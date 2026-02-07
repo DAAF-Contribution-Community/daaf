@@ -496,9 +496,9 @@ You'll interact with the assistant through your **terminal** (also called the co
 **Helpful terminal basics:**
 | What you want to do | Command | Example |
 |---------------------|---------|---------|
-| See where you are | `pwd` | Shows `/Users/yourname/python_researcher` |
+| See where you are | `pwd` | Shows `/Users/yourname/daaf` |
 | List files here | `ls` | Shows files and folders in current directory |
-| Move into a folder | `cd foldername` | `cd python_researcher` |
+| Move into a folder | `cd foldername` | `cd daaf` |
 | Go up one folder | `cd ..` | Goes to the parent directory |
 | Clear the screen | `clear` | Clears clutter (your history is still there) |
 | Cancel a running command | `Ctrl + C` | Stops whatever is currently running |
@@ -540,7 +540,7 @@ claude
 On step 5, Claude Code will prompt you to authenticate (API key or subscription login). After that, you're in — start asking research questions.
 
 **What just happened?**
-- Step 1 downloaded all the project files to a `python_researcher` folder on your computer
+- Step 1 downloaded all the project files to a `daaf` folder on your computer
 - Step 2 moved your terminal into that folder
 - Step 3 built a Docker container with all the tools pre-installed using the Dockerfile provided with this project (Python, data science packages, Claude Code)
 - Step 4 opened a terminal session *inside* that container, separated from the rest of your computer and running with all the software we just installed into the Docker image
@@ -562,7 +562,7 @@ You don't need to install any of these — Docker handles it all — but for you
 
 ### How Files Work
 
-Your local `python_researcher/` folder is connected to the container. This means:
+Your local `daaf/` folder is connected to the container. This means:
 
 - **Files sync both ways** — when the assistant creates a report or dataset inside the container, it appears in the folder on your computer too. You can open these files normally.
 - **Your work persists** — stopping the container doesn't delete your research outputs. They live in your project folder.
@@ -591,10 +591,10 @@ Once installed, your daily workflow is just:
 
 ```bash
 # Get into the project directory, inputting the right file path for your own system
-cd "C:\Users\brhkim\Downloads\python_researcher"
+cd "C:\Users\Documents\daaf"
 # Make sure Docker Desktop is running on your computer, then:
 docker compose up -d
-docker compose exec data-science bash
+docker compose exec daaf-docker bash
 claude
 ```
 
@@ -695,7 +695,7 @@ The `.jsonl` file contains the complete raw transcript if deeper inspection is n
 
 We welcome contributions! This is an open-source proof-of-concept, and there are many ways to help:
 
-- **Report issues:** Found a bug or have a suggestion? [Open an issue](https://github.com/brhkim/python_researcher/issues)
+- **Report issues:** Found a bug or have a suggestion? [Open an issue](https://github.com/brhkim/daaf/issues)
 - **Improve documentation:** Help make the system more accessible
 - **Add skills:** Create new data source or tool skills
 - **Enhance agents:** Improve agent protocols and validation logic
@@ -745,7 +745,7 @@ Your session logs in `.claude/logs/sessions/` contain a full record of what the 
 </details>
 ````
 
-Issue templates are available when you [create a new issue](https://github.com/brhkim/python_researcher/issues/new/choose) to help guide you through this.
+Issue templates are available when you [create a new issue](https://github.com/brhkim/daaf/issues/new/choose) to help guide you through this.
 
 ---
 
