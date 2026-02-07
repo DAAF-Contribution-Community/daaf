@@ -70,7 +70,7 @@ RUN uv pip install --system \
 # ============================================
 # Set up working directory
 # ============================================
-WORKDIR /app
+WORKDIR /daaf
 
 # Default command
 CMD ["bash"]

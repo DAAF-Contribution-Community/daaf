@@ -4,7 +4,7 @@ services:
     ports:
       - "2718:2718"   # Marimo notebook server
     volumes:
-      - .:/app/python_researcher
-    working_dir: /app/python_researcher
+      - .:/daaf
+    working_dir: /daaf
     stdin_open: true  # Required for interactive Claude Code sessions
     tty: true
