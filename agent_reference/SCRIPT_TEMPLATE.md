@@ -354,7 +354,7 @@ from pathlib import Path
 # --- Config ---
 # Configuration constants derived from the Plan's query specification (Section 4.2).
 # Data is downloaded from mirrors — no API calls.
-PROJECT_DIR = Path("/app/python_researcher/research/2026-01-24 School Analysis")
+PROJECT_DIR = Path("/daaf/research/2026-01-24 School Analysis")
 DATA_RAW = PROJECT_DIR / "data" / "raw"
 DATE_PREFIX = "2026-01-24"
 
@@ -375,7 +375,7 @@ OUTPUT_CSV = DATA_RAW / f"{DATE_PREFIX}_ccd_schools.csv"
 # Format-specific read driven by each mirror's read_strategy field.
 import yaml
 
-MIRRORS_YAML = Path("/app/python_researcher/.claude/skills/education-data-query/references/mirrors.yaml")
+MIRRORS_YAML = Path("/daaf/.claude/skills/education-data-query/references/mirrors.yaml")
 
 with open(MIRRORS_YAML) as f:
     MIRRORS = yaml.safe_load(f)["mirrors"]
@@ -549,7 +549,7 @@ from pathlib import Path
 # Configuration constants for CCD cleaning. Coded missing values (-1, -2, -3)
 # are standard across the Education Data Portal and must be replaced with null
 # before any statistical computation.
-PROJECT_DIR = Path("/app/python_researcher/research/2026-01-24 School Analysis")
+PROJECT_DIR = Path("/daaf/research/2026-01-24 School Analysis")
 DATE_PREFIX = "2026-01-24"
 
 INPUT_PATH = PROJECT_DIR / "data" / "raw" / f"{DATE_PREFIX}_ccd_schools.parquet"
@@ -693,7 +693,7 @@ from pathlib import Path
 # --- Config ---
 # Configuration for joining CCD school directory with MEPS poverty estimates.
 # Join key and cardinality are specified in the Plan's Transformation Sequence.
-PROJECT_DIR = Path("/app/python_researcher/research/2026-01-24 School Analysis")
+PROJECT_DIR = Path("/daaf/research/2026-01-24 School Analysis")
 DATE_PREFIX = "2026-01-24"
 
 INPUT_CCD = PROJECT_DIR / "data" / "processed" / f"{DATE_PREFIX}_ccd_clean.parquet"
@@ -833,7 +833,7 @@ from pathlib import Path
 # --- Config ---
 # Diagnostic script for investigating join key mismatch. Loads both datasets
 # that failed to join and tests three hypotheses about the root cause.
-PROJECT_DIR = Path("/app/python_researcher/research/2026-01-24 School Analysis")
+PROJECT_DIR = Path("/daaf/research/2026-01-24 School Analysis")
 DATE_PREFIX = "2026-01-24"
 
 CCD_PATH = PROJECT_DIR / "data" / "processed" / f"{DATE_PREFIX}_ccd_clean.parquet"
@@ -988,7 +988,7 @@ from pathlib import Path
 # QA inspection configuration. Expected values are derived from the Plan
 # specification and the reviewed script's checkpoint assertions. This script
 # provides independent secondary validation of the output data.
-PROJECT_DIR = Path("/app/python_researcher/research/{project_name}")
+PROJECT_DIR = Path("/daaf/research/{project_name}")
 OUTPUT_FILE = PROJECT_DIR / "data" / "{subdir}" / "{filename}.parquet"
 
 EXPECTED_COLUMNS = ["col1", "col2", "col3"]
@@ -1134,7 +1134,7 @@ if not all_passed:
 **Option 1: Using the execution wrapper (recommended)**
 
 ```bash
-cd /app/python_researcher/research/[project]/
+cd /daaf/research/[project]/
 ./scripts/run_with_capture.sh scripts/stage5_fetch/01_fetch-ccd.py
 ```
 
@@ -1146,7 +1146,7 @@ This automatically:
 **Option 2: Manual execution with capture**
 
 ```bash
-cd /app/python_researcher/research/[project]/
+cd /daaf/research/[project]/
 
 # Execute with output capture
 python scripts/stage5_fetch/01_fetch-ccd.py 2>&1 | tee /tmp/output.log

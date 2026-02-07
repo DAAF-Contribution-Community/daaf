@@ -1,6 +1,6 @@
-# Education Data Research Assistant
+# DAAF: Data Analysis Augmentation Framework
 
-An open-source proof-of-concept demonstrating how AI can assist with rigorous, reproducible analysis of U.S. education data—while keeping humans firmly in the loop.
+An open-source framework demonstrating how AI can assist with rigorous, reproducible data analysis—while keeping humans firmly in the loop. Currently demonstrated with U.S. education data from the Urban Institute Education Data Portal, and extensible to new data domains through additional Skills and data ingestion processes.
 
 ---
 
@@ -20,13 +20,15 @@ Our answer: Yes, but only with extensive guardrails, modular quality assurance, 
 
 4. **Human-in-the-Loop**: The system stops and escalates at decision points. Plans require approval. Quality gates require human verification.
 
-### Why Education Data?
+### Why Education Data as the Demonstration Domain?
 
-We chose the [Urban Institute Education Data Portal](https://educationdata.urban.org/) as our demonstration domain because it offers:
+DAAF is designed to be domain-extensible — new data sources can be integrated by authoring Skills (see the `skill-authoring` skill) and profiling datasets (see the `data-ingest` agent). We chose the [Urban Institute Education Data Portal](https://educationdata.urban.org/) as our initial demonstration domain because it offers:
 
 - High-quality, well-documented public data
 - Real policy relevance (K-12 schools, colleges, outcomes)
 - Sufficient complexity to stress-test the system (multiple sources, coded values, suppression rules, cross-state comparability issues)
+
+The architecture, agents, validation protocols, and workflow stages are domain-agnostic — only the Skills are domain-specific.
 
 ---
 
@@ -66,7 +68,7 @@ Large language models can generate plausible-sounding but incorrect outputs. Thi
 
 ## What It Does
 
-Ask questions about U.S. K-12 schools, districts, and colleges. Get documented, reproducible analyses with full methodology and stakeholder-ready reports.
+Ask research questions about your domain of interest. Get documented, reproducible analyses with full methodology and stakeholder-ready reports. The system currently ships with 14+ education data source Skills covering U.S. K-12 schools, districts, and colleges — and can be extended to new domains.
 
 **Example:**
 
@@ -544,7 +546,7 @@ On step 5, Claude Code will prompt you to authenticate (API key or subscription 
 - Step 2 moved your terminal into that folder
 - Step 3 built a Docker container with all the tools pre-installed using the Dockerfile provided with this project (Python, data science packages, Claude Code)
 - Step 4 opened a terminal session *inside* that container, separated from the rest of your computer and running with all the software we just installed into the Docker image
-- Step 5 launched the Claude Code assistant, ready to help with education data research. 
+- Step 5 launched the Claude Code assistant, ready to help with data analysis research. 
 - Step 6 ensured you're using Opus 4.6 for this work, as it's basically required given the complexity of tasks at play here.
 
 ### What the Container Includes
@@ -639,11 +641,11 @@ A: No. This is a proof-of-concept demonstrating AI-assisted research patterns. A
 
 **Q: What data sources are currently supported?**
 
-A: The system connects to 14+ education data sources through the Urban Institute Education Data Portal. See [Available Data Sources](#available-data-sources).
+A: The system currently ships with 14+ education data source Skills through the Urban Institute Education Data Portal. See [Available Data Sources](#available-data-sources). New data domains can be added via the `data-ingest` agent and `skill-authoring` skill.
 
 **Q: Can I use this for non-education research?**
 
-A: The architecture patterns are generalizable, but the skills and protocols are specifically designed for education data. Adapting to other domains would require creating new skills and potentially modifying agent protocols. I've provided a "data-ingest" agent to help you with that process for a given (non-proprietary/sensitive) table and data documentation you might have, as well as a "skill-authoring" skill that gives your assistant a sense of the best practices for how to set it up. 
+A: Yes! DAAF's architecture, agents, and validation protocols are domain-agnostic. Only the Skills are domain-specific. To add a new data domain, use the `data-ingest` agent to profile your dataset and the `skill-authoring` skill to create documentation for it. The education data Skills serve as excellent templates for new domains. Note: do not provide Claude with access to proprietary or sensitive data without proper IT agreements in place. 
 
 **Q: It's asking me to confirm basically everything, and it's taking forever. Can't it just run on its own?**
 

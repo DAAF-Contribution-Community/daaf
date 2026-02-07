@@ -165,7 +165,7 @@ The IAT is about useful documentation, not noise. Do NOT comment:
 **BEFORE (sparse):**
 ```python
 # --- Config ---
-PROJECT_DIR = Path("/app/python_researcher/research/2026-01-24 School Analysis")
+PROJECT_DIR = Path("/daaf/research/2026-01-24 School Analysis")
 DATA_RAW = PROJECT_DIR / "data" / "raw"
 DATE_PREFIX = "2026-01-24"
 BASE_URL = "https://educationdata.urban.org/api/v1/schools/ccd/directory"
@@ -197,7 +197,7 @@ for year in YEARS:
 # Configuration constants derived from the Plan's query specification (Section 4.2).
 # The Urban Institute Education Data Portal provides CCD school directory data
 # via a paginated REST API. We fetch 5 years to match the Plan's year range.
-PROJECT_DIR = Path("/app/python_researcher/research/2026-01-24 School Analysis")
+PROJECT_DIR = Path("/daaf/research/2026-01-24 School Analysis")
 DATA_RAW = PROJECT_DIR / "data" / "raw"
 DATE_PREFIX = "2026-01-24"
 

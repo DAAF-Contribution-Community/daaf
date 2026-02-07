@@ -124,7 +124,7 @@ Each task invocation executes exactly ONE operation:
 │  STEP 2: EXECUTE VIA BASH                                                   │
 │                                                                             │
 │  Command:                                                                   │
-│    cd /app/python_researcher/research/[project]/                            │
+│    cd /daaf/research/[project]/                            │
 │    python scripts/stage{N}_{type}/{step}_{task-name}.py 2>&1                │
 │                                                                             │
 │  Capture: full stdout/stderr, exit code                                     │

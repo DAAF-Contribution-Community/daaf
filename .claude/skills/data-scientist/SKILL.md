@@ -109,7 +109,7 @@ CHECK IN with users when:
 - `polars` - Required for DataFrame operations; data-scientist provides methodology, polars provides syntax
 - `marimo` - Required for creating validated notebooks; data-scientist defines validation patterns, marimo provides implementation
 
-**For Education Data Research Workflows:**
+**For Data Analysis Workflows:**
 
 In the research pipeline, data-scientist methodology is applied within the **file-first execution pattern**:
 - Write script files FIRST (to `scripts/stage{N}_{type}/`)
@@ -130,7 +130,7 @@ What task are you performing?
     └─ Load `ruff` skill for linting
 ```
 
-**For Education Data Analysis:**
+**For Domain-Specific Analysis (e.g., Education Data):**
 - Load relevant `education-data-source-*` skill first to understand domain-specific data caveats
 - Then apply data-scientist methodology with that context
 

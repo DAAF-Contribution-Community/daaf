@@ -198,7 +198,7 @@ See `agents/notebook-assembler.md` for the complete notebook compilation protoco
 
 2. **Execute with capture:**
    ```bash
-   cd /app/python_researcher/research/[project]/
+   cd /daaf/research/[project]/
    ./scripts/run_with_capture.sh scripts/stage{N}_{type}/{step}_{task}.py
    ```
 
