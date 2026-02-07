@@ -2,6 +2,15 @@
 
 How to query Model Estimates of Poverty in Schools via the Urban Institute Education Data Portal API.
 
+> **CRITICAL: Portal Data Encoding**
+>
+> Portal returns MEPS data with integer-encoded IDs and native nulls:
+> - `ncessch`, `leaid`, `fips` are **Int64** (not strings)
+> - Missing values are **null** (not -1, -2, -3)
+> - Years available: **2009-2022** (actual data range)
+>
+> See `variable-definitions.md` for complete type mappings.
+
 ## API Endpoint
 
 ### Base URL
@@ -24,13 +33,16 @@ https://educationdata.urban.org/api/v1/schools/meps/{year}/
 ## Available Years
 
 MEPS data is available for:
-- **MEPS 1.0**: 2006-2019
-- **MEPS 2.0**: Extended range (check API for current availability)
+- **Actual Portal range**: 2009-2022 (as of last verification)
+- **MEPS 1.0 documentation**: 2006-2019
+- **MEPS 2.0**: Extended range (December 2025 release)
 
 To check available years:
 ```
 GET /api/v1/schools/meps/
 ```
+
+> **Note:** Documentation may cite 2006-2019, but actual Portal data starts at 2009.
 
 ## Query Parameters
 
@@ -120,6 +132,21 @@ Note: May require pagination for full dataset.
 | `next` | String/null | URL for next page |
 | `previous` | String/null | URL for previous page |
 | `results` | Array | Data records |
+
+### Record Fields (Portal Encoding)
+
+| Field | Type | Notes |
+|-------|------|-------|
+| `ncessch` | Integer | 12-digit school ID as integer |
+| `year` | Integer | Academic year |
+| `fips` | Integer | State FIPS (1-56) |
+| `leaid` | Integer | 7-digit district ID as integer |
+| `gleaid` | Integer | Geographic LEA ID |
+| `meps_poverty_pct` | Float | Poverty percentage (0-100 scale) |
+| `meps_mod_poverty_pct` | Float | Modified estimate |
+| `meps_poverty_se` | Float | Standard error |
+| `meps_poverty_ptl` | Integer | Poverty percentile (1-100) |
+| `meps_mod_poverty_ptl` | Integer | Modified percentile |
 
 ## Using Python
 

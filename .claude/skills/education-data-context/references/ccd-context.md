@@ -227,14 +227,32 @@ Some states have historically higher rates of missing or problematic data:
 
 ### Enrollment Totals
 
-**Use grade -99 (total) rather than summing grade-level enrollment:**
+**Use grade 99 (total) rather than summing grade-level enrollment:**
 
 ```python
-# RECOMMENDED - use reported total
-total_enrollment = df.filter(pl.col("grade") == -99)["enrollment"]
+# RECOMMENDED - use reported total (grade=99, NOT -99)
+total_enrollment = df.filter(pl.col("grade") == 99)["enrollment"]
 
 # NOT RECOMMENDED - summing grades may miss ungraded students
-# grade_sum = df.filter(pl.col("grade").is_between(1, 12))["enrollment"].sum()
+# grade_sum = df.filter(pl.col("grade").is_between(0, 12))["enrollment"].sum()
+```
+
+**CRITICAL: Grade -1 means Pre-K, NOT missing data!**
+
+The Portal uses integer encoding for grades:
+- `grade = -1` → Pre-Kindergarten (semantic trap!)
+- `grade = 0` → Kindergarten
+- `grade = 1-12` → Grades 1-12
+- `grade = 13` → Ungraded
+- `grade = 99` → Total
+
+```python
+# WRONG - this filters out Pre-K students!
+df = df.filter(pl.col("grade") >= 0)
+
+# RIGHT - include Pre-K
+pre_k = df.filter(pl.col("grade") == -1)
+k_12 = df.filter(pl.col("grade").is_between(0, 12))
 ```
 
 ### State Comparisons
@@ -282,7 +300,8 @@ def suppression_analysis(df, variable):
 
 | Task | Guidance |
 |------|----------|
-| Getting enrollment | Use grade=-99 for totals |
+| Getting enrollment | Use grade=99 for totals (integer, not -99) |
+| Pre-K enrollment | Use grade=-1 (**NOT** missing data!) |
 | Comparing states | Check missingness first |
 | Using FRPL | Note CEP and direct certification |
 | Time series | Check for definition changes |
@@ -290,3 +309,17 @@ def suppression_analysis(df, variable):
 | Disaggregating | Check suppression rates |
 | Using locale | Pre-2006 vs. post-2006 not comparable |
 | Dropout rates | Within-state only |
+
+## Portal Integer Encoding Reference
+
+CCD data uses integer codes, not strings:
+
+| Variable | Values | Notes |
+|----------|--------|-------|
+| Grade | -1 to 13, 99 | -1=Pre-K (semantic trap!), 0=K, 99=Total |
+| Race | 1-7, 99 | 1=White, 2=Black, 3=Hispanic, etc. |
+| Sex | 1, 2, 99 | 1=Male, 2=Female, 99=Total |
+| Charter | 0, 1 | 0=No, 1=Yes |
+| School Level | 0-4 | 1=Primary, 2=Middle, 3=High |
+
+See `education-data-context` SKILL.md for complete encoding tables.

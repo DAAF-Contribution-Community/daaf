@@ -35,6 +35,8 @@ Field of study data links outcomes to specific academic programs:
 
 ### Credential Levels
 
+> **Portal Encoding:** These are integer codes in the Portal data.
+
 | Code | Description |
 |------|-------------|
 | 1 | Undergraduate Certificate or Diploma |
@@ -123,20 +125,20 @@ Field-level data has much higher suppression than institution-level:
 ### Checking Suppression
 
 ```python
-# Count suppressed records
-suppressed = df.filter(
-    pl.col("EARN_MDN_HI_2YR").is_null() |
-    (pl.col("EARN_MDN_HI_2YR") == "PrivacySuppressed")
-)
+import polars as pl
+
+# Count suppressed/missing records (null is primary indicator in Portal parquet)
+suppressed = df.filter(pl.col("earn_mdn_hi_2yr").is_null())
 
 suppression_rate = suppressed.height / df.height
-print(f"Suppression rate: {suppression_rate:.1%}")
+print(f"Suppression/missing rate: {suppression_rate:.1%}")
 
-# Programs with data
+# Programs with valid data (non-null positive values)
 with_data = df.filter(
-    pl.col("EARN_MDN_HI_2YR").is_not_null() &
-    (pl.col("EARN_MDN_HI_2YR") != "PrivacySuppressed")
+    pl.col("earn_mdn_hi_2yr").is_not_null() &
+    (pl.col("earn_mdn_hi_2yr") > 0)
 )
+print(f"Programs with valid earnings data: {with_data.height}")
 ```
 
 ## Common CIP Codes
@@ -195,14 +197,18 @@ with_data = df.filter(
 To reduce suppression, aggregate across similar institutions:
 
 ```python
+import polars as pl
+
 # Aggregate 2-digit CIP earnings across public 4-years
+# Portal uses integer codes: control=1 is public
 field_summary = (
-    df.filter(pl.col("CONTROL") == 1)  # Public
-    .filter(pl.col("CREDLEV") == 3)    # Bachelor's
-    .group_by("CIPCODE")
+    df.filter(pl.col("control") == 1)  # Public (integer code)
+    .filter(pl.col("credlev") == 3)    # Bachelor's (integer code)
+    .filter(pl.col("earn_mdn_hi_2yr") > 0)  # Valid earnings only
+    .group_by("cipcode")
     .agg([
-        pl.col("EARN_MDN_HI_2YR").median().alias("median_earnings"),
-        pl.col("NUM_AWARDS").sum().alias("total_completers")
+        pl.col("earn_mdn_hi_2yr").median().alias("median_earnings"),
+        pl.col("num_awards").sum().alias("total_completers")
     ])
 )
 ```
@@ -274,10 +280,13 @@ Best: "Computer Science bachelor's degree graduates at School X
 Join field data to institution characteristics:
 
 ```python
+import polars as pl
+
 # Merge field data with institution data
+# Note: Portal column names are lowercase
 combined = field_df.join(
-    institution_df.select(["UNITID", "INSTNM", "CONTROL", "STABBR"]),
-    on="UNITID",
+    institution_df.select(["unitid", "inst_name", "control", "state_abbr"]),
+    on="unitid",
     how="left"
 )
 ```

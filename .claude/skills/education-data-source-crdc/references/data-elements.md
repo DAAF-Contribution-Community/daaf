@@ -113,26 +113,36 @@ Starting 2020-21, CRDC also collects:
 ### Calculating Discipline Rates
 
 ```python
-def discipline_rate(discipline_count, enrollment, per=100):
+import polars as pl
+
+def discipline_rate_by_group(df, discipline_var, enrollment_var='enrollment_crdc', per=100):
     """
     Calculate discipline rate per 100 (or 1000) students.
-    
+
     Args:
-        discipline_count: Number of students disciplined
-        enrollment: Total enrollment in subgroup
+        df: DataFrame filtered to a subgroup (e.g., race==2 for Black)
+        discipline_var: Column with discipline counts
+        enrollment_var: Column with enrollment counts
         per: Rate multiplier (100 or 1000)
-    
+
     Returns:
         Rate per specified multiplier
     """
-    if enrollment == 0 or pd.isna(enrollment):
-        return None
-    return (discipline_count / enrollment) * per
+    # Filter out coded missing values
+    df_valid = df.filter(pl.col(discipline_var) >= 0)
 
-# Example: OSS rate for Black students
-black_oss_rate = discipline_rate(
-    df['oss_one_black'] + df['oss_more_black'],
-    df['enrollment_black'],
+    total_disciplined = df_valid.select(pl.col(discipline_var).sum()).item()
+    total_enrolled = df_valid.select(pl.col(enrollment_var).sum()).item()
+
+    if total_enrolled == 0:
+        return None
+    return (total_disciplined / total_enrolled) * per
+
+# Example: OSS rate for Black students (race=2 in Portal encoding)
+black_students = df.filter(pl.col('race') == 2)
+black_oss_rate = discipline_rate_by_group(
+    black_students,
+    'students_susp_out_sch_single',
     per=100
 )
 ```
@@ -323,23 +333,39 @@ Information on courses **offered** by schools and student **enrollment** in spec
 ### Equity Analysis
 
 ```python
+import polars as pl
+
 # Example: AP course access disparity
-def course_access_analysis(school_df):
+def course_access_analysis(df):
     """
     Analyze whether schools serving more minority students
     are less likely to offer advanced courses.
+
+    Uses Portal integer codes: race=2 (Black), race=3 (Hispanic)
     """
-    school_df['pct_minority'] = (
-        (school_df['enrollment_black'] + 
-         school_df['enrollment_hispanic']) / 
-        school_df['enrollment_total']
+    # Get enrollment totals by race for each school
+    # Note: race=99 is total enrollment in Portal data
+    totals = df.filter(pl.col('race') == 99).select(['ncessch', 'enrollment_crdc'])
+    black = df.filter(pl.col('race') == 2).select(['ncessch', pl.col('enrollment_crdc').alias('enrollment_black')])
+    hispanic = df.filter(pl.col('race') == 3).select(['ncessch', pl.col('enrollment_crdc').alias('enrollment_hispanic')])
+
+    school_df = totals.join(black, on='ncessch', how='left').join(hispanic, on='ncessch', how='left')
+
+    school_df = school_df.with_columns(
+        ((pl.col('enrollment_black').fill_null(0) + pl.col('enrollment_hispanic').fill_null(0)) /
+         pl.col('enrollment_crdc')).alias('pct_minority')
     )
-    
-    offers_ap_by_minority = school_df.groupby(
-        pd.cut(school_df['pct_minority'], bins=[0, 0.25, 0.5, 0.75, 1.0])
-    )['offers_ap'].mean()
-    
-    return offers_ap_by_minority
+
+    # Group by minority percentage quartile
+    school_df = school_df.with_columns(
+        pl.when(pl.col('pct_minority') <= 0.25).then(pl.lit('0-25%'))
+        .when(pl.col('pct_minority') <= 0.50).then(pl.lit('25-50%'))
+        .when(pl.col('pct_minority') <= 0.75).then(pl.lit('50-75%'))
+        .otherwise(pl.lit('75-100%'))
+        .alias('minority_quartile')
+    )
+
+    return school_df
 ```
 
 ---

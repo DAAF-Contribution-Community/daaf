@@ -8,6 +8,20 @@ EADA data is available through the Urban Institute's Education Data Portal as pa
 
 **Base URL**: `https://educationdata.urban.org/api/v1/`
 
+> **CRITICAL: Portal Integer Encoding**
+>
+> The Portal returns **integer codes** for categorical variables. When filtering:
+>
+> ```python
+> # Filter by state using integer FIPS code
+> eada_ca = get_eada_data(2022, fips=6)  # California = 6, NOT "CA"
+>
+> # Filter by athletic classification
+> ncaa_d1_fbs = df.filter(pl.col("ath_classification_code") == 1)  # NCAA D1 FBS
+> ```
+>
+> Missing data codes: `-1` (missing), `-2` (not applicable), `-3` (suppressed)
+
 ## Endpoint Structure
 
 ### Institution-Level EADA Data

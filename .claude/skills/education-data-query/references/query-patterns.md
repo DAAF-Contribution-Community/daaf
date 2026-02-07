@@ -94,12 +94,17 @@ School enrollment data. **Requires grade disaggregator in path.**
 "https://educationdata.urban.org/api/v1/schools/ccd/enrollment/2020/grade-99/race/sex/"
 ```
 
-**Grade values:**
-- `grade-pk` - Pre-kindergarten
-- `grade-k` - Kindergarten
-- `grade-1` through `grade-12` - Individual grades
-- `grade-13` - Ungraded
-- `grade-99` - Total (all grades combined)
+**Grade values (URL path → data column):**
+
+| URL Path | Data Column | Description |
+|----------|-------------|-------------|
+| `grade-pk` | `grade = -1` | Pre-kindergarten (**SEMANTIC TRAP!**) |
+| `grade-k` | `grade = 0` | Kindergarten |
+| `grade-1` to `grade-12` | `grade = 1` to `12` | Grades 1-12 |
+| `grade-13` | `grade = 13` | Ungraded |
+| `grade-99` | `grade = 99` | Total (all grades combined) |
+
+**CRITICAL:** In downloaded data, `grade = -1` means Pre-K, NOT missing data!
 
 **CRITICAL: Disaggregator Ordering Rules**
 

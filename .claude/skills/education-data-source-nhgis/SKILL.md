@@ -10,6 +10,22 @@ metadata:
 
 Census geography and demographic data source for education research. NHGIS provides the foundation for linking schools to community characteristics.
 
+> **CRITICAL: Portal Integer Encodings**
+>
+> When accessing NHGIS data through the Education Data Portal (not NHGIS directly), categorical variables use **integer encodings**, not string labels. Always verify the exact codes in the mirror codebook.
+>
+> | Variable | Integer Code | Meaning |
+> |----------|--------------|---------|
+> | `census_region` | `1` | Northeast |
+> | `census_region` | `2` | Midwest |
+> | `census_region` | `3` | South |
+> | `census_region` | `4` | West |
+> | `cbsa_type` | `1` | Metropolitan |
+> | `cbsa_type` | `2` | Micropolitan |
+> | `geocode_accuracy` | `-2` | Not geocoded |
+>
+> See `references/variable-catalog.md` for complete encoding tables.
+
 ## What is NHGIS?
 
 NHGIS (from IPUMS, University of Minnesota) provides free access to:
@@ -127,14 +143,44 @@ Time period?
 
 ## NHGIS in Education Data Portal
 
-The Urban Institute Education Data Portal includes NHGIS-derived data:
+The Urban Institute Education Data Portal includes NHGIS-derived data linking schools to census geography.
 
-| Portal Endpoint | NHGIS Source | Purpose |
-|-----------------|--------------|---------|
-| `/schools/nhgis/{year}/` | Census tract crosswalks | School-tract links |
-| School district geography | School district boundaries | District-level analysis |
+### Available via HuggingFace Mirror
 
-**Note**: The Portal provides pre-processed crosswalks; for custom geographic analysis, use NHGIS directly.
+| Mirror Path | Census Year | Content |
+|-------------|-------------|---------|
+| `schools/nhgis/census-1990/` | 1990 | School-to-tract links |
+| `schools/nhgis/census-2000/` | 2000 | School-to-tract links |
+| `schools/nhgis/census-2010/` | 2010 | School-to-tract links |
+| `schools/nhgis/census-2020/` | 2020 | School-to-tract links |
+
+### Key Variables in Portal NHGIS Data
+
+| Variable | Description |
+|----------|-------------|
+| `ncessch` | NCES school ID |
+| `tract` | Census tract (integer) |
+| `block_group` | Block group number |
+| `geoid_block` | Full block identifier |
+| `census_region` | Census Bureau region (1-4, 9) |
+| `census_division` | Census Bureau division (1-9) |
+| `cbsa` | CBSA code (if applicable) |
+| `cbsa_type` | Metropolitan (1) or Micropolitan (2) |
+
+### Accessing Data
+
+```python
+import polars as pl
+
+# Load school-to-census links for 2020
+url = "https://huggingface.co/datasets/brhkim/education_data_portal_mirror/resolve/main/schools/nhgis/census-2020/schools_nhgis_geog_2020.parquet"
+df = pl.read_parquet(url)
+
+# Filter to specific school
+school_census = df.filter(pl.col("ncessch") == 60000100001)
+```
+
+**Note**: The Portal provides pre-processed crosswalks; for custom geographic analysis, use NHGIS directly (requires free IPUMS registration).
 
 ## Data Access Methods
 

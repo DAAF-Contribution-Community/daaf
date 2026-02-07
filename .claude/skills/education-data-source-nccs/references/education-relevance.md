@@ -355,7 +355,50 @@ Schedule L and R reveal related party transactions:
 
 ## Example Queries
 
-### Find All Private Universities in a State
+### Using Education Data Portal (HuggingFace Mirror)
+
+**Get NCCS Data for Higher Education:**
+
+```python
+import polars as pl
+
+# Load NCCS data from HuggingFace mirror
+url = "https://huggingface.co/datasets/brhkim/education_data_portal_mirror/resolve/main/college-university/nccs/990-forms/colleges_nccs_all.parquet"
+nccs = pl.read_parquet(url)
+
+# Filter to California (FIPS = 6) - note: integer codes!
+ca_institutions = nccs.filter(pl.col("fips") == 6)
+
+# Get latest year data
+latest = nccs.filter(pl.col("year") == nccs["year"].max())
+
+# Financial summary
+print(f"Total Revenue: ${latest['revenue_total'].mean():,.0f}")
+print(f"Total Assets: ${latest['total_assets_eoy'].mean():,.0f}")
+```
+
+**Join with IPEDS:**
+
+```python
+import polars as pl
+
+# NCCS data includes unitid for IPEDS matching
+nccs = pl.read_parquet("https://huggingface.co/datasets/brhkim/education_data_portal_mirror/resolve/main/college-university/nccs/990-forms/colleges_nccs_all.parquet")
+
+# IPEDS directory for institution names
+ipeds = pl.read_parquet("https://huggingface.co/datasets/brhkim/education_data_portal_mirror/resolve/main/college-university/ipeds/directory/colleges_ipeds_directory_all.parquet")
+
+# Join on unitid and year
+combined = nccs.join(
+    ipeds.select(["unitid", "year", "inst_name", "sector"]),
+    on=["unitid", "year"],
+    how="left"
+)
+```
+
+### Using Direct NCCS Data
+
+**Find All Private Universities in a State:**
 
 ```python
 import pandas as pd
@@ -374,7 +417,7 @@ ca_universities = bmf[
 print(f"Found {len(ca_universities)} private universities in California")
 ```
 
-### Get Financial Data for a Specific Institution
+**Get Financial Data for a Specific Institution:**
 
 ```python
 # Find Stanford University
@@ -389,7 +432,7 @@ print(f"Total Revenue: ${stanford_990['TOTREV'].values[0]:,.0f}")
 print(f"Total Assets: ${stanford_990['TOTASS'].values[0]:,.0f}")
 ```
 
-### Compare Endowments Across Institutions
+**Compare Endowments Across Institutions:**
 
 ```python
 # Load Efile Schedule D data
@@ -405,7 +448,7 @@ endowments = endowments[endowments['EIN'].isin(ca_universities['EIN'])]
 endowments = endowments.sort_values('ENDOWMENT_EOY', ascending=False)
 ```
 
-### Analyze Executive Compensation
+**Analyze Executive Compensation:**
 
 ```python
 # Load Part VII compensation data
@@ -419,8 +462,8 @@ presidents = part_vii[
 
 # Calculate total compensation
 presidents['TOTAL_COMP'] = (
-    presidents['BASE_COMP'] + 
-    presidents['BONUS'] + 
+    presidents['BASE_COMP'] +
+    presidents['BONUS'] +
     presidents['OTHER_COMP'] +
     presidents['DEFERRED_COMP'] +
     presidents['NONTAXABLE']

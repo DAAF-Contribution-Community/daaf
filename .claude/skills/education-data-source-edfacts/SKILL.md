@@ -97,19 +97,26 @@ What are you comparing?
 | 6-year ACGR | Further extended rate | 2012-13 to present |
 | Diploma types | Regular diploma only in ACGR | All years |
 
-### Subgroups Reported
+### Subgroups Reported (Portal Integer Encoding)
 
-| Subgroup | Code in Data | Notes |
-|----------|--------------|-------|
-| All students | `ALL` | Full population |
-| Economically disadvantaged | `ECODIS` | Based on FRPL or other measures |
-| Students with disabilities | `CWD` | IDEA-eligible students |
-| English learners | `LEP` | Limited English proficient |
-| Homeless | `HOM` | McKinney-Vento identified |
-| Foster care | `FCS` | In foster care system |
-| Migrant | `MIG` | Migrant education program |
-| Military connected | `MIL` | Military family students |
-| Race/ethnicity | Multiple codes | See subgroup-reporting.md |
+> **Portal Encoding Warning:** The Urban Institute Education Data Portal converts NCES string codes (e.g., `ALL`, `CWD`, `LEP`) to integer codes. Always check actual data values, not documentation labels.
+
+| Subgroup | String Code | Portal Integer | Notes |
+|----------|-------------|----------------|-------|
+| All students | `ALL` | `99` | Total row (filter dimension) |
+| Economically disadvantaged | `ECODIS` | `1` | In econ_disadvantaged column |
+| Students with disabilities | `CWD` | See disability codes | IDEA-eligible students |
+| English learners | `LEP` | `1` | In lep column |
+| Homeless | `HOM` | `1` | In homeless column |
+| Foster care | `FCS` | `1` | In foster_care column |
+| Migrant | `MIG` | `1` | In migrant column |
+| Military connected | `MIL` | `1` | In military_connected column |
+| Race/ethnicity | Multiple | See race codes | Integer codes 1-99 |
+
+**EDFacts Filter Column Pattern:**
+- Special population columns (lep, disability, homeless, migrant, etc.) use `1` = subgroup, `99` = total
+- Race column uses integer codes (1=White, 2=Black, etc.)
+- Sex column uses `1` = Male, `2` = Female, `99` = Total
 
 ## Quick Reference: Suppression and Missing Data
 
@@ -123,6 +130,73 @@ What are you comparing?
 | `_midpt` suffix | Calculated midpoint of suppressed range |
 
 **Always use `_midpt` variables for analysis when exact values are suppressed.**
+
+## Portal Integer Encodings (Categorical Variables)
+
+> **CRITICAL:** The Urban Institute Education Data Portal converts NCES string codes to integers. Always verify actual data values before filtering.
+
+### Grade Codes (grade_edfacts)
+
+| Code | Grade Level |
+|------|-------------|
+| `3`-`8` | Grades 3-8 (individual) |
+| `9` | Grades 9-12 combined |
+| `99` | Total (all grades) |
+
+### Race Codes
+
+| Code | Category |
+|------|----------|
+| `1` | White |
+| `2` | Black |
+| `3` | Hispanic |
+| `4` | Asian |
+| `5` | American Indian/Alaska Native |
+| `6` | Native Hawaiian/Pacific Islander |
+| `7` | Two or More Races |
+| `8` | Nonresident alien |
+| `9` | Unknown |
+| `20` | Other |
+| `99` | Total |
+| `-1` | Missing/not reported |
+| `-2` | Not applicable |
+| `-3` | Suppressed |
+
+### Sex Codes
+
+| Code | Category |
+|------|----------|
+| `1` | Male |
+| `2` | Female |
+| `9` | Unknown |
+| `99` | Total |
+
+### Disability Codes
+
+| Code | Category |
+|------|----------|
+| `0` | Students without disabilities |
+| `1` | Students with disabilities served under IDEA |
+| `2` | Students with disabilities served under Section 504 only |
+| `3` | Students not served under IDEA |
+| `4` | Students with disabilities (Section 504 and IDEA) |
+| `99` | Total |
+
+### LEP Codes
+
+| Code | Category |
+|------|----------|
+| `1` | Students who are limited English proficient |
+| `99` | All students (total) |
+
+### Special Population Columns
+
+For `homeless`, `migrant`, `econ_disadvantaged`, `foster_care`, `military_connected`:
+
+| Code | Category |
+|------|----------|
+| `1` | Yes (in subgroup) |
+| `99` | Total (all students) |
 
 ## Quick Reference: Data Levels
 

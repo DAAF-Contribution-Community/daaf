@@ -2,6 +2,17 @@
 
 Detailed definitions of SAIPE variables, population universes, and coding conventions.
 
+> **CRITICAL: Portal vs Census Raw File Encoding**
+>
+> This document describes **Education Data Portal** integer encodings, which differ from Census Bureau raw file formats. The Portal converts categorical variables to integers for consistency across sources.
+>
+> | Context | FIPS Alabama | FIPS California | Missing | Suppressed |
+> |---------|--------------|-----------------|---------|------------|
+> | **Portal (integers)** | `1` | `6` | `-1` | `-3` |
+> | Census raw files | `01` (string) | `06` (string) | varies | varies |
+>
+> **Key difference:** Portal FIPS codes are integers (no leading zeros). When filtering by state, use integers: `fips == 6` not `fips == "06"` or `fips == "6"`.
+
 ## School District Variables
 
 ### Core Estimates
@@ -138,17 +149,28 @@ Poverty status determined by comparing family income to threshold based on:
 
 ## Geographic Identifiers
 
-### State FIPS Codes
+### State FIPS Codes (Portal Integer Encoding)
+
+The Portal stores FIPS codes as integers (no leading zeros). Use integers when filtering:
+
+```python
+# Correct - use integer
+df.filter(pl.col("fips") == 6)  # California
+
+# WRONG - these will not match
+df.filter(pl.col("fips") == "06")  # String won't match integer
+df.filter(pl.col("fips") == "6")   # Still a string
+```
 
 | Code | State | Code | State |
 |------|-------|------|-------|
-| 01 | Alabama | 27 | Minnesota |
-| 02 | Alaska | 28 | Mississippi |
-| 04 | Arizona | 29 | Missouri |
-| 05 | Arkansas | 30 | Montana |
-| 06 | California | 31 | Nebraska |
-| 08 | Colorado | 32 | Nevada |
-| 09 | Connecticut | 33 | New Hampshire |
+| 1 | Alabama | 27 | Minnesota |
+| 2 | Alaska | 28 | Mississippi |
+| 4 | Arizona | 29 | Missouri |
+| 5 | Arkansas | 30 | Montana |
+| 6 | California | 31 | Nebraska |
+| 8 | Colorado | 32 | Nevada |
+| 9 | Connecticut | 33 | New Hampshire |
 | 10 | Delaware | 34 | New Jersey |
 | 11 | District of Columbia | 35 | New Mexico |
 | 12 | Florida | 36 | New York |
@@ -171,12 +193,32 @@ Poverty status determined by comparing family income to threshold based on:
 | | | 55 | Wisconsin |
 | | | 56 | Wyoming |
 
+**Territories (in Portal data):**
+| Code | Territory |
+|------|-----------|
+| 60 | American Samoa |
+| 66 | Guam |
+| 69 | Northern Mariana Islands |
+| 72 | Puerto Rico |
+| 78 | Virgin Islands |
+
 ### School District ID (LEAID)
 
-- 7-character string
-- First 2 characters = state FIPS code
-- Remaining 5 = unique district within state
-- Example: `0622710` = California district 22710
+In the Portal, `leaid` is stored as an **integer** (not a 7-character string):
+
+- Conceptually 7 digits: first 2 = state FIPS, remaining 5 = district within state
+- Example: `622710` (integer) = California district 22710
+- Note: Leading zeros are not stored (state FIPS 06 → 6, so 0622710 → 622710)
+
+```python
+# Filtering by leaid - use integers
+df.filter(pl.col("leaid") == 622710)  # California district 22710
+
+# If you need the 7-character format for joining with other sources
+df.with_columns(
+    pl.col("leaid").cast(str).str.zfill(7).alias("leaid_str")
+)
+```
 
 ### County FIPS Codes
 
@@ -187,14 +229,38 @@ Poverty status determined by comparing family income to threshold based on:
 
 ## Missing Data Codes
 
-### Education Data Portal Conventions
+### Portal Integer Encoding
 
-| Code | Meaning |
-|------|---------|
-| `-1` | Missing/not available |
-| `-2` | Not applicable |
-| `-3` | Suppressed for confidentiality |
-| `null` | No data |
+The Education Data Portal uses standard negative integer codes across all SAIPE variables:
+
+| Code | Meaning | When Used |
+|------|---------|-----------|
+| `-1` | Missing/not reported | State did not report; value unknown |
+| `-2` | Not applicable | Item doesn't apply to this district |
+| `-3` | Suppressed | Data suppressed for privacy protection |
+| `null` | No data | No value present in source |
+
+> **Note:** Unlike some other sources (e.g., CCD enrollment where `-1` = Pre-K), SAIPE uses `-1` consistently for missing data across all variables.
+
+### Handling Missing Data
+
+```python
+import polars as pl
+
+# Identify problematic values
+missing_codes = [-1, -2, -3]
+
+# Filter to valid data only
+df_valid = df.filter(~pl.col("est_population_5_17_poverty").is_in(missing_codes))
+
+# Or convert to null for calculations
+df_clean = df.with_columns(
+    pl.when(pl.col("est_population_5_17_poverty").is_in(missing_codes))
+    .then(None)
+    .otherwise(pl.col("est_population_5_17_poverty"))
+    .alias("est_population_5_17_poverty")
+)
+```
 
 ### Suppression Rules
 
@@ -250,14 +316,19 @@ SAIPE estimates are for **calendar year** income, not school year:
 
 ## Education Data Portal Variable Names
 
-When accessing SAIPE via the Urban Institute API, variable names may differ slightly:
+When accessing SAIPE via the Urban Institute API, variable names include the `est_` prefix:
 
-| Census Variable | Education Data Portal |
-|-----------------|----------------------|
-| Total population | `population_total` |
-| Population 5-17 | `population_5_17` |
-| Children 5-17 in poverty | `population_5_17_poverty` |
-| Percent 5-17 in poverty | `population_5_17_poverty_pct` |
-| Median household income | `median_household_income` |
+| Census Variable | Portal Variable | Data Type |
+|-----------------|-----------------|-----------|
+| Total population | `est_population_total` | Integer |
+| Population 5-17 | `est_population_5_17` | Integer |
+| Children 5-17 in poverty | `est_population_5_17_poverty` | Integer |
+| Percent 5-17 in poverty | `est_population_5_17_poverty_pct` | Float |
+| Percent population 5-17 | `est_population_5_17_pct` | Float |
+| District ID | `leaid` | Integer |
+| State FIPS | `fips` | Integer |
+| Year | `year` | Integer |
+| Census district ID | `district_id` | Integer |
+| Census district name | `district_name` | String |
 
-Check the Education Data Portal documentation for current variable names.
+> **Note:** All Portal variables are lowercase. The `est_` prefix indicates these are estimates, not direct counts.

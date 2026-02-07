@@ -213,19 +213,25 @@ completions_by_race = df.group_by(["cip", "race"]).agg(pl.col("awards").sum())
 completions_by_gender = df.group_by(["cip", "sex"]).agg(pl.col("awards").sum())
 ```
 
-### Race/Ethnicity Categories
+### Race/Ethnicity Categories (Portal Integer Encoding)
 
 | Code | Category |
 |------|----------|
-| 1 | Nonresident alien |
-| 2 | Hispanic/Latino |
-| 3 | American Indian/Alaska Native |
+| 1 | White |
+| 2 | Black or African American |
+| 3 | Hispanic/Latino |
 | 4 | Asian |
-| 5 | Black or African American |
+| 5 | American Indian/Alaska Native |
 | 6 | Native Hawaiian/Pacific Islander |
-| 7 | White |
-| 8 | Two or more races |
+| 7 | Two or more races |
+| 8 | Nonresident alien |
 | 9 | Race/ethnicity unknown |
+| 20 | Other |
+| 99 | Total |
+| -1 | Missing/not reported |
+| -3 | Suppressed |
+
+> **Note:** The ordering differs from some NCES documentation. Always use the Portal codebook values.
 
 ### By Age (Completers Only)
 

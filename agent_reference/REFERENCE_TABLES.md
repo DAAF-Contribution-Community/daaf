@@ -164,9 +164,101 @@ This matrix defines which types of cross-entity comparisons are valid for each d
 
 ---
 
-## Race/Ethnicity Categories
+## Portal Integer Encodings
 
-### CCD/CRDC Categories
+The Education Data Portal uses integer codes for categorical variables. These codes are consistent across most sources but require careful handling.
+
+### Race Codes (Universal)
+
+These codes are consistent across CCD, CRDC, IPEDS, and EDFacts:
+
+| Code | Category |
+|------|----------|
+| 1 | White |
+| 2 | Black |
+| 3 | Hispanic |
+| 4 | Asian |
+| 5 | American Indian/Alaska Native |
+| 6 | Native Hawaiian/Pacific Islander |
+| 7 | Two or More Races |
+| 8 | Nonresident alien (postsecondary only) |
+| 9 | Unknown |
+| 99 | Total |
+
+**Usage:** Filter to `race=99` for institution-level totals when data is disaggregated by race.
+
+### Sex Codes (Universal)
+
+| Code | Category |
+|------|----------|
+| 1 | Male |
+| 2 | Female |
+| 3 | Another gender / Nonbinary |
+| 9 | Unknown |
+| 99 | Total |
+
+**Usage:** Filter to `sex=99` for institution-level totals when data is disaggregated by sex.
+
+### Grade Codes (CCD Enrollment)
+
+| Code | Grade | Notes |
+|------|-------|-------|
+| **-1** | **Pre-K** | **WARNING: NOT a missing value!** |
+| 0 | Kindergarten | |
+| 1-12 | Grades 1-12 | |
+| 15 | Ungraded | |
+| 99 | Total | Use for totals across all grades |
+| 999 | Not specified | |
+
+**CRITICAL WARNING:** In CCD enrollment data, `grade=-1` means **Pre-Kindergarten**, NOT missing data. Do NOT filter out grade=-1 when you need Pre-K enrollment. This is a common semantic trap.
+
+```python
+# WRONG - Loses Pre-K data!
+df_clean = df.filter(pl.col("grade") >= 0)
+
+# CORRECT - Explicitly handle Pre-K
+df_prek = df.filter(pl.col("grade") == -1)  # Pre-K only
+df_k12 = df.filter(pl.col("grade").is_between(0, 12))  # K-12
+df_totals = df.filter(pl.col("grade") == 99)  # Totals
+```
+
+### Missing Data Patterns by Source
+
+Different sources use different patterns for missing/suppressed data:
+
+| Source | Uses `-1/-2/-3` Coded Values | Uses Native `null` | Notes |
+|--------|------------------------------|-------------------|-------|
+| CCD | Yes | Rare | Standard coded values |
+| CRDC | Yes | Rare | Standard coded values |
+| EDFacts | Yes | Rare | Standard coded values |
+| EADA | Yes | Rare | Standard coded values |
+| NHGIS | Yes | Rare | Standard coded values |
+| IPEDS | Yes | Yes | Both patterns present |
+| FSA | Yes | Yes | Both patterns present |
+| Scorecard | No | Yes | Native nulls only |
+| MEPS | No | Yes | Native nulls only |
+| NACUBO | No | Yes | Native nulls only |
+
+**Implication:** For sources with native nulls only, the standard `-1/-2/-3` filter will not catch missing data. Check for both:
+
+```python
+# For sources like Scorecard, MEPS, NACUBO
+df_clean = df.filter(
+    pl.col("value").is_not_null() &
+    ~pl.col("value").is_in([-1, -2, -3])  # May not have these, but safe to check
+)
+
+# For sources like CCD, CRDC, EDFacts
+df_clean = df.filter(
+    ~pl.col("value").is_in([-1, -2, -3])
+)
+```
+
+---
+
+## Race/Ethnicity Categories (Variable Naming)
+
+### CCD/CRDC Variable Suffixes
 
 | Category | Variable Suffix |
 |----------|-----------------|
@@ -178,10 +270,10 @@ This matrix defines which types of cross-entity comparisons are valid for each d
 | White | `_white` |
 | Two or More Races | `_tr` |
 
-### IPEDS Categories
+### IPEDS Variable Prefixes
 
-| Category | Description |
-|----------|-------------|
+| Prefix | Category |
+|--------|----------|
 | APTS | American Indian/Alaska Native |
 | ASPT | Asian |
 | BKPT | Black or African American |
@@ -194,7 +286,9 @@ This matrix defines which types of cross-entity comparisons are valid for each d
 
 ---
 
-## Grade Levels
+## Grade Levels (String Codes)
+
+Some endpoints use string codes instead of integers:
 
 | Code | Grade |
 |------|-------|
@@ -205,7 +299,9 @@ This matrix defines which types of cross-entity comparisons are valid for each d
 
 ---
 
-## Gender Codes
+## Gender Codes (String)
+
+Some endpoints use string codes:
 
 | Code | Gender |
 |------|--------|

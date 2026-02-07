@@ -183,12 +183,36 @@ Annual changes may reflect:
 
 ## Data Quality Issues
 
-### Missing Data
+### Missing Data (Portal Integer Encoding)
+
+The Education Data Portal uses **integer codes** to represent missing data types:
+
+| Code | Meaning | Action |
+|------|---------|--------|
+| `-1` | Missing/not reported | Exclude from calculations |
+| `-2` | Not applicable | Exclude; item doesn't apply |
+| `-3` | Suppressed | Exclude; privacy-protected |
+| `NULL` | Null value | Handle per analysis needs |
+| `0` | Zero | May be valid or indicate no activity |
+
+```python
+import polars as pl
+
+# Always filter coded missing values before analysis
+missing_codes = [-1, -2, -3]
+df_valid = df.filter(~pl.col("partic_women").is_in(missing_codes))
+
+# Calculate ratios only on valid data
+df_clean = df_valid.with_columns(
+    (pl.col("partic_women") / (pl.col("partic_men") + pl.col("partic_women")))
+    .alias("female_share")
+)
+```
 
 | Situation | Interpretation Challenge |
 |-----------|-------------------------|
-| NULL value | Not reported? Not applicable? |
-| Zero value | Truly zero? Missing? |
+| `-1` value | Truly not reported, or reporting error? |
+| `0` value | Truly zero, or coded missing? |
 | Extreme outliers | Error? Actual? |
 
 ### Lag Issues

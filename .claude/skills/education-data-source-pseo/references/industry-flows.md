@@ -2,6 +2,8 @@
 
 What industries graduates enter: employment by NAICS sector.
 
+> **Portal Integer Encoding:** The `industry` column contains 2-digit NAICS integers (11-92, 99). Null values indicate no industry data for that row.
+
 ## Contents
 
 - [Overview](#overview)
@@ -24,31 +26,33 @@ Industry flows help answer:
 - Are graduates working in fields related to their training?
 - How do career patterns differ by major?
 
-## NAICS Sector Codes
+## NAICS Sector Codes (Portal Integer Encoding)
 
 | Code | Sector |
 |------|--------|
-| 11 | Agriculture, Forestry, Fishing and Hunting |
-| 21 | Mining, Quarrying, and Oil and Gas Extraction |
-| 22 | Utilities |
-| 23 | Construction |
-| 31-33 | Manufacturing |
-| 42 | Wholesale Trade |
-| 44-45 | Retail Trade |
-| 48-49 | Transportation and Warehousing |
-| 51 | Information |
-| 52 | Finance and Insurance |
-| 53 | Real Estate and Rental and Leasing |
-| 54 | Professional, Scientific, and Technical Services |
-| 55 | Management of Companies and Enterprises |
-| 56 | Administrative and Support and Waste Management |
-| 61 | Educational Services |
-| 62 | Health Care and Social Assistance |
-| 71 | Arts, Entertainment, and Recreation |
-| 72 | Accommodation and Food Services |
-| 81 | Other Services (except Public Administration) |
-| 92 | Public Administration |
-| 99 | Unclassified/Federal (PSEO-specific) |
+| `11` | Agriculture, Forestry, Fishing and Hunting |
+| `21` | Mining, Quarrying, and Oil and Gas Extraction |
+| `22` | Utilities |
+| `23` | Construction |
+| `31`-`33` | Manufacturing |
+| `42` | Wholesale Trade |
+| `44`-`45` | Retail Trade |
+| `48`-`49` | Transportation and Warehousing |
+| `51` | Information |
+| `52` | Finance and Insurance |
+| `53` | Real Estate and Rental and Leasing |
+| `54` | Professional, Scientific, and Technical Services |
+| `55` | Management of Companies and Enterprises |
+| `56` | Administrative and Support and Waste Management |
+| `61` | Educational Services |
+| `62` | Health Care and Social Assistance |
+| `71` | Arts, Entertainment, and Recreation |
+| `72` | Accommodation and Food Services |
+| `81` | Other Services (except Public Administration) |
+| `92` | Public Administration |
+| `99` | Unclassified/Federal (PSEO-specific) |
+
+> **Data Note:** In Portal parquet files, the `industry` column is `Int64` with `null` values (not -1) for rows without industry data.
 
 ### Key Sectors by Common Graduate Fields
 

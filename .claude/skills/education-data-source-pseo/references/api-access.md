@@ -281,20 +281,37 @@ df = pd.DataFrame(data[1:], columns=data[0])
 print(df)
 ```
 
-### Python with educationdata package
+### Python with HuggingFace Mirror (Recommended)
 
 ```python
-# Urban Institute's educationdata package
-# pip install educationdata
-from educationdata import get_education_data
+# Using the HuggingFace mirror (recommended for data analysis)
+import polars as pl
 
-# Get PSEO earnings data
-df = get_education_data(
-    level='college-university',
-    source='pseo',
-    topic='earnings',
-    filters={'institution': '00365800'}
-)
+# Download PSEO data from mirror
+url = "https://huggingface.co/datasets/brhkim/education_data_portal_mirror/resolve/main/college-university/pseo/earnings-and-flows/colleges_pseo_2020.parquet"
+df = pl.read_parquet(url)
+
+# Filter to specific institution using integer unitid
+ut_austin = df.filter(pl.col("unitid") == 228778)
+
+# Filter by degree level (5 = Bachelor's)
+bachelors = df.filter(pl.col("degree_level") == 5)
+```
+
+> **Note:** The Portal uses integer encodings. See `variable-definitions.md` for code mappings.
+
+### Python with Urban Institute API (Legacy)
+
+```python
+# Direct API access (note: uses Census API string codes, not Portal integers)
+import requests
+
+base_url = "https://educationdata.urban.org/api/v1"
+endpoint = "/college-university/pseo/earnings-and-flows/"
+url = f"{base_url}{endpoint}?unitid=228778&year=2020"
+
+response = requests.get(url)
+data = response.json()
 ```
 
 ### R with httr

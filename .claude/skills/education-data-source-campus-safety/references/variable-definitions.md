@@ -1,5 +1,16 @@
 # Variable Definitions and Data Structure
 
+> **CRITICAL: Portal vs Raw File Encoding**
+>
+> This document describes **Education Data Portal** integer encodings, which differ from Department of Education raw file string codes. The Portal converts categorical variables to integers for consistency across sources.
+>
+> | Context | Example: Bias Category | Crime Type |
+> |---------|------------------------|------------|
+> | **Portal (integers)** | `1` = Race, `2` = Religion | `1` = Murder, `13` = Intimidation |
+> | Raw files (strings) | Text descriptions | Text descriptions |
+>
+> **Always use integer codes** when querying the Portal API or working with mirror data.
+
 ## Data Sources and Access
 
 ### Primary Source: Department of Education
@@ -13,13 +24,16 @@ The Campus Safety and Security (CSS) data is collected through an annual survey 
 2. **Custom download**: Select variables and institutions for bulk download
 3. **Trend data**: View trends over time for specific questions
 
-### Urban Institute Education Data Portal
+### Education Data Portal (Urban Institute) / HuggingFace Mirror
 
-The Education Data Portal includes CSS data integrated with other college-level data sources.
+The Education Data Portal includes CSS data integrated with other college-level data sources. Data is available via mirror downloads.
 
-**Base Endpoint**: `/api/v1/college-university/css/`
+**Mirror Location**: `college-university/campus-crime/` in the HuggingFace mirror
 
-**Years Available**: Varies by variable; generally 2001-present
+**Available Endpoints**:
+- `hate-crimes/colleges_csafety_hate_crimes.parquet` - Hate crime statistics by institution, year, crime type, and bias category
+
+**Years Available**: 2005-2021 (varies by variable)
 
 ## Key Identifiers
 
@@ -127,22 +141,53 @@ robbery_publicproperty
 ### Structure
 
 Hate crimes are reported by:
-- Crime type
-- Bias category
+- Crime type (integer code)
+- Bias category (integer code)
 - Geographic location
 
-### Bias Category Codes
+### Bias Category Codes (Portal Integer Encoding)
 
-| Code | Bias Category |
-|------|---------------|
-| `race` | Race |
-| `religion` | Religion |
-| `sexual_orientation` | Sexual orientation |
-| `gender` | Gender |
-| `gender_identity` | Gender identity |
-| `ethnicity` | Ethnicity |
-| `national_origin` | National origin |
-| `disability` | Disability |
+| Code | Bias Category | Notes |
+|------|---------------|-------|
+| `1` | Race | Anti-Black, Anti-White, Anti-Asian, etc. |
+| `2` | Religion | Anti-Jewish, Anti-Islamic, Anti-Catholic, etc. |
+| `3` | Sexual Orientation | Anti-Gay, Anti-Lesbian, Anti-Bisexual, etc. |
+| `4` | Gender | Bias based on actual or perceived gender |
+| `5` | Gender Identity | Anti-Transgender, Anti-Gender Non-Conforming (2014+) |
+| `6` | Ethnicity | Anti-Hispanic/Latino, etc. (separated from National Origin in 2014) |
+| `7` | National Origin | Based on country of birth (separated from Ethnicity in 2014) |
+| `8` | Disability | Anti-Physical Disability, Anti-Mental Disability |
+| `9` | Unknown/Other | Bias category not specified |
+| `99` | Total | All bias categories combined |
+| `null` | Missing | Data not reported |
+
+> **Historical Note:** Prior to 2014, National Origin (7) and Ethnicity (6) were combined. Gender Identity (5) was added in 2014.
+
+### Crime Type Codes (Portal Integer Encoding)
+
+| Code | Crime Type | Category |
+|------|------------|----------|
+| `1` | Murder/Non-negligent Manslaughter | Primary Offense |
+| `2` | Manslaughter by Negligence | Primary Offense |
+| `3` | Rape | Sex Offense |
+| `4` | Fondling | Sex Offense |
+| `5` | Incest | Sex Offense |
+| `6` | Statutory Rape | Sex Offense |
+| `7` | Robbery | Primary Offense |
+| `8` | Aggravated Assault | Primary Offense |
+| `9` | Burglary | Property Crime |
+| `10` | Motor Vehicle Theft | Property Crime |
+| `11` | Arson | Property Crime |
+| `12` | Larceny-Theft | Hate Crime Only |
+| `13` | Simple Assault | Hate Crime Only |
+| `14` | Intimidation | Hate Crime Only |
+| `15` | Destruction/Damage/Vandalism | Hate Crime Only |
+| `16` | Domestic Violence | VAWA Offense (2014+) |
+| `17` | Dating Violence | VAWA Offense (2014+) |
+| `18` | Stalking | VAWA Offense (2014+) |
+| `99` | Total | All crime types combined |
+
+> **Note:** Crime types 12-15 (Larceny-Theft, Simple Assault, Intimidation, Vandalism) are only reported as hate crimes. They are not standalone Clery crimes unless bias-motivated.
 
 ### Hate Crime-Only Offenses
 
@@ -192,14 +237,16 @@ Hate crimes are reported by:
 
 **Note**: Crime statistics are for calendar years (Jan 1 - Dec 31). The survey submitted in fall of year X contains data for year X-1.
 
-## Missing Data Codes
+## Missing Data Codes (Portal Integer Encoding)
 
-| Code | Meaning |
-|------|---------|
-| `-1` | Not applicable |
-| `-2` | Data not available |
-| `-3` | Suppressed for privacy |
-| `null` / blank | Missing data |
+| Code | Meaning | When Used |
+|------|---------|-----------|
+| `-1` | Missing/Not reported | State/institution did not report |
+| `-2` | Not applicable | Item doesn't apply to this institution |
+| `-3` | Suppressed | Data suppressed for privacy protection |
+| `null` | Genuinely missing | No data available |
+
+> **Note:** Unlike some other Portal datasets (e.g., CCD enrollment where `-1` means Pre-K), campus safety data uses standard missing codes where negative values always indicate missing/suppressed data.
 
 ## Data Quality Flags
 
@@ -251,28 +298,29 @@ Prior to 2014, sex offenses were categorized as:
 
 ## Common Filters
 
-### For API Queries
+### For Parquet Downloads
 
 | Filter | Description | Example |
 |--------|-------------|---------|
-| `year` | Calendar year | `year=2022` |
-| `unitid` | Institution ID | `unitid=110635` |
-| `state` | State code | `state=CA` |
-| `sector` | Institution sector | `sector=1` (public 4-year) |
+| `year` | Calendar year | `pl.col("year") == 2021` |
+| `unitid` | Institution ID (IPEDS) | `pl.col("unitid") == 110635` |
+| `fips` | State FIPS code | `pl.col("fips") == 6` (California) |
+| `crime_type` | Crime type code | `pl.col("crime_type") == 14` (Intimidation) |
+| `bias` | Bias category code | `pl.col("bias") == 1` (Race) |
 
-### Sector Codes
+### Sector Codes (Portal Integer Encoding)
 
 | Code | Description |
 |------|-------------|
-| 1 | Public, 4-year or above |
-| 2 | Private nonprofit, 4-year or above |
-| 3 | Private for-profit, 4-year or above |
-| 4 | Public, 2-year |
-| 5 | Private nonprofit, 2-year |
-| 6 | Private for-profit, 2-year |
-| 7 | Public, less-than 2-year |
-| 8 | Private nonprofit, less-than 2-year |
-| 9 | Private for-profit, less-than 2-year |
+| `1` | Public, 4-year or above |
+| `2` | Private nonprofit, 4-year or above |
+| `3` | Private for-profit, 4-year or above |
+| `4` | Public, 2-year |
+| `5` | Private nonprofit, 2-year |
+| `6` | Private for-profit, 2-year |
+| `7` | Public, less-than 2-year |
+| `8` | Private nonprofit, less-than 2-year |
+| `9` | Private for-profit, less-than 2-year |
 
 ## Joining with Other Data
 

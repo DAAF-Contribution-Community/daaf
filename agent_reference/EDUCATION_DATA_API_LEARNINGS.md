@@ -10,8 +10,9 @@ This document consolidates lessons learned from hands-on experience with the Urb
 2. [Variable Name Discrepancies](#variable-name-discrepancies)
 3. [Data Availability & Lag Times](#data-availability--lag-times)
 4. [Endpoint-Specific Gotchas](#endpoint-specific-gotchas)
-5. [Data Structure Patterns](#data-structure-patterns)
-6. [Validation Patterns](#validation-patterns)
+5. [Portal Integer Encoding Gotchas](#portal-integer-encoding-gotchas)
+6. [Data Structure Patterns](#data-structure-patterns)
+7. [Validation Patterns](#validation-patterns)
 
 ---
 
@@ -206,6 +207,129 @@ endpoint = "/college-university/ipeds/fall-enrollment/2021/?level_of_study=1"
 ```
 
 **Data lag is significant:** As of Jan 2026, data only available through 2021.
+
+---
+
+## Portal Integer Encoding Gotchas
+
+The Education Data Portal uses integer codes for categorical variables. While generally consistent, several patterns can cause data quality issues if not handled properly.
+
+### CRITICAL: Grade -1 is Pre-K, NOT Missing Data
+
+**This is the most dangerous semantic trap in the Portal.**
+
+In CCD enrollment data, the grade field uses `-1` to represent **Pre-Kindergarten**, NOT missing data. Standard missing-value filters will incorrectly remove all Pre-K enrollment:
+
+```python
+# WRONG - Silently discards all Pre-K enrollment!
+df_clean = df.filter(pl.col("grade") >= 0)
+
+# WRONG - Also discards Pre-K!
+df_clean = df.filter(~pl.col("grade").is_in([-1, -2, -3]))
+
+# CORRECT - Handle Pre-K explicitly
+df_k12 = df.filter(pl.col("grade").is_between(0, 12))  # K-12 only
+df_all = df.filter(pl.col("grade").is_between(-1, 12))  # Pre-K through 12
+df_totals = df.filter(pl.col("grade") == 99)  # Totals across all grades
+```
+
+**CCD Grade Code Reference:**
+| Code | Meaning |
+|------|---------|
+| -1 | Pre-Kindergarten (NOT missing!) |
+| 0 | Kindergarten |
+| 1-12 | Grades 1-12 |
+| 15 | Ungraded |
+| 99 | Total |
+| 999 | Not specified |
+
+### Disaggregated Data: Always Filter to Totals
+
+When data is disaggregated by race or sex, each institution has **multiple rows**. Failing to filter to totals causes overcounting:
+
+```python
+# WRONG - Counts each institution 5-10 times!
+df_admissions = pl.read_parquet("admissions.parquet")
+total_applied = df_admissions["number_applied"].sum()  # Inflated by 5-10x
+
+# CORRECT - Filter to totals first
+df_totals = df_admissions.filter(pl.col("sex") == 99)
+total_applied = df_totals["number_applied"].sum()  # Correct total
+```
+
+**Sex Code Reference:**
+| Code | Meaning |
+|------|---------|
+| 1 | Male |
+| 2 | Female |
+| 3 | Another gender / Nonbinary |
+| 9 | Unknown |
+| **99** | **Total (use this for institution-level counts)** |
+
+**Race Code Reference:**
+| Code | Meaning |
+|------|---------|
+| 1 | White |
+| 2 | Black |
+| 3 | Hispanic |
+| 4 | Asian |
+| 5 | American Indian/Alaska Native |
+| 6 | Native Hawaiian/Pacific Islander |
+| 7 | Two or More Races |
+| 8 | Nonresident alien (postsecondary) |
+| 9 | Unknown |
+| **99** | **Total (use this for institution-level counts)** |
+
+### Missing Data: Source-Dependent Patterns
+
+Different sources use different patterns for missing/suppressed data. Using the wrong pattern will fail silently:
+
+| Pattern | Sources | Detection |
+|---------|---------|-----------|
+| `-1/-2/-3` coded values | CCD, CRDC, EDFacts, EADA, NHGIS | Check for negative integers |
+| Native `null` values | Scorecard, MEPS, NACUBO | Check for nulls |
+| **Both patterns** | IPEDS, FSA | Must check for BOTH |
+
+**Comprehensive missing data filter:**
+
+```python
+# For sources that may have both patterns (IPEDS, FSA)
+df_clean = df.filter(
+    pl.col("value").is_not_null() &
+    ~pl.col("value").is_in([-1, -2, -3])
+)
+
+# For null-only sources (Scorecard, MEPS, NACUBO)
+df_clean = df.filter(pl.col("value").is_not_null())
+
+# For coded-only sources (CCD, CRDC, EDFacts)
+df_clean = df.filter(~pl.col("value").is_in([-1, -2, -3]))
+```
+
+### Validation: Check for Unexpected Code Values
+
+After fetching data, validate that categorical codes are within expected ranges:
+
+```python
+# Validate race codes (should be 1-9 or 99)
+race_values = df["race"].unique().to_list()
+unexpected_race = [v for v in race_values if v not in [1,2,3,4,5,6,7,8,9,99] and v >= 0]
+if unexpected_race:
+    print(f"[WARN] Unexpected race codes: {unexpected_race}")
+
+# Validate sex codes (should be 1-3, 9, or 99)
+sex_values = df["sex"].unique().to_list()
+unexpected_sex = [v for v in sex_values if v not in [1,2,3,9,99] and v >= 0]
+if unexpected_sex:
+    print(f"[WARN] Unexpected sex codes: {unexpected_sex}")
+
+# Validate grade codes (should be -1 to 12, 15, 99, or 999)
+grade_values = df["grade"].unique().to_list()
+valid_grades = set(range(-1, 13)) | {15, 99, 999}
+unexpected_grade = [v for v in grade_values if v not in valid_grades]
+if unexpected_grade:
+    print(f"[WARN] Unexpected grade codes: {unexpected_grade}")
+```
 
 ---
 
@@ -508,6 +632,7 @@ Neither returns traditional headcount enrollment.
 
 | Date | Update |
 |------|--------|
+| 2026-02-07 | Added: Portal Integer Encoding Gotchas section - grade=-1 semantic trap, race/sex code tables, source-dependent missing data patterns, validation code examples |
 | 2026-01-31 | Added: IPEDS Finance data cutoff at 2017, `enrollment_fall` variable name, graduation rate 0-1 scale clarification (from postsecondary enrollment analysis) |
 | 2026-01-31 | Major update: CCD enrollment disaggregator rules, CRDC endpoint corrections, SAIPE/MEPS field names, summary endpoint requirements, metadata API filters, pagination behavior |
 | 2026-01-24 | Initial version based on initial postsecondary analysis |

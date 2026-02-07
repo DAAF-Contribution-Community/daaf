@@ -2,6 +2,17 @@
 
 Detailed definitions for key CRDC variables, including codes, disaggregation categories, and special values.
 
+> **CRITICAL: Portal vs OCR Raw File Encoding**
+>
+> This document describes **Education Data Portal** integer encodings, which differ from OCR raw file string codes. The Portal converts categorical variables to integers for consistency across sources.
+>
+> | Context | Race White | Race Black | Sex Male | Sex Female |
+> |---------|------------|------------|----------|------------|
+> | **Portal (integers)** | `1` | `2` | `1` | `2` |
+> | OCR raw files (strings) | `WH` | `BL` | `M` | `F` |
+>
+> **Always use integer codes when filtering Portal data.**
+
 ## Contents
 
 - [Race/Ethnicity Categories](#raceethnicity-categories)
@@ -19,19 +30,28 @@ Detailed definitions for key CRDC variables, including codes, disaggregation cat
 
 ## Race/Ethnicity Categories
 
-### Seven Categories (Post-2007 Standards)
+### Portal Integer Encoding (Current)
 
-CRDC uses OMB's 2007 standards for race/ethnicity reporting:
+CRDC uses OMB's 2007 standards for race/ethnicity reporting. The Portal converts these to integers:
 
 | Code | Category | Definition |
 |------|----------|------------|
-| `HI` | Hispanic/Latino | Person of Cuban, Mexican, Puerto Rican, South/Central American, or other Spanish culture or origin, regardless of race |
-| `AM` | American Indian/Alaska Native | Person having origins in any of the original peoples of North and South America (including Central America), and who maintains tribal affiliation or community attachment |
-| `AS` | Asian | Person having origins in any of the original peoples of the Far East, Southeast Asia, or the Indian subcontinent |
-| `BL` | Black or African American | Person having origins in any of the Black racial groups of Africa |
-| `HP` | Native Hawaiian/Pacific Islander | Person having origins in any of the original peoples of Hawaii, Guam, Samoa, or other Pacific Islands |
-| `WH` | White | Person having origins in any of the original peoples of Europe, the Middle East, or North Africa |
-| `TR` | Two or more races | Person who identifies with two or more racial categories (non-Hispanic only) |
+| `1` | White | Person having origins in any of the original peoples of Europe, the Middle East, or North Africa |
+| `2` | Black or African American | Person having origins in any of the Black racial groups of Africa |
+| `3` | Hispanic/Latino | Person of Cuban, Mexican, Puerto Rican, South/Central American, or other Spanish culture or origin, regardless of race |
+| `4` | Asian | Person having origins in any of the original peoples of the Far East, Southeast Asia, or the Indian subcontinent |
+| `5` | American Indian/Alaska Native | Person having origins in any of the original peoples of North and South America (including Central America), and who maintains tribal affiliation or community attachment |
+| `6` | Native Hawaiian/Pacific Islander | Person having origins in any of the original peoples of Hawaii, Guam, Samoa, or other Pacific Islands |
+| `7` | Two or more races | Person who identifies with two or more racial categories (non-Hispanic only) |
+| `8` | Nonresident alien | International students (rarely used in K-12) |
+| `9` | Unknown | Race/ethnicity unknown |
+| `20` | Other | Other race/ethnicity |
+| `99` | Total | All races combined |
+| `-1` | Missing/not reported | Data not reported |
+| `-2` | Not applicable | Item doesn't apply |
+| `-3` | Suppressed | Privacy suppression |
+
+> **Note:** OCR raw files use string codes (HI, AM, AS, BL, HP, WH, TR). The Portal converts these to integers for consistency.
 
 ### Important Notes
 
@@ -39,48 +59,71 @@ CRDC uses OMB's 2007 standards for race/ethnicity reporting:
 2. **Non-overlapping categories** - Each student counted in exactly one category
 3. **Two or more races** - Only for non-Hispanic students identifying as multiracial
 
-### Variable Naming Pattern
+### Filtering Example
 
-```
-{variable}_{race_code}
+```python
+import polars as pl
 
-Examples:
-enrollment_bl = Black enrollment
-oss_hi = Hispanic students with OSS
-ap_enrollment_as = Asian students in AP
+# Filter to Black students (use integer code, NOT string)
+df.filter(pl.col("race") == 2)  # Correct
+
+# WRONG - string codes don't exist in Portal data
+# df.filter(pl.col("race") == "BL")  # Will return 0 rows!
 ```
 
 ---
 
 ## Sex Categories
 
-### Binary Categories
+### Portal Integer Encoding
 
 | Code | Category |
 |------|----------|
-| `M` | Male |
-| `F` | Female |
+| `1` | Male |
+| `2` | Female |
+| `3` | Gender (non-binary/other, newer collections) |
+| `9` | Unknown |
+| `99` | Total |
+| `-1` | Missing/not reported |
+| `-2` | Not applicable |
+| `-3` | Suppressed |
+
+> **Note:** OCR raw files use `M`/`F`. The Portal converts these to integers.
 
 ### Important Notes
 
-- CRDC collects binary sex only (not gender identity)
-- Some guidance has addressed LGBTQ+ students under Title IX, but data collection remains binary
-- Variable names typically use `male` / `female` suffixes
+- CRDC historically collected binary sex (male/female)
+- Sex code `3` ("Gender") added in newer collections for non-binary reporting (codebook shows it, but rarely appears in data)
+- Variable names in raw files typically use `male` / `female` suffixes
+- Some guidance has addressed LGBTQ+ students under Title IX
 
-### Variable Naming Pattern
+### Filtering Example
 
-```
-{variable}_male
-{variable}_female
+```python
+# Filter to female students
+df.filter(pl.col("sex") == 2)  # Correct
 
-Examples:
-enrollment_male = Male enrollment
-oss_female = Female students with OSS
+# WRONG - string codes don't exist in Portal data
+# df.filter(pl.col("sex") == "F")  # Will return 0 rows!
 ```
 
 ---
 
 ## Disability Categories
+
+### Portal Integer Encoding
+
+| Code | Category | Definition |
+|------|----------|------------|
+| `0` | Students without disabilities | All other students |
+| `1` | Students with disabilities (IDEA) | Students receiving special education services under IDEA with an IEP |
+| `2` | Students with Section 504 only | Students with disabilities served under Section 504 but not IDEA |
+| `3` | Students not served under IDEA | Includes students without disabilities and students served under Section 504 |
+| `4` | Students with disabilities (combined) | Students with disabilities served under Section 504 and under IDEA |
+| `99` | Total | All students |
+| `-1` | Missing/not reported | Data not reported |
+| `-2` | Not applicable | Item doesn't apply |
+| `-3` | Suppressed | Privacy suppression |
 
 ### Primary Distinction
 
@@ -91,6 +134,8 @@ oss_female = Female students with OSS
 | **Students without disabilities** | All other students |
 
 ### IDEA Disability Categories (13 categories)
+
+These are string codes used in raw OCR files (not typically available in Portal API):
 
 | Code | Category | Definition |
 |------|----------|------------|
@@ -108,22 +153,19 @@ oss_female = Female students with OSS
 | `TBI` | Traumatic brain injury | Acquired injury to brain causing functional disability |
 | `VI` | Visual impairment | Visual impairment affecting educational performance |
 
-### Variable Naming Pattern
-
-```
-{variable}_idea = Students with disabilities (IDEA)
-{variable}_504 = Students with 504 plans only
-{variable}_wodis = Students without disabilities
-
-Examples:
-enrollment_idea = IDEA students enrolled
-oss_idea = IDEA students with OSS
-restrained_idea = IDEA students restrained
-```
-
 ---
 
-## English Learner Definition
+## English Learner (LEP) Status
+
+### Portal Integer Encoding
+
+| Code | Category |
+|------|----------|
+| `1` | Students who are limited English proficient (LEP/EL) |
+| `99` | All students |
+| `-1` | Missing/not reported |
+| `-2` | Not applicable |
+| `-3` | Suppressed |
 
 ### Definition
 
@@ -140,15 +182,11 @@ restrained_idea = IDEA students restrained
 | **Title III definition** | Based on ESEA/ESSA definition |
 | **Not same as immigrant** | EL status is about English proficiency, not immigration status |
 
-### Variable Naming Pattern
+### Filtering Example
 
-```
-{variable}_lep
-
-Examples:
-enrollment_lep = English learner enrollment
-oss_lep = English learners with OSS
-chronic_absent_lep = Chronically absent EL students
+```python
+# Filter to LEP students only (excludes totals)
+df.filter(pl.col("lep") == 1)  # Correct
 ```
 
 ---
@@ -281,12 +319,22 @@ CRDC uses consistent 15-day definition across all states.
 
 When accessing CRDC via Urban Institute Education Data Portal:
 
+| Code | Meaning | When Used |
+|------|---------|-----------|
+| `-1` | Missing/not reported | State did not report; value unknown |
+| `-2` | Not applicable | Item doesn't apply (e.g., preschool discipline for high school) |
+| `-3` | Suppressed (small cell) | Data suppressed for privacy protection |
+| `-9` | Data withheld | Multiple reasons (rarely used in CRDC) |
+
+### Yes/No Variables
+
 | Code | Meaning |
 |------|---------|
+| `0` | No |
+| `1` | Yes |
 | `-1` | Missing/not reported |
 | `-2` | Not applicable |
-| `-3` | Suppressed (small cell) |
-| `-9` | Data withheld (multiple reasons) |
+| `-3` | Suppressed |
 
 ### Handling Special Codes
 
@@ -296,11 +344,11 @@ import polars as pl
 def clean_crdc_values(df, value_columns):
     """
     Handle CRDC special codes appropriately.
-    
+
     Args:
         df: DataFrame with CRDC data
         value_columns: List of columns to clean
-    
+
     Returns:
         DataFrame with nulls for special codes
     """
@@ -320,6 +368,17 @@ def flag_suppressed(df, column):
     return df.with_columns(
         (pl.col(column) == -3).alias(f"{column}_suppressed")
     )
+
+def exclude_totals_and_missing(df, categorical_cols):
+    """
+    Filter out total rows (99) and missing/suppressed values.
+    Use this to get individual subgroup rows only.
+    """
+    for col in categorical_cols:
+        df = df.filter(
+            (pl.col(col) > 0) & (pl.col(col) < 99)
+        )
+    return df
 ```
 
 ### Suppression Rules

@@ -121,26 +121,56 @@ Data quality issue?
 
 ## Quick Reference: Disaggregation Categories
 
-### Race/Ethnicity (7 categories)
-- Hispanic/Latino of any race
-- American Indian or Alaska Native
-- Asian
-- Black or African American
-- Native Hawaiian or Other Pacific Islander
-- White
-- Two or more races
+> **CRITICAL: Portal Integer Encoding**
+>
+> The Education Data Portal uses **integer codes**, not the string codes shown in OCR documentation. Always filter using integers.
+>
+> | Variable | String Code (Raw) | Portal Integer |
+> |----------|-------------------|----------------|
+> | Race: White | `WH` | `1` |
+> | Race: Black | `BL` | `2` |
+> | Race: Hispanic | `HI` | `3` |
+> | Sex: Male | `M` | `1` |
+> | Sex: Female | `F` | `2` |
+>
+> See `./references/variable-definitions.md` for complete encoding tables.
 
-### Sex
-- Male
-- Female
+### Race/Ethnicity (Portal Integer Codes)
 
-### Disability Status
-- Students with disabilities (served under IDEA)
-- Students without disabilities
+| Code | Category |
+|------|----------|
+| `1` | White |
+| `2` | Black or African American |
+| `3` | Hispanic/Latino of any race |
+| `4` | Asian |
+| `5` | American Indian or Alaska Native |
+| `6` | Native Hawaiian or Other Pacific Islander |
+| `7` | Two or more races |
+| `99` | Total |
 
-### English Learner Status
-- English learner (EL/LEP)
-- Non-English learner
+### Sex (Portal Integer Codes)
+
+| Code | Category |
+|------|----------|
+| `1` | Male |
+| `2` | Female |
+| `99` | Total |
+
+### Disability Status (Portal Integer Codes)
+
+| Code | Category |
+|------|----------|
+| `0` | Students without disabilities |
+| `1` | Students with disabilities (served under IDEA) |
+| `2` | Students with Section 504 only |
+| `99` | Total |
+
+### English Learner Status (Portal Integer Codes)
+
+| Code | Category |
+|------|----------|
+| `1` | English learner (EL/LEP) |
+| `99` | All students |
 
 ## API Access via Education Data Portal
 
@@ -190,17 +220,38 @@ CRDC data is designed for civil rights analysis. Key analytical approaches:
 
 ### Disparity Ratios
 ```python
-# Calculate discipline disparity
+import polars as pl
+
+# Calculate discipline disparity using Portal integer codes
 def discipline_disparity(df, discipline_var, group_a, group_b):
     """
     Calculate risk ratio between two groups.
     Value > 1 indicates group_a has higher rate.
+
+    Args:
+        df: DataFrame with CRDC data
+        discipline_var: Column with discipline counts
+        group_a: Integer race code (e.g., 2 for Black)
+        group_b: Integer race code (e.g., 1 for White)
+
+    Example:
+        # Black vs White OSS disparity
+        disparity = discipline_disparity(df, 'students_susp_out_sch_single', 2, 1)
     """
-    rate_a = df[df['race'] == group_a][discipline_var].sum() / \
-             df[df['race'] == group_a]['enrollment'].sum()
-    rate_b = df[df['race'] == group_b][discipline_var].sum() / \
-             df[df['race'] == group_b]['enrollment'].sum()
+    # Filter to each group (using integer codes)
+    df_a = df.filter(pl.col('race') == group_a)
+    df_b = df.filter(pl.col('race') == group_b)
+
+    # Calculate rates
+    rate_a = df_a.select(pl.col(discipline_var).sum()).item() / \
+             df_a.select(pl.col('enrollment_crdc').sum()).item()
+    rate_b = df_b.select(pl.col(discipline_var).sum()).item() / \
+             df_b.select(pl.col('enrollment_crdc').sum()).item()
+
     return rate_a / rate_b
+
+# Example: Black (race=2) vs White (race=1) disparity
+# disparity = discipline_disparity(df, 'students_susp_out_sch_single', 2, 1)
 ```
 
 ### Composition vs. Representation
@@ -215,12 +266,14 @@ def discipline_disparity(df, discipline_var, group_a, group_b):
 
 | Pitfall | Issue | Solution |
 |---------|-------|----------|
+| **Using string codes** | Portal uses integers, not strings | `race == 2` not `race == "BL"` |
 | **Raw counts** | Different enrollment sizes | Use rates per 100/1000 students |
 | **Missing years** | Assuming annual data | Remember biennial schedule |
 | **COVID year** | 2020-21 not comparable | Flag or exclude from trends |
 | **Suppression** | Small cell suppression | Check suppression rates first |
 | **Sample years** | Early years sampled | Use 2015+ for national estimates |
 | **Definition drift** | Variables change over time | Check codebooks for each year |
+| **Forgetting code 99** | Including totals in calculations | Filter `race < 99` for disaggregated analysis |
 
 ## Related Skills and Tools
 

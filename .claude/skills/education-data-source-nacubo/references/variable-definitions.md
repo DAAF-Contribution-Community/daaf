@@ -2,17 +2,56 @@
 
 Reference for NACUBO endowment study variables, size categories, institution types, and data classifications.
 
+> **CRITICAL: Portal Encoding**
+>
+> This document describes **Education Data Portal** data formats. The Portal uses:
+> - **Integer FIPS codes** (1-56) for states, not string abbreviations
+> - **Null values** for missing data (NOT coded -1/-2/-3 like other sources)
+>
+> | Variable | Format | Example Values |
+> |----------|--------|----------------|
+> | `fips` | Integer | `1` (Alabama), `6` (California), `36` (New York) |
+> | `year` | Integer | `2012`, `2022` |
+> | Missing data | Null | `null` (not -1, -2, -3) |
+
 ## Primary Identifiers
 
 ### Institution Identifier
 
 | Variable | Format | Description |
 |----------|--------|-------------|
-| `unitid` | 6-digit integer | IPEDS institution identifier |
-| Institution Name | String | Official institution name |
-| State | 2-letter code | State location |
+| `unitid` | Integer | IPEDS institution identifier (6 digits) |
+| `inst_name_nacubo` | String | Institution name (NACUBO version) |
+| `fips` | Integer | State FIPS code (1-56, see below) |
 
 **Joining with Other Data**: Use `unitid` to link NACUBO data with IPEDS, College Scorecard, and other Education Data Portal sources.
+
+### State FIPS Codes
+
+The `fips` column uses integer FIPS codes, NOT string state abbreviations:
+
+| FIPS | State | FIPS | State | FIPS | State |
+|------|-------|------|-------|------|-------|
+| 1 | Alabama | 19 | Iowa | 37 | North Carolina |
+| 2 | Alaska | 20 | Kansas | 38 | North Dakota |
+| 4 | Arizona | 21 | Kentucky | 39 | Ohio |
+| 5 | Arkansas | 22 | Louisiana | 40 | Oklahoma |
+| 6 | California | 23 | Maine | 41 | Oregon |
+| 8 | Colorado | 24 | Maryland | 42 | Pennsylvania |
+| 9 | Connecticut | 25 | Massachusetts | 44 | Rhode Island |
+| 10 | Delaware | 26 | Michigan | 45 | South Carolina |
+| 11 | DC | 27 | Minnesota | 46 | South Dakota |
+| 12 | Florida | 28 | Mississippi | 47 | Tennessee |
+| 13 | Georgia | 29 | Missouri | 48 | Texas |
+| 15 | Hawaii | 30 | Montana | 49 | Utah |
+| 16 | Idaho | 31 | Nebraska | 50 | Vermont |
+| 17 | Illinois | 32 | Nevada | 51 | Virginia |
+| 18 | Indiana | 33 | New Hampshire | 53 | Washington |
+| | | 34 | New Jersey | 54 | West Virginia |
+| | | 35 | New Mexico | 55 | Wisconsin |
+| | | 36 | New York | 56 | Wyoming |
+
+**Territories**: 72 (Puerto Rico), 78 (Virgin Islands)
 
 ## Endowment Size Categories
 
@@ -212,14 +251,24 @@ Simplified three-category grouping sometimes used:
 
 **Note**: FY2024 data refers to July 1, 2023 - June 30, 2024.
 
-## Missing Data Codes
+## Missing Data Handling
 
-| Code | Meaning |
-|------|---------|
-| Blank/Null | Not reported |
-| -1 | Not applicable |
-| -2 | Data suppressed |
-| -3 | Not collected |
+> **Note:** Unlike other Education Data Portal sources (CCD, CRDC, etc.), NACUBO data uses **null values** for missing data rather than coded values like -1, -2, -3.
+
+| Value | Meaning | Handling |
+|-------|---------|----------|
+| `null` | Not reported / missing | Standard null handling in Polars/pandas |
+| Valid number | Reported value | Use directly |
+
+**Why different?** NACUBO is a voluntary survey with simpler missing data patterns. The Portal preserves null rather than applying coded values.
+
+```python
+# Correct: Check for null
+df.filter(pl.col("endow_per_fte").is_null())
+
+# Incorrect: Checking for -1/-2/-3 (these don't exist in NACUBO)
+# df.filter(pl.col("endow_per_fte") == -1)  # Won't find anything
+```
 
 ## Data Types
 

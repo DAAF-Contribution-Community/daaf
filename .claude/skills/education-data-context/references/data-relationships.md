@@ -497,6 +497,19 @@ Note: FIPS codes skip some numbers (e.g., no 03, 07, 14, etc.)
 | Schools to census | `ncessch` | Via NHGIS; check vintage |
 | Any source to state data | `fips` | Extract from identifiers |
 
+## Portal Integer Encoding Note
+
+When joining or filtering, remember that the Portal uses **integer codes**, not strings:
+
+| Variable | Integer Values | NOT These Strings |
+|----------|----------------|-------------------|
+| Race | 1-7, 99 (total) | WH, BL, HI |
+| Sex | 1, 2, 99 (total) | M, F |
+| Grade | -1 to 13, 99 (total) | PK, KG, 01 |
+| FIPS | Integers (6, 36, 48) | CA, NY, TX |
+
+**SEMANTIC TRAP:** `grade = -1` means **Pre-K**, NOT missing data!
+
 ## Validation After Joining
 
 ```python

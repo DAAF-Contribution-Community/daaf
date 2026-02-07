@@ -406,37 +406,51 @@ CRDC added temporary COVID-related variables:
 ### Recommended Quality Checks
 
 ```python
+import polars as pl
+
 def crdc_quality_checks(df, year):
     """
     Run standard quality checks on CRDC data.
+
+    Note: Portal uses integer codes for race/sex disaggregation.
+    Total rows have race=99, sex=99.
     """
     checks = {}
-    
-    # 1. Check for implausible values
-    checks['negative_enrollment'] = df.filter(
-        pl.col('enrollment') < 0
+
+    # 1. Check for implausible values (negative counts other than coded missing)
+    checks['unexpected_negative'] = df.filter(
+        (pl.col('enrollment_crdc') < -3)  # Below coded missing range
     ).height
-    
-    # 2. Check discipline > enrollment
-    checks['discipline_exceeds_enrollment'] = df.filter(
-        pl.col('oss_total') > pl.col('enrollment')
+
+    # 2. Get total rows only (race=99 means all races combined)
+    totals = df.filter(pl.col('race') == 99)
+
+    # 3. Check discipline > enrollment for totals
+    checks['discipline_exceeds_enrollment'] = totals.filter(
+        pl.col('students_susp_out_sch_single') > pl.col('enrollment_crdc')
     ).height
-    
-    # 3. Check suppression rates
-    for col in ['oss_black', 'oss_hispanic', 'oss_white']:
-        suppressed = df.filter(pl.col(col) == -3).height
-        checks[f'{col}_suppression_rate'] = suppressed / df.height * 100
-    
-    # 4. Check zero inflation
-    checks['zero_discipline_schools'] = df.filter(
-        pl.col('oss_total') == 0
-    ).height / df.height * 100
-    
-    # 5. Year-specific checks
-    if year == 2020:
+
+    # 4. Check suppression rates by race (use integer codes)
+    # race=2 is Black, race=3 is Hispanic, race=1 is White
+    for race_code, race_name in [(2, 'black'), (3, 'hispanic'), (1, 'white')]:
+        race_df = df.filter(pl.col('race') == race_code)
+        if race_df.height > 0:
+            suppressed = race_df.filter(
+                pl.col('students_susp_out_sch_single') == -3
+            ).height
+            checks[f'oss_{race_name}_suppression_rate'] = suppressed / race_df.height * 100
+
+    # 5. Check zero inflation (using totals)
+    if totals.height > 0:
+        checks['zero_discipline_schools'] = totals.filter(
+            pl.col('students_susp_out_sch_single') == 0
+        ).height / totals.height * 100
+
+    # 6. Year-specific checks
+    if year == 2020 or year == 2021:
         checks['covid_year_warning'] = True
         checks['note'] = 'COVID-19 impacted year - interpret with caution'
-    
+
     return checks
 ```
 

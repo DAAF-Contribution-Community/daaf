@@ -175,12 +175,14 @@ Schools → Local Education Agencies (LEAs)
 
 | Pitfall | Issue | Solution |
 |---------|-------|----------|
-| Summing grades | Misses ungraded students | Use grade=-99 (total) instead |
+| Summing grades | Misses ungraded students | Use `grade=99` (total) instead |
+| Assuming `-1` is missing | In grade data, `-1` = Pre-K | Check variable format in codebook |
 | Cross-state comparison | Different state definitions | Check state methodology first |
-| Using FRPL as poverty measure | CEP schools show 100% | Supplement with SAIPE data |
+| Using FRPL as poverty measure | CEP schools show 100% | Supplement with MEPS or SAIPE data |
 | Locale time series | 2006 code system change | Analyze pre/post-2006 separately |
 | Charter school counts | Early years incomplete | Verify against state records pre-2010 |
 | Dropout rate comparison | State definitions vary | Within-state comparisons only |
+| Using NCES string codes | Portal uses integers | See variable-definitions.md for mappings |
 
 ## Related Data Sources
 
@@ -221,11 +223,20 @@ For CCD enrollment endpoints, the `grade` disaggregator is **REQUIRED** and must
 | `/enrollment/{year}/race/` | ❌ HTTP 500 (missing grade) |
 | `/enrollment/{year}/race/grade-99/` | ❌ HTTP 500 (wrong order) |
 
-Use `grade-99` to get totals across all grades.
+Use `grade-99` in URLs to get totals across all grades.
+
+> **URL vs Data Encoding:** The URL path uses `grade-99` (hyphenated), but in the returned data, the `grade` column value is `99` (positive integer). Don't confuse URL path syntax with data values.
 
 **Example correct URL:**
 ```
 /api/v1/schools/ccd/enrollment/2022/grade-99/?fips=6
+```
+
+**Returned data column:**
+```python
+# In the data, filter using positive 99
+df.filter(pl.col("grade") == 99)  # Correct
+df.filter(pl.col("grade") == -99)  # WRONG - no such value
 ```
 
 ### Finance Field Names

@@ -2,6 +2,8 @@
 
 Where graduates work after completion: employment by Census Division and in-state retention.
 
+> **Portal Integer Encoding:** The `census_division` column contains integers 1-9, plus `99` for aggregates across all divisions.
+
 ## Contents
 
 - [Overview](#overview)
@@ -23,21 +25,22 @@ Geographic flows help answer:
 - Which regions attract graduates from specific programs?
 - How do migration patterns vary by field of study?
 
-## Census Divisions
+## Census Divisions (Portal Integer Encoding)
 
 PSEO reports employment by the 9 Census Divisions:
 
 | Code | Division | States |
 |------|----------|--------|
-| 1 | New England | CT, ME, MA, NH, RI, VT |
-| 2 | Middle Atlantic | NJ, NY, PA |
-| 3 | East North Central | IL, IN, MI, OH, WI |
-| 4 | West North Central | IA, KS, MN, MO, NE, ND, SD |
-| 5 | South Atlantic | DE, DC, FL, GA, MD, NC, SC, VA, WV |
-| 6 | East South Central | AL, KY, MS, TN |
-| 7 | West South Central | AR, LA, OK, TX |
-| 8 | Mountain | AZ, CO, ID, MT, NV, NM, UT, WY |
-| 9 | Pacific | AK, CA, HI, OR, WA |
+| `1` | New England | CT, ME, MA, NH, RI, VT |
+| `2` | Middle Atlantic | NJ, NY, PA |
+| `3` | East North Central | IL, IN, MI, OH, WI |
+| `4` | West North Central | IA, KS, MN, MO, NE, ND, SD |
+| `5` | South Atlantic | DE, DC, FL, GA, MD, NC, SC, VA, WV |
+| `6` | East South Central | AL, KY, MS, TN |
+| `7` | West South Central | AR, LA, OK, TX |
+| `8` | Mountain | AZ, CO, ID, MT, NV, NM, UT, WY |
+| `9` | Pacific | AK, CA, HI, OR, WA |
+| `99` | All divisions | Aggregate across all divisions |
 
 ### Division Map Reference
 

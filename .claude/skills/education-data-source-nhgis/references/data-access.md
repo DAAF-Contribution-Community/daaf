@@ -1,8 +1,32 @@
 # Accessing NHGIS Data
 
-Methods for obtaining NHGIS data: web interface, API, and programming libraries.
+Methods for obtaining NHGIS data: web interface, API, programming libraries, and via Education Data Portal.
 
-## Registration
+## Quick Start: Education Data Portal (School-Census Links)
+
+For linking schools to census geography, use the pre-processed data from the Education Data Portal mirror. **No registration required.**
+
+```python
+import polars as pl
+
+# School-to-census geography (2020 Census)
+url = "https://huggingface.co/datasets/brhkim/education_data_portal_mirror/resolve/main/schools/nhgis/census-2020/schools_nhgis_geog_2020.parquet"
+df = pl.read_parquet(url)
+
+# Available census years: 1990, 2000, 2010, 2020
+```
+
+**Available data**: School coordinates linked to census tract, block group, block, region, division, CBSA, and place. See `variable-catalog.md` for Portal integer encodings.
+
+**For custom census analysis** (tract-level demographics, time series, boundary files): Use NHGIS directly via methods below.
+
+---
+
+## Direct NHGIS Access (Custom Analysis)
+
+For full census data access beyond school-census links, register for NHGIS directly.
+
+### Registration
 
 **Required**: Free registration at https://uma.pop.umn.edu/nhgis/user/new
 

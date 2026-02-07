@@ -2,6 +2,8 @@
 
 Understanding the limitations, uncertainty, and appropriate applications of Model Estimates of Poverty in Schools.
 
+> **Portal Encoding Note:** MEPS data uses **native nulls** for missing values, not the coded values (-1, -2, -3) used by CCD and other sources. Always use null checks rather than negative value filtering.
+
 ## Key Data Quality Considerations
 
 ### MEPS is a Modeled Estimate
@@ -189,29 +191,56 @@ results = model.fit()
 
 ### Before Using MEPS Data
 
-1. **Check for missing values**
+> **Note:** MEPS uses native nulls, not negative coded values. Adjust validation accordingly.
+
+1. **Check for missing values (MEPS uses nulls, not negative codes)**
 ```python
-missing_pct = (df['meps'] < 0).mean()
+# Polars
+null_pct = df["meps_poverty_pct"].null_count() / len(df)
+print(f"Missing: {null_pct:.1%}")
+
+# pandas
+missing_pct = df['meps_poverty_pct'].isna().mean()
 print(f"Missing: {missing_pct:.1%}")
 ```
 
 2. **Verify reasonable ranges**
 ```python
-assert df['meps'].between(0, 1).all(), "MEPS out of range"
-assert df['meps_se'].ge(0).all(), "Negative SE values"
+# Polars - filter to non-null first
+valid = df.filter(pl.col("meps_poverty_pct").is_not_null())
+assert valid["meps_poverty_pct"].min() >= 0, "Negative poverty values"
+assert valid["meps_poverty_pct"].max() <= 100, "MEPS out of range"
+assert valid["meps_poverty_se"].min() >= 0, "Negative SE values"
+
+# pandas equivalent
+valid = df[df['meps_poverty_pct'].notna()]
+assert valid['meps_poverty_pct'].between(0, 100).all(), "MEPS out of range"
+assert (valid['meps_poverty_se'] >= 0).all(), "Negative SE values"
 ```
 
 3. **Check coverage**
 ```python
+# Polars
+print(f"Schools covered: {df['ncessch'].n_unique():,}")
+print(f"States covered: {df['fips'].n_unique()}")
+print(f"Years covered: {df['year'].unique().sort().to_list()}")
+
+# pandas
 print(f"Schools covered: {df['ncessch'].nunique():,}")
 print(f"States covered: {df['fips'].nunique()}")
-print(f"Years covered: {df['year'].unique()}")
+print(f"Years covered: {sorted(df['year'].unique())}")
 ```
 
 4. **Assess reliability distribution**
 ```python
-df['meps_se'].describe()
-print(f"Reliable estimates (SE<0.05): {(df['meps_se']<0.05).mean():.1%}")
+# Polars
+print(df["meps_poverty_se"].describe())
+reliable_pct = df.filter(pl.col("meps_poverty_se") < 0.05).height / len(df)
+print(f"Reliable estimates (SE<0.05): {reliable_pct:.1%}")
+
+# pandas
+print(df['meps_poverty_se'].describe())
+print(f"Reliable estimates (SE<0.05): {(df['meps_poverty_se']<0.05).mean():.1%}")
 ```
 
 ## Reporting Recommendations

@@ -167,6 +167,15 @@ Includes:
 | Partner changes | TIAA (2018-22), Commonfund (other years) | Check methodology changes |
 | Fiscal year timing | July 1 - June 30 | Match to other data sources carefully |
 
+## Common Pitfalls
+
+| Pitfall | Issue | Solution |
+|---------|-------|----------|
+| Using NCES-style codes | Portal uses integer FIPS, not string state abbreviations | Use integer fips codes (1-56) |
+| Expecting coded missing values | NACUBO in Portal uses nulls, not -1/-2/-3 | Check for null, not negative codes |
+| Comparing to IPEDS values | NACUBO is voluntary, IPEDS is mandatory | Note sample differences in analysis |
+| Year interpretation | FY2024 = July 2023 - June 2024 | Align fiscal year definitions carefully |
+
 ## Common Use Cases
 
 | Research Question | Primary Variables | Reference File |

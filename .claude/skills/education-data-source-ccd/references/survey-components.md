@@ -81,40 +81,42 @@ The Common Core of Data consists of six major survey components, each collecting
 
 Membership (enrollment) data represents student counts as of October 1 (or closest school day). This is the primary source for student enrollment statistics in public schools.
 
-**Critical Note**: Use grade=-99 for totals rather than summing individual grades, as this captures ungraded students.
+**Critical Note**: Use `grade=99` for totals rather than summing individual grades, as this captures ungraded students.
+
+> **Portal Encoding:** Variables are lowercase (`enrollment`, `grade`, `race`, `sex`) and use integer codes. See `variable-definitions.md` for complete mappings.
 
 ### School-Level Membership
 
 **Disaggregations Available**:
 
-| Disaggregation | Levels | Notes |
-|----------------|--------|-------|
-| Grade | PK, KG, 1-12, UG, Total (-99) | UG = Ungraded |
-| Race/Ethnicity | 7 categories (post-2010) | See historical changes |
-| Sex | Male, Female | |
+| Disaggregation | Portal Codes | Notes |
+|----------------|--------------|-------|
+| Grade | -1 (Pre-K), 0 (KG), 1-12, 15 (Ungraded), 99 (Total) | -1 = Pre-K, NOT missing |
+| Race/Ethnicity | 1-7 (categories), 99 (Total) | Integers, not strings |
+| Sex | 1 (Male), 2 (Female), 99 (Total) | |
 | Combined | Grade × Race × Sex | Full cross-tabulation |
 
-**Key Variables**:
+**Key Variables (Portal lowercase names)**:
 
 | Variable | Description | Notes |
 |----------|-------------|-------|
-| `MEMBER` | Total membership/enrollment | |
-| `GRADE` | Grade level code | PK, KG, 1-12, UG, -99 (total) |
-| `RACE` | Race/ethnicity category | 7 categories post-2010 |
-| `SEX` | Sex | M, F |
-| Student counts | By disaggregation | AM, AS, BL, HI, HP, TR, WH (race codes) |
+| `enrollment` | Student enrollment count | |
+| `grade` | Grade level code | -1=Pre-K, 0=KG, 1-12, 99=Total |
+| `race` | Race/ethnicity category | 1-7 integers, 99=Total |
+| `sex` | Sex | 1=Male, 2=Female, 99=Total |
 
-### Race/Ethnicity Categories (Current, 2010+)
+### Race/Ethnicity Categories (Portal Integer Codes, 2010+)
 
 | Code | Category | Description |
 |------|----------|-------------|
-| AM | American Indian/Alaska Native | Single race, non-Hispanic |
-| AS | Asian | Single race, non-Hispanic |
-| BL | Black or African American | Single race, non-Hispanic |
-| HI | Hispanic/Latino | Any race |
-| HP | Native Hawaiian/Pacific Islander | Single race, non-Hispanic |
-| TR | Two or More Races | Non-Hispanic |
-| WH | White | Single race, non-Hispanic |
+| `1` | White | Single race, non-Hispanic |
+| `2` | Black or African American | Single race, non-Hispanic |
+| `3` | Hispanic/Latino | Any race |
+| `4` | Asian | Single race, non-Hispanic |
+| `5` | American Indian/Alaska Native | Single race, non-Hispanic |
+| `6` | Native Hawaiian/Pacific Islander | Single race, non-Hispanic |
+| `7` | Two or More Races | Non-Hispanic |
+| `99` | Total | All races combined |
 
 ### LEA-Level Membership
 
@@ -126,14 +128,16 @@ Same structure as school-level, aggregated to district.
 
 Additional counts collected at school level:
 
-| Variable | Description | Notes |
-|----------|-------------|-------|
-| `FRELCH` | Free lunch eligible students | NSLP participation |
-| `REDLCH` | Reduced-price lunch eligible | NSLP participation |
-| `TOTFRL` | Total free/reduced lunch | Sum or direct count |
-| `DIRECT_CERT` | Directly certified students | Auto-enrolled without application |
+| Variable (Portal) | Description | Notes |
+|-------------------|-------------|-------|
+| `free_lunch` | Free lunch eligible students | NSLP participation |
+| `reduced_lunch` | Reduced-price lunch eligible | NSLP participation |
+| `free_or_reduced_price_lunch` | Total free/reduced lunch | Sum or direct count |
+| `direct_certification` | Directly certified students | Auto-enrolled without application |
 
-**FRPL Complexity**: Starting 2012-13, Community Eligibility Provision (CEP) allows high-poverty schools to provide free meals to all students. Schools participating in CEP may report 100% eligibility, making FRPL less useful as a poverty proxy.
+> **Note:** Portal uses lowercase with underscores. Original NCES variable names (FRELCH, REDLCH, etc.) are transformed.
+
+**FRPL Complexity**: Starting 2012-13, Community Eligibility Provision (CEP) allows high-poverty schools to provide free meals to all students. Schools participating in CEP may report 100% eligibility, making FRPL less useful as a poverty proxy. Use MEPS or SAIPE for poverty measurement instead.
 
 ---
 

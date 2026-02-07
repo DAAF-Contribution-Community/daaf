@@ -2,6 +2,22 @@
 
 Detailed definitions for key EADA variables available through the Education Data Portal.
 
+> **CRITICAL: Portal Integer Encoding**
+>
+> This document describes **Education Data Portal** integer encodings. The Portal converts categorical variables to integers for consistency across sources.
+>
+> | Variable | Code | Meaning |
+> |----------|------|---------|
+> | `ath_classification_code` | `1` | NCAA Division I FBS |
+> | `ath_classification_code` | `2` | NCAA Division I FCS |
+> | `ath_classification_code` | `8` | Other (see `ath_classification_other` for detail) |
+> | `fips` | `6` | California |
+> | Any variable | `-1` | Missing/not reported |
+> | Any variable | `-2` | Not applicable |
+> | Any variable | `-3` | Suppressed data |
+>
+> See the Athletic Classification Codes section below for complete mappings.
+
 ## Institution Identification
 
 | Variable | Type | Description |
@@ -9,7 +25,7 @@ Detailed definitions for key EADA variables available through the Education Data
 | `unitid` | Integer | IPEDS institution identifier (6 digits) |
 | `year` | Integer | Reporting year (fiscal year ending) |
 | `institution_name` | String | Name of institution |
-| `fips` | Integer | State FIPS code |
+| `fips` | Integer | State FIPS code (see FIPS codes below) |
 | `sector` | Integer | Institutional sector (see codes below) |
 
 ### Sector Codes
@@ -19,6 +35,69 @@ Detailed definitions for key EADA variables available through the Education Data
 | 1 | Public, 4-year or above |
 | 2 | Private nonprofit, 4-year or above |
 | 3 | Private for-profit, 4-year or above |
+
+### State FIPS Codes (Portal Integer Encoding)
+
+| Code | State | Code | State | Code | State |
+|------|-------|------|-------|------|-------|
+| 1 | Alabama | 18 | Indiana | 35 | New Mexico |
+| 2 | Alaska | 19 | Iowa | 36 | New York |
+| 4 | Arizona | 20 | Kansas | 37 | North Carolina |
+| 5 | Arkansas | 21 | Kentucky | 38 | North Dakota |
+| 6 | California | 22 | Louisiana | 39 | Ohio |
+| 8 | Colorado | 23 | Maine | 40 | Oklahoma |
+| 9 | Connecticut | 24 | Maryland | 41 | Oregon |
+| 10 | Delaware | 25 | Massachusetts | 42 | Pennsylvania |
+| 11 | District of Columbia | 26 | Michigan | 44 | Rhode Island |
+| 12 | Florida | 27 | Minnesota | 45 | South Carolina |
+| 13 | Georgia | 28 | Mississippi | 46 | South Dakota |
+| 15 | Hawaii | 29 | Missouri | 47 | Tennessee |
+| 16 | Idaho | 30 | Montana | 48 | Texas |
+| 17 | Illinois | 31 | Nebraska | 49 | Utah |
+| | | 32 | Nevada | 50 | Vermont |
+| | | 33 | New Hampshire | 51 | Virginia |
+| | | 34 | New Jersey | 53 | Washington |
+| | | | | 54 | West Virginia |
+| | | | | 55 | Wisconsin |
+| | | | | 56 | Wyoming |
+
+**Territories and Special Codes:**
+| Code | Jurisdiction |
+|------|--------------|
+| 60 | American Samoa |
+| 66 | Guam |
+| 69 | Northern Mariana Islands |
+| 72 | Puerto Rico |
+| 78 | Virgin Islands |
+
+### Athletic Classification Codes (Portal Integer Encoding)
+
+| Code | Athletic Division |
+|------|-------------------|
+| 1 | NCAA Division I FBS |
+| 2 | NCAA Division I FCS |
+| 3 | NCAA Division I (without football) |
+| 4 | NCAA Division II (with football) |
+| 5 | NCAA Division II (without football) |
+| 6 | NCAA Division III (with football) |
+| 7 | NCAA Division III (without football) |
+| 8 | Other (see `ath_classification_other` field) |
+| 9 | NAIA Division I |
+| 10 | NAIA Division II |
+| 12 | NJCAA Division I |
+| 13 | NJCAA Division II |
+| 14 | NJCAA Division III |
+| 15 | NCCAA Division I |
+| 16 | NCCAA Division II |
+| 17 | CCCAA (California Community Colleges) |
+| 18 | Independent |
+| 19 | NWAC (Northwest Athletic Conference) |
+| 20 | USCAA (United States Collegiate Athletic Association) |
+| -1 | Missing/not reported |
+| -2 | Not applicable |
+| -3 | Suppressed |
+
+> **Note:** Code `8` (Other) is used for institutions that don't fit the standard classifications. Check the `ath_classification_other` string field for additional detail.
 
 ## Participation Variables
 
@@ -247,13 +326,35 @@ exp_per_female = exp_women / partic_women
 aid_share_female = aid_women / (aid_men + aid_women)
 ```
 
-## Missing Value Interpretation
+## Missing Value Interpretation (Portal Integer Encoding)
 
-| Value | Meaning |
-|-------|---------|
-| NULL/NA | Data not reported or not applicable |
-| 0 | Reported as zero (institution has no activity) |
-| -1, -2 | Suppressed or not calculated (check source) |
+| Code | Meaning | When Used |
+|------|---------|-----------|
+| `-1` | Missing/not reported | State/institution did not report; value unknown |
+| `-2` | Not applicable | Item doesn't apply to this institution |
+| `-3` | Suppressed | Data suppressed for privacy protection |
+| `NULL` | Null value | Genuinely not present in source data |
+| `0` | Zero | Reported as zero (institution has no activity) |
+
+### Handling Missing Data
+
+```python
+import polars as pl
+
+# Identify coded missing values
+missing_codes = [-1, -2, -3]
+
+# Filter to valid data only
+df_valid = df.filter(~pl.col("variable").is_in(missing_codes))
+
+# Or convert coded values to null for calculations
+df_clean = df.with_columns(
+    pl.when(pl.col("variable").is_in(missing_codes))
+    .then(None)
+    .otherwise(pl.col("variable"))
+    .alias("variable")
+)
+```
 
 ## Data Type Notes
 

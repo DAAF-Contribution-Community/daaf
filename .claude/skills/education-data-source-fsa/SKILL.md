@@ -10,6 +10,20 @@ metadata:
 
 Reference guide for FSA data available through the Urban Institute Education Data Portal. FSA data provides institutional-level information on Title IV federal student aid programs administered by the U.S. Department of Education.
 
+> **CRITICAL: Portal Integer Encoding**
+>
+> The Education Data Portal converts categorical variables to **integers**. This differs from original FSA documentation which may use string codes. All categorical columns in the Portal parquet files are integer-typed.
+>
+> | Variable | Example Value | Meaning |
+> |----------|---------------|---------|
+> | `grant_type` | `1` | Federal Pell Grant |
+> | `loan_type` | `1` | Subsidized Direct Loan - Undergraduate |
+> | `award_type` | `1` | Federal Supplemental Educational Opportunity Grants |
+> | `fips` | `6` | California |
+> | `allocation_flag` | `1` | Yes |
+>
+> **Missing data codes** (`-1`, `-2`, `-3`) apply to `numeric` format variables, not categorical codes.
+
 ## What is FSA Data?
 
 Federal Student Aid (FSA) is the office within the U.S. Department of Education that administers Title IV aid programs:
@@ -78,11 +92,11 @@ FSA endpoint selection?
 
 | Endpoint | Description | Years | Key Variables |
 |----------|-------------|-------|---------------|
-| `/fsa/grants/` | Pell Grant recipients and amounts | 1999-2018 | `recipients`, `disbursements` |
-| `/fsa/loans/` | Direct Loan recipients and volumes | 1999-2018 | `recipients`, `disbursements` |
-| `/fsa/campus-based-volume/` | FWS, FSEOG, Perkins allocations | 2001-2017 | `fws_*`, `fseog_*`, `perkins_*` |
-| `/fsa/financial-responsibility/` | Composite scores by institution | 2006-2016 | `composite_score` |
-| `/fsa/90-10-revenue-percentages/` | For-profit Title IV revenue ratios | 2014-2017 | `title_iv_percentage` |
+| `fsa/grants/` | Grant recipients and amounts by type | 1999-2021 | `grant_type`, `grant_recipients_*`, `value_grants_disbursed_*` |
+| `fsa/loans/` | Loan recipients and volumes by type | 1999-2021 | `loan_type`, `loan_recipients_*`, `value_loan_disbursements_*` |
+| `fsa/campus-based-volume/` | FWS, FSEOG, Perkins by award type | 2001-2021 | `award_type`, `campus_award_recipients_*`, `value_campus_disbursed_*` |
+| `fsa/financial-responsibility/` | Composite scores by institution | 2006-2016 | `financial_resp_score` |
+| `fsa/90-10-revenue-percentages/` | For-profit Title IV revenue ratios | 2014-2021 | `rev_pct_90_10` |
 
 ## Quick Reference: Title IV Programs
 
@@ -106,37 +120,107 @@ FSA endpoint selection?
 | Below 1.0 | Not Financially Responsible | Must post letter of credit or face sanctions |
 | -1.0 | Minimum score | Lowest possible composite score |
 
-## API URL Patterns
+## Data Access Patterns
 
-FSA endpoints follow the Education Data Portal pattern:
+> **Recommended:** Use the HuggingFace mirror for bulk data access. See `education-data-query` skill for download patterns.
 
-```
-https://educationdata.urban.org/api/v1/college-university/fsa/{endpoint}/{year}/
-```
+### HuggingFace Mirror Paths
 
-**Examples:**
+FSA data is available as parquet files:
 
 ```
-# Pell Grant data for 2018
-/api/v1/college-university/fsa/grants/2018/
-
-# Direct Loan data for 2017, California institutions
-/api/v1/college-university/fsa/loans/2017/?fips=6
-
-# Financial responsibility scores for 2016
-/api/v1/college-university/fsa/financial-responsibility/2016/
-
-# 90/10 data for for-profit institutions
-/api/v1/college-university/fsa/90-10-revenue-percentages/2017/
+college-university/fsa/grants/colleges_fsa_grants.parquet
+college-university/fsa/loans/colleges_fsa_loans.parquet
+college-university/fsa/campus-based-volume/colleges_fsa_campus_based_volume.parquet
+college-university/fsa/financial-responsibility/colleges_fsa_composite_scores.parquet
+college-university/fsa/90-10-revenue-percentages/colleges_fsa_90_10_revenue_percentages.parquet
 ```
+
+**Download Example:**
+```bash
+curl -sL "https://huggingface.co/datasets/brhkim/education_data_portal_mirror/resolve/main/college-university/fsa/grants/colleges_fsa_grants.parquet" -o fsa_grants.parquet
+```
+
+### Filtering After Download
+
+```python
+import polars as pl
+
+# Load data
+df = pl.read_parquet("fsa_grants.parquet")
+
+# Filter by year and state
+df_ca_2020 = df.filter(
+    (pl.col("year") == 2020) &
+    (pl.col("fips") == 6)
+)
+
+# Filter by grant type (1 = Federal Pell Grant)
+df_pell = df.filter(pl.col("grant_type") == 1)
+```
+
+## Quick Reference: Categorical Code Tables
+
+### Grant Type Codes (grants endpoint)
+
+| Code | Grant Type |
+|------|------------|
+| `1` | Federal Pell Grant |
+| `2` | Federal Supplemental Educational Opportunity Grant (FSEOG) |
+| `3` | TEACH Grant |
+| `4` | Iraq and Afghanistan Service Grant |
+| `5` | Children of Fallen Heroes Grant |
+
+### Loan Type Codes (loans endpoint)
+
+| Code | Loan Type |
+|------|-----------|
+| `1` | Subsidized Direct Loan - Undergraduate |
+| `2` | Subsidized Direct Loan - Graduate |
+| `3` | Subsidized Direct Loan - Total |
+| `4` | Unsubsidized Direct Loan - Undergraduate |
+| `5` | Unsubsidized Direct Loan - Graduate |
+| `6` | Unsubsidized Direct Loan - Total |
+| `7` | Direct Loan, Parent PLUS |
+| `8` | Direct Loan, Grad PLUS |
+| `9` | Direct Loan PLUS (sum of Parent PLUS and Grad PLUS) |
+| `10` | Subsidized Federal Family Education Loans |
+| `11` | Unsubsidized Federal Family Education Loans |
+| `12` | Parent PLUS Federal Family Education Loans |
+| `13` | Grad PLUS Federal Family Education Loans |
+| `14` | PLUS Federal Family Education Loans |
+
+### Award Type Codes (campus-based-volume endpoint)
+
+| Code | Award Type |
+|------|------------|
+| `1` | Federal Supplemental Educational Opportunity Grants |
+| `2` | Federal Work-Study |
+| `3` | Perkins Loans |
+
+### Yes/No Codes (allocation_flag, combined_flag)
+
+| Code | Meaning |
+|------|---------|
+| `0` | No |
+| `1` | Yes |
+| `null` | Not reported |
+
+### Missing Data Codes
+
+| Code | Meaning |
+|------|---------|
+| `-1` | Missing/not reported |
+| `-2` | Not applicable |
+| `-3` | Suppressed data |
 
 ## Common Filters
 
 | Filter | Description | Example |
 |--------|-------------|---------|
-| `unitid` | IPEDS institution ID | `?unitid=110635` |
-| `fips` | State FIPS code | `?fips=6` (California) |
-| `year` | Academic year | Specified in URL path |
+| `unitid` | IPEDS institution ID | Filter df by `unitid == 110635` |
+| `fips` | State FIPS code (integer) | Filter df by `fips == 6` (California) |
+| `year` | Academic year | Filter df by `year == 2020` |
 
 ## Joining FSA Data with Other Sources
 

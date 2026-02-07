@@ -2,6 +2,29 @@
 
 Understanding the different enrollment measures in IPEDS and when to use each.
 
+> **CRITICAL: Portal Integer Encoding**
+>
+> The Education Data Portal uses **integer codes** for categorical variables. Key enrollment codes:
+>
+> | Variable | Code | Meaning |
+> |----------|------|---------|
+> | `level_of_study` | 1 | Undergraduate |
+> | | 2 | Graduate |
+> | | 3 | First professional |
+> | | 4 | Postbaccalaureate |
+> | | 99 | Total |
+> | `ftpt` | 1 | Full-time |
+> | | 2 | Part-time |
+> | | 99 | Total |
+> | `degree_seeking` | 0 | No |
+> | | 1 | Yes |
+> | | 99 | Total |
+> | `class_level` | 1 | First-time |
+> | | 2 | Other (transfer-ins) |
+> | | 3 | Other (continuing) |
+> | | 4 | Other (total) |
+> | | 99 | Total |
+
 ## Contents
 
 - [Two Enrollment Surveys](#two-enrollment-surveys)

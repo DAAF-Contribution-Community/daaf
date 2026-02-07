@@ -314,6 +314,39 @@ Format-specific read behavior is driven by the mirror's `read_strategy` field in
 
 ---
 
+## Portal Integer Encoding Notes
+
+**CRITICAL:** The Portal uses integer codes, not string labels. When filtering downloaded data:
+
+### Demographic Variables
+
+| Variable | Integer Values | NOT These Strings |
+|----------|----------------|-------------------|
+| Race | 1-7, 99 (total) | WH, BL, HI, AS |
+| Sex | 1 (Male), 2 (Female), 99 | M, F |
+| Grade | -1 to 13, 99 (total) | PK, KG, 01 |
+
+### Grade Encoding (SEMANTIC TRAP!)
+
+```python
+# WRONG - filters out Pre-K students!
+df = df.filter(pl.col("grade") >= 0)
+
+# RIGHT - grade=-1 is Pre-K, NOT missing data
+pre_k = df.filter(pl.col("grade") == -1)
+k_12 = df.filter(pl.col("grade").is_between(0, 12))
+total = df.filter(pl.col("grade") == 99)
+```
+
+### Variable Names Are Lowercase
+
+Portal variable names are lowercase:
+- `enrollment` not `MEMBER`
+- `grade` not `GRADE`
+- `fips` not `FIPS`
+
+---
+
 ## IAT Documentation for Fetch Scripts
 
 Every fetch script must include these IAT comments:
@@ -325,5 +358,6 @@ Every fetch script must include these IAT comments:
 #   Format-specific read strategy is driven by each mirror's read_strategy field.
 # ASSUMES: Mirror URLs in MIRRORS config are current and accessible.
 #   Year/filter columns exist in the dataset with expected names.
+#   Portal uses integer encoding: grade=-1 is Pre-K (NOT missing), race=1-7, sex=1-2.
 # REFERENCE: mirrors.yaml for mirror config, datasets-reference.md for dataset paths.
 ```

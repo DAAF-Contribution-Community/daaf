@@ -10,6 +10,20 @@ metadata:
 
 School-level poverty measure from the Urban Institute that is **comparable across states and time**, unlike Free/Reduced-Price Lunch (FRPL) data.
 
+> **CRITICAL: Portal Integer Encoding**
+>
+> The Education Data Portal returns MEPS data with **integer-encoded** categorical and identifier columns. This differs from some external documentation:
+>
+> | Column | Portal Type | Example Value | Notes |
+> |--------|-------------|---------------|-------|
+> | `fips` | Int64 | `6` | State FIPS as integer (California = 6) |
+> | `ncessch` | Int64 | `10000200277` | 12-digit NCES school ID as integer |
+> | `leaid` | Int64 | `100002` | 7-digit district ID as integer |
+> | `gleaid` | Int64 | `100013` | Geographic LEA ID as integer |
+> | `year` | Int64 | `2018` | Academic year (fall semester) |
+>
+> **Missing values:** Unlike CCD, MEPS uses **native nulls** rather than negative coded values (-1, -2, -3). While the codebook lists these codes, actual Portal data contains nulls for missing values.
+
 ## What is MEPS?
 
 MEPS is a **modeled estimate** of the share of students from households with incomes at or below **100% of the Federal Poverty Level (FPL)**:
@@ -101,18 +115,34 @@ The actual API field names differ from some documentation:
 |-----------------|------------------|
 | `meps` / `school_poverty` | `meps_poverty_pct` |
 | `meps_mod` | `meps_mod_poverty_pct` |
+| `meps_se` | `meps_poverty_se` |
 
-### Variable Reference
+### Variable Reference (Portal Integer Encoding)
 
-| Variable | Description | Type | Range |
-|----------|-------------|------|-------|
-| `ncessch` | 12-character NCES school ID | String | School identifier |
-| `year` | School year (fall) | Integer | 2006-2019 |
-| `fips` | State FIPS code | Integer | 1-56 |
-| `leaid` | District ID | String | 7-character |
-| `meps_poverty_pct` | Estimated share in poverty (100% FPL) | Float | 0.0-1.0 |
-| `meps_mod_poverty_pct` | Modified MEPS estimate | Float | 0.0-1.0 |
-| `meps_se` | Standard error of estimate | Float | 0.0+ |
+All ID and categorical columns use **integer encoding** in Portal data:
+
+| Variable | Description | Type | Range/Notes |
+|----------|-------------|------|-------------|
+| `ncessch` | NCES school ID (12-digit) | **Int64** | e.g., `10000200277` |
+| `ncessch_num` | NCES school ID (numeric duplicate) | **Int64** | Same as ncessch |
+| `year` | School year (fall) | **Int64** | 2009-2022 (actual data range) |
+| `fips` | State FIPS code | **Int64** | 1-56 |
+| `leaid` | District ID (7-digit) | **Int64** | e.g., `100002` |
+| `gleaid` | Geographic LEA ID | **Int64** | e.g., `100013` |
+| `meps_poverty_pct` | Estimated share in poverty (100% FPL) | Float64 | 0.0-60.5% (actual range) |
+| `meps_mod_poverty_pct` | Modified MEPS estimate | Float64 | 0.0-100.0% |
+| `meps_poverty_se` | Standard error of estimate | Float64 | 0.5-3.8 (typical range) |
+| `meps_poverty_ptl` | National percentile (enrollment-weighted) | **Int64** | 1-100 |
+| `meps_mod_poverty_ptl` | Modified percentile (enrollment-weighted) | **Int64** | 1-100 |
+
+**Missing values:** Use null checks, not negative value filters:
+```python
+# Correct
+valid_data = df.filter(pl.col("meps_poverty_pct").is_not_null())
+
+# Wrong (MEPS doesn't use -1, -2, -3 coded values)
+# df.filter(pl.col("meps_poverty_pct") >= 0)  # Unnecessary
+```
 
 ## Quick Reference: API Endpoint
 
@@ -162,9 +192,9 @@ Returns MEPS data for all California schools in 2018.
 
 ## Limitations to Note
 
-- **Years available**: 2006-2019 (as of MEPS 1.0)
+- **Years available**: 2009-2022 (actual Portal data range)
 - **Public schools only**: No private school coverage
-- **Modeled estimates**: Subject to estimation error (use `meps_se`)
+- **Modeled estimates**: Subject to estimation error (use `meps_poverty_se`)
 - **100% FPL only**: Does not capture near-poverty (100-185% FPL)
 - **Not real-time**: 2-3 year data lag typical
 

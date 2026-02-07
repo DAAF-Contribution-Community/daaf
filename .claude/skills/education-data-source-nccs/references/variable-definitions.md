@@ -2,6 +2,35 @@
 
 This reference provides definitions for key variables in NCCS datasets, including naming conventions, common financial measures, and data quality considerations.
 
+## Education Data Portal vs. Direct NCCS Access
+
+> **CRITICAL:** Variable names and encodings differ between the Education Data Portal and direct NCCS downloads.
+
+| Aspect | Education Data Portal | Direct NCCS |
+|--------|----------------------|-------------|
+| **Variable case** | lowercase (`contributions_total`) | UPPERCASE (`CONT`) |
+| **Naming style** | Descriptive (`prog_serv_rev`) | Abbreviated (`PROGREV`) |
+| **FIPS encoding** | Integer (`6` for California) | May be string (`"06"`) |
+| **Missing codes** | Integer (`-1`, `-2`, `-3`) | Integer or blank |
+| **Data format** | Parquet (via HuggingFace) | CSV |
+
+### Portal Variable Mapping
+
+| Portal Name | NCCS Name | Description |
+|-------------|-----------|-------------|
+| `year` | `FISYR` | Academic/fiscal year |
+| `unitid` | N/A | IPEDS institution ID (Portal addition) |
+| `ein` | `EIN` | Employer Identification Number |
+| `fips` | `FIPS` | State FIPS code (integer in Portal) |
+| `contributions_total` | `CONT` | Total contributions |
+| `prog_serv_rev` | `PROGREV` | Program service revenue |
+| `revenue_total` | `TOTREV` | Total revenue |
+| `expenses_total` | `EXPS` | Total expenses |
+| `total_assets_eoy` | `TOTASS` | Total assets (end of year) |
+| `net_assets_eoy` | `NETASS` | Net assets |
+| `compensation_officers` | `COMPENS` | Officer compensation |
+| `salaries_other` | `OTHSAL` | Other salaries |
+
 ## Contents
 
 - [Variable Naming Conventions](#variable-naming-conventions)
@@ -327,7 +356,7 @@ XX_XX_XX_VARIABLE_NAME
 
 ## Missing Data Codes
 
-### NCCS Standard Codes
+### NCCS Standard Codes (Integer in Portal)
 
 | Code | Meaning |
 |------|---------|
@@ -337,17 +366,45 @@ XX_XX_XX_VARIABLE_NAME
 | `Blank/NULL` | Not reported by organization |
 | `0` | Zero value (explicitly reported) |
 
+> **Portal Note:** In Education Data Portal data, these are always integer values (-1, -2, -3), never strings.
+
 ### Interpreting Missing Data
 
-**Important distinctions**:
+**Important distinctions** (using Portal variable names):
 
 | Observation | Interpretation |
 |-------------|----------------|
-| `INVINC = 0` | Organization reported zero investment income |
-| `INVINC = blank` | Organization did not report (may have income) |
-| `INVINC = -1` | Variable not available for this form/year |
+| `invest_inc_total = 0` | Organization reported zero investment income |
+| `invest_inc_total = null` | Organization did not report (may have income) |
+| `invest_inc_total = -1` | Variable not available for this form/year |
 
 ### Handling Missing Data
+
+**Using Polars (Portal data):**
+
+```python
+import polars as pl
+
+# Load from HuggingFace mirror
+url = "https://huggingface.co/datasets/brhkim/education_data_portal_mirror/resolve/main/college-university/nccs/990-forms/colleges_nccs_all.parquet"
+df = pl.read_parquet(url)
+
+# Filter out missing data codes
+df_clean = df.filter(
+    (pl.col("invest_inc_total").is_not_null()) &
+    (pl.col("invest_inc_total") >= 0)  # Excludes -1, -2, -3
+)
+
+# Or replace with null
+df = df.with_columns(
+    pl.when(pl.col("invest_inc_total") < 0)
+    .then(None)
+    .otherwise(pl.col("invest_inc_total"))
+    .alias("invest_inc_total_clean")
+)
+```
+
+**Using pandas (direct NCCS):**
 
 ```python
 import pandas as pd

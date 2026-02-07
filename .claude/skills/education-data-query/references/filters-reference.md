@@ -234,23 +234,46 @@ Available across all endpoints.
 
 When fetching enrollment data, disaggregators are path parameters, not query filters.
 
+**CRITICAL: URL Path Values vs. Data Column Values**
+
+The Portal uses different representations in URL paths vs. actual data columns:
+
+| Aspect | URL Path | Data Column |
+|--------|----------|-------------|
+| Pre-K | `grade-pk` | `grade = -1` |
+| Kindergarten | `grade-k` | `grade = 0` |
+| Grades 1-12 | `grade-1` to `grade-12` | `grade = 1` to `12` |
+| Total | `grade-99` | `grade = 99` |
+
+**SEMANTIC TRAP:** In the downloaded data, `grade = -1` means **Pre-Kindergarten**, NOT missing data!
+
+```python
+# WRONG - filters out Pre-K students!
+df = df.filter(pl.col("grade") >= 0)
+
+# RIGHT - Pre-K students have grade = -1
+pre_k = df.filter(pl.col("grade") == -1)
+k_12 = df.filter(pl.col("grade").is_between(0, 12))
+total = df.filter(pl.col("grade") == 99)
+```
+
 ### Grade Disaggregator
 
 Use in path: `/enrollment/{year}/grade-{value}/`
 
-| Value | Description |
-|-------|-------------|
-| `pk` | Pre-kindergarten |
-| `k` | Kindergarten |
-| `1`-`12` | Grades 1-12 |
-| `13` | Ungraded |
-| `99` | Total (all grades) |
+| URL Path Value | Data Column Value | Description |
+|----------------|-------------------|-------------|
+| `pk` | -1 | Pre-kindergarten |
+| `k` | 0 | Kindergarten |
+| `1`-`12` | 1-12 | Grades 1-12 |
+| `13` | 13 | Ungraded |
+| `99` | 99 | Total (all grades) |
 
 ### Race Disaggregator
 
 Use in path: `/enrollment/{year}/race/`
 
-Returns records with `race` field:
+Returns records with `race` field (integer, not string codes):
 | Value | Description |
 |-------|-------------|
 | 1 | White |
@@ -262,16 +285,20 @@ Returns records with `race` field:
 | 7 | Two or more races |
 | 99 | Total |
 
+**Note:** The Portal uses integers (1-7), NOT string codes like "WH", "BL", "HI", etc.
+
 ### Sex Disaggregator
 
 Use in path: `/enrollment/{year}/sex/`
 
-Returns records with `sex` field:
+Returns records with `sex` field (integer, not string codes):
 | Value | Description |
 |-------|-------------|
 | 1 | Male |
 | 2 | Female |
 | 99 | Total |
+
+**Note:** The Portal uses integers (1, 2), NOT string codes like "M", "F".
 
 ## Complete FIPS Code List
 

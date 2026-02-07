@@ -2,6 +2,8 @@
 
 This reference documents significant changes to CCD data collection, definitions, and coding over time. Essential for longitudinal analysis and understanding data comparability.
 
+> **Portal vs NCES Codes:** This document references historical NCES string codes (AM, BL, PK, etc.) when explaining transitions. The Education Data Portal uses **integer codes** — see `variable-definitions.md` for current Portal mappings.
+
 ## Major Milestones Timeline
 
 | Year | Change | Impact |
@@ -141,24 +143,27 @@ States transitioned at different times:
 ### Recommended Approach
 
 ```python
-# For time series spanning 2010
-# Option 1: Collapse new categories to old
-def map_to_old_categories(race_code):
-    mapping = {
-        "AM": "AI",  # American Indian
-        "AS": "AS",  # Asian stays Asian
-        "HP": "AS",  # Pacific Islander → Asian
-        "BL": "BL",  # Black
-        "HI": "HI",  # Hispanic
-        "WH": "WH",  # White
-        "TR": "UNK", # Two or more → Unknown/cannot map
-    }
-    return mapping.get(race_code, "UNK")
+# Portal uses integer race codes (not NCES string codes)
+# Current Portal codes: 1=White, 2=Black, 3=Hispanic, 4=Asian,
+#                       5=AIAN, 6=NHPI, 7=Two+, 99=Total
 
-# Option 2: Analyze separately
-# Pre-2010 analysis
-# Post-2010 analysis
-# Note break in time series
+# For time series spanning 2010
+# Option 1: Collapse new categories to match old 5-category system
+def collapse_to_5_categories(race_code: int) -> int:
+    """Collapse 7-category (post-2010) to 5-category (pre-2010) equivalent."""
+    mapping = {
+        5: 5,   # American Indian/Alaska Native stays same
+        4: 4,   # Asian stays Asian
+        6: 4,   # Pacific Islander → Asian (combined pre-2010)
+        2: 2,   # Black stays Black
+        3: 3,   # Hispanic stays Hispanic
+        1: 1,   # White stays White
+        7: -1,  # Two or more → cannot map (treat as missing)
+    }
+    return mapping.get(race_code, -1)
+
+# Option 2: Analyze pre-2010 and post-2010 separately
+# Note the break in your time series documentation
 ```
 
 ---

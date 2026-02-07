@@ -2,6 +2,17 @@
 
 Comprehensive reference for key CCD variables, coding schemes, and special values.
 
+> **CRITICAL: Portal vs NCES Raw File Encoding**
+>
+> This document describes **Education Data Portal** integer encodings, which differ from NCES raw file string codes. The Portal converts categorical variables to integers for consistency across sources.
+>
+> | Context | Grade Pre-K | Kindergarten | Total | Race White |
+> |---------|-------------|--------------|-------|------------|
+> | **Portal (integers)** | `-1` | `0` | `99` | `1` |
+> | NCES raw files (strings) | `PK` | `KG` | varies | `WH` |
+>
+> **Semantic trap:** In enrollment data, `grade = -1` means **Pre-K**, NOT missing! Missing data uses the standard codes only for `numeric` format variables.
+
 ## Identifiers
 
 ### School ID (NCESSCH)
@@ -124,28 +135,34 @@ Data is typically suppressed when:
 
 ## Grade Codes
 
-### Standard Grade Codes
+### Portal Integer Encoding (enrollment data)
 
 | Code | Grade Level | Description |
 |------|-------------|-------------|
-| PK | Pre-Kindergarten | Ages 3-5, before kindergarten |
-| KG | Kindergarten | Typically age 5 |
-| 01-12 | Grades 1-12 | Standard grades |
-| UG | Ungraded | No standard grade assignment |
-| -99 | Total | All grades combined |
+| `-1` | Pre-Kindergarten | Ages 3-5, before kindergarten |
+| `0` | Kindergarten | Typically age 5 |
+| `1`-`12` | Grades 1-12 | Standard grades |
+| `13` | Grade 13 | Extended high school |
+| `14` | Adult education | Adult education programs |
+| `15` | Ungraded | No standard grade assignment |
+| `99` | Total | All grades combined |
+| `999` | Not specified | Grade not specified |
+
+> **WARNING:** `grade = -1` means **Pre-K**, NOT missing! This differs from numeric variables where `-1` indicates missing data.
 
 ### Using Grade Codes
 
-**Best Practice**: Use grade=-99 (total) rather than summing individual grades.
+**Best Practice**: Use `grade == 99` (total) rather than summing individual grades.
 
 **Why**: Summing grades may miss:
-- Ungraded students (UG)
+- Ungraded students (grade=15)
+- Adult education (grade=14)
 - Students in non-standard grade configurations
 - Reporting differences by state
 
 ```python
 # RECOMMENDED: Use total enrollment
-total = df.filter(pl.col("grade") == -99)["enrollment"]
+total = df.filter(pl.col("grade") == 99)["enrollment"]
 
 # NOT RECOMMENDED: Summing grades
 # May undercount due to ungraded students
@@ -164,17 +181,26 @@ Schools report lowest (GSLO) and highest (GSHI) grades offered:
 
 ## Race/Ethnicity Codes
 
-### Current Categories (2010-Present)
+### Portal Integer Encoding (Current)
 
 | Code | Category | Description |
 |------|----------|-------------|
-| HI | Hispanic/Latino | Any race; ethnicity collected separately |
-| AM | American Indian/Alaska Native | Single race, non-Hispanic |
-| AS | Asian | Single race, non-Hispanic |
-| BL | Black or African American | Single race, non-Hispanic |
-| HP | Native Hawaiian/Pacific Islander | Single race, non-Hispanic |
-| TR | Two or More Races | Multiple races selected, non-Hispanic |
-| WH | White | Single race, non-Hispanic |
+| `1` | White | Single race, non-Hispanic |
+| `2` | Black | Single race, non-Hispanic |
+| `3` | Hispanic | Any race; ethnicity collected separately |
+| `4` | Asian | Single race, non-Hispanic |
+| `5` | American Indian/Alaska Native | Single race, non-Hispanic |
+| `6` | Native Hawaiian/Pacific Islander | Single race, non-Hispanic |
+| `7` | Two or More Races | Multiple races selected, non-Hispanic |
+| `8` | Nonresident alien | International students (postsecondary) |
+| `9` | Unknown | Race/ethnicity unknown |
+| `20` | Other | Other race/ethnicity |
+| `99` | Total | All races combined |
+| `-1` | Missing/not reported | Data not reported |
+| `-2` | Not applicable | Item doesn't apply |
+| `-3` | Suppressed | Privacy suppression |
+
+> **Note:** NCES raw files use string codes (WH, BL, HI, AS, AM, HP, TR). The Portal converts these to integers for consistency.
 
 **Key Points**:
 - Hispanic is treated as ethnicity, asked first
@@ -182,68 +208,76 @@ Schools report lowest (GSLO) and highest (GSHI) grades offered:
 - "Two or More Races" category added in 2010
 - HP (Pacific Islander) separated from AS (Asian) in 2010
 
-### Historical Categories (Pre-2010)
+### Historical Context (Pre-2010)
 
-| Code | Category |
-|------|----------|
-| AI | American Indian/Alaska Native |
-| AS | Asian/Pacific Islander (combined) |
-| BL | Black, non-Hispanic |
-| HI | Hispanic |
-| WH | White, non-Hispanic |
-
-### Transition Period (2007-2010)
-
-States transitioned at different times. Data from this period may use:
-- Old 5-category system
-- New 7-category system
-- Bridge period with reporting inconsistencies
+States transitioned to 7-category system at different times. Data from 2007-2010 may have reporting inconsistencies.
 
 **Caution**: Time series analysis across this period requires careful handling.
 
 ---
 
+## Sex Codes
+
+### Portal Integer Encoding
+
+| Code | Category |
+|------|----------|
+| `1` | Male |
+| `2` | Female |
+| `3` | Another gender |
+| `9` | Unknown |
+| `99` | Total |
+| `-1` | Missing/not reported |
+| `-2` | Not applicable |
+| `-3` | Suppressed |
+
+---
+
 ## Locale Codes
+
+### Portal Integer Encoding
+
+The Portal uses integer locale codes. **Both old and new systems appear in the data** depending on the year.
 
 ### Urban-Centric Locale Codes (2006-Present)
 
 | Code | Category | Definition |
 |------|----------|------------|
-| **City** | | |
-| 11 | City, Large | Principal city, population ≥250,000 |
-| 12 | City, Midsize | Principal city, 100,000-249,999 |
-| 13 | City, Small | Principal city, <100,000 |
-| **Suburb** | | |
-| 21 | Suburb, Large | Outside principal city, urbanized area ≥250,000 |
-| 22 | Suburb, Midsize | Outside principal city, urbanized area 100,000-249,999 |
-| 23 | Suburb, Small | Outside principal city, urbanized area <100,000 |
-| **Town** | | |
-| 31 | Town, Fringe | Urban cluster, ≤10 miles from urbanized area |
-| 32 | Town, Distant | Urban cluster, 10-35 miles from urbanized area |
-| 33 | Town, Remote | Urban cluster, >35 miles from urbanized area |
-| **Rural** | | |
-| 41 | Rural, Fringe | ≤5 miles from urbanized area |
-| 42 | Rural, Distant | 5-25 miles from urbanized area |
-| 43 | Rural, Remote | >25 miles from urbanized area |
+| `11` | City, Large | Principal city, population ≥250,000 |
+| `12` | City, Midsize | Principal city, 100,000-249,999 |
+| `13` | City, Small | Principal city, <100,000 |
+| `21` | Suburb, Large | Outside principal city, urbanized area ≥250,000 |
+| `22` | Suburb, Midsize | Outside principal city, urbanized area 100,000-249,999 |
+| `23` | Suburb, Small | Outside principal city, urbanized area <100,000 |
+| `31` | Town, Fringe | Urban cluster, ≤10 miles from urbanized area |
+| `32` | Town, Distant | Urban cluster, 10-35 miles from urbanized area |
+| `33` | Town, Remote | Urban cluster, >35 miles from urbanized area |
+| `41` | Rural, Fringe | ≤5 miles from urbanized area |
+| `42` | Rural, Distant | 5-25 miles from urbanized area |
+| `43` | Rural, Remote | >25 miles from urbanized area |
+| `9` | Not assigned | Locale not assigned |
+| `-1` | Missing/not reported | Data not reported |
+| `-2` | Not applicable | Item doesn't apply |
+| `-3` | Suppressed | Privacy suppression |
 
 ### Metro-Centric Locale Codes (Pre-2006)
 
 | Code | Category |
 |------|----------|
-| 1 | Large city |
-| 2 | Midsize city |
-| 3 | Urban fringe of large city |
-| 4 | Urban fringe of midsize city |
-| 5 | Large town |
-| 6 | Small town |
-| 7 | Rural, outside CBSA |
-| 8 | Rural, inside CBSA |
+| `1` | Large city |
+| `2` | Midsize city |
+| `3` | Urban fringe of large city |
+| `4` | Urban fringe of midsize city |
+| `5` | Large town |
+| `6` | Small town |
+| `7` | Rural, outside CBSA |
+| `8` | Rural, inside CBSA |
 
 ### Locale Code Mapping
 
 **There is no one-to-one mapping** between old and new locale codes. The underlying geographic methodology changed completely in 2006.
 
-**Recommendation**: 
+**Recommendation**:
 - Analyze pre-2006 and post-2006 separately
 - Do not attempt direct comparisons across the transition
 - If longitudinal analysis is essential, use NCES crosswalk documentation with extreme caution
@@ -252,28 +286,47 @@ States transitioned at different times. Data from this period may use:
 
 ## School and LEA Type Codes
 
-### School Type
+### School Type (Portal Integer Encoding)
 
 | Code | Type | Description |
 |------|------|-------------|
-| 1 | Regular | Standard public school |
-| 2 | Special Education | Focuses on students with disabilities |
-| 3 | Vocational | Career/technical focus |
-| 4 | Alternative | Non-traditional programs |
-| 5 | Reportable Program | Program within school, no separate principal (2007-08+) |
+| `1` | Regular school | Standard public school |
+| `2` | Special education school | Focuses on students with disabilities |
+| `3` | Vocational school | Career/technical focus |
+| `4` | Other/alternative school | Non-traditional programs |
+| `5` | Reportable program | Program within school, no separate principal (2007-08+) |
+| `-1` | Missing/not reported | Data not reported |
+| `-2` | Not applicable | Item doesn't apply |
+| `-3` | Suppressed | Privacy suppression |
 
-### LEA Type
+### School Level (Portal Integer Encoding)
+
+| Code | Level | Description |
+|------|-------|-------------|
+| `0` | Prekindergarten | Pre-K only |
+| `1` | Primary | Elementary school |
+| `2` | Middle | Middle school |
+| `3` | High | High school |
+| `4` | Other | Other configuration |
+| `5` | Ungraded | No standard grade structure |
+| `6` | Adult Education | Adult education programs |
+| `7` | Secondary | Combined middle/high |
+| `-1` | Missing/not reported | Data not reported |
+| `-2` | Not applicable | Item doesn't apply |
+| `-3` | Suppressed | Privacy suppression |
+
+### LEA Type (Portal Integer Encoding)
 
 | Code | Type | Description |
 |------|------|-------------|
-| 1 | Regular | Standard local school district |
-| 2 | Component | District sharing superintendent |
-| 3 | Supervisory Union | Admin for multiple districts |
-| 4 | Regional Agency | Education service agency |
-| 5 | State-operated | State-run schools |
-| 6 | Federal-operated | BIE, DoDEA |
-| 7 | Charter Agency | All schools are charters (2007-08+) |
-| 8 | Other | Other agencies (2007-08+) |
+| `1` | Regular | Standard local school district |
+| `2` | Component | District sharing superintendent |
+| `3` | Supervisory Union | Admin for multiple districts |
+| `4` | Regional Agency | Education service agency |
+| `5` | State-operated | State-run schools |
+| `6` | Federal-operated | BIE, DoDEA |
+| `7` | Charter Agency | All schools are charters (2007-08+) |
+| `8` | Other | Other agencies (2007-08+) |
 
 **Historical Note**: Prior to 2007-08, code 7 was used for "Other" agencies. The charter-specific designation was added in 2007-08.
 
@@ -281,24 +334,83 @@ States transitioned at different times. Data from this period may use:
 
 ## Status Codes
 
-### School Operational Status
+### School Operational Status (Portal Integer Encoding)
 
 | Code | Status | Meaning |
 |------|--------|---------|
-| 1 | Continuing | Currently operational, no change |
-| 2 | Closed | No longer operating |
-| 3 | New | Opened since last report |
-| 4 | Added | Existed but not previously reported |
-| 5 | Changed Agency | Now associated with different LEA |
-| 6 | Inactive | Temporarily closed (may reopen ≤3 years) |
-| 7 | Future | Scheduled to open within 2 years |
-| 8 | Reopened | Was closed, now operational |
+| `1` | Open | Currently operational |
+| `2` | Closed | No longer operating |
+| `3` | New | Opened since last report |
+| `4` | Added | Existed but not previously reported |
+| `5` | Changed agency | Now associated with different LEA |
+| `6` | Inactive | Temporarily closed (may reopen ≤3 years) |
+| `7` | Future | Scheduled to open within 2 years |
+| `8` | Reopened | Was closed, now operational |
+| `-1` | Missing/not reported | Data not reported |
+| `-2` | Not applicable | Item doesn't apply |
+| `-3` | Suppressed | Privacy suppression |
 
 Codes 6, 7 added in 2002-03. Code 8 added in 2005-06.
 
 ### LEA Boundary Status
 
 Similar to school status, indicating changes to LEA boundaries or jurisdiction.
+
+---
+
+## Program Participation Variables
+
+### Title I Status (Portal Integer Encoding)
+
+| Code | Status |
+|------|--------|
+| `1` | Eligible for TAS, provides no program |
+| `2` | Eligible for TAS, provides TAS program |
+| `3` | Eligible for SWP, provides TAS program |
+| `4` | Eligible for SWP, provides no program |
+| `5` | Eligible for SWP, provides SWP |
+| `6` | Not eligible for Title I |
+| `-1` | Missing/not reported |
+| `-2` | Not applicable |
+| `-3` | Suppressed |
+
+> TAS = Targeted Assistance, SWP = Schoolwide Program
+
+### Lunch Program (Portal Integer Encoding)
+
+| Code | Status |
+|------|--------|
+| `0` | No |
+| `1` | Yes, without Provision or CEP |
+| `2` | Yes, under Community Eligibility Provision (CEP) |
+| `3` | Yes, under Provision 1 |
+| `4` | Yes, under Provision 2 |
+| `5` | Yes, under Provision 3 |
+| `-1` | Missing/not reported |
+
+> **CEP Note:** Schools using CEP (code 2) report 100% free lunch, making FRPL unreliable as a poverty measure. Use MEPS or SAIPE instead.
+
+### Virtual School Status (Portal Integer Encoding)
+
+| Code | Status |
+|------|--------|
+| `0` | No (not virtual) |
+| `1` | Yes (fully virtual) |
+| `2` | Virtual with face-to-face options |
+| `3` | Supplemental virtual |
+| `-1` | Missing/not reported |
+
+### Yes/No Variables (Charter, Magnet, etc.)
+
+| Code | Meaning |
+|------|---------|
+| `0` | No |
+| `1` | Yes |
+| `-1` | Missing/not reported |
+| `-2` | Not applicable |
+| `-3` | Suppressed |
+
+Used for: `charter`, `magnet`, and similar binary indicators.
 
 ---
 

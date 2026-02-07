@@ -163,13 +163,71 @@ Linking NCCS to education data?
 - **Classification accuracy**: ~25% of NTEE codes estimated to be imprecise
 - **Consolidation**: Some university systems file consolidated 990s
 - **Form version changes**: 990 was redesigned in 2008; variable definitions changed
+- **Using Portal integer codes**: The Education Data Portal uses integer encodings (see below)
+
+## Education Data Portal Encoding Warning
+
+> **CRITICAL:** The Education Data Portal encodes ALL categorical variables as **integers**, not strings.
+
+### Integer Encoding Examples
+
+| Variable | Portal Value | Meaning |
+|----------|-------------|---------|
+| `fips` | `6` | California (not "CA" or "California") |
+| `fips` | `-1` | Missing/not reported |
+| `fips` | `-2` | Not applicable |
+| `fips` | `-3` | Suppressed data |
+| `mult_ein_flag` | `0` | No (single EIN) |
+| `mult_ein_flag` | `1` | Yes (multiple EINs) |
+
+### Variable Names
+
+All variable names are **lowercase** in Portal data:
+- `unitid` (not `UNITID`)
+- `fips` (not `FIPS` or `fips_code`)
+- `contributions_total` (not `CONT`)
+- `revenue_total` (not `TOTREV`)
+
+### Data Access Pattern
+
+```python
+import polars as pl
+
+# Download from HuggingFace mirror (recommended)
+url = "https://huggingface.co/datasets/brhkim/education_data_portal_mirror/resolve/main/college-university/nccs/990-forms/colleges_nccs_all.parquet"
+df = pl.read_parquet(url)
+
+# Filter by state using integer FIPS
+california = df.filter(pl.col("fips") == 6)  # California
+texas = df.filter(pl.col("fips") == 48)       # Texas
+
+# Handle missing data codes
+df_clean = df.filter(pl.col("fips") >= 1)  # Exclude -1, -2, -3
+```
+
+### Mapping Portal Variables to Original NCCS Names
+
+The Portal uses descriptive lowercase names mapped from original 990 variables:
+
+| Portal Name | Original NCCS/990 | Description |
+|-------------|-------------------|-------------|
+| `contributions_total` | `CONT` | Total contributions |
+| `prog_serv_rev` | `PROGREV` | Program service revenue |
+| `revenue_total` | `TOTREV` | Total revenue |
+| `expenses_total` | `EXPS` | Total expenses |
+| `total_assets_eoy` | `TOTASS` | Total assets (end of year) |
+| `net_assets_eoy` | `NETASS` | Net assets (end of year) |
+| `compensation_officers` | `COMPENS` | Officer compensation |
+| `salaries_other` | `OTHSAL` | Other salaries |
 
 ## Cross-Reference to Related Skills
 
 | Skill | Purpose | When to Use |
 |-------|---------|-------------|
 | `education-data-explorer` | Discover Urban Institute education datasets | Finding what data exists |
-| `education-data-query` | Construct API queries | After identifying endpoints |
+| `education-data-query` | Download data from HuggingFace mirror | After identifying endpoints |
+
+> **Note:** The `education-data-query` skill now uses mirror-based downloads from HuggingFace rather than direct API calls. See that skill for current download patterns.
 
 ## Topic Index
 

@@ -2,6 +2,19 @@
 
 Comprehensive reference for variables available in FSA endpoints through the Urban Institute Education Data Portal.
 
+> **CRITICAL: Portal Integer Encoding**
+>
+> This document describes **Education Data Portal** integer encodings. The Portal converts categorical variables to integers for consistency across sources. All parquet files contain integer-typed categorical columns.
+>
+> | Variable | Portal (integers) | Original FSA |
+> |----------|-------------------|--------------|
+> | `grant_type` | `1`, `2`, `3`, `4`, `5` | Descriptive text |
+> | `loan_type` | `1`-`14` | Descriptive text |
+> | `award_type` | `1`, `2`, `3` | Descriptive text |
+> | `allocation_flag` | `0`, `1` | Yes/No |
+>
+> **Missing data codes** (`-1`, `-2`, `-3`) apply to `numeric` format variables only. Categorical variables use the specific codes documented below.
+
 ## Contents
 
 - [Overview](#overview)
@@ -15,188 +28,219 @@ Comprehensive reference for variables available in FSA endpoints through the Urb
 
 ## Overview
 
-FSA data in the Education Data Portal is organized into five endpoints, each with specific variables related to Title IV aid programs.
+FSA data in the Education Data Portal is organized into five endpoints, each with specific variables related to Title IV aid programs. Data is accessed via the HuggingFace mirror as parquet files.
 
 ### Endpoint Summary
 
-| Endpoint | URL Pattern | Years | Record Count |
-|----------|-------------|-------|--------------|
-| Grants | `/fsa/grants/{year}/` | 1999-2018 | ~6,000/year |
-| Loans | `/fsa/loans/{year}/` | 1999-2018 | ~6,000/year |
-| Campus-Based Volume | `/fsa/campus-based-volume/{year}/` | 2001-2017 | ~5,000/year |
-| Financial Responsibility | `/fsa/financial-responsibility/{year}/` | 2006-2016 | ~3,000/year |
-| 90/10 Revenue Percentages | `/fsa/90-10-revenue-percentages/{year}/` | 2014-2017 | ~2,500/year |
+| Endpoint | HuggingFace Path | Years | Approx Records |
+|----------|------------------|-------|----------------|
+| Grants | `fsa/grants/colleges_fsa_grants.parquet` | 1999-2021 | ~600K total |
+| Loans | `fsa/loans/colleges_fsa_loans.parquet` | 1999-2021 | ~1.6M total |
+| Campus-Based Volume | `fsa/campus-based-volume/colleges_fsa_campus_based_volume.parquet` | 2001-2021 | ~250K total |
+| Financial Responsibility | `fsa/financial-responsibility/colleges_fsa_composite_scores.parquet` | 2006-2016 | Varies |
+| 90/10 Revenue Percentages | `fsa/90-10-revenue-percentages/colleges_fsa_90_10_revenue_percentages.parquet` | 2014-2021 | Varies |
 
 ## Grants Endpoint Variables
 
-Endpoint: `/api/v1/college-university/fsa/grants/{year}/`
+Parquet file: `college-university/fsa/grants/colleges_fsa_grants.parquet`
 
 ### Identification Variables
 
 | Variable | Type | Description |
 |----------|------|-------------|
-| `unitid` | Integer | IPEDS institution identifier (6-digit) |
-| `year` | Integer | Academic award year (fall start year) |
-| `fips` | Integer | State FIPS code |
+| `unitid` | Int64 | IPEDS institution identifier (6-digit) |
+| `year` | Int64 | Academic award year (fall start year) |
+| `fips` | Int64 | State FIPS code (integer) |
+| `opeid` | Int64 | 8-digit Office of Postsecondary Education ID |
+| `inst_name_fsa` | String | Institution name (FSA) |
 
-### Pell Grant Variables
+### Grant Type Variable (Portal Integer Encoding)
+
+| Code | Grant Type |
+|------|------------|
+| `1` | Federal Pell Grant |
+| `2` | Federal Supplemental Educational Opportunity Grant (FSEOG) |
+| `3` | TEACH Grant |
+| `4` | Iraq and Afghanistan Service Grant |
+| `5` | Children of Fallen Heroes Grant |
+
+### Grant Amount Variables
 
 | Variable | Type | Description | Units |
 |----------|------|-------------|-------|
-| `pell_recipients` | Integer | Number of Pell Grant recipients | Count |
-| `pell_disbursements` | Float | Total Pell Grant disbursements | Dollars |
-| `pell_avg_amount` | Float | Average Pell Grant per recipient | Dollars |
-
-**Calculated field:**
-```
-pell_avg_amount = pell_disbursements / pell_recipients
-```
-
-### Other Grant Variables
-
-| Variable | Type | Description | Units |
-|----------|------|-------------|-------|
-| `fseog_recipients` | Integer | FSEOG recipients | Count |
-| `fseog_disbursements` | Float | Total FSEOG disbursements | Dollars |
+| `grant_type` | Int64 | Type of Title IV grant (see codes above) | Code |
+| `grant_recipients_unitid` | Float64 | Grant recipients by unit ID | Count |
+| `value_grants_disbursed_unitid` | Float64 | Grants disbursed by unit ID | Dollars |
+| `grant_recipients_opeid` | Float64 | Grant recipients by OPEID | Count |
+| `value_grants_disbursed_opeid` | Float64 | Grants disbursed by OPEID | Dollars |
+| `allocation_flag` | Int64 | Allocated across multiple unit IDs (0=No, 1=Yes) | Code |
+| `combined_flag` | Int64 | Combined from multiple OPEIDs (0=No, 1=Yes) | Code |
+| `other_assoc_opeids` | String | Other associated OPEIDs | Text |
 
 ### Example Query
 
-```
-# Get all Pell Grant data for California institutions in 2018
-/api/v1/college-university/fsa/grants/2018/?fips=6
+```python
+import polars as pl
+
+# Load and filter grants data
+df = pl.read_parquet("colleges_fsa_grants.parquet")
+
+# Get Pell Grant data for California in 2020
+df_pell_ca = df.filter(
+    (pl.col("grant_type") == 1) &  # 1 = Pell Grant
+    (pl.col("fips") == 6) &         # 6 = California
+    (pl.col("year") == 2020)
+)
 ```
 
 ## Loans Endpoint Variables
 
-Endpoint: `/api/v1/college-university/fsa/loans/{year}/`
+Parquet file: `college-university/fsa/loans/colleges_fsa_loans.parquet`
 
 ### Identification Variables
 
 | Variable | Type | Description |
 |----------|------|-------------|
-| `unitid` | Integer | IPEDS institution identifier |
-| `year` | Integer | Academic award year |
-| `fips` | Integer | State FIPS code |
+| `unitid` | Int64 | IPEDS institution identifier |
+| `year` | Int64 | Academic award year |
+| `fips` | Int64 | State FIPS code (integer) |
+| `opeid` | Int64 | 8-digit Office of Postsecondary Education ID |
+| `inst_name_fsa` | String | Institution name (FSA) |
 
-### Direct Subsidized Loan Variables
+### Loan Type Variable (Portal Integer Encoding)
 
-| Variable | Type | Description | Units |
-|----------|------|-------------|-------|
-| `dl_sub_recipients` | Integer | Direct Subsidized Loan recipients | Count |
-| `dl_sub_disbursements` | Float | Direct Subsidized Loan disbursements | Dollars |
-| `dl_sub_avg_amount` | Float | Average Direct Subsidized Loan | Dollars |
+| Code | Loan Type |
+|------|-----------|
+| `1` | Subsidized Direct Loan - Undergraduate |
+| `2` | Subsidized Direct Loan - Graduate |
+| `3` | Subsidized Direct Loan - Total |
+| `4` | Unsubsidized Direct Loan - Undergraduate |
+| `5` | Unsubsidized Direct Loan - Graduate |
+| `6` | Unsubsidized Direct Loan - Total |
+| `7` | Direct Loan, Parent PLUS |
+| `8` | Direct Loan, Grad PLUS |
+| `9` | Direct Loan PLUS (sum of Parent PLUS and Grad PLUS) |
+| `10` | Subsidized Federal Family Education Loans |
+| `11` | Unsubsidized Federal Family Education Loans |
+| `12` | Parent PLUS Federal Family Education Loans |
+| `13` | Grad PLUS Federal Family Education Loans |
+| `14` | PLUS Federal Family Education Loans |
 
-### Direct Unsubsidized Loan Variables
-
-| Variable | Type | Description | Units |
-|----------|------|-------------|-------|
-| `dl_unsub_recipients` | Integer | Direct Unsubsidized Loan recipients | Count |
-| `dl_unsub_disbursements` | Float | Direct Unsubsidized Loan disbursements | Dollars |
-| `dl_unsub_avg_amount` | Float | Average Direct Unsubsidized Loan | Dollars |
-
-### Parent PLUS Loan Variables
-
-| Variable | Type | Description | Units |
-|----------|------|-------------|-------|
-| `dl_parent_plus_recipients` | Integer | Parent PLUS Loan recipients | Count |
-| `dl_parent_plus_disbursements` | Float | Parent PLUS Loan disbursements | Dollars |
-| `dl_parent_plus_avg_amount` | Float | Average Parent PLUS Loan | Dollars |
-
-### Graduate PLUS Loan Variables
+### Loan Amount Variables
 
 | Variable | Type | Description | Units |
 |----------|------|-------------|-------|
-| `dl_grad_plus_recipients` | Integer | Graduate PLUS Loan recipients | Count |
-| `dl_grad_plus_disbursements` | Float | Graduate PLUS Loan disbursements | Dollars |
-| `dl_grad_plus_avg_amount` | Float | Average Graduate PLUS Loan | Dollars |
-
-### Aggregate Loan Variables
-
-| Variable | Type | Description | Units |
-|----------|------|-------------|-------|
-| `dl_total_recipients` | Integer | Total Direct Loan recipients | Count |
-| `dl_total_disbursements` | Float | Total Direct Loan disbursements | Dollars |
+| `loan_type` | Int64 | Type of Title IV loan (see codes above) | Code |
+| `loan_recipients_unitid` | Float64 | Loan recipients by unit ID | Count |
+| `num_loans_disbursed_unitid` | Float64 | Number of loans disbursed by unit ID | Count |
+| `num_loans_originated_unitid` | Float64 | Number of loans originated by unit ID | Count |
+| `value_loans_originated_unitid` | Float64 | Loans originated by unit ID | Dollars |
+| `value_loan_disbursements_unitid` | Float64 | Loans disbursed by unit ID | Dollars |
+| `loan_recipients_opeid` | Float64 | Loan recipients by OPEID | Count |
+| `num_loans_disbursed_opeid` | Float64 | Number of loans disbursed by OPEID | Count |
+| `num_loans_originated_opeid` | Float64 | Number of loans originated by OPEID | Count |
+| `value_loans_originated_opeid` | Float64 | Loans originated by OPEID | Dollars |
+| `value_loan_disbursements_opeid` | Float64 | Loans disbursed by OPEID | Dollars |
+| `allocation_flag` | Int64 | Allocated across multiple unit IDs (0=No, 1=Yes) | Code |
+| `combined_flag` | Int64 | Combined from multiple OPEIDs (0=No, 1=Yes) | Code |
+| `other_assoc_opeids` | String | Other associated OPEIDs | Text |
 
 ### Example Query
 
-```
-# Get all loan data for a specific institution
-/api/v1/college-university/fsa/loans/2018/?unitid=110635
+```python
+import polars as pl
+
+# Load loans data
+df = pl.read_parquet("colleges_fsa_loans.parquet")
+
+# Get Direct Subsidized Undergraduate loan data for a specific institution
+df_sub = df.filter(
+    (pl.col("loan_type") == 1) &     # 1 = Subsidized Direct Loan - Undergraduate
+    (pl.col("unitid") == 110635)
+)
+
+# Get all Parent PLUS loans
+df_plus = df.filter(pl.col("loan_type") == 7)  # 7 = Parent PLUS
 ```
 
 ## Campus-Based Volume Variables
 
-Endpoint: `/api/v1/college-university/fsa/campus-based-volume/{year}/`
+Parquet file: `college-university/fsa/campus-based-volume/colleges_fsa_campus_based_volume.parquet`
 
 ### Identification Variables
 
 | Variable | Type | Description |
 |----------|------|-------------|
-| `unitid` | Integer | IPEDS institution identifier |
-| `year` | Integer | Academic award year |
-| `fips` | Integer | State FIPS code |
+| `unitid` | Int64 | IPEDS institution identifier |
+| `year` | Int64 | Academic award year |
+| `fips` | Int64 | State FIPS code (integer) |
+| `opeid` | Int64 | 8-digit Office of Postsecondary Education ID |
+| `inst_name_fsa` | String | Institution name (FSA) |
 
-### Federal Work-Study Variables
+### Award Type Variable (Portal Integer Encoding)
 
-| Variable | Type | Description | Units |
-|----------|------|-------------|-------|
-| `fws_allocation` | Float | Federal allocation for FWS | Dollars |
-| `fws_recipients` | Integer | FWS recipients | Count |
-| `fws_disbursements` | Float | Total FWS earnings paid | Dollars |
-| `fws_avg_amount` | Float | Average FWS per recipient | Dollars |
+| Code | Award Type |
+|------|------------|
+| `1` | Federal Supplemental Educational Opportunity Grants (FSEOG) |
+| `2` | Federal Work-Study (FWS) |
+| `3` | Perkins Loans (discontinued after 2017) |
 
-### FSEOG Variables
-
-| Variable | Type | Description | Units |
-|----------|------|-------------|-------|
-| `fseog_allocation` | Float | Federal allocation for FSEOG | Dollars |
-| `fseog_recipients` | Integer | FSEOG recipients | Count |
-| `fseog_disbursements` | Float | Total FSEOG disbursements | Dollars |
-| `fseog_avg_amount` | Float | Average FSEOG per recipient | Dollars |
-
-### Perkins Loan Variables (Historical)
+### Campus-Based Amount Variables
 
 | Variable | Type | Description | Units |
 |----------|------|-------------|-------|
-| `perkins_allocation` | Float | Federal allocation for Perkins | Dollars |
-| `perkins_recipients` | Integer | Perkins Loan recipients | Count |
-| `perkins_disbursements` | Float | Total Perkins disbursements | Dollars |
-| `perkins_avg_amount` | Float | Average Perkins Loan | Dollars |
+| `award_type` | Int64 | Type of campus-based award (see codes above) | Code |
+| `campus_award_recipients_unitid` | Float64 | Recipients by unit ID | Count |
+| `value_campus_disbursed_unitid` | Float64 | Awards disbursed by unit ID | Dollars |
+| `campus_award_fed_contr_unitid` | Float64 | Federal contribution by unit ID | Dollars |
+| `campus_award_recipients_opeid` | Float64 | Recipients by OPEID | Count |
+| `value_campus_disbursed_opeid` | Float64 | Awards disbursed by OPEID | Dollars |
+| `campus_award_fed_contr_opeid` | Float64 | Federal contribution by OPEID | Dollars |
+| `allocation_flag` | Int64 | Allocated across multiple unit IDs (0=No, 1=Yes) | Code |
+| `combined_flag` | Int64 | Combined from multiple OPEIDs (0=No, 1=Yes) | Code |
+| `other_assoc_opeids` | String | Other associated OPEIDs | Text |
 
 **Note**: Perkins Loan program discontinued; no new loans after September 30, 2017.
 
 ### Example Query
 
-```
-# Get campus-based data for 2015
-/api/v1/college-university/fsa/campus-based-volume/2015/
+```python
+import polars as pl
+
+# Load campus-based data
+df = pl.read_parquet("colleges_fsa_campus_based_volume.parquet")
+
+# Get Federal Work-Study data for 2020
+df_fws = df.filter(
+    (pl.col("award_type") == 2) &  # 2 = Federal Work-Study
+    (pl.col("year") == 2020)
+)
+
+# Get FSEOG data
+df_fseog = df.filter(pl.col("award_type") == 1)  # 1 = FSEOG
 ```
 
 ## Financial Responsibility Variables
 
-Endpoint: `/api/v1/college-university/fsa/financial-responsibility/{year}/`
+Parquet file: `college-university/fsa/financial-responsibility/colleges_fsa_composite_scores.parquet`
 
 ### Identification Variables
 
 | Variable | Type | Description |
 |----------|------|-------------|
-| `unitid` | Integer | IPEDS institution identifier |
-| `year` | Integer | Fiscal year |
-| `fips` | Integer | State FIPS code |
+| `unitid` | Int64 | IPEDS institution identifier |
+| `year` | Int64 | Fiscal year |
+| `fips` | Int64 | State FIPS code (integer) |
+| `opeid` | Int64 | 8-digit Office of Postsecondary Education ID |
+| `inst_name_fsa` | String | Institution name (FSA) |
+| `inst_group_name` | String | Institution group name (if applicable) |
 
 ### Composite Score Variables
 
 | Variable | Type | Description | Range |
 |----------|------|-------------|-------|
-| `composite_score` | Float | Overall financial responsibility score | -1.0 to 3.0 |
-
-### Component Ratio Variables
-
-| Variable | Type | Description | Typical Range |
-|----------|------|-------------|---------------|
-| `primary_reserve_ratio` | Float | Expendable resources / Total expenses | -0.5 to 1.0+ |
-| `equity_ratio` | Float | Modified equity / Modified assets | -0.5 to 0.5+ |
-| `net_income_ratio` | Float | Net income / Total revenue | -0.2 to 0.2+ |
+| `financial_resp_score` | Float64 | Overall financial responsibility score | -1.0 to 3.0 |
+| `multicampus_flag` | Int64 | Multicampus indicator | 0/1 |
 
 ### Score Interpretation
 
@@ -208,40 +252,48 @@ Endpoint: `/api/v1/college-university/fsa/financial-responsibility/{year}/`
 
 ### Example Query
 
-```
-# Get financial responsibility scores for 2016
-/api/v1/college-university/fsa/financial-responsibility/2016/
+```python
+import polars as pl
 
-# Filter for institutions with scores below 1.5
-/api/v1/college-university/fsa/financial-responsibility/2016/?composite_score__lt=1.5
+# Load financial responsibility data
+df = pl.read_parquet("colleges_fsa_financial_responsibility.parquet")
+
+# Get institutions in the "zone" (1.0 to 1.49)
+df_zone = df.filter(
+    (pl.col("financial_resp_score") >= 1.0) &
+    (pl.col("financial_resp_score") < 1.5)
+)
+
+# Get institutions not financially responsible
+df_at_risk = df.filter(pl.col("financial_resp_score") < 1.0)
 ```
 
 ## 90/10 Revenue Variables
 
-Endpoint: `/api/v1/college-university/fsa/90-10-revenue-percentages/{year}/`
+Parquet file: `college-university/fsa/90-10-revenue-percentages/colleges_fsa_90_10_revenue_percentages.parquet`
 
 ### Identification Variables
 
 | Variable | Type | Description |
 |----------|------|-------------|
-| `unitid` | Integer | IPEDS institution identifier |
-| `year` | Integer | Fiscal year |
-| `fips` | Integer | State FIPS code |
+| `unitid` | Int64 | IPEDS institution identifier |
+| `year` | Int64 | Fiscal year |
+| `fips` | Int64 | State FIPS code (integer) |
+| `opeid` | Int64 | 8-digit Office of Postsecondary Education ID |
+| `inst_name_fsa` | String | Institution name (FSA) |
 
 ### Revenue Variables
 
 | Variable | Type | Description | Units |
 |----------|------|-------------|-------|
-| `title_iv_percentage` | Float | Percentage of revenue from Title IV | Percent (0-100) |
-| `title_iv_revenue` | Float | Total Title IV revenue | Dollars |
-| `total_revenue` | Float | Total revenue from eligible programs | Dollars |
-| `non_title_iv_revenue` | Float | Revenue from non-Title IV sources | Dollars |
+| `rev_pct_90_10` | Float64 | 90/10 revenue percentage | Percent (0-100) |
+| `numerator_90_10` | Float64 | Title IV revenue (numerator) | Dollars |
+| `denominator_90_10` | Float64 | Total revenue (denominator) | Dollars |
 
 ### Calculated Relationship
 
 ```
-title_iv_percentage = (title_iv_revenue / total_revenue) × 100
-non_title_iv_revenue = total_revenue - title_iv_revenue
+rev_pct_90_10 = (numerator_90_10 / denominator_90_10) × 100
 ```
 
 ### Compliance Interpretation
@@ -254,12 +306,17 @@ non_title_iv_revenue = total_revenue - title_iv_revenue
 
 ### Example Query
 
-```
-# Get 90/10 data for 2017
-/api/v1/college-university/fsa/90-10-revenue-percentages/2017/
+```python
+import polars as pl
 
-# Filter for institutions above 85%
-/api/v1/college-university/fsa/90-10-revenue-percentages/2017/?title_iv_percentage__gte=85
+# Load 90/10 data
+df = pl.read_parquet("colleges_fsa_90-10_revenue_percentages.parquet")
+
+# Get institutions near the threshold (85%+)
+df_at_risk = df.filter(pl.col("rev_pct_90_10") >= 85)
+
+# Get apparent violations (>90%)
+df_violations = df.filter(pl.col("rev_pct_90_10") > 90)
 ```
 
 ## Common Identifiers
@@ -369,28 +426,37 @@ Group by inst_control:
 - Distribution of composite scores
 ```
 
-## API Query Patterns
+## Polars Query Patterns
 
 ### Basic Filters
 
-```
+```python
+import polars as pl
+
 # Single filter
-?fips=6
+df.filter(pl.col("fips") == 6)
 
 # Multiple filters
-?fips=6&year=2018
+df.filter(
+    (pl.col("fips") == 6) &
+    (pl.col("year") == 2020)
+)
 
 # Comparison operators
-?composite_score__lt=1.5
-?title_iv_percentage__gte=85
+df.filter(pl.col("financial_resp_score") < 1.5)
+df.filter(pl.col("rev_pct_90_10") >= 85)
 ```
 
-### Pagination
+### Aggregations
 
-```
-# Default page size
-?page=1
+```python
+# Total grants by state
+df.group_by("fips").agg(
+    pl.col("value_grants_disbursed_unitid").sum().alias("total_grants")
+)
 
-# Custom page size (max 10000)
-?per_page=1000&page=2
+# Average by year
+df.group_by("year").agg(
+    pl.col("value_grants_disbursed_unitid").mean().alias("avg_grant")
+)
 ```

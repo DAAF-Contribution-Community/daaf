@@ -2,6 +2,21 @@
 
 Complete reference for PSEO variables, codes, and status flags.
 
+> **CRITICAL: Portal vs Census API Encoding**
+>
+> This document describes **Education Data Portal** integer encodings, which differ from Census API string codes. The Portal converts categorical variables to integers for consistency.
+>
+> | Context | Baccalaureate | Associates | Masters | Division Code |
+> |---------|---------------|------------|---------|---------------|
+> | **Portal (integers)** | `5` | `3` | `7` | `9` |
+> | Census API (strings) | `05` | `03` | `07` | `9` |
+>
+> **Key Points:**
+> - All variable names are **lowercase** in Portal data
+> - `opeid` is an **integer**, not an 8-digit string
+> - `cipcode` is a **2-digit integer** (e.g., `11` for Computer Science)
+> - Missing data codes: `-1` (missing), `-2` (not applicable), `-3` (suppressed)
+
 ## Contents
 
 - [Identifier Variables](#identifier-variables)
@@ -16,165 +31,148 @@ Complete reference for PSEO variables, codes, and status flags.
 
 ## Identifier Variables
 
-### Institution Identifiers
+### Institution Identifiers (Portal Integer Encoding)
 
-| Variable | Description | Format |
-|----------|-------------|--------|
-| `INSTITUTION` | Office of Postsecondary Education ID (OPEID) | 8-digit string |
-| `INST_STATE` | State FIPS code of institution | 2-digit string |
-| `INST_LEVEL` | Institution vs state aggregate | `I` or `S` |
-| `LABEL_INSTITUTION` | Institution name | Text |
-| `LABEL_INST_STATE` | State name | Text |
+| Variable | Description | Type |
+|----------|-------------|------|
+| `unitid` | IPEDS Unit ID | Integer |
+| `opeid` | Office of Postsecondary Education ID | Integer (not 8-digit string) |
+| `fips` | State FIPS code of institution | Integer |
 
-**INST_LEVEL values:**
+> **Note:** Portal uses `unitid` and `opeid` as integers. Census API uses `INSTITUTION` as 8-digit string (e.g., "00365800").
 
-| Code | Meaning |
-|------|---------|
-| `I` | Individual institution |
-| `S` | State-level aggregate (all institutions in state) |
+### Program Identifiers (Portal Integer Encoding)
 
-### Program Identifiers
-
-| Variable | Description | Format |
-|----------|-------------|--------|
-| `DEGREE_LEVEL` | Type of credential | 2-char code |
-| `CIPCODE` | Classification of Instructional Programs | 2 or 4 digit |
-| `CIP_LEVEL` | Granularity of CIP code | `2` or `4` |
-| `LABEL_DEGREE_LEVEL` | Degree level name | Text |
-| `LABEL_CIPCODE` | Program name | Text |
+| Variable | Description | Type |
+|----------|-------------|------|
+| `degree_level` | Type of credential | Integer (1-10) |
+| `cipcode` | Classification of Instructional Programs | 2-digit integer |
 
 ### Cohort Identifiers
 
-| Variable | Description | Format |
-|----------|-------------|--------|
-| `GRAD_COHORT` | First year of graduation cohort | 4-digit year or `0000` |
-| `GRAD_COHORT_YEARS` | Number of years in cohort | `3` or `5` |
+| Variable | Description | Type |
+|----------|-------------|------|
+| `pseo_cohort` | Graduation cohort | String (e.g., "2016-18") |
+| `year` | Academic year (fall semester) | Integer |
+| `years_after_grad` | Years post-graduation | Integer (1, 5, or 10) |
 
-## Earnings Variables
+## Earnings Variables (Portal Schema)
 
 ### Percentile Earnings
 
-| Variable | Description | Unit |
-|----------|-------------|------|
-| `Y1_P25_EARNINGS` | 25th percentile earnings, Year 1 | 2022 dollars |
-| `Y1_P50_EARNINGS` | Median earnings, Year 1 | 2022 dollars |
-| `Y1_P75_EARNINGS` | 75th percentile earnings, Year 1 | 2022 dollars |
-| `Y5_P25_EARNINGS` | 25th percentile earnings, Year 5 | 2022 dollars |
-| `Y5_P50_EARNINGS` | Median earnings, Year 5 | 2022 dollars |
-| `Y5_P75_EARNINGS` | 75th percentile earnings, Year 5 | 2022 dollars |
-| `Y10_P25_EARNINGS` | 25th percentile earnings, Year 10 | 2022 dollars |
-| `Y10_P50_EARNINGS` | Median earnings, Year 10 | 2022 dollars |
-| `Y10_P75_EARNINGS` | 75th percentile earnings, Year 10 | 2022 dollars |
+| Portal Variable | Description | Unit |
+|-----------------|-------------|------|
+| `p25_earnings` | 25th percentile earnings | 2022 dollars |
+| `p50_earnings` | Median (50th percentile) earnings | 2022 dollars |
+| `p75_earnings` | 75th percentile earnings | 2022 dollars |
+| `years_after_grad` | Years post-graduation | `1`, `5`, or `10` |
 
-### Graduate Counts (Earnings)
+> **Note:** Portal uses `years_after_grad` column to indicate timing. Census API embeds timing in variable names (Y1_*, Y5_*, Y10_*).
 
-| Variable | Description |
-|----------|-------------|
-| `Y1_GRADS` | Graduates with valid earnings, Year 1 |
-| `Y5_GRADS` | Graduates with valid earnings, Year 5 |
-| `Y10_GRADS` | Graduates with valid earnings, Year 10 |
+### Graduate Counts
 
-## Flow Variables
+| Portal Variable | Description |
+|-----------------|-------------|
+| `employed_grads_count_e` | Graduates with valid earnings |
+| `total_grads_count` | Total IPEDS-reported graduates |
+
+## Flow Variables (Portal Schema)
 
 ### Employment Counts
 
-| Variable | Description |
-|----------|-------------|
-| `Y1_GRADS_EMP` | Employed graduates, Year 1 |
-| `Y5_GRADS_EMP` | Employed graduates, Year 5 |
-| `Y10_GRADS_EMP` | Employed graduates, Year 10 |
-
-### In-State Employment
-
-| Variable | Description |
-|----------|-------------|
-| `Y1_GRADS_EMP_INSTATE` | Employed in institution's state, Year 1 |
-| `Y5_GRADS_EMP_INSTATE` | Employed in institution's state, Year 5 |
-| `Y10_GRADS_EMP_INSTATE` | Employed in institution's state, Year 10 |
-
-### Non-Employed/Marginal
-
-| Variable | Description |
-|----------|-------------|
-| `Y1_GRADS_NME` | Non-employed or marginally employed, Year 1 |
-| `Y5_GRADS_NME` | Non-employed or marginally employed, Year 5 |
-| `Y10_GRADS_NME` | Non-employed or marginally employed, Year 10 |
+| Portal Variable | Description |
+|-----------------|-------------|
+| `employed_grads_count_f` | Employed graduates count |
+| `employed_instate_grads_count` | Employed in institution's state |
+| `jobless_m_emp_grads_count` | Non-employed or marginally employed |
 
 ### Industry Classification
 
-| Variable | Description |
-|----------|-------------|
-| `NAICS` | 2-digit NAICS industry sector |
-| `LABEL_NAICS` | Industry sector name |
+| Portal Variable | Description |
+|-----------------|-------------|
+| `industry` | 2-digit NAICS sector (integer, or null) |
 
 ### Geography of Employment
 
-| Variable | Description |
-|----------|-------------|
-| `division` | Census Division code (1-9) |
-| `LABEL_DIVISION` | Division name |
+| Portal Variable | Description |
+|-----------------|-------------|
+| `census_division` | Census Division code (1-9, 99 for aggregate) |
 
-## Status Flags
+## Missing Data Codes (Portal Standard)
 
-### Earnings Status Flags
+| Code | Meaning | When Used |
+|------|---------|-----------|
+| `-1` | Missing/not reported | Value unknown or not submitted |
+| `-2` | Not applicable | Item doesn't apply to this record |
+| `-3` | Suppressed | Data suppressed for privacy |
 
-| Variable | Applies To |
-|----------|------------|
-| `STATUS_Y1_EARNINGS` | Y1_P25, Y1_P50, Y1_P75_EARNINGS |
-| `STATUS_Y5_EARNINGS` | Y5_P25, Y5_P50, Y5_P75_EARNINGS |
-| `STATUS_Y10_EARNINGS` | Y10_P25, Y10_P50, Y10_P75_EARNINGS |
+### Handling Missing Data in Portal PSEO Data
 
-### Flow Status Flags
+```python
+import polars as pl
 
-| Variable | Applies To |
-|----------|------------|
-| `STATUS_Y1_GRADS_EMP` | Y1_GRADS_EMP |
-| `STATUS_Y5_GRADS_EMP` | Y5_GRADS_EMP |
-| `STATUS_Y10_GRADS_EMP` | Y10_GRADS_EMP |
+# Load PSEO data
+df = pl.read_parquet("colleges_pseo_2020.parquet")
 
-### Status Flag Values
+# Filter out missing earnings data
+valid_earnings = df.filter(pl.col("p50_earnings") > 0)
 
-| Code | Meaning | Action |
-|------|---------|--------|
-| `1` | Valid data | Use normally |
-| `5` | Suppressed (count < 30) | Data quality insufficient |
+# Check for suppressed values
+suppressed = df.filter(pl.col("p50_earnings") == -3)
 
-## Degree Level Codes
+# Convert coded missing to null
+df_clean = df.with_columns(
+    pl.when(pl.col("p50_earnings") < 0)
+    .then(None)
+    .otherwise(pl.col("p50_earnings"))
+    .alias("p50_earnings_clean")
+)
+```
+
+## Degree Level Codes (Portal Integer Encoding)
 
 | Code | Degree Level | CIP Level | Cohort Years |
 |------|--------------|-----------|--------------|
-| `1C` | Certificate (< 1 year) | 4-digit | 5 |
-| `1A` | Certificate (1-2 years) | 4-digit | 5 |
-| `2A` | Certificate (2-4 years) | 4-digit | 5 |
-| `03` | Associate's | 4-digit | 5 |
-| `05` | Bachelor's | 4-digit | 3 |
-| `07` | Master's | 2-digit only | 5 |
-| `17` | Doctoral-Professional Practice | 4-digit | 5 |
-| `18` | Doctoral-Research/Scholarship | 2-digit only | 5 |
+| `1` | Certificate (< 1 year) | 4-digit | 5 |
+| `2` | Certificate (1-2 years) | 4-digit | 5 |
+| `3` | Associate's | 4-digit | 5 |
+| `4` | Certificate (2-4 years) | 4-digit | 5 |
+| `5` | Bachelor's | 4-digit | 3 |
+| `6` | Post-Bacc Certificate | 4-digit | 5 |
+| `7` | Master's | 2-digit only | 5 |
+| `8` | Post-Masters Certificate | 4-digit | 5 |
+| `9` | Doctoral-Research/Scholarship | 2-digit only | 5 |
+| `10` | Doctoral-Professional Practice | 4-digit | 5 |
+| `-1` | Missing/not reported | — | — |
+| `-2` | Not applicable | — | — |
+| `-3` | Suppressed data | — | — |
 
 **Notes:**
-- Bachelor's (05) is the default if not specified
+- Bachelor's (`5`) is the default if not specified
 - Master's and Doctoral-Research only have 2-digit CIP codes
-- Cohort years affects GRAD_COHORT valid values
+- Cohort years affects valid cohort values
 
-## CIP Codes
+> **Census API comparison:** API uses string codes like "05", "1C", "07". Portal uses integers 1-10.
+
+## CIP Codes (Portal Integer Encoding)
 
 ### CIP Level
 
-| Level | Description | Example |
-|-------|-------------|---------|
+| Level | Description | Portal Example |
+|-------|-------------|----------------|
 | 2-digit | Broad field | `11` = Computer and Information Sciences |
-| 4-digit | Specific program | `11.01` = Computer and Information Sciences, General |
 
-### Common 2-Digit CIP Codes
+> **Note:** Portal data uses 2-digit integer CIP codes only (no decimal points).
+
+### Common 2-Digit CIP Codes (Portal Integers)
 
 | Code | Field |
 |------|-------|
-| `01` | Agriculture |
-| `03` | Natural Resources and Conservation |
-| `04` | Architecture |
-| `05` | Area, Ethnic, Cultural, Gender Studies |
-| `09` | Communication, Journalism |
+| `1` | Agriculture |
+| `3` | Natural Resources and Conservation |
+| `4` | Architecture |
+| `5` | Area, Ethnic, Cultural, Gender Studies |
+| `9` | Communication, Journalism |
 | `10` | Communications Technologies |
 | `11` | Computer and Information Sciences |
 | `13` | Education |
@@ -200,41 +198,50 @@ Complete reference for PSEO variables, codes, and status flags.
 | `51` | Health Professions |
 | `52` | Business, Management, Marketing |
 | `54` | History |
+| `99` | All programs |
+| `-1` | Missing/not reported |
+| `-2` | Not applicable |
+| `-3` | Suppressed data |
 
 Full reference: [CIPCODE Labels (CSV)](https://lehd.ces.census.gov/data/schema/latest/label_cipcode.csv)
 
-## Institution Codes
+## Institution Codes (Portal Integer Encoding)
 
-### OPEID Format
+### Portal Format
 
-8-digit code: `XXXXXXYY`
-- First 6 digits: Institution identifier
-- Last 2 digits: Sub-institution/branch code (often `00`)
+In the Education Data Portal, institution identifiers use integers:
 
-**Examples:**
+| Variable | Type | Example |
+|----------|------|---------|
+| `unitid` | Integer | `100751` (University of Alabama) |
+| `opeid` | Integer | `105100` (not "00105100") |
 
-| OPEID | Institution |
-|-------|-------------|
-| `00365800` | University of Texas at Austin |
-| `00216200` | Georgia Institute of Technology |
-| `00154500` | University of Michigan - Ann Arbor |
-| `00126614` | University of California - Berkeley |
+> **Note:** Census API uses 8-digit OPEID strings (e.g., "00365800"). Portal stores as integer.
+
+### Example UNITID Values
+
+| unitid | Institution |
+|--------|-------------|
+| `228778` | University of Texas at Austin |
+| `139755` | Georgia Institute of Technology |
+| `170976` | University of Michigan - Ann Arbor |
+| `110635` | University of California - Berkeley |
 
 ### Finding Institution Codes
 
 1. [All PSEO Institution Codes (CSV)](https://lehd.ces.census.gov/data/pseo/latest_release/all/pseo_all_institutions.csv)
 2. [Complete Institution Labels (CSV)](https://lehd.ces.census.gov/data/schema/latest/label_institution.csv)
 
-## Geography Codes
+## Geography Codes (Portal Integer Encoding)
 
-### State FIPS Codes (INST_STATE)
+### State FIPS Codes (`fips`)
 
 | Code | State | Code | State |
 |------|-------|------|-------|
-| `01` | Alabama | `27` | Minnesota |
-| `04` | Arizona | `29` | Missouri |
-| `08` | Colorado | `30` | Montana |
-| `09` | Connecticut | `36` | New York |
+| `1` | Alabama | `27` | Minnesota |
+| `4` | Arizona | `29` | Missouri |
+| `8` | Colorado | `30` | Montana |
+| `9` | Connecticut | `36` | New York |
 | `11` | District of Columbia | `39` | Ohio |
 | `13` | Georgia | `40` | Oklahoma |
 | `15` | Hawaii | `41` | Oregon |
@@ -245,13 +252,15 @@ Full reference: [CIPCODE Labels (CSV)](https://lehd.ces.census.gov/data/schema/l
 | `23` | Maine | `48` | Texas |
 | `25` | Massachusetts | `49` | Utah |
 | `26` | Michigan | `51` | Virginia |
-| `00` | Online-only institutions | `54` | West Virginia |
+| `-1` | Missing | `54` | West Virginia |
 | | | `55` | Wisconsin |
 | | | `56` | Wyoming |
 
+> **Note:** Portal uses integers (e.g., `1` not `"01"`). Missing values use `-1`.
+
 Full reference: [State FIPS Labels (CSV)](https://lehd.ces.census.gov/data/schema/latest/label_fipsnum.csv)
 
-### Census Division Codes
+### Census Division Codes (`census_division`)
 
 | Code | Division |
 |------|----------|
@@ -264,6 +273,7 @@ Full reference: [State FIPS Labels (CSV)](https://lehd.ces.census.gov/data/schem
 | `7` | West South Central |
 | `8` | Mountain |
 | `9` | Pacific |
+| `99` | All divisions (aggregate) |
 
 Full reference: [Division Labels (CSV)](https://lehd.ces.census.gov/data/schema/latest/label_geography_division.csv)
 

@@ -76,16 +76,33 @@ The NCCS Unified BMF adds:
 
 ### Download
 
+**Via Education Data Portal (HuggingFace Mirror - Recommended for Portal Integration):**
+
 ```python
-# Direct download from NCCS
+import polars as pl
+
+# Download NCCS 990 data from HuggingFace mirror
+url = "https://huggingface.co/datasets/brhkim/education_data_portal_mirror/resolve/main/college-university/nccs/990-forms/colleges_nccs_all.parquet"
+nccs = pl.read_parquet(url)
+
+# Data is pre-filtered to higher education institutions
+# Variables are lowercase (e.g., fips, unitid, contributions_total)
+```
+
+**Direct download from NCCS (for BMF, Core, Efile):**
+
+```python
 import pandas as pd
 
+# BMF universe file
 url = "https://nccsdata.s3.amazonaws.com/harmonized/bmf/unified/BMF_UNIFIED_V1.1.csv"
 bmf = pd.read_csv(url)
 
 # Filter to higher education
 higher_ed = bmf[bmf['NTEECC'].str.startswith('B4', na=False)]
 ```
+
+> **Note:** The Education Data Portal version contains NCCS Form 990 data matched to IPEDS institutions. For the full NCCS universe or non-education nonprofits, use direct NCCS downloads.
 
 ---
 
@@ -163,7 +180,24 @@ Example: `CHARITIES_PC_2021.csv` = 501(c)(3) charities, full 990 filers, 2021 ta
 
 ### Download
 
+**Via Education Data Portal (HuggingFace Mirror - Recommended):**
+
 ```python
+import polars as pl
+
+# NCCS data for higher education institutions
+url = "https://huggingface.co/datasets/brhkim/education_data_portal_mirror/resolve/main/college-university/nccs/990-forms/colleges_nccs_all.parquet"
+nccs = pl.read_parquet(url)
+
+# Variables use Portal naming (lowercase, descriptive)
+# e.g., contributions_total, prog_serv_rev, revenue_total
+```
+
+**Direct from NCCS (for full Core series):**
+
+```python
+import pandas as pd
+
 # NCCS provides a data catalog for browsing
 # https://urbaninstitute.github.io/nccs/catalogs/catalog-core.html
 
@@ -308,7 +342,28 @@ Before the Efile era, SOI extracts were the primary source of 990 data for resea
 
 ## Data Access Methods
 
-### Direct Download
+### Education Data Portal (Recommended for Education Research)
+
+The HuggingFace mirror provides NCCS data for higher education institutions in parquet format:
+
+```python
+import polars as pl
+
+# NCCS Form 990 data for colleges/universities
+url = "https://huggingface.co/datasets/brhkim/education_data_portal_mirror/resolve/main/college-university/nccs/990-forms/colleges_nccs_all.parquet"
+nccs = pl.read_parquet(url)
+
+# Data is pre-matched to IPEDS UNITID
+# Covers 1993-2016 (24 years)
+# ~30K institution-year observations
+```
+
+**Important:** Portal data uses integer encodings for categorical variables:
+- `fips`: Integer FIPS codes (1-56), with -1/-2/-3 for missing
+- `mult_ein_flag`: 0 (No) or 1 (Yes)
+- All variable names are lowercase
+
+### Direct NCCS Download (For Full Nonprofit Universe)
 
 Most NCCS data is available as CSV files from AWS S3:
 
@@ -330,11 +385,13 @@ https://nccs-urban.shinyapps.io/sector-in-brief/
 
 ### R Package: nccsdata
 
+> **Note:** The `get_data()` function in R works differently from Education Data Portal access. For Portal-based research, use the HuggingFace mirror approach above.
+
 ```r
 # devtools::install_github("UrbanInstitute/nccsdata")
 library(nccsdata)
 
-# Download Core data with filters
+# Download Core data with filters (direct from NCCS, not Portal)
 data <- get_data(
   geo_scope = "state",
   geo_code = "CA",

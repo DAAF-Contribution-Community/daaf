@@ -39,16 +39,20 @@ Understanding data quality considerations, missing data, and analytical pitfalls
 
 ## Missing Data Codes
 
+> **CRITICAL: Portal Integer Encoding**
+>
+> The Education Data Portal uses **integer codes** for missing/special values. These differ from raw NCES file conventions.
+
 IPEDS uses specific codes for missing or suppressed data:
 
-### Standard Missing Data Codes
+### Standard Missing Data Codes (Portal Integer Encoding)
 
 | Code | Meaning | Use |
 |------|---------|-----|
-| `.` or blank | Not reported | Item left blank |
-| `-1` | Not applicable | Item doesn't apply to this institution |
-| `-2` | Not available | Data unavailable |
-| `-3` | Suppressed | Suppressed for privacy |
+| `-1` | Missing/not reported | State/institution did not report; value unknown |
+| `-2` | Not applicable | Item doesn't apply to this institution |
+| `-3` | Suppressed | Suppressed for privacy protection |
+| `null`/`None` | Null value | No data present |
 
 ### Handling Missing Data
 

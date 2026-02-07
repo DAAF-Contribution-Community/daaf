@@ -26,34 +26,41 @@ Under ESSA, states must report assessment and graduation data for these subgroup
 | Special populations | CWD, EL, economically disadvantaged |
 | Additional populations | Homeless, foster care, migrant, military |
 
-### Subgroup Codes in EDFacts
+### Subgroup Codes in EDFacts (Portal Integer Encoding)
 
-| Code | Subgroup | Description |
-|------|----------|-------------|
-| `ALL` | All students | Total population |
-| `ECODIS` | Economically disadvantaged | FRPL or other poverty measure |
-| `CWD` | Children with disabilities | IDEA-eligible with IEP |
-| `LEP` | Limited English proficient | English learner students |
-| `HOM` | Homeless | McKinney-Vento identified |
-| `FCS` | Foster care | In foster care system |
-| `MIG` | Migrant | Migrant education program |
-| `MIL` | Military connected | Military family students |
+> **Portal Encoding Warning:** The Urban Institute Education Data Portal converts NCES string codes to integers. The table below shows NCES codes for reference, but **actual data uses integers**.
+
+| NCES Code | Portal Integer | Column | Description |
+|-----------|----------------|--------|-------------|
+| ALL | `99` | race, sex, lep, disability | Total population (use filter column = 99) |
+| ECODIS | `1` | econ_disadvantaged | FRPL or other poverty measure |
+| CWD | `1` (or 0-4) | disability | IDEA-eligible with IEP |
+| LEP | `1` | lep | English learner students |
+| HOM | `1` | homeless | McKinney-Vento identified |
+| FCS | `1` | foster_care | In foster care system |
+| MIG | `1` | migrant | Migrant education program |
+| MIL | `1` | military_connected | Military family students |
+
+**EDFacts Filter Pattern:** Special population columns use `1` = in subgroup, `99` = total.
 
 ## Race/Ethnicity Reporting
 
-### Federal Race/Ethnicity Categories
+### Federal Race/Ethnicity Categories (Portal Integer Encoding)
+
+> **Portal Encoding Warning:** The Urban Institute Education Data Portal converts NCES string codes to integers.
 
 EDFacts uses the federal OMB race/ethnicity categories:
 
-| Code | Category | Definition |
-|------|----------|------------|
-| `HI` | Hispanic/Latino | Hispanic or Latino of any race |
-| `AM` | American Indian/Alaska Native | Non-Hispanic AI/AN |
-| `AS` | Asian | Non-Hispanic Asian |
-| `HP` | Native Hawaiian/Pacific Islander | Non-Hispanic NH/PI |
-| `BL` | Black | Non-Hispanic Black or African American |
-| `WH` | White | Non-Hispanic White |
-| `MR` | Two or more races | Non-Hispanic, multiple races |
+| NCES Code | Portal Integer | Category | Definition |
+|-----------|----------------|----------|------------|
+| HI | `3` | Hispanic/Latino | Hispanic or Latino of any race |
+| AM | `5` | American Indian/Alaska Native | Non-Hispanic AI/AN |
+| AS | `4` | Asian | Non-Hispanic Asian |
+| HP | `6` | Native Hawaiian/Pacific Islander | Non-Hispanic NH/PI |
+| BL | `2` | Black | Non-Hispanic Black or African American |
+| WH | `1` | White | Non-Hispanic White |
+| MR | `7` | Two or more races | Non-Hispanic, multiple races |
+| — | `99` | Total | All races combined |
 
 ### Reporting Rules
 
@@ -510,22 +517,24 @@ def comprehensive_subgroup_report(df, year, state_fips, value_col):
     return report
 ```
 
-## Subgroup Quick Reference
+## Subgroup Quick Reference (Portal Integer Encoding)
 
-| Subgroup | Code | Definition | Common Issues |
-|----------|------|------------|---------------|
-| All | ALL | Total | Baseline |
-| Econ Dis | ECODIS | Low-income | CEP inflation |
-| CWD | CWD | Disabilities | High suppression |
-| EL | LEP | English learners | Reclassification |
-| Homeless | HOM | McKinney-Vento | Underidentification |
-| Foster | FCS | Foster care | Small population |
-| Migrant | MIG | Migrant program | Seasonal variation |
-| Military | MIL | Military families | Geographic concentration |
-| White | WH | Non-Hispanic White | Reference group |
-| Black | BL | Non-Hispanic Black | Achievement gaps |
-| Hispanic | HI | Hispanic/Latino | EL overlap |
-| Asian | AS | Non-Hispanic Asian | Heterogeneity |
-| Am Indian | AM | AI/AN | High suppression |
-| Pacific Islander | HP | NH/PI | Very high suppression |
-| Two+ Races | MR | Multiple races | Growing population |
+> **Portal Encoding Warning:** The Urban Institute Education Data Portal uses integer codes, not NCES string codes.
+
+| Subgroup | NCES Code | Portal Integer | Column | Common Issues |
+|----------|-----------|----------------|--------|---------------|
+| All | ALL | `99` | race/sex/lep | Baseline (Total row) |
+| Econ Dis | ECODIS | `1` | econ_disadvantaged | CEP inflation |
+| CWD | CWD | `1` | disability | High suppression |
+| EL | LEP | `1` | lep | Reclassification |
+| Homeless | HOM | `1` | homeless | Underidentification |
+| Foster | FCS | `1` | foster_care | Small population |
+| Migrant | MIG | `1` | migrant | Seasonal variation |
+| Military | MIL | `1` | military_connected | Geographic concentration |
+| White | WH | `1` | race | Reference group |
+| Black | BL | `2` | race | Achievement gaps |
+| Hispanic | HI | `3` | race | EL overlap |
+| Asian | AS | `4` | race | Heterogeneity |
+| Am Indian | AM | `5` | race | High suppression |
+| Pacific Islander | HP | `6` | race | Very high suppression |
+| Two+ Races | MR | `7` | race | Growing population |

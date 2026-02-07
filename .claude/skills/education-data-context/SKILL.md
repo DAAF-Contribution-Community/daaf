@@ -89,10 +89,19 @@ What endpoint did you use?
 
 ```
 What value do you see?
-├─ -1 → Missing/not reported (treat as NULL)
-├─ -2 → Not applicable (exclude from that variable's analysis)
-├─ -3 → Suppressed for privacy (cannot recover)
-├─ null/blank → Genuinely missing (treat as NULL)
+├─ In a CATEGORICAL column (grade, race, sex)?
+│   └─ These use integer encoding, NOT coded missing values!
+│       ├─ grade = -1 means Pre-K (NOT missing!)
+│       ├─ race = 1-7 (NOT WH, BL, HI strings)
+│       └─ sex = 1-2 (NOT M, F strings)
+├─ In a NUMERIC column (enrollment, FTE, counts)?
+│   ├─ -1 → Missing/not reported (treat as NULL)
+│   ├─ -2 → Not applicable (exclude from that variable's analysis)
+│   └─ -3 → Suppressed for privacy (cannot recover)
+├─ null/blank?
+│   └─ Source matters:
+│       ├─ CCD, CRDC, EDFacts → Should use -1/-2/-3 codes
+│       └─ Scorecard, MEPS, NACUBO → Use native nulls
 ├─ Ranges (e.g., "10-20") → EDFacts suppression bounds
 └─ Unsure → Check source-specific reference file
 ```
@@ -120,6 +129,59 @@ What type of analysis are you doing?
 
 ## Universal Data Caveats
 
+### Portal Integer Encoding System
+
+**CRITICAL:** The Education Data Portal uses integer codes, not string labels, for categorical variables. This applies to all sources.
+
+#### Demographic Variable Encodings
+
+| Variable | Integer Values | NOT Strings |
+|----------|----------------|-------------|
+| Race | 1-7, 99 (total) | Not WH, BL, HI, AS, etc. |
+| Sex | 1 (Male), 2 (Female), 99 (Total) | Not M, F |
+| Grade | -1 to 13, 99 (total) | Not PK, KG, 01, etc. |
+
+**Race codes:**
+| Value | Meaning |
+|-------|---------|
+| 1 | White |
+| 2 | Black |
+| 3 | Hispanic |
+| 4 | Asian |
+| 5 | American Indian/Alaska Native |
+| 6 | Native Hawaiian/Pacific Islander |
+| 7 | Two or more races |
+| 99 | Total (all races) |
+
+**Grade codes:**
+| Value | Meaning |
+|-------|---------|
+| -1 | Pre-K (**SEMANTIC TRAP: NOT missing data!**) |
+| 0 | Kindergarten |
+| 1-12 | Grades 1-12 |
+| 13 | Ungraded |
+| 99 | Total (all grades) |
+
+**SEMANTIC TRAP - Grade -1:**
+In CCD enrollment data, `grade = -1` means **Pre-Kindergarten**, NOT missing data. This is a common source of errors. Missing data in enrollment uses the separate coded value system (-1/-2/-3) only for numeric fields like enrollment counts, not for the grade categorical variable.
+
+```python
+# WRONG - filters out Pre-K students!
+df = df.filter(pl.col("grade") >= 0)
+
+# RIGHT - Pre-K students have grade = -1
+pre_k = df.filter(pl.col("grade") == -1)
+k_12 = df.filter(pl.col("grade").is_between(0, 12))
+total = df.filter(pl.col("grade") == 99)
+```
+
+#### Variable Names Are Lowercase
+
+Portal variable names are lowercase, not the uppercase names from original NCES documentation:
+- `enrollment` not `MEMBER` or `ENROLLMENT`
+- `grade` not `GRADE`
+- `fips` not `FIPS` or `STATE`
+
 ### Missing Value Codes
 
 | Code | Meaning | How to Handle |
@@ -129,7 +191,17 @@ What type of analysis are you doing?
 | -3 | Suppressed (privacy) | Cannot be recovered; affects small-cell analyses |
 | null/blank | Genuinely missing | Treat as NULL |
 
-**Important**: These codes are numeric. Filter them BEFORE calculating statistics:
+**IMPORTANT:** Coded values (-1/-2/-3) apply to **numeric measure columns** (enrollment counts, FTE, etc.), NOT to categorical identifier columns like `grade`, `race`, or `sex`. Those use the integer encoding system above.
+
+**Missing Data Handling Varies by Source:**
+
+| Source | Missing Data Pattern |
+|--------|---------------------|
+| CCD, CRDC, EDFacts | Use -1/-2/-3 coded values for numeric fields |
+| Scorecard, MEPS, NACUBO | Use native `null` values |
+| IPEDS | Mix of both (check specific variables) |
+
+**Important**: Filter coded values BEFORE calculating statistics:
 
 ```python
 # WRONG - includes coded values in mean

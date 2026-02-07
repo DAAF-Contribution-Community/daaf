@@ -113,14 +113,14 @@ tracts_in_district = district_tracts["TRACT"].unique()
 - Doesn't account for open enrollment or choice programs
 - Updated annually; verify vintage matches your data
 
-## Method 3: Education Data Portal NHGIS Endpoint
+## Method 3: Education Data Portal NHGIS Data
 
-The Urban Institute provides pre-linked school-to-tract data.
+The Urban Institute provides pre-linked school-to-tract data via the HuggingFace mirror.
 
-### Endpoint
+### Mirror Paths
 
 ```
-/api/v1/schools/nhgis/{year}/
+schools/nhgis/census-{year}/schools_nhgis_geog_{year}.parquet
 ```
 
 ### Available Years
@@ -133,22 +133,44 @@ Based on decennial census years:
 
 ### Key Variables
 
-| Variable | Description |
-|----------|-------------|
-| `ncessch` | NCES school ID |
-| `tract_id` | Census tract GEOID |
-| Census variables | Pre-aggregated demographics |
+| Variable | Description | Type |
+|----------|-------------|------|
+| `ncessch` | NCES school ID | Int64 |
+| `tract` | Census tract number | Int64 |
+| `block_group` | Block group number | Int64 |
+| `geoid_block` | Full block identifier | Int64 |
+| `census_region` | Census region (1-4, 9 for territories) | Int64 |
+| `census_division` | Census division (1-9) | Int64 |
+| `cbsa` | CBSA code | Int64 |
+| `cbsa_type` | 1=Metropolitan, 2=Micropolitan | Int64 |
 
-### Querying
+### Querying via Mirror
 
 ```python
-import requests
+import polars as pl
 
-url = "https://educationdata.urban.org/api/v1/schools/nhgis/2020/"
-params = {"ncessch": "060000100001"}
-response = requests.get(url, params=params)
-data = response.json()["results"]
+# Load from HuggingFace mirror
+url = "https://huggingface.co/datasets/brhkim/education_data_portal_mirror/resolve/main/schools/nhgis/census-2020/schools_nhgis_geog_2020.parquet"
+df = pl.read_parquet(url)
+
+# Filter to specific school
+school_data = df.filter(pl.col("ncessch") == 60000100001)
+print(school_data.select(["ncessch", "tract", "block_group", "census_region"]))
 ```
+
+### Note on Integer Encodings
+
+Portal data uses integer encodings for categorical variables:
+
+| Variable | Code | Meaning |
+|----------|------|---------|
+| `census_region` | 1 | Northeast |
+| `census_region` | 2 | Midwest |
+| `census_region` | 3 | South |
+| `census_region` | 4 | West |
+| `census_region` | 9 | Territories |
+| `cbsa_type` | 1 | Metropolitan |
+| `cbsa_type` | 2 | Micropolitan |
 
 ## Method 4: SABINS School Attendance Areas
 

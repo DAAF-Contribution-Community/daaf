@@ -23,11 +23,13 @@ Scorecard suppresses data when cell sizes are too small:
 
 ### Suppression Indicators
 
-| Value | Meaning |
-|-------|---------|
-| `PrivacySuppressed` | Below threshold |
-| `NULL` | Not available |
-| Suppression flag variables (`*_SUPP`) | 1 = suppressed |
+> **Portal Encoding:** In the HuggingFace mirror parquet files, **`null` is the primary indicator** for suppressed/missing data. The codebook documents `-1, -2, -3` codes, but actual parquet data typically uses `null`.
+
+| Data Pattern | Meaning | Notes |
+|--------------|---------|-------|
+| `null` | Suppressed or missing | Primary indicator in parquet |
+| Positive value | Valid data | Actual earnings, counts, etc. |
+| `*_SUPP` = 1 | Suppression flag | Flag variables still use 0/1 |
 
 ### Suppression Rates by Data Type
 
@@ -234,22 +236,30 @@ Entry-cohort earnings calculations were misaligned in some releases:
 ### Before Analysis
 
 ```python
-# Check suppression rates
-suppression_rate = df.filter(
-    pl.col("MD_EARN_WNE_P6") == "PrivacySuppressed"
+import polars as pl
+
+# Check missing/suppression rates (null is primary indicator in Portal parquet)
+missing_rate = df.filter(
+    pl.col("md_earn_wne_p6").is_null()
 ).height / df.height
 
-print(f"Suppression rate: {suppression_rate:.1%}")
+print(f"Missing/suppressed rate: {missing_rate:.1%}")
 
-# Check sample sizes
-small_samples = df.filter(pl.col("COUNT_WNE_P6") < 100)
+# Check sample sizes (for valid data only)
+with_data = df.filter(pl.col("count_wne_p6").is_not_null())
+small_samples = with_data.filter(pl.col("count_wne_p6") < 100)
 print(f"Small samples: {small_samples.height}")
 
-# Check for implausible values
-suspicious = df.filter(
-    (pl.col("MD_EARN_WNE_P6").cast(pl.Float64) < 10000) |
-    (pl.col("MD_EARN_WNE_P6").cast(pl.Float64) > 500000)
+# Check for implausible values (filter valid values first)
+valid_earnings = df.filter(
+    pl.col("md_earn_wne_p6").is_not_null() &
+    (pl.col("md_earn_wne_p6") > 0)
 )
+suspicious = valid_earnings.filter(
+    (pl.col("md_earn_wne_p6") < 10000) |
+    (pl.col("md_earn_wne_p6") > 500000)
+)
+print(f"Suspicious values: {suspicious.height}")
 ```
 
 ### During Analysis

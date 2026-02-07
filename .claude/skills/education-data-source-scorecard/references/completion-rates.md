@@ -224,11 +224,13 @@ Most institutions show completion gaps:
 
 ### Variables Indicating Suppression
 
-| Variable Pattern | Meaning |
-|-----------------|---------|
-| `*_SUPP` | Suppression flag |
-| `PrivacySuppressed` | Privacy threshold not met |
-| `NULL` | Data not available |
+> **Portal Encoding:** In the HuggingFace mirror parquet files, **`null` is the primary indicator** for suppressed/missing data.
+
+| Data Pattern | Meaning | Notes |
+|--------------|---------|-------|
+| `null` | Suppressed or missing | Primary indicator in parquet |
+| Valid rate (0-1) | Actual completion rate | Valid data |
+| `*_SUPP` = 1 | Suppression flag | Flag variables use 0/1 |
 
 ## Recommended Practices
 

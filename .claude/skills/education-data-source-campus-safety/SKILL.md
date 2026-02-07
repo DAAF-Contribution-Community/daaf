@@ -19,7 +19,19 @@ The Campus Safety and Security (CSS) data comes from the annual survey required 
 - **Primary source**: U.S. Department of Education Office of Postsecondary Education
 - **Coverage**: All postsecondary institutions receiving federal financial aid
 - **Reporting period**: Calendar year (January 1 - December 31)
-- **Data portal**: https://ope.ed.gov/campussafety/
+- **Official portal**: https://ope.ed.gov/campussafety/
+
+> **CRITICAL: Portal Integer Encoding**
+>
+> The Education Data Portal and HuggingFace mirror use **integer codes** for categorical variables, not string labels:
+>
+> | Variable | Example Code | Meaning |
+> |----------|--------------|---------|
+> | `bias` | `1` | Race-based bias |
+> | `crime_type` | `14` | Intimidation |
+> | `fips` | `6` | California |
+>
+> See `./references/variable-definitions.md` for complete code mappings.
 
 ## Reference File Structure
 
@@ -89,28 +101,56 @@ Planning institutional comparisons?
 
 ## Quick Reference: Crime Categories
 
-### Primary Criminal Offenses (Clery Crimes)
+### Crime Type Codes (Portal Integer Encoding)
 
-| Category | Offenses |
-|----------|----------|
-| Criminal Homicide | Murder/non-negligent manslaughter, Manslaughter by negligence |
-| Sex Offenses | Rape, Fondling, Incest, Statutory rape |
-| Other Violent | Robbery, Aggravated assault |
-| Property | Burglary, Motor vehicle theft, Arson |
+| Code | Crime Type | Category |
+|------|------------|----------|
+| `1` | Murder/Non-negligent Manslaughter | Primary Offense |
+| `2` | Manslaughter by Negligence | Primary Offense |
+| `3` | Rape | Sex Offense |
+| `4` | Fondling | Sex Offense |
+| `5` | Incest | Sex Offense |
+| `6` | Statutory Rape | Sex Offense |
+| `7` | Robbery | Primary Offense |
+| `8` | Aggravated Assault | Primary Offense |
+| `9` | Burglary | Property Crime |
+| `10` | Motor Vehicle Theft | Property Crime |
+| `11` | Arson | Property Crime |
+| `12` | Larceny-Theft | Hate Crime Only |
+| `13` | Simple Assault | Hate Crime Only |
+| `14` | Intimidation | Hate Crime Only |
+| `15` | Destruction/Damage/Vandalism | Hate Crime Only |
+| `16` | Domestic Violence | VAWA (2014+) |
+| `17` | Dating Violence | VAWA (2014+) |
+| `18` | Stalking | VAWA (2014+) |
+| `99` | Total | All types combined |
+
+### Bias Category Codes (Portal Integer Encoding)
+
+| Code | Bias Category | Notes |
+|------|---------------|-------|
+| `1` | Race | Most common category |
+| `2` | Religion | Anti-Jewish, Anti-Islamic, etc. |
+| `3` | Sexual Orientation | Anti-Gay, Anti-Lesbian, etc. |
+| `4` | Gender | Based on perceived gender |
+| `5` | Gender Identity | Added 2014 |
+| `6` | Ethnicity | Separated from National Origin in 2014 |
+| `7` | National Origin | Based on country of birth |
+| `8` | Disability | Physical or mental |
+| `9` | Unknown/Other | |
+| `99` | Total | All bias categories combined |
 
 ### VAWA Offenses (Added 2013)
 
-| Offense | Definition |
-|---------|------------|
-| Domestic Violence | Violence by current/former spouse, cohabitant, or similar |
-| Dating Violence | Violence by person in romantic/intimate relationship |
-| Stalking | Course of conduct causing fear for safety |
+| Code | Offense | Definition |
+|------|---------|------------|
+| `16` | Domestic Violence | Violence by current/former spouse, cohabitant, or similar |
+| `17` | Dating Violence | Violence by person in romantic/intimate relationship |
+| `18` | Stalking | Course of conduct causing fear for safety |
 
-### Hate Crime Categories
+### Hate Crime-Only Offenses
 
-Hate crimes include the primary offenses plus: Larceny-theft, Simple assault, Intimidation, Destruction/damage/vandalism of property — when motivated by bias.
-
-**Bias Categories**: Race, Religion, Sexual orientation, Gender, Gender identity, Ethnicity, National origin, Disability
+Codes 12-15 are only reported as hate crimes. They are not standalone Clery crimes unless bias-motivated.
 
 ### Arrests and Disciplinary Referrals
 
@@ -144,13 +184,28 @@ Fire data is reported only for **on-campus student housing facilities**:
 
 ## Data Access
 
-### Education Data Portal (Urban Institute)
+### HuggingFace Mirror (Recommended)
 
-The Urban Institute Education Data Portal includes CSS data at the college-university level:
+Campus safety data is available via the Education Data Portal HuggingFace mirror:
 
+```python
+import polars as pl
+
+# Download hate crimes data
+url = "https://huggingface.co/datasets/brhkim/education_data_portal_mirror/resolve/main/college-university/campus-crime/hate-crimes/colleges_csafety_hate_crimes.parquet"
+df = pl.read_parquet(url)
+
+# Filter by bias category (1 = Race)
+race_crimes = df.filter(pl.col("bias") == 1)
+
+# Filter by crime type (14 = Intimidation)
+intimidation = df.filter(pl.col("crime_type") == 14)
 ```
-Base endpoint: /api/v1/college-university/css/
-```
+
+**Available Files**:
+- `college-university/campus-crime/hate-crimes/colleges_csafety_hate_crimes.parquet`
+
+**Years Available**: 2005-2021
 
 ### Direct from Department of Education
 

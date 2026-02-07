@@ -2,6 +2,95 @@
 
 Key demographic variables available from NHGIS for education research contexts.
 
+> **Note**: This document covers two contexts:
+> 1. **NHGIS direct access** - Census variables from NHGIS Data Finder (original table codes)
+> 2. **Portal NHGIS endpoint** - School-to-census links via Education Data Portal (integer encodings)
+>
+> For Portal integer encodings, see the [Portal Encodings](#portal-integer-encodings) section below.
+
+---
+
+## Portal Integer Encodings
+
+When accessing NHGIS data through the Education Data Portal (HuggingFace mirror), categorical variables use integer codes. These are the encodings for the `schools/nhgis/census-{year}/` datasets.
+
+### census_region
+
+| Code | Region |
+|------|--------|
+| `1` | Northeast |
+| `2` | Midwest |
+| `3` | South |
+| `4` | West |
+| `9` | Territories (Puerto Rico, etc.) |
+
+### census_division
+
+| Code | Division |
+|------|----------|
+| `1` | New England (CT, ME, MA, NH, RI, VT) |
+| `2` | Middle Atlantic (NJ, NY, PA) |
+| `3` | East North Central (IL, IN, MI, OH, WI) |
+| `4` | West North Central (IA, KS, MN, MO, NE, ND, SD) |
+| `5` | South Atlantic (DE, DC, FL, GA, MD, NC, SC, VA, WV) |
+| `6` | East South Central (AL, KY, MS, TN) |
+| `7` | West South Central (AR, LA, OK, TX) |
+| `8` | Mountain (AZ, CO, ID, MT, NV, NM, UT, WY) |
+| `9` | Pacific (AK, CA, HI, OR, WA) |
+
+### cbsa_type (Core Based Statistical Area)
+
+| Code | Type |
+|------|------|
+| `1` | Metropolitan Statistical Area (50,000+ core pop) |
+| `2` | Micropolitan Statistical Area (10,000-50,000 core pop) |
+| `null` | Not in a CBSA (rural) |
+
+### geocode_accuracy
+
+Numeric score 0-100 indicating geocode match quality.
+
+| Value | Meaning |
+|-------|---------|
+| `100` | Exact match (rooftop level) |
+| `90-99` | High confidence match |
+| `70-89` | Moderate confidence |
+| `<70` | Low confidence |
+| `-2` | Not geocoded |
+
+### geocode_accuracy_detailed
+
+| Code | Match Type |
+|------|------------|
+| `1` | Rooftop (exact building) |
+| `2` | Parcel centroid |
+| `3` | Street intersection |
+| `4` | Street address (interpolated) |
+| `5` | City centroid |
+| `6` | County centroid |
+| `7` | State centroid |
+| `8` | ZIP code centroid |
+| `9` | USPS ZIP+4 |
+| `10` | Coordinates from CCD directory |
+| `11` | Interpolated address |
+| `12` | Approximate location |
+
+### class_code (FIPS Place Class)
+
+| Code | Type |
+|------|------|
+| `1` | Incorporated place - City |
+| `2` | Incorporated place - Borough |
+| `4` | Incorporated place - Town |
+| `5` | Incorporated place - Village |
+| `7` | Census designated place (CDP) |
+| `8` | Other incorporated place |
+| `50` | Consolidated city |
+| `70` | County subdivision (unincorporated) |
+| `71` | Municipality |
+
+---
+
 ## Variable Availability by Source
 
 | Source | Geographic Detail | Variables |

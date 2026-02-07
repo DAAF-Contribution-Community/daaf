@@ -155,14 +155,23 @@ Query construction?
 
 **"After entry" means after first enrollment**, not after graduation.
 
-## Quick Reference: Suppression Codes
+## Quick Reference: Missing Data Codes
 
-| Value | Meaning |
-|-------|---------|
-| `NULL` | Data not available |
-| `PrivacySuppressed` | Fewer than threshold (usually 30) |
-| `-999` | Not reported |
-| `-2` | Not applicable |
+> **Portal Encoding Warning:** The Education Data Portal uses **integer encodings** for all categorical values. In the HuggingFace mirror parquet files, **`null` is the primary indicator for missing/suppressed data** (not the `-1, -2, -3` codes documented in codebooks). String values like `"PrivacySuppressed"` in original Scorecard documentation are represented as `null`. Always verify actual data patterns.
+
+| Data Pattern | Meaning | Notes |
+|--------------|---------|-------|
+| `null` | Missing/suppressed/not applicable | Primary missing indicator in parquet |
+| Valid integer (e.g., 0-4) | Actual value | Categorical codes |
+| Positive numeric | Actual value | For earnings, debt, counts |
+
+### Categorical Value Encodings
+
+| Variable | Values |
+|----------|--------|
+| `pred_degree_awarded_ipeds` | 0=Not classified, 1=Certificate, 2=Associate's, 3=Bachelor's, 4=Graduate |
+| Yes/No flags (HBCU, tribal, etc.) | 0=No, 1=Yes, null=Missing |
+| `religious_affiliation` | Integer codes 22-200 (see variable-definitions.md), null=None/Missing |
 
 ## What Scorecard Data Does NOT Include
 
@@ -192,6 +201,7 @@ Query construction?
 3. Ignore suppression - many programs have no data
 4. Forget the time lag - earnings reflect old cohorts
 5. Assume debt is total borrowing - private loans excluded
+6. Use string codes from original documentation - Portal uses integers
 
 **Do:**
 1. Note Title IV limitation prominently in any analysis
@@ -199,6 +209,7 @@ Query construction?
 3. Use for relative comparisons, not absolute claims
 4. Supplement with other data sources
 5. Document data vintage (cohort years)
+6. Verify actual data types in Portal data (all categorical values are integers)
 
 ## Topic Index
 

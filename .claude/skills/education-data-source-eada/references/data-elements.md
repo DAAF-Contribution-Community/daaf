@@ -2,6 +2,20 @@
 
 Comprehensive guide to data collected through the Equity in Athletics Disclosure Act.
 
+> **CRITICAL: Portal Integer Encoding**
+>
+> EADA data from the Education Data Portal uses **integer codes** for categorical variables.
+>
+> | Variable | Code | Meaning |
+> |----------|------|---------|
+> | `ath_classification_code` | `1`-`20` | Athletic division (see variable-definitions.md) |
+> | `fips` | `1`-`56` | State FIPS code |
+> | Any variable | `-1` | Missing/not reported |
+> | Any variable | `-2` | Not applicable |
+> | Any variable | `-3` | Suppressed data |
+>
+> **Always filter coded missing values before calculations!**
+
 ## Data Categories Overview
 
 | Category | Description | Key Variables |
@@ -282,11 +296,20 @@ aid_gap = partic_share_women - aid_share_women
 
 ## Data Quality Considerations
 
-### Missing Values
+### Missing Values (Portal Integer Encoding)
 
-- Some institutions don't have certain sports
+| Code | Meaning |
+|------|---------|
+| `-1` | Missing/not reported |
+| `-2` | Not applicable |
+| `-3` | Suppressed |
+| `NULL` | Null value |
+| `0` | Reported as zero |
+
+**Important distinctions:**
 - Zero values may mean "not applicable" or "zero dollars"
 - NULL vs 0 distinction important
+- Always filter `-1`, `-2`, `-3` before calculations
 
 ### Self-Reporting
 

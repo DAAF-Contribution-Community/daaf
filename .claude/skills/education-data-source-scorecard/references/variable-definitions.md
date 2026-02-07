@@ -95,6 +95,8 @@ College Scorecard uses consistent naming conventions and special values. Underst
 
 ### Institution Characteristics
 
+> **Portal Encoding:** All categorical variables use **integer codes** in the Education Data Portal. The original Scorecard documentation may show string values, but Portal data returns integers.
+
 | Variable | Description | Values |
 |----------|-------------|--------|
 | `CONTROL` | Control type | 1=Public, 2=Private NP, 3=Private FP |
@@ -104,17 +106,104 @@ College Scorecard uses consistent naming conventions and special values. Underst
 | `HBCU` | HBCU indicator | 0, 1 |
 | `MENONLY` | Men only | 0, 1 |
 | `WOMENONLY` | Women only | 0, 1 |
-| `RELAFFIL` | Religious affiliation | Various codes |
+| `RELAFFIL` | Religious affiliation | Integer codes (see below) |
 
-### Predominant Degree Codes
+### Predominant Degree Codes (`pred_degree_awarded_ipeds`)
 
-| Value | Description |
-|-------|-------------|
+| Code | Description |
+|------|-------------|
 | 0 | Not classified |
-| 1 | Predominantly certificate |
-| 2 | Predominantly associate's |
-| 3 | Predominantly bachelor's |
-| 4 | Entirely graduate |
+| 1 | Predominantly certificate-degree granting |
+| 2 | Predominantly associate's-degree granting |
+| 3 | Predominantly bachelor's-degree granting |
+| 4 | Entirely graduate-degree granting |
+
+### Yes/No Flag Codes
+
+Many Scorecard fields use boolean indicators for institutional characteristics. In the Portal, these are stored as integers:
+
+| Code | Meaning |
+|------|---------|
+| -3 | Suppressed data |
+| -2 | Not applicable |
+| -1 | Missing/not reported |
+| 0 | No |
+| 1 | Yes |
+
+**Variables using Yes/No encoding:**
+- `under_investigation` - Schools on Heightened Cash Monitoring 2
+- `min_serving_historic_black` - HBCU flag
+- `min_serving_predominant_black` - Predominantly black institution
+- `min_serving_annh` - Alaska Native Native Hawaiian-serving
+- `min_serving_tribal` - Tribal college or university
+- `min_serving_aanipi` - Asian American Native American Pacific Islander-serving
+- `min_serving_hispanic` - Hispanic-serving institution
+- `min_serving_na_nontribal` - Native American nontribal institution
+- `menonly` - Men-only college
+- `womenonly` - Women-only college
+- `currently_operating` - Currently operating institution
+
+### Religious Affiliation Codes
+
+| Code | Description |
+|------|-------------|
+| -3 | Suppressed data |
+| -2 | Not applicable |
+| -1 | Missing/not reported |
+| 22 | American Evangelical Lutheran Church |
+| 24 | African Methodist Episcopal Zion Church |
+| 27 | Assemblies of God Church |
+| 28 | Brethren Church |
+| 30 | Roman Catholic |
+| 33 | Wisconsin Evangelical Lutheran Synod |
+| 34 | Christ and Missionary Alliance Church |
+| 35 | Christian Reformed Church |
+| 36 | Evangelical Congregational Church |
+| 37 | Evangelical Covenant Church of America |
+| 38 | Evangelical Free Church of America |
+| 39 | Evangelical Lutheran Church |
+| 40 | International United Pentecostal Church |
+| 41 | Free Will Baptist Church |
+| 42 | Interdenominational |
+| 50 | Episcopal Church |
+| 51 | African Methodist Episcopal |
+| 52 | American Baptist |
+| 54 | Baptist |
+| 55 | Christian Methodist Episcopal |
+| 57 | Church of God |
+| 58 | Church of Brethren |
+| 59 | Church of the Nazarene |
+| 61 | Christian Church (Disciples of Christ) |
+| 64 | Free Methodist |
+| 65 | Friends |
+| 66 | Presbyterian Church (USA) |
+| 67 | Lutheran Church in America |
+| 68 | Lutheran Church - Missouri Synod |
+| 69 | Mennonite Church |
+| 71 | United Methodist |
+| 74 | Churches of Christ |
+| 75 | Southern Baptist |
+| 76 | United Church of Christ |
+| 77 | Protestant |
+| 78 | Multiple Protestant Denomination |
+| 79 | Other Protestant |
+| 80 | Jewish |
+| 83 | Seventh Day Adventists Church |
+| 88 | Undenominational |
+| 89 | Wesleyan |
+| 91 | Greek Orthodox |
+| 92 | Russian Orthodox |
+| 93 | Unitarian Universalist |
+| 94 | Latter Day Saints (Mormon Church) |
+| 97 | The Presbyterian Church in America |
+| 100 | Original Free Will Baptist |
+| 101 | Ecumenical Christian |
+| 102 | Evangelical Christian |
+| 103 | Presbyterian |
+| 105 | General Baptist |
+| 106 | Muslim |
+| 108 | Nondenominational |
+| 200 | Other (none of the above) |
 
 ### Admissions
 
@@ -219,33 +308,62 @@ College Scorecard uses consistent naming conventions and special values. Underst
 
 ### Missing Data Codes
 
-| Value | Meaning | When Used |
-|-------|---------|-----------|
-| `NULL` | Not available | Data not collected or not applicable |
-| `PrivacySuppressed` | Privacy suppressed | Below threshold (typically 30) |
-| `-999` | Not reported | Institution didn't report |
-| `-2` | Not applicable | Doesn't apply to institution type |
+> **CRITICAL: Portal Encoding Warning**
+>
+> The Education Data Portal uses **integer codes** for all categorical values. For missing data, **the HuggingFace mirror parquet files primarily use `null` (not integer codes)** for most Scorecard columns. The codebook documents `-1, -2, -3` codes, but actual parquet data may represent these as `null`. Always check actual data.
+
+| Codebook Code | Meaning | Actual Portal Data |
+|---------------|---------|-------------------|
+| `-1` | Missing/not reported | Often `null` in parquet |
+| `-2` | Not applicable | Often `null` in parquet |
+| `-3` | Suppressed for privacy | Often `null` in parquet |
+| `null` | No data | Primary missing indicator |
 
 ### Handling Special Values
 
 ```python
 import polars as pl
 
-# Filter out suppressed values
+# Filter out missing values (null is primary indicator in Portal data)
 df = df.filter(
-    ~pl.col("MD_EARN_WNE_P6").is_in(["PrivacySuppressed", "NULL"])
+    pl.col("md_earn_wne_p6").is_not_null() &
+    (pl.col("md_earn_wne_p6") > 0)  # Positive values only
 )
 
-# Convert to numeric (strings become null)
-df = df.with_columns(
-    pl.col("MD_EARN_WNE_P6").cast(pl.Float64, strict=False)
+# For categorical variables, filter out nulls
+df = df.filter(
+    pl.col("pred_degree_awarded_ipeds").is_not_null()
 )
 
-# Exclude invalid numeric codes
+# For yes/no flags, valid values are 0 and 1
 df = df.filter(
-    (pl.col("DEBT_MDN") > 0) | pl.col("DEBT_MDN").is_null()
+    pl.col("min_serving_historic_black").is_in([0, 1])
+)
+
+# Exclude invalid values for debt
+df = df.filter(
+    (pl.col("debt_mdn") > 0) | pl.col("debt_mdn").is_null()
 )
 ```
+
+### Portal vs Original Scorecard Format
+
+| Original Format | Portal Parquet |
+|-----------------|----------------|
+| `"PrivacySuppressed"` | `null` |
+| `"NULL"` | `null` |
+| `-999` | `null` or `-1` |
+| String categories | Integer codes |
+
+### Key Observation: Scorecard Data in Portal
+
+**In the HuggingFace mirror parquet files:**
+- Categorical variables use **integer codes** (e.g., `pred_degree_awarded_ipeds` = 0, 1, 2, 3, 4)
+- Yes/No flags use **0 and 1** (e.g., `min_serving_historic_black` = 0 or 1)
+- Missing/suppressed data is represented as **`null`** (not `-1, -2, -3` in most columns)
+- Religious affiliation codes match codebook integers when present
+
+**Always verify actual data types and null patterns when working with Portal data.**
 
 ## Variable Data Types
 

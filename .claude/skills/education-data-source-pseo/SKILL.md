@@ -8,6 +8,17 @@ metadata:
 
 # Education Data Source: PSEO
 
+> **CRITICAL: Portal vs Census API Encoding**
+>
+> This document describes **Education Data Portal** integer encodings, which differ from Census API string codes. The Portal converts categorical variables to integers for consistency.
+>
+> | Context | Baccalaureate | Associates | Masters | Census Division Pacific |
+> |---------|---------------|------------|---------|-------------------------|
+> | **Portal (integers)** | `5` | `3` | `7` | `9` |
+> | Census API (strings) | `05` | `03` | `07` | `9` |
+>
+> **Key differences:** Degree level uses simple integers (1-10), not string codes like "1C", "05". CIP codes are 2-digit integers (11 for Computer Science), not strings like "11.01".
+
 Postsecondary Employment Outcomes (PSEO) is an experimental data product from the U.S. Census Bureau that links college graduate records to national employment data, providing earnings and employment outcomes by institution, degree level, and field of study.
 
 ## What is PSEO?
@@ -58,15 +69,19 @@ Graduate outcomes research?
 
 ```
 Degree level?
-├─ Certificate (<1 year) → DEGREE_LEVEL=1C
-├─ Certificate (1-2 years) → DEGREE_LEVEL=1A
-├─ Certificate (2-4 years) → DEGREE_LEVEL=2A
-├─ Associate's → DEGREE_LEVEL=03
-├─ Bachelor's → DEGREE_LEVEL=05 (default, 3-year cohorts)
-├─ Master's → DEGREE_LEVEL=07 (2-digit CIP only)
-├─ Doctoral-Professional Practice → DEGREE_LEVEL=17
-└─ Doctoral-Research → DEGREE_LEVEL=18 (2-digit CIP only)
+├─ Certificate (<1 year) → degree_level=1
+├─ Certificate (1-2 years) → degree_level=2
+├─ Certificate (2-4 years) → degree_level=4
+├─ Associate's → degree_level=3
+├─ Bachelor's → degree_level=5 (default, 3-year cohorts)
+├─ Post-Bacc Certificate → degree_level=6
+├─ Master's → degree_level=7 (2-digit CIP only)
+├─ Post-Masters Certificate → degree_level=8
+├─ Doctoral-Research → degree_level=9 (2-digit CIP only)
+└─ Doctoral-Professional Practice → degree_level=10
 ```
+
+> **Note:** Portal uses integers 1-10. Census API uses string codes like "05", "1C".
 
 ### Is my institution/state covered?
 
@@ -81,47 +96,66 @@ Checking data availability?
     └─ Insufficient labor force attachment
 ```
 
-## Quick Reference: Data Endpoints
+## Quick Reference: Data Access
+
+### HuggingFace Mirror (Recommended)
+
+| Data | URL Pattern |
+|------|-------------|
+| PSEO Data | `huggingface.co/datasets/brhkim/education_data_portal_mirror/resolve/main/college-university/pseo/earnings-and-flows/colleges_pseo_{year}.parquet` |
+| Codebook | `huggingface.co/datasets/brhkim/education_data_portal_mirror/resolve/main/college-university/pseo/earnings-and-flows/codebook_colleges_pseo.xls` |
+
+### Urban Institute API
+
+| Endpoint | URL |
+|----------|-----|
+| PSEO | `educationdata.urban.org/api/v1/college-university/pseo/earnings-and-flows/` |
+
+### Census API (Original Source)
 
 | Endpoint | URL | Purpose |
 |----------|-----|---------|
 | Earnings | `api.census.gov/data/timeseries/pseo/earnings` | Graduate earnings percentiles |
 | Flows | `api.census.gov/data/timeseries/pseo/flows` | Industry and geographic employment |
 
-## Quick Reference: Key Variables
+## Quick Reference: Key Variables (Portal Schema)
 
-### Earnings Endpoint
+### Earnings Variables
 
-| Variable | Description |
-|----------|-------------|
-| `Y1_P25_EARNINGS` | 25th percentile earnings, 1 year post-graduation |
-| `Y1_P50_EARNINGS` | Median earnings, 1 year post-graduation |
-| `Y1_P75_EARNINGS` | 75th percentile earnings, 1 year post-graduation |
-| `Y5_P*_EARNINGS` | Same percentiles, 5 years post-graduation |
-| `Y10_P*_EARNINGS` | Same percentiles, 10 years post-graduation |
-| `Y1_GRADS` | Graduate count, 1 year post-graduation |
+| Portal Variable | Description |
+|-----------------|-------------|
+| `p25_earnings` | 25th percentile earnings (2022 dollars) |
+| `p50_earnings` | Median earnings (2022 dollars) |
+| `p75_earnings` | 75th percentile earnings (2022 dollars) |
+| `years_after_grad` | Years post-graduation: `1`, `5`, or `10` |
+| `employed_grads_count_e` | Graduate count with earnings data |
+| `total_grads_count` | Total IPEDS-reported graduates |
 
-### Flows Endpoint
+### Flows Variables
 
-| Variable | Description |
-|----------|-------------|
-| `Y1_GRADS_EMP` | Employed graduates, 1 year post-graduation |
-| `Y1_GRADS_EMP_INSTATE` | Employed in-state, 1 year post-graduation |
-| `Y1_GRADS_NME` | Non-employed or marginally employed |
-| `NAICS` | Industry sector (2-digit NAICS) |
-| `division` | Census Division of employment |
+| Portal Variable | Description |
+|-----------------|-------------|
+| `employed_grads_count_f` | Employed graduates count |
+| `employed_instate_grads_count` | Employed in institution's state |
+| `jobless_m_emp_grads_count` | Non-employed or marginally employed |
+| `industry` | 2-digit NAICS sector (integer) |
+| `census_division` | Census Division of employment (1-9, 99) |
 
-## Quick Reference: Key Filters
+> **Note:** Portal uses restructured schema with `years_after_grad` column instead of Census API's `Y1_*/Y5_*/Y10_*` naming.
+
+## Quick Reference: Key Filters (Portal Integer Encoding)
 
 | Parameter | Description | Example |
 |-----------|-------------|---------|
-| `INSTITUTION` | 8-digit OPEID code | `00365800` (UT Austin) |
-| `INST_STATE` | State FIPS of institution | `48` (Texas) |
-| `DEGREE_LEVEL` | Degree type code | `05` (Bachelor's) |
-| `CIPCODE` | Field of study (CIP code) | `11` (Computer Science) |
-| `CIP_LEVEL` | CIP code precision | `2` or `4` |
-| `GRAD_COHORT` | First year of cohort | `2019` |
-| `GRAD_COHORT_YEARS` | Cohort span | `3` (Bachelor's) or `5` |
+| `unitid` | IPEDS Unit ID | `100751` (University of Alabama) |
+| `opeid` | OPEID as integer | `105100` (not string "00105100") |
+| `fips` | State FIPS of institution | `48` (Texas) |
+| `degree_level` | Degree type integer | `5` (Bachelor's) |
+| `cipcode` | Field of study (2-digit integer) | `11` (Computer Science) |
+| `pseo_cohort` | Graduation cohort | `"2016-18"` (string format) |
+| `years_after_grad` | Years post-graduation | `1`, `5`, or `10` |
+
+> **Note:** Variable names are lowercase in Portal data. `opeid` is an integer (not 8-digit string).
 
 ## Cohort Definitions
 

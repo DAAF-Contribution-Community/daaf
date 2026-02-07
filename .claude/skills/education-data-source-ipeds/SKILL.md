@@ -10,6 +10,17 @@ metadata:
 
 Comprehensive guide to understanding and using IPEDS data correctly. IPEDS is the most widely used source for postsecondary education data but has significant complexities and limitations that users must understand.
 
+> **CRITICAL: Portal vs NCES Raw File Encoding**
+>
+> This document describes **Education Data Portal** integer encodings, which differ from NCES raw file string codes. The Portal converts categorical variables to integers for consistency across sources.
+>
+> | Context | Race White | Race Black | Sex Male | Sector Public 4-yr |
+> |---------|------------|------------|----------|-------------------|
+> | **Portal (integers)** | `1` | `2` | `1` | `1` |
+> | NCES raw files | `EFFY_WHITE` | `EFFY_BKAA` | `M` | varies |
+>
+> **Always verify codes against Portal codebooks** (available at each endpoint in the HuggingFace mirror).
+
 ## What is IPEDS?
 
 IPEDS (Integrated Postsecondary Education Data System) is a system of 12+ interrelated survey components:
@@ -95,21 +106,76 @@ Need variable definitions?
 
 ## Quick Reference: Institution Types
 
+### Portal Integer Encoding
+
 | Variable | Values | Meaning |
 |----------|--------|---------|
 | `inst_control` | 1 | Public |
 | | 2 | Private nonprofit |
 | | 3 | Private for-profit |
+| | -1 | Missing/not reported |
 | `institution_level` | 1 | Less than 2-year |
-| | 2 | 2-year |
-| | **4** | 4-year |
-| | -1 | Missing |
+| | 2 | 2-year (at least 2 but less than 4) |
+| | **4** | 4-year or above |
+| | -1 | Missing/not reported |
+| `sector` | 0 | Administrative unit |
+| | 1 | Public, 4-year or above |
+| | 2 | Private not-for-profit, 4-year or above |
+| | 3 | Private for-profit, 4-year or above |
+| | 4 | Public, 2-year |
+| | 5 | Private not-for-profit, 2-year |
+| | 6 | Private for-profit, 2-year |
+| | 7 | Public, less-than 2-year |
+| | 8 | Private not-for-profit, less-than 2-year |
+| | 9 | Private for-profit, less-than 2-year |
+| | -1 | Sector unknown (not active) |
 | `hbcu` | 1 | Historically Black College/University |
+| | 0 | Not HBCU |
 | `tribal_college` | 1 | Tribal College |
+| | 0 | Not Tribal College |
 | `degree_granting` | 1 | Degree-granting |
 | | 0 | Non-degree-granting |
 
 **Note:** There is **no code 3** for `institution_level`. This is a common source of confusion. The API uses codes 1, 2, 4 (not 1, 2, 3).
+
+## Quick Reference: Demographic Codes
+
+### Race/Ethnicity (Portal Integer Encoding)
+
+| Code | Category | Notes |
+|------|----------|-------|
+| `1` | White | Single race, non-Hispanic |
+| `2` | Black | Single race, non-Hispanic |
+| `3` | Hispanic | Any race |
+| `4` | Asian | Single race, non-Hispanic |
+| `5` | American Indian/Alaska Native | Single race, non-Hispanic |
+| `6` | Native Hawaiian/Pacific Islander | Single race, non-Hispanic |
+| `7` | Two or more races | Multiple races selected, non-Hispanic |
+| `8` | Nonresident alien | International students |
+| `9` | Unknown | Race/ethnicity unknown |
+| `20` | Other | Other race/ethnicity |
+| `99` | Total | All races combined |
+| `-1` | Missing/not reported | |
+| `-2` | Not applicable | |
+| `-3` | Suppressed | Privacy protection |
+
+> **Historical note:** Prior to 2010, Asian included Pacific Islanders (code 6 did not exist), and "Two or more races" (code 7) was not collected.
+
+### Sex (Portal Integer Encoding)
+
+| Code | Category |
+|------|----------|
+| `1` | Male |
+| `2` | Female |
+| `3` | Nonbinary/Another gender |
+| `4` | Unknown/Prefer not to say |
+| `9` | Unknown |
+| `99` | Total |
+| `-1` | Missing/not reported |
+| `-2` | Not applicable |
+| `-3` | Suppressed |
+
+> **Note:** Codes 3 and 4 are recent additions for non-binary gender reporting. Historical data may only have codes 1, 2, and 99. The exact meaning of codes 3 vs 4 may vary by endpoint - check the specific codebook.
 
 ## Critical Limitations Summary
 
@@ -242,9 +308,11 @@ df_totals = df.filter(pl.col("sex") == 99)
 |-----------|---------|
 | 1 | Male |
 | 2 | Female |
-| 3 | Another gender |
+| 3 | Nonbinary/Another gender |
 | 9 | Unknown |
 | **99** | **Total (use this for institution totals)** |
+
+> **Note:** Code 3 (Nonbinary) was added recently. In older data or some endpoints, you may only see codes 1, 2, and 99.
 
 ### Variable Name Mappings
 

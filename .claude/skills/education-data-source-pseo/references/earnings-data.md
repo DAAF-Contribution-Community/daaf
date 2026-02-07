@@ -2,6 +2,8 @@
 
 Graduate earnings tabulations from PSEO: percentile earnings, cohort definitions, and labor force attachment requirements.
 
+> **Portal Variable Names:** Portal uses lowercase variable names (e.g., `p50_earnings`, `years_after_grad`), not Census API names (e.g., `Y1_P50_EARNINGS`). See variable mapping below.
+
 ## Contents
 
 - [Earnings Overview](#earnings-overview)
@@ -28,42 +30,45 @@ The Graduate Earnings tabulations provide earnings percentiles for graduates at 
 
 ## Percentile Earnings Variables
 
-### Variable Names
+### Portal Variable Names vs Census API
 
-| Variable | Description |
-|----------|-------------|
-| `Y1_P25_EARNINGS` | 25th percentile earnings, 1 year post-graduation |
-| `Y1_P50_EARNINGS` | Median (50th percentile) earnings, 1 year post-graduation |
-| `Y1_P75_EARNINGS` | 75th percentile earnings, 1 year post-graduation |
-| `Y5_P25_EARNINGS` | 25th percentile earnings, 5 years post-graduation |
-| `Y5_P50_EARNINGS` | Median earnings, 5 years post-graduation |
-| `Y5_P75_EARNINGS` | 75th percentile earnings, 5 years post-graduation |
-| `Y10_P25_EARNINGS` | 25th percentile earnings, 10 years post-graduation |
-| `Y10_P50_EARNINGS` | Median earnings, 10 years post-graduation |
-| `Y10_P75_EARNINGS` | 75th percentile earnings, 10 years post-graduation |
+The Education Data Portal uses a **restructured schema** with lowercase names:
 
-### Graduate Counts
+| Portal Variable | Census API Equivalent | Description |
+|-----------------|----------------------|-------------|
+| `p25_earnings` | `Y*_P25_EARNINGS` | 25th percentile earnings |
+| `p50_earnings` | `Y*_P50_EARNINGS` | Median (50th percentile) earnings |
+| `p75_earnings` | `Y*_P75_EARNINGS` | 75th percentile earnings |
+| `years_after_grad` | (implicit in variable name) | `1`, `5`, or `10` years post-graduation |
+| `employed_grads_count_e` | `Y*_GRADS` (earnings) | Graduates with observable earnings |
+| `employed_grads_count_f` | `Y*_GRADS_EMP` (flows) | Employed graduates count |
+| `total_grads_count` | — | Total IPEDS-reported graduates |
+| `employed_instate_grads_count` | `Y*_GRADS_EMP_INSTATE` | Graduates employed in-state |
+| `jobless_m_emp_grads_count` | `Y*_GRADS_NME` | Non-employed or marginally employed |
 
-| Variable | Description |
-|----------|-------------|
-| `Y1_GRADS` | Total graduates with observable earnings, Year 1 |
-| `Y5_GRADS` | Total graduates with observable earnings, Year 5 |
-| `Y10_GRADS` | Total graduates with observable earnings, Year 10 |
+> **Key difference:** Portal data uses `years_after_grad` (1, 5, 10) as a column, not embedded in variable names like Census API.
 
-### Status Flags
+### Using Portal Data
 
-| Variable | Description |
-|----------|-------------|
-| `STATUS_Y1_EARNINGS` | Status flag for all Y1 earnings variables |
-| `STATUS_Y5_EARNINGS` | Status flag for all Y5 earnings variables |
-| `STATUS_Y10_EARNINGS` | Status flag for all Y10 earnings variables |
+```python
+import polars as pl
 
-**Status flag values:**
+# Filter to Year 1 earnings
+year1 = df.filter(pl.col("years_after_grad") == 1)
+
+# Get median earnings
+median_earnings = year1.select("p50_earnings")
+```
+
+### Status/Suppression
 
 | Code | Meaning |
 |------|---------|
-| 1 | Valid data |
-| 5 | Suppressed (cell count < 30) |
+| `-1` | Missing/not reported |
+| `-2` | Not applicable |
+| `-3` | Suppressed (cell count < 30) |
+
+> **Note:** Portal uses standard negative codes. Census API uses separate STATUS_* variables.
 
 ## Labor Force Attachment
 

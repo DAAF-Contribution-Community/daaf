@@ -125,9 +125,32 @@ Interpretation question?
 |--------|----------|----------------|
 | Institution | `unitid` | 6-digit IPEDS ID |
 | Year | `year` | 2003-2022 |
-| State | `fips` | State FIPS code |
+| State | `fips` | Integer FIPS code (e.g., `6` = California) |
 | Sector | `sector` | 1=Public, 2=Private nonprofit, 3=Private for-profit |
-| NCAA Division | Via IPEDS join | Division I, II, III |
+| Athletic Division | `ath_classification_code` | Integer codes 1-20 (see below) |
+
+### Athletic Classification Codes (Portal Integer Encoding)
+
+| Code | Division | Code | Division |
+|------|----------|------|----------|
+| 1 | NCAA Division I FBS | 12 | NJCAA Division I |
+| 2 | NCAA Division I FCS | 13 | NJCAA Division II |
+| 3 | NCAA Division I (no football) | 14 | NJCAA Division III |
+| 4 | NCAA Division II (with football) | 15 | NCCAA Division I |
+| 5 | NCAA Division II (no football) | 16 | NCCAA Division II |
+| 6 | NCAA Division III (with football) | 17 | CCCAA |
+| 7 | NCAA Division III (no football) | 18 | Independent |
+| 8 | Other (check `ath_classification_other`) | 19 | NWAC |
+| 9 | NAIA Division I | 20 | USCAA |
+| 10 | NAIA Division II | | |
+
+### Missing Data Codes
+
+| Code | Meaning |
+|------|---------|
+| `-1` | Missing/not reported |
+| `-2` | Not applicable |
+| `-3` | Suppressed |
 
 ## Quick Reference: Data Availability
 
@@ -160,6 +183,12 @@ Public disclosure                  Enforcement mechanism
 - **Counting methods**: Differ from Title IX counting
 - **Not comprehensive**: Misses many equity factors
 - **Comparability issues**: Different reporting practices across institutions
+
+> **CRITICAL: Portal Integer Encoding**
+>
+> EADA data from the Education Data Portal uses **integer codes** for categorical variables and missing data. Always filter coded missing values (`-1`, `-2`, `-3`) before calculations.
+>
+> See `./references/variable-definitions.md` for complete code mappings.
 
 ## Example Research Questions
 

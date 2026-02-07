@@ -2,34 +2,55 @@
 
 Comprehensive definitions of all variables in the MEPS dataset, including identifiers, estimates, and metadata.
 
+> **CRITICAL: Portal Integer Encoding**
+>
+> This document describes **Education Data Portal** encodings. The Portal returns all ID and categorical columns as **integers**, not strings. Missing values use **native nulls**, not negative coded values.
+>
+> | Column | Portal Type | Documentation May Say | Actual Portal Value |
+> |--------|-------------|----------------------|---------------------|
+> | `ncessch` | Int64 | "12-character string" | `10000200277` (integer) |
+> | `fips` | Int64 | "FIPS code" | `6` (integer for California) |
+> | `leaid` | Int64 | "7-character string" | `100002` (integer) |
+> | Missing | null | "-1, -2, -3" | Native null (no coded values) |
+
 ## Core MEPS Variables
 
 ### School Identifier
 
-| Variable | Type | Description |
-|----------|------|-------------|
-| `ncessch` | String (12 char) | NCES school identification number. Unique identifier for each school. Format: {2-digit state FIPS}{5-digit district}{5-digit school} |
+| Variable | Portal Type | Description |
+|----------|-------------|-------------|
+| `ncessch` | **Int64** | NCES school identification number. Unique identifier for each school. Structure: {2-digit state FIPS}{5-digit district}{5-digit school} |
+| `ncessch_num` | **Int64** | Numeric duplicate of NCES school ID (same values) |
 
-**Example**: `060000100001`
+**Example**: `60000100001` (as integer)
 - `06` = California (state FIPS)
 - `00001` = District code
 - `00001` = School code
 
-### Geographic Identifiers
+> **Note:** Portal returns as integer. Leading zeros are implicit. To reconstruct 12-character string: `f"{ncessch:012d}"`
 
-| Variable | Type | Description |
-|----------|------|-------------|
-| `fips` | Integer | Federal Information Processing Standard state code (1-56) |
-| `leaid` | String (7 char) | Local Education Agency (district) ID |
-| `year` | Integer | School year (fall semester). Example: 2018 = 2018-19 school year |
+### Geographic Identifiers (Portal Integer Encoding)
 
-### MEPS Estimates
+| Variable | Portal Type | Description |
+|----------|-------------|-------------|
+| `fips` | **Int64** | Federal Information Processing Standard state code (1-56) |
+| `leaid` | **Int64** | Local Education Agency (district) ID (7-digit structure, returned as integer) |
+| `gleaid` | **Int64** | Geographic Local Education Agency ID |
+| `year` | **Int64** | School year (fall semester). Example: 2018 = 2018-19 school year |
 
-| Variable | Type | Range | Description |
-|----------|------|-------|-------------|
-| `meps` | Float | 0.0-1.0 | Estimated share of students from households at or below 100% FPL |
-| `meps_mod` | Float | 0.0-1.0 | Modified MEPS estimate (adjusted for high-poverty districts) |
-| `meps_se` | Float | 0.0+ | Standard error of the MEPS estimate |
+> **Note:** All IDs returned as integers. To reconstruct 7-character string for leaid: `f"{leaid:07d}"`
+
+### MEPS Estimates (Portal Field Names)
+
+| Portal Variable | Type | Range | Description |
+|-----------------|------|-------|-------------|
+| `meps_poverty_pct` | Float64 | 0.0-60.5 | Estimated share of students from households at or below 100% FPL |
+| `meps_mod_poverty_pct` | Float64 | 0.0-100.0 | Modified MEPS estimate (adjusted for high-poverty districts) |
+| `meps_poverty_se` | Float64 | 0.5-3.8 | Standard error of the MEPS estimate |
+| `meps_poverty_ptl` | Int64 | 1-100 | National percentile of poverty (enrollment-weighted) |
+| `meps_mod_poverty_ptl` | Int64 | 1-100 | Modified percentile (enrollment-weighted) |
+
+> **Field name mapping:** Documentation may reference `meps`, `meps_mod`, `meps_se`. Actual Portal fields are `meps_poverty_pct`, `meps_mod_poverty_pct`, `meps_poverty_se`.
 
 ## Understanding MEPS Values
 
@@ -119,26 +140,42 @@ Depending on the data version, MEPS may include:
 | 42 | Rural, Distant |
 | 43 | Rural, Remote |
 
-## Missing Data Codes
+## Missing Data Handling
 
-MEPS uses standard missing data codes:
+> **CRITICAL: MEPS Uses Native Nulls**
+>
+> Unlike CCD and other sources, MEPS data in the Portal uses **native null values**, not negative coded values. The codebook lists -1, -2, -3 as theoretical possibilities, but actual Portal data contains nulls.
 
+**Codebook codes (theoretical):**
 | Code | Meaning |
 |------|---------|
 | `-1` | Missing/not reported |
 | `-2` | Not applicable |
 | `-3` | Suppressed for privacy |
-| `null` | Data not available |
 
-**Handling missing data:**
+**Actual Portal behavior:**
+| Value | Meaning |
+|-------|---------|
+| `null` | Missing/not available (all missing types) |
+| Valid number | Data present |
+
+**Handling missing data (correct approach):**
 ```python
-# Filter out missing values
-valid_data = df[df['meps'] >= 0]
+# Polars - check for nulls
+valid_data = df.filter(pl.col("meps_poverty_pct").is_not_null())
 
-# Or explicitly handle each code
-df['meps_clean'] = df['meps'].apply(
-    lambda x: x if x >= 0 else None
-)
+# pandas - check for NaN
+valid_data = df[df['meps_poverty_pct'].notna()]
+
+# Count missing
+null_count = df["meps_poverty_pct"].null_count()  # Polars
+null_count = df['meps_poverty_pct'].isna().sum()  # pandas
+```
+
+**Do NOT use negative value filtering for MEPS:**
+```python
+# WRONG - MEPS doesn't use coded values
+df.filter(pl.col("meps_poverty_pct") >= 0)  # Unnecessary and misleading
 ```
 
 ## Derived Variables
@@ -209,37 +246,81 @@ district_meps = df.groupby('leaid').apply(
 | FRPL (non-CEP schools) | Related but different threshold | ~0.75 |
 | FRPL (CEP schools) | Not comparable | Low/meaningless |
 
-## Data Type Specifications
+## Data Type Specifications (Portal Actual Types)
 
-### For Database/DataFrame Setup
+### Polars Schema (from actual Portal data)
 
 ```python
-# Python/Pandas dtypes
-meps_dtypes = {
-    'ncessch': 'string',
-    'year': 'int64',
-    'fips': 'int64',
-    'leaid': 'string',
-    'meps': 'float64',
-    'meps_mod': 'float64',
-    'meps_se': 'float64',
-    'enrollment': 'int64',
+# Polars types - matches actual Portal parquet files
+import polars as pl
+
+meps_schema = {
+    'year': pl.Int64,
+    'fips': pl.Int64,
+    'gleaid': pl.Int64,
+    'ncessch': pl.Int64,           # Integer, not string!
+    'meps_poverty_pct': pl.Float64,
+    'meps_poverty_se': pl.Float64,
+    'meps_mod_poverty_pct': pl.Float64,
+    'meps_poverty_ptl': pl.Int64,
+    'meps_mod_poverty_ptl': pl.Int64,
+    'ncessch_num': pl.Int64,
+    'leaid': pl.Int64,             # Integer, not string!
 }
 ```
 
+### pandas dtypes (for compatibility)
+
+```python
+# pandas types - note nullable Int64 for IDs with potential nulls
+meps_dtypes = {
+    'year': 'int64',
+    'fips': 'int64',
+    'gleaid': 'Int64',             # Nullable integer
+    'ncessch': 'int64',
+    'meps_poverty_pct': 'float64',
+    'meps_poverty_se': 'float64',
+    'meps_mod_poverty_pct': 'float64',
+    'meps_poverty_ptl': 'Int64',   # Nullable integer
+    'meps_mod_poverty_ptl': 'Int64',
+    'ncessch_num': 'int64',
+    'leaid': 'Int64',              # Nullable integer (has ~258 nulls)
+}
+```
+
+### SQL table definition
+
 ```sql
--- SQL table definition
+-- SQL table definition (INTEGER for IDs per Portal encoding)
 CREATE TABLE meps (
-    ncessch VARCHAR(12) NOT NULL,
+    ncessch BIGINT NOT NULL,       -- 12-digit integer
     year INTEGER NOT NULL,
     fips INTEGER,
-    leaid VARCHAR(7),
-    meps DECIMAL(4,3),
-    meps_mod DECIMAL(4,3),
-    meps_se DECIMAL(5,4),
-    enrollment INTEGER,
+    leaid BIGINT,                  -- 7-digit integer, nullable
+    gleaid BIGINT,
+    meps_poverty_pct DECIMAL(6,4),
+    meps_mod_poverty_pct DECIMAL(6,4),
+    meps_poverty_se DECIMAL(8,6),
+    meps_poverty_ptl INTEGER,
+    meps_mod_poverty_ptl INTEGER,
     PRIMARY KEY (ncessch, year)
 );
+```
+
+### Converting IDs to String Format
+
+If you need traditional string-format IDs for joining with other systems:
+
+```python
+# Polars - convert integer IDs to zero-padded strings
+df = df.with_columns([
+    pl.col("ncessch").cast(pl.Utf8).str.zfill(12).alias("ncessch_str"),
+    pl.col("leaid").cast(pl.Utf8).str.zfill(7).alias("leaid_str"),
+])
+
+# pandas equivalent
+df['ncessch_str'] = df['ncessch'].astype(str).str.zfill(12)
+df['leaid_str'] = df['leaid'].astype(str).str.zfill(7)
 ```
 
 ## Quick Reference Card

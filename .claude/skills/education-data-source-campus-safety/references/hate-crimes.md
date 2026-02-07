@@ -1,5 +1,19 @@
 # Hate Crimes: Bias Categories and Classification
 
+> **CRITICAL: Portal Integer Encoding**
+>
+> The Education Data Portal uses **integer codes** for bias categories and crime types:
+>
+> | Code | Bias Category | Code | Crime Type |
+> |------|---------------|------|------------|
+> | `1` | Race | `12` | Larceny-Theft |
+> | `2` | Religion | `13` | Simple Assault |
+> | `3` | Sexual Orientation | `14` | Intimidation |
+> | `4` | Gender | `15` | Vandalism |
+> | `99` | Total | `99` | Total |
+>
+> See `variable-definitions.md` for complete mappings.
+
 ## Definition
 
 A hate crime is a criminal offense that manifests evidence that the victim was intentionally selected because of the perpetrator's bias against the victim.
@@ -10,23 +24,23 @@ A hate crime is a criminal offense that manifests evidence that the victim was i
 - Bias must be against the victim (not general bias)
 - Selection must be intentional
 
-## Bias Categories
+## Bias Categories (Portal Integer Encoding)
 
 Under the Clery Act, institutions report hate crimes motivated by bias based on eight categories:
 
-### 1. Race
+### Code 1: Race
 
 **Definition**: A preformed negative attitude toward a group of persons who possess common physical characteristics genetically transmitted by descent and heredity which distinguish them as a distinct division of humankind.
 
 **Examples**: Anti-Black, Anti-White, Anti-Asian, Anti-Hispanic (when based on race rather than ethnicity), Anti-American Indian/Alaska Native, Anti-Native Hawaiian/Pacific Islander, Anti-Multiple Races
 
-### 2. Religion
+### Code 2: Religion
 
 **Definition**: A preformed negative opinion or attitude toward a group of persons who share the same religious beliefs regarding the origin and purpose of the universe and the existence or nonexistence of a supreme being.
 
 **Examples**: Anti-Jewish, Anti-Islamic (Muslim), Anti-Catholic, Anti-Protestant, Anti-Atheist/Agnostic, Anti-Buddhist, Anti-Hindu, Anti-Sikh, Anti-Other Religion
 
-### 3. Sexual Orientation
+### Code 3: Sexual Orientation
 
 **Definition**: A preformed negative opinion or attitude toward a group of persons based on their actual or perceived sexual orientation.
 
@@ -34,7 +48,7 @@ Under the Clery Act, institutions report hate crimes motivated by bias based on 
 
 **Examples**: Anti-Gay (Male), Anti-Lesbian, Anti-Bisexual, Anti-Heterosexual, Anti-LGBTQ+ (general)
 
-### 4. Gender
+### Code 4: Gender
 
 **Definition**: A preformed negative opinion or attitude toward a person or group of persons based on their actual or perceived gender.
 
@@ -42,7 +56,7 @@ Under the Clery Act, institutions report hate crimes motivated by bias based on 
 
 **Note**: This is distinct from gender identity.
 
-### 5. Gender Identity
+### Code 5: Gender Identity
 
 **Definition**: A preformed negative opinion or attitude toward a person or group of persons based on their actual or perceived gender identity.
 
@@ -52,7 +66,7 @@ Under the Clery Act, institutions report hate crimes motivated by bias based on 
 
 **Note**: Added as a bias category with 2013 VAWA amendments (applicable to 2014+ data).
 
-### 6. Ethnicity
+### Code 6: Ethnicity
 
 **Definition**: A preformed negative opinion or attitude toward a group of people whose members identify with each other, through a common heritage, often consisting of a common language, common culture, and/or ideology that stresses common ancestry.
 
@@ -60,7 +74,7 @@ Under the Clery Act, institutions report hate crimes motivated by bias based on 
 
 **Note**: Ethnicity was separated from National Origin with 2013 VAWA amendments.
 
-### 7. National Origin
+### Code 7: National Origin
 
 **Definition**: A preformed negative opinion or attitude toward a group of people based on their actual or perceived country of birth.
 
@@ -68,11 +82,19 @@ Under the Clery Act, institutions report hate crimes motivated by bias based on 
 
 **Note**: National Origin was separated from Ethnicity with 2013 VAWA amendments.
 
-### 8. Disability
+### Code 8: Disability
 
 **Definition**: A preformed negative opinion or attitude toward a group of persons based on their physical or mental impairments, whether such disability is temporary or permanent, congenital or acquired by heredity, accident, injury, advanced age, or illness.
 
 **Examples**: Anti-Physical Disability, Anti-Mental Disability
+
+### Code 9: Unknown/Other
+
+Bias category not specified or does not fit standard categories.
+
+### Code 99: Total
+
+All bias categories combined. Use for aggregate counts across all bias types.
 
 ## Hate Crime Offenses
 
@@ -202,12 +224,31 @@ When a single hate crime is motivated by multiple biases:
 - Note additional biases in the caveat/notes
 - Example: A crime motivated by both race and religion bias would be counted once with one bias selected
 
-### Data Variables
+### Data Variables (Portal Format)
 
-| Variable | Description |
-|----------|-------------|
-| `hate_[crime]_[bias]` | Count of specific crime with specific bias |
-| Location suffixes | `_oncampus`, `_residencehall`, `_noncampus`, `_publicproperty` |
+In the HuggingFace mirror parquet files:
+
+| Variable | Type | Description |
+|----------|------|-------------|
+| `crime_type` | Integer | Crime type code (1-18, 99) |
+| `bias` | Integer | Bias category code (1-9, 99) |
+| `on_campus_hate_crimes` | Integer | Count on campus |
+| `residence_hall_hate_crimes` | Integer | Count in residence halls |
+| `non_campus_hate_crimes` | Integer | Count at noncampus properties |
+| `public_property_hate_crimes` | Integer | Count on public property |
+| `other_hate_crimes` | Integer | Count in other locations |
+| `total_hate_crimes` | Integer | Total across all locations |
+
+**Filtering Example**:
+```python
+import polars as pl
+
+# Race-based intimidation crimes
+df.filter(
+    (pl.col("bias") == 1) &  # Race
+    (pl.col("crime_type") == 14)  # Intimidation
+)
+```
 
 ## Historical Changes
 

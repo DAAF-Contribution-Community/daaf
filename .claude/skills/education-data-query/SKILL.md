@@ -154,6 +154,45 @@ df = (
 
 See `./references/fetch-patterns.md` for complete code patterns.
 
+## Portal Integer Encoding
+
+**CRITICAL:** The Portal uses integer codes, not string labels. This affects filtering and interpretation.
+
+### Demographic Variable Encodings
+
+| Variable | Integer Values | NOT These Strings |
+|----------|----------------|-------------------|
+| Race | 1-7, 99 (total) | WH, BL, HI, AS, etc. |
+| Sex | 1 (Male), 2 (Female), 99 (Total) | M, F |
+| Grade | -1 to 13, 99 (total) | PK, KG, 01, etc. |
+
+### Grade Encoding (SEMANTIC TRAP!)
+
+| Value | Meaning | URL Path Equivalent |
+|-------|---------|---------------------|
+| -1 | Pre-K (**NOT missing!**) | `grade-pk` |
+| 0 | Kindergarten | `grade-k` |
+| 1-12 | Grades 1-12 | `grade-1` to `grade-12` |
+| 99 | Total | `grade-99` |
+
+```python
+# WRONG - filters out Pre-K students!
+df = df.filter(pl.col("grade") >= 0)
+
+# RIGHT - Pre-K students have grade = -1
+pre_k = df.filter(pl.col("grade") == -1)
+total = df.filter(pl.col("grade") == 99)
+```
+
+### Variable Names Are Lowercase
+
+Portal variable names are lowercase:
+- `enrollment` not `MEMBER`
+- `grade` not `GRADE`
+- `fips` not `FIPS`
+
+See `./references/filters-reference.md` for complete encoding tables.
+
 ## Common FIPS Codes
 
 | Code | State | Code | State | Code | State |

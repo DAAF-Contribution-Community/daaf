@@ -189,11 +189,13 @@ Earnings are suppressed when privacy thresholds are not met:
 
 ### Variables Indicating Suppression
 
-| Value | Meaning |
-|-------|---------|
-| `PrivacySuppressed` | Too few students |
-| `NULL` | Data not available |
-| `EARN_*_SUPP` | Suppression flag variable |
+> **Portal Encoding:** In the HuggingFace mirror parquet files, **`null` is the primary indicator** for suppressed/missing data.
+
+| Data Pattern | Meaning | Notes |
+|--------------|---------|-------|
+| `null` | Suppressed or missing | Primary indicator in parquet |
+| Positive value | Valid earnings | Actual data |
+| `EARN_*_SUPP` = 1 | Suppression flag | Flag variables use 0/1 |
 
 ### High Suppression Rates Affect
 

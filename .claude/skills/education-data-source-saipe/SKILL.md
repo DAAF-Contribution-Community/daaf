@@ -10,6 +10,17 @@ metadata:
 
 Reference for understanding Census Bureau poverty estimates for school districts, counties, and states.
 
+> **CRITICAL: Portal vs Census Raw File Encoding**
+>
+> This document describes **Education Data Portal** integer encodings, which differ from Census Bureau raw file formats. The Portal uses integers for FIPS codes and standard missing data conventions.
+>
+> | Context | FIPS Alabama | FIPS California | Missing | Suppressed |
+> |---------|--------------|-----------------|---------|------------|
+> | **Portal (integers)** | `1` | `6` | `-1` | `-3` |
+> | Census raw files | `01` (string) | `06` (string) | varies | varies |
+>
+> **Key difference:** Portal FIPS codes are integers (no leading zeros), while Census files use 2-character strings.
+
 ## What is SAIPE?
 
 SAIPE is the Census Bureau's program for producing **model-based** estimates of income and poverty:

@@ -28,30 +28,30 @@ FSA data provides valuable information on federal student aid programs but has i
 
 ## Year Coverage by Endpoint
 
-### Available Years
+### Available Years (HuggingFace Mirror)
 
 | Endpoint | Earliest Year | Latest Year | Total Years |
 |----------|---------------|-------------|-------------|
-| `/fsa/grants/` | 1999 | 2018 | 20 |
-| `/fsa/loans/` | 1999 | 2018 | 20 |
-| `/fsa/campus-based-volume/` | 2001 | 2017 | 17 |
-| `/fsa/financial-responsibility/` | 2006 | 2016 | 11 |
-| `/fsa/90-10-revenue-percentages/` | 2014 | 2017 | 4 |
+| `fsa/grants/` | 1999 | 2021 | 23 |
+| `fsa/loans/` | 1999 | 2021 | 23 |
+| `fsa/campus-based-volume/` | 2001 | 2021 | 21 |
+| `fsa/financial-responsibility/` | 2006 | 2016 | 11 |
+| `fsa/90-10-revenue-percentages/` | 2014 | 2021 | 8 |
 
 ### Timeline Visualization
 
 ```
-         1999  2001  2006  2010  2014  2016  2017  2018
-Grants   |----------------------------------------------|
-Loans    |----------------------------------------------|
-Campus   |     |-------------------------------------|   |
-Fin Resp |          |---------------------|              |
-90/10    |                    |---------|               |
+         1999  2001  2006  2010  2014  2016  2021
+Grants   |-----------------------------------------------|
+Loans    |-----------------------------------------------|
+Campus   |     |---------------------------------------------|
+Fin Resp |          |---------------------|
+90/10    |                    |-----------------------------|
 ```
 
 ### Data Currency
 
-**Note**: The Education Data Portal updates periodically. Check the [Updates Timeline](https://educationdata.urban.org/documentation/#data_update) for the most recent data additions.
+**Note**: Data is accessed via the HuggingFace mirror (brhkim/education_data_portal_mirror). Coverage may differ from the live API.
 
 ## Institutional Coverage
 
@@ -188,15 +188,21 @@ If current date is January 2026:
 ### Handling Missing Data
 
 ```python
-# Approach 1: Filter to complete records
-df = df.dropna(subset=['pell_recipients', 'pell_disbursements'])
+import polars as pl
 
-# Approach 2: Replace missing codes with NaN
-import numpy as np
-df = df.replace([-1, -2, -3], np.nan)
+# Approach 1: Filter to non-null records
+df = df.filter(pl.col("grant_recipients_unitid").is_not_null())
 
-# Approach 3: Keep and document
-df['pell_reported'] = df['pell_recipients'] >= 0
+# Approach 2: Filter out missing data codes
+df = df.filter(~pl.col("fips").is_in([-1, -2, -3]))
+
+# Approach 3: Replace missing codes with null
+df = df.with_columns(
+    pl.when(pl.col("fips").is_in([-1, -2, -3]))
+    .then(None)
+    .otherwise(pl.col("fips"))
+    .alias("fips_clean")
+)
 ```
 
 ## Methodological Considerations
@@ -225,9 +231,15 @@ df['pell_reported'] = df['pell_recipients'] >= 0
 Dollar amounts are nominal (not inflation-adjusted):
 
 ```python
-# Example: Adjust to 2018 dollars using CPI
-# Get CPI multipliers for each year
-df['pell_real_2018'] = df['pell_disbursements'] * df['cpi_multiplier']
+import polars as pl
+
+# Example: Adjust to 2021 dollars using CPI multipliers
+cpi_multipliers = {2018: 1.08, 2019: 1.06, 2020: 1.04, 2021: 1.00}
+
+df = df.with_columns(
+    (pl.col("value_grants_disbursed_unitid") *
+     pl.col("year").replace(cpi_multipliers)).alias("grants_real_2021")
+)
 ```
 
 ## Data Source Comparison
@@ -287,27 +299,41 @@ df['pell_real_2018'] = df['pell_disbursements'] * df['cpi_multiplier']
 
 ### Reasonableness Checks
 
-| Check | Method | Flag If |
-|-------|--------|---------|
-| Pell average | pell_avg_amount | > $7,500 or < $500 |
-| Recipient count | pell_recipients | > total_enrollment |
-| Composite score | composite_score | Outside -1 to 3 range |
-| 90/10 percentage | title_iv_percentage | > 100% or < 0% |
+| Check | Variable | Flag If |
+|-------|----------|---------|
+| Composite score | `financial_resp_score` | Outside -1 to 3 range |
+| 90/10 percentage | `rev_pct_90_10` | > 100% or < 0% |
+| Grant values | `value_grants_disbursed_*` | Negative values |
+| Recipient count | `grant_recipients_*` | Negative values |
 
 ### Cross-Validation
 
 ```python
-# Check: Pell disbursements should equal recipients × average
-calculated = df['pell_recipients'] * df['pell_avg_amount']
-discrepancy = abs(df['pell_disbursements'] - calculated) / df['pell_disbursements']
-# Flag if discrepancy > 5%
+import polars as pl
+
+# Check: 90/10 calculation matches components
+df = df.with_columns(
+    ((pl.col("numerator_90_10") / pl.col("denominator_90_10")) * 100)
+    .alias("calculated_pct")
+)
+
+# Flag discrepancies > 1%
+df_discrepancy = df.filter(
+    (pl.col("rev_pct_90_10") - pl.col("calculated_pct")).abs() > 1
+)
 ```
 
 ### Outlier Detection
 
 ```python
+import polars as pl
+
 # Identify extreme values
-import numpy as np
-q1, q99 = df['composite_score'].quantile([0.01, 0.99])
-outliers = df[(df['composite_score'] < q1) | (df['composite_score'] > q99)]
+q01 = df["financial_resp_score"].quantile(0.01)
+q99 = df["financial_resp_score"].quantile(0.99)
+
+outliers = df.filter(
+    (pl.col("financial_resp_score") < q01) |
+    (pl.col("financial_resp_score") > q99)
+)
 ```

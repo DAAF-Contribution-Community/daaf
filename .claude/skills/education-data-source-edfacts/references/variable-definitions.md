@@ -245,48 +245,83 @@ low_participation = df.filter(
 
 ## Subgroup Codes
 
-### Race/Ethnicity Codes
+> **Portal Encoding Warning:** The Urban Institute Education Data Portal converts NCES string codes to integers. The documentation below shows NCES string codes in parentheses but **actual data uses integers**.
+
+### Race/Ethnicity Codes (Portal Integer Encoding)
+
+| Portal Code | NCES Code | Description |
+|-------------|-----------|-------------|
+| `1` | WH | White |
+| `2` | BL | Black or African American |
+| `3` | HI | Hispanic/Latino of any race |
+| `4` | AS | Asian |
+| `5` | AM | American Indian/Alaska Native |
+| `6` | HP | Native Hawaiian/Pacific Islander |
+| `7` | MR | Two or more races |
+| `8` | — | Nonresident alien |
+| `9` | — | Unknown |
+| `20` | — | Other |
+| `99` | — | Total |
+| `-1` | — | Missing/not reported |
+| `-2` | — | Not applicable |
+| `-3` | — | Suppressed |
+
+### Special Population Codes (Portal Integer Encoding)
+
+EDFacts uses **filter columns** for special populations. Each column has:
+- `1` = Yes (student is in this subgroup)
+- `99` = Total (all students)
+
+| Column | NCES Code | Description |
+|--------|-----------|-------------|
+| `lep` | LEP | Limited English proficient students |
+| `disability` | CWD | Students with disabilities (see disability codes below) |
+| `homeless` | HOM | McKinney-Vento identified homeless students |
+| `foster_care` | FCS | Students in foster care system |
+| `migrant` | MIG | Migrant education program participants |
+| `econ_disadvantaged` | ECODIS | Economically disadvantaged students |
+| `military_connected` | MIL | Students from military families |
+
+### Disability Codes (Portal Integer Encoding)
 
 | Code | Description |
 |------|-------------|
-| `HI` | Hispanic/Latino of any race |
-| `AM` | American Indian/Alaska Native |
-| `AS` | Asian |
-| `HP` | Native Hawaiian/Pacific Islander |
-| `BL` | Black or African American |
-| `WH` | White |
-| `MR` | Two or more races |
+| `0` | Students without disabilities |
+| `1` | Students with disabilities served under IDEA |
+| `2` | Students with disabilities served under Section 504 only |
+| `3` | Students not served under IDEA (includes without disabilities + 504) |
+| `4` | Students with disabilities (Section 504 and IDEA) |
+| `99` | Total |
 
-### Special Population Codes
-
-| Code | Description | Definition |
-|------|-------------|------------|
-| `ALL` | All students | Total student population |
-| `ECODIS` | Economically disadvantaged | Students eligible for FRPL or other poverty measures |
-| `CWD` | Children with disabilities | Students with IEPs under IDEA |
-| `LEP` | Limited English proficient | English learner students |
-| `HOM` | Homeless | McKinney-Vento identified |
-| `FCS` | Foster care | In foster care system |
-| `MIG` | Migrant | Migrant education program participants |
-| `MIL` | Military connected | Students from military families |
-
-### Gender Codes
+### Sex Codes (Portal Integer Encoding)
 
 | Code | Description |
 |------|-------------|
-| `F` | Female |
-| `M` | Male |
+| `1` | Male |
+| `2` | Female |
+| `9` | Unknown |
+| `99` | Total |
 
 ### Filtering by Subgroup
 
 ```python
-# Get data for specific subgroup
-cwd_data = df.filter(pl.col("subgroup") == "CWD")
+# Get data for students with disabilities (IDEA)
+# Portal uses integer 1, NOT string "CWD"
+cwd_data = df.filter(pl.col("disability") == 1)
 
-# Compare subgroups
-subgroup_comparison = (df
-    .filter(pl.col("subgroup").is_in(["ALL", "ECODIS", "CWD"]))
-    .group_by("subgroup")
+# Get total row (all students)
+all_students = df.filter(pl.col("race") == 99)
+
+# Get Black students only
+black_students = df.filter(pl.col("race") == 2)
+
+# Get LEP students
+lep_data = df.filter(pl.col("lep") == 1)
+
+# Compare race groups
+race_comparison = (df
+    .filter(pl.col("race").is_in([1, 2, 3, 99]))  # White, Black, Hispanic, Total
+    .group_by("race")
     .agg(pl.col("read_test_pct_prof_midpt").mean())
 )
 ```
