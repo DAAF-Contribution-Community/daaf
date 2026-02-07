@@ -1,5 +1,5 @@
 services:
-  data-science:
+  daaf-docker:
     build: .
     ports:
       - "2718:2718"   # Marimo notebook server
@@ -8,3 +8,4 @@ services:
     working_dir: /daaf
     stdin_open: true  # Required for interactive Claude Code sessions
     tty: true
+
