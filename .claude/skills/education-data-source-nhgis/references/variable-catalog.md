@@ -1,0 +1,288 @@
+# NHGIS Variable Catalog for Education Research
+
+Key demographic variables available from NHGIS for education research contexts.
+
+## Variable Availability by Source
+
+| Source | Geographic Detail | Variables |
+|--------|-------------------|-----------|
+| Decennial Census (100%) | Block | Age, sex, race, Hispanic origin, household type, housing tenure |
+| Decennial Census (Sample) | Block group part (1990-2000) | Income, education, poverty, language, employment |
+| ACS 5-Year | Block group | All socioeconomic variables |
+| ACS 1-Year | Areas 65K+ | All socioeconomic variables |
+
+## Population Variables
+
+### Total Population
+
+| Variable | Table | Source | Education Use |
+|----------|-------|--------|---------------|
+| Total population | P1 (2020), P001 (2010) | Decennial | Denominators, density |
+| Population density | Computed | Any | Urban/rural context |
+
+### Age Structure
+
+| Variable | Table | Source | Education Use |
+|----------|-------|--------|---------------|
+| Under 5 years | P12 / B01001 | Decennial / ACS | Kindergarten planning |
+| 5-17 years | P12 / B01001 | Decennial / ACS | School-age population |
+| 18-24 years | P12 / B01001 | Decennial / ACS | College-age, young adults |
+| Median age | B01002 | ACS | Community age profile |
+| Single year of age | PCT12 | Decennial | Grade-level projections |
+
+**Time series**: Available standardized for basic age groups (1990-2020).
+
+### Sex
+
+| Variable | Table | Source | Education Use |
+|----------|-------|--------|---------------|
+| Male / Female | P12 / B01001 | Decennial / ACS | Gender ratios |
+| Sex by age | P12 / B01001 | Decennial / ACS | Age-sex pyramids |
+
+## Race and Ethnicity
+
+### Race Categories
+
+| Category | Table | Notes |
+|----------|-------|-------|
+| White alone | P1, P2 | Not Hispanic |
+| Black/African American alone | P1, P2 | |
+| American Indian/Alaska Native alone | P1, P2 | |
+| Asian alone | P1, P2 | |
+| Native Hawaiian/Pacific Islander alone | P1, P2 | |
+| Some other race alone | P1, P2 | |
+| Two or more races | P1, P2 | Since 2000 only |
+
+### Hispanic/Latino Origin
+
+| Variable | Table | Notes |
+|----------|-------|-------|
+| Hispanic or Latino (any race) | P2 / B03003 | Ethnicity (not race) |
+| Not Hispanic or Latino | P2 / B03003 | |
+| Hispanic by race | P2 | Cross-tabulation |
+
+### Race by Hispanic Origin
+
+Common education research categories:
+
+| Category | Derivation |
+|----------|------------|
+| White, non-Hispanic | White alone AND not Hispanic |
+| Black, non-Hispanic | Black alone AND not Hispanic |
+| Hispanic (any race) | Hispanic origin |
+| Asian, non-Hispanic | Asian alone AND not Hispanic |
+| Other/Two or more | Remaining categories |
+
+**Time series notes**:
+- Pre-2000: No "two or more races" option
+- 1970-1990: Hispanic origin asked separately, race categories differ
+- Standardized tables available with adjusted race categories
+
+## Socioeconomic Variables (ACS/Sample)
+
+### Income
+
+| Variable | Table | Level | Education Use |
+|----------|-------|-------|---------------|
+| Median household income | B19013 | BG+ | Economic context |
+| Per capita income | B19301 | BG+ | Alternative measure |
+| Income distribution | B19001 | BG+ | Detailed analysis |
+| Family income | B19101 | BG+ | Family economic status |
+
+**Inflation adjustment**: Use Census inflation factors or CPI for real comparisons.
+
+### Poverty
+
+| Variable | Table | Level | Education Use |
+|----------|-------|-------|---------------|
+| Persons below poverty | B17001 | BG+ | Poverty rate |
+| Children (under 18) in poverty | B17001 | BG+ | Child poverty |
+| Poverty ratio categories | C17002 | BG+ | Near-poverty |
+| Families below poverty | B17010 | BG+ | Family poverty |
+
+**Universe**: Persons for whom poverty status is determined (excludes GQ).
+
+### Educational Attainment
+
+| Variable | Table | Level | Education Use |
+|----------|-------|-------|---------------|
+| Less than HS diploma | B15003 | BG+ | Adult education levels |
+| HS diploma (includes equivalency) | B15003 | BG+ | |
+| Some college, no degree | B15003 | BG+ | |
+| Associate's degree | B15003 | BG+ | |
+| Bachelor's degree | B15003 | BG+ | College attainment |
+| Graduate/professional degree | B15003 | BG+ | Advanced degrees |
+| Educational attainment by sex | B15002 | BG+ | Gender gaps |
+| Educational attainment by age | B15001 | Tract+ | Generational differences |
+
+**Population**: Typically 25+ years (completed education).
+
+### Employment
+
+| Variable | Table | Level | Education Use |
+|----------|-------|-------|---------------|
+| Unemployment rate | B23025 | BG+ | Economic hardship |
+| Labor force participation | B23025 | BG+ | Working-age engagement |
+| Employment by industry | B24030 | Tract+ | Local economy |
+| Employment by occupation | B24010 | Tract+ | Job types |
+
+**Population**: Usually 16+ years in labor force.
+
+## Language Variables
+
+| Variable | Table | Level | Education Use |
+|----------|-------|-------|---------------|
+| Language spoken at home | B16001 | Tract+ | ELL/bilingual context |
+| English proficiency | B16004 | Tract+ | LEP population |
+| Spanish speakers | B16001 | Tract+ | Hispanic community |
+| Asian languages | B16001 | Tract+ | Asian community |
+| Linguistic isolation | B16002 | Tract+ | Household-level English |
+
+**Common categories**:
+- English only
+- Spanish (speaks English "very well" / "well" / "not well" / "not at all")
+- Other Indo-European languages
+- Asian and Pacific Island languages
+- Other languages
+
+## Household and Family Variables
+
+### Household Type
+
+| Variable | Table | Source | Education Use |
+|----------|-------|--------|---------------|
+| Family households | P18 / B11001 | Decennial / ACS | Family structure |
+| Non-family households | P18 / B11001 | Decennial / ACS | |
+| Married-couple families | P18 / B11003 | Decennial / ACS | Two-parent homes |
+| Single-parent families | P18 / B11003 | Decennial / ACS | Single-parent households |
+| Female householder, no spouse | B11003 | ACS | Female-headed households |
+
+### Household Size
+
+| Variable | Table | Source | Education Use |
+|----------|-------|--------|---------------|
+| Average household size | B25010 | ACS | Crowding indicator |
+| Persons per room | B25014 | ACS | Housing density |
+
+### Children in Households
+
+| Variable | Table | Level | Education Use |
+|----------|-------|-------|---------------|
+| Children under 18 in household | B09002 | BG+ | Child presence |
+| Children by family type | B09002 | BG+ | Children in single-parent homes |
+| Grandchildren living with grandparent | B10001 | Tract+ | Multigenerational homes |
+
+## Housing Variables
+
+### Tenure
+
+| Variable | Table | Source | Education Use |
+|----------|-------|--------|---------------|
+| Owner-occupied | H3 / B25003 | Decennial / ACS | Housing stability |
+| Renter-occupied | H3 / B25003 | Decennial / ACS | Residential mobility |
+| Vacant units | H1 / B25002 | Decennial / ACS | Neighborhood vitality |
+
+### Housing Value and Costs
+
+| Variable | Table | Level | Education Use |
+|----------|-------|-------|---------------|
+| Median home value | B25077 | BG+ | Neighborhood wealth |
+| Median gross rent | B25064 | BG+ | Rental costs |
+| Housing cost burden (>30% income) | B25070 | BG+ | Affordability stress |
+
+### Housing Characteristics
+
+| Variable | Table | Level | Education Use |
+|----------|-------|-------|---------------|
+| Year structure built | B25034 | BG+ | Housing age/quality |
+| Units in structure | B25024 | BG+ | Multi-family vs. single |
+| Rooms per unit | B25017 | BG+ | Housing size |
+
+## Immigration and Nativity
+
+| Variable | Table | Level | Education Use |
+|----------|-------|-------|---------------|
+| Native-born | B05002 | BG+ | Immigrant communities |
+| Foreign-born | B05002 | BG+ | First-generation |
+| Foreign-born, naturalized | B05001 | BG+ | Citizenship status |
+| Foreign-born, not citizen | B05001 | BG+ | Non-citizens |
+| Year of entry | B05005 | Tract+ | Recent immigrants |
+| Place of birth | B05006 | Tract+ | Country of origin |
+
+## Mobility and Migration
+
+| Variable | Table | Level | Education Use |
+|----------|-------|-------|---------------|
+| Same residence 1 year ago | B07001 | BG+ | Residential stability |
+| Moved within county | B07001 | BG+ | Local mobility |
+| Moved from different county | B07001 | BG+ | In-migration |
+| Moved from different state | B07001 | BG+ | Interstate migration |
+| Moved from abroad | B07001 | BG+ | International migration |
+
+## School Enrollment
+
+| Variable | Table | Level | Education Use |
+|----------|-------|-------|---------------|
+| Enrolled in school | B14001 | BG+ | School-age enrolled |
+| Enrolled in nursery/preschool | B14001 | BG+ | Early childhood |
+| Enrolled in kindergarten | B14001 | BG+ | Elementary preparation |
+| Enrolled in grades 1-8 | B14001 | BG+ | K-8 enrollment |
+| Enrolled in grades 9-12 | B14001 | BG+ | High school enrollment |
+| Enrolled in college | B14001 | BG+ | Higher education |
+| Private school enrollment | B14002 | Tract+ | Public vs. private |
+
+## Creating Derived Variables
+
+### Common Education Research Indicators
+
+| Indicator | Formula | Variables Needed |
+|-----------|---------|------------------|
+| Child poverty rate | Children in poverty / Children total | B17001 |
+| College attainment rate (25+) | (BA + Grad) / Pop 25+ | B15003 |
+| Single-parent household rate | Single-parent families / Families with children | B11003 |
+| Linguistic isolation rate | Isolated HH / Total HH | B16002 |
+| Foreign-born percentage | Foreign-born / Total pop | B05002 |
+| Homeownership rate | Owner-occupied / Occupied units | B25003 |
+| Residential stability | Same house / Pop 1+ | B07001 |
+
+### Aggregating to School Districts
+
+When variables not available at school district level:
+1. Get tract-level data
+2. Identify tracts in district
+3. Sum counts; weight averages by population
+
+```python
+# Example: Child poverty rate for school district
+district_children_poverty = tracts_in_district["children_in_poverty"].sum()
+district_children_total = tracts_in_district["children_total"].sum()
+district_child_poverty_rate = district_children_poverty / district_children_total
+```
+
+## Finding Variables in NHGIS
+
+### Data Finder Workflow
+
+1. **Topics filter**: Select subject area (e.g., "Poverty")
+2. **Years filter**: Select census year or ACS period
+3. **Geographic levels**: Select tract, block group, etc.
+4. **Tables**: Browse available tables
+5. **View details**: Check universe, variables, notes
+
+### Table Naming Conventions
+
+| Prefix | Source |
+|--------|--------|
+| P | Decennial - Population |
+| H | Decennial - Housing |
+| PCT | Decennial - Population (tract+ only) |
+| HCT | Decennial - Housing (tract+ only) |
+| B | ACS - Detailed tables |
+| C | ACS - Collapsed tables |
+| S | ACS - Subject tables |
+
+### NHGIS Variable Codes
+
+NHGIS assigns unique codes (e.g., `AJWME001`):
+- Check codebook file included in extract
+- Codebook maps NHGIS codes to Census table/variable names

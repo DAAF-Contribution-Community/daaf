@@ -1,0 +1,243 @@
+---
+name: education-data-source-edfacts
+description: EDFacts state accountability data for K-12 assessments, graduation rates, and federal reporting. Use when working with state proficiency data, ACGR graduation rates, or ESSA accountability indicators. CRITICAL - state assessment scores CANNOT be compared across states.
+metadata:
+  audience: data-analysts
+  domain: education-data
+---
+
+# EDFacts Data Source
+
+EDFacts is the U.S. Department of Education's centralized data collection system for pre-K through grade 12 education data from State Education Agencies (SEAs).
+
+## CRITICAL WARNING: Cross-State Comparisons
+
+**State assessment proficiency rates CANNOT be compared across states.**
+
+| Factor | Why It Varies |
+|--------|---------------|
+| Assessment content | Each state creates its own tests |
+| Proficiency cut scores | Each state sets own thresholds |
+| Standards alignment | State academic standards differ |
+| Test difficulty | Not calibrated nationally |
+
+A student "proficient" in one state may score "below basic" in another state taking a harder test with higher cut scores. **Rankings of states by proficiency rates are meaningless.**
+
+Use NAEP (National Assessment of Educational Progress) for valid cross-state comparisons.
+
+## Reference File Structure
+
+| File | Purpose | When to Read |
+|------|---------|--------------|
+| `accountability-context.md` | ESSA, NCLB history, accountability systems | Understanding policy context |
+| `assessment-data.md` | Proficiency levels, test scores, limitations | Working with assessment data |
+| `graduation-rates.md` | ACGR methodology, cohort definitions | Analyzing graduation data |
+| `variable-definitions.md` | Key variables, suppression codes, special values | Interpreting specific variables |
+| `data-quality.md` | Known issues, state variations, COVID impacts | Data cleaning, limitations |
+| `subgroup-reporting.md` | Special populations, disaggregation | Analyzing by student groups |
+
+## Decision Trees
+
+### What type of analysis?
+
+```
+What EDFacts data do you need?
+├─ Assessment/proficiency data
+│   ├─ Within-state trends → Valid analysis
+│   ├─ Cross-state comparison → INVALID - use NAEP instead
+│   └─ Subgroup gaps → See ./references/subgroup-reporting.md
+├─ Graduation rates (ACGR)
+│   ├─ Understand methodology → See ./references/graduation-rates.md
+│   ├─ Extended rates (5-year, 6-year) → See ./references/graduation-rates.md
+│   └─ Subgroup rates → See ./references/subgroup-reporting.md
+├─ Understanding variables
+│   ├─ Missing/suppressed values → See ./references/variable-definitions.md
+│   ├─ Range vs. exact values → See ./references/variable-definitions.md
+│   └─ Subgroup codes → See ./references/subgroup-reporting.md
+└─ Data quality concerns
+    ├─ COVID-19 impacts (2019-20) → See ./references/data-quality.md
+    ├─ State reporting changes → See ./references/data-quality.md
+    └─ Suppression rates → See ./references/data-quality.md
+```
+
+### Is my comparison valid?
+
+```
+What are you comparing?
+├─ Same state, different years
+│   ├─ Same assessment system? → Valid
+│   └─ Different tests? → Break in time series
+├─ Schools within same state → Valid
+├─ Districts within same state → Valid
+├─ Subgroups within same school → Valid (check suppression)
+├─ Different states
+│   ├─ Proficiency rates → INVALID
+│   ├─ Graduation rates (ACGR) → More comparable
+│   └─ Use NAEP instead → Valid
+└─ National ranking by proficiency → INVALID
+```
+
+## Quick Reference: What EDFacts Contains
+
+### Assessment Data
+
+| Data Element | Description | Available Years |
+|--------------|-------------|-----------------|
+| Proficiency rates | % meeting state standards in reading/math | 2009-10 to present |
+| Participation rates | % of students assessed | 2012-13 to present |
+| Achievement levels | Below Basic, Basic, Proficient, Advanced | Varies by state |
+| Grade levels | Grades 3-8, high school (varies) | 2009-10 to present |
+
+### Graduation Data
+
+| Data Element | Description | Available Years |
+|--------------|-------------|-----------------|
+| 4-year ACGR | Adjusted Cohort Graduation Rate | 2010-11 to present |
+| 5-year ACGR | Extended graduation rate | 2011-12 to present |
+| 6-year ACGR | Further extended rate | 2012-13 to present |
+| Diploma types | Regular diploma only in ACGR | All years |
+
+### Subgroups Reported
+
+| Subgroup | Code in Data | Notes |
+|----------|--------------|-------|
+| All students | `ALL` | Full population |
+| Economically disadvantaged | `ECODIS` | Based on FRPL or other measures |
+| Students with disabilities | `CWD` | IDEA-eligible students |
+| English learners | `LEP` | Limited English proficient |
+| Homeless | `HOM` | McKinney-Vento identified |
+| Foster care | `FCS` | In foster care system |
+| Migrant | `MIG` | Migrant education program |
+| Military connected | `MIL` | Military family students |
+| Race/ethnicity | Multiple codes | See subgroup-reporting.md |
+
+## Quick Reference: Suppression and Missing Data
+
+| Code/Value | Meaning |
+|------------|---------|
+| `-1` | Missing/not applicable |
+| `-2` | Not reported |
+| `-3` | Suppressed for privacy |
+| `-9` | Rounds to zero |
+| Range values | Exact value suppressed; range provided |
+| `_midpt` suffix | Calculated midpoint of suppressed range |
+
+**Always use `_midpt` variables for analysis when exact values are suppressed.**
+
+## Quick Reference: Data Levels
+
+| Level | Identifier | EDFacts Endpoints |
+|-------|------------|-------------------|
+| School | `ncessch` (12-char) | `/schools/edfacts/` |
+| District/LEA | `leaid` (7-char) | `/school-districts/edfacts/` |
+| State | `fips` (2-digit) | Aggregate from lower levels |
+
+## Urban Institute Education Data Portal Endpoints
+
+> **API Implementation:** For URL construction patterns, pagination, and error handling, see the `education-data-query` skill. For comprehensive API learnings, see `agent_reference/EDUCATION_DATA_API_LEARNINGS.md`.
+
+### CRITICAL: Grade Path Segment Format
+
+For assessment endpoints, grade must be in URL path using `grade-{N}` format:
+
+| Pattern | Status |
+|---------|--------|
+| `/schools/edfacts/assessments/2018/grade-4/` | ✅ Works |
+| `/schools/edfacts/assessments/2018/?grade=4` | ❌ 404 |
+| `/schools/edfacts/assessments/2018/4/` | ❌ 500 |
+
+### Year Availability
+
+| Data Type | Years Available | Notes |
+|-----------|-----------------|-------|
+| Assessments | 2009-2018, 2020 | **2019 is MISSING** (COVID waivers) |
+| Graduation Rates | 2010-2020 | 2019 IS available (cohort-based) |
+
+### School-Level EDFacts
+
+| Endpoint | Description |
+|----------|-------------|
+| `/schools/edfacts/assessments/{year}/grade-{N}/` | Assessment proficiency by grade |
+| `/schools/edfacts/grad-rates/{year}/` | Graduation rates |
+
+### District-Level EDFacts
+
+| Endpoint | Description |
+|----------|-------------|
+| `/school-districts/edfacts/assessments/{year}/grade-{N}/` | District assessment data |
+| `/school-districts/edfacts/grad-rates/{year}/` | District graduation rates |
+
+## Key Policy Context
+
+| Law | Years | Key Features |
+|-----|-------|--------------|
+| NCLB | 2002-2015 | AYP, 100% proficiency goal, HQT |
+| ESSA | 2015-present | State flexibility, multiple indicators |
+
+- **AYP (Adequate Yearly Progress)**: NCLB requirement eliminated by ESSA
+- **ESSA Accountability**: States design own systems with federal guardrails
+- **N-size**: Minimum students required for reporting (varies by state, typically 10-30)
+
+## Common Analysis Pitfalls
+
+| Pitfall | Why It's Wrong | What to Do Instead |
+|---------|----------------|-------------------|
+| Ranking states by proficiency | Different tests, different cut scores | Use NAEP for cross-state |
+| Comparing 2019-20 to other years | COVID testing waivers | Note data gap, exclude year |
+| Ignoring suppression | Biased toward larger schools | Document suppression rates |
+| Assuming proficiency = same thing | State definitions vary | Clarify state's definition |
+| Pre/post ESSA comparison | Different accountability systems | Note policy change |
+
+## Example: Valid vs. Invalid Analysis
+
+### Valid Analysis
+
+```python
+# Within-state trend analysis
+state_df = df.filter(pl.col("fips") == 6)  # California only
+trend = state_df.group_by("year").agg(
+    pl.col("read_test_pct_prof_midpt").mean()
+)
+# Valid: Same state, same test system
+```
+
+### INVALID Analysis
+
+```python
+# DO NOT DO THIS - Cross-state comparison
+# This comparison is MEANINGLESS
+state_comparison = df.group_by("fips").agg(
+    pl.col("read_test_pct_prof_midpt").mean()
+).sort("read_test_pct_prof_midpt", descending=True)
+# INVALID: Different tests, different standards
+```
+
+## Topic Index
+
+| Topic | Reference File |
+|-------|---------------|
+| NCLB to ESSA transition | `./references/accountability-context.md` |
+| State accountability systems | `./references/accountability-context.md` |
+| Federal reporting requirements | `./references/accountability-context.md` |
+| Proficiency levels | `./references/assessment-data.md` |
+| Why states can't be compared | `./references/assessment-data.md` |
+| NAEP comparison | `./references/assessment-data.md` |
+| Assessment system changes | `./references/assessment-data.md` |
+| ACGR calculation | `./references/graduation-rates.md` |
+| Cohort adjustments | `./references/graduation-rates.md` |
+| Extended graduation rates | `./references/graduation-rates.md` |
+| Diploma types | `./references/graduation-rates.md` |
+| Suppression codes | `./references/variable-definitions.md` |
+| Missing data values | `./references/variable-definitions.md` |
+| Range/midpoint variables | `./references/variable-definitions.md` |
+| Participation rates | `./references/variable-definitions.md` |
+| COVID-19 data gaps | `./references/data-quality.md` |
+| State reporting variations | `./references/data-quality.md` |
+| Known data issues | `./references/data-quality.md` |
+| Time series breaks | `./references/data-quality.md` |
+| Students with disabilities | `./references/subgroup-reporting.md` |
+| English learners | `./references/subgroup-reporting.md` |
+| Economically disadvantaged | `./references/subgroup-reporting.md` |
+| Race/ethnicity reporting | `./references/subgroup-reporting.md` |
+| Homeless/foster/migrant | `./references/subgroup-reporting.md` |
+| N-size requirements | `./references/subgroup-reporting.md` |

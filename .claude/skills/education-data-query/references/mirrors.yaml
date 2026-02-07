@@ -1,0 +1,63 @@
+# Mirror Configuration for Education Data Portal
+#
+# This file is the SINGLE SOURCE OF TRUTH for mirror configuration.
+# All other documentation references mirrors generically via this file.
+#
+# Mirrors are tried in priority order (first entry = highest priority).
+# The first mirror that successfully serves the requested file is used.
+# If a mirror returns 404 or times out, the next mirror is tried.
+#
+# ============================================================================
+# HOW TO ADD A NEW MIRROR
+# ============================================================================
+# 1. Add a new entry to the `mirrors` list below (position = priority)
+# 2. Define url_template with placeholders matching your URL structure
+#    - Use {root_url} for the base URL (auto-filled from root_url field)
+#    - Use any other placeholders your mirror needs (e.g., {path}, {source})
+#    - These placeholders are filled from per-mirror entries in datasets-reference.md
+# 3. Set read_strategy to match your file format (see options below)
+# 4. Define a discovery section so agents can check file availability
+# 5. Add per-mirror path columns to datasets-reference.md
+# 6. No other documentation files need to change.
+#
+# read_strategy options:
+#   eager_parquet  - pl.read_parquet(url) — for columnar formats with embedded schema
+#   lazy_csv       - pl.scan_csv(url, infer_schema_length=10000) — for large text files
+#
+# discovery.method options:
+#   http_json      - GET a URL that returns JSON listing available files
+#   known_complete - Mirror has complete coverage; no discovery query needed
+# ============================================================================
+
+mirrors:
+  - name: huggingface
+    root_url: "https://huggingface.co/datasets/brhkim/education_data_portal_mirror/resolve/main"
+    format: parquet
+    timeout: 300
+    url_template: "{root_url}/{path}.parquet"
+    read_strategy: eager_parquet
+    discovery:
+      method: http_json
+      url: "https://huggingface.co/api/datasets/brhkim/education_data_portal_mirror/tree/main?recursive=true"
+      file_path_key: "path"
+      file_filter: "*.parquet"
+    coverage_notes: >
+      Currently has school-districts/ level.
+      Schools/ and college-university/ levels coming.
+      Parquet format: columnar, compressed (3-10x smaller than CSV), schema embedded.
+
+  - name: urban_csv
+    root_url: "https://educationdata.urban.org/csv"
+    format: csv
+    timeout: 300
+    url_template: "{root_url}/{source}/{filename}.csv"
+    read_strategy: lazy_csv
+    discovery:
+      method: known_complete
+      notes: >
+        Urban CSV mirror has complete coverage of all Education Data Portal datasets.
+        No discovery query needed — all datasets listed in datasets-reference.md are available.
+    coverage_notes: >
+      Complete coverage of all data levels and sources.
+      Large files (500MB+); always use lazy loading with filters.
+      Flat directory structure: {source}/{filename}.csv

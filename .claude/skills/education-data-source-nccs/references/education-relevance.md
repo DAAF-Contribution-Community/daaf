@@ -1,0 +1,458 @@
+# NCCS Data for Higher Education Research
+
+This reference explains how NCCS nonprofit data relates to higher education institutions and how to use it to supplement traditional education data sources like IPEDS.
+
+## Contents
+
+- [Private Nonprofit Colleges as 501(c)(3) Organizations](#private-nonprofit-colleges-as-501c3-organizations)
+- [What NCCS Adds to Education Research](#what-nccs-adds-to-education-research)
+- [Identifying Higher Education Institutions](#identifying-higher-education-institutions)
+- [Linking NCCS to IPEDS](#linking-nccs-to-ipeds)
+- [Key Research Applications](#key-research-applications)
+- [Data Comparability Considerations](#data-comparability-considerations)
+- [Example Queries](#example-queries)
+
+---
+
+## Private Nonprofit Colleges as 501(c)(3) Organizations
+
+Private nonprofit colleges and universities operate as tax-exempt organizations under IRS Section 501(c)(3). This status:
+
+- **Exempts** them from federal income tax
+- **Allows** donors to deduct contributions
+- **Requires** annual Form 990 filing (or 990-N for very small schools)
+
+### Organizational Structure
+
+Most private colleges are classified as:
+- **IRS Subsection**: 501(c)(3)
+- **Foundation Code**: 11 (School under 170(b)(1)(A)(ii)) or 15/21 (publicly supported)
+- **NTEE Codes**: B40-B50 (higher education)
+
+### What's Included in NCCS
+
+| Institution Type | In NCCS? | Notes |
+|------------------|----------|-------|
+| Private nonprofit 4-year colleges | Yes | Full 990 filers (most) |
+| Private nonprofit universities | Yes | Often file consolidated 990 |
+| Private 2-year colleges | Yes | Full 990 or 990-EZ |
+| Public colleges/universities | No | Government entities, don't file 990 |
+| For-profit colleges | No | File corporate tax returns, not 990 |
+| Religious colleges | Mixed | Some file 990, some claim church exemption |
+
+### Important Exclusions
+
+**Public institutions** (state universities, community colleges) are not in NCCS because:
+- They are government instrumentalities
+- They don't file Form 990
+- Use IPEDS exclusively for these institutions
+
+**For-profit institutions** are not in NCCS because:
+- They are taxable corporations
+- They file Form 1120 (corporate tax return), not 990
+
+---
+
+## What NCCS Adds to Education Research
+
+NCCS provides data not available through IPEDS:
+
+### Financial Depth
+
+| Data Element | NCCS (990) | IPEDS |
+|--------------|------------|-------|
+| Endowment details | Schedule D Part V | Summary totals only |
+| Investment income breakdown | Part VIII | Limited |
+| Fundraising expenses | Part IX column D | Not separated |
+| Functional expense allocation | Full breakdown | Different categories |
+| Executive compensation | Part VII, Schedule J | Aggregated only |
+| Related party transactions | Schedule L | Not collected |
+| Debt details | Part X | Limited |
+
+### Governance Information
+
+| Data Element | NCCS (990) | IPEDS |
+|--------------|------------|-------|
+| Board size | Part VI | Not collected |
+| Board independence | Part VI | Not collected |
+| Conflict of interest policy | Part VI | Not collected |
+| CEO compensation review | Part VI | Not collected |
+| Individual board members | Part VII | Not collected |
+| Key employee compensation | Part VII | Not collected |
+
+### Organizational Context
+
+| Data Element | NCCS (990) | IPEDS |
+|--------------|------------|-------|
+| Related organizations | Schedule R | Limited |
+| Mission statement | Part III | Not collected |
+| Program descriptions | Part III | Different format |
+| Affiliations | Schedule R | Not collected |
+
+---
+
+## Identifying Higher Education Institutions
+
+### Using NTEE Codes
+
+Filter NCCS data by education NTEE codes:
+
+| Code | Description | Examples |
+|------|-------------|----------|
+| B40 | Higher Education Institutions (General) | Small colleges |
+| B41 | Two-Year Colleges | Private community colleges |
+| B42 | Undergraduate Colleges | Liberal arts colleges |
+| B43 | Universities | Research universities |
+| B50 | Graduate/Professional Schools | Law schools, medical schools |
+
+### NTEEV2 Format
+
+In the newer NTEEV2 format, higher education is tagged:
+
+```
+UNI - Universities (B40, B41, B42, B43, B50)
+```
+
+This makes filtering easier:
+```python
+# Filter for universities using NTEEV2 industry group
+universities = df[df['NTEE_V2'].str.startswith('UNI-', na=False)]
+```
+
+### Using Foundation Code
+
+Many colleges have foundation code 11 (School):
+```python
+# Schools under 170(b)(1)(A)(ii)
+schools = bmf[bmf['FNDNCD'] == '11']
+```
+
+### Filtering Strategy
+
+Recommended approach:
+```python
+# Step 1: Filter by NTEE
+higher_ed = bmf[bmf['NTEECC'].str.match(r'^B4[0-9]|^B50', na=False)]
+
+# Step 2: Verify 501(c)(3) status
+higher_ed = higher_ed[higher_ed['SUBSECCD'] == '03']
+
+# Step 3: Exclude tiny organizations (likely support orgs, not colleges)
+higher_ed = higher_ed[higher_ed['INCOME_AMT'] > 1000000]  # >$1M revenue
+```
+
+---
+
+## Linking NCCS to IPEDS
+
+### Identifier Mapping
+
+| System | Identifier | Format |
+|--------|------------|--------|
+| NCCS/IRS | EIN | 9-digit number (e.g., 123456789) |
+| IPEDS | UNITID | 6-digit number (e.g., 110635) |
+
+There is **no official crosswalk** between EIN and UNITID. Linking requires:
+
+### Linking Methods
+
+**1. Name and Location Matching**
+
+```python
+# Fuzzy matching on name and location
+from fuzzywuzzy import fuzz
+
+def match_institutions(nccs_df, ipeds_df):
+    matches = []
+    for idx, nccs_row in nccs_df.iterrows():
+        best_match = None
+        best_score = 0
+        for jdx, ipeds_row in ipeds_df.iterrows():
+            # Match on name
+            name_score = fuzz.ratio(
+                nccs_row['NAME'].upper(), 
+                ipeds_row['INSTNM'].upper()
+            )
+            # Boost if same state
+            if nccs_row['STATE'] == ipeds_row['STABBR']:
+                name_score += 10
+            if name_score > best_score:
+                best_score = name_score
+                best_match = ipeds_row['UNITID']
+        if best_score > 85:
+            matches.append({
+                'EIN': nccs_row['EIN'],
+                'UNITID': best_match,
+                'score': best_score
+            })
+    return pd.DataFrame(matches)
+```
+
+**2. Address Matching**
+
+Use geocoded addresses to narrow matches:
+```python
+# Match on city + state first, then name
+same_location = ipeds_df[
+    (ipeds_df['CITY'] == nccs_row['CITY']) & 
+    (ipeds_df['STABBR'] == nccs_row['STATE'])
+]
+```
+
+**3. Published Crosswalks**
+
+Some researchers have created EIN-UNITID crosswalks:
+- Check data repositories (ICPSR, Dataverse)
+- Academic publications with supplementary data
+- ProPublica Nonprofit Explorer (sometimes includes IPEDS match)
+
+### Linking Challenges
+
+| Challenge | Description | Mitigation |
+|-----------|-------------|------------|
+| **Name variations** | "University of X" vs "X University" | Fuzzy matching, standardization |
+| **Multiple EINs** | University systems with separate EINs | Identify parent organization |
+| **Consolidated filings** | One 990 for entire system | Map to multiple UNITIDs |
+| **Support organizations** | Foundations, athletics, etc. | Filter by NTEE, revenue size |
+| **Name changes** | Mergers, rebranding | Check historical names |
+
+### Related Organizations
+
+Many universities have multiple EINs for:
+- Main institution
+- Foundation/development office
+- Hospital/medical center
+- Athletic association
+- Alumni association
+
+Schedule R of Form 990 lists related organizations.
+
+---
+
+## Key Research Applications
+
+### 1. Executive Compensation Studies
+
+NCCS provides individual-level compensation data:
+
+```python
+# Get compensation for college presidents
+# Use Efile Part VII or Schedule J data
+
+compensation = efile_partVII[
+    efile_partVII['TITLE'].str.contains('President|Chancellor', case=False)
+]
+```
+
+**Research questions**:
+- How does president pay vary by institution size?
+- Is there a relationship between endowment size and compensation?
+- How has executive pay changed over time?
+
+### 2. Endowment Analysis
+
+Schedule D provides endowment details not in IPEDS:
+
+```python
+# Endowment data from Schedule D Part V
+endowment_cols = [
+    'F9_SD_05_ENDOWMENT_BOY',      # Beginning balance
+    'F9_SD_05_ENDOWMENT_CONTRIB',   # Contributions
+    'F9_SD_05_ENDOWMENT_INVEST',    # Investment return
+    'F9_SD_05_ENDOWMENT_GRANTS',    # Grants/scholarships
+    'F9_SD_05_ENDOWMENT_ADMIN',     # Admin expenses
+    'F9_SD_05_ENDOWMENT_EOY'        # Ending balance
+]
+```
+
+**Research questions**:
+- What is the endowment spending rate?
+- How much comes from new gifts vs. investment returns?
+- How do administrative costs compare across institutions?
+
+### 3. Governance Research
+
+NCCS uniquely provides governance data:
+
+```python
+# Governance indicators from Part VI
+governance_vars = [
+    'F9_PC_06_VOTING_MEMBERS',          # Board size
+    'F9_PC_06_INDEP_VOTING_MEMBERS',    # Independent members
+    'F9_PC_06_FAMILY_RELATIONSHIP',     # Family on board
+    'F9_PC_06_CONFLICT_POLICY',         # COI policy
+    'F9_PC_06_WHISTLEBLOWER',           # Whistleblower policy
+    'F9_PC_06_CEO_COMP_REVIEW'          # CEO comp reviewed
+]
+```
+
+**Research questions**:
+- Does board composition affect institutional outcomes?
+- Do governance practices correlate with financial health?
+- How do governance structures vary by institution type?
+
+### 4. Financial Efficiency Studies
+
+Functional expense allocation enables efficiency analysis:
+
+```python
+# Calculate fundraising efficiency
+df['fundraising_ratio'] = (
+    df['F9_PC_09_FUNC_EXP_FUNDRAISING'] / 
+    df['F9_PC_08_CONTRIBUTIONS']
+)
+
+# Program expense ratio
+df['program_ratio'] = (
+    df['F9_PC_09_FUNC_EXP_PROGRAM'] / 
+    df['F9_PC_09_FUNC_EXP_TOTAL']
+)
+```
+
+### 5. Related Party Analysis
+
+Schedule L and R reveal related party transactions:
+
+**Research questions**:
+- What is the relationship between college and affiliated foundation?
+- How are hospital revenues reflected in university finances?
+- Do athletics generate net revenue or costs?
+
+---
+
+## Data Comparability Considerations
+
+### NCCS vs. IPEDS Financial Differences
+
+| Item | Form 990 | IPEDS |
+|------|----------|-------|
+| **Accounting basis** | Tax reporting (modified cash or accrual) | GAAP, GASB, or FASB |
+| **Consolidation** | Varies | Full consolidation |
+| **Fiscal year** | Tax year (may differ) | Institution fiscal year |
+| **Revenue categories** | IRS-defined | Education-specific |
+| **Expense categories** | Functional (program/admin/fundraising) | Natural + functional |
+
+### Common Discrepancies
+
+**Total revenue differences**:
+- IPEDS includes unrealized investment gains; 990 may not
+- IPEDS may consolidate hospital; 990 may be separate
+- Timing differences if fiscal years don't align
+
+**Expense differences**:
+- 990 requires functional allocation (program/admin/fundraising)
+- IPEDS uses education-specific categories (instruction, research, etc.)
+- Depreciation treatment may differ
+
+### Reconciliation Tips
+
+1. **Check fiscal year ends**: Ensure comparing same time periods
+2. **Identify consolidation scope**: Review Schedule R for related orgs
+3. **Note accounting method**: Part XII indicates cash vs. accrual
+4. **Compare to audited financials**: Often available on institution websites
+
+---
+
+## Example Queries
+
+### Find All Private Universities in a State
+
+```python
+import pandas as pd
+
+# Load BMF
+bmf = pd.read_csv('BMF_UNIFIED_V1.1.csv')
+
+# Filter to California private universities
+ca_universities = bmf[
+    (bmf['STATE'] == 'CA') &
+    (bmf['SUBSECCD'] == '03') &  # 501(c)(3)
+    (bmf['NTEECC'].str.match(r'^B4[0-3]', na=False)) &
+    (bmf['INCOME_AMT'] > 1000000)  # Revenue > $1M
+]
+
+print(f"Found {len(ca_universities)} private universities in California")
+```
+
+### Get Financial Data for a Specific Institution
+
+```python
+# Find Stanford University
+stanford = bmf[bmf['NAME'].str.contains('STANFORD UNIVERSITY', case=False)]
+stanford_ein = stanford['EIN'].values[0]
+
+# Load Core data
+core = pd.read_csv('CHARITIES_PC_2021.csv')
+stanford_990 = core[core['EIN'] == stanford_ein]
+
+print(f"Total Revenue: ${stanford_990['TOTREV'].values[0]:,.0f}")
+print(f"Total Assets: ${stanford_990['TOTASS'].values[0]:,.0f}")
+```
+
+### Compare Endowments Across Institutions
+
+```python
+# Load Efile Schedule D data
+sched_d = pd.read_csv('efile_schedule_d_part_v.csv')
+
+# Merge with BMF for institution names
+endowments = sched_d.merge(bmf[['EIN', 'NAME', 'STATE']], on='EIN')
+
+# Filter to higher ed
+endowments = endowments[endowments['EIN'].isin(ca_universities['EIN'])]
+
+# Sort by endowment size
+endowments = endowments.sort_values('ENDOWMENT_EOY', ascending=False)
+```
+
+### Analyze Executive Compensation
+
+```python
+# Load Part VII compensation data
+part_vii = pd.read_csv('efile_part_vii.csv')
+
+# Filter to presidents/chancellors at universities
+presidents = part_vii[
+    (part_vii['TITLE'].str.contains('President|Chancellor', case=False)) &
+    (part_vii['EIN'].isin(higher_ed['EIN']))
+]
+
+# Calculate total compensation
+presidents['TOTAL_COMP'] = (
+    presidents['BASE_COMP'] + 
+    presidents['BONUS'] + 
+    presidents['OTHER_COMP'] +
+    presidents['DEFERRED_COMP'] +
+    presidents['NONTAXABLE']
+)
+
+# Summary statistics
+print(presidents['TOTAL_COMP'].describe())
+```
+
+---
+
+## Best Practices
+
+### For Linking to IPEDS
+
+1. Start with known institutions to validate matching approach
+2. Use multiple matching criteria (name + location + size)
+3. Manually verify matches for key institutions
+4. Document matching methodology and success rate
+5. Note unmatched institutions and potential reasons
+
+### For Financial Analysis
+
+1. Always check fiscal year alignment
+2. Verify consolidation scope using Schedule R
+3. Compare to audited financials when available
+4. Account for form version changes (pre-2008 vs. post-2008)
+5. Use multiple years to identify outliers/errors
+
+### For Governance Research
+
+1. Note that governance questions were added in 2008 redesign
+2. Board composition data is self-reported
+3. Policy existence doesn't indicate implementation quality
+4. Compare across similar institution types

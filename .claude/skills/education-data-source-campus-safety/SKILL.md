@@ -1,0 +1,225 @@
+---
+name: education-data-source-campus-safety
+description: Campus Safety and Security (CSS) data from the Clery Act reporting system. Covers campus crime statistics, fire safety, VAWA offenses, hate crimes, and geographic reporting categories. Use when analyzing college/university crime data, understanding Clery Act requirements, or interpreting campus safety statistics and their limitations.
+metadata:
+  audience: data-analysts
+  domain: education-data
+---
+
+# Campus Safety and Security (CSS) Data Source
+
+Guide to understanding and using campus crime and fire safety data collected under the Clery Act.
+
+## What is Campus Safety and Security Data?
+
+The Campus Safety and Security (CSS) data comes from the annual survey required by the Jeanne Clery Disclosure of Campus Security Policy and Campus Crime Statistics Act:
+
+- **Federal mandate**: All Title IV institutions must report crime and fire statistics annually
+- **Consumer protection**: Designed to inform students, parents, and employees about campus safety
+- **Primary source**: U.S. Department of Education Office of Postsecondary Education
+- **Coverage**: All postsecondary institutions receiving federal financial aid
+- **Reporting period**: Calendar year (January 1 - December 31)
+- **Data portal**: https://ope.ed.gov/campussafety/
+
+## Reference File Structure
+
+| File | Purpose | When to Read |
+|------|---------|--------------|
+| `clery-act.md` | Legal framework, history, reporting requirements | Understanding compliance context |
+| `crime-categories.md` | Criminal offenses, definitions, classification rules | Interpreting crime statistics |
+| `vawa-offenses.md` | Dating violence, domestic violence, stalking | Analyzing gender-based violence data |
+| `hate-crimes.md` | Bias categories, additional offenses, classification | Working with hate crime statistics |
+| `campus-geography.md` | On-campus, residence halls, public property, noncampus | Understanding location categories |
+| `fire-safety.md` | Fire statistics, safety systems, HEOA requirements | Analyzing residential fire data |
+| `arrests-referrals.md` | Drug, alcohol, weapons violations | Working with disciplinary data |
+| `variable-definitions.md` | Key variables, data structure, identifiers | Building queries |
+| `limitations.md` | Underreporting, comparability issues, interpretation | Critical data analysis |
+
+## Decision Trees
+
+### What type of crime data do I need?
+
+```
+Crime data type?
+├─ Violent crimes (murder, assault, robbery, sex offenses)
+│   └─ See ./references/crime-categories.md
+├─ Property crimes (burglary, motor vehicle theft, arson)
+│   └─ See ./references/crime-categories.md
+├─ Sex offenses (rape, fondling, incest, statutory rape)
+│   └─ See ./references/crime-categories.md
+├─ Dating/domestic violence, stalking
+│   └─ See ./references/vawa-offenses.md
+├─ Hate crimes (bias-motivated)
+│   └─ See ./references/hate-crimes.md
+├─ Drug/alcohol/weapons violations
+│   └─ See ./references/arrests-referrals.md
+└─ Fire incidents in residence halls
+    └─ See ./references/fire-safety.md
+```
+
+### Where did the crime occur?
+
+```
+Understanding crime location?
+├─ On-campus (main campus buildings/grounds)
+│   └─ See ./references/campus-geography.md
+├─ On-campus student housing (subset of on-campus)
+│   └─ See ./references/campus-geography.md
+├─ Public property (streets, sidewalks adjacent to campus)
+│   └─ See ./references/campus-geography.md
+├─ Noncampus (off-site but institution-controlled)
+│   └─ See ./references/campus-geography.md
+└─ Not sure which category
+    └─ See ./references/campus-geography.md (definitions section)
+```
+
+### Can I compare schools?
+
+```
+Planning institutional comparisons?
+├─ Want to rank schools by safety
+│   └─ See ./references/limitations.md (CRITICAL: comparability issues)
+├─ Comparing similar institution types
+│   └─ See ./references/limitations.md (controlling for factors)
+├─ Analyzing trends over time
+│   └─ See ./references/limitations.md (reporting changes)
+└─ Understanding what statistics mean
+    └─ See ./references/limitations.md (interpretation guidance)
+```
+
+## Quick Reference: Crime Categories
+
+### Primary Criminal Offenses (Clery Crimes)
+
+| Category | Offenses |
+|----------|----------|
+| Criminal Homicide | Murder/non-negligent manslaughter, Manslaughter by negligence |
+| Sex Offenses | Rape, Fondling, Incest, Statutory rape |
+| Other Violent | Robbery, Aggravated assault |
+| Property | Burglary, Motor vehicle theft, Arson |
+
+### VAWA Offenses (Added 2013)
+
+| Offense | Definition |
+|---------|------------|
+| Domestic Violence | Violence by current/former spouse, cohabitant, or similar |
+| Dating Violence | Violence by person in romantic/intimate relationship |
+| Stalking | Course of conduct causing fear for safety |
+
+### Hate Crime Categories
+
+Hate crimes include the primary offenses plus: Larceny-theft, Simple assault, Intimidation, Destruction/damage/vandalism of property — when motivated by bias.
+
+**Bias Categories**: Race, Religion, Sexual orientation, Gender, Gender identity, Ethnicity, National origin, Disability
+
+### Arrests and Disciplinary Referrals
+
+| Category | What's Counted |
+|----------|----------------|
+| Liquor Law Violations | Arrests + Disciplinary referrals |
+| Drug Law Violations | Arrests + Disciplinary referrals |
+| Weapons Violations | Arrests + Disciplinary referrals |
+
+## Quick Reference: Geographic Categories
+
+| Location | Definition | Reported Separately? |
+|----------|------------|---------------------|
+| On-Campus | Buildings/property owned/controlled by institution, reasonably contiguous | Yes |
+| On-Campus Student Housing | Residence halls (subset of on-campus) | Yes (as subset) |
+| Noncampus | Institution-owned/controlled property not contiguous; student org properties | Yes |
+| Public Property | Streets, sidewalks, parking within or immediately adjacent to campus | Yes |
+
+## Quick Reference: Fire Safety Data
+
+Fire data is reported only for **on-campus student housing facilities**:
+
+| Data Element | Description |
+|--------------|-------------|
+| Number of fires | Total fires per building per year |
+| Cause of fire | Intentional, unintentional, undetermined |
+| Injuries | Fire-related injuries requiring treatment |
+| Deaths | Fire-related fatalities |
+| Property damage | Estimated dollar value |
+| Fire safety systems | Sprinklers, alarms, smoke detectors, etc. |
+
+## Data Access
+
+### Education Data Portal (Urban Institute)
+
+The Urban Institute Education Data Portal includes CSS data at the college-university level:
+
+```
+Base endpoint: /api/v1/college-university/css/
+```
+
+### Direct from Department of Education
+
+- **Web tool**: https://ope.ed.gov/campussafety/
+- **Bulk download**: Available through Campus Safety website
+- **Custom reports**: Generate by institution, state, or sector
+
+## Key Identifiers
+
+| Variable | Description | Format |
+|----------|-------------|--------|
+| `unitid` | IPEDS institution ID | 6-digit integer |
+| `opeid` | OPE institution ID | 8-character |
+| `instnm` | Institution name | String |
+| `branch` | Campus/branch identifier | String |
+
+## Important Caveats
+
+**Before analyzing CSS data, read `./references/limitations.md`**
+
+Key issues:
+1. **Underreporting**: Many crimes go unreported; CSS captures only reported incidents
+2. **Definition changes**: Crime definitions have changed over time (especially sex offenses in 2014)
+3. **Institutional variation**: Reporting practices vary across institutions
+4. **Geography complexity**: Multi-campus institutions have complex reporting
+5. **Not comparable to FBI data**: Different definitions and scope
+6. **Higher numbers may indicate better reporting**: More crimes reported can mean more trust in reporting systems
+
+## Reporting Timeline
+
+| Date | Action |
+|------|--------|
+| Calendar year | Data collection period |
+| October 1 | Annual Security Report (ASR) due |
+| October 15 | CSS survey submission deadline |
+| Following spring | Data available publicly |
+
+## Cross-Reference to Related Skills
+
+| Skill | Purpose | When to Use |
+|-------|---------|-------------|
+| `education-data-explorer` | Find available endpoints | Identifying what data exists |
+| `education-data-query` | Construct API queries | After identifying variables |
+| `education-data-source-ipeds` | Link to institutional characteristics | Joining with IPEDS directory |
+
+## Topic Index
+
+| Topic | Reference File |
+|-------|---------------|
+| Clery Act history and requirements | `./references/clery-act.md` |
+| Criminal offense definitions | `./references/crime-categories.md` |
+| Sex offense classification | `./references/crime-categories.md` |
+| VAWA amendments | `./references/vawa-offenses.md` |
+| Dating violence definition | `./references/vawa-offenses.md` |
+| Domestic violence definition | `./references/vawa-offenses.md` |
+| Stalking definition | `./references/vawa-offenses.md` |
+| Hate crime bias categories | `./references/hate-crimes.md` |
+| Hate crime offenses | `./references/hate-crimes.md` |
+| On-campus definition | `./references/campus-geography.md` |
+| Residence hall reporting | `./references/campus-geography.md` |
+| Public property definition | `./references/campus-geography.md` |
+| Noncampus property | `./references/campus-geography.md` |
+| Fire statistics | `./references/fire-safety.md` |
+| Fire safety systems | `./references/fire-safety.md` |
+| Arrests vs referrals | `./references/arrests-referrals.md` |
+| Drug/alcohol violations | `./references/arrests-referrals.md` |
+| Weapons violations | `./references/arrests-referrals.md` |
+| Variable names and codes | `./references/variable-definitions.md` |
+| Underreporting issues | `./references/limitations.md` |
+| Institutional comparisons | `./references/limitations.md` |
+| Trend analysis caveats | `./references/limitations.md` |
+| Data interpretation | `./references/limitations.md` |
