@@ -516,19 +516,19 @@ Once you have all the prerequisites above, open your terminal and run these comm
 
 ```bash
 # 0. Navigate to the folder where you want this project to live. Change the below to the folder you want!
-cd "C:\Users\brhkim\Downloads" 
+cd "C:\Users\Documents" 
 
 # 1. Download the project to your computer
-git clone https://github.com/brhkim/python_researcher.git
+git clone https://github.com/brhkim/daaf.git
 
 # 2. Move into the project folder once it's downloaded
-cd python_researcher
+cd daaf
 
 # 3. Build and start the container (this takes a few minutes the first time because Docker is going to download the necessary software from the internet and get it ready for you)
 docker compose up -d --build
 
 # 4. Once that's complete, open an interactive session inside the container
-docker compose exec data-science bash
+docker compose exec daaf-docker bash
 
 # 5. Start Claude Code
 claude
