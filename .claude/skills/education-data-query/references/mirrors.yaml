@@ -42,8 +42,7 @@ mirrors:
       file_path_key: "path"
       file_filter: "*.parquet"
     coverage_notes: >
-      Currently has school-districts/ level.
-      Schools/ and college-university/ levels coming.
+      Complete coverage of all data levels: school-districts/, schools/, and college-university/.
       Parquet format: columnar, compressed (3-10x smaller than CSV), schema embedded.
 
   - name: urban_csv

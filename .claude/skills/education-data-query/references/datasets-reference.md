@@ -64,9 +64,7 @@ dataset_paths = {
 
 ---
 
-## Schools (`schools/`) — Coming Soon
-
-*These paths are expected based on the portal structure. Verify with mirror discovery before using.*
+## Schools (`schools/`)
 
 ### CCD
 
@@ -97,9 +95,7 @@ dataset_paths = {
 
 ---
 
-## College-University (`college-university/`) — Coming Soon
-
-*These paths are expected. Verify with mirror discovery before using.*
+## College-University (`college-university/`)
 
 ### IPEDS
 

@@ -23,7 +23,7 @@ This document consolidates lessons learned from hands-on experience with the Urb
 
 | Mirror | Learning | Impact | Date |
 |--------|----------|--------|------|
-| `huggingface` | Currently has `school-districts/` level only | Must fall through to next mirror for schools and colleges | 2026-02 |
+| `huggingface` | Complete coverage of all data levels (school-districts, schools, college-university) | Primary mirror for all datasets; urban_csv serves as fallback | 2026-02 |
 | Mirrors with `lazy_csv` strategy | Default `infer_schema_length` may mistype columns | Use `infer_schema_length=10000` for reliable type inference | 2026-02 |
 | Mirrors with `lazy_csv` strategy | Large files (500MB+) require lazy loading | Always use `pl.scan_csv()` with filters, never `pl.read_csv()` | 2026-02 |
 
