@@ -46,6 +46,7 @@ RUN uv pip install --system \
     polars \
     scipy \
     openpyxl \
+    xlrd \
     requests \ 
     pyarrow \
     urllib3
