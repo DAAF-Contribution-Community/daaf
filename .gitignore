@@ -58,3 +58,4 @@ Thumbs.db
 # Claude Code
 .claude/settings.local.json
 .claude/logs/sessions/
+.claude/logs/activity.log
