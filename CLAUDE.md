@@ -674,7 +674,7 @@ orchestrator invokes code-reviewer
          ↓
 code-reviewer reviews script + Plan alignment
          ↓
-code-reviewer creates QA script: scripts/qa/stage{N}_{step}_qa1.py
+code-reviewer creates QA script: scripts/cr/stage{N}_{step}_cr1.py
          ↓
 code-reviewer executes QA script, inspects output data
          ↓
@@ -705,7 +705,7 @@ BLOCKER returned
     └─ After 2 attempts, still BLOCKER → STOP, escalate
 ```
 
-**QA Script Naming:** `scripts/qa/stage{N}_{step}_qa{1..5}.py`
+**QA Script Naming:** `scripts/cr/stage{N}_{step}_cr{1..5}.py`
 
 **Severity Classification:**
 | Severity | Definition | Orchestrator Action |
@@ -760,7 +760,7 @@ After Stage 3 completes
 
 **Stage 4.5 (plan-checker) is REQUIRED for all Full Pipeline analyses.**
 
-- Validates Plan across 5 dimensions: completeness, consistency, feasibility, clarity, scope
+- Validates Plan across 6 dimensions: completeness, consistency, feasibility, testability, clarity, scope
 - Returns PASSED/PASSED_WITH_WARNINGS/BLOCKED status
 - If BLOCKED: data-planner must revise Plan (max 2 iterations)
 - After 2 failed revision attempts: STOP and escalate to user with explanation
@@ -897,7 +897,7 @@ For EACH task in Stages 5-8, follow this complete loop. **Do NOT skip any step.*
 │      │                  OUTPUT FILES: {output_files}                        │
 │      │                  STAGE: {N}, STEP: {step}                            │
 │      │                                                                      │
-│      │                  Create iterative QA scripts at scripts/qa/stage{N}_{step}_qa{1..5}.py│
+│      │                  Create iterative QA scripts at scripts/cr/stage{N}_{step}_cr{1..5}.py│
 │      │                  Return severity: PASSED | WARNING | BLOCKER""",    │
 │      │       subagent_type: "general-purpose"                               │
 │      │   })                                                                 │
@@ -1014,9 +1014,9 @@ Eleven specialized agents define behavioral protocols for specific roles:
 | Agent | Purpose | Subagent Type | Primary Stage(s) |
 |-------|---------|---------------|------------------|
 | **research-executor** | Execute data tasks with atomic precision | `general-purpose` | 5, 6, 7, 8 |
-| **code-reviewer** | Secondary QA review of executed scripts | `general-purpose` | 5-QA, 6-QA, 7-QA, 8-QA |
+| **code-reviewer** | Iterative QA review of executed scripts | `general-purpose` | 5-QA, 6-QA, 7-QA, 8-QA |
 | **data-planner** | Create research plans with task sequences | `general-purpose` | 4 |
-| **plan-checker** | Pre-execution plan validation (5 dimensions) | `Plan` | 4.5 |
+| **plan-checker** | Pre-execution plan validation (6 dimensions) | `Plan` | 4.5 |
 | **data-verifier** | Adversarial goal-backward verification with cross-artifact coherence | `Plan` | 12 |
 | **source-researcher** | Deep-dive into single data sources | `Plan` | 3 |
 | **research-synthesizer** | Consolidate parallel findings | `general-purpose` | 3.5 |
@@ -1509,14 +1509,14 @@ research/YYYY-MM-DD [Title]/
 │   │   └── 01_join-data_b.py         # (successful final version)
 │   ├── stage8_viz/                   # Visualization scripts
 │   │   └── 01_enrollment-plot.py
-│   ├── qa/                           # QA inspection scripts (iterative)
-│   │   ├── stage5_01_qa1.py          # QA for 01_fetch-ccd.py (standard + profiling)
-│   │   ├── stage5_01_qa2.py          # (investigated year coverage anomaly)
-│   │   ├── stage6_01_qa1.py          # QA for 01_clean-ccd.py
-│   │   ├── stage7_01_qa1.py          # QA for 01_join-data.py
-│   │   ├── stage7_01_qa2.py          # (investigated join non-matches)
-│   │   ├── stage7_01_qa3.py          # (traced entities end-to-end)
-│   │   └── stage8_01_qa1.py          # QA for 01_enrollment-plot.py
+│   ├── cr/                           # Code-review inspection scripts (iterative)
+│   │   ├── stage5_01_cr1.py          # CR for 01_fetch-ccd.py (standard + profiling)
+│   │   ├── stage5_01_cr2.py          # (investigated year coverage anomaly)
+│   │   ├── stage6_01_cr1.py          # CR for 01_clean-ccd.py
+│   │   ├── stage7_01_cr1.py          # CR for 01_join-data.py
+│   │   ├── stage7_01_cr2.py          # (investigated join non-matches)
+│   │   ├── stage7_01_cr3.py          # (traced entities end-to-end)
+│   │   └── stage8_01_cr1.py          # CR for 01_enrollment-plot.py
 │   └── debug/                        # Debugger diagnostic scripts
 │       └── 01_diag-key-mismatch.py
 ├── data/
@@ -2046,9 +2046,9 @@ See `agent_reference/SCRIPT_TEMPLATE.md` for complete script template and exampl
 | File | Purpose | Subagent Type |
 |------|---------|---------------|
 | `agents/research-executor.md` | Execute data tasks with atomic precision | `general-purpose` |
-| `agents/code-reviewer.md` | Secondary QA review of executed scripts | `general-purpose` |
+| `agents/code-reviewer.md` | Iterative QA review of executed scripts | `general-purpose` |
 | `agents/data-planner.md` | Create research plans with task sequences | `general-purpose` |
-| `agents/plan-checker.md` | Pre-execution plan validation (5 dimensions) | `Plan` |
+| `agents/plan-checker.md` | Pre-execution plan validation (6 dimensions) | `Plan` |
 | `agents/data-verifier.md` | Adversarial goal-backward verification with cross-artifact coherence | `Plan` |
 | `agents/source-researcher.md` | Deep-dive into single data sources | `Plan` |
 | `agents/research-synthesizer.md` | Consolidate parallel findings | `general-purpose` |

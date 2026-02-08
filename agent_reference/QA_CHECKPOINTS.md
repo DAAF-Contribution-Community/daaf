@@ -506,31 +506,31 @@ scripts/
 │   └── 01_join-data.py
 ├── stage8_viz/
 │   └── 01_plot-enrollment.py
-├── qa/                              # QA scripts directory (iterative)
-│   ├── stage5_01_qa1.py             # QA1 for Stage 5, Step 01 (standard + profiling)
-│   ├── stage5_01_qa2.py             # QA2: Investigated year coverage anomaly
-│   ├── stage6_01_qa1.py             # QA1 for Stage 6, Step 01
-│   ├── stage7_01_qa1.py             # QA1 for Stage 7, Step 01
-│   ├── stage7_01_qa2.py             # QA2: Investigated join non-matches
-│   ├── stage7_01_qa3.py             # QA3: Traced 10 entities end-to-end
-│   └── stage8_01_qa1.py             # QA1 for Stage 8, Step 01
+├── qa/                              # Code-review scripts directory (iterative)
+│   ├── stage5_01_cr1.py             # QA1 for Stage 5, Step 01 (standard + profiling)
+│   ├── stage5_01_cr2.py             # QA2: Investigated year coverage anomaly
+│   ├── stage6_01_cr1.py             # QA1 for Stage 6, Step 01
+│   ├── stage7_01_cr1.py             # QA1 for Stage 7, Step 01
+│   ├── stage7_01_cr2.py             # QA2: Investigated join non-matches
+│   ├── stage7_01_cr3.py             # QA3: Traced 10 entities end-to-end
+│   └── stage8_01_cr1.py             # QA1 for Stage 8, Step 01
 └── debug/
     └── ...
 ```
 
 ### Naming Convention
 
-**Pattern:** `stage{N}_{step:02d}_qa{iteration}.py`
+**Pattern:** `stage{N}_{step:02d}_cr{iteration}.py`
 
 | Component | Description | Example |
 |-----------|-------------|---------|
 | `stage{N}` | Stage number (5, 6, 7, 8) | `stage7` |
 | `{step}` | Step number from reviewed script | `01`, `02` |
-| `_qa{iteration}` | QA script suffix with iteration number (1-5) | `_qa1`, `_qa2` |
+| `_cr{iteration}` | QA script suffix with iteration number (1-5) | `_cr1`, `_cr2` |
 
 **Examples:**
-- Script `01_fetch-ccd.py` in Stage 5 → `stage5_01_qa1.py` (first iteration), `stage5_01_qa2.py` (if needed)
-- Script `02_aggregate.py` in Stage 7 → `stage7_02_qa1.py`
+- Script `01_fetch-ccd.py` in Stage 5 → `stage5_01_cr1.py` (first iteration), `stage5_01_cr2.py` (if needed)
+- Script `02_aggregate.py` in Stage 7 → `stage7_02_cr1.py`
 
 ---
 
@@ -541,7 +541,7 @@ QA checkpoint results are returned in a standardized format:
 ```yaml
 qa_report:
   script_reviewed: "scripts/stage7_transform/01_join-data.py"
-  qa_script: "scripts/qa/stage7_01_qa1.py"
+  qa_script: "scripts/cr/stage7_01_cr1.py"
   status: "ISSUES_FOUND"  # or "PASSED"
   severity: "BLOCKER"      # highest severity found
 
@@ -622,7 +622,7 @@ QA checkpoints can trigger STOP conditions that prevent proceeding:
 
 | Condition | Checkpoint | Action |
 |-----------|------------|--------|
-| BLOCKER after 2 revisions | Any | STOP, escalate to user |
+| BLOCKER after 2 revision scripts (_a.py, _b.py) | Any | STOP, escalate to user |
 | Methodology violation | Any | STOP, escalate immediately |
 | Data corruption detected | QA3 | STOP, invoke debugger |
 | Missing critical output | QA4 | STOP, revision required |

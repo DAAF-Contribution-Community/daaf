@@ -198,8 +198,8 @@ Data is fetched by downloading files from configured mirrors (see `mirrors.yaml`
 Mirror Resolution Protocol:
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │  1. Determine dataset file path from Plan query specification               │
-│     - Check datasets-reference.md for known paths                          │
-│     - Or check the mirror's available datasets via datasets-reference.md   │
+│     - Check datasets-reference.md (via education-data-query skill) for known paths │
+│     - Or check the mirror's available datasets via datasets-reference.md         │
 │                                                                             │
 │  2. Try each mirror in priority order (per mirrors.yaml)                    │
 │     - Build URL from mirror's url_template + dataset path parameters       │

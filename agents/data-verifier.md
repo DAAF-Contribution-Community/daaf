@@ -137,7 +137,7 @@ Similarly, when code-reviewer reported PASSED on all scripts, don't assume the a
 | `output/figures/*.png` | All generated visualizations |
 | `scripts/stage*/*.py` | Execution scripts for all tasks |
 | `scripts/debug/*.py` | Diagnostic scripts (if debugging occurred) |
-| `scripts/qa/*.py` | QA inspection scripts from code-reviewer (iterative: `qa1.py` required, `qa2-qa5.py` if deeper investigation was needed) |
+| `scripts/cr/*.py` | QA inspection scripts from code-reviewer (iterative: `cr1.py` required, `cr2-cr5.py` if deeper investigation was needed) |
 
 **QA Findings Log** (optional) — From Stage 10 QA aggregation
 
@@ -756,7 +756,7 @@ Use these checklists during verification:
 - [ ] Scripts include checkpoint validation (CP1-CP4 as appropriate)
 - [ ] Scripts are executable (`#!/usr/bin/env python3` shebang present)
 - [ ] No orphan scripts (scripts without corresponding Plan task)
-- [ ] **All Stage 5-8 scripts have corresponding QA scripts in `scripts/qa/`**
+- [ ] **All Stage 5-8 scripts have corresponding QA scripts in `scripts/cr/`**
 - [ ] **All QA BLOCKERs were resolved (check Stage 10 QA Summary)**
 
 ### Data Quality Checklist

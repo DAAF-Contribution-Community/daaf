@@ -15,7 +15,7 @@ This document provides decision trees and procedures for handling common errors 
 | Code execution error | 2 | Stop, escalate to user | Try alternative approach on 2nd attempt |
 | Validation failure (STOP condition) | 0 | Escalate immediately | Never retry STOP conditions |
 | Validation failure (warning) | N/A | Document and proceed | Warnings don't consume retries |
-| **QA BLOCKER (non-methodology)** | 2 | Stop, escalate to user | Apply Rule 5 fixes via revision |
+| **QA BLOCKER (non-methodology)** | 2 | Stop, escalate to user | Apply Rule 5 fixes via revision (2 revision scripts: _a.py, _b.py after original fails) |
 | **QA BLOCKER (methodology)** | 0 | Escalate immediately | Becomes Rule 4 escalation |
 | **QA WARNING** | N/A | Document, flag for Stage 10 | Warnings don't block progress |
 | Plan check failure | 3 | Return to planning | Revise plan before re-checking |

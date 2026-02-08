@@ -50,8 +50,8 @@ Research scripts are **write-once, execute-once, archive** artifacts — fundame
 
 | Agent | Purpose | Invocation | Stage(s) |
 |-------|---------|------------|----------|
-| **research-executor** | Execute data tasks with atomic precision | `general-purpose` | 5, 6, 7 |
-| **code-reviewer** | Iterative exploratory QA review of executed scripts (up to 5 scripts per review) | `general-purpose` | 5-QA, 6-QA, 7-QA, 8-QA |
+| **research-executor** | Execute data tasks with atomic precision | `general-purpose` | 5, 6, 7, 8 |
+| **code-reviewer** | Iterative QA review of executed scripts | `general-purpose` | 5-QA, 6-QA, 7-QA, 8-QA |
 | **data-planner** | Create research plans with task sequences | `general-purpose` | 4 |
 | **plan-checker** | Pre-execution plan validation (6 dimensions) | `Plan` | 4.5 (before 5) |
 | **data-verifier** | Adversarial goal-backward verification with cross-artifact coherence | `Plan` | 12 |
@@ -662,7 +662,7 @@ Task({
 
 **Key behaviors:**
 - Three-phase review (code, execution log, iterative output data inspection)
-- Creates iterative QA scripts in `scripts/qa/` (qa1 always; qa2-qa5 when warranted)
+- Creates iterative QA scripts in `scripts/cr/` (qa1 always; qa2-qa5 when warranted)
 - Severity classification (BLOCKER/WARNING/INFO)
 - Never fixes code directly (reviewer, not executor)
 
@@ -709,7 +709,7 @@ research/2026-01-24 Analysis/2026-01-24 Analysis Plan.md
 **TASK:**
 1. Review script for correctness and methodology alignment
 2. Review execution log for outcome verification
-3. Create iterative QA scripts at: scripts/qa/stage7_01_qa1.py (+ qa2..qa5 as warranted)
+3. Create iterative QA scripts at: scripts/cr/stage7_01_cr1.py (+ qa2..qa5 as warranted)
 4. Execute QA scripts and synthesize findings across iterations
 5. Return QA report with severity classification
     """,

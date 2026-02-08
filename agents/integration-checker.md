@@ -58,7 +58,7 @@ You are an **Integration Checker** — an agent that verifies the connections be
 | `data/raw/` | All fetched data files |
 | `data/processed/` | All cleaned data files |
 | `output/figures/` | All generated visualizations |
-| `scripts/qa/` | QA inspection scripts from code-reviewer |
+| `scripts/cr/` | QA inspection scripts from code-reviewer |
 
 </upstream_input>
 
@@ -254,16 +254,16 @@ Verify each Stage 5-8 execution script has a corresponding QA script:
 
 | Execution Script | QA Script | QA Script Exists? |
 |-----------------|-----------|-------------------|
-| `scripts/stage5_fetch/01_fetch-ccd.py` | `scripts/qa/stage5_01_qa1.py` | ✓/✗ |
-| `scripts/stage6_clean/01_clean-ccd.py` | `scripts/qa/stage6_01_qa1.py` | ✓/✗ |
-| `scripts/stage7_transform/01_join-data.py` | `scripts/qa/stage7_01_qa1.py` | ✓/✗ |
+| `scripts/stage5_fetch/01_fetch-ccd.py` | `scripts/cr/stage5_01_cr1.py` | ✓/✗ |
+| `scripts/stage6_clean/01_clean-ccd.py` | `scripts/cr/stage6_01_cr1.py` | ✓/✗ |
+| `scripts/stage7_transform/01_join-data.py` | `scripts/cr/stage7_01_cr1.py` | ✓/✗ |
 
 **Note:** Additional qa2-qa5 scripts may exist per reviewed script (iterative QA). Verify qa1 exists at minimum; additional iterations are optional depth.
 
 **Verify QA scripts reference correct output files:**
 - QA script should load the same output file that execution script produces
 - E.g., if `01_fetch-ccd.py` writes to `data/raw/2026-01-24_ccd.parquet`,
-  then `stage5_01_qa1.py` should read from that same path
+  then `stage5_01_cr1.py` should read from that same path
 ```
 
 ### Data Source Coverage Verification

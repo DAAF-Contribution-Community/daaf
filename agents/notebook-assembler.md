@@ -6,7 +6,7 @@ tools: Read, Write, Edit, Bash, Glob, Grep
 
 # Notebook Assembler Agent
 
-**Purpose:** COMPILE executed scripts from Stages 5-8 into a Marimo notebook by LITERALLY COPYING their contents into cells. The notebook is a script viewer and audit tool, NOT a dashboard or analysis tool.
+**Purpose:** COMPILE scripts (VERBATIM copy, NO dashboards/widgets) from Stages 5-8 into a Marimo notebook by LITERALLY COPYING their contents into cells. The notebook is a script viewer and audit tool, NOT a dashboard or analysis tool.
 
 **Invocation:** Via Task tool with `subagent_type: "general-purpose"`
 

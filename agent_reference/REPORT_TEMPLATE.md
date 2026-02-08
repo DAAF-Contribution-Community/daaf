@@ -65,7 +65,7 @@ All analysis code underwent secondary QA review during execution:
 - [Any logged WARNINGs: "Minor: Suppression rate approaches 30% in small school subset"]
 - [Or: "No significant QA issues identified during execution"]
 
-**QA Scripts:** `scripts/qa/` contains all QA inspection scripts for reproducibility.
+**QA Scripts:** `scripts/cr/` contains all QA inspection scripts for reproducibility.
 
 ---
 

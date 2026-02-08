@@ -70,13 +70,13 @@ research/YYYY-MM-DD [Title]/
 │   │   └── 03_aggregate.py
 │   ├── stage8_viz/             # Visualization scripts
 │   │   └── 01_enrollment-plot.py
-│   ├── qa/                     # QA inspection scripts (iterative)
-│   │   ├── stage5_01_qa1.py    # QA for 01_fetch-ccd.py (standard + profiling)
-│   │   ├── stage5_01_qa2.py    # (investigated year coverage anomaly)
-│   │   ├── stage5_02_qa1.py    # QA for 02_fetch-meps.py
-│   │   ├── stage6_01_qa1.py    # QA for 01_clean-ccd.py
-│   │   ├── stage7_02_qa1.py    # QA for 02_join-data.py
-│   │   └── stage8_01_qa1.py    # QA for 01_enrollment-plot.py
+│   ├── cr/                     # QA inspection scripts (iterative)
+│   │   ├── stage5_01_cr1.py    # CR for 01_fetch-ccd.py (standard + profiling)
+│   │   ├── stage5_01_cr2.py    # (investigated year coverage anomaly)
+│   │   ├── stage5_02_cr1.py    # CR for 02_fetch-meps.py
+│   │   ├── stage6_01_cr1.py    # CR for 01_clean-ccd.py
+│   │   ├── stage7_02_cr1.py    # CR for 02_join-data.py
+│   │   └── stage8_01_cr1.py    # CR for 01_enrollment-plot.py
 │   └── debug/                  # Debugger diagnostic scripts
 │       └── 01_diag-key-mismatch.py
 ```
@@ -99,20 +99,20 @@ research/YYYY-MM-DD [Title]/
 
 ### QA Script Naming Convention (Iterative)
 
-**Pattern:** `stage{N}_{step:02d}_qa{iteration}.py`
+**Pattern:** `stage{N}_{step:02d}_cr{iteration}.py`
 
 | Component | Source | Format |
 |-----------|--------|--------|
 | `stage{N}` | Stage number (5, 6, 7, 8) | single digit |
 | `step` | Step number of the reviewed script | 2-digit zero-padded |
-| `_qa{iteration}` | QA script suffix with iteration (1-5) | `_qa1`, `_qa2`, etc. |
+| `_cr{iteration}` | QA script suffix with iteration (1-5) | `_cr1`, `_cr2`, etc. |
 
 **Examples:**
-- QA for `01_fetch-ccd.py` (Stage 5) → `stage5_01_qa1.py` (first iteration), `stage5_01_qa2.py` (if needed)
-- QA for `02_join-data.py` (Stage 7) → `stage7_02_qa1.py`
-- QA for `01_enrollment-plot.py` (Stage 8) → `stage8_01_qa1.py`
+- QA for `01_fetch-ccd.py` (Stage 5) → `stage5_01_cr1.py` (first iteration), `stage5_01_cr2.py` (if needed)
+- QA for `02_join-data.py` (Stage 7) → `stage7_02_cr1.py`
+- QA for `01_enrollment-plot.py` (Stage 8) → `stage8_01_cr1.py`
 
-**QA scripts are created by code-reviewer** and saved in `scripts/qa/`.
+**QA scripts are created by code-reviewer** and saved in `scripts/cr/`.
 
 ---
 
@@ -1087,7 +1087,7 @@ if not all_passed:
 | **Run default checks always** | Schema, rows, distribution, coded values, nulls |
 | **Add discretionary checks** | Statistical tests, methodology checks when context warrants |
 | **Exit non-zero on failure** | Use `raise SystemExit(1)` so the wrapper captures failure |
-| **Save to scripts/qa/** | Keeps QA scripts separate from execution scripts |
+| **Save to scripts/cr/** | Keeps QA scripts separate from execution scripts |
 
 ---
 

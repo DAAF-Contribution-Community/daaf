@@ -49,7 +49,7 @@ research-executor completes script (CP1/CP2/CP3 PASSED)
          ↓
 orchestrator invokes code-reviewer
          ↓
-code-reviewer creates QA scripts: scripts/qa/stage{N}_{step}_qa1.py (+ qa2..qa5 as warranted)
+code-reviewer creates QA scripts: scripts/cr/stage{N}_{step}_cr1.py (+ qa2..qa5 as warranted)
          ↓
 code-reviewer executes QA script, reviews code & output
          ↓
@@ -76,9 +76,19 @@ Every Stage 5-8 task now includes these MANDATORY requirements:
 - [ ] **QA INVOKED** — orchestrator called code-reviewer via Task tool
 - [ ] **QA RETURNED** — code-reviewer returned severity (PASSED/WARNING/BLOCKER)
 - [ ] **QA status ∈ {PASSED, WARNING}** — BLOCKER resolved via revision or escalated
-- [ ] **QA script saved to `scripts/qa/`**
+- [ ] **QA script saved to `scripts/cr/`**
 
 **If QA was never invoked, the gate condition is NOT satisfied.** The orchestrator cannot proceed to the next stage without positive QA confirmation.
+
+### Gate Exhaustion: BLOCKER Resolution Limits
+
+**CRITICAL:** When code-reviewer returns BLOCKER, the orchestrator triggers a revision cycle with a **hard limit of 2 revisions** (base attempt + `_a.py` + `_b.py`). After the second revision attempt:
+
+- **If QA still returns BLOCKER:** Gate is NOT satisfied. STOP execution immediately.
+- **If BLOCKER is a methodology violation:** Escalate to user without attempting revisions (same session, immediate stop).
+- **Escalation message must include:** Issue description, what was attempted, and why resolution is blocked.
+
+**Result:** BLOCKER that persists after 2 revisions → Automatic escalation gate, no further orchestration.
 
 See `agents/code-reviewer.md` for the complete QA protocol and `agent_reference/QA_CHECKPOINTS.md` for QA checkpoint definitions.
 
@@ -747,7 +757,7 @@ assert df['year'].is_in(expected_years).all(), "WARNING: Unexpected years"
 - [ ] Plan updated with Data Freshness Check table
 - [ ] **QA review completed** (code-reviewer invoked after script execution)
 - [ ] **QA status:** PASSED/WARNING (any BLOCKER resolved via revision)
-- [ ] **QA scripts saved to `scripts/qa/stage5_{step}_qa1.py`** (+ qa2..qa5 if warranted)
+- [ ] **QA scripts saved to `scripts/cr/stage5_{step}_cr1.py`** (+ qa2..qa5 if warranted)
 - [ ] **STATE.md updated:** Current Stage: 5, CP1 status, raw data paths recorded
 
 ---
@@ -850,7 +860,7 @@ assert len(clean_df) > len(raw_df) * 0.1, "STOP: >90% data loss"
 - [ ] **Script saved to `scripts/stage6_clean/`** with standard header
 - [ ] **QA review completed** (code-reviewer invoked after script execution)
 - [ ] **QA status:** PASSED/WARNING (any BLOCKER resolved via revision)
-- [ ] **QA scripts saved to `scripts/qa/stage6_{step}_qa1.py`** (+ qa2..qa5 if warranted)
+- [ ] **QA scripts saved to `scripts/cr/stage6_{step}_cr1.py`** (+ qa2..qa5 if warranted)
 - [ ] **STATE.md updated:** Current Stage: 6, CP2 status, suppression rate, processed data paths
 
 ---
@@ -1074,7 +1084,7 @@ MANDATORY EXECUTION PATTERN:
 - [ ] **Script saved to `scripts/stage7_transform/`** with standard header
 - [ ] **QA review completed** (code-reviewer invoked after each script)
 - [ ] **QA status:** PASSED/WARNING (any BLOCKER resolved via revision)
-- [ ] **QA scripts saved to `scripts/qa/stage7_{step}_qa1.py`** (+ qa2..qa5 if warranted)
+- [ ] **QA scripts saved to `scripts/cr/stage7_{step}_cr1.py`** (+ qa2..qa5 if warranted)
 
 **After Sub-Stage 7.3:**
 - [ ] All transformations complete
@@ -1083,7 +1093,7 @@ MANDATORY EXECUTION PATTERN:
 - [ ] Analysis dataset ready at `data/processed/[date]_analysis.parquet`
 - [ ] Transformation log complete
 - [ ] **All transformation scripts archived in `scripts/stage7_transform/`**
-- [ ] **All QA scripts archived in `scripts/qa/`**
+- [ ] **All QA scripts archived in `scripts/cr/`**
 - [ ] **STATE.md updated:** Current Stage: 7, all CP3 statuses, Transformation Progress table current
 
 ---
@@ -1153,7 +1163,7 @@ fig.write_image(f"output/figures/{date_prefix}_plot_name.png")
 - [ ] **Visualization scripts saved to `scripts/stage8_viz/`** with standard header
 - [ ] **QA review completed** (code-reviewer invoked after each visualization script)
 - [ ] **QA status:** PASSED/WARNING (any BLOCKER resolved via revision)
-- [ ] **QA scripts saved to `scripts/qa/stage8_{step}_qa1.py`** (+ qa2..qa5 if warranted)
+- [ ] **QA scripts saved to `scripts/cr/stage8_{step}_cr1.py`** (+ qa2..qa5 if warranted)
 - [ ] **STATE.md updated:** Current Stage: 8, QA4 status, figure paths recorded
 
 ---

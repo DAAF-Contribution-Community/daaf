@@ -50,7 +50,7 @@ Same methodology (goal-backward), different timing, different subject matter.
 
 <verification_dimensions>
 
-## Dimension 1: Requirement Coverage
+## Dimension 1: Completeness
 
 **Question:** Does every research question/requirement have task(s) addressing it?
 
@@ -69,14 +69,14 @@ Same methodology (goal-backward), different timing, different subject matter.
 **Example issue:**
 ```yaml
 issue:
-  dimension: requirement_coverage
+  dimension: completeness
   severity: blocker
   description: "REQ-02 (enrollment trends by state) has no covering task"
   plan: "2026-01-24 School Poverty Analysis Plan.md"
   fix_hint: "Add aggregation task in Wave 3 for state-level groupby"
 ```
 
-## Dimension 2: Task Completeness
+## Dimension 2: Consistency
 
 **Question:** Does every task have Files + Action + Verify + Done?
 
@@ -113,7 +113,7 @@ A task with vague methodology will trigger repeated QA BLOCKERs during execution
 **Example issue:**
 ```yaml
 issue:
-  dimension: task_completeness
+  dimension: consistency
   severity: blocker
   description: "Task clean-ccd missing <verify> element"
   plan: "2026-01-24 School Poverty Analysis Plan.md"
@@ -121,7 +121,7 @@ issue:
   fix_hint: "Add verification: check suppression rate <50%, no coded values remaining"
 ```
 
-## Dimension 3: Dependency Correctness
+## Dimension 3: Feasibility
 
 **Question:** Are task dependencies valid, acyclic, and wave assignments correct?
 
@@ -144,14 +144,42 @@ issue:
 **Example issue:**
 ```yaml
 issue:
-  dimension: dependency_correctness
+  dimension: feasibility
   severity: blocker
   description: "Circular dependency between tasks clean-ccd and join-data"
   tasks: ["clean-ccd", "join-data"]
   fix_hint: "clean-ccd depends on join-data output, but join-data depends on clean-ccd. Remove one dependency."
 ```
 
-## Dimension 4: Key Links Planned
+## Dimension 4: Testability
+
+**Question:** Do must_haves/observable truths trace back to research goal?
+
+**Process:**
+1. Check each task has verification criteria
+2. Verify truths are data-observable (not implementation details)
+3. Verify checkpoints (CP1-CP4) are mapped to tasks
+4. Verify STOP conditions are defined
+
+**Red flags:**
+- Missing verification for data transformations
+- Truths are implementation-focused ("polars installed") not data-observable ("enrollment counts are positive integers")
+- No checkpoint linkage (which task triggers CP1? CP2?)
+- No STOP conditions defined for high-risk operations
+- Subjective verification ("looks correct", "seems reasonable")
+
+**Example issue:**
+```yaml
+issue:
+  dimension: testability
+  severity: warning
+  description: "Task join-data has no cardinality validation in verify"
+  plan: "2026-01-24 School Poverty Analysis Plan.md"
+  task: "join-data"
+  fix_hint: "Add verify: pre/post row count check, expected cardinality 1:1"
+```
+
+## Dimension 5: Clarity
 
 **Question:** Are data artifacts wired together, not just created in isolation?
 
@@ -178,7 +206,7 @@ Aggregate -> Visualize: Does viz use aggregated data?
 **Example issue:**
 ```yaml
 issue:
-  dimension: key_links_planned
+  dimension: clarity
   severity: warning
   description: "data/raw/ccd_schools.parquet created but clean-ccd uses different path"
   plan: "2026-01-24 School Poverty Analysis Plan.md"
@@ -186,7 +214,7 @@ issue:
   fix_hint: "Align file paths between fetch-ccd output and clean-ccd input"
 ```
 
-## Dimension 5: Scope Sanity
+## Dimension 6: Scope
 
 **Question:** Will execution complete within context budget without quality degradation?
 
@@ -212,7 +240,7 @@ issue:
 **Example issue:**
 ```yaml
 issue:
-  dimension: scope_sanity
+  dimension: scope
   severity: warning
   description: "Wave 2 has 5 parallel tasks - split recommended"
   wave: 2
@@ -220,34 +248,6 @@ issue:
     tasks: 5
     parallel_load: "high"
   fix_hint: "Split Wave 2 into 2a (clean-ccd, clean-meps) and 2b (clean-edfacts, clean-crdc, clean-saipe)"
-```
-
-## Dimension 6: Verification Derivation
-
-**Question:** Do must_haves/observable truths trace back to research goal?
-
-**Process:**
-1. Check each task has verification criteria
-2. Verify truths are data-observable (not implementation details)
-3. Verify checkpoints (CP1-CP4) are mapped to tasks
-4. Verify STOP conditions are defined
-
-**Red flags:**
-- Missing verification for data transformations
-- Truths are implementation-focused ("polars installed") not data-observable ("enrollment counts are positive integers")
-- No checkpoint linkage (which task triggers CP1? CP2?)
-- No STOP conditions defined for high-risk operations
-- Subjective verification ("looks correct", "seems reasonable")
-
-**Example issue:**
-```yaml
-issue:
-  dimension: verification_derivation
-  severity: warning
-  description: "Task join-data has no cardinality validation in verify"
-  plan: "2026-01-24 School Poverty Analysis Plan.md"
-  task: "join-data"
-  fix_hint: "Add verify: pre/post row count check, expected cardinality 1:1"
 ```
 
 </verification_dimensions>
@@ -481,7 +481,7 @@ Wave 3:
 **Issue:**
 ```yaml
 issue:
-  dimension: requirement_coverage
+  dimension: completeness
   severity: blocker
   description: "REQ-04 (join CCD and MEPS data) has no covering task"
   plan: "2026-01-24 School Poverty Analysis Plan.md"
@@ -507,7 +507,7 @@ depends_on: ["clean-ccd"]
 **Issue:**
 ```yaml
 issue:
-  dimension: dependency_correctness
+  dimension: feasibility
   severity: blocker
   description: "Circular dependency between clean-ccd and validate-keys"
   tasks: ["clean-ccd", "validate-keys"]
@@ -544,7 +544,7 @@ issue:
 **Issue:**
 ```yaml
 issue:
-  dimension: task_completeness
+  dimension: consistency
   severity: blocker
   description: "Task join-data missing <verify> element"
   plan: "2026-01-24 School Poverty Analysis Plan.md"
@@ -573,7 +573,7 @@ Wave 5: 1 task (analyze)
 **Issue:**
 ```yaml
 issue:
-  dimension: scope_sanity
+  dimension: scope
   severity: warning
   description: "Plan has 14 tasks - exceeds recommended 4-8 for single analysis"
   plan: "2026-01-24 School Poverty Analysis Plan.md"
@@ -608,7 +608,7 @@ issue:
 **Issue:**
 ```yaml
 issue:
-  dimension: key_links_planned
+  dimension: clarity
   severity: blocker
   description: "File path mismatch: clean-ccd input doesn't match fetch-ccd output"
   plan: "2026-01-24 School Poverty Analysis Plan.md"
@@ -645,7 +645,7 @@ issue:
 **Issue:**
 ```yaml
 issue:
-  dimension: verification_derivation
+  dimension: testability
   severity: warning
   description: "Task clean-meps missing STOP condition for high suppression"
   plan: "2026-01-24 School Poverty Analysis Plan.md"

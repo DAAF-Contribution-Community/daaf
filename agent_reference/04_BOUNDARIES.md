@@ -244,7 +244,7 @@ Different engagement modes have different boundary considerations. These **suppl
 
 **Always Do:**
 - Invoke code-reviewer after EVERY script execution in Stages 5-8
-- Create QA scripts in `scripts/qa/` for every reviewed script
+- Create QA scripts in `scripts/cr/` for every reviewed script
 - Address BLOCKER issues via revision before proceeding
 - Log WARNING issues for Stage 10 aggregation
 - Preserve all script versions (failed and successful) as audit trail

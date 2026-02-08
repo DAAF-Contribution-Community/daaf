@@ -1,12 +1,12 @@
 ---
 name: code-reviewer
-description: Performs secondary QA review of executed scripts. Verifies code correctness, methodology alignment, validation robustness, and output data quality. Creates parallel QA inspection scripts. Spawned by orchestrator after each research-executor task completion.
+description: Performs iterative QA review of executed scripts. Verifies code correctness, methodology alignment, validation robustness, and output data quality. Creates parallel QA inspection scripts. Spawned by orchestrator after each research-executor task completion.
 tools: Read, Write, Edit, Bash, Glob, Grep
 ---
 
 # Code Reviewer Agent
 
-**Purpose:** Perform secondary quality assurance review of executed analysis scripts, ensuring code correctness, methodology alignment, and output data integrity.
+**Purpose:** Perform iterative quality assurance review of executed analysis scripts, ensuring code correctness, methodology alignment, and output data integrity.
 
 **Invocation:** Via Task tool with `subagent_type: "general-purpose"`
 
@@ -189,11 +189,11 @@ Phase 3: ITERATIVE OUTPUT DATA INSPECTION
 
 For every reviewed script, create a parallel QA inspection script:
 
-**Location:** `scripts/qa/stage{N}_{step:02d}_qa{iteration}.py`
+**Location:** `scripts/cr/stage{N}_{step:02d}_cr{iteration}.py`
 
 **Naming Examples:**
-- Script `01_fetch-ccd.py` → QA Scripts `stage5_01_qa1.py`, `stage5_01_qa2.py`, etc.
-- Script `02_join-data.py` → QA Scripts `stage7_02_qa1.py`, `stage7_02_qa2.py`, etc.
+- Script `01_fetch-ccd.py` → QA Scripts `stage5_01_cr1.py`, `stage5_01_cr2.py`, etc.
+- Script `02_join-data.py` → QA Scripts `stage7_02_cr1.py`, `stage7_02_cr2.py`, etc.
 
 QA scripts run independently to validate output data without trusting the original script's validation.
 
@@ -349,8 +349,8 @@ Create the first QA script (`qa1`) that validates output data **from angles the 
 6. **Data profiling:** Include profiling output (head, describe, value counts) to inform whether further investigation is needed.
 
 Follow file-first execution:
-1. Write qa1 script to `scripts/qa/stage{N}_{step}_qa1.py`
-2. Execute: `python scripts/qa/stage{N}_{step}_qa1.py 2>&1`
+1. Write qa1 script to `scripts/cr/stage{N}_{step}_cr1.py`
+2. Execute: `python scripts/cr/stage{N}_{step}_cr1.py 2>&1`
 3. Append output as comments
 4. **Review the profiling output and all check results before proceeding**
 
@@ -370,7 +370,7 @@ After reviewing qa1 output, apply this decision tree:
 1. **Document the trigger:** What in the prior script's output prompted this investigation?
 2. **State the hypothesis:** What does this script test?
 3. **Define expected outcome:** What confirms vs. refutes the hypothesis?
-4. Write investigation script to `scripts/qa/stage{N}_{step}_qa{M}.py`
+4. Write investigation script to `scripts/cr/stage{N}_{step}_cr{M}.py`
 5. Execute and capture output
 6. **Interpret:** CONFIRMED or REFUTED? Implications? Further investigation needed?
 7. Apply the decision tree again with updated findings
@@ -526,7 +526,7 @@ For iterations beyond qa1, use this template:
 QA INVESTIGATION: Stage {N} Step {step} — Iteration {M}
 
 Reviewed script: {script_path}
-Prior QA script: scripts/qa/stage{N}_{step}_qa{M-1}.py
+Prior QA script: scripts/cr/stage{N}_{step}_cr{M-1}.py
 
 INVESTIGATION TRIGGER:
 {What was observed in the prior qa script's output that prompted this investigation}
@@ -562,7 +562,7 @@ print("INTERPRETATION")
 print("=" * 60)
 # CONFIRMED or REFUTED?
 # What are the implications?
-# Is further investigation needed? If so, what should qa{M+1} test?
+# Is further investigation needed? If so, what should cr{M+1} test?
 
 print(f"\nHypothesis: {'CONFIRMED' if confirmed else 'REFUTED'}")
 print(f"Implications: {implications}")
@@ -584,8 +584,8 @@ Return QA report in this structure:
 **Severity:** [BLOCKER | WARNING | INFO | None]
 **Script Reviewed:** `scripts/stage{N}_{type}/{step}_{name}.py`
 **QA Scripts Created:** [count] iteration(s)
-- `scripts/qa/stage{N}_{step}_qa1.py`: Standard checks + profiling
-- `scripts/qa/stage{N}_{step}_qa2.py`: [brief purpose] (if created)
+- `scripts/cr/stage{N}_{step}_cr1.py`: Standard checks + profiling
+- `scripts/cr/stage{N}_{step}_cr2.py`: [brief purpose] (if created)
 - ...
 
 ## Code Review
@@ -655,8 +655,8 @@ Return QA report in this structure:
 
 | Iteration | Script | Trigger | Finding | Severity |
 |-----------|--------|---------|---------|----------|
-| qa1 | `stage{N}_{step}_qa1.py` | Standard inspection | [key findings from qa1] | [severity] |
-| qa2 | `stage{N}_{step}_qa2.py` | [what in qa1 prompted this] | [CONFIRMED/REFUTED + implications] | [severity] |
+| qa1 | `stage{N}_{step}_cr1.py` | Standard inspection | [key findings from qa1] | [severity] |
+| qa2 | `stage{N}_{step}_cr2.py` | [what in qa1 prompted this] | [CONFIRMED/REFUTED + implications] | [severity] |
 | ... | ... | ... | ... | ... |
 
 **Decision Trail:**
@@ -727,7 +727,7 @@ Return QA report in this structure:
 - **If Escalate:** [What needs user decision]
 
 ## Files Created
-- QA Scripts: `scripts/qa/stage{N}_{step}_qa1.py` [+ qa2..qa5 if created]
+- QA Scripts: `scripts/cr/stage{N}_{step}_cr1.py` [+ qa2..qa5 if created]
 ```
 
 ---
@@ -893,7 +893,7 @@ Path: {script_path}
 **TASK:**
 1. Review the executed script for correctness and methodology alignment
 2. Review the execution log for outcome verification
-3. Create qa1 at scripts/qa/stage{N}_{step}_qa1.py with 5 default + 5 script-specific + 5 spot-checks + profiling
+3. Create qa1 at scripts/cr/stage{N}_{step}_cr1.py with 5 default + 5 script-specific + 5 spot-checks + profiling
 4. Execute qa1 and review output (including profiling)
 5. DECIDE: If anomalies found, create qa2..qa5 as needed (each with trigger + hypothesis)
 6. Synthesize findings across all iterations into Investigation Narrative
@@ -948,14 +948,14 @@ QA review complete when:
 - [ ] Validation robustness assessed
 - [ ] Code quality checked (stubs, anti-patterns)
 - [ ] Execution log reviewed for warnings and outcomes
-- [ ] qa1 created at `scripts/qa/stage{N}_{step}_qa1.py` with:
+- [ ] qa1 created at `scripts/cr/stage{N}_{step}_cr1.py` with:
   - [ ] 5 default checks
   - [ ] 5 script-specific checks (one per Skeptical Lens)
   - [ ] 5 concrete spot-checks (trace, recalculate, complement, cross-ref, boundary)
   - [ ] Data profiling section
 - [ ] qa1 executed with output captured and reviewed
 - [ ] Decision documented: further iteration needed or sufficient
-- [ ] If further iteration: qa2..qa{M} each has documented trigger, hypothesis, and result
+- [ ] If further iteration: qa2..cr{M} each has documented trigger, hypothesis, and result
 - [ ] Report synthesizes findings across ALL iterations (not just the last one)
 - [ ] If capped at 5: "Additional Strands of Inquiry" section completed
 - [ ] All findings classified by severity (BLOCKER/WARNING/INFO)

@@ -114,12 +114,12 @@ When creating a plan:
 1. **Synthesize Discovery:** Review Stage 2-3 findings
 2. **Determine Data Access Strategy:** For each data source, identify the mirror file path:
 
-   - Check `datasets-reference.md` for known file paths
+   - Check `datasets-reference.md` (accessed via the `education-data-query` skill) for known file paths
    - Verify availability by checking mirror directly
    - Note whether dataset is single-file or yearly
 
    **Document in the Plan's Query Specification:** For each query, include:
-   - Mirror paths from datasets-reference.md (keyed by mirror name per mirrors.yaml)
+   - Mirror paths from datasets-reference.md (accessed via the `education-data-query` skill; keyed by mirror name per mirrors.yaml)
    - Whether the dataset is single-file or yearly
    - Filters to apply locally after download
 
@@ -258,7 +258,7 @@ Before finalizing any plan:
 - [ ] Every task has explicit file paths (no placeholders)
 - [ ] Every task has a skill identified
 - [ ] Every task has a script path in Transformation Sequence
-- [ ] Every fetch task specifies dataset_paths (per-mirror paths from datasets-reference.md)
+- [ ] Every fetch task specifies dataset_paths (per-mirror paths from datasets-reference.md, accessed via the `education-data-query` skill)
 - [ ] Every join has cardinality specified
 - [ ] Every task has verifiable "done" condition
 - [ ] Waves correctly reflect dependencies

@@ -1015,7 +1015,7 @@ Document risks identified during discovery and planning, with mitigation strateg
 |-------|-------|----------|---------|---------------|
 | [N] | [Description] | [N/2] | [Escalated/Accepted] | [Decision] |
 
-**Note:** QA scripts are archived in `scripts/qa/` for reproducibility. See `agent_reference/QA_CHECKPOINTS.md` for checkpoint definitions.
+**Note:** QA scripts are archived in `scripts/cr/` for reproducibility. See `agent_reference/QA_CHECKPOINTS.md` for checkpoint definitions.
 
 ---
 
@@ -1118,5 +1118,5 @@ Document risks identified during discovery and planning, with mitigation strateg
 | Clean Scripts | `research/YYYY-MM-DD [Title]/scripts/stage6_clean/*.py` | Context application code |
 | Transform Scripts | `research/YYYY-MM-DD [Title]/scripts/stage7_transform/*.py` | Transformation code |
 | Viz Scripts | `research/YYYY-MM-DD [Title]/scripts/stage8_viz/*.py` | Visualization code |
-| **QA Scripts** | `research/YYYY-MM-DD [Title]/scripts/qa/*.py` | **QA inspection scripts from code-reviewer** |
+| **QA Scripts** | `research/YYYY-MM-DD [Title]/scripts/cr/*.py` | **QA inspection scripts from code-reviewer** |
 | Debug Scripts | `research/YYYY-MM-DD [Title]/scripts/debug/*.py` | Diagnostic scripts (if any) |
