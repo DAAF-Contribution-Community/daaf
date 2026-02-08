@@ -195,7 +195,7 @@ See `agents/code-reviewer.md` for the complete QA protocol and `agent_reference/
 - Research question formulation
 - Any clarifications received
 
-### Gate Criteria
+### Gate Criteria (G1)
 
 - [ ] Mode classified and confirmed
 - [ ] Research question clearly stated
@@ -390,7 +390,7 @@ Estimated execution time: [time estimate based on complexity]
 | ... | ... | ... |
 ```
 
-### Gate Criteria
+### Gate Criteria (G2)
 
 - [ ] All flagged variables investigated
 - [ ] Coded values fully documented
@@ -572,7 +572,7 @@ This table is CRITICAL. Each row must have:
 
 Incomplete transformation sequences lead to incomplete validation and unreliable results.
 
-### Gate Criteria
+### Gate Criteria (G3)
 
 - [ ] Plan document created at `research/[folder]/YYYY-MM-DD [Title] Plan.md`
 - [ ] **STATE.md created** at `research/[folder]/STATE.md` (MANDATORY — Gate G3)
@@ -658,7 +658,7 @@ Run plan-checker
             If still BLOCKED after 2 attempts → STOP and escalate to user
 ```
 
-### Gate Criteria
+### Gate Criteria (G3.5)
 
 - [ ] Plan validation completed
 - [ ] Status is PASSED or PASSED_WITH_WARNINGS
@@ -747,7 +747,7 @@ assert df['year'].is_in(expected_years).all(), "WARNING: Unexpected years"
 - Includes: Pagination handling, CP1 validation, output paths
 ```
 
-### Gate Criteria
+### Gate Criteria (G4)
 
 - [ ] Data retrieved successfully
 - [ ] CP1 passed (or warnings documented)
@@ -851,7 +851,7 @@ assert len(clean_df) > len(raw_df) * 0.1, "STOP: >90% data loss"
 - Includes: Coded value filtering, suppression calculation, CP2 validation
 ```
 
-### Gate Criteria
+### Gate Criteria (G5)
 
 - [ ] Coded values handled
 - [ ] CP2 passed
@@ -879,7 +879,7 @@ assert len(clean_df) > len(raw_df) * 0.1, "STOP: >90% data loss"
 
 **Stage 7 is split into 3 sub-stages:**
 
-#### Sub-Stage 7.1: Initial EDA (No Transformations)
+#### Stage 7.1: Initial EDA (No Transformations)
 
 **Executor:** Subagent invocation 1
 **Purpose:** Profile data WITHOUT transforming it
@@ -903,7 +903,7 @@ assert len(clean_df) > len(raw_df) * 0.1, "STOP: >90% data loss"
 
 **Gate:** Orchestrator reviews EDA before proceeding to transformations
 
-#### Sub-Stage 7.2: Execute Transformations (Iteratively)
+#### Stage 7.2: Execute Transformations (Iteratively)
 
 **Executor:** Multiple subagent invocations (one per transformation)
 **Purpose:** Execute transformations ONE AT A TIME with validation
@@ -1019,7 +1019,7 @@ else:
 
 **If validation fails:** Create a new versioned script (`01_join-data_a.py`) with fixes. Do NOT modify the original—it serves as audit trail.
 
-#### Sub-Stage 7.3: Final CP3 Validation
+#### Stage 7.3: Final CP3 Validation
 
 **Executor:** Subagent invocation (after all transformations complete)
 **Purpose:** Overall validation of transformation sequence
@@ -1063,7 +1063,7 @@ MANDATORY EXECUTION PATTERN:
 - Follow Iteration Protocol (DESCRIBE → CODE → EXECUTE → VALIDATE → DECIDE)
 ```
 
-### Output (Across All Sub-Stages)
+### Output (Across All Stages)
 
 - **7.1:** EDA summary with data profile
 - **7.2:** Validated transformation at each step, intermediate datasets
@@ -1071,12 +1071,12 @@ MANDATORY EXECUTION PATTERN:
 
 ### Gate Criteria
 
-**After Sub-Stage 7.1:**
+**After Stage 7.1 (Gate to 7.2):**
 - [ ] Data profiled
 - [ ] No blocking data quality issues
 - [ ] Ready to proceed to transformations
 
-**After Each Transformation in 7.2:**
+**After Each Transformation in Stage 7.2 (Gate per transform):**
 - [ ] Pre-state captured
 - [ ] Transformation executed
 - [ ] Validation performed
@@ -1086,7 +1086,7 @@ MANDATORY EXECUTION PATTERN:
 - [ ] **QA status:** PASSED/WARNING (any BLOCKER resolved via revision)
 - [ ] **QA scripts saved to `scripts/cr/stage7_{step}_cr1.py`** (+ cr2..cr5 if warranted)
 
-**After Sub-Stage 7.3:**
+**After Stage 7.3 (G6):**
 - [ ] All transformations complete
 - [ ] CP3 validation passed for all transformations
 - [ ] **All QA reviews passed** for all transformation scripts
@@ -1156,7 +1156,7 @@ fig.write_image(f"output/figures/{date_prefix}_plot_name.png")
 - Exported figure files
 - Figure descriptions for report
 
-### Gate Criteria
+### Gate Criteria (G7)
 
 - [ ] All planned visualizations created
 - [ ] Figures exported to `output/figures/`
@@ -1445,7 +1445,7 @@ def get_final_script_version(base_name: str, scripts_dir: Path) -> Path | None:
     return versions[-1]
 ```
 
-### Gate Criteria
+### Gate Criteria (G8)
 
 - [ ] All final script versions identified
 - [ ] Each script represented with: header, code, execution log, data preview
@@ -1512,7 +1512,7 @@ Stage 10 is now the **aggregation point** for all QA findings from Stages 5-8. B
    - Address linting errors
    - Max 2 attempts before escalating
 
-### Gate Criteria
+### Gate Criteria (G9)
 
 - [ ] **QA Summary Report generated** (aggregates all Stages 5-8 findings)
 - [ ] **All BLOCKERs resolved** (via revision during Stages 5-8)
@@ -1555,7 +1555,7 @@ Stage 10 is now the **aggregation point** for all QA findings from Stages 5-8. B
 5. Limitations
 6. Data Sources (citations)
 
-### Gate Criteria
+### Gate Criteria (G10)
 
 - [ ] Report complete
 - [ ] All sections present
@@ -1626,7 +1626,7 @@ At Stage 12, the orchestrator consolidates LEARNINGS.md (which already contains 
 - [ ] Action items grouped by target type (Skills, Agents, Agent Reference, Orchestrator)
 - [ ] Action item count included in delivery message
 
-### Gate Criteria
+### Gate Criteria (G11)
 
 - [ ] All alignment checks pass
 - [ ] Quality verified

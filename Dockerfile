@@ -1,10 +1,10 @@
-# Data Science Dockerfile with uv, Node.js, and Claude Code
+# Data Science Dockerfile with uv and Claude Code
 # Base: Astral uv with Python 3.12 on Debian Bookworm
 
 FROM ghcr.io/astral-sh/uv:python3.12-bookworm
 
 LABEL maintainer="Data Science Environment"
-LABEL description="Python data science with uv, Node.js 22, and Claude Code"
+LABEL description="Python data science with uv and Claude Code"
 
 # Prevent interactive prompts during package installation
 ENV DEBIAN_FRONTEND=noninteractive
@@ -14,7 +14,7 @@ ENV UV_SYSTEM_PYTHON=1
 ENV UV_COMPILE_BYTECODE=1
 
 # ============================================
-# Install System Dependencies (Node.js setup + Git)
+# Install System Dependencies (Git)
 # ============================================
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \

@@ -48,12 +48,12 @@ Research scripts are **write-once, execute-once, archive** artifacts — fundame
 
 ## Agent Index
 
-| Agent | Purpose | Invocation | Stage(s) |
-|-------|---------|------------|----------|
+| Agent | Purpose | Subagent Type | Stage(s) |
+|-------|---------|---------------|----------|
 | **research-executor** | Execute data tasks with atomic precision | `general-purpose` | 5, 6, 7, 8 |
 | **code-reviewer** | Iterative QA review of executed scripts | `general-purpose` | 5-QA, 6-QA, 7-QA, 8-QA |
 | **data-planner** | Create research plans with task sequences | `general-purpose` | 4 |
-| **plan-checker** | Pre-execution plan validation (6 dimensions) | `Plan` | 4.5 (before 5) |
+| **plan-checker** | Pre-execution plan validation (6 dimensions) | `Plan` | 4.5 |
 | **data-verifier** | Adversarial goal-backward verification with cross-artifact coherence | `Plan` | 12 |
 | **source-researcher** | Deep-dive into single data sources | `Plan` | 3 |
 | **research-synthesizer** | Consolidate parallel findings | `general-purpose` | 3.5 |

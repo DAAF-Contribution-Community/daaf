@@ -114,6 +114,8 @@ These guardrails are enforced at multiple layers — no single layer is relied u
 | **Permission Deny Rules** | `settings.json` deny list | `rm -rf`, `sudo`, `docker`, credential file reads/writes |
 | **Permission Allow List** | `settings.json` allow list | Only approved tools auto-execute; everything else prompts |
 | **PostToolUse Hooks** | `audit-log.sh`, `output-scanner.sh` | Audit trail, secret detection in output |
+| **Context Reporting Hook** | `context-reporter.sh` | Context utilization injection for gating decisions |
+| **Session Archive Hook** | `archive-session.sh` | Session transcript archiving on exit |
 | **Container Isolation** | Docker with `cap_drop: ALL`, non-root user | OS-level blast radius containment |
 | **`.claudeignore`** | File-level exclusion | Prevents indexing of credentials and session logs |
 | **Pre-commit Hooks** | `.pre-commit-config.yaml` | Catches large files, private keys, merge conflicts at commit time |
@@ -541,7 +543,8 @@ The Full Pipeline workflow consists of **5 Phases** and **12 Stages**. Other mod
 │  └────────────────────────────────────────────────────────────────────────┘ │
 │                                                                             │
 │  Stage 5: Data Retrieval ←── education-data-query skill                     │
-│      ├─ Download from configured mirrors (per mirrors.yaml)                │
+│      ├─ Download from configured mirrors (per mirrors.yaml in             │
+│      │   .claude/skills/education-data-query/references/)                  │
 │      ├─ Auto-validate: shape, types, missingness (CP1)                      │
 │      ├─ STOP if: unexpected empty results, data access errors               │
 │      └─ Gate: Raw data saved to data/raw/ (parquet)                   │
@@ -1193,7 +1196,7 @@ Each stage has explicit input/output contracts and gate criteria:
 | 4.5 | Stage 4 (Plan) | Stage 5 | Plan validation PASSED or PASSED_WITH_WARNINGS |
 | 5 | Plan (query spec) | Stage 6 | CP1 PASSED, **QA1 PASSED or WARNING**, data saved to data/raw/ |
 | 6 | Stage 5 (raw data) | Stage 7 | CP2 PASSED, **QA2 PASSED or WARNING**, suppression <50%, data saved to data/processed/ |
-| 7 | Stage 6 (clean data) | Stage 8, 9 | All transformations validated (CP3), **QA3 PASSED or WARNING per script**, analysis dataset saved to `data/processed/[date]_analysis.parquet` |
+| 7 | Stage 6 (clean data) | Stage 8, 9 | All transformations validated (CP3), **QA3 PASSED or WARNING per script**, analysis dataset saved to `data/processed/[date]_analysis.parquet` (at Stage 7.3) |
 | 8 | Stage 7 (analysis data) | Stage 9, 11 | Required visualizations saved to output/figures/, **QA4 PASSED or WARNING** |
 | 9 | Stages 7, 8 | Stage 10 | Notebook runs without errors |
 | 10 | Stage 9 (notebook) | Stage 11 | `ruff check` passes, **QA findings aggregated** |
@@ -1429,6 +1432,10 @@ See `agent_reference/07_CONTEXT_MANAGEMENT.md` for complete context management p
 - Context compression reference
 
 See `agent_reference/STATE_TEMPLATE.md` for the complete template.
+
+#### Session Transcript Archiving
+
+On session end, the `archive-session.sh` hook automatically archives the full session transcript (JSONL + readable Markdown) to `.claude/logs/sessions/`. This provides a complete audit trail independent of STATE.md, useful for debugging cross-session issues or reviewing past decisions.
 
 ### Plan Document as Memory
 
