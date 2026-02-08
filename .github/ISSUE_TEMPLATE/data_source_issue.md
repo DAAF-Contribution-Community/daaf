@@ -1,6 +1,6 @@
 ---
 name: Data Source Issue
-about: Problem with a specific education data source — wrong data, missing variables, API errors
+about: Problem with a specific data source — wrong data, missing variables, data access/mirror errors
 title: "[Data] "
 labels: data
 assignees: ''

@@ -21,7 +21,7 @@ This document contains the full details for all six protocols. Protocols 1-5 are
 
 **Phase:** 1 (Discovery & Scoping)
 **Stages:** 2-3
-**Execution:** Via subagents with `education-data-explorer` and `education-data-source-*` skills
+**Execution:** Via subagents with `education-data-explorer` and `*-data-source-*` skills
 
 ## Purpose
 
@@ -33,7 +33,7 @@ Before writing any data query or analysis code, discover and understand availabl
 
 ### Repository-Level Learnings (Always Available)
 
-Source-specific knowledge (API variable name discrepancies, endpoint gotchas, data availability and lag times, pagination and error handling patterns) is now embedded directly in the relevant `education-data-source-*` skills. These skills are loaded automatically by subagents during exploration and querying -- no separate learnings file needs to be consulted.
+Source-specific knowledge (variable name discrepancies, data access gotchas, data availability and lag times, pagination and error handling patterns) is now embedded directly in the relevant `*-data-source-*` skills. These skills are loaded automatically by subagents during exploration and querying -- no separate learnings file needs to be consulted.
 
 ### Project-Level Learnings (When Available)
 
@@ -120,7 +120,7 @@ Before proceeding to Stage 3:
 
 ## Stage 3: Source Deep-Dive
 
-**Skills:** `education-data-source-*` (one per source)
+**Skills:** `*-data-source-*` (one per source)
 **Subagent Type:** `Plan`
 
 ### Invocation Pattern
@@ -128,7 +128,7 @@ Before proceeding to Stage 3:
 ```python
 Task({
     description: "Stage 3: Source Deep-Dive - [Source Name]",
-    prompt: """You have access to a skill tool. First, call the skill tool with name 'education-data-source-[source]'.
+    prompt: """You have access to a skill tool. First, call the skill tool with name '[domain]-data-source-[source]'.
 
 **CONTEXT FROM STAGE 2:**
 [Paste relevant Stage 2 findings]
@@ -204,7 +204,7 @@ If user clarifications reveal that discovery was inadequate:
 
 ## Purpose
 
-Retrieve data from the Education Data Portal API and apply proper context/cleaning based on source-specific knowledge.
+Retrieve data from the data access mirrors and apply proper context/cleaning based on source-specific knowledge.
 
 ## File-First Execution
 

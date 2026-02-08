@@ -130,8 +130,8 @@ What task are you performing?
     └─ Load `ruff` skill for linting
 ```
 
-**For Domain-Specific Analysis (e.g., Education Data):**
-- Load relevant `education-data-source-*` skill first to understand domain-specific data caveats
+**For Domain-Specific Analysis (e.g., CCD Education Data):**
+- Load relevant `*-data-source-*` skill first to understand domain-specific data caveats
 - Then apply data-scientist methodology with that context
 
 **Prerequisite Knowledge:**

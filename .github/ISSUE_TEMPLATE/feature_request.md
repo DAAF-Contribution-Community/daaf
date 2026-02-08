@@ -18,7 +18,7 @@ assignees: ''
 
 <!-- Optional — if you have thoughts on implementation, share them here. -->
 
-## Which area does this affect?
+## Which area does this affect? Check all that apply
 
 - [ ] Agent protocols (agents/)
 - [ ] Skills / data source knowledge (.claude/skills/)
