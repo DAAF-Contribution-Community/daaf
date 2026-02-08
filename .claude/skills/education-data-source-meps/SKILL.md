@@ -33,7 +33,7 @@ MEPS is a **modeled estimate** of the share of students from households with inc
 - **Data level**: School-level (individual schools)
 - **Coverage**: 2006-2019 (MEPS 1.0), expanded in MEPS 2.0
 - **Source**: Urban Institute, derived from CCD and SAIPE data
-- **API endpoint**: `/api/v1/schools/meps/{year}/`
+- **Mirror path**: `schools/meps/schools_meps.parquet` (via `education-data-query` skill)
 
 ## Why MEPS Instead of FRPL?
 
@@ -96,16 +96,14 @@ Which estimate type?
 
 ```
 Access method?
-├─ API query → ./references/api-usage.md
-├─ R package → `educationdata::get_education_data(level='schools', source='meps')`
-├─ Stata package → `educationdata, level(schools) source(meps)`
-├─ Bulk download → educationdata.urban.org CSV downloads
-└─ Join with other data → Use `ncessch` as join key
+├─ Mirror download (recommended) → See "Data Access via Mirrors" section below
+├─ Join with other data → Use `ncessch` as join key
+└─ Legacy API reference → ./references/api-usage.md
 ```
 
 ## Quick Reference: MEPS Variables
 
-> **API Implementation:** For URL construction patterns, pagination, and error handling, see the `education-data-query` skill. For comprehensive API learnings, see `agent_reference/EDUCATION_DATA_API_LEARNINGS.md`.
+> **Data Access:** MEPS data is fetched from mirrors (parquet/CSV). See the `education-data-query` skill for mirror configuration and fetch patterns.
 
 ### CRITICAL: API Field Names
 
@@ -223,13 +221,11 @@ df = df.filter(
 | Standard errors | `./references/data-quality.md` |
 | Appropriate uses | `./references/data-quality.md` |
 | Known limitations | `./references/data-quality.md` |
-| API endpoints | `./references/api-usage.md` |
-| Query examples | `./references/api-usage.md` |
-| R/Stata packages | `./references/api-usage.md` |
+| Legacy API reference | `./references/api-usage.md` |
 
 ## Cross-Reference to Related Skills
 
 | Skill | Purpose | When to Use |
 |-------|---------|-------------|
 | `education-data-explorer` | Discover all available endpoints | Finding other data to join with MEPS |
-| `education-data-query` | Construct API queries | Building complex MEPS queries |
+| `education-data-query` | Mirror-based data fetching | Downloading MEPS parquet/CSV files |

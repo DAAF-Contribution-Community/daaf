@@ -105,12 +105,6 @@ Checking data availability?
 | PSEO Data | `huggingface.co/datasets/brhkim/education_data_portal_mirror/resolve/main/college-university/pseo/earnings-and-flows/colleges_pseo_{year}.parquet` |
 | Codebook | `huggingface.co/datasets/brhkim/education_data_portal_mirror/resolve/main/college-university/pseo/earnings-and-flows/codebook_colleges_pseo.xls` |
 
-### Urban Institute API
-
-| Endpoint | URL |
-|----------|-----|
-| PSEO | `educationdata.urban.org/api/v1/college-university/pseo/earnings-and-flows/` |
-
 ### Census API (Original Source)
 
 | Endpoint | URL | Purpose |

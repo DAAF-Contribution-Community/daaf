@@ -124,19 +124,16 @@ OPEID6 (6 digits) - Institution family
 ### Schools to Districts
 
 ```python
-# Join school-level CCD to district-level CCD
-schools = educationdata.get_education_data(
-    level="schools",
-    source="ccd",
-    topic="directory",
-    filters={"year": 2020}
+import polars as pl
+
+# Load school-level CCD directory from mirror
+schools = pl.read_parquet("data/raw/schools_ccd_directory.parquet").filter(
+    pl.col("year") == 2020
 )
 
-districts = educationdata.get_education_data(
-    level="school-districts",
-    source="ccd",
-    topic="directory",
-    filters={"year": 2020}
+# Load district-level CCD directory from mirror
+districts = pl.read_parquet("data/raw/school-districts_lea_directory.parquet").filter(
+    pl.col("year") == 2020
 )
 
 # Join on leaid and year
@@ -155,20 +152,15 @@ print(f"Schools without district match: {unmatched}")
 ### Schools Across Sources (CCD to CRDC)
 
 ```python
-# Join CCD directory to CRDC discipline
-ccd = educationdata.get_education_data(
-    level="schools",
-    source="ccd",
-    topic="directory",
-    filters={"year": 2017}
+import polars as pl
+
+# Load CCD directory from mirror
+ccd = pl.read_parquet("data/raw/schools_ccd_directory.parquet").filter(
+    pl.col("year") == 2017
 )
 
-crdc = educationdata.get_education_data(
-    level="schools",
-    source="crdc",
-    topic="discipline",
-    filters={"year": 2017}
-)
+# Load CRDC discipline from mirror (yearly files)
+crdc = pl.read_parquet("data/raw/schools_crdc_discipline_k12_2017.parquet")
 
 # Join on ncessch (CRDC is biennial - verify year alignment)
 merged = ccd.join(
@@ -188,19 +180,15 @@ print(f"CRDC coverage: {crdc_coverage:.1%}")
 ### Colleges Across Sources (IPEDS to Scorecard)
 
 ```python
+import polars as pl
+
 # Both IPEDS and Scorecard use UNITID
-ipeds = educationdata.get_education_data(
-    level="college-university",
-    source="ipeds",
-    topic="directory",
-    filters={"year": 2020}
+ipeds = pl.read_parquet("data/raw/colleges_ipeds_directory.parquet").filter(
+    pl.col("year") == 2020
 )
 
-scorecard = educationdata.get_education_data(
-    level="college-university",
-    source="scorecard",
-    topic="earnings",
-    filters={"year": 2014}  # Cohort year
+scorecard = pl.read_parquet("data/raw/colleges_scorecard_earnings.parquet").filter(
+    pl.col("year") == 2014  # Cohort year
 )
 
 # Join on unitid
@@ -242,21 +230,15 @@ crdc_to_ccd_years = {
 }
 
 def get_aligned_data(crdc_year):
-    crdc = educationdata.get_education_data(
-        level="schools",
-        source="crdc",
-        topic="directory",
-        filters={"year": crdc_year}
+    crdc = pl.read_parquet(
+        f"data/raw/schools_crdc_discipline_k12_{crdc_year}.parquet"
     )
-    
+
     ccd_year = crdc_to_ccd_years[crdc_year]
-    ccd = educationdata.get_education_data(
-        level="schools",
-        source="ccd",
-        topic="directory",
-        filters={"year": ccd_year}
+    ccd = pl.read_parquet("data/raw/schools_ccd_directory.parquet").filter(
+        pl.col("year") == ccd_year
     )
-    
+
     return crdc.join(ccd, on="ncessch", how="left")
 ```
 
@@ -271,22 +253,16 @@ def get_ipeds_with_outcomes(enrollment_year):
     Get enrollment data aligned with graduation outcomes
     Note: Cohort outcomes not available until 6+ years later
     """
-    enrollment = educationdata.get_education_data(
-        level="college-university",
-        source="ipeds",
-        topic="fall-enrollment",
-        filters={"year": enrollment_year}
-    )
-    
+    enrollment = pl.read_parquet(
+        "data/raw/colleges_ipeds_fall_enrollment.parquet"
+    ).filter(pl.col("year") == enrollment_year)
+
     # Graduation rate cohort year = enrollment year
     # But outcomes measured later
-    grad_rates = educationdata.get_education_data(
-        level="college-university",
-        source="ipeds",
-        topic="grad-rates-200pct",
-        filters={"year": enrollment_year}
-    )
-    
+    grad_rates = pl.read_parquet(
+        "data/raw/colleges_ipeds_grad_rates_200pct.parquet"
+    ).filter(pl.col("year") == enrollment_year)
+
     return enrollment.join(grad_rates, on="unitid", how="left")
 ```
 
@@ -414,12 +390,11 @@ district_enrollment = schools.group_by(["leaid", "year"]).agg(
 The Education Data Portal links schools/colleges to Census geography via NHGIS:
 
 ```python
-# Get school-census geography crosswalk
-nhgis = educationdata.get_education_data(
-    level="schools",
-    source="nhgis",
-    topic="census-2010",
-    filters={"year": 2020}
+import polars as pl
+
+# Get school-census geography crosswalk from mirror
+nhgis = pl.read_parquet("data/raw/schools_nhgis_geog_2010.parquet").filter(
+    pl.col("year") == 2020
 )
 
 # Join to get census tract for each school

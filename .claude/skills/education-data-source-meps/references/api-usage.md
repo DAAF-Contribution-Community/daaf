@@ -1,4 +1,6 @@
-# MEPS API Usage
+# MEPS API Usage (Legacy Reference)
+
+> **Note:** This file documents the Education Data Portal's REST API for MEPS data. With the mirror-based workflow, data is fetched as parquet files from configured mirrors (see `education-data-query` skill). This documentation is retained for reference but is not the primary access method.
 
 How to query Model Estimates of Poverty in Schools via the Urban Institute Education Data Portal API.
 

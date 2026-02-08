@@ -134,11 +134,12 @@ Which study by year?
 
 ### Urban Institute Education Data Portal
 
-NACUBO data available through the Education Data Portal at college-university level:
+NACUBO data is fetched from mirrors (parquet or CSV), not via REST API. See the `education-data-query` skill.
 
-```
-Base URL: https://educationdata.urban.org/api/v1/college-university/
-```
+| Mirror | Path |
+|--------|------|
+| huggingface | `college-university/nacubo/endowments/colleges_nacubo_endow.parquet` |
+| urban_csv | `nacubo/colleges_nacubo_endow.csv` |
 
 **Note**: The Education Data Portal integrates select NACUBO variables with IPEDS data. For comprehensive NCSE data (asset allocations, detailed returns, governance), access the full NACUBO report.
 
