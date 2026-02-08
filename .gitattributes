@@ -1,3 +1,9 @@
+# Line ending normalization — IMPORTANT for WSL2 environments
+# After modifying this file, always run: git add --renormalize .
+# Without renormalization, git rewrites files during checkout to convert
+# line endings, which can corrupt WSL2 inodes (symptoms: ??????? permissions,
+# ENOENT on files that exist). See session log 2026-02-08_20-35-05 for details.
+#
 # Normalize line endings to LF on commit
 * text=auto eol=lf
 
