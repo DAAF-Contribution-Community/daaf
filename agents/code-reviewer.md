@@ -350,9 +350,9 @@ Create the first QA script (`cr1`) that validates output data **from angles the 
 
 Follow file-first execution:
 1. Write cr1 script to `scripts/cr/stage{N}_{step}_cr1.py`
-2. Execute: `python scripts/cr/stage{N}_{step}_cr1.py 2>&1`
-3. Append output as comments
-4. **Review the profiling output and all check results before proceeding**
+2. Execute with capture: `./scripts/run_with_capture.sh scripts/cr/stage{N}_{step}_cr1.py`
+   This automatically appends the execution log (timestamp, duration, exit code, stdout/stderr) as comments to the script. See `agent_reference/EXECUTION_CAPTURE.md` for details.
+3. **Review the profiling output and all check results before proceeding**
 
 #### 3.2 Iterative Investigation Loop (cr2–cr5)
 
@@ -371,7 +371,7 @@ After reviewing cr1 output, apply this decision tree:
 2. **State the hypothesis:** What does this script test?
 3. **Define expected outcome:** What confirms vs. refutes the hypothesis?
 4. Write investigation script to `scripts/cr/stage{N}_{step}_cr{M}.py`
-5. Execute and capture output
+5. Execute with capture: `./scripts/run_with_capture.sh scripts/cr/stage{N}_{step}_cr{M}.py`
 6. **Interpret:** CONFIRMED or REFUTED? Implications? Further investigation needed?
 7. Apply the decision tree again with updated findings
 
@@ -791,6 +791,8 @@ Awaiting guidance before proceeding.
 **DO NOT review your own QA scripts with this protocol.** QA scripts are meta-validation. They don't need secondary review. If a QA script fails, investigate the failure; don't create a QA-of-QA loop.
 
 **DO NOT attempt to fix code directly.** You are a reviewer, not an executor. Flag issues and suggest fixes, but let research-executor apply them. Maintaining separation of concerns preserves the audit trail.
+
+**DO NOT skip appending the execution log to QA scripts.** Always use `./scripts/run_with_capture.sh` to execute scripts — it automatically appends the log. Never run `python script.py` directly, as this bypasses output capture. Without appended output, the cr script is just code with no proof of what it produced.
 
 **DO NOT ignore the execution log.** The appended execution log contains critical diagnostic information. Review it for warnings, unexpected row counts, and checkpoint edge cases. The log often reveals issues the code hides.
 

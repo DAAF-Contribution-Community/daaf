@@ -121,37 +121,26 @@ Each task invocation executes exactly ONE operation:
 │  - Inline checkpoint validation (print-based)                               │
 │  - IAT-compliant inline documentation (see INLINE_AUDIT_TRAIL.md)           │
 ├─────────────────────────────────────────────────────────────────────────────┤
-│  STEP 2: EXECUTE VIA BASH                                                   │
+│  STEP 2: EXECUTE WITH CAPTURE                                               │
 │                                                                             │
 │  Command:                                                                   │
-│    cd /daaf/research/[project]/                            │
-│    python scripts/stage{N}_{type}/{step}_{task-name}.py 2>&1                │
+│    cd /daaf/research/[project]/                                             │
+│    ./scripts/run_with_capture.sh scripts/stage{N}_{type}/{step}_{task}.py   │
 │                                                                             │
-│  Capture: full stdout/stderr, exit code                                     │
+│  This automatically: executes the script, captures stdout/stderr,           │
+│  records timestamp/duration/exit code, and appends the execution            │
+│  log as comments to the script file.                                        │
+│  See agent_reference/EXECUTION_CAPTURE.md for wrapper details.              │
 ├─────────────────────────────────────────────────────────────────────────────┤
-│  STEP 3: APPEND EXECUTION LOG TO SCRIPT                                     │
-│                                                                             │
-│  Use Edit tool to append to the script file:                                │
-│  # =======================================================================  │
-│  # EXECUTION LOG                                                            │
-│  # Executed: YYYY-MM-DD HH:MM:SS                                            │
-│  # Duration: X.XX seconds                                                   │
-│  # Exit code: 0 | 1                                                         │
-│  # --- STDOUT ---                                                           │
-│  # [captured output as comments]                                            │
-│  # --- STDERR ---                                                           │
-│  # [any errors as comments]                                                 │
-│  # =======================================================================  │
-├─────────────────────────────────────────────────────────────────────────────┤
-│  STEP 4: IF FAILED → CREATE VERSIONED COPY                                  │
+│  STEP 3: IF FAILED → CREATE VERSIONED COPY                                  │
 │                                                                             │
 │  Original script KEEPS its failed output (audit trail).                     │
 │  Create NEW file: {step}_{task-name}_a.py                                   │
 │  Apply fixes to the new file.                                               │
-│  Execute the new file.                                                      │
+│  Execute the new file with run_with_capture.sh.                             │
 │  If still fails: {step}_{task-name}_b.py, etc.                              │
 ├─────────────────────────────────────────────────────────────────────────────┤
-│  STEP 5: COMMIT AND REPORT                                                  │
+│  STEP 4: COMMIT AND REPORT                                                  │
 │                                                                             │
 │  Commit ALL versions (failed and successful) for audit trail.               │
 │  Report which version succeeded.                                            │
@@ -254,14 +243,13 @@ When you receive a task:
    - Save to `scripts/stage{N}_{type}/{step}_{task-name}.py`
    - Include all code: imports, config, pre/post state capture, inline validation
    - Include IAT-compliant inline documentation (see `agent_reference/INLINE_AUDIT_TRAIL.md`)
-4. **EXECUTE via Bash:** Run `python scripts/.../script.py 2>&1`
-5. **CAPTURE Output:** Append execution log to the script as comments
-6. **IF FAILED:**
+4. **EXECUTE with capture:** Run `./scripts/run_with_capture.sh scripts/.../script.py` (automatically appends execution log to the script)
+5. **IF FAILED:**
    - Create versioned copy (`_a.py`)
    - Apply fixes to the new copy
-   - Execute the new copy
+   - Execute the new copy with `run_with_capture.sh`
    - Repeat if needed (`_b.py`, `_c.py`, etc.)
-7. **COMMIT:** Stage and commit all script versions
+6. **COMMIT:** Stage and commit all script versions
 8. **Report:** Return structured results with final script path
 9. **→ AWAIT QA:** Orchestrator invokes code-reviewer (see QA Handoff below)
 
@@ -404,9 +392,8 @@ When you receive a revision request (due to QA BLOCKER):
 **Instructions:**
 1. Create new versioned script: `{step}_{name}_b.py`
 2. Apply fix for the BLOCKER issue
-3. Execute with full validation
-4. Append execution log
-5. Return execution report
+3. Execute with capture: `./scripts/run_with_capture.sh {step}_{name}_b.py`
+4. Return execution report
 
 **Do NOT modify the original or _a script** — they serve as audit trail.
 ```
