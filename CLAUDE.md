@@ -820,7 +820,7 @@ Stage 3 → [Stage 3.5 if ≥2 sources] → Stage 4 → Stage 4.5 → Stage 5
 | 8 | `plotnine`, `plotly` | general-purpose | Subagent invokes skill |
 | **8-QA** | — | general-purpose | `code-reviewer` agent (after each Stage 8 script) |
 | 9 | — | general-purpose | `notebook-assembler` agent (COMPILES scripts — NO new code, NO dashboards) |
-| 10 | — | Orchestrator | QA aggregation (no subagent needed) |
+| 10 | `data-scientist` | general-purpose | Subagent invokes skill |
 | 11 | — | — | Orchestrator (no skill) |
 | 12 | — | Plan | `data-verifier` agent (no skill needed) |
 

@@ -21,7 +21,7 @@ This document provides detailed execution guidance for each of the 12 stages (pl
 | 7 | 4 | EDA & Transformation | `data-scientist`, `polars` | general-purpose |
 | 8 | 4 | Visualization | `plotnine`, `plotly` | general-purpose |
 | 9 | 4 | Notebook Assembly | `marimo` | general-purpose |
-| 10 | 4 | QA Aggregation | — | Orchestrator |
+| 10 | 4 | QA Aggregation | `data-scientist` | general-purpose |
 | 11 | 5 | Report Generation | — | Orchestrator |
 | 12 | 5 | Final Review | `data-verifier` agent (adversarial verification with cross-artifact coherence) | Plan |
 
@@ -1458,7 +1458,8 @@ def get_final_script_version(base_name: str, scripts_dir: Path) -> Path | None:
 
 ## Stage 10: QA Aggregation
 
-**Executor:** Orchestrator
+**Executor:** Subagent (general-purpose)
+**Skills:** `data-scientist`
 **Purpose:** Aggregation point for all QA findings from Stages 5-8
 
 ### Actions
