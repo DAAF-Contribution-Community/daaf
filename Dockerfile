@@ -47,7 +47,7 @@ RUN uv pip install --system \
     scipy \
     openpyxl \
     xlrd \
-    requests \ 
+    requests \
     pyarrow \
     urllib3
 
@@ -66,12 +66,23 @@ RUN uv pip install --system \
 # Install development & testing tools
 # Note: pydoc is part of the standard library (python -m pydoc)
 RUN uv pip install --system \
-    ruff
+    ruff \
+    pre-commit
+
+# ============================================
+# Create non-root user for security
+# ============================================
+RUN groupadd --gid 1000 appuser \
+    && useradd --uid 1000 --gid 1000 --create-home appuser
 
 # ============================================
 # Set up working directory
 # ============================================
 WORKDIR /daaf
+RUN chown appuser:appuser /daaf
+
+# Switch to non-root user
+USER appuser
 
 # Default command
 CMD ["bash"]

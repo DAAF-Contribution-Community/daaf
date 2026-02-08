@@ -24,11 +24,25 @@
       "Bash(git commit *)"
     ],
     "deny": [
-      "Bash(rm -rf /)",
-      "Bash(curl * | bash)",
+      "Bash(rm -rf *)",
+      "Bash(rm -r /*)",
+      "Bash(sudo *)",
+      "Bash(chmod 777 *)",
+      "Bash(chmod u+s *)",
+      "Bash(docker run *)",
+      "Bash(docker exec *)",
+      "Bash(mount *)",
+      "Bash(chroot *)",
       "Read(.env)",
+      "Read(.env.*)",
+      "Read(**/*.pem)",
+      "Read(**/*.key)",
       "Read(**/credentials*)",
-      "Read(**/*secret*)"
+      "Read(**/*secret*)",
+      "Write(.env)",
+      "Write(.env.*)",
+      "Edit(.env)",
+      "Edit(.env.*)"
     ]
   },
   "prefersReducedMotion": true,
@@ -53,6 +67,33 @@
           {
             "type": "command",
             "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/context-reporter.sh",
+            "timeout": 5
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/bash-safety.sh",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/audit-log.sh",
+            "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/output-scanner.sh",
             "timeout": 5
           }
         ]

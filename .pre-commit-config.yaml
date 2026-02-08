@@ -1,0 +1,26 @@
+# Pre-commit hooks for git safety
+# Install: pre-commit install
+# Run manually: pre-commit run --all-files
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      # Prevent committing files larger than 500KB (catches accidental data commits)
+      - id: check-added-large-files
+        args: ['--maxkb=500']
+
+      # Detect private key files before they're committed
+      - id: detect-private-key
+
+      # Catch unresolved merge conflict markers
+      - id: check-merge-conflict
+
+      # Validate YAML syntax
+      - id: check-yaml
+
+      # Ensure files end with a newline
+      - id: end-of-file-fixer
+
+      # Trim trailing whitespace
+      - id: trailing-whitespace

@@ -8,4 +8,7 @@ services:
     working_dir: /daaf
     stdin_open: true  # Required for interactive Claude Code sessions
     tty: true
-
+    cap_drop:
+      - ALL             # Drop all Linux capabilities (least privilege)
+    security_opt:
+      - no-new-privileges:true  # Prevent privilege escalation inside container
