@@ -74,7 +74,7 @@ After creating notebooks:
 
 ## CRITICAL: Stage 9 is Script COMPILATION, Not Dashboard Building
 
-**For education data research workflows**, the Stage 9 marimo notebook has ONE job: **LITERALLY COPY script file contents into cells.**
+**For data research workflows**, the Stage 9 marimo notebook has ONE job: **LITERALLY COPY script file contents into cells.**
 
 ### What Stage 9 IS
 

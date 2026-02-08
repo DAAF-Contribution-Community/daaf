@@ -147,7 +147,7 @@ Having issues?
 
 ## File-First Execution in Research Workflows
 
-**Important:** In education data research pipelines (see `CLAUDE.md`), Polars transformations are executed through **script files**, not interactively. This ensures auditability and reproducibility.
+**Important:** In data research pipelines (see `CLAUDE.md`), Polars transformations are executed through **script files**, not interactively. This ensures auditability and reproducibility.
 
 **The pattern:**
 1. Write transformation code to `scripts/stage{N}_{type}/{step}_{task-name}.py`

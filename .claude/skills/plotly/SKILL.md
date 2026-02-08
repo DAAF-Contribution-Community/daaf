@@ -93,7 +93,7 @@ Common issues?
 
 ## File-First Execution in Research Workflows
 
-**Important:** In education data research pipelines (see `CLAUDE.md`), all visualizations are generated through **script files** in `scripts/stage8_viz/`, not interactively. This ensures auditability and reproducibility.
+**Important:** In data research pipelines (see `CLAUDE.md`), all visualizations are generated through **script files** in `scripts/stage8_viz/`, not interactively. This ensures auditability and reproducibility.
 
 **The pattern:**
 1. Write plot code to `scripts/stage8_viz/{step}_{plot-name}.py`

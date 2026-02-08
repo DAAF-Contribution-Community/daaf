@@ -99,7 +99,7 @@ Having issues?
 
 ## Linting in Research Workflows
 
-**Context:** In education data research pipelines (see `CLAUDE.md`), ruff is run during Stage 10 (Quality Assurance) with output captured for audit.
+**Context:** In data research pipelines (see `CLAUDE.md`), ruff is run during Stage 10 (Quality Assurance) with output captured for audit.
 
 **Standard execution pattern:**
 ```bash
