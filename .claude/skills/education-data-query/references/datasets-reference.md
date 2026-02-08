@@ -117,9 +117,9 @@ dataset_paths = {
 | Topic | Type | Years | huggingface | urban_csv |
 |-------|------|-------|-------------|-----------|
 | Directory | Single | All years | `college-university/ipeds/directory/colleges_ipeds_directory` | `ipeds/colleges_ipeds_directory` |
-| Admissions | Single | varies | `college-university/ipeds/admissions-enrollment/colleges_ipeds_admissions_enrollment` | `ipeds/colleges_ipeds_admissions-enrollment` |
-| Enrollment FTE | Single | varies | `college-university/ipeds/enrollment-full-time-equivalent/colleges_ipeds_enrollment_fte` | `ipeds/colleges_ipeds_enrollment-full-time-equivalent` |
-| Graduation Rates | Single | varies | `college-university/ipeds/grad-rates/colleges_ipeds_grad_rates` | `ipeds/colleges_ipeds_grad-rates` |
+| Admissions | Single | varies | `college-university/ipeds/admissions-enrollment/colleges_ipeds_admissions-enrollment` | `ipeds/colleges_ipeds_admissions-enrollment` |
+| Enrollment FTE | Single | varies | `college-university/ipeds/enrollment-full-time-equivalent/colleges_ipeds_enrollment-fte` | `ipeds/colleges_ipeds_enrollment-full-time-equivalent` |
+| Graduation Rates | Single | varies | `college-university/ipeds/grad-rates/colleges_ipeds_grad-rates` | `ipeds/colleges_ipeds_grad-rates` |
 | Finance | Single | varies | `college-university/ipeds/finance/colleges_ipeds_finance` | `ipeds/colleges_ipeds_finance` |
 
 ### Scorecard
