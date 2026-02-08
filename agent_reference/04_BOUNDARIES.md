@@ -15,7 +15,7 @@ These actions are **mandatory** for every analysis task.
 | Validate data at every checkpoint (CP1-CP4) | Catch errors early |
 | Filter coded missing values (-1, -2, -3) before analysis | Prevent calculation errors |
 | Document suppression rates and limitations | Ensure transparency |
-| Save both parquet AND csv for all data files | Parquet for processing, CSV for sharing |
+| Save parquet for all data files | Parquet for processing |
 | Check for unexpected nulls after transformations | Catch data corruption |
 | Verify row counts before and after joins | Detect fan-out or data loss |
 
@@ -370,7 +370,7 @@ assert post_rows >= pre_rows * 0.1, f"Filter removed {100 - (post_rows/pre_rows)
 | **Data Access Connection Issues** | Data access timeout, rate limiting hit, endpoint changed |
 | **File Path Errors** | Parquet file not found, wrong directory structure, missing data folder |
 | **Environment Issues** | Missing environment variable for API key, wrong Python version |
-| **Data Format Issues** | CSV has unexpected encoding, parquet schema mismatch, date format parsing failure |
+| **Data Format Issues** | Data file has unexpected encoding, parquet schema mismatch, date format parsing failure |
 
 **Process:**
 1. Fix the blocking issue
@@ -657,7 +657,7 @@ feat(05-01): Fetch CCD school enrollment data
 
 - Validation: CP1 PASSED
 - Rows: 98,234
-- Files: data/raw/2026-01-31_ccd_schools.parquet, .csv
+- Files: data/raw/2026-01-31_ccd_schools.parquet
 
 Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>
 ```
@@ -669,7 +669,7 @@ feat(06-01): Clean CCD data, filter coded values
 - Validation: CP2 PASSED
 - Rows: 94,102 (4% removed)
 - Suppression rate: 12%
-- Files: data/processed/2026-01-31_ccd_clean.parquet, .csv
+- Files: data/processed/2026-01-31_ccd_clean.parquet
 
 Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>
 ```

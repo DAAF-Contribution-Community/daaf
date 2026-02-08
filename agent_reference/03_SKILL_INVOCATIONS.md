@@ -623,7 +623,6 @@ Task({
 
 **DATA OUTPUT REQUIREMENTS:**
 - Save to: data/raw/{date_prefix}_{source}_{description}.parquet
-- Also save CSV: data/raw/{date_prefix}_{source}_{description}.csv
 
 **RISK REGISTER ITEMS FOR THIS TASK:**
 | Risk | Likelihood | Impact | Mitigation | Watch For |
@@ -676,7 +675,6 @@ Return findings in this structure:
 
 ### File Locations
 - Parquet: data/raw/{filename}.parquet
-- CSV: data/raw/{filename}.csv
 
 ### Confidence Assessment
 | Check | Confidence | Rationale |
@@ -742,7 +740,6 @@ Task({
 
 **CLEAN DATA OUTPUT:**
 - Save to: data/processed/{date_prefix}_{description}.parquet
-- Also save CSV: data/processed/{date_prefix}_{description}.csv
 
 **RISK REGISTER ITEMS FOR THIS TASK:**
 | Risk | Likelihood | Impact | Mitigation | Watch For |
@@ -794,7 +791,6 @@ Return findings in this structure:
 
 ### File Locations
 - Parquet: data/processed/{filename}.parquet
-- CSV: data/processed/{filename}.csv
 
 ### Confidence Assessment
 | Check | Confidence | Rationale |

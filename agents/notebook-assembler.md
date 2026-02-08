@@ -224,7 +224,6 @@ def _():
     #
     # # --- Save ---
     # df.write_parquet(OUTPUT_DIR / "2026-01-24_ccd_schools.parquet")
-    # df.write_csv(OUTPUT_DIR / "2026-01-24_ccd_schools.csv")
     # print("CP1 VALIDATION: PASSED")
     #
     pass  # Cell must have executable statement
@@ -633,7 +632,6 @@ def _():
     #
     # # --- Save ---
     # df.write_parquet(OUTPUT_DIR / "2026-01-24_ccd_schools.parquet")
-    # df.write_csv(OUTPUT_DIR / "2026-01-24_ccd_schools.csv")
     # print("CP1 VALIDATION: PASSED")
     #
     pass  # Cell must have executable statement

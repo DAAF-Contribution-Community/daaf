@@ -223,9 +223,6 @@ Always save both formats (include in your script):
 ```python
 # Save parquet (for processing)
 df.write_parquet(f"data/raw/{date_prefix}_{source}_{description}.parquet")
-
-# Save CSV (for sharing)
-df.write_csv(f"data/raw/{date_prefix}_{source}_{description}.csv")
 ```
 
 ### 7. Script Structure

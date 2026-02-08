@@ -544,7 +544,7 @@ The Full Pipeline workflow consists of **5 Phases** and **12 Stages**. Other mod
 │      ├─ Download from configured mirrors (per mirrors.yaml)                │
 │      ├─ Auto-validate: shape, types, missingness (CP1)                      │
 │      ├─ STOP if: unexpected empty results, data access errors               │
-│      └─ Gate: Raw data saved to data/raw/ (parquet + csv)                   │
+│      └─ Gate: Raw data saved to data/raw/ (parquet)                   │
 │                          ↓                                                  │
 │  ┌─ 5-QA: >>> INVOKE code-reviewer NOW <<< (MANDATORY) ──────────────────┐ │
 │  │  Orchestrator MUST call Task tool with code-reviewer agent here.      │ │
@@ -822,7 +822,7 @@ Stage 3 → [Stage 3.5 if ≥2 sources] → Stage 4 → Stage 4.5 → Stage 5
 | 12 | — | Plan | `data-verifier` agent (no skill needed) |
 
 **Notes:**
-- Stages 5 and 6 use `general-purpose` subagent type because they require file write capability (saving parquet and CSV files to `data/raw/` and `data/processed/`).
+- Stages 5 and 6 use `general-purpose` subagent type because they require file write capability (saving parquet files to `data/raw/` and `data/processed/`).
 - Stages 3.5, 4, and 4.5 use specialized agents that define behavioral protocols rather than loading skills.
 - **QA substages** (5-QA through 8-QA) run code-reviewer after each script execution in the parent stage.
 - The `Plan` type is read-only and cannot write files.
@@ -1162,7 +1162,7 @@ See `agent_reference/PLAN_TEMPLATE.md` for wave-based task table format.
 **Stage 5 (Data Retrieval):**
 - Download from configured mirrors (per mirrors.yaml)
 - Validate response shape immediately after fetch
-- Save both parquet and CSV formats
+- Save only parquet format
 - Document which mirror was used
 
 **Stage 6 (Context Application):**
@@ -1462,14 +1462,10 @@ research/2026-01-24 School Poverty Analysis/
 ├── data/
 │   ├── raw/
 │   │   ├── 2026-01-24_ccd_schools.parquet
-│   │   ├── 2026-01-24_ccd_schools.csv
 │   │   ├── 2026-01-24a_ccd_schools.parquet          # Re-pulled for revision
-│   │   └── 2026-01-24a_ccd_schools.csv
 │   └── processed/
 │       ├── 2026-01-24_analysis_data.parquet
-│       ├── 2026-01-24_analysis_data.csv
 │       ├── 2026-01-24a_analysis_data.parquet
-│       └── 2026-01-24a_analysis_data.csv
 ├── output/
 │   └── figures/
 │       ├── 2026-01-24_enrollment_trends.png
@@ -1526,10 +1522,8 @@ research/YYYY-MM-DD [Title]/
 ├── data/
 │   ├── raw/                          # Original data access downloads
 │   │   ├── *.parquet                 # For processing
-│   │   └── *.csv                     # For sharing
 │   └── processed/                    # Cleaned/transformed data
 │       ├── *.parquet
-│       └── *.csv
 ├── output/
 │   └── figures/                      # Exported visualizations
 ```
@@ -1776,7 +1770,7 @@ These are strong recommendations (not hard blocks) to ensure clean state:
 - Validate data at every checkpoint (CP1-CP4)
 - Assess missingness and identify coded values before analysis
 - Document suppression rates and limitations
-- Save both parquet AND csv for all data files
+- Save only parquet for all data files
 
 **Process:**
 - Classify engagement mode before executing
@@ -2110,14 +2104,10 @@ research/2026-01-24 School Poverty Analysis/
 ├── data/
 │   ├── raw/
 │   │   ├── 2026-01-24_ccd_schools.parquet
-│   │   ├── 2026-01-24_ccd_schools.csv
 │   │   ├── 2026-01-24_meps_poverty.parquet
-│   │   └── 2026-01-24_meps_poverty.csv
 │   └── processed/
 │       ├── 2026-01-24_ccd_clean.parquet
-│       ├── 2026-01-24_ccd_clean.csv
 │       ├── 2026-01-24_analysis.parquet
-│       └── 2026-01-24_analysis.csv
 ├── output/
 │   └── figures/
 │       └── 2026-01-24_poverty_distribution.png

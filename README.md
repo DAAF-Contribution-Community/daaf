@@ -225,7 +225,7 @@ Your Question → Discovery → Planning → Data Acquisition → Analysis → D
 - Specifies data queries, cleaning approach, and output format
 
 **Phase 3: Data Acquisition**
-- Fetches data from the Education Data Portal API
+- Fetches data from the configured data access mirrors/sources
 - Validates data quality and handles coded values
 - Documents suppression rates and missing data
 
@@ -452,8 +452,8 @@ research/YYYY-MM-DD [Title]/
 │   ├── stage8_viz/                   # Visualization scripts
 │   └── debug/                        # Debugger diagnostic scripts
 ├── data/
-│   ├── raw/                          # Original API responses (.parquet, .csv)
-│   └── processed/                    # Cleaned data (.parquet, .csv)
+│   ├── raw/                          # Original data access responses (.parquet)
+│   └── processed/                    # Cleaned data (.parquet)
 ├── output/
 │   └── figures/                      # Exported visualizations
 ```

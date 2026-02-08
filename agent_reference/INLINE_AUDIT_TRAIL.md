@@ -63,7 +63,7 @@ A block comment that introduces each major section of a script. Provides orienta
 # to a specific Plan requirement or invariant that must be preserved.
 
 # --- Save ---
-# Persist results in both parquet (for processing) and CSV (for sharing).
+# Persist results in parquet.
 # Output paths match the Plan's file specification.
 ```
 
@@ -205,7 +205,6 @@ BASE_URL = "https://educationdata.urban.org/api/v1/schools/ccd/directory"
 YEARS = list(range(2018, 2023))  # 2018-2022 per Plan query specification
 
 OUTPUT_PARQUET = DATA_RAW / f"{DATE_PREFIX}_ccd_schools.parquet"
-OUTPUT_CSV = DATA_RAW / f"{DATE_PREFIX}_ccd_schools.csv"
 
 # --- Fetch ---
 # INTENT: Retrieve CCD school directory records for all 5 years from the

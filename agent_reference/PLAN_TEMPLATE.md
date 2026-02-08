@@ -573,7 +573,6 @@ The cardinality specified here is passed to `validate_join()` function during St
   <agent>research-executor</agent>
   <files>
     <output>data/raw/YYYY-MM-DD_ccd_schools.parquet</output>
-    <output>data/raw/YYYY-MM-DD_ccd_schools.csv</output>
   </files>
   <action>
     1. Load education-data-query skill
@@ -583,7 +582,7 @@ The cardinality specified here is passed to `validate_join()` function during St
     3. Apply local filters with Polars:
        - Years: pl.col("year").is_in([year list])
        - Filters: [filter parameters as Polars expressions]
-    4. Save to parquet and CSV formats
+    4. Save to parquet format
     5. Run CP1 validation
   </action>
   <verify>
@@ -602,13 +601,12 @@ The cardinality specified here is passed to `validate_join()` function during St
   <agent>research-executor</agent>
   <files>
     <output>data/raw/YYYY-MM-DD_meps_poverty.parquet</output>
-    <output>data/raw/YYYY-MM-DD_meps_poverty.csv</output>
   </files>
   <action>
     1. Load education-data-query skill
     2. Use mirror fetch pattern for MEPS poverty data
     3. Apply local filters with Polars
-    4. Save to parquet and CSV formats
+    4. Save to parquet format
     5. Run CP1 validation
   </action>
   <verify>
@@ -628,7 +626,6 @@ The cardinality specified here is passed to `validate_join()` function during St
   <files>
     <input>data/raw/YYYY-MM-DD_ccd_schools.parquet</input>
     <output>data/processed/YYYY-MM-DD_ccd_clean.parquet</output>
-    <output>data/processed/YYYY-MM-DD_ccd_clean.csv</output>
   </files>
   <action>
     1. Load education-data-context skill
@@ -639,7 +636,7 @@ The cardinality specified here is passed to `validate_join()` function during St
        - Remove rows where [variable] == -3 (suppressed)
     4. Calculate suppression rate for key variable
     5. Generate citation text
-    6. Save to parquet and CSV formats
+    6. Save to parquet format
     7. Run CP2 validation
   </action>
   <verify>
@@ -728,7 +725,6 @@ Read each task aloud and ask:
 files:
   - input: data/raw/YYYY-MM-DD_[source]_[description].parquet
   - output: data/processed/YYYY-MM-DD_[description]_clean.parquet
-  - output: data/processed/YYYY-MM-DD_[description]_clean.csv
 action: |
   1. Call education-data-context skill
   2. Load raw data from input file
@@ -738,7 +734,7 @@ action: |
      - Remove rows where [variable] == -3 (suppressed)
   4. Calculate suppression rate for [key variable]
   5. Generate citation text
-  6. Save to parquet and CSV formats
+  6. Save to parquet format
   7. Run CP2 validation
 verify: |
   - Suppression rate < 50%
@@ -869,8 +865,8 @@ Before finalizing each task above, verify:
 | Plan document | `research/[project]/` | `.md` |
 | Marimo notebook | `research/[project]/` | `.py` |
 | Stakeholder report | `research/[project]/` | `.md` |
-| Raw data | `research/[project]/data/raw/` | `.parquet`, `.csv` |
-| Processed data | `research/[project]/data/processed/` | `.parquet`, `.csv` |
+| Raw data | `research/[project]/data/raw/` | `.parquet` |
+| Processed data | `research/[project]/data/processed/` | `.parquet` |
 | Figures | `research/[project]/output/figures/` | `.png` |
 
 ---

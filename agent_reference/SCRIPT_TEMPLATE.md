@@ -178,9 +178,8 @@ assert result.shape[0] > 0, "STOP: Empty result"
 assert all(c in result.columns for c in ["required_col"]), "STOP: Missing required columns"
 
 # --- Save ---
-# Persist results in both parquet and CSV formats.
+# Persist results in parquet format.
 result.write_parquet(OUTPUT_PATH)
-result.write_csv(OUTPUT_PATH.with_suffix(".csv"))
 print(f"\nSaved: {OUTPUT_PATH}")
 print(f"\nCP{n} VALIDATION: PASSED")
 
@@ -231,7 +230,6 @@ print(f"\nCP{n} VALIDATION: PASSED")
 # Total records fetched: 22,379
 # Shape: 22,379 rows x 45 cols
 # Saved: data/raw/2026-01-31_ccd_schools.parquet
-# Saved: data/raw/2026-01-31_ccd_schools.csv
 #
 # ============================================================
 # CHECKPOINT 1 VALIDATION
@@ -367,7 +365,6 @@ DATASET_PATHS = {
 }
 
 OUTPUT_PARQUET = DATA_RAW / f"{DATE_PREFIX}_ccd_schools.parquet"
-OUTPUT_CSV = DATA_RAW / f"{DATE_PREFIX}_ccd_schools.csv"
 
 # --- Mirror Configuration ---
 # INTENT: Download CCD school directory from the fastest available mirror.
@@ -471,11 +468,9 @@ df = fetch_from_mirrors(
 print(f"Shape: {df.shape[0]:,} rows x {df.shape[1]} cols")
 
 # --- Save ---
-# Persist results in both parquet and CSV formats.
+# Persist results in parquet format.
 df.write_parquet(OUTPUT_PARQUET)
-df.write_csv(OUTPUT_CSV)
 print(f"Saved: {OUTPUT_PARQUET}")
-print(f"Saved: {OUTPUT_CSV}")
 
 # --- CP1 Validation ---
 # Checkpoint validation: verify fetched data meets Plan expectations for
@@ -616,10 +611,9 @@ print(f"\nPost-state: {post_rows:,} rows")
 print(f"Row change: {((post_rows - pre_rows) / pre_rows * 100):+.1f}%")
 
 # --- Save ---
-# Persist results in both parquet and CSV formats.
+# Persist results in parquet format.
 OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)
 df.write_parquet(OUTPUT_PATH)
-df.write_csv(OUTPUT_PATH.with_suffix(".csv"))
 print(f"Saved: {OUTPUT_PATH}")
 
 # --- CP2 Validation ---
@@ -756,10 +750,9 @@ row_change_pct = ((df.shape[0] - pre_ccd_rows) / pre_ccd_rows * 100)  # Negative
 print(f"Row change from CCD: {row_change_pct:+.1f}%")
 
 # --- Save ---
-# Persist results in both parquet and CSV formats.
+# Persist results in parquet format.
 OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)
 df.write_parquet(OUTPUT_PATH)
-df.write_csv(OUTPUT_PATH.with_suffix(".csv"))
 print(f"\nSaved: {OUTPUT_PATH}")
 
 # --- CP3 Validation ---
@@ -1122,7 +1115,7 @@ if not all_passed:
 - Execute exactly ONE major operation per script
 - Capture post-state after transformation
 - Use `assert` statements for checkpoint validation (script exits non-zero on failure)
-- Save both parquet AND csv formats
+- Save parquet format
 - Write verbose inline comments following the IAT protocol (see `agent_reference/INLINE_AUDIT_TRAIL.md`)
 
 ---
