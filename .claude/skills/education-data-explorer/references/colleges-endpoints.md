@@ -1,5 +1,7 @@
 # Colleges Endpoints Reference
 
+> **NOTE:** This file documents endpoint patterns from the Education Data Portal API for reference. Data is now fetched via mirrors (see `education-data-query` skill). These endpoint paths help identify available datasets and their structure.
+
 Complete reference for all college/university level endpoints in the Education Data Portal.
 
 **Base URL**: `https://educationdata.urban.org/api/v1/college-university/`

@@ -1386,24 +1386,23 @@ done
 #### Data Access Response Not Integrated (BLOCKER)
 
 ```python
-# RED FLAG - Fetch but don't use response:
-response = requests.get(f"{BASE_URL}/schools")
-data = response.json()
-# data never converted to DataFrame or used
+# RED FLAG - Fetch but don't use result:
+df = fetch_from_mirrors(dataset_paths=DATASET_PATHS, years=YEARS)
+# df never written to parquet, never validated, never used downstream
 
 # Or partial integration:
-response = requests.get(f"{BASE_URL}/schools")
-# response.json() never called
+fetch_from_mirrors(dataset_paths=DATASET_PATHS, years=YEARS)
+# Return value never assigned to a variable
 ```
 
 **Bash detection:**
 
 ```bash
-# Find data access calls, check for response processing
-grep -rn "requests\.get\|requests\.post" *.py
+# Find mirror fetch calls, check for result assignment and downstream use
+grep -rn "fetch_from_mirrors\|pl\.read_parquet\|pl\.scan_csv" *.py
 
-# Check for response.json() or similar processing nearby
-grep -rn -A3 "requests\.get" *.py | grep -E "\.json\(\)|\.text|\.content"
+# Check for fetch calls whose result is never written or validated
+grep -rn -A5 "fetch_from_mirrors" *.py | grep -E "write_parquet|write_csv|\.shape|assert|print"
 ```
 
 ---

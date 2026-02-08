@@ -80,7 +80,7 @@ Group independent tasks into waves for parallel execution:
 
 | Wave | Tasks | Rationale |
 |------|-------|-----------|
-| 1 | Fetch CCD, Fetch MEPS | Independent API calls |
+| 1 | Fetch CCD, Fetch MEPS | Independent mirror downloads |
 | 2 | Clean CCD, Clean MEPS | Depends on Wave 1 |
 | 3 | Join CCD+MEPS | Depends on Wave 2 |
 
@@ -115,7 +115,7 @@ When creating a plan:
 2. **Determine Data Access Strategy:** For each data source, identify the mirror file path:
 
    - Check `datasets-reference.md` for known file paths
-   - Verify availability via HF tree API if uncertain
+   - Verify availability by checking mirror directly
    - Note whether dataset is single-file or yearly
 
    **Document in the Plan's Query Specification:** For each query, include:
@@ -309,7 +309,7 @@ Before finalizing any plan:
 | Consumer | What They Need | How They Use It |
 |----------|----------------|-----------------|
 | Orchestrator | Plan location, wave structure | Coordinates execution across stages |
-| Stage 5 subagent (fetch) | Query specifications from task specs | Executes API calls with exact parameters |
+| Stage 5 subagent (fetch) | Query specifications from task specs | Downloads files from mirrors with specified parameters |
 | Stage 6 subagent (context) | Coded value handling rules | Applies correct filters and suppressions |
 | Stage 7 subagent (transform) | Transformation sequence, cardinalities | Executes joins/aggregations with validation |
 | Plan-checker | Complete task specifications | Validates plan completeness and correctness |
@@ -514,7 +514,7 @@ Awaiting user guidance before proceeding.
 ```markdown
 | Wave | Task | Operation | Expected Outcome | Cardinality | Depends On |
 |------|------|-----------|------------------|-------------|------------|
-| 1 | fetch-ccd | GET /schools endpoint | ~100K rows, 15 columns | N/A | — |
+| 1 | fetch-ccd | Download schools data from mirrors | ~100K rows, 15 columns | N/A | — |
 | 2 | clean-ccd | Filter -1/-2/-3 coded values | ~95K rows (5% removal) | N/A | 1 |
 | 3 | aggregate-district | Group by leaid, sum enrollment | ~15K rows (district level) | many:1 | 2 |
 ```

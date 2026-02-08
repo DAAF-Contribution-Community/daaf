@@ -674,7 +674,7 @@ Run plan-checker
    - Construct necessary sample filters (year, subgroups, etc.)
 
 2. **Execute Query**
-   - Implement rate limiting
+   - Implement timeout handling for mirror downloads
    - Retry on transient errors
 
 3. **Validate Response**
@@ -698,7 +698,7 @@ Run plan-checker
 ### Thoroughness Directive
 
 ```
-- Use pagination for datasets >10K records
+- Download complete file from mirror
 - Validate response shape immediately
 - Save ONLY in parquet format
 - Document any data access issues encountered

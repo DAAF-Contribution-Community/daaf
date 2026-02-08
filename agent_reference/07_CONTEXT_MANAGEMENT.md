@@ -64,7 +64,7 @@ These tasks consume significant context and should ALWAYS be delegated:
 - Full skill content (let subagents load)
 - Raw data samples (only shapes and summaries)
 - Complete code files (only references)
-- API response bodies (only parsed findings)
+- Downloaded data summaries (only parsed findings)
 - Full error tracebacks (only summaries)
 
 ---

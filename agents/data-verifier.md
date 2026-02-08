@@ -132,7 +132,7 @@ Similarly, when code-reviewer reported PASSED on all scripts, don't assume the a
 
 | Path | What You Check |
 |------|----------------|
-| `data/raw/*.parquet` | Raw API responses exist |
+| `data/raw/*.parquet` | Raw downloaded data exists |
 | `data/processed/*.parquet` | Cleaned data exists |
 | `output/figures/*.png` | All generated visualizations |
 | `scripts/stage*/*.py` | Execution scripts for all tasks |
@@ -374,7 +374,7 @@ For each key finding in the Report:
 
 #### The "Telephone Game" Test
 
-Data transforms through many stages: raw API response → cleaned data → transformed data → analysis dataset → notebook output → report narrative. At each stage, meaning can shift subtly. A column name stays the same but its composition changes after a filter. An aggregation collapses a distribution into a single number. A report sentence distills a complex pattern into a simple claim.
+Data transforms through many stages: raw downloaded data → cleaned data → transformed data → analysis dataset → notebook output → report narrative. At each stage, meaning can shift subtly. A column name stays the same but its composition changes after a filter. An aggregation collapses a distribution into a single number. A report sentence distills a complex pattern into a simple claim.
 
 **For at least one key finding**, trace the complete chain from raw data to Report claim. Verify that the final narrative is faithful to what the original data actually shows. This end-to-end trace is required, not optional.
 

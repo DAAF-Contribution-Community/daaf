@@ -67,8 +67,8 @@ Awaiting your guidance before proceeding.
 
 | Category | Examples | Typical Resolution | Per-Incident Limit |
 |----------|----------|-------------------|-------------------|
-| **Data Availability** | No data exists, endpoint not found | Escalate immediately | 0 retries |
-| **Access/Network** | Timeout, rate limiting, 5xx errors | Retry with backoff | 3 retries |
+| **Data Availability** | No data exists, mirror file not found | Escalate immediately | 0 retries |
+| **Access/Network** | Timeout, 404 (mirror file not found), network errors | Retry with backoff | 3 retries |
 | **Data Quality** | High suppression, unexpected nulls | Adjust approach or escalate | Varies |
 | **Code Execution** | Syntax errors, runtime errors | Fix and retry | 2 attempts |
 | **Validation Failure** | Checkpoint failed | Investigate and fix or escalate | Varies by severity |
@@ -254,44 +254,33 @@ Awaiting your guidance before proceeding.
 **Recovery:** Retry with exponential backoff
 
 ```python
-import time
-import httpx
+import polars as pl
 
-def fetch_with_retry(url: str, max_retries: int = 3) -> dict:
-    """Fetch data with exponential backoff retry logic."""
-    delays = [1, 5, 15]  # seconds
-    
-    for attempt in range(max_retries):
+def fetch_from_mirrors(mirrors: list[dict], dataset_path: str) -> pl.DataFrame:
+    """Download data from configured mirrors with fallback."""
+    errors = []
+
+    for mirror in mirrors:
+        url = mirror["url_template"].format(path=dataset_path)
         try:
-            response = httpx.get(url, timeout=30.0)
-            response.raise_for_status()
-            return response.json()
-            
-        except httpx.TimeoutException:
-            if attempt < max_retries - 1:
-                print(f"Timeout on attempt {attempt + 1}, retrying in {delays[attempt]}s...")
-                time.sleep(delays[attempt])
+            if mirror.get("read_strategy") == "eager_parquet":
+                df = pl.read_parquet(url)
             else:
-                raise
-                
-        except httpx.HTTPStatusError as e:
-            if e.response.status_code == 429:
-                # Rate limited
-                wait_time = int(e.response.headers.get("Retry-After", delays[attempt]))
-                print(f"Rate limited, waiting {wait_time}s...")
-                time.sleep(wait_time)
-            elif e.response.status_code >= 500:
-                # Server error
-                if attempt < max_retries - 1:
-                    print(f"Server error {e.response.status_code}, retrying in {delays[attempt]}s...")
-                    time.sleep(delays[attempt])
-                else:
-                    raise
-            else:
-                # Client error (4xx) - don't retry
-                raise
-    
-    raise RuntimeError(f"Failed after {max_retries} attempts")
+                df = pl.read_csv(url)
+            print(f"Mirror: {mirror['name']} — {df.shape[0]:,} rows fetched")
+            return df
+
+        except Exception as e:
+            errors.append(f"{mirror['name']}: {e}")
+            print(f"Mirror {mirror['name']} failed: {e}")
+            continue
+
+    # All mirrors failed
+    error_report = "\n".join(errors)
+    raise RuntimeError(
+        f"All mirrors failed for {dataset_path}:\n{error_report}\n"
+        "STOP: Escalate to user — check mirrors.yaml configuration"
+    )
 ```
 
 **If retry fails:** ESCALATE
@@ -306,7 +295,7 @@ def fetch_with_retry(url: str, max_retries: int = 3) -> dict:
 **Possible Causes:**
 - Data access mirror service disruption
 - Rate limiting exceeded
-- Invalid endpoint
+- Invalid mirror file path
 
 **Recommendation:**
 Wait and retry later, or verify endpoint is correct.
@@ -596,7 +585,7 @@ Validation Failure
 |-------|----------|
 | Data access timeout | Retry with backoff |
 | Empty response | Verify filters, escalate if correct |
-| Partial data | Check pagination, retry |
+| Partial data | Verify download completed, retry from mirror |
 
 ### Stage 6 (Context Application) Failures
 

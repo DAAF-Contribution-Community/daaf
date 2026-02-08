@@ -191,39 +191,43 @@ def _():
     # =========================================================================
     #
     # """
-    # Stage 5.1: Fetch CCD school directory from Education Data Portal data access mirror.
-    # Input: API endpoint
+    # Stage 5.1: Fetch CCD school directory from mirror.
+    # Input: Mirror download (per mirrors.yaml priority order)
     # Output: data/raw/2026-01-24_ccd_schools.parquet
     # """
     #
     # import polars as pl
-    # import requests
+    # import yaml
     # from pathlib import Path
     #
     # # --- Config ---
-    # BASE_URL = "https://educationdata.urban.org/api/v1/"
-    # ENDPOINT = "schools/ccd/directory"
-    # YEAR = 2022
-    # OUTPUT_DIR = Path("data/raw")
+    # PROJECT_DIR = Path("/daaf/research/2026-01-24 School Analysis")
+    # DATA_RAW = PROJECT_DIR / "data" / "raw"
+    # DATE_PREFIX = "2026-01-24"
+    # YEARS = list(range(2018, 2023))
+    #
+    # DATASET_PATHS = {
+    #     "huggingface": {"path": "schools/ccd/directory/schools_ccd_directory"},
+    #     "urban_csv": {"source": "ccd", "filename": "schools_ccd_directory"},
+    # }
+    #
+    # OUTPUT_PARQUET = DATA_RAW / f"{DATE_PREFIX}_ccd_schools.parquet"
+    #
+    # MIRRORS_YAML = Path("/daaf/.claude/skills/education-data-query/references/mirrors.yaml")
+    # with open(MIRRORS_YAML) as f:
+    #     MIRRORS = yaml.safe_load(f)["mirrors"]
     #
     # # --- Fetch ---
     # print("=" * 60)
     # print("Stage 5.1: Fetch CCD Schools")
     # print("=" * 60)
     #
-    # url = f"{BASE_URL}{ENDPOINT}/{YEAR}/"
-    # all_data = []
-    # while url:
-    #     response = requests.get(url)
-    #     data = response.json()
-    #     all_data.extend(data["results"])
-    #     url = data.get("next")
-    #
-    # df = pl.DataFrame(all_data)
+    # DATA_RAW.mkdir(parents=True, exist_ok=True)
+    # df = fetch_from_mirrors(dataset_paths=DATASET_PATHS, years=YEARS)
     # print(f"Fetched: {df.shape[0]:,} rows x {df.shape[1]} cols")
     #
     # # --- Save ---
-    # df.write_parquet(OUTPUT_DIR / "2026-01-24_ccd_schools.parquet")
+    # df.write_parquet(OUTPUT_PARQUET)
     # print("CP1 VALIDATION: PASSED")
     #
     pass  # Cell must have executable statement
@@ -599,39 +603,43 @@ def _():
     # =========================================================================
     #
     # """
-    # Stage 5.1: Fetch CCD school directory from Education Data Portal data access mirror.
-    # Input: API endpoint
+    # Stage 5.1: Fetch CCD school directory from mirror.
+    # Input: Mirror download (per mirrors.yaml priority order)
     # Output: data/raw/2026-01-24_ccd_schools.parquet
     # """
     #
     # import polars as pl
-    # import requests
+    # import yaml
     # from pathlib import Path
     #
     # # --- Config ---
-    # BASE_URL = "https://educationdata.urban.org/api/v1/"
-    # ENDPOINT = "schools/ccd/directory"
-    # YEAR = 2022
-    # OUTPUT_DIR = Path("data/raw")
+    # PROJECT_DIR = Path("/daaf/research/2026-01-24 School Analysis")
+    # DATA_RAW = PROJECT_DIR / "data" / "raw"
+    # DATE_PREFIX = "2026-01-24"
+    # YEARS = list(range(2018, 2023))
+    #
+    # DATASET_PATHS = {
+    #     "huggingface": {"path": "schools/ccd/directory/schools_ccd_directory"},
+    #     "urban_csv": {"source": "ccd", "filename": "schools_ccd_directory"},
+    # }
+    #
+    # OUTPUT_PARQUET = DATA_RAW / f"{DATE_PREFIX}_ccd_schools.parquet"
+    #
+    # MIRRORS_YAML = Path("/daaf/.claude/skills/education-data-query/references/mirrors.yaml")
+    # with open(MIRRORS_YAML) as f:
+    #     MIRRORS = yaml.safe_load(f)["mirrors"]
     #
     # # --- Fetch ---
     # print("=" * 60)
     # print("Stage 5.1: Fetch CCD Schools")
     # print("=" * 60)
     #
-    # url = f"{BASE_URL}{ENDPOINT}/{YEAR}/"
-    # all_data = []
-    # while url:
-    #     response = requests.get(url)
-    #     data = response.json()
-    #     all_data.extend(data["results"])
-    #     url = data.get("next")
-    #
-    # df = pl.DataFrame(all_data)
+    # DATA_RAW.mkdir(parents=True, exist_ok=True)
+    # df = fetch_from_mirrors(dataset_paths=DATASET_PATHS, years=YEARS)
     # print(f"Fetched: {df.shape[0]:,} rows x {df.shape[1]} cols")
     #
     # # --- Save ---
-    # df.write_parquet(OUTPUT_DIR / "2026-01-24_ccd_schools.parquet")
+    # df.write_parquet(OUTPUT_PARQUET)
     # print("CP1 VALIDATION: PASSED")
     #
     pass  # Cell must have executable statement
@@ -826,22 +834,23 @@ def _():
     # =========================================================================
     #
     # import polars as pl
-    # import requests
+    # import yaml
     # from pathlib import Path
     #
     # # --- Config ---
-    # BASE_URL = "https://educationdata.urban.org/api/v1/"
-    # ENDPOINT = "schools/ccd/directory"
-    # YEAR = 2022
+    # DATASET_PATHS = {
+    #     "huggingface": {"path": "schools/ccd/directory/schools_ccd_directory"},
+    #     "urban_csv": {"source": "ccd", "filename": "schools_ccd_directory"},
+    # }
     # ...
     #
     # # --- Fetch ---
     # print("Stage 5.1: Fetch CCD Schools")
-    # url = f"{BASE_URL}{ENDPOINT}/{YEAR}/"
+    # df = fetch_from_mirrors(dataset_paths=DATASET_PATHS, years=YEARS)
     # ...
     #
     # # --- Save ---
-    # df.write_parquet(OUTPUT_DIR / "2026-01-24_ccd_schools.parquet")
+    # df.write_parquet(OUTPUT_PARQUET)
     # print("CP1 VALIDATION: PASSED")
     #
     pass  # Cell must have executable statement

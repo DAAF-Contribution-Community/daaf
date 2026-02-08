@@ -367,9 +367,9 @@ assert post_rows >= pre_rows * 0.1, f"Filter removed {100 - (post_rows/pre_rows)
 |----------|----------|
 | **Missing Dependency** | `import polars` fails, missing `plotnine` package |
 | **Import Errors** | Wrong import path, circular import, missing `__init__.py` |
-| **Data Access Connection Issues** | Data access timeout, rate limiting hit, endpoint changed |
+| **Data Access Connection Issues** | Data access timeout, mirror service unavailable, mirror file path changed |
 | **File Path Errors** | Parquet file not found, wrong directory structure, missing data folder |
-| **Environment Issues** | Missing environment variable for API key, wrong Python version |
+| **Environment Issues** | Missing mirror configuration (mirrors.yaml), wrong Python version |
 | **Data Format Issues** | Data file has unexpected encoding, parquet schema mismatch, date format parsing failure |
 
 **Process:**
@@ -403,7 +403,7 @@ df = pl.read_parquet("data/raw/2026-01-31_ccd_schools.parquet")
 | Category | Examples |
 |----------|----------|
 | **Changing Analysis Methodology** | Switching from mean to median aggregation, changing from cross-sectional to longitudinal approach |
-| **Adding New Data Sources** | Incorporating additional dataset not in Plan, adding new API or data access endpoint |
+| **Adding New Data Sources** | Incorporating additional dataset not in Plan, adding new mirror or data source |
 | **Modifying Aggregation Approach** | Changing from school-level to district-level, altering grouping variables |
 | **Changing Join Strategy** | Switching from inner join to left join, changing join keys |
 | **Altering Population/Sample** | Excluding years not originally planned, filtering to different states |

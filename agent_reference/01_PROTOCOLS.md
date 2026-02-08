@@ -33,7 +33,7 @@ Before writing any data query or analysis code, discover and understand availabl
 
 ### Repository-Level Learnings (Always Available)
 
-Source-specific knowledge (variable name discrepancies, data access gotchas, data availability and lag times, pagination and error handling patterns) is now embedded directly in the relevant `*-data-source-*` skills. These skills are loaded automatically by subagents during exploration and querying -- no separate learnings file needs to be consulted.
+Source-specific knowledge (variable name discrepancies, data access gotchas, data availability and lag times, mirror fallback patterns and data quality issues) is now embedded directly in the relevant `*-data-source-*` skills. These skills are loaded automatically by subagents during exploration and querying -- no separate learnings file needs to be consulted.
 
 ### Project-Level Learnings (When Available)
 
@@ -236,9 +236,9 @@ Variables: [variables to select]
 Expected Records: [approximate count]
 
 **THOROUGHNESS DIRECTIVE:**
-- Use pagination if dataset exceeds 10K records
+- Download complete file from mirror
 - Validate response shape immediately after fetch
-- Check for data access errors and rate limiting
+- Check for data access errors and mirror availability
 - Save data in ONLY parquet format
 - Document any data access issues encountered
 

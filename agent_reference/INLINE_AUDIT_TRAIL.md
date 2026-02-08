@@ -168,8 +168,18 @@ The IAT is about useful documentation, not noise. Do NOT comment:
 PROJECT_DIR = Path("/daaf/research/2026-01-24 School Analysis")
 DATA_RAW = PROJECT_DIR / "data" / "raw"
 DATE_PREFIX = "2026-01-24"
-BASE_URL = "https://educationdata.urban.org/api/v1/schools/ccd/directory"
 YEARS = list(range(2018, 2023))
+
+DATASET_PATHS = {
+    "huggingface": {"path": "schools/ccd/directory/schools_ccd_directory"},
+    "urban_csv": {"source": "ccd", "filename": "schools_ccd_directory"},
+}
+
+OUTPUT_PARQUET = DATA_RAW / f"{DATE_PREFIX}_ccd_schools.parquet"
+
+MIRRORS_YAML = Path("/daaf/.claude/skills/education-data-query/references/mirrors.yaml")
+with open(MIRRORS_YAML) as f:
+    MIRRORS = yaml.safe_load(f)["mirrors"]
 
 # --- Fetch ---
 print("=" * 60)
@@ -178,71 +188,76 @@ print("=" * 60)
 
 DATA_RAW.mkdir(parents=True, exist_ok=True)
 
-all_data = []
-for year in YEARS:
-    url = f"{BASE_URL}/{year}/"
-    while url:
-        response = requests.get(url, timeout=60)
-        response.raise_for_status()
-        data = response.json()
-        all_data.extend(data["results"])
-        url = data.get("next")
-        if url:
-            time.sleep(0.1)
+df = fetch_from_mirrors(
+    dataset_paths=DATASET_PATHS,
+    years=YEARS,
+)
+print(f"Shape: {df.shape[0]:,} rows x {df.shape[1]} cols")
 ```
 
 **AFTER (IAT-compliant):**
 ```python
 # --- Config ---
 # Configuration constants derived from the Plan's query specification (Section 4.2).
-# The Urban Institute Education Data Portal provides CCD school directory data
-# via a paginated REST API. We fetch 5 years to match the Plan's year range.
+# Data is downloaded from mirrors (per mirrors.yaml priority order) rather than
+# the REST API. We fetch 5 years to match the Plan's year range.
 PROJECT_DIR = Path("/daaf/research/2026-01-24 School Analysis")
 DATA_RAW = PROJECT_DIR / "data" / "raw"
 DATE_PREFIX = "2026-01-24"
 
-BASE_URL = "https://educationdata.urban.org/api/v1/schools/ccd/directory"
 YEARS = list(range(2018, 2023))  # 2018-2022 per Plan query specification
+
+# Dataset paths per mirror (from education-data-query skill's datasets-reference.md)
+DATASET_PATHS = {
+    "huggingface": {"path": "schools/ccd/directory/schools_ccd_directory"},
+    "urban_csv": {"source": "ccd", "filename": "schools_ccd_directory"},
+}
 
 OUTPUT_PARQUET = DATA_RAW / f"{DATE_PREFIX}_ccd_schools.parquet"
 
-# --- Fetch ---
-# INTENT: Retrieve CCD school directory records for all 5 years from the
-# Education Data Portal API. The API returns paginated JSON results (~5K
-# records per page). We accumulate all pages for all years into a single list,
-# then convert to a Polars DataFrame.
+# --- Mirror Configuration ---
+# INTENT: Load mirror configuration so fetch_from_mirrors() knows which
+# mirrors to try and in what order. mirrors.yaml is the single source of
+# truth for mirror URLs, formats, and read strategies.
 #
-# REASONING: Fetching year-by-year (rather than a single multi-year query)
-# because the API endpoint requires year as a path parameter, not a query
-# parameter. This is how the Urban Institute API is structured.
+# REASONING: Loading from YAML file (rather than hardcoding URLs) because
+# mirrors can change independently of analysis scripts. The YAML also
+# encodes the read_strategy (eager_parquet vs lazy_csv) so the fetch
+# function adapts to each mirror's format automatically.
+import yaml
+
+MIRRORS_YAML = Path("/daaf/.claude/skills/education-data-query/references/mirrors.yaml")
+
+with open(MIRRORS_YAML) as f:
+    MIRRORS = yaml.safe_load(f)["mirrors"]
+
+# --- Fetch ---
+# INTENT: Download CCD school directory and filter to requested years.
+# The fetch_from_mirrors() function tries each mirror in priority order
+# (HuggingFace parquet first, Urban CSV fallback) and returns a Polars
+# DataFrame filtered to the requested years.
+#
+# REASONING: Using mirror-based download (not the REST API) because mirrors
+# serve complete files that Polars can read natively via HTTP — no pagination,
+# no rate limiting, and parquet format preserves schema and compresses 3-10x.
 #
 # ASSUMES:
-#   - API is available and returns JSON with "results" and "next" keys
-#   - Each year returns ~4,000-5,000 school records (based on Plan estimate)
-#   - "next" key is null on the final page of results
+#   - At least one mirror is available and serves this dataset
+#   - Dataset contains a "year" column for filtering
+#   - Each year contains ~4,000-5,000 school records (based on Plan estimate)
+#   - All variable names are lowercase (Portal convention)
 print("=" * 60)
 print("Stage 5.1: Fetch CCD school directory")
 print("=" * 60)
 
 DATA_RAW.mkdir(parents=True, exist_ok=True)
 
-all_data = []
-for year in YEARS:
-    print(f"  Year {year}...", end=" ")
-    url = f"{BASE_URL}/{year}/"
-    page_count = 0
-
-    while url:
-        response = requests.get(url, timeout=60)
-        response.raise_for_status()
-        data = response.json()
-        all_data.extend(data["results"])
-        page_count += 1
-        url = data.get("next")  # None on final page terminates the loop
-        if url:
-            time.sleep(0.1)  # Rate limiting: 100ms between pages to avoid 429s
-
-    print(f"Fetched {page_count} pages")
+print("\nFetching CCD school directory...")
+df = fetch_from_mirrors(
+    dataset_paths=DATASET_PATHS,
+    years=YEARS,
+)
+print(f"Shape: {df.shape[0]:,} rows x {df.shape[1]} cols")
 ```
 
 ---

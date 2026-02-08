@@ -1,6 +1,6 @@
 # Metadata API Reference
 
-> **Note:** This file documents the Education Data Portal's REST metadata API for programmatic endpoint and variable discovery. With the mirror-based workflow, file discovery uses mirror-specific methods (see `mirrors.yaml` in `education-data-query` skill). This API documentation remains useful for understanding variable definitions but is not the primary data access method.
+> **LEGACY REFERENCE:** This file documents the Education Data Portal's REST metadata API. Mirror-based file discovery is now the primary data access method (see `education-data-query` skill and `mirrors.yaml`). This file is retained for reference on available endpoints and variable metadata only.
 
 Programmatically discover endpoints, variables, and data availability in the Education Data Portal.
 

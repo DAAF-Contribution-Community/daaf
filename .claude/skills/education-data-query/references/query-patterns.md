@@ -1,5 +1,7 @@
 # Query Patterns Reference
 
+> **LEGACY REFERENCE:** This file documents the deprecated REST API query approach using direct HTTP requests. For current mirror-based data fetching, see `fetch-patterns.md` in this skill directory. This file is retained for reference only.
+
 Comprehensive URL construction examples for the Education Data Portal API.
 
 ## URL Structure

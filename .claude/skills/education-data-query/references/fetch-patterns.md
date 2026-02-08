@@ -10,9 +10,7 @@ All data fetching uses a **mirror-first** approach:
 1. Try each mirror in priority order (defined in `mirrors.yaml`)
 2. Download the dataset file using the mirror's format and URL template
 3. Apply filters locally with Polars
-4. Save to `data/raw/` in both parquet and CSV formats
-
-**No API calls are used for data retrieval.** The REST API has been fully replaced by file downloads from configured mirrors.
+4. Save to `data/raw/` in parquet format
 
 **Mirror configuration is centralized in `mirrors.yaml`.** The patterns below are mirror-agnostic — they work with any mirror defined in that file. To add a new mirror, update `mirrors.yaml` and `datasets-reference.md` only.
 

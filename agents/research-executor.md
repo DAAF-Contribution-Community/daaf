@@ -199,7 +199,7 @@ Mirror Resolution Protocol:
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │  1. Determine dataset file path from Plan query specification               │
 │     - Check datasets-reference.md for known paths                          │
-│     - Or query the mirror's discovery endpoint (see mirrors.yaml)          │
+│     - Or check the mirror's available datasets via datasets-reference.md   │
 │                                                                             │
 │  2. Try each mirror in priority order (per mirrors.yaml)                    │
 │     - Build URL from mirror's url_template + dataset path parameters       │
@@ -219,7 +219,7 @@ Mirror Resolution Protocol:
 
 ### 6. File Operations
 
-Always save both formats (include in your script):
+Always save parquet format (include in your script):
 ```python
 # Save parquet (for processing)
 df.write_parquet(f"data/raw/{date_prefix}_{source}_{description}.parquet")

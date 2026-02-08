@@ -1,5 +1,7 @@
 # API Access
 
+> **NOTE:** This file documents multiple data access methods. The **Census Bureau API** sections remain valid for direct LEHD/PSEO access. The **Urban Institute Education Data Portal API** sections are legacy — for Portal data, use mirror-based downloads via the `education-data-query` skill instead.
+
 Programmatic access to PSEO data via Census Bureau API and bulk downloads.
 
 ## Contents

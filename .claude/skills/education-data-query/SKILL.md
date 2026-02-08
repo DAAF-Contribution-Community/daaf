@@ -12,7 +12,7 @@ Download datasets from the Education Data Portal via configured mirror sources (
 
 ## What This Skill Does
 
-- Download education datasets from configured mirrors (no API calls)
+- Download education datasets from configured mirrors
 - Handle multiple file formats (parquet, CSV) based on mirror read_strategy
 - Apply year, state, and demographic filters locally with Polars
 - Discover available files via each mirror's discovery endpoint
@@ -29,7 +29,7 @@ Download datasets from the Education Data Portal via configured mirror sources (
 
 ## Mirror System Overview
 
-Data is fetched by downloading files from mirrors — no REST API calls:
+Data is fetched by downloading files from mirrors:
 
 ```
 Fetch Request (dataset, years, filters)
@@ -37,7 +37,7 @@ Fetch Request (dataset, years, filters)
         → Build URL from mirror's url_template + dataset paths
         → Read using mirror's read_strategy (eager_parquet, lazy_csv, etc.)
     → If all mirrors fail: STOP and escalate
-    → Save to data/raw/*.parquet + *.csv
+    → Save to data/raw/*.parquet
     → CP1 validation (source-agnostic)
 ```
 

@@ -117,7 +117,7 @@ A script can pass code-reviewer QA but still have broken integration (e.g., note
 Trace data from source to output:
 
 ```
-Raw API Data
+Raw Downloaded Data
     ↓ (fetch)
 data/raw/*.parquet
     ↓ (clean)
@@ -235,7 +235,7 @@ Track what each component provides and requires:
 
 | Component | Exports | Expects |
 |-----------|---------|---------|
-| Stage 5 (Fetch) | `data/raw/*.parquet` | API access |
+| Stage 5 (Fetch) | `data/raw/*.parquet` | Mirror access |
 | Stage 6 (Clean) | `data/processed/*.parquet` | `data/raw/*.parquet` |
 | Stage 7 (Transform) | `analysis_df` variables | `data/processed/*.parquet` |
 | Stage 8 (Visualize) | `output/figures/*.png` | `analysis_df` |
@@ -266,20 +266,20 @@ Verify each Stage 5-8 execution script has a corresponding QA script:
   then `stage5_01_qa1.py` should read from that same path
 ```
 
-### API Coverage Verification
+### Data Source Coverage Verification
 
-For multi-endpoint analyses:
+For multi-source analyses:
 
 ```markdown
-**API Coverage:**
+**Data Source Coverage:**
 
-| Endpoint | Queried? | Data Saved? | Data Used? |
-|----------|----------|-------------|------------|
-| /schools/ccd/directory/ | ✓ | data/raw/ccd_dir.parquet | ✓ |
-| /schools/ccd/enrollment/ | ✓ | data/raw/ccd_enroll.parquet | ✓ |
-| /schools/meps/ | ✗ Planned but not executed | — | — |
+| Source | Downloaded? | Data Saved? | Data Used? |
+|--------|-------------|-------------|------------|
+| CCD schools directory | ✓ | data/raw/ccd_dir.parquet | ✓ |
+| CCD schools enrollment | ✓ | data/raw/ccd_enroll.parquet | ✓ |
+| MEPS school poverty | ✗ Planned but not executed | — | — |
 
-**Flag any planned endpoints not queried.**
+**Flag any planned sources not downloaded.**
 ```
 
 ### E2E Flow Tracing
@@ -289,7 +289,7 @@ Trace a complete user-facing feature from input to output:
 ```markdown
 **E2E Trace: "Show enrollment by state"**
 
-1. Data Source: CCD enrollment endpoint
+1. Data Source: CCD enrollment data (from mirrors)
    - Status: ✓ Queried
    - File: data/raw/ccd_enrollment.parquet
 
@@ -321,7 +321,7 @@ Trace a complete user-facing feature from input to output:
 2. EVERY data file has confirmed size > 0 bytes
 3. EVERY figure in output/figures/ is either referenced OR flagged as orphan
 4. EVERY stage's exports are confirmed to be imported by the next stage
-5. At least ONE end-to-end flow is traced from API to Report
+5. At least ONE end-to-end flow is traced from data download to Report
 6. QA script coverage is verified for all Stage 5-8 execution scripts
 
 **This integration check is INCOMPLETE if:**
@@ -426,7 +426,7 @@ Verify a complete path works:
 ```markdown
 **E2E Flow Trace: Enrollment Analysis**
 
-1. **Start:** API fetch for CCD enrollment
+1. **Start:** Mirror download of CCD enrollment data
    - ✓ Query executed successfully
    - ✓ Data saved to `data/raw/`
 
@@ -489,7 +489,7 @@ Return integration check report:
 ### Flow Status
 | Stage | Input | Output | Status |
 |-------|-------|--------|--------|
-| Fetch | API | data/raw/*.parquet | ✓ Connected |
+| Fetch | Mirrors | data/raw/*.parquet | ✓ Connected |
 | Clean | data/raw/ | data/processed/ | ✓ Connected |
 | Transform | data/processed/ | analysis_df | ✓ Connected |
 | Visualize | analysis_df | output/figures/ | ✓ Connected |

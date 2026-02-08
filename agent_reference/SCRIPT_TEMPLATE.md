@@ -317,8 +317,8 @@ MIRRORS = [
         "timeout": 300,
     },
     {
-        "name": "urban_csv",
-        "url": "https://educationdata.urban.org/csv/{source}/{filename}.csv",
+        "name": "urban_csv",  # From mirrors.yaml
+        "url_template": "{root_url}/{source}/{filename}.csv",  # From mirrors.yaml (root_url resolved at runtime)
         "format": "csv",
         "timeout": 300,
     },

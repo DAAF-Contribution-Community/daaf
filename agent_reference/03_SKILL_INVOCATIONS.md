@@ -125,7 +125,7 @@ Return findings in this EXACT structure:
 ### checkpoint:auto (Default)
 
 Use for:
-- API fetches
+- Mirror-based data downloads
 - Data cleaning
 - Transformations
 - Aggregations
@@ -250,7 +250,7 @@ Call the skill tool with name '[skill-name]'.
 
 - **Full Plan document:** Too large. Inline only relevant sections.
 - **Complete skill content:** Subagent loads via skill tool (5K-20K tokens saved).
-- **Raw API responses:** Summarize to shapes and key values.
+- **Downloaded raw data:** Summarize to shapes and key values.
 - **Complete notebooks:** Reference by path, inline only specific cells if needed.
 - **Full error tracebacks:** Summarize to error type and key message.
 
@@ -273,7 +273,7 @@ Call the skill tool with name '[skill-name]'.
 |-------------|-------------------|--------------|----------------|
 | Official NCES documentation | HIGH | — | Contradicted by actual data |
 | Skill reference content | HIGH | — | Outdated info discovered |
-| API exploration results | MEDIUM | Multiple endpoints confirm | Single endpoint, unclear docs |
+| Data exploration results | MEDIUM | Multiple mirrors confirm | Single endpoint, unclear docs |
 | Inferred from data patterns | LOW | Documentation confirms | Contradicted by test |
 | User-provided information | HIGH | — | Conflicts with official sources |
 
@@ -298,7 +298,7 @@ Every subagent return MUST include confidence assessment:
 **Confidence Assessment:**
 | Finding | Confidence | Rationale |
 |---------|------------|-----------|
-| Endpoint exists | HIGH | Direct API response |
+| Mirror file exists | HIGH | Direct download successful |
 | Variable meaning | MEDIUM | Skill reference, not NCES docs |
 | Suppression threshold | LOW | Inferred from patterns |
 
@@ -347,7 +347,7 @@ Status: Skill loaded successfully, proceeding with data exploration
 
 | Type | Use For | Capabilities |
 |------|---------|--------------|
-| `Plan` | Read-only operations, documentation search, data discovery | Inherits main model; can read files and make API calls; CANNOT write files |
+| `Plan` | Read-only operations, documentation search, data discovery | Inherits main model; can read files and download from mirrors; CANNOT write files |
 | `general-purpose` | Code generation, analysis execution, file creation | Full capabilities including file writes and code execution |
 
 ### Standard Invocation Pattern
