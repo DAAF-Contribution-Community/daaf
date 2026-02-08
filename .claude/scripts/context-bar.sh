@@ -144,7 +144,7 @@ if [[ -n "$transcript_path" && -f "$transcript_path" ]]; then
         fi
     done
 
-    ctx="${bar} ${C_GRAY}${pct_prefix}${pct}% of ${max_k}k tokens"
+    ctx="${bar} ${C_GRAY}${pct_prefix}${pct}% of ${max_k}k tokens (lower session context use enhances performance)"
 else
     # Transcript not available yet - show baseline estimate
     baseline=20000
@@ -165,7 +165,7 @@ else
         fi
     done
 
-    ctx="${bar} ${C_GRAY}~${pct}% of ${max_k}k tokens"
+    ctx="${bar} ${C_GRAY}~${pct}% of ${max_k}k tokens (lower session context use enhances performance)"
 fi
 
 # Build output: Model | Dir | Branch (uncommitted) | Context
@@ -180,7 +180,7 @@ if [[ -n "$transcript_path" && -f "$transcript_path" ]]; then
     # Calculate visible length (without ANSI codes) - 10 chars for bar + content
     plain_output="${model} | 📁${dir}"
     [[ -n "$branch" ]] && plain_output+=" | 🔀${branch} ${git_status}"
-    plain_output+=" | xxxxxxxxxx ${pct}% of ${max_k}k tokens"
+    plain_output+=" | xxxxxxxxxx ${pct}% of ${max_k}k tokens (lower session context use enhances performance)"
     max_len=${#plain_output}
     last_user_msg=$(jq -rs '
         # Messages to skip (not useful as context)
