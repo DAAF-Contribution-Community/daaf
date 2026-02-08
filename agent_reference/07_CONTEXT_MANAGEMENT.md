@@ -57,7 +57,7 @@ These tasks consume significant context and should ALWAYS be delegated:
 | Source deep-dives | Plan | Reference docs are large |
 | Code-heavy analysis | general-purpose | Code + output consumes tokens |
 | Visualization generation | general-purpose | Plot code is verbose |
-| Testing and linting | general-purpose | Test output is voluminous |
+| QA aggregation | general-purpose | QA findings across stages are voluminous |
 
 ### What Never Goes in Orchestrator Context
 
@@ -310,7 +310,7 @@ If orchestrator context exceeds 60%:
 | 8 | Delegate visualization tasks | Keep file paths only |
 | **8-QA** | Delegate to code-reviewer | Keep severity summary |
 | 9 | Delegate notebook creation | Keep path only |
-| 10 | Delegate testing/linting + aggregate QA | Keep pass/fail + QA summary |
+| 10 | Aggregate QA findings from Stages 5-8 | Keep QA summary |
 | 11 | Orchestrator creates report | - |
 | 12 | Orchestrator runs final review | Update STATE.md |
 

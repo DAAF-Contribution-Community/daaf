@@ -395,7 +395,7 @@ Every transformation passes through **two independent validation layers**:
 Skills provide domain knowledge without behavioral protocols:
 - **14 education data source skills** (CCD, IPEDS, CRDC, Scorecard, etc.)
 - **3 infrastructure skills** (explorer, query, context)
-- **7 data science/development tools** (polars, plotnine, marimo, ruff, etc.)
+- **6 data science/development tools** (polars, plotnine, marimo, etc.)
 
 ---
 
@@ -560,7 +560,6 @@ You don't need to install any of these — Docker handles it all — but for you
 | plotnine, plotly, matplotlib | Charts and visualizations |
 | marimo | Interactive notebooks for reviewing analyses |
 | Claude Code | The AI assistant you interact with |
-| ruff | Keeps code clean and formatted |
 
 ### How Files Work
 

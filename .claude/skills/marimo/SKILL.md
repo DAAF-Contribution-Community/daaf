@@ -54,7 +54,6 @@ Load these skills together with marimo for comprehensive workflow support:
 **Load for Specific Features:**
 - `plotnine` - Static publication-quality plots (ggplot2 style)
 - `plotly` - Interactive visualizations with hover/zoom
-- `ruff` - Code quality and formatting
 
 **Load for Education Data Work:**
 - `education-data-context` - Understanding coded values and data limitations
@@ -65,10 +64,6 @@ If new to marimo, first understand:
 1. Python basics
 2. DataFrame operations (polars or pandas)
 3. Basic plotting concepts
-
-**Next-Stage Skills:**
-After creating notebooks:
-- `ruff` - Ensure code quality before delivery
 
 ---
 

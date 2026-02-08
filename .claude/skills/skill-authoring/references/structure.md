@@ -364,13 +364,12 @@ Every line should justify its token cost.
 
 ```markdown
 # Good
-Use `ruff check --fix` to auto-fix linting issues.
+Use `pl.col("x").cast(pl.Int64)` to cast column types in Polars.
 
 # Bad
-When you're running the linter and you want it to automatically
-apply fixes for any issues it finds rather than just reporting
-them, you can use the --fix flag with the ruff check command
-to enable auto-fixing.
+When you want to change the data type of a column named x to a
+64-bit integer in Polars, you can use the cast method on the
+column expression with the Int64 type to perform the conversion.
 ```
 
 ## Length Guidelines

@@ -1276,39 +1276,6 @@ The ONLY acceptable new code is `pl.read_parquet()` + `mo.ui.table()`.""",
 
 ---
 
-## Quality Assurance Skills
-
-### ruff
-
-**Purpose:** Lint and format Python code
-**Stage:** 10 (Quality Assurance)
-**Subagent:** general-purpose
-
-```python
-Task({
-    description: "Stage 10: Linting",
-    prompt: """You have access to a skill tool. First, call the skill tool with name 'ruff'.
-
-**FILES TO CHECK:**
-- {notebook_path}
-- scripts/**/*.py
-
-**COMMANDS:**
-1. ruff check . --fix
-2. ruff format .
-
-**REQUIREMENTS:**
-- All linting errors must be fixed
-- Code must be formatted
-- Report any issues that couldn't be auto-fixed
-
-Return linting results and confirm all files pass.""",
-    subagent_type: "general-purpose"
-})
-```
-
----
-
 ## Multi-Skill Invocations
 
 ### Combined EDA + Transformation (Stage 7)

@@ -1055,8 +1055,6 @@ Document risks identified during discovery and planning, with mitigation strateg
 | **Data Integrity** | Validation checkpoints passed | [ ] |
 | | Coded values handled | [ ] |
 | | Suppression documented | [ ] |
-| **Code Quality** | Linting passed (`ruff check`) | [ ] |
-| | Formatting applied (`ruff format`) | [ ] |
 | **Documentation** | Plan complete | [ ] |
 | | Notebook documented | [ ] |
 | | Report complete | [ ] |

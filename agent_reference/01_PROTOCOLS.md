@@ -1015,7 +1015,6 @@ Execute verification in this order:
 
 5. EXECUTION CHECK
    └─ Load notebook: marimo run [notebook].py --host 0.0.0.0 --port 2718 --headless
-   └─ Verify linting: ruff check .
 ```
 
 ---
@@ -1096,8 +1095,6 @@ In addition to goal-backward verification, complete these traditional checks:
 | **Data Integrity** | CP1-CP4 passed | [ ] |
 | | Coded values handled | [ ] |
 | | Suppression documented | [ ] |
-| **Code Quality** | `ruff check` passes | [ ] |
-| | `ruff format` applied | [ ] |
 | **Documentation** | Plan complete | [ ] |
 | | Notebook documented | [ ] |
 | | Report complete | [ ] |
@@ -1263,7 +1260,7 @@ Ready to continue from Stage 7, Transformation #4?
 | 7 (Transformation) | Read Transformation Log, resume from next incomplete step |
 | 8 (Visualization) | Check figures directory, regenerate missing figures |
 | 9 (Notebook Assembly) | Check if notebook exists; if missing, invoke notebook-assembler agent |
-| 10 (QA) | Re-run linting and tests |
+| 10 (QA Aggregation) | Re-aggregate QA findings from Stages 5-8 |
 | 11-12 (Delivery) | Check if report exists, regenerate if needed |
 
 ## Blocked/Failed Recovery

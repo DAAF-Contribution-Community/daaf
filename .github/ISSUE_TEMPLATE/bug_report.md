@@ -28,7 +28,8 @@ assignees: ''
 - [ ] Stage 6: Data cleaning
 - [ ] Stage 7: Transformation / analysis
 - [ ] Stage 8: Visualization
-- [ ] Stage 9-10: Notebook assembly / QA
+- [ ] Stage 9: Notebook assembly
+- [ ] Stage 10: QA aggregation
 - [ ] Stage 11-12: Report / final review
 - [ ] Not sure / other
 

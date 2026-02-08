@@ -740,7 +740,6 @@ Use these checklists during verification:
 - [ ] No stub indicators in Report
 - [ ] All figures referenced in Report exist
 - [ ] Notebook executes without errors
-- [ ] Linting passes
 - [ ] Citations complete
 - [ ] Limitations documented
 - [ ] Report conclusions directly answer the original research question

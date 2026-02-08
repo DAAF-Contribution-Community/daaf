@@ -126,8 +126,6 @@ What task are you performing?
 │   └─ Load `plotnine` skill for grammar of graphics
 ├─ Interactive visualization (hover, zoom, select)
 │   └─ Load `plotly` skill for interactive charts
-└─ Code quality and formatting
-    └─ Load `ruff` skill for linting
 ```
 
 **For Domain-Specific Analysis (e.g., CCD Education Data):**

@@ -35,7 +35,6 @@ These actions are **mandatory** for every analysis task.
 
 | Action | Rationale |
 |--------|-----------|
-| Run `ruff check . --fix && ruff format .` before finalizing | Consistent code style |
 | Include validation assertions in notebooks | Self-documenting quality |
 | Document every transformation with comments | Reproducibility |
 | Write tests for key data operations | Verify correctness |

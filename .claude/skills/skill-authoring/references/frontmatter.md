@@ -173,7 +173,7 @@ description: Edit and process images. Use when working with .png, .jpg, .gif fil
 ### Include Command/Tool Names
 
 ```yaml
-description: Lint and format Python code with Ruff. Use when running ruff check, ruff format, or configuring pyproject.toml linting rules.
+description: Fast DataFrame library for Python data science. Use for any Polars data manipulation, lazy/eager execution, or performance optimization task.
 ```
 
 ### Front-Load Important Words

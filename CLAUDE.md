@@ -601,11 +601,11 @@ The Full Pipeline workflow consists of **5 Phases** and **12 Stages**. Other mod
 │      ├─ NO dashboards, NO widgets, NO filters, NO aggregations              │
 │      └─ Gate: Notebook runs without errors, contains NO prohibited elements │
 │                          ↓                                                  │
-│  Stage 10: Quality Assurance ←── ruff skill + QA aggregation                │
-│      ├─ Run linting: ruff check . --fix && ruff format .                    │
+│  Stage 10: QA Aggregation                                                   │
 │      ├─ **Aggregate QA findings from Stages 5-8 (WARNINGs reviewed)**       │
-│      ├─ STOP if: linting errors persist after 2 fix attempts                │
-│      └─ Gate: All checks pass                                               │
+│      ├─ Review accumulated WARNINGs, confirm no unresolved BLOCKERs         │
+│      ├─ STOP if: unresolved BLOCKERs or systemic WARNING patterns           │
+│      └─ Gate: QA aggregation complete, all issues documented                │
 └─────────────────────────────────────────────────────────────────────────────┘
                           ↓
 ┌─────────────────────────────────────────────────────────────────────────────┐
@@ -820,7 +820,7 @@ Stage 3 → [Stage 3.5 if ≥2 sources] → Stage 4 → Stage 4.5 → Stage 5
 | 8 | `plotnine`, `plotly` | general-purpose | Subagent invokes skill |
 | **8-QA** | — | general-purpose | `code-reviewer` agent (after each Stage 8 script) |
 | 9 | — | general-purpose | `notebook-assembler` agent (COMPILES scripts — NO new code, NO dashboards) |
-| 10 | `ruff` | general-purpose | Subagent invokes skill + QA aggregation |
+| 10 | — | Orchestrator | QA aggregation (no subagent needed) |
 | 11 | — | — | Orchestrator (no skill) |
 | 12 | — | Plan | `data-verifier` agent (no skill needed) |
 
@@ -853,7 +853,6 @@ As the orchestrator, you maintain overall context and coordinate subagent execut
 - Code-heavy analysis work
 - Visualization generation
 - **QA code review (code-reviewer agent after each Stage 5-8 script)**
-- Linting
 
 ### QA Invocation Responsibility
 
@@ -1199,7 +1198,7 @@ Each stage has explicit input/output contracts and gate criteria:
 | 7 | Stage 6 (clean data) | Stage 8, 9 | All transformations validated (CP3), **QA3 PASSED or WARNING per script**, analysis dataset saved to `data/processed/[date]_analysis.parquet` (at Stage 7.3) |
 | 8 | Stage 7 (analysis data) | Stage 9, 11 | Required visualizations saved to output/figures/, **QA4 PASSED or WARNING** |
 | 9 | Stages 7, 8 | Stage 10 | Notebook runs without errors |
-| 10 | Stage 9 (notebook) | Stage 11 | `ruff check` passes, **QA findings aggregated** |
+| 10 | Stage 9 (notebook) | Stage 11 | **QA findings aggregated**, BLOCKERs resolved, WARNINGs documented |
 | 11 | Stages 9, 10 | Stage 12 | Report complete with all sections and figure references |
 | 12 | All prior stages | Delivery | Protocol 5 PASSED, all commitments fulfilled, LEARNINGS.md consolidated with System Update Action Plan, cross-artifact coherence verified |
 
@@ -1395,7 +1394,6 @@ Context utilization directly impacts reasoning quality. The orchestrator must ac
 - Source deep-dives
 - Visualization generation
 - **QA code review (code-reviewer after each Stage 5-8 script)**
-- Linting
 
 See `agent_reference/07_CONTEXT_MANAGEMENT.md` for complete context management protocol.
 
@@ -1675,7 +1673,7 @@ Forcing functions are design interventions that **prevent** poor practices rathe
 | G6 | 7 → 8 | All transformations CP3 PASSED, **all QA3 INVOKED and ∈ {PASSED, WARNING}** | Cannot proceed to visualization |
 | G7 | 8 → 9 | Visualizations complete, **QA4 INVOKED and QA4 ∈ {PASSED, WARNING}** | Cannot assemble notebook |
 | G8 | 9 → 10 | Notebook runs without errors | Cannot run QA |
-| G9 | 10 → 11 | Linting passes, QA aggregation complete | Cannot generate report |
+| G9 | 10 → 11 | QA aggregation complete | Cannot generate report |
 | G10 | 11 → 12 | Report complete with all sections | Cannot run final review |
 | G11 | 12 → Delivery | Protocol 5 verification PASSED, LEARNINGS.md consolidated with System Update Action Plan | Cannot deliver |
 
@@ -1804,7 +1802,6 @@ These are strong recommendations (not hard blocks) to ensure clean state:
 - Report progress adaptively
 
 **Code Quality:**
-- Run `ruff check . --fix && ruff format .` before committing notebooks
 - Include validation assertions in notebooks
 - Document every transformation with comments
 - Follow the Inline Audit Trail (IAT) protocol for all Python scripts — every transformation, filter, join, and aggregation must include intent, reasoning, and assumption comments (see `agent_reference/INLINE_AUDIT_TRAIL.md`)
@@ -1983,8 +1980,6 @@ See `agent_reference/06_ERROR_RECOVERY.md` for complete decision trees and recov
 
 | Task | Command |
 |------|---------|
-| Lint Python | `ruff check . --fix` |
-| Format Python | `ruff format .` |
 | Run marimo notebook | `marimo run notebook.py` |
 | Edit marimo notebook | `marimo edit notebook.py` |
 
@@ -2032,7 +2027,6 @@ See `agent_reference/SCRIPT_TEMPLATE.md` for complete script template and exampl
 | `plotnine` | Static visualization | Stage 8: Publication plots |
 | `plotly` | Interactive visualization | Stage 8: Interactive plots |
 | `marimo` | Reactive notebooks | General marimo development (Stage 9 uses notebook-assembler agent for COMPILATION only — NO dashboards) |
-| `ruff` | Linting/formatting | Stage 10: Quality assurance |
 
 ### Meta/Development Skills
 

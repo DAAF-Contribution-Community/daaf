@@ -21,7 +21,7 @@ This document provides detailed execution guidance for each of the 12 stages (pl
 | 7 | 4 | EDA & Transformation | `data-scientist`, `polars` | general-purpose |
 | 8 | 4 | Visualization | `plotnine`, `plotly` | general-purpose |
 | 9 | 4 | Notebook Assembly | `marimo` | general-purpose |
-| 10 | 4 | Quality Assurance | `ruff` | general-purpose |
+| 10 | 4 | QA Aggregation | — | Orchestrator |
 | 11 | 5 | Report Generation | — | Orchestrator |
 | 12 | 5 | Final Review | `data-verifier` agent (adversarial verification with cross-artifact coherence) | Plan |
 
@@ -1456,15 +1456,10 @@ def get_final_script_version(base_name: str, scripts_dir: Path) -> Path | None:
 
 ---
 
-## Stage 10: Quality Assurance (Enhanced with QA Aggregation)
+## Stage 10: QA Aggregation
 
-**Executor:** Subagent (general-purpose)
-**Skill:** `ruff`
-**Purpose:** Final code quality checks AND aggregation of continuous QA findings from Stages 5-8
-
-### NEW: QA Aggregation Responsibilities
-
-Stage 10 is now the **aggregation point** for all QA findings from Stages 5-8. Before running linting and tests, aggregate and review all QA results.
+**Executor:** Orchestrator
+**Purpose:** Aggregation point for all QA findings from Stages 5-8
 
 ### Actions
 
@@ -1502,24 +1497,18 @@ Stage 10 is now the **aggregation point** for all QA findings from Stages 5-8. B
    | 01_fetch-ccd.py | Could parallelize data access calls |
    ```
 
-3. **Lint Code**
-   ```bash
-   ruff check . --fix
-   ruff format .
-   ```
-
-4. **Fix Issues**
-   - Address linting errors
-   - Max 2 attempts before escalating
+3. **Review WARNING Patterns**
+   - Identify systemic issues across multiple scripts
+   - Assess cumulative impact of individual WARNINGs
+   - Flag any WARNING clusters that together constitute a concern
 
 ### Gate Criteria (G9)
 
 - [ ] **QA Summary Report generated** (aggregates all Stages 5-8 findings)
 - [ ] **All BLOCKERs resolved** (via revision during Stages 5-8)
 - [ ] **All WARNINGs documented** (with assessment of impact)
-- [ ] `ruff check` passes
-- [ ] `ruff format` applied
-- [ ] **If failures persist after 2 attempts:** STOP, escalate
+- [ ] **No missing QA reviews** (every Stage 5-8 script has a corresponding code-reviewer invocation)
+- [ ] **If unresolved issues found:** STOP, escalate
 
 ---
 

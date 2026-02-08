@@ -38,10 +38,8 @@ RUN uv pip install --system \
     xlrd \
     requests \
     pyarrow \
-    urllib3
-
-# Install machine learning packages
-RUN uv pip install --system \
+    urllib3 \
+    pre-commit \
     scikit-learn
 
 # Install visualization packages
@@ -51,12 +49,6 @@ RUN uv pip install --system \
     plotnine \
     plotly \
     marimo
-
-# Install development & testing tools
-# Note: pydoc is part of the standard library (python -m pydoc)
-RUN uv pip install --system \
-    ruff \
-    pre-commit
 
 # ============================================
 # Create non-root user for security

@@ -5,9 +5,6 @@
   },
   "permissions": {
     "allow": [
-      "Bash(ruff check * --fix)",
-      "Bash(ruff format *)",
-
       "Bash(marimo run *)",
       "Bash(marimo run * --host 0.0.0.0 --port 2718 --headless)",
       "Bash(marimo edit *)",

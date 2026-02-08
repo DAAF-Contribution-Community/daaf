@@ -611,13 +611,13 @@ Validation Failure
 | Reactivity issues | Review variable dependencies |
 | UI element errors | Simplify or remove interactivity |
 
-### Stage 10 (Quality Assurance) Failures
+### Stage 10 (QA Aggregation) Failures
 
 | Issue | Recovery |
 |-------|----------|
-| Linting errors | Auto-fix if possible |
-| Test failures | Investigate root cause |
-| Persistent failures | Escalate after 2 attempts |
+| Unresolved BLOCKER from Stages 5-8 | Review revision history; escalate if 2 attempts already exhausted |
+| Systemic WARNING pattern detected | Assess cumulative impact; escalate if pattern indicates methodology flaw |
+| Missing QA reviews | Invoke code-reviewer for any unreviewed scripts before proceeding |
 
 ---
 

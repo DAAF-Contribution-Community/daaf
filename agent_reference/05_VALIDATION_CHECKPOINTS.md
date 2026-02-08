@@ -260,7 +260,7 @@ Are there multiple valid approaches requiring user preference?
 | 8 (Visualize) | auto | Results differ from expectations |
 | 8-QA | auto | Methodology BLOCKER (escalate immediately) |
 | 9 (Notebook) | auto | Execution warnings |
-| 10 (QA) | auto | Test failures, lint warnings |
+| 10 (QA Aggregation) | auto | Unresolved BLOCKERs, WARNING patterns, missing QA reviews |
 | 11 (Report) | human-verify | Always verify before delivery |
 | 12 (Final Review) | human-verify | Always verify before delivery |
 
@@ -1305,8 +1305,8 @@ def _():
 grep -rn "^import \|^from .* import" *.py
 
 # Step 2: Check each import is used elsewhere in file
-# (Requires per-file analysis - use ruff for automated detection)
-ruff check --select F401 *.py  # F401 = unused import
+# (Requires per-file analysis)
+grep -c "imported_name" *.py  # Verify each import is referenced
 ```
 
 ---
@@ -1634,7 +1634,7 @@ Before delivery, verify all of the following pass:
 | No pass-only or ellipsis-only functions | Pattern match | BLOCKER |
 | No placeholder text in markdown | `grep -ri "placeholder\|coming soon"` | BLOCKER |
 | No empty DataFrame returns | `grep -rn "return pl.DataFrame()"` | BLOCKER |
-| No unused imports | `ruff check --select F401` | WARNING |
+| No unused imports | `grep` for imported names unused in file | WARNING |
 | Data loaded is used in analysis | Wiring check | BLOCKER |
 | Transformations produce saved output | Wiring check | BLOCKER |
 | Figures are referenced in report | Wiring check | WARNING |
