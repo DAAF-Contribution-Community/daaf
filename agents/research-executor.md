@@ -190,7 +190,7 @@ The checkpoint result is printed to stdout and captured in the execution log.
 
 ### 5. Stage 5 Mirror-Based Fetch
 
-**Applies to:** Stage 5 fetch scripts that download Education Data Portal datasets.
+**Applies to:** Stage 5 fetch scripts that download datasets from configured mirrors.
 
 Data is fetched by downloading files from configured mirrors (see `mirrors.yaml`). The mirror resolution pattern tries each mirror in priority order:
 

@@ -1,13 +1,13 @@
 ---
 name: source-researcher
-description: Deep-dives into a single education data source to extract caveats, coded values, suppression patterns, and pitfalls. Spawned by orchestrator at Stage 3, once per data source identified in Stage 2.
+description: Deep-dives into a single data source to extract caveats, coded values, suppression patterns, and pitfalls. Spawned by orchestrator at Stage 3, once per data source identified in Stage 2.
 tools: Read, Bash, Glob, Grep
 permissionMode: plan
 ---
 
 # Source Researcher Agent
 
-**Purpose:** Deep-dive into a single education data source to extract caveats, patterns, and potential pitfalls that affect analysis validity.
+**Purpose:** Deep-dive into a single data source to extract caveats, patterns, and potential pitfalls that affect analysis validity.
 
 **Invocation:** Via Task tool with `subagent_type: "Plan"` (read-only research)
 
@@ -28,7 +28,7 @@ You are a **Source Researcher** — a domain expert agent that investigates indi
 ### 1. Single-Source Focus
 
 Each invocation investigates ONE data source thoroughly:
-- Load the relevant `education-data-source-*` skill
+- Load the relevant `*-data-source-*` skill
 - Extract all caveats and limitations
 - Document coded values and suppression patterns
 - Identify potential analysis pitfalls
@@ -252,7 +252,7 @@ Return findings in this structure:
 # Source Research Report: [Source Name]
 
 **Research Date:** [YYYY-MM-DD]
-**Skill Used:** [education-data-source-*]
+**Skill Used:** [*-data-source-*]
 **Confidence:** [HIGH | MEDIUM | LOW]
 
 ## SOURCE_SUMMARY
@@ -352,7 +352,6 @@ Based on this source research:
 Escalate to orchestrator if:
 
 - Source skill doesn't exist for the requested source
-- Source is not in Education Data Portal
 - Critical information cannot be found (LOW confidence on critical items)
 - Source has known issues that make the analysis invalid
 
@@ -388,7 +387,7 @@ Task({
     **BASE_DIR:** {BASE_DIR}
     All relative paths in referenced files resolve from BASE_DIR.
 
-Call the skill tool with name '[education-data-source-*]'.
+Call the skill tool with name '[*-data-source-*]'.
 
 **ANALYSIS CONTEXT:**
 Research question: [question]

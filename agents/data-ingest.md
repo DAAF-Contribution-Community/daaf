@@ -832,8 +832,8 @@ When the data-ingest agent creates a new skill (e.g., `my-new-data-source`), the
 
 | Priority | File | Section to Update | What to Add |
 |----------|------|-------------------|-------------|
-| **1 (Required)** | `CLAUDE.md` | Quick Reference → Data Need → Source Skill Lookup table (~line 1369) | New row: `\| [Data Need] \| \`education-data-source-{name}\` \|` |
-| **2 (Required)** | `agent_reference/03_SKILL_INVOCATIONS.md` | Available source skills list (~line 460) | New bullet: `- \`education-data-source-{name}\` — [Description]` |
+| **1 (Required)** | `CLAUDE.md` | Quick Reference → Data Need → Source Skill Lookup table (~line 1369) | New row: `\| [Data Need] \| \`{domain}-data-source-{name}\` \|` |
+| **2 (Required)** | `agent_reference/03_SKILL_INVOCATIONS.md` | Available source skills list (~line 460) | New bullet: `- \`{domain}-data-source-{name}\` — [Description]` |
 | **3 (Required)** | `agents/source-researcher.md` | Step 1: Load Source Skill examples (~line 86) | Add skill to example list |
 | **4 (Recommended)** | `README.md` | Data Source Quick Lookup table (~line 604) | New row for user reference |
 

@@ -191,7 +191,7 @@ def _():
     # =========================================================================
     #
     # """
-    # Stage 5.1: Fetch CCD school directory from Education Data Portal.
+    # Stage 5.1: Fetch CCD school directory from Education Data Portal data access mirror.
     # Input: API endpoint
     # Output: data/raw/2026-01-24_ccd_schools.parquet
     # """
@@ -297,7 +297,7 @@ def _(mo):
     ---
     ## Stage 5: Data Fetch
 
-    Retrieve raw data from Education Data Portal API.
+    Retrieve raw data from data access mirror.
 
     **Scripts in this stage:** 2
     **Overall status:** All passed
@@ -600,7 +600,7 @@ def _():
     # =========================================================================
     #
     # """
-    # Stage 5.1: Fetch CCD school directory from Education Data Portal.
+    # Stage 5.1: Fetch CCD school directory from Education Data Portal data access mirror.
     # Input: API endpoint
     # Output: data/raw/2026-01-24_ccd_schools.parquet
     # """

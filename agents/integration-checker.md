@@ -373,7 +373,7 @@ Document the expected data flow:
 **Expected Data Flow:**
 
 1. **Raw Data Acquisition:**
-   - Source: Education Data Portal API
+   - Source: Education Data Portal data access mirror
    - Target: `data/raw/YYYY-MM-DD_ccd_schools.parquet`
    - Verification: File exists, non-empty
 

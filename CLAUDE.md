@@ -553,7 +553,7 @@ The Full Pipeline workflow consists of **5 Phases** and **12 Stages**. Other mod
 │  └────────────────────────────────────────────────────────────────────────┘ │
 │                          ↓                                                  │
 │  Stage 6: Context Application ←── education-data-context skill              │
-│      ├─ Apply coded missing values (-1, -2, -3)                              │
+│      ├─ Assess missingness and coded value presence                             │
 │      ├─ Calculate suppression rates (CP2)                                   │
 │      ├─ STOP if: >50% suppression, invalid analysis type                    │
 │      └─ Gate: Cleaned data saved to data/processed/                         │
@@ -935,7 +935,7 @@ For EACH task in Stages 5-8, follow this complete loop. **Do NOT skip any step.*
 - [ ] Filters specified (exact conditions)
 - [ ] Expected row count range specified
 - [ ] Output file paths specified (not placeholder)
-- [ ] Coded value expectations mentioned (will contain -1, -2, -3)
+- [ ] Missingness and coded value expectations mentioned
 - [ ] Risk Register items for fetch included (from Plan)
 - [ ] Script follows IAT documentation standards
 
@@ -1166,7 +1166,7 @@ See `agent_reference/PLAN_TEMPLATE.md` for wave-based task table format.
 - Document which mirror was used
 
 **Stage 6 (Context Application):**
-- Filter coded missing values (-1, -2, -3) appropriately
+- Assess missingness and filter coded values appropriately
 - Calculate and report suppression rates
 - BLOCK invalid analysis types (e.g., cross-state assessment comparison)
 - Generate citation text
@@ -1774,7 +1774,7 @@ These are strong recommendations (not hard blocks) to ensure clean state:
 
 **Data Integrity:**
 - Validate data at every checkpoint (CP1-CP4)
-- Filter coded missing values (-1, -2, -3) before analysis
+- Assess missingness and identify coded values before analysis
 - Document suppression rates and limitations
 - Save both parquet AND csv for all data files
 
@@ -2042,30 +2042,6 @@ See `agent_reference/SCRIPT_TEMPLATE.md` for complete script template and exampl
 | Private college 990 data | NCCS | `education-data-source-nccs` |
 | Federal student aid | FSA | `education-data-source-fsa` |
 | Census/demographic data | NHGIS | `education-data-source-nhgis` |
-
-### Coded Missing Values
-
-Standard codes used across Education Data Portal. For complete definitions and source-specific variations, invoke the relevant `education-data-source-*` skill or the `education-data-context` skill via subagent.
-
-| Code | Meaning | Action |
-|------|---------|--------|
-| `-1` | Missing/not reported | Filter before calculations |
-| `-2` | Not applicable | Exclude from analysis |
-| `-3` | Suppressed for privacy | Cannot recover; document |
-| `null` | Genuinely missing | Handle per analysis needs |
-
-### State FIPS Codes (Subset)
-
-| State | FIPS | State | FIPS |
-|-------|------|-------|------|
-| Alabama | 1 | Montana | 30 |
-| Alaska | 2 | Nebraska | 31 |
-| Arizona | 4 | Nevada | 32 |
-| California | 6 | New York | 36 |
-| Colorado | 8 | Texas | 48 |
-| Florida | 12 | Washington | 53 |
-
-For complete FIPS tables, invoke the `education-data-query` or `education-data-explorer` skill via subagent.
 
 ---
 
