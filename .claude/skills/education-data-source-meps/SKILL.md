@@ -151,6 +151,14 @@ MEPS data is fetched from mirrors, not via REST API. See `education-data-query` 
 | huggingface | `schools/meps/schools_meps.parquet` |
 | urban_csv | `meps/schools_meps.csv` |
 
+### MEPS Codebook
+
+| Dataset | Codebook Path |
+|---------|---------------|
+| Schools MEPS | `schools/meps/codebook_schools_meps` |
+
+> Codebook is an `.xls` file on both mirrors. See `fetch-patterns.md` for `get_codebook_url()`. For human reference — not parsed programmatically.
+
 **Example Fetch**:
 ```python
 import polars as pl

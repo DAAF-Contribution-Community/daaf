@@ -205,6 +205,14 @@ texas = df.filter(pl.col("fips") == 48)       # Texas
 df_clean = df.filter(pl.col("fips") >= 1)  # Exclude -1, -2, -3
 ```
 
+### NCCS Codebook
+
+| Dataset | Codebook Path |
+|---------|---------------|
+| 990 Forms | `college-university/nccs/990-forms/codebook_colleges_nccs_form_990` |
+
+> Codebook is an `.xls` file on both mirrors. See `fetch-patterns.md` for `get_codebook_url()`. For human reference — not parsed programmatically.
+
 ### Mapping Portal Variables to Original NCCS Names
 
 The Portal uses descriptive lowercase names mapped from original 990 variables:

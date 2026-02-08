@@ -184,6 +184,21 @@ school_census = df.filter(pl.col("ncessch") == 60000100001)
 
 **Note**: The Portal provides pre-processed crosswalks; for custom geographic analysis, use NHGIS directly (requires free IPUMS registration).
 
+### NHGIS Codebooks
+
+| Dataset | Codebook Path |
+|---------|---------------|
+| Schools Census 1990 | `schools/nhgis/census-1990/codebook_schools_nhgis_census1990` |
+| Schools Census 2000 | `schools/nhgis/census-2000/codebook_schools_nhgis_census2000` |
+| Schools Census 2010 | `schools/nhgis/census-2010/codebook_schools_nhgis_census2010` |
+| Schools Census 2020 | `schools/nhgis/census-2020/codebook_schools_nhgis_census2020` |
+| Colleges Census 1990 | `college-university/nhgis/census-1990/codebook_colleges_nhgis_census1990` |
+| Colleges Census 2000 | `college-university/nhgis/census-2000/codebook_colleges_nhgis_census2000` |
+| Colleges Census 2010 | `college-university/nhgis/census-2010/codebook_colleges_nhgis_census2010` |
+| Colleges Census 2020 | `college-university/nhgis/census-2020/codebook_colleges_nhgis_census2020` |
+
+> Codebooks are `.xls` files on both mirrors. See `datasets-reference.md` for full catalog and `fetch-patterns.md` for `get_codebook_url()`. For human reference — not parsed programmatically.
+
 ## Data Access Methods
 
 | Method | Best For | Registration |

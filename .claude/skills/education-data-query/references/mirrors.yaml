@@ -19,6 +19,9 @@
 # 4. Define a discovery section so agents can check file availability
 # 5. Add per-mirror path columns to datasets-reference.md
 # 6. No other documentation files need to change.
+# 7. (Optional) Add a metadata section if the mirror serves metadata files
+#    (e.g., codebook .xls files). See existing mirrors for the format.
+#    Metadata files are for human reference — not parsed programmatically.
 #
 # read_strategy options:
 #   eager_parquet  - pl.read_parquet(url) — for columnar formats with embedded schema
@@ -44,6 +47,13 @@ mirrors:
     coverage_notes: >
       Complete coverage of all data levels: school-districts/, schools/, and college-university/.
       Parquet format: columnar, compressed (3-10x smaller than CSV), schema embedded.
+    metadata:
+      url_template: "{root_url}/{path}.{format}"
+      formats: [xls]
+      filename_pattern: "codebook_{entity}_{source}_{topic}"
+      notes: >
+        Codebook .xls files are co-located with data files in the same directory structure.
+        Path matches the codebook column in datasets-reference.md with .xls extension.
 
   - name: urban_csv
     root_url: "https://educationdata.urban.org/csv"
@@ -60,3 +70,11 @@ mirrors:
       Complete coverage of all data levels and sources.
       Large files (500MB+); always use lazy loading with filters.
       Flat directory structure: {source}/{filename}.csv
+    metadata:
+      url_template: "{root_url}/{source}/{filename}.{format}"
+      formats: [xls]
+      filename_pattern: "codebook_{entity}_{source}_{topic}"
+      notes: >
+        Codebook .xls files in flat directory structure, same as data files.
+        Extract source (2nd path component) and filename (basename) from
+        the codebook path in datasets-reference.md.

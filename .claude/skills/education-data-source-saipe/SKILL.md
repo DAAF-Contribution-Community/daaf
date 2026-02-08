@@ -180,6 +180,14 @@ SAIPE data is fetched from mirrors, not via REST API. See `education-data-query`
 | huggingface | `school-districts/saipe/districts_saipe.parquet` |
 | urban_csv | `saipe/school-districts_saipe.csv` |
 
+### SAIPE Codebook
+
+| Dataset | Codebook Path |
+|---------|---------------|
+| District Poverty Estimates | `school-districts/saipe/codebook_districts_saipe` |
+
+> Codebook is an `.xls` file on both mirrors. See `fetch-patterns.md` for `get_codebook_url()`. For human reference — not parsed programmatically.
+
 **Years Available:** 1999-2023
 
 **Example Fetch**:

@@ -83,6 +83,19 @@ df = pl.read_parquet(url)
 df = df.filter(pl.col("years_after_entry") == 10)
 ```
 
+### Scorecard Codebooks
+
+| Dataset | Codebook Path |
+|---------|---------------|
+| Default | `college-university/scorecard/default/codebook_colleges_scorecard_default` |
+| Earnings | `college-university/scorecard/earnings/codebook_colleges_scorecard_earnings` |
+| Institutional Characteristics | `college-university/scorecard/institutional-characteristics/codebook_colleges_scorecard_institutional-characteristics` |
+| Repayment | `college-university/scorecard/repayment/codebook_colleges_scorecard_repayment` |
+| Student Characteristics (Aid) | `college-university/scorecard/student-characteristics/codebook_colleges_scorecard_student-characteristics_aid-applicants` |
+| Student Characteristics (Neighborhood) | `college-university/scorecard/student-characteristics/codebook_colleges_scorecard_student-characteristics_home-neighborhood` |
+
+> Codebooks are `.xls` files on both mirrors. See `datasets-reference.md` for full catalog and `fetch-patterns.md` for `get_codebook_url()`. For human reference — not parsed programmatically.
+
 ### Missing Values
 
 Both `-3` (suppressed) and `null` appear in Portal data:

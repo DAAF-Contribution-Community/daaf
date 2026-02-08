@@ -1560,6 +1560,23 @@ Assign confidence levels to findings and decisions:
 2. Escalate to user for guidance
 3. Document risk acceptance explicitly in Plan
 
+### Truth Hierarchy for Data Interpretation
+
+When interpreting data values and resolving discrepancies between sources, apply this priority:
+
+| Priority | Source | Rationale | Example |
+|----------|--------|-----------|---------|
+| 1 (highest) | **Actual data file** (parquet) | What you observe IS the truth | Column has values 1-7, not 1-5 as documented |
+| 2 | **Live codebook/metadata** (.xls in mirror) | Authoritative documentation; may lag behind data | Codebook says "1=Regular, 2=Special Ed" |
+| 3 (lowest) | **Archived skill docs** (variable-definitions.md) | Summarized; convenient but may drift | Skill says "values 1-5" but codebook says "1-7" |
+
+**Application Rules:**
+- When skill docs contradict observed data → trust the data, flag the discrepancy
+- When codebook contradicts observed data → trust the data, but investigate (codebook may describe a different year)
+- When skill docs contradict codebook → trust the codebook, update skill docs
+- Codebook URLs are cataloged in `datasets-reference.md` (codebook column); use `get_codebook_url()` in `fetch-patterns.md` to construct download URLs
+- See also: `agents/data-ingest.md` Data Primacy table for the same hierarchy applied during data ingest
+
 ### Validation Checkpoints
 
 | Checkpoint | When | Validates | STOP Condition |

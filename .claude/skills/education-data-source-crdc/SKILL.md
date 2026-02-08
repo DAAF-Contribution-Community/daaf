@@ -187,6 +187,19 @@ CRDC data is fetched from mirrors (parquet or CSV), not via REST API. See the `e
 | Harassment/Bullying | Yearly | 2011-2021 | `schools/crdc/harassment-or-bullying/schools_crdc_harass_bully_students_{year}` |
 | Restraint/Seclusion | Yearly | 2011-2021 | `schools/crdc/restraint-and-seclusion/schools_crdc_restraint_seclusion_students_{year}` |
 
+### CRDC Codebooks
+
+| Dataset | Codebook Path |
+|---------|---------------|
+| Discipline | `schools/crdc/discipline/codebook_schools_crdc_discipline` |
+| Enrollment | `schools/crdc/enrollment/codebook_schools_crdc_enrollment` |
+| Chronic Absenteeism | `schools/crdc/chronic-absenteeism/codebook_schools_crdc_chronic_absenteeism` |
+| Harassment/Bullying | `schools/crdc/harassment-or-bullying/codebook_schools_crdc_harassment_or_bullying` |
+| Restraint/Seclusion | `schools/crdc/restraint-and-seclusion/codebook_schools_crdc_restraint_and_seclusion` |
+| AP/IB Enrollment | `schools/crdc/ap-ib-enrollment/codebook_schools_crdc_ap_ib_enrollment` |
+
+> 22 CRDC codebooks exist total (one per topic). See `datasets-reference.md` for the complete list. Codebooks are `.xls` files on both mirrors. For human reference — not parsed programmatically.
+
 ### Example Fetch
 
 ```python

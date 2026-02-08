@@ -281,6 +281,90 @@ def discover_mirror_files(mirror_config: dict) -> list[str] | None:
 
 ---
 
+## Metadata File References
+
+Codebook and metadata files are available alongside data files in both mirrors. These are `.xls` files for human reference — not parsed programmatically by the pipeline.
+
+### Truth Hierarchy
+
+When interpreting data values and resolving discrepancies between sources, apply this priority:
+
+| Priority | Source | Rationale |
+|----------|--------|-----------|
+| 1 (highest) | **Actual data file** (parquet) | What you observe IS the truth |
+| 2 | **Live codebook/metadata** (.xls in mirror) | Authoritative documentation; may lag behind data |
+| 3 (lowest) | **Archived skill docs** (variable-definitions.md) | Summarized; convenient but may drift |
+
+- When skill docs contradict observed data → trust the data, flag the discrepancy
+- When codebook contradicts observed data → trust the data, but investigate (codebook may describe a different year)
+- When skill docs contradict codebook → trust the codebook, update skill docs
+
+### When to Reference Codebooks
+
+| Stage | Use Case |
+|-------|----------|
+| Stage 3 (Source Deep-Dive) | Verify variable definitions and coded values against authoritative codebook |
+| Stage 6 (Context Application) | Resolve coded value ambiguities by consulting codebook |
+| Data Ingest | Reconcile observed data against codebook documentation |
+| Discrepancy Investigation | When skill docs and observed data disagree, check codebook as tiebreaker |
+
+### get_codebook_url()
+
+Look up the codebook path from the `codebook` column in `datasets-reference.md`, then construct the full URL using the mirror's metadata configuration.
+
+```python
+def get_codebook_url(
+    codebook_path: str,
+    mirrors: list[dict] | None = None,
+    yaml_path: Path | None = None,
+) -> str:
+    """Construct a codebook URL from a datasets-reference.md codebook path.
+
+    Args:
+        codebook_path: Full codebook path from datasets-reference.md codebook column.
+            Example: "school-districts/saipe/codebook_districts_saipe"
+        mirrors: Pre-loaded mirror configs. If None, loads from yaml_path.
+        yaml_path: Path to mirrors.yaml. If None, uses default.
+
+    Returns:
+        Full URL to the codebook file on the first mirror that has metadata config.
+    """
+    if mirrors is None:
+        mirrors = load_mirrors(yaml_path or MIRRORS_YAML)
+
+    for mirror in mirrors:
+        meta = mirror.get("metadata")
+        if not meta:
+            continue
+
+        fmt = meta["formats"][0]  # e.g., "xls"
+        template = meta["url_template"]
+        root_url = mirror["root_url"]
+
+        if mirror["name"] == "huggingface":
+            # HuggingFace: nested path matches codebook_path directly
+            url = template.format(root_url=root_url, path=codebook_path, format=fmt)
+        else:
+            # Other mirrors (e.g., urban_csv): extract source and filename from path
+            parts = codebook_path.split("/")
+            source = parts[1]  # e.g., "saipe" from "school-districts/saipe/..."
+            filename = parts[-1]  # e.g., "codebook_districts_saipe"
+            url = template.format(
+                root_url=root_url, source=source, filename=filename, format=fmt
+            )
+
+        return url
+
+    raise ValueError("No mirror with metadata configuration found")
+
+
+# Usage:
+# url = get_codebook_url("school-districts/saipe/codebook_districts_saipe")
+# → "https://huggingface.co/.../school-districts/saipe/codebook_districts_saipe.xls"
+```
+
+---
+
 ## Format Handling
 
 Format-specific read behavior is driven by the mirror's `read_strategy` field in `mirrors.yaml`:

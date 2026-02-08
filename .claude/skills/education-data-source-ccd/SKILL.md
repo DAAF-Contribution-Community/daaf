@@ -228,6 +228,17 @@ CCD data is fetched from mirrors (parquet or CSV), not via REST API. See the `ed
 | District Enrollment | Yearly | `school-districts/ccd/enrollment/schools_ccd_lea_enrollment_{year}` |
 | District Finance | Single | `school-districts/ccd/finance/districts_ccd_finance` |
 
+### CCD Codebooks
+
+| Dataset | Codebook Path |
+|---------|---------------|
+| District Directory | `school-districts/ccd/directory/codebook_districts_ccd_directory` |
+| District Enrollment | `school-districts/ccd/enrollment/codebook_districts_ccd_enrollment` |
+| School Directory | `schools/ccd/directory/codebook_schools_ccd_directory` |
+| School Enrollment | `schools/ccd/enrollment/codebook_schools_ccd_enrollment` |
+
+> Codebooks are `.xls` files available on both mirrors. See `datasets-reference.md` for the full catalog and `fetch-patterns.md` for `get_codebook_url()`. For human reference — not parsed programmatically. No codebook exists for CCD Finance.
+
 ### Filtering CCD Data
 
 All filtering is done locally with Polars after download:

@@ -292,6 +292,18 @@ def ipeds_quality_check(df):
 
 > **Data Retrieval:** For mirror-based data fetching patterns and filtering, see the `education-data-query` skill.
 
+### IPEDS Codebooks
+
+| Dataset | Codebook Path |
+|---------|---------------|
+| Directory | `college-university/ipeds/directory/codebook_colleges_ipeds_directory` |
+| Admissions Enrollment | `college-university/ipeds/admissions-enrollment/codebook_colleges_ipeds_admissions-enrollment` |
+| Enrollment FTE | `college-university/ipeds/enrollment-full-time-equivalent/codebook_colleges_ipeds_enrollment-fte` |
+| Graduation Rates | `college-university/ipeds/grad-rates/codebook_colleges_ipeds_grad-rates` |
+| Finance | `college-university/ipeds/finance/codebook_colleges_ipeds_finance` |
+
+> 32 IPEDS codebooks exist total (one per survey component). See `datasets-reference.md` for the complete list. Codebooks are `.xls` files on both mirrors. For human reference — not parsed programmatically.
+
 ### Data Availability & Lag Times
 
 IPEDS data becomes available with significant lag. Always verify year availability before committing to a year range.

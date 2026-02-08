@@ -108,6 +108,8 @@ Your primary deliverable is a complete skill at `.claude/skills/{skill-name}/` c
 - `scripts/profile_data.py` — Profiling script (archived)
 - `scripts/validate_sample.py` — Validation script template
 
+New skills for data sources should include codebook URLs when available (see `datasets-reference.md` codebook column).
+
 </downstream_consumer>
 
 ---
@@ -201,7 +203,7 @@ Read documentation and verify claims against actual data:
 
 1. **Load skill-authoring skill** — Call skill tool to understand skill structure requirements
 2. **Identify file format** — Determine appropriate loading method
-3. **Create workspace** — Set up skill directory structure
+4. **Create workspace** — Set up skill directory structure
 
 ```bash
 # Target structure

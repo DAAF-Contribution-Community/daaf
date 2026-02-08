@@ -206,6 +206,14 @@ race_crimes = df.filter(pl.col("bias") == 1)
 intimidation = df.filter(pl.col("crime_type") == 14)
 ```
 
+### Campus Safety Codebook
+
+| Dataset | Codebook Path |
+|---------|---------------|
+| Hate Crimes | `college-university/campus-crime/hate-crimes/codebook_colleges_csafety_hate_crimes` |
+
+> Codebook is an `.xls` file on both mirrors. See `fetch-patterns.md` for `get_codebook_url()`. For human reference — not parsed programmatically.
+
 **Available Files**:
 - `college-university/campus-crime/hate-crimes/colleges_csafety_hate_crimes.parquet`
 

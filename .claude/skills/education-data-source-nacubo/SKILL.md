@@ -141,6 +141,14 @@ NACUBO data is fetched from mirrors (parquet or CSV), not via REST API. See the 
 | huggingface | `college-university/nacubo/endowments/colleges_nacubo_endow.parquet` |
 | urban_csv | `nacubo/colleges_nacubo_endow.csv` |
 
+### NACUBO Codebook
+
+| Dataset | Codebook Path |
+|---------|---------------|
+| Endowments | `college-university/nacubo/endowments/codebook_colleges_nacubo_endowments` |
+
+> Codebook is an `.xls` file on both mirrors. See `fetch-patterns.md` for `get_codebook_url()`. For human reference — not parsed programmatically.
+
 **Note**: The Education Data Portal integrates select NACUBO variables with IPEDS data. For comprehensive NCSE data (asset allocations, detailed returns, governance), access the full NACUBO report.
 
 ### Public NACUBO Tables

@@ -170,6 +170,7 @@ Content here.
 - Split large content into `references/` files
 - Use tables for quick lookup
 - Test scripts before including
+- Include metadata references (codebook URLs) for data source skills — see `datasets-reference.md` codebook column
 
 ### Essential Don'ts
 
@@ -179,6 +180,23 @@ Content here.
 - Don't nest references more than one level deep
 - Don't use angle brackets in description
 - Don't start/end name with hyphens
+
+## Data Source Skills: Metadata References
+
+When authoring a data source skill, include a codebook reference section if codebooks exist for the source. Follow the existing pattern (modeled after PSEO):
+
+```markdown
+### [Source] Codebooks
+
+| Dataset | Codebook Path |
+|---------|---------------|
+| ... | `path/to/codebook_name` |
+
+> Codebooks are `.xls` files on both mirrors. See `datasets-reference.md` for full catalog
+> and `fetch-patterns.md` for `get_codebook_url()`. For human reference — not parsed programmatically.
+```
+
+The codebook path comes from the `codebook` column in `datasets-reference.md`. Metadata files are for human reference only — they are not parsed programmatically by the pipeline.
 
 ## Topic Index
 

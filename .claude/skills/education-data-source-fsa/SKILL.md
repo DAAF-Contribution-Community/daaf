@@ -136,6 +136,18 @@ college-university/fsa/financial-responsibility/colleges_fsa_composite_scores.pa
 college-university/fsa/90-10-revenue-percentages/colleges_fsa_90_10_revenue_percentages.parquet
 ```
 
+### FSA Codebooks
+
+| Dataset | Codebook Path |
+|---------|---------------|
+| Grants | `college-university/fsa/grants/codebook_colleges_fsa_grants` |
+| Loans | `college-university/fsa/loans/codebook_colleges_fsa_loans` |
+| Campus-Based Volume | `college-university/fsa/campus-based-volume/codebook_colleges_fsa_campus_based_volume` |
+| Financial Responsibility | `college-university/fsa/financial-responsibility/codebook_colleges_fsa_financial_responsibility` |
+| 90/10 Revenue | `college-university/fsa/90-10-revenue-percentages/codebook_colleges_fsa_90-10_revenue_percentages` |
+
+> Codebooks are `.xls` files on both mirrors. See `datasets-reference.md` for full catalog and `fetch-patterns.md` for `get_codebook_url()`. For human reference — not parsed programmatically.
+
 **Download Example:**
 ```bash
 curl -sL "https://huggingface.co/datasets/brhkim/education_data_portal_mirror/resolve/main/college-university/fsa/grants/colleges_fsa_grants.parquet" -o fsa_grants.parquet

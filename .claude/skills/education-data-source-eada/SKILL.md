@@ -207,6 +207,14 @@ Public disclosure                  Enforcement mechanism
 | `education-data-explorer` | Find other college data | Joining with IPEDS |
 | `education-data-query` | Construct API queries | Fetching EADA data |
 
+### EADA Codebook
+
+| Dataset | Codebook Path |
+|---------|---------------|
+| Institutional Characteristics | `college-university/eada/institutional-characteristics/codebook_colleges_eada_inst-characteristics` |
+
+> Codebook is an `.xls` file on both mirrors. See `fetch-patterns.md` for `get_codebook_url()`. For human reference — not parsed programmatically.
+
 ## Topic Index
 
 | Topic | Reference File |

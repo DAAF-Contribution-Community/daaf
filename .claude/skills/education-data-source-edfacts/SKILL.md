@@ -219,6 +219,17 @@ EDFacts data is fetched from mirrors (parquet or CSV), not via REST API. See the
 | District Assessments | Yearly | 2009-2020 | `school-districts/edfacts/assessments/districts_edfacts_assessments_{year}` |
 | District Grad Rates | Yearly | 2010-2019 | `school-districts/edfacts/grad-rates/districts_edfacts_grad_rates_{year}` |
 
+### EDFacts Codebooks
+
+| Dataset | Codebook Path |
+|---------|---------------|
+| School Assessments | `schools/edfacts/assessments/codebook_schools_edfacts_assessments` |
+| School Grad Rates | `schools/edfacts/grad-rates/codebook_schools_edfacts_grad_rates` |
+| District Assessments | `school-districts/edfacts/assessments/codebook_districts_edfacts_assessments` |
+| District Grad Rates | `school-districts/edfacts/grad-rates/codebook_districts_edfacts_grad_rates` |
+
+> Codebooks are `.xls` files on both mirrors. See `datasets-reference.md` for full catalog and `fetch-patterns.md` for `get_codebook_url()`. For human reference — not parsed programmatically.
+
 > **Note:** 2019 assessment data is NOT available due to COVID testing waivers.
 
 ### Example Fetch

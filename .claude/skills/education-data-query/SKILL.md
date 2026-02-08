@@ -21,7 +21,7 @@ Download datasets from the Education Data Portal via configured mirror sources (
 
 | File | Purpose | When to Read |
 |------|---------|--------------|
-| `mirrors.yaml` | Mirror URLs, priority, format, timeouts | Understanding mirror configuration |
+| `mirrors.yaml` | Mirror URLs, priority, format, timeouts, metadata config | Understanding mirror configuration |
 | `fetch-patterns.md` | Code patterns for mirror-based fetching | Writing Stage 5 fetch scripts |
 | `datasets-reference.md` | Known dataset file paths by level/source | Finding the right file path for a dataset |
 | `filters-reference.md` | Complete filter variables | Filtering downloaded data locally |
@@ -79,6 +79,8 @@ What dataset do you need?
 │   └─ Check ./references/datasets-reference.md for known paths
 ├─ Not sure what's available?
 │   └─ Query mirror discovery endpoint to list all files → ./references/fetch-patterns.md
+├─ Need a codebook or metadata file?
+│   └─ Check codebook column in ./references/datasets-reference.md → get_codebook_url() in ./references/fetch-patterns.md
 └─ Dataset not in any mirror?
     └─ STOP and escalate — dataset may need to be added to mirror
 ```
@@ -242,6 +244,7 @@ See `./references/filters-reference.md` for complete list.
 | Dataset file paths | `./references/datasets-reference.md` |
 | URL/path naming conventions | `./references/query-patterns.md` |
 | Filter variables | `./references/filters-reference.md` |
+| Codebook/metadata URLs | `./references/datasets-reference.md` (codebook column), `./references/fetch-patterns.md` (get_codebook_url) |
 | FIPS codes | This file, `./references/filters-reference.md` |
 | CCD source details | `education-data-source-ccd` skill |
 | CRDC source details | `education-data-source-crdc` skill |
