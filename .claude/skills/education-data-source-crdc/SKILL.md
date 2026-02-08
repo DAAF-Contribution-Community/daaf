@@ -172,46 +172,38 @@ Data quality issue?
 | `1` | English learner (EL/LEP) |
 | `99` | All students |
 
-## API Access via Education Data Portal
+## Data Access via Mirrors
 
-> **API Implementation:** For URL construction patterns, pagination, and error handling, see the `education-data-query` skill. For comprehensive API learnings, see `agent_reference/EDUCATION_DATA_API_LEARNINGS.md`.
+CRDC data is fetched from mirrors (parquet or CSV), not via REST API. See the `education-data-query` skill for fetch patterns.
 
-CRDC data is available through Urban Institute's Education Data Portal.
+### CRDC Dataset Paths
 
-### CRITICAL: Disaggregation Required in URL Path
+| Topic | Type | Years | Huggingface Path |
+|-------|------|-------|------------------|
+| Discipline | Yearly | 2011-2021 | `schools/crdc/discipline/schools_crdc_discipline_k12_{year}` |
+| AP/IB Enrollment | Single | 2011-2021 | `schools/crdc/ap-ib-enrollment/schools_crdc_apib_enroll` |
+| Enrollment | Yearly | 2011-2021 | `schools/crdc/enrollment/schools_crdc_enrollment_k12_{year}` |
+| Chronic Absenteeism | Yearly | 2013-2022 | `schools/crdc/chronic-absenteeism/schools_crdc_chronic_absenteeism_{year}` |
+| Harassment/Bullying | Yearly | 2011-2021 | `schools/crdc/harassment-or-bullying/schools_crdc_harass_bully_students_{year}` |
+| Restraint/Seclusion | Yearly | 2011-2021 | `schools/crdc/restraint-and-seclusion/schools_crdc_restraint_seclusion_students_{year}` |
 
-Most CRDC endpoints **require** disaggregation levels in the URL path (not optional):
+### Example Fetch
 
-| Documented | Actual Working Endpoint |
-|------------|------------------------|
-| `/schools/crdc/suspensions/{year}/` | ❌ Returns 404 |
-| `/schools/crdc/discipline/{year}/disability/sex/` | ✅ Works |
-| `/schools/crdc/ap-enrollment/{year}/` | ❌ Returns 404 |
-| `/schools/crdc/ap-ib-enrollment/{year}/race/sex/` | ✅ Works |
+```python
+import polars as pl
 
-**Race disaggregation cannot be used standalone** - must combine with other dimensions like `disability` or `sex`.
+# Discipline data (yearly file)
+url = "https://huggingface.co/datasets/brhkim/education_data_portal_mirror/resolve/main/schools/crdc/discipline/schools_crdc_discipline_k12_2017.parquet"
+df = pl.read_parquet(url)
 
-### Endpoints That Work WITHOUT Disaggregation
+# AP/IB data (single file with all years)
+url = "https://huggingface.co/datasets/brhkim/education_data_portal_mirror/resolve/main/schools/crdc/ap-ib-enrollment/schools_crdc_apib_enroll.parquet"
+df = pl.read_parquet(url)
+df = df.filter(pl.col("year") == 2017)
+```
 
-| Endpoint | Description |
-|----------|-------------|
-| `/schools/crdc/offerings/{year}/` | Course offerings data |
-| `/schools/crdc/directory/{year}/` | School directory |
-
-### Endpoints That REQUIRE Disaggregation
-
-| Working Pattern | Description |
-|-----------------|-------------|
-| `/schools/crdc/discipline/{year}/disability/sex/` | Discipline incidents |
-| `/schools/crdc/discipline/{year}/disability/race/sex/` | Discipline with full disaggregation |
-| `/schools/crdc/ap-ib-enrollment/{year}/race/sex/` | AP/IB enrollment |
-| `/schools/crdc/harassment-or-bullying/{year}/` | Harassment allegations |
-| `/schools/crdc/restraint-and-seclusion/{year}/` | Restraint/seclusion |
-| `/schools/crdc/chronic-absenteeism/{year}/` | Chronic absence |
-| `/schools/crdc/retention/{year}/` | Grade retention |
-
-### Available Years via API
-- 2011, 2013, 2015, 2017, 2020, 2021 (as of 2024)
+### Available Years
+- 2011, 2013, 2015, 2017, 2020, 2021
 - **CRDC is biennial** - no data for even-numbered school years
 
 ## Equity Analysis Framework

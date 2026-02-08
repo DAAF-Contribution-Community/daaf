@@ -145,6 +145,8 @@ Time period?
 
 The Urban Institute Education Data Portal includes NHGIS-derived data linking schools to census geography.
 
+> **Schema Difference:** Schools NHGIS files (47 columns) have a different schema than colleges NHGIS files (26 columns). Schools data includes more detailed geographic identifiers (block-level precision), while colleges data is primarily tract-level. Do not assume identical column structures when working with both.
+
 ### Available via HuggingFace Mirror
 
 | Mirror Path | Census Year | Content |

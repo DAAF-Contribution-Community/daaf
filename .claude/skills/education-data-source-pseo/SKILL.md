@@ -148,14 +148,14 @@ Checking data availability?
 | Parameter | Description | Example |
 |-----------|-------------|---------|
 | `unitid` | IPEDS Unit ID | `100751` (University of Alabama) |
-| `opeid` | OPEID as integer | `105100` (not string "00105100") |
+| `opeid` | OPEID as String | `"00105100"` (8-character string, not integer) |
 | `fips` | State FIPS of institution | `48` (Texas) |
 | `degree_level` | Degree type integer | `5` (Bachelor's) |
 | `cipcode` | Field of study (2-digit integer) | `11` (Computer Science) |
 | `pseo_cohort` | Graduation cohort | `"2016-18"` (string format) |
 | `years_after_grad` | Years post-graduation | `1`, `5`, or `10` |
 
-> **Note:** Variable names are lowercase in Portal data. `opeid` is an integer (not 8-digit string).
+> **Note:** Variable names are lowercase in Portal data. `opeid` is an 8-character string (e.g., `"00105100"`), not an integer.
 
 ## Cohort Definitions
 

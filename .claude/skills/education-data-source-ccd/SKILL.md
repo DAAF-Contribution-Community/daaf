@@ -195,6 +195,10 @@ Schools → Local Education Agencies (LEAs)
 | PSS | Private school equivalent | Need private school data |
 | NHGIS | Census geography crosswalks | Need school-Census links |
 
+## Portal Column Name Note
+
+> **Variable Name Mapping:** The Portal column `urban_centric_locale` contains locale codes. Some documentation may refer to this as simply `locale`. Use `urban_centric_locale` when filtering or selecting columns in Portal data.
+
 ## Education Data Portal Mapping
 
 In the Urban Institute Education Data Portal:
@@ -207,47 +211,65 @@ In the Urban Institute Education Data Portal:
 | `/school-districts/ccd/enrollment/` | LEA Membership |
 | `/school-districts/ccd/finance/` | F-33 District Finance |
 
-## Education Data Portal API Patterns
+## Data Fetching
 
-> **API Implementation:** For URL construction patterns, pagination, and error handling, see the `education-data-query` skill. For comprehensive API learnings, see `agent_reference/EDUCATION_DATA_API_LEARNINGS.md`.
+CCD data is fetched from mirrors (parquet or CSV), not via REST API. See the `education-data-query` skill for:
+- Mirror configuration (`mirrors.yaml`)
+- Fetch patterns (`fetch-patterns.md`)
+- Dataset file paths (`datasets-reference.md`)
 
-### CRITICAL: Enrollment Disaggregator Rules
+### CCD Dataset Paths
 
-For CCD enrollment endpoints, the `grade` disaggregator is **REQUIRED** and must come **FIRST** in the URL path.
+| Topic | Type | Huggingface Path |
+|-------|------|------------------|
+| School Directory | Single | `schools/ccd/directory/schools_ccd_directory` |
+| School Enrollment | Yearly | `schools/ccd/enrollment/schools_ccd_enrollment_{year}` |
+| District Directory | Single | `school-districts/ccd/directory/school-districts_lea_directory` |
+| District Enrollment | Yearly | `school-districts/ccd/enrollment/schools_ccd_lea_enrollment_{year}` |
+| District Finance | Single | `school-districts/ccd/finance/districts_ccd_finance` |
 
-| Pattern | Status |
-|---------|--------|
-| `/enrollment/{year}/grade-99/` | ✅ Works (totals) |
-| `/enrollment/{year}/grade-99/race/` | ✅ Works |
-| `/enrollment/{year}/grade-99/race/sex/` | ✅ Works |
-| `/enrollment/{year}/race/` | ❌ HTTP 500 (missing grade) |
-| `/enrollment/{year}/race/grade-99/` | ❌ HTTP 500 (wrong order) |
+### Filtering CCD Data
 
-Use `grade-99` in URLs to get totals across all grades.
+All filtering is done locally with Polars after download:
 
-> **URL vs Data Encoding:** The URL path uses `grade-99` (hyphenated), but in the returned data, the `grade` column value is `99` (positive integer). Don't confuse URL path syntax with data values.
-
-**Example correct URL:**
-```
-/api/v1/schools/ccd/enrollment/2022/grade-99/?fips=6
-```
-
-**Returned data column:**
 ```python
-# In the data, filter using positive 99
-df.filter(pl.col("grade") == 99)  # Correct
-df.filter(pl.col("grade") == -99)  # WRONG - no such value
+import polars as pl
+
+# Filter by state (California)
+df = df.filter(pl.col("fips") == 6)
+
+# Filter by year
+df = df.filter(pl.col("year").is_in([2020, 2021, 2022]))
+
+# Get totals only (enrollment)
+df = df.filter(pl.col("grade") == 99)
+
+# Get specific grades (K-12)
+df = df.filter(pl.col("grade").is_between(0, 12))
 ```
 
-### Finance Field Names
+### CRITICAL: Grade -1 Encoding
 
-API field names include `_total` suffix (not documented):
+In CCD enrollment data:
+- `grade = -1` means **Pre-Kindergarten**, NOT missing data
+- `grade = 99` means **Total** across all grades
 
-| Documented | Actual API Field |
-|------------|------------------|
-| `exp_current_instruction` | `exp_current_instruction_total` |
+**Do NOT filter `grade >= 0`** — this removes all Pre-K students!
 
-**Finance data lag:** As of January 2026, latest available year is **2020** (not 2021).
+```python
+# WRONG - removes Pre-K students!
+df = df.filter(pl.col("grade") >= 0)
+
+# CORRECT
+pre_k = df.filter(pl.col("grade") == -1)  # Pre-K only
+k12 = df.filter(pl.col("grade").is_between(0, 12))  # K-12
+total = df.filter(pl.col("grade") == 99)  # All grades
+```
+
+### Finance Data Notes
+
+- **Finance data lag:** As of January 2026, latest available year is **2020** (not 2021)
+- Some finance columns use `_total` suffix (e.g., `exp_current_instruction_total`)
 
 ## Topic Index
 

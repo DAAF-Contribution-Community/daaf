@@ -86,6 +86,8 @@ Which study by year?
 
 ## Quick Reference: NACUBO Data
 
+> **Portal Coverage Note:** The Education Data Portal mirrors contain only **7 columns** focused on endowment market values (e.g., `endowment_total_end_fy`, fiscal year market values). Full investment data (returns, asset allocations, spending rates, governance) requires access to the complete NACUBO study. See "Full Report Access" section below.
+
 ### Key Metrics Available
 
 | Metric | Description | Granularity |

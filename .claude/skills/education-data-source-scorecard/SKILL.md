@@ -17,7 +17,7 @@ Federal data on post-college outcomes including earnings, debt, and repayment fo
 - **Data sources**: NSLDS (loans/aid), IRS/Treasury (earnings), IPEDS (institutional characteristics)
 - **Coverage**: **Title IV federal aid recipients only** - not all students
 - **Unique feature**: Links education to IRS tax records for actual earnings data
-- **Access**: Free via API, bulk downloads at collegescorecard.ed.gov
+- **Access**: Education Data Portal mirrors (parquet/CSV) or bulk downloads at collegescorecard.ed.gov
 
 ## Critical Limitation: Title IV Recipients Only
 
@@ -57,6 +57,42 @@ Scorecard tracks ONLY students who received federal financial aid (Title IV):
 | `variable-definitions.md` | Key variables, naming conventions, special values | Building queries or interpreting results |
 | `data-quality.md` | Suppression rules, selection bias, known limitations | Assessing data reliability |
 | `field-of-study.md` | Program-level earnings and debt data | Analyzing outcomes by major/CIP code |
+
+## Portal Data Structure (CRITICAL)
+
+The Portal uses **LONG format** with time horizon as a column, NOT the WIDE format from original Scorecard files.
+
+### Key Differences from Original Scorecard
+
+| Scorecard (WIDE) | Portal (LONG) | How to Get |
+|------------------|---------------|------------|
+| `MD_EARN_WNE_P6` | `earnings_med` | Filter: `years_after_entry == 6` |
+| `MD_EARN_WNE_P10` | `earnings_med` | Filter: `years_after_entry == 10` |
+| `COUNT_WNE_P6` | `count_working` | Filter: `years_after_entry == 6` |
+| `CONTROL`, `INSTNM` | NOT IN FILE | Join to IPEDS directory |
+
+### Example Fetch
+
+```python
+import polars as pl
+
+url = "https://huggingface.co/datasets/brhkim/education_data_portal_mirror/resolve/main/college-university/scorecard/earnings/colleges_scorecard_earnings.parquet"
+df = pl.read_parquet(url)
+
+# Get 10-year earnings
+df = df.filter(pl.col("years_after_entry") == 10)
+```
+
+### Missing Values
+
+Both `-3` (suppressed) and `null` appear in Portal data:
+```python
+# Filter for valid earnings
+valid = df.filter(
+    (pl.col("earnings_med").is_not_null()) &
+    (pl.col("earnings_med") != -3)
+)
+```
 
 ## Decision Trees
 

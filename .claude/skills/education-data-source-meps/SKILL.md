@@ -144,22 +144,28 @@ valid_data = df.filter(pl.col("meps_poverty_pct").is_not_null())
 # df.filter(pl.col("meps_poverty_pct") >= 0)  # Unnecessary
 ```
 
-## Quick Reference: API Endpoint
+## Data Access via Mirrors
 
-```
-GET /api/v1/schools/meps/{year}/
-```
+MEPS data is fetched from mirrors, not via REST API. See `education-data-query` skill.
 
-**Filters**:
-- `?fips={state_code}` - Filter by state
-- `?leaid={district_id}` - Filter by district
-- `?ncessch={school_id}` - Filter by school
+| Mirror | Path |
+|--------|------|
+| huggingface | `schools/meps/schools_meps.parquet` |
+| urban_csv | `meps/schools_meps.csv` |
 
-**Example**:
+**Example Fetch**:
+```python
+import polars as pl
+
+url = "https://huggingface.co/datasets/brhkim/education_data_portal_mirror/resolve/main/schools/meps/schools_meps.parquet"
+df = pl.read_parquet(url)
+
+# Filter locally
+df = df.filter(
+    (pl.col("fips") == 6) &  # California
+    (pl.col("year") == 2018)
+)
 ```
-https://educationdata.urban.org/api/v1/schools/meps/2018/?fips=6
-```
-Returns MEPS data for all California schools in 2018.
 
 ## Key Methodological Points
 

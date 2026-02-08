@@ -12,13 +12,14 @@ Discover available education data from the Urban Institute Education Data Portal
 
 ## What is the Education Data Portal?
 
-- **Free, public API** from Urban Institute - no authentication required
+- **Comprehensive education data** from Urban Institute - free and publicly available
 - **Three data levels**: schools, school-districts, college-university
-- **Multiple data sources**: CCD, IPEDS, CRDC, College Scorecard, EDFacts, SAIPE, FSA, etc.
+- **Multiple data sources**: CCD, IPEDS, CRDC, College Scorecard, EDFacts, SAIPE, FSA, MEPS, PSEO, etc.
 - **Coverage**: 1980-2023 depending on source
-- **Response format**: JSON (paginated), CSV bulk downloads available
-- **Base URL**: `https://educationdata.urban.org/api/v1/`
+- **Access**: Mirror downloads (parquet/CSV) via `education-data-query` skill
 - **Documentation**: https://educationdata.urban.org/documentation/
+
+> **Note:** This workflow uses mirror-based file downloads, not paginated API calls. See `education-data-query` skill for fetch patterns and `datasets-reference.md` for file paths.
 
 ## Reference File Structure
 
@@ -90,11 +91,11 @@ Finding variables?
 
 ## Quick Reference: Data Levels
 
-| Level | Base URL | Key Sources | Primary ID | ID Format |
-|-------|----------|-------------|------------|-----------|
-| schools | `/api/v1/schools/` | CCD, CRDC, EDFacts | `ncessch` | 12-char string |
-| school-districts | `/api/v1/school-districts/` | CCD, SAIPE, EDFacts | `leaid` | 7-char string |
-| college-university | `/api/v1/college-university/` | IPEDS, Scorecard, FSA | `unitid` | 6-digit integer |
+| Level | Mirror Path Prefix | Key Sources | Primary ID | ID Format |
+|-------|-------------------|-------------|------------|-----------|
+| schools | `schools/` | CCD, CRDC, EDFacts, MEPS, NHGIS | `ncessch` | 12-char string |
+| school-districts | `school-districts/` | CCD, SAIPE, EDFacts | `leaid` | 7-char string |
+| college-university | `college-university/` | IPEDS, Scorecard, FSA, PSEO, EADA | `unitid` | 6-digit integer |
 
 ## Quick Reference: Data Sources
 

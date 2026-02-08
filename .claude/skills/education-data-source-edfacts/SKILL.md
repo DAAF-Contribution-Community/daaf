@@ -206,40 +206,40 @@ For `homeless`, `migrant`, `econ_disadvantaged`, `foster_care`, `military_connec
 | District/LEA | `leaid` (7-char) | `/school-districts/edfacts/` |
 | State | `fips` (2-digit) | Aggregate from lower levels |
 
-## Urban Institute Education Data Portal Endpoints
+## Data Access via Mirrors
 
-> **API Implementation:** For URL construction patterns, pagination, and error handling, see the `education-data-query` skill. For comprehensive API learnings, see `agent_reference/EDUCATION_DATA_API_LEARNINGS.md`.
+EDFacts data is fetched from mirrors (parquet or CSV), not via REST API. See the `education-data-query` skill for fetch patterns.
 
-### CRITICAL: Grade Path Segment Format
+### EDFacts Dataset Paths
 
-For assessment endpoints, grade must be in URL path using `grade-{N}` format:
+| Topic | Type | Years | Huggingface Path |
+|-------|------|-------|------------------|
+| School Assessments | Yearly | 2009-2018, 2020 | `schools/edfacts/assessments/schools_edfacts_assessments_{year}` |
+| School Grad Rates | Yearly | 2010-2019 | `schools/edfacts/grad-rates/schools_edfacts_grad_rates_{year}` |
+| District Assessments | Yearly | 2009-2020 | `school-districts/edfacts/assessments/districts_edfacts_assessments_{year}` |
+| District Grad Rates | Yearly | 2010-2019 | `school-districts/edfacts/grad-rates/districts_edfacts_grad_rates_{year}` |
 
-| Pattern | Status |
-|---------|--------|
-| `/schools/edfacts/assessments/2018/grade-4/` | ✅ Works |
-| `/schools/edfacts/assessments/2018/?grade=4` | ❌ 404 |
-| `/schools/edfacts/assessments/2018/4/` | ❌ 500 |
+> **Note:** 2019 assessment data is NOT available due to COVID testing waivers.
 
-### Year Availability
+### Example Fetch
 
-| Data Type | Years Available | Notes |
-|-----------|-----------------|-------|
-| Assessments | 2009-2018, 2020 | **2019 is MISSING** (COVID waivers) |
-| Graduation Rates | 2010-2020 | 2019 IS available (cohort-based) |
+```python
+import polars as pl
 
-### School-Level EDFacts
+# Assessment data (yearly file)
+url = "https://huggingface.co/datasets/brhkim/education_data_portal_mirror/resolve/main/schools/edfacts/assessments/schools_edfacts_assessments_2018.parquet"
+df = pl.read_parquet(url)
 
-| Endpoint | Description |
-|----------|-------------|
-| `/schools/edfacts/assessments/{year}/grade-{N}/` | Assessment proficiency by grade |
-| `/schools/edfacts/grad-rates/{year}/` | Graduation rates |
+# Filter by grade locally
+df = df.filter(pl.col("grade_edfacts") == 4)  # Grade 4
+```
 
-### District-Level EDFacts
+### Grade Filtering
 
-| Endpoint | Description |
-|----------|-------------|
-| `/school-districts/edfacts/assessments/{year}/grade-{N}/` | District assessment data |
-| `/school-districts/edfacts/grad-rates/{year}/` | District graduation rates |
+The `grade_edfacts` column uses integer codes:
+- 3-8: Grades 3-8
+- 9: High school
+- 99: All grades combined
 
 ## Key Policy Context
 

@@ -171,26 +171,30 @@ between 4,200 and 5,800.
 | 20,000-65,000 | 0.23 | +/- 38% |
 | 65,000+ | 0.15 | +/- 25% |
 
-## Education Data Portal Access
+## Data Access via Mirrors
 
-SAIPE data available via Urban Institute Education Data Portal:
+SAIPE data is fetched from mirrors, not via REST API. See `education-data-query` skill.
 
+| Mirror | Path |
+|--------|------|
+| huggingface | `school-districts/saipe/districts_saipe.parquet` |
+| urban_csv | `saipe/school-districts_saipe.csv` |
+
+**Years Available:** 1999-2023
+
+**Example Fetch**:
+```python
+import polars as pl
+
+url = "https://huggingface.co/datasets/brhkim/education_data_portal_mirror/resolve/main/school-districts/saipe/districts_saipe.parquet"
+df = pl.read_parquet(url)
+
+# Filter locally
+df = df.filter(
+    (pl.col("fips") == 6) &  # California
+    (pl.col("year") == 2022)
+)
 ```
-Endpoint: /school-districts/saipe/{year}/
-ID field: leaid (7-character NCES district ID)
-Years: 1999-2023
-
-Example:
-/api/v1/school-districts/saipe/2022/?fips=6
-```
-
-### Key Filters
-
-| Parameter | Description | Example |
-|-----------|-------------|---------|
-| `year` | Estimate year | `?year=2022` |
-| `fips` | State FIPS code | `?fips=6` (California) |
-| `leaid` | District ID | `?leaid=0622710` |
 
 ## Poverty Definition
 

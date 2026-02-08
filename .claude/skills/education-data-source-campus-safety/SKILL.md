@@ -21,6 +21,10 @@ The Campus Safety and Security (CSS) data comes from the annual survey required 
 - **Reporting period**: Calendar year (January 1 - December 31)
 - **Official portal**: https://ope.ed.gov/campussafety/
 
+> **CRITICAL: Limited Data in Portal Mirrors**
+>
+> The Education Data Portal mirrors contain **only hate crimes data**. For other campus safety data (primary offenses, VAWA offenses, arrests/referrals, fire safety), access the Department of Education directly at https://ope.ed.gov/campussafety/
+
 > **CRITICAL: Portal Integer Encoding**
 >
 > The Education Data Portal and HuggingFace mirror use **integer codes** for categorical variables, not string labels:

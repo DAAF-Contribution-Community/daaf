@@ -88,10 +88,12 @@ School discipline data is the most extensive CRDC category, covering multiple di
 | `iss_{subgroup}` | In-school suspension by subgroup |
 | `oss_one_{subgroup}` | One out-of-school suspension |
 | `oss_more_{subgroup}` | More than one OSS |
-| `expulsion_with_services_{subgroup}` | Expulsion with educational services |
-| `expulsion_without_services_{subgroup}` | Expulsion without services |
+| `expulsions_with_ed_serv_{subgroup}` | Expulsion with educational services |
+| `expulsions_without_ed_serv_{subgroup}` | Expulsion without services |
 | `referral_law_enforcement_{subgroup}` | Referrals to law enforcement |
 | `arrest_{subgroup}` | School-related arrests |
+
+> **Portal Column Names:** The Portal uses `expulsions_with_ed_serv` and `expulsions_without_ed_serv` (not `expulsion_with_services`).
 
 ### Disaggregation
 
@@ -397,9 +399,11 @@ Enrollment in advanced academic programs designed to provide rigorous coursework
 
 | Variable | Description |
 |----------|-------------|
-| `ap_enrollment_{subject}` | Students enrolled in AP by subject |
+| `enrl_ap_{subject}` | Students enrolled in AP by subject |
 | `ib_enrollment` | Students enrolled in IB program |
 | `gt_enrollment` | Students in gifted/talented |
+
+> **Portal Column Names:** The Portal uses `enrl_ap` prefix (e.g., `enrl_ap_math`) rather than `ap_enrollment`.
 
 ### Disaggregation
 
