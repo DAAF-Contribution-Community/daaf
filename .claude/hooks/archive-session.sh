@@ -25,6 +25,14 @@ mkdir -p "$ARCHIVE_DIR"
 TIMESTAMP=$(date '+%Y-%m-%d_%H-%M-%S')
 SESSION_SHORT="${SESSION_ID:0:8}"
 
+# Extract provenance metadata before archiving
+DAAF_VERSION=$(git -C "$PROJECT_DIR" describe --always --dirty 2>/dev/null || echo "unknown")
+MODEL="unknown"
+if [ -n "$TRANSCRIPT_PATH" ] && [ -f "$TRANSCRIPT_PATH" ]; then
+    MODEL=$(jq -r 'select(.message.model) | .message.model' "$TRANSCRIPT_PATH" 2>/dev/null | head -1)
+    [ -z "$MODEL" ] && MODEL="unknown"
+fi
+
 # Archive paths
 JSONL_ARCHIVE="$ARCHIVE_DIR/${TIMESTAMP}_${SESSION_SHORT}.jsonl"
 MD_ARCHIVE="$ARCHIVE_DIR/${TIMESTAMP}_${SESSION_SHORT}.md"
@@ -40,6 +48,8 @@ if [ -n "$TRANSCRIPT_PATH" ] && [ -f "$TRANSCRIPT_PATH" ]; then
         echo "**Session ID:** $SESSION_ID"
         echo "**Date:** $(date '+%Y-%m-%d %H:%M:%S')"
         echo "**Directory:** $CWD"
+        echo "**DAAF Version:** $DAAF_VERSION"
+        echo "**Model:** $MODEL"
         echo "**End Reason:** $REASON"
         echo ""
         echo "---"
@@ -69,10 +79,16 @@ if [ -n "$TRANSCRIPT_PATH" ] && [ -f "$TRANSCRIPT_PATH" ]; then
                 [ -n "$TIME_DISPLAY" ] && echo "**Time:** $TIME_DISPLAY"
                 echo ""
 
-                # Extract text content
-                echo "$line" | jq -r '.message.content[] | select(.type == "text") | .text // empty' 2>/dev/null | while IFS= read -r text; do
-                    [ -n "$text" ] && echo "$text"
-                done
+                # Extract text content — user messages have plain string content, not array
+                CONTENT_TYPE=$(echo "$line" | jq -r '.message.content | type' 2>/dev/null)
+                if [ "$CONTENT_TYPE" = "string" ]; then
+                    USER_TEXT=$(echo "$line" | jq -r '.message.content // empty' 2>/dev/null)
+                    [ -n "$USER_TEXT" ] && echo "$USER_TEXT"
+                elif [ "$CONTENT_TYPE" = "array" ]; then
+                    echo "$line" | jq -r '.message.content[] | select(.type == "text") | .text // empty' 2>/dev/null | while IFS= read -r text; do
+                        [ -n "$text" ] && echo "$text"
+                    done
+                fi
                 echo ""
 
             elif [ "$ROLE" = "assistant" ]; then
@@ -146,6 +162,8 @@ if [ -n "$TRANSCRIPT_PATH" ] && [ -f "$TRANSCRIPT_PATH" ]; then
         echo "## 📊 Session Summary"
         echo ""
         echo "**Total messages:** $(wc -l < "$JSONL_ARCHIVE")"
+        echo "**Model:** $MODEL"
+        echo "**DAAF Version:** $DAAF_VERSION"
         echo "**Archive:** \`$JSONL_ARCHIVE\`"
 
     } > "$MD_ARCHIVE"

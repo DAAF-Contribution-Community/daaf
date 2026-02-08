@@ -127,7 +127,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "mkdir -p \"$CLAUDE_PROJECT_DIR\"/.claude/logs && echo \"Session started: $(date '+%Y-%m-%d %H:%M:%S')\" >> \"$CLAUDE_PROJECT_DIR\"/.claude/logs/activity.log",
+            "command": "mkdir -p \"$CLAUDE_PROJECT_DIR\"/.claude/logs && echo \"Session started: $(date '+%Y-%m-%d %H:%M:%S') | DAAF: $(git -C \"$CLAUDE_PROJECT_DIR\" describe --always --dirty 2>/dev/null || echo 'unknown')\" >> \"$CLAUDE_PROJECT_DIR\"/.claude/logs/activity.log",
             "timeout": 5
           }
         ]

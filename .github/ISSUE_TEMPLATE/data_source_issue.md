@@ -56,8 +56,9 @@ IMPORTANT: Redact any API keys or sensitive data.
 
 ## Environment
 
-- **Claude model:** <!-- e.g., Opus 4.6, Opus 4.5, Sonnet 4.5 — type /model in Claude Code to check -->
+- **Claude model:** <!-- e.g., Opus 4.6, Opus 4.5, Sonnet 4.5 — see "Model" in your session log header -->
 - **Setup:** <!-- Docker or native install -->
+- **DAAF version:** <!-- Check your session log header (.claude/logs/sessions/*.md) — model and DAAF version are logged automatically -->
 
 ## Additional context
 

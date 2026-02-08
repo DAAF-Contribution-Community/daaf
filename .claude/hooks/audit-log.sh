@@ -23,6 +23,14 @@ TOOL_NAME=$(echo "$INPUT" | jq -r '.tool_name // "unknown"' 2>/dev/null) || TOOL
 SESSION_ID=$(echo "$INPUT" | jq -r '.session_id // "unknown"' 2>/dev/null) || SESSION_ID="unknown"
 TIMESTAMP=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
 
+# DAAF version (git commit hash)
+PROJECT_DIR="${CLAUDE_PROJECT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
+DAAF_VERSION=$(git -C "$PROJECT_DIR" describe --always --dirty 2>/dev/null || echo "unknown")
+
+# Model (from context-reporter cache, populated after first assistant response)
+MODEL_CACHE="/tmp/claude-model-${SESSION_ID}"
+MODEL=$(cat "$MODEL_CACHE" 2>/dev/null || echo "unknown")
+
 # Extract a human-readable target depending on the tool type
 case "$TOOL_NAME" in
     Bash)
@@ -66,7 +74,9 @@ jq -n -c \
     --arg sid "$SESSION_ID" \
     --arg tool "$TOOL_NAME" \
     --arg target "$TARGET" \
-    '{timestamp: $ts, session_id: $sid, tool: $tool, target: $target}' \
+    --arg ver "$DAAF_VERSION" \
+    --arg model "$MODEL" \
+    '{timestamp: $ts, session_id: $sid, tool: $tool, target: $target, daaf_version: $ver, model: $model}' \
     >> "$LOG_FILE" 2>/dev/null
 
 exit 0

@@ -54,8 +54,9 @@ IMPORTANT: Redact any API keys, personal file paths, or sensitive data before po
 - **OS:** <!-- e.g., Windows 11, macOS 14, Ubuntu 24.04 -->
 - **Setup:** <!-- Docker (recommended) or native install -->
 - **Auth method:** <!-- API key or Pro/Max subscription -->
-- **Claude model:** <!-- e.g., Opus 4.6, Opus 4.5, Sonnet 4.5 — type /model in Claude Code to check -->
+- **Claude model:** <!-- e.g., Opus 4.6, Opus 4.5, Sonnet 4.5 — type /model in Claude Code to check, or see "Model" in your session log header -->
 - **Claude Code version:** <!-- run `claude --version` inside the container -->
+- **DAAF version:** <!-- Check your session log header (.claude/logs/sessions/*.md) — model and DAAF version are logged automatically -->
 
 ## Additional context
 

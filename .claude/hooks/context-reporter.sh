@@ -80,6 +80,24 @@ calculate() {
 }
 
 # ---------------------------------------------------------------------------
+# cache_model: Extract the model name from the transcript and cache it once
+# per session. audit-log.sh reads this cache to include model in audit entries.
+# ---------------------------------------------------------------------------
+cache_model() {
+    local transcript="$1"
+    local cache="/tmp/claude-model-${SESSION_ID}"
+    [[ -f "$cache" ]] && return  # Already cached
+    [[ -z "$transcript" || ! -f "$transcript" ]] && return
+
+    local model
+    model=$(tail -50 "$transcript" 2>/dev/null | jq -r '
+        select(.message.model) | .message.model
+    ' 2>/dev/null | head -1)
+
+    [[ -n "$model" ]] && echo "$model" > "$cache" 2>/dev/null
+}
+
+# ---------------------------------------------------------------------------
 # Event dispatch
 # ---------------------------------------------------------------------------
 case "$HOOK_EVENT" in
@@ -87,6 +105,7 @@ case "$HOOK_EVENT" in
     UserPromptSubmit)
         # Always calculate and report (fires once per user message).
         # stdout → injected into Claude's context.
+        cache_model "$TRANSCRIPT_PATH"
         MSG=$(calculate "$TRANSCRIPT_PATH")
         if [[ -n "$MSG" ]]; then
             echo "$MSG" > "$CACHE_FILE" 2>/dev/null
@@ -97,6 +116,7 @@ case "$HOOK_EVENT" in
     PreToolUse)
         # Calculate and inject ONLY if utilization has changed since last report.
         # This prevents identical messages on consecutive Read/Glob/Grep calls.
+        cache_model "$TRANSCRIPT_PATH"
         MSG=$(calculate "$TRANSCRIPT_PATH")
         if [[ -n "$MSG" ]]; then
             CACHED=""
