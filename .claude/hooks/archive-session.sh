@@ -64,7 +64,7 @@ if [ -n "$TRANSCRIPT_PATH" ] && [ -f "$TRANSCRIPT_PATH" ]; then
             ROLE=$(echo "$line" | jq -r '.message.role // empty')
             TIMESTAMP_MSG=$(echo "$line" | jq -r '.timestamp // empty')
 
-            # Skip if no role (might be metadata line)
+            # Skip if no role (metadata, progress, file-history-snapshot lines)
             [ -z "$ROLE" ] && continue
 
             # Format timestamp
@@ -74,27 +74,91 @@ if [ -n "$TRANSCRIPT_PATH" ] && [ -f "$TRANSCRIPT_PATH" ]; then
                 TIME_DISPLAY=""
             fi
 
-            if [ "$ROLE" = "user" ]; then
-                echo "## 👤 User"
-                [ -n "$TIME_DISPLAY" ] && echo "**Time:** $TIME_DISPLAY"
-                echo ""
+            # Track entry type for separator logic
+            ENTRY_TYPE=""
 
-                # Extract text content — user messages have plain string content, not array
+            if [ "$ROLE" = "user" ]; then
+                # Detect tool_result entries (API sends tool results as role=user)
                 CONTENT_TYPE=$(echo "$line" | jq -r '.message.content | type' 2>/dev/null)
-                if [ "$CONTENT_TYPE" = "string" ]; then
-                    USER_TEXT=$(echo "$line" | jq -r '.message.content // empty' 2>/dev/null)
-                    [ -n "$USER_TEXT" ] && echo "$USER_TEXT"
-                elif [ "$CONTENT_TYPE" = "array" ]; then
-                    echo "$line" | jq -r '.message.content[] | select(.type == "text") | .text // empty' 2>/dev/null | while IFS= read -r text; do
-                        [ -n "$text" ] && echo "$text"
-                    done
+                HAS_TOOL_RESULT="false"
+                if [ "$CONTENT_TYPE" = "array" ]; then
+                    TR_COUNT=$(echo "$line" | jq '[.message.content[] | select(.type == "tool_result")] | length' 2>/dev/null)
+                    [ "${TR_COUNT:-0}" -gt 0 ] 2>/dev/null && HAS_TOOL_RESULT="true"
                 fi
-                echo ""
+
+                if [ "$HAS_TOOL_RESULT" = "true" ]; then
+                    ENTRY_TYPE="tool_result"
+                    # Render tool results compactly (not as "User" message)
+                    echo "$line" | jq -c '.message.content[] | select(.type == "tool_result")' 2>/dev/null | while IFS= read -r tr; do
+                        [ -z "$tr" ] && continue
+                        IS_ERROR=$(echo "$tr" | jq -r '.is_error // false')
+                        RESULT_CONTENT=$(echo "$tr" | jq -r '
+                            if (.content | type) == "string" then .content
+                            elif (.content | type) == "array" then
+                                ([.content[] | select(.type == "text") | .text] | join("\n"))
+                            else "" end
+                        ' 2>/dev/null)
+                        RESULT_LEN=${#RESULT_CONTENT}
+
+                        if [ "$IS_ERROR" = "true" ]; then
+                            echo "### ⚠️ Tool Error"
+                        else
+                            echo "### 📋 Tool Result"
+                        fi
+                        echo ""
+                        if [ -n "$RESULT_CONTENT" ]; then
+                            echo '```'
+                            echo "$RESULT_CONTENT" | head -c 1000
+                            if [ "$RESULT_LEN" -gt 1000 ]; then
+                                echo ""
+                                echo "... (truncated, ${RESULT_LEN} chars total)"
+                            fi
+                            echo '```'
+                        else
+                            echo "*(empty result)*"
+                        fi
+                        echo ""
+                    done
+                else
+                    ENTRY_TYPE="user"
+                    echo "## 👤 User"
+                    [ -n "$TIME_DISPLAY" ] && echo "**Time:** $TIME_DISPLAY"
+                    echo ""
+
+                    # Extract text content
+                    if [ "$CONTENT_TYPE" = "string" ]; then
+                        USER_TEXT=$(echo "$line" | jq -r '.message.content // empty' 2>/dev/null)
+                        [ -n "$USER_TEXT" ] && echo "$USER_TEXT"
+                    elif [ "$CONTENT_TYPE" = "array" ]; then
+                        echo "$line" | jq -r '.message.content[] | select(.type == "text") | .text // empty' 2>/dev/null | while IFS= read -r text; do
+                            [ -n "$text" ] && echo "$text"
+                        done
+                    fi
+                    echo ""
+                fi
 
             elif [ "$ROLE" = "assistant" ]; then
+                ENTRY_TYPE="assistant"
                 echo "## 🤖 Assistant"
                 [ -n "$TIME_DISPLAY" ] && echo "**Time:** $TIME_DISPLAY"
                 echo ""
+
+                # Extract thinking blocks (extended thinking)
+                THINKING=$(echo "$line" | jq -r '[.message.content[] | select(.type == "thinking") | .thinking] | join("\n")' 2>/dev/null)
+                if [ -n "$THINKING" ]; then
+                    THINK_LEN=${#THINKING}
+                    echo "<details>"
+                    echo "<summary>💭 Thinking (${THINK_LEN} chars)</summary>"
+                    echo ""
+                    echo "$THINKING" | head -c 2000
+                    if [ "$THINK_LEN" -gt 2000 ]; then
+                        echo ""
+                        echo "*(truncated, ${THINK_LEN} chars total)*"
+                    fi
+                    echo ""
+                    echo "</details>"
+                    echo ""
+                fi
 
                 # Extract text content
                 TEXT_CONTENT=$(echo "$line" | jq -r '.message.content[] | select(.type == "text") | .text // empty' 2>/dev/null)
@@ -153,8 +217,12 @@ if [ -n "$TRANSCRIPT_PATH" ] && [ -f "$TRANSCRIPT_PATH" ]; then
                 fi
             fi
 
-            echo "---"
-            echo ""
+            # Section separator — tool results flow without separator to group
+            # visually with the preceding tool call
+            if [ "$ENTRY_TYPE" = "user" ] || [ "$ENTRY_TYPE" = "assistant" ]; then
+                echo "---"
+                echo ""
+            fi
 
         done < "$JSONL_ARCHIVE"
 
