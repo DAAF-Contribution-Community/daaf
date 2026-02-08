@@ -31,7 +31,13 @@ TRANSCRIPT_PATH=$(echo "$INPUT" | jq -r '.transcript_path // empty' 2>/dev/null)
 # Cache for deduplication (one per session, stores last reported message)
 CACHE_FILE="/tmp/claude-ctx-${SESSION_ID}"
 
-MAX_CONTEXT=200000
+# Read context window size from shared cache (written by context-bar.sh statusline).
+# Falls back to 200k if cache doesn't exist yet (e.g., first turn before statusline runs).
+CTX_CACHE="/tmp/claude-ctx-window-${SESSION_ID}"
+if [[ -f "$CTX_CACHE" ]]; then
+    MAX_CONTEXT=$(cat "$CTX_CACHE" 2>/dev/null)
+fi
+MAX_CONTEXT=${MAX_CONTEXT:-200000}
 MAX_K=$((MAX_CONTEXT / 1000))
 
 # ---------------------------------------------------------------------------

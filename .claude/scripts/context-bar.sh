@@ -103,6 +103,10 @@ transcript_path=$(echo "$input" | jq -r '.transcript_path // empty')
 max_context=$(echo "$input" | jq -r '.context_window.context_window_size // 200000')
 max_k=$((max_context / 1000))
 
+# Share context window size with hooks (which don't receive it in their input payload)
+session_id=$(echo "$input" | jq -r '.session_id // "default"')
+echo "$max_context" > "/tmp/claude-ctx-window-${session_id}" 2>/dev/null
+
 # Calculate context bar from transcript
 if [[ -n "$transcript_path" && -f "$transcript_path" ]]; then
     context_length=$(jq -s '
