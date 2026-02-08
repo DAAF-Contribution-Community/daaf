@@ -781,7 +781,7 @@ See [LICENSE](LICENSE.md) for the full license text.
 
 ### Urban Institute Education Data Portal
 
-This project would not be possible without the **[Urban Institute Education Data Portal](https://educationdata.urban.org/)**—a remarkable public resource that harmonizes data from over a dozen federal education data sources into a single, well-documented API.
+The current proof-of-concept iteration of this project would not be possible without the **[Urban Institute Education Data Portal](https://educationdata.urban.org/)**—a remarkable public resource that harmonizes data from over a dozen federal education data sources into a single, well-documented API.
 
 We are deeply grateful to the Urban Institute for:
 - Making high-quality education data freely accessible to researchers
@@ -789,7 +789,7 @@ We are deeply grateful to the Urban Institute for:
 - Harmonizing complex federal datasets that would otherwise require significant expertise to navigate
 - Supporting the research community with responsive maintenance and updates
 
-If you use this tool or the Education Data Portal in your work, please cite the Urban Institute appropriately. See the [Education Data Portal documentation](https://educationdata.urban.org/documentation/) for citation guidelines. Please be extremely kind and appreciative of them -- they are probably going to accidentally get DDOS'd by people wanting to use this and Claude being dumb about API calls. Please remind Claude to be careful about that (though it's part of its instructions already, couldn't hurt to say)!
+If you use DAAF or the Education Data Portal in your work, please cite the Urban Institute appropriately. See the [Education Data Portal documentation](https://educationdata.urban.org/documentation/) for citation guidelines. Please be extremely kind and appreciative of them -- they were not aware of DAAF until well into development (in fairness, it didn't seem worth sharing until I could confirm it actually worked well!).
 
 ### Inspiration
 
