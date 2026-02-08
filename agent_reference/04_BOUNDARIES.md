@@ -327,7 +327,7 @@ df.filter(pl.col("year") == "2020")
 |----------|----------|
 | **Missing Null Handling** | No check for null before division, missing `.drop_nulls()` before aggregation, no handling of `-1/-2/-3` coded values |
 | **No Data Validation** | No row count check after filter, no shape validation after join, missing assertion for expected columns |
-| **Missing Error Handling** | No try/except around API calls, no handling for empty DataFrame, no timeout for large queries |
+| **Missing Error Handling** | No try/except around data access calls, no handling for empty DataFrame, no timeout for large queries |
 | **No Pre/Post State Capture** | Transformation without capturing row count before/after, no logging of data characteristics |
 | **Missing Type Coercion** | No explicit casting before comparison, missing `.cast()` for safe operations |
 | **No Bounds Checking** | No validation that percentages are 0-100, no check for negative enrollment values |
@@ -365,9 +365,9 @@ assert post_rows >= pre_rows * 0.1, f"Filter removed {100 - (post_rows/pre_rows)
 
 | Category | Examples |
 |----------|----------|
-| **Missing Dependency** | `import polars` fails, missing `plotnine` package, `educationdata` not installed |
+| **Missing Dependency** | `import polars` fails, missing `plotnine` package |
 | **Import Errors** | Wrong import path, circular import, missing `__init__.py` |
-| **API Connection Issues** | API timeout, rate limiting hit, endpoint changed |
+| **Data Access Connection Issues** | Data access timeout, rate limiting hit, endpoint changed |
 | **File Path Errors** | Parquet file not found, wrong directory structure, missing data folder |
 | **Environment Issues** | Missing environment variable for API key, wrong Python version |
 | **Data Format Issues** | CSV has unexpected encoding, parquet schema mismatch, date format parsing failure |
@@ -403,7 +403,7 @@ df = pl.read_parquet("data/raw/2026-01-31_ccd_schools.parquet")
 | Category | Examples |
 |----------|----------|
 | **Changing Analysis Methodology** | Switching from mean to median aggregation, changing from cross-sectional to longitudinal approach |
-| **Adding New Data Sources** | Incorporating additional dataset not in Plan, adding new API endpoint |
+| **Adding New Data Sources** | Incorporating additional dataset not in Plan, adding new API or data access endpoint |
 | **Modifying Aggregation Approach** | Changing from school-level to district-level, altering grouping variables |
 | **Changing Join Strategy** | Switching from inner join to left join, changing join keys |
 | **Altering Population/Sample** | Excluding years not originally planned, filtering to different states |
@@ -739,7 +739,7 @@ These conditions trigger an immediate STOP with escalation to user.
 
 | Condition | Stage | Response |
 |-----------|-------|----------|
-| API returns empty data | 5 | STOP, report, await guidance |
+| Data access attempt returns empty data | 5 | STOP, report, await guidance |
 | Suppression rate >50% | 6 | STOP, report, propose alternatives |
 | Cross-state assessment comparison | 6 | BLOCK with explanation |
 | Row count drops >90% | 7 | STOP, verify transformation |

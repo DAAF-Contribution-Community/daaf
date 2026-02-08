@@ -12,7 +12,7 @@ This document provides detailed execution guidance for each of the 12 stages (pl
 |-------|-------|------|---------------------|----------|
 | 1 | 1 | Initial Intake | — | Orchestrator |
 | 2 | 1 | Data Exploration | `education-data-explorer` | Plan |
-| 3 | 1 | Source Deep-Dive | `education-data-source-*` | Plan |
+| 3 | 1 | Source Deep-Dive | `*-data-source-*` | Plan |
 | **3.5** | 1 | Findings Synthesis (conditional) | `research-synthesizer` agent | general-purpose |
 | 4 | 2 | Plan Creation | `data-planner` agent | Orchestrator |
 | **4.5** | 2 | Plan Validation (required) | `plan-checker` agent | Plan |
@@ -306,13 +306,13 @@ Estimated execution time: [time estimate based on complexity]
 ## Stage 3: Source Deep-Dive
 
 **Executor:** Subagent (explore)
-**Skills:** `education-data-source-*` (one per source)
+**Skills:** `*-data-source-*` (one per source)
 **Purpose:** Understand source-specific limitations and caveats
 
 ### Actions
 
 1. **Load Source Skill**
-   - Identify which `education-data-source-*` skill(s) to load
+   - Identify which `*-data-source-*` skill(s) to load
    - One invocation per source
 
 2. **Extract Caveats**
@@ -663,19 +663,17 @@ Run plan-checker
 
 **Executor:** Subagent (general-purpose)
 **Skill:** `education-data-query`
-**Purpose:** Fetch data from Education Data Portal API
+**Purpose:** Fetch data from Education Data Portal mirrors
 
 **Note:** Uses `general-purpose` subagent type (not `explore`) because it must save data files to `data/raw/`.
 
 ### Actions
 
 1. **Construct Query**
-   - Build API URL from Plan specification
-   - Include all filters
-   - Select required variables
+   - Build data access URL from Plan specification
+   - Construct necessary sample filters (year, subgroups, etc.)
 
 2. **Execute Query**
-   - Handle pagination if >10K records
    - Implement rate limiting
    - Retry on transient errors
 
@@ -683,10 +681,10 @@ Run plan-checker
    - Check shape
    - Verify columns
    - Confirm year coverage
+   - Confirm subsample specifications
 
 4. **Save Data**
    - Parquet format (for processing)
-   - CSV format (for sharing)
    - Location: `data/raw/`
 
 5. **>>> INVOKE code-reviewer (MANDATORY) <<<**
@@ -702,8 +700,8 @@ Run plan-checker
 ```
 - Use pagination for datasets >10K records
 - Validate response shape immediately
-- Save BOTH parquet AND csv formats
-- Document any API issues encountered
+- Save ONLY in parquet format
+- Document any data access issues encountered
 ```
 
 ### Validation (CP1)
@@ -723,7 +721,7 @@ assert df['year'].is_in(expected_years).all(), "WARNING: Unexpected years"
 - Records retrieved: [count]
 - Columns: [list]
 - Years present: [list]
-- API issues: [any problems]
+- Data access issues: [any problems]
 
 ### Initial Validation (CP1):
 - Shape: [rows x cols]
@@ -733,7 +731,6 @@ assert df['year'].is_in(expected_years).all(), "WARNING: Unexpected years"
 
 ### File Locations:
 - Parquet: `data/raw/YYYY-MM-DD_[source]_[description].parquet`
-- CSV: `data/raw/YYYY-MM-DD_[source]_[description].csv`
 
 ### Script Saved:
 - Path: `scripts/stage5_fetch/{step}_{task-name}.py`
@@ -787,7 +784,6 @@ assert df['year'].is_in(expected_years).all(), "WARNING: Unexpected years"
 
 5. **Save Clean Data**
    - Parquet format
-   - CSV format
    - Location: `data/processed/`
 
 6. **>>> INVOKE code-reviewer (MANDATORY) <<<**
@@ -839,7 +835,6 @@ assert len(clean_df) > len(raw_df) * 0.1, "STOP: >90% data loss"
 
 ### File Locations:
 - Parquet: `data/processed/YYYY-MM-DD_[description].parquet`
-- CSV: `data/processed/YYYY-MM-DD_[description].csv`
 
 ### Script Saved:
 - Path: `scripts/stage6_clean/{step}_{task-name}.py`
@@ -1306,7 +1301,7 @@ def _(mo):
     ---
     ## Stage 5: Data Fetch
 
-    Scripts in this stage retrieve raw data from the Education Data Portal API.
+    Scripts in this stage retrieve raw data from the data access mirrors.
     """)
 
 # --- Script 5.1: fetch-ccd ---
@@ -1494,7 +1489,7 @@ Stage 10 is now the **aggregation point** for all QA findings from Stages 5-8. B
    ### INFO Items
    | Script | Observation |
    |--------|-------------|
-   | 01_fetch-ccd.py | Could parallelize API calls |
+   | 01_fetch-ccd.py | Could parallelize data access calls |
    ```
 
 3. **Lint Code**
@@ -1589,7 +1584,7 @@ Stage 10 is now the **aggregation point** for all QA findings from Stages 5-8. B
    - Fill gaps in sections still empty
    - Expand quick-capture entries where warranted
    - Deduplicate entries describing the same insight
-   - Ensure minimum sections populated: What Worked Well, What Didn't Work, API/Data Gotchas
+   - Ensure minimum sections populated: What Worked Well, What Didn't Work, Access/Data Gotchas
    - Flush any remaining signals from STATE.md buffer
    - See `agent_reference/08_LESSONS_LEARNED.md` for consolidation protocol
 
@@ -1615,7 +1610,7 @@ At Stage 12, the orchestrator consolidates LEARNINGS.md (which already contains 
 - [ ] LEARNINGS.md incremental entries reviewed (gaps identified and filled)
 - [ ] Quick-capture entries expanded where warranted
 - [ ] Duplicate entries merged
-- [ ] Minimum sections populated: What Worked Well, What Didn't Work, API/Data Gotchas
+- [ ] Minimum sections populated: What Worked Well, What Didn't Work, Access/Data Gotchas
 - [ ] STATE.md pending signals flushed
 - [ ] System Update Action Plan section added with ≥1 action item or explicit "no generalizable learnings" statement
 - [ ] Action items grouped by target type (Skills, Agents, Agent Reference, Orchestrator)

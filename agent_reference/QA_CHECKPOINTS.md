@@ -18,7 +18,7 @@ This document defines the continuous Quality Assurance checkpoint system that ru
 | **Output** | Embedded in script log | Separate QA script + report |
 | **Failure Mode** | STOP execution | BLOCKER → revision request |
 
-**Why Both?** CP checkpoints catch operational failures (API errors, type mismatches). QA checkpoints catch logical errors (wrong approach, inadequate validation, methodology drift).
+**Why Both?** CP checkpoints catch operational failures (data access errors, type mismatches). QA checkpoints catch logical errors (wrong approach, inadequate validation, methodology drift).
 
 **Cross-Reference:** See `agent_reference/05_VALIDATION_CHECKPOINTS.md` for CP1-CP4 code templates and checkpoint classification system.
 
@@ -61,7 +61,7 @@ The code-reviewer applies five skeptical lenses (Counterfactual, Semantic, Bound
 | Year coverage | Years match Plan's year range | Target years absent |
 | Geographic scope | State/district/school level correct | Wrong geographic unit |
 | ID uniqueness | Primary keys are unique | Duplicate IDs present |
-| API completeness | Pagination completed | Partial data fetch |
+| Dataset completeness | Expected rows and fields present | Partial data fetch |
 
 ### QA1 qa1 Script Template
 
@@ -133,7 +133,7 @@ Add when appropriate:
 | Cross-source consistency | Multi-source fetch | Same entities across sources |
 | **Concrete trace** | **Always (at minimum 5)** — see `agents/code-reviewer.md` for the five required categories | **Pick one entity (e.g., a specific school or state) and verify its record looks plausible** |
 
-**Creative check prompt:** Before writing your QA1 script, ask: *"If the API returned data for the wrong geography or wrong year range, how would I detect that from the data alone?"* Design at least one check to answer that question.
+**Creative check prompt:** Before writing your QA1 script, ask: *"If the data access mirror returned data for the wrong geography or wrong year range, how would I detect that from the data alone?"* Design at least one check to answer that question.
 
 ### QA1 Iterative Investigation Triggers
 
@@ -142,7 +142,7 @@ Observations from qa1 that should trigger qa2+ investigation:
 | qa1 Observation | Suggested qa2 Investigation |
 |-----------------|---------------------------|
 | Unexpected geography in data (states not in Plan scope) | Filter analysis: are extra states contaminating results? |
-| Year distribution uneven (some years have 10x more records) | Investigate: API pagination issue or genuine enrollment change? |
+| Year distribution uneven (some years have 10x more records) | Investigate: data access issue or genuine enrollment change? |
 | ID column has unexpected format variations | Trace: will downstream joins fail on format mismatch? |
 | Row count far from Plan estimate (even if within tolerance) | Profile: what population is unexpectedly included/excluded? |
 
@@ -611,7 +611,7 @@ Stage 10 aggregates all QA findings from Stages 5-8:
 ### INFO Items
 | Script | Observation |
 |--------|-------------|
-| 01_fetch-ccd.py | Could parallelize API calls |
+| 01_fetch-ccd.py | Could parallelize data access calls |
 ```
 
 ---

@@ -294,7 +294,7 @@ After seeing this failure, create `01_join-ccd-meps_a.py` with fixes, run it, an
 
 **Applies to:** All Stage 5 fetch scripts.
 
-Stage 5 scripts download data from configured mirrors (per mirrors.yaml). No API calls are used.
+Stage 5 scripts download data from configured mirrors (per mirrors.yaml).
 
 ### Fetch Decision
 
@@ -353,7 +353,7 @@ from pathlib import Path
 
 # --- Config ---
 # Configuration constants derived from the Plan's query specification (Section 4.2).
-# Data is downloaded from mirrors — no API calls.
+# Data is downloaded from mirrors
 PROJECT_DIR = Path("/daaf/research/2026-01-24 School Analysis")
 DATA_RAW = PROJECT_DIR / "data" / "raw"
 DATE_PREFIX = "2026-01-24"

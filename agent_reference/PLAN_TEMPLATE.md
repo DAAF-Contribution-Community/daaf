@@ -281,7 +281,7 @@ must_haves:
 
 ### Stage 3: Source Deep-Dive
 
-*Output from `education-data-source-*` skill(s)*
+*Output from `*-data-source-*` skill(s)*
 
 **Sources Investigated:**
 

@@ -376,7 +376,7 @@ After completing the skill's Required Actions, return findings using the format 
 
 ---
 
-## Education Data Skills
+## Data Skills
 
 ### education-data-explorer
 
@@ -451,7 +451,7 @@ After completing the skill's Required Actions, return findings using the format 
 
 ---
 
-### education-data-source-* (Source-Specific)
+### * -data-source- * (Source-Specific)
 
 **Purpose:** Deep-dive into source-specific caveats and limitations
 **Stage:** 3 (Source Deep-Dive)
@@ -476,7 +476,7 @@ After completing the skill's Required Actions, return findings using the format 
 ```python
 Task({
     description: "Stage 3: Source Deep-Dive - {source_name}",
-    prompt: """You have access to a skill tool. First, call the skill tool with name 'education-data-source-{source}'.
+    prompt: """You have access to a skill tool. First, call the skill tool with name '{domain}-data-source-{source}'.
 
 **CONTEXT FROM STAGE 2:**
 Endpoints identified: {endpoints}

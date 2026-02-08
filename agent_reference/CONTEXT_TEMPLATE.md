@@ -124,7 +124,7 @@
 
 | Decision | Tolerance | Rationale |
 |----------|-----------|-----------|
-| Suppression rate | <50% (STOP), <30% (PASS), 30-50% (WARNING) | Standard Education Data Portal thresholds |
+| Suppression rate | <50% (STOP), <30% (PASS), 30-50% (WARNING) | Generic thresholds, update as data context demands |
 | Row loss in joins | <10% acceptable | Some schools won't match across sources |
 | [Custom for analysis] | [threshold] | [rationale] |
 

@@ -203,7 +203,7 @@ Error Encountered
 
 ### Data Availability Errors
 
-**Definition:** The requested data does not exist in the Education Data Portal.
+**Definition:** The requested data does not exist in the data access mirrors.
 
 **Examples:**
 - Endpoint returns 404

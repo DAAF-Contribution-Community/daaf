@@ -61,7 +61,7 @@ Not all checkpoints require the same level of human involvement. Use this classi
 - CP4 pre-output validation (when all artifacts exist)
 - Most code execution
 - File saving operations
-- Standard API calls
+- Standard data fetch or data access calls
 
 **Behavior:**
 1. Execute action
@@ -207,14 +207,14 @@ Please confirm when the file is in place, and I'll continue with the analysis.
 
 ### Key Rule: Automation Preference
 
-**If Claude CAN automate (API call, file operation, code execution), Claude MUST automate.**
+**If Claude CAN automate (data access call, file operation, code execution), Claude MUST automate.**
 
 Reserve human checkpoints for genuinely necessary cases:
 
 | Situation | Correct Classification |
 |-----------|----------------------|
-| API call succeeded | checkpoint:auto |
-| API call failed after 3 retries | STOP condition |
+| data access call succeeded | checkpoint:auto |
+| data access call failed after 3 retries | STOP condition |
 | Suppression rate is 15% | checkpoint:auto |
 | Suppression rate is 45% | checkpoint:human-verify |
 | Suppression rate is 55% | STOP condition |
@@ -270,7 +270,7 @@ Are there multiple valid approaches requiring user preference?
 
 ## CP1: Post-Fetch Validation
 
-**When:** Immediately after retrieving data from API
+**When:** Immediately after retrieving data from data access mirror
 **Purpose:** Verify data structure and completeness before proceeding
 
 ### Code Template
@@ -292,7 +292,7 @@ cp1_passed = True
 # Shape check
 print(f"\nShape: {df.shape[0]:,} rows x {df.shape[1]} cols")
 if df.shape[0] == 0:
-    print("[FAIL] Empty dataset returned from API")
+    print("[FAIL] Empty dataset returned from data access mirror")
     cp1_passed = False
 else:
     print(f"[PASS] {df.shape[0]:,} rows loaded")
@@ -1100,7 +1100,7 @@ grep -rn -E "^\s+return (None|{}|\[\])\s*$" *.py
 ```python
 # RED FLAGS:
 def get_enrollment():
-    return None  # TODO: fetch from API
+    return None  # TODO: fetch from data access mirror
 
 def calculate_rate():
     return 0.0  # FIXME: implement calculation
@@ -1150,7 +1150,7 @@ grep -rn "return pl\.DataFrame({})" *.py
 # RED FLAGS - Hardcoded data instead of real processing:
 
 def get_enrollment_data():
-    # This should fetch from API but returns hardcoded values
+    # This should fetch from data access mirror but returns hardcoded values
     return pl.DataFrame({
         "school": ["School A", "School B"],
         "enrollment": [100, 200]
@@ -1383,7 +1383,7 @@ for fig in $(grep -rn "savefig\|write_image" *.py | sed 's/.*["'"'"']\([^"'"'"']
 done
 ```
 
-#### API Response Not Integrated (BLOCKER)
+#### Data Access Response Not Integrated (BLOCKER)
 
 ```python
 # RED FLAG - Fetch but don't use response:
@@ -1399,7 +1399,7 @@ response = requests.get(f"{BASE_URL}/schools")
 **Bash detection:**
 
 ```bash
-# Find API calls, check for response processing
+# Find data access calls, check for response processing
 grep -rn "requests\.get\|requests\.post" *.py
 
 # Check for response.json() or similar processing nearby

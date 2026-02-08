@@ -9,7 +9,7 @@ This document contains the full details for all six protocols. Protocols 1-5 are
 | Protocol | Name | Purpose | Phase | Executed By |
 |----------|------|---------|-------|-------------|
 | **1** | Data Discovery | Identify and understand available data | Phase 1 | Subagents (explore) |
-| **2** | Data Acquisition | Retrieve and clean data from API | Phase 3 | Subagents (general-purpose) |
+| **2** | Data Acquisition | Retrieve and clean data from data access mirrors | Phase 3 | Subagents (general-purpose) |
 | **3** | Validation Checkpoints | Validate data at critical points | Phase 3-4 | Orchestrator + Code |
 | **4** | Plan Management | Maintain Plan as persistent memory | Phase 2, ongoing | Orchestrator |
 | **5** | Final Review | Verify completeness before delivery | Phase 5 | Orchestrator |
@@ -238,9 +238,9 @@ Expected Records: [approximate count]
 **THOROUGHNESS DIRECTIVE:**
 - Use pagination if dataset exceeds 10K records
 - Validate response shape immediately after fetch
-- Check for API errors and rate limiting
-- Save data in BOTH parquet AND csv formats
-- Document any API issues encountered
+- Check for data access errors and rate limiting
+- Save data in ONLY parquet format
+- Document any data access issues encountered
 
 **OUTPUT FORMAT:**
 Return findings in this structure:
@@ -248,7 +248,7 @@ Return findings in this structure:
    - Records retrieved: [count]
    - Columns: [list]
    - Years present: [list]
-   - API issues: [any problems encountered]
+   - Data access issues: [any problems encountered]
 2. Data Freshness Report:
    | Source | Requested Years | Latest Available | Lag Warning |
    |--------|-----------------|------------------|-------------|
@@ -262,7 +262,6 @@ Return findings in this structure:
    - Unexpected values: [any anomalies]
 4. File Locations:
    - Parquet: [path]
-   - CSV: [path]
 
 After completing the skill's Required Actions, return findings using the format above.""",
     subagent_type: "general-purpose"
@@ -293,7 +292,7 @@ Before proceeding to Stage 6:
 - [ ] Row count within expected range
 - [ ] Critical columns present
 - [ ] Years match specification
-- [ ] Data saved to `data/raw/` (parquet + csv)
+- [ ] Data saved to `data/raw/` (parquet)
 - [ ] **If data lag ≥3 years:** User notified and decision documented in Plan
 - [ ] **If COVID years (2020-2021) included:** Warning documented in Plan's COVID-19 Data Quality Considerations section
 
@@ -344,7 +343,6 @@ Return findings in this structure:
    - Full citation text: [citation]
 5. Clean Data Location:
    - Parquet: [path]
-   - CSV: [path]
 
 After completing the skill's Required Actions, return findings using the format above.""",
     subagent_type: "general-purpose"
@@ -377,7 +375,7 @@ Before proceeding to Phase 4:
 - [ ] Coded values handled appropriately
 - [ ] Suppression rate documented and acceptable (<50%)
 - [ ] No invalid analysis types attempted
-- [ ] Data saved to `data/processed/` (parquet + csv)
+- [ ] Data saved to `data/processed/` (parquet)
 - [ ] Citation text generated
 
 ---
@@ -395,7 +393,7 @@ Validate data at each critical point in the pipeline to catch errors early and e
 
 ### CP1: After Data Fetch
 
-**When:** Immediately after retrieving data from API
+**When:** Immediately after retrieving data from data access mirrors
 **Purpose:** Verify data structure and completeness
 
 ```python
@@ -902,9 +900,7 @@ These files must exist in the project folder:
 | Stakeholder report | `[project]/YYYY-MM-DD [Title] Report.md` | [ ] | [ ] |
 | **Lessons learned** | `[project]/LEARNINGS.md` | [ ] | [ ] |
 | Raw data (parquet) | `[project]/data/raw/*.parquet` | [ ] | [ ] |
-| Raw data (csv) | `[project]/data/raw/*.csv` | [ ] | [ ] |
 | Processed data (parquet) | `[project]/data/processed/*.parquet` | [ ] | [ ] |
-| Processed data (csv) | `[project]/data/processed/*.csv` | [ ] | [ ] |
 | Visualizations | `[project]/output/figures/*.png` | [ ] | [ ] |
 | STATE.md (if multi-session) | `[project]/STATE.md` | [ ] | [ ] |
 | CONTEXT.md (if created) | `[project]/CONTEXT.md` | [ ] | [ ] |
@@ -1108,7 +1104,7 @@ In addition to goal-backward verification, complete these traditional checks:
 | | Citations included | [ ] |
 | | **LEARNINGS.md created** | [ ] |
 | **Files** | All files named correctly | [ ] |
-| | Parquet + CSV saved | [ ] |
+| | Parquet saved | [ ] |
 | | Figures exported | [ ] |
 
 ### 5. Deviations
@@ -1159,7 +1155,7 @@ After passing Final Review, deliver to user:
 **Data Citation:**
 > [Full citation]
 
-**Lessons Learned:** [Brief summary of key insights captured - API gotchas, methodology improvements, etc.]
+**Lessons Learned:** [Brief summary of key insights captured - data access gotchas, methodology improvements, etc.]
 
 Let me know if you have any questions or would like any modifications.
 ```
