@@ -794,3 +794,5 @@ If you use this tool or the Education Data Portal in your work, please cite the 
 ### Inspiration
 
 Several core workflow patterns in this project—particularly around agent specialization, shared working memory, and task decomposition—were vastly improved thanks to excellent practices in **[Get Shit Done](https://github.com/glittercowboy/get-shit-done)** by [@glittercowboy](https://github.com/glittercowboy). If you're more into the world of software development, that's an amazing resource to work from!
+
+Early thinking for this project began in mid-2025 as I saw growing agentic automation in the software development sphere, but was rapidly accelerated when I first read Dr. Anton Korinek's working paper, [AI Agents for Economic Research](https://www.genaiforecon.org/JEL-2025-Aug-AIAgents.pdf). I highly recommend a read and tracking his lab's work going forward -- more relevant than ever now, I think and hope, with the launch of DAAF.
