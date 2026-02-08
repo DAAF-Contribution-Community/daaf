@@ -59,3 +59,4 @@ Thumbs.db
 .claude/settings.local.json
 .claude/logs/sessions/
 .claude/logs/activity.log
+.claude/logs/audit.jsonl
