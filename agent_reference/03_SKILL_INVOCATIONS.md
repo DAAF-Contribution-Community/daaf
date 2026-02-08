@@ -707,7 +707,7 @@ All relative paths in referenced files resolve from BASE_DIR.
 **STAGE:** 5 (Data Retrieval)
 **STEP:** {step_number}
 
-Create QA script at: scripts/cr/stage5_{step}_cr1.py (+ qa2..qa5 as warranted)
+Create QA script at: scripts/cr/stage5_{step}_cr1.py (+ cr2..cr5 as warranted)
 Return severity: PASSED | WARNING | BLOCKER""",
     subagent_type: "general-purpose"
 })
@@ -824,7 +824,7 @@ All relative paths in referenced files resolve from BASE_DIR.
 **STAGE:** 6 (Context Application)
 **STEP:** {step_number}
 
-Create QA script at: scripts/cr/stage6_{step}_cr1.py (+ qa2..qa5 as warranted)
+Create QA script at: scripts/cr/stage6_{step}_cr1.py (+ cr2..cr5 as warranted)
 Return severity: PASSED | WARNING | BLOCKER""",
     subagent_type: "general-purpose"
 })
@@ -982,7 +982,7 @@ All relative paths in referenced files resolve from BASE_DIR.
 **STEP:** {step_number}
 **TRANSFORMATION:** #{n} of {total}
 
-Create QA script at: scripts/cr/stage7_{step}_cr1.py (+ qa2..qa5 as warranted)
+Create QA script at: scripts/cr/stage7_{step}_cr1.py (+ cr2..cr5 as warranted)
 Return severity: PASSED | WARNING | BLOCKER""",
     subagent_type: "general-purpose"
 })
@@ -1147,7 +1147,7 @@ All relative paths in referenced files resolve from BASE_DIR.
 **STAGE:** 8 (Visualization)
 **STEP:** {step_number}
 
-Create QA script at: scripts/cr/stage8_{step}_cr1.py (+ qa2..qa5 as warranted)
+Create QA script at: scripts/cr/stage8_{step}_cr1.py (+ cr2..cr5 as warranted)
 Return severity: PASSED | WARNING | BLOCKER""",
     subagent_type: "general-purpose"
 })
@@ -1430,7 +1430,7 @@ Verified when: {verification_condition}
 **TASK:**
 1. Review the executed script for correctness and methodology alignment
 2. Review the execution log for outcome verification
-3. Create iterative QA scripts at: scripts/cr/stage{N}_{step}_cr1.py (+ qa2..qa5 as warranted)
+3. Create iterative QA scripts at: scripts/cr/stage{N}_{step}_cr1.py (+ cr2..cr5 as warranted)
 4. Execute QA scripts and synthesize findings across iterations
 5. Return QA report with severity classification
 
@@ -1445,7 +1445,7 @@ Return findings in this structure:
 **QA Status:** [PASSED | ISSUES_FOUND]
 **Severity:** [BLOCKER | WARNING | INFO | None]
 **Script Reviewed:** scripts/stage{N}_{type}/{step}_{task-name}.py
-**QA Scripts Created:** scripts/cr/stage{N}_{step}_cr1.py [+ qa2..qa5 if created]
+**QA Scripts Created:** scripts/cr/stage{N}_{step}_cr1.py [+ cr2..cr5 if created]
 
 **Code Review:**
 | Check | Status | Notes |

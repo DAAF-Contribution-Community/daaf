@@ -49,7 +49,7 @@ research-executor completes script (CP1/CP2/CP3 PASSED)
          ↓
 orchestrator invokes code-reviewer
          ↓
-code-reviewer creates QA scripts: scripts/cr/stage{N}_{step}_cr1.py (+ qa2..qa5 as warranted)
+code-reviewer creates QA scripts: scripts/cr/stage{N}_{step}_cr1.py (+ cr2..cr5 as warranted)
          ↓
 code-reviewer executes QA script, reviews code & output
          ↓
@@ -757,7 +757,7 @@ assert df['year'].is_in(expected_years).all(), "WARNING: Unexpected years"
 - [ ] Plan updated with Data Freshness Check table
 - [ ] **QA review completed** (code-reviewer invoked after script execution)
 - [ ] **QA status:** PASSED/WARNING (any BLOCKER resolved via revision)
-- [ ] **QA scripts saved to `scripts/cr/stage5_{step}_cr1.py`** (+ qa2..qa5 if warranted)
+- [ ] **QA scripts saved to `scripts/cr/stage5_{step}_cr1.py`** (+ cr2..cr5 if warranted)
 - [ ] **STATE.md updated:** Current Stage: 5, CP1 status, raw data paths recorded
 
 ---
@@ -860,7 +860,7 @@ assert len(clean_df) > len(raw_df) * 0.1, "STOP: >90% data loss"
 - [ ] **Script saved to `scripts/stage6_clean/`** with standard header
 - [ ] **QA review completed** (code-reviewer invoked after script execution)
 - [ ] **QA status:** PASSED/WARNING (any BLOCKER resolved via revision)
-- [ ] **QA scripts saved to `scripts/cr/stage6_{step}_cr1.py`** (+ qa2..qa5 if warranted)
+- [ ] **QA scripts saved to `scripts/cr/stage6_{step}_cr1.py`** (+ cr2..cr5 if warranted)
 - [ ] **STATE.md updated:** Current Stage: 6, CP2 status, suppression rate, processed data paths
 
 ---
@@ -1084,7 +1084,7 @@ MANDATORY EXECUTION PATTERN:
 - [ ] **Script saved to `scripts/stage7_transform/`** with standard header
 - [ ] **QA review completed** (code-reviewer invoked after each script)
 - [ ] **QA status:** PASSED/WARNING (any BLOCKER resolved via revision)
-- [ ] **QA scripts saved to `scripts/cr/stage7_{step}_cr1.py`** (+ qa2..qa5 if warranted)
+- [ ] **QA scripts saved to `scripts/cr/stage7_{step}_cr1.py`** (+ cr2..cr5 if warranted)
 
 **After Sub-Stage 7.3:**
 - [ ] All transformations complete
@@ -1163,7 +1163,7 @@ fig.write_image(f"output/figures/{date_prefix}_plot_name.png")
 - [ ] **Visualization scripts saved to `scripts/stage8_viz/`** with standard header
 - [ ] **QA review completed** (code-reviewer invoked after each visualization script)
 - [ ] **QA status:** PASSED/WARNING (any BLOCKER resolved via revision)
-- [ ] **QA scripts saved to `scripts/cr/stage8_{step}_cr1.py`** (+ qa2..qa5 if warranted)
+- [ ] **QA scripts saved to `scripts/cr/stage8_{step}_cr1.py`** (+ cr2..cr5 if warranted)
 - [ ] **STATE.md updated:** Current Stage: 8, QA4 status, figure paths recorded
 
 ---

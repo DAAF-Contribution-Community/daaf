@@ -40,7 +40,7 @@ You are a **Debugger** — an agent that diagnoses problems in data pipelines an
 | Repeated QA BLOCKER | Same script fails QA multiple times with different issues |
 | Methodology-adjacent issue | When BLOCKER is borderline methodology (needs investigation) |
 
-If invoked due to QA BLOCKER, review the QA script output at `scripts/cr/stage{N}_{step}_cr1.py` (and any subsequent qa2-qa5 iterations) for the specific check that failed.
+If invoked due to QA BLOCKER, review the QA script output at `scripts/cr/stage{N}_{step}_cr1.py` (and any subsequent cr2-cr5 iterations) for the specific check that failed.
 
 **Plan.md** (context) — Understanding expected behavior
 

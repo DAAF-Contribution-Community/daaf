@@ -177,11 +177,11 @@ Phase 2: EXECUTION LOG REVIEW
 └─ Checkpoint: Did validations pass legitimately (or by accident)?
 
 Phase 3: ITERATIVE OUTPUT DATA INSPECTION
-├─ qa1: Standard checks (5 default + 5 script-specific + 5 spot-checks) + data profiling
+├─ cr1: Standard checks (5 default + 5 script-specific + 5 spot-checks) + data profiling
 │   WRITE → EXECUTE → REVIEW output → DECIDE: stop or continue
-├─ qa2: Targeted investigation based on qa1 findings (if warranted)
+├─ cr2: Targeted investigation based on cr1 findings (if warranted)
 │   WRITE → EXECUTE → REVIEW output → DECIDE: stop or continue
-├─ qa3..qa5: Progressive deeper investigation (if warranted)
+├─ cr3..cr5: Progressive deeper investigation (if warranted)
 └─ If capped at 5 with open questions: document "Additional Strands of Inquiry"
 ```
 
@@ -336,9 +336,9 @@ Review the execution log appended to the script:
 
 ### Phase 3: Output Data Inspection
 
-#### 3.1 Create & Execute qa1 (Standard Inspection)
+#### 3.1 Create & Execute cr1 (Standard Inspection)
 
-Create the first QA script (`qa1`) that validates output data **from angles the original script didn't consider.**
+Create the first QA script (`cr1`) that validates output data **from angles the original script didn't consider.**
 
 **QA Script Design Principles:**
 1. **Orthogonal checks:** Don't duplicate the script's own validation. Find *different* ways to verify correctness.
@@ -349,24 +349,24 @@ Create the first QA script (`qa1`) that validates output data **from angles the 
 6. **Data profiling:** Include profiling output (head, describe, value counts) to inform whether further investigation is needed.
 
 Follow file-first execution:
-1. Write qa1 script to `scripts/cr/stage{N}_{step}_cr1.py`
+1. Write cr1 script to `scripts/cr/stage{N}_{step}_cr1.py`
 2. Execute: `python scripts/cr/stage{N}_{step}_cr1.py 2>&1`
 3. Append output as comments
 4. **Review the profiling output and all check results before proceeding**
 
-#### 3.2 Iterative Investigation Loop (qa2–qa5)
+#### 3.2 Iterative Investigation Loop (cr2–cr5)
 
-After reviewing qa1 output, apply this decision tree:
+After reviewing cr1 output, apply this decision tree:
 
-| qa1 Outcome | Action |
+| cr1 Outcome | Action |
 |-------------|--------|
 | BLOCKER found | **Stop iterating.** Report BLOCKER immediately — no further investigation needed. |
-| Anomalies that could be BLOCKERs | Write qa2 to investigate the specific anomaly. Include TRIGGER, HYPOTHESIS, EXPECTED OUTCOME. |
-| Surprising patterns worth characterizing | Write qa2 to characterize the pattern and assess its impact on the analysis. |
+| Anomalies that could be BLOCKERs | Write cr2 to investigate the specific anomaly. Include TRIGGER, HYPOTHESIS, EXPECTED OUTCOME. |
+| Surprising patterns worth characterizing | Write cr2 to characterize the pattern and assess its impact on the analysis. |
 | Clean findings, no anomalies | **Stop iterating.** Report PASSED — no further investigation needed. |
-| Profiling reveals unexpected distributions | Write qa2 to investigate whether the distribution issue affects analysis validity. |
+| Profiling reveals unexpected distributions | Write cr2 to investigate whether the distribution issue affects analysis validity. |
 
-**For each subsequent iteration (qa2–qa5):**
+**For each subsequent iteration (cr2–cr5):**
 1. **Document the trigger:** What in the prior script's output prompted this investigation?
 2. **State the hypothesis:** What does this script test?
 3. **Define expected outcome:** What confirms vs. refutes the hypothesis?
@@ -375,14 +375,14 @@ After reviewing qa1 output, apply this decision tree:
 6. **Interpret:** CONFIRMED or REFUTED? Implications? Further investigation needed?
 7. Apply the decision tree again with updated findings
 
-**If capped at qa5 with open questions:** Document remaining threads as "Additional Strands of Inquiry" in the QA report. These go to the orchestrator, who decides whether to commission further investigation or log for Stage 10.
+**If capped at cr5 with open questions:** Document remaining threads as "Additional Strands of Inquiry" in the QA report. These go to the orchestrator, who decides whether to commission further investigation or log for Stage 10.
 
 #### 3.3 Synthesize Findings
 
-After the iterative loop completes (whether at qa1 or qa5):
+After the iterative loop completes (whether at cr1 or cr5):
 - Aggregate all findings across all iterations
 - Classify each finding by severity (BLOCKER/WARNING/INFO)
-- Build the Investigation Narrative (qa1 → qa2 trigger → qa2 result → ...)
+- Build the Investigation Narrative (cr1 → cr2 trigger → cr2 result → ...)
 - Determine overall QA status based on the worst severity found
 
 ---
@@ -488,13 +488,13 @@ print(f"QA RESULT: {severity}")
 print("=" * 60)
 ```
 
-The template above serves as the **qa1 template**. It must be extended with:
+The template above serves as the **cr1 template**. It must be extended with:
 - 5 script-specific checks (one per Skeptical Lens)
 - 5 concrete spot-checks (trace, recalculate, complement, cross-ref, boundary)
 - A data profiling section at the end:
 
 ```python
-# --- Data Profiling (for qa2+ decision) ---
+# --- Data Profiling (for cr2+ decision) ---
 print("\n" + "=" * 60)
 print("DATA PROFILING")
 print("=" * 60)
@@ -516,9 +516,9 @@ if "year" in df.columns:
     print(df["year"].value_counts().sort("year"))
 ```
 
-### qa2+ Investigation Script Template
+### cr2+ Investigation Script Template
 
-For iterations beyond qa1, use this template:
+For iterations beyond cr1, use this template:
 
 ```python
 #!/usr/bin/env python3
@@ -529,7 +529,7 @@ Reviewed script: {script_path}
 Prior QA script: scripts/cr/stage{N}_{step}_cr{M-1}.py
 
 INVESTIGATION TRIGGER:
-{What was observed in the prior qa script's output that prompted this investigation}
+{What was observed in the prior cr script's output that prompted this investigation}
 
 HYPOTHESIS:
 {What this script tests — stated as a falsifiable claim}
@@ -655,20 +655,20 @@ Return QA report in this structure:
 
 | Iteration | Script | Trigger | Finding | Severity |
 |-----------|--------|---------|---------|----------|
-| qa1 | `stage{N}_{step}_cr1.py` | Standard inspection | [key findings from qa1] | [severity] |
-| qa2 | `stage{N}_{step}_cr2.py` | [what in qa1 prompted this] | [CONFIRMED/REFUTED + implications] | [severity] |
+| cr1 | `stage{N}_{step}_cr1.py` | Standard inspection | [key findings from cr1] | [severity] |
+| cr2 | `stage{N}_{step}_cr2.py` | [what in cr1 prompted this] | [CONFIRMED/REFUTED + implications] | [severity] |
 | ... | ... | ... | ... | ... |
 
 **Decision Trail:**
-- qa1 → [observation] → triggered qa2
-- qa2 → [result] → triggered qa3 / sufficient, stopped
+- cr1 → [observation] → triggered cr2
+- cr2 → [result] → triggered cr3 / sufficient, stopped
 
 ### Synthesized Data Quality Assessment
 
 | Check | Result | Source Script | Severity |
 |-------|--------|--------------|----------|
-| [check name] | PASS/FAIL | qa1 | [level] |
-| [check name] | PASS/FAIL | qa2 | [level] |
+| [check name] | PASS/FAIL | cr1 | [level] |
+| [check name] | PASS/FAIL | cr2 | [level] |
 | ... | ... | ... | ... |
 
 ### Additional Strands of Inquiry
@@ -677,7 +677,7 @@ Return QA report in this structure:
 
 | # | Observation | Concern | Suggested Investigation | Estimated Severity |
 |---|-------------|---------|------------------------|-------------------|
-| 1 | [what was seen] | [why it matters] | [what qa6 would test] | [WARNING/INFO] |
+| 1 | [what was seen] | [why it matters] | [what cr6 would test] | [WARNING/INFO] |
 
 ## Issues Found
 
@@ -727,7 +727,7 @@ Return QA report in this structure:
 - **If Escalate:** [What needs user decision]
 
 ## Files Created
-- QA Scripts: `scripts/cr/stage{N}_{step}_cr1.py` [+ qa2..qa5 if created]
+- QA Scripts: `scripts/cr/stage{N}_{step}_cr1.py` [+ cr2..cr5 if created]
 ```
 
 ---
@@ -806,13 +806,13 @@ Awaiting guidance before proceeding.
 
 **DO NOT review in isolation from the research question.** The ultimate test is not "does this code match the Plan?" but "does this code contribute to answering the research question correctly?" A script can be Plan-compliant and still fail to serve the research goal if the Plan itself was imprecise.
 
-**DO NOT write qa2+ scripts that repeat qa1's checks.** Each iteration must investigate something NEW prompted by the prior iteration's findings. Repeating checks wastes tokens and adds no safety.
+**DO NOT write cr2+ scripts that repeat cr1's checks.** Each iteration must investigate something NEW prompted by the prior iteration's findings. Repeating checks wastes tokens and adds no safety.
 
-**DO NOT write qa2+ without documenting the trigger from the prior iteration.** Every investigation script must begin with what was observed and what hypothesis is being tested. Aimless exploration is not investigation.
+**DO NOT write cr2+ without documenting the trigger from the prior iteration.** Every investigation script must begin with what was observed and what hypothesis is being tested. Aimless exploration is not investigation.
 
-**DO NOT always write 5 scripts for thoroughness theater.** The point is depth when warranted, not volume for its own sake. If qa1 returns clean with no anomalies, stop at qa1 and report PASSED. Writing 4 more scripts "to be thorough" when there's nothing to investigate is waste.
+**DO NOT always write 5 scripts for thoroughness theater.** The point is depth when warranted, not volume for its own sake. If cr1 returns clean with no anomalies, stop at cr1 and report PASSED. Writing 4 more scripts "to be thorough" when there's nothing to investigate is waste.
 
-**DO NOT let investigations diverge from the reviewed script's scope.** qa2+ scripts investigate the DATA produced by the reviewed script, not unrelated aspects of the pipeline. Stay focused on the output files under review.
+**DO NOT let investigations diverge from the reviewed script's scope.** cr2+ scripts investigate the DATA produced by the reviewed script, not unrelated aspects of the pipeline. Stay focused on the output files under review.
 
 </anti_patterns>
 
@@ -893,14 +893,14 @@ Path: {script_path}
 **TASK:**
 1. Review the executed script for correctness and methodology alignment
 2. Review the execution log for outcome verification
-3. Create qa1 at scripts/cr/stage{N}_{step}_cr1.py with 5 default + 5 script-specific + 5 spot-checks + profiling
-4. Execute qa1 and review output (including profiling)
-5. DECIDE: If anomalies found, create qa2..qa5 as needed (each with trigger + hypothesis)
+3. Create cr1 at scripts/cr/stage{N}_{step}_cr1.py with 5 default + 5 script-specific + 5 spot-checks + profiling
+4. Execute cr1 and review output (including profiling)
+5. DECIDE: If anomalies found, create cr2..cr5 as needed (each with trigger + hypothesis)
 6. Synthesize findings across all iterations into Investigation Narrative
 7. Return QA report with severity classification
 
 **PRIOR QA FINDINGS (if any):**
-{prior_qa_warnings}
+{prior_cr_warnings}
 
 Return findings using the code-reviewer OUTPUT FORMAT.""",
     subagent_type: "general-purpose"
@@ -922,9 +922,9 @@ Before finalizing your QA report, verify your review meets these quality standar
 | Did I consider what would happen with different (but plausible) data? | Apply the Counterfactual lens |
 | Did I check what the code DOESN'T do, not just what it does? | Apply the Absence lens |
 | Would a domain expert reading my QA report learn something about the data? | Add substantive observations to INFO items |
-| Did qa1 include at least 5 script-specific checks and 5 spot-checks? | Expand qa1 before proceeding |
-| Did I review qa1's profiling output before deciding whether to continue? | Review profiling, then decide |
-| Do all qa2+ scripts have documented triggers from prior iterations? | Add trigger documentation |
+| Did cr1 include at least 5 script-specific checks and 5 spot-checks? | Expand cr1 before proceeding |
+| Did I review cr1's profiling output before deciding whether to continue? | Review profiling, then decide |
+| Do all cr2+ scripts have documented triggers from prior iterations? | Add trigger documentation |
 | Does the report synthesize findings across ALL iterations? | Write Investigation Narrative |
 | If iterations < 5 and PASSED: can I articulate why further investigation is unnecessary? | Document reasoning for stopping |
 
@@ -948,14 +948,14 @@ QA review complete when:
 - [ ] Validation robustness assessed
 - [ ] Code quality checked (stubs, anti-patterns)
 - [ ] Execution log reviewed for warnings and outcomes
-- [ ] qa1 created at `scripts/cr/stage{N}_{step}_cr1.py` with:
+- [ ] cr1 created at `scripts/cr/stage{N}_{step}_cr1.py` with:
   - [ ] 5 default checks
   - [ ] 5 script-specific checks (one per Skeptical Lens)
   - [ ] 5 concrete spot-checks (trace, recalculate, complement, cross-ref, boundary)
   - [ ] Data profiling section
-- [ ] qa1 executed with output captured and reviewed
+- [ ] cr1 executed with output captured and reviewed
 - [ ] Decision documented: further iteration needed or sufficient
-- [ ] If further iteration: qa2..cr{M} each has documented trigger, hypothesis, and result
+- [ ] If further iteration: cr2..cr{M} each has documented trigger, hypothesis, and result
 - [ ] Report synthesizes findings across ALL iterations (not just the last one)
 - [ ] If capped at 5: "Additional Strands of Inquiry" section completed
 - [ ] All findings classified by severity (BLOCKER/WARNING/INFO)

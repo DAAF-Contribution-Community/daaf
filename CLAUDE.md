@@ -1261,8 +1261,8 @@ Status: VERIFIED - Proceeding to Stage 3
 **Code-Reviewer Output Verification (Additional):**
 
 When verifying code-reviewer QA reports specifically, also check:
-- [ ] qa1 includes at least 5 script-specific checks (one per Skeptical Lens) and 5 spot-checks
-- [ ] qa1 includes data profiling section; if multiple iterations, each has documented trigger
+- [ ] cr1 includes at least 5 script-specific checks (one per Skeptical Lens) and 5 spot-checks
+- [ ] cr1 includes data profiling section; if multiple iterations, each has documented trigger
 - [ ] Report includes reasoning (WHY correct, not just WHAT was checked)
 - [ ] Adversarial analysis section has substantive content (not boilerplate)
 - [ ] If PASSED: report articulates basis for confidence, not just absence of failures

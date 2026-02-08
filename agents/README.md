@@ -662,7 +662,7 @@ Task({
 
 **Key behaviors:**
 - Three-phase review (code, execution log, iterative output data inspection)
-- Creates iterative QA scripts in `scripts/cr/` (qa1 always; qa2-qa5 when warranted)
+- Creates iterative QA scripts in `scripts/cr/` (cr1 always; cr2-cr5 when warranted)
 - Severity classification (BLOCKER/WARNING/INFO)
 - Never fixes code directly (reviewer, not executor)
 
@@ -709,7 +709,7 @@ research/2026-01-24 Analysis/2026-01-24 Analysis Plan.md
 **TASK:**
 1. Review script for correctness and methodology alignment
 2. Review execution log for outcome verification
-3. Create iterative QA scripts at: scripts/cr/stage7_01_cr1.py (+ qa2..qa5 as warranted)
+3. Create iterative QA scripts at: scripts/cr/stage7_01_cr1.py (+ cr2..cr5 as warranted)
 4. Execute QA scripts and synthesize findings across iterations
 5. Return QA report with severity classification
     """,
