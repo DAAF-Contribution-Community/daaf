@@ -7,114 +7,71 @@ This document defines the systematic capture AND consumption of insights to buil
 ## Purpose
 
 Every analysis produces learning opportunities beyond its immediate findings:
-- API behaviors not documented elsewhere
+- Data download behaviors not documented elsewhere
 - Data quality patterns
 - Methodology insights
 - Performance optimizations
 - Common pitfalls to avoid
 
-Capturing these lessons prevents repeated mistakes and accelerates future analyses. **Equally important:** consuming prior learnings ensures we don't repeat past mistakes.
+Capturing these lessons prevents repeated mistakes and accelerates future analyses. **Equally important:** incorporating and formalizing prior learnings ensures we don't repeat past mistakes.
 
 ---
 
-## Consuming Prior Learnings (Stage 2-4)
+## Incremental Capture Protocol
 
-**Before diving into a new analysis, check what we've already learned.**
+### Creation Trigger
 
-### Two-Level Learning Sources
+LEARNINGS.md is a project-specific log of ongoing learnings created at **Stage 4** (alongside Plan + STATE.md). The skeleton includes project metadata and empty section headers from the template below.
 
-| Source | Location | Contains | When to Check |
-|--------|----------|----------|---------------|
-| **Repository-level** | Embedded in `education-data-source-*` skills | Consolidated API gotchas, variable mappings, endpoint behaviors | **Always** (skills load automatically) |
-| **Project-level** | `research/*/LEARNINGS.md` | Analysis-specific insights, methodology discoveries | When using similar data sources |
+**Gate G3 requires:** Plan + STATE.md + LEARNINGS.md all exist before proceeding to Stage 4.5.
 
-### When to Search Prior Learnings
+### Learning Signal Format
 
-**Stage 2 (Data Exploration):** Before exploring data sources
+Agents (research-executor, code-reviewer, debugger) include a lightweight Learning Signal field in their output:
+
 ```
-Search: research/*/LEARNINGS.md for mentions of [data source]
-Purpose: Find prior gotchas with this data source
+**Learning Signal:** [Category: Access|Data|Method|Perf|Process] — [One-line insight] | or "None"
 ```
 
-**Stage 3 (Source Deep-Dive):** When investigating specific sources
-```
-Search: research/*/LEARNINGS.md for [source name] (e.g., "IPEDS", "CCD")
-Purpose: Find variable name discrepancies, API quirks, suppression patterns
-```
+**Examples:**
+- `**Learning Signal:** CCD enrollment value codes were not as expected in the codebook; codes needed to be explicitly examined for progress to continue`
+- `**Learning Signal:** Data — MEPS poverty rates have 15% suppression in rural counties (higher than Plan estimate of 5%)`
+- `**Learning Signal:** None`
 
-**Stage 4 (Planning):** When designing methodology
+### Accumulation Flow
+
 ```
-Search: research/*/LEARNINGS.md for [analysis type] (e.g., "join", "enrollment", "trends")
-Purpose: Find methodology insights and time sinks to avoid
-```
-
-### Search Pattern
-
-```bash
-# Find all project learnings mentioning a data source
-grep -rl "IPEDS\|ipeds" research/*/LEARNINGS.md
-
-# Find learnings about specific issues
-grep -rn "didn't work\|failed\|gotcha" research/*/LEARNINGS.md
+Agent returns with Learning Signal
+     ↓
+Orchestrator extracts signal (if not "None")
+     ↓
+Orchestrator appends to STATE.md "Pending Learning Signals" buffer
+     ↓
+At next flush trigger → orchestrator appends buffered signals to LEARNINGS.md
+     ↓
+Clear STATE.md buffer
 ```
 
-### Orchestrator Protocol for Prior Learnings
+### Flush Triggers
 
-**During Stage 2 (Data Exploration):**
+The orchestrator writes buffered signals to LEARNINGS.md at these points:
 
-1. **Check repository-level learnings:**
-   - Source-specific `education-data-source-*` skills contain accumulated API gotchas, variable mappings, and endpoint behaviors directly
-   - No additional action needed (skills handle this)
+1. **Phase boundary** — end of Phase 1 (after Stage 3/3.5), Phase 2 (after Stage 4.5), Phase 3 (after Stage 6-QA), Phase 4 (after Stage 8-QA / Stage 10)
+2. **After blocker resolution** — a resolved BLOCKER often yields the richest learnings
+3. **After debugging session** — debugger agent's Prevention section feeds learnings directly
+4. **At utilization gates** (40%, 60%) — ensures learnings are persisted before potential session end
 
-2. **Search project-level learnings (if ≥3 prior analyses exist):**
-   ```python
-   Task({
-       description: "Search prior learnings",
-       prompt: """Search for LEARNINGS.md files in research/ that mention:
-       - Data sources: [list from Stage 2 findings]
-       - Analysis type keywords: [relevant terms]
+*Not* at every stage transition or every subagent return — that would be too frequent and disruptive.
 
-       Return: Relevant gotchas, warnings, or recommendations.""",
-       subagent_type: "Plan"
-   })
-   ```
+### Flush Operation
 
-3. **Integrate findings into Plan:**
-   - Add relevant prior learnings to Plan's Risk Register
-   - Reference specific LEARNINGS.md files in Plan's "Prior Art" section (if added)
+What the orchestrator does at each flush:
 
-### Prior Learnings Checklist (Stage 4)
-
-Before finalizing the Plan, verify:
-
-- [ ] Source-specific `education-data-source-*` skills checked for relevant gotchas
-- [ ] If using IPEDS: Checked for enrollment/finance endpoint quirks
-- [ ] If using CCD: Checked for enrollment disaggregator requirements
-- [ ] If using CRDC: Checked for disaggregation path requirements
-- [ ] Prior project LEARNINGS.md searched for similar analysis types
-- [ ] Relevant warnings incorporated into Risk Register
-
-### What to Extract from Prior Learnings
-
-| Category | Look For | Add To |
-|----------|----------|--------|
-| **API Gotchas** | Variable name mismatches, endpoint behaviors | Plan: Critical Warnings |
-| **Data Quality** | Suppression rates, missing year patterns | Plan: Risk Register |
-| **Methodology** | What worked/didn't work for similar analyses | Plan: Methodology Specification |
-| **Time Sinks** | Tasks that took longer than expected | Plan: Risk Register (timeline) |
-
----
-
-## Per-Session Capture
-
-### When to Capture
-
-Document lessons **during** the analysis, not just at the end:
-- When encountering unexpected behavior
-- When a technique works particularly well
-- When abandoning an approach
-- When discovering undocumented API behavior
-- When finding data quality issues
+1. Read pending signals from STATE.md buffer
+2. Categorize each signal into the appropriate LEARNINGS.md section (Access/Data Gotchas, What Worked Well, Surprises, etc.)
+3. Append as a quick-capture entry with stage number and timestamp
+4. Clear the STATE.md buffer
+5. This should take ~1 minute of orchestrator time, not a subagent invocation
 
 ### Where to Capture
 
@@ -129,6 +86,8 @@ research/YYYY-MM-DD [Title]/
 ```
 
 ### Template
+
+*This template is created as a skeleton at Stage 4 (project metadata + empty section headers) and populated incrementally during Stages 5-8 via Learning Signals. At Stage 12, entries are consolidated and the System Update Action Plan is appended.*
 
 ```markdown
 # Learnings: [Project Title]
@@ -164,7 +123,7 @@ Approaches that failed, with explanations:
 
 ## Surprises
 
-Unexpected findings about data, APIs, or methodology:
+Unexpected findings about data, access, or methodology:
 
 - **[Finding]:** [Description]
   - **Impact:** [How this affected the analysis]
@@ -172,19 +131,19 @@ Unexpected findings about data, APIs, or methodology:
 
 ---
 
-## API/Data Gotchas
+## Access/Data Gotchas
 
 Specific issues with data sources worth documenting:
 
 ### [Source Name] (e.g., CCD)
 
-- **[Variable/Endpoint]:** [Issue description]
+- **[Variable/Data Source]:** [Issue description]
   - **Example:** [Concrete example]
   - **Workaround:** [How to handle]
 
 ### [Source Name]
 
-- **[Variable/Endpoint]:** [Issue description]
+- **[Variable/Data Source]:** [Issue description]
 
 ---
 
@@ -247,110 +206,69 @@ If someone were to do a similar analysis:
 
 ---
 
-## Repository-Level Consolidation
+## Stage 12 Consolidation & Post-Processing
 
-### When to Consolidate
+### Step A: Consolidation
 
-Consolidate project learnings into repository-level documentation:
-- After completing 5+ analyses
-- Quarterly (whichever comes first)
-- When major patterns emerge across projects
+By Stage 12, LEARNINGS.md should already contain incremental entries from Stages 5-8. The orchestrator now consolidates:
 
-### Consolidation Target
+1. **Review incremental entries** — Are there sections still empty? Reflect on whether signals were missed or if there genuinely were no learnings in that category.
+2. **Expand quick-capture entries** — Entries that warrant more detail get expanded with context, examples, and recommendations.
+3. **Deduplicate** — Multiple signals about the same issue get merged into one entry.
+4. **Ensure minimum sections populated:** What Worked Well, What Didn't Work, Access/Data Gotchas.
+5. **Flush any remaining signals** from STATE.md buffer.
 
-Learnings are consolidated directly into the relevant `education-data-source-*` skills (e.g., API gotchas for CCD go into `education-data-source-ccd`, IPEDS gotchas into `education-data-source-ipeds`, etc.). This ensures source-specific knowledge is available automatically when subagents load the skill.
+This replaces the old "create from scratch at Stage 12" approach. Because entries were captured incrementally, consolidation is a review-and-polish task, not a reconstruction-from-memory task.
 
-### Consolidation Categories
+### Step B: System Update Action Plan
 
-#### 1. API Gotchas
-
-Variable name discrepancies, pagination issues, rate limiting, endpoint quirks.
-
-```markdown
-### [Source]: [Endpoint]
-
-**Issue:** [Description]
-**Discovered:** [Date/Project]
-**Example:**
-```
-[Example code or query]
-```
-**Workaround:**
-```
-[Solution code or approach]
-```
-```
-
-#### 2. Data Quality Issues
-
-Source-specific patterns that affect analysis validity.
+After consolidation, the orchestrator adds a final section to LEARNINGS.md:
 
 ```markdown
-### [Source]: [Issue Type]
-
-**Pattern:** [Description]
-**Frequency:** [How often encountered]
-**Detection:** [How to identify]
-**Handling:** [Recommended approach]
-```
-
-#### 3. Methodology Insights
-
-What works for which question types, common transformation pitfalls.
-
-```markdown
-### [Analysis Type]: [Insight]
-
-**Context:** [When this applies]
-**Recommendation:** [What to do]
-**Rationale:** [Why this works]
-**Example projects:** [Where this was learned]
-```
-
-#### 4. Performance Optimizations
-
-When to use bulk download vs. API, caching strategies, large dataset handling.
-
-```markdown
-### [Optimization Type]
-
-**Use when:** [Conditions]
-**Approach:** [What to do]
-**Impact:** [Expected improvement]
-**Trade-offs:** [What you give up]
-```
-
 ---
 
-## Integration with Workflow
+## System Update Action Plan
 
-### During Analysis (Stages 1-10)
+*Generated at project completion. Each item maps a learning to a specific
+system file with a proposed change. This plan is NOT auto-executed — it
+serves as a work queue for future system maintenance.*
 
-As issues arise:
-1. Note the issue immediately in LEARNINGS.md (if created early)
-2. Don't wait until end of analysis
-3. Include concrete examples
-4. Document workarounds as you discover them
+### Priority Legend
+- **P1 (High):** Prevents incorrect results in future analyses
+- **P2 (Medium):** Improves efficiency or clarity
+- **P3 (Low):** Nice-to-have improvement
 
-**Note:** While you can create LEARNINGS.md early and document as you go, it's **REQUIRED** to exist by the end of Stage 12.
+### Action Items
 
-### At Stage 12 (Final Review) - MANDATORY
+| # | Learning | Target File | Change Type | Proposed Change | Priority |
+|---|---------|-------------|-------------|-----------------|----------|
+| 1 | [1-line learning summary] | `path/to/file.md` | [Add/Update/Clarify] | [Specific proposed change] | P1 |
+| 2 | ... | ... | ... | ... | P2 |
 
-**LEARNINGS.md creation is a REQUIRED gate criterion for Stage 12.**
+### Grouped by Target
 
-The orchestrator MUST:
-1. Create `LEARNINGS.md` in the project folder
-2. Populate at minimum: What Worked Well, What Didn't Work, API/Data Gotchas
-3. Flag items for repository-level consolidation
-4. Include LEARNINGS.md in the delivery message
+#### Skills (`.claude/skills/*/SKILL.md`)
+- [ ] [Skill name]: [What to add/change] (from Learning #N)
 
-Stage 12 Gate Criteria includes:
-- [ ] **LEARNINGS.md created and complete** (REQUIRED)
-- [ ] Key findings flagged for repository consolidation
-- [ ] Reusable patterns identified
-- [ ] Items flagged for consolidation noted in delivery
+#### Agents (`agents/*.md`)
+- [ ] [Agent name]: [What to add/change] (from Learning #N)
 
-See `02_WORKFLOW_STAGES.md: Stage 12` for the complete gate criteria and quick template.
+#### Agent Reference (`agent_reference/*.md`)
+- [ ] [File name]: [What to add/change] (from Learning #N)
+
+#### Orchestrator (`CLAUDE.md`)
+- [ ] [Section]: [What to add/change] (from Learning #N)
+
+### Not Actionable (Context Only)
+- [Learnings that are project-specific and don't generalize to system updates]
+```
+
+The orchestrator produces this by:
+1. Reading each learning entry in the consolidated LEARNINGS.md
+2. For each: determining if it generalizes beyond this project
+3. If yes: identifying the specific target file(s) and drafting a concrete change description
+4. If no: placing it in "Not Actionable" with brief reasoning
+5. Assigning priority based on impact (P1 = correctness, P2 = efficiency, P3 = polish)
 
 ### Session Recovery (Protocol 6)
 
@@ -363,12 +281,11 @@ When resuming:
 
 ## Learning Categories Reference
 
-### Category: API Behavior
+### Category: Data Access Behavior
 
-- Pagination edge cases
 - Rate limiting patterns
 - Variable naming inconsistencies
-- Endpoint response variations
+- File size inconsistencies or issues
 - Authentication/access issues
 
 ### Category: Data Quality
@@ -407,12 +324,14 @@ When resuming:
 
 ## Quick Capture Template
 
+*This is the primary format used during incremental capture (not just a convenience shortcut). Learning Signals from agents are expanded into quick-capture entries when flushed to LEARNINGS.md.*
+
 For rapid capture during analysis, use this abbreviated format:
 
 ```markdown
 ## Quick Note: [timestamp]
 
-**Category:** [API/Data/Method/Perf/Process]
+**Category:** [Access/Data/Method/Perf/Process]
 **Issue:** [One-line description]
 **Context:** [What I was doing]
 **Solution:** [What worked]
@@ -432,6 +351,7 @@ These quick notes can be expanded into full entries at Stage 12.
 - Skip the "why" (reasons matter more than what)
 - Duplicate existing documentation (link instead)
 - Over-generalize from single instances (note sample size)
+- Treat Stage 12 as the primary capture point (use incremental capture instead)
 
 ### Do Instead
 

@@ -37,7 +37,7 @@ You NEVER execute Python code interactively. Instead:
 |---------|----------------|
 | `Transformation Sequence` table | Each row becomes a separate task — execute EXACTLY as specified |
 | `Methodology Decisions` | Constraints on how to implement transformations |
-| `Query Specifications` | API endpoints, filters, and year ranges to use |
+| `Query Specifications` | Data access endpoints, filters, and year ranges to use |
 | `Risk Register` | What to watch for during execution |
 | `Wave assignments` | Determines parallelism — only execute your assigned wave |
 
@@ -97,7 +97,7 @@ Your execution reports are consumed by the **orchestrator** which uses them to:
 ### 1. Atomic Execution
 
 Each task invocation executes exactly ONE operation:
-- One API fetch
+- One data access fetch
 - One cleaning step
 - One transformation
 - One validation
@@ -192,7 +192,7 @@ The checkpoint result is printed to stdout and captured in the execution log.
 
 **Applies to:** Stage 5 fetch scripts that download Education Data Portal datasets.
 
-Data is fetched by downloading files from configured mirrors (see `mirrors.yaml`) — no API calls. The mirror resolution pattern tries each mirror in priority order:
+Data is fetched by downloading files from configured mirrors (see `mirrors.yaml`). The mirror resolution pattern tries each mirror in priority order:
 
 ```
 Mirror Resolution Protocol:
@@ -324,6 +324,8 @@ Always return findings in this structure:
 
 **Deviations Applied:**
 - [Per RULE 1-3 from 04_BOUNDARIES.md, or "None"]
+
+**Learning Signal:** [Category: Access|Data|Method|Perf|Process] — [One-line insight generalizable to future analyses] | "None"
 ```
 
 ---
@@ -439,6 +441,12 @@ Final audit trail:
 
 ---
 
+## Learning Signal
+
+After completing execution, reflect: did this task reveal anything that future analyses should know? If yes, emit a one-line Learning Signal categorized as Access, Data, Method, Perf, or Process. If nothing novel was discovered, emit "None". Do NOT force a signal — "None" is the expected common case.
+
+---
+
 ## Commit Protocol
 
 After successful task completion, commit with this format:
@@ -460,7 +468,7 @@ Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>
 ## STOP Conditions
 
 Immediately stop and escalate if:
-- API returns empty data
+- Data access attempt returns empty data
 - Row count drops >90%
 - Checkpoint validation fails
 - Unexpected nulls in critical columns

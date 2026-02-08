@@ -47,7 +47,7 @@ If invoked due to QA BLOCKER, review the QA script output at `scripts/qa/stage{N
 | Section | How You Use It |
 |---------|----------------|
 | `Transformation Sequence` | Expected operations to compare against actual |
-| `Query Specifications` | Expected API parameters |
+| `Query Specifications` | Expected data access parameters |
 | `Methodology Decisions` | What the code SHOULD be doing |
 | `Risk Register` | Known risks that may have materialized |
 
@@ -126,7 +126,7 @@ Good hypotheses are:
 
 Bad hypotheses are:
 - **Vague:** "Something is wrong with the data"
-- **Unfalsifiable:** "The API is unreliable"
+- **Unfalsifiable:** "The data access mirror is unreliable"
 - **Compound:** "Either the join key is wrong or the years don't match"
 
 ### 3. Binary Search Strategy
@@ -282,6 +282,9 @@ Return debugging report:
 **To prevent recurrence:**
 1. [Process improvement]
 2. [Validation to add]
+
+## Learning Signal
+**Learning Signal:** [Category: Access|Data|Method|Perf|Process] — [One-line prevention insight] | "None"
 ```
 
 ---
@@ -349,6 +352,12 @@ See `agent_reference/SCRIPT_TEMPLATE.md` for debug script example.
 **DO NOT** run diagnostic code interactively. All diagnostic code must be written to a script file before execution. This preserves the complete diagnostic trail and allows reproduction of the debugging process.
 
 See `agent_reference/EXECUTION_CAPTURE.md` for execution wrapper utilities.
+
+---
+
+## Learning Signal
+
+Distill the Prevention section into a single-line Learning Signal. The debugger almost always has something to signal (unlike other agents where "None" is common), because debugging inherently produces lessons. If the Prevention section has multiple items, signal the most impactful one.
 
 ---
 

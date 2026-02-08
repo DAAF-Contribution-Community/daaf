@@ -1114,8 +1114,8 @@ Document risks identified during discovery and planning, with mitigation strateg
 | Plan | `research/YYYY-MM-DD [Title]/YYYY-MM-DD [Title] Plan.md` | This document |
 | Notebook | `research/YYYY-MM-DD [Title]/YYYY-MM-DD [Title].py` | Marimo analysis notebook |
 | Report | `research/YYYY-MM-DD [Title]/YYYY-MM-DD [Title] Report.md` | Stakeholder report |
-| **Learnings** | `research/YYYY-MM-DD [Title]/LEARNINGS.md` | **Session learnings (API gotchas, methodology insights)** |
-| Raw Data | `research/YYYY-MM-DD [Title]/data/raw/YYYY-MM-DD_*.parquet` | Original API responses |
+| **Learnings** | `research/YYYY-MM-DD [Title]/LEARNINGS.md` | **Session learnings (skeleton at Stage 4, incremental during 5-8, consolidated at Stage 12)** |
+| Raw Data | `research/YYYY-MM-DD [Title]/data/raw/YYYY-MM-DD_*.parquet` | Original data downloads |
 | Processed Data | `research/YYYY-MM-DD [Title]/data/processed/YYYY-MM-DD_*.parquet` | Cleaned data |
 | Figures | `research/YYYY-MM-DD [Title]/output/figures/YYYY-MM-DD_*.png` | Visualizations |
 | Fetch Scripts | `research/YYYY-MM-DD [Title]/scripts/stage5_fetch/*.py` | Data retrieval code |

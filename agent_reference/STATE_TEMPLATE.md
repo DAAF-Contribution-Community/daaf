@@ -137,7 +137,7 @@ Copy this template to `STATE.md` in the project folder when starting a Full Pipe
 ### Per-Stage (Current Stage)
 | Resource | Used | Limit | Remaining |
 |----------|------|-------|-----------|
-| API Retries | [X] | 3 | [Y] |
+| Data Access Retries | [X] | 3 | [Y] |
 | Code Attempts | [X] | 2 | [Y] |
 | Subagent Re-invocations | [X] | 3 | [Y] |
 | **QA BLOCKER Revisions** | [X] | 2 | [Y] |
@@ -153,7 +153,7 @@ Copy this template to `STATE.md` in the project folder when starting a Full Pipe
 ### Session Total
 | Resource | Used | Limit | Remaining |
 |----------|------|-------|-----------|
-| API Retries | [X] | 9 | [Y] |
+| Data Access Retries | [X] | 9 | [Y] |
 | Code Attempts | [X] | 6 | [Y] |
 | Subagent Re-invocations | [X] | 9 | [Y] |
 | STOP Conditions | [X] | 3 | [Y] |
@@ -166,6 +166,20 @@ Copy this template to `STATE.md` in the project folder when starting a Full Pipe
 | Deviation | Type | Stage | Notes |
 |-----------|------|-------|-------|
 | [None or description] | [Bug Fix/Critical Func/Test] | [N] | |
+
+---
+
+## Pending Learning Signals
+
+*Buffer for learning signals from subagents. Flushed to LEARNINGS.md at phase boundaries, after blocker resolution, after debugging, and at utilization gates.*
+
+| Stage.Step | Category | Signal | Source Agent |
+|------------|----------|--------|-------------|
+| [e.g., 5.1] | [Access/Data/Method/Perf/Process] | [One-line insight] | [research-executor/code-reviewer/debugger] |
+
+**Last Flushed:** [timestamp or "Not yet flushed"]
+**Total Signals Captured (Session):** [N]
+**Total Flushed to LEARNINGS.md:** [N]
 
 ---
 
@@ -299,6 +313,8 @@ Update STATE.md after:
 - Error budget is consumed
 - Deviations are applied
 - Before any planned break
+- Learning signals received from subagents (append to Pending buffer)
+- Flush triggers met (flush buffer → LEARNINGS.md)
 
 ### Minimal Update Pattern
 

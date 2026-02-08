@@ -11,7 +11,7 @@ This document provides decision trees and procedures for handling common errors 
 | Error Type | Max Attempts | After Max Attempts | Notes |
 |------------|--------------|-------------------|-------|
 | Data unavailable | 0 | Escalate immediately | User must decide path forward |
-| API/network error | 3 | Stop, report to user | Exponential backoff between attempts |
+| Access/network error | 3 | Stop, report to user | Exponential backoff between attempts |
 | Code execution error | 2 | Stop, escalate to user | Try alternative approach on 2nd attempt |
 | Validation failure (STOP condition) | 0 | Escalate immediately | Never retry STOP conditions |
 | Validation failure (warning) | N/A | Document and proceed | Warnings don't consume retries |
@@ -68,7 +68,7 @@ Awaiting your guidance before proceeding.
 | Category | Examples | Typical Resolution | Per-Incident Limit |
 |----------|----------|-------------------|-------------------|
 | **Data Availability** | No data exists, endpoint not found | Escalate immediately | 0 retries |
-| **API/Network** | Timeout, rate limiting, 5xx errors | Retry with backoff | 3 retries |
+| **Access/Network** | Timeout, rate limiting, 5xx errors | Retry with backoff | 3 retries |
 | **Data Quality** | High suppression, unexpected nulls | Adjust approach or escalate | Varies |
 | **Code Execution** | Syntax errors, runtime errors | Fix and retry | 2 attempts |
 | **Validation Failure** | Checkpoint failed | Investigate and fix or escalate | Varies by severity |
@@ -84,7 +84,7 @@ To prevent infinite retry loops and excessive resource consumption, track cumula
 
 | Error Type | Per-Stage Limit | Session Limit | Action When Exceeded |
 |------------|----------------|---------------|---------------------|
-| API retries | 3 | 9 | STOP with comprehensive error report |
+| Data access retries | 3 | 9 | STOP with comprehensive error report |
 | Code fix attempts | 2 | 6 | STOP, escalate to user |
 | **QA BLOCKER revisions** | 2 per script | 8 per session | STOP, escalate to user |
 | **QA methodology issues** | 0 | 2 | STOP, fundamental methodology question |
@@ -100,7 +100,7 @@ The orchestrator MUST track cumulative errors in the Plan document's "Current St
 
 | Error Type | Used | Remaining | Status |
 |------------|------|-----------|--------|
-| API retries | 4 | 5/9 | ⚠️ Elevated |
+| Data access retries | 4 | 5/9 | ⚠️ Elevated |
 | Code attempts | 2 | 4/6 | ✅ Normal |
 | Subagent re-invocations | 1 | 8/9 | ✅ Normal |
 | STOP conditions hit | 1 | 2/3 | ⚠️ Warning |
@@ -115,20 +115,20 @@ When any session limit is exceeded:
    ```markdown
    **STOP: Session Error Budget Exhausted**
    
-   **Budget Type:** [API retries | Code attempts | Subagent invocations | STOP conditions]
+   **Budget Type:** [Data access retries | Code attempts | Subagent invocations | STOP conditions]
    **Limit:** [N]
    **Consumed:** [N+]
    
    **Error History:**
    | Stage | Error | Attempts | Resolution |
    |-------|-------|----------|------------|
-   | Stage 5 | API timeout | 3 | Eventual success |
+   | Stage 5 | Data access timeout | 3 | Eventual success |
    | Stage 7 | Join error | 2 | Fixed |
    | Stage 7 | Transform error | 2 | Fixed |
    | Stage 7 | Filter error | 2 | Failed (budget exhausted) |
    
    **Analysis:**
-   The high error rate suggests [fundamental data issue | API instability | methodology mismatch | complexity too high].
+   The high error rate suggests [fundamental data issue | Data access instability | methodology mismatch | complexity too high].
    
    **Recommendation:**
    [Simplify scope | Wait and retry later | Alternative data source | Escalate for manual intervention]
@@ -142,7 +142,7 @@ When any session limit is exceeded:
 
 To stay within budget:
 - **Be precise in subagent prompts** to avoid re-invocations
-- **Verify query parameters before execution** to avoid API failures
+- **Verify query parameters before execution** to avoid data access failures
 - **Review code before execution** when delegating complex transformations
 - **Escalate proactively** when patterns suggest fundamental issues
 
@@ -158,7 +158,7 @@ Error Encountered
     │   │        (per design decision: user must decide path forward)
     │   └─ NO → Continue
     │
-    ├─ Is it an API/network error?
+    ├─ Is it an data access/network error?
     │   ├─ YES → Apply retry logic
     │   │        ├─ Retry 1 (wait 1s)
     │   │        ├─ Retry 2 (wait 5s)
@@ -241,9 +241,9 @@ Awaiting your guidance before proceeding.
 
 ---
 
-### API/Network Errors
+### Data Access/Network Errors
 
-**Definition:** Transient errors from API communication.
+**Definition:** Transient errors from data access mirror communication.
 
 **Examples:**
 - Connection timeout
@@ -297,14 +297,14 @@ def fetch_with_retry(url: str, max_retries: int = 3) -> dict:
 **If retry fails:** ESCALATE
 
 ```markdown
-**STOP: API Error After Retries**
+**STOP: Data Access Error After Retries**
 
 **Endpoint:** [URL]
 **Error:** [error message]
 **Attempts:** 3
 
 **Possible Causes:**
-- API service disruption
+- Data access mirror service disruption
 - Rate limiting exceeded
 - Invalid endpoint
 
@@ -339,7 +339,7 @@ Data Quality Issue
     │
     ├─ Are there unexpected nulls?
     │   └─ YES → Investigate source
-    │            ├─ From API (expected) → Document
+    │            ├─ From data access source (expected) → Document
     │            ├─ From transformation (bug) → Fix code
     │            └─ Unknown → STOP, investigate
     │
@@ -594,7 +594,7 @@ Validation Failure
 
 | Issue | Recovery |
 |-------|----------|
-| API timeout | Retry with backoff |
+| Data access timeout | Retry with backoff |
 | Empty response | Verify filters, escalate if correct |
 | Partial data | Check pagination, retry |
 

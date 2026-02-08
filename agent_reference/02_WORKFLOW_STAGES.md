@@ -503,7 +503,13 @@ Consolidate these parallel findings into a unified context for Plan creation.
    - Report sections
    - Required visualizations
 
-5. **Report to User**
+5. **Create LEARNINGS.md Skeleton**
+   - Create `LEARNINGS.md` in the project folder using the template from `08_LESSONS_LEARNED.md`
+   - Populate project metadata (title, date, data sources, analysis type)
+   - Include all section headers with empty content
+   - This is a skeleton — content will be added incrementally during execution
+
+6. **Report to User**
    ```
    **Progress Update: Phase 2 Complete**
    - Created: Plan document at [path]
@@ -560,12 +566,13 @@ Incomplete transformation sequences lead to incomplete validation and unreliable
 
 - [ ] Plan document created at `research/[folder]/YYYY-MM-DD [Title] Plan.md`
 - [ ] **STATE.md created** at `research/[folder]/STATE.md` (MANDATORY — Gate G3)
+- [ ] **LEARNINGS.md skeleton created** at `research/[folder]/LEARNINGS.md` (MANDATORY — Gate G3)
 - [ ] **Plan Completeness Gate passed** (all sections verified)
 - [ ] Project folder structure created (`data/raw/`, `data/processed/`, `output/figures/`)
 - [ ] User notified
 - [ ] Ready to proceed unless user objects
 
-**Gate G3 Enforcement:** Stage 5 CANNOT begin without both Plan and STATE.md existing.
+**Gate G3 Enforcement:** Stage 5 CANNOT begin without Plan, STATE.md, and LEARNINGS.md all existing.
 
 ---
 
@@ -1577,46 +1584,42 @@ Stage 10 is now the **aggregation point** for all QA findings from Stages 5-8. B
    - Fill Final Review Log section
    - Record outcome
 
-5. **Capture Lessons Learned (REQUIRED)**
-   - Create `LEARNINGS.md` in project folder
-   - Document what worked well
-   - Document what didn't work (and alternatives found)
-   - Record API/data gotchas discovered
-   - Note any time sinks and how to avoid them
-   - Identify reusable patterns
-   - Flag items for repository-level consolidation
-   - See `agent_reference/08_LESSONS_LEARNED.md` for template and guidance
+5. **Consolidate LEARNINGS.md (REQUIRED)**
+   - Review incremental entries captured during Stages 5-8
+   - Fill gaps in sections still empty
+   - Expand quick-capture entries where warranted
+   - Deduplicate entries describing the same insight
+   - Ensure minimum sections populated: What Worked Well, What Didn't Work, API/Data Gotchas
+   - Flush any remaining signals from STATE.md buffer
+   - See `agent_reference/08_LESSONS_LEARNED.md` for consolidation protocol
 
-6. **Deliver to User**
+6. **Generate System Update Action Plan (REQUIRED)**
+   - Add "System Update Action Plan" section to LEARNINGS.md
+   - For each learning: determine if it generalizes beyond this project
+   - If yes: identify target file(s) and draft concrete change description
+   - If no: place in "Not Actionable" with brief reasoning
+   - Assign priority: P1 (correctness), P2 (efficiency), P3 (polish)
+   - This plan is NOT auto-executed — it serves as a work queue
+   - Include action item count in delivery message
+
+7. **Deliver to User**
    - Summary message
    - File locations
    - Key findings
    - Limitations
 
-### Lessons Learned Quick Template
+### Consolidation & Action Plan Checklist
 
-At minimum, `LEARNINGS.md` must include:
+At Stage 12, the orchestrator consolidates LEARNINGS.md (which already contains incremental entries) and generates the System Update Action Plan:
 
-```markdown
-# Learnings: [Project Title]
-
-**Date:** YYYY-MM-DD
-**Data Sources:** [list]
-
-## What Worked Well
-- [Technique/approach that succeeded]
-
-## What Didn't Work
-- **[Approach]:** [What was tried]
-  - **Why it failed:** [Root cause]
-  - **Alternative:** [What worked instead]
-
-## API/Data Gotchas
-- **[Variable/Endpoint]:** [Issue + workaround]
-
-## Flag for Skill Consolidation
-- [ ] [Item to consolidate into the relevant `education-data-source-*` skill]
-```
+- [ ] LEARNINGS.md incremental entries reviewed (gaps identified and filled)
+- [ ] Quick-capture entries expanded where warranted
+- [ ] Duplicate entries merged
+- [ ] Minimum sections populated: What Worked Well, What Didn't Work, API/Data Gotchas
+- [ ] STATE.md pending signals flushed
+- [ ] System Update Action Plan section added with ≥1 action item or explicit "no generalizable learnings" statement
+- [ ] Action items grouped by target type (Skills, Agents, Agent Reference, Orchestrator)
+- [ ] Action item count included in delivery message
 
 ### Gate Criteria
 
@@ -1624,7 +1627,9 @@ At minimum, `LEARNINGS.md` must include:
 - [ ] Quality verified
 - [ ] Deviations documented
 - [ ] Plan updated with Final Review Log
-- [ ] **LEARNINGS.md created and complete**
-- [ ] **Items flagged for consolidation noted**
+- [ ] **LEARNINGS.md consolidated** (incremental entries reviewed, gaps filled)
+- [ ] **System Update Action Plan section present** (≥1 action item or "no generalizable learnings")
+- [ ] **Key findings flagged for repository consolidation** (in Action Plan)
+- [ ] **Action item count included in delivery message**
 - [ ] **STATE.md finalized:** Status: Complete, all checkpoints marked, Session History complete
 - [ ] User notified with delivery summary

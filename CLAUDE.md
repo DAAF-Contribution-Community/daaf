@@ -249,6 +249,7 @@ Failures: 1 → Continue with increased monitoring
 │     - If utilization ≥40%: Update STATE.md with current position            │
 │     - If stage completed: Update checkpoint status                          │
 │     - If blocker encountered: Document immediately                          │
+│     - If flush trigger met: Append pending learning signals to LEARNINGS.md │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │  4. DECIDE: Choose appropriate action                                       │
 │     - <40% utilization: Proceed normally                                    │
@@ -513,6 +514,7 @@ The Full Pipeline workflow consists of **5 Phases** and **12 Stages**. Other mod
 │      ├─ Create project folder + Plan.md                                     │
 │      ├─ **CRITICAL:** Complete Transformation Sequence table                │
 │      ├─ Create STATE.md with Plan Validation section (initially NOT_RUN)    │
+│      ├─ Create LEARNINGS.md skeleton (project metadata + empty sections)    │
 │      ├─ **WARNING:** DO NOT use Claude Code's EnterPlanMode tool here!      │
 │      │   Use data-planner agent + PLAN_TEMPLATE.md instead.                 │
 │      └─ Report to user: "Plan created, invoking plan-checker..."            │
@@ -541,7 +543,7 @@ The Full Pipeline workflow consists of **5 Phases** and **12 Stages**. Other mod
 │  Stage 5: Data Retrieval ←── education-data-query skill                     │
 │      ├─ Download from configured mirrors (per mirrors.yaml)                │
 │      ├─ Auto-validate: shape, types, missingness (CP1)                      │
-│      ├─ STOP if: unexpected empty results, API errors                       │
+│      ├─ STOP if: unexpected empty results, data access errors               │
 │      └─ Gate: Raw data saved to data/raw/ (parquet + csv)                   │
 │                          ↓                                                  │
 │  ┌─ 5-QA: >>> INVOKE code-reviewer NOW <<< (MANDATORY) ──────────────────┐ │
@@ -617,9 +619,11 @@ The Full Pipeline workflow consists of **5 Phases** and **12 Stages**. Other mod
 │      ├─ Check all Plan commitments fulfilled                                │
 │      ├─ Document any deviations                                             │
 │      ├─ Update Plan with Final Review Log                                   │
-│      └─ **Capture Lessons Learned (REQUIRED) → LEARNINGS.md**               │
+│      ├─ **Consolidate LEARNINGS.md (review incremental entries, fill gaps)**│
+│      └─ **Generate System Update Action Plan section in LEARNINGS.md**      │
 │                          ↓                                                  │
-│  DELIVERY: Summary to user with file paths + learnings summary              │
+│  DELIVERY: Summary to user with file paths                                  │
+│      + Learnings summary (key insights + action plan item count)            │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -1120,7 +1124,7 @@ All relative paths in referenced files resolve from BASE_DIR.
 
 | Type | Use For | Capabilities |
 |------|---------|--------------|
-| `Plan` | Read-only operations, documentation search, data discovery | Inherits main model; can read files and make API calls; CANNOT write files |
+| `Plan` | Read-only operations, documentation search, data discovery | Inherits main model; can read files and make data access calls; CANNOT write files |
 | `general-purpose` | Code generation, analysis execution, file creation | Full capabilities including file writes and code execution |
 
 ### Wave-Based Parallel Execution
@@ -1194,7 +1198,7 @@ Each stage has explicit input/output contracts and gate criteria:
 | 9 | Stages 7, 8 | Stage 10 | Notebook runs without errors |
 | 10 | Stage 9 (notebook) | Stage 11 | `ruff check` passes, **QA findings aggregated** |
 | 11 | Stages 9, 10 | Stage 12 | Report complete with all sections and figure references |
-| 12 | All prior stages | Delivery | Protocol 5 verification PASSED, all commitments fulfilled, cross-artifact coherence verified, adversarial verification completed |
+| 12 | All prior stages | Delivery | Protocol 5 PASSED, all commitments fulfilled, LEARNINGS.md consolidated with System Update Action Plan, cross-artifact coherence verified |
 
 **QA Gate Notes:**
 - **PASSED or WARNING:** QA may log WARNINGs that don't block execution (documented for Stage 10 aggregation)
@@ -1266,6 +1270,26 @@ When verifying code-reviewer QA reports specifically, also check:
 - [ ] If capped at 5 iterations: "Additional Strands of Inquiry" section present
 
 If the QA report reads like a template with values filled in and no script-specific reasoning, it has not met the review depth expectation. Consider re-invoking with emphasis on adversarial analysis.
+
+### Learning Signal Extraction
+
+After verifying subagent output, extract any Learning Signal:
+
+1. Check if subagent output contains a `**Learning Signal:**` field
+2. If value is "None" → skip
+3. If value is present → append to STATE.md "Pending Learning Signals" buffer:
+   ```
+   - [Stage N.step] [Category] — [Signal text]
+   ```
+4. Do NOT write to LEARNINGS.md on every signal — wait for flush triggers
+
+**Flush Triggers** (write buffered signals to LEARNINGS.md):
+- Phase boundary completion (end of Phase 1, 2, 3, or 4)
+- After BLOCKER resolution
+- After debugger session
+- At utilization gates (40%, 60%)
+
+**Flush is lightweight:** Read buffer → categorize into LEARNINGS.md sections → append → clear buffer. Not a subagent invocation.
 
 ### Verification Checklists by Stage
 
@@ -1472,7 +1496,7 @@ research/YYYY-MM-DD [Title]/
 ├── YYYY-MM-DD [Title] Plan.md        # Analysis plan and decisions
 ├── YYYY-MM-DD [Title].py             # Marimo WALKTHROUGH (assembles final scripts)
 ├── YYYY-MM-DD [Title] Report.md      # Stakeholder SUMMARY (separate artifact)
-├── LEARNINGS.md                      # Session learnings (REQUIRED at Stage 12)
+├── LEARNINGS.md                      # Session learnings (REQUIRED)
 ├── scripts/                          # *** PRIMARY EXECUTION ARTIFACTS ***
 │   │                                 # Each script has embedded execution log
 │   ├── run_with_capture.sh           # Execution wrapper utility
@@ -1500,7 +1524,7 @@ research/YYYY-MM-DD [Title]/
 │   └── debug/                        # Debugger diagnostic scripts
 │       └── 01_diag-key-mismatch.py
 ├── data/
-│   ├── raw/                          # Original API responses
+│   ├── raw/                          # Original data access downloads
 │   │   ├── *.parquet                 # For processing
 │   │   └── *.csv                     # For sharing
 │   └── processed/                    # Cleaned/transformed data
@@ -1582,7 +1606,7 @@ These conditions trigger an immediate STOP with escalation to user. See `agent_r
 
 | Condition | Stage | Action |
 |-----------|-------|--------|
-| API returns empty data | Stage 5 | STOP, report to user, await guidance |
+| Data access mirror returns empty data | Stage 5 | STOP, report to user, await guidance |
 | Suppression rate >50% | Stage 6 | STOP, report issue, propose alternatives |
 | Cross-state assessment comparison attempted | Stage 6 | BLOCK with explanation (never valid) |
 | Row count drops >90% after transformation | Stage 7 | STOP, verify transformation logic |
@@ -1626,7 +1650,7 @@ Forcing functions are design interventions that **prevent** poor practices rathe
 |------|------------|----------|-------------|
 | G1 | 1 → 2 | Mode classified and confirmed | Cannot invoke Stage 2 subagent |
 | G2 | 3 → 4 | ≥1 endpoint identified | Cannot create Plan |
-| **G3** | **4 → 4.5** | **Plan created AND STATE.md created** | **Cannot invoke plan-checker** |
+| **G3** | **4 → 4.5** | **Plan created AND STATE.md created AND LEARNINGS.md skeleton created** | **Cannot invoke plan-checker** |
 | **G3.5** | **4.5 → 5** | **plan-checker returned PASSED or PASSED_WITH_WARNINGS** | **Cannot begin data acquisition** |
 | G4 | 5 → 6 | CP1 PASSED, **QA1 INVOKED and QA1 ∈ {PASSED, WARNING}** | Cannot proceed to cleaning |
 | G5 | 6 → 7 | CP2 PASSED, **QA2 INVOKED and QA2 ∈ {PASSED, WARNING}** | Cannot proceed to transformation |
@@ -1635,7 +1659,7 @@ Forcing functions are design interventions that **prevent** poor practices rathe
 | G8 | 9 → 10 | Notebook runs without errors | Cannot run QA |
 | G9 | 10 → 11 | Linting passes, QA aggregation complete | Cannot generate report |
 | G10 | 11 → 12 | Report complete with all sections | Cannot run final review |
-| G11 | 12 → Delivery | Protocol 5 verification PASSED, LEARNINGS.md created | Cannot deliver |
+| G11 | 12 → Delivery | Protocol 5 verification PASSED, LEARNINGS.md consolidated with System Update Action Plan | Cannot deliver |
 
 **Gate G3 Enforcement (STATE.md):**
 ```
@@ -1646,7 +1670,10 @@ Stage 4 Complete
     ├─ STATE.md exists? ─── NO → CREATE STATE.md NOW
     │                            (Use STATE_TEMPLATE.md)
     │
-    └─ Both exist? ─── YES → Proceed to Stage 4.5 (plan-checker)
+    ├─ LEARNINGS.md exists? ─── NO → CREATE LEARNINGS.md NOW
+    │                              (Use template from 08_LESSONS_LEARNED.md)
+    │
+    └─ All three exist? ─── YES → Proceed to Stage 4.5 (plan-checker)
 ```
 
 **If STATE.md is missing at Gate G3:** DO NOT proceed. Create STATE.md using template from `agent_reference/STATE_TEMPLATE.md` with initial values populated.
@@ -1912,7 +1939,7 @@ See `agent_reference/06_ERROR_RECOVERY.md` for complete decision trees and recov
 | Error Type | Max Retries | Escalation Trigger | Reference |
 |------------|-------------|-------------------|-----------|
 | Data unavailable | 0 | Immediate | `06_ERROR_RECOVERY.md` § Data Availability |
-| API/network error | 3 | After 3 failures | `06_ERROR_RECOVERY.md` § API/Network |
+| Access/network error | 3 | After 3 failures | `06_ERROR_RECOVERY.md` § Access/Network |
 | Code execution error | 2 | After 2 failures | `06_ERROR_RECOVERY.md` § Code Execution |
 | Validation failure (STOP condition) | 0 | Immediate | `06_ERROR_RECOVERY.md` § Validation |
 | Validation failure (warning) | N/A | Document and proceed | `06_ERROR_RECOVERY.md` § Validation |

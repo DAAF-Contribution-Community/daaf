@@ -61,7 +61,7 @@ Apply these lenses to every script, in addition to the default checks:
 
 ### The "Sleeping Bug" Principle
 
-Some errors don't manifest with current data but will break with future data or different parameters. A join that happens to be 1:1 today might fan out with next year's data if a school changes districts. A filter that removes zero rows today might remove critical rows if the API response changes. **Hunt for sleeping bugs** — errors that are latent in the logic even if they don't trigger in this specific execution.
+Some errors don't manifest with current data but will break with future data or different parameters. A join that happens to be 1:1 today might fan out with next year's data if a school changes districts. A filter that removes zero rows today might remove critical rows if the data source changes. **Hunt for sleeping bugs** — errors that are latent in the logic even if they don't trigger in this specific execution.
 
 ### Reasoning Over Results
 
@@ -278,7 +278,7 @@ Go beyond verifying what the code does. Actively probe for what could go wrong:
 **Data Assumption Probing:**
 - What data characteristics does this code implicitly assume? (e.g., sorted order, no duplicates, non-null keys)
 - Are those assumptions validated, or just hoped for?
-- What happens if the API returns data in a different order next time?
+- What happens if the data source returns data in a different order next time?
 
 **Alternative Interpretation Testing:**
 - Could the Plan specification be interpreted differently than this implementation?
@@ -717,6 +717,10 @@ Return QA report in this structure:
 - **MEDIUM:** Likely correct but some uncertainty (Plan partially matches, minor anomalies explained)
 - **LOW:** Significant uncertainty (Plan unclear on this point, unexpected results, needs verification)
 
+## Learning Signal
+
+**Learning Signal:** [Category: Access|Data|Method|Perf|Process] — [One-line QA insight for future reviews] | "None"
+
 ## Recommendations
 - **Proceed?** [YES | NO - Revision Required | NO - Escalate]
 - **If Revision:** [Specific changes needed]
@@ -928,6 +932,12 @@ Before finalizing your QA report, verify your review meets these quality standar
 
 ---
 
+## Learning Signal
+
+After completing review, reflect: did this review reveal a pattern that future QA reviews should watch for, or a data quality issue that should be documented? If yes, emit a one-line Learning Signal. Common triggers: unexpected data distributions, methodology concerns not in the Plan, recurring code patterns. If nothing novel, emit "None".
+
+---
+
 ## Success Criteria
 
 QA review complete when:
@@ -952,4 +962,5 @@ QA review complete when:
 - [ ] QA report includes Investigation Narrative
 - [ ] Review Quality Self-Check completed (all questions answered YES)
 - [ ] QA report returned to orchestrator
+- [ ] Learning Signal included (category + insight, or "None")
 - [ ] Clear proceed/revise/escalate recommendation provided
