@@ -17,7 +17,6 @@ User Request Received
     │          ├─ When writing validation: Read 05_VALIDATION_CHECKPOINTS.md
     │          ├─ When handling errors: Read 06_ERROR_RECOVERY.md
     │          ├─ When invoking subagents: Read 03_SKILL_INVOCATIONS.md + agents/README.md
-    │          ├─ When needing coded values/FIPS: Read REFERENCE_TABLES.md
     │          ├─ When writing report (Stage 11): Read REPORT_TEMPLATE.md
     │          └─ When verifying (Stage 12): Invoke data-verifier agent
     │
@@ -1975,7 +1974,7 @@ See `agent_reference/SCRIPT_TEMPLATE.md` for complete script template and exampl
 
 ### Coded Missing Values
 
-Standard codes used across Education Data Portal. See `agent_reference/REFERENCE_TABLES.md` for complete definitions and source-specific variations.
+Standard codes used across Education Data Portal. For complete definitions and source-specific variations, invoke the relevant `education-data-source-*` skill or the `education-data-context` skill via subagent.
 
 | Code | Meaning | Action |
 |------|---------|--------|
@@ -1995,7 +1994,7 @@ Standard codes used across Education Data Portal. See `agent_reference/REFERENCE
 | Colorado | 8 | Texas | 48 |
 | Florida | 12 | Washington | 53 |
 
-See `agent_reference/REFERENCE_TABLES.md` for complete tables.
+For complete FIPS tables, invoke the `education-data-query` or `education-data-explorer` skill via subagent.
 
 ---
 
@@ -2034,7 +2033,6 @@ See `agent_reference/REFERENCE_TABLES.md` for complete tables.
 | `agent_reference/EDUCATION_DATA_API_LEARNINGS.md` | Accumulated API learnings and data source gotchas |
 | `agent_reference/PLAN_TEMPLATE.md` | Research plan template with wave-based task sequences |
 | `agent_reference/REPORT_TEMPLATE.md` | Output report template |
-| `agent_reference/REFERENCE_TABLES.md` | Quick lookup tables |
 | `agent_reference/STATE_TEMPLATE.md` | Session state file template for continuity |
 | `agent_reference/CONTEXT_TEMPLATE.md` | Design context template for capturing decisions |
 | `agent_reference/SCRIPT_TEMPLATE.md` | Standardized script format with stage-specific examples |

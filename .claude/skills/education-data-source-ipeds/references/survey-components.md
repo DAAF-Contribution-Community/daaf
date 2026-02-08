@@ -65,7 +65,7 @@ The foundational survey that must be completed first. Establishes institution id
 | `locale` | Urban-centric locale code | 11-43 |
 | `openpubl` | Open to general public | 1=Yes, 2=No |
 | `obereg` | Bureau of Economic Analysis region | 0-8 |
-| `ccbasic` | Carnegie basic classification | Integer codes |
+| `ccbasic` | Carnegie basic classification (2021) | 1-9=Associate's, 10-13=Spec. Focus 2-Yr, 14=Bacc/Assoc Dominant, 15=R1, 16=R2, 17=Doctoral/Prof, 18-20=Master's, 21-22=Baccalaureate, 23=Bacc/Assoc Mixed, 24-32=Spec. Focus 4-Yr, 33=Tribal. Full table in `education-data-explorer` variable-codes. 2025 Carnegie update not yet in Portal. |
 | `tuition1_in` | In-state tuition | Dollar amount |
 | `tuition2_in` | In-state required fees | Dollar amount |
 | `tuition3_in` | In-state per credit hour | Dollar amount |

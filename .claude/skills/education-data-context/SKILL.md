@@ -138,7 +138,7 @@ What type of analysis are you doing?
 | Variable | Integer Values | NOT Strings |
 |----------|----------------|-------------|
 | Race | 1-7, 99 (total) | Not WH, BL, HI, AS, etc. |
-| Sex | 1 (Male), 2 (Female), 99 (Total) | Not M, F |
+| Sex | 1 (Male), 2 (Female), 3 (Another gender, IPEDS 2022+), 4 (Unknown gender, IPEDS 2022+), 9 (Unknown), 99 (Total) | Not M, F |
 | Grade | -1 to 13, 99 (total) | Not PK, KG, 01, etc. |
 
 **Race codes:**

@@ -479,7 +479,7 @@ If analysis includes 2020 or 2021 data, CP1 Check 7 will flag this automatically
 
 **Coded Value Handling:**
 
-*For complete coded value definitions, see `agent_reference/REFERENCE_TABLES.md: Coded Missing Values`*
+*For complete coded value definitions, invoke the `education-data-context` skill via subagent.*
 
 | Variable | Codes to Filter | Rationale |
 |----------|-----------------|-----------|

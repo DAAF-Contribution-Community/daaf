@@ -296,9 +296,12 @@ Returns records with `sex` field (integer, not string codes):
 |-------|-------------|
 | 1 | Male |
 | 2 | Female |
+| 3 | Another gender (IPEDS 2022+ only) |
+| 4 | Unknown gender (IPEDS 2022+ only) |
+| 9 | Unknown |
 | 99 | Total |
 
-**Note:** The Portal uses integers (1, 2), NOT string codes like "M", "F".
+**Note:** The Portal uses integers (1, 2), NOT string codes like "M", "F". Codes 3 and 4 appear only in IPEDS data starting 2022-23.
 
 ## Complete FIPS Code List
 

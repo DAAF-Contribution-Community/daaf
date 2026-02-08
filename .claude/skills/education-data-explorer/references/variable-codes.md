@@ -167,8 +167,12 @@ Prior to 2008, race categories differed. The current categories align with OMB s
 |------|-------------|
 | 1 | Male |
 | 2 | Female |
+| 3 | Another gender (IPEDS 2022+ only) |
+| 4 | Unknown gender (IPEDS 2022+ only) |
 | 9 | Unknown / Not Reported |
 | 99 | Total (all sexes) |
+
+> **Note:** Codes 3 and 4 were added to IPEDS starting with the 2022-23 collection. K-12 sources (CCD, CRDC, EDFacts) currently use only codes 1, 2, and 99.
 
 ---
 
@@ -429,24 +433,46 @@ Data suppression for privacy varies by source:
 
 ---
 
-## Carnegie Classification Codes
+## Carnegie Basic Classification Codes (2021)
 
-Basic classification for colleges:
+The `ccbasic` variable uses the 2021 Carnegie Classification. A 2025 update exists but is not yet reflected in Portal data.
 
 | Code | Description |
 |------|-------------|
-| 15 | Doctoral Universities: Very High Research |
-| 16 | Doctoral Universities: High Research |
+| -2 | Not applicable |
+| 1 | Associate's: High Transfer-High Traditional |
+| 2 | Associate's: High Transfer-Mixed Trad/Nontrad |
+| 3 | Associate's: High Transfer-High Nontraditional |
+| 4 | Associate's: Mixed Transfer/Career & Tech-High Traditional |
+| 5 | Associate's: Mixed Transfer/Career & Tech-Mixed Trad/Nontrad |
+| 6 | Associate's: Mixed Transfer/Career & Tech-High Nontraditional |
+| 7 | Associate's: High Career & Tech-High Traditional |
+| 8 | Associate's: High Career & Tech-Mixed Trad/Nontrad |
+| 9 | Associate's: High Career & Tech-High Nontraditional |
+| 10 | Special Focus Two-Year: Health Professions |
+| 11 | Special Focus Two-Year: Technical Professions |
+| 12 | Special Focus Two-Year: Arts & Design |
+| 13 | Special Focus Two-Year: Other Fields |
+| 14 | Baccalaureate/Associate's: Associate's Dominant |
+| 15 | Doctoral Universities: Very High Research Activity (R1) |
+| 16 | Doctoral Universities: High Research Activity (R2) |
 | 17 | Doctoral/Professional Universities |
-| 18 | Master's Colleges: Larger Programs |
-| 19 | Master's Colleges: Medium Programs |
-| 20 | Master's Colleges: Small Programs |
-| 21 | Baccalaureate Colleges: Arts & Sciences |
+| 18 | Master's Colleges & Universities: Larger Programs |
+| 19 | Master's Colleges & Universities: Medium Programs |
+| 20 | Master's Colleges & Universities: Small Programs |
+| 21 | Baccalaureate Colleges: Arts & Sciences Focus |
 | 22 | Baccalaureate Colleges: Diverse Fields |
-| 23 | Baccalaureate/Associate's Colleges |
-| 24-33 | Associate's Colleges (various types) |
-| 34-39 | Special Focus Institutions |
-| 40 | Tribal Colleges |
+| 23 | Baccalaureate/Associate's: Mixed |
+| 24 | Special Focus Four-Year: Faith-Related Institutions |
+| 25 | Special Focus Four-Year: Medical Schools & Centers |
+| 26 | Special Focus Four-Year: Other Health Professions |
+| 27 | Special Focus Four-Year: Engineering Schools |
+| 28 | Special Focus Four-Year: Other Technology-Related |
+| 29 | Special Focus Four-Year: Business & Management |
+| 30 | Special Focus Four-Year: Arts, Music & Design |
+| 31 | Special Focus Four-Year: Law Schools |
+| 32 | Special Focus Four-Year: Other Special Focus |
+| 33 | Tribal Colleges |
 
 ---
 
