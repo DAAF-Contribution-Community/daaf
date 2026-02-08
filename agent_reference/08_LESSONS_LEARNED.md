@@ -25,7 +25,7 @@ Capturing these lessons prevents repeated mistakes and accelerates future analys
 
 | Source | Location | Contains | When to Check |
 |--------|----------|----------|---------------|
-| **Repository-level** | `agent_reference/EDUCATION_DATA_API_LEARNINGS.md` | Consolidated API gotchas, variable mappings, endpoint behaviors | **Always** (via skills) |
+| **Repository-level** | Embedded in `education-data-source-*` skills | Consolidated API gotchas, variable mappings, endpoint behaviors | **Always** (skills load automatically) |
 | **Project-level** | `research/*/LEARNINGS.md` | Analysis-specific insights, methodology discoveries | When using similar data sources |
 
 ### When to Search Prior Learnings
@@ -63,7 +63,7 @@ grep -rn "didn't work\|failed\|gotcha" research/*/LEARNINGS.md
 **During Stage 2 (Data Exploration):**
 
 1. **Check repository-level learnings:**
-   - Skills automatically reference `EDUCATION_DATA_API_LEARNINGS.md`
+   - Source-specific `education-data-source-*` skills contain accumulated API gotchas, variable mappings, and endpoint behaviors directly
    - No additional action needed (skills handle this)
 
 2. **Search project-level learnings (if ≥3 prior analyses exist):**
@@ -87,7 +87,7 @@ grep -rn "didn't work\|failed\|gotcha" research/*/LEARNINGS.md
 
 Before finalizing the Plan, verify:
 
-- [ ] `EDUCATION_DATA_API_LEARNINGS.md` checked for source-specific gotchas (via skills)
+- [ ] Source-specific `education-data-source-*` skills checked for relevant gotchas
 - [ ] If using IPEDS: Checked for enrollment/finance endpoint quirks
 - [ ] If using CCD: Checked for enrollment disaggregator requirements
 - [ ] If using CRDC: Checked for disaggregation path requirements
@@ -258,9 +258,7 @@ Consolidate project learnings into repository-level documentation:
 
 ### Consolidation Target
 
-`agent_reference/EDUCATION_DATA_API_LEARNINGS.md`
-
-This file already exists and should be updated with consolidated findings.
+Learnings are consolidated directly into the relevant `education-data-source-*` skills (e.g., API gotchas for CCD go into `education-data-source-ccd`, IPEDS gotchas into `education-data-source-ipeds`, etc.). This ensures source-specific knowledge is available automatically when subagents load the skill.
 
 ### Consolidation Categories
 

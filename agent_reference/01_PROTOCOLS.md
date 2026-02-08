@@ -33,11 +33,7 @@ Before writing any data query or analysis code, discover and understand availabl
 
 ### Repository-Level Learnings (Always Available)
 
-Skills automatically reference `agent_reference/EDUCATION_DATA_API_LEARNINGS.md`. This contains:
-- API variable name discrepancies (documented vs. actual)
-- Endpoint-specific gotchas
-- Data availability and lag times
-- Pagination and error handling patterns
+Source-specific knowledge (API variable name discrepancies, endpoint gotchas, data availability and lag times, pagination and error handling patterns) is now embedded directly in the relevant `education-data-source-*` skills. These skills are loaded automatically by subagents during exploration and querying -- no separate learnings file needs to be consulted.
 
 ### Project-Level Learnings (When Available)
 

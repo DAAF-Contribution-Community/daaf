@@ -231,28 +231,22 @@ Estimated execution time: [time estimate based on complexity]
 
 ### Actions
 
-1. **Check Prior Learnings (Orchestrator, before subagent dispatch)**
-   - Skills automatically reference `EDUCATION_DATA_API_LEARNINGS.md`
-   - If ≥3 prior analyses exist: search `research/*/LEARNINGS.md` for relevant data sources
-   - Extract gotchas, warnings, known issues to inform exploration
-   - See `agent_reference/08_LESSONS_LEARNED.md: Consuming Prior Learnings`
-
-2. **Determine Data Level**
+1. **Determine Data Level**
    - Schools (K-12 individual schools)
    - School districts (LEAs)
    - College/university (postsecondary)
 
-3. **Search Endpoints**
+2. **Search Endpoints**
    - Query Education Data Portal metadata
    - Identify relevant sources (CCD, IPEDS, CRDC, etc.)
    - Check year coverage
 
-4. **Identify Variables**
+3. **Identify Variables**
    - List variables relevant to research question
    - Note data types
    - Flag variables needing deep-dive
 
-5. **Document Limitations**
+4. **Document Limitations**
    - What couldn't be found
    - Data gaps
    - Coverage limitations
@@ -1620,8 +1614,8 @@ At minimum, `LEARNINGS.md` must include:
 ## API/Data Gotchas
 - **[Variable/Endpoint]:** [Issue + workaround]
 
-## Flag for Repository Consolidation
-- [ ] [Item to add to EDUCATION_DATA_API_LEARNINGS.md]
+## Flag for Skill Consolidation
+- [ ] [Item to consolidate into the relevant `education-data-source-*` skill]
 ```
 
 ### Gate Criteria

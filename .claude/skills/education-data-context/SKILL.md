@@ -151,6 +151,8 @@ What type of analysis are you doing?
 | 5 | American Indian/Alaska Native |
 | 6 | Native Hawaiian/Pacific Islander |
 | 7 | Two or more races |
+| 8 | Nonresident alien (postsecondary only) |
+| 9 | Unknown |
 | 99 | Total (all races) |
 
 **Grade codes:**
@@ -402,7 +404,7 @@ Data availability lags behind the current year. As of January 2026:
 - **Query assistance**: Load `education-data-query` skill to re-fetch data with different parameters
 - **Joining data**: Read `./references/data-relationships.md` for identifier mappings
 - **Deep source context**: Load the appropriate `education-data-source-*` skill for comprehensive methodology, historical changes, and detailed variable definitions
-- **API learnings**: See `agent_reference/EDUCATION_DATA_API_LEARNINGS.md` for comprehensive API gotchas, variable name discrepancies, and endpoint-specific behaviors
+- **Source-specific gotchas**: Load the relevant `education-data-source-*` skill for variable name mappings, data lags, and endpoint-specific behaviors
 
 ## Topic Index
 

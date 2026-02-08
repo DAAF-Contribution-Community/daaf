@@ -333,7 +333,7 @@ print("Actual columns:", list(data['results'][0].keys()))
 | `school_poverty` | `meps_poverty_pct` | MEPS |
 | `population_5_17_poverty` | `est_population_5_17_poverty` | SAIPE |
 
-See `agent_reference/EDUCATION_DATA_API_LEARNINGS.md` for comprehensive variable mappings.
+See the relevant `education-data-source-*` skill for comprehensive variable mappings per source.
 
 ### Metadata API Limitations
 

@@ -290,7 +290,22 @@ def ipeds_quality_check(df):
 
 ## Education Data Portal API Gotchas
 
-> **API Implementation:** For URL construction patterns, pagination, and error handling, see the `education-data-query` skill. For comprehensive API learnings, see `agent_reference/EDUCATION_DATA_API_LEARNINGS.md`.
+> **Data Retrieval:** For mirror-based data fetching patterns and filtering, see the `education-data-query` skill.
+
+### Data Availability & Lag Times
+
+IPEDS data becomes available with significant lag. Always verify year availability before committing to a year range.
+
+| Survey Component | Typical Lag | Latest Available (as of Jan 2026) |
+|------------------|-------------|-----------------------------------|
+| **Directory** | ~1 year | 2023 |
+| **Admissions-Enrollment** | ~2 years | 2022 |
+| **Fall Enrollment** | ~2-3 years | 2021 |
+| **Completions** | ~2 years | Varies |
+| **Finance** | ~4+ years | **2017** (see warning below) |
+| **Graduation Rates** | ~2-3 years | 2021 |
+
+> **CRITICAL: IPEDS Finance Data Cutoff.** As of January 2026, IPEDS Finance data is only available through **2017**. This affects endowment values (`endowment_end`), revenue/expense data, and any financial ratios. Options: (1) limit analysis to available years, (2) use NCCS 990 data for private institutions as an alternative, or (3) forward-fill with a documented caveat and indicator column.
 
 ### Admissions Data: Sex Disaggregation
 

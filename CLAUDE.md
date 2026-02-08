@@ -449,7 +449,6 @@ The Full Pipeline workflow consists of **5 Phases** and **12 Stages**. Other mod
 │      └─ Output: Research question + scope confirmed                         │
 │                          ↓                                                  │
 │  Stage 2: Data Exploration ←── education-data-explorer skill                │
-│      ├─ **Check prior learnings** (EDUCATION_DATA_API_LEARNINGS.md + prior) │
 │      ├─ Identify available endpoints and variables                          │
 │      ├─ Report findings to user (adaptive)                                  │
 │      └─ Gate: Endpoints identified OR escalate if infeasible                │
@@ -2030,7 +2029,6 @@ For complete FIPS tables, invoke the `education-data-query` or `education-data-e
 | `agent_reference/06_ERROR_RECOVERY.md` | Failure handling procedures |
 | `agent_reference/07_CONTEXT_MANAGEMENT.md` | Context quality awareness and compression protocol |
 | `agent_reference/08_LESSONS_LEARNED.md` | Systematic lesson capture and consolidation |
-| `agent_reference/EDUCATION_DATA_API_LEARNINGS.md` | Accumulated API learnings and data source gotchas |
 | `agent_reference/PLAN_TEMPLATE.md` | Research plan template with wave-based task sequences |
 | `agent_reference/REPORT_TEMPLATE.md` | Output report template |
 | `agent_reference/STATE_TEMPLATE.md` | Session state file template for continuity |

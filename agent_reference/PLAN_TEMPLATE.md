@@ -236,33 +236,6 @@ must_haves:
 
 ---
 
-## Prior Learnings Consulted
-
-*Document which prior learnings were checked and what relevant insights were found.*
-
-### Repository-Level Learnings
-
-**Source:** `agent_reference/EDUCATION_DATA_API_LEARNINGS.md`
-**Checked:** [ ] Yes / No
-
-**Relevant Insights Applied:**
-- [Insight 1 from API learnings that affects this analysis]
-- [Insight 2]
-- *None applicable* (if nothing relevant)
-
-### Project-Level Learnings
-
-**Prior Projects Searched:** [list of LEARNINGS.md files checked, or "N/A - fewer than 3 prior analyses"]
-
-| Project | Relevant Finding | Applied How |
-|---------|------------------|-------------|
-| `research/YYYY-MM-DD [Title]/LEARNINGS.md` | [Finding] | [How it informed this Plan] |
-| — | — | — |
-
-**Note:** Project-level learnings search is recommended when ≥3 prior analyses exist. See `08_LESSONS_LEARNED.md: Consuming Prior Learnings`.
-
----
-
 ## Phase 1: Discovery Results
 
 ### Stage 2: Data Exploration

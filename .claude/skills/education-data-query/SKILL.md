@@ -163,7 +163,7 @@ See `./references/fetch-patterns.md` for complete code patterns.
 | Variable | Integer Values | NOT These Strings |
 |----------|----------------|-------------------|
 | Race | 1-7, 99 (total) | WH, BL, HI, AS, etc. |
-| Sex | 1 (Male), 2 (Female), 99 (Total) | M, F |
+| Sex | 1 (Male), 2 (Female), 3 (Another gender, IPEDS 2022+), 4 (Unknown gender, IPEDS 2022+), 9 (Unknown), 99 (Total) | M, F |
 | Grade | -1 to 13, 99 (total) | PK, KG, 01, etc. |
 
 ### Grade Encoding (SEMANTIC TRAP!)

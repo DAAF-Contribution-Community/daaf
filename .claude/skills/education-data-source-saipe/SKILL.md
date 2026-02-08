@@ -95,7 +95,7 @@ Research question?
 
 ## Quick Reference: Key Variables
 
-> **API Implementation:** For URL construction patterns, pagination, and error handling, see the `education-data-query` skill. For comprehensive API learnings, see `agent_reference/EDUCATION_DATA_API_LEARNINGS.md`.
+> **Data Retrieval:** For mirror-based data fetching patterns and filtering, see the `education-data-query` skill.
 
 ### CRITICAL: Field Name Prefix
 
