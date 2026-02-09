@@ -128,10 +128,10 @@ Codebook `.xls` files exist for these topics. Data files are available in the mi
 
 | Topic | Type | Years | huggingface | urban_csv | codebook |
 |-------|------|-------|-------------|-----------|----------|
-| Census 1990 | Single | 1986-2023 | `schools/nhgis/census-1990/schools_nhgis_geog_1990` | N/A | `schools/nhgis/census-1990/codebook_schools_nhgis_census1990` |
-| Census 2000 | Single | 1986-2023 | `schools/nhgis/census-2000/schools_nhgis_geog_2000` | N/A | `schools/nhgis/census-2000/codebook_schools_nhgis_census2000` |
-| Census 2010 | Single | 1986-2023 | `schools/nhgis/census-2010/schools_nhgis_geog_2010` | N/A | `schools/nhgis/census-2010/codebook_schools_nhgis_census2010` |
-| Census 2020 | Single | 1986-2023 | `schools/nhgis/census-2020/schools_nhgis_geog_2020` | N/A | `schools/nhgis/census-2020/codebook_schools_nhgis_census2020` |
+| Census 1990 | Single | 1986-2023 | `schools/nhgis/census-1990/schools_nhgis_geog_1990` | `nhgis/schools_nhgis_geog_1990` | `schools/nhgis/census-1990/codebook_schools_nhgis_census1990` |
+| Census 2000 | Single | 1986-2023 | `schools/nhgis/census-2000/schools_nhgis_geog_2000` | `nhgis/schools_nhgis_geog_2000` | `schools/nhgis/census-2000/codebook_schools_nhgis_census2000` |
+| Census 2010 | Single | 1986-2023 | `schools/nhgis/census-2010/schools_nhgis_geog_2010` | `nhgis/schools_nhgis_geog_2010` | `schools/nhgis/census-2010/codebook_schools_nhgis_census2010` |
+| Census 2020 | Single | 1986-2023 | `schools/nhgis/census-2020/schools_nhgis_geog_2020` | `nhgis/schools_nhgis_geog_2020` | `schools/nhgis/census-2020/codebook_schools_nhgis_census2020` |
 
 ---
 
@@ -209,10 +209,10 @@ Codebook `.xls` files exist for these topics. Data files are available in the mi
 
 | Topic | Type | Years | huggingface | urban_csv | codebook |
 |-------|------|-------|-------------|-----------|----------|
-| Census 1990 | Single | 1980-2023 | `college-university/nhgis/census-1990/colleges_nhgis_geog_1990` | N/A | `college-university/nhgis/census-1990/codebook_colleges_nhgis_census1990` |
-| Census 2000 | Single | 1980-2023 | `college-university/nhgis/census-2000/colleges_nhgis_geog_2000` | N/A | `college-university/nhgis/census-2000/codebook_colleges_nhgis_census2000` |
-| Census 2010 | Single | 1980-2023 | `college-university/nhgis/census-2010/colleges_nhgis_geog_2010` | N/A | `college-university/nhgis/census-2010/codebook_colleges_nhgis_census2010` |
-| Census 2020 | Single | 1980-2023 | `college-university/nhgis/census-2020/colleges_nhgis_geog_2020` | N/A | `college-university/nhgis/census-2020/codebook_colleges_nhgis_census2020` |
+| Census 1990 | Single | 1980-2023 | `college-university/nhgis/census-1990/colleges_nhgis_geog_1990` | `nhgis/colleges_nhgis_geog_1990` | `college-university/nhgis/census-1990/codebook_colleges_nhgis_census1990` |
+| Census 2000 | Single | 1980-2023 | `college-university/nhgis/census-2000/colleges_nhgis_geog_2000` | `nhgis/colleges_nhgis_geog_2000` | `college-university/nhgis/census-2000/codebook_colleges_nhgis_census2000` |
+| Census 2010 | Single | 1980-2023 | `college-university/nhgis/census-2010/colleges_nhgis_geog_2010` | `nhgis/colleges_nhgis_geog_2010` | `college-university/nhgis/census-2010/codebook_colleges_nhgis_census2010` |
+| Census 2020 | Single | 1980-2023 | `college-university/nhgis/census-2020/colleges_nhgis_geog_2020` | `nhgis/colleges_nhgis_geog_2020` | `college-university/nhgis/census-2020/codebook_colleges_nhgis_census2020` |
 
 ### NCCS (Nonprofit 990 Data)
 
@@ -259,7 +259,7 @@ Codebook `.xls` files exist for these topics. Data files are available in the mi
 - **Mirror column values** are URL template parameters, not full URLs. See `mirrors.yaml` for URL templates.
 - **Codebook files** are `.xls` files available on both mirrors. The `codebook` column contains the full path (without extension); use `get_codebook_url()` from `fetch-patterns.md` to construct download URLs. Naming pattern: `codebook_{entity}_{source}_{topic}`. Codebooks are for human reference — not parsed programmatically.
 - **Additional datasets** sections list mirror datasets with codebooks that are not yet fully documented with data file paths. Use mirror discovery to confirm data file paths before fetching.
-- **NHGIS codebooks** are available on both mirrors (including Urban CSV), even though NHGIS data files are only available via HuggingFace.
+- **NHGIS** data files and codebooks are available on both mirrors.
 - **Discovery:** Use each mirror's discovery mechanism (defined in `mirrors.yaml`) to verify file availability before fetching.
 - **Cross-reference** source-specific skills for variable names, coded values, and caveats.
 - **Adding a new mirror:** Add a column to these tables with the new mirror's name (matching `mirrors.yaml`) and fill in URL template parameters.
