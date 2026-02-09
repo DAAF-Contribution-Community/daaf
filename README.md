@@ -517,41 +517,41 @@ You'll interact with the assistant through your **terminal** (also called the co
 Once you have all the prerequisites above, open your terminal and run these commands one at a time:
 
 ```bash
-# 1. Navigate to the folder where you want the installation files downloaded to. Change the below to the folder you want!
-cd "C:\Users\Documents"
+# 0. Navigate to the folder where you want this project to live. Change the below to the folder you want!
+cd "C:\Users\Documents" 
 
-# 2. Set up a project folder for the install files
-git clone --filter=blob:none --sparse https://github.com/brhkim/daaf.git
+# 1. Download the project to your computer
+git clone https://github.com/brhkim/daaf.git
 
-# 3. Move into the project folder once it's downloaded
+# 2. Move into the project folder once it's downloaded
 cd daaf
 
-# 4. Build and start the container (this takes a few minutes the first time because Docker
-#    downloads the necessary Python, Claude Code, AND the full project files from the internet)
+# 3. Build and start the container (this takes a few minutes the first time because Docker is going to download the necessary software from the internet and get it ready for you)
 docker compose up -d --build
 
-# 5. Once that's complete, open an interactive session inside the container
+# 4. Once that's complete, open an interactive session inside the container
 docker compose exec daaf-docker bash
 
-# 6. Start Claude Code
+# 5. Start Claude Code
 claude
 
-# Claude Code will prompt you to authenticate (API key or subscription login)
-# After that, you're in — start asking research questions!
-# You may want to enter into the chatbar /model to ensure that you're running Opus 4.6 for highest quality results given the complexity of tasks at play here
-
+# 6. Check or change your model to Opus 4.6
+/model
 ```
 
+On step 5, Claude Code will prompt you to authenticate (API key or subscription login). After that, you're in — start asking research questions.
 
 **What just happened?**
-- Steps 1-3 downloaded just the base installation files (Dockerfile, docker-compose.yml) to a `daaf` folder on your computer using a git feature called "sparse checkout" that fetches only the files you need
-- Step 4 built a Docker container that downloaded the full project files for running DAAF internally and installed all the required tools (Python, data science packages, Claude Code)
-- Step 5 opened a terminal session *inside* that container, separated from the rest of your computer and running with all the software we just installed into the Docker image
-- Step 6 launched the Claude Code assistant, ready to help with data analysis research
+- Step 1 downloaded all the project files to a `daaf` folder on your computer
+- Step 2 moved your terminal into that folder
+- Step 3 built a Docker container with all the tools pre-installed using the Dockerfile provided with this project (Python, data science packages, Claude Code)
+- Step 4 opened a terminal session *inside* that container, separated from the rest of your computer and running with all the software we just installed into the Docker image
+- Step 5 launched the Claude Code assistant, ready to help with data analysis research. 
+- Step 6 ensured you're using Opus 4.6 for this work, as it's basically required given the complexity of tasks at play here.
 
 ### What the Container Includes
 
-The point of the Docker container is two-fold. First, it fully isolates everything Claude is doing from the rest of your computer for safety. Second, it handles ALL of the complex software installation, and avoids any issues with hardware compatibility, pre-existing software versions, etc. etc. For your reference, that includes:
+You don't need to install any of these — Docker handles it all — but for your reference:
 
 | Component | What it does |
 |-----------|-------------|
@@ -563,13 +563,11 @@ The point of the Docker container is two-fold. First, it fully isolates everythi
 
 ### How Files Work
 
-The files you downloaded to your chosen folder in step #1 are just files that help us install the actual DAAF files and software — it contains only the files needed to build and start the Docker container (Dockerfile, docker-compose.yml, README). For your safety, the full project lives inside the container's fast, reliable storage — not on your computer's filesystem. If you want to look at files that DAAF is working on, it's easiest to access them via the Docker app window, clicking into the "Volumes" section.
+Your local `daaf/` folder is connected to the container. This means:
 
-- **The full project lives inside the container** — all code, agents, skills, and research outputs are stored in a Docker volume
-- **When you want to close your container temporarily** — run the following command in your terminal: `docker compose down`. Files that DAAF was working on remain saved in the Docker volume safely, and will be there when you restart working again later (see commands below for Day-to-Day Usage)
-- **When you want to delete all project files from Docker entirely** — run the following command in your terminal: `docker compose down -v`. This deletes the volume and all uncommitted work inside it. Always save your work with `git push` inside the container before using this command
-- **To copy files to your computer** — from your project folder on the host, run: `docker compose cp daaf-docker:/daaf/research/. ./research/`
-- **The container cannot see your other files** — your documents, photos, and everything else on your computer are completely isolated
+- **Files sync both ways** — when the assistant creates a report or dataset inside the container, it appears in the folder on your computer too. You can open these files normally.
+- **Your work persists** — stopping the container doesn't delete your research outputs. They live in your project folder.
+- **Only this folder is accessible** — the container cannot see any other files on your computer. Your documents, photos, and everything else are completely isolated.
 
 ### Viewing Marimo Notebooks
 
@@ -605,13 +603,11 @@ When you're done for the day:
 
 ```bash
 # Type /exit or press Ctrl+C to leave Claude Code, then:
-
-# Exit the docker container
 exit
-
-# Shut down the docker container, without deleting any files. Files will remain when you restart the docker container again with `docker compose up -d`
 docker compose down
 ```
+
+Your files are safe — they're on your computer, not just inside the container.
 
 ### Troubleshooting
 
@@ -622,20 +618,13 @@ docker compose down
 - Another process is using that port. Either stop it, or change the port mapping in `docker-compose.yml` (e.g., `"3000:2718"` to use port 3000 on your host)
 
 **Claude Code asks for an API key every time**
-- Claude Code stores its configuration inside the Docker volume. Your config survives `docker compose down` (normal stop), but is lost if you run `docker compose down -v` (which deletes the volume). To avoid re-authenticating, you can set `ANTHROPIC_API_KEY` as an environment variable in a `.env` file in the project root (the `.gitignore` already prevents `.env` from being shared publicly)
+- Claude Code stores its configuration inside the container. If you fully remove the container (`docker compose down`), you may need to re-authenticate next time. To avoid this, you can set `ANTHROPIC_API_KEY` as an environment variable in a `.env` file in the project root (the `.gitignore` already prevents `.env` from being shared publicly)
 
 **Container seems slow to build the first time**
-- The first `docker compose up --build` downloads base images, installs all packages, and clones the full project. This is a one-time cost — subsequent starts are fast since Docker caches everything
+- The first `docker compose up --build` downloads base images and installs all packages. This is a one-time cost — subsequent starts are fast since Docker caches everything
 
 **"command not found: docker"**
 - Docker Desktop may not be installed, or your terminal needs to be restarted after installation. Close and reopen your terminal, and make sure Docker Desktop is installed and running
-
-**"How do I update to the latest framework version?"**
-- Inside the container, run `git pull origin main` to fetch the latest changes
-
-**"How do I use my own fork?"**
-- Build with your fork's URL: `docker compose build --build-arg DAAF_REPO=https://github.com/youruser/daaf.git`
-- To use a specific branch: `docker compose build --build-arg DAAF_REF=my-branch`
 
 ---
 

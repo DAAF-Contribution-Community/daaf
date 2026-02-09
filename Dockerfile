@@ -57,30 +57,15 @@ RUN groupadd --gid 1000 appuser \
     && useradd --uid 1000 --gid 1000 --create-home appuser
 
 # ============================================
-# Set up working directory (named volume mount point)
+# Set up working directory
 # ============================================
-RUN mkdir -p /daaf && chown appuser:appuser /daaf
 WORKDIR /daaf
-
+RUN chown appuser:appuser /daaf
 USER appuser
 
-# Install Claude Code (cached — only re-runs if layers above change)
+# Install Claude Code as appuser (installs to ~/.claude/local/bin/)
 RUN curl -fsSL https://claude.ai/install.sh | bash
 ENV PATH="/home/appuser/.local/bin:${PATH}"
 
-# ============================================
-# Clone full repository into image
-# ============================================
-# Build args allow forks and pinned versions:
-#   docker compose build --build-arg DAAF_REPO=https://github.com/myuser/daaf.git
-#   docker compose build --build-arg DAAF_REF=my-branch
-ARG DAAF_REPO=https://github.com/brhkim/daaf.git
-ARG DAAF_REF=main
-RUN git clone --branch ${DAAF_REF} --single-branch ${DAAF_REPO} /home/appuser/daaf-seed
-
-# Extract entrypoint from cloned repo and make executable
-RUN cp /home/appuser/daaf-seed/docker-entrypoint.sh /home/appuser/docker-entrypoint.sh \
-    && chmod +x /home/appuser/docker-entrypoint.sh
-
-ENTRYPOINT ["/home/appuser/docker-entrypoint.sh"]
+# Default command
 CMD ["bash"]

@@ -4,7 +4,7 @@ services:
     ports:
       - "2718:2718"   # Marimo notebook server
     volumes:
-      - daaf-data:/daaf
+      - .:/daaf
     working_dir: /daaf
     stdin_open: true  # Required for interactive Claude Code sessions
     tty: true
@@ -12,6 +12,3 @@ services:
       - ALL             # Drop all Linux capabilities (least privilege)
     security_opt:
       - no-new-privileges:true  # Prevent privilege escalation inside container
-
-volumes:
-  daaf-data:            # Docker-managed volume (ext4 filesystem)
