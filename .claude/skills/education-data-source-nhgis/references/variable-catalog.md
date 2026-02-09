@@ -12,7 +12,7 @@ Key demographic variables available from NHGIS for education research contexts.
 
 ## Portal Integer Encodings
 
-When accessing NHGIS data through the Education Data Portal (HuggingFace mirror), categorical variables use integer codes. These are the encodings for the `schools/nhgis/census-{year}/` datasets.
+When accessing NHGIS data through the Education Data Portal mirrors, categorical variables use integer codes. These are the encodings for the NHGIS school-geography datasets.
 
 ### census_region
 

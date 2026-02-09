@@ -33,7 +33,7 @@ The EADA provides the only standardized, publicly available dataset on college a
 - **Coverage**: ~2,000+ coeducational postsecondary institutions with intercollegiate athletics
 - **Mandate**: Institutions participating in Title IV aid with athletic programs must report
 - **Frequency**: Annual (data publicly available by October 15 each year)
-- **Available years**: 2003–2022 (Portal), 2002–2021 (HuggingFace mirror)
+- **Available years**: 2002–2022 (Portal mirror)
 - **Primary identifier**: `unitid` (6-digit IPEDS institution ID)
 - **Content**: Athletic participation, coaching staff, salaries, expenses, revenues, and athletic aid — all reported by gender
 

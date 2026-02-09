@@ -7,11 +7,12 @@ Methods for obtaining NHGIS data: web interface, API, programming libraries, and
 For linking schools to census geography, use the pre-processed data from the Education Data Portal mirror. **No registration required.**
 
 ```python
-import polars as pl
+# Uses fetch_from_mirrors() — tries each mirror in priority order per mirrors.yaml.
+# See fetch-patterns.md and datasets-reference.md for canonical paths.
+from fetch_utils import fetch_from_mirrors
 
 # School-to-census geography (2020 Census)
-url = "https://huggingface.co/datasets/brhkim/education_data_portal_mirror/resolve/main/schools/nhgis/census-2020/schools_nhgis_geog_2020.parquet"
-df = pl.read_parquet(url)
+df = fetch_from_mirrors("nhgis/schools_nhgis_geog_2020")
 
 # Available census years: 1990, 2000, 2010, 2020
 ```

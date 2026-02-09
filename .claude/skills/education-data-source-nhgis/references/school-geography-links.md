@@ -115,7 +115,7 @@ tracts_in_district = district_tracts["TRACT"].unique()
 
 ## Method 3: Education Data Portal NHGIS Data
 
-The Urban Institute provides pre-linked school-to-tract data via the HuggingFace mirror.
+The Urban Institute provides pre-linked school-to-tract data via the Education Data Portal mirrors.
 
 ### Mirror Paths
 
@@ -147,11 +147,11 @@ Based on decennial census years:
 ### Querying via Mirror
 
 ```python
-import polars as pl
+# Uses fetch_from_mirrors() — tries each mirror in priority order per mirrors.yaml.
+from fetch_utils import fetch_from_mirrors
 
-# Load from HuggingFace mirror
-url = "https://huggingface.co/datasets/brhkim/education_data_portal_mirror/resolve/main/schools/nhgis/census-2020/schools_nhgis_geog_2020.parquet"
-df = pl.read_parquet(url)
+# Load from Portal mirror
+df = fetch_from_mirrors("nhgis/schools_nhgis_geog_2020")
 
 # Filter to specific school
 school_data = df.filter(pl.col("ncessch") == 60000100001)

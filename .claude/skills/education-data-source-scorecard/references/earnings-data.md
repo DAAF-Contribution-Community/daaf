@@ -189,7 +189,7 @@ Earnings are suppressed when privacy thresholds are not met:
 
 ### Variables Indicating Suppression
 
-> **Portal Encoding:** In the HuggingFace mirror parquet files, **`null` is the primary indicator** for suppressed/missing data.
+> **Portal Encoding:** In Portal mirror parquet files, **`null` is the primary indicator** for suppressed/missing data.
 
 | Data Pattern | Meaning | Notes |
 |--------------|---------|-------|

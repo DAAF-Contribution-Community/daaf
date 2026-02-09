@@ -12,7 +12,7 @@ This reference provides definitions for key variables in NCCS datasets, includin
 | **Naming style** | Descriptive (`prog_serv_rev`) | Abbreviated (`PROGREV`) |
 | **FIPS encoding** | Integer (`6` for California) | May be string (`"06"`) |
 | **Missing codes** | Integer (`-1`, `-2`, `-3`) | Integer or blank |
-| **Data format** | Parquet (via HuggingFace) | CSV |
+| **Data format** | Parquet (via Portal mirror) | CSV |
 
 ### Portal Variable Mapping
 

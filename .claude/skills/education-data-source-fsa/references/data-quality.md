@@ -28,7 +28,7 @@ FSA data provides valuable information on federal student aid programs but has i
 
 ## Year Coverage by Endpoint
 
-### Available Years (HuggingFace Mirror)
+### Available Years (Portal Mirror)
 
 | Endpoint | Earliest Year | Latest Year | Total Years |
 |----------|---------------|-------------|-------------|
@@ -51,7 +51,7 @@ Fin Resp |          |---------------------|
 
 ### Data Currency
 
-**Note**: Data is accessed via the HuggingFace mirror (brhkim/education_data_portal_mirror). Coverage may differ from the live API.
+**Note**: Data is accessed via the Education Data Portal mirrors (see `mirrors.yaml`). Coverage may differ from the live API.
 
 ## Institutional Coverage
 

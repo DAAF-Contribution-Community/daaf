@@ -76,12 +76,12 @@ The NCCS Unified BMF adds:
 
 ### Download
 
-**Via Education Data Portal (HuggingFace Mirror - Recommended for Portal Integration):**
+**Via Education Data Portal (Recommended for Portal Integration):**
 
 ```python
 import polars as pl
 
-# Download NCCS 990 data from HuggingFace mirror
+# Download NCCS 990 data from Portal mirror
 DATASET_PATH = "nccs/colleges_nccs_all"
 nccs = fetch_from_mirrors(DATASET_PATH)
 
@@ -180,7 +180,7 @@ Example: `CHARITIES_PC_2021.csv` = 501(c)(3) charities, full 990 filers, 2021 ta
 
 ### Download
 
-**Via Education Data Portal (HuggingFace Mirror - Recommended):**
+**Via Education Data Portal (Recommended):**
 
 ```python
 import polars as pl
@@ -344,7 +344,7 @@ Before the Efile era, SOI extracts were the primary source of 990 data for resea
 
 ### Education Data Portal (Recommended for Education Research)
 
-The HuggingFace mirror provides NCCS data for higher education institutions in parquet format:
+The Portal mirror provides NCCS data for higher education institutions in parquet format:
 
 ```python
 import polars as pl
@@ -385,7 +385,7 @@ https://nccs-urban.shinyapps.io/sector-in-brief/
 
 ### R Package: nccsdata
 
-> **Note:** The `get_data()` function in R works differently from Education Data Portal access. For Portal-based research, use the HuggingFace mirror approach above.
+> **Note:** The `get_data()` function in R works differently from Education Data Portal access. For Portal-based research, use the `fetch_from_mirrors()` approach above.
 
 ```r
 # devtools::install_github("UrbanInstitute/nccsdata")

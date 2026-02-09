@@ -23,7 +23,7 @@ Scorecard suppresses data when cell sizes are too small:
 
 ### Suppression Indicators
 
-> **Portal Encoding:** In the HuggingFace mirror parquet files, **`null` is the primary indicator** for suppressed/missing data. The codebook documents `-1, -2, -3` codes, but actual parquet data typically uses `null`.
+> **Portal Encoding:** In Portal mirror parquet files, **`null` is the primary indicator** for suppressed/missing data. The codebook documents `-1, -2, -3` codes, but actual parquet data typically uses `null`.
 
 | Data Pattern | Meaning | Notes |
 |--------------|---------|-------|

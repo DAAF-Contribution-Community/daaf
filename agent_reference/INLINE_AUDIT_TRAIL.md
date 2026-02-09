@@ -225,7 +225,7 @@ with open(MIRRORS_YAML) as f:
 # --- Fetch ---
 # INTENT: Download CCD school directory and filter to requested years.
 # The fetch_from_mirrors() function tries each mirror in priority order
-# (HuggingFace parquet first, Urban CSV fallback) and returns a Polars
+# (mirrors tried in priority order per mirrors.yaml) and returns a Polars
 # DataFrame filtered to the requested years.
 #
 # REASONING: Using mirror-based download (not the REST API) because mirrors

@@ -23,10 +23,33 @@ This pattern is inlined into every Stage 5 fetch script. It tries each mirror in
 ### Single-File Dataset (all years in one file)
 
 ```python
+import time
+
 import polars as pl
 import requests
 import yaml
 from pathlib import Path
+
+# --- Rate Limiting ---
+# INTENT: Prevent HTTP 429 (Too Many Requests) errors from mirrors.
+# REASONING: Mirrors may rate-limit rapid successive requests. A 3-second delay
+#   between fetch calls avoids triggering limits while keeping pipeline runtime
+#   reasonable (most fetches are sequential anyway).
+FETCH_DELAY_SECONDS = 3
+_last_fetch_time = 0.0
+
+
+def _rate_limit():
+    """Sleep if needed to maintain minimum delay between fetch requests."""
+    global _last_fetch_time
+    if _last_fetch_time > 0:
+        elapsed = time.time() - _last_fetch_time
+        if elapsed < FETCH_DELAY_SECONDS:
+            wait = FETCH_DELAY_SECONDS - elapsed
+            print(f"  (rate limit: waiting {wait:.1f}s)")
+            time.sleep(wait)
+    _last_fetch_time = time.time()
+
 
 # --- Mirror Configuration ---
 # INTENT: Download dataset from the fastest available mirror.
@@ -59,7 +82,7 @@ MIRRORS = load_mirrors()
 # Dataset path: canonical path string from datasets-reference.md.
 # All mirrors use the same path — only root_url and format differ.
 # Example for SAIPE district poverty:
-DATASET_PATH = "saipe/geography_saipe"
+DATASET_PATH = "saipe/districts_saipe"
 
 
 def fetch_from_mirrors(
@@ -72,13 +95,14 @@ def fetch_from_mirrors(
     Args:
         path: Canonical dataset path string from datasets-reference.md.
             All mirrors use the same path — only root_url and format differ.
-            Example: "saipe/geography_saipe"
+            Example: "saipe/districts_saipe"
         filters: Dict of column->value(s) filters to apply locally
         years: List of years to filter to (applied as pl.col("year").is_in(years))
 
     Returns:
         Filtered Polars DataFrame
     """
+    _rate_limit()
     last_error = None
 
     for mirror in MIRRORS:
@@ -222,25 +246,35 @@ def discover_mirror_files(mirror_config: dict) -> list[str] | None:
 
         response = requests.get(url, timeout=30)
         response.raise_for_status()
-        entries = response.json()
+        raw = response.json()
+
+        # Handle paginated response envelopes (e.g., Urban CSV returns
+        # {"count": N, "results": [...]} instead of a flat list).
+        if isinstance(raw, dict) and "results" in raw:
+            entries = raw["results"]
+        elif isinstance(raw, list):
+            entries = raw
+        else:
+            print(f"  Unexpected discovery response type: {type(raw)}")
+            return None
 
         # Handle response format differences between mirrors.
-        # HuggingFace: objects have "path" and "type" fields.
-        # Urban CSV:   objects have "file_dir" and "file_name" fields.
+        # Some mirrors return separate dir + name fields; others use a single path field.
+        # The keys are configured in mirrors.yaml's discovery section.
         file_dir_key = discovery.get("file_dir_key")
         file_name_key = discovery.get("file_name_key")
         path_key = discovery.get("file_path_key", "path")
 
         if file_dir_key and file_name_key:
-            # Construct paths from separate dir + name fields (e.g., Urban CSV)
+            # Construct paths from separate dir + name fields
             paths = [
                 f"{e[file_dir_key]}/{e[file_name_key]}"
                 for e in entries
-                if e.get("hide", 0) == 0
+                if isinstance(e, dict) and e.get("hide", 0) == 0
             ]
         else:
-            # Single path field (e.g., HuggingFace)
-            paths = [e[path_key] for e in entries if e.get("type") == "file"]
+            # Single path field
+            paths = [e[path_key] for e in entries if isinstance(e, dict) and e.get("type") == "file"]
 
         # Apply file_filter if specified (simple suffix matching)
         if file_filter != "*":
@@ -264,7 +298,7 @@ def discover_mirror_files(mirror_config: dict) -> list[str] | None:
 # mirror = MIRRORS[0]  # highest priority
 # files = discover_mirror_files(mirror)
 # if files is not None:
-#     target = "saipe/geography_saipe.parquet"
+#     target = "saipe/districts_saipe.parquet"
 #     if target in files:
 #         print("Available in primary mirror")
 #     else:
@@ -343,7 +377,7 @@ def get_codebook_url(
 
 # Usage:
 # url = get_codebook_url("saipe/codebook_districts_saipe")
-# → "https://huggingface.co/.../saipe/codebook_districts_saipe.xls"
+# → "{root_url}/saipe/codebook_districts_saipe.xls" (from first mirror with metadata config)
 ```
 
 ---
@@ -364,6 +398,7 @@ Format-specific read behavior is driven by the mirror's `read_strategy` field in
 - Set `infer_schema_length=10000` to avoid type inference errors on large files
 - Apply filters in the lazy frame before `.collect()` to minimize memory
 - Large files (500MB+) — always use lazy loading, never `pl.read_csv()` directly
+- **CRDC ID columns:** When reading any CRDC dataset from CSV, pass `schema_overrides={"ncessch": pl.Utf8, "leaid": pl.Utf8, "crdc_id": pl.Utf8}` to preserve zero-padded identifiers. Without this override, Polars infers Int64, destroying leading zeros for FIPS 01-09 states (~19% of rows). See `education-data-source-crdc` skill.
 
 ---
 

@@ -226,7 +226,7 @@ When a single hate crime is motivated by multiple biases:
 
 ### Data Variables (Portal Format)
 
-In the HuggingFace mirror parquet files:
+In Portal mirror parquet files:
 
 | Variable | Type | Description |
 |----------|------|-------------|

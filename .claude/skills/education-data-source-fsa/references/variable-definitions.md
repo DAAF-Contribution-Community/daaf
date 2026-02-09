@@ -28,11 +28,11 @@ Comprehensive reference for variables available in FSA endpoints through the Urb
 
 ## Overview
 
-FSA data in the Education Data Portal is organized into five endpoints, each with specific variables related to Title IV aid programs. Data is accessed via the HuggingFace mirror as parquet files.
+FSA data in the Education Data Portal is organized into five endpoints, each with specific variables related to Title IV aid programs. Data is accessed via the Portal mirrors (see `mirrors.yaml` for configuration).
 
 ### Endpoint Summary
 
-| Endpoint | HuggingFace Path | Years | Approx Records |
+| Endpoint | Path | Years | Approx Records |
 |----------|------------------|-------|----------------|
 | Grants | `fsa/grants/colleges_fsa_grants.parquet` | 1999-2021 | ~600K total |
 | Loans | `fsa/loans/colleges_fsa_loans.parquet` | 1999-2021 | ~1.6M total |

@@ -17,7 +17,7 @@ Guide to understanding and using campus crime and fire safety data collected und
 
 > **CRITICAL: Value Encoding**
 >
-> The Education Data Portal and HuggingFace mirror use **integer codes** for categorical variables, not string labels:
+> The Education Data Portal mirrors use **integer codes** for categorical variables, not string labels:
 >
 > | Variable | Example Code | Meaning |
 > |----------|--------------|---------|

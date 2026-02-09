@@ -184,7 +184,7 @@ Datasets for SAIPE are available via the mirror system. See `datasets-reference.
 
 | Dataset | Path | Type |
 |---------|------|------|
-| District Poverty Estimates | `saipe/geography_saipe` | Single |
+| District Poverty Estimates | `saipe/districts_saipe` | Single |
 
 **Years Available:** 1999-2023
 

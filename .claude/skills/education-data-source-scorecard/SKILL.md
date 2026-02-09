@@ -18,7 +18,7 @@ Federal data on post-college outcomes including earnings, debt, and repayment fo
 > **CRITICAL: Value Encoding**
 >
 > The Education Data Portal uses **integer encodings** for all categorical variables.
-> In HuggingFace mirror parquet files, **`null` is the primary indicator for
+> In Portal mirror parquet files, **`null` is the primary indicator for
 > missing/suppressed data** — not the string `"PrivacySuppressed"` from original
 > Scorecard documentation. Always verify codes against codebooks.
 >

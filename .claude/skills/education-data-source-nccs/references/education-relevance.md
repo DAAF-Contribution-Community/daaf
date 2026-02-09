@@ -355,7 +355,7 @@ Schedule L and R reveal related party transactions:
 
 ## Example Queries
 
-### Using Education Data Portal (HuggingFace Mirror)
+### Using Education Data Portal
 
 **Get NCCS Data for Higher Education:**
 

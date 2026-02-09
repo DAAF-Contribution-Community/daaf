@@ -258,8 +258,8 @@ Should orient the reader immediately — what this source provides that others d
 
 ### Dataset Paths
 
-| Topic | Type | Huggingface Path |
-|-------|------|------------------|
+| Topic | Type | Path |
+|-------|------|------|
 | [Dataset name] | [Single/Yearly] | `[path/to/file]` |
 | [Dataset name] | [Single/Yearly] | `[path/to/file_{year}]` |
 
@@ -276,15 +276,14 @@ Should orient the reader immediately — what this source provides that others d
 ### Example Fetch
 
 ```python
-import polars as pl
+# Uses fetch_from_mirrors() from fetch-patterns.md — tries each mirror
+# in priority order per mirrors.yaml and applies filters locally.
+from fetch_utils import fetch_from_mirrors
 
-url = "https://huggingface.co/datasets/brhkim/education_data_portal_mirror/resolve/main/[path].parquet"
-df = pl.read_parquet(url)
-
-# Filter locally
-df = df.filter(
-    (pl.col("fips") == 6) &  # California
-    (pl.col("year") == [year])
+df = fetch_from_mirrors(
+    "[source]/[dataset_path]",
+    filters={"fips": 6},  # California
+    years=[[year]],
 )
 ```
 
@@ -299,9 +298,9 @@ df = df.filter(
 <!-- RULES:
   - Section name: ALWAYS "## Data Access" (not "Data Fetching", "API Gotchas", etc.)
   - MUST have all four subsections: Dataset Paths, Codebooks, Example Fetch, Filtering
-  - Dataset Paths table: 3 columns (Topic | Type | Huggingface Path)
+  - Dataset Paths table: 3 columns (Topic | Type | Path) — canonical paths from datasets-reference.md
   - Codebooks table: 2 columns (Dataset | Codebook Path) + standard blockquote note
-  - Example Fetch: ALWAYS use Python + Polars with HuggingFace mirror URL
+  - Example Fetch: ALWAYS use fetch_from_mirrors() pattern from fetch-patterns.md
   - Example Fetch: Include at least one filter (fips + year is the standard pattern)
   - Filtering subsection: Show source-specific filter patterns (e.g., grade codes for CCD)
   - If a source has data NOT available via mirrors, note that explicitly

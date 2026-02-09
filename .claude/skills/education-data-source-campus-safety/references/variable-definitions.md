@@ -24,11 +24,9 @@ The Campus Safety and Security (CSS) data is collected through an annual survey 
 2. **Custom download**: Select variables and institutions for bulk download
 3. **Trend data**: View trends over time for specific questions
 
-### Education Data Portal (Urban Institute) / HuggingFace Mirror
+### Education Data Portal (Urban Institute)
 
-The Education Data Portal includes CSS data integrated with other college-level data sources. Data is available via mirror downloads.
-
-**Mirror Location**: `college-university/campus-crime/` in the HuggingFace mirror
+The Education Data Portal includes CSS data integrated with other college-level data sources. Data is available via mirror downloads (see `mirrors.yaml` for configuration).
 
 **Available Endpoints**:
 - `hate-crimes/colleges_csafety_hate_crimes.parquet` - Hate crime statistics by institution, year, crime type, and bias category

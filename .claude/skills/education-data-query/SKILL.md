@@ -128,10 +128,10 @@ All mirrors use the same canonical path. Each mirror appends its own format exte
 | Component | Description | Examples |
 |-----------|-------------|----------|
 | `source` | Data source | `ccd`, `ipeds`, `crdc`, `saipe`, `edfacts` |
-| `filename` | Dataset file | `schools_ccd_directory`, `geography_saipe` |
+| `filename` | Dataset file | `schools_ccd_directory`, `districts_saipe` |
 
 Example paths:
-- `saipe/geography_saipe` (SAIPE district poverty)
+- `saipe/districts_saipe` (SAIPE district poverty)
 - `ccd/schools_ccd_directory` (CCD school directory)
 - `ccd/schools_ccd_enrollment_2022` (CCD enrollment, yearly)
 
@@ -229,7 +229,7 @@ See `./references/filters-reference.md` for complete list.
 | Source | Skill | Key Fetch Considerations |
 |--------|-------|--------------------------|
 | CCD | `education-data-source-ccd` | Use grade-99 for totals; FRPL affected by CEP |
-| CRDC | `education-data-source-crdc` | Biennial only; 2015+ for complete coverage |
+| CRDC | `education-data-source-crdc` | Biennial only; 2015+ for complete coverage; CSV requires `schema_overrides` for ID cols (see CRDC skill) |
 | EDFacts | `education-data-source-edfacts` | Use `_midpt` vars; states not comparable |
 | IPEDS | `education-data-source-ipeds` | GRS limited to first-time full-time |
 | Scorecard | `education-data-source-scorecard` | High suppression; Title IV recipients only |

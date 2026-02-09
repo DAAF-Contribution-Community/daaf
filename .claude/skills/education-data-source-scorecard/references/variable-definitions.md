@@ -310,7 +310,7 @@ Many Scorecard fields use boolean indicators for institutional characteristics. 
 
 > **CRITICAL: Portal Encoding Warning**
 >
-> The Education Data Portal uses **integer codes** for all categorical values. For missing data, **the HuggingFace mirror parquet files primarily use `null` (not integer codes)** for most Scorecard columns. The codebook documents `-1, -2, -3` codes, but actual parquet data may represent these as `null`. Always check actual data.
+> The Education Data Portal uses **integer codes** for all categorical values. For missing data, **Portal mirror parquet files primarily use `null` (not integer codes)** for most Scorecard columns. The codebook documents `-1, -2, -3` codes, but actual parquet data may represent these as `null`. Always check actual data.
 
 | Codebook Code | Meaning | Actual Portal Data |
 |---------------|---------|-------------------|
@@ -357,7 +357,7 @@ df = df.filter(
 
 ### Key Observation: Scorecard Data in Portal
 
-**In the HuggingFace mirror parquet files:**
+**In Portal mirror parquet files:**
 - Categorical variables use **integer codes** (e.g., `pred_degree_awarded_ipeds` = 0, 1, 2, 3, 4)
 - Yes/No flags use **0 and 1** (e.g., `min_serving_historic_black` = 0 or 1)
 - Missing/suppressed data is represented as **`null`** (not `-1, -2, -3` in most columns)

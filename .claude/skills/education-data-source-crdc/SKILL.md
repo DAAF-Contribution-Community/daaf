@@ -149,6 +149,8 @@ Data quality issue?
 | `leaid` | 7-digit | District | `0600001` | NCES district ID, joins to CCD |
 | `combokey` | varies | School | `AL-0010-00002` | OCR internal key (state-district-school) |
 
+> **WARNING: String Type Override Required.** When reading CRDC data from CSV, `ncessch`, `leaid`, and `crdc_id` must be read as String (`pl.Utf8`) via `schema_overrides`. Polars infers these as Int64, silently destroying leading zeros for ~19% of rows (FIPS 01-09 states: AL, AK, AZ, AR, CA, CO, CT). Parquet files preserve types automatically.
+
 ### Race/Ethnicity (Portal Integer Codes)
 
 | Code | Category |
@@ -244,6 +246,7 @@ df = df.filter(
 | **Sample years** | Early years sampled | Use 2015+ for national estimates |
 | **Definition drift** | Variables change over time | Check codebooks for each year |
 | **Forgetting code 99** | Including totals in calculations | Filter `race < 99` for disaggregated analysis |
+| **CSV type inference** | Polars infers `ncessch`/`leaid`/`crdc_id` as Int64 | Use `schema_overrides={"ncessch": pl.Utf8, "leaid": pl.Utf8, "crdc_id": pl.Utf8}` |
 
 ## Equity Analysis Framework
 

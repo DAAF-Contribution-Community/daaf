@@ -24,7 +24,7 @@ Comprehensive guide to understanding and using IPEDS data correctly. IPEDS is th
 > | **Portal (integers)** | `1` | `2` | `1` | `1` |
 > | NCES raw files | `EFFY_WHITE` | `EFFY_BKAA` | `M` | varies |
 >
-> **Always verify codes against Portal codebooks** (available at each endpoint in the HuggingFace mirror).
+> **Always verify codes against Portal codebooks** (available alongside each dataset in the Portal mirrors).
 
 ## What is IPEDS?
 

@@ -342,6 +342,8 @@ Output: data/raw/2026-01-24_ccd_schools.parquet
 Checkpoint: CP1
 """
 
+import time
+
 import polars as pl
 from pathlib import Path
 
@@ -370,6 +372,24 @@ MIRRORS_YAML = Path("/daaf/.claude/skills/education-data-query/references/mirror
 with open(MIRRORS_YAML) as f:
     MIRRORS = yaml.safe_load(f)["mirrors"]
 
+# --- Rate Limiting ---
+# INTENT: Prevent HTTP 429 (Too Many Requests) errors from mirrors.
+# REASONING: Mirrors may rate-limit rapid successive requests.
+FETCH_DELAY_SECONDS = 3
+_last_fetch_time = 0.0
+
+
+def _rate_limit():
+    """Sleep if needed to maintain minimum delay between fetch requests."""
+    global _last_fetch_time
+    if _last_fetch_time > 0:
+        elapsed = time.time() - _last_fetch_time
+        if elapsed < FETCH_DELAY_SECONDS:
+            wait = FETCH_DELAY_SECONDS - elapsed
+            print(f"  (rate limit: waiting {wait:.1f}s)")
+            time.sleep(wait)
+    _last_fetch_time = time.time()
+
 
 def fetch_from_mirrors(
     path: str,
@@ -385,6 +405,7 @@ def fetch_from_mirrors(
         filters: Dict of column->value(s) filters to apply locally.
         years: List of years to filter to.
     """
+    _rate_limit()
     last_error = None
 
     for mirror in MIRRORS:
