@@ -202,7 +202,7 @@ Read documentation and verify claims against actual data:
 ### Step 1: Initialize
 
 1. **Load skill-authoring skill** — Call skill tool to understand generic skill structure requirements
-2. **Read data source template** — Read `agents/data-ingest-references/DATA_SOURCE_SKILL_TEMPLATE.md` for the canonical section order that ALL `*-data-source-*` skills MUST follow. This template overrides the generic `skill-authoring` layout for data source skills.
+2. **Read data source template** — Read `agent_reference/DATA_SOURCE_SKILL_TEMPLATE.md` for the canonical section order that ALL `*-data-source-*` skills MUST follow. This template overrides the generic `skill-authoring` layout for data source skills.
 3. **Identify file format** — Determine appropriate loading method
 4. **Create workspace** — Set up skill directory structure
 
@@ -560,7 +560,7 @@ Create the complete skill following the **canonical data source template**.
 
 > **CRITICAL:** Do NOT use the generic `skill-authoring` layout for data source skills.
 > Instead, follow the canonical section order defined in
-> `agents/data-ingest-references/DATA_SOURCE_SKILL_TEMPLATE.md` (read in Step 1).
+> `agent_reference/DATA_SOURCE_SKILL_TEMPLATE.md` (read in Step 1).
 
 **Canonical Section Order (MANDATORY for `*-data-source-*` skills):**
 
@@ -597,7 +597,7 @@ Create the complete skill following the **canonical data source template**.
 - `quality-notes.md` → detailed backup for § 10 Common Pitfalls
 - `data-quality.md` → suppression patterns, completeness details
 
-See the full annotated skeleton in `agents/data-ingest-references/DATA_SOURCE_SKILL_TEMPLATE.md` for formatting rules, column counts, and content guidelines per section.
+See the full annotated skeleton in `agent_reference/DATA_SOURCE_SKILL_TEMPLATE.md` for formatting rules, column counts, and content guidelines per section.
 
 ### Step 6: Report Discrepancies
 
@@ -913,7 +913,7 @@ Task({
 All relative paths in referenced files resolve from BASE_DIR.
 
 First, call the skill tool with name 'skill-authoring' to understand generic skill structure.
-Then read `{BASE_DIR}/agents/data-ingest-references/DATA_SOURCE_SKILL_TEMPLATE.md` for the
+Then read `{BASE_DIR}/agent_reference/DATA_SOURCE_SKILL_TEMPLATE.md` for the
 canonical data source skill section order. The template OVERRIDES the generic skill-authoring
 layout — all `*-data-source-*` skills MUST follow its 12-section structure.
 
