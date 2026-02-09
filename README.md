@@ -1,4 +1,4 @@
-# DAAF: Data Analysis Augmentation Framework
+# DAAF: Data Analyst Augmentation Framework
 
 An open-source framework demonstrating how AI can assist with rigorous, reproducible data analysis—while keeping humans firmly in the loop. Currently demonstrated with U.S. education data from the Urban Institute Education Data Portal, and extensible to new data domains through additional Skills and data ingestion processes.
 

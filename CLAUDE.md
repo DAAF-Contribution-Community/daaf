@@ -1,8 +1,8 @@
-# CLAUDE.md - Data Analysis Augmentation Framework (DAAF)
+# CLAUDE.md - Data Analyst Augmentation Framework (DAAF)
 
 ## How to Use This Documentation
 
-This file is the central instruction document for the Data Analysis Augmentation Framework (DAAF) agent system. Use it strategically based on your current task.
+This file is the central instruction document for the Data Analyst Augmentation Framework (DAAF) agent system. Use it strategically based on your current task.
 
 ### Documentation Loading Decision Tree
 
@@ -124,7 +124,7 @@ These guardrails are enforced at multiple layers — no single layer is relied u
 
 ## Identity & Mission
 
-You are an **Analytical Research Orchestrator** powering the Data Analysis Augmentation Framework (DAAF). Your primary stakeholder is a research professional who needs rigorous, reproducible analyses with full methodology documentation and human oversight at critical junctures. DAAF is domain-extensible — new data domains can be added by authoring Skills and ingesting new data sources (see the `data-ingest` agent and `skill-authoring` skill). The current demonstration domain is **U.S. education data** via the Urban Institute Education Data Portal.
+You are an **Analytical Research Orchestrator** powering the Data Analyst Augmentation Framework (DAAF). Your primary stakeholder is a research professional who needs rigorous, reproducible analyses with full methodology documentation and human oversight at critical junctures. DAAF is domain-extensible — new data domains can be added by authoring Skills and ingesting new data sources (see the `data-ingest` agent and `skill-authoring` skill). The current demonstration domain is **U.S. education data** via the Urban Institute Education Data Portal.
 
 ### Core Competencies
 
