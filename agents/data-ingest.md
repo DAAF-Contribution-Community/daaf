@@ -201,8 +201,9 @@ Read documentation and verify claims against actual data:
 
 ### Step 1: Initialize
 
-1. **Load skill-authoring skill** — Call skill tool to understand skill structure requirements
-2. **Identify file format** — Determine appropriate loading method
+1. **Load skill-authoring skill** — Call skill tool to understand generic skill structure requirements
+2. **Read data source template** — Read `agents/data-ingest-references/DATA_SOURCE_SKILL_TEMPLATE.md` for the canonical section order that ALL `*-data-source-*` skills MUST follow. This template overrides the generic `skill-authoring` layout for data source skills.
+3. **Identify file format** — Determine appropriate loading method
 4. **Create workspace** — Set up skill directory structure
 
 ```bash
@@ -555,68 +556,48 @@ Combine profiling results and documentation reconciliation:
 
 ### Step 5: Author Skill
 
-Create the complete skill following `skill-authoring` patterns:
+Create the complete skill following the **canonical data source template**.
 
-**SKILL.md Structure:**
-```markdown
----
-name: {skill-name}
-description: {Generated description of data, structure, and use cases}. Use when working with {data description} data, interpreting {key columns}, or understanding {domain} coding schemes.
----
+> **CRITICAL:** Do NOT use the generic `skill-authoring` layout for data source skills.
+> Instead, follow the canonical section order defined in
+> `agents/data-ingest-references/DATA_SOURCE_SKILL_TEMPLATE.md` (read in Step 1).
 
-# {Skill Title}
+**Canonical Section Order (MANDATORY for `*-data-source-*` skills):**
 
-## What This Data Contains
-
-- **Source:** {source if known}
-- **Records:** {row count}
-- **Columns:** {column count}
-- **Temporal coverage:** {if applicable}
-- **Geographic coverage:** {if applicable}
-
-## Quick Reference
-
-| Column | Type | Description | Notes |
-|--------|------|-------------|-------|
-| {col1} | {type} | {description} | {quality notes} |
-| ... | ... | ... | ... |
-
-## Coded Values
-
-> **CRITICAL:** Filter these values before calculations.
-
-| Column | Code | Meaning | Action |
-|--------|------|---------|--------|
-| {col} | -1 | Missing | Exclude |
-| ... | ... | ... | ... |
-
-## Data Quality Notes
-
-### Completeness
-{Completeness observations}
-
-### Known Issues
-{Quality issues discovered}
-
-## How to Load
-
-```python
-import polars as pl
-
-df = pl.read_{format}("{path}")
-
-# Filter coded missing values
-df = df.filter(pl.col("{col}") >= 0)
+```
+ 1. Frontmatter (YAML) — domain: education-data, audience: data-analysts
+ 2. Title — "# [ACRONYM] Data Source Reference"
+ 3. Summary paragraph — 1-2 sentences
+ 4. Value Encodings Warning — blockquote with comparison table
+ 5. ## What is [Source]? — bullet list with bold keys
+ 6. ## Reference File Structure — 3-column table
+ 7. ## Decision Trees — ≥2 ASCII trees in code blocks
+ 8. ## Quick Reference: [Label] — MUST include Missing Data Codes + Key Identifiers
+ 9. ## Data Access — Dataset Paths table + Codebooks table + Example Fetch + Filtering
+10. ## Common Pitfalls — 3-column table (Pitfall | Issue | Solution)
+11. ## Related Data Sources — 3-column table, MUST include explorer + query skills
+12. ## Topic Index — 2-column table (Topic | Reference File), LAST section
 ```
 
-## Topic Index
+**Mapping Profiling Phases to Template Sections:**
 
-| Topic | Reference File |
-|-------|----------------|
-| Complete column reference | `references/columns.md` |
-| All coded values | `references/coded-values.md` |
-| Quality details | `references/quality-notes.md` |
-```
+| Profiling Phase | Populates Template Section(s) |
+|-----------------|-------------------------------|
+| Phase 1: Structural | § 3 Summary (row/column counts), § 5 "What is" (coverage, frequency) |
+| Phase 2: Column-level | § 8 Quick Reference (variable tables, Key Identifiers) |
+| Phase 3: Relationships | § 8 Key Identifiers (join keys), § 11 Related Data Sources |
+| Phase 4: Quality | § 4 Value Encodings Warning, § 8 Missing Data Codes, § 10 Common Pitfalls |
+| Phase 5: Semantic | § 7 Decision Trees (navigation), § 8 categorical code tables |
+| Documentation reconciliation | § 6 Reference File Structure, § 9 Codebooks, § 10 Common Pitfalls |
+
+**Reference files** (`references/`) map to template sections as follows:
+- `columns.md` → detailed backup for § 8 Quick Reference
+- `coded-values.md` → detailed backup for § 4 + § 8 Missing Data Codes
+- `variable-definitions.md` → complete encoding tables referenced by § 4 blockquote
+- `quality-notes.md` → detailed backup for § 10 Common Pitfalls
+- `data-quality.md` → suppression patterns, completeness details
+
+See the full annotated skeleton in `agents/data-ingest-references/DATA_SOURCE_SKILL_TEMPLATE.md` for formatting rules, column counts, and content guidelines per section.
 
 ### Step 6: Report Discrepancies
 
@@ -810,16 +791,40 @@ Awaiting guidance before proceeding.
 2. [ ] All coded values detected and mapped
 3. [ ] All documentation claims verified against data
 4. [ ] All discrepancies documented with evidence
-5. [ ] Complete skill created per `skill-authoring` spec
+5. [ ] Complete skill created per canonical data source template
 6. [ ] Profiling scripts archived in skill directory
 7. [ ] Discrepancy report presented for user review
+8. [ ] **Template compliance verified** (see checklist below)
+
+**Template Compliance Self-Check (MANDATORY before returning):**
+
+Before returning findings, verify the generated SKILL.md against this checklist:
+
+- [ ] Frontmatter: `domain: education-data` (not other values)
+- [ ] Frontmatter: description includes "what" AND "when to use"
+- [ ] Title: `# [ACRONYM] Data Source Reference` format
+- [ ] Summary: 1-2 sentences after title
+- [ ] Value Encodings Warning: blockquote in position 4 with comparison table
+- [ ] "What is" section: bullet list with bold keys
+- [ ] Reference File Structure: 3-column table (File | Purpose | When to Read)
+- [ ] Decision Trees: at least 2 trees in code blocks
+- [ ] Quick Reference: includes `### Missing Data Codes` subsection
+- [ ] Quick Reference: includes `### Key Identifiers` subsection
+- [ ] Data Access: has Dataset Paths table + Codebooks table + Example Fetch code
+- [ ] Common Pitfalls: 3-column table (Pitfall | Issue | Solution), ≥3 rows
+- [ ] Related Data Sources: 3-column table, includes `education-data-explorer` + `education-data-query`
+- [ ] Topic Index: 2-column table as LAST section
+- [ ] Total lines under 500
+
+If any check fails, fix the SKILL.md before returning.
 
 **This ingest is INCOMPLETE if:**
 
 - Any column has no profiling data
 - Coded values are mentioned but not enumerated
 - Discrepancies are noted without evidence
-- Skill is missing required sections
+- Skill is missing required canonical sections (see checklist above)
+- SKILL.md does not follow the 12-section canonical order
 - User review items are not explicitly listed
 
 ---
@@ -907,7 +912,10 @@ Task({
 **BASE_DIR:** {BASE_DIR}
 All relative paths in referenced files resolve from BASE_DIR.
 
-First, call the skill tool with name 'skill-authoring' to understand skill structure requirements.
+First, call the skill tool with name 'skill-authoring' to understand generic skill structure.
+Then read `{BASE_DIR}/agents/data-ingest-references/DATA_SOURCE_SKILL_TEMPLATE.md` for the
+canonical data source skill section order. The template OVERRIDES the generic skill-authoring
+layout — all `*-data-source-*` skills MUST follow its 12-section structure.
 
 **DATA FILE:**
 Path: {data_file_path}
@@ -972,7 +980,7 @@ Before returning findings, verify:
 - [ ] **All semantic interpretations marked as [PRELIMINARY]**
 - [ ] **Interpretations include basis (name pattern, value pattern, range)**
 - [ ] **Ambiguous columns flagged for user clarification**
-- [ ] Skill follows `skill-authoring` structure
+- [ ] Skill follows canonical data source template (12-section order)
 - [ ] Profiling scripts archived and executable
 - [ ] User review items explicitly enumerated (discrepancies AND interpretations)
 - [ ] **Website sources cited with URLs (if website documentation used)**
