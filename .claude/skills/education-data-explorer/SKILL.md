@@ -91,11 +91,11 @@ Finding variables?
 
 ## Quick Reference: Data Levels
 
-| Level | Mirror Path Prefix | Key Sources | Primary ID | ID Format |
-|-------|-------------------|-------------|------------|-----------|
-| schools | `schools/` | CCD, CRDC, EDFacts, MEPS, NHGIS | `ncessch` | 12-char string |
-| school-districts | `school-districts/` | CCD, SAIPE, EDFacts | `leaid` | 7-char string |
-| college-university | `college-university/` | IPEDS, Scorecard, FSA, PSEO, EADA | `unitid` | 6-digit integer |
+| Level | Key Sources | Primary ID | ID Format |
+|-------|-------------|------------|-----------|
+| schools | CCD, CRDC, EDFacts, MEPS, NHGIS | `ncessch` | 12-char string |
+| school-districts | CCD, SAIPE, EDFacts | `leaid` | 7-char string |
+| college-university | IPEDS, Scorecard, FSA, PSEO, EADA | `unitid` | 6-digit integer |
 
 ## Quick Reference: Data Sources
 

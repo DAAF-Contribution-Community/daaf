@@ -220,43 +220,20 @@ For `homeless`, `migrant`, `econ_disadvantaged`, `foster_care`, `military_connec
 
 ## Data Access
 
-### Dataset Paths
+Datasets for EDFacts are available via the mirror system. See `datasets-reference.md` for canonical paths and `fetch-patterns.md` for fetch code patterns.
 
-| Topic | Type | Huggingface Path |
-|-------|------|------------------|
-| School Assessments | Yearly (2009-2018, 2020) | `schools/edfacts/assessments/schools_edfacts_assessments_{year}` |
-| School Grad Rates | Yearly (2010-2019) | `schools/edfacts/grad-rates/schools_edfacts_grad_rates_{year}` |
-| District Assessments | Yearly (2009-2020) | `school-districts/edfacts/assessments/districts_edfacts_assessments_{year}` |
-| District Grad Rates | Yearly (2010-2019) | `school-districts/edfacts/grad-rates/districts_edfacts_grad_rates_{year}` |
+**Key datasets:**
 
-### Codebooks
+| Dataset | Path | Type |
+|---------|------|------|
+| School Assessments | `edfacts/schools_edfacts_assessments_{year}` | Yearly (2009-2018, 2020) |
+| School Grad Rates | `edfacts/schools_edfacts_grad_rates_{year}` | Yearly (2010-2019) |
+| District Assessments | `edfacts/districts_edfacts_assessments_{year}` | Yearly (2009-2020) |
+| District Grad Rates | `edfacts/districts_edfacts_grad_rates_{year}` | Yearly (2010-2019) |
 
-| Dataset | Codebook Path |
-|---------|---------------|
-| School Assessments | `schools/edfacts/assessments/codebook_schools_edfacts_assessments` |
-| School Grad Rates | `schools/edfacts/grad-rates/codebook_schools_edfacts_grad_rates` |
-| District Assessments | `school-districts/edfacts/assessments/codebook_districts_edfacts_assessments` |
-| District Grad Rates | `school-districts/edfacts/grad-rates/codebook_districts_edfacts_grad_rates` |
-
-> Codebooks are `.xls` files on both mirrors. See `datasets-reference.md` for full catalog and `fetch-patterns.md` for `get_codebook_url()`. For human reference — not parsed programmatically.
+Codebooks: See `datasets-reference.md` codebook column. Use `get_codebook_url()` from `fetch-patterns.md`.
 
 > **Note:** 2019 assessment data is NOT available due to COVID testing waivers.
-
-### Example Fetch
-
-```python
-import polars as pl
-
-# Assessment data (yearly file)
-url = "https://huggingface.co/datasets/brhkim/education_data_portal_mirror/resolve/main/schools/edfacts/assessments/schools_edfacts_assessments_2018.parquet"
-df = pl.read_parquet(url)
-
-# Filter by state and grade locally
-df = df.filter(
-    (pl.col("fips") == 6) &  # California
-    (pl.col("grade_edfacts") == 4)  # Grade 4
-)
-```
 
 ### Filtering
 

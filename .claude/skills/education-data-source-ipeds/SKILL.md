@@ -221,44 +221,19 @@ Need variable definitions?
 
 ## Data Access
 
-### Dataset Paths
+Datasets for IPEDS are available via the mirror system. See `datasets-reference.md` for canonical paths and `fetch-patterns.md` for fetch code patterns.
 
-| Topic | Type | Huggingface Path |
-|-------|------|------------------|
-| Directory | Single | `college-university/ipeds/directory/colleges_ipeds_directory` |
-| Admissions | Single | `college-university/ipeds/admissions-enrollment/colleges_ipeds_admissions-enrollment` |
-| Enrollment FTE | Single | `college-university/ipeds/enrollment-full-time-equivalent/colleges_ipeds_enrollment-fte` |
-| Graduation Rates | Single | `college-university/ipeds/grad-rates/colleges_ipeds_grad-rates` |
-| Finance | Single | `college-university/ipeds/finance/colleges_ipeds_finance` |
+**Key datasets:**
 
-### Codebooks
+| Dataset | Path | Type |
+|---------|------|------|
+| Directory | `ipeds/colleges_ipeds_directory` | Single |
+| Admissions | `ipeds/colleges_ipeds_admissions-enrollment` | Single |
+| Enrollment FTE | `ipeds/colleges_ipeds_enrollment-fte` | Single |
+| Graduation Rates | `ipeds/colleges_ipeds_grad-rates` | Single |
+| Finance | `ipeds/colleges_ipeds_finance` | Single |
 
-| Dataset | Codebook Path |
-|---------|---------------|
-| Directory | `college-university/ipeds/directory/codebook_colleges_ipeds_directory` |
-| Admissions Enrollment | `college-university/ipeds/admissions-enrollment/codebook_colleges_ipeds_admissions-enrollment` |
-| Enrollment FTE | `college-university/ipeds/enrollment-full-time-equivalent/codebook_colleges_ipeds_enrollment-fte` |
-| Graduation Rates | `college-university/ipeds/grad-rates/codebook_colleges_ipeds_grad-rates` |
-| Finance | `college-university/ipeds/finance/codebook_colleges_ipeds_finance` |
-
-> Codebooks are `.xls` files on both mirrors. See `datasets-reference.md` for the
-> full catalog (32 IPEDS codebooks total, one per survey component) and `fetch-patterns.md`
-> for `get_codebook_url()`. For human reference — not parsed programmatically.
-
-### Example Fetch
-
-```python
-import polars as pl
-
-url = "https://huggingface.co/datasets/brhkim/education_data_portal_mirror/resolve/main/college-university/ipeds/directory/colleges_ipeds_directory.parquet"
-df = pl.read_parquet(url)
-
-# Filter locally
-df = df.filter(
-    (pl.col("fips") == 6) &  # California
-    (pl.col("year") == 2023)
-)
-```
+32 IPEDS datasets exist in the mirror. See `datasets-reference.md` for the complete list with codebook paths.
 
 ### Filtering
 

@@ -191,36 +191,15 @@ Interpretation question?
 
 ## Data Access
 
-### Dataset Paths
+Datasets for EADA are available via the mirror system. See `datasets-reference.md` for canonical paths and `fetch-patterns.md` for fetch code patterns.
 
-| Topic | Type | Huggingface Path |
-|-------|------|------------------|
-| Institutional Characteristics | Single | `college-university/eada/institutional-characteristics/colleges_eada_inst_characteristics` |
+**Key datasets:**
 
-### Codebooks
+| Dataset | Path | Type |
+|---------|------|------|
+| Institutional Characteristics | `eada/colleges_eada_inst_characteristics` | Single |
 
-| Dataset | Codebook Path |
-|---------|---------------|
-| Institutional Characteristics | `college-university/eada/institutional-characteristics/codebook_colleges_eada_inst-characteristics` |
-
-> Codebooks are `.xls` files on both mirrors. See `datasets-reference.md` for the
-> full catalog and `fetch-patterns.md` for `get_codebook_url()`. For human
-> reference — not parsed programmatically.
-
-### Example Fetch
-
-```python
-import polars as pl
-
-url = "https://huggingface.co/datasets/brhkim/education_data_portal_mirror/resolve/main/college-university/eada/institutional-characteristics/colleges_eada_inst_characteristics.parquet"
-df = pl.read_parquet(url)
-
-# Filter locally — California, 2022
-df = df.filter(
-    (pl.col("fips") == 6) &
-    (pl.col("year") == 2022)
-)
-```
+Codebooks: See `datasets-reference.md` codebook column. Use `get_codebook_url()` from `fetch-patterns.md`.
 
 ### Filtering
 

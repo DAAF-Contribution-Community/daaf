@@ -82,8 +82,8 @@ The NCCS Unified BMF adds:
 import polars as pl
 
 # Download NCCS 990 data from HuggingFace mirror
-url = "https://huggingface.co/datasets/brhkim/education_data_portal_mirror/resolve/main/college-university/nccs/990-forms/colleges_nccs_all.parquet"
-nccs = pl.read_parquet(url)
+DATASET_PATH = "nccs/colleges_nccs_all"
+nccs = fetch_from_mirrors(DATASET_PATH)
 
 # Data is pre-filtered to higher education institutions
 # Variables are lowercase (e.g., fips, unitid, contributions_total)
@@ -186,8 +186,8 @@ Example: `CHARITIES_PC_2021.csv` = 501(c)(3) charities, full 990 filers, 2021 ta
 import polars as pl
 
 # NCCS data for higher education institutions
-url = "https://huggingface.co/datasets/brhkim/education_data_portal_mirror/resolve/main/college-university/nccs/990-forms/colleges_nccs_all.parquet"
-nccs = pl.read_parquet(url)
+DATASET_PATH = "nccs/colleges_nccs_all"
+nccs = fetch_from_mirrors(DATASET_PATH)
 
 # Variables use Portal naming (lowercase, descriptive)
 # e.g., contributions_total, prog_serv_rev, revenue_total
@@ -350,8 +350,8 @@ The HuggingFace mirror provides NCCS data for higher education institutions in p
 import polars as pl
 
 # NCCS Form 990 data for colleges/universities
-url = "https://huggingface.co/datasets/brhkim/education_data_portal_mirror/resolve/main/college-university/nccs/990-forms/colleges_nccs_all.parquet"
-nccs = pl.read_parquet(url)
+DATASET_PATH = "nccs/colleges_nccs_all"
+nccs = fetch_from_mirrors(DATASET_PATH)
 
 # Data is pre-matched to IPEDS UNITID
 # Covers 1993-2016 (24 years)

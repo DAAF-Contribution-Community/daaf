@@ -13,9 +13,9 @@ EADA data is fetched from mirrors via the `education-data-query` skill.
 ```python
 import polars as pl
 
-# Fetch EADA institutional data
-url = "https://huggingface.co/datasets/brhkim/education_data_portal_mirror/resolve/main/college-university/eada/institutional-characteristics/colleges_eada_inst_characteristics.parquet"
-df = pl.read_parquet(url)
+# Fetch EADA institutional data via unified mirror system
+DATASET_PATH = "eada/colleges_eada_inst_characteristics"
+df = fetch_from_mirrors(DATASET_PATH)
 
 # Filter by year and state
 df = df.filter(

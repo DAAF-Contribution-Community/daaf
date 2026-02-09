@@ -362,9 +362,9 @@ Schedule L and R reveal related party transactions:
 ```python
 import polars as pl
 
-# Load NCCS data from HuggingFace mirror
-url = "https://huggingface.co/datasets/brhkim/education_data_portal_mirror/resolve/main/college-university/nccs/990-forms/colleges_nccs_all.parquet"
-nccs = pl.read_parquet(url)
+# Load NCCS data via unified mirror system
+DATASET_PATH = "nccs/colleges_nccs_all"
+nccs = fetch_from_mirrors(DATASET_PATH)
 
 # Filter to California (FIPS = 6) - note: integer codes!
 ca_institutions = nccs.filter(pl.col("fips") == 6)
@@ -383,10 +383,12 @@ print(f"Total Assets: ${latest['total_assets_eoy'].mean():,.0f}")
 import polars as pl
 
 # NCCS data includes unitid for IPEDS matching
-nccs = pl.read_parquet("https://huggingface.co/datasets/brhkim/education_data_portal_mirror/resolve/main/college-university/nccs/990-forms/colleges_nccs_all.parquet")
+NCCS_PATH = "nccs/colleges_nccs_all"
+nccs = fetch_from_mirrors(NCCS_PATH)
 
 # IPEDS directory for institution names
-ipeds = pl.read_parquet("https://huggingface.co/datasets/brhkim/education_data_portal_mirror/resolve/main/college-university/ipeds/directory/colleges_ipeds_directory_all.parquet")
+IPEDS_PATH = "ipeds/colleges_ipeds_directory"
+ipeds = fetch_from_mirrors(IPEDS_PATH)
 
 # Join on unitid and year
 combined = nccs.join(

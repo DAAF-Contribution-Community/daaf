@@ -8,83 +8,76 @@ Known dataset file paths for the Education Data Portal mirrors. This is a human-
 
 1. Find your dataset in the tables below
 2. Note the **Type** (single-file or yearly) and available **Years**
-3. Copy the per-mirror path columns into your `dataset_paths` dict
+3. Copy the `path` value into your fetch call
 4. Use the appropriate fetch pattern from `fetch-patterns.md`
 5. If unsure whether a file exists, use the mirror's discovery endpoint (see `mirrors.yaml`)
 6. For codebook/metadata files, use the `codebook` column with `get_codebook_url()` from `fetch-patterns.md`
 
-### Mirror Path Columns
+### Unified Path Model
 
-Each table has columns named after mirrors defined in `mirrors.yaml`. The column values provide the URL template parameters for that mirror's `url_template`:
+All mirrors use the same canonical `path` from this reference. Each mirror appends its own format extension:
 
-| Mirror Column | URL Template | Parameters in Column |
-|---------------|-------------|---------------------|
-| `huggingface` | `{root_url}/{path}.parquet` | `path` value |
-| `urban_csv` | `{root_url}/{file_dir}/{file_name}.csv` | `file_dir/file_name` (slash-separated) |
-| `codebook` | (via `get_codebook_url()` in `fetch-patterns.md`) | Full codebook path (without extension) |
+| Mirror | URL Template | Result |
+|--------|-------------|--------|
+| HuggingFace | `{root_url}/{path}.parquet` | `https://huggingface.co/.../ccd/schools_ccd_directory.parquet` |
+| Urban CSV | `{root_url}/{path}.csv` | `https://educationdata.urban.org/csv/ccd/schools_ccd_directory.csv` |
 
-**When a new mirror is added to `mirrors.yaml`**, add a corresponding column to these tables with that mirror's URL template parameters.
-
-### Building dataset_paths from This Reference
-
-Given a table row, construct the `dataset_paths` dict for `fetch_from_mirrors()`:
+### Building a Fetch Call
 
 ```python
 # Example: SAIPE district poverty
-# Table shows: huggingface = school-districts/saipe/districts_saipe
-#              urban_csv = saipe/districts_saipe
-dataset_paths = {
-    "huggingface": {"path": "school-districts/saipe/districts_saipe"},
-    "urban_csv": {"file_dir": "saipe", "file_name": "districts_saipe"},
-}
+DATASET_PATH = "saipe/geography_saipe"
+df = fetch_from_mirrors(DATASET_PATH, years=[2020, 2021, 2022])
 ```
+
+No per-mirror path dicts needed — one path works for all mirrors.
 
 ---
 
-## School Districts (`school-districts/`)
+## School Districts
 
 ### CCD (Common Core of Data)
 
-| Topic | Type | Years | huggingface | urban_csv | codebook |
-|-------|------|-------|-------------|-----------|----------|
-| Directory | Single | All years | `school-districts/ccd/directory/school-districts_lea_directory` | `ccd/school-districts_lea_directory` | `school-districts/ccd/directory/codebook_districts_ccd_directory` |
-| Enrollment | Yearly | 1986-2023 | `school-districts/ccd/enrollment/schools_ccd_lea_enrollment_{year}` | `ccd/schools_ccd_lea_enrollment_{year}` | `school-districts/ccd/enrollment/codebook_districts_ccd_enrollment` |
-| Finance | Single | All years | `school-districts/ccd/finance/districts_ccd_finance` | `ccd/districts_ccd_finance` | — |
+| Topic | Type | Years | path | codebook |
+|-------|------|-------|------|----------|
+| Directory | Single | All years | `ccd/school-districts_lea_directory` | `ccd/codebook_districts_ccd_directory` |
+| Enrollment | Yearly | 1986-2023 | `ccd/schools_ccd_lea_enrollment_{year}` | `ccd/codebook_districts_ccd_enrollment` |
+| Finance | Single | All years | `ccd/districts_ccd_finance` | — |
 
 ### EDFacts
 
-| Topic | Type | Years | huggingface | urban_csv | codebook |
-|-------|------|-------|-------------|-----------|----------|
-| Assessments | Yearly | 2009-2020 | `school-districts/edfacts/assessments/districts_edfacts_assessments_{year}` | `edfacts/districts_edfacts_assessments_{year}` | `school-districts/edfacts/assessments/codebook_districts_edfacts_assessments` |
-| Grad Rates | Yearly | 2010-2019 | `school-districts/edfacts/grad-rates/districts_edfacts_grad_rates_{year}` | `edfacts/districts_edfacts_grad_rates_{year}` | `school-districts/edfacts/grad-rates/codebook_districts_edfacts_grad_rates` |
+| Topic | Type | Years | path | codebook |
+|-------|------|-------|------|----------|
+| Assessments | Yearly | 2009-2020 | `edfacts/districts_edfacts_assessments_{year}` | `edfacts/codebook_districts_edfacts_assessments` |
+| Grad Rates | Yearly | 2010-2019 | `edfacts/districts_edfacts_grad_rates_{year}` | `edfacts/codebook_districts_edfacts_grad_rates` |
 
 ### SAIPE
 
-| Topic | Type | Years | huggingface | urban_csv | codebook |
-|-------|------|-------|-------------|-----------|----------|
-| Poverty Estimates | Single | All years | `school-districts/saipe/districts_saipe` | `saipe/districts_saipe` | `school-districts/saipe/codebook_districts_saipe` |
+| Topic | Type | Years | path | codebook |
+|-------|------|-------|------|----------|
+| Poverty Estimates | Single | All years | `saipe/geography_saipe` | `saipe/codebook_districts_saipe` |
 
 ---
 
-## Schools (`schools/`)
+## Schools
 
 ### CCD
 
-| Topic | Type | Years | huggingface | urban_csv | codebook |
-|-------|------|-------|-------------|-----------|----------|
-| Directory | Single | All years | `schools/ccd/directory/schools_ccd_directory` | `ccd/schools_ccd_directory` | `schools/ccd/directory/codebook_schools_ccd_directory` |
-| Enrollment | Yearly | varies | `schools/ccd/enrollment/schools_ccd_enrollment_{year}` | `ccd/schools_ccd_enrollment_{year}` | `schools/ccd/enrollment/codebook_schools_ccd_enrollment` |
+| Topic | Type | Years | path | codebook |
+|-------|------|-------|------|----------|
+| Directory | Single | All years | `ccd/schools_ccd_directory` | `ccd/codebook_schools_ccd_directory` |
+| Enrollment | Yearly | varies | `ccd/schools_ccd_enrollment_{year}` | `ccd/codebook_schools_ccd_enrollment` |
 
 ### CRDC
 
-| Topic | Type | Years | huggingface | urban_csv | codebook |
-|-------|------|-------|-------------|-----------|----------|
-| Discipline | Yearly | 2011-2021 | `schools/crdc/discipline/schools_crdc_discipline_k12_{year}` | `crdc/schools_crdc_discipline_k12_{year}` | `schools/crdc/discipline/codebook_schools_crdc_discipline` |
-| AP/IB Enrollment | Single | 2011-2021 | `schools/crdc/ap-ib-enrollment/schools_crdc_apib_enroll` | `crdc/schools_crdc_apib_enroll` | `schools/crdc/ap-ib-enrollment/codebook_schools_crdc_ap_ib_enrollment` |
-| Enrollment | Yearly | 2011-2021 | `schools/crdc/enrollment/schools_crdc_enrollment_k12_{year}` | `crdc/schools_crdc_enrollment_k12_{year}` | `schools/crdc/enrollment/codebook_schools_crdc_enrollment` |
-| Chronic Absenteeism | Yearly | 2013-2022 | `schools/crdc/chronic-absenteeism/schools_crdc_chronic_absenteeism_{year}` | `crdc/schools_crdc_chronic_absenteeism_{year}` | `schools/crdc/chronic-absenteeism/codebook_schools_crdc_chronic_absenteeism` |
-| Harassment/Bullying | Yearly | 2011-2021 | `schools/crdc/harassment-or-bullying/schools_crdc_harass_bully_students_{year}` | `crdc/schools_crdc_harass_bully_students_{year}` | `schools/crdc/harassment-or-bullying/codebook_schools_crdc_harassment_or_bullying` |
-| Restraint/Seclusion | Yearly | 2011-2021 | `schools/crdc/restraint-and-seclusion/schools_crdc_restraint_seclusion_students_{year}` | `crdc/schools_crdc_restraint_seclusion_students_{year}` | `schools/crdc/restraint-and-seclusion/codebook_schools_crdc_restraint_and_seclusion` |
+| Topic | Type | Years | path | codebook |
+|-------|------|-------|------|----------|
+| Discipline | Yearly | 2011-2021 | `crdc/schools_crdc_discipline_k12_{year}` | `crdc/codebook_schools_crdc_discipline` |
+| AP/IB Enrollment | Single | 2011-2021 | `crdc/schools_crdc_apib_enroll` | `crdc/codebook_schools_crdc_ap_ib_enrollment` |
+| Enrollment | Yearly | 2011-2021 | `crdc/schools_crdc_enrollment_k12_{year}` | `crdc/codebook_schools_crdc_enrollment` |
+| Chronic Absenteeism | Yearly | 2013-2022 | `crdc/schools_crdc_chronic_absenteeism_{year}` | `crdc/codebook_schools_crdc_chronic_absenteeism` |
+| Harassment/Bullying | Yearly | 2011-2021 | `crdc/schools_crdc_harass_bully_students_{year}` | `crdc/codebook_schools_crdc_harassment_or_bullying` |
+| Restraint/Seclusion | Yearly | 2011-2021 | `crdc/schools_crdc_restraint_seclusion_students_{year}` | `crdc/codebook_schools_crdc_restraint_and_seclusion` |
 
 #### Additional CRDC Datasets (Mirror Available)
 
@@ -92,60 +85,60 @@ Codebook `.xls` files exist for these topics. Data files are available in the mi
 
 | Topic | codebook |
 |-------|----------|
-| Algebra I | `schools/crdc/algebra1/codebook_schools_crdc_algebra1` |
-| AP Exams | `schools/crdc/ap-exams/codebook_schools_crdc_ap_exams` |
-| COVID Indicators | `schools/crdc/covid-indicators/codebook_schools_crdc_covid_indicators` |
-| Credit Recovery | `schools/crdc/credit-recovery/codebook_schools_crdc_credit_recovery` |
-| Directory | `schools/crdc/directory/codebook_schools_crdc_directory` |
-| Discipline Instances | `schools/crdc/discipline-instances/codebook_schools_crdc_discipline_instances` |
-| Dual Enrollment | `schools/crdc/dual-enrollment/codebook_schools_crdc_dual_enrollment` |
-| Internet Access | `schools/crdc/internet-access/codebook_schools_crdc_internet_access` |
-| Math and Science | `schools/crdc/math-and-science/codebook_schools_crdc_math_and_science` |
-| Offenses | `schools/crdc/offenses/codebook_schools_crdc_offenses` |
-| Offerings | `schools/crdc/offerings/codebook_schools_crdc_offerings` |
-| Retention | `schools/crdc/retention/codebook_schools_crdc_retention` |
-| SAT/ACT Participation | `schools/crdc/sat-act-participation/codebook_schools_crdc_sat_act_participation` |
-| School Finance | `schools/crdc/school-finance/codebook_schools_crdc_school_finance` |
-| Suspensions Days | `schools/crdc/suspensions-days/codebook_schools_crdc_suspensions_days` |
-| Teachers/Staff | `schools/crdc/teachers-staff/codebook_schools_crdc_teachers_staff` |
+| Algebra I | `crdc/codebook_schools_crdc_algebra1` |
+| AP Exams | `crdc/codebook_schools_crdc_ap_exams` |
+| COVID Indicators | `crdc/codebook_schools_crdc_covid_indicators` |
+| Credit Recovery | `crdc/codebook_schools_crdc_credit_recovery` |
+| Directory | `crdc/codebook_schools_crdc_directory` |
+| Discipline Instances | `crdc/codebook_schools_crdc_discipline_instances` |
+| Dual Enrollment | `crdc/codebook_schools_crdc_dual_enrollment` |
+| Internet Access | `crdc/codebook_schools_crdc_internet_access` |
+| Math and Science | `crdc/codebook_schools_crdc_math_and_science` |
+| Offenses | `crdc/codebook_schools_crdc_offenses` |
+| Offerings | `crdc/codebook_schools_crdc_offerings` |
+| Retention | `crdc/codebook_schools_crdc_retention` |
+| SAT/ACT Participation | `crdc/codebook_schools_crdc_sat_act_participation` |
+| School Finance | `crdc/codebook_schools_crdc_school_finance` |
+| Suspensions Days | `crdc/codebook_schools_crdc_suspensions_days` |
+| Teachers/Staff | `crdc/codebook_schools_crdc_teachers_staff` |
 
 ### MEPS
 
-| Topic | Type | Years | huggingface | urban_csv | codebook |
-|-------|------|-------|-------------|-----------|----------|
-| Poverty | Single | varies | `schools/meps/schools_meps` | `meps/schools_meps` | `schools/meps/codebook_schools_meps` |
+| Topic | Type | Years | path | codebook |
+|-------|------|-------|------|----------|
+| Poverty | Single | varies | `meps/schools_meps` | `meps/codebook_schools_meps` |
 
 ### EDFacts
 
-| Topic | Type | Years | huggingface | urban_csv | codebook |
-|-------|------|-------|-------------|-----------|----------|
-| Assessments | Yearly | 2009-2018, 2020 | `schools/edfacts/assessments/schools_edfacts_assessments_{year}` | `edfacts/schools_edfacts_assessments_{year}` | `schools/edfacts/assessments/codebook_schools_edfacts_assessments` |
-| Grad Rates | Yearly | 2010-2019 | `schools/edfacts/grad-rates/schools_edfacts_grad_rates_{year}` | `edfacts/schools_edfacts_grad_rates_{year}` | `schools/edfacts/grad-rates/codebook_schools_edfacts_grad_rates` |
+| Topic | Type | Years | path | codebook |
+|-------|------|-------|------|----------|
+| Assessments | Yearly | 2009-2018, 2020 | `edfacts/schools_edfacts_assessments_{year}` | `edfacts/codebook_schools_edfacts_assessments` |
+| Grad Rates | Yearly | 2010-2019 | `edfacts/schools_edfacts_grad_rates_{year}` | `edfacts/codebook_schools_edfacts_grad_rates` |
 
 > **Note:** 2019 assessment data is NOT available due to COVID testing waivers.
 
 ### NHGIS (Census Geography)
 
-| Topic | Type | Years | huggingface | urban_csv | codebook |
-|-------|------|-------|-------------|-----------|----------|
-| Census 1990 | Single | 1986-2023 | `schools/nhgis/census-1990/schools_nhgis_geog_1990` | `nhgis/schools_nhgis_geog_1990` | `schools/nhgis/census-1990/codebook_schools_nhgis_census1990` |
-| Census 2000 | Single | 1986-2023 | `schools/nhgis/census-2000/schools_nhgis_geog_2000` | `nhgis/schools_nhgis_geog_2000` | `schools/nhgis/census-2000/codebook_schools_nhgis_census2000` |
-| Census 2010 | Single | 1986-2023 | `schools/nhgis/census-2010/schools_nhgis_geog_2010` | `nhgis/schools_nhgis_geog_2010` | `schools/nhgis/census-2010/codebook_schools_nhgis_census2010` |
-| Census 2020 | Single | 1986-2023 | `schools/nhgis/census-2020/schools_nhgis_geog_2020` | `nhgis/schools_nhgis_geog_2020` | `schools/nhgis/census-2020/codebook_schools_nhgis_census2020` |
+| Topic | Type | Years | path | codebook |
+|-------|------|-------|------|----------|
+| Census 1990 | Single | 1986-2023 | `nhgis/schools_nhgis_geog_1990` | `nhgis/codebook_schools_nhgis_census1990` |
+| Census 2000 | Single | 1986-2023 | `nhgis/schools_nhgis_geog_2000` | `nhgis/codebook_schools_nhgis_census2000` |
+| Census 2010 | Single | 1986-2023 | `nhgis/schools_nhgis_geog_2010` | `nhgis/codebook_schools_nhgis_census2010` |
+| Census 2020 | Single | 1986-2023 | `nhgis/schools_nhgis_geog_2020` | `nhgis/codebook_schools_nhgis_census2020` |
 
 ---
 
-## College-University (`college-university/`)
+## Colleges & Universities
 
 ### IPEDS
 
-| Topic | Type | Years | huggingface | urban_csv | codebook |
-|-------|------|-------|-------------|-----------|----------|
-| Directory | Single | All years | `college-university/ipeds/directory/colleges_ipeds_directory` | `ipeds/colleges_ipeds_directory` | `college-university/ipeds/directory/codebook_colleges_ipeds_directory` |
-| Admissions | Single | varies | `college-university/ipeds/admissions-enrollment/colleges_ipeds_admissions-enrollment` | `ipeds/colleges_ipeds_admissions-enrollment` | `college-university/ipeds/admissions-enrollment/codebook_colleges_ipeds_admissions-enrollment` |
-| Enrollment FTE | Single | varies | `college-university/ipeds/enrollment-full-time-equivalent/colleges_ipeds_enrollment-fte` | `ipeds/colleges_ipeds_enrollment-fte` | `college-university/ipeds/enrollment-full-time-equivalent/codebook_colleges_ipeds_enrollment-fte` |
-| Graduation Rates | Single | varies | `college-university/ipeds/grad-rates/colleges_ipeds_grad-rates` | `ipeds/colleges_ipeds_grad-rates` | `college-university/ipeds/grad-rates/codebook_colleges_ipeds_grad-rates` |
-| Finance | Single | varies | `college-university/ipeds/finance/colleges_ipeds_finance` | `ipeds/colleges_ipeds_finance` | `college-university/ipeds/finance/codebook_colleges_ipeds_finance` |
+| Topic | Type | Years | path | codebook |
+|-------|------|-------|------|----------|
+| Directory | Single | All years | `ipeds/colleges_ipeds_directory` | `ipeds/codebook_colleges_ipeds_directory` |
+| Admissions | Single | varies | `ipeds/colleges_ipeds_admissions-enrollment` | `ipeds/codebook_colleges_ipeds_admissions-enrollment` |
+| Enrollment FTE | Single | varies | `ipeds/colleges_ipeds_enrollment-fte` | `ipeds/codebook_colleges_ipeds_enrollment-fte` |
+| Graduation Rates | Single | varies | `ipeds/colleges_ipeds_grad-rates` | `ipeds/codebook_colleges_ipeds_grad-rates` |
+| Finance | Single | varies | `ipeds/colleges_ipeds_finance` | `ipeds/codebook_colleges_ipeds_finance` |
 
 #### Additional IPEDS Datasets (Mirror Available)
 
@@ -153,39 +146,39 @@ Codebook `.xls` files exist for these topics. Data files are available in the mi
 
 | Topic | codebook |
 |-------|----------|
-| Academic Libraries | `college-university/ipeds/academic-libraries/codebook_colleges_ipeds_academic-libraries` |
-| Academic Year Room/Board/Other | `college-university/ipeds/academic-year-room-board-other/codebook_colleges_ipeds_ay_room_board_other` |
-| Academic Year Tuition | `college-university/ipeds/academic-year-tuition/codebook_colleges_ipeds_ay_tuition_fees` |
-| Academic Year Tuition (Prof Program) | `college-university/ipeds/academic-year-tuition-prof-program/codebook_colleges_ipeds_ay_tuition_firstprof` |
-| Admissions Requirements | `college-university/ipeds/admissions-requirements/codebook_colleges_ipeds_admissions-requirements` |
-| Completers | `college-university/ipeds/completers/codebook_colleges_ipeds_completers` |
-| Completions (CIP 2-digit) | `college-university/ipeds/completions-cip-2/codebook_colleges_ipeds_completions-2digcip` |
-| Completions (CIP 6-digit) | `college-university/ipeds/completions-cip-6/codebook_colleges_ipeds_completions-6digcip` |
-| Enrollment Headcount | `college-university/ipeds/enrollment-headcount/codebook_colleges_ipeds_enrollment-headcount` |
-| Fall Enrollment (Age) | `college-university/ipeds/fall-enrollment/codebook_colleges_ipeds_fall-enrollment-age` |
-| Fall Enrollment (Race) | `college-university/ipeds/fall-enrollment/codebook_colleges_ipeds_fall-enrollment-race` |
-| Fall Enrollment (Residence) | `college-university/ipeds/fall-enrollment/codebook_colleges_ipeds_fall-enrollment-residence` |
-| Fall Retention | `college-university/ipeds/fall-retention/codebook_colleges_ipeds_fall-retention` |
-| Grad Rates (200%) | `college-university/ipeds/grad-rates-200pct/codebook_colleges_ipeds_grad-rates-200pct` |
-| Grad Rates (Pell) | `college-university/ipeds/grad-rates-pell/codebook_colleges_ipeds_grad-rates-pell` |
-| Institutional Characteristics | `college-university/ipeds/institutional-characteristics/codebook_colleges_ipeds_institutional-characteristics` |
-| Outcome Measures | `college-university/ipeds/outcome-measures/codebook_colleges_ipeds_outcome-measures` |
-| Program Year Room/Board/Other | `college-university/ipeds/program-year-room-board-other/codebook_colleges_ipeds_py_room_board_other` |
-| Program Year Tuition (CIP) | `college-university/ipeds/program-year-tuition-cip/codebook_colleges_ipeds_py_tuition_cip` |
-| Salaries (Instructional Staff) | `college-university/ipeds/salaries-instructional-staff/codebook_colleges_ipeds_instructional_staff_salaries` |
-| Salaries (Non-Instructional Staff) | `college-university/ipeds/salaries-noninstructional-staff/codebook_colleges_ipeds_noninstructional_staff_salaries` |
-| SFA (All Undergraduates) | `college-university/ipeds/sfa-all-undergraduates/codebook_colleges_ipeds_sfa_all_undergrads` |
-| SFA (By Living Arrangement) | `college-university/ipeds/sfa-by-living-arrangement/codebook_colleges_ipeds_sfa_by_living_arrangement` |
-| SFA (By Tuition Type) | `college-university/ipeds/sfa-by-tuition-type/codebook_colleges_ipeds_sfa_by_tuition_type` |
-| SFA (FTFT) | `college-university/ipeds/sfa-ftft/codebook_colleges_ipeds_sfa_FTFT` |
-| SFA (Grants and Net Price) | `college-university/ipeds/sfa-grants-and-net-price/codebook_colleges_ipeds_sfa_grants_and_net_price` |
-| Student-Faculty Ratio | `college-university/ipeds/student-faculty-ratio/codebook_colleges_ipeds_student-faculty-ratio` |
+| Academic Libraries | `ipeds/codebook_colleges_ipeds_academic-libraries` |
+| Academic Year Room/Board/Other | `ipeds/codebook_colleges_ipeds_ay_room_board_other` |
+| Academic Year Tuition | `ipeds/codebook_colleges_ipeds_ay_tuition_fees` |
+| Academic Year Tuition (Prof Program) | `ipeds/codebook_colleges_ipeds_ay_tuition_firstprof` |
+| Admissions Requirements | `ipeds/codebook_colleges_ipeds_admissions-requirements` |
+| Completers | `ipeds/codebook_colleges_ipeds_completers` |
+| Completions (CIP 2-digit) | `ipeds/codebook_colleges_ipeds_completions-2digcip` |
+| Completions (CIP 6-digit) | `ipeds/codebook_colleges_ipeds_completions-6digcip` |
+| Enrollment Headcount | `ipeds/codebook_colleges_ipeds_enrollment-headcount` |
+| Fall Enrollment (Age) | `ipeds/codebook_colleges_ipeds_fall-enrollment-age` |
+| Fall Enrollment (Race) | `ipeds/codebook_colleges_ipeds_fall-enrollment-race` |
+| Fall Enrollment (Residence) | `ipeds/codebook_colleges_ipeds_fall-enrollment-residence` |
+| Fall Retention | `ipeds/codebook_colleges_ipeds_fall-retention` |
+| Grad Rates (200%) | `ipeds/codebook_colleges_ipeds_grad-rates-200pct` |
+| Grad Rates (Pell) | `ipeds/codebook_colleges_ipeds_grad-rates-pell` |
+| Institutional Characteristics | `ipeds/codebook_colleges_ipeds_institutional-characteristics` |
+| Outcome Measures | `ipeds/codebook_colleges_ipeds_outcome-measures` |
+| Program Year Room/Board/Other | `ipeds/codebook_colleges_ipeds_py_room_board_other` |
+| Program Year Tuition (CIP) | `ipeds/codebook_colleges_ipeds_py_tuition_cip` |
+| Salaries (Instructional Staff) | `ipeds/codebook_colleges_ipeds_instructional_staff_salaries` |
+| Salaries (Non-Instructional Staff) | `ipeds/codebook_colleges_ipeds_noninstructional_staff_salaries` |
+| SFA (All Undergraduates) | `ipeds/codebook_colleges_ipeds_sfa_all_undergrads` |
+| SFA (By Living Arrangement) | `ipeds/codebook_colleges_ipeds_sfa_by_living_arrangement` |
+| SFA (By Tuition Type) | `ipeds/codebook_colleges_ipeds_sfa_by_tuition_type` |
+| SFA (FTFT) | `ipeds/codebook_colleges_ipeds_sfa_FTFT` |
+| SFA (Grants and Net Price) | `ipeds/codebook_colleges_ipeds_sfa_grants_and_net_price` |
+| Student-Faculty Ratio | `ipeds/codebook_colleges_ipeds_student-faculty-ratio` |
 
 ### Scorecard
 
-| Topic | Type | Years | huggingface | urban_csv | codebook |
-|-------|------|-------|-------------|-----------|----------|
-| Earnings | Single | varies | `college-university/scorecard/earnings/colleges_scorecard_earnings` | `scorecard/colleges_scorecard_earnings` | `college-university/scorecard/earnings/codebook_colleges_scorecard_earnings` |
+| Topic | Type | Years | path | codebook |
+|-------|------|-------|------|----------|
+| Earnings | Single | varies | `scorecard/colleges_scorecard_earnings` | `scorecard/codebook_colleges_scorecard_earnings` |
 
 #### Additional Scorecard Datasets (Mirror Available)
 
@@ -193,60 +186,60 @@ Codebook `.xls` files exist for these topics. Data files are available in the mi
 
 | Topic | codebook |
 |-------|----------|
-| Default | `college-university/scorecard/default/codebook_colleges_scorecard_default` |
-| Institutional Characteristics | `college-university/scorecard/institutional-characteristics/codebook_colleges_scorecard_institutional-characteristics` |
-| Repayment | `college-university/scorecard/repayment/codebook_colleges_scorecard_repayment` |
-| Student Characteristics (Aid Applicants) | `college-university/scorecard/student-characteristics/codebook_colleges_scorecard_student-characteristics_aid-applicants` |
-| Student Characteristics (Home Neighborhood) | `college-university/scorecard/student-characteristics/codebook_colleges_scorecard_student-characteristics_home-neighborhood` |
+| Default | `scorecard/codebook_colleges_scorecard_default` |
+| Institutional Characteristics | `scorecard/codebook_colleges_scorecard_institutional-characteristics` |
+| Repayment | `scorecard/codebook_colleges_scorecard_repayment` |
+| Student Characteristics (Aid Applicants) | `scorecard/codebook_colleges_scorecard_student-characteristics_aid-applicants` |
+| Student Characteristics (Home Neighborhood) | `scorecard/codebook_colleges_scorecard_student-characteristics_home-neighborhood` |
 
 ### PSEO (Postsecondary Employment Outcomes)
 
-| Topic | Type | Years | huggingface | urban_csv | codebook |
-|-------|------|-------|-------------|-----------|----------|
-| Earnings and Flows | Yearly | 2001-2021 | `college-university/pseo/earnings-and-flows/colleges_pseo_{year}` | `pseo/colleges_pseo_{year}` | `college-university/pseo/earnings-and-flows/codebook_colleges_pseo` |
+| Topic | Type | Years | path | codebook |
+|-------|------|-------|------|----------|
+| Earnings and Flows | Yearly | 2001-2021 | `pseo/colleges_pseo_{year}` | `pseo/codebook_colleges_pseo` |
 
 ### NHGIS (Census Geography)
 
-| Topic | Type | Years | huggingface | urban_csv | codebook |
-|-------|------|-------|-------------|-----------|----------|
-| Census 1990 | Single | 1980-2023 | `college-university/nhgis/census-1990/colleges_nhgis_geog_1990` | `nhgis/colleges_nhgis_geog_1990` | `college-university/nhgis/census-1990/codebook_colleges_nhgis_census1990` |
-| Census 2000 | Single | 1980-2023 | `college-university/nhgis/census-2000/colleges_nhgis_geog_2000` | `nhgis/colleges_nhgis_geog_2000` | `college-university/nhgis/census-2000/codebook_colleges_nhgis_census2000` |
-| Census 2010 | Single | 1980-2023 | `college-university/nhgis/census-2010/colleges_nhgis_geog_2010` | `nhgis/colleges_nhgis_geog_2010` | `college-university/nhgis/census-2010/codebook_colleges_nhgis_census2010` |
-| Census 2020 | Single | 1980-2023 | `college-university/nhgis/census-2020/colleges_nhgis_geog_2020` | `nhgis/colleges_nhgis_geog_2020` | `college-university/nhgis/census-2020/codebook_colleges_nhgis_census2020` |
+| Topic | Type | Years | path | codebook |
+|-------|------|-------|------|----------|
+| Census 1990 | Single | 1980-2023 | `nhgis/colleges_nhgis_geog_1990` | `nhgis/codebook_colleges_nhgis_census1990` |
+| Census 2000 | Single | 1980-2023 | `nhgis/colleges_nhgis_geog_2000` | `nhgis/codebook_colleges_nhgis_census2000` |
+| Census 2010 | Single | 1980-2023 | `nhgis/colleges_nhgis_geog_2010` | `nhgis/codebook_colleges_nhgis_census2010` |
+| Census 2020 | Single | 1980-2023 | `nhgis/colleges_nhgis_geog_2020` | `nhgis/codebook_colleges_nhgis_census2020` |
 
 ### NCCS (Nonprofit 990 Data)
 
-| Topic | Type | Years | huggingface | urban_csv | codebook |
-|-------|------|-------|-------------|-----------|----------|
-| 990 Forms | Single | 1993-2016 | `college-university/nccs/990-forms/colleges_nccs_all` | `nccs/colleges_nccs_all` | `college-university/nccs/990-forms/codebook_colleges_nccs_form_990` |
+| Topic | Type | Years | path | codebook |
+|-------|------|-------|------|----------|
+| 990 Forms | Single | 1993-2016 | `nccs/colleges_nccs_all` | `nccs/codebook_colleges_nccs_form_990` |
 
 ### FSA (Federal Student Aid)
 
-| Topic | Type | Years | huggingface | urban_csv | codebook |
-|-------|------|-------|-------------|-----------|----------|
-| Grants | Yearly | 1999-2021 | `college-university/fsa/grants/colleges_fsa_grants_{year}` | `fsa/colleges_fsa_grants` | `college-university/fsa/grants/codebook_colleges_fsa_grants` |
-| Loans | Yearly | 1999-2021 | `college-university/fsa/loans/colleges_fsa_loans_{year}` | `fsa/colleges_fsa_loans` | `college-university/fsa/loans/codebook_colleges_fsa_loans` |
-| Campus-Based Volume | Yearly | 2001-2021 | `college-university/fsa/campus-based-volume/colleges_fsa_campus_based_vol_{year}` | `fsa/colleges_fsa_campus_based_volume` | `college-university/fsa/campus-based-volume/codebook_colleges_fsa_campus_based_volume` |
-| Financial Responsibility | Single | 2006-2016 | `college-university/fsa/financial-responsibility/colleges_fsa_fin_resp` | `fsa/colleges_fsa_composite_scores` | `college-university/fsa/financial-responsibility/codebook_colleges_fsa_financial_responsibility` |
-| 90/10 Revenue | Single | 2014-2021 | `college-university/fsa/90-10-revenue-percentages/colleges_fsa_90_10_rev_pct` | `fsa/colleges_fsa_90_10_revenue_percentages` | `college-university/fsa/90-10-revenue-percentages/codebook_colleges_fsa_90-10_revenue_percentages` |
+| Topic | Type | Years | path | codebook |
+|-------|------|-------|------|----------|
+| Grants | Single | 1999-2021 | `fsa/colleges_fsa_grants` | `fsa/codebook_colleges_fsa_grants` |
+| Loans | Single | 1999-2021 | `fsa/colleges_fsa_loans` | `fsa/codebook_colleges_fsa_loans` |
+| Campus-Based Volume | Single | 2001-2021 | `fsa/colleges_fsa_campus_based_volume` | `fsa/codebook_colleges_fsa_campus_based_volume` |
+| Financial Responsibility | Single | 2006-2016 | `fsa/colleges_fsa_composite_scores` | `fsa/codebook_colleges_fsa_financial_responsibility` |
+| 90/10 Revenue | Single | 2014-2021 | `fsa/colleges_fsa_90_10_revenue_percentages` | `fsa/codebook_colleges_fsa_90-10_revenue_percentages` |
 
 ### EADA (Equity in Athletics)
 
-| Topic | Type | Years | huggingface | urban_csv | codebook |
-|-------|------|-------|-------------|-----------|----------|
-| Institutional Characteristics | Single | 2002-2021 | `college-university/eada/institutional-characteristics/colleges_eada_inst_characteristics` | `eada/colleges_eada_inst_characteristics` | `college-university/eada/institutional-characteristics/codebook_colleges_eada_inst-characteristics` |
+| Topic | Type | Years | path | codebook |
+|-------|------|-------|------|----------|
+| Institutional Characteristics | Single | 2002-2021 | `eada/colleges_eada_inst_characteristics` | `eada/codebook_colleges_eada_inst-characteristics` |
 
 ### NACUBO (Endowments)
 
-| Topic | Type | Years | huggingface | urban_csv | codebook |
-|-------|------|-------|-------------|-----------|----------|
-| Endowments | Single | 2012-2022 | `college-university/nacubo/endowments/colleges_nacubo_endow` | `nacubo/colleges_nacubo_endow` | `college-university/nacubo/endowments/codebook_colleges_nacubo_endowments` |
+| Topic | Type | Years | path | codebook |
+|-------|------|-------|------|----------|
+| Endowments | Single | 2012-2022 | `nacubo/colleges_nacubo_endow` | `nacubo/codebook_colleges_nacubo_endowments` |
 
 ### Campus Safety
 
-| Topic | Type | Years | huggingface | urban_csv | codebook |
-|-------|------|-------|-------------|-----------|----------|
-| Hate Crimes | Single | 2005-2021 | `college-university/campus-crime/hate-crimes/colleges_csafety_hate_crimes` | `csafety/colleges_csafety_hate_crimes` | `college-university/campus-crime/hate-crimes/codebook_colleges_csafety_hate_crimes` |
+| Topic | Type | Years | path | codebook |
+|-------|------|-------|------|----------|
+| Hate Crimes | Single | 2005-2021 | `csafety/colleges_csafety_hate_crimes` | `csafety/codebook_colleges_csafety_hate_crimes` |
 
 > **Note:** Only hate crimes data is available in the Portal mirrors. For full campus safety data (primary offenses, VAWA, arrests, fire safety), access the Department of Education Campus Safety portal directly.
 
@@ -256,11 +249,9 @@ Codebook `.xls` files exist for these topics. Data files are available in the mi
 
 - **Single-file datasets** contain all years in one file. Filter locally with `pl.col("year").is_in(years)`.
 - **Yearly datasets** have one file per year with `{year}` in the path. Fetch each year separately and concatenate.
-- **Yearly/single differences between mirrors:** Some datasets are yearly on one mirror but single on another. For example, FSA Grants/Loans/Campus-Based are yearly files on HuggingFace but single all-years files on Urban CSV. Check whether the specific mirror's path contains `{year}` to determine per-mirror behavior. When `fetch_yearly_from_mirrors()` encounters a path without `{year}`, it downloads the same file for each year and filters locally (functional but wasteful — prefer the mirror with yearly files when available).
-- **Mirror column values** are URL template parameters, not full URLs. See `mirrors.yaml` for URL templates.
-- **Codebook files** are `.xls` files available on both mirrors. The `codebook` column contains the full path (without extension); use `get_codebook_url()` from `fetch-patterns.md` to construct download URLs. Naming pattern: `codebook_{entity}_{source}_{topic}`. Codebooks are for human reference — not parsed programmatically.
+- **Path values** are canonical — they work with all mirrors. Each mirror's `url_template` (in `mirrors.yaml`) appends its own format extension (`.parquet`, `.csv`).
+- **Codebook files** are `.xls` files available on all mirrors. The `codebook` column contains the canonical path (without extension); use `get_codebook_url()` from `fetch-patterns.md` to construct download URLs. Naming pattern: `codebook_{entity}_{source}_{topic}`. Codebooks are for human reference — not parsed programmatically.
 - **Additional datasets** sections list mirror datasets with codebooks that are not yet fully documented with data file paths. Use mirror discovery to confirm data file paths before fetching.
-- **NHGIS** data files and codebooks are available on both mirrors.
-- **Discovery:** Use each mirror's discovery mechanism (defined in `mirrors.yaml`) to verify file availability before fetching. The Urban CSV mirror provides a JSON manifest at `https://educationdata.urban.org/api/v1/api-downloads`.
+- **Discovery:** Use each mirror's discovery mechanism (defined in `mirrors.yaml`) to verify file availability before fetching.
 - **Cross-reference** source-specific skills for variable names, coded values, and caveats.
-- **Adding a new mirror:** Add a column to these tables with the new mirror's name (matching `mirrors.yaml`) and fill in URL template parameters.
+- **Adding a new mirror:** Only update `mirrors.yaml`. The paths in this file work for all mirrors.

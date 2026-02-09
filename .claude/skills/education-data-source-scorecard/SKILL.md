@@ -192,43 +192,15 @@ valid = df.filter(
 
 ## Data Access
 
-### Dataset Paths
+Datasets for Scorecard are available via the mirror system. See `datasets-reference.md` for canonical paths and `fetch-patterns.md` for fetch code patterns.
 
-| Topic | Type | Huggingface Path |
-|-------|------|------------------|
-| Earnings | Single | `college-university/scorecard/earnings/colleges_scorecard_earnings` |
-| Default | Single | `college-university/scorecard/default/colleges_scorecard_default` |
-| Institutional Characteristics | Single | `college-university/scorecard/institutional-characteristics/colleges_scorecard_institutional-characteristics` |
-| Repayment | Single | `college-university/scorecard/repayment/colleges_scorecard_repayment` |
-| Student Characteristics (Aid) | Single | `college-university/scorecard/student-characteristics/colleges_scorecard_student-characteristics_aid-applicants` |
-| Student Characteristics (Neighborhood) | Single | `college-university/scorecard/student-characteristics/colleges_scorecard_student-characteristics_home-neighborhood` |
+**Key datasets:**
 
-### Codebooks
+| Dataset | Path | Type |
+|---------|------|------|
+| Earnings | `scorecard/colleges_scorecard_earnings` | Single |
 
-| Dataset | Codebook Path |
-|---------|---------------|
-| Default | `college-university/scorecard/default/codebook_colleges_scorecard_default` |
-| Earnings | `college-university/scorecard/earnings/codebook_colleges_scorecard_earnings` |
-| Institutional Characteristics | `college-university/scorecard/institutional-characteristics/codebook_colleges_scorecard_institutional-characteristics` |
-| Repayment | `college-university/scorecard/repayment/codebook_colleges_scorecard_repayment` |
-| Student Characteristics (Aid) | `college-university/scorecard/student-characteristics/codebook_colleges_scorecard_student-characteristics_aid-applicants` |
-| Student Characteristics (Neighborhood) | `college-university/scorecard/student-characteristics/codebook_colleges_scorecard_student-characteristics_home-neighborhood` |
-
-> Codebooks are `.xls` files on both mirrors. See `datasets-reference.md` for the
-> full catalog and `fetch-patterns.md` for `get_codebook_url()`. For human
-> reference — not parsed programmatically.
-
-### Example Fetch
-
-```python
-import polars as pl
-
-url = "https://huggingface.co/datasets/brhkim/education_data_portal_mirror/resolve/main/college-university/scorecard/earnings/colleges_scorecard_earnings.parquet"
-df = pl.read_parquet(url)
-
-# Get 10-year earnings
-df = df.filter(pl.col("years_after_entry") == 10)
-```
+6 Scorecard datasets exist in the mirror. See `datasets-reference.md` for the complete list with codebook paths.
 
 ### Filtering
 

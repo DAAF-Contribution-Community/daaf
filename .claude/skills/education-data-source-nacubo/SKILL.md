@@ -176,53 +176,15 @@ df.filter(pl.col("endow_per_fte").is_null())
 
 ## Data Access
 
-### Dataset Paths
+Datasets for NACUBO are available via the mirror system. See `datasets-reference.md` for canonical paths and `fetch-patterns.md` for fetch code patterns.
 
-| Topic | Type | Huggingface Path |
-|-------|------|------------------|
-| Endowments | Single | `college-university/nacubo/endowments/colleges_nacubo_endow` |
+**Key datasets:**
 
-> **Urban CSV mirror path:** `nacubo/colleges_nacubo_endow`
+| Dataset | Path | Type |
+|---------|------|------|
+| Endowments | `nacubo/colleges_nacubo_endow` | Single |
 
-### Codebooks
-
-| Dataset | Codebook Path |
-|---------|---------------|
-| Endowments | `college-university/nacubo/endowments/codebook_colleges_nacubo_endowments` |
-
-> Codebooks are `.xls` files on both mirrors. See `datasets-reference.md` for the
-> full catalog and `fetch-patterns.md` for `get_codebook_url()`. For human
-> reference -- not parsed programmatically.
-
-### Example Fetch
-
-```python
-import polars as pl
-
-url = "https://huggingface.co/datasets/brhkim/education_data_portal_mirror/resolve/main/college-university/nacubo/endowments/colleges_nacubo_endow.parquet"
-df = pl.read_parquet(url)
-
-# Filter locally
-df = df.filter(
-    (pl.col("fips") == 6) &  # California
-    (pl.col("year") == 2022)
-)
-```
-
-### Filtering
-
-```python
-# Filter by state
-df_ca = df.filter(pl.col("fips") == 6)  # California
-
-# Filter by year range
-df_recent = df.filter(pl.col("year").is_between(2018, 2022))
-
-# Drop nulls in key column
-df_valid = df.filter(pl.col("endowment_total_end_fy").is_not_null())
-```
-
-**Note**: The Education Data Portal integrates select NACUBO variables with IPEDS data. For comprehensive NCSE data (asset allocations, detailed returns, governance), access the full NACUBO report.
+Codebooks: See `datasets-reference.md` codebook column. Use `get_codebook_url()` from `fetch-patterns.md`.
 
 ### Public NACUBO Tables
 

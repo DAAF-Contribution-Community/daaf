@@ -167,37 +167,15 @@ Checking data availability?
 
 ## Data Access
 
-### Dataset Paths
+Datasets for PSEO are available via the mirror system. See `datasets-reference.md` for canonical paths and `fetch-patterns.md` for fetch code patterns.
 
-| Topic | Type | Huggingface Path |
-|-------|------|------------------|
-| Earnings and Flows | Yearly | `college-university/pseo/earnings-and-flows/colleges_pseo_{year}` |
+**Key datasets:**
 
-### Codebooks
+| Dataset | Path | Type |
+|---------|------|------|
+| Earnings and Flows | `pseo/colleges_pseo_{year}` | Yearly (2001-2021) |
 
-| Dataset | Codebook Path |
-|---------|---------------|
-| PSEO Earnings and Flows | `college-university/pseo/earnings-and-flows/codebook_colleges_pseo` |
-
-> Codebooks are `.xls` files on both mirrors. See `datasets-reference.md` for the
-> full catalog and `fetch-patterns.md` for `get_codebook_url()`. For human
-> reference -- not parsed programmatically.
-
-### Example Fetch
-
-```python
-import polars as pl
-
-url = "https://huggingface.co/datasets/brhkim/education_data_portal_mirror/resolve/main/college-university/pseo/earnings-and-flows/colleges_pseo_2021.parquet"
-df = pl.read_parquet(url)
-
-# Filter for Texas Bachelor's degree earnings, 5 years post-graduation
-df = df.filter(
-    (pl.col("fips") == 48) &
-    (pl.col("degree_level") == 5) &
-    (pl.col("years_after_grad") == 5)
-)
-```
+Codebooks: See `datasets-reference.md` codebook column. Use `get_codebook_url()` from `fetch-patterns.md`.
 
 ### Filtering
 

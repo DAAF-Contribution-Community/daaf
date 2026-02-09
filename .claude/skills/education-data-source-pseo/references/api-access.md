@@ -283,15 +283,15 @@ df = pd.DataFrame(data[1:], columns=data[0])
 print(df)
 ```
 
-### Python with HuggingFace Mirror (Recommended)
+### Python with Mirror System (Recommended)
 
 ```python
-# Using the HuggingFace mirror (recommended for data analysis)
+# Using the unified mirror system (recommended for data analysis)
 import polars as pl
 
-# Download PSEO data from mirror
-url = "https://huggingface.co/datasets/brhkim/education_data_portal_mirror/resolve/main/college-university/pseo/earnings-and-flows/colleges_pseo_2020.parquet"
-df = pl.read_parquet(url)
+# Download PSEO data via mirrors
+DATASET_PATH = "pseo/colleges_pseo_2020"
+df = fetch_from_mirrors(DATASET_PATH)
 
 # Filter to specific institution using integer unitid
 ut_austin = df.filter(pl.col("unitid") == 228778)

@@ -193,44 +193,19 @@ FSA endpoint selection?
 
 ## Data Access
 
-### Dataset Paths
+Datasets for FSA are available via the mirror system. See `datasets-reference.md` for canonical paths and `fetch-patterns.md` for fetch code patterns.
 
-| Topic | Type | Huggingface Path |
-|-------|------|------------------|
-| Grants | Single | `college-university/fsa/grants/colleges_fsa_grants.parquet` |
-| Loans | Single | `college-university/fsa/loans/colleges_fsa_loans.parquet` |
-| Campus-Based Volume | Single | `college-university/fsa/campus-based-volume/colleges_fsa_campus_based_volume.parquet` |
-| Financial Responsibility | Single | `college-university/fsa/financial-responsibility/colleges_fsa_composite_scores.parquet` |
-| 90/10 Revenue Percentages | Single | `college-university/fsa/90-10-revenue-percentages/colleges_fsa_90_10_revenue_percentages.parquet` |
+**Key datasets:**
 
-### Codebooks
+| Dataset | Path | Type |
+|---------|------|------|
+| Grants | `fsa/colleges_fsa_grants` | Single |
+| Loans | `fsa/colleges_fsa_loans` | Single |
+| Campus-Based Volume | `fsa/colleges_fsa_campus_based_volume` | Single |
+| Financial Responsibility | `fsa/colleges_fsa_composite_scores` | Single |
+| 90/10 Revenue | `fsa/colleges_fsa_90_10_revenue_percentages` | Single |
 
-| Dataset | Codebook Path |
-|---------|---------------|
-| Grants | `college-university/fsa/grants/codebook_colleges_fsa_grants` |
-| Loans | `college-university/fsa/loans/codebook_colleges_fsa_loans` |
-| Campus-Based Volume | `college-university/fsa/campus-based-volume/codebook_colleges_fsa_campus_based_volume` |
-| Financial Responsibility | `college-university/fsa/financial-responsibility/codebook_colleges_fsa_financial_responsibility` |
-| 90/10 Revenue | `college-university/fsa/90-10-revenue-percentages/codebook_colleges_fsa_90-10_revenue_percentages` |
-
-> Codebooks are `.xls` files on both mirrors. See `datasets-reference.md` for the
-> full catalog and `fetch-patterns.md` for `get_codebook_url()`. For human
-> reference — not parsed programmatically.
-
-### Example Fetch
-
-```python
-import polars as pl
-
-url = "https://huggingface.co/datasets/brhkim/education_data_portal_mirror/resolve/main/college-university/fsa/grants/colleges_fsa_grants.parquet"
-df = pl.read_parquet(url)
-
-# Filter by state and year
-df = df.filter(
-    (pl.col("fips") == 6) &  # California
-    (pl.col("year") == 2020)
-)
-```
+Codebooks: See `datasets-reference.md` codebook column. Use `get_codebook_url()` from `fetch-patterns.md`.
 
 ### Filtering
 

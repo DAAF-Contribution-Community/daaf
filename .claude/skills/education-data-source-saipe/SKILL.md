@@ -178,40 +178,17 @@ between 4,200 and 5,800.
 
 ## Data Access
 
-### Dataset Paths
+Datasets for SAIPE are available via the mirror system. See `datasets-reference.md` for canonical paths and `fetch-patterns.md` for fetch code patterns.
 
-| Topic | Type | Huggingface Path |
-|-------|------|------------------|
-| District Poverty Estimates | Single | `school-districts/saipe/districts_saipe.parquet` |
+**Key datasets:**
 
-> **Urban CSV mirror path:** `saipe/school-districts_saipe.csv`
-
-### Codebooks
-
-| Dataset | Codebook Path |
-|---------|---------------|
-| District Poverty Estimates | `school-districts/saipe/codebook_districts_saipe` |
-
-> Codebooks are `.xls` files on both mirrors. See `datasets-reference.md` for the
-> full catalog and `fetch-patterns.md` for `get_codebook_url()`. For human
-> reference — not parsed programmatically.
+| Dataset | Path | Type |
+|---------|------|------|
+| District Poverty Estimates | `saipe/geography_saipe` | Single |
 
 **Years Available:** 1999-2023
 
-### Example Fetch
-
-```python
-import polars as pl
-
-url = "https://huggingface.co/datasets/brhkim/education_data_portal_mirror/resolve/main/school-districts/saipe/districts_saipe.parquet"
-df = pl.read_parquet(url)
-
-# Filter locally
-df = df.filter(
-    (pl.col("fips") == 6) &  # California
-    (pl.col("year") == 2022)
-)
-```
+Codebooks: See `datasets-reference.md` codebook column. Use `get_codebook_url()` from `fetch-patterns.md`.
 
 ### Filtering
 

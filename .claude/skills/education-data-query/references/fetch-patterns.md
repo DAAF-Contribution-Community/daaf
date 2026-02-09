@@ -56,30 +56,23 @@ def load_mirrors(yaml_path: Path = MIRRORS_YAML) -> list[dict]:
 # Load mirrors at module level — tried in priority order
 MIRRORS = load_mirrors()
 
-# Dataset paths: maps each mirror name to its URL template parameters.
-# These come from datasets-reference.md for the specific dataset being fetched.
+# Dataset path: canonical path string from datasets-reference.md.
+# All mirrors use the same path — only root_url and format differ.
 # Example for SAIPE district poverty:
-DATASET_PATHS = {
-    "huggingface": {"path": "school-districts/saipe/districts_saipe"},
-    "urban_csv": {"file_dir": "saipe", "file_name": "districts_saipe"},
-}
+DATASET_PATH = "saipe/geography_saipe"
 
 
 def fetch_from_mirrors(
-    dataset_paths: dict,
+    path: str,
     filters: dict | None = None,
     years: list[int] | None = None,
 ) -> pl.DataFrame:
     """Try each mirror in order. Return DataFrame on first success.
 
     Args:
-        dataset_paths: Dict mapping mirror name to URL template parameters.
-            Each key is a mirror name (matching MIRRORS entries).
-            Each value is a dict of placeholders for that mirror's url_template.
-            Example: {
-                "huggingface": {"path": "school-districts/saipe/districts_saipe"},
-                "urban_csv": {"source": "saipe", "filename": "school-districts_saipe"},
-            }
+        path: Canonical dataset path string from datasets-reference.md.
+            All mirrors use the same path — only root_url and format differ.
+            Example: "saipe/geography_saipe"
         filters: Dict of column->value(s) filters to apply locally
         years: List of years to filter to (applied as pl.col("year").is_in(years))
 
@@ -93,14 +86,8 @@ def fetch_from_mirrors(
         strategy = mirror["read_strategy"]
         timeout = mirror["timeout"]
 
-        # Skip mirrors that don't have a path for this dataset
-        if name not in dataset_paths:
-            print(f"  Skipping {name}: no path configured for this dataset")
-            continue
-
-        # Build URL from template + dataset-specific path parameters
-        path_params = dataset_paths[name]
-        url = mirror["url_template"].format(root_url=mirror["root_url"], **path_params)
+        # Build URL from template + canonical path
+        url = mirror["url_template"].format(root_url=mirror["root_url"], path=path, format=mirror["format"])
 
         print(f"  Trying {name}: {url}")
 
@@ -156,7 +143,7 @@ def fetch_from_mirrors(
 
 ```python
 def fetch_yearly_from_mirrors(
-    dataset_paths: dict,
+    path_template: str,
     years: list[int],
     year_placeholder: str = "{year}",
     filters: dict | None = None,
@@ -167,15 +154,11 @@ def fetch_yearly_from_mirrors(
     download each year separately and concatenate.
 
     Args:
-        dataset_paths: Dict mapping mirror name to URL template parameters.
-            Path values containing the year_placeholder string will have it
-            substituted with each year.
-            Example: {
-                "huggingface": {"path": "school-districts/ccd/enrollment/schools_ccd_lea_enrollment_{year}"},
-                "urban_csv": {"source": "ccd", "filename": "school-districts_ccd_enrollment"},
-            }
+        path_template: Canonical path string with a year placeholder.
+            The year_placeholder is substituted with each year before fetching.
+            Example: "ccd/schools_ccd_enrollment_{year}"
         years: List of years to fetch
-        year_placeholder: String in path values to replace with year (default: "{year}")
+        year_placeholder: String in path_template to replace with year (default: "{year}")
         filters: Additional column filters
 
     Returns:
@@ -184,19 +167,14 @@ def fetch_yearly_from_mirrors(
     frames = []
 
     for year in years:
-        # Substitute {year} in all path values for this year
-        year_paths = {}
-        for mirror_name, params in dataset_paths.items():
-            year_paths[mirror_name] = {
-                k: v.replace(year_placeholder, str(year)) if isinstance(v, str) else v
-                for k, v in params.items()
-            }
+        # Substitute {year} in the path template for this year
+        year_path = path_template.replace(year_placeholder, str(year))
 
         print(f"\n  Year {year}:")
 
         try:
             df = fetch_from_mirrors(
-                dataset_paths=year_paths,
+                year_path,
                 filters=filters,
                 years=[year],  # Filter to this specific year
             )
@@ -286,7 +264,7 @@ def discover_mirror_files(mirror_config: dict) -> list[str] | None:
 # mirror = MIRRORS[0]  # highest priority
 # files = discover_mirror_files(mirror)
 # if files is not None:
-#     target = "school-districts/saipe/districts_saipe.parquet"
+#     target = "saipe/geography_saipe.parquet"
 #     if target in files:
 #         print("Available in primary mirror")
 #     else:
@@ -335,8 +313,8 @@ def get_codebook_url(
     """Construct a codebook URL from a datasets-reference.md codebook path.
 
     Args:
-        codebook_path: Full codebook path from datasets-reference.md codebook column.
-            Example: "school-districts/saipe/codebook_districts_saipe"
+        codebook_path: Canonical codebook path from datasets-reference.md codebook column.
+            Example: "saipe/codebook_districts_saipe"
         mirrors: Pre-loaded mirror configs. If None, loads from yaml_path.
         yaml_path: Path to mirrors.yaml. If None, uses default.
 
@@ -355,17 +333,8 @@ def get_codebook_url(
         template = meta["url_template"]
         root_url = mirror["root_url"]
 
-        if mirror["name"] == "huggingface":
-            # HuggingFace: nested path matches codebook_path directly
-            url = template.format(root_url=root_url, path=codebook_path, format=fmt)
-        else:
-            # Other mirrors (e.g., urban_csv): extract file_dir and file_name from path
-            parts = codebook_path.split("/")
-            file_dir = parts[1]  # e.g., "saipe" from "school-districts/saipe/..."
-            file_name = parts[-1]  # e.g., "codebook_districts_saipe"
-            url = template.format(
-                root_url=root_url, file_dir=file_dir, file_name=file_name, format=fmt
-            )
+        # All mirrors resolve codebook the same way using the canonical path
+        url = template.format(root_url=root_url, path=codebook_path, format=fmt)
 
         return url
 
@@ -373,8 +342,8 @@ def get_codebook_url(
 
 
 # Usage:
-# url = get_codebook_url("school-districts/saipe/codebook_districts_saipe")
-# → "https://huggingface.co/.../school-districts/saipe/codebook_districts_saipe.xls"
+# url = get_codebook_url("saipe/codebook_districts_saipe")
+# → "https://huggingface.co/.../saipe/codebook_districts_saipe.xls"
 ```
 
 ---
@@ -452,8 +421,9 @@ Every fetch script must include these IAT comments:
 # INTENT: Download {dataset_name} from the fastest available mirror.
 # REASONING: Mirrors are tried in priority order per mirrors.yaml config.
 #   Format-specific read strategy is driven by each mirror's read_strategy field.
-# ASSUMES: Mirror URLs in MIRRORS config are current and accessible.
+# ASSUMES: Mirror URLs are current and accessible; each mirror uses the same canonical
+#   path with its own root_url and format.
 #   Year/filter columns exist in the dataset with expected names.
 #   Portal uses integer encoding: grade=-1 is Pre-K (NOT missing), race=1-7, sex=1-2.
-# REFERENCE: mirrors.yaml for mirror config, datasets-reference.md for dataset paths.
+# REFERENCE: mirrors.yaml for mirror config, datasets-reference.md for canonical paths.
 ```

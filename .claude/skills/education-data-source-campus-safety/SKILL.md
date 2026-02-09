@@ -209,40 +209,17 @@ Fire data is reported only for **on-campus student housing facilities**:
 
 ## Data Access
 
-### Dataset Paths
+Datasets for Campus Safety are available via the mirror system. See `datasets-reference.md` for canonical paths and `fetch-patterns.md` for fetch code patterns.
 
-| Topic | Type | Huggingface Path |
-|-------|------|------------------|
-| Hate Crimes | Single | `college-university/campus-crime/hate-crimes/colleges_csafety_hate_crimes.parquet` |
+**Key datasets:**
 
-> **CRITICAL: Limited Data in Portal Mirrors**
->
-> The Education Data Portal mirrors contain **only hate crimes data**. For other campus safety data (primary offenses, VAWA offenses, arrests/referrals, fire safety), access the Department of Education directly at https://ope.ed.gov/campussafety/
+| Dataset | Path | Type |
+|---------|------|------|
+| Hate Crimes | `csafety/colleges_csafety_hate_crimes` | Single |
 
-### Codebooks
+> **CRITICAL: Limited Data in Portal Mirrors** — Only hate crimes data is available. For other campus safety data, access the Department of Education directly at https://ope.ed.gov/campussafety/
 
-| Dataset | Codebook Path |
-|---------|---------------|
-| Hate Crimes | `college-university/campus-crime/hate-crimes/codebook_colleges_csafety_hate_crimes` |
-
-> Codebooks are `.xls` files on both mirrors. See `datasets-reference.md` for the
-> full catalog and `fetch-patterns.md` for `get_codebook_url()`. For human
-> reference — not parsed programmatically.
-
-### Example Fetch
-
-```python
-import polars as pl
-
-url = "https://huggingface.co/datasets/brhkim/education_data_portal_mirror/resolve/main/college-university/campus-crime/hate-crimes/colleges_csafety_hate_crimes.parquet"
-df = pl.read_parquet(url)
-
-# Filter by state and year
-df = df.filter(
-    (pl.col("fips") == 6) &  # California
-    (pl.col("year") == 2021)
-)
-```
+Codebooks: See `datasets-reference.md` codebook column. Use `get_codebook_url()` from `fetch-patterns.md`.
 
 ### Filtering
 

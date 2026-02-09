@@ -385,9 +385,9 @@ XX_XX_XX_VARIABLE_NAME
 ```python
 import polars as pl
 
-# Load from HuggingFace mirror
-url = "https://huggingface.co/datasets/brhkim/education_data_portal_mirror/resolve/main/college-university/nccs/990-forms/colleges_nccs_all.parquet"
-df = pl.read_parquet(url)
+# Load NCCS data via unified mirror system
+DATASET_PATH = "nccs/colleges_nccs_all"
+df = fetch_from_mirrors(DATASET_PATH)
 
 # Filter out missing data codes
 df_clean = df.filter(

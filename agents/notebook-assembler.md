@@ -206,10 +206,7 @@ def _():
     # DATE_PREFIX = "2026-01-24"
     # YEARS = list(range(2018, 2023))
     #
-    # DATASET_PATHS = {
-    #     "huggingface": {"path": "schools/ccd/directory/schools_ccd_directory"},
-    #     "urban_csv": {"source": "ccd", "filename": "schools_ccd_directory"},
-    # }
+    # DATASET_PATH = "ccd/schools_ccd_directory"
     #
     # OUTPUT_PARQUET = DATA_RAW / f"{DATE_PREFIX}_ccd_schools.parquet"
     #
@@ -223,7 +220,7 @@ def _():
     # print("=" * 60)
     #
     # DATA_RAW.mkdir(parents=True, exist_ok=True)
-    # df = fetch_from_mirrors(dataset_paths=DATASET_PATHS, years=YEARS)
+    # df = fetch_from_mirrors(DATASET_PATH, years=YEARS)
     # print(f"Fetched: {df.shape[0]:,} rows x {df.shape[1]} cols")
     #
     # # --- Save ---
@@ -618,10 +615,7 @@ def _():
     # DATE_PREFIX = "2026-01-24"
     # YEARS = list(range(2018, 2023))
     #
-    # DATASET_PATHS = {
-    #     "huggingface": {"path": "schools/ccd/directory/schools_ccd_directory"},
-    #     "urban_csv": {"source": "ccd", "filename": "schools_ccd_directory"},
-    # }
+    # DATASET_PATH = "ccd/schools_ccd_directory"
     #
     # OUTPUT_PARQUET = DATA_RAW / f"{DATE_PREFIX}_ccd_schools.parquet"
     #
@@ -635,7 +629,7 @@ def _():
     # print("=" * 60)
     #
     # DATA_RAW.mkdir(parents=True, exist_ok=True)
-    # df = fetch_from_mirrors(dataset_paths=DATASET_PATHS, years=YEARS)
+    # df = fetch_from_mirrors(DATASET_PATH, years=YEARS)
     # print(f"Fetched: {df.shape[0]:,} rows x {df.shape[1]} cols")
     #
     # # --- Save ---
@@ -838,15 +832,12 @@ def _():
     # from pathlib import Path
     #
     # # --- Config ---
-    # DATASET_PATHS = {
-    #     "huggingface": {"path": "schools/ccd/directory/schools_ccd_directory"},
-    #     "urban_csv": {"source": "ccd", "filename": "schools_ccd_directory"},
-    # }
+    # DATASET_PATH = "ccd/schools_ccd_directory"
     # ...
     #
     # # --- Fetch ---
     # print("Stage 5.1: Fetch CCD Schools")
-    # df = fetch_from_mirrors(dataset_paths=DATASET_PATHS, years=YEARS)
+    # df = fetch_from_mirrors(DATASET_PATH, years=YEARS)
     # ...
     #
     # # --- Save ---

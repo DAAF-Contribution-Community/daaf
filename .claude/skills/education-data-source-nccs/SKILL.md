@@ -165,37 +165,15 @@ Linking NCCS to education data?
 
 ## Data Access
 
-### Dataset Paths
+Datasets for NCCS are available via the mirror system. See `datasets-reference.md` for canonical paths and `fetch-patterns.md` for fetch code patterns.
 
-| Topic | Type | Huggingface Path |
-|-------|------|------------------|
-| 990 Forms | Single | `college-university/nccs/990-forms/colleges_nccs_all` |
+**Key datasets:**
 
-### Codebooks
+| Dataset | Path | Type |
+|---------|------|------|
+| 990 Forms | `nccs/colleges_nccs_all` | Single |
 
-| Dataset | Codebook Path |
-|---------|---------------|
-| 990 Forms | `college-university/nccs/990-forms/codebook_colleges_nccs_form_990` |
-
-> Codebooks are `.xls` files on both mirrors. See `datasets-reference.md` for the
-> full catalog and `fetch-patterns.md` for `get_codebook_url()`. For human
-> reference -- not parsed programmatically.
-
-### Example Fetch
-
-```python
-import polars as pl
-
-url = "https://huggingface.co/datasets/brhkim/education_data_portal_mirror/resolve/main/college-university/nccs/990-forms/colleges_nccs_all.parquet"
-df = pl.read_parquet(url)
-
-# Filter by state using integer FIPS
-california = df.filter(pl.col("fips") == 6)  # California
-texas = df.filter(pl.col("fips") == 48)       # Texas
-
-# Handle missing data codes
-df_clean = df.filter(pl.col("fips") >= 1)  # Exclude -1, -2, -3
-```
+Codebooks: See `datasets-reference.md` codebook column. Use `get_codebook_url()` from `fetch-patterns.md`.
 
 ### Filtering
 

@@ -188,46 +188,22 @@ Time period?
 
 ## Data Access
 
-### Dataset Paths
+Datasets for NHGIS are available via the mirror system. See `datasets-reference.md` for canonical paths and `fetch-patterns.md` for fetch code patterns.
 
-| Topic | Type | Huggingface Path |
-|-------|------|------------------|
-| Schools Census 1990 | Single | `schools/nhgis/census-1990/schools_nhgis_geog_1990` |
-| Schools Census 2000 | Single | `schools/nhgis/census-2000/schools_nhgis_geog_2000` |
-| Schools Census 2010 | Single | `schools/nhgis/census-2010/schools_nhgis_geog_2010` |
-| Schools Census 2020 | Single | `schools/nhgis/census-2020/schools_nhgis_geog_2020` |
-| Colleges Census 1990 | Single | `college-university/nhgis/census-1990/colleges_nhgis_geog_1990` |
-| Colleges Census 2000 | Single | `college-university/nhgis/census-2000/colleges_nhgis_geog_2000` |
-| Colleges Census 2010 | Single | `college-university/nhgis/census-2010/colleges_nhgis_geog_2010` |
-| Colleges Census 2020 | Single | `college-university/nhgis/census-2020/colleges_nhgis_geog_2020` |
+**Key datasets:**
 
-### Codebooks
+| Dataset | Path | Type |
+|---------|------|------|
+| Schools Census 1990 | `nhgis/schools_nhgis_geog_1990` | Single |
+| Schools Census 2000 | `nhgis/schools_nhgis_geog_2000` | Single |
+| Schools Census 2010 | `nhgis/schools_nhgis_geog_2010` | Single |
+| Schools Census 2020 | `nhgis/schools_nhgis_geog_2020` | Single |
+| Colleges Census 1990 | `nhgis/colleges_nhgis_geog_1990` | Single |
+| Colleges Census 2000 | `nhgis/colleges_nhgis_geog_2000` | Single |
+| Colleges Census 2010 | `nhgis/colleges_nhgis_geog_2010` | Single |
+| Colleges Census 2020 | `nhgis/colleges_nhgis_geog_2020` | Single |
 
-| Dataset | Codebook Path |
-|---------|---------------|
-| Schools Census 1990 | `schools/nhgis/census-1990/codebook_schools_nhgis_census1990` |
-| Schools Census 2000 | `schools/nhgis/census-2000/codebook_schools_nhgis_census2000` |
-| Schools Census 2010 | `schools/nhgis/census-2010/codebook_schools_nhgis_census2010` |
-| Schools Census 2020 | `schools/nhgis/census-2020/codebook_schools_nhgis_census2020` |
-| Colleges Census 1990 | `college-university/nhgis/census-1990/codebook_colleges_nhgis_census1990` |
-| Colleges Census 2000 | `college-university/nhgis/census-2000/codebook_colleges_nhgis_census2000` |
-| Colleges Census 2010 | `college-university/nhgis/census-2010/codebook_colleges_nhgis_census2010` |
-| Colleges Census 2020 | `college-university/nhgis/census-2020/codebook_colleges_nhgis_census2020` |
-
-> Codebooks are `.xls` files on both mirrors. See `datasets-reference.md` for the full catalog and `fetch-patterns.md` for `get_codebook_url()`. For human reference — not parsed programmatically.
-
-### Example Fetch
-
-```python
-import polars as pl
-
-# Load school-to-census links for 2020
-url = "https://huggingface.co/datasets/brhkim/education_data_portal_mirror/resolve/main/schools/nhgis/census-2020/schools_nhgis_geog_2020.parquet"
-df = pl.read_parquet(url)
-
-# Filter to California schools
-df = df.filter(pl.col("fips") == 6)
-```
+Codebooks: See `datasets-reference.md` codebook column. Use `get_codebook_url()` from `fetch-patterns.md`.
 
 ### Filtering
 

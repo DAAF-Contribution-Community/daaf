@@ -154,38 +154,15 @@ valid_data = df.filter(pl.col("meps_poverty_pct").is_not_null())
 
 ## Data Access
 
-### Dataset Paths
+Datasets for MEPS are available via the mirror system. See `datasets-reference.md` for canonical paths and `fetch-patterns.md` for fetch code patterns.
 
-| Topic | Type | Huggingface Path |
-|-------|------|------------------|
-| Schools MEPS | Single | `schools/meps/schools_meps.parquet` |
+**Key datasets:**
 
-Urban CSV mirror path: `meps/schools_meps.csv`
+| Dataset | Path | Type |
+|---------|------|------|
+| Schools MEPS | `meps/schools_meps` | Single |
 
-### Codebooks
-
-| Dataset | Codebook Path |
-|---------|---------------|
-| Schools MEPS | `schools/meps/codebook_schools_meps` |
-
-> Codebooks are `.xls` files on both mirrors. See `datasets-reference.md` for the
-> full catalog and `fetch-patterns.md` for `get_codebook_url()`. For human
-> reference — not parsed programmatically.
-
-### Example Fetch
-
-```python
-import polars as pl
-
-url = "https://huggingface.co/datasets/brhkim/education_data_portal_mirror/resolve/main/schools/meps/schools_meps.parquet"
-df = pl.read_parquet(url)
-
-# Filter locally
-df = df.filter(
-    (pl.col("fips") == 6) &  # California
-    (pl.col("year") == 2018)
-)
-```
+Codebooks: See `datasets-reference.md` codebook column. Use `get_codebook_url()` from `fetch-patterns.md`.
 
 ### Filtering
 

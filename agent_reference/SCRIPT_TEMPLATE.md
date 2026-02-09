@@ -306,25 +306,21 @@ Stage 5 scripts download data from configured mirrors (per mirrors.yaml).
 ```python
 # --- Mirror Configuration ---
 # INTENT: Download {dataset} from the fastest available mirror.
-# REASONING: Mirrors tried in priority order per mirrors.yaml.
-# Format-specific read driven by each mirror's read_strategy.
-# Mirror config below reflects mirrors.yaml at script creation time.
-MIRRORS = [
-    {
-        "name": "huggingface",  # From mirrors.yaml
-        "url_template": "https://huggingface.co/datasets/brhkim/education_data_portal_mirror/resolve/main/{path}.parquet",  # From mirrors.yaml
-        "format": "parquet",
-        "timeout": 300,
-    },
-    {
-        "name": "urban_csv",  # From mirrors.yaml
-        "url_template": "{root_url}/{source}/{filename}.csv",  # From mirrors.yaml (root_url resolved at runtime)
-        "format": "csv",
-        "timeout": 300,
-    },
-]
+# REASONING: Mirrors loaded from mirrors.yaml (single source of truth).
+# Format-specific read driven by each mirror's read_strategy field.
+# All mirrors use the same canonical path from datasets-reference.md.
+import yaml
 
-# [Include fetch_from_mirrors() function from fetch-patterns.md]
+MIRRORS_YAML = Path("/daaf/.claude/skills/education-data-query/references/mirrors.yaml")
+
+with open(MIRRORS_YAML) as f:
+    MIRRORS = yaml.safe_load(f)["mirrors"]
+
+# Dataset path: canonical path string from datasets-reference.md.
+# All mirrors use the same path — only root_url and format differ.
+DATASET_PATH = "ccd/schools_ccd_directory"
+
+# [Include fetch_from_mirrors(path, ...) function from fetch-patterns.md]
 ```
 
 ---
@@ -358,11 +354,8 @@ DATE_PREFIX = "2026-01-24"
 
 YEARS = list(range(2018, 2023))  # 2018-2022 per Plan query specification
 
-# Dataset paths per mirror (from education-data-query skill's datasets-reference.md)
-DATASET_PATHS = {
-    "huggingface": {"path": "schools/ccd/directory/schools_ccd_directory"},
-    "urban_csv": {"source": "ccd", "filename": "schools_ccd_directory"},
-}
+# Dataset path (from education-data-query skill's datasets-reference.md)
+DATASET_PATH = "ccd/schools_ccd_directory"
 
 OUTPUT_PARQUET = DATA_RAW / f"{DATE_PREFIX}_ccd_schools.parquet"
 
@@ -379,14 +372,16 @@ with open(MIRRORS_YAML) as f:
 
 
 def fetch_from_mirrors(
-    dataset_paths: dict,
+    path: str,
     filters: dict | None = None,
     years: list[int] | None = None,
 ) -> pl.DataFrame:
     """Try each mirror in order. Return DataFrame on first success.
 
     Args:
-        dataset_paths: Dict mapping mirror name to URL template parameters.
+        path: Canonical dataset path string from datasets-reference.md.
+            All mirrors use the same path — only root_url and format differ.
+            Example: "ccd/schools_ccd_directory"
         filters: Dict of column->value(s) filters to apply locally.
         years: List of years to filter to.
     """
@@ -396,13 +391,8 @@ def fetch_from_mirrors(
         name = mirror["name"]
         strategy = mirror["read_strategy"]
 
-        if name not in dataset_paths:
-            print(f"  Skipping {name}: no path configured for this dataset")
-            continue
-
-        # Build URL from mirror's url_template + dataset-specific path parameters
-        path_params = dataset_paths[name]
-        url = mirror["url_template"].format(root_url=mirror["root_url"], **path_params)
+        # Build URL from mirror's url_template + canonical path
+        url = mirror["url_template"].format(root_url=mirror["root_url"], path=path, format=mirror["format"])
 
         print(f"  Trying {name}: {url}")
 
@@ -462,7 +452,7 @@ DATA_RAW.mkdir(parents=True, exist_ok=True)
 # ASSUMES: Mirror URLs are current and accessible. Dataset contains "year" column.
 print("\nFetching CCD school directory...")
 df = fetch_from_mirrors(
-    dataset_paths=DATASET_PATHS,
+    path=DATASET_PATH,
     years=YEARS,
 )
 print(f"Shape: {df.shape[0]:,} rows x {df.shape[1]} cols")

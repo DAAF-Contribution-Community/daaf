@@ -615,7 +615,7 @@ Task({
     prompt: """You have access to a skill tool. First, call the skill tool with name 'education-data-query'.
 
 **QUERY SPECIFICATION:**
-- Dataset Paths: {dataset_paths}  (from datasets-reference.md, keyed by mirror name)
+- Dataset Path: {dataset_path}  (from datasets-reference.md, flat format e.g. "ccd/schools_ccd_directory")
 - Years: {years}
 - Filters: {filters}
 - Variables: {variables}

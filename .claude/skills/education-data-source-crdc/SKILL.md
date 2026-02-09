@@ -198,44 +198,20 @@ Data quality issue?
 
 ## Data Access
 
-### Dataset Paths
+Datasets for CRDC are available via the mirror system. See `datasets-reference.md` for canonical paths and `fetch-patterns.md` for fetch code patterns.
 
-| Topic | Type | Huggingface Path |
-|-------|------|------------------|
-| Discipline | Yearly | `schools/crdc/discipline/schools_crdc_discipline_k12_{year}` |
-| AP/IB Enrollment | Single | `schools/crdc/ap-ib-enrollment/schools_crdc_apib_enroll` |
-| Enrollment | Yearly | `schools/crdc/enrollment/schools_crdc_enrollment_k12_{year}` |
-| Chronic Absenteeism | Yearly | `schools/crdc/chronic-absenteeism/schools_crdc_chronic_absenteeism_{year}` |
-| Harassment/Bullying | Yearly | `schools/crdc/harassment-or-bullying/schools_crdc_harass_bully_students_{year}` |
-| Restraint/Seclusion | Yearly | `schools/crdc/restraint-and-seclusion/schools_crdc_restraint_seclusion_students_{year}` |
+**Key datasets:**
 
-### Codebooks
+| Dataset | Path | Type |
+|---------|------|------|
+| Discipline | `crdc/schools_crdc_discipline_k12_{year}` | Yearly |
+| AP/IB Enrollment | `crdc/schools_crdc_apib_enroll` | Single |
+| Enrollment | `crdc/schools_crdc_enrollment_k12_{year}` | Yearly |
+| Chronic Absenteeism | `crdc/schools_crdc_chronic_absenteeism_{year}` | Yearly |
+| Harassment/Bullying | `crdc/schools_crdc_harass_bully_students_{year}` | Yearly |
+| Restraint/Seclusion | `crdc/schools_crdc_restraint_seclusion_students_{year}` | Yearly |
 
-| Dataset | Codebook Path |
-|---------|---------------|
-| Discipline | `schools/crdc/discipline/codebook_schools_crdc_discipline` |
-| Enrollment | `schools/crdc/enrollment/codebook_schools_crdc_enrollment` |
-| Chronic Absenteeism | `schools/crdc/chronic-absenteeism/codebook_schools_crdc_chronic_absenteeism` |
-| Harassment/Bullying | `schools/crdc/harassment-or-bullying/codebook_schools_crdc_harassment_or_bullying` |
-| Restraint/Seclusion | `schools/crdc/restraint-and-seclusion/codebook_schools_crdc_restraint_and_seclusion` |
-| AP/IB Enrollment | `schools/crdc/ap-ib-enrollment/codebook_schools_crdc_ap_ib_enrollment` |
-
-> 22 CRDC codebooks exist total (one per topic). See `datasets-reference.md` for the complete list. Codebooks are `.xls` files on both mirrors. For human reference — not parsed programmatically.
-
-### Example Fetch
-
-```python
-import polars as pl
-
-# Discipline data (yearly file)
-url = "https://huggingface.co/datasets/brhkim/education_data_portal_mirror/resolve/main/schools/crdc/discipline/schools_crdc_discipline_k12_2017.parquet"
-df = pl.read_parquet(url)
-
-# AP/IB data (single file with all years)
-url = "https://huggingface.co/datasets/brhkim/education_data_portal_mirror/resolve/main/schools/crdc/ap-ib-enrollment/schools_crdc_apib_enroll.parquet"
-df = pl.read_parquet(url)
-df = df.filter(pl.col("year") == 2017)
-```
+22 CRDC codebooks exist total. See `datasets-reference.md` for the complete list.
 
 ### Filtering
 

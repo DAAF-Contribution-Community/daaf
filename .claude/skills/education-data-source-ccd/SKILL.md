@@ -206,41 +206,19 @@ Schools → Local Education Agencies (LEAs)
 
 ## Data Access
 
-### Dataset Paths
+Datasets for CCD are available via the mirror system. See `datasets-reference.md` for canonical paths and `fetch-patterns.md` for fetch code patterns.
 
-| Topic | Type | Huggingface Path |
-|-------|------|------------------|
-| School Directory | Single | `schools/ccd/directory/schools_ccd_directory` |
-| School Enrollment | Yearly | `schools/ccd/enrollment/schools_ccd_enrollment_{year}` |
-| District Directory | Single | `school-districts/ccd/directory/school-districts_lea_directory` |
-| District Enrollment | Yearly | `school-districts/ccd/enrollment/schools_ccd_lea_enrollment_{year}` |
-| District Finance | Single | `school-districts/ccd/finance/districts_ccd_finance` |
+**Key datasets:**
 
-### Codebooks
+| Dataset | Path | Type |
+|---------|------|------|
+| School Directory | `ccd/schools_ccd_directory` | Single |
+| School Enrollment | `ccd/schools_ccd_enrollment_{year}` | Yearly |
+| District Directory | `ccd/school-districts_lea_directory` | Single |
+| District Enrollment | `ccd/schools_ccd_lea_enrollment_{year}` | Yearly |
+| District Finance | `ccd/districts_ccd_finance` | Single |
 
-| Dataset | Codebook Path |
-|---------|---------------|
-| District Directory | `school-districts/ccd/directory/codebook_districts_ccd_directory` |
-| District Enrollment | `school-districts/ccd/enrollment/codebook_districts_ccd_enrollment` |
-| School Directory | `schools/ccd/directory/codebook_schools_ccd_directory` |
-| School Enrollment | `schools/ccd/enrollment/codebook_schools_ccd_enrollment` |
-
-> Codebooks are `.xls` files available on both mirrors. See `datasets-reference.md` for the full catalog and `fetch-patterns.md` for `get_codebook_url()`. For human reference — not parsed programmatically. No codebook exists for CCD Finance.
-
-### Example Fetch
-
-```python
-import polars as pl
-
-url = "https://huggingface.co/datasets/brhkim/education_data_portal_mirror/resolve/main/schools/ccd/directory/schools_ccd_directory.parquet"
-df = pl.read_parquet(url)
-
-# Filter locally
-df = df.filter(
-    (pl.col("fips") == 6) &  # California
-    (pl.col("year") == 2022)
-)
-```
+Codebooks: See `datasets-reference.md` codebook column. Use `get_codebook_url()` from `fetch-patterns.md`. No codebook exists for CCD Finance.
 
 ### Filtering
 

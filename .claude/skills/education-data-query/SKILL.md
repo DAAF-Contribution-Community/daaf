@@ -1,6 +1,6 @@
 ---
 name: education-data-query
-description: Download education data from configured mirror sources. Use when fetching education data for research, downloading datasets by level/source/topic, or filtering large files locally with Polars.
+description: Download education data from configured mirror sources. Use when fetching education data for research, downloading datasets by source, or filtering large files locally with Polars.
 metadata:
   audience: data-analysts
   domain: education-data
@@ -23,7 +23,7 @@ Download datasets from the Education Data Portal via configured mirror sources (
 |------|---------|--------------|
 | `mirrors.yaml` | Mirror URLs, priority, format, timeouts, metadata config | Understanding mirror configuration |
 | `fetch-patterns.md` | Code patterns for mirror-based fetching | Writing Stage 5 fetch scripts |
-| `datasets-reference.md` | Known dataset file paths by level/source | Finding the right file path for a dataset |
+| `datasets-reference.md` | Known dataset file paths by source | Finding the right file path for a dataset |
 | `filters-reference.md` | Complete filter variables | Filtering downloaded data locally |
 | `query-patterns.md` | Endpoint path structure reference | Understanding URL/path naming conventions |
 
@@ -75,7 +75,7 @@ This eliminates guessing — if the file exists in a mirror, use it; if not, fal
 What dataset do you need?
 ├─ Know the exact file path?
 │   └─ Use fetch_from_mirrors() with that path → ./references/fetch-patterns.md
-├─ Know the level/source/topic but not the file?
+├─ Know the source but not the exact filename?
 │   └─ Check ./references/datasets-reference.md for known paths
 ├─ Not sure what's available?
 │   └─ Query mirror discovery endpoint to list all files → ./references/fetch-patterns.md
@@ -119,18 +119,21 @@ df = df.filter(
 
 ## Dataset Path Structure
 
-Dataset files follow this general path convention (see mirrors.yaml for per-mirror URL templates):
+All mirrors use the same canonical path. Each mirror appends its own format extension (`.parquet`, `.csv`) via its `url_template` in mirrors.yaml:
 
 ```
-{level}/{source}/{topic}/{filename}.parquet
+{source}/{filename}
 ```
 
 | Component | Description | Examples |
 |-----------|-------------|----------|
-| `level` | Data level | `schools`, `school-districts`, `college-university` |
 | `source` | Data source | `ccd`, `ipeds`, `crdc`, `saipe`, `edfacts` |
-| `topic` | Data topic | `directory`, `enrollment`, `finance`, `grad-rates` |
-| `filename` | Dataset file | `districts_saipe`, `schools_ccd_lea_enrollment_2022` |
+| `filename` | Dataset file | `schools_ccd_directory`, `geography_saipe` |
+
+Example paths:
+- `saipe/geography_saipe` (SAIPE district poverty)
+- `ccd/schools_ccd_directory` (CCD school directory)
+- `ccd/schools_ccd_enrollment_2022` (CCD enrollment, yearly)
 
 See `./references/datasets-reference.md` for the complete file path listing.
 

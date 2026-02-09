@@ -170,10 +170,7 @@ DATA_RAW = PROJECT_DIR / "data" / "raw"
 DATE_PREFIX = "2026-01-24"
 YEARS = list(range(2018, 2023))
 
-DATASET_PATHS = {
-    "huggingface": {"path": "schools/ccd/directory/schools_ccd_directory"},
-    "urban_csv": {"source": "ccd", "filename": "schools_ccd_directory"},
-}
+DATASET_PATH = "ccd/schools_ccd_directory"
 
 OUTPUT_PARQUET = DATA_RAW / f"{DATE_PREFIX}_ccd_schools.parquet"
 
@@ -188,10 +185,7 @@ print("=" * 60)
 
 DATA_RAW.mkdir(parents=True, exist_ok=True)
 
-df = fetch_from_mirrors(
-    dataset_paths=DATASET_PATHS,
-    years=YEARS,
-)
+df = fetch_from_mirrors(DATASET_PATH, years=YEARS)
 print(f"Shape: {df.shape[0]:,} rows x {df.shape[1]} cols")
 ```
 
@@ -207,11 +201,8 @@ DATE_PREFIX = "2026-01-24"
 
 YEARS = list(range(2018, 2023))  # 2018-2022 per Plan query specification
 
-# Dataset paths per mirror (from education-data-query skill's datasets-reference.md)
-DATASET_PATHS = {
-    "huggingface": {"path": "schools/ccd/directory/schools_ccd_directory"},
-    "urban_csv": {"source": "ccd", "filename": "schools_ccd_directory"},
-}
+# Dataset path from education-data-query skill's datasets-reference.md
+DATASET_PATH = "ccd/schools_ccd_directory"
 
 OUTPUT_PARQUET = DATA_RAW / f"{DATE_PREFIX}_ccd_schools.parquet"
 
@@ -253,10 +244,7 @@ print("=" * 60)
 DATA_RAW.mkdir(parents=True, exist_ok=True)
 
 print("\nFetching CCD school directory...")
-df = fetch_from_mirrors(
-    dataset_paths=DATASET_PATHS,
-    years=YEARS,
-)
+df = fetch_from_mirrors(DATASET_PATH, years=YEARS)
 print(f"Shape: {df.shape[0]:,} rows x {df.shape[1]} cols")
 ```
 
