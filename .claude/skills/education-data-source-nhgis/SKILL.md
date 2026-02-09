@@ -1,16 +1,22 @@
 ---
 name: education-data-source-nhgis
-description: IPUMS NHGIS (National Historical Geographic Information System) census data source for education research. Use when working with census geography, demographic data for school communities, time series analysis, geographic crosswalks, or linking schools to census tracts/block groups.
+description: >-
+  IPUMS NHGIS (National Historical Geographic Information System) census
+  geography and demographic data for education research. Use when working with
+  census geography, demographic data for school communities, time series
+  analysis, geographic crosswalks, or linking schools to census tracts/block
+  groups. Portal data is pre-processed crosswalks; direct NHGIS requires
+  IPUMS registration.
 metadata:
   audience: data-analysts
   domain: education-data
 ---
 
-# NHGIS: National Historical Geographic Information System
+# NHGIS Data Source Reference
 
-Census geography and demographic data source for education research. NHGIS provides the foundation for linking schools to community characteristics.
+Census geography and demographic data source for education research. NHGIS provides the foundation for linking schools to community characteristics via census tracts, block groups, and school district boundaries.
 
-> **CRITICAL: Portal Integer Encodings**
+> **CRITICAL: Value Encoding**
 >
 > When accessing NHGIS data through the Education Data Portal (not NHGIS directly), categorical variables use **integer encodings**, not string labels. Always verify the exact codes in the mirror codebook.
 >
@@ -24,18 +30,19 @@ Census geography and demographic data source for education research. NHGIS provi
 > | `cbsa_type` | `2` | Micropolitan |
 > | `geocode_accuracy` | `-2` | Not geocoded |
 >
-> See `references/variable-catalog.md` for complete encoding tables.
+> See `./references/variable-catalog.md` for complete encoding tables.
 
 ## What is NHGIS?
 
-NHGIS (from IPUMS, University of Minnesota) provides free access to:
+NHGIS (from IPUMS, University of Minnesota) provides free access to census geography and demographic data.
 
-- **Summary tables**: Census data from 1790-present (decennial census + ACS)
-- **GIS boundary files**: States, counties, tracts, blocks, school districts
-- **Time series tables**: Harmonized data across census years
-- **Geographic crosswalks**: Allocate data between different census geographies
-
-**Key for education research**: Links school locations to community demographics via census tracts, block groups, and school district boundaries.
+- **Collector**: IPUMS, University of Minnesota
+- **Coverage**: US census data from 1790-present (decennial census + ACS)
+- **Content**: Summary tables, GIS boundary files, time series tables, geographic crosswalks
+- **Frequency**: Decennial census (every 10 years) + ACS (annual, 5-year rolling)
+- **Available years**: 1790-2020 (decennial), 2005-2023 (ACS 5-year)
+- **Primary identifiers**: GISJOIN (NHGIS internal), GEOID (Census Bureau standard)
+- **Education relevance**: Links school locations to community demographics via census tracts, block groups, and school district boundaries
 
 ## Reference File Structure
 
@@ -44,9 +51,9 @@ NHGIS (from IPUMS, University of Minnesota) provides free access to:
 | `geographic-units.md` | Census geography hierarchy (tracts, blocks, districts) | Understanding census geography |
 | `school-geography-links.md` | Linking schools to census areas | Connecting school data to demographics |
 | `time-series.md` | Historical data, harmonization methods | Longitudinal analysis |
-| `variable-catalog.md` | Key demographic variables for education | Selecting census variables |
+| `variable-catalog.md` | Key demographic variables, codes, special values | Selecting census variables or interpreting encodings |
 | `boundary-changes.md` | How boundaries change between censuses | Handling geographic inconsistencies |
-| `data-access.md` | API, Python/R packages, data extraction | Downloading NHGIS data |
+| `data-access.md` | API, Python/R packages, data extraction | Downloading NHGIS data directly |
 
 ## Decision Trees
 
@@ -105,7 +112,9 @@ Time period?
     └─ Limited tract coverage; county/state more complete
 ```
 
-## Quick Reference: Geographic Levels
+## Quick Reference: Geographic Levels and Variables
+
+### Geographic Levels
 
 | Level | Typical Size | Education Use | NHGIS Coverage |
 |-------|--------------|---------------|----------------|
@@ -118,7 +127,19 @@ Time period?
 | County | ~100,000 people | Regional patterns | 1790-2020 |
 | State | Varies | Policy analysis | 1790-2020 |
 
-## Quick Reference: Key Education Variables
+### Key Identifiers
+
+| ID | Format | Level | Example | Notes |
+|----|--------|-------|---------|-------|
+| `ncessch` | 12-digit integer | School | `60000100001` | NCES school ID (in Portal data) |
+| `GISJOIN` | String with prefix | Any | `G0600010` | NHGIS internal ID; use for NHGIS joins |
+| `GEOID` | Numeric string | Any | `06001402100` | Census Bureau standard; use for non-NHGIS joins |
+| `tract` | Integer | Tract | `402100` | Census tract number (in Portal data) |
+| `block_group` | Integer | Block Group | `1` | Block group within tract (in Portal data) |
+| `geoid_block` | String | Block | `060014021001001` | Full block FIPS code (in Portal data) |
+| `cbsa` | Integer | Metro area | `41860` | Core Based Statistical Area code |
+
+### Key Education Variables
 
 | Topic | Example Variables | Source |
 |-------|-------------------|--------|
@@ -131,7 +152,7 @@ Time period?
 | Family structure | Single-parent, grandparent households | ACS (sample) |
 | Immigration | Foreign-born, recent immigrants | ACS (sample) |
 
-## Quick Reference: Data Sources
+### Data Sources by Type
 
 | Source | Years | Geographic Detail | Content |
 |--------|-------|-------------------|---------|
@@ -141,22 +162,7 @@ Time period?
 | Time Series | 1790-2020 | Varies | Harmonized across years |
 | Geographic Crosswalks | 1990-2020 | Block+ | Interpolation weights |
 
-## NHGIS in Education Data Portal
-
-The Urban Institute Education Data Portal includes NHGIS-derived data linking schools to census geography.
-
-> **Schema Difference:** Schools NHGIS files (47 columns) have a different schema than colleges NHGIS files (26 columns). Schools data includes more detailed geographic identifiers (block-level precision), while colleges data is primarily tract-level. Do not assume identical column structures when working with both.
-
-### Available via HuggingFace Mirror
-
-| Mirror Path | Census Year | Content |
-|-------------|-------------|---------|
-| `schools/nhgis/census-1990/` | 1990 | School-to-tract links |
-| `schools/nhgis/census-2000/` | 2000 | School-to-tract links |
-| `schools/nhgis/census-2010/` | 2010 | School-to-tract links |
-| `schools/nhgis/census-2020/` | 2020 | School-to-tract links |
-
-### Key Variables in Portal NHGIS Data
+### Portal Variables (Schools NHGIS)
 
 | Variable | Description |
 |----------|-------------|
@@ -169,22 +175,33 @@ The Urban Institute Education Data Portal includes NHGIS-derived data linking sc
 | `cbsa` | CBSA code (if applicable) |
 | `cbsa_type` | Metropolitan (1) or Micropolitan (2) |
 
-### Accessing Data
+### Missing Data Codes
 
-```python
-import polars as pl
+| Code | Meaning | When Used |
+|------|---------|-----------|
+| `-2` | Not geocoded | `geocode_accuracy` field in Portal data |
+| `-1` | Missing/not reported | General missing data indicator in Portal data |
+| `9` | Unknown region | `census_region` when area not classified |
+| `null` | Not available | Variable not applicable to this record |
 
-# Load school-to-census links for 2020
-url = "https://huggingface.co/datasets/brhkim/education_data_portal_mirror/resolve/main/schools/nhgis/census-2020/schools_nhgis_geog_2020.parquet"
-df = pl.read_parquet(url)
+> **Schema Difference:** Schools NHGIS files (47 columns) have a different schema than colleges NHGIS files (26 columns). Schools data includes more detailed geographic identifiers (block-level precision), while colleges data is primarily tract-level. Do not assume identical column structures when working with both.
 
-# Filter to specific school
-school_census = df.filter(pl.col("ncessch") == 60000100001)
-```
+## Data Access
 
-**Note**: The Portal provides pre-processed crosswalks; for custom geographic analysis, use NHGIS directly (requires free IPUMS registration).
+### Dataset Paths
 
-### NHGIS Codebooks
+| Topic | Type | Huggingface Path |
+|-------|------|------------------|
+| Schools Census 1990 | Single | `schools/nhgis/census-1990/schools_nhgis_geog_1990` |
+| Schools Census 2000 | Single | `schools/nhgis/census-2000/schools_nhgis_geog_2000` |
+| Schools Census 2010 | Single | `schools/nhgis/census-2010/schools_nhgis_geog_2010` |
+| Schools Census 2020 | Single | `schools/nhgis/census-2020/schools_nhgis_geog_2020` |
+| Colleges Census 1990 | Single | `college-university/nhgis/census-1990/colleges_nhgis_geog_1990` |
+| Colleges Census 2000 | Single | `college-university/nhgis/census-2000/colleges_nhgis_geog_2000` |
+| Colleges Census 2010 | Single | `college-university/nhgis/census-2010/colleges_nhgis_geog_2010` |
+| Colleges Census 2020 | Single | `college-university/nhgis/census-2020/colleges_nhgis_geog_2020` |
+
+### Codebooks
 
 | Dataset | Codebook Path |
 |---------|---------------|
@@ -197,9 +214,35 @@ school_census = df.filter(pl.col("ncessch") == 60000100001)
 | Colleges Census 2010 | `college-university/nhgis/census-2010/codebook_colleges_nhgis_census2010` |
 | Colleges Census 2020 | `college-university/nhgis/census-2020/codebook_colleges_nhgis_census2020` |
 
-> Codebooks are `.xls` files on both mirrors. See `datasets-reference.md` for full catalog and `fetch-patterns.md` for `get_codebook_url()`. For human reference — not parsed programmatically.
+> Codebooks are `.xls` files on both mirrors. See `datasets-reference.md` for the full catalog and `fetch-patterns.md` for `get_codebook_url()`. For human reference — not parsed programmatically.
 
-## Data Access Methods
+### Example Fetch
+
+```python
+import polars as pl
+
+# Load school-to-census links for 2020
+url = "https://huggingface.co/datasets/brhkim/education_data_portal_mirror/resolve/main/schools/nhgis/census-2020/schools_nhgis_geog_2020.parquet"
+df = pl.read_parquet(url)
+
+# Filter to California schools
+df = df.filter(pl.col("fips") == 6)
+```
+
+### Filtering
+
+```python
+# Filter to a specific school
+school_census = df.filter(pl.col("ncessch") == 60000100001)
+
+# Filter to metropolitan areas only
+metro = df.filter(pl.col("cbsa_type") == 1)
+
+# Filter to a specific census region (South)
+south = df.filter(pl.col("census_region") == 3)
+```
+
+### Direct NHGIS Access Methods
 
 | Method | Best For | Registration |
 |--------|----------|--------------|
@@ -208,35 +251,50 @@ school_census = df.filter(pl.col("ncessch") == 60000100001)
 | [ipumsr (R)](https://tech.popdata.org/ipumsr/) | R workflows | Uses API key |
 | [ipumspy (Python)](https://ipumspy.readthedocs.io/) | Python workflows | Uses API key |
 
+> **Note**: The Portal provides pre-processed crosswalks; for custom geographic analysis, use NHGIS directly (requires free IPUMS registration).
+
 ## Common Pitfalls
 
-| Issue | Problem | Solution |
-|-------|---------|----------|
-| Boundary changes | Tracts split/merged between censuses | Use crosswalks or standardized tables |
+| Pitfall | Issue | Solution |
+|---------|-------|----------|
+| Boundary changes | Tracts split/merged between censuses break longitudinal analysis | Use crosswalks or geographically standardized tables |
 | ACS margins of error | Small-area estimates have high uncertainty | Check MOE; aggregate areas if needed |
-| Block data limitations | Only 100% count variables (no income) | Use block groups for sample data |
-| GISJOIN vs GEOID | Different ID formats | Use GISJOIN for NHGIS joins |
-| 2020 Census issues | Differential privacy added noise | Check for negative values; use ACS |
+| Block data limitations | Only 100% count variables available (no income/poverty) | Use block groups for sample data (ACS) |
+| GISJOIN vs GEOID | Different ID formats cause join failures | Use GISJOIN for NHGIS joins, GEOID for Census Bureau joins |
+| 2020 Census noise | Differential privacy added noise to small-area counts | Check for negative values; prefer ACS for detailed characteristics |
+| Schools vs colleges schema | Different column counts (47 vs 26) and geographic precision | Check schema before joining; do not assume identical structures |
+| Using string codes | Portal data uses integer encodings, not string labels | Always verify codes against codebook (see encoding warning above) |
+
+## Related Data Sources
+
+| Source | Relationship | When to Use |
+|--------|--------------|-------------|
+| `education-data-source-ccd` | School identifiers for linking | Join school data to census geography via `ncessch` |
+| `education-data-source-saipe` | District-level poverty | Use SAIPE for district poverty; NHGIS for tract/block group poverty |
+| `education-data-source-meps` | School-level poverty | MEPS provides school-level poverty estimates; NHGIS provides community context |
+| `education-data-source-ipeds` | College identifiers for linking | Join college data to census geography via `unitid` |
+| `education-data-explorer` | Parent discovery skill | Finding available endpoints |
+| `education-data-query` | Data fetching | Downloading parquet/CSV files |
 
 ## Topic Index
 
 | Topic | Reference File |
 |-------|---------------|
-| Census tract definition | `geographic-units.md` |
-| Block group definition | `geographic-units.md` |
-| School district boundaries | `geographic-units.md` |
-| School-to-tract linking | `school-geography-links.md` |
-| SABINS attendance areas | `school-geography-links.md` |
-| NCES EDGE files | `school-geography-links.md` |
-| Time series tables | `time-series.md` |
-| Geographic standardization | `time-series.md` |
-| Geographic crosswalks | `time-series.md` |
-| Population variables | `variable-catalog.md` |
-| Income/poverty variables | `variable-catalog.md` |
-| Education variables | `variable-catalog.md` |
-| Tract boundary changes | `boundary-changes.md` |
-| 2022 Connecticut changes | `boundary-changes.md` |
-| TIGER/Line versions | `boundary-changes.md` |
-| API access | `data-access.md` |
-| ipumspy Python package | `data-access.md` |
-| Data Finder workflow | `data-access.md` |
+| Census tract definition | `./references/geographic-units.md` |
+| Block group definition | `./references/geographic-units.md` |
+| School district boundaries | `./references/geographic-units.md` |
+| School-to-tract linking | `./references/school-geography-links.md` |
+| SABINS attendance areas | `./references/school-geography-links.md` |
+| NCES EDGE files | `./references/school-geography-links.md` |
+| Time series tables | `./references/time-series.md` |
+| Geographic standardization | `./references/time-series.md` |
+| Geographic crosswalks | `./references/time-series.md` |
+| Population variables | `./references/variable-catalog.md` |
+| Income/poverty variables | `./references/variable-catalog.md` |
+| Education variables | `./references/variable-catalog.md` |
+| Tract boundary changes | `./references/boundary-changes.md` |
+| 2022 Connecticut changes | `./references/boundary-changes.md` |
+| TIGER/Line versions | `./references/boundary-changes.md` |
+| API access | `./references/data-access.md` |
+| ipumspy Python package | `./references/data-access.md` |
+| Data Finder workflow | `./references/data-access.md` |

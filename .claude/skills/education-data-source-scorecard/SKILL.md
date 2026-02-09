@@ -1,50 +1,43 @@
 ---
 name: education-data-source-scorecard
-description: College Scorecard data source for post-college outcomes. Covers earnings from IRS/Treasury, student debt and repayment from NSLDS, and completion metrics. Use when analyzing post-graduation earnings, loan repayment, debt levels, or when understanding Scorecard's Title IV recipient limitation is critical.
+description: >-
+  College Scorecard data source for post-college outcomes including earnings
+  from IRS/Treasury, student debt and repayment from NSLDS, and completion
+  metrics. Use when analyzing post-graduation earnings, loan repayment, debt
+  levels, or when understanding Scorecard's Title IV recipient limitation is
+  critical. Covers only Title IV federal aid recipients, not all students.
 metadata:
   audience: data-analysts
   domain: education-data
 ---
 
-# College Scorecard Data Source
+# Scorecard Data Source Reference
 
-Federal data on post-college outcomes including earnings, debt, and repayment for students who received Title IV financial aid.
+Federal data on post-college outcomes including earnings, debt, and repayment for students who received Title IV financial aid. Links education records to IRS tax data for actual earnings, making it the primary source for post-college labor market outcomes.
+
+> **CRITICAL: Value Encoding**
+>
+> The Education Data Portal uses **integer encodings** for all categorical variables.
+> In HuggingFace mirror parquet files, **`null` is the primary indicator for
+> missing/suppressed data** — not the string `"PrivacySuppressed"` from original
+> Scorecard documentation. Always verify codes against codebooks.
+>
+> | Context | `pred_degree_awarded_ipeds` | HBCU / tribal flags | `religious_affiliation` |
+> |---------|----------------------------|---------------------|-------------------------|
+> | **Portal (integer)** | `0`-`4` | `0` / `1` | Integer codes 22-200 |
+> | Original Scorecard | String labels | String labels | String labels |
+>
+> See `./references/variable-definitions.md` for complete encoding tables.
 
 ## What is College Scorecard?
 
 - **Publisher**: U.S. Department of Education
 - **Primary value**: Post-college labor market outcomes (earnings) and debt/repayment metrics
 - **Data sources**: NSLDS (loans/aid), IRS/Treasury (earnings), IPEDS (institutional characteristics)
-- **Coverage**: **Title IV federal aid recipients only** - not all students
+- **Coverage**: **Title IV federal aid recipients only** — not all students
 - **Unique feature**: Links education to IRS tax records for actual earnings data
 - **Access**: Education Data Portal mirrors (parquet/CSV) or bulk downloads at collegescorecard.ed.gov
-
-## Critical Limitation: Title IV Recipients Only
-
-**The single most important caveat for all Scorecard analysis:**
-
-Scorecard tracks ONLY students who received federal financial aid (Title IV):
-- Pell Grants
-- Federal student loans (Direct, Perkins, PLUS)
-- Federal work-study
-
-| Excluded Group | Impact |
-|----------------|--------|
-| Full-pay students | Often higher-income; different outcomes |
-| Students with only state/institutional aid | Missing from data |
-| International students | Not eligible for federal aid |
-| Some graduate students | If they received no federal aid |
-
-**Coverage varies dramatically by institution type:**
-
-| Institution Type | Typical Title IV Coverage |
-|-----------------|---------------------------|
-| For-profit colleges | 80-90%+ |
-| Community colleges | 60-80% |
-| Public flagships | 50-70% |
-| Selective private colleges | 30-50% |
-
-**Data systematically overrepresents lower-income students** who are more likely to need federal aid.
+- **Primary identifier**: `unitid` (IPEDS institution ID)
 
 ## Reference File Structure
 
@@ -57,55 +50,6 @@ Scorecard tracks ONLY students who received federal financial aid (Title IV):
 | `variable-definitions.md` | Key variables, naming conventions, special values | Building queries or interpreting results |
 | `data-quality.md` | Suppression rules, selection bias, known limitations | Assessing data reliability |
 | `field-of-study.md` | Program-level earnings and debt data | Analyzing outcomes by major/CIP code |
-
-## Portal Data Structure (CRITICAL)
-
-The Portal uses **LONG format** with time horizon as a column, NOT the WIDE format from original Scorecard files.
-
-### Key Differences from Original Scorecard
-
-| Scorecard (WIDE) | Portal (LONG) | How to Get |
-|------------------|---------------|------------|
-| `MD_EARN_WNE_P6` | `earnings_med` | Filter: `years_after_entry == 6` |
-| `MD_EARN_WNE_P10` | `earnings_med` | Filter: `years_after_entry == 10` |
-| `COUNT_WNE_P6` | `count_working` | Filter: `years_after_entry == 6` |
-| `CONTROL`, `INSTNM` | NOT IN FILE | Join to IPEDS directory |
-
-### Example Fetch
-
-```python
-import polars as pl
-
-url = "https://huggingface.co/datasets/brhkim/education_data_portal_mirror/resolve/main/college-university/scorecard/earnings/colleges_scorecard_earnings.parquet"
-df = pl.read_parquet(url)
-
-# Get 10-year earnings
-df = df.filter(pl.col("years_after_entry") == 10)
-```
-
-### Scorecard Codebooks
-
-| Dataset | Codebook Path |
-|---------|---------------|
-| Default | `college-university/scorecard/default/codebook_colleges_scorecard_default` |
-| Earnings | `college-university/scorecard/earnings/codebook_colleges_scorecard_earnings` |
-| Institutional Characteristics | `college-university/scorecard/institutional-characteristics/codebook_colleges_scorecard_institutional-characteristics` |
-| Repayment | `college-university/scorecard/repayment/codebook_colleges_scorecard_repayment` |
-| Student Characteristics (Aid) | `college-university/scorecard/student-characteristics/codebook_colleges_scorecard_student-characteristics_aid-applicants` |
-| Student Characteristics (Neighborhood) | `college-university/scorecard/student-characteristics/codebook_colleges_scorecard_student-characteristics_home-neighborhood` |
-
-> Codebooks are `.xls` files on both mirrors. See `datasets-reference.md` for full catalog and `fetch-patterns.md` for `get_codebook_url()`. For human reference — not parsed programmatically.
-
-### Missing Values
-
-Both `-3` (suppressed) and `null` appear in Portal data:
-```python
-# Filter for valid earnings
-valid = df.filter(
-    (pl.col("earnings_med").is_not_null()) &
-    (pl.col("earnings_med") != -3)
-)
-```
 
 ## Decision Trees
 
@@ -154,7 +98,18 @@ Query construction?
 └─ Field-level queries → ./references/field-of-study.md
 ```
 
-## Quick Reference: Key Variables
+## Quick Reference: Scorecard Variables
+
+### Portal Data Structure (CRITICAL)
+
+The Portal uses **LONG format** with time horizon as a column, NOT the WIDE format from original Scorecard files.
+
+| Scorecard (WIDE) | Portal (LONG) | How to Get |
+|------------------|---------------|------------|
+| `MD_EARN_WNE_P6` | `earnings_med` | Filter: `years_after_entry == 6` |
+| `MD_EARN_WNE_P10` | `earnings_med` | Filter: `years_after_entry == 10` |
+| `COUNT_WNE_P6` | `count_working` | Filter: `years_after_entry == 6` |
+| `CONTROL`, `INSTNM` | NOT IN FILE | Join to IPEDS directory |
 
 ### Earnings Variables
 
@@ -193,7 +148,13 @@ Query construction?
 | `C150_4_POOLED` | Pooled completion rate | Scorecard |
 | `COMP_ORIG_YR*_RT` | Completion rate by year | Scorecard |
 
-## Quick Reference: Data Timing
+### Key Identifiers
+
+| ID | Format | Level | Example | Notes |
+|----|--------|-------|---------|-------|
+| `unitid` | 6-digit integer | Institution | `110635` | Same as IPEDS unitid; primary join key |
+
+### Data Timing
 
 | Metric | "Years After" Meaning | Typical Lag |
 |--------|----------------------|-------------|
@@ -204,16 +165,6 @@ Query construction?
 
 **"After entry" means after first enrollment**, not after graduation.
 
-## Quick Reference: Missing Data Codes
-
-> **Portal Encoding Warning:** The Education Data Portal uses **integer encodings** for all categorical values. In the HuggingFace mirror parquet files, **`null` is the primary indicator for missing/suppressed data** (not the `-1, -2, -3` codes documented in codebooks). String values like `"PrivacySuppressed"` in original Scorecard documentation are represented as `null`. Always verify actual data patterns.
-
-| Data Pattern | Meaning | Notes |
-|--------------|---------|-------|
-| `null` | Missing/suppressed/not applicable | Primary missing indicator in parquet |
-| Valid integer (e.g., 0-4) | Actual value | Categorical codes |
-| Positive numeric | Actual value | For earnings, debt, counts |
-
 ### Categorical Value Encodings
 
 | Variable | Values |
@@ -221,6 +172,119 @@ Query construction?
 | `pred_degree_awarded_ipeds` | 0=Not classified, 1=Certificate, 2=Associate's, 3=Bachelor's, 4=Graduate |
 | Yes/No flags (HBCU, tribal, etc.) | 0=No, 1=Yes, null=Missing |
 | `religious_affiliation` | Integer codes 22-200 (see variable-definitions.md), null=None/Missing |
+
+### Missing Data Codes
+
+| Code | Meaning | When Used |
+|------|---------|-----------|
+| `null` | Missing/suppressed/not applicable | Primary missing indicator in parquet files |
+| `-3` | Suppressed | Privacy suppression (appears in some numeric fields) |
+| Valid integer (e.g., 0-4) | Actual value | Categorical codes |
+| Positive numeric | Actual value | Earnings, debt, counts |
+
+```python
+# Filter for valid earnings (handle both null and -3)
+valid = df.filter(
+    (pl.col("earnings_med").is_not_null()) &
+    (pl.col("earnings_med") != -3)
+)
+```
+
+## Data Access
+
+### Dataset Paths
+
+| Topic | Type | Huggingface Path |
+|-------|------|------------------|
+| Earnings | Single | `college-university/scorecard/earnings/colleges_scorecard_earnings` |
+| Default | Single | `college-university/scorecard/default/colleges_scorecard_default` |
+| Institutional Characteristics | Single | `college-university/scorecard/institutional-characteristics/colleges_scorecard_institutional-characteristics` |
+| Repayment | Single | `college-university/scorecard/repayment/colleges_scorecard_repayment` |
+| Student Characteristics (Aid) | Single | `college-university/scorecard/student-characteristics/colleges_scorecard_student-characteristics_aid-applicants` |
+| Student Characteristics (Neighborhood) | Single | `college-university/scorecard/student-characteristics/colleges_scorecard_student-characteristics_home-neighborhood` |
+
+### Codebooks
+
+| Dataset | Codebook Path |
+|---------|---------------|
+| Default | `college-university/scorecard/default/codebook_colleges_scorecard_default` |
+| Earnings | `college-university/scorecard/earnings/codebook_colleges_scorecard_earnings` |
+| Institutional Characteristics | `college-university/scorecard/institutional-characteristics/codebook_colleges_scorecard_institutional-characteristics` |
+| Repayment | `college-university/scorecard/repayment/codebook_colleges_scorecard_repayment` |
+| Student Characteristics (Aid) | `college-university/scorecard/student-characteristics/codebook_colleges_scorecard_student-characteristics_aid-applicants` |
+| Student Characteristics (Neighborhood) | `college-university/scorecard/student-characteristics/codebook_colleges_scorecard_student-characteristics_home-neighborhood` |
+
+> Codebooks are `.xls` files on both mirrors. See `datasets-reference.md` for the
+> full catalog and `fetch-patterns.md` for `get_codebook_url()`. For human
+> reference — not parsed programmatically.
+
+### Example Fetch
+
+```python
+import polars as pl
+
+url = "https://huggingface.co/datasets/brhkim/education_data_portal_mirror/resolve/main/college-university/scorecard/earnings/colleges_scorecard_earnings.parquet"
+df = pl.read_parquet(url)
+
+# Get 10-year earnings
+df = df.filter(pl.col("years_after_entry") == 10)
+```
+
+### Filtering
+
+```python
+# Filter by time horizon (LONG format — filter, don't use wide column names)
+six_yr = df.filter(pl.col("years_after_entry") == 6)
+
+# Filter for valid earnings (exclude null and suppressed)
+valid = df.filter(
+    (pl.col("earnings_med").is_not_null()) &
+    (pl.col("earnings_med") != -3)
+)
+
+# Join to IPEDS for institution names/control (not in Scorecard data)
+# ipeds_dir = pl.read_parquet("...ipeds/directory/...")
+# df = df.join(ipeds_dir.select("unitid", "inst_name", "control"), on="unitid")
+```
+
+## Common Pitfalls
+
+| Pitfall | Issue | Solution |
+|---------|-------|----------|
+| "All graduates" claims | Scorecard covers Title IV recipients only, not all students | Note Title IV limitation prominently in any analysis |
+| Wage comparison | Comparing to BLS wages or Census income uses different populations | Use for relative comparisons, not absolute claims; document population differences |
+| Ignoring suppression | Many programs have no data due to privacy thresholds | Check suppression rates before analyzing; document coverage |
+| Time lag ignored | Earnings reflect old cohorts (6-year = data from 7+ years ago) | Document data vintage and cohort years explicitly |
+| Total borrowing assumption | Scorecard debt includes only federal loans, not private | State "federal loans only" when reporting debt figures |
+| String codes from docs | Original Scorecard uses string labels; Portal uses integers | Verify actual data types in Portal parquet files; use integer codes |
+| Wide-format variable names | Using `MD_EARN_WNE_P10` column name on Portal data | Portal uses LONG format — filter `years_after_entry` instead |
+
+## Critical Limitation: Title IV Recipients Only
+
+**The single most important caveat for all Scorecard analysis:**
+
+Scorecard tracks ONLY students who received federal financial aid (Title IV):
+- Pell Grants
+- Federal student loans (Direct, Perkins, PLUS)
+- Federal work-study
+
+| Excluded Group | Impact |
+|----------------|--------|
+| Full-pay students | Often higher-income; different outcomes |
+| Students with only state/institutional aid | Missing from data |
+| International students | Not eligible for federal aid |
+| Some graduate students | If they received no federal aid |
+
+**Coverage varies dramatically by institution type:**
+
+| Institution Type | Typical Title IV Coverage |
+|-----------------|---------------------------|
+| For-profit colleges | 80-90%+ |
+| Community colleges | 60-80% |
+| Public flagships | 50-70% |
+| Selective private colleges | 30-50% |
+
+**Data systematically overrepresents lower-income students** who are more likely to need federal aid.
 
 ## What Scorecard Data Does NOT Include
 
@@ -242,23 +306,15 @@ Query construction?
 | **Outcome focus** | Earnings, debt, repayment | Completion, retention |
 | **Data source** | NSLDS + IRS | Institution-reported |
 
-## Common Analysis Mistakes
+## Related Data Sources
 
-**Do Not:**
-1. Claim Scorecard shows "all graduates" - it's Title IV recipients only
-2. Compare to BLS wages or Census income - different populations
-3. Ignore suppression - many programs have no data
-4. Forget the time lag - earnings reflect old cohorts
-5. Assume debt is total borrowing - private loans excluded
-6. Use string codes from original documentation - Portal uses integers
-
-**Do:**
-1. Note Title IV limitation prominently in any analysis
-2. Check suppression rates before analyzing
-3. Use for relative comparisons, not absolute claims
-4. Supplement with other data sources
-5. Document data vintage (cohort years)
-6. Verify actual data types in Portal data (all categorical values are integers)
+| Source | Relationship | When to Use |
+|--------|--------------|-------------|
+| `education-data-source-ipeds` | Institutional characteristics, enrollment, finance | Join on `unitid` for institution names, control type, enrollment context |
+| `education-data-source-pseo` | Alternative post-college earnings (Census LEHD) | When broader population coverage needed (not limited to Title IV) |
+| `education-data-source-fsa` | Federal student aid details | Deeper analysis of aid types and disbursements |
+| `education-data-explorer` | Parent discovery skill | Finding available endpoints |
+| `education-data-query` | Data fetching | Downloading parquet/CSV files |
 
 ## Topic Index
 

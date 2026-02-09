@@ -1,26 +1,46 @@
 ---
 name: education-data-source-nacubo
-description: NACUBO endowment study data source for college/university endowments. Use when researching higher education endowment market values, investment returns, asset allocations, spending rates, or governance practices from the NACUBO-Commonfund Study of Endowments.
+description: >-
+  NACUBO-Commonfund Study of Endowments (NCSE) data for college/university
+  endowment market values, investment returns, asset allocations, spending
+  rates, and governance practices. Use when researching higher education
+  endowment performance, portfolio composition, or spending policies.
+  Portal mirror contains only 7 market-value columns; full study requires
+  separate NACUBO access.
 metadata:
   audience: data-analysts
   domain: education-data
 ---
 
-# NACUBO Endowment Data Source
+# NACUBO Data Source Reference
 
-Reference for understanding college and university endowment data from the NACUBO-Commonfund Study of Endowments (NCSE), available through the Urban Institute Education Data Portal.
+The NACUBO-Commonfund Study of Endowments (NCSE) is the most comprehensive annual survey of U.S. college and university endowments, covering ~650 institutions representing over $870 billion in assets. The Education Data Portal mirrors a limited subset (7 market-value columns); full investment, allocation, spending, and governance data requires direct NACUBO access.
+
+> **CRITICAL: Value Encoding**
+>
+> The Education Data Portal uses **integer codes** for categorical variables and
+> **null values** for missing data (NOT coded -1/-2/-3 like CCD, CRDC, etc.).
+> Always verify codes against codebooks whenever possible.
+>
+> | Variable | Portal Format | Notes |
+> |----------|---------------|-------|
+> | `fips` | Integer (`6` = California) | Not string abbreviations ("CA") |
+> | `year` | Integer (`2022`) | Fiscal year ending year |
+> | Missing data | `null` | NOT -1, -2, -3 |
+>
+> See `./references/variable-definitions.md` for complete encoding tables.
 
 ## What is NACUBO?
 
-The National Association of College and University Business Officers (NACUBO) is a nonprofit professional organization representing chief administrative and financial officers at higher education institutions. Since 1974, NACUBO has conducted the most comprehensive annual study of U.S. college and university endowments.
+The National Association of College and University Business Officers (NACUBO) is a nonprofit professional organization representing chief administrative and financial officers at higher education institutions.
 
-Key characteristics:
-
-- **Voluntary survey** of ~1,500 colleges, universities, and affiliated foundations
-- **658 participants** in FY2024 (most recent), representing $873.7 billion in assets
-- **Annual data collection** September-December, results published February
-- **Coverage**: Investment returns, asset allocations, spending rates, governance
-- **50+ years** of historical data (study founded 1974)
+- **Collector**: NACUBO with Commonfund Institute (currently); TIAA partnership FY2018-2022
+- **Coverage**: ~650 participating colleges, universities, and affiliated foundations (voluntary)
+- **Scope**: Investment returns, asset allocations, spending rates, governance practices, market values
+- **Frequency**: Annual survey (September-December collection, February publication)
+- **Available years**: 1974-present (50+ years); Portal mirror covers 2012-2022
+- **Primary identifier**: `unitid` (IPEDS 6-digit institution ID)
+- **FY2024 total**: 658 participants representing $873.7 billion in assets
 
 ## Reference File Structure
 
@@ -99,26 +119,34 @@ Which study by year?
 | New Gifts | Donations added to endowment | Aggregate by size/type |
 | Budget Support | Endowment % of operating budget | Size category, type |
 
+### Key Identifiers
+
+| ID | Format | Level | Example | Notes |
+|----|--------|-------|---------|-------|
+| `unitid` | Integer (6-digit) | Institution | `166027` | IPEDS institution ID; primary join key |
+| `inst_name_nacubo` | String | Institution | `Harvard University` | NACUBO version of name |
+| `fips` | Integer (1-56) | State | `25` (Massachusetts) | State FIPS code |
+
 ### Endowment Size Categories
 
-| Category | Range | FY24 Count | % of Participants |
-|----------|-------|------------|-------------------|
-| Over $5 Billion | >$5B | ~25 | ~4% |
-| $1 Billion to $5 Billion | $1B-$5B | ~107 | ~16% |
-| $501 Million to $1 Billion | $501M-$1B | ~77 | ~12% |
-| $251 Million to $500 Million | $251M-$500M | ~97 | ~15% |
-| $101 Million to $250 Million | $101M-$250M | ~161 | ~24% |
-| $51 Million to $100 Million | $51M-$100M | ~111 | ~17% |
-| Under $50 Million | <$50M | ~80 | ~12% |
+| Category Code | Range | FY24 Count | % of Participants |
+|---------------|-------|------------|-------------------|
+| 1 | Over $5 Billion | ~25 | ~4% |
+| 2 | $1 Billion to $5 Billion | ~107 | ~16% |
+| 3 | $501 Million to $1 Billion | ~77 | ~12% |
+| 4 | $251 Million to $500 Million | ~97 | ~15% |
+| 5 | $101 Million to $250 Million | ~161 | ~24% |
+| 6 | $51 Million to $100 Million | ~111 | ~17% |
+| 7 | Under $50 Million | ~80 | ~12% |
 
 ### Institution Types
 
-| Type | Description |
-|------|-------------|
-| Private | Private colleges and universities |
-| Public | Public colleges and universities |
-| IRF | Institutionally Related Foundations |
-| Combined | Combined endowment/foundation |
+| Type Code | Type Name | Description |
+|-----------|-----------|-------------|
+| 1 | Private | Private colleges and universities |
+| 2 | Public | Public colleges and universities |
+| 3 | IRF | Institutionally Related Foundations |
+| 4 | Combined | Combined endowment/foundation |
 
 ### Typical Return Ranges (Historical)
 
@@ -130,24 +158,69 @@ Which study by year?
 | 10-year | 6% to 9% | Most commonly cited |
 | 25-year | 6% to 9% | Long-term benchmark |
 
+### Missing Data Codes
+
+| Code | Meaning | When Used |
+|------|---------|-----------|
+| `null` | Not reported / missing | Standard for all NACUBO variables |
+
+> **Note:** Unlike other Education Data Portal sources (CCD, CRDC, etc.), NACUBO data uses **null values** for missing data rather than coded values like -1, -2, -3. NACUBO is a voluntary survey with simpler missing data patterns; the Portal preserves null rather than applying coded values.
+
+```python
+# Correct: Check for null
+df.filter(pl.col("endow_per_fte").is_null())
+
+# Incorrect: Checking for -1/-2/-3 (these don't exist in NACUBO)
+# df.filter(pl.col("endow_per_fte") == -1)  # Won't find anything
+```
+
 ## Data Access
 
-### Urban Institute Education Data Portal
+### Dataset Paths
 
-NACUBO data is fetched from mirrors (parquet or CSV), not via REST API. See the `education-data-query` skill.
+| Topic | Type | Huggingface Path |
+|-------|------|------------------|
+| Endowments | Single | `college-university/nacubo/endowments/colleges_nacubo_endow` |
 
-| Mirror | Path |
-|--------|------|
-| huggingface | `college-university/nacubo/endowments/colleges_nacubo_endow.parquet` |
-| urban_csv | `nacubo/colleges_nacubo_endow.csv` |
+> **Urban CSV mirror path:** `nacubo/colleges_nacubo_endow`
 
-### NACUBO Codebook
+### Codebooks
 
 | Dataset | Codebook Path |
 |---------|---------------|
 | Endowments | `college-university/nacubo/endowments/codebook_colleges_nacubo_endowments` |
 
-> Codebook is an `.xls` file on both mirrors. See `fetch-patterns.md` for `get_codebook_url()`. For human reference — not parsed programmatically.
+> Codebooks are `.xls` files on both mirrors. See `datasets-reference.md` for the
+> full catalog and `fetch-patterns.md` for `get_codebook_url()`. For human
+> reference -- not parsed programmatically.
+
+### Example Fetch
+
+```python
+import polars as pl
+
+url = "https://huggingface.co/datasets/brhkim/education_data_portal_mirror/resolve/main/college-university/nacubo/endowments/colleges_nacubo_endow.parquet"
+df = pl.read_parquet(url)
+
+# Filter locally
+df = df.filter(
+    (pl.col("fips") == 6) &  # California
+    (pl.col("year") == 2022)
+)
+```
+
+### Filtering
+
+```python
+# Filter by state
+df_ca = df.filter(pl.col("fips") == 6)  # California
+
+# Filter by year range
+df_recent = df.filter(pl.col("year").is_between(2018, 2022))
+
+# Drop nulls in key column
+df_valid = df.filter(pl.col("endowment_total_end_fy").is_not_null())
+```
 
 **Note**: The Education Data Portal integrates select NACUBO variables with IPEDS data. For comprehensive NCSE data (asset allocations, detailed returns, governance), access the full NACUBO report.
 
@@ -168,6 +241,17 @@ Includes:
 - **Non-members**: $1,500
 - **Academic researchers**: Contact Commonfund Institute
 
+## Common Pitfalls
+
+| Pitfall | Issue | Solution |
+|---------|-------|----------|
+| Using NCES-style codes | Portal uses integer FIPS, not string state abbreviations | Use integer fips codes (1-56) |
+| Expecting coded missing values | NACUBO in Portal uses nulls, not -1/-2/-3 | Check for null, not negative codes |
+| Comparing to IPEDS values | NACUBO is voluntary (~650), IPEDS is mandatory (~6,000+) | Note sample differences in analysis |
+| Year interpretation | FY2024 = July 2023 - June 2024 | Align fiscal year definitions carefully |
+| Assuming comprehensive coverage | Only ~650 of ~4,000+ institutions participate | Use IPEDS for population-level analysis |
+| Ignoring partner changes | TIAA (2018-22) vs Commonfund (other years) may change methodology | Check methodology for specific years |
+
 ## Key Caveats
 
 | Issue | Impact | Mitigation |
@@ -177,15 +261,7 @@ Includes:
 | Selection bias | Larger, well-resourced institutions overrepresented | Analyze by size category |
 | Partner changes | TIAA (2018-22), Commonfund (other years) | Check methodology changes |
 | Fiscal year timing | July 1 - June 30 | Match to other data sources carefully |
-
-## Common Pitfalls
-
-| Pitfall | Issue | Solution |
-|---------|-------|----------|
-| Using NCES-style codes | Portal uses integer FIPS, not string state abbreviations | Use integer fips codes (1-56) |
-| Expecting coded missing values | NACUBO in Portal uses nulls, not -1/-2/-3 | Check for null, not negative codes |
-| Comparing to IPEDS values | NACUBO is voluntary, IPEDS is mandatory | Note sample differences in analysis |
-| Year interpretation | FY2024 = July 2023 - June 2024 | Align fiscal year definitions carefully |
+| Portal subset | Only 7 columns mirrored | Full study required for returns, allocations, governance |
 
 ## Common Use Cases
 
@@ -198,14 +274,14 @@ Includes:
 | How has endowment performance changed? | Historical return series | `endowment-metrics.md` |
 | What portion of budgets come from endowments? | Budget support percentage | `endowment-metrics.md` |
 
-## Related Skills and Data Sources
+## Related Data Sources
 
-| Resource | Relationship | When to Use |
-|----------|--------------|-------------|
-| `education-data-explorer` | Parent skill for all education data | General exploration |
-| IPEDS Finance | Complementary source | Need all institutions |
-| College Scorecard | Complementary source | Student outcomes |
-| IPEDS Directory | Join key (`unitid`) | Institution characteristics |
+| Source | Relationship | When to Use |
+|--------|--------------|-------------|
+| `education-data-source-ipeds` | Complementary; mandatory reporting covers all institutions | Need all institutions or just market values |
+| `education-data-source-scorecard` | Complementary; student outcomes | Linking endowment size to student outcomes |
+| `education-data-explorer` | Parent discovery skill | Finding available endpoints |
+| `education-data-query` | Data fetching | Downloading parquet/CSV files |
 
 ## Topic Index
 

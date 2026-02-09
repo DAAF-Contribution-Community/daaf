@@ -1,31 +1,21 @@
 ---
 name: education-data-source-campus-safety
-description: Campus Safety and Security (CSS) data from the Clery Act reporting system. Covers campus crime statistics, fire safety, VAWA offenses, hate crimes, and geographic reporting categories. Use when analyzing college/university crime data, understanding Clery Act requirements, or interpreting campus safety statistics and their limitations.
+description: >-
+  Campus Safety and Security (CSS) data from the Clery Act reporting system.
+  Covers campus crime statistics, fire safety, VAWA offenses, hate crimes, and
+  geographic reporting categories. Use when analyzing college/university crime
+  data, understanding Clery Act requirements, or interpreting campus safety
+  statistics and their limitations.
 metadata:
   audience: data-analysts
   domain: education-data
 ---
 
-# Campus Safety and Security (CSS) Data Source
+# Campus Safety Data Source Reference
 
 Guide to understanding and using campus crime and fire safety data collected under the Clery Act.
 
-## What is Campus Safety and Security Data?
-
-The Campus Safety and Security (CSS) data comes from the annual survey required by the Jeanne Clery Disclosure of Campus Security Policy and Campus Crime Statistics Act:
-
-- **Federal mandate**: All Title IV institutions must report crime and fire statistics annually
-- **Consumer protection**: Designed to inform students, parents, and employees about campus safety
-- **Primary source**: U.S. Department of Education Office of Postsecondary Education
-- **Coverage**: All postsecondary institutions receiving federal financial aid
-- **Reporting period**: Calendar year (January 1 - December 31)
-- **Official portal**: https://ope.ed.gov/campussafety/
-
-> **CRITICAL: Limited Data in Portal Mirrors**
->
-> The Education Data Portal mirrors contain **only hate crimes data**. For other campus safety data (primary offenses, VAWA offenses, arrests/referrals, fire safety), access the Department of Education directly at https://ope.ed.gov/campussafety/
-
-> **CRITICAL: Portal Integer Encoding**
+> **CRITICAL: Value Encoding**
 >
 > The Education Data Portal and HuggingFace mirror use **integer codes** for categorical variables, not string labels:
 >
@@ -36,6 +26,19 @@ The Campus Safety and Security (CSS) data comes from the annual survey required 
 > | `fips` | `6` | California |
 >
 > See `./references/variable-definitions.md` for complete code mappings.
+
+## What is Campus Safety and Security Data?
+
+The Campus Safety and Security (CSS) data comes from the annual survey required by the Jeanne Clery Disclosure of Campus Security Policy and Campus Crime Statistics Act:
+
+- **Federal mandate**: All Title IV institutions must report crime and fire statistics annually
+- **Consumer protection**: Designed to inform students, parents, and employees about campus safety
+- **Primary source**: U.S. Department of Education Office of Postsecondary Education
+- **Coverage**: All postsecondary institutions receiving federal financial aid
+- **Reporting period**: Calendar year (January 1 - December 31)
+- **Available years**: 2005-2021 (hate crimes in portal mirrors)
+- **Primary identifier**: `unitid` (IPEDS institution ID, 6-digit integer)
+- **Official portal**: https://ope.ed.gov/campussafety/
 
 ## Reference File Structure
 
@@ -164,7 +167,16 @@ Codes 12-15 are only reported as hate crimes. They are not standalone Clery crim
 | Drug Law Violations | Arrests + Disciplinary referrals |
 | Weapons Violations | Arrests + Disciplinary referrals |
 
-## Quick Reference: Geographic Categories
+### Key Identifiers
+
+| ID | Format | Level | Example | Notes |
+|----|--------|-------|---------|-------|
+| `unitid` | 6-digit integer | Institution | `100654` | IPEDS institution ID |
+| `opeid` | 8-character | Institution | `00100200` | OPE institution ID |
+| `instnm` | String | Institution | `University of Alabama` | Institution name |
+| `branch` | String | Campus | `Main Campus` | Campus/branch identifier |
+
+### Geographic Categories
 
 | Location | Definition | Reported Separately? |
 |----------|------------|---------------------|
@@ -173,7 +185,7 @@ Codes 12-15 are only reported as hate crimes. They are not standalone Clery crim
 | Noncampus | Institution-owned/controlled property not contiguous; student org properties | Yes |
 | Public Property | Streets, sidewalks, parking within or immediately adjacent to campus | Yes |
 
-## Quick Reference: Fire Safety Data
+### Fire Safety Data
 
 Fire data is reported only for **on-campus student housing facilities**:
 
@@ -186,38 +198,64 @@ Fire data is reported only for **on-campus student housing facilities**:
 | Property damage | Estimated dollar value |
 | Fire safety systems | Sprinklers, alarms, smoke detectors, etc. |
 
+### Missing Data Codes
+
+| Code | Meaning | When Used |
+|------|---------|-----------|
+| `-1` | Missing/not reported | Data not submitted by institution |
+| `-2` | Not applicable | Item does not apply to this institution or category |
+| `null` | Not available | Field absent from dataset for given year |
+| `0` | Zero incidents | Explicitly reported as zero (distinct from missing) |
+
 ## Data Access
 
-### HuggingFace Mirror (Recommended)
+### Dataset Paths
 
-Campus safety data is available via the Education Data Portal HuggingFace mirror:
+| Topic | Type | Huggingface Path |
+|-------|------|------------------|
+| Hate Crimes | Single | `college-university/campus-crime/hate-crimes/colleges_csafety_hate_crimes.parquet` |
 
-```python
-import polars as pl
+> **CRITICAL: Limited Data in Portal Mirrors**
+>
+> The Education Data Portal mirrors contain **only hate crimes data**. For other campus safety data (primary offenses, VAWA offenses, arrests/referrals, fire safety), access the Department of Education directly at https://ope.ed.gov/campussafety/
 
-# Download hate crimes data
-url = "https://huggingface.co/datasets/brhkim/education_data_portal_mirror/resolve/main/college-university/campus-crime/hate-crimes/colleges_csafety_hate_crimes.parquet"
-df = pl.read_parquet(url)
-
-# Filter by bias category (1 = Race)
-race_crimes = df.filter(pl.col("bias") == 1)
-
-# Filter by crime type (14 = Intimidation)
-intimidation = df.filter(pl.col("crime_type") == 14)
-```
-
-### Campus Safety Codebook
+### Codebooks
 
 | Dataset | Codebook Path |
 |---------|---------------|
 | Hate Crimes | `college-university/campus-crime/hate-crimes/codebook_colleges_csafety_hate_crimes` |
 
-> Codebook is an `.xls` file on both mirrors. See `fetch-patterns.md` for `get_codebook_url()`. For human reference — not parsed programmatically.
+> Codebooks are `.xls` files on both mirrors. See `datasets-reference.md` for the
+> full catalog and `fetch-patterns.md` for `get_codebook_url()`. For human
+> reference — not parsed programmatically.
 
-**Available Files**:
-- `college-university/campus-crime/hate-crimes/colleges_csafety_hate_crimes.parquet`
+### Example Fetch
 
-**Years Available**: 2005-2021
+```python
+import polars as pl
+
+url = "https://huggingface.co/datasets/brhkim/education_data_portal_mirror/resolve/main/college-university/campus-crime/hate-crimes/colleges_csafety_hate_crimes.parquet"
+df = pl.read_parquet(url)
+
+# Filter by state and year
+df = df.filter(
+    (pl.col("fips") == 6) &  # California
+    (pl.col("year") == 2021)
+)
+```
+
+### Filtering
+
+```python
+# Filter by bias category (1 = Race)
+race_crimes = df.filter(pl.col("bias") == 1)
+
+# Filter by crime type (14 = Intimidation)
+intimidation = df.filter(pl.col("crime_type") == 14)
+
+# Filter by institution
+institution = df.filter(pl.col("unitid") == 100654)
+```
 
 ### Direct from Department of Education
 
@@ -225,26 +263,18 @@ intimidation = df.filter(pl.col("crime_type") == 14)
 - **Bulk download**: Available through Campus Safety website
 - **Custom reports**: Generate by institution, state, or sector
 
-## Key Identifiers
+## Common Pitfalls
 
-| Variable | Description | Format |
-|----------|-------------|--------|
-| `unitid` | IPEDS institution ID | 6-digit integer |
-| `opeid` | OPE institution ID | 8-character |
-| `instnm` | Institution name | String |
-| `branch` | Campus/branch identifier | String |
-
-## Important Caveats
-
-**Before analyzing CSS data, read `./references/limitations.md`**
-
-Key issues:
-1. **Underreporting**: Many crimes go unreported; CSS captures only reported incidents
-2. **Definition changes**: Crime definitions have changed over time (especially sex offenses in 2014)
-3. **Institutional variation**: Reporting practices vary across institutions
-4. **Geography complexity**: Multi-campus institutions have complex reporting
-5. **Not comparable to FBI data**: Different definitions and scope
-6. **Higher numbers may indicate better reporting**: More crimes reported can mean more trust in reporting systems
+| Pitfall | Issue | Solution |
+|---------|-------|----------|
+| Using string codes | Portal uses integer codes for `bias`, `crime_type`, etc. | Always map integers via `./references/variable-definitions.md` |
+| Ranking schools by crime counts | Higher numbers may indicate better reporting, not worse safety | Normalize by enrollment; note reporting culture differences in `./references/limitations.md` |
+| Comparing across years naively | Crime definitions changed over time (especially sex offenses in 2014, VAWA added 2013) | Restrict comparisons to consistent-definition periods; document breaks |
+| Treating zero as missing | Zero means explicitly reported zero incidents; missing means not reported | Check for `-1` (missing) vs `0` (zero incidents) before analysis |
+| Comparing CSS to FBI UCR data | Different definitions, scope, and reporting requirements | Never equate CSS and FBI statistics; see `./references/limitations.md` |
+| Assuming all crime data in mirror | Mirror only has hate crimes | Use Department of Education portal for primary offenses, VAWA, arrests, fire safety |
+| Ignoring multi-campus institutions | Branch campuses report separately; aggregating incorrectly inflates/deflates | Use `branch` field to distinguish campuses; see `./references/campus-geography.md` |
+| Ignoring underreporting | Many crimes go unreported; CSS captures only reported incidents | Acknowledge underreporting as a limitation in all analyses |
 
 ## Reporting Timeline
 
@@ -255,13 +285,13 @@ Key issues:
 | October 15 | CSS survey submission deadline |
 | Following spring | Data available publicly |
 
-## Cross-Reference to Related Skills
+## Related Data Sources
 
-| Skill | Purpose | When to Use |
-|-------|---------|-------------|
-| `education-data-explorer` | Find available endpoints | Identifying what data exists |
-| `education-data-query` | Construct API queries | After identifying variables |
-| `education-data-source-ipeds` | Link to institutional characteristics | Joining with IPEDS directory |
+| Source | Relationship | When to Use |
+|--------|--------------|-------------|
+| `education-data-source-ipeds` | Institutional characteristics | Joining with IPEDS directory for enrollment, sector, control |
+| `education-data-explorer` | Parent discovery skill | Finding available endpoints |
+| `education-data-query` | Data fetching | Downloading parquet/CSV files |
 
 ## Topic Index
 

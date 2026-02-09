@@ -1,23 +1,41 @@
 ---
 name: education-data-source-nccs
-description: National Center for Charitable Statistics (NCCS) nonprofit organization data from the Urban Institute. Use when researching private nonprofit colleges and universities, understanding Form 990 financial data, analyzing nonprofit higher education institutions, or supplementing IPEDS data with detailed financial and governance information from IRS filings.
+description: >-
+  National Center for Charitable Statistics (NCCS) nonprofit organization data
+  from the Urban Institute. Use when researching private nonprofit colleges and
+  universities, understanding Form 990 financial data, analyzing nonprofit higher
+  education institutions, or supplementing IPEDS data with detailed financial and
+  governance information from IRS filings.
 metadata:
   audience: data-analysts
   domain: education-data
 ---
 
-# NCCS: National Center for Charitable Statistics
+# NCCS Data Source Reference
 
-The National Center for Charitable Statistics (NCCS) is a research center and open data platform operated by the Urban Institute's Center on Nonprofits and Philanthropy. It serves as the principal U.S. repository for empirical data on the nonprofit and charitable sector, derived primarily from IRS tax filings.
+The NCCS (National Center for Charitable Statistics) is the principal U.S. repository for empirical data on the nonprofit sector, derived from IRS Form 990 filings. It provides financial depth, governance detail, and historical coverage for private nonprofit colleges and universities that goes well beyond what IPEDS collects.
 
-## Why NCCS Matters for Education Research
+> **CRITICAL: Value Encoding**
+>
+> The Education Data Portal encodes ALL categorical variables as **integers**, not strings.
+> Variable names are **lowercase** in Portal data. Always verify codes against codebooks.
+>
+> | Context | `fips` | `mult_ein_flag` |
+> |---------|--------|-----------------|
+> | **Portal integer** | `6` (California) | `1` (Yes) |
+> | Original NCCS | `"06"` or string | N/A |
+>
+> See `./references/variable-definitions.md` for complete encoding tables.
 
-Private nonprofit colleges and universities are 501(c)(3) tax-exempt organizations that file IRS Form 990. NCCS data provides:
+## What is NCCS?
 
-- **Financial depth**: Detailed revenue, expenses, assets, liabilities, and endowment data beyond what IPEDS collects
-- **Governance information**: Board composition, executive compensation, and organizational structure
-- **Historical coverage**: Data spanning 30+ years for trend analysis
-- **Complementary perspective**: Different financial reporting framework than IPEDS
+- **Operator**: Urban Institute, Center on Nonprofits and Philanthropy
+- **Coverage**: All U.S. tax-exempt nonprofit organizations (~3.8M in BMF)
+- **Primary data source**: IRS Form 990 tax filings
+- **Frequency**: Annual (with filing lag)
+- **Available years**: 1989-present (Core Series); 2012-present (Efile); 1993-2016 (Portal)
+- **Primary identifier**: EIN (Employer Identification Number, 9-digit)
+- **Education relevance**: Private nonprofit colleges/universities are 501(c)(3) orgs filing Form 990; NTEE codes B40-B50 cover higher education
 
 ## Reference File Structure
 
@@ -27,7 +45,7 @@ Private nonprofit colleges and universities are 501(c)(3) tax-exempt organizatio
 | `form-990.md` | IRS Form 990 structure and data elements | Understanding what information is collected |
 | `education-relevance.md` | How NCCS relates to higher education | Connecting nonprofit data to education research |
 | `ntee-codes.md` | Nonprofit classification system | Finding and filtering educational institutions |
-| `variable-definitions.md` | Key financial and organizational variables | Building queries and analysis |
+| `variable-definitions.md` | Key financial and organizational variables, codes, special values | Interpreting specific data elements or building queries |
 
 ## Decision Trees
 
@@ -84,7 +102,9 @@ Linking NCCS to education data?
     └─ Use Core data panel (1989-present)
 ```
 
-## Quick Reference: NCCS Datasets
+## Quick Reference: NCCS Datasets and Variables
+
+### Available Datasets
 
 | Dataset | Description | Coverage | Key Use |
 |---------|-------------|----------|---------|
@@ -94,16 +114,16 @@ Linking NCCS to education data?
 | Form 990-N ePostcard | Small nonprofits (<$50K revenue) | 2007-present | Grassroots organizations |
 | Pub78 | Organizations eligible for tax-deductible donations | Current | Verify charitable status |
 
-## Quick Reference: Key Identifiers
+### Key Identifiers
 
-| Identifier | Format | Description |
-|------------|--------|-------------|
-| EIN | 9-digit number | Employer Identification Number (unique to each nonprofit) |
-| NTEECC | Letter + 2 digits | NTEE classification code (e.g., B42 = 4-year college) |
-| SUBSECCD | 2-digit code | IRS subsection (03 = 501(c)(3) charity) |
-| FIPS | 5-digit code | State + county geographic identifier |
+| ID | Format | Level | Example | Notes |
+|----|--------|-------|---------|-------|
+| `EIN` | 9-digit number | Organization | `123456789` | Unique to each nonprofit |
+| `NTEECC` | Letter + 2 digits | Classification | `B42` (4-year college) | May be imprecise (~25%) |
+| `SUBSECCD` | 2-digit code | Tax subsection | `03` (501(c)(3) charity) | |
+| `FIPS` | 5-digit code | Geography | `06037` (LA County) | State + county |
 
-## Quick Reference: Education NTEE Codes
+### Education NTEE Codes
 
 | Code | Description |
 |------|-------------|
@@ -117,6 +137,112 @@ Linking NCCS to education data?
 | B70 | Libraries |
 | B80 | Student Services/Organizations |
 | B90 | Educational Services/Schools N.E.C. |
+
+### Portal Variable Name Mapping
+
+| Portal Name | Original NCCS/990 | Description |
+|-------------|-------------------|-------------|
+| `contributions_total` | `CONT` | Total contributions |
+| `prog_serv_rev` | `PROGREV` | Program service revenue |
+| `revenue_total` | `TOTREV` | Total revenue |
+| `expenses_total` | `EXPS` | Total expenses |
+| `total_assets_eoy` | `TOTASS` | Total assets (end of year) |
+| `net_assets_eoy` | `NETASS` | Net assets (end of year) |
+| `compensation_officers` | `COMPENS` | Officer compensation |
+| `salaries_other` | `OTHSAL` | Other salaries |
+
+### Missing Data Codes
+
+| Code | Meaning | When Used |
+|------|---------|-----------|
+| `-1` | Data unavailable | Not collected for this form/year |
+| `-2` | Not applicable | Field doesn't apply to this entity |
+| `-3` | Suppressed | Confidentiality restriction |
+| `null` | Not reported | Organization did not report (may have data) |
+| `0` | Zero value | Explicitly reported as zero |
+
+> **Important:** In Portal data, `-1`/`-2`/`-3` are always integers. A `0` means the organization reported zero; `null` means the organization did not report. These are distinct conditions.
+
+## Data Access
+
+### Dataset Paths
+
+| Topic | Type | Huggingface Path |
+|-------|------|------------------|
+| 990 Forms | Single | `college-university/nccs/990-forms/colleges_nccs_all` |
+
+### Codebooks
+
+| Dataset | Codebook Path |
+|---------|---------------|
+| 990 Forms | `college-university/nccs/990-forms/codebook_colleges_nccs_form_990` |
+
+> Codebooks are `.xls` files on both mirrors. See `datasets-reference.md` for the
+> full catalog and `fetch-patterns.md` for `get_codebook_url()`. For human
+> reference -- not parsed programmatically.
+
+### Example Fetch
+
+```python
+import polars as pl
+
+url = "https://huggingface.co/datasets/brhkim/education_data_portal_mirror/resolve/main/college-university/nccs/990-forms/colleges_nccs_all.parquet"
+df = pl.read_parquet(url)
+
+# Filter by state using integer FIPS
+california = df.filter(pl.col("fips") == 6)  # California
+texas = df.filter(pl.col("fips") == 48)       # Texas
+
+# Handle missing data codes
+df_clean = df.filter(pl.col("fips") >= 1)  # Exclude -1, -2, -3
+```
+
+### Filtering
+
+```python
+# Filter to higher education institutions by NTEE code
+# (requires NTEE data from BMF — not in Portal dataset directly)
+# In Portal data, filter by year:
+df_2015 = df.filter(pl.col("year") == 2015)
+
+# Filter out missing data codes from financial columns
+df_valid = df.filter(
+    (pl.col("revenue_total").is_not_null()) &
+    (pl.col("revenue_total") >= 0)  # Excludes -1, -2, -3
+)
+
+# Replace negative codes with null for analysis
+df = df.with_columns(
+    pl.when(pl.col("revenue_total") < 0)
+    .then(None)
+    .otherwise(pl.col("revenue_total"))
+    .alias("revenue_total_clean")
+)
+```
+
+## Common Pitfalls
+
+| Pitfall | Issue | Solution |
+|---------|-------|----------|
+| Using string codes | Portal uses integer FIPS (`6`), not string (`"CA"` or `"06"`) | Always use integer comparisons; filter `>= 1` to exclude missing codes |
+| Filing threshold confusion | Organizations under $200K revenue may file 990-EZ with fewer variables | Check form type; use Core PZ files for combined 990/990-EZ coverage |
+| Fiscal year variation | Nonprofits have different fiscal year ends (June 30 common for colleges) | Verify `TAXPER` alignment when comparing institutions |
+| NTEE classification accuracy | ~25% of NTEE codes estimated to be imprecise | Use NCCS-corrected codes (`NTEE_NCCS`) over IRS-assigned codes when available |
+| Consolidated filings | Some university systems file consolidated 990s covering multiple campuses | Check `mult_ein_flag`; one EIN may represent multiple institutions |
+| Form version changes | Form 990 was redesigned in 2008; variable definitions changed | Be cautious comparing pre-2008 and post-2008 data for governance variables |
+| Missing vs. zero | `0` means explicitly reported zero; `null` means not reported | Distinguish between zero-value and not-reported before aggregating |
+
+## Key Differences: NCCS vs. IPEDS
+
+| Aspect | NCCS (Form 990) | IPEDS |
+|--------|-----------------|-------|
+| **Coverage** | All 501(c)(3) nonprofits | Title IV institutions only |
+| **Reporting Basis** | IRS fiscal year | IPEDS survey cycles |
+| **Financial Framework** | Nonprofit accounting (GAAP) | Education-specific categories |
+| **Governance** | Detailed board/compensation data | Limited HR data |
+| **Programs** | Mission statements, activities | Degree programs, enrollment |
+| **Identifier** | EIN | UNITID |
+| **Update Frequency** | Annual (with lag) | Annual |
 
 ## Exploration Workflow
 
@@ -143,99 +269,13 @@ Linking NCCS to education data?
    - See variable definitions for meaning and limitations
    - Apply appropriate error checking procedures
 
-## Key Differences: NCCS vs. IPEDS
+## Related Data Sources
 
-| Aspect | NCCS (Form 990) | IPEDS |
-|--------|-----------------|-------|
-| **Coverage** | All 501(c)(3) nonprofits | Title IV institutions only |
-| **Reporting Basis** | IRS fiscal year | IPEDS survey cycles |
-| **Financial Framework** | Nonprofit accounting (GAAP) | Education-specific categories |
-| **Governance** | Detailed board/compensation data | Limited HR data |
-| **Programs** | Mission statements, activities | Degree programs, enrollment |
-| **Identifier** | EIN | UNITID |
-| **Update Frequency** | Annual (with lag) | Annual |
-
-## Common Pitfalls
-
-- **Filing threshold**: Organizations under $200K revenue may file 990-EZ (fewer variables)
-- **Fiscal year variation**: Nonprofits have different fiscal year ends
-- **Missing data**: Not all fields required; some intentionally redacted (donor names)
-- **Classification accuracy**: ~25% of NTEE codes estimated to be imprecise
-- **Consolidation**: Some university systems file consolidated 990s
-- **Form version changes**: 990 was redesigned in 2008; variable definitions changed
-- **Using Portal integer codes**: The Education Data Portal uses integer encodings (see below)
-
-## Education Data Portal Encoding Warning
-
-> **CRITICAL:** The Education Data Portal encodes ALL categorical variables as **integers**, not strings.
-
-### Integer Encoding Examples
-
-| Variable | Portal Value | Meaning |
-|----------|-------------|---------|
-| `fips` | `6` | California (not "CA" or "California") |
-| `fips` | `-1` | Missing/not reported |
-| `fips` | `-2` | Not applicable |
-| `fips` | `-3` | Suppressed data |
-| `mult_ein_flag` | `0` | No (single EIN) |
-| `mult_ein_flag` | `1` | Yes (multiple EINs) |
-
-### Variable Names
-
-All variable names are **lowercase** in Portal data:
-- `unitid` (not `UNITID`)
-- `fips` (not `FIPS` or `fips_code`)
-- `contributions_total` (not `CONT`)
-- `revenue_total` (not `TOTREV`)
-
-### Data Access Pattern
-
-```python
-import polars as pl
-
-# Download from HuggingFace mirror (recommended)
-url = "https://huggingface.co/datasets/brhkim/education_data_portal_mirror/resolve/main/college-university/nccs/990-forms/colleges_nccs_all.parquet"
-df = pl.read_parquet(url)
-
-# Filter by state using integer FIPS
-california = df.filter(pl.col("fips") == 6)  # California
-texas = df.filter(pl.col("fips") == 48)       # Texas
-
-# Handle missing data codes
-df_clean = df.filter(pl.col("fips") >= 1)  # Exclude -1, -2, -3
-```
-
-### NCCS Codebook
-
-| Dataset | Codebook Path |
-|---------|---------------|
-| 990 Forms | `college-university/nccs/990-forms/codebook_colleges_nccs_form_990` |
-
-> Codebook is an `.xls` file on both mirrors. See `fetch-patterns.md` for `get_codebook_url()`. For human reference — not parsed programmatically.
-
-### Mapping Portal Variables to Original NCCS Names
-
-The Portal uses descriptive lowercase names mapped from original 990 variables:
-
-| Portal Name | Original NCCS/990 | Description |
-|-------------|-------------------|-------------|
-| `contributions_total` | `CONT` | Total contributions |
-| `prog_serv_rev` | `PROGREV` | Program service revenue |
-| `revenue_total` | `TOTREV` | Total revenue |
-| `expenses_total` | `EXPS` | Total expenses |
-| `total_assets_eoy` | `TOTASS` | Total assets (end of year) |
-| `net_assets_eoy` | `NETASS` | Net assets (end of year) |
-| `compensation_officers` | `COMPENS` | Officer compensation |
-| `salaries_other` | `OTHSAL` | Other salaries |
-
-## Cross-Reference to Related Skills
-
-| Skill | Purpose | When to Use |
-|-------|---------|-------------|
-| `education-data-explorer` | Discover Urban Institute education datasets | Finding what data exists |
-| `education-data-query` | Download data from HuggingFace mirror | After identifying endpoints |
-
-> **Note:** The `education-data-query` skill now uses mirror-based downloads from HuggingFace rather than direct API calls. See that skill for current download patterns.
+| Source | Relationship | When to Use |
+|--------|--------------|-------------|
+| `education-data-source-ipeds` | Complementary institution data | Join on EIN-UNITID crosswalk for enrollment, degrees, and education-specific financials |
+| `education-data-explorer` | Parent discovery skill | Finding available endpoints |
+| `education-data-query` | Data fetching | Downloading parquet/CSV files |
 
 ## Topic Index
 

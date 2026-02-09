@@ -1,14 +1,32 @@
 ---
 name: education-data-source-ccd
-description: Deep reference for the Common Core of Data (CCD), the US Department of Education's primary database on public K-12 education. Use when working with CCD data to understand survey components, variable definitions, data quality issues, historical changes, and state-level variations. Essential for interpreting enrollment, staffing, finance, and directory data from public schools and districts.
+description: >-
+  Deep reference for the Common Core of Data (CCD), the US Department of
+  Education's primary database on public K-12 education. Use when working with
+  CCD data to understand survey components, variable definitions, data quality
+  issues, historical changes, and state-level variations. Essential for
+  interpreting enrollment, staffing, finance, and directory data from public
+  schools and districts.
 metadata:
   audience: data-analysts
   domain: education-data
 ---
 
-# Common Core of Data (CCD) Source Reference
+# CCD Data Source Reference
 
-The CCD is the Department of Education's comprehensive, annual, national database of all public elementary and secondary schools and school districts in the United States. This skill provides deep context for working with CCD data.
+The CCD is the Department of Education's comprehensive, annual, national database of all public elementary and secondary schools and school districts in the United States. It is the only federal dataset that provides a complete universe census (not a sample) of U.S. public K-12 education.
+
+> **CRITICAL: Value Encoding**
+>
+> The Education Data Portal uses **integer codes** for categorical variables that
+> differ from NCES's original string codes. Always verify codes against codebooks.
+>
+> | Context | `school_type` | `charter` | `urban_centric_locale` |
+> |---------|---------------|-----------|------------------------|
+> | **Portal (integers)** | `1` (Regular) | `1` (Yes) | `11` (City-Large) |
+> | NCES original | `1-Regular school` | `Yes` | `11-City: Large` |
+>
+> See `./references/variable-definitions.md` for complete encoding tables.
 
 ## What is CCD?
 
@@ -98,7 +116,7 @@ Building a time series?
 | Finance (District) | LEA | Revenue, expenditure, per-pupil | 1989+ | Annual (2 yr lag) |
 | Dropout/Completers | LEA, State | Dropout counts, diploma recipients | 1991+ | Annual |
 
-## Quick Reference: Key Identifiers
+### Key Identifiers
 
 | ID | Format | Level | Example | Notes |
 |----|--------|-------|---------|-------|
@@ -106,7 +124,7 @@ Building a time series?
 | `LEAID` | 7 characters | District | `0100001` | State FIPS (2) + State-assigned (5) |
 | `FIPS` | 2 digits | State | `01` | Federal Information Processing Standard |
 
-## Quick Reference: Missing Data Codes
+### Missing Data Codes
 
 | Code | Meaning | When Used |
 |------|---------|-----------|
@@ -115,7 +133,7 @@ Building a time series?
 | `-3` | Suppressed | Data suppressed for privacy |
 | `-9` | Not reported | State did not report this item |
 
-## Quick Reference: School Types
+### School Types
 
 | Code | Type | Description |
 |------|------|-------------|
@@ -125,7 +143,7 @@ Building a time series?
 | 4 | Alternative | Non-traditional programs |
 | 5 | Reportable Program | Program within another school (2007-08+) |
 
-## Quick Reference: LEA Types
+### LEA Types
 
 | Code | Type | Description |
 |------|------|-------------|
@@ -138,7 +156,39 @@ Building a time series?
 | 7 | Charter Agency | All schools are charters (2007-08+) |
 | 8 | Other | Doesn't fit other categories (2007-08+) |
 
-## Data Collection Flow
+### Grade -1 Encoding
+
+In CCD enrollment data:
+- `grade = -1` means **Pre-Kindergarten**, NOT missing data
+- `grade = 99` means **Total** across all grades
+
+**Do NOT filter `grade >= 0`** — this removes all Pre-K students!
+
+```python
+# WRONG - removes Pre-K students!
+df = df.filter(pl.col("grade") >= 0)
+
+# CORRECT
+pre_k = df.filter(pl.col("grade") == -1)  # Pre-K only
+k12 = df.filter(pl.col("grade").is_between(0, 12))  # K-12
+total = df.filter(pl.col("grade") == 99)  # All grades
+```
+
+### Portal Column Name Mapping
+
+> **Variable Name Mapping:** The Portal column `urban_centric_locale` contains locale codes. Some documentation may refer to this as simply `locale`. Use `urban_centric_locale` when filtering or selecting columns in Portal data.
+
+### Portal Endpoint Mapping
+
+| Portal Endpoint | CCD Component |
+|-----------------|---------------|
+| `/schools/ccd/directory/` | School Directory |
+| `/schools/ccd/enrollment/` | School Membership |
+| `/school-districts/ccd/directory/` | LEA Directory |
+| `/school-districts/ccd/enrollment/` | LEA Membership |
+| `/school-districts/ccd/finance/` | F-33 District Finance |
+
+### Data Collection Flow
 
 ```
 Schools → Local Education Agencies (LEAs)
@@ -154,71 +204,9 @@ Schools → Local Education Agencies (LEAs)
 
 **Timeline**: Data for school year 20XX-YY typically submitted spring 20YY, released fall 20YY (preliminary) to spring 20YY+1 (provisional/final).
 
-## Coverage Notes
+## Data Access
 
-### What CCD Includes
-
-- All public schools (traditional, charter, magnet, alternative)
-- All public school districts and LEAs
-- Bureau of Indian Education (BIE) schools
-- Department of Defense Education Activity (DoDEA) schools
-- State-operated schools (deaf, blind, correctional)
-
-### What CCD Excludes
-
-- Private schools (use Private School Universe Survey - PSS)
-- Homeschool students
-- Postsecondary institutions (use IPEDS)
-- Detailed student-level data (CCD is aggregate only)
-
-## Common Pitfalls
-
-| Pitfall | Issue | Solution |
-|---------|-------|----------|
-| Summing grades | Misses ungraded students | Use `grade=99` (total) instead |
-| Assuming `-1` is missing | In grade data, `-1` = Pre-K | Check variable format in codebook |
-| Cross-state comparison | Different state definitions | Check state methodology first |
-| Using FRPL as poverty measure | CEP schools show 100% | Supplement with MEPS or SAIPE data |
-| Locale time series | 2006 code system change | Analyze pre/post-2006 separately |
-| Charter school counts | Early years incomplete | Verify against state records pre-2010 |
-| Dropout rate comparison | State definitions vary | Within-state comparisons only |
-| Using NCES string codes | Portal uses integers | See variable-definitions.md for mappings |
-
-## Related Data Sources
-
-| Source | Relationship to CCD | Use When |
-|--------|---------------------|----------|
-| EDFacts | CCD nonfiscal data flows through EDFacts | Same underlying data |
-| CRDC | Biennial; uses CCD school IDs | Need discipline, course access, equity data |
-| SAIPE | Uses CCD district IDs | Need poverty estimates (better than FRPL) |
-| IPEDS | Separate system for postsecondary | Need college/university data |
-| PSS | Private school equivalent | Need private school data |
-| NHGIS | Census geography crosswalks | Need school-Census links |
-
-## Portal Column Name Note
-
-> **Variable Name Mapping:** The Portal column `urban_centric_locale` contains locale codes. Some documentation may refer to this as simply `locale`. Use `urban_centric_locale` when filtering or selecting columns in Portal data.
-
-## Education Data Portal Mapping
-
-In the Urban Institute Education Data Portal:
-
-| Portal Endpoint | CCD Component |
-|-----------------|---------------|
-| `/schools/ccd/directory/` | School Directory |
-| `/schools/ccd/enrollment/` | School Membership |
-| `/school-districts/ccd/directory/` | LEA Directory |
-| `/school-districts/ccd/enrollment/` | LEA Membership |
-| `/school-districts/ccd/finance/` | F-33 District Finance |
-
-## Data Fetching
-
-CCD data is fetched from mirrors (parquet or CSV), not via REST API. See the `education-data-query` skill for:
-- Mirror configuration (`mirrors.yaml`)
-- Fetch patterns (`fetch-patterns.md`)
-- Dataset file paths (`datasets-reference.md`)
-
-### CCD Dataset Paths
+### Dataset Paths
 
 | Topic | Type | Huggingface Path |
 |-------|------|------------------|
@@ -228,7 +216,7 @@ CCD data is fetched from mirrors (parquet or CSV), not via REST API. See the `ed
 | District Enrollment | Yearly | `school-districts/ccd/enrollment/schools_ccd_lea_enrollment_{year}` |
 | District Finance | Single | `school-districts/ccd/finance/districts_ccd_finance` |
 
-### CCD Codebooks
+### Codebooks
 
 | Dataset | Codebook Path |
 |---------|---------------|
@@ -239,7 +227,22 @@ CCD data is fetched from mirrors (parquet or CSV), not via REST API. See the `ed
 
 > Codebooks are `.xls` files available on both mirrors. See `datasets-reference.md` for the full catalog and `fetch-patterns.md` for `get_codebook_url()`. For human reference — not parsed programmatically. No codebook exists for CCD Finance.
 
-### Filtering CCD Data
+### Example Fetch
+
+```python
+import polars as pl
+
+url = "https://huggingface.co/datasets/brhkim/education_data_portal_mirror/resolve/main/schools/ccd/directory/schools_ccd_directory.parquet"
+df = pl.read_parquet(url)
+
+# Filter locally
+df = df.filter(
+    (pl.col("fips") == 6) &  # California
+    (pl.col("year") == 2022)
+)
+```
+
+### Filtering
 
 All filtering is done locally with Polars after download:
 
@@ -259,28 +262,54 @@ df = df.filter(pl.col("grade") == 99)
 df = df.filter(pl.col("grade").is_between(0, 12))
 ```
 
-### CRITICAL: Grade -1 Encoding
-
-In CCD enrollment data:
-- `grade = -1` means **Pre-Kindergarten**, NOT missing data
-- `grade = 99` means **Total** across all grades
-
-**Do NOT filter `grade >= 0`** — this removes all Pre-K students!
-
-```python
-# WRONG - removes Pre-K students!
-df = df.filter(pl.col("grade") >= 0)
-
-# CORRECT
-pre_k = df.filter(pl.col("grade") == -1)  # Pre-K only
-k12 = df.filter(pl.col("grade").is_between(0, 12))  # K-12
-total = df.filter(pl.col("grade") == 99)  # All grades
-```
-
 ### Finance Data Notes
 
 - **Finance data lag:** As of January 2026, latest available year is **2020** (not 2021)
 - Some finance columns use `_total` suffix (e.g., `exp_current_instruction_total`)
+
+## Common Pitfalls
+
+| Pitfall | Issue | Solution |
+|---------|-------|----------|
+| Summing grades | Misses ungraded students | Use `grade=99` (total) instead |
+| Assuming `-1` is missing | In grade data, `-1` = Pre-K | Check variable format in codebook |
+| Cross-state comparison | Different state definitions | Check state methodology first |
+| Using FRPL as poverty measure | CEP schools show 100% | Supplement with MEPS or SAIPE data |
+| Locale time series | 2006 code system change | Analyze pre/post-2006 separately |
+| Charter school counts | Early years incomplete | Verify against state records pre-2010 |
+| Dropout rate comparison | State definitions vary | Within-state comparisons only |
+| Using NCES string codes | Portal uses integers | See variable-definitions.md for mappings |
+
+## Coverage Notes
+
+### What CCD Includes
+
+- All public schools (traditional, charter, magnet, alternative)
+- All public school districts and LEAs
+- Bureau of Indian Education (BIE) schools
+- Department of Defense Education Activity (DoDEA) schools
+- State-operated schools (deaf, blind, correctional)
+
+### What CCD Excludes
+
+- Private schools (use Private School Universe Survey - PSS)
+- Homeschool students
+- Postsecondary institutions (use IPEDS)
+- Detailed student-level data (CCD is aggregate only)
+
+## Related Data Sources
+
+| Source | Relationship | When to Use |
+|--------|--------------|-------------|
+| `education-data-source-edfacts` | CCD nonfiscal data flows through EDFacts | Same underlying data |
+| `education-data-source-crdc` | Biennial; uses CCD school IDs | Need discipline, course access, equity data |
+| `education-data-source-saipe` | Uses CCD district IDs | Need poverty estimates (better than FRPL) |
+| `education-data-source-meps` | School-level poverty estimates | Need school-level poverty (better than FRPL) |
+| `education-data-source-ipeds` | Separate system for postsecondary | Need college/university data |
+| PSS | Private school equivalent | Need private school data |
+| `education-data-source-nhgis` | Census geography crosswalks | Need school-Census links |
+| `education-data-explorer` | Parent discovery skill | Finding available endpoints |
+| `education-data-query` | Data fetching | Downloading parquet/CSV files |
 
 ## Topic Index
 

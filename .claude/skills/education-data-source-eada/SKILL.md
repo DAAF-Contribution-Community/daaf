@@ -1,31 +1,41 @@
 ---
 name: education-data-source-eada
-description: Equity in Athletics Disclosure Act (EADA) data for college athletics gender equity analysis. Use when analyzing athletic participation, coaching staff, salaries, expenses, or revenues at colleges/universities, or understanding Title IX context in athletics.
+description: >-
+  Equity in Athletics Disclosure Act (EADA) data for college athletics gender
+  equity analysis. Use when analyzing athletic participation, coaching staff,
+  salaries, expenses, or revenues at colleges/universities, or understanding
+  Title IX context in athletics. EADA is NOT Title IX compliance data.
 metadata:
   audience: data-analysts
   domain: education-data
 ---
 
-# Education Data Source: EADA (Equity in Athletics)
+# EADA Data Source Reference
 
-Guide for understanding and using Equity in Athletics Disclosure Act data through the Urban Institute Education Data Portal.
+The EADA provides the only standardized, publicly available dataset on college athletics participation, coaching, finances, and athletic aid by gender across ~2,000+ postsecondary institutions, enabling gender equity analysis in intercollegiate athletics.
+
+> **CRITICAL: Value Encoding**
+>
+> EADA data from the Education Data Portal uses **integer codes** for categorical
+> variables. Original EADA web tools use string labels; the Portal converts these
+> to integers. Always verify codes against codebooks.
+>
+> | Context | `sector` | `ath_classification_code` | Missing values |
+> |---------|----------|--------------------------|----------------|
+> | **Portal (integers)** | `1` = Public | `1` = NCAA DI FBS | `-1`, `-2`, `-3` |
+> | Original EADA | String labels | String labels | Blank / N/A |
+>
+> See `./references/variable-definitions.md` for complete encoding tables.
 
 ## What is EADA?
 
-The Equity in Athletics Disclosure Act (EADA) requires coeducational postsecondary institutions that:
-- Participate in Title IV federal student financial aid programs, AND
-- Have an intercollegiate athletic program
-
-to submit annual reports on:
-
-- **Athletic Participation**: Number of participants by sport and gender
-- **Coaching Staff**: Head and assistant coaches by gender and employment status
-- **Salaries**: Coach compensation by gender of teams coached
-- **Expenses**: Operating, recruiting, and total expenses by team
-- **Revenues**: Athletic revenues by team
-- **Athletic Aid**: Scholarships and grants-in-aid by gender
-
-**Key Fact**: ~2,000+ institutions report annually; data publicly available by October 15 each year.
+- **Collector**: U.S. Department of Education (Office of Postsecondary Education)
+- **Coverage**: ~2,000+ coeducational postsecondary institutions with intercollegiate athletics
+- **Mandate**: Institutions participating in Title IV aid with athletic programs must report
+- **Frequency**: Annual (data publicly available by October 15 each year)
+- **Available years**: 2003–2022 (Portal), 2002–2021 (HuggingFace mirror)
+- **Primary identifier**: `unitid` (6-digit IPEDS institution ID)
+- **Content**: Athletic participation, coaching staff, salaries, expenses, revenues, and athletic aid — all reported by gender
 
 ## Reference File Structure
 
@@ -34,9 +44,9 @@ to submit annual reports on:
 | `title-ix-context.md` | Legal framework, gender equity requirements | Understanding policy context |
 | `data-elements.md` | Participation, coaches, salaries, expenses, revenues | Identifying available variables |
 | `sport-level-data.md` | Data available by individual sport | Sport-specific analysis |
-| `variable-definitions.md` | Key variables and their meanings | Query construction |
-| `limitations.md` | Data quality issues, not Title IX compliance | Interpreting results |
-| `api-endpoints.md` | Urban Institute API access patterns | Fetching data |
+| `variable-definitions.md` | Key variables, codes, special values | Interpreting specific data elements |
+| `limitations.md` | Data quality issues, comparability, self-reporting caveats | Assessing data reliability |
+| `fetch-patterns.md` | Mirror URLs and fetch code patterns | Fetching data |
 
 ## Decision Trees
 
@@ -55,7 +65,7 @@ Research question?
 ├─ Title IX compliance assessment → CAUTION: EADA ≠ compliance data
 │   └─ See ./references/limitations.md (Critical)
 └─ Trend analysis → Year-over-year comparisons
-    └─ See ./references/api-endpoints.md
+    └─ See ./references/fetch-patterns.md
 ```
 
 ### What variables do I need?
@@ -87,7 +97,7 @@ Interpretation question?
 │   └─ See ./references/limitations.md
 ├─ Is this institution Title IX compliant?
 │   └─ CANNOT determine from EADA data alone
-│   └─ See ./references/limitations.md (Critical)
+│       └─ See ./references/limitations.md (Critical)
 ├─ Why are some values missing or zero?
 │   └─ See ./references/limitations.md
 └─ How do I compare across institutions?
@@ -119,17 +129,25 @@ Interpretation question?
 | Female coaches of women's teams | % female | `hdcoach_women_female_ft`, `_pt` |
 | Salary equity | Avg salary comparison | `salary_men_coach`, `salary_women_coach` |
 
-## Quick Reference: Common Filters
+### Key Identifiers
+
+| ID | Format | Level | Example | Notes |
+|----|--------|-------|---------|-------|
+| `unitid` | 6-digit integer | Institution | `110635` | Same as IPEDS; primary join key |
+| `year` | 4-digit integer | Reporting year | `2022` | Fiscal year ending |
+| `fips` | Integer | State | `6` (California) | Federal FIPS code |
+
+### Common Filters
 
 | Filter | Variable | Example Values |
 |--------|----------|----------------|
 | Institution | `unitid` | 6-digit IPEDS ID |
-| Year | `year` | 2003-2022 |
+| Year | `year` | 2003–2022 |
 | State | `fips` | Integer FIPS code (e.g., `6` = California) |
 | Sector | `sector` | 1=Public, 2=Private nonprofit, 3=Private for-profit |
-| Athletic Division | `ath_classification_code` | Integer codes 1-20 (see below) |
+| Athletic Division | `ath_classification_code` | Integer codes 1–20 (see below) |
 
-### Athletic Classification Codes (Portal Integer Encoding)
+### Athletic Classification Codes
 
 | Code | Division | Code | Division |
 |------|----------|------|----------|
@@ -146,24 +164,92 @@ Interpretation question?
 
 ### Missing Data Codes
 
-| Code | Meaning |
-|------|---------|
-| `-1` | Missing/not reported |
-| `-2` | Not applicable |
-| `-3` | Suppressed |
+| Code | Meaning | When Used |
+|------|---------|-----------|
+| `-1` | Missing/not reported | Data not submitted by institution |
+| `-2` | Not applicable | Item doesn't apply (e.g., no men's team) |
+| `-3` | Suppressed | Data suppressed for privacy |
 
-## Quick Reference: Data Availability
+### Data Availability
 
 | Topic | Years Available | Update Frequency |
 |-------|-----------------|------------------|
-| Institution-level | 2003-2022 | Annual |
-| Sport-level | 2003-2022 | Annual |
-| Coaching details | 2003-2022 | Annual |
-| Financial data | 2003-2022 | Annual |
+| Institution-level | 2003–2022 | Annual |
+| Sport-level | 2003–2022 | Annual |
+| Coaching details | 2003–2022 | Annual |
+| Financial data | 2003–2022 | Annual |
 
-## Critical Context
+### Example Research Questions
 
-### EADA is NOT Title IX Compliance Data
+| Question | Key Variables | Reference |
+|----------|---------------|-----------|
+| Are women underrepresented in athletics? | `partic_*`, enrollment | `data-elements.md` |
+| How much do institutions invest in women's sports? | `exp_*`, `rev_*` | `data-elements.md` |
+| Are coaches of women's teams paid fairly? | `salary_*` | `variable-definitions.md` |
+| Which sports have most female participants? | Sport-level data | `sport-level-data.md` |
+| Has participation equity improved over time? | Multi-year trend | `fetch-patterns.md` |
+
+## Data Access
+
+### Dataset Paths
+
+| Topic | Type | Huggingface Path |
+|-------|------|------------------|
+| Institutional Characteristics | Single | `college-university/eada/institutional-characteristics/colleges_eada_inst_characteristics` |
+
+### Codebooks
+
+| Dataset | Codebook Path |
+|---------|---------------|
+| Institutional Characteristics | `college-university/eada/institutional-characteristics/codebook_colleges_eada_inst-characteristics` |
+
+> Codebooks are `.xls` files on both mirrors. See `datasets-reference.md` for the
+> full catalog and `fetch-patterns.md` for `get_codebook_url()`. For human
+> reference — not parsed programmatically.
+
+### Example Fetch
+
+```python
+import polars as pl
+
+url = "https://huggingface.co/datasets/brhkim/education_data_portal_mirror/resolve/main/college-university/eada/institutional-characteristics/colleges_eada_inst_characteristics.parquet"
+df = pl.read_parquet(url)
+
+# Filter locally — California, 2022
+df = df.filter(
+    (pl.col("fips") == 6) &
+    (pl.col("year") == 2022)
+)
+```
+
+### Filtering
+
+```python
+# Filter by athletic division (NCAA Division I FBS only)
+df_d1_fbs = df.filter(pl.col("ath_classification_code") == 1)
+
+# Exclude coded missing values before calculations
+df_clean = df.filter(
+    (pl.col("partic_men") >= 0) &
+    (pl.col("partic_women") >= 0)
+)
+
+# Filter by sector (public institutions only)
+df_public = df.filter(pl.col("sector") == 1)
+```
+
+## Common Pitfalls
+
+| Pitfall | Issue | Solution |
+|---------|-------|----------|
+| Including coded missing values | `-1`, `-2`, `-3` treated as real numbers skew totals and ratios | Filter `>= 0` on all numeric columns before aggregation |
+| Assuming Title IX compliance | EADA data cannot determine Title IX compliance — it is a disclosure tool, not an enforcement mechanism | Read `./references/limitations.md`; use EADA for descriptive analysis only |
+| Comparing across institutions naively | Different reporting practices, program sizes, and classification levels make raw comparisons misleading | Normalize by enrollment, filter to same classification, and note caveats |
+| Using string codes | Portal uses integer encodings, not original EADA string labels | Use integer codes from `./references/variable-definitions.md` |
+| Self-reported data accuracy | Institutions self-report without independent verification; errors and inconsistencies exist | Cross-check outliers against institution websites or IPEDS data |
+| Ignoring zero values | Zero may mean "no team" or "not reported" depending on context | Distinguish between true zeros and missing data using `-1`/`-2` codes |
+
+## EADA vs. Title IX Compliance
 
 ```
 EADA Data                          Title IX Compliance
@@ -184,36 +270,13 @@ Public disclosure                  Enforcement mechanism
 - **Not comprehensive**: Misses many equity factors
 - **Comparability issues**: Different reporting practices across institutions
 
-> **CRITICAL: Portal Integer Encoding**
->
-> EADA data from the Education Data Portal uses **integer codes** for categorical variables and missing data. Always filter coded missing values (`-1`, `-2`, `-3`) before calculations.
->
-> See `./references/variable-definitions.md` for complete code mappings.
+## Related Data Sources
 
-## Example Research Questions
-
-| Question | Key Variables | Reference |
-|----------|---------------|-----------|
-| Are women underrepresented in athletics? | `partic_*`, enrollment | `data-elements.md` |
-| How much do institutions invest in women's sports? | `exp_*`, `rev_*` | `data-elements.md` |
-| Are coaches of women's teams paid fairly? | `salary_*` | `variable-definitions.md` |
-| Which sports have most female participants? | Sport-level data | `sport-level-data.md` |
-| Has participation equity improved over time? | Multi-year trend | `api-endpoints.md` |
-
-## Related Skills
-
-| Skill | Purpose | When to Use |
-|-------|---------|-------------|
-| `education-data-explorer` | Find other college data | Joining with IPEDS |
-| `education-data-query` | Construct API queries | Fetching EADA data |
-
-### EADA Codebook
-
-| Dataset | Codebook Path |
-|---------|---------------|
-| Institutional Characteristics | `college-university/eada/institutional-characteristics/codebook_colleges_eada_inst-characteristics` |
-
-> Codebook is an `.xls` file on both mirrors. See `fetch-patterns.md` for `get_codebook_url()`. For human reference — not parsed programmatically.
+| Source | Relationship | When to Use |
+|--------|--------------|-------------|
+| `education-data-source-ipeds` | Complementary institution data | Joining enrollment, demographics, finances via `unitid` |
+| `education-data-explorer` | Parent discovery skill | Finding available endpoints across all sources |
+| `education-data-query` | Data fetching | Downloading parquet/CSV files from mirrors |
 
 ## Topic Index
 
@@ -230,8 +293,9 @@ Public disclosure                  Enforcement mechanism
 | Athletic aid | `./references/data-elements.md` |
 | Sport-specific data | `./references/sport-level-data.md` |
 | Variable definitions | `./references/variable-definitions.md` |
+| Integer encoding tables | `./references/variable-definitions.md` |
 | Data limitations | `./references/limitations.md` |
 | Self-reporting issues | `./references/limitations.md` |
 | EADA vs Title IX | `./references/limitations.md` |
-| API endpoints | `./references/api-endpoints.md` |
-| Query examples | `./references/api-endpoints.md` |
+| Fetch patterns | `./references/fetch-patterns.md` |
+| Mirror URLs | `./references/fetch-patterns.md` |

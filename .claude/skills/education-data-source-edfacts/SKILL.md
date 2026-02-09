@@ -1,29 +1,39 @@
 ---
 name: education-data-source-edfacts
-description: EDFacts state accountability data for K-12 assessments, graduation rates, and federal reporting. Use when working with state proficiency data, ACGR graduation rates, or ESSA accountability indicators. CRITICAL - state assessment scores CANNOT be compared across states.
+description: >-
+  EDFacts state accountability data for K-12 assessments, graduation rates, and
+  federal reporting. Use when working with state proficiency data, ACGR graduation
+  rates, or ESSA accountability indicators. CRITICAL - state assessment scores
+  CANNOT be compared across states.
 metadata:
   audience: data-analysts
   domain: education-data
 ---
 
-# EDFacts Data Source
+# EDFacts Data Source Reference
 
-EDFacts is the U.S. Department of Education's centralized data collection system for pre-K through grade 12 education data from State Education Agencies (SEAs).
+EDFacts is the U.S. Department of Education's centralized data collection system for pre-K through grade 12 education data from State Education Agencies (SEAs). It provides state assessment proficiency rates, graduation rates, and accountability indicators — the authoritative federal source for state-level K-12 outcome data.
 
-## CRITICAL WARNING: Cross-State Comparisons
+> **CRITICAL: Value Encoding**
+>
+> The Urban Institute Education Data Portal converts NCES string codes (e.g., `ALL`, `CWD`, `LEP`) to **integer codes**. Always verify actual data values before filtering — do not rely on documentation labels alone.
+>
+> | Context | Subgroup "All" | English Learner | Sex "Male" |
+> |---------|----------------|-----------------|------------|
+> | **Portal integer** | `99` | `1` | `1` |
+> | NCES string | `ALL` | `LEP` | `M` |
+>
+> See `./references/variable-definitions.md` for complete encoding tables.
 
-**State assessment proficiency rates CANNOT be compared across states.**
+## What is EDFacts?
 
-| Factor | Why It Varies |
-|--------|---------------|
-| Assessment content | Each state creates its own tests |
-| Proficiency cut scores | Each state sets own thresholds |
-| Standards alignment | State academic standards differ |
-| Test difficulty | Not calibrated nationally |
-
-A student "proficient" in one state may score "below basic" in another state taking a harder test with higher cut scores. **Rankings of states by proficiency rates are meaningless.**
-
-Use NAEP (National Assessment of Educational Progress) for valid cross-state comparisons.
+- **Collector**: U.S. Department of Education, via State Education Agencies (SEAs)
+- **Coverage**: All public schools and districts in 50 states + DC
+- **Content**: State assessment proficiency rates, ACGR graduation rates, participation rates, accountability indicators
+- **Frequency**: Annual collection
+- **Available years**: Assessments 2009-10 to present; Graduation rates 2010-11 to present
+- **Primary identifiers**: `ncessch` (12-char school ID), `leaid` (7-char district ID), `fips` (2-digit state code)
+- **Key limitation**: State assessment scores CANNOT be compared across states (different tests, different cut scores)
 
 ## Reference File Structure
 
@@ -77,7 +87,7 @@ What are you comparing?
 └─ National ranking by proficiency → INVALID
 ```
 
-## Quick Reference: What EDFacts Contains
+## Quick Reference: EDFacts Data Elements
 
 ### Assessment Data
 
@@ -97,9 +107,23 @@ What are you comparing?
 | 6-year ACGR | Further extended rate | 2012-13 to present |
 | Diploma types | Regular diploma only in ACGR | All years |
 
-### Subgroups Reported (Portal Integer Encoding)
+### Key Identifiers
 
-> **Portal Encoding Warning:** The Urban Institute Education Data Portal converts NCES string codes (e.g., `ALL`, `CWD`, `LEP`) to integer codes. Always check actual data values, not documentation labels.
+| ID | Format | Level | Example | Notes |
+|----|--------|-------|---------|-------|
+| `ncessch` | 12-char | School | `060000000001` | NCES school ID |
+| `leaid` | 7-char | District/LEA | `0600001` | NCES district ID |
+| `fips` | 2-digit | State | `06` (California) | Federal state code |
+
+### Data Levels
+
+| Level | Identifier | EDFacts Endpoints |
+|-------|------------|-------------------|
+| School | `ncessch` (12-char) | `/schools/edfacts/` |
+| District/LEA | `leaid` (7-char) | `/school-districts/edfacts/` |
+| State | `fips` (2-digit) | Aggregate from lower levels |
+
+### Subgroups Reported
 
 | Subgroup | String Code | Portal Integer | Notes |
 |----------|-------------|----------------|-------|
@@ -117,23 +141,6 @@ What are you comparing?
 - Special population columns (lep, disability, homeless, migrant, etc.) use `1` = subgroup, `99` = total
 - Race column uses integer codes (1=White, 2=Black, etc.)
 - Sex column uses `1` = Male, `2` = Female, `99` = Total
-
-## Quick Reference: Suppression and Missing Data
-
-| Code/Value | Meaning |
-|------------|---------|
-| `-1` | Missing/not applicable |
-| `-2` | Not reported |
-| `-3` | Suppressed for privacy |
-| `-9` | Rounds to zero |
-| Range values | Exact value suppressed; range provided |
-| `_midpt` suffix | Calculated midpoint of suppressed range |
-
-**Always use `_midpt` variables for analysis when exact values are suppressed.**
-
-## Portal Integer Encodings (Categorical Variables)
-
-> **CRITICAL:** The Urban Institute Education Data Portal converts NCES string codes to integers. Always verify actual data values before filtering.
 
 ### Grade Codes (grade_edfacts)
 
@@ -198,28 +205,31 @@ For `homeless`, `migrant`, `econ_disadvantaged`, `foster_care`, `military_connec
 | `1` | Yes (in subgroup) |
 | `99` | Total (all students) |
 
-## Quick Reference: Data Levels
+### Missing Data Codes
 
-| Level | Identifier | EDFacts Endpoints |
-|-------|------------|-------------------|
-| School | `ncessch` (12-char) | `/schools/edfacts/` |
-| District/LEA | `leaid` (7-char) | `/school-districts/edfacts/` |
-| State | `fips` (2-digit) | Aggregate from lower levels |
+| Code | Meaning | When Used |
+|------|---------|-----------|
+| `-1` | Missing/not applicable | Data not reported |
+| `-2` | Not reported | Item doesn't apply to this entity |
+| `-3` | Suppressed for privacy | Data suppressed for small N-size |
+| `-9` | Rounds to zero | Value rounds to zero |
+| Range values | Exact value suppressed | Range provided instead of exact value |
+| `_midpt` suffix | Calculated midpoint of suppressed range | Use for analysis when exact values are suppressed |
 
-## Data Access via Mirrors
+**Always use `_midpt` variables for analysis when exact values are suppressed.**
 
-EDFacts data is fetched from mirrors (parquet or CSV), not via REST API. See the `education-data-query` skill for fetch patterns.
+## Data Access
 
-### EDFacts Dataset Paths
+### Dataset Paths
 
-| Topic | Type | Years | Huggingface Path |
-|-------|------|-------|------------------|
-| School Assessments | Yearly | 2009-2018, 2020 | `schools/edfacts/assessments/schools_edfacts_assessments_{year}` |
-| School Grad Rates | Yearly | 2010-2019 | `schools/edfacts/grad-rates/schools_edfacts_grad_rates_{year}` |
-| District Assessments | Yearly | 2009-2020 | `school-districts/edfacts/assessments/districts_edfacts_assessments_{year}` |
-| District Grad Rates | Yearly | 2010-2019 | `school-districts/edfacts/grad-rates/districts_edfacts_grad_rates_{year}` |
+| Topic | Type | Huggingface Path |
+|-------|------|------------------|
+| School Assessments | Yearly (2009-2018, 2020) | `schools/edfacts/assessments/schools_edfacts_assessments_{year}` |
+| School Grad Rates | Yearly (2010-2019) | `schools/edfacts/grad-rates/schools_edfacts_grad_rates_{year}` |
+| District Assessments | Yearly (2009-2020) | `school-districts/edfacts/assessments/districts_edfacts_assessments_{year}` |
+| District Grad Rates | Yearly (2010-2019) | `school-districts/edfacts/grad-rates/districts_edfacts_grad_rates_{year}` |
 
-### EDFacts Codebooks
+### Codebooks
 
 | Dataset | Codebook Path |
 |---------|---------------|
@@ -241,16 +251,38 @@ import polars as pl
 url = "https://huggingface.co/datasets/brhkim/education_data_portal_mirror/resolve/main/schools/edfacts/assessments/schools_edfacts_assessments_2018.parquet"
 df = pl.read_parquet(url)
 
-# Filter by grade locally
-df = df.filter(pl.col("grade_edfacts") == 4)  # Grade 4
+# Filter by state and grade locally
+df = df.filter(
+    (pl.col("fips") == 6) &  # California
+    (pl.col("grade_edfacts") == 4)  # Grade 4
+)
 ```
 
-### Grade Filtering
+### Filtering
 
-The `grade_edfacts` column uses integer codes:
-- 3-8: Grades 3-8
-- 9: High school
-- 99: All grades combined
+```python
+# Grade filtering: grade_edfacts uses integer codes
+df = df.filter(pl.col("grade_edfacts") == 4)  # Grade 4
+df = df.filter(pl.col("grade_edfacts") == 99)  # All grades combined
+
+# Subgroup filtering: special population columns use 1/99 pattern
+df_total = df.filter(pl.col("sex") == 99)  # All students (total)
+df_econ = df.filter(pl.col("econ_disadvantaged") == 1)  # Economically disadvantaged only
+
+# Race filtering: integer codes
+df_black = df.filter(pl.col("race") == 2)  # Black students
+```
+
+## Common Pitfalls
+
+| Pitfall | Issue | Solution |
+|---------|-------|----------|
+| Ranking states by proficiency | Different tests, different cut scores make comparisons meaningless | Use NAEP for cross-state comparisons |
+| Comparing 2019-20 to other years | COVID testing waivers created data gaps | Note data gap, exclude year |
+| Ignoring suppression | Results biased toward larger schools/subgroups | Document suppression rates, use `_midpt` variables |
+| Assuming proficiency = same thing | State definitions of "proficient" vary widely | Clarify each state's definition |
+| Pre/post ESSA comparison | Different accountability systems (NCLB vs ESSA) | Note policy change at 2015 boundary |
+| Using string codes for filtering | Portal uses integer encoding, not NCES strings | Always check actual data values; see encoding tables above |
 
 ## Key Policy Context
 
@@ -263,19 +295,24 @@ The `grade_edfacts` column uses integer codes:
 - **ESSA Accountability**: States design own systems with federal guardrails
 - **N-size**: Minimum students required for reporting (varies by state, typically 10-30)
 
-## Common Analysis Pitfalls
+## CRITICAL WARNING: Cross-State Comparisons
 
-| Pitfall | Why It's Wrong | What to Do Instead |
-|---------|----------------|-------------------|
-| Ranking states by proficiency | Different tests, different cut scores | Use NAEP for cross-state |
-| Comparing 2019-20 to other years | COVID testing waivers | Note data gap, exclude year |
-| Ignoring suppression | Biased toward larger schools | Document suppression rates |
-| Assuming proficiency = same thing | State definitions vary | Clarify state's definition |
-| Pre/post ESSA comparison | Different accountability systems | Note policy change |
+**State assessment proficiency rates CANNOT be compared across states.**
 
-## Example: Valid vs. Invalid Analysis
+| Factor | Why It Varies |
+|--------|---------------|
+| Assessment content | Each state creates its own tests |
+| Proficiency cut scores | Each state sets own thresholds |
+| Standards alignment | State academic standards differ |
+| Test difficulty | Not calibrated nationally |
 
-### Valid Analysis
+A student "proficient" in one state may score "below basic" in another state taking a harder test with higher cut scores. **Rankings of states by proficiency rates are meaningless.**
+
+Use NAEP (National Assessment of Educational Progress) for valid cross-state comparisons.
+
+### Valid vs. Invalid Analysis Examples
+
+**Valid Analysis:**
 
 ```python
 # Within-state trend analysis
@@ -286,7 +323,7 @@ trend = state_df.group_by("year").agg(
 # Valid: Same state, same test system
 ```
 
-### INVALID Analysis
+**INVALID Analysis:**
 
 ```python
 # DO NOT DO THIS - Cross-state comparison
@@ -296,6 +333,17 @@ state_comparison = df.group_by("fips").agg(
 ).sort("read_test_pct_prof_midpt", descending=True)
 # INVALID: Different tests, different standards
 ```
+
+## Related Data Sources
+
+| Source | Relationship | When to Use |
+|--------|--------------|-------------|
+| `education-data-source-ccd` | CCD provides school/district demographics | Combining outcome data with school characteristics |
+| `education-data-source-crdc` | CRDC has discipline, AP, school climate data | Analyzing school equity alongside achievement |
+| `education-data-source-saipe` | SAIPE provides district poverty estimates | Linking poverty to achievement |
+| `education-data-source-meps` | MEPS provides school poverty estimates | School-level poverty and assessment analysis |
+| `education-data-explorer` | Parent discovery skill | Finding available endpoints |
+| `education-data-query` | Data fetching | Downloading parquet/CSV files |
 
 ## Topic Index
 

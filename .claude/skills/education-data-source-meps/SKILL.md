@@ -1,16 +1,20 @@
 ---
 name: education-data-source-meps
-description: Model Estimates of Poverty in Schools (MEPS) - Urban Institute's school-level poverty measure. Use when analyzing school poverty rates, comparing poverty across states, or when FRPL data is unreliable due to CEP/universal meals programs. MEPS provides consistent cross-state poverty measurement at 100% FPL.
+description: >-
+  Model Estimates of Poverty in Schools (MEPS) - Urban Institute's school-level
+  poverty measure. Use when analyzing school poverty rates, comparing poverty
+  across states, or when FRPL data is unreliable due to CEP/universal meals
+  programs. MEPS provides consistent cross-state poverty measurement at 100% FPL.
 metadata:
   audience: data-analysts
   domain: education-data
 ---
 
-# Model Estimates of Poverty in Schools (MEPS)
+# MEPS Data Source Reference
 
 School-level poverty measure from the Urban Institute that is **comparable across states and time**, unlike Free/Reduced-Price Lunch (FRPL) data.
 
-> **CRITICAL: Portal Integer Encoding**
+> **CRITICAL: Value Encoding**
 >
 > The Education Data Portal returns MEPS data with **integer-encoded** categorical and identifier columns. This differs from some external documentation:
 >
@@ -23,29 +27,20 @@ School-level poverty measure from the Urban Institute that is **comparable acros
 > | `year` | Int64 | `2018` | Academic year (fall semester) |
 >
 > **Missing values:** Unlike CCD, MEPS uses **native nulls** rather than negative coded values (-1, -2, -3). While the codebook lists these codes, actual Portal data contains nulls for missing values.
+>
+> See `./references/variable-definitions.md` for complete encoding tables.
 
 ## What is MEPS?
 
-MEPS is a **modeled estimate** of the share of students from households with incomes at or below **100% of the Federal Poverty Level (FPL)**:
+MEPS is a **modeled estimate** of the share of students from households with incomes at or below **100% of the Federal Poverty Level (FPL)**.
 
 - **Purpose**: Provide consistent school poverty measurement across all US states
 - **Key advantage**: Comparable across states (unlike FRPL which varies by state policy)
 - **Data level**: School-level (individual schools)
-- **Coverage**: 2006-2019 (MEPS 1.0), expanded in MEPS 2.0
+- **Coverage**: 2009-2022 (actual Portal data range)
 - **Source**: Urban Institute, derived from CCD and SAIPE data
-- **Mirror path**: `schools/meps/schools_meps.parquet` (via `education-data-query` skill)
-
-## Why MEPS Instead of FRPL?
-
-| Issue | FRPL Problem | MEPS Solution |
-|-------|--------------|---------------|
-| **CEP schools** | All students counted as "free lunch" regardless of income | Uses modeled estimates independent of meal programs |
-| **State variation** | Different states use different eligibility criteria | Standardized 100% FPL threshold nationwide |
-| **Direct certification** | Varies by state program participation | Calibrated to Census SAIPE data |
-| **Income threshold** | 130-185% FPL (varies) | Consistent 100% FPL |
-| **Time consistency** | Policy changes affect comparability over time | Methodology consistent across years |
-
-**Critical insight**: As of 2020, ~60% of schools participate in CEP or other universal meal programs, making FRPL increasingly unreliable as a poverty proxy.
+- **Primary identifier**: `ncessch` (12-digit NCES school ID)
+- **Public schools only**: Does not cover private schools
 
 ## Reference File Structure
 
@@ -54,9 +49,9 @@ MEPS is a **modeled estimate** of the share of students from households with inc
 | `methodology.md` | How MEPS estimates are calculated | Understanding the model, research validation |
 | `comparison-to-frpl.md` | Detailed FRPL vs MEPS comparison | Deciding which measure to use |
 | `data-sources.md` | Input data (CCD, SAIPE, ISP) | Understanding data provenance |
-| `variable-definitions.md` | MEPS variables and codes | Building API queries, interpreting results |
+| `variable-definitions.md` | MEPS variables and codes | Building queries, interpreting results |
 | `data-quality.md` | Limitations, uncertainty, appropriate uses | Research design, caveats |
-| `api-usage.md` | API endpoints and query examples | Querying MEPS data |
+| `api-usage.md` | Legacy API endpoints and query examples | Legacy API reference only |
 
 ## Decision Trees
 
@@ -82,13 +77,13 @@ What is your research goal?
 
 ```
 Which estimate type?
-├─ Standard analysis → `meps`
+├─ Standard analysis → `meps_poverty_pct`
 │   └─ Original modeled estimate
-├─ High-poverty district adjustment → `meps_mod`
+├─ High-poverty district adjustment → `meps_mod_poverty_pct`
 │   └─ Modified MEPS for districts where model underestimates
-├─ Need confidence bounds → `meps_se`
+├─ Need confidence bounds → `meps_poverty_se`
 │   └─ Standard error for uncertainty analysis
-└─ Categorical analysis → Derive from `meps`
+└─ Categorical analysis → Derive from `meps_poverty_pct`
     └─ Create quartiles/quintiles as needed
 ```
 
@@ -96,7 +91,7 @@ Which estimate type?
 
 ```
 Access method?
-├─ Mirror download (recommended) → See "Data Access via Mirrors" section below
+├─ Mirror download (recommended) → See "Data Access" section below
 ├─ Join with other data → Use `ncessch` as join key
 └─ Legacy API reference → ./references/api-usage.md
 ```
@@ -105,7 +100,7 @@ Access method?
 
 > **Data Access:** MEPS data is fetched from mirrors (parquet/CSV). See the `education-data-query` skill for mirror configuration and fetch patterns.
 
-### CRITICAL: API Field Names
+### API Field Names
 
 The actual API field names differ from some documentation:
 
@@ -115,7 +110,7 @@ The actual API field names differ from some documentation:
 | `meps_mod` | `meps_mod_poverty_pct` |
 | `meps_se` | `meps_poverty_se` |
 
-### Variable Reference (Portal Integer Encoding)
+### Variable Reference
 
 All ID and categorical columns use **integer encoding** in Portal data:
 
@@ -133,7 +128,22 @@ All ID and categorical columns use **integer encoding** in Portal data:
 | `meps_poverty_ptl` | National percentile (enrollment-weighted) | **Int64** | 1-100 |
 | `meps_mod_poverty_ptl` | Modified percentile (enrollment-weighted) | **Int64** | 1-100 |
 
-**Missing values:** Use null checks, not negative value filters:
+### Key Identifiers
+
+| ID | Format | Level | Example | Notes |
+|----|--------|-------|---------|-------|
+| `ncessch` | Int64 (12-digit) | School | `10000200277` | Primary join key for school-level joins |
+| `leaid` | Int64 (7-digit) | District | `100002` | Use for district-level joins (e.g., with SAIPE) |
+| `gleaid` | Int64 | Geographic LEA | `100013` | Geographic LEA ID |
+| `fips` | Int64 | State | `6` | State FIPS code |
+
+### Missing Data Codes
+
+| Code | Meaning | When Used |
+|------|---------|-----------|
+| `null` | Missing / Not available | All missing values — MEPS uses native nulls, not negative coded values |
+
+**Important:** Unlike CCD and most other Portal sources, MEPS does **not** use `-1`, `-2`, `-3` coded values. Use null checks:
 ```python
 # Correct
 valid_data = df.filter(pl.col("meps_poverty_pct").is_not_null())
@@ -142,24 +152,28 @@ valid_data = df.filter(pl.col("meps_poverty_pct").is_not_null())
 # df.filter(pl.col("meps_poverty_pct") >= 0)  # Unnecessary
 ```
 
-## Data Access via Mirrors
+## Data Access
 
-MEPS data is fetched from mirrors, not via REST API. See `education-data-query` skill.
+### Dataset Paths
 
-| Mirror | Path |
-|--------|------|
-| huggingface | `schools/meps/schools_meps.parquet` |
-| urban_csv | `meps/schools_meps.csv` |
+| Topic | Type | Huggingface Path |
+|-------|------|------------------|
+| Schools MEPS | Single | `schools/meps/schools_meps.parquet` |
 
-### MEPS Codebook
+Urban CSV mirror path: `meps/schools_meps.csv`
+
+### Codebooks
 
 | Dataset | Codebook Path |
 |---------|---------------|
 | Schools MEPS | `schools/meps/codebook_schools_meps` |
 
-> Codebook is an `.xls` file on both mirrors. See `fetch-patterns.md` for `get_codebook_url()`. For human reference — not parsed programmatically.
+> Codebooks are `.xls` files on both mirrors. See `datasets-reference.md` for the
+> full catalog and `fetch-patterns.md` for `get_codebook_url()`. For human
+> reference — not parsed programmatically.
 
-**Example Fetch**:
+### Example Fetch
+
 ```python
 import polars as pl
 
@@ -173,6 +187,47 @@ df = df.filter(
 )
 ```
 
+### Filtering
+
+```python
+# Filter to valid poverty estimates only (drop nulls)
+df = df.filter(pl.col("meps_poverty_pct").is_not_null())
+
+# High-poverty schools (top quartile nationally)
+high_poverty = df.filter(pl.col("meps_poverty_ptl") >= 75)
+
+# Use modified MEPS for high-poverty districts
+df = df.with_columns(
+    pl.when(pl.col("meps_mod_poverty_pct").is_not_null())
+    .then(pl.col("meps_mod_poverty_pct"))
+    .otherwise(pl.col("meps_poverty_pct"))
+    .alias("poverty_pct_best")
+)
+```
+
+## Common Pitfalls
+
+| Pitfall | Issue | Solution |
+|---------|-------|----------|
+| Using negative value filters | Filtering `>= 0` to remove missing values; MEPS uses nulls, not `-1`/`-2`/`-3` | Use `.is_not_null()` instead of `>= 0` |
+| Confusing MEPS with FRPL thresholds | MEPS measures 100% FPL; FRPL uses 130-185% FPL — rates are not comparable | State clearly which measure and threshold; never mix in same analysis |
+| Using wrong field names | Documentation says `meps` but actual Portal field is `meps_poverty_pct` | Always use actual API field names: `meps_poverty_pct`, `meps_mod_poverty_pct`, `meps_poverty_se` |
+| Ignoring standard errors | Treating MEPS as exact counts; they are modeled estimates with uncertainty | Use `meps_poverty_se` for close comparisons; flag when SE exceeds meaningful difference |
+| Including private schools | MEPS only covers public schools; joining with datasets containing private schools inflates nulls | Filter to public schools before joining |
+| Expecting recent data | MEPS has 2-3 year data lag; latest available may be several years behind | Check actual year range (2009-2022) before planning analysis |
+
+## Why MEPS Instead of FRPL?
+
+| Issue | FRPL Problem | MEPS Solution |
+|-------|--------------|---------------|
+| **CEP schools** | All students counted as "free lunch" regardless of income | Uses modeled estimates independent of meal programs |
+| **State variation** | Different states use different eligibility criteria | Standardized 100% FPL threshold nationwide |
+| **Direct certification** | Varies by state program participation | Calibrated to Census SAIPE data |
+| **Income threshold** | 130-185% FPL (varies) | Consistent 100% FPL |
+| **Time consistency** | Policy changes affect comparability over time | Methodology consistent across years |
+
+**Critical insight**: As of 2020, ~60% of schools participate in CEP or other universal meal programs, making FRPL increasingly unreliable as a poverty proxy.
+
 ## Key Methodological Points
 
 1. **Model-based**: MEPS uses a linear probability model, not direct counts
@@ -185,12 +240,12 @@ df = df.filter(
 
 | Use Case | Recommended Approach |
 |----------|---------------------|
-| School poverty rankings | Use `meps`, note `meps_se` for close comparisons |
+| School poverty rankings | Use `meps_poverty_pct`, note `meps_poverty_se` for close comparisons |
 | State-level aggregation | Sum weighted by enrollment |
 | Poverty-achievement gaps | Join MEPS with EDFacts assessments on `ncessch` |
 | Resource allocation analysis | Join MEPS with CCD finance on `leaid` |
 | CEP impact research | Compare MEPS vs FRPL trends over time |
-| Title I targeting analysis | Use `meps` to identify high-poverty schools |
+| Title I targeting analysis | Use `meps_poverty_pct` to identify high-poverty schools |
 
 ## Joining MEPS with Other Data
 
@@ -202,13 +257,24 @@ df = df.filter(
 | EDFacts | `ncessch`, `year` | Achievement + poverty analysis |
 | SAIPE (district) | `leaid`, `year` | Validate against Census estimates |
 
-## Limitations to Note
+## Limitations
 
 - **Years available**: 2009-2022 (actual Portal data range)
 - **Public schools only**: No private school coverage
 - **Modeled estimates**: Subject to estimation error (use `meps_poverty_se`)
 - **100% FPL only**: Does not capture near-poverty (100-185% FPL)
 - **Not real-time**: 2-3 year data lag typical
+
+## Related Data Sources
+
+| Source | Relationship | When to Use |
+|--------|--------------|-------------|
+| `education-data-source-saipe` | District-level poverty (Census) | District-level analysis; MEPS calibration source |
+| `education-data-source-ccd` | School/district characteristics | Join for enrollment, demographics, finance |
+| `education-data-source-crdc` | Civil rights/discipline data | Join on `ncessch` for poverty + discipline analysis |
+| `education-data-source-edfacts` | State assessment data | Join on `ncessch` for poverty + achievement analysis |
+| `education-data-explorer` | Parent discovery skill | Finding available endpoints |
+| `education-data-query` | Data fetching | Downloading MEPS parquet/CSV files |
 
 ## Topic Index
 
@@ -230,10 +296,3 @@ df = df.filter(
 | Appropriate uses | `./references/data-quality.md` |
 | Known limitations | `./references/data-quality.md` |
 | Legacy API reference | `./references/api-usage.md` |
-
-## Cross-Reference to Related Skills
-
-| Skill | Purpose | When to Use |
-|-------|---------|-------------|
-| `education-data-explorer` | Discover all available endpoints | Finding other data to join with MEPS |
-| `education-data-query` | Mirror-based data fetching | Downloading MEPS parquet/CSV files |

@@ -1,6 +1,11 @@
 ---
 name: education-data-source-ipeds
-description: Deep reference for IPEDS (Integrated Postsecondary Education Data System) - the primary federal data source on U.S. colleges and universities. Use when analyzing postsecondary data, understanding graduation rate limitations, comparing institution finances, interpreting enrollment metrics, or working with UNITID/OPEID identifiers.
+description: >-
+  Deep reference for IPEDS (Integrated Postsecondary Education Data System) -
+  the primary federal data source on U.S. colleges and universities. Use when
+  analyzing postsecondary data, understanding graduation rate limitations,
+  comparing institution finances, interpreting enrollment metrics, or working
+  with UNITID/OPEID identifiers.
 metadata:
   audience: data-analysts
   domain: education-data
@@ -8,7 +13,7 @@ metadata:
 
 # IPEDS Data Source Reference
 
-Comprehensive guide to understanding and using IPEDS data correctly. IPEDS is the most widely used source for postsecondary education data but has significant complexities and limitations that users must understand.
+Comprehensive guide to understanding and using IPEDS data correctly. IPEDS is the most widely used source for postsecondary education data but has significant complexities — including sector-specific accounting standards, cohort-limited graduation rates, and integer-encoded categorical variables — that users must understand.
 
 > **CRITICAL: Portal vs NCES Raw File Encoding**
 >
@@ -30,6 +35,7 @@ IPEDS (Integrated Postsecondary Education Data System) is a system of 12+ interr
 - **Frequency**: Annual collection in three periods (Fall, Winter, Spring)
 - **Mandate**: Required for Title IV federal student aid participation
 - **Available years**: 1980-present (varies by component)
+- **Primary identifier**: UNITID (6-digit institution ID)
 
 ## Reference File Structure
 
@@ -104,9 +110,14 @@ Need variable definitions?
 | Human Resources | HR | Spring | Employees, salaries |
 | Academic Libraries | AL | Spring | Library resources (biennial) |
 
-## Quick Reference: Institution Types
+### Key Identifiers
 
-### Portal Integer Encoding
+| ID | Format | Level | Example | Notes |
+|----|--------|-------|---------|-------|
+| `unitid` | 6-digit integer | Institution | `100654` | Unique, persistent across years; changes on merger |
+| `opeid` | 8-digit string | Institution (Title IV) | `00100200` | Links to FSA/NSLDS; shared across branches |
+
+### Institution Type Codes
 
 | Variable | Values | Meaning |
 |----------|--------|---------|
@@ -136,11 +147,21 @@ Need variable definitions?
 | `degree_granting` | 1 | Degree-granting |
 | | 0 | Non-degree-granting |
 
-**Note:** There is **no code 3** for `institution_level`. This is a common source of confusion. The API uses codes 1, 2, 4 (not 1, 2, 3).
+**Note:** There is **no code 3** for `institution_level`. The Portal uses codes 1, 2, 4 (not 1, 2, 3).
 
-## Quick Reference: Demographic Codes
+### `inst_size` Categories
 
-### Race/Ethnicity (Portal Integer Encoding)
+| Code | Meaning |
+|------|---------|
+| 1 | Under 1,000 |
+| 2 | 1,000 - 4,999 |
+| 3 | 5,000 - 9,999 |
+| 4 | 10,000 - 19,999 |
+| 5 | 20,000 and above |
+
+**Note:** `inst_size` is a category code (1-5), not an actual enrollment count.
+
+### Race/Ethnicity Codes (Portal Integer Encoding)
 
 | Code | Category | Notes |
 |------|----------|-------|
@@ -161,7 +182,7 @@ Need variable definitions?
 
 > **Historical note:** Prior to 2010, Asian included Pacific Islanders (code 6 did not exist), and "Two or more races" (code 7) was not collected.
 
-### Sex (Portal Integer Encoding)
+### Sex Codes (Portal Integer Encoding)
 
 | Code | Category |
 |------|----------|
@@ -175,9 +196,145 @@ Need variable definitions?
 | `-2` | Not applicable |
 | `-3` | Suppressed |
 
-> **Note:** Codes 3 and 4 are recent additions for non-binary gender reporting. Historical data may only have codes 1, 2, and 99. The exact meaning of codes 3 vs 4 may vary by endpoint - check the specific codebook.
+> **Note:** Codes 3 and 4 are recent additions for non-binary gender reporting. Historical data may only have codes 1, 2, and 99. The exact meaning of codes 3 vs 4 may vary by endpoint — check the specific codebook.
 
-## Critical Limitations Summary
+### Missing Data Codes
+
+| Code | Meaning | When Used |
+|------|---------|-----------|
+| `-1` | Missing/not reported | Data not submitted by institution |
+| `-2` | Not applicable | Item doesn't apply to this institution type |
+| `-3` | Suppressed | Data suppressed for privacy |
+| `null` | Not available | Field not collected for this survey year |
+
+### Year Field Meanings
+
+| Data Type | Year Field Meaning |
+|-----------|--------------------|
+| Institutional characteristics | As of fall of indicated year |
+| Fall enrollment | As of fall census date |
+| 12-month enrollment | July 1 to June 30 academic year |
+| Completions | Awarded during academic year |
+| Graduation rates | **Cohort entered** in indicated year |
+| Finance | Fiscal year ending in indicated year |
+| Student financial aid | For indicated academic year |
+
+## Data Access
+
+### Dataset Paths
+
+| Topic | Type | Huggingface Path |
+|-------|------|------------------|
+| Directory | Single | `college-university/ipeds/directory/colleges_ipeds_directory` |
+| Admissions | Single | `college-university/ipeds/admissions-enrollment/colleges_ipeds_admissions-enrollment` |
+| Enrollment FTE | Single | `college-university/ipeds/enrollment-full-time-equivalent/colleges_ipeds_enrollment-fte` |
+| Graduation Rates | Single | `college-university/ipeds/grad-rates/colleges_ipeds_grad-rates` |
+| Finance | Single | `college-university/ipeds/finance/colleges_ipeds_finance` |
+
+### Codebooks
+
+| Dataset | Codebook Path |
+|---------|---------------|
+| Directory | `college-university/ipeds/directory/codebook_colleges_ipeds_directory` |
+| Admissions Enrollment | `college-university/ipeds/admissions-enrollment/codebook_colleges_ipeds_admissions-enrollment` |
+| Enrollment FTE | `college-university/ipeds/enrollment-full-time-equivalent/codebook_colleges_ipeds_enrollment-fte` |
+| Graduation Rates | `college-university/ipeds/grad-rates/codebook_colleges_ipeds_grad-rates` |
+| Finance | `college-university/ipeds/finance/codebook_colleges_ipeds_finance` |
+
+> Codebooks are `.xls` files on both mirrors. See `datasets-reference.md` for the
+> full catalog (32 IPEDS codebooks total, one per survey component) and `fetch-patterns.md`
+> for `get_codebook_url()`. For human reference — not parsed programmatically.
+
+### Example Fetch
+
+```python
+import polars as pl
+
+url = "https://huggingface.co/datasets/brhkim/education_data_portal_mirror/resolve/main/college-university/ipeds/directory/colleges_ipeds_directory.parquet"
+df = pl.read_parquet(url)
+
+# Filter locally
+df = df.filter(
+    (pl.col("fips") == 6) &  # California
+    (pl.col("year") == 2023)
+)
+```
+
+### Filtering
+
+```python
+# Admissions totals: filter to sex=99 for institution-level totals
+# WRONG - includes duplicates (~26K rows with multiple sex values per institution)
+df = pl.read_parquet("admissions.parquet")
+# CORRECT - one row per institution-year (~8K rows)
+df_totals = df.filter(pl.col("sex") == 99)
+
+# Calculate admission rate (not provided directly)
+df = df.with_columns(
+    (pl.col("number_admitted") / pl.col("number_applied") * 100).alias("admit_rate")
+)
+
+# Filter to active, degree-granting, 4-year public institutions
+df = df.filter(
+    (pl.col("sector") == 1) &
+    (pl.col("degree_granting") == 1)
+)
+```
+
+### Data Availability & Lag Times
+
+IPEDS data becomes available with significant lag. Always verify year availability before committing to a year range.
+
+| Survey Component | Typical Lag | Latest Available (as of Jan 2026) |
+|------------------|-------------|-----------------------------------|
+| **Directory** | ~1 year | 2023 |
+| **Admissions-Enrollment** | ~2 years | 2022 |
+| **Fall Enrollment** | ~2-3 years | 2021 |
+| **Completions** | ~2 years | Varies |
+| **Finance** | ~4+ years | **2017** (see warning below) |
+| **Graduation Rates** | ~2-3 years | 2021 |
+
+> **CRITICAL: IPEDS Finance Data Cutoff.** As of January 2026, IPEDS Finance data is only available through **2017**. This affects endowment values (`endowment_end`), revenue/expense data, and any financial ratios. Options: (1) limit analysis to available years, (2) use NCCS 990 data for private institutions as an alternative, or (3) forward-fill with a documented caveat and indicator column.
+
+### Variable Name Mappings
+
+The Portal uses different names than NCES documentation:
+
+| Documented Name | Actual Portal Name |
+|-----------------|-----------------|
+| `inst_level` | `institution_level` |
+| `applicants_total` | `number_applied` |
+| `admissions_total` | `number_admitted` |
+| `grad_rate_150pct` | `completion_rate_150pct` |
+
+### Enrollment Endpoint Confusion
+
+The Portal has two enrollment endpoints that BOTH return FTE data:
+- `/ipeds/fall-enrollment/` — Returns `est_fte`, `rep_fte` (FTE only, NOT headcount)
+- `/ipeds/enrollment-headcount/` — Despite the name, also returns FTE-style data
+
+Neither provides traditional headcount enrollment. Fall enrollment has a **2-3 year lag**.
+
+### Path Segments That Fail
+
+| Fails (HTTP 500) | Works |
+|------------------|-------|
+| `/fall-enrollment/2021/undergrad/` | `/fall-enrollment/2021/?level_of_study=1` |
+
+## Common Pitfalls
+
+| Pitfall | Issue | Solution |
+|---------|-------|----------|
+| Using string codes | Portal uses integer encodings, not NCES string codes | Always verify against Portal codebooks; see encoding table above |
+| Grad rates as sole quality metric | IPEDS tracks only first-time, full-time, fall-entering students; excludes ~40% transfers, ~40% part-time | Use Outcome Measures (OM) for part-time/transfer data; note limitations |
+| Cross-sector finance comparison | Public (GASB) and private (FASB) use different accounting standards | Compare within sector only; see `./references/finance-data.md` for crosswalk |
+| Net price for all students | Net price covers only first-time, full-time students who received Title IV aid | Document population limitation; excludes full-pay students |
+| Admissions without sex filter | Admissions data disaggregated by sex — unfiltered data has duplicates | Filter to `sex == 99` for institution totals |
+| No `institution_level` 3 | Codes are 1, 2, 4 — not sequential 1, 2, 3 | Use exact codes: 1=less-than-2yr, 2=2yr, 4=4yr+ |
+| Ignoring mergers/closures | Institutions merge, close, or change sector over time | Check `inst_status` and track UNITID changes; see `./references/institution-identifiers.md` |
+| `inst_size` as enrollment | `inst_size` is a 1-5 category code, not an enrollment count | Use enrollment endpoints for actual counts |
+
+## Critical Limitations
 
 ### Graduation Rates (GRS)
 
@@ -215,186 +372,50 @@ Net price is calculated ONLY for:
 
 See `./references/financial-aid.md` for details.
 
-## Quick Reference: Year Field Meanings
-
-| Data Type | Year Field Meaning |
-|-----------|--------------------|
-| Institutional characteristics | As of fall of indicated year |
-| Fall enrollment | As of fall census date |
-| 12-month enrollment | July 1 to June 30 academic year |
-| Completions | Awarded during academic year |
-| Graduation rates | **Cohort entered** in indicated year |
-| Finance | Fiscal year ending in indicated year |
-| Student financial aid | For indicated academic year |
-
-## Common Analysis Mistakes
-
-### Do NOT:
-
-1. Use IPEDS grad rates as sole quality measure
-2. Compare grad rates across institution types without adjusting for population
-3. Compare finance data across GASB/FASB sectors directly
-4. Assume net price represents all students
-5. Use IPEDS to track transfer student outcomes
-6. Ignore institutional mergers/closures in time series
-
-### DO:
-
-1. Compare within sector and Carnegie class
-2. Use Outcome Measures (OM) for part-time/transfer data
-3. Note all limitations in analysis
-4. Check institutional status before including
-5. Use appropriate cohort definitions
-6. Supplement with College Scorecard for non-traditional students
-
-## Data Quality Checklist
+### Data Quality Checklist
 
 ```python
 def ipeds_quality_check(df):
     """Basic IPEDS data quality checks."""
     issues = []
-    
+
     # Check graduation rates are 0-100
     if "grad_rate_150" in df.columns:
         bad = df.filter(
-            (pl.col("grad_rate_150") > 100) | 
+            (pl.col("grad_rate_150") > 100) |
             (pl.col("grad_rate_150") < 0)
         )
         if bad.height > 0:
             issues.append(f"Invalid grad rates: {bad.height} rows")
-    
+
     # Check for closed institutions
     if "inst_status" in df.columns:
         closed = df.filter(pl.col("inst_status") != 1)
         if closed.height > 0:
             issues.append(f"Non-active institutions: {closed.height}")
-    
+
     # Check sector consistency
     if "inst_control" in df.columns:
         invalid = df.filter(~pl.col("inst_control").is_in([1, 2, 3]))
         if invalid.height > 0:
             issues.append(f"Invalid control codes: {invalid.height}")
-    
+
     return issues
 ```
 
 ## Related Data Sources
 
-| Source | Use When | Link Key |
-|--------|----------|----------|
-| College Scorecard | Non-traditional student outcomes | UNITID |
-| FSA (Federal Student Aid) | Detailed loan/grant data | OPEID |
-| BPS (Beginning Postsecondary Students) | Student-level trajectories | N/A (sample) |
-| NSLDS | Individual loan records | N/A (restricted) |
-| State longitudinal systems | State-specific outcomes | Varies |
-
-## Education Data Portal API Gotchas
-
-> **Data Retrieval:** For mirror-based data fetching patterns and filtering, see the `education-data-query` skill.
-
-### IPEDS Codebooks
-
-| Dataset | Codebook Path |
-|---------|---------------|
-| Directory | `college-university/ipeds/directory/codebook_colleges_ipeds_directory` |
-| Admissions Enrollment | `college-university/ipeds/admissions-enrollment/codebook_colleges_ipeds_admissions-enrollment` |
-| Enrollment FTE | `college-university/ipeds/enrollment-full-time-equivalent/codebook_colleges_ipeds_enrollment-fte` |
-| Graduation Rates | `college-university/ipeds/grad-rates/codebook_colleges_ipeds_grad-rates` |
-| Finance | `college-university/ipeds/finance/codebook_colleges_ipeds_finance` |
-
-> 32 IPEDS codebooks exist total (one per survey component). See `datasets-reference.md` for the complete list. Codebooks are `.xls` files on both mirrors. For human reference — not parsed programmatically.
-
-### Data Availability & Lag Times
-
-IPEDS data becomes available with significant lag. Always verify year availability before committing to a year range.
-
-| Survey Component | Typical Lag | Latest Available (as of Jan 2026) |
-|------------------|-------------|-----------------------------------|
-| **Directory** | ~1 year | 2023 |
-| **Admissions-Enrollment** | ~2 years | 2022 |
-| **Fall Enrollment** | ~2-3 years | 2021 |
-| **Completions** | ~2 years | Varies |
-| **Finance** | ~4+ years | **2017** (see warning below) |
-| **Graduation Rates** | ~2-3 years | 2021 |
-
-> **CRITICAL: IPEDS Finance Data Cutoff.** As of January 2026, IPEDS Finance data is only available through **2017**. This affects endowment values (`endowment_end`), revenue/expense data, and any financial ratios. Options: (1) limit analysis to available years, (2) use NCCS 990 data for private institutions as an alternative, or (3) forward-fill with a documented caveat and indicator column.
-
-### Admissions Data: Sex Disaggregation
-
-**CRITICAL:** Admissions data is disaggregated by sex. You must filter to `sex=99` for institution totals:
-
-```python
-# WRONG - includes duplicates (~26K rows with multiple sex values per institution)
-df = pl.read_parquet("admissions.parquet")
-
-# CORRECT - one row per institution-year (~8K rows)
-df_totals = df.filter(pl.col("sex") == 99)
-```
-
-| Sex Value | Meaning |
-|-----------|---------|
-| 1 | Male |
-| 2 | Female |
-| 3 | Nonbinary/Another gender |
-| 9 | Unknown |
-| **99** | **Total (use this for institution totals)** |
-
-> **Note:** Code 3 (Nonbinary) was added recently. In older data or some endpoints, you may only see codes 1, 2, and 99.
-
-### Variable Name Mappings
-
-The API uses different names than documentation:
-
-| Documented Name | Actual API Name |
-|-----------------|-----------------|
-| `inst_level` | `institution_level` |
-| `applicants_total` | `number_applied` |
-| `admissions_total` | `number_admitted` |
-| `grad_rate_150pct` | `completion_rate_150pct` |
-
-### Admission Rate Must Be Calculated
-
-The API does **NOT** provide `admit_rate`. Calculate manually:
-
-```python
-df = df.with_columns(
-    (pl.col("number_admitted") / pl.col("number_applied") * 100).alias("admit_rate")
-)
-```
-
-### Fall Enrollment: FTE Only
-
-The fall-enrollment endpoint provides **FTE (Full-Time Equivalent)**, NOT headcount:
-- `est_fte` - Estimated FTE enrollment
-- `rep_fte` - Reported FTE enrollment
-
-**Data lag:** Fall enrollment typically has a **2-3 year lag**.
-
-### Path Segments That Fail
-
-| Fails (HTTP 500) | Works |
-|------------------|-------|
-| `/fall-enrollment/2021/undergrad/` | `/fall-enrollment/2021/?level_of_study=1` |
-
-### Enrollment Endpoint Confusion
-
-The API has two enrollment endpoints that BOTH return FTE data:
-- `/ipeds/fall-enrollment/` - Returns `est_fte`, `rep_fte`
-- `/ipeds/enrollment-headcount/` - Despite the name, also returns FTE-style data
-
-Neither provides traditional headcount enrollment.
-
-### `inst_size` is Categorical
-
-The `inst_size` variable is a **category code (1-5)**, not an actual enrollment count:
-
-| Code | Meaning |
-|------|---------|
-| 1 | Under 1,000 |
-| 2 | 1,000 - 4,999 |
-| 3 | 5,000 - 9,999 |
-| 4 | 10,000 - 19,999 |
-| 5 | 20,000 and above |
+| Source | Relationship | When to Use |
+|--------|--------------|-------------|
+| `education-data-source-scorecard` | Non-traditional student outcomes | Post-college earnings, broader student population |
+| `education-data-source-fsa` | Detailed loan/grant data | Federal student aid analysis (link on OPEID) |
+| `education-data-source-nccs` | Private institution 990 data | Financial data beyond IPEDS cutoff year |
+| `education-data-source-pseo` | Post-college employment | State-level employment outcomes |
+| `education-data-source-eada` | College athletics | Athletics equity and finance |
+| `education-data-source-nacubo` | Endowment data | Endowment analysis beyond IPEDS |
+| `education-data-source-campus-safety` | Campus crime statistics | Safety and compliance |
+| `education-data-explorer` | Parent discovery skill | Finding available endpoints |
+| `education-data-query` | Data fetching | Downloading parquet/CSV files |
 
 ## Topic Index
 

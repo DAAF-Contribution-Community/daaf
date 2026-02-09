@@ -1,14 +1,33 @@
 ---
 name: education-data-source-crdc
-description: Deep reference for Civil Rights Data Collection (CRDC) - biennial OCR survey of public schools. Use when analyzing school discipline disparities, course access equity, harassment data, restraint/seclusion, chronic absenteeism, or any civil rights education indicators. Covers legal framework, data elements, quality issues, and historical changes.
+description: >-
+  Deep reference for Civil Rights Data Collection (CRDC) - biennial OCR survey
+  of all public schools. Use when analyzing school discipline disparities,
+  course access equity, harassment data, restraint/seclusion, chronic
+  absenteeism, or any civil rights education indicators. Covers legal
+  framework, data elements, quality issues, and historical changes.
 metadata:
   audience: data-analysts
-  domain: education-civil-rights
+  domain: education-data
 ---
 
-# Civil Rights Data Collection (CRDC) Source Guide
+# CRDC Data Source Reference
 
-Comprehensive reference for understanding, analyzing, and interpreting CRDC data from the U.S. Department of Education's Office for Civil Rights.
+The Civil Rights Data Collection is a mandatory biennial survey of all U.S. public schools measuring educational opportunity and civil rights compliance. It is the only national source for school-level discipline disparities, course access equity, harassment, and restraint/seclusion data disaggregated by race, sex, disability, and English learner status.
+
+> **CRITICAL: Value Encoding**
+>
+> The Education Data Portal uses **integer codes**, not the string codes shown in OCR documentation. Always filter using integers.
+>
+> | Variable | String Code (Raw) | Portal Integer |
+> |----------|-------------------|----------------|
+> | Race: White | `WH` | `1` |
+> | Race: Black | `BL` | `2` |
+> | Race: Hispanic | `HI` | `3` |
+> | Sex: Male | `M` | `1` |
+> | Sex: Female | `F` | `2` |
+>
+> See `./references/variable-definitions.md` for complete encoding tables.
 
 ## What is CRDC?
 
@@ -20,6 +39,7 @@ The Civil Rights Data Collection is a **mandatory biennial survey** of all publi
 - **Frequency**: Biennial (every 2 school years)
 - **Disaggregation**: Race/ethnicity, sex, disability status, English learner status
 - **History**: Collected since 1968 (as Elementary and Secondary School Civil Rights Survey)
+- **Available years**: 2011, 2013, 2015, 2017, 2020, 2021 (biennial — no data for even-numbered school years)
 
 ## Reference File Structure
 
@@ -91,7 +111,9 @@ Data quality issue?
 └─ State-level variations → ./references/data-quality.md#state-variations
 ```
 
-## Quick Reference: Collection Years
+## Quick Reference: CRDC Data Categories
+
+### Collection Years
 
 | School Year | Collection | Coverage | Key Notes |
 |-------------|------------|----------|-----------|
@@ -105,7 +127,7 @@ Data quality issue?
 
 **Critical**: CRDC is biennial - no data for odd years (2012, 2014, 2016, 2018, 2019).
 
-## Quick Reference: Data Categories
+### Data Categories
 
 | Category | Description | Disaggregation |
 |----------|-------------|----------------|
@@ -119,21 +141,13 @@ Data quality issue?
 | **Offenses** | Violence, weapons, drugs at school | Type of offense |
 | **Retention** | Students retained in grade | Race, sex, disability |
 
-## Quick Reference: Disaggregation Categories
+### Key Identifiers
 
-> **CRITICAL: Portal Integer Encoding**
->
-> The Education Data Portal uses **integer codes**, not the string codes shown in OCR documentation. Always filter using integers.
->
-> | Variable | String Code (Raw) | Portal Integer |
-> |----------|-------------------|----------------|
-> | Race: White | `WH` | `1` |
-> | Race: Black | `BL` | `2` |
-> | Race: Hispanic | `HI` | `3` |
-> | Sex: Male | `M` | `1` |
-> | Sex: Female | `F` | `2` |
->
-> See `./references/variable-definitions.md` for complete encoding tables.
+| ID | Format | Level | Example | Notes |
+|----|--------|-------|---------|-------|
+| `ncessch` | 12-digit | School | `060000000001` | NCES school ID, joins to CCD |
+| `leaid` | 7-digit | District | `0600001` | NCES district ID, joins to CCD |
+| `combokey` | varies | School | `AL-0010-00002` | OCR internal key (state-district-school) |
 
 ### Race/Ethnicity (Portal Integer Codes)
 
@@ -172,22 +186,30 @@ Data quality issue?
 | `1` | English learner (EL/LEP) |
 | `99` | All students |
 
-## Data Access via Mirrors
+### Missing Data Codes
 
-CRDC data is fetched from mirrors (parquet or CSV), not via REST API. See the `education-data-query` skill for fetch patterns.
+| Code | Meaning | When Used |
+|------|---------|-----------|
+| `-1` | Missing | Data not reported by school/district |
+| `-2` | Not applicable | Item doesn't apply to this entity |
+| `-3` | Suppressed | Data suppressed for privacy (small cell sizes) |
+| `-9` | Skip pattern | Question not asked in this collection year |
+| `null` | Not available | Value absent from dataset |
 
-### CRDC Dataset Paths
+## Data Access
 
-| Topic | Type | Years | Huggingface Path |
-|-------|------|-------|------------------|
-| Discipline | Yearly | 2011-2021 | `schools/crdc/discipline/schools_crdc_discipline_k12_{year}` |
-| AP/IB Enrollment | Single | 2011-2021 | `schools/crdc/ap-ib-enrollment/schools_crdc_apib_enroll` |
-| Enrollment | Yearly | 2011-2021 | `schools/crdc/enrollment/schools_crdc_enrollment_k12_{year}` |
-| Chronic Absenteeism | Yearly | 2013-2022 | `schools/crdc/chronic-absenteeism/schools_crdc_chronic_absenteeism_{year}` |
-| Harassment/Bullying | Yearly | 2011-2021 | `schools/crdc/harassment-or-bullying/schools_crdc_harass_bully_students_{year}` |
-| Restraint/Seclusion | Yearly | 2011-2021 | `schools/crdc/restraint-and-seclusion/schools_crdc_restraint_seclusion_students_{year}` |
+### Dataset Paths
 
-### CRDC Codebooks
+| Topic | Type | Huggingface Path |
+|-------|------|------------------|
+| Discipline | Yearly | `schools/crdc/discipline/schools_crdc_discipline_k12_{year}` |
+| AP/IB Enrollment | Single | `schools/crdc/ap-ib-enrollment/schools_crdc_apib_enroll` |
+| Enrollment | Yearly | `schools/crdc/enrollment/schools_crdc_enrollment_k12_{year}` |
+| Chronic Absenteeism | Yearly | `schools/crdc/chronic-absenteeism/schools_crdc_chronic_absenteeism_{year}` |
+| Harassment/Bullying | Yearly | `schools/crdc/harassment-or-bullying/schools_crdc_harass_bully_students_{year}` |
+| Restraint/Seclusion | Yearly | `schools/crdc/restraint-and-seclusion/schools_crdc_restraint_seclusion_students_{year}` |
+
+### Codebooks
 
 | Dataset | Codebook Path |
 |---------|---------------|
@@ -215,15 +237,44 @@ df = pl.read_parquet(url)
 df = df.filter(pl.col("year") == 2017)
 ```
 
-### Available Years
-- 2011, 2013, 2015, 2017, 2020, 2021
-- **CRDC is biennial** - no data for even-numbered school years
+### Filtering
+
+```python
+import polars as pl
+
+# Filter to a single state (California) and disaggregated race groups
+df = df.filter(
+    (pl.col("fips") == 6) &       # California
+    (pl.col("race") < 99)          # Exclude totals row
+)
+
+# Filter to specific demographic intersection
+df = df.filter(
+    (pl.col("race") == 2) &        # Black students
+    (pl.col("sex") == 99) &         # Both sexes (total)
+    (pl.col("disability") == 99)    # All disability statuses
+)
+```
+
+## Common Pitfalls
+
+| Pitfall | Issue | Solution |
+|---------|-------|----------|
+| **Using string codes** | Portal uses integers, not strings | `race == 2` not `race == "BL"` |
+| **Raw counts** | Different enrollment sizes | Use rates per 100/1000 students |
+| **Missing years** | Assuming annual data | Remember biennial schedule |
+| **COVID year** | 2020-21 not comparable | Flag or exclude from trends |
+| **Suppression** | Small cell suppression | Check suppression rates first |
+| **Sample years** | Early years sampled | Use 2015+ for national estimates |
+| **Definition drift** | Variables change over time | Check codebooks for each year |
+| **Forgetting code 99** | Including totals in calculations | Filter `race < 99` for disaggregated analysis |
 
 ## Equity Analysis Framework
 
 CRDC data is designed for civil rights analysis. Key analytical approaches:
 
 ### Disparity Ratios
+
 ```python
 import polars as pl
 
@@ -260,56 +311,45 @@ def discipline_disparity(df, discipline_var, group_a, group_b):
 ```
 
 ### Composition vs. Representation
+
 - **Composition**: What share of suspended students are Black?
 - **Representation**: Are Black students suspended at higher rates than enrollment share?
 
 ### Risk Ratios
+
 - Compare discipline/outcome rates across groups
 - Adjust for school-level factors when appropriate
 
-## Common Pitfalls
+## Related Data Sources
 
-| Pitfall | Issue | Solution |
-|---------|-------|----------|
-| **Using string codes** | Portal uses integers, not strings | `race == 2` not `race == "BL"` |
-| **Raw counts** | Different enrollment sizes | Use rates per 100/1000 students |
-| **Missing years** | Assuming annual data | Remember biennial schedule |
-| **COVID year** | 2020-21 not comparable | Flag or exclude from trends |
-| **Suppression** | Small cell suppression | Check suppression rates first |
-| **Sample years** | Early years sampled | Use 2015+ for national estimates |
-| **Definition drift** | Variables change over time | Check codebooks for each year |
-| **Forgetting code 99** | Including totals in calculations | Filter `race < 99` for disaggregated analysis |
-
-## Related Skills and Tools
-
-| Resource | Use When |
-|----------|----------|
-| `education-data-explorer` | Finding CRDC endpoints and variables |
-| `education-data-query` | Constructing API queries |
-| `education-data-context` | General education data interpretation |
-| CCD data | Linking to school characteristics |
-| EDFacts data | Comparing to assessment outcomes |
+| Source | Relationship | When to Use |
+|--------|--------------|-------------|
+| `education-data-source-ccd` | School/district characteristics | Linking CRDC to school demographics, locale, Title I status (join on `ncessch` or `leaid`) |
+| `education-data-source-edfacts` | Assessment outcomes | Comparing discipline patterns to academic outcomes |
+| `education-data-explorer` | Parent discovery skill | Finding available CRDC endpoints and variables |
+| `education-data-query` | Data fetching | Downloading CRDC parquet/CSV files from mirrors |
+| `education-data-context` | General interpretation | Education data interpretation and citation generation |
 
 ## Topic Index
 
-| Topic | Reference File | Section |
-|-------|---------------|---------|
-| Title VI (race) | `civil-rights-context.md` | Title VI |
-| Title IX (sex) | `civil-rights-context.md` | Title IX |
-| Section 504 (disability) | `civil-rights-context.md` | Section 504 |
-| IDEA | `civil-rights-context.md` | IDEA |
-| OCR enforcement | `civil-rights-context.md` | OCR Enforcement |
-| Discipline data | `data-elements.md` | Discipline |
-| Restraint/seclusion | `data-elements.md` | Restraint and Seclusion |
-| Harassment | `data-elements.md` | Harassment |
-| Course access | `data-elements.md` | Course Access |
-| AP/IB/Gifted | `data-elements.md` | Advanced Courses |
-| Chronic absenteeism | `data-elements.md` | Chronic Absenteeism |
-| Staffing | `data-elements.md` | Staffing |
-| Preschool | `data-elements.md` | Preschool |
-| Sampling approach | `collection-methodology.md` | Sampling |
-| Collection timeline | `collection-methodology.md` | Timeline |
-| Variable codes | `variable-definitions.md` | All |
-| Suppression rules | `data-quality.md` | Suppression |
-| COVID impact | `data-quality.md` | COVID Impact |
-| Year changes | `historical-changes.md` | All |
+| Topic | Reference File |
+|-------|---------------|
+| Title VI (race) | `./references/civil-rights-context.md` |
+| Title IX (sex) | `./references/civil-rights-context.md` |
+| Section 504 (disability) | `./references/civil-rights-context.md` |
+| IDEA | `./references/civil-rights-context.md` |
+| OCR enforcement | `./references/civil-rights-context.md` |
+| Discipline data | `./references/data-elements.md` |
+| Restraint/seclusion | `./references/data-elements.md` |
+| Harassment | `./references/data-elements.md` |
+| Course access | `./references/data-elements.md` |
+| AP/IB/Gifted | `./references/data-elements.md` |
+| Chronic absenteeism | `./references/data-elements.md` |
+| Staffing | `./references/data-elements.md` |
+| Preschool | `./references/data-elements.md` |
+| Sampling approach | `./references/collection-methodology.md` |
+| Collection timeline | `./references/collection-methodology.md` |
+| Variable codes | `./references/variable-definitions.md` |
+| Suppression rules | `./references/data-quality.md` |
+| COVID impact | `./references/data-quality.md` |
+| Year changes | `./references/historical-changes.md` |
