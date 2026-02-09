@@ -61,7 +61,7 @@ MIRRORS = load_mirrors()
 # Example for SAIPE district poverty:
 DATASET_PATHS = {
     "huggingface": {"path": "school-districts/saipe/districts_saipe"},
-    "urban_csv": {"source": "saipe", "filename": "school-districts_saipe"},
+    "urban_csv": {"file_dir": "saipe", "file_name": "districts_saipe"},
 }
 
 
@@ -240,15 +240,29 @@ def discover_mirror_files(mirror_config: dict) -> list[str] | None:
 
     if method == "http_json":
         url = discovery["url"]
-        path_key = discovery.get("file_path_key", "path")
         file_filter = discovery.get("file_filter", "*")
 
         response = requests.get(url, timeout=30)
         response.raise_for_status()
         entries = response.json()
 
-        # Extract file paths
-        paths = [e[path_key] for e in entries if e.get("type") == "file"]
+        # Handle response format differences between mirrors.
+        # HuggingFace: objects have "path" and "type" fields.
+        # Urban CSV:   objects have "file_dir" and "file_name" fields.
+        file_dir_key = discovery.get("file_dir_key")
+        file_name_key = discovery.get("file_name_key")
+        path_key = discovery.get("file_path_key", "path")
+
+        if file_dir_key and file_name_key:
+            # Construct paths from separate dir + name fields (e.g., Urban CSV)
+            paths = [
+                f"{e[file_dir_key]}/{e[file_name_key]}"
+                for e in entries
+                if e.get("hide", 0) == 0
+            ]
+        else:
+            # Single path field (e.g., HuggingFace)
+            paths = [e[path_key] for e in entries if e.get("type") == "file"]
 
         # Apply file_filter if specified (simple suffix matching)
         if file_filter != "*":
@@ -345,12 +359,12 @@ def get_codebook_url(
             # HuggingFace: nested path matches codebook_path directly
             url = template.format(root_url=root_url, path=codebook_path, format=fmt)
         else:
-            # Other mirrors (e.g., urban_csv): extract source and filename from path
+            # Other mirrors (e.g., urban_csv): extract file_dir and file_name from path
             parts = codebook_path.split("/")
-            source = parts[1]  # e.g., "saipe" from "school-districts/saipe/..."
-            filename = parts[-1]  # e.g., "codebook_districts_saipe"
+            file_dir = parts[1]  # e.g., "saipe" from "school-districts/saipe/..."
+            file_name = parts[-1]  # e.g., "codebook_districts_saipe"
             url = template.format(
-                root_url=root_url, source=source, filename=filename, format=fmt
+                root_url=root_url, file_dir=file_dir, file_name=file_name, format=fmt
             )
 
         return url

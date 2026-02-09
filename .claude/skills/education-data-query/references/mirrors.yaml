@@ -59,22 +59,37 @@ mirrors:
     root_url: "https://educationdata.urban.org/csv"
     format: csv
     timeout: 300
-    url_template: "{root_url}/{source}/{filename}.csv"
+    url_template: "{root_url}/{file_dir}/{file_name}.csv"
     read_strategy: lazy_csv
     discovery:
-      method: known_complete
-      notes: >
-        Urban CSV mirror has complete coverage of all Education Data Portal datasets.
-        No discovery query needed — all datasets listed in datasets-reference.md are available.
+      method: http_json
+      url: "https://educationdata.urban.org/api/v1/api-downloads"
+      # Response is a JSON array of objects with fields:
+      #   id, endpoint_id, sort_order, file_dir, file_name, file_label, file_size, hide
+      # file_name includes the .csv/.xls extension already.
+      # Construct download URL as: {root_url}/{file_dir}/{file_name}
+      # Filter: hide == 0 for active files; file_name ends with .csv for data.
+      #
+      # NOTE: Unlike the HuggingFace mirror, this API does not have a single
+      # "path" field. Paths must be constructed from file_dir + file_name.
+      # The standard discover_mirror_files() function needs the following
+      # adaptation to work with this mirror:
+      #   path = f"{entry['file_dir']}/{entry['file_name']}"
+      file_dir_key: "file_dir"
+      file_name_key: "file_name"
+      file_filter: "*.csv"
     coverage_notes: >
       Complete coverage of all data levels and sources.
       Large files (500MB+); always use lazy loading with filters.
-      Flat directory structure: {source}/{filename}.csv
+      Flat directory structure: {file_dir}/{file_name}.csv
+      Some datasets are split into yearly files (e.g., schools_ccd_enrollment_{year}.csv)
+      while others contain all years in a single file (e.g., colleges_fsa_grants.csv).
+      Check the api-downloads manifest to determine which pattern applies.
     metadata:
-      url_template: "{root_url}/{source}/{filename}.{format}"
+      url_template: "{root_url}/{file_dir}/{file_name}.{format}"
       formats: [xls]
       filename_pattern: "codebook_{entity}_{source}_{topic}"
       notes: >
         Codebook .xls files in flat directory structure, same as data files.
-        Extract source (2nd path component) and filename (basename) from
+        Extract file_dir (2nd path component) and file_name (basename) from
         the codebook path in datasets-reference.md.
