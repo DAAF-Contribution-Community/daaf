@@ -6,7 +6,7 @@ An open-source framework demonstrating how AI can assist with rigorous, reproduc
 
 ## Documentation Table of Contents
 
-- **00.** README — **\[This document\]** Vision and purpose, what DAAF does and does not do, core design philosophy, acknowledgments
+- **00. README** — **\[This document\]** Vision and purpose, what DAAF does and does not do, core design philosophy, acknowledgments
 - [**01. Installation & Quick Start**](user_reference/01_installation_and_quickstart.md) — Get started! Installation prerequisites, step-by-step 5-minute setup, day-to-day usage, and troubleshooting
 - [**02. Understanding DAAF**](user_reference/02_understanding_daaf.md) — Learn to work with DAAF for the first time: what to expect, engagement modes explained, your first analysis walkthrough
 - [**03. Best Practices**](user_reference/03_best_practices.md) — Tips for working with Claude Code, writing effective prompts, ensuring quality and rigor with DAAF, reviewing outputs, and managing context
