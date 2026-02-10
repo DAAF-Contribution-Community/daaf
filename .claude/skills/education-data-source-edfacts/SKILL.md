@@ -229,15 +229,12 @@ All EDFacts data is fetched via the **mirror-based bulk download system**. There
 - **`datasets-reference.md`** -- Canonical dataset paths (one path works for all mirrors)
 - **`fetch-patterns.md`** -- `fetch_from_mirrors()` and `fetch_yearly_from_mirrors()` patterns
 
-### Truth Hierarchy
-
-When skill documentation contradicts observed data, trust the data:
-
-| Priority | Source | Rationale |
-|----------|--------|-----------|
-| 1 (highest) | **Actual data file** (parquet) | What you observe IS the truth |
-| 2 | **Live codebook/metadata** (.xls in mirror) | Authoritative documentation; may lag behind data |
-| 3 (lowest) | **This skill's reference files** | Summarized; convenient but may drift |
+> **Truth Hierarchy:** When interpreting variable values, apply this priority:
+> 1. **Actual data file** (what you observe in the parquet/CSV) — this IS the truth
+> 2. **Live codebook** (.xls in mirror) — authoritative documentation, may lag
+> 3. **This skill documentation** — convenient summary, may drift from codebook
+>
+> If this documentation contradicts the codebook, trust the codebook. If the codebook contradicts observed data, trust the data and investigate.
 
 ### Key Datasets
 

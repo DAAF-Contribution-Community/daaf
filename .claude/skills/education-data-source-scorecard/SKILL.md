@@ -32,13 +32,6 @@ Federal data on post-college outcomes including earnings, debt, and repayment fo
 > | Original Scorecard | String labels | String labels | String labels |
 >
 > See `./references/variable-definitions.md` for complete encoding tables.
->
-> **Truth Hierarchy:** When interpreting variable values, apply this priority:
-> 1. **Actual data file** (what you observe in the parquet/CSV) — this IS the truth
-> 2. **Live codebook** (.xls in mirror) — authoritative documentation, may lag
-> 3. **This skill documentation** — convenient summary, may drift from codebook
->
-> If this documentation contradicts the codebook, trust the codebook. If the codebook contradicts observed data, trust the data and investigate.
 
 ## What is College Scorecard?
 
@@ -208,6 +201,13 @@ six_yr_valid = valid.filter(pl.col("years_after_entry") == 6)
 Datasets for Scorecard are available via the mirror system. See `datasets-reference.md` for canonical paths, `mirrors.yaml` for mirror configuration, and `fetch-patterns.md` for fetch code patterns.
 
 Codebooks are `.xls` files co-located with data in all mirrors. Use `get_codebook_url()` from `fetch-patterns.md` to construct download URLs.
+
+> **Truth Hierarchy:** When interpreting variable values, apply this priority:
+> 1. **Actual data file** (what you observe in the parquet/CSV) — this IS the truth
+> 2. **Live codebook** (.xls in mirror) — authoritative documentation, may lag
+> 3. **This skill documentation** — convenient summary, may drift from codebook
+>
+> If this documentation contradicts the codebook, trust the codebook. If the codebook contradicts observed data, trust the data and investigate.
 
 ### All Scorecard Datasets (6 total)
 

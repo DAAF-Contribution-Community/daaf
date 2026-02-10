@@ -16,7 +16,7 @@ metadata:
 
 Postsecondary Employment Outcomes (PSEO) is an experimental data product from the U.S. Census Bureau that links college graduate records to national employment data, providing earnings and employment outcomes by institution, degree level, and field of study.
 
-> **CRITICAL: Portal vs Census API Encoding**
+> **CRITICAL: Value Encoding**
 >
 > This document describes **Education Data Portal** integer encodings, which differ from Census API string codes. The Portal converts categorical variables to integers for consistency.
 >

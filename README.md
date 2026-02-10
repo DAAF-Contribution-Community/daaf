@@ -303,7 +303,7 @@ For complete setup instructions — from installing prerequisites through launch
 | **[Installation & Quick Start](user_reference/01_installation_and_quickstart.md)** | Prerequisites, step-by-step setup, day-to-day usage, troubleshooting |
 | **[Understanding DAAF](user_reference/02_understanding_daaf.md)** | Engagement modes in depth, workflow phases, anatomy of an analysis, data sources, your first analysis walkthrough |
 | **[Best Practices](user_reference/03_best_practices.md)** | Writing effective prompts, reviewing outputs, human oversight responsibilities, session recovery |
-| **[Extending DAAF](user_reference/04_extending_daaf.md)** | Adding new data domains and data source skills |
+| **[Extending DAAF](user_reference/04_extending_daaf.md)** | Adding new data domains, data source skills, and specialized agents |
 | **[Contributing](user_reference/05_contributing.md)** | Filing issues, development setup, framework modifications, license details |
 | **[FAQ: Technical](user_reference/06_faq_technical.md)** | Docker troubleshooting, authentication, technology choices, common errors |
 | **[FAQ: Philosophy](user_reference/07_faq_philosophy.md)** | Design rationale, AI in research, broader questions about this approach |

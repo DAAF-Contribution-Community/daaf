@@ -2,6 +2,11 @@
 
 This document provides complete invocation templates for all skills used in the research workflow.
 
+> **Invocation Pattern Authority:** Each agent's `## Invocation` section (in `agents/[agent-name].md`)
+> is the **authoritative source** for that agent's invocation pattern. This file provides
+> **orchestrator-focused context** that wraps those patterns with stage-specific details, context
+> inlining guidance, and prompt size limits. When in doubt, defer to the agent file's Invocation section.
+
 ---
 
 ## Standard Task Prompt Structure
@@ -473,7 +478,12 @@ After completing the skill's Required Actions, return findings using the format 
 ```python
 Task({
     description: "Stage 3: Source Deep-Dive - {source_name}",
-    prompt: """You have access to a skill tool. First, call the skill tool with name '{domain}-data-source-{source}'.
+    prompt: """You are a Source Researcher. Follow the protocol in `{BASE_DIR}/agents/source-researcher.md`.
+
+**BASE_DIR:** {BASE_DIR}
+All relative paths in referenced files resolve from BASE_DIR.
+
+Call the skill tool with name '{domain}-data-source-{source}'.
 
 **CONTEXT FROM STAGE 2:**
 Endpoints identified: {endpoints}
@@ -535,6 +545,19 @@ After completing the skill's Required Actions, return findings using the format 
     subagent_type: "Plan"
 })
 ```
+
+---
+
+### research-synthesizer (Stage 3.5: Findings Synthesis)
+
+**Purpose:** Consolidate Stage 2-3 findings into unified planning guidance
+**Stage:** 3.5 (after all Stage 3 source research completes)
+**Agent:** `research-synthesizer` (see `agents/research-synthesizer.md`)
+**Subagent:** general-purpose
+
+For the complete invocation pattern, see `agents/research-synthesizer.md` Invocation section.
+The orchestrator provides all Stage 2 and Stage 3 outputs as context. The agent returns
+a unified synthesis with cross-source conflict resolution and join feasibility assessment.
 
 ---
 
@@ -609,7 +632,12 @@ Do NOT paraphrase or summarize — copy the exact text.
 ```python
 Task({
     description: "Stage 5: Data Retrieval",
-    prompt: """You have access to a skill tool. First, call the skill tool with name 'education-data-query'.
+    prompt: """You are a Research Executor. Follow the protocol in `{BASE_DIR}/agents/research-executor.md`.
+
+**BASE_DIR:** {BASE_DIR}
+All relative paths in referenced files resolve from BASE_DIR.
+
+Call the skill tool with name 'education-data-query'.
 
 **QUERY SPECIFICATION:**
 - Dataset Path: {dataset_path}  (from datasets-reference.md, flat format e.g. "ccd/schools_ccd_directory")
@@ -688,27 +716,9 @@ After completing the skill's Required Actions, return findings using the format 
 
 #### QA Follow-Up (MANDATORY)
 
-**After research-executor returns from Stage 5, orchestrator MUST invoke code-reviewer:**
-
-```python
-Task({
-    description: "QA: Stage 5 - {script_name}",
-    prompt: """You are a Code Reviewer. Follow the protocol in `{BASE_DIR}/agents/code-reviewer.md`.
-
-**BASE_DIR:** {BASE_DIR}
-All relative paths in referenced files resolve from BASE_DIR.
-
-**SCRIPT TO REVIEW:** {script_path}
-**PLAN LOCATION:** {plan_path}
-**OUTPUT FILES:** {output_files}
-**STAGE:** 5 (Data Retrieval)
-**STEP:** {step_number}
-
-Create QA script at: scripts/cr/stage5_{step}_cr1.py (+ cr2..cr5 as warranted)
-Return severity: PASSED | WARNING | BLOCKER""",
-    subagent_type: "general-purpose"
-})
-```
+**After research-executor returns from Stage 5, orchestrator MUST invoke code-reviewer.**
+Use the **code-reviewer invocation template** below (see "code-reviewer (QA Agent)" section)
+with stage-specific values for Stage 5.
 
 **Do NOT proceed to Stage 6 until QA returns PASSED or WARNING.**
 
@@ -723,7 +733,12 @@ Return severity: PASSED | WARNING | BLOCKER""",
 ```python
 Task({
     description: "Stage 6: Context Application",
-    prompt: """You have access to a skill tool. First, call the skill tool with name 'education-data-context'.
+    prompt: """You are a Research Executor. Follow the protocol in `{BASE_DIR}/agents/research-executor.md`.
+
+**BASE_DIR:** {BASE_DIR}
+All relative paths in referenced files resolve from BASE_DIR.
+
+Call the skill tool with name 'education-data-context'.
 
 **DATA SOURCE:** {source_name}
 
@@ -805,27 +820,9 @@ After completing the skill's Required Actions, return findings using the format 
 
 #### QA Follow-Up (MANDATORY)
 
-**After research-executor returns from Stage 6, orchestrator MUST invoke code-reviewer:**
-
-```python
-Task({
-    description: "QA: Stage 6 - {script_name}",
-    prompt: """You are a Code Reviewer. Follow the protocol in `{BASE_DIR}/agents/code-reviewer.md`.
-
-**BASE_DIR:** {BASE_DIR}
-All relative paths in referenced files resolve from BASE_DIR.
-
-**SCRIPT TO REVIEW:** {script_path}
-**PLAN LOCATION:** {plan_path}
-**OUTPUT FILES:** {output_files}
-**STAGE:** 6 (Context Application)
-**STEP:** {step_number}
-
-Create QA script at: scripts/cr/stage6_{step}_cr1.py (+ cr2..cr5 as warranted)
-Return severity: PASSED | WARNING | BLOCKER""",
-    subagent_type: "general-purpose"
-})
-```
+**After research-executor returns from Stage 6, orchestrator MUST invoke code-reviewer.**
+Use the **code-reviewer invocation template** below (see "code-reviewer (QA Agent)" section)
+with stage-specific values for Stage 6.
 
 **Do NOT proceed to Stage 7 until QA returns PASSED or WARNING.**
 
@@ -846,7 +843,12 @@ Return severity: PASSED | WARNING | BLOCKER""",
 # Step 1: Initial EDA (no transformations yet)
 Task({
     description: "Stage 7.1: Initial EDA",
-    prompt: """You have access to a skill tool. First, call the skill tool with name 'data-scientist'.
+    prompt: """You are a Research Executor. Follow the protocol in `{BASE_DIR}/agents/research-executor.md`.
+
+**BASE_DIR:** {BASE_DIR}
+All relative paths in referenced files resolve from BASE_DIR.
+
+Call the skill tool with name 'data-scientist'.
 
 **DATA LOCATION:** data/processed/{processed_data_filename}
 
@@ -884,7 +886,12 @@ Do NOT proceed to transformations. Return findings for orchestrator review.""",
 
 Task({
     description: "Stage 7.2: Execute Transformation #{n}",
-    prompt: """You have access to a skill tool. First, call the skill tool with name 'data-scientist'.
+    prompt: """You are a Research Executor. Follow the protocol in `{BASE_DIR}/agents/research-executor.md`.
+
+**BASE_DIR:** {BASE_DIR}
+All relative paths in referenced files resolve from BASE_DIR.
+
+Call the skill tool with name 'data-scientist'.
 
 **IMPORTANT:** This is script-based execution, NOT marimo. Write transformations to script files following `{BASE_DIR}/agent_reference/SCRIPT_TEMPLATE.md`.
 
@@ -962,28 +969,9 @@ Do NOT proceed to transformation #{n+1}. Return to orchestrator for approval."""
 
 #### QA Follow-Up (MANDATORY - After EACH Transformation)
 
-**After research-executor returns from EACH Stage 7 transformation, orchestrator MUST invoke code-reviewer:**
-
-```python
-Task({
-    description: "QA: Stage 7 - Transformation #{n}",
-    prompt: """You are a Code Reviewer. Follow the protocol in `{BASE_DIR}/agents/code-reviewer.md`.
-
-**BASE_DIR:** {BASE_DIR}
-All relative paths in referenced files resolve from BASE_DIR.
-
-**SCRIPT TO REVIEW:** {script_path}
-**PLAN LOCATION:** {plan_path}
-**OUTPUT FILES:** {output_files}
-**STAGE:** 7 (Transformation)
-**STEP:** {step_number}
-**TRANSFORMATION:** #{n} of {total}
-
-Create QA script at: scripts/cr/stage7_{step}_cr1.py (+ cr2..cr5 as warranted)
-Return severity: PASSED | WARNING | BLOCKER""",
-    subagent_type: "general-purpose"
-})
-```
+**After research-executor returns from EACH Stage 7 transformation, orchestrator MUST invoke code-reviewer.**
+Use the **code-reviewer invocation template** below (see "code-reviewer (QA Agent)" section)
+with stage-specific values for Stage 7.
 
 **Do NOT proceed to transformation #{n+1} until QA returns PASSED or WARNING.**
 
@@ -995,7 +983,12 @@ Return severity: PASSED | WARNING | BLOCKER""",
 # Step 4: Final CP3 Validation (after all transformations complete)
 Task({
     description: "Stage 7.3: Final CP3 Validation",
-    prompt: """You have access to a skill tool. First, call the skill tool with name 'data-scientist'.
+    prompt: """You are a Research Executor. Follow the protocol in `{BASE_DIR}/agents/research-executor.md`.
+
+**BASE_DIR:** {BASE_DIR}
+All relative paths in referenced files resolve from BASE_DIR.
+
+Call the skill tool with name 'data-scientist'.
 
 **TASK:** Perform final CP3 validation after all transformations complete.
 
@@ -1070,7 +1063,12 @@ Return the Polars code to accomplish this, with validation.""",
 ```python
 Task({
     description: "Stage 8: Visualization - Static Plots",
-    prompt: """You have access to a skill tool. First, call the skill tool with name 'plotnine'.
+    prompt: """You are a Research Executor. Follow the protocol in `{BASE_DIR}/agents/research-executor.md`.
+
+**BASE_DIR:** {BASE_DIR}
+All relative paths in referenced files resolve from BASE_DIR.
+
+Call the skill tool with name 'plotnine'.
 
 **VISUALIZATION SPECIFICATION (from Plan):**
 {visualization_requirements}
@@ -1104,7 +1102,12 @@ Return the plotting code and confirm files are saved.""",
 ```python
 Task({
     description: "Stage 8: Visualization - Interactive Plots",
-    prompt: """You have access to a skill tool. First, call the skill tool with name 'plotly'.
+    prompt: """You are a Research Executor. Follow the protocol in `{BASE_DIR}/agents/research-executor.md`.
+
+**BASE_DIR:** {BASE_DIR}
+All relative paths in referenced files resolve from BASE_DIR.
+
+Call the skill tool with name 'plotly'.
 
 **VISUALIZATION SPECIFICATION (from Plan):**
 {visualization_requirements}
@@ -1128,27 +1131,9 @@ Return the plotting code and confirm files are saved.""",
 
 #### QA Follow-Up for Stage 8 (MANDATORY)
 
-**After research-executor completes visualization scripts, orchestrator MUST invoke code-reviewer:**
-
-```python
-Task({
-    description: "QA: Stage 8 - {script_name}",
-    prompt: """You are a Code Reviewer. Follow the protocol in `{BASE_DIR}/agents/code-reviewer.md`.
-
-**BASE_DIR:** {BASE_DIR}
-All relative paths in referenced files resolve from BASE_DIR.
-
-**SCRIPT TO REVIEW:** {script_path}
-**PLAN LOCATION:** {plan_path}
-**OUTPUT FILES:** {figure_paths}
-**STAGE:** 8 (Visualization)
-**STEP:** {step_number}
-
-Create QA script at: scripts/cr/stage8_{step}_cr1.py (+ cr2..cr5 as warranted)
-Return severity: PASSED | WARNING | BLOCKER""",
-    subagent_type: "general-purpose"
-})
-```
+**After research-executor completes visualization scripts, orchestrator MUST invoke code-reviewer.**
+Use the **code-reviewer invocation template** below (see "code-reviewer (QA Agent)" section)
+with stage-specific values for Stage 8.
 
 **Do NOT proceed to Stage 9 until QA returns PASSED or WARNING for all visualization scripts.**
 
@@ -1269,8 +1254,12 @@ When EDA and transformation are closely linked:
 ```python
 Task({
     description: "Stage 7: EDA & Transformation",
-    prompt: """You have access to a skill tool. 
-First, call the skill tool with name 'data-scientist' for methodology.
+    prompt: """You are a Research Executor. Follow the protocol in `{BASE_DIR}/agents/research-executor.md`.
+
+**BASE_DIR:** {BASE_DIR}
+All relative paths in referenced files resolve from BASE_DIR.
+
+Call the skill tool with name 'data-scientist' for methodology.
 Then, call the skill tool with name 'polars' for implementation.
 
 **DATA LOCATION:** data/processed/{filename}
@@ -1297,9 +1286,13 @@ When both static and interactive plots are needed:
 ```python
 Task({
     description: "Stage 8: Visualization",
-    prompt: """You have access to a skill tool.
-Call 'plotnine' for static publication plots.
-Call 'plotly' for interactive exploration plots.
+    prompt: """You are a Research Executor. Follow the protocol in `{BASE_DIR}/agents/research-executor.md`.
+
+**BASE_DIR:** {BASE_DIR}
+All relative paths in referenced files resolve from BASE_DIR.
+
+Call the skill tool with name 'plotnine' for static publication plots.
+Call the skill tool with name 'plotly' for interactive exploration plots.
 
 **DATA LOCATION:** data/processed/{filename}
 
@@ -1502,3 +1495,17 @@ After 2 failed attempts:
 Awaiting user guidance.
 """
 ```
+
+---
+
+## Pre-Pipeline Skills
+
+### data-ingest
+
+**Purpose:** Profile new datasets and author comprehensive Skills
+**Stage:** Pre-pipeline (on demand, when new data files arrive)
+**Agent:** `data-ingest` (see `agents/data-ingest.md`)
+**Subagent:** general-purpose
+
+For the complete invocation pattern, see `agents/README.md` data-ingest section
+or `agents/data-ingest.md` Invocation section.

@@ -224,6 +224,11 @@ The Full Pipeline workflow consists of **5 Phases** and **12 Stages**. Other mod
 │      ├─ Understand limitations, caveats, suppression patterns               │
 │      ├─ Document source-specific gotchas                                    │
 │      └─ Gate: Context sufficient OR escalate gaps                           │
+│                          ↓                                                  │
+│  Stage 3.5: Findings Synthesis ←── research-synthesizer agent               │
+│      ├─ Consolidate parallel Stage 2-3 findings                             │
+│      ├─ Resolve cross-source conflicts                                      │
+│      └─ Gate: Synthesis complete, unified guidance for Plan                 │
 └─────────────────────────────────────────────────────────────────────────────┘
                           ↓
 ┌─────────────────────────────────────────────────────────────────────────────┐
@@ -480,25 +485,15 @@ For EACH task in Stages 5-8, follow this complete loop. **Do NOT skip any step.*
 ├─────────────────────────────────────────────────────────────────────────────┤
 │  STEP 2: INVOKE code-reviewer (MANDATORY - DO NOT SKIP)                     │
 │      │                                                                      │
+│      │   Use the code-reviewer invocation template from                     │
+│      │   `agent_reference/03_SKILL_INVOCATIONS.md`                         │
+│      │   (see "code-reviewer (QA Agent)" section) with stage-specific      │
+│      │   values.                                                           │
+│      │                                                                      │
 │      │   **Review Expectation:** code-reviewer should perform adversarial   │
 │      │   analysis, not just template validation. Expect the QA report to    │
 │      │   include script-specific checks and reasoning about WHY the code    │
 │      │   is correct, not merely confirmation that checks passed.            │
-│      │                                                                      │
-│      │   Task({                                                             │
-│      │       description: "QA: Stage {N} - {script_name}",                  │
-│      │       prompt: """You are a Code Reviewer. Follow agents/code-        │
-│      │                  reviewer.md protocol.                               │
-│      │                                                                      │
-│      │                  SCRIPT: {script_path}                               │
-│      │                  PLAN: {plan_path}                                   │
-│      │                  OUTPUT FILES: {output_files}                        │
-│      │                  STAGE: {N}, STEP: {step}                            │
-│      │                                                                      │
-│      │                  Create iterative QA scripts at scripts/cr/stage{N}_{step}_cr{1..5}.py│
-│      │                  Return severity: PASSED | WARNING | BLOCKER""",     │
-│      │       subagent_type: "general-purpose"                               │
-│      │   })                                                                 │
 │      │                                                                      │
 │      └─ WAIT for code-reviewer to return before proceeding                  │
 ├─────────────────────────────────────────────────────────────────────────────┤
@@ -678,7 +673,7 @@ Eleven specialized agents define behavioral protocols for specific roles:
 | **research-synthesizer** | Consolidate parallel findings | `general-purpose` | 3.5 |
 | **debugger** | Diagnose issues scientifically | `general-purpose` | Any (on error) |
 | **notebook-assembler** | COMPILE scripts (VERBATIM copy, NO dashboards/widgets) | `general-purpose` | 9 |
-| **integration-checker** | Verify component wiring | `Plan` | 11, 12 |
+| **integration-checker** | Verify component wiring | `Plan` | 9, 11, 12 |
 | **data-ingest** | Profile new datasets and author documentation Skills | `general-purpose` | Pre-pipeline (on demand) |
 
 See `agents/README.md` for complete agent documentation.
@@ -816,6 +811,12 @@ See `agent_reference/PLAN_TEMPLATE.md` for wave-based task table format.
 - Document suppression patterns and thresholds
 - Note any cross-state comparability issues
 
+**Stage 3.5 (Findings Synthesis):**
+- Consolidate all Stage 2 and Stage 3 findings into unified guidance
+- Identify and resolve conflicts across multiple sources
+- Assess join feasibility and data compatibility
+- Document unified path forward for Plan creation
+
 **Stage 5 (Data Retrieval):**
 - Download from configured mirrors (per mirrors.yaml)
 - Validate response shape immediately after fetch
@@ -845,7 +846,7 @@ Each stage has explicit input/output contracts and gate criteria:
 | 1 | User request | Stage 2 | Mode classified, scope confirmed |
 | 2 | Stage 1 (mode + scope) | Stage 3, Plan | ≥1 endpoint identified, variables flagged |
 | 3 | Stage 2 endpoints | Stage 4, Plan | All caveats documented, coded values mapped |
-| 3.5 | Stages 2, 3 | Stage 4 | Synthesis complete, conflicts resolved |
+| 3.5 | Stages 2, 3 | Stage 4, Plan | Synthesis complete, conflicts resolved |
 | 4 | Phase 1 findings | Stage 4.5 or 5 | Plan complete with Transformation Sequence |
 | 4.5 | Stage 4 (Plan) | Stage 5 | Plan validation PASSED or PASSED_WITH_WARNINGS |
 | 5 | Plan (query spec) | Stage 6 | CP1 PASSED, **QA1 PASSED or WARNING**, data saved to data/raw/ |
@@ -1034,7 +1035,8 @@ Forcing functions are mandatory design interventions that **prevent** poor pract
 | Gate | Transition | Requires | Enforcement |
 |------|------------|----------|-------------|
 | G1 | 1 → 2 | Mode classified and confirmed | Cannot invoke Stage 2 subagent |
-| G2 | 3 → 4 | ≥1 endpoint identified | Cannot create Plan |
+| G2 | 3 → 3.5 | ≥1 endpoint identified | Cannot invoke research-synthesizer |
+| G2.5 | 3.5 → 4 | Synthesis complete, cross-source conflicts resolved | Cannot create Plan |
 | **G3** | **4 → 4.5** | **Plan created AND STATE.md created AND LEARNINGS.md skeleton created** | **Cannot invoke plan-checker** |
 | **G3.5** | **4.5 → 5** | **plan-checker returned PASSED or PASSED_WITH_WARNINGS** | **Cannot begin data acquisition** |
 | G4 | 5 → 6 | CP1 PASSED, **QA1 INVOKED and QA1 ∈ {PASSED, WARNING}** | Cannot proceed to cleaning |
@@ -1048,11 +1050,39 @@ Forcing functions are mandatory design interventions that **prevent** poor pract
 
 **Gate G3 Enforcement:** Stage 5 CANNOT begin without all three files: Plan.md, STATE.md (`agent_reference/STATE_TEMPLATE.md`), and LEARNINGS.md (`agent_reference/08_LESSONS_LEARNED.md`). If any are missing, create before proceeding.
 
-**Gate G3.5 Enforcement:** plan-checker MUST be invoked and return PASSED or PASSED_WITH_WARNINGS. If BLOCKED, revise Plan (max 2 attempts) then escalate. Update STATE.md "Plan Validation" section with the result before proceeding. See Stage 4.5 in `agent_reference/02_WORKFLOW_STAGES.md` for the invocation pattern.
+**Gate G3.5 Enforcement:** plan-checker MUST be invoked and return PASSED or PASSED_WITH_WARNINGS. If ISSUES_FOUND, revise Plan (max 2 attempts) then escalate. Update STATE.md "Plan Validation" section with the result before proceeding. See Stage 4.5 in `agent_reference/02_WORKFLOW_STAGES.md` for the invocation pattern.
 
 **CRITICAL:** Gate G3.5 requires POSITIVE confirmation that plan-checker was invoked and returned PASSED or PASSED_WITH_WARNINGS. If plan-checker was never invoked, the gate condition is NOT satisfied. Update STATE.md "Plan Validation" section with the result before proceeding to Stage 5.
 
 **Gate G4-G7 Enforcement (QA Invocation):** Gates G4-G7 require POSITIVE confirmation that code-reviewer was invoked and returned PASSED or WARNING. If QA was never invoked, the gate condition is NOT satisfied. See the **Stage 5-8 Composite Execution Pattern** for the complete flow.
+
+### Gate Status Translation
+
+Agents use domain-specific status vocabularies. The orchestrator translates these to gate vocabulary:
+
+| Agent | Agent Output | Gate Interpretation |
+|-------|-------------|-------------------|
+| **research-executor** | PASSED | Proceed to QA |
+| | WARNING | Proceed to QA (log warning) |
+| | FAILED | Attempt versioned fix or STOP |
+| **code-reviewer** | PASSED (severity: None/INFO) | QA = PASSED |
+| | ISSUES_FOUND (severity: WARNING) | QA = WARNING |
+| | ISSUES_FOUND (severity: BLOCKER) | QA = BLOCKER |
+| **data-planner** | COMPLETE | Proceed to Stage 4.5 |
+| | REVISION_COMPLETE | Re-invoke plan-checker |
+| | BLOCKED | Escalate to user |
+| **plan-checker** | PASSED | G3.5 = SATISFIED |
+| | PASSED_WITH_WARNINGS | G3.5 = SATISFIED (log warnings) |
+| | ISSUES_FOUND | G3.5 = NOT SATISFIED (revision needed) |
+| **data-verifier** | PASSED | G11 = SATISFIED |
+| | ISSUES_FOUND (severity: WARNING) | Log, proceed with caveats |
+| | ISSUES_FOUND (severity: BLOCKER) | G11 = NOT SATISFIED |
+| **source-researcher** | COMPLETE | Proceed to next source or Stage 3.5 |
+| | COMPLETE_WITH_WARNINGS | Log warnings; proceed |
+| | BLOCKED | Escalate |
+| **notebook-assembler** | PASSED | G8 = SATISFIED |
+| | WARNING | Log; proceed |
+| | BLOCKER | Revision needed |
 
 ### STATE.md Update Gates
 
@@ -1116,6 +1146,13 @@ These conditions trigger an immediate STOP with escalation to user. See `agent_r
 - [ ] Critical Warnings have mitigation strategies
 - [ ] Confidence Assessment present
 - [ ] If confidence is LOW: resolution present
+
+**Stage 3.5 (Findings Synthesis) Verification:**
+- [ ] All source findings consolidated into unified summary
+- [ ] Cross-source conflicts identified and resolved (or flagged for Plan)
+- [ ] Join feasibility assessed with key considerations documented
+- [ ] Unified guidance ready for data-planner input
+- [ ] Confidence Assessment present
 
 **Stage 5 (Data Retrieval) Verification:**
 - [ ] Fetch Summary has actual counts (not "TBD")

@@ -60,6 +60,7 @@ Before proceeding to Stage 3:
 ## Stage 3: Source Deep-Dive
 
 **Skills:** `*-data-source-*` (one per source)
+**Agent:** `source-researcher` (see `agents/source-researcher.md`)
 **Subagent Type:** `Plan`
 
 ### Invocation Pattern
@@ -86,6 +87,36 @@ Before proceeding to Phase 2:
 - [ ] Cross-state comparability assessed
 - [ ] Critical warnings have mitigation strategies
 - [ ] All LOW confidence findings resolved or escalated
+
+---
+
+## Stage 3.5: Findings Synthesis
+
+**When:** After Stage 3 completes (all sources explored)
+**Agent:** `research-synthesizer` (see `agents/research-synthesizer.md`)
+**Subagent Type:** `general-purpose`
+**Purpose:** Consolidate parallel Stage 2-3 findings into unified planning guidance
+
+### Purpose
+
+- Consolidate all Stage 2 and Stage 3 findings into unified planning guidance
+- Resolve any cross-source conflicts or overlapping coverage
+- Assess cross-source join feasibility and data compatibility
+
+### Expected Output
+
+- Unified summary of all source findings
+- Conflict resolution (where sources disagree)
+- Recommended approach for Plan creation (Stage 4)
+- Cross-source join feasibility and key considerations
+
+### Gate Criteria
+
+Before proceeding to Phase 2 (Plan Creation):
+- [ ] Synthesis complete — all source findings consolidated
+- [ ] Conflicts between sources identified and resolved (or flagged for Plan)
+- [ ] Cross-source join feasibility assessed with key considerations documented
+- [ ] If synthesis reveals infeasibility: STOP and escalate to user
 
 ---
 
@@ -326,6 +357,14 @@ Task({
     subagent_type: "..."
 })
 ```
+
+## Learning Signal Handling
+
+All agents include a **Learning Signal** field in their output (per AGENT_TEMPLATE.md Section 6).
+The orchestrator extracts and buffers these signals in STATE.md, then flushes to LEARNINGS.md
+at phase boundaries.
+
+See CLAUDE.md "Learning Signal Extraction" section for the complete extraction and flush protocol.
 
 ---
 
@@ -597,6 +636,19 @@ Document any deviations from the original Plan:
 2. Resolve issues
 3. Re-run affected checkpoints
 4. Re-run Final Review
+
+## LEARNINGS.md Consolidation (REQUIRED)
+
+After data-verifier returns and before delivery, the orchestrator consolidates LEARNINGS.md:
+
+1. Review incremental entries captured during Stages 5-8
+2. Fill gaps in sections still empty
+3. Deduplicate entries describing the same insight
+4. Generate System Update Action Plan section
+5. Include action item count in delivery message
+
+See `agent_reference/08_LESSONS_LEARNED.md` for the complete consolidation protocol
+and `02_WORKFLOW_STAGES.md` Stage 12 for the consolidation checklist.
 
 ## Delivery Format
 

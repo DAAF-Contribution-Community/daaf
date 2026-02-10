@@ -15,7 +15,7 @@ metadata:
 
 Comprehensive guide to understanding and using IPEDS data correctly. IPEDS is the most widely used source for postsecondary education data but has significant complexities — including sector-specific accounting standards, cohort-limited graduation rates, and integer-encoded categorical variables — that users must understand.
 
-> **CRITICAL: Portal vs NCES Raw File Encoding**
+> **CRITICAL: Value Encoding**
 >
 > This document describes **Education Data Portal** integer encodings, which differ from NCES raw file string codes. The Portal converts categorical variables to integers for consistency across sources.
 >

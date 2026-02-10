@@ -405,7 +405,7 @@ You MUST wait for user confirmation before proceeding.
 
 **Executor:** Subagent (general-purpose)
 **Agent:** `research-synthesizer`
-**Purpose:** Consolidate findings from parallel Stage 2-3 explorations when multiple data sources were explored
+**Purpose:** Consolidate findings from Stage 2-3 explorations into unified planning guidance
 
 ### Actions
 
@@ -619,12 +619,12 @@ All relative paths in referenced files resolve from BASE_DIR.
 [Path to Plan document]
 
 **TASK:**
-Validate the Plan across all 6 dimensions. Return PASSED, PASSED_WITH_WARNINGS, or BLOCKED status.
+Validate the Plan across all 6 dimensions. Return PASSED, PASSED_WITH_WARNINGS, or ISSUES_FOUND status.
 
 **OUTPUT FORMAT:**
 1. Dimension Scores (PASS/WARN/FAIL for each)
 2. Issues Found (with severity and location)
-3. Recommended Fixes (if BLOCKED)
+3. Recommended Fixes (if ISSUES_FOUND)
 4. Overall Status
 """,
     subagent_type: "Plan"
@@ -640,13 +640,13 @@ Run plan-checker
     ↓
 ├─ PASSED → Proceed to Stage 5
 ├─ PASSED_WITH_WARNINGS → Document warnings, proceed to Stage 5
-└─ BLOCKED → Return to data-planner for revision
+└─ ISSUES_FOUND → Return to data-planner for revision
                 ↓
             data-planner revises Plan
                 ↓
             Re-run plan-checker (max 2 iterations)
                 ↓
-            If still BLOCKED after 2 attempts → STOP and escalate to user
+            If still ISSUES_FOUND after 2 attempts → STOP and escalate to user
 ```
 
 ### Gate Criteria (G3.5)
@@ -1166,65 +1166,17 @@ fig.write_image(f"output/figures/{date_prefix}_plot_name.png")
 **Skill:** `marimo` (for basic syntax only; agent provides behavioral constraints)
 **Purpose:** LITERALLY COPY script file contents into marimo cells
 
-> **CRITICAL:** Stage 9 is a FILE COMPILATION task. The agent READS script files and COPIES their contents verbatim into cells. It does NOT generate new code, dashboards, filters, or interactive widgets.
+> **CRITICAL:** Stage 9 is a FILE COMPILATION task. See `agents/notebook-assembler.md`
+> for the complete protocol including the Four-Cell Pattern, helper functions, and
+> WRONG vs. RIGHT examples.
 
-### What Stage 9 IS
+### Key Constraints (Summary)
 
-- **A file compiler** — Read script files, copy contents into cells
-- **A script viewer** — Display what was executed
-- **An audit tool** — Show execution logs as proof
-
-### What Stage 9 is NOT
-
-- ❌ **NOT a dashboard builder** — No dropdowns, sliders, multiselects
-- ❌ **NOT an analysis tool** — No new aggregations or transformations
-- ❌ **NOT an interactive explorer** — No search boxes or filters
-- ❌ **NOT a report generator** — Report.md is created in Stage 11
-
-### Key Principle: LITERAL COPY
-
-The agent READS each script file and COPIES its contents:
-- **Cell 2:** VERBATIM copy of script code (before execution log marker)
-- **Cell 3:** VERBATIM copy of execution log (in accordion)
-- **Cell 4:** THE ONLY NEW CODE: `pl.read_parquet()` + `mo.ui.table()`
-
-No paraphrasing. No summarizing. No "improving." Just copy.
-
-### Actions
-
-1. **Scan Script Directories**
-   - List all `.py` files in `scripts/stage{5,6,7,8}_*/`
-   - Identify final versions (highest suffix: `_b.py` > `_a.py` > base)
-
-2. **For Each Script, Create EXACTLY 4 Cells:**
-
-   **Cell 1 (Markdown):** Header
-   - Script filename and path
-   - Input/output file paths
-   - Checkpoint status
-
-   **Cell 2 (Code):** VERBATIM Script Code
-   - READ the script file
-   - COPY everything BEFORE the `# EXECUTION LOG` marker
-   - Include ALL imports, ALL functions, the ENTIRE body
-   - Do NOT modify, summarize, or paraphrase
-
-   **Cell 3 (Markdown):** VERBATIM Execution Log
-   - READ the script file
-   - COPY everything AFTER the `# EXECUTION LOG` marker
-   - Wrap in `mo.accordion()` for collapsed display
-
-   **Cell 4 (Code):** Data Inspection — THE ONLY NEW CODE
-   - ONLY these two lines:
-     ```python
-     df = pl.read_parquet("path/to/output.parquet")
-     mo.ui.table(df.head(100))
-     ```
-   - NO `.filter()`, NO `.with_columns()`, NO aggregations
-
-3. **Test Notebook**
-   - Run `marimo run notebook.py --host 0.0.0.0 --port 2718 --headless`
-   - Verify all cells execute without errors
+- **LITERAL COPY** — Read each script file and copy contents verbatim into cells
+- NO new analysis code — only `pl.read_parquet()` + `mo.ui.table()` for data inspection
+- NO dashboards, widgets, dropdowns, sliders
+- All script code presented as-is; execution logs in accordions
+- Script versioning: use final successful version (`_b.py` > `_a.py` > base)
 
 ### ABSOLUTE PROHIBITIONS
 
@@ -1247,194 +1199,6 @@ The following are **NEVER ALLOWED** in Stage 9 notebooks:
 | New visualizations | Stage 8 created them |
 
 **If the notebook contains ANY of the above, it FAILED.**
-
-### Notebook Structure Template
-
-```python
-import marimo
-
-__generated_with = "0.19.7"
-app = marimo.App(width="medium")
-
-# =============================================================================
-# CELL: Title and Navigation
-# =============================================================================
-@app.cell
-def _(mo):
-    mo.md("""
-    # Analysis Walkthrough: [Title]
-
-    This notebook is an **interactive walkthrough** of the executed analysis scripts.
-    Each section corresponds to a script in `scripts/`. You can:
-    - Review the code that was executed
-    - See the captured output (execution logs)
-    - Inspect data at each step
-    - Modify and re-run individual steps
-
-    ## Pipeline Overview
-
-    | Stage | Script | Status |
-    |-------|--------|--------|
-    | 5.1 | `01_fetch-ccd.py` | ✓ Passed |
-    | 5.2 | `02_fetch-meps.py` | ✓ Passed |
-    | 6.1 | `01_clean-ccd.py` | ✓ Passed |
-    | 6.2 | `02_clean-meps.py` | ✓ Passed |
-    | 7.1 | `01_join-data_b.py` | ✓ Passed (v3) |
-    | 8.1 | `01_enrollment-plot.py` | ✓ Passed |
-    """)
-
-# =============================================================================
-# CELL: Imports
-# =============================================================================
-@app.cell
-def _():
-    import marimo as mo
-    import polars as pl
-    from pathlib import Path
-    return mo, pl, Path
-
-# =============================================================================
-# STAGE 5: Data Fetch
-# =============================================================================
-@app.cell
-def _(mo):
-    mo.md("""
-    ---
-    ## Stage 5: Data Fetch
-
-    Scripts in this stage retrieve raw data from the data access mirrors.
-    """)
-
-# --- Script 5.1: fetch-ccd ---
-@app.cell
-def _(mo):
-    mo.md("""
-    ### 5.1: Fetch CCD Data
-
-    **Script:** `scripts/stage5_fetch/01_fetch-ccd.py`
-    **Output:** `data/raw/2026-01-31_ccd_schools.parquet`
-    """)
-
-@app.cell
-def _(pl, Path):
-    # =========================================================================
-    # CODE FROM: scripts/stage5_fetch/01_fetch-ccd.py
-    # =========================================================================
-    # (Insert the main() function content here, adapted for marimo)
-    # Users can modify this and re-run to experiment
-
-    # For walkthrough, just load the result:
-    fetch_ccd_result = pl.read_parquet("data/raw/2026-01-31_ccd_schools.parquet")
-    fetch_ccd_result
-
-@app.cell
-def _(mo):
-    # Execution log from the script
-    mo.accordion({
-        "Execution Log (01_fetch-ccd.py)": mo.md("""
-```
-Executed: 2026-01-31 14:32:05
-Duration: 45.23 seconds
-Exit code: 0
-
---- STDOUT ---
-============================================================
-EXECUTING: fetch-ccd
-============================================================
-[... captured output ...]
-CP1 STATUS: PASSED
-```
-        """)
-    })
-
-# =============================================================================
-# STAGE 6: Data Cleaning
-# =============================================================================
-@app.cell
-def _(mo):
-    mo.md("""
-    ---
-    ## Stage 6: Data Cleaning
-
-    Scripts in this stage apply coded value filters and calculate suppression rates.
-    """)
-
-# --- Continue pattern for each script ---
-
-# =============================================================================
-# STAGE 7: Transformations
-# =============================================================================
-@app.cell
-def _(mo):
-    mo.md("""
-    ---
-    ## Stage 7: Transformations
-
-    **Note:** Script `01_join-data.py` required 2 revisions. The final
-    successful version is `01_join-data_b.py`. Failed attempts are preserved
-    in the scripts folder for audit.
-    """)
-
-# =============================================================================
-# FINAL: Summary
-# =============================================================================
-@app.cell
-def _(mo):
-    mo.md("""
-    ---
-    ## Pipeline Summary
-
-    | Stage | Scripts | Status |
-    |-------|---------|--------|
-    | Stage 5 (Fetch) | 2 scripts | All passed |
-    | Stage 6 (Clean) | 2 scripts | All passed |
-    | Stage 7 (Transform) | 1 script (3 versions) | Final passed |
-    | Stage 8 (Visualize) | 1 script | Passed |
-
-    **Total Revisions:** 2 (all in Stage 7 join operation)
-
-    **Final Analysis Dataset:** `data/processed/2026-01-31_analysis.parquet`
-    """)
-
-if __name__ == "__main__":  # marimo framework boilerplate (auto-generated)
-    app.run()
-```
-
-### Parsing Execution Logs from Scripts
-
-To extract execution logs from script files:
-
-```python
-import re
-from pathlib import Path
-
-def extract_execution_log(script_path: Path) -> str | None:
-    """Extract the execution log section from a script file."""
-    content = script_path.read_text()
-
-    # Find the execution log section
-    match = re.search(
-        r'# EXECUTION LOG\n# =+\n(.*?)(?=\n# =+\s*$|\Z)',
-        content,
-        re.DOTALL
-    )
-
-    if match:
-        return match.group(0)
-    return None
-
-def get_final_script_version(base_name: str, scripts_dir: Path) -> Path | None:
-    """Find the final (successful) version of a script."""
-    # List all versions: base.py, base_a.py, base_b.py, etc.
-    pattern = f"{base_name}*.py"
-    versions = sorted(scripts_dir.glob(pattern))
-
-    if not versions:
-        return None
-
-    # Return the last version (highest suffix = final attempt)
-    return versions[-1]
-```
 
 ### Gate Criteria (G8)
 

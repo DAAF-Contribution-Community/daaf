@@ -6,30 +6,44 @@
   "permissions": {
     "allow": [
       "Bash(marimo run *)",
-      "Bash(marimo run * --host 0.0.0.0 --port 2718 --headless)",
       "Bash(marimo edit *)",
-      "Bash(marimo edit * --host 0.0.0.0 --port 2718 --headless)",
-      "Bash(pip install *)",
       "Bash(pip list)",
       "Bash(python *)",
+      "Bash(python3 *)",
+      "Bash(bash *)",
+      "Bash(./scripts/run_with_capture.sh *)",
       "Bash(ls *)",
       "Bash(mkdir *)",
       "Bash(git status)",
       "Bash(git diff *)",
       "Bash(git log *)",
       "Bash(git add *)",
-      "Bash(git commit *)"
+      "Bash(cp *)",
+      "Bash(chmod +x *)",
+      "Bash(cd *)",
+      "Task(general-purpose)",
+      "Task(Plan)",
+      "Task(Explore)"
     ],
     "deny": [
       "Bash(rm -rf *)",
       "Bash(rm -r /*)",
       "Bash(sudo *)",
+      "Bash(su *)",
       "Bash(chmod 777 *)",
       "Bash(chmod u+s *)",
       "Bash(docker run *)",
       "Bash(docker exec *)",
       "Bash(mount *)",
       "Bash(chroot *)",
+      "Bash(git push --force *)",
+      "Bash(git push -f *)",
+      "Bash(git reset --hard *)",
+      "Bash(git reset --hard)",
+      "Bash(git clean -f *)",
+      "Bash(git checkout .)",
+      "Bash(git restore .)",
+      "Bash(git branch -D *)",
       "Read(.env)",
       "Read(.env.*)",
       "Read(**/*.pem)",
@@ -39,10 +53,14 @@
       "Write(.env)",
       "Write(.env.*)",
       "Edit(.env)",
-      "Edit(.env.*)"
+      "Edit(.env.*)",
+      "Edit(.claude/hooks/*)",
+      "Write(.claude/hooks/*)"
     ]
   },
-  "prefersReducedMotion": true,
+  "env": {
+    "CLAUDE_AUTOCOMPACT_PCT_OVERRIDE": "100"
+  },
   "outputStyle": "Explanatory",
   "hooks": {
     "UserPromptSubmit": [

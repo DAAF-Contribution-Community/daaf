@@ -15,7 +15,7 @@ metadata:
 
 Reference for understanding Census Bureau poverty estimates for school districts, counties, and states. SAIPE is the only annual, district-level poverty source and the legally mandated basis for Title I education funding allocations.
 
-> **CRITICAL: Portal vs Census Raw File Encoding**
+> **CRITICAL: Value Encoding**
 >
 > This document describes **Education Data Portal** integer encodings, which differ from Census Bureau raw file formats. The Portal uses integers for FIPS codes and standard missing data conventions.
 >

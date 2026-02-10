@@ -59,7 +59,7 @@ Copy this template to `STATE.md` in the project folder when starting a Full Pipe
 
 | Field | Value |
 |-------|-------|
-| **Plan-Checker Status** | [NOT_RUN / PASSED / PASSED_WITH_WARNINGS / BLOCKED] |
+| **Plan-Checker Status** | [NOT_RUN / PASSED / PASSED_WITH_WARNINGS / ISSUES_FOUND] |
 | **Run Date** | [YYYY-MM-DD HH:MM or "Not run"] |
 | **Revision Attempts** | [0 / 1 / 2] |
 

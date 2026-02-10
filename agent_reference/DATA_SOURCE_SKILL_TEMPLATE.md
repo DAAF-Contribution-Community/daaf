@@ -125,6 +125,7 @@ Should orient the reader immediately — what this source provides that others d
   - Include a comparison table showing at least 2-3 example encodings
   - Reference the variable-definitions.md file for complete mappings
   - If the source uses nulls instead of -1/-2/-3 codes, note that here
+  - Do NOT place Truth Hierarchy here — it belongs in Section 9 (Data Access)
 -->
 
 ---
@@ -306,6 +307,16 @@ df = fetch_from_mirrors(
   - If a source has data NOT available via mirrors, note that explicitly
   - The Filtering subsection can be omitted ONLY if Example Fetch already shows
     all common filter patterns (to avoid redundancy)
+  - MUST include Truth Hierarchy blockquote in this section (after Codebooks, before
+    Example Fetch). This is the CANONICAL location for Truth Hierarchy across all skills.
+    Use this exact format:
+      > **Truth Hierarchy:** When interpreting variable values, apply this priority:
+      > 1. **Actual data file** (what you observe in the parquet/CSV) — this IS the truth
+      > 2. **Live codebook** (.xls in mirror) — authoritative documentation, may lag
+      > 3. **This skill documentation** — convenient summary, may drift from codebook
+      >
+      > If this documentation contradicts the codebook, trust the codebook.
+      > If the codebook contradicts observed data, trust the data and investigate.
 -->
 
 ---
@@ -430,6 +441,7 @@ Use this checklist when reviewing a skill for template compliance:
 - [ ] Decision Trees: at least 2 trees in code blocks
 - [ ] Quick Reference: includes Missing Data Codes subsection
 - [ ] Data Access: has Dataset Paths table + Codebooks table + Example Fetch code
+- [ ] Data Access: includes Truth Hierarchy blockquote (not in Value Encoding section)
 - [ ] Common Pitfalls: 3-column table format (Pitfall | Issue | Solution)
 - [ ] Related Data Sources: 3-column table, includes explorer + query skills
 - [ ] Topic Index: 2-column table as final section
