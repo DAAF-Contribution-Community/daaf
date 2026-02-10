@@ -14,6 +14,7 @@ This document addresses the "why" behind DAAF's design decisions and the broader
 - [**05. Contributing**](05_contributing.md) — Get involved in developing DAAF! How to file issues via GitHub, support expanding the capabilities of the framework, contribute to educational tutorials and how-to's, and more!
 - [**06. FAQ: Technical**](06_faq_technical.md) — Covers frequently asked questions about Docker, issues with Claude Code, usage limits, design rationale, authentication errors, and other common errors
 - **07. FAQ: Philosophy** — **\[This document\]** Grapples with the broader implications of this work, AI automation in general, model advancement pace, approaching the "exponential", environmental ethics, what this means for the next generation of researchers, and more
+- [**Back to main**](../.)
 
 ---
 
@@ -142,3 +143,4 @@ DAAF is not a general-purpose coding assistant — it's a domain-specific resear
 - [**00. README**](../README.md) — Vision and purpose, what DAAF does and does not do, core design philosophy, acknowledgments
 - [**01. Installation & Quick Start**](01_installation_and_quickstart.md) — Get started! Installation prerequisites, step-by-step 5-minute setup, day-to-day usage, and troubleshooting
 - [**06. FAQ: Technical**](06_faq_technical.md) — Covers frequently asked questions about Docker, issues with Claude Code, usage limits, design rationale, authentication errors, and other common errors
+- [**Back to main**](../.)

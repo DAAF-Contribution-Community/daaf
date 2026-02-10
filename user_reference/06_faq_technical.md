@@ -14,6 +14,7 @@ Operational questions with concrete answers. If you're stuck, troubleshooting, o
 - [**05. Contributing**](05_contributing.md) — Get involved in developing DAAF! How to file issues via GitHub, support expanding the capabilities of the framework, contribute to educational tutorials and how-to's, and more!
 - **06. FAQ: Technical** — **\[This document\]** Covers frequently asked questions about Docker, issues with Claude Code, usage limits, design rationale, authentication errors, and other common errors
 - [**07. FAQ: Philosophy**](07_faq_philosophy.md) — Grapples with the broader implications of this work, AI automation in general, model advancement pace, approaching the "exponential", environmental ethics, what this means for the next generation of researchers, and more
+- [**Back to main**](../.)
 
 ---
 
@@ -226,4 +227,4 @@ How to verify the container is running, the port is mapped correctly, and the ma
 - [**00. README**](../README.md) — Vision and purpose, what DAAF does and does not do, core design philosophy, acknowledgments
 - [**01. Installation & Quick Start**](01_installation_and_quickstart.md) — Get started! Installation prerequisites, step-by-step 5-minute setup, day-to-day usage, and troubleshooting
 - [**07. FAQ: Philosophy**](07_faq_philosophy.md) — Grapples with the broader implications of this work, AI automation in general, model advancement pace, approaching the "exponential", environmental ethics, what this means for the next generation of researchers, and more
-
+- [**Back to main**](../.)
