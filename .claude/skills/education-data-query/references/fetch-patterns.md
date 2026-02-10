@@ -309,7 +309,7 @@ def discover_mirror_files(mirror_config: dict) -> list[str] | None:
 
 ## Metadata File References
 
-Codebook and metadata files are available alongside data files in both mirrors. These are `.xls` files for human reference — not parsed programmatically by the pipeline.
+Codebook and metadata files are available alongside data files in both mirrors. These are `.xls` files that document variable definitions, coded values, and data structure. Per the Truth Hierarchy below, codebooks rank **second** — below the actual data but above archived skill docs. They are not ingested into the analysis pipeline as data, but agents can download and read them programmatically to resolve ambiguities.
 
 ### Truth Hierarchy
 
@@ -318,7 +318,7 @@ When interpreting data values and resolving discrepancies between sources, apply
 | Priority | Source | Rationale |
 |----------|--------|-----------|
 | 1 (highest) | **Actual data file** (parquet) | What you observe IS the truth |
-| 2 | **Live codebook/metadata** (.xls in mirror) | Authoritative documentation; may lag behind data |
+| 2 | **Live codebook/metadata** (.xls in mirror) | Official documentation; may lag behind data |
 | 3 (lowest) | **Archived skill docs** (variable-definitions.md) | Summarized; convenient but may drift |
 
 - When skill docs contradict observed data → trust the data, flag the discrepancy
@@ -380,6 +380,149 @@ def get_codebook_url(
 # → "{root_url}/saipe/codebook_districts_saipe.xls" (from first mirror with metadata config)
 ```
 
+### fetch_codebook()
+
+Download a codebook `.xls` file from a mirror to a local cache directory. Returns the local file path. Skips download if the file already exists locally (session-level caching).
+
+```python
+import httpx
+from pathlib import Path
+
+
+def fetch_codebook(
+    codebook_path: str,
+    cache_dir: Path | str = Path("data/codebooks"),
+    mirrors: list[dict] | None = None,
+    yaml_path: Path | None = None,
+    timeout: int = 60,
+) -> Path:
+    """Download a codebook .xls file from a mirror to a local cache.
+
+    Args:
+        codebook_path: Canonical codebook path from datasets-reference.md codebook column.
+            Example: "saipe/codebook_districts_saipe"
+        cache_dir: Local directory for cached codebook files.
+        mirrors: Pre-loaded mirror configs. If None, loads from yaml_path.
+        yaml_path: Path to mirrors.yaml. If None, uses default.
+        timeout: HTTP request timeout in seconds.
+
+    Returns:
+        Path to the downloaded .xls file.
+    """
+    cache_dir = Path(cache_dir)
+    cache_dir.mkdir(parents=True, exist_ok=True)
+
+    # Derive local filename from the canonical path (flatten source/filename → filename.xls)
+    local_name = codebook_path.replace("/", "_") + ".xls"
+    local_path = cache_dir / local_name
+
+    if local_path.exists():
+        print(f"  Codebook cached: {local_path}")
+        return local_path
+
+    if mirrors is None:
+        mirrors = load_mirrors(yaml_path or MIRRORS_YAML)
+
+    # Try each mirror with metadata config
+    last_error = None
+    for mirror in mirrors:
+        meta = mirror.get("metadata")
+        if not meta:
+            continue
+
+        fmt = meta["formats"][0]  # e.g., "xls"
+        template = meta["url_template"]
+        root_url = mirror["root_url"]
+        url = template.format(root_url=root_url, path=codebook_path, format=fmt)
+
+        print(f"  Fetching codebook from {mirror['name']}: {url}")
+
+        try:
+            _rate_limit()
+            with httpx.Client(timeout=timeout, follow_redirects=True) as client:
+                resp = client.get(url)
+                resp.raise_for_status()
+
+            local_path.write_bytes(resp.content)
+            print(f"  ✓ Saved: {local_path} ({len(resp.content):,} bytes)")
+            return local_path
+
+        except Exception as e:
+            last_error = e
+            print(f"  ✗ {mirror['name']} failed: {e}")
+            continue
+
+    raise RuntimeError(
+        f"All mirrors failed for codebook '{codebook_path}'. Last error: {last_error}"
+    )
+
+
+# Usage:
+# path = fetch_codebook("saipe/codebook_districts_saipe")
+# → downloads to data/codebooks/saipe_codebook_districts_saipe.xls
+```
+
+### read_codebook()
+
+Download (if needed) and read a codebook into a dict of DataFrames, one per sheet. This is the primary entry point for agents that need to inspect codebook contents.
+
+```python
+import polars as pl
+
+
+def read_codebook(
+    codebook_path: str,
+    cache_dir: Path | str = Path("data/codebooks"),
+    mirrors: list[dict] | None = None,
+    yaml_path: Path | None = None,
+) -> dict[str, pl.DataFrame]:
+    """Download and read a codebook .xls file. Returns {sheet_name: DataFrame}.
+
+    Combines fetch_codebook() + sheet reading into a single call.
+    Uses openpyxl for .xlsx and xlrd for .xls files.
+
+    Args:
+        codebook_path: Canonical codebook path from datasets-reference.md codebook column.
+            Example: "saipe/codebook_districts_saipe"
+        cache_dir: Local directory for cached codebook files.
+        mirrors: Pre-loaded mirror configs. If None, loads from yaml_path.
+        yaml_path: Path to mirrors.yaml. If None, uses default.
+
+    Returns:
+        Dict mapping sheet names to Polars DataFrames.
+    """
+    local_path = fetch_codebook(
+        codebook_path, cache_dir=cache_dir, mirrors=mirrors, yaml_path=yaml_path
+    )
+
+    # Read all sheets — try xlrd first (.xls), fall back to openpyxl (.xlsx)
+    import pandas as pd
+
+    try:
+        sheets = pd.read_excel(local_path, sheet_name=None, engine="xlrd")
+    except Exception:
+        sheets = pd.read_excel(local_path, sheet_name=None, engine="openpyxl")
+
+    # Convert pandas DataFrames to Polars
+    result = {}
+    for name, pdf in sheets.items():
+        result[name] = pl.from_pandas(pdf)
+
+    sheet_summary = ", ".join(
+        f"{name} ({df.shape[0]}×{df.shape[1]})" for name, df in result.items()
+    )
+    print(f"  Codebook sheets: {sheet_summary}")
+
+    return result
+
+
+# Usage:
+# sheets = read_codebook("saipe/codebook_districts_saipe")
+# for name, df in sheets.items():
+#     print(f"\n--- {name} ---")
+#     print(df.head())
+```
+
 ---
 
 ## Format Handling
@@ -411,6 +554,9 @@ Format-specific read behavior is driven by the mirror's `read_strategy` field in
 | Schema mismatch | CSV column types differ from parquet | Use `infer_schema_length=10000` |
 | Empty DataFrame | Filters too restrictive | Check filter values; verify year availability |
 | All mirrors failed | Dataset not available in any mirror | STOP and escalate to user |
+| Codebook read error (xlrd) | `.xls` format not readable by xlrd | Auto-falls back to openpyxl engine |
+| Codebook read error (both) | Corrupt or non-Excel file served | Check URL manually; try alternate mirror |
+| Codebook empty sheets | Codebook has no data rows | Likely a metadata-only file; inspect raw `.xls` |
 
 ---
 
