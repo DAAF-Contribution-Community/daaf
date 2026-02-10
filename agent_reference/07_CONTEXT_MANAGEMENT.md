@@ -71,16 +71,7 @@ These tasks consume significant context and should ALWAYS be delegated:
 
 ## Task Prompt Size Guidelines
 
-When creating Task prompts for subagents, size the context appropriately:
-
-| Stage | Subagent Type | Max Prompt Size | What to Include |
-|-------|---------------|-----------------|-----------------|
-| 2-3 (Discovery) | Plan | 500 words | Research question, constraints, scope |
-| 5 (Retrieval) | general-purpose | 800 words | Query spec from Plan, expected values |
-| 6 (Context) | general-purpose | 800 words | Caveats from Stage 3, cleaning spec |
-| 7-8 (Analysis) | general-purpose | 1000 words | Data specs, methodology, transformation details |
-| 9 (Notebook) | general-purpose | 800 words | Structure spec, analysis findings |
-| 10 (QA) | general-purpose | 500 words | File paths, test requirements |
+See `03_SKILL_INVOCATIONS.md` "Prompt Size Limits by Subagent Type" for authoritative size limits per subagent type. The limits there (Plan: 500 words, general-purpose: 1000 words) are the single source of truth for prompt sizing.
 
 ### Prompt Content Priority
 
