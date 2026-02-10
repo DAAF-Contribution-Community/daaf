@@ -23,13 +23,14 @@ Scorecard suppresses data when cell sizes are too small:
 
 ### Suppression Indicators
 
-> **Portal Encoding:** In Portal mirror parquet files, **`null` is the primary indicator** for suppressed/missing data. The codebook documents `-1, -2, -3` codes, but actual parquet data typically uses `null`.
+> **Portal Encoding:** Suppression encoding differs by dataset. The earnings dataset uses **`-3` integer codes** for suppression, while other datasets use `null`. Always check actual data patterns.
 
-| Data Pattern | Meaning | Notes |
-|--------------|---------|-------|
-| `null` | Suppressed or missing | Primary indicator in parquet |
-| Positive value | Valid data | Actual earnings, counts, etc. |
-| `*_SUPP` = 1 | Suppression flag | Flag variables still use 0/1 |
+| Dataset | Suppression Indicator | Notes |
+|---------|----------------------|-------|
+| **Earnings** (earnings, counts) | `-3` integer code | Verified: ~24K rows have -3 in `earnings_mean` |
+| **Inst Characteristics** (flags) | `null` | Only 0/1 values appear; missing = null |
+| **Default/Repayment** (rates) | `null` | Float64 rates with nulls |
+| **Student Body** (percentages) | `null` | Float64 percentages with nulls |
 
 ### Suppression Rates by Data Type
 
@@ -238,26 +239,36 @@ Entry-cohort earnings calculations were misaligned in some releases:
 ```python
 import polars as pl
 
-# Check missing/suppression rates (null is primary indicator in Portal parquet)
-missing_rate = df.filter(
-    pl.col("md_earn_wne_p6").is_null()
-).height / df.height
+# Portal column names are lowercase; filter years_after_entry for time horizon
+six_yr = df.filter(pl.col("years_after_entry") == 6)
 
-print(f"Missing/suppressed rate: {missing_rate:.1%}")
+# Check suppression rate (earnings uses -3 for suppression, NOT null)
+suppressed = six_yr.filter(pl.col("earnings_med") == -3).height
+null_count = six_yr.filter(pl.col("earnings_med").is_null()).height
+total = six_yr.height
+print(f"Suppressed (-3): {suppressed} ({suppressed/total:.1%})")
+print(f"Null: {null_count} ({null_count/total:.1%})")
 
-# Check sample sizes (for valid data only)
-with_data = df.filter(pl.col("count_wne_p6").is_not_null())
-small_samples = with_data.filter(pl.col("count_wne_p6") < 100)
-print(f"Small samples: {small_samples.height}")
-
-# Check for implausible values (filter valid values first)
-valid_earnings = df.filter(
-    pl.col("md_earn_wne_p6").is_not_null() &
-    (pl.col("md_earn_wne_p6") > 0)
+# Valid earnings: exclude both -3 and null
+valid_earnings = six_yr.filter(
+    pl.col("earnings_med").is_not_null() &
+    (pl.col("earnings_med") != -3) &
+    (pl.col("earnings_med") > 0)
 )
+print(f"Valid earnings: {valid_earnings.height} ({valid_earnings.height/total:.1%})")
+
+# Check sample sizes
+small_samples = valid_earnings.filter(
+    pl.col("count_working").is_not_null() &
+    (pl.col("count_working") != -3) &
+    (pl.col("count_working") < 100)
+)
+print(f"Small samples (<100 workers): {small_samples.height}")
+
+# Check for implausible values
 suspicious = valid_earnings.filter(
-    (pl.col("md_earn_wne_p6") < 10000) |
-    (pl.col("md_earn_wne_p6") > 500000)
+    (pl.col("earnings_med") < 10000) |
+    (pl.col("earnings_med") > 500000)
 )
 print(f"Suspicious values: {suspicious.height}")
 ```

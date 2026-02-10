@@ -10,8 +10,6 @@ Understanding the different enrollment measures in IPEDS and when to use each.
 > |----------|------|---------|
 > | `level_of_study` | 1 | Undergraduate |
 > | | 2 | Graduate |
-> | | 3 | First professional |
-> | | 4 | Postbaccalaureate |
 > | | 99 | Total |
 > | `ftpt` | 1 | Full-time |
 > | | 2 | Part-time |
@@ -323,27 +321,45 @@ IPEDS reports separate retention rates:
 
 ## Variable Reference
 
-### Fall Enrollment Key Variables
+> Verify these variable names against the live codebook. Use `get_codebook_url()` from `fetch-patterns.md`. Portal variable names may differ from NCES documentation.
 
-| Variable | Description |
-|----------|-------------|
-| `eftotlt` | Total fall enrollment |
-| `eftotlm` | Male fall enrollment |
-| `eftotlw` | Female fall enrollment |
-| `efft` | Full-time enrollment |
-| `efpt` | Part-time enrollment |
-| `efug` | Undergraduate enrollment |
-| `efgr` | Graduate enrollment |
-| `ef1st` | First-time students |
-| `eftran` | Transfer students |
-| `efcont` | Continuing students |
-| `efdeexc` | Exclusively distance education |
-| `efdesom` | Some distance education |
+### Fall Enrollment Key Variables (Portal Names)
+
+The `fall-enrollment-race` (yearly) dataset provides the main fall enrollment data. Key columns:
+
+| Portal Variable | Description |
+|-----------------|-------------|
+| `enrollment_fall` | Fall enrollment count |
+| `race` | Race/ethnicity (integer codes: 1-9, 99=Total) |
+| `sex` | Sex (1=Male, 2=Female, 3=Nonbinary, 4=Unknown, 99=Total) |
+| `level_of_study` | 1=Undergraduate, 2=Graduate, 99=Total |
+| `ftpt` | 1=Full-time, 2=Part-time, 99=Total |
+| `class_level` | 1=First-time, 2=Transfer, 3=Continuing, 4=Other total, 99=Total |
+| `degree_seeking` | 0=No, 1=Yes, 99=Total |
+
+To get institution-level totals, filter to `race == 99`, `sex == 99`, `ftpt == 99`, `level_of_study == 99`.
+
+#### NCES Raw File Names (for reference only)
+
+| NCES Name | Portal Equivalent | Notes |
+|-----------|-------------------|-------|
+| `EFTOTLT` | `enrollment_fall` (filtered to totals) | Portal uses disaggregated rows |
+| `EFFT` | `enrollment_fall` where `ftpt == 1` | Full-time subset |
+| `EFPT` | `enrollment_fall` where `ftpt == 2` | Part-time subset |
+| `EFDEEXC` | Not in fall-enrollment-race | Check separate dataset |
 
 ### 12-Month Enrollment Key Variables
 
-| Variable | Description |
-|----------|-------------|
+The `enrollment-fte` dataset provides FTE and headcount data. Consult the codebook for the current variable list:
+
+```python
+url = get_codebook_url("ipeds/codebook_colleges_ipeds_enrollment-fte")
+```
+
+> **Note:** The variable names below are from NCES documentation and may differ in the Portal. Always verify against the actual data or codebook.
+
+| NCES Name | Description |
+|-----------|-------------|
 | `efytotlt` | Total 12-month unduplicated headcount |
 | `efyug` | Undergraduate 12-month |
 | `efygr` | Graduate 12-month |
@@ -353,8 +369,16 @@ IPEDS reports separate retention rates:
 
 ### Retention Variables
 
-| Variable | Description |
-|----------|-------------|
+The `fall-retention` dataset provides retention rates. Consult the codebook:
+
+```python
+url = get_codebook_url("ipeds/codebook_colleges_ipeds_fall-retention")
+```
+
+> **Note:** Variable names below are from NCES documentation and may differ in the Portal.
+
+| NCES Name | Description |
+|-----------|-------------|
 | `ret_pcf` | Full-time retention rate |
 | `ret_pcp` | Part-time retention rate |
 | `ret_nmf` | Full-time students in retention cohort |

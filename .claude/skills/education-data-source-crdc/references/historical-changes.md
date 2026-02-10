@@ -445,9 +445,11 @@ When using CRDC data across years, document:
 
 - **ED.gov** - Official CRDC page, historical documents
 - **CRDC Resource Center** - Collection materials
-- **Education Data Portal** - Variable documentation
+- **Education Data Portal mirrors** - Variable documentation via codebook `.xls` files (use `get_codebook_url()` from `fetch-patterns.md`)
 - **NCES** - CRDC partnership documentation
 - **Federal Register** - OMB clearance documents
+
+> **Note:** When comparing variables across collection years, always verify definitions against the codebook for each specific year. The Portal codebook reflects the most recent collection; for earlier years, consult OCR's official data element lists.
 
 ### Version Tracking
 

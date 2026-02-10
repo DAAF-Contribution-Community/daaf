@@ -154,24 +154,26 @@ Crosswalk files describe relationships between census units from different years
 **Goal**: Get 2000 Census data for 2010 tract boundaries
 
 ```python
-import pandas as pd
+import polars as pl
 
-# Load crosswalk: 2000 blocks to 2010 tracts
-crosswalk = pd.read_csv("nhgis_blk2000_tr2010.csv")
+# Load crosswalk: 2000 blocks to 2010 tracts (direct NHGIS download, not Portal data)
+crosswalk = pl.read_csv("nhgis_blk2000_tr2010.csv")
 
 # Load 2000 block data
-blocks_2000 = pd.read_csv("nhgis_2000_blocks.csv")
+blocks_2000 = pl.read_csv("nhgis_2000_blocks.csv")
 
 # Join crosswalk to block data
-merged = crosswalk.merge(blocks_2000, left_on="GJOIN2000", right_on="GISJOIN")
+merged = crosswalk.join(blocks_2000, left_on="GJOIN2000", right_on="GISJOIN")
 
 # Apply weights to allocate population
-merged["pop_allocated"] = merged["total_pop"] * merged["wt_pop"]
+merged = merged.with_columns(
+    (pl.col("total_pop") * pl.col("wt_pop")).alias("pop_allocated")
+)
 
 # Aggregate to 2010 tracts
-tracts_2010 = merged.groupby("GJOIN2010").agg({
-    "pop_allocated": "sum"
-}).reset_index()
+tracts_2010 = merged.group_by("GJOIN2010").agg(
+    pl.col("pop_allocated").sum()
+)
 ```
 
 ### Start from Lowest Level

@@ -37,14 +37,14 @@ No per-mirror path dicts needed — one path works for all mirrors.
 |-------|------|-------|------|----------|
 | Directory | Single | varies | `ccd/school-districts_lea_directory` | `ccd/codebook_districts_ccd_directory` |
 | Enrollment | Yearly | 1986-2023 | `ccd/schools_ccd_lea_enrollment_{year}` | `ccd/codebook_districts_ccd_enrollment` |
-| Finance | Single | varies | `ccd/districts_ccd_finance` | — |
+| Finance | Single | varies | `ccd/districts_ccd_finance` | `ccd/codebook_districts_ccd_finance` |
 
 ### EDFacts
 
 | Topic | Type | Years | path | codebook |
 |-------|------|-------|------|----------|
 | Assessments | Yearly | 2009-2018, 2020 | `edfacts/districts_edfacts_assessments_{year}` | `edfacts/codebook_districts_edfacts_assessments` |
-| Grad Rates | Yearly | 2010-2019 | `edfacts/districts_edfacts_grad_rates_{year}` | `edfacts/codebook_districts_edfacts_grad_rates` |
+| Grad Rates | Yearly | 2010-2019 | `edfacts/districts_edfacts_grad_rates_{year}` | `edfacts/codebook_districts_edfacts_graduation` |
 
 > **Note:** 2019 assessment data is NOT available (at any level) due to COVID testing waivers.
 
@@ -52,7 +52,7 @@ No per-mirror path dicts needed — one path works for all mirrors.
 
 | Topic | Type | Years | path | codebook |
 |-------|------|-------|------|----------|
-| Poverty Estimates | Single | varies | `saipe/districts_saipe` | `saipe/codebook_districts_saipe` |
+| Poverty Estimates | Single | 1995-2023 | `saipe/districts_saipe` | `saipe/codebook_districts_saipe` |
 
 ---
 
@@ -70,41 +70,41 @@ No per-mirror path dicts needed — one path works for all mirrors.
 | Topic | Type | Years | path | codebook |
 |-------|------|-------|------|----------|
 | Discipline | Yearly | 2011-2021 | `crdc/schools_crdc_discipline_k12_{year}` | `crdc/codebook_schools_crdc_discipline` |
-| AP/IB Enrollment | Single | 2011-2021 | `crdc/schools_crdc_apib_enroll` | `crdc/codebook_schools_crdc_ap_ib_enrollment` |
+| AP/IB Enrollment | Single | 2011-2021 | `crdc/schools_crdc_apib_enroll` | `crdc/codebook_schools_crdc_ap-ib-enrollment` |
 | Enrollment | Yearly | 2011-2021 | `crdc/schools_crdc_enrollment_k12_{year}` | `crdc/codebook_schools_crdc_enrollment` |
-| Chronic Absenteeism | Yearly | 2013-2022 | `crdc/schools_crdc_chronic_absenteeism_{year}` | `crdc/codebook_schools_crdc_chronic_absenteeism` |
-| Harassment/Bullying | Yearly | 2011-2021 | `crdc/schools_crdc_harass_bully_students_{year}` | `crdc/codebook_schools_crdc_harassment_or_bullying` |
-| Restraint/Seclusion | Yearly | 2011-2021 | `crdc/schools_crdc_restraint_seclusion_students_{year}` | `crdc/codebook_schools_crdc_restraint_and_seclusion` |
+| Chronic Absenteeism | Yearly | 2013-2022 | `crdc/schools_crdc_chronic_absenteeism_{year}` | `crdc/codebook_schools_crdc_chronic-absenteeism` |
+| Harassment/Bullying | Yearly | 2011-2021 | `crdc/schools_crdc_harass_bully_students_{year}` | `crdc/codebook_schools_crdc_harrassment-bullying-students` |
+| Restraint/Seclusion | Yearly | 2011-2021 | `crdc/schools_crdc_restraint_seclusion_students_{year}` | `crdc/codebook_schools_crdc_restraint-seclusion-students` |
 
 #### Additional CRDC Datasets — Yearly
 
 | Topic | Type | Years | path | codebook |
 |-------|------|-------|------|----------|
-| Algebra | Yearly | 2011, 2013, 2015, 2017, 2020, 2021 | `crdc/schools_crdc_algebra_{year}` | `crdc/codebook_schools_crdc_algebra1` |
-| AP Exams | Yearly | 2011, 2013, 2015, 2017 | `crdc/schools_crdc_ap_exams_{year}` | `crdc/codebook_schools_crdc_ap_exams` |
+| Algebra | Yearly | 2011, 2013, 2015, 2017, 2020, 2021 | `crdc/schools_crdc_algebra_{year}` | `crdc/codebook_schools_crdc_algebra-1` |
+| AP Exams | Yearly | 2011, 2013, 2015, 2017 | `crdc/schools_crdc_ap_exams_{year}` | `crdc/codebook_schools_crdc_ap-exams` |
 | Retention | Yearly | 2011, 2013, 2015, 2017, 2020 | `crdc/schools_crdc_retention_{year}` | `crdc/codebook_schools_crdc_retention` |
-| SAT/ACT Participation | Yearly | 2011, 2013, 2015, 2017, 2020, 2021 | `crdc/schools_crdc_sat_and_act_participation_{year}` | `crdc/codebook_schools_crdc_sat_act_participation` |
+| SAT/ACT Participation | Yearly | 2011, 2013, 2015, 2017, 2020, 2021 | `crdc/schools_crdc_sat_and_act_participation_{year}` | `crdc/codebook_schools_crdc_sat-act-participation` |
 
 #### Additional CRDC Datasets — Single-File
 
 | Topic | Type | Years | path | codebook |
 |-------|------|-------|------|----------|
 | COVID Indicators | Single | 2020-2021 | `crdc/schools_crdc_covid_indicators` | `crdc/codebook_schools_crdc_covid_indicators` |
-| Credit Recovery | Single | varies | `crdc/schools_crdc_credit_recovery` | `crdc/codebook_schools_crdc_credit_recovery` |
+| Credit Recovery | Single | varies | `crdc/schools_crdc_credit_recovery` | `crdc/codebook_schools_crdc_credit-recovery` |
 | Directory/Characteristics | Single | varies | `crdc/schools_crdc_school_characteristics` | `crdc/codebook_schools_crdc_directory` |
 | Discipline Instances | Single | varies | `crdc/schools_crdc_disciplineinstances` | `crdc/codebook_schools_crdc_discipline_instances` |
 | Dual Enrollment | Single | varies | `crdc/schools_crdc_dual_enrollment` | `crdc/codebook_schools_crdc_dual_enrollment` |
-| Harassment/Bullying Allegations | Single | varies | `crdc/schools_crdc_harass_bully_allegations` | `crdc/codebook_schools_crdc_harassment_or_bullying` |
+| Harassment/Bullying Allegations | Single | varies | `crdc/schools_crdc_harass_bully_allegations` | `crdc/codebook_schools_crdc_harrassment-bullying-allegations` |
 | Internet Access | Single | 2020-2021 | `crdc/schools_crdc_internet_access` | `crdc/codebook_schools_crdc_internet_access` |
-| Math and Science | Single | varies | `crdc/schools_crdc_mathandscience` | `crdc/codebook_schools_crdc_math_and_science` |
+| Math and Science | Single | varies | `crdc/schools_crdc_mathandscience` | `crdc/codebook_schools_crdc_math-and-science` |
 | Offenses | Single | varies | `crdc/schools_crdc_offenses` | `crdc/codebook_schools_crdc_offenses` |
 | Offerings | Single | varies | `crdc/schools_crdc_offerings` | `crdc/codebook_schools_crdc_offerings` |
-| Restraint/Seclusion Instances | Single | varies | `crdc/schools_crdc_restraint_seclusion_instances` | `crdc/codebook_schools_crdc_restraint_and_seclusion` |
-| School Finance | Single | varies | `crdc/schools_crdc_finance` | `crdc/codebook_schools_crdc_school_finance` |
+| Restraint/Seclusion Instances | Single | varies | `crdc/schools_crdc_restraint_seclusion_instances` | `crdc/codebook_schools_crdc_restraint-seclusion-instances` |
+| School Finance | Single | varies | `crdc/schools_crdc_finance` | `crdc/codebook_schools_crdc_finance` |
 | Suspensions (Days) | Single | varies | `crdc/schools_crdc_suspensions` | `crdc/codebook_schools_crdc_suspensions_days` |
 | Teachers/Staff | Single | varies | `crdc/schools_crdc_teacher` | `crdc/codebook_schools_crdc_teachers_staff` |
 
-> **CRDC naming note:** Some data file paths use concatenated names (e.g., `disciplineinstances`, `mathandscience`) while their codebook counterparts use underscored names (e.g., `discipline_instances`, `math_and_science`). Always use the exact paths shown above.
+> **CRDC naming note:** CRDC codebook filenames frequently use hyphens where data paths use underscores or concatenated names. Additionally, some codebook names differ structurally from their data counterparts (e.g., data `harass_bully_students` vs codebook `harrassment-bullying-students`; data `restraint_seclusion_students` vs codebook `restraint-seclusion-students`). Note the mirror's codebook files spell "harassment" as "harrassment" (double r) — this is intentional and must be preserved. Always use the exact paths shown above.
 
 > **CRDC ID columns:** All CRDC datasets have `crdc_id`, `ncessch`, and `leaid` as String columns (zero-padded IDs). When reading from CSV, these **must** be forced to String via `schema_overrides` — Polars infers them as Int64, silently destroying leading zeros for ~19% of rows (FIPS 01-09 states: AL, AK, AZ, AR, CA, CO, CT). Parquet preserves types automatically. See `education-data-source-crdc` skill for full details.
 
@@ -119,7 +119,7 @@ No per-mirror path dicts needed — one path works for all mirrors.
 | Topic | Type | Years | path | codebook |
 |-------|------|-------|------|----------|
 | Assessments | Yearly | 2009-2018, 2020 | `edfacts/schools_edfacts_assessments_{year}` | `edfacts/codebook_schools_edfacts_assessments` |
-| Grad Rates | Yearly | 2010-2019 | `edfacts/schools_edfacts_grad_rates_{year}` | `edfacts/codebook_schools_edfacts_grad_rates` |
+| Grad Rates | Yearly | 2010-2019 | `edfacts/schools_edfacts_grad_rates_{year}` | `edfacts/codebook_schools_edfacts_graduation` |
 
 > **Note:** 2019 assessment data is NOT available due to COVID testing waivers.
 

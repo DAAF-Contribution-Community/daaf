@@ -52,7 +52,7 @@ Industry flows help answer:
 | `92` | Public Administration |
 | `99` | Unclassified/Federal (PSEO-specific) |
 
-> **Data Note:** In Portal parquet files, the `industry` column is `Int64` with `null` values (not -1) for rows without industry data.
+> **Data Note:** In Portal parquet files, the `industry` column is **String** type (not Int64) because some NAICS sectors span ranges (e.g., `"31-33"` for Manufacturing). All rows have a non-null `industry` value -- rows representing earnings-only data (without industry breakdown) appear with an aggregate industry value.
 
 ### Key Sectors by Common Graduate Fields
 
@@ -68,39 +68,52 @@ Industry flows help answer:
 
 ## Industry Flow Variables
 
-### Employment by Industry
+### Employment by Industry (Portal Schema)
 
-| Variable | Description |
-|----------|-------------|
-| `Y1_GRADS_EMP` | Employed graduates (when filtered by NAICS) |
-| `Y5_GRADS_EMP` | Employed graduates, 5 years out |
-| `Y10_GRADS_EMP` | Employed graduates, 10 years out |
+In Portal data, employment counts are accessed via `employed_grads_count_f`, filtered by `years_after_grad` and `industry`:
+
+| Portal Variable | Description |
+|-----------------|-------------|
+| `employed_grads_count_f` | Employed graduates count (filter by `years_after_grad` for Y1/Y5/Y10) |
+| `industry` | NAICS sector (String type, e.g., `"54"`, `"31-33"`) |
+| `years_after_grad` | `1`, `5`, or `10` |
 
 ### Querying by Industry
 
-Use the `NAICS` parameter in the Flows endpoint:
+```python
+import polars as pl
 
-```
-# Employment in Information sector (51), 1 year post-graduation
-GET api.census.gov/data/timeseries/pseo/flows
-  ?get=Y1_GRADS_EMP
-  &for=us:1
-  &NAICS=54
-  &INSTITUTION=00365800
-  &DEGREE_LEVEL=05
-  &CIPCODE=11
+# Fetch PSEO data
+df = fetch_from_mirrors("pseo/colleges_pseo_2020")
+
+# Employment in Professional Services sector ("54"), 1 year post-graduation
+prof_services = df.filter(
+    (pl.col("industry") == "54")
+    & (pl.col("unitid") == 228778)       # UT Austin
+    & (pl.col("degree_level") == 5)       # Bachelor's
+    & (pl.col("cipcode") == 11)           # Computer Science
+    & (pl.col("years_after_grad") == 1)
+    & (pl.col("employed_grads_count_f") > 0)
+)
 ```
 
 ### Multiple Industries
 
-Query multiple NAICS codes:
-```
-&NAICS=51&NAICS=54&NAICS=52
-```
+```python
+# Filter to specific NAICS sectors
+tech_sectors = df.filter(
+    pl.col("industry").is_in(["51", "54", "52"])
+    & (pl.col("years_after_grad") == 1)
+    & (pl.col("employed_grads_count_f") > 0)
+)
 
-Or add NAICS to get statement for all industries:
-```
-?get=Y1_GRADS_EMP,NAICS
+# Get distribution across all industries for a program
+all_industries = df.filter(
+    (pl.col("unitid") == 228778)
+    & (pl.col("cipcode") == 11)
+    & (pl.col("years_after_grad") == 1)
+    & (pl.col("employed_grads_count_f") > 0)
+).select("industry", "employed_grads_count_f")
 ```
 
 ## Analysis Patterns
@@ -212,8 +225,8 @@ For Business Administration Bachelor's graduates (hypothetical):
 ```
 Institution: State University
 CIP: 52 (Business, Management, Marketing)
-Degree Level: 05 (Bachelor's)
-Cohort: 2016
+Degree Level: 5 (Bachelor's)
+Cohort: "2016-2018"
 
 Industry Distribution Evolution:
 

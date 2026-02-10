@@ -469,8 +469,9 @@ For any EDFacts analysis, document:
 - Weighted state averages by student count
 
 ### Citation
-EDFacts Assessment Data, Education Data Portal (Version 2024.1), Urban Institute, 
-accessed January 15, 2024, https://educationdata.urban.org/documentation/, 
+EDFacts Assessment Data, Education Data Portal (Version [version]),
+Urban Institute, accessed [date],
+https://educationdata.urban.org/documentation/,
 made available under the ODC Attribution License.
 ```
 

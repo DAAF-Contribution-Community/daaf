@@ -32,7 +32,7 @@ EDFacts is the U.S. Department of Education's centralized data collection system
 - **Content**: State assessment proficiency rates, ACGR graduation rates, participation rates, accountability indicators
 - **Frequency**: Annual collection
 - **Available years**: Assessments 2009-10 to present; Graduation rates 2010-11 to present
-- **Primary identifiers**: `ncessch` (12-char school ID), `leaid` (7-char district ID), `fips` (2-digit state code)
+- **Primary identifiers**: `ncessch` (school ID, Int64), `leaid` (district ID, Int64), `fips` (state FIPS code, Int64)
 - **Key limitation**: State assessment scores CANNOT be compared across states (different tests, different cut scores)
 
 ## Reference File Structure
@@ -109,38 +109,45 @@ What are you comparing?
 
 ### Key Identifiers
 
-| ID | Format | Level | Example | Notes |
-|----|--------|-------|---------|-------|
-| `ncessch` | 12-char | School | `060000000001` | NCES school ID |
-| `leaid` | 7-char | District/LEA | `0600001` | NCES district ID |
-| `fips` | 2-digit | State | `06` (California) | Federal state code |
+> **Portal Data Types:** All identifiers are **Int64** in the Portal parquet files. The NCES source format (zero-padded strings) is shown for reference only. When joining with other Portal datasets, join on the integer columns directly.
+
+| ID | Portal Type | NCES Source Format | Level | Example (Int64) |
+|----|-------------|-------------------|-------|-----------------|
+| `ncessch` | Int64 | 12-char zero-padded | School | `10000500870` |
+| `ncessch_num` | Int64 | Same as ncessch | School | `10000500870` |
+| `leaid` | Int64 | 7-char zero-padded | District/LEA | `100005` |
+| `leaid_num` | Int64 | Same as leaid | District/LEA | `100005` |
+| `fips` | Int64 | 2-digit | State | `1` (Alabama) |
 
 ### Data Levels
 
-| Level | Identifier | EDFacts Endpoints |
-|-------|------------|-------------------|
-| School | `ncessch` (12-char) | `/schools/edfacts/` |
-| District/LEA | `leaid` (7-char) | `/school-districts/edfacts/` |
-| State | `fips` (2-digit) | Aggregate from lower levels |
+| Level | Identifier | Dataset Path Pattern |
+|-------|------------|---------------------|
+| School | `ncessch` (Int64) | `edfacts/schools_edfacts_*` |
+| District/LEA | `leaid` (Int64) | `edfacts/districts_edfacts_*` |
+| State | `fips` (Int64) | Aggregate from lower levels |
 
 ### Subgroups Reported
 
-| Subgroup | String Code | Portal Integer | Notes |
-|----------|-------------|----------------|-------|
-| All students | `ALL` | `99` | Total row (filter dimension) |
-| Economically disadvantaged | `ECODIS` | `1` | In econ_disadvantaged column |
-| Students with disabilities | `CWD` | See disability codes | IDEA-eligible students |
-| English learners | `LEP` | `1` | In lep column |
-| Homeless | `HOM` | `1` | In homeless column |
-| Foster care | `FCS` | `1` | In foster_care column |
-| Migrant | `MIG` | `1` | In migrant column |
-| Military connected | `MIL` | `1` | In military_connected column |
-| Race/ethnicity | Multiple | See race codes | Integer codes 1-99 |
+> **Note:** Not all subgroup columns are present in every dataset. Grad rates data does NOT have `sex`, `migrant`, or `military_connected` columns.
+
+| Subgroup | NCES Code | Portal Integer | Column | Available In |
+|----------|-----------|----------------|--------|--------------|
+| All students | `ALL` | `99` | race, sex, lep, disability | Assessments, Grad Rates |
+| Economically disadvantaged | `ECODIS` | `1` | econ_disadvantaged | Assessments, Grad Rates |
+| Students with disabilities | `CWD` | `1` | disability | Assessments, Grad Rates |
+| English learners | `LEP` | `1` | lep | Assessments, Grad Rates |
+| Homeless | `HOM` | `1` | homeless | Assessments, Grad Rates |
+| Foster care | `FCS` | `1` | foster_care | Assessments, Grad Rates |
+| Migrant | `MIG` | `1` | migrant | Assessments only |
+| Military connected | `MIL` | `1` | military_connected | Assessments only |
+| Race/ethnicity | Multiple | `1-7, 99` | race | Assessments, Grad Rates |
+| Sex | `M/F` | `1, 2, 99` | sex | Assessments only |
 
 **EDFacts Filter Column Pattern:**
-- Special population columns (lep, disability, homeless, migrant, etc.) use `1` = subgroup, `99` = total
+- Special population columns (lep, disability, homeless, etc.) use `1` = subgroup, `99` = total
 - Race column uses integer codes (1=White, 2=Black, etc.)
-- Sex column uses `1` = Male, `2` = Female, `99` = Total
+- Sex column uses `1` = Male, `2` = Female, `99` = Total (assessments only)
 
 ### Grade Codes (grade_edfacts)
 
@@ -152,6 +159,8 @@ What are you comparing?
 
 ### Race Codes
 
+> **Empirically verified** from 2018 school assessment data. Only these values appear in the `race` column:
+
 | Code | Category |
 |------|----------|
 | `1` | White |
@@ -159,15 +168,10 @@ What are you comparing?
 | `3` | Hispanic |
 | `4` | Asian |
 | `5` | American Indian/Alaska Native |
-| `6` | Native Hawaiian/Pacific Islander |
 | `7` | Two or More Races |
-| `8` | Nonresident alien |
-| `9` | Unknown |
-| `20` | Other |
 | `99` | Total |
-| `-1` | Missing/not reported |
-| `-2` | Not applicable |
-| `-3` | Suppressed |
+
+> **Note:** Code `6` (Native Hawaiian/Pacific Islander) is NOT observed in the data. Codes `8` (Nonresident alien), `9` (Unknown), `20` (Other), `-1`, `-2`, `-3` are also not observed in the race column. These codes may exist in other Portal sources but are absent from EDFacts.
 
 ### Sex Codes
 
@@ -180,14 +184,12 @@ What are you comparing?
 
 ### Disability Codes
 
+> **Empirically verified** from 2018 school assessment and 2019 grad rate data. Only `1` and `99` are observed in the `disability` column. The expanded codes (0-4) documented in other Portal sources are NOT present in EDFacts datasets.
+
 | Code | Category |
 |------|----------|
-| `0` | Students without disabilities |
-| `1` | Students with disabilities served under IDEA |
-| `2` | Students with disabilities served under Section 504 only |
-| `3` | Students not served under IDEA |
-| `4` | Students with disabilities (Section 504 and IDEA) |
-| `99` | Total |
+| `1` | Students with disabilities (IDEA-eligible) |
+| `99` | Total (all students) |
 
 ### LEP Codes
 
@@ -220,20 +222,64 @@ For `homeless`, `migrant`, `econ_disadvantaged`, `foster_care`, `military_connec
 
 ## Data Access
 
-Datasets for EDFacts are available via the mirror system. See `datasets-reference.md` for canonical paths and `fetch-patterns.md` for fetch code patterns.
+All EDFacts data is fetched via the **mirror-based bulk download system**. There is no API access.
 
-**Key datasets:**
+**Key references:**
+- **`mirrors.yaml`** -- Mirror definitions, URL templates, read strategies
+- **`datasets-reference.md`** -- Canonical dataset paths (one path works for all mirrors)
+- **`fetch-patterns.md`** -- `fetch_from_mirrors()` and `fetch_yearly_from_mirrors()` patterns
 
-| Dataset | Path | Type |
-|---------|------|------|
-| School Assessments | `edfacts/schools_edfacts_assessments_{year}` | Yearly (2009-2018, 2020) |
-| School Grad Rates | `edfacts/schools_edfacts_grad_rates_{year}` | Yearly (2010-2019) |
-| District Assessments | `edfacts/districts_edfacts_assessments_{year}` | Yearly (2009-2020) |
-| District Grad Rates | `edfacts/districts_edfacts_grad_rates_{year}` | Yearly (2010-2019) |
+### Truth Hierarchy
 
-Codebooks: See `datasets-reference.md` codebook column. Use `get_codebook_url()` from `fetch-patterns.md`.
+When skill documentation contradicts observed data, trust the data:
 
-> **Note:** 2019 assessment data is NOT available due to COVID testing waivers.
+| Priority | Source | Rationale |
+|----------|--------|-----------|
+| 1 (highest) | **Actual data file** (parquet) | What you observe IS the truth |
+| 2 | **Live codebook/metadata** (.xls in mirror) | Authoritative documentation; may lag behind data |
+| 3 (lowest) | **This skill's reference files** | Summarized; convenient but may drift |
+
+### Key Datasets
+
+| Dataset | Path | Type | Columns |
+|---------|------|------|---------|
+| School Assessments | `edfacts/schools_edfacts_assessments_{year}` | Yearly (2009-2018, 2020) | 26 cols |
+| School Grad Rates | `edfacts/schools_edfacts_grad_rates_{year}` | Yearly (2010-2019) | 18 cols |
+| District Assessments | `edfacts/districts_edfacts_assessments_{year}` | Yearly (2009-2018, 2020) | 23 cols |
+| District Grad Rates | `edfacts/districts_edfacts_grad_rates_{year}` | Yearly (2010-2019) | 15 cols |
+
+> **Note:** 2019 assessment data is NOT available (at any level) due to COVID testing waivers.
+
+### Codebooks
+
+Codebook `.xls` files are available for both assessment and graduation rate datasets. Use `get_codebook_url()` from `fetch-patterns.md`:
+
+```python
+# Assessment codebooks:
+url = get_codebook_url("edfacts/codebook_schools_edfacts_assessments")
+url = get_codebook_url("edfacts/codebook_districts_edfacts_assessments")
+
+# Graduation rate codebooks:
+url = get_codebook_url("edfacts/codebook_schools_edfacts_graduation")
+url = get_codebook_url("edfacts/codebook_districts_edfacts_graduation")
+```
+
+> **Codebook naming note:** Graduation rate codebooks use `_graduation` (not `_grad_rates`), while the data files use `_grad_rates`. This follows the same pattern as other Portal sources where codebook names differ from data file names. See `datasets-reference.md` for the authoritative path mapping.
+
+### Dataset Column Differences
+
+Assessment and graduation rate datasets have **different column sets**:
+
+| Column | Assessments | Grad Rates |
+|--------|-------------|------------|
+| `sex` | Yes (1, 2, 99) | **No** |
+| `migrant` | Yes (1, 99) | **No** |
+| `military_connected` | Yes (1, 99) | **No** |
+| `grade_edfacts` | Yes (3-9, 99) | **No** |
+| `read_test_*` / `math_test_*` | Yes | **No** |
+| `grad_rate_*` | **No** | Yes |
+| `cohort_num` | **No** | Yes |
+| `school_name` / `lea_name` | Yes | Yes |
 
 ### Filtering
 
@@ -320,7 +366,7 @@ state_comparison = df.group_by("fips").agg(
 | `education-data-source-saipe` | SAIPE provides district poverty estimates | Linking poverty to achievement |
 | `education-data-source-meps` | MEPS provides school poverty estimates | School-level poverty and assessment analysis |
 | `education-data-explorer` | Parent discovery skill | Finding available endpoints |
-| `education-data-query` | Data fetching | Downloading parquet/CSV files |
+| `education-data-query` | Data fetching | Downloading via mirrors |
 
 ## Topic Index
 

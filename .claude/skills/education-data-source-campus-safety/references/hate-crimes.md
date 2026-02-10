@@ -12,7 +12,8 @@
 > | `4` | Gender | `15` | Vandalism |
 > | `99` | Total | `99` | Total |
 >
-> See `variable-definitions.md` for complete mappings.
+> See `variable-definitions.md` for complete mappings. Verify codes against the live codebook.
+> Use `get_codebook_url("csafety/codebook_colleges_csafety_hate_crimes")` from `fetch-patterns.md`.
 
 ## Definition
 

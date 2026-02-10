@@ -23,8 +23,10 @@ The CCD is the Department of Education's comprehensive, annual, national databas
 >
 > | Context | `school_type` | `charter` | `urban_centric_locale` |
 > |---------|---------------|-----------|------------------------|
-> | **Portal (integers)** | `1` (Regular) | `1` (Yes) | `11` (City-Large) |
-> | NCES original | `1-Regular school` | `Yes` | `11-City: Large` |
+> | **Portal (integers)** | `1` (Regular) | `0` (No) / `1` (Yes) | `11` (City-Large) |
+> | NCES original | `1-Regular school` | `Yes` / `No` | `11-City: Large` |
+>
+> **Note:** `charter` and `magnet` use `0/1` encoding, NOT `1=Yes / 2=No` as some NCES documentation shows.
 >
 > See `./references/variable-definitions.md` for complete encoding tables.
 
@@ -118,22 +120,32 @@ Building a time series?
 
 ### Key Identifiers
 
-| ID | Format | Level | Example | Notes |
-|----|--------|-------|---------|-------|
-| `NCESSCH` | 12 characters | School | `010000100100` | State FIPS (2) + LEA suffix (5) + School (5) |
-| `LEAID` | 7 characters | District | `0100001` | State FIPS (2) + State-assigned (5) |
-| `FIPS` | 2 digits | State | `01` | Federal Information Processing Standard |
+| Portal Column | Format | Level | Example | Notes |
+|---------------|--------|-------|---------|-------|
+| `ncessch` | 12 characters | School | `010000100100` | State FIPS (2) + LEA suffix (5) + School (5) |
+| `leaid` | 7 characters | District | `0100001` | State FIPS (2) + State-assigned (5) |
+| `fips` | 2 digits | State | `01` | Federal Information Processing Standard |
+
+> **ID Type Warning:** `ncessch` and `leaid` may be String or Int64 depending on the dataset.
+> In the Schools Directory, `ncessch` is String (preserving leading zeros); in enrollment data,
+> `ncessch` is Int64. In the Districts Directory, `leaid` is Int64; in Finance data, `leaid` is String.
+> Always check the actual dtype and cast as needed when joining across datasets.
 
 ### Missing Data Codes
 
+The Portal uses both `null` and negative integer codes to represent missing/special values. The specific pattern varies by dataset:
+
 | Code | Meaning | When Used |
 |------|---------|-----------|
-| `-1` | Missing | Data not reported by state |
+| `null` | Not available | Common in Directory fields that don't apply to all years |
+| `-1` | Missing/not reported | Data not reported by state |
 | `-2` | Not applicable | Item doesn't apply to this entity |
 | `-3` | Suppressed | Data suppressed for privacy |
 | `-9` | Not reported | State did not report this item |
 
-### School Types
+> **Check actual data.** Some datasets use `null` where others use `-1` for effectively the same condition. Always check the observed values in the data before applying a blanket missing-value filter.
+
+### School Types (`school_type`)
 
 | Code | Type | Description |
 |------|------|-------------|
@@ -143,7 +155,7 @@ Building a time series?
 | 4 | Alternative | Non-traditional programs |
 | 5 | Reportable Program | Program within another school (2007-08+) |
 
-### LEA Types
+### LEA Types (`agency_type`)
 
 | Code | Type | Description |
 |------|------|-------------|
@@ -155,6 +167,7 @@ Building a time series?
 | 6 | Federal-operated | Federal schools (BIE, DoDEA) |
 | 7 | Charter Agency | All schools are charters (2007-08+) |
 | 8 | Other | Doesn't fit other categories (2007-08+) |
+| 9 | Specialized Agency | Specialized public agency (observed in data) |
 
 ### Grade -1 Encoding
 
@@ -178,15 +191,15 @@ total = df.filter(pl.col("grade") == 99)  # All grades
 
 > **Variable Name Mapping:** The Portal column `urban_centric_locale` contains locale codes. Some documentation may refer to this as simply `locale`. Use `urban_centric_locale` when filtering or selecting columns in Portal data.
 
-### Portal Endpoint Mapping
+### Dataset-to-Component Mapping
 
-| Portal Endpoint | CCD Component |
-|-----------------|---------------|
-| `/schools/ccd/directory/` | School Directory |
-| `/schools/ccd/enrollment/` | School Membership |
-| `/school-districts/ccd/directory/` | LEA Directory |
-| `/school-districts/ccd/enrollment/` | LEA Membership |
-| `/school-districts/ccd/finance/` | F-33 District Finance |
+| Mirror Dataset | CCD Component | Path |
+|----------------|---------------|------|
+| Schools CCD Directory | School Directory | `ccd/schools_ccd_directory` |
+| Schools CCD Enrollment | School Membership | `ccd/schools_ccd_enrollment_{year}` |
+| Districts LEA Directory | LEA Directory | `ccd/school-districts_lea_directory` |
+| Districts CCD Enrollment | LEA Membership | `ccd/schools_ccd_lea_enrollment_{year}` |
+| Districts CCD Finance | F-33 District Finance | `ccd/districts_ccd_finance` |
 
 ### Data Collection Flow
 
@@ -206,19 +219,30 @@ Schools → Local Education Agencies (LEAs)
 
 ## Data Access
 
-Datasets for CCD are available via the mirror system. See `datasets-reference.md` for canonical paths and `fetch-patterns.md` for fetch code patterns.
+Datasets for CCD are available via the mirror system. See `datasets-reference.md` for canonical paths, `mirrors.yaml` for mirror configuration, and `fetch-patterns.md` for fetch code patterns.
 
-**Key datasets:**
+**Key datasets (5 datasets; see `datasets-reference.md` for the authoritative list):**
 
-| Dataset | Path | Type |
-|---------|------|------|
-| School Directory | `ccd/schools_ccd_directory` | Single |
-| School Enrollment | `ccd/schools_ccd_enrollment_{year}` | Yearly |
-| District Directory | `ccd/school-districts_lea_directory` | Single |
-| District Enrollment | `ccd/schools_ccd_lea_enrollment_{year}` | Yearly |
-| District Finance | `ccd/districts_ccd_finance` | Single |
+| Dataset | Type | Path | Codebook |
+|---------|------|------|----------|
+| School Directory | Single | `ccd/schools_ccd_directory` | `ccd/codebook_schools_ccd_directory` |
+| School Enrollment | Yearly (1986-2023) | `ccd/schools_ccd_enrollment_{year}` | `ccd/codebook_schools_ccd_enrollment` |
+| District Directory | Single | `ccd/school-districts_lea_directory` | `ccd/codebook_districts_ccd_directory` |
+| District Enrollment | Yearly (1986-2023) | `ccd/schools_ccd_lea_enrollment_{year}` | `ccd/codebook_districts_ccd_enrollment` |
+| District Finance | Single | `ccd/districts_ccd_finance` | `ccd/codebook_districts_ccd_finance` |
 
-Codebooks: See `datasets-reference.md` codebook column. Use `get_codebook_url()` from `fetch-patterns.md`. No codebook exists for CCD Finance.
+Codebooks are `.xls` files co-located with data in all mirrors. Use `get_codebook_url()` from `fetch-patterns.md` to construct download URLs:
+
+```python
+url = get_codebook_url("ccd/codebook_schools_ccd_directory")
+```
+
+> **Truth Hierarchy:** When interpreting variable values, apply this priority:
+> 1. **Actual data file** (what you observe in the parquet/CSV) -- this IS the truth
+> 2. **Live codebook** (.xls in mirror) -- authoritative documentation, may lag
+> 3. **This skill documentation** -- convenient summary, may drift from codebook
+>
+> If this documentation contradicts the codebook, trust the codebook. If the codebook contradicts observed data, trust the data and investigate.
 
 ### Filtering
 
@@ -242,8 +266,10 @@ df = df.filter(pl.col("grade").is_between(0, 12))
 
 ### Finance Data Notes
 
-- **Finance data lag:** As of January 2026, latest available year is **2020** (not 2021)
+- **Finance data lag:** The latest available year in the mirror is **2020** (empirically verified). Finance data typically lags 2+ years behind current school year.
+- Finance dataset has 163 columns -- by far the most complex CCD dataset
 - Some finance columns use `_total` suffix (e.g., `exp_current_instruction_total`)
+- `leaid` is String type in Finance data (unlike the Districts Directory where it is Int64)
 
 ## Common Pitfalls
 
@@ -257,6 +283,8 @@ df = df.filter(pl.col("grade").is_between(0, 12))
 | Charter school counts | Early years incomplete | Verify against state records pre-2010 |
 | Dropout rate comparison | State definitions vary | Within-state comparisons only |
 | Using NCES string codes | Portal uses integers | See variable-definitions.md for mappings |
+| Assuming `charter=1/2` | Portal uses `0=No, 1=Yes` | Empirically verified; not NCES `1=Yes, 2=No` |
+| ID type across datasets | `leaid`/`ncessch` may be String or Int64 | Always check dtype before joining |
 
 ## Coverage Notes
 
@@ -286,8 +314,8 @@ df = df.filter(pl.col("grade").is_between(0, 12))
 | `education-data-source-ipeds` | Separate system for postsecondary | Need college/university data |
 | PSS | Private school equivalent | Need private school data |
 | `education-data-source-nhgis` | Census geography crosswalks | Need school-Census links |
-| `education-data-explorer` | Parent discovery skill | Finding available endpoints |
-| `education-data-query` | Data fetching | Downloading parquet/CSV files |
+| `education-data-explorer` | Parent discovery skill | Finding available datasets |
+| `education-data-query` | Data fetching (mirror system) | Downloading parquet/CSV files via `fetch_from_mirrors()` |
 
 ## Topic Index
 

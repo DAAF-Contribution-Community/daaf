@@ -15,7 +15,15 @@ Complete reference for PSEO variables, codes, and status flags.
 > - All variable names are **lowercase** in Portal data
 > - `opeid` is an **integer**, not an 8-digit string
 > - `cipcode` is a **2-digit integer** (e.g., `11` for Computer Science)
+> - `industry` is a **String**, not an integer (e.g., `"54"`, `"31-33"`)
 > - Missing data codes: `-1` (missing), `-2` (not applicable), `-3` (suppressed)
+>
+> **Truth Hierarchy:** When interpreting variable values, apply this priority:
+> 1. **Actual data file** (what you observe in the parquet) -- this IS the truth
+> 2. **Live codebook** (`.xls` in mirror, via `get_codebook_url()` from `fetch-patterns.md`) -- authoritative documentation, may lag
+> 3. **This skill documentation** -- convenient summary, may drift from codebook
+>
+> If this documentation contradicts the codebook or observed data, trust the higher-priority source and flag the discrepancy.
 
 ## Contents
 
@@ -52,7 +60,7 @@ Complete reference for PSEO variables, codes, and status flags.
 
 | Variable | Description | Type |
 |----------|-------------|------|
-| `pseo_cohort` | Graduation cohort | String (e.g., "2016-18") |
+| `pseo_cohort` | Graduation cohort | String (e.g., `"2016-2020"`, `"2019-2021"`) |
 | `year` | Academic year (fall semester) | Integer |
 | `years_after_grad` | Years post-graduation | Integer (1, 5, or 10) |
 
@@ -90,7 +98,7 @@ Complete reference for PSEO variables, codes, and status flags.
 
 | Portal Variable | Description |
 |-----------------|-------------|
-| `industry` | 2-digit NAICS sector (integer, or null) |
+| `industry` | 2-digit NAICS sector (String, e.g., `"54"`, `"31-33"`, `"44-45"`) |
 
 ### Geography of Employment
 
@@ -292,14 +300,14 @@ Use to filter for specific aggregation patterns in bulk data.
 
 ### Default Values
 
-When parameters are not specified:
+In Portal data, there are no implicit defaults -- you must filter explicitly. For reference, the Census API defaults are:
 
-| Parameter | Default Value |
-|-----------|---------------|
-| `DEGREE_LEVEL` | `05` (Bachelor's) |
-| `CIP_LEVEL` | `2` |
-| `GRAD_COHORT_YEARS` | `3` (if Bachelor's) or `5` |
-| `INST_LEVEL` | `I` (Individual institution) |
+| Census API Parameter | Default Value | Portal Equivalent |
+|---------------------|---------------|-------------------|
+| `DEGREE_LEVEL` | `05` (Bachelor's) | `degree_level == 5` |
+| `CIP_LEVEL` | `2` | Portal uses 2-digit CIP only |
+| `GRAD_COHORT_YEARS` | `3` (if Bachelor's) or `5` | Implicit in `pseo_cohort` string |
+| `INST_LEVEL` | `I` (Individual institution) | Not applicable in Portal |
 
 ## Schema Reference Files
 

@@ -18,23 +18,25 @@ Detailed definitions for key EADA variables available through the Education Data
 >
 > See the Athletic Classification Codes section below for complete mappings.
 
+## Codebook Authority
+
+> **This document summarizes Portal variable definitions for convenience.** When in doubt,
+> consult the authoritative codebook via `get_codebook_url("eada/codebook_colleges_eada_inst-characteristics")`
+> from `fetch-patterns.md`. If this document contradicts the codebook or observed data,
+> trust the codebook or data (see Truth Hierarchy in `fetch-patterns.md`).
+
 ## Institution Identification
 
 | Variable | Type | Description |
 |----------|------|-------------|
 | `unitid` | Integer | IPEDS institution identifier (6 digits) |
+| `opeid` | String | OPE ID (null for early years, e.g., 2002) |
 | `year` | Integer | Reporting year (fiscal year ending) |
-| `institution_name` | String | Name of institution |
+| `inst_name` | String | Name of institution |
 | `fips` | Integer | State FIPS code (see FIPS codes below) |
-| `sector` | Integer | Institutional sector (see codes below) |
 
-### Sector Codes
-
-| Code | Description |
-|------|-------------|
-| 1 | Public, 4-year or above |
-| 2 | Private nonprofit, 4-year or above |
-| 3 | Private for-profit, 4-year or above |
+> **Note:** There is no `sector` column in EADA Portal data. To filter by institutional
+> sector, join with IPEDS directory data on `unitid`.
 
 ### State FIPS Codes (Portal Integer Encoding)
 
@@ -84,6 +86,7 @@ Detailed definitions for key EADA variables available through the Education Data
 | 8 | Other (see `ath_classification_other` field) |
 | 9 | NAIA Division I |
 | 10 | NAIA Division II |
+| 11 | NAIA Division III |
 | 12 | NJCAA Division I |
 | 13 | NJCAA Division II |
 | 14 | NJCAA Division III |
@@ -105,10 +108,23 @@ Detailed definitions for key EADA variables available through the Education Data
 
 | Variable | Type | Description |
 |----------|------|-------------|
-| `partic_men` | Integer | Unduplicated count of male participants across all sports |
-| `partic_women` | Integer | Unduplicated count of female participants across all sports |
-| `partic_coed_men` | Integer | Male participants on coed teams |
-| `partic_coed_women` | Integer | Female participants on coed teams |
+| `undup_athpartic_men` | Integer | Unduplicated count of male participants across all sports |
+| `undup_athpartic_women` | Integer | Unduplicated count of female participants across all sports |
+| `undup_athpartic_total` | Integer | Total unduplicated participants (often `-1` coded; may need to sum men + women) |
+| `athpartic_men` | Integer | Duplicated (sport-level sum) male participants |
+| `athpartic_women` | Integer | Duplicated (sport-level sum) female participants |
+| `athpartic_coed_men` | Integer | Male participants on coed teams |
+| `athpartic_coed_women` | Integer | Female participants on coed teams |
+| `sum_athpartic_men` | Integer | Sum of sport-level male participants |
+| `sum_athpartic_women` | Integer | Sum of sport-level female participants |
+
+### Enrollment Context
+
+| Variable | Type | Description |
+|----------|------|-------------|
+| `enrollment_men` | Integer | Male undergraduate enrollment |
+| `enrollment_women` | Integer | Female undergraduate enrollment |
+| `enrollment_total` | Integer | Total undergraduate enrollment |
 
 ### Definition: "Participant"
 
@@ -136,24 +152,58 @@ A participant is a student who:
 
 ### Head Coach Counts
 
+The Portal naming convention for coach counts is `{team}_{status}{role}_{gender}`:
+- `{team}`: `men_`, `women_`, `coed_`
+- `{status}`: `ft` (full-time), `pt` (part-time)
+- `{role}`: `hdcoach` (head coach)
+- `{gender}`: `_male`, `_fem`
+
+Additional categories exist for university employment status:
+- `{team}_hdcoach_ftuniemp_{gender}`: Full-time university employee, head coaching assignment
+- `{team}_hdcoach_ptuniemp_{gender}`: Part-time university employee, head coaching assignment
+
 | Variable | Type | Description |
 |----------|------|-------------|
-| `hdcoach_men_male_ft` | Integer | Full-time male head coaches of men's teams |
-| `hdcoach_men_male_pt` | Integer | Part-time male head coaches of men's teams |
-| `hdcoach_men_female_ft` | Integer | Full-time female head coaches of men's teams |
-| `hdcoach_men_female_pt` | Integer | Part-time female head coaches of men's teams |
-| `hdcoach_women_male_ft` | Integer | Full-time male head coaches of women's teams |
-| `hdcoach_women_male_pt` | Integer | Part-time male head coaches of women's teams |
-| `hdcoach_women_female_ft` | Integer | Full-time female head coaches of women's teams |
-| `hdcoach_women_female_pt` | Integer | Part-time female head coaches of women's teams |
-| `hdcoach_coed_male_ft` | Integer | Full-time male head coaches of coed teams |
-| `hdcoach_coed_male_pt` | Integer | Part-time male head coaches of coed teams |
-| `hdcoach_coed_female_ft` | Integer | Full-time female head coaches of coed teams |
-| `hdcoach_coed_female_pt` | Integer | Part-time female head coaches of coed teams |
+| `men_fthdcoach_male` | Integer | Full-time male head coaches of men's teams |
+| `men_pthdcoach_male` | Integer | Part-time male head coaches of men's teams |
+| `men_fthdcoach_fem` | Integer | Full-time female head coaches of men's teams |
+| `men_pthdcoach_fem` | Integer | Part-time female head coaches of men's teams |
+| `men_hdcoach_ftuniemp_male` | Integer | FT university employee male head coaches, men's teams |
+| `men_hdcoach_ptuniemp_male` | Integer | PT university employee male head coaches, men's teams |
+| `men_hdcoach_ftuniemp_fem` | Integer | FT university employee female head coaches, men's teams |
+| `men_hdcoach_ptuniemp_fem` | Integer | PT university employee female head coaches, men's teams |
+| `men_total_hdcoach` | Integer | Total head coaches of men's teams |
+| `women_fthdcoach_male` | Integer | Full-time male head coaches of women's teams |
+| `women_pthdcoach_male` | Integer | Part-time male head coaches of women's teams |
+| `women_fthdcoach_fem` | Integer | Full-time female head coaches of women's teams |
+| `women_pthdcoach_fem` | Integer | Part-time female head coaches of women's teams |
+| `women_hdcoach_ftuniemp_male` | Integer | FT university employee male head coaches, women's teams |
+| `women_hdcoach_ptuniemp_male` | Integer | PT university employee male head coaches, women's teams |
+| `women_hdcoach_ftuniemp_fem` | Integer | FT university employee female head coaches, women's teams |
+| `women_hdcoach_ptuniemp_fem` | Integer | PT university employee female head coaches, women's teams |
+| `women_total_hdcoach` | Integer | Total head coaches of women's teams |
+| `coed_fthdcoach_male` | Integer | Full-time male head coaches of coed teams |
+| `coed_pthdcoach_male` | Integer | Part-time male head coaches of coed teams |
+| `coed_fthdcoach_fem` | Integer | Full-time female head coaches of coed teams |
+| `coed_pthdcoach_fem` | Integer | Part-time female head coaches of coed teams |
+| `coed_total_hdcoach` | Integer | Total head coaches of coed teams |
+| `num_hdcoach_men` | Integer | Number of head coaches, men's teams |
+| `num_hdcoach_women` | Integer | Number of head coaches, women's teams |
+| `num_hdcoach_coed` | Integer | Number of head coaches, coed teams |
+
+**Summary (aggregate) variables:**
+
+| Variable | Type | Description |
+|----------|------|-------------|
+| `sum_fthdcoach_male` | Integer | Sum of full-time male head coaches across all teams |
+| `sum_pthdcoach_male` | Integer | Sum of part-time male head coaches across all teams |
+| `sum_fthdcoach_fem` | Integer | Sum of full-time female head coaches across all teams |
+| `sum_pthdcoach_fem` | Integer | Sum of part-time female head coaches across all teams |
+| `sum_total_hdcoach` | Integer | Sum of all head coaches across all teams |
 
 ### Assistant Coach Counts
 
-Same structure as head coaches with `asstcoach_` prefix.
+Same structure as head coaches with `ascoach` replacing `hdcoach` in variable names (e.g., `men_ftascoach_male`, `women_ftascoach_fem`, `sum_total_ascoach`).
 
 ### Definition: Full-Time vs. Part-Time
 
@@ -170,12 +220,29 @@ Same structure as head coaches with `asstcoach_` prefix.
 
 | Variable | Type | Description |
 |----------|------|-------------|
-| `salary_men_coach` | Decimal | Average annual salary of head coaches of men's teams |
-| `salary_women_coach` | Decimal | Average annual salary of head coaches of women's teams |
-| `salary_coed_coach` | Decimal | Average annual salary of head coaches of coed teams |
-| `asstcoach_salary_men` | Decimal | Average annual salary of assistant coaches of men's teams |
-| `asstcoach_salary_women` | Decimal | Average annual salary of assistant coaches of women's teams |
-| `asstcoach_salary_coed` | Decimal | Average annual salary of assistant coaches of coed teams |
+| `hdcoach_salary_men` | Integer | Average annual salary of head coaches of men's teams |
+| `hdcoach_salary_women` | Integer | Average annual salary of head coaches of women's teams |
+| `hdcoach_salary_coed` | Integer | Average annual salary of head coaches of coed teams |
+| `hdcoach_sal_fte_men` | Integer | Head coach salary per FTE, men's teams |
+| `hdcoach_sal_fte_women` | Integer | Head coach salary per FTE, women's teams |
+| `hdcoach_sal_fte_coed` | Integer | Head coach salary per FTE, coed teams |
+| `ascoach_salary_men` | Integer | Average annual salary of assistant coaches of men's teams |
+| `ascoach_salary_women` | Integer | Average annual salary of assistant coaches of women's teams |
+| `ascoach_salary_coed` | Integer | Average annual salary of assistant coaches of coed teams |
+| `ascoach_sal_fte_men` | Integer | Assistant coach salary per FTE, men's teams |
+| `ascoach_sal_fte_women` | Integer | Assistant coach salary per FTE, women's teams |
+| `ascoach_sal_fte_coed` | Integer | Assistant coach salary per FTE, coed teams |
+
+### FTE Coach Counts
+
+| Variable | Type | Description |
+|----------|------|-------------|
+| `fte_hdcoach_men` | Float | FTE head coaches, men's teams |
+| `fte_hdcoach_women` | Float | FTE head coaches, women's teams |
+| `fte_hdcoach_coed` | Float | FTE head coaches, coed teams |
+| `fte_ascoach_men` | Float | FTE assistant coaches, men's teams |
+| `fte_ascoach_women` | Float | FTE assistant coaches, women's teams |
+| `fte_ascoach_coed` | Float | FTE assistant coaches, coed teams |
 
 ### Definition: Salary
 
@@ -202,13 +269,39 @@ Average Salary = Total Salaries Paid / Number of Paid Coaching Positions
 
 ## Expense Variables
 
-### Operating (Game-Day) Expenses
+### Total Expenses
 
 | Variable | Type | Description |
 |----------|------|-------------|
-| `exp_men` | Decimal | Operating expenses attributable to men's teams |
-| `exp_women` | Decimal | Operating expenses attributable to women's teams |
-| `exp_coed` | Decimal | Operating expenses attributable to coed teams |
+| `ath_exp_men` | Integer | Total expenses attributable to men's teams |
+| `ath_exp_women` | Integer | Total expenses attributable to women's teams |
+| `ath_exp_coed_men` | Float | Total expenses for coed teams, men's portion |
+| `ath_exp_coed_women` | Float | Total expenses for coed teams, women's portion |
+| `ath_exp_menall` | Float | Total expenses for men (including coed portion) |
+| `ath_exp_womenall` | Float | Total expenses for women (including coed portion) |
+| `ath_total_exp_menwomen` | Integer | Combined total expenses, men's + women's teams |
+| `ath_total_exp_coed` | Integer | Total expenses, coed teams |
+| `ath_total_exp_all` | Integer | Total expenses, all teams |
+| `ath_tot_exp_all_notalloc` | Integer | Total expenses, not allocated by gender |
+| `ath_grnd_total_exp` | Integer | Grand total of all athletic expenses |
+
+### Operating Expenses
+
+| Variable | Type | Description |
+|----------|------|-------------|
+| `ath_opexp_menwomen` | Integer | Operating expenses, men's + women's teams |
+| `ath_opexp_coed` | Integer | Operating expenses, coed teams |
+| `ath_total_opexp_allteams` | Integer | Total operating expenses, all teams |
+| `ath_opexp_perpart_men` | Float | Operating expense per participant, men's teams |
+| `ath_opexp_perpart_women` | Float | Operating expense per participant, women's teams |
+| `ath_opexp_perpart_menall` | Float | Operating expense per participant, men (incl. coed) |
+| `ath_opexp_perpart_womenall` | Float | Operating expense per participant, women (incl. coed) |
+| `ath_opexp_perpart_coed_men` | Float | Operating expense per participant, coed teams (men) |
+| `ath_opexp_perpart_coed_women` | Float | Operating expense per participant, coed teams (women) |
+| `ath_opexp_perteam_men` | Integer | Operating expense per team, men's teams |
+| `ath_opexp_perteam_women` | Integer | Operating expense per team, women's teams |
+| `ath_opexp_perteam_menall` | Float | Operating expense per team, men (incl. coed) |
+| `ath_opexp_perteam_womenall` | Float | Operating expense per team, women (incl. coed) |
 
 ### Definition: Operating Expenses
 
@@ -228,9 +321,10 @@ Average Salary = Total Salaries Paid / Number of Paid Coaching Positions
 
 | Variable | Type | Description |
 |----------|------|-------------|
-| `recruiting_exp_men` | Decimal | Recruiting expenses for men's teams |
-| `recruiting_exp_women` | Decimal | Recruiting expenses for women's teams |
-| `recruiting_exp_coed` | Decimal | Recruiting expenses for coed teams |
+| `recruitexp_men` | Integer | Recruiting expenses for men's teams |
+| `recruitexp_women` | Integer | Recruiting expenses for women's teams |
+| `recruitexp_coed` | Integer | Recruiting expenses for coed teams |
+| `recruitexp_total` | Integer | Total recruiting expenses |
 
 ### Definition: Recruiting Expenses
 
@@ -247,9 +341,17 @@ Average Salary = Total Salaries Paid / Number of Paid Coaching Positions
 
 | Variable | Type | Description |
 |----------|------|-------------|
-| `rev_men` | Decimal | Revenues attributable to men's teams |
-| `rev_women` | Decimal | Revenues attributable to women's teams |
-| `rev_coed` | Decimal | Revenues attributable to coed teams |
+| `ath_rev_men` | Integer | Revenues attributable to men's teams |
+| `ath_rev_women` | Integer | Revenues attributable to women's teams |
+| `ath_rev_coed_men` | Float | Revenues for coed teams, men's portion |
+| `ath_rev_coed_women` | Float | Revenues for coed teams, women's portion |
+| `ath_rev_menall` | Float | Total revenues for men (including coed portion) |
+| `ath_rev_womenall` | Float | Total revenues for women (including coed portion) |
+| `ath_total_rev_menwomen` | Integer | Combined total revenues, men's + women's teams |
+| `ath_total_rev_coed` | Integer | Total revenues, coed teams |
+| `ath_total_rev_all` | Integer | Total revenues, all teams |
+| `ath_tot_rev_all_notalloc` | Integer | Total revenues, not allocated by gender |
+| `ath_grnd_total_rev` | Integer | Grand total of all athletic revenues |
 
 ### Definition: Revenue
 
@@ -277,10 +379,13 @@ Many revenue sources are shared (conference distributions, multimedia rights) an
 
 | Variable | Type | Description |
 |----------|------|-------------|
-| `aid_men` | Decimal | Total athletic aid to male students |
-| `aid_women` | Decimal | Total athletic aid to female students |
-| `aid_num_men` | Integer | Number of male students receiving athletic aid |
-| `aid_num_women` | Integer | Number of female students receiving athletic aid |
+| `ath_stuaid_men` | Integer | Total athletic aid to male students |
+| `ath_stuaid_women` | Integer | Total athletic aid to female students |
+| `ath_stuaid_coed` | Integer | Athletic aid for coed teams |
+| `ath_stuaid_total` | Integer | Total athletic aid |
+| `ath_stuaid_men_ratio` | Float | Ratio of male aid to total |
+| `ath_stuaid_women_ratio` | Float | Ratio of female aid to total |
+| `ath_stuaid_coed_ratio` | Float | Ratio of coed aid to total |
 
 ### Definition: Athletic Aid
 
@@ -309,22 +414,30 @@ Full Scholarship Equivalency = Total Aid Dollars / Cost of Full Scholarship
 ### Common Calculations
 
 ```python
-# Total participation
-total_partic = partic_men + partic_women
+import polars as pl
+
+# Total unduplicated participation
+# Note: undup_athpartic_total is often coded -1; calculate manually
+total_partic = pl.col("undup_athpartic_men") + pl.col("undup_athpartic_women")
 
 # Female participation share
-female_share = partic_women / total_partic
+female_share = pl.col("undup_athpartic_women") / total_partic
 
-# Total expenses
-total_exp = exp_men + exp_women + exp_coed
-
-# Per-athlete expense
-exp_per_male = exp_men / partic_men
-exp_per_female = exp_women / partic_women
+# Per-athlete operating expense (pre-calculated in data)
+# Use ath_opexp_perpart_men, ath_opexp_perpart_women directly
 
 # Aid proportionality
-aid_share_female = aid_women / (aid_men + aid_women)
+aid_share_female = pl.col("ath_stuaid_women") / (
+    pl.col("ath_stuaid_men") + pl.col("ath_stuaid_women")
+)
+# Note: ath_stuaid_women_ratio is pre-calculated in the data
 ```
+
+### Additional Miscellaneous Variables
+
+| Variable | Type | Description |
+|----------|------|-------------|
+| `num_sports` | Integer | Number of sports offered (null for some years) |
 
 ## Missing Value Interpretation (Portal Integer Encoding)
 
@@ -344,15 +457,15 @@ import polars as pl
 # Identify coded missing values
 missing_codes = [-1, -2, -3]
 
-# Filter to valid data only
-df_valid = df.filter(~pl.col("variable").is_in(missing_codes))
+# Filter to valid data only for a specific column
+df_valid = df.filter(~pl.col("undup_athpartic_women").is_in(missing_codes))
 
 # Or convert coded values to null for calculations
 df_clean = df.with_columns(
-    pl.when(pl.col("variable").is_in(missing_codes))
+    pl.when(pl.col("ath_stuaid_men").is_in(missing_codes))
     .then(None)
-    .otherwise(pl.col("variable"))
-    .alias("variable")
+    .otherwise(pl.col("ath_stuaid_men"))
+    .alias("ath_stuaid_men_clean")
 )
 ```
 
@@ -374,8 +487,10 @@ Use `unitid` to join with IPEDS data for:
 - Geographic details
 
 ```python
-# Example join
-eada_df.merge(ipeds_df, on=['unitid', 'year'])
+import polars as pl
+
+# Example join with IPEDS
+eada_df.join(ipeds_df, on=["unitid", "year"], how="left")
 ```
 
 ### Year Alignment

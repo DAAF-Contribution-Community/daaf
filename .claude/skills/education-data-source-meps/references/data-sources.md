@@ -180,6 +180,8 @@ ISP Data ────────┴──── Matched to schools via state/sc
 | MEPS 1.0 | 2006-2019 | One-time release |
 | MEPS 2.0 | Extended range | December 2025 |
 
+> **Portal Status (Feb 2026):** MEPS 2.0 has not yet been integrated into the Education Data Portal mirrors. Portal data still reflects MEPS 1.0 (2009-2022).
+
 ### Known Data Gaps
 
 1. **Private schools**: Not included in CCD or MEPS
@@ -191,26 +193,24 @@ ISP Data ────────┴──── Matched to schools via state/sc
 
 ### CCD Data
 
-Via Education Data Portal:
-```
-GET /api/v1/schools/ccd/directory/{year}/
-GET /api/v1/schools/ccd/enrollment/{year}/
-GET /api/v1/school-districts/ccd/directory/{year}/
-```
+Available via the mirror system. See `datasets-reference.md` for canonical paths and `fetch-patterns.md` for fetch code patterns.
+
+Key CCD datasets:
+- School Directory: `ccd/schools_ccd_directory`
+- School Enrollment: `ccd/schools_ccd_enrollment_{year}` (yearly)
+- District Directory: `ccd/school-districts_lea_directory`
 
 ### SAIPE Data
 
-Via Education Data Portal:
-```
-GET /api/v1/school-districts/saipe/{year}/
-```
+Available via the mirror system:
+- District Poverty: `saipe/districts_saipe`
 
-Via Census Bureau:
+Also available directly from the Census Bureau:
 - https://www.census.gov/programs-surveys/saipe.html
 
 ### ISP Data
 
-- Not directly available via Education Data Portal
+- Not directly available via the Education Data Portal mirrors
 - Incorporated into MEPS 2.0 estimates
 - Raw data available through USDA Food and Nutrition Service
 

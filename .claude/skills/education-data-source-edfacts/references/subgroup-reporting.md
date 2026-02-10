@@ -48,19 +48,22 @@ Under ESSA, states must report assessment and graduation data for these subgroup
 ### Federal Race/Ethnicity Categories (Portal Integer Encoding)
 
 > **Portal Encoding Warning:** The Urban Institute Education Data Portal converts NCES string codes to integers.
+>
+> **Empirically verified** from 2018 assessment data. Only codes 1-5, 7, and 99 are observed in the `race` column. Code 6 (NH/PI) is NOT present in EDFacts data.
 
 EDFacts uses the federal OMB race/ethnicity categories:
 
 | NCES Code | Portal Integer | Category | Definition |
 |-----------|----------------|----------|------------|
-| HI | `3` | Hispanic/Latino | Hispanic or Latino of any race |
-| AM | `5` | American Indian/Alaska Native | Non-Hispanic AI/AN |
-| AS | `4` | Asian | Non-Hispanic Asian |
-| HP | `6` | Native Hawaiian/Pacific Islander | Non-Hispanic NH/PI |
-| BL | `2` | Black | Non-Hispanic Black or African American |
 | WH | `1` | White | Non-Hispanic White |
+| BL | `2` | Black | Non-Hispanic Black or African American |
+| HI | `3` | Hispanic/Latino | Hispanic or Latino of any race |
+| AS | `4` | Asian | Non-Hispanic Asian |
+| AM | `5` | American Indian/Alaska Native | Non-Hispanic AI/AN |
 | MR | `7` | Two or more races | Non-Hispanic, multiple races |
 | — | `99` | Total | All races combined |
+
+> **Note:** Code `6` (Native Hawaiian/Pacific Islander) does not appear in the data. NH/PI students may be aggregated into another category or reported at levels below the suppression threshold.
 
 ### Reporting Rules
 
@@ -75,15 +78,16 @@ EDFacts uses the federal OMB race/ethnicity categories:
 
 Small racial groups experience high suppression:
 
-| Group | Typical Suppression |
-|-------|---------------------|
-| White | Low (larger population) |
-| Hispanic | Low to moderate |
-| Black | Moderate |
-| Asian | Moderate to high |
-| American Indian | High |
-| Pacific Islander | Very high |
-| Two or more | High |
+| Group | Race Code | Typical Suppression |
+|-------|-----------|---------------------|
+| White | 1 | Low (larger population) |
+| Hispanic | 3 | Low to moderate |
+| Black | 2 | Moderate |
+| Asian | 4 | Moderate to high |
+| American Indian | 5 | High |
+| Two or more | 7 | High |
+
+> **Note:** Code 6 (Pacific Islander) is not observed in EDFacts data and is excluded from this table.
 
 ## Special Populations
 
@@ -356,6 +360,8 @@ def aggregate_for_subgroups(df, geo_level, subgroup_col, value_cols):
 
 ## Gap Analysis
 
+> **Note on code examples below:** These gap analysis examples use a generic `"subgroup"` column for illustration. EDFacts data does NOT have a single "subgroup" column -- it uses separate filter columns (`race`, `lep`, `disability`, `econ_disadvantaged`, etc.) with integer codes. Adapt the filtering logic to the appropriate column and integer value for your analysis. See the comprehensive graduation analysis example in `./graduation-rates.md` for a concrete pattern.
+
 ### Calculating Achievement Gaps
 
 ```python
@@ -521,20 +527,22 @@ def comprehensive_subgroup_report(df, year, state_fips, value_col):
 
 > **Portal Encoding Warning:** The Urban Institute Education Data Portal uses integer codes, not NCES string codes.
 
-| Subgroup | NCES Code | Portal Integer | Column | Common Issues |
-|----------|-----------|----------------|--------|---------------|
-| All | ALL | `99` | race/sex/lep | Baseline (Total row) |
-| Econ Dis | ECODIS | `1` | econ_disadvantaged | CEP inflation |
-| CWD | CWD | `1` | disability | High suppression |
-| EL | LEP | `1` | lep | Reclassification |
-| Homeless | HOM | `1` | homeless | Underidentification |
-| Foster | FCS | `1` | foster_care | Small population |
-| Migrant | MIG | `1` | migrant | Seasonal variation |
-| Military | MIL | `1` | military_connected | Geographic concentration |
-| White | WH | `1` | race | Reference group |
-| Black | BL | `2` | race | Achievement gaps |
-| Hispanic | HI | `3` | race | EL overlap |
-| Asian | AS | `4` | race | Heterogeneity |
-| Am Indian | AM | `5` | race | High suppression |
-| Pacific Islander | HP | `6` | race | Very high suppression |
-| Two+ Races | MR | `7` | race | Growing population |
+| Subgroup | NCES Code | Portal Integer | Column | Available In | Common Issues |
+|----------|-----------|----------------|--------|--------------|---------------|
+| All | ALL | `99` | race/sex/lep/etc. | Both | Baseline (Total row) |
+| Econ Dis | ECODIS | `1` | econ_disadvantaged | Both | CEP inflation |
+| CWD | CWD | `1` | disability | Both | High suppression |
+| EL | LEP | `1` | lep | Both | Reclassification |
+| Homeless | HOM | `1` | homeless | Both | Underidentification |
+| Foster | FCS | `1` | foster_care | Both | Small population |
+| Migrant | MIG | `1` | migrant | Assessments only | Seasonal variation |
+| Military | MIL | `1` | military_connected | Assessments only | Geographic concentration |
+| Sex | M/F | `1`/`2` | sex | Assessments only | — |
+| White | WH | `1` | race | Both | Reference group |
+| Black | BL | `2` | race | Both | Achievement gaps |
+| Hispanic | HI | `3` | race | Both | EL overlap |
+| Asian | AS | `4` | race | Both | Heterogeneity |
+| Am Indian | AM | `5` | race | Both | High suppression |
+| Two+ Races | MR | `7` | race | Both | Growing population |
+
+> **Note:** Pacific Islander (code 6) is not observed in EDFacts data. "Both" means assessments and grad rates. Grad rate datasets do NOT have `sex`, `migrant`, or `military_connected` columns.

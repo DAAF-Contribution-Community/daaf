@@ -164,7 +164,10 @@ Interpretation:
 IPEDS reports total enrollment; Scorecard reports Title IV recipients:
 
 ```python
-# Estimate coverage rate
+import polars as pl
+
+# Estimate coverage rate using count_working from earnings data
+# vs IPEDS enrollment
 coverage_estimate = scorecard_count / ipeds_total_enrollment
 
 # Flag institutions with low coverage
@@ -174,13 +177,15 @@ if coverage_estimate < 0.5:
 
 ### Variables Indicating Coverage
 
-| Variable | Description |
-|----------|-------------|
-| `UGDS` | Undergraduate enrollment (IPEDS) |
-| `NUM4_PUB` | Number in 4-year public cohort |
-| `NUM4_PRIV` | Number in 4-year private cohort |
-| `PCTFLOAN` | Percent receiving federal loans |
-| `PCTPELL` | Percent receiving Pell grants |
+> **Portal note:** Many of these variables are from the original Scorecard bulk downloads. The Portal `student_body_nslds` dataset contains `count_total_FAFSA_applicants` which can be used as a proxy for coverage.
+
+| Variable | Description | Portal Availability |
+|----------|-------------|---------------------|
+| `count_total_FAFSA_applicants` | Total FAFSA applicants | In `student_body_nslds` dataset |
+| `count_family_income` | Count with family income data | In `student_body_nslds` dataset |
+| `UGDS` | Undergraduate enrollment | IPEDS directory (join on `unitid`) |
+| `PCTFLOAN` | Percent receiving federal loans | Not in Portal Scorecard datasets |
+| `PCTPELL` | Percent receiving Pell grants | Not in Portal Scorecard datasets |
 
 ### Red Flags for Coverage
 

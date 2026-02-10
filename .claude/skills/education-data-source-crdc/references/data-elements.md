@@ -33,20 +33,19 @@ Total student enrollment disaggregated by:
 
 ### Key Variables
 
-| Variable | Description |
-|----------|-------------|
-| `enrollment_total` | Total enrollment |
-| `enrollment_{race}` | Enrollment by race (e.g., `enrollment_black`) |
-| `enrollment_male` / `enrollment_female` | Enrollment by sex |
-| `enrollment_idea` | Students served under IDEA |
-| `enrollment_504_only` | Students with 504 plans only |
-| `enrollment_lep` | English learner students |
+| Portal Column | Description |
+|---------------|-------------|
+| `enrollment_crdc` | Enrollment count (varies by row's race/sex/disability/lep combination) |
+| `psenrollment_crdc` | Preschool enrollment count |
+
+> **Portal Data Structure:** Unlike OCR raw files which have separate columns per subgroup (e.g., `enrollment_black`, `enrollment_male`), the Portal uses a row-based structure. Each row represents a unique combination of school + race + sex + disability + lep. To get total enrollment for a school, filter to `race == 99, sex == 99, disability == 99, lep == 99`. To get Black enrollment, filter to `race == 2, sex == 99, disability == 99, lep == 99`.
 
 ### Analytical Notes
 
-- Enrollment serves as **denominator** for rate calculations
+- `enrollment_crdc` serves as **denominator** for rate calculations
 - Match enrollment year with outcome year carefully
 - Some variables use different enrollment bases (e.g., discipline uses school enrollment, AP uses high school enrollment)
+- The `psenrollment_crdc` column contains many `-2` (not applicable) values for non-preschool schools
 
 ### Cross-Tabulations Available
 
@@ -83,17 +82,20 @@ School discipline data is the most extensive CRDC category, covering multiple di
 
 ### Discipline Variables
 
-| Variable Pattern | Description |
-|-----------------|-------------|
-| `iss_{subgroup}` | In-school suspension by subgroup |
-| `oss_one_{subgroup}` | One out-of-school suspension |
-| `oss_more_{subgroup}` | More than one OSS |
-| `expulsions_with_ed_serv_{subgroup}` | Expulsion with educational services |
-| `expulsions_without_ed_serv_{subgroup}` | Expulsion without services |
-| `referral_law_enforcement_{subgroup}` | Referrals to law enforcement |
-| `arrest_{subgroup}` | School-related arrests |
+| Portal Column Name | Description |
+|-------------------|-------------|
+| `students_susp_in_sch` | In-school suspension count |
+| `students_susp_out_sch_single` | One out-of-school suspension |
+| `students_susp_out_sch_multiple` | More than one OSS |
+| `expulsions_with_ed_serv` | Expulsion with educational services |
+| `expulsions_no_ed_serv` | Expulsion without services |
+| `expulsions_zero_tolerance` | Zero-tolerance expulsions |
+| `students_referred_law_enforce` | Referrals to law enforcement |
+| `students_arrested` | School-related arrests |
+| `students_corporal_punish` | Corporal punishment |
+| `transfers_alt_sch_disc` | Transfers to alternative school for discipline |
 
-> **Portal Column Names:** The Portal uses `expulsions_with_ed_serv` and `expulsions_without_ed_serv` (not `expulsion_with_services`).
+> **Note:** The Portal uses a row-based structure where each row represents a combination of school + race + sex + disability + LEP. Subgroup breakdowns are obtained by filtering on the categorical columns (e.g., `race == 2` for Black students), not by separate variable names. The variable names above are the actual Portal column names as observed in `schools_crdc_discipline_k12` data.
 
 ### Disaggregation
 
@@ -395,15 +397,20 @@ Enrollment in advanced academic programs designed to provide rigorous coursework
 | Computer Science | AP Computer Science A, Principles |
 | Other AP | All other AP courses |
 
-### Variables
+### Variables (Portal Column Names)
 
 | Variable | Description |
 |----------|-------------|
-| `enrl_ap_{subject}` | Students enrolled in AP by subject |
-| `ib_enrollment` | Students enrolled in IB program |
-| `gt_enrollment` | Students in gifted/talented |
+| `enrl_ap` | Total AP enrollment |
+| `enrl_ap_math` | AP math enrollment |
+| `enrl_ap_science` | AP science enrollment |
+| `enrl_ap_compsci` | AP computer science enrollment |
+| `enrl_ap_language` | AP language enrollment |
+| `enrl_ap_other` | AP other enrollment |
+| `enrl_ib` | Students enrolled in IB program |
+| `enrl_gifted_talented` | Students in gifted/talented |
 
-> **Portal Column Names:** The Portal uses `enrl_ap` prefix (e.g., `enrl_ap_math`) rather than `ap_enrollment`.
+> **Note:** These column names are empirically confirmed from the `schools_crdc_apib_enroll` dataset. Each row represents a combination of school + race + sex + disability + lep. Filter categorical columns to get subgroup-specific enrollments.
 
 ### Disaggregation
 

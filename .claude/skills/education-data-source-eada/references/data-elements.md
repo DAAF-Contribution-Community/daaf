@@ -20,13 +20,13 @@ Comprehensive guide to data collected through the Equity in Athletics Disclosure
 
 | Category | Description | Key Variables |
 |----------|-------------|---------------|
-| Participation | Athletes by gender and sport | `partic_*` |
-| Coaching | Staff counts and demographics | `hdcoach_*`, `asstcoach_*` |
-| Salaries | Coach compensation | `salary_*` |
-| Expenses | Operating, recruiting, total | `exp_*` |
-| Revenues | Income by team | `rev_*` |
-| Athletic Aid | Scholarships/grants | `aid_*` |
-| Recruiting | Recruiting expenses | `recruiting_*` |
+| Participation | Athletes by gender and sport | `undup_athpartic_*`, `athpartic_*` |
+| Coaching | Staff counts and demographics | `*_fthdcoach_*`, `*_ftascoach_*` |
+| Salaries | Coach compensation | `hdcoach_salary_*`, `ascoach_salary_*` |
+| Expenses | Operating, recruiting, total | `ath_exp_*`, `ath_opexp_*` |
+| Revenues | Income by team | `ath_rev_*` |
+| Athletic Aid | Scholarships/grants | `ath_stuaid_*` |
+| Recruiting | Recruiting expenses | `recruitexp_*` |
 
 ## Participation Data
 
@@ -34,10 +34,13 @@ Comprehensive guide to data collected through the Equity in Athletics Disclosure
 
 | Variable | Description |
 |----------|-------------|
-| `partic_men` | Total male participants (unduplicated) |
-| `partic_women` | Total female participants (unduplicated) |
-| `partic_coed_men` | Male participants on coed teams |
-| `partic_coed_women` | Female participants on coed teams |
+| `undup_athpartic_men` | Total male participants (unduplicated) |
+| `undup_athpartic_women` | Total female participants (unduplicated) |
+| `undup_athpartic_total` | Total participants (unduplicated; often `-1` coded) |
+| `athpartic_men` | Male participants (duplicated/sport-level sum) |
+| `athpartic_women` | Female participants (duplicated/sport-level sum) |
+| `athpartic_coed_men` | Male participants on coed teams |
+| `athpartic_coed_women` | Female participants on coed teams |
 
 ### Counting Rules
 
@@ -54,14 +57,18 @@ Comprehensive guide to data collected through the Equity in Athletics Disclosure
 ### Example Calculation
 
 ```python
-# Total athletes
-total_athletes = partic_men + partic_women
+import polars as pl
+
+# Total unduplicated athletes
+total_athletes = pl.col("undup_athpartic_men") + pl.col("undup_athpartic_women")
 
 # Female participation rate
-female_pct = partic_women / total_athletes
+female_pct = pl.col("undup_athpartic_women") / total_athletes
 
-# Compare to enrollment
-enrollment_gap = female_enrollment_pct - female_pct
+# Compare to enrollment (enrollment columns are in EADA data)
+enrollment_gap = (
+    pl.col("enrollment_women") / pl.col("enrollment_total")
+) - female_pct
 ```
 
 ## Coaching Data
@@ -70,25 +77,28 @@ enrollment_gap = female_enrollment_pct - female_pct
 
 | Variable | Description |
 |----------|-------------|
-| `hdcoach_salary_men` | Head coach salaries for men's teams |
-| `hdcoach_salary_women` | Head coach salaries for women's teams |
-| `hdcoach_salary_coed` | Head coach salaries for coed teams |
-| `hdcoach_men_male_ft` | Full-time male head coaches of men's teams |
-| `hdcoach_men_male_pt` | Part-time male head coaches of men's teams |
-| `hdcoach_men_female_ft` | Full-time female head coaches of men's teams |
-| `hdcoach_men_female_pt` | Part-time female head coaches of men's teams |
-| `hdcoach_women_male_ft` | Full-time male head coaches of women's teams |
-| `hdcoach_women_male_pt` | Part-time male head coaches of women's teams |
-| `hdcoach_women_female_ft` | Full-time female head coaches of women's teams |
-| `hdcoach_women_female_pt` | Part-time female head coaches of women's teams |
+| `hdcoach_salary_men` | Average head coach salary for men's teams |
+| `hdcoach_salary_women` | Average head coach salary for women's teams |
+| `hdcoach_salary_coed` | Average head coach salary for coed teams |
+| `men_fthdcoach_male` | Full-time male head coaches of men's teams |
+| `men_pthdcoach_male` | Part-time male head coaches of men's teams |
+| `men_fthdcoach_fem` | Full-time female head coaches of men's teams |
+| `men_pthdcoach_fem` | Part-time female head coaches of men's teams |
+| `women_fthdcoach_male` | Full-time male head coaches of women's teams |
+| `women_pthdcoach_male` | Part-time male head coaches of women's teams |
+| `women_fthdcoach_fem` | Full-time female head coaches of women's teams |
+| `women_pthdcoach_fem` | Part-time female head coaches of women's teams |
+| `men_total_hdcoach` | Total head coaches of men's teams |
+| `women_total_hdcoach` | Total head coaches of women's teams |
 
 ### Assistant Coaches
 
-Similar structure to head coaches with `asstcoach_*` prefix:
+Same naming pattern with `ascoach` replacing `hdcoach`:
 
 | Variable Pattern | Description |
 |------------------|-------------|
-| `asstcoach_[team]_[gender]_[status]` | Assistant coaches by team gender, coach gender, employment status |
+| `{team}_ft/ptascoach_{gender}` | Assistant coaches by team, status, coach gender |
+| `ascoach_salary_{team}` | Average assistant coach salary by team gender |
 
 Employment Status:
 - `ft` = Full-time
@@ -97,16 +107,15 @@ Employment Status:
 ### Coaching Demographics Analysis
 
 ```python
+import polars as pl
+
 # Female head coaches of women's teams
 female_coaches_womens = (
-    hdcoach_women_female_ft + hdcoach_women_female_pt
+    pl.col("women_fthdcoach_fem") + pl.col("women_pthdcoach_fem")
 )
 
 # Total head coaches of women's teams
-total_coaches_womens = (
-    hdcoach_women_male_ft + hdcoach_women_male_pt +
-    hdcoach_women_female_ft + hdcoach_women_female_pt
-)
+total_coaches_womens = pl.col("women_total_hdcoach")
 
 # Percentage female
 pct_female = female_coaches_womens / total_coaches_womens
@@ -123,12 +132,12 @@ Institutions report:
 
 | Variable | Description |
 |----------|-------------|
-| `salary_men_coach` | Average salary for head coaches of men's teams |
-| `salary_women_coach` | Average salary for head coaches of women's teams |
-| `salary_coed_coach` | Average salary for head coaches of coed teams |
-| `asstcoach_salary_men` | Average salary for assistant coaches of men's teams |
-| `asstcoach_salary_women` | Average salary for assistant coaches of women's teams |
-| `asstcoach_salary_coed` | Average salary for assistant coaches of coed teams |
+| `hdcoach_salary_men` | Average salary for head coaches of men's teams |
+| `hdcoach_salary_women` | Average salary for head coaches of women's teams |
+| `hdcoach_salary_coed` | Average salary for head coaches of coed teams |
+| `ascoach_salary_men` | Average salary for assistant coaches of men's teams |
+| `ascoach_salary_women` | Average salary for assistant coaches of women's teams |
+| `ascoach_salary_coed` | Average salary for assistant coaches of coed teams |
 
 ### Salary Analysis Cautions
 
@@ -148,13 +157,13 @@ basketball_men_salary vs basketball_women_salary
 
 ## Expense Data
 
-### Operating Expenses (Game-Day)
+### Total Expenses
 
 | Variable | Description |
 |----------|-------------|
-| `exp_men` | Total expenses for men's teams |
-| `exp_women` | Total expenses for women's teams |
-| `exp_coed` | Total expenses for coed teams |
+| `ath_exp_men` | Total expenses for men's teams |
+| `ath_exp_women` | Total expenses for women's teams |
+| `ath_grnd_total_exp` | Grand total athletic expenses |
 
 Operating expenses include:
 - Lodging, meals, transportation
@@ -173,9 +182,10 @@ Operating expenses include:
 
 | Variable | Description |
 |----------|-------------|
-| `recruiting_exp_men` | Recruiting expenses for men's teams |
-| `recruiting_exp_women` | Recruiting expenses for women's teams |
-| `recruiting_exp_coed` | Recruiting expenses for coed teams |
+| `recruitexp_men` | Recruiting expenses for men's teams |
+| `recruitexp_women` | Recruiting expenses for women's teams |
+| `recruitexp_coed` | Recruiting expenses for coed teams |
+| `recruitexp_total` | Total recruiting expenses |
 
 Recruiting includes:
 - Transportation for prospects and staff
@@ -195,9 +205,9 @@ Some datasets report total athletic expenditures:
 
 | Variable | Description |
 |----------|-------------|
-| `rev_men` | Total revenues from men's teams |
-| `rev_women` | Total revenues from women's teams |
-| `rev_coed` | Total revenues from coed teams |
+| `ath_rev_men` | Total revenues from men's teams |
+| `ath_rev_women` | Total revenues from women's teams |
+| `ath_grnd_total_rev` | Grand total of all athletic revenues |
 
 Revenue includes:
 - Ticket sales
@@ -224,11 +234,12 @@ Common pattern:
 
 | Variable | Description |
 |----------|-------------|
-| `aid_men` | Total athletic aid to male students |
-| `aid_women` | Total athletic aid to female students |
-| `aid_coed` | Athletic aid for coed teams (if applicable) |
-| `aid_men_num` | Number of male aid recipients |
-| `aid_women_num` | Number of female aid recipients |
+| `ath_stuaid_men` | Total athletic aid to male students |
+| `ath_stuaid_women` | Total athletic aid to female students |
+| `ath_stuaid_coed` | Athletic aid for coed teams |
+| `ath_stuaid_total` | Total athletic student aid |
+| `ath_stuaid_men_ratio` | Ratio of male aid to total |
+| `ath_stuaid_women_ratio` | Ratio of female aid to total |
 
 ### What Counts as Athletic Aid
 
@@ -254,41 +265,51 @@ Small deviations (1-2%) acceptable; larger gaps raise concerns.
 ### Participation Equity
 
 ```python
-# Female participation share
-female_share = partic_women / (partic_men + partic_women)
+import polars as pl
 
-# Compare to enrollment (need IPEDS data)
-enrollment_gap = female_enrollment_share - female_share
+# Female participation share
+female_share = pl.col("undup_athpartic_women") / (
+    pl.col("undup_athpartic_men") + pl.col("undup_athpartic_women")
+)
+
+# Compare to enrollment (included in EADA data)
+enrollment_gap = (
+    pl.col("enrollment_women") / pl.col("enrollment_total")
+) - female_share
 ```
 
 ### Financial Investment Per Athlete
 
 ```python
-# Expenses per athlete
-exp_per_male = exp_men / partic_men
-exp_per_female = exp_women / partic_women
+# Per-athlete operating expenses (pre-calculated in data)
+# Use ath_opexp_perpart_men and ath_opexp_perpart_women directly
 
 # Investment ratio
-investment_ratio = exp_per_female / exp_per_male
+investment_ratio = pl.col("ath_opexp_perpart_women") / pl.col("ath_opexp_perpart_men")
 ```
 
 ### Coaching Investment
 
 ```python
 # Average salary comparison
-salary_ratio = salary_women_coach / salary_men_coach
+salary_ratio = pl.col("hdcoach_salary_women") / pl.col("hdcoach_salary_men")
 
 # Coaches per athlete
-coaches_per_male = total_coaches_men / partic_men
-coaches_per_female = total_coaches_women / partic_women
+coaches_per_male = pl.col("men_total_hdcoach") / pl.col("undup_athpartic_men")
+coaches_per_female = pl.col("women_total_hdcoach") / pl.col("undup_athpartic_women")
 ```
 
 ### Aid Proportionality
 
 ```python
-# Aid share vs participation share
-aid_share_women = aid_women / (aid_men + aid_women)
-partic_share_women = partic_women / (partic_men + partic_women)
+# Aid share vs participation share (pre-calculated ratio available)
+# Use ath_stuaid_women_ratio directly, or calculate:
+aid_share_women = pl.col("ath_stuaid_women") / (
+    pl.col("ath_stuaid_men") + pl.col("ath_stuaid_women")
+)
+partic_share_women = pl.col("undup_athpartic_women") / (
+    pl.col("undup_athpartic_men") + pl.col("undup_athpartic_women")
+)
 
 # Proportionality gap
 aid_gap = partic_share_women - aid_share_women

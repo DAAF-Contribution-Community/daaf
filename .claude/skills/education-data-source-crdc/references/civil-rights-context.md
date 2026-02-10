@@ -58,26 +58,45 @@ Title VI violations can be established through:
 ### Common Disparate Impact Analysis
 
 ```python
-# Example: Discipline disparity analysis for Title VI
-def check_discipline_disparity(school_data):
+import polars as pl
+
+def check_discipline_disparity(df: pl.DataFrame) -> dict:
     """
-    Calculate if Black students are disciplined at 
+    Calculate if Black students are disciplined at
     disproportionately higher rates than White students.
-    
+
     OCR often looks at risk ratios > 2.0 as potential red flags.
+
+    Args:
+        df: CRDC discipline data with race, enrollment_crdc,
+            and students_susp_out_sch_single columns.
+            Uses Portal integer codes: race=2 (Black), race=1 (White).
     """
-    black_rate = (school_data['oss_black'] / 
-                  school_data['enrollment_black']) * 100
-    white_rate = (school_data['oss_white'] / 
-                  school_data['enrollment_white']) * 100
-    
-    risk_ratio = black_rate / white_rate
-    
+    # Filter to totals for sex/disability/lep to avoid double-counting
+    totals = df.filter(
+        (pl.col("sex") == 99) &
+        (pl.col("disability") == 99) &
+        (pl.col("lep") == 99)
+    )
+
+    black = totals.filter(pl.col("race") == 2)
+    white = totals.filter(pl.col("race") == 1)
+
+    black_oss = black.filter(pl.col("students_susp_out_sch_single") >= 0)
+    white_oss = white.filter(pl.col("students_susp_out_sch_single") >= 0)
+
+    black_rate = black_oss.select(pl.col("students_susp_out_sch_single").sum()).item() / \
+                 black_oss.select(pl.col("enrollment_crdc").sum()).item() * 100
+    white_rate = white_oss.select(pl.col("students_susp_out_sch_single").sum()).item() / \
+                 white_oss.select(pl.col("enrollment_crdc").sum()).item() * 100
+
+    risk_ratio = black_rate / white_rate if white_rate > 0 else None
+
     return {
-        'black_suspension_rate': black_rate,
-        'white_suspension_rate': white_rate,
-        'risk_ratio': risk_ratio,
-        'potential_concern': risk_ratio > 2.0
+        "black_suspension_rate": black_rate,
+        "white_suspension_rate": white_rate,
+        "risk_ratio": risk_ratio,
+        "potential_concern": risk_ratio is not None and risk_ratio > 2.0,
     }
 ```
 

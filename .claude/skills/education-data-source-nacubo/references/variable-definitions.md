@@ -2,9 +2,18 @@
 
 Reference for NACUBO endowment study variables, size categories, institution types, and data classifications.
 
+> **Truth Hierarchy:** When interpreting variable values, apply this priority:
+> 1. **Actual data file** (what you observe in the parquet/CSV) -- this IS the truth
+> 2. **Live codebook** (.xls in mirror) -- authoritative documentation, may lag
+> 3. **This document** -- convenient summary, may drift from codebook
+>
+> If this document contradicts the codebook, trust the codebook. If the codebook contradicts observed data, trust the data and investigate. Codebook URL: use `get_codebook_url("nacubo/codebook_colleges_nacubo_endowments")` from `fetch-patterns.md`.
+
 > **CRITICAL: Portal Encoding**
 >
-> This document describes **Education Data Portal** data formats. The Portal uses:
+> This document covers both **Portal mirror columns** (7 columns available via the mirror system) and **full NCSE study variables** (available only through the complete NACUBO study). Sections are clearly labeled.
+>
+> The Portal uses:
 > - **Integer FIPS codes** (1-56) for states, not string abbreviations
 > - **Null values** for missing data (NOT coded -1/-2/-3 like other sources)
 >
@@ -12,6 +21,8 @@ Reference for NACUBO endowment study variables, size categories, institution typ
 > |----------|--------|----------------|
 > | `fips` | Integer | `1` (Alabama), `6` (California), `36` (New York) |
 > | `year` | Integer | `2012`, `2022` |
+> | `endow_total` | Float64 (USD) | `1054900000.0` (full dollars, NOT thousands) |
+> | `endow_chg_mktval` | Float64 (decimal) | `0.059` = 5.9% change (NOT `5.9`) |
 > | Missing data | Null | `null` (not -1, -2, -3) |
 
 ## Primary Identifiers
@@ -125,19 +136,34 @@ Simplified three-category grouping sometimes used:
 | IRF | ~130 | ~20% |
 | Combined | ~30 | ~5% |
 
-## Financial Variables
+## Portal Mirror Variables (7 Columns)
 
-### Market Value Variables
+These are the **only** variables available in the Portal mirror dataset (`nacubo/colleges_nacubo_endow`). All other variable sections below describe the full NCSE study and are NOT available in the Portal mirror.
 
-| Variable | Description | Unit |
-|----------|-------------|------|
-| `market_value` | Total endowment market value at fiscal year end | USD |
-| `market_value_prior` | Market value at prior fiscal year end | USD |
-| `market_value_change` | Absolute change in market value | USD |
-| `market_value_change_pct` | Percentage change in market value | % |
-| `market_value_per_fte` | Market value per FTE student | USD |
+| Variable | Type | Description | Unit | Nulls |
+|----------|------|-------------|------|-------|
+| `year` | Int64 | Fiscal year ending year | YYYY | 0 |
+| `unitid` | Int64 | IPEDS institution identifier (6 digits) | — | 0 |
+| `inst_name_nacubo` | String | Institution name (NACUBO version) | — | 0 |
+| `fips` | Int64 | State FIPS code (1-56, territories: 72, 78) | — | 1 |
+| `endow_total` | Float64 | Total endowment market value at fiscal year end | **Full USD** (NOT thousands) | 0 |
+| `endow_per_fte` | Float64 | Endowment per FTE student | USD | ~15% null |
+| `endow_chg_mktval` | Float64 | Year-over-year market value change | **Decimal fraction** (0.059 = 5.9%) | ~48% null |
 
-### Investment Return Variables
+**Format warnings:**
+- `endow_total` is in **full USD** (e.g., `1054900000.0` = ~$1.05 billion). Do NOT divide by 1000.
+- `endow_chg_mktval` is a **decimal fraction**, not a percentage. Multiply by 100 for display: `pl.col("endow_chg_mktval") * 100`.
+- `endow_per_fte` is in **full USD** (e.g., `48784.99` = ~$48,785 per FTE student).
+
+**Note**: `year` in the Portal corresponds to the fiscal year ending year. FY2022 = July 1, 2021 - June 30, 2022.
+
+---
+
+## Full NCSE Study Variables (NOT in Portal Mirror)
+
+> **The following variable sections describe the complete NACUBO study data, which is NOT available through the Education Data Portal mirrors.** These variables require purchasing or requesting the full NCSE dataset from NACUBO. They are documented here to provide context for understanding the broader study and to support research that may combine Portal data with full NCSE data.
+
+### Investment Return Variables (Full Study Only)
 
 | Variable | Description | Unit |
 |----------|-------------|------|
@@ -147,7 +173,7 @@ Simplified three-category grouping sometimes used:
 | `return_10yr` | Ten-year annualized return | % |
 | `return_25yr` | Twenty-five-year annualized return | % |
 
-### Spending Variables
+### Spending Variables (Full Study Only)
 
 | Variable | Description | Unit |
 |----------|-------------|------|
@@ -160,14 +186,14 @@ Simplified three-category grouping sometimes used:
 | `spending_operations` | Spending on operations/maintenance | USD or % |
 | `spending_other` | Other spending | USD or % |
 
-### Budget Variables
+### Budget Variables (Full Study Only)
 
 | Variable | Description | Unit |
 |----------|-------------|------|
 | `budget_support_pct` | Endowment as % of operating budget | % |
 | `operating_budget` | Total institutional operating budget | USD |
 
-### Gift Variables
+### Gift Variables (Full Study Only)
 
 | Variable | Description | Unit |
 |----------|-------------|------|
@@ -175,9 +201,9 @@ Simplified three-category grouping sometimes used:
 | `gifts_restricted` | Donor-restricted new gifts | USD |
 | `gifts_unrestricted` | Unrestricted new gifts | USD |
 
-## Asset Allocation Variables
+### Asset Allocation Variables (Full Study Only)
 
-### Major Asset Classes
+#### Major Asset Classes
 
 | Variable | Description | Typical Range |
 |----------|-------------|---------------|
@@ -187,7 +213,7 @@ Simplified three-category grouping sometimes used:
 | `alloc_global_equity` | Global equity strategies | 0-10% |
 | `alloc_fixed_income` | Bonds and fixed income | 8-15% |
 
-### Alternative Investment Classes
+#### Alternative Investment Classes
 
 | Variable | Description | Typical Range |
 |----------|-------------|---------------|
@@ -197,7 +223,7 @@ Simplified three-category grouping sometimes used:
 | `alloc_real_assets` | Real estate, natural resources | 8-15% |
 | `alloc_private_credit` | Private debt strategies | 0-5% |
 
-### Aggregated Categories
+#### Aggregated Categories
 
 | Variable | Components | Typical Range |
 |----------|------------|---------------|
@@ -205,9 +231,9 @@ Simplified three-category grouping sometimes used:
 | `alloc_alternatives` | PE + VC + Alts + Real + Credit | 40-60% |
 | `alloc_traditional` | Public equity + Fixed income | 35-55% |
 
-## Governance Variables
+### Governance Variables (Full Study Only)
 
-### Investment Committee
+#### Investment Committee
 
 | Variable | Description |
 |----------|-------------|
@@ -216,7 +242,7 @@ Simplified three-category grouping sometimes used:
 | `has_student_managed` | Whether students manage portion of endowment |
 | `student_managed_value` | Market value of student-managed funds |
 
-### Management Structure
+#### Management Structure
 
 | Variable | Description |
 |----------|-------------|
@@ -224,7 +250,7 @@ Simplified three-category grouping sometimes used:
 | `has_ocio` | Uses outsourced CIO |
 | `internal_management_pct` | Percentage managed internally |
 
-### Policy Variables
+#### Policy Variables
 
 | Variable | Description |
 |----------|-------------|
@@ -232,7 +258,7 @@ Simplified three-category grouping sometimes used:
 | `smoothing_period` | Years/quarters in smoothing formula |
 | `rebalancing_frequency` | How often portfolio rebalanced |
 
-## ESG/Responsible Investing Variables
+### ESG/Responsible Investing Variables (Full Study Only)
 
 | Variable | Description |
 |----------|-------------|
@@ -241,26 +267,21 @@ Simplified three-category grouping sometimes used:
 | `has_impact_investing` | Allocates to impact investments |
 | `esg_policy_type` | Type of ESG integration |
 
-## Time Variables
-
-| Variable | Description | Format |
-|----------|-------------|--------|
-| `fiscal_year` | Fiscal year of data | YYYY (ending year) |
-| `fye_date` | Fiscal year end date | June 30 |
-| `survey_year` | Year survey was conducted | YYYY |
-
-**Note**: FY2024 data refers to July 1, 2023 - June 30, 2024.
-
 ## Missing Data Handling
 
 > **Note:** Unlike other Education Data Portal sources (CCD, CRDC, etc.), NACUBO data uses **null values** for missing data rather than coded values like -1, -2, -3.
 
 | Value | Meaning | Handling |
 |-------|---------|----------|
-| `null` | Not reported / missing | Standard null handling in Polars/pandas |
+| `null` | Not reported / missing | Standard null handling in Polars |
 | Valid number | Reported value | Use directly |
 
 **Why different?** NACUBO is a voluntary survey with simpler missing data patterns. The Portal preserves null rather than applying coded values.
+
+**Null prevalence in Portal mirror:**
+- `endow_per_fte`: ~15% null (1,260 of 8,197 rows) -- FTE data not always available
+- `endow_chg_mktval`: ~48% null (3,972 of 8,197 rows) -- requires consecutive years of participation
+- `fips`: 1 null row in entire dataset
 
 ```python
 # Correct: Check for null
@@ -272,12 +293,26 @@ df.filter(pl.col("endow_per_fte").is_null())
 
 ## Data Types
 
+### Portal Mirror Column Types
+
+| Column | Polars Type | Format Notes |
+|--------|-------------|--------------|
+| `year` | Int64 | Fiscal year ending year (2012-2022) |
+| `unitid` | Int64 | 6-digit IPEDS institution ID |
+| `inst_name_nacubo` | String | Institution name |
+| `fips` | Int64 | State FIPS code |
+| `endow_total` | Float64 | Full USD (NOT thousands) |
+| `endow_per_fte` | Float64 | Full USD per FTE student |
+| `endow_chg_mktval` | Float64 | Decimal fraction (NOT percentage) |
+
+### Full NCSE Study Variable Types (NOT in Portal)
+
 | Variable Type | Examples | Notes |
 |---------------|----------|-------|
-| Currency | Market value, spending | Reported in USD, often in thousands |
-| Percentage | Returns, allocations, rates | Usually 0-100 scale |
+| Currency | Spending, gifts, operating budget | Reported in USD |
+| Percentage | Returns, allocations, spending rates | 0-100 scale |
 | Count | Committee size, managers | Integer |
-| Category | Size category, type | Coded values |
+| Category | Size category, institution type | Integer coded values |
 | Boolean | Has OCIO, Has ESG policy | Yes/No or 1/0 |
 
 ## Derived Variables

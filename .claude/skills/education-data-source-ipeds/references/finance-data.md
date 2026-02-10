@@ -383,49 +383,67 @@ instruction_share = instruction / total_core_expenses * 100
 
 ## Variable Reference
 
-### GASB Revenue Variables (F1)
+> Verify these variable names against the live codebook. Use `get_codebook_url()` from `fetch-patterns.md`:
+> ```python
+> url = get_codebook_url("ipeds/codebook_colleges_ipeds_finance")
+> ```
 
-| Variable | Description |
-|----------|-------------|
-| `f1a01` | Tuition and fees |
-| `f1a02` | Federal appropriations |
-| `f1a03` | State appropriations |
-| `f1a04` | Local appropriations |
-| `f1a05` | Federal grants and contracts |
-| `f1a06` | State grants and contracts |
-| `f1a07` | Local grants and contracts |
-| `f1a08` | Private gifts, grants, contracts |
-| `f1a09` | Investment income |
-| `f1a10` | Sales/services educational activities |
-| `f1a11` | Auxiliary enterprises |
-| `f1a12` | Hospital revenue |
+> **CRITICAL: Portal vs NCES Variable Names.** The Portal `finance` dataset uses descriptive variable names (e.g., `rev_appropriations_state`, `exp_instruc_total`), NOT the NCES form-field codes (`f1a01`, `f2a01`). The NCES codes are shown below for cross-reference with source documentation only.
 
-### FASB Revenue Variables (F2)
+### Portal Revenue Variables (Selected)
 
-| Variable | Description |
-|----------|-------------|
-| `f2a01` | Tuition and fees |
-| `f2a02` | Federal appropriations/grants/contracts |
-| `f2a03` | State appropriations/grants/contracts |
-| `f2a04` | Local appropriations/grants/contracts |
-| `f2a05` | Private gifts, grants, contracts |
-| `f2a06` | Contributions affiliated entities |
-| `f2a07` | Investment return |
-| `f2a08` | Sales/services educational activities |
-| `f2a09` | Auxiliary enterprises |
+| Portal Variable | Description | NCES Form Field |
+|-----------------|-------------|-----------------|
+| `rev_tuition` | Tuition and fees (net) | F1A01 / F2A01 |
+| `rev_appropriations_fed` | Federal appropriations | F1A02 |
+| `rev_appropriations_state` | State appropriations | F1A03 |
+| `rev_appropriations_local` | Local appropriations | F1A04 |
+| `rev_grants_contracts_federal` | Federal grants and contracts | F1A05 |
+| `rev_grants_contracts_state` | State grants and contracts | F1A06 |
+| `rev_grants_contracts_local` | Local grants and contracts | F1A07 |
+| `rev_gifts_grants_contracts` | Private gifts, grants, contracts | F1A08 / F2A05 |
+| `rev_investment_return` | Investment income/return | F1A09 / F2A07 |
+| `rev_edu_services_sales` | Sales/services educational activities | F1A10 / F2A08 |
+| `rev_auxiliary_enterprises_net` | Auxiliary enterprises (net) | F1A11 / F2A09 |
+| `rev_hospital` | Hospital revenue | F1A12 |
+| `rev_affiliated_entities` | Contributions from affiliated entities | F2A06 |
+| `rev_operating` | Total operating revenue | — |
+| `rev_nonoperating` | Total non-operating revenue | — |
 
-### Expense Variables (Both)
+### Portal Expense Variables (Selected)
 
-| Variable | Description |
-|----------|-------------|
-| `f*b01` | Instruction |
-| `f*b02` | Research |
-| `f*b03` | Public service |
-| `f*b04` | Academic support |
-| `f*b05` | Student services |
-| `f*b06` | Institutional support |
-| `f*b07` | Operation and maintenance |
-| `f*b08` | Scholarships/fellowships (net) |
-| `f*b09` | Auxiliary enterprises |
-| `f*b10` | Hospital services |
-| `f*b11` | Independent operations |
+| Portal Variable | Description | NCES Form Field |
+|-----------------|-------------|-----------------|
+| `exp_instruc_total` | Instruction (total) | F*B01 |
+| `exp_research_total` | Research (total) | F*B02 |
+| `exp_pub_serv_total` | Public service (total) | F*B03 |
+| `exp_acad_supp_total` | Academic support (total) | F*B04 |
+| `exp_student_serv_total` | Student services (total) | F*B05 |
+| `exp_inst_supp_total` | Institutional support (total) | F*B06 |
+| `exp_net_grant_aid_total` | Scholarships/fellowships (net) | F*B08 |
+| `exp_aux_ent_total` | Auxiliary enterprises (total) | F*B09 |
+| `exp_hospital_total` | Hospital services (total) | F*B10 |
+| `exp_total_current` | Total current expenses | — |
+
+### Other Key Finance Variables
+
+| Portal Variable | Description |
+|-----------------|-------------|
+| `endowment_beg` | Endowment value at beginning of year |
+| `endowment_end` | Endowment value at end of year |
+| `form_type` | Finance form type (1-5, indicates GASB vs FASB) |
+| `assets` | Total assets |
+| `liabilities` | Total liabilities |
+| `calc_fte` | Calculated FTE enrollment |
+| `est_fte` | Estimated FTE enrollment |
+| `rep_fte` | Reported FTE enrollment |
+
+### NCES Form Field Codes (for reference only)
+
+The variable names below are from NCES finance survey forms and are NOT used as column names in the Portal:
+
+| NCES Code | Description | Used In |
+|-----------|-------------|---------|
+| `f1a01`-`f1a12` | GASB revenue items | Form F1 (public) |
+| `f2a01`-`f2a09` | FASB revenue items | Form F2 (private NP) |
+| `f*b01`-`f*b11` | Expense items (both forms) | Form F1, F2, F3 |

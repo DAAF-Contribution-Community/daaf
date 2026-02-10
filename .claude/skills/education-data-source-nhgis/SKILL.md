@@ -28,7 +28,7 @@ Census geography and demographic data source for education research. NHGIS provi
 > | `census_region` | `4` | West |
 > | `cbsa_type` | `1` | Metropolitan |
 > | `cbsa_type` | `2` | Micropolitan |
-> | `geocode_accuracy` | `-2` | Not geocoded |
+> | `geocode_accuracy` | `4` | Did not geocode |
 >
 > See `./references/variable-catalog.md` for complete encoding tables.
 
@@ -53,7 +53,7 @@ NHGIS (from IPUMS, University of Minnesota) provides free access to census geogr
 | `time-series.md` | Historical data, harmonization methods | Longitudinal analysis |
 | `variable-catalog.md` | Key demographic variables, codes, special values | Selecting census variables or interpreting encodings |
 | `boundary-changes.md` | How boundaries change between censuses | Handling geographic inconsistencies |
-| `data-access.md` | API, Python/R packages, data extraction | Downloading NHGIS data directly |
+| `data-access.md` | Direct NHGIS access methods (registration, Data Finder, ipumspy) | Custom census analysis beyond Portal |
 
 ## Decision Trees
 
@@ -131,13 +131,14 @@ Time period?
 
 | ID | Format | Level | Example | Notes |
 |----|--------|-------|---------|-------|
-| `ncessch` | 12-digit integer | School | `60000100001` | NCES school ID (in Portal data) |
-| `GISJOIN` | String with prefix | Any | `G0600010` | NHGIS internal ID; use for NHGIS joins |
-| `GEOID` | Numeric string | Any | `06001402100` | Census Bureau standard; use for non-NHGIS joins |
-| `tract` | Integer | Tract | `402100` | Census tract number (in Portal data) |
-| `block_group` | Integer | Block Group | `1` | Block group within tract (in Portal data) |
-| `geoid_block` | String | Block | `060014021001001` | Full block FIPS code (in Portal data) |
-| `cbsa` | Integer | Metro area | `41860` | Core Based Statistical Area code |
+| `ncessch` | Int64 | School | `10000201704` | NCES school ID (schools Portal data) |
+| `unitid` | Int64 | College | `100654` | IPEDS institution ID (colleges Portal data) |
+| `GISJOIN` | String with prefix | Any | `G0600010` | NHGIS internal ID; use for direct NHGIS joins (not in Portal data) |
+| `GEOID` | Numeric string | Any | `06001402100` | Census Bureau standard; use for non-NHGIS joins (not in Portal data) |
+| `tract` | Int64 | Tract | `402100` | Census tract number (in Portal data) |
+| `block_group` | Int64 | Block Group | `1` | Block group within tract (1-9; 0=unassigned) |
+| `geoid_block` | Int64 | Block | `60014021001001` | Full block FIPS code (in Portal data — stored as Int64, not String) |
+| `cbsa` | Int64 | Metro area | `41860` | Core Based Statistical Area code (2000+ census files only) |
 
 ### Key Education Variables
 
@@ -164,70 +165,104 @@ Time period?
 
 ### Portal Variables (Schools NHGIS)
 
-| Variable | Description |
-|----------|-------------|
-| `ncessch` | NCES school ID |
-| `tract` | Census tract (integer) |
-| `block_group` | Block group number |
-| `geoid_block` | Full block identifier |
-| `census_region` | Census Bureau region (1-4, 9) |
-| `census_division` | Census Bureau division (1-9) |
-| `cbsa` | CBSA code (if applicable) |
-| `cbsa_type` | Metropolitan (1) or Micropolitan (2) |
+Key geographic and identifying columns in the schools NHGIS datasets. Census 2020 files have 47 columns; earlier census years have fewer (e.g., 1990 has 35 columns — no CBSA or legislative district fields).
+
+| Variable | Description | Type |
+|----------|-------------|------|
+| `ncessch` | NCES school ID | Int64 |
+| `leaid` | NCES district ID | Int64 |
+| `tract` | Census tract number | Int64 |
+| `block_group` | Block group number (1-9; 0 = unassigned) | Int64 |
+| `geoid_block` | Full block FIPS identifier | Int64 |
+| `census_region` | Census Bureau region (1-4, 9) | Int64 |
+| `census_division` | Census Bureau division (1-9) | Int64 |
+| `cbsa` | CBSA code (2000+ census files only) | Int64 |
+| `cbsa_type` | Metropolitan (1) or Micropolitan (2) | Int64 |
+| `cbsa_city` | Principal city indicator (0=No, 1=Yes; 2000+ only). See note below. | Int64 |
+| `geocode_accuracy` | Geocode confidence (1=High, 2=Medium, 3=Low, 4=Did not geocode, -2=N/A) | Float64 |
+| `geocode_accuracy_detailed` | Geocode match type (1-12) | Int64 |
+| `class_code` | FIPS place class code | Int64 |
+| `lower_chamber_type` | State legislative district lower chamber type (1-8; census 2010 only). See `variable-catalog.md` for code mapping. | Int64 |
+| `geo_latitude` / `geo_longitude` | Geocoded coordinates | Float64 |
+| `latitude` / `longitude` | CCD-reported coordinates (many nulls in early years) | Float64 |
+| `fips` | State FIPS code | Int64 |
+| `puma` | Public Use Microdata Area (2000+ census files only) | Int64 |
+
+### Portal Variables (Colleges NHGIS)
+
+Colleges NHGIS datasets have 38 columns (2020 census). Different identifier set from schools.
+
+| Variable | Description | Type |
+|----------|-------------|------|
+| `unitid` | IPEDS institution ID | Int64 |
+| `opeid` | Office of Postsecondary Education ID | String |
+| `tract` | Census tract number | Int64 |
+| `block_group` | Block group number (1-9) | Int64 |
+| `geoid_block` | Full block FIPS identifier | Int64 |
+| `census_region` | Census Bureau region (1-4, 9) | Int64 |
+| `census_division` | Census Bureau division (1-9) | Int64 |
+| `cbsa` | CBSA code | Int64 |
+| `cbsa_type` | Metropolitan (1) or Micropolitan (2) | Int64 |
+| `cbsa_city` | Principal city indicator (0=No, 1=Yes; 2000+ only) | Int64 |
+| `geocode_accuracy` | Geocode match score (Int64 in colleges, Float64 in schools) | Int64 |
+| `county_fips` | County FIPS code | Int64 |
+| `county_name` | County name | String |
+| `state_abbr` | State abbreviation | String |
 
 ### Missing Data Codes
 
 | Code | Meaning | When Used |
 |------|---------|-----------|
 | `-2` | Not geocoded | `geocode_accuracy` field in Portal data |
-| `-1` | Missing/not reported | General missing data indicator in Portal data |
-| `9` | Unknown region | `census_region` when area not classified |
-| `null` | Not available | Variable not applicable to this record |
+| `-1` | Missing/not reported | General missing data indicator (e.g., `latitude`, `county_code`) |
+| `0` | Unassigned | `block_group` (rare, ~4 rows in schools) |
+| `null` | Not available | Variable not applicable to this record; many columns heavily null in early years |
 
-> **Schema Difference:** Schools NHGIS files (47 columns) have a different schema than colleges NHGIS files (26 columns). Schools data includes more detailed geographic identifiers (block-level precision), while colleges data is primarily tract-level. Do not assume identical column structures when working with both.
+> **Schema Difference:** Schools NHGIS 2020 files (47 columns) have a different schema than colleges NHGIS 2020 files (38 columns). Schools data includes school-specific identifiers (`ncessch`, `leaid`, `school_name`, mailing/location address fields) while colleges data includes institution-specific identifiers (`unitid`, `opeid`, `inst_name`, `county_name`). Both entity types have block-level geographic precision. Earlier census years have fewer columns (e.g., Schools 1990 has 35 columns — no CBSA or legislative district fields). Do not assume identical column structures when working across entities or census years.
 
 ## Data Access
 
-Datasets for NHGIS are available via the mirror system. See `datasets-reference.md` for canonical paths and `fetch-patterns.md` for fetch code patterns.
+Datasets for NHGIS are available via the mirror system. See `datasets-reference.md` for canonical paths, `mirrors.yaml` for mirror configuration, and `fetch-patterns.md` for fetch code patterns.
 
-**Key datasets:**
+| Dataset | Type | Years | Path | Codebook |
+|---------|------|-------|------|----------|
+| Schools Census 1990 | Single | 1986-2023 | `nhgis/schools_nhgis_geog_1990` | `nhgis/codebook_schools_nhgis_census1990` |
+| Schools Census 2000 | Single | 1986-2023 | `nhgis/schools_nhgis_geog_2000` | `nhgis/codebook_schools_nhgis_census2000` |
+| Schools Census 2010 | Single | 1986-2023 | `nhgis/schools_nhgis_geog_2010` | `nhgis/codebook_schools_nhgis_census2010` |
+| Schools Census 2020 | Single | 1986-2023 | `nhgis/schools_nhgis_geog_2020` | `nhgis/codebook_schools_nhgis_census2020` |
+| Colleges Census 1990 | Single | 1980-2023 | `nhgis/colleges_nhgis_geog_1990` | `nhgis/codebook_colleges_nhgis_census1990` |
+| Colleges Census 2000 | Single | 1980-2023 | `nhgis/colleges_nhgis_geog_2000` | `nhgis/codebook_colleges_nhgis_census2000` |
+| Colleges Census 2010 | Single | 1980-2023 | `nhgis/colleges_nhgis_geog_2010` | `nhgis/codebook_colleges_nhgis_census2010` |
+| Colleges Census 2020 | Single | 1980-2023 | `nhgis/colleges_nhgis_geog_2020` | `nhgis/codebook_colleges_nhgis_census2020` |
 
-| Dataset | Path | Type |
-|---------|------|------|
-| Schools Census 1990 | `nhgis/schools_nhgis_geog_1990` | Single |
-| Schools Census 2000 | `nhgis/schools_nhgis_geog_2000` | Single |
-| Schools Census 2010 | `nhgis/schools_nhgis_geog_2010` | Single |
-| Schools Census 2020 | `nhgis/schools_nhgis_geog_2020` | Single |
-| Colleges Census 1990 | `nhgis/colleges_nhgis_geog_1990` | Single |
-| Colleges Census 2000 | `nhgis/colleges_nhgis_geog_2000` | Single |
-| Colleges Census 2010 | `nhgis/colleges_nhgis_geog_2010` | Single |
-| Colleges Census 2020 | `nhgis/colleges_nhgis_geog_2020` | Single |
+Codebooks are `.xls` files co-located with data in all mirrors. Use `get_codebook_url()` from `fetch-patterns.md` to construct download URLs.
 
-Codebooks: See `datasets-reference.md` codebook column. Use `get_codebook_url()` from `fetch-patterns.md`.
+> **Truth Hierarchy:** When interpreting variable values, apply this priority:
+> 1. **Actual data file** (what you observe in the parquet/CSV) — this IS the truth
+> 2. **Live codebook** (.xls in mirror) — authoritative documentation, may lag
+> 3. **This skill documentation** — convenient summary, may drift from codebook
+>
+> If this documentation contradicts the codebook, trust the codebook. If the codebook contradicts observed data, trust the data and investigate.
 
 ### Filtering
 
 ```python
-# Filter to a specific school
-school_census = df.filter(pl.col("ncessch") == 60000100001)
+import polars as pl
 
-# Filter to metropolitan areas only
+# Filter to a specific school
+school_census = df.filter(pl.col("ncessch") == 10000201704)
+
+# Filter to metropolitan areas only (cbsa_type only in 2000+ census files)
 metro = df.filter(pl.col("cbsa_type") == 1)
 
 # Filter to a specific census region (South)
 south = df.filter(pl.col("census_region") == 3)
+
+# Filter to a specific year
+recent = df.filter(pl.col("year") == 2023)
 ```
 
-### Direct NHGIS Access Methods
-
-| Method | Best For | Registration |
-|--------|----------|--------------|
-| [Data Finder](https://data2.nhgis.org/main) | Interactive selection | Required (free) |
-| [IPUMS API](https://developer.ipums.org/) | Programmatic access | Required (free) |
-| [ipumsr (R)](https://tech.popdata.org/ipumsr/) | R workflows | Uses API key |
-| [ipumspy (Python)](https://ipumspy.readthedocs.io/) | Python workflows | Uses API key |
-
-> **Note**: The Portal provides pre-processed crosswalks; for custom geographic analysis, use NHGIS directly (requires free IPUMS registration).
+> **Note**: The Portal provides pre-processed school/college-to-census-geography links. For custom census analysis (tract-level demographics, time series, boundary files), use NHGIS directly via methods in `./references/data-access.md` (requires free IPUMS registration).
 
 ## Common Pitfalls
 
@@ -238,7 +273,9 @@ south = df.filter(pl.col("census_region") == 3)
 | Block data limitations | Only 100% count variables available (no income/poverty) | Use block groups for sample data (ACS) |
 | GISJOIN vs GEOID | Different ID formats cause join failures | Use GISJOIN for NHGIS joins, GEOID for Census Bureau joins |
 | 2020 Census noise | Differential privacy added noise to small-area counts | Check for negative values; prefer ACS for detailed characteristics |
-| Schools vs colleges schema | Different column counts (47 vs 26) and geographic precision | Check schema before joining; do not assume identical structures |
+| Schools vs colleges schema | Different column counts (47 vs 38 for 2020) and identifier sets | Check schema before joining; do not assume identical structures |
+| Census year schema drift | Earlier census files have fewer columns (e.g., 1990 lacks CBSA/legislative fields) | Check available columns per census year before relying on them |
+| geocode_accuracy type | Float64 in schools, Int64 in colleges | Cast to consistent type before cross-entity comparison |
 | Using string codes | Portal data uses integer encodings, not string labels | Always verify codes against codebook (see encoding warning above) |
 
 ## Related Data Sources
@@ -271,6 +308,6 @@ south = df.filter(pl.col("census_region") == 3)
 | Tract boundary changes | `./references/boundary-changes.md` |
 | 2022 Connecticut changes | `./references/boundary-changes.md` |
 | TIGER/Line versions | `./references/boundary-changes.md` |
-| API access | `./references/data-access.md` |
+| Direct NHGIS access | `./references/data-access.md` |
 | ipumspy Python package | `./references/data-access.md` |
 | Data Finder workflow | `./references/data-access.md` |

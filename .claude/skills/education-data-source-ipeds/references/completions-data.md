@@ -85,44 +85,60 @@ stem_completions = bio_completions + chem_completions + physics_completions
 
 ## Award Levels
 
-### IPEDS Award Level Codes
+### Portal Award Level Codes
+
+> **CRITICAL:** The Portal uses DIFFERENT award level codes than NCES raw documentation. The codes below are from actual observed data in the Portal `completions-2digcip` dataset. Always verify against the codebook.
 
 | Code | Level | Typical Duration |
 |------|-------|------------------|
-| 1 | Postsecondary certificate (<1 year) | <1 academic year |
-| 2 | Postsecondary certificate (1-2 years) | 1-2 academic years |
-| 3 | Associate's degree | 2 years |
-| 4 | Postsecondary certificate (2-4 years) | 2-4 years |
-| 5 | Bachelor's degree | 4 years |
-| 6 | Postbaccalaureate certificate | Post-bachelor's |
-| 7 | Master's degree | 1-2 years post-bachelor's |
-| 8 | Post-master's certificate | Post-master's |
-| 17 | Doctor's degree - research/scholarship | PhD, EdD (research) |
-| 18 | Doctor's degree - professional practice | MD, JD, DDS, etc. |
-| 19 | Doctor's degree - other | Other doctoral |
+| 4 | Postsecondary certificate (<1 year) | <1 academic year |
+| 7 | Postsecondary certificate (1-<2 years) | 1-2 academic years |
+| 8 | Associate's degree | 2 years |
+| 9 | Postsecondary certificate (2-<4 years) | 2-4 years |
+| 22 | Bachelor's degree | 4 years |
+| 23 | Postbaccalaureate certificate | Post-bachelor's |
+| 24 | Master's degree | 1-2 years post-bachelor's |
+| 30 | Post-master's certificate | Post-master's |
+| 31 | Doctor's degree - research/scholarship | PhD, EdD (research) |
+| 32 | Doctor's degree - professional practice | MD, JD, DDS, etc. |
+| 33 | Doctor's degree - other | Other doctoral |
 
-### Historical Award Level Changes
+> Verify these codes against the live codebook. Use `get_codebook_url()` from `fetch-patterns.md`:
+> ```python
+> url = get_codebook_url("ipeds/codebook_colleges_ipeds_completions-2digcip")
+> ```
 
-Pre-2010-11, doctoral degrees used different codes:
-- Code 9: Doctor's degree (all types combined)
+#### NCES Raw File Award Level Codes (for reference only)
 
-Post-2010-11, split into three types (17, 18, 19).
+NCES documentation and raw IPEDS data files use a different numbering system. The table below shows the mapping:
 
-**Impact**: Trend analysis crossing 2010-11 must account for this change.
+| NCES Code | Portal Code | Level |
+|-----------|-------------|-------|
+| 1 | 4 | Certificate (<1 year) |
+| 2 | 7 | Certificate (1-<2 years) |
+| 3 | 8 | Associate's |
+| 4 | 9 | Certificate (2-<4 years) |
+| 5 | 22 | Bachelor's |
+| 6 | 23 | Postbaccalaureate certificate |
+| 7 | 24 | Master's |
+| 8 | 30 | Post-master's certificate |
+| 17 | 31 | Doctor's - research/scholarship |
+| 18 | 32 | Doctor's - professional practice |
+| 19 | 33 | Doctor's - other |
 
-### Award Level Groupings
+### Award Level Groupings (Portal Codes)
 
 ```python
-# Common groupings
-certificates = [1, 2, 4, 6, 8]  # All certificate levels
-associate = [3]
-bachelor = [5]
-master = [7]
-doctoral = [17, 18, 19]
+# Common groupings using PORTAL codes (not NCES codes)
+certificates = [4, 7, 9, 23, 30]  # All certificate levels
+associate = [8]
+bachelor = [22]
+master = [24]
+doctoral = [31, 32, 33]
 
 # Undergraduate vs graduate
-undergraduate = [1, 2, 3, 4, 5]  # Through bachelor's
-graduate = [6, 7, 8, 17, 18, 19]  # Post-bachelor's
+undergraduate = [4, 7, 8, 9, 22]  # Through bachelor's
+graduate = [23, 24, 30, 31, 32, 33]  # Post-bachelor's
 ```
 
 ## CIP Codes
@@ -310,14 +326,17 @@ field_trend = field_trend.with_columns(
 Analyze representation:
 
 ```python
-# Percent women in engineering
+import polars as pl
+
+# Percent women in engineering (sex=2 is Female in Portal integer encoding)
 eng_by_gender = completions.filter(
-    pl.col("cip2") == 14
+    (pl.col("cipcode") == 14) &
+    (pl.col("race") == 99)  # Total across races
 ).group_by("sex").agg(pl.col("awards").sum())
 
-pct_women = eng_by_gender.filter(
-    pl.col("sex") == "women"
-)["awards"][0] / eng_by_gender["awards"].sum() * 100
+female_awards = eng_by_gender.filter(pl.col("sex") == 2)["awards"][0]
+total_awards = eng_by_gender.filter(pl.col("sex") == 99)["awards"][0]
+pct_women = female_awards / total_awards * 100
 ```
 
 ### Institution Program Mix
@@ -390,53 +409,46 @@ Certificate programs vary widely:
 
 ## Variable Reference
 
-### Completions Variables
+> Verify these variable names against the live codebook. Use `get_codebook_url()` from `fetch-patterns.md`. Portal variable names differ from NCES documentation.
 
-| Variable | Description |
-|----------|-------------|
+### Portal Completions Variables (2-digit CIP dataset)
+
+The `completions-2digcip` (yearly) dataset contains disaggregated rows by race, sex, and award level:
+
+| Portal Variable | Description |
+|-----------------|-------------|
 | `unitid` | Institution identifier |
-| `cipcode` | 6-digit CIP code |
-| `awlevel` | Award level code |
-| `majornum` | Major number (1 or 2 for double majors) |
-| `ctotalt` | Total completions |
-| `ctotalm` | Male completions |
-| `ctotalw` | Female completions |
-| `caiant` | American Indian/Alaska Native |
-| `casiat` | Asian |
-| `cbkaat` | Black or African American |
-| `chispt` | Hispanic/Latino |
-| `cnhpit` | Native Hawaiian/Pacific Islander |
-| `cwhitt` | White |
-| `c2mort` | Two or more races |
-| `cunknt` | Race unknown |
-| `cnralt` | Nonresident alien |
-| `distcip` | Distance education offering flag |
+| `year` | Data year |
+| `cipcode` | CIP code (2-digit integer) |
+| `award_level` | Award level code (Portal codes: 4, 7, 8, 9, 22-24, 30-33) |
+| `majornum` | Major number (1=first major, 2=second major) |
+| `awards` | Count of awards conferred |
+| `race` | Race/ethnicity (integer codes: 1-9, 99=Total) |
+| `sex` | Sex (1=Male, 2=Female, 99=Total) |
+| `fips` | State FIPS code |
 
-### Completers Variables
+The `completions-6digcip` (yearly) dataset has the same structure but with 6-digit CIP codes for more granular field analysis.
 
-| Variable | Description |
-|----------|-------------|
-| `cstotlt` | Total completers (all award levels) |
-| `cstotlm` | Male completers |
-| `cstotlw` | Female completers |
-| `csaiant` | Completers - American Indian/Alaska Native |
-| `csasiat` | Completers - Asian |
-| `csbkaat` | Completers - Black |
-| `cshispt` | Completers - Hispanic |
-| `csnhpit` | Completers - Native Hawaiian/Pacific Islander |
-| `cswhitt` | Completers - White |
-| `cs2mort` | Completers - Two or more races |
-| `csunknt` | Completers - Race unknown |
-| `csnralt` | Completers - Nonresident alien |
+#### NCES Raw File Names (for reference only)
 
-### Award Level Specific
+The following variable names appear in NCES documentation and raw IPEDS data files but are NOT used in the Portal:
 
-| Variable Pattern | Description |
-|------------------|-------------|
-| `c*a` | Award level specific (e.g., `ctotala` = total at award level) |
-| `crace*` | Race at specific award level |
+| NCES Name | Portal Equivalent | Notes |
+|-----------|-------------------|-------|
+| `AWLEVEL` | `award_level` | NCES uses codes 1-19; Portal uses codes 4-33 |
+| `CTOTALT` | `awards` (filtered to totals) | Portal uses disaggregated rows |
+| `CIPCODE` | `cipcode` | Same name, but 2-digit vs 6-digit depends on dataset |
+| `MAJORNUM` | `majornum` | Same concept |
 
-### CIP-Related
+### Completers Dataset
+
+The `completers` dataset counts unduplicated individuals. Consult the codebook for variables:
+
+```python
+url = get_codebook_url("ipeds/codebook_colleges_ipeds_completers")
+```
+
+### CIP-Related Resources
 
 | Resource | Description |
 |----------|-------------|

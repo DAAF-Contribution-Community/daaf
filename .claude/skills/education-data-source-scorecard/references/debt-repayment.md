@@ -2,6 +2,14 @@
 
 College Scorecard provides comprehensive data on federal student debt and loan repayment outcomes from the National Student Loan Data System (NSLDS).
 
+> **Portal datasets:**
+> - Default rates: `scorecard/colleges_scorecard_repayment_fsa` (177,882 rows x 9 cols, years 1996-2020)
+> - Repayment rates: `scorecard/colleges_scorecard_repayment_nslds` (167,976 rows x 31 cols, years 2007-2016)
+>
+> **Portal uses lowercase LONG format.** Original Scorecard names like `CDR3` become `default_rate` filtered by `years_since_entering_repay`. Repayment rates like `RPY_3YR_RT` become `repay_rate` filtered by `years_since_entering_repay == 3`.
+>
+> **Note:** Debt variables (`DEBT_MDN`, `GRAD_DEBT_MDN`, etc.) from the original Scorecard bulk downloads are **not available as separate Portal datasets**. Debt information is embedded in other Portal datasets or must be obtained from the Scorecard bulk downloads at `collegescorecard.ed.gov`.
+
 ## Data Source: NSLDS
 
 | Aspect | Detail |
@@ -103,16 +111,30 @@ Repayment rate = share of borrowers making progress on reducing principal
 - Has the borrower defaulted?
 - Is the principal balance declining?
 
-### Repayment Rate Variables
+### Repayment Rate Variables (Portal: `repayment_nslds` dataset)
 
-| Variable | Description |
-|----------|-------------|
-| `RPY_1YR_RT` | 1-year repayment rate |
-| `RPY_3YR_RT` | 3-year repayment rate |
-| `RPY_5YR_RT` | 5-year repayment rate |
-| `RPY_7YR_RT` | 7-year repayment rate |
+> **Portal column names are lowercase.** Filter by `years_since_entering_repay` (values: 1, 3, 5, 7) to select time horizon.
 
-### Repayment by Completion Status
+| Portal Column | Description | Original Scorecard |
+|---------------|-------------|-------------------|
+| `repay_rate` | Overall repayment rate | `RPY_*YR_RT` |
+| `repay_count` | Count of borrowers | — |
+| `repay_rate_pell` | Repayment rate, Pell recipients | — |
+| `repay_rate_nopell` | Repayment rate, non-Pell | — |
+| `repay_rate_lowincome` | Repayment rate, low income | — |
+| `repay_rate_midincome` | Repayment rate, mid income | — |
+| `repay_rate_highincome` | Repayment rate, high income | — |
+| `repay_rate_firstgen` | Repayment rate, first-gen | — |
+| `repay_rate_notfirstgen` | Repayment rate, not first-gen | — |
+| `repay_rate_dependent` | Repayment rate, dependent | — |
+| `repay_rate_independent` | Repayment rate, independent | — |
+| `repay_rate_female` | Repayment rate, female | — |
+| `repay_rate_male` | Repayment rate, male | — |
+| `years_since_entering_repay` | 1, 3, 5, or 7 years | Was in variable name |
+
+### Original Scorecard Repayment Variables (Historical Reference)
+
+The original Scorecard bulk downloads include additional disaggregations not available in the Portal:
 
 | Variable | Description |
 |----------|-------------|
@@ -120,17 +142,9 @@ Repayment rate = share of borrowers making progress on reducing principal
 | `COMPL_RPY_3YR_RT` | 3-year rate, completers |
 | `NONCOM_RPY_1YR_RT` | 1-year rate, non-completers |
 
-### Repayment by Income Level
-
-| Suffix | Family Income Level |
-|--------|-------------------|
-| `_LO_INC_` | Lowest third |
-| `_MD_INC_` | Middle third |
-| `_HI_INC_` | Highest third |
-
 ### Dollar-Based Repayment Rates (DBRR)
 
-Newer metric measuring share of loan dollars being repaid:
+> **Note:** DBRR variables are from the original Scorecard bulk downloads. They may not be available in the Portal mirror datasets.
 
 | Variable | Description |
 |----------|-------------|
@@ -142,14 +156,15 @@ Newer metric measuring share of loan dollars being repaid:
 
 ## Default Rates
 
-### Cohort Default Rate (CDR)
+### Cohort Default Rate (Portal: `repayment_fsa` dataset)
 
 The official federal accountability metric:
 
-| Variable | Description |
-|----------|-------------|
-| `CDR3` | 3-year cohort default rate |
-| `CDR3_DENOM` | Borrowers in CDR3 cohort |
+| Portal Column | Description | Original Scorecard |
+|---------------|-------------|-------------------|
+| `default_rate` | Default rate (Float64) | `CDR2`, `CDR3` |
+| `default_rate_denom` | Borrowers in cohort | `CDR3_DENOM` |
+| `years_since_entering_repay` | 2 or 3 years | Was in variable name |
 
 **CDR Definition:** Share of borrowers who enter repayment and default within 3 years.
 

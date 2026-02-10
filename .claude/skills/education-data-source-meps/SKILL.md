@@ -51,7 +51,6 @@ MEPS is a **modeled estimate** of the share of students from households with inc
 | `data-sources.md` | Input data (CCD, SAIPE, ISP) | Understanding data provenance |
 | `variable-definitions.md` | MEPS variables and codes | Building queries, interpreting results |
 | `data-quality.md` | Limitations, uncertainty, appropriate uses | Research design, caveats |
-| `api-usage.md` | Legacy API endpoints and query examples | Legacy API reference only |
 
 ## Decision Trees
 
@@ -92,20 +91,19 @@ Which estimate type?
 ```
 Access method?
 ├─ Mirror download (recommended) → See "Data Access" section below
-├─ Join with other data → Use `ncessch` as join key
-└─ Legacy API reference → ./references/api-usage.md
+└─ Join with other data → Use `ncessch` as join key
 ```
 
 ## Quick Reference: MEPS Variables
 
-> **Data Access:** MEPS data is fetched from mirrors (parquet/CSV). See the `education-data-query` skill for mirror configuration and fetch patterns.
+> **Data Access:** MEPS data is fetched from mirrors (parquet/CSV). See `datasets-reference.md` for canonical paths, `mirrors.yaml` for mirror configuration, and `fetch-patterns.md` for fetch code patterns.
 
-### API Field Names
+### Portal Field Names
 
-The actual API field names differ from some documentation:
+The Portal field names differ from some external MEPS documentation:
 
-| Documented Name | Actual API Field |
-|-----------------|------------------|
+| External Documentation | Portal Field Name |
+|------------------------|-------------------|
 | `meps` / `school_poverty` | `meps_poverty_pct` |
 | `meps_mod` | `meps_mod_poverty_pct` |
 | `meps_se` | `meps_poverty_se` |
@@ -154,15 +152,24 @@ valid_data = df.filter(pl.col("meps_poverty_pct").is_not_null())
 
 ## Data Access
 
-Datasets for MEPS are available via the mirror system. See `datasets-reference.md` for canonical paths and `fetch-patterns.md` for fetch code patterns.
+Datasets for MEPS are available via the mirror system. See `datasets-reference.md` for canonical paths, `mirrors.yaml` for mirror configuration, and `fetch-patterns.md` for fetch code patterns.
 
-**Key datasets:**
+| Dataset | Type | Years | Path | Codebook |
+|---------|------|-------|------|----------|
+| School Poverty | Single | 2009-2022 | `meps/schools_meps` | `meps/codebook_schools_meps` |
 
-| Dataset | Path | Type |
-|---------|------|------|
-| Schools MEPS | `meps/schools_meps` | Single |
+Codebooks are `.xls` files co-located with data in all mirrors. Use `get_codebook_url()` from `fetch-patterns.md` to construct download URLs:
 
-Codebooks: See `datasets-reference.md` codebook column. Use `get_codebook_url()` from `fetch-patterns.md`.
+```python
+url = get_codebook_url("meps/codebook_schools_meps")
+```
+
+> **Truth Hierarchy:** When interpreting variable values, apply this priority:
+> 1. **Actual data file** (what you observe in the parquet/CSV) -- this IS the truth
+> 2. **Live codebook** (.xls in mirror) -- authoritative documentation, may lag
+> 3. **This skill documentation** -- convenient summary, may drift from codebook
+>
+> If this documentation contradicts the codebook, trust the codebook. If the codebook contradicts observed data, trust the data and investigate.
 
 ### Filtering
 
@@ -188,7 +195,7 @@ df = df.with_columns(
 |---------|-------|----------|
 | Using negative value filters | Filtering `>= 0` to remove missing values; MEPS uses nulls, not `-1`/`-2`/`-3` | Use `.is_not_null()` instead of `>= 0` |
 | Confusing MEPS with FRPL thresholds | MEPS measures 100% FPL; FRPL uses 130-185% FPL — rates are not comparable | State clearly which measure and threshold; never mix in same analysis |
-| Using wrong field names | Documentation says `meps` but actual Portal field is `meps_poverty_pct` | Always use actual API field names: `meps_poverty_pct`, `meps_mod_poverty_pct`, `meps_poverty_se` |
+| Using wrong field names | Documentation says `meps` but actual Portal field is `meps_poverty_pct` | Always use Portal field names: `meps_poverty_pct`, `meps_mod_poverty_pct`, `meps_poverty_se` |
 | Ignoring standard errors | Treating MEPS as exact counts; they are modeled estimates with uncertainty | Use `meps_poverty_se` for close comparisons; flag when SE exceeds meaningful difference |
 | Including private schools | MEPS only covers public schools; joining with datasets containing private schools inflates nulls | Filter to public schools before joining |
 | Expecting recent data | MEPS has 2-3 year data lag; latest available may be several years behind | Check actual year range (2009-2022) before planning analysis |
@@ -272,4 +279,3 @@ df = df.with_columns(
 | Standard errors | `./references/data-quality.md` |
 | Appropriate uses | `./references/data-quality.md` |
 | Known limitations | `./references/data-quality.md` |
-| Legacy API reference | `./references/api-usage.md` |

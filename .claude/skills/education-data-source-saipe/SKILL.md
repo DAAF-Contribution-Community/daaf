@@ -37,7 +37,7 @@ SAIPE is the Census Bureau's program for producing **model-based** estimates of 
 - **Coverage**: All 50 states, 3,100+ counties, 13,000+ school districts
 - **Key measure**: Related children ages 5-17 in families in poverty
 - **Update frequency**: Annual (released each December, ~18-month lag)
-- **Available years**: 1995-2023 (school districts from 1999)
+- **Available years**: 1995-2023 (gaps at 1996, 1998; annual from 1999)
 - **Primary identifier**: FIPS code + LEAID (district ID)
 - **Methodology**: Model-based — combines ACS survey data with administrative records (IRS tax returns, SNAP data) using regression models with "shrinkage" techniques; school district estimates are allocated from county totals using within-county shares; all estimates contain uncertainty and confidence intervals are essential
 
@@ -98,10 +98,10 @@ Research question?
 
 ### CRITICAL: Field Name Prefix
 
-All SAIPE fields in the Education Data Portal API have the `est_` prefix:
+All SAIPE estimate columns in the Education Data Portal use the `est_` prefix:
 
-| Documented Name | Actual API Field |
-|-----------------|------------------|
+| Short Name | Portal Column Name |
+|------------|-------------------|
 | `population_total` | `est_population_total` |
 | `population_5_17` | `est_population_5_17` |
 | `population_5_17_poverty` | `est_population_5_17_poverty` |
@@ -126,6 +126,8 @@ All SAIPE fields in the Education Data Portal API have the `est_` prefix:
 
 ### State/County Estimates (additional)
 
+> **Not available in Portal mirrors.** The datasets below describe variables in SAIPE state and county files published by the Census Bureau. Only the **district-level** dataset (`saipe/districts_saipe`) is available in the Education Data Portal mirrors. These variables are listed for context only — they cannot be fetched via `fetch_from_mirrors()`.
+
 | Variable | Description |
 |----------|-------------|
 | `population_0_4_poverty` | Children under 5 in poverty (states only) |
@@ -135,12 +137,11 @@ All SAIPE fields in the Education Data Portal API have the `est_` prefix:
 
 ### Missing Data Codes
 
+> **Empirical observation (2025):** The `districts_saipe` parquet file uses `null` for all missing/unavailable values. No negative integer codes (-1, -2, -3) were observed in any column. Verify against the live codebook if this changes in future releases.
+
 | Code | Meaning | When Used |
 |------|---------|-----------|
-| `-1` | Missing | Data not reported or unavailable |
-| `-2` | Not applicable | Item doesn't apply to this entity |
-| `-3` | Suppressed | Data suppressed for privacy |
-| `null` | Not available | Field not present for given year/level |
+| `null` | Missing or unavailable | Estimate not produced for this district/year |
 
 ### When to Use SAIPE vs Alternatives
 
@@ -178,17 +179,26 @@ between 4,200 and 5,800.
 
 ## Data Access
 
-Datasets for SAIPE are available via the mirror system. See `datasets-reference.md` for canonical paths and `fetch-patterns.md` for fetch code patterns.
+Datasets for SAIPE are available via the mirror system. See `datasets-reference.md` for canonical paths, `mirrors.yaml` for mirror configuration, and `fetch-patterns.md` for fetch code patterns.
 
-**Key datasets:**
+| Dataset | Type | Years | Path | Codebook |
+|---------|------|-------|------|----------|
+| District Poverty Estimates | Single | 1995-2023 (gaps: 1996, 1998) | `saipe/districts_saipe` | `saipe/codebook_districts_saipe` |
 
-| Dataset | Path | Type |
-|---------|------|------|
-| District Poverty Estimates | `saipe/districts_saipe` | Single |
+> **Only district-level SAIPE data is available in the Portal mirrors.** State and county SAIPE estimates are published by the Census Bureau but are not included in the Education Data Portal mirror system.
 
-**Years Available:** 1999-2023
+Codebooks are `.xls` files co-located with data in all mirrors. Use `get_codebook_url()` from `fetch-patterns.md` to construct download URLs:
 
-Codebooks: See `datasets-reference.md` codebook column. Use `get_codebook_url()` from `fetch-patterns.md`.
+```python
+url = get_codebook_url("saipe/codebook_districts_saipe")
+```
+
+> **Truth Hierarchy:** When interpreting variable values, apply this priority:
+> 1. **Actual data file** (what you observe in the parquet/CSV) — this IS the truth
+> 2. **Live codebook** (.xls in mirror) — authoritative documentation, may lag
+> 3. **This skill documentation** — convenient summary, may drift from codebook
+>
+> If this documentation contradicts the codebook, trust the codebook. If the codebook contradicts observed data, trust the data and investigate.
 
 ### Filtering
 
@@ -198,15 +208,15 @@ df_state = df.filter(
     (pl.col("fips") == 6) & (pl.col("year") == 2022)
 )
 
-# Exclude missing/suppressed poverty estimates
+# Exclude null poverty estimates
 df_valid = df.filter(
-    pl.col("est_population_5_17_poverty") >= 0
+    pl.col("est_population_5_17_poverty").is_not_null()
 )
 
 # High-poverty districts (above 20%)
 df_high = df.filter(
-    (pl.col("est_population_5_17_poverty_pct") >= 20) &
-    (pl.col("est_population_5_17_poverty_pct") >= 0)  # exclude coded values
+    pl.col("est_population_5_17_poverty_pct").is_not_null()
+    & (pl.col("est_population_5_17_poverty_pct") >= 20)
 )
 ```
 
@@ -220,7 +230,7 @@ df_high = df.filter(
 | Not enrollment | Population-based (residential), not enrolled students | Different from FRPL counts; do not equate with enrollment |
 | Boundary timing | May not reflect very recent district consolidations or splits | Check SDRP update cycle in `./references/historical-changes.md` |
 | County allocation | Districts inherit county model uncertainty plus allocation uncertainty | Larger CV for small districts; use CV table for reliability |
-| Missing `est_` prefix | API fields use `est_` prefix not shown in documentation | Always prefix variable names with `est_` when querying Portal data |
+| Missing `est_` prefix | Portal columns use `est_` prefix not shown in some documentation | Always use `est_`-prefixed column names when working with Portal data |
 | Pre/post 2010 comparison | Methodology break at 2010 decennial update invalidates naive trends | Do not compare school district estimates across the 2010 boundary |
 
 ## Poverty Definition

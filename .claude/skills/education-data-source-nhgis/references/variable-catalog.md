@@ -3,16 +3,23 @@
 Key demographic variables available from NHGIS for education research contexts.
 
 > **Note**: This document covers two contexts:
-> 1. **NHGIS direct access** - Census variables from NHGIS Data Finder (original table codes)
-> 2. **Portal NHGIS endpoint** - School-to-census links via Education Data Portal (integer encodings)
+> 1. **Portal NHGIS data** — School/college-to-census links via Education Data Portal mirrors (integer encodings)
+> 2. **NHGIS direct access** — Census variables from NHGIS Data Finder (original table codes)
 >
 > For Portal integer encodings, see the [Portal Encodings](#portal-integer-encodings) section below.
+
+> **Truth Hierarchy:** When interpreting variable values, apply this priority:
+> 1. **Actual data file** (what you observe in the parquet/CSV) — this IS the truth
+> 2. **Live codebook** (.xls in mirror) — authoritative documentation, may lag
+> 3. **This skill documentation** — convenient summary, may drift from codebook
+>
+> Codebook paths are listed in `datasets-reference.md`. Use `get_codebook_url()` from `fetch-patterns.md` to construct download URLs. If this documentation contradicts the codebook, trust the codebook.
 
 ---
 
 ## Portal Integer Encodings
 
-When accessing NHGIS data through the Education Data Portal mirrors, categorical variables use integer codes. These are the encodings for the NHGIS school-geography datasets.
+When accessing NHGIS data through the Education Data Portal mirrors, categorical variables use integer codes. These are the encodings for the NHGIS school/college-geography datasets.
 
 ### census_region
 
@@ -48,46 +55,92 @@ When accessing NHGIS data through the Education Data Portal mirrors, categorical
 
 ### geocode_accuracy
 
-Numeric score 0-100 indicating geocode match quality.
+Categorical confidence level for geocode match. **Note:** This column is Float64 in schools data but Int64 in colleges data. Cast to a consistent type before cross-entity comparison.
 
-| Value | Meaning |
-|-------|---------|
-| `100` | Exact match (rooftop level) |
-| `90-99` | High confidence match |
-| `70-89` | Moderate confidence |
-| `<70` | Low confidence |
-| `-2` | Not geocoded |
+| Code | Meaning |
+|------|---------|
+| `1` | High confidence |
+| `2` | Medium confidence |
+| `3` | Low confidence |
+| `4` | Did not geocode |
+| `-2` | Not applicable |
+
+> **Codebook correction:** The codebook defines this as a 4-level categorical variable (1-4), not a 0-100 numeric score as previously documented. The prior documentation was inaccurate.
 
 ### geocode_accuracy_detailed
 
 | Code | Match Type |
 |------|------------|
-| `1` | Rooftop (exact building) |
-| `2` | Parcel centroid |
-| `3` | Street intersection |
-| `4` | Street address (interpolated) |
-| `5` | City centroid |
-| `6` | County centroid |
-| `7` | State centroid |
-| `8` | ZIP code centroid |
-| `9` | USPS ZIP+4 |
-| `10` | Coordinates from CCD directory |
-| `11` | Interpolated address |
-| `12` | Approximate location |
+| `1` | Point address |
+| `2` | Street address |
+| `3` | Subaddress |
+| `4` | Street intersection |
+| `5` | Street address extension |
+| `6` | Street name |
+| `7` | Postal extension |
+| `8` | Point of interest |
+| `9` | Distance marker |
+| `10` | Postal code |
+| `11` | Locality |
+| `12` | Postal location |
+| `-2` | Not applicable |
 
-### class_code (FIPS Place Class)
+### cbsa_city (Principal City Indicator)
+
+Indicates whether the school/institution is located in the **principal city** of its Core Based Statistical Area.
+
+| Code | Meaning |
+|------|---------|
+| `0` | Not in the CBSA's principal city |
+| `1` | In the CBSA's principal city |
+| `null` | Not in a CBSA or not determined |
+| `-1` | Missing/not reported |
+| `-2` | Not applicable |
+| `-3` | Suppressed data |
+
+> **Codebook label discrepancy:** The mirror codebook labels this field as "Metropolitan or micropolitan statistical area (yes/no)", which is misleading since `cbsa` and `cbsa_type` already indicate CBSA membership and type. Empirical verification confirms `cbsa_city` is a principal city indicator: many institutions have a valid `cbsa` code but `cbsa_city=0`, meaning they are in the CBSA but not in its principal city. The variable name `cbsa_city` also supports this interpretation.
+
+**Availability:** Present in census 2000+ files only. Not in census 1990 files.
+
+### lower_chamber_type (State Legislative District Classification)
+
+Legal or statistical area description code for the state legislative district lower chamber. Describes the type of legislative district the school/institution falls within.
 
 | Code | Type |
 |------|------|
-| `1` | Incorporated place - City |
-| `2` | Incorporated place - Borough |
-| `4` | Incorporated place - Town |
-| `5` | Incorporated place - Village |
-| `7` | Census designated place (CDP) |
-| `8` | Other incorporated place |
-| `50` | Consolidated city |
-| `70` | County subdivision (unincorporated) |
-| `71` | Municipality |
+| `1` | State legislative district |
+| `2` | State legislative subdistrict |
+| `3` | State house district |
+| `4` | Vermont state house district |
+| `5` | District |
+| `6` | General assembly district |
+| `7` | Assembly district |
+| `8` | Other geographic entity |
+
+**Availability:** Present in census 2010 files only. Not in census 1990, 2000, or 2020 files. Appears in both schools and colleges NHGIS datasets for the census 2010 vintage.
+
+### class_code (FIPS Place Class)
+
+> **Codebook discrepancy:** The codebook defines different codes than those listed below. The codebook values include: 1=Governmentally active (incorporated), 2=Minor civil division coextensive (incorporated), 3=Consolidated city (incorporated), 4=Minor civil division equivalent (incorporated), 5=Alaska Native village statistical area (incorporated), 6=Independent city, 7=Consolidated city portion, 8=Operationally inactive incorporated place, plus many additional codes (10-86) for American Indian reservations, Alaska Native areas, counties, census-designated places, and minor civil divisions. The simplified mapping below may be inaccurate; consult the codebook for authoritative definitions.
+
+| Code | Type |
+|------|------|
+| `1` | Governmentally active (incorporated) |
+| `2` | Minor civil division coextensive (incorporated) |
+| `3` | Consolidated city (incorporated) |
+| `4` | Minor civil division equivalent (incorporated) |
+| `5` | Alaska Native village statistical area (incorporated) |
+| `6` | Independent city |
+| `7` | Consolidated city portion |
+| `8` | Operationally inactive incorporated place |
+| `10`-`16` | American Indian reservations and tribal areas |
+| `20`-`23` | Alaska Native statistical areas |
+| `30` | Hawaiian home land |
+| `40`-`43` | County types |
+| `50` | Installation of US Department of Defense |
+| `60`-`62` | Minor civil divisions (governmentally active) |
+| `70`-`73` | Census-designated places |
+| `80`-`86` | Other minor civil divisions and statistical areas |
 
 ---
 
@@ -342,10 +395,14 @@ When variables not available at school district level:
 3. Sum counts; weight averages by population
 
 ```python
+import polars as pl
+
 # Example: Child poverty rate for school district
-district_children_poverty = tracts_in_district["children_in_poverty"].sum()
-district_children_total = tracts_in_district["children_total"].sum()
-district_child_poverty_rate = district_children_poverty / district_children_total
+result = tracts_in_district.select(
+    pl.col("children_in_poverty").sum().alias("poverty_sum"),
+    pl.col("children_total").sum().alias("total_sum"),
+)
+district_child_poverty_rate = result["poverty_sum"][0] / result["total_sum"][0]
 ```
 
 ## Finding Variables in NHGIS

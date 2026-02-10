@@ -86,9 +86,9 @@ suppressed = df.filter(pl.col("variable") == -3)
 print(f"Suppressed cells: {suppressed.height}")
 ```
 
-### Not Applicable (-1)
+### Not Applicable (-2)
 
-Used when item doesn't apply:
+Code `-2` is used when item doesn't apply:
 - Graduation rates for non-degree institutions
 - Graduate data for undergrad-only institutions
 - Distance education for institutions without DE programs
@@ -263,8 +263,8 @@ Always compare within peer groups:
 ```python
 # Define peer group
 peers = df.filter(
-    (pl.col("control") == 1) &  # Public
-    (pl.col("level") == 1) &    # 4-year
+    (pl.col("inst_control") == 1) &  # Public
+    (pl.col("institution_level") == 4) &    # 4-year (Portal code is 4, not 1)
     (pl.col("carnegie_basic").is_in(peer_carnegies)) &
     (pl.col("enrollment_size").is_between(5000, 15000))
 )
@@ -332,9 +332,9 @@ def validate_ipeds_data(df, key_vars):
             issues.append(f"Missing {var}: {missing} rows")
     
     # 3. Check for implausible values
-    if "grad_rate" in df.columns:
+    if "completion_rate_150pct" in df.columns:
         bad_grad = df.filter(
-            (pl.col("grad_rate") > 100) | (pl.col("grad_rate") < 0)
+            (pl.col("completion_rate_150pct") > 100) | (pl.col("completion_rate_150pct") < 0)
         )
         if bad_grad.height > 0:
             issues.append(f"Invalid grad rates: {bad_grad.height}")
@@ -397,11 +397,14 @@ def check_yoy_changes(df, max_change=0.5):
 
 ### Institution Status Flags
 
-| Variable | Description | Check |
-|----------|-------------|-------|
-| `cyactive` | Currently active | Should be 1 for analysis |
-| `instcat` | Institution category | Check for changes |
-| `deathyr` | Year closed | Exclude closed institutions |
+| Portal Variable | Description | Check |
+|-----------------|-------------|-------|
+| `currently_active_ipeds` | Currently active | Should be 1 for analysis |
+| `inst_category` | Institution category | Check for changes |
+| `year_deleted` | Year closed | Exclude closed institutions |
+| `inst_status` | Institution status | Active vs inactive |
+
+> **Note:** NCES raw file documentation may use different variable names (e.g., `CYACTIVE`, `INSTCAT`, `DEATHYR`). The Portal uses the lowercase descriptive names shown above. Always verify against the actual data columns.
 
 ### Data Quality Flags
 
@@ -414,12 +417,13 @@ def check_yoy_changes(df, max_change=0.5):
 ### Using Flags in Analysis
 
 ```python
-# Example: Quality-filtered analysis
+import polars as pl
+
+# Example: Quality-filtered analysis using Portal variable names
 analysis_data = df.filter(
-    (pl.col("cyactive") == 1) &           # Active institutions
-    (pl.col("deathyr").is_null()) &       # Not closed
-    (pl.col("imputation_flag") != "I") &  # Not imputed
-    (pl.col("enrollment") > 100)          # Minimum size
+    (pl.col("currently_active_ipeds") == 1) &  # Active institutions
+    (pl.col("year_deleted").is_null()) &        # Not closed
+    (pl.col("enrollment") > 100)               # Minimum size (if applicable)
 )
 
 # Document filtering

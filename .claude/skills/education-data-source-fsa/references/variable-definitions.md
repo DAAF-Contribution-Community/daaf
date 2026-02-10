@@ -1,6 +1,6 @@
 # FSA Variable Definitions
 
-Comprehensive reference for variables available in FSA endpoints through the Urban Institute Education Data Portal.
+Comprehensive reference for variables available in FSA datasets through the Urban Institute Education Data Portal.
 
 > **CRITICAL: Portal Integer Encoding**
 >
@@ -18,8 +18,8 @@ Comprehensive reference for variables available in FSA endpoints through the Urb
 ## Contents
 
 - [Overview](#overview)
-- [Grants Endpoint Variables](#grants-endpoint-variables)
-- [Loans Endpoint Variables](#loans-endpoint-variables)
+- [Grants Dataset Variables](#grants-dataset-variables)
+- [Loans Dataset Variables](#loans-dataset-variables)
 - [Campus-Based Volume Variables](#campus-based-volume-variables)
 - [Financial Responsibility Variables](#financial-responsibility-variables)
 - [90/10 Revenue Variables](#9010-revenue-variables)
@@ -28,21 +28,23 @@ Comprehensive reference for variables available in FSA endpoints through the Urb
 
 ## Overview
 
-FSA data in the Education Data Portal is organized into five endpoints, each with specific variables related to Title IV aid programs. Data is accessed via the Portal mirrors (see `mirrors.yaml` for configuration).
+> **Codebook Authority:** This file summarizes variable definitions for convenience. The authoritative source is the codebook `.xls` file for each dataset (see codebook paths in SKILL.md "Data Access" section). Use `get_codebook_url()` from `fetch-patterns.md` to construct download URLs. If this file contradicts observed data or the codebook, trust the higher-priority source per the Truth Hierarchy in SKILL.md.
 
-### Endpoint Summary
+FSA data in the Education Data Portal is organized into five datasets, each with specific variables related to Title IV aid programs. Data is accessed via the Portal mirrors (see `mirrors.yaml` for configuration, `datasets-reference.md` for canonical paths, `fetch-patterns.md` for fetch code).
 
-| Endpoint | Path | Years | Approx Records |
-|----------|------------------|-------|----------------|
-| Grants | `fsa/grants/colleges_fsa_grants.parquet` | 1999-2021 | ~600K total |
-| Loans | `fsa/loans/colleges_fsa_loans.parquet` | 1999-2021 | ~1.6M total |
-| Campus-Based Volume | `fsa/campus-based-volume/colleges_fsa_campus_based_volume.parquet` | 2001-2021 | ~250K total |
-| Financial Responsibility | `fsa/financial-responsibility/colleges_fsa_composite_scores.parquet` | 2006-2016 | Varies |
-| 90/10 Revenue Percentages | `fsa/90-10-revenue-percentages/colleges_fsa_90_10_revenue_percentages.parquet` | 2014-2021 | Varies |
+### Dataset Summary
 
-## Grants Endpoint Variables
+| Dataset | Canonical Path | Years | Approx Records |
+|---------|---------------|-------|----------------|
+| Grants | `fsa/colleges_fsa_grants` | 1999-2021 | ~608K total |
+| Loans | `fsa/colleges_fsa_loans` | 1999-2021 | ~1.6M total |
+| Campus-Based Volume | `fsa/colleges_fsa_campus_based_volume` | 2001-2021 | ~248K total |
+| Financial Responsibility | `fsa/colleges_fsa_composite_scores` | 2006-2016 | ~38K total |
+| 90/10 Revenue Percentages | `fsa/colleges_fsa_90_10_revenue_percentages` | 2014-2021 | ~14K total |
 
-Parquet file: `college-university/fsa/grants/colleges_fsa_grants.parquet`
+## Grants Dataset Variables
+
+Canonical path: `fsa/colleges_fsa_grants` | Codebook: `fsa/codebook_colleges_fsa_grants`
 
 ### Identification Variables
 
@@ -82,8 +84,8 @@ Parquet file: `college-university/fsa/grants/colleges_fsa_grants.parquet`
 ```python
 import polars as pl
 
-# Load and filter grants data
-df = pl.read_parquet("colleges_fsa_grants.parquet")
+# Fetch grants data via mirror system
+df = fetch_from_mirrors("fsa/colleges_fsa_grants")
 
 # Get Pell Grant data for California in 2020
 df_pell_ca = df.filter(
@@ -93,9 +95,9 @@ df_pell_ca = df.filter(
 )
 ```
 
-## Loans Endpoint Variables
+## Loans Dataset Variables
 
-Parquet file: `college-university/fsa/loans/colleges_fsa_loans.parquet`
+Canonical path: `fsa/colleges_fsa_loans` | Codebook: `fsa/codebook_colleges_fsa_loans`
 
 ### Identification Variables
 
@@ -150,8 +152,8 @@ Parquet file: `college-university/fsa/loans/colleges_fsa_loans.parquet`
 ```python
 import polars as pl
 
-# Load loans data
-df = pl.read_parquet("colleges_fsa_loans.parquet")
+# Fetch loans data via mirror system
+df = fetch_from_mirrors("fsa/colleges_fsa_loans")
 
 # Get Direct Subsidized Undergraduate loan data for a specific institution
 df_sub = df.filter(
@@ -163,9 +165,9 @@ df_sub = df.filter(
 df_plus = df.filter(pl.col("loan_type") == 7)  # 7 = Parent PLUS
 ```
 
-## Campus-Based Volume Variables
+## Campus-Based Volume Dataset Variables
 
-Parquet file: `college-university/fsa/campus-based-volume/colleges_fsa_campus_based_volume.parquet`
+Canonical path: `fsa/colleges_fsa_campus_based_volume` | Codebook: `fsa/codebook_colleges_fsa_campus_based_volume`
 
 ### Identification Variables
 
@@ -207,8 +209,8 @@ Parquet file: `college-university/fsa/campus-based-volume/colleges_fsa_campus_ba
 ```python
 import polars as pl
 
-# Load campus-based data
-df = pl.read_parquet("colleges_fsa_campus_based_volume.parquet")
+# Fetch campus-based data via mirror system
+df = fetch_from_mirrors("fsa/colleges_fsa_campus_based_volume")
 
 # Get Federal Work-Study data for 2020
 df_fws = df.filter(
@@ -220,9 +222,11 @@ df_fws = df.filter(
 df_fseog = df.filter(pl.col("award_type") == 1)  # 1 = FSEOG
 ```
 
-## Financial Responsibility Variables
+## Financial Responsibility Dataset Variables
 
-Parquet file: `college-university/fsa/financial-responsibility/colleges_fsa_composite_scores.parquet`
+Canonical path: `fsa/colleges_fsa_composite_scores` | Codebook: `fsa/codebook_colleges_fsa_financial_responsibility`
+
+> **Naming mismatch:** Data path uses `composite_scores`; codebook uses `financial_responsibility`. This is intentional.
 
 ### Identification Variables
 
@@ -240,7 +244,7 @@ Parquet file: `college-university/fsa/financial-responsibility/colleges_fsa_comp
 | Variable | Type | Description | Range |
 |----------|------|-------------|-------|
 | `financial_resp_score` | Float64 | Overall financial responsibility score | -1.0 to 3.0 |
-| `multicampus_flag` | Int64 | Multicampus indicator | 0/1 |
+| `multicampus_flag` | Int64 | Multicampus indicator | 1 when true; null otherwise (true-only flag — value 0 is not used) |
 
 ### Score Interpretation
 
@@ -255,8 +259,8 @@ Parquet file: `college-university/fsa/financial-responsibility/colleges_fsa_comp
 ```python
 import polars as pl
 
-# Load financial responsibility data
-df = pl.read_parquet("colleges_fsa_financial_responsibility.parquet")
+# Fetch financial responsibility data via mirror system
+df = fetch_from_mirrors("fsa/colleges_fsa_composite_scores")
 
 # Get institutions in the "zone" (1.0 to 1.49)
 df_zone = df.filter(
@@ -268,9 +272,11 @@ df_zone = df.filter(
 df_at_risk = df.filter(pl.col("financial_resp_score") < 1.0)
 ```
 
-## 90/10 Revenue Variables
+## 90/10 Revenue Dataset Variables
 
-Parquet file: `college-university/fsa/90-10-revenue-percentages/colleges_fsa_90_10_revenue_percentages.parquet`
+Canonical path: `fsa/colleges_fsa_90_10_revenue_percentages` | Codebook: `fsa/codebook_colleges_fsa_90-10_revenue_percentages`
+
+> **Naming mismatch:** Data path uses underscores (`90_10`); codebook uses hyphens (`90-10`). This is intentional.
 
 ### Identification Variables
 
@@ -286,37 +292,41 @@ Parquet file: `college-university/fsa/90-10-revenue-percentages/colleges_fsa_90_
 
 | Variable | Type | Description | Units |
 |----------|------|-------------|-------|
-| `rev_pct_90_10` | Float64 | 90/10 revenue percentage | Percent (0-100) |
-| `numerator_90_10` | Float64 | Title IV revenue (numerator) | Dollars |
-| `denominator_90_10` | Float64 | Total revenue (denominator) | Dollars |
+| `rev_pct_90_10` | Float64 | 90/10 revenue percentage | **Proportion (0-1)**, NOT percent (0-100) |
+| `numerator_90_10` | Float64 | Title IV revenue (numerator) | Dollars (null for ~17 rows) |
+| `denominator_90_10` | Float64 | Total revenue (denominator) | Dollars (null for ~17 rows) |
+
+> **CRITICAL: Proportion, not percentage.** `rev_pct_90_10` is stored as a proportion (e.g., 0.87 means 87%). The compliance threshold is `rev_pct_90_10 > 0.90`, NOT `> 90`.
 
 ### Calculated Relationship
 
 ```
-rev_pct_90_10 = (numerator_90_10 / denominator_90_10) × 100
+rev_pct_90_10 = numerator_90_10 / denominator_90_10
 ```
+
+(The result is a proportion, not multiplied by 100.)
 
 ### Compliance Interpretation
 
-| Title IV Percentage | Status |
-|--------------------|--------|
-| ≤ 90% | Compliant |
-| > 90% (1 year) | Provisional |
-| > 90% (2 consecutive years) | Ineligible |
+| Title IV Proportion | Equivalent Percentage | Status |
+|--------------------|----------------------|--------|
+| <= 0.90 | <= 90% | Compliant |
+| > 0.90 (1 year) | > 90% | Provisional |
+| > 0.90 (2 consecutive years) | > 90% | Ineligible |
 
 ### Example Query
 
 ```python
 import polars as pl
 
-# Load 90/10 data
-df = pl.read_parquet("colleges_fsa_90-10_revenue_percentages.parquet")
+# Fetch 90/10 data via mirror system
+df = fetch_from_mirrors("fsa/colleges_fsa_90_10_revenue_percentages")
 
-# Get institutions near the threshold (85%+)
-df_at_risk = df.filter(pl.col("rev_pct_90_10") >= 85)
+# Get institutions near the threshold (85%+ = 0.85 as proportion)
+df_at_risk = df.filter(pl.col("rev_pct_90_10") >= 0.85)
 
-# Get apparent violations (>90%)
-df_violations = df.filter(pl.col("rev_pct_90_10") > 90)
+# Get apparent violations (>90% = 0.90 as proportion)
+df_violations = df.filter(pl.col("rev_pct_90_10") > 0.90)
 ```
 
 ## Common Identifiers
@@ -360,25 +370,38 @@ FSA data uses standard Education Data Portal missing data codes:
 When analyzing FSA data:
 
 ```python
-# Filter out missing values
-df = df[df['pell_recipients'] > 0]
+import polars as pl
 
-# Or explicitly handle codes
-df = df[~df['pell_recipients'].isin([-1, -2, -3])]
+# Filter out missing sentinel values from numeric columns
+df = df.filter(~pl.col("grant_recipients_unitid").is_in([-1, -2, -3]))
+
+# Or filter to positive values only
+df = df.filter(pl.col("grant_recipients_unitid") > 0)
+
+# Replace sentinel values with null
+df = df.with_columns(
+    pl.when(pl.col("grant_recipients_unitid").is_in([-1, -2, -3]))
+    .then(None)
+    .otherwise(pl.col("grant_recipients_unitid"))
+    .alias("grant_recipients_unitid")
+)
 ```
 
 ## Variable Naming Conventions
 
-FSA variables follow consistent naming patterns:
+FSA Portal variables use **generic column names** with type code columns to differentiate programs. There are no program-specific column names (e.g., no `pell_recipients` or `dl_sub_recipients`).
 
 | Pattern | Meaning | Example |
 |---------|---------|---------|
-| `*_recipients` | Count of aid recipients | `pell_recipients` |
-| `*_disbursements` | Total dollars disbursed | `pell_disbursements` |
-| `*_avg_amount` | Average per recipient | `pell_avg_amount` |
-| `*_allocation` | Federal allocation amount | `fws_allocation` |
-| `dl_*` | Direct Loan program | `dl_sub_recipients` |
-| `*_ratio` | Financial ratio | `equity_ratio` |
+| `*_recipients_unitid` | Count of aid recipients (by unit ID) | `grant_recipients_unitid`, `loan_recipients_unitid` |
+| `*_recipients_opeid` | Count of aid recipients (by OPEID) | `grant_recipients_opeid`, `loan_recipients_opeid` |
+| `value_*_disbursed_unitid` | Total dollars disbursed (by unit ID) | `value_grants_disbursed_unitid` |
+| `value_*_disbursed_opeid` | Total dollars disbursed (by OPEID) | `value_grants_disbursed_opeid` |
+| `*_fed_contr_*` | Federal contribution amount | `campus_award_fed_contr_unitid` |
+| `*_flag` | Boolean indicator | `allocation_flag`, `combined_flag`, `multicampus_flag` |
+| `*_type` | Program type code (integer) | `grant_type`, `loan_type`, `award_type` |
+| `financial_resp_score` | Financial responsibility composite score | `financial_resp_score` |
+| `rev_pct_90_10` | 90/10 revenue proportion | `rev_pct_90_10` |
 
 ## Data Type Considerations
 

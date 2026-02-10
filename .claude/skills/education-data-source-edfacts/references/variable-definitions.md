@@ -197,25 +197,25 @@ weighted_avg = (
 
 ### Rate Variables
 
-| Variable | Description | Type |
-|----------|-------------|------|
-| `grad_rate_low` | Graduation rate, lower bound | Percentage |
-| `grad_rate_high` | Graduation rate, upper bound | Percentage |
-| `grad_rate_midpt` | Graduation rate, midpoint | Percentage |
+> **Empirically verified** from 2019 grad rate data. Note that `grad_rate_midpt` is **Int64** (not Float64 like assessment midpoints).
 
-### Cohort Variables
+| Variable | Description | Portal Type |
+|----------|-------------|-------------|
+| `grad_rate_low` | Graduation rate, lower bound (null when exact) | Int64 |
+| `grad_rate_high` | Graduation rate, upper bound (null when exact) | Int64 |
+| `grad_rate_midpt` | Graduation rate, midpoint or exact value | Int64 |
 
-| Variable | Description | Type |
-|----------|-------------|------|
-| `cohort_count` | Adjusted cohort size | Integer |
-| `grad_count` | Number of graduates | Integer |
+### Cohort Variable
 
-### Extended Rate Variables (if available)
+| Variable | Description | Portal Type |
+|----------|-------------|-------------|
+| `cohort_num` | Adjusted cohort size | Int64 |
 
-| Variable | Description |
-|----------|-------------|
-| `grad_rate_5yr_midpt` | 5-year graduation rate |
-| `grad_rate_6yr_midpt` | 6-year graduation rate |
+> **Note:** The variable is `cohort_num`, NOT `cohort_count`. There is no `grad_count` column in the Portal data.
+
+### Extended Rate Variables
+
+Extended graduation rate variables (`grad_rate_5yr_midpt`, `grad_rate_6yr_midpt`) are not observed in the current Portal datasets. If your analysis requires extended rates, verify column availability empirically before proceeding.
 
 ## Participation Variables
 
@@ -249,6 +249,8 @@ low_participation = df.filter(
 
 ### Race/Ethnicity Codes (Portal Integer Encoding)
 
+> **Empirically verified** from 2018 assessment data. Only these values appear in the `race` column.
+
 | Portal Code | NCES Code | Description |
 |-------------|-----------|-------------|
 | `1` | WH | White |
@@ -256,15 +258,10 @@ low_participation = df.filter(
 | `3` | HI | Hispanic/Latino of any race |
 | `4` | AS | Asian |
 | `5` | AM | American Indian/Alaska Native |
-| `6` | HP | Native Hawaiian/Pacific Islander |
 | `7` | MR | Two or more races |
-| `8` | — | Nonresident alien |
-| `9` | — | Unknown |
-| `20` | — | Other |
 | `99` | — | Total |
-| `-1` | — | Missing/not reported |
-| `-2` | — | Not applicable |
-| `-3` | — | Suppressed |
+
+> **Note:** Code `6` (NH/PI), `8` (Nonresident alien), `9` (Unknown), `20` (Other) are NOT observed in EDFacts data. Negative codes (-1, -2, -3) are also not present in the `race` column -- suppression is applied to the *value* columns, not the subgroup filter columns.
 
 ### Special Population Codes (Portal Integer Encoding)
 
@@ -284,14 +281,14 @@ EDFacts uses **filter columns** for special populations. Each column has:
 
 ### Disability Codes (Portal Integer Encoding)
 
+> **Empirically verified** from 2018 assessment and 2019 grad rate data. Only `1` and `99` are observed.
+
 | Code | Description |
 |------|-------------|
-| `0` | Students without disabilities |
-| `1` | Students with disabilities served under IDEA |
-| `2` | Students with disabilities served under Section 504 only |
-| `3` | Students not served under IDEA (includes without disabilities + 504) |
-| `4` | Students with disabilities (Section 504 and IDEA) |
-| `99` | Total |
+| `1` | Students with disabilities (IDEA-eligible) |
+| `99` | Total (all students) |
+
+> **Note:** The expanded disability codes (0-4) documented in other Portal sources are NOT present in EDFacts datasets. EDFacts uses a simple binary: `1` = students with disabilities, `99` = total.
 
 ### Sex Codes (Portal Integer Encoding)
 
@@ -328,40 +325,43 @@ race_comparison = (df
 
 ## Geographic Identifiers
 
-### School-Level
+> **Portal Data Types:** All identifiers are **Int64** in the Portal parquet files. The NCES source format (zero-padded strings) is described below for reference, but you will encounter integer values when working with the data.
 
-| Variable | Description | Format |
-|----------|-------------|--------|
-| `ncessch` | NCES school ID | 12-character string |
-| `ncessch_num` | School ID (numeric) | Integer |
+### School-Level (Assessment datasets: 26 cols, Grad rate datasets: 18 cols)
 
-### District-Level
+| Variable | Description | Portal Type | NCES Source Format |
+|----------|-------------|-------------|-------------------|
+| `ncessch` | NCES school ID | Int64 | 12-char zero-padded |
+| `ncessch_num` | School ID (same as ncessch) | Int64 | — |
+| `school_name` | School name | String | — |
 
-| Variable | Description | Format |
-|----------|-------------|--------|
-| `leaid` | NCES district/LEA ID | 7-character string |
-| `leaid_num` | District ID (numeric) | Integer |
+### District-Level (Assessment datasets: 23 cols, Grad rate datasets: 15 cols)
+
+| Variable | Description | Portal Type | NCES Source Format |
+|----------|-------------|-------------|-------------------|
+| `leaid` | NCES district/LEA ID | Int64 | 7-char zero-padded |
+| `leaid_num` | District ID (same as leaid) | Int64 | — |
+| `lea_name` | LEA/district name | String | — |
 
 ### State-Level
 
-| Variable | Description | Format |
-|----------|-------------|--------|
-| `fips` | State FIPS code | 2-digit integer |
-| `state_name` | State name | String |
-| `state_abbrev` | State abbreviation | 2-character string |
+| Variable | Description | Portal Type |
+|----------|-------------|-------------|
+| `fips` | State FIPS code | Int64 |
 
-### ID Formats
+> **Note:** `state_name` and `state_abbrev` columns are NOT present in EDFacts datasets. Only `fips` is available. Join with CCD directory data to get state names.
+
+### ID Format Reference (NCES Source)
 
 ```python
-# NCESSCH format: SSLLLLLNNNNN
+# NCESSCH logical format: SSLLLLLNNNNN (12 digits)
 # SS = State FIPS (2 digits)
 # LLLLL = LEA ID (5 digits)
 # NNNNN = School ID within LEA (5 digits)
-
-example_ncessch = "060000100001"
-# 06 = California
-# 00001 = LEA ID
-# 00001 = School within LEA
+#
+# In Portal data, this is stored as Int64 (no leading zeros):
+# California example: ncessch = 60000100001 (Int64)
+# NCES source:        ncessch = "060000100001" (12-char string)
 ```
 
 ## Handling Special Values
@@ -450,45 +450,49 @@ def add_range_metrics(df, var_prefix):
     ])
 ```
 
-## EDFacts Data in Urban Institute Portal
+## EDFacts Data in the Portal
 
-### Accessing EDFacts via API
+### Fetching EDFacts Data
+
+EDFacts data is fetched via the mirror-based bulk download system. See `fetch-patterns.md` for the `fetch_yearly_from_mirrors()` function.
 
 ```python
-from educationdata import get_education_data
+import polars as pl
 
-# School-level assessments
-assessments = get_education_data(
-    level="schools",
-    source="edfacts",
-    topic="assessments",
-    filters={
-        "year": 2022,
-        "grade": 4,
-        "fips": 6  # California
-    }
+# School-level assessments (yearly dataset)
+df = fetch_yearly_from_mirrors(
+    path_template="edfacts/schools_edfacts_assessments_{year}",
+    years=[2017, 2018],
 )
 
-# School-level graduation rates
-grad_rates = get_education_data(
-    level="schools",
-    source="edfacts", 
-    topic="grad-rates",
-    filters={
-        "year": 2022,
-        "fips": 6
-    }
+# Filter to California, grade 4
+ca_grade4 = df.filter(
+    (pl.col("fips") == 6) & (pl.col("grade_edfacts") == 4)
+)
+
+# School-level graduation rates (yearly dataset)
+grad_df = fetch_yearly_from_mirrors(
+    path_template="edfacts/schools_edfacts_grad_rates_{year}",
+    years=[2018, 2019],
 )
 ```
 
-### Available EDFacts Endpoints
+### Codebook Authority
 
-| Level | Endpoint | Topic |
-|-------|----------|-------|
-| schools | `/schools/edfacts/assessments/{year}/{grade}/` | Assessment data |
-| schools | `/schools/edfacts/grad-rates/{year}/` | Graduation rates |
-| school-districts | `/school-districts/edfacts/assessments/{year}/{grade}/` | District assessments |
-| school-districts | `/school-districts/edfacts/grad-rates/{year}/` | District graduation |
+> **Truth Hierarchy:** This file summarizes variable definitions for convenience. When this file contradicts observed data or the live codebook, trust the higher-priority source. See the Truth Hierarchy in SKILL.md.
+>
+> Assessment codebooks: `get_codebook_url("edfacts/codebook_schools_edfacts_assessments")`
+>
+> Graduation rate codebooks: `get_codebook_url("edfacts/codebook_schools_edfacts_graduation")`
+
+### Available EDFacts Datasets
+
+| Level | Dataset | Path Pattern |
+|-------|---------|-------------|
+| Schools | Assessments | `edfacts/schools_edfacts_assessments_{year}` |
+| Schools | Grad Rates | `edfacts/schools_edfacts_grad_rates_{year}` |
+| Districts | Assessments | `edfacts/districts_edfacts_assessments_{year}` |
+| Districts | Grad Rates | `edfacts/districts_edfacts_grad_rates_{year}` |
 
 ## Best Practices Summary
 

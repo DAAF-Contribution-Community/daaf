@@ -2,6 +2,12 @@
 
 College Scorecard's earnings data represents actual post-college earnings from IRS W-2 records, making it uniquely valuable for understanding labor market outcomes.
 
+> **Portal dataset:** `scorecard/colleges_scorecard_earnings` (203,066 rows x 33 columns)
+>
+> **Portal uses lowercase LONG format.** Original Scorecard names like `MD_EARN_WNE_P6` become `earnings_med` filtered by `years_after_entry == 6`. See `variable-definitions.md` for the full mapping.
+>
+> **Suppression:** Earnings columns use `-3` integer code (NOT null) for suppressed values.
+
 ## Data Source: IRS/Treasury
 
 Earnings come from IRS W-2 wage records matched to students via Social Security numbers:
@@ -117,42 +123,53 @@ Example for 2024 data release:
 
 ### Median Earnings (Primary Metric)
 
-| Variable | Description |
-|----------|-------------|
-| `MD_EARN_WNE_P6` | Median earnings, 6 years after entry |
-| `MD_EARN_WNE_P8` | Median earnings, 8 years after entry |
-| `MD_EARN_WNE_P10` | Median earnings, 10 years after entry |
+> **Portal column names are lowercase.** Filter by `years_after_entry` to select time horizon.
 
-"WNE" = Working and Not Enrolled
+| Portal Column | Description | Original Scorecard |
+|---------------|-------------|-------------------|
+| `earnings_med` | Median earnings (filter by `years_after_entry`) | `MD_EARN_WNE_P6/P8/P10` |
+| `earnings_mean` | Mean earnings | `MN_EARN_WNE_P*` |
+
+"WNE" (Working and Not Enrolled) is implicit in the Portal data — these columns only include workers.
+
+Available `years_after_entry` values: **6, 7, 8, 9, 10**
 
 ### Percentile Earnings
 
-| Variable | Description |
-|----------|-------------|
-| `PCT10_EARN_WNE_P*` | 10th percentile earnings |
-| `PCT25_EARN_WNE_P*` | 25th percentile earnings |
-| `PCT75_EARN_WNE_P*` | 75th percentile earnings |
-| `PCT90_EARN_WNE_P*` | 90th percentile earnings |
+| Portal Column | Description | Original Scorecard |
+|---------------|-------------|-------------------|
+| `earnings_pct10` | 10th percentile earnings | `PCT10_EARN_WNE_P*` |
+| `earnings_pct25` | 25th percentile earnings | `PCT25_EARN_WNE_P*` |
+| `earnings_pct75` | 75th percentile earnings | `PCT75_EARN_WNE_P*` |
+| `earnings_pct90` | 90th percentile earnings | `PCT90_EARN_WNE_P*` |
 
 ### Earnings by Family Income
 
 Disaggregated by FAFSA-reported family income tercile:
 
-| Suffix | Family Income Level |
-|--------|-------------------|
-| `_INC1_` | Lowest third (0-$30,000) |
-| `_INC2_` | Middle third ($30,001-$75,000) |
-| `_INC3_` | Highest third ($75,001+) |
+| Portal Column | Family Income Level | Original Scorecard |
+|---------------|--------------------|--------------------|
+| `earnings_lowinc_mean` | Lowest third ($0-$30,000) | `MN_EARN_WNE_INC1_P*` |
+| `earnings_midinc_mean` | Middle third ($30,001-$75,000) | `MN_EARN_WNE_INC2_P*` |
+| `earnings_highinc_mean` | Highest third ($75,001+) | `MN_EARN_WNE_INC3_P*` |
 
-Example: `MD_EARN_WNE_INC1_P6` = Median earnings at 6 years for lowest-income students
+### Additional Disaggregations
+
+| Portal Column | Description |
+|---------------|-------------|
+| `earnings_dep_mean` | Mean earnings, dependent students |
+| `earnings_dep_lowinc_mean` | Mean earnings, dependent low-income |
+| `earnings_ind_mean` | Mean earnings, independent students |
+| `earnings_female_mean` | Mean earnings, female |
+| `earnings_male_mean` | Mean earnings, male |
 
 ### Working and Enrollment Status
 
-| Variable | Description |
-|----------|-------------|
-| `COUNT_WNE_P*` | Number working and not enrolled |
-| `COUNT_NWNE_P*` | Number not working and not enrolled |
-| `PCT_EARN_WNE_P*` | Share working and not enrolled |
+| Portal Column | Description | Original Scorecard |
+|---------------|-------------|-------------------|
+| `count_working` | Number working and not enrolled | `COUNT_WNE_P*` |
+| `count_not_working` | Number not working and not enrolled | `COUNT_NWNE_P*` |
+| `earnings_greater_than_25k_pct` | Share earning > $25K | `GT_25K_P*` |
 
 ## Working Population Filter
 
@@ -189,13 +206,24 @@ Earnings are suppressed when privacy thresholds are not met:
 
 ### Variables Indicating Suppression
 
-> **Portal Encoding:** In Portal mirror parquet files, **`null` is the primary indicator** for suppressed/missing data.
+> **Portal Encoding:** In the Portal earnings dataset, **`-3` is the primary suppression indicator** for earnings and count columns (NOT null). This was verified empirically — ~24,000 rows have `-3` in `earnings_mean` alone.
 
 | Data Pattern | Meaning | Notes |
 |--------------|---------|-------|
-| `null` | Suppressed or missing | Primary indicator in parquet |
+| `-3` | Suppressed for privacy | Primary suppression indicator in earnings columns |
+| `null` | Missing data | Null count is 0 for `unitid`, `year`, etc. but ~109K for disaggregated columns |
 | Positive value | Valid earnings | Actual data |
-| `EARN_*_SUPP` = 1 | Suppression flag | Flag variables use 0/1 |
+
+```python
+import polars as pl
+
+# CORRECT: Filter both -3 and null for earnings
+valid = df.filter(
+    pl.col("earnings_med").is_not_null() &
+    (pl.col("earnings_med") != -3) &
+    (pl.col("earnings_med") > 0)
+)
+```
 
 ### High Suppression Rates Affect
 

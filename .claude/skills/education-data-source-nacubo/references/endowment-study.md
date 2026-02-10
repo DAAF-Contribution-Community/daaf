@@ -2,6 +2,8 @@
 
 Comprehensive reference on the NCSE methodology, history, and participation.
 
+> **Portal Scope Note:** The Education Data Portal mirror contains a limited subset of NCSE data (7 columns, 2012-2022). This file documents the full NCSE study methodology and context, which is valuable for understanding the provenance and limitations of the Portal data.
+
 ## Study Overview
 
 The NACUBO-Commonfund Study of Endowments (NCSE) is the most comprehensive annual survey of higher education endowment management in the United States.

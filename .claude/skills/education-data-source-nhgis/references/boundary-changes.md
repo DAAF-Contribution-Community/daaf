@@ -165,25 +165,29 @@ NHGIS provides multiple shapefile versions:
 ### Method 1: Compare Tract Counts
 
 ```python
+import polars as pl
+
 # If tract count in area changed, boundaries changed
-tracts_1990 = df_1990[df_1990["county"] == "06037"]["tract"].nunique()
-tracts_2020 = df_2020[df_2020["county"] == "06037"]["tract"].nunique()
+tracts_1990 = df_1990.filter(pl.col("county_fips_geo") == 6037).select("tract").n_unique()
+tracts_2020 = df_2020.filter(pl.col("county_fips_geo") == 6037).select("tract").n_unique()
 # LA County: ~1,600 in 1990 → ~2,300 in 2020
 ```
 
 ### Method 2: Check Crosswalk
 
 ```python
-# Crosswalk shows splits/mergers
-crosswalk = pd.read_csv("nhgis_tr1990_tr2010.csv")
+import polars as pl
+
+# Crosswalk shows splits/mergers (direct NHGIS download, not Portal data)
+crosswalk = pl.read_csv("nhgis_tr1990_tr2010.csv")
 
 # Tracts that split (1990 tract → multiple 2010 tracts)
-splits = crosswalk.groupby("GJOIN1990")["GJOIN2010"].nunique()
-split_tracts = splits[splits > 1]
+splits = crosswalk.group_by("GJOIN1990").agg(pl.col("GJOIN2010").n_unique().alias("n_targets"))
+split_tracts = splits.filter(pl.col("n_targets") > 1)
 
 # Tracts that merged (multiple 1990 tracts → 1 2010 tract)
-merges = crosswalk.groupby("GJOIN2010")["GJOIN1990"].nunique()
-merged_tracts = merges[merges > 1]
+merges = crosswalk.group_by("GJOIN2010").agg(pl.col("GJOIN1990").n_unique().alias("n_sources"))
+merged_tracts = merges.filter(pl.col("n_sources") > 1)
 ```
 
 ### Method 3: Visual Inspection

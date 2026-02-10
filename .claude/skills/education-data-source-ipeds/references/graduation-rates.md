@@ -338,28 +338,145 @@ transfer_adjusted = grad_rate_150 + transfer_out_rate
 
 ## Variable Reference
 
-### Key GR Variables
+> Verify these variable names against the live codebook. Use `get_codebook_url()` from `fetch-patterns.md`.
+> The Portal `grad-rates` dataset uses descriptive names (not NCES survey form names).
 
-| Variable | Description |
-|----------|-------------|
-| `cohort` | Adjusted cohort count |
-| `grtype` | Grad rate type (by level) |
-| `chrtstat` | Cohort status (completers, transfers, etc.) |
-| `grtotlt` | Total graduates |
-| `grrace*` | Graduates by race |
-| `grgenderc` | Graduates by gender |
-| `grrttot` | Total graduation rate |
-| `grrt*` | Graduation rates by subgroup |
-| `trtotlt` | Total transfers out |
-| `grpell*` | Pell recipient outcomes |
-| `grssl*` | Subsidized loan recipient outcomes |
+### Key GR Variables (Portal Names)
 
-### Outcome Measures Variables
+| Portal Variable | Description |
+|-----------------|-------------|
+| `unitid` | Institution identifier |
+| `year` | Data year |
+| `cohort_year` | Year the cohort entered |
+| `cohort_adj_150pct` | Adjusted cohort count (at 150% time) |
+| `cohort_rev` | Revised cohort count |
+| `completers_150pct` | Completers within 150% time |
+| `completers_100pct` | Completers within 100% time |
+| `completion_rate_150pct` | Graduation rate at 150% time |
+| `transfers_out` | Students who transferred out |
+| `still_enrolled` | Students still enrolled |
+| `still_enrolled_long_program` | Still enrolled in longer program |
+| `no_longer_enrolled` | No longer enrolled |
+| `exclusions` | Cohort exclusions (death, disability, military) |
+| `subcohort` | Subcohort type identifier |
+| `race` | Race/ethnicity (integer codes: 1-9, 99) |
+| `sex` | Sex (integer codes: 1=Male, 2=Female, 99=Total) |
+| `institution_level` | Institution level |
 
-| Variable | Description |
-|----------|-------------|
-| `omachrt` | Award at this institution |
-| `omawdoth` | Award at other institution |
-| `omstleng` | Still enrolled at this institution |
-| `omengoth` | Still enrolled elsewhere |
-| `omnoleng` | Not enrolled anywhere |
+#### NCES Raw File Names (for reference only)
+
+The following variable names appear in NCES documentation and raw IPEDS data files but are NOT used in the Portal:
+
+| NCES Name | Portal Equivalent |
+|-----------|-------------------|
+| `GRTYPE` | `subcohort` |
+| `CHRTSTAT` | (encoded in row structure) |
+| `GRTOTLT` | `completers_150pct` (filtered) |
+| `GRRTTOT` | `completion_rate_150pct` |
+| `TRTOTLT` | `transfers_out` |
+
+### Outcome Measures Variables (Portal Names — Verified)
+
+The outcome-measures dataset is available at path `ipeds/colleges_ipeds_outcome-measures` (2015-2022). Consult the codebook for full coded value definitions:
+
+```python
+url = get_codebook_url("ipeds/codebook_colleges_ipeds_outcome-measures")
+```
+
+#### All 38 Columns (Verified from Mirror)
+
+**Identifiers and Dimensions:**
+
+| Portal Column | Type | Description |
+|---------------|------|-------------|
+| `unitid` | Int64 | Institution identifier |
+| `year` | Int64 | Data year |
+| `fips` | Int64 | State FIPS code |
+| `cohort_year` | Int64 | Year the cohort entered |
+| `class_level` | Int64 | 1=First-time, 2=Non-first-time, 99=Total |
+| `ftpt` | Int64 | 1=Full-time, 2=Part-time, 99=Total |
+| `fed_aid_type` | Int64 | 1=Pell recipients, 4=Non-Pell/non-loan, 99=Total |
+
+**Cohort Counts:**
+
+| Portal Column | Type | Description |
+|---------------|------|-------------|
+| `cohort_adj` | Int64 | Adjusted cohort (4-year window; -2 = not applicable) |
+| `cohort_adj_6yr` | Int64 | Adjusted cohort (6-year window) |
+| `cohort_adj_8yr` | Int64 | Adjusted cohort (8-year window) |
+| `cohort_rev` | Int64 | Revised cohort (4-year window; -2 = not applicable) |
+| `cohort_rev_6yr` | Int64 | Revised cohort (6-year window) |
+| `exclusions` | Int64 | Exclusions from cohort (4-year; -2 = not applicable) |
+| `exclusions_6yr` | Int64 | Exclusions from cohort (6-year) |
+| `exclusions_add_8yr` | Int64 | Additional exclusions at 8-year point |
+
+**Award Outcomes (by time window and award type):**
+
+| Portal Column | Type | Description |
+|---------------|------|-------------|
+| `completers_4yr` | Int64 | Total completers within 4 years |
+| `completers_6yr` | Int64 | Total completers within 6 years |
+| `completers_8yr` | Int64 | Total completers within 8 years |
+| `award_cert_4yr` | Int64 | Certificate awards within 4 years |
+| `award_cert_6yr` | Int64 | Certificate awards within 6 years |
+| `award_cert_8yr` | Int64 | Certificate awards within 8 years |
+| `award_assoc_4yr` | Int64 | Associate degree awards within 4 years |
+| `award_assoc_6yr` | Int64 | Associate degree awards within 6 years |
+| `award_assoc_8yr` | Int64 | Associate degree awards within 8 years |
+| `award_bach_4yr` | Int64 | Bachelor's degree awards within 4 years |
+| `award_bach_6yr` | Int64 | Bachelor's degree awards within 6 years |
+| `award_bach_8yr` | Int64 | Bachelor's degree awards within 8 years |
+
+**Completion Rates:**
+
+| Portal Column | Type | Description |
+|---------------|------|-------------|
+| `completion_rate_4yr` | Float64 | Completion rate at 4 years |
+| `completion_rate_6yr` | Float64 | Completion rate at 6 years |
+| `completion_rate_8yr` | Float64 | Completion rate at 8 years |
+
+**Other 8-Year Outcomes:**
+
+| Portal Column | Type | Description |
+|---------------|------|-------------|
+| `transfer_8yr` | Int64 | Transferred out within 8 years |
+| `transfer_rate_8yr` | Float64 | Transfer-out rate at 8 years |
+| `still_enroll_8yr` | Int64 | Still enrolled at 8 years |
+| `still_enroll_rate_8yr` | Float64 | Still-enrolled rate at 8 years |
+| `still_enroll_transfer_rate_8yr` | Float64 | Still enrolled or transferred rate at 8 years |
+| `no_award_8yr` | Int64 | No award received at 8 years |
+| `unknown_8yr` | Int64 | Unknown status at 8 years |
+| `unknown_rate_8yr` | Float64 | Unknown rate at 8 years |
+
+**Special value:** `-2` means "not applicable" (e.g., 4-year cohort fields for 2-year institutions).
+
+#### NCES to Portal Mapping (for reference)
+
+| NCES Name | Portal Equivalent |
+|-----------|-------------------|
+| `omachrt` | `completers_8yr` (total awards at this institution) |
+| `omawdoth` | No direct equivalent (awards at other institutions not separately tracked; see `transfer_8yr`) |
+| `omstleng` | `still_enroll_8yr` |
+| `omengoth` | No direct equivalent (incorporated into `still_enroll_transfer_rate_8yr`) |
+| `omnoleng` | `no_award_8yr` |
+
+#### Querying Outcome Measures (Example)
+
+```python
+import polars as pl
+
+MIRROR = "https://huggingface.co/datasets/brhkim/education_data_portal_mirror/resolve/main"
+url = f"{MIRROR}/ipeds/colleges_ipeds_outcome-measures.parquet"
+df = pl.read_parquet(url)
+
+# 8-year completion rates by enrollment intensity for first-time students
+om = (
+    df.filter(
+        (pl.col("year") == 2022)
+        & (pl.col("class_level") == 1)    # First-time
+        & (pl.col("fed_aid_type") == 99)  # All aid types
+        & (pl.col("ftpt").is_in([1, 2]))  # FT and PT separately
+    )
+    .select("unitid", "ftpt", "completion_rate_8yr", "transfer_rate_8yr")
+)
+```

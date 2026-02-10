@@ -220,7 +220,7 @@ Reasons:
 | 1989, 1993 | Limited | Early estimates |
 | 1995 | Yes | Regular series begins |
 | 1997-present | Annual | Continuous annual series |
-| 1999-present | Via Education Data Portal | API access |
+| 1999-present | Via Education Data Portal | Mirror data (parquet/CSV) |
 
 ### Counties
 

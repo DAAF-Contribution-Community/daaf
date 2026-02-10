@@ -2,6 +2,12 @@
 
 Comprehensive definitions of all variables in the MEPS dataset, including identifiers, estimates, and metadata.
 
+> **Codebook Authority:** The variable definitions in this document are summaries for convenience.
+> The authoritative source for variable names, codes, and definitions is the codebook `.xls` file
+> available in the data mirrors. Use `get_codebook_url("meps/codebook_schools_meps")` from `fetch-patterns.md`
+> to download the codebook. If this document contradicts the codebook, trust the codebook and
+> flag the discrepancy.
+
 > **CRITICAL: Portal Integer Encoding**
 >
 > This document describes **Education Data Portal** encodings. The Portal returns all ID and categorical columns as **integers**, not strings. Missing values use **native nulls**, not negative coded values.
@@ -54,30 +60,32 @@ Comprehensive definitions of all variables in the MEPS dataset, including identi
 
 ## Understanding MEPS Values
 
-### The `meps` Variable
+### `meps_poverty_pct`
 
 The primary poverty estimate. Interpretation:
-- `meps = 0.25` means 25% of students estimated to be in poverty (≤100% FPL)
-- Values range from 0 (no students in poverty) to 1 (all students in poverty)
-- National average is approximately 0.15-0.20
+- `meps_poverty_pct = 25.0` means 25% of students estimated to be in poverty (at or below 100% FPL)
+- Values range from 0.0 to 60.5 (percentage scale)
+- National average is approximately 15-20%
 
-### The `meps_mod` Variable
+### `meps_mod_poverty_pct`
 
 Modified estimate for schools in high-poverty districts:
 - Adjusts for systematic underestimation in the original model
-- Generally higher than `meps` for high-poverty schools
+- Generally higher than `meps_poverty_pct` for high-poverty schools
 - Use when focusing on high-poverty populations
+- Range: 0.0-100.0%
 
-### The `meps_se` Variable
+### `meps_poverty_se`
 
-Standard error quantifying estimation uncertainty:
+Standard error quantifying estimation uncertainty (on the same percentage scale as `meps_poverty_pct`):
 - Smaller values = more precise estimates
 - Larger values = less certainty about the point estimate
 - Use for confidence intervals and statistical comparisons
+- Actual observed range: 0.52-3.77
 
 **Calculating confidence intervals:**
 ```
-95% CI = meps ± (1.96 × meps_se)
+95% CI = meps_poverty_pct +/- (1.96 x meps_poverty_se)
 ```
 
 ## Poverty Threshold: 100% FPL
@@ -108,38 +116,6 @@ MEPS uses 100% of the Federal Poverty Level as its threshold:
 
 **Key implication**: MEPS captures **deeper poverty** than FRPL. Schools may have low MEPS but higher FRPL if many families are 100-185% FPL.
 
-## Supplementary Variables
-
-Depending on the data version, MEPS may include:
-
-### School Characteristics (from CCD)
-
-| Variable | Type | Description |
-|----------|------|-------------|
-| `enrollment` | Integer | Total enrollment count |
-| `school_name` | String | School name |
-| `charter` | Integer | 1 = Charter school, 0 = Traditional public |
-| `magnet` | Integer | 1 = Magnet school, 0 = Not magnet |
-| `urban_centric_locale` | Integer | Locale code (see below) |
-| `school_level` | Integer | 1=Primary, 2=Middle, 3=High, 4=Other |
-
-### Urban-Centric Locale Codes
-
-| Code | Description |
-|------|-------------|
-| 11 | City, Large |
-| 12 | City, Midsize |
-| 13 | City, Small |
-| 21 | Suburb, Large |
-| 22 | Suburb, Midsize |
-| 23 | Suburb, Small |
-| 31 | Town, Fringe |
-| 32 | Town, Distant |
-| 33 | Town, Remote |
-| 41 | Rural, Fringe |
-| 42 | Rural, Distant |
-| 43 | Rural, Remote |
-
 ## Missing Data Handling
 
 > **CRITICAL: MEPS Uses Native Nulls**
@@ -161,15 +137,13 @@ Depending on the data version, MEPS may include:
 
 **Handling missing data (correct approach):**
 ```python
-# Polars - check for nulls
+import polars as pl
+
+# Filter to non-null values
 valid_data = df.filter(pl.col("meps_poverty_pct").is_not_null())
 
-# pandas - check for NaN
-valid_data = df[df['meps_poverty_pct'].notna()]
-
 # Count missing
-null_count = df["meps_poverty_pct"].null_count()  # Polars
-null_count = df['meps_poverty_pct'].isna().sum()  # pandas
+null_count = df["meps_poverty_pct"].null_count()
 ```
 
 **Do NOT use negative value filtering for MEPS:**
@@ -185,43 +159,48 @@ df.filter(pl.col("meps_poverty_pct") >= 0)  # Unnecessary and misleading
 MEPS is continuous; create categories as needed:
 
 ```python
-# Quartiles
-df['poverty_quartile'] = pd.qcut(df['meps'], 4, labels=['Low', 'Med-Low', 'Med-High', 'High'])
+import polars as pl
 
 # Policy-relevant thresholds
-df['high_poverty'] = df['meps'] >= 0.30  # 30%+ in poverty
-df['low_poverty'] = df['meps'] < 0.10    # <10% in poverty
+df = df.with_columns([
+    (pl.col("meps_poverty_pct") >= 30.0).alias("high_poverty"),
+    (pl.col("meps_poverty_pct") < 10.0).alias("low_poverty"),
+])
 
 # Title I style categories
-def poverty_category(meps):
-    if meps >= 0.40:
-        return 'Very High'
-    elif meps >= 0.25:
-        return 'High'
-    elif meps >= 0.10:
-        return 'Moderate'
-    else:
-        return 'Low'
-
-df['poverty_level'] = df['meps'].apply(poverty_category)
+df = df.with_columns(
+    pl.when(pl.col("meps_poverty_pct") >= 40.0).then(pl.lit("Very High"))
+    .when(pl.col("meps_poverty_pct") >= 25.0).then(pl.lit("High"))
+    .when(pl.col("meps_poverty_pct") >= 10.0).then(pl.lit("Moderate"))
+    .otherwise(pl.lit("Low"))
+    .alias("poverty_level")
+)
 ```
 
 ### School-Level Poverty Count
 
-Estimate the number of students in poverty:
+Estimate the number of students in poverty (requires joining with CCD enrollment data first):
 
 ```python
-df['poverty_count'] = (df['meps'] * df['enrollment']).round()
+# After joining MEPS with CCD enrollment on ncessch + year:
+df = df.with_columns(
+    (pl.col("meps_poverty_pct") / 100.0 * pl.col("enrollment")).round(0).alias("poverty_count")
+)
 ```
 
 ### District Aggregation
 
-Aggregate school MEPS to district level:
+Aggregate school MEPS to district level (requires enrollment data from CCD join):
 
 ```python
 # Enrollment-weighted district average
-district_meps = df.groupby('leaid').apply(
-    lambda x: (x['meps'] * x['enrollment']).sum() / x['enrollment'].sum()
+district_meps = (
+    df.filter(pl.col("meps_poverty_pct").is_not_null() & pl.col("enrollment").is_not_null())
+    .group_by("leaid")
+    .agg(
+        (pl.col("meps_poverty_pct") * pl.col("enrollment")).sum()
+        / pl.col("enrollment").sum()
+    ).rename({"meps_poverty_pct": "meps_weighted_avg"})
 )
 ```
 
@@ -231,10 +210,10 @@ district_meps = df.groupby('leaid').apply(
 
 | FRPL Concept | MEPS Equivalent | Notes |
 |--------------|-----------------|-------|
-| % FRPL eligible | `meps` | Different threshold (185% vs 100% FPL) |
+| % FRPL eligible | `meps_poverty_pct` | Different threshold (185% vs 100% FPL) |
 | Free lunch % | No direct equivalent | MEPS doesn't distinguish free vs reduced |
 | Reduced lunch % | No direct equivalent | Not separately estimated |
-| FRPL count | `meps × enrollment` | Approximate only |
+| FRPL count | `meps_poverty_pct / 100 * enrollment` | Approximate only (requires CCD join) |
 
 ### MEPS and Other Poverty Measures
 
@@ -269,25 +248,6 @@ meps_schema = {
 }
 ```
 
-### pandas dtypes (for compatibility)
-
-```python
-# pandas types - note nullable Int64 for IDs with potential nulls
-meps_dtypes = {
-    'year': 'int64',
-    'fips': 'int64',
-    'gleaid': 'Int64',             # Nullable integer
-    'ncessch': 'int64',
-    'meps_poverty_pct': 'float64',
-    'meps_poverty_se': 'float64',
-    'meps_mod_poverty_pct': 'float64',
-    'meps_poverty_ptl': 'Int64',   # Nullable integer
-    'meps_mod_poverty_ptl': 'Int64',
-    'ncessch_num': 'int64',
-    'leaid': 'Int64',              # Nullable integer (has ~258 nulls)
-}
-```
-
 ### SQL table definition
 
 ```sql
@@ -312,32 +272,34 @@ CREATE TABLE meps (
 If you need traditional string-format IDs for joining with other systems:
 
 ```python
-# Polars - convert integer IDs to zero-padded strings
+import polars as pl
+
+# Convert integer IDs to zero-padded strings
 df = df.with_columns([
     pl.col("ncessch").cast(pl.Utf8).str.zfill(12).alias("ncessch_str"),
     pl.col("leaid").cast(pl.Utf8).str.zfill(7).alias("leaid_str"),
 ])
-
-# pandas equivalent
-df['ncessch_str'] = df['ncessch'].astype(str).str.zfill(12)
-df['leaid_str'] = df['leaid'].astype(str).str.zfill(7)
 ```
 
 ## Quick Reference Card
 
-| Variable | What it tells you |
-|----------|-------------------|
-| `meps` | Share of students in poverty (100% FPL) |
-| `meps_mod` | Adjusted estimate for high-poverty districts |
-| `meps_se` | How confident you can be in the estimate |
-| `ncessch` | Unique school identifier for joins |
-| `leaid` | District ID for aggregation |
+| Portal Variable | What it tells you |
+|-----------------|-------------------|
+| `meps_poverty_pct` | Estimated share of students in poverty (100% FPL), as percentage |
+| `meps_mod_poverty_pct` | Adjusted estimate for high-poverty districts |
+| `meps_poverty_se` | How confident you can be in the estimate |
+| `meps_poverty_ptl` | National percentile (enrollment-weighted, 1-100) |
+| `meps_mod_poverty_ptl` | Modified percentile (enrollment-weighted, 1-100) |
+| `ncessch` | Unique school identifier for joins (Int64) |
+| `leaid` | District ID for aggregation (Int64) |
 | `year` | Which school year |
-| `fips` | Which state |
+| `fips` | Which state (Int64) |
 
 **Most common usage:**
 ```python
+import polars as pl
+
 # "What's the poverty rate at this school?"
-poverty_rate = df.loc[df['ncessch'] == '060000100001', 'meps'].values[0]
-# Returns: 0.25 (meaning 25% estimated in poverty)
+result = df.filter(pl.col("ncessch") == 60000100001).select("meps_poverty_pct")
+# Returns value like 25.0 (meaning 25% estimated in poverty)
 ```

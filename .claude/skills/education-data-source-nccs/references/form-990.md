@@ -2,6 +2,8 @@
 
 Form 990 is the annual information return that tax-exempt organizations file with the IRS. This reference covers the form's structure and the data elements available for research.
 
+> **Variable naming context:** This file uses original IRS/NCCS variable names (e.g., `CONT`, `TOTREV`, `COMPENS`) which are UPPERCASE and abbreviated. In the Portal dataset, these are mapped to lowercase descriptive names (e.g., `contributions_total`, `revenue_total`, `compensation_officers`). See SKILL.md Portal Variable Name Mapping for the crosswalk. Governance and schedule detail variables (Part VI, VII, Schedule D/J) are available only in the full NCCS Efile database, not in the Portal mirror dataset.
+
 ## Contents
 
 - [Form 990 Overview](#form-990-overview)
@@ -463,7 +465,9 @@ In NCCS data:
 | -1 | Data unavailable |
 | -2 | Not applicable |
 | -3 | Suppressed (confidentiality) |
-| Blank | Not reported |
+| `null` | Not reported (blank in CSV, null in parquet) |
+
+> **Portal note:** In the Portal dataset, most missing data appears as `null` rather than negative codes. The `-1`/`-2`/`-3` codes exist but are rare (only a few financial columns). Always check for both `null` and negative codes when cleaning.
 
 ### Recommended Error Checks
 

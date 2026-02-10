@@ -2,6 +2,13 @@
 
 This reference provides definitions for key variables in NCCS datasets, including naming conventions, common financial measures, and data quality considerations.
 
+> **Truth Hierarchy:** When interpreting variable values, apply this priority:
+> 1. **Actual data file** (what you observe in the parquet/CSV) — this IS the truth
+> 2. **Live codebook** (.xls in mirror, via `get_codebook_url("nccs/codebook_colleges_nccs_form_990")`) — authoritative documentation, may lag
+> 3. **This file** — convenient summary, may drift from codebook
+>
+> If this documentation contradicts the codebook or observed data, trust the higher-priority source.
+
 ## Education Data Portal vs. Direct NCCS Access
 
 > **CRITICAL:** Variable names and encodings differ between the Education Data Portal and direct NCCS downloads.
@@ -18,10 +25,13 @@ This reference provides definitions for key variables in NCCS datasets, includin
 
 | Portal Name | NCCS Name | Description |
 |-------------|-----------|-------------|
-| `year` | `FISYR` | Academic/fiscal year |
-| `unitid` | N/A | IPEDS institution ID (Portal addition) |
-| `ein` | `EIN` | Employer Identification Number |
-| `fips` | `FIPS` | State FIPS code (integer in Portal) |
+| `year` | `FISYR` | Academic year — the Portal-aligned year corresponding to the fall semester of the academic year the filing is associated with (range 1993-2016). The codebook labels this "Academic year (fall semester)." |
+| `fiscal_year` | — | Fiscal year — the IRS fiscal year ending year from the Form 990 filing (range 1994-2017). Typically differs from `year` by +1 because a fiscal year ending in e.g. June 2015 corresponds to the 2014-2015 academic year (`year`=2014, `fiscal_year`=2015). |
+| `unitid` | — | IPEDS institution ID (Portal addition) |
+| `ein` | `EIN` | Employer Identification Number (Int64) |
+| `fips` | `FIPS` | State FIPS code (integer in Portal, 1-78) |
+| `inst_name_nccs` | `NAME` | Organization name from 990 filing (String) |
+| `mult_ein_flag` | — | Multiple-EIN indicator (0=No, 1=Yes) |
 | `contributions_total` | `CONT` | Total contributions |
 | `prog_serv_rev` | `PROGREV` | Program service revenue |
 | `revenue_total` | `TOTREV` | Total revenue |
@@ -30,6 +40,8 @@ This reference provides definitions for key variables in NCCS datasets, includin
 | `net_assets_eoy` | `NETASS` | Net assets |
 | `compensation_officers` | `COMPENS` | Officer compensation |
 | `salaries_other` | `OTHSAL` | Other salaries |
+
+> **Note:** The Portal dataset has 161 columns total. The table above shows selected key variables. Consult the codebook for the complete list. The full dataset includes detailed Part VIII revenue breakdowns (e.g., `prog_serv_rev_amt2a` through `prog_serv_rev_amt2f`), Part IX expense breakdowns, Part X balance sheet items, and support test variables (170/509).
 
 ## Contents
 
@@ -363,10 +375,10 @@ XX_XX_XX_VARIABLE_NAME
 | `-1` | Data unavailable (not collected) |
 | `-2` | Not applicable (field doesn't apply) |
 | `-3` | Suppressed (confidentiality) |
-| `Blank/NULL` | Not reported by organization |
+| `null` | Not reported by organization |
 | `0` | Zero value (explicitly reported) |
 
-> **Portal Note:** In Education Data Portal data, these are always integer values (-1, -2, -3), never strings.
+> **Portal Note:** In the Portal dataset, `-1`/`-2`/`-3` are integer values but are **empirically rare** — most missing data appears as `null`. Only a handful of financial columns (e.g., `sale_sec_gross_net`, `changes_net_assets_other`) contain any negative coded values. Always check for both `null` and negative codes when cleaning.
 
 ### Interpreting Missing Data
 
@@ -380,7 +392,7 @@ XX_XX_XX_VARIABLE_NAME
 
 ### Handling Missing Data
 
-**Using Polars (Portal data):**
+**Using Portal data (Polars):**
 
 ```python
 import polars as pl
@@ -389,32 +401,39 @@ import polars as pl
 DATASET_PATH = "nccs/colleges_nccs_all"
 df = fetch_from_mirrors(DATASET_PATH)
 
-# Filter out missing data codes
+# Filter out null and rare negative codes
 df_clean = df.filter(
     (pl.col("invest_inc_total").is_not_null()) &
-    (pl.col("invest_inc_total") >= 0)  # Excludes -1, -2, -3
+    (pl.col("invest_inc_total") >= 0)  # Excludes rare -1, -2, -3 codes
 )
 
-# Or replace with null
+# Or replace negative codes with null (precautionary)
 df = df.with_columns(
     pl.when(pl.col("invest_inc_total") < 0)
     .then(None)
     .otherwise(pl.col("invest_inc_total"))
     .alias("invest_inc_total_clean")
 )
-```
-
-**Using pandas (direct NCCS):**
-
-```python
-import pandas as pd
-import numpy as np
-
-# Replace negative codes with NaN
-df['INVINC'] = df['INVINC'].replace([-1, -2, -3], np.nan)
 
 # Distinguish zero from missing
-df['has_inv_income'] = df['INVINC'].notna() & (df['INVINC'] > 0)
+df = df.with_columns(
+    (pl.col("invest_inc_total").is_not_null() & (pl.col("invest_inc_total") > 0))
+    .alias("has_inv_income")
+)
+```
+
+**Using direct NCCS data (Polars):**
+
+```python
+import polars as pl
+
+# Replace negative codes with null
+df = df.with_columns(
+    pl.when(pl.col("INVINC") < 0)
+    .then(None)
+    .otherwise(pl.col("INVINC"))
+    .alias("INVINC")
+)
 ```
 
 ---
@@ -433,34 +452,46 @@ df['has_inv_income'] = df['INVINC'].notna() & (df['INVINC'] > 0)
 
 ### Validation Checks
 
+**Using Portal data (Polars, lowercase variable names):**
+
 **Balance sheet identity**:
 ```python
+import polars as pl
+
 # Assets should equal Liabilities + Net Assets
-df['balance_check'] = abs(df['TOTASS'] - df['TOTLIAB'] - df['NETASS'])
-df['balance_error'] = df['balance_check'] > 100  # Allow small rounding
+df = df.with_columns(
+    (pl.col("total_assets_eoy") - pl.col("total_liab_eoy") - pl.col("net_assets_eoy"))
+    .abs()
+    .alias("balance_check")
+)
+balance_errors = df.filter(pl.col("balance_check") > 100)  # Allow small rounding
 ```
 
 **Revenue reconciliation**:
 ```python
 # Total revenue should approximate sum of components
-df['rev_sum'] = df['CONT'] + df['PROGREV'] + df['INVINC'] + df['OTHREV']
-df['rev_check'] = abs(df['TOTREV'] - df['rev_sum'])
-df['rev_error'] = df['rev_check'] > df['TOTREV'] * 0.01  # 1% tolerance
-```
-
-**Expense reconciliation**:
-```python
-# Functional expenses should sum to total
-df['exp_sum'] = df['PROGEXP'] + df['MGTEXP'] + df['FUNDEXP']
-df['exp_check'] = abs(df['TOTEXP'] - df['exp_sum'])
+df = df.with_columns(
+    (pl.col("contributions_total") + pl.col("prog_serv_rev") + pl.col("invest_inc_total"))
+    .alias("rev_sum")
+)
+df = df.with_columns(
+    (pl.col("revenue_total") - pl.col("rev_sum")).abs().alias("rev_check")
+)
+# Note: revenue_total includes other categories not shown here; some gap is expected
 ```
 
 **Year-over-year reasonableness**:
 ```python
-# Flag large year-over-year changes
-df['rev_change'] = df.groupby('EIN')['TOTREV'].pct_change()
-df['unusual_change'] = abs(df['rev_change']) > 1.0  # >100% change
+# Flag large year-over-year changes (sorted by ein and year)
+df = df.sort(["ein", "year"])
+df = df.with_columns(
+    (pl.col("revenue_total") / pl.col("revenue_total").shift(1).over("ein") - 1)
+    .alias("rev_change")
+)
+unusual = df.filter(pl.col("rev_change").abs() > 1.0)  # >100% change
 ```
+
+**Using direct NCCS data (UPPERCASE variable names):** Replace Portal names with NCCS names (e.g., `TOTASS`, `TOTLIAB`, `NETASS`, `TOTREV`, `CONT`, etc.).
 
 ### Error Checking Recommendations
 

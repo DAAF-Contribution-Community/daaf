@@ -2,6 +2,8 @@
 
 Reference for understanding endowment portfolio composition, investment categories, and allocation strategies in NACUBO data.
 
+> **Portal Scope Note:** Asset allocation data is **NOT available** in the Education Data Portal mirror. The Portal mirror contains only market value columns (`endow_total`, `endow_per_fte`, `endow_chg_mktval`). The asset allocation information in this file comes from the full NCSE study and provides contextual understanding for interpreting endowment market value changes observed in the Portal data.
+
 ## Overview
 
 Endowment asset allocation describes how investment portfolios are divided across different asset classes. This is a key driver of investment returns and risk.

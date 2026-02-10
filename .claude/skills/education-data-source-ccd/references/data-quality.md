@@ -2,6 +2,9 @@
 
 Understanding data quality issues is essential for valid analysis. This reference covers missing data patterns, state variations, suppression, and known limitations.
 
+> **Codebook Authority:** When resolving ambiguities about data quality or coded values, consult
+> the codebook `.xls` file in the mirror. Use `get_codebook_url()` from `fetch-patterns.md`.
+
 ## Missing Data Patterns
 
 ### State-Level Clustering
@@ -160,14 +163,14 @@ Common thresholds:
 
 ```python
 # Identify suppression impact
-def suppression_analysis(df, variable):
-    total = len(df)
+def suppression_analysis(df: pl.DataFrame, variable: str) -> dict:
+    total = df.height
     suppressed = df.filter(pl.col(variable) == -3).height
-    
+
     if suppressed / total > 0.1:
         print(f"WARNING: {suppressed/total:.1%} of {variable} is suppressed")
         print("Disaggregated analysis may be unreliable")
-    
+
     return {
         "total_records": total,
         "suppressed": suppressed,
@@ -260,10 +263,10 @@ School and district IDs are generally stable but can change due to:
 
 **Check Before Building Panels**:
 ```python
-def check_id_stability(df_year1, df_year2, id_col):
-    ids_y1 = set(df_year1[id_col].unique())
-    ids_y2 = set(df_year2[id_col].unique())
-    
+def check_id_stability(df_year1: pl.DataFrame, df_year2: pl.DataFrame, id_col: str) -> dict:
+    ids_y1 = set(df_year1.get_column(id_col).unique().to_list())
+    ids_y2 = set(df_year2.get_column(id_col).unique().to_list())
+
     return {
         "dropped": len(ids_y1 - ids_y2),
         "added": len(ids_y2 - ids_y1),

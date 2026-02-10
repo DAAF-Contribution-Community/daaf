@@ -331,50 +331,54 @@ Schools may have missing data due to:
 
 ### Common Core of Data (CCD) Link
 
-CRDC uses **NCESSCH** (NCES school ID) as primary identifier:
+CRDC uses **ncessch** (NCES school ID) as primary identifier for linking to CCD:
 
 ```python
+import polars as pl
+
 # Linking CRDC to CCD
-def link_crdc_ccd(crdc_df, ccd_df, year):
+def link_crdc_ccd(crdc_df: pl.DataFrame, ccd_df: pl.DataFrame) -> pl.DataFrame:
     """
     Link CRDC data to CCD school characteristics.
-    
+
     Args:
-        crdc_df: CRDC data
-        ccd_df: CCD directory data
-        year: School year
-    
+        crdc_df: CRDC data (must have ncessch as String)
+        ccd_df: CCD directory data (must have ncessch as String)
+
     Returns:
-        Merged dataframe
+        Joined DataFrame with CCD characteristics
     """
-    merged = crdc_df.merge(
-        ccd_df[['ncessch', 'school_name', 'leaid', 
-                'urban_centric_locale', 'charter', 
-                'free_or_reduced_price_lunch']],
-        on='ncessch',
-        how='left'
-    )
-    
-    # Check merge success
-    unmatched = merged['school_name'].isna().sum()
+    ccd_cols = ccd_df.select([
+        "ncessch", "school_name", "leaid",
+        "urban_centric_locale", "charter",
+        "free_or_reduced_price_lunch",
+    ])
+
+    merged = crdc_df.join(ccd_cols, on="ncessch", how="left")
+
+    # Check join success
+    unmatched = merged.filter(pl.col("school_name").is_null()).height
     if unmatched > 0:
         print(f"Warning: {unmatched} CRDC schools not matched to CCD")
-    
+
     return merged
 ```
+
+> **Note:** Some CRDC rows have `ncessch` as null. Use `crdc_id` or `leaid` for alternative linkage when `ncessch` is unavailable.
 
 ### Key Identifiers
 
 | Identifier | Format | Description |
 |------------|--------|-------------|
-| `ncessch` | 12-character string | NCES school ID |
-| `leaid` | 7-character string | NCES district ID |
-| `fips` | 2-digit code | State FIPS code |
+| `crdc_id` | 12-character string | Primary CRDC identifier; always present |
+| `ncessch` | 12-character string | NCES school ID; may be null for some entries |
+| `leaid` | 7-character string | NCES district ID; always present |
+| `fips` | 2-digit integer | State FIPS code |
 
 ### Year Alignment
 
 When linking:
-- CRDC year refers to **spring** of school year (2020-21 = 2021 in API)
+- CRDC year refers to **spring** of school year (2020-21 = year 2021 in Portal data)
 - CCD year may use fall reference point
 - Ensure same school year for accurate linking
 
@@ -400,11 +404,11 @@ When linking:
 
 ### Education Data Portal
 
-Urban Institute provides processed CRDC data:
+Urban Institute provides processed CRDC data via the Education Data Portal:
 - https://educationdata.urban.org/
-- API access to cleaned data
-- Documentation of variables
-- R and Stata packages
+- Data available through mirror-based downloads (parquet primary, CSV fallback)
+- See `mirrors.yaml` for mirror configuration and `datasets-reference.md` for canonical dataset paths
+- See `fetch-patterns.md` for `fetch_from_mirrors()` and `fetch_yearly_from_mirrors()` code patterns
 
 ---
 

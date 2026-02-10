@@ -243,19 +243,19 @@ Despite standardization, some variation exists:
 
 ### Required Subgroups
 
-ACGR must be reported for:
+ACGR must be reported for these subgroups. In the Portal data, subgroups are represented as **filter columns** with integer codes, not a single "subgroup" column with string codes.
 
-| Subgroup | Code |
-|----------|------|
-| All students | ALL |
-| Economically disadvantaged | ECODIS |
-| Students with disabilities | CWD |
-| English learners | LEP |
-| Homeless | HOM |
-| Foster care | FCS |
-| Migrant | MIG |
-| Military connected | MIL |
-| Each race/ethnicity | Multiple codes |
+| Subgroup | NCES Code | Portal Column | Portal Filter Value |
+|----------|-----------|---------------|---------------------|
+| All students | ALL | race (or any filter col) | `99` |
+| Economically disadvantaged | ECODIS | econ_disadvantaged | `1` |
+| Students with disabilities | CWD | disability | `1` |
+| English learners | LEP | lep | `1` |
+| Homeless | HOM | homeless | `1` |
+| Foster care | FCS | foster_care | `1` |
+| Each race/ethnicity | Multiple | race | `1-7` |
+
+> **Note:** `migrant` and `military_connected` columns are NOT present in grad rate datasets (only in assessment datasets).
 
 ### Subgroup Graduation Gaps
 
@@ -335,28 +335,31 @@ Schools with high mobility may have:
 
 ### Graduation Rate Variables
 
-| Variable | Description |
-|----------|-------------|
-| `grad_rate_midpt` | Graduation rate, midpoint of range |
-| `grad_rate_low` | Graduation rate, lower bound |
-| `grad_rate_high` | Graduation rate, upper bound |
-| `cohort_count` | Number of students in adjusted cohort |
+> **Empirically verified** from 2019 grad rate parquet data.
 
-### Using Variables
+| Variable | Description | Portal Type |
+|----------|-------------|-------------|
+| `grad_rate_midpt` | Graduation rate, midpoint or exact value | Int64 |
+| `grad_rate_low` | Graduation rate, lower bound (null when exact) | Int64 |
+| `grad_rate_high` | Graduation rate, upper bound (null when exact) | Int64 |
+| `cohort_num` | Number of students in adjusted cohort | Int64 |
+
+> **Note:** The cohort variable is `cohort_num`, NOT `cohort_count`. There is no `grad_count` column. The `grad_rate_midpt` is Int64, not Float64.
+
+### Fetching Graduation Rate Data
 
 ```python
-# Access graduation rate data
-grad_data = (
-    get_education_data(
-        level="schools",
-        source="edfacts",
-        topic="grad-rates",
-        filters={"year": 2022, "fips": 6}
-    )
+# Fetch graduation rate data via mirror system
+grad_data = fetch_yearly_from_mirrors(
+    path_template="edfacts/schools_edfacts_grad_rates_{year}",
+    years=[2018, 2019],
 )
 
+# Filter to California
+ca_grads = grad_data.filter(pl.col("fips") == 6)
+
 # Use midpoint for analysis
-grad_data.select([
+ca_grads.select([
     "ncessch",
     "school_name",
     "grad_rate_midpt"  # Use midpoint
@@ -385,32 +388,42 @@ grad_data.select([
 
 ### Example: Comprehensive Graduation Analysis
 
+> **Note:** Grad rate data uses filter columns (race, lep, disability, econ_disadvantaged, etc.) with integer codes, NOT a single "subgroup" column with string codes.
+
 ```python
 def comprehensive_grad_analysis(df, state_fips, year):
     """Analyze graduation rates with appropriate context."""
-    
+
     state_data = (df
         .filter(pl.col("fips") == state_fips)
         .filter(pl.col("year") == year)
+        .filter(pl.col("grad_rate_midpt") >= 0)  # Exclude missing codes
     )
-    
-    # Overall rate
-    overall = state_data.filter(pl.col("subgroup") == "ALL")
-    
-    # Subgroup rates
-    subgroups = state_data.filter(
-        pl.col("subgroup").is_in(["ALL", "ECODIS", "CWD", "LEP"])
+
+    # Overall rate: race=99 (total), all other filter cols=99 (total)
+    overall = state_data.filter(
+        (pl.col("race") == 99) &
+        (pl.col("lep") == 99) &
+        (pl.col("disability") == 99) &
+        (pl.col("econ_disadvantaged") == 99)
     )
-    
-    # Calculate gaps
+
+    # Economically disadvantaged students
+    econ_dis = state_data.filter(pl.col("econ_disadvantaged") == 1)
+
+    # Students with disabilities
+    cwd = state_data.filter(pl.col("disability") == 1)
+
+    # English learners
+    el = state_data.filter(pl.col("lep") == 1)
+
     all_rate = overall["grad_rate_midpt"].mean()
-    
-    summary = subgroups.group_by("subgroup").agg([
-        pl.col("grad_rate_midpt").mean().alias("avg_rate"),
-        (pl.col("grad_rate_midpt") - all_rate).mean().alias("gap_from_all")
-    ])
-    
-    return summary
+
+    # Note: gaps are calculated per-subgroup filter column
+    print(f"Overall rate: {all_rate:.1f}")
+    for label, subgroup_df in [("Econ Dis", econ_dis), ("CWD", cwd), ("EL", el)]:
+        sub_rate = subgroup_df["grad_rate_midpt"].mean()
+        print(f"{label}: {sub_rate:.1f} (gap: {sub_rate - all_rate:.1f})")
 ```
 
 ## Federal Guidance

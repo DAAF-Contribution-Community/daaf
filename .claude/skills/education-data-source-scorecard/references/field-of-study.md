@@ -2,6 +2,8 @@
 
 College Scorecard provides program-level data on earnings and debt by field of study (CIP code), enabling analysis of outcomes at the major/program level.
 
+> **Portal availability note:** Field-of-study data is **not available as a separate Portal mirror dataset**. The 6 Portal Scorecard datasets cover institution-level earnings, default, repayment, institutional characteristics, and student body characteristics. For program-level data, use the College Scorecard bulk downloads at `collegescorecard.ed.gov` (the "Most Recent Institution-Level Data" or "Field of Study" files). Variable names below use the original Scorecard naming convention, not Portal lowercase names.
+
 ## Overview
 
 Field of study data links outcomes to specific academic programs:
@@ -127,13 +129,18 @@ Field-level data has much higher suppression than institution-level:
 ```python
 import polars as pl
 
-# Count suppressed/missing records (null is primary indicator in Portal parquet)
-suppressed = df.filter(pl.col("earn_mdn_hi_2yr").is_null())
+# Count suppressed/missing records
+# Note: Field-of-study data is from Scorecard bulk downloads, not Portal mirrors.
+# Suppression may use null, -3, or "PrivacySuppressed" depending on file format.
+suppressed = df.filter(
+    pl.col("earn_mdn_hi_2yr").is_null() |
+    (pl.col("earn_mdn_hi_2yr") == -3)
+)
 
 suppression_rate = suppressed.height / df.height
 print(f"Suppression/missing rate: {suppression_rate:.1%}")
 
-# Programs with valid data (non-null positive values)
+# Programs with valid data (positive values only)
 with_data = df.filter(
     pl.col("earn_mdn_hi_2yr").is_not_null() &
     (pl.col("earn_mdn_hi_2yr") > 0)

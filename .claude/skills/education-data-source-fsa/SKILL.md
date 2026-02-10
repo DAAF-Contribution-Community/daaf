@@ -32,6 +32,37 @@ Reference guide for FSA data available through the Urban Institute Education Dat
 >
 > See `./references/variable-definitions.md` for complete encoding tables.
 
+## Truth Hierarchy
+
+When interpreting FSA data values and resolving discrepancies between this skill documentation and observed data, apply this priority:
+
+| Priority | Source | Rationale |
+|----------|--------|-----------|
+| 1 (highest) | **Actual data file** (parquet) | What you observe IS the truth |
+| 2 | **Live codebook/metadata** (.xls in mirror) | Authoritative documentation; may lag behind data |
+| 3 (lowest) | **This skill documentation** (variable-definitions.md, etc.) | Summarized; convenient but may drift |
+
+- When this skill contradicts observed data: trust the data, flag the discrepancy
+- When codebook contradicts observed data: trust the data, but investigate
+- When this skill contradicts codebook: trust the codebook, update this skill
+
+**Codebook Access:** Use `get_codebook_url()` from `fetch-patterns.md` with paths from `datasets-reference.md`:
+
+```python
+# Example: Get codebook for FSA grants
+url = get_codebook_url("fsa/codebook_colleges_fsa_grants")
+```
+
+| Dataset | Codebook Path |
+|---------|---------------|
+| Grants | `fsa/codebook_colleges_fsa_grants` |
+| Loans | `fsa/codebook_colleges_fsa_loans` |
+| Campus-Based Volume | `fsa/codebook_colleges_fsa_campus_based_volume` |
+| Financial Responsibility | `fsa/codebook_colleges_fsa_financial_responsibility` |
+| 90/10 Revenue | `fsa/codebook_colleges_fsa_90-10_revenue_percentages` |
+
+> **FSA naming note:** The Financial Responsibility dataset uses `composite_scores` in its data path but `financial_responsibility` in its codebook path. The 90/10 Revenue dataset uses underscores (`90_10`) in the data path but hyphens (`90-10`) in the codebook path. Always use the exact paths shown above.
+
 ## What is Federal Student Aid?
 
 Federal Student Aid (FSA) is the office within the U.S. Department of Education that administers Title IV aid programs:
@@ -40,7 +71,7 @@ Federal Student Aid (FSA) is the office within the U.S. Department of Education 
 - **Institutional Coverage**: All Title IV-eligible postsecondary institutions (approximately 5,500+ schools)
 - **Data Types**: Aid disbursements, recipient counts, loan/grant volumes, financial responsibility metrics
 - **Primary Identifier**: `unitid` (6-digit IPEDS institution ID)
-- **Years Available**: 1999-2021 depending on endpoint
+- **Years Available**: 1999-2021 depending on dataset
 
 ## Reference File Structure
 
@@ -80,39 +111,41 @@ FSA research topic?
     └─ Coverage, timing, limitations → ./references/data-quality.md
 ```
 
-### Which FSA endpoint do I need?
+### Which FSA dataset do I need?
 
 ```
-FSA endpoint selection?
+FSA dataset selection?
 ├─ Need grant data (Pell, FSEOG)
-│   └─ /college-university/fsa/grants/{year}/
+│   └─ fsa/colleges_fsa_grants (single-file, 1999-2021)
 ├─ Need loan data (Direct, PLUS)
-│   └─ /college-university/fsa/loans/{year}/
+│   └─ fsa/colleges_fsa_loans (single-file, 1999-2021)
 ├─ Need campus-based program data
-│   └─ /college-university/fsa/campus-based-volume/{year}/
+│   └─ fsa/colleges_fsa_campus_based_volume (single-file, 2001-2021)
 ├─ Need institutional financial health
-│   └─ /college-university/fsa/financial-responsibility/{year}/
+│   └─ fsa/colleges_fsa_composite_scores (single-file, 2006-2016)
 └─ Need 90/10 compliance (for-profits)
-    └─ /college-university/fsa/90-10-revenue-percentages/{year}/
+    └─ fsa/colleges_fsa_90_10_revenue_percentages (single-file, 2014-2021)
 ```
 
-## Quick Reference: FSA Endpoints and Codes
+## Quick Reference: FSA Datasets and Codes
 
-### Endpoints
+### Datasets
 
-| Endpoint | Description | Years | Key Variables |
-|----------|-------------|-------|---------------|
-| `fsa/grants/` | Grant recipients and amounts by type | 1999-2021 | `grant_type`, `grant_recipients_*`, `value_grants_disbursed_*` |
-| `fsa/loans/` | Loan recipients and volumes by type | 1999-2021 | `loan_type`, `loan_recipients_*`, `value_loan_disbursements_*` |
-| `fsa/campus-based-volume/` | FWS, FSEOG, Perkins by award type | 2001-2021 | `award_type`, `campus_award_recipients_*`, `value_campus_disbursed_*` |
-| `fsa/financial-responsibility/` | Composite scores by institution | 2006-2016 | `financial_resp_score` |
-| `fsa/90-10-revenue-percentages/` | For-profit Title IV revenue ratios | 2014-2021 | `rev_pct_90_10` |
+| Dataset Path | Description | Years | Key Variables |
+|--------------|-------------|-------|---------------|
+| `fsa/colleges_fsa_grants` | Grant recipients and amounts by type | 1999-2021 | `grant_type`, `grant_recipients_unitid`, `value_grants_disbursed_unitid` |
+| `fsa/colleges_fsa_loans` | Loan recipients and volumes by type | 1999-2021 | `loan_type`, `loan_recipients_unitid`, `value_loan_disbursements_unitid` |
+| `fsa/colleges_fsa_campus_based_volume` | FWS, FSEOG, Perkins by award type | 2001-2021 | `award_type`, `campus_award_recipients_unitid`, `value_campus_disbursed_unitid` |
+| `fsa/colleges_fsa_composite_scores` | Composite scores by institution | 2006-2016 | `financial_resp_score` |
+| `fsa/colleges_fsa_90_10_revenue_percentages` | For-profit Title IV revenue ratios | 2014-2021 | `rev_pct_90_10` |
+
+> **Data access:** All FSA datasets are single-file (all years in one file). Fetch using `fetch_from_mirrors()` from `fetch-patterns.md` with the canonical path from `datasets-reference.md`. See `mirrors.yaml` for mirror configuration.
 
 ### Key Identifiers
 
 | ID | Format | Level | Example | Notes |
 |----|--------|-------|---------|-------|
-| `unitid` | 6-digit integer | Institution | `110635` | IPEDS institution ID; primary join key across FSA endpoints and to IPEDS/Scorecard |
+| `unitid` | 6-digit integer | Institution | `110635` | IPEDS institution ID; primary join key across FSA datasets and to IPEDS/Scorecard |
 | `fips` | 2-digit integer | State | `6` | State FIPS code |
 
 ### Title IV Programs
@@ -137,7 +170,7 @@ FSA endpoint selection?
 | Below 1.0 | Not Financially Responsible | Must post letter of credit or face sanctions |
 | -1.0 | Minimum score | Lowest possible composite score |
 
-### Grant Type Codes (grants endpoint)
+### Grant Type Codes (grants dataset)
 
 | Code | Grant Type |
 |------|------------|
@@ -147,7 +180,7 @@ FSA endpoint selection?
 | `4` | Iraq and Afghanistan Service Grant |
 | `5` | Children of Fallen Heroes Grant |
 
-### Loan Type Codes (loans endpoint)
+### Loan Type Codes (loans dataset)
 
 | Code | Loan Type |
 |------|-----------|
@@ -166,7 +199,7 @@ FSA endpoint selection?
 | `13` | Grad PLUS Federal Family Education Loans |
 | `14` | PLUS Federal Family Education Loans |
 
-### Award Type Codes (campus-based-volume endpoint)
+### Award Type Codes (campus-based-volume dataset)
 
 | Code | Award Type |
 |------|------------|
@@ -193,33 +226,42 @@ FSA endpoint selection?
 
 ## Data Access
 
-Datasets for FSA are available via the mirror system. See `datasets-reference.md` for canonical paths and `fetch-patterns.md` for fetch code patterns.
+All FSA datasets are fetched via the **mirror system**. Three reference files govern data access:
 
-**Key datasets:**
+| Reference File | Purpose |
+|----------------|---------|
+| `mirrors.yaml` | Mirror URLs, read strategies, timeouts, discovery endpoints |
+| `datasets-reference.md` | Canonical dataset paths and codebook paths |
+| `fetch-patterns.md` | `fetch_from_mirrors()` function and codebook URL helper |
 
-| Dataset | Path | Type |
-|---------|------|------|
-| Grants | `fsa/colleges_fsa_grants` | Single |
-| Loans | `fsa/colleges_fsa_loans` | Single |
-| Campus-Based Volume | `fsa/colleges_fsa_campus_based_volume` | Single |
-| Financial Responsibility | `fsa/colleges_fsa_composite_scores` | Single |
-| 90/10 Revenue | `fsa/colleges_fsa_90_10_revenue_percentages` | Single |
+**Key datasets (all single-file, all years in one file):**
 
-Codebooks: See `datasets-reference.md` codebook column. Use `get_codebook_url()` from `fetch-patterns.md`.
+| Dataset | Canonical Path | Years | Codebook Path |
+|---------|---------------|-------|---------------|
+| Grants | `fsa/colleges_fsa_grants` | 1999-2021 | `fsa/codebook_colleges_fsa_grants` |
+| Loans | `fsa/colleges_fsa_loans` | 1999-2021 | `fsa/codebook_colleges_fsa_loans` |
+| Campus-Based Volume | `fsa/colleges_fsa_campus_based_volume` | 2001-2021 | `fsa/codebook_colleges_fsa_campus_based_volume` |
+| Financial Responsibility | `fsa/colleges_fsa_composite_scores` | 2006-2016 | `fsa/codebook_colleges_fsa_financial_responsibility` |
+| 90/10 Revenue | `fsa/colleges_fsa_90_10_revenue_percentages` | 2014-2021 | `fsa/codebook_colleges_fsa_90-10_revenue_percentages` |
 
-### Filtering
+> **Naming mismatches (intentional):** Financial Responsibility uses `composite_scores` in data path but `financial_responsibility` in codebook path. 90/10 Revenue uses underscores (`90_10`) in data path but hyphens (`90-10`) in codebook path.
+
+### Fetch Example
 
 ```python
 import polars as pl
 
+# Using fetch_from_mirrors() from fetch-patterns.md
+df_grants = fetch_from_mirrors("fsa/colleges_fsa_grants", years=[2019, 2020, 2021])
+
 # Filter by grant type (1 = Federal Pell Grant)
-df_pell = df.filter(pl.col("grant_type") == 1)
+df_pell = df_grants.filter(pl.col("grant_type") == 1)
 
 # Filter by institution
-df_inst = df.filter(pl.col("unitid") == 110635)
+df_inst = df_grants.filter(pl.col("unitid") == 110635)
 
 # Filter by year range
-df_recent = df.filter(pl.col("year").is_between(2015, 2021))
+df_recent = df_grants.filter(pl.col("year").is_between(2015, 2021))
 ```
 
 ## Common Pitfalls
@@ -228,7 +270,8 @@ df_recent = df.filter(pl.col("year").is_between(2015, 2021))
 |---------|-------|----------|
 | Using string codes | Portal encodes categoricals as integers; original FSA docs may reference string labels | Always use integer codes (e.g., `grant_type == 1` not `"Pell"`) |
 | Ignoring missing data codes | `-1`, `-2`, `-3` in numeric columns are sentinel values, not real amounts | Filter or handle missing codes before aggregation; exclude negative values from sums/means |
-| Stale financial responsibility data | `financial-responsibility` endpoint only covers 2006-2016 | Check year coverage before analysis; do not assume current availability |
+| Stale financial responsibility data | `colleges_fsa_composite_scores` only covers 2006-2016 | Check year coverage before analysis; do not assume current availability |
+| 90/10 percentage is a proportion | `rev_pct_90_10` is stored as 0-1 (e.g., 0.87), NOT 0-100 | Multiply by 100 for display; compare to 0.90 threshold, not 90 |
 | Perkins Loan discontinuation | Perkins Loans ended after 2017; campus-based data still includes historical records | Filter by year or award_type to avoid mixing discontinued and active programs |
 | Data lag | FSA data typically lags 1-2 years behind the current award year | Verify latest available year before planning analysis |
 | Mixing aggregate and detail loan types | Loan type codes include both individual types (1-8, 10-13) and aggregate totals (3, 6, 9, 14) | Filter to specific types or aggregates, never sum both together |
@@ -245,13 +288,13 @@ df_recent = df.filter(pl.col("year").is_between(2015, 2021))
 
 ## Common Research Applications
 
-| Research Question | FSA Endpoints | Complementary Data |
-|-------------------|---------------|-------------------|
-| Pell Grant distribution by institution type | `/fsa/grants/` | IPEDS Directory |
-| Student loan burden by sector | `/fsa/loans/` | IPEDS Enrollment |
-| Financial stability of for-profit schools | `/fsa/financial-responsibility/`, `/fsa/90-10-revenue-percentages/` | IPEDS Directory |
-| Campus-based aid allocation patterns | `/fsa/campus-based-volume/` | IPEDS Directory |
-| Title IV participation trends | `/fsa/grants/`, `/fsa/loans/` | Multiple years |
+| Research Question | FSA Datasets | Complementary Data |
+|-------------------|-------------|-------------------|
+| Pell Grant distribution by institution type | `fsa/colleges_fsa_grants` | IPEDS Directory |
+| Student loan burden by sector | `fsa/colleges_fsa_loans` | IPEDS Enrollment |
+| Financial stability of for-profit schools | `fsa/colleges_fsa_composite_scores`, `fsa/colleges_fsa_90_10_revenue_percentages` | IPEDS Directory |
+| Campus-based aid allocation patterns | `fsa/colleges_fsa_campus_based_volume` | IPEDS Directory |
+| Title IV participation trends | `fsa/colleges_fsa_grants`, `fsa/colleges_fsa_loans` | Multiple years |
 
 ## Data Update Schedule
 
@@ -266,9 +309,9 @@ df_recent = df.filter(pl.col("year").is_between(2015, 2021))
 |--------|--------------|-------------|
 | `education-data-source-ipeds` | Institutional characteristics and enrollment | Joining aid data with institution type, enrollment, or finances via `unitid` |
 | `education-data-source-scorecard` | Student outcomes after enrollment | Linking aid patterns to post-college earnings and repayment |
-| `education-data-source-fsa` | Self (cross-endpoint joins) | Combining grants + loans + campus-based for holistic aid picture |
-| `education-data-explorer` | Parent discovery skill | Finding available FSA endpoints and variables |
-| `education-data-query` | Data fetching | Downloading FSA parquet/CSV files from mirrors |
+| `education-data-source-fsa` | Self (cross-dataset joins) | Combining grants + loans + campus-based for holistic aid picture |
+| `education-data-explorer` | Parent discovery skill | Finding available FSA datasets and variables |
+| `education-data-query` | Data fetching | Downloading FSA data from mirrors via `fetch_from_mirrors()` |
 
 ## Topic Index
 
@@ -291,4 +334,4 @@ df_recent = df.filter(pl.col("year").is_between(2015, 2021))
 | Campus-based variables | `./references/variable-definitions.md` |
 | Data coverage | `./references/data-quality.md` |
 | Missing data handling | `./references/data-quality.md` |
-| Year coverage by endpoint | `./references/data-quality.md` |
+| Year coverage by dataset | `./references/data-quality.md` |

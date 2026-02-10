@@ -200,12 +200,16 @@ import polars as pl
 
 # Always filter coded missing values before analysis
 missing_codes = [-1, -2, -3]
-df_valid = df.filter(~pl.col("partic_women").is_in(missing_codes))
+df_valid = df.filter(
+    ~pl.col("undup_athpartic_women").is_in(missing_codes) &
+    ~pl.col("undup_athpartic_men").is_in(missing_codes)
+)
 
 # Calculate ratios only on valid data
 df_clean = df_valid.with_columns(
-    (pl.col("partic_women") / (pl.col("partic_men") + pl.col("partic_women")))
-    .alias("female_share")
+    (pl.col("undup_athpartic_women") / (
+        pl.col("undup_athpartic_men") + pl.col("undup_athpartic_women")
+    )).alias("female_share")
 )
 ```
 

@@ -36,24 +36,25 @@ Most direct method when you have school coordinates.
 
 ```python
 import geopandas as gpd
-import pandas as pd
+import polars as pl
 
-# Load school points (from CCD)
-schools = pd.read_csv("schools.csv")
+# Load school points (from CCD via Portal mirror)
+schools = pl.read_parquet("data/raw/ccd_schools.parquet")
+schools_pd = schools.select(["ncessch", "longitude", "latitude"]).to_pandas()
 schools_gdf = gpd.GeoDataFrame(
-    schools,
-    geometry=gpd.points_from_xy(schools.longitude, schools.latitude),
+    schools_pd,
+    geometry=gpd.points_from_xy(schools_pd.longitude, schools_pd.latitude),
     crs="EPSG:4326"
 )
 
-# Load tract boundaries (from NHGIS)
+# Load tract boundaries (from NHGIS direct download)
 tracts = gpd.read_file("nhgis_tracts_2020.shp")
 
 # Spatial join
 schools_with_tracts = gpd.sjoin(
-    schools_gdf, 
-    tracts[["GISJOIN", "geometry"]], 
-    how="left", 
+    schools_gdf,
+    tracts[["GISJOIN", "geometry"]],
+    how="left",
     predicate="within"
 )
 ```
@@ -95,16 +96,16 @@ The EDGE School District Geographic Relationship Files show how census tracts re
 ### Using EDGE Files
 
 ```python
-import pandas as pd
+import polars as pl
 
-# Load EDGE relationship file
-edge = pd.read_csv("EDGE_GEOCODE_PUBLICSCH_2223.csv")
+# Load EDGE relationship file (from NCES download, not Portal)
+edge = pl.read_csv("EDGE_GEOCODE_PUBLICSCH_2223.csv")
 
 # Filter to specific district
-district_tracts = edge[edge["LEAID"] == "0622710"]
+district_tracts = edge.filter(pl.col("LEAID") == "0622710")
 
 # Get unique tracts in district
-tracts_in_district = district_tracts["TRACT"].unique()
+tracts_in_district = district_tracts.select("TRACT").unique()
 ```
 
 ### Limitations
@@ -115,52 +116,61 @@ tracts_in_district = district_tracts["TRACT"].unique()
 
 ## Method 3: Education Data Portal NHGIS Data
 
-The Urban Institute provides pre-linked school-to-tract data via the Education Data Portal mirrors.
+The Urban Institute provides pre-linked school/college-to-tract data via the Education Data Portal mirrors. **No registration required.**
 
-### Mirror Paths
+### Canonical Paths
 
-```
-schools/nhgis/census-{year}/schools_nhgis_geog_{year}.parquet
-```
+See `datasets-reference.md` for all canonical paths. Key paths:
 
-### Available Years
+| Dataset | Path |
+|---------|------|
+| Schools Census 1990 | `nhgis/schools_nhgis_geog_1990` |
+| Schools Census 2000 | `nhgis/schools_nhgis_geog_2000` |
+| Schools Census 2010 | `nhgis/schools_nhgis_geog_2010` |
+| Schools Census 2020 | `nhgis/schools_nhgis_geog_2020` |
+| Colleges Census 1990 | `nhgis/colleges_nhgis_geog_1990` |
+| Colleges Census 2000 | `nhgis/colleges_nhgis_geog_2000` |
+| Colleges Census 2010 | `nhgis/colleges_nhgis_geog_2010` |
+| Colleges Census 2020 | `nhgis/colleges_nhgis_geog_2020` |
 
-Based on decennial census years:
-- 1990
-- 2000
-- 2010
-- 2020
+Each file contains ALL data years (schools: 1986-2023, colleges: 1980-2023). The census year in the file name determines which boundary vintage is used for geographic assignment.
 
-### Key Variables
+### Key Variables (Schools)
 
 | Variable | Description | Type |
 |----------|-------------|------|
 | `ncessch` | NCES school ID | Int64 |
+| `leaid` | NCES district ID | Int64 |
 | `tract` | Census tract number | Int64 |
-| `block_group` | Block group number | Int64 |
-| `geoid_block` | Full block identifier | Int64 |
+| `block_group` | Block group number (1-9; 0 = unassigned) | Int64 |
+| `geoid_block` | Full block FIPS identifier | Int64 |
 | `census_region` | Census region (1-4, 9 for territories) | Int64 |
 | `census_division` | Census division (1-9) | Int64 |
-| `cbsa` | CBSA code | Int64 |
-| `cbsa_type` | 1=Metropolitan, 2=Micropolitan | Int64 |
+| `cbsa` | CBSA code (2000+ census files only) | Int64 |
+| `cbsa_type` | 1=Metropolitan, 2=Micropolitan (2000+ only) | Int64 |
+| `geocode_accuracy` | Match score (0-100; -2=not geocoded) | Float64 |
 
 ### Querying via Mirror
 
 ```python
+import polars as pl
+
 # Uses fetch_from_mirrors() — tries each mirror in priority order per mirrors.yaml.
-from fetch_utils import fetch_from_mirrors
+# See fetch-patterns.md for the fetch_from_mirrors() function.
 
 # Load from Portal mirror
 df = fetch_from_mirrors("nhgis/schools_nhgis_geog_2020")
 
-# Filter to specific school
-school_data = df.filter(pl.col("ncessch") == 60000100001)
+# Filter to specific school and year
+school_data = df.filter(
+    (pl.col("ncessch") == 10000201704) & (pl.col("year") == 2023)
+)
 print(school_data.select(["ncessch", "tract", "block_group", "census_region"]))
 ```
 
 ### Note on Integer Encodings
 
-Portal data uses integer encodings for categorical variables:
+Portal data uses integer encodings for categorical variables. See `variable-catalog.md` for complete encoding tables.
 
 | Variable | Code | Meaning |
 |----------|------|---------|
@@ -273,13 +283,17 @@ When NHGIS doesn't provide school-district-level data for your variables:
 3. Sum counts or compute weighted averages
 
 ```python
+import polars as pl
+
 # Example: Total population in district
-district_population = tracts_in_district["total_pop"].sum()
+district_population = tracts_in_district.select(pl.col("total_pop").sum()).item()
 
 # Example: Weighted average median income
 weighted_income = (
-    (tracts_in_district["median_income"] * tracts_in_district["households"]).sum() 
-    / tracts_in_district["households"].sum()
+    tracts_in_district.select(
+        (pl.col("median_income") * pl.col("households")).sum()
+        / pl.col("households").sum()
+    ).item()
 )
 ```
 

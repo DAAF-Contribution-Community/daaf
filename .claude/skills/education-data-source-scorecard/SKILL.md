@@ -15,12 +15,16 @@ metadata:
 
 Federal data on post-college outcomes including earnings, debt, and repayment for students who received Title IV financial aid. Links education records to IRS tax data for actual earnings, making it the primary source for post-college labor market outcomes.
 
-> **CRITICAL: Value Encoding**
+> **CRITICAL: Value Encoding and Missing Data**
 >
-> The Education Data Portal uses **integer encodings** for all categorical variables.
-> In Portal mirror parquet files, **`null` is the primary indicator for
-> missing/suppressed data** — not the string `"PrivacySuppressed"` from original
-> Scorecard documentation. Always verify codes against codebooks.
+> The Education Data Portal uses **integer encodings** for all categorical variables
+> and **lowercase, restructured variable names** that differ from the original
+> Scorecard column names. Suppression encoding differs by dataset:
+>
+> - **Earnings/counts**: `-3` integer code is the primary suppression indicator
+> - **Yes/No flags** (institutional characteristics): `null` for missing, `0`/`1` for valid
+> - **Rates** (repayment, default): `null` for missing
+> - The original Scorecard string `"PrivacySuppressed"` does NOT appear in Portal data
 >
 > | Context | `pred_degree_awarded_ipeds` | HBCU / tribal flags | `religious_affiliation` |
 > |---------|----------------------------|---------------------|-------------------------|
@@ -28,6 +32,13 @@ Federal data on post-college outcomes including earnings, debt, and repayment fo
 > | Original Scorecard | String labels | String labels | String labels |
 >
 > See `./references/variable-definitions.md` for complete encoding tables.
+>
+> **Truth Hierarchy:** When interpreting variable values, apply this priority:
+> 1. **Actual data file** (what you observe in the parquet/CSV) — this IS the truth
+> 2. **Live codebook** (.xls in mirror) — authoritative documentation, may lag
+> 3. **This skill documentation** — convenient summary, may drift from codebook
+>
+> If this documentation contradicts the codebook, trust the codebook. If the codebook contradicts observed data, trust the data and investigate.
 
 ## What is College Scorecard?
 
@@ -36,7 +47,7 @@ Federal data on post-college outcomes including earnings, debt, and repayment fo
 - **Data sources**: NSLDS (loans/aid), IRS/Treasury (earnings), IPEDS (institutional characteristics)
 - **Coverage**: **Title IV federal aid recipients only** — not all students
 - **Unique feature**: Links education to IRS tax records for actual earnings data
-- **Access**: Education Data Portal mirrors (parquet/CSV) or bulk downloads at collegescorecard.ed.gov
+- **Access**: Education Data Portal mirrors (parquet/CSV); see `datasets-reference.md` for paths, `mirrors.yaml` for mirror config, `fetch-patterns.md` for fetch code
 - **Primary identifier**: `unitid` (IPEDS institution ID)
 
 ## Reference File Structure
@@ -102,121 +113,141 @@ Query construction?
 
 ### Portal Data Structure (CRITICAL)
 
-The Portal uses **LONG format** with time horizon as a column, NOT the WIDE format from original Scorecard files.
+The Portal uses **LONG format** with time horizon as a column, NOT the WIDE format from original Scorecard bulk download files. **Portal column names are all lowercase** and differ significantly from original Scorecard names.
 
-| Scorecard (WIDE) | Portal (LONG) | How to Get |
-|------------------|---------------|------------|
+| Original Scorecard (WIDE) | Portal Column (LONG) | How to Get |
+|---------------------------|----------------------|------------|
 | `MD_EARN_WNE_P6` | `earnings_med` | Filter: `years_after_entry == 6` |
 | `MD_EARN_WNE_P10` | `earnings_med` | Filter: `years_after_entry == 10` |
 | `COUNT_WNE_P6` | `count_working` | Filter: `years_after_entry == 6` |
-| `CONTROL`, `INSTNM` | NOT IN FILE | Join to IPEDS directory |
+| `MN_EARN_WNE_P6` | `earnings_mean` | Filter: `years_after_entry == 6` |
+| `CONTROL`, `INSTNM` | NOT IN EARNINGS | Join to IPEDS directory or `inst_characteristics` dataset |
+| `CDR3` | `default_rate` | In `repayment_fsa` dataset; filter: `years_since_entering_repay` |
+| `RPY_3YR_RT` | `repay_rate` | In `repayment_nslds` dataset; filter: `years_since_entering_repay == 3` |
 
-### Earnings Variables
+### Earnings Dataset Columns (Actual Portal Names)
 
-| Variable Pattern | Description | Source |
-|-----------------|-------------|--------|
-| `MD_EARN_WNE_P6` | Median earnings 6 years after entry | IRS W-2 |
-| `MD_EARN_WNE_P8` | Median earnings 8 years after entry | IRS W-2 |
-| `MD_EARN_WNE_P10` | Median earnings 10 years after entry | IRS W-2 |
-| `PCT_EARN_WNE_P*` | Share working and not enrolled | IRS |
-| `*_INC1_*`, `*_INC2_*`, `*_INC3_*` | By FAFSA family income tercile | IRS |
+> **Source dataset:** `scorecard/colleges_scorecard_earnings` (203,066 rows x 33 columns)
 
-### Debt Variables
-
-| Variable Pattern | Description | Source |
-|-----------------|-------------|--------|
-| `DEBT_MDN` | Median cumulative debt at graduation | NSLDS |
-| `GRAD_DEBT_MDN` | Median debt for completers | NSLDS |
-| `WDRAW_DEBT_MDN` | Median debt for withdrawals | NSLDS |
-| `LO_INC_DEBT_MDN` | Median debt, low-income students | NSLDS |
-
-### Repayment Variables
-
-| Variable Pattern | Description | Source |
-|-----------------|-------------|--------|
-| `RPY_*YR_RT` | Repayment rate at N years | NSLDS |
-| `COMPL_RPY_*YR_RT` | Repayment rate, completers only | NSLDS |
-| `CDR3` | 3-year cohort default rate | FSA |
-| `DBRR*` | Dollar-based repayment rate | NSLDS |
-
-### Completion Variables
-
-| Variable Pattern | Description | Source |
-|-----------------|-------------|--------|
-| `C150_4` | 150% completion rate, 4-year | Scorecard |
-| `C150_L4` | 150% completion rate, <4-year | Scorecard |
-| `C150_4_POOLED` | Pooled completion rate | Scorecard |
-| `COMP_ORIG_YR*_RT` | Completion rate by year | Scorecard |
+| Portal Column | Type | Description | Original Scorecard |
+|---------------|------|-------------|-------------------|
+| `unitid` | Int64 | IPEDS institution ID | `UNITID` |
+| `opeid` | String | OPE ID (8-digit, zero-padded) | `OPEID` |
+| `year` | Int64 | Data year (2003-2014, 2018) | File year |
+| `years_after_entry` | Int64 | Years since first enrollment (6-10) | Encoded in variable name |
+| `cohort_year` | Int64 | Entry cohort year | Encoded in variable name |
+| `earnings_med` | Int64 | Median earnings (W-2) | `MD_EARN_WNE_P*` |
+| `earnings_mean` | Int64 | Mean earnings | `MN_EARN_WNE_P*` |
+| `earnings_sd` | Int64 | Standard deviation of earnings | `SD_EARN_WNE_P*` |
+| `earnings_pct10` | Int64 | 10th percentile earnings | `PCT10_EARN_WNE_P*` |
+| `earnings_pct25` | Int64 | 25th percentile earnings | `PCT25_EARN_WNE_P*` |
+| `earnings_pct75` | Int64 | 75th percentile earnings | `PCT75_EARN_WNE_P*` |
+| `earnings_pct90` | Int64 | 90th percentile earnings | `PCT90_EARN_WNE_P*` |
+| `count_working` | Int64 | Count working and not enrolled | `COUNT_WNE_P*` |
+| `count_not_working` | Int64 | Count not working and not enrolled | `COUNT_NWNE_P*` |
+| `earnings_greater_than_25k_pct` | Float64 | Share earning > $25K | `GT_25K_P*` |
+| `earnings_lowinc_mean` | Int64 | Mean earnings, low-income | `MN_EARN_WNE_INC1_P*` |
+| `earnings_midinc_mean` | Int64 | Mean earnings, mid-income | `MN_EARN_WNE_INC2_P*` |
+| `earnings_highinc_mean` | Int64 | Mean earnings, high-income | `MN_EARN_WNE_INC3_P*` |
+| `earnings_dep_mean` | Int64 | Mean earnings, dependent students | — |
+| `earnings_dep_lowinc_mean` | Int64 | Mean earnings, dependent low-income | — |
+| `earnings_ind_mean` | Int64 | Mean earnings, independent students | — |
+| `earnings_female_mean` | Int64 | Mean earnings, female | — |
+| `earnings_male_mean` | Int64 | Mean earnings, male | — |
+| `count_working_*` | Int64 | Count working by subgroup | — |
 
 ### Key Identifiers
 
 | ID | Format | Level | Example | Notes |
 |----|--------|-------|---------|-------|
 | `unitid` | 6-digit integer | Institution | `110635` | Same as IPEDS unitid; primary join key |
+| `opeid` | 8-digit string | OPE (Title IV) | `"00100200"` | Zero-padded; present in all datasets |
+| `opeid6` | Integer | 6-digit OPE | `1002` | Numeric, no zero-padding |
 
 ### Data Timing
 
-| Metric | "Years After" Meaning | Typical Lag |
-|--------|----------------------|-------------|
-| 6-year earnings | 6 years after first enrollment | Data from 7+ years ago |
-| 10-year earnings | 10 years after first enrollment | Data from 11+ years ago |
-| Repayment rates | Years since entering repayment | Varies by metric |
-| Completion rates | 150%/200% of normal time | 6-8 years for 4-year schools |
+| Metric | Dimension Column | Values | Typical Lag |
+|--------|-----------------|--------|-------------|
+| Earnings | `years_after_entry` | 6, 7, 8, 9, 10 | Data from 7+ years ago |
+| Default | `years_since_entering_repay` | 2, 3 | Varies |
+| Repayment | `years_since_entering_repay` | 1, 3, 5, 7 | Varies |
 
 **"After entry" means after first enrollment**, not after graduation.
 
-### Categorical Value Encodings
+### Categorical Value Encodings (Institutional Characteristics Dataset)
 
 | Variable | Values |
 |----------|--------|
 | `pred_degree_awarded_ipeds` | 0=Not classified, 1=Certificate, 2=Associate's, 3=Bachelor's, 4=Graduate |
 | Yes/No flags (HBCU, tribal, etc.) | 0=No, 1=Yes, null=Missing |
-| `religious_affiliation` | Integer codes 22-200 (see variable-definitions.md), null=None/Missing |
+| `religious_affiliation` | 76 integer codes 22-200 (see variable-definitions.md for complete mapping), null=None/Missing |
 
 ### Missing Data Codes
 
-| Code | Meaning | When Used |
-|------|---------|-----------|
-| `null` | Missing/suppressed/not applicable | Primary missing indicator in parquet files |
-| `-3` | Suppressed | Privacy suppression (appears in some numeric fields) |
-| Valid integer (e.g., 0-4) | Actual value | Categorical codes |
-| Positive numeric | Actual value | Earnings, debt, counts |
+| Code | Meaning | Which Datasets |
+|------|---------|----------------|
+| `-3` | Suppressed for privacy | **Earnings dataset** (earnings and count columns) — primary suppression indicator |
+| `null` | Missing/not applicable | **Institutional characteristics** (yes/no flags), **repayment/default** (rates) |
+| Positive numeric | Actual value | Earnings, debt, counts, rates |
 
 ```python
-# Filter for valid earnings (handle both null and -3)
+import polars as pl
+
+# Filter for valid earnings (handle -3 suppression code)
 valid = df.filter(
     (pl.col("earnings_med").is_not_null()) &
     (pl.col("earnings_med") != -3)
 )
+
+# Filter for 6-year earnings specifically
+six_yr_valid = valid.filter(pl.col("years_after_entry") == 6)
 ```
 
 ## Data Access
 
-Datasets for Scorecard are available via the mirror system. See `datasets-reference.md` for canonical paths and `fetch-patterns.md` for fetch code patterns.
+Datasets for Scorecard are available via the mirror system. See `datasets-reference.md` for canonical paths, `mirrors.yaml` for mirror configuration, and `fetch-patterns.md` for fetch code patterns.
 
-**Key datasets:**
+Codebooks are `.xls` files co-located with data in all mirrors. Use `get_codebook_url()` from `fetch-patterns.md` to construct download URLs.
 
-| Dataset | Path | Type |
-|---------|------|------|
-| Earnings | `scorecard/colleges_scorecard_earnings` | Single |
+### All Scorecard Datasets (6 total)
 
-6 Scorecard datasets exist in the mirror. See `datasets-reference.md` for the complete list with codebook paths.
+| Dataset | Path | Codebook | Type | Years |
+|---------|------|----------|------|-------|
+| Earnings | `scorecard/colleges_scorecard_earnings` | `scorecard/codebook_colleges_scorecard_earnings` | Single | varies |
+| Default | `scorecard/colleges_scorecard_repayment_fsa` | `scorecard/codebook_colleges_scorecard_default` | Single | 1996-2020 |
+| Institutional Characteristics | `scorecard/colleges_scorecard_inst_characteristics` | `scorecard/codebook_colleges_scorecard_institutional-characteristics` | Single | 1996-2020 |
+| Repayment | `scorecard/colleges_scorecard_repayment_nslds` | `scorecard/codebook_colleges_scorecard_repayment` | Single | 2007-2016 |
+| Student Characteristics (Aid) | `scorecard/colleges_scorecard_student_body_nslds` | `scorecard/codebook_colleges_scorecard_student-characteristics_aid-applicants` | Single | 1997-2016 |
+| Student Characteristics (Home) | `scorecard/colleges_scorecard_student_body_treasury` | `scorecard/codebook_colleges_scorecard_student-characteristics_home-neighborhood` | Single | 1997-2016 |
 
-### Filtering
+> **Scorecard naming note:** Data file paths differ significantly from codebook paths. Notable mismatches: data `repayment_fsa` vs codebook `default`; data `inst_characteristics` vs codebook `institutional-characteristics`; data `repayment_nslds` vs codebook `repayment`; data `student_body_nslds` vs codebook `student-characteristics_aid-applicants`; data `student_body_treasury` vs codebook `student-characteristics_home-neighborhood`. Always use the exact paths shown above.
+
+### Fetching Data
 
 ```python
-# Filter by time horizon (LONG format — filter, don't use wide column names)
-six_yr = df.filter(pl.col("years_after_entry") == 6)
+import polars as pl
+from fetch_utils import fetch_from_mirrors  # See fetch-patterns.md
 
-# Filter for valid earnings (exclude null and suppressed)
-valid = df.filter(
+# Fetch earnings data
+earnings = fetch_from_mirrors("scorecard/colleges_scorecard_earnings")
+
+# Filter by time horizon (LONG format — filter, don't use wide column names)
+six_yr = earnings.filter(pl.col("years_after_entry") == 6)
+
+# Filter for valid earnings (exclude -3 suppression code)
+valid = six_yr.filter(
     (pl.col("earnings_med").is_not_null()) &
     (pl.col("earnings_med") != -3)
 )
 
-# Join to IPEDS for institution names/control (not in Scorecard data)
-# ipeds_dir = pl.read_parquet("...ipeds/directory/...")
-# df = df.join(ipeds_dir.select("unitid", "inst_name", "control"), on="unitid")
+# Institution names/control are NOT in the earnings dataset.
+# Join to inst_characteristics or IPEDS directory:
+inst = fetch_from_mirrors("scorecard/colleges_scorecard_inst_characteristics",
+                          years=[2020])
+valid = valid.join(
+    inst.select("unitid", "inst_name", "pred_degree_awarded_ipeds"),
+    on="unitid", how="left"
+)
 ```
 
 ## Common Pitfalls
@@ -230,6 +261,8 @@ valid = df.filter(
 | Total borrowing assumption | Scorecard debt includes only federal loans, not private | State "federal loans only" when reporting debt figures |
 | String codes from docs | Original Scorecard uses string labels; Portal uses integers | Verify actual data types in Portal parquet files; use integer codes |
 | Wide-format variable names | Using `MD_EARN_WNE_P10` column name on Portal data | Portal uses LONG format — filter `years_after_entry` instead |
+| Assuming null = suppressed | Earnings dataset uses `-3` for suppression, not null | Filter both: `is_not_null() & != -3` |
+| Using uppercase names | Original Scorecard uses `MD_EARN_WNE_P6`; Portal uses `earnings_med` | Always use lowercase Portal names from actual data |
 
 ## Critical Limitation: Title IV Recipients Only
 

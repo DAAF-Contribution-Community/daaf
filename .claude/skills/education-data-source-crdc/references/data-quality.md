@@ -487,7 +487,7 @@ When analyzing CRDC data, document:
 2. **Check suppression** - Assess impact before analysis
 3. **Use rates** - Normalize by enrollment
 4. **Compare within units** - Same district, same school over time
-5. **Verify definitions** - Check codebook for your year
+5. **Verify definitions** - Check the live codebook for your year (use `get_codebook_url()` from `fetch-patterns.md`)
 
 ### For Discipline Analysis
 

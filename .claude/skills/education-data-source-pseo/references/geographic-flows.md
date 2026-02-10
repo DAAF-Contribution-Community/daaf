@@ -60,60 +60,66 @@ PSEO reports employment by the 9 Census Divisions:
 
 ## Geographic Flow Variables
 
-### Employment by Division
+### Employment by Division (Portal Schema)
 
-Available for Years 1, 5, and 10 post-graduation:
+In Portal data, employment counts are accessed via `employed_grads_count_f`, filtered by `years_after_grad` and `census_division`:
 
-| Variable Pattern | Description |
-|------------------|-------------|
-| `Y1_GRADS_EMP` | Employed graduates (when filtered by division) |
-| `Y5_GRADS_EMP` | Employed graduates, 5 years out |
-| `Y10_GRADS_EMP` | Employed graduates, 10 years out |
-
-### Total Employment Variables
-
-| Variable | Description |
-|----------|-------------|
-| `Y1_GRADS_EMP` | Total employed (sum across divisions) |
-| `Y1_GRADS_NME` | Non-employed or marginally employed |
+| Portal Variable | Description |
+|-----------------|-------------|
+| `employed_grads_count_f` | Employed graduates count (filter by `years_after_grad` for Y1/Y5/Y10) |
+| `employed_instate_grads_count` | Employed in institution's state |
+| `jobless_m_emp_grads_count` | Non-employed or marginally employed |
+| `census_division` | Census Division of employment (1-9, 99 for aggregate) |
+| `years_after_grad` | `1`, `5`, or `10` |
 
 ### Querying by Division
 
-Use the `division` parameter in the Flows endpoint:
+```python
+import polars as pl
 
-```
+# Fetch PSEO data
+df = fetch_from_mirrors("pseo/colleges_pseo_2020")
+
 # Employment in Pacific Division (9), 1 year post-graduation
-GET api.census.gov/data/timeseries/pseo/flows
-  ?get=Y1_GRADS_EMP
-  &for=division:9
-  &INSTITUTION=00365800
-  &DEGREE_LEVEL=05
-```
+pacific = df.filter(
+    (pl.col("census_division") == 9)
+    & (pl.col("unitid") == 228778)       # UT Austin
+    & (pl.col("degree_level") == 5)       # Bachelor's
+    & (pl.col("years_after_grad") == 1)
+    & (pl.col("employed_grads_count_f") > 0)
+)
 
-To get all divisions:
-```
-&for=division:*
+# Get all divisions for an institution
+all_divisions = df.filter(
+    (pl.col("unitid") == 228778)
+    & (pl.col("years_after_grad") == 1)
+    & (pl.col("census_division") != 99)   # Exclude aggregate
+    & (pl.col("employed_grads_count_f") > 0)
+).select("census_division", "employed_grads_count_f")
 ```
 
 ## In-State Employment
 
-### In-State Variables
+### In-State Variables (Portal Schema)
 
-| Variable | Description |
-|----------|-------------|
-| `Y1_GRADS_EMP_INSTATE` | Employed in same state as institution, Year 1 |
-| `Y5_GRADS_EMP_INSTATE` | Employed in same state as institution, Year 5 |
-| `Y10_GRADS_EMP_INSTATE` | Employed in same state as institution, Year 10 |
+In Portal data, in-state employment is in the `employed_instate_grads_count` column, filtered by `years_after_grad`:
+
+| Portal Variable | `years_after_grad` | Census API Equivalent |
+|-----------------|--------------------|-----------------------|
+| `employed_instate_grads_count` | `1` | `Y1_GRADS_EMP_INSTATE` |
+| `employed_instate_grads_count` | `5` | `Y5_GRADS_EMP_INSTATE` |
+| `employed_instate_grads_count` | `10` | `Y10_GRADS_EMP_INSTATE` |
 
 ### Calculating Retention Rate
 
-```
-In-State Retention Rate = Y1_GRADS_EMP_INSTATE / Y1_GRADS_EMP × 100
+```python
+# In-state retention = employed_instate_grads_count / employed_grads_count_f
+# Filter to census_division == 99 (aggregate) for total employed count
 ```
 
-**Example**:
-- Y1_GRADS_EMP = 1,000
-- Y1_GRADS_EMP_INSTATE = 650
+**Example** (using Portal variable names):
+- `employed_grads_count_f` = 1,000 (where `years_after_grad=1`, `census_division=99`)
+- `employed_instate_grads_count` = 650 (where `years_after_grad=1`)
 - In-state retention = 65%
 
 ### Interpreting In-State Data
@@ -143,8 +149,8 @@ for cip_code in programs:
 
 Show where graduates from an institution/state work:
 
-| From Institution State | To Division | Y1_GRADS_EMP |
-|------------------------|-------------|--------------|
+| From Institution State | To Division | `employed_grads_count_f` |
+|------------------------|-------------|--------------------------|
 | Texas (48) | West South Central (7) | 8,500 |
 | Texas (48) | Pacific (9) | 1,200 |
 | Texas (48) | Mountain (8) | 800 |
@@ -193,8 +199,8 @@ For Texas Engineering Bachelor's graduates (hypothetical data):
 ```
 Institution: Texas Higher Education Coordinating Board (State aggregate)
 CIP: 14 (Engineering)
-Degree Level: 05 (Bachelor's)
-Cohort: 2016
+Degree Level: 5 (Bachelor's)
+Cohort: "2016-2018"
 
 Geographic Distribution (Y1):
 ┌────────────────────────┬────────────┬─────────┐

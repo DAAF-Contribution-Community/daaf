@@ -250,18 +250,22 @@ XXX-Xxx-XX
 
 ### Filtering with NTEEV2
 
+> **Note:** NTEEV2 is available in full NCCS data, not in the Portal mirror dataset.
+
 ```python
+import polars as pl
+
 # Filter for all universities
-universities = df[df['NTEE_V2'].str.startswith('UNI-', na=False)]
+universities = df.filter(pl.col("NTEE_V2").str.starts_with("UNI-"))
 
 # Filter for hospitals
-hospitals = df[df['NTEE_V2'].str.startswith('HOS-', na=False)]
+hospitals = df.filter(pl.col("NTEE_V2").str.starts_with("HOS-"))
 
 # Filter for advocacy organizations in any sector
-advocacy = df[df['NTEE_V2'].str.endswith('-AA', na=False)]
+advocacy = df.filter(pl.col("NTEE_V2").str.ends_with("-AA"))
 
 # Filter for education sector (excluding universities)
-education = df[df['NTEE_V2'].str.startswith('EDU-', na=False)]
+education = df.filter(pl.col("NTEE_V2").str.starts_with("EDU-"))
 ```
 
 ---
@@ -401,21 +405,25 @@ International Classification of Nonprofit Organizations:
 
 ### Filtering Examples
 
+> **Important:** NTEE codes are NOT included in the Portal dataset (`nccs/colleges_nccs_all`), which is already pre-filtered to higher education institutions. The filtering examples below apply to the **full NCCS BMF/Core data** downloaded directly from NCCS.
+
 ```python
+import polars as pl
+
+# --- Full NCCS data (NOT Portal) ---
+
 # All higher education (B40-B50)
-higher_ed_pattern = r'^B4[0-9]|^B50'
-higher_ed = df[df['NTEECC'].str.match(higher_ed_pattern, na=False)]
+higher_ed = df.filter(pl.col("NTEECC").str.contains(r"^B4[0-9]|^B50"))
 
 # Just universities (B43)
-universities = df[df['NTEECC'] == 'B43']
+universities = df.filter(pl.col("NTEECC") == "B43")
 
 # All K-12 schools (B20-B29)
-k12_pattern = r'^B2[0-9]'
-k12 = df[df['NTEECC'].str.match(k12_pattern, na=False)]
+k12 = df.filter(pl.col("NTEECC").str.contains(r"^B2[0-9]"))
 
 # All education (B)
-all_education = df[df['NTEECC'].str.startswith('B', na=False)]
+all_education = df.filter(pl.col("NTEECC").str.starts_with("B"))
 
 # Using NTEEV2 for universities
-universities_v2 = df[df['NTEE_V2'].str.startswith('UNI-', na=False)]
+universities_v2 = df.filter(pl.col("NTEE_V2").str.starts_with("UNI-"))
 ```

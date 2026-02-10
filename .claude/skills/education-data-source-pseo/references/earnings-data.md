@@ -97,13 +97,15 @@ Graduates excluded from earnings tabulations:
 
 ### Non-Employed/Marginal Employment
 
-Graduates who don't meet attachment criteria are counted in residual variables:
+Graduates who don't meet attachment criteria are counted in the `jobless_m_emp_grads_count` column, filtered by `years_after_grad`:
 
-| Variable | Description |
-|----------|-------------|
-| `Y1_GRADS_NME` | Non-employed or marginally employed, Year 1 |
-| `Y5_GRADS_NME` | Non-employed or marginally employed, Year 5 |
-| `Y10_GRADS_NME` | Non-employed or marginally employed, Year 10 |
+| Portal Variable | `years_after_grad` | Census API Equivalent |
+|-----------------|--------------------|-----------------------|
+| `jobless_m_emp_grads_count` | `1` | `Y1_GRADS_NME` |
+| `jobless_m_emp_grads_count` | `5` | `Y5_GRADS_NME` |
+| `jobless_m_emp_grads_count` | `10` | `Y10_GRADS_NME` |
+
+> **Note:** Portal restructures Census API's separate Y1/Y5/Y10 variables into a single column with a `years_after_grad` filter.
 
 ## Cohort Definitions
 
@@ -111,26 +113,28 @@ Graduates are grouped into cohorts based on graduation year. Cohort length varie
 
 ### Bachelor's Degree Cohorts (3-year)
 
-| GRAD_COHORT | Years Included |
-|-------------|----------------|
-| 2001 | 2001, 2002, 2003 |
-| 2004 | 2004, 2005, 2006 |
-| 2007 | 2007, 2008, 2009 |
-| 2010 | 2010, 2011, 2012 |
-| 2013 | 2013, 2014, 2015 |
-| 2016 | 2016, 2017, 2018 |
-| 2019 | 2019, 2020, 2021 |
+| `pseo_cohort` Value | Years Included |
+|---------------------|----------------|
+| `"2001-2003"` | 2001, 2002, 2003 |
+| `"2004-2006"` | 2004, 2005, 2006 |
+| `"2007-2009"` | 2007, 2008, 2009 |
+| `"2010-2012"` | 2010, 2011, 2012 |
+| `"2013-2015"` | 2013, 2014, 2015 |
+| `"2016-2018"` | 2016, 2017, 2018 |
+| `"2019-2021"` | 2019, 2020, 2021 |
+
+> **Note:** Portal uses full year range strings (e.g., `"2019-2021"`). Census Bureau source data uses abbreviated start-year format (e.g., `2019`).
 
 ### All Other Degree Levels (5-year)
 
 Includes: Certificates, Associate's, Master's, Doctoral
 
-| GRAD_COHORT | Years Included |
-|-------------|----------------|
-| 2001 | 2001, 2002, 2003, 2004, 2005 |
-| 2006 | 2006, 2007, 2008, 2009, 2010 |
-| 2011 | 2011, 2012, 2013, 2014, 2015 |
-| 2016 | 2016, 2017, 2018, 2019, 2020 |
+| `pseo_cohort` Value | Years Included |
+|---------------------|----------------|
+| `"2001-2005"` | 2001, 2002, 2003, 2004, 2005 |
+| `"2006-2010"` | 2006, 2007, 2008, 2009, 2010 |
+| `"2011-2015"` | 2011, 2012, 2013, 2014, 2015 |
+| `"2016-2020"` | 2016, 2017, 2018, 2019, 2020 |
 
 ### Why Different Cohort Lengths?
 
@@ -139,9 +143,7 @@ Includes: Certificates, Associate's, Master's, Doctoral
 
 ### All-Cohort Aggregations
 
-When `GRAD_COHORT=0000`, data spans all available cohorts. `GRAD_COHORT_YEARS` indicates the cohort span:
-- `3` for Bachelor's
-- `5` for all other degree levels
+In Census Bureau source data, `GRAD_COHORT=0000` spans all available cohorts, with `GRAD_COHORT_YEARS` indicating the cohort span (3 for Bachelor's, 5 for others). In Portal data, check for aggregate `pseo_cohort` values that span all years.
 
 ## Earnings Adjustments
 
@@ -206,15 +208,27 @@ When comparing earnings across programs:
 
 **Question**: What do Computer Science Bachelor's graduates from UT Austin earn?
 
-```
-Institution: 00365800 (UT Austin)
-Degree Level: 05 (Bachelor's)
-CIP Code: 11 (Computer and Information Sciences)
-Cohort: 2016 (graduates 2016-2018)
+```python
+import polars as pl
 
-Y1_P50_EARNINGS: $62,500 (median 1 year out)
-Y5_P50_EARNINGS: $95,000 (median 5 years out)
-Y1_GRADS: 450 (sample size)
+# Fetch PSEO data for 2020
+df = fetch_from_mirrors("pseo/colleges_pseo_2020")
+
+# Filter to UT Austin CS Bachelor's
+ut_cs = df.filter(
+    (pl.col("unitid") == 228778)         # UT Austin
+    & (pl.col("degree_level") == 5)       # Bachelor's
+    & (pl.col("cipcode") == 11)           # Computer Science
+    & (pl.col("p50_earnings") > 0)        # Valid earnings only
+)
+
+# View earnings by years after graduation
+print(ut_cs.select("years_after_grad", "p25_earnings", "p50_earnings", "p75_earnings", "employed_grads_count_e"))
 ```
+
+**Example result** (hypothetical):
+- `years_after_grad=1`: `p50_earnings` = $62,500 (median 1 year out)
+- `years_after_grad=5`: `p50_earnings` = $95,000 (median 5 years out)
+- `employed_grads_count_e` = 450 (sample size)
 
 **Interpretation**: Median CS graduate from UT Austin earned $62,500 one year after graduation (in 2022 dollars), growing to $95,000 five years out. With 450 graduates in the cell, this estimate is relatively precise.

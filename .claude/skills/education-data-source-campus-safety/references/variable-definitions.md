@@ -9,7 +9,13 @@
 > | **Portal (integers)** | `1` = Race, `2` = Religion | `1` = Murder, `13` = Intimidation |
 > | Raw files (strings) | Text descriptions | Text descriptions |
 >
-> **Always use integer codes** when querying the Portal API or working with mirror data.
+> **Always use integer codes** when working with mirror data.
+
+> **Codebook Authority:** The variable definitions in this document are summaries for convenience.
+> The authoritative source for variable names, codes, and definitions is the codebook `.xls` file
+> available in the data mirrors. Use `get_codebook_url("csafety/codebook_colleges_csafety_hate_crimes")` from `fetch-patterns.md`
+> to download the codebook. If this document contradicts the codebook, trust the codebook and
+> flag the discrepancy.
 
 ## Data Sources and Access
 
@@ -19,58 +25,54 @@ The Campus Safety and Security (CSS) data is collected through an annual survey 
 
 **Official Data Portal**: https://ope.ed.gov/campussafety/
 
-**Access Options**:
-1. **Web tool**: Search individual institutions or compare up to 4 schools
-2. **Custom download**: Select variables and institutions for bulk download
-3. **Trend data**: View trends over time for specific questions
+For data NOT available in the mirror system (primary offenses, VAWA, arrests/referrals, fire safety), access the Department of Education directly.
 
-### Education Data Portal (Urban Institute)
+### Education Data Portal (Urban Institute) -- Mirror System
 
-The Education Data Portal includes CSS data integrated with other college-level data sources. Data is available via mirror downloads (see `mirrors.yaml` for configuration).
+The Education Data Portal includes CSS hate crimes data integrated with other college-level data sources. Data is available via mirror downloads. See `datasets-reference.md` for canonical paths, `mirrors.yaml` for mirror configuration, and `fetch-patterns.md` for fetch code patterns.
 
-**Available Endpoints**:
-- `hate-crimes/colleges_csafety_hate_crimes.parquet` - Hate crime statistics by institution, year, crime type, and bias category
+**Available Dataset:**
 
-**Years Available**: 2005-2021 (varies by variable)
+| Dataset | Path | Codebook | Years |
+|---------|------|----------|-------|
+| Hate Crimes | `csafety/colleges_csafety_hate_crimes` | `csafety/codebook_colleges_csafety_hate_crimes` | 2005-2021 |
+
+> **Note:** Only 1 campus safety dataset is available in the Portal mirrors. Consult `datasets-reference.md` for the authoritative list.
 
 ## Key Identifiers
 
-### Institution Identifiers
+### Identifiers in Portal Mirror Data (Hate Crimes Dataset)
 
-| Variable | Description | Format | Notes |
-|----------|-------------|--------|-------|
-| `unitid` | IPEDS institution ID | 6-digit integer | Primary identifier for joining with IPEDS data |
-| `opeid` | OPE institution ID | 8-character | Used in federal student aid system |
-| `instnm` | Institution name | String | Official institution name |
-| `branch` | Campus/branch identifier | String | For institutions with multiple campuses |
-| `address` | Street address | String | Institution address |
-| `city` | City | String | Location city |
-| `state` | State | 2-character | State abbreviation |
-| `zip` | ZIP code | String | 5 or 9 digit |
+The following columns are **empirically confirmed** in the `csafety/colleges_csafety_hate_crimes` dataset:
 
-### Campus Identification
+| Variable | Description | Type | Notes |
+|----------|-------------|------|-------|
+| `unitid` | IPEDS institution ID | Int64 | Primary identifier for joining with IPEDS data |
+| `opeid` | OPE institution ID | String | 8-character; 126 null values in dataset |
+| `inst_name` | Institution name | String | Official institution name |
+| `fips` | State FIPS code | Int64 | 59 unique values (50 states + DC + territories) |
 
-Multi-campus institutions report separately for each campus. Key variables:
+> **Note:** The Portal hate crimes data uses `inst_name` (not `instnm`). Columns such as `branch`, `address`, `city`, `zip`, `state`, `campus_id`, `main_campus`, `sector`, `control`, `enrollment`, `fte_enrollment`, `housing`, and `housing_capacity` are NOT present in the mirror dataset. Join with IPEDS directory data on `unitid` to obtain institutional characteristics.
 
-| Variable | Description |
-|----------|-------------|
-| `campus_id` | Unique campus identifier |
-| `main_campus` | Indicator for main campus |
-| `branch_name` | Name of branch campus |
+### Identifiers in Full CSS Data (Department of Education Direct Access)
+
+The full CSS survey data (available at https://ope.ed.gov/campussafety/) includes additional identifiers not present in the Portal mirror, such as `branch`, `address`, `city`, `state`, `zip`, `campus_id`, and `main_campus`. These are relevant when accessing data directly from the Department of Education rather than through the Portal mirrors.
 
 ## Institutional Characteristics
 
-### Basic Characteristics
+> **Not in Portal mirror data:** The variables below are available in the full CSS survey from the Department of Education but are NOT present in the Portal mirror hate crimes dataset. To obtain institutional characteristics, join the hate crimes data with the IPEDS directory dataset (`ipeds/colleges_ipeds_directory`) on `unitid`.
+
+### Basic Characteristics (Full CSS / IPEDS Join)
 
 | Variable | Description | Values |
 |----------|-------------|--------|
-| `sector` | Institution sector | Public 4-year, Private nonprofit 4-year, Private for-profit 4-year, Public 2-year, etc. |
+| `sector` | Institution sector | Integer codes 1-9 (see sector codes below) |
 | `level` | Institution level | 4-year, 2-year, Less than 2-year |
 | `control` | Institution control | Public, Private nonprofit, Private for-profit |
 | `enrollment` | Total enrollment | Integer |
 | `fte_enrollment` | Full-time equivalent enrollment | Integer |
 
-### Housing Information
+### Housing Information (Full CSS Only)
 
 | Variable | Description | Values |
 |----------|-------------|--------|
@@ -78,6 +80,8 @@ Multi-campus institutions report separately for each campus. Key variables:
 | `housing_capacity` | Housing bed capacity | Integer |
 
 ## Crime Statistics Variables
+
+> **Not in Portal mirror data:** The individual crime count variables below (e.g., `murder`, `rape`, `robbery`) are available in the full CSS survey from the Department of Education but are NOT present in the Portal mirror hate crimes dataset. The mirror data contains only aggregate hate crime counts by location (see "Hate Crime Variables" section below).
 
 ### Criminal Offenses
 
@@ -116,7 +120,9 @@ Multi-campus institutions report separately for each campus. Key variables:
 
 ## Geographic Location Suffixes
 
-Crime variables typically have suffixes indicating location:
+> **Not in Portal mirror data:** The suffixed crime variables below (e.g., `robbery_oncampus`) are part of the full CSS survey, not the Portal mirror. In the Portal mirror hate crimes dataset, geographic breakdowns are provided as separate count columns: `on_campus_hate_crimes`, `residence_hall_hate_crimes`, `non_campus_hate_crimes`, `public_property_hate_crimes`, `other_hate_crimes`, and `total_hate_crimes`.
+
+Crime variables in the full CSS data typically have suffixes indicating location:
 
 | Suffix | Description |
 |--------|-------------|
@@ -136,12 +142,14 @@ robbery_publicproperty
 
 ## Hate Crime Variables
 
+> **This is the data available in Portal mirrors.** The hate crimes dataset is the only campus safety data in the mirror system.
+
 ### Structure
 
 Hate crimes are reported by:
 - Crime type (integer code)
 - Bias category (integer code)
-- Geographic location
+- Geographic location (as separate count columns)
 
 ### Bias Category Codes (Portal Integer Encoding)
 
@@ -183,9 +191,10 @@ Hate crimes are reported by:
 | `16` | Domestic Violence | VAWA Offense (2014+) |
 | `17` | Dating Violence | VAWA Offense (2014+) |
 | `18` | Stalking | VAWA Offense (2014+) |
-| `99` | Total | All crime types combined |
 
 > **Note:** Crime types 12-15 (Larceny-Theft, Simple Assault, Intimidation, Vandalism) are only reported as hate crimes. They are not standalone Clery crimes unless bias-motivated.
+
+> **Empirically verified:** The Portal mirror data contains crime_type values 1-18 only. Code `99` (Total) does NOT appear in the actual data, despite being documented in some references. Verify codes against the live codebook. Use `get_codebook_url()` from `fetch-patterns.md`.
 
 ### Hate Crime-Only Offenses
 
@@ -197,6 +206,8 @@ Hate crimes are reported by:
 | `vandalism_hate` | Destruction/damage/vandalism of property (hate crime only) |
 
 ## Fire Safety Variables
+
+> **Not in Portal mirror data:** Fire safety variables are NOT available in the Portal mirrors. Access the Department of Education CSS portal directly for fire data.
 
 ### Fire Statistics
 
@@ -228,33 +239,25 @@ Hate crimes are reported by:
 
 ## Time Variables
 
-| Variable | Description | Format |
-|----------|-------------|--------|
-| `year` | Calendar year of data | YYYY |
-| `survey_year` | Year survey was submitted | YYYY |
+| Variable | Description | Format | In Mirror Data? |
+|----------|-------------|--------|-----------------|
+| `year` | Calendar year of data | YYYY (Int64) | Yes |
+| `survey_year` | Year survey was submitted | YYYY | No (full CSS only) |
 
-**Note**: Crime statistics are for calendar years (Jan 1 - Dec 31). The survey submitted in fall of year X contains data for year X-1.
+**Note**: Crime statistics are for calendar years (Jan 1 - Dec 31). The survey submitted in fall of year X contains data for year X-1. The Portal mirror data contains `year` (2005-2021) but not `survey_year`.
 
-## Missing Data Codes (Portal Integer Encoding)
+## Missing Data Codes
 
 | Code | Meaning | When Used |
 |------|---------|-----------|
-| `-1` | Missing/Not reported | State/institution did not report |
-| `-2` | Not applicable | Item doesn't apply to this institution |
-| `-3` | Suppressed | Data suppressed for privacy protection |
-| `null` | Genuinely missing | No data available |
+| `null` | Missing/not reported | Data not submitted or not applicable |
+| `0` | Zero incidents | Explicitly reported as zero (distinct from missing) |
 
-> **Note:** Unlike some other Portal datasets (e.g., CCD enrollment where `-1` means Pre-K), campus safety data uses standard missing codes where negative values always indicate missing/suppressed data.
+> **Empirically verified:** The Portal mirror hate crimes dataset does NOT use `-1`, `-2`, or `-3` coded values for missing data. All missing data appears as `null` (e.g., 352,310 null values in the `bias` column). This differs from some other Portal datasets (e.g., CCD enrollment) that use negative integer codes. Always verify against the actual data.
 
 ## Data Quality Flags
 
-Some datasets include flags indicating data quality:
-
-| Flag | Meaning |
-|------|---------|
-| `imputed` | Value was imputed |
-| `revised` | Value was corrected after initial submission |
-| `estimated` | Value is an estimate |
+> **Not in Portal mirror data:** The data quality flag columns (`imputed`, `revised`, `estimated`) are NOT present in the Portal mirror hate crimes dataset. These may be available in full CSS survey data from the Department of Education.
 
 ## Historical Variable Changes
 
@@ -294,17 +297,15 @@ Prior to 2014, sex offenses were categorized as:
 
 **Note**: These categories are not directly comparable to post-2014 categories.
 
-## Common Filters
-
-### For Parquet Downloads
+## Common Filters (Portal Mirror Data)
 
 | Filter | Description | Example |
 |--------|-------------|---------|
 | `year` | Calendar year | `pl.col("year") == 2021` |
 | `unitid` | Institution ID (IPEDS) | `pl.col("unitid") == 110635` |
 | `fips` | State FIPS code | `pl.col("fips") == 6` (California) |
-| `crime_type` | Crime type code | `pl.col("crime_type") == 14` (Intimidation) |
-| `bias` | Bias category code | `pl.col("bias") == 1` (Race) |
+| `crime_type` | Crime type code (1-18) | `pl.col("crime_type") == 14` (Intimidation) |
+| `bias` | Bias category code (1-9, 99) | `pl.col("bias") == 1` (Race) |
 
 ### Sector Codes (Portal Integer Encoding)
 

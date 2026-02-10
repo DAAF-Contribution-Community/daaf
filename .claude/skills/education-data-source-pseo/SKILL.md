@@ -36,7 +36,7 @@ Postsecondary Employment Outcomes (PSEO) is an experimental data product from th
 - **Content**: Links university transcript data with national UI wage records to track graduate employment outcomes
 - **Two data types**: Graduate Earnings (percentile earnings) and Employment Flows (industry/geography)
 - **Frequency**: Updated periodically; cohorts span 3-year (Bachelor's) or 5-year (all others) windows
-- **Primary identifiers**: `unitid` (IPEDS Unit ID), `opeid` (8-character string)
+- **Primary identifiers**: `unitid` (IPEDS Unit ID, integer), `opeid` (integer in Portal data)
 - **Privacy method**: Differential privacy mechanisms protect individual data
 
 ## Reference File Structure
@@ -49,7 +49,6 @@ Postsecondary Employment Outcomes (PSEO) is an experimental data product from th
 | `industry-flows.md` | What industries graduates enter by NAICS sector | Career pathway analysis |
 | `variable-definitions.md` | All variables, codes, and status flags | Building queries or interpreting values |
 | `state-coverage.md` | Participating states, coverage rates, data partners | Understanding limitations |
-| `api-access.md` | Census API endpoints, query construction | Programmatic data access |
 
 ## Decision Trees
 
@@ -58,19 +57,19 @@ Postsecondary Employment Outcomes (PSEO) is an experimental data product from th
 ```
 Graduate outcomes research?
 ├─ Earnings by program/institution
-│   ├─ Median earnings → Earnings endpoint, Y*_P50_EARNINGS
-│   ├─ Earnings distribution → 25th/50th/75th percentiles
+│   ├─ Median earnings → `p50_earnings` column, filter by `years_after_grad`
+│   ├─ Earnings distribution → `p25_earnings`/`p50_earnings`/`p75_earnings`
 │   └─ See ./references/earnings-data.md
 ├─ Where graduates work (geography)
-│   ├─ Census Division of employment → Flows endpoint
-│   ├─ In-state vs out-of-state → Y*_GRADS_EMP_INSTATE
+│   ├─ Census Division of employment → `census_division` column
+│   ├─ In-state vs out-of-state → `employed_instate_grads_count`
 │   └─ See ./references/geographic-flows.md
 ├─ What industries graduates enter
-│   ├─ NAICS sector employment → Flows endpoint
+│   ├─ NAICS sector employment → `industry` column (String)
 │   └─ See ./references/industry-flows.md
 └─ How many graduates are employed
-    ├─ Employment counts → Y*_GRADS_EMP
-    ├─ Non-employed/marginal → Y*_GRADS_NME
+    ├─ Employment counts → `employed_grads_count_f`
+    ├─ Non-employed/marginal → `jobless_m_emp_grads_count`
     └─ See ./references/variable-definitions.md
 ```
 
@@ -90,14 +89,14 @@ Degree level?
 └─ Doctoral-Professional Practice → degree_level=10
 ```
 
-> **Note:** Portal uses integers 1-10. Census API uses string codes like "05", "1C".
+> **Note:** Portal uses integers 1-10. Census Bureau source data uses string codes like "05", "1C" -- these do not appear in Portal data.
 
 ### Is my institution/state covered?
 
 ```
 Checking data availability?
 ├─ Which states participate → ./references/state-coverage.md
-├─ Which institutions have data → Check PSEO Explorer or API
+├─ Which institutions have data → Check PSEO Explorer or mirror data
 ├─ Coverage rate for state → ./references/state-coverage.md
 └─ Why data might be missing
     ├─ Institution not partnered
@@ -125,17 +124,17 @@ Checking data availability?
 | `employed_grads_count_f` | Employed graduates count |
 | `employed_instate_grads_count` | Employed in institution's state |
 | `jobless_m_emp_grads_count` | Non-employed or marginally employed |
-| `industry` | 2-digit NAICS sector (integer) |
+| `industry` | 2-digit NAICS sector (String, e.g., `"54"`, `"31-33"`) |
 | `census_division` | Census Division of employment (1-9, 99) |
 
-> **Note:** Portal uses restructured schema with `years_after_grad` column instead of Census API's `Y1_*/Y5_*/Y10_*` naming.
+> **Note:** Portal uses restructured schema with `years_after_grad` column instead of Census API's `Y1_*/Y5_*/Y10_*` naming. The `industry` column is String type because some NAICS sectors span ranges (e.g., `"31-33"` for Manufacturing, `"44-45"` for Retail Trade).
 
 ### Key Identifiers
 
 | ID | Format | Level | Example | Notes |
 |----|--------|-------|---------|-------|
 | `unitid` | Integer | Institution | `100751` | IPEDS Unit ID (University of Alabama) |
-| `opeid` | 8-char string | Institution | `"00105100"` | Not an integer; zero-padded |
+| `opeid` | Integer | Institution | `105100` | Portal stores as integer (Census uses 8-digit zero-padded string) |
 | `fips` | Integer | State | `48` | State of institution (Texas) |
 | `cipcode` | 2-digit integer | Field of study | `11` | Computer Science; Portal uses integers, not "11.01" |
 
@@ -144,38 +143,57 @@ Checking data availability?
 | Parameter | Description | Example |
 |-----------|-------------|---------|
 | `degree_level` | Degree type integer | `5` (Bachelor's) |
-| `pseo_cohort` | Graduation cohort | `"2016-18"` (string format) |
+| `pseo_cohort` | Graduation cohort | `"2016-2020"` or `"2019-2021"` (string format, full year range) |
 | `years_after_grad` | Years post-graduation | `1`, `5`, or `10` |
 
 ### Cohort Definitions
 
 | Degree Level | Cohort Years | Example Cohorts |
 |--------------|--------------|-----------------|
-| Bachelor's | 3-year | 2001-03, 2004-06, 2007-09, 2010-12, 2013-15, 2016-18, 2019-21 |
-| All others | 5-year | 2001-05, 2006-10, 2011-15, 2016-20 |
+| Bachelor's | 3-year | `"2001-2003"`, `"2004-2006"`, `"2007-2009"`, `"2010-2012"`, `"2013-2015"`, `"2016-2018"`, `"2019-2021"` |
+| All others | 5-year | `"2001-2005"`, `"2006-2010"`, `"2011-2015"`, `"2016-2020"` |
 
 ### Missing Data Codes
 
 | Code | Meaning | When Used |
 |------|---------|-----------|
-| `null` | Not available | Earnings data not available for cell |
-| Suppressed cell | Count < 30 graduates | Differential privacy suppression threshold |
-| `-1` | Missing | Data not reported (Portal convention) |
+| `-1` | Missing/not reported | Primary missing data indicator; very common in earnings and flows columns |
+| `-3` | Suppressed | Cell count < 30 graduates (differential privacy suppression) |
 | `-2` | Not applicable | Item doesn't apply to this entity (Portal convention) |
 
-> **Note:** PSEO uses differential privacy rather than traditional suppression. Cells with fewer than 30 graduates are suppressed entirely. Earnings values may also be absent when labor force attachment requirements are not met.
+> **Note:** PSEO data has **no null values** in the parquet files. All missing/suppressed data uses integer codes (`-1`, `-3`). Filter with `pl.col("p50_earnings") > 0` to get valid earnings, not `.is_not_null()`. PSEO uses differential privacy rather than traditional suppression. Cells with fewer than 30 graduates are suppressed entirely (coded as `-3`). Earnings values coded `-1` may indicate insufficient labor force attachment.
 
 ## Data Access
 
-Datasets for PSEO are available via the mirror system. See `datasets-reference.md` for canonical paths and `fetch-patterns.md` for fetch code patterns.
+Datasets for PSEO are available via the mirror system. See `datasets-reference.md` for canonical paths, `mirrors.yaml` for mirror configuration, and `fetch-patterns.md` for fetch code patterns.
 
-**Key datasets:**
+| Dataset | Type | Path | Codebook |
+|---------|------|------|----------|
+| Earnings and Flows | Yearly (2001-2021) | `pseo/colleges_pseo_{year}` | `pseo/codebook_colleges_pseo` |
 
-| Dataset | Path | Type |
-|---------|------|------|
-| Earnings and Flows | `pseo/colleges_pseo_{year}` | Yearly (2001-2021) |
+Codebooks are `.xls` files co-located with data in all mirrors. Use `get_codebook_url()` from `fetch-patterns.md` to construct download URLs.
 
-Codebooks: See `datasets-reference.md` codebook column. Use `get_codebook_url()` from `fetch-patterns.md`.
+> **Truth Hierarchy:** When interpreting variable values, apply this priority:
+> 1. **Actual data file** (what you observe in the parquet/CSV) -- this IS the truth
+> 2. **Live codebook** (.xls in mirror) -- authoritative documentation, may lag
+> 3. **This skill documentation** -- convenient summary, may drift from codebook
+>
+> If this documentation contradicts the codebook, trust the codebook. If the codebook contradicts observed data, trust the data and investigate.
+
+### Fetching PSEO Data
+
+```python
+import polars as pl
+
+# PSEO is a yearly dataset -- fetch individual years
+df = fetch_yearly_from_mirrors(
+    path_template="pseo/colleges_pseo_{year}",
+    years=[2018, 2019, 2020],
+)
+
+# Or fetch a single year
+df = fetch_from_mirrors("pseo/colleges_pseo_2020")
+```
 
 ### Filtering
 
@@ -186,24 +204,21 @@ df.filter(pl.col("unitid") == 100751)  # University of Alabama
 # Filter by field of study
 df.filter(pl.col("cipcode") == 11)  # Computer Science
 
-# Filter by cohort
-df.filter(pl.col("pseo_cohort") == "2016-18")
+# Filter by cohort (note: full year range format)
+df.filter(pl.col("pseo_cohort") == "2019-2021")
 
-# Earnings endpoint only (non-null median earnings)
-df.filter(pl.col("p50_earnings").is_not_null())
+# Earnings rows only (exclude missing/suppressed)
+df.filter(pl.col("p50_earnings") > 0)
+
+# Filter by industry (String column, not integer)
+df.filter(pl.col("industry") == "54")  # Professional Services
 ```
 
-### Census API (Original Source)
+### Additional Access Methods (Census Bureau Source)
 
-| Endpoint | URL | Purpose |
-|----------|-----|---------|
-| Earnings | `api.census.gov/data/timeseries/pseo/earnings` | Graduate earnings percentiles |
-| Flows | `api.census.gov/data/timeseries/pseo/flows` | Industry and geographic employment |
-
-### Additional Access Methods
-
-1. **PSEO Explorer**: Interactive visualization tool at `lehd.ces.census.gov/data/pseo_explorer.html`
-2. **Bulk download**: CSV/XLS files at `lehd.ces.census.gov/data/pseo/`
+1. **PSEO Explorer**: Interactive visualization tool at `https://lehd.ces.census.gov/data/pseo_explorer.html`
+2. **Census bulk download**: CSV/XLS files at `https://lehd.ces.census.gov/data/pseo/`
+3. **Census API**: `https://api.census.gov/data/timeseries/pseo/earnings` and `.../flows` (uses different variable naming and string codes; not used in this system)
 
 ## Common Pitfalls
 
@@ -214,7 +229,7 @@ df.filter(pl.col("p50_earnings").is_not_null())
 | Cross-institution comparison without controlling degree/CIP | Institutions offer different program mixes; aggregate comparison is misleading | Always filter to same `degree_level` and `cipcode` when comparing institutions |
 | Treating PSEO as comprehensive | Only ~29% of graduates covered; participating states differ systematically | Acknowledge selection bias; do not generalize to all U.S. graduates |
 | Ignoring labor attachment | Workers need 3+ quarters above minimum wage threshold to appear in earnings data | Some graduates are employed but excluded; note this limitation |
-| Using opeid as integer | `opeid` is an 8-character zero-padded string, not a numeric field | Keep as string: `"00105100"`, not `105100` |
+| Treating Portal opeid as string | Portal stores `opeid` as integer (e.g., `105100`), not Census's 8-digit zero-padded string (`"00105100"`) | Use integer comparison in Portal data; only Census API uses string format |
 | Mixing cohort spans | Bachelor's uses 3-year cohorts; all others use 5-year | Filter by `degree_level` first, then verify cohort format matches |
 | Assuming inflation comparability | All earnings are in 2022 CPI-U dollars | No manual inflation adjustment needed; values are already real dollars |
 
@@ -278,5 +293,5 @@ df.filter(pl.col("p50_earnings").is_not_null())
 | State participation | `./references/state-coverage.md` |
 | Coverage rates | `./references/state-coverage.md` |
 | Data partners | `./references/state-coverage.md` |
-| API query construction | `./references/api-access.md` |
-| Bulk data download | `./references/api-access.md` |
+| Mirror-based data download | Data Access section above |
+| Bulk data download | Data Access section above |

@@ -2,6 +2,8 @@
 
 Reference for understanding coverage gaps, selection bias, and data quality issues in NACUBO endowment data.
 
+> **Portal Scope Note:** These quality considerations apply to both the Portal mirror subset (7 market-value columns) and the full NCSE study. The Portal mirror inherits all limitations of the underlying NACUBO data, including voluntary participation, selection bias, and self-reporting. The Portal mirror covers 2012-2022 (8,197 rows, 652-813 institutions per year with a declining trend).
+
 ## Coverage Limitations
 
 ### Voluntary Participation

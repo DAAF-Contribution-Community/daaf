@@ -142,8 +142,10 @@ Need variable definitions?
 | | -1 | Sector unknown (not active) |
 | `hbcu` | 1 | Historically Black College/University |
 | | 0 | Not HBCU |
+| | -1 | Missing/not reported |
 | `tribal_college` | 1 | Tribal College |
 | | 0 | Not Tribal College |
+| | -1 | Missing/not reported |
 | `degree_granting` | 1 | Degree-granting |
 | | 0 | Non-degree-granting |
 
@@ -221,26 +223,41 @@ Need variable definitions?
 
 ## Data Access
 
-Datasets for IPEDS are available via the mirror system. See `datasets-reference.md` for canonical paths and `fetch-patterns.md` for fetch code patterns.
+Datasets for IPEDS are available via the mirror system. See `datasets-reference.md` for canonical paths, `mirrors.yaml` for mirror configuration, and `fetch-patterns.md` for fetch code patterns.
 
 **Key datasets:**
 
-| Dataset | Path | Type |
-|---------|------|------|
-| Directory | `ipeds/colleges_ipeds_directory` | Single |
-| Admissions | `ipeds/colleges_ipeds_admissions-enrollment` | Single |
-| Enrollment FTE | `ipeds/colleges_ipeds_enrollment-fte` | Single |
-| Graduation Rates | `ipeds/colleges_ipeds_grad-rates` | Single |
-| Finance | `ipeds/colleges_ipeds_finance` | Single |
+| Dataset | Type | Path | Codebook |
+|---------|------|------|----------|
+| Directory | Single | `ipeds/colleges_ipeds_directory` | `ipeds/codebook_colleges_ipeds_directory` |
+| Admissions | Single | `ipeds/colleges_ipeds_admissions-enrollment` | `ipeds/codebook_colleges_ipeds_admissions-enrollment` |
+| Enrollment FTE | Single | `ipeds/colleges_ipeds_enrollment-fte` | `ipeds/codebook_colleges_ipeds_enrollment-fte` |
+| Graduation Rates | Single | `ipeds/colleges_ipeds_grad-rates` | `ipeds/codebook_colleges_ipeds_grad-rates` |
+| Finance | Single | `ipeds/colleges_ipeds_finance` | `ipeds/codebook_colleges_ipeds_finance` |
 
-32 IPEDS datasets exist in the mirror. See `datasets-reference.md` for the complete list with codebook paths.
+32 IPEDS datasets exist in the mirror (5 shown above). See `datasets-reference.md` for the complete list with all paths and codebook paths.
+
+Codebooks are `.xls` files co-located with data in all mirrors. Use `get_codebook_url()` from `fetch-patterns.md` to construct download URLs:
+
+```python
+url = get_codebook_url("ipeds/codebook_colleges_ipeds_directory")
+```
+
+> **Truth Hierarchy:** When interpreting variable values, apply this priority:
+> 1. **Actual data file** (what you observe in the parquet/CSV) — this IS the truth
+> 2. **Live codebook** (.xls in mirror) — authoritative documentation, may lag
+> 3. **This skill documentation** — convenient summary, may drift from codebook
+>
+> If this documentation contradicts the codebook, trust the codebook. If the codebook contradicts observed data, trust the data and investigate.
 
 ### Filtering
 
 ```python
+import polars as pl
+
 # Admissions totals: filter to sex=99 for institution-level totals
 # WRONG - includes duplicates (~26K rows with multiple sex values per institution)
-df = pl.read_parquet("admissions.parquet")
+df = pl.read_parquet("data/raw/admissions.parquet")
 # CORRECT - one row per institution-year (~8K rows)
 df_totals = df.filter(pl.col("sex") == 99)
 
@@ -264,37 +281,46 @@ IPEDS data becomes available with significant lag. Always verify year availabili
 |------------------|-------------|-----------------------------------|
 | **Directory** | ~1 year | 2023 |
 | **Admissions-Enrollment** | ~2 years | 2022 |
-| **Fall Enrollment** | ~2-3 years | 2021 |
-| **Completions** | ~2 years | Varies |
+| **Fall Enrollment** | ~2-3 years | 2022 |
+| **Completions** | ~2 years | 2022 |
 | **Finance** | ~4+ years | **2017** (see warning below) |
-| **Graduation Rates** | ~2-3 years | 2021 |
+| **Graduation Rates** | ~2-3 years | 2022 |
 
-> **CRITICAL: IPEDS Finance Data Cutoff.** As of January 2026, IPEDS Finance data is only available through **2017**. This affects endowment values (`endowment_end`), revenue/expense data, and any financial ratios. Options: (1) limit analysis to available years, (2) use NCCS 990 data for private institutions as an alternative, or (3) forward-fill with a documented caveat and indicator column.
+> **CRITICAL: IPEDS Finance Data Cutoff.** As of January 2026, IPEDS Finance data is only available through **2017** in the Portal mirrors. This affects endowment values (`endowment_end`), revenue/expense data, and any financial ratios. Options: (1) limit analysis to available years, (2) use NCCS 990 data for private institutions as an alternative, or (3) forward-fill with a documented caveat and indicator column.
 
 ### Variable Name Mappings
 
-The Portal uses different names than NCES documentation:
+The Portal uses different names than NCES raw file documentation. The table below lists commonly confused mappings:
 
-| Documented Name | Actual Portal Name |
-|-----------------|-----------------|
-| `inst_level` | `institution_level` |
-| `applicants_total` | `number_applied` |
-| `admissions_total` | `number_admitted` |
-| `grad_rate_150pct` | `completion_rate_150pct` |
+| NCES Raw File Name | Actual Portal Name | Notes |
+|--------------------|-------------------|-------|
+| `INSTNM` | `inst_name` | Institution name |
+| `STABBR` | `state_abbr` | State abbreviation |
+| `CONTROL` | `inst_control` | Institutional control |
+| `ICLEVEL` | `institution_level` | Level of institution |
+| `DEGGRANT` | `degree_granting` | Degree-granting status |
+| `CYACTIVE` | `currently_active_ipeds` | Currently active flag |
+| `DEATHYR` | `year_deleted` | Year institution closed |
+| `APPLCN` | `number_applied` | Total applicants |
+| `ADMSSN` | `number_admitted` | Total admitted |
+| `EFTOTLT` | `enrollment_fall` | Fall enrollment (in fall-enrollment-race dataset) |
+| various `GR*` | `completion_rate_150pct`, `completers_150pct`, etc. | Grad rate variables |
 
-### Enrollment Endpoint Confusion
+> **Note:** Portal variable names are always **lowercase** with underscores. NCES documentation often uses UPPERCASE or CamelCase. When in doubt, fetch a sample of the actual data and inspect its column names.
 
-The Portal has two enrollment endpoints that BOTH return FTE data:
-- `/ipeds/fall-enrollment/` — Returns `est_fte`, `rep_fte` (FTE only, NOT headcount)
-- `/ipeds/enrollment-headcount/` — Despite the name, also returns FTE-style data
+### Enrollment Dataset Clarification
 
-Neither provides traditional headcount enrollment. Fall enrollment has a **2-3 year lag**.
+IPEDS has multiple enrollment-related datasets in the Portal:
 
-### Path Segments That Fail
+| Dataset | Key Columns | Best For |
+|---------|-------------|----------|
+| `fall-enrollment-race` (yearly) | `enrollment_fall`, `race`, `sex`, `level_of_study`, `ftpt`, `class_level`, `degree_seeking` | Detailed demographic breakdowns |
+| `fall-enrollment-age` (yearly) | Enrollment by age group | Age distribution analysis |
+| `enrollment-fte` (single) | `est_fte`, `rep_fte` | FTE-based comparisons |
+| `enrollment-headcount` (single) | Headcount data | Headcount-based analysis |
+| `fall-retention` (single) | Retention rates | Retention analysis |
 
-| Fails (HTTP 500) | Works |
-|------------------|-------|
-| `/fall-enrollment/2021/undergrad/` | `/fall-enrollment/2021/?level_of_study=1` |
+> **Note:** The `fall-enrollment-race` yearly dataset provides the most granular enrollment data, disaggregated by multiple dimensions. For institution-level totals, filter to `race == 99`, `sex == 99`, `ftpt == 99`, `level_of_study == 99`.
 
 ## Common Pitfalls
 
@@ -306,7 +332,7 @@ Neither provides traditional headcount enrollment. Fall enrollment has a **2-3 y
 | Net price for all students | Net price covers only first-time, full-time students who received Title IV aid | Document population limitation; excludes full-pay students |
 | Admissions without sex filter | Admissions data disaggregated by sex — unfiltered data has duplicates | Filter to `sex == 99` for institution totals |
 | No `institution_level` 3 | Codes are 1, 2, 4 — not sequential 1, 2, 3 | Use exact codes: 1=less-than-2yr, 2=2yr, 4=4yr+ |
-| Ignoring mergers/closures | Institutions merge, close, or change sector over time | Check `inst_status` and track UNITID changes; see `./references/institution-identifiers.md` |
+| Ignoring mergers/closures | Institutions merge, close, or change sector over time | Check `currently_active_ipeds` and `year_deleted`; track UNITID changes; see `./references/institution-identifiers.md` |
 | `inst_size` as enrollment | `inst_size` is a 1-5 category code, not an enrollment count | Use enrollment endpoints for actual counts |
 
 ## Critical Limitations
@@ -350,28 +376,32 @@ See `./references/financial-aid.md` for details.
 ### Data Quality Checklist
 
 ```python
+import polars as pl
+
 def ipeds_quality_check(df):
-    """Basic IPEDS data quality checks."""
+    """Basic IPEDS data quality checks using Portal variable names."""
     issues = []
 
     # Check graduation rates are 0-100
-    if "grad_rate_150" in df.columns:
+    if "completion_rate_150pct" in df.columns:
         bad = df.filter(
-            (pl.col("grad_rate_150") > 100) |
-            (pl.col("grad_rate_150") < 0)
+            (pl.col("completion_rate_150pct") > 100) |
+            (pl.col("completion_rate_150pct") < 0)
         )
         if bad.height > 0:
             issues.append(f"Invalid grad rates: {bad.height} rows")
 
-    # Check for closed institutions
-    if "inst_status" in df.columns:
-        closed = df.filter(pl.col("inst_status") != 1)
-        if closed.height > 0:
-            issues.append(f"Non-active institutions: {closed.height}")
+    # Check for non-active institutions (directory dataset)
+    if "currently_active_ipeds" in df.columns:
+        inactive = df.filter(pl.col("currently_active_ipeds") != 1)
+        if inactive.height > 0:
+            issues.append(f"Non-active institutions: {inactive.height}")
 
     # Check sector consistency
     if "inst_control" in df.columns:
-        invalid = df.filter(~pl.col("inst_control").is_in([1, 2, 3]))
+        invalid = df.filter(
+            ~pl.col("inst_control").is_in([1, 2, 3, -1])
+        )
         if invalid.height > 0:
             issues.append(f"Invalid control codes: {invalid.height}")
 

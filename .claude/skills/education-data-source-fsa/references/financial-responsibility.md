@@ -260,32 +260,54 @@ Public institutions are generally:
 
 ## FSA Data Variables
 
-### Education Data Portal: `/fsa/financial-responsibility/` Endpoint
+### Portal Dataset: `fsa/colleges_fsa_composite_scores`
 
-| Variable | Description | Values |
-|----------|-------------|--------|
-| `unitid` | IPEDS institution identifier | 6-digit integer |
-| `year` | Fiscal year | 2006-2016 |
-| `composite_score` | Overall composite score | -1.0 to 3.0 |
-| `primary_reserve_ratio` | Primary reserve ratio value | Decimal |
-| `equity_ratio` | Equity ratio value | Decimal |
-| `net_income_ratio` | Net income ratio value | Decimal |
+> **Codebook Authority:** The authoritative variable reference is the codebook at `fsa/codebook_colleges_fsa_financial_responsibility`. Use `get_codebook_url()` from `fetch-patterns.md` to construct the download URL. If the information below contradicts the codebook or observed data, trust the higher-priority source per the Truth Hierarchy in SKILL.md.
+
+> **Naming mismatch:** The data file uses `composite_scores` in its path, but the codebook uses `financial_responsibility`. This is intentional.
+
+**Empirically verified columns (from parquet):**
+
+| Variable | Type | Description | Values |
+|----------|------|-------------|--------|
+| `unitid` | Int64 | IPEDS institution identifier | 6-digit integer |
+| `year` | Int64 | Fiscal year | 2006-2016 |
+| `fips` | Int64 | State FIPS code | Integer |
+| `opeid` | Int64 | Office of Postsecondary Education ID | Integer |
+| `inst_name_fsa` | String | Institution name (FSA) | Text |
+| `inst_group_name` | String | Institution group name (if applicable) | Text (mostly null) |
+| `financial_resp_score` | Float64 | Overall financial responsibility composite score | -1.0 to 3.0 |
+| `multicampus_flag` | Int64 | Multicampus indicator | 1 (when applicable; null otherwise) |
+
+> **Note:** The individual ratio components (`primary_reserve_ratio`, `equity_ratio`, `net_income_ratio`) described in the Composite Score Calculation section above are **NOT available as separate columns** in the Portal data. Only the final `financial_resp_score` composite is provided. The ratio methodology above is included to help interpret the composite score.
 
 ### Score Distribution Analysis
 
 When analyzing financial responsibility data:
 
-```
-Financially Responsible: composite_score >= 1.5
-Zone Institutions: composite_score >= 1.0 AND composite_score < 1.5
-Not Financially Responsible: composite_score < 1.0
+```python
+import polars as pl
+
+df = fetch_from_mirrors("fsa/colleges_fsa_composite_scores")
+
+# Financially Responsible
+df_responsible = df.filter(pl.col("financial_resp_score") >= 1.5)
+
+# Zone Institutions
+df_zone = df.filter(
+    (pl.col("financial_resp_score") >= 1.0) &
+    (pl.col("financial_resp_score") < 1.5)
+)
+
+# Not Financially Responsible
+df_at_risk = df.filter(pl.col("financial_resp_score") < 1.0)
 ```
 
 ### Year Coverage
 
 | Variable | Years Available |
 |----------|----------------|
-| `composite_score` | 2006-2016 |
+| `financial_resp_score` | 2006-2016 |
 
 **Note**: Data availability may lag 2-3 years due to audit submission timelines.
 
@@ -293,12 +315,16 @@ Not Financially Responsible: composite_score < 1.0
 
 ### Identifying At-Risk Institutions
 
-```
+```python
+import polars as pl
+
+df = fetch_from_mirrors("fsa/colleges_fsa_composite_scores")
+
 # Filter for institutions in the zone or below
-?composite_score__lt=1.5
+df_concern = df.filter(pl.col("financial_resp_score") < 1.5)
 
 # Filter for not financially responsible
-?composite_score__lt=1.0
+df_at_risk = df.filter(pl.col("financial_resp_score") < 1.0)
 ```
 
 ### Sector Comparisons

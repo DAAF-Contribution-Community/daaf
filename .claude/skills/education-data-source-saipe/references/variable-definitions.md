@@ -13,6 +13,12 @@ Detailed definitions of SAIPE variables, population universes, and coding conven
 >
 > **Key difference:** Portal FIPS codes are integers (no leading zeros). When filtering by state, use integers: `fips == 6` not `fips == "06"` or `fips == "6"`.
 
+> **Codebook Authority:** The variable definitions in this document are summaries for convenience.
+> The authoritative source for variable names, codes, and definitions is the codebook `.xls` file
+> available in the data mirrors. Use `get_codebook_url("saipe/codebook_districts_saipe")` from `fetch-patterns.md`
+> to download the codebook. If this document contradicts the codebook, trust the codebook and
+> flag the discrepancy.
+
 ## School District Variables
 
 ### Core Estimates
@@ -30,6 +36,8 @@ Detailed definitions of SAIPE variables, population universes, and coding conven
 | `population_5_17_poverty_pct` | `population_5_17_poverty / population_5_17 * 100` | Not a true poverty "rate" - numerator excludes some in denominator |
 
 ## State and County Variables
+
+> **Not available in Portal mirrors.** The variables below describe SAIPE state and county estimates published by the Census Bureau. Only the **district-level** dataset (`saipe/districts_saipe`) is available in the Education Data Portal mirrors. These variables are listed for context only.
 
 ### Income Estimates
 
@@ -229,37 +237,25 @@ df.with_columns(
 
 ## Missing Data Codes
 
-### Portal Integer Encoding
+### Missing Value Encoding
 
-The Education Data Portal uses standard negative integer codes across all SAIPE variables:
+> **Empirical observation (2025):** The `districts_saipe` parquet file uses `null` for all missing/unavailable values. No negative integer codes (-1, -2, -3) were observed in any column. Verify against the live codebook if this changes in future releases.
 
 | Code | Meaning | When Used |
 |------|---------|-----------|
-| `-1` | Missing/not reported | State did not report; value unknown |
-| `-2` | Not applicable | Item doesn't apply to this district |
-| `-3` | Suppressed | Data suppressed for privacy protection |
-| `null` | No data | No value present in source |
-
-> **Note:** Unlike some other sources (e.g., CCD enrollment where `-1` = Pre-K), SAIPE uses `-1` consistently for missing data across all variables.
+| `null` | Missing or unavailable | Estimate not produced for this district/year |
 
 ### Handling Missing Data
 
 ```python
 import polars as pl
 
-# Identify problematic values
-missing_codes = [-1, -2, -3]
+# Filter to valid (non-null) data only
+df_valid = df.filter(pl.col("est_population_5_17_poverty").is_not_null())
 
-# Filter to valid data only
-df_valid = df.filter(~pl.col("est_population_5_17_poverty").is_in(missing_codes))
-
-# Or convert to null for calculations
-df_clean = df.with_columns(
-    pl.when(pl.col("est_population_5_17_poverty").is_in(missing_codes))
-    .then(None)
-    .otherwise(pl.col("est_population_5_17_poverty"))
-    .alias("est_population_5_17_poverty")
-)
+# Check null rates per column
+null_rates = df.null_count() / df.height
+print(null_rates)
 ```
 
 ### Suppression Rules
@@ -316,7 +312,7 @@ SAIPE estimates are for **calendar year** income, not school year:
 
 ## Education Data Portal Variable Names
 
-When accessing SAIPE via the Urban Institute API, variable names include the `est_` prefix:
+In the Education Data Portal, estimate variable names include the `est_` prefix:
 
 | Census Variable | Portal Variable | Data Type |
 |-----------------|-----------------|-----------|

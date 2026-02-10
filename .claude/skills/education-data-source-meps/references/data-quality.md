@@ -17,25 +17,29 @@ MEPS values are **statistical estimates**, not direct counts:
 
 **Implication**: Use standard errors for statistical inference; don't treat point estimates as ground truth.
 
-### Estimation Uncertainty (`meps_se`)
+### Estimation Uncertainty (`meps_poverty_se`)
 
-The standard error indicates reliability:
+The standard error indicates reliability. Portal values are on a **percentage scale** (matching `meps_poverty_pct`):
 
-| `meps_se` Range | Interpretation | Typical Context |
-|-----------------|----------------|-----------------|
-| < 0.02 | Very reliable | Large schools, abundant data |
-| 0.02 - 0.05 | Reliable | Typical schools |
-| 0.05 - 0.10 | Moderate uncertainty | Smaller schools, unusual characteristics |
-| > 0.10 | High uncertainty | Small schools, missing predictors |
+| `meps_poverty_se` Range | Interpretation | Typical Context |
+|-------------------------|----------------|-----------------|
+| < 1.0 | Very reliable | Large schools, abundant data |
+| 1.0 - 2.0 | Reliable | Typical schools |
+| 2.0 - 3.0 | Moderate uncertainty | Smaller schools, unusual characteristics |
+| > 3.0 | High uncertainty | Small schools, missing predictors |
+
+> **Actual observed range:** 0.52 - 3.77 (percentage points). This is on the same scale as `meps_poverty_pct`.
 
 **Using standard errors:**
 ```python
-# 95% confidence interval
-lower = df['meps'] - 1.96 * df['meps_se']
-upper = df['meps'] + 1.96 * df['meps_se']
+import polars as pl
 
-# Flag unreliable estimates
-df['reliable'] = df['meps_se'] < 0.05
+# 95% confidence interval
+df = df.with_columns([
+    (pl.col("meps_poverty_pct") - 1.96 * pl.col("meps_poverty_se")).alias("ci_lower"),
+    (pl.col("meps_poverty_pct") + 1.96 * pl.col("meps_poverty_se")).alias("ci_upper"),
+    (pl.col("meps_poverty_se") < 2.0).alias("reliable"),
+])
 ```
 
 ## Known Limitations
@@ -56,6 +60,8 @@ MEPS covers **only public schools**:
 |---------|-----------------|-------|
 | MEPS 1.0 | 2006-2019 | Original release |
 | MEPS 2.0 | Extended range | December 2025 release |
+
+> **Portal Status (Feb 2026):** MEPS 2.0 has not yet been integrated into the Education Data Portal mirrors. Portal data still reflects MEPS 1.0 (2009-2022). Check `datasets-reference.md` for current availability.
 
 **Impact**: Cannot analyze poverty before 2006 or after available years with MEPS.
 
@@ -89,8 +95,8 @@ The linear probability model assumes:
 ### 6. High-Poverty District Bias
 
 The original MEPS model **underestimates** poverty in very high-poverty districts:
-- Use `meps_mod` for analyses focused on high-poverty contexts
-- Original `meps` may undercount in districts >30% poverty
+- Use `meps_mod_poverty_pct` for analyses focused on high-poverty contexts
+- Original `meps_poverty_pct` may undercount in districts >30% poverty
 
 ### 7. Small School Uncertainty
 
@@ -118,7 +124,7 @@ Smaller schools have larger estimation errors:
 |----------|---------|
 | Individual school analysis | Use standard errors; acknowledge uncertainty |
 | Small school analysis | High uncertainty; consider aggregation |
-| Very high-poverty districts | Consider `meps_mod` instead |
+| Very high-poverty districts | Consider `meps_mod_poverty_pct` instead |
 | Year-over-year changes for single school | Changes may be within uncertainty |
 | Near-poverty analysis | MEPS only captures 100% FPL |
 
@@ -140,52 +146,53 @@ Smaller schools have larger estimation errors:
 When comparing poverty between schools:
 
 ```python
-def statistically_different(school_a, school_b, alpha=0.05):
-    """Test if two schools have significantly different poverty rates."""
-    diff = school_a['meps'] - school_b['meps']
-    se_diff = (school_a['meps_se']**2 + school_b['meps_se']**2)**0.5
+def statistically_different(pct_a: float, se_a: float, pct_b: float, se_b: float, alpha: float = 0.05) -> bool:
+    """Test if two schools have significantly different poverty rates.
+
+    Args:
+        pct_a: meps_poverty_pct for school A
+        se_a: meps_poverty_se for school A
+        pct_b: meps_poverty_pct for school B
+        se_b: meps_poverty_se for school B
+        alpha: significance level (0.05 or 0.01)
+    """
+    diff = pct_a - pct_b
+    se_diff = (se_a**2 + se_b**2)**0.5
     z_score = abs(diff) / se_diff
-    
-    # Critical value for two-tailed test
-    z_critical = 1.96 if alpha == 0.05 else 2.58  # 0.01
-    
+    z_critical = 1.96 if alpha == 0.05 else 2.58
     return z_score > z_critical
 ```
 
 ### Aggregating to Higher Levels
 
-For district or state aggregation, use enrollment-weighted averages:
+For district or state aggregation, use enrollment-weighted averages (requires joining with CCD enrollment data first):
 
 ```python
-def aggregate_meps(df, groupby_col):
-    """Enrollment-weighted aggregation with proper SE propagation."""
-    grouped = df.groupby(groupby_col).apply(
-        lambda x: pd.Series({
-            'meps_weighted': (x['meps'] * x['enrollment']).sum() / x['enrollment'].sum(),
-            'total_enrollment': x['enrollment'].sum(),
-            # SE of weighted average (approximate)
-            'meps_se_agg': ((x['meps_se']**2 * x['enrollment']**2).sum()**0.5 
-                           / x['enrollment'].sum())
-        })
+import polars as pl
+
+# Enrollment-weighted aggregation with proper SE propagation
+district_agg = (
+    df.filter(
+        pl.col("meps_poverty_pct").is_not_null()
+        & pl.col("enrollment").is_not_null()
     )
-    return grouped
+    .group_by("leaid")
+    .agg(
+        ((pl.col("meps_poverty_pct") * pl.col("enrollment")).sum()
+         / pl.col("enrollment").sum()).alias("meps_weighted"),
+        pl.col("enrollment").sum().alias("total_enrollment"),
+        # SE of weighted average (approximate)
+        ((pl.col("meps_poverty_se").pow(2) * pl.col("enrollment").pow(2)).sum().sqrt()
+         / pl.col("enrollment").sum()).alias("meps_se_agg"),
+    )
+)
 ```
 
 ### Regression with MEPS
 
-When using MEPS as a control variable:
-
-```python
-import statsmodels.api as sm
-
-# Simple approach (ignores measurement error)
-model = sm.OLS(y, sm.add_constant(df[['meps', 'other_vars']]))
-results = model.fit()
-
-# Better: Consider measurement error
-# MEPS has known SE; consider errors-in-variables regression
-# or sensitivity analysis varying MEPS within its CI
-```
+When using MEPS as a control variable, note that `meps_poverty_pct` is a modeled estimate with known standard error (`meps_poverty_se`). Consider:
+- **Simple approach:** Use `meps_poverty_pct` directly as a regressor (ignores measurement error)
+- **Better approach:** Use errors-in-variables regression or sensitivity analysis varying MEPS within its confidence interval
 
 ## Data Validation Checks
 
@@ -195,52 +202,32 @@ results = model.fit()
 
 1. **Check for missing values (MEPS uses nulls, not negative codes)**
 ```python
-# Polars
+import polars as pl
+
 null_pct = df["meps_poverty_pct"].null_count() / len(df)
 print(f"Missing: {null_pct:.1%}")
-
-# pandas
-missing_pct = df['meps_poverty_pct'].isna().mean()
-print(f"Missing: {missing_pct:.1%}")
 ```
 
 2. **Verify reasonable ranges**
 ```python
-# Polars - filter to non-null first
 valid = df.filter(pl.col("meps_poverty_pct").is_not_null())
 assert valid["meps_poverty_pct"].min() >= 0, "Negative poverty values"
 assert valid["meps_poverty_pct"].max() <= 100, "MEPS out of range"
 assert valid["meps_poverty_se"].min() >= 0, "Negative SE values"
-
-# pandas equivalent
-valid = df[df['meps_poverty_pct'].notna()]
-assert valid['meps_poverty_pct'].between(0, 100).all(), "MEPS out of range"
-assert (valid['meps_poverty_se'] >= 0).all(), "Negative SE values"
 ```
 
 3. **Check coverage**
 ```python
-# Polars
 print(f"Schools covered: {df['ncessch'].n_unique():,}")
 print(f"States covered: {df['fips'].n_unique()}")
 print(f"Years covered: {df['year'].unique().sort().to_list()}")
-
-# pandas
-print(f"Schools covered: {df['ncessch'].nunique():,}")
-print(f"States covered: {df['fips'].nunique()}")
-print(f"Years covered: {sorted(df['year'].unique())}")
 ```
 
 4. **Assess reliability distribution**
 ```python
-# Polars
 print(df["meps_poverty_se"].describe())
-reliable_pct = df.filter(pl.col("meps_poverty_se") < 0.05).height / len(df)
-print(f"Reliable estimates (SE<0.05): {reliable_pct:.1%}")
-
-# pandas
-print(df['meps_poverty_se'].describe())
-print(f"Reliable estimates (SE<0.05): {(df['meps_poverty_se']<0.05).mean():.1%}")
+reliable_pct = df.filter(pl.col("meps_poverty_se") < 2.0).height / len(df)
+print(f"Reliable estimates (SE<2.0): {reliable_pct:.1%}")
 ```
 
 ## Reporting Recommendations
@@ -270,7 +257,7 @@ Clarify:
 ### 1. Ignoring Standard Errors
 
 **Problem**: Treating MEPS point estimates as exact values
-**Solution**: Always consider `meps_se` in comparisons and conclusions
+**Solution**: Always consider `meps_poverty_se` in comparisons and conclusions
 
 ### 2. Conflating with FRPL
 
@@ -290,7 +277,7 @@ Clarify:
 ### 5. Ignoring Modified MEPS
 
 **Problem**: Using original MEPS for high-poverty analysis
-**Solution**: Use `meps_mod` when focusing on high-poverty districts
+**Solution**: Use `meps_mod_poverty_pct` when focusing on high-poverty districts
 
 ## Quality Assurance Checklist
 

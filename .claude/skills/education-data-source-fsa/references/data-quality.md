@@ -5,7 +5,7 @@ Reference for understanding data quality issues, coverage limitations, and timin
 ## Contents
 
 - [Overview](#overview)
-- [Year Coverage by Endpoint](#year-coverage-by-endpoint)
+- [Year Coverage by Dataset](#year-coverage-by-dataset)
 - [Institutional Coverage](#institutional-coverage)
 - [Data Timing and Lag](#data-timing-and-lag)
 - [Known Data Issues](#known-data-issues)
@@ -22,21 +22,21 @@ FSA data provides valuable information on federal student aid programs but has i
 | Issue | Impact | Mitigation |
 |-------|--------|------------|
 | Data lag | 1-3 years behind current year | Note data vintage in analysis |
-| Coverage gaps | Not all institutions in all endpoints | Check institutional availability |
+| Coverage gaps | Not all institutions in all datasets | Check institutional availability |
 | Methodology changes | Calculation rules change over time | Document methods by year |
 | Self-reported data | Subject to reporting errors | Cross-validate with other sources |
 
-## Year Coverage by Endpoint
+## Year Coverage by Dataset
 
 ### Available Years (Portal Mirror)
 
-| Endpoint | Earliest Year | Latest Year | Total Years |
-|----------|---------------|-------------|-------------|
-| `fsa/grants/` | 1999 | 2021 | 23 |
-| `fsa/loans/` | 1999 | 2021 | 23 |
-| `fsa/campus-based-volume/` | 2001 | 2021 | 21 |
-| `fsa/financial-responsibility/` | 2006 | 2016 | 11 |
-| `fsa/90-10-revenue-percentages/` | 2014 | 2021 | 8 |
+| Dataset Path | Earliest Year | Latest Year | Total Years |
+|-------------|---------------|-------------|-------------|
+| `fsa/colleges_fsa_grants` | 1999 | 2021 | 23 |
+| `fsa/colleges_fsa_loans` | 1999 | 2021 | 23 |
+| `fsa/colleges_fsa_campus_based_volume` | 2001 | 2021 | 21 |
+| `fsa/colleges_fsa_composite_scores` | 2006 | 2016 | 11 |
+| `fsa/colleges_fsa_90_10_revenue_percentages` | 2014 | 2021 | 8 |
 
 ### Timeline Visualization
 
@@ -51,7 +51,7 @@ Fin Resp |          |---------------------|
 
 ### Data Currency
 
-**Note**: Data is accessed via the Education Data Portal mirrors (see `mirrors.yaml`). Coverage may differ from the live API.
+**Note**: Data is accessed via the Education Data Portal mirrors (see `mirrors.yaml` for mirror configuration, `datasets-reference.md` for canonical paths, `fetch-patterns.md` for fetch code).
 
 ## Institutional Coverage
 
@@ -81,9 +81,9 @@ FSA data covers institutions that:
 - Foreign institutions (even if Title IV eligible)
 - Schools closed before data collection
 
-### Institutional Count by Endpoint (Approximate)
+### Institutional Count by Dataset (Approximate)
 
-| Endpoint | Records per Year | Unique Institutions |
+| Dataset | Records per Year | Unique Institutions |
 |----------|------------------|---------------------|
 | Grants | ~5,500-6,500 | Varies by year |
 | Loans | ~5,500-6,500 | Varies by year |
@@ -104,7 +104,7 @@ FSA data covers institutions that:
 
 ### Data Publication Lag
 
-| Endpoint | Typical Lag | Reason |
+| Dataset | Typical Lag | Reason |
 |----------|-------------|--------|
 | Grants/Loans | 1-2 years | Reconciliation period after award year |
 | Campus-Based | 1-2 years | FISAP reporting cycle |
@@ -150,8 +150,9 @@ If current date is January 2026:
 
 | Issue | Description | Impact |
 |-------|-------------|--------|
-| Limited years | Only 2014-2017 available | Short time series |
-| Pre-2021 methodology | VA/DoD not counted as federal | Not comparable to current rule |
+| Limited years | 2014-2021 available | 8-year time series |
+| Proportion format | `rev_pct_90_10` is a proportion (0-1), not percentage (0-100) | Compare to 0.90 threshold, not 90 |
+| Pre-2021 methodology | VA/DoD not counted as federal before 2021 | Not comparable to current rule |
 | Revenue recognition | Timing differences | Annual figures may be volatile |
 | Audit adjustments | May differ from published data | Verify with official sources |
 
@@ -168,12 +169,12 @@ If current date is January 2026:
 
 ### Common Missing Data Scenarios
 
-**Grants Endpoint:**
+**Grants Dataset:**
 - Institution doesn't participate in FSEOG → FSEOG values = -2
 - No students received Pell → Pell values = 0 or -1
 - Data not yet available → null
 
-**Loans Endpoint:**
+**Loans Dataset:**
 - Undergraduate-only school → Grad PLUS = -2
 - No students took loans → values = 0
 
@@ -276,7 +277,7 @@ df = df.with_columns(
 
 ### Before Analysis
 
-1. **Check year coverage**: Verify endpoint has data for your period
+1. **Check year coverage**: Verify dataset has data for your period
 2. **Check institutional coverage**: Confirm institutions of interest are present
 3. **Review missing data**: Understand patterns of missingness
 4. **Note methodology**: Document which rules apply to your years
@@ -302,7 +303,7 @@ df = df.with_columns(
 | Check | Variable | Flag If |
 |-------|----------|---------|
 | Composite score | `financial_resp_score` | Outside -1 to 3 range |
-| 90/10 percentage | `rev_pct_90_10` | > 100% or < 0% |
+| 90/10 proportion | `rev_pct_90_10` | > 1.01 or < 0 (stored as proportion 0-1, not percentage) |
 | Grant values | `value_grants_disbursed_*` | Negative values |
 | Recipient count | `grant_recipients_*` | Negative values |
 
@@ -312,14 +313,15 @@ df = df.with_columns(
 import polars as pl
 
 # Check: 90/10 calculation matches components
+# NOTE: rev_pct_90_10 is a proportion (0-1), not percentage (0-100)
 df = df.with_columns(
-    ((pl.col("numerator_90_10") / pl.col("denominator_90_10")) * 100)
+    (pl.col("numerator_90_10") / pl.col("denominator_90_10"))
     .alias("calculated_pct")
 )
 
-# Flag discrepancies > 1%
+# Flag discrepancies > 0.01 (1 percentage point)
 df_discrepancy = df.filter(
-    (pl.col("rev_pct_90_10") - pl.col("calculated_pct")).abs() > 1
+    (pl.col("rev_pct_90_10") - pl.col("calculated_pct")).abs() > 0.01
 )
 ```
 

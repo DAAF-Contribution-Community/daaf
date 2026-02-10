@@ -353,51 +353,189 @@ grant_coverage = total_grants / cost_of_attendance * 100
 
 ## Variable Reference
 
-### Student Counts
+> **IMPORTANT:** The Portal does NOT use NCES survey variable names (e.g., `scugffn`, `npist1`).
+> Instead, the Portal restructures SFA data into **long/tidy format** with dimension columns
+> (coded integers) and measure columns (counts, amounts, rates). NCES wide-format variables
+> like `npist1`-`npist5` become rows distinguished by `income_level` codes 1-5.
+>
+> Multiple SFA-related datasets exist in the Portal:
+> - `ipeds/colleges_ipeds_sfa_ftft` — FTFT student aid (1999-2017)
+> - `ipeds/colleges_ipeds_sfa_grants_and_net_price` — Grants and net price (2008-2021)
+> - `ipeds/colleges_ipeds_sfa_all_undergrads` — All undergrad aid (2007-2017)
+> - `ipeds/colleges_ipeds_sfa_by_living_arrangement` — Aid by living arrangement (2008-2017)
+> - `ipeds/colleges_ipeds_sfa_by_tuition_type` — Aid by tuition type (1999-2017)
+>
+> Use `get_codebook_url()` from `fetch-patterns.md` to download codebooks:
+> ```python
+> url = get_codebook_url("ipeds/codebook_colleges_ipeds_sfa_grants_and_net_price")
+> ```
 
-| Variable | Description |
-|----------|-------------|
-| `scugffn` | FTFT undergrads in net price cohort |
-| `scugrad` | Undergrads receiving any aid |
-| `scugran` | Undergrads receiving grants |
-| `scugpel` | Undergrads receiving Pell |
-| `scugfsl` | Undergrads receiving federal loans |
-| `scugsta` | Undergrads receiving state grants |
-| `scugist` | Undergrads receiving institutional grants |
+### Portal Column Reference by Dataset (Verified)
 
-### Aid Amounts
+#### SFA FTFT (`sfa_ftft`) — 12 columns
 
-| Variable | Description |
-|----------|-------------|
-| `upgrnta` | Average undergraduate grant amount |
-| `upgrnt` | Total undergraduate grants |
-| `uppell` | Total Pell grant amount |
-| `upfloan` | Total federal loan amount |
-| `uagrnta` | Average grant to FTFT |
-| `uagrntt` | Total grants to FTFT |
+| Portal Column | Type | Description |
+|---------------|------|-------------|
+| `unitid` | Int64 | Institution identifier |
+| `year` | Int64 | Data year |
+| `fips` | Int64 | State FIPS code |
+| `type_of_aid` | Int64 | Aid type code (see coded values below) |
+| `ftpt` | Int64 | Full-time/part-time status (coded) |
+| `level_of_study` | Int64 | Level of study (coded) |
+| `class_level` | Int64 | Class level (coded) |
+| `degree_seeking` | Int64 | Degree-seeking status (coded) |
+| `number_of_students` | Int64 | Count of students receiving this aid type |
+| `percent_of_students` | Float64 | Proportion of students receiving aid |
+| `average_amount` | Float64 | Average award amount (dollars) |
+| `total_amount` | Float64 | Total amount awarded (dollars) |
 
-### Net Price Variables
+**`type_of_aid` codes in this dataset:** 1, 2, 3, 4, 5, 7, 8, 10, 11, 12
 
-| Variable | Description |
-|----------|-------------|
-| `npist1` | Net price, income $0-$30,000 |
-| `npist2` | Net price, income $30,001-$48,000 |
-| `npist3` | Net price, income $48,001-$75,000 |
-| `npist4` | Net price, income $75,001-$110,000 |
-| `npist5` | Net price, income $110,001+ |
-| `npgrn1` | Number in net price, lowest income |
-| `npgrn2` | Number in net price, second income |
-| `npgrn3` | Number in net price, third income |
-| `npgrn4` | Number in net price, fourth income |
-| `npgrn5` | Number in net price, highest income |
+#### SFA Grants and Net Price (`sfa_grants_and_net_price`) — 15 columns
 
-### Cost Variables (from IC)
+| Portal Column | Type | Description |
+|---------------|------|-------------|
+| `unitid` | Int64 | Institution identifier |
+| `year` | Int64 | Data year |
+| `fips` | Int64 | State FIPS code |
+| `type_of_aid` | Int64 | Aid type code (3 or 9 in this dataset) |
+| `income_level` | Int64 | Income bracket code (see below) |
+| `ftpt` | Int64 | Full-time/part-time status (coded) |
+| `level_of_study` | Int64 | Level of study (coded) |
+| `class_level` | Int64 | Class level (coded) |
+| `degree_seeking` | Int64 | Degree-seeking status (coded) |
+| `tuition_type` | Int64 | Tuition type (coded) |
+| `number_of_students` | Int64 | Count of students in group |
+| `number_receiving_grants` | Int64 | Count receiving grants |
+| `total_grant` | Int64 | Total grant amount (dollars) |
+| `average_grant` | Int64 | Average grant amount (dollars) |
+| `net_price` | Int64 | Net price (COA minus grants, dollars) |
 
-| Variable | Description |
-|----------|-------------|
-| `tuition2` | In-state tuition and fees |
-| `tuition3` | Out-of-state tuition and fees |
-| `roomamt` | Room charges |
-| `boardamt` | Board charges |
-| `bksupply` | Books and supplies estimate |
-| `rmbrdamt` | Room and board combined |
+**`income_level` codes:** 1=$0-$30,000, 2=$30,001-$48,000, 3=$48,001-$75,000, 4=$75,001-$110,000, 5=$110,001+, 99=Total
+
+#### SFA All Undergraduates (`sfa_all_undergrads`) — 10 columns
+
+| Portal Column | Type | Description |
+|---------------|------|-------------|
+| `unitid` | Int64 | Institution identifier |
+| `year` | Int64 | Data year |
+| `fips` | Int64 | State FIPS code |
+| `type_of_aid` | Int64 | Aid type code (3, 5, or 11 in this dataset) |
+| `ftpt` | Int64 | Full-time/part-time status (coded) |
+| `level_of_study` | Int64 | Level of study (coded) |
+| `number_of_students` | Int64 | Count of students |
+| `percent_of_students` | Float64 | Proportion of students |
+| `average_amount` | Float64 | Average award amount (dollars) |
+| `total_amount` | Float64 | Total amount awarded (dollars) |
+
+#### SFA by Living Arrangement (`sfa_by_living_arrangement`) — 11 columns
+
+| Portal Column | Type | Description |
+|---------------|------|-------------|
+| `unitid` | Int64 | Institution identifier |
+| `year` | Int64 | Data year |
+| `fips` | Int64 | State FIPS code |
+| `type_of_aid` | Int64 | Aid type code |
+| `living_arrangement` | Int64 | Living arrangement code |
+| `ftpt` | Int64 | Full-time/part-time status (coded) |
+| `level_of_study` | Int64 | Level of study (coded) |
+| `class_level` | Int64 | Class level (coded) |
+| `degree_seeking` | Int64 | Degree-seeking status (coded) |
+| `tuition_type` | Int64 | Tuition type (coded) |
+| `number_of_students` | Int64 | Count of students |
+
+#### SFA by Tuition Type (`sfa_by_tuition_type`) — 12 columns
+
+| Portal Column | Type | Description |
+|---------------|------|-------------|
+| `unitid` | Int64 | Institution identifier |
+| `year` | Int64 | Data year |
+| `fips` | Int64 | State FIPS code |
+| `tuition_type` | Int64 | Tuition type code |
+| `type_of_cohort` | Int64 | Cohort type code |
+| `ftpt` | Int64 | Full-time/part-time status (coded) |
+| `level_of_study` | Int64 | Level of study (coded) |
+| `class_level` | Int64 | Class level (coded) |
+| `degree_seeking` | Int64 | Degree-seeking status (coded) |
+| `number_of_students` | Int64 | Count of students |
+| `percent_of_cohort` | Float64 | Proportion of cohort |
+| `percent_of_undergrads` | Float64 | Proportion of all undergrads |
+
+### How NCES Variables Map to Portal Structure
+
+The Portal converts NCES wide-format variables into long/tidy rows. For example:
+
+**Student counts** — NCES has separate variables per aid type (`scugpel` for Pell, `scugfsl` for federal loans, etc.). The Portal stores all of these as `number_of_students` rows differentiated by `type_of_aid` code:
+
+| NCES Variable | Portal Equivalent |
+|---------------|-------------------|
+| `scugffn` | `number_of_students` in `sfa_grants_and_net_price` (filtered by `type_of_aid`) |
+| `scugrad` | `number_of_students` in `sfa_ftft` (filtered by `type_of_aid`) |
+| `scugpel` | `number_of_students` in `sfa_ftft` where `type_of_aid` = Pell code |
+| `scugfsl` | `number_of_students` in `sfa_ftft` where `type_of_aid` = federal loan code |
+
+**Aid amounts** — similarly collapsed:
+
+| NCES Variable | Portal Equivalent |
+|---------------|-------------------|
+| `upgrnta` | `average_amount` in `sfa_all_undergrads` (filtered by `type_of_aid`) |
+| `upgrnt` | `total_amount` in `sfa_all_undergrads` (filtered by `type_of_aid`) |
+| `uagrnta` | `average_amount` in `sfa_ftft` (filtered by `type_of_aid`) |
+| `uagrntt` | `total_amount` in `sfa_ftft` (filtered by `type_of_aid`) |
+
+**Net price by income** — NCES uses `npist1`-`npist5`; the Portal uses `net_price` column with `income_level` dimension:
+
+| NCES Variable | Portal Equivalent |
+|---------------|-------------------|
+| `npist1` | `net_price` where `income_level` = 1 ($0-$30K) |
+| `npist2` | `net_price` where `income_level` = 2 ($30K-$48K) |
+| `npist3` | `net_price` where `income_level` = 3 ($48K-$75K) |
+| `npist4` | `net_price` where `income_level` = 4 ($75K-$110K) |
+| `npist5` | `net_price` where `income_level` = 5 ($110K+) |
+| `npgrn1`-`npgrn5` | `number_of_students` where `income_level` = 1-5 |
+
+### Querying Net Price by Income (Example)
+
+```python
+import polars as pl
+
+MIRROR = "https://huggingface.co/datasets/brhkim/education_data_portal_mirror/resolve/main"
+url = f"{MIRROR}/ipeds/colleges_ipeds_sfa_grants_and_net_price.parquet"
+df = pl.read_parquet(url)
+
+# Net price by income level for a specific institution and year
+net_prices = (
+    df.filter(
+        (pl.col("unitid") == 166027)  # Example: MIT
+        & (pl.col("year") == 2020)
+        & (pl.col("income_level").is_in([1, 2, 3, 4, 5]))
+        & (pl.col("type_of_aid") == 9)
+    )
+    .select("income_level", "net_price", "number_of_students")
+    .sort("income_level")
+)
+```
+
+### Cost Variables
+
+Cost of attendance components are in the **tuition/fees datasets**, not SFA datasets:
+- `ipeds/colleges_ipeds_ay_tuition_fees` — Academic year tuition and fees
+- `ipeds/colleges_ipeds_ay_room_board_other` — Room, board, and other expenses
+
+Consult those codebooks for column names:
+```python
+url = get_codebook_url("ipeds/codebook_colleges_ipeds_ay_tuition_fees")
+```
+
+#### NCES Cost Variable Names (for reference only)
+
+These appear in NCES documentation but are NOT used in the Portal:
+
+| NCES Name | Description | Portal Dataset |
+|-----------|-------------|----------------|
+| `tuition2` | In-state tuition and fees | `ay_tuition_fees` |
+| `tuition3` | Out-of-state tuition and fees | `ay_tuition_fees` |
+| `roomamt` | Room charges | `ay_room_board_other` |
+| `boardamt` | Board charges | `ay_room_board_other` |
+| `bksupply` | Books and supplies estimate | `ay_room_board_other` |
+| `rmbrdamt` | Room and board combined | `ay_room_board_other` |

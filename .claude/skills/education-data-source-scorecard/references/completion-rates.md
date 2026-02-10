@@ -2,6 +2,8 @@
 
 College Scorecard provides completion metrics that differ significantly from IPEDS graduation rates. Understanding these differences is critical for valid analysis.
 
+> **Portal note:** Completion rate variables (e.g., `C150_4`, `C150_4_POOLED`) are from the original Scorecard naming scheme. The Portal mirror datasets do not include a separate completion rates dataset. Completion data may be embedded in other Scorecard bulk downloads available at `collegescorecard.ed.gov`. The Portal's 6 Scorecard datasets focus on earnings, default, repayment, institutional characteristics, and student body characteristics. For completion rates, consider using the IPEDS graduation rates dataset (`ipeds/colleges_ipeds_grad-rates`).
+
 ## Scorecard vs IPEDS: Key Differences
 
 | Aspect | College Scorecard | IPEDS Graduation Rate |
@@ -224,13 +226,13 @@ Most institutions show completion gaps:
 
 ### Variables Indicating Suppression
 
-> **Portal Encoding:** In Portal mirror parquet files, **`null` is the primary indicator** for suppressed/missing data.
+> **Note:** Completion rate variables from the original Scorecard use various suppression indicators. In Portal mirror data, check the actual data for suppression patterns — some datasets use `null`, others use `-3`. Always verify against the codebook (use `get_codebook_url()` from `fetch-patterns.md`).
 
 | Data Pattern | Meaning | Notes |
 |--------------|---------|-------|
-| `null` | Suppressed or missing | Primary indicator in parquet |
+| `null` | Suppressed or missing | Common in rate columns |
+| `-3` | Suppressed for privacy | Common in earnings/count columns |
 | Valid rate (0-1) | Actual completion rate | Valid data |
-| `*_SUPP` = 1 | Suppression flag | Flag variables use 0/1 |
 
 ## Recommended Practices
 

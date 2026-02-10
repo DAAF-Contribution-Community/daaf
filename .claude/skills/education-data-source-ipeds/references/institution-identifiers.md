@@ -125,16 +125,18 @@ branch2 = "00131202"  # opeid6 = "001312"
 IPEDS provides OPEID in the Institutional Characteristics (IC) survey.
 
 ```python
-# Get both IDs from IPEDS
-ic_data = get_ipeds_ic(year=2023)
+import polars as pl
+
+# Load IPEDS directory (contains both unitid and opeid)
+directory = pl.read_parquet("data/raw/ipeds_directory.parquet")
 
 # Crosswalk columns
-unitid = ic_data["unitid"]
-opeid = ic_data["opeid"]
+unitid = directory["unitid"]
+opeid = directory["opeid"]
 
-# Link to other data
-scorecard_data = get_scorecard(year=2023)
-merged = ic_data.join(scorecard_data, on="unitid")
+# Link to other data (e.g., Scorecard)
+scorecard = pl.read_parquet("data/raw/scorecard_earnings.parquet")
+merged = directory.join(scorecard, on="unitid")
 ```
 
 ### Complications
@@ -176,18 +178,24 @@ Institutions sometimes change sector:
 
 ### Institutional Closure Tracking
 
-| Variable | Values |
-|----------|--------|
-| `instcat` | Institution status category |
-| `deathyr` | Year institution closed |
-| `cyactive` | Currently active flag |
+| Portal Variable | Description |
+|-----------------|-------------|
+| `inst_category` | Institution status category |
+| `year_deleted` | Year institution closed |
+| `currently_active_ipeds` | Currently active flag |
+| `date_closed` | Close date (string) |
+| `inst_status` | Institution status |
+
+> **Note:** NCES raw files use `INSTCAT`, `DEATHYR`, `CYACTIVE`. The Portal uses the descriptive names shown above.
 
 ```python
+import polars as pl
+
 # Filter to active institutions
-active = df.filter(pl.col("cyactive") == 1)
+active = df.filter(pl.col("currently_active_ipeds") == 1)
 
 # Find closures
-closed = df.filter(pl.col("deathyr").is_not_null())
+closed = df.filter(pl.col("year_deleted").is_not_null())
 ```
 
 ## Tracking Institutions Over Time
@@ -206,7 +214,7 @@ closed = df.filter(pl.col("deathyr").is_not_null())
 1. **Check institution status** each year
    ```python
    # Verify institution was active in analysis years
-   active_years = df.filter(pl.col("cyactive") == 1).select("year").unique()
+   active_years = df.filter(pl.col("currently_active_ipeds") == 1).select("year").unique()
    ```
 
 2. **Look for discontinuities**
@@ -266,9 +274,11 @@ data = data.with_columns(
 | OPEID | Also available in Scorecard |
 
 ```python
-# Scorecard uses UNITID
-ipeds = get_ipeds_directory(year=2023)
-scorecard = get_scorecard(year=2023)
+import polars as pl
+
+# Both IPEDS and Scorecard use UNITID
+ipeds = pl.read_parquet("data/raw/ipeds_directory.parquet")
+scorecard = pl.read_parquet("data/raw/scorecard_earnings.parquet")
 
 merged = ipeds.join(scorecard, on="unitid", how="left")
 
@@ -284,8 +294,10 @@ missing = merged.filter(pl.col("scorecard_field").is_null())
 | OPEID6 | Institution family level |
 
 ```python
+import polars as pl
+
 # FSA data uses OPEID
-fsa_data = get_fsa_data(year=2023)
+fsa_data = pl.read_parquet("data/raw/fsa_grants.parquet")
 
 # Link through OPEID
 merged = ipeds.join(fsa_data, on="opeid", how="left")
@@ -394,24 +406,25 @@ print(f"Added: {len(added)}, Removed: {len(removed)}")
 
 ### Status Variables
 
-| Variable | Description |
-|----------|-------------|
-| `cyactive` | Currently active |
-| `instcat` | Institutional category |
-| `deathyr` | Year closed |
-| `closedat` | Close date |
+| Portal Variable | NCES Name | Description |
+|-----------------|-----------|-------------|
+| `currently_active_ipeds` | `CYACTIVE` | Currently active |
+| `inst_category` | `INSTCAT` | Institutional category |
+| `year_deleted` | `DEATHYR` | Year closed |
+| `date_closed` | `CLOSEDAT` | Close date |
+| `inst_status` | — | Institution status |
 
 ### Name and Location
 
-| Variable | Description |
-|----------|-------------|
-| `instnm` | Institution name |
-| `ialias` | Institution alias/former name |
-| `addr` | Street address |
-| `city` | City |
-| `stabbr` | State abbreviation |
-| `zip` | ZIP code |
-| `fips` | State FIPS code |
-| `countynm` | County name |
-| `longitude` | Longitude |
-| `latitude` | Latitude |
+| Portal Variable | NCES Name | Description |
+|-----------------|-----------|-------------|
+| `inst_name` | `INSTNM` | Institution name |
+| `inst_alias` | `IALIAS` | Institution alias/former name |
+| `address` | `ADDR` | Street address |
+| `city` | `CITY` | City |
+| `state_abbr` | `STABBR` | State abbreviation |
+| `zip` | `ZIP` | ZIP code |
+| `fips` | `FIPS` | State FIPS code |
+| `county_name` | `COUNTYNM` | County name |
+| `longitude` | `LONGITUD` | Longitude |
+| `latitude` | `LATITUDE` | Latitude |

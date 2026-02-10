@@ -2,6 +2,8 @@
 
 Reference for interpreting NACUBO endowment performance metrics: market values, investment returns, spending rates, and budget support.
 
+> **Portal Scope Note:** The Education Data Portal mirror contains only market value data (`endow_total`, `endow_per_fte`, `endow_chg_mktval`). The investment return, spending rate, budget support, and new gift metrics described in this file are available only through the full NCSE study. This reference provides context for understanding the broader endowment landscape when working with Portal data.
+
 ## Market Value
 
 ### Definition

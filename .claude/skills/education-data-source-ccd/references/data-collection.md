@@ -216,11 +216,11 @@ Coordinators are responsible for:
 
 CCD data is available through:
 
-1. **Data Files**: CSV/SAS files for download
-2. **ELSI (Elementary/Secondary Information System)**: Online query tool
-3. **School/District Locators**: Individual entity lookup
+1. **Data Files**: CSV/SAS files for download from NCES
+2. **ELSI (Elementary/Secondary Information System)**: NCES online query tool
+3. **School/District Locators**: Individual entity lookup on NCES site
 4. **Publications**: NCES reports and tables
-5. **Education Data Portal**: Urban Institute API (processed CCD data)
+5. **Education Data Portal mirrors**: Processed CCD data available via HuggingFace (parquet) and Urban Institute (CSV) mirrors. See `datasets-reference.md` for canonical paths and `mirrors.yaml` for mirror configuration.
 
 ### Documentation
 

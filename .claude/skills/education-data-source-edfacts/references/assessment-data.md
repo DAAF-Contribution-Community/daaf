@@ -110,17 +110,16 @@ The National Assessment of Educational Progress (NAEP) IS comparable across stat
 
 ### Using NAEP for Cross-State Analysis
 
-For valid cross-state comparisons:
+For valid cross-state comparisons, use NAEP data (not available in the Portal mirror):
 
 ```python
-# Use NAEP data, not EDFacts state assessments
-# NAEP data available from nationsreportcard.gov
-# or NAEP Data Explorer
-
-# Example: Valid cross-state comparison
-naep_scores = get_naep_data(subject="reading", grade=4, year=2022)
-state_rankings = naep_scores.sort_values("avg_scale_score", ascending=False)
-# This comparison IS meaningful
+# NAEP data is available from nationsreportcard.gov
+# or the NAEP Data Explorer — it is NOT in the Education Data Portal.
+#
+# Example: Valid cross-state comparison (conceptual — NAEP data is external)
+# naep_scores = pl.read_csv("naep_grade4_reading_2022.csv")
+# state_rankings = naep_scores.sort("avg_scale_score", descending=True)
+# This comparison IS meaningful because NAEP uses the same test nationwide
 ```
 
 ## Proficiency Levels

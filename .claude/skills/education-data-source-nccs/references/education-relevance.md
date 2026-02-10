@@ -113,32 +113,40 @@ In the newer NTEEV2 format, higher education is tagged:
 UNI - Universities (B40, B41, B42, B43, B50)
 ```
 
-This makes filtering easier:
+This makes filtering easier (full NCCS data only, not Portal):
 ```python
+import polars as pl
+
 # Filter for universities using NTEEV2 industry group
-universities = df[df['NTEE_V2'].str.startswith('UNI-', na=False)]
+universities = df.filter(pl.col("NTEE_V2").str.starts_with("UNI-"))
 ```
 
 ### Using Foundation Code
 
 Many colleges have foundation code 11 (School):
 ```python
-# Schools under 170(b)(1)(A)(ii)
-schools = bmf[bmf['FNDNCD'] == '11']
+import polars as pl
+
+# Schools under 170(b)(1)(A)(ii) — full NCCS BMF data only
+schools = bmf.filter(pl.col("FNDNCD") == "11")
 ```
 
 ### Filtering Strategy
 
-Recommended approach:
+> **Note:** These filters apply to **full NCCS BMF/Core data**, not the Portal dataset. The Portal dataset (`nccs/colleges_nccs_all`) is already pre-filtered to higher education institutions matched to IPEDS UNITIDs — no NTEE filtering needed.
+
+Recommended approach for full NCCS data:
 ```python
+import polars as pl
+
 # Step 1: Filter by NTEE
-higher_ed = bmf[bmf['NTEECC'].str.match(r'^B4[0-9]|^B50', na=False)]
+higher_ed = bmf.filter(pl.col("NTEECC").str.contains(r"^B4[0-9]|^B50"))
 
 # Step 2: Verify 501(c)(3) status
-higher_ed = higher_ed[higher_ed['SUBSECCD'] == '03']
+higher_ed = higher_ed.filter(pl.col("SUBSECCD") == "03")
 
 # Step 3: Exclude tiny organizations (likely support orgs, not colleges)
-higher_ed = higher_ed[higher_ed['INCOME_AMT'] > 1000000]  # >$1M revenue
+higher_ed = higher_ed.filter(pl.col("INCOME_AMT") > 1_000_000)  # >$1M revenue
 ```
 
 ---
@@ -156,47 +164,48 @@ There is **no official crosswalk** between EIN and UNITID. Linking requires:
 
 ### Linking Methods
 
-**1. Name and Location Matching**
+**1. Portal Dataset (Pre-linked)**
+
+The Portal dataset already includes `unitid` for IPEDS matching. No fuzzy matching needed:
 
 ```python
-# Fuzzy matching on name and location
-from fuzzywuzzy import fuzz
+import polars as pl
 
-def match_institutions(nccs_df, ipeds_df):
-    matches = []
-    for idx, nccs_row in nccs_df.iterrows():
-        best_match = None
-        best_score = 0
-        for jdx, ipeds_row in ipeds_df.iterrows():
-            # Match on name
-            name_score = fuzz.ratio(
-                nccs_row['NAME'].upper(), 
-                ipeds_row['INSTNM'].upper()
-            )
-            # Boost if same state
-            if nccs_row['STATE'] == ipeds_row['STABBR']:
-                name_score += 10
-            if name_score > best_score:
-                best_score = name_score
-                best_match = ipeds_row['UNITID']
-        if best_score > 85:
-            matches.append({
-                'EIN': nccs_row['EIN'],
-                'UNITID': best_match,
-                'score': best_score
-            })
-    return pd.DataFrame(matches)
+# Portal data already has unitid
+nccs = fetch_from_mirrors("nccs/colleges_nccs_all")
+ipeds = fetch_from_mirrors("ipeds/colleges_ipeds_directory")
+
+# Direct join on unitid and year
+combined = nccs.join(
+    ipeds.select(["unitid", "year", "inst_name", "sector"]),
+    on=["unitid", "year"],
+    how="left"
+)
 ```
 
-**2. Address Matching**
+**2. Full NCCS Data (Fuzzy Matching Required)**
+
+When working with the full NCCS universe (outside Portal), linking requires fuzzy name/location matching since there is no official EIN-UNITID crosswalk:
+
+```python
+# Fuzzy matching on name and location (uses rapidfuzz or fuzzywuzzy)
+from rapidfuzz import fuzz
+
+# This is inherently row-level work; consider converting to pandas for iterrows()
+# or use Polars with map_elements for small datasets
+```
+
+**3. Address Matching**
 
 Use geocoded addresses to narrow matches:
 ```python
-# Match on city + state first, then name
-same_location = ipeds_df[
-    (ipeds_df['CITY'] == nccs_row['CITY']) & 
-    (ipeds_df['STABBR'] == nccs_row['STATE'])
-]
+import polars as pl
+
+# Match on city + state first, then name (full NCCS data)
+same_location = ipeds_df.filter(
+    (pl.col("CITY") == nccs_city) &
+    (pl.col("STABBR") == nccs_state)
+)
 ```
 
 **3. Published Crosswalks**
@@ -400,79 +409,82 @@ combined = nccs.join(
 
 ### Using Direct NCCS Data
 
+> **Note:** These examples use full NCCS data downloaded directly (not the Portal mirror). Variable names are UPPERCASE. For Portal data, use the lowercase Portal variable names shown in the "Using Education Data Portal" section above.
+
 **Find All Private Universities in a State:**
 
 ```python
-import pandas as pd
+import polars as pl
 
 # Load BMF
-bmf = pd.read_csv('BMF_UNIFIED_V1.1.csv')
+bmf = pl.read_csv("BMF_UNIFIED_V1.1.csv")
 
 # Filter to California private universities
-ca_universities = bmf[
-    (bmf['STATE'] == 'CA') &
-    (bmf['SUBSECCD'] == '03') &  # 501(c)(3)
-    (bmf['NTEECC'].str.match(r'^B4[0-3]', na=False)) &
-    (bmf['INCOME_AMT'] > 1000000)  # Revenue > $1M
-]
+ca_universities = bmf.filter(
+    (pl.col("STATE") == "CA") &
+    (pl.col("SUBSECCD") == "03") &  # 501(c)(3)
+    (pl.col("NTEECC").str.contains(r"^B4[0-3]")) &
+    (pl.col("INCOME_AMT") > 1_000_000)  # Revenue > $1M
+)
 
-print(f"Found {len(ca_universities)} private universities in California")
+print(f"Found {ca_universities.height} private universities in California")
 ```
 
 **Get Financial Data for a Specific Institution:**
 
 ```python
 # Find Stanford University
-stanford = bmf[bmf['NAME'].str.contains('STANFORD UNIVERSITY', case=False)]
-stanford_ein = stanford['EIN'].values[0]
+stanford = bmf.filter(pl.col("NAME").str.contains("(?i)STANFORD UNIVERSITY"))
+stanford_ein = stanford["EIN"][0]
 
 # Load Core data
-core = pd.read_csv('CHARITIES_PC_2021.csv')
-stanford_990 = core[core['EIN'] == stanford_ein]
+core = pl.read_csv("CHARITIES_PC_2021.csv")
+stanford_990 = core.filter(pl.col("EIN") == stanford_ein)
 
-print(f"Total Revenue: ${stanford_990['TOTREV'].values[0]:,.0f}")
-print(f"Total Assets: ${stanford_990['TOTASS'].values[0]:,.0f}")
+print(f"Total Revenue: ${stanford_990['TOTREV'][0]:,.0f}")
+print(f"Total Assets: ${stanford_990['TOTASS'][0]:,.0f}")
 ```
 
 **Compare Endowments Across Institutions:**
 
 ```python
 # Load Efile Schedule D data
-sched_d = pd.read_csv('efile_schedule_d_part_v.csv')
+sched_d = pl.read_csv("efile_schedule_d_part_v.csv")
 
-# Merge with BMF for institution names
-endowments = sched_d.merge(bmf[['EIN', 'NAME', 'STATE']], on='EIN')
+# Join with BMF for institution names
+endowments = sched_d.join(
+    bmf.select(["EIN", "NAME", "STATE"]),
+    on="EIN"
+)
 
 # Filter to higher ed
-endowments = endowments[endowments['EIN'].isin(ca_universities['EIN'])]
+endowments = endowments.filter(pl.col("EIN").is_in(ca_universities["EIN"]))
 
 # Sort by endowment size
-endowments = endowments.sort_values('ENDOWMENT_EOY', ascending=False)
+endowments = endowments.sort("ENDOWMENT_EOY", descending=True)
 ```
 
 **Analyze Executive Compensation:**
 
 ```python
 # Load Part VII compensation data
-part_vii = pd.read_csv('efile_part_vii.csv')
+part_vii = pl.read_csv("efile_part_vii.csv")
 
 # Filter to presidents/chancellors at universities
-presidents = part_vii[
-    (part_vii['TITLE'].str.contains('President|Chancellor', case=False)) &
-    (part_vii['EIN'].isin(higher_ed['EIN']))
-]
+presidents = part_vii.filter(
+    (pl.col("TITLE").str.contains("(?i)President|Chancellor")) &
+    (pl.col("EIN").is_in(higher_ed["EIN"]))
+)
 
 # Calculate total compensation
-presidents['TOTAL_COMP'] = (
-    presidents['BASE_COMP'] +
-    presidents['BONUS'] +
-    presidents['OTHER_COMP'] +
-    presidents['DEFERRED_COMP'] +
-    presidents['NONTAXABLE']
+presidents = presidents.with_columns(
+    (pl.col("BASE_COMP") + pl.col("BONUS") + pl.col("OTHER_COMP")
+     + pl.col("DEFERRED_COMP") + pl.col("NONTAXABLE"))
+    .alias("TOTAL_COMP")
 )
 
 # Summary statistics
-print(presidents['TOTAL_COMP'].describe())
+print(presidents["TOTAL_COMP"].describe())
 ```
 
 ---

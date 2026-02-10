@@ -13,6 +13,12 @@ Detailed definitions for key CRDC variables, including codes, disaggregation cat
 >
 > **Always use integer codes when filtering Portal data.**
 
+> **Codebook Authority:** The variable definitions in this document are summaries for convenience.
+> The authoritative source for variable names, codes, and definitions is the codebook `.xls` file
+> available in the data mirrors. Use `get_codebook_url("crdc/codebook_schools_crdc_discipline")` from `fetch-patterns.md`
+> to download the codebook. If this document contradicts the codebook, trust the codebook and
+> flag the discrepancy.
+
 ## Contents
 
 - [Race/Ethnicity Categories](#raceethnicity-categories)
@@ -43,15 +49,17 @@ CRDC uses OMB's 2007 standards for race/ethnicity reporting. The Portal converts
 | `5` | American Indian/Alaska Native | Person having origins in any of the original peoples of North and South America (including Central America), and who maintains tribal affiliation or community attachment |
 | `6` | Native Hawaiian/Pacific Islander | Person having origins in any of the original peoples of Hawaii, Guam, Samoa, or other Pacific Islands |
 | `7` | Two or more races | Person who identifies with two or more racial categories (non-Hispanic only) |
-| `8` | Nonresident alien | International students (rarely used in K-12) |
-| `9` | Unknown | Race/ethnicity unknown |
-| `20` | Other | Other race/ethnicity |
+| `8` | Nonresident alien | International students (defined in codebook but not observed in CRDC K-12 data) |
+| `9` | Unknown | Race/ethnicity unknown (defined in codebook but not observed in CRDC K-12 data) |
+| `20` | Other | Other race/ethnicity (defined in codebook but not observed in CRDC K-12 data) |
 | `99` | Total | All races combined |
 | `-1` | Missing/not reported | Data not reported |
 | `-2` | Not applicable | Item doesn't apply |
 | `-3` | Suppressed | Privacy suppression |
 
 > **Note:** OCR raw files use string codes (HI, AM, AS, BL, HP, WH, TR). The Portal converts these to integers for consistency.
+
+> **Empirically observed values:** In CRDC enrollment and discipline data, only codes `1`-`7` and `99` are observed. Codes `8`, `9`, and `20` are defined in the codebook but do not appear in K-12 CRDC datasets. Verify against the live codebook using `get_codebook_url()` from `fetch-patterns.md`.
 
 ### Important Notes
 
@@ -93,8 +101,8 @@ df.filter(pl.col("race") == 2)  # Correct
 ### Important Notes
 
 - CRDC historically collected binary sex (male/female)
-- Sex code `3` ("Gender") added in newer collections for non-binary reporting (codebook shows it, but rarely appears in data)
-- Variable names in raw files typically use `male` / `female` suffixes
+- Sex code `3` ("Gender" / non-binary) is present in the data as of the 2021 collection -- rows exist for sex=3 but most contain `-1` or `-2` values, with approximately 174K rows having actual enrollment data
+- The Portal data uses the `sex` column (integer-coded), not `male`/`female` column suffixes
 - Some guidance has addressed LGBTQ+ students under Title IX
 
 ### Filtering Example
@@ -133,9 +141,11 @@ df.filter(pl.col("sex") == 2)  # Correct
 | **Students with Section 504 plans only** | Students with disabilities served under Section 504 but not IDEA |
 | **Students without disabilities** | All other students |
 
+> **Note:** Not all disability codes appear in every dataset. Enrollment data typically has `[1, 2, 99]`; discipline data has `[0, 1, 2, 4, 99]`. Verify codes against the live codebook for your specific dataset using `get_codebook_url()` from `fetch-patterns.md`.
+
 ### IDEA Disability Categories (13 categories)
 
-These are string codes used in raw OCR files (not typically available in Portal API):
+These are string codes from OCR source documentation (not used in Portal data; the Portal provides aggregate disability status integers, not individual IDEA categories):
 
 | Code | Category | Definition |
 |------|----------|------------|
@@ -317,14 +327,16 @@ CRDC uses consistent 15-day definition across all states.
 
 ### Education Data Portal Codes
 
-When accessing CRDC via Urban Institute Education Data Portal:
+When accessing CRDC via the mirror system (parquet or CSV):
 
 | Code | Meaning | When Used |
 |------|---------|-----------|
 | `-1` | Missing/not reported | State did not report; value unknown |
 | `-2` | Not applicable | Item doesn't apply (e.g., preschool discipline for high school) |
 | `-3` | Suppressed (small cell) | Data suppressed for privacy protection |
-| `-9` | Data withheld | Multiple reasons (rarely used in CRDC) |
+| `-9` | Data withheld | Multiple reasons (rare in CRDC; check codebook) |
+
+> Verify these codes against the live codebook. Use `get_codebook_url()` from `fetch-patterns.md`.
 
 ### Yes/No Variables
 
@@ -436,23 +448,29 @@ CRDC provides some variables cross-tabulated:
 | Sex × Disability | Some discipline variables |
 | Race × Sex × Disability | Limited variables |
 
-### Example Variable Names
+### How Cross-Tabulations Work in Portal Data
 
-```
-# Race × Sex patterns
-oss_bl_male = Black male students with OSS
-oss_hi_female = Hispanic female students with OSS
+In the Portal, cross-tabulations are represented as **rows** with multiple categorical columns, not separate variable names. For example, to get Black male students with OSS:
 
-# Race × Disability patterns
-oss_bl_idea = Black students with disabilities with OSS
-oss_wh_wodis = White students without disabilities with OSS
+```python
+import polars as pl
+
+# Cross-tab: Black male students
+black_male_oss = df.filter(
+    (pl.col("race") == 2) &    # Black
+    (pl.col("sex") == 1)        # Male
+).select("students_susp_out_sch_single")
 ```
+
+> **Note on OCR raw files:** Original OCR data uses compound variable names like `oss_bl_male` or `oss_bl_idea`. The Portal flattens these into a row-based structure with integer-coded categorical columns (`race`, `sex`, `disability`).
 
 ---
 
 ## Grade Level Codes
 
-### Grade Codes
+> **Note:** CRDC Portal data does NOT have a `grade` column like CCD. CRDC enrollment is reported as school-level totals, not per-grade. The grade codes below are from OCR source documentation and describe grade spans reported at the school level.
+
+### Grade Codes (OCR Source)
 
 | Code | Grade |
 |------|-------|
@@ -462,12 +480,12 @@ oss_wh_wodis = White students without disabilities with OSS
 | `01`-`12` | Grades 1-12 |
 | `UG` | Ungraded |
 
-### School Grade Span
+### School Grade Span Variables
 
 | Pattern | Description |
 |---------|-------------|
-| `grades_offered_lowest` | Lowest grade offered |
-| `grades_offered_highest` | Highest grade offered |
+| `grades_offered_lowest` | Lowest grade offered (in school characteristics dataset) |
+| `grades_offered_highest` | Highest grade offered (in school characteristics dataset) |
 | `elementary_school` | Indicator for elementary |
 | `middle_school` | Indicator for middle school |
 | `high_school` | Indicator for high school |

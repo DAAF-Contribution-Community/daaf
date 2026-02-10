@@ -72,13 +72,17 @@ The Pell Grant Scheduled Award depends on:
 
 ### FSA Data Variables for Pell Grants
 
-In the Education Data Portal `/fsa/grants/` endpoint:
+In the Portal dataset `fsa/colleges_fsa_grants`, Pell Grant data is accessed by filtering `grant_type == 1`:
 
 | Variable | Description |
 |----------|-------------|
-| `pell_recipients` | Number of Pell Grant recipients |
-| `pell_disbursements` | Total Pell Grant disbursements ($) |
-| `pell_avg_amount` | Average Pell Grant per recipient ($) |
+| `grant_type` | Set to `1` for Federal Pell Grant |
+| `grant_recipients_unitid` | Number of grant recipients (by unit ID) |
+| `value_grants_disbursed_unitid` | Total grant disbursements ($, by unit ID) |
+| `grant_recipients_opeid` | Number of grant recipients (by OPEID) |
+| `value_grants_disbursed_opeid` | Total grant disbursements ($, by OPEID) |
+
+> **Note:** The Portal uses generic column names with a `grant_type` code to differentiate programs. There are no Pell-specific column names like `pell_recipients`.
 
 ## William D. Ford Federal Direct Loan Program
 
@@ -154,18 +158,16 @@ The federal government is the direct lender for all loans in this program.
 
 ### FSA Data Variables for Loans
 
-In the Education Data Portal `/fsa/loans/` endpoint:
+In the Portal dataset `fsa/colleges_fsa_loans`, loan data is accessed by filtering `loan_type`:
 
-| Variable | Description |
-|----------|-------------|
-| `dl_sub_recipients` | Direct Subsidized Loan recipients |
-| `dl_sub_disbursements` | Direct Subsidized Loan disbursements ($) |
-| `dl_unsub_recipients` | Direct Unsubsidized Loan recipients |
-| `dl_unsub_disbursements` | Direct Unsubsidized Loan disbursements ($) |
-| `dl_parent_plus_recipients` | Parent PLUS Loan recipients |
-| `dl_parent_plus_disbursements` | Parent PLUS disbursements ($) |
-| `dl_grad_plus_recipients` | Grad PLUS Loan recipients |
-| `dl_grad_plus_disbursements` | Grad PLUS disbursements ($) |
+| `loan_type` Code | Loan Type | Key Columns |
+|------------------|-----------|-------------|
+| `1` | Subsidized Direct Loan - Undergraduate | `loan_recipients_unitid`, `value_loan_disbursements_unitid` |
+| `4` | Unsubsidized Direct Loan - Undergraduate | Same generic columns |
+| `7` | Direct Loan, Parent PLUS | Same generic columns |
+| `8` | Direct Loan, Grad PLUS | Same generic columns |
+
+> **Note:** The Portal uses generic column names with a `loan_type` code to differentiate programs. There are no loan-specific column names like `dl_sub_recipients`. See `variable-definitions.md` for all 14 loan type codes.
 
 ## Campus-Based Programs
 
@@ -218,19 +220,15 @@ These programs provide funds directly to institutions, which then award aid to e
 
 ### FSA Data Variables for Campus-Based Programs
 
-In the Education Data Portal `/fsa/campus-based-volume/` endpoint:
+In the Portal dataset `fsa/colleges_fsa_campus_based_volume`, campus-based data is accessed by filtering `award_type`:
 
-| Variable | Description |
-|----------|-------------|
-| `fws_allocation` | Federal Work-Study federal allocation ($) |
-| `fws_recipients` | FWS recipients |
-| `fws_disbursements` | FWS disbursements ($) |
-| `fseog_allocation` | FSEOG federal allocation ($) |
-| `fseog_recipients` | FSEOG recipients |
-| `fseog_disbursements` | FSEOG disbursements ($) |
-| `perkins_allocation` | Perkins Loan allocation ($) |
-| `perkins_recipients` | Perkins Loan recipients |
-| `perkins_disbursements` | Perkins Loan disbursements ($) |
+| `award_type` Code | Award Type | Key Columns |
+|-------------------|------------|-------------|
+| `1` | FSEOG | `campus_award_recipients_unitid`, `value_campus_disbursed_unitid`, `campus_award_fed_contr_unitid` |
+| `2` | Federal Work-Study | Same generic columns |
+| `3` | Perkins Loans (discontinued) | Same generic columns |
+
+> **Note:** The Portal uses generic column names with an `award_type` code to differentiate programs. There are no program-specific column names like `fws_recipients`. See `variable-definitions.md` for the complete column list.
 
 ## Program Comparison
 

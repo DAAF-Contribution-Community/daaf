@@ -76,7 +76,7 @@ The NCCS Unified BMF adds:
 
 ### Download
 
-**Via Education Data Portal (Recommended for Portal Integration):**
+**Via Education Data Portal mirror (recommended for education research):**
 
 ```python
 import polars as pl
@@ -85,24 +85,25 @@ import polars as pl
 DATASET_PATH = "nccs/colleges_nccs_all"
 nccs = fetch_from_mirrors(DATASET_PATH)
 
-# Data is pre-filtered to higher education institutions
+# Data is pre-filtered to higher education institutions matched to IPEDS
 # Variables are lowercase (e.g., fips, unitid, contributions_total)
+# 161 columns, 1993-2016, ~30K institution-year rows
 ```
 
-**Direct download from NCCS (for BMF, Core, Efile):**
+**Direct download from NCCS (for BMF, Core, Efile — outside Portal):**
 
 ```python
-import pandas as pd
+import polars as pl
 
-# BMF universe file
+# BMF universe file (large — ~1.3 GB)
 url = "https://nccsdata.s3.amazonaws.com/harmonized/bmf/unified/BMF_UNIFIED_V1.1.csv"
-bmf = pd.read_csv(url)
+bmf = pl.read_csv(url)
 
-# Filter to higher education
-higher_ed = bmf[bmf['NTEECC'].str.startswith('B4', na=False)]
+# Filter to higher education by NTEE code (NOT available in Portal data)
+higher_ed = bmf.filter(pl.col("NTEECC").str.starts_with("B4"))
 ```
 
-> **Note:** The Education Data Portal version contains NCCS Form 990 data matched to IPEDS institutions. For the full NCCS universe or non-education nonprofits, use direct NCCS downloads.
+> **Note:** The Portal mirror dataset contains NCCS Form 990 data matched to IPEDS institutions (~2,600 institutions). It does NOT include NTEE codes, BMF attributes, or the full nonprofit universe. For the full NCCS universe, NTEE-based filtering, or non-education nonprofits, download directly from NCCS.
 
 ---
 
@@ -180,7 +181,7 @@ Example: `CHARITIES_PC_2021.csv` = 501(c)(3) charities, full 990 filers, 2021 ta
 
 ### Download
 
-**Via Education Data Portal (Recommended):**
+**Via Education Data Portal mirror (recommended for education research):**
 
 ```python
 import polars as pl
@@ -193,17 +194,17 @@ nccs = fetch_from_mirrors(DATASET_PATH)
 # e.g., contributions_total, prog_serv_rev, revenue_total
 ```
 
-**Direct from NCCS (for full Core series):**
+**Direct from NCCS (for full Core series — outside Portal):**
 
 ```python
-import pandas as pd
+import polars as pl
 
 # NCCS provides a data catalog for browsing
 # https://urbaninstitute.github.io/nccs/catalogs/catalog-core.html
 
 # Individual year download
 url = "https://nccsdata.s3.amazonaws.com/harmonized/core/CHARITIES_PC_2021.csv"
-core_pc = pd.read_csv(url)
+core_pc = pl.read_csv(url)
 ```
 
 ---
@@ -262,7 +263,7 @@ Variables use a standardized prefix: `XX_XX_XX_NAME`
 
 Example: `F9_PC_08_TOTREV` = Form 990, Full 990 filers, Part VIII, Total Revenue
 
-### Access via R Package
+### Access via R Package (Direct NCCS, Not Portal)
 
 ```r
 # Install the irs990efile package
@@ -342,9 +343,9 @@ Before the Efile era, SOI extracts were the primary source of 990 data for resea
 
 ## Data Access Methods
 
-### Education Data Portal (Recommended for Education Research)
+### Education Data Portal Mirror (Recommended for Education Research)
 
-The Portal mirror provides NCCS data for higher education institutions in parquet format:
+The Portal mirror provides NCCS data for higher education institutions in parquet format. See `datasets-reference.md` for the canonical path, `mirrors.yaml` for mirror configuration, and `fetch-patterns.md` for the `fetch_from_mirrors()` function.
 
 ```python
 import polars as pl
@@ -355,13 +356,14 @@ nccs = fetch_from_mirrors(DATASET_PATH)
 
 # Data is pre-matched to IPEDS UNITID
 # Covers 1993-2016 (24 years)
-# ~30K institution-year observations
+# ~30K institution-year observations, 161 columns
 ```
 
 **Important:** Portal data uses integer encodings for categorical variables:
-- `fips`: Integer FIPS codes (1-56), with -1/-2/-3 for missing
+- `fips`: Integer state FIPS codes (1-78, including territories); no -1/-2/-3 codes observed
 - `mult_ein_flag`: 0 (No) or 1 (Yes)
 - All variable names are lowercase
+- NTEE codes, SUBSECCD, and FNDNCD are NOT included (data is pre-filtered to higher ed)
 
 ### Direct NCCS Download (For Full Nonprofit Universe)
 
@@ -385,7 +387,7 @@ https://nccs-urban.shinyapps.io/sector-in-brief/
 
 ### R Package: nccsdata
 
-> **Note:** The `get_data()` function in R works differently from Education Data Portal access. For Portal-based research, use the `fetch_from_mirrors()` approach above.
+> **Note:** The `get_data()` function in R downloads directly from NCCS, not from the Education Data Portal mirrors. For Portal-based research, use the `fetch_from_mirrors()` approach above. The R package provides access to the full NCCS universe including BMF, Core, and Efile data with NTEE codes.
 
 ```r
 # devtools::install_github("UrbanInstitute/nccsdata")

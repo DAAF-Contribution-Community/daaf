@@ -2,9 +2,15 @@
 
 Comprehensive reference for key CCD variables, coding schemes, and special values.
 
+> **Codebook Authority:** The variable definitions in this document are summaries for convenience.
+> The authoritative source for variable names, codes, and definitions is the codebook `.xls` file
+> available in the data mirrors. Use `get_codebook_url("ccd/codebook_schools_ccd_directory")` from `fetch-patterns.md`
+> to download the codebook. If this document contradicts the codebook, trust the codebook and
+> flag the discrepancy.
+
 > **CRITICAL: Portal vs NCES Raw File Encoding**
 >
-> This document describes **Education Data Portal** integer encodings, which differ from NCES raw file string codes. The Portal converts categorical variables to integers for consistency across sources.
+> This document describes **Education Data Portal** integer encodings, which differ from NCES raw file string codes. The Portal converts categorical variables to integers for consistency across sources. All Portal column names are **lowercase** with underscores.
 >
 > | Context | Grade Pre-K | Kindergarten | Total | Race White |
 > |---------|-------------|--------------|-------|------------|
@@ -12,12 +18,17 @@ Comprehensive reference for key CCD variables, coding schemes, and special value
 > | NCES raw files (strings) | `PK` | `KG` | varies | `WH` |
 >
 > **Semantic trap:** In enrollment data, `grade = -1` means **Pre-K**, NOT missing! Missing data uses the standard codes only for `numeric` format variables.
+>
+> Verify these codes against the live codebook. Use `get_codebook_url()` from `fetch-patterns.md`.
 
 ## Identifiers
 
-### School ID (NCESSCH)
+### School ID (`ncessch`)
 
-**Format**: 12 characters
+**Portal column name:** `ncessch` (lowercase)
+**NCES source name:** NCESSCH
+
+**Format**: 12 characters (when String) or equivalent integer
 
 **Structure**:
 ```
@@ -28,6 +39,10 @@ Example: 010000100100
          00100   = School ID within LEA
 ```
 
+> **Type Warning:** `ncessch` is String in the Schools Directory dataset (preserving leading zeros)
+> but Int64 in the Schools Enrollment dataset. Always check dtype before joining.
+> An additional column `ncessch_num` (always Int64) exists in some datasets as a numeric equivalent.
+
 **Characteristics**:
 - Assigned by NCES when school first reported
 - Generally stable across years
@@ -37,9 +52,12 @@ Example: 010000100100
 - NCES provides crosswalk files for ID changes
 - Always verify ID continuity before building longitudinal panels
 
-### LEA/District ID (LEAID)
+### LEA/District ID (`leaid`)
 
-**Format**: 7 characters
+**Portal column name:** `leaid` (lowercase)
+**NCES source name:** LEAID
+
+**Format**: 7 characters (when String) or equivalent integer
 
 **Structure**:
 ```
@@ -48,6 +66,10 @@ Example: 0100001
          01    = Alabama (State FIPS)
          00001 = State-assigned district ID
 ```
+
+> **Type Warning:** `leaid` is Int64 in the Districts Directory and District Enrollment datasets
+> but String in the Schools Directory and District Finance datasets. Always check dtype and
+> cast as needed when joining across datasets.
 
 **When LEAID Changes**:
 - District merger
@@ -192,15 +214,12 @@ Schools report lowest (GSLO) and highest (GSHI) grades offered:
 | `5` | American Indian/Alaska Native | Single race, non-Hispanic |
 | `6` | Native Hawaiian/Pacific Islander | Single race, non-Hispanic |
 | `7` | Two or More Races | Multiple races selected, non-Hispanic |
-| `8` | Nonresident alien | International students (postsecondary) |
 | `9` | Unknown | Race/ethnicity unknown |
-| `20` | Other | Other race/ethnicity |
 | `99` | Total | All races combined |
-| `-1` | Missing/not reported | Data not reported |
-| `-2` | Not applicable | Item doesn't apply |
-| `-3` | Suppressed | Privacy suppression |
 
 > **Note:** NCES raw files use string codes (WH, BL, HI, AS, AM, HP, TR). The Portal converts these to integers for consistency.
+>
+> **CCD-specific:** Empirically verified codes in CCD enrollment data are `1-7`, `9`, and `99`. Codes `8` (Nonresident alien) and `20` (Other) appear in postsecondary datasets (IPEDS) but are NOT present in CCD K-12 data. Missing data codes (`-1`, `-2`, `-3`) may appear in non-enrollment CCD datasets.
 
 **Key Points**:
 - Hispanic is treated as ethnicity, asked first
@@ -224,12 +243,10 @@ States transitioned to 7-category system at different times. Data from 2007-2010
 |------|----------|
 | `1` | Male |
 | `2` | Female |
-| `3` | Another gender |
 | `9` | Unknown |
 | `99` | Total |
-| `-1` | Missing/not reported |
-| `-2` | Not applicable |
-| `-3` | Suppressed |
+
+> **CCD-specific:** Empirically verified codes in CCD enrollment data are `1`, `2`, `9`, and `99`. Code `3` (Another gender) may appear in other Portal datasets but is NOT present in CCD K-12 enrollment data. Missing data codes (`-1`, `-2`, `-3`) may appear in non-enrollment CCD datasets.
 
 ---
 
@@ -315,7 +332,7 @@ The Portal uses integer locale codes. **Both old and new systems appear in the d
 | `-2` | Not applicable | Item doesn't apply |
 | `-3` | Suppressed | Privacy suppression |
 
-### LEA Type (Portal Integer Encoding)
+### LEA Type (`agency_type`, Portal Integer Encoding)
 
 | Code | Type | Description |
 |------|------|-------------|
@@ -327,8 +344,11 @@ The Portal uses integer locale codes. **Both old and new systems appear in the d
 | `6` | Federal-operated | BIE, DoDEA |
 | `7` | Charter Agency | All schools are charters (2007-08+) |
 | `8` | Other | Other agencies (2007-08+) |
+| `9` | Specialized Agency | Specialized public agency (observed in data) |
 
 **Historical Note**: Prior to 2007-08, code 7 was used for "Other" agencies. The charter-specific designation was added in 2007-08.
+
+> **Note:** The Districts Directory column is named `agency_type`, not `lea_type`.
 
 ---
 
@@ -445,37 +465,41 @@ Multiple per-pupil measures exist:
 
 ---
 
-## Special Indicators
+## Special Indicators (Portal Integer Encoding)
 
-### Title I Status
+> **Empirically verified** against actual Portal data. These replace older NCES string codes (e.g., `F`/`V`/`N` for virtual, `M` for missing, `1`/`2` for charter yes/no) which are NOT present in Portal data.
 
-| Code | Status |
-|------|--------|
-| 1 | Title I eligible school |
-| 2 | Title I school-wide program eligible |
-| M | Missing/not reported |
-
-### Charter School
+### Charter School (`charter`)
 
 | Code | Status |
 |------|--------|
-| 1 | Yes, charter school |
-| 2 | No, not a charter school |
+| `0` | No, not a charter school |
+| `1` | Yes, charter school |
+| `-1` | Missing/not reported |
+| `-2` | Not applicable |
 
-### Magnet School
+> **CAUTION:** Some older documentation (including NCES sources) shows `1=Yes, 2=No`. The Portal uses `0=No, 1=Yes`. Empirically confirmed.
 
-| Code | Status |
-|------|--------|
-| 1 | Yes, magnet school or program |
-| 2 | No, not a magnet school |
-
-### Virtual School (2014-15+)
+### Magnet School (`magnet`)
 
 | Code | Status |
 |------|--------|
-| F | Full-time virtual |
-| V | Supplemental virtual |
-| N | Not virtual |
+| `0` | No, not a magnet school |
+| `1` | Yes, magnet school or program |
+| `-1` | Missing/not reported |
+| `-2` | Not applicable |
+
+### Virtual School (`virtual`, 2014-15+)
+
+| Code | Status |
+|------|--------|
+| `0` | Not virtual |
+| `1` | Fully virtual |
+| `2` | Virtual with face-to-face options |
+| `3` | Supplemental virtual |
+| `-1` | Missing/not reported |
+
+> **Note:** NCES raw files use string codes (`F`, `V`, `N`). The Portal converts these to integers.
 
 ---
 

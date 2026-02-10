@@ -82,10 +82,10 @@ The adjustment factor is larger for schools in districts where:
 
 | Scenario | Recommendation |
 |----------|---------------|
-| General analysis | Use original `meps` |
-| Focus on high-poverty schools/districts | Consider `meps_mod` |
-| Comparing across poverty levels | Use original `meps` for consistency |
-| Policy analysis for Title I | Consider `meps_mod` for high-poverty targeting |
+| General analysis | Use original `meps_poverty_pct` |
+| Focus on high-poverty schools/districts | Consider `meps_mod_poverty_pct` |
+| Comparing across poverty levels | Use original `meps_poverty_pct` for consistency |
+| Policy analysis for Title I | Consider `meps_mod_poverty_pct` for high-poverty targeting |
 
 ## Validation Evidence
 
@@ -126,13 +126,15 @@ Standard errors tend to be larger for:
 ### Using Standard Errors in Research
 
 ```python
-# Example: Identify schools where estimates are precise
-precise_schools = df[df['meps_se'] < 0.05]
+import polars as pl
 
-# Example: Flag close comparisons
-def compare_schools(school_a, school_b):
-    diff = abs(school_a['meps'] - school_b['meps'])
-    se_combined = (school_a['meps_se']**2 + school_b['meps_se']**2)**0.5
+# Identify schools where estimates are precise (SE < 2 percentage points)
+precise_schools = df.filter(pl.col("meps_poverty_se") < 2.0)
+
+# Flag close comparisons between two schools
+def compare_schools(pct_a: float, se_a: float, pct_b: float, se_b: float) -> str:
+    diff = abs(pct_a - pct_b)
+    se_combined = (se_a**2 + se_b**2)**0.5
     if diff < 1.96 * se_combined:
         return "Not statistically different"
     return "Statistically different"
@@ -141,6 +143,8 @@ def compare_schools(school_a, school_b):
 ## MEPS 2.0 Updates
 
 ### Key Improvements in MEPS 2.0 (December 2025)
+
+> **Portal Status (Feb 2026):** MEPS 2.0 has not yet been integrated into the Education Data Portal mirrors. Portal data still reflects MEPS 1.0 (2009-2022). The improvements below apply to the Urban Institute's direct release, not yet to mirror-accessible data.
 
 1. **Extended time coverage**: Additional years of data
 2. **ISP integration**: Incorporates Identified Student Percentage data

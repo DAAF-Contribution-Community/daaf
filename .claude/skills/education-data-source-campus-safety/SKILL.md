@@ -27,6 +27,13 @@ Guide to understanding and using campus crime and fire safety data collected und
 >
 > See `./references/variable-definitions.md` for complete code mappings.
 
+> **Truth Hierarchy:** When interpreting variable values, apply this priority:
+> 1. **Actual data file** (what you observe in the parquet/CSV) -- this IS the truth
+> 2. **Live codebook** (.xls in mirror) -- authoritative documentation, may lag
+> 3. **This skill documentation** -- convenient summary, may drift from codebook
+>
+> If this documentation contradicts the codebook, trust the codebook. If the codebook contradicts observed data, trust the data and investigate. Use `get_codebook_url()` from `fetch-patterns.md` to download codebooks.
+
 ## What is Campus Safety and Security Data?
 
 The Campus Safety and Security (CSS) data comes from the annual survey required by the Jeanne Clery Disclosure of Campus Security Policy and Campus Crime Statistics Act:
@@ -36,9 +43,10 @@ The Campus Safety and Security (CSS) data comes from the annual survey required 
 - **Primary source**: U.S. Department of Education Office of Postsecondary Education
 - **Coverage**: All postsecondary institutions receiving federal financial aid
 - **Reporting period**: Calendar year (January 1 - December 31)
-- **Available years**: 2005-2021 (hate crimes in portal mirrors)
+- **Available years**: 2005-2021 (hate crimes in Portal mirrors)
 - **Primary identifier**: `unitid` (IPEDS institution ID, 6-digit integer)
 - **Official portal**: https://ope.ed.gov/campussafety/
+- **Portal mirror coverage**: Hate crimes only. For primary offenses, VAWA, arrests, and fire safety, access the Department of Education portal directly.
 
 ## Reference File Structure
 
@@ -130,7 +138,8 @@ Planning institutional comparisons?
 | `16` | Domestic Violence | VAWA (2014+) |
 | `17` | Dating Violence | VAWA (2014+) |
 | `18` | Stalking | VAWA (2014+) |
-| `99` | Total | All types combined |
+
+> **Note:** Crime type code `99` (Total) is documented in some references but does NOT appear in the actual Portal mirror data. The data contains individual crime types 1-18 only.
 
 ### Bias Category Codes (Portal Integer Encoding)
 
@@ -167,14 +176,16 @@ Codes 12-15 are only reported as hate crimes. They are not standalone Clery crim
 | Drug Law Violations | Arrests + Disciplinary referrals |
 | Weapons Violations | Arrests + Disciplinary referrals |
 
-### Key Identifiers
+### Key Identifiers (Hate Crimes Dataset)
 
 | ID | Format | Level | Example | Notes |
 |----|--------|-------|---------|-------|
 | `unitid` | 6-digit integer | Institution | `100654` | IPEDS institution ID |
-| `opeid` | 8-character | Institution | `00100200` | OPE institution ID |
-| `instnm` | String | Institution | `University of Alabama` | Institution name |
-| `branch` | String | Campus | `Main Campus` | Campus/branch identifier |
+| `opeid` | 8-character String | Institution | `00100200` | OPE institution ID (126 nulls in data) |
+| `inst_name` | String | Institution | `University of Alabama` | Institution name |
+| `fips` | Integer | State | `6` | State FIPS code |
+
+> **Note:** The hate crimes dataset uses `inst_name` (not `instnm`). Columns like `branch`, `address`, `city`, `zip`, `state`, `sector`, `enrollment` are NOT present in the Portal mirror data. Join with IPEDS directory on `unitid` to obtain institutional characteristics.
 
 ### Geographic Categories
 
@@ -202,28 +213,40 @@ Fire data is reported only for **on-campus student housing facilities**:
 
 | Code | Meaning | When Used |
 |------|---------|-----------|
-| `-1` | Missing/not reported | Data not submitted by institution |
-| `-2` | Not applicable | Item does not apply to this institution or category |
-| `null` | Not available | Field absent from dataset for given year |
+| `null` | Missing/not reported | Data not submitted or not applicable (e.g., 352k null values in `bias` column) |
 | `0` | Zero incidents | Explicitly reported as zero (distinct from missing) |
+
+> **Empirically verified:** The hate crimes dataset in the Portal mirror does NOT use `-1`, `-2`, or `-3` coded values. All missing data appears as `null`. This differs from some other Portal datasets (e.g., CCD) that use negative integer codes. Always verify against the actual data.
 
 ## Data Access
 
-Datasets for Campus Safety are available via the mirror system. See `datasets-reference.md` for canonical paths and `fetch-patterns.md` for fetch code patterns.
+Datasets for Campus Safety are available via the mirror system. See `datasets-reference.md` for canonical paths, `mirrors.yaml` for mirror configuration, and `fetch-patterns.md` for fetch code patterns.
 
-**Key datasets:**
+| Dataset | Type | Years | Path | Codebook |
+|---------|------|-------|------|----------|
+| Hate Crimes | Single | 2005-2021 | `csafety/colleges_csafety_hate_crimes` | `csafety/codebook_colleges_csafety_hate_crimes` |
 
-| Dataset | Path | Type |
-|---------|------|------|
-| Hate Crimes | `csafety/colleges_csafety_hate_crimes` | Single |
+> **CRITICAL: Limited Data in Portal Mirrors** -- Only hate crimes data is available in the Portal mirrors (1 dataset). For other campus safety data (primary offenses, VAWA, arrests/referrals, fire safety), access the Department of Education directly at https://ope.ed.gov/campussafety/. Consult `datasets-reference.md` for the authoritative list of available mirror datasets.
 
-> **CRITICAL: Limited Data in Portal Mirrors** — Only hate crimes data is available. For other campus safety data, access the Department of Education directly at https://ope.ed.gov/campussafety/
-
-Codebooks: See `datasets-reference.md` codebook column. Use `get_codebook_url()` from `fetch-patterns.md`.
-
-### Filtering
+Codebooks are `.xls` files co-located with data in all mirrors. Use `get_codebook_url()` from `fetch-patterns.md` to construct download URLs:
 
 ```python
+url = get_codebook_url("csafety/codebook_colleges_csafety_hate_crimes")
+```
+
+### Fetching Data
+
+Use the `fetch_from_mirrors()` pattern from `fetch-patterns.md`:
+
+```python
+import polars as pl
+
+# Fetch hate crimes data (all years, single-file dataset)
+df = fetch_from_mirrors("csafety/colleges_csafety_hate_crimes")
+
+# Filter by year
+df_2021 = df.filter(pl.col("year") == 2021)
+
 # Filter by bias category (1 = Race)
 race_crimes = df.filter(pl.col("bias") == 1)
 
@@ -232,9 +255,14 @@ intimidation = df.filter(pl.col("crime_type") == 14)
 
 # Filter by institution
 institution = df.filter(pl.col("unitid") == 100654)
+
+# Filter by state FIPS code (6 = California)
+california = df.filter(pl.col("fips") == 6)
 ```
 
-### Direct from Department of Education
+### Direct from Department of Education (Non-Mirror Data)
+
+For data NOT available in Portal mirrors (primary offenses, VAWA, arrests, fire safety):
 
 - **Web tool**: https://ope.ed.gov/campussafety/
 - **Bulk download**: Available through Campus Safety website
@@ -247,9 +275,11 @@ institution = df.filter(pl.col("unitid") == 100654)
 | Using string codes | Portal uses integer codes for `bias`, `crime_type`, etc. | Always map integers via `./references/variable-definitions.md` |
 | Ranking schools by crime counts | Higher numbers may indicate better reporting, not worse safety | Normalize by enrollment; note reporting culture differences in `./references/limitations.md` |
 | Comparing across years naively | Crime definitions changed over time (especially sex offenses in 2014, VAWA added 2013) | Restrict comparisons to consistent-definition periods; document breaks |
-| Treating zero as missing | Zero means explicitly reported zero incidents; missing means not reported | Check for `-1` (missing) vs `0` (zero incidents) before analysis |
+| Treating zero as missing | Zero means explicitly reported zero incidents; missing means not reported | Check for `null` (missing) vs `0` (zero incidents) before analysis |
 | Comparing CSS to FBI UCR data | Different definitions, scope, and reporting requirements | Never equate CSS and FBI statistics; see `./references/limitations.md` |
 | Assuming all crime data in mirror | Mirror only has hate crimes | Use Department of Education portal for primary offenses, VAWA, arrests, fire safety |
+| Using `instnm` as column name | Hate crimes data uses `inst_name`, not `instnm` (which is the IPEDS convention) | Check actual column names with `df.columns` |
+| Expecting `-1`/`-2` missing codes | Hate crimes data uses `null` for missing, not negative integer codes | Check for nulls with `pl.col("bias").is_null()`, not `pl.col("bias") == -1` |
 | Ignoring multi-campus institutions | Branch campuses report separately; aggregating incorrectly inflates/deflates | Use `branch` field to distinguish campuses; see `./references/campus-geography.md` |
 | Ignoring underreporting | Many crimes go unreported; CSS captures only reported incidents | Acknowledge underreporting as a limitation in all analyses |
 

@@ -37,7 +37,7 @@ If women = 45% of athletes
 Then women should receive ≈ 45% of athletic scholarship dollars
 ```
 
-**EADA Connection**: EADA reports `aid_men` and `aid_women` totals.
+**EADA Connection**: EADA reports `ath_stuaid_men` and `ath_stuaid_women` totals.
 
 ### 3. Treatment and Benefits (The "Laundry List")
 

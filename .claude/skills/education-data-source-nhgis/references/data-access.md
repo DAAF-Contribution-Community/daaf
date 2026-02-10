@@ -1,23 +1,38 @@
 # Accessing NHGIS Data
 
-Methods for obtaining NHGIS data: web interface, API, programming libraries, and via Education Data Portal.
+Methods for obtaining NHGIS data: via Education Data Portal mirrors (school/college-to-census links) and via direct NHGIS access (custom census analysis).
 
-## Quick Start: Education Data Portal (School-Census Links)
+## Quick Start: Education Data Portal (School/College-Census Links)
 
-For linking schools to census geography, use the pre-processed data from the Education Data Portal mirror. **No registration required.**
+For linking schools or colleges to census geography, use the pre-processed data from the Education Data Portal mirrors. **No registration required.**
 
 ```python
+import polars as pl
+
 # Uses fetch_from_mirrors() — tries each mirror in priority order per mirrors.yaml.
 # See fetch-patterns.md and datasets-reference.md for canonical paths.
-from fetch_utils import fetch_from_mirrors
 
-# School-to-census geography (2020 Census)
+# School-to-census geography (2020 Census boundaries)
 df = fetch_from_mirrors("nhgis/schools_nhgis_geog_2020")
 
+# College-to-census geography (2020 Census boundaries)
+df_colleges = fetch_from_mirrors("nhgis/colleges_nhgis_geog_2020")
+
 # Available census years: 1990, 2000, 2010, 2020
+# All files contain ALL data years (schools: 1986-2023, colleges: 1980-2023)
+# The census year determines which boundary vintage is used for geographic assignment
 ```
 
-**Available data**: School coordinates linked to census tract, block group, block, region, division, CBSA, and place. See `variable-catalog.md` for Portal integer encodings.
+**Available data**: Institution coordinates linked to census tract, block group, block, region, division, CBSA, and place. See `variable-catalog.md` for Portal integer encodings.
+
+Codebooks are `.xls` files co-located with data in all mirrors. Use `get_codebook_url()` from `fetch-patterns.md` to construct download URLs. Codebook paths are listed in `datasets-reference.md`.
+
+> **Truth Hierarchy:** When interpreting variable values, apply this priority:
+> 1. **Actual data file** (what you observe in the parquet/CSV) — this IS the truth
+> 2. **Live codebook** (.xls in mirror) — authoritative documentation, may lag
+> 3. **This skill documentation** — convenient summary, may drift from codebook
+>
+> If this documentation contradicts the codebook, trust the codebook. If the codebook contradicts observed data, trust the data and investigate.
 
 **For custom census analysis** (tract-level demographics, time series, boundary files): Use NHGIS directly via methods below.
 
@@ -25,13 +40,13 @@ df = fetch_from_mirrors("nhgis/schools_nhgis_geog_2020")
 
 ## Direct NHGIS Access (Custom Analysis)
 
-For full census data access beyond school-census links, register for NHGIS directly.
+For full census data access beyond school/college-census links, register for NHGIS directly. This is separate from the Education Data Portal mirror system.
 
 ### Registration
 
 **Required**: Free registration at https://uma.pop.umn.edu/nhgis/user/new
 
-All access methods require authentication. Registration provides:
+All direct NHGIS access methods require authentication. Registration provides:
 - Web interface access
 - API key for programmatic access
 - Extract history and downloads
@@ -217,6 +232,7 @@ data = readers.read_nhgis("nhgis_data.csv", ddi)
 ### Example: Complete Workflow
 
 ```python
+import polars as pl
 from ipumspy import IpumsApiClient
 from ipumspy.nhgis import NhgisExtract
 
@@ -242,9 +258,8 @@ client.wait_for_extract(extract)
 # Download
 files = client.download_extract(extract, download_dir="./nhgis_data")
 
-# Read data
-import pandas as pd
-df = pd.read_csv(files["data"][0])
+# Read data with Polars
+df = pl.read_csv(files["data"][0])
 ```
 
 ## Method 4: ipumsr (R)

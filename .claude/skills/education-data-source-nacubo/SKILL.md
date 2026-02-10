@@ -16,16 +16,23 @@ metadata:
 
 The NACUBO-Commonfund Study of Endowments (NCSE) is the most comprehensive annual survey of U.S. college and university endowments, covering ~650 institutions representing over $870 billion in assets. The Education Data Portal mirrors a limited subset (7 market-value columns); full investment, allocation, spending, and governance data requires direct NACUBO access.
 
-> **CRITICAL: Value Encoding**
+> **CRITICAL: Portal Mirror Scope**
 >
-> The Education Data Portal uses **integer codes** for categorical variables and
-> **null values** for missing data (NOT coded -1/-2/-3 like CCD, CRDC, etc.).
-> Always verify codes against codebooks whenever possible.
+> The Education Data Portal mirrors contain **only 7 columns** of endowment data,
+> focused on market values. Full investment data (returns, asset allocations,
+> spending rates, governance) requires access to the complete NACUBO study.
+>
+> **Portal columns:** `year`, `unitid`, `inst_name_nacubo`, `fips`, `endow_total`,
+> `endow_per_fte`, `endow_chg_mktval`
+>
+> **Value Encoding:**
 >
 > | Variable | Portal Format | Notes |
 > |----------|---------------|-------|
 > | `fips` | Integer (`6` = California) | Not string abbreviations ("CA") |
 > | `year` | Integer (`2022`) | Fiscal year ending year |
+> | `endow_total` | Float64 (USD) | Full dollar amount, NOT thousands |
+> | `endow_chg_mktval` | Float64 (decimal fraction) | `0.059` = 5.9% change, NOT `5.9` |
 > | Missing data | `null` | NOT -1, -2, -3 |
 >
 > See `./references/variable-definitions.md` for complete encoding tables.
@@ -38,7 +45,7 @@ The National Association of College and University Business Officers (NACUBO) is
 - **Coverage**: ~650 participating colleges, universities, and affiliated foundations (voluntary)
 - **Scope**: Investment returns, asset allocations, spending rates, governance practices, market values
 - **Frequency**: Annual survey (September-December collection, February publication)
-- **Available years**: 1974-present (50+ years); Portal mirror covers 2012-2022
+- **Available years**: 1974-present (50+ years of study); Portal mirror covers 2012-2022 (11 years)
 - **Primary identifier**: `unitid` (IPEDS 6-digit institution ID)
 - **FY2024 total**: 658 participants representing $873.7 billion in assets
 
@@ -106,18 +113,49 @@ Which study by year?
 
 ## Quick Reference: NACUBO Data
 
-> **Portal Coverage Note:** The Education Data Portal mirrors contain only **7 columns** focused on endowment market values (e.g., `endowment_total_end_fy`, fiscal year market values). Full investment data (returns, asset allocations, spending rates, governance) requires access to the complete NACUBO study. See "Full Report Access" section below.
+> **Portal Coverage Note:** The Education Data Portal mirrors contain only **7 columns** focused on endowment market values. Full investment data (returns, asset allocations, spending rates, governance) requires access to the complete NACUBO study. See "Full Report Access" section below.
+
+### Portal Mirror Columns (Verified)
+
+These are the **only** columns available in the Portal mirror (`nacubo/colleges_nacubo_endow`):
+
+| Column | Type | Description | Nulls |
+|--------|------|-------------|-------|
+| `year` | Int64 | Fiscal year ending year (2012-2022) | 0 |
+| `unitid` | Int64 | IPEDS 6-digit institution ID | 0 |
+| `inst_name_nacubo` | String | NACUBO institution name | 0 |
+| `fips` | Int64 | State FIPS code (1-56, territories: 72, 78) | 1 |
+| `endow_total` | Float64 | Total endowment market value in USD (full dollars, NOT thousands) | 0 |
+| `endow_per_fte` | Float64 | Endowment per FTE student in USD | 1,260 (~15%) |
+| `endow_chg_mktval` | Float64 | Year-over-year market value change as decimal fraction (0.059 = 5.9%) | 3,972 (~48%) |
+
+**Important format notes:**
+- `endow_total` is in **full USD** (e.g., `1.05e9` = $1.05 billion), not in thousands
+- `endow_chg_mktval` is a **decimal fraction**, not a percentage (multiply by 100 for display)
+- Missing data uses **null**, not coded values (-1/-2/-3)
+
+```python
+# Correct: convert decimal fraction to percentage for display
+df = df.with_columns(
+    (pl.col("endow_chg_mktval") * 100).alias("pct_change")
+)
+
+# Correct: endow_total is already in full USD
+df.filter(pl.col("endow_total") > 1_000_000_000)  # Endowments over $1B
+```
 
 ### Key Metrics Available
 
-| Metric | Description | Granularity |
-|--------|-------------|-------------|
-| Market Value | Total endowment assets (FMV) | Institution, size category, type |
-| Investment Return | Time-weighted return, net of fees | 1, 3, 5, 10, 25-year periods |
-| Effective Spending Rate | Annual withdrawal as % of market value | Institution type, size |
-| Asset Allocation | Portfolio composition by asset class | Size category, type |
-| New Gifts | Donations added to endowment | Aggregate by size/type |
-| Budget Support | Endowment % of operating budget | Size category, type |
+| Metric | Description | In Portal Mirror? | Granularity |
+|--------|-------------|-------------------|-------------|
+| Market Value | Total endowment assets (FMV) | **Yes** (`endow_total`) | Institution-level |
+| Market Value Per FTE | Endowment per FTE student | **Yes** (`endow_per_fte`) | Institution-level |
+| Market Value Change | Year-over-year change | **Yes** (`endow_chg_mktval`) | Institution-level |
+| Investment Return | Time-weighted return, net of fees | No (full study only) | 1, 3, 5, 10, 25-year periods |
+| Effective Spending Rate | Annual withdrawal as % of market value | No (full study only) | Institution type, size |
+| Asset Allocation | Portfolio composition by asset class | No (full study only) | Size category, type |
+| New Gifts | Donations added to endowment | No (full study only) | Aggregate by size/type |
+| Budget Support | Endowment % of operating budget | No (full study only) | Size category, type |
 
 ### Key Identifiers
 
@@ -176,15 +214,24 @@ df.filter(pl.col("endow_per_fte").is_null())
 
 ## Data Access
 
-Datasets for NACUBO are available via the mirror system. See `datasets-reference.md` for canonical paths and `fetch-patterns.md` for fetch code patterns.
+Datasets for NACUBO are available via the mirror system. See `datasets-reference.md` for canonical paths, `mirrors.yaml` for mirror configuration, and `fetch-patterns.md` for fetch code patterns.
 
-**Key datasets:**
+| Dataset | Type | Years | Path | Codebook |
+|---------|------|-------|------|----------|
+| Endowments | Single | 2012-2022 | `nacubo/colleges_nacubo_endow` | `nacubo/codebook_colleges_nacubo_endowments` |
 
-| Dataset | Path | Type |
-|---------|------|------|
-| Endowments | `nacubo/colleges_nacubo_endow` | Single |
+Codebooks are `.xls` files co-located with data in all mirrors. Use `get_codebook_url()` from `fetch-patterns.md` to construct download URLs:
 
-Codebooks: See `datasets-reference.md` codebook column. Use `get_codebook_url()` from `fetch-patterns.md`.
+```python
+url = get_codebook_url("nacubo/codebook_colleges_nacubo_endowments")
+```
+
+> **Truth Hierarchy:** When interpreting variable values, apply this priority:
+> 1. **Actual data file** (what you observe in the parquet/CSV) -- this IS the truth
+> 2. **Live codebook** (.xls in mirror) -- authoritative documentation, may lag
+> 3. **This skill documentation** -- convenient summary, may drift from codebook
+>
+> If this documentation contradicts the codebook, trust the codebook. If the codebook contradicts observed data, trust the data and investigate.
 
 ### Public NACUBO Tables
 
@@ -209,21 +256,25 @@ Includes:
 |---------|-------|----------|
 | Using NCES-style codes | Portal uses integer FIPS, not string state abbreviations | Use integer fips codes (1-56) |
 | Expecting coded missing values | NACUBO in Portal uses nulls, not -1/-2/-3 | Check for null, not negative codes |
-| Comparing to IPEDS values | NACUBO is voluntary (~650), IPEDS is mandatory (~6,000+) | Note sample differences in analysis |
+| Treating `endow_chg_mktval` as percentage | Column is a decimal fraction (0.059), not a percentage (5.9) | Multiply by 100 for display: `pl.col("endow_chg_mktval") * 100` |
+| Treating `endow_total` as thousands | Column is in full USD (1.05e9 = $1.05B) | No division needed; value is already in dollars |
+| Comparing to IPEDS values | NACUBO is voluntary (~650-813), IPEDS is mandatory (~6,000+) | Note sample differences in analysis |
 | Year interpretation | FY2024 = July 2023 - June 2024 | Align fiscal year definitions carefully |
-| Assuming comprehensive coverage | Only ~650 of ~4,000+ institutions participate | Use IPEDS for population-level analysis |
+| Assuming comprehensive coverage | Only ~650-813 of ~4,000+ institutions participate | Use IPEDS for population-level analysis |
 | Ignoring partner changes | TIAA (2018-22) vs Commonfund (other years) may change methodology | Check methodology for specific years |
+| Expecting investment returns in Portal | Portal only has market values, not returns/allocations/spending | Use full NCSE study for investment analysis |
 
 ## Key Caveats
 
 | Issue | Impact | Mitigation |
 |-------|--------|------------|
-| Voluntary participation | ~650 of ~4,000+ institutions | Use IPEDS for comprehensive coverage |
+| **Portal subset** | Only 7 columns mirrored (market values only) | Full study required for returns, allocations, spending, governance |
+| Voluntary participation | ~650-813 of ~4,000+ institutions per year | Use IPEDS for comprehensive coverage |
 | Self-reported data | Unverified accuracy | Cross-reference with IPEDS where possible |
 | Selection bias | Larger, well-resourced institutions overrepresented | Analyze by size category |
 | Partner changes | TIAA (2018-22), Commonfund (other years) | Check methodology changes |
 | Fiscal year timing | July 1 - June 30 | Match to other data sources carefully |
-| Portal subset | Only 7 columns mirrored | Full study required for returns, allocations, governance |
+| Declining participation | 813 in 2012 to 652 in 2021 in Portal data | Account for sample size changes in trend analysis |
 
 ## Common Use Cases
 

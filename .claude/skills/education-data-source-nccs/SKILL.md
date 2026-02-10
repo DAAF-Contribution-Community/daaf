@@ -106,6 +106,14 @@ Linking NCCS to education data?
 
 ### Available Datasets
 
+**Portal mirror** (via `fetch_from_mirrors()`):
+
+| Dataset | Description | Coverage | Rows |
+|---------|-------------|----------|------|
+| 990 Forms (`nccs/colleges_nccs_all`) | Form 990 data for higher ed institutions matched to IPEDS | 1993-2016, ~2,600 institutions | ~30K |
+
+**Full NCCS** (direct download, outside Portal):
+
 | Dataset | Description | Coverage | Key Use |
 |---------|-------------|----------|---------|
 | Business Master File (BMF) | All active tax-exempt organizations | ~3.8M orgs | Sampling frame, basic info |
@@ -114,14 +122,26 @@ Linking NCCS to education data?
 | Form 990-N ePostcard | Small nonprofits (<$50K revenue) | 2007-present | Grassroots organizations |
 | Pub78 | Organizations eligible for tax-deductible donations | Current | Verify charitable status |
 
+> **Scope note:** The Portal mirror dataset contains NCCS Form 990 data matched to IPEDS institutions only (~2,600 institutions). It does NOT include the full NCCS universe of ~3.8M nonprofits. For non-education nonprofits, NTEE-based filtering, or BMF/Core/Efile data, download directly from NCCS.
+
 ### Key Identifiers
+
+**Portal dataset:**
+
+| ID | Format | Level | Example | Notes |
+|----|--------|-------|---------|-------|
+| `unitid` | Integer | Institution | `110635` | IPEDS institution ID (Portal addition) |
+| `ein` | Integer | Organization | `10211484` | Employer Identification Number |
+| `fips` | Integer | State | `6` (California) | State FIPS code |
+
+**Full NCCS** (direct download, outside Portal):
 
 | ID | Format | Level | Example | Notes |
 |----|--------|-------|---------|-------|
 | `EIN` | 9-digit number | Organization | `123456789` | Unique to each nonprofit |
-| `NTEECC` | Letter + 2 digits | Classification | `B42` (4-year college) | May be imprecise (~25%) |
-| `SUBSECCD` | 2-digit code | Tax subsection | `03` (501(c)(3) charity) | |
-| `FIPS` | 5-digit code | Geography | `06037` (LA County) | State + county |
+| `NTEECC` | Letter + 2 digits | Classification | `B42` (4-year college) | May be imprecise (~25%); NOT in Portal data |
+| `SUBSECCD` | 2-digit code | Tax subsection | `03` (501(c)(3) charity) | NOT in Portal data |
+| `FIPS` | 5-digit code | Geography | `06037` (LA County) | State + county; Portal uses state-level integer |
 
 ### Education NTEE Codes
 
@@ -138,10 +158,19 @@ Linking NCCS to education data?
 | B80 | Student Services/Organizations |
 | B90 | Educational Services/Schools N.E.C. |
 
-### Portal Variable Name Mapping
+### Portal Variable Name Mapping (Selected)
+
+The Portal dataset has 161 columns. Key mappings from original NCCS/990 names to Portal lowercase names:
 
 | Portal Name | Original NCCS/990 | Description |
 |-------------|-------------------|-------------|
+| `year` | `FISYR` | Academic year (fall semester) — Portal-aligned year (1993-2016) |
+| `fiscal_year` | — | IRS fiscal year ending year from 990 filing (1994-2017); typically `year` + 1 |
+| `unitid` | — | IPEDS institution ID (Portal addition) |
+| `ein` | `EIN` | Employer Identification Number |
+| `fips` | `FIPS` | State FIPS code (integer) |
+| `inst_name_nccs` | `NAME` | Organization name from 990 filing |
+| `mult_ein_flag` | — | Multiple-EIN indicator (0=No, 1=Yes) |
 | `contributions_total` | `CONT` | Total contributions |
 | `prog_serv_rev` | `PROGREV` | Program service revenue |
 | `revenue_total` | `TOTREV` | Total revenue |
@@ -150,6 +179,8 @@ Linking NCCS to education data?
 | `net_assets_eoy` | `NETASS` | Net assets (end of year) |
 | `compensation_officers` | `COMPENS` | Officer compensation |
 | `salaries_other` | `OTHSAL` | Other salaries |
+
+> **Note:** The full 161 columns include detailed revenue breakdowns (Part VIII), expense breakdowns (Part IX), and balance sheet items (Part X). Consult the codebook for the complete list. Use `get_codebook_url("nccs/codebook_colleges_nccs_form_990")` from `fetch-patterns.md` to download it.
 
 ### Missing Data Codes
 
@@ -161,35 +192,45 @@ Linking NCCS to education data?
 | `null` | Not reported | Organization did not report (may have data) |
 | `0` | Zero value | Explicitly reported as zero |
 
-> **Important:** In Portal data, `-1`/`-2`/`-3` are always integers. A `0` means the organization reported zero; `null` means the organization did not report. These are distinct conditions.
+> **Important:** In Portal data, `-1`/`-2`/`-3` are integer values. However, empirically these codes are **rare** in the NCCS Portal dataset — most missing data appears as `null` rather than negative codes. Only a handful of financial columns (e.g., `sale_sec_gross_net`, `changes_net_assets_other`) contain any `-1`/`-2`/`-3` values. A `0` means the organization reported zero; `null` means the organization did not report. These are distinct conditions.
 
 ## Data Access
 
-Datasets for NCCS are available via the mirror system. See `datasets-reference.md` for canonical paths and `fetch-patterns.md` for fetch code patterns.
+Datasets for NCCS are available via the mirror system. See `datasets-reference.md` for canonical paths, `mirrors.yaml` for mirror configuration, and `fetch-patterns.md` for fetch code patterns.
 
-**Key datasets:**
+| Dataset | Type | Years | Path | Codebook |
+|---------|------|-------|------|----------|
+| 990 Forms | Single | 1993-2016 | `nccs/colleges_nccs_all` | `nccs/codebook_colleges_nccs_form_990` |
 
-| Dataset | Path | Type |
-|---------|------|------|
-| 990 Forms | `nccs/colleges_nccs_all` | Single |
+Codebooks are `.xls` files co-located with data in all mirrors. Use `get_codebook_url()` from `fetch-patterns.md` to construct download URLs.
 
-Codebooks: See `datasets-reference.md` codebook column. Use `get_codebook_url()` from `fetch-patterns.md`.
+> **Truth Hierarchy:** When interpreting variable values, apply this priority:
+> 1. **Actual data file** (what you observe in the parquet/CSV) — this IS the truth
+> 2. **Live codebook** (.xls in mirror) — authoritative documentation, may lag
+> 3. **This skill documentation** — convenient summary, may drift from codebook
+>
+> If this documentation contradicts the codebook, trust the codebook. If the codebook contradicts observed data, trust the data and investigate.
 
 ### Filtering
 
+The Portal dataset is **pre-filtered** to higher education institutions matched to IPEDS UNITIDs. NTEE codes are NOT included in the Portal data — for NTEE-based filtering, use the full NCCS BMF directly.
+
 ```python
-# Filter to higher education institutions by NTEE code
-# (requires NTEE data from BMF — not in Portal dataset directly)
-# In Portal data, filter by year:
+import polars as pl
+
+# Filter by year
 df_2015 = df.filter(pl.col("year") == 2015)
 
-# Filter out missing data codes from financial columns
+# Filter by state (integer FIPS codes)
+df_ca = df.filter(pl.col("fips") == 6)  # California
+
+# Filter out null values from financial columns
 df_valid = df.filter(
     (pl.col("revenue_total").is_not_null()) &
-    (pl.col("revenue_total") >= 0)  # Excludes -1, -2, -3
+    (pl.col("revenue_total") >= 0)  # Excludes rare -1/-2/-3 codes
 )
 
-# Replace negative codes with null for analysis
+# Replace negative codes with null for analysis (precautionary)
 df = df.with_columns(
     pl.when(pl.col("revenue_total") < 0)
     .then(None)
@@ -204,7 +245,8 @@ df = df.with_columns(
 |---------|-------|----------|
 | Using string codes | Portal uses integer FIPS (`6`), not string (`"CA"` or `"06"`) | Always use integer comparisons; filter `>= 1` to exclude missing codes |
 | Filing threshold confusion | Organizations under $200K revenue may file 990-EZ with fewer variables | Check form type; use Core PZ files for combined 990/990-EZ coverage |
-| Fiscal year variation | Nonprofits have different fiscal year ends (June 30 common for colleges) | Verify `TAXPER` alignment when comparing institutions |
+| Fiscal year variation | Nonprofits have different fiscal year ends (June 30 common for colleges) | `year` = Portal academic year (fall semester); `fiscal_year` = IRS fiscal year end (typically `year` + 1). Filter on `year` for IPEDS joins. |
+| No NTEE in Portal data | Portal dataset does not include NTEE codes; pre-filtered to higher ed institutions | Cannot filter by NTEE code; use full NCCS BMF for NTEE-based filtering |
 | NTEE classification accuracy | ~25% of NTEE codes estimated to be imprecise | Use NCCS-corrected codes (`NTEE_NCCS`) over IRS-assigned codes when available |
 | Consolidated filings | Some university systems file consolidated 990s covering multiple campuses | Check `mult_ein_flag`; one EIN may represent multiple institutions |
 | Form version changes | Form 990 was redesigned in 2008; variable definitions changed | Be cautious comparing pre-2008 and post-2008 data for governance variables |
@@ -224,6 +266,25 @@ df = df.with_columns(
 
 ## Exploration Workflow
 
+### Using Portal Data (Recommended for Education Research)
+
+1. **Fetch data** via `fetch_from_mirrors("nccs/colleges_nccs_all")`
+   - Data is pre-filtered to higher education institutions matched to IPEDS
+   - Already includes `unitid` for IPEDS joining
+   - 161 financial/organizational variables, 1993-2016
+
+2. **Filter and clean**
+   - Filter by year, state (FIPS), or institution
+   - Handle nulls (primary missing data form in Portal)
+   - Check for rare negative codes (-1/-2/-3) in financial columns
+
+3. **Link to IPEDS** using `unitid` and `year` columns
+   - Join with IPEDS directory, enrollment, finance, etc.
+
+4. **Analyze** — See variable definitions for meaning and limitations
+
+### Using Full NCCS (for Non-Education or Pre-Portal Research)
+
 1. **Identify target organizations**
    - Filter BMF by NTEE codes (B40-B50 for higher ed)
    - Verify 501(c)(3) status (SUBSECCD = 03)
@@ -235,17 +296,11 @@ df = df.with_columns(
    - Efile for maximum detail (governance, compensation)
 
 3. **Extract and clean data**
-   - Download relevant years
+   - Download relevant years from NCCS directly
    - Merge with BMF for organizational attributes
-   - Handle missing data codes (-1, -2, -3)
+   - Handle missing data codes
 
-4. **Link to education data (if needed)**
-   - Use EIN-UNITID crosswalk for IPEDS matching
-   - Apply Census crosswalks for geographic analysis
-
-5. **Analyze**
-   - See variable definitions for meaning and limitations
-   - Apply appropriate error checking procedures
+4. **Analyze** — See variable definitions for meaning and limitations
 
 ## Related Data Sources
 
