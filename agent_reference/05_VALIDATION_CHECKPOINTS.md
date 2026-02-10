@@ -29,20 +29,11 @@ See `agent_reference/SCRIPT_TEMPLATE.md` for complete script format with checkpo
 | **CP3** | After transformation | Verify data integrity | >90% row loss, unexpected NAs |
 | **CP4** | Before output | Verify completeness | Missing requirements |
 
-### Secondary Checkpoints (QA1-QA4) - NEW
+### Secondary Checkpoints (QA1-QA4)
 
-QA checkpoints run AFTER primary checkpoints, providing independent secondary verification via code-reviewer agent.
+QA checkpoints run AFTER primary checkpoints, providing independent secondary verification via code-reviewer agent. CP checkpoints validate operations; QA checkpoints validate outputs and methodology alignment.
 
-| Checkpoint | When | Purpose | BLOCKER Threshold |
-|------------|------|---------|-------------------|
-| **QA1** | After Stage 5 scripts | Verify raw data quality | Schema wrong, years missing, unexpected geography |
-| **QA2** | After Stage 6 scripts | Verify cleaning correctness | Coded values remain, wrong suppression calc |
-| **QA3** | After Stage 7 scripts | Verify transform validity | Wrong join type, aggregation error, data loss |
-| **QA4** | After Stage 8 scripts | Verify visualization validity | Missing figures, wrong data plotted |
-
-**Relationship:** CP checkpoints validate operations; QA checkpoints validate outputs and methodology alignment.
-
-**See:** `agent_reference/QA_CHECKPOINTS.md` for complete QA checkpoint documentation.
+**See:** `agent_reference/QA_CHECKPOINTS.md` for QA1-QA4 definitions, BLOCKER thresholds, severity classification, and complete QA checkpoint documentation.
 
 ---
 
@@ -1020,9 +1011,6 @@ TODO_PATTERNS = [
     r'\bHACK\b',           # HACK marker
     r'\bPLACEHOLDER\b',    # Explicit placeholder
 ]
-
-# Bash detection
-grep -rn -E "TODO|FIXME|XXX|HACK|PLACEHOLDER" *.py
 ```
 
 **Severity:** BLOCKER if in core analysis code; WARNING if in comments explaining future work.
@@ -1041,9 +1029,6 @@ PLACEHOLDER_PATTERNS = [
     r'\[description\]',
     r'\[your .* here\]',
 ]
-
-# Bash detection
-grep -rn -iE "placeholder|coming soon|will be|not yet implemented|lorem ipsum|\[TBD\]|\[add more\]" *.py *.md
 ```
 
 ---
@@ -1079,22 +1064,6 @@ def load_data():
     return []    # Empty list with no file read
 ```
 
-**Bash detection:**
-
-```bash
-# Functions with only 'pass'
-grep -Pzo "def \w+\([^)]*\):\n\s+pass\s*$" *.py
-
-# Functions with only '...'
-grep -Pzo "def \w+\([^)]*\):\n\s+\.\.\.\s*$" *.py
-
-# NotImplementedError
-grep -rn "raise NotImplementedError" *.py
-
-# Suspicious empty returns (may need context review)
-grep -rn -E "^\s+return (None|{}|\[\])\s*$" *.py
-```
-
 #### Return Stubs with TODO Comments (BLOCKER)
 
 ```python
@@ -1107,13 +1076,6 @@ def calculate_rate():
 
 def fetch_schools():
     return []  # placeholder data
-```
-
-**Bash detection:**
-
-```bash
-# Return statements followed by TODO/FIXME comments
-grep -rn -E "return.*(#.*(TODO|FIXME|placeholder))" *.py
 ```
 
 ---
@@ -1136,14 +1098,6 @@ def transform_data(df):
 result = pl.DataFrame(schema=df.schema)  # Empty — this is a stub!
 ```
 
-**Bash detection:**
-
-```bash
-# Empty DataFrame creation in returns
-grep -rn "return pl\.DataFrame()" *.py
-grep -rn "return pl\.DataFrame({})" *.py
-```
-
 #### Hardcoded Sample Data Instead of Processing (WARNING/BLOCKER)
 
 ```python
@@ -1161,16 +1115,6 @@ def calculate_statistics(df):
     return {"mean": 500, "median": 450}  # Magic numbers
 ```
 
-**Bash detection:**
-
-```bash
-# Hardcoded DataFrame creation in functions (review for legitimacy)
-grep -rn -B5 'pl\.DataFrame({' *.py | grep "def "
-
-# Magic number returns (suspiciously round)
-grep -rn -E 'return \{.*: [0-9]+000' *.py
-```
-
 #### Filter That Returns Input Unchanged (WARNING)
 
 ```python
@@ -1184,16 +1128,6 @@ def clean_data(df):
     return df
 ```
 
-**Bash detection:**
-
-```bash
-# Functions that just return input
-grep -Pzo "def \w+\(df[^)]*\):\n\s+return df\s*$" *.py
-
-# Trivial true filter
-grep -rn "filter(pl.lit(True))" *.py
-```
-
 #### Aggregations That Don't Aggregate (BLOCKER)
 
 ```python
@@ -1205,13 +1139,6 @@ def calculate_totals(df):
 def summarize_enrollment(df):
     # Aggregation returns input column unchanged
     return df.group_by("state").agg(pl.col("enrollment"))  # No agg function applied
-```
-
-**Bash detection:**
-
-```bash
-# Group by without .agg() on same line (may be multi-line - review context)
-grep -rn "group_by(" *.py | grep -v "\.agg("
 ```
 
 ---
@@ -1235,13 +1162,6 @@ def _():
     ...
 ```
 
-**Bash detection:**
-
-```bash
-# Cells with only pass or ellipsis
-grep -Pzo "@app.cell\ndef[^:]+:\n\s+#.*\n\s+(pass|\.\.\.)" *.py
-```
-
 #### Cells Returning Hardcoded Strings (WARNING)
 
 ```python
@@ -1253,15 +1173,6 @@ def _():
 @app.cell
 def _():
     return mo.md("TODO: Add findings here")
-```
-
-**Bash detection:**
-
-```bash
-# Placeholder markdown content
-grep -rn 'mo\.md.*(".*TODO' *.py
-grep -rn 'mo\.md.*(".*Coming Soon' *.py
-grep -rn 'mo\.md.*(".*Placeholder' *.py
 ```
 
 #### Placeholder Markdown Cells (WARNING)
@@ -1279,14 +1190,6 @@ TBD
 """)
 ```
 
-**Bash detection:**
-
-```bash
-# Markdown with placeholder brackets
-grep -rn '\[Add.*here\]' *.py
-grep -rn '\[TODO\]' *.py
-```
-
 #### Import Cells With No Usage (INFO)
 
 ```python
@@ -1295,18 +1198,6 @@ grep -rn '\[TODO\]' *.py
 def _():
     import plotly.express as px  # Never used in notebook
     import seaborn as sns        # Never used
-```
-
-**Detection approach:**
-
-```bash
-# Find all imports, then check if they're used
-# Step 1: Extract imported names
-grep -rn "^import \|^from .* import" *.py
-
-# Step 2: Check each import is used elsewhere in file
-# (Requires per-file analysis)
-grep -c "imported_name" *.py  # Verify each import is referenced
 ```
 
 ---
@@ -1328,16 +1219,6 @@ df = pl.read_parquet("data/raw/schools.parquet")
 print(df.head())  # Only inspection, no actual analysis
 ```
 
-**Bash detection:**
-
-```bash
-# Find all data loads, verify they're used
-grep -rn "read_parquet\|read_csv" *.py
-
-# Check if loaded variable is used later (requires manual review)
-# Look for pattern: load followed by no operations on that variable
-```
-
 #### Transformations Exist But Output Not Saved (BLOCKER)
 
 ```python
@@ -1351,17 +1232,6 @@ summary = df.group_by("state").agg(pl.col("enrollment").mean())
 # summary not used in report, not saved
 ```
 
-**Bash detection:**
-
-```bash
-# Check for write operations after transforms
-# If transforms exist but no write_parquet/write_csv, flag for review
-grep -rn "write_parquet\|write_csv" *.py
-
-# Compare against transformation count
-grep -rn "\.filter(\|\.with_columns(\|\.group_by(" *.py
-```
-
 #### Figures Created But Not Referenced in Report (WARNING)
 
 ```python
@@ -1369,18 +1239,6 @@ grep -rn "\.filter(\|\.with_columns(\|\.group_by(" *.py
 fig = px.scatter(df, x="poverty_rate", y="enrollment")
 fig.write_image("output/figures/scatter.png")
 # Report.md doesn't reference scatter.png
-```
-
-**Bash detection:**
-
-```bash
-# List all figures saved
-grep -rn "savefig\|write_image" *.py | sed 's/.*["'"'"']\([^"'"'"']*\)["'"'"'].*/\1/'
-
-# Check if they're referenced in Report.md
-for fig in $(grep -rn "savefig\|write_image" *.py | sed 's/.*["'"'"']\([^"'"'"']*\)["'"'"'].*/\1/'); do
-    grep -q "$(basename $fig)" Report.md || echo "Unreferenced: $fig"
-done
 ```
 
 #### Data Access Response Not Integrated (BLOCKER)
@@ -1393,109 +1251,6 @@ df = fetch_from_mirrors(dataset_paths=DATASET_PATHS, years=YEARS)
 # Or partial integration:
 fetch_from_mirrors(dataset_paths=DATASET_PATHS, years=YEARS)
 # Return value never assigned to a variable
-```
-
-**Bash detection:**
-
-```bash
-# Find mirror fetch calls, check for result assignment and downstream use
-grep -rn "fetch_from_mirrors\|pl\.read_parquet\|pl\.scan_csv" *.py
-
-# Check for fetch calls whose result is never written or validated
-grep -rn -A5 "fetch_from_mirrors" *.py | grep -E "write_parquet|write_csv|\.shape|assert|print"
-```
-
----
-
-### Programmatic Stub Detection
-
-Use this comprehensive bash script to scan a project directory:
-
-```bash
-#!/bin/bash
-# stub_detector.sh - Comprehensive stub detection for Python data science projects
-
-PROJECT_DIR="${1:-.}"
-BLOCKERS=0
-WARNINGS=0
-INFO=0
-
-echo "=== STUB DETECTION REPORT ==="
-echo "Project: $PROJECT_DIR"
-echo "Date: $(date)"
-echo ""
-
-# Function to report findings
-report() {
-    local severity="$1"
-    local category="$2"
-    local file="$3"
-    local line="$4"
-    local pattern="$5"
-
-    echo "[$severity] $category"
-    echo "  File: $file:$line"
-    echo "  Pattern: $pattern"
-    echo ""
-
-    case $severity in
-        BLOCKER) ((BLOCKERS++)) ;;
-        WARNING) ((WARNINGS++)) ;;
-        INFO) ((INFO++)) ;;
-    esac
-}
-
-echo "--- Comment-Based Stubs (BLOCKER) ---"
-grep -rn -E "TODO|FIXME|XXX|HACK|PLACEHOLDER" "$PROJECT_DIR"/*.py 2>/dev/null | while IFS=: read -r file line content; do
-    report "BLOCKER" "TODO/FIXME marker" "$file" "$line" "$content"
-done
-
-echo "--- NotImplementedError (BLOCKER) ---"
-grep -rn "raise NotImplementedError" "$PROJECT_DIR"/*.py 2>/dev/null | while IFS=: read -r file line content; do
-    report "BLOCKER" "NotImplementedError" "$file" "$line" "$content"
-done
-
-echo "--- Empty Returns (WARNING) ---"
-grep -rn -E "^\s+return (None|\{\}|\[\])\s*$" "$PROJECT_DIR"/*.py 2>/dev/null | while IFS=: read -r file line content; do
-    report "WARNING" "Empty return" "$file" "$line" "$content"
-done
-
-echo "--- Placeholder Text (BLOCKER) ---"
-grep -rn -iE "placeholder|coming soon|will be implemented|\[TBD\]|\[add more\]" "$PROJECT_DIR"/*.py "$PROJECT_DIR"/*.md 2>/dev/null | while IFS=: read -r file line content; do
-    report "BLOCKER" "Placeholder text" "$file" "$line" "$content"
-done
-
-echo "--- Empty DataFrame Returns (BLOCKER) ---"
-grep -rn "return pl\.DataFrame()" "$PROJECT_DIR"/*.py 2>/dev/null | while IFS=: read -r file line content; do
-    report "BLOCKER" "Empty DataFrame return" "$file" "$line" "$content"
-done
-
-echo "--- Pass-only Functions (BLOCKER) ---"
-grep -Pzo "def \w+\([^)]*\):\n\s+pass\s*\n" "$PROJECT_DIR"/*.py 2>/dev/null | tr '\0' '\n' | while read -r content; do
-    report "BLOCKER" "Pass-only function" "$PROJECT_DIR" "-" "$content"
-done
-
-echo "--- Ellipsis-only Functions (BLOCKER) ---"
-grep -Pzo "def \w+\([^)]*\):\n\s+\.\.\.\s*\n" "$PROJECT_DIR"/*.py 2>/dev/null | tr '\0' '\n' | while read -r content; do
-    report "BLOCKER" "Ellipsis-only function" "$PROJECT_DIR" "-" "$content"
-done
-
-echo "=== SUMMARY ==="
-echo "BLOCKERS: $BLOCKERS"
-echo "WARNINGS: $WARNINGS"
-echo "INFO: $INFO"
-echo ""
-
-if [ $BLOCKERS -gt 0 ]; then
-    echo "STATUS: FAILED - Blockers must be resolved before delivery"
-    exit 1
-elif [ $WARNINGS -gt 0 ]; then
-    echo "STATUS: WARNING - Review warnings and document if acceptable"
-    exit 0
-else
-    echo "STATUS: PASSED - No stubs detected"
-    exit 0
-fi
 ```
 
 ---
