@@ -1,8 +1,19 @@
-# FAQ: Philosophy & Design Rationale
-
-> **Prerequisite:** [README](../README.md) — specifically the Vision & Purpose and Important Caveats sections.
+# 07. FAQ: Philosophy & Design Rationale
 
 This document addresses the "why" behind DAAF's design decisions and the broader questions about AI in research. It's where the project's intellectual contribution lives — beyond the technical how-to, these are the ideas and principles that shaped the framework.
+
+---
+
+## Documentation Table of Contents
+
+- [**00.** README](../README.md) — \[**Prerequisite**\] Vision and purpose, what DAAF does and does not do, core design philosophy, acknowledgments
+- [**01.** Installation & Quick Start](01_installation_and_quickstart.md) — Get started! Installation prerequisites, step-by-step 5-minute setup, day-to-day usage, and troubleshooting
+- [**02.** Understanding DAAF](02_understanding_daaf.md) — Learn to work with DAAF for the first time: what to expect, engagement modes explained, your first analysis walkthrough
+- [**03.** Best Practices](03_best_practices.md) — Tips for working with Claude Code, writing effective prompts, ensuring quality and rigor with DAAF, reviewing outputs, and managing context
+- [**04.** Extending DAAF](04_extending_daaf.md) — How to add new data source skills, analytical tools and methodologies, and creating your own additional specialized agents
+- [**05.** Contributing](05_contributing.md) — Get involved in developing DAAF! How to file issues via GitHub, support expanding the capabilities of the framework, contribute to educational tutorials and how-to's, and more!
+- [**06.** FAQ: Technical](06_faq_technical.md) — Covers frequently asked questions about Docker, issues with Claude Code, usage limits, authentication errors, and other common errors
+- **07.** FAQ: Philosophy — \[**This document**\] Design rationale, AI in research, broader questions about this approach (this document)
 
 ---
 

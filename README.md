@@ -4,6 +4,19 @@ An open-source framework demonstrating how AI can assist with rigorous, reproduc
 
 ---
 
+## Documentation Table of Contents
+
+- **00.** README — Vision and purpose, what DAAF does and does not do, core design philosophy, acknowledgments (this document)
+- [**01.** Installation & Quick Start](user_reference/01_installation_and_quickstart.md) — Get started! Installation prerequisites, step-by-step 5-minute setup, day-to-day usage, and troubleshooting
+- [**02.** Understanding DAAF](user_reference/02_understanding_daaf.md) — Learn to work with DAAF for the first time: what to expect, engagement modes explained, your first analysis walkthrough
+- [**03.** Best Practices](user_reference/03_best_practices.md) — Tips for working with Claude Code, writing effective prompts, ensuring quality and rigor with DAAF, reviewing outputs, and managing context
+- [**04.** Extending DAAF](user_reference/04_extending_daaf.md) — How to add new data source skills, analytical tools and methodologies, and creating your own additional specialized agents
+- [**05.** Contributing](user_reference/05_contributing.md) — Get involved in developing DAAF! How to file issues via GitHub, support expanding the capabilities of the framework, contribute to educational tutorials and how-to's, and more!
+- [**06.** FAQ: Technical](user_reference/06_faq_technical.md) — Covers frequently asked questions about Docker, issues with Claude Code, usage limits, authentication errors, and other common errors
+- [**07.** FAQ: Philosophy](user_reference/07_faq_philosophy.md) — Design rationale, AI in research, broader questions about this approach
+
+---
+
 ## Vision & Purpose
 
 This project explores a critical question: **Can AI meaningfully assist with complex research tasks while maintaining the rigor that social science demands?**
@@ -293,20 +306,6 @@ For detailed guidance on your role in the human-AI research partnership, reviewi
 <!-- TODO: Consider adding a brief (2-3 sentence) teaser here about what you'll need before linking to the guide. Something like: "You'll need Git, Docker Desktop, and an Anthropic account (API key or Pro/Max subscription). The setup takes about 10 minutes, and Docker handles all the software installation for you." This gives readers a quick mental preview before clicking through. -->
 
 For complete setup instructions — from installing prerequisites through launching your first session — see the **[Installation & Quick Start Guide](user_reference/01_installation_and_quickstart.md)**.
-
----
-
-## Documentation
-
-| Guide | What It Covers |
-|-------|---------------|
-| **[Installation & Quick Start](user_reference/01_installation_and_quickstart.md)** | Prerequisites, step-by-step setup, day-to-day usage, troubleshooting |
-| **[Understanding DAAF](user_reference/02_understanding_daaf.md)** | Engagement modes in depth, workflow phases, anatomy of an analysis, data sources, your first analysis walkthrough |
-| **[Best Practices](user_reference/03_best_practices.md)** | Writing effective prompts, reviewing outputs, human oversight responsibilities, session recovery |
-| **[Extending DAAF](user_reference/04_extending_daaf.md)** | Adding new data domains, data source skills, and specialized agents |
-| **[Contributing](user_reference/05_contributing.md)** | Filing issues, development setup, framework modifications, license details |
-| **[FAQ: Technical](user_reference/06_faq_technical.md)** | Docker troubleshooting, authentication, technology choices, common errors |
-| **[FAQ: Philosophy](user_reference/07_faq_philosophy.md)** | Design rationale, AI in research, broader questions about this approach |
 
 ---
 

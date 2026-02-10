@@ -1,8 +1,19 @@
-# Extending DAAF
-
-> **Prerequisites:** [README](../README.md) and [Understanding DAAF](02_understanding_daaf.md) (architecture section) — you should understand how agents, skills, and the query pipeline fit together before extending the system.
+# 04. Extending DAAF
 
 This guide focuses on the primary extension path: bringing new datasets and data domains into DAAF. If you want to modify the framework itself (agents, protocols, validation logic), see [Contributing](05_contributing.md) for framework-level changes.
+
+---
+
+## Documentation Table of Contents
+
+- [**00.** README](../README.md) — \[**Prerequisite**\] Vision and purpose, what DAAF does and does not do, core design philosophy, acknowledgments
+- [**01.** Installation & Quick Start](01_installation_and_quickstart.md) — \[**Prerequisite**\] Get started! Installation prerequisites, step-by-step 5-minute setup, day-to-day usage, and troubleshooting
+- [**02.** Understanding DAAF](02_understanding_daaf.md) — \[**Prerequisite**\] Learn to work with DAAF for the first time: what to expect, engagement modes explained, your first analysis walkthrough
+- [**03.** Best Practices](03_best_practices.md) — \[**Prerequisite**\] Tips for working with Claude Code, writing effective prompts, ensuring quality and rigor with DAAF, reviewing outputs, and managing context
+- **04.** Extending DAAF — \[**This document**\] How to add new data source skills, analytical tools and methodologies, and creating your own additional specialized agents (this document)
+- [**05.** Contributing](05_contributing.md) — Get involved in developing DAAF! How to file issues via GitHub, support expanding the capabilities of the framework, contribute to educational tutorials and how-to's, and more!
+- [**06.** FAQ: Technical](06_faq_technical.md) — Covers frequently asked questions about Docker, issues with Claude Code, usage limits, authentication errors, and other common errors
+- [**07.** FAQ: Philosophy](07_faq_philosophy.md) — Design rationale, AI in research, broader questions about this approach
 
 ---
 
@@ -32,6 +43,7 @@ The distinction between extension (adding domain knowledge) and contribution (mo
 |-------------------|-------|
 | Add a new data source | This document (04) |
 | Add a new data domain | This document (04) |
+| Add a new agent | This document (04) — "Adding a New Agent" section |
 | Modify an agent's behavior | [Contributing](05_contributing.md) |
 | Change validation protocols | [Contributing](05_contributing.md) |
 | Fix a bug in the framework | [Contributing](05_contributing.md) |
@@ -75,6 +87,43 @@ What every data source skill must contain: frontmatter, variable definitions, qu
 ### Registering the Skill
 
 Where to place the skill files and how DAAF discovers them.
+
+---
+
+## Adding a New Agent
+
+<!-- NEW: Guidance for adding new specialized agents to DAAF -->
+
+While adding data sources is the most common extension path, you may also need to add a new **specialized agent** — a behavioral protocol that defines how a subagent should operate during a specific part of the workflow.
+
+### When You Need a New Agent
+
+| Situation | Extension Type |
+|-----------|---------------|
+| New data source to analyze | Data source skill (see sections above) |
+| New tool/library to use | Tool skill (e.g., plotnine, polars) |
+| New **behavioral role** in the pipeline | New agent (this section) |
+
+A new agent is warranted when you need a distinct behavioral protocol that doesn't fit any existing agent's role — for example, a specialized validator for a new data domain, or a new synthesis pattern for cross-domain analysis.
+
+### Using the Agent-Authoring Skill
+
+The `agent-authoring` skill provides comprehensive guidance for creating new agents:
+
+1. **Design phase:** Identify the role, pipeline stage, and similar agents to differentiate from
+2. **Author phase:** Write the agent file following the canonical 12-section template (`agent_reference/AGENT_TEMPLATE.md`)
+3. **Integrate phase:** Update all registry files across the documentation ecosystem (the skill provides a complete checklist)
+4. **Validate phase:** Verify cross-agent consistency and registry completeness
+
+### Key Resources
+
+| Resource | Purpose |
+|----------|---------|
+| `agent-authoring` skill | Full workflow with integration checklist |
+| `agent_reference/AGENT_TEMPLATE.md` | Canonical 12-section template |
+| `agents/README.md` | Current agent landscape and coordination matrix |
+
+For framework-level changes to existing agents (modifying behavior, not adding new ones), see [Contributing](05_contributing.md).
 
 ---
 
