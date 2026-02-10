@@ -914,6 +914,17 @@ Before finalizing each task above, verify:
 | Report sections complete | Yes | Missing sections |
 | Notebook runs without error | Yes | Execution errors |
 
+### QA Tolerance Decisions
+
+*Document project-specific tolerance thresholds and WHY they differ from defaults (if they do).
+Code-reviewer uses these to calibrate BLOCKER vs WARNING severity.*
+
+| Check | Default Threshold | Project Threshold | Rationale |
+|-------|-------------------|-------------------|-----------|
+| Suppression rate | <50% STOP | [Same or custom] | [Why, if different] |
+| Join row loss | <10% acceptable | [Same or custom] | [Why, if different] |
+| [Custom check] | [N/A] | [threshold] | [rationale] |
+
 ---
 
 ## Decisions Log
@@ -923,6 +934,21 @@ Before finalizing each task above, verify:
 | Data source | CCD vs. PSS | CCD | Research question focuses on public schools |
 | Year range | 2018-2022 vs. 2020-2022 | 2020-2022 | Recent years sufficient; avoids COVID transition |
 | Suppression handling | Exclude vs. Impute | Exclude | Imputation would introduce bias |
+
+### Key Decision Detail
+
+*For decisions where multiple valid approaches existed, document the full reasoning.
+Skip this for obvious choices (e.g., "CCD because the question is about public schools").*
+
+#### [Decision Title] (e.g., "Poverty Measure Selection")
+**Question:** [The ambiguity that needed resolution]
+**Options:**
+1. [Option A] — [Implications if chosen]
+2. [Option B] — [Implications if chosen]
+
+**Resolution:** [Which option chosen]
+**Rationale:** [Why]
+**Decided By:** [User | Agent (within autonomous scope)]
 
 ---
 
@@ -952,6 +978,19 @@ Document risks identified during discovery and planning, with mitigation strateg
 - **Stage 6 (Context Application):** Add risks when suppression rate is 30-50% (below STOP but elevated)
 - **Stage 7 (Transformation):** Add risks when unexpected row loss or cardinality violations occur
 - **Any stage:** Add risks when data definitions changed between years or other quality issues arise
+
+---
+
+## Trade-offs Accepted
+
+*Explicit acknowledgment of what was sacrificed for what benefit.
+Every non-trivial analysis involves trade-offs — document them here so stakeholders
+and QA reviewers understand what was intentionally accepted.*
+
+| We Accepted | In Order To | Downside |
+|-------------|-------------|----------|
+| [e.g., Older data (2022 vs 2023)] | [Use MEPS poverty measure] | [1-year lag] |
+| [e.g., State-only scope] | [Avoid cross-state comparability issues] | [Less generalizable] |
 
 ---
 

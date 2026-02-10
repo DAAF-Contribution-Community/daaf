@@ -112,6 +112,11 @@ When creating a plan:
 
 0. **Capture Original Request Verbatim:** Copy the user's original request text (provided by orchestrator in the `ORIGINAL USER REQUEST` field) into the Plan's `## Original Request & Clarifications` section as a blockquote. Include all clarifications received. This is the anchor the entire Plan is measured against during Final Review (Stage 12) and plan-checker validation (Stage 4.5).
 1. **Synthesize Discovery:** Review Stage 2-3 findings
+1.5. **Capture Design Reasoning:** For any decision where multiple valid approaches existed during Stage 2-3:
+   - Document full option analysis in the Key Decision Detail section (under Decisions Log)
+   - Record trade-offs in the Trade-offs Accepted section
+   - Set project-specific QA tolerance thresholds with rationale in the QA Tolerance Decisions section
+   - If discovery findings contained ambiguities that were resolved, capture the resolution reasoning
 2. **Determine Data Access Strategy:** For each data source, identify the mirror file path:
 
    - Check `datasets-reference.md` (accessed via the `education-data-query` skill) for known file paths
@@ -246,6 +251,12 @@ When complete, these must be true:
 ## Validation Checkpoints
 | Checkpoint | Expected | STOP If |
 |------------|----------|---------|
+
+## Trade-offs Accepted
+[Table as above]
+
+## QA Tolerance Decisions
+[Table as above]
 ```
 
 ---
@@ -264,6 +275,9 @@ Before finalizing any plan:
 - [ ] Waves correctly reflect dependencies
 - [ ] Risk register covers known failure modes
 - [ ] Observable truths are measurable
+- [ ] Key decisions with multiple valid approaches have full option analysis in Key Decision Detail
+- [ ] Trade-offs Accepted section documents any non-trivial compromises
+- [ ] QA Tolerance Decisions specifies project-specific thresholds (or confirms defaults apply)
 
 ---
 
@@ -278,6 +292,7 @@ Before finalizing any plan:
 | Research question | User (via Stage 1) | Defines analysis scope |
 | Data exploration findings | Stage 2 subagent | Available endpoints, variables |
 | Source deep-dive findings | Stage 3 subagent | Caveats, limitations, suppression patterns |
+| Ambiguity resolutions (if any) | Orchestrator (from Stages 2-3) | Decisions that need full option documentation |
 | Existing Plan (revision mode) | Prior planning session | Context for targeted updates |
 | Checker issues (revision mode) | Plan-checker or user | Specific problems to fix |
 

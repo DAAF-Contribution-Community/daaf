@@ -903,7 +903,6 @@ These files must exist in the project folder:
 | Processed data (parquet) | `[project]/data/processed/*.parquet` | [ ] | [ ] |
 | Visualizations | `[project]/output/figures/*.png` | [ ] | [ ] |
 | STATE.md (if multi-session) | `[project]/STATE.md` | [ ] | [ ] |
-| CONTEXT.md (if created) | `[project]/CONTEXT.md` | [ ] | [ ] |
 
 **Verification Protocol:**
 1. List files in project folder

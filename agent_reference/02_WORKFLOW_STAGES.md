@@ -155,7 +155,7 @@ See `agents/code-reviewer.md` for the complete QA protocol and `agent_reference/
 | Plan expectations | Plan (inlined) | YES — row counts, tolerances |
 | Observable Truth contribution | Plan | YES — what this task enables |
 | Risk Register items | Plan | YES — relevant mitigations |
-| QA tolerance thresholds | Plan/CONTEXT.md | YES — BLOCKER/WARNING criteria |
+| QA tolerance thresholds | Plan (QA Tolerance Decisions section) | YES — BLOCKER/WARNING criteria |
 | Prior QA findings | Accumulated from prior scripts | YES — WARNING items to track |
 
 ---
