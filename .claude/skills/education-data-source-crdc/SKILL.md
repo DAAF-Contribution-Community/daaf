@@ -145,9 +145,11 @@ Data quality issue?
 
 | ID | Format | Level | Example | Notes |
 |----|--------|-------|---------|-------|
-| `ncessch` | 12-digit | School | `060000000001` | NCES school ID, joins to CCD |
-| `leaid` | 7-digit | District | `0600001` | NCES district ID, joins to CCD |
-| `combokey` | varies | School | `AL-0010-00002` | OCR internal key (state-district-school) |
+| `crdc_id` | 12-digit string | School | `010000201705` | Primary CRDC identifier; always present |
+| `ncessch` | 12-digit string | School | `010000201705` | NCES school ID, joins to CCD; may be null for some entries |
+| `leaid` | 7-digit string | District | `0100002` | NCES district ID, joins to CCD; always present |
+
+> **Note:** The OCR-internal `combokey` (e.g., `AL-0010-00002`) does NOT appear as a column in Portal data. Use `crdc_id` or `ncessch` for school-level identification.
 
 > **WARNING: String Type Override Required.** When reading CRDC data from CSV, `ncessch`, `leaid`, and `crdc_id` must be read as String (`pl.Utf8`) via `schema_overrides`. Polars infers these as Int64, silently destroying leading zeros for ~19% of rows (FIPS 01-09 states: AL, AK, AZ, AR, CA, CO, CT). Parquet files preserve types automatically.
 
@@ -164,12 +166,15 @@ Data quality issue?
 | `7` | Two or more races |
 | `99` | Total |
 
+> **Empirically observed values:** Codes `1`-`7` and `99` appear in CRDC data. Additional codes (`8` Nonresident alien, `9` Unknown, `20` Other) are defined in the codebook but are not observed in practice for K-12 CRDC datasets. See `variable-definitions.md` for the full codebook listing.
+
 ### Sex (Portal Integer Codes)
 
 | Code | Category |
 |------|----------|
 | `1` | Male |
 | `2` | Female |
+| `3` | Non-binary/other (newer collections; rows exist but mostly contain -1 or -2 values) |
 | `99` | Total |
 
 ### Disability Status (Portal Integer Codes)
@@ -179,7 +184,11 @@ Data quality issue?
 | `0` | Students without disabilities |
 | `1` | Students with disabilities (served under IDEA) |
 | `2` | Students with Section 504 only |
+| `3` | Students not served under IDEA (includes 504-only and non-disabled) |
+| `4` | Students with disabilities (combined: IDEA + Section 504) |
 | `99` | Total |
+
+> **Note:** Not all disability codes appear in every dataset. Enrollment data typically has `[1, 2, 99]`; discipline data has `[0, 1, 2, 4, 99]`. Verify codes against the live codebook for your specific dataset.
 
 ### English Learner Status (Portal Integer Codes)
 
@@ -195,25 +204,43 @@ Data quality issue?
 | `-1` | Missing | Data not reported by school/district |
 | `-2` | Not applicable | Item doesn't apply to this entity |
 | `-3` | Suppressed | Data suppressed for privacy (small cell sizes) |
-| `-9` | Skip pattern | Question not asked in this collection year |
-| `null` | Not available | Value absent from dataset |
+| `-9` | Skip pattern | Question not asked in this collection year (rare; check codebook) |
+| `null` | Not available | Value absent from dataset (e.g., `ncessch` is null for some schools) |
+
+> Verify these codes against the live codebook for your specific dataset. Use `get_codebook_url()` from `fetch-patterns.md`.
 
 ## Data Access
 
-Datasets for CRDC are available via the mirror system. See `datasets-reference.md` for canonical paths and `fetch-patterns.md` for fetch code patterns.
+Datasets for CRDC are available via the mirror system. See `datasets-reference.md` for canonical paths, `mirrors.yaml` for mirror configuration, and `fetch-patterns.md` for fetch code patterns including `fetch_from_mirrors()` and `fetch_yearly_from_mirrors()`.
 
-**Key datasets:**
+**Key datasets (6 of 22 total):**
 
-| Dataset | Path | Type |
-|---------|------|------|
-| Discipline | `crdc/schools_crdc_discipline_k12_{year}` | Yearly |
-| AP/IB Enrollment | `crdc/schools_crdc_apib_enroll` | Single |
-| Enrollment | `crdc/schools_crdc_enrollment_k12_{year}` | Yearly |
-| Chronic Absenteeism | `crdc/schools_crdc_chronic_absenteeism_{year}` | Yearly |
-| Harassment/Bullying | `crdc/schools_crdc_harass_bully_students_{year}` | Yearly |
-| Restraint/Seclusion | `crdc/schools_crdc_restraint_seclusion_students_{year}` | Yearly |
+| Dataset | Path | Type | Codebook |
+|---------|------|------|----------|
+| Discipline | `crdc/schools_crdc_discipline_k12_{year}` | Yearly | `crdc/codebook_schools_crdc_discipline` |
+| AP/IB Enrollment | `crdc/schools_crdc_apib_enroll` | Single | `crdc/codebook_schools_crdc_ap-ib-enrollment` |
+| Enrollment | `crdc/schools_crdc_enrollment_k12_{year}` | Yearly | `crdc/codebook_schools_crdc_enrollment` |
+| Chronic Absenteeism | `crdc/schools_crdc_chronic_absenteeism_{year}` | Yearly | `crdc/codebook_schools_crdc_chronic-absenteeism` |
+| Harassment/Bullying | `crdc/schools_crdc_harass_bully_students_{year}` | Yearly | `crdc/codebook_schools_crdc_harrassment-bullying-students` |
+| Restraint/Seclusion | `crdc/schools_crdc_restraint_seclusion_students_{year}` | Yearly | `crdc/codebook_schools_crdc_restraint-seclusion-students` |
 
-22 CRDC codebooks exist total. See `datasets-reference.md` for the complete list.
+22 CRDC datasets exist total (6 yearly, 16 single-file). See `datasets-reference.md` for the complete list with all paths and codebook references.
+
+> **CRDC naming note:** Some data file paths use concatenated names (e.g., `disciplineinstances`, `mathandscience`) while their codebook counterparts use underscored names (e.g., `discipline_instances`, `math_and_science`). Always use the exact paths from `datasets-reference.md`.
+
+Codebooks are `.xls` files co-located with data in all mirrors. Use `get_codebook_url()` from `fetch-patterns.md` to construct download URLs:
+
+```python
+from fetch_patterns import get_codebook_url
+url = get_codebook_url("crdc/codebook_schools_crdc_discipline")
+```
+
+> **Truth Hierarchy:** When interpreting variable values, apply this priority:
+> 1. **Actual data file** (what you observe in the parquet/CSV) -- this IS the truth
+> 2. **Live codebook** (.xls in mirror) -- authoritative documentation, may lag
+> 3. **This skill documentation** -- convenient summary, may drift from codebook
+>
+> If this documentation contradicts the codebook, trust the codebook. If the codebook contradicts observed data, trust the data and investigate.
 
 ### Filtering
 
