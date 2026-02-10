@@ -6,7 +6,7 @@ This is the complete installation and setup guide for DAAF. All installation ins
 
 ## Documentation Table of Contents
 
-- [**00. README**](../README.md) — **\[Prerequisite\]** Vision and purpose, what DAAF does and does not do, core design philosophy, acknowledgments
+- [**00. README**](../.) — **\[Prerequisite\]** Vision and purpose, what DAAF does and does not do, core design philosophy, acknowledgments
 - **01. Installation & Quick Start** — **\[This document\]** Get started! Installation prerequisites, step-by-step 5-minute setup, day-to-day usage, and troubleshooting
 - [**02. Understanding DAAF**](02_understanding_daaf.md) — Learn to work with DAAF for the first time: what to expect, engagement modes explained, your first analysis walkthrough
 - [**03. Best Practices**](03_best_practices.md) — Tips for working with Claude Code, writing effective prompts, ensuring quality and rigor with DAAF, reviewing outputs, and managing context

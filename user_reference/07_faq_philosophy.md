@@ -6,7 +6,7 @@ This document addresses the "why" behind DAAF's design decisions and the broader
 
 ## Documentation Table of Contents
 
-- [**00. README**](../README.md) — **\[Prerequisite\]** Vision and purpose, what DAAF does and does not do, core design philosophy, acknowledgments
+- [**00. README**](../.) — **\[Prerequisite\]** Vision and purpose, what DAAF does and does not do, core design philosophy, acknowledgments
 - [**01. Installation & Quick Start**](01_installation_and_quickstart.md) — Get started! Installation prerequisites, step-by-step 5-minute setup, day-to-day usage, and troubleshooting
 - [**02. Understanding DAAF**](02_understanding_daaf.md) — Learn to work with DAAF for the first time: what to expect, engagement modes explained, your first analysis walkthrough
 - [**03. Best Practices**](03_best_practices.md) — Tips for working with Claude Code, writing effective prompts, ensuring quality and rigor with DAAF, reviewing outputs, and managing context
@@ -140,7 +140,7 @@ DAAF is not a general-purpose coding assistant — it's a domain-specific resear
 
 ## Recommended Next Steps
 
-- [**00. README**](../README.md) — Vision and purpose, what DAAF does and does not do, core design philosophy, acknowledgments
+- [**00. README**](../.) — Vision and purpose, what DAAF does and does not do, core design philosophy, acknowledgments
 - [**01. Installation & Quick Start**](01_installation_and_quickstart.md) — Get started! Installation prerequisites, step-by-step 5-minute setup, day-to-day usage, and troubleshooting
 - [**06. FAQ: Technical**](06_faq_technical.md) — Covers frequently asked questions about Docker, issues with Claude Code, usage limits, design rationale, authentication errors, and other common errors
 - [**Back to main**](../.)
