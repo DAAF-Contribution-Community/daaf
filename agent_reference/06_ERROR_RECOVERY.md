@@ -382,10 +382,12 @@ Awaiting guidance.
 
 **CRITICAL: File-First Script Versioning**
 
+Closely read `agent_reference/EXECUTION_CAPTURE.md` for the mandatory file-first execution protocol covering complete code file writing, output capture, and file versioning rules.
+
 When a script fails, DO NOT modify the original. Instead:
 1. Original script (`01_task.py`) keeps its failed output appended (audit trail)
 2. Create versioned copy (`01_task_a.py`) with fixes
-3. Execute and capture output to the new version
+3. Execute with automatic output capture wrapper to the new version
 4. If still failing, create `01_task_b.py`, etc.
 5. Marimo notebook uses only the final successful version
 
@@ -395,8 +397,7 @@ When a script fails, DO NOT modify the original. Instead:
 2. Identify the root cause
 3. Create new versioned copy (e.g., 01_task_a.py)
 4. Apply fix in the new copy
-5. Execute: python scripts/.../01_task_a.py 2>&1
-6. Append output to the new version
+5. Execute: ./scripts/run_with_capture.sh scripts/.../01_task_a.py
 ```
 
 **Attempt 2: Alternative approach in new version**
@@ -405,8 +406,6 @@ When a script fails, DO NOT modify the original. Instead:
 2. Try different approach in this copy
 3. Execute and capture output
 ```
-
-See `agents/research-executor.md` for the complete file-first protocol and versioning rules.
 
 **If still failing after 2 attempts:** ESCALATE
 

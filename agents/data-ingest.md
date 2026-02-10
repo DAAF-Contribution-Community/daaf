@@ -221,6 +221,8 @@ Read documentation and verify claims against actual data:
 
 ### Step 2: Load and Profile Data (Mode 1)
 
+Closely read `agent_reference/EXECUTION_CAPTURE.md` for the mandatory file-first execution protocol covering complete code file writing, output capture, and file versioning rules.
+
 Write and execute profiling scripts following the **file-first** pattern:
 
 **Script 1: Structural Profile** (`scripts/01_structural_profile.py`)
@@ -732,10 +734,9 @@ The skill `{skill-name}` has been created but is **not yet discoverable** by the
 
 All profiling and reconciliation code follows the file-first pattern:
 
-1. **WRITE** script to `scripts/` directory
-2. **EXECUTE** via Bash: `python scripts/01_structural_profile.py 2>&1`
-3. **CAPTURE** output and append to script as comments
-4. **ARCHIVE** scripts in the skill's `scripts/` directory
+1. **WRITE** initial script to `scripts/` directory
+2. **EXECUTE** via wrapper: `./scripts/run_with_capture.sh scripts/01_structural_profile.py` (automatically captures output and appends execution log)
+3. **ARCHIVE** scripts (with embedded execution logs) in the skill's `scripts/` directory
 
 **Script Naming:**
 | Script | Purpose |

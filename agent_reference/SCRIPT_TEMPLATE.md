@@ -12,15 +12,16 @@ This document defines the standardized format for all Python scripts in the file
 
 The workflow is:
 1. **WRITE** script to file using this template
-2. **EXECUTE** via `python script.py 2>&1`
-3. **CAPTURE** output and append as comments to the script
-4. **IF FAILED** → Create new versioned copy for fixes
-5. **COMMIT** successful script with embedded execution log
+2. **EXECUTE** via `./scripts/run_with_capture.sh scripts/.../script.py` (wrapper automatically captures output and appends execution log)
+3. **IF FAILED** → Create new versioned copy for fixes, re-run wrapper on new copy
+4. **COMMIT** successful script with embedded execution log
+
+Closely read `agent_reference/EXECUTION_CAPTURE.md` for the mandatory file-first execution protocol covering complete code file writing, output capture, and file versioning rules.
 
 Scripts serve as:
 - **Primary execution artifacts** — The code that actually ran
 - **Audit trail** — Embedded output shows what happened
-- **Reproducibility record** — Anyone can re-run `python script.py`
+- **Reproducibility record** — Anyone can re-run the script to reproduce results
 - **Version history** — Failed attempts preserved with their outputs
 
 ---
@@ -1135,7 +1136,7 @@ if not all_passed:
 
 ### How to Execute a Script
 
-**Option 1: Using the execution wrapper (recommended)**
+**Always use the execution wrapper:**
 
 ```bash
 cd /daaf/research/[project]/
@@ -1145,19 +1146,10 @@ cd /daaf/research/[project]/
 This automatically:
 - Runs the script with output capture
 - Records timestamp, duration, exit code
-- Appends execution log to the script if successful
+- Appends execution log to the script as comments
+- Blocks re-runs on scripts that already have a log (enforces versioning)
 
-**Option 2: Manual execution with capture**
-
-```bash
-cd /daaf/research/[project]/
-
-# Execute with output capture
-python scripts/stage5_fetch/01_fetch-ccd.py 2>&1 | tee /tmp/output.log
-echo "Exit code: $?"
-
-# If successful, manually append the log (or use Python utility)
-```
+**Do NOT run `python script.py` directly** — this bypasses output capture and log appending.
 
 ### After Execution
 
@@ -1182,5 +1174,3 @@ echo "Exit code: $?"
 | **NEVER modify after appending log** | The log documents that exact code's execution |
 | **ALWAYS create new version for fixes** | Preserves full history of attempts and outputs |
 | **ALWAYS commit all versions** | Audit trail shows evolution of code and results |
-
-See `agent_reference/EXECUTION_CAPTURE.md` for the wrapper script and Python utilities.

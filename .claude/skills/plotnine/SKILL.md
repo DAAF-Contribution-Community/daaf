@@ -75,12 +75,13 @@ Common issues?
 
 **The pattern:**
 1. Write plot code to `scripts/stage8_viz/{step}_{plot-name}.py`
-2. Execute via Bash with output capture
-3. Append execution log to script as comments
+2. Execute via Bash with automatic output capture wrapper script
+3. Validation results get automatically embedded in scripts as comments
 4. If failed, create versioned copy for fixes
 
+Closely read `agent_reference/EXECUTION_CAPTURE.md` for the mandatory file-first execution protocol covering complete code file writing, output capture, and file versioning rules.
+
 **See:**
-- `agents/research-executor.md` — Complete file-first protocol
 - `agent_reference/02_WORKFLOW_STAGES.md` — Stage 8 (Visualization)
 
 The examples below show plotnine syntax. In research workflows, wrap them in scripts following the file-first pattern.

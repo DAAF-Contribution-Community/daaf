@@ -345,13 +345,12 @@ See `agent_reference/SCRIPT_TEMPLATE.md` for debug script example.
 **CRITICAL:** All diagnostic code follows the file-first pattern:
 
 1. **WRITE** diagnostic script to `scripts/debug/{seq}_diag-{slug}.py`
-2. **EXECUTE** via Bash with output capture: `python scripts/debug/01_diag-key-mismatch.py 2>&1`
-3. **APPEND** output to script as comments (preserves diagnostic trail)
-4. **VERSION** if iteration needed: `01_diag-key-mismatch_a.py`, `01_diag-key-mismatch_b.py`, etc.
+2. **EXECUTE** via wrapper: `./scripts/run_with_capture.sh scripts/debug/01_diag-key-mismatch.py` (automatically captures output and appends execution log)
+3. **VERSION** if iteration needed: `01_diag-key-mismatch_a.py`, `01_diag-key-mismatch_b.py`, etc.
 
-**DO NOT** run diagnostic code interactively. All diagnostic code must be written to a script file before execution. This preserves the complete diagnostic trail and allows reproduction of the debugging process.
+**DO NOT** run diagnostic code interactively or via `python script.py` directly. All diagnostic code must be written to a script file and executed via the wrapper. This preserves the complete diagnostic trail and allows reproduction of the debugging process.
 
-See `agent_reference/EXECUTION_CAPTURE.md` for execution wrapper utilities.
+Closely read `agent_reference/EXECUTION_CAPTURE.md` for the mandatory file-first execution protocol covering complete code file writing, output capture, and file versioning rules.
 
 ---
 

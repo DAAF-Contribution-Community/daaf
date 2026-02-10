@@ -37,7 +37,6 @@ These actions are **mandatory** for every analysis task.
 |--------|-----------|
 | Include validation assertions in notebooks | Self-documenting quality |
 | Document every transformation with comments | Reproducibility |
-| Write tests for key data operations | Verify correctness |
 
 ### Documentation
 
@@ -147,7 +146,7 @@ These actions are **prohibited** under all circumstances.
 | Modify scripts after appending execution log (create new version instead) | Destroys audit trail |
 | Create Marimo cells with code that wasn't first executed as a script | Unvalidated code in notebook |
 
-**See:** `agents/research-executor.md` for the mandatory file-first protocol.
+**See:** Closely read `agent_reference/EXECUTION_CAPTURE.md` for the mandatory file-first execution protocol covering complete code file writing, output capture, and file versioning rules.
 
 ---
 
@@ -262,10 +261,7 @@ Different engagement modes have different boundary considerations. These **suppl
 - Skipping QA for an entire stage (never allowed in Full Pipeline mode)
 - Changing QA script naming convention
 
-**BLOCKER Escalation:**
-- Non-methodology BLOCKER: Apply Rule 5 (fix via revision)
-- Methodology BLOCKER: STOP immediately, escalate per Rule 4
-- BLOCKER after 2 revisions: STOP, escalate to user
+**BLOCKER Escalation:** See `06_ERROR_RECOVERY.md` § QA BLOCKER Recovery for the full escalation flow.
 
 ---
 
@@ -636,7 +632,7 @@ Is this an improvement or optimization not required for correctness?
 - Rows: {count}
 - Files: {file list}
 
-Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>
+Co-Authored-By: Claude <noreply@anthropic.com>
 ```
 
 **Types:**
@@ -658,7 +654,7 @@ feat(05-01): Fetch CCD school enrollment data
 - Rows: 98,234
 - Files: data/raw/2026-01-31_ccd_schools.parquet
 
-Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>
+Co-Authored-By: Claude <noreply@anthropic.com>
 ```
 
 **Data Cleaning (Stage 6):**
@@ -670,7 +666,7 @@ feat(06-01): Clean CCD data, filter coded values
 - Suppression rate: 12%
 - Files: data/processed/2026-01-31_ccd_clean.parquet
 
-Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>
+Co-Authored-By: Claude <noreply@anthropic.com>
 ```
 
 **Transformation (Stage 7):**
@@ -681,7 +677,7 @@ feat(07-02): Join CCD schools with MEPS poverty data
 - Rows: 91,847 (1:1 cardinality confirmed)
 - Files: data/processed/2026-01-31_analysis.parquet
 
-Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>
+Co-Authored-By: Claude <noreply@anthropic.com>
 ```
 
 **Bug Fix During Execution:**
@@ -692,7 +688,7 @@ fix(07-02): Correct type mismatch in year filter
 - Resolution: Changed filter to use string comparison
 - Rows affected: All (was filtering to 0)
 
-Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>
+Co-Authored-By: Claude <noreply@anthropic.com>
 ```
 
 ### Wave Completion Commit
@@ -708,7 +704,7 @@ Completed tasks:
 
 Updated: Plan.md transformation log
 
-Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>
+Co-Authored-By: Claude <noreply@anthropic.com>
 ```
 
 ### What NOT to Commit
@@ -738,41 +734,19 @@ These conditions trigger an immediate STOP with escalation to user.
 
 | Condition | Stage | Response |
 |-----------|-------|----------|
-| Data access attempt returns empty data | 5 | STOP, report, await guidance |
-| Suppression rate >50% | 6 | STOP, report, propose alternatives |
-| Cross-state assessment comparison | 6 | BLOCK with explanation |
-| Row count drops >90% | 7 | STOP, verify transformation |
-| **QA BLOCKER after 2 revisions** | 5-8 QA | STOP, escalate to user |
-| **QA methodology violation** | 5-8 QA | STOP, escalate immediately |
-| Tests fail after 2 fix attempts | 10 | STOP, escalate |
-| Notebook errors after 2 fix attempts | 9 | STOP, escalate |
-| Data unavailable in Portal | 2-3 | STOP, escalate immediately |
+| Data access mirror returns empty data | Stage 5 | STOP, report to user, await guidance |
+| Suppression rate >50% | Stage 6 | STOP, report issue, propose alternatives |
+| Cross-state assessment comparison attempted | Stage 6 | BLOCK with explanation (never valid) |
+| Row count drops >90% after transformation | Stage 7 | STOP, verify transformation logic |
+| **QA BLOCKER after 2 revisions** | 5-QA to 8-QA | STOP, escalate to user |
+| **QA methodology violation** | 5-QA to 8-QA | STOP, escalate immediately |
+| Notebook execution error after 2 fix attempts | Stage 9 | STOP, report error details |
+| Data unavailable in Education Data Portal | Stage 2-3 | STOP, escalate immediately |
 | LOW confidence finding unresolved | Any | Cannot proceed |
 
 ### STOP Message Format
 
-```markdown
-**STOP: [Condition Name]**
-
-**What Happened:**
-[Clear description of the issue]
-
-**What I Tried:**
-[Resolution attempts made]
-
-**Impact:**
-[How this affects the analysis]
-
-**Options:**
-1. [Option A with implications]
-2. [Option B with implications]
-3. [Option C with implications]
-
-**Recommendation:**
-[Your suggested path forward with rationale]
-
-Awaiting your guidance before proceeding.
-```
+See `06_ERROR_RECOVERY.md` "Escalation Format" for the authoritative STOP/escalation message template.
 
 ---
 

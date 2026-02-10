@@ -354,6 +354,8 @@ Follow file-first execution:
    This automatically appends the execution log (timestamp, duration, exit code, stdout/stderr) as comments to the script. See `agent_reference/EXECUTION_CAPTURE.md` for details.
 3. **Review the profiling output and all check results before proceeding**
 
+Closely read `agent_reference/EXECUTION_CAPTURE.md` for the mandatory file-first execution protocol covering complete code file writing, output capture, and file versioning rules.
+
 #### 3.2 Iterative Investigation Loop (cr2–cr5)
 
 After reviewing cr1 output, apply this decision tree:

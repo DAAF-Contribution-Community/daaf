@@ -1,6 +1,6 @@
 # Context Management Protocol
 
-This document defines how to manage context utilization to prevent "context rot" - the quality degradation that occurs as the context window fills up.
+This document provides **detailed procedures** for the context health rules defined in CLAUDE.md's "Context & Session Health" subsection. CLAUDE.md is the single source of truth for thresholds, self-assessment questions, scoring, and the STOP-ASSESS-UPDATE-DECIDE cycle. This document covers the *how*: compression techniques, subagent context isolation, degradation symptom taxonomy, context budgets, and recovery strategies.
 
 ---
 
@@ -388,6 +388,8 @@ I'll use Protocol 6 (Session Recovery) to resume with fresh context.
 
 ## Self-Monitoring Protocol
 
+Thresholds, self-assessment questions, scoring, and the STOP-ASSESS-UPDATE-DECIDE cycle are defined in CLAUDE.md's "Context & Session Health" subsection. This section documents only the `context-reporter` hook format.
+
 ### Context Utilization Reporting
 
 The `context-reporter` hook provides deterministic utilization measurements on every orchestrator turn. The injected message format is:
@@ -397,49 +399,6 @@ Context utilization [SEVERITY]: XXXk / 200k tokens (YY%)
 ```
 
 Where **SEVERITY** = OK (<40%) | MODERATE (40-60%) | HIGH (60-75%) | CRITICAL (75%+). Use the reported percentage directly for gating decisions — no estimation needed.
-
-### Self-Assessment Checklist (Every 3 Turns)
-
-Run this checklist every 3 orchestrator turns as part of the **STOP-ASSESS-UPDATE-DECIDE** cycle:
-
-```markdown
-**Self-Assessment (Turn [N]):**
-1. [ ] Can state original request verbatim?
-2. [ ] Can state current stage and next action?
-3. [ ] Not repeating earlier information?
-4. [ ] Response efficiency acceptable?
-
-Failures: [count] → [action taken]
-```
-
-### STOP-ASSESS-UPDATE-DECIDE Cycle
-
-At every self-assessment checkpoint (every 3 turns) and at every stage transition:
-
-```
-1. STOP: Pause before next action
-2. ASSESS: Run 4-question checklist + check reported utilization
-3. UPDATE: Persist state to STATE.md if needed (≥40% or any failures)
-4. DECIDE: Continue, delegate, report, or restart based on utilization
-```
-
-### Utilization Gate Actions
-
-| Threshold | Required Action |
-|-----------|-----------------|
-| 40% | Delegate ALL remaining complex tasks to subagents |
-| 60% | Update STATE.md IMMEDIATELY, STOP, report to user |
-| 75% | STOP, save state, offer session restart to user |
-
-### Self-Assessment Scoring
-
-| Failures | Action |
-|----------|--------|
-| 0 | Continue normally |
-| 1 | Log assessment, continue with increased monitoring |
-| 2 | Trigger compression: delegate next complex task |
-| 3 | Update STATE.md immediately, compress phase summaries |
-| 4 | STOP, update STATE.md, recommend session restart |
 
 ---
 

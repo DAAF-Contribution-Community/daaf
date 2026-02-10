@@ -113,11 +113,11 @@ CHECK IN with users when:
 
 In the research pipeline, data-scientist methodology is applied within the **file-first execution pattern**:
 - Write script files FIRST (to `scripts/stage{N}_{type}/`)
-- Execute via Bash with output capture
-- Validation results get embedded in scripts as comments
+- Execute via Bash with automatic output capture wrapper script
+- Validation results get automatically embedded in scripts as comments
 - Marimo notebook assembles validated scripts for interactive review
 
-See `agents/research-executor.md` for the complete file-first protocol.
+Closely read `agent_reference/EXECUTION_CAPTURE.md` for the mandatory file-first execution protocol covering complete code file writing, output capture, and file versioning rules.
 
 **Load for Specific Needs:**
 ```

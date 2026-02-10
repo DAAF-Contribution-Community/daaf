@@ -335,11 +335,11 @@ ERROR DETECTED
 
 This agent MUST follow the file-first execution pattern:
 1. Write script to `scripts/stage{N}_{type}/` BEFORE execution
-2. Execute via Bash with output capture
-3. Append output to script as comments
+2. Execute via Bash with automatic output capture wrapper script
+3. Validation results get automatically embedded in scripts as comments
 4. Version failed scripts with `_a`, `_b`, `_c` suffixes
 
-See `agents/research-executor.md` for the complete protocol.
+Closely read `agent_reference/EXECUTION_CAPTURE.md` for the mandatory file-first execution protocol covering complete code file writing, output capture, and file versioning rules.
 
 **Key behaviors:**
 - **File-first execution** (no interactive Python)

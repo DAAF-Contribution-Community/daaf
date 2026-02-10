@@ -151,14 +151,14 @@ Having issues?
 
 **The pattern:**
 1. Write transformation code to `scripts/stage{N}_{type}/{step}_{task-name}.py`
-2. Execute via Bash: `python scripts/.../script.py 2>&1`
-3. Append captured output as comments to the script file
-4. If failed, create versioned copy (`_a.py`, `_b.py`) for fixes
+2. Execute via Bash with automatic output capture wrapper script
+3. Validation results get automatically embedded in scripts as comments
+4. If failed, create versioned copy for fixes
+
+Closely read `agent_reference/EXECUTION_CAPTURE.md` for the mandatory file-first execution protocol covering complete code file writing, output capture, and file versioning rules.
 
 **See:**
-- `agents/research-executor.md` — Complete file-first protocol
 - `agent_reference/SCRIPT_TEMPLATE.md` — Script format with validation
-- `agent_reference/EXECUTION_CAPTURE.md` — Capture utilities
 
 The examples below show Polars syntax. In research workflows, wrap them in scripts following the file-first pattern.
 
