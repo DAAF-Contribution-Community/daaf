@@ -100,7 +100,7 @@ When sources disagree or have gaps:
 
 ### 3. Uncertainty Documentation
 
-Explicitly track confidence:
+Explicitly track confidence. For example:
 
 | Finding | Confidence | Source | Notes |
 |---------|------------|--------|-------|
@@ -304,21 +304,6 @@ Return synthesis in this structure:
 1. [Immediate action]
 2. [Following action]
 ```
-
----
-
-## When to Invoke
-
-Use Research Synthesizer when:
-- Multiple data sources need integration (CCD + CRDC + MEPS)
-- Stage 3 findings span multiple source skills
-- Conflicts exist between exploration findings
-- User needs consolidated view before planning
-
-**Not needed for:**
-- Single-source analyses
-- Simple lookups
-- When Stage 2-3 findings are unambiguous
 
 ---
 

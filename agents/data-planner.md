@@ -201,7 +201,7 @@ Include in every plan:
 
 ## Risk Register
 
-Document risks during planning:
+Document risks during planning. For example:
 
 | Risk | Likelihood | Impact | Mitigation | Owner |
 |------|------------|--------|------------|-------|

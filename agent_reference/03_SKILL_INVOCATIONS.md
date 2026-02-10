@@ -568,8 +568,8 @@ All relative paths in referenced files resolve from BASE_DIR.
 **STAGE 3 FINDINGS (Source Deep-Dive):**
 {stage_3_output_summary}
 
-**STAGE 3.5 FINDINGS (if applicable):**
-{stage_3_5_synthesis_or_NA}
+**STAGE 3.5 FINDINGS (research synthesis):**
+{stage_3_5_synthesis}
 
 **PROJECT FOLDER:**
 research/{date} {title}/
@@ -595,7 +595,7 @@ Do NOT paraphrase or summarize — copy the exact text.
 - [ ] Clarifications documented (numbered list)
 - [ ] Stage 2 findings summarized
 - [ ] Stage 3 findings summarized (per source)
-- [ ] Stage 3.5 synthesis included (if multi-source)
+- [ ] Stage 3.5 synthesis included
 - [ ] Project folder path determined
 
 ---

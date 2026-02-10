@@ -212,6 +212,7 @@ Different engagement modes have different boundary considerations. These **suppl
 **Always Do:**
 - Search for and locate existing project first
 - Read complete Plan and notebook before proposing changes
+- Create fresh copy of Plan to record new changes
 - Classify revision type and confirm with user
 - Create new version files (never modify existing)
 - Regenerate data fresh (don't copy from prior version)

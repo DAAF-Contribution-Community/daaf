@@ -13,9 +13,9 @@ This document provides detailed execution guidance for each of the 12 stages (pl
 | 1 | 1 | Initial Intake | — | Orchestrator |
 | 2 | 1 | Data Exploration | `education-data-explorer` | Plan |
 | 3 | 1 | Source Deep-Dive | `*-data-source-*` | Plan |
-| **3.5** | 1 | Findings Synthesis (conditional) | `research-synthesizer` agent | general-purpose |
+| **3.5** | 1 | Findings Synthesis | `research-synthesizer` agent | general-purpose |
 | 4 | 2 | Plan Creation | `data-planner` agent | Orchestrator (invokes data-planner) |
-| **4.5** | 2 | Plan Validation (required) | `plan-checker` agent | Plan |
+| **4.5** | 2 | Plan Validation | `plan-checker` agent | Plan |
 | 5 | 3 | Data Retrieval | `education-data-query` | general-purpose |
 | 6 | 3 | Context Application | `education-data-context` | general-purpose |
 | 7 | 4 | EDA & Transformation | `data-scientist`, `polars` | general-purpose |
@@ -24,8 +24,6 @@ This document provides detailed execution guidance for each of the 12 stages (pl
 | 10 | 4 | QA Aggregation | `data-scientist` | general-purpose |
 | 11 | 5 | Report Generation | — | Orchestrator |
 | 12 | 5 | Final Review | `data-verifier` agent (adversarial verification with cross-artifact coherence) | Plan |
-
-**Note:** Stage 3.5 is conditional (invoked only when ≥2 data sources explored). Stage 4.5 is required for all Full Pipeline analyses.
 
 ---
 
@@ -182,7 +180,7 @@ See `agents/code-reviewer.md` for the complete QA protocol and `agent_reference/
 3. **Confirm Mode**
    - State classification with reasoning
    - Describe expected scope and outputs
-   - Await user confirmation (implicit or explicit)
+   - Await EXPLICIT user confirmation
 
 4. **Ask Clarifying Questions (if needed)**
    - Ambiguous scope
@@ -209,13 +207,14 @@ See `agents/code-reviewer.md` for the complete QA protocol and `agent_reference/
 **Full Pipeline Analysis: Pre-Flight Check**
 
 This analysis will create:
-- [ ] Research Plan document
-- [ ] **STATE.md session state file** (for progress tracking and session recovery)
-- [ ] Marimo notebook (interactive walkthrough of pre-executed scripts)
-- [ ] Stakeholder report
+- [ ] Research Plan document summarizing all key goals, considerations, decisions, risks, interpretations, work stage summaries, and final work review notes
+- [ ] STATE.md session state file (for progress tracking and session recovery)
+- [ ] Comprehensive analytic scripts covering data fetch, clean, join, transformation, analysis, and QA for all of the above
 - [ ] Validated datasets (raw + processed)
-- [ ] Visualizations
-- [ ] **LEARNINGS.md lessons learned**
+- [ ] Marimo notebook "walkthrough" of successfully completed analysis scripts and their execution runtime logs for inspection
+- [ ] Illustrative key data visualizations
+- [ ] Summary stakeholder report synthesizing key findings and interpreting key data visualizations
+- [ ] LEARNINGS.md lessons learned
 
 Estimated scope:
 - Data sources: [identified sources]
@@ -223,15 +222,14 @@ Estimated scope:
 - Approximate records: [estimate]
 - Geographic scope: [geography]
 
-Estimated execution time: [time estimate based on complexity]
-
-**Confirm to proceed, or request scope adjustment.**
+**Please confirm whether you'd like me to begin with this approach, or let me know if you have any changes you'd like to make.**
 ```
 
 **User may:**
 - Confirm → Proceed to Stage 2
 - Request scope adjustment → Clarify and reconfirm
 - Decline → Switch to Discovery or Targeted Assist mode
+You MUST wait for user confirmation before proceeding.
 
 ---
 
@@ -403,20 +401,11 @@ Estimated execution time: [time estimate based on complexity]
 
 ---
 
-## Stage 3.5: Findings Synthesis (Conditional)
+## Stage 3.5: Findings Synthesis
 
 **Executor:** Subagent (general-purpose)
 **Agent:** `research-synthesizer`
 **Purpose:** Consolidate findings from parallel Stage 2-3 explorations when multiple data sources were explored
-
-### When to Invoke
-
-This stage is **conditional** and should be invoked when:
-- Stage 2-3 explored ≥2 data sources (e.g., CCD + CRDC, IPEDS + Scorecard)
-- Conflicting findings exist between sources
-- Multiple valid approaches need reconciliation
-
-**Skip this stage if:** Only one data source was explored.
 
 ### Actions
 
@@ -677,7 +666,7 @@ Run plan-checker
 **Skill:** `education-data-query`
 **Purpose:** Fetch data from Education Data Portal mirrors
 
-**Note:** Uses `general-purpose` subagent type (not `explore`) because it must save data files to `data/raw/`.
+**Note:** Uses `general-purpose` subagent type (not `Plan`) because it must save data files to `data/raw/`.
 
 ### Actions
 
@@ -770,7 +759,7 @@ assert df['year'].is_in(expected_years).all(), "WARNING: Unexpected years"
 **Skill:** `education-data-context`
 **Purpose:** Apply source-specific cleaning and context
 
-**Note:** Uses `general-purpose` subagent type (not `explore`) because it must save cleaned data files to `data/processed/`.
+**Note:** Uses `general-purpose` subagent type (not `Plan`) because it must save cleaned data files to `data/processed/`.
 
 ### Actions
 
