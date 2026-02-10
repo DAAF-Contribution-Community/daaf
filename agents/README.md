@@ -2,6 +2,8 @@
 
 This directory contains behavioral definitions for specialized agents used in the research workflow. Unlike skills (which provide domain knowledge), agents define **behavioral protocols** for specific roles.
 
+All agents in this directory MUST follow the canonical template at `agent_reference/AGENT_TEMPLATE.md`.
+
 ---
 
 ## Agent vs Skill Distinction
@@ -48,19 +50,32 @@ Research scripts are **write-once, execute-once, archive** artifacts — fundame
 
 ## Agent Index
 
-| Agent | Purpose | Subagent Type | Stage(s) |
-|-------|---------|---------------|----------|
-| **research-executor** | Execute data tasks with atomic precision | `general-purpose` | 5, 6, 7, 8 |
-| **code-reviewer** | Iterative QA review of executed scripts | `general-purpose` | 5-QA, 6-QA, 7-QA, 8-QA |
-| **data-planner** | Create research plans with task sequences | `general-purpose` | 4 |
-| **plan-checker** | Pre-execution plan validation (6 dimensions) | `Plan` | 4.5 |
-| **data-verifier** | Adversarial goal-backward verification with cross-artifact coherence | `Plan` | 12 |
-| **source-researcher** | Deep-dive into single data sources | `Plan` | 3 |
-| **research-synthesizer** | Consolidate parallel findings | `general-purpose` | 3.5 |
-| **debugger** | Diagnose issues scientifically | `general-purpose` | Any (on error) |
-| **notebook-assembler** | COMPILE scripts (VERBATIM copy, NO dashboards/widgets) | `general-purpose` | 9 |
-| **integration-checker** | Verify component wiring | `Plan` | 11, 12 |
-| **data-ingest** | Profile new datasets and author documentation Skills | `general-purpose` | Pre-pipeline (on demand) |
+| Agent | Purpose | Subagent Type | Stage(s) | Key Inputs | Key Outputs |
+|-------|---------|---------------|----------|------------|-------------|
+| **research-executor** | Execute data tasks with atomic precision, rigorous validation, and full audit-trail capture | `general-purpose` | 5, 6, 7, 8 | Task spec XML, Plan, skill knowledge, dependency outputs | Script + execution log + data files (parquet) |
+| **code-reviewer** | Iterative QA review verifying code correctness, methodology alignment, and output data quality | `general-purpose` | 5-QA, 6-QA, 7-QA, 8-QA | Executed script + log, Plan, output data files, stage/step/wave context | QA scripts (cr1-cr5) + severity report (PASSED/WARNING/BLOCKER) |
+| **data-planner** | Synthesize discovery findings into research plans with executable task sequences and wave-based parallelization | `general-purpose` | 4 | User request, clarifications, Stage 2-3 findings, project folder path | Plan.md document with tasks, waves, risks |
+| **plan-checker** | Verify research plans will achieve analysis goals via goal-backward analysis across six dimensions | `Plan` | 4.5 | Plan content (inlined), original user request, clarifications | Validation report: PASSED / PASSED_WITH_WARNINGS / ISSUES_FOUND |
+| **data-verifier** | Adversarial goal-backward verification of completed analyses with cross-artifact coherence | `Plan` | 12 | Plan, Notebook, Report, project folder, STATE.md, QA summary | Verification report: PASSED / ISSUES_FOUND with four-layer evidence |
+| **source-researcher** | Deep-dive into a single data source for caveats, coded values, suppression patterns, and pitfalls | `Plan` | 3 | Source name, variables of interest, research question, years, geographic scope | Five-section source report (Summary, Variables, Caveats, Patterns, Pitfalls) |
+| **research-synthesizer** | Consolidate parallel Stage 2-3 findings into actionable planning guidance with conflict resolution | `general-purpose` | 3.5 | Stage 2 findings, all Stage 3 findings, research question, year range, geographic scope | Integrated synthesis with conflicts, resolutions, and planning recommendations |
+| **debugger** | Diagnose data quality issues and analysis failures using scientific hypothesis-testing methodology | `general-purpose` | Any (on error) | Error message/symptom, failed script path, Plan, last successful operation | Root cause report with hypothesis log and verified fix |
+| **notebook-assembler** | Compile scripts into Marimo notebook via VERBATIM copy (NO dashboards, NO widgets, NO new code) | `general-purpose` | 9 | Completed scripts (stages 5-8), Plan, data files, figure files, project path | Marimo `.py` notebook with script walkthroughs and data inspection cells |
+| **integration-checker** | Validate component wiring: data flows, file references, and orphan detection | `Plan` | 9, 11, 12 | Plan, Notebook, Report, project folder, script-to-output mappings | Integration check report: CONNECTED / ISSUES FOUND with flow diagrams |
+| **data-ingest** | Profile new datasets and author comprehensive Skills documenting structure, values, and quality | `general-purpose` | Pre-pipeline (on demand) | Data file path + format, target skill name, intended use, domain context, optional docs | New Skill at `.claude/skills/` + Data Ingest Report |
+
+### Commonly Confused Pairs
+
+When adding a new agent, ensure it doesn't overlap with these frequently confused pairs. Each new agent's Core Distinction table (Section 2 of the template) must differentiate from its closest neighbor(s).
+
+| Pair | How They Differ |
+|------|----------------|
+| **code-reviewer** vs **data-verifier** | Reviewer validates individual scripts *during* execution (Stages 5-8); verifier performs adversarial whole-analysis check *after* completion (Stage 12) |
+| **code-reviewer** vs **debugger** | Reviewer validates *correctness* of working code; debugger diagnoses *failures* when code doesn't work |
+| **source-researcher** vs **research-synthesizer** | Researcher examines a *single* source in depth; synthesizer *combines* findings across multiple sources |
+| **source-researcher** vs **data-ingest** | Researcher examines *existing* skills for a known source; ingest *creates new* skills from raw data files |
+| **data-planner** vs **plan-checker** | Planner *creates* plans; checker *validates* plans (never fixes them) |
+| **notebook-assembler** vs **integration-checker** | Assembler *builds* the notebook (verbatim script compilation); checker *verifies* wiring between components |
 
 ---
 
@@ -70,169 +85,169 @@ This diagram shows how agents interact throughout the pipeline:
 
 ```
                               USER REQUEST
-                                   │
-                                   ▼
-                    ┌──────────────────────────────┐
-                    │  PHASE 1: DISCOVERY          │
-                    │  (Orchestrator coordinates)  │
-                    └──────────────────────────────┘
-                                   │
-                    ┌──────────────┴──────────────┐
-                    ▼                              ▼
-         ┌───────────────────┐         ┌───────────────────┐
-         │ source-researcher │         │ source-researcher │
-         │   (Source A)      │         │   (Source B)      │
-         │   [Stage 3]       │         │   [Stage 3]       │
-         └─────────┬─────────┘         └─────────┬─────────┘
-                   │                              │
-                   └──────────────┬───────────────┘
-                                  ▼
-                    ┌──────────────────────────────┐
-                    │   research-synthesizer       │
-                    │   [Stage 3.5 - if needed]    │
-                    └──────────────┬───────────────┘
-                                   │
-                    ┌──────────────┴──────────────────┐
-                    │  PHASE 2: PLANNING              │
-                    └──────────────┬──────────────────┘
-                                   ▼
-                    ┌──────────────────────────────┐
-                    │      data-planner            │
-                    │      [Stage 4]               │
-                    └──────────────┬───────────────┘
-                                   │
-                    ┌──────────────┴──────────────────┐
-                    │       PLAN VALIDATION LOOP      │
-                    └──────────────┬──────────────────┘
-                                   ▼
-                    ┌──────────────────────────────┐
-                    │       plan-checker           │◄───────┐
-                    │       [Stage 4.5]            │        │
-                    └──────────────┬───────────────┘        │
-                                   │                        │
-                    ┌──────────────┼──────────────┐         │
-                    │              │              │         │
-                    ▼              ▼              ▼         │
-                 PASSED      WARNINGS       BLOCKED         │
-                    │              │              │         │
-                    │              │              ▼         │
-                    │              │    ┌─────────────┐     │
-                    │              │    │data-planner │     │
-                    │              │    │ (revision)  │─────┘
-                    │              │    └─────────────┘
-                    │              │         │
-                    │              │         ▼
-                    │              │    (max 2 iterations,
-                    │              │     then escalate to user)
-                    │              │
-                    └──────────────┼──────────────┘
-                                   ▼
-                    ┌──────────────────────────────┐
-                    │  PHASE 3-4: EXECUTION        │
-                    │  (research-executor +        │
-                    │   code-reviewer QA)          │
-                    └──────────────┬───────────────┘
-                                   │
-         ┌─────────────────────────┼─────────────────────────┬─────────────────────────┐
-         │                         │                         │                         │
-         ▼                         ▼                         ▼                         ▼
-    ┌─────────┐              ┌─────────┐              ┌─────────┐              ┌─────────┐
-    │Stage 5  │              │Stage 6  │              │Stage 7  │              │Stage 8  │
-    │(fetch)  │              │(clean)  │              │(trans)  │              │(viz)    │
-    │ CP1     │              │ CP2     │              │ CP3×N   │              │ CP4     │
-    └────┬────┘              └────┬────┘              └────┬────┘              └────┬────┘
-         │                        │                        │                        │
-         ▼                        ▼                        ▼                        ▼
-    ┌─────────┐              ┌─────────┐              ┌─────────┐              ┌─────────┐
-    │Stage 5  │              │Stage 6  │              │Stage 7  │              │Stage 8  │
-    │   QA    │─────────────▶│   QA    │─────────────▶│   QA    │─────────────▶│   QA    │
-    │(review) │              │(review) │              │(review) │              │(review) │
-    └────┬────┘              └────┬────┘              └────┬────┘              └────┬────┘
-         │                        │                        │                        │
-         │ BLOCKER?               │ BLOCKER?               │ BLOCKER?               │ BLOCKER?
-         ├─► Revision ─┐          ├─► Revision ─┐          ├─► Revision ─┐          ├─► Revision ─┐
-         │             │          │             │          │             │          │             │
-         │◄────────────┘          │◄────────────┘          │◄────────────┘          │◄────────────┘
-         │                        │                        │                        │
-         │ (on error)             │ (on error)             │ (on error)             │ (on error)
-         └───────────┬────────────┴────────────┬───────────┴────────────┬───────────┘
-                     ▼                         ▼                        │
-              ┌─────────────┐           ┌───────────┐                   │
-              │  debugger   │           │   USER    │◄──────────────────┘
-              │  (diagnose) │──────────▶│(escalate) │
-              └─────────────┘           └───────────┘
-                                   │
-                                   ▼
-                    ┌──────────────────────────────┐
-                    │  PHASE 5: DELIVERY           │
-                    └──────────────┬───────────────┘
-                                   │
-                    ┌──────────────┴──────────────┐
-                    ▼                              │
-         ┌───────────────────┐                     │
-         │notebook-assembler │                     │
-         │    [Stage 9]      │                     │
-         └─────────┬─────────┘                     │
-                   │                               │
-                   ▼                               │
-         ┌───────────────────┐                     │
-         │integration-checker│◄────────────────────┘
-         │  [Stage 11,12]    │
-         └─────────┬─────────┘
-                   │
-                   ▼
-         ┌───────────────────┐
-         │   data-verifier   │
-         │   [Stage 12]      │
-         └───────────────────┘
-                                   │
-                                   ▼
+                                   |
+                                   v
+                    +------------------------------+
+                    |  PHASE 1: DISCOVERY          |
+                    |  (Orchestrator coordinates)  |
+                    +------------------------------+
+                                   |
+                    +--------------+--------------+
+                    v                              v
+         +-------------------+         +-------------------+
+         | source-researcher |         | source-researcher |
+         |   (Source A)      |         |   (Source B)      |
+         |   [Stage 3]       |         |   [Stage 3]       |
+         +---------+---------+         +---------+---------+
+                   |                              |
+                   +--------------+---------------+
+                                  v
+                    +------------------------------+
+                    |   research-synthesizer       |
+                    |   [Stage 3.5 - synthesis]    |
+                    +--------------+---------------+
+                                   |
+                    +--------------+-----------------+
+                    |  PHASE 2: PLANNING              |
+                    +--------------+-----------------+
+                                   v
+                    +------------------------------+
+                    |      data-planner            |
+                    |      [Stage 4]               |
+                    +--------------+---------------+
+                                   |
+                    +--------------+-----------------+
+                    |       PLAN VALIDATION LOOP      |
+                    +--------------+-----------------+
+                                   v
+                    +------------------------------+
+                    |       plan-checker           |<--------+
+                    |       [Stage 4.5]            |        |
+                    +--------------+---------------+        |
+                                   |                        |
+                    +--------------+--------------+         |
+                    |              |              |         |
+                    v              v              v         |
+                 PASSED      WARNINGS       BLOCKED         |
+                    |              |              |         |
+                    |              |              v         |
+                    |              |    +-------------+     |
+                    |              |    |data-planner |     |
+                    |              |    | (revision)  |-----+
+                    |              |    +-------------+
+                    |              |         |
+                    |              |         v
+                    |              |    (max 2 iterations,
+                    |              |     then escalate to user)
+                    |              |
+                    +--------------+--------------+
+                                   v
+                    +------------------------------+
+                    |  PHASE 3-4: EXECUTION        |
+                    |  (research-executor +        |
+                    |   code-reviewer QA)          |
+                    +--------------+---------------+
+                                   |
+         +-------------------------+-------------------------+-------------------------+
+         |                         |                         |                         |
+         v                         v                         v                         v
+    +---------+              +---------+              +---------+              +---------+
+    |Stage 5  |              |Stage 6  |              |Stage 7  |              |Stage 8  |
+    |(fetch)  |              |(clean)  |              |(trans)  |              |(viz)    |
+    | CP1     |              | CP2     |              | CP3xN   |              | QA4     |
+    +----+----+              +----+----+              +----+----+              +----+----+
+         |                        |                        |                        |
+         v                        v                        v                        v
+    +---------+              +---------+              +---------+              +---------+
+    |Stage 5  |              |Stage 6  |              |Stage 7  |              |Stage 8  |
+    |   QA    |------------->|   QA    |------------->|   QA    |------------->|   QA    |
+    |(review) |              |(review) |              |(review) |              |(review) |
+    +----+----+              +----+----+              +----+----+              +----+----+
+         |                        |                        |                        |
+         | BLOCKER?               | BLOCKER?               | BLOCKER?               | BLOCKER?
+         +-> Revision -+          +-> Revision -+          +-> Revision -+          +-> Revision -+
+         |             |          |             |          |             |          |             |
+         |<------------+          |<------------+          |<------------+          |<------------+
+         |                        |                        |                        |
+         | (on error)             | (on error)             | (on error)             | (on error)
+         +-----------+------------+------------+-----------+------------+-----------+
+                     v                         v                        |
+              +-------------+           +-----------+                   |
+              |  debugger   |           |   USER    |<------------------+
+              |  (diagnose) |---------->|(escalate) |
+              +-------------+           +-----------+
+                                   |
+                                   v
+                    +------------------------------+
+                    |  PHASE 5: DELIVERY           |
+                    +--------------+---------------+
+                                   |
+                    +--------------+--------------+
+                    v                              |
+         +-------------------+                     |
+         |notebook-assembler |                     |
+         |    [Stage 9]      |                     |
+         +---------+---------+                     |
+                   |                               |
+                   v                               |
+         +-------------------+                     |
+         |integration-checker|<--------------------+
+         |  [Stage 9,11,12]  |
+         +---------+---------+
+                   |
+                   v
+         +-------------------+
+         |   data-verifier   |
+         |   [Stage 12]      |
+         +-------------------+
+                                   |
+                                   v
                               DELIVERY
 ```
 
 ---
 
-## Plan Validation Loop (plan-checker ↔ data-planner)
+## Plan Validation Loop (plan-checker <-> data-planner)
 
 When plan-checker identifies issues, the revision loop executes:
 
 ```
 data-planner creates Plan
-         │
-         ▼
+         |
+         v
 plan-checker validates
-         │
-    ┌────┴────┐
-    │         │
+         |
+    +----+----+
+    |         |
  PASSED    ISSUES
-    │         │
-    ▼         ▼
+    |         |
+    v         v
 Stage 5   Categorize issues
-              │
-    ┌─────────┴─────────┐
-    │                   │
+              |
+    +---------+---------+
+    |                   |
  WARNINGS           BLOCKERS
-    │                   │
-    ▼                   ▼
+    |                   |
+    v                   v
 Document &         data-planner
 proceed            revises Plan
-    │                   │
-    ▼                   ▼
+    |                   |
+    v                   v
 Stage 5           plan-checker
                validates again
-                       │
-            ┌──────────┴──────────┐
-            │                     │
+                       |
+            +----------+----------+
+            |                     |
          PASSED              STILL BLOCKED
-            │                     │
-            ▼                     ▼
+            |                     |
+            v                     v
          Stage 5          (iteration 2?)
-                               │
-                    ┌──────────┴──────────┐
-                    │                     │
+                               |
+                    +----------+----------+
+                    |                     |
                  Yes (retry)         No (max reached)
-                    │                     │
-                    ▼                     ▼
+                    |                     |
+                    v                     v
               data-planner         ESCALATE TO USER
               revises again
 ```
@@ -250,23 +265,24 @@ Shows which agents produce output consumed by other agents:
 
 | Producer Agent | Consumer Agent(s) | Data Produced | When |
 |----------------|-------------------|---------------|------|
-| **source-researcher** | research-synthesizer | Source findings (per source) | Multi-source analyses |
-| **source-researcher** | data-planner | Source findings | Single-source analyses |
-| **research-synthesizer** | data-planner | Consolidated synthesis report | Multi-source analyses |
-| **data-planner** | plan-checker | Plan document | Always (Stage 4→4.5) |
-| **plan-checker** | data-planner | Issues report | When BLOCKED |
-| **plan-checker** | Orchestrator | Validation status | PASSED or WARNINGS |
-| **research-executor** | code-reviewer | Executed script + output files | After every script |
-| **research-executor** | debugger | Error context | On failure |
-| **code-reviewer** | Orchestrator | QA report (BLOCKER/WARNING/INFO) | After every script |
-| **code-reviewer** | research-executor | Revision request | When BLOCKER found |
-| **code-reviewer** | Stage 10 | QA findings log | For aggregation |
-| **debugger** | research-executor | Diagnosis + fix | After diagnosis |
-| **debugger** | Orchestrator | Escalation | Undiagnosed issues |
-| **research-executor** (Stage 8) | notebook-assembler | Scripts + data files | After Stage 8 completes |
+| **source-researcher** | research-synthesizer | Five-section source report (per source) | Multi-source analyses |
+| **source-researcher** | data-planner | Five-section source report | Single-source analyses |
+| **research-synthesizer** | data-planner | Integrated synthesis with conflict resolutions and recommendations | Multi-source analyses |
+| **data-planner** | plan-checker | Plan.md document with tasks, waves, risks | Always (Stage 4 -> 4.5) |
+| **plan-checker** | data-planner | Issues report (YAML format with dimension, severity, details) | When ISSUES_FOUND with blockers |
+| **plan-checker** | Orchestrator | Validation status (PASSED / PASSED_WITH_WARNINGS / ISSUES_FOUND) | Always |
+| **research-executor** | code-reviewer | Executed script + appended execution log + output data files | After every Stage 5-8 script |
+| **research-executor** | debugger | Failed script + error context + last successful operation | On failure |
+| **code-reviewer** | Orchestrator | QA report with severity (PASSED / WARNING / BLOCKER) | After every script review |
+| **code-reviewer** | research-executor | Revision request with BLOCKER details | When BLOCKER found |
+| **code-reviewer** | Stage 10 | QA findings log (accumulated WARNINGs) | For aggregation |
+| **debugger** | research-executor | Root cause diagnosis + verified fix + prevention recommendation | After diagnosis |
+| **debugger** | Orchestrator | Escalation (when UNRESOLVED or methodology issue) | Undiagnosed issues |
+| **research-executor** (Stage 8) | notebook-assembler | Scripts + data files + figures | After Stage 8 completes |
 | **notebook-assembler** | integration-checker | Marimo notebook (VERBATIM script copies, NO new code) | After Stage 9 compilation |
-| **integration-checker** | data-verifier | Wiring status | Stage 11,12 |
-| **data-verifier** | Orchestrator | Verification report | Before delivery |
+| **integration-checker** | data-verifier | Wiring status (CONNECTED / ISSUES FOUND) | Stages 9, 11, 12 |
+| **data-verifier** | Orchestrator | Verification report (PASSED / ISSUES_FOUND with four-layer evidence) | Before delivery |
+| **data-ingest** | Orchestrator | New Skill at `.claude/skills/` + Data Ingest Report | Pre-pipeline, on demand |
 
 ---
 
@@ -276,35 +292,35 @@ When errors occur, this routing determines which agent handles recovery:
 
 ```
 ERROR DETECTED
-      │
-      ├─ Data issue (empty, wrong shape)?
-      │       └─► research-executor retry (max 2)
-      │               └─► debugger (if still failing)
-      │
-      ├─ QA BLOCKER found (code-reviewer)?
-      │       └─► Is it a methodology issue?
-      │               ├─► YES → ESCALATE to user immediately
-      │               └─► NO → research-executor revision
-      │                       └─► code-reviewer re-reviews
-      │                               ├─► Resolved → Proceed
-      │                               └─► Still BLOCKER after 2 attempts → ESCALATE
-      │
-      ├─ Transformation issue (unexpected row loss)?
-      │       └─► debugger
-      │               ├─► Fix identified → research-executor applies fix
-      │               └─► Root cause unclear → ESCALATE to user
-      │
-      ├─ Plan issue (missing section, ambiguous task)?
-      │       └─► data-planner (revision)
-      │               └─► plan-checker validates
-      │
-      ├─ Integration issue (broken references)?
-      │       └─► integration-checker diagnoses
-      │               └─► Orchestrator coordinates fix
-      │
-      └─ Verification failure (stub detected, missing artifact)?
-              └─► data-verifier documents
-                      └─► Orchestrator coordinates completion
+      |
+      +- Data issue (empty, wrong shape)?
+      |       +-> research-executor retry (max 2)
+      |               +-> debugger (if still failing)
+      |
+      +- QA BLOCKER found (code-reviewer)?
+      |       +-> Is it a methodology issue?
+      |               +-> YES -> ESCALATE to user immediately
+      |               +-> NO -> research-executor revision
+      |                       +-> code-reviewer re-reviews
+      |                               +-> Resolved -> Proceed
+      |                               +-> Still BLOCKER after 2 attempts -> ESCALATE
+      |
+      +- Transformation issue (unexpected row loss)?
+      |       +-> debugger
+      |               +-> Fix identified -> research-executor applies fix
+      |               +-> Root cause unclear -> ESCALATE to user
+      |
+      +- Plan issue (missing section, ambiguous task)?
+      |       +-> data-planner (revision)
+      |               +-> plan-checker validates
+      |
+      +- Integration issue (broken references)?
+      |       +-> integration-checker diagnoses
+      |               +-> Orchestrator coordinates fix
+      |
+      +- Verification failure (stub detected, missing artifact)?
+              +-> data-verifier documents
+                      +-> Orchestrator coordinates completion
 ```
 
 **Error Budget:**
@@ -312,7 +328,7 @@ ERROR DETECTED
 - code-reviewer: 2 revision cycles per script before escalation
 - debugger: 2 diagnostic cycles before escalation
 - data-planner: 2 revision cycles before escalation
-- Any agent: Context degradation → Compress and continue or restart
+- Any agent: Context degradation -> Compress and continue or restart
 
 **QA BLOCKER Types:**
 
@@ -329,7 +345,7 @@ ERROR DETECTED
 
 ### research-executor
 
-**Use when:** Executing data acquisition, cleaning, or transformation tasks.
+**Use when:** Executing data acquisition, cleaning, transformation, or visualization tasks in Stages 5-8. Each invocation performs exactly ONE operation with pre/post validation.
 
 **CRITICAL: File-First Protocol Required**
 
@@ -346,19 +362,37 @@ Closely read `agent_reference/EXECUTION_CAPTURE.md` for the mandatory file-first
 - Atomic execution (one operation at a time)
 - Pre/post state capture
 - Checkpoint integration (CP1-CP4)
-- Commit after each successful task (script + embedded log)
+- Immutable versioning (never modify after execution log appended)
 
 **Invocation pattern:**
 ```python
 Task({
-    description: "Stage 5: Fetch CCD data",
-    prompt: """You are a Research Executor. Follow the protocol in `{BASE_DIR}/agents/research-executor.md`.
+    description: "Stage [N]: [Task Name]",
+    prompt: """You are a Research Executor. Follow the protocol in
+    `{BASE_DIR}/agents/research-executor.md`.
 
     **BASE_DIR:** {BASE_DIR}
     All relative paths in referenced files resolve from BASE_DIR.
 
-    [Task specification]
-    """,
+    Call the skill tool with name '[skill-name]'.
+
+    **CONTEXT:**
+    Research Question: [verbatim]
+    Plan Path: {BASE_DIR}/research/[project]/[Plan filename]
+    Risk Register Items: [relevant items]
+    Expected Row Count: [range] | Critical Columns: [list]
+
+    **TASK:**
+    <task name="[task-name]" type="auto" wave="[N]">
+      <depends_on>[deps]</depends_on>
+      <skill>[skill]</skill>
+      <files><input>[abs path]</input><output>[abs path]</output></files>
+      <action>1. [Step 1] 2. [Step 2] 3. [Step 3]</action>
+      <verify>[Criterion 1]; [Criterion 2]</verify>
+      <done>[Measurable completion condition]</done>
+    </task>
+
+    Return findings using the Research Executor Output Format.""",
     subagent_type: "general-purpose"
 })
 ```
@@ -367,24 +401,50 @@ Task({
 
 ### data-planner
 
-**Use when:** Creating or refining the research Plan document.
+**Use when:** Creating or refining the research Plan document at Stage 4, or handling plan revisions when plan-checker or user identifies issues.
 
 **Key behaviors:**
-- Requirements-driven planning (from research question)
-- Task specificity test
+- Requirements-driven planning (backward from Observable Truths)
+- Task specificity test (every task unambiguous for any agent)
 - Wave-based sequencing for parallel execution
 - Dependency mapping
 
 **Invocation pattern:**
 ```python
 Task({
-    description: "Stage 4: Create research plan",
-    prompt: """You are a Data Planner. Follow the protocol in `{BASE_DIR}/agents/data-planner.md`.
+    description: "Stage 4: Plan Creation",
+    prompt: """You are a Data Planner. Follow the protocol in
+    `{BASE_DIR}/agents/data-planner.md`.
 
     **BASE_DIR:** {BASE_DIR}
     All relative paths in referenced files resolve from BASE_DIR.
 
-    [Discovery findings to synthesize]
+    Read `{BASE_DIR}/agent_reference/PLAN_TEMPLATE.md` for the plan template.
+
+    **ORIGINAL USER REQUEST:**
+    {verbatim_user_request}
+
+    **CLARIFICATIONS:**
+    {clarifications}
+
+    **STAGE 2 FINDINGS:**
+    {stage_2_exploration_findings}
+
+    **STAGE 3 FINDINGS:**
+    {stage_3_source_deep_dive_findings}
+
+    **PROJECT FOLDER:** {project_folder_path}
+    **DATE PREFIX:** {date_prefix}
+
+    **TASK:**
+    Create a comprehensive research plan. Write Plan.md to the project
+    folder. Return findings using the Data Planner Output Format.
+
+    [If revision mode:]
+    <revision_context>
+    {checker_issues_yaml}
+    </revision_context>
+    Read existing Plan at {existing_plan_path} before making changes.
     """,
     subagent_type: "general-purpose"
 })
@@ -394,11 +454,11 @@ Task({
 
 ### data-verifier
 
-**Use when:** Final review before delivery, or verifying specific artifacts.
+**Use when:** Final review before delivery (Stage 12), or verifying specific artifacts. Performs adversarial goal-backward verification with cross-artifact coherence checks.
 
 **Key behaviors:**
 - Adversarial goal-backward verification (skeptical, not checklist-driven)
-- Four-level checks: Existence → Substantive → Wired → Coherent
+- Four-level checks: Existence -> Substantive -> Wired -> Coherent
 - Cross-artifact coherence verification (data, notebook, report tell same story)
 - Research question stress test
 - Independent assessment before Plan anchoring
@@ -407,32 +467,31 @@ Task({
 **Invocation pattern:**
 ```python
 Task({
-    description: "Stage 12: Final verification",
-    prompt: """You are a Data Verifier. Follow the protocol in `{BASE_DIR}/agents/data-verifier.md`.
+    description: "Stage 12: Final Verification",
+    prompt: """You are a Data Verifier. Follow the protocol in
+    `{BASE_DIR}/agents/data-verifier.md`.
 
     **BASE_DIR:** {BASE_DIR}
     All relative paths in referenced files resolve from BASE_DIR.
 
-    **PROJECT TO VERIFY:**
-    Path: research/YYYY-MM-DD [Title]/
+    **CONTEXT:**
+    - Research question (verbatim): {research_question}
+    - Plan path: {plan_path}
+    - Notebook path: {notebook_path}
+    - Report path: {report_path}
+    - Project folder: {project_folder}
+    - STATE.md path: {state_path}
+    - LEARNINGS.md path: {learnings_path}
+    - QA Summary findings: {qa_summary_or_path}
 
-    **RESEARCH QUESTION:**
-    [Verbatim from Plan]
+    **TASK:**
+    Perform adversarial goal-backward verification of the completed
+    analysis. Verify all four layers (existence, substantiveness,
+    wiring, coherence). Perform research question stress test,
+    Telephone Game trace, alternative interpretation probing, silent
+    failure audit, and QA history review.
 
-    **PLAN COMMITMENTS:**
-    [Paste relevant Plan sections including Observable Truths]
-
-    **QA HISTORY:**
-    [Summary of QA findings from Stage 10]
-
-    Execute the full verification protocol including:
-    1. Independent assessment (before reading Observable Truths)
-    2. Four-level verification (Existence, Substantive, Wired, Coherent)
-    3. Adversarial verification (research question stress test, alternative interpretations, silent failure audit)
-    4. Cross-artifact coherence check
-
-    Return verification report with PASSED/FAILED status and articulated reasoning.
-    """,
+    Return findings using the Data Verifier Output Format.""",
     subagent_type: "Plan"
 })
 ```
@@ -441,25 +500,45 @@ Task({
 
 ### research-synthesizer
 
-**Use when:** Multiple data sources or exploration tasks need consolidation.
+**Use when:** Multiple data sources or exploration tasks need consolidation (Stage 3.5, after all per-source research completes).
 
 **Key behaviors:**
-- Multi-source integration
-- Conflict resolution
-- Uncertainty documentation
-- Actionable recommendations
+- Multi-source integration with explicit conflict resolution
+- Opinionated recommendations (not just descriptions)
+- Uncertainty documentation with confidence levels
+- Actionable guidance structured for data-planner consumption
 
 **Invocation pattern:**
 ```python
 Task({
-    description: "Synthesize Stage 2-3 findings",
-    prompt: """You are a Research Synthesizer. Follow the protocol in `{BASE_DIR}/agents/research-synthesizer.md`.
+    description: "Stage 3.5: Research Synthesis",
+    prompt: """You are a Research Synthesizer. Follow the protocol in
+    `{BASE_DIR}/agents/research-synthesizer.md`.
 
     **BASE_DIR:** {BASE_DIR}
     All relative paths in referenced files resolve from BASE_DIR.
 
-    [Findings from Stage 2, Stage 3a, Stage 3b, ...]
-    """,
+    **CONTEXT:**
+    Research question: [verbatim research question]
+    Year range: [exact range, e.g., "2019-2023"]
+    Geographic scope: [e.g., "national", "California only"]
+    Sources identified in Stage 2: [count and names]
+
+    **STAGE 2 FINDINGS:**
+    [Full Stage 2 output from education-data-explorer]
+
+    **STAGE 3a FINDINGS ([source name]):**
+    [Full Stage 3a output from source-researcher]
+
+    **STAGE 3b FINDINGS ([source name]):**
+    [Full Stage 3b output from source-researcher]
+
+    **TASK:**
+    Synthesize all Stage 2-3 findings into unified planning guidance.
+    Resolve all conflicts. Flag LOW confidence items.
+    Produce actionable recommendations for data-planner.
+
+    Return findings using the Research Synthesizer Output Format.""",
     subagent_type: "general-purpose"
 })
 ```
@@ -468,25 +547,40 @@ Task({
 
 ### debugger
 
-**Use when:** Something fails and root cause is unclear.
+**Use when:** Something fails and root cause is unclear, or code-reviewer identifies complex issues requiring root-cause analysis.
 
 **Key behaviors:**
-- Scientific hypothesis testing
+- Scientific hypothesis testing (max 5 cycles)
 - Binary search for issue isolation
 - Systematic evidence collection
 - Falsifiable hypothesis formation
+- Documented elimination process
 
 **Invocation pattern:**
 ```python
 Task({
-    description: "Debug: Row count drop in Stage 7",
-    prompt: """You are a Debugger. Follow the protocol in `{BASE_DIR}/agents/debugger.md`.
+    description: "Debug: Stage {N} - {error_description}",
+    prompt: """You are a Debugger. Follow the protocol in
+    `{BASE_DIR}/agents/debugger.md`.
 
     **BASE_DIR:** {BASE_DIR}
     All relative paths in referenced files resolve from BASE_DIR.
 
-    [Problem description and evidence]
-    """,
+    **CONTEXT:**
+    - Error: {error_message_verbatim}
+    - Stage: {stage_number}, Step: {step_number}
+    - Failed script: {absolute_script_path}
+    - Last successful operation: {last_success_description}
+    - Plan: {absolute_plan_path}
+    [If QA-triggered:]
+    - QA Report: {qa_report_path}
+    - BLOCKER check: {specific_check_that_failed}
+
+    **TASK:**
+    Diagnose the root cause of this failure. Follow the scientific
+    debugging method (max 5 hypothesis cycles). Save diagnostic
+    scripts to scripts/debug/. Return findings using the Debugger
+    Output Format.""",
     subagent_type: "general-purpose"
 })
 ```
@@ -495,30 +589,41 @@ Task({
 
 ### plan-checker
 
-**Use when:** Validating a plan before execution begins (between Stage 4 and Stage 5).
+**Use when:** Validating a plan before execution begins (Stage 4.5, between Plan creation and Stage 5). Performs goal-backward analysis across six dimensions.
 
 **Key behaviors:**
-- Six-dimension validation (requirements, completeness, dependencies, skills, scope, verification)
+- Six-dimension validation (Completeness, Consistency, Feasibility, Testability, Clarity, Scope)
+- Goal-backward verification (starts from research outcome, works backward)
 - Task specificity testing
 - Blocking issue identification
 - Non-blocking (identifies issues but doesn't fix)
+- Methodology precision enforcement
 
 **Invocation pattern:**
 ```python
 Task({
-    description: "Validate plan before execution",
-    prompt: """You are a Plan Checker. Follow the protocol in `{BASE_DIR}/agents/plan-checker.md`.
+    description: "Stage 4.5: Plan Verification",
+    prompt: """You are a Plan Checker. Follow the protocol in
+    `{BASE_DIR}/agents/plan-checker.md`.
 
     **BASE_DIR:** {BASE_DIR}
     All relative paths in referenced files resolve from BASE_DIR.
 
     **PLAN CONTENT:**
-    {inline the plan content}
+    {inline the full plan content here}
 
     **ORIGINAL REQUEST:**
-    {inline the request}
-    """,
-    subagent_type: "Plan"  # Read-only validation
+    {inline the original user request verbatim}
+
+    **CLARIFICATIONS:**
+    {inline any user clarifications, or "None"}
+
+    Validate the plan across all six dimensions (Completeness, Consistency,
+    Feasibility, Testability, Clarity, Scope). Return structured report with
+    per-dimension confidence and issues in YAML format.
+
+    Return findings using the Plan Checker Output Format.""",
+    subagent_type: "Plan"
 })
 ```
 
@@ -526,28 +631,45 @@ Task({
 
 ### source-researcher
 
-**Use when:** Deep-diving into a single data source's caveats, patterns, and pitfalls.
+**Use when:** Deep-diving into a single data source's caveats, patterns, and pitfalls (Stage 3, one invocation per source identified in Stage 2).
 
 **Key behaviors:**
 - Single-source focus (one source per invocation)
-- Five-section output (SUMMARY, VARIABLES, CAVEATS, PATTERNS, PITFALLS)
-- Confidence assessment
-- Pitfall identification
+- Five-deliverable output contract (Summary, Variables, Caveats, Patterns, Pitfalls)
+- Confidence assessment per section
+- Pitfall identification with mitigation
+- Truth Hierarchy application for discrepancies
 
 **Invocation pattern:**
 ```python
 Task({
-    description: "Stage 3: Research CCD source",
-    prompt: """You are a Source Researcher. Follow the protocol in `{BASE_DIR}/agents/source-researcher.md`.
+    description: "Stage 3: Research [Source] source",
+    prompt: """You are a Source Researcher. Follow the protocol in
+    `{BASE_DIR}/agents/source-researcher.md`.
 
     **BASE_DIR:** {BASE_DIR}
     All relative paths in referenced files resolve from BASE_DIR.
 
-    Call the skill tool with name 'education-data-source-ccd'.
+    Call the skill tool with name '[*-data-source-*]'.
 
-    [Context and variables to investigate]
-    """,
-    subagent_type: "Plan"  # Read-only
+    **CONTEXT:**
+    Research question: [verbatim question from Stage 1]
+    Variables of interest: [list from Stage 2, with flagging reasons]
+    Years needed: [exact start year]-[exact end year]
+    Geographic scope: [national / state list / single state]
+
+    **SPECIFIC INVESTIGATION NEEDS:**
+    - [Variable flagged for deep-dive from Stage 2]
+    - [Specific caveat question from Stage 2]
+
+    **TASK:**
+    Produce the five-section source research report with confidence
+    assessment per section. Flag any LOW confidence findings with
+    verification recommendations. Apply the Truth Hierarchy if any
+    discrepancies are found between skill docs and other sources.
+
+    Return findings using the Source Researcher Output Format.""",
+    subagent_type: "Plan"
 })
 ```
 
@@ -567,84 +689,106 @@ Task({
 - A script viewer
 
 **What this agent is NOT:**
-- ❌ A dashboard builder
-- ❌ An analysis tool
-- ❌ An interactive explorer
+- A dashboard builder
+- An analysis tool
+- An interactive explorer
 
 **Key behaviors:**
 - READ script files from `scripts/`
-- COPY code VERBATIM into code cells
+- COPY code VERBATIM into code cells (commented out with `# ` prefix)
 - COPY execution logs VERBATIM into accordion cells
 - ADD ONLY `pl.read_parquet() + mo.ui.table()` cells
+- Applies the Four-Cell Pattern per script (header, commented code, log accordion, data load)
 
 **PROHIBITIONS (agent FAILED if output contains):**
-- `mo.ui.dropdown()` — NO dropdowns
-- `mo.ui.slider()` — NO sliders
-- `mo.ui.multiselect()` — NO multiselects
-- `.group_by()` outside script code — NO new aggregations
-- `.pivot()` outside script code — NO new pivots
-- `.filter()` in data cells — NO filtering
-- `.with_columns()` in data cells — NO transforms
+- `mo.ui.dropdown()` -- NO dropdowns
+- `mo.ui.slider()` -- NO sliders
+- `mo.ui.multiselect()` -- NO multiselects
+- `.group_by()` outside script code -- NO new aggregations
+- `.pivot()` outside script code -- NO new pivots
+- `.filter()` in data cells -- NO filtering
+- `.with_columns()` in data cells -- NO transforms
 
 **Invocation pattern:**
 ```python
 Task({
-    description: "Stage 9: Compile scripts into notebook",
-    prompt: """You are a Notebook Assembler. Follow the protocol in `{BASE_DIR}/agents/notebook-assembler.md`.
+    description: "Stage 9: Notebook Assembly",
+    prompt: """You are a Notebook Assembler. Follow the protocol in
+    `{BASE_DIR}/agents/notebook-assembler.md`.
 
     **BASE_DIR:** {BASE_DIR}
     All relative paths in referenced files resolve from BASE_DIR.
 
-You are a FILE COMPILER. Your job:
-1. READ each script file from scripts/
-2. COPY code VERBATIM into marimo cells
-3. COPY execution logs VERBATIM into accordions
-4. ADD ONLY pl.read_parquet() + mo.ui.table() cells
+    **CONTEXT:**
+    - Project path: {project_path}
+    - Plan path: {plan_path}
+    - Research question: {research_question}
+    - Date prefix: {date_prefix}
+    - Scripts directory: {scripts_dir}
 
-❌ DO NOT create dropdowns, sliders, or filters
-❌ DO NOT write new aggregations or transformations
-❌ DO NOT build a dashboard
+    **TASK:**
+    Compile all scripts from scripts/stage{5,6,7,8}_*/ into a
+    Marimo notebook at {notebook_path}. Apply the Four-Cell Pattern
+    per script (header, commented code, log accordion, data load).
+    NO new analysis code. NO dashboards. NO widgets.
+    Test with marimo run before reporting.
 
-**PROJECT:** research/2026-01-24 Analysis/
-**SCRIPTS:** scripts/stage5_fetch/, stage6_clean/, stage7_transform/, stage8_viz/
-**OUTPUT:** 2026-01-24 Analysis.py
-    """,
+    Return findings using the Notebook Assembler Output Format.""",
     subagent_type: "general-purpose"
 })
 ```
 
 **What notebook-assembler produces:**
 - Marimo notebook with navigation (markdown only)
-- VERBATIM script code in code cells
+- VERBATIM script code in code cells (commented out)
 - VERBATIM execution logs in accordion cells
 - Simple data load + display cells (THE ONLY NEW CODE)
 
-**Verification:** If output contains `mo.ui.dropdown`, `mo.ui.slider`, `group_by` outside scripts, or `filter` in data cells → REJECT and re-run
+**Verification:** If output contains `mo.ui.dropdown`, `mo.ui.slider`, `group_by` outside scripts, or `filter` in data cells -> REJECT and re-run
 
 ---
 
 ### integration-checker
 
-**Use when:** Verifying connections between components work (Stage 11, 12).
+**Use when:** Verifying connections between components work (Stages 9, 11, 12). Traces data flows from raw inputs to final outputs, ensures nothing is orphaned, broken, or disconnected.
 
 **Key behaviors:**
-- Flow tracing (source to output)
-- Reference validation
+- Flow tracing (source to output through complete pipeline)
+- Reference validation (notebook->data, report->figures)
 - Export/import mapping
 - Orphan detection
+- E2E flow verification
 
 **Invocation pattern:**
 ```python
 Task({
-    description: "Verify notebook-to-data integration",
-    prompt: """You are an Integration Checker. Follow the protocol in `{BASE_DIR}/agents/integration-checker.md`.
+    description: "Stage [9|11|12]: Integration Check",
+    prompt: """You are an Integration Checker. Follow the protocol in
+    `{BASE_DIR}/agents/integration-checker.md`.
 
     **BASE_DIR:** {BASE_DIR}
     All relative paths in referenced files resolve from BASE_DIR.
 
-    [Components to verify]
-    """,
-    subagent_type: "Plan"  # Read-only
+    **CONTEXT:**
+    - Plan path: {plan_path}
+    - Notebook path: {notebook_path}
+    - Report path: {report_path}
+    - Project folder: {project_folder}
+    - Execution scripts: {list of script paths with their output files}
+    - Expected figures: {list of expected figure paths}
+
+    **TASK:**
+    Verify all components are properly connected:
+    1. Map expected data flow from Plan
+    2. Verify all file references resolve (notebook->data, report->figures)
+    3. Verify stage-to-stage transitions are connected
+    4. Trace at least one E2E flow from raw data to Report
+    5. Detect orphaned components
+    6. Verify QA script coverage
+    7. Verify data source coverage
+
+    Return findings using the Integration Checker Output Format.""",
+    subagent_type: "Plan"
 })
 ```
 
@@ -661,6 +805,7 @@ Task({
 - Output data quality (is the data correct?)
 
 **Key behaviors:**
+- Adversarial stance (default hypothesis: something is wrong)
 - Three-phase review (code, execution log, iterative output data inspection)
 - Creates iterative QA scripts in `scripts/cr/` (cr1 always; cr2-cr5 when warranted)
 - Severity classification (BLOCKER/WARNING/INFO)
@@ -669,50 +814,60 @@ Task({
 **Invocation timing:**
 ```
 research-executor completes task
-         ↓
+         |
     [Primary CP validation passed]
-         ↓
-orchestrator invokes code-reviewer  ← HERE
-         ↓
+         |
+orchestrator invokes code-reviewer  <-- HERE
+         |
 code-reviewer returns QA report
-         ↓
+         |
     [Severity?]
-     ├─ None/INFO → Proceed to next task
-     ├─ WARNING → Log, proceed, flag for Stage 10
-     └─ BLOCKER → Trigger revision flow
+     +- None/INFO -> Proceed to next task
+     +- WARNING -> Log, proceed, flag for Stage 10
+     +- BLOCKER -> Trigger revision flow
 ```
 
 **Invocation pattern:**
 ```python
 Task({
-    description: "QA Review: Stage 7 Step 01 - join-data",
-    prompt: """You are a Code Reviewer. Follow the protocol in `{BASE_DIR}/agents/code-reviewer.md`.
+    description: "QA Review: Stage {N} Step {step} - {task_name}",
+    prompt: """You are a Code Reviewer. Follow the protocol in
+    `{BASE_DIR}/agents/code-reviewer.md`.
 
     **BASE_DIR:** {BASE_DIR}
     All relative paths in referenced files resolve from BASE_DIR.
 
-**SCRIPT TO REVIEW:**
-Path: scripts/stage7_transform/01_join-data.py
+    **SCRIPT TO REVIEW:**
+    Path: {script_path}
 
-**PLAN LOCATION:**
-research/2026-01-24 Analysis/2026-01-24 Analysis Plan.md
+    **PLAN LOCATION:**
+    {plan_path}
 
-**OUTPUT FILES:**
-- data/processed/2026-01-24_analysis.parquet
+    **OUTPUT FILES:**
+    {output_files}
 
-**CONTEXT:**
-- Stage: 7
-- Step: 01
-- Task: join-data
-- Research Question: [from Plan]
+    **CONTEXT:**
+    - Stage: {stage}
+    - Step: {step}
+    - Wave: {wave}
+    - Task: {task_name}
+    - Research Question: {research_question}
 
-**TASK:**
-1. Review script for correctness and methodology alignment
-2. Review execution log for outcome verification
-3. Create iterative QA scripts at: scripts/cr/stage7_01_cr1.py (+ cr2..cr5 as warranted)
-4. Execute QA scripts and synthesize findings across iterations
-5. Return QA report with severity classification
-    """,
+    **TASK:**
+    1. Review the executed script for correctness and methodology alignment
+    2. Review the execution log for outcome verification
+    3. Create cr1 at scripts/cr/stage{N}_{step}_cr1.py with 5 default +
+       5 script-specific + 5 spot-checks + profiling
+    4. Execute cr1 and review output (including profiling)
+    5. DECIDE: If anomalies found, create cr2..cr5 as needed
+       (each with trigger + hypothesis)
+    6. Synthesize findings across all iterations into Investigation Narrative
+    7. Return QA report with severity classification
+
+    **PRIOR QA FINDINGS (if any):**
+    {prior_cr_warnings}
+
+    Return findings using the code-reviewer Output Format.""",
     subagent_type: "general-purpose"
 })
 ```
@@ -720,26 +875,26 @@ research/2026-01-24 Analysis/2026-01-24 Analysis Plan.md
 **Revision flow (when BLOCKER):**
 ```
 code-reviewer returns BLOCKER
-         ↓
+         |
     [Is methodology issue?]
-     ├─ YES → ESCALATE to user immediately
-     └─ NO → research-executor creates revision (_a.py)
-                 ↓
+     +- YES -> ESCALATE to user immediately
+     +- NO -> research-executor creates revision (_a.py)
+                 |
          code-reviewer re-reviews
-                 ↓
+                 |
          [Still BLOCKER?]
-          ├─ NO → Proceed
-          └─ YES → Revision attempt 2 (_b.py)
-                       ↓
+          +- NO -> Proceed
+          +- YES -> Revision attempt 2 (_b.py)
+                       |
                [After 2 attempts, still BLOCKER?]
-                └─ YES → ESCALATE to user
+                +- YES -> ESCALATE to user
 ```
 
 ---
 
 ### data-ingest
 
-**Use when:** User provides a new data file (CSV, parquet, Excel, TSV) for documentation and integration into the workflow.
+**Use when:** User provides a new data file (CSV, parquet, Excel, TSV) for profiling and integration into the workflow.
 
 **Purpose:** Exhaustively profile new datasets and create comprehensive Skills that document:
 - Data structure, types, and quality characteristics
@@ -749,7 +904,7 @@ code-reviewer returns BLOCKER
 - Usage patterns and loading examples
 
 **Key behaviors:**
-- Two-mode investigation: Deductive (data → understanding) + Documentation reconciliation (docs → verification)
+- Two-mode investigation: Deductive (data -> understanding) + Documentation reconciliation (docs -> verification)
 - **Semantic interpretation:** Infers likely variable meanings from names, values, patterns (marked PRELIMINARY)
 - **Website documentation support:** Can fetch and parse documentation from provided URLs
 - Data file is source of truth; documentation claims are verified against data
@@ -760,40 +915,44 @@ code-reviewer returns BLOCKER
 ```python
 Task({
     description: "Ingest: {data_name}",
-    prompt: """You are a Data Ingest Specialist. Follow `{BASE_DIR}/agents/data-ingest.md`.
+    prompt: """You are a Data Ingest Specialist. Follow the protocol in
+    `{BASE_DIR}/agents/data-ingest.md`.
 
-**BASE_DIR:** {BASE_DIR}
-All relative paths in referenced files resolve from BASE_DIR.
+    **BASE_DIR:** {BASE_DIR}
+    All relative paths in referenced files resolve from BASE_DIR.
 
-First, call the skill tool with name 'skill-authoring' to understand skill structure requirements.
+    First, call the skill tool with name 'skill-authoring' to understand
+    generic skill structure. Then read
+    `{BASE_DIR}/agent_reference/DATA_SOURCE_SKILL_TEMPLATE.md` for the
+    canonical data source skill section order. The template OVERRIDES the
+    generic skill-authoring layout.
 
-**DATA FILE:**
-Path: {data_file_path}
-Format: {csv | parquet | xlsx | tsv}
+    **DATA FILE:**
+    Path: {data_file_path}
+    Format: {csv | parquet | xlsx | tsv}
 
-**DOCUMENTATION FILES:** (if any)
-- {doc_path_1}: Data dictionary
-- {doc_path_2}: README
+    **DOCUMENTATION FILES:** (if any)
+    - {doc_path_1}: {description}
 
-**DOCUMENTATION WEBSITE:** (if any)
-URL: {website_url}
-Description: {what information is available there}
+    **DOCUMENTATION WEBSITE:** (if any)
+    URL: {website_url}
+    Description: {what information is available there}
 
-**SKILL CONFIGURATION:**
-Target skill name: {skill-name}
-Intended use: {how the data will be used}
-Priority columns: {columns requiring extra attention}
-Domain context: {domain for semantic interpretation}
+    **SKILL CONFIGURATION:**
+    Target skill name: {skill-name}
+    Intended use: {how the data will be used}
+    Priority columns: {columns requiring extra attention}
+    Domain context: {domain for semantic interpretation}
 
-**TASK:**
-1. Profile the data file exhaustively (Mode 1: Deductive, Phases 1-5)
-2. Generate preliminary semantic interpretations (Phase 5)
-3. Fetch website documentation (if URL provided)
-4. Read and reconcile local documentation (Mode 2: if docs provided)
-5. Create complete skill at `.claude/skills/{skill-name}/`
-6. Report all discrepancies AND preliminary interpretations for user review
+    **TASK:**
+    1. Profile the data file exhaustively (Mode 1: Phases 1-5)
+    2. Generate preliminary semantic interpretations (Phase 5)
+    3. Fetch website documentation (if URL provided)
+    4. Read and reconcile local documentation (Mode 2: if docs provided)
+    5. Create complete skill at `.claude/skills/{skill-name}/`
+    6. Report all discrepancies AND preliminary interpretations for review
 
-Return the complete Data Ingest Report.""",
+    Return findings using the Data Ingest Output Format.""",
     subagent_type: "general-purpose"
 })
 ```
@@ -808,9 +967,9 @@ Some tasks benefit from combining an agent protocol with skill knowledge:
 |------|-------|----------|
 | Fetch CCD data | research-executor | education-data-query |
 | Clean MEPS data | research-executor | education-data-context |
-| Create analysis plan | data-planner | — |
+| Create analysis plan | data-planner | -- |
 | Diagnose join failure | debugger | polars |
-| Final verification | data-verifier | — |
+| Final verification | data-verifier | -- |
 | Ingest new dataset | data-ingest | skill-authoring, polars |
 
 **Invocation pattern for combined:**
@@ -851,37 +1010,54 @@ Agents handle:
 
 ## Adding New Agents
 
-To add a new agent:
+> **Comprehensive guide:** Use the `agent-authoring` skill for full guidance including section-by-section walkthrough, cross-agent standards, and a complete integration checklist covering every file that needs updating. The summary below provides a quick orientation.
 
-1. Create `agents/[agent-name].md`
-2. Include **YAML frontmatter** at the top:
-   ```yaml
-   ---
-   name: agent-name                    # Required: lowercase, hyphens
-   description: Clear delegation description  # Required: tells orchestrator when to use
-   tools: Read, Bash, Glob, Grep       # Optional: restrict available tools
-   permissionMode: plan                # Optional: plan (read-only), default, etc.
-   ---
-   ```
-3. Include these body sections:
-   - **Identity:** Who the agent is
-   - **Core Behaviors:** Key behavioral patterns
-   - **`<upstream_input>`:** What inputs the agent receives
-   - **`<downstream_consumer>`:** Who uses the agent's output
-   - **Protocol:** Step-by-step execution process
-   - **Output Format:** Expected return structure
-   - **STOP Conditions:** When to escalate
-   - **`<anti_patterns>`:** What the agent should NOT do
-4. Add to this README's index
-5. Update CLAUDE.md's agent reference section
+### Quick Summary
+
+1. **Design:** Identify the agent's role, pipeline stage, subagent type, and similar agents to differentiate from (see "Commonly Confused Pairs" above)
+2. **Author:** Create `agents/[agent-name].md` following `agent_reference/AGENT_TEMPLATE.md` (12 mandatory sections)
+3. **Integrate:** Update all registry files — use the `agent-authoring` skill's integration checklist for the complete list
+4. **Validate:** Verify the agent appears in all registry files and cross-agent standards are met
+
+### Required Frontmatter
+
+```yaml
+---
+name: agent-name-here
+description: >
+  [Third person. What it does AND when to use it.]
+tools: [Read, Write, Edit, Bash, Glob, Grep]   # Explicit allowlist. Omit for all.
+permissionMode: default                          # Or: plan (read-only agents)
+---
+```
+
+### Required Body Sections (12 total)
+
+| # | Section | Key Requirements |
+|---|---------|-----------------|
+| 1 | Title and Purpose | H1 + one-sentence purpose + invocation type |
+| 2 | Identity and Philosophy | Role, philosophy maxim, **Core Distinction table** |
+| 3 | Upstream Inputs | `<upstream_input>` tags, orchestrator checklist |
+| 4 | Core Behaviors | 3-7 numbered principles (not steps) |
+| 5 | Execution Protocol | Sequential steps + decision points |
+| 6 | Output Format | Status, Confidence (H/M/L), Learning Signal, Recommendations |
+| 7 | Downstream Consumers | `<downstream_consumer>` tags, severity-to-action mapping |
+| 8 | Boundaries | Always/Ask/Never tiers + STOP Conditions |
+| 9 | Anti-Patterns | `<anti_patterns>` tags, 3-column table (min 5) |
+| 10 | Quality and Completion | COMPLETE/INCOMPLETE criteria + Self-Check |
+| 11 | Invocation Pattern | Exact Task() syntax with BASE_DIR |
+| 12 | References | CONDITIONAL — only when agent references external files |
+
+### Integration Checklist (Abbreviated)
+
+After writing the agent file, update these registries at minimum:
+
+- [ ] `agents/README.md` — Agent Index + "When to Use" section + Coordination Matrix
+- [ ] `CLAUDE.md` — Specialized Agents table (2 locations) + Skill-to-Stage Mapping (if stage-specific)
+- [ ] `README.md` — Agent Ecosystem table + update agent count
+
+For the **complete 29-item integration checklist** (including conditional workflow and narrative updates), invoke the `agent-authoring` skill and read `references/integration-checklist.md`.
 
 **Naming convention:** `lowercase-hyphenated.md`
 
-**Frontmatter fields:**
-| Field | Required | Description |
-|-------|----------|-------------|
-| `name` | Yes | Agent identifier (lowercase, hyphens) |
-| `description` | Yes | When Claude should delegate to this agent |
-| `tools` | No | Allowlist of tools (restricts capabilities) |
-| `permissionMode` | No | `plan` for read-only, `default` for full access |
-| `skills` | No | Skills to preload (e.g., `[polars, data-scientist]`) |
+**Target length:** 400-700 lines per agent (never exceed 1000).
