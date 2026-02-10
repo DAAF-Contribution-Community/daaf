@@ -221,7 +221,7 @@ See `agents/notebook-assembler.md` for the complete notebook compilation protoco
    - Validation: CP{N} PASSED
    - Revisions: 2 (key mismatch, type error)
 
-   Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>"
+   Co-Authored-By: Claude <noreply@anthropic.com>"
    ```
 
 5. **For Stage 9:** The notebook-assembler agent compiles final successful script versions into the Marimo notebook.

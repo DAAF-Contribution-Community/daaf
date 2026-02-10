@@ -14,7 +14,7 @@ This document provides detailed execution guidance for each of the 12 stages (pl
 | 2 | 1 | Data Exploration | `education-data-explorer` | Plan |
 | 3 | 1 | Source Deep-Dive | `*-data-source-*` | Plan |
 | **3.5** | 1 | Findings Synthesis (conditional) | `research-synthesizer` agent | general-purpose |
-| 4 | 2 | Plan Creation | `data-planner` agent | Orchestrator |
+| 4 | 2 | Plan Creation | `data-planner` agent | Orchestrator (invokes data-planner) |
 | **4.5** | 2 | Plan Validation (required) | `plan-checker` agent | Plan |
 | 5 | 3 | Data Retrieval | `education-data-query` | general-purpose |
 | 6 | 3 | Context Application | `education-data-context` | general-purpose |
@@ -69,9 +69,9 @@ code-reviewer returns: PASSED | WARNING | INFO | BLOCKER
 
 ### QA Gate Criteria (Added to Each Stage) — ENFORCED
 
-**IMPORTANT:** Gates G4-G7 now require POSITIVE confirmation that QA was invoked, not just absence of BLOCKER.
+**IMPORTANT:** Gates G4-G7 require POSITIVE confirmation that QA was invoked, not just absence of BLOCKER.
 
-Every Stage 5-8 task now includes these MANDATORY requirements:
+Every Stage 5-8 task includes these MANDATORY requirements:
 
 - [ ] **QA INVOKED** — orchestrator called code-reviewer via Task tool
 - [ ] **QA RETURNED** — code-reviewer returned severity (PASSED/WARNING/BLOCKER)
@@ -210,10 +210,12 @@ See `agents/code-reviewer.md` for the complete QA protocol and `agent_reference/
 
 This analysis will create:
 - [ ] Research Plan document
+- [ ] **STATE.md session state file** (for progress tracking and session recovery)
 - [ ] Marimo notebook (interactive walkthrough of pre-executed scripts)
 - [ ] Stakeholder report
 - [ ] Validated datasets (raw + processed)
 - [ ] Visualizations
+- [ ] **LEARNINGS.md lessons learned**
 
 Estimated scope:
 - Data sources: [identified sources]
@@ -235,7 +237,7 @@ Estimated execution time: [time estimate based on complexity]
 
 ## Stage 2: Data Exploration
 
-**Executor:** Subagent (explore)
+**Executor:** Subagent (Plan)
 **Skill:** `education-data-explorer`
 **Purpose:** Identify available data sources and variables
 
@@ -315,7 +317,7 @@ Estimated execution time: [time estimate based on complexity]
 
 ## Stage 3: Source Deep-Dive
 
-**Executor:** Subagent (explore)
+**Executor:** Subagent (Plan)
 **Skills:** `*-data-source-*` (one per source)
 **Purpose:** Understand source-specific limitations and caveats
 
@@ -475,7 +477,7 @@ Consolidate these parallel findings into a unified context for Plan creation.
 
 ## Stage 4: Plan Creation
 
-**Executor:** Orchestrator (main context)
+**Executor:** Orchestrator (invokes `data-planner` agent via `general-purpose` subagent)
 **Purpose:** Create the Plan document as persistent memory
 
 ### Actions
@@ -588,7 +590,7 @@ Incomplete transformation sequences lead to incomplete validation and unreliable
 
 ## Stage 4.5: Plan Validation (Required)
 
-**Executor:** Subagent (explore)
+**Executor:** Subagent (Plan)
 **Agent:** `plan-checker`
 **Purpose:** Validate Plan across 6 dimensions before execution begins
 

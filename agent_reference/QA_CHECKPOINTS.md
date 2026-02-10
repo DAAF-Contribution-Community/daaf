@@ -506,7 +506,7 @@ scripts/
 │   └── 01_join-data.py
 ├── stage8_viz/
 │   └── 01_plot-enrollment.py
-├── qa/                              # Code-review scripts directory (iterative)
+├── cr/                              # Code-review scripts directory (iterative)
 │   ├── stage5_01_cr1.py             # QA1 for Stage 5, Step 01 (standard + profiling)
 │   ├── stage5_01_cr2.py             # QA2: Investigated year coverage anomaly
 │   ├── stage6_01_cr1.py             # QA1 for Stage 6, Step 01

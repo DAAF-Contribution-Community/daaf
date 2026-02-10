@@ -121,6 +121,9 @@ Return findings in this EXACT structure:
 | `auto` | Fully automatable (90% of tasks) | None unless STOP condition |
 | `checkpoint:human-verify` | Needs visual confirmation | Report results, await "proceed" |
 | `checkpoint:decision` | Multiple valid approaches | Present options, await selection |
+| `checkpoint:human-action` | User must perform action themselves | Report instructions, await completion |
+
+**Note:** `checkpoint:human-action` is used when Claude cannot automate a step (e.g., external authentication, restricted data downloads). See `05_VALIDATION_CHECKPOINTS.md` for full classification details.
 
 ### checkpoint:auto (Default)
 
@@ -256,10 +259,7 @@ Call the skill tool with name '[skill-name]'.
 
 ### Size Limits for Inlined Content
 
-| Subagent Type | Max Inlined Context | Total Prompt Max |
-|---------------|---------------------|------------------|
-| Plan | 200 words | 500 words |
-| general-purpose | 500 words | 1000 words |
+See "Prompt Size Limits by Subagent Type" table above for size limits. The same limits apply to inlined content.
 
 **If you need more context:** Break the task into smaller subtasks, each with focused context.
 
@@ -345,10 +345,7 @@ Status: Skill loaded successfully, proceeding with data exploration
 
 ### Subagent Type Selection
 
-| Type | Use For | Capabilities |
-|------|---------|--------------|
-| `Plan` | Read-only operations, documentation search, data discovery | Inherits main model; can read files and download from mirrors; CANNOT write files |
-| `general-purpose` | Code generation, analysis execution, file creation | Full capabilities including file writes and code execution |
+See `CLAUDE.md` "Subagent Type Selection" for capabilities by type (`Plan` = read-only; `general-purpose` = full capabilities including file writes).
 
 ### Standard Invocation Pattern
 
@@ -382,7 +379,7 @@ After completing the skill's Required Actions, return findings using the format 
 
 **Purpose:** Identify available datasets and variables
 **Stage:** 2 (Data Exploration)
-**Subagent:** explore
+**Subagent:** Plan
 
 ```python
 Task({
@@ -455,7 +452,7 @@ After completing the skill's Required Actions, return findings using the format 
 
 **Purpose:** Deep-dive into source-specific caveats and limitations
 **Stage:** 3 (Source Deep-Dive)
-**Subagent:** explore
+**Subagent:** Plan
 
 **Available source skills:**
 - `education-data-source-ccd` — K-12 schools and districts
@@ -1191,20 +1188,7 @@ You are a COPY-PASTE MACHINE with formatting. Nothing more.
 
 ## WHAT YOU MUST NOT DO (ABSOLUTE PROHIBITIONS)
 
-❌ DO NOT create `mo.ui.dropdown()` — NO dropdowns
-❌ DO NOT create `mo.ui.slider()` — NO sliders
-❌ DO NOT create `mo.ui.multiselect()` — NO multiselects
-❌ DO NOT create `mo.ui.text()` for search — NO search boxes
-❌ DO NOT write `.group_by()` or `.agg()` — NO new aggregations
-❌ DO NOT write `.pivot()` — NO pivot tables
-❌ DO NOT write `.filter()` in data inspection cells — NO filtering
-❌ DO NOT write `.with_columns()` in data inspection cells — NO transformations
-❌ DO NOT create "Interactive Filters" sections
-❌ DO NOT create "Data Explorer" sections
-❌ DO NOT create "Institution Lookup" features
-❌ DO NOT create "Sector Comparison" with new code
-❌ DO NOT create new visualizations
-❌ DO NOT summarize or paraphrase script code
+See `02_WORKFLOW_STAGES.md` Stage 9 "ABSOLUTE PROHIBITIONS" for the complete prohibition list. In short: NO dashboards, NO widgets, NO new aggregations, NO new visualizations, NO paraphrasing script code.
 
 ## SCRIPTS LOCATION
 
