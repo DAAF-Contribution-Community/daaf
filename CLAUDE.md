@@ -12,7 +12,6 @@ User Request Received
     ├─ Full Pipeline Mode? (analysis, research, data deliverable)
     │   └─ Read: CLAUDE.md (complete) → Execute stages
     │          ├─ During Stage 2-3: Invoke skills via subagents (don't read directly)
-    │          ├─ When creating CONTEXT.md: Read CONTEXT_TEMPLATE.md
     │          ├─ When creating Plan: Read PLAN_TEMPLATE.md
     │          ├─ When writing validation: Read 05_VALIDATION_CHECKPOINTS.md
     │          ├─ When handling errors: Read 06_ERROR_RECOVERY.md
@@ -1856,7 +1855,9 @@ When executing Plan tasks, the agent MAY deviate **without asking** for these ca
 |------|----------|--------|
 | RULE 1 | Bug fixes (syntax, types, imports) | Fix immediately, document |
 | RULE 2 | Critical functionality (validation, error handling) | Add silently, document |
-| RULE 3 | Optional improvements | Track only, do NOT implement |
+| RULE 3 | Blocking issues (missing deps, wrong paths) | Fix immediately, document |
+| RULE 4 | Methodological changes | STOP, escalate to user |
+| RULE 5 | QA-triggered revisions (non-methodology BLOCKER) | Fix via versioned revision, re-QA |
 
 **Always Requires Approval:** Scope expansion, methodology changes, removing validation, skipping checkpoints.
 
@@ -2092,7 +2093,6 @@ See `agent_reference/SCRIPT_TEMPLATE.md` for complete script template and exampl
 | `agent_reference/PLAN_TEMPLATE.md` | Research plan template with wave-based task sequences |
 | `agent_reference/REPORT_TEMPLATE.md` | Output report template |
 | `agent_reference/STATE_TEMPLATE.md` | Session state file template for continuity |
-| `agent_reference/CONTEXT_TEMPLATE.md` | Design context template for capturing decisions |
 | `agent_reference/SCRIPT_TEMPLATE.md` | Standardized script format with stage-specific examples |
 
 ### Skill Locations
@@ -2107,7 +2107,6 @@ research/2026-01-24 School Poverty Analysis/
 ├── 2026-01-24 School Poverty Analysis.py
 ├── 2026-01-24 School Poverty Analysis Report.md
 ├── LEARNINGS.md                                   # Session learnings (REQUIRED)
-├── CONTEXT.md                                     # Design decisions (if created)
 ├── scripts/                                       # All executed scripts (code archive)
 │   ├── stage5_fetch/
 │   │   ├── 01_fetch-ccd.py
@@ -2130,5 +2129,4 @@ research/2026-01-24 School Poverty Analysis/
 │   └── figures/
 │       └── 2026-01-24_poverty_distribution.png
 ├── STATE.md                                       # Session state (REQUIRED for Full Pipeline)
-└── CONTEXT.md                                     # Design decisions (if created)
 ```
