@@ -6,14 +6,14 @@ An open-source framework demonstrating how AI can assist with rigorous, reproduc
 
 ## Documentation Table of Contents
 
-- **00.** README — Vision and purpose, what DAAF does and does not do, core design philosophy, acknowledgments (this document)
-- [**01.** Installation & Quick Start](user_reference/01_installation_and_quickstart.md) — Get started! Installation prerequisites, step-by-step 5-minute setup, day-to-day usage, and troubleshooting
-- [**02.** Understanding DAAF](user_reference/02_understanding_daaf.md) — Learn to work with DAAF for the first time: what to expect, engagement modes explained, your first analysis walkthrough
-- [**03.** Best Practices](user_reference/03_best_practices.md) — Tips for working with Claude Code, writing effective prompts, ensuring quality and rigor with DAAF, reviewing outputs, and managing context
-- [**04.** Extending DAAF](user_reference/04_extending_daaf.md) — How to add new data source skills, analytical tools and methodologies, and creating your own additional specialized agents
-- [**05.** Contributing](user_reference/05_contributing.md) — Get involved in developing DAAF! How to file issues via GitHub, support expanding the capabilities of the framework, contribute to educational tutorials and how-to's, and more!
-- [**06.** FAQ: Technical](user_reference/06_faq_technical.md) — Covers frequently asked questions about Docker, issues with Claude Code, usage limits, authentication errors, and other common errors
-- [**07.** FAQ: Philosophy](user_reference/07_faq_philosophy.md) — Design rationale, AI in research, broader questions about this approach
+- **00.** README — **\[This document\]** Vision and purpose, what DAAF does and does not do, core design philosophy, acknowledgments
+- [**01. Installation & Quick Start**](user_reference/01_installation_and_quickstart.md) — Get started! Installation prerequisites, step-by-step 5-minute setup, day-to-day usage, and troubleshooting
+- [**02. Understanding DAAF**](user_reference/02_understanding_daaf.md) — Learn to work with DAAF for the first time: what to expect, engagement modes explained, your first analysis walkthrough
+- [**03. Best Practices**](user_reference/03_best_practices.md) — Tips for working with Claude Code, writing effective prompts, ensuring quality and rigor with DAAF, reviewing outputs, and managing context
+- [**04. Extending DAAF**](user_reference/04_extending_daaf.md) — How to add new data source skills, analytical tools and methodologies, and creating your own additional specialized agents
+- [**05. Contributing**](user_reference/05_contributing.md) — Get involved in developing DAAF! How to file issues via GitHub, support expanding the capabilities of the framework, contribute to educational tutorials and how-to's, and more!
+- [**06. FAQ: Technical**](user_reference/06_faq_technical.md) — Covers frequently asked questions about Docker, issues with Claude Code, usage limits, design rationale, authentication errors, and other common errors
+- [**07. FAQ: Philosophy**](user_reference/07_faq_philosophy.md) — Grapples with the broader implications of this work, AI automation in general, model advancement pace, approaching the "exponential", environmental ethics, what this means for the next generation of researchers, and more
 
 ---
 

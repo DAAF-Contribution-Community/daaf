@@ -6,14 +6,14 @@ This is the conceptual guide that turns an installer into a confident user. It e
 
 ## Documentation Table of Contents
 
-- [**00.** README](../README.md) — \[**Prerequisite**\] Vision and purpose, what DAAF does and does not do, core design philosophy, acknowledgments
-- [**01.** Installation & Quick Start](01_installation_and_quickstart.md) — \[**Prerequisite**\] Get started! Installation prerequisites, step-by-step 5-minute setup, day-to-day usage, and troubleshooting
-- **02.** Understanding DAAF — \[**This document**\] Learn to work with DAAF for the first time: what to expect, engagement modes explained, your first analysis walkthrough
-- [**03.** Best Practices](03_best_practices.md) — Tips for working with Claude Code, writing effective prompts, ensuring quality and rigor with DAAF, reviewing outputs, and managing context
-- [**04.** Extending DAAF](04_extending_daaf.md) — How to add new data source skills, analytical tools and methodologies, and creating your own additional specialized agents
-- [**05.** Contributing](05_contributing.md) — Get involved in developing DAAF! How to file issues via GitHub, support expanding the capabilities of the framework, contribute to educational tutorials and how-to's, and more!
-- [**06.** FAQ: Technical](06_faq_technical.md) — Covers frequently asked questions about Docker, issues with Claude Code, usage limits, authentication errors, and other common errors
-- [**07.** FAQ: Philosophy](07_faq_philosophy.md) — Design rationale, AI in research, broader questions about this approach
+- [**00. README**](../README.md) — **\[Prerequisite\]** Vision and purpose, what DAAF does and does not do, core design philosophy, acknowledgments
+- [**01. Installation & Quick Start**](01_installation_and_quickstart.md) — **\[Prerequisite\]** Get started! Installation prerequisites, step-by-step 5-minute setup, day-to-day usage, and troubleshooting
+- **02. Understanding DAAF** — **\[This document\]** Learn to work with DAAF for the first time: what to expect, engagement modes explained, your first analysis walkthrough
+- [**03. Best Practices**](03_best_practices.md) — Tips for working with Claude Code, writing effective prompts, ensuring quality and rigor with DAAF, reviewing outputs, and managing context
+- [**04. Extending DAAF**](04_extending_daaf.md) — How to add new data source skills, analytical tools and methodologies, and creating your own additional specialized agents
+- [**05. Contributing**](05_contributing.md) — Get involved in developing DAAF! How to file issues via GitHub, support expanding the capabilities of the framework, contribute to educational tutorials and how-to's, and more!
+- [**06. FAQ: Technical**](06_faq_technical.md) — Covers frequently asked questions about Docker, issues with Claude Code, usage limits, design rationale, authentication errors, and other common errors
+- [**07. FAQ: Philosophy**](07_faq_philosophy.md) — Grapples with the broader implications of this work, AI automation in general, model advancement pace, approaching the "exponential", environmental ethics, what this means for the next generation of researchers, and more
 
 ---
 
@@ -308,8 +308,8 @@ research/YYYY-MM-DD [Title]/
 
 ---
 
-## Next Steps
+## Recommended Next Steps
 
-- **[Best Practices](03_best_practices.md)** — Tips for writing effective prompts and reviewing outputs
-- **[Extending DAAF](04_extending_daaf.md)** — How to add new data domains and skills
-- **[FAQ: Technical](06_faq_technical.md)** — Answers to common technical questions
+- [**03. Best Practices**](03_best_practices.md) — Tips for working with Claude Code, writing effective prompts, ensuring quality and rigor with DAAF, reviewing outputs, and managing context
+- [**06. FAQ: Technical**](06_faq_technical.md) — Covers frequently asked questions about Docker, issues with Claude Code, usage limits, design rationale, authentication errors, and other common errors
+- [**07. FAQ: Philosophy**](07_faq_philosophy.md) — Grapples with the broader implications of this work, AI automation in general, model advancement pace, approaching the "exponential", environmental ethics, what this means for the next generation of researchers, and more
