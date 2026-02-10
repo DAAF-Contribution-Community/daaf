@@ -8,7 +8,7 @@ This document contains the full details for all six protocols. Protocols 1-5 are
 
 | Protocol | Name | Purpose | Phase | Executed By |
 |----------|------|---------|-------|-------------|
-| **1** | Data Discovery | Identify and understand available data | Phase 1 | Subagents (explore) |
+| **1** | Data Discovery | Identify and understand available data | Phase 1 | Subagents (Plan) |
 | **2** | Data Acquisition | Retrieve and clean data from data access mirrors | Phase 3 | Subagents (general-purpose) |
 | **3** | Validation Checkpoints | Validate data at critical points | Phase 3-4 | Orchestrator + Code |
 | **4** | Plan Management | Maintain Plan as persistent memory | Phase 2, ongoing | Orchestrator |
@@ -27,37 +27,6 @@ This document contains the full details for all six protocols. Protocols 1-5 are
 
 Before writing any data query or analysis code, discover and understand available data sources. This protocol ensures the agent has complete, accurate information about what data exists and its limitations.
 
-## Pre-Discovery: Check Prior Learnings
-
-**Before dispatching Stage 2 subagent, the orchestrator should check prior learnings.**
-
-### Repository-Level Learnings (Always Available)
-
-Source-specific knowledge (variable name discrepancies, data access gotchas, data availability and lag times, mirror fallback patterns and data quality issues) is now embedded directly in the relevant `*-data-source-*` skills. These skills are loaded automatically by subagents during exploration and querying -- no separate learnings file needs to be consulted.
-
-### Project-Level Learnings (When Available)
-
-If prior analyses exist in `research/`, search for relevant learnings:
-
-```bash
-# Search for learnings mentioning intended data sources
-grep -rl "[data-source]" research/*/LEARNINGS.md
-```
-
-**When to search project learnings:**
-- ≥3 prior analyses exist in `research/`
-- Similar data sources or analysis types planned
-- User references prior work
-
-**What to extract:**
-- Data source gotchas not yet in repository-level file
-- Methodology insights for similar analyses
-- Time sinks to avoid
-
-See `agent_reference/08_LESSONS_LEARNED.md: Consuming Prior Learnings` for full protocol.
-
----
-
 ## Stage 2: Data Exploration
 
 **Skill:** `education-data-explorer`
@@ -65,37 +34,7 @@ See `agent_reference/08_LESSONS_LEARNED.md: Consuming Prior Learnings` for full 
 
 ### Invocation Pattern
 
-```python
-Task({
-    description: "Stage 2: Data Exploration",
-    prompt: """You have access to a skill tool. First, call the skill tool with name 'education-data-explorer'.
-
-**RESEARCH QUESTION:**
-[User's research question]
-
-**CONTEXT:**
-[Any clarifications or constraints from user]
-
-**THOROUGHNESS DIRECTIVE:**
-- Search ALL relevant data levels (schools, districts, colleges as appropriate)
-- Consider multiple potential data sources before recommending
-- Flag ALL variables that might need deeper source-specific investigation
-- Check year coverage against research question needs
-- Include a 'Limitations Encountered' section in your output
-
-**OUTPUT FORMAT:**
-Return findings in this structure:
-1. Recommended Data Level: [schools | school-districts | college-university]
-2. Candidate Endpoints: [table with endpoint, source, description, years]
-3. Key Variables: [table with variable, endpoint, type, description]
-4. Variables Flagged for Deep-Dive: [table with variable, reason]
-5. Limitations Encountered: [table with limitation, impact, resolution]
-6. Completeness Assessment: [checklist of what was searched]
-
-After completing the skill's Required Actions, return findings using the format above.""",
-    subagent_type: "Plan"
-})
-```
+See `03_SKILL_INVOCATIONS.md` for the complete Stage 2 invocation template.
 
 ### Expected Output
 
@@ -125,38 +64,7 @@ Before proceeding to Stage 3:
 
 ### Invocation Pattern
 
-```python
-Task({
-    description: "Stage 3: Source Deep-Dive - [Source Name]",
-    prompt: """You have access to a skill tool. First, call the skill tool with name '[domain]-data-source-[source]'.
-
-**CONTEXT FROM STAGE 2:**
-[Paste relevant Stage 2 findings]
-
-**VARIABLES TO INVESTIGATE:**
-[List of variables flagged for deep-dive]
-
-**THOROUGHNESS DIRECTIVE:**
-- Extract ALL coded value mappings for flagged variables
-- Document ALL suppression patterns and thresholds
-- Identify ALL source-specific caveats and limitations
-- Note ANY cross-state comparability issues
-- Check for historical definition changes
-- Include COVID-19 impact notes (2020-2021 data)
-
-**OUTPUT FORMAT:**
-Return findings in this structure:
-1. Source-Specific Caveats: [table with caveat, impact, mitigation]
-2. Coded Value Mappings: [table with variable, code, meaning, action]
-3. Suppression Patterns: [table with variable, rate, threshold, impact]
-4. Cross-State Comparability: [table with analysis type, valid?, notes]
-5. Critical Warnings: [numbered list with mitigation strategies]
-6. Limitations Encountered: [table with limitation, impact, resolution]
-
-After completing the skill's Required Actions, return findings using the format above.""",
-    subagent_type: "Plan"
-})
-```
+See `03_SKILL_INVOCATIONS.md` for the complete Stage 3 invocation template.
 
 **Note:** If multiple sources are needed (e.g., CCD + CRDC), invoke Stage 3 separately for each source.
 
@@ -183,16 +91,7 @@ Before proceeding to Phase 2:
 
 ## Re-run Guidance
 
-If user clarifications reveal that discovery was inadequate:
-
-| Situation | Stage(s) to Re-run | Mode |
-|-----------|-------------------|------|
-| Wrong endpoints identified | Stage 2 | Refresh |
-| Missing data source | Stage 2, 3 | Additive |
-| Caveats misunderstood | Stage 3 | Refresh (affected source) |
-
-**Refresh Mode:** Replace prior output with new findings
-**Additive Mode:** Supplement prior output with additional findings
+See `06_ERROR_RECOVERY.md` "Re-run Procedures" for the complete re-run guidance table and mode definitions (Refresh vs Additive).
 
 ---
 
@@ -210,11 +109,10 @@ Retrieve data from the data access mirrors and apply proper context/cleaning bas
 
 **CRITICAL:** All code in Protocol 2 follows the **file-first pattern**:
 1. Write script to `scripts/stage{5,6}_{type}/` before execution
-2. Execute via Bash with output capture
-3. Append output to script as comments
-4. Version failed scripts (`_a`, `_b`, etc.)
+2. Execute via `./scripts/run_with_capture.sh` (automatically captures output and appends execution log)
+3. Version failed scripts (`_a`, `_b`, etc.) — re-run wrapper on new version
 
-See `agents/research-executor.md` for the complete protocol.
+Closely read `agent_reference/EXECUTION_CAPTURE.md` for the mandatory file-first execution protocol covering complete code file writing, output capture, and file versioning rules.
 
 ## Stage 5: Data Retrieval
 
@@ -223,50 +121,7 @@ See `agents/research-executor.md` for the complete protocol.
 
 ### Invocation Pattern
 
-```python
-Task({
-    description: "Stage 5: Data Retrieval",
-    prompt: """You have access to a skill tool. First, call the skill tool with name 'education-data-query'.
-
-**QUERY SPECIFICATION (from Plan):**
-Endpoint: [endpoint path]
-Years: [years]
-Filters: [filter parameters]
-Variables: [variables to select]
-Expected Records: [approximate count]
-
-**THOROUGHNESS DIRECTIVE:**
-- Download complete file from mirror
-- Validate response shape immediately after fetch
-- Check for data access errors and mirror availability
-- Save data in ONLY parquet format
-- Document any data access issues encountered
-
-**OUTPUT FORMAT:**
-Return findings in this structure:
-1. Fetch Summary:
-   - Records retrieved: [count]
-   - Columns: [list]
-   - Years present: [list]
-   - Data access issues: [any problems encountered]
-2. Data Freshness Report:
-   | Source | Requested Years | Latest Available | Lag Warning |
-   |--------|-----------------|------------------|-------------|
-   | [source] | [requested] | [latest] | [⚠️ if gap exists] |
-   
-   - Impact: [How this affects the analysis]
-   - Recommendation: [Adjust years or proceed with caveat]
-3. Initial Validation:
-   - Shape: [rows x cols]
-   - Missing values: [summary by column]
-   - Unexpected values: [any anomalies]
-4. File Locations:
-   - Parquet: [path]
-
-After completing the skill's Required Actions, return findings using the format above.""",
-    subagent_type: "general-purpose"
-})
-```
+See `03_SKILL_INVOCATIONS.md` for the complete Stage 5 invocation template.
 
 ### Validation (CP1)
 
@@ -305,49 +160,7 @@ Before proceeding to Stage 6:
 
 ### Invocation Pattern
 
-```python
-Task({
-    description: "Stage 6: Context Application",
-    prompt: """You have access to a skill tool. First, call the skill tool with name 'education-data-context'.
-
-**DATA SOURCE:**
-[Source name from Stage 2/3]
-
-**RAW DATA SUMMARY:**
-[Shape, columns, years from Stage 5]
-
-**CAVEATS FROM STAGE 3:**
-[Relevant caveats and coded value mappings]
-
-**THOROUGHNESS DIRECTIVE:**
-- Apply coded value filters (-1, -2, -3) as specified
-- Calculate suppression rates for key variables
-- BLOCK if cross-state assessment comparison attempted
-- BLOCK if suppression rate exceeds 50%
-- Generate proper citation text
-- Document all cleaning decisions
-
-**OUTPUT FORMAT:**
-Return findings in this structure:
-1. Cleaning Applied:
-   - Coded values filtered: [summary]
-   - Rows removed: [count and percentage]
-2. Data Quality Report:
-   - Suppression rate: [percentage]
-   - Missing value summary: [by variable]
-3. Validity Check:
-   - Analysis type: [description]
-   - Valid: [Yes/No/Conditional]
-   - Warnings: [any concerns]
-4. Citation:
-   - Full citation text: [citation]
-5. Clean Data Location:
-   - Parquet: [path]
-
-After completing the skill's Required Actions, return findings using the format above.""",
-    subagent_type: "general-purpose"
-})
-```
+See `03_SKILL_INVOCATIONS.md` for the complete Stage 6 invocation template.
 
 ### Validation (CP2)
 
@@ -389,281 +202,9 @@ Before proceeding to Phase 4:
 
 Validate data at each critical point in the pipeline to catch errors early and ensure data integrity.
 
-## Four Required Checkpoints
+## Four Required Checkpoints (CP1-CP4)
 
-### CP1: After Data Fetch
-
-**When:** Immediately after retrieving data from data access mirrors
-**Purpose:** Verify data structure and completeness
-
-```python
-# --- CP1 Validation: Post-Fetch ---
-# Configure these before running:
-#   df = <fetched DataFrame>
-#   expected_rows = 10000
-#   required_cols = ["ncessch", "school_name", "enrollment", "year"]
-print("\n" + "=" * 60)
-print("CP1 VALIDATION: POST-FETCH")
-print("=" * 60)
-
-cp1_passed = True
-
-# Check 1: Non-empty
-has_rows = len(df) > 0
-print(f"  [{'PASS' if has_rows else 'FAIL'}] Row count: {len(df):,}")
-if not has_rows:
-    cp1_passed = False
-
-# Check 2: Row count in range
-if has_rows and expected_rows > 0:
-    ratio = len(df) / expected_rows
-    print(f"  Expected ~{expected_rows:,} rows, got {len(df):,} (ratio: {ratio:.2f}x)")
-    if ratio < 0.01:
-        print(f"  [WARN] Row count much lower than expected")
-    elif ratio > 10:
-        print(f"  [WARN] Row count much higher than expected")
-
-# Check 3: Required columns present
-missing_cols = [c for c in required_cols if c not in df.columns]
-if missing_cols:
-    print(f"  [FAIL] Missing columns: {missing_cols}")
-    cp1_passed = False
-else:
-    print(f"  [PASS] All {len(required_cols)} required columns present")
-
-# Check 4: Critical field missingness
-for col in required_cols:
-    if col in df.columns:
-        null_rate = df[col].null_count() / len(df)
-        if null_rate > 0.9:
-            print(f"  [FAIL] {col}: {null_rate:.1%} null (>90% threshold)")
-            cp1_passed = False
-        elif null_rate > 0.5:
-            print(f"  [WARN] {col}: {null_rate:.1%} null (high)")
-
-print(f"\nCP1 VALIDATION: {'PASSED' if cp1_passed else 'FAILED'}")
-print("=" * 60)
-
-assert cp1_passed, "STOP: CP1 validation failed"
-```
-
-**STOP Conditions:**
-- Empty dataset
-- Missing critical columns
-- >90% missing in critical fields
-
----
-
-### CP2: After Cleaning
-
-**When:** After applying coded value filters and handling suppression
-**Purpose:** Verify data quality and acceptable loss rates
-
-```python
-# --- CP2 Validation: Post-Cleaning ---
-# Configure these before running:
-#   raw_df = <DataFrame before cleaning>
-#   clean_df = <DataFrame after cleaning>
-#   key_variable = "enrollment"
-#   max_suppression = 0.5
-print("\n" + "=" * 60)
-print("CP2 VALIDATION: POST-CLEANING")
-print("=" * 60)
-
-cp2_passed = True
-
-# Check 1: Data loss rate
-rows_removed = len(raw_df) - len(clean_df)
-loss_rate = rows_removed / len(raw_df) if len(raw_df) > 0 else 0
-
-print(f"\nData Loss:")
-print(f"  Raw rows:     {len(raw_df):,}")
-print(f"  Clean rows:   {len(clean_df):,}")
-print(f"  Rows removed: {rows_removed:,} ({loss_rate:.1%})")
-
-if loss_rate > 0.9:
-    print(f"  [FAIL] Data loss rate {loss_rate:.1%} exceeds 90%")
-    cp2_passed = False
-elif loss_rate > 0.5:
-    print(f"  [WARN] High data loss rate: {loss_rate:.1%}")
-else:
-    print(f"  [PASS] Data loss rate {loss_rate:.1%} within tolerance")
-
-# Check 2: Suppression rate
-if key_variable in raw_df.columns:
-    suppressed = (raw_df[key_variable] == -3).sum()
-    suppression_rate = suppressed / len(raw_df) if len(raw_df) > 0 else 0
-    if suppression_rate > max_suppression:
-        print(f"  [FAIL] {key_variable}: {suppression_rate:.1%} suppressed (>{max_suppression:.0%} threshold)")
-        cp2_passed = False
-    elif suppression_rate > 0.2:
-        print(f"  [WARN] {key_variable}: {suppression_rate:.1%} suppressed (notable)")
-    else:
-        print(f"  [PASS] {key_variable}: {suppression_rate:.1%} suppressed")
-
-# Check 3: No coded values remaining
-print(f"\nCoded Values Check (clean data):")
-coded_found = False
-for col in clean_df.columns:
-    if clean_df[col].dtype in [pl.Int32, pl.Int64, pl.Float64]:
-        coded_remaining = (clean_df[col] < 0).sum()
-        if coded_remaining > 0:
-            print(f"  [WARN] {col}: {coded_remaining} coded values remain")
-            coded_found = True
-if not coded_found:
-    print("  [PASS] No coded values remain in clean data")
-
-print(f"\nCP2 VALIDATION: {'PASSED' if cp2_passed else 'FAILED'}")
-print("=" * 60)
-
-assert cp2_passed, "STOP: CP2 validation failed"
-```
-
-**STOP Conditions:**
-- >90% data loss
-- >50% suppression rate
-
----
-
-### CP3: After Transformation
-
-**When:** After joins, aggregations, or derived variable creation
-**Purpose:** Verify transformations preserved data integrity
-
-```python
-# --- CP3 Validation: Post-Transformation ---
-# Configure these before running:
-#   input_df = <DataFrame before transformation>
-#   output_df = <DataFrame after transformation>
-#   operation = "Join CCD + MEPS"
-#   expected_relationship = "same"  # "same", "fewer", "more", "aggregated"
-print("\n" + "=" * 60)
-print(f"CP3 VALIDATION: POST-TRANSFORMATION ({operation})")
-print("=" * 60)
-
-cp3_passed = True
-
-# Check 1: Row count relationship
-input_rows = len(input_df)
-output_rows = len(output_df)
-row_change = output_rows - input_rows
-
-print(f"\nRow Count Change:")
-print(f"  Input rows:  {input_rows:,}")
-print(f"  Output rows: {output_rows:,}")
-print(f"  Change:      {row_change:+,}")
-print(f"  Expected:    {expected_relationship}")
-
-if expected_relationship == "same" and row_change != 0:
-    print(f"  [WARN] Expected same row count, but changed by {row_change:+,}")
-elif expected_relationship == "fewer" and row_change >= 0:
-    print(f"  [WARN] Expected fewer rows, but count changed by {row_change:+,}")
-elif expected_relationship == "more" and row_change <= 0:
-    print(f"  [WARN] Expected more rows, but count changed by {row_change:+,}")
-else:
-    print(f"  [PASS] Row count relationship matches expectation")
-
-# Check 2: Unexpected NAs introduced
-print(f"\nNew Null Values:")
-new_nulls_found = False
-common_cols = set(input_df.columns) & set(output_df.columns)
-for col in sorted(common_cols):
-    input_nulls = input_df[col].null_count()
-    output_nulls = output_df[col].null_count()
-    new_nulls = output_nulls - input_nulls
-    if new_nulls > 0:
-        print(f"  [WARN] {col}: {new_nulls:,} new nulls")
-        new_nulls_found = True
-if not new_nulls_found:
-    print("  [PASS] No new nulls introduced")
-
-# Check 3: Extreme row loss
-if input_rows > 0:
-    loss_rate = 1 - (output_rows / input_rows)
-    if loss_rate > 0.9:
-        print(f"  [FAIL] Row count dropped by {loss_rate:.1%} (>90% threshold)")
-        cp3_passed = False
-
-print(f"\nCP3 VALIDATION: {'PASSED' if cp3_passed else 'FAILED'}")
-print("=" * 60)
-
-assert cp3_passed, "STOP: CP3 validation failed"
-```
-
-**STOP Conditions:**
-- >90% row loss after transformation
-
----
-
-### CP4: Before Output
-
-**When:** Before generating final outputs
-**Purpose:** Verify analysis is complete and consistent with Plan
-
-```python
-from pathlib import Path
-
-# --- CP4 Validation: Pre-Output ---
-# Configure these before running:
-#   analysis_df = <final analysis DataFrame>
-#   required_columns = ["ncessch", "year", "enrollment", "poverty_rate"]
-#   critical_columns = ["ncessch", "year"]
-#   required_figures = ["enrollment_trends.png", "poverty_scatter.png"]
-#   figures_dir = Path("output/figures")
-#   required_sections = ["Executive Summary", "Key Findings", "Limitations"]
-print("\n" + "=" * 60)
-print("CP4 VALIDATION: PRE-OUTPUT")
-print("=" * 60)
-
-cp4_passed = True
-
-# Check 1: Required columns in final data
-missing_cols = [c for c in required_columns if c not in analysis_df.columns]
-if missing_cols:
-    print(f"  [FAIL] Missing required columns: {missing_cols}")
-    cp4_passed = False
-else:
-    print(f"  [PASS] All {len(required_columns)} required columns present")
-
-# Check 2: No NAs in critical columns
-print(f"\nCritical Column Nulls:")
-for col in critical_columns:
-    if col in analysis_df.columns:
-        null_count = analysis_df[col].null_count()
-        if null_count > 0:
-            print(f"  [FAIL] {col}: {null_count:,} nulls")
-            cp4_passed = False
-        else:
-            print(f"  [PASS] {col}: 0 nulls")
-
-# Check 3: Required figures generated
-print(f"\nRequired Figures:")
-for fig in required_figures:
-    fig_path = figures_dir / fig
-    if fig_path.exists():
-        size_kb = fig_path.stat().st_size / 1024
-        print(f"  [PASS] {fig} ({size_kb:.1f} KB)")
-        if size_kb < 10:
-            print(f"  [WARN] {fig} is suspiciously small")
-    else:
-        print(f"  [FAIL] {fig} NOT FOUND")
-        cp4_passed = False
-
-# Check 4: Report sections complete
-if required_sections:
-    print(f"\nRequired Report Sections: {required_sections}")
-    print("  (Verify manually that each section has substantive content)")
-
-print(f"\nCP4 VALIDATION: {'PASSED' if cp4_passed else 'FAILED'}")
-print("=" * 60)
-
-assert cp4_passed, "STOP: CP4 validation failed"
-```
-
-**STOP Conditions:**
-- Missing required columns
-- NAs in critical columns
-- Missing required figures or report sections
+See `05_VALIDATION_CHECKPOINTS.md` for CP1-CP4 definitions, STOP thresholds, and Python code templates.
 
 ---
 
@@ -673,73 +214,9 @@ assert cp4_passed, "STOP: CP4 validation failed"
 **Executor:** code-reviewer agent (invoked by orchestrator)
 **Purpose:** Independent secondary validation of output quality and methodology alignment
 
-### Relationship to Primary Checkpoints
+CP checkpoints catch **operational failures** (empty data, wrong types). QA checkpoints catch **logical errors** (wrong methodology, data misinterpretation). Both must pass for stage handoff.
 
-| Aspect | CP Checkpoints (CP1-CP4) | QA Checkpoints (QA1-QA4) |
-|--------|--------------------------|--------------------------|
-| **Timing** | Inline, during script execution | After script execution |
-| **Executor** | research-executor (embedded in code) | code-reviewer (separate agent) |
-| **Focus** | Operational correctness (shape, types, counts) | Methodology alignment, data quality, logic |
-| **Output** | PASSED/FAILED (binary) | PASSED/WARNING/INFO/BLOCKER (graduated) |
-| **Failure Mode** | STOP execution | Revision attempt (max 2) or escalate |
-
-**Key Insight:** CP checkpoints catch **operational failures** (empty data, wrong types, missing columns). QA checkpoints catch **logical errors** (wrong methodology, data misinterpretation, validation gaps).
-
-### QA Checkpoint Definitions
-
-| Checkpoint | Stage | What It Validates |
-|------------|-------|-------------------|
-| **QA1** | 5 (Post-Fetch) | Schema correctness, year coverage, ID uniqueness, unexpected distributions |
-| **QA2** | 6 (Post-Clean) | Coded value handling, suppression calculation, filtering logic |
-| **QA3** | 7 (Post-Transform) | Join cardinality, row preservation, aggregation logic, derived column correctness |
-| **QA4** | 8 (Post-Viz) | Figure existence, data source accuracy, visual correctness |
-
-### QA Severity Classification
-
-| Severity | Definition | Orchestrator Response |
-|----------|------------|----------------------|
-| **BLOCKER** | Code produces invalid results | Trigger revision (max 2 attempts) |
-| **WARNING** | Code works but has concerns | Log for Stage 10 aggregation, proceed |
-| **INFO** | Suggestions for improvement | Log only, proceed |
-
-### QA Recovery Protocol
-
-When code-reviewer returns BLOCKER:
-
-```
-BLOCKER returned by code-reviewer
-    │
-    ├─ Is it a methodology issue?
-    │   ├─ YES → STOP, escalate to user immediately
-    │   └─ NO → Continue to revision flow
-    │
-    ├─ Revision Attempt 1:
-    │   ├─ research-executor creates versioned revision (_a.py)
-    │   ├─ code-reviewer re-reviews
-    │   └─ Resolved? → Proceed; Still BLOCKER? → Attempt 2
-    │
-    ├─ Revision Attempt 2:
-    │   ├─ research-executor creates second revision (_b.py)
-    │   ├─ code-reviewer re-reviews
-    │   └─ Resolved? → Proceed; Still BLOCKER? → Escalate
-    │
-    └─ After 2 failed attempts:
-        └─ STOP and escalate to user with explanation
-```
-
-### Integration with Protocol 3
-
-QA checkpoints complement, not replace, CP checkpoints:
-
-1. **Stage 5:** CP1 validates fetch success → QA1 validates data quality
-2. **Stage 6:** CP2 validates cleaning metrics → QA2 validates methodology
-3. **Stage 7:** CP3 validates transformation → QA3 validates logic and cardinality
-4. **Stage 8:** QA4 validates visualization correctness (no CP checkpoint at Stage 8)
-5. **Stages 11-12:** CP4 validates final output completeness (runs during Final Review)
-
-Both must pass for stage handoff. A script can pass CP validation but fail QA review.
-
-**See:** `agent_reference/QA_CHECKPOINTS.md` for complete checkpoint definitions and `agents/code-reviewer.md` for the QA agent protocol.
+**See:** `agent_reference/QA_CHECKPOINTS.md` for complete QA checkpoint definitions (QA1-QA4), severity classification, recovery protocol, and `agents/code-reviewer.md` for the QA agent protocol.
 
 ---
 
@@ -898,18 +375,18 @@ These files must exist in the project folder:
 | Plan document | `[project]/YYYY-MM-DD [Title] Plan.md` | [ ] | [ ] |
 | Marimo notebook | `[project]/YYYY-MM-DD [Title].py` | [ ] | [ ] |
 | Stakeholder report | `[project]/YYYY-MM-DD [Title] Report.md` | [ ] | [ ] |
-| **Lessons learned** | `[project]/LEARNINGS.md` | [ ] | [ ] |
+| Lessons learned | `[project]/LEARNINGS.md` | [ ] | [ ] |
 | Raw data (parquet) | `[project]/data/raw/*.parquet` | [ ] | [ ] |
 | Processed data (parquet) | `[project]/data/processed/*.parquet` | [ ] | [ ] |
 | Visualizations | `[project]/output/figures/*.png` | [ ] | [ ] |
-| STATE.md (if multi-session) | `[project]/STATE.md` | [ ] | [ ] |
+| STATE.md | `[project]/STATE.md` | [ ] | [ ] |
 
 **Verification Protocol:**
 1. List files in project folder
 2. Verify each required file exists
 3. Open each file and verify non-empty, valid content
 4. Check file naming follows conventions
-5. **Check substantiveness** (see below)
+5. Check substantiveness (see below)
 
 ---
 
@@ -1098,7 +575,7 @@ In addition to goal-backward verification, complete these traditional checks:
 | | Notebook documented | [ ] |
 | | Report complete | [ ] |
 | | Citations included | [ ] |
-| | **LEARNINGS.md created** | [ ] |
+| | LEARNINGS.md created | [ ] |
 | **Files** | All files named correctly | [ ] |
 | | Parquet saved | [ ] |
 | | Figures exported | [ ] |

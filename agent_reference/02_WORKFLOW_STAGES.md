@@ -2,7 +2,7 @@
 
 This document provides detailed execution guidance for each of the 12 stages (plus 2 intermediate stages) in the Full Pipeline workflow.
 
-**Execution Model:** Stages 5-8 follow the **file-first execution pattern**—all code is written to script files before execution, with output appended as comments. See `CLAUDE.md` "File-First Execution Rule" and `agents/research-executor.md` for the complete protocol.
+**Execution Model:** Stages 5-8 follow the **file-first execution pattern**—all code is written to script files before execution, then run via `./scripts/run_with_capture.sh` which automatically appends the execution log. Closely read `agent_reference/EXECUTION_CAPTURE.md` for the mandatory file-first execution protocol covering complete code file writing, output capture, and file versioning rules.
 
 ---
 
@@ -976,7 +976,7 @@ The cardinality in the Plan's Transformation Sequence is the contract. The `vali
 
 **Validation Pattern (Script-Based):**
 
-All transformations are executed through script files, NOT interactive notebooks. See `agent_reference/SCRIPT_TEMPLATE.md` for the complete script format and `agents/research-executor.md` for the file-first protocol.
+All transformations are executed through script files, NOT interactive notebooks. See `agent_reference/SCRIPT_TEMPLATE.md` for the script format. Closely read `agent_reference/EXECUTION_CAPTURE.md` for the mandatory file-first execution protocol covering complete code file writing, output capture, and file versioning rules.
 
 ```python
 # scripts/stage7_transform/01_join-data.py
@@ -1016,7 +1016,7 @@ else:
     print(f"CP3 STATUS: FAILED - Row loss {row_loss_pct:.1%}")
 
 # EXECUTION LOG will be appended here after running:
-# python scripts/stage7_transform/01_join-data.py 2>&1
+# ./scripts/run_with_capture.sh scripts/stage7_transform/01_join-data.py
 ```
 
 **If validation fails:** Create a new versioned script (`01_join-data_a.py`) with fixes. Do NOT modify the original—it serves as audit trail.

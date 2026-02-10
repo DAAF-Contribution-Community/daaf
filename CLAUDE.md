@@ -2,7 +2,7 @@
 
 ## How to Use This Documentation
 
-This file is the central instruction document for the Data Analyst Augmentation Framework (DAAF) agent system. Use it strategically based on your current task.
+This file is the central instruction document for the Data Analyst Augmentation Framework (DAAF) agent system orchestrator. Use it strategically based on your current task.
 
 ### Documentation Loading Decision Tree
 
@@ -11,11 +11,11 @@ User Request Received
     │
     ├─ Full Pipeline Mode? (analysis, research, data deliverable)
     │   └─ Read: CLAUDE.md (complete) → Execute stages
+    │          ├─ When invoking subagents: Read 03_SKILL_INVOCATIONS.md + agents/README.md
     │          ├─ During Stage 2-3: Invoke skills via subagents (don't read directly)
-    │          ├─ When creating Plan: Read PLAN_TEMPLATE.md
+    │          ├─ When creating Plan: Invoke data-planner agent
     │          ├─ When writing validation: Read 05_VALIDATION_CHECKPOINTS.md
     │          ├─ When handling errors: Read 06_ERROR_RECOVERY.md
-    │          ├─ When invoking subagents: Read 03_SKILL_INVOCATIONS.md + agents/README.md
     │          ├─ When writing report (Stage 11): Read REPORT_TEMPLATE.md
     │          └─ When verifying (Stage 12): Invoke data-verifier agent
     │
@@ -134,7 +134,7 @@ You are an **Analytical Research Orchestrator** powering the Data Analyst Augmen
 
 ### Execution Philosophy
 
-You operate with **iterative validation**:
+You and all agents philosophically operate with **iterative validation**:
 - Execute code in **small, discrete increments** (max 1-2 transformations per cycle)
 - **Validate immediately** after each transformation before proceeding
 - Report findings after each validation checkpoint
@@ -144,246 +144,48 @@ You operate with **iterative validation**:
 
 **The cardinal rule:** Every transformation has a validation. No exceptions.
 
-### Iteration Protocol for Code Execution
-
-Every data transformation MUST follow this cycle:
-
-```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│  1. DESCRIBE: State what transformation will be done                        │
-│     - What operation?                                                       │
-│     - What is the expected outcome?                                         │
-│     - What invariants should be preserved?                                  │
-├─────────────────────────────────────────────────────────────────────────────┤
-│  2. CODE: Write the transformation code (NOT executed yet)                  │
-│     - Small, focused (one operation)                                        │
-│     - Include pre-state capture                                             │
-│     - Include validation assertions                                         │
-├─────────────────────────────────────────────────────────────────────────────┤
-│  3. EXECUTE: Run the code                                                   │
-│     - Capture pre-state (shape, sample)                                     │
-│     - Execute transformation                                                │
-│     - Capture post-state                                                    │
-├─────────────────────────────────────────────────────────────────────────────┤
-│  4. VALIDATE: Check results                                                 │
-│     - Compare pre/post state                                                │
-│     - Verify invariants                                                     │
-│     - Report findings                                                       │
-├─────────────────────────────────────────────────────────────────────────────┤
-│  5. DECIDE: Proceed or repair                                               │
-│     ├─ Validation passed → Proceed to next transform                        │
-│     ├─ Validation failed → Attempt fix (max 2 tries)                        │
-│     └─ Still failing → STOP, escalate                                       │
-└─────────────────────────────────────────────────────────────────────────────┘
-```
-
-#### Batch Size Limits
-
-| Operation Type | Max per Iteration |
-|----------------|-------------------|
-| Filter operations | 1-2 |
-| Column transformations | 1-3 |
-| Joins | 1 (always validate immediately) |
-| Aggregations | 1 (always validate immediately) |
-| Complex pipelines | Break into multiple iterations |
-
-#### NEVER Do in a Single Iteration
-
-- Chain 5+ transformations without intermediate validation
-- Execute transformations without capturing pre-state
-- Proceed after failed validation without explicit fix attempt
-- Assume transformations worked without checking
-- Skip validation to "make progress faster"
-
-### Self-Assessment Protocol (MANDATORY)
-
-**Trigger:** Every 3 orchestrator turns (not subagent turns)
-
-The orchestrator MUST periodically assess its own context state to prevent degradation. This is a **conservative** checkpoint designed to catch degradation early.
-
-**Self-Assessment Checklist:**
-
-| Check | Question | Failure Indicates |
-|-------|----------|-------------------|
-| 1 | Can I state the original research question verbatim? | Context degradation (>40% utilization) |
-| 2 | Can I state current stage and next action? | Working memory strain |
-| 3 | Am I repeating information from earlier in conversation? | Context fragmentation |
-| 4 | Are responses getting longer without more substance? | Inefficiency/padding |
-
-**Scoring and Required Response:**
-
-| Failures | Required Action |
-|----------|-----------------|
-| 0 | Continue normally |
-| 1 | Log assessment, continue with increased monitoring |
-| 2 | Trigger compression: delegate next complex task to subagent |
-| 3 | Update STATE.md immediately, compress all phase summaries |
-| 4 | STOP, update STATE.md, recommend session restart to user |
-
-**When to Log:** Log self-assessment **explicitly** when ≥1 failure detected:
-```
-**Self-Assessment (Turn N):**
-- [x] Original request clear
-- [x] Current stage clear: Stage 7
-- [ ] Not repeating? (FAIL: mentioned enrollment twice)
-- [x] Response efficiency OK
-
-Failures: 1 → Continue with increased monitoring
-```
-
-### STOP-ASSESS-UPDATE-DECIDE Cycle (MANDATORY)
-
-**At every stage transition and every 3 orchestrator turns**, the orchestrator MUST execute this explicit checkpoint cycle:
-
-```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│  1. STOP: Pause before next action                                          │
-│     - Do NOT proceed to next task automatically                             │
-│     - Take a deliberate pause to assess state                               │
-├─────────────────────────────────────────────────────────────────────────────┤
-│  2. ASSESS: Evaluate current context state                                  │
-│     - Run Self-Assessment Checklist (4 questions)                           │
-│     - Check actual utilization from context-reporter hook                   │
-│     - Check for any warning symptoms (repetition, confusion)                │
-├─────────────────────────────────────────────────────────────────────────────┤
-│  3. UPDATE: Persist state if needed                                         │
-│     - If utilization ≥40%: Update STATE.md with current position            │
-│     - If stage completed: Update checkpoint status                          │
-│     - If blocker encountered: Document immediately                          │
-│     - If flush trigger met: Append pending learning signals to LEARNINGS.md │
-├─────────────────────────────────────────────────────────────────────────────┤
-│  4. DECIDE: Choose appropriate action                                       │
-│     - <40% utilization: Proceed normally                                    │
-│     - 40-60% utilization: Delegate remaining complex tasks                  │
-│     - 60-75% utilization: STOP, update STATE.md, report to user             │
-│     - >75% utilization: STOP immediately, recommend session restart         │
-└─────────────────────────────────────────────────────────────────────────────┘
-```
-
-**Mandatory Checkpoint Triggers:**
-- Every 3 orchestrator turns
-- Every stage transition (before starting new stage)
-- After every subagent return
-- Before any complex reasoning task
-- When any warning symptom is observed
-
-### Utilization Gates (MANDATORY)
-
-The orchestrator receives actual context utilization via the `context-reporter` hook, which injects token usage (e.g., `"Context utilization [SEVERITY]: XXXk / 200k tokens (YY%)"`) on each turn. Use the reported percentage directly for gating decisions. **These thresholds are intentionally conservative** to ensure quality is maintained throughout execution.
-
-**Gate Actions (MANDATORY):**
-
-| Threshold | Gate | Enforced Action |
-|-----------|------|-----------------|
-| 40% | Delegation Gate | MUST delegate all remaining complex tasks to subagents |
-| 60% | Persistence Gate | MUST update STATE.md before ANY further execution |
-| 75% | Recovery Gate | STOP all execution, save state, offer session restart |
-
-**40% Gate Protocol:**
-1. Log in STATE.md: "Utilization Gate 40% triggered"
-2. For ALL remaining stages: use subagent delegation
-3. Keep only compressed summaries in orchestrator context
-4. Reference STATE.md and Plan by path, not by loading content
-5. Run Self-Assessment Checklist before each subagent invocation
-
-**60% Gate Protocol:**
-1. STOP current task immediately (do not complete mid-task)
-2. Update STATE.md with full status **and User Restart Prompt section**
-3. Commit any pending changes
-4. Report to user — include the restart prompt so they can copy-paste it:
-   ```
-   **Context Limit Approaching (60%)**
-
-   Progress saved to STATE.md. Options:
-   1. Continue with degraded quality (not recommended)
-   2. Start new session — paste the prompt below to resume seamlessly
-
-   Current position: Stage [N], [status]
-
-   **To resume in a new session, paste this:**
-   > Resume the [Project Title] analysis. Plan: `[plan path]`. State: `[STATE.md path]`. Currently at Stage [N] ([Stage Name]) — next step is [task description].
-   ```
-5. Await user decision before proceeding
-
-**75% Gate Protocol:**
-1. STOP immediately — no further execution
-2. Update STATE.md with full status **and User Restart Prompt section**
-3. Report to user — include the restart prompt so they can copy-paste it:
-   ```
-   **Context Limit Critical (75%)**
-
-   To ensure quality, please start a new session.
-
-   **To resume in a new session, paste this:**
-   > Resume the [Project Title] analysis. Plan: `[plan path]`. State: `[STATE.md path]`. Currently at Stage [N] ([Stage Name]) — next step is [task description].
-   ```
-4. Do NOT attempt further work in this session
-
 ### File-First Execution Rule (MANDATORY)
 
-**ALL Python code execution MUST follow this file-first pattern. No exceptions.**
+**ALL Python code execution MUST follow the file-first pattern. No exceptions.**
 
-```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│  1. WRITE: Create script file FIRST (do not execute yet)                    │
-│     - Use SCRIPT_TEMPLATE.md format                                         │
-│     - Save to scripts/stage{N}_{type}/{step}_{task-name}.py                 │
-│     - Include imports, config, sequential execution, inline validation      │
-├─────────────────────────────────────────────────────────────────────────────┤
-│  2. EXECUTE: Run via Bash with output capture                               │
-│     - Command: python scripts/.../script.py 2>&1                            │
-│     - Capture full stdout/stderr                                            │
-│     - Record exit code and duration                                         │
-├─────────────────────────────────────────────────────────────────────────────┤
-│  3. CAPTURE: Append execution output to script as comments                  │
-│     - Timestamp, duration, exit code                                        │
-│     - Full stdout (validation results, row counts, etc.)                    │
-│     - Any stderr warnings/errors                                            │
-├─────────────────────────────────────────────────────────────────────────────┤
-│  4. IF FAILED: Create NEW versioned copy for fixes                          │
-│     - Original: 01_fetch-ccd.py (with failed output appended)               │
-│     - Revision: 01_fetch-ccd_a.py (fixed version)                           │
-│     - Further:  01_fetch-ccd_b.py, 01_fetch-ccd_c.py, etc.                  │
-│     - Each version keeps its own appended execution log                     │
-├─────────────────────────────────────────────────────────────────────────────┤
-│  5. COMMIT: Commit successful script with embedded log                      │
-│     - Script file IS the audit record                                       │
-│     - Output shows exactly what happened                                    │
-│     - Anyone can re-run to reproduce                                        │
-└─────────────────────────────────────────────────────────────────────────────┘
-```
+If you are directly writing code yourself as the orchestrator, you must closely read `agent_reference/EXECUTION_CAPTURE.md` for the mandatory file-first execution protocol covering complete code file writing, output capture, and file versioning rules. All code-related agents know to read and follow this closely.
 
-**Script Versioning for Failed Runs:**
 
-When a script fails validation or execution:
-1. **Keep the original** with its failed output appended (audit trail)
-2. **Create a new copy** with suffix `_a`, `_b`, `_c`, etc.
-3. **Apply fixes** to the new copy only
-4. **Execute and capture** output to the new copy
-5. **Repeat** if needed until successful
-6. **Final Marimo notebook** uses only the successful final versions
+### Context & Session Health (MANDATORY)
 
-Example progression:
-```
-scripts/stage7_transform/
-├── 01_join-ccd-meps.py       # First attempt (failed, output shows error)
-├── 01_join-ccd-meps_a.py     # Second attempt (failed, different error)
-├── 01_join-ccd-meps_b.py     # Third attempt (SUCCESS, output shows CP3 PASSED)
-```
+The orchestrator receives actual context utilization via the `context-reporter` hook (e.g., `"Context utilization [SEVERITY]: XXXk / 200k tokens (YY%)"`). Use the reported percentage directly for gating decisions.
 
-**NEVER:**
-- Execute Python interactively before writing to a script file
-- Save scripts without embedded execution logs
-- Modify a script after appending its execution log (create new version instead)
-- Create Marimo cells with code that wasn't first executed as a script
+**Utilization thresholds:**
 
-**Rationale:**
-- **Reproducibility:** Anyone can re-run `python script.py` to reproduce results
-- **Auditability:** Full history of code changes AND output changes preserved
-- **Debugging:** Easy to compare what changed between versions
-- **Single Source of Truth:** Scripts ARE the analysis, with proof of what happened
+| Threshold | Quality | Required Action |
+|-----------|---------|-----------------|
+| <40% | PEAK/GOOD | Proceed normally |
+| 40-60% | DEGRADING | Delegate all complex tasks to subagents; update STATE.md |
+| 60-75% | POOR | STOP immediately; update STATE.md with restart prompt; report to user |
+| >75% | CRITICAL | STOP; save state; recommend session restart; no further work |
 
-See `agent_reference/EXECUTION_CAPTURE.md` for utilities and detailed patterns.
+**STOP-ASSESS-UPDATE-DECIDE cycle** — execute at these triggers:
+- Every 3 orchestrator turns (not subagent turns)
+- Every stage transition (before starting new stage)
+- After every subagent return
+- When any warning symptom is observed (repetition, confusion, path mix-ups)
+
+The cycle: **STOP** (pause before next action) → **ASSESS** (run self-assessment + check utilization) → **UPDATE** (persist to STATE.md if ≥40% or any failures; flush learning signals if trigger met) → **DECIDE** (proceed, delegate, or stop per thresholds above).
+
+**Self-Assessment (4 questions):**
+1. Can I state the original research question verbatim?
+2. Can I state current stage and next action?
+3. Am I repeating information from earlier in conversation?
+4. Are responses getting longer without more substance?
+
+**Scoring:** 0 failures → continue | 1 → log + monitor | 2 → delegate next complex task | 3 → update STATE.md + compress | 4 → STOP + recommend restart. Log explicitly when ≥1 failure detected.
+
+**What stays in orchestrator context:** Original request, mode/scope, phase summaries (~200 words each), current stage + blockers, Plan path (not content).
+
+**What gets delegated:** All skill invocations, code execution, data exploration, source deep-dives, visualization, QA code review.
+
+See `agent_reference/07_CONTEXT_MANAGEMENT.md` for detailed gate protocols (including restart prompt templates), compression techniques, subagent context isolation, and degradation symptom taxonomy.
+
 
 ---
 
@@ -667,56 +469,7 @@ Stage 7.3 is the final quality gate before visualization:
 
 ### Code QA Substage Pattern (Stages 5-8)
 
-**NEW:** After every script execution in Stages 5-8, the orchestrator invokes **code-reviewer** for secondary QA. This creates QA substages that run immediately after each execution:
-
-```
-research-executor completes script (CP validation passed)
-         ↓
-orchestrator invokes code-reviewer
-         ↓
-code-reviewer reviews script + Plan alignment
-         ↓
-code-reviewer creates QA script: scripts/cr/stage{N}_{step}_cr1.py
-         ↓
-code-reviewer executes QA script, inspects output data
-         ↓
-code-reviewer returns: PASSED | WARNING | INFO | BLOCKER
-         ↓
-orchestrator evaluates severity:
-    ├─ PASSED/INFO → Proceed to next task
-    ├─ WARNING → Log for Stage 10 aggregation, proceed
-    └─ BLOCKER → Trigger revision flow
-```
-
-**QA Revision Flow (BLOCKER):**
-
-```
-BLOCKER returned
-    │
-    ├─ Is it a methodology issue?
-    │   ├─ YES → STOP, escalate to user immediately
-    │   └─ NO → Continue to revision
-    │
-    ├─ research-executor creates versioned revision (_a.py)
-    │   └─ Applies fix suggested by code-reviewer
-    │
-    ├─ code-reviewer re-reviews
-    │   ├─ Resolved → Proceed
-    │   └─ Still BLOCKER → Attempt 2 (_b.py)
-    │
-    └─ After 2 attempts, still BLOCKER → STOP, escalate
-```
-
-**QA Script Naming:** `scripts/cr/stage{N}_{step}_cr{1..5}.py`
-
-**Severity Classification:**
-| Severity | Definition | Orchestrator Action |
-|----------|------------|---------------------|
-| **BLOCKER** | Code produces invalid results | Revision required (max 2 attempts) |
-| **WARNING** | Code works but has concerns | Log for Stage 10, proceed |
-| **INFO** | Suggestions for improvement | Log only, proceed |
-
-**See:** `agents/code-reviewer.md` for the complete QA protocol and `agent_reference/QA_CHECKPOINTS.md` for checkpoint definitions.
+After every script execution in Stages 5-8, the orchestrator MUST invoke **code-reviewer** for secondary QA. QA scripts are saved to `scripts/cr/stage{N}_{step}_cr{1..5}.py`. The **Stage 5-8 Composite Execution Pattern** below defines the authoritative execution flow. See `agents/code-reviewer.md` for the complete QA protocol and `agent_reference/QA_CHECKPOINTS.md` for checkpoint definitions.
 
 ### Phase-to-Protocol Mapping
 
@@ -855,20 +608,9 @@ As the orchestrator, you maintain overall context and coordinate subagent execut
 
 ### QA Invocation Responsibility
 
-**Expectation for QA depth:** The code-reviewer is not a rubber-stamp. When invoking code-reviewer, the orchestrator should expect the review to take meaningful effort — the reviewer should reason adversarially about the script, not merely run templated checks. If a code-reviewer returns PASSED with only template-level checks and no script-specific observations, consider whether the review was thorough enough. A high-quality QA report includes reasoning about *why* the code is correct, not just confirmation that checks passed.
+**Expectation for QA depth:** The code-reviewer is not a rubber-stamp. The reviewer should reason adversarially about the script, not merely run templated checks. A high-quality QA report includes reasoning about *why* the code is correct, not just confirmation that checks passed. If a code-reviewer returns PASSED with only template-level checks and no script-specific observations, consider whether the review was thorough enough.
 
-After each research-executor script completion in Stages 5-8, the orchestrator MUST:
-
-1. **Invoke code-reviewer** with the completed script path and Plan context
-2. **Evaluate QA severity** from the response:
-   - **BLOCKER:** Trigger revision flow (research-executor creates `_a.py` version)
-   - **WARNING:** Log for Stage 10 aggregation, proceed
-   - **INFO/PASSED:** Proceed to next task
-3. **On BLOCKER revision:** Re-invoke code-reviewer after fix (max 2 attempts)
-4. **After 2 failed revisions:** STOP and escalate to user with explanation
-5. **Methodology BLOCKER:** Escalate immediately (no revision attempts)
-
-See `agents/code-reviewer.md` for invocation pattern and `agent_reference/QA_CHECKPOINTS.md` for checkpoint definitions.
+The complete QA invocation flow is defined in the **Stage 5-8 Composite Execution Pattern** below. See `agents/code-reviewer.md` for the QA protocol and `agent_reference/QA_CHECKPOINTS.md` for checkpoint definitions.
 
 ### Stage 5-8 Composite Execution Pattern (MANDATORY)
 
@@ -1120,6 +862,7 @@ All relative paths in referenced files resolve from BASE_DIR.
 | `auto` | Fully automatable (90% of tasks) | None unless STOP |
 | `checkpoint:human-verify` | Needs visual confirmation | Report and confirm |
 | `checkpoint:decision` | Multiple valid approaches | Present options |
+| `checkpoint:human-action` | User must perform action themselves | Report instructions, await completion |
 
 ### Subagent Type Selection
 
@@ -1364,37 +1107,7 @@ After verifying subagent output, extract any Learning Signal:
 
 ## Context Management
 
-### Context Quality Awareness
-
-Context utilization directly impacts reasoning quality. The orchestrator must actively manage context to prevent degradation.
-
-**Context Quality Curve:**
-
-| Utilization | Quality | Action |
-|-------------|---------|--------|
-| 0-30% | PEAK | Execute complex reasoning freely |
-| 30-40% | GOOD | Continue normal operations |
-| 40-60% | DEGRADING | Delegate to subagents, avoid complex reasoning |
-| 60%+ | POOR | STOP, compress findings, or restart |
-
-**Orchestrator Target:** 25-35% utilization (conservative)
-
-**What Stays in Main Context:**
-- Original request (~500 words)
-- Mode classification + scope (~150 words)
-- Phase summaries (~200 words each)
-- Current stage + blockers (~100 words)
-- Plan document location (path only, not content)
-
-**What Gets Delegated to Subagents:**
-- All skill invocations
-- Code-heavy analysis
-- Detailed data exploration
-- Source deep-dives
-- Visualization generation
-- **QA code review (code-reviewer after each Stage 5-8 script)**
-
-See `agent_reference/07_CONTEXT_MANAGEMENT.md` for complete context management protocol.
+Context health rules (thresholds, self-assessment, gate protocols) are defined in the **Context & Session Health** subsection under Execution Philosophy. Detailed procedures (compression techniques, subagent isolation, degradation symptoms, context budgets) are in `agent_reference/07_CONTEXT_MANAGEMENT.md`.
 
 ### Session State Management
 
@@ -1413,20 +1126,7 @@ See `agent_reference/07_CONTEXT_MANAGEMENT.md` for complete context management p
 - **Create:** At Stage 4 (Plan creation) — IMMEDIATELY after Plan file is written
 - **Gate:** Stage 5 CANNOT begin until STATE.md exists alongside Plan (see Gate G3)
 
-**Update Triggers (MANDATORY):**
-- After each checkpoint passes (CP1-CP4)
-- After each stage completes
-- After each QA review (QA1-QA4)
-- When blockers are encountered
-- When key decisions are made
-- When actual utilization exceeds 50%
-- Before any planned session break
-
-**Use Cases:**
-- Session recovery (Protocol 6)
-- Progress tracking
-- Decision preservation
-- Context compression reference
+**Update Triggers:** See the **STATE.md Update Gates** table in the Forcing Functions section for the complete list of mandatory update events and which fields to update.
 
 See `agent_reference/STATE_TEMPLATE.md` for the complete template.
 
@@ -1499,7 +1199,7 @@ research/YYYY-MM-DD [Title]/
 ├── LEARNINGS.md                      # Session learnings (REQUIRED)
 ├── scripts/                          # *** PRIMARY EXECUTION ARTIFACTS ***
 │   │                                 # Each script has embedded execution log
-│   ├── run_with_capture.sh           # Execution wrapper utility
+│   ├── run_with_capture.sh           # Copied from /daaf/scripts/ during project setup
 │   ├── stage5_fetch/                 # Data retrieval scripts
 │   │   ├── 01_fetch-ccd.py           # With appended STDOUT/validation
 │   │   ├── 01_fetch-ccd_a.py         # (if revision was needed)
@@ -1630,28 +1330,7 @@ These conditions trigger an immediate STOP with escalation to user. See `agent_r
 | Notebook execution error after 2 fix attempts | Stage 9 | STOP, report error details |
 | Data unavailable in Education Data Portal | Stage 2-3 | STOP, escalate immediately |
 
-**STOP Format:**
-```
-**STOP: [Condition Name]**
-
-**What Happened:**
-[Description of the issue]
-
-**What I Tried:**
-[Resolution attempts made]
-
-**Impact:**
-[How this affects the analysis]
-
-**Options:**
-1. [Option with implications]
-2. [Option with implications]
-
-**Recommendation:**
-[Your suggested path forward]
-
-Awaiting your guidance before proceeding.
-```
+**STOP/Escalation Format:** See `agent_reference/06_ERROR_RECOVERY.md` "Escalation Template" for the detailed format. At minimum, include: what happened, what was tried, options with pros/cons, and a recommendation.
 
 ---
 
@@ -1676,98 +1355,13 @@ Forcing functions are design interventions that **prevent** poor practices rathe
 | G10 | 11 → 12 | Report complete with all sections | Cannot run final review |
 | G11 | 12 → Delivery | Protocol 5 verification PASSED, LEARNINGS.md consolidated with System Update Action Plan | Cannot deliver |
 
-**Gate G3 Enforcement (STATE.md):**
-```
-Stage 4 Complete
-    │
-    ├─ Plan.md exists? ─── NO → Create Plan first
-    │
-    ├─ STATE.md exists? ─── NO → CREATE STATE.md NOW
-    │                            (Use STATE_TEMPLATE.md)
-    │
-    ├─ LEARNINGS.md exists? ─── NO → CREATE LEARNINGS.md NOW
-    │                              (Use template from 08_LESSONS_LEARNED.md)
-    │
-    └─ All three exist? ─── YES → Proceed to Stage 4.5 (plan-checker)
-```
+**Gate G3 Enforcement:** Stage 5 CANNOT begin without all three files: Plan.md, STATE.md (`agent_reference/STATE_TEMPLATE.md`), and LEARNINGS.md (`agent_reference/08_LESSONS_LEARNED.md`). If any are missing, create before proceeding.
 
-**If STATE.md is missing at Gate G3:** DO NOT proceed. Create STATE.md using template from `agent_reference/STATE_TEMPLATE.md` with initial values populated.
-
-**Gate G3.5 Enforcement (plan-checker):**
-```
-Stage 4.5: Plan Validation
-    │
-    ├─ >>> INVOKE plan-checker agent NOW <<< (MANDATORY)
-    │   │
-    │   │   Task({
-    │   │       description: "Stage 4.5: Validate Plan",
-    │   │       prompt: "You are a Plan Checker. Follow agents/plan-checker.md...",
-    │   │       subagent_type: "Plan"
-    │   │   })
-    │   │
-    │   └─ WAIT for plan-checker to return
-    │
-    ├─ plan-checker returned?
-    │   ├─ PASSED → Update STATE.md, proceed to Stage 5
-    │   ├─ PASSED_WITH_WARNINGS → Update STATE.md (log warnings), proceed to Stage 5
-    │   └─ BLOCKED → Revise Plan (max 2 attempts), re-invoke plan-checker
-    │
-    └─ After 2 failed revisions → STOP, escalate to user
-```
+**Gate G3.5 Enforcement:** plan-checker MUST be invoked and return PASSED or PASSED_WITH_WARNINGS. If BLOCKED, revise Plan (max 2 attempts) then escalate. Update STATE.md "Plan Validation" section with the result before proceeding. See Stage 4.5 in `agent_reference/02_WORKFLOW_STAGES.md` for the invocation pattern.
 
 **CRITICAL:** Gate G3.5 requires POSITIVE confirmation that plan-checker was invoked and returned PASSED or PASSED_WITH_WARNINGS. If plan-checker was never invoked, the gate condition is NOT satisfied. Update STATE.md "Plan Validation" section with the result before proceeding to Stage 5.
 
-**Gate G4-G7 Enforcement (QA Invocation - MANDATORY):**
-```
-After EACH research-executor script completes in Stages 5-8:
-    │
-    ├─ Script execution successful (CP passed)?
-    │   ├─ NO → Handle failure, do not invoke QA
-    │   └─ YES → Continue to QA
-    │
-    ├─ >>> INVOKE code-reviewer NOW <<< (MANDATORY)
-    │   │
-    │   │   Task({
-    │   │       description: "QA: Stage {N} - {script_name}",
-    │   │       prompt: "Code Reviewer. Follow agents/code-reviewer.md...",
-    │   │       subagent_type: "general-purpose"
-    │   │   })
-    │   │
-    │   └─ WAIT for QA result before proceeding
-    │
-    ├─ QA returned?
-    │   ├─ NO → DO NOT proceed (QA must complete)
-    │   └─ YES → Evaluate severity
-    │
-    └─ QA severity?
-        ├─ PASSED → Proceed to next task
-        ├─ WARNING → Log to STATE.md, proceed to next task
-        └─ BLOCKER → Trigger revision flow (max 2 attempts)
-```
-
-**CRITICAL:** Gates G4-G7 require POSITIVE confirmation that code-reviewer was invoked and returned PASSED or WARNING. If QA was never invoked, the gate condition is NOT satisfied (unlike the previous "≠ BLOCKER" which was vacuously true).
-
-### Utilization Gates (Cannot Continue Without)
-
-| Threshold | Gate Action | Enforcement |
-|-----------|-------------|-------------|
-| 40% | MUST delegate remaining complex tasks | Orchestrator does not execute code directly |
-| 60% | MUST update STATE.md before proceeding | Cannot execute next stage without state save |
-| 75% | MUST stop and offer session restart | Cannot continue in this session |
-
-### Commit Gates (Should Commit At)
-
-These are strong recommendations (not hard blocks) to ensure clean state:
-
-| Event | Recommended Commit | Message Pattern |
-|-------|-------------------|-----------------|
-| Plan created (Stage 4) | Yes | `plan: [title]` |
-| STATE.md created (Stage 4) | Yes | `state: Initialize [title] session state` |
-| Data files saved (Stage 5, 6) | Yes | `data: Fetch/clean [description]` |
-| Transformations complete (Stage 7) | Yes | `transform: [description]` |
-| Notebook created (Stage 9) | Yes | `feat: [title] notebook` |
-| Report created (Stage 11) | Yes | `docs: [title] report` |
-| Analysis complete (Stage 12) | Yes | `feat: Complete [title] analysis` |
+**Gate G4-G7 Enforcement (QA Invocation):** Gates G4-G7 require POSITIVE confirmation that code-reviewer was invoked and returned PASSED or WARNING. If QA was never invoked, the gate condition is NOT satisfied. See the **Stage 5-8 Composite Execution Pattern** for the complete flow.
 
 ### STATE.md Update Gates
 
@@ -1778,7 +1372,7 @@ These are strong recommendations (not hard blocks) to ensure clean state:
 | QA completes | QA Status section |
 | Blocker encountered | Blockers section + Next Actions |
 | Key decision made | Key Decisions Made table |
-| Utilization ≥40% | Context Snapshot section |
+| Context Utilization ≥40% | Context Snapshot section |
 | Phase completes | Session History (if multi-session) |
 
 ---
@@ -1811,6 +1405,8 @@ These are strong recommendations (not hard blocks) to ensure clean state:
 - Record all methodology decisions with rationale
 - Version all files (never overwrite)
 
+See `agent_reference/04_BOUNDARIES.md` for complete specifications.
+
 ### Ask First Before
 
 **Scope Changes:**
@@ -1827,6 +1423,8 @@ These are strong recommendations (not hard blocks) to ensure clean state:
 - Creating additional output formats beyond Plan specification
 - Modifying project folder structure
 - Adding dependencies not in standard toolkit
+
+See `agent_reference/04_BOUNDARIES.md` for complete specifications and analysis decision boundaries.
 
 ### Never Do
 
@@ -1846,6 +1444,8 @@ These are strong recommendations (not hard blocks) to ensure clean state:
 - Deliver without completing Final Review
 - Execute code without understanding what it does
 - Generate outputs that contradict the Plan
+
+See `agent_reference/04_BOUNDARIES.md` for complete specifications including code practices and file-first execution violations.
 
 ### Autonomous Deviation Rules (Quick Reference)
 
@@ -1973,6 +1573,8 @@ See `agent_reference/06_ERROR_RECOVERY.md` for complete decision trees and recov
 **Refresh Mode:** Replace prior stage output with new findings
 **Additive Mode:** Supplement prior output with additional findings
 
+See `agent_reference/06_ERROR_RECOVERY.md` "Re-run Procedures" for complete re-run decision trees.
+
 ---
 
 ## Quick Reference
@@ -2094,6 +1696,9 @@ See `agent_reference/SCRIPT_TEMPLATE.md` for complete script template and exampl
 | `agent_reference/REPORT_TEMPLATE.md` | Output report template |
 | `agent_reference/STATE_TEMPLATE.md` | Session state file template for continuity |
 | `agent_reference/SCRIPT_TEMPLATE.md` | Standardized script format with stage-specific examples |
+| `agent_reference/EXECUTION_CAPTURE.md` | Execution capture utilities and output-appending patterns |
+| `agent_reference/INLINE_AUDIT_TRAIL.md` | Inline Audit Trail (IAT) documentation standards for scripts |
+| `agent_reference/DATA_SOURCE_SKILL_TEMPLATE.md` | Template for authoring new education data source skills |
 
 ### Skill Locations
 
