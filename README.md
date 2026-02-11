@@ -1,6 +1,6 @@
 # DAAF: Data Analyst Augmentation Framework
 
-An open-source framework demonstrating how AI can assist with rigorous, reproducible data analysis—while keeping humans firmly in the loop. Currently demonstrated with U.S. education data from the Urban Institute Education Data Portal, and extensible to new data domains through additional Skills and data ingestion processes.
+(TODO: README is still WIP) An open-source, extensible agentic workflow that allows skilled researchers to rapidly scale their expertise and accelerate data analysis by as much as 5-10x -- without sacrificing rigor or reproducibility. This project is a core proof-of-concept demonstrating how AI can assist with rigorous, reproducible data analysis given the right frameworks, instructions, and capabilities. Currently demonstrated with U.S. education data from the Urban Institute Education Data Portal, and extensible to new data domains, methodologies, and domains through additional Skills and data ingestion processes.
 
 ---
 
@@ -19,9 +19,9 @@ An open-source framework demonstrating how AI can assist with rigorous, reproduc
 
 ## Vision & Purpose
 
-This project explores a critical question: **Can AI meaningfully assist with complex research tasks while maintaining the rigor that social science demands?**
+This project explores a critical question: **Can an AI/LLM meaningfully assist with complex research tasks while maintaining the rigor that social science demands?**
 
-Our answer: Yes, but only with extensive guardrails, modular quality assurance, and human oversight at every critical juncture.
+Our answer: Yes, but only with extensive guardrails, self-monitoring and self-revision protocols, and human oversight at every critical juncture.
 
 ### What This Project Demonstrates
 
