@@ -1,6 +1,6 @@
 # 01. Installation & Quick Start
 
-This is the complete installation and setup guide for DAAF. All installation instructions, prerequisites, and setup troubleshooting live here — the README focuses on what DAAF is and why it exists, then points here for setup. This document covers every step from installing prerequisites to running your first session.
+This is the complete first-time installation and setup guide for DAAF. This document covers every step from installing prerequisites to running your first session.
 
 ---
 
@@ -18,45 +18,38 @@ This is the complete installation and setup guide for DAAF. All installation ins
 
 ---
 
-## Prerequisites Deep Dive
+## Prerequisites\
 
-Before installing DAAF, you need four things on your computer. This section explains each one and why it's needed.
+Before installing DAAF, there are four (technically five) key prerequisites:
 
-<!-- MIGRATE: README section "Prerequisites" — subsections 1-4 (Git, Docker Desktop, Anthropic account, Terminal) -->
-<!-- This is now the SOLE home for prerequisite details; README will link here instead -->
+### 0. A computer with internet access
 
-### Git
+You'll need internet access to download the project files and interact with Claude (which itself always requires internet). Datasets will also be downloaded from the Urban Institute Education Data Portal, which will also require an internet connection. Note that all analyses will be conducted using your computer hardware, so you should have a computer that's generally capable of running intermediate-level data analysis (same sort of requirements you'd face if you wanted to analyze these same datasets in R/Stata/Python regularly).
 
-<!-- MIGRATE: README "Prerequisites" subsection "1. Git" — moves here in full; README will not retain -->
+### 1. Git
 
-Git is a version control tool that primarily helps people track software file changes and updates. In this case, it lets you download ("clone") this project to your computer (all the files you see above). You'll use it just once during setup. The Git installer is straightforward — the default options are generally fine. If you continue to use Claude Code at all, and plan to use this project, I HIGHLY recommend you learn more about how to use Git for project and file management. It is absolutely necessary to better track and understand how Claude is changing things in your workspace later on.
+Git is a version control tool that primarily helps people track software file changes and updates. In this case, it lets you download ("clone") this project to your computer (all the files you see above). You'll use it just once during setup. The Git installer is straightforward — the default options are generally fine. If you continue to use Claude Code at all, and plan to use this project, I HIGHLY recommend you learn more about how to use Git for project and file management. It is absolutely necessary to better track and understand and review how Claude is changing things in your workspace later on. If you run into any Git-related errors during install, you may need to restart your computer to let the install fully sink in.
 
 **Install:** [git-scm.com/downloads](https://git-scm.com/downloads)
 
-### Docker Desktop
+### 2. Docker Desktop
 
-<!-- MIGRATE: README "Prerequisites" subsection "2. Docker Desktop" — moves here in full; README will not retain -->
-
-Docker is a program designed to help people create self-contained, isolated environments (called a "container") on your computer that are strictly separated from everything else, and extremely easy to replicate and share. This protects your computer and prevents Claude Code from messing with anything it shouldn't be, and it ensures that even if somehow things go catastrophic, you can easily spin a new virtual environment back up in minutes. In this project, I use Docker to install every needed piece of software in a predictable and stress-free way, that has Python, data science libraries, and Claude Code all pre-installed. Think of it like a lightweight virtual computer running inside your computer. Docker Desktop includes everything you need (including Docker Compose, which coordinates the setup). After installing, make sure Docker Desktop is running before proceeding. If you're worried, you can see exactly what is installed by reading the Dockerfile in this repository -- feel free to ask your favorite LLM to help you interpret and inspect it, if you'd like.
+Docker is a program designed to help people create self-contained, isolated environments (called a "container") on your computer that are strictly separated from everything else, and extremely easy to replicate and share. This protects your computer and prevents Claude Code from messing with anything it shouldn't be, and it ensures that even if somehow things go catastrophic, you can easily spin up a new virtual environment back up in minutes with zero consequences. In this project, I also use Docker to install every needed piece of software in a predictable and stress-free way to have Python, data science libraries, and Claude Code all ready to go in one step. Think of it like a lightweight virtual computer running inside your computer. Docker Desktop includes everything you need (including Docker Compose, which coordinates the setup). After installing, make sure Docker Desktop is actually running before proceeding. If you're worried, you can see exactly what is installed by reading the Dockerfile in this repository -- feel free to ask your favorite LLM to help you interpret and inspect it, if you'd like. If you run into any Docker-related errors during install, you may need to restart your computer to let the install fully sink in.
 
 **Install:** [docker.com/products/docker-desktop](https://www.docker.com/products/docker-desktop/)
 
-### Anthropic Account & Authentication
+### 3 Anthropic Account & Authentication
 
-<!-- MIGRATE: README "Prerequisites" subsection "3. An Anthropic account" — moves here in full; README will not retain -->
+Claude Code is the AI assistant that powers this project. It runs inside your terminal (not in a web browser) and needs to link in with an Anthropic account for billing/usage purposes. For the account setup, you have two options:
 
-Claude Code is the AI assistant that powers this project. It runs inside your terminal (not in a web browser) and needs to authenticate with Anthropic. You have two options:
-- **Anthropic API key** — [Get one here](https://console.anthropic.com/). This is a pay-per-use key that you'll paste into Claude Code when prompted. Just note, this can get VERY expensive, very quickly. I HIGHLY recommend getting a Pro/Max subscription for this project.
-- **Anthropic Pro/Max subscription** — If you have a Claude Pro or Max plan, Claude Code can authenticate through your subscription instead. It will walk you through this interactively. I am on the top-level Max plan and it is more than enough for my usage and development of this project, but admittedly a very high barrier to entry. Conversely, I think Pro will probably not be enough for reliably using it more than once every 4 hours (their rate limiting window), but it's worth testing! Please let me know your experiences.
+- **Anthropic Pro/Max subscription** — If you have a Claude Pro or Max plan, Claude Code will walk you through linking your account interactively. This is probably going to be the biggest barrier-to-entry for testing this work, but, unfortunately, these AI research pipelines are intensive enough that you simply cannot get enough usage with a free plan. Even the lower-cost Pro plan may be extremely limited in use for work like this, since they have specific usage limits reset every four hours. But it's worth testing! Please let me know your experiences.
+- **Anthropic API key** — [Get one here](https://console.anthropic.com/). This is a pay-per-use key that you'll paste into Claude Code when prompted. This allows unlimited use as long as you're willing to pay. Just note, this can get VERY expensive, very quickly. I HIGHLY recommend getting a Pro/Max subscription for this project, instead.
 
-Claude Code will prompt you to choose your authentication method the first time you run it — you don't need to configure anything in advance. Note that you can easily port this whole project over to a CLI tool of your choice (OpenCode, Codex, etc.) with a little bit of effort. Fork this repo, work with your favorite tool to convert it over, and please continue to share it broadly with others!!!
+Claude Code will prompt you to choose your authentication method the first time you run it — you don't need to configure anything in advance. If you're concerned: Nothing (including your credentials) ever leave your computer in the course of this project's workflows, and I've enforced a LOT of safety checks to ensure Claude doesn't accidentally share it with anyone, either. This can be directly verified in the code. Note that you can easily port this whole project over to a CLI tool of your choice (OpenCode, Codex, Gemini CLI, etc.) with a little bit of effort (the hooks are really the only hard part -- everything like the agents and skills should port over immediately). Fork this repo, work with your favorite tool to convert it over, and please continue to share it broadly with others!!!
 
-### Terminal Basics
+### 4. Terminal
 
-<!-- MIGRATE: README "Prerequisites" subsection "4. A terminal program" — moves here in full; README will not retain -->
-<!-- Includes the terminal basics table and tips -->
-
-You'll interact with the assistant through your **terminal** (also called the command line or shell), where you type commands and press Enter to run them. This project is used entirely through the terminal — the text-based interface on your computer where you type commands. Your computer definitely already has this, but if you're not used to working in the terminal, here are some basics:
+It's probably going to feel a bit weird, but you'll interact with the Claude Code assistant through your **terminal** (also called the command line or shell), where you type commands and press Enter to run them. This project is used entirely through the terminal — the text-based interface on your computer where you type commands; getting started is strange, but then when it's running, it's basically like any other AI assistant chatbot window with worse font. Your computer definitely already has this, but if you're not used to working in the terminal, here are some basics:
 
 **Opening your terminal:**
 - **Mac:** Open the "Terminal" app (search for it in Spotlight with `Cmd + Space`)
@@ -71,145 +64,149 @@ You'll interact with the assistant through your **terminal** (also called the co
 | Move into a folder | `cd foldername` | `cd daaf` |
 | Go up one folder | `cd ..` | Goes to the parent directory |
 | Clear the screen | `clear` | Clears clutter (your history is still there) |
-| Cancel a running command | `Ctrl + C` | Stops whatever is currently running |
+| Cancel a running command | `Cmd/Ctrl + C` | Stops whatever is currently running |
 | Scroll up to see past output | Scroll or `Shift + Page Up` | See output that scrolled off screen |
 
 **Tips:**
 - You can paste commands into the terminal (`Cmd + V` on Mac, `Ctrl + V` or right-click on Windows)
 - Press the up arrow key to recall previous commands
 - Tab completion works — start typing a file/folder name and press `Tab` to auto-complete it
+- Claude Code was immensely buggy for me on Windows using Powershell. I have found the free version of [Warp](https://www.warp.dev/) to be a much cleaner, more reliable experience (but feel free to turn off all their extra AI features and account shenanigans).
 
 ---
 
-## Step-by-Step Installation
+## Installing DAAF
 
-<!-- MIGRATE: README section "Quick Start" — the 6 commands with "What just happened?" explanations -->
-<!-- This is now the SOLE home for installation steps; README will link here instead -->
+Okay, with all the prerequisites out of the way, installation itself is only six easy steps and will only take a few minutes with a decent internet connection.
 
-### Step 1: Choose a Location and Clone the Repository
+### Step 1: Choose a project download location on your computer and open it in your terminal
 
-Navigate to the folder where you want this project to live, then download it:
+Using your terminal, first navigate to the folder where you want this project to live:
 
 ```bash
 # Navigate to the folder where you want this project to live. Change the below to the folder you want!
 cd "C:\Users\Documents"
 
-# Download the project to your computer
-git clone https://github.com/brhkim/daaf.git
 ```
 
-This creates a `daaf` folder containing all the project files.
-
-### Step 2: Enter the Project Directory
+### Step 2: Use Git to download the project files and enter the Project Directory
 
 ```bash
+# Download the project files to your computer
+git clone https://github.com/brhkim/daaf.git
+
+# Enter the project directory
 cd daaf
 ```
 
-You should now be inside the project directory. You'll see files like `CLAUDE.md`, `docker-compose.yml`, `Dockerfile`, and folders like `agents/`, `research/`, etc.
+This creates a `daaf` folder containing all the project files. You should now be inside the project directory. You'll see files like `CLAUDE.md`, `docker-compose.yml`, `Dockerfile`, and folders like `agents/`, `research/`, etc.
 
-### Step 3: Build and Start the Container
+### Step 3: Use Docker to create and start the container
 
 ```bash
 docker compose up -d --build
 ```
 
-This builds a Docker container with all the tools pre-installed using the Dockerfile provided with this project (Python, data science packages, Claude Code). The first time, this downloads base images and installs all packages — expect it to take a few minutes. Subsequent starts are fast since Docker caches everything.
+This builds a Docker container with all the tools pre-installed using the Dockerfile provided with the project folder you just downloaded (Python, data science packages, Claude Code). The first time, this downloads base images and installs all packages — expect it to take a few minutes as it pulls in all the needed software. Subsequent starts are really fast since Docker caches everything. The `-d` flag in the command runs it in the background so you get your terminal back.
 
-The `-d` flag runs it in the background so you get your terminal back.
+### Step 4: Open a terminal session inside the Docker container
 
-### Step 4: Open a Session Inside the Container
+Once the Docker container setup is complete, your terminal will resume in the project folder. Run the following command to "enter" the Docker container we just created (which will use some configuration settings from the docker-compose.yaml file in our project folder, too).
 
 ```bash
 docker compose exec daaf-docker bash
 ```
 
-This opens a terminal session *inside* the container, separated from the rest of your computer and running with all the software just installed. You'll notice your prompt changes — that's how you know you're "inside."
+This opens a terminal session *inside* the container, separated from the rest of your computer and running with all the software just installed. You'll notice your terminal prompt changes — that's how you know you're "inside." Think of this like activating a mini virtual computer, within your computer.
 
 ### Step 5: Launch Claude Code
+
+Now that we're in, it has everything it needs to start working. Enter the following command to launch Claude Code, configured with everything DAAF has to offer and ready to run.
 
 ```bash
 claude
 ```
-
-On first launch, Claude Code will prompt you to authenticate (API key or subscription login). After that, you're in — start asking research questions.
+On first launch, Claude Code will prompt you to authenticate (API key or subscription login). Follow its instructions to complete the process as needed based on your method. For Windows users, remember that CTRL+C actually exits the terminal, so use CTRL+SHIFT+C and CTRL+SHIFT+V if you want to copy/paste.
 
 ### Step 6: Select Your Model
 
-<!-- MIGRATE: README "Prerequisites" subsection about recommended model (Opus 4.5/4.6) — moves here; README will not retain -->
+You can decide which exact Claude model to use as your assistant. To set your model, run the following command at any time:
 
 ```bash
 /model
 ```
 
-**Recommended model:** All development and testing of this project was done using **Opus 4.5** and **Opus 4.6**. I strongly recommend using one of these models for the best results. You can change your model at any time inside Claude Code by typing `/model` and selecting from the list. Other models (Sonnet, Haiku) have not been tested with this workflow and may produce inconsistent results — especially for the multi-agent orchestration and validation stages, which rely on the model's ability to follow complex, multi-step protocols reliably.
+**Recommended model:** All development and testing of this project was done using **Opus 4.5** and **Opus 4.6**. I strongly recommend using one of these models for the best results. Other models (Sonnet, Haiku) have not been tested with this workflow and may produce inconsistent results — especially for the multi-agent orchestration and validation stages, which rely on the model's ability to follow complex, multi-step protocols reliably. 
+- Opus 4.6 is the most capable, but most expensive and uses up rate limits quickly. My strong default when possible.
+- Sonnet 4.5 is generally okay, and likely to go further if you're on a Pro subscription (as opposed to a Max subscription) -- but again, I have no insight into how well it'll work. Please do let me know what you find! 
+- Lastly, I cannot stress enough that you should never use Haiku for this work. It simply is not capable enough to be useful here, and will only cause you headaches.
 
 ---
 
 ## First Launch: Confirming Everything Works
 
-<!-- NEW: A short checklist or test sequence to verify the setup is working correctly -->
-
-A quick verification sequence to confirm Docker is running, the container is healthy, Claude Code is authenticated, and the correct model is selected.
+Once you've gotten Claude Code running in your terminal and your model is set, you're ready to start asking the DAAF-empowered Claude any question you'd like. You may find it helpful to reference what's available in the (Urban Institute Education Data Portal)[https://educationdata.urban.org/documentation/] (the current datasets available for demonstration). Or, you can just ask it: "Hey Claude, I'm interested in understanding what kind of data we have available on \[Colleges/High Schools/School Districts\]. Can you give me a brief summary of the sorts of data you can analyze on this subject?"
 
 ---
 
 ## Day-to-Day Start/Stop Workflow
 
-<!-- MIGRATE: README section "Day-to-Day Usage" — moves here in full; README will not retain -->
-
-The daily commands to start a session, work, and shut down — plus what happens to your files when the container stops.
+Now that you've got DAAF running, let's talk through simple commands you'll use to get in and out of this workflow, as well as how to manage files.
 
 ### Starting a Session
 
-Once installed, your daily workflow is just:
+Once you've completed the above Docker installation steps, your daily workflow is just:
 
 ```bash
 # Get into the project directory, inputting the right file path for your own system
 cd "C:\Users\Documents\daaf"
-# Make sure Docker Desktop is running on your computer, then:
+# Make sure Docker Desktop is running on your computer, then start the Docker container:
 docker compose up -d
+# Enter into the Docker container again
 docker compose exec daaf-docker bash
+# Run Claude
 claude
 ```
 
 ### Ending a Session
 
+When you're ready to end a session, you have two options. The first option: Close the terminal window, and then use your Docker Desktop window to "pause" your Docker container (look for "daaf-docker-1" in your Containers panel). The other option is to do this fully through the terminal: 
+
 ```bash
-# Type /exit or press Ctrl+C to leave Claude Code, then:
+# Exit Claude Code first. You can also just press CTRL+C
+/exit
+# That gets you back into the terminal window, running *within* your Docker container. Let's exit the Docker container
 exit
+# Now let's turn off the Docker container
 docker compose down
+
+# You can then just close your terminal.
 ```
-
-### What Persists Between Sessions
-
-<!-- MIGRATE: README section "How Files Work" (partial) — moves here; README will not retain -->
-
-Your files are safe — they're on your computer, not just inside the container. Stopping the container doesn't delete your research outputs.
-
----
 
 ## How Files Sync Between Container and Host
 
-<!-- MIGRATE: README section "How Files Work" — moves here in full; README will not retain -->
-
 Your local `daaf/` folder is connected to the container. This means:
 
-- **Files sync both ways** — when the assistant creates a report or dataset inside the container, it appears in the folder on your computer too. You can open these files normally.
-- **Your work persists** — stopping the container doesn't delete your research outputs. They live in your project folder.
-- **Only this folder is accessible** — the container cannot see any other files on your computer. Your documents, photos, and everything else are completely isolated.
+- **Files sync both ways** — when the assistant creates a report or dataset inside the container, it appears in the folder on your computer too. You can open these files normally. You can also bring in files into this folder that you'd like Claude to see, review, or inspect (e.g., other public datasets you're comfortable with it profiling using the data-ingest agent)
+- **Your work persists** — stopping the container doesn't delete your research outputs. They continue live in your project folder.
+- **Only this folder is accessible to Claude** — the container cannot see any other files on your computer. Your documents, photos, and everything else are completely isolated.
 
 ---
 
 ## Viewing Marimo Notebooks in Your Browser
 
-<!-- MIGRATE: README section "Viewing Marimo Notebooks" — moves here in full; README will not retain -->
-
 The assistant uses a python library called "marimo" to create streamlined python code "notebooks" as part of its analysis. It can also use this library to create nice, interactive dashboards for you of analyses it has completed. To view one in your browser:
 
 ```bash
-# Inside the container — view a notebook (replace the path with your actual notebook)
-marimo run research/YYYY-MM-DD\ Title/notebook.py --host 0.0.0.0 --port 2718 --headless
+# Get into the project directory, inputting the right file path for your own system
+cd "C:\Users\Documents\daaf"
+# Make sure Docker Desktop is running on your computer, then start the Docker container:
+docker compose up -d
+# Enter into the Docker container again
+docker compose exec daaf-docker bash
+# Inside the container, you can run the following command to view a notebook 
+# Note that the first bit should be the (replace the path with your actual notebook)
+marimo run 'research/YYYY-MM-DD Title/YYYY-MM-DD Notebook Name.py' --host 0.0.0.0 --port 2718 --headless
 ```
 
 Then open [http://localhost:2718](http://localhost:2718) in your computer's browser (no need to mess with anything in the terminal here). The notebook renders there as an interactive document.
@@ -217,7 +214,7 @@ Then open [http://localhost:2718](http://localhost:2718) in your computer's brow
 To edit a notebook interactively, use `marimo edit` instead of `marimo run`:
 
 ```bash
-marimo edit research/YYYY-MM-DD\ Title/notebook.py --host 0.0.0.0 --port 2718 --headless
+marimo edit 'research/YYYY-MM-DD Title/YYYY-MM-DD Notebook Name.py' --host 0.0.0.0 --port 2718 --headless
 ```
 
 ---
@@ -240,40 +237,11 @@ You don't need to install any of these — Docker handles it all — but for you
 
 ## Setup Troubleshooting
 
-<!-- MIGRATE: README section "Troubleshooting" (the 5 items under Installation) — moves here in full; README will not retain -->
-<!-- NEW: Additional troubleshooting items anticipated from project structure analysis -->
-
-### Docker Daemon Not Running
-
 **"Cannot connect to the Docker daemon"** — Make sure Docker Desktop is running (look for the whale icon in your system tray / menu bar).
-
-### Port Conflicts
-
 **"Port 2718 already in use"** — Another process is using that port. Either stop it, or change the port mapping in `docker-compose.yml` (e.g., `"3000:2718"` to use port 3000 on your host).
-
-### Authentication Persistence
-
 **Claude Code asks for an API key every time** — Claude Code stores its configuration inside the container. If you fully remove the container (`docker compose down`), you may need to re-authenticate next time. To avoid this, you can set `ANTHROPIC_API_KEY` as an environment variable in a `.env` file in the project root (the `.gitignore` already prevents `.env` from being shared publicly).
-
-### Slow First Build
-
 **Container seems slow to build the first time** — The first `docker compose up --build` downloads base images and installs all packages. This is a one-time cost — subsequent starts are fast since Docker caches everything.
-
-### "command not found: docker"
-
 **"command not found: docker"** — Docker Desktop may not be installed, or your terminal needs to be restarted after installation. Close and reopen your terminal, and make sure Docker Desktop is installed and running.
-
-### Container Won't Start After System Update
-
-<!-- NEW: Anticipated issue — Docker Desktop updates sometimes require attention -->
-
-What to try if Docker Desktop was updated or the system was restarted.
-
-### Permission Issues on Linux
-
-<!-- NEW: Anticipated issue — Docker group membership on Linux -->
-
-How to add your user to the `docker` group if you see permission errors.
 
 ---
 
