@@ -46,6 +46,20 @@ All Python code produced by agents follows a **flat, sequential** style. Scripts
 
 Research scripts are **write-once, execute-once, archive** artifacts — fundamentally different from application code. Functions add cognitive overhead (What does it return? Where's the entry point?) without providing reuse value. Sequential code is immediately readable and self-documenting through its execution order. Combined with the IAT documentation protocol, sequential code becomes not just readable but self-explanatory — a human auditor can follow every decision without running the code.
 
+### Bash Execution Rule: Single Command Per Call
+
+**Rule:** Every Bash tool call must contain exactly one command. No `&&`, `;`, or `||` chaining.
+
+All code-executing agents (research-executor, code-reviewer, debugger, data-ingest, notebook-assembler) follow this:
+- Each script invocation is a single call to `run_with_capture.sh` using absolute paths
+- Never chain commands (e.g., `cd /path && ./scripts/run.sh`)
+- If multiple scripts must execute in sequence, use separate Bash calls
+
+**Execution pattern:**
+```bash
+bash {PROJECT_DIR}/scripts/run_with_capture.sh {PROJECT_DIR}/scripts/stage{N}_{type}/{step}_{task}.py
+```
+
 ---
 
 ## Agent Index

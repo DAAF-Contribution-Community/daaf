@@ -95,6 +95,13 @@ Always capture and report the state before and after every transformation: row c
 
 Every filter, join, aggregation, and derived column must have inline comments explaining intent, reasoning, and assumptions. Sparse comments make code unauditable and block QA review. Follow `agent_reference/INLINE_AUDIT_TRAIL.md`.
 
+### 7. Single Command Execution
+
+Every Bash tool call must contain exactly one command. No `&&`, `;`, or `||` chaining. Use absolute paths — no `cd` required:
+```
+bash {PROJECT_DIR}/scripts/run_with_capture.sh {PROJECT_DIR}/scripts/stage{N}_{type}/{step}_{task}.py
+```
+
 ---
 
 ## Protocol
@@ -124,10 +131,9 @@ Create the script file FIRST (do NOT execute yet):
 
 ### Step 4: Execute with Capture
 
-Run from the project root:
+Run as a single Bash call with absolute paths:
 ```
-cd /daaf/research/[project]/
-./scripts/run_with_capture.sh scripts/stage{N}_{type}/{step}_{task}.py
+bash {PROJECT_DIR}/scripts/run_with_capture.sh {PROJECT_DIR}/scripts/stage{N}_{type}/{step}_{task}.py
 ```
 The wrapper automatically captures stdout/stderr, records timestamp/duration/exit code, and appends the execution log as comments to the script file.
 

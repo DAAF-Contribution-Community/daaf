@@ -136,7 +136,7 @@ All generated skills for data sources MUST follow the canonical 12-section order
 
 ### Step 2: Profile Data (Mode 1 — Deductive)
 
-Read `agent_reference/EXECUTION_CAPTURE.md` for the mandatory file-first execution protocol.
+Read `agent_reference/EXECUTION_CAPTURE.md` for the mandatory file-first execution protocol. **Single command execution:** Each profiling script is executed via one Bash call using absolute paths: `bash {PROJECT_DIR}/scripts/run_with_capture.sh {PROJECT_DIR}/scripts/{script}.py`. Do not chain commands with `&&` or `;`.
 
 Write and execute profiling scripts for each phase:
 

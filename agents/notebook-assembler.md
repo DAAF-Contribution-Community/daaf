@@ -490,7 +490,7 @@ if __name__ == "__main__":  # marimo framework boilerplate (auto-generated)
 
 ### Step 6: Test Notebook
 
-- Run `marimo run notebook.py --host 0.0.0.0 --port 2718 --headless`
+- Run as a single Bash call: `marimo run {PROJECT_DIR}/notebook.py --host 0.0.0.0 --port 2718 --headless` (no `cd` or command chaining)
 - Verify all cells execute without errors
 - Verify data loads work (parquet files exist and load)
 - Fix any import issues (max 2 fix attempts, then STOP)

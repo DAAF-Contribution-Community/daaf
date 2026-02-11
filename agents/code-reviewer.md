@@ -377,7 +377,7 @@ if "year" in df.columns:
 
 Follow file-first execution:
 1. Write cr1 script to `scripts/cr/stage{N}_{step}_cr1.py`
-2. Execute with capture: `./scripts/run_with_capture.sh scripts/cr/stage{N}_{step}_cr1.py`
+2. Execute as a single Bash call with absolute paths: `bash {PROJECT_DIR}/scripts/run_with_capture.sh {PROJECT_DIR}/scripts/cr/stage{N}_{step}_cr1.py`
 3. **Review the profiling output and all check results before proceeding**
 
 Read `agent_reference/EXECUTION_CAPTURE.md` for the mandatory file-first execution protocol.

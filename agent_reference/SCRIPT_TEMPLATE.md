@@ -1139,9 +1139,10 @@ if not all_passed:
 **Always use the execution wrapper:**
 
 ```bash
-cd /daaf/research/[project]/
-./scripts/run_with_capture.sh scripts/stage5_fetch/01_fetch-ccd.py
+bash /daaf/research/[project]/scripts/run_with_capture.sh /daaf/research/[project]/scripts/stage5_fetch/01_fetch-ccd.py
 ```
+
+**Single command only.** Do not chain with `&&` or `;`. Do not prefix with `cd`. Use absolute paths.
 
 This automatically:
 - Runs the script with output capture
@@ -1155,7 +1156,9 @@ This automatically:
 
 **If PASSED:**
 1. Execution log is appended to the script
-2. Commit the script: `git add scripts/... && git commit -m "feat(stage5-01): ..."`
+2. Commit the script (two separate Bash calls):
+   - `git add scripts/...`
+   - `git commit -m "feat(stage5-01): ..."`
 3. Proceed to next step
 
 **If FAILED:**

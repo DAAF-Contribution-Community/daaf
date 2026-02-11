@@ -1414,6 +1414,18 @@ On session end, the `archive-session.sh` hook automatically archives the full se
 
 ## Project Conventions
 
+### Bash Command Rule: One Command Per Call
+
+**Rule:** Every Bash tool call must contain exactly one command. No `&&`, `;`, or `||` chaining, to better prevent running up against safety boundaries and permission triggers.
+
+- **Wrong:** `mkdir -p /path && cp file /path && ls /path`
+- **Right:** Three separate Bash calls, each with one command
+
+**Script execution:** Use absolute paths — no `cd` required:
+```
+bash {PROJECT_DIR}/scripts/run_with_capture.sh {PROJECT_DIR}/scripts/stage5_fetch/01_fetch-ccd.py
+```
+
 ### Plan Document as Memory
 
 The Plan document is the **single source of truth** for the analysis. It:

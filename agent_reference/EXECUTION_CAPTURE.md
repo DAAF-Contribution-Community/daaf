@@ -32,9 +32,10 @@ Create the script file BEFORE executing any code. Use the standard template form
 Run the script using the execution wrapper, which handles output capture and log appending automatically:
 
 ```bash
-cd /path/to/research/[project]/
-./scripts/run_with_capture.sh scripts/stage{N}_{type}/{step}_{task-name}.py
+bash /path/to/research/[project]/scripts/run_with_capture.sh /path/to/research/[project]/scripts/stage{N}_{type}/{step}_{task-name}.py
 ```
+
+**Single command only.** Do not chain with `&&` or `;`. Do not prefix with `cd`. Use absolute paths.
 
 **Do NOT run `python script.py` directly.** Direct execution bypasses output capture and log appending.
 
