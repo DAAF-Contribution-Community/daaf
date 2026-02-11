@@ -55,6 +55,8 @@ Large language models can generate plausible-sounding but incorrect outputs. Thi
 
 **Human review of all outputs is essential.**
 
+<!-- TODO: By deciding to use this repository... The maintainers of this repository take absolutely no responsibility for any errors produced by this system; any mistakes not caught are your own -->
+
 ### What This Means in Practice
 
 | Risk | Mitigation | Human Responsibility |
@@ -301,14 +303,6 @@ For detailed guidance on your role in the human-AI research partnership, reviewi
 
 ---
 
-## Getting Started
-
-<!-- TODO: Consider adding a brief (2-3 sentence) teaser here about what you'll need before linking to the guide. Something like: "You'll need Git, Docker Desktop, and an Anthropic account (API key or Pro/Max subscription). The setup takes about 10 minutes, and Docker handles all the software installation for you." This gives readers a quick mental preview before clicking through. -->
-
-For complete setup instructions — from installing prerequisites through launching your first session — see the **[Installation & Quick Start Guide](user_reference/01_installation_and_quickstart.md)**.
-
----
-
 ## Contributing
 
 We welcome contributions! This is an open-source proof-of-concept, and there are many ways to help:
@@ -370,3 +364,9 @@ If you use DAAF or the Education Data Portal in your work, please cite the Urban
 Several core workflow patterns in this project—particularly around agent specialization, shared working memory, and task decomposition—were vastly improved thanks to excellent practices in **[Get Shit Done](https://github.com/glittercowboy/get-shit-done)** by [@glittercowboy](https://github.com/glittercowboy). If you're more into the world of software development, that's an amazing resource to work from!
 
 Early thinking for this project began in mid-2025 as I saw growing agentic automation in the software development sphere, but was rapidly accelerated when I first read Dr. Anton Korinek's working paper, [AI Agents for Economic Research](https://www.genaiforecon.org/JEL-2025-Aug-AIAgents.pdf). I highly recommend a read and tracking his lab's work going forward -- more relevant than ever now, I think and hope, with the launch of DAAF.
+
+## Recommended Next Steps
+
+- [**01. Installation & Quick Start**](01_installation_and_quickstart.md) — Get started! Installation prerequisites, step-by-step 5-minute setup, day-to-day usage, and troubleshooting
+- [**06. FAQ: Technical**](06_faq_technical.md) — Covers frequently asked questions about Docker, issues with Claude Code, usage limits, design rationale, authentication errors, and other common errors
+- [**07. FAQ: Philosophy**](07_faq_philosophy.md) — Grapples with the broader implications of this work, AI automation in general, model advancement pace, approaching the "exponential", environmental ethics, what this means for the next generation of researchers, and more
