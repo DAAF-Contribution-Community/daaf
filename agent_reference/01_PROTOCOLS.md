@@ -46,7 +46,7 @@ See `03_SKILL_INVOCATIONS.md` for the complete Stage 2 invocation template.
 - Limitations encountered during exploration
 - Completeness assessment checklist
 
-### Gate Criteria (G1.5)
+### Gate Criteria (G2)
 
 Before proceeding to Stage 3:
 - [ ] At least one candidate endpoint identified
@@ -78,7 +78,7 @@ See `03_SKILL_INVOCATIONS.md` for the complete Stage 3 invocation template.
 - Cross-state comparability assessment
 - Critical warnings
 
-### Gate Criteria (G2)
+### Gate Criteria (G3)
 
 Before proceeding to Stage 3.5:
 - [ ] All flagged variables investigated
@@ -110,7 +110,7 @@ Before proceeding to Stage 3.5:
 - Recommended approach for Plan creation (Stage 4)
 - Cross-source join feasibility and key considerations
 
-### Gate Criteria (G2.5)
+### Gate Criteria (G3.5)
 
 Before proceeding to Phase 2 (Plan Creation):
 - [ ] Synthesis complete — all source findings consolidated
@@ -171,7 +171,7 @@ assert len(df) > 0, "STOP: Empty dataset returned"
 assert len(df) < 1_000_000, "WARNING: Very large dataset - verify expected"
 ```
 
-### Gate Criteria (G4)
+### Gate Criteria (G5)
 
 Before proceeding to Stage 6:
 - [ ] Data retrieved successfully
@@ -215,9 +215,9 @@ assert suppression_rate < 0.5, f"STOP: Suppression rate {suppression_rate:.1%} e
 assert len(clean_df) > len(raw_df) * 0.1, "STOP: >90% data loss after cleaning"
 ```
 
-### Gate Criteria (G5)
+### Gate Criteria (G6)
 
-Before proceeding to Phase 4:
+Before proceeding to Stage 7 / Phase 4:
 - [ ] Coded values handled appropriately
 - [ ] Suppression rate documented and acceptable (<50%)
 - [ ] No invalid analysis types attempted

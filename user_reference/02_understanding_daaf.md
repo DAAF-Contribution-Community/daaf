@@ -40,12 +40,12 @@ For a Full Pipeline analysis, the assistant follows a structured workflow:
 - Creates a Plan document capturing all methodology decisions
 - Specifies data queries, cleaning approach, and output format
 
-**Phase 3: Data Acquisition**
+**Phase 3: Data Acquisition & Preparation**
 - Fetches data from the configured data access mirrors/sources
 - Validates data quality and handles coded values
 - Documents suppression rates and missing data
 
-**Phase 4: Analysis & Notebook**
+**Phase 4: Analysis & Notebook Development**
 - Sub-Stage 7.1: Performs exploratory data analysis (EDA) first, without transformations
 - Sub-Stage 7.2: Executes transformations **one at a time** following the Iteration Protocol
 - Sub-Stage 7.3: Final CP3 validation after all transformations complete
@@ -138,13 +138,13 @@ How the Plan document captures methodology decisions before any data is touched.
 
 How data is fetched, validated, cleaned, and prepared for analysis.
 
-### Phase 4: Analysis & Notebook Development (Stages 7-9)
+### Phase 4: Analysis & Notebook Development (Stages 7-10)
 
-How transformations are executed one at a time with validation, visualizations are created, and the notebook is assembled.
+How transformations are executed one at a time with validation, visualizations are created, the notebook is assembled, and QA findings are aggregated.
 
-### Phase 5: Synthesis & Delivery (Stages 10-12)
+### Phase 5: Synthesis & Delivery (Stages 11-12)
 
-How QA findings are aggregated, the report is generated, and final verification ensures everything aligns.
+How the report is generated and final verification ensures everything aligns with the original request.
 
 ---
 

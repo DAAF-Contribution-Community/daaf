@@ -336,7 +336,7 @@ When returning from Revision Mode, use:
 
 | Consumer | Receives | How They Use It |
 |----------|----------|-----------------|
-| Orchestrator | Status + Plan path + wave structure | Gate G3 decision; coordinates execution across stages |
+| Orchestrator | Status + Plan path + wave structure | Gate G4 decision; coordinates execution across stages |
 | Plan-checker (Stage 4.5) | Complete Plan document | Validates plan completeness and goal coverage |
 | Stage 5 subagent (fetch) | Query specifications from task specs | Downloads files from mirrors with specified parameters |
 | Stage 6 subagent (context) | Coded value handling rules | Applies correct filters and suppressions |

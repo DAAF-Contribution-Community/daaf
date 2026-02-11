@@ -594,7 +594,7 @@ If nothing novel, emit "None" — this is the expected common case.
 
 | Consumer | Receives | How They Use It |
 |----------|----------|-----------------|
-| Orchestrator | Status + Structure summary | Gate G8 decision (proceed to Stage 10 or revise) |
+| Orchestrator | Status + Structure summary | Gate G9 decision (proceed to Stage 10 or revise) |
 | integration-checker | Notebook file | Verifies data/figure references resolve |
 | data-verifier (Stage 12) | Notebook file | Confirms notebook exists, runs, is substantive |
 | User | Notebook file | Interactive exploration, audit trail review |

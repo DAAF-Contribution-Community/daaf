@@ -70,7 +70,7 @@ Copy this template to `STATE.md` in the project folder when starting a Full Pipe
 **Blockers (if BLOCKED and unresolved):**
 - [Blocker description]
 
-**Gate G3.5 Status:** [OPEN / SATISFIED]
+**Gate G4.5 Status:** [OPEN / SATISFIED]
 
 > **CRITICAL:** Stage 5 CANNOT begin until Plan-Checker Status is PASSED or PASSED_WITH_WARNINGS.
 > If this section shows NOT_RUN, invoke plan-checker before proceeding.

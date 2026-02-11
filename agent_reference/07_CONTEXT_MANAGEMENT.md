@@ -187,7 +187,7 @@ The STATE.md file serves as **persistent session memory**:
 
 ### When to Create STATE.md
 
-**MANDATORY Creation (Gate G3):**
+**MANDATORY Creation (Gate G4):**
 - At Stage 4 (Plan creation) for **ALL Full Pipeline analyses**
 - Stage 5 CANNOT begin without STATE.md existing alongside Plan
 - This is a forcing function, not a recommendation

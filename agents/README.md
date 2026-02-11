@@ -84,125 +84,123 @@ When adding a new agent, ensure it doesn't overlap with these frequently confuse
 This diagram shows how agents interact throughout the pipeline:
 
 ```
-                              USER REQUEST
-                                   |
-                                   v
-                    +------------------------------+
-                    |  PHASE 1: DISCOVERY          |
-                    |  (Orchestrator coordinates)  |
-                    +------------------------------+
-                                   |
-                    +--------------+--------------+
-                    v                              v
-         +-------------------+         +-------------------+
-         | source-researcher |         | source-researcher |
-         |   (Source A)      |         |   (Source B)      |
-         |   [Stage 3]       |         |   [Stage 3]       |
-         +---------+---------+         +---------+---------+
-                   |                              |
-                   +--------------+---------------+
-                                  v
-                    +------------------------------+
-                    |   research-synthesizer       |
-                    |   [Stage 3.5 - synthesis]    |
-                    +--------------+---------------+
-                                   |
-                    +--------------+-----------------+
-                    |  PHASE 2: PLANNING              |
-                    +--------------+-----------------+
-                                   v
-                    +------------------------------+
-                    |      data-planner            |
-                    |      [Stage 4]               |
-                    +--------------+---------------+
-                                   |
-                    +--------------+-----------------+
+                                USER REQUEST
+                                     |
+                                     v
+                    +---------------------------------+
+                    |   PHASE 1: DISCOVERY & SCOPING  |
+                    |    (Orchestrator coordinates)   |
+                    +---------------------------------+
+                                     |
+                    +----------------+----------------+
+                    v                                 v
+         +--------------------+             +--------------------+
+         | source-researcher  |             | source-researcher  |
+         |     (Source A)     |             |     (Source B)     |
+         |      [Stage 3]     |             |      [Stage 3]     |
+         +----------+---------+             +---------+----------+
+                    |                                 |
+                    +----------------+----------------+
+                                     v
+                    +---------------------------------+
+                    |       research-synthesizer      |
+                    |      [Stage 3.5 - synthesis]    |
+                    +----------------+----------------+
+                                     |
+                    +---------------------------------+
+                    |        PHASE 2: PLANNING        |
+                    +---------------------------------+
+                                     v
+                    +---------------------------------+
+                    |           data-planner          |
+                    |            [Stage 4]            |
+                    +----------------+----------------+
+                                     |
+                    +---------------------------------+
                     |       PLAN VALIDATION LOOP      |
-                    +--------------+-----------------+
-                                   v
-                    +------------------------------+
-                    |       plan-checker           |<--------+
-                    |       [Stage 4.5]            |        |
-                    +--------------+---------------+        |
-                                   |                        |
-                    +--------------+--------------+         |
-                    |              |              |         |
-                    v              v              v         |
-                 PASSED      WARNINGS       BLOCKED         |
-                    |              |              |         |
-                    |              |              v         |
-                    |              |    +-------------+     |
-                    |              |    |data-planner |     |
-                    |              |    | (revision)  |-----+
-                    |              |    +-------------+
-                    |              |         |
-                    |              |         v
-                    |              |    (max 2 iterations,
-                    |              |     then escalate to user)
-                    |              |
-                    +--------------+--------------+
-                                   v
-                    +------------------------------+
-                    |  PHASE 3-4: EXECUTION        |
-                    |  (research-executor +        |
-                    |   code-reviewer QA)          |
-                    +--------------+---------------+
-                                   |
-         +-------------------------+-------------------------+-------------------------+
-         |                         |                         |                         |
-         v                         v                         v                         v
-    +---------+              +---------+              +---------+              +---------+
-    |Stage 5  |              |Stage 6  |              |Stage 7  |              |Stage 8  |
-    |(fetch)  |              |(clean)  |              |(trans)  |              |(viz)    |
-    | CP1     |              | CP2     |              | CP3xN   |              | QA4     |
-    +----+----+              +----+----+              +----+----+              +----+----+
-         |                        |                        |                        |
-         v                        v                        v                        v
-    +---------+              +---------+              +---------+              +---------+
-    |Stage 5  |              |Stage 6  |              |Stage 7  |              |Stage 8  |
-    |   QA    |------------->|   QA    |------------->|   QA    |------------->|   QA    |
-    |(review) |              |(review) |              |(review) |              |(review) |
-    +----+----+              +----+----+              +----+----+              +----+----+
-         |                        |                        |                        |
-         | BLOCKER?               | BLOCKER?               | BLOCKER?               | BLOCKER?
-         +-> Revision -+          +-> Revision -+          +-> Revision -+          +-> Revision -+
-         |             |          |             |          |             |          |             |
-         |<------------+          |<------------+          |<------------+          |<------------+
-         |                        |                        |                        |
-         | (on error)             | (on error)             | (on error)             | (on error)
-         +-----------+------------+------------+-----------+------------+-----------+
-                     v                         v                        |
-              +-------------+           +-----------+                   |
-              |  debugger   |           |   USER    |<------------------+
-              |  (diagnose) |---------->|(escalate) |
-              +-------------+           +-----------+
-                                   |
-                                   v
-                    +------------------------------+
-                    |  PHASE 5: DELIVERY           |
-                    +--------------+---------------+
-                                   |
-                    +--------------+--------------+
-                    v                              |
-         +-------------------+                     |
-         |notebook-assembler |                     |
-         |    [Stage 9]      |                     |
-         +---------+---------+                     |
-                   |                               |
-                   v                               |
-         +-------------------+                     |
-         |integration-checker|<--------------------+
-         |  [Stage 9,11,12]  |
-         +---------+---------+
-                   |
-                   v
-         +-------------------+
-         |   data-verifier   |
-         |   [Stage 12]      |
-         +-------------------+
-                                   |
-                                   v
-                              DELIVERY
+                    +---------------------------------+
+                                     v
+                    +---------------------------------+
+                    |           plan-checker          |<---------+
+                    |           [Stage 4.5]           |          |
+                    +----------------+----------------+          |
+                                     |                           |
+                    +----------------+----------------+          |
+                    |                |                |          |
+                    v                v                v          |
+                  PASSED          WARNINGS         BLOCKED       |
+                    |                |                |          |
+                    |                |                v          |
+                    |                |       +-----------------+ |
+                    |                |       |   data-planner  | |
+                    |                |       |    (revision)   |-+
+                    |                |       +-----------------+
+                    |                |                |
+                    |                |                v
+                    |                |       (max 2 iterations,
+                    |                |     then escalate to user)
+                    |                |
+                    +----------------+----------------+
+                                     v
+                    +---------------------------------+
+                    |  PHASE 3: DATA ACQUISITION &    |
+                    |           PREPARATION           |
+                    |  PHASE 4: ANALYSIS & NOTEBOOK   |
+                    |           DEVELOPMENT           |
+                    |      (research-executor +       |
+                    |        code-reviewer QA)        |
+                    +----------------+----------------+
+                                     |
+         +-----------+---------------+---------------+-----------+
+         |           |                               |           |
+         v           v                               v           v
+    +---------+ +---------+                     +---------+ +---------+
+    | Stage 5 | | Stage 6 |                     | Stage 7 | | Stage 8 |
+    | (fetch) | | (clean) |                     | (trans) | |  (viz)  |
+    |   CP1   | |   CP2   |                     |  CP3xN  | |   QA4   |
+    +----+----+ +----+----+                     +----+----+ +----+----+
+         |           |                               |           |
+         v           v                               v           v
+    +---------+ +---------+                     +---------+ +---------+
+    | Stage 5 | | Stage 6 |                     | Stage 7 | | Stage 8 |
+    |   QA    |>|   QA    |>                    |   QA    |>|   QA    |
+    | (review)| | (review)|                     | (review)| | (review)|
+    +----+----+ +----+----+                     +----+----+ +----+----+
+         |           |                               |           |
+         | BLOCKER?  | BLOCKER?                      | BLOCKER?  | BLOCKER?
+         +->Rev-+    +->Rev-+                        +->Rev-+    +->Rev-+
+         |      |    |      |                        |      |    |      |
+         |<-----+    |<-----+                        |<-----+    |<-----+
+         |           |                               |           |
+         | (error)   | (error)                       | (error)   | (error)
+         +-----+-----+------+--------+---------------+----+------+
+               v            v        v                    |
+         +-------------+ +-----------+                    |
+         |  debugger   | |   USER    |<-------------------+
+         |  (diagnose) |>|(escalate) |
+         +-------------+ +-----------+
+                                     |
+                                     v
+                    +----------------+----------------+
+                    |        notebook-assembler       |
+                    |           [Stage 9]             |
+                    +----------------+----------------+
+                                     |
+                                     v
+                    +----------------+----------------+
+                    |  PHASE 5: SYNTHESIS & DELIVERY  |
+                    +----------------+----------------+
+                                     |
+                    +----------------+----------------+
+                    v                                 v
+         +---------------------+            +--------------------+
+         | integration-checker |            |   data-verifier    |
+         |   [Stage 9,11,12]   |            |     [Stage 12]     |
+         +----------+----------+            +--------------------+
+                    |                                 |
+                    +----------------+----------------+
+                                     v
+                                 DELIVERY
 ```
 
 ---
@@ -230,26 +228,26 @@ Stage 5   Categorize issues
     |                   |
     v                   v
 Document &         data-planner
-proceed            revises Plan
+ proceed           revises Plan
     |                   |
     v                   v
-Stage 5           plan-checker
-               validates again
-                       |
-            +----------+----------+
-            |                     |
-         PASSED              STILL BLOCKED
-            |                     |
-            v                     v
-         Stage 5          (iteration 2?)
-                               |
-                    +----------+----------+
-                    |                     |
-                 Yes (retry)         No (max reached)
-                    |                     |
-                    v                     v
-              data-planner         ESCALATE TO USER
-              revises again
+ Stage 5           plan-checker
+                  validates again
+                        |
+             +----------+----------+
+             |                     |
+          PASSED              STILL BLOCKED
+             |                     |
+             v                     v
+          Stage 5            (iteration 2?)
+                                   |
+                        +----------+----------+
+                        |                     |
+                     Yes (retry)         No (max reached)
+                        |                     |
+                        v                     v
+                  data-planner         ESCALATE TO USER
+                  revises again
 ```
 
 **Iteration Limits:**

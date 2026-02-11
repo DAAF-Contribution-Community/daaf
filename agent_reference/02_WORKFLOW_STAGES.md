@@ -67,7 +67,7 @@ code-reviewer returns: PASSED | WARNING | INFO | BLOCKER
 
 ### QA Gate Criteria (Added to Each Stage) — ENFORCED
 
-**IMPORTANT:** Gates G4-G7 require POSITIVE confirmation that QA was invoked, not just absence of BLOCKER.
+**IMPORTANT:** Gates G5-G8 require POSITIVE confirmation that QA was invoked, not just absence of BLOCKER.
 
 Every Stage 5-8 task includes these MANDATORY requirements:
 
@@ -303,7 +303,7 @@ You MUST wait for user confirmation before proceeding.
 - [ ] Multiple sources considered
 ```
 
-### Gate Criteria (G1.5)
+### Gate Criteria (G2)
 
 - [ ] At least one candidate endpoint identified
 - [ ] Key variables identified
@@ -390,7 +390,7 @@ You MUST wait for user confirmation before proceeding.
 | ... | ... | ... |
 ```
 
-### Gate Criteria (G2)
+### Gate Criteria (G3)
 
 - [ ] All flagged variables investigated
 - [ ] Coded values fully documented
@@ -454,7 +454,7 @@ Consolidate these parallel findings into a unified context for Plan creation.
 })
 ```
 
-### Gate Criteria (G2.5)
+### Gate Criteria (G3.5)
 
 - [ ] All source findings integrated
 - [ ] Conflicts identified and resolved
@@ -563,17 +563,17 @@ This table is CRITICAL. Each row must have:
 
 Incomplete transformation sequences lead to incomplete validation and unreliable results.
 
-### Gate Criteria (G3)
+### Gate Criteria (G4)
 
 - [ ] Plan document created at `research/[folder]/YYYY-MM-DD [Title] Plan.md`
-- [ ] **STATE.md created** at `research/[folder]/STATE.md` (MANDATORY — Gate G3)
-- [ ] **LEARNINGS.md skeleton created** at `research/[folder]/LEARNINGS.md` (MANDATORY — Gate G3)
+- [ ] **STATE.md created** at `research/[folder]/STATE.md` (MANDATORY — Gate G4)
+- [ ] **LEARNINGS.md skeleton created** at `research/[folder]/LEARNINGS.md` (MANDATORY — Gate G4)
 - [ ] **Plan Completeness Gate passed** (all sections verified)
 - [ ] Project folder structure created (`data/raw/`, `data/processed/`, `output/figures/`)
 - [ ] User notified
 - [ ] Ready to proceed unless user objects
 
-**Gate G3 Enforcement:** Plan-checker (Stage 4.5) CANNOT be invoked without Plan, STATE.md, and LEARNINGS.md all existing. (Stage 5 additionally requires G3.5 — see below.)
+**Gate G4 Enforcement:** Plan-checker (Stage 4.5) CANNOT be invoked without Plan, STATE.md, and LEARNINGS.md all existing. (Stage 5 additionally requires G4.5 — see below.)
 
 ---
 
@@ -649,7 +649,7 @@ Run plan-checker
             If still ISSUES_FOUND after 2 attempts → STOP and escalate to user
 ```
 
-### Gate Criteria (G3.5)
+### Gate Criteria (G4.5)
 
 - [ ] Plan validation completed
 - [ ] Status is PASSED or PASSED_WITH_WARNINGS
@@ -738,7 +738,7 @@ assert df['year'].is_in(expected_years).all(), "WARNING: Unexpected years"
 - Includes: Pagination handling, CP1 validation, output paths
 ```
 
-### Gate Criteria (G4)
+### Gate Criteria (G5)
 
 - [ ] Data retrieved successfully
 - [ ] CP1 passed (or warnings documented)
@@ -842,7 +842,7 @@ assert len(clean_df) > len(raw_df) * 0.1, "STOP: >90% data loss"
 - Includes: Coded value filtering, suppression calculation, CP2 validation
 ```
 
-### Gate Criteria (G5)
+### Gate Criteria (G6)
 
 - [ ] Coded values handled
 - [ ] CP2 passed
@@ -1077,7 +1077,7 @@ MANDATORY EXECUTION PATTERN:
 - [ ] **QA status:** PASSED/WARNING (any BLOCKER resolved via revision)
 - [ ] **QA scripts saved to `scripts/cr/stage7_{step}_cr1.py`** (+ cr2..cr5 if warranted)
 
-**After Stage 7.3 (G6):**
+**After Stage 7.3 (G7):**
 - [ ] All transformations complete
 - [ ] CP3 validation passed for all transformations
 - [ ] **All QA reviews passed** for all transformation scripts
@@ -1147,7 +1147,7 @@ fig.write_image(f"output/figures/{date_prefix}_plot_name.png")
 - Exported figure files
 - Figure descriptions for report
 
-### Gate Criteria (G7)
+### Gate Criteria (G8)
 
 - [ ] All planned visualizations created
 - [ ] Figures exported to `output/figures/`
@@ -1200,7 +1200,7 @@ The following are **NEVER ALLOWED** in Stage 9 notebooks:
 
 **If the notebook contains ANY of the above, it FAILED.**
 
-### Gate Criteria (G8)
+### Gate Criteria (G9)
 
 - [ ] All final script versions identified
 - [ ] Each script represented with: header, code, execution log, data preview
@@ -1258,7 +1258,7 @@ The following are **NEVER ALLOWED** in Stage 9 notebooks:
    - Assess cumulative impact of individual WARNINGs
    - Flag any WARNING clusters that together constitute a concern
 
-### Gate Criteria (G9)
+### Gate Criteria (G10)
 
 - [ ] **QA Summary Report generated** (aggregates all Stages 5-8 findings)
 - [ ] **All BLOCKERs resolved** (via revision during Stages 5-8)
@@ -1300,7 +1300,7 @@ The following are **NEVER ALLOWED** in Stage 9 notebooks:
 5. Limitations
 6. Data Sources (citations)
 
-### Gate Criteria (G10)
+### Gate Criteria (G11)
 
 - [ ] Report complete
 - [ ] All sections present
@@ -1371,7 +1371,7 @@ At Stage 12, the orchestrator consolidates LEARNINGS.md (which already contains 
 - [ ] Action items grouped by target type (Skills, Agents, Agent Reference, Orchestrator)
 - [ ] Action item count included in delivery message
 
-### Gate Criteria (G11)
+### Gate Criteria (G12)
 
 - [ ] All alignment checks pass
 - [ ] Quality verified

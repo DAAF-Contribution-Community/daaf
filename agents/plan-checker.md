@@ -487,7 +487,7 @@ If nothing novel, emit "None".
 
 | Consumer | Receives | How They Use It |
 |----------|----------|-----------------|
-| Orchestrator | Status + per-dimension confidence + issues | Gate G3.5 decision (proceed / revise / escalate) |
+| Orchestrator | Status + per-dimension confidence + issues | Gate G4.5 decision (proceed / revise / escalate) |
 | data-planner | Structured issues (YAML) with fix_hints | Targeted plan revision (if ISSUES_FOUND) |
 | STATE.md | Plan Validation status | Session recovery and audit trail |
 
@@ -655,7 +655,7 @@ Task({
 
 | Result | Orchestrator Action |
 |--------|-------------------|
-| PASSED | Update STATE.md Plan Validation = PASSED, Gate G3.5 = SATISFIED; proceed to Stage 5 |
+| PASSED | Update STATE.md Plan Validation = PASSED, Gate G4.5 = SATISFIED; proceed to Stage 5 |
 | PASSED_WITH_WARNINGS | Update STATE.md; log warnings in Plan; proceed with cautions |
 | ISSUES_FOUND (blockers) | Re-invoke data-planner with structured issues; re-verify after revision |
 | ISSUES_FOUND after 2 cycles | Escalate to user with issues summary |

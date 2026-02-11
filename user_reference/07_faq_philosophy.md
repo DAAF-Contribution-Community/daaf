@@ -37,7 +37,7 @@ The fundamental problem with single-agent systems (context growth degrades quali
 
 <!-- NEW: Expand from README "Important Caveats" and "Human Oversight" sections -->
 
-Why the system stops for human review at critical junctures rather than running autonomously, and what the gate structure (G1-G11) accomplishes.
+Why the system stops for human review at critical junctures rather than running autonomously, and what the gate structure (G1-G12) accomplishes.
 
 ### Q: Why file-first execution instead of interactive notebooks?
 

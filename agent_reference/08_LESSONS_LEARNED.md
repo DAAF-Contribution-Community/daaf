@@ -23,7 +23,7 @@ Capturing these lessons prevents repeated mistakes and accelerates future analys
 
 LEARNINGS.md is a project-specific log of ongoing learnings created at **Stage 4** (alongside Plan + STATE.md). The skeleton includes project metadata and empty section headers from the template below.
 
-**Gate G3 requires:** Plan + STATE.md + LEARNINGS.md all exist before proceeding to Stage 4.5.
+**Gate G4 requires:** Plan + STATE.md + LEARNINGS.md all exist before proceeding to Stage 4.5.
 
 ### Learning Signal Format
 
@@ -56,7 +56,7 @@ Clear STATE.md buffer
 
 The orchestrator writes buffered signals to LEARNINGS.md at these points:
 
-1. **Phase boundary** — end of Phase 1 (after Stage 3/3.5), Phase 2 (after Stage 4.5), Phase 3 (after Stage 6-QA), Phase 4 (after Stage 8-QA / Stage 10)
+1. **Phase boundary** — end of Phase 1 (after Stage 3/3.5), Phase 2 (after Stage 4.5), Phase 3 (after Stage 6-QA), Phase 4 (after Stage 10 — QA Aggregation)
 2. **After blocker resolution** — a resolved BLOCKER often yields the richest learnings
 3. **After debugging session** — debugger agent's Prevention section feeds learnings directly
 4. **At utilization gates** (40%, 60%) — ensures learnings are persisted before potential session end
