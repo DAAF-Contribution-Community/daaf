@@ -46,7 +46,7 @@ See `03_SKILL_INVOCATIONS.md` for the complete Stage 2 invocation template.
 - Limitations encountered during exploration
 - Completeness assessment checklist
 
-### Gate Criteria
+### Gate Criteria (G1.5)
 
 Before proceeding to Stage 3:
 - [ ] At least one candidate endpoint identified
@@ -78,9 +78,9 @@ See `03_SKILL_INVOCATIONS.md` for the complete Stage 3 invocation template.
 - Cross-state comparability assessment
 - Critical warnings
 
-### Gate Criteria
+### Gate Criteria (G2)
 
-Before proceeding to Phase 2:
+Before proceeding to Stage 3.5:
 - [ ] All flagged variables investigated
 - [ ] Coded values fully documented
 - [ ] Suppression patterns identified
@@ -110,7 +110,7 @@ Before proceeding to Phase 2:
 - Recommended approach for Plan creation (Stage 4)
 - Cross-source join feasibility and key considerations
 
-### Gate Criteria
+### Gate Criteria (G2.5)
 
 Before proceeding to Phase 2 (Plan Creation):
 - [ ] Synthesis complete — all source findings consolidated
@@ -171,7 +171,7 @@ assert len(df) > 0, "STOP: Empty dataset returned"
 assert len(df) < 1_000_000, "WARNING: Very large dataset - verify expected"
 ```
 
-### Gate Criteria
+### Gate Criteria (G4)
 
 Before proceeding to Stage 6:
 - [ ] Data retrieved successfully
@@ -181,6 +181,8 @@ Before proceeding to Stage 6:
 - [ ] Data saved to `data/raw/` (parquet)
 - [ ] **If data lag ≥3 years:** User notified and decision documented in Plan
 - [ ] **If COVID years (2020-2021) included:** Warning documented in Plan's COVID-19 Data Quality Considerations section
+- [ ] **QA review completed** (code-reviewer invoked after script execution)
+- [ ] **QA status:** PASSED/WARNING (any BLOCKER resolved via revision)
 
 ---
 
@@ -213,7 +215,7 @@ assert suppression_rate < 0.5, f"STOP: Suppression rate {suppression_rate:.1%} e
 assert len(clean_df) > len(raw_df) * 0.1, "STOP: >90% data loss after cleaning"
 ```
 
-### Gate Criteria
+### Gate Criteria (G5)
 
 Before proceeding to Phase 4:
 - [ ] Coded values handled appropriately
@@ -221,6 +223,8 @@ Before proceeding to Phase 4:
 - [ ] No invalid analysis types attempted
 - [ ] Data saved to `data/processed/` (parquet)
 - [ ] Citation text generated
+- [ ] **QA review completed** (code-reviewer invoked after script execution)
+- [ ] **QA status:** PASSED/WARNING (any BLOCKER resolved via revision)
 
 ---
 

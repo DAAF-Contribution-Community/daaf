@@ -218,17 +218,17 @@ The Full Pipeline workflow consists of **5 Phases** and **12 Stages**. Other mod
 │  Stage 2: Data Exploration ←── education-data-explorer skill                │
 │      ├─ Identify available endpoints and variables                          │
 │      ├─ Report findings to user (adaptive)                                  │
-│      └─ Gate: Endpoints identified OR escalate if infeasible                │
+│      └─ Gate G1.5: ≥1 endpoint identified, key variables flagged            │
 │                          ↓                                                  │
 │  Stage 3: Source Deep-Dive ←── education-data-source-* skills               │
 │      ├─ Understand limitations, caveats, suppression patterns               │
 │      ├─ Document source-specific gotchas                                    │
-│      └─ Gate: Context sufficient OR escalate gaps                           │
+│      └─ Gate G2: Coded values documented, suppression patterns identified   │
 │                          ↓                                                  │
 │  Stage 3.5: Findings Synthesis ←── research-synthesizer agent               │
 │      ├─ Consolidate parallel Stage 2-3 findings                             │
 │      ├─ Resolve cross-source conflicts                                      │
-│      └─ Gate: Synthesis complete, unified guidance for Plan                 │
+│      └─ Gate G2.5: Synthesis complete, unified guidance for Plan            │
 └─────────────────────────────────────────────────────────────────────────────┘
                           ↓
 ┌─────────────────────────────────────────────────────────────────────────────┐
@@ -271,7 +271,7 @@ The Full Pipeline workflow consists of **5 Phases** and **12 Stages**. Other mod
 │      │   .claude/skills/education-data-query/references/)                   │
 │      ├─ Auto-validate: shape, types, missingness (CP1)                      │
 │      ├─ STOP if: unexpected empty results, data access errors               │
-│      └─ Gate: Raw data saved to data/raw/ (parquet)                         │
+│      └─ Gate G4: CP1 PASSED, QA1 PASSED/WARNING, data in data/raw/          │
 │                          ↓                                                  │
 │  ┌─ 5-QA: >>> INVOKE code-reviewer NOW <<< (MANDATORY) ───────────────────┐ │
 │  │  Orchestrator MUST call Task tool with code-reviewer agent here.       │ │
@@ -283,7 +283,7 @@ The Full Pipeline workflow consists of **5 Phases** and **12 Stages**. Other mod
 │      ├─ Assess missingness and coded value presence                         │
 │      ├─ Calculate suppression rates (CP2)                                   │
 │      ├─ STOP if: >50% suppression, invalid analysis type                    │
-│      └─ Gate: Cleaned data saved to data/processed/                         │
+│      └─ Gate G5: CP2 PASSED, QA2 PASSED/WARNING, data in processed/         │
 │                          ↓                                                  │
 │  ┌─ 6-QA: >>> INVOKE code-reviewer NOW <<< (MANDATORY) ───────────────────┐ │
 │  │  Orchestrator MUST call Task tool with code-reviewer agent here.       │ │
@@ -299,7 +299,7 @@ The Full Pipeline workflow consists of **5 Phases** and **12 Stages**. Other mod
 │      ├─ Initial data profiling (auto-execute)                               │
 │      ├─ Report key findings to user (adaptive)                              │
 │      ├─ Transformations with validation (CP3 per transformation)            │
-│      └─ Gate: Analysis dataset ready                                        │
+│      └─ Gate G6: All CP3 PASSED, all QA3 PASSED/WARNING                     │
 │                          ↓                                                  │
 │  ┌─ 7-QA: >>> INVOKE code-reviewer NOW <<< (MANDATORY, per script) ───────┐ │
 │  │  Orchestrator MUST call Task tool with code-reviewer after EACH        │ │
@@ -310,7 +310,7 @@ The Full Pipeline workflow consists of **5 Phases** and **12 Stages**. Other mod
 │  Stage 8: Visualization ←── plotnine/plotly skills                          │
 │      ├─ Generate exploratory and final plots                                │
 │      ├─ Save to output/figures/                                             │
-│      └─ Gate: Key visualizations complete                                   │
+│      └─ Gate G7: Visualizations complete, QA4 PASSED/WARNING                │
 │                          ↓                                                  │
 │  ┌─ 8-QA: >>> INVOKE code-reviewer NOW <<< (MANDATORY) ───────────────────┐ │
 │  │  Orchestrator MUST call Task tool with code-reviewer agent here.       │ │
@@ -323,13 +323,13 @@ The Full Pipeline workflow consists of **5 Phases** and **12 Stages**. Other mod
 │      ├─ VERBATIM execution logs in accordions (not summaries)               │
 │      ├─ NO new code except pl.read_parquet() + mo.ui.table()                │
 │      ├─ NO dashboards, NO widgets, NO filters, NO aggregations              │
-│      └─ Gate: Notebook runs without errors, contains NO prohibited elements │
+│      └─ Gate G8: Notebook runs, all scripts represented, no prohibited items│
 │                          ↓                                                  │
 │  Stage 10: QA Aggregation                                                   │
 │      ├─ **Aggregate QA findings from Stages 5-8 (WARNINGs reviewed)**       │
 │      ├─ Review accumulated WARNINGs, confirm no unresolved BLOCKERs         │
 │      ├─ STOP if: unresolved BLOCKERs or systemic WARNING patterns           │
-│      └─ Gate: QA aggregation complete, all issues documented                │
+│      └─ Gate G9: QA aggregated, BLOCKERs resolved, WARNINGs documented      │
 └─────────────────────────────────────────────────────────────────────────────┘
                           ↓
 ┌─────────────────────────────────────────────────────────────────────────────┐
@@ -339,7 +339,7 @@ The Full Pipeline workflow consists of **5 Phases** and **12 Stages**. Other mod
 │      ├─ Extract key findings from notebook                                  │
 │      ├─ Generate stakeholder report (Report.md)                             │
 │      ├─ Include figure references                                           │
-│      └─ Gate: Report complete                                               │
+│      └─ Gate G10: Report complete with all sections + figure references     │
 │                          ↓                                                  │
 │  Stage 12: Final Review (Protocol 5)                                        │
 │      ├─ Verify alignment with original request                              │
@@ -380,7 +380,7 @@ Stage 7.3 is the final quality gate before visualization:
 - Run CP3 on the final dataset (row counts, no unexpected NAs, schema matches Plan)
 - Document any deviations from Plan in Plan document
 - **Update STATE.md** (REQUIRED — all Full Pipeline analyses have STATE.md)
-- Gate: Analysis dataset ready for Stage 8 visualization
+- Gate G6: Analysis dataset ready for Stage 8 visualization
 
 **Why this matters:**
 - The core principle "Every transformation has a validation" requires separate execution cycles
@@ -843,20 +843,20 @@ Each stage has explicit input/output contracts and gate criteria:
 
 | Stage | Input From | Output To | Gate Criteria |
 |-------|------------|-----------|---------------|
-| 1 | User request | Stage 2 | Mode classified, scope confirmed |
-| 2 | Stage 1 (mode + scope) | Stage 3, Plan | ≥1 endpoint identified, variables flagged |
-| 3 | Stage 2 endpoints | Stage 4, Plan | All caveats documented, coded values mapped |
-| 3.5 | Stages 2, 3 | Stage 4, Plan | Synthesis complete, conflicts resolved |
-| 4 | Phase 1 findings | Stage 4.5 or 5 | Plan complete with Transformation Sequence |
-| 4.5 | Stage 4 (Plan) | Stage 5 | Plan validation PASSED or PASSED_WITH_WARNINGS |
-| 5 | Plan (query spec) | Stage 6 | CP1 PASSED, **QA1 PASSED or WARNING**, data saved to data/raw/ |
-| 6 | Stage 5 (raw data) | Stage 7 | CP2 PASSED, **QA2 PASSED or WARNING**, suppression <50%, data saved to data/processed/ |
-| 7 | Stage 6 (clean data) | Stage 8, 9 | All transformations validated (CP3), **QA3 PASSED or WARNING per script**, analysis dataset saved to `data/processed/[date]_analysis.parquet` (at Stage 7.3) |
-| 8 | Stage 7 (analysis data) | Stage 9, 11 | Required visualizations saved to output/figures/, **QA4 PASSED or WARNING** |
-| 9 | Stages 7, 8 | Stage 10 | Notebook runs without errors |
-| 10 | Stage 9 (notebook) | Stage 11 | **QA findings aggregated**, BLOCKERs resolved, WARNINGs documented |
-| 11 | Stages 9, 10 | Stage 12 | Report complete with all sections and figure references |
-| 12 | All prior stages | Delivery | Protocol 5 PASSED, all commitments fulfilled, LEARNINGS.md consolidated with System Update Action Plan, cross-artifact coherence verified |
+| 1 | User request | Stage 2 | G1: Mode classified, scope confirmed |
+| 2 | Stage 1 (mode + scope) | Stage 3 | G1.5: ≥1 endpoint identified, key variables flagged |
+| 3 | Stage 2 endpoints | Stage 3.5 | G2: All flagged variables investigated, coded values documented, suppression patterns identified |
+| 3.5 | Stages 2, 3 | Stage 4 | G2.5: Synthesis complete, conflicts resolved |
+| 4 | Phase 1 findings | Stage 4.5 | G3: Plan created, STATE.md created, LEARNINGS.md skeleton created |
+| 4.5 | Stage 4 (Plan) | Stage 5 | G3.5: Plan validation PASSED or PASSED_WITH_WARNINGS |
+| 5 | Plan (query spec) | Stage 6 | G4: CP1 PASSED, **QA1 PASSED or WARNING**, data saved to data/raw/ |
+| 6 | Stage 5 (raw data) | Stage 7 | G5: CP2 PASSED, **QA2 PASSED or WARNING**, suppression <50%, data saved to data/processed/ |
+| 7 | Stage 6 (clean data) | Stage 8, 9 | G6: All transformations validated (CP3), **QA3 PASSED or WARNING per script**, analysis dataset saved to `data/processed/[date]_analysis.parquet` (at Stage 7.3) |
+| 8 | Stage 7 (analysis data) | Stage 9, 11 | G7: Required visualizations saved to output/figures/, **QA4 PASSED or WARNING** |
+| 9 | Stages 7, 8 | Stage 10 | G8: Notebook runs without errors, all scripts represented with code + execution logs |
+| 10 | Stage 9 (notebook) | Stage 11 | G9: **QA findings aggregated**, all BLOCKERs resolved, all WARNINGs documented |
+| 11 | Stages 9, 10 | Stage 12 | G10: Report complete with all sections and figure references |
+| 12 | All prior stages | Delivery | G11: Protocol 5 PASSED, all commitments fulfilled, LEARNINGS.md consolidated with System Update Action Plan, cross-artifact coherence verified |
 
 **QA Gate Notes:**
 - **PASSED or WARNING:** QA may log WARNINGs that don't block execution (documented for Stage 10 aggregation)
@@ -1035,20 +1035,21 @@ Forcing functions are mandatory design interventions that **prevent** poor pract
 | Gate | Transition | Requires | Enforcement |
 |------|------------|----------|-------------|
 | G1 | 1 → 2 | Mode classified and confirmed | Cannot invoke Stage 2 subagent |
-| G2 | 3 → 3.5 | ≥1 endpoint identified | Cannot invoke research-synthesizer |
+| G1.5 | 2 → 3 | ≥1 endpoint identified, key variables flagged | Cannot invoke source deep-dive |
+| G2 | 3 → 3.5 | All flagged variables investigated, coded values documented, suppression patterns identified | Cannot invoke research-synthesizer |
 | G2.5 | 3.5 → 4 | Synthesis complete, cross-source conflicts resolved | Cannot create Plan |
 | **G3** | **4 → 4.5** | **Plan created AND STATE.md created AND LEARNINGS.md skeleton created** | **Cannot invoke plan-checker** |
 | **G3.5** | **4.5 → 5** | **plan-checker returned PASSED or PASSED_WITH_WARNINGS** | **Cannot begin data acquisition** |
-| G4 | 5 → 6 | CP1 PASSED, **QA1 INVOKED and QA1 ∈ {PASSED, WARNING}** | Cannot proceed to cleaning |
-| G5 | 6 → 7 | CP2 PASSED, **QA2 INVOKED and QA2 ∈ {PASSED, WARNING}** | Cannot proceed to transformation |
+| G4 | 5 → 6 | CP1 PASSED, data saved to data/raw/, **QA1 INVOKED and QA1 ∈ {PASSED, WARNING}** | Cannot proceed to cleaning |
+| G5 | 6 → 7 | CP2 PASSED, suppression <50%, data saved to data/processed/, **QA2 INVOKED and QA2 ∈ {PASSED, WARNING}** | Cannot proceed to transformation |
 | G6 | 7 → 8 | All transformations CP3 PASSED, **all QA3 INVOKED and ∈ {PASSED, WARNING}** | Cannot proceed to visualization |
 | G7 | 8 → 9 | Visualizations complete, **QA4 INVOKED and QA4 ∈ {PASSED, WARNING}** | Cannot assemble notebook |
-| G8 | 9 → 10 | Notebook runs without errors | Cannot run QA |
-| G9 | 10 → 11 | QA aggregation complete | Cannot generate report |
-| G10 | 11 → 12 | Report complete with all sections | Cannot run final review |
-| G11 | 12 → Delivery | Protocol 5 verification PASSED, LEARNINGS.md consolidated with System Update Action Plan | Cannot deliver |
+| G8 | 9 → 10 | Notebook runs without errors, all scripts represented with code + execution logs | Cannot run QA aggregation |
+| G9 | 10 → 11 | QA findings aggregated, all BLOCKERs resolved, all WARNINGs documented | Cannot generate report |
+| G10 | 11 → 12 | Report complete with all sections and figure references | Cannot run final review |
+| G11 | 12 → Delivery | Protocol 5 verification PASSED, all commitments fulfilled, LEARNINGS.md consolidated with System Update Action Plan, cross-artifact coherence verified | Cannot deliver |
 
-**Gate G3 Enforcement:** Stage 5 CANNOT begin without all three files: Plan.md, STATE.md (`agent_reference/STATE_TEMPLATE.md`), and LEARNINGS.md (`agent_reference/08_LESSONS_LEARNED.md`). If any are missing, create before proceeding.
+**Gate G3 Enforcement:** Plan-checker (Stage 4.5) CANNOT be invoked without all three files: Plan.md, STATE.md (`agent_reference/STATE_TEMPLATE.md`), and LEARNINGS.md (`agent_reference/08_LESSONS_LEARNED.md`). If any are missing, create before proceeding. (Stage 5 additionally requires G3.5 — see below.)
 
 **Gate G3.5 Enforcement:** plan-checker MUST be invoked and return PASSED or PASSED_WITH_WARNINGS. If ISSUES_FOUND, revise Plan (max 2 attempts) then escalate. Update STATE.md "Plan Validation" section with the result before proceeding. See Stage 4.5 in `agent_reference/02_WORKFLOW_STAGES.md` for the invocation pattern.
 
@@ -1392,7 +1393,7 @@ See `agent_reference/07_CONTEXT_MANAGEMENT.md` for detailed gate protocols (incl
 
 **Creation Trigger:**
 - **Create:** At Stage 4 (Plan creation) — IMMEDIATELY after Plan file is written
-- **Gate:** Stage 5 CANNOT begin until STATE.md exists alongside Plan (see Gate G3)
+- **Gate:** Stage 5 CANNOT begin until STATE.md exists alongside Plan (see Gate G3) and Plan-Checker Status is PASSED or PASSED_WITH_WARNINGS (see Gate G3.5).
 
 **Update Triggers:** See the **STATE.md Update Gates** table in the Quality & Validation Framework section for the complete list of mandatory update events and which fields to update.
 

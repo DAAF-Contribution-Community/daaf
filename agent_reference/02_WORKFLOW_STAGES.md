@@ -303,7 +303,7 @@ You MUST wait for user confirmation before proceeding.
 - [ ] Multiple sources considered
 ```
 
-### Gate Criteria
+### Gate Criteria (G1.5)
 
 - [ ] At least one candidate endpoint identified
 - [ ] Key variables identified
@@ -454,7 +454,7 @@ Consolidate these parallel findings into a unified context for Plan creation.
 })
 ```
 
-### Gate Criteria
+### Gate Criteria (G2.5)
 
 - [ ] All source findings integrated
 - [ ] Conflicts identified and resolved
@@ -573,7 +573,7 @@ Incomplete transformation sequences lead to incomplete validation and unreliable
 - [ ] User notified
 - [ ] Ready to proceed unless user objects
 
-**Gate G3 Enforcement:** Stage 5 CANNOT begin without Plan, STATE.md, and LEARNINGS.md all existing.
+**Gate G3 Enforcement:** Plan-checker (Stage 4.5) CANNOT be invoked without Plan, STATE.md, and LEARNINGS.md all existing. (Stage 5 additionally requires G3.5 — see below.)
 
 ---
 
