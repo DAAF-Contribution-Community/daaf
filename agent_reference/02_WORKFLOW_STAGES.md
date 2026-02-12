@@ -129,20 +129,26 @@ See `agents/code-reviewer.md` for the complete QA protocol and `agent_reference/
 
 ### Stage 5 → Stage 6 Context
 
+**Note:** Stage 5 may produce multiple scripts (one per fetch task). All outputs must be passed forward.
+
 | Context Item | Source | Required In Stage 6 Prompt |
 |--------------|--------|---------------------------|
-| Raw data file paths | Stage 5 output | YES — exact paths |
-| CP1 validation results | Stage 5 output | YES — what passed/failed |
+| All raw data file paths (one per fetch script) | Stage 5 output | YES — exact paths for every file produced |
+| CP1 validation results for ALL Stage 5 scripts | Stage 5 output | YES — what passed/failed per script |
+| QA1 status for EACH Stage 5 script separately | Stage 5 QA | YES — per-script QA outcomes |
 | Source caveats | Stage 3 → Plan | YES — inlined, not just referenced |
 | Coded value handling rules | Plan | YES — complete specification |
 | Suppression tolerance | Plan | YES — BLOCKER/WARNING thresholds |
 
 ### Stage 6 → Stage 7 Context
 
+**Note:** Stage 6 may produce multiple scripts (one per clean task). All outputs must be passed forward.
+
 | Context Item | Source | Required In Stage 7 Prompt |
 |--------------|--------|---------------------------|
-| Processed data file paths | Stage 6 output | YES — exact paths |
-| CP2 validation results | Stage 6 output | YES — suppression rates |
+| All processed data file paths (one per clean script) | Stage 6 output | YES — exact paths for every file produced |
+| CP2 validation results for ALL Stage 6 scripts | Stage 6 output | YES — suppression rates per script |
+| QA2 status for EACH Stage 6 script separately | Stage 6 QA | YES — per-script QA outcomes |
 | EDA findings (for 7.2+) | Stage 7.1 output | YES — distributions, quality issues |
 | Prior transformation results (for 7.N) | Stage 7.(N-1) output | YES — row counts, changes, findings |
 | Invariants to maintain | Prior transformations | YES — accumulated constraints |
@@ -736,9 +742,10 @@ assert df['year'].is_in(expected_years).all(), "WARNING: Unexpected years"
 ### File Locations:
 - Parquet: `data/raw/YYYY-MM-DD_[source]_[description].parquet`
 
-### Script Saved:
+### Scripts Saved (one per fetch task):
 - Path: `scripts/stage5_fetch/{step}_{task-name}.py`
 - Includes: Pagination handling, CP1 validation, output paths
+- Note: Each fetch task produces a separate script; QA is invoked immediately after each
 ```
 
 ### Gate Criteria (G5)
@@ -746,11 +753,11 @@ assert df['year'].is_in(expected_years).all(), "WARNING: Unexpected years"
 - [ ] Data retrieved successfully
 - [ ] CP1 passed (or warnings documented)
 - [ ] Data saved to `data/raw/`
-- [ ] **Script saved to `scripts/stage5_fetch/`** with standard header
+- [ ] **All scripts saved to `scripts/stage5_fetch/`** (one per fetch task) with standard header
 - [ ] **If data lag ≥3 years:** User notified and decision documented
 - [ ] Plan updated with Data Freshness Check table
-- [ ] **QA review completed** (code-reviewer invoked after script execution)
-- [ ] **QA status:** PASSED/WARNING (any BLOCKER resolved via revision)
+- [ ] **QA review completed for EACH Stage 5 script** (code-reviewer separately invoked immediately after each individual script, not batched)
+- [ ] **All QA1 statuses:** PASSED/WARNING (any BLOCKER resolved via revision before next script)
 - [ ] **QA scripts saved to `scripts/cr/stage5_{step}_cr1.py`** (+ cr2..cr5 if warranted)
 - [ ] **STATE.md updated:** Current Stage: 5, CP1 status, raw data paths recorded
 
@@ -840,9 +847,10 @@ assert len(clean_df) > len(raw_df) * 0.1, "STOP: >90% data loss"
 ### File Locations:
 - Parquet: `data/processed/YYYY-MM-DD_[description].parquet`
 
-### Script Saved:
+### Scripts Saved (one per clean task):
 - Path: `scripts/stage6_clean/{step}_{task-name}.py`
 - Includes: Coded value filtering, suppression calculation, CP2 validation
+- Note: Each clean task produces a separate script; QA is invoked immediately after each
 ```
 
 ### Gate Criteria (G6)
@@ -851,9 +859,9 @@ assert len(clean_df) > len(raw_df) * 0.1, "STOP: >90% data loss"
 - [ ] CP2 passed
 - [ ] Citation generated
 - [ ] Data saved to `data/processed/`
-- [ ] **Script saved to `scripts/stage6_clean/`** with standard header
-- [ ] **QA review completed** (code-reviewer invoked after script execution)
-- [ ] **QA status:** PASSED/WARNING (any BLOCKER resolved via revision)
+- [ ] **All scripts saved to `scripts/stage6_clean/`** (one per clean task) with standard header
+- [ ] **QA review completed for EACH Stage 6 script** (code-reviewer separately invoked immediately after each individual script, not batched)
+- [ ] **All QA2 statuses:** PASSED/WARNING (any BLOCKER resolved via revision before next script)
 - [ ] **QA scripts saved to `scripts/cr/stage6_{step}_cr1.py`** (+ cr2..cr5 if warranted)
 - [ ] **STATE.md updated:** Current Stage: 6, CP2 status, suppression rate, processed data paths
 
@@ -1076,8 +1084,8 @@ MANDATORY EXECUTION PATTERN:
 - [ ] Validation performed
 - [ ] Status reported (PASS/FAIL)
 - [ ] **Script saved to `scripts/stage7_transform/`** with standard header
-- [ ] **QA review completed** (code-reviewer invoked after each script)
-- [ ] **QA status:** PASSED/WARNING (any BLOCKER resolved via revision)
+- [ ] **QA review completed IMMEDIATELY AFTER THIS SCRIPT, before the next script begins** (code-reviewer separately invoked per script, not batched)
+- [ ] **QA status:** PASSED/WARNING (any BLOCKER resolved via revision before next script)
 - [ ] **QA scripts saved to `scripts/cr/stage7_{step}_cr1.py`** (+ cr2..cr5 if warranted)
 
 **After Stage 7.3 (G7):**
@@ -1226,8 +1234,8 @@ fig.write_image(f"output/figures/{date_prefix}_plot_name.png")
 - [ ] Figures exported to `output/figures/`
 - [ ] All analysis scripts saved to `scripts/stage8_analysis/` with standard header
 - [ ] All visualization scripts saved to `scripts/stage8_analysis/` with standard header
-- [ ] QA4a completed for all analysis scripts (PASSED/WARNING)
-- [ ] QA4b completed for all visualization scripts (PASSED/WARNING)
+- [ ] QA4a completed for EACH analysis script individually (PASSED/WARNING), invoked immediately after each script
+- [ ] QA4b completed for EACH visualization script individually (PASSED/WARNING), invoked immediately after each script
 
 ### Gate Criteria (G8)
 
@@ -1235,10 +1243,10 @@ fig.write_image(f"output/figures/{date_prefix}_plot_name.png")
 - [ ] Statistical results exported to `output/analysis/`
 - [ ] Figures exported to `output/figures/`
 - [ ] **All scripts saved to `scripts/stage8_analysis/`** with standard header
-- [ ] **QA4a review completed** (code-reviewer invoked after each analysis script)
-- [ ] **QA4a status:** PASSED/WARNING (any BLOCKER resolved via revision)
-- [ ] **QA4b review completed** (code-reviewer invoked after each visualization script)
-- [ ] **QA4b status:** PASSED/WARNING (any BLOCKER resolved via revision)
+- [ ] **QA4a review completed for EACH analysis script** (code-reviewer separately invoked IMMEDIATELY AFTER each individual script, before the next script begins — not batched)
+- [ ] **All QA4a statuses:** PASSED/WARNING (any BLOCKER resolved via revision before next script)
+- [ ] **QA4b review completed for EACH visualization script** (code-reviewer separately invoked IMMEDIATELY AFTER each individual script, before the next script begins — not batched)
+- [ ] **All QA4b statuses:** PASSED/WARNING (any BLOCKER resolved via revision before next script)
 - [ ] **QA scripts saved to `scripts/cr/stage8_{step}_cra1.py`** (analysis) and **`stage8_{step}_crb1.py`** (viz)
 - [ ] **STATE.md updated:** Current Stage: 8, QA4a and QA4b status, analysis result paths, figure paths recorded
 

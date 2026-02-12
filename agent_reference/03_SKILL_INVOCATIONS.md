@@ -749,13 +749,14 @@ After completing the skill's Required Actions, return findings using the format 
 })
 ```
 
-#### QA Follow-Up (MANDATORY)
+#### QA Follow-Up (MANDATORY — After EACH Script)
 
-**After research-executor returns from Stage 5, orchestrator MUST invoke code-reviewer.**
+**After research-executor completes EACH individual Stage 5 fetch script, orchestrator MUST immediately invoke code-reviewer to separately review that script.**
 Use the **code-reviewer invocation template** below (see "code-reviewer (QA Agent)" section)
 with stage-specific values for Stage 5.
 
-**Do NOT proceed to Stage 6 until QA returns PASSED or WARNING.**
+**Do NOT start the next Stage 5 script until QA returns PASSED or WARNING for the current script.**
+**Do NOT proceed to Stage 6 until ALL Stage 5 scripts have been individually QA'd.**
 
 ---
 
@@ -855,13 +856,14 @@ After completing the skill's Required Actions, return findings using the format 
 })
 ```
 
-#### QA Follow-Up (MANDATORY)
+#### QA Follow-Up (MANDATORY — After EACH Script)
 
-**After research-executor returns from Stage 6, orchestrator MUST invoke code-reviewer.**
+**After research-executor completes EACH individual Stage 6 cleaning script, orchestrator MUST immediately invoke code-reviewer to separately review that script.**
 Use the **code-reviewer invocation template** below (see "code-reviewer (QA Agent)" section)
 with stage-specific values for Stage 6.
 
-**Do NOT proceed to Stage 7 until QA returns PASSED or WARNING.**
+**Do NOT start the next Stage 6 script until QA returns PASSED or WARNING for the current script.**
+**Do NOT proceed to Stage 7 until ALL Stage 6 scripts have been individually QA'd.**
 
 ---
 
@@ -917,7 +919,7 @@ Do NOT proceed to transformations. Return findings for orchestrator review.""",
     subagent_type: "general-purpose"
 })
 
-# Step 2: Execute transformations iteratively (one or small batch at a time)
+# Step 2: Execute transformations iteratively (one at a time, atomically)
 # Orchestrator provides specific transformation from Plan's transformation sequence
 # CRITICAL: Include prior transformation context for continuity
 

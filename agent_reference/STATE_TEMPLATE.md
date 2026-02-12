@@ -54,6 +54,8 @@ Copy this template to `STATE.md` in the project folder when starting a Full Pipe
 - **PASSED** — All scripts passed QA review (no BLOCKERs, WARNINGs logged)
 - **ISSUES** — BLOCKERs resolved via revision, or WARNINGs logged
 
+**Note:** This table provides an aggregate summary per stage. Per-script QA tracking (which gates individual script progression) is recorded in the **Transformation Progress** table below, where each row tracks one script's independent QA status.
+
 ---
 
 ## Plan Validation (Stage 4.5)
@@ -103,19 +105,20 @@ Copy this template to `STATE.md` in the project folder when starting a Full Pipe
 
 ## Transformation Progress
 
-*For Stage 5-8 tracking (includes QA substages)*
+*For Stage 5-8 tracking (includes QA substages). Each row tracks ONE script with its independent QA status. A row with QA Status = NOT_RUN blocks the next script invocation.*
 
-| # | Transformation | CP Status | QA Status | QA Depth | Revisions | Pre-Rows | Post-Rows | Notes |
-|---|----------------|-----------|-----------|----------|-----------|----------|-----------|-------|
-| 1 | [description] | [PENDING/PASSED/FAILED] | [PENDING/PASSED/WARNING/REVISED] | [1 of 5] | [0-2] | [N] | [N] | |
-| 2 | [description] | [PENDING/PASSED/FAILED] | [PENDING/PASSED/WARNING/REVISED] | [1 of 5] | [0-2] | [N] | [N] | |
-| 3 | [description] | [PENDING/PASSED/FAILED] | [PENDING/PASSED/WARNING/REVISED] | [1 of 5] | [0-2] | [N] | [N] | |
+| # | Transformation | Script Path | CP Status | QA Status | QA Script Path | QA Depth | Revisions | Pre-Rows | Post-Rows | Notes |
+|---|----------------|-------------|-----------|-----------|----------------|----------|-----------|----------|-----------|-------|
+| 1 | Fetch CCD schools | `scripts/stage5_fetch/01_fetch-ccd.py` | [PENDING/PASSED/FAILED] | [NOT_RUN/PENDING/PASSED/WARNING/REVISED] | `scripts/cr/stage5_01_cr1.py` | [1 of 5] | [0-2] | [N] | [N] | |
+| 2 | Clean CCD schools | `scripts/stage6_clean/01_clean-ccd.py` | [PENDING/PASSED/FAILED] | [NOT_RUN/PENDING/PASSED/WARNING/REVISED] | `scripts/cr/stage6_01_cr1.py` | [1 of 5] | [0-2] | [N] | [N] | |
+| 3 | Join CCD + MEPS | `scripts/stage7_transform/01_join-data.py` | [PENDING/PASSED/FAILED] | [NOT_RUN/PENDING/PASSED/WARNING/REVISED] | `scripts/cr/stage7_01_cr1.py` | [1 of 5] | [0-2] | [N] | [N] | |
 
 **QA Status Values:**
-- **PENDING** — QA review not yet completed
-- **PASSED** — QA review passed (no issues)
-- **WARNING** — QA found non-blocking issues (logged)
-- **REVISED** — QA BLOCKER resolved via revision
+- **NOT_RUN** — code-reviewer has not been invoked for this script (blocks next script invocation)
+- **PENDING** — QA review invoked but not yet completed for this script
+- **PASSED** — QA review passed for this script (no issues)
+- **WARNING** — QA found non-blocking issues for this script (logged for Stage 10 aggregation)
+- **REVISED** — QA BLOCKER for this script resolved via revision
 
 ---
 

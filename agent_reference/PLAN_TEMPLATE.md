@@ -528,6 +528,8 @@ The cardinality specified here is passed to `validate_join()` function during St
 5. **Wave Advance:** If all PASSED, proceed to next wave
 6. **Update Status:** ⬜ Pending → ⏳ In Progress → ✅ Passed → ❌ Failed
 
+**Per-Script QA Requirement:** After each script in this table completes execution (CP checkpoint passes), code-reviewer MUST be separately invoked to review that individual script before the next script begins. The Transformation Log below tracks both CP and QA status per script. A script is NOT fully gated until both CP and QA statuses are recorded.
+
 **If any task fails:**
 - Attempt fix (max 2 tries)
 - If still failing, STOP and escalate
@@ -548,12 +550,12 @@ The cardinality specified here is passed to `validate_join()` function during St
 | 4 | 4.2 | calc-ratio | — | — | — | — | — | 0 | — | — |
 | 5 | 5.1 | aggregate | — | — | — | — | — | 0 | — | — |
 
-**QA Status Values:**
-- **PENDING** — QA review not yet executed
-- **PASSED** — QA review passed (no issues or INFO only)
-- **WARNING** — QA review found non-blocking issues (logged for Stage 10)
-- **BLOCKER** → **REVISED** — QA found blocking issue, revision applied
-- **ESCALATED** — QA BLOCKER unresolved after 2 revision attempts
+**QA Status Values (per-script, independent per row):**
+- **PENDING** — QA review not yet executed for this script
+- **PASSED** — QA review passed for this script (no issues or INFO only)
+- **WARNING** — QA review found non-blocking issues in this script (logged for Stage 10)
+- **BLOCKER** → **REVISED** — QA found blocking issue in this script, revision applied
+- **ESCALATED** — QA BLOCKER unresolved after 2 revision attempts for this script
 
 **Revisions Column:** Count of script revisions due to QA BLOCKER findings (max 2 before escalation)
 

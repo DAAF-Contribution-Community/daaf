@@ -256,7 +256,7 @@ Are there multiple valid approaches requiring user preference?
 | 11 (Report) | human-verify | Always verify before delivery |
 | 12 (Final Review) | human-verify | Always verify before delivery |
 
-**Note:** QA substages (5-QA through 8-QA) run after each Stage 5-8 script execution. Technical BLOCKERs trigger revision attempts (max 2); methodology BLOCKERs escalate immediately.
+**Note:** QA substages (5-QA through 8-QA) run SEPARATELY after EACH individual Stage 5-8 script execution — not once at stage end. For example: Stage 5 with 2 fetch scripts = 2 independent QA1 invocations, each reviewing one script's output in isolation before the next script begins. Technical BLOCKERs trigger revision attempts (max 2 per script); methodology BLOCKERs escalate immediately.
 
 ---
 

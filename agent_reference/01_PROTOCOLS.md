@@ -181,8 +181,8 @@ Before proceeding to Stage 6:
 - [ ] Data saved to `data/raw/` (parquet)
 - [ ] **If data lag ≥3 years:** User notified and decision documented in Plan
 - [ ] **If COVID years (2020-2021) included:** Warning documented in Plan's COVID-19 Data Quality Considerations section
-- [ ] **QA review completed** (code-reviewer invoked after script execution)
-- [ ] **QA status:** PASSED/WARNING (any BLOCKER resolved via revision)
+- [ ] **QA review completed for EACH Stage 5 script** (code-reviewer separately invoked immediately after each individual fetch script completes, not batched at stage end)
+- [ ] **All QA1 statuses ∈ {PASSED, WARNING}** (any BLOCKER resolved via revision before next script)
 
 ---
 
@@ -223,8 +223,8 @@ Before proceeding to Stage 7 / Phase 4:
 - [ ] No invalid analysis types attempted
 - [ ] Data saved to `data/processed/` (parquet)
 - [ ] Citation text generated
-- [ ] **QA review completed** (code-reviewer invoked after script execution)
-- [ ] **QA status:** PASSED/WARNING (any BLOCKER resolved via revision)
+- [ ] **QA review completed for EACH Stage 6 script** (code-reviewer separately invoked immediately after each individual cleaning script completes, not batched at stage end)
+- [ ] **All QA2 statuses ∈ {PASSED, WARNING}** (any BLOCKER resolved via revision before next script)
 
 ---
 
