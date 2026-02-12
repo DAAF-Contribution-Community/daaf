@@ -280,10 +280,14 @@ The Full Pipeline workflow consists of **5 Phases** and **12 Stages**. Other mod
 │      ├─ STOP if: unexpected empty results, data access errors               │
 │      └─ Gate G5: CP1 PASSED, QA1 PASSED/WARNING, data in data/raw/          │
 │                          ↓                                                  │
-│  ┌─ 5-QA: >>> INVOKE code-reviewer NOW <<< (MANDATORY) ───────────────────┐ │
-│  │  Orchestrator MUST call Task tool with code-reviewer agent here.       │ │
-│  │  Do NOT proceed to Stage 6 until QA returns.                           │ │
-│  │  └─ BLOCKER → revision (max 2) │ WARNING → log │ PASSED → proceed      │ │
+│  ┌─ 5-QA: PER-SCRIPT QA LOOP (MANDATORY) ─────────────────────────────────┐ │
+│  │  For EACH Stage 5 script, immediately after that script completes:     │ │
+│  │  ① Invoke code-reviewer to separately review that individual script    │ │
+│  │  ② WAIT for QA result — do NOT start next script until QA returns      │ │
+│  │  ③ BLOCKER → revise + re-QA (max 2) │ WARNING → log │ PASSED → next    │ │
+│  │  ④ Update STATE.md with script path + QA status                        │ │
+│  │  ↺ Repeat for each script. NEVER batch QA at end of stage.             │ │
+│  │  Gate: ALL Stage 5 scripts individually QA'd → proceed to Stage 6      │ │
 │  └────────────────────────────────────────────────────────────────────────┘ │
 │                          ↓                                                  │
 │  Stage 6: Context Application ←── education-data-context skill              │
@@ -292,10 +296,14 @@ The Full Pipeline workflow consists of **5 Phases** and **12 Stages**. Other mod
 │      ├─ STOP if: >50% suppression, invalid analysis type                    │
 │      └─ Gate G6: CP2 PASSED, QA2 PASSED/WARNING, data in processed/         │
 │                          ↓                                                  │
-│  ┌─ 6-QA: >>> INVOKE code-reviewer NOW <<< (MANDATORY) ───────────────────┐ │
-│  │  Orchestrator MUST call Task tool with code-reviewer agent here.       │ │
-│  │  Do NOT proceed to Stage 7 until QA returns.                           │ │
-│  │  └─ BLOCKER → revision (max 2) │ WARNING → log │ PASSED → proceed      │ │
+│  ┌─ 6-QA: PER-SCRIPT QA LOOP (MANDATORY) ─────────────────────────────────┐ │
+│  │  For EACH Stage 6 script, immediately after that script completes:     │ │
+│  │  ① Invoke code-reviewer to separately review that individual script    │ │
+│  │  ② WAIT for QA result — do NOT start next script until QA returns      │ │
+│  │  ③ BLOCKER → revise + re-QA (max 2) │ WARNING → log │ PASSED → next    │ │
+│  │  ④ Update STATE.md with script path + QA status                        │ │
+│  │  ↺ Repeat for each script. NEVER batch QA at end of stage.             │ │
+│  │  Gate: ALL Stage 6 scripts individually QA'd → proceed to Stage 7      │ │
 │  └────────────────────────────────────────────────────────────────────────┘ │
 └─────────────────────────────────────────────────────────────────────────────┘
                           ↓
@@ -308,22 +316,30 @@ The Full Pipeline workflow consists of **5 Phases** and **12 Stages**. Other mod
 │      ├─ Transformations with validation (CP3 per transformation)            │
 │      └─ Gate G7: All CP3 PASSED, all QA3 PASSED/WARNING                     │
 │                          ↓                                                  │
-│  ┌─ 7-QA: >>> INVOKE code-reviewer NOW <<< (MANDATORY, per script) ───────┐ │
-│  │  Orchestrator MUST call Task tool with code-reviewer after EACH        │ │
-│  │  transformation script. Do NOT batch - invoke after every script.      │ │
-│  │  └─ BLOCKER → revision (max 2) │ WARNING → log │ PASSED → proceed      │ │
+│  ┌─ 7-QA: PER-SCRIPT QA LOOP (MANDATORY) ─────────────────────────────────┐ │
+│  │  For EACH Stage 7 script, immediately after that script completes:     │ │
+│  │  ① Invoke code-reviewer to separately review that individual script    │ │
+│  │  ② WAIT for QA result — do NOT start next script until QA returns      │ │
+│  │  ③ BLOCKER → revise + re-QA (max 2) │ WARNING → log │ PASSED → next    │ │
+│  │  ④ Update STATE.md with script path + QA status                        │ │
+│  │  ↺ Repeat for each script. NEVER batch QA at end of stage.             │ │
+│  │  Gate: ALL Stage 7 scripts individually QA'd → proceed to Stage 8      │ │
 │  └────────────────────────────────────────────────────────────────────────┘ │
 │                          ↓                                                  │
 │  Stage 8: Analysis & Visualization ←── data-scientist/polars/plotnine/plotly│
 │      ├─ 8.1: Run statistical analyses (save to output/analysis/)            │
-│      │   ┌─ 8.1-QA: >>> INVOKE code-reviewer (QA4a) <<< (MANDATORY) ──────┐ │
-│      │   │  After EACH 8.1 script. Statistical validity review.           │ │
-│      │   │  └─ BLOCKER → revision (max 2) │ WARNING → log │ PASSED → next │ │
+│      │   ┌─ 8.1-QA: PER-SCRIPT QA LOOP (QA4a, MANDATORY) ─────────────────┐ │
+│      │   │  For EACH 8.1 script, immediately after it completes:          │ │
+│      │   │  ① Invoke code-reviewer (QA4a) to separately review script     │ │
+│      │   │  ② WAIT — do NOT start next script until QA returns            │ │
+│      │   │  ③ BLOCKER → revise + re-QA (max 2) │ WARNING → log            │ │
 │      │   └────────────────────────────────────────────────────────────────┘ │
 │      ├─ 8.2: Generate exploratory and final plots (save to output/figures/) │
-│      │   ┌─ 8.2-QA: >>> INVOKE code-reviewer (QA4b) <<< (MANDATORY) ──────┐ │
-│      │   │  After EACH 8.2 script. Visualization quality review.          │ │
-│      │   │  └─ BLOCKER → revision (max 2) │ WARNING → log │ PASSED → next │ │
+│      │   ┌─ 8.2-QA: PER-SCRIPT QA LOOP (QA4b, MANDATORY) ─────────────────┐ │
+│      │   │  For EACH 8.2 script, immediately after it completes:          │ │
+│      │   │  ① Invoke code-reviewer (QA4b) to separately review script     │ │
+│      │   │  ② WAIT — do NOT start next script until QA returns            │ │
+│      │   │  ③ BLOCKER → revise + re-QA (max 2) │ WARNING → log            │ │
 │      │   └────────────────────────────────────────────────────────────────┘ │
 │      └─ Gate G8: Analyses + viz complete, QA4a AND QA4b PASSED/WARNING      │
 │                          ↓                                                  │
@@ -364,45 +380,75 @@ The Full Pipeline workflow consists of **5 Phases** and **12 Stages**. Other mod
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
-### CRITICAL: Stage 7 Iterative Execution Pattern
+> **AUTHORITATIVE EXECUTION LOOP:** The per-script execute→QA→evaluate→update
+> loop shown in each QA box above is defined in full detail in the
+> **Stage 5-8 Composite Execution Pattern** section. That pattern is the MANDATORY atomic unit for all
+> Stage 5-8 work. The workflow diagram above is a visual summary; the
+> Composite Pattern is the binding specification.
 
-**Stage 7 is executed as MULTIPLE subagent calls, NOT a single invocation.**
+### CRITICAL: Stage 5-8 Per-Script Execution & QA Loop
 
-Each row in the Plan's Transformation Sequence table becomes a separate subagent call:
-
-```
-Stage 7.1: Initial EDA (auto-execute profiling)
-    ↓
-Stage 7.2a: Transformation #1 → Validate (CP3)
-    ↓
-Stage 7.2b: Transformation #2 → Validate (CP3)
-    ↓
-Stage 7.2c: Transformation #3 → Validate (CP3)
-    ↓
-Stage 7.3: Final validation before proceeding to Stage 8
-```
-
-**Stage 7.3: Final Pre-Stage-8 Validation**
-
-Stage 7.3 is the final quality gate before final analysis and visualization:
-- Verify all Transformation Sequence tasks are complete
-- Confirm analysis dataset exists at expected location (`data/processed/[date]_analysis.parquet`)
-- Run CP3 on the final dataset (row counts, no unexpected NAs, schema matches Plan)
-- Document any deviations from Plan in Plan document
-- **Update STATE.md** (REQUIRED — all Full Pipeline analyses have STATE.md)
-- Gate G7: Analysis dataset ready for Stage 8 analysis and visualization
+**Every stage from 5 through 8 is executed as MULTIPLE subagent calls with interleaved QA, NOT as a single invocation per stage.** Each script in the Plan's Transformation Sequence table is executed by research-executor, then **immediately and separately** reviewed by code-reviewer, before the next script begins. This applies equally to Stage 5 (fetch scripts), Stage 6 (clean scripts), Stage 7 (transformation scripts), and Stage 8 (analysis and visualization scripts). Any Stage writing net new code must adhere to this. QA scripts are saved to `scripts/cr/stage{N}_{step}_cr{1..5}.py`. The **Stage 5-8 Composite Execution Pattern** below defines the authoritative execution flow — it is the MANDATORY atomic unit for all Stage 5-8 work. See `agents/code-reviewer.md` for the complete QA protocol and `agent_reference/QA_CHECKPOINTS.md` for checkpoint definitions.
 
 **Why this matters:**
 - The core principle "Every transformation has a validation" requires separate execution cycles
-- Each subagent call captures pre-state, executes ONE transformation, validates post-state
-- Batch execution violates the Iteration Protocol and risks undetected data corruption
+- Each subagent call captures pre-state, executes ONE script, validates post-state
+- QA must run immediately after each script so findings can inform whether to proceed, revise, or stop
+- Batching QA to stage end means errors in script 1 propagate silently through scripts 2, 3, 4 — compounding data corruption
 - The Transformation Sequence table in the Plan is the contract for these invocations
 
-**See:** `agent_reference/02_WORKFLOW_STAGES.md` for detailed Stage 7 execution guidance.
+**See:** `agent_reference/02_WORKFLOW_STAGES.md` for detailed per-script execution guidance.
 
-### Code QA Substage Pattern (Stages 5-8)
+### QA Invocation Responsibility
 
-After every script execution in Stages 5-8, the orchestrator MUST invoke **code-reviewer** for secondary QA. QA scripts are saved to `scripts/cr/stage{N}_{step}_cr{1..5}.py`. The **Stage 5-8 Composite Execution Pattern** below defines the authoritative execution flow. See `agents/code-reviewer.md` for the complete QA protocol and `agent_reference/QA_CHECKPOINTS.md` for checkpoint definitions.
+**Expectation for QA depth:** The code-reviewer is not a rubber-stamp. The reviewer should reason adversarially about the script, not merely run templated checks. A high-quality QA report includes reasoning about *why* the code is correct, not just confirmation that checks passed. If a code-reviewer returns PASSED with only template-level checks and no script-specific observations, consider whether the review was thorough enough.
+
+The complete QA invocation workflow is defined in the **Stage 5-8 Composite Execution Pattern** below. See `agents/code-reviewer.md` for the QA protocol and `agent_reference/QA_CHECKPOINTS.md` for checkpoint definitions.
+
+### Stage 5-8 Composite Execution Pattern (MANDATORY)
+
+For EACH task in Stages 5-8, follow this complete loop. **Do NOT skip any step.**
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  STEP 1: INVOKE research-executor                                           │
+│      ├─ Use stage-specific template from 03_SKILL_INVOCATIONS.md            │
+│      ├─ Capture from result: script_path, output_files, CP_status           │
+│      └─ If CP_status == FAILED → Handle error, do not proceed to QA         │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  STEP 2: INVOKE code-reviewer (MANDATORY - DO NOT SKIP)                     │
+│      │                                                                      │
+│      │   Use the code-reviewer invocation template from                     │
+│      │   `agent_reference/03_SKILL_INVOCATIONS.md`                          │
+│      │   (see "code-reviewer (QA Agent)" section) with stage-specific       │
+│      │   values.                                                            │
+│      │                                                                      │
+│      │   **Review Expectation:** code-reviewer should perform adversarial   │
+│      │   analysis, not just template validation. Expect the QA report to    │
+│      │   include script-specific checks and reasoning about WHY the code    │
+│      │   is correct, not merely confirmation that checks passed.            │
+│      │                                                                      │
+│      └─ WAIT for code-reviewer to return before proceeding                  │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  STEP 3: EVALUATE QA severity                                               │
+│      ├─ PASSED → Log to STATE.md, proceed to next task                      │
+│      ├─ WARNING → Log to STATE.md (for Stage 10 review), proceed            │
+│      └─ BLOCKER → Go to STEP 4                                              │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  STEP 4: REVISION FLOW (if BLOCKER)                                         │
+│      ├─ Invoke research-executor to create revised script (_a.py)           │
+│      ├─ Re-invoke code-reviewer on revised script                           │
+│      ├─ If still BLOCKER → Create _b.py revision, re-invoke code-reviewer   │
+│      └─ If still BLOCKER after 2 revisions → STOP and escalate to user      │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  STEP 5: UPDATE STATE.md                                                    │
+│      ├─ Update Transformation Progress table                                │
+│      ├─ Record QA status and any findings                                   │
+│      └─ Proceed to next task in wave                                        │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+**CRITICAL:** Steps 1-5 form an atomic unit. NEVER proceed to the next task without completing all steps. NEVER batch multiple executor calls without intermediate QA.
 
 ### Phase-to-Protocol Mapping
 
@@ -474,59 +520,8 @@ As the orchestrator, you maintain overall context and coordinate subagent execut
 - Source-specific deep dives
 - Code-heavy analysis work
 - Visualization generation
-- **QA code review (code-reviewer agent after each Stage 5-8 script)**
+- **QA code review (code-reviewer agent invoked to closely inspect each individual Stage 5-8 script)**
 - Final report writing and review
-
-### QA Invocation Responsibility
-
-**Expectation for QA depth:** The code-reviewer is not a rubber-stamp. The reviewer should reason adversarially about the script, not merely run templated checks. A high-quality QA report includes reasoning about *why* the code is correct, not just confirmation that checks passed. If a code-reviewer returns PASSED with only template-level checks and no script-specific observations, consider whether the review was thorough enough.
-
-The complete QA invocation workflow is defined in the **Stage 5-8 Composite Execution Pattern** below. See `agents/code-reviewer.md` for the QA protocol and `agent_reference/QA_CHECKPOINTS.md` for checkpoint definitions.
-
-### Stage 5-8 Composite Execution Pattern (MANDATORY)
-
-For EACH task in Stages 5-8, follow this complete loop. **Do NOT skip any step.**
-
-```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│  STEP 1: INVOKE research-executor                                           │
-│      ├─ Use stage-specific template from 03_SKILL_INVOCATIONS.md            │
-│      ├─ Capture from result: script_path, output_files, CP_status           │
-│      └─ If CP_status == FAILED → Handle error, do not proceed to QA         │
-├─────────────────────────────────────────────────────────────────────────────┤
-│  STEP 2: INVOKE code-reviewer (MANDATORY - DO NOT SKIP)                     │
-│      │                                                                      │
-│      │   Use the code-reviewer invocation template from                     │
-│      │   `agent_reference/03_SKILL_INVOCATIONS.md`                         │
-│      │   (see "code-reviewer (QA Agent)" section) with stage-specific      │
-│      │   values.                                                           │
-│      │                                                                      │
-│      │   **Review Expectation:** code-reviewer should perform adversarial   │
-│      │   analysis, not just template validation. Expect the QA report to    │
-│      │   include script-specific checks and reasoning about WHY the code    │
-│      │   is correct, not merely confirmation that checks passed.            │
-│      │                                                                      │
-│      └─ WAIT for code-reviewer to return before proceeding                  │
-├─────────────────────────────────────────────────────────────────────────────┤
-│  STEP 3: EVALUATE QA severity                                               │
-│      ├─ PASSED → Log to STATE.md, proceed to next task                      │
-│      ├─ WARNING → Log to STATE.md (for Stage 10 review), proceed            │
-│      └─ BLOCKER → Go to STEP 4                                              │
-├─────────────────────────────────────────────────────────────────────────────┤
-│  STEP 4: REVISION FLOW (if BLOCKER)                                         │
-│      ├─ Invoke research-executor to create revised script (_a.py)           │
-│      ├─ Re-invoke code-reviewer on revised script                           │
-│      ├─ If still BLOCKER → Create _b.py revision, re-invoke code-reviewer   │
-│      └─ If still BLOCKER after 2 revisions → STOP and escalate to user      │
-├─────────────────────────────────────────────────────────────────────────────┤
-│  STEP 5: UPDATE STATE.md                                                    │
-│      ├─ Update Transformation Progress table                                │
-│      ├─ Record QA status and any findings                                   │
-│      └─ Proceed to next task in wave                                        │
-└─────────────────────────────────────────────────────────────────────────────┘
-```
-
-**CRITICAL:** Steps 1-5 form an atomic unit. NEVER proceed to the next task without completing all steps. NEVER batch multiple executor calls without intermediate QA.
 
 ### Context Completeness Checklist (MANDATORY)
 
@@ -721,7 +716,7 @@ See `agents/README.md` for complete agent documentation.
 2. **Subagent receives Task** and reads the prompt
 3. **Subagent calls skill tool** to load specialized knowledge into its context
 4. **Subagent follows agent protocol** using the skill's guidance
-5. **Subagent returns findings** to orchestrator (compressed, essential findings only)
+5. **Subagent returns findings** to orchestrator (concise, focusing on key findings)
 
 **Why This Matters:**
 - **Orchestrator context stays lean** — Doesn't contain full skill content (saves tokens)
@@ -738,7 +733,7 @@ See `agents/README.md` for complete agent documentation.
 - Include agent protocol reference in Task prompt
 - Include skill loading instruction
 - Let the subagent handle skill loading
-- Receive compressed findings from subagent
+- Receive concise key findings from subagent
 
 ### General Invocation Pattern
 
@@ -864,8 +859,10 @@ See `agent_reference/PLAN_TEMPLATE.md` for wave-based task table format.
 - Generate citation text
 
 **Stage 7 (EDA & Transformation):**
+- Verify all Transformation Sequence tasks are complete
 - Follow data-scientist skill principles rigorously
 - Validate before AND after every transformation
+- Document any deviations from Plan in Plan document
 - Document every methodological decision
 - Report surprising findings to user
 
@@ -897,10 +894,10 @@ Each stage has explicit input/output contracts and gate criteria:
 | 3.5 | Stages 2, 3 | Stage 4 | G3.5: Synthesis complete, conflicts resolved |
 | 4 | Phase 1 findings | Stage 4.5 | G4: Plan created, STATE.md created, LEARNINGS.md skeleton created |
 | 4.5 | Stage 4 (Plan) | Stage 5 | G4.5: Plan validation PASSED or PASSED_WITH_WARNINGS |
-| 5 | Plan (query spec) | Stage 6 | G5: CP1 PASSED, **QA1 PASSED or WARNING**, data saved to data/raw/ |
-| 6 | Stage 5 (raw data) | Stage 7 | G6: CP2 PASSED, **QA2 PASSED or WARNING**, suppression <50%, data saved to data/processed/ |
-| 7 | Stage 6 (clean data) | Stage 8, 9 | G7: All transformations validated (CP3), **QA3 PASSED or WARNING per script**, analysis dataset saved to `data/processed/[date]_analysis.parquet` (at Stage 7.3) |
-| 8 | Stage 7 (analysis data) | Stage 9, 11 | G8: Statistical results saved to output/analysis/, visualizations saved to output/figures/, **QA4a AND QA4b PASSED or WARNING** |
+| 5 | Plan (query spec) | Stage 6 | G5: CP1 PASSED for each script, **code-reviewer separately invoked to review each individual Stage 5 script immediately after that script completes (not batched), all QA1 ∈ {PASSED, WARNING}**, data saved to data/raw/ |
+| 6 | Stage 5 (raw data) | Stage 7 | G6: CP2 PASSED for each script, **code-reviewer separately invoked to review each individual Stage 6 script immediately after that script completes (not batched), all QA2 ∈ {PASSED, WARNING}**, suppression <50%, data saved to data/processed/ |
+| 7 | Stage 6 (clean data) | Stage 8, 9 | G7: All transformations validated (CP3) for each script, **code-reviewer separately invoked to review each individual Stage 7 script immediately after that script completes (not batched), all QA3 ∈ {PASSED, WARNING}**, analysis dataset saved to `data/processed/[date]_analysis.parquet` (at Stage 7.3) |
+| 8 | Stage 7 (analysis data) | Stage 9, 11 | G8: Statistical results saved to output/analysis/, visualizations saved to output/figures/, **code-reviewer separately invoked to review each individual 8.1 script (QA4a) and each individual 8.2 script (QA4b) immediately after each script completes (not batched), all QA4a and QA4b ∈ {PASSED, WARNING}** |
 | 9 | Stages 7, 8 | Stage 10 | G9: Notebook runs without errors, all scripts represented with code + execution logs |
 | 10 | Stage 9 (notebook) | Stage 11 | G10: **QA findings aggregated**, all BLOCKERs resolved, all WARNINGs documented |
 | 11 | Stages 9, 10 (notebook + QA aggregation), Plan, STATE.md, LEARNINGS.md | Stage 12 | G11: report-writer returned COMPLETE or COMPLETE_WITH_GAPS, all REPORT_TEMPLATE.md sections populated, figure references verified |
@@ -1089,10 +1086,10 @@ Forcing functions are mandatory design interventions that **prevent** poor pract
 | G3.5 | 3.5 → 4 | Synthesis complete, cross-source conflicts resolved | Cannot create Plan |
 | **G4** | **4 → 4.5** | **Plan created AND STATE.md created AND LEARNINGS.md skeleton created** | **Cannot invoke plan-checker** |
 | **G4.5** | **4.5 → 5** | **plan-checker returned PASSED or PASSED_WITH_WARNINGS** | **Cannot begin data acquisition** |
-| G5 | 5 → 6 | CP1 PASSED, data saved to data/raw/, **QA1 INVOKED and QA1 ∈ {PASSED, WARNING}** | Cannot proceed to cleaning |
-| G6 | 6 → 7 | CP2 PASSED, suppression <50%, data saved to data/processed/, **QA2 INVOKED and QA2 ∈ {PASSED, WARNING}** | Cannot proceed to transformation |
-| G7 | 7 → 8 | All transformations CP3 PASSED, **all QA3 INVOKED and ∈ {PASSED, WARNING}** | Cannot proceed to analysis and visualization |
-| G8 | 8 → 9 | Analyses and visualizations complete, **QA4a INVOKED and ∈ {PASSED, WARNING}** AND **QA4b INVOKED and ∈ {PASSED, WARNING}** | Cannot assemble notebook |
+| G5 | 5 → 6 | CP1 PASSED for each script, data saved to data/raw/, **code-reviewer separately invoked to review each individual Stage 5 script immediately after that script completes (not batched at stage end), and every QA1 review ∈ {PASSED, WARNING}** | Cannot proceed to cleaning |
+| G6 | 6 → 7 | CP2 PASSED for each script, suppression <50%, data saved to data/processed/, **code-reviewer separately invoked to review each individual Stage 6 script immediately after that script completes (not batched at stage end), and every QA2 review ∈ {PASSED, WARNING}** | Cannot proceed to transformation |
+| G7 | 7 → 8 | All transformations CP3 PASSED for each script, **code-reviewer separately invoked to review each individual Stage 7 script immediately after that script completes (not batched at stage end), and every QA3 review ∈ {PASSED, WARNING}** | Cannot proceed to analysis and visualization |
+| G8 | 8 → 9 | Analyses and visualizations complete, **code-reviewer separately invoked to review each individual 8.1 script (QA4a) and each individual 8.2 script (QA4b) immediately after each script completes (not batched), and every QA4a and QA4b review ∈ {PASSED, WARNING}** | Cannot assemble notebook |
 | G9 | 9 → 10 | Notebook runs without errors, all scripts represented with code + execution logs | Cannot run QA aggregation |
 | G10 | 10 → 11 | QA findings aggregated, all BLOCKERs resolved, all WARNINGs documented | Cannot generate report |
 | G11 | 11 → 12 | Report complete with all sections and figure references | Cannot run final review |
@@ -1104,7 +1101,20 @@ Forcing functions are mandatory design interventions that **prevent** poor pract
 
 **CRITICAL:** Gate G4.5 requires POSITIVE confirmation that plan-checker was invoked and returned PASSED or PASSED_WITH_WARNINGS. If plan-checker was never invoked, the gate condition is NOT satisfied. Update STATE.md "Plan Validation" section with the result before proceeding to Stage 5.
 
-**Gate G5-G8 Enforcement (QA Invocation):** Gates G5-G8 require POSITIVE confirmation that code-reviewer was invoked and returned PASSED or WARNING. If QA was never invoked, the gate condition is NOT satisfied. For Gate G8, BOTH QA4a (statistical analysis) and QA4b (visualization) must be independently invoked and satisfied. See the **Stage 5-8 Composite Execution Pattern** for the complete flow.
+**Gate G5-G8 Enforcement (Per-Script QA Invocation):** Gates G5-G8 require POSITIVE confirmation that code-reviewer was **separately invoked to review each individual script immediately after that script completed execution** — not batched at stage end. "Immediately" means: before the next script in the same stage begins. "Separately" means: one code-reviewer invocation per script, not one invocation reviewing multiple scripts. Running all scripts in a stage and then invoking code-reviewer once (or once per script after-the-fact) does **NOT** satisfy these gates — the QA must be interleaved with execution so that each script's QA findings can inform whether to proceed, revise, or stop before the next script runs. If code-reviewer was never invoked for a given script, that script's QA status is NOT_RUN and the gate is NOT satisfied. For Gate G8, BOTH QA4a (statistical analysis) and QA4b (visualization) must be independently and separately invoked per script. See the **Stage 5-8 Composite Execution Pattern** for the complete flow.
+
+### Per-Script QA Enforcement Protocol
+
+**To prevent batching, the orchestrator MUST maintain a QA invocation discipline throughout Stages 5-8.**
+
+**Rule: One script in, one QA out, before the next script begins.**
+
+Concretely:
+1. **Before invoking research-executor for script N+1**, verify that script N has a completed code-reviewer QA entry in STATE.md (with QA status ∈ {PASSED, WARNING} or BLOCKER resolved via revision). If script N's QA entry is missing or incomplete, STOP and invoke code-reviewer for script N first.
+2. **STATE.md Transformation Progress table** must have one row per script, and each row must include: script path, CP status, QA status, and QA script path. A row with QA status = `NOT_RUN` blocks the next script invocation.
+3. **Self-check before every research-executor call**: *"What was the last script I executed? Did I invoke code-reviewer separately for it? Is its QA status recorded in STATE.md? If any answer is no → invoke code-reviewer NOW, do not invoke research-executor."*
+
+**Why this matters:** Batching QA to the end of a stage means errors in script 1 propagate silently through scripts 2, 3, and 4 — producing compounding data corruption that is far harder to diagnose and fix. Per-script QA catches errors at the source, before they cascade.
 
 ### Gate Status Translation
 
@@ -1443,7 +1453,7 @@ The orchestrator receives actual context utilization via the `context-reporter` 
 
 **What gets delegated:** All skill invocations, code execution, data exploration, source deep-dives, visualization, QA code review.
 
-See `agent_reference/07_CONTEXT_MANAGEMENT.md` for detailed procedures: compression techniques, subagent context isolation, degradation symptom taxonomy, context budgets, and recovery strategies.
+See `agent_reference/07_CONTEXT_MANAGEMENT.md` for detailed procedures: subagent context isolation, degradation symptom taxonomy, context budgets, and recovery strategies.
 
 ### Session State Management
 
@@ -1676,7 +1686,7 @@ See `agent_reference/SCRIPT_TEMPLATE.md` for complete script template and exampl
 | `agent_reference/05_VALIDATION_CHECKPOINTS.md` | Python checkpoint code templates, stub detection |
 | `agent_reference/QA_CHECKPOINTS.md` | QA checkpoint definitions (QA1-QA4b), QA script patterns |
 | `agent_reference/06_ERROR_RECOVERY.md` | Failure handling procedures |
-| `agent_reference/07_CONTEXT_MANAGEMENT.md` | Context quality awareness and compression protocol |
+| `agent_reference/07_CONTEXT_MANAGEMENT.md` | Context quality awareness and management protocol |
 | `agent_reference/08_LESSONS_LEARNED.md` | Systematic lesson capture and consolidation |
 | `agent_reference/PLAN_TEMPLATE.md` | Research plan template with wave-based task sequences |
 | `agent_reference/REPORT_TEMPLATE.md` | Output report template |
@@ -1702,17 +1712,25 @@ research/2026-01-24 School Poverty Analysis/
 │   ├── run_with_capture.sh           # Copied from /daaf/scripts/ during project setup
 │   ├── stage5_fetch/
 │   │   ├── 01_fetch-ccd.py
+│   │   ├── 02_fetch-ipeds.py
 │   ├── stage6_clean/
 │   │   ├── 01_clean-ccd.py
 │   ├── stage7_transform/
 │   │   └── 01_join-data.py
+│   │   └── 02_process-data.py
 │   ├── stage8_analysis/
 │   │   ├── 01_regression-poverty.py
 │   │   └── 02_enrollment-plot.py
 │   ├── cr/                           # Code-review inspection scripts (iterative)
 │   │   ├── stage5_01_cr1.py          # CR for 01_fetch-ccd.py (standard + profiling)
+│   │   ├── stage5_02_cr1.py          # CR for 01_fetch-ipeds.py (standard + profiling)
 │   │   ├── stage6_01_cr1.py          # CR for 01_clean-ccd.py
 │   │   ├── stage7_01_cr1.py          # CR for 01_join-data.py
+│   │   ├── stage7_02_cr1.py          # CR for 02_process-data.py
+│   │   ├── stage7_02_cr2.py          # Additional checks for 02_process-data.py
+│   │   ├── stage8_01_cr1.py          # Additional checks 01_regression-poverty.py
+│   │   ├── stage8_01_cr2.py          # Additional checks 01_regression-poverty.py
+│   │   └── stage8_02_cr1.py          # Additional checks 02_enrollment-plot.py
 │   └── debug/                                     # If debugging occurred
 │       └── 01_diag-key-mismatch.py
 ├── data/
