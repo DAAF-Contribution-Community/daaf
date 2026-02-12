@@ -385,11 +385,13 @@ After completing the skill's Required Actions, return findings using the format 
 **Purpose:** Identify available datasets and variables
 **Stage:** 2 (Data Exploration)
 **Subagent:** Plan
+**Skills:** `data-scientist`, `education-data-explorer`
 
 ```python
 Task({
     description: "Stage 2: Data Exploration",
-    prompt: """You have access to a skill tool. First, call the skill tool with name 'education-data-explorer'.
+    prompt: """You have access to a skill tool. First, call the skill tool with name 'data-scientist'.
+Then, call the skill tool with name 'education-data-explorer'.
 
 **ORIGINAL REQUEST (for context):**
 > {original_user_request_verbatim}
@@ -458,6 +460,7 @@ After completing the skill's Required Actions, return findings using the format 
 **Purpose:** Deep-dive into source-specific caveats and limitations
 **Stage:** 3 (Source Deep-Dive)
 **Subagent:** Plan
+**Skills:** `data-scientist`, `education-data-source-*`
 
 **Available source skills:**
 - `education-data-source-ccd` — K-12 schools and districts
@@ -483,7 +486,8 @@ Task({
 **BASE_DIR:** {BASE_DIR}
 All relative paths in referenced files resolve from BASE_DIR.
 
-Call the skill tool with name '{domain}-data-source-{source}'.
+Call the skill tool with name 'data-scientist'.
+Then, call the skill tool with name '{domain}-data-source-{source}'.
 
 **CONTEXT FROM STAGE 2:**
 Endpoints identified: {endpoints}
@@ -554,10 +558,15 @@ After completing the skill's Required Actions, return findings using the format 
 **Stage:** 3.5 (after all Stage 3 source research completes)
 **Agent:** `research-synthesizer` (see `agents/research-synthesizer.md`)
 **Subagent:** general-purpose
+**Skills:** `data-scientist`
 
 For the complete invocation pattern, see `agents/research-synthesizer.md` Invocation section.
 The orchestrator provides all Stage 2 and Stage 3 outputs as context. The agent returns
 a unified synthesis with cross-source conflict resolution and join feasibility assessment.
+
+**Skill Loading:** Include `Call the skill tool with name 'data-scientist'.` in the Task prompt
+before providing context. The data-scientist skill provides methodological rigor for
+assessing data quality findings and join feasibility across sources.
 
 ---
 
@@ -567,11 +576,15 @@ a unified synthesis with cross-source conflict resolution and join feasibility a
 **Stage:** 4 (Plan Creation)
 **Agent:** `data-planner` (see `agents/data-planner.md`)
 **Subagent:** general-purpose
+**Skills:** `data-scientist`
+
 
 ```python
 Task({
     description: "Stage 4: Plan Creation",
     prompt: """You are a Data Planner. Follow the protocol in `{BASE_DIR}/agents/data-planner.md`.
+
+    Call the skill tool with name 'data-scientist'.
 
 **BASE_DIR:** {BASE_DIR}
 All relative paths in referenced files resolve from BASE_DIR.
@@ -623,11 +636,30 @@ Do NOT paraphrase or summarize — copy the exact text.
 
 ---
 
+### plan-checker (Stage 4.5: Plan Validation)
+
+**Purpose:** Validate research plan before execution
+**Stage:** 4.5 (after Plan creation, before Stage 5)
+**Agent:** `plan-checker` (see `agents/plan-checker.md`)
+**Subagent:** Plan
+**Skills:** `data-scientist`
+
+For the complete invocation pattern, see `agents/plan-checker.md` Invocation section
+and `agents/README.md` plan-checker section. The orchestrator inlines the full Plan content
+and original user request. The agent validates across six dimensions.
+
+**Skill Loading:** Include `Call the skill tool with name 'data-scientist'.` in the Task prompt.
+The data-scientist skill helps the plan-checker assess methodological soundness
+of the proposed transformation sequence and validation approach.
+
+---
+
 ### education-data-query
 
 **Purpose:** Download data from mirrors
 **Stage:** 5 (Data Retrieval)
 **Subagent:** general-purpose
+**Skills:** `data-scientist`, `education-data-query`
 
 ```python
 Task({
@@ -637,7 +669,8 @@ Task({
 **BASE_DIR:** {BASE_DIR}
 All relative paths in referenced files resolve from BASE_DIR.
 
-Call the skill tool with name 'education-data-query'.
+Call the skill tool with name 'data-scientist'.
+Then, call the skill tool with name 'education-data-query'.
 
 **QUERY SPECIFICATION:**
 - Dataset Path: {dataset_path}  (from datasets-reference.md, flat format e.g. "ccd/schools_ccd_directory")
@@ -729,6 +762,7 @@ with stage-specific values for Stage 5.
 **Purpose:** Apply source-specific cleaning and generate citations
 **Stage:** 6 (Context Application)
 **Subagent:** general-purpose
+**Skills:** `data-scientist`, `education-data-context`
 
 ```python
 Task({
@@ -738,7 +772,8 @@ Task({
 **BASE_DIR:** {BASE_DIR}
 All relative paths in referenced files resolve from BASE_DIR.
 
-Call the skill tool with name 'education-data-context'.
+Call the skill tool with name 'data-scientist'.
+Then, call the skill tool with name 'education-data-context'.
 
 **DATA SOURCE:** {source_name}
 
@@ -1059,6 +1094,7 @@ Return the Polars code to accomplish this, with validation.""",
 **Purpose:** Static visualizations (ggplot2 style)
 **Stage:** 8 (Visualization)
 **Subagent:** general-purpose
+**Skills:** `data-scientist`, `plotnine`
 
 ```python
 Task({
@@ -1068,7 +1104,8 @@ Task({
 **BASE_DIR:** {BASE_DIR}
 All relative paths in referenced files resolve from BASE_DIR.
 
-Call the skill tool with name 'plotnine'.
+Call the skill tool with name 'data-scientist'.
+Then, call the skill tool with name 'plotnine'.
 
 **VISUALIZATION SPECIFICATION (from Plan):**
 {visualization_requirements}
@@ -1098,6 +1135,7 @@ Return the plotting code and confirm files are saved.""",
 **Purpose:** Interactive visualizations
 **Stage:** 8 (Visualization)
 **Subagent:** general-purpose
+**Skills:** `data-scientist`, `plotly`
 
 ```python
 Task({
@@ -1107,7 +1145,8 @@ Task({
 **BASE_DIR:** {BASE_DIR}
 All relative paths in referenced files resolve from BASE_DIR.
 
-Call the skill tool with name 'plotly'.
+Call the skill tool with name 'data-scientist'.
+Then, call the skill tool with name 'plotly'.
 
 **VISUALIZATION SPECIFICATION (from Plan):**
 {visualization_requirements}
@@ -1291,6 +1330,7 @@ Task({
 **BASE_DIR:** {BASE_DIR}
 All relative paths in referenced files resolve from BASE_DIR.
 
+Call the skill tool with name 'data-scientist' for methodology.
 Call the skill tool with name 'plotnine' for static publication plots.
 Call the skill tool with name 'plotly' for interactive exploration plots.
 
@@ -1495,6 +1535,83 @@ After 2 failed attempts:
 Awaiting user guidance.
 """
 ```
+
+---
+
+## Stage 11: Report Generation (report-writer agent)
+
+**Agent:** report-writer
+**Subagent Type:** `general-purpose`
+**Skills:** `data-scientist` (synthesis agent — key domain knowledge is in upstream artifacts)
+
+### Invocation Template
+
+```python
+Task({
+    description: "Stage 11: Report Generation",
+    prompt: """You are a Report Writer. Follow the protocol in
+    `{BASE_DIR}/agents/report-writer.md`.
+
+    Call the skill tool with name 'data-scientist'.
+
+    **BASE_DIR:** {BASE_DIR}
+    All relative paths in referenced files resolve from BASE_DIR.
+
+    **CONTEXT:**
+    - Project path: {project_path}
+    - Plan path: {plan_path}
+    - Notebook path: {notebook_path}
+    - STATE.md path: {state_path}
+    - LEARNINGS.md path: {learnings_path}
+    - Date prefix: {date_prefix}
+    - Report filename: {report_filename}
+
+    **STAGE 10 QA SUMMARY:**
+    {qa_summary_text}
+
+    **CITATION TEXT (from Stage 6):**
+    {citation_text}
+
+    **ANALYSIS DATASET METADATA:**
+    {dataset_metadata}
+
+    **FIGURE FILES:**
+    {figure_file_list}
+
+    **TASK:**
+    Generate the stakeholder report following REPORT_TEMPLATE.md.
+    Read the Plan, Notebook, STATE.md, and LEARNINGS.md.
+    Follow the Section-Source Mapping for every section.
+    Verify all figure references before embedding.
+    Cross-check all Observable Truths from the Plan.
+    Write Report.md to the project folder.
+
+    Return findings using the Report Writer Output Format.""",
+    subagent_type: "general-purpose"
+})
+```
+
+### Context Completeness Checklist (Stage 11)
+
+Before invoking report-writer, verify:
+- [ ] Plan.md path provided (absolute)
+- [ ] Notebook path provided (absolute)
+- [ ] STATE.md path provided (absolute)
+- [ ] LEARNINGS.md path provided (absolute)
+- [ ] Stage 10 QA summary inlined (not just path reference)
+- [ ] Citation text inlined from Stage 6
+- [ ] Analysis dataset metadata inlined (shape, columns, key stats)
+- [ ] Figure file paths listed (all files in output/figures/)
+- [ ] Date prefix specified
+- [ ] Report filename specified (following naming convention)
+- [ ] Project path specified (absolute)
+
+### Expected Output
+
+report-writer returns:
+- **COMPLETE** → Proceed to Stage 12 (data-verifier)
+- **COMPLETE_WITH_GAPS** → Log gaps, proceed to Stage 12 (verifier will assess severity)
+- **BLOCKED** → Resolve missing inputs, re-invoke
 
 ---
 

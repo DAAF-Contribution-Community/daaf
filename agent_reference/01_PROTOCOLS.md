@@ -12,7 +12,7 @@ This document contains the full details for all six protocols. Protocols 1-5 are
 | **2** | Data Acquisition | Retrieve and clean data from data access mirrors | Phase 3 | Subagents (general-purpose) |
 | **3** | Validation Checkpoints | Validate data at critical points | Phase 3-4 | Orchestrator + Code |
 | **4** | Plan Management | Maintain Plan as persistent memory | Phase 2, ongoing | Orchestrator |
-| **5** | Final Review | Verify completeness before delivery | Phase 5 | Orchestrator |
+| **5** | Final Review | Verify completeness before delivery | Phase 5 | Orchestrator (Stage 11 via report-writer agent) |
 | **6** | Session Recovery | Resume interrupted analyses | Any | Orchestrator |
 
 ---

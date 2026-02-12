@@ -36,6 +36,8 @@ print(f"Null counts:\n{df.null_count()}")
 print(f"Sample:\n{df.sample(5)}")
 ```
 
+This principle applies only when you are conducting actual data work. Do NOT conduct net new analyses or data inspections when tasked with compiling past work (e.g., analytic notebook creation), or synthesizing prior analyses into a report (e.g., final report writing).
+
 ### Principle 2: Documentation First
 
 **ALWAYS understand or create data documentation.**

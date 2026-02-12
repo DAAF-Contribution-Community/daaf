@@ -77,6 +77,7 @@ bash {PROJECT_DIR}/scripts/run_with_capture.sh {PROJECT_DIR}/scripts/stage{N}_{t
 | **notebook-assembler** | Compile scripts into Marimo notebook via VERBATIM copy (NO dashboards, NO widgets, NO new code) | `general-purpose` | 9 | Completed scripts (stages 5-8), Plan, data files, figure files, project path | Marimo `.py` notebook with script walkthroughs and data inspection cells |
 | **integration-checker** | Validate component wiring: data flows, file references, and orphan detection | `Plan` | 9, 11, 12 | Plan, Notebook, Report, project folder, script-to-output mappings | Integration check report: CONNECTED / ISSUES FOUND with flow diagrams |
 | **data-ingest** | Profile new datasets and author comprehensive Skills documenting structure, values, and quality | `general-purpose` | Pre-pipeline (on demand) | Data file path + format, target skill name, intended use, domain context, optional docs | New Skill at `.claude/skills/` + Data Ingest Report |
+| **report-writer** | Synthesize pipeline artifacts into stakeholder report following REPORT_TEMPLATE.md | `general-purpose` | 11 | Plan, Notebook, STATE.md, LEARNINGS.md, QA summary, figures, citations, dataset metadata | Report.md (stakeholder prose) |
 
 ### Commonly Confused Pairs
 
@@ -90,6 +91,7 @@ When adding a new agent, ensure it doesn't overlap with these frequently confuse
 | **source-researcher** vs **data-ingest** | Researcher examines *existing* skills for a known source; ingest *creates new* skills from raw data files |
 | **data-planner** vs **plan-checker** | Planner *creates* plans; checker *validates* plans (never fixes them) |
 | **notebook-assembler** vs **integration-checker** | Assembler *builds* the notebook (verbatim script compilation); checker *verifies* wiring between components |
+| **report-writer** vs **research-synthesizer** | Writer synthesizes *post-execution* artifacts into a stakeholder report (Stage 11); synthesizer combines *pre-execution* research findings into planning guidance (Stage 3.5) |
 
 ---
 
@@ -202,6 +204,17 @@ This diagram shows how agents interact throughout the pipeline:
                                      |
                                      v
                     +----------------+----------------+
+                    |    QA Aggregation [Stage 10]    |
+                    +----------------+----------------+
+                                     |
+                                     v
+                    +----------------+----------------+
+                    |          report-writer          |
+                    |           [Stage 11]            |
+                    +----------------+----------------+
+                                     |
+                                     v
+                    +----------------+----------------+
                     |  PHASE 5: SYNTHESIS & DELIVERY  |
                     +----------------+----------------+
                                      |
@@ -294,6 +307,9 @@ Shows which agents produce output consumed by other agents:
 | **notebook-assembler** | integration-checker | Marimo notebook (VERBATIM script copies, NO new code) | After Stage 9 compilation |
 | **integration-checker** | data-verifier | Wiring status (CONNECTED / ISSUES FOUND) | Stages 9, 11, 12 |
 | **data-verifier** | Orchestrator | Verification report (PASSED / ISSUES_FOUND with four-layer evidence) | Before delivery |
+| **report-writer** | integration-checker | Report.md (stakeholder report following REPORT_TEMPLATE.md) | After Stage 11 completes |
+| **report-writer** | data-verifier | Report.md (stakeholder report) | Before Stage 12 verification |
+| **report-writer** | Orchestrator | Status report (COMPLETE / COMPLETE_WITH_GAPS / BLOCKED) | After report generation |
 | **data-ingest** | Orchestrator | New Skill at `.claude/skills/` + Data Ingest Report | Pre-pipeline, on demand |
 
 ---
@@ -386,7 +402,8 @@ Task({
     **BASE_DIR:** {BASE_DIR}
     All relative paths in referenced files resolve from BASE_DIR.
 
-    Call the skill tool with name '[skill-name]'.
+    Call the skill tool with name 'data-scientist'.
+    Then, call the skill tool with name '[domain-skill-name]'.
 
     **CONTEXT:**
     Research Question: [verbatim]
@@ -427,6 +444,8 @@ Task({
     description: "Stage 4: Plan Creation",
     prompt: """You are a Data Planner. Follow the protocol in
     `{BASE_DIR}/agents/data-planner.md`.
+
+    Call the skill tool with name 'data-scientist'.
 
     **BASE_DIR:** {BASE_DIR}
     All relative paths in referenced files resolve from BASE_DIR.
@@ -527,6 +546,8 @@ Task({
     prompt: """You are a Research Synthesizer. Follow the protocol in
     `{BASE_DIR}/agents/research-synthesizer.md`.
 
+    Call the skill tool with name 'data-scientist'.
+
     **BASE_DIR:** {BASE_DIR}
     All relative paths in referenced files resolve from BASE_DIR.
 
@@ -618,6 +639,8 @@ Task({
     prompt: """You are a Plan Checker. Follow the protocol in
     `{BASE_DIR}/agents/plan-checker.md`.
 
+    Call the skill tool with name 'data-scientist'.
+
     **BASE_DIR:** {BASE_DIR}
     All relative paths in referenced files resolve from BASE_DIR.
 
@@ -662,7 +685,8 @@ Task({
     **BASE_DIR:** {BASE_DIR}
     All relative paths in referenced files resolve from BASE_DIR.
 
-    Call the skill tool with name '[*-data-source-*]'.
+    Call the skill tool with name 'data-scientist'.
+    Then, call the skill tool with name '[*-data-source-*]'.
 
     **CONTEXT:**
     Research question: [verbatim question from Stage 1]
@@ -757,6 +781,66 @@ Task({
 - Simple data load + display cells (THE ONLY NEW CODE)
 
 **Verification:** If output contains `mo.ui.dropdown`, `mo.ui.slider`, `group_by` outside scripts, or `filter` in data cells -> REJECT and re-run
+
+---
+
+### report-writer
+
+**Use when:** Generating the stakeholder report at Stage 11, after QA aggregation (Stage 10) confirms no unresolved BLOCKERs.
+
+**Key behaviors:**
+- Follows REPORT_TEMPLATE.md section by section using a systematic Section-Source Mapping
+- Reads the full pipeline artifact set: Plan, Notebook, STATE.md, LEARNINGS.md, QA summary, figures, citations
+- Every statistic must trace to an execution log or dataset metadata — never hallucinated
+- Cross-checks all Observable Truths from Plan against Key Findings
+- Verifies all figure file paths resolve before embedding references
+
+**Invocation pattern:**
+
+```python
+Task({
+    description: "Stage 11: Report Generation",
+    prompt: """You are a Report Writer. Follow the protocol in
+    `{BASE_DIR}/agents/report-writer.md`.
+
+    Call the skill tool with name 'data-scientist'.
+
+    **BASE_DIR:** {BASE_DIR}
+    All relative paths in referenced files resolve from BASE_DIR.
+
+    **CONTEXT:**
+    - Project path: {project_path}
+    - Plan path: {plan_path}
+    - Notebook path: {notebook_path}
+    - STATE.md path: {state_path}
+    - LEARNINGS.md path: {learnings_path}
+    - Date prefix: {date_prefix}
+    - Report filename: {report_filename}
+
+    **STAGE 10 QA SUMMARY:**
+    {qa_summary_text}
+
+    **CITATION TEXT (from Stage 6):**
+    {citation_text}
+
+    **ANALYSIS DATASET METADATA:**
+    {dataset_metadata}
+
+    **FIGURE FILES:**
+    {figure_file_list}
+
+    **TASK:**
+    Generate the stakeholder report following REPORT_TEMPLATE.md.
+    Read the Plan, Notebook, STATE.md, and LEARNINGS.md.
+    Follow the Section-Source Mapping for every section.
+    Verify all figure references before embedding.
+    Cross-check all Observable Truths from the Plan.
+    Write Report.md to the project folder.
+
+    Return findings using the Report Writer Output Format.""",
+    subagent_type: "general-purpose"
+})
+```
 
 ---
 
@@ -977,12 +1061,20 @@ Some tasks benefit from combining an agent protocol with skill knowledge:
 
 | Task | Agent | Skill(s) |
 |------|-------|----------|
-| Fetch CCD data | research-executor | education-data-query |
-| Clean MEPS data | research-executor | education-data-context |
-| Create analysis plan | data-planner | -- |
-| Diagnose join failure | debugger | polars |
-| Final verification | data-verifier | -- |
-| Ingest new dataset | data-ingest | skill-authoring, polars |
+| Explore data (Stage 2) | (Plan subagent) | data-scientist, education-data-explorer |
+| Source deep-dive (Stage 3) | source-researcher | data-scientist, education-data-source-* |
+| Synthesize findings (Stage 3.5) | research-synthesizer | data-scientist |
+| Create analysis plan (Stage 4) | data-planner | data-scientist |
+| Validate plan (Stage 4.5) | plan-checker | data-scientist |
+| Fetch CCD data (Stage 5) | research-executor | data-scientist, education-data-query |
+| Clean MEPS data (Stage 6) | research-executor | data-scientist, education-data-context |
+| Transform data (Stage 7) | research-executor | data-scientist, polars |
+| Create visualizations (Stage 8) | research-executor | data-scientist, plotnine/plotly |
+| Compile notebook (Stage 9) | notebook-assembler | data-scientist, marimo |
+| Generate report (Stage 11) | report-writer | data-scientist |
+| Final verification (Stage 12) | data-verifier | data-scientist |
+| Diagnose failure (any) | debugger | data-scientist, polars |
+| Ingest new dataset (pre-pipeline) | data-ingest | skill-authoring, polars |
 
 **Invocation pattern for combined:**
 ```python

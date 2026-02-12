@@ -116,10 +116,10 @@ Call the skill tool for required skills based on stage:
 
 | Stage | Skill(s) to Load |
 |-------|-------------------|
-| 5 (Fetch) | `education-data-query` |
-| 6 (Clean) | `education-data-context` |
-| 7 (Transform) | `polars`, `data-scientist` |
-| 8 (Viz) | `plotnine` or `plotly` |
+| 5 (Fetch) | `data-scientist`, `education-data-query` |
+| 6 (Clean) | `data-scientist`, `education-data-context` |
+| 7 (Transform) | `data-scientist`, `polars` |
+| 8 (Viz) | `data-scientist`, `plotnine` or `plotly` |
 
 ### Step 3: Write Script
 
@@ -302,7 +302,7 @@ If nothing novel, emit "None" -- this is the expected common case.
 | code-reviewer | Script path + execution log + output files | Secondary QA review for correctness and methodology |
 | Next wave tasks | Data files in data/raw/ or data/processed/ | Input data for subsequent transformations |
 | notebook-assembler (Stage 9) | Saved data files + successful scripts | Compiles scripts into marimo notebook |
-| Report generation (Stage 11) | Validation findings | References in stakeholder report |
+| report-writer (Stage 11) | Validation findings | References in stakeholder report |
 | data-verifier (Stage 12) | All artifacts | Checks existence, substance, and coherence |
 
 **Severity-to-Action Mapping:**

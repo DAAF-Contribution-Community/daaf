@@ -16,7 +16,7 @@ User Request Received
     │          ├─ When creating Plan: Invoke data-planner agent
     │          ├─ When agents write any code: Read 05_VALIDATION_CHECKPOINTS.md
     │          ├─ When handling errors: Read 06_ERROR_RECOVERY.md
-    │          ├─ When writing report (Stage 11): Read REPORT_TEMPLATE.md
+    │          ├─ When writing report (Stage 11): Invoke report-writer agent (reads REPORT_TEMPLATE.md)
     │          ├─ When context utilization exceeds 50%: Read 07_CONTEXT_MANAGEMENT.md
     │          └─ When verifying (Stage 12): Invoke data-verifier agent
     │
@@ -341,10 +341,10 @@ The Full Pipeline workflow consists of **5 Phases** and **12 Stages**. Other mod
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │ PHASE 5: SYNTHESIS & DELIVERY                                               │
 ├─────────────────────────────────────────────────────────────────────────────┤
-│  Stage 11: Report Generation                                                │
-│      ├─ Extract key findings from notebook                                  │
-│      ├─ Generate stakeholder report (Report.md)                             │
-│      ├─ Include figure references                                           │
+│  Stage 11: Report Generation ←── report-writer agent                        │
+│      ├─ Synthesize Plan, Notebook, STATE, LEARNINGS, QA summary             │
+│      ├─ Follow Section-Source Mapping for each REPORT_TEMPLATE.md section    │
+│      ├─ Cross-check Observable Truths against Key Findings                   │
 │      └─ Gate G11: Report complete with all sections + figure references     │
 │                          ↓                                                  │
 │  Stage 12: Final Review (Protocol 5)                                        │
@@ -425,23 +425,23 @@ After every script execution in Stages 5-8, the orchestrator MUST invoke **code-
 
 | Stage | Primary Skill(s) | Subagent Type | Invocation Pattern |
 |-------|------------------|---------------|-------------------|
-| 2 | `education-data-explorer` | Plan | Subagent invokes skill |
-| 3 | `education-data-source-*` (relevant sources) | Plan | Subagent invokes skill(s) |
-| 3.5 | — | general-purpose | `research-synthesizer` agent (no skill needed) |
-| 4 | — | general-purpose | `data-planner` agent (no skill needed) |
-| 4.5 | — | Plan | `plan-checker` agent (no skill needed) |
-| 5 | `education-data-query` | general-purpose | Subagent invokes skill |
-| **5-QA** | — | general-purpose | `code-reviewer` agent (after each Stage 5 script) |
-| 6 | `education-data-context` | general-purpose | Subagent invokes skill |
-| **6-QA** | — | general-purpose | `code-reviewer` agent (after each Stage 6 script) |
+| 2 | `data-scientist`, `education-data-explorer` | Plan | Subagent invokes skill |
+| 3 | `data-scientist`, `education-data-source-*` (relevant sources) | Plan | Subagent invokes skill(s) |
+| 3.5 | `data-scientist` | general-purpose | `research-synthesizer` agent |
+| 4 | `data-scientist` | general-purpose | `data-planner` agent |
+| 4.5 | `data-scientist` | Plan | `plan-checker` agent |
+| 5 | `data-scientist`, `education-data-query` | general-purpose | Subagent invokes skill |
+| **5-QA** | `data-scientist` | general-purpose | `code-reviewer` agent (after each Stage 5 script) |
+| 6 | `data-scientist`, `education-data-context` | general-purpose | Subagent invokes skill |
+| **6-QA** | `data-scientist` | general-purpose | `code-reviewer` agent (after each Stage 6 script) |
 | 7 | `data-scientist`, `polars` | general-purpose | Subagent invokes skills |
-| **7-QA** | — | general-purpose | `code-reviewer` agent (after each Stage 7 script) |
-| 8 | `plotnine`, `plotly` | general-purpose | Subagent invokes skill |
-| **8-QA** | — | general-purpose | `code-reviewer` agent (after each Stage 8 script) |
-| 9 | — | general-purpose | `notebook-assembler` agent (COMPILES scripts — NO new code, NO dashboards) |
+| **7-QA** | `data-scientist` | general-purpose | `code-reviewer` agent (after each Stage 7 script) |
+| 8 | `data-scientist`, `plotnine`, `plotly` | general-purpose | Subagent invokes skill |
+| **8-QA** | `data-scientist` | general-purpose | `code-reviewer` agent (after each Stage 8 script) |
+| 9 | `data-scientist` | general-purpose | `notebook-assembler` agent (COMPILES scripts — NO new code, NO dashboards) |
 | 10 | `data-scientist` | general-purpose | Subagent invokes skill |
-| 11 | — | — | Orchestrator (no skill) |
-| 12 | — | Plan | `data-verifier` agent (no skill needed) |
+| 11 | `data-scientist` | general-purpose | `report-writer` agent |
+| 12 | `data-scientist` | Plan | `data-verifier` agent |
 
 **Notes:**
 - Stages 5 and 6 use `general-purpose` subagent type because they require file write capability (saving parquet files to `data/raw/` and `data/processed/`).
@@ -472,6 +472,7 @@ As the orchestrator, you maintain overall context and coordinate subagent execut
 - Code-heavy analysis work
 - Visualization generation
 - **QA code review (code-reviewer agent after each Stage 5-8 script)**
+- Final report writing and review
 
 ### QA Invocation Responsibility
 
@@ -682,6 +683,7 @@ Eleven specialized agents define behavioral protocols for specific roles:
 | **notebook-assembler** | COMPILE scripts (VERBATIM copy, NO dashboards/widgets) | `general-purpose` | 9 |
 | **integration-checker** | Verify component wiring | `Plan` | 9, 11, 12 |
 | **data-ingest** | Profile new datasets and author documentation Skills | `general-purpose` | Pre-pipeline (on demand) |
+| **report-writer** | Synthesize pipeline artifacts into stakeholder report | `general-purpose` | 11 |
 
 See `agents/README.md` for complete agent documentation.
 
@@ -862,7 +864,7 @@ Each stage has explicit input/output contracts and gate criteria:
 | 8 | Stage 7 (analysis data) | Stage 9, 11 | G8: Required visualizations saved to output/figures/, **QA4 PASSED or WARNING** |
 | 9 | Stages 7, 8 | Stage 10 | G9: Notebook runs without errors, all scripts represented with code + execution logs |
 | 10 | Stage 9 (notebook) | Stage 11 | G10: **QA findings aggregated**, all BLOCKERs resolved, all WARNINGs documented |
-| 11 | Stages 9, 10 | Stage 12 | G11: Report complete with all sections and figure references |
+| 11 | Stages 9, 10 (notebook + QA aggregation), Plan, STATE.md, LEARNINGS.md | Stage 12 | G11: report-writer returned COMPLETE or COMPLETE_WITH_GAPS, all REPORT_TEMPLATE.md sections populated, figure references verified |
 | 12 | All prior stages | Delivery | G12: Protocol 5 PASSED, all commitments fulfilled, LEARNINGS.md consolidated with System Update Action Plan, cross-artifact coherence verified |
 
 **QA Gate Notes:**
@@ -1091,6 +1093,9 @@ Agents use domain-specific status vocabularies. The orchestrator translates thes
 | **notebook-assembler** | PASSED | G9 = SATISFIED |
 | | WARNING | Log; proceed |
 | | BLOCKER | Revision needed |
+| **report-writer** | COMPLETE | G11 = SATISFIED |
+| | COMPLETE_WITH_GAPS | G11 = SATISFIED (log gaps) |
+| | BLOCKED | G11 = NOT SATISFIED |
 
 ### STATE.md Update Gates
 
@@ -1602,6 +1607,7 @@ See `agent_reference/SCRIPT_TEMPLATE.md` for complete script template and exampl
 | `agents/notebook-assembler.md` | COMPILE scripts into notebook (VERBATIM copy, NO new code) | `general-purpose` |
 | `agents/integration-checker.md` | Verify component wiring | `Plan` |
 | `agents/data-ingest.md` | Profile new datasets and author documentation Skills | `general-purpose` |
+| `agents/report-writer.md` | Synthesize pipeline artifacts into stakeholder report | `general-purpose` |
 | `agents/README.md` | Agent index and usage guide | — |
 
 ### Agent Reference Files

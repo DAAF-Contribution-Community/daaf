@@ -3,11 +3,31 @@
 **Date:** YYYY-MM-DD
 **Version:** [Original | Revision suffix]
 
+## Source Mapping Guide
+
+> **For the report-writer agent:** This guide maps each report section below to its primary pipeline artifact source. When populating each section, consult the primary source first, then secondary sources for additional detail.
+
+| Report Section | Primary Source | Secondary Sources |
+|---|---|---|
+| Executive Summary | Plan § Observable Truths + Stage 7-8 execution logs | LEARNINGS.md |
+| Research Question | Plan § Research Question (verbatim) | Plan § Context |
+| Data & Methods: Data Sources | Plan § Data Sources table | Stage 5 execution logs |
+| Data & Methods: Key Variables | Plan § Key Variables | — |
+| Data & Methods: Methodology | Plan § Methodology Specification | Plan § Key Decisions |
+| Data & Methods: Data Cleaning | Stage 6 execution logs | STATE.md checkpoints |
+| Quality Assurance | Stage 10 QA summary | STATE.md QA sections |
+| Key Findings | Stage 7-8 outputs + figures | Plan § Observable Truths |
+| Summary Statistics | Analysis dataset metadata + Stage 7 EDA logs | Notebook data cells |
+| Limitations | Plan § Risk Register + source caveats + LEARNINGS.md | STATE.md blockers |
+| Data Sources & Citations | Stage 6 citation text (verbatim) | Plan § Data Sources |
+| Technical Notes | Project file paths | — |
+| Appendix | Additional figures + extended methodology from Plan | — |
+
 ---
 
 ## Executive Summary
 
-[2-3 sentences summarizing the key findings and their implications. Write for a busy stakeholder who may only read this section.]
+[4-5 sentences summarizing the key findings and their implications. Write for a busy stakeholder who may only read this section.]
 
 ---
 

@@ -22,7 +22,7 @@ This document provides detailed execution guidance for each of the 12 stages (pl
 | 8 | 4 | Visualization | `plotnine`, `plotly` | general-purpose |
 | 9 | 4 | Notebook Assembly | `marimo` | general-purpose |
 | 10 | 4 | QA Aggregation | `data-scientist` | general-purpose |
-| 11 | 5 | Report Generation | — | Orchestrator |
+| 11 | 5 | Report Generation | `report-writer` agent | general-purpose |
 | 12 | 5 | Final Review | `data-verifier` agent (adversarial verification with cross-artifact coherence) | Plan |
 
 ---
@@ -1272,39 +1272,53 @@ The following are **NEVER ALLOWED** in Stage 9 notebooks:
 
 ## Stage 11: Report Generation
 
-**Executor:** Orchestrator (main context)
-**Purpose:** Create stakeholder report
+**Executor:** report-writer agent (`general-purpose`)
+**Purpose:** Synthesize all pipeline artifacts into a stakeholder-appropriate report
+
+### Upstream Inputs
+
+| Input | Source | Purpose |
+|-------|--------|---------|
+| Plan.md | Stage 4 | Research question, methodology, observable truths, risk register |
+| Marimo notebook (.py) | Stage 9 | Complete technical record: all scripts + execution logs |
+| STATE.md | Maintained throughout | Checkpoint statuses, key decisions, blockers |
+| LEARNINGS.md | Maintained throughout | Data quality insights, methodology lessons |
+| Stage 10 QA summary | Stage 10 | Aggregated QA findings (WARNINGs, resolved BLOCKERs) |
+| Figure files | Stage 8 (`output/figures/`) | Visualizations to embed in Key Findings |
+| Citation text | Stage 6 (education-data-context) | Pre-formatted data source citations |
+| Analysis dataset metadata | Stage 7 | Final dataset shape, column list, key statistics |
+
+### Section-Source Mapping
+
+The report-writer follows a systematic mapping from REPORT_TEMPLATE.md sections to pipeline artifacts:
+
+| Report Section | Primary Source | Secondary Sources |
+|---|---|---|
+| Executive Summary | Plan Observable Truths + notebook execution logs | LEARNINGS.md |
+| Research Question | Plan (verbatim) | — |
+| Data & Methods | Plan Methodology + Stage 5-6 execution logs | STATE.md checkpoints |
+| Quality Assurance | Stage 10 QA summary | STATE.md QA sections |
+| Key Findings | Stage 7-8 outputs + figures | Plan Observable Truths |
+| Limitations | Plan Risk Register + source caveats + suppression rates + LEARNINGS.md | STATE.md blockers |
+| Citations | Stage 6 citation text | Plan Data Sources table |
 
 ### Actions
 
-1. **Extract Findings**
-   - Key insights from notebook
-   - Supporting visualizations
-   - Methodology summary
-
-2. **Write Report**
-   - Follow REPORT_TEMPLATE.md
-   - Plain language for stakeholders
-   - Include figure references
-
-3. **Include Citations**
-   - Data sources
-   - Methodology references
-
-### Report Sections
-
-1. Executive Summary (2-3 sentences)
-2. Research Question
-3. Data & Methods
-4. Key Findings (with figures)
-5. Limitations
-6. Data Sources (citations)
+1. **Read upstream artifacts** — Plan, Notebook, STATE.md, LEARNINGS.md
+2. **Verify figures** — Confirm all figure files exist before referencing
+3. **Draft report** — Follow REPORT_TEMPLATE.md section by section using Section-Source Mapping
+4. **Cross-check Observable Truths** — Every Observable Truth addressed in Key Findings
+5. **Write Report.md** — Save to project folder with date prefix
 
 ### Gate Criteria (G11)
 
-- [ ] Report complete
-- [ ] All sections present
-- [ ] Figures referenced correctly
+- [ ] report-writer returned COMPLETE or COMPLETE_WITH_GAPS
+- [ ] All REPORT_TEMPLATE.md sections populated (not placeholder text)
+- [ ] All figure references resolve to existing files
+- [ ] All Observable Truths from Plan addressed in Key Findings
+- [ ] Executive Summary is 4-5 sentences
+- [ ] All statistics trace to execution logs or dataset metadata
+- [ ] Citation text included verbatim
 
 ---
 

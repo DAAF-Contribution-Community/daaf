@@ -844,12 +844,14 @@ Before finalizing each task above, verify:
 
 **Report Sections:**
 
-1. **Executive Summary** — Key findings in 2-3 sentences
+1. **Executive Summary** — Key findings in 4-5 sentences
 2. **Research Question** — What we set out to answer
 3. **Data & Methods** — Sources, cleaning, analysis approach
 4. **Findings** — Results with visualizations
 5. **Limitations** — Caveats and constraints
 6. **Data Sources** — Full citations
+
+> **Note:** The report-writer agent (Stage 11) uses this Output Specification to structure the final report. The Observable Truths section is particularly critical — each truth is cross-checked against Key Findings in the report.
 
 ### Visualization Requirements
 
