@@ -1,30 +1,32 @@
 # Context Management Protocol
 
-This document provides **detailed procedures** for the context health rules defined in CLAUDE.md's "Context & Session Health" subsection. CLAUDE.md is the single source of truth for thresholds, self-assessment questions, scoring, and the STOP-ASSESS-UPDATE-DECIDE cycle. This document covers the *how*: compression techniques, subagent context isolation, degradation symptom taxonomy, context budgets, and recovery strategies.
+This document provides **detailed procedures** for the context health rules defined in CLAUDE.md's "Context & Session Health" subsection. CLAUDE.md is the single source of truth for thresholds and the context monitoring protocol. This document covers the *how*: compression techniques, subagent context isolation, degradation symptom taxonomy, context budgets, and recovery strategies.
+
+> **Quality Primacy Rule:** Context management is about maintaining awareness of remaining capacity so the orchestrator can make informed decisions about when to restart. It is NEVER about reducing the quality or completeness of work. Subagent prompt fidelity, Context Completeness Checklist compliance, and inlined context are NON-NEGOTIABLE regardless of utilization level. If maintaining quality means reaching a restart point sooner, that is the correct outcome. The STATE.md + Protocol 6 system exists precisely for clean handoffs at full quality.
 
 ---
 
 ## Context Quality Curve
 
-Context utilization directly impacts reasoning quality. Monitor and manage proactively.
+Context utilization determines how much runway remains — it does NOT determine the quality of work performed. Quality is invariant; utilization determines WHEN to restart.
 
-| Utilization | Quality Level | Reasoning Capability | Required Action |
-|-------------|---------------|---------------------|-----------------|
-| **0-30%** | PEAK | Full complex reasoning, nuanced analysis | Execute complex tasks freely |
-| **30-40%** | GOOD | Strong reasoning, reliable execution | Continue normal operations |
-| **40-60%** | DEGRADING | Reduced nuance, increased errors | Delegate to subagents, avoid complex reasoning |
-| **60%+** | POOR | Significant degradation, unreliable | STOP, compress findings, summarize, or restart |
+| Utilization | Status | Monitoring Posture | Required Action |
+|-------------|--------|-------------------|-----------------|
+| **0-40%** | NOMINAL | Normal operations | Continue normally |
+| **40-60%** | ELEVATED | Monitor; plan for restart | Prefer subagent delegation for heavy execution; **maintain full prompt fidelity**; update STATE.md proactively |
+| **60-75%** | HIGH | Prepare for restart | Complete current atomic unit at full quality; update STATE.md with restart prompt; report to user; do not start new stages |
+| **75%+** | CRITICAL | Session restart required | Finalize STATE.md; recommend session restart; no new work |
 
 ### Target Operating Range
 
-**Orchestrator Target:** 25-35% utilization (conservative)
+**Orchestrator Target:** Stay under 60% utilization through delegation. Plan for session restart when approaching 60%.
 
 **Why This Matters:**
-- Peak quality enables best decision-making
-- Subagents get fresh 200K token windows (always PEAK)
-- Delegating heavy tasks to subagents preserves orchestrator quality
-- Orchestrator can then synthesize subagent findings effectively
-- **Conservative buffer** ensures quality is maintained under varying workloads
+- Subagents get fresh 200K token windows (always NOMINAL quality)
+- Delegating heavy execution to subagents preserves orchestrator runway
+- Orchestrator retains capacity for high-quality prompt construction and synthesis
+- **Quality of subagent prompts is never reduced** — if maintaining complete Context Completeness Checklist compliance means reaching the restart point sooner, that is the correct outcome
+- STATE.md + Protocol 6 provide a robust, zero-loss restart mechanism
 
 ---
 
@@ -71,18 +73,20 @@ These tasks consume significant context and should ALWAYS be delegated:
 
 ## Task Prompt Size Guidelines
 
-See `03_SKILL_INVOCATIONS.md` "Prompt Size Limits by Subagent Type" for authoritative size limits per subagent type. The limits there (Plan: 500 words, general-purpose: 1000 words) are the single source of truth for prompt sizing.
+See `03_SKILL_INVOCATIONS.md` "Prompt Size Targets by Subagent Type" for size targets per subagent type. These are efficiency targets, not hard ceilings — the Context Completeness Checklist always takes priority over prompt brevity.
 
 ### Prompt Content Priority
 
-When space is limited, prioritize in this order:
+Prioritize in this order. Items marked REQUIRED must never be omitted regardless of utilization level:
 
 1. **Task specification** (what to do) - REQUIRED
 2. **Verification criteria** (how to validate) - REQUIRED
-3. **Expected outcomes** (what success looks like) - HIGH
-4. **Relevant Plan sections** (methodology context) - MEDIUM
-5. **Prior stage findings** (if dependencies) - MEDIUM
+3. **Expected outcomes** (what success looks like) - REQUIRED
+4. **Relevant Plan sections** (methodology context) - REQUIRED when referenced by Context Completeness Checklist
+5. **Prior stage findings** (if dependencies exist) - REQUIRED when task has `depends_on` entries
 6. **Background context** (nice to have) - LOW
+
+**Principle:** An incomplete prompt wastes MORE tokens than a thorough one (subagent confusion → re-invocation → wasted output). Never compress outgoing prompt quality to conserve context.
 
 ---
 
@@ -93,9 +97,8 @@ When space is limited, prioritize in this order:
 Trigger compression when:
 - Phase completion (compress phase findings)
 - Large subagent return (extract essentials only)
-- Context utilization exceeds 40%
-- Preparing for complex reasoning task
-- Every 3 orchestrator turns (proactive compression)
+- Context utilization reaches ELEVATED (40%+)
+- Stage transitions (compress completed stage to summary)
 
 ### Compression Technique
 
@@ -131,6 +134,17 @@ When compressing subagent output:
 - [ ] Discard intermediate reasoning
 - [ ] Discard raw data samples
 - [ ] Discard verbose explanations
+
+### Compression Exclusions (Never Compress)
+
+The following are EXEMPT from compression regardless of utilization level:
+- **Subagent prompt content:** Context Completeness Checklist items are never compressed or omitted. Reload Plan sections from file if needed — reading the Plan before constructing a subagent prompt is always justified.
+- **QA findings with BLOCKER severity:** Full detail retained until resolved.
+- **Decision rationales for methodology choices:** These are audit-critical.
+- **Observable Truth definitions:** Required for end-to-end tracing.
+- **STATE.md content being written:** Write faithfully and completely. STATE.md is the lifeline for session recovery — every shortcut taken here becomes a gap in the next session's context.
+
+**Principle:** Compress what's BEHIND you (completed phase summaries, resolved issues). Never compress what's AHEAD of you (upcoming subagent context, validation criteria, task specifications) or what's your SAFETY NET (STATE.md, LEARNINGS.md).
 
 ---
 
@@ -193,9 +207,8 @@ The STATE.md file serves as **persistent session memory**:
 - This is a forcing function, not a recommendation
 
 **Secondary Triggers (if somehow missed at Stage 4):**
-- When context utilization approaches 40%
+- When context utilization approaches ELEVATED (40%)
 - When analysis complexity increases unexpectedly
-- After any self-assessment failure
 
 ### When to Update STATE.md
 
@@ -205,9 +218,9 @@ The STATE.md file serves as **persistent session memory**:
 - When any stage completes
 - When blockers are encountered
 - When key decisions are made
-- When utilization exceeds 40% (Utilization Gate)
+- When utilization reaches ELEVATED (40%+)
 - Before any planned session break
-- After every self-assessment checkpoint (every 3 turns)
+- At every stage transition
 
 **Minimal Update Pattern (after each stage):**
 ```markdown
@@ -235,15 +248,15 @@ See `STATE_TEMPLATE.md` for the complete template.
 
 ## Context Recovery Strategies
 
-### When Context is Approaching Limits
+### When Context is Approaching Limits (ELEVATED: 40-60%)
 
-If orchestrator context reaches 40-60%:
+If orchestrator context reaches ELEVATED:
 
-1. **Compress all phase summaries** to bullet points
-2. **Delegate remaining complex tasks** to subagents
-3. **Reference Plan by path** instead of content
-4. **Create/update STATE.md** as external memory
-5. **Run STOP-ASSESS-UPDATE-DECIDE cycle** before each action
+1. **Compress completed phase summaries** to bullet points (compress what's BEHIND you)
+2. **Prefer subagent delegation** for heavy execution tasks
+3. **Reload Plan sections from file** when constructing subagent prompts rather than retaining in context permanently
+4. **Update STATE.md faithfully** — write complete stage summaries, accurate checkpoint statuses, and specific next-action descriptions. Resist the urge to abbreviate; STATE.md is the lifeline for session recovery.
+5. **NEVER reduce subagent prompt quality** — the Context Completeness Checklist is mandatory at ALL utilization levels. If meeting the checklist requires reading the Plan (consuming tokens), do it. Reaching a restart point sooner with high-quality work is always preferable to continuing longer with degraded subagent tasking.
 
 ### When Context Exceeds 60%
 
@@ -327,12 +340,13 @@ Watch for these warning signs that indicate context quality is declining:
 
 | Utilization | Symptoms Present? | Action |
 |-------------|-------------------|--------|
-| 40-60% | None | Continue with delegation, monitor closely |
-| 40-60% | Minor repetition | Delegate next task to subagent, update STATE.md |
-| 60-75% | None | STOP, update STATE.md, report to user |
-| 60-75% | Forgetting context | STOP, compress findings, update STATE.md |
-| 60-75% | Contradictions | STOP, do not proceed, compress or restart |
-| 75%+ | Any | Save state, recommend session restart |
+| ELEVATED (40-60%) | None | Prefer delegation for execution; maintain full prompt quality; update STATE.md |
+| ELEVATED (40-60%) | Minor repetition | Delegate execution to subagent; update STATE.md; compress completed phases |
+| HIGH (60-75%) | None | Complete current atomic unit at full quality; update STATE.md with restart prompt; report to user |
+| HIGH (60-75%) | Any symptoms | Complete current atomic unit at full quality; update STATE.md with restart prompt; report to user |
+| CRITICAL (75%+) | Any | Finalize STATE.md; recommend session restart; no new work |
+
+**In all cases:** Quality of current work output (including subagent prompts and STATE.md writes) is never reduced. The variable is WHEN to stop, not HOW WELL to work.
 
 ### Context Preservation Priority
 
@@ -349,16 +363,13 @@ When compressing or deciding what to keep, prioritize in this order:
 
 ### Proactive Quality Maintenance
 
-**Every 3 orchestrator turns, assess (STOP-ASSESS-UPDATE-DECIDE):**
+Context monitoring is objective and continuous via the `context-reporter` hook. At each stage transition and after each subagent return:
 
-1. **Am I repeating myself?** → Sign of degradation
-2. **Do I remember the original request clearly?** → If fuzzy, re-read
-3. **Can I state the current stage and next action?** → If unclear, check STATE.md
-4. **Are my responses getting longer without more content?** → Sign of inefficiency
+1. **Check** the utilization percentage from the hook report
+2. **Act** per the threshold table (NOMINAL → proceed; ELEVATED → delegate execution, maintain prompt quality; HIGH → finish current unit, prepare restart)
+3. **Update STATE.md** if at ELEVATED or above — write faithfully and completely
 
-**If 1+ check fails:** Log assessment and increase monitoring frequency.
-**If 2+ checks fail:** Trigger compression protocol immediately.
-**If 3+ checks fail:** Update STATE.md immediately, delegate all remaining tasks.
+**If degradation symptoms are observed** (repetition, path confusion, forgetting decisions): treat as equivalent to HIGH regardless of actual utilization — update STATE.md immediately and prepare for restart. These symptoms indicate the context is fragmented even if not numerically full.
 
 ### Emergency Context Reset
 
@@ -386,19 +397,21 @@ I'll use Protocol 6 (Session Recovery) to resume with fresh context.
 
 ---
 
-## Self-Monitoring Protocol
+## Context Monitoring
 
-Thresholds, self-assessment questions, scoring, and the STOP-ASSESS-UPDATE-DECIDE cycle are defined in CLAUDE.md's "Context & Session Health" subsection. This section documents only the `context-reporter` hook format.
+The `context-reporter` hook provides objective, continuous utilization measurements on every orchestrator turn. This is the sole mechanism for context monitoring — no subjective self-assessment is needed.
 
 ### Context Utilization Reporting
 
-The `context-reporter` hook provides deterministic utilization measurements on every orchestrator turn. The injected message format is:
+The hook injects the following message format:
 
 ```
-Context utilization [SEVERITY]: XXXk / 200k tokens (YY%)
+Context utilization [STATUS]: XXXk / 200k tokens (YY%)
 ```
 
-Where **SEVERITY** = OK (<40%) | MODERATE (40-60%) | HIGH (60-75%) | CRITICAL (75%+). Use the reported percentage directly for gating decisions — no estimation needed.
+Where **STATUS** = OK (<40%) | ELEVATED (40-60%) | HIGH (60-75%) | CRITICAL (75%+). Use the reported percentage directly for gating decisions — no estimation needed.
+
+Thresholds and required actions are defined in CLAUDE.md's "Context & Session Health" subsection.
 
 ---
 
@@ -407,8 +420,9 @@ Where **SEVERITY** = OK (<40%) | MODERATE (40-60%) | HIGH (60-75%) | CRITICAL (7
 ### Context Budget Summary
 
 ```
-Orchestrator Target: 25-35% utilization (conservative)
-Subagent Fresh Start: 0% (PEAK quality every time)
+Orchestrator Target: Stay under 60% through delegation
+Quality: INVARIANT at all utilization levels
+Subagent Fresh Start: 0% (NOMINAL quality every time)
 
 Keep in Orchestrator:
 - Request + scope (~600 words)
@@ -423,11 +437,16 @@ Always Delegate:
 - Visualization
 - Testing
 
-STOP-ASSESS-UPDATE-DECIDE Triggers:
-- Every 3 orchestrator turns
+Context Monitoring Triggers:
 - Every stage transition
-- After every subagent return
-- Before any complex reasoning task
+- After every subagent return (lightweight: check utilization + decide)
+- When degradation symptoms observed (treat as HIGH)
+
+Never Compress:
+- Subagent prompt content (Context Completeness Checklist is mandatory)
+- STATE.md writes (lifeline for session recovery)
+- QA BLOCKER details (until resolved)
+- Methodology decision rationales (audit-critical)
 ```
 
 ### Compression Quick Guide

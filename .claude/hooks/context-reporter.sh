@@ -72,8 +72,8 @@ calculate() {
     local severity
     if   [[ $pct -ge 75 ]]; then severity="CRITICAL"
     elif [[ $pct -ge 60 ]]; then severity="HIGH"
-    elif [[ $pct -ge 40 ]]; then severity="MODERATE"
-    else                         severity="OK"
+    elif [[ $pct -ge 40 ]]; then severity="ELEVATED"
+    else                         severity="NOMINAL"
     fi
 
     echo "Context utilization [${severity}]: ${used_k}k / ${MAX_K}k tokens (${pct}%)"

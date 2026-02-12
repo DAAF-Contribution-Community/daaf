@@ -5,7 +5,7 @@ This document provides complete invocation templates for all skills used in the 
 > **Invocation Pattern Authority:** Each agent's `## Invocation` section (in `agents/[agent-name].md`)
 > is the **authoritative source** for that agent's invocation pattern. This file provides
 > **orchestrator-focused context** that wraps those patterns with stage-specific details, context
-> inlining guidance, and prompt size limits. When in doubt, defer to the agent file's Invocation section.
+> inlining guidance, and prompt size targets. When in doubt, defer to the agent file's Invocation section.
 
 ---
 
@@ -39,7 +39,7 @@ All relative paths in referenced files resolve from BASE_DIR.
 Call the skill tool with name '[skill-name]'.
 
 ## CONTEXT FROM PLAN
-[Paste relevant Plan section - respect size limits from `{BASE_DIR}/agent_reference/07_CONTEXT_MANAGEMENT.md`]
+[Paste relevant Plan section - see size targets in `{BASE_DIR}/agent_reference/07_CONTEXT_MANAGEMENT.md`; Context Completeness Checklist always takes priority over brevity]
 
 Original Request: [verbatim user request — required for Stage 4; include for other stages when methodology alignment matters]
 Research Question: [from Plan]
@@ -180,14 +180,16 @@ If any checkbox is unchecked → Add specificity until all pass.
 
 ---
 
-## Prompt Size Limits by Subagent Type
+## Prompt Size Targets by Subagent Type
 
-| Subagent Type | Max Prompt Size | Max Context from Plan |
-|---------------|-----------------|----------------------|
-| Plan | 500 words | 200 words |
-| general-purpose | 1000 words | 500 words |
+| Subagent Type | Target Prompt Size | Typical Context from Plan |
+|---------------|-------------------|--------------------------|
+| Plan | ~500 words | ~200 words |
+| general-purpose | ~1000 words | ~500 words |
 
-**If you need more context than these limits, break the task into smaller subtasks.**
+These are efficiency TARGETS for typical tasks, not hard ceilings that override the Context Completeness Checklist (CLAUDE.md). If a task's checklist requires more context to meet all REQUIRED items, provide it — completeness beats brevity. An incomplete prompt wastes MORE tokens (subagent confusion, re-invocation, wasted output) than a thorough one.
+
+**If context needs consistently exceed these targets:** Consider whether the task should be broken into smaller subtasks with more focused scope.
 
 ---
 
@@ -264,9 +266,9 @@ Call the skill tool with name '[skill-name]'.
 
 ### Size Limits for Inlined Content
 
-See "Prompt Size Limits by Subagent Type" table above for size limits. The same limits apply to inlined content.
+See "Prompt Size Targets by Subagent Type" table above for size targets. The same targets apply to inlined content, but the Context Completeness Checklist always takes priority over brevity.
 
-**If you need more context:** Break the task into smaller subtasks, each with focused context.
+**If context needs consistently exceed targets:** Consider breaking the task into smaller subtasks, each with more focused scope.
 
 ---
 

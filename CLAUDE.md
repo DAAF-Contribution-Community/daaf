@@ -1413,38 +1413,37 @@ Complete mode-specific boundary details are in `agent_reference/04_BOUNDARIES.md
 
 ### Context & Session Health (MANDATORY)
 
+**Cardinal Principle: Quality Is the Invariant, Session Restart Is the Pressure Valve.**
+
+Context management exists to maintain awareness of remaining capacity — NOT to degrade output quality. When context pressure rises, the correct response is to maintain full fidelity in all remaining work and use session restart (Protocol 6) as the relief mechanism. Never sacrifice subagent prompt completeness, skip Context Completeness Checklist items, or reduce inlined context to "save space." The STATE.md + Protocol 6 system exists precisely so you can stop cleanly and resume at full quality rather than continuing at diminished quality.
+
 The orchestrator receives actual context utilization via the `context-reporter` hook (e.g., `"Context utilization [SEVERITY]: XXXk / 200k tokens (YY%)"`). Use the reported percentage directly for gating decisions.
 
 **Utilization thresholds:**
 
-| Threshold | Quality | Required Action |
-|-----------|---------|-----------------|
-| <40% | PEAK/GOOD | Proceed normally |
-| 40-60% | DEGRADING | Delegate all complex tasks to subagents; update STATE.md |
-| 60-75% | POOR | STOP immediately; update STATE.md with restart prompt; report to user |
-| >75% | CRITICAL | STOP; save state; recommend session restart; no further work |
+| Threshold | Status | Required Action |
+|-----------|--------|-----------------|
+| <40% | NOMINAL | Proceed normally |
+| 40-60% | ELEVATED | Prefer subagent delegation for heavy execution; **maintain full prompt fidelity**; update STATE.md proactively |
+| 60-75% | HIGH | Complete current atomic unit at full quality; update STATE.md with restart prompt; report to user; do not start new stages |
+| >75% | CRITICAL | Finalize STATE.md; recommend session restart; no new work |
 
-**STOP-ASSESS-UPDATE-DECIDE cycle** — execute at these triggers:
-- Every 3 orchestrator turns (not subagent turns)
-- Every stage transition (before starting new stage)
-- After every subagent return
-- When any warning symptom is observed (repetition, confusion, path mix-ups)
+**What these thresholds control:** Utilization determines WHEN to restart, never WHETHER to maintain fidelity. At ELEVATED, you delegate more execution but construct subagent prompts with the same thoroughness as at NOMINAL. At HIGH, you finish your current work properly and prepare a clean handoff — you do not rush or cut corners to "fit more in."
 
-The cycle: **STOP** (pause before next action) → **ASSESS** (run self-assessment + check utilization) → **UPDATE** (persist to STATE.md if ≥40% or any failures; flush learning signals if trigger met) → **DECIDE** (proceed, delegate, or stop per thresholds above).
+**Context monitoring protocol** — the `context-reporter` hook provides objective, continuous utilization measurements on every turn. Use the reported percentage directly for gating decisions. Execute the following at stage transitions and after subagent returns:
 
-**Self-Assessment (4 questions):**
-1. Can I state the original research question verbatim?
-2. Can I state current stage and next action?
-3. Am I repeating information from earlier in conversation?
-4. Are responses getting longer without more substance?
+1. **CHECK** utilization from hook report
+2. **UPDATE** STATE.md if ≥40% (record stage, checkpoint status, next action, key decisions — write faithfully and completely, as STATE.md is the lifeline for session recovery)
+3. **DECIDE** per thresholds: proceed, delegate execution, or prepare for restart
+4. **Flush** learning signals to LEARNINGS.md if at a phase boundary or after BLOCKER resolution
 
-**Scoring:** 0 failures → continue | 1 → log + monitor | 2 → delegate next complex task | 3 → update STATE.md + compress | 4 → STOP + recommend restart. Log explicitly when ≥1 failure detected.
+**STATE.md fidelity is critical.** When updating STATE.md under context pressure, resist the urge to abbreviate. STATE.md is what the next session reads to resume — every shortcut taken here becomes a gap in the recovery context. Write complete stage summaries, accurate checkpoint statuses, and specific next-action descriptions.
 
-**What stays in orchestrator context:** Original request, mode/scope, phase summaries (~200 words each), current stage + blockers, Plan path (not content).
+**What stays in orchestrator context:** Original request, mode/scope, phase summaries (~200 words each), current stage + blockers, Plan path + key sections needed for upcoming subagent prompts (reload from file as needed — reading the Plan before constructing a subagent prompt is always justified regardless of utilization level).
 
 **What gets delegated:** All skill invocations, code execution, data exploration, source deep-dives, visualization, QA code review.
 
-See `agent_reference/07_CONTEXT_MANAGEMENT.md` for detailed gate protocols (including restart prompt templates), compression techniques, subagent context isolation, and degradation symptom taxonomy.
+See `agent_reference/07_CONTEXT_MANAGEMENT.md` for detailed procedures: compression techniques, subagent context isolation, degradation symptom taxonomy, context budgets, and recovery strategies.
 
 ### Session State Management
 
