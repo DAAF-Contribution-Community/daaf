@@ -251,7 +251,7 @@ This system uses a **multi-agent architecture** where specialized agents handle 
 
 Single-agent systems face a fundamental problem: as context grows, quality degrades. By decomposing work into specialized agents with focused responsibilities, each agent operates with fresh context and clear protocols.
 
-### Agent Ecosystem (11 Specialized Agents)
+### Agent Ecosystem (12 Specialized Agents)
 
 | Agent | Role | Quality Contribution |
 |-------|------|---------------------|
@@ -264,6 +264,7 @@ Single-agent systems face a fundamental problem: as context grows, quality degra
 | **research-synthesizer** | Consolidate multi-source findings | Resolve conflicts between sources |
 | **debugger** | Diagnose failures scientifically | Systematic error resolution |
 | **notebook-assembler** | Compile scripts into notebook | Literal copying, no new code |
+| **report-writer** | Synthesize pipeline artifacts into stakeholder report | Ensures analysis results are accurately communicated with proper limitations and figure references |
 | **integration-checker** | Verify component wiring | Ensure data flows correctly |
 | **data-ingest** | Profile new datasets and author documentation skills | Comprehensive data profiling before use |
 
@@ -321,27 +322,26 @@ For detailed guidance on filing effective issues (including how to use session l
 
 ## License
 
-This project is licensed under the **GNU General Public License v3.0** (GPL-3.0).
+This project is licensed under the **GNU Lesser General Public License v3.0** (LGPL-3.0-or-later).
 
 ### What This Means
 
-- ✅ **Freedom to use**: Use this software for any purpose
+- ✅ **Freedom to use**: Use this software for any purpose (including proprietary applications)
 - ✅ **Freedom to study**: Access and modify the source code
 - ✅ **Freedom to share**: Distribute copies
 - ✅ **Freedom to improve**: Distribute your modifications
 
 ### Copyleft Requirement
+Unlike the standard GPL, this license allows you to link this library into your own software without being forced to release your application's source code. However, specific obligations remain:
+- Modifications to the DAAF: If you modify DAAF itself, you must release those modifications under LGPL-3.0.
+- Linking: You may link DAAF with proprietary software, provided you allow users to replace/upgrade DAAF (e.g., by using dynamic linking).
+- Reverse Engineering: You cannot prevent users from reverse engineering your application for the specific purpose of debugging changes to DAAF.
 
-If you distribute modified versions of this software, you must:
-- Release your modifications under GPL-3.0
-- Make source code available
-- Preserve copyright notices
+### Why LGPL-3.0-or-later?
 
-### Why GPL-3.0?
+We chose LGPL-3.0-or-later to facilitate the widest possible accessibility, utility, and adoption of this proof-of-concept. It ensures that the core research tooling remains open and transparent, requiring that anyone building upon it shares those core improvements back to the community. This license still allows it to be integrated into a diverse range of larger systems — whether open-source or proprietary — without legal friction, to provide support for data analysts working with secure data resources that themselves cannot be made public (e.g., for use with private databases, developing private data source skills, applying proprietary research methodologies, etc.).
 
-We chose GPL-3.0 to ensure that improvements to this proof-of-concept remain open and accessible to the research community. AI-assisted research tools should be transparent and auditable—proprietary forks would undermine this goal.
-
-See [LICENSE](LICENSE.md) for the full license text.
+See [LICENSE](LICENSE) and [COPYING.LESSER](COPYING.LESSER) for the full license text.
 
 ---
 
