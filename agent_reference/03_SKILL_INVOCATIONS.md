@@ -18,7 +18,7 @@ This document provides complete invocation templates for all skills used in the 
 **CRITICAL:** For Stages 5-8, all code execution MUST follow the file-first pattern:
 
 1. **Write script FIRST** — Code goes to `scripts/stage{N}_{type}/{step}_{task-name}.py`
-2. **Execute via wrapper** — `./scripts/run_with_capture.sh scripts/.../script.py` (automatically captures output, appends execution log)
+2. **Execute via wrapper** — single Bash call: `bash {PROJECT_DIR}/scripts/run_with_capture.sh {PROJECT_DIR}/scripts/.../script.py` (automatically captures output, appends execution log)
 3. **Version on failure** — Failed scripts get `_a`, `_b`, `_c` suffixes; original preserved with its failed output
 
 Closely read `agent_reference/EXECUTION_CAPTURE.md` for the mandatory file-first execution protocol covering complete code file writing, output capture, and file versioning rules.
@@ -71,7 +71,7 @@ Wave: [N] (if applicable)
 
 ## FILE-FIRST RULE (Stages 5-8)
 Write Python code to a script file FIRST. Do NOT execute interactively.
-Execute ONLY via `./scripts/run_with_capture.sh` — do NOT run `python script.py` directly.
+Execute ONLY via single Bash call: `bash {PROJECT_DIR}/scripts/run_with_capture.sh {PROJECT_DIR}/scripts/.../script.py` — do NOT run `python script.py` directly, chain commands with `&&`/`;`, or prefix with `cd`.
 Follow the IAT documentation standard (`{BASE_DIR}/agent_reference/INLINE_AUDIT_TRAIL.md`).
 Closely read `{BASE_DIR}/agent_reference/EXECUTION_CAPTURE.md` for the mandatory file-first execution protocol covering complete code file writing, output capture, and file versioning rules.
 

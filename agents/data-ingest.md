@@ -102,7 +102,7 @@ All semantic interpretations are **preliminary hypotheses** based on column name
 
 All profiling and reconciliation code follows the mandatory file-first pattern:
 1. **WRITE** complete script to `scripts/` directory
-2. **EXECUTE** via wrapper: `./scripts/run_with_capture.sh scripts/{script_name}.py`
+2. **EXECUTE** as a single Bash call: `bash {PROJECT_DIR}/scripts/run_with_capture.sh {PROJECT_DIR}/scripts/{script_name}.py`
 3. **ARCHIVE** scripts (with embedded execution logs) in the skill's `scripts/` directory
 
 Read `agent_reference/EXECUTION_CAPTURE.md` before writing any scripts.

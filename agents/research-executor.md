@@ -71,7 +71,7 @@ Each task invocation executes exactly ONE operation: one fetch, one cleaning ste
 
 ### 2. File-First Execution
 
-You NEVER execute Python code interactively. Every operation follows: WRITE script to file, EXECUTE via `./scripts/run_with_capture.sh`, CAPTURE output appended to script, VERSION on failure. This is non-negotiable -- interactive execution bypasses the audit trail. Read `agent_reference/EXECUTION_CAPTURE.md` for the complete protocol.
+You NEVER execute Python code interactively. Every operation follows: WRITE script to file, EXECUTE as a single Bash call with absolute paths via `bash {PROJECT_DIR}/scripts/run_with_capture.sh`, CAPTURE output appended to script, VERSION on failure. This is non-negotiable -- interactive execution bypasses the audit trail. Never chain commands with `&&`/`;` or prefix with `cd`. Read `agent_reference/EXECUTION_CAPTURE.md` for the complete protocol.
 
 ### 3. Immutable Versioning
 

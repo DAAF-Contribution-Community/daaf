@@ -2,7 +2,7 @@
 
 This document provides detailed execution guidance for each of the 12 stages (plus 2 intermediate stages) in the Full Pipeline workflow.
 
-**Execution Model:** Stages 5-8 follow the **file-first execution pattern**—all code is written to script files before execution, then run via `./scripts/run_with_capture.sh` which automatically appends the execution log. Closely read `agent_reference/EXECUTION_CAPTURE.md` for the mandatory file-first execution protocol covering complete code file writing, output capture, and file versioning rules.
+**Execution Model:** Stages 5-8 follow the **file-first execution pattern**—all code is written to script files before execution, then run as a single Bash call via `bash {PROJECT_DIR}/scripts/run_with_capture.sh {PROJECT_DIR}/scripts/...` which automatically appends the execution log. Closely read `agent_reference/EXECUTION_CAPTURE.md` for the mandatory file-first execution protocol covering complete code file writing, output capture, and file versioning rules.
 
 ---
 
@@ -1005,7 +1005,7 @@ else:
     print(f"CP3 STATUS: FAILED - Row loss {row_loss_pct:.1%}")
 
 # EXECUTION LOG will be appended here after running:
-# ./scripts/run_with_capture.sh scripts/stage7_transform/01_join-data.py
+# bash {PROJECT_DIR}/scripts/run_with_capture.sh {PROJECT_DIR}/scripts/stage7_transform/01_join-data.py
 ```
 
 **If validation fails:** Create a new versioned script (`01_join-data_a.py`) with fixes. Do NOT modify the original—it serves as audit trail.

@@ -12,7 +12,7 @@ This document defines the standardized format for all Python scripts in the file
 
 The workflow is:
 1. **WRITE** script to file using this template
-2. **EXECUTE** via `./scripts/run_with_capture.sh scripts/.../script.py` (wrapper automatically captures output and appends execution log)
+2. **EXECUTE** as a single Bash call: `bash {PROJECT_DIR}/scripts/run_with_capture.sh {PROJECT_DIR}/scripts/.../script.py` (wrapper automatically captures output and appends execution log)
 3. **IF FAILED** → Create new versioned copy for fixes, re-run wrapper on new copy
 4. **COMMIT** successful script with embedded execution log
 

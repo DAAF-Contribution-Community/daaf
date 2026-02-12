@@ -10,7 +10,7 @@ This document provides Python code templates for all four validation checkpoints
 
 The workflow is:
 1. Write script to `scripts/stage{N}_{type}/` including validation code
-2. Execute via `./scripts/run_with_capture.sh scripts/.../script.py` (automatically captures output and appends execution log)
+2. Execute as a single Bash call: `bash {PROJECT_DIR}/scripts/run_with_capture.sh {PROJECT_DIR}/scripts/.../script.py` (automatically captures output and appends execution log)
 3. Validation results get automatically embedded in scripts as comments
 4. Checkpoint status (PASSED/FAILED) is captured in the embedded execution log
 

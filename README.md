@@ -111,7 +111,7 @@ Unlike traditional analyses where code is written in large batches and tested at
 
 1. **DESCRIBE** — State what will be done and the expected outcome
 2. **CODE** — Write the transformation to a **script file first** (not executed yet)
-3. **EXECUTE** — Run via `./scripts/run_with_capture.sh` (automatically captures output and appends log)
+3. **EXECUTE** — Run as a single Bash call: `bash {PROJECT_DIR}/scripts/run_with_capture.sh {PROJECT_DIR}/scripts/.../script.py` (automatically captures output and appends log)
 4. **VALIDATE** — Compare pre/post state, check invariants
 5. **DECIDE** — PASSED → proceed to next | FAILED → create versioned copy and fix
 

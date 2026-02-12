@@ -397,7 +397,7 @@ When a script fails, DO NOT modify the original. Instead:
 2. Identify the root cause
 3. Create new versioned copy (e.g., 01_task_a.py)
 4. Apply fix in the new copy
-5. Execute: ./scripts/run_with_capture.sh scripts/.../01_task_a.py
+5. Execute (single Bash call): `bash {PROJECT_DIR}/scripts/run_with_capture.sh {PROJECT_DIR}/scripts/.../01_task_a.py`
 ```
 
 **Attempt 2: Alternative approach in new version**

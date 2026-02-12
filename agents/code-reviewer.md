@@ -399,7 +399,7 @@ After reviewing cr1 output, apply the iteration decision tree:
 2. **State the hypothesis:** What does this script test?
 3. **Define expected outcome:** What confirms vs. refutes the hypothesis?
 4. Write investigation script to `scripts/cr/stage{N}_{step}_cr{M}.py`
-5. Execute with capture: `./scripts/run_with_capture.sh scripts/cr/stage{N}_{step}_cr{M}.py`
+5. Execute as a single Bash call: `bash {PROJECT_DIR}/scripts/run_with_capture.sh {PROJECT_DIR}/scripts/cr/stage{N}_{step}_cr{M}.py`
 6. **Interpret:** CONFIRMED or REFUTED? Implications? Further investigation needed?
 7. Apply the decision tree again with updated findings
 
@@ -673,7 +673,7 @@ If nothing novel, emit "None" — this is the expected common case.
 
 ### Always Do
 - Create at least one QA script (cr1) for every reviewed script
-- Use `./scripts/run_with_capture.sh` to execute all QA scripts (never `python` directly)
+- Execute all QA scripts as single Bash calls with absolute paths via `run_with_capture.sh` (never `python` directly, never chain with `&&`/`;`)
 - Load the Plan.md before assessing methodology alignment
 - Form independent understanding of code before comparing to Plan
 - Include data profiling in cr1
@@ -792,7 +792,7 @@ Awaiting guidance before proceeding.
 
 **DO NOT attempt to fix code directly.** You are a reviewer, not an executor. Flag issues and suggest fixes, but let research-executor apply them. Maintaining separation of concerns preserves the audit trail.
 
-**DO NOT skip appending the execution log to QA scripts.** Always use `./scripts/run_with_capture.sh` to execute scripts — it automatically appends the log. Never run `python script.py` directly, as this bypasses output capture. Without appended output, the cr script is just code with no proof of what it produced.
+**DO NOT skip appending the execution log to QA scripts.** Always execute as a single Bash call with absolute paths: `bash {PROJECT_DIR}/scripts/run_with_capture.sh {PROJECT_DIR}/scripts/cr/...` — it automatically appends the log. Never run `python script.py` directly or chain commands with `&&`/`;`, as this bypasses output capture. Without appended output, the cr script is just code with no proof of what it produced.
 
 **DO NOT ignore the execution log.** The appended execution log contains critical diagnostic information. Review it for warnings, unexpected row counts, and checkpoint edge cases. The log often reveals issues the code hides.
 

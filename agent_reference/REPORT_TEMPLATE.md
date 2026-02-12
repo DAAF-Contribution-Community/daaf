@@ -35,11 +35,12 @@
 
 ### Methodology
 
-[Brief description of the analytical approach]
+[Description of the analytical approach]
 
 **Key decisions:**
 - [Decision 1 and rationale]
 - [Decision 2 and rationale]
+- [additional decisions and rationale as needed]
 
 ### Data Cleaning
 
@@ -93,9 +94,9 @@ All analysis code underwent secondary QA review during execution:
 
 ---
 
-### Finding 3: [Title]
+### Finding X: [Title]
 
-[Description]
+[Continue providing findings in this format as needed]
 
 ---
 
@@ -115,13 +116,15 @@ This analysis has the following limitations that should be considered when inter
 
 1. **[Limitation category]:** [Description and impact on conclusions]
 
-2. **[Limitation category]:** [Description and impact]
+2. **[Limitation category]:** [Description and impact on conclusions]
 
-3. **Data suppression:** [X]% of records were suppressed for privacy, which may affect [specific impact]
+3. **[Limitation category, adding more line items as needed]:** [Description and impact on conclusions]
 
-4. **[Source-specific limitation]:** [From education-data-context skill]
+4. **Data suppression:** [X]% of records were suppressed for privacy, which may affect [specific impact]
 
-5. **COVID-19 impact (if applicable):** [If analysis includes 2020-2021 data, REQUIRED to document: Data from 2020-2021 may be affected by COVID-19 pandemic disruptions including collection method changes, missing data, and non-representative samples. Comparisons to pre-pandemic years should be interpreted with caution.]
+5. **[Source-specific limitation]:** [From education-data-context skill]
+
+6. **COVID-19 impact (if applicable):** [If analysis includes 2020-2021 data, REQUIRED to document: Data from 2020-2021 may be affected by COVID-19 pandemic disruptions including collection method changes, missing data, and non-representative samples. Comparisons to pre-pandemic years should be interpreted with caution.]
 
 ---
 
@@ -147,7 +150,7 @@ This analysis has the following limitations that should be considered when inter
 
 ### Analysis Environment
 
-- Python 3.11+
+- Python 3.12
 - Key packages: polars, plotnine, marimo
 
 ---
@@ -160,7 +163,7 @@ This analysis has the following limitations that should be considered when inter
 
 ### B. Detailed Methodology
 
-[Extended methodology notes if needed]
+[Extended methodology notes if valuable for auditability and full explanations]
 
 ### C. Data Dictionary
 

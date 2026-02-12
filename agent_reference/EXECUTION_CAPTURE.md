@@ -143,13 +143,13 @@ chmod +x scripts/run_with_capture.sh
 ### Usage
 
 ```bash
-# Execute a script
-./scripts/run_with_capture.sh scripts/stage5_fetch/01_fetch-ccd.py
+# Execute a script (single Bash call, absolute paths)
+bash {PROJECT_DIR}/scripts/run_with_capture.sh {PROJECT_DIR}/scripts/stage5_fetch/01_fetch-ccd.py
 
 # If it fails, create a versioned copy and fix
-cp scripts/stage5_fetch/01_fetch-ccd.py scripts/stage5_fetch/01_fetch-ccd_a.py
-# Edit 01_fetch-ccd_a.py with fixes
-./scripts/run_with_capture.sh scripts/stage5_fetch/01_fetch-ccd_a.py
+cp {PROJECT_DIR}/scripts/stage5_fetch/01_fetch-ccd.py {PROJECT_DIR}/scripts/stage5_fetch/01_fetch-ccd_a.py
+# Edit 01_fetch-ccd_a.py with fixes, then execute the new version
+bash {PROJECT_DIR}/scripts/run_with_capture.sh {PROJECT_DIR}/scripts/stage5_fetch/01_fetch-ccd_a.py
 ```
 
 ### Re-run Protection

@@ -140,7 +140,7 @@ Retrieve data from the data access mirrors and apply proper context/cleaning bas
 
 **CRITICAL:** All code in Protocol 2 follows the **file-first pattern**:
 1. Write script to `scripts/stage{5,6}_{type}/` before execution
-2. Execute via `./scripts/run_with_capture.sh` (automatically captures output and appends execution log)
+2. Execute as a single Bash call with absolute paths: `bash {PROJECT_DIR}/scripts/run_with_capture.sh {PROJECT_DIR}/scripts/...` (automatically captures output and appends execution log)
 3. Version failed scripts (`_a`, `_b`, etc.) — re-run wrapper on new version
 
 Closely read `agent_reference/EXECUTION_CAPTURE.md` for the mandatory file-first execution protocol covering complete code file writing, output capture, and file versioning rules.
