@@ -28,6 +28,9 @@
       "Bash(find *)",
       "Grep",
       "Glob",
+      "Edit",
+      "Write",
+      "Skill",
       "Task(general-purpose)",
       "Task(Plan)",
       "Task(Explore)"
