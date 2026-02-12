@@ -21,6 +21,13 @@
       "Bash(cp *)",
       "Bash(chmod +x *)",
       "Bash(cd *)",
+      "Bash(head *)",
+      "Bash(file *)",
+      "Bash(git --version)",
+      "Bash(git status *)",
+      "Bash(find *)",
+      "Grep",
+      "Glob",
       "Task(general-purpose)",
       "Task(Plan)",
       "Task(Explore)"
