@@ -99,11 +99,11 @@ A deeper explanation of DAAF's multi-agent architecture and how it maintains qua
 
 What the orchestrator does: maintains context, delegates to specialized agents, enforces gates, and reports progress to you.
 
-### Specialized Agents (11)
+### Specialized Agents (12)
 
 <!-- MIGRATE: README "Agent Ecosystem" table -->
 
-What each agent does and why decomposing work into specialized roles improves quality.
+What each agent does and why decomposing work into specialized roles improves quality. The 12 agents include: research-executor (data tasks), code-reviewer (QA), data-planner (plans), plan-checker (plan validation), data-verifier (final verification), source-researcher (data source deep-dives), research-synthesizer (consolidating findings), debugger (error diagnosis), notebook-assembler (script compilation), report-writer (stakeholder report generation), integration-checker (component wiring), and data-ingest (new dataset profiling).
 
 ### Skills as Knowledge Modules (24)
 

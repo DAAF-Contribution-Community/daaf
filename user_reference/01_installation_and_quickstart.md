@@ -18,38 +18,17 @@ This is the complete first-time installation and setup guide for DAAF. This docu
 
 ---
 
-## Prerequisites\
+## Prerequisites
 
-Before installing DAAF, there are four (technically five) key prerequisites:
+Before installing DAAF, there are four (technically five) key prerequisites. Please read the Claude requirement especially closely; the price of the necessary subscription is definitively the highest barrier to entry at this time. I hope this will change in the near future with greater testing and community support for open-source models!
 
 ### 0. A computer with internet access
 
-You'll need internet access to download the project files and interact with Claude (which itself always requires internet). Datasets will also be downloaded from the Urban Institute Education Data Portal, which will also require an internet connection. Note that all analyses will be conducted using your computer hardware, so you should have a computer that's generally capable of running intermediate-level data analysis (same sort of requirements you'd face if you wanted to analyze these same datasets in R/Stata/Python regularly).
+You'll need internet access to download the project files and interact with DAAF/Claude (which itself always requires internet). Datasets will also be downloaded from the Urban Institute Education Data Portal, which will also require an internet connection. Note that all analyses will be conducted using your computer hardware, so you should have a computer that's generally capable of running intermediate-level data analysis (same sort of requirements you'd face if you wanted to analyze these same datasets in R/Stata/Python regularly).
 
-### 1. Git
+### 1. Terminal
 
-Git is a version control tool that primarily helps people track software file changes and updates. In this case, it lets you download ("clone") this project to your computer (all the files you see above). You'll use it just once during setup. The Git installer is straightforward — the default options are generally fine. If you continue to use Claude Code at all, and plan to use this project, I HIGHLY recommend you learn more about how to use Git for project and file management. It is absolutely necessary to better track and understand and review how Claude is changing things in your workspace later on. If you run into any Git-related errors during install, you may need to restart your computer to let the install fully sink in.
-
-**Install:** [git-scm.com/downloads](https://git-scm.com/downloads)
-
-### 2. Docker Desktop
-
-Docker is a program designed to help people create self-contained, isolated environments (called a "container") on your computer that are strictly separated from everything else, and extremely easy to replicate and share. This protects your computer and prevents Claude Code from messing with anything it shouldn't be, and it ensures that even if somehow things go catastrophic, you can easily spin up a new virtual environment back up in minutes with zero consequences. In this project, I also use Docker to install every needed piece of software in a predictable and stress-free way to have Python, data science libraries, and Claude Code all ready to go in one step. Think of it like a lightweight virtual computer running inside your computer. Docker Desktop includes everything you need (including Docker Compose, which coordinates the setup). After installing, make sure Docker Desktop is actually running before proceeding. If you're worried, you can see exactly what is installed by reading the Dockerfile in this repository -- feel free to ask your favorite LLM to help you interpret and inspect it, if you'd like. If you run into any Docker-related errors during install, you may need to restart your computer to let the install fully sink in.
-
-**Install:** [docker.com/products/docker-desktop](https://www.docker.com/products/docker-desktop/)
-
-### 3 Anthropic Account & Authentication
-
-Claude Code is the AI assistant that powers this project. It runs inside your terminal (not in a web browser) and needs to link in with an Anthropic account for billing/usage purposes. For the account setup, you have two options:
-
-- **Anthropic Pro/Max subscription** — If you have a Claude Pro or Max plan, Claude Code will walk you through linking your account interactively. This is probably going to be the biggest barrier-to-entry for testing this work, but, unfortunately, these AI research pipelines are intensive enough that you simply cannot get enough usage with a free plan. Even the lower-cost Pro plan may be extremely limited in use for work like this, since they have specific usage limits reset every four hours. But it's worth testing! Please let me know your experiences.
-- **Anthropic API key** — [Get one here](https://console.anthropic.com/). This is a pay-per-use key that you'll paste into Claude Code when prompted. This allows unlimited use as long as you're willing to pay. Just note, this can get VERY expensive, very quickly. I HIGHLY recommend getting a Pro/Max subscription for this project, instead.
-
-Claude Code will prompt you to choose your authentication method the first time you run it — you don't need to configure anything in advance. If you're concerned: Nothing (including your credentials) ever leave your computer in the course of this project's workflows, and I've enforced a LOT of safety checks to ensure Claude doesn't accidentally share it with anyone, either. This can be directly verified in the code. Note that you can easily port this whole project over to a CLI tool of your choice (OpenCode, Codex, Gemini CLI, etc.) with a little bit of effort (the hooks are really the only hard part -- everything like the agents and skills should port over immediately). Fork this repo, work with your favorite tool to convert it over, and please continue to share it broadly with others!!!
-
-### 4. Terminal
-
-It's probably going to feel a bit weird, but you'll interact with the Claude Code assistant through your **terminal** (also called the command line or shell), where you type commands and press Enter to run them. This project is used entirely through the terminal — the text-based interface on your computer where you type commands; getting started is strange, but then when it's running, it's basically like any other AI assistant chatbot window with worse font. Your computer definitely already has this, but if you're not used to working in the terminal, here are some basics:
+It's probably going to feel a bit weird, but you'll interact with DAAF/Claude Code through your **Terminal** (also called the command line or shell) -- a text-based interface on your computer where you type commands and instructions to your computer. You can think of this as the code-base way to do all the things you would normally do on your computer by clicking around a standard user interface (navigating folders, copying files, deleting things, etc.). Getting started is strange, but then when it's running, it's basically like any other AI assistant chatbot window with worse font. Your computer definitely already has this, but if you're not used to working in the terminal, here are some basics:
 
 **Opening your terminal:**
 - **Mac:** Open the "Terminal" app (search for it in Spotlight with `Cmd + Space`)
@@ -61,8 +40,8 @@ It's probably going to feel a bit weird, but you'll interact with the Claude Cod
 |---------------------|---------|---------|
 | See where you are | `pwd` | Shows `/Users/yourname/daaf` |
 | List files here | `ls` | Shows files and folders in current directory |
-| Move into a folder | `cd foldername` | `cd daaf` |
-| Go up one folder | `cd ..` | Goes to the parent directory |
+| Move into a folder in the current directory | `cd foldername` | `cd daaf` |
+| Go up one folder level | `cd ..` | Goes to the parent directory |
 | Clear the screen | `clear` | Clears clutter (your history is still there) |
 | Cancel a running command | `Cmd/Ctrl + C` | Stops whatever is currently running |
 | Scroll up to see past output | Scroll or `Shift + Page Up` | See output that scrolled off screen |
@@ -72,6 +51,30 @@ It's probably going to feel a bit weird, but you'll interact with the Claude Cod
 - Press the up arrow key to recall previous commands
 - Tab completion works — start typing a file/folder name and press `Tab` to auto-complete it
 - Claude Code was immensely buggy for me on Windows using Powershell. I have found the free version of [Warp](https://www.warp.dev/) to be a much cleaner, more reliable experience (but feel free to turn off all their extra AI features and account shenanigans).
+
+### 2. Git
+
+Git is software that primarily helps people track file changes and updates. It helps people identify exact line changes, and collect a full history of all changes in sequence (you can see that history for DAAF [here](https://github.com/brhkim/daaf/commits/main/)!) In this case, we're using Git to help you download ("clone") this project's core files to your computer. You'll use it just once during setup. If you continue to use Claude Code at all, and plan to use this project, I HIGHLY recommend you learn more about how to use Git for project and file management. It is absolutely necessary to better track and understand and review how Claude is changing things in your workspace later on. If you run into any Git-related errors during install, you may need to restart your computer to let the install fully sink in.
+
+**Install:**
+- **macOS**: You will first need to use the Terminal mentioned above to install [Homebrew](https://brew.sh/). Follow the directions on that site, and then install Git by following directions here: [git-scm.com/downloads](https://git-scm.com/downloads).
+- **Windows**: You can install Git via the installer available for download at [git-scm.com/downloads](https://git-scm.com/downloads)
+- **Linux**: You probably already know what to do, but otherwise, follow directions at [git-scm.com/downloads](https://git-scm.com/downloads)
+
+### 3. Docker Desktop
+
+Docker is a program designed to help people create self-contained, isolated environments (called a "container") on your computer that are strictly separated from everything else, and extremely easy to replicate and share. This protects your computer and prevents Claude Code from messing with anything it shouldn't be, and it ensures that even if somehow things go catastrophic, you can easily spin up a new virtual environment back up in minutes with zero consequences. In this project, I also use Docker to install every needed piece of software in a predictable and stress-free way to have Python, data science libraries, and Claude Code all ready to go in one step. Think of it like a lightweight virtual computer running inside your computer that gets created via a very specific recipe, every single time. Docker Desktop includes everything you need (including Docker Compose, which coordinates the setup). After installing, make sure Docker Desktop is actually running before proceeding. If you're worried, you can see exactly what is installed by reading the Dockerfile in this repository -- feel free to ask your favorite LLM to help you interpret and inspect it, if you'd like. If you run into any Docker-related errors during install, you may need to restart your computer to let the install fully sink in.
+
+**Install:** [docker.com/products/docker-desktop](https://www.docker.com/products/docker-desktop/)
+
+### 4. Anthropic Account & Authentication
+
+Claude Code is the AI assistant that powers this project. It runs inside your terminal (not in a web browser) and needs to link in with an Anthropic account for billing/usage purposes. For the account setup, you have two options:
+
+- **Anthropic Max subscription** — If you have a Claude Max plan, Claude Code will walk you through linking your account interactively. This is probably going to be the biggest barrier-to-entry for testing this work, but, unfortunately, these AI research pipelines are intensive enough that you simply cannot get enough usage with a free or Pro plan.
+- **Anthropic API key** — [Get one here](https://console.anthropic.com/). This is a pay-per-use key that you'll paste into Claude Code when prompted. This allows unlimited use as long as you're willing to pay. Just note, this can get VERY expensive, very quickly. I HIGHLY recommend getting a Max subscription for this project, instead, as they are explicitly subsidizing these sorts of costs via their subscription model.
+
+Claude Code will prompt you to choose your authentication method the first time you run it — you don't need to configure anything in advance. Note that many terminal interfaces "hide" any password-entry you're asked to do, so if you don't see your typing "working," it's working but hiding it from view for your privacy. If you're concerned about privacy otherwise: Nothing (including your credentials) ever leave your computer in the course of this project's workflows, and I've enforced a LOT of safety checks to ensure Claude doesn't accidentally share it with anyone, either. This can be directly verified in the code. Note that you can easily port this whole project over to a CLI tool of your choice (OpenCode, Codex, Gemini CLI, etc.) with a little bit of effort (the hooks are really the only hard part -- everything like the agents and skills should port over immediately). Fork this repo, work with your favorite tool to convert it over, and please continue to share it broadly with others!!!
 
 ---
 
