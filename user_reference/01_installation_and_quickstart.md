@@ -147,15 +147,6 @@ You can check which Claude model is being used at any time (Opus, Sonnet, Haiku)
 
 Once you've gotten Claude Code running in your terminal and your model is set, you're ready to start asking the DAAF-empowered Claude any question you'd like. You may find it helpful to reference what's available in the (Urban Institute Education Data Portal)[https://educationdata.urban.org/documentation/] (the current datasets available for demonstration). Or, you can just ask it: "Hey Claude, I'm interested in understanding what kind of data we have available on \[Colleges/High Schools/School Districts\]. Can you give me a brief summary of the sorts of data you can analyze on this subject?"
 
-### Easing in with progressively more advanced queries
-
-You can use DAAF in a couple of different ways, which we'll get into in the next few tutorial files. But I'd recommend starting small:
-1. Ask Claude to explain to you a single dataset or variable -- see what it says, feeling free to ask follow-ups or dig into certain details.
-2. Ask Claude to help you analyze a single varible for a simple subset from a single dataset. This will probably kick off a full analysis, but a very simple and approachable one.
-3. Ask Claude to help you understand the relationship between two variables of interest for \[Colleges/High Schools/School Districts\]. See if you can learn more about that relationship over time, as well.
-4. Get more abstract, complex, or high-level. For example, ask Claude to help you better understand the nuances of the relationships between college selectivity, student academic preparedness, graduation rates, and student socioeconomic backgrounds. Or ask it how you might better understand what linkages may exist between school-level resources, student socioeconomic status, and access to advanced coursework. You can even ask it what you should ask it, based on the data it has available: "I'm trying to get started with the DAAF system. I'm trying to think of a few moderately complex, abstract research questions I could ask you to conduct data analysis on, based on the data current available to you. Do you have a few examples you can surface related to [Topic A/B/C]?"
-5. I am actively trying to assess DAAF's performance by replicating studies conducted by the [Urban Institute Learning Curve series](https://www.urban.org/projects/learning-curve) which leverage the same Education Data Portal datasets DAAF currently has access to -- especially as they have [open-source code available](https://github.com/UrbanInstitute/The-Learning-Curve/tree/main) for direct comparison afterwards. Run some tests of your own, and please do let me know what you find!
-
 ---
 
 ## Day-to-Day Start/Stop Workflow

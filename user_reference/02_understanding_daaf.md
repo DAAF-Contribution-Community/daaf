@@ -239,7 +239,7 @@ Overview of the 14+ education data source skills currently available.
 
 ---
 
-## Your First Analysis: A Guided Walkthrough
+## Your First Full Analysis: A Guided Walkthrough
 
 <!-- NEW: Step-by-step narrative of what to type and what to expect -->
 
@@ -269,6 +269,15 @@ What progress updates look like and when DAAF will ask for your input.
 
 How to open and interpret the notebook, report, and data files.
 
+## Easing in with progressively more advanced queries
+
+You can use DAAF in a couple of different ways, as mentioned above. Given that the main premise of this project is that it is surprisingly robust, I'd recommend starting small and asking it questions you largely already know the answer to, to assess its knowledge and way of responding. For example:
+1. \[Quick Ask\] Ask Claude to explain to you a single dataset or variable you're already familiar with -- see what it says, feeling free to ask follow-ups or dig into certain details.
+2. \[Single Variable Analysis\]Ask Claude to help you analyze a single varible for a simple subset from a single dataset you're already familiar with. This will probably kick off a full analysis, but a very simple and approachable one.
+3. \[Simple Correlational Longitudinal Analysis\] Ask Claude to help you understand the relationship between two variables of interest for \[Colleges/High Schools/School Districts\]. Ask it to unpack that relationship over time, as well.
+4. \[Multivariate Analysis\] Then get more abstract, complex, or high-level. For example, ask Claude to help you better understand the nuances of the relationships between college selectivity, student academic preparedness, graduation rates, and student socioeconomic backgrounds. Or ask it how you might better understand what linkages may exist between school-level resources, student socioeconomic status, and access to advanced coursework. You can even ask it what you should ask it, based on the data it has available: "I'm trying to get started with the DAAF system. I'm trying to think of a few moderately complex, abstract research questions I could ask you to conduct data analysis on, based on the data current available to you. Do you have a few examples you can surface related to [Topic A/B/C]?"
+5. \[Replication Exercises\] I am actively trying to assess DAAF's performance by replicating studies conducted by the [Urban Institute Learning Curve series](https://www.urban.org/projects/learning-curve) which leverage the same Education Data Portal datasets DAAF currently has access to -- especially as they have [open-source code available](https://github.com/UrbanInstitute/The-Learning-Curve/tree/main) for direct comparison afterwards. Run some tests of your own, and please do let me know what you find!
+
 ---
 
 ## Where Things Live in the Repository
@@ -278,11 +287,11 @@ How to open and interpret the notebook, report, and data files.
 
 | Directory | Purpose |
 |-----------|---------|
-| `research/` | Analysis projects (notebooks, data, reports) |
+| `research/` | Analysis projects produced by DAAF (notebooks, data, reports) |
 | `user_reference/` | User documentation (you're reading it) |
-| `agents/` | Specialized agent protocols (11 behavioral definitions) |
-| `agent_reference/` | Detailed protocols, templates, and reference tables |
-| `.claude/skills/` | Skill definitions (24 skills for data sources and tools) |
+| `agents/` | Specialized agent protocols that dictate certain task workflows |
+| `agent_reference/` | Detailed workflow documentation, templates, and reference tables |
+| `.claude/skills/` | Skill definitions that provide agents with specific knowledge or toolsets |
 
 Each analysis creates a self-contained project folder:
 
