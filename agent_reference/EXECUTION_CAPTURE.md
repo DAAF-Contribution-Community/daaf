@@ -72,7 +72,7 @@ If the script fails (non-zero exit code or failed validation):
 | 5 (Fetch) | `scripts/stage5_fetch/` | Data retrieval scripts |
 | 6 (Clean) | `scripts/stage6_clean/` | Context application / cleaning scripts |
 | 7 (Transform) | `scripts/stage7_transform/` | EDA and transformation scripts |
-| 8 (Viz) | `scripts/stage8_viz/` | Visualization scripts |
+| 8 (Analysis & Viz) | `scripts/stage8_analysis/` | Statistical analysis and visualization scripts |
 | Debug | `scripts/debug/` | Debugger diagnostic scripts |
 | QA | `scripts/cr/` | Code-reviewer inspection scripts |
 

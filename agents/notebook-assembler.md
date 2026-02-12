@@ -46,7 +46,8 @@ The assembler BUILDS the notebook; the checker VERIFIES its wiring. They never o
 | Completed scripts | `scripts/stage{5,6,7,8}_*/` | Yes | Read and copy verbatim into notebook cells |
 | Plan.md | Orchestrator Task prompt | Yes | Research question for title, transformation sequence for ordering |
 | Data files | `data/raw/`, `data/processed/` | Yes | Referenced in data inspection cells (Cell 4) |
-| Figure files | `output/figures/` | Yes | Embedded in Stage 8 display cells via `mo.image()` |
+| Figure files | `output/figures/` | Yes | Embedded in Stage 8.2 display cells via `mo.image()` |
+| Analysis result files | `output/analysis/` | No | Loaded in Stage 8.1 display cells via `pl.read_parquet()` + `mo.ui.table()` |
 | Project path | Orchestrator Task prompt | Yes | Absolute path for `PROJECT_DIR` constant |
 
 **Context the orchestrator MUST provide:**
@@ -191,7 +192,7 @@ For each script, apply the Four-Cell Pattern:
 7. Identify output data file from script
 8. Create data inspection cell (Cell 4) with `pl.read_parquet()` + `mo.ui.table()`
 
-For Stage 8 visualization scripts, Cell 4 uses `mo.image()` to display saved figures instead of `mo.ui.table()`.
+For Stage 8.2 visualization scripts, Cell 4 uses `mo.image()` to display saved figures instead of `mo.ui.table()`. For Stage 8.1 analysis-only scripts (no figure output), Cell 4 uses `pl.read_parquet()` + `mo.ui.table()` to display analysis result parquet files from `output/analysis/`.
 
 #### Helper Functions
 
@@ -439,7 +440,7 @@ def _(pl, mo):
 
 # ============================================================
 # [REPEAT PATTERN FOR EACH SCRIPT IN stage5_fetch, stage6_clean,
-#  stage7_transform, stage8_viz]
+#  stage7_transform, stage8_analysis (analysis + visualization scripts)]
 # ============================================================
 
 
@@ -458,7 +459,7 @@ def _(mo):
     | Stage 5 (Fetch) | 2 | All passed |
     | Stage 6 (Clean) | 2 | All passed |
     | Stage 7 (Transform) | 1 (3 versions) | Final passed |
-    | Stage 8 (Visualize) | 1 | Passed |
+    | Stage 8 (Analyze & Visualize) | 1 | Passed |
 
     **Output Files:**
     - Final data: `data/processed/2026-01-24_analysis.parquet`
@@ -506,7 +507,8 @@ Return findings using the Output Format below.
 | Script has no execution log marker | Include all content as code; note "No execution log found" in Cell 3 |
 | Script has revision versions | Show version history in Cell 1; use final version for Cell 2 |
 | Output parquet file missing | Create Cell 4 with comment noting file not found; log as WARNING |
-| Stage 8 script produces figure, not data | Cell 4 uses `mo.image()` instead of `mo.ui.table()` |
+| Stage 8.2 script produces figure, not data | Cell 4 uses `mo.image()` instead of `mo.ui.table()` |
+| Stage 8.1 script produces analysis results, not figure | Cell 4 uses `pl.read_parquet()` + `mo.ui.table()` on parquet results from `output/analysis/` |
 
 ---
 
@@ -525,7 +527,7 @@ Return findings in this structure:
 | 5 (Fetch) | [count] | [list] | Assembled |
 | 6 (Clean) | [count] | [list] | Assembled |
 | 7 (Transform) | [count] | [list] | Assembled |
-| 8 (Viz) | [count] | [list] | Assembled |
+| 8 (Analysis & Viz) | [count] | [list] | Assembled |
 
 ### Version History Captured
 - [List of scripts with multiple versions, if any]

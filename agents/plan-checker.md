@@ -668,4 +668,4 @@ Load on demand — do NOT read all at start:
 |------|-------------|---------|
 | `agent_reference/PLAN_TEMPLATE.md` | When unsure about expected Plan structure | Defines required Plan sections and task specification format |
 | `agent_reference/05_VALIDATION_CHECKPOINTS.md` | When verifying checkpoint integration (Step 9) | CP1-CP4 definitions and validation criteria |
-| `agent_reference/QA_CHECKPOINTS.md` | When assessing methodology precision impact | QA1-QA4 definitions showing what downstream QA checks |
+| `agent_reference/QA_CHECKPOINTS.md` | When assessing methodology precision impact | QA1-QA4b definitions showing what downstream QA checks |

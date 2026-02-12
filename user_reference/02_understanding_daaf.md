@@ -49,7 +49,7 @@ For a Full Pipeline analysis, the assistant follows a structured workflow:
 - Sub-Stage 7.1: Performs exploratory data analysis (EDA) first, without transformations
 - Sub-Stage 7.2: Executes transformations **one at a time** following the Iteration Protocol
 - Sub-Stage 7.3: Final CP3 validation after all transformations complete
-- Stage 8: Creates visualizations after all transformations are validated
+- Stage 8: Conducts final analyses (regressions, robustness checks) and creates visualizations after all transformations are validated
 - Stage 9: Assembles a marimo notebook displaying pre-executed scripts with their embedded validation logs
 
 **Phase 5: Synthesis & Delivery**
@@ -113,7 +113,7 @@ How skills provide domain knowledge (data source documentation, tool expertise) 
 
 ### Dual-Layer Validation
 
-<!-- MIGRATE: README "Dual-Layer Validation" section (CP1-CP4 and QA1-QA4) -->
+<!-- MIGRATE: README "Dual-Layer Validation" section (CP1-CP4 and QA1-QA4b) -->
 
 How primary validation (embedded in scripts) and secondary QA (independent code reviewer) work together to catch errors.
 
@@ -305,7 +305,7 @@ research/YYYY-MM-DD [Title]/
 │   ├── stage5_fetch/                 # Data retrieval scripts
 │   ├── stage6_clean/                 # Context application scripts
 │   ├── stage7_transform/             # Transformation scripts (may have _a, _b versions)
-│   ├── stage8_viz/                   # Visualization scripts
+│   ├── stage8_analysis/                   # Visualization scripts
 │   └── debug/                        # Debugger diagnostic scripts
 ├── data/
 │   ├── raw/                          # Original data access responses (.parquet)

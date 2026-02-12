@@ -83,7 +83,7 @@ Execute the appropriate checkpoint WITHIN the script, printing results to stdout
 - **After fetch (Stage 5):** CP1 -- shape, types, missingness, year coverage
 - **After clean (Stage 6):** CP2 -- suppression rate, coded values, data loss
 - **After transform (Stage 7):** CP3 -- row counts, new nulls, invariants
-- **After viz (Stage 8):** CP4 -- figure existence, correct data source
+- **After analysis & viz (Stage 8):** CP4 -- statistical analysis results, model convergence, figure existence, correct data source
 
 See `agent_reference/05_VALIDATION_CHECKPOINTS.md` for checkpoint code templates.
 
@@ -119,7 +119,7 @@ Call the skill tool for required skills based on stage:
 | 5 (Fetch) | `data-scientist`, `education-data-query` |
 | 6 (Clean) | `data-scientist`, `education-data-context` |
 | 7 (Transform) | `data-scientist`, `polars` |
-| 8 (Viz) | `data-scientist`, `plotnine` or `plotly` |
+| 8 (Analyze & Viz) | `data-scientist`, `polars`, `plotnine` or `plotly` |
 
 ### Step 3: Write Script
 
@@ -127,7 +127,7 @@ Create the script file FIRST (do NOT execute yet):
 - Use `agent_reference/SCRIPT_TEMPLATE.md` format
 - Save to `scripts/stage{N}_{type}/{step:02d}_{task-name}.py`
 - Include: imports, config, pre-state capture, transformation, post-state capture, inline checkpoint validation, IAT documentation
-- Target directories: `stage5_fetch/`, `stage6_clean/`, `stage7_transform/`, `stage8_viz/`
+- Target directories: `stage5_fetch/`, `stage6_clean/`, `stage7_transform/`, `stage8_analysis/`
 
 ### Step 4: Execute with Capture
 
@@ -320,7 +320,8 @@ If nothing novel, emit "None" -- this is the expected common case.
 | 5 | `scripts/stage5_fetch/*.py` | QA1 | Schema correctness, ID uniqueness, distributions |
 | 6 | `scripts/stage6_clean/*.py` | QA2 | Coded value handling, filtering logic, methodology |
 | 7 | `scripts/stage7_transform/*.py` | QA3 | Join cardinality, aggregation logic, derived columns |
-| 8 | `scripts/stage8_viz/*.py` | QA4 | Figure existence, data source accuracy, labeling |
+| 8.1 | `scripts/stage8_analysis/*_analyze-*.py` | QA4a | Statistical validity, model convergence, result correctness |
+| 8.2 | `scripts/stage8_analysis/*_viz-*.py` | QA4b | Figure existence, data source accuracy, labeling |
 
 See `agent_reference/QA_CHECKPOINTS.md` for complete checkpoint definitions.
 
@@ -434,7 +435,7 @@ Awaiting guidance before proceeding.
 
 **DO NOT execute code you do not understand.** Before running any transformation, ensure you understand what it does, what output it should produce, and what invariants it should preserve. Blindly executing code leads to undetected errors.
 
-**DO NOT attempt Stage 9 notebook assembly.** Your responsibility ends at Stage 8 (visualization scripts). The notebook-assembler agent creates the Marimo notebook by literally copying your script files into cells. Do not generate notebook files or marimo code directly.
+**DO NOT attempt Stage 9 notebook assembly.** Your responsibility ends at Stage 8 (analysis and visualization scripts). The notebook-assembler agent creates the Marimo notebook by literally copying your script files into cells. Do not generate notebook files or marimo code directly.
 
 **DO NOT write transformation code without inline documentation.** Every filter, join, aggregation, and derived column must have comments explaining intent, reasoning, and assumptions. Sparse comments make code unauditable and block QA review. Follow `agent_reference/INLINE_AUDIT_TRAIL.md`.
 
@@ -554,6 +555,6 @@ Load on demand -- do NOT read all at start:
 | `agent_reference/SCRIPT_TEMPLATE.md` | Before writing first script | Standardized script format with stage-specific examples |
 | `agent_reference/INLINE_AUDIT_TRAIL.md` | Before writing first script | IAT documentation standards for inline comments |
 | `agent_reference/05_VALIDATION_CHECKPOINTS.md` | When writing checkpoint code | Python checkpoint code templates (CP1-CP4) |
-| `agent_reference/QA_CHECKPOINTS.md` | When understanding QA expectations | QA checkpoint definitions (QA1-QA4) |
+| `agent_reference/QA_CHECKPOINTS.md` | When understanding QA expectations | QA checkpoint definitions (QA1-QA4b) |
 | `agent_reference/04_BOUNDARIES.md` | When encountering deviation decisions | Complete autonomous deviation rules |
 | `agent_reference/06_ERROR_RECOVERY.md` | When errors occur | Recovery procedures and escalation templates |

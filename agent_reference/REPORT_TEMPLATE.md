@@ -79,7 +79,8 @@ All analysis code underwent secondary QA review during execution:
 | QA1 | Data Fetch | Schema correctness, year coverage, ID uniqueness | PASSED |
 | QA2 | Data Cleaning | Coded value handling, suppression calculation | PASSED |
 | QA3 | Transformation | Join cardinality, row preservation, derived columns | PASSED |
-| QA4 | Visualization | Figure accuracy, data source alignment | PASSED |
+| QA4a | Statistical Analysis | Statistical validity, assumption checks, sample sizes | PASSED |
+| QA4b | Visualization | Figure accuracy, data source alignment | PASSED |
 
 **QA Notes:**
 - [Any resolved BLOCKERs: "A join cardinality issue was identified and corrected during Stage 7"]

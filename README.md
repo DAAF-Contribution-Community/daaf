@@ -278,7 +278,7 @@ Every transformation passes through **two independent validation layers**:
 - CP3: Post-transform (row preservation, join validation)
 - CP4: Pre-output (completeness, Plan alignment)
 
-**2. Secondary QA (QA1-QA4):** Independent code-reviewer agent
+**2. Secondary QA (QA1-QA4b):** Independent code-reviewer agent
 - Creates separate inspection scripts
 - Uses adversarial "skeptical lenses"
 - Can block execution and require revision

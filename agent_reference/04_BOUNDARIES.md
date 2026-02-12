@@ -403,6 +403,7 @@ df = pl.read_parquet("data/raw/2026-01-31_ccd_schools.parquet")
 | **Modifying Aggregation Approach** | Changing from school-level to district-level, altering grouping variables |
 | **Changing Join Strategy** | Switching from inner join to left join, changing join keys |
 | **Altering Population/Sample** | Excluding years not originally planned, filtering to different states |
+| **Changing Model Specification** | Switching regression type, changing dependent/independent variables, altering model assumptions |
 | **Switching Libraries** | Changing from Polars to pandas, switching visualization library |
 | **Schema Changes** | Adding new columns to output, changing output data structure |
 | **Imputation Decisions** | Deciding to impute missing values, choosing imputation method |
@@ -460,6 +461,7 @@ Awaiting your guidance before proceeding.
 | **Validation Gap** | Missing checkpoint, inadequate invariant check | Add validation via revision |
 | **Stub/Placeholder** | TODO, FIXME, pass, NotImplementedError in code | Complete implementation via revision |
 | **Data Corruption** | Output has unexpected nulls, wrong row count | Fix transformation via revision |
+| **Statistical Analysis Issue** | Incorrect regression specification in Stage 8 analysis, wrong model variables, invalid assumptions | Fix via revision (or escalate if methodology change needed) |
 | **Methodology Violation** | Code contradicts Plan specification | STOP → Escalate to user (becomes Rule 4) |
 
 **Process:**

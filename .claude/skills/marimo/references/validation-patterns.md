@@ -414,7 +414,7 @@ These patterns implement the 4 validation checkpoints from the education data wo
 | **CP1: Post-Fetch** | Basic Transform-Validate | After API data retrieval |
 | **CP2: Post-Cleaning** | Multi-Condition Filter | After removing coded values |
 | **CP3: Post-Transformation** | Join/Aggregation patterns | After each transform |
-| **CP4: Pre-Output** | Validation State Tracker | Before analysis/visualization |
+| **CP4: Pre-Output** | Validation State Tracker | Before final output — covers both Stage 8.1 analysis results and Stage 8.2 visualization outputs |
 
 ## Best Practices Summary
 

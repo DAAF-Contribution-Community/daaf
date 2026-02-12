@@ -172,8 +172,8 @@ This diagram shows how agents interact throughout the pipeline:
          v           v                               v           v
     +---------+ +---------+                     +---------+ +---------+
     | Stage 5 | | Stage 6 |                     | Stage 7 | | Stage 8 |
-    | (fetch) | | (clean) |                     | (trans) | |  (viz)  |
-    |   CP1   | |   CP2   |                     |  CP3xN  | |   QA4   |
+    | (fetch) | | (clean) |                     | (trans) | |(ana&viz)|
+    |   CP1   | |   CP2   |                     |  CP3xN  | |QA4a/4b |
     +----+----+ +----+----+                     +----+----+ +----+----+
          |           |                               |           |
          v           v                               v           v
@@ -303,7 +303,7 @@ Shows which agents produce output consumed by other agents:
 | **code-reviewer** | Stage 10 | QA findings log (accumulated WARNINGs) | For aggregation |
 | **debugger** | research-executor | Root cause diagnosis + verified fix + prevention recommendation | After diagnosis |
 | **debugger** | Orchestrator | Escalation (when UNRESOLVED or methodology issue) | Undiagnosed issues |
-| **research-executor** (Stage 8) | notebook-assembler | Scripts + data files + figures | After Stage 8 completes |
+| **research-executor** (Stage 8) | notebook-assembler | Scripts + data files + analysis results + figures | After Stage 8 completes |
 | **notebook-assembler** | integration-checker | Marimo notebook (VERBATIM script copies, NO new code) | After Stage 9 compilation |
 | **integration-checker** | data-verifier | Wiring status (CONNECTED / ISSUES FOUND) | Stages 9, 11, 12 |
 | **data-verifier** | Orchestrator | Verification report (PASSED / ISSUES_FOUND with four-layer evidence) | Before delivery |
@@ -1069,7 +1069,7 @@ Some tasks benefit from combining an agent protocol with skill knowledge:
 | Fetch CCD data (Stage 5) | research-executor | data-scientist, education-data-query |
 | Clean MEPS data (Stage 6) | research-executor | data-scientist, education-data-context |
 | Transform data (Stage 7) | research-executor | data-scientist, polars |
-| Create visualizations (Stage 8) | research-executor | data-scientist, plotnine/plotly |
+| Conduct analyses and create visualizations (Stage 8) | research-executor | data-scientist, polars, plotnine/plotly |
 | Compile notebook (Stage 9) | notebook-assembler | data-scientist, marimo |
 | Generate report (Stage 11) | report-writer | data-scientist |
 | Final verification (Stage 12) | data-verifier | data-scientist |

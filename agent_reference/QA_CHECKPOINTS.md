@@ -7,7 +7,7 @@ This document defines the continuous Quality Assurance checkpoint system that ru
 ## Relationship to CP1-CP4
 
 **CP1-CP4** = Primary validation (inline, during execution)
-**QA1-QA4** = Secondary validation (parallel script, after execution)
+**QA1-QA4b** = Secondary validation (parallel script, after execution)
 
 | Aspect | CP Checkpoints (Primary) | QA Checkpoints (Secondary) |
 |--------|--------------------------|---------------------------|
@@ -43,7 +43,8 @@ The code-reviewer applies five skeptical lenses (Counterfactual, Semantic, Bound
 | **QA1** | After fetch (Stage 5) | Raw data quality | Schema wrong, years missing, unexpected geography |
 | **QA2** | After clean (Stage 6) | Cleaning correctness | Coded values remain, wrong suppression calc |
 | **QA3** | After transform (Stage 7) | Transform validity | Wrong join type, aggregation error, data loss |
-| **QA4** | After viz (Stage 8) | Visualization validity | Missing figures, wrong data plotted |
+| **QA4a** | After analysis & viz (Stage 8) | Statistical validity | Wrong data source, incorrect aggregations, model non-convergence, scale misrepresentation |
+| **QA4b** | After analysis & viz (Stage 8) | Visualization quality | Missing figures, labeling errors, accessibility issues, misleading scales |
 
 ---
 
@@ -374,11 +375,153 @@ Observations from qa1 that should trigger qa2+ investigation:
 
 ---
 
-## QA4: Post-Visualization Quality Assessment
+## QA4a: Post-Analysis Statistical Validity
+
+**Applies To:** Stage 8 scripts (statistical analysis and visualization)
+
+**Purpose:** Verify data is represented accurately, statistical analyses are correct, and no misrepresentation occurs.
+
+### Default Checks
+
+| Check | What It Validates | BLOCKER If |
+|-------|-------------------|------------|
+| Data source accuracy | Correct dataset used | Figure/analysis uses wrong data file |
+| Aggregation correctness | Calculations match script logic | Aggregated values don't match source data |
+| Model convergence | Statistical models converged (if applicable) | Non-convergence without documentation |
+| Assumption validation | Model assumptions checked (if applicable) | Critical assumptions violated without discussion |
+| Coefficient reasonableness | Effect sizes plausible (if applicable) | Coefficients contradict domain knowledge |
+| Robustness consistency | Alternative specs agree (if applicable) | Primary result reverses in robustness check |
+| Axis scale appropriateness | Scales don't distort relationships | Y-axis truncation misleads interpretation |
+| Statistical representation | Visual encoding matches data semantics | Bar chart for continuous data, pie chart for >7 categories |
+
+### QA4a cra1 Script Template
+
+```python
+import polars as pl
+from pathlib import Path
+
+# --- QA4a: Post-Analysis Statistical Validity ---
+print("\n" + "=" * 60)
+print("QA4a: POST-ANALYSIS STATISTICAL VALIDITY")
+print("=" * 60)
+
+qa4a_max_severity = "PASSED"
+
+# Data source accuracy
+print("\nData Source Check:")
+script_path = Path(script_spec["script_path"])
+script_text = script_path.read_text()
+expected_data_source = plan_spec["data_source"]
+if expected_data_source not in script_text:
+    print(f"[BLOCKER] Script does not load expected data source: {expected_data_source}")
+    qa4a_max_severity = "BLOCKER"
+elif "data/raw/" in script_text and "data/processed/" not in script_text:
+    print("[WARNING] Script appears to use raw data instead of processed data")
+    qa4a_max_severity = max(qa4a_max_severity, "WARNING", key=["PASSED", "WARNING", "BLOCKER"].index)
+else:
+    print(f"[PASS] Script loads expected data source")
+
+# Aggregation spot-check
+if "aggregation" in plan_spec:
+    print("\nAggregation Spot-Check:")
+    group_col = plan_spec["aggregation"]["group_by"]
+    agg_col = plan_spec["aggregation"]["column"]
+    sample_group = df[group_col].unique()[0]
+    source_val = source_df.filter(pl.col(group_col) == sample_group)[agg_col].sum()
+    result_val = df.filter(pl.col(group_col) == sample_group)[agg_col].sum()
+    if abs(source_val - result_val) > 0.01 * abs(source_val) and source_val != 0:
+        print(f"[BLOCKER] Aggregation mismatch: source={source_val}, result={result_val}")
+        qa4a_max_severity = "BLOCKER"
+    else:
+        print(f"[PASS] Aggregation verified: source={source_val}, result={result_val}")
+
+# Model convergence (if applicable)
+if "model_results" in plan_spec:
+    print("\nModel Convergence Check:")
+    model_results = plan_spec["model_results"]
+    if model_results.get("converged") is False and not model_results.get("convergence_documented"):
+        print("[BLOCKER] Model did not converge and non-convergence is not documented")
+        qa4a_max_severity = "BLOCKER"
+    elif model_results.get("converged") is False:
+        print("[WARNING] Model did not converge (documented in script)")
+        qa4a_max_severity = max(qa4a_max_severity, "WARNING", key=["PASSED", "WARNING", "BLOCKER"].index)
+    else:
+        print("[PASS] Model converged successfully")
+
+# Assumption validation (if applicable)
+if "assumptions" in plan_spec:
+    print("\nAssumption Validation:")
+    for assumption in plan_spec["assumptions"]:
+        name = assumption["name"]
+        checked = assumption.get("checked", False)
+        violated = assumption.get("violated", False)
+        discussed = assumption.get("discussed", False)
+        if not checked:
+            print(f"[WARNING] Assumption '{name}' not checked")
+            qa4a_max_severity = max(qa4a_max_severity, "WARNING", key=["PASSED", "WARNING", "BLOCKER"].index)
+        elif violated and not discussed:
+            print(f"[BLOCKER] Assumption '{name}' violated without discussion")
+            qa4a_max_severity = "BLOCKER"
+        elif violated and discussed:
+            print(f"[WARNING] Assumption '{name}' violated (discussed in script)")
+            qa4a_max_severity = max(qa4a_max_severity, "WARNING", key=["PASSED", "WARNING", "BLOCKER"].index)
+        else:
+            print(f"[PASS] Assumption '{name}' holds")
+
+# Robustness consistency (if applicable)
+if "robustness_checks" in plan_spec:
+    print("\nRobustness Consistency:")
+    for rob_check in plan_spec["robustness_checks"]:
+        name = rob_check["name"]
+        primary_sign = rob_check.get("primary_sign")
+        alt_sign = rob_check.get("alt_sign")
+        if primary_sign and alt_sign and primary_sign != alt_sign:
+            print(f"[BLOCKER] Result reversal in '{name}': primary sign={primary_sign}, alt sign={alt_sign}")
+            qa4a_max_severity = "BLOCKER"
+        else:
+            print(f"[PASS] Robustness check '{name}' consistent")
+
+# --- Data Profiling (for cra2+ decision) ---
+print("\n" + "=" * 60)
+print("DATA PROFILING")
+print("=" * 60)
+print(f"\nFirst 10 rows:\n{df.head(10)}")
+print(f"\nDescriptive statistics:\n{df.describe()}")
+
+print(f"\nQA4a RESULT: {qa4a_max_severity}")
+print("=" * 60)
+```
+
+### QA4a Discretionary Checks
+
+| Check | When to Add | What It Validates |
+|-------|-------------|-------------------|
+| Effect size plausibility | Regression/causal analysis | Estimated effects within domain-reasonable bounds |
+| Sample size adequacy | Statistical tests | Sufficient N for claimed significance |
+| Multiple comparison adjustment | Multiple hypotheses tested | p-values adjusted appropriately |
+| Outlier influence | Regression analysis | Results not driven by a few extreme observations |
+| **Concrete trace** | **Always (at minimum 5)** — see `agents/code-reviewer.md` for the five required categories | **Pick one data point and verify its representation in the analysis output is accurate** |
+
+**Creative check prompt:** Before writing your QA4a script, ask: *"If the script used the wrong column for a key calculation, or aggregated at the wrong level, how would the output differ from correct output?"* Design at least one check to catch that class of error.
+
+### QA4a Iterative Investigation Triggers
+
+Observations from cra1 that should trigger cra2+ investigation:
+
+| cra1 Observation | Suggested cra2 Investigation |
+|-----------------|---------------------------|
+| Aggregated totals don't match source data sums | Trace: which group(s) account for the discrepancy? Is a filter being applied incorrectly? |
+| Model coefficients have unexpected signs | Investigate: is there multicollinearity, omitted variable bias, or data coding error? |
+| Effect sizes implausibly large or small | Profile: are outliers driving the result? Does winsorization change the conclusion? |
+| Robustness check shows marginal consistency | Deeper analysis: how sensitive is the result to specification choices? |
+
+---
+
+## QA4b: Post-Analysis Visualization Quality
 
 **Applies To:** Stage 8 scripts (visualization)
 
-**Purpose:** Verify visualizations are correct and complete, not just that they were created.
+**Purpose:** Verify visualizations are complete, labeled, accessible, and publication-ready.
 
 ### Default Checks
 
@@ -386,20 +529,25 @@ Observations from qa1 that should trigger qa2+ investigation:
 |-------|-------------------|------------|
 | File existence | All planned figures created | Required figures missing |
 | File size | Figures have content | File size < 10KB (likely empty) |
-| Data source | Correct data plotted | Figure uses wrong data file |
-| Title/labels | Metadata correct | Misleading titles |
+| Title/labels | All axes labeled with units, descriptive title | Missing titles or axis labels |
+| Colorblind-safe palette | Accessible color scheme used | Color-only encoding without texture/shape |
+| COVID period annotation | Years 2020-2022 flagged visually (if present) | COVID years present but not annotated |
+| Legend clarity | Legend present if needed, labels interpretable | Legend missing when required |
+| Resolution | Exported at appropriate DPI | DPI <150 for print-intended figures |
+| Misleading scales | Y-axis starts at 0 for bar charts | Truncated axis distorts interpretation |
 
-### QA4 qa1 Script Template
+### QA4b crb1 Script Template
 
 ```python
 from pathlib import Path
+import re
 
-# --- QA4: Post-Visualization Quality Assessment ---
+# --- QA4b: Post-Analysis Visualization Quality ---
 print("\n" + "=" * 60)
-print("QA4: POST-VISUALIZATION QUALITY ASSESSMENT")
+print("QA4b: POST-ANALYSIS VISUALIZATION QUALITY")
 print("=" * 60)
 
-qa4_max_severity = "PASSED"
+qa4b_max_severity = "PASSED"
 
 # File existence and size check
 expected_figures = viz_spec.get("expected_figures", [])
@@ -408,25 +556,97 @@ for fig_name in expected_figures:
     fig_path = output_dir / "figures" / fig_name
     if not fig_path.exists():
         print(f"[BLOCKER] Not found: {fig_name}")
-        qa4_max_severity = "BLOCKER"
+        qa4b_max_severity = "BLOCKER"
     else:
         size_kb = fig_path.stat().st_size / 1024
         if size_kb < 10:
             print(f"[WARNING] {fig_name} is suspiciously small ({size_kb:.1f} KB)")
-            qa4_max_severity = max(qa4_max_severity, "WARNING", key=["PASSED", "WARNING", "BLOCKER"].index)
+            qa4b_max_severity = max(qa4b_max_severity, "WARNING", key=["PASSED", "WARNING", "BLOCKER"].index)
         else:
             print(f"[PASS] {fig_name} ({size_kb:.1f} KB)")
 
-# --- Data Profiling (for qa2+ decision) ---
-print("\n" + "=" * 60)
-print("DATA PROFILING")
-print("=" * 60)
-print(f"\nFirst 10 rows:\n{df.head(10)}")
-print(f"\nDescriptive statistics:\n{df.describe()}")
+# Title and label check (via script inspection)
+print("\nTitle/Label Check:")
+script_path = Path(script_spec["script_path"])
+script_text = script_path.read_text()
+has_xlabel = bool(re.search(r'(xlab|xlabel|labs\(.*x\s*=|axis_title_x)', script_text))
+has_ylabel = bool(re.search(r'(ylab|ylabel|labs\(.*y\s*=|axis_title_y)', script_text))
+has_title = bool(re.search(r'(ggtitle|title\s*=|labs\(.*title)', script_text))
 
-print(f"\nQA4 RESULT: {qa4_max_severity}")
+if not has_xlabel or not has_ylabel:
+    print(f"[BLOCKER] Missing axis labels")
+    qa4b_max_severity = "BLOCKER"
+else:
+    print("[PASS] Axis labels present in script")
+
+if not has_title:
+    print("[WARNING] No title detected in script")
+    qa4b_max_severity = max(qa4b_max_severity, "WARNING", key=["PASSED", "WARNING", "BLOCKER"].index)
+else:
+    print("[PASS] Title present in script")
+
+# COVID period annotation check
+print("\nCOVID Annotation Check:")
+covid_years = viz_spec.get("covid_years_present", False)
+if covid_years:
+    has_covid = bool(re.search(r'(covid|pandemic|2020.*2022|annotate|vline|geom_rect)', script_text, re.IGNORECASE))
+    if not has_covid:
+        print("[BLOCKER] COVID years (2020-2022) present but not annotated visually")
+        qa4b_max_severity = "BLOCKER"
+    else:
+        print("[PASS] COVID period annotation detected")
+else:
+    print("[PASS] No COVID years in data range")
+
+# Resolution check
+print("\nResolution Check:")
+dpi_match = re.search(r'dpi\s*=\s*(\d+)', script_text)
+if dpi_match:
+    dpi = int(dpi_match.group(1))
+    if dpi < 150:
+        print(f"[WARNING] Low DPI ({dpi}) — may be insufficient for print")
+        qa4b_max_severity = max(qa4b_max_severity, "WARNING", key=["PASSED", "WARNING", "BLOCKER"].index)
+    else:
+        print(f"[PASS] DPI = {dpi}")
+else:
+    print("[WARNING] No explicit DPI setting found")
+    qa4b_max_severity = max(qa4b_max_severity, "WARNING", key=["PASSED", "WARNING", "BLOCKER"].index)
+
+# --- Data Profiling (for crb2+ decision) ---
+print("\n" + "=" * 60)
+print("FIGURES DIRECTORY LISTING")
+print("=" * 60)
+figures_dir = output_dir / "figures"
+if figures_dir.exists():
+    for f in sorted(figures_dir.iterdir()):
+        print(f"  {f.name} ({f.stat().st_size / 1024:.1f} KB)")
+
+print(f"\nQA4b RESULT: {qa4b_max_severity}")
 print("=" * 60)
 ```
+
+### QA4b Discretionary Checks
+
+| Check | When to Add | What It Validates |
+|-------|-------------|-------------------|
+| Aspect ratio | Publication submission | Figure dimensions meet requirements |
+| Font size | Presentation figures | Text readable at intended display size |
+| Annotation accuracy | Annotated plots | Annotation text matches data values |
+| Multi-panel consistency | Faceted plots | Consistent scales across panels |
+| **Visual trace** | **Always (at minimum 5)** — see `agents/code-reviewer.md` for the five required categories | **Pick one data point and verify it appears in the correct position in the figure** |
+
+**Creative check prompt:** Before writing your QA4b script, ask: *"If a figure were missing its legend, had truncated axes, or used a color scheme indistinguishable to colorblind readers, how would I detect that programmatically?"* Design at least one check to catch that class of error.
+
+### QA4b Iterative Investigation Triggers
+
+Observations from crb1 that should trigger crb2+ investigation:
+
+| crb1 Observation | Suggested crb2 Investigation |
+|-----------------|---------------------------|
+| Figure file size varies wildly across expected figures | Investigate: are some figures blank or truncated? |
+| Script has no explicit DPI or size settings | Verify: do output figures meet minimum resolution? |
+| Color palette not from known accessible set | Test: verify redundant encoding (shape/linetype) present |
+| COVID years in data but annotation only on some figures | Audit: which figures include COVID years and which lack annotation? |
 
 ---
 
@@ -504,8 +724,9 @@ scripts/
 │   └── 01_clean-ccd.py
 ├── stage7_transform/
 │   └── 01_join-data.py
-├── stage8_viz/
-│   └── 01_plot-enrollment.py
+├── stage8_analysis/
+│   ├── 01_regression-analysis.py
+│   └── 02_enrollment-plot.py
 ├── cr/                              # Code-review scripts directory (iterative)
 │   ├── stage5_01_cr1.py             # QA1 for Stage 5, Step 01 (standard + profiling)
 │   ├── stage5_01_cr2.py             # QA2: Investigated year coverage anomaly
@@ -513,24 +734,35 @@ scripts/
 │   ├── stage7_01_cr1.py             # QA1 for Stage 7, Step 01
 │   ├── stage7_01_cr2.py             # QA2: Investigated join non-matches
 │   ├── stage7_01_cr3.py             # QA3: Traced 10 entities end-to-end
-│   └── stage8_01_cr1.py             # QA1 for Stage 8, Step 01
+│   ├── stage8_01_cra1.py            # QA4a (statistical validity) for Stage 8, Step 01
+│   └── stage8_02_crb1.py            # QA4b (visualization quality) for Stage 8, Step 02
 └── debug/
     └── ...
 ```
 
 ### Naming Convention
 
-**Pattern:** `stage{N}_{step:02d}_cr{iteration}.py`
+**Standard pattern (Stages 5-7):** `stage{N}_{step:02d}_cr{iteration}.py`
 
 | Component | Description | Example |
 |-----------|-------------|---------|
-| `stage{N}` | Stage number (5, 6, 7, 8) | `stage7` |
+| `stage{N}` | Stage number (5, 6, 7) | `stage7` |
 | `{step}` | Step number from reviewed script | `01`, `02` |
 | `_cr{iteration}` | QA script suffix with iteration number (1-5) | `_cr1`, `_cr2` |
+
+**Stage 8 pattern (split QA):** `stage8_{step:02d}_cr{a|b}{iteration}.py`
+
+| Component | Description | Example |
+|-----------|-------------|---------|
+| `stage8` | Stage 8 (analysis & visualization) | `stage8` |
+| `{step}` | Step number from reviewed script | `01`, `02` |
+| `_cra{iteration}` | QA4a (statistical validity) suffix | `_cra1`, `_cra2` |
+| `_crb{iteration}` | QA4b (visualization quality) suffix | `_crb1`, `_crb2` |
 
 **Examples:**
 - Script `01_fetch-ccd.py` in Stage 5 → `stage5_01_cr1.py` (first iteration), `stage5_01_cr2.py` (if needed)
 - Script `02_aggregate.py` in Stage 7 → `stage7_02_cr1.py`
+- Script `01_regression-analysis.py` in Stage 8 → `stage8_01_cra1.py` (QA4a), `stage8_01_crb1.py` (QA4b)
 
 ---
 
@@ -625,7 +857,8 @@ QA checkpoints can trigger STOP conditions that prevent proceeding:
 | BLOCKER after 2 revision scripts (_a.py, _b.py) | Any | STOP, escalate to user |
 | Methodology violation | Any | STOP, escalate immediately |
 | Data corruption detected | QA3 | STOP, invoke debugger |
-| Missing critical output | QA4 | STOP, revision required |
+| Statistical misrepresentation detected | QA4a | STOP, revision required |
+| Missing critical figures | QA4b | STOP, revision required |
 | QA script execution fails | Any | STOP, investigate |
 
 ---

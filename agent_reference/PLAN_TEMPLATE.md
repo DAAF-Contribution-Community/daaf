@@ -487,7 +487,7 @@ If analysis includes 2020 or 2021 data, CP1 Check 7 will flag this automatically
 - Stage 5 (fetch) → `scripts/stage5_fetch/`
 - Stage 6 (clean) → `scripts/stage6_clean/`
 - Stage 7 (transform) → `scripts/stage7_transform/`
-- Stage 8 (viz) → `scripts/stage8_viz/`
+- Stage 8 (analysis & viz) → `scripts/stage8_analysis/`
 
 #### Wave Execution Rules
 
@@ -771,6 +771,35 @@ done: Transformation validated, PASSED status reported
 
 ### Stage 8 Tasks
 
+#### Stage 8.1: Statistical Analysis Tasks
+
+<task name="analyze-[description]">
+files:
+  - input: data/processed/YYYY-MM-DD_[description].parquet
+  - output: output/analysis/YYYY-MM-DD_[analysis-name].parquet
+action: |
+  1. Call data-scientist and polars skills
+  2. Load analysis dataset
+  3. Perform statistical analysis:
+     - Type: [descriptive/comparative/regression/correlation]
+     - Variables: [target and predictor variables]
+     - Grouping: [if applicable]
+  4. Validate results:
+     - Sample sizes adequate for chosen method
+     - Assumptions checked (normality, homoscedasticity, etc.)
+     - Effect sizes calculated alongside significance tests
+  5. Save results to output/analysis/
+verify: |
+  - Output file exists at expected path
+  - Results contain expected columns/metrics
+  - Sample sizes documented
+  - No unexpected NAs in result columns
+  - Statistical assumptions validated or violations documented
+done: Analysis results saved to output/analysis/, assumptions documented
+</task>
+
+#### Stage 8.2: Visualization Tasks
+
 <task name="visualize-[description]">
 files:
   - input: data/processed/YYYY-MM-DD_[description].parquet
@@ -852,6 +881,19 @@ Before finalizing each task above, verify:
 6. **Data Sources** — Full citations
 
 > **Note:** The report-writer agent (Stage 11) uses this Output Specification to structure the final report. The Observable Truths section is particularly critical — each truth is cross-checked against Key Findings in the report.
+
+### Analysis Requirements
+
+| Analysis | Type | Purpose | Output File |
+|----------|------|---------|-------------|
+| [e.g., Poverty-enrollment correlation] | [Correlation/Regression/Descriptive/Comparative] | [What question it answers] | `YYYY-MM-DD_[analysis-name].parquet` |
+
+#### Modeling Decisions
+
+| Decision | Choice | Rationale |
+|----------|--------|-----------|
+| [e.g., Correlation method] | [e.g., Spearman rank] | [e.g., Non-normal distribution of poverty rates] |
+| [e.g., Outlier treatment] | [e.g., Winsorize at 1st/99th percentile] | [e.g., Extreme values from data entry errors] |
 
 ### Visualization Requirements
 
@@ -1029,7 +1071,8 @@ and QA reviewers understand what was intentionally accepted.*
 | QA1 (Post-Fetch) | 5 | [count] | [count] | [count] | [count] | [count] |
 | QA2 (Post-Clean) | 6 | [count] | [count] | [count] | [count] | [count] |
 | QA3 (Post-Transform) | 7 | [count] | [count] | [count] | [count] | [count] |
-| QA4 (Post-Viz) | 8 | [count] | [count] | [count] | [count] | [count] |
+| QA4a (Post-Analysis) | 8.1 | [count] | [count] | [count] | [count] | [count] |
+| QA4b (Post-Viz) | 8.2 | [count] | [count] | [count] | [count] | [count] |
 | **Total** | — | [sum] | [sum] | [sum] | [sum] | [sum] |
 
 ### BLOCKERs Resolved
@@ -1156,6 +1199,6 @@ and QA reviewers understand what was intentionally accepted.*
 | Fetch Scripts | `research/YYYY-MM-DD [Title]/scripts/stage5_fetch/*.py` | Data retrieval code |
 | Clean Scripts | `research/YYYY-MM-DD [Title]/scripts/stage6_clean/*.py` | Context application code |
 | Transform Scripts | `research/YYYY-MM-DD [Title]/scripts/stage7_transform/*.py` | Transformation code |
-| Viz Scripts | `research/YYYY-MM-DD [Title]/scripts/stage8_viz/*.py` | Visualization code |
+| Analysis & Viz Scripts | `research/YYYY-MM-DD [Title]/scripts/stage8_analysis/*.py` | Statistical analysis and visualization code |
 | **QA Scripts** | `research/YYYY-MM-DD [Title]/scripts/cr/*.py` | **QA inspection scripts from code-reviewer** |
 | Debug Scripts | `research/YYYY-MM-DD [Title]/scripts/debug/*.py` | Diagnostic scripts (if any) |

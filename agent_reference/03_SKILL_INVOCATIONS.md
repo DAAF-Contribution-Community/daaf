@@ -1089,16 +1089,146 @@ Return the Polars code to accomplish this, with validation.""",
 
 ---
 
-### plotnine
+### Stage 8.1: Statistical Analysis
+
+**Purpose:** Run statistical analyses (regression, hypothesis tests, model fitting)
+**Stage:** 8.1 (Statistical Analysis)
+**Subagent:** general-purpose
+**Skills:** `data-scientist`, `polars`
+
+```python
+# ITERATIVE INVOCATION PATTERN (Required for Stage 8.1)
+# Execute each analysis task ONE AT A TIME, not all at once
+
+Task({
+    description: "Stage 8.1: Statistical Analysis - {analysis_name}",
+    prompt: """You are a Research Executor. Follow the protocol in `{BASE_DIR}/agents/research-executor.md`.
+
+**BASE_DIR:** {BASE_DIR}
+All relative paths in referenced files resolve from BASE_DIR.
+
+Call the skill tool with name 'data-scientist'.
+Then, call the skill tool with name 'polars'.
+
+**IMPORTANT:** This is script-based execution, NOT marimo. Write analysis to script files following `{BASE_DIR}/agent_reference/SCRIPT_TEMPLATE.md`.
+
+**DATA LOCATION:** data/processed/{analysis_data_filename}
+
+## ANALYSIS SPECIFICATION (from Plan)
+
+**Model Type:** {model_type} (e.g., OLS regression, logistic regression, t-test, ANOVA, chi-square)
+**Hypothesis:** {hypothesis_statement}
+**Dependent Variable(s):** {dv_list}
+**Independent Variable(s):** {iv_list}
+**Control Variable(s):** {control_list_or_none}
+
+**Robustness Strategy:**
+- {robustness_check_1} (e.g., alternate specification, sensitivity analysis)
+- {robustness_check_2} (e.g., subset analysis, different controls)
+
+**Assumption Validation:**
+- {assumption_1} (e.g., normality of residuals, homoscedasticity)
+- {assumption_2} (e.g., multicollinearity check via VIF)
+- {assumption_3_if_applicable}
+
+## PRIOR TRANSFORMATION CONTEXT (REQUIRED)
+
+### From Stage 7 (Final Dataset):
+- Data shape: {final_rows} rows × {final_cols} columns
+- Key distributions: {distribution_summary}
+- Data quality notes: {quality_notes}
+
+### Carry-Forward Findings:
+{from_prior_stage_reports}
+- {finding_1}
+- {finding_2}
+
+---
+
+**OUTPUT LOCATIONS:**
+- Statistical results: output/analysis/{date_prefix}_{analysis_name}.parquet
+- Summary tables: output/analysis/{date_prefix}_{analysis_name}_summary.parquet
+- Figures (if produced): output/figures/{date_prefix}_{analysis_name}_{plot_type}.png
+
+**RISK REGISTER ITEMS FOR THIS TASK:**
+| Risk | Likelihood | Impact | Mitigation | Watch For |
+|------|------------|--------|------------|-----------|
+| {risk_name} | {L/M/H} | {L/M/H} | {specific_action} | {symptom_to_monitor} |
+
+During execution, ACTIVELY MONITOR for watch-for symptoms. Escalate if detected.
+
+**EXECUTION PROTOCOL:**
+1. **DESCRIBE:** State the model specification and expected outcome
+2. **VALIDATE ASSUMPTIONS:** Run assumption checks BEFORE fitting model
+3. **FIT MODEL:** Execute primary analysis
+4. **ROBUSTNESS:** Run robustness checks
+5. **VALIDATE:** Verify results are interpretable and consistent
+6. **SAVE:** Export results to output/analysis/
+
+**THOROUGHNESS DIRECTIVE:**
+- Validate ALL model assumptions before interpreting results
+- Report assumption violations explicitly (do NOT ignore)
+- Include effect sizes alongside p-values
+- Run at least one robustness check
+- Save all results as parquet for downstream use
+- If producing figures, save to output/figures/
+
+**OUTPUT FORMAT:**
+Return analysis report:
+
+### Statistical Analysis: {analysis_name}
+**Model:** {model_type}
+**Hypothesis:** {hypothesis}
+
+**Assumption Checks:**
+| Assumption | Test | Result | Status |
+|------------|------|--------|--------|
+| {assumption} | {test_name} | {value} | PASS/FAIL/WARNING |
+
+**Primary Results:**
+- {key_result_1}
+- {key_result_2}
+- Effect size: {effect_size}
+
+**Robustness Checks:**
+| Check | Result | Consistent with Primary? |
+|-------|--------|------------------------|
+| {check_name} | {result} | Yes/No |
+
+**Files Created:**
+- `output/analysis/{filename}`: {description}
+- `output/figures/{filename}`: {description} (if applicable)
+
+**Status:** PASSED | FAILED | WARNING
+If FAILED: [issue description and proposed fix]
+
+Do NOT proceed to next analysis task. Return to orchestrator for approval.""",
+    subagent_type: "general-purpose"
+})
+```
+
+#### QA Follow-Up for Stage 8.1 (MANDATORY)
+
+**After research-executor completes each Stage 8.1 analysis script, orchestrator MUST invoke code-reviewer.**
+Use the **code-reviewer invocation template** below (see "code-reviewer (QA Agent)" section)
+with stage-specific values for Stage 8. Use **QA4a** (statistical validity) for the analysis script.
+
+**If the analysis script also produced figures**, invoke code-reviewer again with **QA4b** (visualization quality) for those figures.
+
+**Do NOT proceed to the next analysis task until QA4a returns PASSED or WARNING.**
+
+---
+
+### Stage 8.2: Visualization — plotnine
 
 **Purpose:** Static visualizations (ggplot2 style)
-**Stage:** 8 (Visualization)
+**Stage:** 8.2 (Visualization)
 **Subagent:** general-purpose
 **Skills:** `data-scientist`, `plotnine`
 
 ```python
 Task({
-    description: "Stage 8: Visualization - Static Plots",
+    description: "Stage 8.2: Visualization - Static Plots",
     prompt: """You are a Research Executor. Follow the protocol in `{BASE_DIR}/agents/research-executor.md`.
 
 **BASE_DIR:** {BASE_DIR}
@@ -1130,16 +1260,16 @@ Return the plotting code and confirm files are saved.""",
 
 ---
 
-### plotly
+### Stage 8.2: Visualization — plotly
 
 **Purpose:** Interactive visualizations
-**Stage:** 8 (Visualization)
+**Stage:** 8.2 (Visualization)
 **Subagent:** general-purpose
 **Skills:** `data-scientist`, `plotly`
 
 ```python
 Task({
-    description: "Stage 8: Visualization - Interactive Plots",
+    description: "Stage 8.2: Visualization - Interactive Plots",
     prompt: """You are a Research Executor. Follow the protocol in `{BASE_DIR}/agents/research-executor.md`.
 
 **BASE_DIR:** {BASE_DIR}
@@ -1168,13 +1298,13 @@ Return the plotting code and confirm files are saved.""",
 })
 ```
 
-#### QA Follow-Up for Stage 8 (MANDATORY)
+#### QA Follow-Up for Stage 8.2 (MANDATORY)
 
-**After research-executor completes visualization scripts, orchestrator MUST invoke code-reviewer.**
+**After research-executor completes each Stage 8.2 visualization script, orchestrator MUST invoke code-reviewer.**
 Use the **code-reviewer invocation template** below (see "code-reviewer (QA Agent)" section)
-with stage-specific values for Stage 8.
+with stage-specific values for Stage 8. Use **QA4b** (visualization quality) for visualization scripts.
 
-**Do NOT proceed to Stage 9 until QA returns PASSED or WARNING for all visualization scripts.**
+**Do NOT proceed to Stage 9 until QA4b returns PASSED or WARNING for all visualization scripts.**
 
 ---
 
@@ -1220,7 +1350,7 @@ scripts/
 ├── stage5_fetch/   ← Read each .py file
 ├── stage6_clean/   ← Read each .py file
 ├── stage7_transform/ ← Read each .py file
-└── stage8_viz/     ← Read each .py file
+└── stage8_analysis/ ← Read each .py file
 
 ## FOR EACH SCRIPT, CREATE EXACTLY 4 CELLS
 
@@ -1318,13 +1448,13 @@ Return comprehensive EDA findings and validated transformation code.""",
 
 ---
 
-### Combined Visualization (Stage 8)
+### Combined Visualization (Stage 8.2)
 
 When both static and interactive plots are needed:
 
 ```python
 Task({
-    description: "Stage 8: Visualization",
+    description: "Stage 8.2: Visualization - Combined",
     prompt: """You are a Research Executor. Follow the protocol in `{BASE_DIR}/agents/research-executor.md`.
 
 **BASE_DIR:** {BASE_DIR}
@@ -1354,7 +1484,7 @@ Return all plotting code and confirm files saved.""",
 ### code-reviewer (QA Agent)
 
 **Purpose:** Secondary QA review of executed scripts
-**Stage:** 5-QA, 6-QA, 7-QA, 8-QA (after each script execution)
+**Stage:** 5-QA, 6-QA, 7-QA, 8-QA (after each script execution; Stage 8 uses QA4a for analysis, QA4b for visualization)
 **Subagent:** general-purpose
 
 **Invocation Timing:** After research-executor completes each script (after CP validation passes).

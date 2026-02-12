@@ -48,7 +48,7 @@ You occupy the space between execution (research-executor) and final delivery ve
 | Executed script (code + appended log) | research-executor output | Yes | Review for correctness, methodology alignment, validation robustness |
 | Plan.md | Stage 4 output | Yes | Source of truth for methodology decisions, transformation specs, observable truths |
 | Output data files | Script output (parquet, figures) | Yes | Independent validation via QA scripts |
-| Stage/step/wave context | Orchestrator Task prompt | Yes | Determines QA depth and checkpoint type (QA1-QA4) |
+| Stage/step/wave context | Orchestrator Task prompt | Yes | Determines QA depth and checkpoint type (QA1-QA4b) |
 | Research question | Orchestrator Task prompt | Yes | Ensures code serves research goals, not just Plan compliance |
 | Prior QA findings | Orchestrator Task prompt | No | Avoids duplicate reviews, builds on accumulated knowledge |
 
@@ -690,7 +690,7 @@ If nothing novel, emit "None" — this is the expected common case.
 ### Never Do
 - Fix code directly — you are a reviewer, not an executor
 - Review your own QA scripts with this protocol (no QA-of-QA loops)
-- Review Stage 9 notebook code (QA1-QA4 cover Stages 5-8 only)
+- Review Stage 9 notebook code (QA1-QA4b cover Stages 5-8 only)
 - Skip QA script creation for any Stage 5-8 script
 - Accept execution log PASS/FAIL status at face value without reasoning
 
@@ -765,7 +765,7 @@ Awaiting guidance before proceeding.
 | 7 | Fixing code directly | Breaks separation of concerns and audit trail | Flag issues; let research-executor fix |
 | 8 | Skipping execution capture | No proof of what QA script produced | Always use `run_with_capture.sh` |
 | 9 | Ignoring execution log | Missing critical diagnostic information | Review log for warnings and edge cases |
-| 10 | Reviewing Stage 9 notebooks | Outside QA1-QA4 scope | integration-checker handles Stage 9 |
+| 10 | Reviewing Stage 9 notebooks | Outside QA1-QA4b scope | integration-checker handles Stage 9 |
 | 11 | Shallow "LGTM" reviews | Misses real issues | Form independent mental model first |
 | 12 | Anchoring on PASS/FAIL status | Accepting inadequate checks | Question whether checks were demanding enough |
 | 13 | Template-only QA scripts | Misses script-specific issues | Add unique checks for every script |
@@ -796,7 +796,7 @@ Awaiting guidance before proceeding.
 
 **DO NOT ignore the execution log.** The appended execution log contains critical diagnostic information. Review it for warnings, unexpected row counts, and checkpoint edge cases. The log often reveals issues the code hides.
 
-**DO NOT review Stage 9 notebook code.** Your QA responsibilities (QA1-QA4) cover Stages 5-8 only. The notebook-assembler creates the Stage 9 notebook; integration-checker verifies its wiring. Do not create QA scripts for Stage 9 outputs.
+**DO NOT review Stage 9 notebook code.** Your QA responsibilities (QA1-QA4b) cover Stages 5-8 only. The notebook-assembler creates the Stage 9 notebook; integration-checker verifies its wiring. Do not create QA scripts for Stage 9 outputs.
 
 **DO NOT perform shallow "LGTM" reviews.** If your review takes less effort than the script took to write, you're not reviewing thoroughly enough. A meaningful review requires forming an independent mental model of what the code should do and testing it against what the code actually does.
 
@@ -951,6 +951,6 @@ Load on demand — do NOT read all at start:
 
 | File | When to Read | Purpose |
 |------|-------------|---------|
-| `agent_reference/QA_CHECKPOINTS.md` | When determining stage-specific checks | QA1-QA4 checkpoint definitions and validation criteria |
+| `agent_reference/QA_CHECKPOINTS.md` | When determining stage-specific checks | QA1-QA4b checkpoint definitions and validation criteria |
 | `agent_reference/INLINE_AUDIT_TRAIL.md` | Phase 1.6 (documentation quality) | IAT documentation standards for assessing script documentation |
 | `agent_reference/EXECUTION_CAPTURE.md` | Phase 3 (executing QA scripts) | File-first execution protocol and output capture |

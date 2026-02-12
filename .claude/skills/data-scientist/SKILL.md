@@ -124,10 +124,12 @@ Closely read `agent_reference/EXECUTION_CAPTURE.md` for the mandatory file-first
 **Load for Specific Needs:**
 ```
 What task are you performing?
+├─ Statistical analysis (regression, robustness checks)
+│   └─ Stage 8.1 — use data-scientist methodology + polars for data prep
 ├─ Static visualization (publication-ready plots)
-│   └─ Load `plotnine` skill for grammar of graphics
+│   └─ Stage 8.2 — Load `plotnine` skill for grammar of graphics
 ├─ Interactive visualization (hover, zoom, select)
-│   └─ Load `plotly` skill for interactive charts
+│   └─ Stage 8.2 — Load `plotly` skill for interactive charts
 ```
 
 **For Domain-Specific Analysis (e.g., CCD Education Data):**

@@ -101,7 +101,7 @@ For each stage, track what it provides and consumes:
 | Stage 5 | `data/raw/*.parquet` | (mirror access) |
 | Stage 6 | `data/processed/*.parquet` | `data/raw/*.parquet` |
 | Stage 7 | `data/processed/*_analysis.parquet` | `data/processed/*.parquet` |
-| Stage 8 | `output/figures/*.png` | analysis data |
+| Stage 8 | `output/figures/*.png`, `output/analysis/*.parquet` | analysis data |
 | Stage 9 | `notebook.py` | All processed data, figures |
 | Stage 11 | `Report.md` | Figures, notebook findings |
 
@@ -186,8 +186,8 @@ For each stage transition, confirm exports-to-imports alignment:
 |------------|----------------|--------------|--------------|
 | 5 -> 6 | `data/raw/*.parquet` | Stage 6 scripts | Script loads from data/raw/ |
 | 6 -> 7 | `data/processed/*.parquet` | Stage 7 scripts | Script loads from data/processed/ |
-| 7 -> 8 | Analysis DataFrames | Stage 8 scripts | Visualization uses analysis data |
-| 8 -> 9 | `output/figures/*.png` | Notebook | Notebook references figures |
+| 7 -> 8 | Analysis DataFrames | Stage 8 scripts | Analysis and visualization use analysis data |
+| 8 -> 9 | `output/figures/*.png`, `output/analysis/*.parquet` | Notebook | Notebook references figures and analysis outputs |
 | 9 -> 11 | Notebook findings | Report | Report references notebook outputs |
 
 ### Step 4: Trace End-to-End Flow

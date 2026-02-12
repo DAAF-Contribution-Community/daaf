@@ -69,15 +69,17 @@ research/YYYY-MM-DD [Title]/
 │   │   ├── 01_initial-eda.py
 │   │   ├── 02_join-data.py
 │   │   └── 03_aggregate.py
-│   ├── stage8_viz/             # Visualization scripts
-│   │   └── 01_enrollment-plot.py
+│   ├── stage8_analysis/        # Analysis & visualization scripts
+│   │   ├── 01_regression-poverty.py
+│   │   └── 02_enrollment-plot.py
 │   ├── cr/                     # QA inspection scripts (iterative)
 │   │   ├── stage5_01_cr1.py    # CR for 01_fetch-ccd.py (standard + profiling)
 │   │   ├── stage5_01_cr2.py    # (investigated year coverage anomaly)
 │   │   ├── stage5_02_cr1.py    # CR for 02_fetch-meps.py
 │   │   ├── stage6_01_cr1.py    # CR for 01_clean-ccd.py
 │   │   ├── stage7_02_cr1.py    # CR for 02_join-data.py
-│   │   └── stage8_01_cr1.py    # CR for 01_enrollment-plot.py
+│   │   ├── stage8_01_cra1.py   # QA4a (statistical validity) for 01_regression-poverty.py
+│   │   └── stage8_02_crb1.py   # QA4b (viz quality) for 02_enrollment-plot.py
 │   └── debug/                  # Debugger diagnostic scripts
 │       └── 01_diag-key-mismatch.py
 ```
@@ -104,14 +106,18 @@ research/YYYY-MM-DD [Title]/
 
 | Component | Source | Format |
 |-----------|--------|--------|
-| `stage{N}` | Stage number (5, 6, 7, 8) | single digit |
+| `stage{N}` | Stage number (5, 6, 7, 8) | single digit (Stage 8 uses `cra`/`crb` — see below) |
 | `step` | Step number of the reviewed script | 2-digit zero-padded |
 | `_cr{iteration}` | QA script suffix with iteration (1-5) | `_cr1`, `_cr2`, etc. |
 
 **Examples:**
 - QA for `01_fetch-ccd.py` (Stage 5) → `stage5_01_cr1.py` (first iteration), `stage5_01_cr2.py` (if needed)
 - QA for `02_join-data.py` (Stage 7) → `stage7_02_cr1.py`
-- QA for `01_enrollment-plot.py` (Stage 8) → `stage8_01_cr1.py`
+- QA for `01_enrollment-plot.py` (Stage 8 viz) → `stage8_01_crb1.py`
+
+**Stage 8 QA Split:** Stage 8 uses separate QA prefixes for analysis (QA4a) and visualization (QA4b):
+- QA4a for `01_regression-poverty.py` (Stage 8.1 analysis) → `stage8_01_cra1.py`
+- QA4b for `02_enrollment-plot.py` (Stage 8.2 viz) → `stage8_02_crb1.py`
 
 **QA scripts are created by code-reviewer** and saved in `scripts/cr/`.
 
@@ -965,7 +971,7 @@ df = df_ccd.join(df_meps, on="ncessch", how="inner")
 
 QA scripts are created by **code-reviewer** to validate outputs independently from the original execution script.
 
-**Reference:** See `agent_reference/QA_CHECKPOINTS.md` for complete QA checkpoint definitions (QA1-QA4) and stage-specific validation criteria.
+**Reference:** See `agent_reference/QA_CHECKPOINTS.md` for complete QA checkpoint definitions (QA1-QA4b) and stage-specific validation criteria.
 
 ### QA Script Structure
 

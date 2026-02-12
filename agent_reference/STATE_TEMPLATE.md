@@ -39,14 +39,15 @@ Copy this template to `STATE.md` in the project folder when starting a Full Pipe
 | CP3 (Post-Transform) | [PENDING/PASSED/FAILED] | [time] | [notes] |
 | CP4 (Pre-Output) | [PENDING/PASSED/FAILED] | [time] | [notes] |
 
-### Secondary Validation (QA1-QA4)
+### Secondary Validation (QA1-QA4b)
 
 | Checkpoint | Stage | Status | BLOCKERs | WARNINGs | Revisions | Timestamp |
 |------------|-------|--------|----------|----------|-----------|-----------|
 | QA1 (Post-Fetch) | 5 | [PENDING/PASSED/ISSUES] | [count] | [count] | [count] | [time] |
 | QA2 (Post-Clean) | 6 | [PENDING/PASSED/ISSUES] | [count] | [count] | [count] | [time] |
 | QA3 (Post-Transform) | 7 | [PENDING/PASSED/ISSUES] | [count] | [count] | [count] | [time] |
-| QA4 (Post-Viz) | 8 | [PENDING/PASSED/ISSUES] | [count] | [count] | [count] | [time] |
+| QA4a (Post-Analysis) | 8.1 | [PENDING/PASSED/ISSUES] | [count] | [count] | [count] | [time] |
+| QA4b (Post-Viz) | 8.2 | [PENDING/PASSED/ISSUES] | [count] | [count] | [count] | [time] |
 
 **QA Status Values:**
 - **PENDING** — QA checkpoint not yet executed for this stage
@@ -148,7 +149,7 @@ Copy this template to `STATE.md` in the project folder when starting a Full Pipe
 | 5 (Fetch) | [N] | [N] | [N] | [N] |
 | 6 (Clean) | [N] | [N] | [N] | [N] |
 | 7 (Transform) | [N] | [N] | [N] | [N] |
-| 8 (Viz) | [N] | [N] | [N] | [N] |
+| 8 (Analyze & Viz) | [N] | [N] | [N] | [N] |
 
 ### Session Total
 | Resource | Used | Limit | Remaining |

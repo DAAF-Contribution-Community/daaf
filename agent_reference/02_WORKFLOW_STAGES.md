@@ -19,7 +19,7 @@ This document provides detailed execution guidance for each of the 12 stages (pl
 | 5 | 3 | Data Retrieval | `education-data-query` | general-purpose |
 | 6 | 3 | Context Application | `education-data-context` | general-purpose |
 | 7 | 4 | EDA & Transformation | `data-scientist`, `polars` | general-purpose |
-| 8 | 4 | Visualization | `plotnine`, `plotly` | general-purpose |
+| 8 | 4 | Analysis & Visualization | `data-scientist`, `polars`, `plotnine`, `plotly` | general-purpose |
 | 9 | 4 | Notebook Assembly | `marimo` | general-purpose |
 | 10 | 4 | QA Aggregation | `data-scientist` | general-purpose |
 | 11 | 5 | Report Generation | `report-writer` agent | general-purpose |
@@ -38,7 +38,9 @@ This document provides detailed execution guidance for each of the 12 stages (pl
 | 6 | 6.1 clean-ccd | 6.1-QA | code-reviewer |
 | 7 | 7.1 join-data | 7.1-QA | code-reviewer |
 | 7 | 7.2 aggregate | 7.2-QA | code-reviewer |
-| 8 | 8.1 plot-enrollment | 8.1-QA | code-reviewer |
+| 8 | 8.1.1 regression-analysis | 8.1.1-QA (QA4a) | code-reviewer |
+| 8 | 8.1.2 effect-sizes | 8.1.2-QA (QA4a) | code-reviewer |
+| 8 | 8.2.1 plot-enrollment | 8.2.1-QA (QA4b) | code-reviewer |
 
 ### QA Substage Flow
 
@@ -485,6 +487,7 @@ Consolidate these parallel findings into a unified context for Plan creation.
    │   ├── raw/
    │   └── processed/
    └── output/
+       ├── analysis/
        └── figures/
    ```
 
@@ -569,7 +572,7 @@ Incomplete transformation sequences lead to incomplete validation and unreliable
 - [ ] **STATE.md created** at `research/[folder]/STATE.md` (MANDATORY — Gate G4)
 - [ ] **LEARNINGS.md skeleton created** at `research/[folder]/LEARNINGS.md` (MANDATORY — Gate G4)
 - [ ] **Plan Completeness Gate passed** (all sections verified)
-- [ ] Project folder structure created (`data/raw/`, `data/processed/`, `output/figures/`)
+- [ ] Project folder structure created (`data/raw/`, `data/processed/`, `output/analysis/`, `output/figures/`)
 - [ ] User notified
 - [ ] Ready to proceed unless user objects
 
@@ -1089,37 +1092,72 @@ MANDATORY EXECUTION PATTERN:
 
 ---
 
-## Stage 8: Visualization
+## Stage 8: Analysis & Visualization
 
-**Executor:** Subagent (general-purpose)
-**Skills:** `plotnine`, `plotly`
-**Purpose:** Create visualizations specified in Plan
+**Executor:** Subagent (general-purpose) — ITERATIVE INVOCATION REQUIRED
+**Skills:** `data-scientist`, `polars` (Stage 8.1), `plotnine`, `plotly` (Stage 8.2)
+**Purpose:** Conduct final statistical analyses on the analysis dataset AND generate visualizations specified in Plan
 
-### Actions
+### Execution Pattern
 
-1. **Create Exploratory Plots**
-   - Distributions
-   - Relationships
-   - Patterns
+**Stage 8 is split into 2 sub-stages, executed sequentially:**
 
-2. **Create Final Visualizations**
-   - As specified in Plan
-   - Publication-quality
+```
+Stage 8.1.x: Statistical Analysis (one script per analysis task)
+    ↓  QA4a after each script
+Stage 8.2.x: Visualization (one script per visualization task)
+    ↓  QA4b after each script
+```
 
-3. **Export Figures**
-   - PNG format
-   - Appropriate dimensions
-   - Location: `output/figures/`
+#### Stage 8.1: Statistical Analysis
 
-4. **>>> INVOKE code-reviewer (MANDATORY) <<<**
-   - After research-executor completes visualization scripts, orchestrator MUST invoke code-reviewer
-   - Pass: script path, output figures, Plan location
-   - Wait for QA result before proceeding to Stage 9
+**Purpose:** Run statistical analyses specified in the Plan (regressions, correlations, group comparisons, effect sizes, etc.)
+
+**Input:** Analysis dataset from Stage 7 (`data/processed/[date]_analysis.parquet`)
+**Output:** Statistical results saved as parquet to `output/analysis/`
+
+**Actions:**
+1. **Load analysis dataset** — Verify schema matches Plan expectations
+2. **Execute analysis tasks** — One script per analysis task from Plan's Transformation Sequence
+3. **Validate assumptions** — Check statistical assumptions before applying methods
+4. **Save results** — Parquet format to `output/analysis/`
+5. **>>> INVOKE code-reviewer (MANDATORY, QA4a) <<<**
+   - After EACH analysis script, orchestrator MUST invoke code-reviewer
+   - QA4a validates: statistical methodology, assumption checks, result plausibility
    - If BLOCKER: trigger revision flow (max 2 attempts)
    - If WARNING: log to STATE.md, proceed
-   - If PASSED: proceed to Stage 9
+   - If PASSED: proceed to next analysis task or Stage 8.2
 
-### Visualization Patterns
+#### Stage 8.2: Visualization
+
+**Purpose:** Create visualizations specified in Plan, informed by Stage 8.1 results
+
+**Input:** Analysis dataset from Stage 7 + statistical results from Stage 8.1
+**Output:** Figures saved to `output/figures/`
+
+**Actions:**
+1. **Create exploratory plots** — Distributions, relationships, patterns
+2. **Create final visualizations** — As specified in Plan, publication-quality
+3. **Export figures** — PNG format, appropriate dimensions, to `output/figures/`
+4. **>>> INVOKE code-reviewer (MANDATORY, QA4b) <<<**
+   - After EACH visualization script, orchestrator MUST invoke code-reviewer
+   - QA4b validates: figure existence, data source accuracy, labeling, visual clarity
+   - If BLOCKER: trigger revision flow (max 2 attempts)
+   - If WARNING: log to STATE.md, proceed
+   - If PASSED: proceed to next visualization task or Stage 9
+
+### Analysis Principles
+
+```
+- Validate statistical assumptions BEFORE applying methods (normality, homoscedasticity, etc.)
+- Document all methodology decisions with rationale in script comments (IAT)
+- Perform robustness checks where appropriate (sensitivity analysis, alternative specifications)
+- Report effect sizes alongside statistical significance
+- Save all intermediate and final results as parquet (never just print to log)
+- Follow the Iteration Protocol: one analysis per script, validate before proceeding
+```
+
+### Visualization Principles
 
 **Static (plotnine):**
 ```python
@@ -1142,20 +1180,67 @@ fig.write_html(f"output/figures/{date_prefix}_plot_name.html")
 fig.write_image(f"output/figures/{date_prefix}_plot_name.png")
 ```
 
+### Context Requirements
+
+**Stage 8.1 (Analysis) — Orchestrator must provide:**
+
+| Context Item | Source | Required In Prompt |
+|--------------|--------|-------------------|
+| Analysis dataset path | Stage 7 output | YES — exact path |
+| Research question | Plan | YES — verbatim |
+| Analysis specification | Plan (Analysis Requirements) | YES — methods, variables, hypotheses |
+| Observable Truth contribution | Plan | YES — which truths this analysis addresses |
+| Statistical assumptions to check | Plan / data-scientist skill | YES — method-specific |
+| Risk Register items | Plan | YES — relevant risks |
+
+**Stage 8.2 (Visualization) — Orchestrator must provide:**
+
+| Context Item | Source | Required In Prompt |
+|--------------|--------|-------------------|
+| Analysis dataset path | Stage 7 output | YES — exact path |
+| Statistical results path(s) | Stage 8.1 output | YES — exact paths from `output/analysis/` |
+| Visualization specification | Plan (Visualization Requirements) | YES — plot types, variables, dimensions |
+| Key findings from 8.1 | Stage 8.1 results | YES — what to highlight in visualizations |
+| Figure naming convention | Plan | YES — date prefix + descriptive name |
+
+### QA Context (code-reviewer invocations)
+
+| Context Item | QA4a (Analysis) | QA4b (Visualization) |
+|--------------|-----------------|---------------------|
+| Script path | YES | YES |
+| Plan expectations | YES — statistical methods, expected directions | YES — figure specs, labeling requirements |
+| QA tolerance thresholds | YES — methodology validity, assumption violations | YES — figure existence, data accuracy |
+| Prior QA findings | YES — accumulated from 8.1 scripts | YES — accumulated from 8.1 + 8.2 scripts |
+| Observable Truth contribution | YES | YES |
+
 ### Output
 
-- Exported figure files
-- Figure descriptions for report
+- **Stage 8.1:** Statistical result files in `output/analysis/` (parquet), analysis summaries
+- **Stage 8.2:** Exported figure files in `output/figures/`, figure descriptions for report
+
+### Completion Checklist
+
+- [ ] All planned statistical analyses executed (Stage 8.1)
+- [ ] Statistical results saved to `output/analysis/`
+- [ ] All planned visualizations created (Stage 8.2)
+- [ ] Figures exported to `output/figures/`
+- [ ] All analysis scripts saved to `scripts/stage8_analysis/` with standard header
+- [ ] All visualization scripts saved to `scripts/stage8_analysis/` with standard header
+- [ ] QA4a completed for all analysis scripts (PASSED/WARNING)
+- [ ] QA4b completed for all visualization scripts (PASSED/WARNING)
 
 ### Gate Criteria (G8)
 
-- [ ] All planned visualizations created
+- [ ] All planned analyses and visualizations created
+- [ ] Statistical results exported to `output/analysis/`
 - [ ] Figures exported to `output/figures/`
-- [ ] **Visualization scripts saved to `scripts/stage8_viz/`** with standard header
-- [ ] **QA review completed** (code-reviewer invoked after each visualization script)
-- [ ] **QA status:** PASSED/WARNING (any BLOCKER resolved via revision)
-- [ ] **QA scripts saved to `scripts/cr/stage8_{step}_cr1.py`** (+ cr2..cr5 if warranted)
-- [ ] **STATE.md updated:** Current Stage: 8, QA4 status, figure paths recorded
+- [ ] **All scripts saved to `scripts/stage8_analysis/`** with standard header
+- [ ] **QA4a review completed** (code-reviewer invoked after each analysis script)
+- [ ] **QA4a status:** PASSED/WARNING (any BLOCKER resolved via revision)
+- [ ] **QA4b review completed** (code-reviewer invoked after each visualization script)
+- [ ] **QA4b status:** PASSED/WARNING (any BLOCKER resolved via revision)
+- [ ] **QA scripts saved to `scripts/cr/stage8_{step}_cra1.py`** (analysis) and **`stage8_{step}_crb1.py`** (viz)
+- [ ] **STATE.md updated:** Current Stage: 8, QA4a and QA4b status, analysis result paths, figure paths recorded
 
 ---
 
@@ -1235,7 +1320,8 @@ The following are **NEVER ALLOWED** in Stage 9 notebooks:
    | 5     | 2       | 2          | 0              | N/A               |
    | 6     | 2       | 2          | 0              | N/A               |
    | 7     | 3       | 3          | 2              | 2 (via revision)  |
-   | 8     | 1       | 1          | 0              | N/A               |
+   | 8 (QA4a) | 1    | 1          | 0              | N/A               |
+   | 8 (QA4b) | 1    | 1          | 0              | N/A               |
 
    ### Resolved BLOCKERs
    | Script | Issue | Resolution | Revision Count |
@@ -1284,7 +1370,8 @@ The following are **NEVER ALLOWED** in Stage 9 notebooks:
 | STATE.md | Maintained throughout | Checkpoint statuses, key decisions, blockers |
 | LEARNINGS.md | Maintained throughout | Data quality insights, methodology lessons |
 | Stage 10 QA summary | Stage 10 | Aggregated QA findings (WARNINGs, resolved BLOCKERs) |
-| Figure files | Stage 8 (`output/figures/`) | Visualizations to embed in Key Findings |
+| Statistical results | Stage 8.1 (`output/analysis/`) | Analysis findings for Key Findings and interpretation |
+| Figure files | Stage 8.2 (`output/figures/`) | Visualizations to embed in Key Findings |
 | Citation text | Stage 6 (education-data-context) | Pre-formatted data source citations |
 | Analysis dataset metadata | Stage 7 | Final dataset shape, column list, key statistics |
 
@@ -1298,7 +1385,7 @@ The report-writer follows a systematic mapping from REPORT_TEMPLATE.md sections 
 | Research Question | Plan (verbatim) | — |
 | Data & Methods | Plan Methodology + Stage 5-6 execution logs | STATE.md checkpoints |
 | Quality Assurance | Stage 10 QA summary | STATE.md QA sections |
-| Key Findings | Stage 7-8 outputs + figures | Plan Observable Truths |
+| Key Findings | Stage 7 transforms + Stage 8.1 analysis results + Stage 8.2 figures | Plan Observable Truths |
 | Limitations | Plan Risk Register + source caveats + suppression rates + LEARNINGS.md | STATE.md blockers |
 | Citations | Stage 6 citation text | Plan Data Sources table |
 

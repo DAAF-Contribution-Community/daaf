@@ -243,7 +243,7 @@ See `05_VALIDATION_CHECKPOINTS.md` for CP1-CP4 definitions, STOP thresholds, and
 
 ---
 
-## Secondary Validation: QA Checkpoints (QA1-QA4)
+## Secondary Validation: QA Checkpoints (QA1-QA4b)
 
 **When:** After each script execution in Stages 5-8
 **Executor:** code-reviewer agent (invoked by orchestrator)
@@ -251,7 +251,7 @@ See `05_VALIDATION_CHECKPOINTS.md` for CP1-CP4 definitions, STOP thresholds, and
 
 CP checkpoints catch **operational failures** (empty data, wrong types). QA checkpoints catch **logical errors** (wrong methodology, data misinterpretation). Both must pass for stage handoff.
 
-**See:** `agent_reference/QA_CHECKPOINTS.md` for complete QA checkpoint definitions (QA1-QA4), severity classification, recovery protocol, and `agents/code-reviewer.md` for the QA agent protocol.
+**See:** `agent_reference/QA_CHECKPOINTS.md` for complete QA checkpoint definitions (QA1-QA4b), severity classification, recovery protocol, and `agents/code-reviewer.md` for the QA agent protocol.
 
 ---
 

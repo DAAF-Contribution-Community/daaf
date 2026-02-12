@@ -96,7 +96,7 @@ Each report section has defined primary and secondary source artifacts. Follow t
 | Data & Methods: Methodology | Plan Methodology Specification | Plan Key Decisions |
 | Data & Methods: Data Cleaning | Stage 6 execution logs (records analyzed, excluded, suppression rate) | STATE.md checkpoint statuses |
 | Quality Assurance | Stage 10 QA summary (inlined by orchestrator) | STATE.md QA sections |
-| Key Findings | Stage 7 transformation outputs + Stage 8 figures + notebook execution logs | Plan Observable Truths (for framing each finding) |
+| Key Findings | Stage 7 transformation outputs + Stage 8 analysis results (`output/analysis/`) + Stage 8 figures (`output/figures/`) + notebook execution logs | Plan Observable Truths (for framing each finding) |
 | Summary Statistics | Analysis dataset metadata (from orchestrator) + Stage 7 EDA execution logs | Notebook data inspection cells |
 | Limitations | Plan Risk Register + Plan source caveats from Stage 3 + suppression rates from Stage 6 + LEARNINGS.md data quality entries | STATE.md blockers encountered |
 | Data Sources & Citations | Citation text (inlined from Stage 6 by orchestrator) | Plan Data Sources table |

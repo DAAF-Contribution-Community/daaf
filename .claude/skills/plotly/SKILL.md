@@ -93,10 +93,10 @@ Common issues?
 
 ## File-First Execution in Research Workflows
 
-**Important:** In data research pipelines (see `CLAUDE.md`), all visualizations are generated through **script files** in `scripts/stage8_viz/`, not interactively. This ensures auditability and reproducibility.
+**Important:** In data research pipelines (see `CLAUDE.md`), all visualizations are generated through **script files** in `scripts/stage8_analysis/`, not interactively. This ensures auditability and reproducibility.
 
 **The pattern:**
-1. Write plot code FIRST to `scripts/stage8_viz/{step}_{plot-name}.py`
+1. Write plot code FIRST to `scripts/stage8_analysis/{step}_{plot-name}.py`
 2. Execute via Bash with automatic output capture wrapper script
 3. Validation results get automatically embedded in scripts as comments
 4. If failed, create versioned copy for fixes
@@ -104,7 +104,7 @@ Common issues?
 Closely read `agent_reference/EXECUTION_CAPTURE.md` for the mandatory file-first execution protocol covering complete code file writing, output capture, and file versioning rules.
 
 **See:**
-- `agent_reference/02_WORKFLOW_STAGES.md` — Stage 8 (Visualization)
+- `agent_reference/02_WORKFLOW_STAGES.md` — Stage 8 (Analysis & Visualization)
 
 The examples below show Plotly syntax. In research workflows, wrap them in scripts following the file-first pattern.
 

@@ -30,11 +30,11 @@ See `agent_reference/SCRIPT_TEMPLATE.md` for complete script format with checkpo
 | **CP3** | After transformation | Verify data integrity | >90% row loss, unexpected NAs |
 | **CP4** | Before output | Verify completeness | Missing requirements |
 
-### Secondary Checkpoints (QA1-QA4)
+### Secondary Checkpoints (QA1-QA4b)
 
 QA checkpoints run AFTER primary checkpoints, providing independent secondary verification via code-reviewer agent. CP checkpoints validate operations; QA checkpoints validate outputs and methodology alignment.
 
-**See:** `agent_reference/QA_CHECKPOINTS.md` for QA1-QA4 definitions, BLOCKER thresholds, severity classification, and complete QA checkpoint documentation.
+**See:** `agent_reference/QA_CHECKPOINTS.md` for QA1-QA4b definitions, BLOCKER thresholds, severity classification, and complete QA checkpoint documentation.
 
 ---
 
@@ -249,7 +249,7 @@ Are there multiple valid approaches requiring user preference?
 | 6-QA | auto | Methodology BLOCKER (escalate immediately) |
 | 7 (Transform) | auto | Row loss 50-90%, unexpected nulls |
 | 7-QA | auto | Methodology BLOCKER (escalate immediately) |
-| 8 (Visualize) | auto | Results differ from expectations |
+| 8 (Analyze & Visualize) | auto | Results differ from expectations |
 | 8-QA | auto | Methodology BLOCKER (escalate immediately) |
 | 9 (Notebook) | auto | Execution warnings |
 | 10 (QA Aggregation) | auto | Unresolved BLOCKERs, WARNING patterns, missing QA reviews |
@@ -553,7 +553,7 @@ preserved_cols = ["ncessch", "year"]     # columns that must survive
 |-------|-------------------|----------------|-------------------|
 | **CP4.1: Required Columns** | All columns in Plan's output spec are present | Any missing required column | N/A |
 | **CP4.2: Critical Nulls** | No nulls in columns marked critical in Plan | Any nulls in critical columns | >5% nulls in non-critical columns |
-| **CP4.3: Figure Generation** | All figures in Plan's visualization spec exist | Any missing figure file | Figure size <10KB (possibly empty) |
+| **CP4.3: Analysis & Figure Generation** | All analysis outputs and figures in Plan's analysis/visualization specs exist | Any missing analysis output or figure file | File size <10KB (possibly empty) |
 | **CP4.4: Report Sections** | All Plan-required report sections complete | Missing Executive Summary or Key Findings | Missing optional sections |
 | **CP4.5: Plan Consistency** | Outputs match Plan commitments | Major deviation from Plan | Minor scope changes |
 | **CP4.6: Observable Truths** | Plan's Observable Truths are satisfied | Any Observable Truth unsatisfied | N/A |
@@ -967,7 +967,7 @@ research/YYYY-MM-DD [Title]/
 │   ├── stage5_fetch/
 │   ├── stage6_clean/
 │   ├── stage7_transform/
-│   └── stage8_viz/
+│   └── stage8_analysis/
 ├── data/
 │   ├── raw/
 │   └── processed/

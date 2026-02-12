@@ -27,7 +27,7 @@ assignees: ''
 - [ ] Stage 5: Data fetch
 - [ ] Stage 6: Data cleaning
 - [ ] Stage 7: Transformation / analysis
-- [ ] Stage 8: Visualization
+- [ ] Stage 8: Analysis & Visualization
 - [ ] Stage 9: Notebook assembly
 - [ ] Stage 10: QA aggregation
 - [ ] Stage 11-12: Report / final review

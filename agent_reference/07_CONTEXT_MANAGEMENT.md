@@ -201,7 +201,7 @@ The STATE.md file serves as **persistent session memory**:
 
 **MANDATORY Update Triggers:**
 - After each checkpoint passes (CP1-CP4)
-- After each QA review completes (QA1-QA4)
+- After each QA review completes (QA1-QA4b)
 - When any stage completes
 - When blockers are encountered
 - When key decisions are made
@@ -298,7 +298,7 @@ If orchestrator context exceeds 60%:
 | **6-QA** | Delegate to code-reviewer | Keep PASSED/WARNING/BLOCKER + revision count |
 | 7 | Delegate transformation tasks | Compress each CP3 result |
 | **7-QA** | Delegate to code-reviewer (per script) | Keep severity summary |
-| 8 | Delegate visualization tasks | Keep file paths only |
+| 8 | Delegate analysis & visualization tasks | Keep file paths only |
 | **8-QA** | Delegate to code-reviewer | Keep severity summary |
 | 9 | Delegate notebook creation | Keep path only |
 | 10 | Aggregate QA findings from Stages 5-8 | Keep QA summary |

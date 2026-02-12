@@ -59,7 +59,7 @@ No. This is a proof-of-concept demonstrating AI-assisted research patterns. All 
 
 <!-- NEW: Rationale for defense-in-depth validation -->
 
-The case for redundant validation: primary checkpoints (CP1-CP4), secondary QA (QA1-QA4), plan validation, and final verification. Why each layer catches different types of errors.
+The case for redundant validation: primary checkpoints (CP1-CP4), secondary QA (QA1-QA4b), plan validation, and final verification. Why each layer catches different types of errors.
 
 ### Q: Why does the Plan document exist? Can't the AI just start analyzing?
 

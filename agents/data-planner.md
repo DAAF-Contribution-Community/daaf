@@ -186,6 +186,8 @@ What must be true when analysis is complete? These are measurable outcomes that 
 
 Work backward from outputs to inputs. For each task, apply the Methodology Rigor Checklist (Core Behavior 3). Use the Transformation Sequence table format from `agent_reference/PLAN_TEMPLATE.md`.
 
+**Stage 8 Planning Note:** Stage 8 tasks should be split into analysis tasks (8.1.x) and visualization tasks (8.2.x) in the Transformation Sequence. Analysis tasks (e.g., regression, statistical tests) produce parquet results to `output/analysis/` and are validated by QA4a. Visualization tasks produce figures to `output/figures/` and are validated by QA4b. Both substage types belong in `scripts/stage8_analysis/`.
+
 ### Step 7: Assign Waves
 
 Group independent tasks for parallel execution. Verify no circular dependencies.
@@ -572,6 +574,6 @@ Load on demand -- do NOT read all at start:
 | `agent_reference/PLAN_TEMPLATE.md` | Always (Step 9) | Complete plan document template |
 | `agent_reference/SCRIPT_TEMPLATE.md` | When assigning script paths | Script naming conventions and format |
 | `agent_reference/05_VALIDATION_CHECKPOINTS.md` | When specifying validation criteria | CP1-CP4 checkpoint definitions |
-| `agent_reference/QA_CHECKPOINTS.md` | When setting QA tolerance thresholds | QA1-QA4 definitions and severity levels |
+| `agent_reference/QA_CHECKPOINTS.md` | When setting QA tolerance thresholds | QA1-QA4b definitions and severity levels |
 | `agent_reference/04_BOUNDARIES.md` | When handling edge cases | Autonomous deviation rules and scope boundaries |
 | `agent_reference/INLINE_AUDIT_TRAIL.md` | When specifying script documentation standards | IAT requirements for task action steps |

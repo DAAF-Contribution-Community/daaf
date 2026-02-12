@@ -151,6 +151,7 @@ This analysis will create:
 - [ ] Comprehensive analytic scripts covering data fetch, clean, join, transformation, analysis, and QA for all of the above
 - [ ] Validated datasets (raw + processed)
 - [ ] Marimo notebook "walkthrough" of successfully completed analysis scripts and their execution runtime logs for inspection
+- [ ] Statistical analysis results (saved to output/analysis/)
 - [ ] Illustrative key data visualizations
 - [ ] Summary stakeholder report synthesizing key findings and interpreting key data visualizations
 - [ ] LEARNINGS.md lessons learned
@@ -313,16 +314,18 @@ The Full Pipeline workflow consists of **5 Phases** and **12 Stages**. Other mod
 │  │  └─ BLOCKER → revision (max 2) │ WARNING → log │ PASSED → proceed      │ │
 │  └────────────────────────────────────────────────────────────────────────┘ │
 │                          ↓                                                  │
-│  Stage 8: Visualization ←── plotnine/plotly skills                          │
-│      ├─ Generate exploratory and final plots                                │
-│      ├─ Save to output/figures/                                             │
-│      └─ Gate G8: Visualizations complete, QA4 PASSED/WARNING                │
-│                          ↓                                                  │
-│  ┌─ 8-QA: >>> INVOKE code-reviewer NOW <<< (MANDATORY) ───────────────────┐ │
-│  │  Orchestrator MUST call Task tool with code-reviewer agent here.       │ │
-│  │  Do NOT proceed to Stage 9 until QA returns.                           │ │
-│  │  └─ BLOCKER → revision (max 2) │ WARNING → log │ PASSED → proceed      │ │
-│  └────────────────────────────────────────────────────────────────────────┘ │
+│  Stage 8: Analysis & Visualization ←── data-scientist/polars/plotnine/plotly│
+│      ├─ 8.1: Run statistical analyses (save to output/analysis/)            │
+│      │   ┌─ 8.1-QA: >>> INVOKE code-reviewer (QA4a) <<< (MANDATORY) ──────┐ │
+│      │   │  After EACH 8.1 script. Statistical validity review.           │ │
+│      │   │  └─ BLOCKER → revision (max 2) │ WARNING → log │ PASSED → next │ │
+│      │   └────────────────────────────────────────────────────────────────┘ │
+│      ├─ 8.2: Generate exploratory and final plots (save to output/figures/) │
+│      │   ┌─ 8.2-QA: >>> INVOKE code-reviewer (QA4b) <<< (MANDATORY) ──────┐ │
+│      │   │  After EACH 8.2 script. Visualization quality review.          │ │
+│      │   │  └─ BLOCKER → revision (max 2) │ WARNING → log │ PASSED → next │ │
+│      │   └────────────────────────────────────────────────────────────────┘ │
+│      └─ Gate G8: Analyses + viz complete, QA4a AND QA4b PASSED/WARNING      │
 │                          ↓                                                  │
 │  Stage 9: Script Compilation ←── notebook-assembler agent                   │
 │      ├─ LITERALLY COPY script file contents into marimo cells               │
@@ -343,8 +346,8 @@ The Full Pipeline workflow consists of **5 Phases** and **12 Stages**. Other mod
 ├─────────────────────────────────────────────────────────────────────────────┤
 │  Stage 11: Report Generation ←── report-writer agent                        │
 │      ├─ Synthesize Plan, Notebook, STATE, LEARNINGS, QA summary             │
-│      ├─ Follow Section-Source Mapping for each REPORT_TEMPLATE.md section    │
-│      ├─ Cross-check Observable Truths against Key Findings                   │
+│      ├─ Follow Section-Source Mapping for each REPORT_TEMPLATE.md section   │
+│      ├─ Cross-check Observable Truths against Key Findings                  │
 │      └─ Gate G11: Report complete with all sections + figure references     │
 │                          ↓                                                  │
 │  Stage 12: Final Review (Protocol 5)                                        │
@@ -381,13 +384,13 @@ Stage 7.3: Final validation before proceeding to Stage 8
 
 **Stage 7.3: Final Pre-Stage-8 Validation**
 
-Stage 7.3 is the final quality gate before visualization:
+Stage 7.3 is the final quality gate before final analysis and visualization:
 - Verify all Transformation Sequence tasks are complete
 - Confirm analysis dataset exists at expected location (`data/processed/[date]_analysis.parquet`)
 - Run CP3 on the final dataset (row counts, no unexpected NAs, schema matches Plan)
 - Document any deviations from Plan in Plan document
 - **Update STATE.md** (REQUIRED — all Full Pipeline analyses have STATE.md)
-- Gate G7: Analysis dataset ready for Stage 8 visualization
+- Gate G7: Analysis dataset ready for Stage 8 analysis and visualization
 
 **Why this matters:**
 - The core principle "Every transformation has a validation" requires separate execution cycles
@@ -418,7 +421,7 @@ After every script execution in Stages 5-8, the orchestrator MUST invoke **code-
   - Phase 3: CP1 (after fetch), CP2 (after cleaning)
   - Phase 4: CP3 (after transformation)
   - Phase 5: CP4 (before final output, during Stages 11-12)
-- **QA Checkpoints (QA1-QA4)** run in parallel as secondary validation during Phases 3-4
+- **QA Checkpoints (QA1-QA4b)** run in parallel as secondary validation during Phases 3-4
 - **Protocol 4 (Plan Management)** is created in Phase 2 but updated throughout Phases 3-5
 
 ### Skill-to-Stage Mapping
@@ -436,7 +439,7 @@ After every script execution in Stages 5-8, the orchestrator MUST invoke **code-
 | **6-QA** | `data-scientist` | general-purpose | `code-reviewer` agent (after each Stage 6 script) |
 | 7 | `data-scientist`, `polars` | general-purpose | Subagent invokes skills |
 | **7-QA** | `data-scientist` | general-purpose | `code-reviewer` agent (after each Stage 7 script) |
-| 8 | `data-scientist`, `plotnine`, `plotly` | general-purpose | Subagent invokes skill |
+| 8 | `data-scientist`, `polars`, `plotnine`, `plotly` | general-purpose | Subagent invokes skill |
 | **8-QA** | `data-scientist` | general-purpose | `code-reviewer` agent (after each Stage 8 script) |
 | 9 | `data-scientist` | general-purpose | `notebook-assembler` agent (COMPILES scripts — NO new code, NO dashboards) |
 | 10 | `data-scientist` | general-purpose | Subagent invokes skill |
@@ -567,6 +570,28 @@ For EACH task in Stages 5-8, follow this complete loop. **Do NOT skip any step.*
 - [ ] Observable Truth contribution stated
 - [ ] Prior QA findings accumulated (if any WARNING items from prior scripts)
 - [ ] IAT compliance expectations stated
+
+**Stage 8.1 (Analysis) Checklist:**
+- [ ] Analysis dataset path specified (exact path from Stage 7 output)
+- [ ] Statistical method specified (regression, summary stats, comparison, etc.)
+- [ ] Dependent and independent variables identified
+- [ ] Grouping/stratification variables specified (if applicable)
+- [ ] Expected output format specified (summary table, model results, etc.)
+- [ ] Output file path specified (`output/analysis/[date]_[description].parquet`)
+- [ ] Significance thresholds or interpretation guidelines provided
+- [ ] Observable Truth contribution stated
+- [ ] Risk Register items included
+- [ ] Script follows IAT documentation standards
+
+**Stage 8.2 (Visualization) Checklist:**
+- [ ] Analysis dataset and/or analysis results paths specified
+- [ ] Figure specification provided (chart type, variables, grouping)
+- [ ] Output file path specified (`output/figures/[date]_[description].png`)
+- [ ] Labeling requirements stated (title, axes, legend, source note)
+- [ ] Accessibility considerations noted (colorblind-safe palette, etc.)
+- [ ] Observable Truth contribution stated
+- [ ] Risk Register items included
+- [ ] Script follows IAT documentation standards
 
 **If any checklist item is unchecked:** Add the missing context before invoking. Incomplete context = subagent asks clarifying questions = wasted round-trip.
 
@@ -844,6 +869,20 @@ See `agent_reference/PLAN_TEMPLATE.md` for wave-based task table format.
 - Document every methodological decision
 - Report surprising findings to user
 
+**Stage 8.1 (Statistical Analysis):**
+- Select statistical methods appropriate to research question and data characteristics
+- Validate assumptions before running analyses (normality, independence, sample size)
+- Document all parameter choices and their rationale
+- Save analysis results as parquet to `output/analysis/`
+- Report key findings with effect sizes and confidence intervals where applicable
+
+**Stage 8.2 (Visualization):**
+- Generate both exploratory and publication-quality plots
+- Use colorblind-safe palettes by default
+- Include proper titles, axis labels, legends, and source notes
+- Save to `output/figures/` in PNG format
+- Ensure visualizations accurately represent the underlying data and analysis results
+
 See `agent_reference/03_SKILL_INVOCATIONS.md` for complete invocation templates.
 
 ### Handoff Specifications
@@ -861,7 +900,7 @@ Each stage has explicit input/output contracts and gate criteria:
 | 5 | Plan (query spec) | Stage 6 | G5: CP1 PASSED, **QA1 PASSED or WARNING**, data saved to data/raw/ |
 | 6 | Stage 5 (raw data) | Stage 7 | G6: CP2 PASSED, **QA2 PASSED or WARNING**, suppression <50%, data saved to data/processed/ |
 | 7 | Stage 6 (clean data) | Stage 8, 9 | G7: All transformations validated (CP3), **QA3 PASSED or WARNING per script**, analysis dataset saved to `data/processed/[date]_analysis.parquet` (at Stage 7.3) |
-| 8 | Stage 7 (analysis data) | Stage 9, 11 | G8: Required visualizations saved to output/figures/, **QA4 PASSED or WARNING** |
+| 8 | Stage 7 (analysis data) | Stage 9, 11 | G8: Statistical results saved to output/analysis/, visualizations saved to output/figures/, **QA4a AND QA4b PASSED or WARNING** |
 | 9 | Stages 7, 8 | Stage 10 | G9: Notebook runs without errors, all scripts represented with code + execution logs |
 | 10 | Stage 9 (notebook) | Stage 11 | G10: **QA findings aggregated**, all BLOCKERs resolved, all WARNINGs documented |
 | 11 | Stages 9, 10 (notebook + QA aggregation), Plan, STATE.md, LEARNINGS.md | Stage 12 | G11: report-writer returned COMPLETE or COMPLETE_WITH_GAPS, all REPORT_TEMPLATE.md sections populated, figure references verified |
@@ -1008,7 +1047,7 @@ When interpreting data values and resolving discrepancies between sources, apply
 **CP4 Detail:** CP4 runs during Stages 11-12 and validates:
 - **CP4.1:** All required columns present in analysis data
 - **CP4.2:** No nulls in critical columns defined in Plan
-- **CP4.3:** All figures in Plan's visualization spec exist in output/figures/
+- **CP4.3:** All analysis outputs in Plan's analysis spec exist in output/analysis/ and all figures in Plan's visualization spec exist in output/figures/
 - **CP4.4:** All Plan-required report sections complete
 - **CP4.5:** Outputs match Plan commitments (data sources, years, geography, methodology)
 - **CP4.6:** All Observable Truths in Plan are satisfied
@@ -1026,7 +1065,8 @@ In addition to CP checkpoints (embedded in code), **QA checkpoints** provide ind
 | **QA1** | After fetch (5) | Schema correctness, ID uniqueness, distributions | Data integrity compromised |
 | **QA2** | After clean (6) | Coded value handling, filtering logic, methodology | Cleaning logic invalid |
 | **QA3** | After transform (7) | Join cardinality, aggregation logic, derived columns | Transformation produces wrong results |
-| **QA4** | After viz (8) | Figure existence, data source accuracy, labeling | Visualization misleading or incorrect |
+| **QA4a** | After analysis (8.1) | Statistical validity, assumption checks, result interpretation | Analysis methodology invalid or results unreliable |
+| **QA4b** | After viz (8.2) | Figure existence, data source accuracy, labeling | Visualization misleading or incorrect |
 
 **Key Difference:** CP checkpoints catch **operational failures** (empty data, wrong types). QA checkpoints catch **logical errors** (wrong methodology, misinterpretation).
 
@@ -1051,8 +1091,8 @@ Forcing functions are mandatory design interventions that **prevent** poor pract
 | **G4.5** | **4.5 → 5** | **plan-checker returned PASSED or PASSED_WITH_WARNINGS** | **Cannot begin data acquisition** |
 | G5 | 5 → 6 | CP1 PASSED, data saved to data/raw/, **QA1 INVOKED and QA1 ∈ {PASSED, WARNING}** | Cannot proceed to cleaning |
 | G6 | 6 → 7 | CP2 PASSED, suppression <50%, data saved to data/processed/, **QA2 INVOKED and QA2 ∈ {PASSED, WARNING}** | Cannot proceed to transformation |
-| G7 | 7 → 8 | All transformations CP3 PASSED, **all QA3 INVOKED and ∈ {PASSED, WARNING}** | Cannot proceed to visualization |
-| G8 | 8 → 9 | Visualizations complete, **QA4 INVOKED and QA4 ∈ {PASSED, WARNING}** | Cannot assemble notebook |
+| G7 | 7 → 8 | All transformations CP3 PASSED, **all QA3 INVOKED and ∈ {PASSED, WARNING}** | Cannot proceed to analysis and visualization |
+| G8 | 8 → 9 | Analyses and visualizations complete, **QA4a INVOKED and ∈ {PASSED, WARNING}** AND **QA4b INVOKED and ∈ {PASSED, WARNING}** | Cannot assemble notebook |
 | G9 | 9 → 10 | Notebook runs without errors, all scripts represented with code + execution logs | Cannot run QA aggregation |
 | G10 | 10 → 11 | QA findings aggregated, all BLOCKERs resolved, all WARNINGs documented | Cannot generate report |
 | G11 | 11 → 12 | Report complete with all sections and figure references | Cannot run final review |
@@ -1064,7 +1104,7 @@ Forcing functions are mandatory design interventions that **prevent** poor pract
 
 **CRITICAL:** Gate G4.5 requires POSITIVE confirmation that plan-checker was invoked and returned PASSED or PASSED_WITH_WARNINGS. If plan-checker was never invoked, the gate condition is NOT satisfied. Update STATE.md "Plan Validation" section with the result before proceeding to Stage 5.
 
-**Gate G5-G8 Enforcement (QA Invocation):** Gates G5-G8 require POSITIVE confirmation that code-reviewer was invoked and returned PASSED or WARNING. If QA was never invoked, the gate condition is NOT satisfied. See the **Stage 5-8 Composite Execution Pattern** for the complete flow.
+**Gate G5-G8 Enforcement (QA Invocation):** Gates G5-G8 require POSITIVE confirmation that code-reviewer was invoked and returned PASSED or WARNING. If QA was never invoked, the gate condition is NOT satisfied. For Gate G8, BOTH QA4a (statistical analysis) and QA4b (visualization) must be independently invoked and satisfied. See the **Stage 5-8 Composite Execution Pattern** for the complete flow.
 
 ### Gate Status Translation
 
@@ -1191,6 +1231,22 @@ These conditions trigger an immediate STOP with escalation to user. See `agent_r
 - [ ] Overall status: PASSED/FAILED/WARNING
 - [ ] If FAILED: Issue description and proposed fix present
 - [ ] For joins: Cardinality validation performed
+
+**Stage 8.1 (Statistical Analysis) Verification:**
+- [ ] Statistical method appropriate for data type and research question
+- [ ] Assumptions validated before analysis (documented in script)
+- [ ] Results saved to `output/analysis/` as parquet
+- [ ] Key findings documented with effect sizes and confidence intervals
+- [ ] Interpretation aligned with Observable Truths in Plan
+- [ ] Overall status: PASSED/FAILED/WARNING
+
+**Stage 8.2 (Visualization) Verification:**
+- [ ] All Plan-specified figures generated
+- [ ] Figures saved to `output/figures/` as PNG
+- [ ] Proper labeling (title, axes, legend, source note)
+- [ ] Data source in visualization matches analysis dataset
+- [ ] Colorblind-safe palette used
+- [ ] Overall status: PASSED/FAILED/WARNING
 
 **Stage 12 (Final Verification) Output Verification:**
 - [ ] Independent assessment performed (expectations listed before Plan comparison)
@@ -1527,7 +1583,7 @@ All executed scripts are archived in the `scripts/` folder with stage-based orga
 | 5 (Fetch) | `scripts/stage5_fetch/` | `{step:02d}_{task-name}.py` | `01_fetch-ccd.py` |
 | 6 (Clean) | `scripts/stage6_clean/` | `{step:02d}_{task-name}.py` | `01_clean-ccd.py` |
 | 7 (Transform) | `scripts/stage7_transform/` | `{step:02d}_{task-name}.py` | `01_join-data.py` |
-| 8 (Viz) | `scripts/stage8_viz/` | `{step:02d}_{task-name}.py` | `01_enrollment-plot.py` |
+| 8 (Analysis & Viz) | `scripts/stage8_analysis/` | `{step:02d}_{task-name}.py` | `01_regression-poverty.py` |
 | Debug | `scripts/debug/` | `{seq:02d}_diag-{slug}.py` | `01_diag-key-mismatch.py` |
 
 **Step numbering:** Use the step number from the Transformation Sequence (e.g., Step 1.1 → `01`, Step 2.3 → `03`).
@@ -1556,9 +1612,9 @@ See `agent_reference/SCRIPT_TEMPLATE.md` for complete script template and exampl
 | `education-data-source-nacubo` | NACUBO-specific knowledge | College endowment data |
 | `education-data-source-campus-safety` | Campus Safety knowledge | Campus crime statistics |
 | `data-scientist` | Methodology and rigor | All analysis stages |
-| `polars` | DataFrame operations | Stage 7: Data transformation |
-| `plotnine` | Static visualization | Stage 8: Publication plots |
-| `plotly` | Interactive visualization | Stage 8: Interactive plots |
+| `polars` | DataFrame operations | Stage 7-8: Data transformation and statistical analysis |
+| `plotnine` | Static visualization | Stage 8.2: Publication plots |
+| `plotly` | Interactive visualization | Stage 8.2: Interactive plots |
 | `marimo` | Reactive notebooks | General marimo development (Stage 9 uses notebook-assembler agent for COMPILATION only — NO dashboards) |
 
 ### Meta/Development Skills
@@ -1619,7 +1675,7 @@ See `agent_reference/SCRIPT_TEMPLATE.md` for complete script template and exampl
 | `agent_reference/03_SKILL_INVOCATIONS.md` | Skill invocation patterns and standardized handoff format |
 | `agent_reference/04_BOUNDARIES.md` | Boundary specs, autonomous deviation rules, git commit protocol |
 | `agent_reference/05_VALIDATION_CHECKPOINTS.md` | Python checkpoint code templates, stub detection |
-| `agent_reference/QA_CHECKPOINTS.md` | QA checkpoint definitions (QA1-QA4), QA script patterns |
+| `agent_reference/QA_CHECKPOINTS.md` | QA checkpoint definitions (QA1-QA4b), QA script patterns |
 | `agent_reference/06_ERROR_RECOVERY.md` | Failure handling procedures |
 | `agent_reference/07_CONTEXT_MANAGEMENT.md` | Context quality awareness and compression protocol |
 | `agent_reference/08_LESSONS_LEARNED.md` | Systematic lesson capture and consolidation |
@@ -1651,6 +1707,9 @@ research/2026-01-24 School Poverty Analysis/
 │   │   ├── 01_clean-ccd.py
 │   ├── stage7_transform/
 │   │   └── 01_join-data.py
+│   ├── stage8_analysis/
+│   │   ├── 01_regression-poverty.py
+│   │   └── 02_enrollment-plot.py
 │   ├── cr/                           # Code-review inspection scripts (iterative)
 │   │   ├── stage5_01_cr1.py          # CR for 01_fetch-ccd.py (standard + profiling)
 │   │   ├── stage6_01_cr1.py          # CR for 01_clean-ccd.py
@@ -1665,6 +1724,8 @@ research/2026-01-24 School Poverty Analysis/
 │       ├── 2026-01-24_ccd_clean.parquet
 │       ├── 2026-01-24_analysis.parquet
 ├── output/
+│   ├── analysis/
+│   │   └── 2026-01-24_regression_results.parquet
 │   └── figures/
 │       └── 2026-01-24_poverty_distribution.png
 └── STATE.md                                       # Session state (REQUIRED for Full Pipeline)
