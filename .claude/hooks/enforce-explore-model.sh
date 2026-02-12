@@ -5,11 +5,11 @@
 #
 # Hook type: PreToolUse (matcher: Task)
 # Decision: deny if subagent_type=Explore AND model=haiku
-set -e
+trap 'jq -n "{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"permissionDecision\":\"deny\",\"permissionDecisionReason\":\"enforce-explore-model hook encountered an unexpected error\"}}" 2>/dev/null; exit 0' ERR
 
 INPUT=$(cat)
-SUBAGENT_TYPE=$(echo "$INPUT" | jq -r '.tool_input.subagent_type // empty')
-MODEL=$(echo "$INPUT" | jq -r '.tool_input.model // empty')
+SUBAGENT_TYPE=$(echo "$INPUT" | jq -r '.tool_input.subagent_type // empty' 2>/dev/null) || SUBAGENT_TYPE=""
+MODEL=$(echo "$INPUT" | jq -r '.tool_input.model // empty' 2>/dev/null) || MODEL=""
 
 if [ "$SUBAGENT_TYPE" = "Explore" ] && [ "$MODEL" = "haiku" ]; then
   jq -n '{

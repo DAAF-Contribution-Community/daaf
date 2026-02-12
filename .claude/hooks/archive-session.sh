@@ -5,7 +5,9 @@
 # This hook reads the full JSONL transcript (which includes ALL assistant
 # responses, tool calls, and results) and converts it to readable Markdown.
 
-set -e
+# Fail OPEN: archival is observability-only, not a security gate.
+# A malformed JSONL line should produce a gap in the archive, not kill it entirely.
+trap '' ERR
 
 # Read JSON input from stdin
 INPUT=$(cat)
@@ -61,7 +63,7 @@ if [ -n "$TRANSCRIPT_PATH" ] && [ -f "$TRANSCRIPT_PATH" ]; then
             [ -z "$line" ] && continue
 
             # Extract message info
-            ROLE=$(echo "$line" | jq -r '.message.role // empty')
+            ROLE=$(echo "$line" | jq -r '.message.role // empty' 2>/dev/null) || { continue; }
             TIMESTAMP_MSG=$(echo "$line" | jq -r '.timestamp // empty')
 
             # Skip if no role (metadata, progress, file-history-snapshot lines)

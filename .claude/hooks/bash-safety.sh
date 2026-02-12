@@ -15,21 +15,23 @@
 #   rewrites remote history and is always blocked. Similarly, `curl <url>`
 #   is fine, but `curl <url> | bash` is arbitrary code execution.
 #
-# Hook event: PreToolUse (matcher: "Bash")
+# Hook event: PreToolUse (matcher: "Bash")                                                 
 # Registered in: .claude/settings.json
 
-set -euo pipefail
+# Fail CLOSED: if anything unexpected goes wrong, block the command.
+# This is a security hook — ambiguous failures must not silently allow execution.
+trap 'echo "BLOCKED by bash-safety hook: unexpected error in safety check" >&2; exit 2' ERR
 
 INPUT=$(cat)
 
 # Only inspect Bash tool calls
-TOOL_NAME=$(echo "$INPUT" | jq -r '.tool_name // empty' 2>/dev/null) || true
+TOOL_NAME=$(echo "$INPUT" | jq -r '.tool_name // empty' 2>/dev/null) || TOOL_NAME=""
 if [[ "$TOOL_NAME" != "Bash" ]]; then
     exit 0
 fi
 
 # Extract the command string
-CMD=$(echo "$INPUT" | jq -r '.tool_input.command // empty' 2>/dev/null) || true
+CMD=$(echo "$INPUT" | jq -r '.tool_input.command // empty' 2>/dev/null) || CMD=""
 if [[ -z "$CMD" ]]; then
     exit 0
 fi
