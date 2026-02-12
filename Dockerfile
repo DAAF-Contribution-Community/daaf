@@ -40,7 +40,10 @@ RUN uv pip install --system \
     pyarrow \
     urllib3 \
     pre-commit \
-    scikit-learn
+    scikit-learn \
+    pyyaml \
+    statsmodels \
+    pyfixest
 
 # Install visualization packages
 RUN uv pip install --system \
