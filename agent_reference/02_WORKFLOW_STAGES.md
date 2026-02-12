@@ -21,7 +21,7 @@ This document provides detailed execution guidance for each of the 12 stages (pl
 | 7 | 4 | EDA & Transformation | `data-scientist`, `polars` | general-purpose |
 | 8 | 4 | Analysis & Visualization | `data-scientist`, `polars`, `plotnine`, `plotly` | general-purpose |
 | 9 | 4 | Notebook Assembly | `marimo` | general-purpose |
-| 10 | 4 | QA Aggregation | `data-scientist` | general-purpose |
+| 10 | 4 | QA Aggregation | — (orchestrator) | — |
 | 11 | 5 | Report Generation | `report-writer` agent | general-purpose |
 | 12 | 5 | Final Review | `data-verifier` agent (adversarial verification with cross-artifact coherence) | Plan |
 
@@ -1306,8 +1306,8 @@ The following are **NEVER ALLOWED** in Stage 9 notebooks:
 
 ## Stage 10: QA Aggregation
 
-**Executor:** Subagent (general-purpose)
-**Skills:** `data-scientist`
+**Executor:** Orchestrator (no subagent — performed directly by orchestrator)
+**Skills:** —
 **Purpose:** Aggregation point for all QA findings from Stages 5-8
 
 ### Actions

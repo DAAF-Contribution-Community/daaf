@@ -125,7 +125,7 @@ Consult `agents/README.md` for the authoritative Agent Index with:
 |----------|-------------|
 | `skill-authoring` skill | Invoke separately if the new agent also needs a companion skill |
 | `agent_reference/AGENT_TEMPLATE.md` | The structural blueprint — read directly during Phase 2 |
-| `agent_reference/AGENT_REVISION_PLAN.md` | Reference for revision-specific patterns and wave-based execution |
+| `agent_reference/PLAN_TEMPLATE.md` | Reference for wave-based task sequencing and plan structure |
 | `agents/README.md` | The single source of truth for the agent landscape — read during Phase 1 |
 | `data-ingest` agent | Related: creates new data source skills; agent-authoring creates new agents |
 

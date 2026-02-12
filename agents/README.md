@@ -300,7 +300,7 @@ Shows which agents produce output consumed by other agents:
 | **research-executor** | debugger | Failed script + error context + last successful operation | On failure |
 | **code-reviewer** | Orchestrator | QA report with severity (PASSED / WARNING / BLOCKER) | After every script review |
 | **code-reviewer** | research-executor | Revision request with BLOCKER details | When BLOCKER found |
-| **code-reviewer** | Stage 10 | QA findings log (accumulated WARNINGs) | For aggregation |
+| **code-reviewer** | Orchestrator | QA findings log (accumulated WARNINGs) | For aggregation |
 | **debugger** | research-executor | Root cause diagnosis + verified fix + prevention recommendation | After diagnosis |
 | **debugger** | Orchestrator | Escalation (when UNRESOLVED or methodology issue) | Undiagnosed issues |
 | **research-executor** (Stage 8) | notebook-assembler | Scripts + data files + analysis results + figures | After Stage 8 completes |

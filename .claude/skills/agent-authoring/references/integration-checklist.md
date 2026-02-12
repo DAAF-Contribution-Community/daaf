@@ -137,10 +137,9 @@ Follow the format of existing agent subsections in this file.
 | 23 | `agent_reference/08_LESSONS_LEARNED.md` | Agent generates learning signals |
 | 24 | `agent_reference/PLAN_TEMPLATE.md` | Agent reads or writes the Plan document |
 | 25 | `agent_reference/STATE_TEMPLATE.md` | Agent affects STATE.md fields |
-| 26 | `agent_reference/AGENT_REVISION_PLAN.md` | Update progress tracker with new agent |
-| 27 | `user_reference/02_understanding_daaf.md` | Agent changes the architecture description for users |
-| 28 | `user_reference/04_extending_daaf.md` | Agent enables new extension patterns |
-| 29 | `user_reference/06_faq_technical.md` | Agent affects common technical questions |
+| 26 | `user_reference/02_understanding_daaf.md` | Agent changes the architecture description for users |
+| 27 | `user_reference/04_extending_daaf.md` | Agent enables new extension patterns |
+| 28 | `user_reference/06_faq_technical.md` | Agent affects common technical questions |
 
 ---
 
@@ -235,7 +234,6 @@ done
 - [ ] agent_reference/08_LESSONS_LEARNED.md (if generates learning signals)
 - [ ] agent_reference/PLAN_TEMPLATE.md (if reads/writes Plan)
 - [ ] agent_reference/STATE_TEMPLATE.md (if affects STATE.md)
-- [ ] agent_reference/AGENT_REVISION_PLAN.md (update tracker)
 - [ ] user_reference/02_understanding_daaf.md (if changes architecture)
 - [ ] user_reference/04_extending_daaf.md (if enables new extensions)
 - [ ] user_reference/06_faq_technical.md (if affects FAQs)

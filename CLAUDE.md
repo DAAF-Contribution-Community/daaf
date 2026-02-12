@@ -487,14 +487,15 @@ For EACH task in Stages 5-8, follow this complete loop. **Do NOT skip any step.*
 | **7-QA** | `data-scientist` | general-purpose | `code-reviewer` agent (after each Stage 7 script) |
 | 8 | `data-scientist`, `polars`, `plotnine`, `plotly` | general-purpose | Subagent invokes skill |
 | **8-QA** | `data-scientist` | general-purpose | `code-reviewer` agent (after each Stage 8 script) |
-| 9 | `data-scientist` | general-purpose | `notebook-assembler` agent (COMPILES scripts — NO new code, NO dashboards) |
-| 10 | `data-scientist` | general-purpose | Subagent invokes skill |
+| 9 | `marimo` | general-purpose | `notebook-assembler` agent (COMPILES scripts — NO new code, NO dashboards) |
+| 10 | — | — | Orchestrator aggregates QA findings (no subagent) |
 | 11 | `data-scientist` | general-purpose | `report-writer` agent |
 | 12 | `data-scientist` | Plan | `data-verifier` agent |
 
 **Notes:**
 - Stages 5 and 6 use `general-purpose` subagent type because they require file write capability (saving parquet files to `data/raw/` and `data/processed/`).
-- Stages 3.5, 4, and 4.5 use specialized agents that define behavioral protocols rather than loading skills.
+- **Stage 4 responsibility split:** The `data-planner` agent creates the Plan document only. The **orchestrator** is responsible for creating STATE.md (from `agent_reference/STATE_TEMPLATE.md`) and the LEARNINGS.md skeleton (from `agent_reference/08_LESSONS_LEARNED.md`) after the data-planner returns. Gate G4 requires all three files.
+- **Stage 10** has no dedicated agent — the orchestrator performs QA aggregation directly by reviewing accumulated code-reviewer findings from Stages 5-8.
 - **QA substages** (5-QA through 8-QA) run code-reviewer after each script execution in the parent stage.
 - The `Plan` type is read-only and cannot write files.
 - All Stages 5-8 scripts must follow IAT documentation standards (`agent_reference/INLINE_AUDIT_TRAIL.md`).
@@ -688,7 +689,7 @@ Delegate to subagents using the Task tool to preserve main context.
 
 ### Specialized Agents
 
-Eleven specialized agents define behavioral protocols for specific roles:
+Twelve specialized agents define behavioral protocols for specific roles:
 
 | Agent | Purpose | Subagent Type | Primary Stage(s) |
 |-------|---------|---------------|------------------|
@@ -1146,6 +1147,20 @@ Agents use domain-specific status vocabularies. The orchestrator translates thes
 | **report-writer** | COMPLETE | G11 = SATISFIED |
 | | COMPLETE_WITH_GAPS | G11 = SATISFIED (log gaps) |
 | | BLOCKED | G11 = NOT SATISFIED |
+| **research-synthesizer** | PASSED | G3.5 = SATISFIED, proceed to Stage 4 |
+| | WARNING | G3.5 = SATISFIED (log warnings for Plan) |
+| | BLOCKER | G3.5 = NOT SATISFIED (resolve or escalate) |
+| **debugger** | RESOLVED (Bug fix) | Apply fix, re-run task via research-executor |
+| | RESOLVED (Data quality) | Document limitation, adjust scope |
+| | RESOLVED (Transient) | Retry operation |
+| | UNRESOLVED | Escalate to user with hypothesis log |
+| | PARTIAL | Escalate with findings; user decides |
+| **integration-checker** | CONNECTED | Gate satisfied (G9, G11, or G12 depending on stage) |
+| | ISSUES FOUND (severity: WARNING) | Log; proceed with caveats |
+| | ISSUES FOUND (severity: BLOCKER) | Gate NOT SATISFIED; revision needed |
+| **data-ingest** | COMPLETE | Present integration guidance; offer skill registration |
+| | COMPLETE_WITH_WARNINGS | Present discrepancies; user review required |
+| | BLOCKED | Present STOP condition; await user resolution |
 
 ### STATE.md Update Gates
 
