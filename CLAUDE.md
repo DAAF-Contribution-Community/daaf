@@ -1743,9 +1743,9 @@ research/2026-01-24 School Poverty Analysis/
 │   │   ├── stage7_01_cr1.py          # CR for 01_join-data.py
 │   │   ├── stage7_02_cr1.py          # CR for 02_process-data.py
 │   │   ├── stage7_02_cr2.py          # Additional checks for 02_process-data.py
-│   │   ├── stage8_01_cr1.py          # Additional checks 01_regression-poverty.py
-│   │   ├── stage8_01_cr2.py          # Additional checks 01_regression-poverty.py
-│   │   └── stage8_02_cr1.py          # Additional checks 02_enrollment-plot.py
+│   │   ├── stage8_01_cra1.py          # QA4a for 01_regression-poverty.py (analysis)
+│   │   ├── stage8_01_cra2.py          # Additional QA4a checks for 01_regression-poverty.py
+│   │   └── stage8_02_crb1.py          # QA4b for 02_enrollment-plot.py (visualization)
 │   └── debug/                                     # If debugging occurred
 │       └── 01_diag-key-mismatch.py
 ├── data/
