@@ -183,6 +183,23 @@ docker compose down
 # You can then just close your terminal.
 ```
 
+## Keeping DAAF Updated
+
+DAAF is actively being developed and updated. If you'd like to pull in the latest fixes, extensions, and updates (which for a while may be as often as daily!!), updating your codebase is extremely simple. First, out of abundance of caution, make sure to make a separate copy of your research folder elsewhere on your computer (shouldn't be a problem, but just in case!). Then, all you need to do is open a Terminal in your DAAF folder and run the following commands:
+
+```bash
+# Get into the project directory, inputting the right file path for your own system
+cd "C:\Users\Documents\daaf"
+# Make sure Docker Desktop is running on your computer, then start the Docker container:
+docker compose up -d
+# Enter into the Docker container again
+docker compose exec daaf-docker bash
+# Pull down the latest updates
+git pull origin main
+```
+
+Note that the above won't work correctly if you've made any edits to the core DAAF workflow or documentation files (basically, anything outside of the research folder). In that case, you may want to submit a Pull request for your changes (if you've made useful updates you want to share broadly!). If not, it's relatively easy to delete the entire DAAF folder (again, backing up your research folder!!!) and just begin the install process fresh -- since the prerequisites and the Docker container are the most time intensive parts, reinstalling will take literally one minute.
+
 ## How to Manage DAAF Project Files and Output
 
 Your local `daaf/` folder is connected to the container. This means:
