@@ -133,22 +133,28 @@ On first launch, Claude Code will prompt you to authenticate (API key or subscri
 
 ### Step 6: Select Your Model
 
-You can decide which exact Claude model to use as your assistant. To set your model, run the following command at any time:
+You can check which Claude model is being used at any time (Opus, Sonnet, Haiku). To set this, run the following command at any time:
 
 ```bash
 /model
 ```
 
-**Recommended model:** All development and testing of this project was done using **Opus 4.5** and **Opus 4.6**. I strongly recommend using one of these models for the best results. Other models (Sonnet, Haiku) have not been tested with this workflow and may produce inconsistent results — especially for the multi-agent orchestration and validation stages, which rely on the model's ability to follow complex, multi-step protocols reliably. 
-- Opus 4.6 is the most capable, but most expensive and uses up rate limits quickly. My strong default when possible.
-- Sonnet 4.5 is generally okay, and likely to go further if you're on a Pro subscription (as opposed to a Max subscription) -- but again, I have no insight into how well it'll work. Please do let me know what you find! 
-- Lastly, I cannot stress enough that you should never use Haiku for this work. It simply is not capable enough to be useful here, and will only cause you headaches.
+**Recommended model:** All development and testing of this project was done using **Opus 4.5** and **Opus 4.6**. I unfortunately think that these models are absolutely required; other models (Sonnet, Haiku) are not nearly as capable and produce erratic, inconsistent results. The complexity of tasks embedded in the DAAF workflow (multi-agent orchestration) relies on the model's ability to follow complex, multi-step protocols reliably. This is also the reason why the Claude Max subscription is a likely prerequisite here: Opus models are very resource-intensive, and it's hard to complete the DAAF workflows under the "Pro" or "Free" tiers accordingly.
 
 ---
 
 ## First Launch: Confirming Everything Works
 
 Once you've gotten Claude Code running in your terminal and your model is set, you're ready to start asking the DAAF-empowered Claude any question you'd like. You may find it helpful to reference what's available in the (Urban Institute Education Data Portal)[https://educationdata.urban.org/documentation/] (the current datasets available for demonstration). Or, you can just ask it: "Hey Claude, I'm interested in understanding what kind of data we have available on \[Colleges/High Schools/School Districts\]. Can you give me a brief summary of the sorts of data you can analyze on this subject?"
+
+### Easing in with progressively more advanced queries
+
+You can use DAAF in a couple of different ways, which we'll get into in the next few tutorial files. But I'd recommend starting small:
+1. Ask Claude to explain to you a single dataset or variable -- see what it says, feeling free to ask follow-ups or dig into certain details.
+2. Ask Claude to help you analyze a single varible for a simple subset from a single dataset. This will probably kick off a full analysis, but a very simple and approachable one.
+3. Ask Claude to help you understand the relationship between two variables of interest for \[Colleges/High Schools/School Districts\]. See if you can learn more about that relationship over time, as well.
+4. Get more abstract, complex, or high-level. For example, ask Claude to help you better understand the nuances of the relationships between college selectivity, student academic preparedness, graduation rates, and student socioeconomic backgrounds. Or ask it how you might better understand what linkages may exist between school-level resources, student socioeconomic status, and access to advanced coursework. You can even ask it what you should ask it, based on the data it has available: "I'm trying to get started with the DAAF system. I'm trying to think of a few moderately complex, abstract research questions I could ask you to conduct data analysis on, based on the data current available to you. Do you have a few examples you can surface related to [Topic A/B/C]?"
+5. I am actively trying to assess DAAF's performance by replicating studies conducted by the [Urban Institute Learning Curve series](https://www.urban.org/projects/learning-curve) which leverage the same Education Data Portal datasets DAAF currently has access to -- especially as they have [open-source code available](https://github.com/UrbanInstitute/The-Learning-Curve/tree/main) for direct comparison afterwards. Run some tests of your own, and please do let me know what you find!
 
 ---
 
@@ -186,13 +192,15 @@ docker compose down
 # You can then just close your terminal.
 ```
 
-## How Files Sync Between Container and Host
+## How to Manage DAAF Project Files and Output
 
 Your local `daaf/` folder is connected to the container. This means:
 
 - **Files sync both ways** — when the assistant creates a report or dataset inside the container, it appears in the folder on your computer too. You can open these files normally. You can also bring in files into this folder that you'd like Claude to see, review, or inspect (e.g., other public datasets you're comfortable with it profiling using the data-ingest agent)
 - **Your work persists** — stopping the container doesn't delete your research outputs. They continue live in your project folder.
 - **Only this folder is accessible to Claude** — the container cannot see any other files on your computer. Your documents, photos, and everything else are completely isolated.
+
+Projects produced by DAAF will be stored in a folder called "research" within the DAAF installation folder you selected. For file management purposes, I strongly recommend making backup copies of these project folders intermittently. As mentioned above, if you use DAAF for anything more than exploration, I strongly recommend learning how to use Git to backup your files and track filechanges robustly.
 
 ---
 
