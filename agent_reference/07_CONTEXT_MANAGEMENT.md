@@ -1,6 +1,6 @@
 # Context Management Protocol
 
-This document provides **detailed procedures** for the context health rules defined in CLAUDE.md's "Context & Session Health" subsection. CLAUDE.md is the single source of truth for thresholds and the context monitoring protocol. This document covers the *how*: compression techniques, subagent context isolation, degradation symptom taxonomy, context budgets, and recovery strategies.
+This document provides **detailed procedures** for the context health rules defined in CLAUDE.md's "Context & Session Health" subsection. CLAUDE.md is the single source of truth for thresholds and the context monitoring protocol. This document covers the *how*: subagent context isolation, degradation symptom taxonomy, context budgets, and recovery strategies.
 
 > **Quality Primacy Rule:** Context management is about maintaining awareness of remaining capacity so the orchestrator can make informed decisions about when to restart. It is NEVER about reducing the quality or completeness of work. Subagent prompt fidelity, Context Completeness Checklist compliance, and inlined context are NON-NEGOTIABLE regardless of utilization level. If maintaining quality means reaching a restart point sooner, that is the correct outcome. The STATE.md + Protocol 6 system exists precisely for clean handoffs at full quality.
 
@@ -90,64 +90,6 @@ Prioritize in this order. Items marked REQUIRED must never be omitted regardless
 
 ---
 
-## Context Compression Protocol
-
-### When to Compress
-
-Trigger compression when:
-- Phase completion (compress phase findings)
-- Large subagent return (extract essentials only)
-- Context utilization reaches ELEVATED (40%+)
-- Stage transitions (compress completed stage to summary)
-
-### Compression Technique
-
-Transform verbose content into compressed summaries:
-
-**Before (verbose):**
-```
-The data exploration found that the CCD enrollment endpoint at
-/schools/ccd/enrollment/ contains enrollment data from 1986 to 2022.
-The key variables include total enrollment, enrollment by grade,
-enrollment by race/ethnicity, and enrollment by gender. The data
-is available at the school level with NCESSCH as the primary key...
-[continues for 500+ words]
-```
-
-**After (compressed):**
-```
-Stage 2 Findings:
-- Endpoint: /schools/ccd/enrollment/ (1986-2022)
-- Key vars: enrollment, grade, race, gender
-- Level: school (NCESSCH key)
-- Flagged: race categories need Stage 3 deep-dive
-- Confidence: HIGH
-```
-
-### Compression Checklist
-
-When compressing subagent output:
-- [ ] Extract key findings (bullet points)
-- [ ] Preserve decision rationales (why, not just what)
-- [ ] Keep data shapes (rows, columns, rates)
-- [ ] Retain error/warning history
-- [ ] Discard intermediate reasoning
-- [ ] Discard raw data samples
-- [ ] Discard verbose explanations
-
-### Compression Exclusions (Never Compress)
-
-The following are EXEMPT from compression regardless of utilization level:
-- **Subagent prompt content:** Context Completeness Checklist items are never compressed or omitted. Reload Plan sections from file if needed — reading the Plan before constructing a subagent prompt is always justified.
-- **QA findings with BLOCKER severity:** Full detail retained until resolved.
-- **Decision rationales for methodology choices:** These are audit-critical.
-- **Observable Truth definitions:** Required for end-to-end tracing.
-- **STATE.md content being written:** Write faithfully and completely. STATE.md is the lifeline for session recovery — every shortcut taken here becomes a gap in the next session's context.
-
-**Principle:** Compress what's BEHIND you (completed phase summaries, resolved issues). Never compress what's AHEAD of you (upcoming subagent context, validation criteria, task specifications) or what's your SAFETY NET (STATE.md, LEARNINGS.md).
-
----
-
 ## Subagent Context Isolation
 
 ### Why Isolation Matters
@@ -156,14 +98,14 @@ Each subagent invocation gets a **fresh context window**:
 - Subagent starts at 0% utilization (PEAK quality)
 - Skill loading adds known, bounded content
 - Task execution stays focused
-- Return to orchestrator is compressed
+- Return to orchestrator is concise and focused
 
 ### Isolation Protocol
 
 1. **Don't pre-load skills** in orchestrator context
 2. **Don't copy Plan content** into main context (reference by path)
 3. **Don't accumulate** subagent returns verbatim
-4. **Do compress** findings before integrating
+4. **Do summarize and focus on key findings** before integrating
 5. **Do reference** prior findings by summary, not full text
 
 ### Subagent Return Processing
@@ -184,7 +126,7 @@ When subagent returns findings:
    - Intermediate steps
    - Full code blocks (keep references)
    - Raw data samples
-5. Store compressed version in working memory
+5. Store summarized key findings in working memory
 ```
 
 ---
@@ -252,11 +194,10 @@ See `STATE_TEMPLATE.md` for the complete template.
 
 If orchestrator context reaches ELEVATED:
 
-1. **Compress completed phase summaries** to bullet points (compress what's BEHIND you)
-2. **Prefer subagent delegation** for heavy execution tasks
-3. **Reload Plan sections from file** when constructing subagent prompts rather than retaining in context permanently
-4. **Update STATE.md faithfully** — write complete stage summaries, accurate checkpoint statuses, and specific next-action descriptions. Resist the urge to abbreviate; STATE.md is the lifeline for session recovery.
-5. **NEVER reduce subagent prompt quality** — the Context Completeness Checklist is mandatory at ALL utilization levels. If meeting the checklist requires reading the Plan (consuming tokens), do it. Reaching a restart point sooner with high-quality work is always preferable to continuing longer with degraded subagent tasking.
+1. **Prefer subagent delegation** for heavy execution tasks
+2. **Reload Plan sections from file** when constructing subagent prompts rather than retaining in context permanently
+3. **Update STATE.md faithfully** — write complete stage summaries, accurate checkpoint statuses, and specific next-action descriptions. Resist the urge to abbreviate; STATE.md is the lifeline for session recovery.
+4. **NEVER reduce subagent prompt quality** — the Context Completeness Checklist is mandatory at ALL utilization levels. If meeting the checklist requires reading the Plan (consuming tokens), do it. Reaching a restart point sooner with high-quality work is always preferable to continuing longer with degraded subagent tasking.
 
 ### When Context Exceeds 60%
 
@@ -285,41 +226,6 @@ If orchestrator context exceeds 60%:
 
 ---
 
-## Integration with Workflow
-
-### Phase-Level Context Management
-
-| Phase | Context Strategy | Compression Point |
-|-------|-----------------|-------------------|
-| Phase 1 | Delegate discovery to subagents | End of Phase 1 |
-| Phase 2 | Create Plan (main context) | After Plan creation |
-| Phase 3 | Delegate fetch/clean to subagents | After CP2 passes |
-| Phase 4 | Delegate analysis to subagents | After each stage |
-| Phase 5 | Orchestrator synthesizes | Before delivery |
-
-### Stage-Level Context Actions
-
-| Stage | Start Action | End Action |
-|-------|--------------|------------|
-| 1 | Load user request | Compress to scope summary |
-| 2 | Delegate to Explore subagent | Compress findings |
-| 3 | Delegate to Explore subagent(s) | Compress caveats |
-| 4 | Create Plan (main context task) | Reference Plan by path |
-| 5 | Delegate to general-purpose subagent | Compress CP1 results |
-| **5-QA** | Delegate to code-reviewer | Keep PASSED/WARNING/BLOCKER + revision count |
-| 6 | Delegate to general-purpose subagent | Compress CP2 results |
-| **6-QA** | Delegate to code-reviewer | Keep PASSED/WARNING/BLOCKER + revision count |
-| 7 | Delegate transformation tasks | Compress each CP3 result |
-| **7-QA** | Delegate to code-reviewer (per script) | Keep severity summary |
-| 8 | Delegate analysis & visualization tasks | Keep file paths only |
-| **8-QA** | Delegate to code-reviewer | Keep severity summary |
-| 9 | Delegate notebook creation | Keep path only |
-| 10 | Aggregate QA findings from Stages 5-8 | Keep QA summary |
-| 11 | Orchestrator creates report | - |
-| 12 | Orchestrator runs final review | Update STATE.md |
-
----
-
 ## Context Quality Monitoring
 
 ### Symptoms of Context Degradation
@@ -341,25 +247,12 @@ Watch for these warning signs that indicate context quality is declining:
 | Utilization | Symptoms Present? | Action |
 |-------------|-------------------|--------|
 | ELEVATED (40-60%) | None | Prefer delegation for execution; maintain full prompt quality; update STATE.md |
-| ELEVATED (40-60%) | Minor repetition | Delegate execution to subagent; update STATE.md; compress completed phases |
+| ELEVATED (40-60%) | Minor repetition | Delegate execution to subagent; update STATE.md |
 | HIGH (60-75%) | None | Complete current atomic unit at full quality; update STATE.md with restart prompt; report to user |
 | HIGH (60-75%) | Any symptoms | Complete current atomic unit at full quality; update STATE.md with restart prompt; report to user |
 | CRITICAL (75%+) | Any | Finalize STATE.md; recommend session restart; no new work |
 
 **In all cases:** Quality of current work output (including subagent prompts and STATE.md writes) is never reduced. The variable is WHEN to stop, not HOW WELL to work.
-
-### Context Preservation Priority
-
-When compressing or deciding what to keep, prioritize in this order:
-
-| Priority | Content | Action |
-|----------|---------|--------|
-| 1 (NEVER LOSE) | Original user request | Keep verbatim, never summarize away |
-| 2 (CRITICAL) | Current stage and blockers | Keep current, can summarize past |
-| 3 (HIGH) | Key decisions made | Keep decision + rationale |
-| 4 (MEDIUM) | Phase summaries | Can compress to bullets |
-| 5 (LOW) | Detailed findings | Delegate to subagents |
-| 6 (DISCARD) | Intermediate reasoning | Let go |
 
 ### Proactive Quality Maintenance
 
@@ -447,16 +340,4 @@ Never Compress:
 - STATE.md writes (lifeline for session recovery)
 - QA BLOCKER details (until resolved)
 - Methodology decision rationales (audit-critical)
-```
-
-### Compression Quick Guide
-
-```
-Verbose → Compressed
-
-"I found that the endpoint..." → "Endpoint: [path] ([years])"
-"The key variables are..." → "Vars: [list]"
-"This is important because..." → [omit unless decision-relevant]
-"The code executed successfully..." → "Status: PASSED"
-"Here is the full output..." → "[summary only]"
 ```
