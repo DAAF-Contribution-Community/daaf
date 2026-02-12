@@ -324,24 +324,53 @@ For detailed guidance on filing effective issues (including how to use session l
 
 This project is licensed under the **GNU Lesser General Public License v3.0** (LGPL-3.0-or-later).
 
+**The simple version:** Anyone can use this for any reason. If you make improvements to the **core DAAF framework**, those improvements must be shared back with the entire community. However, any extensions you build **in addition to and on top of the framework** can remain private and yours to use as you wish.
+
 ### What This Means
+- **Freedom to use**: Use this software for any purpose, including with proprietary data and systems
+- **Freedom to study**: Access and modify the source code
+- **Freedom to share**: Distribute copies
+- **Freedom to improve**: Distribute your modifications
 
-- ✅ **Freedom to use**: Use this software for any purpose (including proprietary applications)
-- ✅ **Freedom to study**: Access and modify the source code
-- ✅ **Freedom to share**: Distribute copies
-- ✅ **Freedom to improve**: Distribute your modifications
+### The Core vs. Extensions Principle
 
-### Copyleft Requirement
-Unlike the standard GPL, this license allows you to link this library into your own software without being forced to release your application's source code. However, specific obligations remain:
-- Modifications to the DAAF: If you modify DAAF itself, you must release those modifications under LGPL-3.0.
-- Linking: You may link DAAF with proprietary software, provided you allow users to replace/upgrade DAAF (e.g., by using dynamic linking).
-- Reverse Engineering: You cannot prevent users from reverse engineering your application for the specific purpose of debugging changes to DAAF.
+Unlike the standard GPL, the LGPL distinguishes between **modifying the framework itself** and **building on top of it**:
+
+**Modifications to DAAF's core** must be shared if you distribute them, such as (but not limited to):
+- Changes to the orchestrator logic, workflow stages, or validation protocols
+- Modifications to existing agent definitions or bundled Skills
+- Bug fixes or enhancements to DAAF's Python workflows and protocols
+
+**Extensions built on DAAF** are yours to keep open or proprietary as you see fit, such as (but not limited to):
+- Private data source Skills you author for your own databases
+- Custom agents you create for your organization's specific workflows
+- Research methodologies and analysis scripts you develop using DAAF
+- All data, outputs, reports, notebooks, and visualizations you produce via DAAF
+
+**Important:** Copyleft obligations only trigger when you **distribute** a modified version of DAAF to others. Internal use within your organization — no matter how extensively you modify the framework — requires no sharing whatsoever.
+
+### Practical Examples
+
+| Scenario | Must you share open-source? | Why |
+|----------|----------------|-----|
+| You fix a bug in DAAF's orchestrator and publish your fork | **Yes** | This modifies the core framework and is distributed |
+| You create a Skill for your agency's private student database | **No** | This is an extension — a new file that uses DAAF's interfaces |
+| You add a custom agent for your team's internal review process | **No** | New agents are extensions, and internal use never triggers sharing |
+| You apply a proprietary statistical methodology in your analysis scripts | **No** | Analysis scripts are your work product, not part of DAAF |
+| You modify DAAF's validation checkpoints for internal use only | **No** | Internal modifications are never subject to LGPL obligations |
+| You work with FERPA-protected, classified, or proprietary data | **No** | Data processed by the framework is never affected by the license |
+| You run DAAF in a private Docker container within your organization | **No** | Running software internally is not distribution |
+| You modify the DAAF core framework and want to sell as new software | **Yes** | Distributing modified core framework code triggers LGPL |
 
 ### Why LGPL-3.0-or-later?
 
-We chose LGPL-3.0-or-later to facilitate the widest possible accessibility, utility, and adoption of this proof-of-concept. It ensures that the core research tooling remains open and transparent, requiring that anyone building upon it shares those core improvements back to the community. This license still allows it to be integrated into a diverse range of larger systems — whether open-source or proprietary — without legal friction, to provide support for data analysts working with secure data resources that themselves cannot be made public (e.g., for use with private databases, developing private data source skills, applying proprietary research methodologies, etc.).
+We chose LGPL-3.0-or-later to balance openness with practical adoption. It ensures that the core research tooling remains open and transparent — anyone who improves the framework's orchestration, agents, or validation protocols and distributes those improvements must share them back with the community.
+
+At the same time, it allows DAAF to be used in a diverse range of contexts — including those involving sensitive, proprietary, or classified data — without requiring users to open-source their data configurations, research methodologies, or analysis outputs. This matters because many of the researchers and analysts who would benefit most from DAAF work with data that cannot be made public (government agencies, healthcare researchers, private-sector analysts, etc.).
 
 See [LICENSE](LICENSE) and [COPYING.LESSER](COPYING.LESSER) for the full license text.
+
+> **Note:** This summary is provided for convenience and does not constitute legal advice. The authoritative license terms are in the LICENSE and COPYING.LESSER files. If you have specific compliance questions, consult a qualified attorney.
 
 ---
 
