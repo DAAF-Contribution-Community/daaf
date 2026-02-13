@@ -1,6 +1,6 @@
 # 02. Understanding DAAF
 
-This is the conceptual guide that turns an installer into a confident user. It expands on the README's brief overview into a thorough walkthrough of how DAAF works, what it produces, and how to think about AI-assisted research analysis. Read this before your first analysis to understand what's happening under the hood.
+This guide is designed to turn a new user into a confident user. It expands on the README and installation guide's brief overview into a thorough walkthrough of how DAAF works, what it produces, what to expect, where it can fail, and how to think about AI-assisted research analysis for your workflows more critically. This will guide you through your first real analysis with DAAF to understand what's happening under the hood, and suggest further testing pathways to really get comfortable with the strengths and weaknesses of DAAF.
 
 ---
 

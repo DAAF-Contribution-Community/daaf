@@ -1,6 +1,6 @@
 # 01. Installation & Quick Start
 
-This is the complete first-time installation and setup guide for DAAF. This document covers every step from installing prerequisites to running your first session.
+This is the complete first-time installation and setup guide for DAAF. This document covers every step from installing prerequisites to running your first session, as well as tips for file management, viewing compiled research script notebooks, and troubleshooting.
 
 ---
 
