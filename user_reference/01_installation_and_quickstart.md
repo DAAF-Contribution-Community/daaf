@@ -228,7 +228,7 @@ claude
 
 ### Ending a Session
 
-When you're ready to end a session, you have two options. The first option: Close the terminal window, and then use your Docker Desktop window to "pause" your Docker container (look for "daaf-docker-1" in your Containers panel). The other option is to do this fully through the terminal: 
+When you're ready to end a session, you have two options. The first option: Close the terminal window, and then use your Docker Desktop window to "pause" your Docker container (look for "daaf" and click the expand arrow next to it, then "daaf-daaf-docker-1" in your Containers panel). The other option is to do this fully through the terminal: 
 
 ```bash
 # Exit Claude Code first. You can also just press CTRL+C
@@ -256,7 +256,7 @@ The easiest way to browse your files is through Docker Desktop's graphical inter
 
 1. Open **Docker Desktop**
 2. Click **Containers** in the left sidebar
-3. Click the "expand" arrow on the container named **`daaf`** and then click on the name **`daaf-daaf-docker1`**
+3. Click the "expand" arrow on the container named **`daaf`** and then click on the name **`daaf-daaf-docker-1`**
 4. Select the **Files** tab to see the file tree
 5. Navigate into `daaf` and then `research` to find your project folders
 
@@ -288,6 +288,8 @@ git pull origin main
 ```
 
 Note that `git pull` inside the container won't work correctly if you've made any edits to the core DAAF workflow or documentation files (basically, anything outside of the research folder). In that case, you may want to submit a Pull request for your changes (if you've made useful updates you want to share broadly!) -- otherwise, you'll need to navigate your own merge conflicts and such (a topic for general Git tutorials, rather than here!).
+
+---
 
 ## Viewing Marimo Notebooks in Your Browser
 
