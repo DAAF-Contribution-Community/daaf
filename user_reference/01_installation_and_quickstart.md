@@ -145,7 +145,35 @@ You can check which Claude model is being used at any time (Opus, Sonnet, Haiku)
 
 ## First Launch: Confirming Everything Works
 
-Once you've gotten Claude Code running in your terminal and your model is set, you're ready to start asking the DAAF-empowered Claude any question you'd like. You may find it helpful to reference what's available in the (Urban Institute Education Data Portal)[https://educationdata.urban.org/documentation/] (the current datasets available for demonstration). Or, you can just ask it: "Hey Claude, I'm interested in understanding what kind of data we have available on \[Colleges/High Schools/School Districts\]. Can you give me a brief summary of the sorts of data you can analyze on this subject?"
+Once you've gotten Claude Code running in your terminal and your model is set, you're ready to start interacting with the DAAF-empowered Claude Code. Before you do anything else, let's confirm that Claude is actually seeing and using all the DAAF resources first:
+
+```
+Hey Claude, can you tell me more about DAAF? What does it do, and why is it useful for researchers wanting to use Claude Code for data analysis work? Give me the elevator pitch for a newcomer
+```
+
+If setup was successful and everything went through correctly, you should get back something quite specific and descriptive to the effect of:
+
+```
+DAAF: Data Analyst Augmentation Framework
+The Elevator Pitch
+DAAF is an agent orchestration system built on top of Claude Code that transforms it from a general-purpose coding assistant into a rigorous, reproducible research pipeline. It's designed for researchers who want AI-assisted data analysis but can't afford the typical pitfalls: hallucinated results, unreproducible workflows, silent data errors, or black-box methodology.
+The Problem It Solves
+When researchers use LLMs for data analysis, several things go wrong:
+1. No validation discipline — the AI writes a transformation, moves on, and nobody checks if it corrupted the data
+2. No audit trail — you get a result but can't trace how it was derived or what decisions were made along the way
+3. Context collapse — long analyses exhaust the AI's context window, leading to forgotten constraints and degraded output quality
+4. Scope drift — the AI quietly expands or changes the analysis without the researcher noticing
+5. No reproducibility — if you wanted to re-run the analysis or hand it to a colleague, you couldn't
+
+How DAAF Addresses This
+DAAF wraps Claude Code in a multi-agent pipeline with 12 stages across 5 phases...
+```
+
+Talking with Claude like this is one easy way you could get oriented to using DAAF. Ask it questions, dig into features, talk about pros and cons, and so on. It will intelligently reference both the user documentation and the workflow documentation as relevant (but it never hurts to remind it, "...based on the project documentation"). 
+
+From here, you can interact with Claude the same way you would with any AI assistant, but it'll "kick in" its DAAF-powered workflows and skillsets whenever relevant to supercharge anything related to data analysis work, data documentation spelunking, data exploration, and so on. If you want a gentle onboarding guide for actually using DAAF (fully written by a human for other humans!), we'll cover that in the next section: [**02. Understanding DAAF**](02_understanding_daaf.md). I used to be a high school English teacher, so this is the fun part for me, honestly. 
+
+That being said, let's go over just a few more technical details and how-to's before we get there.
 
 ---
 
