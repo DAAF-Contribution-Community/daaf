@@ -80,7 +80,7 @@ Claude Code will prompt you to choose your authentication method the first time 
 
 ## Installing DAAF
 
-Okay, with all the prerequisites out of the way, installation itself is only six easy steps and will only take a few minutes with a decent internet connection.
+Okay, with all the prerequisites out of the way, installation itself is only seven easy steps and will only take a few minutes with a decent internet connection.
 
 ### Step 1: Choose a project download location on your computer and open it in your terminal
 
@@ -104,17 +104,29 @@ cd daaf
 
 This creates a `daaf` folder containing all the project files. You should now be inside the project directory. You'll see files like `CLAUDE.md`, `docker-compose.yml`, `Dockerfile`, and folders like `agents/`, `research/`, etc.
 
-### Step 3: Use Docker to create and start the container
+> **Important:** The `git clone` command creates a folder named `daaf` by default. **Do not rename this folder** before you finish this full process.
+
+### Step 3: Copy the project files into Docker
+
+Rather than let Claude use and edit files directly on your computer, we're going to make a secure copy for Claude to operate on separately using Docker. Run this command next, making sure that Docker Desktop is currently running in the background:
+
+```bash
+docker run --rm -v "${PWD}:/source:ro" -v "daaf_daaf-data:/dest" busybox cp -a /source/. /dest/
+```
+
+This copies all the project files into a **Docker volume** — a storage area managed by Docker that will serve as the container's working directory. Think of it like creating a dedicated workspace inside Docker where all your research, data, and outputs will live. The `daaf/` folder on your computer is used as the starting point here, but going forward, the Docker volume is where the actual work happens (see "How to Manage DAAF Project Files and Output" below for more on this).
+
+### Step 4: Use Docker to create and start the container
 
 ```bash
 docker compose up -d --build
 ```
 
-This builds a Docker container with all the tools pre-installed using the Dockerfile provided with the project folder you just downloaded (Python, data science packages, Claude Code). The first time, this downloads base images and installs all packages — expect it to take a few minutes as it pulls in all the needed software. Subsequent starts are really fast since Docker caches everything. The `-d` flag in the command runs it in the background so you get your terminal back.
+This builds an isolated/protected Docker container with all the necessary tools pre-installed (Python, data science packages, Claude Code) using the Dockerfile provided and the copied project files from the volume we just made. The first time, this downloads base images and installs all packages — expect it to take a few minutes as it pulls in all the needed software. Subsequent starts are really fast since Docker caches everything.
 
-### Step 4: Open a terminal session inside the Docker container
+### Step 5: Open a terminal session inside the Docker container
 
-Once the Docker container setup is complete, your terminal will resume in the project folder. Run the following command to "enter" the Docker container we just created (which will use some configuration settings from the docker-compose.yaml file in our project folder, too).
+Once the Docker container setup is complete, your terminal will resume in the project folder. Run the following command to "enter" the Docker container we just created.
 
 ```bash
 docker compose exec daaf-docker bash
@@ -122,7 +134,7 @@ docker compose exec daaf-docker bash
 
 This opens a terminal session *inside* the container, separated from the rest of your computer and running with all the software just installed. You'll notice your terminal prompt changes — that's how you know you're "inside." Think of this like activating a mini virtual computer, within your computer.
 
-### Step 5: Launch Claude Code
+### Step 6: Launch Claude Code
 
 Now that we're in, it has everything it needs to start working. Enter the following command to launch Claude Code, configured with everything DAAF has to offer and ready to run.
 
@@ -131,7 +143,7 @@ claude
 ```
 On first launch, Claude Code will prompt you to authenticate (API key or subscription login). Follow its instructions to complete the process as needed based on your method. For Windows users, remember that CTRL+C actually exits the terminal, so use CTRL+SHIFT+C and CTRL+SHIFT+V if you want to copy/paste.
 
-### Step 6: Adjust some quick configuration settings
+### Step 7: Adjust some quick configuration settings
 
 Once you're in, there are a few settings to adjust to ensure that the workflow is able to operate as expected. First, type the following into Claude's chat window:
 
@@ -229,34 +241,53 @@ docker compose down
 # You can then just close your terminal.
 ```
 
+## How to Manage DAAF Project Files and Output
+
+Your research files, data, and outputs live inside the **Docker volume** we created during installation — a storage area managed by Docker, **copied from** the `daaf/` folder on your computer. Think of the `daaf/` folder on your computer as the "recipe" that was used to set everything up, while the Docker volume is the actual "kitchen" where all the work happens.
+
+This means:
+- **Your work persists** — stopping or restarting the container does NOT delete anything. The Docker volume retains all your research outputs, data, and notebooks across restarts, rebuilds, and even `docker compose down`.
+- **Files don't automatically appear on your computer** — unlike a traditional shared folder, files created inside the container are stored in the Docker volume, not directly on your desktop. To access them directly, you'll use Docker Desktop or simple copy commands (see below).
+- **Only the volume is accessible to Claude** — Claude can only see what's in the volume. Your documents, photos, and everything else are completely isolated.
+
+### Viewing Files in Docker Desktop
+
+The easiest way to browse your files is through Docker Desktop's graphical interface:
+
+1. Open **Docker Desktop**
+2. Click **Containers** in the left sidebar
+3. Click the "expand" arrow on the container named **`daaf`** and then click on the name **`daaf-daaf-docker1`**
+4. Select the **Files** tab to see the file tree
+5. Navigate into `daaf` and then `research` to find your project folders
+
+From here, you can download copies of individual folders or files to your computer by right-clicking on them. You can also Import files into the Volume from your computer by right-clicking, as well.
+
+### Backing Up Your Work
+
+Since your research files live inside the Docker volume, it'll be extremely important to regularly back up your work separately from the Volume. You can do that most easily using the Docker Desktop method above (go into the volume file viewer and download the whole daaf or research folder to somewhere else on your computer).
+
+### Viewing report Markdown (.md) files
+
+LLM assistants work best on text files, which means that proprietary document formats like Microsoft Word or Google Docs aren't great for this type of work. DAAF produces all its output report documents in Markdown (.md) format. You can open these in any basic text editor, but basic text editors tend not to display the formatting very nicely. I recommend installing a basic Markdown viewer, or you can copy the Markdown text into any free online viewer (e.g., [StackEdit](https://stackedit.io/app)) 
+
+---
+
 ## Keeping DAAF Updated
 
-DAAF is actively being developed and updated. If you'd like to pull in the latest fixes, extensions, and updates (which for a while may be as often as daily!!), updating your codebase is extremely simple. First, out of abundance of caution, make sure to make a separate copy of your research folder elsewhere on your computer (shouldn't be a problem, but just in case!). Then, all you need to do is open a Terminal in your DAAF folder and run the following commands:
+DAAF is actively being developed and updated. If you'd like to pull in the latest fixes, extensions, and updates (which for a while may be as often as daily!!), updating is straightforward. Since the project files live inside the Docker volume, the update happens inside the container -- the files that are visible on your original computer's folder are just old copies, now. Before updating, I recommend backing up your volume's research folder as a precaution (see "Backing Up Your Work" above).
 
 ```bash
 # Get into the project directory, inputting the right file path for your own system
 cd "C:\Users\Documents\daaf"
 # Make sure Docker Desktop is running on your computer, then start the Docker container:
 docker compose up -d
-# Enter into the Docker container again
+# Enter into the Docker container
 docker compose exec daaf-docker bash
-# Pull down the latest updates
+# Pull down the latest updates (this runs inside the container, updating the Docker volume)
 git pull origin main
 ```
 
-Note that the above won't work correctly if you've made any edits to the core DAAF workflow or documentation files (basically, anything outside of the research folder). In that case, you may want to submit a Pull request for your changes (if you've made useful updates you want to share broadly!). If not, it's relatively easy to delete the entire DAAF folder (again, backing up your research folder!!!) and just begin the install process fresh -- since the prerequisites and the Docker container are the most time intensive parts, reinstalling will take literally one minute.
-
-## How to Manage DAAF Project Files and Output
-
-Your local `daaf/` folder is connected to the container. This means:
-
-- **Files sync both ways** — when the assistant creates a report or dataset inside the container, it appears in the folder on your computer too. You can open these files normally. You can also bring in files into this folder that you'd like Claude to see, review, or inspect (e.g., other public datasets you're comfortable with it profiling using the data-ingest agent)
-- **Your work persists** — stopping the container doesn't delete your research outputs. They continue live in your project folder.
-- **Only this folder is accessible to Claude** — the container cannot see any other files on your computer. Your documents, photos, and everything else are completely isolated.
-
-Projects produced by DAAF will be stored in a folder called "research" within the DAAF installation folder you selected. For file management purposes, I strongly recommend making backup copies of these project folders intermittently. As mentioned above, if you use DAAF for anything more than exploration, I strongly recommend learning how to use Git to backup your files and track filechanges robustly.
-
----
+Note that `git pull` inside the container won't work correctly if you've made any edits to the core DAAF workflow or documentation files (basically, anything outside of the research folder). In that case, you may want to submit a Pull request for your changes (if you've made useful updates you want to share broadly!) -- otherwise, you'll need to navigate your own merge conflicts and such (a topic for general Git tutorials, rather than here!).
 
 ## Viewing Marimo Notebooks in Your Browser
 
@@ -306,7 +337,8 @@ You don't need to install any of these — Docker handles it all — but for you
 **"Port 2718 already in use"** — Another process is using that port. Either stop it, or change the port mapping in `docker-compose.yml` (e.g., `"3000:2718"` to use port 3000 on your host).
 **Claude Code asks for an API key every time** — Claude Code stores its configuration inside the container. If you fully remove the container (`docker compose down`), you may need to re-authenticate next time. To avoid this, you can set `ANTHROPIC_API_KEY` as an environment variable in a `.env` file in the project root (the `.gitignore` already prevents `.env` from being shared publicly).
 **Container seems slow to build the first time** — The first `docker compose up --build` downloads base images and installs all packages. This is a one-time cost — subsequent starts are fast since Docker caches everything.
-**"command not found: docker"** — Docker Desktop may not be installed, or your terminal needs to be restarted after installation. Close and reopen your terminal, and make sure Docker Desktop is installed and running.
+**"command not found: docker"** — Docker Desktop may not be installed, may not be running, or your terminal needs to be restarted after the initial installation. Close and reopen your terminal, and then make sure Docker Desktop is installed and running.
+**"I can't find my research files on my computer"** — With Docker volumes, your research files live inside Docker's managed storage, not in the `daaf/` folder on your computer. See **How to Manage DAAF Project Files and Output** above for more information.
 
 ---
 
