@@ -151,7 +151,7 @@ Once you're in, there are a few settings to adjust to ensure that the workflow i
 /config
 ```
 
-And then change the "auto-compact" setting to False by navigating down with your arrow keys and hitting Enter when it's selected. It should then show "False", after which you can hit the ESC key to return to the regular Claude chat.
+And then change the "Auto-compact" setting to False and "Verbose output" setting to True by navigating down with your arrow keys and hitting Enter when the option is selected. When the settings are changed, you can then hit the ESC key to return to the regular Claude chat. and begin working.
 
 **Recommended model:** You can check and change which Claude model is being used at any time (Opus, Sonnet, Haiku) by typing `/model`. You should also see the exact model being used below the chatline. All development and testing of this project was done using **Opus 4.5** and **Opus 4.6**. I unfortunately think that these models are absolutely required; other models (Sonnet, Haiku) are not nearly as capable and produce erratic, inconsistent results. The complexity of tasks embedded in the DAAF workflow (multi-agent orchestration) relies on the model's ability to follow complex, multi-step protocols reliably. This is also the reason why the Claude Max subscription is a likely prerequisite here: Opus models are very resource-intensive, and it's hard to complete the DAAF workflows under the "Pro" or "Free" tiers accordingly.
 
