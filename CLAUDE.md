@@ -38,8 +38,9 @@ User Request Received
     │
     └─ Session Recovery?
         └─ Read: Protocol 6 in 01_PROTOCOLS.md
-               ├─ Locate and read EXISTING PLAN (required)
-               ├─ Locate and read plan STATE.md (required)
+               ├─ Read STATE.md FIRST (establishes position + context snapshot)
+               ├─ Read Plan SELECTIVELY (recovery sections only, per Protocol 6)
+               ├─ Load additional Plan sections ON DEMAND (when dispatching tasks)
                └─ Resume from current stage
 ```
 

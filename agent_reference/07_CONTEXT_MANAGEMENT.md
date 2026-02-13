@@ -46,6 +46,8 @@ Keep only what's essential for orchestration:
 | Plan document location | Path only | Don't load full Plan |
 | Error history | ~200 words | Avoid repeating failures |
 
+> **Plan Loading Strategy:** During session recovery (Protocol 6), load Plan selectively — search for `## ` headings to build a section map, then read only recovery-critical sections (Original Request, Goal & Context, Decisions Log, Risk Register, Current Status, Transformation Sequence summary). Task-specific sections (wave task blocks, validation checkpoints) are loaded on-demand when dispatching subagents. See Protocol 6 Steps 3a-3d and "On-Demand Plan Loading" for the complete procedure.
+
 **Total Orchestrator Working Set:** ~1,500-2,000 words
 
 ### What Gets Delegated to Subagents

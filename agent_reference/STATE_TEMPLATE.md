@@ -277,22 +277,24 @@ Copy this template to `STATE.md` in the project folder when starting a Full Pipe
 
 **For the orchestrator when recovering via Protocol 6:**
 
-1. **Read this STATE.md first** — Establishes current position
+1. **Read this STATE.md first** — This is the primary recovery document
 2. **Locate Plan at:** `[exact path]`
-3. **Current Phase:** [N] — [Phase Name]
-4. **Current Stage:** [N] — [Stage Name]
-5. **Next Task:** `[task-name]` (Wave [N])
-6. **Required Context to Load:**
-   - [File or section needed]
-   - [Prior findings to review]
-7. **Use Protocol 6** from `01_PROTOCOLS.md` for full recovery procedure
+3. **Read Plan SELECTIVELY** — Search for `## ` headings, then load only:
+   - **Always:** Original Request, Goal & Context, Decisions Log, Risk Register, Current Status
+   - **Stage-conditional:** See Protocol 6 Step 3c table for additional sections based on current stage
+   - **On-demand:** Load specific wave task blocks only when dispatching (see Protocol 6 "On-Demand Plan Loading")
+4. **Current Phase:** [N] — [Phase Name]
+5. **Current Stage:** [N] — [Stage Name]
+6. **Next Task:** `[task-name]` (Wave [N])
+7. **Required Plan Sections for Next Task:** [List the specific Plan sections needed — e.g., "Wave 5 task block from Executable Task Sequence, CP4 from Validation Checkpoints"]
+8. **Prior Findings to Review:** [Specific findings or "See Context Snapshot above"]
 
 **Quick Resume Checklist:**
-- [ ] STATE.md read and understood
-- [ ] Plan located and key sections reviewed
-- [ ] Prior stage findings understood
+- [ ] STATE.md read and understood (position, checkpoints, blockers, next actions, context snapshot)
+- [ ] Plan recovery sections loaded selectively (NOT entire Plan)
+- [ ] Stage-conditional sections loaded if applicable
 - [ ] Open blockers identified
-- [ ] Next task ready for execution
+- [ ] Next task ready for execution (wave task block loaded on-demand when dispatching)
 ```
 
 ---
