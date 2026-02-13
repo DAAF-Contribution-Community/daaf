@@ -1,6 +1,6 @@
 # 04. Extending DAAF
 
-This guide focuses on the primary extension path: bringing new datasets and data domains into DAAF. If you want to modify the framework itself (agents, protocols, validation logic), see [Contributing](05_contributing.md) for framework-level changes.
+**UNDER CONSTRUCTION, EVERYTHING HERE SUBJECT TO CHANGE BY LAUNCH** This guide focuses on the primary extension path: bringing new datasets and data domains into DAAF. If you want to modify the framework itself (agents, protocols, validation logic), see [Contributing](05_contributing.md) for framework-level changes.
 
 ---
 

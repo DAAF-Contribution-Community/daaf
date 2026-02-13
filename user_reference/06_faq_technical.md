@@ -1,6 +1,6 @@
 # 06. FAQ: Technical
 
-Operational questions with concrete answers. If you're stuck, troubleshooting, or curious about a technical choice — check here first.
+**UNDER CONSTRUCTION, EVERYTHING HERE SUBJECT TO CHANGE BY LAUNCH** Operational questions with concrete answers. If you're stuck, troubleshooting, or curious about a technical choice — check here first.
 
 ---
 

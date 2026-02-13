@@ -1,6 +1,6 @@
 # 05. Contributing
 
-This guide covers all forms of contribution to DAAF, from filing an issue to modifying core framework components. Whether you've found a bug, want to improve documentation, or are building new agents — this is where to start.
+**UNDER CONSTRUCTION, EVERYTHING HERE SUBJECT TO CHANGE BY LAUNCH** This guide covers all forms of contribution to DAAF, from filing an issue to modifying core framework components. Whether you've found a bug, want to improve documentation, or are building new agents — this is where to start.
 
 ---
 

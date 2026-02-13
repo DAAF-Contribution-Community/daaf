@@ -1,6 +1,6 @@
 # 07. FAQ: Philosophy & Design Rationale
 
-This document addresses the "why" behind DAAF's design decisions and the broader questions about AI in research. It's where the project's intellectual contribution lives — beyond the technical how-to, these are the ideas and principles that shaped the framework.
+**UNDER CONSTRUCTION, EVERYTHING HERE SUBJECT TO CHANGE BY LAUNCH** This document addresses the "why" behind DAAF's design decisions and the broader questions about AI in research. It's where the project's intellectual contribution lives — beyond the technical how-to, these are the ideas and principles that shaped the framework.
 
 ---
 
