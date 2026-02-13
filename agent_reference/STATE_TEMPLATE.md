@@ -267,7 +267,7 @@ Copy this template to `STATE.md` in the project folder when starting a Full Pipe
 
 ### User Restart Prompt
 
-**To resume in a new session, paste this into the chat:**
+**To resume in a new session, run `/clear` to reset context, then paste this into the chat:**
 
 > Resume the [Project Title] analysis. Plan: `[exact plan path]`. State: `[exact STATE.md path]`. Currently at Stage [N] ([Stage Name]) — next step is [task description].
 

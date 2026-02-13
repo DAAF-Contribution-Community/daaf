@@ -210,8 +210,9 @@ If orchestrator context exceeds 60%:
    **Context Limit Approaching**
 
    I've captured current progress in STATE.md.
-   To continue with fresh context, start a new conversation and paste
-   the restart prompt below. I'll use Protocol 6 to resume seamlessly.
+   To continue with fresh context, copy the session restart prompt below, run 
+   `/clear` to reset the session, then paste the restart prompt into the new chat. 
+   I'll use Protocol 6 to resume seamlessly.
 
    Current state:
    - Phase: [X]
@@ -219,7 +220,7 @@ If orchestrator context exceeds 60%:
    - Last checkpoint: [CPn] - [status]
    - Next action: [description]
 
-   **To resume in a new session, paste this:**
+   **To resume, run `/clear` and then paste this:**
    > Resume the [Project Title] analysis. Plan: `[plan path]`. State: `[STATE.md path]`. Currently at Stage [N] ([Stage Name]) — next step is [task description].
    ```
 4. **Await user direction** (new session or continue with degraded quality)
@@ -282,10 +283,11 @@ I'm experiencing context degradation that may affect output quality.
 **Saved to:** STATE.md (updated)
 
 **Recommendation:**
-To ensure high-quality completion, please start a new conversation.
+To ensure high-quality completion, please copy the restart prompt below,
+run `/clear` to reset the session, then paste the restart prompt from STATE.md.
 Reference: `research/[project]/STATE.md`
 
-I'll use Protocol 6 (Session Recovery) to resume with fresh context.
+I'll then use Protocol 6 (Session Recovery) to resume with fresh context.
 ```
 
 ---
