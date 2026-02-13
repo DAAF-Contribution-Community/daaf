@@ -32,7 +32,7 @@ It's probably going to feel a bit weird, but you'll interact with DAAF/Claude Co
 
 **Opening your terminal:**
 - **Mac:** Open the "Terminal" app (search for it in Spotlight with `Cmd + Space`)
-- **Windows:** Open "PowerShell" or "Command Prompt" from the Start menu (PowerShell is recommended)
+- **Windows:** Open "PowerShell" from the Start menu (PowerShell is strongly recommended as Command Prompt/cmd often does not contain all the proper permissions and functions!)
 - **Linux:** Open your terminal emulator (usually `Ctrl + Alt + T`)
 
 **Helpful terminal basics:**
@@ -50,7 +50,7 @@ It's probably going to feel a bit weird, but you'll interact with DAAF/Claude Co
 - You can paste commands into the terminal (`Cmd + V` on Mac, `Ctrl + V` or right-click on Windows)
 - Press the up arrow key to recall previous commands
 - Tab completion works — start typing a file/folder name and press `Tab` to auto-complete it
-- Claude Code was immensely buggy for me on Windows using Powershell. I have found the free version of [Warp](https://www.warp.dev/) to be a much cleaner, more reliable experience (but feel free to turn off all their extra AI features and account shenanigans).
+- Claude Code had a lot of graphical glitches for me on Windows when using Powershell. I have found the free version of [Warp](https://www.warp.dev/) to be a much cleaner, more reliable experience (you can skip creating an account and skip using any of their AI features, it's totally free), but Powershell will still work if you don't want to install any other software.
 
 ### 2. Git
 
