@@ -131,15 +131,17 @@ claude
 ```
 On first launch, Claude Code will prompt you to authenticate (API key or subscription login). Follow its instructions to complete the process as needed based on your method. For Windows users, remember that CTRL+C actually exits the terminal, so use CTRL+SHIFT+C and CTRL+SHIFT+V if you want to copy/paste.
 
-### Step 6: Select Your Model
+### Step 6: Adjust some quick configuration settings
 
-You can check which Claude model is being used at any time (Opus, Sonnet, Haiku). To set this, run the following command at any time:
+Once you're in, there are a few settings to adjust to ensure that the workflow is able to operate as expected. First, type the following into Claude's chat window:
 
 ```bash
-/model
+/config
 ```
 
-**Recommended model:** All development and testing of this project was done using **Opus 4.5** and **Opus 4.6**. I unfortunately think that these models are absolutely required; other models (Sonnet, Haiku) are not nearly as capable and produce erratic, inconsistent results. The complexity of tasks embedded in the DAAF workflow (multi-agent orchestration) relies on the model's ability to follow complex, multi-step protocols reliably. This is also the reason why the Claude Max subscription is a likely prerequisite here: Opus models are very resource-intensive, and it's hard to complete the DAAF workflows under the "Pro" or "Free" tiers accordingly.
+And then change the "auto-compact" setting to False by navigating down with your arrow keys and hitting Enter when it's selected. It should then show "False", after which you can hit the ESC key to return to the regular Claude chat.
+
+**Recommended model:** You can check and change which Claude model is being used at any time (Opus, Sonnet, Haiku) by typing `/model`. You should also see the exact model being used below the chatline. All development and testing of this project was done using **Opus 4.5** and **Opus 4.6**. I unfortunately think that these models are absolutely required; other models (Sonnet, Haiku) are not nearly as capable and produce erratic, inconsistent results. The complexity of tasks embedded in the DAAF workflow (multi-agent orchestration) relies on the model's ability to follow complex, multi-step protocols reliably. This is also the reason why the Claude Max subscription is a likely prerequisite here: Opus models are very resource-intensive, and it's hard to complete the DAAF workflows under the "Pro" or "Free" tiers accordingly.
 
 Opus 4.6 (unlike Opus 4.5) also allows you to select its "thinking level" by tapping left-and-right arrow keys while Opus 4.6 is selected on the /model selector in Claude Code. All tests I've conducted to date are using the "High" setting -- as this is a case where quality is far more important than quantity, I strongly recommend doing the same. This will have usage and API limit ramificiations, though, so it is a reasonable thing to test out the tradeoffs for yourself! Please do report back with any findings so we can incorporate that into our guidance here.
 
