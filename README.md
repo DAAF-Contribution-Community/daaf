@@ -6,7 +6,7 @@ Install and begin using it in as little as 10 minutes from a fresh computer with
 
 By open-sourcing DAAF as an open and extensible framework (see more on [Open-source Licensing](#open-source-licensing) below), I hope to provide a foundational resource that the entire community of researchers and data scientists can use, benefit from, learn from, and extend via critical conversations and collaboration together. By pairing DAAF with an intensive array of educational materials, tutorials, blog deep-dives, and videos via project documentation and the [DAAF Field Guide Substack](https://daafguide.substack.com/), I also hope to rapidly accelerate the readiness of the scientific community to genuinely and critically engage with AI disruption and transformation writ large. More than anything, I just hope all of this work can somehow be useful for my many peers and colleagues trying to "catch up" to this rapidly developing (and extremely scary) frontier. 
 
-Learn more about my vision for DAAF, what DAAF currently can and cannot do as of today, how you can get involved, and how you can get started with DAAF yourself below.
+Learn more about my vision for DAAF, what makes DAAF different from other attempts to create LLM research assistants, what DAAF currently can and cannot do as of today, how you can get involved, and how you can get started with DAAF yourself by diving in below.
 
 ---
 
