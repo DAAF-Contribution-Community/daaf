@@ -1,6 +1,6 @@
-# DAAF: the Data Analyst Augmentation Framework
+<img width="4096" height="1296" alt="DAAF Logo" src="https://github.com/user-attachments/assets/616fae4e-2bd7-44aa-a52c-954d473dbb10" />
 
-**Summary:** DAAF is an open-source, extensible workflow for Claude Code that allows **skilled researchers** to rapidly scale their expertise and accelerate data analysis by as much as 5-10x -- without sacrificing the transparency, rigor, or reproducibility demanded by our core scientific principles. Install and begin using it in as little as 10 minutes from a fresh computer with a high-usage Anthropic account. 
+**Summary:** DAAF, the Data Analyst Augmentation Framework, is an open-source, extensible workflow for Claude Code that allows **skilled researchers** to rapidly scale their expertise and accelerate data analysis by as much as 5-10x -- without sacrificing the transparency, rigor, or reproducibility demanded by our core scientific principles. Install and begin using it in as little as 10 minutes from a fresh computer with a high-usage Anthropic account. 
 
 DAAF explicitly embraces the fact that LLM research assistants will never be perfect and can never be trusted as a matter of course. But by providing strict guardrails, enforcing best practices, and ensuring the highest levels of auditability possible, DAAF ensures that LLM research assistants can still be **immensely valuable** for critically-minded researchers capable of verifying and reviewing their work. In energetic and vocal opposition to the deeply misguided attempts to *replace* human researchers, DAAF is intended to be a force-multiplying *"exo-skeleton"* for human researchers (i.e., firmly keeping humans-in-the-loop). 
 
