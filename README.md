@@ -28,7 +28,7 @@ Learn more about my vision for DAAF, what makes DAAF different from other attemp
 - [**What DAAF Can Do Today**](#what-daaf-can-do-today)
 - [**What DAAF Can Do With Your Help**](#what-daaf-can-do-with-your-help)
 - [**Recommended Next Steps**](#recommended-next-steps)
-- [**Open-source Licensing**](#prerequisites)
+- [**Open-source Licensing**](#open-source-licensing)
 - [**Acknowledgments**](#acknowledgments)
 - [**About the Author**](#about-the-author)
 
