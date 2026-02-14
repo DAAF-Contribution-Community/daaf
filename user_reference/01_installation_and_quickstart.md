@@ -70,7 +70,7 @@ It's probably going to feel a bit weird, but you'll interact with DAAF/Claude Co
 
 ### 3. Git
 
-Git is software that primarily helps people track file changes and updates. It helps people identify exact line changes, and collect a full history of all changes in sequence (you can see that history for DAAF [here](https://github.com/brhkim/daaf/commits/main/)!) In this case, we're using Git to help you download ("clone") this project's core files to your computer. You'll use it just once during setup. If you continue to use Claude Code at all, and plan to use this project, I HIGHLY recommend you learn more about how to use Git for project and file management. It is absolutely necessary to better track and understand and review how Claude is changing things in your workspace later on. If you run into any Git-related errors during install, you may need to restart your computer to let the install fully sink in.
+Git is software that primarily helps people track file changes and updates. It helps people identify exact line changes, and collect a full history of all changes in sequence (you can see that history for DAAF [here](https://github.com/DAAF-Contribution-Community/daaf/commits/main/)!) In this case, we're using Git to help you download ("clone") this project's core files to your computer. You'll use it just once during setup. If you continue to use Claude Code at all, and plan to use this project, I HIGHLY recommend you learn more about how to use Git for project and file management. It is absolutely necessary to better track and understand and review how Claude is changing things in your workspace later on. If you run into any Git-related errors during install, you may need to restart your computer to let the install fully sink in.
 
 **Install:**
 - **macOS**: You will first need to use the Terminal mentioned above to install [Homebrew](https://brew.sh/). Follow the directions on that site, and then install Git by following directions here: [git-scm.com/downloads](https://git-scm.com/downloads).
@@ -103,7 +103,7 @@ cd "C:\Users\Downloads"
 
 ```bash
 # Now actually download the project files to your computer from GitHub
-git clone https://github.com/brhkim/daaf.git
+git clone https://github.com/DAAF-Contribution-Community/daaf.git
 
 # Enter the newly downloaded project directory
 cd daaf

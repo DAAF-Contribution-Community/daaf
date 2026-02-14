@@ -117,7 +117,7 @@ When including session log excerpts in issues:
 </details>
 ````
 
-Issue templates are available when you [create a new issue](https://github.com/brhkim/daaf/issues/new/choose) to help guide you through this.
+Issue templates are available when you [create a new issue](https://github.com/DAAF-Contribution-Community/daaf/issues/new/choose) to help guide you through this.
 
 ---
 
