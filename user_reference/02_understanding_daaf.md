@@ -1,20 +1,8 @@
-# 02. Understanding DAAF
+# 02. Understanding and Working with DAAF
 
 **UNDER CONSTRUCTION, EVERYTHING HERE SUBJECT TO CHANGE BY LAUNCH** This guide is designed to turn a new user into a confident user. It expands on the README and installation guide's brief overview into a thorough walkthrough of how DAAF works, what it produces, what to expect, where it can fail, and how to think about AI-assisted research analysis for your workflows more critically. This will guide you through your first real analysis with DAAF to understand what's happening under the hood, and suggest further testing pathways to really get comfortable with the strengths and weaknesses of DAAF.
 
----
-
-## Documentation Table of Contents
-
-- [**00. README**](../.) — **\[Prerequisite\]** Vision and purpose, what DAAF does and does not do, core design philosophy, acknowledgments
-- [**01. Installation & Quick Start**](01_installation_and_quickstart.md) — **\[Prerequisite\]** Get started! Installation prerequisites, step-by-step 5-minute setup, day-to-day usage, and troubleshooting
-- **02. Understanding DAAF** — **\[This document\]** Learn to work with DAAF for the first time: what to expect, engagement modes explained, your first analysis walkthrough
-- [**03. Best Practices**](03_best_practices.md) — Tips for working with Claude Code, writing effective prompts, ensuring quality and rigor with DAAF, reviewing outputs, and managing context
-- [**04. Extending DAAF**](04_extending_daaf.md) — How to add new data source skills, analytical tools and methodologies, and creating your own additional specialized agents
-- [**05. Contributing**](05_contributing.md) — Get involved in developing DAAF! How to file issues via GitHub, support expanding the capabilities of the framework, contribute to educational tutorials and how-to's, and more!
-- [**06. FAQ: Technical**](06_faq_technical.md) — Covers frequently asked questions about Docker, issues with Claude Code, usage limits, design rationale, authentication errors, and other common errors
-- [**07. FAQ: Philosophy**](07_faq_philosophy.md) — Grapples with the broader implications of this work, AI automation in general, model advancement pace, approaching the "exponential", environmental ethics, what this means for the next generation of researchers, and more
-- [**Back to main**](../.)
+[**Back to main**](../.)
 
 ---
 
