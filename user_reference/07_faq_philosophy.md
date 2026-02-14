@@ -128,7 +128,7 @@ DAAF is not a general-purpose coding assistant — it's a domain-specific resear
 
 ## Recommended Next Steps
 
-- [**00. README**](../.) — Vision and purpose, what DAAF does and does not do, core design philosophy, acknowledgments
+- [**00. README**](../.) — Vision and purpose, project goals, what DAAF does and does not do, core design philosophy, acknowledgments
 - [**01. Installation & Quick Start**](01_installation_and_quickstart.md) — Get started! Installation prerequisites, step-by-step 5-minute setup, day-to-day usage, and troubleshooting
 - [**06. FAQ: Technical**](06_faq_technical.md) — Covers frequently asked questions about Docker, issues with Claude Code, usage limits, design rationale, authentication errors, and other common errors
 - [**Back to main**](../.)

@@ -212,7 +212,7 @@ How to verify the container is running, the port is mapped correctly, and the ma
 
 ## Recommended Next Steps
 
-- [**00. README**](../.) — Vision and purpose, what DAAF does and does not do, core design philosophy, acknowledgments
+- [**00. README**](../.) — Vision and purpose, project goals, what DAAF does and does not do, core design philosophy, acknowledgments
 - [**01. Installation & Quick Start**](01_installation_and_quickstart.md) — Get started! Installation prerequisites, step-by-step 5-minute setup, day-to-day usage, and troubleshooting
 - [**07. FAQ: Philosophy**](07_faq_philosophy.md) — Grapples with the broader implications of this work, AI automation in general, model advancement pace, approaching the "exponential", environmental ethics, what this means for the next generation of researchers, and more
 - [**Back to main**](../.)
