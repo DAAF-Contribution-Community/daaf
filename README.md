@@ -4,7 +4,7 @@
 
 Install and begin using it in as little as 10 minutes from a fresh computer with a high-usage Anthropic account. The base framework comes ready to analyze any or all of the 40+ foundational public education datasets available via the [Urban Institute Education Data Portal](https://educationdata.urban.org/documentation/), and is readily extensible to new data domains and methodologies with a suite of built-in tools to ingest new data sources and craft new Skill files at will. 
 
-By open-sourcing DAAF as an open and extensible framework (see more on [Open-source Licensing](#open-source-licensing) below), I hope to provide a foundational resource that the entire community of researchers and data scientists can use, benefit from, learn from, and extend via critical conversations and collaboration together. By pairing DAAF with an intensive array of educational materials, tutorials, blog deep-dives, and videos via project documentation and the [DAAF Field Guide Substack](https://daafguide.substack.com/) (much, much more to come!!), I also hope to rapidly accelerate the readiness of the scientific community to genuinely and critically engage with AI disruption and transformation writ large. More than anything, I just hope all of this work can somehow be useful for my many peers and colleagues trying to "catch up" to this rapidly developing (and extremely scary) frontier. 
+By open-sourcing DAAF as an open and extensible framework (see more on [Why open-source? What does it mean for DAAF?](#why-open-source-what-does-it-mean-for-daaf) below), I hope to provide a foundational resource that the entire community of researchers and data scientists can use, benefit from, learn from, and extend via critical conversations and collaboration together. By pairing DAAF with an intensive array of educational materials, tutorials, blog deep-dives, and videos via project documentation and the [DAAF Field Guide Substack](https://daafguide.substack.com/) (much, much more to come!!), I also hope to rapidly accelerate the readiness of the scientific community to genuinely and critically engage with AI disruption and transformation writ large. More than anything, I just hope all of this work can somehow be useful for my many peers and colleagues trying to "catch up" to this rapidly developing (and extremely scary) frontier. 
 
 Learn more about my vision for DAAF, what makes DAAF different from other attempts to create LLM research assistants, what DAAF currently can and cannot do as of today, how you can get involved, and how you can get started with DAAF yourself by diving in below.
 
@@ -25,10 +25,10 @@ Learn more about my vision for DAAF, what makes DAAF different from other attemp
 
 ## README Table of Contents
 - [**Vision & Purpose**](#vision--purpose)
-- [**What DAAF Can Do Today**](#what-daaf-can-do-today)
-- [**What DAAF Can Do With Your Help**](#what-daaf-can-do-with-your-help)
+- [**What DAAF can do today**](#what-daaf-can-do-today)
+- [**What DAAF can do with your help**](#what-daaf-can-do-with-your-help)
+- [**Why open-source? What does it mean for DAAF?**](#why-open-source-what-does-it-mean-for-daaf)
 - [**Recommended Next Steps**](#recommended-next-steps)
-- [**Open-source Licensing**](#open-source-licensing)
 - [**Acknowledgments**](#acknowledgments)
 - [**About the Author**](#about-the-author)
 
@@ -52,11 +52,11 @@ DAAF is a set of **forever free, completely open-source, and highly structured w
 
 The end-result? I believe that a skilled researcher using DAAF and Claude Code can **easily produce 5-10x the amount of rigorous, careful, and thoughtful data analysis** over what they could complete alone or with more ad-hoc/interactive engagement with LLM assistants -- a sort of **force-multiplying exo-skeleton for researchers with trained experts at the helm** (i.e., human-in-the-loop, in energetic and vocal opposition to deeply misguided attempts to replace researchers entirely). DAAF explicitly embraces the fact that LLM research assistants will never be perfect and can never be trusted as a matter of course. But with a skilled researcher at the helm, LLM research assistants shaped by DAAF can still be immensely useful in scaling the value of the researcher's hard-won expertise.
 
-By open-sourcing this work as an open and extensible framework (see more on [Open-source Licensing](#open-source-licensing) below), I hope to provide a foundational resource that the entire community of researchers and data scientists can use, benefit from, learn from, and extend via critical conversations and collaboration together. By pairing DAAF with an intensive array of educational materials, tutorials, blog deep-dives, and videos via project documentation and the [DAAF Field Guide Substack](https://daafguide.substack.com/) (much, much more to come!!), I also hope to rapidly accelerate the readiness of the scientific community to genuinely and critically engage with AI disruption and transformation writ large. More than anything, I just hope all of this work can somehow be useful for my many peers and colleagues trying to "catch up" to this rapidly developing (and extremely scary) frontier.
+By open-sourcing this work as an open and extensible framework (see more on [Why open-source? What does it mean for DAAF?](#why-open-source-what-does-it-mean-for-daaf) below), I hope to provide a foundational resource that the entire community of researchers and data scientists can use, benefit from, learn from, and extend via critical conversations and collaboration together. By pairing DAAF with an intensive array of educational materials, tutorials, blog deep-dives, and videos via project documentation and the [DAAF Field Guide Substack](https://daafguide.substack.com/) (much, much more to come!!), I also hope to rapidly accelerate the readiness of the scientific community to genuinely and critically engage with AI disruption and transformation writ large. More than anything, I just hope all of this work can somehow be useful for my many peers and colleagues trying to "catch up" to this rapidly developing (and extremely scary) frontier.
 
 ---
 
-## What DAAF Can Do Today
+## What DAAF can do today
 
 As of launch, DAAF can be downloaded, installed, and run by any skilled researcher in as little as 10 minutes on a fresh computer (see [**01. Installation & Quick Start**](user_reference/01_installation_and_quickstart.md) for installation instructions).
 
@@ -77,7 +77,7 @@ Ready to get started? See [**01. Installation & Quick Start**](user_reference/01
 
 ---
 
-## What DAAF Can Do With Your Help
+## What DAAF can do with your help
 
 While built with the public education datasets out-of-the-box for demonstration purposes, DAAF also includes a suite of tools that allow advanced users to easily and rapidly extend its capabilities in a number of important directions:
 - **Data ingestion:** Ask DAAF to invoke the `data-ingest` agent, point it to a dataset (being extremely careful to ensure that you abide by your organization's AI policy and data protection standards for it!!!), and provide any codebook or documentation available. DAAF will carefully build an intensive set of data documentation via manual data diagnostics and exploration, allowing it to use that data robustly and carefully in any future research request.
@@ -100,15 +100,7 @@ The architecture, agents, validation protocols, and workflow stages are domain-a
 
 ---
 
-## Recommended Next Steps
-
-- [**01. Installation & Quick Start**](user_reference/01_installation_and_quickstart.md) — Get started! Installation prerequisites, step-by-step 5-minute setup, day-to-day usage, and troubleshooting
-- [**06. FAQ: Technical**](user_reference/06_faq_technical.md) — Covers frequently asked questions about Docker, issues with Claude Code, usage limits, design rationale, authentication errors, and other common errors
-- [**07. FAQ: Philosophy**](user_reference/07_faq_philosophy.md) — Grapples with the broader implications of this work, AI automation in general, model advancement pace, approaching the "exponential", environmental ethics, what this means for the next generation of researchers, and more
-
----
-
-## Open-source Licensing
+## Why open-source? What does it mean for DAAF?
 
 **Critical Note:** This summary is provided for convenience and does not constitute legal advice. See [LICENSE](LICENSE) and [COPYING.LESSER](COPYING.LESSER) for the full license text. If you have specific compliance questions, consult a qualified attorney.
 
@@ -145,6 +137,14 @@ Unlike the standard GPL, the LGPL distinguishes between **modifying the framewor
 | You work with FERPA-protected, classified, or proprietary data | **No** | Data processed by the framework is never affected by the license |
 | You run DAAF in a private Docker container within your organization | **No** | Running software internally is not distribution |
 | You modify the DAAF core framework and want to sell as new software | **Yes** | Distributing modified core framework code triggers LGPL |
+
+---
+
+## Recommended Next Steps
+
+- [**01. Installation & Quick Start**](user_reference/01_installation_and_quickstart.md) — Get started! Installation prerequisites, step-by-step 5-minute setup, day-to-day usage, and troubleshooting
+- [**06. FAQ: Technical**](user_reference/06_faq_technical.md) — Covers frequently asked questions about Docker, issues with Claude Code, usage limits, design rationale, authentication errors, and other common errors
+- [**07. FAQ: Philosophy**](user_reference/07_faq_philosophy.md) — Grapples with the broader implications of this work, AI automation in general, model advancement pace, approaching the "exponential", environmental ethics, what this means for the next generation of researchers, and more
 
 ---
 
