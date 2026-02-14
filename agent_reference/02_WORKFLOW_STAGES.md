@@ -687,7 +687,7 @@ Run plan-checker
 - [ ] Plan validation completed
 - [ ] Status is PASSED or PASSED_WITH_WARNINGS
 - [ ] If PASSED_WITH_WARNINGS: warnings documented in Plan
-- [ ] **PSU2 presented to user with Plan summary and validation results**
+- [ ] **PSU2 presented to user with Plan summary, exact Plan filepath for their deeper inspection of the full file, and validation results**
 - [ ] **User confirmed PSU2 (explicit approval of Plan)**
 
 ---
@@ -700,7 +700,8 @@ Run plan-checker
 **Actions:**
 1. Compile Plan summary and plan-checker results
 2. Present PSU2 to user using the PSU template
-3. WAIT for explicit user confirmation
+3. Share the exact Plan filepath and indicate to the user that they should read it closely at this time
+4. WAIT for explicit user confirmation
 
 **PSU2 Content Requirements:**
 - Research question as stated in the Plan
@@ -711,6 +712,7 @@ Run plan-checker
 - Risk Register highlights: top risks and mitigation strategies
 - Plan-checker result: PASSED or PASSED_WITH_WARNINGS (include any warnings verbatim)
 - Estimated scope: approximate record counts, number of scripts
+- User informed of full Plan filepath and instructed to read it closely for their deep review
 
 **User Response Handling:**
 - **Approve** → Proceed to Stage 5 (Data Retrieval)

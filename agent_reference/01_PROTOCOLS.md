@@ -423,6 +423,7 @@ PSU2 presents the Plan for explicit user approval, covering:
 - Transformation sequence and observable truths
 - Plan-checker validation results (including any warnings)
 - Risk Register highlights
+- The exact filepath to the Plan so the user can review it in detail
 
 **The orchestrator MUST wait for explicit user confirmation before invoking Stage 5 (Data Retrieval).** The Plan is the contract for the entire analysis — user approval is mandatory, not advisory.
 

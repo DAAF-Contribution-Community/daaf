@@ -717,6 +717,7 @@ Phase [N+1] ([Phase Name]) will [brief description of what comes next and what i
 - Observable Truths the analysis will test
 - Risk Register highlights
 - Plan-checker validation result (PASSED/PASSED_WITH_WARNINGS and any warnings)
+- User informed of full Plan filepath and instructed to read it closely for their deep review
 
 **PSU3 (Data Acquisition → Analysis):**
 - Datasets acquired: source, shape, date range, file paths
@@ -1233,7 +1234,7 @@ Forcing functions are mandatory design interventions that **prevent** poor pract
 
 **Gate G4.5 Enforcement:** plan-checker MUST be invoked and return PASSED or PASSED_WITH_WARNINGS. If ISSUES_FOUND, revise Plan (max 2 attempts) then escalate. Update STATE.md "Plan Validation" section with the result before proceeding. See Stage 4.5 in `agent_reference/02_WORKFLOW_STAGES.md` for the invocation pattern.
 
-**CRITICAL:** Gate G4.5 requires POSITIVE confirmation that plan-checker was invoked and returned PASSED or PASSED_WITH_WARNINGS. If plan-checker was never invoked, the gate condition is NOT satisfied. Update STATE.md "Plan Validation" section with the result before proceeding to Stage 5. Additionally, after plan-checker returns PASSED or PASSED_WITH_WARNINGS, the orchestrator MUST present PSU2 (Phase Status Update) to the user including the plan-checker result and a Plan summary. Stage 5 CANNOT begin until the user confirms PSU2.
+**CRITICAL:** Gate G4.5 requires POSITIVE confirmation that plan-checker was invoked and returned PASSED or PASSED_WITH_WARNINGS. If plan-checker was never invoked, the gate condition is NOT satisfied. Update STATE.md "Plan Validation" section with the result before proceeding to Stage 5. Additionally, after plan-checker returns PASSED or PASSED_WITH_WARNINGS, the orchestrator MUST present PSU2 (Phase Status Update) to the user including the plan-checker result, a Plan summary, and the exact filepath to the Plan for the user's deeper inspection. Stage 5 CANNOT begin until the user confirms PSU2.
 
 **Gate G5-G8 Enforcement (Per-Script QA Invocation):** Gates G5-G8 require POSITIVE confirmation that code-reviewer was **separately invoked to review each individual script immediately after that script completed execution** — not batched at stage end. "Immediately" means: before the next script in the same stage begins. "Separately" means: one code-reviewer invocation per script, not one invocation reviewing multiple scripts. Running all scripts in a stage and then invoking code-reviewer once (or once per script after-the-fact) does **NOT** satisfy these gates — the QA must be interleaved with execution so that each script's QA findings can inform whether to proceed, revise, or stop before the next script runs. If code-reviewer was never invoked for a given script, that script's QA status is NOT_RUN and the gate is NOT satisfied. For Gate G8, BOTH QA4a (statistical analysis) and QA4b (visualization) must be independently and separately invoked per script. See the **Stage 5-8 Composite Execution Pattern** for the complete flow.
 
