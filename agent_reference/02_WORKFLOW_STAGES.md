@@ -467,6 +467,36 @@ Consolidate these parallel findings into a unified context for Plan creation.
 - [ ] All source findings integrated
 - [ ] Conflicts identified and resolved
 - [ ] Unified context ready for data-planner
+- [ ] **PSU1 presented to user**
+- [ ] **User confirmed PSU1**
+
+---
+
+### Phase Status Update 1 (PSU1): Discovery Complete
+
+**Trigger:** Gate G3.5 satisfied (synthesis complete, conflicts resolved)
+**Blocking:** YES — Stage 4 CANNOT begin until user confirms PSU1
+
+**Actions:**
+1. Compile discovery findings from Stages 2, 3, and 3.5
+2. Present PSU1 to user using the PSU template (see CLAUDE.md "Phase Status Updates" section)
+3. WAIT for explicit user confirmation
+
+**PSU1 Content Requirements:**
+- Data sources identified (with endpoints and year ranges)
+- Key variables discovered and their availability status
+- Source-specific caveats and limitations (from Stage 3 deep-dives)
+- Suppression patterns identified
+- Cross-source conflicts and how they were resolved (from Stage 3.5)
+- Feasibility assessment: can the research question be answered with available data?
+- Recommended analytical approach for the Plan
+- Any LOW-confidence items that need user input before planning
+
+**User Response Handling:**
+- **Approve** → Proceed to Stage 4 (Plan Creation)
+- **Request more exploration** → Return to Stage 2 or 3 for additional discovery
+- **Adjust scope** → Update research question/scope, re-confirm, then proceed to Stage 4
+- **Ask questions** → Answer, then re-present approval request
 
 ---
 
@@ -519,15 +549,10 @@ Consolidate these parallel findings into a unified context for Plan creation.
    - Include all section headers with empty content
    - This is a skeleton — content will be added incrementally during execution
 
-6. **Report to User**
-   ```
-   **Progress Update: Phase 2 Complete**
-   - Created: Plan document at [path]
-   - Methodology: [brief summary]
-   - Next: Proceeding to data acquisition
-   
-   [User may review Plan; execution continues unless objections raised]
-   ```
+6. **Phase Status Update (PSU2)**
+   After plan-checker completes (Stage 4.5), present PSU2 to user.
+   See "Phase Status Update 2 (PSU2)" section for full requirements.
+   **MUST wait for explicit user confirmation before proceeding to Stage 5.**
 
 ### Plan Completeness Checklist
 
@@ -579,8 +604,7 @@ Incomplete transformation sequences lead to incomplete validation and unreliable
 - [ ] **LEARNINGS.md skeleton created** at `research/[folder]/LEARNINGS.md` (MANDATORY — Gate G4)
 - [ ] **Plan Completeness Gate passed** (all sections verified)
 - [ ] Project folder structure created (`data/raw/`, `data/processed/`, `output/analysis/`, `output/figures/`)
-- [ ] User notified
-- [ ] Ready to proceed unless user objects
+- [ ] User notified (PSU2 presented after Stage 4.5 completes)
 
 **Gate G4 Enforcement:** Plan-checker (Stage 4.5) CANNOT be invoked without Plan, STATE.md, and LEARNINGS.md all existing. (Stage 5 additionally requires G4.5 — see below.)
 
@@ -647,8 +671,8 @@ Plan created (Stage 4)
     ↓
 Run plan-checker
     ↓
-├─ PASSED → Proceed to Stage 5
-├─ PASSED_WITH_WARNINGS → Document warnings, proceed to Stage 5
+├─ PASSED → Present PSU2, await user confirmation, then proceed to Stage 5
+├─ PASSED_WITH_WARNINGS → Document warnings, present PSU2, await user confirmation, then proceed to Stage 5
 └─ ISSUES_FOUND → Return to data-planner for revision
                 ↓
             data-planner revises Plan
@@ -663,7 +687,36 @@ Run plan-checker
 - [ ] Plan validation completed
 - [ ] Status is PASSED or PASSED_WITH_WARNINGS
 - [ ] If PASSED_WITH_WARNINGS: warnings documented in Plan
-- [ ] Ready to proceed to Phase 3
+- [ ] **PSU2 presented to user with Plan summary and validation results**
+- [ ] **User confirmed PSU2 (explicit approval of Plan)**
+
+---
+
+### Phase Status Update 2 (PSU2): Plan Ready for Approval
+
+**Trigger:** Gate G4.5 satisfied (plan-checker PASSED or PASSED_WITH_WARNINGS)
+**Blocking:** YES — Stage 5 CANNOT begin until user confirms PSU2
+
+**Actions:**
+1. Compile Plan summary and plan-checker results
+2. Present PSU2 to user using the PSU template
+3. WAIT for explicit user confirmation
+
+**PSU2 Content Requirements:**
+- Research question as stated in the Plan
+- Methodology summary: statistical approach, key analytical decisions
+- Data sources confirmed: endpoints, year ranges, geographic scope
+- Transformation sequence overview: number of tasks, wave structure, key joins
+- Observable Truths the analysis will evaluate
+- Risk Register highlights: top risks and mitigation strategies
+- Plan-checker result: PASSED or PASSED_WITH_WARNINGS (include any warnings verbatim)
+- Estimated scope: approximate record counts, number of scripts
+
+**User Response Handling:**
+- **Approve** → Proceed to Stage 5 (Data Retrieval)
+- **Request Plan changes** → Invoke data-planner for revision, re-run plan-checker, then re-present PSU2
+- **Adjust scope/methodology** → Revise Plan accordingly, re-validate, re-present PSU2
+- **Ask questions** → Answer, then re-present approval request
 
 ---
 
@@ -864,6 +917,39 @@ assert len(clean_df) > len(raw_df) * 0.1, "STOP: >90% data loss"
 - [ ] **All QA2 statuses:** PASSED/WARNING (any BLOCKER resolved via revision before next script)
 - [ ] **QA scripts saved to `scripts/cr/stage6_{step}_cr1.py`** (+ cr2..cr5 if warranted)
 - [ ] **STATE.md updated:** Current Stage: 6, CP2 status, suppression rate, processed data paths
+- [ ] **PSU3 presented to user with data quality summary**
+- [ ] **User confirmed PSU3**
+
+---
+
+### Phase Status Update 3 (PSU3): Data Acquired and Cleaned
+
+**Trigger:** Gate G6 satisfied (all Stage 5-6 scripts executed and QA'd)
+**Blocking:** YES — Stage 7 CANNOT begin until user confirms PSU3
+
+**Actions:**
+1. Compile data acquisition and cleaning summary from Stages 5-6
+2. Include QA results from all QA1 and QA2 reviews
+3. Present PSU3 to user using the PSU template
+4. WAIT for explicit user confirmation
+
+**PSU3 Content Requirements:**
+- Datasets acquired: source name, shape (rows x columns), date range, file path
+- Data freshness: most recent year available per source
+- Data quality per dataset: missingness rates for critical columns, suppression rates
+- Cleaning actions taken: rows removed (with counts and percentages), values recoded, filters applied
+- QA summary table: each script's QA status (PASSED/WARNING) with details for any WARNINGs
+- Any deviations from the Plan during fetch or clean (documented per RULE 1-3)
+- If data lag >= 3 years: explicit flag for user awareness
+- If COVID years (2020-2021) included: explicit flag with documented warning
+- Data readiness assessment: are the cleaned datasets ready for analysis?
+
+**User Response Handling:**
+- **Approve** → Proceed to Stage 7 (EDA & Transformation)
+- **Request re-fetch** → Return to Stage 5 for specific datasets
+- **Request different cleaning approach** → Return to Stage 6 with revised parameters
+- **Flag concern about data quality** → Orchestrator investigates and reports back
+- **Ask questions** → Answer, then re-present approval request
 
 ---
 
@@ -1359,6 +1445,38 @@ The following are **NEVER ALLOWED** in Stage 9 notebooks:
 - [ ] **All WARNINGs documented** (with assessment of impact)
 - [ ] **No missing QA reviews** (every Stage 5-8 script has a corresponding code-reviewer invocation)
 - [ ] **If unresolved issues found:** STOP, escalate
+- [ ] **PSU4 presented to user with analysis results and QA summary**
+- [ ] **User confirmed PSU4**
+
+---
+
+### Phase Status Update 4 (PSU4): Analysis Complete
+
+**Trigger:** Gate G10 satisfied (QA aggregation complete, BLOCKERs resolved)
+**Blocking:** YES — Stage 11 CANNOT begin until user confirms PSU4
+
+**Actions:**
+1. Compile analysis summary from Stages 7-8 and QA aggregation from Stage 10
+2. Reference key visualizations by file path for user inspection
+3. Present PSU4 to user using the PSU template
+4. WAIT for explicit user confirmation
+
+**PSU4 Content Requirements:**
+- Transformation summary: joins performed, derived variables created, final analysis dataset shape
+- EDA highlights: key distributions, notable patterns, surprising findings
+- Statistical analysis results: key findings with effect sizes and confidence intervals where applicable
+- Visualization inventory: file paths to all generated figures (so user can inspect them)
+- QA aggregation summary: all accumulated WARNINGs from Stages 5-8, with resolution status
+- Any deviations from Plan methodology (with rationale)
+- Notebook compilation status (Stage 9): runs successfully, all scripts represented
+- Observable Truths progress: which can be evaluated, preliminary assessment
+
+**User Response Handling:**
+- **Approve** → Proceed to Stage 11 (Report Generation)
+- **Request additional analysis** → Return to Stage 8 for supplementary work
+- **Request re-transformation** → Return to Stage 7 with revised approach
+- **Flag concern about findings** → Orchestrator investigates and reports back
+- **Ask questions** → Answer, then re-present approval request
 
 ---
 

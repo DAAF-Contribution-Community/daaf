@@ -225,7 +225,7 @@ If orchestrator context exceeds 60%:
    **To resume, run `/clear` and then paste this:**
    > Resume the [Project Title] analysis. Plan: `[plan path]`. State: `[STATE.md path]`. Currently at Stage [N] ([Stage Name]) — next step is [task description].
    ```
-4. **Await user direction** (new session or continue with degraded quality)
+4. **Await user direction** (start a new session to continue at full quality, or complete only the current atomic unit before restarting)
 
 ---
 

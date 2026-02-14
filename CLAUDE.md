@@ -234,6 +234,12 @@ The Full Pipeline workflow consists of **5 Phases** and **12 Stages**. Other mod
 │      └─ Gate G3.5: Synthesis complete, unified guidance for Plan            │
 └─────────────────────────────────────────────────────────────────────────────┘
                           ↓
+            ┌─────────────────────────────────┐
+            │  ★ PSU1: Phase Status Update 1  │
+            │  Present findings, await user   │
+            │  confirmation before planning   │
+            └─────────────────────────────────┘
+                          ↓
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │ PHASE 2: PLANNING                                                           │
 ├─────────────────────────────────────────────────────────────────────────────┤
@@ -257,9 +263,14 @@ The Full Pipeline workflow consists of **5 Phases** and **12 Stages**. Other mod
 │  contract between orchestrator and subagents during Stage 7. Each row       │
 │  becomes a separate subagent invocation. Incomplete sequences lead to       │
 │  incomplete validation and unreliable results.                              │
-│                                                                             │
-│  [User may review Plan; execution continues unless objections raised]       │
 └─────────────────────────────────────────────────────────────────────────────┘
+                          ↓
+            ┌─────────────────────────────────┐
+            │  ★ PSU2: Phase Status Update 2  │
+            │  Present Plan for user review,  │
+            │  await confirmation before      │
+            │  data acquisition               │
+            └─────────────────────────────────┘
                           ↓
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │ PHASE 3: DATA ACQUISITION & PREPARATION                                     │
@@ -307,6 +318,13 @@ The Full Pipeline workflow consists of **5 Phases** and **12 Stages**. Other mod
 │  │  Gate: ALL Stage 6 scripts individually QA'd → proceed to Stage 7      │ │
 │  └────────────────────────────────────────────────────────────────────────┘ │
 └─────────────────────────────────────────────────────────────────────────────┘
+                          ↓
+            ┌─────────────────────────────────┐
+            │  ★ PSU3: Phase Status Update 3  │
+            │  Present data quality metrics,  │
+            │  await confirmation before      │
+            │  analysis                       │
+            └─────────────────────────────────┘
                           ↓
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │ PHASE 4: ANALYSIS & NOTEBOOK DEVELOPMENT                                    │
@@ -357,6 +375,13 @@ The Full Pipeline workflow consists of **5 Phases** and **12 Stages**. Other mod
 │      ├─ STOP if: unresolved BLOCKERs or systemic WARNING patterns           │
 │      └─ Gate G10: QA aggregated, BLOCKERs resolved, WARNINGs documented     │
 └─────────────────────────────────────────────────────────────────────────────┘
+                          ↓
+            ┌─────────────────────────────────┐
+            │  ★ PSU4: Phase Status Update 4  │
+            │  Present analysis results and   │
+            │  QA aggregation, await user     │
+            │  confirmation before synthesis  │
+            └─────────────────────────────────┘
                           ↓
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │ PHASE 5: SYNTHESIS & DELIVERY                                               │
@@ -453,13 +478,12 @@ For EACH task in Stages 5-8, follow this complete loop. **Do NOT skip any step.*
 
 ### Phase-to-Protocol Mapping
 
-| Phase | Primary Protocol | Also Applies | Reference |
-|-------|------------------|--------------|-----------|
-| Phase 1 | Protocol 1: Data Discovery | — | `agent_reference/01_PROTOCOLS.md` |
-| Phase 2 | Protocol 4: Plan Management | — | `agent_reference/01_PROTOCOLS.md` |
-| Phase 3 | Protocol 2: Data Acquisition | Protocol 3: Validation (CP1-CP2) | `agent_reference/01_PROTOCOLS.md` |
-| Phase 4 | Protocol 3: Validation Checkpoints | Protocol 4: Plan Management (updates) | `agent_reference/01_PROTOCOLS.md` |
-| Phase 5 | Protocol 5: Final Review | — | `agent_reference/01_PROTOCOLS.md` |
+| Phase | Primary Protocol | Also Applies | PSU at Boundary | Reference |
+|-------|------------------|--------------|-----------------|-----------|
+| Phase 1 | Protocol 1: Data Discovery | — | PSU1 (after Phase 1) | `agent_reference/01_PROTOCOLS.md` |
+| Phase 2 | Protocol 4: Plan Management | — | PSU2 (after Phase 2) | `agent_reference/01_PROTOCOLS.md` |
+| Phase 3 | Protocol 2: Data Acquisition | Protocol 3: Validation (CP1-CP2) | PSU3 (after Phase 3) | `agent_reference/01_PROTOCOLS.md` |
+| Phase 4 | Protocol 3: Validation Checkpoints | Protocol 4: Plan Management (updates) | PSU4 (after Phase 4) | `agent_reference/01_PROTOCOLS.md` |
 
 **Note:** Protocol 6 (Session Recovery) is used when resuming interrupted analyses.
 
@@ -599,6 +623,7 @@ Report to the user **adaptively** at these trigger points:
 | Trigger | Report Content |
 |---------|----------------|
 | Phase completion | Summary of phase outcomes, any issues encountered |
+| Phase boundary | **Phase Status Update (PSU) — MANDATORY. Present comprehensive PSU and WAIT for user confirmation. See Phase Status Updates section.** |
 | Notable finding | Surprising data insight, limitation discovered |
 | Decision point | Methodology choice with rationale |
 | Error/blocker | Issue description, attempted resolution, escalation if needed |
@@ -612,6 +637,113 @@ Report to the user **adaptively** at these trigger points:
 - Next Steps: [What happens next]
 - [If applicable] Action Needed: [What user input is required]
 ```
+
+**Note:** Progress reports during a phase are one-way informational updates. Phase Status Updates at phase boundaries are BLOCKING — the orchestrator must wait for user confirmation before proceeding.
+
+### Phase Status Updates (Mandatory)
+
+**Phase Status Updates (PSU) are enforced pause points at every phase boundary.** After completing a phase, the orchestrator MUST present a comprehensive Phase Status Update to the user and WAIT for explicit confirmation before proceeding to the next phase.
+
+**Cardinal Rule:** No phase transition occurs without user approval. The orchestrator presents, the user decides.
+
+#### PSU Design Principles
+
+1. **Blocking:** The orchestrator MUST wait for an explicit user response. Do NOT proceed automatically.
+2. **Comprehensive:** Each PSU includes everything the user needs to make an informed go/no-go decision.
+3. **Actionable:** Each PSU ends with explicit approval request and clear options for the user.
+4. **Cumulative:** Later PSUs reference earlier ones, building a coherent narrative of the analysis.
+
+#### PSU Schedule
+
+| ID | Transition | After Stage | Before Stage | What User Reviews |
+|---|---|---|---|---|
+| PSU1 | Phase 1 → Phase 2 | 3.5 (Synthesis) | 4 (Plan Creation) | Discovery findings, data availability, source caveats, feasibility, recommended approach |
+| PSU2 | Phase 2 → Phase 3 | 4.5 (Plan Validation) | 5 (Data Retrieval) | The Plan document — methodology, scope, task sequence, observable truths |
+| PSU3 | Phase 3 → Phase 4 | 6 (Context Application) | 7 (EDA & Transformation) | Data quality metrics, suppression rates, datasets acquired, QA1/QA2 summaries |
+| PSU4 | Phase 4 → Phase 5 | 10 (QA Aggregation) | 11 (Report Generation) | Statistical results, key visualizations, QA aggregation, deviations from Plan |
+
+#### PSU Template
+
+Every Phase Status Update MUST follow this format:
+
+```
+**Phase Status Update: Phase [N] Complete — [Phase Name]**
+
+**Summary:**
+[2-3 sentence overview of what was accomplished in this phase]
+
+**Key Findings:**
+- [Finding 1]
+- [Finding 2]
+- [Finding 3]
+
+**Decisions Made:**
+| Decision | Rationale | Impact |
+|----------|-----------|--------|
+| [decision] | [why] | [what it affects] |
+
+**Warnings & Issues:**
+| Item | Severity | Status | Details |
+|------|----------|--------|---------|
+| [item] | WARNING/INFO | Resolved/Open | [details] |
+
+[If no warnings: "No warnings or issues encountered in this phase."]
+
+**Artifacts Produced:**
+- [File path 1]: [description]
+- [File path 2]: [description]
+
+**Next Phase Preview:**
+Phase [N+1] ([Phase Name]) will [brief description of what comes next and what it involves].
+
+**Please confirm you'd like to proceed to Phase [N+1], or let me know if you'd like me to revisit or adjust anything from Phase [N].**
+```
+
+#### PSU-Specific Content Requirements
+
+**PSU1 (Discovery → Planning):**
+- Data sources identified (with endpoints and year ranges)
+- Key variables and their availability
+- Source-specific caveats and limitations discovered
+- Suppression patterns and cross-state comparability issues
+- Feasibility assessment and recommended analytical approach
+- Any LOW-confidence items requiring user input
+
+**PSU2 (Planning → Data Acquisition):**
+- Research question as stated in Plan
+- Methodology summary (statistical approach, key decisions)
+- Data sources and year ranges confirmed
+- Transformation sequence overview (number of tasks, waves)
+- Observable Truths the analysis will test
+- Risk Register highlights
+- Plan-checker validation result (PASSED/PASSED_WITH_WARNINGS and any warnings)
+
+**PSU3 (Data Acquisition → Analysis):**
+- Datasets acquired: source, shape, date range, file paths
+- Data quality summary: missingness rates, suppression rates per dataset
+- Cleaning actions taken and their impact (rows removed, values recoded)
+- QA summary: QA1/QA2 results for each script (PASSED/WARNING with details)
+- Any deviations from the Plan during fetch/clean
+- Data readiness assessment for analysis phase
+
+**PSU4 (Analysis → Synthesis):**
+- Transformation summary: joins performed, derived variables, final analysis dataset shape
+- Statistical analysis results: key findings with effect sizes and confidence intervals
+- Key visualizations produced (reference file paths for user to inspect)
+- QA summary: QA3/QA4a/QA4b results across all scripts
+- Accumulated warnings from Stages 5-8 (the Stage 10 QA aggregation)
+- Any deviations from Plan methodology
+- Notebook compilation status
+
+#### User Response Handling
+
+At each PSU, the user may:
+- **Approve** ("proceed", "looks good", "continue", etc.) → Proceed to next phase
+- **Request revision** ("redo X", "fix Y", "I'm concerned about Z") → Orchestrator addresses within current phase, then re-presents PSU
+- **Request scope change** ("can we also look at...", "let's narrow to...") → Triggers scope change protocol (Ask First), then revises as needed
+- **Ask questions** ("what does X mean?", "why did you choose Y?") → Orchestrator answers, then re-presents approval request
+
+**CRITICAL:** After answering questions or providing clarification, the orchestrator MUST re-present the approval request. Do not assume that a question implies approval.
 
 ### Plan Document Maintenance
 
@@ -893,15 +1025,15 @@ Each stage has explicit input/output contracts and gate criteria:
 | 1 | User request | Stage 2 | G1: Mode classified, scope confirmed |
 | 2 | Stage 1 (mode + scope) | Stage 3 | G2: ≥1 endpoint identified, key variables flagged |
 | 3 | Stage 2 endpoints | Stage 3.5 | G3: All flagged variables investigated, coded values documented, suppression patterns identified |
-| 3.5 | Stages 2, 3 | Stage 4 | G3.5: Synthesis complete, conflicts resolved |
+| 3.5 | Stages 2, 3 | PSU1 to user, then Stage 4 | G3.5: Synthesis complete, conflicts resolved, user confirmed PSU1 |
 | 4 | Phase 1 findings | Stage 4.5 | G4: Plan created, STATE.md created, LEARNINGS.md skeleton created |
-| 4.5 | Stage 4 (Plan) | Stage 5 | G4.5: Plan validation PASSED or PASSED_WITH_WARNINGS |
+| 4.5 | Stage 4 (Plan) | PSU2 to user, then Stage 5 | G4.5: Plan validation PASSED or PASSED_WITH_WARNINGS, user confirmed PSU2 |
 | 5 | Plan (query spec) | Stage 6 | G5: CP1 PASSED for each script, **code-reviewer separately invoked to review each individual Stage 5 script immediately after that script completes (not batched), all QA1 ∈ {PASSED, WARNING}**, data saved to data/raw/ |
-| 6 | Stage 5 (raw data) | Stage 7 | G6: CP2 PASSED for each script, **code-reviewer separately invoked to review each individual Stage 6 script immediately after that script completes (not batched), all QA2 ∈ {PASSED, WARNING}**, suppression <50%, data saved to data/processed/ |
+| 6 | Stage 5 (raw data) | PSU3 to user, then Stage 7 | G6: CP2 PASSED for each script, **code-reviewer separately invoked to review each individual Stage 6 script immediately after that script completes (not batched), all QA2 ∈ {PASSED, WARNING}**, suppression <50%, data saved to data/processed/, user confirmed PSU3 |
 | 7 | Stage 6 (clean data) | Stage 8, 9 | G7: All transformations validated (CP3) for each script, **code-reviewer separately invoked to review each individual Stage 7 script immediately after that script completes (not batched), all QA3 ∈ {PASSED, WARNING}**, analysis dataset saved to `data/processed/[date]_analysis.parquet` (at Stage 7.3) |
 | 8 | Stage 7 (analysis data) | Stage 9, 11 | G8: Statistical results saved to output/analysis/, visualizations saved to output/figures/, **code-reviewer separately invoked to review each individual 8.1 script (QA4a) and each individual 8.2 script (QA4b) immediately after each script completes (not batched), all QA4a and QA4b ∈ {PASSED, WARNING}** |
 | 9 | Stages 7, 8 | Stage 10 | G9: Notebook runs without errors, all scripts represented with code + execution logs |
-| 10 | Stage 9 (notebook) | Stage 11 | G10: **QA findings aggregated**, all BLOCKERs resolved, all WARNINGs documented |
+| 10 | Stage 9 (notebook) | PSU4 to user, then Stage 11 | G10: **QA findings aggregated**, all BLOCKERs resolved, all WARNINGs documented, user confirmed PSU4 |
 | 11 | Stages 9, 10 (notebook + QA aggregation), Plan, STATE.md, LEARNINGS.md | Stage 12 | G11: report-writer returned COMPLETE or COMPLETE_WITH_GAPS, all REPORT_TEMPLATE.md sections populated, figure references verified |
 | 12 | All prior stages | Delivery | G12: Protocol 5 PASSED, all commitments fulfilled, LEARNINGS.md consolidated with System Update Action Plan, cross-artifact coherence verified |
 
@@ -1085,23 +1217,23 @@ Forcing functions are mandatory design interventions that **prevent** poor pract
 | G1 | 1 → 2 | Mode classified and confirmed | Cannot invoke Stage 2 subagent |
 | G2 | 2 → 3 | ≥1 endpoint identified, key variables flagged | Cannot invoke source deep-dive |
 | G3 | 3 → 3.5 | All flagged variables investigated, coded values documented, suppression patterns identified | Cannot invoke research-synthesizer |
-| G3.5 | 3.5 → 4 | Synthesis complete, cross-source conflicts resolved | Cannot create Plan |
+| G3.5 | 3.5 → 4 | Synthesis complete, cross-source conflicts resolved, **User confirmed PSU1** | Cannot create Plan without user PSU1 confirmation |
 | **G4** | **4 → 4.5** | **Plan created AND STATE.md created AND LEARNINGS.md skeleton created** | **Cannot invoke plan-checker** |
-| **G4.5** | **4.5 → 5** | **plan-checker returned PASSED or PASSED_WITH_WARNINGS** | **Cannot begin data acquisition** |
+| **G4.5** | **4.5 → 5** | **plan-checker returned PASSED or PASSED_WITH_WARNINGS, User confirmed PSU2** | **Cannot begin data acquisition without user PSU2 confirmation** |
 | G5 | 5 → 6 | CP1 PASSED for each script, data saved to data/raw/, **code-reviewer separately invoked to review each individual Stage 5 script immediately after that script completes (not batched at stage end), and every QA1 review ∈ {PASSED, WARNING}** | Cannot proceed to cleaning |
-| G6 | 6 → 7 | CP2 PASSED for each script, suppression <50%, data saved to data/processed/, **code-reviewer separately invoked to review each individual Stage 6 script immediately after that script completes (not batched at stage end), and every QA2 review ∈ {PASSED, WARNING}** | Cannot proceed to transformation |
+| G6 | 6 → 7 | CP2 PASSED for each script, suppression <50%, data saved to data/processed/, **code-reviewer separately invoked to review each individual Stage 6 script immediately after that script completes (not batched at stage end), and every QA2 review ∈ {PASSED, WARNING}**, **User confirmed PSU3** | Cannot proceed to transformation without user PSU3 confirmation |
 | G7 | 7 → 8 | All transformations CP3 PASSED for each script, **code-reviewer separately invoked to review each individual Stage 7 script immediately after that script completes (not batched at stage end), and every QA3 review ∈ {PASSED, WARNING}** | Cannot proceed to analysis and visualization |
 | G8 | 8 → 9 | Analyses and visualizations complete, **code-reviewer separately invoked to review each individual 8.1 script (QA4a) and each individual 8.2 script (QA4b) immediately after each script completes (not batched), and every QA4a and QA4b review ∈ {PASSED, WARNING}** | Cannot assemble notebook |
 | G9 | 9 → 10 | Notebook runs without errors, all scripts represented with code + execution logs | Cannot run QA aggregation |
-| G10 | 10 → 11 | QA findings aggregated, all BLOCKERs resolved, all WARNINGs documented | Cannot generate report |
+| G10 | 10 → 11 | QA findings aggregated, all BLOCKERs resolved, all WARNINGs documented, **User confirmed PSU4** | Cannot generate report without user PSU4 confirmation |
 | G11 | 11 → 12 | Report complete with all sections and figure references | Cannot run final review |
 | G12 | 12 → Delivery | Protocol 5 verification PASSED, all commitments fulfilled, LEARNINGS.md consolidated with System Update Action Plan, cross-artifact coherence verified | Cannot deliver |
 
-**Gate G4 Enforcement:** Plan-checker (Stage 4.5) CANNOT be invoked without all three files: Plan.md, STATE.md (`agent_reference/STATE_TEMPLATE.md`), and LEARNINGS.md (`agent_reference/08_LESSONS_LEARNED.md`). If any are missing, create before proceeding. (Stage 5 additionally requires G4.5 — see below.)
+**Gate G4 Enforcement:** Plan-checker (Stage 4.5) CANNOT be invoked without all three files: Plan.md, STATE.md (`agent_reference/STATE_TEMPLATE.md`), and LEARNINGS.md (`agent_reference/08_LESSONS_LEARNED.md`). If any are missing, create before proceeding. (Stage 5 additionally requires G4.5 — see below.) After plan-checker returns, the orchestrator MUST present PSU2 to the user and wait for confirmation before proceeding to Stage 5.
 
 **Gate G4.5 Enforcement:** plan-checker MUST be invoked and return PASSED or PASSED_WITH_WARNINGS. If ISSUES_FOUND, revise Plan (max 2 attempts) then escalate. Update STATE.md "Plan Validation" section with the result before proceeding. See Stage 4.5 in `agent_reference/02_WORKFLOW_STAGES.md` for the invocation pattern.
 
-**CRITICAL:** Gate G4.5 requires POSITIVE confirmation that plan-checker was invoked and returned PASSED or PASSED_WITH_WARNINGS. If plan-checker was never invoked, the gate condition is NOT satisfied. Update STATE.md "Plan Validation" section with the result before proceeding to Stage 5.
+**CRITICAL:** Gate G4.5 requires POSITIVE confirmation that plan-checker was invoked and returned PASSED or PASSED_WITH_WARNINGS. If plan-checker was never invoked, the gate condition is NOT satisfied. Update STATE.md "Plan Validation" section with the result before proceeding to Stage 5. Additionally, after plan-checker returns PASSED or PASSED_WITH_WARNINGS, the orchestrator MUST present PSU2 (Phase Status Update) to the user including the plan-checker result and a Plan summary. Stage 5 CANNOT begin until the user confirms PSU2.
 
 **Gate G5-G8 Enforcement (Per-Script QA Invocation):** Gates G5-G8 require POSITIVE confirmation that code-reviewer was **separately invoked to review each individual script immediately after that script completed execution** — not batched at stage end. "Immediately" means: before the next script in the same stage begins. "Separately" means: one code-reviewer invocation per script, not one invocation reviewing multiple scripts. Running all scripts in a stage and then invoking code-reviewer once (or once per script after-the-fact) does **NOT** satisfy these gates — the QA must be interleaved with execution so that each script's QA findings can inform whether to proceed, revise, or stop before the next script runs. If code-reviewer was never invoked for a given script, that script's QA status is NOT_RUN and the gate is NOT satisfied. For Gate G8, BOTH QA4a (statistical analysis) and QA4b (visualization) must be independently and separately invoked per script. See the **Stage 5-8 Composite Execution Pattern** for the complete flow.
 
@@ -1173,6 +1305,7 @@ Agents use domain-specific status vocabularies. The orchestrator translates thes
 | Blocker encountered | Blockers section + Next Actions |
 | Key decision made | Key Decisions Made table |
 | Context Utilization ≥40% | Context Snapshot section |
+| Phase boundary reached | Phase Status Update section + User confirmation status |
 | Phase completes | Session History (if multi-session) |
 
 ### Automatic STOP Conditions

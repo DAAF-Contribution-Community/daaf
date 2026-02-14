@@ -117,6 +117,20 @@ Before proceeding to Phase 2 (Plan Creation):
 - [ ] Conflicts between sources identified and resolved (or flagged for Plan)
 - [ ] Cross-source join feasibility assessed with key considerations documented
 - [ ] If synthesis reveals infeasibility: STOP and escalate to user
+- [ ] **User confirmed PSU1** (see below)
+
+#### Phase Status Update 1 (PSU1)
+
+**After Gate G3.5 is satisfied**, the orchestrator **MUST present** Phase Status Update 1 (PSU1) to the user before proceeding to Phase 2 (Planning).
+
+PSU1 synthesizes all Protocol 1 findings into a comprehensive status update covering:
+- Data sources identified and their availability
+- Key variables and caveats discovered
+- Suppression patterns and cross-source compatibility
+- Feasibility assessment and recommended analytical approach
+- Any unresolved LOW-confidence items
+
+**The orchestrator MUST wait for explicit user confirmation before invoking Stage 4 (Plan Creation).** See CLAUDE.md "Phase Status Updates" section for the full PSU template and content requirements.
 
 ---
 
@@ -225,6 +239,21 @@ Before proceeding to Stage 7 / Phase 4:
 - [ ] Citation text generated
 - [ ] **QA review completed for EACH Stage 6 script** (code-reviewer separately invoked immediately after each individual cleaning script completes, not batched at stage end)
 - [ ] **All QA2 statuses ∈ {PASSED, WARNING}** (any BLOCKER resolved via revision before next script)
+- [ ] **User confirmed PSU3** (see below)
+
+#### Phase Status Update 3 (PSU3)
+
+**After Gate G6 is satisfied** (all fetch and clean scripts executed and QA'd), the orchestrator **MUST present** Phase Status Update 3 (PSU3) to the user before proceeding to Phase 4 (Analysis).
+
+PSU3 presents data quality findings covering:
+- Datasets acquired with shapes, date ranges, and file paths
+- Data quality metrics: missingness, suppression rates
+- Cleaning actions and their impact
+- QA1/QA2 results summary with any WARNING details
+- Data freshness flags (data lag >= 3 years, COVID years)
+- Deviations from Plan during fetch/clean
+
+**The orchestrator MUST wait for explicit user confirmation before invoking Stage 7 (EDA & Transformation).** This ensures the user is satisfied with data quality before analysis begins.
 
 ---
 
@@ -252,6 +281,20 @@ See `05_VALIDATION_CHECKPOINTS.md` for CP1-CP4 definitions, STOP thresholds, and
 CP checkpoints catch **operational failures** (empty data, wrong types). QA checkpoints catch **logical errors** (wrong methodology, data misinterpretation). Both must pass for stage handoff.
 
 **See:** `agent_reference/QA_CHECKPOINTS.md` for complete QA checkpoint definitions (QA1-QA4b), severity classification, recovery protocol, and `agents/code-reviewer.md` for the QA agent protocol.
+
+#### Phase Status Update 4 (PSU4)
+
+**After Stage 10 QA Aggregation completes** (all BLOCKERs resolved, WARNINGs documented), the orchestrator **MUST present** Phase Status Update 4 (PSU4) to the user before proceeding to Phase 5 (Synthesis & Delivery).
+
+PSU4 presents the complete analysis picture covering:
+- Transformation and analysis summaries
+- Statistical findings with effect sizes
+- Key visualization file paths for user inspection
+- Aggregated QA findings (all WARNINGs from Stages 5-8)
+- Any methodology deviations from the Plan
+- Notebook compilation status
+
+**The orchestrator MUST wait for explicit user confirmation before invoking Stage 11 (Report Generation).** This is the user's opportunity to verify analysis results before they are synthesized into the final report.
 
 ---
 
@@ -369,6 +412,19 @@ The orchestrator extracts and buffers these signals in STATE.md, then flushes to
 at phase boundaries.
 
 See CLAUDE.md "Learning Signal Extraction" section for the complete extraction and flush protocol.
+
+#### Phase Status Update 2 (PSU2)
+
+**After plan-checker returns PASSED or PASSED_WITH_WARNINGS**, the orchestrator **MUST present** Phase Status Update 2 (PSU2) to the user before proceeding to Phase 3 (Data Acquisition).
+
+PSU2 presents the Plan for explicit user approval, covering:
+- Research question and methodology summary
+- Data sources, year ranges, and geographic scope
+- Transformation sequence and observable truths
+- Plan-checker validation results (including any warnings)
+- Risk Register highlights
+
+**The orchestrator MUST wait for explicit user confirmation before invoking Stage 5 (Data Retrieval).** The Plan is the contract for the entire analysis — user approval is mandatory, not advisory.
 
 ---
 

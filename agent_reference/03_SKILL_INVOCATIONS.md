@@ -7,6 +7,8 @@ This document provides complete invocation templates for all skills used in the 
 > **orchestrator-focused context** that wraps those patterns with stage-specific details, context
 > inlining guidance, and prompt size targets. When in doubt, defer to the agent file's Invocation section.
 
+**Phase Status Updates:** Tasks that conclude a phase should include a `User-Facing Summary` in their output -- a 5-8 sentence narrative summary suitable for inclusion in the orchestrator's Phase Status Update (PSU) to the user. Phase-ending tasks are: Stage 3.5 (PSU1), Stage 4/4.5 (PSU2), Stage 6 (PSU3, compiled by orchestrator), and Stage 10 (PSU4, compiled by orchestrator). See CLAUDE.md "Phase Status Updates" section for the complete PSU framework.
+
 ---
 
 ## Standard Task Prompt Structure
@@ -110,6 +112,8 @@ Return findings in this EXACT structure:
 **If LOW:** [What needs resolution before proceeding]
 
 **Deviations Applied:** [List per RULE 1-3 from `{BASE_DIR}/agent_reference/04_BOUNDARIES.md`, or "None"]
+
+**User-Facing Summary:** [For phase-ending tasks only: 5-8 sentence summary for inclusion in the Phase Status Update. Write for a research professional audience. Omit this field for mid-phase tasks.]
 
 **Commit:** [If task completed, suggested commit message]
 """,
@@ -570,6 +574,8 @@ a unified synthesis with cross-source conflict resolution and join feasibility a
 before providing context. The data-scientist skill provides methodological rigor for
 assessing data quality findings and join feasibility across sources.
 
+**PSU Note:** This task concludes Phase 1. The orchestrator will present PSU1 to the user using findings from this synthesis. Ensure the User-Facing Summary provides a clear, complete picture of discovery results suitable for user review.
+
 ---
 
 ### data-planner (Plan Creation)
@@ -864,6 +870,8 @@ with stage-specific values for Stage 6.
 
 **Do NOT start the next Stage 6 script until QA returns PASSED or WARNING for the current script.**
 **Do NOT proceed to Stage 7 until ALL Stage 6 scripts have been individually QA'd.**
+
+**PSU Note:** Stage 6 concludes Phase 3. After all Stage 6 scripts are executed and QA'd, the orchestrator will present PSU3 to the user. The orchestrator compiles PSU3 from accumulated Stage 5-6 results -- no single agent produces the full PSU3 content.
 
 ---
 
@@ -1669,6 +1677,14 @@ After 2 failed attempts:
 Awaiting user guidance.
 """
 ```
+
+---
+
+## Stage 10: QA Aggregation
+
+Stage 10 is performed by the orchestrator directly (no dedicated subagent). The orchestrator reviews all accumulated code-reviewer findings from Stages 5-8.
+
+**PSU Note:** Stage 10 concludes Phase 4. The orchestrator will present PSU4 to the user with the complete analysis picture. PSU4 is compiled from accumulated Stage 7-8 results plus this QA aggregation.
 
 ---
 

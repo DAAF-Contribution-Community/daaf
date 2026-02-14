@@ -15,6 +15,8 @@ permissionMode: default
 
 **Invocation:** Via Task tool with `subagent_type: "general-purpose"`
 
+**Note:** The output of this agent concludes Phase 1 (Discovery & Scoping). The orchestrator will present findings to the user via Phase Status Update 1 (PSU1) and wait for explicit user approval before proceeding to Phase 2 (Planning). The User-Facing Summary field in the output format is specifically designed for this purpose.
+
 ---
 
 ## Identity
@@ -281,6 +283,16 @@ Return synthesis in this structure:
 - **Concern:** [What's uncertain]
 - **Resolution needed:** [What would raise confidence]
 
+## User-Facing Summary
+[A 5-8 sentence narrative summary written for the user (not for internal consumption). This summary will be incorporated into Phase Status Update 1 (PSU1), which the orchestrator presents to the user at the Phase 1→2 boundary. It should cover:
+- What data sources were found and their suitability
+- Key caveats or limitations the user should know about
+- Whether the research question appears feasible with available data
+- The recommended analytical approach in plain language
+- Any items requiring user input or decision
+
+Write this summary in clear, non-technical language suitable for a research professional. Avoid internal jargon (e.g., say "school-level poverty estimates" not "MEPS endpoint data").]
+
 ## Recommendations
 
 ### Recommended Approach
@@ -352,6 +364,7 @@ Your synthesis is consumed by **data-planner** to create Plan.md:
 
 | Consumer | Receives | How They Use It |
 |----------|----------|-----------------|
+| Orchestrator (PSU1) | User-Facing Summary | Incorporated into Phase Status Update 1 for user review at Phase 1→2 boundary |
 | Orchestrator | Status + Confidence | Gate decision (proceed / explore more / escalate) |
 | research-executor | Constraints + Coded Value Handling | References constraints during execution |
 | data-verifier | Constraints + Caveats | Checks final artifacts against documented constraints |

@@ -15,6 +15,8 @@ permissionMode: default
 
 **Invocation:** Via Task tool with `subagent_type: "general-purpose"`
 
+**Note:** The Plan produced by this agent requires explicit user approval before execution begins. The orchestrator will present the Plan to the user via Phase Status Update 2 (PSU2) after plan-checker validation. The User-Facing Summary field provides a concise overview for the user's go/no-go decision. Stage 5 (Data Retrieval) CANNOT begin until the user confirms PSU2.
+
 ---
 
 ## Identity
@@ -285,6 +287,19 @@ Return findings in this structure after writing the Plan:
 - **Concern:** [What is uncertain]
 - **Resolution needed:** [What would raise confidence]
 
+### User-Facing Summary
+
+**User-Facing Summary:**
+A 5-8 sentence narrative summary of the Plan, written for user review. This summary will be incorporated into Phase Status Update 2 (PSU2), which the orchestrator presents to the user at the Phase 2→3 boundary for explicit Plan approval. It should cover:
+- The research question being investigated
+- The data sources and year ranges that will be used
+- The analytical methodology in accessible language
+- Key observable truths the analysis will evaluate
+- The overall scope (approximate number of scripts, transformations, expected timeline)
+- Any significant risks or trade-offs the user should be aware of
+
+Write this summary so the user can make an informed go/no-go decision about the Plan without reading the entire document. Reference the Plan file path so the user can review the full document if desired.
+
 ### Issues Found
 
 [If applicable -- use severity levels: BLOCKER / WARNING / INFO]
@@ -338,6 +353,7 @@ When returning from Revision Mode, use:
 
 | Consumer | Receives | How They Use It |
 |----------|----------|-----------------|
+| Orchestrator (PSU2) | User-Facing Summary + Plan path | Incorporated into Phase Status Update 2 for user approval at Phase 2→3 boundary |
 | Orchestrator | Status + Plan path + wave structure | Gate G4 decision; coordinates execution across stages |
 | Plan-checker (Stage 4.5) | Complete Plan document | Validates plan completeness and goal coverage |
 | Stage 5 subagent (fetch) | Query specifications from task specs | Downloads files from mirrors with specified parameters |
