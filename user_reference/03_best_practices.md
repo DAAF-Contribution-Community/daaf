@@ -16,6 +16,7 @@ Practical wisdom for getting the most out of DAAF while maintaining research qua
 - [**Appropriate vs. Inappropriate Use Cases**](#appropriate-vs-inappropriate-use-cases)
 - [**Using Git Version Control**](#using-git-version-control)
 - [**Using VSCode and Similar Interfaces**](#using-vscode-and-similar-interfaces)
+- [**Safety with Claude Code**](#safety-with-claude-code)
 - [**Recommended Next Steps**](#recommended-next-steps)
 
 ---
@@ -443,6 +444,23 @@ In addition to using Git, and part and parcel with it: I currently use [VSCode](
 - Doing intensive file searches, edits, and similar
 
 There are a bunch of similar alternatives that are also designed to be a bit more teched-up with coding agents built in (e.g., Cursor), but I've found VSCode to work great! Your mileage may vary -- the recommendation here is really just, find an interface that works for you and your workflow to make this work easier and reduce the frictions involved.
+
+---
+
+## Safety with Claude Code
+
+It's worth saying explicitly: Claude Code is **extremely powerful and capable**, which is super cool and useful when it's doing what we want. But that same quality of it having expanded capabilities and tools is an absolute **nightmare** when it is operating erratically or being manipulated by bad actors.
+
+I set up this whole project to use Docker in part to protect users directly and enforce some paternalistic standards for new users (with me also packaging in a lot of guardrails into the Hooks and permissions files for Claude as well). That being said, there's a lot that I don't know enough about to fully protect all users. At the end of the day, this is a wild west frontier, and things can go wrong in extremely unexpected ways as it continues to develop.
+
+Right now, my main recommendation is to not allow Claude Code to run and cook fully unattended. Check back on it periodically, even if only just to spot-check what it's output looks like and what it's reporting back on in the chat. Letting it go completely unsupervised for long periods of time is kind of asking for trouble, even if I've never seen anything go awry yet in my dozens of hours of testing.
+
+Secondly, one of the most common attack surfaces for Claude Code is what's known as a "prompt injection." As you can imagine from our earlier conversations about context management (see [**02. Understanding and Working with DAAF: Context Windows and Prompt Engineering 101**](02_understanding_daaf.md#core-concept-context-windows-and-prompt-engineering-101) for more info): having someone unexpectedly insert a lot of context into your context window can cause Claude to act erratically. With DAAF, there are really only two or three main ways that can happen:
+1. You load in data documentation or data files that are unvetted and contain malicious instructions/code that Claude may not be prepared to resist. This can cause it to do strange activities or other arbitrary commands depending on how sophisticated the attack is.
+2. Similarly, you ask it to conduct deep research online, and the websites it searches through end up having malicious prompt-injection instructions.
+3. Lastly, someone hijacks the DAAF project and sneaks in hidden, malicious code/instructions into the fabric of the project documentation.
+
+The first two are your responsibility: Be thorough and thoughtful about what you have Claude read/do/search on your behalf. The last one is my responsibility: I will do everything I can to make sure all edits and changes from here are thoroughly vetted, reviewed, and sanitized for the benefit of all users. 
 
 ---
 

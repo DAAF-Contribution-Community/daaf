@@ -88,7 +88,7 @@ What would need adaptation:
 - The `.claude/settings.json` permission configuration
 - Any Claude Code-specific invocation patterns (the `Task` tool, subagent types)
 
-I would honestly be thrilled if someone forked DAAF and adapted it for another provider. The more researchers who have access to rigorous AI-assisted analysis tooling, the better. I'd also love to see someone test this with open-source models -- please reach out if you've got the capacity to explore that.
+I would honestly be thrilled if someone forked DAAF and adapted it for another provider. The more researchers who have access to rigorous AI-assisted analysis tooling, the better. I'd also love to see someone test this with open-source models, as that's such an enormous value-add for anyone working with sufficiently protected data in secure environments -- **please** reach out if you've got the capacity to explore that!!
 
 ### Q: Is my data sent to Anthropic? What about privacy?
 
