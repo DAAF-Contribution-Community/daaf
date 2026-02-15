@@ -1,29 +1,16 @@
 # 04. Extending DAAF
 
-**UNDER CONSTRUCTION, EVERYTHING HERE SUBJECT TO CHANGE BY LAUNCH** This guide focuses on the primary extension path: bringing new datasets, data domain expertise, and methodological tooling into DAAF. If you want to modify the framework itself (agents, protocols, validation logic), see [**05. Contributing to DAAF**](CONTRIBUTING.md) for framework-level changes.
+This guide focuses on the primary extension path: bringing new datasets, data domain expertise, and methodological tooling into DAAF for your own purposes. If you want to make any of these modifications available to the broader community by sharing these changes/extensions back with the DAAF project, see [**05. Contributing to DAAF**](CONTRIBUTING.md).
 
 [**Back to main**](../.)
-
----
-
-- **Expanded data ingestion:** Ask DAAF to invoke the `data-ingest` agent, point it to a dataset (public data sources preferred, or ensure that you're being extremely careful to abide by your organization's AI policy and data protection standards for any proprietary data!!!), and provide any codebook or documentation available. DAAF will carefully build an intensive set of data documentation via manual data diagnostics and exploration, allowing it to use that data robustly and carefully in any future research request. This gets packaged into a new `data-source-skill` that can be shared with anyone else using DAAF at any time.
-- **Methodological skill extensions:** Ask DAAF to use the `skill-authoring` skill and conduct deep research online for documentation or literature on a given methodological toolset for Python (e.g., pyfixest, predictive analytics, cluster analysis, etc.) to generate a new methodological toolset it can reference for future analyses. This gets packaged into a new `methodology-skill` that can be shared with anyone else using DAAF at any time.
-- **Content area knowledge skill extensions:** Similarly, ask DAAF to use the `skill-authoring` skill and conduct deep research online for literature on a given area of domain expertise to help it navigate future analyses with more appropriate intuition, data concerns, and limitations. This gets packaged into a new `context-skill` that can be shared with anyone else using DAAF at any time.
-- **Learnings integration:** Every time DAAF runs a completed project, it compiles learnings about the research process and data idiosyncrasies along the way. The LEARNINGS.md project file is written to be immediately actionable with revisions to make to documentation, skills, and more -- share these back with the community by [opening an issue](https://github.com/DAAF-Contribution-Community/daaf/issues) so DAAF can self-iterate and grow from its runs across users!
-- **Better, more robust, and more efficient workflows:** DAAF is *extremely* usage-hungry and likely far moreso than it needs to be, even for the level of care desired here. If you find a bug or have a suggestion, please [open an issue!](https://github.com/DAAF-Contribution-Community/daaf/issues)
-- **Coding language agnosticism:** Today, DAAF works primarily in the Python ecosystem as its default analytic language. That being said, it is entirely possible to replace Python with any analytic toolset that can be installed open-source and run from the command line (e.g., R). I use the Polars library (which follows extremely similar syntax to tidyverse) to try and split the difference, but future collaborators can help us incorporate other languages more freely to suit more analytic workflows and organizational contexts.
-- **Coding agent agnosticism:** DAAF is currently built on Claude Code, but the vast majority of the tooling present here (Skills, Agents, agent_reference, and so on) can be immediately ported to any similar coding harness/agent program (Gemini CLI, Codex, OpenCode, etc.). There will be important work to do related to the Hooks processes and similar guardrails.
 
 ---
 
 ## Table of Contents
 
 - [**The Extension Model: Skills + Agents + Data-Ingest**](#the-extension-model-skills--agents--data-ingest)
-- [**When to Extend vs. When to Contribute**](#when-to-extend-vs-when-to-contribute)
-- [**Anatomy of an Existing Skill: A Guided Tour**](#anatomy-of-an-existing-skill-a-guided-tour)
-- [**How Skills, Mirrors, and the Query Pipeline Connect**](#how-skills-mirrors-and-the-query-pipeline-connect)
 - [**Step-by-Step: Profiling a New Dataset with Data-Ingest**](#step-by-step-profiling-a-new-dataset-with-data-ingest)
-- [**Step-by-Step: Authoring a New Skill**](#step-by-step-authoring-a-new-skill)
+- [**Step-by-Step: Authoring Other Types of New Skills**](#step-by-step-authoring-other-types-of-new-skills)
 - [**Adding a New Agent**](#adding-a-new-agent)
 - [**Testing Your New Extension End-to-End**](#testing-your-new-extension-end-to-end)
 - [**Submitting Your Extension for Inclusion**](#submitting-your-extension-for-inclusion)
@@ -33,15 +20,15 @@
 
 ## The Extension Model: Skills + Agents + Data-Ingest
 
-Here's the fundamental insight behind DAAF's extensibility: **the framework separates what it *knows* from how it *behaves*.** This is a really important distinction that makes the whole extension model work, so let me explain it clearly.
+Here's the fundamental insight behind DAAF's extensibility: **the framework is intended to separate what it *knows* from how it *behaves*.** This is a really important distinction that makes the whole extension model work, so let me try to explain it clearly.
 
-DAAF has two types of building blocks:
+Building from our initial discussion of agents and skills from [**02. Understanding and Working with DAAF**](02_understanding_daaf.md), DAAF has two main types of building blocks:
 
-- **Skills** are structured knowledge documents. They tell DAAF's agents *what they need to know* about a specific topic -- a data source, a Python library, a visualization framework, a domain of expertise. Think of skills as extremely thorough, well-organized reference guides that an agent loads into its context when it needs specialized knowledge to do its job.
+- **Skills** are structured knowledge documents. They tell DAAF's agents *what they need to know* about a specific topic -- a data source, a Python library, a visualization framework, a domain of expertise. Think of skills as extremely thorough, well-organized reference guides that an agent loads into its context when it needs specialized knowledge to do its job, and can be easily shared or transferred across multiple agents.
 
 - **Agents** are behavioral protocols. They tell a subagent *how to behave* -- what steps to follow, what to validate, when to stop, how to format output. Think of agents as detailed job descriptions that define a specific role in the pipeline (the code reviewer, the data planner, the report writer, etc.).
 
-This separation is what makes DAAF extensible without being fragile. When you want DAAF to work with a new dataset, you don't need to touch the workflow, the validation logic, or the agent protocols at all. You just add a new skill that teaches the existing agents about the new data. The agents already know *how* to fetch, clean, transform, and analyze data -- they just need to be told the specifics of *your* data.
+This separation is what makes DAAF extensible without being fragile. When you want DAAF to work with a new dataset, you generally shouldn't need to touch the workflow, the validation logic, or the agent protocols at all. You just add a new skill that teaches the existing agents about the new data. The agents already know *how* to fetch, clean, transform, and analyze data -- they just need to be told the specifics of *your* data.
 
 ### The Three Extension Paths
 
@@ -51,231 +38,32 @@ This separation is what makes DAAF extensible without being fragile. When you wa
 | **Methodology** | Knowledge about a statistical or analytical method | `skill-authoring` skill | A new `methodology-skill` |
 | **Domain expertise** | Knowledge about a content area or field | `skill-authoring` skill | A new `context-skill` |
 
-The most common extension path by far -- and the one I'll spend the most time on in this guide -- is adding new data sources. DAAF ships with a dedicated agent specifically for this purpose: the `data-ingest` agent, which does the heavy lifting of profiling a dataset and generating the skill documentation for you. You still need to review its output (this is *always* true with DAAF), but it dramatically reduces the manual effort involved.
+The most common extension path by far -- and the one I'll spend the most time on in this guide -- is adding new data sources. DAAF ships with a dedicated agent specifically for this purpose: the `data-ingest` agent, which does the heavy lifting of profiling a dataset and generating the skill documentation for you. You still need to review its output (this is *always* true with DAAF), but it should dramatically reduce the manual effort involved.
 
 For methodology and domain expertise skills, the process is lighter-weight -- you ask DAAF to use the `skill-authoring` skill, point it at documentation or literature to research, and it drafts a skill for you to review and refine. I'll cover that process too, but it's more straightforward than data ingestion.
 
-### What Happens Under the Hood
+## Step-by-Step: Profiling a New Dataset with Data-Ingest
 
-When you ask DAAF to work with a data source (say, CCD enrollment data), here's the flow:
+The [`data-ingest`](../agents/data-ingest.md) agent is DAAF's built-in tool for turning a raw dataset (or online dataset source) into a comprehensive data source skill it can begin using in tandem with other data source skills. It automates the tedious but critical work of profiling every column, detecting coded values, checking data quality, and reconciling what any provided documentation says against what the data actually contains. 
+
+### Before You Start
+
+You'll need:
+
+1. **A data file or link** in a supported format (parquet, CSV, Excel, or TSV). Public data sources are strongly preferred. If you're working with proprietary or sensitive data, please be *extremely* careful to abide by your organization's AI policy and data protection standards -- Claude will be examining the actual contents of the data.
+2. **Any available documentation** -- codebooks, data dictionaries, README files, or documentation website URLs. These aren't strictly required, but they dramatically improve the quality of the resulting skill because the agent can cross-reference what the documentation *says* against what the data *actually shows*.
+3. **A sense of how the data will be used** -- what research questions it might inform, what domain it belongs to, and which columns are most important for your purposes.
+
+### Where Your New Skill Will Fit in
+
+When you ask DAAF to work with any current data source (say, CCD enrollment data), here's the flow:
 
 1. The **orchestrator** dispatches a subagent to explore available data (Stage 2)
 2. The subagent **loads the relevant skill** (e.g., `education-data-source-ccd`) into its context
 3. The skill tells the subagent everything it needs: what variables exist, what the coded values mean, what the known pitfalls are, how to access the data
 4. The subagent uses that knowledge to do its job and returns findings to the orchestrator
 
-The key thing to understand: **skills are loaded by subagents, not by the orchestrator.** This keeps the orchestrator's context lean and means skill knowledge only gets loaded when it's actually needed. It also means you can add as many skills as you want without bloating the base system -- they're loaded on demand.
-
----
-
-## When to Extend vs. When to Contribute
-
-This is a genuinely important distinction, and it maps directly to the [open-source licensing model](../#why-open-source-what-does-it-mean-for-daaf) described in the README. **Extending** DAAF means adding new knowledge on top of the existing framework. **Contributing** means modifying the framework itself. Both are valuable, but they're different activities with different guides.
-
-| If You Want To... | Type | Guide |
-|-------------------|------|-------|
-| Add a new data source for DAAF to analyze | Extension | This document (04) |
-| Teach DAAF a new statistical method or Python library | Extension | This document (04) |
-| Give DAAF domain expertise in a new field | Extension | This document (04) |
-| Add a new specialized agent to the pipeline | Extension | This document (04) -- [Adding a New Agent](#adding-a-new-agent) |
-| Modify an existing agent's behavior | Contribution | [**05. Contributing to DAAF**](CONTRIBUTING.md) |
-| Change validation protocols or workflow stages | Contribution | [**05. Contributing to DAAF**](CONTRIBUTING.md) |
-| Fix a bug in the framework | Contribution | [**05. Contributing to DAAF**](CONTRIBUTING.md) |
-| Improve documentation or tutorials | Contribution | [**05. Contributing to DAAF**](CONTRIBUTING.md) |
-
-**A helpful rule of thumb:** If you're adding a new `.md` file to `.claude/skills/` or `agents/`, you're extending. If you're editing existing files in `agent_reference/`, `agents/`, or the root `CLAUDE.md`, you're contributing. The licensing implications matter here too -- extensions you build on top of DAAF are yours to keep proprietary or open-source as you choose, while modifications to the core framework must be shared back if you distribute them (see the [README](../#why-open-source-what-does-it-mean-for-daaf) for the full details on LGPL-3.0).
-
----
-
-## Anatomy of an Existing Skill: A Guided Tour
-
-Before you create a new skill, it really helps to understand what a well-structured one looks like. Let me walk you through the CCD (Common Core of Data) skill -- `education-data-source-ccd` -- since it's one of the most comprehensive data source skills in the system and a good model for what you'll be building.
-
-Every data source skill lives at `.claude/skills/[skill-name]/SKILL.md` and follows a **canonical 12-section structure**. Here's what each section does and why it matters.
-
-### 1. Frontmatter (YAML Header)
-
-```yaml
----
-name: education-data-source-ccd
-description: >-
-  Deep reference for the Common Core of Data (CCD), the US Department of
-  Education's primary database on public K-12 education. Use when working with
-  CCD data to understand survey components, variable definitions, data quality
-  issues, historical changes, and state-level variations.
-metadata:
-  audience: data-analysts
-  domain: education-data
----
-```
-
-This is the metadata that Claude Code reads *at startup* for every skill -- before any skill body is loaded. The `name` must exactly match the directory name. The `description` tells agents *when* to load this skill (this is crucial -- a vague description means agents won't know when to reach for it). Think of it as the label on the filing cabinet that tells you whether to pull this drawer open or not.
-
-### 2-3. Title and Summary Paragraph
-
-```markdown
-# CCD Data Source Reference
-
-The CCD is the Department of Education's comprehensive, annual, national
-database of all public elementary and secondary schools and school districts
-in the United States.
-```
-
-Short, clear, and immediately oriented. An agent that loads this skill knows within two sentences exactly what data universe it's dealing with.
-
-### 4. Value Encodings Warning
-
-This is a blockquote that appears right after the summary, and it's probably the single most important section for preventing data errors. The Education Data Portal re-encodes categorical variables as integers, which differ from the original NCES string codes. The CCD skill includes a comparison table showing both encodings side by side:
-
-```markdown
-> **CRITICAL: Value Encoding**
-> | Context | `school_type` | `charter` |
-> |---------|---------------|-----------|
-> | **Portal (integers)** | `1` (Regular) | `0` (No) / `1` (Yes) |
-> | NCES original | `1-Regular school` | `Yes` / `No` |
-```
-
-This warns agents immediately, before they even get into the details. Without this, an agent might assume `charter = 1` means "not a charter school" based on some documentation convention where `1 = Yes, 2 = No`, when actually it means `1 = Yes, 0 = No`. These kinds of encoding mistakes are exactly the sort of silent data corruption that DAAF's entire design philosophy is built to prevent.
-
-### 5. "What is [Source]?"
-
-A concise factsheet about the data source: what it covers, who collects it, how often, how many records, how far back it goes. This gives agents enough context to make informed decisions about whether the data is appropriate for a given research question.
-
-### 6. Reference File Structure
-
-A table pointing to the `references/` subdirectory -- the more detailed documentation that agents load on-demand when they need deeper information:
-
-```markdown
-| File | Purpose | When to Read |
-|------|---------|--------------|
-| `survey-components.md` | Detailed coverage of each CCD survey component | Understanding what data is collected |
-| `variable-definitions.md` | Key variables, coding schemes, special values | Interpreting specific data elements |
-| `data-quality.md` | Missing data patterns, suppression, state variations | Assessing data reliability |
-```
-
-This is the **progressive disclosure** pattern in action -- the main SKILL.md stays under 500 lines by keeping the essential quick-reference material in the body and pushing the deep dives into separate files. Agents load these reference files only when they need them, preserving precious context window space.
-
-### 7. Decision Trees
-
-These are genuinely one of the most clever parts of the skill structure. Decision trees guide agents through common questions using a branching format:
-
-```
-What information do you need?
-+-- Student enrollment counts -> Membership
-|   +-- By grade -> Membership (grade disaggregation)
-|   +-- By race/ethnicity -> Membership (race disaggregation)
-+-- Staff/teacher counts -> Staffing
-+-- Revenue and expenditure -> Finance
-```
-
-An agent working on a research question about school staffing trends can follow the tree straight to the right component without reading the entire skill. These trees are concise, scannable, and extremely effective at helping agents navigate complex data landscapes quickly.
-
-### 8. Quick Reference
-
-The meat of the skill -- tables of key variables, identifiers, coded values, and component mappings. This is what agents reference most frequently during actual analysis work. For CCD, this includes things like school type codes (1 = Regular, 2 = Special Education, etc.), missing data codes (-1 = Missing/not reported, -2 = Not applicable, -3 = Suppressed), and key identifiers like `ncessch` (12-character school ID) and `leaid` (7-character district ID).
-
-### 9. Data Access
-
-How to actually get the data -- dataset paths, codebook locations, and the truth hierarchy for resolving conflicts between documentation and observed data:
-
-> **Truth Hierarchy:** When interpreting variable values:
-> 1. **Actual data file** (what you observe in the parquet/CSV) -- this IS the truth
-> 2. **Live codebook** (.xls in mirror) -- authoritative documentation, may lag
-> 3. **This skill documentation** -- convenient summary, may drift from codebook
-
-This hierarchy is a core principle across the entire framework. Documentation describes intent; data reveals reality. When they conflict, you trust the data.
-
-### 10. Common Pitfalls
-
-A 3-column table (Pitfall | Impact | Mitigation) documenting the known gotchas that trip up analysts. For CCD, this includes things like: "Grade -1 means Pre-K, not missing data -- do NOT filter `grade >= 0`" and "Free/reduced lunch counts are unreliable after ~2014 due to Community Eligibility Provision (CEP)." These pitfalls are *exactly* the kind of hard-won domain knowledge that makes the difference between a credible analysis and one with silent errors.
-
-### 11. Related Data Sources
-
-Cross-references to other skills that complement or overlap with this one. For CCD, that includes EDFacts (state assessment data), MEPS and SAIPE (poverty estimates), and CRDC (civil rights data). This helps agents understand the broader data ecosystem and know when to pull in additional sources.
-
-### 12. Topic Index
-
-A flat lookup table at the very end that maps topics to reference files. This serves as a quick "Ctrl+F alternative" for agents that know what they're looking for but aren't sure which reference file contains it.
-
-### The References Directory
-
-Alongside SKILL.md, each skill can have a `references/` directory for detailed documentation that would bloat the main file. For the CCD skill:
-
-```
-.claude/skills/education-data-source-ccd/
-+-- SKILL.md                            # Main skill (< 500 lines)
-+-- references/
-    +-- survey-components.md            # Deep dive: what data is in each component
-    +-- variable-definitions.md         # Full variable catalogs and encoding tables
-    +-- data-quality.md                 # Missingness, suppression, state quirks
-    +-- data-collection.md              # How data flows from schools to NCES
-    +-- historical-changes.md           # What changed across years
-```
-
-This structure keeps the main SKILL.md focused and scannable while ensuring that the detailed reference material is available when agents need to go deep. It's a good model to follow for your own skills.
-
----
-
-## How Skills, Mirrors, and the Query Pipeline Connect
-
-This section explains the end-to-end data flow from "I need some data" to "I have a validated parquet file on disk." Understanding this pipeline will help you see where your new skill fits into the bigger picture.
-
-### The Mirror System
-
-DAAF doesn't query APIs directly. Instead, it downloads pre-built data files from **mirrors** -- hosted copies of education datasets in formats optimized for bulk download (primarily parquet files). Mirrors are configured in a YAML file (`.claude/skills/education-data-query/references/mirrors.yaml`) that specifies:
-
-- **URL templates** for building download URLs
-- **Read strategies** defining how Polars should load the files (eager parquet, lazy CSV, etc.)
-- **Discovery endpoints** for checking what files are available
-- **Priority ordering** so DAAF tries the fastest/most reliable mirror first
-
-Why mirrors instead of direct API calls? Three reasons: (1) bulk downloads are much faster than paginated API requests for large datasets, (2) parquet format preserves types and is dramatically more efficient than CSV, and (3) mirrors can be configured for offline or air-gapped environments where API access isn't available. The Education Data Portal happens to provide excellent mirror endpoints, but the system is designed so that *any* data source with downloadable files can be integrated.
-
-### The Query Pipeline
-
-Here's the flow when DAAF needs to fetch data during a research project:
-
-```
-Research question requires CCD enrollment data
-    |
-    v
-Orchestrator dispatches Stage 5 (fetch) task
-    |
-    v
-research-executor agent loads education-data-query skill
-    |
-    v
-Agent looks up dataset path in datasets-reference.md
-    (e.g., "ccd/schools_ccd_enrollment_2022")
-    |
-    v
-Agent reads mirrors.yaml for mirror URLs and priority
-    |
-    v
-Agent writes a fetch script using patterns from fetch-patterns.md
-    |
-    v
-Script tries each mirror in priority order:
-    Mirror 1: Build URL from template + dataset path -> download -> success? done
-    Mirror 2: Build URL from template + dataset path -> download -> success? done
-    All failed? -> STOP, escalate to user
-    |
-    v
-Downloaded data saved to data/raw/*.parquet
-    |
-    v
-CP1 validation runs (shape, types, missingness checks)
-```
-
-The **data source skill** (like `education-data-source-ccd`) doesn't directly participate in fetching. Instead, it provides the knowledge that the fetch scripts need -- the dataset paths, the expected column names, the known data quality issues. The **query skill** (`education-data-query`) provides the mechanical patterns for building URLs and downloading files. They work together but stay cleanly separated.
-
-### Local Data Storage
-
-All fetched data lands in `data/raw/` as parquet files, following the naming convention `YYYY-MM-DD_[source]_[description].parquet`. After cleaning and context application (Stage 6), processed data goes to `data/processed/`. This separation between raw and processed data is intentional -- it means you can always go back to the original downloaded files if something goes wrong during cleaning.
-
-### Where Your New Skill Fits
-
-When you create a new data source skill, you're primarily adding knowledge to the system at two points:
+The key thing to understand: When you add a new data source skill, we just need the orchestrator to know what it is and when it'd be useful so it can instruct its subagents on when to load it for their specific task. To do this, you're primarily adding knowledge to the system at two points:
 
 1. **Exploration (Stage 2-3):** Your skill tells agents what data is available, what variables exist, and what caveats to watch for
 2. **Context application (Stage 6):** Your skill tells agents how to handle coded values, missing data patterns, and source-specific quirks during cleaning
@@ -284,26 +72,14 @@ The fetch mechanics (Stage 5) are mostly handled by the query skill and mirror c
 
 ---
 
-## Step-by-Step: Profiling a New Dataset with Data-Ingest
-
-The `data-ingest` agent is DAAF's built-in tool for turning a raw dataset into a comprehensive data source skill. It automates the tedious but critical work of profiling every column, detecting coded values, checking data quality, and reconciling what the documentation says against what the data actually contains. Here's how to use it.
-
-### Before You Start
-
-You'll need:
-
-1. **A data file** in a supported format (parquet, CSV, Excel, or TSV). Public data sources are strongly preferred. If you're working with proprietary or sensitive data, please be *extremely* careful to abide by your organization's AI policy and data protection standards -- Claude will be examining the actual contents of the data.
-2. **Any available documentation** -- codebooks, data dictionaries, README files, or documentation website URLs. These aren't strictly required, but they dramatically improve the quality of the resulting skill because the agent can cross-reference what the documentation *says* against what the data *actually shows*.
-3. **A sense of how the data will be used** -- what research questions it might inform, what domain it belongs to, and which columns are most important for your purposes.
-
 ### Preparing Your Data
 
-Place your data file somewhere accessible within the Docker volume (the easiest spot is the `research/` directory or a subfolder of it). If you have documentation files, put those nearby too. Note the absolute file paths -- you'll need them.
+Place your data file somewhere accessible within the Docker volume (the easiest spot is the `research/` directory or a subfolder of it). Exactly where doesn't really matter, as long as you provide Claude with the actual filepaths when you start the conversation. If you have documentation files, put those inside the same folder. See [**01. Installation and Quickstart**](01_installation_and_quickstart.md) for reminders on managing files within the Docker volume if needed.
 
 A few practical considerations:
 
 - **File size:** The agent can handle files up to about 1GB without special handling. For larger files, it'll ask you about a sampling strategy before proceeding.
-- **File format:** Parquet is ideal (fast, preserves types). CSV works fine but may have type inference quirks. Excel files work but require the `openpyxl` library.
+- **File format:** Parquet is ideal (fast, preserves types). CSV works fine but may have type inference quirks. Excel files work using the `openpyxl` library, included with the standard installation Docker for DAAF.
 - **Multiple files:** If your data source spans multiple files (e.g., one file per year), start with a single representative file. The skill can document the multi-file structure, but profiling works best on one file at a time.
 
 ### Running the Data-Ingest Agent
@@ -350,34 +126,15 @@ The agent will return a structured report with:
 
 **This review step is not optional.** The whole point of marking interpretations as `[PRELIMINARY]` is that *you* need to confirm or correct them. The agent has done the mechanical work of profiling, but the semantic understanding -- what these columns actually *mean* in context -- requires your domain expertise. Take the time to go through the review questions carefully. Your answers will directly determine the quality of the resulting skill.
 
-Once you've provided your feedback, the agent uses your corrections to finalize the skill and writes it to `.claude/skills/[skill-name]/`.
+Once you've provided your feedback, the agent uses your corrections to finalize the skill and writes it to `.claude/skills/[skill-name]/`. From there, you can start a fresh session with DAAF and ask it to analyze it alongside whatever other datasets you'd like! I'd strongly recommend running it through some simple paces to get it tested and any issues worked out first.
 
 ---
 
-## Step-by-Step: Authoring a New Skill
-
-### Data Source Skills (via Data-Ingest)
-
-If you're adding a new data source, the `data-ingest` agent (described above) handles most of the skill authoring for you. It follows a **canonical 12-section template** (defined in `agent_reference/DATA_SOURCE_SKILL_TEMPLATE.md`) that ensures every data source skill has the same predictable structure. The sections are:
-
-1. Frontmatter (YAML)
-2. Title
-3. Summary paragraph
-4. Value Encodings Warning (blockquote)
-5. "What is [Source]?"
-6. Reference File Structure
-7. Decision Trees
-8. Quick Reference (variables, identifiers, coded values)
-9. Data Access
-10. Common Pitfalls
-11. Related Data Sources
-12. Topic Index
-
-The agent creates the skill directory, writes the SKILL.md, and populates the `references/` subdirectory with detailed backup documentation. After your review and corrections, the skill is ready to use.
+## Step-by-Step: Authoring Other Types of New Skills
 
 ### Methodology Skills (via Skill-Authoring)
 
-For adding knowledge about a statistical method, Python library, or analytical technique, you'll use the `skill-authoring` skill directly. This is more free-form than data ingestion -- there's no fixed 12-section template (that's specific to data sources), and the content depends heavily on what you're documenting.
+For adding knowledge about a statistical method, Python library, or analytical technique, you'll use the `skill-authoring` skill directly. This is more free-form than data ingestion, and the content depends heavily on what you're documenting. You may find it helpful to refer DAAF to other standard skills this one will be most like. Python library? Try referencing the `plotnine` or `polars` skills. Wanting to do something more methodological in nature? Try pointing it to the `data-scientist` skill. And so on. My hope is that as the community continues to extend DAAF in a few directions, we'll have plenty of exemplars to point to.
 
 Ask DAAF something like:
 
@@ -386,7 +143,10 @@ I'd like to create a new methodology skill for pyfixest
 (fixed-effects regression in Python). Please use the
 skill-authoring skill to guide the process, and research
 the pyfixest documentation online to build a comprehensive
-reference.
+reference. You might refer to the `polars` skill as a model
+for some of what it could look like. Please run some initial
+explorations and then come back to me with a plan for my
+approval.
 ```
 
 DAAF will use the `skill-authoring` skill to guide the process. The skill-authoring skill provides detailed guidance on:
@@ -408,12 +168,13 @@ I'd like to create a context skill for understanding Community
 Eligibility Provision (CEP) and its impact on free/reduced-price
 lunch data. This is critical context for anyone analyzing school
 poverty measures after 2014. Please use the skill-authoring skill
-and research this topic.
+and launch a few web searching subagents to research this topic
+in depth before coming up with a plan for my approval.
 ```
 
 ### Registering Your New Skill
 
-Here's the part that people sometimes miss: **creating the skill file is not enough.** DAAF uses a manual, documentation-based discovery system -- there's no auto-discovery of skills. After creating a new skill, it needs to be registered in several places so the orchestrator and agents can find it.
+Here's the part that people will sometimes miss: **creating the skill file is not enough.** DAAF uses a manual, documentation-based discovery system -- auto-discovery of skills with Claude Code is imperfect and can't always be relied on. After creating a new skill, it needs to be registered in several places to ensure that the orchestrator and agents can find it and know when to use it.
 
 For data source skills, the `data-ingest` agent will provide you with a specific registration checklist at the end of its report. It looks something like this:
 
@@ -422,7 +183,6 @@ For data source skills, the `data-ingest` agent will provide you with a specific
 | 1 (Required) | `CLAUDE.md` | Data Need Source Skill Lookup table | New row mapping data need to skill name |
 | 2 (Required) | `agent_reference/03_SKILL_INVOCATIONS.md` | Available source skills list | New bullet with skill name and description |
 | 3 (Required) | `agents/source-researcher.md` | Step 1 examples | Add skill to example list |
-| 4 (Recommended) | `README.md` | Data Source Quick Lookup | New row for user reference |
 
 The agent will typically offer to make these updates for you -- just confirm and it'll handle the file edits. Note that these registration edits touch core framework files, which means they fall under the "contribution" category if you plan to share them (see [When to Extend vs. When to Contribute](#when-to-extend-vs-when-to-contribute)).
 
@@ -434,27 +194,19 @@ For methodology and domain expertise skills, registration is simpler -- you prim
 
 Adding data sources is the most common extension path, but sometimes you need something different: a new **behavioral role** in the pipeline. Maybe you need a specialized validator for a particular type of analysis, or a new synthesis pattern for cross-domain work, or a domain-specific planner that understands the constraints of your field. That's when you add a new agent.
 
-This is a less common operation and a more involved one. Agents are deeply wired into the DAAF ecosystem -- they have producer/consumer relationships with other agents, they reference shared protocols, and they need to be discoverable by the orchestrator. The `agent-authoring` skill exists specifically to guide you through this process and make sure nothing gets missed.
-
-### When You Actually Need a New Agent
-
-Before creating a new agent, ask yourself honestly:
-
-| Situation | What You Actually Need |
-|-----------|----------------------|
-| New data source to analyze | A data source skill (see sections above) |
-| New Python library or tool to use | A methodology skill (see sections above) |
-| New **behavioral role** that no existing agent covers | A new agent (this section) |
-
-DAAF currently has 12 specialized agents covering execution, code review, planning, plan validation, verification, source research, synthesis, debugging, notebook assembly, integration checking, data ingestion, and report writing. That's a pretty comprehensive set. Make sure your new role genuinely doesn't fit any of these before creating a new agent -- it's much better to extend an existing agent's protocol than to create a new one that overlaps and confuses the orchestrator.
+This is a less common operation and a more involved one. Agents are deeply wired into the DAAF ecosystem -- they have producer/consumer relationships with other agents, they reference shared protocols, and they need to be discoverable by the orchestrator. The `agent-authoring` skill exists specifically to guide you through this process and tries to make sure nothing gets missed.
 
 ### The Agent-Authoring Workflow
 
 Ask DAAF to use the `agent-authoring` skill:
 
 ```
-I need to create a new agent for [describe the behavioral role].
-Please use the agent-authoring skill to guide me through the process.
+I need to create a new agent for [describe the behavioral role]. I'd
+like this to be an agent focused on [x, y, z], and likely should be 
+involved in doing [a, b, c] at [specific part of the research process].
+Please use the agent-authoring skill to guide me through the process,
+and let me know what more detail would be useful to make sure this is
+successful.
 ```
 
 The workflow has five phases:
@@ -565,7 +317,7 @@ If you've created a useful skill or agent and want to share it with the broader 
 A few things to check:
 
 - **Quality:** Did you thoroughly review the data-ingest output and correct any preliminary interpretations? Skills with `[PRELIMINARY]` markers still in place aren't ready for sharing.
-- **Completeness:** Does the skill follow the canonical 12-section template (for data sources)? Does it have at least 2 decision trees? Is the Common Pitfalls section substantive?
+- **Completeness:** Does the skill follow the appropriate template (for data sources)? Does it have at least 2 decision trees? Is the Common Pitfalls section substantive?
 - **Privacy:** Does the skill reference only publicly accessible data? If it was built from proprietary data, make sure the skill documentation doesn't leak any confidential information or values.
 - **Testing:** Have you run at least a Discovery Test and a Fetch Test to confirm the skill works end-to-end?
 
