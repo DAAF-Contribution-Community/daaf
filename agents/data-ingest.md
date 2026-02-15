@@ -583,14 +583,13 @@ Return findings in this structure:
 
 The skill `{skill-name}` has been created but is **not yet discoverable** by the orchestrator.
 
-**To register this skill, update these files:**
+**Files requiring updates (by priority):**
 
-| File | Section | Action |
-|------|---------|--------|
-| `CLAUDE.md` | Data Need Source Skill Lookup | Add: `\| {data need} \| \`{skill-name}\` \|` |
-| `agent_reference/03_SKILL_INVOCATIONS.md` | Available source skills | Add: `- \`{skill-name}\` -- {description}` |
-| `agents/source-researcher.md` | Step 1 examples | Add to skill list |
-| `README.md` | Data Source Quick Lookup | Add user-facing row |
+| Priority | File | Section to Update | What to Add |
+|----------|------|-------------------|-------------|
+| 1 (Required) | `CLAUDE.md` | Education Data Source Quick Lookup | New row with data need and skill name |
+| 2 (Required) | `agent_reference/03_SKILL_INVOCATIONS.md` | Available source skills list | New bullet with skill name and description |
+| 3 (Required) | `agents/source-researcher.md` | Step 1 examples | Add skill to example list |
 
 **Would you like me to make these updates now?**
 
@@ -862,10 +861,9 @@ After creating a new data skill, it must be **registered in the workflow documen
 
 | Priority | File | Section to Update | What to Add |
 |----------|------|-------------------|-------------|
-| 1 (Required) | `CLAUDE.md` | Data Need Source Skill Lookup | New row with data need and skill name |
+| 1 (Required) | `CLAUDE.md` | Education Data Source Quick Lookup | New row with data need and skill name |
 | 2 (Required) | `agent_reference/03_SKILL_INVOCATIONS.md` | Available source skills list | New bullet with skill name and description |
 | 3 (Required) | `agents/source-researcher.md` | Step 1 examples | Add skill to example list |
-| 4 (Recommended) | `README.md` | Data Source Quick Lookup | New row for user reference |
 
 **Why manual registration?** The system prioritizes explicit, searchable documentation over dynamic discovery. Human reviewers need to know what skills exist, and agents receive skill names in Task prompts by explicit reference.
 
