@@ -10,6 +10,7 @@ This document seeks to grapple with some of the bigger implications of DAAF and 
 - [**Q: Won't this tool lead to misuse and misinformation? Couldn't this be an engine for slop and pseudoscience?**](#q-wont-this-tool-lead-to-misuse-and-misinformation-couldnt-this-be-an-engine-for-slop-and-pseudoscience)
 - [**Q: What's the appropriate level of trust for AI-generated analysis?**](#q-whats-the-appropriate-level-of-trust-for-ai-generated-analysis)
 - [**Q: So what do you see as the main value-add for AI assistance in research workflows after all of this?**](#q-so-what-do-you-see-as-the-main-value-add-for-ai-assistance-in-research-workflows-after-all-of-this)
+- [**Q: Where does the world of research go from here? What does an AI-assisted research paradigm look like?**](#q-where-does-the-world-of-research-go-from-here-what-does-an-ai-assisted-research-paradigm-look-like)
 - [**Q: What does this all mean for the next generation of researchers?**](#q-what-does-this-all-mean-for-the-next-generation-of-researchers)
 - [**Q: What about the environmental and energy costs of this kind of intensive AI use?**](#q-what-about-the-environmental-and-energy-costs-of-this-kind-of-intensive-ai-use)
 - [**Recommended Next Steps**](#recommended-next-steps)
@@ -47,6 +48,16 @@ I want to answer this as honestly as I can, because I think the research communi
 - **Documentation generation.** Documenting data processing decisions, creating audit trails, cataloging variable definitions, describing what scripts do, highlighting data idiosyncrasies and issues -- all of this is work that researchers typically under-invest in because it does not produce new findings in and of itself. DAAF generates it as a natural byproduct of the workflow, and can easily be instructed to provide even more as desired. You can provide it your own human-written scripts and documents and have it supplement your documentation, too -- even that would be an enormous value-add for most research and transparency/rigor/reproducibility in science more generally.
 
 - **Initial data exploration.** When you need to orient yourself to a new data source -- what variables exist, what they mean, how they are coded, what the known limitations are -- the AI can synthesize that information much faster than manual documentation review. We already have some systematic tools for doing this, but AI can supplement these and is much more flexible and creative if you ask it to be. Huge value-add given the enormous array of poorly cleaned and documented data out there that is still worth analyzing given the right ingestion processes.
+
+### Q: Where does the world of research go from here? What does an AI-assisted research paradigm look like?
+
+Optimistically, my hope is that tools like DAAF will fundamentally change our relationship to research. Where the current paradigms are inherently resource-scarce, every researcher needs to be **extremely strategic** about what research they conduct according to their incentives (be it publication, media mentions, book opportunities, business value, etc. etc.). When you only have so much time and attention as an individual, this is the natural state of things. This introduces publication biases, the "searching for your keys under the lightpost" issue, and distorts what should be a more egalitarian and objective process at the root.
+
+In a world where you suddenly have substantially more capacity and attention, and certain aspects of the research pipeline are fundamentally costless? That entire arithmetic changes.
+
+As one example: We often have to "kill our darlings" and try to focus on research questions and studies that we think have the highest possibility of producing "useful results" given a broad array of options, i.e., maximize publishability. But this is **importantly distinct** from pursuing research questions that can **actually** produce the most useful and impactful results. 
+
+What does research look like when we can explore every competing hypothesis at the same time? When we don't have to choose based on "optimal strategy" or "greatest efficiency" of research-time-to-papers? What does research look like when examining multiple subsamples and subpopulations is costless? Conversely, how do we avoid endless p-hacking and spurious results? There are a lot of questions here, but I think the immediate-term prospects of AI-empowered research pipelines really change a lot of what we currently understand about science generation and truth-seeking. Not all of that is good, but I think a lot can be.
 
 ### Q: What does this all mean for the next generation of researchers?
 
