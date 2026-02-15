@@ -14,7 +14,6 @@ Practical wisdom for getting the most out of DAAF while maintaining research qua
 - [**Human Oversight Responsibilities**](#human-oversight-responsibilities)
 - [**When and How to Request Revisions**](#when-and-how-to-request-revisions)
 - [**Appropriate vs. Inappropriate Use Cases**](#appropriate-vs-inappropriate-use-cases)
-- [**Managing Long Analyses and Session Recovery**](#managing-long-analyses-and-session-recovery)
 - [**Recommended Next Steps**](#recommended-next-steps)
 
 ---
