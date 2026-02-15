@@ -521,7 +521,7 @@ Observations from cra1 that should trigger cra2+ investigation:
 
 **Applies To:** Stage 8 scripts (visualization)
 
-**Purpose:** Verify visualizations are complete, labeled, accessible, and publication-ready.
+**Purpose:** Verify visualizations are complete, labeled, accessible, visually coherent, and publication-ready.
 
 ### Default Checks
 

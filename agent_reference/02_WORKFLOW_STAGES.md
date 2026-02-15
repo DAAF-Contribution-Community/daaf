@@ -1234,7 +1234,7 @@ Stage 8.2.x: Visualization (one script per visualization task)
 
 **Actions:**
 1. **Create exploratory plots** — Distributions, relationships, patterns
-2. **Create final visualizations** — As specified in Plan, publication-quality
+2. **Create final visualizations** — As specified in Plan, striving for publication-quality
 3. **Export figures** — PNG format, appropriate dimensions, to `output/figures/`
 4. **>>> INVOKE code-reviewer (MANDATORY, QA4b) <<<**
    - After EACH visualization script, orchestrator MUST invoke code-reviewer

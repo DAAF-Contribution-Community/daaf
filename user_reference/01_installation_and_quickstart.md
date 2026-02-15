@@ -28,7 +28,7 @@ You'll need internet access to download the project files and interact with DAAF
 
 ### 1. Anthropic Account & Authentication
 
-Claude Code is the AI assistant that powers this project. It runs inside your terminal (not in a web browser) and needs to link in with an Anthropic account for billing/usage purposes. Because we're relying on cutting-edge frontier models and asking them to do a LOT of thorough work for us (deep-diving into data, writing a lot of code, checking a lot of code, writing intensive plans, etc., etc.), we need to have a **high-usage** Anthropic account. Unfortunately, the free and standard "Pro"-level plans will simply not be sufficient for the time being; given current pricing at $100-200/mo, this is the biggest barrier-to-entry for engaging in this work.
+Claude Code is the AI assistant that powers this project. It runs inside your terminal (not in a web browser) and needs to link in with an Anthropic account for billing/usage purposes. Because we're relying on cutting-edge frontier models and asking them to do a **LOT** of thorough work for us (deep-diving into data, writing a lot of code, checking a lot of code, rewriting code, writing intensive plans, etc., etc.), we need to have a **high-usage** Anthropic account. Unfortunately, the free and standard "Pro"-level plans will simply not be sufficient for the time being; given current pricing at $100-200/mo, this is the biggest barrier-to-entry for engaging in this work.
 
 For the account setup, that means you have two main options:
 
@@ -87,7 +87,7 @@ Docker is a program designed to help people create self-contained, isolated envi
 
 ## Installing DAAF
 
-Okay, with all the prerequisites out of the way, installation itself is only seven very easy steps and will only take about 5 minutes start-to-finish with a decent internet connection.
+Okay, with all the prerequisites out of the way, installation itself is only seven very easy copy-paste steps and will only take about 5 minutes start-to-finish with a decent internet connection.
 
 ### Step 1: Choose a project download location on your computer and open it in your terminal
 
@@ -344,6 +344,6 @@ marimo edit 'research/YYYY-MM-DD Title/YYYY-MM-DD Notebook Name.py' --host 0.0.0
 ## Recommended Next Steps
 
 - [**02. Understanding and Working with DAAF**](02_understanding_daaf.md) — Learn to work with DAAF for the first time: what to expect, how to use it, and how to test its strengths and limitations
-- [**06. FAQ: Technical**](06_faq_technical.md) — Covers frequently asked questions about Docker, issues with Claude Code, usage limits, design rationale, authentication errors, and other common errors
-- [**07. FAQ: Philosophy**](07_faq_philosophy.md) — Grapples with the broader implications of this work, AI automation in general, model advancement pace, approaching the "exponential", environmental ethics, what this means for the next generation of researchers, and more
+- [**06. FAQ: Philosophy**](06_faq_philosophy.md) — Grapples with the broader implications of this work, AI automation in general, model advancement pace, approaching the "exponential", environmental ethics, what this means for the next generation of researchers, and more
+- [**07. FAQ: Technical Support**](07_faq_technical.md) — Covers frequently asked questions about Docker, issues with Claude Code, usage limits, authentication errors, and other common errors
 - [**Back to main**](../.)

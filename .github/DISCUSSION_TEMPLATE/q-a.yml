@@ -5,7 +5,7 @@ body:
     attributes:
       value: |
         Thanks for asking! Please search existing discussions and the
-        [FAQ: Technical](../../user_reference/06_faq_technical.md) before
+        [07. FAQ: Technical Support](../../user_reference/07_faq_technical.md) before
         posting to avoid duplicates.
   - type: textarea
     id: question

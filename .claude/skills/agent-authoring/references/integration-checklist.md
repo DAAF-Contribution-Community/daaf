@@ -139,7 +139,7 @@ Follow the format of existing agent subsections in this file.
 | 25 | `agent_reference/STATE_TEMPLATE.md` | Agent affects STATE.md fields |
 | 26 | `user_reference/02_understanding_daaf.md` | Agent changes the architecture description for users |
 | 27 | `user_reference/04_extending_daaf.md` | Agent enables new extension patterns |
-| 28 | `user_reference/06_faq_technical.md` | Agent affects common technical questions |
+| 28 | `user_reference/07_faq_technical.md` | Agent affects common technical questions |
 
 ---
 
@@ -236,7 +236,7 @@ done
 - [ ] agent_reference/STATE_TEMPLATE.md (if affects STATE.md)
 - [ ] user_reference/02_understanding_daaf.md (if changes architecture)
 - [ ] user_reference/04_extending_daaf.md (if enables new extensions)
-- [ ] user_reference/06_faq_technical.md (if affects FAQs)
+- [ ] user_reference/07_faq_technical.md (if affects FAQs)
 
 ### Post-Integration Verification
 - [ ] Agent name found in all Tier 1 files
