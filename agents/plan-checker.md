@@ -308,16 +308,16 @@ Evaluate plan scope against context budget thresholds:
 
 | Metric | Target | Warning | Blocker |
 |--------|--------|---------|---------|
-| Tasks total | 4-8 | 10-12 | 15+ |
-| Tasks/wave | 2-3 | 4 | 5+ |
+| Tasks total | 5-10 | 10-20 | 25+ |
+| Tasks/wave | 2-4 | 5 (hard max) | 6+ |
 | Transformations/task | 2-3 | 4 | 5+ |
 | Total context est. | ~50% | ~70% | 80%+ |
 
 **Red flags:**
-- Wave with 5+ parallel tasks (orchestrator overhead)
+- Wave with 6+ parallel tasks (violates hard max of 5 concurrent subagents — BLOCKER)
 - Single task with 5+ transformation steps (should split)
 - Analysis crammed into one task (fetch + clean + join + aggregate)
-- Overly granular (15+ tiny tasks for simple analysis)
+- Overly granular (20+ tiny tasks for simple analysis)
 
 When scope exceeds thresholds, recommend splitting into phases (e.g., "Phase A: CCD+MEPS core analysis, Phase B: EDFACTS+CRDC enhancement").
 
@@ -329,14 +329,14 @@ Total tasks: 14
 Wave 1: 4 tasks | Wave 2: 4 tasks | Wave 3: 3 tasks | Wave 4: 2 tasks | Wave 5: 1 task
 ```
 
-**Analysis:** 14 tasks exceeds 4-8 target. Wave 2 has 4 parallel tasks (warning threshold).
+**Analysis:** 14 tasks exceeds 5-10 target. Wave 2 has 4 parallel tasks (target threshold). Any wave with 6+ tasks would be a BLOCKER.
 
 **Issue:**
 ```yaml
 issue:
   dimension: scope
   severity: warning
-  description: "Plan has 14 tasks - exceeds recommended 4-8 for single analysis"
+  description: "Plan has 14 tasks - exceeds recommended 5-10 for single analysis"
   metrics: { tasks: 14, waves: 5, complexity: "high" }
   fix_hint: "Consider splitting: Phase A (CCD+MEPS core), Phase B (EDFACTS+CRDC enhancement)"
 ```

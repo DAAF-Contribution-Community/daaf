@@ -493,6 +493,7 @@ If analysis includes 2020 or 2021 data, CP1 Check 7 will flag this automatically
 
 **Parallelization:**
 - Same-wave tasks (e.g., 1.1 and 1.2) can run in parallel
+- **Maximum 5 tasks per wave.** The orchestrator NEVER dispatches more than 5 subagents concurrently. If a wave somehow exceeds 5 tasks, the orchestrator will sub-batch into groups of ≤5.
 - Each parallel task gets a fresh subagent context (200K tokens)
 - Independent execution prevents context degradation
 
@@ -521,8 +522,8 @@ The cardinality specified here is passed to `validate_join()` function during St
 
 #### Execution Protocol
 
-1. **Wave Start:** Identify all tasks in current wave
-2. **Parallel Dispatch:** Create Task for each, run simultaneously
+1. **Wave Start:** Identify all tasks in current wave (max 5 — hard limit)
+2. **Parallel Dispatch:** Create Task for each, run simultaneously (if >5 tasks, sub-batch into groups of ≤5)
 3. **Wave Completion:** Wait for ALL wave tasks to complete
 4. **Validation:** Review each task's CP status
 5. **Wave Advance:** If all PASSED, proceed to next wave

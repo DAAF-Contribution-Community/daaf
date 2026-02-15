@@ -133,6 +133,7 @@ Group independent tasks into waves for parallel execution:
 
 **Rules:**
 - Same-wave tasks have no dependencies between them
+- **Maximum 5 tasks per wave** (hard limit — the orchestrator cannot dispatch more than 5 subagents concurrently; if more tasks are independent, split across waves or the orchestrator will sub-batch)
 - Each task gets fresh subagent context
 - Next wave starts only after all prior-wave tasks complete
 

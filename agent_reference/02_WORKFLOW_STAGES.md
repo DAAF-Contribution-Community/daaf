@@ -332,6 +332,7 @@ You MUST wait for user confirmation before proceeding.
 1. **Load Source Skill**
    - Identify which `*-data-source-*` skill(s) to load
    - One invocation per source
+   - **Parallel cap:** If >5 sources identified, sub-batch source-researcher dispatch into groups of ≤5 (hard maximum of 5 concurrent subagents)
 
 2. **Extract Caveats**
    - Source-specific limitations

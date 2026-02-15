@@ -955,6 +955,7 @@ Wave 3: [join-data]                 ← Depends on Wave 2
 
 **Execution Rules:**
 - Same-wave tasks dispatch simultaneously with independent subagent contexts
+- If any parallel dispatch stage contains more than 5 tasks (e.g., Stage 3 source-researcher dispatch, any ad-hoc parallel exploration, and code-reviewer invocations), sub-batch into groups of ≤5 and wait for each sub-batch to complete before dispatching the next. NEVER dispatch more than 5 subagents concurrently. 
 - Each subagent gets fresh 200K-token context (no degradation)
 - Later waves wait for ALL prior waves to complete
 - Dependencies in `depends_on` must be satisfied

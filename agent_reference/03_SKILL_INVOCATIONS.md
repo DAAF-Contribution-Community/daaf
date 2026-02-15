@@ -7,6 +7,8 @@ This document provides complete invocation templates for all skills used in the 
 > **orchestrator-focused context** that wraps those patterns with stage-specific details, context
 > inlining guidance, and prompt size targets. When in doubt, defer to the agent file's Invocation section.
 
+> **Parallel Dispatch Limit:** The orchestrator MUST NOT dispatch more than **5 subagents concurrently** — this applies to wave-based task dispatch, Stage 3 source-researcher dispatch, and any other parallel invocation. If more than 5 independent tasks need to run, sub-batch into groups of ≤5 and wait for each sub-batch to complete before dispatching the next.
+
 **Phase Status Updates:** Tasks that conclude a phase should include a `User-Facing Summary` in their output -- a 5-8 sentence narrative summary suitable for inclusion in the orchestrator's Phase Status Update (PSU) to the user. Phase-ending tasks are: Stage 3.5 (PSU1), Stage 4/4.5 (PSU2), Stage 6 (PSU3, compiled by orchestrator), and Stage 10 (PSU4, compiled by orchestrator). See CLAUDE.md "Phase Status Updates" section for the complete PSU framework.
 
 ---
