@@ -2,6 +2,8 @@
 
 This guide is designed to turn a new user into a confident user. It expands on the README and installation guide's brief overview into a thorough walkthrough of how DAAF works, what it produces, what to expect, where it can fail, and how to think about AI-assisted research analysis for your workflows more critically. This will guide you through your first real analysis with DAAF to understand what's happening under the hood, and suggest further testing pathways to really get comfortable with the strengths and weaknesses of DAAF.
 
+> **Quick tip before you begin**: If you have any questions, concerns, issues, or confusion about **anything** you read in this guide: Ask Claude for help! Point it to any document, section, or sentence, and then ask it to help you understand it better. It has visibility into the whole project documentation at-will, so it should be able to help you out as you go. This kind of personalized assistance should be invaluable for anyone getting onboarded into using DAAF and Claude Code more generally!
+
 [**Back to main**](../.)
 
 ---
@@ -18,8 +20,6 @@ This guide is designed to turn a new user into a confident user. It expands on t
 - [**Recommended Next Steps**](#recommended-next-steps)
 
 ---
-
-> **Quick tip before you begin**: If you have any questions, concerns, issues, or confusion about **anything** you read in this guide: Ask Claude for help! Point it to any document, section, or sentence, and then ask it to help you understand it better. It's got visibility into the whole project documentation at-will, so it should be able to help you out as you go. This kind of personalized assistance should be invaluable for anyone getting onboarded into using DAAF and Claude Code more generally!
 
 ## Core Concept: Context Windows and Prompt Engineering 101
 

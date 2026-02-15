@@ -14,6 +14,8 @@ Practical wisdom for getting the most out of DAAF while maintaining research qua
 - [**Human Oversight Responsibilities**](#human-oversight-responsibilities)
 - [**When and How to Request Revisions**](#when-and-how-to-request-revisions)
 - [**Appropriate vs. Inappropriate Use Cases**](#appropriate-vs-inappropriate-use-cases)
+- [**Using Git Version Control**](#using-git-version-control)
+- [**Using VSCode and Similar Interfaces**](#using-vscode-and-similar-interfaces)
 - [**Recommended Next Steps**](#recommended-next-steps)
 
 ---
@@ -413,6 +415,34 @@ These should not be done with DAAF (or any LLM-based system) regardless of the g
 
 - **High-stakes decisions based solely on AI outputs.** Never use DAAF's results as the sole basis for decisions that significantly affect people -- resource allocation, program elimination, individual assessments, legal proceedings. Always have qualified humans independently verify any findings that will drive consequential decisions.
 - **Analysis presented as AI-generated without disclosure.** If you use DAAF to produce analysis, you should disclose the role of AI assistance in your work. Transparency is non-negotiable in my view. DAAF is designed to make this easy by documenting exactly what it did, but the responsibility to disclose is yours.
+
+---
+
+## Using Git Version Control
+
+When you start using DAAF, you'll find that it produces a LOT of files, and it does a LOT of things at once. Once best practice I'd strongly encourage is to get comfortable with using Git for version control. This is part of why I treat it as a prerequisite for using DAAF in the installation process (spoilers: there were other ways to do it!): This type of work with LLMs just benefits so immensely from having a full audit log of file edits and changes at all times, with the ability to roll back changes and identify issues quickly.
+
+I would strongly recommend making a private "fork" of the DAAF repository for you to work in and back up all of your research files to (though DAAF by default will NOT back up your parquet data files to avoid accidentally sharing data up to the cloud). Teaching Git is a bit beyond the scope of this project, but you absolutely can and should ask Claude to tell you more about:
+
+- What does it mean to make a fork of a GitHub repo?
+- What does Git actually do, and why is it useful?
+- What's a commit? What does it do?
+- How can I track changes in DAAF using Git? What would that workflow look like?
+- What tools can I use to make this whole process easier?
+
+There are also a ton of guides online and on YouTube, etc. Take some time to get oriented! It's an immensely useful skillset.
+
+---
+
+## Using VSCode and Similar Interfaces
+
+In addition to using Git, and part and parcel with it: I currently use [VSCode](https://code.visualstudio.com) as my main driver for working with DAAF and Claude Code. VSCode is basically a nice interface that collects all of the following in an easy-to-use sort of format:
+- File management within the Docker volume (using the "Dev containers" extension)
+- File editing for markdown files, and viewing markdown files in their rendered format
+- Tracking changes for files using Git in a super easy and intuitive interface
+- Doing intensive file searches, edits, and similar
+
+There are a bunch of similar alternatives that are also designed to be a bit more teched-up with coding agents built in (e.g., Cursor), but I've found VSCode to work great! Your mileage may vary -- the recommendation here is really just, find an interface that works for you and your workflow to make this work easier and reduce the frictions involved.
 
 ---
 

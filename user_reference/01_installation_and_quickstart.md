@@ -214,6 +214,8 @@ From here, you can interact with Claude the same way you would with any AI assis
 
 That being said, let's go over just a few more technical details and how-to's before we get there.
 
+> **Quick tip before you go any further**: Now that you have Claude Code up and running with DAAF, you can actually start asking Claude for help! If you have any questions, concerns, issues, or confusion about **anything** you read in this guide or other parts of the User Documentation: Ask Claude about it! Point it to any document, section, or sentence, and then ask it to help you understand it better. It has visibility into the whole project documentation at-will, so it should be able to help you out as you go. This kind of personalized assistance should be invaluable for anyone getting onboarded into using DAAF and Claude Code more generally!
+
 ---
 
 ## Day-to-Day Start/Stop Workflow
