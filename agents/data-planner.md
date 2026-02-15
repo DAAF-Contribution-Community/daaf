@@ -199,9 +199,51 @@ Group independent tasks for parallel execution. Verify no circular dependencies.
 
 Populate Risk Register with known failure modes and mitigations. Specify validation checkpoint criteria (CP1-CP3) for each relevant task.
 
-### Step 9: Write Plan Document
+### Step 9: Write Plan Document (Sectional Writing Protocol)
 
-Write the complete Plan following `agent_reference/PLAN_TEMPLATE.md`. Save to the project folder at the path specified by the orchestrator.
+Write the Plan following `agent_reference/PLAN_TEMPLATE.md`, **saving to disk incrementally in four section groups.** This ensures partial work survives if context is exhausted during complex plans with many task specifications.
+
+**Section Groups:**
+
+| Group | Sections Covered | Action |
+|-------|-----------------|--------|
+| **A: Foundation** | YAML frontmatter, Title/Philosophy, Original Request & Clarifications, Goal & Context, Must-Haves Specification | Write file (creates it) |
+| **B: Discovery & Methodology** | Phase 1 Discovery Results (Stage 2 + Stage 3), Methodology Specification (Query Spec, Cleaning Spec, Transformation Sequence table) | Edit to append |
+| **C: Executable Tasks** | Complete Executable Task Sequence — all XML `<task>` blocks organized by wave | Edit to append |
+| **D: Completion** | Output Specification, Validation Checkpoints, Decisions Log, Risk Register, Trade-offs Accepted, Current Status, QA Findings Summary (skeleton), Final Review Log (skeleton), Data Citations, File Manifest | Edit to append |
+
+**Writing Procedure:**
+
+1. **Group A:** Compose the Foundation sections. **Write** the file. End with progress marker:
+   ```
+   <!-- PLAN_PROGRESS: NEXT_GROUP=B -->
+   ```
+
+2. **Group B:** Compose Discovery & Methodology sections. **Edit** to replace the progress marker with Group B content, ending with:
+   ```
+   <!-- PLAN_PROGRESS: NEXT_GROUP=C -->
+   ```
+
+3. **Group C:** Compose the Executable Task Sequence (all waves and XML task blocks). **Edit** to replace the progress marker with Group C content, ending with:
+   ```
+   <!-- PLAN_PROGRESS: NEXT_GROUP=D -->
+   ```
+
+4. **Group D:** Compose the Completion sections. **Edit** to replace the progress marker with Group D content. **Do NOT append a progress marker** — absence of the marker signals the Plan is complete.
+
+**Progress Marker Convention:**
+
+- `<!-- PLAN_PROGRESS: NEXT_GROUP=X -->` present at end of file → Plan is incomplete; X indicates which group is needed next
+- No marker present → Plan is complete
+- Variant with wave detail: `<!-- PLAN_PROGRESS: NEXT_GROUP=C WAVES_COMPLETE=1-4 -->` → Group C is partially complete (waves 1-4 written, more remain)
+
+**If you cannot complete the current group** (e.g., Group C is very large and you are deep into wave generation):
+
+1. Save everything composed so far to disk using Edit
+2. Update the progress marker to reflect the precise position (include `WAVES_COMPLETE` detail for Group C)
+3. Return with status `CONTINUATION` (see Continuation Output Format below)
+
+The orchestrator will read the partial Plan, see what is complete, and invoke a fresh data-planner in continuation mode to finish.
 
 ### Step 10: Run Quality Checklist
 
@@ -249,6 +291,24 @@ Before returning, verify all items in the Quality Standards section (Section 10 
 
 **Step R6: Return Revision Summary.** Use the revision output format (see Output Format section).
 
+### Continuation Mode Protocol
+
+**When Triggered:**
+- Orchestrator provides `MODE: continuation` with a partial Plan path
+- A prior planner invocation exhausted context or returned CONTINUATION
+
+**Mindset:** "Continue from where the last planner left off. The partial Plan is my context — do NOT re-derive decisions already documented in it."
+
+**Step C1: Read Partial Plan (MANDATORY).** Read the partial Plan file. It contains all decisions, methodology, and context from groups already completed. Do NOT re-read discovery findings — they are already embedded in the Plan's Discovery Results section.
+
+**Step C2: Identify Resume Point.** Look for the progress marker `<!-- PLAN_PROGRESS: NEXT_GROUP=X ... -->` at the end of the file. This tells you exactly which Group to write next. If the marker includes `WAVES_COMPLETE`, resume from the next wave within that group.
+
+**Step C3: Load Template (if needed).** Read `agent_reference/PLAN_TEMPLATE.md` for the section structure of remaining groups. You do NOT need to re-read sections for groups already written.
+
+**Step C4: Continue Writing.** Follow the Sectional Writing Protocol (Step 9) starting from the indicated group. Use Edit to replace the progress marker with new content, as normal.
+
+**Step C5: Quality Check.** Run the Quality Checklist (Step 10) on the COMPLETE file (all groups, including those written by prior invocations), not just the groups you wrote.
+
 ---
 
 ## Output Format
@@ -261,7 +321,7 @@ Write the complete Plan following `agent_reference/PLAN_TEMPLATE.md`. The plan i
 
 Return findings in this structure after writing the Plan:
 
-**Status:** [COMPLETE | REVISION_COMPLETE | BLOCKED]
+**Status:** [COMPLETE | CONTINUATION | REVISION_COMPLETE | BLOCKED]
 **Plan Path:** [absolute path to Plan.md]
 **Tasks Defined:** [count]
 **Waves:** [count]
@@ -346,6 +406,29 @@ When returning from Revision Mode, use:
 [All flagged issues resolved / Blocking issues listed with reasons]
 ```
 
+### Continuation Output Format
+
+When returning CONTINUATION status (plan incomplete, context pressure):
+
+```
+## CONTINUATION
+
+**Plan Path:** [absolute path to partial Plan.md on disk]
+
+**Groups Completed:** [A | A,B | A,B,C]
+**Next Group:** [B | C | D]
+**Last Wave Written:** [if mid-Group-C: last wave number completed, e.g., "4 of 10"]
+
+**Continuation Context:**
+- Wave structure: [total waves planned, how many written]
+- Tasks remaining: [approximate count of XML task blocks still needed]
+- Key decisions already in Plan: [list section names that contain methodology decisions]
+
+**Resume Instructions:**
+Invoke fresh data-planner in continuation mode with partial plan path.
+Discovery findings are already embedded in Plan Group B — do NOT re-provide them.
+```
+
 ---
 
 <downstream_consumer>
@@ -368,6 +451,7 @@ When returning from Revision Mode, use:
 | Your Status | Orchestrator Action |
 |-------------|-------------------|
 | COMPLETE | Proceed to Stage 4.5 (plan-checker) |
+| CONTINUATION | Read partial Plan, invoke fresh data-planner in continuation mode |
 | REVISION_COMPLETE | Re-invoke plan-checker for validation |
 | BLOCKED | Escalate to user with blocking reason |
 

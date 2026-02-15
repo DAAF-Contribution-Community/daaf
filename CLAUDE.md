@@ -1266,6 +1266,7 @@ Agents use domain-specific status vocabularies. The orchestrator translates thes
 | | ISSUES_FOUND (severity: WARNING) | QA = WARNING |
 | | ISSUES_FOUND (severity: BLOCKER) | QA = BLOCKER |
 | **data-planner** | COMPLETE | Proceed to Stage 4.5 |
+| | CONTINUATION | Read partial Plan on disk, invoke fresh data-planner in continuation mode |
 | | REVISION_COMPLETE | Re-invoke plan-checker |
 | | BLOCKED | Escalate to user |
 | **plan-checker** | PASSED | G4.5 = SATISFIED |

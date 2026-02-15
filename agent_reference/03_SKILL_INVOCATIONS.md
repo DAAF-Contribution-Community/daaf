@@ -653,6 +653,52 @@ Do NOT paraphrase or summarize — copy the exact text.
 - [ ] Stage 3.5 synthesis included
 - [ ] Project folder path determined
 
+### data-planner — Continuation Mode
+
+**When to use:** The data-planner returned `CONTINUATION`, or the subagent crashed and a partial Plan file exists on disk with a `<!-- PLAN_PROGRESS: ... -->` marker.
+
+**Key savings:** Discovery findings are already embedded in the partial Plan (Group B). The continuation planner reads them from the file — do NOT re-supply Stage 2/3/3.5 findings in the prompt.
+
+```python
+Task({
+    description: "Stage 4: Plan Continuation",
+    prompt: """You are a Data Planner. Follow the protocol in
+    `{BASE_DIR}/agents/data-planner.md`.
+
+    **BASE_DIR:** {BASE_DIR}
+    All relative paths in referenced files resolve from BASE_DIR.
+
+    Call the skill tool with name 'data-scientist'.
+
+    **MODE:** continuation
+
+    **PARTIAL PLAN PATH:** {partial_plan_path}
+    Read the partial Plan file FIRST to understand all decisions and context
+    already documented. Discovery findings are embedded in the Plan's
+    Phase 1 Discovery Results section — do NOT re-derive them.
+
+    **GROUPS REMAINING:** {groups_remaining}
+    Continue writing from Group {next_group}. The Plan file ends with a
+    progress marker `<!-- PLAN_PROGRESS: ... -->` showing exactly where
+    to resume.
+
+    **TASK:**
+    Complete the remaining section groups of the Plan following
+    `{BASE_DIR}/agent_reference/PLAN_TEMPLATE.md`.
+    Use the Edit tool to replace the progress marker with new content.
+    Follow the Sectional Writing Protocol (Step 9 of your protocol).
+
+    Return findings using the Data Planner Output Format.""",
+    subagent_type: "general-purpose"
+})
+```
+
+**Orchestrator Checklist Before Invoking Continuation:**
+- [ ] Partial Plan file exists on disk
+- [ ] Progress marker present (`<!-- PLAN_PROGRESS: ... -->`)
+- [ ] Groups remaining identified from marker or CONTINUATION return
+- [ ] Total planner invocations < 3 (initial + max 2 continuations)
+
 ---
 
 ### plan-checker (Stage 4.5: Plan Validation)
