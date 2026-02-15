@@ -81,15 +81,17 @@ Ready to get started? See [**01. Installation & Quick Start**](user_reference/01
 
 ## What DAAF can do with your help
 
-While built with the public education datasets out-of-the-box for demonstration purposes, DAAF also includes a suite of tools that allow advanced users to easily and rapidly extend its capabilities in a number of important directions:
-- **Better, more robust, and more efficient workflows:** At launch, DAAF is fully functioning and shockingly robust based on various batteries of testing and reproducibility inspections. That being said, this framework is still very much in its nascency, and will need to be broken and amended and improved as more people push it to its current limits. It is usage-hungry and likely far moreso than it needs to be, even for the level of care desired here. If you find a bug or have a suggestion, please [open an issue!](https://github.com/DAAF-Contribution-Community/daaf/issues)
-- **Data ingestion:** Ask DAAF to invoke the `data-ingest` agent, point it to a dataset (public data sources preferred, or ensure that you're being extremely careful to abide by your organization's AI policy and data protection standards for any proprietary data!!!), and provide any codebook or documentation available. DAAF will carefully build an intensive set of data documentation via manual data diagnostics and exploration, allowing it to use that data robustly and carefully in any future research request. This gets packaged into a new `data-source-skill` that can be shared with anyone else using DAAF at any time.
-- **Methodological skill extensions:** Ask DAAF to use the `skill-authoring` skill and conduct deep research online for documentation or literature on a given methodological toolset for Python (e.g., pyfixest, predictive analytics, cluster analysis, etc.) to generate a new methodological toolset it can reference for future analyses. This gets packaged into a new `methodology-skill` that can be shared with anyone else using DAAF at any time.
-- **Content area knowledge skill extensions:** Similarly, ask DAAF to use the `skill-authoring` skill and conduct deep research online for literature on a given area of domain expertise to help it navigate future analyses with more appropriate intuition, data concerns, and limitations. This gets packaged into a new `context-skill` that can be shared with anyone else using DAAF at any time.
-- **Learnings integration:** Every time DAAF runs a completed project, it compiles learnings about the research process and data idiosyncrasies along the way. The LEARNINGS.md project file is written to be immediately actionable with revisions to make to documentation, skills, and more -- share these back with the community by [opening an issue](https://github.com/DAAF-Contribution-Community/daaf/issues) so DAAF can self-iterate and grow from its runs across users!
-- **Coding language agnosticism:** Today, DAAF works primarily in the Python ecosystem as its default analytic language. That being said, it is entirely possible to replace Python with any analytic toolset that can be installed open-source and run from the command line (e.g., R). I use the Polars library (which follows extremely similar syntax to tidyverse) to try and split the difference, but future collaborators can help us incorporate other languages more freely to suit more analytic workflows and organizational contexts.
+DAAF is still very much in its nascency and will need the support of the community to really be ready for serious use in research workflows as a reliable, scalable tool. It will need to be broken and amended and improved as more people push it to its current limits. Moreover, while built with the public education datasets out-of-the-box for demonstration purposes, DAAF also includes a suite of tools that allow advanced users to easily and rapidly extend its capabilities in a number of important directions. If you're interested in working with DAAF and pushing this frontier forward, you can contribute by:
 
-I welcome community contributions to any of these ends! If you tackle any of the above, please share back with the community for us all to benefit as this framework expands. Please review existing issues before creating new ones, and be respectful in all interactions. I'm not a software developer, so a lot of this true open-source collaboration work will take some time to acclimate to! For detailed guidance on filing effective issues (including how to use session logs), development setup, and making your own framework modifications, see [**05. Contributing to DAAF**](CONTRIBUTING.md).
+- **Expanded data ingestion:** Use DAAF's `data-ingest` agent to help profile and integrate new public data sources. These get packaged into a new `data-source-skill` that can be immediately integrated into the main repository and/or shared directly with other users.
+- **Methodological skill extensions:** Use DAAF's `skill-authoring` skill and conduct deep research online for documentation or literature on a given methodological toolset for Python (e.g., pyfixest, predictive analytics, cluster analysis, etc.) to generate a new methodological toolset it can reference for future analyses. This gets packaged into a new `methodology-skill` that can be immediately integrated into the main repository and/or shared directly with other users.
+- **Content area knowledge skill extensions:** Similarly, use DAAF's `skill-authoring` skill and conduct deep research online for literature on a given area of domain expertise to help it navigate future analyses with more appropriate intuition, data concerns, and limitations. This gets packaged into a new `context-skill` that can be immediately integrated into the main repository and/or shared directly with other users.
+- **Learnings integration:** Every time DAAF runs a completed project, it compiles learnings about the research process and data idiosyncrasies along the way. The LEARNINGS.md project file is written to be immediately actionable with revisions to make to documentation, skills, and more -- share these back with the community by [opening an issue](https://github.com/DAAF-Contribution-Community/daaf/issues) so DAAF can self-iterate and grow from its runs across users!
+- **Better, more robust, and more efficient workflows:** DAAF is *extremely* usage-hungry and likely far moreso than it needs to be, even for the level of care desired here. If you have a suggestion to balance quality with speed/efficiency, or find a bug, please [open an issue!](https://github.com/DAAF-Contribution-Community/daaf/issues)
+- **Coding language agnosticism:** Today, DAAF works primarily in the Python ecosystem as its default analytic language. That being said, it is entirely possible to replace Python with any analytic toolset that can be installed open-source and run from the command line (e.g., R). Future collaborators can help us incorporate other languages more freely to suit more analytic workflows and organizational contexts.
+- **Coding agent agnosticism:** DAAF is currently built on Claude Code, but the vast majority of the tooling present here (Skills, Agents, agent_reference, and so on) can be immediately ported to any similar coding harness/agent program (Gemini CLI, Codex, OpenCode, etc.). Other aspects will need more finessing -- help bring DAAF to more users and LLMs!
+
+See [**04. Extending DAAF**](user_reference/04_extending_daaf.md) and [**05. Contributing to DAAF**](CONTRIBUTING.md) for more detail on all of these fronts.
 
 ### Why Education Data as the Demonstration Domain?
 
@@ -127,19 +129,6 @@ Unlike the standard GPL, the LGPL distinguishes between **modifying the framewor
 - Custom agents you create for your organization's specific workflows
 - Research methodologies and analysis scripts you develop using DAAF
 - All data, outputs, reports, notebooks, and visualizations you produce via DAAF
-
-### Practical Examples
-
-| Scenario | Must you share open-source? | Why |
-|----------|----------------|-----|
-| You fix a bug in DAAF's orchestrator and publish your fork | **Yes** | This modifies the core framework and is distributed |
-| You create a Skill for your agency's private student database | **No** | This is an extension — a new file that uses DAAF's interfaces |
-| You add a custom agent for your team's internal review process | **No** | New agents are extensions, and internal use never triggers sharing |
-| You apply a proprietary statistical methodology in your analysis scripts | **No** | Analysis scripts are your work product, not part of DAAF |
-| You modify DAAF's validation checkpoints for internal use only | **No** | Internal modifications are never subject to LGPL obligations |
-| You work with FERPA-protected, classified, or proprietary data | **No** | Data processed by the framework is never affected by the license |
-| You run DAAF in a private Docker container within your organization | **No** | Running software internally is not distribution |
-| You modify the DAAF core framework and want to sell as new software | **Yes** | Distributing modified core framework code triggers LGPL |
 
 ---
 
