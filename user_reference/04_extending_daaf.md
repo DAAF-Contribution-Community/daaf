@@ -8,7 +8,7 @@ This guide focuses on the primary extension path: bringing new datasets, data do
 
 ## Table of Contents
 
-- [**The Extension Model: Skills + Agents + Data-Ingest**](#the-extension-model-skills--agents--data-ingest)
+- [**The Extension Model: Skills, Agents, and Data-Ingest**](#the-extension-model-skills-agents-and-data-ingest)
 - [**Step-by-Step: Profiling a New Dataset with Data-Ingest**](#step-by-step-profiling-a-new-dataset-with-data-ingest)
 - [**Step-by-Step: Authoring Other Types of New Skills**](#step-by-step-authoring-other-types-of-new-skills)
 - [**Adding a New Agent**](#adding-a-new-agent)
@@ -18,7 +18,7 @@ This guide focuses on the primary extension path: bringing new datasets, data do
 
 ---
 
-## The Extension Model: Skills + Agents + Data-Ingest
+## The Extension Model: Skills, Agents, and Data-Ingest
 
 Here's the fundamental insight behind DAAF's extensibility: **the framework is intended to separate what it *knows* from how it *behaves*.** This is a really important distinction that makes the whole extension model work, so let me try to explain it clearly.
 
