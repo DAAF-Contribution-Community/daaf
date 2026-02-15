@@ -32,11 +32,11 @@ Claude Code is the AI assistant that powers this project. It runs inside your te
 
 For the account setup, that means you have two main options:
 
-- **Anthropic Max subscription** — [Get one here](https://claude.com/pricing/max). If you already have an active Anthropic account, you can [upgrade your plan here](https://claude.ai/upgrade). You can also use an existing Team or Enterprise subscription, but your mileage may vary substantially based on your organizational settings.
-- **Anthropic API key** — [Get one here](https://console.anthropic.com/). This is a pay-per-use key that you'll paste into Claude Code when prompted. This allows unlimited use as long as you're willing to pay -- but this can get VERY expensive, very quickly. I HIGHLY recommend getting a Max subscription for this project, instead, as they are explicitly subsidizing these sorts of costs via their subscription model. Initial testing on my end indicates I'd pay roughly 10x more for my usage going with the API key versus just my Max subscription plan.
+- **Anthropic Max subscription** — [Get one here](https://claude.com/pricing/max), or if you already have an active Anthropic account, you can [upgrade your plan here](https://claude.ai/upgrade). I rarely hit my usage limits running multiple projects at once on the $200/mo plan; your mileage may vary on the $100/mo plan. You can also use an existing Team or Enterprise subscription, but your mileage may vary substantially there too based on your exact organizational settings/limits.
+- **Anthropic API key** — [Get one here](https://console.anthropic.com/). This is a pay-per-use key that you'll paste into Claude Code when prompted. This allows unlimited use as long as you're willing to pay -- but this can get VERY expensive, *very* quickly. A fairly straightforward descriptive analysis with relatively few dataset joins via raw API fees can easily be between $30-60. I HIGHLY recommend getting a Max subscription for this project, instead, as they are explicitly subsidizing these sorts of costs via their subscription model. Initial testing on my end indicates I would have paid roughly 10x more for my usage going with the API key versus just my Max subscription plan.
 - **Third-party platform use** — If your company has an Amazon Bedrock or Vertex AI or similar partnership as part of your organizational plan with Anthropic, you can also leverage these settings instead. I'm not familiar enough with this myself and wouldn't be able to support much, but you should follow whatever instructions your plan admins have given you to link your account with Claude Code more generally.
 
-Whichever route you choose, Claude Code will prompt you to choose your authentication method the first time you run it — you don't need to configure anything in advance. Note that many terminal interfaces "hide" any password-entry you're asked to do, so if you don't see your typing "working," it's working but hiding it from view for your privacy. If you're concerned about privacy otherwise: Nothing (including your credentials) ever leave your computer in the course of this project's workflows, and I've enforced a LOT of safety checks to ensure Claude doesn't accidentally share it with anyone, either. This can be directly verified in the code. 
+Whichever route you choose, Claude Code will prompt you to choose your authentication method the first time you run it — you don't need to configure anything in advance. You can also always start with one option and change later (e.g., try billing via API for a short test and then transition to a Max subscription); you can adjust your settings by typing `/login` when chatting with Claude. Note that many terminal interfaces "hide" any password-entry you're asked to do, so if you don't see your typing "working," it's working but hiding it from view for your privacy. If you're concerned about privacy otherwise: Nothing (including your credentials) ever leave your computer in the course of this project's workflows, and I've enforced a LOT of safety checks to ensure Claude doesn't accidentally share it with anyone, either. This can be directly verified in the code. 
 
 Finally, note that you can easily port this whole project over to a CLI tool of your choice (OpenCode, Codex, Gemini CLI, etc.) with a little bit of effort (the hooks are really the only hard part -- everything like the agents and skills should port over immediately). Fork this repo, work with your favorite tool to convert it over, and please continue to share it broadly with others!!! I would be excited to have people test this on open-source models, as well -- please reach out if you've got capacity to that end.
 
@@ -118,6 +118,7 @@ This creates a `daaf` folder containing all the project files. You should now be
 Rather than let Claude use and edit files directly on your computer, we're going to make a **secure copy** for Claude to operate on separately using Docker. Run this command next, making sure that Docker Desktop is currently running in the background:
 
 ```bash
+# This uses Docker to help us copy files from your installation folder into a place Docker can work in later
 docker run --rm -v "${PWD}:/source:ro" -v "daaf_daaf-data:/dest" busybox cp -a /source/. /dest/
 ```
 
@@ -126,6 +127,7 @@ This copies all the project files into a **"Docker volume"** — a storage area 
 ### Step 4: Use Docker to create and start the container
 
 ```bash
+# This code uses the docker-compose.yaml file to begin the Docker container with specific pre-sets
 docker compose up -d --build
 ```
 
@@ -296,7 +298,7 @@ docker compose exec daaf-docker bash
 git pull origin main
 ```
 
-Note that `git pull` inside the container won't work correctly if you've made any edits to the core DAAF workflow or documentation files (basically, anything outside of the research folder). In that case, you may want to submit a Pull request for your changes (if you've made useful updates you want to share broadly!) -- otherwise, you'll need to navigate your own merge conflicts and such (a topic for general Git tutorials, rather than here!).
+Note that `git pull` inside the container shouldn't impact any of your research files. `git pull` also won't work correctly if you've made any edits to the core DAAF workflow or documentation files (basically, anything outside of the research folder). In that case, you may want to submit a Pull request for your changes (if you've made useful updates you want to share broadly!) -- otherwise, you'll need to navigate your own merge conflicts and such (a topic for general Git tutorials, rather than here!).
 
 ---
 
