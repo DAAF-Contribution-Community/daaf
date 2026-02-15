@@ -333,7 +333,7 @@ Let's go through each piece.
 
 ### The Scripts Directory
 
-**What it is:** The primary execution artifacts. I cannot stress this enough -- **the scripts are the real work product**, not the notebook. Every data fetch, every cleaning operation, every transformation, every analysis, and every visualization is captured as a standalone Python script in the `scripts/` directory, organized by stage.
+**What it is:** The primary execution artifacts. I cannot stress this enough -- **the scripts are the real work product**, not the notebook. Every data fetch, every cleaning operation, every transformation, every analysis, and every visualization is captured as a standalone Python script in the `scripts/` directory, organized by stage. I cannot stress enough: Get a sense for how these scripts are actually written and run: **this is the secret sauce of why anything about DAAF is worth anything at all**. Without the core engine of data analysis being transparent, rigorous, and reproducible, nothing else that comes out of this process is valuable. Spend time here.
 
 **What's inside each script:**
 - Clear section headers (`# --- Config ---`, `# --- Load ---`, `# --- Transform ---`, `# --- Validate ---`, `# --- Save ---`)
@@ -557,9 +557,10 @@ DAAF will read STATE.md, understand where it stopped, and resume from that exact
 ### Tips for Multi-Session Work
 
 - **Don't panic if a session ends mid-analysis.** This is undesired but not unexpected for complex analyses. The whole STATE.md system exists precisely for this reason.
+- **A session restart is not a failure state.** We're constantly and deliberately toe-ing the line between "giving enough context for Claude to do a good job at what we're asking for" and "filling up the context so much that it gets confused and does weird stuff" to optimize our performance. The session restart is our way of maintaining that balance deliberately as a pressure valve.
 - **Let DAAF finish its current "atomic unit" before stopping it as the context window begins to fill.** If DAAF is in the middle of executing a script and running QA, try to let it complete that cycle before stopping. Interrupting mid-script is recoverable but creates a messier restart.
 - **You can always check progress.** At any point, you can ask DAAF: "What's the current status of the analysis?" and it'll tell you where things stand.
-- **Complex analyses may take several sessions.** A nine-source, multi-year analysis with extensive transformations and multiple statistical tests can easily fill up multiple context windows. This is fine -- each session picks up seamlessly from where the last one left off. But it definitely can be annoying!
+- **Complex analyses may take several sessions.** A nine-source, multi-year analysis with extensive transformations and multiple statistical tests can easily fill up multiple context windows. This is fine -- I've designed the system such that each session picks up seamlessly and as painlessly as possible from where the last one left off. But it definitely can be annoying doing it multiple times!
 
 ---
 

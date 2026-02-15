@@ -1,6 +1,6 @@
 # 03. Best Practices
 
-**UNDER CONSTRUCTION, EVERYTHING HERE SUBJECT TO CHANGE BY LAUNCH** Practical wisdom for getting the most out of DAAF while maintaining research quality. This guide helps you write effective prompts, review outputs critically, and understand your role in the human-AI research partnership.
+Practical wisdom for getting the most out of DAAF while maintaining research quality. This guide helps you write effective prompts, review outputs critically, and understand your role in the human-AI research partnership.
 
 [**Back to main**](../.)
 
@@ -8,7 +8,6 @@
 
 ## Table of Contents
 - [**Writing Effective Prompts**](#writing-effective-prompts)
-- [**Choosing the Right Engagement Mode**](#choosing-the-right-engagement-mode)
 - [**Reviewing the Plan Before Execution**](#reviewing-the-plan-before-execution)
 - [**Interpreting Validation Checkpoints and STOP Conditions**](#interpreting-validation-checkpoints-and-stop-conditions)
 - [**Reviewing Notebooks, Reports, and Script Logs**](#reviewing-notebooks-reports-and-script-logs)
@@ -22,125 +21,30 @@
 
 ## Writing Effective Prompts
 
-This is the single most impactful thing you can do to improve the quality of what DAAF produces. I realize that "write better prompts" has become almost cliche advice at this point, but I want to be very concrete here about what that actually means in practice -- because the specifics really matter for a structured research system like DAAF.
+This is the single most impactful thing you can do to improve the quality of what DAAF produces. I realize that "write better prompts" has become almost cliche advice at this point, but I want to be very concrete here about what that actually means in practice -- because the specifics really matter for a structured research system like DAAF and your experience with using it.
 
 ### What Makes a Good Request
 
-A good request gives DAAF the four dimensions it needs to scope the work properly:
+Building off of what we discussed in [**02. Understanding and Working with DAAF**](02_understanding_daaf.md) re: context management principles: A good request ultimately helps steer the LLM in the right directions and enhances its likelihood of doing what you really want it to do. As many in the AI space are advocating, you really need to ask yourself: What kind of instruction would **you** need to do the task you're asking well? What kind of specifics, details, and process guidance would be helpful for you, or a colleague you're delegating to? Time spent crafting your prompt with more detail and specifics pay off almost infinitely for quality down the road.
 
-- **Geography**: Which state, district, or national scope? "California" is much better than "the west coast." "National" is fine if that's what you want.
-- **Time period**: Which years? "2018-2022" is ideal. "The past few years" works but forces DAAF to make assumptions you might not agree with.
-- **Data granularity**: Are you interested in individual schools, school districts, or colleges/universities? This determines which datasets DAAF reaches for.
-- **Analysis focus**: What relationship, trend, or comparison are you trying to understand? "The relationship between poverty and enrollment" is much more actionable than "poverty stuff."
+When it comes to DAAF, there are a few dimensions of specificity you can provide to help it scope and navigate the work properly:
 
-You do *not* need to know the exact dataset names, variable codes, or statistical methods. That is genuinely what DAAF is here to help with. What you *do* need to provide is a clear enough picture that DAAF can make intelligent decisions about those things on your behalf -- decisions you'll then review and approve before anything gets executed.
+- **Geography**: Are you interested in a particular state, region, or just nation-wide? Or all of the above, separately? Be specific
+- **Time period**: Which years? Something specific like "2018-2022" is ideal, knowing that it may need to adjust based on specific data availability and trade-offs. "The past few years" works but is vague and encourages DAAF to make assumptions you might not agree with. Explicit is better.
+- **Data granularity**: Are you interested in individual schools, school districts, or colleges/universities? This determines which datasets DAAF reaches for, and what feels most important
+- **Analysis focus**: What relationship, trend, or comparison are you trying to understand? "The relationship between poverty and enrollment" is much more actionable than "general socioeconomics."
+- **Priorities**: What matters most to you about this analysis? If it has to make trade-offs, what should go first? Every analysis involves complicated decision-making, so giving it more insight here can help it align with what you'd want it to do.
+- **Desired insights**: What are you really trying to say, or learn, or do with the data analysis? Giving it a sense of your goals will also help it make better decisions.
 
-### Good vs. Less-Good Examples
+You do *not* need to know the exact dataset names, variable codes, or statistical methods. If you know them, great, but if not, that's fine -- that is genuinely part of what DAAF is designed to handle rigorously on our behalf. What you *do* need to provide is a clear enough picture that DAAF can make intelligent decisions about those things as it works -- decisions you'll then review and approve before anything gets executed.
 
-**Full Pipeline examples (analysis, research, data deliverables):**
+With that in mind, there are actually some appreciable trade-offs in being too vague or too prescriptive:
 
-| Quality | Example | Why |
-|---------|---------|-----|
-| Great | "Analyze how school poverty rates in Texas changed from 2018-2022, breaking down trends by school type (charter vs. traditional) and urbanicity" | Specific geography, time range, outcome variable, and two comparison dimensions |
-| Good | "Research the relationship between school poverty and enrollment trends in California" | Clear relationship question with geography; time period will be clarified |
-| Okay | "Analyze graduation rates by state for the past 5 years" | Has a measure and timeframe, but 50-state analyses are very large -- DAAF will ask about scope |
-| Weak | "Tell me about school poverty" | Too broad. DAAF will ask you several clarifying questions before it can proceed |
+**Being too vague** triggers a round of clarifying questions. This is not a catastrophe -- DAAF is designed to ask before it assumes -- but it adds an extra back-and-forth that slows you down.
 
-**Discovery examples (what exists, feasibility):**
+**Being too prescriptive** can actually constrain useful exploration. If you say "Use CCD enrollment counts and MEPS poverty estimates for schools in Texas from 2019-2022, join on NCES school ID, and run an OLS regression with XYZ as the covariates," you may miss that DAAF would have recommended SAIPE district-level poverty estimates instead, or flagged that 2020 CCD data has significant COVID-related reporting gaps. If you know enough about your data context to be this confident, go for it, but you may benefit from engaging with DAAF on scoping and ideation.
 
-| Quality | Example | Why |
-|---------|---------|-----|
-| Great | "What school-level poverty measures exist, and which would be most reliable for analyzing Title I eligibility gaps?" | Clear topic, specific application, asks for a recommendation |
-| Good | "Is it feasible to analyze teacher salaries by district using the available data?" | Direct feasibility question with clear scope |
-| Okay | "What data is available on school discipline?" | Workable but broad -- DAAF will identify many endpoints and may ask which angle you care about |
-
-**Targeted Assist examples (quick lookups, definitions):**
-
-| Quality | Example | Why |
-|---------|---------|-----|
-| Great | "What are the coded values for the charter school status variable in CCD data, and how have those codes changed over time?" | Names the exact dataset and variable, asks a specific follow-up |
-| Good | "How is the graduation rate calculated in IPEDS?" | Clear, focused question about a specific metric |
-| Okay | "What does enrollment mean?" | Enrollment means different things in different datasets -- DAAF will need to ask which data source |
-
-**Revision examples (changes to existing work):**
-
-| Quality | Example | Why |
-|---------|---------|-----|
-| Great | "In the Texas poverty analysis from 2026-02-10, update the enrollment filter to exclude virtual schools and re-run the regression" | Names the project, specifies the exact change, and identifies the downstream impact |
-| Good | "Add 2023 data to the school poverty analysis and update the trend charts" | Clear scope of change |
-| Okay | "Fix my last analysis" | DAAF can probably find it, but "fix" could mean a lot of things |
-
-### The Specificity Spectrum
-
-Here is something I think is genuinely important to internalize: there is a sweet spot for prompt specificity, and it is not "as specific as possible."
-
-**Too vague** triggers a round of clarifying questions. This is not a catastrophe -- DAAF is designed to ask before it assumes -- but it adds an extra back-and-forth that slows you down.
-
-**Too prescriptive** can actually constrain useful exploration. If you say "Use CCD enrollment counts and MEPS poverty estimates for schools in Texas from 2019-2022, join on NCES school ID, and run an OLS regression," you have effectively written the Plan yourself. That is fine if you know exactly what you want, but you may miss that DAAF would have recommended SAIPE district-level poverty estimates instead, or flagged that 2020 CCD data has significant COVID-related reporting gaps.
-
-**The sweet spot** gives DAAF clear scope with room for expertise. You specify *what you want to learn* and *roughly where to look*, and let DAAF figure out the best *how*. Then you review its proposal in the Plan document and push back before any data is touched.
-
-Here is a concrete example of what I mean:
-
-> **Too vague:** "Analyze poverty and schools."
->
-> **Sweet spot:** "I want to understand how school-level poverty rates relate to enrollment trends across Texas, roughly 2018-2022. I'm particularly interested in whether the relationship differs between charter and traditional public schools."
->
-> **Too prescriptive:** "Download CCD school directory data for Texas 2018-2022 from the schools endpoint, filter to charter_text values, join with MEPS poverty data on ncessch, calculate year-over-year enrollment change as a percentage, and run a fixed-effects panel regression with school and year fixed effects."
-
-The sweet spot works best because DAAF has deep knowledge of the available data sources, their limitations, their coded values, and their quirks. It will surface things you might not have considered -- like the fact that charter school definitions changed in CCD between certain years, or that MEPS poverty estimates have substantial suppression in rural areas. That is exactly the kind of expert guidance you want from the system, and you only get it if you leave room for it.
-
----
-
-## Choosing the Right Engagement Mode
-
-If you have read [**02. Understanding and Working with DAAF**](02_understanding_daaf.md), you already know about the four modes. Here is the practical decision guide for choosing between them.
-
-### The Quick Decision Tree
-
-Ask yourself these questions in order:
-
-1. **Do I already have an analysis from DAAF that I need to change?** If yes -- Revision Mode.
-2. **Do I know exactly what analysis I want, and I am ready to commit to a full pipeline?** If yes -- Full Pipeline Mode.
-3. **Am I trying to figure out whether an analysis is even possible with the available data?** If yes -- Discovery Mode.
-4. **Do I just need a quick answer about a variable, coded value, or data source?** If yes -- Targeted Assist.
-
-If you are unsure, **start with Discovery**. It is always easier to escalate from Discovery to Full Pipeline than to realize halfway through a Full Pipeline analysis that the data does not support your question. Discovery is low-cost -- it does not create files, write code, or commit you to anything.
-
-### When Discovery Is Better Than Full Pipeline
-
-Use Discovery when:
-
-- **You are exploring a new topic** and do not yet know what data exists. "What variables does CRDC collect on school discipline?" is a Discovery question, not a Full Pipeline request.
-- **You are uncertain about feasibility.** "Can I analyze teacher experience levels by school poverty status?" is best answered with a quick Discovery pass first. DAAF might find that the data is there but heavily suppressed, or that the variable you want is only available for certain years.
-- **You want to compare potential approaches.** "What are the different ways to measure school poverty, and what are the tradeoffs?" is Discovery territory.
-- **You are working with a data source you have never used before.** A Discovery pass lets DAAF surface the caveats and limitations before you invest in a full analysis.
-
-Discovery is fast, cheap (in terms of API usage), and informational. If the findings look promising, DAAF will offer to escalate to a Full Pipeline analysis -- you just confirm and it transitions smoothly.
-
-### When to Start Targeted and Escalate
-
-Targeted Assist is for quick lookups: "What are the values of the `school_type` variable in CCD?" or "How does IPEDS define first-time, full-time students?" These should produce a direct answer in a single exchange, no Plan document, no code.
-
-But sometimes a quick lookup reveals that the question is more complex than you expected. Maybe you ask about a variable and discover it has been redefined across years, or that it interacts with suppression rules in ways that affect your planned analysis. In those cases, DAAF will suggest escalating:
-
-> "Based on these findings, the coded values for this variable changed in 2018, which could affect year-over-year comparisons. Would you like me to explore this more thoroughly in Discovery mode?"
-
-You do not need to plan this in advance. Just start where you are, and let the findings guide the escalation.
-
-### Recognizing When You Need Revision Mode
-
-Revision Mode is for when you already have a completed DAAF analysis and want to modify it. It is **not** for starting over -- it is for building on what exists. Typical revision triggers:
-
-- **Adding a year of data:** "Update the analysis to include 2023 data."
-- **Changing a filter or scope:** "Re-run but exclude virtual schools."
-- **Adding a new dimension:** "Add a breakdown by urbanicity."
-- **Fixing an error you caught:** "The enrollment filter should be >= 100, not >= 50."
-- **Extending the analysis:** "Now run the same regression but with district-level controls."
-
-When you request a revision, reference the existing project clearly -- by its title, its date, or both. DAAF will locate the existing Plan, read it, create a new version, and work from there. All prior versions are preserved; nothing gets overwritten.
-
-One important note: some "revisions" are really new projects in disguise. If you want to change the research question entirely, switch data sources, or apply a fundamentally different methodology, it is usually cleaner to start fresh with a new Full Pipeline request rather than revise the old one. DAAF will not prevent you from doing a massive revision, but it may suggest starting over if the scope of changes is large enough that building on the old Plan would be more confusing than helpful.
+**The sweet spot** gives DAAF clear scope with room for expertise. You specify *what you want to learn* and *roughly where to look*, and let DAAF present its thoughts on *how* that you can further shape and revise. Then you review its proposal in the Plan document and push back before any data is touched.
 
 ---
 
@@ -203,13 +107,13 @@ These are signs that the Plan may need revision before you approve it:
 
 ### How to Request Changes
 
-When you want to change something in the Plan, be specific about what and why. Here are some examples:
+When you want to change something in the Plan, be specific about what and why, while opening room for discussion. Here are some examples:
 
-> "Change the year range to 2019-2022 instead of 2016-2022 -- I want to avoid pre-ESSA data."
+> "Can we change the year range to 2019-2022 instead of 2016-2022? I want to avoid pre-ESSA data."
 
-> "Add urbanicity as a control variable in the regression. I think the poverty-enrollment relationship differs significantly between urban and rural schools."
+> "I think we should add urbanicity as a control variable in the regression. I think the poverty-enrollment relationship differs significantly between urban and rural schools, right?"
 
-> "The observable truth about suppression rates should specify a threshold -- say that suppression rates below 30% are acceptable for proceeding."
+> "The observable truth about suppression rates should probably specify a threshold -- I'd say that suppression rates below 30% are acceptable for proceeding."
 
 > "I do not think OLS regression is the right approach here given the panel structure of the data. Can you consider a fixed-effects model instead?"
 
@@ -387,9 +291,9 @@ These scripts contain the adversarial checks that the code-reviewer ran, along w
 
 I want to frame this section carefully, because I think the right mental model here is genuinely important.
 
-DAAF is not an oracle. It is not an autonomous research system that you can walk away from and trust to get things right. It is a very powerful -- and sometimes surprisingly thorough -- research *assistant* that operates under strict guardrails. But it is still an LLM-based system, which means it is fundamentally susceptible to the same limitations as all LLM systems: hallucination, sycophancy, over-confidence, and subtle logical errors that look plausible on the surface.
+DAAF is not an oracle. It is not an autonomous research system that you can walk away from and trust to get things right. It is not "fire-and-forget." Yes, it is a very powerful -- and sometimes surprisingly thorough -- assistant that operates under strict guardrails. But it is still an LLM-based system, which means it is fundamentally susceptible to the same limitations as all LLM systems: hallucination, sycophancy, over-confidence, and subtle logical errors that look plausible on the surface.
 
-What makes DAAF different from using Claude (or any LLM) ad-hoc is the sheer volume of structured verification layered into the process. But those layers of verification do not eliminate the need for human judgment. They *reduce* the surface area of what you need to verify, and they make verification *easier* by giving you organized, traceable artifacts. That is the exo-skeleton metaphor: DAAF amplifies your expertise, but your expertise is still the thing doing the real work.
+What makes DAAF different from using Claude (or any LLM) ad-hoc is the sheer volume of structured verification layered into the process. But those layers of verification do not eliminate the need for human judgment. They *reduce* the surface area of what you need to verify, and they make verification *easier* by giving you organized, traceable artifacts. That is the exo-skeleton metaphor: DAAF amplifies your expertise, but your expertise is still the thing doing the real work to ensure that outputs are worth anything at all.
 
 ### What DAAF Validates Automatically
 
@@ -412,6 +316,8 @@ That is a substantial amount of automated quality control. It means that the maj
 
 But automated validation cannot assess everything. Here is what still requires a human researcher with domain expertise:
 
+**Formulating the right question.** Is this a good question? Is it rooted in reasonable assumptions? Does it account for what we know from the literature? DAAF is thoughtful, and will likely push back on strange or erroneous assumptions, but it'll also definitely back down if you ask it to. You need to be the final say in what is or isn't worth investigating.
+
 **Methodological appropriateness.** Is the statistical method right for this research question and data structure? DAAF will choose a method and justify its choice, but the justification might be plausible-sounding without being correct. If you have strong priors about methodology, bring them to the Plan review.
 
 **Substantive interpretation.** DAAF will report that "enrollment declined by 12%," but it cannot tell you whether that decline is policy-relevant, expected, or alarming. It cannot contextualize findings within the broader policy landscape or institutional realities you may know about. That is your job.
@@ -423,21 +329,6 @@ But automated validation cannot assess everything. Here is what still requires a
 **Sufficiency for your use case.** DAAF can tell you the suppression rate is 28% and that this is within its acceptable bounds. Whether 28% suppression is acceptable *for your specific use case* -- whether this is an exploratory analysis for internal discussion or a finding that will inform a policy decision -- is a judgment call that only you can make.
 
 **Ethical considerations.** DAAF does not assess the ethical dimensions of your analysis. If you are working with data that involves vulnerable populations, politically sensitive topics, or potential for misuse of findings, those considerations are entirely your responsibility.
-
-### The Trust-but-Verify Compact
-
-Here is how I think about the division of labor:
-
-| Risk Category | What Could Go Wrong | DAAF's Role | Your Role |
-|--------------|---------------------|-------------|-----------|
-| **Data integrity** | Corrupted, missing, or wrong data | Catches most issues via CP1-CP4 and QA1-QA4b | Spot-check key values against known benchmarks |
-| **Analytical logic** | Wrong joins, bad aggregations, incorrect formulas | Catches most issues via per-script QA review | Verify that the transformation sequence makes logical sense |
-| **Methodology** | Wrong statistical approach, violated assumptions | Flags some issues; chooses method and justifies | Evaluate whether the method is appropriate for your question |
-| **Interpretation** | Over-claiming, under-qualifying, missing context | Generates Limitations section; documents caveats | Assess whether findings are substantively meaningful and properly qualified |
-| **Scope** | Analyzing the wrong thing, missing the point | Confirms scope at multiple gates (PSU1, PSU2) | Verify the research question matches your intent |
-| **Ethical/policy** | Inappropriate use, harm to populations | Does not assess | Entirely your responsibility |
-
-The bottom line: DAAF handles the *execution quality* -- making sure the code runs correctly, the data is handled properly, and the outputs are internally consistent. You handle the *research quality* -- making sure the right question is being asked, the right method is being used, the findings are properly interpreted, and the whole thing is fit for purpose.
 
 ---
 
@@ -496,13 +387,13 @@ When you are on the fence, DAAF will offer its assessment. But a useful rule of 
 
 ## Appropriate vs. Inappropriate Use Cases
 
-I want to be honest about this, because DAAF is a proof-of-concept and it is important to understand what that means in practice.
+DAAF is still very much in its nasceny, and there is only so much that one person and his friends can do to check guardrails, test robustness, and so on. With that in mind, it is important to be extremely transparent about what that means in practice.
 
 ### Appropriate Uses
 
 These are genuinely good applications for DAAF in its current state:
 
-- **Exploratory analysis with expert oversight.** You have a research question, you want to see what the data shows, and you are prepared to critically evaluate the results. This is the sweet spot.
+- **Exploratory analysis with expert oversight.** You have a research question, you want to see what the data shows, you have a good sense of what to expect already, and you are prepared to critically evaluate the results. This is the sweet spot.
 - **Learning and skill-building.** DAAF is excellent for learning how datasets work, what variables are available, and how data pipelines are constructed. Even if you never use DAAF's outputs directly, working with the system teaches you things about the data.
 - **Rapid prototyping of analyses.** You need to quickly test whether an analysis direction is viable before investing significant manual effort. DAAF can produce a working prototype in a fraction of the time.
 - **Scaling established methodologies.** You have already done this kind of analysis manually and know what correct output looks like. DAAF lets you run the same analysis across more states, more years, or more breakdowns than you could do alone.
@@ -522,59 +413,7 @@ These are possible but carry significant caveats:
 These should not be done with DAAF (or any LLM-based system) regardless of the guardrails:
 
 - **High-stakes decisions based solely on AI outputs.** Never use DAAF's results as the sole basis for decisions that significantly affect people -- resource allocation, program elimination, individual assessments, legal proceedings. Always have qualified humans independently verify any findings that will drive consequential decisions.
-- **Cross-state assessment score comparisons.** State assessments are not comparable across states. Period. DAAF is hard-coded to block these, and for very good reason. If you need cross-state comparisons of student achievement, use NAEP or another common assessment -- and even then, proceed with great care.
-- **Analysis on heavily suppressed data.** When more than 50% of your data is suppressed or missing, no amount of sophisticated methodology can overcome the fundamental problem that you do not have enough data. DAAF blocks these for your protection.
-- **Analysis presented as AI-generated without disclosure.** If you use DAAF to produce analysis, you should disclose the role of AI assistance in your work. Transparency is non-negotiable. DAAF is designed to make this easy by documenting exactly what it did, but the responsibility to disclose is yours.
-
-### A Note on the Proof-of-Concept Reality
-
-DAAF is a working system that produces real, useful output. But it is also a proof-of-concept that has not yet been battle-tested by a large community of users across a wide range of research questions. This means:
-
-- **There are edge cases that have not been found yet.** I have tested extensively against the education datasets, but I have not tested every variable, every year range, every join combination, or every state. You may find bugs, gaps in documentation, or unexpected behaviors.
-- **The validation system is thorough but not exhaustive.** The multi-layer QA catches a lot, but it cannot catch everything -- especially subtle methodological errors that require deep domain expertise to identify.
-- **Performance and cost vary significantly by query complexity.** A simple single-dataset descriptive analysis is fast and cheap. A multi-source, multi-year, multi-state analysis with complex joins will take longer, cost more, and have more opportunities for things to go wrong.
-
-This is why I built DAAF as an open-source community project rather than a product. The system needs more eyes, more testing, more edge cases discovered and documented, and more diverse research questions thrown at it. If you find issues, please [open an issue](https://github.com/DAAF-Contribution-Community/daaf/issues) -- you are contributing to making this better for everyone.
-
----
-
-## Managing Long Analyses and Session Recovery
-
-Full Pipeline analyses -- especially complex ones with multiple data sources, many transformation steps, or large datasets -- can take a while. The actual computation time is not the bottleneck; it is the number of agent invocations and QA cycles. A moderately complex analysis might involve 15-25 separate script executions, each followed by a code review -- and that adds up.
-
-DAAF is designed to handle this, but there are practical realities you should understand.
-
-### How Session State Is Preserved
-
-Every Full Pipeline analysis produces a `STATE.md` file in the project folder. This file tracks:
-
-- **Current stage:** Where in the 12-stage pipeline the analysis currently is
-- **Checkpoint results:** Which CPs have been run and their statuses
-- **QA results:** Which scripts have been reviewed and their QA verdicts
-- **Key decisions:** Methodology choices and their rationale
-- **Blockers:** Any unresolved issues
-
-STATE.md is updated continuously as the analysis progresses. It is the single most important file for session recovery -- if context runs out or you need to resume in a new session, STATE.md tells DAAF exactly where to pick up.
-
-### Resuming a Previous Session
-
-If a session ends -- whether because of context exhaustion, an API limit, a network interruption, or simply because you closed the terminal -- you can resume by starting a new Claude Code session and pasting the restart prompt that STATE.md provides. It will look something like:
-
-> "Resume the analysis in `research/2026-02-10 Texas Poverty Analysis/`. Read STATE.md first, then continue from the current stage."
-
-DAAF will read STATE.md, orient itself, and continue from where it left off. You do not need to re-explain the research question or re-approve the Plan -- all of that context is preserved in the project files.
-
-### When to Start a New Session vs. Continue
-
-Context exhaustion is a reality of working with LLMs. DAAF monitors its context utilization and will proactively recommend a session restart when context starts getting tight (typically around 60-75% utilization). Signs that a restart is warranted:
-
-- **DAAF explicitly recommends it.** It will tell you when context is getting high and suggest saving state for restart.
-- **Responses are getting noticeably slower or less detailed.** This can be a sign of context pressure.
-- **DAAF is forgetting things you told it earlier in the conversation.** If it asks about something you already discussed, context may be degrading.
-
-A session restart is **not** a failure state. It is a designed-in pressure valve. The STATE.md + restart prompt system exists precisely so that the analysis can be split across multiple sessions without loss of quality. In fact, a clean restart at full context capacity will generally produce *better* results than trying to push through with degraded context.
-
-For very complex analyses, you should expect to use 2-3 sessions. That is normal and by design.
+- **Analysis presented as AI-generated without disclosure.** If you use DAAF to produce analysis, you should disclose the role of AI assistance in your work. Transparency is non-negotiable in my view. DAAF is designed to make this easy by documenting exactly what it did, but the responsibility to disclose is yours.
 
 ---
 
