@@ -1,16 +1,11 @@
 # 05. Contributing to DAAF
 
-This guide covers all forms of contribution to DAAF, from filing an issue to modifying core framework components. Whether you've found a bug, want to improve documentation, or are building new agents — this is where to start. Thank you for your interest in contributing to the Data Analyst Augmentation Framework. Whether you are reporting a bug, suggesting an improvement, authoring a new data source skill, or proposing changes to core framework logic, your contribution is valued and appreciated.
-
-Before participating, please review the project's [Code of Conduct](CODE_OF_CONDUCT.md). All contributors are expected to uphold these standards in every interaction.
-
-**A note from the maintainer:**
-As an important heads-up: I am a researcher by training, not a software developer, and this is my first significant open-source project. I am still learning the norms, tooling, and rhythms of open-source collaboration. If something about the contribution process feels rough around the edges, please bear with me -- and please do not hesitate to suggest improvements. I welcome patience, candor, and constructive feedback as this project and its community grow together. Thank you! 
--- Brian Heseung Kim ([@brhkim](https://github.com/brhkim))
+This guide covers all forms of contribution to DAAF, from filing an issue to modifying core framework components. Whether you've found a bug, want to improve documentation, or are building new agents — this is where to start.
 
 ---
 
 ## Table of Contents
+- [**Introduction**](#introduction)
 - [**Governance**](#governance)
 - [**Quick Start: Contribution Workflow**](#quick-start-contribution-workflow)
 - [**Developer Certificate of Origin**](#developer-certificate-of-origin)
@@ -18,8 +13,17 @@ As an important heads-up: I am a researcher by training, not a software develope
 - [**Filing Effective Issues**](#filing-effective-issues)
 - [**Using Session Logs for Debugging and Issue Reports**](#using-session-logs-for-debugging-and-issue-reports)
 - [**License**](#license)
-- [**Code of Conduct**](#code-of-conduct)
 - [**Recommended Next Steps**](#recommended-next-steps)
+
+---
+
+## Introduction
+
+Thank you for your interest in contributing to DAAF. Whether you are reporting a bug, suggesting an improvement, authoring a new data source skill, or proposing changes to core framework logic, your contribution is valued and appreciated. Before participating, please review the project's [Contributor Covenant Code of Conduct v2.0](CODE_OF_CONDUCT.md). By participating, you agree to uphold its standards. Instances of unacceptable behavior may be reported to the project maintainer, Brian Heseung Kim ([@brhkim](https://github.com/brhkim)). All reports will be reviewed and investigated promptly and confidentially.
+
+**A note from the maintainer:**
+As an important heads-up: I am a researcher by training, not a software developer, and this is my first significant open-source project. I am still learning the norms, tooling, and rhythms of open-source collaboration. If something about the contribution process feels rough around the edges, please bear with me -- and please do not hesitate to suggest improvements. I welcome patience, candor, and constructive feedback as this project and its community grow together. Thank you! 
+-- Brian Heseung Kim ([@brhkim](https://github.com/brhkim))
 
 ---
 
@@ -229,7 +233,7 @@ Claude Code automatically archives a complete log of every session when it ends.
 | **Markdown** (`.md`) | `YYYY-MM-DD_HH-MM-SS_<session-id>.md` | Human-readable transcript with tool calls, timestamps, and token usage |
 | **JSONL** (`.jsonl`) | `YYYY-MM-DD_HH-MM-SS_<session-id>.jsonl` | Raw machine-readable transcript (full API-level detail) |
 
-Additionally, `.claude/logs/activity.log` records a timestamped entry every time a session starts, giving you a quick overview of usage history.
+Additionally, `.claude/logs/activity.log` records a timestamped entry every time a session starts, giving you a quick overview of usage history, while `.claude/logs/audit.jsonl` gives a full inventory of every tool call by Claude for additional diagnostics.
 
 **These logs are gitignored by default** (they may contain sensitive content or API details), so they stay on your local machine and are never pushed to the repository.
 
@@ -271,9 +275,7 @@ Issue templates are available when you [create a new issue](https://github.com/D
 
 ## License
 
-DAAF is licensed under **LGPL-3.0-or-later** (GNU Lesser General Public License v3.0 or any later version).
-
-The license is implemented as two files in the repository root:
+DAAF is licensed under **LGPL-3.0-or-later** (GNU Lesser General Public License v3.0 or any later version). The license is implemented as two files in the repository root:
 
 | File | Contents |
 |------|----------|
@@ -287,14 +289,6 @@ The license is implemented as two files in the repository root:
 - **If you distribute modified versions of the core framework**, you must release those core modifications under LGPL-3.0-or-later and make the corresponding source code available.
 
 For a detailed explanation of what counts as "core" versus "extension," including practical examples, see the [**Why open-source? What does it mean for DAAF?**](README.md#why-open-source-what-does-it-mean-for-daaf) section of the README.
-
----
-
-## Code of Conduct
-
-This project is governed by the [Contributor Covenant Code of Conduct v2.0](CODE_OF_CONDUCT.md). By participating, you agree to uphold its standards.
-
-Instances of unacceptable behavior may be reported to the project maintainer, Brian Heseung Kim ([@brhkim](https://github.com/brhkim)). All reports will be reviewed and investigated promptly and confidentially.
 
 ---
 
