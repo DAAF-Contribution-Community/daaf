@@ -1,0 +1,26 @@
+title: "[AI & Research] "
+labels: []
+body:
+  - type: markdown
+    attributes:
+      value: |
+        This space is for thoughtful discussion about the broader
+        implications of AI-assisted research -- ethics, methodology,
+        workforce impact, reproducibility standards, responsible use,
+        and beyond. All perspectives are welcome.
+  - type: textarea
+    id: topic
+    attributes:
+      label: Topic
+      description: What aspect of AI-assisted research would you like to discuss?
+    validations:
+      required: true
+  - type: textarea
+    id: background
+    attributes:
+      label: Background or References
+      description: >
+        Include any relevant articles, papers, or experiences that
+        inform your perspective.
+    validations:
+      required: false

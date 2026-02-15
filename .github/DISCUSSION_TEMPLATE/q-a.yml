@@ -1,0 +1,26 @@
+title: "[Q&A] "
+labels: []
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for asking! Please search existing discussions and the
+        [FAQ: Technical](../../user_reference/06_faq_technical.md) before
+        posting to avoid duplicates.
+  - type: textarea
+    id: question
+    attributes:
+      label: Your Question
+      description: What would you like to know?
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: Context
+      description: >
+        What are you trying to accomplish? Include your setup details
+        (Docker or native install, OS) and any relevant error messages
+        or session log excerpts.
+    validations:
+      required: false

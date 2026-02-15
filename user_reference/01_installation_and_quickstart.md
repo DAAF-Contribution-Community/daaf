@@ -28,7 +28,7 @@ You'll need internet access to download the project files and interact with DAAF
 
 ### 1. Anthropic Account & Authentication
 
-Claude Code is the AI assistant that powers this project. It runs inside your terminal (not in a web browser) and needs to link in with an Anthropic account for billing/usage purposes. Because we're relying on cutting-edge frontier models and asking them to do a LOT of thorough work for us (deep-diving into data, writing a lot of code, checking a lot of code, writing intensive plans, etc., etc.), we need to have a **high-usage** Anthropic account. Unfortunately, the free and standard "Pro"-level plans will simply not be sufficient for the time being; given current pricing at $100/mo, this is the biggest barrier-to-entry for engaging in this work.
+Claude Code is the AI assistant that powers this project. It runs inside your terminal (not in a web browser) and needs to link in with an Anthropic account for billing/usage purposes. Because we're relying on cutting-edge frontier models and asking them to do a LOT of thorough work for us (deep-diving into data, writing a lot of code, checking a lot of code, writing intensive plans, etc., etc.), we need to have a **high-usage** Anthropic account. Unfortunately, the free and standard "Pro"-level plans will simply not be sufficient for the time being; given current pricing at $100-200/mo, this is the biggest barrier-to-entry for engaging in this work.
 
 For the account setup, that means you have two main options:
 

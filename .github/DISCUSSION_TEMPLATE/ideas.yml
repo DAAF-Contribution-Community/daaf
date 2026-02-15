@@ -1,0 +1,33 @@
+title: "[Idea] "
+labels: []
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Share your ideas for improving DAAF. All suggestions are welcome,
+        from small quality-of-life improvements to ambitious new capabilities.
+  - type: textarea
+    id: idea
+    attributes:
+      label: Your Idea
+      description: Describe the improvement or new capability you envision.
+    validations:
+      required: true
+  - type: textarea
+    id: motivation
+    attributes:
+      label: Motivation
+      description: >
+        What problem does this solve? What research workflow would this
+        improve? What prompted this idea?
+    validations:
+      required: false
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives Considered
+      description: >
+        Have you considered other approaches? Are there existing tools
+        or workarounds that partially address this?
+    validations:
+      required: false

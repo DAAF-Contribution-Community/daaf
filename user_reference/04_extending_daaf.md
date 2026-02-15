@@ -1,6 +1,6 @@
 # 04. Extending DAAF
 
-**UNDER CONSTRUCTION, EVERYTHING HERE SUBJECT TO CHANGE BY LAUNCH** This guide focuses on the primary extension path: bringing new datasets and data domains into DAAF. If you want to modify the framework itself (agents, protocols, validation logic), see [Contributing](05_contributing.md) for framework-level changes.
+**UNDER CONSTRUCTION, EVERYTHING HERE SUBJECT TO CHANGE BY LAUNCH** This guide focuses on the primary extension path: bringing new datasets and data domains into DAAF. If you want to modify the framework itself (agents, protocols, validation logic), see [**05. Contributing to DAAF**](CONTRIBUTING.md) for framework-level changes.
 
 [**Back to main**](../.)
 
@@ -33,9 +33,9 @@ The distinction between extension (adding domain knowledge) and contribution (mo
 | Add a new data source | This document (04) |
 | Add a new data domain | This document (04) |
 | Add a new agent | This document (04) — "Adding a New Agent" section |
-| Modify an agent's behavior | [Contributing](05_contributing.md) |
-| Change validation protocols | [Contributing](05_contributing.md) |
-| Fix a bug in the framework | [Contributing](05_contributing.md) |
+| Modify an agent's behavior | [**05. Contributing to DAAF**](CONTRIBUTING.md) |
+| Change validation protocols | [**05. Contributing to DAAF**](CONTRIBUTING.md) |
+| Fix a bug in the framework | [**05. Contributing to DAAF**](CONTRIBUTING.md) |
 
 ---
 
@@ -112,7 +112,7 @@ The `agent-authoring` skill provides comprehensive guidance for creating new age
 | `agent_reference/AGENT_TEMPLATE.md` | Canonical 12-section template |
 | `agents/README.md` | Current agent landscape and coordination matrix |
 
-For framework-level changes to existing agents (modifying behavior, not adding new ones), see [Contributing](05_contributing.md).
+For framework-level changes to existing agents (modifying behavior, not adding new ones), see [**05. Contributing to DAAF**](CONTRIBUTING.md).
 
 ---
 
@@ -190,13 +190,13 @@ Run a simple analysis using your new skill to verify end-to-end integration.
 
 How to share your skill with the DAAF community — preparation, quality standards, and the pull request process.
 
-See [Contributing](05_contributing.md) for the full contribution workflow, including how to submit a pull request.
+See [**05. Contributing to DAAF**](CONTRIBUTING.md) for the full contribution workflow, including how to submit a pull request.
 
 ---
 
 ## Recommended Next Steps
 
-- [**05. Contributing**](05_contributing.md) — Get involved in developing DAAF! How to file issues via GitHub, support expanding the capabilities of the framework, contribute to educational tutorials and how-to's, and more!
+- [**05. Contributing to DAAF**](CONTRIBUTING.md) — Get involved in developing DAAF! How to file issues via GitHub, support expanding the capabilities of the framework, contribute to educational tutorials and how-to's, and more!
 - [**06. FAQ: Technical**](06_faq_technical.md) — Covers frequently asked questions about Docker, issues with Claude Code, usage limits, design rationale, authentication errors, and other common errors
 - [**07. FAQ: Philosophy**](07_faq_philosophy.md) — Grapples with the broader implications of this work, AI automation in general, model advancement pace, approaching the "exponential", environmental ethics, what this means for the next generation of researchers, and more
 - [**Back to main**](../.)

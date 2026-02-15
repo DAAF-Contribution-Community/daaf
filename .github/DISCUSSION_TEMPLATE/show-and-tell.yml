@@ -1,0 +1,27 @@
+title: "[Show & Tell] "
+labels: []
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Share what you have built with DAAF! New skills, interesting
+        analyses, workflow extensions, novel use cases, lessons learned --
+        the community benefits when you share your experience.
+  - type: textarea
+    id: showcase
+    attributes:
+      label: What did you build?
+      description: >
+        Describe your project, skill, agent, or analysis. Include links,
+        screenshots, or code snippets if helpful.
+    validations:
+      required: true
+  - type: textarea
+    id: lessons
+    attributes:
+      label: What did you learn?
+      description: >
+        Any tips, gotchas, or insights from your experience that others
+        might find useful?
+    validations:
+      required: false
