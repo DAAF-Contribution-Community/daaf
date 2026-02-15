@@ -7,6 +7,7 @@ This document seeks to grapple with some of the bigger implications of DAAF and 
 ---
 
 ## Table of Contents
+- [**Q: Won't this tool lead to misuse and misinformation? Couldn't this be an engine for slop and pseudoscience?**](#q-wont-this-tool-lead-to-misuse-and-misinformation-couldnt-this-be-an-engine-for-slop-and-pseudoscience)
 - [**Q: What's the appropriate level of trust for AI-generated analysis?**](#q-whats-the-appropriate-level-of-trust-for-ai-generated-analysis)
 - [**Q: So what do you see as the main value-add for AI assistance in research workflows after all of this?**](#q-so-what-do-you-see-as-the-main-value-add-for-ai-assistance-in-research-workflows-after-all-of-this)
 - [**Q: What does this all mean for the next generation of researchers?**](#q-what-does-this-all-mean-for-the-next-generation-of-researchers)
@@ -16,6 +17,14 @@ This document seeks to grapple with some of the bigger implications of DAAF and 
 ---
 
 ## AI in Research: Broader Questions
+
+### Q: Won't this tool lead to misuse and misinformation? Couldn't this be an engine for slop and pseudoscience?
+
+Absolutely. I can put up all the philosophical guidance and warnings I want, but it is impossible to avoid the reality that this tool will be misused, misunderstood, and misapplied broadly. Arguably, this is true for literally any statistical/scientific method or tool that's ever existed, but the stakes here do feel different and meaningfully exacerbated by the involvement of AI more generally.
+
+I won't sugarcoat it: this is the danger of tools like DAAF writ large. My position in releasing DAAF is to accept the situation for what it is and shoulder as much responsibility as I can: People are doing this **already** even without DAAF. People will **continue** to do this without DAAF. By releasing DAAF, I am accepting that new reality and trying to instead hyper-accelerate us past the "everyone just tinkers in the shadows and plays with gasoline" phase and straight to the phase where we as a scientific community better understand what we're dealing with, have a lot of strong initial principles to work with, and can engage in genuinely informed discourse about the best ways forward from here. I want as many people to be critical, experienced consumers and contributors for these tools as possible -- because only with those pre-conditions can we produce the guardrails and guidance that we need to minimize the harms and collateral damage involved. Hence the enormous amount of writing and educational materials, the focus on building an open-source community, and sharing this broadly with as many people as possible.
+
+And then as much as this tool may end up being a vehicle for misinformation, a more optimistic view is that it can also become a critical tool for fighting it: With the right experts at the helm, producing GENUINELY transparent, rigorous, reproducible insights to fight misinformation directly is back within the realm of possibility, where before it was a lost game immediately. I think that's overly sanguine, but I think directionally important to recognize. Either way, I'm just trying to do my best to help as many people as I can, and there's only so much here that will be within any one person's control.
 
 ### Q: What's the appropriate level of trust for AI-generated analysis?
 
