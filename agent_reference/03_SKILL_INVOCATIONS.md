@@ -80,6 +80,15 @@ Follow the IAT documentation standard (`{BASE_DIR}/agent_reference/INLINE_AUDIT_
 Closely read `{BASE_DIR}/agent_reference/EXECUTION_CAPTURE.md` for the mandatory file-first execution protocol covering complete code file writing, output capture, and file versioning rules.
 
 ## OUTPUT FORMAT
+
+**Hard cap: 1000 words maximum.** The orchestrator has limited context — every word you return consumes shared capacity across the entire pipeline. Your Task output is a *signal to the orchestrator*, not an archive. The script files on disk are the archive.
+
+**Do NOT include in your output:**
+- Raw execution logs or captured stdout/stderr (already appended to the script file by `run_with_capture.sh`)
+- Data samples, row-level examples, or Polars/pandas table displays
+- Full checkpoint output (summarize as PASSED/FAILED/WARNING + 1-line reason)
+- QA script code or contents (reference by file path instead)
+
 Return findings in this EXACT structure:
 
 ### [Task Name] Results
@@ -719,7 +728,7 @@ Use the mirror-based fetch pattern from the education-data-query skill:
 - Verify all requested years are present
 - Verify all requested columns are present
 
-**OUTPUT FORMAT:**
+**OUTPUT FORMAT (1000-word hard cap):**
 Return findings in this structure:
 
 ### Fetch Summary
@@ -819,7 +828,7 @@ During execution, ACTIVELY MONITOR for watch-for symptoms. Escalate if detected.
 - Generate complete citation text with access date
 - Document all cleaning decisions and row impacts
 
-**OUTPUT FORMAT:**
+**OUTPUT FORMAT (1000-word hard cap):**
 Return findings in this structure:
 
 ### Cleaning Applied
@@ -997,7 +1006,7 @@ Call the skill tool with name 'data-scientist'.
 - Use script-based validation (see `{BASE_DIR}/agent_reference/SCRIPT_TEMPLATE.md` and `{BASE_DIR}/agent_reference/EXECUTION_CAPTURE.md`)
 - Report clear PASS/FAIL with metrics
 
-**OUTPUT FORMAT:**
+**OUTPUT FORMAT (1000-word hard cap):**
 Return validation report:
 
 ### Transformation #{n}: {description}
@@ -1187,7 +1196,7 @@ During execution, ACTIVELY MONITOR for watch-for symptoms. Escalate if detected.
 - Save all results as parquet for downstream use
 - If producing figures, save to output/figures/
 
-**OUTPUT FORMAT:**
+**OUTPUT FORMAT (1000-word hard cap):**
 Return analysis report:
 
 ### Statistical Analysis: {analysis_name}
@@ -1565,8 +1574,8 @@ Verified when: {verification_condition}
 **PRIOR QA FINDINGS (if any):**
 {accumulated_warnings_from_prior_scripts}
 
-**OUTPUT FORMAT:**
-Return findings in this structure:
+**OUTPUT FORMAT (1000-word hard cap):**
+Return findings in this structure. Do NOT paste QA script code, raw execution logs, or data samples — reference cr/ script paths instead.
 
 ### QA Review: {task_name}
 
@@ -1578,12 +1587,12 @@ Return findings in this structure:
 **Code Review:**
 | Check | Status | Notes |
 |-------|--------|-------|
-| Operations match intent | PASS/FAIL | ... |
-| Methodology alignment | PASS/FAIL | ... |
-| Validation robustness | PASS/FAIL | ... |
+| Operations match intent | PASS/FAIL | [1 sentence] |
+| Methodology alignment | PASS/FAIL | [1 sentence] |
+| Validation robustness | PASS/FAIL | [1 sentence] |
 
 **QA Script Results:**
-[Captured output from QA script]
+[1-2 sentence summary per cr script — PASSED/FAILED + key finding. Do NOT paste raw output.]
 
 **Issues Found:**
 - BLOCKER: [list or "None"]

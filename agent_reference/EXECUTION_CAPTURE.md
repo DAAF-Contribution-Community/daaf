@@ -205,6 +205,21 @@ Maximum 2 revision attempts per QA BLOCKER. If still failing after 2 revisions, 
 
 ---
 
+## Returning Output to the Orchestrator
+
+**Execution logs are captured in the script file. Agents returning output to the orchestrator should SUMMARIZE checkpoint results (PASSED/FAILED/WARNING + 1-line reason), not echo the raw log.**
+
+The `run_with_capture.sh` wrapper appends the complete execution log to the script file as comments. This means the full audit trail is *already preserved on disk*. When an agent (research-executor, code-reviewer, debugger) finishes its work and returns a Task result to the orchestrator:
+
+- **Report outcomes, not process:** "CP1 PASSED: 2,528 rows, 12 columns, 0.3% missingness" — not the full stdout.
+- **Reference files by path, don't reproduce contents:** The orchestrator can read any file if it needs detail.
+- **Keep verification tables to results only:** PASS/FAIL per check with a short note, not the underlying data that proved it.
+- **Summarize, don't echo:** If the execution log shows 50 lines of data profiling output, the agent returns "Distributions reasonable, no outliers detected" — not the 50 lines.
+
+This separation — exhaustive in the files, concise in the message — is what keeps the orchestrator's context viable across a full pipeline.
+
+---
+
 ## Critical Rules
 
 | Rule | Rationale |

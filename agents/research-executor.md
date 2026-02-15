@@ -202,6 +202,17 @@ When you receive a revision request due to QA BLOCKER:
 
 ## Output Format
 
+**Hard cap: 1000 words maximum.** The orchestrator has limited context. Your output is a *signal*, not an *archive* — the script files themselves are the audit trail.
+
+**Do NOT include in your output:**
+- Raw execution logs or captured stdout/stderr (these are already appended to the script file)
+- Data samples, row-level examples, or Polars table displays
+- Full checkpoint output (summarize as PASSED/FAILED/WARNING + 1-line reason)
+- Verbose reasoning or multi-paragraph explanations in any section
+- QA script code or contents
+
+**Do include:** Structured summary sections with concise entries. Each bullet point or table cell should be 1 sentence max.
+
 Return findings in this structure:
 
 ### Summary

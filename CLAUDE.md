@@ -1052,6 +1052,7 @@ Each stage has explicit input/output contracts and gate criteria:
 
 | Check | What to Verify | Action if Failed |
 |-------|----------------|------------------|
+| **Size** | Output is under 1000 words | Extract only structured summary fields; discard verbose sections, raw logs, and data samples before integrating into context. If chronic, re-invoke with emphasis on the 1000-word hard cap. |
 | **Completeness** | All required output sections present | Re-invoke with clarification |
 | **Format** | Output matches specified OUTPUT FORMAT | Re-invoke with format emphasis |
 | **Confidence** | No LOW confidence items without resolution | Request resolution or escalate |

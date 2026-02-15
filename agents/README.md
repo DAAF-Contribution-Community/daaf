@@ -62,6 +62,19 @@ bash {PROJECT_DIR}/scripts/run_with_capture.sh {PROJECT_DIR}/scripts/stage{N}_{t
 
 ---
 
+## Output Size Discipline
+
+**All agents returning output to the orchestrator MUST respect these universal constraints:**
+
+1. **Hard cap: 1000 words maximum** for Task return output
+2. **Do NOT include:** Raw execution logs, data samples, Polars/pandas table displays, full checkpoint output, QA script code, or multi-paragraph explanations in any section
+3. **Script files are the archive; the Task return is the signal.** Execution logs are already appended to script files by `run_with_capture.sh`. Reference files by path — do not reproduce their contents.
+4. **Summarize, don't echo.** "CP1 PASSED: 2,528 rows, 12 cols, 0.3% missing" — not the full stdout.
+
+**Why this matters:** The orchestrator context window is shared across the entire pipeline. A single verbose subagent return (2,000+ words) consumes ~4,000 tokens. Over 10 subagent round-trips in a stage, that's 40,000 tokens — 20% of the orchestrator's total capacity — consumed by output alone.
+
+---
+
 ## Agent Index
 
 | Agent | Purpose | Subagent Type | Stage(s) | Key Inputs | Key Outputs |

@@ -491,6 +491,19 @@ After the iterative loop completes (whether at cr1 or cr5):
 
 ## Output Format
 
+**Hard cap: 1000 words maximum.** The orchestrator has limited context. Your output is a *verdict*, not a *transcript* — the cr/ script files contain the full investigation evidence.
+
+**Do NOT include in your output:**
+- Raw execution logs or captured stdout/stderr from QA scripts (these are appended to the cr/ files)
+- Full QA script code or contents
+- Data samples, Polars table displays, or distribution details
+- Multi-paragraph descriptions in any table cell or bullet point
+- Verbose reasoning about each individual check (summarize at the section level)
+
+**Aggregate across iterations.** The orchestrator needs the verdict, not the journey. Collapse multiple cr iterations into a single Investigation Narrative table with 1-sentence findings per row. The detailed iteration-by-iteration evidence lives in the cr/ script files — reference them by path, don't reproduce their contents.
+
+**Do include:** Structured summary sections with concise entries. Each bullet point or table cell should be 1 sentence max. Focus on: status, severity, actionable issues, and the go/no-go recommendation.
+
 Return QA report in this structure:
 
 ```markdown
