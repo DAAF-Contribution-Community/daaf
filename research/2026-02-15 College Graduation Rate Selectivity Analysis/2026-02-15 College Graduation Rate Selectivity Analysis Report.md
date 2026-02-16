@@ -1,3 +1,5 @@
+> **CONTEXTUAL NOTE FROM THE AUTHOR**: This folder represents just a random test run that I decided to record via video for demo purposes, and it felt appropriate to upload the full and complete output in all dimensions for transparency's sake. I do **not** post this because I think it's spotless and perfect and great -- I present this warts and all, knowing that many can and should take issue with some of DAAF's interpretations here, and some of the report is frankly a little overblown in its conclusions. That's part of the point here: there's a LOT to be impressed by in this work, but it IS NOT PERFECT and DOES need human review. Please use DAAF accordingly!!!
+
 # College Graduation Rate Selectivity Analysis
 
 **Date:** 2026-02-15
