@@ -87,7 +87,7 @@ Docker is a program designed to help people create self-contained, isolated envi
 
 ## Installing DAAF
 
-Okay, with all the prerequisites out of the way, installation itself is only seven very easy copy-paste steps and will only take about 5 minutes start-to-finish with a decent internet connection (as evidence, here's a quick video of me finishing [all of the steps in this section in just 3 minutes](https://youtu.be/VSk7prIr0a4)!).
+Okay, with all the prerequisites out of the way, installation itself is only seven very easy copy-paste steps and will only take about 5 minutes start-to-finish with a decent internet connection (as evidence, here's a quick video of me finishing [all of the steps in this section in just 3 minutes](https://youtu.be/jqkVLXA1CV4)!).
 
 ### Step 1: Choose a project download location on your computer and open it in your terminal
 
