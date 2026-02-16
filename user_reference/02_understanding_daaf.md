@@ -14,6 +14,7 @@ This guide is designed to turn a new user into a confident user. It expands on t
 - [**The Mental Model: Orchestrator, Agents, Skills, Validation**](#the-mental-model-orchestrator-agents-skills-validation)
 - [**What a Full Pipeline Analysis Looks Like**](#what-a-full-pipeline-analysis-looks-like)
 - [**Anatomy of a Completed Analysis**](#anatomy-of-a-completed-analysis)
+- [**Looking at an Actual Example Project**](#looking-at-an-actual-example-project)
 - [**Easing in with Progressively More Advanced Queries**](#easing-in-with-progressively-more-advanced-queries)
 - [**Session Management: Multi-Session Work and Recovery**](#session-management-multi-session-work-and-recovery)
 - [**Where Things Live in the Repository**](#where-things-live-in-the-repository)
@@ -405,6 +406,14 @@ Then open [http://localhost:2718](http://localhost:2718) in your normal web brow
 **STATE.md** -- A session state file that tracks DAAF's progress through the analysis. If a session is interrupted (context exhaustion, network issues, etc.), STATE.md allows DAAF to resume exactly where it left off. You generally don't need to read this unless debugging a session issue.
 
 **LEARNINGS.md** -- A lessons-learned document capturing insights about the data and the analysis process. This includes data idiosyncrasies discovered during the analysis, interpretation concerns, and suggested improvements to DAAF's documentation. This file is designed to be immediately actionable -- you can share it back with the community to help improve DAAF for future users.
+
+## Looking at an Actual Example Project
+
+To help illustrate what DAAF does and how it works, I've included in the main repository an example project in the research folder focused on trying to tease out the [**complicated/misleading relationship between college selectivity and graduation rates**](../research/2026-02-15%20College%20Graduation%20Rate%20Selectivity%20Analysis/). With that folder, you can explore basically everything that DAAF has to offer for a Full Pipeline Analysis -- from the [Plan document](../research/2026-02-15%20College%20Graduation%20Rate%20Selectivity%20Analysis/2026-02-15%20College%20Graduation%20Rate%20Selectivity%20Analysis%20Plan.md), the [full report](../research/2026-02-15%20College%20Graduation%20Rate%20Selectivity%20Analysis/2026-02-15%20College%20Graduation%20Rate%20Selectivity%20Analysis%20Report.md), and a variety of analytic scripts along the way (see a [data fetch example](../research/2026-02-15%20College%20Graduation%20Rate%20Selectivity%20Analysis/scripts/stage5_fetch/03_fetch-admissions.py), a [data transformation/join example](../research/2026-02-15%20College%20Graduation%20Rate%20Selectivity%20Analysis/scripts/stage7_transform/03_join-resources.py), a [code QA example](../research/2026-02-15%20College%20Graduation%20Rate%20Selectivity%20Analysis/scripts/cr/stage6_08_cr2.py), and a [statistical analysis example](../research/2026-02-15%20College%20Graduation%20Rate%20Selectivity%20Analysis/scripts/stage8_analysis/03_correlation-matrix.py)).
+
+This was just a random test run that I decided to record via video for demo purposes, and it felt appropriate to upload the full and complete output in all dimensions for transparency's sake. I do **not** post this because I think it's spotless and perfect and great -- I present this warts and all, knowing that it isn't great with some of its interpretation, and some of the report is frankly a little overblown in its conclusions. That's part of the point here: there's a LOT to be impressed by in this work, but it IS NOT PERFECT and DOES need human review. Please use DAAF accordingly!!!
+
+In any case, this demo project should give you a good sense of what to expect, and how DAAF ultimately works.
 
 ---
 
