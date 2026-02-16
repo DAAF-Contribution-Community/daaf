@@ -206,6 +206,8 @@ DAAF's skills are currently organized into a few categories:
 
 **The key insight:** In DAAF, skills are generally intended to be loaded *by agents*, not by the orchestrator. When the orchestrator delegates a task to the research-executor, it tells the agent: "Load the `education-data-source-ccd` skill for this task." The agent pulls up the relevant reference material, uses it to guide its work, and then returns its findings to the orchestrator. This keeps the orchestrator's context lean (it doesn't need to hold the full contents of every skill in memory) and ensures each agent gets exactly the knowledge it needs for its specific task.
 
+<img width="743" height="377" alt="orchestrator_diagram" src="https://github.com/user-attachments/assets/d8c297e0-376e-4543-b219-98ea44a74e93" />
+
 ### Dual-Layer Validation: Your Lab's Quality Control System
 
 This is where DAAF really earns its keep, and honestly where I think the biggest gap exists in most ad-hoc LLM-assisted analysis today. DAAF uses two independent layers of validation that work together to catch errors:
