@@ -113,6 +113,13 @@ This creates a `daaf` folder containing all the project files. You should now be
 
 > **Important:** The `git clone` command creates a folder named `daaf` by default. **Do not rename this folder** before you finish this full process.
 
+**Optional Note**: The commands above give you the latest development version of DAAF. This should generally be fine for everyone. If you'd prefer to install a specific release (e.g., for returning to a specific older version you prefer), you can check out a tagged release (browse available releases and their changelogs on the [Releases page](https://github.com/DAAF-Contribution-Community/daaf/releases)) after cloning by running the following command:
+
+```bash
+# OPTIONAL: Check out a specific release (replace v1.0.0 with your desired version)
+git checkout v1.0.0
+```
+
 ### Step 3: Copy the project files into Docker
 
 Rather than let Claude use and edit files directly on your computer, we're going to make a **secure copy** for Claude to operate on separately using Docker. Run this command next, making sure that Docker Desktop is currently running in the background:
@@ -301,6 +308,12 @@ git pull origin main
 ```
 
 Note that `git pull` inside the container shouldn't impact any of your research files. `git pull` also won't work correctly if you've made any edits to the core DAAF workflow or documentation files (basically, anything outside of the research folder). In that case, you may want to submit a Pull request for your changes (if you've made useful updates you want to share broadly!) -- otherwise, you'll need to navigate your own merge conflicts and such (a topic for general Git tutorials, rather than here!).
+
+**Prefer to update to specific releases only?** If you'd rather update in discrete, tested versions instead of tracking the latest changes on `main`, you can update to a specific release tag instead. Check the [Releases page](https://github.com/DAAF-Contribution-Community/daaf/releases) to see what's changed in each version before updating, and then run the following code:
+```bash
+# Check out the release you want
+git checkout v1.0.0
+```
 
 ---
 
