@@ -13,7 +13,7 @@ These actions are **mandatory** for every analysis task.
 | Action | Rationale |
 |--------|-----------|
 | Validate data at every checkpoint (CP1-CP4) | Catch errors early |
-| Filter coded missing values (-1, -2, -3) before analysis | Prevent calculation errors |
+| Filter coded missing values (per domain config; e.g., -1, -2, -3 for education) before analysis | Prevent calculation errors |
 | Document suppression rates and limitations | Ensure transparency |
 | Save parquet for all data files | Parquet for processing |
 | Check for unexpected nulls after transformations | Catch data corruption |
@@ -43,7 +43,7 @@ These actions are **mandatory** for every analysis task.
 | Action | Rationale |
 |--------|-----------|
 | Store original request verbatim in Plan | Accurate reference |
-| Cite data sources properly (use education-data-context skill) | Academic integrity |
+| Cite data sources properly (use domain context skill, e.g., `education-data-context`) | Academic integrity |
 | Record all methodology decisions with rationale | Reproducibility |
 | Version all files (never overwrite) | Audit trail |
 | Include limitations section in every report | Transparency |
@@ -109,7 +109,7 @@ These actions are **prohibited** under all circumstances.
 
 | Prohibition | Consequence |
 |-------------|-------------|
-| Compare assessment scores across states | **NEVER valid** - different state tests |
+| Violate domain governance rules (e.g., cross-state assessment comparison in education) | **NEVER valid** per domain governance |
 | Skip validation checkpoints | Data quality unknown |
 | Ignore LOW confidence findings without resolution | Silent failures |
 | Proceed after STOP condition without user guidance | Quality compromise |
@@ -739,7 +739,7 @@ These conditions trigger an immediate STOP with escalation to user.
 |-----------|-------|----------|
 | Data access mirror returns empty data | Stage 5 | STOP, report to user, await guidance |
 | Suppression rate >50% | Stage 6 | STOP, report issue, propose alternatives |
-| Cross-state assessment comparison attempted | Stage 6 | BLOCK with explanation (never valid) |
+| Domain governance rule violated (e.g., cross-state assessment comparison in education) | Stage 6 | BLOCK with explanation (never valid per domain governance) |
 | Row count drops >90% after transformation | Stage 7 | STOP, verify transformation logic |
 | **QA BLOCKER after 2 revisions** | 5-QA to 8-QA | STOP, escalate to user |
 | **QA methodology violation** | 5-QA to 8-QA | STOP, escalate immediately |

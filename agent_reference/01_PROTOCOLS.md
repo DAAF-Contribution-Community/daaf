@@ -21,7 +21,7 @@ This document contains the full details for all six protocols. Protocols 1-5 are
 
 **Phase:** 1 (Discovery & Scoping)
 **Stages:** 2-3
-**Execution:** Via subagents with `education-data-explorer` and `*-data-source-*` skills
+**Execution:** Via subagents with domain explorer skill (e.g., `education-data-explorer`) and `*-data-source-*` skills
 
 ## Purpose
 
@@ -29,7 +29,7 @@ Before writing any data query or analysis code, discover and understand availabl
 
 ## Stage 2: Data Exploration
 
-**Skill:** `education-data-explorer`
+**Skill:** Domain explorer skill (e.g., `education-data-explorer`)
 **Subagent Type:** `Plan`
 
 ### Invocation Pattern
@@ -73,9 +73,9 @@ See `03_SKILL_INVOCATIONS.md` for the complete Stage 3 invocation template.
 
 **From Stage 3:**
 - Source-specific caveats with mitigation strategies
-- Complete coded value mappings
+- Complete coded value mappings (domain-specific coded values, e.g., -1, -2, -3 for education)
 - Suppression patterns and thresholds
-- Cross-state comparability assessment
+- Domain-specific governance assessment (e.g., cross-state comparability for education)
 - Critical warnings
 
 ### Gate Criteria (G3)
@@ -84,7 +84,7 @@ Before proceeding to Stage 3.5:
 - [ ] All flagged variables investigated
 - [ ] Coded values fully documented
 - [ ] Suppression patterns identified
-- [ ] Cross-state comparability assessed
+- [ ] Domain governance rules assessed (e.g., cross-state comparability for education)
 - [ ] Critical warnings have mitigation strategies
 - [ ] All LOW confidence findings resolved or escalated
 
@@ -144,7 +144,7 @@ See `06_ERROR_RECOVERY.md` "Re-run Procedures" for the complete re-run guidance 
 
 **Phase:** 3 (Data Acquisition & Preparation)
 **Stages:** 5-6
-**Execution:** Via subagents with `education-data-query` and `education-data-context` skills
+**Execution:** Via subagents with domain query skill (e.g., `education-data-query`) and domain context skill (e.g., `education-data-context`)
 
 ## Purpose
 
@@ -161,7 +161,7 @@ Closely read `agent_reference/EXECUTION_CAPTURE.md` for the mandatory file-first
 
 ## Stage 5: Data Retrieval
 
-**Skill:** `education-data-query`
+**Skill:** Domain query skill (e.g., `education-data-query`)
 **Subagent Type:** `general-purpose` (requires file write capability)
 
 ### Invocation Pattern
@@ -202,7 +202,7 @@ Before proceeding to Stage 6:
 
 ## Stage 6: Context Application
 
-**Skill:** `education-data-context`
+**Skill:** Domain context skill (e.g., `education-data-context`)
 **Subagent Type:** `general-purpose` (requires file write capability)
 
 ### Invocation Pattern
@@ -220,7 +220,7 @@ print(f"Clean rows: {len(clean_df)}")
 print(f"Rows removed: {len(raw_df) - len(clean_df)} ({(len(raw_df) - len(clean_df)) / len(raw_df) * 100:.1f}%)")
 
 # Check suppression rate
-suppressed = (raw_df['key_variable'] == -3).sum()
+suppressed = (raw_df['key_variable'] == SUPPRESSION_CODE).sum()  # SUPPRESSION_CODE from Plan domain config (e.g., -3 for education)
 suppression_rate = suppressed / len(raw_df)
 print(f"Suppression rate: {suppression_rate:.1%}")
 

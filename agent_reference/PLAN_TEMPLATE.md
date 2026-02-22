@@ -94,6 +94,23 @@ Every task in the "Executable Task Sequence" section is written as a prompt that
 
 ---
 
+## Domain Configuration
+
+> **Purpose:** This section specifies the active data domain and its associated skills, coded values, and governance rules. All domain-specific behavior throughout the pipeline (skill loading, validation thresholds, coded value handling) is driven by these settings. For domains without a particular feature (e.g., no suppression codes), set the value to N/A or "none".
+
+**Active Domain:** [domain name, e.g., "education"]
+**Query Skill:** [skill name, e.g., "education-data-query"]
+**Explorer Skill:** [skill name, e.g., "education-data-explorer"]
+**Context Skill:** [skill name or N/A, e.g., "education-data-context"]
+**Coded Missing Values:** [list or "none", e.g., [-1, -2, -3]]
+**Suppression Code:** [value or N/A, e.g., -3]
+**Suppression Threshold:** [decimal or N/A, e.g., 0.5]
+**Year Column:** [column name or N/A, e.g., "year"]
+**Flag Years:** [list or "none", e.g., [2020, 2021] for COVID-impacted years]
+**Governance Rules:** [list or "none", e.g., "Cross-state assessment comparison is NEVER valid"]
+
+---
+
 ## Original Request & Clarifications
 
 ### Original Request
@@ -240,7 +257,7 @@ must_haves:
 
 ### Stage 2: Data Exploration
 
-*Output from `education-data-explorer` skill*
+*Output from domain explorer skill (per Domain Configuration; e.g., `education-data-explorer`)*
 
 **Data Level:** [schools | school-districts | college-university]
 
@@ -322,6 +339,8 @@ must_haves:
 | Enrollment counts | Yes | Comparable definitions |
 | Assessment scores | **NO** | Different state tests |
 | Graduation rates | Conditional | ACGR comparable; other rates vary |
+
+*(Education domain example — replace with your domain's cross-region comparability rules per Domain Configuration.)*
 
 **Critical Warnings:**
 
@@ -452,12 +471,12 @@ If analysis includes 2020 or 2021 data, CP1 Check 7 will flag this automatically
 
 **Coded Value Handling:**
 
-*For complete coded value definitions, invoke the `education-data-context` skill via subagent.*
+*For complete coded value definitions, invoke the domain context skill (per Domain Configuration) via subagent.*
 
 | Variable | Codes to Filter | Rationale |
 |----------|-----------------|-----------|
-| `enrollment` | -1, -2 | Missing/not applicable (standard Education Data Portal codes) |
-| `frl` | -1, -2, -3 | Missing/not applicable/suppressed (standard codes) |
+| `enrollment` | -1, -2 | Missing/not applicable (domain-specific codes per Domain Configuration) |
+| `frl` | -1, -2, -3 | Missing/not applicable/suppressed (domain-specific codes per Domain Configuration) |
 
 **Suppression Handling:**
 
@@ -540,6 +559,8 @@ The cardinality specified here is passed to `validate_join()` function during St
 
 *Updated during execution — one row per completed task*
 
+> *(Education domain example below — replace task names with your domain's actual tasks.)*
+
 | Wave | Step | Task | Pre-Rows | Post-Rows | Change % | CP Status | QA Status | Revisions | Commit Hash | Notes |
 |------|------|------|----------|-----------|----------|-----------|-----------|-----------|-------------|-------|
 | 1 | 1.1 | fetch-ccd | — | — | — | — | — | 0 | — | — |
@@ -569,6 +590,8 @@ The cardinality specified here is passed to `validate_join()` function during St
 **WAVE EXECUTION:** Tasks are grouped by wave. Same-wave tasks dispatch in parallel. Later waves wait for all prior waves.
 
 ### Wave 1: Data Acquisition (Parallel)
+
+> *Task examples below use education domain skills (`education-data-query`, `education-data-context`). Substitute your domain's query and context skills per Domain Configuration.*
 
 <task name="fetch-ccd-schools" type="auto" wave="1">
   <depends_on>none</depends_on>
@@ -637,6 +660,7 @@ The cardinality specified here is passed to `validate_join()` function during St
        - Remove rows where [variable] == -1 (missing)
        - Remove rows where [variable] == -2 (not applicable)
        - Remove rows where [variable] == -3 (suppressed)
+       *(Coded values above are education domain defaults — replace with values from Domain Configuration.)*
     4. Calculate suppression rate for key variable
     5. Generate citation text
     6. Save to parquet format
@@ -644,7 +668,7 @@ The cardinality specified here is passed to `validate_join()` function during St
   </action>
   <verify>
     - Suppression rate < 50%
-    - No coded values (-1, -2, -3) remain
+    - No coded missing values (per Domain Configuration) remain
     - Data loss < 90%
     - Citation text complete
   </verify>
@@ -729,12 +753,13 @@ files:
   - input: data/raw/YYYY-MM-DD_[source]_[description].parquet
   - output: data/processed/YYYY-MM-DD_[description]_clean.parquet
 action: |
-  1. Call education-data-context skill
+  1. Call domain context skill (per Domain Configuration)
   2. Load raw data from input file
   3. Filter coded values:
      - Remove rows where [variable] == -1 (missing)
      - Remove rows where [variable] == -2 (not applicable)
      - Remove rows where [variable] == -3 (suppressed)
+     *(Coded values above are education domain defaults — replace with values from Domain Configuration.)*
   4. Calculate suppression rate for [key variable]
   5. Generate citation text
   6. Save to parquet format
@@ -1172,7 +1197,7 @@ and QA reviewers understand what was intentionally accepted.*
 
 ## Data Citations
 
-*Generated using `education-data-context` skill*
+*Generated using domain context skill (per Domain Configuration)*
 
 ### Primary Data Source
 

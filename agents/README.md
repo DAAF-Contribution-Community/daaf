@@ -13,7 +13,7 @@ All agents in this directory MUST follow the canonical template at `agent_refere
 | **Purpose** | Provide domain knowledge | Define behavioral protocol |
 | **Content** | Reference material, decision trees | Execution patterns, validation rules |
 | **Loading** | Subagent calls skill tool | Orchestrator includes agent definition in Task prompt |
-| **Example** | `education-data-source-ccd` (CCD knowledge) | `research-executor` (execution protocol) |
+| **Example** | `education-data-source-ccd` (CCD knowledge -- education domain) | `research-executor` (execution protocol -- domain-agnostic) |
 
 **Rule of thumb:** Skills answer "What do I need to know?" Agents answer "How should I behave?"
 
@@ -571,7 +571,7 @@ Task({
     Sources identified in Stage 2: [count and names]
 
     **STAGE 2 FINDINGS:**
-    [Full Stage 2 output from education-data-explorer]
+    [Full Stage 2 output from domain explorer skill]
 
     **STAGE 3a FINDINGS ([source name]):**
     [Full Stage 3a output from source-researcher]
@@ -699,7 +699,7 @@ Task({
     All relative paths in referenced files resolve from BASE_DIR.
 
     Call the skill tool with name 'data-scientist'.
-    Then, call the skill tool with name '[*-data-source-*]'.
+    Then, call the skill tool with name '[domain-source-skill-name]'.
 
     **CONTEXT:**
     Research question: [verbatim question from Stage 1]
@@ -1070,17 +1070,17 @@ Task({
 
 ## Agent + Skill Combinations
 
-Some tasks benefit from combining an agent protocol with skill knowledge:
+Some tasks benefit from combining an agent protocol with skill knowledge. The domain-specific skills shown below are from the education demonstration domain -- substitute the appropriate domain skills for your data domain.
 
 | Task | Agent | Skill(s) |
 |------|-------|----------|
-| Explore data (Stage 2) | (Plan subagent) | data-scientist, education-data-explorer |
-| Source deep-dive (Stage 3) | source-researcher | data-scientist, education-data-source-* |
+| Explore data (Stage 2) | (Plan subagent) | data-scientist, *domain explorer* (e.g., education-data-explorer) |
+| Source deep-dive (Stage 3) | source-researcher | data-scientist, *domain source skill* (e.g., education-data-source-*) |
 | Synthesize findings (Stage 3.5) | research-synthesizer | data-scientist |
 | Create analysis plan (Stage 4) | data-planner | data-scientist |
 | Validate plan (Stage 4.5) | plan-checker | data-scientist |
-| Fetch CCD data (Stage 5) | research-executor | data-scientist, education-data-query |
-| Clean MEPS data (Stage 6) | research-executor | data-scientist, education-data-context |
+| Fetch data (Stage 5) | research-executor | data-scientist, *domain query skill* (e.g., education-data-query) |
+| Clean data (Stage 6) | research-executor | data-scientist, *domain context skill* (e.g., education-data-context) |
 | Transform data (Stage 7) | research-executor | data-scientist, polars |
 | Conduct analyses and create visualizations (Stage 8) | research-executor | data-scientist, polars, plotnine/plotly |
 | Compile notebook (Stage 9) | notebook-assembler | data-scientist, marimo |
@@ -1089,7 +1089,7 @@ Some tasks benefit from combining an agent protocol with skill knowledge:
 | Diagnose failure (any) | debugger | data-scientist, polars |
 | Ingest new dataset (pre-pipeline) | data-ingest | skill-authoring, polars |
 
-**Invocation pattern for combined:**
+**Invocation pattern for combined** *(education domain example -- substitute domain-specific skill names)*:
 ```python
 Task({
     description: "Stage 6: Clean CCD data",

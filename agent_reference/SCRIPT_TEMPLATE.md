@@ -305,8 +305,8 @@ Stage 5 scripts download data from configured mirrors (per mirrors.yaml).
 
 | Dataset Type | Pattern | Reference |
 |--------------|---------|-----------|
-| Single-file (all years) | `fetch_from_mirrors()` | `education-data-query` skill `./references/fetch-patterns.md` |
-| Yearly files | `fetch_yearly_from_mirrors()` | `education-data-query` skill `./references/fetch-patterns.md` |
+| Single-file (all years) | `fetch_from_mirrors()` | Domain query skill `./references/fetch-patterns.md` (e.g., `education-data-query`) |
+| Yearly files | `fetch_yearly_from_mirrors()` | Domain query skill `./references/fetch-patterns.md` (e.g., `education-data-query`) |
 
 ### Mirror Fetch Code Pattern
 
@@ -318,6 +318,7 @@ Stage 5 scripts download data from configured mirrors (per mirrors.yaml).
 # All mirrors use the same canonical path from datasets-reference.md.
 import yaml
 
+# Education domain example — substitute your domain's query skill path
 MIRRORS_YAML = Path("/daaf/.claude/skills/education-data-query/references/mirrors.yaml")
 
 with open(MIRRORS_YAML) as f:
@@ -325,7 +326,7 @@ with open(MIRRORS_YAML) as f:
 
 # Dataset path: canonical path string from datasets-reference.md.
 # All mirrors use the same path — only root_url and format differ.
-DATASET_PATH = "ccd/schools_ccd_directory"
+DATASET_PATH = "ccd/schools_ccd_directory"  # Education domain example
 
 # [Include fetch_from_mirrors(path, ...) function from fetch-patterns.md]
 ```
@@ -335,6 +336,8 @@ DATASET_PATH = "ccd/schools_ccd_directory"
 ## Stage-Specific Examples
 
 ### Stage 5: Fetch Script Example (Mirror-Based)
+
+*Education domain example — substitute your domain's query skill paths and dataset references.*
 
 ```python
 #!/usr/bin/env python3
@@ -363,8 +366,8 @@ DATE_PREFIX = "2026-01-24"
 
 YEARS = list(range(2018, 2023))  # 2018-2022 per Plan query specification
 
-# Dataset path (from education-data-query skill's datasets-reference.md)
-DATASET_PATH = "ccd/schools_ccd_directory"
+# Dataset path (from domain query skill's datasets-reference.md)
+DATASET_PATH = "ccd/schools_ccd_directory"  # Education domain example
 
 OUTPUT_PARQUET = DATA_RAW / f"{DATE_PREFIX}_ccd_schools.parquet"
 
@@ -374,6 +377,7 @@ OUTPUT_PARQUET = DATA_RAW / f"{DATE_PREFIX}_ccd_schools.parquet"
 # Format-specific read driven by each mirror's read_strategy field.
 import yaml
 
+# Education domain example — substitute your domain's query skill path
 MIRRORS_YAML = Path("/daaf/.claude/skills/education-data-query/references/mirrors.yaml")
 
 with open(MIRRORS_YAML) as f:
@@ -1049,17 +1053,20 @@ dist_ok = len(dist_issues) == 0
 print(f"[{'PASS' if dist_ok else 'FAIL'}] Distribution: {'; '.join(dist_issues) if dist_issues else 'OK'}")
 
 # --- Check 4: No coded values ---
-# INTENT: Verify that Education Data Portal coded missing values (-1, -2, -3)
-# have been properly replaced with null. Their presence in post-Stage-6 data
-# would corrupt downstream statistical calculations.
+# INTENT: Verify that domain-specific coded missing values have been properly
+# replaced with null. Their presence in post-Stage-6 data would corrupt
+# downstream statistical calculations.
+# CODED_MISSING_VALUES from Plan's Domain Configuration (e.g., [-1, -2, -3] for education data).
+# If empty, skip coded value checks.
 coded_issues = []
-for col in df.columns:
-    if df[col].dtype not in [pl.Int8, pl.Int16, pl.Int32, pl.Int64]:
-        continue
-    for code in [-1, -2, -3]:
-        count = (df[col] == code).sum()
-        if count > 0:
-            coded_issues.append(f"{col} has {count} coded value {code}")
+if CODED_MISSING_VALUES:
+    for col in df.columns:
+        if df[col].dtype not in [pl.Int8, pl.Int16, pl.Int32, pl.Int64]:
+            continue
+        for code in CODED_MISSING_VALUES:
+            count = (df[col] == code).sum()
+            if count > 0:
+                coded_issues.append(f"{col} has {count} coded value {code}")
 
 coded_ok = len(coded_issues) == 0
 print(f"[{'PASS' if coded_ok else 'FAIL'}] Coded values: {'; '.join(coded_issues) if coded_issues else 'None remain'}")

@@ -310,17 +310,29 @@ print(f"[{'PASS' if dist_ok else 'FAIL'}] Distributions: ", end="")
 print("Look reasonable" if dist_ok else "; ".join(dist_issues))
 
 # --- Check 4: Coded values ---
+# CODED_MISSING_VALUES: domain-specific coded missing values from Plan's domain config
+# (e.g., [-1, -2, -3] for education data). Provided by orchestrator in Task prompt.
+# If CODED_VALUES is empty, skip coded value checks and check for standard
+# missing values (null, NaN) instead.
+CODED_MISSING_VALUES = [{coded_values}]
+
 coded_issues = []
-for col in df.columns:
-    if df[col].dtype not in [pl.Int8, pl.Int16, pl.Int32, pl.Int64]:
-        continue
-    for code in [-1, -2, -3]:
-        count = (df[col] == code).sum()
-        if count > 0:
-            coded_issues.append(f"{col} has {count} coded value {code}")
+if CODED_MISSING_VALUES:
+    for col in df.columns:
+        if df[col].dtype not in [pl.Int8, pl.Int16, pl.Int32, pl.Int64]:
+            continue
+        for code in CODED_MISSING_VALUES:
+            count = (df[col] == code).sum()
+            if count > 0:
+                coded_issues.append(f"{col} has {count} coded value {code}")
 coded_ok = len(coded_issues) == 0
 print(f"[{'PASS' if coded_ok else 'FAIL'}] Coded values: ", end="")
-print("None remain" if coded_ok else "; ".join(coded_issues))
+if not CODED_MISSING_VALUES:
+    print("No domain-specific coded values to check")
+elif coded_ok:
+    print("None remain")
+else:
+    print("; ".join(coded_issues))
 
 # --- Check 5: Critical nulls ---
 null_issues = []

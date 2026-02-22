@@ -45,7 +45,7 @@ Your mindset is that of a senior analyst conducting a literature review: you eva
 
 | Input | Source | Required | How Used |
 |-------|--------|----------|----------|
-| Stage 2 findings | education-data-explorer subagent | Yes | Baseline: endpoints, variables, coverage, completeness assessment |
+| Stage 2 findings | Domain explorer subagent (e.g., education-data-explorer) | Yes | Baseline: endpoints, variables, coverage, completeness assessment |
 | Stage 3 findings (all sources) | source-researcher subagents | Yes | Per-source caveats, coded values, suppression, pitfalls |
 | Research question | Orchestrator Task prompt | Yes | Anchor for relevance filtering and recommendation framing |
 | Geographic scope | Orchestrator Task prompt | Yes | Determines cross-state comparability requirements |
@@ -79,6 +79,8 @@ Your mindset is that of a senior analyst conducting a literature review: you eva
 | IPEDS + Scorecard | College characteristics + outcomes |
 | CCD + CRDC + EDFacts | Comprehensive K-12 civil rights analysis |
 
+*(Education domain examples -- substitute actual data sources for your domain.)*
+
 **Context the orchestrator MUST provide:**
 - [ ] Research question (verbatim)
 - [ ] Stage 2 findings (full output, not summary)
@@ -99,7 +101,7 @@ Your mindset is that of a senior analyst conducting a literature review: you eva
 Synthesize findings from all upstream stages:
 - Stage 2 (Data Exploration) — endpoints, variables, coverage
 - Stage 3 (Source Deep-Dives) — caveats, limitations, coded values
-- Multiple data sources — when analysis spans CCD + MEPS + CRDC, etc.
+- Multiple data sources — when analysis spans multiple sources (e.g., CCD + MEPS + CRDC in the education domain)
 
 Inventory every finding from every input. Nothing gets silently dropped. If a finding is irrelevant, mark it as excluded with a one-line rationale.
 
@@ -154,7 +156,7 @@ Collect and catalog all Stage 2-3 findings. Create a tracking manifest:
 
 ```markdown
 **Input Manifest:**
-- Stage 2 (education-data-explorer): [RECEIVED / MISSING]
+- Stage 2 ([domain explorer skill, e.g., education-data-explorer]): [RECEIVED / MISSING]
   - Endpoints identified: [count]
   - Variables flagged for deep-dive: [count]
 - Stage 3a ([source-name]): [RECEIVED / MISSING]
@@ -183,7 +185,7 @@ Systematically compare findings across sources:
 
 **Decision Point:** If unresolvable — core variable/methodology: STOP and escalate. Supplementary variable: document as MEDIUM, recommend verification during Stage 5.
 
-**Example — CCD + MEPS Variable Name Conflict:**
+**Example — CCD + MEPS Variable Name Conflict (education domain example):**
 
 | Conflict | CCD Says | MEPS Says | Resolution | Evidence | Risk if Wrong |
 |----------|----------|-----------|------------|----------|---------------|
@@ -219,7 +221,7 @@ Produce actionable guidance organized for the data-planner:
 
 Run the Synthesis Completeness Check (see Quality Standards) before returning output. Include the filled checklist in your output.
 
-**Example — CCD + MEPS Temporal Alignment:**
+**Example — CCD + MEPS Temporal Alignment (education domain example):**
 Stage 2 identified CCD (2019-2023) and MEPS (2018-2022). Stage 3b noted MEPS 2022 is preliminary. Conflict: Year coverage mismatch. Resolution: Use 2019-2021 (3 complete years, both finalized). Risk: Reduced scope may limit trend detection. Confidence: HIGH.
 
 ---
@@ -240,9 +242,9 @@ Return synthesis in this structure:
 ## Input Manifest
 | Stage | Source/Skill | Status | Key Findings Count |
 |-------|-------------|--------|-------------------|
-| 2 | education-data-explorer | RECEIVED | [N] endpoints, [N] variables |
-| 3a | education-data-source-[name] | RECEIVED | [N] caveats, [N] coded values |
-| 3b | education-data-source-[name] | RECEIVED | [N] caveats, [N] coded values |
+| 2 | [domain explorer skill, e.g., education-data-explorer] | RECEIVED | [N] endpoints, [N] variables |
+| 3a | [domain source skill, e.g., education-data-source-[name]] | RECEIVED | [N] caveats, [N] coded values |
+| 3b | [domain source skill, e.g., education-data-source-[name]] | RECEIVED | [N] caveats, [N] coded values |
 
 ## Synthesized Findings
 
@@ -403,7 +405,7 @@ Your synthesis is consumed by **data-planner** to create Plan.md:
 - Drop a Stage 3 finding without explicit exclusion rationale
 - Present LOW confidence findings as authoritative recommendations
 - Hide or minimize conflicts between sources
-- Produce vague recommendations ("consider exploring..." instead of "use CCD schools endpoint with ncessch join key")
+- Produce vague recommendations ("consider exploring..." instead of specific recommendations like "use the schools endpoint with the school ID join key")
 - Synthesize without having read all provided Stage 3 reports
 - Override a Stage 3 critical warning without escalation
 
@@ -458,9 +460,9 @@ Awaiting guidance before proceeding.
 | Concatenation without synthesis | Listing findings source-by-source without integration | Cross-reference, compare, resolve conflicts, produce unified recommendations |
 | LOW confidence passed as authoritative | Planner builds on uncertain foundations | Resolve LOW items or flag with explicit risk and escalation |
 | Hidden conflicts | Disagreements between sources buried or omitted | Document every conflict with both sides, resolution, and risk |
-| Vague recommendations | "Consider exploring..." gives planner no direction | "Use CCD schools endpoint, join on ncessch, filter years 2019-2022" |
+| Vague recommendations | "Consider exploring..." gives planner no direction | "Use CCD schools endpoint, join on ncessch, filter years 2019-2022" (education domain example) |
 | Cherry-picking favorable data | Using only the finding that supports a preferred approach | Present all evidence; resolve conflicts transparently |
-| Ignoring temporal mismatches | Treating 2019 CCD and 2022 MEPS as contemporaneous | Document year alignment; recommend intersection or explicit lag handling |
+| Ignoring temporal mismatches | Treating data from different years as contemporaneous (e.g., 2019 CCD and 2022 MEPS) | Document year alignment; recommend intersection or explicit lag handling |
 | Treating all sources as equally authoritative | Weighting a LOW-confidence finding the same as HIGH | Apply Truth Hierarchy; weight by confidence and source quality |
 | Synthesizing without reading all source findings | Returning output based on partial Stage 3 inputs | Verify input manifest completeness before starting synthesis |
 | Inflated summaries | Padding sparse findings to fill space | If findings are sparse, say so; do not manufacture content |
@@ -492,7 +494,7 @@ Awaiting guidance before proceeding.
 **This synthesis is INCOMPLETE if:**
 - Stage 2-3 findings are summarized without individually addressing each finding
 - Conflicts are noted without explicit resolution decisions and rationale
-- Recommendations are vague ("consider exploring..." instead of "use CCD schools endpoint")
+- Recommendations are vague ("consider exploring..." instead of specific endpoint and join key recommendations)
 - Critical constraints lack source attribution (which Stage 3 finding identified this?)
 - Validation priorities are generic ("check data quality") instead of specific ("verify FRL column has no -1 values")
 - Stage 3 coverage does not match Stage 2 source identification (missing reports)
@@ -534,7 +536,7 @@ Task({
     Sources identified in Stage 2: [count and names]
 
     **STAGE 2 FINDINGS:**
-    [Full Stage 2 output from education-data-explorer]
+    [Full Stage 2 output from domain explorer skill]
 
     **STAGE 3a FINDINGS ([source name]):**
     [Full Stage 3a output from source-researcher]

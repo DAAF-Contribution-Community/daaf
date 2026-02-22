@@ -80,7 +80,7 @@ Secondary distinction from **data-verifier**: the report-writer creates the repo
 Every claim must trace to a specific artifact: a script execution log, a figure, a QA finding, a Plan section, or dataset metadata provided by the orchestrator. Never synthesize from memory or inference alone. If a statistic appears in the report, it must appear in an execution log or the dataset metadata. If you cannot find a source for a number, do not include it.
 
 **Bad:** "The dataset contains approximately 6,000 schools."
-**Good:** "The dataset contains 6,234 schools (Stage 5 execution log: `01_fetch-ccd.py`)."
+**Good:** "The dataset contains 6,234 schools (Stage 5 execution log: `01_fetch-ccd.py`)." *(education domain example)*
 
 ### 2. Section-Source Mapping Discipline
 

@@ -307,7 +307,7 @@ else:
     print(f"[PASS] All {len(required_cols)} required columns present")
 
 # Expected years
-if expected_years and year_col in df.columns:
+if year_col and expected_years and year_col in df.columns:
     present_years = sorted(df[year_col].unique().to_list())
     missing_years = [y for y in expected_years if y not in present_years]
     print(f"Years present: {present_years}")
@@ -327,16 +327,16 @@ for col in required_cols:
             print(f"[WARN] {col}: {null_pct:.1f}% null")
 
 # Year freshness (data lag detection)
-if expected_years and year_col in df.columns:
+if year_col and expected_years and year_col in df.columns:
     max_expected = max(expected_years)
     max_actual = df[year_col].max()
     if max_actual < max_expected:
         lag_years = max_expected - max_actual
         print(f"[WARN] Data lag: requested {max_expected}, latest available {max_actual} ({lag_years}-year lag)")
 
-# COVID-19 data quality flag
-if expected_years and any(y in [2020, 2021] for y in expected_years):
-    print("[WARN] COVID-IMPACT: Analysis includes 2020-2021 data. "
+# Flag years data quality check (e.g., COVID-19 for education: [2020, 2021])
+if FLAG_YEARS and expected_years and any(y in FLAG_YEARS for y in expected_years):
+    print(f"[WARN] FLAG-YEARS: Analysis includes data from flagged years {FLAG_YEARS}. "
           "Document comparability concerns in limitations.")
 
 print(f"\nCP1 VALIDATION: {'PASSED' if cp1_passed else 'FAILED'}")
@@ -355,7 +355,13 @@ Adapt the inline code above to each fetch script. Set these variables before run
 expected_rows = 10000
 required_cols = ["ncessch", "school_name", "enrollment", "year"]
 expected_years = [2020, 2021, 2022]
-year_col = "year"
+
+# Domain configuration (from Plan's Domain Configuration section)
+YEAR_COL = "year"              # From Plan domain config; set to None if no temporal dimension
+FLAG_YEARS = [2020, 2021]      # From Plan domain config; empty list [] if N/A (e.g., education: COVID years)
+# Education domain defaults: YEAR_COL = "year", FLAG_YEARS = [2020, 2021]
+
+year_col = YEAR_COL
 # df = <your fetched DataFrame>
 ```
 
@@ -379,7 +385,7 @@ print("CP2 VALIDATION: POST-CLEANING")
 print("=" * 60)
 
 cp2_passed = True
-max_suppression = 0.5  # 50% threshold
+max_suppression = SUPPRESSION_THRESHOLD  # From Plan domain config (education default: 0.5)
 max_data_loss = 0.9    # 90% threshold
 
 # Data loss check
@@ -405,7 +411,7 @@ else:
 print(f"\nSuppression Rates (in raw data):")
 for var in key_variables:
     if var in raw_df.columns:
-        suppressed = (raw_df[var] == -3).sum()
+        suppressed = (raw_df[var] == SUPPRESSION_CODE).sum() if SUPPRESSION_CODE is not None else 0
         supp_rate = suppressed / raw_rows if raw_rows > 0 else 0
         if supp_rate > max_suppression:
             print(f"[FAIL] {var}: {supp_rate:.1%} suppressed (>{max_suppression:.0%} threshold)")
@@ -422,7 +428,7 @@ for var in key_variables:
     if var in clean_df.columns:
         dtype = clean_df[var].dtype
         if dtype in [pl.Int8, pl.Int16, pl.Int32, pl.Int64, pl.Float32, pl.Float64]:
-            coded = (clean_df[var] < 0).sum()
+            coded = sum((clean_df[var] == c).sum() for c in CODED_MISSING_VALUES) if CODED_MISSING_VALUES else 0
             if coded > 0:
                 print(f"[WARN] {var}: {coded} coded values remain")
                 coded_found = True
@@ -445,6 +451,12 @@ Set these variables before the CP2 block:
 # raw_df = <DataFrame before cleaning>
 # clean_df = <DataFrame after cleaning>
 key_variables = ["enrollment", "poverty_rate"]  # columns to check
+
+# Domain configuration (from Plan's Domain Configuration section)
+SUPPRESSION_CODE = -3              # From Plan domain config; None if domain has no suppression code
+CODED_MISSING_VALUES = [-1, -2, -3]  # From Plan domain config; empty list [] if none
+SUPPRESSION_THRESHOLD = 0.5        # From Plan domain config; 50% default for education
+# Education domain defaults: SUPPRESSION_CODE = -3, CODED_MISSING_VALUES = [-1, -2, -3], SUPPRESSION_THRESHOLD = 0.5
 ```
 
 ---

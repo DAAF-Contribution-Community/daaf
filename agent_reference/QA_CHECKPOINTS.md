@@ -60,7 +60,7 @@ The code-reviewer applies five skeptical lenses (Counterfactual, Semantic, Bound
 |-------|-------------------|------------|
 | Schema match | Columns match Plan specification | Critical columns missing |
 | Year coverage | Years match Plan's year range | Target years absent |
-| Geographic scope | State/district/school level correct | Wrong geographic unit |
+| Geographic scope | Correct entity granularity per domain config (e.g., state/district/school for education) | Wrong geographic unit or entity level |
 | ID uniqueness | Primary keys are unique | Duplicate IDs present |
 | Dataset completeness | Expected rows and fields present | Partial data fetch |
 
@@ -91,8 +91,9 @@ else:
     print(f"[PASS] All {len(expected_cols)} expected columns present")
 
 # Year coverage
-if "year" in df.columns:
-    years_present = set(df["year"].unique().to_list())
+year_col = plan_spec.get("year_col", "year")  # From Plan Domain Configuration
+if year_col and year_col in df.columns:
+    years_present = set(df[year_col].unique().to_list())
     years_expected = set(plan_spec["year_range"])
     missing_years = years_expected - years_present
     if missing_years:
@@ -159,7 +160,7 @@ Observations from qa1 that should trigger qa2+ investigation:
 
 | Check | What It Validates | BLOCKER If |
 |-------|-------------------|------------|
-| Coded values gone | -1, -2, -3 filtered properly | Coded values remain in analysis columns |
+| Coded values gone | Domain-specific coded values filtered properly (e.g., -1, -2, -3 for education) | Coded values remain in analysis columns |
 | Suppression calc | Rate calculated correctly | Suppression rate miscalculated |
 | Filter correctness | Correct rows removed | Wrong filter criteria applied |
 | Type consistency | Data types are appropriate | Analysis columns have wrong types |
@@ -181,12 +182,13 @@ print("\nCoded Values Check:")
 for col in plan_spec.get("numeric_columns", []):
     if col not in df.columns:
         continue
-    for code in [-1, -2, -3]:
+    coded_missing_values = plan_spec.get("coded_missing_values", [-1, -2, -3])  # Maps to Plan's "Coded Missing Values" field in Domain Configuration; education default: [-1, -2, -3]
+    for code in coded_missing_values:
         count = (df[col] == code).sum()
         if count > 0:
             print(f"[BLOCKER] Column '{col}' still has {count} coded value {code}")
             qa2_max_severity = "BLOCKER"
-    if all((df[col] == code).sum() == 0 for code in [-1, -2, -3]):
+    if all((df[col] == code).sum() == 0 for code in coded_missing_values):
         print(f"[PASS] '{col}': no coded values remain")
 
 # Suppression rate recalculation

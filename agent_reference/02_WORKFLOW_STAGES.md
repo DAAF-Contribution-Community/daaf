@@ -2,6 +2,8 @@
 
 This document provides detailed execution guidance for each of the 12 stages (plus 2 intermediate stages) in the Full Pipeline workflow.
 
+> **Domain Extensibility:** This workflow is domain-agnostic. Skill names referenced below (e.g., `education-data-explorer`, `education-data-query`, `education-data-context`) are the demonstration domain defaults. The orchestrator resolves actual skill names from the Plan's Domain Configuration section and provides them in Task prompts. New domains can be added by authoring domain-specific Skills and registering them in the Plan's Domain Configuration.
+
 **Execution Model:** Stages 5-8 follow the **file-first execution pattern**—all code is written to script files before execution, then run as a single Bash call via `bash {PROJECT_DIR}/scripts/run_with_capture.sh {PROJECT_DIR}/scripts/...` which automatically appends the execution log. Closely read `agent_reference/EXECUTION_CAPTURE.md` for the mandatory file-first execution protocol covering complete code file writing, output capture, and file versioning rules.
 
 ---
@@ -11,13 +13,13 @@ This document provides detailed execution guidance for each of the 12 stages (pl
 | Stage | Phase | Name | Primary Skill/Agent | Subagent |
 |-------|-------|------|---------------------|----------|
 | 1 | 1 | Initial Intake | — | Orchestrator |
-| 2 | 1 | Data Exploration | `education-data-explorer` | Plan |
+| 2 | 1 | Data Exploration | Domain explorer skill (e.g., `education-data-explorer`) | Plan |
 | 3 | 1 | Source Deep-Dive | `*-data-source-*` | Plan |
 | **3.5** | 1 | Findings Synthesis | `research-synthesizer` agent | general-purpose |
 | 4 | 2 | Plan Creation | `data-planner` agent | Orchestrator (invokes data-planner) |
 | **4.5** | 2 | Plan Validation | `plan-checker` agent | Plan |
-| 5 | 3 | Data Retrieval | `education-data-query` | general-purpose |
-| 6 | 3 | Context Application | `education-data-context` | general-purpose |
+| 5 | 3 | Data Retrieval | Domain query skill (e.g., `education-data-query`) | general-purpose |
+| 6 | 3 | Context Application | Domain context skill (e.g., `education-data-context`) | general-purpose |
 | 7 | 4 | EDA & Transformation | `data-scientist`, `polars` | general-purpose |
 | 8 | 4 | Analysis & Visualization | `data-scientist`, `polars`, `plotnine`, `plotly` | general-purpose |
 | 9 | 4 | Notebook Assembly | `marimo` | general-purpose |
@@ -244,7 +246,7 @@ You MUST wait for user confirmation before proceeding.
 ## Stage 2: Data Exploration
 
 **Executor:** Subagent (Plan)
-**Skill:** `education-data-explorer`
+**Skill:** Domain explorer skill (e.g., `education-data-explorer`)
 **Purpose:** Identify available data sources and variables
 
 ### Actions
@@ -340,7 +342,7 @@ You MUST wait for user confirmation before proceeding.
    - Data collection methodology
 
 3. **Document Coded Values**
-   - Standard codes (-1, -2, -3)
+   - Domain-specific coded values (from Plan Domain Configuration; e.g., -1, -2, -3 for education)
    - Source-specific codes
    - Action for each code
 
@@ -362,7 +364,7 @@ You MUST wait for user confirmation before proceeding.
 - Identify ALL source-specific caveats
 - Note ANY cross-state comparability issues
 - Check for historical definition changes
-- Include COVID-19 impact notes (2020-2021)
+- Include impact notes for any flagged years (per FLAG_YEARS in Plan Domain Configuration; e.g., COVID-19 years 2020-2021 for education)
 ```
 
 ### Output Format
@@ -739,8 +741,8 @@ Run plan-checker
 ## Stage 5: Data Retrieval
 
 **Executor:** Subagent (general-purpose)
-**Skill:** `education-data-query`
-**Purpose:** Fetch data from Education Data Portal mirrors
+**Skill:** Domain query skill (e.g., `education-data-query`)
+**Purpose:** Fetch data from configured data mirrors
 
 **Note:** Uses `general-purpose` subagent type (not `Plan`) because it must save data files to `data/raw/`.
 
@@ -833,7 +835,7 @@ assert df['year'].is_in(expected_years).all(), "WARNING: Unexpected years"
 ## Stage 6: Context Application
 
 **Executor:** Subagent (general-purpose)
-**Skill:** `education-data-context`
+**Skill:** Domain context skill (e.g., `education-data-context`)
 **Purpose:** Apply source-specific cleaning and context
 
 **Note:** Uses `general-purpose` subagent type (not `Plan`) because it must save cleaned data files to `data/processed/`.
@@ -877,7 +879,7 @@ assert df['year'].is_in(expected_years).all(), "WARNING: Unexpected years"
 ```
 - Apply coded value filters as specified in Plan
 - Calculate suppression rates for key variables
-- BLOCK if cross-state assessment comparison
+- BLOCK if any governance rules from Plan Domain Configuration are violated (e.g., cross-state assessment comparison for education)
 - BLOCK if suppression rate >50%
 - Generate proper citation text
 ```
@@ -886,7 +888,7 @@ assert df['year'].is_in(expected_years).all(), "WARNING: Unexpected years"
 
 ```python
 # Required checks
-suppression_rate = (raw_df['key_var'] == -3).sum() / len(raw_df)
+suppression_rate = (raw_df['key_var'] == SUPPRESSION_CODE).sum() / len(raw_df)  # SUPPRESSION_CODE from Plan Domain Configuration
 assert suppression_rate < 0.5, f"STOP: Suppression {suppression_rate:.1%} > 50%"
 assert len(clean_df) > len(raw_df) * 0.1, "STOP: >90% data loss"
 ```
@@ -955,7 +957,7 @@ assert len(clean_df) > len(raw_df) * 0.1, "STOP: >90% data loss"
 - QA summary table: each script's QA status (PASSED/WARNING) with details for any WARNINGs
 - Any deviations from the Plan during fetch or clean (documented per RULE 1-3)
 - If data lag >= 3 years: explicit flag for user awareness
-- If COVID years (2020-2021) included: explicit flag with documented warning
+- If flag years (per FLAG_YEARS in Plan Domain Configuration) are included: explicit flag with documented warning
 - Data readiness assessment: are the cleaned datasets ready for analysis?
 
 **User Response Handling:**
