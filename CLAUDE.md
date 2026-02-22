@@ -22,7 +22,7 @@ User Request Received
     │
     ├─ Discovery Mode? (what data exists, feasibility)
     │   └─ Read: Begin with CLAUDE.md "Engagement Modes" section
-    │          ├─ Invoke education-data-explorer skill via subagent
+    │          ├─ Invoke domain explorer skill via subagent (per Plan domain config)
     │          └─ Invoke additional agent_reference/ files as needed
     │
     ├─ Targeted Assist Mode? (lookup, specific question)
@@ -120,7 +120,7 @@ User Request
 | Mode | Trigger Keywords | Primary Output | Skills Used |
 |------|------------------|----------------|-------------|
 | **Full Pipeline** | "analyze", "research", "create", "generate" | Plan + Notebook + Report | All skills |
-| **Discovery** | "what data", "is it possible", "feasibility", "explore" | Findings summary | education-data-explorer, education-data-context, source skills |
+| **Discovery** | "what data", "is it possible", "feasibility", "explore" | Findings summary | Domain explorer, domain context, source skills (per Plan domain config) |
 | **Targeted Assist** | "what are the values", "how is X defined", "lookup" | Direct answer | Single relevant skill |
 | **Revision** | "fix", "update", "change", "modify the analysis" | Updated Plan + Notebook + Report (new version) | Varies by revision scope |
 
@@ -218,12 +218,12 @@ The Full Pipeline workflow consists of **5 Phases** and **12 Stages**. Other mod
 │      ├─ Output: Research question + scope confirmed                         │
 │      └─ Gate G1: Mode classified, scope confirmed                           │
 │                          ↓                                                  │
-│  Stage 2: Data Exploration ←── education-data-explorer skill                │
+│  Stage 2: Data Exploration ←── domain explorer skill                        │
 │      ├─ Identify available endpoints and variables                          │
 │      ├─ Report findings to user (adaptive)                                  │
 │      └─ Gate G2: ≥1 endpoint identified, key variables flagged              │
 │                          ↓                                                  │
-│  Stage 3: Source Deep-Dive ←── education-data-source-* skills               │
+│  Stage 3: Source Deep-Dive ←── domain source skills                         │
 │      ├─ Understand limitations, caveats, suppression patterns               │
 │      ├─ Document source-specific gotchas                                    │
 │      └─ Gate G3: Coded values documented, suppression patterns identified   │
@@ -285,9 +285,9 @@ The Full Pipeline workflow consists of **5 Phases** and **12 Stages**. Other mod
 │  │  □ If Plan-Checker Status is NOT_RUN → STOP, invoke plan-checker first │ │
 │  └────────────────────────────────────────────────────────────────────────┘ │
 │                                                                             │
-│  Stage 5: Data Retrieval ←── education-data-query skill                     │
+│  Stage 5: Data Retrieval ←── domain query skill                             │
 │      ├─ Download from configured mirrors (per mirrors.yaml in               │
-│      │   .claude/skills/education-data-query/references/)                   │
+│      │   domain query skill references/)                                    │
 │      ├─ Auto-validate: shape, types, missingness (CP1)                      │
 │      ├─ STOP if: unexpected empty results, data access errors               │
 │      └─ Gate G5: CP1 PASSED, QA1 PASSED/WARNING, data in data/raw/          │
@@ -302,7 +302,7 @@ The Full Pipeline workflow consists of **5 Phases** and **12 Stages**. Other mod
 │  │  Gate: ALL Stage 5 scripts individually QA'd → proceed to Stage 6      │ │
 │  └────────────────────────────────────────────────────────────────────────┘ │
 │                          ↓                                                  │
-│  Stage 6: Context Application ←── education-data-context skill              │
+│  Stage 6: Context Application ←── domain context skill                      │
 │      ├─ Assess missingness and coded value presence                         │
 │      ├─ Calculate suppression rates (CP2)                                   │
 │      ├─ STOP if: >50% suppression, invalid analysis type                    │
@@ -499,14 +499,14 @@ For EACH task in Stages 5-8, follow this complete loop. **Do NOT skip any step.*
 
 | Stage | Primary Skill(s) | Subagent Type | Invocation Pattern |
 |-------|------------------|---------------|-------------------|
-| 2 | `data-scientist`, `education-data-explorer` | Plan | Subagent invokes skill |
-| 3 | `data-scientist`, `education-data-source-*` (relevant sources) | Plan | Subagent invokes skill(s) |
+| 2 | `data-scientist`, domain explorer skill | Plan | Subagent invokes skill |
+| 3 | `data-scientist`, domain source skill(s) | Plan | Subagent invokes skill(s) |
 | 3.5 | `data-scientist` | general-purpose | `research-synthesizer` agent |
 | 4 | `data-scientist` | general-purpose | `data-planner` agent |
 | 4.5 | `data-scientist` | Plan | `plan-checker` agent |
-| 5 | `data-scientist`, `education-data-query` | general-purpose | Subagent invokes skill |
+| 5 | `data-scientist`, domain query skill | general-purpose | Subagent invokes skill |
 | **5-QA** | `data-scientist` | general-purpose | `code-reviewer` agent (after each Stage 5 script) |
-| 6 | `data-scientist`, `education-data-context` | general-purpose | Subagent invokes skill |
+| 6 | `data-scientist`, domain context skill | general-purpose | Subagent invokes skill |
 | **6-QA** | `data-scientist` | general-purpose | `code-reviewer` agent (after each Stage 6 script) |
 | 7 | `data-scientist`, `polars` | general-purpose | Subagent invokes skills |
 | **7-QA** | `data-scientist` | general-purpose | `code-reviewer` agent (after each Stage 7 script) |
@@ -524,6 +524,8 @@ For EACH task in Stages 5-8, follow this complete loop. **Do NOT skip any step.*
 - **QA substages** (5-QA through 8-QA) run code-reviewer after each script execution in the parent stage.
 - The `Plan` type is read-only and cannot write files.
 - All Stages 5-8 scripts must follow IAT documentation standards (`agent_reference/INLINE_AUDIT_TRAIL.md`).
+
+**Note:** Stages 2, 3, 5, and 6 use domain-specific skills resolved by the orchestrator based on the active domain configuration in the Plan.
 
 ---
 
@@ -562,6 +564,7 @@ As the orchestrator, you maintain overall context and coordinate subagent execut
 - [ ] Output file paths specified (not placeholder)
 - [ ] Missingness and coded value expectations mentioned
 - [ ] Risk Register items for fetch included (from Plan)
+- [ ] Domain query skill specified
 - [ ] Script follows IAT documentation standards
 
 **Stage 6 (Clean) Checklist:**
@@ -571,6 +574,7 @@ As the orchestrator, you maintain overall context and coordinate subagent execut
 - [ ] Suppression tolerance thresholds specified
 - [ ] Critical columns identified (from Plan Observable Truths)
 - [ ] Risk Register items for cleaning included
+- [ ] Domain context skill specified (or N/A)
 - [ ] Script follows IAT documentation standards
 
 **Stage 7 (Transform) Checklist:**
@@ -590,6 +594,7 @@ As the orchestrator, you maintain overall context and coordinate subagent execut
 - [ ] Risk Register items included
 - [ ] Observable Truth contribution stated
 - [ ] Prior QA findings accumulated (if any WARNING items from prior scripts)
+- [ ] Coded values from Plan inlined
 - [ ] IAT compliance expectations stated
 
 **Stage 8.1 (Analysis) Checklist:**
@@ -705,7 +710,7 @@ Phase [N+1] ([Phase Name]) will [brief description of what comes next and what i
 - Data sources identified (with endpoints and year ranges)
 - Key variables and their availability
 - Source-specific caveats and limitations discovered
-- Suppression patterns and cross-state comparability issues
+- Suppression patterns and cross-region comparability issues (e.g., cross-state for education)
 - Feasibility assessment and recommended analytical approach
 - Any LOW-confidence items requiring user input
 
@@ -965,16 +970,16 @@ See `agent_reference/PLAN_TEMPLATE.md` for wave-based task table format.
 ### Thoroughness Directives by Stage
 
 **Stage 2 (Data Exploration):**
-- Search ALL relevant data levels (schools, districts, colleges)
+- Search ALL relevant data levels (e.g., schools, districts, colleges for education)
 - Consider multiple potential data sources
 - Flag variables that need source-specific deep dives
 - Include "Limitations Encountered" section
 
 **Stage 3 (Source Deep-Dive):**
-- Load the specific `education-data-source-*` skill for each source
+- Load the specific domain source skill for each source (per Plan domain config)
 - Extract all relevant caveats and limitations
 - Document suppression patterns and thresholds
-- Note any cross-state comparability issues
+- Note any cross-region comparability issues (e.g., cross-state comparability for education)
 
 **Stage 3.5 (Findings Synthesis):**
 - Consolidate all Stage 2 and Stage 3 findings into unified guidance
@@ -1159,14 +1164,14 @@ When interpreting data values and resolving discrepancies between sources, apply
 | Priority | Source | Rationale | Example |
 |----------|--------|-----------|---------|
 | 1 (highest) | **Actual data file** (parquet) | What you observe IS the truth | Column has values 1-7, not 1-5 as documented |
-| 2 | **Live codebook/metadata** (.xls in mirror) | Authoritative documentation; may lag behind data | Codebook says "1=Regular, 2=Special Ed" |
-| 3 (lowest) | **Archived skill docs** (variable-definitions.md) | Summarized; convenient but may drift | Skill says "values 1-5" but codebook says "1-7" |
+| 2 | **Live codebook/metadata** (.xls in mirror) | Authoritative documentation; may lag behind data | Codebook says "1=Regular, 2=Special Ed" (e.g., in education) |
+| 3 (lowest) | **Archived skill docs** (e.g., variable-definitions.md) | Summarized; convenient but may drift | Skill says "values 1-5" but codebook says "1-7" |
 
 **Application Rules:**
 - When skill docs contradict observed data → trust the data, flag the discrepancy
 - When codebook contradicts observed data → trust the data, but investigate (codebook may describe a different year)
 - When skill docs contradict codebook → trust the codebook, update skill docs
-- Codebook URLs are cataloged in `datasets-reference.md` (codebook column); use `get_codebook_url()` in `fetch-patterns.md` to construct download URLs
+- For education domain: Codebook URLs are cataloged in `datasets-reference.md` (codebook column); use `get_codebook_url()` in `fetch-patterns.md` to construct download URLs. Other domains will use analogous structures in their domain query skill.
 - See also: `agents/data-ingest.md` Data Primacy table for the same hierarchy applied during data ingest
 
 ### Validation Checkpoints
@@ -1320,12 +1325,12 @@ These conditions trigger an immediate STOP with escalation to user. See `agent_r
 |-----------|-------|--------|
 | Data access mirror returns empty data | Stage 5 | STOP, report to user, await guidance |
 | Suppression rate >50% | Stage 6 | STOP, report issue, propose alternatives |
-| Cross-state assessment comparison attempted | Stage 6 | BLOCK with explanation (never valid) |
+| Domain governance rule violation (e.g., cross-state assessment comparison in education) | Stage 6 | BLOCK with explanation (never valid) |
 | Row count drops >90% after transformation | Stage 7 | STOP, verify transformation logic |
 | **QA BLOCKER after 2 revisions** | 5-QA to 8-QA | STOP, escalate to user |
 | **QA methodology violation** | 5-QA to 8-QA | STOP, escalate immediately |
 | Notebook execution error after 2 fix attempts | Stage 9 | STOP, report error details |
-| Data unavailable in Education Data Portal | Stage 2-3 | STOP, escalate immediately |
+| Data unavailable in configured data source (e.g., Education Data Portal) | Stage 2-3 | STOP, escalate immediately |
 
 **STOP/Escalation Format:** See `agent_reference/06_ERROR_RECOVERY.md` "Escalation Template" for the detailed format. At minimum, include: what happened, what was tried, options with pros/cons, and a recommendation.
 
@@ -1358,7 +1363,7 @@ These conditions trigger an immediate STOP with escalation to user. See `agent_r
 - [ ] Source-Specific Caveats table populated (not empty)
 - [ ] Coded Value Mappings complete for all flagged variables
 - [ ] Suppression Patterns documented with typical rates
-- [ ] Cross-State Comparability assessed (if multi-state analysis)
+- [ ] Cross-region comparability assessed (if multi-region analysis, e.g., cross-state for education)
 - [ ] Critical Warnings have mitigation strategies
 - [ ] Confidence Assessment present
 - [ ] If confidence is LOW: resolution present
@@ -1376,7 +1381,7 @@ These conditions trigger an immediate STOP with escalation to user. See `agent_r
 - [ ] File locations provided with actual filenames
 - [ ] If CP1 FAILED: Stop reason documented
 - [ ] If data lag ≥3 years: Flagged for user notification
-- [ ] If COVID years included: Flagged with warning
+- [ ] If flag years (per FLAG_YEARS in Plan Domain Configuration) included: Flagged with warning
 
 **Stage 6 (Context Application) Verification:**
 - [ ] Cleaning Applied table shows actual row counts removed
@@ -1489,7 +1494,7 @@ These guardrails are enforced at multiple layers — no single layer is relied u
 
 **Documentation:**
 - Store original request verbatim in Plan
-- Cite data sources properly (use education-data-context skill)
+- Cite data sources properly (use domain context skill, e.g., `education-data-context`)
 - Record all methodology decisions with rationale
 - Version all files (never overwrite)
 
@@ -1522,7 +1527,7 @@ See `agent_reference/04_BOUNDARIES.md` for complete specifications and analysis 
 - Share data outside the research folder
 
 **Analysis Integrity:**
-- Compare assessment scores across states (NEVER valid)
+- Violate domain governance rules (e.g., cross-state assessment comparison in education — NEVER valid)
 - Skip validation checkpoints
 - Ignore LOW confidence findings without resolution
 - Proceed after STOP condition without user guidance
@@ -1787,7 +1792,7 @@ See `agent_reference/SCRIPT_TEMPLATE.md` for complete script template and exampl
 
 **Note:** Meta skills support system development and maintenance rather than research workflows.
 
-### Education Data Source Quick Lookup
+### Data Source Quick Lookup
 
 | Data Need | Primary Source | Skill |
 |-----------|----------------|-------|

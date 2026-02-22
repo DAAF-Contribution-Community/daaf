@@ -397,18 +397,20 @@ After completing the skill's Required Actions, return findings using the format 
 
 ## Data Skills
 
-### education-data-explorer
+### Domain Explorer Skill (e.g., `education-data-explorer`)
 
 **Purpose:** Identify available datasets and variables
 **Stage:** 2 (Data Exploration)
 **Subagent:** Plan
-**Skills:** `data-scientist`, `education-data-explorer`
+**Skills:** `data-scientist`, `{domain_explorer_skill}`
+
+> **Domain extensibility:** The orchestrator resolves the explorer skill name based on the active domain (from the Plan's Domain Configuration) and provides it in the Task prompt. The example below uses `education-data-explorer` as the demonstration domain default.
 
 ```python
 Task({
     description: "Stage 2: Data Exploration",
     prompt: """You have access to a skill tool. First, call the skill tool with name 'data-scientist'.
-Then, call the skill tool with name 'education-data-explorer'.
+Then, call the skill tool with name '{domain_explorer_skill}'.  # e.g., 'education-data-explorer'
 
 **ORIGINAL REQUEST (for context):**
 > {original_user_request_verbatim}
@@ -480,6 +482,9 @@ After completing the skill's Required Actions, return findings using the format 
 **Skills:** `data-scientist`, `education-data-source-*`
 
 **Available source skills:**
+
+> The orchestrator resolves source skill names based on the active domain and provides them in the Task prompt.
+
 - `education-data-source-ccd` — K-12 schools and districts
 - `education-data-source-ipeds` — Colleges and universities
 - `education-data-source-crdc` — Civil rights data
@@ -719,12 +724,14 @@ of the proposed transformation sequence and validation approach.
 
 ---
 
-### education-data-query
+### Domain Query Skill (e.g., `education-data-query`)
 
 **Purpose:** Download data from mirrors
 **Stage:** 5 (Data Retrieval)
 **Subagent:** general-purpose
-**Skills:** `data-scientist`, `education-data-query`
+**Skills:** `data-scientist`, `{domain_query_skill}`
+
+> **Domain extensibility:** The orchestrator resolves the query skill name based on the active domain (from the Plan's Domain Configuration) and provides it in the Task prompt. The example below uses `education-data-query` as the demonstration domain default.
 
 ```python
 Task({
@@ -735,7 +742,7 @@ Task({
 All relative paths in referenced files resolve from BASE_DIR.
 
 Call the skill tool with name 'data-scientist'.
-Then, call the skill tool with name 'education-data-query'.
+Then, call the skill tool with name '{domain_query_skill}'.  # e.g., 'education-data-query'
 
 **QUERY SPECIFICATION:**
 - Dataset Path: {dataset_path}  (from datasets-reference.md, flat format e.g. "ccd/schools_ccd_directory")
@@ -755,7 +762,7 @@ Then, call the skill tool with name 'education-data-query'.
 During execution, ACTIVELY MONITOR for watch-for symptoms. Escalate if detected.
 
 **CODED VALUE EXPECTATIONS:**
-Retrieved data may include -1 (missing), -2 (not applicable), -3 (suppressed).
+Retrieved data may include domain-specific coded missing values (per Plan Domain Configuration; e.g., -1, -2, -3 for education).
 These will be handled in Stage 6. Report presence in CP1 output.
 
 **MIRROR FETCH PROTOCOL (MANDATORY):**
@@ -823,12 +830,14 @@ with stage-specific values for Stage 5.
 
 ---
 
-### education-data-context
+### Domain Context Skill (e.g., `education-data-context`)
 
 **Purpose:** Apply source-specific cleaning and generate citations
 **Stage:** 6 (Context Application)
 **Subagent:** general-purpose
-**Skills:** `data-scientist`, `education-data-context`
+**Skills:** `data-scientist`, `{domain_context_skill}`
+
+> **Domain extensibility:** The orchestrator resolves the context skill name based on the active domain (from the Plan's Domain Configuration) and provides it in the Task prompt. The example below uses `education-data-context` as the demonstration domain default.
 
 ```python
 Task({
@@ -839,7 +848,7 @@ Task({
 All relative paths in referenced files resolve from BASE_DIR.
 
 Call the skill tool with name 'data-scientist'.
-Then, call the skill tool with name 'education-data-context'.
+Then, call the skill tool with name '{domain_context_skill}'.  # e.g., 'education-data-context'
 
 **DATA SOURCE:** {source_name}
 
@@ -869,7 +878,7 @@ During execution, ACTIVELY MONITOR for watch-for symptoms. Escalate if detected.
 **THOROUGHNESS DIRECTIVE:**
 - Apply ALL coded value filters as specified
 - Calculate suppression rate for key variables
-- BLOCK if attempting cross-state assessment comparison (NEVER valid)
+- BLOCK if any governance rules from Plan Domain Configuration are violated (e.g., cross-state assessment comparison for education)
 - BLOCK if suppression rate exceeds 50%
 - Generate complete citation text with access date
 - Document all cleaning decisions and row impacts
@@ -884,6 +893,8 @@ Return findings in this structure:
 | -2 (N/A) | | | |
 | -3 (Suppressed) | | | |
 | **Total** | | | |
+
+*(Coded values shown are education domain defaults. Substitute values from Plan Domain Configuration.)*
 
 ### Data Quality Report (CP2)
 - Original rows: [count]

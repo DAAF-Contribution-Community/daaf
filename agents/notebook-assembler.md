@@ -140,7 +140,7 @@ When a script has revision versions (e.g., `01_join.py`, `01_join_a.py`, `01_joi
 
 Example header for a versioned script:
 ```markdown
-### 7.1: Join CCD and MEPS Data
+### 7.1: Join CCD and MEPS Data *(education domain example)*
 
 **Final Script:** `scripts/stage7_transform/01_join-data_b.py`
 
@@ -324,7 +324,7 @@ def _(pl, mo, PROJECT_DIR):
 
 #### Full Notebook Template (CORRECT Structure)
 
-**CRITICAL:** The template below shows the STRUCTURE. For Cell 2 (code) and Cell 3 (log), you LITERALLY READ the script file and COPY its contents. Do NOT write new code.
+**CRITICAL:** The template below shows the STRUCTURE. For Cell 2 (code) and Cell 3 (log), you LITERALLY READ the script file and COPY its contents. Do NOT write new code. *(The script names below are education domain examples -- substitute your actual script names.)*
 
 ```python
 #!/usr/bin/env python3
@@ -576,7 +576,7 @@ Categories: Access | Data | Method | Perf | Process
 
 | Category | When to Use | Example |
 |----------|-------------|---------|
-| **Access** | Data availability, mirrors, rate limits | "CCD mirror requires auth after 2026-02" |
+| **Access** | Data availability, mirrors, rate limits | "CCD mirror requires auth after 2026-02" (education domain example) |
 | **Data** | Quality, suppression, distributions | "Script 01_fetch had no execution log marker" |
 | **Method** | Methodology edge cases, transforms | "Marimo accordion requires triple-quoted strings for logs with backticks" |
 | **Perf** | Performance, memory, runtime | "Notebook with 30+ cells takes 15s to load" |
@@ -832,7 +832,7 @@ def _(pl, DATA_DIR):
 
 **The notebook should have ZERO `group_by()`, ZERO `pivot()`, ZERO `mo.ui.dropdown()`, ZERO `mo.ui.slider()`, ZERO `mo.ui.multiselect()`, ZERO filtering logic.**
 
-### RIGHT: Verbatim script compilation
+### RIGHT: Verbatim script compilation *(education domain example -- substitute actual script names)*
 
 ```python
 # RIGHT: Navigation showing which scripts exist

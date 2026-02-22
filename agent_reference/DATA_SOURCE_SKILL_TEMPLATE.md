@@ -57,7 +57,7 @@ description: >-
   to be loaded]. [One sentence on key limitation or scope if critical.]
 metadata:
   audience: data-analysts
-  domain: education-data
+  domain: education-data  # Use your active domain identifier (e.g., "education-data", "health-data")
 ---
 ```
 
@@ -65,7 +65,7 @@ metadata:
   - name: must match the directory name exactly
   - description: max 1024 chars, no angle brackets (< >)
   - description: MUST include both "what it does" AND "when to use it"
-  - domain: ALWAYS use "education-data" (not education-civil-rights or other variants)
+  - domain: ALWAYS use a consistent domain identifier for your domain (e.g., "education-data" for education; not variants like "education-civil-rights")
   - audience: ALWAYS use "data-analysts" for source skills
 -->
 
@@ -384,7 +384,7 @@ df = fetch_from_mirrors(
   - Section name: ALWAYS "## Related Data Sources"
   - NOT "Related Skills and Tools", "Cross-Reference to Related Skills", etc.
   - 3-column table: Source | Relationship | When to Use
-  - ALWAYS include education-data-explorer and education-data-query rows
+  - ALWAYS include the domain's explorer and query skill rows (e.g., `education-data-explorer` and `education-data-query` for education)
   - Include complementary data sources (e.g., CCD includes CRDC, SAIPE, MEPS)
   - Include join key information if relevant (e.g., "Join on unitid")
 -->

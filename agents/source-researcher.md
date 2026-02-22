@@ -120,23 +120,11 @@ This is a thoroughness-dependent task. Shallow research that misses critical cav
 
 ### Step 1: Load Source Skill
 
-Call the skill tool with the relevant source skill:
-- CCD data → `education-data-source-ccd`
-- IPEDS data → `education-data-source-ipeds`
-- CRDC data → `education-data-source-crdc`
-- Scorecard data → `education-data-source-scorecard`
-- EDFacts data → `education-data-source-edfacts`
-- MEPS data → `education-data-source-meps`
-- SAIPE data → `education-data-source-saipe`
-- FSA data → `education-data-source-fsa`
-- NHGIS data → `education-data-source-nhgis`
-- NCCS data → `education-data-source-nccs`
-- PSEO data → `education-data-source-pseo`
-- EADA data → `education-data-source-eada`
-- NACUBO data → `education-data-source-nacubo`
-- Campus Safety data → `education-data-source-campus-safety`
+The orchestrator provides the exact source skill name in the Task prompt.
+Call the skill tool with that name.
 
-If the skill does not exist, STOP immediately (see STOP Conditions).
+If the orchestrator did not specify a skill name, STOP and request clarification.
+If the specified skill does not exist, STOP immediately (see STOP Conditions).
 
 ### Step 2: Extract Source Summary
 
@@ -175,6 +163,8 @@ For variables relevant to the analysis:
 | [var] | [type] | [desc] | [codes] | [notes] |
 
 ### Coded Value Reference
+
+*(Education domain example — your domain may use different coded values per Plan Domain Configuration.)*
 
 | Code | Meaning | Standard Action |
 |------|---------|-----------------|
@@ -219,7 +209,7 @@ Document things that commonly break analyses:
 | Variable not documented in skill | Flag as LOW confidence; recommend codebook verification |
 | Skill docs contradict known data behavior | Apply Truth Hierarchy (Behavior 4); document discrepancy |
 | Suppression rates appear extreme (>50%) | Flag in CAVEATS and PITFALLS; recommend aggregation strategy |
-| Cross-state assessment comparison requested | Flag as INVALID in PITFALLS; this is never valid |
+| Domain governance rule violation detected (e.g., cross-state assessment comparison in education) | Flag as INVALID in PITFALLS; document which governance rule is violated |
 
 ---
 
@@ -363,7 +353,7 @@ Based on this source research:
 - State confidence without rationale
 - Ignore LOW confidence findings without a resolution plan
 - Fabricate information not found in the skill or verifiable documentation
-- Claim cross-state assessment comparison is valid (it never is)
+- Violate domain governance rules (e.g., cross-state assessment comparison is never valid in education)
 
 ### Autonomous Deviation Rules
 
@@ -411,7 +401,7 @@ Awaiting guidance before proceeding.
 | Anti-Pattern | Problem | Correct Approach |
 |--------------|---------|------------------|
 | Surface-level review | Only reading source summary, missing critical caveats | Follow all 6 protocol steps; read skill thoroughly |
-| Skipping coded values | Not documenting source-specific codes (-1, -2, -3, etc.) | Always complete VARIABLES section with coded value reference table |
+| Skipping coded values | Not documenting source-specific codes (e.g., -1, -2, -3 for education) | Always complete VARIABLES section with coded value reference table |
 | Ignoring state variations | Assuming data is consistent across states | Check and document state-level variations in CAVEATS |
 | Missing suppression patterns | Not calculating typical suppression rates | Document suppression thresholds and typical rates |
 | Vague pitfalls | "Data may have quality issues" | Specific: "FRL unreliable in CEP states; affects ~30% of schools" |
@@ -423,7 +413,7 @@ Awaiting guidance before proceeding.
 
 **DO NOT return a report where any section contains fewer than 5 lines of substantive content.** If the skill documentation is genuinely sparse for a section, explain what was searched, what was found, and what remains unknown. A transparent gap is better than fabricated content.
 
-**DO NOT skip the Coded Value Reference table.** Every source has coded values (at minimum -1, -2 for missing/not applicable). If the skill does not document them, flag this as a gap with LOW confidence and recommend codebook verification.
+**DO NOT skip the Coded Value Reference table.** Every source has coded values (at minimum the coded values specified in the Task prompt or Plan; e.g., -1, -2 for missing/not applicable in education data). If the skill does not document them, flag this as a gap with LOW confidence and recommend codebook verification.
 
 **DO NOT conflate confidence about what the skill says with confidence about what the data actually contains.** The skill may confidently document a value that no longer appears in recent data years. Confidence should reflect the full picture, not just documentation availability.
 

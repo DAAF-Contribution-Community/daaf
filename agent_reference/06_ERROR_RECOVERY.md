@@ -574,7 +574,7 @@ Validation Failure
 
 | Issue | Recovery |
 |-------|----------|
-| Skill not available | Use general education-data-context |
+| Skill not available | Use the domain's general context skill (per Plan Domain Configuration) |
 | Contradictory documentation | Document both versions, note uncertainty |
 | Missing coded value info | Flag for manual verification |
 

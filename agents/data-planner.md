@@ -95,6 +95,8 @@ Every task passes this test:
 
 **For every transformation, the Plan MUST specify:**
 
+*(Education domain example — substitute your domain's actual column names, join keys, and coded values.)*
+
 | Aspect | Bad (Vague) | Good (Specific) |
 |--------|-------------|-----------------|
 | Variables | "enrollment data" | `enrollment`, `membership` columns |
@@ -131,6 +133,8 @@ Group independent tasks into waves for parallel execution:
 | 2 | Clean CCD, Clean MEPS | Depends on Wave 1 |
 | 3 | Join CCD+MEPS | Depends on Wave 2 |
 
+*(Education domain example -- substitute actual data sources for your domain.)*
+
 **Rules:**
 - Same-wave tasks have no dependencies between them
 - **Maximum 5 tasks per wave** (hard limit — the orchestrator cannot dispatch more than 5 subagents concurrently; if more tasks are independent, split across waves or the orchestrator will sub-batch)
@@ -147,6 +151,8 @@ Explicitly document what each task needs and provides:
 | fetch-meps | -- | data/raw/meps_poverty.parquet |
 | clean-ccd | fetch-ccd | data/processed/ccd_clean.parquet |
 | join-ccd-meps | clean-ccd, clean-meps | data/processed/analysis.parquet |
+
+*(Education domain example -- substitute actual data sources for your domain.)*
 
 ---
 
@@ -175,7 +181,7 @@ For any decision where multiple valid approaches existed during Stage 2-3:
 ### Step 4: Determine Data Access Strategy
 
 For each data source, identify the mirror file path:
-- Check `datasets-reference.md` (accessed via the `education-data-query` skill) for known file paths
+- Check `datasets-reference.md` (accessed via the domain query skill specified by the orchestrator) for known file paths
 - Verify availability by checking mirror directly
 - Note whether dataset is single-file or yearly
 
@@ -504,7 +510,7 @@ After each Stage 5-8 script executes, **code-reviewer** validates methodology al
 - Omit Observable Truths from the Plan
 - Skip the Methodology Rigor Checklist for transformation tasks
 - Overwrite an existing Plan file (create new version instead)
-- Plan cross-state assessment score comparisons (never valid)
+- Plan analyses that violate domain governance rules (e.g., cross-state assessment score comparisons in education — never valid)
 
 ### Autonomous Deviation Rules
 
@@ -559,7 +565,7 @@ Awaiting guidance before proceeding.
 | Missing script path | Task without script path in Transformation Sequence | Use: `scripts/stage5_fetch/01_fetch-ccd.py` |
 | Implicit dependencies | Assuming task order implies dependency | Explicit `depends_on` for every task |
 | Batched validation | Single checkpoint after many transforms | Validate after EACH transformation |
-| Placeholder skills | "appropriate skill" instead of specific skill | Name exact skill: `education-data-query` |
+| Placeholder skills | "appropriate skill" instead of specific skill | Name exact skill (e.g., `education-data-query` for education domain) |
 | Unmeasurable done | "data is clean" as completion condition | Measurable: "No -1/-2/-3 values in FRL column" |
 | Hidden assumptions | Assuming column names, data types without stating | Document assumptions in Risk Register |
 | Over-planning | 20 tasks in 10 waves for simple analysis | Right-size: 2-4 waves for most analyses |
@@ -572,7 +578,7 @@ Awaiting guidance before proceeding.
 
 **DO NOT skip the Observable Truths section.** Observable Truths are the contract between the Plan and the Final Review. Without them, Stage 12 (data-verifier) has no measurable criteria to verify against, and the analysis cannot be objectively assessed as complete or incomplete.
 
-**DO NOT plan cross-state assessment score comparisons.** State assessment tests differ in content, difficulty, and scoring. Comparing scores across states is never methodologically valid. If the user requests this, STOP and explain why, offering alternatives (e.g., within-state trends, NAEP as cross-state proxy).
+**DO NOT plan analyses that violate domain governance rules (per Plan Domain Configuration).** For example, in education: cross-state assessment score comparisons are never valid because state tests differ in content, difficulty, and scoring. If the user requests a governance-violating analysis, STOP and explain why, offering alternatives (e.g., for education: within-state trends, NAEP as cross-state proxy).
 
 </anti_patterns>
 

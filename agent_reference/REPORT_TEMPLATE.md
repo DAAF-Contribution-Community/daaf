@@ -143,7 +143,7 @@ This analysis has the following limitations that should be considered when inter
 
 4. **Data suppression:** [X]% of records were suppressed for privacy, which may affect [specific impact]
 
-5. **[Source-specific limitation]:** [From education-data-context skill]
+5. **[Source-specific limitation]:** [From domain context skill (per Plan Domain Configuration)]
 
 6. **COVID-19 impact (if applicable):** [If analysis includes 2020-2021 data, REQUIRED to document: Data from 2020-2021 may be affected by COVID-19 pandemic disruptions including collection method changes, missing data, and non-representative samples. Comparisons to pre-pandemic years should be interpreted with caution.]
 
@@ -153,7 +153,7 @@ This analysis has the following limitations that should be considered when inter
 
 ### Primary Data
 
-> [Full citation from education-data-context skill]
+> [Full citation from domain context skill (per Plan Domain Configuration)]
 
 ### Additional Sources
 

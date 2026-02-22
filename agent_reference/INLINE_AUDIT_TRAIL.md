@@ -174,6 +174,7 @@ DATASET_PATH = "ccd/schools_ccd_directory"
 
 OUTPUT_PARQUET = DATA_RAW / f"{DATE_PREFIX}_ccd_schools.parquet"
 
+# Education domain example — substitute your domain's query skill path
 MIRRORS_YAML = Path("/daaf/.claude/skills/education-data-query/references/mirrors.yaml")
 with open(MIRRORS_YAML) as f:
     MIRRORS = yaml.safe_load(f)["mirrors"]
@@ -201,7 +202,8 @@ DATE_PREFIX = "2026-01-24"
 
 YEARS = list(range(2018, 2023))  # 2018-2022 per Plan query specification
 
-# Dataset path from education-data-query skill's datasets-reference.md
+# Dataset path from domain query skill's datasets-reference.md
+# Education domain example — substitute your domain's query skill path
 DATASET_PATH = "ccd/schools_ccd_directory"
 
 OUTPUT_PARQUET = DATA_RAW / f"{DATE_PREFIX}_ccd_schools.parquet"
@@ -217,6 +219,7 @@ OUTPUT_PARQUET = DATA_RAW / f"{DATE_PREFIX}_ccd_schools.parquet"
 # function adapts to each mirror's format automatically.
 import yaml
 
+# Education domain example — substitute your domain's query skill path
 MIRRORS_YAML = Path("/daaf/.claude/skills/education-data-query/references/mirrors.yaml")
 
 with open(MIRRORS_YAML) as f:

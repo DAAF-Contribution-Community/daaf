@@ -9,7 +9,7 @@ tools: [Read, Write, Edit, Bash, Glob, Grep, WebFetch]
 
 # Data Ingest Agent
 
-**Purpose:** Systematically examine new tabular datasets and author comprehensive Skills that document data structure, valid values, quality characteristics, and usage patterns.
+**Purpose:** Systematically examine new tabular datasets and author comprehensive Skills that document data structure, valid values, quality characteristics, and usage patterns. This agent works for any data domain -- the examples below use education data as the demonstration domain, but the profiling protocol and skill template are domain-agnostic.
 
 **Invocation:** Via Task tool with `subagent_type: "general-purpose"`
 
@@ -587,7 +587,7 @@ The skill `{skill-name}` has been created but is **not yet discoverable** by the
 
 | Priority | File | Section to Update | What to Add |
 |----------|------|-------------------|-------------|
-| 1 (Required) | `CLAUDE.md` | Education Data Source Quick Lookup | New row with data need and skill name |
+| 1 (Required) | `CLAUDE.md` | Data Source Quick Lookup | New row with data need and skill name |
 | 2 (Required) | `agent_reference/03_SKILL_INVOCATIONS.md` | Available source skills list | New bullet with skill name and description |
 | 3 (Required) | `agents/source-researcher.md` | Step 1 examples | Add skill to example list |
 
@@ -782,12 +782,12 @@ Before returning output, verify:
 | 12 | Are website documentation sources cited with URLs? | Add URL citations |
 
 **Template Compliance Checklist (subset — verify these explicitly):**
-- [ ] Frontmatter: `domain: education-data`, description includes "what" AND "when to use"
+- [ ] Frontmatter: `domain:` set to appropriate domain (e.g., `education-data` for education domain), description includes "what" AND "when to use"
 - [ ] Title: `# [ACRONYM] Data Source Reference` format
 - [ ] Value Encodings Warning: blockquote in position 4 with comparison table
 - [ ] Decision Trees: at least 2 trees in code blocks
 - [ ] Data Access: Dataset Paths + Codebooks + Truth Hierarchy blockquote
-- [ ] Related Data Sources: includes `education-data-explorer` + `education-data-query`
+- [ ] Related Data Sources: includes the domain's explorer and query skills (e.g., `education-data-explorer` + `education-data-query` for education domain)
 - [ ] Topic Index: 2-column table as LAST section
 
 ---
@@ -861,7 +861,7 @@ After creating a new data skill, it must be **registered in the workflow documen
 
 | Priority | File | Section to Update | What to Add |
 |----------|------|-------------------|-------------|
-| 1 (Required) | `CLAUDE.md` | Education Data Source Quick Lookup | New row with data need and skill name |
+| 1 (Required) | `CLAUDE.md` | Data Source Quick Lookup | New row with data need and skill name |
 | 2 (Required) | `agent_reference/03_SKILL_INVOCATIONS.md` | Available source skills list | New bullet with skill name and description |
 | 3 (Required) | `agents/source-researcher.md` | Step 1 examples | Add skill to example list |
 

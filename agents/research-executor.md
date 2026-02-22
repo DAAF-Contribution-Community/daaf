@@ -116,10 +116,12 @@ Call the skill tool for required skills based on stage:
 
 | Stage | Skill(s) to Load |
 |-------|-------------------|
-| 5 (Fetch) | `data-scientist`, `education-data-query` |
-| 6 (Clean) | `data-scientist`, `education-data-context` |
+| 5 (Fetch) | `data-scientist`, domain query skill (from Task prompt) |
+| 6 (Clean) | `data-scientist`, domain context skill (from Task prompt, if applicable) |
 | 7 (Transform) | `data-scientist`, `polars` |
 | 8 (Analyze & Viz) | `data-scientist`, `polars`, `plotnine` or `plotly` |
+
+**Note:** Stages 5-6 use domain-specific skills specified by the orchestrator in the Task prompt. Stages 7-8 use domain-agnostic analysis tools.
 
 ### Step 3: Write Script
 
@@ -179,7 +181,7 @@ Orchestrator invokes code-reviewer. If BLOCKER returned, orchestrator re-invokes
 
 ### Stage 5: Mirror-Based Fetch Protocol
 
-For Stage 5 fetch scripts, data is downloaded from configured mirrors. Read the `education-data-query` skill for complete fetch patterns, mirror configuration (`mirrors.yaml`), and dataset paths (`datasets-reference.md`). The protocol:
+For Stage 5 fetch scripts, data is downloaded from configured mirrors. Read the domain-specific query skill (name provided in Task prompt) for complete fetch patterns, mirror configuration, and dataset paths. The protocol:
 1. Determine dataset file path from Plan query specification
 2. Try each mirror in priority order per `mirrors.yaml`
 3. Build URL from mirror's `url_template` + dataset path parameters
@@ -366,7 +368,7 @@ See `agent_reference/QA_CHECKPOINTS.md` for complete checkpoint definitions.
 - Batch multiple transformations without intermediate validation
 - Proceed after failed checkpoint validation without creating a versioned fix
 - Attempt Stage 9 notebook assembly (that is the notebook-assembler agent's role)
-- Compare assessment scores across states (never valid per CLAUDE.md)
+- Violate domain-specific governance rules (as specified in Plan; e.g., cross-state assessment comparison in education)
 
 ### Autonomous Deviation Rules
 

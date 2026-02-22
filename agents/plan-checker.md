@@ -91,7 +91,7 @@ Also check for related files in the project directory using `ls` on the plan's p
 
 Break the research question into concrete requirements (REQ-01, REQ-02, etc.). Each requirement represents something that must be TRUE for the goal to be achieved.
 
-Example: "Analyze relationship between school poverty and enrollment across states" decomposes to: REQ-01 (poverty data acquired), REQ-02 (enrollment data acquired), REQ-03 (data cleaned), REQ-04 (data joined), REQ-05 (state-level aggregation), REQ-06 (statistical analysis), REQ-07 (visualization).
+Example (education domain): "Analyze relationship between school poverty and enrollment across states" decomposes to: REQ-01 (poverty data acquired), REQ-02 (enrollment data acquired), REQ-03 (data cleaned), REQ-04 (data joined), REQ-05 (state-level aggregation), REQ-06 (statistical analysis), REQ-07 (visualization).
 
 ### Step 3: Check Requirement Coverage (D1 — Completeness)
 
@@ -126,7 +126,7 @@ For each task, verify required fields exist with substantive content.
 
 **Flag these patterns as incomplete:** `[placeholder]`, `[TBD]`, `[add]`, empty sections, generic criteria ("data ready", "task complete"), paths with brackets, vague methodology ("process the data", "filter as needed", "aggregate appropriately").
 
-**Example: Missing Requirement Coverage (D1 — Completeness)**
+**Example: Missing Requirement Coverage (D1 — Completeness)** *(education domain example)*
 
 **Research goal:** "Analyze school poverty and enrollment relationship by state"
 **Requirements derived:**
@@ -158,7 +158,7 @@ issue:
   fix_hint: "Add join-data task between Wave 2 and Wave 3"
 ```
 
-**Example: Task Missing Verification (D2 — Consistency)**
+**Example: Task Missing Verification (D2 — Consistency)** *(education domain example)*
 
 **Task in Plan:**
 ```xml
@@ -199,7 +199,7 @@ Parse `depends_on` from each task. Build the dependency graph and validate:
 3. Wave numbers consistent with dependencies (wave = max(dep waves) + 1)
 4. Wave 1 tasks have no dependencies
 
-**Example: Circular Dependency (D3 — Feasibility)**
+**Example: Circular Dependency (D3 — Feasibility)** *(education domain example)*
 
 **Task dependencies:**
 ```yaml
@@ -239,7 +239,7 @@ Verify that observable truths trace back to the research goal and are data-obser
 
 **Join tasks specifically** must include cardinality validation (expected 1:1, 1:many, or many:1) and pre/post row count checks in their verify element. Joins without cardinality specification are a common source of silent data loss.
 
-**Example: Missing STOP Condition (D4 — Testability)**
+**Example: Missing STOP Condition (D4 — Testability)** *(education domain example)*
 
 **Task with high-risk operation:**
 ```xml
@@ -282,7 +282,7 @@ Join output → Aggregate input (paths match?)
 Aggregate output → Visualize input (paths match?)
 ```
 
-**Example: File Path Mismatch (D5 — Clarity)**
+**Example: File Path Mismatch (D5 — Clarity)** *(education domain example)*
 
 **Task outputs:**
 ```xml
@@ -319,9 +319,9 @@ Evaluate plan scope against context budget thresholds:
 - Analysis crammed into one task (fetch + clean + join + aggregate)
 - Overly granular (20+ tiny tasks for simple analysis)
 
-When scope exceeds thresholds, recommend splitting into phases (e.g., "Phase A: CCD+MEPS core analysis, Phase B: EDFACTS+CRDC enhancement").
+When scope exceeds thresholds, recommend splitting into phases (e.g., "Phase A: core analysis with primary sources, Phase B: enhancement with secondary sources").
 
-**Example: Scope Exceeded (D6 — Scope)**
+**Example: Scope Exceeded (D6 — Scope)** *(education domain example)*
 
 **Plan analysis:**
 ```
@@ -338,7 +338,7 @@ issue:
   severity: warning
   description: "Plan has 14 tasks - exceeds recommended 5-10 for single analysis"
   metrics: { tasks: 14, waves: 5, complexity: "high" }
-  fix_hint: "Consider splitting: Phase A (CCD+MEPS core), Phase B (EDFACTS+CRDC enhancement)"
+  fix_hint: "Consider splitting: Phase A (primary sources core), Phase B (secondary sources enhancement)"
 ```
 
 ### Step 9: Verify Checkpoint Integration
@@ -467,8 +467,8 @@ Categories: Access | Data | Method | Perf | Process
 
 | Category | When to Use | Example |
 |----------|-------------|---------|
-| **Access** | Data availability, mirrors, rate limits | "CCD mirror requires auth after 2026-02" |
-| **Data** | Quality, suppression, distributions | "MEPS has 12% ambiguous school keys" |
+| **Access** | Data availability, mirrors, rate limits | "CCD mirror requires auth after 2026-02" (education domain example) |
+| **Data** | Quality, suppression, distributions | "MEPS has 12% ambiguous school keys" (education domain example) |
 | **Method** | Methodology edge cases, transforms | "District aggregation requires LEAID type filter" |
 | **Perf** | Performance, memory, runtime | "15+ tasks consistently triggers scope blocker" |
 | **Process** | Execution patterns, error patterns | "Plans missing STOP conditions 60% of the time" |
