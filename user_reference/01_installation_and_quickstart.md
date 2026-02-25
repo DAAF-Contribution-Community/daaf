@@ -173,6 +173,33 @@ And then change the **"Auto-compact"** setting to **False** and **"Verbose outpu
 
 Opus 4.6 (unlike Opus 4.5) also allows you to select its "thinking level" by tapping left-and-right arrow keys while Opus 4.6 is selected on the /model selector in Claude Code. All tests I've conducted to date are using the "High" setting -- as this is a case where quality is far more important than quantity, I strongly recommend doing the same. This will have usage and API limit ramificiations, though, so it is a reasonable thing to test out the tradeoffs for yourself! Please do report back with any findings so we can incorporate that into our guidance here.
 
+### Step 8 (Optional): Set up data source API keys
+
+Most DAAF data sources — including all built-in education data from the Urban Institute — are **freely accessible with no authentication required**. You can skip this step entirely if you're only working with education data.
+
+However, some data domains require API keys from their hosting platforms. If you plan to use any of these data sources, you'll need to set the corresponding environment variable **inside the Docker container, before launching Claude Code**:
+
+| Data Source | Environment Variable | Where to Get a Key |
+|-------------|---------------------|-------------------|
+| County Presidential Election Returns (Harvard Dataverse) | `HARVARD_DATAVERSE_API_KEY` | [dataverse.harvard.edu](https://dataverse.harvard.edu/) → Log in → Account name (top-right) → API Token → Create Token |
+
+To set a key for your current session:
+
+```bash
+# Run this inside the Docker container, BEFORE running `claude`
+export HARVARD_DATAVERSE_API_KEY="your_token_here"
+```
+
+To make it persist across container restarts, add the `export` line to `~/.bashrc` inside the container:
+
+```bash
+echo 'export HARVARD_DATAVERSE_API_KEY="your_token_here"' >> ~/.bashrc
+```
+
+> **Note:** DAAF's safety guardrails prevent Claude from reading or writing `.env` files, so environment variables must be set directly in the shell. This is by design — your credentials stay in temporary memory only and are never written to files that could be accidentally committed to a public repository or shared outside the container.
+
+If you skip this step and later try to analyze election data, DAAF will inform you that the API key is missing and point you back to these instructions.
+
 ---
 
 ### First Launch: Confirming Everything Works

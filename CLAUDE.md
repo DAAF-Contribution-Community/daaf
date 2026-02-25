@@ -1810,6 +1810,7 @@ See `agent_reference/SCRIPT_TEMPLATE.md` for complete script template and exampl
 | Private college 990 data | NCCS | `education-data-source-nccs` |
 | Federal student aid | FSA | `education-data-source-fsa` |
 | Census/demographic data | NHGIS | `education-data-source-nhgis` |
+| County presidential returns | MEDSL | `election-data-source-countypres` |
 
 ---
 

@@ -290,6 +290,27 @@ This usually means one of a few things:
 3. Check the Education Data Portal documentation directly to confirm the data you want actually exists
 4. If the portal seems down, wait and try again later
 
+### Q: I'm getting a "KeyError: HARVARD_DATAVERSE_API_KEY" error when fetching election data
+
+Election data (county presidential returns) is hosted on Harvard Dataverse, which requires an API key — unlike the Urban Institute Education Data Portal, which is freely accessible with no authentication.
+
+**To fix this:**
+
+1. Create a free account at [dataverse.harvard.edu](https://dataverse.harvard.edu/)
+2. Log in, click your account name (top-right) → **API Token** → **Create Token**
+3. Copy the token, then run this **inside the Docker container, before launching Claude Code**:
+   ```bash
+   export HARVARD_DATAVERSE_API_KEY="your_token_here"
+   ```
+4. Then start Claude Code with `claude` as usual
+
+To make it persist across sessions, add the export line to `~/.bashrc` inside the container:
+```bash
+echo 'export HARVARD_DATAVERSE_API_KEY="your_token_here"' >> ~/.bashrc
+```
+
+See also: [Installation Guide — Data Source API Keys](01_installation_and_quickstart.md#step-8-optional-set-up-data-source-api-keys)
+
 ### Q: How current is the education data?
 
 Education data has significant publication lags that vary by source. This is not a DAAF limitation -- it's how federal education data works. Agencies need time to collect, clean, validate, and publish data, so the most recent available data is typically 1-3 years behind the current date.

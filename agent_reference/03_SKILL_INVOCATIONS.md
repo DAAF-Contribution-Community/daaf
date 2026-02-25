@@ -499,6 +499,7 @@ After completing the skill's Required Actions, return findings using the format 
 - `education-data-source-nhgis` — Census geography
 - `education-data-source-nccs` — Nonprofit data
 - `education-data-source-campus-safety` — Campus crime
+- `election-data-source-countypres` — County presidential election returns 2000-2024
 
 ```python
 Task({
