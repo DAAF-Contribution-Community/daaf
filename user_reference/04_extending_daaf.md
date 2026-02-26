@@ -44,7 +44,7 @@ For methodology and domain expertise skills, the process is lighter-weight -- yo
 
 ## Step-by-Step: Profiling a New Dataset with Data-Ingest
 
-The [`data-ingest`](../agents/data-ingest.md) agent is DAAF's built-in tool for turning a raw dataset (or online dataset source) into a comprehensive data source skill it can begin using in tandem with other data source skills. It automates the tedious but critical work of profiling every column, detecting coded values, checking data quality, and reconciling what any provided documentation says against what the data actually contains. 
+The [`data-ingest`](../agents/data-ingest.md) agent is DAAF's built-in tool for turning a raw dataset (or online dataset source) into a comprehensive data source skill it can begin using in tandem with other data source skills. It automates the tedious but critical work of profiling every column, detecting coded values, checking data quality, and reconciling what any provided documentation says against what the data actually contains. In addition to the instructions below, I've also made a [10-minute video tutorial](https://youtu.be/G5uKSlI6jls) giving you the intuition and overview for how this works.
 
 ### Before You Start
 
