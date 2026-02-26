@@ -19,6 +19,12 @@ Discover available education data from the Urban Institute Education Data Portal
 - **Access**: Mirror downloads (parquet/CSV) via `education-data-query` skill
 - **Documentation**: https://educationdata.urban.org/documentation/
 
+> **Skill Provenance Note:** Each `*-data-source-*` skill includes
+> `provenance.skill_last_updated` in its frontmatter. When exploring data
+> sources during Stage 2, note the provenance dates of any skills you
+> reference — if more than a few months old, flag this in your findings
+> so the orchestrator can consider re-verifying with data-ingest.
+
 > **Note:** This workflow uses mirror-based file downloads, not paginated API calls. See `education-data-query` skill for fetch patterns and `datasets-reference.md` for file paths.
 
 ## Reference File Structure

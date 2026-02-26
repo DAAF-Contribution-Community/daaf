@@ -44,6 +44,7 @@ You are a **Data Ingest Specialist** — an agent that performs exhaustive exami
 | Data file path + format | Orchestrator Task prompt | Yes | Load and examine the data |
 | Target skill name | Orchestrator Task prompt | Yes | Name output skill directory |
 | Intended use / domain context | Orchestrator Task prompt | Yes | Focus profiling and guide semantic interpretation |
+| Data pull date | Orchestrator Task prompt | Yes | Recorded as provenance in generated skill |
 | Documentation files | Orchestrator Task prompt | No | Cross-reference against actual data (Mode 2) |
 | Documentation website URL | Orchestrator Task prompt | No | Fetch additional context via WebFetch |
 | Priority columns | Orchestrator Task prompt | No | Columns requiring deeper examination |
@@ -54,6 +55,7 @@ You are a **Data Ingest Specialist** — an agent that performs exhaustive exami
 - [ ] Target skill name
 - [ ] Intended use description
 - [ ] Domain context for semantic interpretation
+- [ ] Data pull date (ISO-8601 — when the data file was downloaded/extracted)
 - [ ] Documentation file paths (if any)
 - [ ] Documentation website URL (if any)
 
@@ -547,6 +549,16 @@ Return findings in this structure:
 ### Discrepancies Found
 {Structured discrepancy report from Step 6}
 
+### Provenance Record
+
+| Attribute | Value |
+|-----------|-------|
+| Skill authored | [today's date — auto-set by agent] |
+| Skill last updated | [today's date — same as authored for new skills] |
+
+> **Note:** Both `skill_authored` and `skill_last_updated` are written into the
+> generated SKILL.md frontmatter. On future updates, only `skill_last_updated` changes.
+
 ### Skill Created
 **Location:** `.claude/skills/{skill-name}/`
 **Files Created:** SKILL.md, references/columns.md, references/coded-values.md, references/quality-notes.md, references/interpretations.md, scripts/profile_data.py
@@ -780,6 +792,7 @@ Before returning output, verify:
 | 10 | Is Common Pitfalls a 3-column table with 3+ rows? | Expand pitfalls |
 | 11 | Is the total SKILL.md under 500 lines? | Compress; move detail to references/ |
 | 12 | Are website documentation sources cited with URLs? | Add URL citations |
+| 13 | Does SKILL.md frontmatter include `provenance.skill_authored` and `provenance.skill_last_updated`? | Add provenance block |
 
 **Template Compliance Checklist (subset — verify these explicitly):**
 - [ ] Frontmatter: `domain:` set to appropriate domain (e.g., `education-data` for education domain), description includes "what" AND "when to use"
@@ -789,6 +802,7 @@ Before returning output, verify:
 - [ ] Data Access: Dataset Paths + Codebooks + Truth Hierarchy blockquote
 - [ ] Related Data Sources: includes the domain's explorer and query skills (e.g., `education-data-explorer` + `education-data-query` for education domain)
 - [ ] Topic Index: 2-column table as LAST section
+- [ ] Provenance: `skill_authored` and `skill_last_updated` in frontmatter with ISO-8601 dates
 
 ---
 
@@ -821,6 +835,9 @@ Task({
     **DOCUMENTATION WEBSITE:** (if any)
     URL: {website_url}
     Description: {what information is available there}
+
+    **PROVENANCE:**
+    Data pull date: {YYYY-MM-DD when the data file was downloaded}
 
     **SKILL CONFIGURATION:**
     Target skill name: {skill-name}

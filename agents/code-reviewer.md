@@ -91,7 +91,11 @@ Apply these lenses to every script, in addition to the default checks:
 | **Absence** | "What's NOT in this code that should be?" | Missing filters, unhandled categories, silent data loss |
 | **Downstream** | "If I were the next script consuming this output, what would surprise me?" | Hidden assumptions that break downstream tasks |
 
-### 3. The "Sleeping Bug" Principle
+### 3. Skill Provenance Check
+
+When reviewing a script that relies on coded value mappings, column definitions, or quality assumptions from a `*-data-source-*` skill, check that skill's `provenance.skill_last_updated` frontmatter field. If more than a few months old, flag this as a WARNING — the skill's documentation may have drifted from the current data, and the script's assumptions should be verified against the actual data file.
+
+### 4. The "Sleeping Bug" Principle
 
 Some errors don't manifest with current data but will break with future data or different parameters. A join that happens to be 1:1 today might fan out with next year's data if a school changes districts. A filter that removes zero rows today might remove critical rows if the data source changes. **Hunt for sleeping bugs** — errors that are latent in the logic even if they don't trigger in this specific execution.
 

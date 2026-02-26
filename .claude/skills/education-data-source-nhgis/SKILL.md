@@ -10,6 +10,9 @@ description: >-
 metadata:
   audience: data-analysts
   domain: education-data
+provenance:
+  skill_authored: "2026-02-09"
+  skill_last_updated: "2026-02-09"
 ---
 
 # NHGIS Data Source Reference

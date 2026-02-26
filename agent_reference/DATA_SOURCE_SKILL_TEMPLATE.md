@@ -58,6 +58,9 @@ description: >-
 metadata:
   audience: data-analysts
   domain: education-data  # Use your active domain identifier (e.g., "education-data", "health-data")
+provenance:
+  skill_authored: "YYYY-MM-DD"      # Date this skill was first created
+  skill_last_updated: "YYYY-MM-DD"  # Date this skill was last updated or re-verified
 ---
 ```
 
@@ -67,6 +70,12 @@ metadata:
   - description: MUST include both "what it does" AND "when to use it"
   - domain: ALWAYS use a consistent domain identifier for your domain (e.g., "education-data" for education; not variants like "education-civil-rights")
   - audience: ALWAYS use "data-analysts" for source skills
+  - PROVENANCE (REQUIRED for all data source skills):
+    - skill_authored: ISO-8601 date when the skill was first created (never changes after initial authoring)
+    - skill_last_updated: ISO-8601 date when the skill was last updated or re-verified against data
+    - On updates: change skill_last_updated only; skill_authored remains fixed
+    - STALENESS: If skill_last_updated is more than a few months old, treat skill
+      claims with caution — data sources evolve and skill documentation may have drifted
 -->
 
 ---
@@ -127,6 +136,20 @@ Should orient the reader immediately — what this source provides that others d
   - If the source uses nulls instead of -1/-2/-3 codes, note that here
   - Do NOT place Truth Hierarchy here — it belongs in Section 9 (Data Access)
 -->
+
+---
+
+### Section 4.5: Staleness Warning
+
+> **Note:** This warning is NOT a separate section in the generated SKILL.md.
+> It is guidance for agents and humans consuming the skill. The provenance
+> dates in frontmatter are sufficient — this rule governs interpretation.
+
+**Rule:** If `skill_last_updated` is **more than a few months old**, treat the
+skill's claims about column definitions, coded values, suppression patterns,
+and data quality with caution. Data sources evolve — new years are added,
+schemas change, coded values are revised, and suppression thresholds shift.
+When in doubt, re-run data-ingest to re-verify against fresh data.
 
 ---
 
@@ -433,6 +456,7 @@ Use this checklist when reviewing a skill for template compliance:
 
 - [ ] Frontmatter: `domain: education-data` (not other values)
 - [ ] Frontmatter: description includes "what" AND "when to use"
+- [ ] Frontmatter: `provenance.skill_authored` and `provenance.skill_last_updated` present with ISO-8601 dates
 - [ ] Title: `# [ACRONYM] Data Source Reference` format
 - [ ] Summary: 1-2 sentences after title
 - [ ] Value Encodings Warnings: blockquote in position 4 with comparison table

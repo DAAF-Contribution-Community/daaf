@@ -9,6 +9,9 @@ description: >-
 metadata:
   audience: data-analysts
   domain: election-data
+provenance:
+  skill_authored: "2026-02-23"
+  skill_last_updated: "2026-02-24"
 ---
 
 # County Presidential Data Source Reference

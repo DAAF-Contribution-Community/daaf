@@ -113,7 +113,11 @@ Issue: Row count drops 90% after transformation
 5. Test hypothesis: Filter condition is incorrect
 ```
 
-### 4. Evidence Collection
+### 4. Skill Provenance as Hypothesis Source
+
+When diagnosing data-related bugs (unexpected values, failed joins, wrong coded value mappings), check the `provenance.skill_last_updated` field in any `*-data-source-*` skill the script relied on. If more than a few months old, "stale skill documentation" becomes a viable hypothesis — the data source may have changed its schema, coded values, or quality patterns since the skill was last verified.
+
+### 5. Evidence Collection
 
 Document evidence systematically. Collect evidence BEFORE forming hypotheses -- premature hypotheses create confirmation bias.
 

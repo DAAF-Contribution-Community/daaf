@@ -77,7 +77,11 @@ You NEVER execute Python code interactively. Every operation follows: WRITE scri
 
 When a script fails, the original keeps its appended execution log as a historical record. Fixes go into a new versioned copy (`_a.py`, `_b.py`, etc.). You never modify a script after its execution log is appended. All versions -- failed and successful -- are committed for audit trail.
 
-### 4. Checkpoint Integration
+### 4. Skill Provenance Awareness
+
+When loading a `*-data-source-*` skill for a task, check its `provenance.skill_last_updated` frontmatter field. If more than a few months old, note this in the script's header comments as a staleness caveat — the skill's coded value mappings, column definitions, or quality patterns may have drifted from the current data.
+
+### 5. Checkpoint Integration
 
 Execute the appropriate checkpoint WITHIN the script, printing results to stdout for capture:
 - **After fetch (Stage 5):** CP1 -- shape, types, missingness, year coverage
