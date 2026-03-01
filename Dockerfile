@@ -1,7 +1,7 @@
 # Data Science Dockerfile with uv and Claude Code
 # Base: Astral uv with Python 3.12 on Debian Bookworm
 
-FROM ghcr.io/astral-sh/uv:python3.12-bookworm
+FROM ghcr.io/astral-sh/uv:0.9.30-python3.12-bookworm
 
 LABEL maintainer="Data Science Environment"
 LABEL description="Python data science with uv and Claude Code"
@@ -30,28 +30,28 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # Install core data science packages
 RUN uv pip install --system \
-    numpy \
-    pandas \
-    polars \
-    scipy \
-    openpyxl \
-    xlrd \
-    requests \
-    pyarrow \
-    urllib3 \
-    pre-commit \
-    scikit-learn \
-    pyyaml \
-    statsmodels \
-    pyfixest
+    numpy==2.4.2 \
+    pandas==3.0.0 \
+    polars==1.38.1 \
+    scipy==1.17.0 \
+    openpyxl==3.1.5 \
+    xlrd==2.0.2 \
+    requests==2.32.5 \
+    pyarrow==23.0.0 \
+    urllib3==2.6.3 \
+    pre-commit==4.5.1 \
+    scikit-learn==1.8.0 \
+    pyyaml==6.0.3 \
+    statsmodels==0.14.6 \
+    pyfixest==0.40.0
 
 # Install visualization packages
 RUN uv pip install --system \
-    matplotlib \
-    seaborn \
-    plotnine \
-    plotly \
-    marimo
+    matplotlib==3.10.8 \
+    seaborn==0.13.2 \
+    plotnine==0.15.3 \
+    plotly==6.5.2 \
+    marimo==0.19.11
 
 # ============================================
 # Create non-root user for security
