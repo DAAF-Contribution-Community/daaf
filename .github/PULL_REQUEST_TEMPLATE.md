@@ -34,8 +34,8 @@
 
 ## Checklist
 
-- [ ] I have read the [Contributing Guide](CONTRIBUTING.md)
-- [ ] My commits are signed off (`git commit -s`) per the [DCO](CONTRIBUTING.md#developer-certificate-of-origin)
+- [ ] I have read the [Contributing Guide](../CONTRIBUTING.md)
+- [ ] My commits are signed off (`git commit -s`) per the [DCO](../CONTRIBUTING.md#developer-certificate-of-origin)
 - [ ] Pre-commit hooks pass (`pre-commit run --all-files`)
 - [ ] I have updated relevant documentation for my changes
 - [ ] I have not committed credentials, API keys, or data files

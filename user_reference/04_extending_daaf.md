@@ -1,6 +1,6 @@
 # 04. Extending DAAF
 
-This guide focuses on the primary extension path: bringing new datasets, data domain expertise, and methodological tooling into DAAF for your own purposes. If you want to make any of these modifications available to the broader community by sharing these changes/extensions back with the DAAF project, see [**05. Contributing to DAAF**](CONTRIBUTING.md).
+This guide focuses on the primary extension path: bringing new datasets, data domain expertise, and methodological tooling into DAAF for your own purposes. If you want to make any of these modifications available to the broader community by sharing these changes/extensions back with the DAAF project, see [**05. Contributing to DAAF**](../CONTRIBUTING.md).
 
 [**Back to main**](../.)
 
@@ -241,7 +241,7 @@ If any of these answers are vague, the agent-authoring skill will push you to sh
 | `agent_reference/AGENT_TEMPLATE.md` | Canonical 12-section template |
 | `agents/README.md` | Current agent landscape, commonly confused pairs, coordination matrix |
 
-For changes to *existing* agents (modifying behavior rather than adding new ones), see [**05. Contributing to DAAF**](CONTRIBUTING.md).
+For changes to *existing* agents (modifying behavior rather than adding new ones), see [**05. Contributing to DAAF**](../CONTRIBUTING.md).
 
 ---
 
@@ -323,7 +323,7 @@ A few things to check:
 
 ### How to Submit
 
-See [**05. Contributing to DAAF**](CONTRIBUTING.md) for the full contribution workflow. The short version: fork the repository, add your skill files, update the registration entries, and submit a pull request. The contribution guide covers pull request formatting, quality standards, and the review process in detail.
+See [**05. Contributing to DAAF**](../CONTRIBUTING.md) for the full contribution workflow. The short version: fork the repository, add your skill files, update the registration entries, and submit a pull request. The contribution guide covers pull request formatting, quality standards, and the review process in detail.
 
 If you're not comfortable with the pull request process, you can also [open an issue](https://github.com/DAAF-Contribution-Community/daaf/issues) describing your new skill and sharing the files -- the community can help get it integrated.
 
@@ -337,7 +337,7 @@ If you [open an issue](https://github.com/DAAF-Contribution-Community/daaf/issue
 
 ## Recommended Next Steps
 
-- [**05. Contributing to DAAF**](CONTRIBUTING.md) — Get involved in developing DAAF! How to file issues via GitHub, support expanding the capabilities of the framework, contribute to educational tutorials and how-to's, and more!
+- [**05. Contributing to DAAF**](../CONTRIBUTING.md) — Get involved in developing DAAF! How to file issues via GitHub, support expanding the capabilities of the framework, contribute to educational tutorials and how-to's, and more!
 - [**06. FAQ: Philosophy**](06_faq_philosophy.md) — Grapples with the broader implications of this work, AI automation in general, model advancement pace, approaching the "exponential", environmental ethics, what this means for the next generation of researchers, and more
 - [**07. FAQ: Technical Support**](07_faq_technical.md) — Covers frequently asked questions about Docker, issues with Claude Code, usage limits, authentication errors, and other common errors
 - [**Back to main**](../.)
