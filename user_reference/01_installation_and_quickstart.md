@@ -2,7 +2,7 @@
 
 This is the complete first-time installation and setup guide for DAAF. This document covers every step from installing prerequisites to running your first session, as well as tips for file management, viewing compiled research script notebooks, and troubleshooting.
 
-[**Back to main**](../.)
+[**Back to main**](https://github.com/DAAF-Contribution-Community/daaf/tree/main)
 
 ---
 
@@ -388,4 +388,4 @@ marimo edit 'research/YYYY-MM-DD Title/YYYY-MM-DD Notebook Name.py' --host 0.0.0
 - [**02. Understanding and Working with DAAF**](02_understanding_daaf.md) — Learn to work with DAAF for the first time: what to expect, how to use it, and how to test its strengths and limitations
 - [**06. FAQ: Philosophy**](06_faq_philosophy.md) — Grapples with the broader implications of this work, AI automation in general, model advancement pace, approaching the "exponential", environmental ethics, what this means for the next generation of researchers, and more
 - [**07. FAQ: Technical Support**](07_faq_technical.md) — Covers frequently asked questions about Docker, issues with Claude Code, usage limits, authentication errors, and other common errors
-- [**Back to main**](../.)
+- [**Back to main**](https://github.com/DAAF-Contribution-Community/daaf/tree/main)

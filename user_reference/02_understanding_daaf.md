@@ -4,7 +4,7 @@ This guide is designed to turn a new user into a confident user. It expands on t
 
 > **Quick tip before you begin**: If you have any questions, concerns, issues, or confusion about **anything** you read in this guide: Ask Claude for help! Point it to any document, section, or sentence, and then ask it to help you understand it better. It has visibility into the whole project documentation at-will, so it should be able to help you out as you go. This kind of personalized assistance should be invaluable for anyone getting onboarded into using DAAF and Claude Code more generally!
 
-[**Back to main**](../.)
+[**Back to main**](https://github.com/DAAF-Contribution-Community/daaf/tree/main)
 
 ---
 
@@ -597,4 +597,4 @@ Here's a quick reference for what each part of the DAAF repository contains and 
 - [**03. Best Practices**](03_best_practices.md) — Tips for working with Claude Code, writing effective prompts, ensuring quality and rigor with DAAF, reviewing outputs, and managing context
 - [**06. FAQ: Philosophy**](06_faq_philosophy.md) — Grapples with the broader implications of this work, AI automation in general, model advancement pace, approaching the "exponential", environmental ethics, what this means for the next generation of researchers, and more
 - [**07. FAQ: Technical Support**](07_faq_technical.md) — Covers frequently asked questions about Docker, issues with Claude Code, usage limits, authentication errors, and other common errors
-- [**Back to main**](../.)
+- [**Back to main**](https://github.com/DAAF-Contribution-Community/daaf/tree/main)

@@ -2,7 +2,7 @@
 
 This document seeks to grapple with some of the bigger implications of DAAF and AI in research more generally. For most of these, I'll do my best to share my informed thoughts and current awareness of a topic -- but alas, I really won't have many or any satisfying answers for you here. This will be a constant work-in-progress as questions and discussions arise!
 
-[**Back to main**](../.)
+[**Back to main**](https://github.com/DAAF-Contribution-Community/daaf/tree/main)
 
 ---
 
@@ -106,7 +106,7 @@ What I can commit to is that DAAF should be as efficient as possible for the qua
 
 ## Recommended Next Steps
 
-- [**00. README**](../.) — Vision and purpose, project goals, what DAAF does and does not do, core design philosophy, acknowledgments
+- [**00. README**](https://github.com/DAAF-Contribution-Community/daaf/tree/main?tab=readme-ov-file#summary-what-is-daaf) — Vision and purpose, project goals, what DAAF does and does not do, core design philosophy, acknowledgments
 - [**01. Installation & Quick Start**](01_installation_and_quickstart.md) — Get started! Installation prerequisites, step-by-step 5-minute setup, day-to-day usage, and troubleshooting
 - [**07. FAQ: Technical Support**](07_faq_technical.md) — Covers frequently asked questions about Docker, issues with Claude Code, usage limits, authentication errors, and other common errors
-- [**Back to main**](../.)
+- [**Back to main**](https://github.com/DAAF-Contribution-Community/daaf/tree/main)

@@ -2,7 +2,7 @@
 
 Operational questions with concrete answers. If you're stuck, troubleshooting, or curious about a technical choice -- check here first.
 
-[**Back to main**](../.)
+[**Back to main**](https://github.com/DAAF-Contribution-Community/daaf/tree/main)
 
 ---
 
@@ -413,6 +413,6 @@ If you notice Claude asking questions it already asked, or making decisions that
 
 ## Recommended Next Steps
 
-- [**00. README**](../.) — Vision and purpose, project goals, what DAAF does and does not do, core design philosophy, acknowledgments
+- [**00. README**](https://github.com/DAAF-Contribution-Community/daaf/tree/main?tab=readme-ov-file#summary-what-is-daaf) — Vision and purpose, project goals, what DAAF does and does not do, core design philosophy, acknowledgments
 - [**01. Installation & Quick Start**](01_installation_and_quickstart.md) — Get started! Installation prerequisites, step-by-step 5-minute setup, day-to-day usage, and troubleshooting
-- [**Back to main**](../.)
+- [**Back to main**](https://github.com/DAAF-Contribution-Community/daaf/tree/main)

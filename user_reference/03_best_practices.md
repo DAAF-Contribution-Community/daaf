@@ -2,7 +2,7 @@
 
 Practical wisdom for getting the most out of DAAF while maintaining research quality. This guide helps you write effective prompts, review outputs critically, and understand your role in the human-AI research partnership.
 
-[**Back to main**](../.)
+[**Back to main**](https://github.com/DAAF-Contribution-Community/daaf/tree/main)
 
 ---
 
@@ -469,4 +469,4 @@ The first two are your responsibility: Be thorough and thoughtful about what you
 - [**04. Extending DAAF**](04_extending_daaf.md) — How to add new data source skills, analytical tools and methodologies, and creating your own additional specialized agents
 - [**06. FAQ: Philosophy**](06_faq_philosophy.md) — Grapples with the broader implications of this work, AI automation in general, model advancement pace, approaching the "exponential", environmental ethics, what this means for the next generation of researchers, and more
 - [**07. FAQ: Technical Support**](07_faq_technical.md) — Covers frequently asked questions about Docker, issues with Claude Code, usage limits, authentication errors, and other common errors
-- [**Back to main**](../.)
+- [**Back to main**](https://github.com/DAAF-Contribution-Community/daaf/tree/main)

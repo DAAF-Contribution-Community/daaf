@@ -2,7 +2,7 @@
 
 This guide focuses on the primary extension path: bringing new datasets, data domain expertise, and methodological tooling into DAAF for your own purposes. If you want to make any of these modifications available to the broader community by sharing these changes/extensions back with the DAAF project, see [**05. Contributing to DAAF**](../CONTRIBUTING.md).
 
-[**Back to main**](../.)
+[**Back to main**](https://github.com/DAAF-Contribution-Community/daaf/tree/main)
 
 ---
 
@@ -340,4 +340,4 @@ If you [open an issue](https://github.com/DAAF-Contribution-Community/daaf/issue
 - [**05. Contributing to DAAF**](../CONTRIBUTING.md) — Get involved in developing DAAF! How to file issues via GitHub, support expanding the capabilities of the framework, contribute to educational tutorials and how-to's, and more!
 - [**06. FAQ: Philosophy**](06_faq_philosophy.md) — Grapples with the broader implications of this work, AI automation in general, model advancement pace, approaching the "exponential", environmental ethics, what this means for the next generation of researchers, and more
 - [**07. FAQ: Technical Support**](07_faq_technical.md) — Covers frequently asked questions about Docker, issues with Claude Code, usage limits, authentication errors, and other common errors
-- [**Back to main**](../.)
+- [**Back to main**](https://github.com/DAAF-Contribution-Community/daaf/tree/main)
