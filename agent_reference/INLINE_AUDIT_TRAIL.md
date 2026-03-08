@@ -315,7 +315,7 @@ plot.save(OUTPUT_PATH, dpi=300, width=10, height=6)
 # --- Plot ---
 # INTENT: Create a scatter plot showing the relationship between school-level
 # poverty rate (MEPS estimate) and total enrollment. This is the primary
-# visualization for Observable Truth #1: "Stakeholders can see the correlation
+# visualization for Research Outcome #1: "Stakeholders can see the correlation
 # between poverty and enrollment across schools."
 #
 # REASONING: Scatter plot (not line or bar) because:

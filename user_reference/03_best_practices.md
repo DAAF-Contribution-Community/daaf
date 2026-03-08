@@ -64,14 +64,17 @@ Here is what to look at, roughly in order of priority:
 
 Does the stated research question match what you actually asked? This sounds obvious, but misinterpretation happens -- especially when your original request was somewhat open-ended. If the research question has been narrowed or reframed in a way that does not match your intent, flag it now.
 
-**2. Observable Truths (Must-Haves)**
+**2. Research Outcomes (Must-Haves)**
 
-These are the concrete, testable statements that define what "success" looks like for the analysis. Good observable truths are specific and measurable:
+Research Outcomes define what the analysis must rigorously investigate and report on -- not what the answer should be. Good outcomes specify the measurement or examination required without pre-determining the direction of the finding:
 
-- *Good:* "Analysis shows year-over-year enrollment change from 2018-2022 for Texas charter vs. traditional public schools"
-- *Bad:* "Analysis is comprehensive and covers enrollment trends"
+- *Good:* "Year-over-year enrollment change from 2018-2022 for Texas charter vs. traditional public schools is measured and characterized (direction, magnitude, significance)"
+- *Bad:* "Charter schools show higher enrollment growth than traditional public schools" (this is a hypothesis, not an outcome)
+- *Also bad:* "Analysis is comprehensive and covers enrollment trends" (too vague to verify)
 
-There should be at least 3 observable truths. If any of them feel vague or subjective, push back. These truths are what DAAF uses to verify the final output -- if they are squishy, the final verification will be squishy too.
+There should be at least 3 research outcomes. If any of them read like hypotheses (predicting a specific direction or result), push back -- those belong in the optional Hypotheses section, where they are transparently pre-registered but not treated as success criteria. The analysis succeeds by rigorously ADDRESSING each outcome, regardless of what the data shows. If the outcomes are squishy, the final verification will be squishy too.
+
+If DAAF has also included **Hypotheses**, these are directional predictions based on prior literature or domain knowledge. They will be assessed as SUPPORTED / NOT SUPPORTED / PARTIALLY SUPPORTED. Either outcome is a valid finding -- a rigorously refuted hypothesis is excellent science.
 
 **3. Transformation Sequence**
 
@@ -99,7 +102,7 @@ These are signs that the Plan may need revision before you approve it:
 
 | Red Flag | What It Might Mean | What to Do |
 |----------|-------------------|------------|
-| Observable Truths are vague or subjective | Final verification will not be rigorous | Ask for more specific, measurable truths |
+| Research Outcomes are vague, subjective, or confirmatory | Final verification will not be rigorous | Ask for more specific, measurable outcomes |
 | No risks identified | Plan may be overconfident | Ask about suppression rates, data gaps, and join complexity |
 | Placeholder file paths (`[TBD]`, `[filename]`) | Plan may not be fully specified | Ask DAAF to complete the paths before proceeding |
 | Very large scope (50 states, 20 years, 5+ data sources) | Analysis may run very long and incur high API costs | Consider narrowing scope first |
@@ -115,11 +118,11 @@ When you want to change something in the Plan, be specific about what and why, w
 
 > "I think we should add urbanicity as a control variable in the regression. I think the poverty-enrollment relationship differs significantly between urban and rural schools, right?"
 
-> "The observable truth about suppression rates should probably specify a threshold -- I'd say that suppression rates below 30% are acceptable for proceeding."
+> "The research outcome about suppression rates should probably specify a threshold -- I'd say that suppression rates below 30% are acceptable for proceeding."
 
 > "I do not think OLS regression is the right approach here given the panel structure of the data. Can you consider a fixed-effects model instead?"
 
-**What is easy to change at this stage:** Year ranges, geographic scope, control variables, output format, observable truth language, risk register additions, file naming.
+**What is easy to change at this stage:** Year ranges, geographic scope, control variables, output format, research outcome language, risk register additions, file naming.
 
 **What requires more thought:** Statistical methodology changes, adding or removing data sources, changing the unit of analysis (e.g., from schools to districts), fundamentally restructuring the transformation sequence.
 
@@ -176,12 +179,13 @@ This runs after every join, aggregation, or derived-variable calculation. It che
 This runs during the synthesis phase (Stages 11-12), checking the complete output against what the Plan promised. It validates:
 - Are all required columns present in the analysis dataset?
 - Do all promised output files exist (figures, analysis results, report)?
-- Are all Observable Truths from the Plan satisfied?
+- Are all Research Outcomes from the Plan rigorously addressed?
+- Are Hypotheses (if any) transparently assessed with evidence?
 - Does the report have all required sections?
 
-**What PASSED means:** Everything the Plan promised has been delivered. The analysis is consistent with the original research question.
+**What PASSED means:** Everything the Plan committed to investigate has been rigorously addressed. The analysis is consistent with the original research question.
 
-**What FAILED means:** Something is missing -- a figure was not generated, a report section is incomplete, or an Observable Truth was not satisfied. DAAF will identify the gap and attempt to resolve it.
+**What FAILED means:** Something is missing -- a figure was not generated, a report section is incomplete, or a Research Outcome was not addressed. DAAF will identify the gap and attempt to resolve it.
 
 ### When DAAF Stops and Asks for Guidance
 

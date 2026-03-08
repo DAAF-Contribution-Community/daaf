@@ -9,10 +9,15 @@ status: "planning"                    # planning | in_progress | complete
 
 # Goal-Backward Verification Criteria
 must_haves:
-  truths:
-    - "[Observable behavior 1 - user perspective]"
-    - "[Observable behavior 2 - testable outcome]"
-    - "[Observable behavior 3 - measurable result]"
+  research_outcomes:
+    - "[What must be examined/measured/reported — Outcome 1]"
+    - "[What must be examined/measured/reported — Outcome 2]"
+    - "[What must be examined/measured/reported — Outcome 3]"
+
+  hypotheses:  # Optional — directional expectations from theory or prior literature
+    # - id: "H1"
+    #   statement: "[Directional prediction based on prior knowledge]"
+    #   basis: "[Why expected — cite theory, prior research, or domain knowledge]"
 
   artifacts:
     - path: "research/YYYY-MM-DD_[Title]/YYYY-MM-DD_[Title].py"
@@ -148,22 +153,35 @@ Every task in the "Executable Task Sequence" section is written as a prompt that
 
 ## Must-Haves (Goal-Backward Verification)
 
-**Purpose:** This section defines what MUST be true for the analysis to be considered complete. Derived using goal-backward methodology — working from the desired outcome to identify observable truths, required artifacts, and critical connections.
+**Purpose:** This section defines what must be rigorously investigated and produced for the analysis to be considered complete. Derived using goal-backward methodology — working from the research question to identify research outcomes, required artifacts, and critical connections.
 
 ### Deriving Must-Haves
 
-**Goal-backward planning asks:** "What must be TRUE for the goal to be achieved?" rather than "What should we build?"
+**Goal-backward planning asks:** "What must be EXAMINED for the research question to be rigorously answered?" rather than "What should we build?"
 
 **Step 1: State the Goal (Outcome, Not Task)**
-- Good: "Analysis shows enrollment trends by poverty level" (outcome)
+- Good: "Analysis characterizes enrollment trends by poverty level" (outcome)
 - Bad: "Create enrollment visualization" (task)
 
-**Step 2: Derive Observable Truths (User Perspective)**
-Ask: "What must be TRUE for this goal to be achieved?"
-List 3-7 truths that are verifiable by examining the outputs.
+**Step 2: Derive Research Outcomes (What Must Be Investigated)**
+Ask: "What must be EXAMINED for this research question to be rigorously answered?"
+List 3-7 outcomes that define the scope of rigorous investigation. Each outcome states what must be measured, characterized, or reported — not what the result should be.
+
+- Good: "Relationship between poverty rate and enrollment is characterized (direction, magnitude, significance)"
+- Bad: "Poverty is negatively correlated with enrollment (expect r < -0.3)"
+
+Research outcomes define the **scope and rigor** of the investigation. They are assessed as ADDRESSED or NOT ADDRESSED based on whether the analysis thoroughly investigated and reported on the stated topic. Surprising or null findings are equally valid — the outcome is ADDRESSED if the investigation was rigorous.
+
+**Step 2b: State Hypotheses (Optional — Pre-Registration)**
+If prior literature, domain knowledge, or theory suggests directional expectations, state them transparently as hypotheses with their basis. Hypotheses are pre-registered predictions, not success criteria. A rigorously refuted hypothesis is excellent science.
+
+- Each hypothesis must include an `id`, `statement`, and `basis` (citation or rationale)
+- Hypotheses are assessed as SUPPORTED / NOT SUPPORTED / PARTIALLY SUPPORTED
+- Either outcome is equally valid and informative
+- Hypotheses belong here, NOT in research outcomes — any directional prediction in a research outcome should be moved to this section
 
 **Step 3: Derive Required Artifacts**
-For each truth, ask: "What must EXIST for this to be true?"
+For each research outcome, ask: "What must EXIST for this to be investigated?"
 Identify specific files with expected content.
 
 **Step 4: Identify Key Links (Critical Connections)**
@@ -174,12 +192,17 @@ Key links are connections that, if missing, cause cascading failures.
 
 ```yaml
 must_haves:
-  truths:
-    - "Analysis shows enrollment trends by year"
-    - "Poverty rates are calculated at the school level"
-    - "Suppression rates are documented with impact assessment"
-    - "Data limitations are explicitly stated in the report"
-    - "Visualizations include confidence intervals where applicable"
+  research_outcomes:
+    - "Enrollment trends by year are measured and reported with appropriate statistical testing"
+    - "School-level poverty rates are calculated and their distribution characterized"
+    - "Suppression rates are documented with impact assessment on analytical validity"
+    - "Data limitations are explicitly stated in the report with scope implications"
+    - "Key relationships are visualized with uncertainty quantification where applicable"
+
+  hypotheses:  # Optional — remove section if no directional predictions
+    - id: "H1"
+      statement: "Schools with higher poverty rates have lower enrollment growth"
+      basis: "Prior literature on demographic shifts and school choice patterns (cite specific studies)"
 
   artifacts:
     - path: "research/YYYY-MM-DD_[Title]/YYYY-MM-DD_[Title].py"
@@ -225,8 +248,10 @@ must_haves:
 
 | Failure Type | Bad Example | Good Example |
 |--------------|-------------|--------------|
-| **Truths too vague** | "Analysis is complete" | "Enrollment trends show year-over-year change with statistical significance" |
-| **Truths not testable** | "Data is clean" | "No coded values (-1, -2, -3) remain in analysis columns" |
+| **Outcomes too vague** | "Analysis is complete" | "Year-over-year enrollment change is measured and reported with statistical significance testing" |
+| **Outcomes not verifiable** | "Data is clean" | "No coded values (-1, -2, -3) remain in analysis columns" |
+| **Outcomes are confirmatory** | "Poverty is negatively correlated with enrollment (expect r < -0.3)" | "Relationship between poverty rate and enrollment is characterized (direction, magnitude, significance, confidence intervals)" |
+| **Hypotheses missing basis** | "We expect r > 0.5" | "H1: Based on Smith et al. 2020 selectivity literature, we expect \|r\| > 0.5 between admission rate and graduation rate" |
 | **Artifacts too abstract** | "Analysis files" | "research/2026-01-31_School_Poverty/2026-01-31_School_Poverty.py" |
 | **Artifacts missing content spec** | path only | path + provides + contains/has_columns |
 | **Missing wiring** | Listing files without connections | "Notebook loads from data/processed/ via pl.read_parquet()" |
@@ -234,12 +259,19 @@ must_haves:
 
 ### Must-Haves Verification Checklist
 
-*Use during Stage 12 (Final Review) to verify all must-haves are satisfied:*
+*Use during Stage 12 (Final Review) to verify all must-haves are addressed:*
 
-**Truths Verification:**
-- [ ] Each truth can be observed by examining outputs
-- [ ] No truth requires subjective judgment
-- [ ] Truths cover the core research question
+**Research Outcomes Verification:**
+- [ ] Each research outcome can be verified by examining whether the analysis rigorously investigated and reported on the stated topic
+- [ ] No research outcome pre-specifies a directional result (those belong in Hypotheses)
+- [ ] No research outcome requires subjective judgment to assess
+- [ ] Research outcomes collectively cover the core research question
+
+**Hypotheses Verification (if any):**
+- [ ] Each hypothesis has a stated basis (theory, prior literature, domain knowledge)
+- [ ] Each hypothesis is clearly separated from research outcomes
+- [ ] Each hypothesis is assessed as SUPPORTED / NOT SUPPORTED / PARTIALLY SUPPORTED with evidence
+- [ ] Refuted hypotheses are reported as valid findings, not as failures
 
 **Artifacts Verification:**
 - [ ] All artifact paths exist
@@ -908,7 +940,7 @@ Before finalizing each task above, verify:
 5. **Limitations** — Caveats and constraints
 6. **Data Sources** — Full citations
 
-> **Note:** The report-writer agent (Stage 11) uses this Output Specification to structure the final report. The Observable Truths section is particularly critical — each truth is cross-checked against Key Findings in the report.
+> **Note:** The report-writer agent (Stage 11) uses this Output Specification to structure the final report. The Research Outcomes section is particularly critical — each outcome is cross-checked against Key Findings in the report.
 
 ### Analysis Requirements
 

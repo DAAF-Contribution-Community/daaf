@@ -44,7 +44,7 @@ Secondary distinction from **data-verifier**: the report-writer creates the repo
 
 | Input | Source | Required | How Used |
 |-------|--------|----------|----------|
-| Plan.md | Orchestrator (path) | Yes | Research question, methodology decisions, observable truths, risk register, output specification, data source citations |
+| Plan.md | Orchestrator (path) | Yes | Research question, methodology decisions, research outcomes, hypotheses (if any), risk register, output specification, data source citations |
 | Marimo notebook (.py) | Orchestrator (path) | Yes | All finished scripts + execution output — the complete technical record of what was done and what resulted |
 | STATE.md | Orchestrator (path) | Yes | Checkpoint statuses, key decisions made, session history, blockers encountered and resolved |
 | LEARNINGS.md | Orchestrator (path) | Yes | Data quality insights, methodology lessons, process observations — informs Limitations section |
@@ -89,14 +89,14 @@ Each report section has defined primary and secondary source artifacts. Follow t
 | Report Section | Primary Source Artifact | Secondary Sources |
 |---|---|---|
 | Title + Date | Plan title + date prefix from orchestrator | — |
-| Executive Summary | Plan Observable Truths + Key findings from notebook execution logs | LEARNINGS.md highlights |
+| Executive Summary | Plan Research Outcomes + Key findings from notebook execution logs | LEARNINGS.md highlights |
 | Research Question | Plan Research Question (verbatim) | Plan Context |
 | Data & Methods: Data Sources | Plan Data Sources table | Stage 5 execution logs (actual row counts) |
 | Data & Methods: Key Variables | Plan Key Variables | — |
 | Data & Methods: Methodology | Plan Methodology Specification | Plan Key Decisions |
 | Data & Methods: Data Cleaning | Stage 6 execution logs (records analyzed, excluded, suppression rate) | STATE.md checkpoint statuses |
 | Quality Assurance | Stage 10 QA summary (inlined by orchestrator) | STATE.md QA sections |
-| Key Findings | Stage 7 transformation outputs + Stage 8 analysis results (`output/analysis/`) + Stage 8 figures (`output/figures/`) + notebook execution logs | Plan Observable Truths (for framing each finding) |
+| Key Findings | Stage 7 transformation outputs + Stage 8 analysis results (`output/analysis/`) + Stage 8 figures (`output/figures/`) + notebook execution logs | Plan Research Outcomes (for organizing findings by investigation area) + Plan Hypotheses (for transparent assessment) |
 | Summary Statistics | Analysis dataset metadata (from orchestrator) + Stage 7 EDA execution logs | Notebook data inspection cells |
 | Limitations | Plan Risk Register + Plan source caveats from Stage 3 + suppression rates from Stage 6 + LEARNINGS.md data quality entries | STATE.md blockers encountered |
 | Data Sources & Citations | Citation text (inlined from Stage 6 by orchestrator) | Plan Data Sources table |
@@ -160,7 +160,7 @@ Prefer this over reading entire files — especially for Plan documents, skill f
 
 Read the Plan document at the orchestrator-provided path. Extract:
 - Research question (verbatim — to be quoted exactly in the report)
-- Observable Truths (each one becomes a framing anchor for Key Findings)
+- Research Outcomes (each one becomes a framing anchor for Key Findings)
 - Methodology decisions and rationale
 - Risk Register entries (feed Limitations section)
 - Data Sources table (feed Data & Methods section)
@@ -222,13 +222,20 @@ Follow REPORT_TEMPLATE.md section by section. For each section:
 10. Technical Notes (Reproducibility, Environment)
 11. Appendix (additional figures, extended methodology)
 
-### Step 7: Cross-Check Observable Truths
+### Step 7: Cross-Check Research Outcomes and Hypotheses
 
-For each Observable Truth in the Plan, verify it is addressed in Key Findings:
-- **Satisfied:** Finding explicitly addresses the truth with evidence
-- **Unsatisfied:** Document in Key Findings: "This analysis was unable to confirm [truth] because [reason]"
+For each Research Outcome in the Plan, verify it is addressed in Key Findings:
+- **Addressed:** Finding explicitly reports on the investigated topic with evidence
+- **Not Addressed:** Document in Key Findings: "This analysis was unable to investigate [outcome] because [reason]"
 
-No Observable Truth may go unaddressed.
+No Research Outcome may go unaddressed.
+
+For each Hypothesis in the Plan (if any), verify it is assessed in Key Findings:
+- **Supported:** Evidence aligns with the directional prediction — report the evidence
+- **Not Supported:** Evidence contradicts or does not support the prediction — report as a valid finding with equal prominence
+- **Partially Supported:** Evidence supports under some conditions — report the nuance
+
+Present hypothesis assessments neutrally. A refuted hypothesis is equally valid and interesting as a confirmed one. Report *why* with evidence, not just the verdict.
 
 ### Step 8: Write Report.md
 
@@ -243,7 +250,7 @@ Return output in the standardized Output Format below.
 | Condition | Action |
 |-----------|--------|
 | Figure file missing | Note gap in report ("Figure not available"); log WARNING in output |
-| Observable Truth unsatisfied | Document in Key Findings with reason: "This analysis was unable to confirm [truth] because [reason]" |
+| Research Outcome not addressed | Document in Key Findings with reason: "This analysis was unable to investigate [outcome] because [reason]" |
 | QA WARNINGs exist | Include in QA section with context; note in Limitations if they affect conclusions |
 | Resolved BLOCKER exists | Mention in QA Notes: "A [issue] was identified and corrected during Stage [N]" |
 | Suppression rate > 30% | Highlight prominently in Limitations with specific impact on findings |
@@ -270,15 +277,15 @@ Return findings in this structure:
 ### Sections Populated
 | Section | Primary Source Used | Notes |
 |---------|-------------------|-------|
-| Executive Summary | Plan Observable Truths + execution logs | [any notes] |
+| Executive Summary | Plan Research Outcomes + execution logs | [any notes] |
 | Research Question | Plan (verbatim) | — |
 | [continue for each section] | | |
 
-### Observable Truth Coverage
-| Observable Truth | Status | Report Section | Evidence Source |
+### Research Outcome Coverage
+| Research Outcome | Status (ADDRESSED/NOT ADDRESSED) | Report Section | Evidence Source |
 |-----------------|--------|---------------|----------------|
-| [Truth 1] | Satisfied / Unsatisfied | Finding [N] | [artifact] |
-| [Truth 2] | Satisfied / Unsatisfied | Finding [N] | [artifact] |
+| [Outcome 1] | ADDRESSED / NOT ADDRESSED | Finding [N] | [artifact] |
+| [Outcome 2] | ADDRESSED / NOT ADDRESSED | Finding [N] | [artifact] |
 
 ### Figure References
 | Figure | Path | Status | Mapped to Finding |
@@ -291,7 +298,7 @@ Return findings in this structure:
 | Aspect | Confidence | Rationale |
 |--------|------------|-----------|
 | Statistics accuracy | [H/M/L] | [Evidence: all numbers traced to execution logs, or gaps identified] |
-| Observable Truth coverage | [H/M/L] | [Evidence: all truths addressed, or unsatisfied truths noted] |
+| Research Outcome coverage | [H/M/L] | [Evidence: all outcomes addressed, or unaddressed outcomes noted] |
 | Figure integrity | [H/M/L] | [Evidence: all figure files verified, or missing files noted] |
 | Limitations completeness | [H/M/L] | [Evidence: all artifact sources consulted, or sources missed] |
 | Audience calibration | [H/M/L] | [Evidence: section register matches intended audience] |
@@ -318,7 +325,7 @@ Categories: Access | Data | Method | Perf | Process
 |----------|-------------|---------|
 | **Access** | Data availability, mirrors, rate limits | "Figure files were in unexpected subdirectory" |
 | **Data** | Quality, suppression, distributions | "Suppression rate exceeded Plan estimate by 12 percentage points" |
-| **Method** | Methodology edge cases, transforms | "Observable Truth required reframing due to data constraints" |
+| **Method** | Methodology edge cases, transforms | "Research Outcome required reframing due to data constraints" |
 | **Perf** | Performance, memory, runtime | "Notebook file too large to scan efficiently; used Grep for log extraction" |
 | **Process** | Execution patterns, error patterns | "LEARNINGS.md had no data quality entries despite Stage 6 warnings" |
 
@@ -362,14 +369,14 @@ If nothing novel, emit "None" — this is the expected common case.
 - Quote the research question verbatim from the Plan
 - Include citation text verbatim from Stage 6 (no paraphrasing)
 - Verify every figure path exists on disk before referencing it
-- Address every Observable Truth from the Plan in Key Findings
+- Address every Research Outcome from the Plan in Key Findings
 - Include at least 3 specific limitations with impact statements
 - Write the Executive Summary last (after all findings are drafted) to ensure accuracy
 
 ### Ask First Before
 - Omitting any REPORT_TEMPLATE.md section (even if seemingly empty)
 - Adding report sections not in REPORT_TEMPLATE.md
-- Reframing an Observable Truth that cannot be addressed as stated
+- Reframing a Research Outcome that cannot be addressed as stated
 - Including statistics from sources other than execution logs or orchestrator-provided metadata
 
 ### Never Do
@@ -392,7 +399,7 @@ You MUST ask before:
 - Omitting any REPORT_TEMPLATE.md section
 - Adding content not traceable to an upstream artifact
 - Changing the research question framing
-- Excluding an Observable Truth from coverage
+- Excluding a Research Outcome from coverage
 
 ## STOP Conditions
 
@@ -404,7 +411,7 @@ Immediately stop and escalate when:
 | Notebook missing or empty | STOP — Cannot extract findings without technical record |
 | No figure files exist AND Plan specifies visualizations | STOP — Key Findings section cannot be populated |
 | Stage 10 QA summary not provided | STOP — QA section cannot be populated; report integrity at risk |
-| Zero Observable Truths in Plan | STOP — Cannot frame Key Findings without observable truths |
+| Zero Research Outcomes in Plan | STOP — Cannot frame Key Findings without research outcomes |
 
 **STOP Format:**
 
@@ -433,7 +440,7 @@ Awaiting guidance before proceeding.
 | 3 | Omitting known limitations | Makes findings appear stronger than warranted; discovered during Stage 12 verification | Consult all four limitation sources (Plan risk register, Stage 3 caveats, Stage 6 suppression, LEARNINGS.md) |
 | 4 | Phantom figure references | Broken image links in the report signal carelessness and block reader comprehension | Glob-verify every figure path before embedding; note gaps explicitly if missing |
 | 5 | Paraphrased research question | Subtle rewording can change the question's scope or intent | Copy the research question verbatim from Plan; never edit, rephrase, or "improve" it |
-| 6 | Orphaned findings | Key Findings that don't connect to Observable Truths leave the reader without a framework | Frame each finding around an Observable Truth; if no truth applies, the finding may not belong |
+| 6 | Orphaned findings | Key Findings that don't connect to Research Outcomes leave the reader without a framework | Frame each finding around a Research Outcome; if no outcome applies, the finding may not belong |
 | 7 | Raw technical output in prose | Stakeholders cannot interpret unformatted code output, column names, or error messages | Translate technical results into plain language with context and interpretation |
 | 8 | Inventing new analysis | Creating calculations, aggregations, or derived statistics that appear in no upstream script | Report only what the pipeline produced; if a needed statistic is missing, note the gap |
 | 9 | Ignoring LEARNINGS.md | Misses data quality insights and methodology lessons that inform Limitations | Always read LEARNINGS.md; extract data quality and methodology entries for Limitations and Technical Notes |
@@ -454,7 +461,7 @@ Awaiting guidance before proceeding.
 **This report is COMPLETE when:**
 1. [ ] All REPORT_TEMPLATE.md sections are populated with substantive content (no placeholder text)
 2. [ ] Every figure reference resolves to an existing file on disk
-3. [ ] Every Observable Truth from Plan is addressed in Key Findings (satisfied or explicitly noted as unsatisfied)
+3. [ ] Every Research Outcome from Plan is addressed in Key Findings (addressed or explicitly noted as not addressed)
 4. [ ] Executive Summary is exactly 4-5 sentences
 5. [ ] All statistics trace to execution logs or dataset metadata
 6. [ ] Limitations section includes at least 3 specific limitations from pipeline artifacts, each with impact statement
@@ -464,7 +471,7 @@ Awaiting guidance before proceeding.
 **This report is INCOMPLETE if:**
 - Any REPORT_TEMPLATE.md section is missing or contains placeholder text
 - Report contains statistics not traceable to execution logs or metadata
-- Observable Truths from Plan are not addressed in Key Findings
+- Research Outcomes from Plan are not addressed in Key Findings
 - Limitations section is generic rather than analysis-specific
 - Figure references point to nonexistent files
 - Executive Summary exceeds 5 sentences
@@ -480,7 +487,7 @@ Before returning output, verify:
 | 1 | Does every statistic in the report appear in an execution log or metadata? | Remove ungrounded statistics; replace with sourced numbers |
 | 2 | Is the Executive Summary exactly 4-5 sentences? | Trim or expand to hit the target |
 | 3 | Does every figure reference resolve to an existing file? | Remove broken references; note gaps in report and output |
-| 4 | Is every Observable Truth from the Plan addressed in Key Findings? | Add coverage for missing truths or note why unsatisfied |
+| 4 | Is every Research Outcome from the Plan addressed in Key Findings? | Add coverage for missing outcomes or note why not addressed |
 | 5 | Are Limitations specific to this analysis (not generic)? | Rewrite with specific rates, sources, and impact on conclusions |
 | 6 | Did I follow the Section-Source Mapping for every section? | Re-check each section against its primary source artifact |
 | 7 | Is the citation text included verbatim (not paraphrased)? | Replace with exact citation text from Stage 6 |
@@ -527,7 +534,7 @@ Task({
     Read the Plan, Notebook, STATE.md, and LEARNINGS.md.
     Follow the Section-Source Mapping for every section.
     Verify all figure references before embedding.
-    Cross-check all Observable Truths from the Plan.
+    Cross-check all Research Outcomes from the Plan.
     Write Report.md to the project folder.
 
     Return findings using the Report Writer Output Format.""",
@@ -545,4 +552,4 @@ Load on demand — do NOT read all at start:
 |------|-------------|---------|
 | `agent_reference/REPORT_TEMPLATE.md` | Always (at start) | Report structure to follow |
 | `agent_reference/EXECUTION_CAPTURE.md` | When execution log format is unclear | Understand how execution logs are structured in scripts |
-| `agent_reference/PLAN_TEMPLATE.md` | When Plan structure is unclear | Understand where to find Plan sections (Observable Truths, Risk Register, etc.) |
+| `agent_reference/PLAN_TEMPLATE.md` | When Plan structure is unclear | Understand where to find Plan sections (Research Outcomes, Risk Register, etc.) |

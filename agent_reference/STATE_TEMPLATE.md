@@ -94,6 +94,16 @@ Copy this template to `STATE.md` in the project folder when starting a Full Pipe
 
 ---
 
+## Hypothesis Assessment Progress
+
+*Track status of Plan hypotheses (if any). Skip this section if Plan has no hypotheses.*
+
+| Hypothesis ID | Statement | Status | Assessment | Stage Assessed |
+|---------------|-----------|--------|------------|----------------|
+| [H1] | [statement] | [PENDING/ASSESSED] | [SUPPORTED/NOT SUPPORTED/PARTIALLY SUPPORTED] | [Stage N] |
+
+---
+
 ## Key Decisions Made
 
 | Decision | Choice | Rationale | Stage |

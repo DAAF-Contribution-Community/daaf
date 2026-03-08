@@ -1600,7 +1600,7 @@ Path: scripts/stage{N}_{type}/{step}_{task-name}.py
 |--------|----------|--------|
 | Output rows | {min_rows} - {max_rows} | Plan Transformation Sequence row {step} |
 | Row change | ±{tolerance}% | Plan expected outcome |
-| Critical columns | {column_list} | Plan Observable Truths |
+| Critical columns | {column_list} | Plan Research Outcomes |
 | Max acceptable loss | {loss_pct}% | Plan Risk Register |
 | Join cardinality | {cardinality_or_NA} | Plan (if join task) |
 
@@ -1610,10 +1610,10 @@ Path: scripts/stage{N}_{type}/{step}_{task-name}.py
 |------|------------|-----------|
 | {risk_1} | {mitigation_1} | {symptom_1} |
 
-## OBSERVABLE TRUTH CONTRIBUTION
+## RESEARCH OUTCOME CONTRIBUTION
 
-This task contributes to: "{observable_truth_text}"
-Verified when: {verification_condition}
+This task contributes to: "{research_outcome_text}"
+Addressed when: {verification_condition}
 
 ## QA TOLERANCE FOR THIS ANALYSIS
 
@@ -1802,7 +1802,7 @@ Task({
     Read the Plan, Notebook, STATE.md, and LEARNINGS.md.
     Follow the Section-Source Mapping for every section.
     Verify all figure references before embedding.
-    Cross-check all Observable Truths from the Plan.
+    Cross-check all Research Outcomes from the Plan.
     Write Report.md to the project folder.
 
     Return findings using the Report Writer Output Format.""",

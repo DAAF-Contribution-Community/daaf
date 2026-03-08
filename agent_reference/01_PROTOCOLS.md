@@ -420,7 +420,7 @@ See CLAUDE.md "Learning Signal Extraction" section for the complete extraction a
 PSU2 presents the Plan for explicit user approval, covering:
 - Research question and methodology summary
 - Data sources, year ranges, and geographic scope
-- Transformation sequence and observable truths
+- Transformation sequence and research outcomes
 - Plan-checker validation results (including any warnings)
 - Risk Register highlights
 - The exact filepath to the Plan so the user can review it in detail
@@ -447,13 +447,15 @@ Before marking any analysis complete, verify each of the three categories below.
 
 **Verification Stance:** The data-verifier agent approaches this framework with adversarial skepticism — its default hypothesis is that something was missed. See `agents/data-verifier.md` for the complete adversarial verification protocol including cross-artifact coherence, research question stress testing, and the Hidden Narrative principle.
 
-### 1. What Must Be TRUE (Observable Behaviors)
+### 1. What Must Be EXAMINED (Research Outcomes)
 
-These are properties that must hold for the analysis to be valid:
+These are topics that must be rigorously investigated and reported for the analysis to be complete:
 
 | Requirement | Verification Method | Status |
 |-------------|---------------------|--------|
-| Research question answered with evidence | Read Report conclusions | [ ] |
+| Research question addressed with evidence | Read Report conclusions | [ ] |
+| All Plan research outcomes rigorously investigated | Compare Plan outcomes vs. report findings | [ ] |
+| Hypotheses transparently assessed (if any) | Check hypothesis assessments in Report | [ ] |
 | All Plan commitments fulfilled | Compare Plan vs. deliverables | [ ] |
 | No validation checkpoints failed | Review CP1-CP4 status | [ ] |
 | Limitations explicitly documented | Check Report limitations section | [ ] |
@@ -614,13 +616,13 @@ Task({
     [Verbatim from Plan]
 
     **PLAN COMMITMENTS:**
-    [Paste relevant Plan sections including Observable Truths]
+    [Paste relevant Plan sections including Research Outcomes]
 
     **QA HISTORY:**
     [Summary of QA findings from Stage 10]
 
     Execute the full verification protocol including:
-    1. Independent assessment (before reading Observable Truths)
+    1. Independent assessment (before reading Research Outcomes)
     2. Four-level verification (Existence, Substantive, Wired, Coherent)
     3. Adversarial verification (research question stress test, alternative interpretations, silent failure audit)
     4. Cross-artifact coherence check

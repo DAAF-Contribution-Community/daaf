@@ -105,7 +105,8 @@ Prefer this over reading entire files — especially for Plan documents, skill f
 
 Read the Plan content provided in the Task prompt. Extract:
 - Research question (from Plan document)
-- Observable truths (goal state when complete)
+- Research outcomes (what must be investigated and reported)
+- Hypotheses, if any (directional predictions with basis — assessed separately from outcomes)
 - Transformation sequence (what gets executed)
 - Data sources table
 - Risk register
@@ -114,7 +115,7 @@ Also check for related files in the project directory using `ls` on the plan's p
 
 ### Step 2: Decompose Research Goal
 
-Break the research question into concrete requirements (REQ-01, REQ-02, etc.). Each requirement represents something that must be TRUE for the goal to be achieved.
+Break the research question into concrete requirements (REQ-01, REQ-02, etc.). Each requirement represents something that must be EXAMINED or PRODUCED for the research question to be rigorously answered.
 
 Example (education domain): "Analyze relationship between school poverty and enrollment across states" decomposes to: REQ-01 (poverty data acquired), REQ-02 (enrollment data acquired), REQ-03 (data cleaned), REQ-04 (data joined), REQ-05 (state-level aggregation), REQ-06 (statistical analysis), REQ-07 (visualization).
 
@@ -249,11 +250,13 @@ issue:
 
 ### Step 6: Check Testability (D4 — Testability)
 
-Verify that observable truths trace back to the research goal and are data-observable (not implementation details). Verify checkpoints (CP1-CP4) are mapped to tasks. Verify STOP conditions are defined for high-risk operations (joins, filters, aggregations).
+Verify that research outcomes trace back to the research goal and are data-observable (not implementation details). Verify that research outcomes define what must be investigated — not what the result should be (directional predictions belong in Hypotheses). Verify checkpoints (CP1-CP4) are mapped to tasks. Verify STOP conditions are defined for high-risk operations (joins, filters, aggregations).
 
 **Red flags:**
 - Missing verification for data transformations
-- Truths are implementation-focused ("polars installed") not data-observable ("enrollment counts are positive integers")
+- Outcomes are implementation-focused ("polars installed") not data-observable ("enrollment counts are positive integers")
+- Outcomes contain directional predictions ("poverty is negatively correlated with X") instead of investigation scope ("relationship between poverty and X is characterized")
+- Hypotheses stated without basis (missing theory, prior literature, or domain knowledge citation)
 - No checkpoint linkage (which task triggers CP1? CP2?)
 - No STOP conditions defined for high-risk operations
 - Subjective verification ("looks correct", "seems reasonable")

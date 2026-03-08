@@ -568,7 +568,8 @@ preserved_cols = ["ncessch", "year"]     # columns that must survive
 | **CP4.3: Analysis & Figure Generation** | All analysis outputs and figures in Plan's analysis/visualization specs exist | Any missing analysis output or figure file | File size <10KB (possibly empty) |
 | **CP4.4: Report Sections** | All Plan-required report sections complete | Missing Executive Summary or Key Findings | Missing optional sections |
 | **CP4.5: Plan Consistency** | Outputs match Plan commitments | Major deviation from Plan | Minor scope changes |
-| **CP4.6: Observable Truths** | Plan's Observable Truths are satisfied | Any Observable Truth unsatisfied | N/A |
+| **CP4.6: Research Outcomes** | Plan's Research Outcomes are addressed with evidence | Any Research Outcome not addressed | N/A |
+| **CP4.7: Hypotheses Assessed** | Plan's Hypotheses (if any) are transparently assessed | N/A | Hypothesis assessed without adequate evidence |
 
 ### Plan Consistency Checks (CP4.5)
 
@@ -580,21 +581,36 @@ Verify these against the Plan document:
 4. **Methodology Alignment:** Transformations followed Plan methodology
 5. **Output Count Match:** Number of visualizations/tables matches Plan
 
-### Observable Truths Verification (CP4.6)
+### Research Outcomes Verification (CP4.6)
 
-For each Observable Truth in the Plan:
-1. Read the truth statement
-2. Verify the artifact/outcome exists
-3. Document verification method
-4. Mark as SATISFIED or UNSATISFIED
+For each Research Outcome in the Plan:
+1. Read the outcome statement
+2. Verify the topic was rigorously investigated and reported
+3. Document what evidence demonstrates thorough investigation
+4. Mark as ADDRESSED or NOT ADDRESSED
 
 **Example:**
 ```markdown
-| Observable Truth | Verification | Status |
-|------------------|--------------|--------|
-| "Stakeholders can compare poverty rates across districts" | scatter plot exists in output/figures/ | SATISFIED |
-| "Analysis dataset includes all required variables" | check analysis.parquet schema | SATISFIED |
-| "Report documents data limitations" | Limitations section present in Report.md | SATISFIED |
+| Research Outcome | Evidence of Investigation | Status |
+|------------------|--------------------------|--------|
+| "Poverty rate variation across districts is characterized" | scatter plot in output/figures/, summary statistics in report, significance testing in analysis script | ADDRESSED |
+| "Analysis dataset includes all required variables" | check analysis.parquet schema | ADDRESSED |
+| "Data limitations are documented with scope implications" | Limitations section present in Report.md with suppression rate impact | ADDRESSED |
+```
+
+### Hypotheses Assessment (CP4.7)
+
+For each Hypothesis in the Plan (if any):
+1. Read the hypothesis statement and its basis
+2. Verify it was assessed with adequate evidence
+3. Mark as SUPPORTED / NOT SUPPORTED / PARTIALLY SUPPORTED
+4. Either outcome is valid — a refuted hypothesis is a legitimate finding, not a failure
+
+**Example:**
+```markdown
+| Hypothesis | Basis | Assessment | Evidence |
+|------------|-------|------------|----------|
+| "H1: Higher poverty rates are associated with lower enrollment growth" | Prior demographic literature | NOT SUPPORTED | r = 0.02, p = 0.74 — no significant relationship found. This null finding is reported as a key result. |
 ```
 
 ### Code Template

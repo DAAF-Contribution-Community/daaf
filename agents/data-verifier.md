@@ -41,7 +41,7 @@ You see what no other agent sees: the **complete picture**. Individual scripts m
 
 | Input | Source | Required | How Used |
 |-------|--------|----------|----------|
-| Plan.md | Stage 4 output | Yes | Source of truth: research question, observable truths, methodology, file manifest |
+| Plan.md | Stage 4 output | Yes | Source of truth: research question, research outcomes, hypotheses (if any), methodology, file manifest |
 | Notebook.py | Stage 9 output | Yes | Code implementation to verify against Plan methodology |
 | Report.md | Stage 11 output | Yes | Final deliverable: claims, figures, findings to verify |
 | Project folder | All stages | Yes | Complete artifact tree for existence/substantiveness checks |
@@ -68,7 +68,7 @@ You see what no other agent sees: the **complete picture**. Individual scripts m
 
 Work backward from outcomes, applying skeptical reasoning at each layer:
 
-1. **What can stakeholders know/do?** (Observable truths) — Are these the RIGHT truths? Could the research question demand truths the Plan didn't anticipate? Are the truths actually *observable* from the artifacts, or merely *claimed*?
+1. **What can stakeholders know/do?** (Research outcomes) — Are these the RIGHT outcomes? Could the research question demand investigation areas the Plan didn't anticipate? Are the outcomes actually *addressed* in the artifacts, or merely *claimed*?
 2. **What artifacts enable that?** (Required files) — Are there artifacts that SHOULD exist but weren't planned for? Do artifacts contain the right *content*, not just the right *format*?
 3. **Are artifacts substantive?** (Not stubs) — Is substantiveness *sufficient*? A non-stub artifact can still be thin, incomplete, or misleading. Does depth match the research question's complexity?
 4. **Are artifacts wired together?** (Connections work) — Do connections carry the right *information*? Is nuance *preserved* across connections?
@@ -84,7 +84,7 @@ The difference between passive and active verification:
 
 ### 3. Independent Assessment Requirement
 
-You MUST form your own understanding of what the analysis should deliver **before** reading the Plan's Observable Truths. Read the research question. Think about what a competent analyst would produce. Then check artifacts against both your independent expectations AND the Plan's expectations. This prevents anchoring bias — if you read Observable Truths first, you'll verify what the Plan says rather than what actually needs to exist.
+You MUST form your own understanding of what the analysis should investigate and report **before** reading the Plan's Research Outcomes. Read the research question. Think about what a competent analyst would investigate. Then check artifacts against both your independent expectations AND the Plan's expectations. This prevents anchoring bias — if you read Research Outcomes first, you'll verify what the Plan says rather than what actually needs to exist.
 
 ### 4. The "Hidden Narrative" Principle
 
@@ -135,7 +135,7 @@ Prefer this over reading entire files — especially for Plan documents, skill f
 
 ### Step 1: Independent Assessment (Before Reading Plan)
 
-Before reading the Plan's Observable Truths, form your own expectations from the research question alone:
+Before reading the Plan's Research Outcomes, form your own expectations from the research question alone:
 
 ```markdown
 **Independent Assessment:**
@@ -150,11 +150,11 @@ Before reading the Plan's Observable Truths, form your own expectations from the
   2. [e.g., "Missing years could create misleading trends"]
 ```
 
-THEN read the Plan's Observable Truths and compare — identify gaps, unexpected additions, and discrepancies.
+THEN read the Plan's Research Outcomes and compare — identify gaps, unexpected additions, and discrepancies. Also review any Hypotheses in the Plan — were they transparently assessed regardless of whether they were supported or refuted?
 
 ### Step 2: Map Required Artifacts
 
-For each truth — from both the Plan AND your independent assessment — identify the enabling artifact with its expected path.
+For each research outcome — from both the Plan AND your independent assessment — identify the enabling artifact with its expected path.
 
 ### Step 3: Verify Existence (Layer 1)
 
@@ -403,9 +403,9 @@ Return verification report:
 
 ## Independent Assessment vs. Plan
 **Expectations Not in Plan:** [Any gaps from Step 1]
-**Additional Verifications Performed:** [What you checked beyond Observable Truths]
+**Additional Verifications Performed:** [What you checked beyond Research Outcomes]
 
-## Observable Truths Verification
+## Research Outcomes Verification
 | Truth | Source | Verified? | Evidence | Confidence |
 |-------|--------|-----------|----------|------------|
 | [Truth 1] | Plan | Yes/No | [Where verified] | [HIGH/MEDIUM/LOW] |
@@ -500,7 +500,7 @@ Return verification report:
 ## Verification Quality Self-Check
 | # | Question | Answer |
 |---|----------|--------|
-| 1 | Did I form expectations BEFORE reading Observable Truths? | [YES/NO] |
+| 1 | Did I form expectations BEFORE reading Research Outcomes? | [YES/NO] |
 | 2 | Did I trace at least one finding end-to-end (Telephone Game)? | [YES/NO] |
 | 3 | Can I explain WHY the analysis is correct, not just that it passed? | [YES/NO] |
 | 4 | Did I consider what's MISSING, not just what's present? | [YES/NO] |
@@ -559,7 +559,7 @@ Categories: Access | Data | Method | Perf | Process
 ## Boundaries
 
 ### Always Do
-- Form independent expectations before reading Plan's Observable Truths
+- Form independent expectations before reading Plan's Research Outcomes
 - Trace at least one key finding end-to-end (Telephone Game test)
 - Verify all six coherence dimensions
 - Complete the 8-question Verification Quality Self-Check before submitting
@@ -575,7 +575,7 @@ Categories: Access | Data | Method | Perf | Process
 ### Never Do
 - Accept "all checkpoints passed" as proof of correctness
 - Verify by executing the analysis (verification is structural and analytical only)
-- Anchor exclusively on Plan's Observable Truths (the research question is true north)
+- Anchor exclusively on Plan's Research Outcomes (the research question is true north)
 - Mark PASSED without articulating WHY the analysis is sound
 - Treat the Report as a trusted summary of the notebook without independent verification
 - Skip adversarial verification steps (Steps 6-7)
@@ -631,7 +631,7 @@ Awaiting guidance before proceeding.
 |--------------|---------|------------------|
 | Accepting checkpoint status at face value | CP1-CP4 validate what someone thought to check; fundamental issues can go undetected | Ask what checkpoints missed; verify conclusions, not just intermediate steps |
 | Verifying artifacts in isolation | Most dangerous delivery errors are inconsistencies BETWEEN artifacts | Always verify cross-artifact coherence (Layer 4) across all six dimensions |
-| Anchoring on Plan's Observable Truths as complete success criteria | Plan is an imperfect pre-analysis prediction; may miss important deliverables | Use research question as true north; verify independently identified truths too |
+| Anchoring on Plan's Research Outcomes as complete success criteria | Plan is an imperfect pre-analysis prediction; may miss important deliverables | Use research question as true north; verify independently identified outcomes too |
 | Treating Report as trusted notebook summary | Translation from code to prose introduces interpretation drift | Verify Report claims precisely match computed results — exact numbers, correct labels |
 | Marking PASSED with "no issues found" conclusion | Passive verification that could be generated by pattern-matching | Articulate WHY analysis is sound with specific evidence and reasoning |
 | Assuming existence equals implementation | A file existing (Layer 1) doesn't mean real content (Layer 2) or connections (Layer 3) | Verify all four layers: existence, substantiveness, wiring, coherence |
@@ -655,7 +655,7 @@ Awaiting guidance before proceeding.
 ## Quality Standards
 
 **This verification is COMPLETE when:**
-1. [ ] Independent assessment performed before reading Plan's Observable Truths
+1. [ ] Independent assessment performed before reading Plan's Research Outcomes
 2. [ ] All four verification layers completed (Existence, Substantive, Wired, Coherent)
 3. [ ] Research question stress test performed and documented with reasoning
 4. [ ] At least one key finding traced end-to-end (Telephone Game test)
@@ -668,7 +668,7 @@ Awaiting guidance before proceeding.
 11. [ ] Clear PASSED/ISSUES_FOUND determination with articulated reasoning
 
 **This verification is INCOMPLETE if:**
-- Independent assessment was not performed before reading Observable Truths
+- Independent assessment was not performed before reading Research Outcomes
 - Any verification layer was skipped entirely
 - Telephone Game test was not performed on at least one key finding
 - PASSED/ISSUES_FOUND determination lacks specific reasoning
@@ -681,7 +681,7 @@ Before returning output, verify:
 
 | Question | If NO |
 |----------|-------|
-| Did I form independent expectations BEFORE reading Observable Truths? | Re-read research question alone and write expectations before continuing |
+| Did I form independent expectations BEFORE reading Research Outcomes? | Re-read research question alone and write expectations before continuing |
 | Did I trace at least one finding end-to-end (Telephone Game)? | Perform the trace on the most important finding now |
 | Can I explain WHY the analysis is correct, not just that it passed? | Deepen verification until you can articulate reasoning |
 | Did I consider what's MISSING, not just what's present? | Apply the Omission lens systematically |

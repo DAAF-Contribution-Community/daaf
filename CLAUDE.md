@@ -414,7 +414,7 @@ The Full Pipeline workflow consists of **5 Phases** and **12 Stages**. Other mod
 │  Stage 11: Report Generation ←── report-writer agent                        │
 │      ├─ Synthesize Plan, Notebook, STATE, LEARNINGS, QA summary             │
 │      ├─ Follow Section-Source Mapping for each REPORT_TEMPLATE.md section   │
-│      ├─ Cross-check Observable Truths against Key Findings                  │
+│      ├─ Cross-check Research Outcomes against Key Findings                  │
 │      └─ Gate G11: Report complete with all sections + figure references     │
 │                          ↓                                                  │
 │  Stage 12: Final Review (Protocol 5)                                        │
@@ -597,7 +597,7 @@ As the orchestrator, you maintain overall context and coordinate subagent execut
 - [ ] Source caveats from Stage 3 inlined (not just referenced)
 - [ ] Coded value handling specification provided
 - [ ] Suppression tolerance thresholds specified
-- [ ] Critical columns identified (from Plan Observable Truths)
+- [ ] Critical columns identified (from Plan Research Outcomes)
 - [ ] Risk Register items for cleaning included
 - [ ] Domain context skill specified (or N/A)
 - [ ] Script follows IAT documentation standards
@@ -609,7 +609,7 @@ As the orchestrator, you maintain overall context and coordinate subagent execut
 - [ ] Expected outcome specified (row count, shape)
 - [ ] Join cardinality specified (if join task)
 - [ ] Risk Register items included
-- [ ] Observable Truth contribution stated
+- [ ] Research Outcome contribution stated
 - [ ] Script follows IAT documentation standards
 
 **Code-Reviewer (QA) Checklist:**
@@ -617,7 +617,7 @@ As the orchestrator, you maintain overall context and coordinate subagent execut
 - [ ] Plan expectations INLINED (not just path) — row counts, tolerances, critical columns
 - [ ] QA tolerance thresholds specified (BLOCKER if, WARNING if)
 - [ ] Risk Register items included
-- [ ] Observable Truth contribution stated
+- [ ] Research Outcome contribution stated
 - [ ] Prior QA findings accumulated (if any WARNING items from prior scripts)
 - [ ] Coded values from Plan inlined
 - [ ] IAT compliance expectations stated
@@ -630,7 +630,7 @@ As the orchestrator, you maintain overall context and coordinate subagent execut
 - [ ] Expected output format specified (summary table, model results, etc.)
 - [ ] Output file path specified (`output/analysis/[date]_[description].parquet`)
 - [ ] Significance thresholds or interpretation guidelines provided
-- [ ] Observable Truth contribution stated
+- [ ] Research Outcome contribution stated
 - [ ] Risk Register items included
 - [ ] Script follows IAT documentation standards
 
@@ -640,7 +640,7 @@ As the orchestrator, you maintain overall context and coordinate subagent execut
 - [ ] Output file path specified (`output/figures/[date]_[description].png`)
 - [ ] Labeling requirements stated (title, axes, legend, source note)
 - [ ] Accessibility considerations noted (colorblind-safe palette, etc.)
-- [ ] Observable Truth contribution stated
+- [ ] Research Outcome contribution stated
 - [ ] Risk Register items included
 - [ ] Script follows IAT documentation standards
 
@@ -688,7 +688,7 @@ Report to the user **adaptively** at these trigger points:
 | ID | Transition | After Stage | Before Stage | What User Reviews |
 |---|---|---|---|---|
 | PSU1 | Phase 1 → Phase 2 | 3.5 (Synthesis) | 4 (Plan Creation) | Discovery findings, data availability, source caveats, feasibility, recommended approach |
-| PSU2 | Phase 2 → Phase 3 | 4.5 (Plan Validation) | 5 (Data Retrieval) | The Plan document — methodology, scope, task sequence, observable truths |
+| PSU2 | Phase 2 → Phase 3 | 4.5 (Plan Validation) | 5 (Data Retrieval) | The Plan document — methodology, scope, task sequence, research outcomes, hypotheses (if any) |
 | PSU3 | Phase 3 → Phase 4 | 6 (Context Application) | 7 (EDA & Transformation) | Data quality metrics, suppression rates, datasets acquired, QA1/QA2 summaries |
 | PSU4 | Phase 4 → Phase 5 | 10 (QA Aggregation) | 11 (Report Generation) | Statistical results, key visualizations, QA aggregation, deviations from Plan |
 
@@ -744,7 +744,8 @@ Phase [N+1] ([Phase Name]) will [brief description of what comes next and what i
 - Methodology summary (statistical approach, key decisions)
 - Data sources and year ranges confirmed
 - Transformation sequence overview (number of tasks, waves)
-- Observable Truths the analysis will test
+- Research Outcomes the analysis will investigate
+- Hypotheses (if any) and their basis
 - Risk Register highlights
 - Plan-checker validation result (PASSED/PASSED_WITH_WARNINGS and any warnings)
 - User informed of full Plan filepath and instructed to read it closely for their deep review
@@ -1214,9 +1215,10 @@ When interpreting data values and resolving discrepancies between sources, apply
 - **CP4.3:** All analysis outputs in Plan's analysis spec exist in output/analysis/ and all figures in Plan's visualization spec exist in output/figures/
 - **CP4.4:** All Plan-required report sections complete
 - **CP4.5:** Outputs match Plan commitments (data sources, years, geography, methodology)
-- **CP4.6:** All Observable Truths in Plan are satisfied
+- **CP4.6:** All Research Outcomes in Plan are addressed with evidence
+- **CP4.7:** All Hypotheses in Plan (if any) are transparently assessed
 
-**CP4 STOP Conditions:** Missing Executive Summary, missing Key Findings, any Observable Truth unsatisfied, major deviation from Plan methodology.
+**CP4 STOP Conditions:** Missing Executive Summary, missing Key Findings, any Research Outcome not addressed, major deviation from Plan methodology.
 
 See `agent_reference/05_VALIDATION_CHECKPOINTS.md` for Python code templates.
 
@@ -1363,7 +1365,8 @@ These conditions trigger an immediate STOP with escalation to user. See `agent_r
 
 **Stage 4 (Plan Creation) Verification:**
 - [ ] Research question clearly stated (not placeholder)
-- [ ] Observable Truths section has ≥3 measurable outcomes
+- [ ] Research Outcomes section has ≥3 investigation/measurement objectives that do not pre-specify directional results
+- [ ] Hypotheses (if any) are clearly separated from Research Outcomes and include basis citations
 - [ ] Data Sources table complete with endpoints and years
 - [ ] Transformation Sequence table has all tasks with waves assigned
 - [ ] Every task has explicit file paths (no placeholders like "TBD")
@@ -1430,7 +1433,7 @@ These conditions trigger an immediate STOP with escalation to user. See `agent_r
 - [ ] Assumptions validated before analysis (documented in script)
 - [ ] Results saved to `output/analysis/` as parquet
 - [ ] Key findings documented with effect sizes and confidence intervals
-- [ ] Interpretation aligned with Observable Truths in Plan
+- [ ] Interpretation aligned with Research Outcomes in Plan
 - [ ] Overall status: PASSED/FAILED/WARNING
 
 **Stage 8.2 (Visualization) Verification:**

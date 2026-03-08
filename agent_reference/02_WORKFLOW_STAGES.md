@@ -161,7 +161,7 @@ See `agents/code-reviewer.md` for the complete QA protocol and `agent_reference/
 |--------------|--------|----------------------|
 | Script path | research-executor | YES — exact path |
 | Plan expectations | Plan (inlined) | YES — row counts, tolerances |
-| Observable Truth contribution | Plan | YES — what this task enables |
+| Research Outcome contribution | Plan | YES — what this task enables |
 | Risk Register items | Plan | YES — relevant mitigations |
 | QA tolerance thresholds | Plan (QA Tolerance Decisions section) | YES — BLOCKER/WARNING criteria |
 | Prior QA findings | Accumulated from prior scripts | YES — WARNING items to track |
@@ -648,7 +648,7 @@ Stage 4.5 catches these issues **before** expensive data acquisition begins.
 | **Completeness** | All required sections populated, no placeholders |
 | **Consistency** | Internal references match, no contradictions |
 | **Feasibility** | Data sources exist, endpoints valid, years available |
-| **Testability** | Observable Truths are measurable, validation criteria specific |
+| **Testability** | Research Outcomes are measurable investigation objectives, validation criteria specific |
 | **Clarity** | Tasks unambiguous, file paths explicit |
 | **Scope** | Boundaries defined, escalation conditions clear |
 
@@ -722,7 +722,7 @@ Run plan-checker
 - Methodology summary: statistical approach, key analytical decisions
 - Data sources confirmed: endpoints, year ranges, geographic scope
 - Transformation sequence overview: number of tasks, wave structure, key joins
-- Observable Truths the analysis will evaluate
+- Research Outcomes the analysis will investigate
 - Risk Register highlights: top risks and mitigation strategies
 - Plan-checker result: PASSED or PASSED_WITH_WARNINGS (include any warnings verbatim)
 - Estimated scope: approximate record counts, number of scripts
@@ -1299,7 +1299,7 @@ fig.write_image(f"output/figures/{date_prefix}_plot_name.png")
 | Analysis dataset path | Stage 7 output | YES — exact path |
 | Research question | Plan | YES — verbatim |
 | Analysis specification | Plan (Analysis Requirements) | YES — methods, variables, hypotheses |
-| Observable Truth contribution | Plan | YES — which truths this analysis addresses |
+| Research Outcome contribution | Plan | YES — which outcomes this analysis addresses |
 | Statistical assumptions to check | Plan / data-scientist skill | YES — method-specific |
 | Risk Register items | Plan | YES — relevant risks |
 
@@ -1321,7 +1321,7 @@ fig.write_image(f"output/figures/{date_prefix}_plot_name.png")
 | Plan expectations | YES — statistical methods, expected directions | YES — figure specs, labeling requirements |
 | QA tolerance thresholds | YES — methodology validity, assumption violations | YES — figure existence, data accuracy |
 | Prior QA findings | YES — accumulated from 8.1 scripts | YES — accumulated from 8.1 + 8.2 scripts |
-| Observable Truth contribution | YES | YES |
+| Research Outcome contribution | YES | YES |
 
 ### Output
 
@@ -1485,7 +1485,7 @@ The following are **NEVER ALLOWED** in Stage 9 notebooks:
 - QA aggregation summary: all accumulated WARNINGs from Stages 5-8, with resolution status
 - Any deviations from Plan methodology (with rationale)
 - Notebook compilation status (Stage 9): runs successfully, all scripts represented
-- Observable Truths progress: which can be evaluated, preliminary assessment
+- Research Outcomes progress: which can be evaluated, preliminary assessment
 
 **User Response Handling:**
 - **Approve** → Proceed to Stage 11 (Report Generation)
@@ -1507,7 +1507,7 @@ The following are **NEVER ALLOWED** in Stage 9 notebooks:
 
 | Input | Source | Purpose |
 |-------|--------|---------|
-| Plan.md | Stage 4 | Research question, methodology, observable truths, risk register |
+| Plan.md | Stage 4 | Research question, methodology, research outcomes, risk register |
 | Marimo notebook (.py) | Stage 9 | Complete technical record: all scripts + execution logs |
 | STATE.md | Maintained throughout | Checkpoint statuses, key decisions, blockers |
 | LEARNINGS.md | Maintained throughout | Data quality insights, methodology lessons |
@@ -1523,11 +1523,11 @@ The report-writer follows a systematic mapping from REPORT_TEMPLATE.md sections 
 
 | Report Section | Primary Source | Secondary Sources |
 |---|---|---|
-| Executive Summary | Plan Observable Truths + notebook execution logs | LEARNINGS.md |
+| Executive Summary | Plan Research Outcomes + notebook execution logs | LEARNINGS.md |
 | Research Question | Plan (verbatim) | — |
 | Data & Methods | Plan Methodology + Stage 5-6 execution logs | STATE.md checkpoints |
 | Quality Assurance | Stage 10 QA summary | STATE.md QA sections |
-| Key Findings | Stage 7 transforms + Stage 8.1 analysis results + Stage 8.2 figures | Plan Observable Truths |
+| Key Findings | Stage 7 transforms + Stage 8.1 analysis results + Stage 8.2 figures | Plan Research Outcomes |
 | Limitations | Plan Risk Register + source caveats + suppression rates + LEARNINGS.md | STATE.md blockers |
 | Citations | Stage 6 citation text | Plan Data Sources table |
 
@@ -1536,7 +1536,7 @@ The report-writer follows a systematic mapping from REPORT_TEMPLATE.md sections 
 1. **Read upstream artifacts** — Plan, Notebook, STATE.md, LEARNINGS.md
 2. **Verify figures** — Confirm all figure files exist before referencing
 3. **Draft report** — Follow REPORT_TEMPLATE.md section by section using Section-Source Mapping
-4. **Cross-check Observable Truths** — Every Observable Truth addressed in Key Findings
+4. **Cross-check Research Outcomes** — Every Research Outcome addressed in Key Findings
 5. **Write Report.md** — Save to project folder with date prefix
 
 ### Gate Criteria (G11)
@@ -1544,7 +1544,7 @@ The report-writer follows a systematic mapping from REPORT_TEMPLATE.md sections 
 - [ ] report-writer returned COMPLETE or COMPLETE_WITH_GAPS
 - [ ] All REPORT_TEMPLATE.md sections populated (not placeholder text)
 - [ ] All figure references resolve to existing files
-- [ ] All Observable Truths from Plan addressed in Key Findings
+- [ ] All Research Outcomes from Plan addressed in Key Findings
 - [ ] Executive Summary is 4-5 sentences
 - [ ] All statistics trace to execution logs or dataset metadata
 - [ ] Citation text included verbatim
