@@ -274,10 +274,10 @@ After a Full Pipeline run completes, you'll have a project folder containing eve
 Every analysis lives in a self-contained folder under `research/`, named with the date and a descriptive title:
 
 ```
-research/2026-01-24 School Poverty Analysis/
-├── 2026-01-24 School Poverty Analysis Plan.md
-├── 2026-01-24 School Poverty Analysis.py
-├── 2026-01-24 School Poverty Analysis Report.md
+research/2026-01-24_School_Poverty_Analysis/
+├── 2026-01-24_School_Poverty_Analysis_Plan.md
+├── 2026-01-24_School_Poverty_Analysis.py
+├── 2026-01-24_School_Poverty_Analysis_Report.md
 ├── LEARNINGS.md
 ├── STATE.md
 ├── scripts/
@@ -368,7 +368,7 @@ Let's go through each piece.
 
 **How to view it:** From inside your Docker container:
 ```bash
-marimo run 'research/YYYY-MM-DD Title/YYYY-MM-DD Notebook.py' --host 0.0.0.0 --port 2718 --headless
+marimo run 'research/YYYY-MM-DD_Title/YYYY-MM-DD_Notebook.py' --host 0.0.0.0 --port 2718 --headless
 ```
 Then open [http://localhost:2718](http://localhost:2718) in your normal web browser. You can also open the `.py` file in any text editor -- marimo notebooks are just Python.
 
@@ -409,7 +409,7 @@ Then open [http://localhost:2718](http://localhost:2718) in your normal web brow
 
 ## Looking at an Actual Example Project
 
-To help illustrate what DAAF does and how it works, I've included in the main repository an example project in the research folder focused on trying to tease out the [**complicated/misleading relationship between college selectivity and graduation rates**](../research/2026-02-15%20College%20Graduation%20Rate%20Selectivity%20Analysis/). With that folder, you can explore basically everything that DAAF has to offer for a Full Pipeline Analysis -- from the [Plan document](../research/2026-02-15%20College%20Graduation%20Rate%20Selectivity%20Analysis/2026-02-15%20College%20Graduation%20Rate%20Selectivity%20Analysis%20Plan.md), the [full report](../research/2026-02-15%20College%20Graduation%20Rate%20Selectivity%20Analysis/2026-02-15%20College%20Graduation%20Rate%20Selectivity%20Analysis%20Report.md), and a variety of analytic scripts along the way (see a [data fetch example](../research/2026-02-15%20College%20Graduation%20Rate%20Selectivity%20Analysis/scripts/stage5_fetch/03_fetch-admissions.py), a [data transformation/join example](../research/2026-02-15%20College%20Graduation%20Rate%20Selectivity%20Analysis/scripts/stage7_transform/03_join-resources.py), a [code QA example](../research/2026-02-15%20College%20Graduation%20Rate%20Selectivity%20Analysis/scripts/cr/stage6_08_cr2.py), and a [statistical analysis example](../research/2026-02-15%20College%20Graduation%20Rate%20Selectivity%20Analysis/scripts/stage8_analysis/03_correlation-matrix.py)).
+To help illustrate what DAAF does and how it works, I've included in the main repository an example project in the research folder focused on trying to tease out the [**complicated/misleading relationship between college selectivity and graduation rates**](../research/2026-02-15_College_Graduation_Rate_Selectivity_Analysis/). With that folder, you can explore basically everything that DAAF has to offer for a Full Pipeline Analysis -- from the [Plan document](../research/2026-02-15_College_Graduation_Rate_Selectivity_Analysis/2026-02-15_College_Graduation_Rate_Selectivity_Analysis_Plan.md), the [full report](../research/2026-02-15_College_Graduation_Rate_Selectivity_Analysis/2026-02-15_College_Graduation_Rate_Selectivity_Analysis_Report.md), and a variety of analytic scripts along the way (see a [data fetch example](../research/2026-02-15_College_Graduation_Rate_Selectivity_Analysis/scripts/stage5_fetch/03_fetch-admissions.py), a [data transformation/join example](../research/2026-02-15_College_Graduation_Rate_Selectivity_Analysis/scripts/stage7_transform/03_join-resources.py), a [code QA example](../research/2026-02-15_College_Graduation_Rate_Selectivity_Analysis/scripts/cr/stage6_08_cr2.py), and a [statistical analysis example](../research/2026-02-15_College_Graduation_Rate_Selectivity_Analysis/scripts/stage8_analysis/03_correlation-matrix.py)).
 
 This was just a random test run that I decided to record via video for demo purposes, and it felt appropriate to upload the full and complete output in all dimensions for transparency's sake. I do **not** post this because I think it's spotless and perfect and great -- I present this warts and all, knowing that it isn't great with some of its interpretation, and some of the report is frankly a little overblown in its conclusions. That's part of the point here: there's a LOT to be impressed by in this work, but it IS NOT PERFECT and DOES need human review. Please use DAAF accordingly!!!
 
@@ -560,7 +560,7 @@ To resume a session, simply start a new Claude Code session and tell DAAF to pic
 
 ```
 I need to resume the school poverty analysis we were working on.
-The project folder is at research/2026-01-24 School Poverty Analysis/
+The project folder is at research/2026-01-24_School_Poverty_Analysis/
 ```
 
 DAAF will read STATE.md, understand where it stopped, and resume from that exact point. You don't need to re-explain your research question or re-run any completed stages.

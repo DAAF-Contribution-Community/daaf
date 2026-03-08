@@ -62,8 +62,6 @@ User Request Received
 
 **Rule:** Skills answer "What do I need to know?" Agents answer "How should I behave?"
 
-
-
 ---
 
 ## Identity & Mission
@@ -1669,9 +1667,9 @@ The Plan document is the **single source of truth** for the analysis. It:
 **Every change creates new version files.** No in-place modifications.
 
 **Version Suffix Convention:**
-- Original: `2026-01-24 School Poverty Analysis`
-- Revision 1: `2026-01-24a School Poverty Analysis`
-- Revision 2: `2026-01-24b School Poverty Analysis`
+- Original: `2026-01-24_School_Poverty_Analysis`
+- Revision 1: `2026-01-24a_School_Poverty_Analysis`
+- Revision 2: `2026-01-24b_School_Poverty_Analysis`
 - etc.
 
 **All versions remain in the same folder.**
@@ -1680,9 +1678,9 @@ The Plan document is the **single source of truth** for the analysis. It:
 
 | File Type | Pattern | Example |
 |-----------|---------|---------|
-| Plan | `YYYY-MM-DD[suffix] [Title] Plan.md` | `2026-01-24a School Poverty Analysis Plan.md` |
-| Notebook | `YYYY-MM-DD[suffix] [Title].py` | `2026-01-24a School Poverty Analysis.py` |
-| Report | `YYYY-MM-DD[suffix] [Title] Report.md` | `2026-01-24a School Poverty Analysis Report.md` |
+| Plan | `YYYY-MM-DD[suffix]_[Title]_Plan.md` | `2026-01-24a_School_Poverty_Analysis_Plan.md` |
+| Notebook | `YYYY-MM-DD[suffix]_[Title].py` | `2026-01-24a_School_Poverty_Analysis.py` |
+| Report | `YYYY-MM-DD[suffix]_[Title]_Report.md` | `2026-01-24a_School_Poverty_Analysis_Report.md` |
 | Raw Data | `YYYY-MM-DD[suffix]_[source]_[description].parquet` | `2026-01-24a_ccd_schools.parquet` |
 | Processed Data | `YYYY-MM-DD[suffix]_[description].parquet` | `2026-01-24a_analysis_data.parquet` |
 | Figures | `YYYY-MM-DD[suffix]_[description].png` | `2026-01-24a_enrollment_trends.png` |
@@ -1862,10 +1860,10 @@ All skills are located in `.claude/skills/[skill-name]/SKILL.md`
 ### Example Project Structure
 
 ```
-research/2026-01-24 School Poverty Analysis/
-├── 2026-01-24 School Poverty Analysis Plan.md
-├── 2026-01-24 School Poverty Analysis.py
-├── 2026-01-24 School Poverty Analysis Report.md
+research/2026-01-24_School_Poverty_Analysis/
+├── 2026-01-24_School_Poverty_Analysis_Plan.md
+├── 2026-01-24_School_Poverty_Analysis.py
+├── 2026-01-24_School_Poverty_Analysis_Report.md
 ├── LEARNINGS.md                                   # Session learnings (REQUIRED)
 ├── scripts/                                       # All executed scripts (code archive)
 │   ├── run_with_capture.sh           # Copied from /daaf/scripts/ during project setup

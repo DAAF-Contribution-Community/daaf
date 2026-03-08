@@ -357,7 +357,7 @@ docker compose up -d
 docker compose exec daaf-docker bash
 # Inside the container, you can run the following command to view a notebook 
 # Note that the first bit should be the (replace the path with your actual notebook)
-marimo run 'research/YYYY-MM-DD Title/YYYY-MM-DD Notebook Name.py' --host 0.0.0.0 --port 2718 --headless
+marimo run 'research/YYYY-MM-DD_Title/YYYY-MM-DD_Notebook_Name.py' --host 0.0.0.0 --port 2718 --headless
 ```
 
 Then open [http://localhost:2718](http://localhost:2718) in your computer's browser (no need to mess with anything in the terminal here). The notebook renders there as an interactive document. The nice thing about these is that they're also written in regular Python code, so you can inspect its code very easily in any text browser as well.
@@ -365,7 +365,7 @@ Then open [http://localhost:2718](http://localhost:2718) in your computer's brow
 To **edit** a notebook interactively, use `marimo edit` instead of `marimo run`:
 
 ```bash
-marimo edit 'research/YYYY-MM-DD Title/YYYY-MM-DD Notebook Name.py' --host 0.0.0.0 --port 2718 --headless
+marimo edit 'research/YYYY-MM-DD_Title/YYYY-MM-DD_Notebook_Name.py' --host 0.0.0.0 --port 2718 --headless
 ```
 
 ---

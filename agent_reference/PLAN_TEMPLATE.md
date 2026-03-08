@@ -15,16 +15,16 @@ must_haves:
     - "[Observable behavior 3 - measurable result]"
 
   artifacts:
-    - path: "research/YYYY-MM-DD [Title]/YYYY-MM-DD [Title].py"
+    - path: "research/YYYY-MM-DD_[Title]/YYYY-MM-DD_[Title].py"
       provides: "[What this file delivers]"
       min_lines: 200
       contains: "[Pattern or text that must be present]"
 
-    - path: "research/YYYY-MM-DD [Title]/data/processed/YYYY-MM-DD_analysis.parquet"
+    - path: "research/YYYY-MM-DD_[Title]/data/processed/YYYY-MM-DD_analysis.parquet"
       provides: "[What this file delivers]"
       has_columns: ["col1", "col2", "col3"]
 
-    - path: "research/YYYY-MM-DD [Title]/YYYY-MM-DD [Title] Report.md"
+    - path: "research/YYYY-MM-DD_[Title]/YYYY-MM-DD_[Title]_Report.md"
       provides: "[What this file delivers]"
       contains: ["## Section 1", "## Section 2"]
 
@@ -76,10 +76,10 @@ Every task in the "Executable Task Sequence" section is written as a prompt that
 *Include this section for all revisions. Omit for original deliveries.*
 
 **Version:** [a | b | c | ...]
-**Based On:** `YYYY-MM-DD[prior-suffix] [Title] Plan.md` (same folder)
+**Based On:** `YYYY-MM-DD[prior-suffix]_[Title]_Plan.md` (same folder)
 **Prior Versions:**
-- `YYYY-MM-DD[x] [Title] Plan.md` — [revision type, brief note]
-- `YYYY-MM-DD [Title] Plan.md` — Original delivery
+- `YYYY-MM-DD[x]_[Title]_Plan.md` — [revision type, brief note]
+- `YYYY-MM-DD_[Title]_Plan.md` — Original delivery
 
 **Revision Trigger:**
 > [Verbatim user request that triggered this revision]
@@ -182,35 +182,35 @@ must_haves:
     - "Visualizations include confidence intervals where applicable"
 
   artifacts:
-    - path: "research/YYYY-MM-DD [Title]/YYYY-MM-DD [Title].py"
+    - path: "research/YYYY-MM-DD_[Title]/YYYY-MM-DD_[Title].py"
       provides: "Interactive analysis notebook"
       min_lines: 200
       contains: "mo.md"  # Marimo markdown cells present
 
-    - path: "research/YYYY-MM-DD [Title]/data/processed/YYYY-MM-DD_analysis.parquet"
+    - path: "research/YYYY-MM-DD_[Title]/data/processed/YYYY-MM-DD_analysis.parquet"
       provides: "Cleaned analysis dataset"
       has_columns: ["ncessch", "year", "enrollment", "frl_rate"]
 
-    - path: "research/YYYY-MM-DD [Title]/YYYY-MM-DD [Title] Report.md"
+    - path: "research/YYYY-MM-DD_[Title]/YYYY-MM-DD_[Title]_Report.md"
       provides: "Stakeholder report with findings"
       contains: ["## Executive Summary", "## Limitations", "## Data Sources"]
 
-    - path: "research/YYYY-MM-DD [Title]/output/figures/YYYY-MM-DD_enrollment_trends.png"
+    - path: "research/YYYY-MM-DD_[Title]/output/figures/YYYY-MM-DD_enrollment_trends.png"
       provides: "Trend visualization"
       min_size_kb: 50
 
   key_links:
-    - from: "YYYY-MM-DD [Title].py"
+    - from: "YYYY-MM-DD_[Title].py"
       to: "data/processed/YYYY-MM-DD_analysis.parquet"
       via: "pl.read_parquet() in data loading cell"
       pattern: "read_parquet.*analysis"
 
-    - from: "YYYY-MM-DD [Title].py"
+    - from: "YYYY-MM-DD_[Title].py"
       to: "output/figures/"
       via: "ggplot.save() or fig.write_image()"
       pattern: "(ggsave|write_image|savefig)"
 
-    - from: "YYYY-MM-DD [Title] Report.md"
+    - from: "YYYY-MM-DD_[Title]_Report.md"
       to: "output/figures/"
       via: "Markdown image references"
       pattern: "!\\[.*\\]\\(.*figures/"
@@ -227,7 +227,7 @@ must_haves:
 |--------------|-------------|--------------|
 | **Truths too vague** | "Analysis is complete" | "Enrollment trends show year-over-year change with statistical significance" |
 | **Truths not testable** | "Data is clean" | "No coded values (-1, -2, -3) remain in analysis columns" |
-| **Artifacts too abstract** | "Analysis files" | "research/2026-01-31 School Poverty/2026-01-31 School Poverty.py" |
+| **Artifacts too abstract** | "Analysis files" | "research/2026-01-31_School_Poverty/2026-01-31_School_Poverty.py" |
 | **Artifacts missing content spec** | path only | path + provides + contains/has_columns |
 | **Missing wiring** | Listing files without connections | "Notebook loads from data/processed/ via pl.read_parquet()" |
 | **Key links too generic** | "Notebook uses data" | "Cell 3 loads YYYY-MM-DD_analysis.parquet with enrollment, frl columns" |
@@ -1217,16 +1217,16 @@ and QA reviewers understand what was intentionally accepted.*
 
 | File | Path | Description |
 |------|------|-------------|
-| Plan | `research/YYYY-MM-DD [Title]/YYYY-MM-DD [Title] Plan.md` | This document |
-| Notebook | `research/YYYY-MM-DD [Title]/YYYY-MM-DD [Title].py` | Marimo analysis notebook |
-| Report | `research/YYYY-MM-DD [Title]/YYYY-MM-DD [Title] Report.md` | Stakeholder report |
-| **Learnings** | `research/YYYY-MM-DD [Title]/LEARNINGS.md` | **Session learnings (skeleton at Stage 4, incremental during 5-8, consolidated at Stage 12)** |
-| Raw Data | `research/YYYY-MM-DD [Title]/data/raw/YYYY-MM-DD_*.parquet` | Original data downloads |
-| Processed Data | `research/YYYY-MM-DD [Title]/data/processed/YYYY-MM-DD_*.parquet` | Cleaned data |
-| Figures | `research/YYYY-MM-DD [Title]/output/figures/YYYY-MM-DD_*.png` | Visualizations |
-| Fetch Scripts | `research/YYYY-MM-DD [Title]/scripts/stage5_fetch/*.py` | Data retrieval code |
-| Clean Scripts | `research/YYYY-MM-DD [Title]/scripts/stage6_clean/*.py` | Context application code |
-| Transform Scripts | `research/YYYY-MM-DD [Title]/scripts/stage7_transform/*.py` | Transformation code |
-| Analysis & Viz Scripts | `research/YYYY-MM-DD [Title]/scripts/stage8_analysis/*.py` | Statistical analysis and visualization code |
-| **QA Scripts** | `research/YYYY-MM-DD [Title]/scripts/cr/*.py` | **QA inspection scripts from code-reviewer** |
-| Debug Scripts | `research/YYYY-MM-DD [Title]/scripts/debug/*.py` | Diagnostic scripts (if any) |
+| Plan | `research/YYYY-MM-DD_[Title]/YYYY-MM-DD_[Title]_Plan.md` | This document |
+| Notebook | `research/YYYY-MM-DD_[Title]/YYYY-MM-DD_[Title].py` | Marimo analysis notebook |
+| Report | `research/YYYY-MM-DD_[Title]/YYYY-MM-DD_[Title]_Report.md` | Stakeholder report |
+| **Learnings** | `research/YYYY-MM-DD_[Title]/LEARNINGS.md` | **Session learnings (skeleton at Stage 4, incremental during 5-8, consolidated at Stage 12)** |
+| Raw Data | `research/YYYY-MM-DD_[Title]/data/raw/YYYY-MM-DD_*.parquet` | Original data downloads |
+| Processed Data | `research/YYYY-MM-DD_[Title]/data/processed/YYYY-MM-DD_*.parquet` | Cleaned data |
+| Figures | `research/YYYY-MM-DD_[Title]/output/figures/YYYY-MM-DD_*.png` | Visualizations |
+| Fetch Scripts | `research/YYYY-MM-DD_[Title]/scripts/stage5_fetch/*.py` | Data retrieval code |
+| Clean Scripts | `research/YYYY-MM-DD_[Title]/scripts/stage6_clean/*.py` | Context application code |
+| Transform Scripts | `research/YYYY-MM-DD_[Title]/scripts/stage7_transform/*.py` | Transformation code |
+| Analysis & Viz Scripts | `research/YYYY-MM-DD_[Title]/scripts/stage8_analysis/*.py` | Statistical analysis and visualization code |
+| **QA Scripts** | `research/YYYY-MM-DD_[Title]/scripts/cr/*.py` | **QA inspection scripts from code-reviewer** |
+| Debug Scripts | `research/YYYY-MM-DD_[Title]/scripts/debug/*.py` | Diagnostic scripts (if any) |

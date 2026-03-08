@@ -972,9 +972,9 @@ required_sections = ["Executive Summary", "Findings", "Limitations"]
 
 **Project Structure:**
 ```
-research/YYYY-MM-DD [Title]/
-├── YYYY-MM-DD [Title] Plan.md
-├── YYYY-MM-DD [Title].py     # Marimo notebook
+research/YYYY-MM-DD_[Title]/
+├── YYYY-MM-DD_[Title]_Plan.md
+├── YYYY-MM-DD_[Title].py     # Marimo notebook
 ├── scripts/                   # Scripts with inline validation
 │   ├── stage5_fetch/
 │   ├── stage6_clean/
@@ -1382,11 +1382,11 @@ Run stub detection and wiring checks inline in a Final Review script. Set variab
 
 ```python
 # Configure before stub detection
-project_dir = Path("research/2026-01-24 School Analysis/")
+project_dir = Path("research/2026-01-24_School_Analysis/")
 
 # Configure before wiring check
-notebook_path = Path("research/2026-01-24 School Analysis/2026-01-24 School Analysis.py")
-report_path = Path("research/2026-01-24 School Analysis/2026-01-24 School Analysis Report.md")
+notebook_path = Path("research/2026-01-24_School_Analysis/2026-01-24_School_Analysis.py")
+report_path = Path("research/2026-01-24_School_Analysis/2026-01-24_School_Analysis_Report.md")
 ```
 
 ---

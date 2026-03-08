@@ -165,7 +165,7 @@ This analysis has the following limitations that should be considered when inter
 
 ### Reproducibility
 
-- **Notebook:** `YYYY-MM-DD [Title].py`
+- **Notebook:** `YYYY-MM-DD_[Title].py`
 - **Processed data:** `data/processed/YYYY-MM-DD_*.parquet`
 - **Raw data:** `data/raw/YYYY-MM-DD_*.parquet`
 

@@ -315,7 +315,7 @@ Create the Plan document **after** completing Phase 1 (Discovery) and **before**
 
 ### Creation Checklist
 
-- [ ] Project folder created: `research/YYYY-MM-DD [Title]/`
+- [ ] Project folder created: `research/YYYY-MM-DD_[Title]/`
 - [ ] Plan file created from template
 - [ ] Original request captured verbatim
 - [ ] Clarifications documented
@@ -472,9 +472,9 @@ These files must exist in the project folder:
 
 | Artifact | Path | Exists? | Substantive? |
 |----------|------|---------|--------------|
-| Plan document | `[project]/YYYY-MM-DD [Title] Plan.md` | [ ] | [ ] |
-| Marimo notebook | `[project]/YYYY-MM-DD [Title].py` | [ ] | [ ] |
-| Stakeholder report | `[project]/YYYY-MM-DD [Title] Report.md` | [ ] | [ ] |
+| Plan document | `[project]/YYYY-MM-DD_[Title]_Plan.md` | [ ] | [ ] |
+| Marimo notebook | `[project]/YYYY-MM-DD_[Title].py` | [ ] | [ ] |
+| Stakeholder report | `[project]/YYYY-MM-DD_[Title]_Report.md` | [ ] | [ ] |
 | Lessons learned | `[project]/LEARNINGS.md` | [ ] | [ ] |
 | Raw data (parquet) | `[project]/data/raw/*.parquet` | [ ] | [ ] |
 | Processed data (parquet) | `[project]/data/processed/*.parquet` | [ ] | [ ] |
@@ -608,7 +608,7 @@ Task({
     All relative paths in referenced files resolve from BASE_DIR.
 
     **PROJECT TO VERIFY:**
-    Path: research/YYYY-MM-DD [Title]/
+    Path: research/YYYY-MM-DD_[Title]/
 
     **RESEARCH QUESTION:**
     [Verbatim from Plan]
@@ -822,9 +822,9 @@ Check which artifacts exist vs. are expected:
 
 ```python
 expected_files = {
-    "plan": f"{date_prefix} {title} Plan.md",
-    "notebook": f"{date_prefix} {title}.py",
-    "report": f"{date_prefix} {title} Report.md",
+    "plan": f"{date_prefix}_{title}_Plan.md",
+    "notebook": f"{date_prefix}_{title}.py",
+    "report": f"{date_prefix}_{title}_Report.md",
     "raw_data": "data/raw/",
     "processed_data": "data/processed/",
     "figures": "output/figures/"
@@ -849,7 +849,7 @@ Determine what's complete and what remains.
 **Session Recovery: [Project Title]**
 
 I found your in-progress analysis:
-- Plan: research/YYYY-MM-DD [Title]/YYYY-MM-DD [Title] Plan.md
+- Plan: research/YYYY-MM-DD_[Title]/YYYY-MM-DD_[Title]_Plan.md
 - Current Stage: [N] - [Stage Name]
 - Status: [status]
 - Last Checkpoint: [CP#] - [PASSED/FAILED]
