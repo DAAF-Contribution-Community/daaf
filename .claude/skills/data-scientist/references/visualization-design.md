@@ -33,24 +33,26 @@ Each visualization should communicate a single clear takeaway. If you need two m
 
 ## Visual Encoding Hierarchy
 
-Not all visual encodings are equally effective. Cleveland & McGill (1984) established through experiments that humans decode some channels far more accurately than others:
+Not all visual encodings are equally effective. Cleveland & McGill (1984), extended by Mackinlay (1986) and Munzner (2014), established that humans decode some visual channels far more accurately than others:
 
 ```
 Most accurate
   │  1. Position on a common scale (scatter plot, dot plot)
-  │  2. Position on non-aligned scales (small multiples)
+  │  2. Position on non-aligned scales (separate panels, small multiples)
   │  3. Length (bar chart height)
-  │  4. Angle / Slope (pie slice, line slope)
-  │  5. Area (bubble size, treemap)
-  │  6. Color saturation (heatmap intensity)
-  │  7. Color hue (categorical distinction only)
+  │  4. Slope (line chart trends)
+  │  5. Angle (pie slice)
+  │  6. Area (bubble size, treemap)
+  │  7. Color saturation (heatmap intensity)
+  │  8. Color hue (categorical distinction only)
 Least accurate
 ```
 
 **Practical implications:**
-- Bars beat pies for the same data (length vs. angle)
+- Bars beat pies for the same data (length at rank 3 vs. angle at rank 5)
+- Line chart slopes (rank 4) are read more accurately than pie angles (rank 5)
 - Scatter plots are powerful — both axes use position (rank 1)
-- Bubble charts sacrifice precision — size uses area (rank 5)
+- Bubble charts sacrifice precision — size uses area (rank 6)
 - Heatmaps show patterns, not precise values — use for "where are the hot spots?"
 
 **Encoding depends on data type:**
@@ -77,9 +79,10 @@ Start with the relationship you want to show, not the chart type you like. This 
 | Chart | Best For | Key Rule |
 |-------|----------|----------|
 | Histogram | Single distribution, shape + frequency | Bin width changes the story — try multiple |
-| Box plot | Comparing 5+ groups compactly | Hides bimodality — a bimodal and uniform distribution can produce identical boxes |
+| Box plot | Comparing distributions compactly | Hides shape: a bimodal and a unimodal distribution with the same quartiles produce identical boxes |
 | Violin plot | Distribution shape matters | Reveals bimodality that box plots hide |
-| Strip/jitter | Small datasets (n < ~200/group) | Shows every individual point |
+| Strip/jitter | Moderate datasets (n < ~500/group) | Shows individual data points; use transparency for larger n |
+| ECDF plot | Percentile comparisons, no binning | Shows every point's rank; great for "what % fall below X?" questions |
 | Ridgeline | Comparing many distributions (5-20+) | Compact vertical stacking of densities |
 
 ### Trend Over Time — How do values change?
@@ -87,7 +90,7 @@ Start with the relationship you want to show, not the chart type you like. This 
 | Chart | Best For | Key Rule |
 |-------|----------|----------|
 | Line chart | Continuous time series, 1-5 series | Lines imply continuity — don't use for discrete events |
-| Area chart | Emphasizing volume over time | Single series only; stacked areas obscure |
+| Area chart | Emphasizing volume over time | Stacked areas: only bottom layer and total are readable; middle layers lack a common baseline |
 | Small multiples | 5+ series that would overlap | Each gets its own panel — avoids spaghetti |
 | Bar chart | Discrete time periods (annual totals) | When each period is independent |
 | Sparklines | Inline trend context in tables/text | Data-dense, word-sized graphics (Tufte) |
@@ -109,6 +112,7 @@ Start with the relationship you want to show, not the chart type you like. This 
 | 100% stacked bar | Comparing proportions across groups | Normalizes totals; focus on share |
 | Treemap | Hierarchical, many categories | Space-efficient but hard to compare precisely |
 | Waffle chart | Simple proportion ("7 out of 10") | Intuitive for general audiences |
+| Stacked area | Composition change over time | Bottom layer + total are reliable; middle layers are hard to read precisely |
 
 **Why pie charts are usually poor:** They encode values as angle (rank 4), not length (rank 3). Comparing slices across pies is nearly impossible. Beyond 3-4 slices they become unreadable. A bar chart almost always communicates the same data more accurately. The one defensible use: showing that one category overwhelmingly dominates.
 
@@ -162,6 +166,9 @@ Before finalizing any visualization:
 - [ ] Data is not cherry-picked — full context is visible
 - [ ] Source is cited
 - [ ] The chart's message is stated (title) or immediately obvious
+- [ ] Sample sizes (N) are disclosed for all groups shown
+- [ ] Suppressed or missing values are noted (not silently excluded)
+- [ ] Axis labels include units of measurement
 
 ## Key References
 

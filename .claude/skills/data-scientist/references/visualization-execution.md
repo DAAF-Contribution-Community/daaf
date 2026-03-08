@@ -29,10 +29,12 @@ What kind of data are you coloring?
 | Sequential, CVD-optimized | **cividis** | Blue-yellow range avoids red-green entirely |
 | Sequential, high contrast | **inferno** | Wide luminance range; strong visual punch |
 | Diverging (general) | **BrBG** (ColorBrewer) | Brown-teal avoids red-green; clear midpoint |
-| Diverging (familiar) | **RdBu** (ColorBrewer) | Red-blue is intuitive for hot/cold, +/- |
+| Diverging (familiar) | **RdBu** (ColorBrewer) | Red-blue is intuitive for hot/cold, +/-; less CVD-safe than BrBG — use BrBG when accessibility is the priority |
 | Categorical (≤8 groups) | **Okabe-Ito** | Purpose-built for color vision deficiency |
 | Categorical (alternative) | **ColorBrewer Set2 / Dark2** | Tested for print, screen, and CVD |
 | Highlight one thing | **gray + one saturated color** | Instant attention focus; no legend needed |
+
+**Okabe-Ito hex values (in recommended order):** `#E69F00` (orange), `#56B4E9` (sky blue), `#009E73` (bluish green), `#F0E442` (yellow), `#0072B2` (blue), `#D55E00` (vermilion), `#CC79A7` (reddish purple), `#000000` (black). Use via `scale_color_manual()` in plotnine or `color_discrete_sequence` in plotly.
 
 ### Color Restraint
 
@@ -117,7 +119,7 @@ Annotations are where the analyst adds value beyond what the data alone shows. U
 - **Callouts** — brief text pointing to a specific data element. One short sentence max.
 - **Strategic highlighting** — bold or saturate the focal element; gray out everything else
 
-**Limit:** 1-2 annotations per chart. More than that creates visual noise that competes with the data.
+**Default limit:** 1-2 annotations per chart. Time series with multiple relevant events may warrant 3-4, but each must earn its place. If you need more than 4, consider splitting into panels.
 
 ## Typography & Layout
 
