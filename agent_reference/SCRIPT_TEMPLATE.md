@@ -57,7 +57,7 @@ scripts/stage7_transform/
 ## Directory Structure
 
 ```
-research/YYYY-MM-DD [Title]/
+research/YYYY-MM-DD_[Title]/
 ├── scripts/
 │   ├── stage5_fetch/           # Data retrieval scripts
 │   │   ├── 01_fetch-ccd.py
@@ -145,7 +145,7 @@ from pathlib import Path
 
 # --- Config ---
 # PROJECT_DIR: The orchestrator substitutes the absolute project path at invocation time.
-# Example: Path("/home/user/my-project/research/2026-02-04 My Analysis")
+# Example: Path("/home/user/my-project/research/2026-02-04_My_Analysis")
 PROJECT_DIR = Path("{PROJECT_DIR}")
 INPUT_PATH = PROJECT_DIR / "{input_path}"
 OUTPUT_PATH = PROJECT_DIR / "{output_path}"
@@ -360,7 +360,7 @@ from pathlib import Path
 # --- Config ---
 # Configuration constants derived from the Plan's query specification (Section 4.2).
 # Data is downloaded from mirrors
-PROJECT_DIR = Path("/daaf/research/2026-01-24 School Analysis")
+PROJECT_DIR = Path("/daaf/research/2026-01-24_School_Analysis")
 DATA_RAW = PROJECT_DIR / "data" / "raw"
 DATE_PREFIX = "2026-01-24"
 
@@ -566,7 +566,7 @@ from pathlib import Path
 # Configuration constants for CCD cleaning. Coded missing values (-1, -2, -3)
 # are standard across the Education Data Portal and must be replaced with null
 # before any statistical computation.
-PROJECT_DIR = Path("/daaf/research/2026-01-24 School Analysis")
+PROJECT_DIR = Path("/daaf/research/2026-01-24_School_Analysis")
 DATE_PREFIX = "2026-01-24"
 
 INPUT_PATH = PROJECT_DIR / "data" / "raw" / f"{DATE_PREFIX}_ccd_schools.parquet"
@@ -709,7 +709,7 @@ from pathlib import Path
 # --- Config ---
 # Configuration for joining CCD school directory with MEPS poverty estimates.
 # Join key and cardinality are specified in the Plan's Transformation Sequence.
-PROJECT_DIR = Path("/daaf/research/2026-01-24 School Analysis")
+PROJECT_DIR = Path("/daaf/research/2026-01-24_School_Analysis")
 DATE_PREFIX = "2026-01-24"
 
 INPUT_CCD = PROJECT_DIR / "data" / "processed" / f"{DATE_PREFIX}_ccd_clean.parquet"
@@ -848,7 +848,7 @@ from pathlib import Path
 # --- Config ---
 # Diagnostic script for investigating join key mismatch. Loads both datasets
 # that failed to join and tests three hypotheses about the root cause.
-PROJECT_DIR = Path("/daaf/research/2026-01-24 School Analysis")
+PROJECT_DIR = Path("/daaf/research/2026-01-24_School_Analysis")
 DATE_PREFIX = "2026-01-24"
 
 CCD_PATH = PROJECT_DIR / "data" / "processed" / f"{DATE_PREFIX}_ccd_clean.parquet"

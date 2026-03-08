@@ -165,7 +165,7 @@ The IAT is about useful documentation, not noise. Do NOT comment:
 **BEFORE (sparse):**
 ```python
 # --- Config ---
-PROJECT_DIR = Path("/daaf/research/2026-01-24 School Analysis")
+PROJECT_DIR = Path("/daaf/research/2026-01-24_School_Analysis")
 DATA_RAW = PROJECT_DIR / "data" / "raw"
 DATE_PREFIX = "2026-01-24"
 YEARS = list(range(2018, 2023))
@@ -196,7 +196,7 @@ print(f"Shape: {df.shape[0]:,} rows x {df.shape[1]} cols")
 # Configuration constants derived from the Plan's query specification (Section 4.2).
 # Data is downloaded from mirrors (per mirrors.yaml priority order) rather than
 # the REST API. We fetch 5 years to match the Plan's year range.
-PROJECT_DIR = Path("/daaf/research/2026-01-24 School Analysis")
+PROJECT_DIR = Path("/daaf/research/2026-01-24_School_Analysis")
 DATA_RAW = PROJECT_DIR / "data" / "raw"
 DATE_PREFIX = "2026-01-24"
 

@@ -633,7 +633,7 @@ All relative paths in referenced files resolve from BASE_DIR.
 {stage_3_5_synthesis}
 
 **PROJECT FOLDER:**
-research/{date} {title}/
+research/{date}_{title}/
 
 **TASK:**
 Create a comprehensive Plan document following `{BASE_DIR}/agent_reference/PLAN_TEMPLATE.md`.
@@ -643,7 +643,7 @@ containing the VERBATIM original user request above as a blockquote.
 Do NOT paraphrase or summarize — copy the exact text.
 
 **OUTPUT:**
-- Plan saved to: research/{date} {title}/{date} {title} Plan.md
+- Plan saved to: research/{date}_{title}/{date}_{title}_Plan.md
 - Structure follows `{BASE_DIR}/agent_reference/PLAN_TEMPLATE.md`
 - All sections populated (no placeholders)
 """,
@@ -1475,7 +1475,7 @@ And Cell 3 accordion should contain EXACTLY:
 
 ## OUTPUT
 
-**Notebook file:** {date_prefix} {title}.py
+**Notebook file:** {date_prefix}_{title}.py
 
 ## VERIFICATION BEFORE RETURNING
 

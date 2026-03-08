@@ -180,9 +180,9 @@ Use the complete template from `STATE_TEMPLATE.md`.
 ### STATE.md Location
 
 ```
-research/YYYY-MM-DD [Title]/
+research/YYYY-MM-DD_[Title]/
 ├── STATE.md                          # Session state file
-├── YYYY-MM-DD [Title] Plan.md
+├── YYYY-MM-DD_[Title]_Plan.md
 ├── ...
 ```
 

@@ -78,10 +78,10 @@ What the orchestrator does at each flush:
 Create `LEARNINGS.md` in the project folder:
 
 ```
-research/YYYY-MM-DD [Title]/
+research/YYYY-MM-DD_[Title]/
 ├── LEARNINGS.md                      # Session learnings
-├── YYYY-MM-DD [Title] Plan.md
-├── YYYY-MM-DD [Title].py
+├── YYYY-MM-DD_[Title]_Plan.md
+├── YYYY-MM-DD_[Title].py
 ├── ...
 ```
 

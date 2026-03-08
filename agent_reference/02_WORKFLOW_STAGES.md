@@ -521,7 +521,7 @@ Consolidate these parallel findings into a unified context for Plan creation.
 
 1. **Create Project Folder**
    ```
-   research/YYYY-MM-DD [Title]/
+   research/YYYY-MM-DD_[Title]/
    ├── data/
    │   ├── raw/
    │   └── processed/
@@ -602,7 +602,7 @@ Incomplete transformation sequences lead to incomplete validation and unreliable
 
 ### Gate Criteria (G4)
 
-- [ ] Plan document created at `research/[folder]/YYYY-MM-DD [Title] Plan.md`
+- [ ] Plan document created at `research/[folder]/YYYY-MM-DD_[Title]_Plan.md`
 - [ ] **STATE.md created** at `research/[folder]/STATE.md` (MANDATORY — Gate G4)
 - [ ] **LEARNINGS.md skeleton created** at `research/[folder]/LEARNINGS.md` (MANDATORY — Gate G4)
 - [ ] **Plan Completeness Gate passed** (all sections verified)

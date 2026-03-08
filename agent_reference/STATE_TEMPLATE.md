@@ -21,7 +21,7 @@ Copy this template to `STATE.md` in the project folder when starting a Full Pipe
 | Field | Value |
 |-------|-------|
 | **Project** | [Full title] |
-| **Plan Location** | `research/[folder]/[filename] Plan.md` |
+| **Plan Location** | `research/[folder]/[filename]_Plan.md` |
 | **Current Phase** | [1-5]: [Phase Name] |
 | **Current Stage** | [1-12]: [Stage Name] |
 | **Status** | [In Progress / Blocked / Complete] |
