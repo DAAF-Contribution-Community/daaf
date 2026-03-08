@@ -12,7 +12,7 @@ All agents in this directory MUST follow the canonical template at `agent_refere
 |--------|-------|-------|
 | **Purpose** | Provide domain knowledge | Define behavioral protocol |
 | **Content** | Reference material, decision trees | Execution patterns, validation rules |
-| **Loading** | Subagent calls skill tool | Orchestrator includes agent definition in Task prompt |
+| **Loading** | Subagent calls skill tool | Orchestrator includes agent definition in Agent prompt |
 | **Example** | `education-data-source-ccd` (CCD knowledge -- education domain) | `research-executor` (execution protocol -- domain-agnostic) |
 
 **Rule of thumb:** Skills answer "What do I need to know?" Agents answer "How should I behave?"
@@ -66,9 +66,9 @@ bash {PROJECT_DIR}/scripts/run_with_capture.sh {PROJECT_DIR}/scripts/stage{N}_{t
 
 **All agents returning output to the orchestrator MUST respect these universal constraints:**
 
-1. **Hard cap: 1000 words maximum** for Task return output
+1. **Hard cap: 1000 words maximum** for Agent return output
 2. **Do NOT include:** Raw execution logs, data samples, Polars/pandas table displays, full checkpoint output, QA script code, or multi-paragraph explanations in any section
-3. **Script files are the archive; the Task return is the signal.** Execution logs are already appended to script files by `run_with_capture.sh`. Reference files by path — do not reproduce their contents.
+3. **Script files are the archive; the Agent return is the signal.** Execution logs are already appended to script files by `run_with_capture.sh`. Reference files by path — do not reproduce their contents.
 4. **Summarize, don't echo.** "CP1 PASSED: 2,528 rows, 12 cols, 0.3% missing" — not the full stdout.
 
 **Why this matters:** The orchestrator context window is shared across the entire pipeline. A single verbose subagent return (2,000+ words) consumes ~4,000 tokens. Over 10 subagent round-trips in a stage, that's 40,000 tokens — 20% of the orchestrator's total capacity — consumed by output alone.
@@ -407,7 +407,7 @@ Closely read `agent_reference/EXECUTION_CAPTURE.md` for the mandatory file-first
 
 **Invocation pattern:**
 ```python
-Task({
+Agent({
     description: "Stage [N]: [Task Name]",
     prompt: """You are a Research Executor. Follow the protocol in
     `{BASE_DIR}/agents/research-executor.md`.
@@ -453,7 +453,7 @@ Task({
 
 **Invocation pattern:**
 ```python
-Task({
+Agent({
     description: "Stage 4: Plan Creation",
     prompt: """You are a Data Planner. Follow the protocol in
     `{BASE_DIR}/agents/data-planner.md`.
@@ -510,7 +510,7 @@ Task({
 
 **Invocation pattern:**
 ```python
-Task({
+Agent({
     description: "Stage 12: Final Verification",
     prompt: """You are a Data Verifier. Follow the protocol in
     `{BASE_DIR}/agents/data-verifier.md`.
@@ -554,7 +554,7 @@ Task({
 
 **Invocation pattern:**
 ```python
-Task({
+Agent({
     description: "Stage 3.5: Research Synthesis",
     prompt: """You are a Research Synthesizer. Follow the protocol in
     `{BASE_DIR}/agents/research-synthesizer.md`.
@@ -604,7 +604,7 @@ Task({
 
 **Invocation pattern:**
 ```python
-Task({
+Agent({
     description: "Debug: Stage {N} - {error_description}",
     prompt: """You are a Debugger. Follow the protocol in
     `{BASE_DIR}/agents/debugger.md`.
@@ -647,7 +647,7 @@ Task({
 
 **Invocation pattern:**
 ```python
-Task({
+Agent({
     description: "Stage 4.5: Plan Verification",
     prompt: """You are a Plan Checker. Follow the protocol in
     `{BASE_DIR}/agents/plan-checker.md`.
@@ -690,7 +690,7 @@ Task({
 
 **Invocation pattern:**
 ```python
-Task({
+Agent({
     description: "Stage 3: Research [Source] source",
     prompt: """You are a Source Researcher. Follow the protocol in
     `{BASE_DIR}/agents/source-researcher.md`.
@@ -760,7 +760,7 @@ Task({
 
 **Invocation pattern:**
 ```python
-Task({
+Agent({
     description: "Stage 9: Notebook Assembly",
     prompt: """You are a Notebook Assembler. Follow the protocol in
     `{BASE_DIR}/agents/notebook-assembler.md`.
@@ -811,7 +811,7 @@ Task({
 **Invocation pattern:**
 
 ```python
-Task({
+Agent({
     description: "Stage 11: Report Generation",
     prompt: """You are a Report Writer. Follow the protocol in
     `{BASE_DIR}/agents/report-writer.md`.
@@ -870,7 +870,7 @@ Task({
 
 **Invocation pattern:**
 ```python
-Task({
+Agent({
     description: "Stage [9|11|12]: Integration Check",
     prompt: """You are an Integration Checker. Follow the protocol in
     `{BASE_DIR}/agents/integration-checker.md`.
@@ -938,7 +938,7 @@ code-reviewer returns QA report
 
 **Invocation pattern:**
 ```python
-Task({
+Agent({
     description: "QA Review: Stage {N} Step {step} - {task_name}",
     prompt: """You are a Code Reviewer. Follow the protocol in
     `{BASE_DIR}/agents/code-reviewer.md`.
@@ -1022,7 +1022,7 @@ code-reviewer returns BLOCKER
 
 **Invocation pattern:**
 ```python
-Task({
+Agent({
     description: "Ingest: {data_name}",
     prompt: """You are a Data Ingest Specialist. Follow the protocol in
     `{BASE_DIR}/agents/data-ingest.md`.
@@ -1091,7 +1091,7 @@ Some tasks benefit from combining an agent protocol with skill knowledge. The do
 
 **Invocation pattern for combined** *(education domain example -- substitute domain-specific skill names)*:
 ```python
-Task({
+Agent({
     description: "Stage 6: Clean CCD data",
     prompt: """You are a Research Executor. Follow the protocol in `{BASE_DIR}/agents/research-executor.md`.
 
@@ -1162,7 +1162,7 @@ permissionMode: default                          # Or: plan (read-only agents)
 | 8 | Boundaries | Always/Ask/Never tiers + STOP Conditions |
 | 9 | Anti-Patterns | `<anti_patterns>` tags, 3-column table (min 5) |
 | 10 | Quality and Completion | COMPLETE/INCOMPLETE criteria + Self-Check |
-| 11 | Invocation Pattern | Exact Task() syntax with BASE_DIR |
+| 11 | Invocation Pattern | Exact Agent() syntax with BASE_DIR |
 | 12 | References | CONDITIONAL — only when agent references external files |
 
 ### Integration Checklist (Abbreviated)

@@ -13,7 +13,7 @@ permissionMode: default
 
 **Purpose:** Diagnose data quality issues and analysis failures using scientific hypothesis-testing methodology, producing actionable root-cause reports with verified fixes.
 
-**Invocation:** Via Task tool with `subagent_type: "general-purpose"`
+**Invocation:** Via Agent tool with `subagent_type: "general-purpose"`
 
 ---
 
@@ -42,11 +42,11 @@ You are a **Debugger** -- an agent that diagnoses problems in data pipelines and
 | Input | Source | Required | How Used |
 |-------|--------|----------|----------|
 | Error message / symptom | Orchestrator or research-executor | Yes | Starting point for symptom documentation |
-| Stage where error occurred | Orchestrator Task prompt | Yes | Narrows scope of investigation |
+| Stage where error occurred | Orchestrator Agent prompt | Yes | Narrows scope of investigation |
 | Last successful operation | Prior stage output | Yes | Establishes baseline state |
 | Pre/Post state snapshots | Execution logs | No | Data to compare for what changed |
 | QA BLOCKER details | Code-reviewer report | Conditional | Specific check that failed (if QA-triggered) |
-| Plan.md | Orchestrator Task prompt | Yes | Expected behavior, methodology, risk register |
+| Plan.md | Orchestrator Agent prompt | Yes | Expected behavior, methodology, risk register |
 | Execution reports | Prior task outcomes | No | Which checks passed/failed before the error |
 | Data files | `data/raw/`, `data/processed/` | No | For hypothesis testing against actual data |
 
@@ -512,7 +512,7 @@ Before returning output, verify:
 Orchestrator invokes this agent with:
 
 ```
-Task({
+Agent({
     description: "Debug: Stage {N} - {error_description}",
     prompt: """You are a Debugger. Follow the protocol in
     `{BASE_DIR}/agents/debugger.md`.

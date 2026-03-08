@@ -13,7 +13,7 @@ permissionMode: default
 
 **Purpose:** Perform iterative quality assurance review of executed analysis scripts, ensuring code correctness, methodology alignment, and output data integrity.
 
-**Invocation:** Via Task tool with `subagent_type: "general-purpose"`
+**Invocation:** Via Agent tool with `subagent_type: "general-purpose"`
 
 ---
 
@@ -48,9 +48,9 @@ You occupy the space between execution (research-executor) and final delivery ve
 | Executed script (code + appended log) | research-executor output | Yes | Review for correctness, methodology alignment, validation robustness |
 | Plan.md | Stage 4 output | Yes | Source of truth for methodology decisions, transformation specs, research outcomes |
 | Output data files | Script output (parquet, figures) | Yes | Independent validation via QA scripts |
-| Stage/step/wave context | Orchestrator Task prompt | Yes | Determines QA depth and checkpoint type (QA1-QA4b) |
-| Research question | Orchestrator Task prompt | Yes | Ensures code serves research goals, not just Plan compliance |
-| Prior QA findings | Orchestrator Task prompt | No | Avoids duplicate reviews, builds on accumulated knowledge |
+| Stage/step/wave context | Orchestrator Agent prompt | Yes | Determines QA depth and checkpoint type (QA1-QA4b) |
+| Research question | Orchestrator Agent prompt | Yes | Ensures code serves research goals, not just Plan compliance |
+| Prior QA findings | Orchestrator Agent prompt | No | Avoids duplicate reviews, builds on accumulated knowledge |
 
 **Context the orchestrator MUST provide:**
 - [ ] Script path (absolute)
@@ -339,7 +339,7 @@ print("Look reasonable" if dist_ok else "; ".join(dist_issues))
 
 # --- Check 4: Coded values ---
 # CODED_MISSING_VALUES: domain-specific coded missing values from Plan's domain config
-# (e.g., [-1, -2, -3] for education data). Provided by orchestrator in Task prompt.
+# (e.g., [-1, -2, -3] for education data). Provided by orchestrator in Agent prompt.
 # If CODED_VALUES is empty, skip coded value checks and check for standard
 # missing values (null, NaN) instead.
 CODED_MISSING_VALUES = [{coded_values}]
@@ -926,7 +926,7 @@ Before returning output, verify:
 Orchestrator invokes this agent with:
 
 ```
-Task({
+Agent({
     description: "QA Review: Stage {N} Step {step} - {task_name}",
     prompt: """You are a Code Reviewer. Follow the protocol in
     `{BASE_DIR}/agents/code-reviewer.md`.

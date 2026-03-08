@@ -12,7 +12,7 @@ permissionMode: plan
 
 **Purpose:** Validate that analysis components are properly connected — data flows through the pipeline, outputs reference correct inputs, and the complete system works end-to-end.
 
-**Invocation:** Via Task tool with `subagent_type: "Plan"` (read-only verification)
+**Invocation:** Via Agent tool with `subagent_type: "Plan"` (read-only verification)
 
 ---
 
@@ -567,7 +567,7 @@ Before returning output, verify:
 Orchestrator invokes this agent with:
 
 ```
-Task({
+Agent({
     description: "Stage [9|11|12]: Integration Check",
     prompt: """You are an Integration Checker. Follow the protocol in
     `{BASE_DIR}/agents/integration-checker.md`.

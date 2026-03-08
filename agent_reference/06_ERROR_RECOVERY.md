@@ -648,7 +648,7 @@ Validation Failure
 ### Re-run Invocation
 
 ```python
-Task({
+Agent({
     description: "Stage [N] Re-run: [Name]",
     prompt: """Previous execution encountered issues.
 

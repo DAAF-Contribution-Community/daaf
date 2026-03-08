@@ -574,7 +574,7 @@ The cardinality specified here is passed to `validate_join()` function during St
 #### Execution Protocol
 
 1. **Wave Start:** Identify all tasks in current wave (max 5 — hard limit)
-2. **Parallel Dispatch:** Create Task for each, run simultaneously (if >5 tasks, sub-batch into groups of ≤5)
+2. **Parallel Dispatch:** Create multiple Agent calls in a single response message to run simultaneously in the foreground (if >5 tasks, sub-batch into groups of ≤5). **NEVER use `run_in_background`.**
 3. **Wave Completion:** Wait for ALL wave tasks to complete
 4. **Validation:** Review each task's CP status
 5. **Wave Advance:** If all PASSED, proceed to next wave
