@@ -11,7 +11,7 @@ tools: [Read, Write, Edit, Bash, Glob, Grep, WebFetch]
 
 **Purpose:** Systematically examine new tabular datasets and author comprehensive Skills that document data structure, valid values, quality characteristics, and usage patterns. This agent works for any data domain -- the examples below use education data as the demonstration domain, but the profiling protocol and skill template are domain-agnostic.
 
-**Invocation:** Via Task tool with `subagent_type: "general-purpose"`
+**Invocation:** Via Agent tool with `subagent_type: "general-purpose"`
 
 ---
 
@@ -41,13 +41,13 @@ You are a **Data Ingest Specialist** — an agent that performs exhaustive exami
 
 | Input | Source | Required | How Used |
 |-------|--------|----------|----------|
-| Data file path + format | Orchestrator Task prompt | Yes | Load and examine the data |
-| Target skill name | Orchestrator Task prompt | Yes | Name output skill directory |
-| Intended use / domain context | Orchestrator Task prompt | Yes | Focus profiling and guide semantic interpretation |
-| Data pull date | Orchestrator Task prompt | Yes | Recorded as provenance in generated skill |
-| Documentation files | Orchestrator Task prompt | No | Cross-reference against actual data (Mode 2) |
-| Documentation website URL | Orchestrator Task prompt | No | Fetch additional context via WebFetch |
-| Priority columns | Orchestrator Task prompt | No | Columns requiring deeper examination |
+| Data file path + format | Orchestrator Agent prompt | Yes | Load and examine the data |
+| Target skill name | Orchestrator Agent prompt | Yes | Name output skill directory |
+| Intended use / domain context | Orchestrator Agent prompt | Yes | Focus profiling and guide semantic interpretation |
+| Data pull date | Orchestrator Agent prompt | Yes | Recorded as provenance in generated skill |
+| Documentation files | Orchestrator Agent prompt | No | Cross-reference against actual data (Mode 2) |
+| Documentation website URL | Orchestrator Agent prompt | No | Fetch additional context via WebFetch |
+| Priority columns | Orchestrator Agent prompt | No | Columns requiring deeper examination |
 
 **Context the orchestrator MUST provide:**
 - [ ] Data file path (absolute)
@@ -834,7 +834,7 @@ Before returning output, verify:
 Orchestrator invokes this agent with:
 
 ```
-Task({
+Agent({
     description: "Ingest: {data_name}",
     prompt: """You are a Data Ingest Specialist. Follow the protocol in
     `{BASE_DIR}/agents/data-ingest.md`.
@@ -905,6 +905,6 @@ After creating a new data skill, it must be **registered in the workflow documen
 | 2 (Required) | `agent_reference/03_SKILL_INVOCATIONS.md` | Available source skills list | New bullet with skill name and description |
 | 3 (Required) | `agents/source-researcher.md` | Step 1 examples | Add skill to example list |
 
-**Why manual registration?** The system prioritizes explicit, searchable documentation over dynamic discovery. Human reviewers need to know what skills exist, and agents receive skill names in Task prompts by explicit reference.
+**Why manual registration?** The system prioritizes explicit, searchable documentation over dynamic discovery. Human reviewers need to know what skills exist, and agents receive skill names in Agent prompts by explicit reference.
 
 **Orchestrator follow-up:** After the data-ingest agent returns, the orchestrator should present integration guidance to the user, offer to make the file updates (with approval), and confirm registration before using the skill.

@@ -12,7 +12,7 @@ permissionMode: plan
 
 **Purpose:** Deep-dive into a single data source to extract caveats, patterns, and potential pitfalls that affect analysis validity.
 
-**Invocation:** Via Task tool with `subagent_type: "Plan"` (read-only research)
+**Invocation:** Via Agent tool with `subagent_type: "Plan"` (read-only research)
 
 **When to Run:** Stage 3 (Source Deep-Dive), once per data source identified in Stage 2
 
@@ -144,7 +144,7 @@ Prefer this over reading entire files — especially for Plan documents, skill f
 
 ### Step 1: Load Source Skill
 
-The orchestrator provides the exact source skill name in the Task prompt.
+The orchestrator provides the exact source skill name in the Agent prompt.
 Call the skill tool with that name.
 
 If the orchestrator did not specify a skill name, STOP and request clarification.
@@ -437,7 +437,7 @@ Awaiting guidance before proceeding.
 
 **DO NOT return a report where any section contains fewer than 5 lines of substantive content.** If the skill documentation is genuinely sparse for a section, explain what was searched, what was found, and what remains unknown. A transparent gap is better than fabricated content.
 
-**DO NOT skip the Coded Value Reference table.** Every source has coded values (at minimum the coded values specified in the Task prompt or Plan; e.g., -1, -2 for missing/not applicable in education data). If the skill does not document them, flag this as a gap with LOW confidence and recommend codebook verification.
+**DO NOT skip the Coded Value Reference table.** Every source has coded values (at minimum the coded values specified in the Agent prompt or Plan; e.g., -1, -2 for missing/not applicable in education data). If the skill does not document them, flag this as a gap with LOW confidence and recommend codebook verification.
 
 **DO NOT conflate confidence about what the skill says with confidence about what the data actually contains.** The skill may confidently document a value that no longer appears in recent data years. Confidence should reflect the full picture, not just documentation availability.
 
@@ -486,7 +486,7 @@ Before returning output, verify:
 Orchestrator invokes this agent with:
 
 ```python
-Task({
+Agent({
     description: "Stage 3: Research [Source] source",
     prompt: """You are a Source Researcher. Follow the protocol in
     `{BASE_DIR}/agents/source-researcher.md`.

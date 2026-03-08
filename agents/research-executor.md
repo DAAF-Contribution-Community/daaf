@@ -12,7 +12,7 @@ permissionMode: default
 
 **Purpose:** Execute data acquisition and transformation tasks with atomic precision, rigorous validation, and full audit-trail capture.
 
-**Invocation:** Via Task tool with `subagent_type: "general-purpose"`
+**Invocation:** Via Agent tool with `subagent_type: "general-purpose"`
 
 ---
 
@@ -42,7 +42,7 @@ You occupy the **execution** layer: you produce the artifacts that code-reviewer
 
 | Input | Source | Required | How Used |
 |-------|--------|----------|----------|
-| Task specification (`<task>` XML) | Orchestrator Task prompt | Yes | Defines the ONE operation to execute |
+| Task specification (`<task>` XML) | Orchestrator Agent prompt | Yes | Defines the ONE operation to execute |
 | Plan document | Orchestrator (path or inlined sections) | Yes | Methodology constraints, query specs, risk register |
 | Skill knowledge | Loaded via skill tool | Yes | Domain-specific fetch/clean/transform patterns |
 | Dependency outputs | Prior stage data files | Conditional | Input data for cleaning/transformation tasks |
@@ -143,12 +143,12 @@ Call the skill tool for required skills based on stage:
 
 | Stage | Skill(s) to Load |
 |-------|-------------------|
-| 5 (Fetch) | `data-scientist`, domain query skill (from Task prompt) |
-| 6 (Clean) | `data-scientist`, domain context skill (from Task prompt, if applicable) |
+| 5 (Fetch) | `data-scientist`, domain query skill (from Agent prompt) |
+| 6 (Clean) | `data-scientist`, domain context skill (from Agent prompt, if applicable) |
 | 7 (Transform) | `data-scientist`, `polars` |
 | 8 (Analyze & Viz) | `data-scientist`, `polars`, `plotnine` or `plotly` |
 
-**Note:** Stages 5-6 use domain-specific skills specified by the orchestrator in the Task prompt. Stages 7-8 use domain-agnostic analysis tools.
+**Note:** Stages 5-6 use domain-specific skills specified by the orchestrator in the Agent prompt. Stages 7-8 use domain-agnostic analysis tools.
 
 ### Step 3: Write Script
 
@@ -208,7 +208,7 @@ Orchestrator invokes code-reviewer. If BLOCKER returned, orchestrator re-invokes
 
 ### Stage 5: Mirror-Based Fetch Protocol
 
-For Stage 5 fetch scripts, data is downloaded from configured mirrors. Read the domain-specific query skill (name provided in Task prompt) for complete fetch patterns, mirror configuration, and dataset paths. The protocol:
+For Stage 5 fetch scripts, data is downloaded from configured mirrors. Read the domain-specific query skill (name provided in Agent prompt) for complete fetch patterns, mirror configuration, and dataset paths. The protocol:
 1. Determine dataset file path from Plan query specification
 2. Try each mirror in priority order per `mirrors.yaml`
 3. Build URL from mirror's `url_template` + dataset path parameters
@@ -526,7 +526,7 @@ Before returning output, verify:
 Orchestrator invokes this agent with:
 
 ```
-Task({
+Agent({
     description: "Stage [N]: [Task Name]",
     prompt: """You are a Research Executor. Follow the protocol in
     `{BASE_DIR}/agents/research-executor.md`.
@@ -560,7 +560,7 @@ Task({
 For QA revision requests:
 
 ```
-Task({
+Agent({
     description: "Stage [N]: Revision - [Task Name]",
     prompt: """You are a Research Executor. Follow the protocol in
     `{BASE_DIR}/agents/research-executor.md`.

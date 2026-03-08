@@ -57,7 +57,7 @@ User Request Received
 |--------|-------|-------|
 | **Purpose** | Provide domain knowledge | Define behavioral protocol |
 | **Content** | Reference material, decision trees | Execution patterns, validation rules |
-| **Loading** | Subagent calls skill tool | Include agent protocol in Task prompt |
+| **Loading** | Subagent calls skill tool | Include agent protocol in Agent prompt |
 | **Example** | `education-data-source-ccd` (CCD knowledge) | `research-executor` (execution protocol) |
 
 **Rule:** Skills answer "What do I need to know?" Agents answer "How should I behave?"
@@ -797,7 +797,7 @@ See `agent_reference/PLAN_TEMPLATE.md` for the complete template.
 
 **Step 1: Request Code Generation (without execution)**
 ```python
-Task({
+Agent({
     description: "Generate transformation code",
     prompt: """Generate code for: {transformation_description}
 
@@ -822,7 +822,7 @@ Validation: {approach}
 
 **Step 3: Execute with Validation**
 ```python
-Task({
+Agent({
     description: "Execute validated transformation",
     prompt: """Execute the following approved code:
 
@@ -850,7 +850,7 @@ These operations may be executed without preview:
 
 ## Subagent Invocation Patterns
 
-Delegate to subagents using the Task tool to preserve main context.
+Delegate to subagents using the Agent tool to preserve main context.
 
 ### Specialized Agents
 
@@ -878,8 +878,8 @@ See `agents/README.md` for complete agent documentation.
 **CRITICAL UNDERSTANDING:** Skills are loaded BY subagents, not by the orchestrator.
 
 **The Flow:**
-1. **Orchestrator creates Task** with agent protocol and skill name in the prompt
-2. **Subagent receives Task** and reads the prompt
+1. **Orchestrator creates Agent call** with agent protocol and skill name in the prompt
+2. **Subagent receives prompt** and reads it
 3. **Subagent calls skill tool** to load specialized knowledge into its context
 4. **Subagent follows agent protocol** using the skill's guidance
 5. **Subagent returns findings** to orchestrator (concise, focusing on key findings)
@@ -896,7 +896,7 @@ See `agents/README.md` for complete agent documentation.
 - Don't copy skill content into your prompts to subagents
 
 **What You Do:**
-- Include agent protocol reference in Task prompt
+- Include agent protocol reference in Agent prompt
 - Include skill loading instruction
 - Let the subagent handle skill loading
 - Receive concise key findings from subagent
@@ -904,7 +904,7 @@ See `agents/README.md` for complete agent documentation.
 ### General Invocation Pattern
 
 ```python
-Task({
+Agent({
     description: "Stage [N]: [Stage Name]",
     prompt: """You are a [Agent Name]. Follow the protocol in `{BASE_DIR}/agents/[agent-name].md`.
 
@@ -943,13 +943,13 @@ Return findings using the agent's output format.""",
 
 ### Path Resolution Rule (MANDATORY)
 
-**All file paths in Task prompts to subagents MUST be absolute paths.**
+**All file paths in Agent prompts to subagents MUST be absolute paths.**
 
-Relative paths in documentation (e.g., `agents/code-reviewer.md`, `agent_reference/PLAN_TEMPLATE.md`) are for human readability. When constructing Task prompts, the orchestrator MUST:
+Relative paths in documentation (e.g., `agents/code-reviewer.md`, `agent_reference/PLAN_TEMPLATE.md`) are for human readability. When constructing Agent prompts, the orchestrator MUST:
 
 1. **Determine the base directory** from its working directory context (the project root where `CLAUDE.md`, `agents/`, and `agent_reference/` reside)
-2. **Expand all relative paths** to absolute form before including them in Task prompts
-3. **Include a `BASE_DIR` line** in every Task prompt so subagents can resolve any paths they encounter in protocol files:
+2. **Expand all relative paths** to absolute form before including them in Agent prompts
+3. **Include a `BASE_DIR` line** in every Agent prompt so subagents can resolve any paths they encounter in protocol files:
 
 ```
 **BASE_DIR:** /absolute/path/to/project-root
@@ -985,8 +985,8 @@ Wave 3: [join-data]                 ← Depends on Wave 2
 ```
 
 **Execution Rules:**
-- Same-wave tasks dispatch simultaneously with independent subagent contexts
-- If any parallel dispatch stage contains more than 5 tasks (e.g., Stage 3 source-researcher dispatch, any ad-hoc parallel exploration, and code-reviewer invocations), sub-batch into groups of ≤5 and wait for each sub-batch to complete before dispatching the next. NEVER dispatch more than 5 subagents concurrently. 
+- Same-wave tasks dispatch simultaneously by making multiple Agent tool calls in a **single response message** (foreground parallel). **NEVER use `run_in_background`** — background agents cannot prompt for permissions and will silently fail.
+- If any parallel dispatch stage contains more than 5 tasks (e.g., Stage 3 source-researcher dispatch, any ad-hoc parallel exploration, and code-reviewer invocations), sub-batch into groups of ≤5 and wait for each sub-batch to complete before dispatching the next. NEVER dispatch more than 5 subagents concurrently.
 - Each subagent gets fresh 200K-token context (no degradation)
 - Later waves wait for ALL prior waves to complete
 - Dependencies in `depends_on` must be satisfied

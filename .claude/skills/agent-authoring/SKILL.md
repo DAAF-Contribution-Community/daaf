@@ -68,7 +68,7 @@ If any of these answers are vague, in doubt, or incomplete, the quality and reli
    - [ ] Learning Signal uses standardized 5-category model
    - [ ] Anti-patterns in 4-column table format (# | Anti-Pattern | Problem | Correct Approach) (minimum 5)
    - [ ] STOP Conditions use standardized format
-   - [ ] Invocation Pattern shows complete Task() syntax with BASE_DIR
+   - [ ] Invocation Pattern shows complete Agent() syntax with BASE_DIR
    - [ ] COMPLETE criteria: minimum 3
    - [ ] INCOMPLETE criteria: minimum 3
    - [ ] Self-Check has minimum 4 questions

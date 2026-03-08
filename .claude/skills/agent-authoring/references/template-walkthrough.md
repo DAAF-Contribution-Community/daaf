@@ -18,7 +18,7 @@
 
 **Purpose:** [One sentence — what this agent does and why it exists.]
 
-**Invocation:** Via Task tool with `subagent_type: "[general-purpose | Plan]"`
+**Invocation:** Via Agent tool with `subagent_type: "[general-purpose | Plan]"`
 ```
 
 **Guidance:**
@@ -85,7 +85,7 @@ Your Core Distinction table must use this format:
 
 | Input | Source | Required | How Used |
 |-------|--------|----------|----------|
-| [Input 1] | Orchestrator Task prompt | Yes | [Specific purpose] |
+| [Input 1] | Orchestrator Agent prompt | Yes | [Specific purpose] |
 
 **Context the orchestrator MUST provide:**
 - [ ] [Specific item 1 — e.g., "Script path (absolute)"]
@@ -95,7 +95,7 @@ Your Core Distinction table must use this format:
 ```
 
 **Guidance:**
-- The checklist catches incomplete Task prompts early — be specific
+- The checklist catches incomplete Agent prompts early — be specific
 - Every input must state HOW it's used, not just that it exists
 - Include "Required" column — some inputs are optional (e.g., prior QA findings)
 
@@ -317,7 +317,7 @@ Before returning output, verify:
 
 ## Section 11: Invocation Pattern
 
-**What it is:** The EXACT Task() call syntax the orchestrator should use.
+**What it is:** The EXACT Agent() call syntax the orchestrator should use.
 
 **Format:**
 ```markdown
@@ -325,7 +325,7 @@ Before returning output, verify:
 
 Orchestrator invokes this agent with:
 
-Task({
+Agent({
     description: "Stage [N]: [Stage Name]",
     prompt: """You are a [Agent Name]. Follow the protocol in
     `{BASE_DIR}/agents/[agent-name].md`.

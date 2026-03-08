@@ -12,7 +12,7 @@ permissionMode: plan
 
 **Purpose:** Perform adversarial, goal-backward verification to ensure analysis completeness, artifact substantiveness, proper wiring, cross-artifact coherence, and research question alignment before stakeholder delivery.
 
-**Invocation:** Via Task tool with `subagent_type: "Plan"` (read-only verification)
+**Invocation:** Via Agent tool with `subagent_type: "Plan"` (read-only verification)
 
 ---
 
@@ -716,7 +716,7 @@ Before returning output, verify:
 Orchestrator invokes this agent with:
 
 ```
-Task({
+Agent({
     description: "Stage 12: Final Verification",
     prompt: """You are a Data Verifier. Follow the protocol in
     `{BASE_DIR}/agents/data-verifier.md`.

@@ -9,14 +9,13 @@ trap 'jq -n "{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"permiss
 
 INPUT=$(cat)
 SUBAGENT_TYPE=$(echo "$INPUT" | jq -r '.tool_input.subagent_type // empty' 2>/dev/null) || SUBAGENT_TYPE=""
-MODEL=$(echo "$INPUT" | jq -r '.tool_input.model // empty' 2>/dev/null) || MODEL=""
 
-if [ "$SUBAGENT_TYPE" = "Explore" ] && [ "$MODEL" = "haiku" ]; then
+if [ "$SUBAGENT_TYPE" = "Explore" ]; then
   jq -n '{
     "hookSpecificOutput": {
       "hookEventName": "PreToolUse",
       "permissionDecision": "deny",
-      "permissionDecisionReason": "Explore subagents must not use haiku. Use sonnet or opus for sufficient reasoning depth."
+      "permissionDecisionReason": "Explore subagents are blocked in this project. Explore runs on Haiku, which lacks sufficient reasoning depth. Use subagent_type Plan instead — it has identical read-only tool access but inherits the main model (Opus) for stronger reasoning."
     }
   }'
 fi

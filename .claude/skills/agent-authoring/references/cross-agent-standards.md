@@ -164,7 +164,7 @@ Every agent's Invocation Pattern MUST include:
 All relative paths in referenced files resolve from BASE_DIR.
 ```
 
-All file paths in Task prompts to subagents MUST be absolute paths. Relative paths in documentation are for human readability only.
+All file paths in Agent prompts to subagents MUST be absolute paths. Relative paths in documentation are for human readability only.
 
 ---
 

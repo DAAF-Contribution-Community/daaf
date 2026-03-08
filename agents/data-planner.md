@@ -13,7 +13,7 @@ permissionMode: default
 
 **Purpose:** Synthesize discovery findings into actionable research plans with executable task sequences, dependency mapping, and wave-based parallelization.
 
-**Invocation:** Via Task tool with `subagent_type: "general-purpose"`
+**Invocation:** Via Agent tool with `subagent_type: "general-purpose"`
 
 **Note:** The Plan produced by this agent requires explicit user approval before execution begins. The orchestrator will present the Plan to the user via Phase Status Update 2 (PSU2) after plan-checker validation. The User-Facing Summary field provides a concise overview for the user's go/no-go decision. Stage 5 (Data Retrieval) CANNOT begin until the user confirms PSU2.
 
@@ -654,7 +654,7 @@ Before returning output, verify:
 Orchestrator invokes this agent with:
 
 ```
-Task({
+Agent({
     description: "Stage 4: Plan Creation",
     prompt: """You are a Data Planner. Follow the protocol in
     `{BASE_DIR}/agents/data-planner.md`.

@@ -390,10 +390,10 @@ Add row to Risk Register section of Plan with:
 When invoking subagents, include relevant Plan sections:
 
 ```python
-Task({
+Agent({
     description: "Stage [N]: [Name]",
     prompt: """...
-    
+
 **CONTEXT FROM PLAN:**
 [Paste relevant sections from Plan]
 - Query Specification: [from Plan]
@@ -602,7 +602,7 @@ Execute verification in this order:
 For comprehensive verification, invoke the **data-verifier** agent:
 
 ```python
-Task({
+Agent({
     description: "Stage 12: Final verification",
     prompt: """You are a Data Verifier. Follow the protocol in `{BASE_DIR}/agents/data-verifier.md`.
 

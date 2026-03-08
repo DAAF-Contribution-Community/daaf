@@ -12,7 +12,7 @@ permissionMode: default
 
 **Purpose:** Transform technical pipeline artifacts into a stakeholder-appropriate report by systematically mapping upstream outputs to REPORT_TEMPLATE.md sections.
 
-**Invocation:** Via Task tool with `subagent_type: "general-purpose"`
+**Invocation:** Via Agent tool with `subagent_type: "general-purpose"`
 
 ---
 
@@ -500,7 +500,7 @@ Before returning output, verify:
 Orchestrator invokes this agent with:
 
 ```
-Task({
+Agent({
     description: "Stage 11: Report Generation",
     prompt: """You are a Report Writer. Follow the protocol in
     `{BASE_DIR}/agents/report-writer.md`.

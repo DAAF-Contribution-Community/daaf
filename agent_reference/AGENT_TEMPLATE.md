@@ -35,7 +35,7 @@ permissionMode: default                          # Or: plan (read-only agents)
 
 **Purpose:** [One sentence — what this agent does and why it exists in the system.]
 
-**Invocation:** Via Task tool with `subagent_type: "[general-purpose | Plan]"`
+**Invocation:** Via Agent tool with `subagent_type: "[general-purpose | Plan]"`
 ```
 
 **Guidelines:**
@@ -85,7 +85,7 @@ Use a comparison table or short paragraph. This prevents role confusion.]
 
 | Input | Source | Required | How Used |
 |-------|--------|----------|----------|
-| [Input 1] | Orchestrator Task prompt | Yes | [Purpose] |
+| [Input 1] | Orchestrator Agent prompt | Yes | [Purpose] |
 | [Input 2] | Prior stage output | Yes | [Purpose] |
 | [Input 3] | Skill knowledge | No | [Purpose] |
 
@@ -99,7 +99,7 @@ Use a comparison table or short paragraph. This prevents role confusion.]
 
 **Guidelines:**
 - Use `<upstream_input>` tags for structural clarity
-- Include a checklist of what the orchestrator must provide — this catches incomplete Task prompts early
+- Include a checklist of what the orchestrator must provide — this catches incomplete Agent prompts early
 - Every input should state HOW it's used, not just that it exists
 
 ---
@@ -386,7 +386,7 @@ Before returning output, verify:
 
 Orchestrator invokes this agent with:
 
-Task({
+Agent({
     description: "Stage [N]: [Stage Name]",
     prompt: """You are a [Agent Name]. Follow the protocol in
     `{BASE_DIR}/agents/[agent-name].md`.
@@ -409,7 +409,7 @@ Task({
 ```
 
 **Guidelines:**
-- Shows the EXACT Task() call syntax the orchestrator should use
+- Shows the EXACT Agent() call syntax the orchestrator should use
 - Maps to Upstream Inputs (Section 3) — everything listed there should appear here
 - Includes BASE_DIR line (mandatory for path resolution)
 - Includes skill loading instruction if agent uses skills
@@ -477,5 +477,5 @@ These elements MUST be identical across all agents:
 | STOP format | Standardized template (see Section 8) |
 | Anti-pattern format | 4-column table (# | Anti-Pattern | Problem | Correct Approach) + DO NOT paragraphs |
 | Terminology | "STOP Conditions" (not "Escalation", not "When to Escalate") |
-| Path resolution | All paths absolute; BASE_DIR in every Task prompt |
+| Path resolution | All paths absolute; BASE_DIR in every Agent prompt |
 | Frontmatter description | Third person; includes what AND when |

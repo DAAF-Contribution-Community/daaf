@@ -2,7 +2,7 @@
 
 This document provides detailed execution guidance for each of the 12 stages (plus 2 intermediate stages) in the Full Pipeline workflow.
 
-> **Domain Extensibility:** This workflow is domain-agnostic. Skill names referenced below (e.g., `education-data-explorer`, `education-data-query`, `education-data-context`) are the demonstration domain defaults. The orchestrator resolves actual skill names from the Plan's Domain Configuration section and provides them in Task prompts. New domains can be added by authoring domain-specific Skills and registering them in the Plan's Domain Configuration.
+> **Domain Extensibility:** This workflow is domain-agnostic. Skill names referenced below (e.g., `education-data-explorer`, `education-data-query`, `education-data-context`) are the demonstration domain defaults. The orchestrator resolves actual skill names from the Plan's Domain Configuration section and provides them in Agent prompts. New domains can be added by authoring domain-specific Skills and registering them in the Plan's Domain Configuration.
 
 **Execution Model:** Stages 5-8 follow the **file-first execution pattern**—all code is written to script files before execution, then run as a single Bash call via `bash {PROJECT_DIR}/scripts/run_with_capture.sh {PROJECT_DIR}/scripts/...` which automatically appends the execution log. Closely read `agent_reference/EXECUTION_CAPTURE.md` for the mandatory file-first execution protocol covering complete code file writing, output capture, and file versioning rules.
 
@@ -75,7 +75,7 @@ code-reviewer returns: PASSED | WARNING | INFO | BLOCKER
 
 Every Stage 5-8 task includes these MANDATORY requirements:
 
-- [ ] **QA INVOKED** — orchestrator called code-reviewer via Task tool
+- [ ] **QA INVOKED** — orchestrator called code-reviewer via Agent tool
 - [ ] **QA RETURNED** — code-reviewer returned severity (PASSED/WARNING/BLOCKER)
 - [ ] **QA status ∈ {PASSED, WARNING}** — BLOCKER resolved via revision or escalated
 - [ ] **QA script saved to `scripts/cr/`**
@@ -438,7 +438,7 @@ You MUST wait for user confirmation before proceeding.
 ### Invocation Pattern
 
 ```python
-Task({
+Agent({
     description: "Stage 3.5: Findings Synthesis",
     prompt: """You are a research-synthesizer. Follow the protocol in `{BASE_DIR}/agents/research-synthesizer.md`.
 
@@ -655,7 +655,7 @@ Stage 4.5 catches these issues **before** expensive data acquisition begins.
 ### Invocation Pattern
 
 ```python
-Task({
+Agent({
     description: "Stage 4.5: Plan Validation",
     prompt: """You are a plan-checker. Follow the protocol in `{BASE_DIR}/agents/plan-checker.md`.
 

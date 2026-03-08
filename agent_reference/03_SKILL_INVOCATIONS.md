@@ -7,13 +7,13 @@ This document provides complete invocation templates for all skills used in the 
 > **orchestrator-focused context** that wraps those patterns with stage-specific details, context
 > inlining guidance, and prompt size targets. When in doubt, defer to the agent file's Invocation section.
 
-> **Parallel Dispatch Limit:** The orchestrator MUST NOT dispatch more than **5 subagents concurrently** — this applies to wave-based task dispatch, Stage 3 source-researcher dispatch, and any other parallel invocation. If more than 5 independent tasks need to run, sub-batch into groups of ≤5 and wait for each sub-batch to complete before dispatching the next.
+> **Parallel Dispatch Limit:** The orchestrator MUST NOT dispatch more than **5 subagents concurrently** — this applies to wave-based task dispatch, Stage 3 source-researcher dispatch, and any other parallel invocation. If more than 5 independent tasks need to run, sub-batch into groups of ≤5 and wait for each sub-batch to complete before dispatching the next. Parallel dispatch is achieved by making multiple Agent tool calls in a **single response message** (foreground parallel). **NEVER use `run_in_background`** — background agents cannot prompt for permissions and will silently fail.
 
 **Phase Status Updates:** Tasks that conclude a phase should include a `User-Facing Summary` in their output -- a 5-8 sentence narrative summary suitable for inclusion in the orchestrator's Phase Status Update (PSU) to the user. Phase-ending tasks are: Stage 3.5 (PSU1), Stage 4/4.5 (PSU2), Stage 6 (PSU3, compiled by orchestrator), and Stage 10 (PSU4, compiled by orchestrator). See CLAUDE.md "Phase Status Updates" section for the complete PSU framework.
 
 ---
 
-## Standard Task Prompt Structure
+## Standard Agent Prompt Structure
 
 **REQUIRED:** Every subagent invocation MUST use this standardized format to ensure consistent handoffs and verifiable outputs.
 
@@ -30,7 +30,7 @@ Closely read `agent_reference/EXECUTION_CAPTURE.md` for the mandatory file-first
 ### Template
 
 ```python
-Task({
+Agent({
     description: "[3-5 word summary]",
     prompt: """
 ## AGENT PROTOCOL
@@ -81,7 +81,7 @@ Closely read `{BASE_DIR}/agent_reference/EXECUTION_CAPTURE.md` for the mandatory
 
 ## OUTPUT FORMAT
 
-**Hard cap: 1000 words maximum.** The orchestrator has limited context — every word you return consumes shared capacity across the entire pipeline. Your Task output is a *signal to the orchestrator*, not an archive. The script files on disk are the archive.
+**Hard cap: 1000 words maximum.** The orchestrator has limited context — every word you return consumes shared capacity across the entire pipeline. Your Agent output is a *signal to the orchestrator*, not an archive. The script files on disk are the archive.
 
 **Do NOT include in your output:**
 - Raw execution logs or captured stdout/stderr (already appended to the script file by `run_with_capture.sh`)
@@ -212,7 +212,7 @@ These are efficiency TARGETS for typical tasks, not hard ceilings that override 
 
 ### Principle: Inline Critical Context Directly
 
-**Rule:** When dispatching a Task, inline critical context directly in the prompt. Don't rely on subagent file reads for essential information.
+**Rule:** When dispatching an Agent, inline critical context directly in the prompt. Don't rely on subagent file reads for essential information.
 
 **Why This Matters:**
 - Eliminates round-trip file lookups
@@ -236,7 +236,7 @@ These are efficiency TARGETS for typical tasks, not hard ceilings that override 
 ### Inlining Template
 
 ```python
-Task({
+Agent({
     description: "Stage [N]: [Name]",
     prompt: """## AGENT PROTOCOL
 Follow the protocol in `{BASE_DIR}/agents/[agent-name].md`.
@@ -372,7 +372,7 @@ See `CLAUDE.md` "Subagent Type Selection" for capabilities by type (`Plan` = rea
 ### Standard Invocation Pattern
 
 ```python
-Task({
+Agent({
     description: "Stage [N]: [Name]",
     prompt: """You have access to a skill tool. First, call the skill tool with name '[skill-name]'.
 
@@ -404,10 +404,10 @@ After completing the skill's Required Actions, return findings using the format 
 **Subagent:** Plan
 **Skills:** `data-scientist`, `{domain_explorer_skill}`
 
-> **Domain extensibility:** The orchestrator resolves the explorer skill name based on the active domain (from the Plan's Domain Configuration) and provides it in the Task prompt. The example below uses `education-data-explorer` as the demonstration domain default.
+> **Domain extensibility:** The orchestrator resolves the explorer skill name based on the active domain (from the Plan's Domain Configuration) and provides it in the Agent prompt. The example below uses `education-data-explorer` as the demonstration domain default.
 
 ```python
-Task({
+Agent({
     description: "Stage 2: Data Exploration",
     prompt: """You have access to a skill tool. First, call the skill tool with name 'data-scientist'.
 Then, call the skill tool with name '{domain_explorer_skill}'.  # e.g., 'education-data-explorer'
@@ -483,7 +483,7 @@ After completing the skill's Required Actions, return findings using the format 
 
 **Available source skills:**
 
-> The orchestrator resolves source skill names based on the active domain and provides them in the Task prompt.
+> The orchestrator resolves source skill names based on the active domain and provides them in the Agent prompt.
 
 - `education-data-source-ccd` — K-12 schools and districts
 - `education-data-source-ipeds` — Colleges and universities
@@ -502,7 +502,7 @@ After completing the skill's Required Actions, return findings using the format 
 - `election-data-source-countypres` — County presidential election returns 2000-2024
 
 ```python
-Task({
+Agent({
     description: "Stage 3: Source Deep-Dive - {source_name}",
     prompt: """You are a Source Researcher. Follow the protocol in `{BASE_DIR}/agents/source-researcher.md`.
 
@@ -587,7 +587,7 @@ For the complete invocation pattern, see `agents/research-synthesizer.md` Invoca
 The orchestrator provides all Stage 2 and Stage 3 outputs as context. The agent returns
 a unified synthesis with cross-source conflict resolution and join feasibility assessment.
 
-**Skill Loading:** Include `Call the skill tool with name 'data-scientist'.` in the Task prompt
+**Skill Loading:** Include `Call the skill tool with name 'data-scientist'.` in the Agent prompt
 before providing context. The data-scientist skill provides methodological rigor for
 assessing data quality findings and join feasibility across sources.
 
@@ -605,7 +605,7 @@ assessing data quality findings and join feasibility across sources.
 
 
 ```python
-Task({
+Agent({
     description: "Stage 4: Plan Creation",
     prompt: """You are a Data Planner. Follow the protocol in `{BASE_DIR}/agents/data-planner.md`.
 
@@ -666,7 +666,7 @@ Do NOT paraphrase or summarize — copy the exact text.
 **Key savings:** Discovery findings are already embedded in the partial Plan (Group B). The continuation planner reads them from the file — do NOT re-supply Stage 2/3/3.5 findings in the prompt.
 
 ```python
-Task({
+Agent({
     description: "Stage 4: Plan Continuation",
     prompt: """You are a Data Planner. Follow the protocol in
     `{BASE_DIR}/agents/data-planner.md`.
@@ -719,7 +719,7 @@ For the complete invocation pattern, see `agents/plan-checker.md` Invocation sec
 and `agents/README.md` plan-checker section. The orchestrator inlines the full Plan content
 and original user request. The agent validates across six dimensions.
 
-**Skill Loading:** Include `Call the skill tool with name 'data-scientist'.` in the Task prompt.
+**Skill Loading:** Include `Call the skill tool with name 'data-scientist'.` in the Agent prompt.
 The data-scientist skill helps the plan-checker assess methodological soundness
 of the proposed transformation sequence and validation approach.
 
@@ -732,10 +732,10 @@ of the proposed transformation sequence and validation approach.
 **Subagent:** general-purpose
 **Skills:** `data-scientist`, `{domain_query_skill}`
 
-> **Domain extensibility:** The orchestrator resolves the query skill name based on the active domain (from the Plan's Domain Configuration) and provides it in the Task prompt. The example below uses `education-data-query` as the demonstration domain default.
+> **Domain extensibility:** The orchestrator resolves the query skill name based on the active domain (from the Plan's Domain Configuration) and provides it in the Agent prompt. The example below uses `education-data-query` as the demonstration domain default.
 
 ```python
-Task({
+Agent({
     description: "Stage 5: Data Retrieval",
     prompt: """You are a Research Executor. Follow the protocol in `{BASE_DIR}/agents/research-executor.md`.
 
@@ -838,10 +838,10 @@ with stage-specific values for Stage 5.
 **Subagent:** general-purpose
 **Skills:** `data-scientist`, `{domain_context_skill}`
 
-> **Domain extensibility:** The orchestrator resolves the context skill name based on the active domain (from the Plan's Domain Configuration) and provides it in the Task prompt. The example below uses `education-data-context` as the demonstration domain default.
+> **Domain extensibility:** The orchestrator resolves the context skill name based on the active domain (from the Plan's Domain Configuration) and provides it in the Agent prompt. The example below uses `education-data-context` as the demonstration domain default.
 
 ```python
-Task({
+Agent({
     description: "Stage 6: Context Application",
     prompt: """You are a Research Executor. Follow the protocol in `{BASE_DIR}/agents/research-executor.md`.
 
@@ -957,7 +957,7 @@ with stage-specific values for Stage 6.
 # Execute transformations ONE AT A TIME, not all at once
 
 # Step 1: Initial EDA (no transformations yet)
-Task({
+Agent({
     description: "Stage 7.1: Initial EDA",
     prompt: """You are a Research Executor. Follow the protocol in `{BASE_DIR}/agents/research-executor.md`.
 
@@ -1000,7 +1000,7 @@ Do NOT proceed to transformations. Return findings for orchestrator review.""",
 # Orchestrator provides specific transformation from Plan's transformation sequence
 # CRITICAL: Include prior transformation context for continuity
 
-Task({
+Agent({
     description: "Stage 7.2: Execute Transformation #{n}",
     prompt: """You are a Research Executor. Follow the protocol in `{BASE_DIR}/agents/research-executor.md`.
 
@@ -1097,7 +1097,7 @@ with stage-specific values for Stage 7.
 # QA is REQUIRED after EACH transformation, not just at the end
 
 # Step 4: Final CP3 Validation (after all transformations complete)
-Task({
+Agent({
     description: "Stage 7.3: Final CP3 Validation",
     prompt: """You are a Research Executor. Follow the protocol in `{BASE_DIR}/agents/research-executor.md`.
 
@@ -1149,7 +1149,7 @@ If WARNING or FAILED, provide recommendations.""",
 Typically invoked alongside `data-scientist` skill. Use for specific Polars syntax questions or complex operations.
 
 ```python
-Task({
+Agent({
     description: "Polars Operation: {operation_name}",
     prompt: """You have access to a skill tool. First, call the skill tool with name 'polars'.
 
@@ -1181,7 +1181,7 @@ Return the Polars code to accomplish this, with validation.""",
 # ITERATIVE INVOCATION PATTERN (Required for Stage 8.1)
 # Execute each analysis task ONE AT A TIME, not all at once
 
-Task({
+Agent({
     description: "Stage 8.1: Statistical Analysis - {analysis_name}",
     prompt: """You are a Research Executor. Follow the protocol in `{BASE_DIR}/agents/research-executor.md`.
 
@@ -1308,7 +1308,7 @@ with stage-specific values for Stage 8. Use **QA4a** (statistical validity) for 
 **Skills:** `data-scientist`, `plotnine`
 
 ```python
-Task({
+Agent({
     description: "Stage 8.2: Visualization - Static Plots",
     prompt: """You are a Research Executor. Follow the protocol in `{BASE_DIR}/agents/research-executor.md`.
 
@@ -1349,7 +1349,7 @@ Return the plotting code and confirm files are saved.""",
 **Skills:** `data-scientist`, `plotly`
 
 ```python
-Task({
+Agent({
     description: "Stage 8.2: Visualization - Interactive Plots",
     prompt: """You are a Research Executor. Follow the protocol in `{BASE_DIR}/agents/research-executor.md`.
 
@@ -1402,7 +1402,7 @@ with stage-specific values for Stage 8. Use **QA4b** (visualization quality) for
 > **WHAT THIS IS NOT:** A dashboard builder, an analysis tool, or an interactive explorer.
 
 ```python
-Task({
+Agent({
     description: "Stage 9: Compile Scripts into Notebook",
     prompt: """You are a Notebook Assembler. Follow the protocol in `{BASE_DIR}/agents/notebook-assembler.md`.
 
@@ -1502,7 +1502,7 @@ The ONLY acceptable new code is `pl.read_parquet()` + `mo.ui.table()`.""",
 When EDA and transformation are closely linked:
 
 ```python
-Task({
+Agent({
     description: "Stage 7: EDA & Transformation",
     prompt: """You are a Research Executor. Follow the protocol in `{BASE_DIR}/agents/research-executor.md`.
 
@@ -1534,7 +1534,7 @@ Return comprehensive EDA findings and validated transformation code.""",
 When both static and interactive plots are needed:
 
 ```python
-Task({
+Agent({
     description: "Stage 8.2: Visualization - Combined",
     prompt: """You are a Research Executor. Follow the protocol in `{BASE_DIR}/agents/research-executor.md`.
 
@@ -1571,7 +1571,7 @@ Return all plotting code and confirm files saved.""",
 **Invocation Timing:** After research-executor completes each script (after CP validation passes).
 
 ```python
-Task({
+Agent({
     description: "QA Review: Stage {N} Step {step} - {task_name}",
     prompt: """You are a Code Reviewer. Follow the protocol in `{BASE_DIR}/agents/code-reviewer.md`.
 
@@ -1669,7 +1669,7 @@ Return findings in this structure. Do NOT paste QA script code, raw execution lo
 When code-reviewer returns BLOCKER, orchestrator sends revision request to research-executor:
 
 ```python
-Task({
+Agent({
     description: "Revision: Stage {N} Step {step} - {task_name}",
     prompt: """You are a Research Executor. Follow the protocol in `{BASE_DIR}/agents/research-executor.md`.
 
@@ -1711,7 +1711,7 @@ All relative paths in referenced files resolve from BASE_DIR.
 
 ```python
 # If subagent returns error, retry with clarification
-Task({
+Agent({
     description: "Stage [N] - Retry",
     prompt: """Previous attempt encountered: {error_description}
 
@@ -1766,7 +1766,7 @@ Stage 10 is performed by the orchestrator directly (no dedicated subagent). The 
 ### Invocation Template
 
 ```python
-Task({
+Agent({
     description: "Stage 11: Report Generation",
     prompt: """You are a Report Writer. Follow the protocol in
     `{BASE_DIR}/agents/report-writer.md`.

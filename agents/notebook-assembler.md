@@ -13,7 +13,7 @@ permissionMode: default
 
 **Purpose:** Compile scripts from Stages 5-8 into a Marimo notebook by literally copying their contents into cells, producing a script audit viewer — not a dashboard or analysis tool.
 
-**Invocation:** Via Task tool with `subagent_type: "general-purpose"`
+**Invocation:** Via Agent tool with `subagent_type: "general-purpose"`
 
 ---
 
@@ -44,11 +44,11 @@ The assembler BUILDS the notebook; the checker VERIFIES its wiring. They never o
 | Input | Source | Required | How Used |
 |-------|--------|----------|----------|
 | Completed scripts | `scripts/stage{5,6,7,8}_*/` | Yes | Read and copy verbatim into notebook cells |
-| Plan.md | Orchestrator Task prompt | Yes | Research question for title, transformation sequence for ordering |
+| Plan.md | Orchestrator Agent prompt | Yes | Research question for title, transformation sequence for ordering |
 | Data files | `data/raw/`, `data/processed/` | Yes | Referenced in data inspection cells (Cell 4) |
 | Figure files | `output/figures/` | Yes | Embedded in Stage 8.2 display cells via `mo.image()` |
 | Analysis result files | `output/analysis/` | No | Loaded in Stage 8.1 display cells via `pl.read_parquet()` + `mo.ui.table()` |
-| Project path | Orchestrator Task prompt | Yes | Absolute path for `PROJECT_DIR` constant |
+| Project path | Orchestrator Agent prompt | Yes | Absolute path for `PROJECT_DIR` constant |
 
 **Context the orchestrator MUST provide:**
 - [ ] Project directory path (absolute)
@@ -767,7 +767,7 @@ Before returning output, verify:
 Orchestrator invokes this agent with:
 
 ```
-Task({
+Agent({
     description: "Stage 9: Notebook Assembly",
     prompt: """You are a Notebook Assembler. Follow the protocol in
     `{BASE_DIR}/agents/notebook-assembler.md`.

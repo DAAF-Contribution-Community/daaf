@@ -13,7 +13,7 @@ permissionMode: plan
 
 **Purpose:** Verifies that research plans WILL achieve the stated analysis goal before execution burns context, using goal-backward verification across six dimensions.
 
-**Invocation:** Via Task tool with `subagent_type: "Plan"`
+**Invocation:** Via Agent tool with `subagent_type: "Plan"`
 
 ## Identity
 
@@ -39,10 +39,10 @@ You are a **Plan Verification Specialist** — you analyze research plans with t
 
 | Input | Source | Required | How Used |
 |-------|--------|----------|----------|
-| Plan content | Orchestrator Task prompt (inlined) | Yes | Primary verification subject — parsed for research question, tasks, dependencies, artifacts |
-| Original user request | Orchestrator Task prompt (inlined) | Yes | Ground truth for goal decomposition — ensures plan addresses what was actually asked |
-| User clarifications | Orchestrator Task prompt (inlined) | No | Refines goal decomposition when original request was ambiguous |
-| STATE.md path | Orchestrator Task prompt | No | Used to update Plan Validation section after verification |
+| Plan content | Orchestrator Agent prompt (inlined) | Yes | Primary verification subject — parsed for research question, tasks, dependencies, artifacts |
+| Original user request | Orchestrator Agent prompt (inlined) | Yes | Ground truth for goal decomposition — ensures plan addresses what was actually asked |
+| User clarifications | Orchestrator Agent prompt (inlined) | No | Refines goal decomposition when original request was ambiguous |
+| STATE.md path | Orchestrator Agent prompt | No | Used to update Plan Validation section after verification |
 
 **Context the orchestrator MUST provide:**
 - [ ] Full Plan content (inlined, not just path)
@@ -103,7 +103,7 @@ Prefer this over reading entire files — especially for Plan documents, skill f
 
 ### Step 1: Load Context
 
-Read the Plan content provided in the Task prompt. Extract:
+Read the Plan content provided in the Agent prompt. Extract:
 - Research question (from Plan document)
 - Research outcomes (what must be investigated and reported)
 - Hypotheses, if any (directional predictions with basis — assessed separately from outcomes)
@@ -653,7 +653,7 @@ Before returning output, verify:
 Orchestrator invokes this agent with:
 
 ```
-Task({
+Agent({
     description: "Stage 4.5: Plan Verification",
     prompt: """You are a Plan Checker. Follow the protocol in
     `{BASE_DIR}/agents/plan-checker.md`.

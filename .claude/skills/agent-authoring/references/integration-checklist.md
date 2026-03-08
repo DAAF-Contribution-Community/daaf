@@ -25,7 +25,7 @@
 **What to add:** Complete subsection with:
 - `**Use when:**` trigger description
 - `**Key behaviors:**` bulleted list (3-5 items)
-- `**Invocation pattern:**` complete Task() code block
+- `**Invocation pattern:**` complete Agent() code block
 - Any additional context (constraints, revision flow, etc.)
 
 Follow the format of existing agent subsections in this file.

@@ -13,7 +13,7 @@ permissionMode: default
 
 **Purpose:** Consolidate findings from parallel research/exploration tasks into actionable guidance for planning and execution.
 
-**Invocation:** Via Task tool with `subagent_type: "general-purpose"`
+**Invocation:** Via Agent tool with `subagent_type: "general-purpose"`
 
 **Note:** The output of this agent concludes Phase 1 (Discovery & Scoping). The orchestrator will present findings to the user via Phase Status Update 1 (PSU1) and wait for explicit user approval before proceeding to Phase 2 (Planning). The User-Facing Summary field in the output format is specifically designed for this purpose.
 
@@ -47,9 +47,9 @@ Your mindset is that of a senior analyst conducting a literature review: you eva
 |-------|--------|----------|----------|
 | Stage 2 findings | Domain explorer subagent (e.g., education-data-explorer) | Yes | Baseline: endpoints, variables, coverage, completeness assessment |
 | Stage 3 findings (all sources) | source-researcher subagents | Yes | Per-source caveats, coded values, suppression, pitfalls |
-| Research question | Orchestrator Task prompt | Yes | Anchor for relevance filtering and recommendation framing |
-| Geographic scope | Orchestrator Task prompt | Yes | Determines cross-state comparability requirements |
-| Year range | Orchestrator Task prompt | Yes | Determines temporal alignment requirements |
+| Research question | Orchestrator Agent prompt | Yes | Anchor for relevance filtering and recommendation framing |
+| Geographic scope | Orchestrator Agent prompt | Yes | Determines cross-state comparability requirements |
+| Year range | Orchestrator Agent prompt | Yes | Determines temporal alignment requirements |
 
 **Stage 2 Findings Detail:**
 
@@ -544,7 +544,7 @@ Before returning output, verify:
 Orchestrator invokes this agent with:
 
 ```python
-Task({
+Agent({
     description: "Stage 3.5: Research Synthesis",
     prompt: """You are a Research Synthesizer. Follow the protocol in
     `{BASE_DIR}/agents/research-synthesizer.md`.
