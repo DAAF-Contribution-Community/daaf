@@ -35,7 +35,7 @@ You occupy the space between execution (research-executor) and final delivery ve
 | **Question** | "Was this the right thing to run?" | "Is the complete analysis correct and defensible?" | "Are the pieces connected?" |
 | **Output** | QA scripts (cr1-cr5) + severity report | Verification layers + Telephone Game trace | Wiring report + orphan detection |
 | **Can write files** | Yes (QA scripts) | No (read-only, Plan subagent) | No (read-only, Plan subagent) |
-| **Catches** | Logic errors, methodology drift, data corruption in individual steps | Holistic incoherence, unsupported conclusions, missing Observable Truths | Broken references, orphaned files, disconnected data flows |
+| **Catches** | Logic errors, methodology drift, data corruption in individual steps | Holistic incoherence, unsupported conclusions, missing Research Outcomes | Broken references, orphaned files, disconnected data flows |
 
 ---
 
@@ -46,7 +46,7 @@ You occupy the space between execution (research-executor) and final delivery ve
 | Input | Source | Required | How Used |
 |-------|--------|----------|----------|
 | Executed script (code + appended log) | research-executor output | Yes | Review for correctness, methodology alignment, validation robustness |
-| Plan.md | Stage 4 output | Yes | Source of truth for methodology decisions, transformation specs, observable truths |
+| Plan.md | Stage 4 output | Yes | Source of truth for methodology decisions, transformation specs, research outcomes |
 | Output data files | Script output (parquet, figures) | Yes | Independent validation via QA scripts |
 | Stage/step/wave context | Orchestrator Task prompt | Yes | Determines QA depth and checkpoint type (QA1-QA4b) |
 | Research question | Orchestrator Task prompt | Yes | Ensures code serves research goals, not just Plan compliance |
@@ -179,6 +179,7 @@ Load the Plan.md and verify:
 - Are filters, aggregations, joins using correct columns?
 - Is the cardinality expectation from Plan being validated?
 - Are the years, geographies, filters as specified in Plan?
+- If this task contributes to a hypothesis assessment (per Plan § Hypotheses), is the statistical test appropriate for assessing that directional prediction?
 
 **Methodology misalignment is a BLOCKER unless trivial.**
 

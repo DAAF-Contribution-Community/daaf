@@ -126,11 +126,16 @@ Closely read `agent_reference/EXECUTION_CAPTURE.md` for the mandatory file-first
 What task are you performing?
 ├─ Statistical analysis (regression, robustness checks)
 │   └─ Stage 8.1 — use data-scientist methodology + polars for data prep
-├─ Static visualization (publication-ready plots)
-│   └─ Stage 8.2 — Load `plotnine` skill for grammar of graphics
-├─ Interactive visualization (hover, zoom, select)
-│   └─ Stage 8.2 — Load `plotly` skill for interactive charts
+├─ Data visualization (any kind)
+│   └─ Stage 8.2 — FIRST read visualization reference files below:
+│       ├─ ./references/visualization-design.md (chart selection, encoding, emphasis)
+│       └─ ./references/visualization-execution.md (color, labeling, accessibility, export)
+│       THEN load the tool-specific skill:
+│       ├─ Static plots → Load `plotnine` skill for grammar of graphics
+│       └─ Interactive plots → Load `plotly` skill for interactive charts
 ```
+
+**Visualization loading order matters:** The reference files provide *design principles* (what chart to use, how to direct attention, how to handle color accessibly). The tool skills provide *syntax* (how to code it). Read the design guidance first so implementation choices are principled, not ad-hoc.
 
 **For Domain-Specific Analysis (e.g., CCD Education Data):**
 - Load relevant `*-data-source-*` skill first to understand domain-specific data caveats
@@ -153,6 +158,8 @@ This skill assumes familiarity with:
 | `transformation-validation.md` | Validating data operations | Before/after any transformation |
 | `code-documentation.md` | Writing thorough comments and docs | Writing any analysis code |
 | `research-questions.md` | Framing questions, stakeholder communication | Scoping work, presenting findings |
+| `visualization-design.md` | Chart selection, visual encoding, emphasis, integrity | **Before creating any visualization** |
+| `visualization-execution.md` | Color palettes, accessibility, labeling, typography, export | **When producing figures** |
 
 ### Validation Tracking
 
@@ -251,6 +258,27 @@ Communicating findings?
 │   └─ No → Add confidence intervals or ranges
 └─ Have I checked in with stakeholder?
     └─ No → Validate findings align with expectations
+```
+
+### "I need to create a visualization"
+
+```
+What kind of visualization task?
+├─ Choosing what chart to make
+│   └─ → ./references/visualization-design.md
+├─ Directing attention / emphasis strategy
+│   └─ → ./references/visualization-design.md
+├─ Selecting colors or ensuring accessibility
+│   └─ → ./references/visualization-execution.md
+├─ Labeling, titling, or annotating
+│   └─ → ./references/visualization-execution.md
+├─ Making it publication-ready (export, DPI, fonts)
+│   └─ → ./references/visualization-execution.md
+├─ Ensuring project consistency (theme, palette)
+│   └─ → ./references/visualization-execution.md
+└─ Tool-specific syntax (geoms, traces, themes)
+    ├─ Static plots → Load `plotnine` skill
+    └─ Interactive plots → Load `plotly` skill
 ```
 
 ## Essential Workflows
@@ -507,3 +535,17 @@ Use markdown cells liberally:
 | Stakeholder check-ins | `./references/research-questions.md` |
 | Communicating uncertainty | `./references/research-questions.md` |
 | Causal vs. correlational claims | `./references/research-questions.md` |
+| Chart selection by relationship | `./references/visualization-design.md` |
+| Visual encoding hierarchy | `./references/visualization-design.md` |
+| Exploratory vs. explanatory viz | `./references/visualization-design.md` |
+| Small multiples | `./references/visualization-design.md` |
+| Common visualization pitfalls | `./references/visualization-design.md` |
+| Graphical integrity | `./references/visualization-design.md` |
+| Color palette selection | `./references/visualization-execution.md` |
+| Colorblind accessibility | `./references/visualization-execution.md` |
+| Direct labeling vs. legends | `./references/visualization-execution.md` |
+| Chart titles and annotation | `./references/visualization-execution.md` |
+| Typography and layout | `./references/visualization-execution.md` |
+| Export standards (DPI, format) | `./references/visualization-execution.md` |
+| Project visual consistency | `./references/visualization-execution.md` |
+| Figure captions | `./references/visualization-execution.md` |

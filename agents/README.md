@@ -446,7 +446,7 @@ Task({
 **Use when:** Creating or refining the research Plan document at Stage 4, or handling plan revisions when plan-checker or user identifies issues.
 
 **Key behaviors:**
-- Requirements-driven planning (backward from Observable Truths)
+- Requirements-driven planning (backward from Research Outcomes)
 - Task specificity test (every task unambiguous for any agent)
 - Wave-based sequencing for parallel execution
 - Dependency mapping
@@ -805,7 +805,7 @@ Task({
 - Follows REPORT_TEMPLATE.md section by section using a systematic Section-Source Mapping
 - Reads the full pipeline artifact set: Plan, Notebook, STATE.md, LEARNINGS.md, QA summary, figures, citations
 - Every statistic must trace to an execution log or dataset metadata — never hallucinated
-- Cross-checks all Observable Truths from Plan against Key Findings
+- Cross-checks all Research Outcomes from Plan against Key Findings
 - Verifies all figure file paths resolve before embedding references
 
 **Invocation pattern:**
@@ -847,7 +847,7 @@ Task({
     Read the Plan, Notebook, STATE.md, and LEARNINGS.md.
     Follow the Section-Source Mapping for every section.
     Verify all figure references before embedding.
-    Cross-check all Observable Truths from the Plan.
+    Cross-check all Research Outcomes from the Plan.
     Write Report.md to the project folder.
 
     Return findings using the Report Writer Output Format.""",

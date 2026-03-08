@@ -322,7 +322,7 @@ Let's go through each piece.
 
 **What's inside:**
 - **Research Question** -- your original question, verbatim, plus any clarifications
-- **Observable Truths** -- specific, measurable outcomes the analysis must produce and assess (e.g., "Analysis will report the correlation between school poverty rates and AP course enrollment, with confidence intervals")
+- **Research Outcomes** -- specific, measurable topics the analysis must rigorously investigate and report on (e.g., "Relationship between school poverty rates and AP course enrollment is characterized with direction, magnitude, significance, and confidence intervals"). These define what must be *examined*, not what the answer should be. Directional predictions belong in the optional Hypotheses section.
 - **Data Sources** -- which datasets are being used, what endpoints, what years, and why
 - **Methodology** -- the statistical approach, key decisions, and their rationale
 - **Transformation Sequence** -- the exact ordered list of tasks (fetch, clean, transform, analyze, visualize) with dependencies, wave assignments for parallel execution, and input/output file paths
@@ -330,7 +330,7 @@ Let's go through each piece.
 - **Key Decisions Log** -- every methodological choice made during the project, with reasoning
 - **Final Review Log** -- notes from the data-verifier's final check
 
-**How to read it:** Start with the Research Question and Observable Truths -- do they match your intent? Then skim the Transformation Sequence table to understand the flow of work. Check the Key Decisions Log for anything surprising. The Plan is meant to be comprehensive enough that someone unfamiliar with the project could understand exactly what was done and why.
+**How to read it:** Start with the Research Question and Research Outcomes -- do they match your intent? If any outcomes read like hypotheses (predicting a direction), flag them. Then skim the Transformation Sequence table to understand the flow of work. Check the Key Decisions Log for anything surprising. The Plan is meant to be comprehensive enough that someone unfamiliar with the project could understand exactly what was done and why.
 
 **Why it matters:** The Plan is your audit trail. If you or a colleague ever needs to understand how a finding was derived, the Plan traces the full chain of reasoning from question to methodology to execution. It's also what makes Revision Mode possible -- DAAF reads the existing Plan to understand what was done before proposing changes.
 

@@ -9,14 +9,14 @@
 
 | Report Section | Primary Source | Secondary Sources |
 |---|---|---|
-| Executive Summary | Plan § Observable Truths + Stage 7-8 execution logs | LEARNINGS.md |
+| Executive Summary | Plan § Research Outcomes + Stage 7-8 execution logs | LEARNINGS.md |
 | Research Question | Plan § Research Question (verbatim) | Plan § Context |
 | Data & Methods: Data Sources | Plan § Data Sources table | Stage 5 execution logs |
 | Data & Methods: Key Variables | Plan § Key Variables | — |
 | Data & Methods: Methodology | Plan § Methodology Specification | Plan § Key Decisions |
 | Data & Methods: Data Cleaning | Stage 6 execution logs | STATE.md checkpoints |
 | Quality Assurance | Stage 10 QA summary | STATE.md QA sections |
-| Key Findings | Stage 7-8 outputs + figures | Plan § Observable Truths |
+| Key Findings | Stage 7-8 outputs + figures | Plan § Research Outcomes + Plan § Hypotheses (if any) |
 | Summary Statistics | Analysis dataset metadata + Stage 7 EDA logs | Notebook data cells |
 | Limitations | Plan § Risk Register + source caveats + LEARNINGS.md | STATE.md blockers |
 | Data Sources & Citations | Stage 6 citation text (verbatim) | Plan § Data Sources |
