@@ -126,6 +126,7 @@ guidance, not abstract platitudes.]
 - Hit the "Goldilocks zone" — specific enough to guide, flexible enough to be heuristic
 - Include concrete examples or bad/good comparisons where the behavior is non-obvious
 - Domain-specific agents should include a methodology section here (e.g., data-planner's "Methodology Rigor Requirement")
+- For agents that will need to file-read often, include the section on "Context-Efficient File Reading" (see Cross-Agent Standards § 11)
 
 ---
 
