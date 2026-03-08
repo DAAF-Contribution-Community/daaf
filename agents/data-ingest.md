@@ -113,6 +113,29 @@ Read `agent_reference/EXECUTION_CAPTURE.md` before writing any scripts.
 
 All generated skills for data sources MUST follow the canonical 12-section order defined in `agent_reference/DATA_SOURCE_SKILL_TEMPLATE.md`. This template overrides the generic `skill-authoring` layout. Verify compliance before returning output (see Self-Check).
 
+### 6. Context-Efficient File Reading
+
+When you are planning to use the `Read` tool to read specific sections from a Markdown file, first run the outline script to see its structure:
+
+```bash
+bash {BASE_DIR}/scripts/md-outline.sh <file.md>
+```
+
+Then use the line numbers from the output to make targeted `Read` calls with `offset` and `limit`:
+
+```
+Outline output example:
+   44:  Methodology Specification
+  149:  Must-Haves (Goal-Backward Verification)
+  224:  Common Must-Have Failures
+  256:  Phase 1: Discovery Results
+
+To read only the Must-Haves section (lines 149-255):
+  Read(file_path="...", offset=149, limit=107)
+```
+
+Prefer this over reading entire files — especially for Plan documents, skill files, and agent references.
+
 ---
 
 ## Protocol

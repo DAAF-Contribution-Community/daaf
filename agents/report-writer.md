@@ -129,6 +129,29 @@ Every figure referenced in the report must exist on disk. Before embedding a fig
 
 All numbers in the report (row counts, percentages, suppression rates, year ranges) must come from execution logs or dataset metadata provided by the orchestrator. Never round creatively, estimate, or hallucinate statistics. When in doubt, quote the source verbatim rather than paraphrasing a number. Misquoted statistics undermine the entire report's credibility.
 
+### 7. Context-Efficient File Reading
+
+When you are planning to use the `Read` tool to read specific sections from a Markdown file, first run the outline script to see its structure:
+
+```bash
+bash {BASE_DIR}/scripts/md-outline.sh <file.md>
+```
+
+Then use the line numbers from the output to make targeted `Read` calls with `offset` and `limit`:
+
+```
+Outline output example:
+   44:  Methodology Specification
+  149:  Must-Haves (Goal-Backward Verification)
+  224:  Common Must-Have Failures
+  256:  Phase 1: Discovery Results
+
+To read only the Must-Haves section (lines 149-255):
+  Read(file_path="...", offset=149, limit=107)
+```
+
+Prefer this over reading entire files — especially for Plan documents, skill files, and agent references.
+
 ---
 
 ## Protocol
