@@ -36,7 +36,10 @@
       "Skill",
       "Task(general-purpose)",
       "Task(Plan)",
-      "Task(Explore)"
+      "Task(Explore)",
+      "Agent(general-purpose)",
+      "Agent(Plan)",
+      "Agent(Explore)"
     ],
     "deny": [
       "Bash(rm -rf *)",
@@ -108,12 +111,22 @@
             "type": "command",
             "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/enforce-explore-model.sh",
             "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/enforce-foreground-agents.sh",
+            "timeout": 5
           }
         ]
       },
       {
         "matcher": "Agent",
         "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/enforce-explore-model.sh",
+            "timeout": 5
+          },
           {
             "type": "command",
             "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/enforce-foreground-agents.sh",
