@@ -329,6 +329,166 @@ Use for:
 3. Third step
 ```
 
+## Content Patterns
+
+These patterns address common needs in skill content. Mix and match as appropriate.
+
+### Workflow Checklists
+
+For complex multi-step tasks, provide a copyable checklist that tracks progress:
+
+````markdown
+## Data Processing Workflow
+
+Copy this checklist and track your progress:
+
+```
+Task Progress:
+- [ ] Step 1: Fetch raw data
+- [ ] Step 2: Validate schema
+- [ ] Step 3: Clean and transform
+- [ ] Step 4: Run analysis
+- [ ] Step 5: Verify output
+```
+````
+
+Checklists help both the agent and the user track progress through multi-step operations.
+
+### Feedback Loops
+
+For quality-critical operations, build in validate-fix-repeat cycles:
+
+```markdown
+## Document Editing Process
+
+1. Make edits to the target file
+2. **Validate immediately**: `python scripts/validate.py output/`
+3. If validation fails:
+   - Review the error message
+   - Fix the issues
+   - Run validation again
+4. **Only proceed when validation passes**
+5. Finalize output
+```
+
+The validation loop catches errors early rather than discovering them at the end.
+
+### Template Pattern
+
+Provide output templates with appropriate strictness:
+
+**Strict** (for formats where consistency is critical):
+
+````markdown
+## Report Structure
+
+ALWAYS use this exact template:
+
+```markdown
+# [Title]
+
+## Executive Summary
+[One-paragraph overview]
+
+## Key Findings
+- Finding with supporting data
+
+## Recommendations
+1. Specific actionable recommendation
+```
+````
+
+**Flexible** (when adaptation is useful):
+
+````markdown
+## Report Structure
+
+Sensible default format — adjust sections based on what you discover:
+
+```markdown
+# [Title]
+
+## Executive Summary
+[Overview]
+
+## Key Findings
+[Adapt based on analysis]
+
+## Recommendations
+[Tailor to context]
+```
+````
+
+### Examples Pattern (Input/Output Pairs)
+
+Show concrete input/output examples rather than describing behavior in prose:
+
+````markdown
+## Commit Message Format
+
+**Example 1:**
+Input: Added user authentication with JWT tokens
+Output:
+```
+feat(auth): implement JWT-based authentication
+```
+
+**Example 2:**
+Input: Fixed bug where dates displayed incorrectly
+Output:
+```
+fix(reports): correct date formatting in timezone conversion
+```
+````
+
+Examples help the agent understand desired style and detail more clearly than descriptions alone.
+
+### Verifiable Intermediate Outputs
+
+For complex operations, have the agent create an intermediate plan file that gets validated before execution:
+
+```markdown
+## Batch Update Workflow
+
+1. Analyze the input: `python scripts/analyze.py input.csv`
+2. Create a changes plan: save proposed changes to `changes.json`
+3. **Validate the plan**: `python scripts/validate_plan.py changes.json`
+4. If validation passes, execute: `python scripts/apply_changes.py changes.json`
+5. Verify output: `python scripts/verify.py output/`
+```
+
+This catches errors before they're applied, keeping operations reversible at the plan stage.
+
+### Consistent Terminology
+
+Choose one term for each concept and use it throughout the skill:
+
+| Do | Don't |
+|----|-------|
+| Always "API endpoint" | Mix "endpoint", "URL", "route", "path" |
+| Always "field" | Mix "field", "box", "element", "control" |
+| Always "extract" | Mix "extract", "pull", "get", "retrieve" |
+
+Consistency reduces ambiguity and helps the agent follow instructions reliably.
+
+### Time-Sensitive Information
+
+Avoid information that will become outdated. If historical context is needed, use collapsible sections:
+
+```markdown
+## Current Method
+
+Use the v2 API endpoint: `api.example.com/v2/data`
+
+<details>
+<summary>Legacy v1 API (deprecated)</summary>
+
+The v1 API used: `api.example.com/v1/data`
+
+This endpoint is no longer supported.
+</details>
+```
+
 ## Writing Style
 
 ### Use Imperative Form
@@ -371,6 +531,34 @@ When you want to change the data type of a column named x to a
 64-bit integer in Polars, you can use the cast method on the
 column expression with the Int64 type to perform the conversion.
 ```
+
+### Explain the Why
+
+Explain reasoning behind instructions rather than using rigid directives. Today's LLMs respond better to understanding *why* something matters than to heavy-handed mandates.
+
+```markdown
+# Less effective
+ALWAYS validate data before proceeding. NEVER skip this step.
+
+# More effective
+Validate data before proceeding — unvalidated data can silently
+corrupt downstream transformations, making errors much harder
+to diagnose after the fact.
+```
+
+If you find yourself writing ALWAYS or NEVER in all caps, that's a signal to reframe: explain the reasoning so the model understands the importance.
+
+### Degrees of Freedom
+
+Match the level of specificity to the task's fragility:
+
+| Freedom Level | When to Use | Example |
+|---------------|-------------|---------|
+| **High** (text guidance) | Multiple valid approaches; context-dependent | Code review process |
+| **Medium** (pseudocode/templates) | Preferred pattern exists; some variation OK | Report generation with parameters |
+| **Low** (exact scripts) | Fragile operations; consistency critical | Database migrations, destructive ops |
+
+Think of it as a path: a narrow bridge with cliffs needs exact instructions (low freedom), while an open field just needs general direction (high freedom).
 
 ## Length Guidelines
 

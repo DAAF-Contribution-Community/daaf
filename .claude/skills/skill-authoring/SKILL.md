@@ -26,18 +26,20 @@ A Skill is a reusable instruction set that extends agent capabilities:
 | File | Purpose | When to Read |
 |------|---------|--------------|
 | `quickstart.md` | Minimal skill, directory setup | Creating first skill |
-| `frontmatter.md` | YAML spec, validation rules | Writing frontmatter |
-| `structure.md` | Body patterns, section templates | Organizing content |
+| `frontmatter.md` | YAML spec, validation rules, description writing | Writing frontmatter |
+| `structure.md` | Body patterns, section templates, content patterns | Organizing content |
 | `progressive-disclosure.md` | Three-level loading, splitting | Managing token budget |
 | `references-resources.md` | scripts/, references/, assets/ | Adding bundled resources |
-| `gotchas.md` | Anti-patterns, validation errors | Debugging or reviewing |
+| `testing-iteration.md` | Test prompts, iteration workflow, multi-model testing | Validating and improving skills |
+| `gotchas.md` | Anti-patterns, validation errors, diagnostics | Debugging or reviewing |
 
 ### Reading Order
 
 1. **Creating a skill?** Start with `quickstart.md` then `frontmatter.md`
 2. **Structuring content?** Read `structure.md` then `progressive-disclosure.md`
 3. **Adding resources?** See `references-resources.md`
-4. **Having issues?** Check `gotchas.md` first
+4. **Testing and improving?** See `testing-iteration.md`
+5. **Having issues?** Check `gotchas.md` first
 
 ## Quick Decision Trees
 
@@ -86,11 +88,24 @@ Adding bundled resources?
 └─ Directory structure → ./references/references-resources.md
 ```
 
+### "I need to test or improve a skill"
+
+```
+Testing or iterating?
+├─ Create test prompts → ./references/testing-iteration.md
+├─ Test triggering accuracy → ./references/testing-iteration.md
+├─ Iterate based on feedback → ./references/testing-iteration.md
+├─ Test across models → ./references/testing-iteration.md
+└─ Observe navigation patterns → ./references/testing-iteration.md
+```
+
 ### "Something isn't working"
 
 ```
 Debugging a skill?
 ├─ Skill not loading → ./references/gotchas.md
+├─ Skill undertriggering → ./references/gotchas.md
+├─ Skill overtriggering → ./references/gotchas.md
 ├─ Validation errors → ./references/gotchas.md
 ├─ Name format issues → ./references/frontmatter.md
 ├─ Description too long → ./references/frontmatter.md
@@ -157,18 +172,26 @@ Content here.
 
 | Principle | Meaning |
 |-----------|---------|
-| **Concise is Key** | Context window is shared; justify every token |
+| **Concise is Key** | Context window is shared; justify every token. Claude is already smart — only add context it doesn't already have |
 | **Progressive Disclosure** | Load only what's needed, when needed |
-| **Appropriate Freedom** | Match specificity to task fragility |
-| **Examples over Prose** | Show, don't tell |
+| **Appropriate Freedom** | Match specificity to task fragility (high freedom for flexible tasks, low freedom for fragile/critical operations) |
+| **Explain the Why** | Use reasoning over rigid directives. If you find yourself writing ALWAYS/NEVER in all caps, reframe and explain the reasoning instead — it's more effective |
+| **Examples over Prose** | Show input/output pairs rather than describing behavior in paragraphs |
+| **Test and Iterate** | Create test prompts, observe behavior, refine. See `./references/testing-iteration.md` |
 
 ### Essential Do's
 
 - Include "what it does" AND "when to use it" in description
+- Write descriptions in third person ("Processes files" not "I help you process files")
+- Make descriptions slightly "pushy" to combat undertriggering
+- Front-load important words in description (may be truncated in UI)
+- Explain *why* behind instructions, not just *what*
 - Use decision trees for navigation
 - Keep SKILL.md under 500 lines
 - Split large content into `references/` files
 - Use tables for quick lookup
+- Use consistent terminology throughout (pick one term, stick with it)
+- Test skills with realistic prompts before finalizing
 - Test scripts before including
 - Include metadata references (codebook URLs) for data source skills — see `datasets-reference.md` codebook column
 
@@ -180,6 +203,10 @@ Content here.
 - Don't nest references more than one level deep
 - Don't use angle brackets in description
 - Don't start/end name with hyphens
+- Don't use heavy-handed ALWAYS/NEVER/MUST in all caps — explain reasoning instead
+- Don't offer too many options — provide a default with an escape hatch
+- Don't include time-sensitive information (use "Old patterns" `<details>` sections if needed)
+- Don't use Windows-style backslash paths (always forward slashes)
 
 ## Data Source Skills: Metadata References
 
@@ -207,18 +234,27 @@ The codebook path comes from the `codebook` column in `datasets-reference.md`. M
 | First skill walkthrough | `./references/quickstart.md` |
 | Name field spec | `./references/frontmatter.md` |
 | Description field spec | `./references/frontmatter.md` |
+| Description writing tips | `./references/frontmatter.md` |
 | Optional fields | `./references/frontmatter.md` |
 | Validation rules | `./references/frontmatter.md` |
 | Body patterns | `./references/structure.md` |
 | Decision tree format | `./references/structure.md` |
 | Table conventions | `./references/structure.md` |
 | Section templates | `./references/structure.md` |
+| Content patterns (checklists, feedback loops) | `./references/structure.md` |
 | Three-level loading | `./references/progressive-disclosure.md` |
 | Content splitting | `./references/progressive-disclosure.md` |
 | Token budget | `./references/progressive-disclosure.md` |
 | scripts/ directory | `./references/references-resources.md` |
+| Script error handling | `./references/references-resources.md` |
 | references/ directory | `./references/references-resources.md` |
 | assets/ directory | `./references/references-resources.md` |
+| Test prompts | `./references/testing-iteration.md` |
+| Triggering tests | `./references/testing-iteration.md` |
+| Multi-model testing | `./references/testing-iteration.md` |
+| Iteration workflow | `./references/testing-iteration.md` |
+| Observing skill behavior | `./references/testing-iteration.md` |
 | Validation errors | `./references/gotchas.md` |
 | Anti-patterns | `./references/gotchas.md` |
+| Undertriggering / overtriggering | `./references/gotchas.md` |
 | Pre-submission checklist | `./references/gotchas.md` |

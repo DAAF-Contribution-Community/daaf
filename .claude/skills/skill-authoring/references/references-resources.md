@@ -79,6 +79,66 @@ curl -s "$INPUT_URL" | jq '.data' > "$OUTPUT_FILE"
 echo "Data saved to $OUTPUT_FILE"
 ```
 
+### Script Quality Guidelines
+
+#### Solve, Don't Punt
+
+Scripts should handle error conditions explicitly rather than failing and leaving it to the agent to figure out:
+
+```python
+# Good: Handle errors explicitly
+def process_file(path):
+    """Process a file, creating it if it doesn't exist."""
+    try:
+        with open(path) as f:
+            return f.read()
+    except FileNotFoundError:
+        print(f"File {path} not found, creating default")
+        with open(path, "w") as f:
+            f.write("")
+        return ""
+    except PermissionError:
+        print(f"Cannot access {path}, using default")
+        return ""
+
+# Bad: Punt to the agent
+def process_file(path):
+    return open(path).read()  # just fails
+```
+
+#### Self-Documenting Constants
+
+Avoid "voodoo constants" — unexplained magic numbers. Document why each value was chosen:
+
+```python
+# Good: Self-documenting
+# HTTP requests typically complete within 30 seconds
+# Longer timeout accounts for slow connections
+REQUEST_TIMEOUT = 30
+
+# Three retries balances reliability vs speed
+# Most intermittent failures resolve by the second retry
+MAX_RETRIES = 3
+
+# Bad: Magic numbers
+TIMEOUT = 47  # Why 47?
+RETRIES = 5   # Why 5?
+```
+
+#### Verbose Validation Messages
+
+Make validation scripts produce specific, actionable error messages:
+
+```python
+# Good: Specific and actionable
+if field not in available_fields:
+    print(f"Field '{field}' not found. Available: {', '.join(available_fields)}")
+
+# Bad: Vague
+if field not in available_fields:
+    print("Invalid field")
+```
+
 ### Referencing Scripts in SKILL.md
 
 ```markdown
@@ -94,6 +154,20 @@ The script accepts:
 - `input`: Path to PDF file
 - `--degrees`: Rotation angle (default: 90)
 ```
+
+### Execute vs. Read Intent
+
+Make clear whether the agent should run a script or read it for understanding:
+
+```markdown
+# Execute (most common — more reliable and token-efficient)
+Run `scripts/analyze_form.py` to extract form fields.
+
+# Read as reference (for understanding complex logic)
+See `scripts/analyze_form.py` for the field extraction algorithm.
+```
+
+For most utility scripts, execution is preferred because it's more reliable, saves tokens (no code generation needed), and ensures consistency across uses.
 
 ### When Agent Reads Scripts
 

@@ -180,6 +180,46 @@ Use this when you need to...
 description: A helpful skill. Use when you need to process PDFs or manipulate documents.
 ```
 
+### Undertriggering
+
+**Problem:** Skill doesn't load when it should. Users have to manually enable it.
+
+**Symptoms:**
+- Skill never loads automatically
+- Users manually invoking it by name
+- Support questions about when to use it
+
+**Diagnosis:** Ask Claude: "When would you use the [skill name] skill?" Claude will quote the description back. Adjust based on what's missing.
+
+**Fix:** Make the description more "pushy" — include contexts where the skill should activate even without explicit naming:
+
+```yaml
+# Before (undertriggers)
+description: Build dashboards to display data.
+
+# After (better triggering)
+description: Build dashboards to display data. Use whenever the user mentions dashboards, data visualization, metrics display, or wants to present any kind of data visually, even if they don't explicitly ask for a "dashboard."
+```
+
+### Overtriggering
+
+**Problem:** Skill loads for unrelated queries. Users disabling it.
+
+**Symptoms:**
+- Skill loads for clearly unrelated tasks
+- Users confused about why it activated
+- Interference with other skills
+
+**Fix:** Add negative triggers and narrow scope:
+
+```yaml
+# Before (overtriggers)
+description: Processes documents.
+
+# After (narrowed scope)
+description: Processes PDF legal documents for contract review. Do NOT use for general document editing, spreadsheets, or non-PDF formats.
+```
+
 ### Overly Verbose Descriptions
 
 **Problem:** Long descriptions waste metadata budget.
@@ -251,6 +291,37 @@ python ./scripts/my_script.py --help
 python ./scripts/my_script.py test-input.txt
 ```
 
+### Too Many Options
+
+**Problem:** Presenting multiple equivalent approaches instead of a clear default.
+
+**Fix:** Provide one recommended approach with an escape hatch:
+
+```markdown
+# Bad: Confusing choices
+You can use pypdf, pdfplumber, PyMuPDF, or pdf2image...
+
+# Good: Default with escape hatch
+Use pdfplumber for text extraction. For scanned PDFs requiring OCR,
+use pdf2image with pytesseract instead.
+```
+
+### Windows-Style Paths
+
+**Problem:** Using backslashes in file paths, which fail on Unix systems.
+
+**Fix:** Always use forward slashes — they work cross-platform:
+
+```markdown
+# Bad
+scripts\helper.py
+reference\guide.md
+
+# Good
+scripts/helper.py
+reference/guide.md
+```
+
 ### Unnecessary Files
 
 **Problem:** README.md, CHANGELOG.md, etc.
@@ -286,6 +357,7 @@ Skills are for AI execution, not human documentation.
 - [ ] Has Topic Index (if has references)
 - [ ] Reference files are one level deep
 - [ ] Long references (>100 lines) have TOC
+- [ ] All file paths use forward slashes (no backslashes)
 
 ### Content
 
@@ -295,6 +367,9 @@ Skills are for AI execution, not human documentation.
 - [ ] No "When to Use" section in body
 - [ ] Code blocks have language specified
 - [ ] Tables used for quick lookups
+- [ ] Consistent terminology throughout (one term per concept)
+- [ ] No time-sensitive information (or in collapsible "old patterns" sections)
+- [ ] Explains "why" behind instructions, not just "what"
 
 ### Resources (if applicable)
 
@@ -303,6 +378,9 @@ Skills are for AI execution, not human documentation.
 - [ ] References are focused (one topic each)
 - [ ] Assets are necessary and minimal
 - [ ] Resources documented in SKILL.md
+- [ ] Scripts handle errors explicitly (don't punt to Claude)
+- [ ] Script constants are documented (no magic numbers)
+- [ ] Execute vs. read intent is clear for each script
 
 ### Files
 
@@ -310,6 +388,13 @@ Skills are for AI execution, not human documentation.
 - [ ] No CHANGELOG.md
 - [ ] No auxiliary documentation
 - [ ] Only necessary files included
+
+### Testing
+
+- [ ] 2-3 realistic test prompts created
+- [ ] Triggering tested (should-trigger and should-not-trigger queries)
+- [ ] Tested with real usage scenarios
+- [ ] Iterated based on observed behavior
 
 ## Self-Review Questions
 

@@ -70,6 +70,7 @@ The primary triggering mechanism. This is what agents see when deciding whether 
 
 1. **What the skill does** - Functionality overview
 2. **When to use it** - Specific triggering conditions
+3. **Third-person voice** - Write as "Processes files" not "I help you process files" or "You can use this to process files"
 
 **Good Examples:**
 
@@ -100,6 +101,36 @@ description: Use <this> when needed.
 description: Helps with testing.
 # Then in body: "## When to Use This Skill" <-- WRONG
 ```
+
+### Combating Undertriggering
+
+Claude tends to undertrigger skills — not using them when they'd be useful. Make descriptions slightly "pushy" by including contexts where the skill should activate even if the user doesn't explicitly name it.
+
+```yaml
+# Standard (may undertrigger)
+description: Build dashboards to display data.
+
+# Pushy (better triggering)
+description: Build dashboards to display data. Use this skill whenever the user mentions dashboards, data visualization, internal metrics, or wants to display any kind of data, even if they don't explicitly ask for a "dashboard."
+```
+
+### Combating Overtriggering
+
+If a skill loads for unrelated queries, add negative triggers to narrow scope:
+
+```yaml
+description: Advanced statistical analysis for CSV datasets. Use for regression modeling, clustering, and hypothesis testing. Do NOT use for simple data exploration or basic charting (use data-viz skill instead).
+```
+
+### Naming Conventions
+
+Consider using **gerund form** (verb + -ing) for skill names, as this clearly describes the activity the skill provides:
+
+- `processing-pdfs` — clearly an activity
+- `analyzing-spreadsheets` — clearly an activity
+- `managing-databases` — clearly an activity
+
+Acceptable alternatives include noun phrases (`pdf-processing`) or action-oriented names (`process-pdfs`). Avoid vague names like `helper`, `utils`, or `tools`.
 
 ## Optional Fields
 
@@ -186,4 +217,16 @@ description: PostgreSQL database operations. Use when writing SQL queries, manag
 
 # Key info buried (less good)
 description: A comprehensive skill for various operations related to PostgreSQL database management and optimization.
+```
+
+### Avoid Offering Too Many Options
+
+Provide a default approach with an escape hatch, rather than listing multiple equivalent alternatives:
+
+```yaml
+# Bad: Too many choices
+description: Process PDFs using pypdf, pdfplumber, PyMuPDF, or pdf2image.
+
+# Good: Default with escape hatch
+description: Process PDFs using pdfplumber for text extraction. For scanned PDFs requiring OCR, uses pdf2image with pytesseract instead.
 ```
