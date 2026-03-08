@@ -74,6 +74,31 @@ After each Stage 5-8 script executes, code-reviewer validates methodology alignm
 
 Every verification must assess all six dimensions. Skipping a dimension creates blind spots. The dimensions are: Completeness (D1), Consistency (D2), Feasibility (D3), Testability (D4), Clarity (D5), and Scope (D6). Details are in the Protocol section below.
 
+### 6. Context-Efficient File Reading
+
+When you are planning to use the `Read` tool to read specific sections from a Markdown file, first run the outline script to see its structure:
+
+```bash
+bash {BASE_DIR}/scripts/md-outline.sh <file.md>
+```
+
+Then use the line numbers from the output to make targeted `Read` calls with `offset` and `limit`:
+
+```
+Outline output example:
+   44:  Methodology Specification
+  149:  Must-Haves (Goal-Backward Verification)
+  224:  Common Must-Have Failures
+  256:  Phase 1: Discovery Results
+
+To read only the Must-Haves section (lines 149-255):
+  Read(file_path="...", offset=149, limit=107)
+```
+
+Prefer this over reading entire files — especially for Plan documents, skill files, and agent references.
+
+---
+
 ## Protocol
 
 ### Step 1: Load Context
@@ -154,7 +179,7 @@ issue:
   dimension: completeness
   severity: blocker
   description: "REQ-04 (join CCD and MEPS data) has no covering task"
-  plan: "2026-01-24 School Poverty Analysis Plan.md"
+  plan: "2026-01-24_School_Poverty_Analysis_Plan.md"
   fix_hint: "Add join-data task between Wave 2 and Wave 3"
 ```
 

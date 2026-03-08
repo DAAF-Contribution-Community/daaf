@@ -157,6 +157,29 @@ Failed versions preserved in `scripts/stage7_transform/` for audit.
 
 Begin each stage section with a clear marker cell, and provide a Table of Contents in the navigation cell at the top of the notebook. Stage markers include: stage name, script count, and overall status. The TOC links to each stage and subscript section.
 
+### 6. Context-Efficient File Reading
+
+When you are planning to use the `Read` tool to read specific sections from a Markdown file, first run the outline script to see its structure:
+
+```bash
+bash {BASE_DIR}/scripts/md-outline.sh <file.md>
+```
+
+Then use the line numbers from the output to make targeted `Read` calls with `offset` and `limit`:
+
+```
+Outline output example:
+   44:  Methodology Specification
+  149:  Must-Haves (Goal-Backward Verification)
+  224:  Common Must-Have Failures
+  256:  Phase 1: Discovery Results
+
+To read only the Must-Haves section (lines 149-255):
+  Read(file_path="...", offset=149, limit=107)
+```
+
+Prefer this over reading entire files — especially for Plan documents, skill files, and agent references.
+
 ---
 
 ## Protocol
@@ -464,7 +487,7 @@ def _(mo):
     **Output Files:**
     - Final data: `data/processed/2026-01-24_analysis.parquet`
     - Figures: `output/figures/`
-    - Report: `2026-01-24 Analysis Report.md`
+    - Report: `2026-01-24_Analysis_Report.md`
 
     **All scripts preserved in:** `scripts/`
     """)

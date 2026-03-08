@@ -124,6 +124,8 @@ Your Core Distinction table must use this format:
 
 **Common mistake:** Abstract platitudes like "Be thorough and careful." This tells the agent nothing. Instead: "Validate row counts before AND after every join. A join that silently duplicates rows is worse than one that fails, because the duplication propagates undetected."
 
+**File reading:** Many agents that will do substantial file reading should get the Core Behavior section on "Context-Efficient File Reading" (standardized block — see `cross-agent-standards.md` § 11). Number it to follow the agent's other behaviors.
+
 **Best exemplar:** `research-executor.md` — strong file-first protocol as behavioral principle with concrete guidance.
 
 ---

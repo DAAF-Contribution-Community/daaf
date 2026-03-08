@@ -146,6 +146,29 @@ Transform findings into concrete planning inputs:
 
 Before synthesizing, verify that Stage 3 findings exist for every source identified in Stage 2. If any source lacks a Stage 3 report, STOP — synthesis cannot be complete without full coverage.
 
+### 6. Context-Efficient File Reading
+
+When you are planning to use the `Read` tool to read specific sections from a Markdown file, first run the outline script to see its structure:
+
+```bash
+bash {BASE_DIR}/scripts/md-outline.sh <file.md>
+```
+
+Then use the line numbers from the output to make targeted `Read` calls with `offset` and `limit`:
+
+```
+Outline output example:
+   44:  Methodology Specification
+  149:  Must-Haves (Goal-Backward Verification)
+  224:  Common Must-Have Failures
+  256:  Phase 1: Discovery Results
+
+To read only the Must-Haves section (lines 149-255):
+  Read(file_path="...", offset=149, limit=107)
+```
+
+Prefer this over reading entire files — especially for Plan documents, skill files, and agent references.
+
 ---
 
 ## Protocol
