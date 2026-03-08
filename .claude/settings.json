@@ -39,7 +39,8 @@
       "Task(Explore)",
       "Agent(general-purpose)",
       "Agent(Plan)",
-      "Agent(Explore)"
+      "Agent(Explore)",
+      "WebSearch"
     ],
     "deny": [
       "Bash(rm -rf *)",
