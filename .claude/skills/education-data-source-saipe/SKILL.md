@@ -43,6 +43,7 @@ SAIPE is the Census Bureau's program for producing **model-based** estimates of 
 - **Available years**: 1995-2023 (gaps at 1996, 1998; annual from 1999)
 - **Primary identifier**: FIPS code + LEAID (district ID)
 - **Methodology**: Model-based — combines ACS survey data with administrative records (IRS tax returns, SNAP data) using regression models with "shrinkage" techniques; school district estimates are allocated from county totals using within-county shares; all estimates contain uncertainty and confidence intervals are essential
+- **Available through**: Education Data Portal mirrors (district-level only; state and county SAIPE are not in Portal mirrors — see Data Access section)
 
 ## Reference File Structure
 
@@ -182,7 +183,7 @@ between 4,200 and 5,800.
 
 ## Data Access
 
-Datasets for SAIPE are available via the mirror system. See `datasets-reference.md` for canonical paths, `mirrors.yaml` for mirror configuration, and `fetch-patterns.md` for fetch code patterns.
+Datasets for SAIPE are available via the Education Data Portal mirror system. See `datasets-reference.md` for canonical paths, `mirrors.yaml` for mirror configuration, and `fetch-patterns.md` for fetch code patterns.
 
 | Dataset | Type | Years | Path | Codebook |
 |---------|------|-------|------|----------|

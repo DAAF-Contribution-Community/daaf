@@ -2,6 +2,14 @@
 
 Targeted Assist mode is for specific lookup questions — coded values, variable definitions, data source details, or quick factual answers. It invokes a single relevant skill and returns a direct answer.
 
+## User Orientation
+
+Give the user a clear sense for how you'll operate -- what you'll look into, what you'll be looking for, what info you'll be paying attention to, and so on.
+
+For unfamiliar users, add something like: *"If it turns out your question touches on something broader, I'll let you know and we can explore further."*
+
+---
+
 ## Targeted Assist Workflow
 
 ```

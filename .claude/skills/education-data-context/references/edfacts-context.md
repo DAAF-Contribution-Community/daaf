@@ -1,6 +1,6 @@
 # EDFacts Context
 
-EDFacts provides state-reported data on assessment results, graduation rates, and other accountability indicators for K-12 public schools.
+EDFacts provides state-reported data on assessment results, graduation rates, and other accountability indicators for K-12 public schools. In this system, EDFacts data is accessed through the Urban Institute Education Data Portal, which converts original NCES string codes to integer encodings and standardizes variable names to lowercase.
 
 ## Source Overview
 

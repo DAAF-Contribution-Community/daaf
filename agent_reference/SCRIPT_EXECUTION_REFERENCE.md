@@ -830,7 +830,7 @@ no_coded = coded_remaining == 0
 print(f"  [{'PASS' if no_coded else 'FAIL'}] No coded values remaining: {coded_remaining}")
 
 # CP2.2: Suppression rate < 50%
-# REASONING: The 50% threshold is from CLAUDE.md STOP conditions. Above 50%
+# REASONING: The 50% threshold is from BOUNDARIES.md STOP conditions. Above 50%
 # suppression, the remaining data is too sparse to support reliable analysis.
 total_cells = len(df) * len(NUMERIC_COLS)
 null_cells = sum(df[col].null_count() for col in NUMERIC_COLS if col in df.columns)

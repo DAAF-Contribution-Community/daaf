@@ -1,6 +1,6 @@
 # College Scorecard Context
 
-The College Scorecard provides federal data on student outcomes, focusing on earnings and debt for students who received federal financial aid.
+The College Scorecard provides federal data on student outcomes, focusing on earnings and debt for students who received federal financial aid. In this system, Scorecard data is accessed through the Urban Institute Education Data Portal, which restructures variable names to lowercase and applies integer encoding to categorical variables.
 
 ## Source Overview
 

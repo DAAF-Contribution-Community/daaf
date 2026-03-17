@@ -1,5 +1,21 @@
 # Full Pipeline Mode
 
+## User Orientation
+
+After mode confirmation but before starting Phase 1, briefly present the phase-by-checkpoint roadmap. Expand naturally on these points:
+
+- 5 phases: Discovery → Planning → Data Acquisition → Analysis → Synthesis
+- Checkpoint after each of the first 4 phases (data sources? plan? data quality? results?)
+- Planning checkpoint is the most important review — approves methodology before code runs
+- Nothing moves forward without user go-ahead
+- Session progress is saved if conversation gets long
+
+**When to skip:** User has indicated familiarity, or this is a session recovery.
+
+**For more detail:** Consult `{BASE_DIR}/user_reference/02_understanding_daaf.md`.
+
+---
+
 This reference is loaded after the orchestrator classifies a request as Full Pipeline mode and the user confirms. It contains the complete 5-phase, 12-stage workflow, subagent coordination patterns, quality framework, and session management protocol.
 
 **Path variables** (defined in core SKILL.md):
@@ -627,10 +643,15 @@ Report to the user **adaptively** at these trigger points:
 
 #### PSU Template and Content Requirements
 
-Every Phase Status Update MUST follow this format:
+Every Phase Status Update MUST follow this format. Remember: all user-facing text must use **plain language** per the User-Facing Communication Standards in SKILL.md. Never use internal terms (PSU, QA, CP, gate, stage N) in the output — use the plain-language equivalents.
 
 ```
-**Phase Status Update: Phase [N] Complete — [Phase Name]**
+**Checkpoint: Phase [N] of 5 Complete — [Phase Name in Plain Language]**
+
+[Progress indicator — e.g., "Phase 2 of 5 complete" with visual]
+━━━━━━━━━━━━░░░░░░░░░░░░░░░░░░ (or similar proportional marker)
+
+**Why this checkpoint:** [1 sentence — see checkpoint purpose text below]
 
 **Summary:**
 [2-3 sentence overview of what was accomplished in this phase]
@@ -648,7 +669,7 @@ Every Phase Status Update MUST follow this format:
 **Warnings & Issues:**
 | Item | Severity | Status | Details |
 |------|----------|--------|---------|
-| [item] | WARNING/INFO | Resolved/Open | [details] |
+| [item] | Needs resolution / For your awareness | Resolved/Open | [details] |
 
 [If no warnings: "No warnings or issues encountered in this phase."]
 
@@ -656,11 +677,54 @@ Every Phase Status Update MUST follow this format:
 - [File path 1]: [description]
 - [File path 2]: [description]
 
-**Next Phase Preview:**
-Phase [N+1] ([Phase Name]) will [brief description of what comes next and what it involves].
+**What Comes Next:**
+[Phase transition narrative — see bridge text below. 2-3 sentences connecting
+what just happened to what comes next, written as a coherent story.]
 
-**Please confirm you'd like to proceed to Phase [N+1], or let me know if you'd like me to revisit or adjust anything from Phase [N].**
+**What's Most Useful From You Here:**
+[Checkpoint-specific feedback guidance — see per-PSU content below]
+
+**Your Options:**
+- **Approve** — proceed to the next phase
+- **Ask questions** — I'll explain anything that's unclear, then check back in again
+- **Request changes** — tell me what to adjust, and I'll revise within this phase
+- **Change scope** — if you'd like to expand or narrow the analysis
+
+**Ready to move forward, or would you like to discuss anything first?**
 ```
+
+#### Checkpoint Purpose Text (per PSU)
+
+Include the appropriate line in the "Why this checkpoint" field:
+
+| PSU | Checkpoint Purpose |
+|-----|-------------------|
+| PSU1 | "I'm pausing here to make sure we've identified the right data and understand its limitations before investing time in methodology design." |
+| PSU2 | "This is your most important review point — the plan defines exactly what analysis will be performed and how. Once you approve, I'll start writing and executing code." |
+| PSU3 | "I'm checking in to confirm the data is clean and trustworthy before running any statistics on it." |
+| PSU4 | "This is your chance to review all results and the quality review summary before they're synthesized into the final report." |
+
+#### Phase Transition Bridge Text (per PSU)
+
+Include the appropriate narrative in the "What Comes Next" field:
+
+| PSU | Bridge Narrative |
+|-----|-----------------|
+| PSU1 | "Now that we know what data is available and what its limitations are, I'll design a detailed analysis plan — including the methodology, the specific data to acquire, and the sequence of analytical steps. You'll review the full plan before any code runs." |
+| PSU2 | "With the plan approved, I'll now download and clean the data according to the plan. I'll run automated quality checks on everything and report back on data health before analysis begins." |
+| PSU3 | "The data is ready. Now comes the analysis itself — transformations, statistics, and visualizations, all following the plan we agreed on. Each script goes through a quality review. I'll compile all results and come back for one more checkpoint before writing the final report." |
+| PSU4 | "All analysis is complete and quality-reviewed. I'll now compile everything into a final report and run an independent verification pass to make sure the report accurately reflects the data and methodology." |
+
+#### Feedback Guidance Text (per PSU)
+
+Include the appropriate guidance in the "What's Most Useful From You Here" field:
+
+| PSU | Feedback Guidance |
+|-----|------------------|
+| PSU1 | "Are these the right data sources for your question? Any sources I may have missed? Any concerns about the limitations I identified?" |
+| PSU2 | "Does the methodology match your intent? Are the research outcomes what you want to investigate? Any variables to add or remove? I've included the full plan filepath above — I'd recommend reading through it closely." |
+| PSU3 | "Are the data quality levels acceptable for your purposes? Any concerns about missing data rates or the cleaning decisions I made?" |
+| PSU4 | "Do the results make sense substantively? Are there additional analyses or visualizations you'd like to see? Any results that seem surprising and worth investigating further?" |
 
 ##### PSU-Specific Content Requirements
 
@@ -702,11 +766,12 @@ Phase [N+1] ([Phase Name]) will [brief description of what comes next and what i
 
 #### User Response Handling
 
-At each PSU, the user may:
-- **Approve** ("proceed", "looks good", "continue", etc.) → Proceed to next phase
-- **Request revision** ("redo X", "fix Y", "I'm concerned about Z") → Orchestrator addresses within current phase, then re-presents PSU
+The checkpoint template includes an explicit "Your Options" block so the user always knows what they can do. Internally, handle responses as follows:
+
+- **Approve** ("proceed", "looks good", "continue", etc.) → Proceed to next phase. If this is the user's first Full Pipeline session (based on conversation history), briefly preview what comes next: *"Great — moving on to [next activity]. I'll check back in when [next checkpoint condition]."*
+- **Request revision** ("redo X", "fix Y", "I'm concerned about Z") → Orchestrator addresses within current phase, then re-presents the checkpoint
 - **Request scope change** ("can we also look at...", "let's narrow to...") → Triggers scope change protocol (Ask First), then revises as needed
-- **Ask questions** ("what does X mean?", "why did you choose Y?") → Orchestrator answers, then re-presents approval request
+- **Ask questions** ("what does X mean?", "why did you choose Y?") → Orchestrator answers, then re-presents the approval request
 
 **CRITICAL:** After answering questions or providing clarification, the orchestrator MUST re-present the approval request. Do not assume that a question implies approval.
 
@@ -1213,7 +1278,7 @@ If any checkbox is unchecked → Add specificity until all pass.
 | Plan | ~500 words | ~200 words |
 | general-purpose | ~1000 words | ~500 words |
 
-These are efficiency TARGETS for typical tasks, not hard ceilings that override the Context Completeness Checklist (CLAUDE.md). If a task's checklist requires more context to meet all REQUIRED items, provide it — completeness beats brevity. An incomplete prompt wastes MORE tokens (subagent confusion, re-invocation, wasted output) than a thorough one.
+These are efficiency TARGETS for typical tasks, not hard ceilings that override the Context Completeness Checklist (above). If a task's checklist requires more context to meet all REQUIRED items, provide it — completeness beats brevity. An incomplete prompt wastes MORE tokens (subagent confusion, re-invocation, wasted output) than a thorough one.
 
 **If context needs consistently exceed these targets:** Consider whether the task should be broken into smaller subtasks with more focused scope.
 

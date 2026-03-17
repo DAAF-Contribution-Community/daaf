@@ -39,6 +39,7 @@ IPEDS (Integrated Postsecondary Education Data System) is a system of 12+ interr
 - **Mandate**: Required for Title IV federal student aid participation
 - **Available years**: 1980-present (varies by component)
 - **Primary identifier**: UNITID (6-digit institution ID)
+- **Available through**: Education Data Portal mirrors (32 datasets covering most survey components; some variables not mirrored — see Data Access section)
 
 ## Reference File Structure
 
@@ -240,6 +241,12 @@ Datasets for IPEDS are available via the mirror system. See `datasets-reference.
 
 32 IPEDS datasets exist in the mirror (5 shown above). See `datasets-reference.md` for the complete list with all paths and codebook paths.
 
+> **Known Portal gaps:**
+> - **Distance education enrollment variables** (`efdeexc`, `efdesom`, `efdenom`) are not in Portal mirror datasets. Use the NCES IPEDS Data Center for these.
+> - **Finance data** may have a year lag relative to NCES releases (last verified through 2017 in some datasets).
+>
+> For data not available through Portal mirrors, access NCES directly at https://nces.ed.gov/ipeds/.
+
 Codebooks are `.xls` files co-located with data in all mirrors. Use `get_codebook_url()` from `fetch-patterns.md` to construct download URLs:
 
 ```python
@@ -337,6 +344,7 @@ IPEDS has multiple enrollment-related datasets in the Portal:
 | No `institution_level` 3 | Codes are 1, 2, 4 — not sequential 1, 2, 3 | Use exact codes: 1=less-than-2yr, 2=2yr, 4=4yr+ |
 | Ignoring mergers/closures | Institutions merge, close, or change sector over time | Check `currently_active_ipeds` and `year_deleted`; track UNITID changes; see `./references/institution-identifiers.md` |
 | `inst_size` as enrollment | `inst_size` is a 1-5 category code, not an enrollment count | Use enrollment endpoints for actual counts |
+| Distance education variables missing | `efdeexc`, `efdesom`, `efdenom` are not in Portal mirror datasets | Use the NCES IPEDS Data Center directly for distance education enrollment |
 
 ## Critical Limitations
 

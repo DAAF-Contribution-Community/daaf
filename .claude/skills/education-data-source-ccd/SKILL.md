@@ -42,6 +42,7 @@ The CCD is the Department of Education's comprehensive, annual, national databas
 - **Coverage**: ~100,000 public schools and ~18,000 school districts nationwide
 - **Historical depth**: Data available from 1986 to present (varies by component)
 - **Collector**: National Center for Education Statistics (NCES) via EDFacts
+- **Available through**: Education Data Portal mirrors (5 of 6 survey components; see Data Access section for details)
 
 ## Reference File Structure
 
@@ -120,6 +121,8 @@ Building a time series?
 | Finance (State) | State | Revenue, expenditure by source/function | 1989+ | Annual (1-2 yr lag) |
 | Finance (District) | LEA | Revenue, expenditure, per-pupil | 1989+ | Annual (2 yr lag) |
 | Dropout/Completers | LEA, State | Dropout counts, diploma recipients | 1991+ | Annual |
+
+> **Note:** Not all components listed above are available through the Portal mirrors. See the Data Access section for which datasets are mirrored.
 
 ### Key Identifiers
 
@@ -233,6 +236,12 @@ Datasets for CCD are available via the mirror system. See `datasets-reference.md
 | District Directory | Single | `ccd/school-districts_lea_directory` | `ccd/codebook_districts_ccd_directory` |
 | District Enrollment | Yearly (1986-2023) | `ccd/schools_ccd_lea_enrollment_{year}` | `ccd/codebook_districts_ccd_enrollment` |
 | District Finance | Single | `ccd/districts_ccd_finance` | `ccd/codebook_districts_ccd_finance` |
+
+> **Not in Portal mirrors:** The following CCD components are documented in this skill for reference but are **not available** through the Education Data Portal mirrors:
+> - **Dropout/Completers** — completion and dropout data by demographics
+> - **State Finance (NPEFS)** — state-level education revenue and expenditure
+>
+> For these components, access NCES directly at https://nces.ed.gov/ccd/.
 
 Codebooks are `.xls` files co-located with data in all mirrors. Use `get_codebook_url()` from `fetch-patterns.md` to construct download URLs:
 

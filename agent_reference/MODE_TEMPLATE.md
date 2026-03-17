@@ -18,6 +18,20 @@ Use this template when adding a new engagement mode to the DAAF orchestrator. A 
 
 [1-2 sentence description of when this mode is used and what it produces.]
 
+## User Orientation
+
+After mode confirmation, briefly orient the user. Key points:
+
+- [What the mode does, in plain language]
+- [What the user will receive]
+- [Key constraint or characteristic (e.g., "read-only", "new version created")]
+
+**When to skip:** User has indicated familiarity, or [mode-specific skip condition].
+
+**For more detail:** Consult `{BASE_DIR}/user_reference/02_understanding_daaf.md`.
+
+---
+
 ## [Mode Name] Workflow
 
 [ASCII flowchart showing the stage sequence, similar to other mode files]
@@ -45,5 +59,6 @@ Use this template when adding a new engagement mode to the DAAF orchestrator. A 
 - Each mode should have a clear, non-overlapping trigger condition
 - Mode workflows should be a subset of or complement to the Full Pipeline stages
 - All modes require the Mode Confirmation Protocol before proceeding
+- All modes include a User Orientation section presented after confirmation (skippable for familiar users)
 - Modes should specify their outputs explicitly
 - Boundary definitions prevent mode scope from creeping into other modes' territory

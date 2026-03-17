@@ -19,6 +19,19 @@ This skill provides critical context for interpreting data from the Urban Instit
 - **Citation is required**: The ODC Attribution License mandates proper citation
 - **Skill provenance matters**: Each `*-data-source-*` skill includes `provenance.skill_last_updated` in its frontmatter. If this date is more than a few months old, treat the skill's claims about coded values, suppression patterns, and data quality with caution — data sources evolve and skill documentation may have drifted. Consider re-running data-ingest to re-verify.
 
+## Data Provenance: The Education Data Portal
+
+All education data currently accessible through this system is obtained from the **Urban Institute Education Data Portal (EDP)**, not directly from original source agencies (NCES, Census Bureau, Department of Education, etc.). The EDP is a curation and standardization layer that:
+
+- **Renames variables** to lowercase (e.g., `enrollment` not `MEMBER`)
+- **Re-encodes categoricals** as integers (e.g., `1` not `"Regular school"`)
+- **Standardizes missing values** using codes `-1` (missing), `-2` (not applicable), `-3` (suppressed)
+- **May subset** each source's full variable catalog — not all variables from the original source are necessarily available through the Portal
+
+Each `education-data-source-*` skill documents what is available through the Portal for that source, including any known gaps relative to the original data collection. When a skill also documents variables or components only available from the original source directly, this is clearly noted.
+
+> **Note:** This provenance applies specifically to the current education data source skills. Future data source skills may access data from other providers with different characteristics.
+
 ## Reference File Structure
 
 ### Quick Context (This Skill)
@@ -33,6 +46,8 @@ This skill provides critical context for interpreting data from the Urban Instit
 | `./references/data-relationships.md` | Joining tables, identifiers | When merging datasets |
 
 ### Deep-Dive Source Skills (Comprehensive Documentation)
+
+These skills document both EDP-available data and original source context. Each skill notes when content applies only to the original source (not available through the Portal).
 
 For comprehensive understanding beyond the quick context files above, load the dedicated data source skill:
 

@@ -18,6 +18,8 @@ Discover available education data from the Urban Institute Education Data Portal
 - **Coverage**: 1980-2023 depending on source
 - **Access**: Mirror downloads (parquet/CSV) via `education-data-query` skill
 - **Documentation**: https://educationdata.urban.org/documentation/
+- **Curation layer, not a direct pass-through**: The EDP standardizes data from original federal sources with lowercase variable names, integer-encoded categoricals, and uniform missing value codes (`-1`, `-2`, `-3`)
+- **Coverage varies by source**: Some sources are fully mirrored; others are partially mirrored with only a subset of variables or datasets available. See individual `education-data-source-*` skills for source-specific coverage details
 
 > **Skill Provenance Note:** Each `*-data-source-*` skill includes
 > `provenance.skill_last_updated` in its frontmatter. When exploring data

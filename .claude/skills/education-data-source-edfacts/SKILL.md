@@ -37,6 +37,7 @@ EDFacts is the U.S. Department of Education's centralized data collection system
 - **Available years**: Assessments 2009-10 to present; Graduation rates 2010-11 to present
 - **Primary identifiers**: `ncessch` (school ID, Int64), `leaid` (district ID, Int64), `fips` (state FIPS code, Int64)
 - **Key limitation**: State assessment scores CANNOT be compared across states (different tests, different cut scores)
+- **Available through**: Education Data Portal mirrors
 
 ## Reference File Structure
 
@@ -225,7 +226,7 @@ For `homeless`, `migrant`, `econ_disadvantaged`, `foster_care`, `military_connec
 
 ## Data Access
 
-All EDFacts data is fetched via the **mirror-based bulk download system**. There is no API access.
+All EDFacts data is fetched via the **Education Data Portal mirror system**. There is no API access.
 
 **Key references:**
 - **`mirrors.yaml`** -- Mirror definitions, URL templates, read strategies

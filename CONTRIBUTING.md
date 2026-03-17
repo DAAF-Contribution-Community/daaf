@@ -238,7 +238,7 @@ These contributions involve modifying the core framework -- the agents, protocol
 
 - **Changing validation logic or checkpoint definitions.** The validation framework (CP1-CP4 checkpoints, QA1-QA4b reviews, stage gates) is one of the most carefully designed parts of DAAF, and is arguably the most important part of how it all works. It exists to catch both operational failures (empty data, wrong types) and logical errors (wrong methodology, misinterpretation). If you want to modify checkpoint thresholds, add new validation criteria, or change the gate enforcement logic, you'll need to understand the full validation chain documented in [`agent_reference/VALIDATION_CHECKPOINTS.md`](agent_reference/VALIDATION_CHECKPOINTS.md) and [`agent_reference/QA_CHECKPOINTS.md`](agent_reference/QA_CHECKPOINTS.md). Changes here have outsized impact -- a relaxed threshold might let subtle data corruption through, while an overly strict one might cause unnecessary STOP conditions.
 
-- **Adding new framework capabilities.** This is the broadest category -- anything from adding support for new output formats, to implementing parallel execution optimizations, to building new orchestration patterns. The bar for framework changes is high because DAAF's components are deeply interconnected. A change to the workflow stages, for instance, potentially affects [`CLAUDE.md`](CLAUDE.md), [the workflow phase files](.claude/skills/daaf-orchestrator/references/full-pipeline.md), multiple agent protocols, the Plan template, the State template, and the integration checker. That said, well-considered framework improvements are exactly the kind of contribution that benefits everyone, and I'm genuinely excited to collaborate on them.
+- **Adding new framework capabilities.** This is the broadest category -- anything from adding support for new output formats, to implementing parallel execution optimizations, to building new orchestration patterns. The bar for framework changes is high because DAAF's components are deeply interconnected. A change to the workflow stages, for instance, potentially affects the [orchestrator skill references](.claude/skills/daaf-orchestrator/references/full-pipeline.md), the [workflow phase files](agent_reference/) in `agent_reference/`, [`CLAUDE.md`](CLAUDE.md), multiple agent protocols, the Plan template, the State template, and the integration checker. That said, well-considered framework improvements are exactly the kind of contribution that benefits everyone, and I'm genuinely excited to collaborate on them.
 
 - **Improving the Docker setup or CI/CD pipeline.** If you have DevOps expertise, the containerization and deployment infrastructure could definitely benefit from more experienced hands. I built the Docker setup to be functional and secure, but I'm a researcher, not a DevOps engineer -- there are almost certainly improvements to be made in build performance, layer caching, security hardening, and CI/CD automation. Please help!
 
@@ -254,7 +254,7 @@ This comes up often enough that it's worth being explicit. The rule of thumb fro
 
 This distinction matters for two reasons. First, it determines which guide to follow -- extension workflows are in [**04. Extending DAAF**](user_reference/04_extending_daaf.md), contribution workflows are here. Second, it has licensing implications under LGPL-3.0: extensions you build on top of DAAF are yours to keep proprietary or open-source as you choose, while modifications to the core framework must be shared back if you distribute them. See the [**README**](README.md#why-open-source-what-does-it-mean-for-daaf) for the full details.
 
-In practice, many contributions involve *both* -- for example, creating a new data source skill (extension) and then registering it in `CLAUDE.md` (contribution). That's totally fine. Just be aware that the registration edits to core files fall under the contribution category.
+In practice, many contributions involve *both* -- for example, creating a new data source skill (extension) and then registering it in `skill-catalog.md` and `agents/README.md` (contribution). That's totally fine. Just be aware that the registration edits to core files fall under the contribution category.
 
 ---
 
@@ -342,7 +342,7 @@ Documentation changes are the easiest to test:
 
 If you're submitting a new or modified skill, run through this sequence (also described in more detail in [**04. Extending DAAF**](user_reference/04_extending_daaf.md)):
 
-1. **Discovery test.** Ask DAAF: "What data sources does DAAF know about? Can you tell me about [your new data source]?" If the skill is properly registered, DAAF should describe it accurately. If it can't find the skill, check your registration entries in `CLAUDE.md` and the other files in the registration checklist.
+1. **Discovery test.** Ask DAAF: "What data sources does DAAF know about? Can you tell me about [your new data source]?" If the skill is properly registered, DAAF should describe it accurately. If it can't find the skill, check your registration entries in `.claude/skills/daaf-orchestrator/references/skill-catalog.md` and the other files in the registration checklist.
 
 2. **Fetch test.** Ask DAAF to fetch data using your skill and show basic summary statistics. This tests the data access pathway -- dataset paths, mirror configuration, and loading mechanics. If CP1 validation fails, it usually means the dataset path doesn't match what's available on the mirror.
 
@@ -358,7 +358,7 @@ Agent and protocol changes are the hardest to test because their effects cascade
 
 2. **Run the affected stage.** The minimum viable test is running a DAAF analysis that exercises the stage your change affects. Watch the session log carefully for the specific agent invocations related to your change.
 
-3. **Check gate satisfaction.** Every stage has gate criteria (documented in `CLAUDE.md`). Verify that your change doesn't cause a previously-passing gate to fail, or a previously-failing gate to pass when it shouldn't.
+3. **Check gate satisfaction.** Every stage has gate criteria (documented in `.claude/skills/daaf-orchestrator/references/full-pipeline.md`). Verify that your change doesn't cause a previously-passing gate to fail, or a previously-failing gate to pass when it shouldn't.
 
 4. **Run a full pipeline (strongly recommended).** For changes to core agents (research-executor, code-reviewer, data-planner) or validation logic, nothing substitutes for running a complete analysis start-to-finish and verifying that all stages complete successfully.
 

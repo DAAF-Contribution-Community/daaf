@@ -186,7 +186,7 @@ For data source skills, the `data-ingest` agent will provide you with a specific
 
 The agent will typically offer to make these updates for you -- just confirm and it'll handle the file edits. Note that these registration edits touch core framework files, which means they fall under the "contribution" category if you plan to share them (see [When to Extend vs. When to Contribute](#when-to-extend-vs-when-to-contribute)).
 
-For methodology and domain expertise skills, registration is simpler -- you primarily need to update `CLAUDE.md` so the orchestrator knows the skill exists and when to recommend loading it.
+For methodology and domain expertise skills, registration is simpler -- you primarily need to update the skill catalog at `.claude/skills/daaf-orchestrator/references/skill-catalog.md` so the orchestrator knows the skill exists and when to recommend loading it.
 
 ---
 
@@ -225,7 +225,7 @@ If any of these answers are vague, the agent-authoring skill will push you to sh
 
 **Phase 3: Integrate.** This is the step where the most things can go wrong if you're not careful. A new agent needs to be registered across multiple files in the DAAF ecosystem. The agent-authoring skill provides a complete integration checklist organized into tiers:
 
-- **Tier 1 (Mandatory, 6 files):** Every new agent must be registered in `agents/README.md`, `CLAUDE.md`, `README.md`, and several other core files
+- **Tier 1 (Mandatory):** Every new agent must be registered in `agents/README.md` (the canonical agent registry, with entries in 4 sections: Agent Index, When to Use, Coordination Matrix, and Agent catalog)
 - **Tier 2 (Conditional):** Additional updates if the agent maps to a specific pipeline stage
 - **Tier 3 (Conditional):** Additional updates if the agent affects specific workflow areas
 
@@ -258,7 +258,7 @@ What data sources does DAAF know about? Can you tell me about
 [your new data source]?
 ```
 
-If the skill is properly registered, DAAF should be able to describe the data source, list key variables, and mention important caveats. If it can't find the skill or gives a generic response, check your registration entries in `CLAUDE.md` and the other files listed in the registration checklist.
+If the skill is properly registered, DAAF should be able to describe the data source, list key variables, and mention important caveats. If it can't find the skill or gives a generic response, check your registration entries in `.claude/skills/daaf-orchestrator/references/skill-catalog.md` and the other files listed in the registration checklist.
 
 ### Fetch Test
 

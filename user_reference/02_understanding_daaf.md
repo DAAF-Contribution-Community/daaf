@@ -148,7 +148,7 @@ I'm going to use an analogy that I think captures it well: **DAAF is intended to
 
 ### The Orchestrator: Your Lab Director
 
-When you type a message to DAAF, you're talking to the **orchestrator**, whose behavior is dictated by the [`CLAUDE.md`](../CLAUDE.md) file as its main context. Think of the orchestrator as a lab director -- the person who takes your research question, figures out what needs to be done, decides who on the team should do each piece, coordinates the whole effort, and reports back to you at key milestones.
+When you type a message to DAAF, you're talking to the **orchestrator**, whose core orchestration behavior is defined by the [`daaf-orchestrator` skill](../.claude/skills/daaf-orchestrator/SKILL.md), while universal execution rules come from [`CLAUDE.md`](../CLAUDE.md). Think of the orchestrator as a lab director -- the person who takes your research question, figures out what needs to be done, decides who on the team should do each piece, coordinates the whole effort, and reports back to you at key milestones.
 
 The orchestrator should NOT be doing the hands-on work itself, because its primary value-add and contribution is coordination and workflow management. It doesn't write analysis scripts, it doesn't clean data, it doesn't run regressions. What it does is:
 

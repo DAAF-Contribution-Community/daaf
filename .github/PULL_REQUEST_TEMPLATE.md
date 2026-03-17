@@ -18,7 +18,8 @@
 
 <!-- Check all that apply to help reviewers focus. -->
 
-- [ ] CLAUDE.md (orchestrator instructions)
+- [ ] CLAUDE.md (universal execution rules)
+- [ ] Orchestrator skill (.claude/skills/daaf-orchestrator/)
 - [ ] Agent protocols (agents/)
 - [ ] Agent reference files (agent_reference/)
 - [ ] Skills (.claude/skills/)

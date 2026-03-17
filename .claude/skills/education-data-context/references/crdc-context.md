@@ -1,6 +1,6 @@
 # Civil Rights Data Collection (CRDC) Context
 
-The CRDC collects data on equity indicators and civil rights compliance from public schools and districts.
+The CRDC collects data on equity indicators and civil rights compliance from public schools and districts. In this system, CRDC data is accessed through the Urban Institute Education Data Portal, which standardizes variable names to lowercase and applies integer encoding to categorical variables.
 
 ## Source Overview
 

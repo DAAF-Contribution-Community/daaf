@@ -41,6 +41,7 @@ Postsecondary Employment Outcomes (PSEO) is an experimental data product from th
 - **Frequency**: Updated periodically; cohorts span 3-year (Bachelor's) or 5-year (all others) windows
 - **Primary identifiers**: `unitid` (IPEDS Unit ID, integer), `opeid` (integer in Portal data)
 - **Privacy method**: Differential privacy mechanisms protect individual data
+- **Available through**: Education Data Portal mirrors (restructured from Census Bureau LEHD format with integer encodings and lowercase variable names)
 
 ## Reference File Structure
 
@@ -168,7 +169,7 @@ Checking data availability?
 
 ## Data Access
 
-Datasets for PSEO are available via the mirror system. See `datasets-reference.md` for canonical paths, `mirrors.yaml` for mirror configuration, and `fetch-patterns.md` for fetch code patterns.
+Datasets for PSEO are available via the Education Data Portal mirror system. See `datasets-reference.md` for canonical paths, `mirrors.yaml` for mirror configuration, and `fetch-patterns.md` for fetch code patterns.
 
 | Dataset | Type | Path | Codebook |
 |---------|------|------|----------|

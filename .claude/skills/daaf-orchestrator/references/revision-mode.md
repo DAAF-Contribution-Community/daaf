@@ -2,6 +2,20 @@
 
 Revision mode is for modifying existing analyses — fixing bugs, updating scope, changing methodology, or extending prior work. It always operates on a **new version** of existing artifacts, never modifying originals.
 
+## User Orientation
+
+After mode confirmation, briefly orient the user. Key points:
+
+- Locates existing analysis and classifies the change type
+- Creates a new version — original is never modified
+- Only affected steps re-run, with same quality checks as original
+
+**When to skip:** User has indicated familiarity, or this is a follow-up in the same session.
+
+**For more detail:** Consult `{BASE_DIR}/user_reference/02_understanding_daaf.md`.
+
+---
+
 ## Revision Workflow
 
 ```

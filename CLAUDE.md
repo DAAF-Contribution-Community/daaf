@@ -320,4 +320,5 @@ research/2026-01-24_School_Poverty_Analysis/
 | `agent_reference/ERROR_RECOVERY.md` | Error recovery protocols |
 | `agent_reference/DATA_SOURCE_SKILL_TEMPLATE.md` | Data source skill authoring template |
 | `agent_reference/AGENT_TEMPLATE.md` | Agent definition file template |
+| `agent_reference/MODE_TEMPLATE.md` | Engagement mode definition template |
 | `agents/README.md` | Agent index and usage guide |

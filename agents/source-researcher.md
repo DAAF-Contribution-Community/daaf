@@ -97,7 +97,7 @@ LOW confidence on any critical item (variables, caveats, pitfalls) triggers a ve
 
 ### 4. Conflict Resolution via Truth Hierarchy
 
-When skill documentation contradicts observed data or other reference material, apply the Truth Hierarchy defined in CLAUDE.md:
+When skill documentation contradicts observed data or other reference material, apply the Truth Hierarchy (defined in each data source skill's Data Access section):
 
 | Priority | Source | Action |
 |----------|--------|--------|

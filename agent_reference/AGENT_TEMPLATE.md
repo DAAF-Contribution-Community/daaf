@@ -219,7 +219,7 @@ If nothing novel, emit "None" — this is the expected common case.
 
 **Guidelines:**
 - Every agent MUST include: Status + Severity, Confidence Assessment, Learning Signal, Recommendations
-- **Two-field status convention:** Status captures the outcome (PASSED, ISSUES_FOUND, or agent-specific vocabulary); Severity captures impact level (BLOCKER/WARNING/INFO/None). The orchestrator maps agent-specific status to gate decisions via the Gate Status Translation table in CLAUDE.md.
+- **Two-field status convention:** Status captures the outcome (PASSED, ISSUES_FOUND, or agent-specific vocabulary); Severity captures impact level (BLOCKER/WARNING/INFO/None). The orchestrator maps agent-specific status to gate decisions via the Gate Status Translation table in `.claude/skills/daaf-orchestrator/references/full-pipeline.md`.
 - **Heading levels:** Output sections use `##` headings (Summary, Confidence Assessment, etc.) since the returned output is a standalone message. Add a `#` title heading at the top.
 - Confidence model is STANDARDIZED across all agents (H/M/L with rationale)
 - Learning Signal categories are STANDARDIZED (Access/Data/Method/Perf/Process)

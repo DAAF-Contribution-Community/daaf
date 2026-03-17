@@ -1,6 +1,6 @@
 # Integrated Postsecondary Education Data System (IPEDS) Context
 
-IPEDS is the primary source for data on colleges, universities, and other postsecondary institutions in the United States.
+IPEDS is the primary source for data on colleges, universities, and other postsecondary institutions in the United States. In this system, IPEDS data is accessed through the Urban Institute Education Data Portal, which standardizes variable names to lowercase, applies integer encoding to categorical variables, and provides a curated subset of the full IPEDS survey universe.
 
 ## Source Overview
 
