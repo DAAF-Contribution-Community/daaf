@@ -45,7 +45,7 @@ Every conversation begins with a brief preamble before mode classification. Expa
 - You keep the user in the loop at every key decision point
 - Invite the user: if they're new or want more guidance, they can ask; otherwise, tell you what they're working on
 
-**Newcomer signals:** If the user asks for more info or seems unfamiliar ("how does this work", "what can you do", "what is DAAF"), present the expanded orientation below and direct them to user documentation for depth.
+**Newcomer signals:** If the user asks for more info or seems unfamiliar ("how does this work", "what can you do", "what is DAAF"), present the expanded orientation below. For deeper questions, see the Context-Sensitive Help table under User-Facing Communication Standards.
 
 ### Expanded Orientation (On Request)
 
@@ -56,23 +56,6 @@ When a user asks for more information, expand naturally on these points:
 - The user is always in control — you explain what to expect and wait for go-ahead
 
 For more depth, consult `{BASE_DIR}/user_reference/02_understanding_daaf.md` and summarize relevant sections. Point the user to the file path if they want to read it directly. After orienting, proceed to mode classification.
-
-### User Documentation Reference
-
-DAAF includes comprehensive user documentation in `{BASE_DIR}/user_reference/` and at the project root. When users ask questions beyond what the orchestrator context covers, consult these files on demand.
-
-**How to use:** Read the relevant section(s) using the `md-outline.sh` + targeted `Read` pattern described in CLAUDE.md. Summarize guidance in plain language. If the user wants more depth, point them to the specific file path.
-
-| # | File | Content | When to Reference |
-|---|------|---------|-------------------|
-| 00 | `{BASE_DIR}/README.md` | Project vision, what DAAF can do, why open-source, acknowledgments | User asks "what is DAAF?", wants the big picture, or asks about project goals |
-| 01 | `user_reference/01_installation_and_quickstart.md` | Setup, prerequisites, step-by-step installation, day-to-day usage, troubleshooting | User has setup or installation questions |
-| 02 | `user_reference/02_understanding_daaf.md` | What to expect, how to use DAAF, testing strengths and limitations | **Primary new-user resource.** User asks "how does this work?", wants detail beyond the orientation, or asks what DAAF can/can't do |
-| 03 | `user_reference/03_best_practices.md` | Prompting tips, ensuring quality, reviewing outputs, managing context | User asks for tips on working with DAAF effectively or writing good prompts |
-| 04 | `user_reference/04_extending_daaf.md` | Adding data sources, analytical tools, specialized agents | User asks about extending DAAF to new domains or capabilities |
-| 05 | `{BASE_DIR}/CONTRIBUTING.md` | Filing issues, contributing to DAAF, community involvement | User asks how to contribute, report bugs, or get involved |
-| 06 | `user_reference/06_faq_philosophy.md` | Broader implications, AI ethics, responsible use, what this means for researchers | User asks philosophical questions about AI in research |
-| 07 | `user_reference/07_faq_technical.md` | Docker issues, Claude Code issues, usage limits, common errors | User encounters technical problems |
 
 ---
 
@@ -113,10 +96,10 @@ Keywords are heuristics, not deterministic. When multiple modes seem applicable,
 
 | Mode | Trigger Keywords | Primary Output | Reference File |
 |------|------------------|----------------|----------------|
-| **Full Pipeline** | "analyze", "research", "create", "generate" | Plan + Notebook + Report | `full-pipeline.md` |
+| **Full Pipeline** | "analyze", "research", "create", "generate" | Plan.md + Plan_Tasks.md + Notebook + Report | `full-pipeline.md` |
 | **Discovery** | "what data", "is it possible", "feasibility", "explore" | Findings summary | `discovery-mode.md` |
 | **Targeted Assist** | "what are the values", "how is X defined", "lookup" | Direct answer | `targeted-assist-mode.md` |
-| **Revision** | "fix", "update", "change", "modify the analysis" | Updated Plan + Notebook + Report (new version) | `revision-mode.md` |
+| **Revision** | "fix", "update", "change", "modify the analysis" | Updated Plan.md + Plan_Tasks.md + Notebook + Report (new version) | `revision-mode.md` |
 
 ### Mode Confirmation Gate (MANDATORY)
 
@@ -155,7 +138,7 @@ Before sending your confirmation response, verify:
 Use the appropriate boilerplate below as a starting point. Fill in the bracketed fields, expand naturally based on context, and **always end with a confirmation question.**
 
 **Full Pipeline:**
-> [Classification reasoning]. 5 phases with 4 checkpoints — you review the plan before code runs and results before the report. [Scope summary]. **Shall I proceed?**
+> [Classification reasoning]. 5 phases with 4 checkpoints — you review the plan before code runs and results before the report. [Scope summary]. Once confirmed, I'll present a detailed deliverables and scope overview for your review before diving in. **Shall I proceed?**
 
 **Discovery:**
 > [Classification reasoning]. Read-only exploration — no code, no downloads. [What you'll look into]. **Shall I proceed?**
@@ -211,22 +194,28 @@ All user-facing messages (mode confirmations, checkpoints, status updates, error
 
 ### Context-Sensitive Help
 
-During any mode, watch for signals that the user needs additional guidance and respond proactively:
+During any mode, watch for signals that the user needs additional guidance and respond proactively. The table below also serves as the master index for user-facing documentation — consult the referenced file when a signal matches.
 
-| User Signal | Response | User Doc Reference |
+| User Signal | Response | Consult (if needed) |
 |---|---|---|
-| "What happens next?" | Present current position in workflow + next steps | `02_understanding_daaf.md` |
-| "Can I change X?" / "Is it too late to...?" | Explain what's modifiable at current stage | `02_understanding_daaf.md` |
-| "I don't understand" / confusion signals | Re-explain in simpler terms; offer to elaborate | `02_understanding_daaf.md` |
+| "What is DAAF?" / big picture / project goals | Summarize vision and capabilities | `{BASE_DIR}/README.md` |
+| "How does this work?" / new user orientation | Expand orientation; explain phases and checkpoints | `user_reference/02_understanding_daaf.md` |
+| "What happens next?" | Present current position in workflow + next steps | `user_reference/02_understanding_daaf.md` |
+| "Can I change X?" / "Is it too late to...?" | Explain what's modifiable at current stage | `user_reference/02_understanding_daaf.md` |
+| "I don't understand" / confusion signals | Re-explain in simpler terms; offer to elaborate | `user_reference/02_understanding_daaf.md` |
+| "Why are you doing X?" | Explain purpose of current step in overall analysis | `user_reference/02_understanding_daaf.md` |
 | "How long will this take?" | Describe remaining phases and checkpoints (no time estimates — per CLAUDE.md) | — |
 | "What are my options?" | Present available actions at current workflow point | — |
-| "Why are you doing X?" | Explain purpose of current step in the overall analysis | `02_understanding_daaf.md` |
-| "Any tips?" / "How do I get the best results?" | Summarize relevant prompting and review guidance | `03_best_practices.md` |
-| "Something's not working" / technical issues | Diagnose; consult FAQ if needed | `07_faq_technical.md` |
+| "Any tips?" / "How do I get the best results?" | Summarize prompting and review guidance | `user_reference/03_best_practices.md` |
+| Setup or installation questions | Troubleshoot or walk through steps | `user_reference/01_installation_and_quickstart.md` |
+| Extending DAAF / new domains or capabilities | Explain extension points | `user_reference/04_extending_daaf.md` |
+| Contributing / reporting bugs | Point to contribution guide | `{BASE_DIR}/CONTRIBUTING.md` |
+| AI ethics / responsible use / implications | Discuss implications thoughtfully | `user_reference/06_faq_philosophy.md` |
+| "Something's not working" / technical issues | Diagnose; consult FAQ if needed | `user_reference/07_faq_technical.md` |
+
+**File paths:** All user documentation lives in `{BASE_DIR}/user_reference/` (except `README.md` and `CONTRIBUTING.md` at project root). Read the relevant section on demand, summarize in plain language, and point the user to the file path if they want to read it directly.
 
 **Proactive guidance:** If the user's response to a checkpoint is very brief (e.g., just "ok"), and this is their first Full Pipeline session (based on conversation history), consider briefly previewing what comes next: *"Great — moving on to [next activity]. I'll check back in when [next checkpoint condition]."*
-
-**Deeper questions:** When any question goes beyond what the orchestrator context covers, consult the User Documentation Reference table above. Read the relevant section on demand, summarize the guidance in plain language, and point the user to the file path if they want to read it directly.
 
 ---
 
@@ -341,7 +330,9 @@ All file paths in Agent prompts MUST be absolute. See `full-pipeline.md` > "Stan
 | Scope decisions | ~100 words | Bound the work |
 | Phase summaries | ~200 words each | Track progress |
 | Current stage + blockers | ~100 words | Know where we are |
-| Plan document location | Path only | Don't load full Plan |
+| STATE.md | Full document | Know current status of project execution |
+| Plan.md | Full document | Know overarching work strategy and goals |
+| Plan_Tasks.md | Paths only | Be ready to distribute tasks to subagents |
 | Error history | ~200 words | Avoid repeating failures |
 
 **What Gets Delegated to Subagents:**

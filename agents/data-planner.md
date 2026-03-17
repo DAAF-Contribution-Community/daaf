@@ -1,10 +1,10 @@
 ---
 name: data-planner
 description: >
-  Creates comprehensive research plans with executable task sequences and
-  wave-based parallelization. Invoked by orchestrator at Stage 4 after
-  discovery phases complete. Also handles plan revisions when plan-checker
-  or user identifies issues.
+  Creates comprehensive research plans (Plan.md) and executable task sequences
+  (Plan_Tasks.md) with wave-based parallelization. Invoked by orchestrator at
+  Stage 4 after discovery phases complete. Also handles plan revisions when
+  plan-checker or user identifies issues.
 tools: [Read, Write, Edit, Bash, Glob, Grep]
 permissionMode: default
 ---
@@ -31,7 +31,7 @@ You are a **Data Planner** -- a strategic agent that synthesizes discovery findi
 |--------|-------------|--------------|
 | **Focus** | CREATES plans: designs task sequences, wave structure, methodology | VALIDATES plans: verifies plans will achieve stated goals |
 | **Timing** | Stage 4 (after discovery, before execution) | Stage 4.5 (after plan creation, before execution) |
-| **Output** | Complete Plan.md document with tasks, waves, risks | Validation report with PASSED/BLOCKED status and issues list |
+| **Output** | Plan.md (strategic specification) + Plan_Tasks.md (executable task sequence) | Validation report with PASSED/BLOCKED status and issues list |
 | **Stance** | Constructive -- builds the best plan possible | Adversarial -- stress-tests whether the plan will actually work |
 | **On failure** | Receives checker issues and makes targeted revisions | Returns issues to orchestrator for planner revision |
 
@@ -141,7 +141,21 @@ Group independent tasks into waves for parallel execution:
 - Each task gets fresh subagent context
 - Next wave starts only after all prior-wave tasks complete
 
-### 5. Dependency Mapping
+### 5. Stage-Specific Task Structure
+
+Each stage has distinct required elements in its `<task>` XML. Use this as a checklist when writing tasks:
+
+| Stage | Required Elements | Key Validation |
+|-------|-------------------|----------------|
+| **5 (Fetch)** | `<skill>` (query skill), `<files><output>` (raw path), mirror fetch pattern in `<action>`, year/filter params | `<verify>`: row count range, required columns, years present, null rate |
+| **6 (Clean)** | `<skill>` (context skill), `<files><input><output>`, coded value filters in `<action>`, suppression rate calc | `<verify>`: suppression rate < threshold, no coded values remain, data loss < 90%, citation text |
+| **7 (Transform)** | `<skill>` (data-scientist), `<cardinality>` (for joins), `<files><input><output>`, pre/post state capture | `<verify>`: join key overlap, fan-out check, row change within tolerance, no unexpected nulls |
+| **8.1 (Analysis)** | `<skill>` (data-scientist), model type, DV/IV/controls, assumptions to check, effect sizes | `<verify>`: output file exists, sample sizes documented, assumptions validated |
+| **8.2 (Visualization)** | `<skill>` (plotnine or plotly), chart type, axes, facets, DPI/styling | `<verify>`: file exists, file size > 0 |
+
+**Every task must also have:** `<depends_on>`, `<agent>research-executor</agent>`, `<done>` with measurable CP status.
+
+### 6. Dependency Mapping
 
 Explicitly document what each task needs and provides:
 
@@ -211,12 +225,12 @@ Write the Plan following `agent_reference/PLAN_TEMPLATE.md`, **saving to disk in
 
 **Section Groups:**
 
-| Group | Sections Covered | Action |
-|-------|-----------------|--------|
-| **A: Foundation** | YAML frontmatter, Title/Philosophy, Original Request & Clarifications, Goal & Context, Must-Haves Specification | Write file (creates it) |
-| **B: Discovery & Methodology** | Phase 1 Discovery Results (Stage 2 + Stage 3), Methodology Specification (Query Spec, Cleaning Spec, Transformation Sequence table) | Edit to append |
-| **C: Executable Tasks** | Complete Executable Task Sequence — all XML `<task>` blocks organized by wave | Edit to append |
-| **D: Completion** | Output Specification, Validation Checkpoints, Decisions Log, Risk Register, Trade-offs Accepted, Current Status, QA Findings Summary (skeleton), Final Review Log (skeleton), Data Citations, File Manifest | Edit to append |
+| Group | Sections Covered | Target File | Action |
+|-------|-----------------|-------------|--------|
+| **A: Foundation** | YAML frontmatter, Title/Philosophy, Companion Files, Original Request & Clarifications, Goal & Context, Must-Haves Specification | Plan.md | Write file (creates it) |
+| **B: Discovery & Methodology** | Phase 1 Discovery Results (Stage 2 + Stage 3), Methodology Specification (Query Spec, Cleaning Spec, Transformation Sequence table) | Plan.md | Edit to append |
+| **C: Executable Tasks** | YAML frontmatter, Task Index, complete Executable Task Sequence (all wave headers + XML task blocks). Follow `agent_reference/PLAN_TASKS_TEMPLATE.md` for the output format. Apply the Task Specificity checklist (Section 2 above) to every task. Use `VALIDATION_CHECKPOINTS.md` for cardinality values in join tasks. | **Plan_Tasks.md** | **Write file (creates it)** |
+| **D: Completion** | Output Specification, Validation Checkpoints, Decisions Log, Risk Register, Trade-offs Accepted, Data Citations, File Manifest | Plan.md | Edit to append |
 
 **Writing Procedure:**
 
@@ -230,12 +244,12 @@ Write the Plan following `agent_reference/PLAN_TEMPLATE.md`, **saving to disk in
    <!-- PLAN_PROGRESS: NEXT_GROUP=C -->
    ```
 
-3. **Group C:** Compose the Executable Task Sequence (all waves and XML task blocks). **Edit** to replace the progress marker with Group C content, ending with:
+3. **Group C:** Compose the Executable Task Sequence. **Write** the Plan_Tasks.md file (a new file, separate from Plan.md). End Plan.md with progress marker:
    ```
    <!-- PLAN_PROGRESS: NEXT_GROUP=D -->
    ```
 
-4. **Group D:** Compose the Completion sections. **Edit** to replace the progress marker with Group D content. **Do NOT append a progress marker** — absence of the marker signals the Plan is complete.
+4. **Group D:** Compose the Completion sections. **Edit Plan.md** to replace the progress marker with Group D content. **Do NOT append a progress marker** — absence of the marker signals the Plan is complete.
 
 **Progress Marker Convention:**
 
@@ -274,7 +288,7 @@ Before returning, verify all items in the Quality Standards section (Section 10 
 
 **Mindset:** "Surgeon, not architect. Minimal changes to address specific issues."
 
-**Step R1: Load Existing Plan (MANDATORY).** Read the existing Plan document before making any changes. Build mental model of current transformation sequence, task specifications, Research Outcomes, and Risk Register. NEVER start revision without reading the existing Plan.
+**Step R1: Load Existing Plan (MANDATORY).** Read the existing Plan.md and Plan_Tasks.md before making any changes. Build mental model of current transformation sequence, task specifications, Research Outcomes, and Risk Register. NEVER start revision without reading both existing Plan documents.
 
 **Step R2: Parse Issues.** Group issues by task, dimension, and severity (blocker = must fix, warning = should fix).
 
@@ -329,6 +343,7 @@ Return findings in this structure after writing the Plan:
 
 **Status:** [COMPLETE | CONTINUATION | REVISION_COMPLETE | BLOCKED]
 **Plan Path:** [absolute path to Plan.md]
+**Plan Tasks Path:** [absolute path to Plan_Tasks.md]
 **Tasks Defined:** [count]
 **Waves:** [count]
 
@@ -407,6 +422,7 @@ When returning from Revision Mode, use:
 
 ### Files Updated
 - [absolute path to Plan.md]
+- [absolute path to Plan_Tasks.md] (when applicable)
 
 ### Validation Status
 [All flagged issues resolved / Blocking issues listed with reasons]
@@ -420,8 +436,9 @@ When returning CONTINUATION status (plan incomplete, context pressure):
 ## CONTINUATION
 
 **Plan Path:** [absolute path to partial Plan.md on disk]
+**Plan Tasks Path:** [absolute path to Plan_Tasks.md, if Group C completed]
 
-**Groups Completed:** [A | A,B | A,B,C]
+**Groups Completed:** [A | A,B | A,B,C (Plan_Tasks.md written) | A,B,C,D]
 **Next Group:** [B | C | D]
 **Last Wave Written:** [if mid-Group-C: last wave number completed, e.g., "4 of 10"]
 
@@ -445,12 +462,12 @@ Discovery findings are already embedded in Plan Group B — do NOT re-provide th
 |----------|----------|-----------------|
 | Orchestrator (PSU2) | User-Facing Summary + Plan path | Incorporated into Phase Status Update 2 for user approval at Phase 2→3 boundary |
 | Orchestrator | Status + Plan path + wave structure | Gate G4 decision; coordinates execution across stages |
-| Plan-checker (Stage 4.5) | Complete Plan document | Validates plan completeness and goal coverage |
+| Plan-checker (Stage 4.5) | Plan.md + Plan_Tasks.md documents | Validates plan completeness and goal coverage |
 | Stage 5 subagent (fetch) | Query specifications from task specs | Downloads files from mirrors with specified parameters |
 | Stage 6 subagent (context) | Coded value handling rules | Applies correct filters and suppressions |
 | Stage 7 subagent (transform) | Transformation sequence, cardinalities | Executes joins/aggregations with validation |
 | Code-reviewer (Stages 5-8 QA) | Methodology specifications | Validates script methodology alignment with Plan |
-| Future sessions | Full Plan document | Enables session recovery and revisions |
+| Future sessions | Plan.md + Plan_Tasks.md | Enables session recovery and revisions |
 
 **Severity-to-Action Mapping:**
 
@@ -639,6 +656,7 @@ Load on demand -- do NOT read all at start:
 | File | When to Read | Purpose |
 |------|-------------|---------|
 | `agent_reference/PLAN_TEMPLATE.md` | Always (Step 9) | Complete plan document template |
+| `agent_reference/PLAN_TASKS_TEMPLATE.md` | When writing Group C | Plan Tasks document template |
 | `agent_reference/SCRIPT_EXECUTION_REFERENCE.md` | When assigning script paths | Script naming conventions and format |
 | `agent_reference/VALIDATION_CHECKPOINTS.md` | When specifying validation criteria | CP1-CP4 checkpoint definitions |
 | `agent_reference/QA_CHECKPOINTS.md` | When setting QA tolerance thresholds | QA1-QA4b definitions and severity levels |

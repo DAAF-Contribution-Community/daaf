@@ -47,7 +47,7 @@ Stages 7, 8, 9, 10. Cross-phase orchestration guidance (invocation templates, QA
 **Executor:** Multiple subagent invocations (one per transformation)
 **Purpose:** Execute transformations ONE AT A TIME with validation
 
-**For EACH transformation in Plan's Transformation Sequence:**
+**For EACH transformation in Plan_Tasks.md's task sequence:**
 
 1. **Orchestrator provides:**
    - Transformation #{n} description
@@ -74,7 +74,7 @@ Stages 7, 8, 9, 10. Cross-phase orchestration guidance (invocation templates, QA
 5. **>>> INVOKE code-reviewer (MANDATORY, after EACH script) <<<**
    - Orchestrator MUST invoke code-reviewer after EACH transformation script
    - Do NOT batch multiple transformations before QA
-   - Pass: script path, output files, Plan location
+   - Pass: script path, output files, Plan.md + Plan_Tasks.md locations
    - If BLOCKER: trigger revision flow (max 2 attempts)
    - If WARNING: log to STATE.md, proceed to next transformation
    - If PASSED: proceed to next transformation
@@ -86,7 +86,7 @@ Stages 7, 8, 9, 10. Cross-phase orchestration guidance (invocation templates, QA
 For join operations, use enhanced validation from `VALIDATION_CHECKPOINTS.md`:
 
 1. **Orchestrator provides additional context:**
-   - **Expected cardinality** from Plan's Transformation Sequence table (REQUIRED: must be specified as "1:1", "1:many", "many:1", or "many:many")
+   - **Expected cardinality** from Plan_Tasks.md's task specification (REQUIRED: must be specified as "1:1", "1:many", "many:1", or "many:many")
    - Join keys (column names)
    - Join type (inner, left, right, outer)
    - Expected relationship between datasets
@@ -106,7 +106,7 @@ For join operations, use enhanced validation from `VALIDATION_CHECKPOINTS.md`:
    - Missing join keys in result
 
 **Linking Cardinality to Validation:**
-The cardinality in the Plan's Transformation Sequence is the contract. The Join-Specific Validation code template enforces it:
+The cardinality in Plan_Tasks.md's task specification is the contract. The Join-Specific Validation code template enforces it:
 - If Plan says "1:1", validation checks result rows ≈ left rows
 - If Plan says "1:many", validation allows result rows > left rows
 - Violations trigger warnings or STOP conditions based on severity
@@ -240,7 +240,7 @@ Do NOT proceed to transformations. Return findings for orchestrator review.""",
 })
 
 # Step 2: Execute transformations iteratively (one at a time, atomically)
-# Orchestrator provides specific transformation from Plan's transformation sequence
+# Orchestrator provides specific transformation from Plan_Tasks.md task sequence
 # CRITICAL: Include prior transformation context for continuity
 
 Agent({
@@ -476,7 +476,7 @@ Stage 8.2.x: Visualization (one script per visualization task)
 
 ### Stage 8.1: Statistical Analysis
 
-**Purpose:** Run statistical analyses specified in the Plan (regressions, correlations, group comparisons, effect sizes, etc.)
+**Purpose:** Run statistical analyses specified in Plan.md (regressions, correlations, group comparisons, effect sizes, etc.)
 
 **Input:** Analysis dataset from Stage 7 (`data/processed/[date]_analysis.parquet`)
 **Output:** Statistical results saved as parquet to `output/analysis/`
@@ -484,7 +484,7 @@ Stage 8.2.x: Visualization (one script per visualization task)
 #### Actions
 
 1. **Load analysis dataset** — Verify schema matches Plan expectations
-2. **Execute analysis tasks** — One script per analysis task from Plan's Transformation Sequence
+2. **Execute analysis tasks** — One script per analysis task from Plan_Tasks.md
 3. **Validate assumptions** — Check statistical assumptions before applying methods
 4. **Save results** — Parquet format to `output/analysis/`
 5. **>>> INVOKE code-reviewer (MANDATORY, QA4a) <<<**
@@ -519,7 +519,7 @@ Then, call the skill tool with name 'polars'.
 
 **DATA LOCATION:** data/processed/{analysis_data_filename}
 
-## ANALYSIS SPECIFICATION (from Plan)
+## ANALYSIS SPECIFICATION (from Plan.md)
 
 **Model Type:** {model_type} (e.g., OLS regression, logistic regression, t-test, ANOVA, chi-square)
 **Hypothesis:** {hypothesis_statement}
@@ -632,7 +632,7 @@ with stage-specific values for Stage 8. Use **QA4a** (statistical validity) for 
 #### Actions
 
 1. **Create exploratory plots** — Distributions, relationships, patterns
-2. **Create final visualizations** — As specified in Plan, striving for publication-quality
+2. **Create final visualizations** — As specified in Plan.md and Plan_Tasks.md, striving for publication-quality
 3. **Export figures** — PNG format, appropriate dimensions, to `output/figures/`
 4. **>>> INVOKE code-reviewer (MANDATORY, QA4b) <<<**
    - After EACH visualization script, orchestrator MUST invoke code-reviewer
@@ -659,7 +659,7 @@ All relative paths in referenced files resolve from BASE_DIR.
 Call the skill tool with name 'data-scientist'.
 Then, call the skill tool with name 'plotnine'.
 
-**VISUALIZATION SPECIFICATION (from Plan):**
+**VISUALIZATION SPECIFICATION (from Plan.md):**
 {visualization_requirements}
 
 **DATA LOCATION:** data/processed/{analysis_data_filename}
@@ -698,7 +698,7 @@ All relative paths in referenced files resolve from BASE_DIR.
 Call the skill tool with name 'data-scientist'.
 Then, call the skill tool with name 'plotly'.
 
-**VISUALIZATION SPECIFICATION (from Plan):**
+**VISUALIZATION SPECIFICATION (from Plan.md):**
 {visualization_requirements}
 
 **DATA LOCATION:** data/processed/{analysis_data_filename}
@@ -767,11 +767,12 @@ fig.write_image(f"output/figures/{date_prefix}_plot_name.png")
 | Context Item | Source | Required In Prompt |
 |--------------|--------|-------------------|
 | Analysis dataset path | Stage 7 output | YES — exact path |
-| Research question | Plan | YES — verbatim |
-| Analysis specification | Plan (Analysis Requirements) | YES — methods, variables, hypotheses |
-| Research Outcome contribution | Plan | YES — which outcomes this analysis addresses |
-| Statistical assumptions to check | Plan / data-scientist skill | YES — method-specific |
-| Risk Register items | Plan | YES — relevant risks |
+| Research question | Plan.md | YES — verbatim |
+| Analysis specification | Plan.md (Analysis Requirements) | YES — methods, variables, hypotheses |
+| Task specification | Plan_Tasks.md | YES — specific task block for this analysis |
+| Research Outcome contribution | Plan.md | YES — which outcomes this analysis addresses |
+| Statistical assumptions to check | Plan.md / data-scientist skill | YES — method-specific |
+| Risk Register items | Plan.md | YES — relevant risks |
 
 **Stage 8.2 (Visualization) — Orchestrator must provide:**
 
@@ -779,16 +780,16 @@ fig.write_image(f"output/figures/{date_prefix}_plot_name.png")
 |--------------|--------|-------------------|
 | Analysis dataset path | Stage 7 output | YES — exact path |
 | Statistical results path(s) | Stage 8.1 output | YES — exact paths from `output/analysis/` |
-| Visualization specification | Plan (Visualization Requirements) | YES — plot types, variables, dimensions |
+| Visualization specification | Plan.md (Visualization Requirements) + Plan_Tasks.md task block | YES — plot types, variables, dimensions |
 | Key findings from 8.1 | Stage 8.1 results | YES — what to highlight in visualizations |
-| Figure naming convention | Plan | YES — date prefix + descriptive name |
+| Figure naming convention | Plan.md | YES — date prefix + descriptive name |
 
 ### QA Context (code-reviewer invocations)
 
 | Context Item | QA4a (Analysis) | QA4b (Visualization) |
 |--------------|-----------------|---------------------|
 | Script path | YES | YES |
-| Plan expectations | YES — statistical methods, expected directions | YES — figure specs, labeling requirements |
+| Plan.md methodology + Plan_Tasks.md task spec | YES — statistical methods, expected directions | YES — figure specs, labeling requirements |
 | QA tolerance thresholds | YES — methodology validity, assumption violations | YES — figure existence, data accuracy |
 | Prior QA findings | YES — accumulated from 8.1 scripts | YES — accumulated from 8.1 + 8.2 scripts |
 | Research Outcome contribution | YES | YES |
@@ -1106,6 +1107,7 @@ After each script execution:
 
 ### Gate Criteria (G10)
 
+- [ ] **QA Findings Summary written to STATE.md** (populate the `## QA Findings Summary` section with aggregated results: QA Checkpoint Summary table, BLOCKERs Resolved, WARNINGs Logged, Unresolved Issues)
 - [ ] **QA Summary Report generated** (aggregates all Stages 5-8 findings)
 - [ ] **All BLOCKERs resolved** (via revision during Stages 5-8)
 - [ ] **All WARNINGs documented** (with assessment of impact)
@@ -1133,7 +1135,7 @@ After each script execution:
 - Statistical analysis results: key findings with effect sizes and confidence intervals where applicable
 - Visualization inventory: file paths to all generated figures (so user can inspect them)
 - QA aggregation summary: all accumulated WARNINGs from Stages 5-8, with resolution status
-- Any deviations from Plan methodology (with rationale)
+- Any deviations from Plan.md methodology (with rationale)
 - Notebook compilation status (Stage 9): runs successfully, all scripts represented
 - Research Outcomes progress: which can be evaluated, preliminary assessment
 
@@ -1173,7 +1175,7 @@ The PSU4 checkpoint MUST include:
 - Key visualizations produced (reference file paths for user to inspect)
 - QA summary: QA3/QA4a/QA4b results across all scripts
 - Accumulated warnings from Stages 5-8 (the Stage 10 QA aggregation)
-- Any deviations from Plan methodology
+- Any deviations from Plan.md methodology
 - Notebook compilation status
 
 ---
@@ -1197,12 +1199,12 @@ Apply the relevant checklist after each subagent returns findings for the corres
 - [ ] Assumptions validated before analysis (documented in script)
 - [ ] Results saved to `output/analysis/` as parquet
 - [ ] Key findings documented with effect sizes and confidence intervals
-- [ ] Interpretation aligned with Research Outcomes in Plan
+- [ ] Interpretation aligned with Research Outcomes in Plan.md
 - [ ] Overall status: PASSED/FAILED/WARNING
 
 ### Stage 8.2 (Visualization) Verification
 
-- [ ] All Plan-specified figures generated
+- [ ] All Plan.md-specified figures generated
 - [ ] Figures saved to `output/figures/` as PNG
 - [ ] Proper labeling (title, axes, legend, source note)
 - [ ] Data source in visualization matches analysis dataset

@@ -4,7 +4,7 @@ description: >
   Verifies research plans will achieve analysis goals before execution begins.
   Performs goal-backward analysis across six dimensions (completeness, consistency,
   feasibility, testability, clarity, scope). Invoked by orchestrator at Stage 4.5
-  after data-planner creates Plan.md.
+  after data-planner creates Plan.md and Plan_Tasks.md.
 tools: [Read, Bash, Glob, Grep]
 permissionMode: plan
 ---
@@ -39,13 +39,15 @@ You are a **Plan Verification Specialist** — you analyze research plans with t
 
 | Input | Source | Required | How Used |
 |-------|--------|----------|----------|
-| Plan content | Orchestrator Agent prompt (inlined) | Yes | Primary verification subject — parsed for research question, tasks, dependencies, artifacts |
+| Plan.md content | Orchestrator Agent prompt (inlined) | Yes | Strategic specification — research question, methodology, risk register |
+| Plan_Tasks.md content | Orchestrator Agent prompt (inlined) | Yes | Executable task sequence — XML task blocks, wave structure, dependencies |
 | Original user request | Orchestrator Agent prompt (inlined) | Yes | Ground truth for goal decomposition — ensures plan addresses what was actually asked |
 | User clarifications | Orchestrator Agent prompt (inlined) | No | Refines goal decomposition when original request was ambiguous |
 | STATE.md path | Orchestrator Agent prompt | No | Used to update Plan Validation section after verification |
 
 **Context the orchestrator MUST provide:**
-- [ ] Full Plan content (inlined, not just path)
+- [ ] Full Plan.md content (inlined, not just path)
+- [ ] Full Plan_Tasks.md content (inlined, not just path)
 - [ ] Original user request (verbatim)
 - [ ] Any user clarifications received during Stage 1
 - [ ] BASE_DIR for path resolution
@@ -80,7 +82,7 @@ Every verification must assess all six dimensions. Skipping a dimension creates 
 
 ### Step 1: Load Context
 
-Read the Plan content provided in the Agent prompt. Extract:
+Read the Plan.md and Plan_Tasks.md content provided in the Agent prompt. Extract:
 - Research question (from Plan document)
 - Research outcomes (what must be investigated and reported)
 - Hypotheses, if any (directional predictions with basis — assessed separately from outcomes)
@@ -117,6 +119,8 @@ REQ-04 Join          | -           | MISSING  ← BLOCKER
 
 ### Step 4: Validate Task Structure (D2 — Consistency)
 
+Task structure is found in Plan_Tasks.md. Each task has a searchable header: `### Task {step}: {name} [Stage {N}]`.
+
 For each task, verify required fields exist with substantive content.
 
 **Required by task type:**
@@ -128,6 +132,21 @@ For each task, verify required fields exist with substantive content.
 | `checkpoint:decision` | N/A | N/A | N/A | Decision made |
 
 **Flag these patterns as incomplete:** `[placeholder]`, `[TBD]`, `[add]`, empty sections, generic criteria ("data ready", "task complete"), paths with brackets, vague methodology ("process the data", "filter as needed", "aggregate appropriately").
+
+#### Methodology Rigor Check (D2 sub-check)
+
+For each transformation task (Stage 6-8), verify the methodology specification is precise enough for code-reviewer to validate the implementation. Apply this checklist — any "No" is a WARNING; 3+ "No" answers on a single task is a BLOCKER:
+
+| Check | What to Look For | Example of Failure |
+|-------|------------------|--------------------|
+| Exact variable names? | Column names as they appear in data, not prose descriptions | "enrollment data" instead of "`enrollment`, `membership` columns" |
+| Exact filter conditions? | SQL-style predicates, not vague prose | "recent years" instead of "`year >= 2019 AND year <= 2023`" |
+| Exact aggregation spec? | Function + grouping columns | "by school" instead of "`GROUP BY ncessch` with `SUM(enrollment)`" |
+| Exact join specification? | Join type + key columns + expected cardinality | "match schools" instead of "`LEFT JOIN ON ncessch`, 1:1 expected" |
+| Expected row change? | Percentage tolerance | Missing entirely, or "some rows will be lost" |
+| Edge case handling? | What to do with nulls, zeros, coded values | "handle missing" instead of "`Filter WHERE enrollment != -1 AND != -2`" |
+
+**Why this matters:** Vague methodology is the #1 cause of QA BLOCKER cycles during execution. Code-reviewer validates implementation against Plan.md methodology. If the methodology says "filter appropriately," code-reviewer cannot determine whether the implementation is correct — producing repeated BLOCKER → revision → BLOCKER loops.
 
 **Example: Missing Requirement Coverage (D1 — Completeness)** *(education domain example)*
 
@@ -383,7 +402,7 @@ Return findings in this structure:
 ### Summary
 
 **Status:** [PASSED | PASSED_WITH_WARNINGS | ISSUES_FOUND]
-**Plan:** [plan filename]
+**Plan:** [Plan.md filename] + [Plan_Tasks.md filename]
 **Verification Date:** [YYYY-MM-DD]
 **Issues:** [X blocker(s), Y warning(s), Z info]
 
@@ -638,6 +657,7 @@ Load on demand — do NOT read all at start:
 
 | File | When to Read | Purpose |
 |------|-------------|---------|
-| `agent_reference/PLAN_TEMPLATE.md` | When unsure about expected Plan structure | Defines required Plan sections and task specification format |
+| `agent_reference/PLAN_TEMPLATE.md` | When unsure about expected Plan.md structure | Defines required Plan sections and task specification format |
+| `agent_reference/PLAN_TASKS_TEMPLATE.md` | When unsure about expected Plan_Tasks.md structure | Defines task specification format and task header conventions |
 | `agent_reference/VALIDATION_CHECKPOINTS.md` | When verifying checkpoint integration (Step 9) | CP1-CP4 definitions and validation criteria |
 | `agent_reference/QA_CHECKPOINTS.md` | When assessing methodology precision impact | QA1-QA4b definitions showing what downstream QA checks |

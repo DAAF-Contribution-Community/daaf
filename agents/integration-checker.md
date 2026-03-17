@@ -49,12 +49,12 @@ A script can pass code-reviewer QA but still have broken integration (e.g., note
 | STATE.md | Orchestrator | No | QA script coverage confirmation |
 
 **Context the orchestrator MUST provide:**
-- [ ] Plan path (absolute)
+- [ ] Plan.md path (absolute)
 - [ ] Notebook path (absolute)
 - [ ] Report path (absolute)
 - [ ] Project folder path (absolute)
 - [ ] List of execution scripts with their output files (from Stages 5-8)
-- [ ] List of expected figures (from Plan or Stage 8 output)
+- [ ] List of expected figures (from Plan.md or Stage 8 output)
 
 </upstream_input>
 
@@ -135,7 +135,7 @@ The "Accessible" threshold exists because a zero-byte parquet or a corrupt image
 
 ### Step 1: Map Expected Data Flow
 
-Read the Plan's File Manifest and Transformation Sequence to construct the expected data flow. Document every expected file path and every expected stage-to-stage connection.
+Read Plan.md's File Manifest and Transformation Sequence to construct the expected data flow. Document every expected file path and every expected stage-to-stage connection.
 
 ```markdown
 **Expected Data Flow:**
@@ -213,7 +213,7 @@ Scan for disconnected components in each artifact directory:
 1. List all files in `output/figures/` — compare against Report references. Unmatched files are orphan figures.
 2. List all files in `data/raw/` and `data/processed/` — compare against notebook/script data loads. Unmatched files are orphan data.
 3. Scan notebook for defined-but-uncalled functions. These are orphan code.
-4. Verify multi-source coverage: check all data sources planned in the Plan were actually downloaded and used.
+4. Verify multi-source coverage: check all data sources planned in Plan.md were actually downloaded and used.
 
 ### Step 6: Assess Data Source Coverage
 
@@ -450,7 +450,7 @@ Immediately stop and escalate when:
 | E2E flow fails at multiple points | STOP — Fundamental integration failure |
 | Critical connection broken with no obvious fix | STOP — Cannot verify connectivity |
 | Multiple orphans suggest structural problem (>50% orphan rate) | STOP — Systemic wiring failure |
-| Required artifact missing (Plan, Notebook, Report, or data directory) | STOP — Cannot perform integration check |
+| Required artifact missing (Plan.md, Notebook, Report, or data directory) | STOP — Cannot perform integration check |
 | Stage transition completely disconnected (no files at expected paths) | STOP — Pipeline break |
 
 **STOP Format:**
@@ -491,7 +491,7 @@ Awaiting guidance before proceeding.
 
 **DO NOT assume in-memory connections are valid.** When Stage 7 produces a DataFrame consumed by Stage 8, verify the intermediate file exists if one is expected. In-memory handoffs between separate scripts must go through persistent files.
 
-**DO NOT rely on Plan paths without filesystem verification.** The Plan documents intended paths. Files may have been saved to different locations due to revisions or errors. Always verify with tools (Glob, Read, Bash).
+**DO NOT rely on Plan.md paths without filesystem verification.** Plan.md documents intended paths. Files may have been saved to different locations due to revisions or errors. Always verify with tools (Glob, Read, Bash).
 
 </anti_patterns>
 
@@ -506,7 +506,7 @@ Awaiting guidance before proceeding.
 4. [ ] Every stage's exports are confirmed to be imported by the next stage
 5. [ ] At least one end-to-end flow is traced from data download to Report
 6. [ ] QA script coverage is verified for all Stage 5-8 execution scripts
-7. [ ] Data source coverage verified against Plan
+7. [ ] Data source coverage verified against Plan.md
 8. [ ] Orphan detection completed across all artifact directories
 9. [ ] Confidence assessment completed for all five aspects with rationale
 
@@ -516,7 +516,7 @@ Awaiting guidance before proceeding.
 - E2E flow described but not actually traced step-by-step with tool verification
 - Orphan detection skipped for any artifact directory
 - QA script coverage not verified
-- Data source coverage not checked against Plan
+- Data source coverage not checked against Plan.md
 
 ### Self-Check
 
@@ -530,7 +530,7 @@ Before returning output, verify:
 | 4 | Did I run orphan detection on data/raw/, data/processed/, and output/figures/? | Scan each directory and cross-reference |
 | 5 | Did I trace at least one E2E flow with evidence at each step? | Perform a complete E2E trace now |
 | 6 | Did I verify script-to-QA-script mapping for all Stage 5-8 scripts? | List execution scripts, check for cr1 counterparts |
-| 7 | Did I verify data source coverage against Plan? | Cross-reference Plan data sources with data/raw/ contents |
+| 7 | Did I verify data source coverage against Plan.md? | Cross-reference Plan.md data sources with data/raw/ contents |
 | 8 | Would a broken reference slip past my checks? | Re-verify any references where accessibility was not confirmed |
 
 **All 8 must be YES.** If any is NO, address the gap before submitting.

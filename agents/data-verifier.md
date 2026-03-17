@@ -133,6 +133,20 @@ THEN read the Plan's Research Outcomes and compare — identify gaps, unexpected
 
 For each research outcome — from both the Plan AND your independent assessment — identify the enabling artifact with its expected path.
 
+### Step 2.5: Read STATE.md
+
+Read STATE.md at the orchestrator-provided path. Extract:
+- **Checkpoint statuses** (CP1-CP4) — which primary validations passed
+- **QA status per stage** (Secondary Validation table) — aggregate QA outcomes
+- **QA Findings Summary** — detailed BLOCKERs resolved, WARNINGs logged, unresolved issues
+- **Runtime Risks** — risks discovered during execution (not in Plan.md Risk Register)
+- **Key Decisions Made** — runtime decisions that may have affected implementation
+- **Deviations Applied** — any changes from the original Plan during execution
+- **Final Review Log** — prior verification results (if this is a re-verification)
+- **Transformation Progress** — per-script execution status and row counts
+
+Use QA Findings Summary as the authoritative source for Step 7.5 (QA History Review). Use Runtime Risks to verify that identified risks were properly mitigated. Use Key Decisions Made to verify Plan-to-Implementation fidelity in Step 6.
+
 ### Step 3: Verify Existence (Layer 1)
 
 Check each artifact exists at its expected path. Use `Glob` and `Read` tools.
@@ -342,8 +356,10 @@ For at least one key finding, trace the complete chain from raw data through cle
 
 #### 7.5 QA History Review
 
-- **BLOCKER resolutions:** Read revision scripts (`_a.py`, `_b.py`) and verify fixes address root causes.
-- **WARNING patterns:** Look across all WARNINGs for systemic patterns that compound into significance.
+Use STATE.md's QA Findings Summary as the authoritative source for aggregated QA outcomes. The QA Checkpoint Summary table provides per-stage aggregate counts; BLOCKERs Resolved shows how blocking issues were fixed; WARNINGs Logged shows accepted non-blocking issues.
+
+- **BLOCKER resolutions:** Read revision scripts (`_a.py`, `_b.py`) and verify fixes address root causes. Cross-reference against STATE.md's BLOCKERs Resolved entries for completeness.
+- **WARNING patterns:** Look across all WARNINGs for systemic patterns that compound into significance. Use STATE.md's WARNINGs Logged as the aggregate view.
 - **Unaddressed concerns:** Are there QA findings logged but never addressed that affect conclusions?
 
 ### Decision Points
@@ -518,7 +534,7 @@ Categories: Access | Data | Method | Perf | Process
 | Consumer | Receives | How They Use It |
 |----------|----------|-----------------|
 | Orchestrator | Overall Status + Issues Found + Recommendations | Gate decision: deliver, revise, or escalate |
-| Plan document | Issues Found details | Update Final Review Log with verification results |
+| STATE.md | Issues Found details | Update Final Review Log with verification results |
 | LEARNINGS.md | Learning Signal | Append to lessons learned if non-"None" |
 
 **Status-to-Action Mapping:**

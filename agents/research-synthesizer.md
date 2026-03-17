@@ -350,7 +350,7 @@ Categories: Access | Data | Method | Perf | Process. If nothing novel, emit "Non
 
 ## Consumers
 
-Your synthesis is consumed by **data-planner** to create Plan.md:
+Your synthesis is consumed by **data-planner** to create Plan.md and Plan_Tasks.md:
 
 | Output Section | How Planner Uses It |
 |----------------|---------------------|
@@ -532,6 +532,7 @@ Load on demand — do NOT read all at start:
 
 | File | When to Read | Purpose |
 |------|-------------|---------|
-| `agent_reference/PLAN_TEMPLATE.md` | When verifying output aligns with planner needs | Understand what the planner expects |
+| `agent_reference/PLAN_TEMPLATE.md` | When verifying output aligns with planner needs | Understand what the planner expects for Plan.md |
+| `agent_reference/PLAN_TASKS_TEMPLATE.md` | When verifying output aligns with planner needs | Understand what the planner expects for Plan_Tasks.md |
 | `agent_reference/VALIDATION_CHECKPOINTS.md` | When defining CP1-CP4 validation priorities | Ensure checkpoint recommendations are valid |
 | `agent_reference/QA_CHECKPOINTS.md` | When defining QA checkpoint recommendations | Ensure QA recommendations are valid |

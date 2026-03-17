@@ -17,7 +17,7 @@ Stages 5, 6. Cross-phase orchestration guidance (invocation templates, QA protoc
 ### Actions
 
 1. **Construct Query**
-   - Build data access URL from Plan specification
+   - Build data access URL from Plan.md specification
    - Construct necessary sample filters (year, subgroups, etc.)
 
 2. **Execute Query**
@@ -36,7 +36,7 @@ Stages 5, 6. Cross-phase orchestration guidance (invocation templates, QA protoc
 
 5. **>>> INVOKE code-reviewer (MANDATORY) <<<**
    - After research-executor completes, orchestrator MUST invoke code-reviewer
-   - Pass: script path, output files, Plan location
+   - Pass: script path, output files, Plan.md + Plan_Tasks.md locations
    - Wait for QA result before proceeding to Stage 6
    - If BLOCKER: trigger revision flow (max 2 attempts)
    - If WARNING: log to STATE.md, proceed
@@ -121,7 +121,7 @@ Return findings in this structure:
 
 ### Initial Validation (CP1)
 - Shape: [rows] x [cols]
-- Expected rows: [from Plan]
+- Expected rows: [from Plan.md]
 - Row count ratio: [actual/expected]
 - Missing values by column:
   | Column | Null Count | Null % |
@@ -196,7 +196,7 @@ assert df['year'].is_in(expected_years).all(), "WARNING: Unexpected years"
 - [ ] Data saved to `data/raw/`
 - [ ] **All scripts saved to `scripts/stage5_fetch/`** (one per fetch task) with standard header
 - [ ] **If data lag ≥3 years:** User notified and decision documented
-- [ ] Plan updated with Data Freshness Check table
+- [ ] STATE.md updated with Data Freshness Check findings
 - [ ] **QA review completed for EACH Stage 5 script** (code-reviewer separately invoked immediately after each individual script, not batched)
 - [ ] **All QA1 statuses:** PASSED/WARNING (any BLOCKER resolved via revision before next script)
 - [ ] **QA scripts saved to `scripts/cr/stage5_{step}_cr1.py`** (+ cr2..cr5 if warranted)
@@ -240,7 +240,7 @@ assert df['year'].is_in(expected_years).all(), "WARNING: Unexpected years"
 
 6. **>>> INVOKE code-reviewer (MANDATORY) <<<**
    - After research-executor completes, orchestrator MUST invoke code-reviewer
-   - Pass: script path, output files, Plan location
+   - Pass: script path, output files, Plan.md + Plan_Tasks.md locations
    - Wait for QA result before proceeding to Stage 7
    - If BLOCKER: trigger revision flow (max 2 attempts)
    - If WARNING: log to STATE.md, proceed
@@ -249,7 +249,7 @@ assert df['year'].is_in(expected_years).all(), "WARNING: Unexpected years"
 ### Thoroughness Directive
 
 ```
-- Apply coded value filters as specified in Plan
+- Apply coded value filters as specified in Plan.md
 - Calculate suppression rates for key variables
 - BLOCK if any governance rules from Plan Domain Configuration are violated (e.g., cross-state assessment comparison for education)
 - BLOCK if suppression rate >50%
@@ -283,7 +283,7 @@ Then, call the skill tool with name '{domain_context_skill}'.  # e.g., 'educatio
 **CAVEATS FROM STAGE 3:**
 {source_caveats}
 
-**CODED VALUE HANDLING (from Plan):**
+**CODED VALUE HANDLING (from Plan.md):**
 {coded_value_specification}
 
 **CLEAN DATA OUTPUT:**
@@ -296,7 +296,7 @@ Then, call the skill tool with name '{domain_context_skill}'.  # e.g., 'educatio
 
 During execution, ACTIVELY MONITOR for watch-for symptoms. Escalate if detected.
 
-**SUPPRESSION TOLERANCE (from Plan):**
+**SUPPRESSION TOLERANCE (from Plan.md):**
 - Target suppression rate: <{target}%
 - WARNING threshold: {warning_threshold}%
 - BLOCKER threshold: {blocker_threshold}%
@@ -438,7 +438,7 @@ assert len(clean_df) > len(raw_df) * 0.1, "STOP: >90% data loss"
 - Data quality per dataset: missingness rates for critical columns, suppression rates
 - Cleaning actions taken: rows removed (with counts and percentages), values recoded, filters applied
 - QA summary table: each script's QA status (PASSED/WARNING) with details for any WARNINGs
-- Any deviations from the Plan during fetch or clean (documented per RULE 1-3)
+- Any deviations from Plan.md during fetch or clean (documented per RULE 1-3)
 - If data lag >= 3 years: explicit flag for user awareness
 - If flag years (per FLAG_YEARS in Plan Domain Configuration) are included: explicit flag with documented warning
 - Data readiness assessment: are the cleaned datasets ready for analysis?
@@ -472,7 +472,7 @@ The PSU3 checkpoint MUST include:
 - Data quality summary: missingness rates, suppression rates per dataset
 - Cleaning actions taken and their impact (rows removed, values recoded)
 - QA summary: QA1/QA2 results for each script (PASSED/WARNING with details)
-- Any deviations from the Plan during fetch/clean
+- Any deviations from Plan.md during fetch/clean
 - Data readiness assessment for analysis phase
 
 ### Post-Script Action Checklist (Stages 5-6)

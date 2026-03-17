@@ -53,7 +53,7 @@ Stages 1, 2, 3, 3.5. Cross-phase orchestration guidance (invocation templates, Q
 **Full Pipeline Analysis: Pre-Flight Check**
 
 This analysis will create:
-- [ ] Research Plan document summarizing all key goals, considerations, decisions, risks, interpretations, work stage summaries, and final work review notes
+- [ ] Research Plan documents (Plan.md + Plan_Tasks.md) summarizing all key goals, considerations, decisions, risks, interpretations, work stage summaries, and final work review notes
 - [ ] STATE.md session state file (for progress tracking and session recovery)
 - [ ] Comprehensive analytic scripts covering data fetch, clean, join, transformation, analysis, and QA for all of the above
 - [ ] Validated datasets (raw + processed)

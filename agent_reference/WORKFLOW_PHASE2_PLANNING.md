@@ -7,7 +7,7 @@ Stages 4, 4.5. Cross-phase orchestration guidance (invocation templates, QA prot
 ## Stage 4: Plan Creation
 
 **Executor:** Orchestrator (invokes `data-planner` agent via `general-purpose` subagent)
-**Purpose:** Create the Plan document as persistent memory
+**Purpose:** Create Plan.md (strategic specification) and Plan_Tasks.md (executable task sequence) as persistent memory
 
 ### Actions
 
@@ -49,7 +49,7 @@ Stages 4, 4.5. Cross-phase orchestration guidance (invocation templates, QA prot
    - Populate project metadata (title, date, data sources, analysis type)
    - Include all section headers with empty content
    - This is a skeleton — content will be added incrementally during execution
-   - **LEARNINGS.md is created at Stage 4 alongside Plan + STATE.md. Gate G4 requires: Plan + STATE.md + LEARNINGS.md all exist before proceeding to Stage 4.5.**
+   - **LEARNINGS.md is created at Stage 4 alongside Plan.md + Plan_Tasks.md + STATE.md. Gate G4 requires: Plan.md + Plan_Tasks.md + STATE.md + LEARNINGS.md all exist before proceeding to Stage 4.5.**
 
 6. **Phase Status Update (PSU2)**
    After plan-checker completes (Stage 4.5), present PSU2 to user.
@@ -82,7 +82,7 @@ Before proceeding to Phase 3, the orchestrator MUST verify the Plan is complete 
 | **Output Specification** | Required deliverables listed | Notebook structure, report sections, visualizations specified |
 
 **Completeness Test:**
-Could a subagent execute any stage of this analysis with ONLY the Plan as context (plus skill knowledge), without access to the original conversation?
+Could a subagent execute any stage of this analysis with ONLY the Plan documents (Plan.md + Plan_Tasks.md) as context (plus skill knowledge), without access to the original conversation?
 
 **If ANY section fails verification:**
 - DO NOT proceed to Phase 3
@@ -139,14 +139,15 @@ All relative paths in referenced files resolve from BASE_DIR.
 research/{date}_{title}/
 
 **TASK:**
-Create a comprehensive Plan document following `{BASE_DIR}/agent_reference/PLAN_TEMPLATE.md`.
+Create a comprehensive Plan document following `{BASE_DIR}/agent_reference/PLAN_TEMPLATE.md` and an executable task sequence following `{BASE_DIR}/agent_reference/PLAN_TASKS_TEMPLATE.md`.
 
 CRITICAL: The Plan MUST begin with `## Original Request & Clarifications`
 containing the VERBATIM original user request above as a blockquote.
 Do NOT paraphrase or summarize — copy the exact text.
 
 **OUTPUT:**
-- Plan saved to: research/{date}_{title}/{date}_{title}_Plan.md
+- Plan.md saved to: research/{date}_{title}/{date}_{title}_Plan.md
+- Plan_Tasks.md saved to: research/{date}_{title}/{date}_{title}_Plan_Tasks.md
 - Structure follows `{BASE_DIR}/agent_reference/PLAN_TEMPLATE.md`
 - All sections populated (no placeholders)
 """,
@@ -221,14 +222,15 @@ Agent({
 
 ### Gate Criteria (G4)
 
-- [ ] Plan document created at `research/[folder]/YYYY-MM-DD_[Title]_Plan.md`
-- [ ] **STATE.md created** at `research/[folder]/STATE.md` (MANDATORY — Gate G4)
+- [ ] Plan.md created at `research/[folder]/YYYY-MM-DD_[Title]_Plan.md`
+- [ ] Plan_Tasks.md created at `research/[folder]/YYYY-MM-DD_[Title]_Plan_Tasks.md`
+- [ ] **STATE.md created** at `research/[folder]/STATE.md` (MANDATORY — Gate G4) — includes Runtime Risks, QA Findings Summary, and Final Review Log skeleton sections
 - [ ] **LEARNINGS.md skeleton created** at `research/[folder]/LEARNINGS.md` (MANDATORY — Gate G4)
-- [ ] **Plan Completeness Gate passed** (all sections verified)
+- [ ] **Plan Completeness Gate passed** (all sections verified in both Plan.md and Plan_Tasks.md)
 - [ ] Project folder structure created (`data/raw/`, `data/processed/`, `output/analysis/`, `output/figures/`)
 - [ ] User notified (PSU2 presented after Stage 4.5 completes)
 
-**Gate G4 Enforcement:** Plan-checker (Stage 4.5) CANNOT be invoked without Plan, STATE.md, and LEARNINGS.md all existing. (Stage 5 additionally requires G4.5 — see below.)
+**Gate G4 Enforcement:** Plan-checker (Stage 4.5) CANNOT be invoked without Plan.md, Plan_Tasks.md, STATE.md, and LEARNINGS.md all existing. (Stage 5 additionally requires G4.5 — see below.)
 
 ---
 
@@ -269,8 +271,8 @@ Stage 4.5 catches these issues **before** expensive data acquisition begins.
 **Skills:** `data-scientist`
 
 For the complete invocation pattern, see `agents/plan-checker.md` Invocation section
-and `agents/README.md` plan-checker section. The orchestrator inlines the full Plan content
-and original user request. The agent validates across six dimensions.
+and `agents/README.md` plan-checker section. The orchestrator inlines BOTH Plan.md and
+Plan_Tasks.md content along with the original user request. The agent validates across six dimensions.
 
 **Skill Loading:** Include `Call the skill tool with name 'data-scientist'.` in the Agent prompt.
 The data-scientist skill helps the plan-checker assess methodological soundness
@@ -284,17 +286,26 @@ Agent({
 **BASE_DIR:** {BASE_DIR}
 All relative paths in referenced files resolve from BASE_DIR.
 
-**PLAN LOCATION:**
-[Path to Plan document]
+**PLAN.MD CONTENT:**
+{inline the full Plan.md content here}
+
+**PLAN_TASKS.MD CONTENT:**
+{inline the full Plan_Tasks.md content here}
+
+**ORIGINAL REQUEST:**
+{inline the original user request verbatim}
+
+**CLARIFICATIONS:**
+{inline any user clarifications, or "None"}
 
 **TASK:**
-Validate the Plan across all 6 dimensions. Return PASSED, PASSED_WITH_WARNINGS, or ISSUES_FOUND status.
+Validate BOTH Plan.md and Plan_Tasks.md across all 6 dimensions (Completeness, Consistency, Feasibility, Testability, Clarity, Scope). Return structured report with per-dimension confidence and issues in YAML format.
 
 **OUTPUT FORMAT:**
 1. Dimension Scores (PASS/WARN/FAIL for each)
 2. Issues Found (with severity and location)
 3. Recommended Fixes (if ISSUES_FOUND)
-4. Overall Status
+4. Overall Status: PASSED / PASSED_WITH_WARNINGS / ISSUES_FOUND
 """,
     subagent_type: "Plan"
 })
@@ -322,7 +333,7 @@ Run plan-checker
 
 - [ ] Plan validation completed
 - [ ] Status is PASSED or PASSED_WITH_WARNINGS
-- [ ] If PASSED_WITH_WARNINGS: warnings documented in Plan
+- [ ] If PASSED_WITH_WARNINGS: warnings documented in Plan.md
 - [ ] **PSU2 presented to user with Plan summary, exact Plan filepath, clear indication that the user should read the full Plan before approving, and validation results**
 - [ ] **User confirmed PSU2 (explicit approval of Plan)**
 
@@ -337,7 +348,7 @@ The PSU2 checkpoint presents a **high-level summary** of the Plan — not the Pl
 **Actions:**
 1. Compile a high-level Plan summary and plan-checker results
 2. Present PSU2 to user using the PSU template, explicitly framing it as a summary
-3. Share the exact Plan filepath and clearly tell the user that this summary does not replace reading the full Plan — they should review the complete document before approving
+3. Share the exact Plan.md filepath and clearly tell the user that this summary does not replace reading the full Plan — they should review Plan.md before approving (Plan_Tasks.md contains executable task details and does not require user review)
 4. WAIT for explicit user confirmation
 
 **PSU2 Content Requirements (this is a SUMMARY — not the full Plan):**
@@ -349,7 +360,7 @@ The PSU2 checkpoint presents a **high-level summary** of the Plan — not the Pl
 - Risk Register highlights: top risks and mitigation strategies
 - Plan-checker result: PASSED or PASSED_WITH_WARNINGS (include any warnings verbatim)
 - Estimated scope: approximate record counts, number of scripts
-- **Full Plan filepath prominently displayed, with clear language that this checkpoint is a summary and the user should read the full Plan document before approving** (e.g., "This is a summary — the full plan with complete specifications is at [path]. Please review it before approving.")
+- **Full Plan.md filepath prominently displayed, with clear language that this checkpoint is a summary and the user should read the full Plan.md document before approving** (e.g., "This is a summary — the full plan with complete specifications is at [path]. Please review it before approving.")
 
 **User Response Handling:**
 - **Approve** → Proceed to Stage 5 (Data Retrieval)
@@ -383,13 +394,13 @@ The PSU2 checkpoint presents a **summary**, not the full Plan. It MUST include:
 - Hypotheses (if any) and their basis
 - Risk Register highlights
 - Plan-checker validation result (PASSED/PASSED_WITH_WARNINGS and any warnings)
-- **Full Plan filepath prominently displayed, with clear language that the user should read the complete Plan document before approving** — this summary covers the highlights but does not replace reviewing the full specification
+- **Full Plan.md filepath prominently displayed, with clear language that the user should read the complete Plan.md document before approving** — this summary covers the highlights but does not replace reviewing the full specification
 
 ---
 
 ## Verification Checklists
 
-Apply this checklist after the data-planner subagent returns the Plan document.
+Apply this checklist after the data-planner subagent returns the Plan documents (Plan.md + Plan_Tasks.md).
 
 ### Stage 4 (Plan Creation) Verification
 

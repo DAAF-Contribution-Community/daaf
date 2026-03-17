@@ -206,7 +206,7 @@ Your Core Distinction table must use this format:
 **Guidance:**
 - ALWAYS include the orchestrator as a consumer
 - The severity-to-action mapping makes the output contract explicit — no ambiguity
-- Think about ALL consumers: orchestrator, next-stage agents, STATE.md, LEARNINGS.md
+- Think about ALL consumers: orchestrator, next-stage agents, Plan.md, Plan_Tasks.md, STATE.md, LEARNINGS.md
 
 **Common mistake:** Omitting the orchestrator. Every agent's primary consumer is the orchestrator.
 

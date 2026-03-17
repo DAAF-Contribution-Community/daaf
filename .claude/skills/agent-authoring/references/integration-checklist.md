@@ -125,7 +125,8 @@ Follow the format of existing agent subsections in this file.
 | 21 | `agent_reference/ERROR_RECOVERY.md` | Agent handles specific error types |
 | 22 | `CLAUDE.md` > "Context & Session Health" | Agent has special context considerations |
 | 23 | `full-pipeline.md` > "Learning Signal Protocol" | Agent generates learning signals |
-| 24 | `agent_reference/PLAN_TEMPLATE.md` | Agent reads or writes the Plan document |
+| 24 | `agent_reference/PLAN_TEMPLATE.md` | Agent reads or writes Plan.md |
+| 24b | `agent_reference/PLAN_TASKS_TEMPLATE.md` | Agent reads or writes Plan_Tasks.md |
 | 25 | `agent_reference/STATE_TEMPLATE.md` | Agent affects STATE.md fields |
 | 26 | `user_reference/02_understanding_daaf.md` | Agent changes the architecture description for users |
 | 27 | `user_reference/04_extending_daaf.md` | Agent enables new extension patterns |
@@ -220,7 +221,8 @@ done
 - [ ] agent_reference/ERROR_RECOVERY.md (if handles error types)
 - [ ] CLAUDE.md > "Context & Session Health" (if special context needs)
 - [ ] full-pipeline.md > "Learning Signal Protocol" (if generates learning signals)
-- [ ] agent_reference/PLAN_TEMPLATE.md (if reads/writes Plan)
+- [ ] agent_reference/PLAN_TEMPLATE.md (if reads/writes Plan.md)
+- [ ] agent_reference/PLAN_TASKS_TEMPLATE.md (if reads/writes Plan_Tasks.md)
 - [ ] agent_reference/STATE_TEMPLATE.md (if affects STATE.md)
 - [ ] user_reference/02_understanding_daaf.md (if changes architecture)
 - [ ] user_reference/04_extending_daaf.md (if enables new extensions)

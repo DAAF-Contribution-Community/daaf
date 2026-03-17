@@ -25,6 +25,7 @@
       "Bash(chmod +x *)",
       "Bash(cd *)",
       "Bash(head *)",
+      "Bash(wc -l *)",
       "Bash(file *)",
       "Bash(git --version)",
       "Bash(git status *)",

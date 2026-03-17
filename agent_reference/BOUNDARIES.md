@@ -26,8 +26,8 @@ These actions are **mandatory** for every analysis task.
 | Classify engagement mode before executing | Set correct expectations |
 | Create Plan document before data acquisition | Establish shared context |
 | Complete Final Review (Stage 12) before delivery | Ensure quality and alignment |
-| Update Plan with all decisions and deviations | Maintain audit trail |
-| Update Risk Register when risks are discovered | Capture issues affecting analysis validity |
+| Update STATE.md with all runtime decisions and deviations | Maintain audit trail |
+| Update STATE.md Runtime Risks when risks are discovered during execution | Capture issues affecting analysis validity |
 | Report progress adaptively (after phases, notable events) | Keep user informed |
 | Escalate immediately when data is unavailable | Per design decision |
 
@@ -582,7 +582,7 @@ Co-Authored-By: Claude <noreply@anthropic.com>
 |------|-------------|---------|
 | `feat` | New data acquisition, transformation | `feat(05-01): Fetch CCD enrollment data` |
 | `fix` | Bug fixes, data corrections | `fix(07-02): Handle negative values in join` |
-| `chore` | Metadata, Plan updates | `chore(wave-1): Update transformation log` |
+| `chore` | Metadata, STATE.md updates | `chore(wave-1): Update transformation progress` |
 | `test` | Test additions | `test(10-01): Add enrollment validation tests` |
 | `docs` | Report, documentation | `docs(11-01): Generate stakeholder report` |
 
@@ -644,7 +644,7 @@ Completed tasks:
 - clean-ccd: 94,102 rows (CP2 PASSED)
 - clean-meps: 97,503 rows (CP2 PASSED)
 
-Updated: Plan.md transformation log
+Updated: STATE.md transformation progress
 
 Co-Authored-By: Claude <noreply@anthropic.com>
 ```

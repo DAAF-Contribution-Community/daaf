@@ -52,9 +52,11 @@ With that in mind, there are actually some appreciable trade-offs in being too v
 
 ## Reviewing the Plan Before Execution
 
-The Plan is arguably the most important artifact DAAF produces. It is your **last chance** to shape the entire analysis before any data is fetched, any code is written, or any computation is spent. I cannot overstate this: time spent carefully reviewing the Plan is the single highest-leverage activity in the entire DAAF workflow.
+Plan.md is arguably the most important artifact DAAF produces. It is your **last chance** to shape the entire analysis before any data is fetched, any code is written, or any computation is spent. I cannot overstate this: time spent carefully reviewing Plan.md is the single highest-leverage activity in the entire DAAF workflow.
 
-After DAAF creates the Plan and validates it internally (via the plan-checker agent), it will present you with a Phase Status Update (PSU2) that summarizes the Plan and gives you the exact file path to read it yourself. **Read the actual file.** The PSU2 summary is helpful but it is a summary -- the full Plan contains critical details about methodology, risk, and scope that the summary necessarily condenses.
+After DAAF creates the Plan and validates it internally (via the plan-checker agent), it will present you with a Phase Status Update (PSU2) that summarizes the Plan and gives you the exact file path to read it yourself. **Read the actual file.** The PSU2 summary is helpful but it is a summary -- the full Plan.md contains critical details about methodology, risk, and scope that the summary necessarily condenses.
+
+A companion file, Plan_Tasks.md, is also created during planning. It contains the detailed machine-readable task definitions that DAAF uses to execute each step. Plan_Tasks.md is available for auditing specific task definitions if you want to inspect the exact transformation sequence, dependencies, and file paths.
 
 ### Key Sections to Review
 
@@ -76,9 +78,9 @@ There should be at least 3 research outcomes. If any of them read like hypothese
 
 If DAAF has also included **Hypotheses**, these are directional predictions based on prior literature or domain knowledge. They will be assessed as SUPPORTED / NOT SUPPORTED / PARTIALLY SUPPORTED. Either outcome is a valid finding -- a rigorously refuted hypothesis is excellent science.
 
-**3. Transformation Sequence**
+**3. Transformation Sequence (in Plan_Tasks.md)**
 
-This is the table of every data operation DAAF plans to execute, in order, with dependencies. Each row will become a separate script that gets executed and reviewed. Look for:
+This is the table of every data operation DAAF plans to execute, in order, with dependencies. It lives in Plan_Tasks.md (the companion file to Plan.md). Each row will become a separate script that gets executed and reviewed. Look for:
 
 - **Does the sequence make logical sense?** Data should be fetched before it is cleaned, cleaned before it is joined, joined before it is analyzed.
 - **Are the join keys specified?** If DAAF plans to merge two datasets, the Plan should specify exactly which columns will be used for the join and what kind of join it is (1:1, 1:many, etc.).
@@ -228,7 +230,7 @@ I recommend this review order:
 
 1. **Report** -- Start here for the big picture. Does the narrative make sense? Do the findings answer your research question?
 2. **Figures** -- Look at the visualizations referenced in the report. Do they show what the report claims they show?
-3. **Plan** -- Skim the Final Review Log section (appended at the end) to see if DAAF flagged any deviations or concerns.
+3. **Plan.md and STATE.md** -- Skim Plan.md for methodology and key decisions. Check STATE.md for the Final Review Log and QA Findings Summary to see if DAAF flagged any deviations or concerns.
 4. **Notebook** -- Dive into specific stages if you want to verify how a particular result was derived.
 5. **Script logs** -- Go here for the deepest level of detail on any specific step.
 

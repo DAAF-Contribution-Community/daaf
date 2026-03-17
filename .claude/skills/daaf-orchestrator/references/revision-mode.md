@@ -23,19 +23,32 @@ Stage 1: Classify as Revision Mode → Confirm with user
     ↓
 Locate Existing Project
     ├─ Search research/ for the referenced analysis folder
-    ├─ Read the COMPLETE existing Plan document
-    └─ Read the existing notebook to understand current state
+    ├─ Read the COMPLETE existing Plan.md and Plan_Tasks.md
+    ├─ Read the existing notebook to understand current state
+    └─ Read STATE.md and extract original execution context (see below)
     ↓
 Classify Revision Type → Confirm with user
     ↓
 Create New Version
-    ├─ Create new version of Plan (e.g., 2026-01-24a → 2026-01-24b)
-    ├─ Document revision request and type in new Plan
+    ├─ Create new versions of BOTH Plan.md AND Plan_Tasks.md (e.g., 2026-01-24a → 2026-01-24b)
+    ├─ Document revision request and type in new Plan.md + updated task specs in new Plan_Tasks.md
     └─ Execute required stages (load full-pipeline.md if needed)
     ↓
 Final Review
     └─ Complete full Final Review even for minor fixes
 ```
+
+### STATE.md Extraction at Revision Start
+
+Read STATE.md and extract:
+- **Transformation Progress** — which scripts ran, which succeeded/failed, row counts
+- **Runtime Risks** — risks discovered during original execution (separate from Plan.md's planning-phase Risk Register)
+- **QA Findings Summary** — aggregated QA results: BLOCKERs resolved, WARNINGs logged, unresolved issues
+- **Final Review Log** — Stage 12 verification results (if original execution reached Stage 12)
+- **Key Decisions Made** — runtime decisions from Stages 5-12
+- **Deviations Applied** — any deviations from the original Plan.md during execution
+
+This context is critical for informed revision planning. Plan.md captures planning-phase intent; STATE.md captures what actually happened during execution. Revisions that ignore STATE.md risk repeating resolved issues or missing known risks.
 
 ## Revision Type Classification
 
@@ -80,7 +93,8 @@ Version suffixes follow the convention defined in `CLAUDE.md` > "Version Control
 - Always create new version files — never modify existing versions
 - All versions remain in the same project folder
 - Regenerate data fresh from scripts — don't copy data files from prior version
-- The new Plan documents the revision rationale and what changed
+- New versions of BOTH Plan.md AND Plan_Tasks.md document the revision rationale and what changed
+- Version suffix applies consistently to both files (e.g., both get `_a` suffix)
 
 ## Re-run Guidance
 
@@ -135,6 +149,10 @@ When dispatching subagents for re-executed stages during a revision, include thi
 2. **Prior version reference:** Path to the prior version's script/output for comparison
 3. **Preserved context:** Which upstream data files are being reused vs. regenerated
 4. **Scope boundary:** Explicitly state what should change vs. what must remain identical
+5. **Original execution context from STATE.md:**
+   - QA findings relevant to the affected stages (from QA Findings Summary)
+   - Runtime risks that may affect revised stages (from Runtime Risks)
+   - Prior transformation outcomes for affected scripts (from Transformation Progress)
 
 Example addition to subagent prompt:
 ```
@@ -154,7 +172,7 @@ Example addition to subagent prompt:
 
 **Step 2: Determine affected stages.** Stage 7 (where the bad join is) + Stage 8, 9, 10, 11, 12 (all downstream).
 
-**Step 3: Create new version.** If the prior version was `2026-01-24_School_Poverty_Analysis`, create `2026-01-24a_School_Poverty_Analysis`. Create new Plan version documenting the fix rationale.
+**Step 3: Create new version.** If the prior version was `2026-01-24_School_Poverty_Analysis`, create `2026-01-24a_School_Poverty_Analysis`. Create new versions of BOTH Plan.md and Plan_Tasks.md documenting the fix rationale.
 
 **Step 4: Determine what to reuse.** Stage 5 (fetch) and Stage 6 (clean) data files are unaffected — reuse them. Only re-execute Stage 7+ scripts.
 
@@ -187,8 +205,9 @@ These boundaries supplement the universal boundaries in `CLAUDE.md` and `agent_r
 
 **Always Do:**
 - Search for and locate existing project first
-- Read complete Plan and notebook before proposing changes
-- Create fresh copy of Plan to record new changes
+- Read complete Plan.md, Plan_Tasks.md, and notebook before proposing changes
+- Read STATE.md before planning any revision — original execution context is critical for informed revision decisions
+- Create fresh copies of both Plan.md and Plan_Tasks.md to record new changes
 - Classify revision type and confirm with user
 - Create new version files (never modify existing)
 - Regenerate data fresh (don't copy from prior version)
@@ -205,6 +224,6 @@ These boundaries supplement the universal boundaries in `CLAUDE.md` and `agent_r
 - Overwrite or modify prior version files
 - Skip revision type classification
 - Copy raw data files from prior version (regenerate fresh)
-- Proceed without reading existing Plan
+- Proceed without reading existing Plan.md, Plan_Tasks.md, and STATE.md
 
 **Version Suffix Convention:** See `CLAUDE.md` > "Version Control Protocol" for the canonical convention (e.g., original → `a` → `b` → `c`).

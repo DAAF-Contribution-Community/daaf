@@ -276,6 +276,7 @@ Every analysis lives in a self-contained folder under `research/`, named with th
 ```
 research/2026-01-24_School_Poverty_Analysis/
 ├── 2026-01-24_School_Poverty_Analysis_Plan.md
+├── 2026-01-24_School_Poverty_Analysis_Plan_Tasks.md
 ├── 2026-01-24_School_Poverty_Analysis.py
 ├── 2026-01-24_School_Poverty_Analysis_Report.md
 ├── LEARNINGS.md
@@ -316,23 +317,23 @@ research/2026-01-24_School_Poverty_Analysis/
 
 Let's go through each piece.
 
-### The Plan Document
+### The Plan Document (Plan.md)
 
-**What it is:** The single most important artifact in the project. The Plan is DAAF's research design document -- it captures everything about what was done and *why*. If the scripts are the "what," the Plan is the "why."
+**What it is:** The single most important artifact in the project. Plan.md is DAAF's strategic research specification -- it captures everything about what was done and *why*. If the scripts are the "what," Plan.md is the "why."
 
 **What's inside:**
 - **Research Question** -- your original question, verbatim, plus any clarifications
 - **Research Outcomes** -- specific, measurable topics the analysis must rigorously investigate and report on (e.g., "Relationship between school poverty rates and AP course enrollment is characterized with direction, magnitude, significance, and confidence intervals"). These define what must be *examined*, not what the answer should be. Directional predictions belong in the optional Hypotheses section.
 - **Data Sources** -- which datasets are being used, what endpoints, what years, and why
 - **Methodology** -- the statistical approach, key decisions, and their rationale
-- **Transformation Sequence** -- the exact ordered list of tasks (fetch, clean, transform, analyze, visualize) with dependencies, wave assignments for parallel execution, and input/output file paths
 - **Risk Register** -- what could go wrong and how to handle it
 - **Key Decisions Log** -- every methodological choice made during the project, with reasoning
-- **Final Review Log** -- notes from the data-verifier's final check
 
-**How to read it:** Start with the Research Question and Research Outcomes -- do they match your intent? If any outcomes read like hypotheses (predicting a direction), flag them. Then skim the Transformation Sequence table to understand the flow of work. Check the Key Decisions Log for anything surprising. The Plan is meant to be comprehensive enough that someone unfamiliar with the project could understand exactly what was done and why.
+**How to read it:** Start with the Research Question and Research Outcomes -- do they match your intent? If any outcomes read like hypotheses (predicting a direction), flag them. Check the Key Decisions Log for anything surprising. Plan.md is meant to be comprehensive enough that someone unfamiliar with the project could understand exactly what was done and why.
 
-**Why it matters:** The Plan is your audit trail. If you or a colleague ever needs to understand how a finding was derived, the Plan traces the full chain of reasoning from question to methodology to execution. It's also what makes Revision Mode possible -- DAAF reads the existing Plan to understand what was done before proposing changes.
+**Why it matters:** Plan.md is your audit trail. If you or a colleague ever needs to understand how a finding was derived, Plan.md traces the full chain of reasoning from question to methodology to execution. It's also what makes Revision Mode possible -- DAAF reads the existing Plan.md to understand what was done before proposing changes.
+
+A companion file, **Plan_Tasks.md**, contains the detailed machine-readable task specifications that DAAF uses internally to execute each step. It includes the exact ordered Transformation Sequence of tasks (fetch, clean, transform, analyze, visualize) with dependencies, wave assignments for parallel execution, and input/output file paths. Both files are frozen after planning completes. You can review Plan_Tasks.md if you want to audit the specific task definitions, but Plan.md is the primary document for understanding the research design.
 
 ### The Scripts Directory
 
@@ -403,7 +404,7 @@ Then open [http://localhost:2718](http://localhost:2718) in your normal web brow
 
 ### STATE.md and LEARNINGS.md
 
-**STATE.md** -- A session state file that tracks DAAF's progress through the analysis. If a session is interrupted (context exhaustion, network issues, etc.), STATE.md allows DAAF to resume exactly where it left off. You generally don't need to read this unless debugging a session issue.
+**STATE.md** -- A session state file that tracks DAAF's progress through the analysis. It records transformation progress, checkpoint statuses, runtime decisions, and any blockers encountered. It also accumulates the QA Findings Summary (aggregated quality review results across all stages), the Final Review Log (from the end-of-pipeline verification), and any Runtime Risks discovered during execution. If a session is interrupted (context exhaustion, network issues, etc.), STATE.md allows DAAF to resume exactly where it left off. You generally don't need to read this unless debugging a session issue.
 
 **LEARNINGS.md** -- A lessons-learned document capturing insights about the data and the analysis process. This includes data idiosyncrasies discovered during the analysis, interpretation concerns, and suggested improvements to DAAF's documentation. This file is designed to be immediately actionable -- you can share it back with the community to help improve DAAF for future users.
 

@@ -46,18 +46,18 @@ See `CLAUDE.md` > "Bash Command Rule: One Command Per Call" for the canonical ru
 
 | Agent | Purpose | Subagent Type | Stage(s) | Key Inputs | Key Outputs |
 |-------|---------|---------------|----------|------------|-------------|
-| **research-executor** | Execute data tasks with atomic precision, rigorous validation, and full audit-trail capture | `general-purpose` | 5, 6, 7, 8 | Task spec XML, Plan, skill knowledge, dependency outputs | Script + execution log + data files (parquet) |
-| **code-reviewer** | Iterative QA review verifying code correctness, methodology alignment, and output data quality | `general-purpose` | 5-QA, 6-QA, 7-QA, 8-QA | Executed script + log, Plan, output data files, stage/step/wave context | QA scripts (cr1-cr5) + severity report (PASSED/WARNING/BLOCKER) |
-| **data-planner** | Synthesize discovery findings into research plans with executable task sequences and wave-based parallelization | `general-purpose` | 4 | User request, clarifications, Stage 2-3 findings, project folder path | Plan.md document with tasks, waves, risks |
-| **plan-checker** | Verify research plans will achieve analysis goals via goal-backward analysis across six dimensions | `Plan` | 4.5 | Plan content (inlined), original user request, clarifications | Validation report: PASSED / PASSED_WITH_WARNINGS / ISSUES_FOUND |
-| **data-verifier** | Adversarial goal-backward verification of completed analyses with cross-artifact coherence | `Plan` | 12 | Plan, Notebook, Report, project folder, STATE.md, QA summary | Verification report: PASSED / ISSUES_FOUND with four-layer evidence |
+| **research-executor** | Execute data tasks with atomic precision, rigorous validation, and full audit-trail capture | `general-purpose` | 5, 6, 7, 8 | Task spec XML, Plan.md, skill knowledge, dependency outputs | Script + execution log + data files (parquet) |
+| **code-reviewer** | Iterative QA review verifying code correctness, methodology alignment, and output data quality | `general-purpose` | 5-QA, 6-QA, 7-QA, 8-QA | Executed script + log, Plan.md, output data files, stage/step/wave context | QA scripts (cr1-cr5) + severity report (PASSED/WARNING/BLOCKER) |
+| **data-planner** | Synthesize discovery findings into research plans with executable task sequences and wave-based parallelization | `general-purpose` | 4 | User request, clarifications, Stage 2-3 findings, project folder path | Plan.md + Plan_Tasks.md documents |
+| **plan-checker** | Verify research plans will achieve analysis goals via goal-backward analysis across six dimensions | `Plan` | 4.5 | Plan.md + Plan_Tasks.md content (inlined), original user request, clarifications | Validation report: PASSED / PASSED_WITH_WARNINGS / ISSUES_FOUND |
+| **data-verifier** | Adversarial goal-backward verification of completed analyses with cross-artifact coherence | `Plan` | 12 | Plan.md, Notebook, Report, project folder, STATE.md, LEARNINGS.md, QA summary | Verification report: PASSED / ISSUES_FOUND with four-layer evidence; STATE.md Final Review Log |
 | **source-researcher** | Deep-dive into a single data source for caveats, coded values, suppression patterns, and pitfalls | `Plan` | 3 | Source name, variables of interest, research question, years, geographic scope | Five-section source report (Summary, Variables, Caveats, Patterns, Pitfalls) |
 | **research-synthesizer** | Consolidate parallel Stage 2-3 findings into actionable planning guidance with conflict resolution | `general-purpose` | 3.5 | Stage 2 findings, all Stage 3 findings, research question, year range, geographic scope | Integrated synthesis with conflicts, resolutions, and planning recommendations |
-| **debugger** | Diagnose data quality issues and analysis failures using scientific hypothesis-testing methodology | `general-purpose` | Any (on error) | Error message/symptom, failed script path, Plan, last successful operation | Root cause report with hypothesis log and verified fix |
-| **notebook-assembler** | Compile scripts into Marimo notebook via VERBATIM copy (NO dashboards, NO widgets, NO new code) | `general-purpose` | 9 | Completed scripts (stages 5-8), Plan, data files, figure files, project path | Marimo `.py` notebook with script walkthroughs and data inspection cells |
-| **integration-checker** | Validate component wiring: data flows, file references, and orphan detection | `Plan` | 9, 11, 12 | Plan, Notebook, Report, project folder, script-to-output mappings | Integration check report: CONNECTED / ISSUES FOUND with flow diagrams |
+| **debugger** | Diagnose data quality issues and analysis failures using scientific hypothesis-testing methodology | `general-purpose` | Any (on error) | Error message/symptom, failed script path, Plan.md, Plan_Tasks.md (optional), last successful operation | Root cause report with hypothesis log and verified fix |
+| **notebook-assembler** | Compile scripts into Marimo notebook via VERBATIM copy (NO dashboards, NO widgets, NO new code) | `general-purpose` | 9 | Completed scripts (stages 5-8), Plan.md, data files, figure files, project path | Marimo `.py` notebook with script walkthroughs and data inspection cells |
+| **integration-checker** | Validate component wiring: data flows, file references, and orphan detection | `Plan` | 9, 11, 12 | Plan.md, Notebook, Report, project folder, script-to-output mappings | Integration check report: CONNECTED / ISSUES FOUND with flow diagrams |
 | **data-ingest** | Profile new datasets and author comprehensive Skills documenting structure, values, and quality | `general-purpose` | Pre-pipeline (on demand) | Data file path + format, target skill name, intended use, domain context, optional docs | New Skill at `.claude/skills/` + Data Ingest Report |
-| **report-writer** | Synthesize pipeline artifacts into stakeholder report following REPORT_TEMPLATE.md | `general-purpose` | 11 | Plan, Notebook, STATE.md, LEARNINGS.md, QA summary, figures, citations, dataset metadata | Report.md (stakeholder prose) |
+| **report-writer** | Synthesize pipeline artifacts into stakeholder report following REPORT_TEMPLATE.md | `general-purpose` | 11 | Plan.md, Notebook, STATE.md, LEARNINGS.md, QA summary, figures, citations, dataset metadata | Report.md (stakeholder prose) |
 
 ### Commonly Confused Pairs
 
@@ -273,7 +273,7 @@ Shows which agents produce output consumed by other agents:
 | **source-researcher** | research-synthesizer | Five-section source report (per source) | Multi-source analyses |
 | **source-researcher** | data-planner | Five-section source report | Single-source analyses |
 | **research-synthesizer** | data-planner | Integrated synthesis with conflict resolutions and recommendations | Multi-source analyses |
-| **data-planner** | plan-checker | Plan.md document with tasks, waves, risks | Always (Stage 4 -> 4.5) |
+| **data-planner** | plan-checker | Plan.md + Plan_Tasks.md documents | Always (Stage 4 -> 4.5) |
 | **plan-checker** | data-planner | Issues report (YAML format with dimension, severity, details) | When ISSUES_FOUND with blockers |
 | **plan-checker** | Orchestrator | Validation status (PASSED / PASSED_WITH_WARNINGS / ISSUES_FOUND) | Always |
 | **research-executor** | code-reviewer | Executed script + appended execution log + output data files | After every Stage 5-8 script |
@@ -587,6 +587,7 @@ Agent({
     - Failed script: {absolute_script_path}
     - Last successful operation: {last_success_description}
     - Plan: {absolute_plan_path}
+    - Plan Tasks: {absolute_plan_tasks_path} (for task specification context)
     [If QA-triggered:]
     - QA Report: {qa_report_path}
     - BLOCKER check: {specific_check_that_failed}
@@ -626,8 +627,11 @@ Agent({
     **BASE_DIR:** {BASE_DIR}
     All relative paths in referenced files resolve from BASE_DIR.
 
-    **PLAN CONTENT:**
-    {inline the full plan content here}
+    **PLAN.MD CONTENT:**
+    {inline the full Plan.md content here}
+
+    **PLAN_TASKS.MD CONTENT:**
+    {inline the full Plan_Tasks.md content here}
 
     **ORIGINAL REQUEST:**
     {inline the original user request verbatim}

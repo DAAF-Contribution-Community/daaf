@@ -75,6 +75,27 @@ all at once. **When a loading trigger fires, the document must be read
 completely.** These documents are already optimized for context efficiency through
 their loading triggers; read them in their entirety when triggered to ensure clear and complete understanding of all processes and requirements.
 
+### Targeted Reads: Prefer Broad Context
+
+When reading specific sections of files ad hoc (i.e., separate from progressive disclosure reading triggers), **always read
+generously above and below the region of interest.** Understanding surrounding
+context prevents misinterpretation of the target section.
+
+**Practical defaults:**
+- **Always check file length first** use `wc -l <file>` to
+  determine whether the file can be read in full or requires offset/limit.
+- **Read the whole file when it is of reasonable length**. Only use
+  `offset`/`limit` for genuinely large files (e.g., scripts with thousands of
+  lines of appended execution logs).
+- **When using offset/limit,** include substantial and generous context before and after the
+  section of interest — not just the lines you think you need.
+- **When uncertain about scope,** read more files rather than fewer. Parallel
+  reads cost no additional latency and prevent compounding errors from missing
+  context.
+- **Never guess at file contents** from a partial read. If a narrow read leaves
+  ambiguity, read the full file immediately rather than requesting another narrow
+  slice.
+
 ---
 
 ## Context & Session Health
@@ -197,6 +218,7 @@ bash {PROJECT_DIR}/scripts/run_with_capture.sh {PROJECT_DIR}/scripts/stage5_fetc
 | File Type | Pattern | Example |
 |-----------|---------|---------|
 | Plan | `YYYY-MM-DD[suffix]_[Title]_Plan.md` | `2026-01-24a_School_Poverty_Analysis_Plan.md` |
+| Plan Tasks | `YYYY-MM-DD[suffix]_[Title]_Plan_Tasks.md` | `2026-01-24a_School_Poverty_Analysis_Plan_Tasks.md` |
 | Notebook | `YYYY-MM-DD[suffix]_[Title].py` | `2026-01-24a_School_Poverty_Analysis.py` |
 | Report | `YYYY-MM-DD[suffix]_[Title]_Report.md` | `2026-01-24a_School_Poverty_Analysis_Report.md` |
 | Raw Data | `YYYY-MM-DD[suffix]_[source]_[description].parquet` | `2026-01-24a_ccd_schools.parquet` |
@@ -237,6 +259,7 @@ See `agent_reference/SCRIPT_EXECUTION_REFERENCE.md` for complete script template
 ```
 research/2026-01-24_School_Poverty_Analysis/
 ├── 2026-01-24_School_Poverty_Analysis_Plan.md
+├── 2026-01-24_School_Poverty_Analysis_Plan_Tasks.md
 ├── 2026-01-24_School_Poverty_Analysis.py
 ├── 2026-01-24_School_Poverty_Analysis_Report.md
 ├── LEARNINGS.md                                   # Session learnings (REQUIRED)
@@ -289,6 +312,7 @@ research/2026-01-24_School_Poverty_Analysis/
 | `agent_reference/SCRIPT_EXECUTION_REFERENCE.md` | Script execution protocol, format templates, and stage-specific examples |
 | `agent_reference/INLINE_AUDIT_TRAIL.md` | Script documentation standards (IAT) |
 | `agent_reference/PLAN_TEMPLATE.md` | Research plan template |
+| `agent_reference/PLAN_TASKS_TEMPLATE.md` | Plan Tasks document template |
 | `agent_reference/STATE_TEMPLATE.md` | Session state file template |
 | `agent_reference/QA_CHECKPOINTS.md` | QA checkpoint definitions (QA1-QA4b) |
 | `agent_reference/VALIDATION_CHECKPOINTS.md` | Validation checkpoint code templates |

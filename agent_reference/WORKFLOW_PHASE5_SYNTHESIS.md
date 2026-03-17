@@ -13,9 +13,9 @@ Stages 11, 12. Cross-phase orchestration guidance (invocation templates, QA prot
 
 | Input | Source | Purpose |
 |-------|--------|---------|
-| Plan.md | Stage 4 | Research question, methodology, research outcomes, risk register |
+| Plan.md | Stage 4 | Research question, methodology, research outcomes, risk register (frozen after Stage 4.5) |
 | Marimo notebook (.py) | Stage 9 | Complete technical record: all scripts + execution logs |
-| STATE.md | Maintained throughout | Checkpoint statuses, key decisions, blockers |
+| STATE.md | Maintained throughout | Checkpoint statuses, key decisions, blockers, runtime risks, QA findings summary, final review log |
 | LEARNINGS.md | Maintained throughout | Data quality insights, methodology lessons |
 | Stage 10 QA summary | Stage 10 | Aggregated QA findings (WARNINGs, resolved BLOCKERs) |
 | Statistical results | Stage 8.1 (`output/analysis/`) | Analysis findings for Key Findings and interpretation |
@@ -29,20 +29,20 @@ The report-writer follows a systematic mapping from REPORT_TEMPLATE.md sections 
 
 | Report Section | Primary Source | Secondary Sources |
 |---|---|---|
-| Executive Summary | Plan Research Outcomes + notebook execution logs | LEARNINGS.md |
-| Research Question | Plan (verbatim) | — |
-| Data & Methods | Plan Methodology + Stage 5-6 execution logs | STATE.md checkpoints |
-| Quality Assurance | Stage 10 QA summary | STATE.md QA sections |
-| Key Findings | Stage 7 transforms + Stage 8.1 analysis results + Stage 8.2 figures | Plan Research Outcomes |
-| Limitations | Plan Risk Register + source caveats + suppression rates + LEARNINGS.md | STATE.md blockers |
-| Citations | Stage 6 citation text | Plan Data Sources table |
+| Executive Summary | Plan.md Research Outcomes + notebook execution logs | LEARNINGS.md |
+| Research Question | Plan.md (verbatim) | — |
+| Data & Methods | Plan.md Methodology + Stage 5-6 execution logs | STATE.md checkpoints |
+| Quality Assurance | STATE.md QA Findings Summary | STATE.md checkpoint statuses |
+| Key Findings | Stage 7 transforms + Stage 8.1 analysis results + Stage 8.2 figures | Plan.md Research Outcomes |
+| Limitations | Plan.md Risk Register + STATE.md Runtime Risks + source caveats + suppression rates + LEARNINGS.md | STATE.md blockers |
+| Citations | Stage 6 citation text | Plan.md Data Sources table |
 
 ### Actions
 
-1. **Read upstream artifacts** — Plan, Notebook, STATE.md, LEARNINGS.md
+1. **Read upstream artifacts** — Plan.md, Notebook, STATE.md, LEARNINGS.md
 2. **Verify figures** — Confirm all figure files exist before referencing
 3. **Draft report** — Follow REPORT_TEMPLATE.md section by section using Section-Source Mapping
-4. **Cross-check Research Outcomes** — Every Research Outcome addressed in Key Findings
+4. **Cross-check Research Outcomes** — Every Research Outcome from Plan.md addressed in Key Findings
 5. **Write Report.md** — Save to project folder with date prefix
 
 ### Invocation Template: report-writer
@@ -85,10 +85,10 @@ Agent({
 
     **TASK:**
     Generate the stakeholder report following REPORT_TEMPLATE.md.
-    Read the Plan, Notebook, STATE.md, and LEARNINGS.md.
+    Read Plan.md, Notebook, STATE.md, and LEARNINGS.md.
     Follow the Section-Source Mapping for every section.
     Verify all figure references before embedding.
-    Cross-check all Research Outcomes from the Plan.
+    Cross-check all Research Outcomes from Plan.md.
     Write Report.md to the project folder.
 
     Return findings using the Report Writer Output Format.""",
@@ -99,7 +99,7 @@ Agent({
 #### Context Completeness Checklist (Stage 11)
 
 Before invoking report-writer, verify:
-- [ ] Plan.md path provided (absolute)
+- [ ] Plan.md path provided (absolute) — methodology, research question, risk register
 - [ ] Notebook path provided (absolute)
 - [ ] STATE.md path provided (absolute)
 - [ ] LEARNINGS.md path provided (absolute)
@@ -123,7 +123,7 @@ report-writer returns:
 - [ ] report-writer returned COMPLETE or COMPLETE_WITH_GAPS
 - [ ] All REPORT_TEMPLATE.md sections populated (not placeholder text)
 - [ ] All figure references resolve to existing files
-- [ ] All Research Outcomes from Plan addressed in Key Findings
+- [ ] All Research Outcomes from Plan.md addressed in Key Findings
 - [ ] Executive Summary is 4-5 sentences
 - [ ] All statistics trace to execution logs or dataset metadata
 - [ ] Citation text included verbatim
@@ -176,7 +176,7 @@ Agent({
 
 data-verifier returns:
 - **VERIFIED** → Proceed to Step 2 (consolidation and delivery)
-- **VERIFIED_WITH_WARNINGS** → Log warnings in Plan Final Review Log, proceed to Step 2
+- **VERIFIED_WITH_WARNINGS** → Log warnings in STATE.md Final Review Log, proceed to Step 2
 - **FAILED** → STOP, escalate to user with specific failures and remediation options
 
 ---
@@ -213,6 +213,7 @@ These files must exist in the project folder:
 | Artifact | Path | Exists? | Substantive? |
 |----------|------|---------|--------------|
 | Plan document | `[project]/YYYY-MM-DD_[Title]_Plan.md` | [ ] | [ ] |
+| Plan tasks | `[project]/YYYY-MM-DD_[Title]_Plan_Tasks.md` | [ ] | [ ] |
 | Marimo notebook | `[project]/YYYY-MM-DD_[Title].py` | [ ] | [ ] |
 | Stakeholder report | `[project]/YYYY-MM-DD_[Title]_Report.md` | [ ] | [ ] |
 | Lessons learned | `[project]/LEARNINGS.md` | [ ] | [ ] |
@@ -320,8 +321,8 @@ Execute verification in this order:
 
 4. TRUTH CHECK
    └─ Compare Report conclusions to research question
-   └─ Verify Plan commitments fulfilled
-   └─ Check checkpoint statuses in Plan
+   └─ Verify Plan.md commitments fulfilled
+   └─ Check checkpoint statuses in STATE.md
 
 5. EXECUTION CHECK
    └─ Load notebook: marimo run [notebook].py --host 0.0.0.0 --port 2718 --headless
@@ -398,11 +399,11 @@ Document any deviations from the original Plan:
    - Plan commitments met?
 
 2. **Document Deviations**
-   - What changed from Plan?
+   - What changed from Plan.md?
    - Why?
    - What's the impact?
 
-3. **Update Plan**
+3. **Update STATE.md**
    - Fill Final Review Log section
    - Record data-verifier outcome and any warnings
 
@@ -746,7 +747,7 @@ These quick notes can be expanded into full entries at Stage 12.
 - [ ] All alignment checks pass
 - [ ] Quality verified
 - [ ] Deviations documented
-- [ ] Plan updated with Final Review Log
+- [ ] STATE.md updated with Final Review Log
 - [ ] **LEARNINGS.md consolidated** (incremental entries reviewed, gaps filled)
 - [ ] **System Update Action Plan section present** (≥1 action item or "no generalizable learnings")
 - [ ] **Key findings flagged for repository consolidation** (in Action Plan)

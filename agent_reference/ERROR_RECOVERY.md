@@ -93,7 +93,7 @@ To prevent infinite retry loops and excessive resource consumption, track cumula
 
 ### Budget Tracking
 
-The orchestrator MUST track cumulative errors in the Plan document's "Current Status & To-Do's" section:
+The orchestrator MUST track cumulative errors in STATE.md's `## Error Budget Consumed` section:
 
 ```markdown
 ### Error Budget Status
@@ -105,6 +105,10 @@ The orchestrator MUST track cumulative errors in the Plan document's "Current St
 | Subagent re-invocations | 1 | 8/9 | ✅ Normal |
 | STOP conditions hit | 1 | 2/3 | ⚠️ Warning |
 ```
+
+### Budget Read-Gating
+
+The orchestrator reads the Error Budget Consumed section from STATE.md at Step 0 of each Composite Execution Pattern cycle (see `full-pipeline.md`). If any category has remaining budget ≤ 0, the orchestrator MUST STOP and follow the Budget Exhaustion Protocol below rather than dispatching the next task. This ensures budget enforcement is data-driven (read from STATE.md) rather than memory-dependent.
 
 ### Budget Exhaustion Protocol
 

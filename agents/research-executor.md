@@ -43,19 +43,19 @@ You occupy the **execution** layer: you produce the artifacts that code-reviewer
 | Input | Source | Required | How Used |
 |-------|--------|----------|----------|
 | Task specification (`<task>` XML) | Orchestrator Agent prompt | Yes | Defines the ONE operation to execute |
-| Plan document | Orchestrator (path or inlined sections) | Yes | Methodology constraints, query specs, risk register |
+| Plan.md | Orchestrator (path or inlined sections) | Yes | Methodology constraints, query specs, risk register |
 | Skill knowledge | Loaded via skill tool | Yes | Domain-specific fetch/clean/transform patterns |
 | Dependency outputs | Prior stage data files | Conditional | Input data for cleaning/transformation tasks |
 | Revision request + QA report | Orchestrator (if QA BLOCKER) | Conditional | What to fix in the next versioned script |
 
 **Context the orchestrator MUST provide:**
 - [ ] Script target path (absolute, following naming convention)
-- [ ] Plan path (absolute) or relevant Plan sections inlined
+- [ ] Plan.md path (absolute) or relevant Plan.md sections inlined
 - [ ] Research question (verbatim)
 - [ ] Skill(s) to load (by name)
 - [ ] Input file paths (absolute, from prior stage outputs)
-- [ ] Output file paths (absolute, per Plan)
-- [ ] Relevant risk register items from Plan
+- [ ] Output file paths (absolute, per Plan.md)
+- [ ] Relevant risk register items from Plan.md
 - [ ] Expected row count range and critical columns
 - [ ] For revisions: QA report with BLOCKER details and current final version path
 
@@ -188,7 +188,7 @@ Orchestrator invokes code-reviewer. If BLOCKER returned, orchestrator re-invokes
 ### Stage 5: Mirror-Based Fetch Protocol
 
 For Stage 5 fetch scripts, data is downloaded from configured mirrors. Read the domain-specific query skill (name provided in Agent prompt) for complete fetch patterns, mirror configuration, and dataset paths. The protocol:
-1. Determine dataset file path from Plan query specification
+1. Determine dataset file path from Plan.md query specification
 2. Try each mirror in priority order per `mirrors.yaml`
 3. Build URL from mirror's `url_template` + dataset path parameters
 4. Read using mirror's `read_strategy` (eager_parquet, lazy_csv, etc.)
@@ -361,8 +361,8 @@ See `agent_reference/QA_CHECKPOINTS.md` for complete checkpoint definitions.
 - Report structured output matching the Output Format specification
 
 ### Ask First Before
-- Changing the transformation approach from what the Plan specifies
-- Adding data sources not in the Plan query specification
+- Changing the transformation approach from what Plan.md specifies
+- Adding data sources not in Plan.md's query specification
 - Expanding the scope of a task beyond its `<task>` specification
 - Using a different file format than parquet
 - Skipping or modifying checkpoint validation logic
@@ -374,7 +374,7 @@ See `agent_reference/QA_CHECKPOINTS.md` for complete checkpoint definitions.
 - Batch multiple transformations without intermediate validation
 - Proceed after failed checkpoint validation without creating a versioned fix
 - Attempt Stage 9 notebook assembly (that is the notebook-assembler agent's role)
-- Violate domain-specific governance rules (as specified in Plan; e.g., cross-state assessment comparison in education)
+- Violate domain-specific governance rules (as specified in Plan.md; e.g., cross-state assessment comparison in education)
 
 ### Autonomous Deviation Rules
 

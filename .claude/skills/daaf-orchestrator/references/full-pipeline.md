@@ -22,7 +22,7 @@ This reference is loaded after the orchestrator classifies a request as Full Pip
 - **`{BASE_DIR}`** = project root (where `CLAUDE.md` resides)
 - **`{SKILL_REFS}`** = `{BASE_DIR}/.claude/skills/daaf-orchestrator/references`
 
-> **Domain Extensibility:** This workflow is domain-agnostic. Skill names referenced below (e.g., `education-data-explorer`, `education-data-query`, `education-data-context`) are the demonstration domain defaults. The orchestrator resolves actual skill names from the Plan's Domain Configuration section and provides them in Agent prompts. New domains can be added by authoring domain-specific Skills and registering them in the Plan's Domain Configuration.
+> **Domain Extensibility:** This workflow is domain-agnostic. Skill names referenced below (e.g., `education-data-explorer`, `education-data-query`, `education-data-context`) are the demonstration domain defaults. The orchestrator resolves actual skill names from Plan.md's Domain Configuration section and provides them in Agent prompts. New domains can be added by authoring domain-specific Skills and registering them in Plan.md's Domain Configuration.
 
 > **Invocation Pattern Authority:** Two layers:
 > 1. **`WORKFLOW_PHASE*.md`** — stage-specific invocation templates with full context fields, thoroughness directives, gate criteria, verification checklists, and PSU content. **Start here** when constructing a subagent prompt.
@@ -36,7 +36,13 @@ This reference is loaded after the orchestrator classifies a request as Full Pip
 
 ## Pre-Flight Checklist
 
-See `agent_reference/WORKFLOW_PHASE1_DISCOVERY.md` > "Pre-Flight Checklist (Full Pipeline Mode Only)" for the complete pre-flight checklist to present during initial mode confirmation.
+After mode confirmation (Gate G1) and before starting Stage 2, present the scope confirmation to the user:
+
+- **Deliverables:** Plan.md + Plan_Tasks.md, STATE.md, analytic scripts, validated datasets, marimo notebook, visualizations, stakeholder report, LEARNINGS.md
+- **Estimated scope:** Data sources, year range, approximate records, geographic scope
+- **User gate:** User confirms, adjusts scope, or switches mode before proceeding
+
+See `agent_reference/WORKFLOW_PHASE1_DISCOVERY.md` > "Pre-Flight Checklist (Full Pipeline Mode Only)" for the complete template with exact wording.
 
 ---
 
@@ -93,6 +99,13 @@ The Full Pipeline workflow consists of **5 Phases** and **12 Stages**.
 │      ├─ Output: Research question + scope confirmed                         │
 │      └─ Gate G1: Mode classified, scope confirmed                           │
 │                          ↓                                                  │
+│  ┌─ PRE-FLIGHT CHECKLIST (present to user) ─────────────────────────────┐   │
+│  │  □ Present deliverables list (Plan, scripts, notebook, report, etc.) │   │
+│  │  □ Confirm estimated scope (sources, years, records, geography)      │   │
+│  │  □ User confirms or adjusts before proceeding                        │   │
+│  │  See WORKFLOW_PHASE1_DISCOVERY.md > Pre-Flight Checklist             │   │
+│  └──────────────────────────────────────────────────────────────────────┘   │
+│                          ↓                                                  │
 │  Stage 2: Data Exploration ←── domain explorer skill                        │
 │      ├─ Identify available endpoints and variables                          │
 │      ├─ Report findings to user (adaptive)                                  │
@@ -106,7 +119,7 @@ The Full Pipeline workflow consists of **5 Phases** and **12 Stages**.
 │  Stage 3.5: Findings Synthesis ←── research-synthesizer agent               │
 │      ├─ Consolidate parallel Stage 2-3 findings                             │
 │      ├─ Resolve cross-source conflicts                                      │
-│      └─ Gate G3.5: Synthesis complete, unified guidance for Plan            │
+│      └─ Gate G3.5: Synthesis complete, unified guidance for Plan.md and Plan_Tasks.md│
 └─────────────────────────────────────────────────────────────────────────────┘
                           ↓
             ┌─────────────────────────────────┐
@@ -121,29 +134,30 @@ The Full Pipeline workflow consists of **5 Phases** and **12 Stages**.
 │  Stage 4: Plan Document Creation                                            │
 │      ├─ Synthesize Phase 1 findings                                         │
 │      ├─ Document methodology decisions                                      │
-│      ├─ Create project folder + Plan.md                                     │
+│      ├─ Create project folder + Plan.md + Plan_Tasks.md                     │
 │      ├─ **CRITICAL:** Complete Transformation Sequence table                │
 │      ├─ Create STATE.md with Plan Validation section (initially NOT_RUN)    │
 │      ├─ Create LEARNINGS.md skeleton (project metadata + empty sections)    │
 │      ├─ **WARNING:** DO NOT use Claude Code's EnterPlanMode tool here!      │
 │      │   Use data-planner agent + PLAN_TEMPLATE.md instead.                 │
-│      ├─ Report to user: "Plan created, invoking plan-checker..."            │
-│      └─ Gate G4: Plan + STATE.md + LEARNINGS.md created                     │
+│      ├─ Report to user: "Plan documents created, invoking plan-checker..."   │
+│      └─ Gate G4: Plan.md + Plan_Tasks.md + STATE.md + LEARNINGS.md created  │
 │                          ↓                                                  │
 │  Stage 4.5: Plan Validation ←── plan-checker agent                          │
 │      ├─ Automated 6-dimension plan validation                               │
 │      └─ Gate G4.5: plan-checker PASSED or PASSED_WITH_WARNINGS              │
 │                                                                             │
-│  **Transformation Sequence:** This table is REQUIRED and serves as the      │
-│  contract between orchestrator and subagents during Stage 7. Each row       │
-│  becomes a separate subagent invocation. Incomplete sequences lead to       │
-│  incomplete validation and unreliable results.                              │
+│  **Transformation Sequence:** This table (in Plan.md) with task blocks     │
+│  (in Plan_Tasks.md) serves as the contract between orchestrator and        │
+│  subagents during Stages 5-8. Each task becomes a separate subagent        │
+│  invocation. Incomplete sequences lead to incomplete validation and        │
+│  unreliable results.                                                       │
 └─────────────────────────────────────────────────────────────────────────────┘
                           ↓
             ┌─────────────────────────────────┐
             │  ★ PSU2: Phase Status Update 2  │
-            │  Present Plan SUMMARY for user  │
-            │  review; user reads full Plan   │
+            │  Present Plan.md SUMMARY for    │
+            │  review; user reads full Plan.md│
             │  before confirming              │
             └─────────────────────────────────┘
                           ↓
@@ -152,7 +166,8 @@ The Full Pipeline workflow consists of **5 Phases** and **12 Stages**.
 ├─────────────────────────────────────────────────────────────────────────────┤
 │  ┌─ STAGE 5 PRE-FLIGHT CHECK (MANDATORY) ─────────────────────────────────┐ │
 │  │  Before executing ANY Stage 5 task, verify:                            │ │
-│  │  □ Plan exists at expected path                                        │ │
+│  │  □ Plan.md exists at expected path                                      │ │
+│  │  □ Plan_Tasks.md exists at expected path                               │ │
 │  │  □ STATE.md exists                                                     │ │
 │  │  □ STATE.md "Plan Validation" section shows:                           │ │
 │  │    - Plan-Checker Status: PASSED or PASSED_WITH_WARNINGS               │ │
@@ -224,16 +239,16 @@ The Full Pipeline workflow consists of **5 Phases** and **12 Stages**.
 │ PHASE 5: SYNTHESIS & DELIVERY                                               │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │  Stage 11: Report Generation ←── report-writer agent                        │
-│      ├─ Synthesize Plan, Notebook, STATE, LEARNINGS, QA summary             │
+│      ├─ Synthesize Plan.md, Notebook, STATE.md, LEARNINGS.md, QA            │
 │      ├─ Follow Section-Source Mapping for each REPORT_TEMPLATE.md section   │
 │      ├─ Cross-check Research Outcomes against Key Findings                  │
 │      └─ Gate G11: Report complete with all sections + figure references     │
 │                          ↓                                                  │
 │  Stage 12: Final Review                                                     │
 │      ├─ Verify alignment with original request                              │
-│      ├─ Check all Plan commitments fulfilled                                │
+│      ├─ Check all Plan.md commitments fulfilled                             │
 │      ├─ Document any deviations                                             │
-│      ├─ Update Plan with Final Review Log                                   │
+│      ├─ Update STATE.md with Final Review Log                               │
 │      ├─ **Consolidate LEARNINGS.md (review incremental entries, fill gaps)**│
 │      ├─ **Generate System Update Action Plan section in LEARNINGS.md**      │
 │      └─ Gate G12: Final review passed, all commitments fulfilled            │
@@ -249,14 +264,14 @@ The Full Pipeline workflow consists of **5 Phases** and **12 Stages**.
 
 ## Stage 5-8 Per-Script Execution & QA Loop
 
-**Every stage from 5 through 8 is executed as MULTIPLE subagent calls with interleaved QA, NOT as a single invocation per stage.** Each script in the Plan's Transformation Sequence table is executed by research-executor, then **immediately and separately** reviewed by code-reviewer, before the next script begins. This applies equally to Stage 5 (fetch scripts), Stage 6 (clean scripts), Stage 7 (transformation scripts), and Stage 8 (analysis and visualization scripts). Any Stage writing net new code must adhere to this. QA scripts are saved to `scripts/cr/stage{N}_{step}_cr{1..5}.py`. The **Stage 5-8 Composite Execution Pattern** below defines the authoritative execution flow — it is the MANDATORY atomic unit for all Stage 5-8 work. See `agents/code-reviewer.md` for the complete QA protocol and `agent_reference/QA_CHECKPOINTS.md` for checkpoint definitions.
+**Every stage from 5 through 8 is executed as MULTIPLE subagent calls with interleaved QA, NOT as a single invocation per stage.** Each script in Plan.md's Transformation Sequence table is executed by research-executor, then **immediately and separately** reviewed by code-reviewer, before the next script begins. This applies equally to Stage 5 (fetch scripts), Stage 6 (clean scripts), Stage 7 (transformation scripts), and Stage 8 (analysis and visualization scripts). Any Stage writing net new code must adhere to this. QA scripts are saved to `scripts/cr/stage{N}_{step}_cr{1..5}.py`. The **Stage 5-8 Composite Execution Pattern** below defines the authoritative execution flow — it is the MANDATORY atomic unit for all Stage 5-8 work. See `agents/code-reviewer.md` for the complete QA protocol and `agent_reference/QA_CHECKPOINTS.md` for checkpoint definitions.
 
 **Why this matters:**
 - The core principle "Every transformation has a validation" requires separate execution cycles
 - Each subagent call captures pre-state, executes ONE script, validates post-state
 - QA must run immediately after each script so findings can inform whether to proceed, revise, or stop
 - Batching QA to stage end means errors in script 1 propagate silently through scripts 2, 3, 4 — compounding data corruption
-- The Transformation Sequence table in the Plan is the contract for these invocations
+- The Transformation Sequence table (Plan.md) and task blocks (Plan_Tasks.md) are the contract for these invocations
 
 **See:** the appropriate `agent_reference/WORKFLOW_PHASE*.md` file for detailed per-script execution guidance.
 
@@ -302,13 +317,21 @@ For EACH task in Stages 5-8, follow this complete loop. **Do NOT skip any step.*
 │      └─ If still BLOCKER after 2 revisions → STOP and escalate to user      │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │  STEP 5: UPDATE STATE.md                                                    │
-│      ├─ Update Transformation Progress table                                │
-│      ├─ Record QA status and any findings                                   │
+│      ├─ Update Transformation Progress table (per-script QA status)         │
+│      ├─ Append QA findings to QA Findings Summary incrementally             │
+│      │   (BLOCKERs Resolved, WARNINGs Logged — don't defer to Stage 10)    │
+│      ├─ If analysis addresses a Plan.md hypothesis, update Hypothesis       │
+│      │   Assessment Progress                                                │
 │      └─ Proceed to next task in wave                                        │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  STEP 0 (before each cycle): READ STATE.md                                  │
+│      ├─ Verify current position and prior task statuses                     │
+│      ├─ Check Error Budget — confirm remaining budget > 0                   │
+│      └─ Confirm no unresolved BLOCKERs from prior tasks                    │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
-**CRITICAL:** Steps 1-5 form an atomic unit. NEVER proceed to the next task without completing all steps. NEVER batch multiple executor calls without intermediate QA.
+**CRITICAL:** Steps 0-5 form an atomic unit. Step 0 runs before each new task cycle. NEVER proceed to the next task without completing all steps. NEVER batch multiple executor calls without intermediate QA.
 
 ---
 
@@ -345,7 +368,7 @@ Validation: {approach}
 
 **Step 2: Review Code**
 - Orchestrator reviews proposed approach
-- Checks for alignment with Plan
+- Checks for alignment with Plan.md
 - Verifies validation approach is adequate
 
 **Step 3: Execute with Validation**
@@ -388,7 +411,7 @@ These operations may be executed without preview:
 | Phase 1 | Data Discovery | — | PSU1 (after Phase 1) | `agent_reference/WORKFLOW_PHASE1_DISCOVERY.md` |
 | Phase 2 | Plan Management | — | PSU2 (after Phase 2) | `agent_reference/WORKFLOW_PHASE2_PLANNING.md` |
 | Phase 3 | Data Acquisition | Validation (CP1-CP2) | PSU3 (after Phase 3) | `agent_reference/WORKFLOW_PHASE3_ACQUISITION.md` |
-| Phase 4 | Validation Checkpoints | Plan Management (updates) | PSU4 (after Phase 4) | `agent_reference/WORKFLOW_PHASE4_ANALYSIS.md` |
+| Phase 4 | Validation Checkpoints | STATE.md Management (runtime updates) | PSU4 (after Phase 4) | `agent_reference/WORKFLOW_PHASE4_ANALYSIS.md` |
 | Phase 5 | Synthesis & Delivery | Stages 11-12 | Final Review | `agent_reference/WORKFLOW_PHASE5_SYNTHESIS.md` |
 
 **Note:** Session Recovery is documented in `{SKILL_REFS}/session-recovery.md`.
@@ -399,7 +422,7 @@ These operations may be executed without preview:
   - Phase 4: CP3 (after transformation)
   - Phase 5: CP4 (before final output, during Stages 11-12)
 - **QA Checkpoints (QA1-QA4b)** run in parallel as secondary validation during Phases 3-4
-- **Plan Document Maintenance** — Plan is created in Phase 2 but updated throughout Phases 3-5
+- **Plan Document Maintenance** — Plan.md + Plan_Tasks.md are created and frozen in Phase 2; runtime state is tracked in STATE.md throughout Phases 3-5
 
 ## Skill-to-Stage Mapping
 
@@ -425,7 +448,7 @@ These operations may be executed without preview:
 
 **Notes:**
 - Stages 5 and 6 use `general-purpose` subagent type because they require file write capability (saving parquet files to `data/raw/` and `data/processed/`).
-- **Stage 4 responsibility split:** The `data-planner` agent creates the Plan document only. The **orchestrator** is responsible for creating STATE.md (from `agent_reference/STATE_TEMPLATE.md`) and the LEARNINGS.md skeleton (from `agent_reference/WORKFLOW_PHASE5_SYNTHESIS.md`) after the data-planner returns. Gate G4 requires all three files.
+- **Stage 4 responsibility split:** The `data-planner` agent creates Plan.md and Plan_Tasks.md. The **orchestrator** is responsible for creating STATE.md (from `agent_reference/STATE_TEMPLATE.md`) and the LEARNINGS.md skeleton (from `agent_reference/WORKFLOW_PHASE5_SYNTHESIS.md`) after the data-planner returns. Gate G4 requires all four files.
 - **Stage 10** has no dedicated agent — the orchestrator performs QA aggregation directly by reviewing accumulated code-reviewer findings from Stages 5-8.
 
 **Stage 10 Protocol:** Read STATE.md's Transformation Progress table as the sole input. For each script: (1) Check QA status (PASS / PASS_WITH_WARNINGS / N/A), (2) Aggregate WARNING items into a summary, (3) Verify no unresolved BLOCKERs exist, (4) Compose QA Aggregation Summary for PSU4. Do NOT re-read individual QA scripts — STATE.md already tracks all QA outcomes.
@@ -433,7 +456,7 @@ These operations may be executed without preview:
 - The `Plan` type is read-only and cannot write files.
 - All Stages 5-8 scripts must follow IAT documentation standards (`agent_reference/INLINE_AUDIT_TRAIL.md`).
 
-**Note:** Stages 2, 3, 5, and 6 use domain-specific skills resolved by the orchestrator based on the active domain configuration in the Plan.
+**Note:** Stages 2, 3, 5, and 6 use domain-specific skills resolved by the orchestrator based on the active domain configuration in Plan.md.
 
 ---
 
@@ -455,7 +478,7 @@ See the "Task Types" section below for the complete taxonomy, behavioral descrip
 
 **Stage 5 (Fetch) Checklist:**
 - [ ] Script target path specified (absolute, following naming convention)
-- [ ] Plan path specified or relevant Plan sections inlined
+- [ ] Methodology context from Plan.md and task spec from Plan_Tasks.md inlined
 - [ ] Research question inlined
 - [ ] Years specified (exact range, not "recent years")
 - [ ] Geographic scope specified (state, national, etc.)
@@ -463,19 +486,19 @@ See the "Task Types" section below for the complete taxonomy, behavioral descrip
 - [ ] Expected row count range and critical columns specified
 - [ ] Output file paths specified (not placeholder)
 - [ ] Missingness and coded value expectations mentioned
-- [ ] Risk Register items for fetch included (from Plan)
+- [ ] Risk Register items for fetch included (from Plan.md)
 - [ ] Domain query skill specified
 - [ ] Script follows IAT documentation standards
 
 **Stage 6 (Clean) Checklist:**
 - [ ] Script target path specified (absolute, following naming convention)
-- [ ] Plan path specified or relevant Plan sections inlined
+- [ ] Methodology context from Plan.md and task spec from Plan_Tasks.md inlined
 - [ ] Research question inlined
 - [ ] Raw data location specified (exact path from Stage 5 output)
 - [ ] Source caveats from Stage 3 inlined (not just referenced)
 - [ ] Coded value handling specification provided
 - [ ] Suppression tolerance thresholds specified
-- [ ] Expected row count range and critical columns identified (from Plan Research Outcomes)
+- [ ] Expected row count range and critical columns identified (from Plan.md Research Outcomes)
 - [ ] Output file paths specified (not placeholder)
 - [ ] Risk Register items for cleaning included
 - [ ] Domain context skill specified (or N/A)
@@ -483,10 +506,10 @@ See the "Task Types" section below for the complete taxonomy, behavioral descrip
 
 **Stage 7 (Transform) Checklist:**
 - [ ] Script target path specified (absolute, following naming convention)
-- [ ] Plan path specified or relevant Plan sections inlined
+- [ ] Methodology context from Plan.md and task spec from Plan_Tasks.md inlined
 - [ ] Research question inlined
 - [ ] Input file paths specified (absolute, from prior stage outputs)
-- [ ] Output file paths specified (absolute, per Plan)
+- [ ] Output file paths specified (absolute, per Plan_Tasks.md)
 - [ ] Prior transformation context inlined (EDA findings, prior transform results)
 - [ ] Invariants to maintain listed (from prior transformations)
 - [ ] Transformation specification complete (exact columns, exact conditions)
@@ -499,17 +522,17 @@ See the "Task Types" section below for the complete taxonomy, behavioral descrip
 
 **Code-Reviewer (QA) Checklist:**
 - [ ] Script path specified (exact path)
-- [ ] Plan expectations INLINED (not just path) — row counts, tolerances, critical columns
+- [ ] Plan.md + Plan_Tasks.md expectations INLINED (not just path) — row counts, tolerances, critical columns
 - [ ] QA tolerance thresholds specified (BLOCKER if, WARNING if)
 - [ ] Risk Register items included
 - [ ] Research Outcome contribution stated
 - [ ] Prior QA findings accumulated (if any WARNING items from prior scripts)
-- [ ] Coded values from Plan inlined
+- [ ] Coded values from Plan.md inlined
 - [ ] IAT compliance expectations stated
 
 **Stage 8.1 (Analysis) Checklist:**
 - [ ] Script target path specified (absolute, following naming convention)
-- [ ] Plan path specified or relevant Plan sections inlined
+- [ ] Methodology context from Plan.md and task spec from Plan_Tasks.md inlined
 - [ ] Research question inlined
 - [ ] Analysis dataset path specified (exact path from Stage 7 output)
 - [ ] Statistical method specified (regression, summary stats, comparison, etc.)
@@ -525,7 +548,7 @@ See the "Task Types" section below for the complete taxonomy, behavioral descrip
 
 **Stage 8.2 (Visualization) Checklist:**
 - [ ] Script target path specified (absolute, following naming convention)
-- [ ] Plan path specified or relevant Plan sections inlined
+- [ ] Methodology context from Plan.md and task spec from Plan_Tasks.md inlined
 - [ ] Research question inlined
 - [ ] Analysis dataset and/or analysis results paths specified
 - [ ] Figure specification provided (chart type, variables, grouping)
@@ -542,7 +565,7 @@ See the "Task Types" section below for the complete taxonomy, behavioral descrip
 - [ ] Current final version path specified (absolute)
 - [ ] QA report with BLOCKER details inlined
 - [ ] Suggested fix from code-reviewer included
-- [ ] Plan path specified or relevant Plan sections inlined
+- [ ] Methodology context from Plan.md and task spec from Plan_Tasks.md inlined
 
 **If any checklist item is unchecked:** Add the missing context before invoking. Incomplete context = subagent asks clarifying questions = wasted round-trip.
 
@@ -590,9 +613,9 @@ Report to the user **adaptively** at these trigger points:
 | ID | Transition | After Stage | Before Stage | What User Reviews |
 |---|---|---|---|---|
 | PSU1 | Phase 1 → Phase 2 | 3.5 (Synthesis) | 4 (Plan Creation) | Discovery findings, data availability, source caveats, feasibility, recommended approach |
-| PSU2 | Phase 2 → Phase 3 | 4.5 (Plan Validation) | 5 (Data Retrieval) | Plan summary (methodology, scope, task sequence, research outcomes, hypotheses) — user directed to read full Plan before approving |
+| PSU2 | Phase 2 → Phase 3 | 4.5 (Plan Validation) | 5 (Data Retrieval) | Plan.md summary (methodology, scope, task sequence, research outcomes, hypotheses) — user directed to read full Plan.md before approving |
 | PSU3 | Phase 3 → Phase 4 | 6 (Context Application) | 7 (EDA & Transformation) | Data quality metrics, suppression rates, datasets acquired, QA1/QA2 summaries |
-| PSU4 | Phase 4 → Phase 5 | 10 (QA Aggregation) | 11 (Report Generation) | Statistical results, key visualizations, QA aggregation, deviations from Plan |
+| PSU4 | Phase 4 → Phase 5 | 10 (QA Aggregation) | 11 (Report Generation) | Statistical results, key visualizations, QA aggregation, deviations from Plan.md |
 
 #### PSU Template and Content Requirements
 
@@ -670,40 +693,49 @@ The checkpoint template includes an explicit "Your Options" block so the user al
 
 ### Plan Document Maintenance
 
-The Plan document is your **persistent memory** across the workflow and the most important document for auditability, replicability, and rigor. Treat this as the highest of priorities at all times, being verbose as much as possible to prevent losing track of information or decisions crucial to the project, and to enforce clear communication with all subagents working in the project as well.
+The Plan documents (Plan.md + Plan_Tasks.md) are your **persistent memory** for methodology and task specification, and the most important documents for auditability, replicability, and rigor. They are **frozen after Stage 4.5** — all runtime state updates go to STATE.md.
 
-1. **Create** during Phase 2 (Stage 4)
-2. **Update** as decisions are made and findings emerge
-3. **Reference** when delegating to subagents (include relevant sections)
-4. **Finalize** during Phase 5 with Final Review Log
+1. **Create** during Phase 2 (Stage 4) — data-planner produces Plan.md (strategic specification) + Plan_Tasks.md (executable task sequence)
+2. **Freeze** after Stage 4.5 (Plan Validation) — no further modifications to Plan.md or Plan_Tasks.md
+3. **Reference** when delegating to subagents — methodology context from Plan.md, task-specific context from Plan_Tasks.md (orchestrator searches for `### Task {step}:` headers to find specific task blocks)
+4. **Track runtime state** in STATE.md — all decisions, findings, risks, QA results, and progress go here
 
 See `agent_reference/PLAN_TEMPLATE.md` for the complete template.
 
-The Plan document is the **single source of truth** for the analysis. It:
-- Captures all decisions and their rationale
-- Provides context for subagent invocations
-- Enables session continuity (return to work later)
-- Supports version control for revisions
+The Plan documents are the **single source of truth** for methodology and task specification. They:
+- Capture all pre-execution decisions and their rationale
+- Provide context for subagent invocations
+- Enable session continuity (return to work later)
+- Support version control for revisions
 
-**Completeness Standard:** The Plan must be comprehensive enough that any subagent can execute its stage with ONLY the Plan as context (plus skill knowledge).
+STATE.md is the **single source of truth** for runtime state. It tracks:
+- All runtime decisions and their rationale (Key Decisions Made)
+- Runtime risks discovered during execution (Runtime Risks)
+- QA findings across all stages (QA Findings Summary)
+- Final review results (Final Review Log)
+- Transformation progress and checkpoint statuses
 
-### Plan Update Events
+**Completeness Standard:** The Plan documents must be comprehensive enough that any subagent can execute its stage with ONLY Plan.md + Plan_Tasks.md as context (plus skill knowledge).
 
-Update the Plan as the analysis progresses:
+### Runtime State Update Events
 
-| Event | Update Required |
-|-------|-----------------|
-| Decision made | Add to Decisions Log |
-| Limitation discovered | Add to appropriate section |
-| Deviation from plan | Document in Deviations section |
-| Checkpoint passed | Update status |
-| Error encountered | Document in Issues section |
-| Phase completed | Update Current Status |
-| **Risk identified** | **Add to Risk Register (see below)** |
+Update STATE.md as the analysis progresses:
 
-### Risk Register Updates
+| Event | STATE.md Section to Update |
+|-------|---------------------------|
+| Decision made | Key Decisions Made |
+| Limitation discovered | Context Snapshot or Runtime Risks |
+| Deviation from plan | Key Decisions Made (with rationale) |
+| Checkpoint passed | Checkpoint Status table |
+| Error encountered | Blockers section |
+| Phase completed | Session History |
+| Risk identified | Runtime Risks (see below) |
+| QA finding | QA Findings Summary |
+| Final review result | Final Review Log |
 
-The Risk Register in the Plan document MUST be updated when new risks are discovered during execution.
+### Runtime Risk Tracking
+
+Runtime risks discovered during execution are tracked in STATE.md's **Runtime Risks** section.
 
 **Update Triggers:**
 
@@ -719,7 +751,7 @@ The Risk Register in the Plan document MUST be updated when new risks are discov
 
 **Update Format:**
 
-Add row to Risk Register section of Plan with:
+Add row to Runtime Risks section of STATE.md with:
 - **Risk:** Clear description of the issue
 - **Likelihood:** Low/Medium/High
 - **Impact:** Low/Medium/High (on analysis validity/completeness)
@@ -739,7 +771,7 @@ These patterns supplement the Universal Prompt Requirements in `SKILL.md` and th
 
 ### Wave-Based Parallel Execution
 
-Tasks in the Plan's transformation sequence have wave assignments:
+Tasks in Plan_Tasks.md have wave assignments:
 
 ```
 Wave 1: [fetch-ccd, fetch-meps]     ← Run in parallel
@@ -756,6 +788,24 @@ Wave 3: [join-data]                 ← Depends on Wave 2
 
 See `agent_reference/PLAN_TEMPLATE.md` for wave-based task table format.
 
+### Plan_Tasks.md Extraction Protocol
+
+Plan_Tasks.md can be 1000+ lines. **Never read the full file into orchestrator context.** Use targeted extraction:
+
+1. **Read the Task Index** — The `## Task Index` table is near the top of the file (~first 30-40 lines after frontmatter). It provides a compact lookup of all tasks: step, name, wave, stage, script path, dependencies.
+2. **Identify the target task** — Match by step number (e.g., `1.1`) or task name (e.g., `fetch-ccd-schools`).
+3. **Search for the task header** — Use the pattern `### Task {step}: {task-name}` to find the specific block (e.g., `### Task 1.1: fetch-ccd-schools [Stage 5]`).
+4. **Read the task block** — From the `### Task` header through the closing `</task>` tag. Each block is typically 20-40 lines.
+5. **Inline the extracted block** — Paste the `<task>` XML into the subagent prompt under `## TASK SPECIFICATION`.
+
+**What the orchestrator keeps in its own context:**
+- The Task Index table (compact — ~10-20 rows)
+- The current wave number and which tasks remain
+
+**What gets extracted on demand per subagent dispatch:**
+- The specific `<task>` XML block for that dispatch
+- Relevant methodology context from Plan.md (separate extraction)
+
 ### Thoroughness Directives by Stage
 
 See the Thoroughness Directive section in the appropriate `agent_reference/WORKFLOW_PHASE*.md` file for stage-specific requirements.
@@ -770,15 +820,15 @@ Each stage has explicit input/output contracts and gate criteria:
 | 2 | Stage 1 (mode + scope) | Stage 3 | G2: ≥1 endpoint identified, key variables flagged |
 | 3 | Stage 2 endpoints | Stage 3.5 | G3: All flagged variables investigated, coded values documented, suppression patterns identified |
 | 3.5 | Stages 2, 3 | PSU1 to user, then Stage 4 | G3.5: Synthesis complete, conflicts resolved, user confirmed PSU1 |
-| 4 | Phase 1 findings | Stage 4.5 | G4: Plan created, STATE.md created, LEARNINGS.md skeleton created |
+| 4 | Phase 1 findings | Stage 4.5 | G4: Plan.md + Plan_Tasks.md created, STATE.md created, LEARNINGS.md skeleton created |
 | 4.5 | Stage 4 (Plan) | PSU2 to user, then Stage 5 | G4.5: Plan validation PASSED or PASSED_WITH_WARNINGS, user confirmed PSU2 |
-| 5 | Plan (query spec) | Stage 6 | G5: CP1 PASSED per script, code-reviewer separately invoked per script immediately after completion, all QA1 ∈ {PASSED, WARNING}, data saved to data/raw/ |
+| 5 | Plan.md + Plan_Tasks.md (query spec) | Stage 6 | G5: CP1 PASSED per script, code-reviewer separately invoked per script immediately after completion, all QA1 ∈ {PASSED, WARNING}, data saved to data/raw/ |
 | 6 | Stage 5 (raw data) | PSU3 to user, then Stage 7 | G6: CP2 PASSED per script, code-reviewer separately invoked per script immediately after completion, all QA2 ∈ {PASSED, WARNING}, suppression <50%, data saved to data/processed/, user confirmed PSU3 |
 | 7 | Stage 6 (clean data) | Stage 8, 9 | G7: All transformations validated (CP3) per script, code-reviewer separately invoked per script immediately after completion, all QA3 ∈ {PASSED, WARNING}, analysis dataset saved to `data/processed/[date]_analysis.parquet` (at Stage 7.3) |
 | 8 | Stage 7 (analysis data) | Stage 9, 11 | G8: Statistical results saved to output/analysis/, visualizations saved to output/figures/, code-reviewer separately invoked per 8.1 script (QA4a) and per 8.2 script (QA4b) immediately after each completes, all QA4a and QA4b ∈ {PASSED, WARNING} |
 | 9 | Stages 7, 8 | Stage 10 | G9: Notebook runs without errors, all scripts represented with code + execution logs |
 | 10 | Stage 9 (notebook) | PSU4 to user, then Stage 11 | G10: QA findings aggregated, all BLOCKERs resolved, all WARNINGs documented, user confirmed PSU4 |
-| 11 | Stages 9, 10, Plan, STATE.md, LEARNINGS.md | Stage 12 | G11: report-writer returned COMPLETE or COMPLETE_WITH_GAPS, all REPORT_TEMPLATE.md sections populated, figure references verified |
+| 11 | Stages 9, 10, Plan.md + Plan_Tasks.md, STATE.md, LEARNINGS.md | Stage 12 | G11: report-writer returned COMPLETE or COMPLETE_WITH_GAPS, all REPORT_TEMPLATE.md sections populated, figure references verified |
 | 12 | All prior stages | Delivery | G12: Final Review PASSED, all commitments fulfilled, LEARNINGS.md consolidated with System Update Action Plan, cross-artifact coherence verified |
 
 **QA Gate Notes:**
@@ -788,7 +838,7 @@ Each stage has explicit input/output contracts and gate criteria:
 
 ### Subagent Output Verification Protocol
 
-**CRITICAL:** Before integrating subagent findings into the Plan or proceeding to the next stage, verify that subagent output meets orchestrator expectations.
+**CRITICAL:** Before integrating subagent findings into STATE.md (or into Plan documents during Phase 2) or proceeding to the next stage, verify that subagent output meets orchestrator expectations.
 
 **Verification Checklist:**
 
@@ -929,11 +979,11 @@ All relative paths in referenced files resolve from BASE_DIR.
 Call the skill tool with name '[skill-name]'.
 
 ## CONTEXT FROM PLAN
-[Paste relevant Plan section - Context Completeness Checklist always takes priority over brevity]
+[Paste relevant Plan.md methodology sections and Plan_Tasks.md task blocks - Context Completeness Checklist always takes priority over brevity]
 
 Original Request: [verbatim user request — required for Stage 4; include for other stages when methodology alignment matters]
-Research Question: [from Plan]
-Data Source: [from Plan]
+Research Question: [from Plan.md]
+Data Source: [from Plan.md]
 Current Stage: [N]
 Wave: [N] (if applicable)
 
@@ -1083,7 +1133,7 @@ If any checkbox is unchecked → Add specificity until all pass.
 
 ## Prompt Size Targets by Subagent Type
 
-| Subagent Type | Target Prompt Size | Typical Context from Plan |
+| Subagent Type | Target Prompt Size | Typical Context from Plan.md + Plan_Tasks.md |
 |---------------|-------------------|--------------------------|
 | Plan | ~500 words | ~200 words |
 | general-purpose | ~1000 words | ~500 words |
@@ -1110,7 +1160,8 @@ These are efficiency TARGETS for typical tasks, not hard ceilings that override 
 
 | Content Type | Inline? | Rationale |
 |--------------|---------|-----------|
-| Relevant Plan sections | YES | Methodology decisions needed |
+| Relevant Plan.md sections | YES | Methodology decisions needed |
+| Relevant Plan_Tasks.md task blocks | YES | Task specifications needed |
 | Prior stage findings | YES | Dependencies must be clear |
 | Decision context | YES | Rationale affects execution |
 | Expected values | YES | Validation needs targets |
@@ -1134,8 +1185,11 @@ Call the skill tool with name '[skill-name]'.
 
 ## INLINED CONTEXT
 
-### From Plan (Methodology):
+### From Plan.md (Methodology):
 {paste_relevant_methodology_section}
+
+### From Plan_Tasks.md (Task Specification):
+{paste_relevant_task_block}
 
 ### From Stage [N-1] (Prior Findings):
 - Key finding 1: [value]
@@ -1158,7 +1212,7 @@ Call the skill tool with name '[skill-name]'.
 
 ### What NOT to Inline
 
-- **Full Plan document:** Too large. Inline only relevant sections.
+- **Full Plan.md or Plan_Tasks.md:** Too large. Inline only relevant sections/task blocks.
 - **Complete skill content:** Subagent loads via skill tool (5K-20K tokens saved).
 - **Downloaded raw data:** Summarize to shapes and key values.
 - **Complete notebooks:** Reference by path, inline only specific cells if needed.
@@ -1193,8 +1247,9 @@ All relative paths in referenced files resolve from BASE_DIR.
 **SCRIPT TO REVIEW:**
 Path: scripts/stage{N}_{type}/{step}_{task-name}.py
 
-**PLAN LOCATION:**
-{plan_path}
+**PLAN LOCATIONS:**
+Plan.md: {plan_path}
+Plan_Tasks.md: {plan_tasks_path}
 
 **OUTPUT FILES:**
 {list_of_output_files}
@@ -1210,11 +1265,11 @@ Path: scripts/stage{N}_{type}/{step}_{task-name}.py
 
 | Aspect | Expected | Source |
 |--------|----------|--------|
-| Output rows | {min_rows} - {max_rows} | Plan Transformation Sequence row {step} |
-| Row change | ±{tolerance}% | Plan expected outcome |
-| Critical columns | {column_list} | Plan Research Outcomes |
-| Max acceptable loss | {loss_pct}% | Plan Risk Register |
-| Join cardinality | {cardinality_or_NA} | Plan (if join task) |
+| Output rows | {min_rows} - {max_rows} | Plan.md Transformation Sequence row {step} |
+| Row change | ±{tolerance}% | Plan_Tasks.md expected outcome |
+| Critical columns | {column_list} | Plan.md Research Outcomes |
+| Max acceptable loss | {loss_pct}% | Plan.md Risk Register |
+| Join cardinality | {cardinality_or_NA} | Plan_Tasks.md (if join task) |
 
 ## RISK REGISTER ITEMS FOR THIS STAGE
 
@@ -1293,6 +1348,12 @@ All relative paths in referenced files resolve from BASE_DIR.
 **Original Script:** scripts/stage{N}_{type}/{step}_{task-name}.py
 **Current Final Version:** scripts/stage{N}_{type}/{step}_{task-name}_{suffix}.py
 
+**METHODOLOGY CONTEXT (from Plan.md):**
+{relevant methodology decisions, coded values, research outcomes for this task}
+
+**TASK SPECIFICATION (from Plan_Tasks.md):**
+{the <task> XML block for this specific task, including <action>, <verify>, <done>}
+
 **QA BLOCKER Issue:**
 - **Type:** {issue_type}
 - **Description:** {issue_description}
@@ -1301,8 +1362,8 @@ All relative paths in referenced files resolve from BASE_DIR.
 
 **Instructions:**
 1. Create new versioned script: {step}_{task-name}_{next_suffix}.py
-2. Apply fix for the BLOCKER issue
-3. Execute with full validation
+2. Apply fix for the BLOCKER issue while maintaining alignment with Plan.md methodology
+3. Execute with full validation per the task's <verify> block
 4. Append execution log
 5. Return execution report
 
@@ -1391,10 +1452,10 @@ Awaiting user guidance.
 
 | Context Item | Source | Required In Stage 5 Prompt |
 |--------------|--------|---------------------------|
-| Query specifications | Plan | YES — exact endpoint, years, filters |
-| Expected row counts | Plan | YES — ranges |
-| Risk Register items for fetch | Plan | YES — relevant risks |
-| Output file paths | Plan | YES — explicit paths |
+| Query specifications | Plan.md + Plan_Tasks.md | YES — exact endpoint, years, filters |
+| Expected row counts | Plan_Tasks.md | YES — ranges |
+| Risk Register items for fetch | Plan.md | YES — relevant risks |
+| Output file paths | Plan_Tasks.md | YES — explicit paths |
 
 ### Stage 5 → Stage 6 Context
 
@@ -1405,9 +1466,9 @@ Awaiting user guidance.
 | All raw data file paths (one per fetch script) | Stage 5 output | YES — exact paths for every file produced |
 | CP1 validation results for ALL Stage 5 scripts | Stage 5 output | YES — what passed/failed per script |
 | QA1 status for EACH Stage 5 script separately | Stage 5 QA | YES — per-script QA outcomes |
-| Source caveats | Stage 3 → Plan | YES — inlined, not just referenced |
-| Coded value handling rules | Plan | YES — complete specification |
-| Suppression tolerance | Plan | YES — BLOCKER/WARNING thresholds |
+| Source caveats | Stage 3 → Plan.md | YES — inlined, not just referenced |
+| Coded value handling rules | Plan.md | YES — complete specification |
+| Suppression tolerance | Plan.md | YES — BLOCKER/WARNING thresholds |
 
 ### Stage 6 → Stage 7 Context
 
@@ -1427,10 +1488,10 @@ Awaiting user guidance.
 | Context Item | Source | Required In QA Prompt |
 |--------------|--------|----------------------|
 | Script path | research-executor | YES — exact path |
-| Plan expectations | Plan (inlined) | YES — row counts, tolerances |
-| Research Outcome contribution | Plan | YES — what this task enables |
-| Risk Register items | Plan | YES — relevant mitigations |
-| QA tolerance thresholds | Plan (QA Tolerance Decisions section) | YES — BLOCKER/WARNING criteria |
+| Plan expectations | Plan.md + Plan_Tasks.md (inlined) | YES — row counts, tolerances |
+| Research Outcome contribution | Plan.md | YES — what this task enables |
+| Risk Register items | Plan.md | YES — relevant mitigations |
+| QA tolerance thresholds | Plan.md (QA Tolerance Decisions section) | YES — BLOCKER/WARNING criteria |
 | Prior QA findings | Accumulated from prior scripts | YES — WARNING items to track |
 
 ---
@@ -1456,7 +1517,7 @@ Awaiting user guidance.
 **LOW confidence findings:** MUST have resolution path before proceeding:
 1. Re-run discovery with refined parameters
 2. Escalate to user for guidance
-3. Document risk acceptance explicitly in Plan
+3. Document risk acceptance explicitly in Plan.md (if during planning) or STATE.md Runtime Risks (if during execution)
 
 **LOW confidence items cannot be silently ignored.**
 
@@ -1502,7 +1563,7 @@ Agents (research-executor, code-reviewer, debugger) include a lightweight Learni
 
 **Examples:**
 - `**Learning Signal:** CCD enrollment value codes were not as expected in the codebook; codes needed to be explicitly examined for progress to continue`
-- `**Learning Signal:** Data — MEPS poverty rates have 15% suppression in rural counties (higher than Plan estimate of 5%)`
+- `**Learning Signal:** Data — MEPS poverty rates have 15% suppression in rural counties (higher than Plan.md estimate of 5%)`
 - `**Learning Signal:** None`
 
 ### Accumulation Flow
@@ -1578,18 +1639,18 @@ When interpreting data values and resolving discrepancies between sources, apply
 | **CP1** | After data fetch | Shape, types, missingness, expected rows | Empty data, >90% missing critical fields |
 | **CP2** | After cleaning | Coded values handled, suppression rate | >50% suppression, invalid analysis type |
 | **CP3** | After transformation | Row counts, join validation, no data loss | >90% row loss, unexpected NAs |
-| **CP4** | Before output | Completeness, consistency with Plan | Missing required outputs, Plan violations |
+| **CP4** | Before output | Completeness, consistency with Plan.md | Missing required outputs, Plan.md violations |
 
 **CP4 Detail:** CP4 runs during Stages 11-12 and validates:
 - **CP4.1:** All required columns present in analysis data
-- **CP4.2:** No nulls in critical columns defined in Plan
-- **CP4.3:** All analysis outputs in Plan's analysis spec exist in output/analysis/ and all figures in Plan's visualization spec exist in output/figures/
-- **CP4.4:** All Plan-required report sections complete
-- **CP4.5:** Outputs match Plan commitments (data sources, years, geography, methodology)
-- **CP4.6:** All Research Outcomes in Plan are addressed with evidence
-- **CP4.7:** All Hypotheses in Plan (if any) are transparently assessed
+- **CP4.2:** No nulls in critical columns defined in Plan.md
+- **CP4.3:** All analysis outputs in Plan.md's analysis spec exist in output/analysis/ and all figures in Plan.md's visualization spec exist in output/figures/
+- **CP4.4:** All Plan.md-required report sections complete
+- **CP4.5:** Outputs match Plan.md commitments (data sources, years, geography, methodology)
+- **CP4.6:** All Research Outcomes in Plan.md are addressed with evidence
+- **CP4.7:** All Hypotheses in Plan.md (if any) are transparently assessed
 
-**CP4 STOP Conditions:** Missing Executive Summary, missing Key Findings, any Research Outcome not addressed, major deviation from Plan methodology.
+**CP4 STOP Conditions:** Missing Executive Summary, missing Key Findings, any Research Outcome not addressed, major deviation from Plan.md methodology.
 
 See `agent_reference/VALIDATION_CHECKPOINTS.md` for Python code templates.
 
@@ -1623,8 +1684,8 @@ Forcing functions are mandatory design interventions that **prevent** poor pract
 | G1 | 1 → 2 | Mode classified and confirmed | Cannot invoke Stage 2 subagent |
 | G2 | 2 → 3 | ≥1 endpoint identified, key variables flagged | Cannot invoke source deep-dive |
 | G3 | 3 → 3.5 | All flagged variables investigated, coded values documented, suppression patterns identified | Cannot invoke research-synthesizer |
-| G3.5 | 3.5 → 4 | Synthesis complete, cross-source conflicts resolved, **User confirmed PSU1** | Cannot create Plan without user PSU1 confirmation |
-| **G4** | **4 → 4.5** | **Plan created AND STATE.md created AND LEARNINGS.md skeleton created** | **Cannot invoke plan-checker** |
+| G3.5 | 3.5 → 4 | Synthesis complete, cross-source conflicts resolved, **User confirmed PSU1** | Cannot create Plan documents without user PSU1 confirmation |
+| **G4** | **4 → 4.5** | **Plan.md + Plan_Tasks.md created AND STATE.md created AND LEARNINGS.md skeleton created** | **Cannot invoke plan-checker** |
 | **G4.5** | **4.5 → 5** | **plan-checker returned PASSED or PASSED_WITH_WARNINGS, User confirmed PSU2** | **Cannot begin data acquisition without user PSU2 confirmation** |
 | G5 | 5 → 6 | CP1 PASSED per script, data saved to data/raw/, code-reviewer separately invoked per script immediately after completion, every QA1 ∈ {PASSED, WARNING} | Cannot proceed to cleaning |
 | G6 | 6 → 7 | CP2 PASSED per script, suppression <50%, data saved to data/processed/, code-reviewer separately invoked per script immediately after completion, every QA2 ∈ {PASSED, WARNING}, **User confirmed PSU3** | Cannot proceed to transformation without user PSU3 confirmation |
@@ -1635,11 +1696,11 @@ Forcing functions are mandatory design interventions that **prevent** poor pract
 | G11 | 11 → 12 | Report complete with all sections and figure references | Cannot run final review |
 | G12 | 12 → Delivery | Final Review verification PASSED, all commitments fulfilled, LEARNINGS.md consolidated with System Update Action Plan, cross-artifact coherence verified | Cannot deliver |
 
-**Gate G4 Enforcement:** Plan-checker (Stage 4.5) CANNOT be invoked without all three files: Plan.md, STATE.md (`agent_reference/STATE_TEMPLATE.md`), and LEARNINGS.md (`agent_reference/WORKFLOW_PHASE5_SYNTHESIS.md`). If any are missing, create before proceeding. After plan-checker returns, the orchestrator MUST present PSU2 to the user and wait for confirmation before proceeding to Stage 5.
+**Gate G4 Enforcement:** Plan-checker (Stage 4.5) CANNOT be invoked without all four files: Plan.md, Plan_Tasks.md, STATE.md (`agent_reference/STATE_TEMPLATE.md`), and LEARNINGS.md (`agent_reference/WORKFLOW_PHASE5_SYNTHESIS.md`). If any are missing, create before proceeding. After plan-checker returns, the orchestrator MUST present PSU2 to the user and wait for confirmation before proceeding to Stage 5.
 
-**Gate G4.5 Enforcement:** plan-checker MUST be invoked and return PASSED or PASSED_WITH_WARNINGS. If ISSUES_FOUND, revise Plan (max 2 attempts) then escalate. Update STATE.md "Plan Validation" section with the result before proceeding. See Stage 4.5 in `agent_reference/WORKFLOW_PHASE2_PLANNING.md` for the invocation pattern.
+**Gate G4.5 Enforcement:** plan-checker MUST be invoked and return PASSED or PASSED_WITH_WARNINGS. If ISSUES_FOUND, revise Plan documents (max 2 attempts) then escalate. Update STATE.md "Plan Validation" section with the result before proceeding. See Stage 4.5 in `agent_reference/WORKFLOW_PHASE2_PLANNING.md` for the invocation pattern.
 
-**CRITICAL:** Gate G4.5 requires POSITIVE confirmation that plan-checker was invoked and returned PASSED or PASSED_WITH_WARNINGS. If plan-checker was never invoked, the gate condition is NOT satisfied. Update STATE.md "Plan Validation" section with the result before proceeding to Stage 5. Additionally, after plan-checker returns PASSED or PASSED_WITH_WARNINGS, the orchestrator MUST present PSU2 (Phase Status Update) to the user including the plan-checker result, a Plan summary, and the exact filepath to the Plan for the user's deeper inspection. Stage 5 CANNOT begin until the user confirms PSU2.
+**CRITICAL:** Gate G4.5 requires POSITIVE confirmation that plan-checker was invoked and returned PASSED or PASSED_WITH_WARNINGS. If plan-checker was never invoked, the gate condition is NOT satisfied. Update STATE.md "Plan Validation" section with the result before proceeding to Stage 5. Additionally, after plan-checker returns PASSED or PASSED_WITH_WARNINGS, the orchestrator MUST present PSU2 (Phase Status Update) to the user including the plan-checker result, a Plan.md summary, and the exact filepath to Plan.md for the user's deeper inspection. Stage 5 CANNOT begin until the user confirms PSU2.
 
 **Gate G5-G8 Enforcement (Per-Script QA Invocation):** Gates G5-G8 require POSITIVE confirmation that code-reviewer was **separately invoked to review each individual script immediately after that script completed execution** — not batched at stage end. "Immediately" means: before the next script in the same stage begins. "Separately" means: one code-reviewer invocation per script, not one invocation reviewing multiple scripts. Running all scripts in a stage and then invoking code-reviewer once (or once per script after-the-fact) does **NOT** satisfy these gates — the QA must be interleaved with execution so that each script's QA findings can inform whether to proceed, revise, or stop before the next script runs. If code-reviewer was never invoked for a given script, that script's QA status is NOT_RUN and the gate is NOT satisfied. For Gate G8, BOTH QA4a (statistical analysis) and QA4b (visualization) must be independently and separately invoked per script. See the **Stage 5-8 Composite Execution Pattern** for the complete flow.
 
@@ -1669,7 +1730,7 @@ Agents use domain-specific status vocabularies. The orchestrator translates thes
 | | ISSUES_FOUND (severity: WARNING) | QA = WARNING |
 | | ISSUES_FOUND (severity: BLOCKER) | QA = BLOCKER |
 | **data-planner** | COMPLETE | Proceed to Stage 4.5 |
-| | CONTINUATION | Read partial Plan on disk, invoke fresh data-planner in continuation mode |
+| | CONTINUATION | Read partial Plan.md on disk, invoke fresh data-planner in continuation mode |
 | | REVISION_COMPLETE | Re-invoke plan-checker |
 | | BLOCKED | Escalate to user |
 | **plan-checker** | PASSED | G4.5 = SATISFIED |
@@ -1688,7 +1749,7 @@ Agents use domain-specific status vocabularies. The orchestrator translates thes
 | | COMPLETE_WITH_GAPS | G11 = SATISFIED (log gaps) |
 | | BLOCKED | G11 = NOT SATISFIED |
 | **research-synthesizer** | PASSED | G3.5 = SATISFIED, proceed to Stage 4 |
-| | WARNING | G3.5 = SATISFIED (log warnings for Plan) |
+| | WARNING | G3.5 = SATISFIED (log warnings for Plan documents) |
 | | BLOCKER | G3.5 = NOT SATISFIED (resolve or escalate) |
 | **debugger** | RESOLVED (Bug fix) | Apply fix, re-run task via research-executor |
 | | RESOLVED (Data quality) | Document limitation, adjust scope |
@@ -1711,6 +1772,10 @@ Agents use domain-specific status vocabularies. The orchestrator translates thes
 | QA completes | QA Status section |
 | Blocker encountered | Blockers section + Next Actions |
 | Key decision made | Key Decisions Made table |
+| Risk identified during execution | Runtime Risks table |
+| QA finding recorded | QA Findings Summary (incremental — append per code-reviewer return) |
+| Analysis result addresses hypothesis | Hypothesis Assessment Progress table |
+| Final review completed | Final Review Log |
 | Context Utilization ≥40% | Context Snapshot section |
 | Phase boundary reached | Phase Status Update section + User confirmation status |
 | Phase completes | Session History (if multi-session) |
@@ -1754,12 +1819,12 @@ These supplement the universal boundaries in `CLAUDE.md` (Boundaries & Safety) a
 
 **Always Do:**
 - Validate data at every checkpoint (CP1-CP4)
-- Create Plan document before data acquisition
+- Create Plan.md + Plan_Tasks.md before data acquisition
 - Complete Final Review (Final Review) before delivery
-- Generate all three deliverables (Plan, Notebook, Report)
+- Generate all three deliverables (Plan.md + Plan_Tasks.md, Notebook, Report)
 - Follow the Inline Audit Trail (IAT) protocol for all Python scripts (`agent_reference/INLINE_AUDIT_TRAIL.md`)
 - Include validation assertions in notebooks
-- Update Plan with all decisions and deviations
+- Update STATE.md with all runtime decisions, deviations, and findings
 
 **Never Do:**
 - Skip any protocol or checkpoint
@@ -1779,7 +1844,7 @@ See `agent_reference/BOUNDARIES.md` > QA-Specific Boundaries for complete specif
 
 ### Autonomous Deviation Rules (Quick Reference)
 
-When executing Plan tasks, the agent MAY deviate **without asking** for these categories:
+When executing Plan_Tasks.md tasks, the agent MAY deviate **without asking** for these categories:
 
 | Rule | Category | Action |
 |------|----------|--------|
@@ -1817,8 +1882,9 @@ The orchestrator receives actual context utilization via the `context-reporter` 
 - Prevents context exhaustion without recovery path
 
 **Creation Trigger:**
-- **Create:** At Stage 4 (Plan creation) — IMMEDIATELY after Plan file is written
-- **Gate:** Stage 5 CANNOT begin until STATE.md exists alongside Plan (see Gate G4) and Plan-Checker Status is PASSED or PASSED_WITH_WARNINGS (see Gate G4.5).
+- **Create:** At Stage 4 (Plan creation) — IMMEDIATELY after Plan.md file is written
+- **Gate:** Stage 5 CANNOT begin until STATE.md exists alongside Plan.md + Plan_Tasks.md (see Gate G4) and Plan-Checker Status is PASSED or PASSED_WITH_WARNINGS (see Gate G4.5).
+- **Required Sections:** STATE.md must include skeleton sections for Runtime Risks, QA Findings Summary, and Final Review Log at creation time.
 
 **Update Triggers:** See the **STATE.md Update Gates** table above for the complete list of mandatory update events and which fields to update.
 

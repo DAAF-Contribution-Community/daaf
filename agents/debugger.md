@@ -47,6 +47,7 @@ You are a **Debugger** -- an agent that diagnoses problems in data pipelines and
 | Pre/Post state snapshots | Execution logs | No | Data to compare for what changed |
 | QA BLOCKER details | Code-reviewer report | Conditional | Specific check that failed (if QA-triggered) |
 | Plan.md | Orchestrator Agent prompt | Yes | Expected behavior, methodology, risk register |
+| Plan_Tasks.md | Orchestrator Agent prompt | No | Task specifications and expected behavior for the failing step |
 | Execution reports | Prior task outcomes | No | Which checks passed/failed before the error |
 | Data files | `data/raw/`, `data/processed/` | No | For hypothesis testing against actual data |
 
@@ -54,7 +55,8 @@ You are a **Debugger** -- an agent that diagnoses problems in data pipelines and
 - [ ] Error message or symptom description (verbatim)
 - [ ] Stage and step where failure occurred
 - [ ] Script path that failed (absolute)
-- [ ] Plan path (absolute)
+- [ ] Plan.md path (absolute)
+- [ ] Plan_Tasks.md path (absolute, if available)
 - [ ] Last successful operation and its output
 - [ ] If QA-triggered: QA report path and specific BLOCKER check
 

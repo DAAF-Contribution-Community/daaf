@@ -150,7 +150,7 @@ They serve very different purposes:
 
 **Session logs** are a complete, raw transcript of everything that happened in a Claude Code session. They're automatically generated, stored in `.claude/logs/`, and are primarily useful for debugging after the fact. Think of these as a security camera recording -- comprehensive but not curated.
 
-**STATE.md** is a structured progress tracker that DAAF creates during full-pipeline analyses. It lives inside your project folder (`research/[project]/STATE.md`) and tracks what stage the analysis is at, which checkpoints have passed, what decisions were made, and what needs to happen next. Its primary purpose is enabling **session recovery** -- if your session runs out of context (the model's working memory fills up), you can start a fresh session and STATE.md tells the new session exactly where to pick up. Think of this as a bookmark with detailed notes.
+**STATE.md** is a structured progress tracker that DAAF creates during full-pipeline analyses. It lives inside your project folder (`research/[project]/STATE.md`) and tracks what stage the analysis is at, which checkpoints have passed, what decisions were made, and what needs to happen next. It also accumulates the QA Findings Summary (aggregated quality review results across all stages), the Final Review Log (from the data-verifier's end-of-pipeline check), and any Runtime Risks encountered during execution. Its primary purpose is enabling **session recovery** -- if your session runs out of context (the model's working memory fills up), you can start a fresh session and STATE.md tells the new session exactly where to pick up. Think of this as a bookmark with detailed notes.
 
 ---
 
@@ -233,7 +233,7 @@ Here's what's happening under the hood: DAAF breaks every analysis into 12 stage
 | Phase | What's happening | Typical duration |
 |-------|-----------------|------------------|
 | Phase 1 (Discovery) | Exploring data sources, deep-diving into documentation | 5-15 minutes |
-| Phase 2 (Planning) | Creating the research plan, validating it | 20-30 minutes |
+| Phase 2 (Planning) | Creating Plan.md and Plan_Tasks.md, validating them | 20-30 minutes |
 | Phase 3 (Data Acquisition) | Fetching data, cleaning it, QA on each script | 30-45 minutes |
 | Phase 4 (Analysis) | Transformations, statistical analysis, visualizations, QA on each | 60-90 minutes |
 | Phase 5 (Synthesis) | Assembling notebook, writing report, final review | 20-30 minutes |
@@ -266,7 +266,7 @@ For most DAAF analyses, the defaults are fine. If you're working with datasets i
 
 Yes! Because each Claude Code session runs independently with its own context, you can absolutely open multiple terminal windows, each running their own Claude Code session inside the same Docker container, each working on different research questions simultaneously.
 
-This is one of the exciting aspects of the workflow -- you can kick off an analysis on school enrollment trends, then open a new terminal and start a completely separate analysis on college graduation rates, and they'll run side by side without interfering with each other. Each project gets its own folder in `research/`, its own Plan, its own STATE.md, and its own set of scripts.
+This is one of the exciting aspects of the workflow -- you can kick off an analysis on school enrollment trends, then open a new terminal and start a completely separate analysis on college graduation rates, and they'll run side by side without interfering with each other. Each project gets its own folder in `research/`, its own Plan.md and Plan_Tasks.md, its own STATE.md, and its own set of scripts.
 
 The practical constraint is your Anthropic usage allocation. Each parallel session consumes tokens independently, so running three analyses simultaneously will eat through your Max plan allocation roughly three times as fast. Plan accordingly.
 
@@ -404,10 +404,10 @@ DAAF has several mechanisms to handle this:
 
 1. **Context monitoring** catches this proactively. The system should flag elevated utilization before it gets this bad.
 2. **STATE.md** records all key decisions, so even if Claude "forgets," the information is retrievable from the file.
-3. **The Plan document** serves as persistent memory for methodology decisions.
+3. **Plan.md** serves as the methodology specification; **STATE.md** tracks execution progress, QA findings, and runtime state.
 4. **Session restart** via Session Recovery gives Claude a completely fresh context window while preserving all progress.
 
-If you notice Claude asking questions it already asked, or making decisions that contradict earlier ones, the best course of action is to prompt it to check its STATE.md and Plan, or to restart the session with `/clear` and the restart prompt.
+If you notice Claude asking questions it already asked, or making decisions that contradict earlier ones, the best course of action is to prompt it to check its STATE.md and Plan.md, or to restart the session with `/clear` and the restart prompt.
 
 ---
 

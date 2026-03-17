@@ -22,6 +22,7 @@ Copy this template to `STATE.md` in the project folder when starting a Full Pipe
 |-------|-------|
 | **Project** | [Full title] |
 | **Plan Location** | `research/[folder]/[filename]_Plan.md` |
+| **Plan Tasks Location** | `research/[folder]/[filename]_Plan_Tasks.md` |
 | **Current Phase** | [1-5]: [Phase Name] |
 | **Current Stage** | [1-12]: [Stage Name] |
 | **Status** | [In Progress / Blocked / Complete] |
@@ -106,6 +107,8 @@ Copy this template to `STATE.md` in the project folder when starting a Full Pipe
 
 ## Key Decisions Made
 
+> **Planning-phase decisions** are in Plan.md `## Decisions Log` (frozen at Stage 4.5). All **runtime decisions** made during Stages 5-12 are recorded here.
+
 | Decision | Choice | Rationale | Stage |
 |----------|--------|-----------|-------|
 | [Topic] | [What was decided] | [Why] | [N] |
@@ -180,6 +183,133 @@ Copy this template to `STATE.md` in the project folder when starting a Full Pipe
 | Deviation | Type | Stage | Notes |
 |-----------|------|-------|-------|
 | [None or description] | [Bug Fix/Critical Func/Test] | [N] | |
+
+---
+
+## Runtime Risks
+
+> **Planning-phase risks** are in Plan.md `## Risk Register` (frozen at Stage 4.5). Risks discovered during execution (Stages 5-12) are recorded here.
+
+| Risk | Likelihood | Impact | Mitigation | Stage Discovered |
+|------|------------|--------|------------|------------------|
+| [None or description] | [Low/Medium/High] | [Low/Medium/High] | [Mitigation strategy] | [N] |
+
+**When to Add:**
+- Stage 5: CP1 reveals unexpected data shape, data lag, or quality issues
+- Stage 6: Suppression rate is 30-50% (below STOP but elevated)
+- Stage 7: Unexpected row loss or cardinality violations occur
+- Any stage: Data definitions changed between years, other quality issues arise
+
+---
+
+## QA Findings Summary
+
+*Aggregated during Stage 10, finalized during Stage 12.*
+
+### QA Checkpoint Summary
+
+| Checkpoint | Stage | Scripts Reviewed | BLOCKERs | WARNINGs | INFOs | Revisions Applied |
+|------------|-------|------------------|----------|----------|-------|-------------------|
+| QA1 (Post-Fetch) | 5 | [count] | [count] | [count] | [count] | [count] |
+| QA2 (Post-Clean) | 6 | [count] | [count] | [count] | [count] | [count] |
+| QA3 (Post-Transform) | 7 | [count] | [count] | [count] | [count] | [count] |
+| QA4a (Post-Analysis) | 8.1 | [count] | [count] | [count] | [count] | [count] |
+| QA4b (Post-Viz) | 8.2 | [count] | [count] | [count] | [count] | [count] |
+| **Total** | — | [sum] | [sum] | [sum] | [sum] | [sum] |
+
+### BLOCKERs Resolved
+
+*Document each QA BLOCKER that was resolved via revision.*
+
+| Stage | Script | Issue | Resolution | Revision |
+|-------|--------|-------|------------|----------|
+| [N] | [filename.py] | [What QA found] | [How fixed] | [_a/_b] |
+
+### WARNINGs Logged
+
+*Document QA WARNINGs for transparency (did not block execution).*
+
+| Stage | Script | Warning | Accepted Rationale |
+|-------|--------|---------|--------------------|
+| [N] | [filename.py] | [Warning description] | [Why acceptable] |
+
+### Unresolved Issues
+
+*Document any QA issues that could not be fully resolved.*
+
+| Stage | Issue | Attempts | Outcome | User Decision |
+|-------|-------|----------|---------|---------------|
+| [N] | [Description] | [N/2] | [Escalated/Accepted] | [Decision] |
+
+**Note:** QA scripts are archived in `scripts/cr/` for reproducibility. See `agent_reference/QA_CHECKPOINTS.md` for checkpoint definitions.
+
+---
+
+## Final Review Log
+
+*Completed during Phase 5, Stage 12 by data-verifier.*
+
+### Review Date
+
+[YYYY-MM-DD]
+
+### Alignment Check
+
+| Research Outcome | Addressed? | Evidence Location | Quality |
+|------------------|------------|-------------------|---------|
+| [Outcome 1 from Plan] | [Yes / No] | [Section/file] | [HIGH/MEDIUM/LOW] |
+| [Outcome 2 from Plan] | [Yes / No] | [Section/file] | [HIGH/MEDIUM/LOW] |
+
+### Clarification Fulfillment
+
+| Clarification | Fulfilled? | How |
+|---------------|------------|-----|
+| [Clarification 1] | [Yes / No] | [Notes] |
+| [Clarification 2] | [Yes / No] | [Notes] |
+
+### Plan Commitments
+
+| Commitment | Met? | Notes |
+|------------|------|-------|
+| [Methodology commitment] | [Yes / No] | [If deviated, explain] |
+| [Output commitment] | [Yes / No] | [If deviated, explain] |
+
+### Quality Checklist
+
+| Category | Item | Status |
+|----------|------|--------|
+| **Data Integrity** | Validation checkpoints passed | [ ] |
+| | Coded values handled | [ ] |
+| | Suppression documented | [ ] |
+| **Documentation** | Plan complete | [ ] |
+| | Notebook documented | [ ] |
+| | Report complete | [ ] |
+| | Citations included | [ ] |
+
+### Deviations from Plan
+
+| Aspect | Planned | Actual | Rationale |
+|--------|---------|--------|-----------|
+| [What changed] | [Original plan] | [What actually happened] | [Why] |
+
+### Issues Identified
+
+| Issue | Severity | Recommendation |
+|-------|----------|----------------|
+| [Issue] | [Low/Medium/High] | [How resolved or documented] |
+
+### Final Status
+
+**Review Outcome:** [COMPLETE | COMPLETE_WITH_CAVEATS | INCOMPLETE]
+
+**If COMPLETE_WITH_CAVEATS:**
+- Caveats must be documented in Report.md Limitations section
+- Document each caveat and its impact on conclusions
+
+**If INCOMPLETE:**
+- Issues must be resolved before delivery
+- Document resolution in this section
+- Re-run Final Review after resolution
 
 ---
 
@@ -289,7 +419,7 @@ Copy this template to `STATE.md` in the project folder when starting a Full Pipe
 
 **To resume in a new session, run `/clear` to reset context, then paste this into the chat:**
 
-> Resume the [Project Title] analysis. Plan: `[exact plan path]`. State: `[exact STATE.md path]`. Currently at Stage [N] ([Stage Name]) — next step is [task description].
+> Resume the [Project Title] analysis. Plan: `[exact plan path]`. Plan Tasks: `[exact Plan_Tasks path]`. State: `[exact STATE.md path]`. Currently at Stage [N] ([Stage Name]) — next step is [task description].
 
 **Orchestrator:** Update this prompt whenever hitting 60%/75% utilization gates, before planned session breaks, or when the user decides to stop. Use concrete values — no brackets or placeholders in the actual prompt.
 
@@ -298,7 +428,7 @@ Copy this template to `STATE.md` in the project folder when starting a Full Pipe
 **For the orchestrator when recovering via Session Recovery:**
 
 1. **Read this STATE.md first** — This is the primary recovery document
-2. **Locate Plan at:** `[exact path]`
+2. **Locate Plan at:** `[exact path]` and Plan Tasks at: `[exact Plan_Tasks path]`
 3. **Read Plan SELECTIVELY** — Search for `## ` headings, then load only:
    - **Always:** Original Request, Goal & Context, Decisions Log, Risk Register, Current Status
    - **Stage-conditional:** See Session Recovery Step 3c table for additional sections based on current stage
@@ -341,6 +471,10 @@ Update STATE.md after:
 - Before any planned break
 - Learning signals received from subagents (append to Pending buffer)
 - Flush triggers met (flush buffer → LEARNINGS.md)
+- QA findings reported by code-reviewer (append to QA Findings Summary)
+- Runtime risks discovered (append to Runtime Risks)
+- Stage 10 QA aggregation (finalize QA Findings Summary)
+- Stage 12 final review (populate Final Review Log)
 
 ### Minimal Update Pattern
 
