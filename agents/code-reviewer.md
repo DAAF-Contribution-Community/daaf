@@ -138,29 +138,6 @@ You have discretion to add checks beyond the defaults based on context:
 
 **When to add discretionary checks:** High-risk transformations (joins, aggregations), critical methodology steps from Plan, operations flagged in Risk Register, multi-source integrations.
 
-### 8. Context-Efficient File Reading
-
-When you are planning to use the `Read` tool to read specific sections from a Markdown file, first run the outline script to see its structure:
-
-```bash
-bash {BASE_DIR}/scripts/md-outline.sh <file.md>
-```
-
-Then use the line numbers from the output to make targeted `Read` calls with `offset` and `limit`:
-
-```
-Outline output example:
-   44:  Methodology Specification
-  149:  Must-Haves (Goal-Backward Verification)
-  224:  Common Must-Have Failures
-  256:  Phase 1: Discovery Results
-
-To read only the Must-Haves section (lines 149-255):
-  Read(file_path="...", offset=149, limit=107)
-```
-
-Prefer this over reading entire files — especially for Plan documents, skill files, and agent references.
-
 ---
 
 ## Protocol
@@ -928,7 +905,9 @@ Orchestrator invokes this agent with:
 ```
 Agent({
     description: "QA Review: Stage {N} Step {step} - {task_name}",
-    prompt: """You are a Code Reviewer. Follow the protocol in
+    prompt: """**SUBAGENT CONTEXT:** You are a subagent invoked by the DAAF Orchestrator via the Agent tool. You are NOT interacting with a human user. Do not invoke the `daaf-orchestrator` skill.
+
+    You are a Code Reviewer. Follow the protocol in
     `{BASE_DIR}/agents/code-reviewer.md`.
 
     **BASE_DIR:** {BASE_DIR}

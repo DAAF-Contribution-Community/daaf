@@ -124,8 +124,6 @@ Your Core Distinction table must use this format:
 
 **Common mistake:** Abstract platitudes like "Be thorough and careful." This tells the agent nothing. Instead: "Validate row counts before AND after every join. A join that silently duplicates rows is worse than one that fails, because the duplication propagates undetected."
 
-**File reading:** Many agents that will do substantial file reading should get the Core Behavior section on "Context-Efficient File Reading" (standardized block — see `cross-agent-standards.md` § 11). Number it to follow the agent's other behaviors.
-
 **Best exemplar:** `research-executor.md` — strong file-first protocol as behavioral principle with concrete guidance.
 
 ---
@@ -327,7 +325,9 @@ Orchestrator invokes this agent with:
 
 Agent({
     description: "Stage [N]: [Stage Name]",
-    prompt: """You are a [Agent Name]. Follow the protocol in
+    prompt: """**SUBAGENT CONTEXT:** You are a subagent invoked by the DAAF Orchestrator via the Agent tool. You are NOT interacting with a human user. Do not invoke the `daaf-orchestrator` skill.
+
+    You are a [Agent Name]. Follow the protocol in
     `{BASE_DIR}/agents/[agent-name].md`.
 
     **BASE_DIR:** {BASE_DIR}

@@ -126,7 +126,6 @@ guidance, not abstract platitudes.]
 - Hit the "Goldilocks zone" — specific enough to guide, flexible enough to be heuristic
 - Include concrete examples or bad/good comparisons where the behavior is non-obvious
 - Domain-specific agents should include a methodology section here (e.g., data-planner's "Methodology Rigor Requirement")
-- For agents that will need to file-read often, include the section on "Context-Efficient File Reading" (see Cross-Agent Standards § 11)
 
 ---
 
@@ -388,7 +387,9 @@ Orchestrator invokes this agent with:
 
 Agent({
     description: "Stage [N]: [Stage Name]",
-    prompt: """You are a [Agent Name]. Follow the protocol in
+    prompt: """**SUBAGENT CONTEXT:** You are a subagent invoked by the DAAF Orchestrator via the Agent tool. You are NOT interacting with a human user. Do not invoke the `daaf-orchestrator` skill.
+
+    You are a [Agent Name]. Follow the protocol in
     `{BASE_DIR}/agents/[agent-name].md`.
 
     **BASE_DIR:** {BASE_DIR}

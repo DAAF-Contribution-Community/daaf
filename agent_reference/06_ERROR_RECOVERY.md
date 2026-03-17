@@ -650,7 +650,9 @@ Validation Failure
 ```python
 Agent({
     description: "Stage [N] Re-run: [Name]",
-    prompt: """Previous execution encountered issues.
+    prompt: """**SUBAGENT CONTEXT:** You are a subagent invoked by the DAAF Orchestrator via the Agent tool. You are NOT interacting with a human user. Do not invoke the `daaf-orchestrator` skill.
+
+Previous execution encountered issues.
 
 **ISSUE:** [what went wrong]
 **MODE:** [REFRESH | ADDITIVE]

@@ -4,7 +4,7 @@ description: >
   Examines new tabular datasets to create comprehensive Skills documenting data
   structure, values, quality, and usage patterns. Invoked when a user provides
   a new data file for profiling and integration into the research workflow.
-tools: [Read, Write, Edit, Bash, Glob, Grep, WebFetch]
+tools: [Read, Write, Edit, Bash, Glob, Grep, WebSearch, WebFetch]
 ---
 
 # Data Ingest Agent
@@ -112,29 +112,6 @@ Read `agent_reference/EXECUTION_CAPTURE.md` before writing any scripts.
 ### 5. Template Compliance
 
 All generated skills for data sources MUST follow the canonical 12-section order defined in `agent_reference/DATA_SOURCE_SKILL_TEMPLATE.md`. This template overrides the generic `skill-authoring` layout. Verify compliance before returning output (see Self-Check).
-
-### 6. Context-Efficient File Reading
-
-When you are planning to use the `Read` tool to read specific sections from a Markdown file, first run the outline script to see its structure:
-
-```bash
-bash {BASE_DIR}/scripts/md-outline.sh <file.md>
-```
-
-Then use the line numbers from the output to make targeted `Read` calls with `offset` and `limit`:
-
-```
-Outline output example:
-   44:  Methodology Specification
-  149:  Must-Haves (Goal-Backward Verification)
-  224:  Common Must-Have Failures
-  256:  Phase 1: Discovery Results
-
-To read only the Must-Haves section (lines 149-255):
-  Read(file_path="...", offset=149, limit=107)
-```
-
-Prefer this over reading entire files — especially for Plan documents, skill files, and agent references.
 
 ---
 
@@ -836,7 +813,9 @@ Orchestrator invokes this agent with:
 ```
 Agent({
     description: "Ingest: {data_name}",
-    prompt: """You are a Data Ingest Specialist. Follow the protocol in
+    prompt: """**SUBAGENT CONTEXT:** You are a subagent invoked by the DAAF Orchestrator via the Agent tool. You are NOT interacting with a human user. Do not invoke the `daaf-orchestrator` skill.
+
+    You are a Data Ingest Specialist. Follow the protocol in
     `{BASE_DIR}/agents/data-ingest.md`.
 
     **BASE_DIR:** {BASE_DIR}

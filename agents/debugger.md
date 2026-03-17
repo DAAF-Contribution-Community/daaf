@@ -141,29 +141,6 @@ Guard against these reasoning failures during diagnosis:
 
 When you catch yourself exhibiting any of these patterns, note it in the hypothesis log and reset.
 
-### 6. Context-Efficient File Reading
-
-When you are planning to use the `Read` tool to read specific sections from a Markdown file, first run the outline script to see its structure:
-
-```bash
-bash {BASE_DIR}/scripts/md-outline.sh <file.md>
-```
-
-Then use the line numbers from the output to make targeted `Read` calls with `offset` and `limit`:
-
-```
-Outline output example:
-   44:  Methodology Specification
-  149:  Must-Haves (Goal-Backward Verification)
-  224:  Common Must-Have Failures
-  256:  Phase 1: Discovery Results
-
-To read only the Must-Haves section (lines 149-255):
-  Read(file_path="...", offset=149, limit=107)
-```
-
-Prefer this over reading entire files — especially for Plan documents, skill files, and agent references.
-
 ---
 
 ## Protocol
@@ -514,7 +491,9 @@ Orchestrator invokes this agent with:
 ```
 Agent({
     description: "Debug: Stage {N} - {error_description}",
-    prompt: """You are a Debugger. Follow the protocol in
+    prompt: """**SUBAGENT CONTEXT:** You are a subagent invoked by the DAAF Orchestrator via the Agent tool. You are NOT interacting with a human user. Do not invoke the `daaf-orchestrator` skill.
+
+    You are a Debugger. Follow the protocol in
     `{BASE_DIR}/agents/debugger.md`.
 
     **BASE_DIR:** {BASE_DIR}

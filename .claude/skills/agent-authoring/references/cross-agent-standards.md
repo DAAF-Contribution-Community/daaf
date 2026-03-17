@@ -199,34 +199,19 @@ permissionMode: default          # Or: plan (read-only agents)
 
 ---
 
-### 11. Context-Efficient File Reading
+### 11. Subagent Identity Preamble
 
-Any agents that will be tasked with reading files often should include this as one of their Core Behaviors (Section 4). Targeted reads via `md-outline.sh` preserve the agent's context budget, which is especially important during Stages 5-8 where agents may execute multiple scripts in sequence. Use this exact block, substituting only the behavior number:
+Every agent's Invocation Pattern MUST include the **Subagent Identity Preamble** as the first line of the `prompt:` value, before the role assignment:
 
 ```markdown
-### N. Context-Efficient File Reading
-
-When you are planning to use the `Read` tool to read specific sections from a Markdown file, first run the outline script to see its structure:
-
-```bash
-bash {BASE_DIR}/scripts/md-outline.sh <file.md>
+**SUBAGENT CONTEXT:** You are a subagent invoked by the DAAF Orchestrator via the Agent tool. You are NOT interacting with a human user. Do not invoke the `daaf-orchestrator` skill.
 ```
 
-Then use the line numbers from the output to make targeted `Read` calls with `offset` and `limit`:
+Followed by a blank line, then the agent's role (e.g., `You are a Research Executor...`).
 
-```
-Outline output example:
-   44:  Methodology Specification
-  149:  Must-Haves (Goal-Backward Verification)
-  224:  Common Must-Have Failures
-  256:  Phase 1: Discovery Results
+**Why:** Claude Code's Agent tool does not inject any signal distinguishing subagent sessions from top-level human-facing sessions. Without this preamble, subagents receive the same `CLAUDE.md` and environment context as the orchestrator and will incorrectly attempt to invoke the `daaf-orchestrator` skill or apply human-interaction behaviors.
 
-To read only the Must-Haves section (lines 149-255):
-  Read(file_path="...", offset=149, limit=107)
-```
-
-Prefer this over reading entire files — especially for Plan documents, skill files, and agent references.
-```
+See `agents/README.md` "Subagent Identity Preamble" section for full documentation.
 
 ---
 
@@ -246,6 +231,11 @@ grep -c "## Identity\|Core Distinction\|## Inputs\|## Core Behaviors\|## Protoco
 echo "=== Standardized Elements ==="
 grep -c "HIGH.*MEDIUM.*LOW\|Learning Signal\|BLOCKER.*WARNING\|STOP Conditions\|<anti_patterns>\|<upstream_input>\|<downstream_consumer>" "$AGENT_FILE"
 # Expected: 7+ matches
+
+# Check subagent identity preamble in invocation
+echo "=== Subagent Identity Preamble ==="
+grep -c "SUBAGENT CONTEXT" "$AGENT_FILE"
+# Expected: 1+ (every prompt: """ must have it)
 
 # Check length
 echo "=== Length ==="

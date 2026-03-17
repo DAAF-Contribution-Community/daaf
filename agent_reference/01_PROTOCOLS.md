@@ -392,7 +392,9 @@ When invoking subagents, include relevant Plan sections:
 ```python
 Agent({
     description: "Stage [N]: [Name]",
-    prompt: """...
+    prompt: """**SUBAGENT CONTEXT:** You are a subagent invoked by the DAAF Orchestrator via the Agent tool. You are NOT interacting with a human user. Do not invoke the `daaf-orchestrator` skill.
+
+...
 
 **CONTEXT FROM PLAN:**
 [Paste relevant sections from Plan]
@@ -604,7 +606,9 @@ For comprehensive verification, invoke the **data-verifier** agent:
 ```python
 Agent({
     description: "Stage 12: Final verification",
-    prompt: """You are a Data Verifier. Follow the protocol in `{BASE_DIR}/agents/data-verifier.md`.
+    prompt: """**SUBAGENT CONTEXT:** You are a subagent invoked by the DAAF Orchestrator via the Agent tool. You are NOT interacting with a human user. Do not invoke the `daaf-orchestrator` skill.
+
+    You are a Data Verifier. Follow the protocol in `{BASE_DIR}/agents/data-verifier.md`.
 
     **BASE_DIR:** {BASE_DIR}
     All relative paths in referenced files resolve from BASE_DIR.

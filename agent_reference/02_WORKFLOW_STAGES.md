@@ -440,7 +440,9 @@ You MUST wait for user confirmation before proceeding.
 ```python
 Agent({
     description: "Stage 3.5: Findings Synthesis",
-    prompt: """You are a research-synthesizer. Follow the protocol in `{BASE_DIR}/agents/research-synthesizer.md`.
+    prompt: """**SUBAGENT CONTEXT:** You are a subagent invoked by the DAAF Orchestrator via the Agent tool. You are NOT interacting with a human user. Do not invoke the `daaf-orchestrator` skill.
+
+You are a research-synthesizer. Follow the protocol in `{BASE_DIR}/agents/research-synthesizer.md`.
 
 **BASE_DIR:** {BASE_DIR}
 All relative paths in referenced files resolve from BASE_DIR.
@@ -657,7 +659,9 @@ Stage 4.5 catches these issues **before** expensive data acquisition begins.
 ```python
 Agent({
     description: "Stage 4.5: Plan Validation",
-    prompt: """You are a plan-checker. Follow the protocol in `{BASE_DIR}/agents/plan-checker.md`.
+    prompt: """**SUBAGENT CONTEXT:** You are a subagent invoked by the DAAF Orchestrator via the Agent tool. You are NOT interacting with a human user. Do not invoke the `daaf-orchestrator` skill.
+
+You are a plan-checker. Follow the protocol in `{BASE_DIR}/agents/plan-checker.md`.
 
 **BASE_DIR:** {BASE_DIR}
 All relative paths in referenced files resolve from BASE_DIR.
