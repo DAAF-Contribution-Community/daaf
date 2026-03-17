@@ -1133,7 +1133,7 @@ Return findings in this EXACT structure:
 **Confidence:** [HIGH | MEDIUM | LOW]
 **If LOW:** [What needs resolution before proceeding]
 
-**Deviations Applied:** [List per RULE 1-3 from `{BASE_DIR}/agent_reference/04_BOUNDARIES.md`, or "None"]
+**Deviations Applied:** [List per RULE 1-3 from `{BASE_DIR}/agent_reference/BOUNDARIES.md`, or "None"]
 
 **User-Facing Summary:** [For phase-ending tasks only: 5-8 sentence summary for inclusion in the Phase Status Update. Write for a research professional audience. Omit this field for mid-phase tasks.]
 
@@ -1154,7 +1154,7 @@ Return findings in this EXACT structure:
 | `checkpoint:decision` | Multiple valid approaches | Present options, await selection |
 | `checkpoint:human-action` | User must perform action themselves | Report instructions, await completion |
 
-**Note:** `checkpoint:human-action` is used when Claude cannot automate a step (e.g., external authentication, restricted data downloads). See `05_VALIDATION_CHECKPOINTS.md` for full classification details.
+**Note:** `checkpoint:human-action` is used when Claude cannot automate a step (e.g., external authentication, restricted data downloads). See `VALIDATION_CHECKPOINTS.md` for full classification details.
 
 ### checkpoint:auto (Default)
 
@@ -1716,7 +1716,7 @@ When interpreting data values and resolving discrepancies between sources, apply
 
 **CP4 STOP Conditions:** Missing Executive Summary, missing Key Findings, any Research Outcome not addressed, major deviation from Plan methodology.
 
-See `agent_reference/05_VALIDATION_CHECKPOINTS.md` for Python code templates.
+See `agent_reference/VALIDATION_CHECKPOINTS.md` for Python code templates.
 
 ### QA Checkpoints (Secondary Validation)
 
@@ -1842,7 +1842,7 @@ Agents use domain-specific status vocabularies. The orchestrator translates thes
 
 ### Automatic STOP Conditions
 
-These conditions trigger an immediate STOP with escalation to user. See `agent_reference/04_BOUNDARIES.md` for complete specifications.
+These conditions trigger an immediate STOP with escalation to user. See `agent_reference/BOUNDARIES.md` for complete specifications.
 
 | Condition | Stage | Action |
 |-----------|-------|--------|
@@ -1855,7 +1855,7 @@ These conditions trigger an immediate STOP with escalation to user. See `agent_r
 | Notebook execution error after 2 fix attempts | Stage 9 | STOP, report error details |
 | Data unavailable in configured data source | Stage 2-3 | STOP, escalate immediately |
 
-**STOP/Escalation Format:** See `agent_reference/06_ERROR_RECOVERY.md` "Escalation Template" for the detailed format. At minimum, include: what happened, what was tried, options with pros/cons, and a recommendation.
+**STOP/Escalation Format:** See `agent_reference/ERROR_RECOVERY.md` "Escalation Template" for the detailed format. At minimum, include: what happened, what was tried, options with pros/cons, and a recommendation.
 
 ### Verification Checklists by Stage
 
@@ -1953,7 +1953,7 @@ These conditions trigger an immediate STOP with escalation to user. See `agent_r
 
 ## Pipeline-Specific Behavioral Boundaries
 
-These supplement the universal boundaries in `CLAUDE.md` (Boundaries & Safety) and `agent_reference/04_BOUNDARIES.md`. See `04_BOUNDARIES.md` > Full Pipeline Mode for complete specifications.
+These supplement the universal boundaries in `CLAUDE.md` (Boundaries & Safety) and `agent_reference/BOUNDARIES.md`. See `BOUNDARIES.md` > Full Pipeline Mode for complete specifications.
 
 **Always Do:**
 - Validate data at every checkpoint (CP1-CP4)
@@ -1978,7 +1978,7 @@ These supplement the universal boundaries in `CLAUDE.md` (Boundaries & Safety) a
 - Never modify scripts after QA review (create new version instead)
 - Never allow code-reviewer to directly modify execution scripts
 
-See `agent_reference/04_BOUNDARIES.md` > QA-Specific Boundaries for complete specifications.
+See `agent_reference/BOUNDARIES.md` > QA-Specific Boundaries for complete specifications.
 
 ### Autonomous Deviation Rules (Quick Reference)
 
@@ -1994,7 +1994,7 @@ When executing Plan tasks, the agent MAY deviate **without asking** for these ca
 
 **Always Requires Approval:** Scope expansion, methodology changes, removing validation, skipping checkpoints.
 
-See `agent_reference/04_BOUNDARIES.md` for complete boundary specifications and deviation decision tree.
+See `agent_reference/BOUNDARIES.md` for complete boundary specifications and deviation decision tree.
 
 ---
 
@@ -2037,21 +2037,21 @@ On session end, the `archive-session.sh` hook automatically archives the full se
 
 > For retry/escalation prompt templates, see the "Error Handling in Invocations" section above.
 
-See `agent_reference/06_ERROR_RECOVERY.md` for complete decision trees and recovery procedures.
+See `agent_reference/ERROR_RECOVERY.md` for complete decision trees and recovery procedures.
 
 ### Quick Reference: Error Types & Responses
 
 | Error Type | Max Retries | Escalation Trigger | Reference |
 |------------|-------------|-------------------|-----------|
-| Data unavailable | 0 | Immediate | `06_ERROR_RECOVERY.md` § Data Availability |
-| Access/network error | 3 | After 3 failures | `06_ERROR_RECOVERY.md` § Access/Network |
-| Code execution error | 2 | After 2 failures | `06_ERROR_RECOVERY.md` § Code Execution |
-| Validation failure (STOP condition) | 0 | Immediate | `06_ERROR_RECOVERY.md` § Validation |
-| Validation failure (warning) | N/A | Document and proceed | `06_ERROR_RECOVERY.md` § Validation |
+| Data unavailable | 0 | Immediate | `ERROR_RECOVERY.md` § Data Availability |
+| Access/network error | 3 | After 3 failures | `ERROR_RECOVERY.md` § Access/Network |
+| Code execution error | 2 | After 2 failures | `ERROR_RECOVERY.md` § Code Execution |
+| Validation failure (STOP condition) | 0 | Immediate | `ERROR_RECOVERY.md` § Validation |
+| Validation failure (warning) | N/A | Document and proceed | `ERROR_RECOVERY.md` § Validation |
 
 ### Re-run Guidance
 
 For the complete re-run guidance table (situations, stages to re-run, and refresh/additive modes), see `{SKILL_REFS}/revision-mode.md` > Re-run Guidance.
 
-See `agent_reference/06_ERROR_RECOVERY.md` "Re-run Procedures" for complete re-run decision trees.
+See `agent_reference/ERROR_RECOVERY.md` "Re-run Procedures" for complete re-run decision trees.
 

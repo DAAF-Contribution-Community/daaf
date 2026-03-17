@@ -23,13 +23,15 @@ Findings Synthesis
     └─ Present to user with escalation option
 ```
 
-**Stage 2-3 can run in parallel** when exploring multiple sources — dispatch one subagent per source following the Universal Prompt Requirements in `SKILL.md` and the invocation templates in `agent_reference/WORKFLOW_PHASE1_DISCOVERY.md`. Use `Plan` subagent type (read-only is sufficient for exploration).
+**Stage 2-3 can run in parallel** when exploring multiple sources — dispatch one subagent per source using `Plan` subagent type (read-only is sufficient for exploration).
 
-**Note:** Discovery mode does NOT require loading `agent_reference/04_BOUNDARIES.md`, or `full-pipeline.md`. These contain execution-stage guidance (QA substages, code review patterns, git commit protocol) that is irrelevant to Discovery's read-only exploration. The invocation templates in `WORKFLOW_PHASE1_DISCOVERY.md` are sufficient.
+**Before dispatching subagents:** Read `{BASE_DIR}/agent_reference/WORKFLOW_PHASE1_DISCOVERY.md` for the detailed invocation templates (Stage 2: Domain Explorer, Stage 3: Source Deep-Dive). These templates specify the exact prompt structure, context fields, thoroughness directives, and output formats for each subagent type.
+
+**Note:** Discovery mode does NOT require loading `agent_reference/BOUNDARIES.md`, or `full-pipeline.md`. These contain execution-stage guidance (QA substages, code review patterns, git commit protocol) that is irrelevant to Discovery's read-only exploration.
 
 ## Subagent Invocation
 
-Discovery uses read-only subagents to explore data availability. Follow the Universal Prompt Requirements in `SKILL.md` and the invocation templates in `agent_reference/WORKFLOW_PHASE1_DISCOVERY.md`, with these specifics:
+Discovery uses read-only subagents to explore data availability. Follow the invocation templates in `{BASE_DIR}/agent_reference/WORKFLOW_PHASE1_DISCOVERY.md`, with these specifics:
 
 - **Stage 2:** Subagent invokes the domain explorer skill (e.g., `education-data-explorer` for education domain)
 - **Stage 3:** Subagent invokes domain source skill(s) (e.g., `education-data-source-ccd`) for deep dives on specific sources flagged in Stage 2
@@ -55,9 +57,20 @@ Present findings as a structured summary:
 - [Specific suggestion — e.g., proceed to Full Pipeline, narrow scope, etc.]
 ```
 
+## Multi-Source Synthesis Protocol
+
+When Discovery explores multiple data sources (multiple Stage 3 returns), the orchestrator consolidates findings directly (without dispatching the research-synthesizer agent). Follow this protocol:
+
+1. **Merge structured outputs.** For each source-researcher return, extract: variables identified, temporal coverage, geographic coverage, key caveats, and coded values.
+2. **Identify conflicts.** Flag cases where the same concept (e.g., "poverty rate") is measured differently across sources, or where temporal/geographic coverage doesn't align.
+3. **Assess overall feasibility.** Based on merged findings: Can the user's question be answered with available data? What are the primary limitations? Which sources are essential vs. supplementary?
+4. **Structure the synthesis** using the Output Format above, organizing by theme rather than by source.
+
+**When NOT to synthesize here:** If findings reveal enough complexity to warrant formal analysis (multiple joins, derived measures, statistical modeling), propose escalation to Full Pipeline instead of attempting a comprehensive synthesis.
+
 ## Boundaries
 
-These boundaries supplement the universal safety boundaries in `CLAUDE.md`. The detailed execution boundaries in `agent_reference/04_BOUNDARIES.md` (autonomous deviation rules, git commit protocol, STOP conditions) do not apply to Discovery mode's read-only exploration.
+These boundaries supplement the universal safety boundaries in `CLAUDE.md`. The detailed execution boundaries in `agent_reference/BOUNDARIES.md` (autonomous deviation rules, git commit protocol, STOP conditions) do not apply to Discovery mode's read-only exploration.
 
 **Always Do:**
 - Focus on data availability and feasibility

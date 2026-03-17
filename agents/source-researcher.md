@@ -475,4 +475,4 @@ Load on demand — do NOT read all at start:
 |------|-------------|---------|
 | `agent_reference/WORKFLOW_PHASE1_DISCOVERY.md` | When Discovery protocol details needed | Discovery protocol specifics |
 | `agent_reference/WORKFLOW_PHASE1_DISCOVERY.md` | When unsure which skill to load | Skill invocation patterns and available skills |
-| `agent_reference/04_BOUNDARIES.md` | When encountering scope boundary questions | Deviation rules and boundary specifications |
+| `agent_reference/BOUNDARIES.md` | When encountering scope boundary questions | Deviation rules and boundary specifications |

@@ -4,11 +4,11 @@ Use this template when adding a new engagement mode to the DAAF orchestrator. A 
 
 ## Adding a New Mode: Checklist
 
-1. Create a mode reference file at `{SKILL_REFS}/[mode-name]-mode.md` using the structure below
+1. Create a mode reference file at `{BASE_DIR}/.claude/skills/daaf-orchestrator/references/[mode-name]-mode.md` using the structure below
 2. Add a row to the Mode Summary Table in `SKILL.md` > Engagement Mode Classification
 3. Add a branch to the Mode Decision Framework tree in `SKILL.md`
 4. Add a row to the Reference File Index in `SKILL.md` > What to Load Next
-5. Add mode-specific boundaries to `agent_reference/04_BOUNDARIES.md` > Mode-Specific Boundaries
+5. Add mode-specific boundaries to `agent_reference/BOUNDARIES.md` > Mode-Specific Boundaries
 6. If the mode uses escalation, add entries to the Mode Escalation Paths table in `SKILL.md`
 
 ## Mode Reference File Structure
@@ -33,7 +33,7 @@ Use this template when adding a new engagement mode to the DAAF orchestrator. A 
 ## Boundaries
 
 [Mode-specific constraints — what this mode does and does NOT do]
-[Pointer to agent_reference/04_BOUNDARIES.md > [Mode Name] Mode]
+[Pointer to agent_reference/BOUNDARIES.md > [Mode Name] Mode]
 
 ## Escalation Triggers
 

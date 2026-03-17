@@ -265,7 +265,7 @@ Before returning, verify all items in the Quality Standards section (Section 10 
 | >10 years of data without temporal goal | Flag scope concern; recommend narrowing or confirming temporal intent |
 | Revision mode triggered | Follow Revision Mode protocol (below) |
 
-### Revision Mode Protocol
+### Plan Repair Protocol
 
 **When Triggered:**
 - Orchestrator provides `<revision_context>` with checker issues
@@ -514,7 +514,7 @@ After each Stage 5-8 script executes, **code-reviewer** validates methodology al
 
 ### Autonomous Deviation Rules
 
-Follow the Autonomous Deviation Rules defined in `agent_reference/04_BOUNDARIES.md`, adapted for planning context. In summary: auto-fix task bugs and missing XML elements (Rule 1); auto-fix clearly wrong dependency/wave assignments (Rule 2); auto-clarify vague Research Outcomes to be measurable (Rule 3); STOP and escalate for methodology changes (Rule 4).
+Follow the Autonomous Deviation Rules defined in `agent_reference/BOUNDARIES.md`, adapted for planning context. In summary: auto-fix task bugs and missing XML elements (Rule 1); auto-fix clearly wrong dependency/wave assignments (Rule 2); auto-clarify vague Research Outcomes to be measurable (Rule 3); STOP and escalate for methodology changes (Rule 4).
 
 You MUST ask before:
 - Removing tasks from the transformation sequence
@@ -640,7 +640,7 @@ Load on demand -- do NOT read all at start:
 |------|-------------|---------|
 | `agent_reference/PLAN_TEMPLATE.md` | Always (Step 9) | Complete plan document template |
 | `agent_reference/SCRIPT_EXECUTION_REFERENCE.md` | When assigning script paths | Script naming conventions and format |
-| `agent_reference/05_VALIDATION_CHECKPOINTS.md` | When specifying validation criteria | CP1-CP4 checkpoint definitions |
+| `agent_reference/VALIDATION_CHECKPOINTS.md` | When specifying validation criteria | CP1-CP4 checkpoint definitions |
 | `agent_reference/QA_CHECKPOINTS.md` | When setting QA tolerance thresholds | QA1-QA4b definitions and severity levels |
-| `agent_reference/04_BOUNDARIES.md` | When handling edge cases | Autonomous deviation rules and scope boundaries |
+| `agent_reference/BOUNDARIES.md` | When handling edge cases | Autonomous deviation rules and scope boundaries |
 | `agent_reference/INLINE_AUDIT_TRAIL.md` | When specifying script documentation standards | IAT requirements for task action steps |

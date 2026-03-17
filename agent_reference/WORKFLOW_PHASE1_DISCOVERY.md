@@ -1,6 +1,6 @@
 # Workflow Reference: Phase 1 — Discovery & Scoping
 
-Stages 1, 2, 3, 3.5. Cross-phase orchestration guidance (invocation templates, QA protocols, context requirements) is in `full-pipeline.md`.
+Stages 1, 2, 3, 3.5. Cross-phase orchestration guidance (invocation templates, QA protocols, context requirements) is in `full-pipeline.md` (loaded only for Full Pipeline mode; not needed for standalone Discovery mode).
 
 ---
 
@@ -283,7 +283,7 @@ After completing the skill's Required Actions, return findings using the format 
 **Subagent:** Plan
 **Skills:** `data-scientist`, `education-data-source-*`
 
-**Available source skills:** See `{SKILL_REFS}/skill-catalog.md` for the complete list of available data source skills with their coverage, key variables, and primary use cases.
+**Available source skills:** See `{BASE_DIR}/.claude/skills/daaf-orchestrator/references/skill-catalog.md` for the complete list of available data source skills with their coverage, key variables, and primary use cases.
 
 > The orchestrator resolves source skill names based on the active domain and provides them in the Agent prompt.
 
@@ -487,4 +487,4 @@ Consolidate these parallel findings into a unified context for Plan creation.
 
 ### Re-run Guidance
 
-See `agent_reference/06_ERROR_RECOVERY.md` > "Re-run Procedures" for complete re-run decision trees when Discovery stages need to be repeated.
+See `agent_reference/ERROR_RECOVERY.md` > "Re-run Procedures" for complete re-run decision trees when Discovery stages need to be repeated.

@@ -119,10 +119,10 @@ Follow the format of existing agent subsections in this file.
 | # | File | Update Condition |
 |---|------|-----------------|
 | 17 | Appropriate `agent_reference/WORKFLOW_PHASE*.md` | Agent implements or extends a workflow phase |
-| 18 | `agent_reference/04_BOUNDARIES.md` | Agent has special deviation authority or unique boundaries |
-| 19 | `agent_reference/05_VALIDATION_CHECKPOINTS.md` | Agent runs validation checkpoints |
+| 18 | `agent_reference/BOUNDARIES.md` | Agent has special deviation authority or unique boundaries |
+| 19 | `agent_reference/VALIDATION_CHECKPOINTS.md` | Agent runs validation checkpoints |
 | 20 | `agent_reference/QA_CHECKPOINTS.md` | Agent participates in QA review |
-| 21 | `agent_reference/06_ERROR_RECOVERY.md` | Agent handles specific error types |
+| 21 | `agent_reference/ERROR_RECOVERY.md` | Agent handles specific error types |
 | 22 | `CLAUDE.md` > "Context & Session Health" | Agent has special context considerations |
 | 23 | `full-pipeline.md` > "Learning Signal Protocol" | Agent generates learning signals |
 | 24 | `agent_reference/PLAN_TEMPLATE.md` | Agent reads or writes the Plan document |
@@ -214,10 +214,10 @@ done
 
 ### Tier 3: CONDITIONAL (review applicability)
 - [ ] Appropriate agent_reference/WORKFLOW_PHASE*.md (if implements workflow phase)
-- [ ] agent_reference/04_BOUNDARIES.md (if special boundaries)
-- [ ] agent_reference/05_VALIDATION_CHECKPOINTS.md (if runs checkpoints)
+- [ ] agent_reference/BOUNDARIES.md (if special boundaries)
+- [ ] agent_reference/VALIDATION_CHECKPOINTS.md (if runs checkpoints)
 - [ ] agent_reference/QA_CHECKPOINTS.md (if participates in QA)
-- [ ] agent_reference/06_ERROR_RECOVERY.md (if handles error types)
+- [ ] agent_reference/ERROR_RECOVERY.md (if handles error types)
 - [ ] CLAUDE.md > "Context & Session Health" (if special context needs)
 - [ ] full-pipeline.md > "Learning Signal Protocol" (if generates learning signals)
 - [ ] agent_reference/PLAN_TEMPLATE.md (if reads/writes Plan)

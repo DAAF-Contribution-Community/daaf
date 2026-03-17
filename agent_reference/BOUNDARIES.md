@@ -201,7 +201,7 @@ Mode-specific boundaries for these engagement modes are defined in their respect
 - Skipping QA for an entire stage (never allowed in Full Pipeline mode)
 - Changing QA script naming convention
 
-**BLOCKER Escalation:** See `06_ERROR_RECOVERY.md` § QA BLOCKER Recovery for the full escalation flow.
+**BLOCKER Escalation:** See `ERROR_RECOVERY.md` § QA BLOCKER Recovery for the full escalation flow.
 
 ---
 
@@ -683,12 +683,12 @@ These conditions trigger an immediate STOP with escalation to user.
 | **QA BLOCKER after 2 revisions** | 5-QA to 8-QA | STOP, escalate to user |
 | **QA methodology violation** | 5-QA to 8-QA | STOP, escalate immediately |
 | Notebook execution error after 2 fix attempts | Stage 9 | STOP, report error details |
-| Data unavailable in Education Data Portal | Stage 2-3 | STOP, escalate immediately |
+| Data unavailable in data skills | Stage 2-3 | STOP, escalate immediately |
 | LOW confidence finding unresolved | Any | Cannot proceed |
 
 ### STOP Message Format
 
-See `06_ERROR_RECOVERY.md` "Escalation Format" for the authoritative STOP/escalation message template.
+See `ERROR_RECOVERY.md` "Escalation Format" for the authoritative STOP/escalation message template.
 
 ---
 

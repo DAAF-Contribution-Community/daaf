@@ -458,3 +458,7 @@ After each script execution:
 3. **Next:** Proceed to next script in wave, or check gate if wave complete
 
 ---
+
+## Error Recovery
+
+For decision trees, retry logic, and escalation procedures for errors encountered during data acquisition stages, see `agent_reference/ERROR_RECOVERY.md`.

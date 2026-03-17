@@ -703,7 +703,7 @@ Load on demand — do NOT read all at start:
 
 | File | When to Read | Purpose |
 |------|-------------|---------|
-| `agent_reference/05_VALIDATION_CHECKPOINTS.md` | Step 7.3 (Silent Failure Audit) | CP1-CP4 definitions for verifying checkpoint appropriateness |
+| `agent_reference/VALIDATION_CHECKPOINTS.md` | Step 7.3 (Silent Failure Audit) | CP1-CP4 definitions for verifying checkpoint appropriateness |
 | `agent_reference/QA_CHECKPOINTS.md` | Step 7.5 (QA History Review) | QA1-QA4b definitions and severity standards |
 | `agent_reference/WORKFLOW_PHASE5_SYNTHESIS.md` | If Final Review details needed | Goal-backward verification, traditional review checklist, review outcome |
 | `agent_reference/REPORT_TEMPLATE.md` | Step 6 (Coherence) | Expected report structure for completeness verification |

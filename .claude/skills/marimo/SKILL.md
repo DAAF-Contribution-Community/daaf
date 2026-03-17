@@ -55,10 +55,6 @@ Load these skills together with marimo for comprehensive workflow support:
 - `plotnine` - Static publication-quality plots (ggplot2 style)
 - `plotly` - Interactive visualizations with hover/zoom
 
-**Load for Education Data Work:**
-- `education-data-context` - Understanding coded values and data limitations
-- Relevant `education-data-source-*` skills - Source-specific documentation
-
 **Prerequisite Knowledge:**
 If new to marimo, first understand:
 1. Python basics

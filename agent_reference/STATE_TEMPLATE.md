@@ -183,6 +183,16 @@ Copy this template to `STATE.md` in the project folder when starting a Full Pipe
 
 ---
 
+## Revision History (if applicable)
+
+*Populated when a project undergoes Revision Mode. Each revision adds a row.*
+
+| # | Revision Type | Prior Version | Affected Stages | Re-entry Point | New Version Prefix | Rationale |
+|---|--------------|---------------|-----------------|----------------|-------------------|-----------|
+| 1 | [Bug Fix / Scope Change / Methodology Change / Extension / Correction] | [prior date prefix] | [list of stages re-run] | [Stage N] | [new date+suffix prefix] | [brief description] |
+
+---
+
 ## Pending Learning Signals
 
 *Buffer for learning signals from subagents. Flushed to LEARNINGS.md at phase boundaries, after blocker resolution, after debugging, and at utilization gates.*
@@ -355,7 +365,7 @@ Use full template update:
 
 ## Integration with Session Recovery
 
-STATE.md is the primary input for Session Recovery (Session Recovery):
+STATE.md is the primary input for the Session Recovery procedure:
 
 1. **Recovery starts** with reading STATE.md
 2. **Current position** tells where to resume
@@ -364,4 +374,4 @@ STATE.md is the primary input for Session Recovery (Session Recovery):
 5. **Blockers** surface issues needing resolution
 6. **Error budget** prevents infinite retries
 
-See `{SKILL_REFS}/session-recovery.md` for complete recovery procedure.
+See `{BASE_DIR}/.claude/skills/daaf-orchestrator/references/session-recovery.md` for complete recovery procedure.

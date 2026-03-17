@@ -91,7 +91,7 @@ Execute the appropriate checkpoint WITHIN the script, printing results to stdout
 - **After transform (Stage 7):** CP3 -- row counts, new nulls, invariants
 - **After analysis & viz (Stage 8):** CP4 -- statistical analysis results, model convergence, figure existence, correct data source
 
-See `agent_reference/05_VALIDATION_CHECKPOINTS.md` for checkpoint code templates.
+See `agent_reference/VALIDATION_CHECKPOINTS.md` for checkpoint code templates.
 
 ### 5. Pre/Post State Capture
 
@@ -378,7 +378,7 @@ See `agent_reference/QA_CHECKPOINTS.md` for complete checkpoint definitions.
 
 ### Autonomous Deviation Rules
 
-Follow the Autonomous Deviation Rules defined in `agent_reference/04_BOUNDARIES.md`. In summary: auto-fix bugs, missing functionality, and blocking issues (Rules 1-3); STOP and escalate for methodology changes (Rule 4); execute QA-triggered revisions via versioned files (Rule 5).
+Follow the Autonomous Deviation Rules defined in `agent_reference/BOUNDARIES.md`. In summary: auto-fix bugs, missing functionality, and blocking issues (Rules 1-3); STOP and escalate for methodology changes (Rule 4); execute QA-triggered revisions via versioned files (Rule 5).
 
 ## STOP Conditions
 
@@ -492,7 +492,7 @@ Load on demand -- do NOT read all at start:
 |------|-------------|---------|
 | `agent_reference/SCRIPT_EXECUTION_REFERENCE.md` | Before writing first script | File-first execution protocol, script format, and stage-specific examples |
 | `agent_reference/INLINE_AUDIT_TRAIL.md` | Before writing first script | IAT documentation standards for inline comments |
-| `agent_reference/05_VALIDATION_CHECKPOINTS.md` | When writing checkpoint code | Python checkpoint code templates (CP1-CP4) |
+| `agent_reference/VALIDATION_CHECKPOINTS.md` | When writing checkpoint code | Python checkpoint code templates (CP1-CP4) |
 | `agent_reference/QA_CHECKPOINTS.md` | When understanding QA expectations | QA checkpoint definitions (QA1-QA4b) |
-| `agent_reference/04_BOUNDARIES.md` | When encountering deviation decisions | Complete autonomous deviation rules |
-| `agent_reference/06_ERROR_RECOVERY.md` | When errors occur | Recovery procedures and escalation templates |
+| `agent_reference/BOUNDARIES.md` | When encountering deviation decisions | Complete autonomous deviation rules |
+| `agent_reference/ERROR_RECOVERY.md` | When errors occur | Recovery procedures and escalation templates |

@@ -533,5 +533,5 @@ Load on demand — do NOT read all at start:
 | File | When to Read | Purpose |
 |------|-------------|---------|
 | `agent_reference/PLAN_TEMPLATE.md` | When verifying output aligns with planner needs | Understand what the planner expects |
-| `agent_reference/05_VALIDATION_CHECKPOINTS.md` | When defining CP1-CP4 validation priorities | Ensure checkpoint recommendations are valid |
+| `agent_reference/VALIDATION_CHECKPOINTS.md` | When defining CP1-CP4 validation priorities | Ensure checkpoint recommendations are valid |
 | `agent_reference/QA_CHECKPOINTS.md` | When defining QA checkpoint recommendations | Ensure QA recommendations are valid |

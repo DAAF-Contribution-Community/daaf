@@ -18,12 +18,27 @@ Return direct, focused answer to user
 
 - Invoke **one** subagent with the relevant skill (e.g., `education-data-source-ccd` for a CCD variable question)
 - Use `Plan` subagent type (read-only)
-- The subagent loads the skill, finds the answer, and returns it
+- **Always load `data-scientist`** in addition to the domain skill — it provides methodological rigor for interpreting results
+- The subagent loads the skills, finds the answer, and returns it
 - If the skill doesn't contain the answer, report that clearly rather than guessing
 
 Use the Data Source Quick Lookup table in `{SKILL_REFS}/skill-catalog.md` to identify the correct skill for the question.
 
-### Example Invocation
+### Agent Selection
+
+Match agent protocol weight to question complexity:
+
+| Question Type | Agent Protocol | Domain Skill | Example |
+|--------------|----------------|--------------|---------|
+| Simple fact, definition, year coverage | None (skill-only) | Source or explorer | "What years does CCD cover?" |
+| Coded values, suppression patterns, caveats | `source-researcher` | Source (`*-data-source-*`) | "What are the suppression rules for CRDC discipline data?" |
+| What data exists (narrow, single-source) | None (skill-only) | Explorer | "Does CCD include charter school flags?" |
+
+> **Note:** Broad landscape questions ("What data exists about school poverty?") are better served by Discovery Mode. The Explorer row above is for narrow, source-specific existence checks where the user already knows which domain to look in.
+
+**Default:** No agent protocol (skill-only). Use `source-researcher` when the question requires structured investigation of caveats, coded values, or suppression patterns — the cases where its 5-section output contract adds value.
+
+### Invocation Template: Simple Lookup (Default)
 
 ```python
 Agent({
@@ -34,19 +49,67 @@ Agent({
 All relative paths in referenced files resolve from BASE_DIR.
 
 ## SKILL LOADING
-Call the skill tool with name '[skill-name-from-catalog]'.
+Call the skill tool with name 'data-scientist'.
+Then, call the skill tool with name '[skill-name-from-catalog]'.
+
+If a skill fails to load, report the failure clearly and attempt to answer
+from base knowledge. Flag reduced confidence due to the missing skill.
 
 ## QUESTION
 {user's specific question}
 
 ## RESPONSE FORMAT
-Provide a direct, concise answer. Include:
+**Hard cap: 500 words.** Answer directly and concisely.
+
+Provide:
 - The specific values, definitions, or information requested
 - Source attribution (which skill/documentation provided the answer)
 - Any important caveats or limitations
-- Confidence level (HIGH/MEDIUM/LOW)
+- Confidence level (HIGH/MEDIUM/LOW) with brief rationale
 
-If the question cannot be fully answered from the available skill, say so clearly and suggest what additional exploration might help.""",
+If the question cannot be fully answered from the available skill, say so
+clearly and suggest what additional exploration might help.""",
+    subagent_type: "Plan"
+})
+```
+
+### Invocation Template: Deep Lookup (source-researcher)
+
+Use when the question requires investigating caveats, coded values, or suppression patterns in depth.
+
+```python
+Agent({
+    description: "Targeted Assist: [question summary]",
+    prompt: """You are a Source Researcher. Follow the protocol in `{BASE_DIR}/agents/source-researcher.md`.
+
+**BASE_DIR:** {BASE_DIR}
+All relative paths in referenced files resolve from BASE_DIR.
+
+## SKILL LOADING
+Call the skill tool with name 'data-scientist'.
+Then, call the skill tool with name '{domain}-data-source-{source}'.
+
+If a skill fails to load, STOP and report the failure (see STOP Conditions
+in your agent protocol).
+
+## CONTEXT
+**Question:** {user's specific question}
+**Source:** {source_name}
+**Variables of interest:** {variables, if applicable}
+
+## TASK
+Answer the user's specific question using the source-researcher protocol.
+Focus your investigation on the sections most relevant to the question —
+you do not need to produce a complete 5-section report if the question
+only touches one area (e.g., coded values only → focus on VARIABLES section).
+
+## RESPONSE FORMAT
+**Hard cap: 500 words.** Return only the sections relevant to the question.
+
+- The specific answer to the question
+- Supporting detail from the relevant report section(s)
+- Confidence level (HIGH/MEDIUM/LOW) with rationale
+- Any caveats or warnings the user should know""",
     subagent_type: "Plan"
 })
 ```
@@ -67,7 +130,7 @@ Keep responses concise. The user asked a specific question — answer it specifi
 
 ## Boundaries
 
-These boundaries supplement the universal safety boundaries in `CLAUDE.md`. The detailed execution boundaries in `agent_reference/04_BOUNDARIES.md` do not apply to Targeted Assist mode (no code execution, no data transformations, no commits).
+These boundaries supplement the universal safety boundaries in `CLAUDE.md`. The detailed execution boundaries in `agent_reference/BOUNDARIES.md` do not apply to Targeted Assist mode (no code execution, no data transformations, no commits).
 
 **Always Do:**
 - Answer the specific question asked

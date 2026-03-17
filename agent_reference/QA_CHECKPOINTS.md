@@ -20,7 +20,7 @@ This document defines the continuous Quality Assurance checkpoint system that ru
 
 **Why Both?** CP checkpoints catch operational failures (data access errors, type mismatches). QA checkpoints catch logical errors (wrong approach, inadequate validation, methodology drift).
 
-**Cross-Reference:** See `agent_reference/05_VALIDATION_CHECKPOINTS.md` for CP1-CP4 code templates and checkpoint classification system.
+**Cross-Reference:** See `agent_reference/VALIDATION_CHECKPOINTS.md` for CP1-CP4 code templates and checkpoint classification system.
 
 ---
 
@@ -64,7 +64,7 @@ The code-reviewer applies five skeptical lenses (Counterfactual, Semantic, Bound
 | ID uniqueness | Primary keys are unique | Duplicate IDs present |
 | Dataset completeness | Expected rows and fields present | Partial data fetch |
 
-### QA1 qa1 Script Template
+### QA1 Standard Check Script (cr1)
 
 ```python
 import polars as pl
@@ -165,7 +165,7 @@ Observations from qa1 that should trigger qa2+ investigation:
 | Filter correctness | Correct rows removed | Wrong filter criteria applied |
 | Type consistency | Data types are appropriate | Analysis columns have wrong types |
 
-### QA2 qa1 Script Template
+### QA2 Standard Check Script (cr1)
 
 ```python
 import polars as pl
@@ -269,7 +269,7 @@ Observations from qa1 that should trigger qa2+ investigation:
 | Column creation | New columns calculated correctly | Derived columns have wrong values |
 | No surprise nulls | Expected nulls only | Unexpected nulls introduced |
 
-### QA3 qa1 Script Template
+### QA3 Standard Check Script (cr1)
 
 ```python
 import polars as pl
@@ -770,7 +770,7 @@ scripts/
 
 ## QA Report Format
 
-QA checkpoint results are returned in a standardized format:
+QA checkpoint results follow this conceptual schema. The actual output to the orchestrator uses Markdown format (see the code-reviewer invocation template in `full-pipeline.md`). This YAML schema documents the logical structure:
 
 ```yaml
 qa_report:

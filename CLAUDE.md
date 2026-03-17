@@ -309,15 +309,15 @@ research/2026-01-24_School_Poverty_Analysis/
 | `agent_reference/PLAN_TEMPLATE.md` | Research plan template |
 | `agent_reference/STATE_TEMPLATE.md` | Session state file template |
 | `agent_reference/QA_CHECKPOINTS.md` | QA checkpoint definitions (QA1-QA4b) |
-| `agent_reference/05_VALIDATION_CHECKPOINTS.md` | Validation checkpoint code templates |
+| `agent_reference/VALIDATION_CHECKPOINTS.md` | Validation checkpoint code templates |
 | `agent_reference/REPORT_TEMPLATE.md` | Output report template |
 | `agent_reference/WORKFLOW_PHASE1_DISCOVERY.md` | Full pipeline analysis Phase 1: Stages 1-3.5 |
 | `agent_reference/WORKFLOW_PHASE2_PLANNING.md` | Full pipeline analysis Phase 2: Stages 4-4.5 |
 | `agent_reference/WORKFLOW_PHASE3_ACQUISITION.md` | Full pipeline analysis Phase 3: Stages 5-6 |
 | `agent_reference/WORKFLOW_PHASE4_ANALYSIS.md` | Full pipeline analysis Phase 4: Stages 7-10 |
 | `agent_reference/WORKFLOW_PHASE5_SYNTHESIS.md` | Full pipeline analysis Phase 5: Stages 11-12 |
-| `agent_reference/04_BOUNDARIES.md` | Agent boundary definitions |
-| `agent_reference/06_ERROR_RECOVERY.md` | Error recovery protocols |
+| `agent_reference/BOUNDARIES.md` | Agent boundary definitions |
+| `agent_reference/ERROR_RECOVERY.md` | Error recovery protocols |
 | `agent_reference/DATA_SOURCE_SKILL_TEMPLATE.md` | Data source skill authoring template |
 | `agent_reference/AGENT_TEMPLATE.md` | Agent definition file template |
 | `agents/README.md` | Agent index and usage guide |

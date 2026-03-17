@@ -35,6 +35,10 @@ Read the full STATE.md file. This is the primary recovery document:
 - Read **Next Actions** for immediate guidance
 - Check **Blockers** section for any unresolved issues
 
+### Step 2b: Read LEARNINGS.md
+
+If the project has a `LEARNINGS.md` file, read it to recover accumulated insights from prior sessions. These signals — data quirks discovered, access patterns, performance notes, methodology decisions — prevent re-encountering resolved issues. Prioritize entries tagged with the current or upcoming stages.
+
 ### Step 3: Read Plan Selectively
 
 **Do NOT read the entire Plan file.** Use targeted section loading to minimize context consumption and preserve capacity for execution work.
@@ -84,6 +88,12 @@ expected_files = {
 
 # Check existence for each
 ```
+
+**Stale State Detection:** If STATE.md's last-updated information or session history timestamp is older than the most recent script file in `scripts/`, the state file may be stale (the prior session may have crashed before updating STATE.md). In this case:
+1. Check git log for commits after the STATE.md timestamp
+2. List scripts in `scripts/stage*_*/` and compare against the Transformation Progress table
+3. If discrepancies exist, reconstruct current position from the filesystem and git history rather than trusting STATE.md alone
+4. Note reconstructed entries in the Recovery Summary with a `[reconstructed]` tag
 
 ### Step 5: Identify Resume Point
 
@@ -185,5 +195,6 @@ Before resuming work:
 - [ ] Current stage/status identified and consistent between STATE.md and Plan
 - [ ] File system state verified
 - [ ] Resume point identified
+- [ ] LEARNINGS.md reviewed (if present) and key signals noted
 - [ ] Any blocking issues presented to user
 - [ ] User confirmed ready to proceed

@@ -83,7 +83,7 @@ Stages 7, 8, 9, 10. Cross-phase orchestration guidance (invocation templates, QA
 
 **Special Case: Join Transformations**
 
-For join operations, use enhanced validation from `05_VALIDATION_CHECKPOINTS.md`:
+For join operations, use enhanced validation from `VALIDATION_CHECKPOINTS.md`:
 
 1. **Orchestrator provides additional context:**
    - **Expected cardinality** from Plan's Transformation Sequence table (REQUIRED: must be specified as "1:1", "1:many", "many:1", or "many:many")
@@ -92,8 +92,8 @@ For join operations, use enhanced validation from `05_VALIDATION_CHECKPOINTS.md`
    - Expected relationship between datasets
 
 2. **Subagent uses join-specific validation:**
-   - Use `validate_join()` function from `05_VALIDATION_CHECKPOINTS.md`
-   - Pass cardinality value to validation function
+   - Use the **Join-Specific Validation** inline code template from `VALIDATION_CHECKPOINTS.md` > "Join-Specific Validation" section
+   - Pass cardinality value to the validation code block
    - Check for fan-out (unexpected row multiplication)
    - Check for data loss (unexpected row reduction)
    - Verify join keys matched as expected
@@ -106,7 +106,7 @@ For join operations, use enhanced validation from `05_VALIDATION_CHECKPOINTS.md`
    - Missing join keys in result
 
 **Linking Cardinality to Validation:**
-The cardinality in the Plan's Transformation Sequence is the contract. The `validate_join()` function enforces it:
+The cardinality in the Plan's Transformation Sequence is the contract. The Join-Specific Validation code template enforces it:
 - If Plan says "1:1", validation checks result rows ≈ left rows
 - If Plan says "1:many", validation allows result rows > left rows
 - Violations trigger warnings or STOP conditions based on severity
@@ -289,8 +289,8 @@ Call the skill tool with name 'data-scientist'.
 **VALIDATION CRITERIA:** {validation_criteria_from_plan}
 
 **JOIN CARDINALITY (if join):** {cardinality_from_plan}
-- If this transformation is a join, use `validate_join()` function from `{BASE_DIR}/agent_reference/05_VALIDATION_CHECKPOINTS.md`
-- Pass the cardinality value to verify row count expectations
+- If this transformation is a join, use the **Join-Specific Validation** inline code template from `{BASE_DIR}/agent_reference/VALIDATION_CHECKPOINTS.md` > "Join-Specific Validation" section
+- Embed the cardinality value in the validation code block to verify row count expectations
 - Check for fan-out (unexpected row multiplication) or data loss (unexpected row reduction)
 
 **EXECUTION PROTOCOL:**
@@ -1145,3 +1145,7 @@ After each script execution:
 - **Ask questions** → Answer, then re-present approval request
 
 ---
+
+## Error Recovery
+
+For decision trees, retry logic, and escalation procedures for errors encountered during analysis stages, see `agent_reference/ERROR_RECOVERY.md`.

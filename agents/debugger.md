@@ -500,4 +500,4 @@ Load on demand -- do NOT read all at start:
 |------|-------------|---------|
 | `agent_reference/SCRIPT_EXECUTION_REFERENCE.md` | Before writing first diagnostic script | File-first execution protocol and debug script format |
 | `agent_reference/INLINE_AUDIT_TRAIL.md` | When adding comments to diagnostic code | IAT documentation standards |
-| `agent_reference/06_ERROR_RECOVERY.md` | When error matches a known recovery pattern | Error type decision trees |
+| `agent_reference/ERROR_RECOVERY.md` | When error matches a known recovery pattern | Error type decision trees |

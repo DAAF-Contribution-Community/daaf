@@ -569,7 +569,7 @@ If analysis includes 2020 or 2021 data, CP1 Check 7 will flag this automatically
 | **many:many** | Complex matching | Validate carefully |
 
 **Validation Linkage:**
-The cardinality specified here is passed to `validate_join()` function during Stage 7 execution. See `05_VALIDATION_CHECKPOINTS.md: Join-Specific Validation` for the validation logic.
+The cardinality specified here is used in the **Join-Specific Validation** inline code template during Stage 7 execution. See `VALIDATION_CHECKPOINTS.md: Join-Specific Validation` for the validation logic.
 
 #### Execution Protocol
 

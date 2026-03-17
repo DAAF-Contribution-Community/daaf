@@ -59,9 +59,9 @@ if [[ -n "$transcript_path" && -f "$transcript_path" ]]; then
         else 0 end
     ' < "$transcript_path")
 
-    # 40k baseline: includes system prompt (~15k), tools (~15k), memory (~300),
-    # plus ~10k for skills, env block, XML framing, and other dynamic context
-    baseline=40000
+    # 20k baseline: conservative default estimate for system prompt, tools, memory,
+    # skills, env block, XML framing, and other dynamic context
+    baseline=20000
     bar_width=10
 
     if [[ "$context_length" -gt 0 ]]; then
@@ -91,7 +91,7 @@ if [[ -n "$transcript_path" && -f "$transcript_path" ]]; then
     ctx="${bar} ${C_GRAY}${pct_prefix}${pct}% of ${max_k}k tokens (lower session context use enhances performance)"
 else
     # Transcript not available yet - show baseline estimate
-    baseline=40000
+    baseline=20000
     bar_width=10
     pct=$((baseline * 100 / max_context))
     [[ $pct -gt 100 ]] && pct=100
