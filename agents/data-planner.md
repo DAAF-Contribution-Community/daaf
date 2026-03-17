@@ -625,47 +625,10 @@ Before returning output, verify:
 
 ## Invocation
 
-Orchestrator invokes this agent with:
+**Invocation type:** `subagent_type: "general-purpose"`
 
-```
-Agent({
-    description: "Stage 4: Plan Creation",
-    prompt: """You are a Data Planner. Follow the protocol in
-    `{BASE_DIR}/agents/data-planner.md`.
-
-    **BASE_DIR:** {BASE_DIR}
-    All relative paths in referenced files resolve from BASE_DIR.
-
-    Read `{BASE_DIR}/agent_reference/PLAN_TEMPLATE.md` for the plan template.
-
-    **ORIGINAL USER REQUEST:**
-    {verbatim_user_request}
-
-    **CLARIFICATIONS:**
-    {clarifications}
-
-    **STAGE 2 FINDINGS:**
-    {stage_2_exploration_findings}
-
-    **STAGE 3 FINDINGS:**
-    {stage_3_source_deep_dive_findings}
-
-    **PROJECT FOLDER:** {project_folder_path}
-    **DATE PREFIX:** {date_prefix}
-
-    **TASK:**
-    Create a comprehensive research plan. Write Plan.md to the project
-    folder. Return findings using the Data Planner Output Format.
-
-    [If revision mode:]
-    <revision_context>
-    {checker_issues_yaml}
-    </revision_context>
-    Read existing Plan at {existing_plan_path} before making changes.
-    """,
-    subagent_type: "general-purpose"
-})
-```
+See `agents/README.md` for the canonical invocation template (standard, revision, and continuation modes).
+The stage-specific template with full context fields is in `agent_reference/WORKFLOW_PHASE2_PLANNING.md`.
 
 ---
 

@@ -23,6 +23,34 @@ Return direct, focused answer to user
 
 Use the Data Source Quick Lookup table in `{SKILL_REFS}/skill-catalog.md` to identify the correct skill for the question.
 
+### Example Invocation
+
+```python
+Agent({
+    description: "Targeted Assist: [question summary]",
+    prompt: """You are answering a specific data lookup question.
+
+**BASE_DIR:** {BASE_DIR}
+All relative paths in referenced files resolve from BASE_DIR.
+
+## SKILL LOADING
+Call the skill tool with name '[skill-name-from-catalog]'.
+
+## QUESTION
+{user's specific question}
+
+## RESPONSE FORMAT
+Provide a direct, concise answer. Include:
+- The specific values, definitions, or information requested
+- Source attribution (which skill/documentation provided the answer)
+- Any important caveats or limitations
+- Confidence level (HIGH/MEDIUM/LOW)
+
+If the question cannot be fully answered from the available skill, say so clearly and suggest what additional exploration might help.""",
+    subagent_type: "Plan"
+})
+```
+
 ## Response Format
 
 Provide a direct, actionable answer:
@@ -39,7 +67,7 @@ Keep responses concise. The user asked a specific question — answer it specifi
 
 ## Boundaries
 
-These boundaries supplement the universal boundaries in `CLAUDE.md` and `agent_reference/04_BOUNDARIES.md`.
+These boundaries supplement the universal safety boundaries in `CLAUDE.md`. The detailed execution boundaries in `agent_reference/04_BOUNDARIES.md` do not apply to Targeted Assist mode (no code execution, no data transformations, no commits).
 
 **Always Do:**
 - Answer the specific question asked

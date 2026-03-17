@@ -690,38 +690,10 @@ Before returning output, verify:
 
 ## Invocation
 
-Orchestrator invokes this agent with:
+**Invocation type:** `subagent_type: "Plan"`
 
-```
-Agent({
-    description: "Stage 12: Final Verification",
-    prompt: """You are a Data Verifier. Follow the protocol in
-    `{BASE_DIR}/agents/data-verifier.md`.
-
-    **BASE_DIR:** {BASE_DIR}
-    All relative paths in referenced files resolve from BASE_DIR.
-
-    **CONTEXT:**
-    - Research question (verbatim): {research_question}
-    - Plan path: {plan_path}
-    - Notebook path: {notebook_path}
-    - Report path: {report_path}
-    - Project folder: {project_folder}
-    - STATE.md path: {state_path}
-    - LEARNINGS.md path: {learnings_path}
-    - QA Summary findings: {qa_summary_or_path}
-
-    **TASK:**
-    Perform adversarial goal-backward verification of the completed
-    analysis. Verify all four layers (existence, substantiveness,
-    wiring, coherence). Perform research question stress test,
-    Telephone Game trace, alternative interpretation probing, silent
-    failure audit, and QA history review.
-
-    Return findings using the Data Verifier Output Format.""",
-    subagent_type: "Plan"
-})
-```
+See `agents/README.md` for the canonical invocation template.
+The stage-specific template with full context fields is in `agent_reference/WORKFLOW_PHASE5_SYNTHESIS.md`.
 
 ---
 
@@ -733,5 +705,5 @@ Load on demand — do NOT read all at start:
 |------|-------------|---------|
 | `agent_reference/05_VALIDATION_CHECKPOINTS.md` | Step 7.3 (Silent Failure Audit) | CP1-CP4 definitions for verifying checkpoint appropriateness |
 | `agent_reference/QA_CHECKPOINTS.md` | Step 7.5 (QA History Review) | QA1-QA4b definitions and severity standards |
-| `agent_reference/01_PROTOCOLS.md` | If Protocol 5 details needed | Full Protocol 5 (Final Review) specification |
+| `agent_reference/WORKFLOW_PHASE5_SYNTHESIS.md` | If Final Review details needed | Goal-backward verification, traditional review checklist, review outcome |
 | `agent_reference/REPORT_TEMPLATE.md` | Step 6 (Coherence) | Expected report structure for completeness verification |

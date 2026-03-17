@@ -285,14 +285,14 @@ Copy this template to `STATE.md` in the project folder when starting a Full Pipe
 
 ### Resumption Instructions (Agent Reference)
 
-**For the orchestrator when recovering via Protocol 6:**
+**For the orchestrator when recovering via Session Recovery:**
 
 1. **Read this STATE.md first** — This is the primary recovery document
 2. **Locate Plan at:** `[exact path]`
 3. **Read Plan SELECTIVELY** — Search for `## ` headings, then load only:
    - **Always:** Original Request, Goal & Context, Decisions Log, Risk Register, Current Status
-   - **Stage-conditional:** See Protocol 6 Step 3c table for additional sections based on current stage
-   - **On-demand:** Load specific wave task blocks only when dispatching (see Protocol 6 "On-Demand Plan Loading")
+   - **Stage-conditional:** See Session Recovery Step 3c table for additional sections based on current stage
+   - **On-demand:** Load specific wave task blocks only when dispatching (see Session Recovery "On-Demand Plan Loading")
 4. **Current Phase:** [N] — [Phase Name]
 5. **Current Stage:** [N] — [Stage Name]
 6. **Next Task:** `[task-name]` (Wave [N])
@@ -353,9 +353,9 @@ Use full template update:
 
 ---
 
-## Integration with Protocol 6
+## Integration with Session Recovery
 
-STATE.md is the primary input for Protocol 6 (Session Recovery):
+STATE.md is the primary input for Session Recovery (Session Recovery):
 
 1. **Recovery starts** with reading STATE.md
 2. **Current position** tells where to resume
@@ -364,4 +364,4 @@ STATE.md is the primary input for Protocol 6 (Session Recovery):
 5. **Blockers** surface issues needing resolution
 6. **Error budget** prevents infinite retries
 
-See `01_PROTOCOLS.md` Protocol 6 for complete recovery procedure.
+See `{SKILL_REFS}/session-recovery.md` for complete recovery procedure.

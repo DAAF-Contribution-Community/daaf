@@ -541,39 +541,10 @@ Before returning output, verify:
 
 ## Invocation
 
-Orchestrator invokes this agent with:
+**Invocation type:** `subagent_type: "Plan"`
 
-```
-Agent({
-    description: "Stage [9|11|12]: Integration Check",
-    prompt: """You are an Integration Checker. Follow the protocol in
-    `{BASE_DIR}/agents/integration-checker.md`.
-
-    **BASE_DIR:** {BASE_DIR}
-    All relative paths in referenced files resolve from BASE_DIR.
-
-    **CONTEXT:**
-    - Plan path: {plan_path}
-    - Notebook path: {notebook_path}
-    - Report path: {report_path}
-    - Project folder: {project_folder}
-    - Execution scripts: {list of script paths with their output files}
-    - Expected figures: {list of expected figure paths}
-
-    **TASK:**
-    Verify all components are properly connected:
-    1. Map expected data flow from Plan
-    2. Verify all file references resolve (notebook->data, report->figures)
-    3. Verify stage-to-stage transitions are connected
-    4. Trace at least one E2E flow from raw data to Report
-    5. Detect orphaned components
-    6. Verify QA script coverage
-    7. Verify data source coverage
-
-    Return findings using the Integration Checker Output Format.""",
-    subagent_type: "Plan"
-})
-```
+See `agents/README.md` for the canonical invocation template.
+The integration checker is invoked at multiple pipeline stages; see the corresponding `agent_reference/WORKFLOW_PHASE*.md` files.
 
 ---
 

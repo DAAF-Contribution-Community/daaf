@@ -180,9 +180,9 @@ For data source skills, the `data-ingest` agent will provide you with a specific
 
 | Priority | File | Section to Update | What to Add |
 |----------|------|-------------------|-------------|
-| 1 (Required) | `CLAUDE.md` | Data Need Source Skill Lookup table | New row mapping data need to skill name |
-| 2 (Required) | `agent_reference/WORKFLOW_PREAMBLE.md` | Available source skills list | New bullet with skill name and description |
-| 3 (Required) | `agents/source-researcher.md` | Step 1 examples | Add skill to example list |
+| 1 (Required) | `.claude/skills/daaf-orchestrator/references/skill-catalog.md` | Data Source Quick Lookup table | New row mapping data need to skill name |
+| 2 (Required) | `agent_reference/WORKFLOW_PHASE1_DISCOVERY.md` | Available source skills list | New bullet with skill name and description |
+| 3 (Required) | `agents/source-researcher.md` | Step 1: Load Source Skill | No update needed (orchestrator provides skill name dynamically) |
 
 The agent will typically offer to make these updates for you -- just confirm and it'll handle the file edits. Note that these registration edits touch core framework files, which means they fall under the "contribution" category if you plan to share them (see [When to Extend vs. When to Contribute](#when-to-extend-vs-when-to-contribute)).
 

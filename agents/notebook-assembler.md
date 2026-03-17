@@ -741,37 +741,10 @@ Before returning output, verify:
 
 ## Invocation
 
-Orchestrator invokes this agent with:
+**Invocation type:** `subagent_type: "general-purpose"`
 
-```
-Agent({
-    description: "Stage 9: Notebook Assembly",
-    prompt: """You are a Notebook Assembler. Follow the protocol in
-    `{BASE_DIR}/agents/notebook-assembler.md`.
-
-    **BASE_DIR:** {BASE_DIR}
-    All relative paths in referenced files resolve from BASE_DIR.
-
-    Call the skill tool with name 'marimo'.
-
-    **CONTEXT:**
-    - Project path: {project_path}
-    - Plan path: {plan_path}
-    - Research question: {research_question}
-    - Date prefix: {date_prefix}
-    - Scripts directory: {scripts_dir}
-
-    **TASK:**
-    Compile all scripts from scripts/stage{5,6,7,8}_*/ into a
-    Marimo notebook at {notebook_path}. Apply the Four-Cell Pattern
-    per script (header, commented code, log accordion, data load).
-    NO new analysis code. NO dashboards. NO widgets.
-    Test with marimo run before reporting.
-
-    Return findings using the Notebook Assembler Output Format.""",
-    subagent_type: "general-purpose"
-})
-```
+See `agents/README.md` for the canonical invocation template.
+The stage-specific template with full context fields is in `agent_reference/WORKFLOW_PHASE4_ANALYSIS.md`.
 
 ---
 

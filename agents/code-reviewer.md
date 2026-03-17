@@ -900,78 +900,10 @@ Before returning output, verify:
 
 ## Invocation
 
-Orchestrator invokes this agent with:
+**Invocation type:** `subagent_type: "general-purpose"`
 
-```
-Agent({
-    description: "QA Review: Stage {N} Step {step} - {task_name}",
-    prompt: """You are a Code Reviewer. Follow the protocol in
-    `{BASE_DIR}/agents/code-reviewer.md`.
-
-    **BASE_DIR:** {BASE_DIR}
-    All relative paths in referenced files resolve from BASE_DIR.
-
-    **SCRIPT TO REVIEW:**
-    Path: {script_path}
-
-    **PLAN LOCATION:**
-    {plan_path}
-
-    **OUTPUT FILES:**
-    {output_files}
-
-    **CONTEXT:**
-    - Stage: {stage}
-    - Step: {step}
-    - Wave: {wave}
-    - Task: {task_name}
-    - Research Question: {research_question}
-
-    **TASK:**
-    1. Review the executed script for correctness and methodology alignment
-    2. Review the execution log for outcome verification
-    3. Create cr1 at scripts/cr/stage{N}_{step}_cr1.py with 5 default +
-       5 script-specific + 5 spot-checks + profiling
-    4. Execute cr1 and review output (including profiling)
-    5. DECIDE: If anomalies found, create cr2..cr5 as needed
-       (each with trigger + hypothesis)
-    6. Synthesize findings across all iterations into Investigation Narrative
-    7. Return QA report with severity classification
-
-    **PRIOR QA FINDINGS (if any):**
-    {prior_cr_warnings}
-
-    Return findings using the code-reviewer Output Format.""",
-    subagent_type: "general-purpose"
-})
-```
-
-### Revision Flow
-
-When you return a BLOCKER:
-
-```
-code-reviewer returns BLOCKER
-         |
-orchestrator evaluates issue
-         |
-    [Is this a methodology issue?]
-     +-- YES -> STOP, escalate to user
-     +-- NO -> Continue to revision
-         |
-research-executor creates {script}_a.py
-         |
-research-executor applies fix, executes
-         |
-code-reviewer re-reviews (you again)
-         |
-    [Still BLOCKER?]
-     +-- NO -> Proceed
-     +-- YES -> Revision attempt 2
-         |
-    [After 2 attempts, still BLOCKER?]
-     +-- YES -> STOP, escalate to user
-```
+See `agents/README.md` for the canonical invocation template and revision flow diagram.
+The cross-phase QA invocation template with full context fields is in `.claude/skills/daaf-orchestrator/references/full-pipeline.md`.
 
 ---
 

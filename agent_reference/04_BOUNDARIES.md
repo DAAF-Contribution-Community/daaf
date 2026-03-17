@@ -25,7 +25,7 @@ These actions are **mandatory** for every analysis task.
 |--------|-----------|
 | Classify engagement mode before executing | Set correct expectations |
 | Create Plan document before data acquisition | Establish shared context |
-| Complete Protocol 5 (Final Review) before delivery | Ensure quality and alignment |
+| Complete Final Review (Stage 12) before delivery | Ensure quality and alignment |
 | Update Plan with all decisions and deviations | Maintain audit trail |
 | Update Risk Register when risks are discovered | Capture issues affecting analysis validity |
 | Report progress adaptively (after phases, notable events) | Keep user informed |
@@ -159,7 +159,7 @@ Different engagement modes have different boundary considerations. These **suppl
 **Always Do:**
 - Complete all five protocols in sequence
 - Create plan file after receiving clarifications
-- Complete Protocol 5 before delivery
+- Complete Final Review (Stage 12) before delivery
 - Generate all three deliverables (Plan, Notebook, Report)
 
 **Never Do:**

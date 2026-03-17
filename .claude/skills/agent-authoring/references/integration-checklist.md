@@ -40,19 +40,7 @@ Follow the format of existing agent subsections in this file.
 ### 4. `agents/README.md` — Agent catalog table (canonical location)
 
 **Section:** Agent Index table (this is the canonical Specialized Agents registry)
-**What to add:** New row with Agent, Purpose, Subagent Type, Primary Stage(s)
-
-### 5. `agents/README.md` — Agent catalog table (same as #4; formerly a second table in CLAUDE.md Appendix)
-
-**Section:** Agent Index table (consolidated — both former CLAUDE.md tables now live here)
-**What to add:** New row with File path, Purpose, Subagent Type
-
-### 6. `README.md` — Agent Ecosystem table
-
-**Section:** "Agent Ecosystem (N Specialized Agents)"
-**What to add:**
-- New row with Agent, Role, Quality Contribution
-- **Update the agent count in the section header** (e.g., "11" → "12")
+**What to add:** New row with Agent, Purpose, Subagent Type, Primary Stage(s), Key Inputs, Key Outputs
 
 ---
 
@@ -84,7 +72,7 @@ Follow the format of existing agent subsections in this file.
 **Section:** "Stage Gates (Cannot Proceed Without)" (in `.claude/skills/daaf-orchestrator/references/full-pipeline.md`)
 **What to add:** New or updated gate row
 
-### 11. `agent_reference/WORKFLOW_PREAMBLE.md` — Stage Overview table
+### 11. `full-pipeline.md` — Stage Overview table
 
 **Condition:** Agent maps to a specific stage
 **Section:** "Stage Overview"
@@ -130,13 +118,13 @@ Follow the format of existing agent subsections in this file.
 
 | # | File | Update Condition |
 |---|------|-----------------|
-| 17 | `agent_reference/01_PROTOCOLS.md` | Agent implements or extends a protocol |
+| 17 | Appropriate `agent_reference/WORKFLOW_PHASE*.md` | Agent implements or extends a workflow phase |
 | 18 | `agent_reference/04_BOUNDARIES.md` | Agent has special deviation authority or unique boundaries |
 | 19 | `agent_reference/05_VALIDATION_CHECKPOINTS.md` | Agent runs validation checkpoints |
 | 20 | `agent_reference/QA_CHECKPOINTS.md` | Agent participates in QA review |
 | 21 | `agent_reference/06_ERROR_RECOVERY.md` | Agent handles specific error types |
 | 22 | `CLAUDE.md` > "Context & Session Health" | Agent has special context considerations |
-| 23 | `agent_reference/WORKFLOW_PREAMBLE.md` > "Learning Signal Protocol" | Agent generates learning signals |
+| 23 | `full-pipeline.md` > "Learning Signal Protocol" | Agent generates learning signals |
 | 24 | `agent_reference/PLAN_TEMPLATE.md` | Agent reads or writes the Plan document |
 | 25 | `agent_reference/STATE_TEMPLATE.md` | Agent affects STATE.md fields |
 | 26 | `user_reference/02_understanding_daaf.md` | Agent changes the architecture description for users |
@@ -165,12 +153,12 @@ After completing all applicable tiers, run these checks:
 ```bash
 # Verify agent name appears in all Tier 1 files
 AGENT_NAME="new-agent-name"
-for f in agents/README.md CLAUDE.md README.md; do
+for f in agents/README.md; do
   echo "$f: $(grep -c "$AGENT_NAME" "$f") references"
 done
 ```
 
-**Expected:** agents/README.md has 3+ references (index, when-to-use, coordination matrix), CLAUDE.md has 2+ (both tables), README.md has 1+.
+**Expected:** agents/README.md has 3+ references (index, when-to-use, coordination matrix).
 
 ### 2. Agent Count Consistency
 
@@ -187,9 +175,9 @@ grep "Specialized Agents" README.md
 ### 3. Cross-Reference Integrity
 
 ```bash
-# Verify no broken agent references in CLAUDE.md
-# (Every agent mentioned in CLAUDE.md should have a file in agents/)
-grep -oP '\*\*\w[\w-]+\*\*' CLAUDE.md | sort -u | while read agent; do
+# Verify no broken agent references in agents/README.md
+# (Every agent mentioned in agents/README.md should have a file in agents/)
+grep -oP '\*\*\w[\w-]+\*\*' agents/README.md | sort -u | while read agent; do
   name=$(echo "$agent" | tr -d '*')
   if [ -f "agents/${name}.md" ]; then
     echo "OK: $name"
@@ -211,15 +199,13 @@ done
 - [ ] agents/README.md — "When to Use" section (new subsection)
 - [ ] agents/README.md — Agent Coordination Matrix (producer/consumer rows)
 - [ ] agents/README.md — Agent catalog table (canonical Specialized Agents registry)
-- [ ] agents/README.md — Agent catalog table (consolidated; formerly CLAUDE.md Appendix)
-- [ ] README.md — Agent Ecosystem table (new row + update count)
 
 ### Tier 2: CONDITIONAL (check applicability)
 - [ ] full-pipeline.md — Skill-to-Stage Mapping (if stage-specific)
 - [ ] full-pipeline.md — Core Workflow diagram (if in main flow)
 - [ ] full-pipeline.md — Handoff Specifications (if affects gates)
 - [ ] full-pipeline.md — Stage Gates table (if new/modified gate)
-- [ ] agent_reference/WORKFLOW_PREAMBLE.md — Stage Overview (if stage-specific)
+- [ ] full-pipeline.md — Stage Overview (if stage-specific)
 - [ ] agent_reference/WORKFLOW_PHASE*.md — Individual stage section (if stage-specific)
 - [ ] agent_reference/WORKFLOW_PHASE*.md — Stage invocation template (if unique invocation template)
 - [ ] agents/README.md — Orchestration Flow diagram (if changes workflow)
@@ -227,13 +213,13 @@ done
 - [ ] agents/README.md — Agent + Skill Combinations (if uses skills)
 
 ### Tier 3: CONDITIONAL (review applicability)
-- [ ] agent_reference/01_PROTOCOLS.md (if implements protocol)
+- [ ] Appropriate agent_reference/WORKFLOW_PHASE*.md (if implements workflow phase)
 - [ ] agent_reference/04_BOUNDARIES.md (if special boundaries)
 - [ ] agent_reference/05_VALIDATION_CHECKPOINTS.md (if runs checkpoints)
 - [ ] agent_reference/QA_CHECKPOINTS.md (if participates in QA)
 - [ ] agent_reference/06_ERROR_RECOVERY.md (if handles error types)
 - [ ] CLAUDE.md > "Context & Session Health" (if special context needs)
-- [ ] agent_reference/WORKFLOW_PREAMBLE.md > "Learning Signal Protocol" (if generates learning signals)
+- [ ] full-pipeline.md > "Learning Signal Protocol" (if generates learning signals)
 - [ ] agent_reference/PLAN_TEMPLATE.md (if reads/writes Plan)
 - [ ] agent_reference/STATE_TEMPLATE.md (if affects STATE.md)
 - [ ] user_reference/02_understanding_daaf.md (if changes architecture)

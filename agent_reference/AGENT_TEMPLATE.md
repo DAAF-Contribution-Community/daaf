@@ -383,35 +383,19 @@ Before returning output, verify:
 ```markdown
 ## Invocation
 
-Orchestrator invokes this agent with:
+**Invocation type:** `subagent_type: "[general-purpose | Plan]"`
 
-Agent({
-    description: "Stage [N]: [Stage Name]",
-    prompt: """You are a [Agent Name]. Follow the protocol in
-    `{BASE_DIR}/agents/[agent-name].md`.
-
-    **BASE_DIR:** {BASE_DIR}
-    All relative paths in referenced files resolve from BASE_DIR.
-
-    [Skill loading instruction, if applicable:]
-    Call the skill tool with name '[skill-name]'.
-
-    **CONTEXT:**
-    [What orchestrator provides — mapped to Upstream Inputs]
-
-    **TASK:**
-    [Specific task specification]
-
-    Return findings using the [Agent Name] Output Format.""",
-    subagent_type: "[general-purpose | Plan]"
-})
+See `agents/README.md` for the canonical invocation template.
+[If stage-specific template exists:]
+The stage-specific template with full context fields is in `agent_reference/WORKFLOW_PHASE[N]_[NAME].md`.
 ```
 
 **Guidelines:**
-- Shows the EXACT Agent() call syntax the orchestrator should use
-- Maps to Upstream Inputs (Section 3) — everything listed there should appear here
-- Includes BASE_DIR line (mandatory for path resolution)
-- Includes skill loading instruction if agent uses skills
+- Points to `agents/README.md` as the single source of truth for invocation templates
+- Specifies the `subagent_type` for quick reference
+- References the relevant WORKFLOW_PHASE file for stage-specific context fields
+- The canonical template in README.md must map to Upstream Inputs (Section 3)
+- Do NOT duplicate the full Agent() call syntax here — that lives in README.md
 
 ---
 

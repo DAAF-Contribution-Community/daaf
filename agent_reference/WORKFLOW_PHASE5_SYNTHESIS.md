@@ -1,6 +1,6 @@
 # Workflow Reference: Phase 5 — Synthesis & Delivery
 
-Stages 11, 12. See `WORKFLOW_PREAMBLE.md` for universal orchestration guidance.
+Stages 11, 12. Cross-phase orchestration guidance (invocation templates, QA protocols, context requirements) is in `full-pipeline.md`.
 
 ---
 
@@ -179,6 +179,217 @@ data-verifier returns:
 - **VERIFIED_WITH_WARNINGS** → Log warnings in Plan Final Review Log, proceed to Step 2
 - **FAILED** → STOP, escalate to user with specific failures and remediation options
 
+---
+
+### Goal-Backward Verification Framework
+
+Before marking any analysis complete, verify each of the three categories below. This approach works backward from the goal state to ensure nothing is missing.
+
+**Verification Stance:** The data-verifier agent approaches this framework with adversarial skepticism — its default hypothesis is that something was missed. See `agents/data-verifier.md` for the complete adversarial verification protocol including cross-artifact coherence, research question stress testing, and the Hidden Narrative principle.
+
+#### 1. What Must Be EXAMINED (Research Outcomes)
+
+These are topics that must be rigorously investigated and reported for the analysis to be complete:
+
+| Requirement | Verification Method | Status |
+|-------------|---------------------|--------|
+| Research question addressed with evidence | Read Report conclusions | [ ] |
+| All Plan research outcomes rigorously investigated | Compare Plan outcomes vs. report findings | [ ] |
+| Hypotheses transparently assessed (if any) | Check hypothesis assessments in Report | [ ] |
+| All Plan commitments fulfilled | Compare Plan vs. deliverables | [ ] |
+| No validation checkpoints failed | Review CP1-CP4 status | [ ] |
+| Limitations explicitly documented | Check Report limitations section | [ ] |
+| Data transformations preserve integrity | Review transformation log | [ ] |
+| No coded values in analysis variables | Check processed data | [ ] |
+| Suppression rate acceptable (<50%) | Review CP2 results | [ ] |
+| Cross-state comparisons valid (if any) | Check against validity matrix | [ ] |
+
+**Verification:** For each item, actively verify (don't assume). Check file contents, run queries, read sections.
+
+#### 2. What Must EXIST (Concrete Artifacts)
+
+These files must exist in the project folder:
+
+| Artifact | Path | Exists? | Substantive? |
+|----------|------|---------|--------------|
+| Plan document | `[project]/YYYY-MM-DD_[Title]_Plan.md` | [ ] | [ ] |
+| Marimo notebook | `[project]/YYYY-MM-DD_[Title].py` | [ ] | [ ] |
+| Stakeholder report | `[project]/YYYY-MM-DD_[Title]_Report.md` | [ ] | [ ] |
+| Lessons learned | `[project]/LEARNINGS.md` | [ ] | [ ] |
+| Raw data (parquet) | `[project]/data/raw/*.parquet` | [ ] | [ ] |
+| Processed data (parquet) | `[project]/data/processed/*.parquet` | [ ] | [ ] |
+| Visualizations | `[project]/output/figures/*.png` | [ ] | [ ] |
+| STATE.md | `[project]/STATE.md` | [ ] | [ ] |
+
+**Verification Protocol:**
+1. List files in project folder
+2. Verify each required file exists
+3. Open each file and verify non-empty, valid content
+4. Check file naming follows conventions
+5. Check substantiveness (see below)
+
+#### 2b. Substantiveness Check (Stub Detection)
+
+Artifacts must contain **real implementation**, not placeholders. Flag these patterns as incomplete:
+
+**Text File Stub Indicators:**
+| Pattern | Example | Found In |
+|---------|---------|----------|
+| TODO comments | `# TODO: implement` | Code files |
+| FIXME markers | `FIXME: add validation` | Code files |
+| Placeholder text | `[add more]`, `TBD`, `XXX` | Markdown files |
+| Empty sections | `## Results\n\n## Conclusion` | Report |
+| Template remnants | `[Your finding here]` | Report |
+
+**Code Stub Indicators:**
+| Pattern | Example | Concern |
+|---------|---------|---------|
+| Empty returns | `return None`, `return {}` | Unimplemented function |
+| Pass statements | `def process(): pass` | Placeholder function |
+| NotImplementedError | `raise NotImplementedError` | Incomplete code |
+| Hardcoded test values | `return 42` | Missing real logic |
+
+**Data Stub Indicators:**
+| Pattern | Example | Concern |
+|---------|---------|---------|
+| Single unique value | All rows have same value | Data not actually processed |
+| All zeros | Count column is all 0 | Calculation not run |
+| All nulls | Column entirely null | Join or filter failed |
+| Suspiciously round numbers | All values end in 000 | Placeholder data |
+
+**Stub Detection Protocol:**
+
+```python
+# Text files
+stub_patterns = [
+    r'\bTODO\b', r'\bFIXME\b', r'\bPLACEHOLDER\b', r'\bTBD\b',
+    r'\bXXX\b', r'\[add more\]', r'\[your .* here\]',
+    r'coming soon', r'lorem ipsum'
+]
+
+# For each text file:
+for pattern in stub_patterns:
+    if re.search(pattern, content, re.IGNORECASE):
+        flag_as_incomplete(file, pattern)
+```
+
+**Substantiveness Checklist:**
+- [ ] No TODO/FIXME comments in delivered code
+- [ ] No placeholder text in Report
+- [ ] No empty function bodies
+- [ ] Data has expected variation (not all same value)
+- [ ] Count columns have non-zero values
+- [ ] All Report sections have content
+
+#### 3. What Must Be WIRED (Critical Connections)
+
+These connections between components must be valid:
+
+| Connection | Verification | Status |
+|------------|--------------|--------|
+| Report → Figures | All figure references point to existing files | [ ] |
+| Notebook → Data | Import statements load from correct paths | [ ] |
+| Plan → Decisions | All methodology decisions documented | [ ] |
+| Report → Citations | Citation text matches data sources used | [ ] |
+| Files → Naming convention | All files follow YYYY-MM-DD pattern | [ ] |
+
+**Verification Protocol:**
+1. Read figure references in Report, verify paths exist
+2. Check notebook imports, verify data files exist
+3. Compare Plan decisions to implementation
+4. Verify citation sources match data used
+
+#### Verification Execution Protocol
+
+Execute verification in this order:
+
+```
+1. EXISTENCE CHECK
+   └─ Run: ls -la [project]/**/*
+   └─ Verify all required files present
+   └─ Check file sizes (non-zero)
+
+2. SUBSTANTIVENESS CHECK
+   └─ Scan for stub indicators (TODO, FIXME, TBD)
+   └─ Verify non-placeholder content
+   └─ Check data has expected variation
+
+3. WIRING CHECK
+   └─ Trace Report → Figure references
+   └─ Verify Notebook → Data imports
+
+4. TRUTH CHECK
+   └─ Compare Report conclusions to research question
+   └─ Verify Plan commitments fulfilled
+   └─ Check checkpoint statuses in Plan
+
+5. EXECUTION CHECK
+   └─ Load notebook: marimo run [notebook].py --host 0.0.0.0 --port 2718 --headless
+```
+
+---
+
+### Traditional Review Checklist
+
+In addition to goal-backward verification, complete these traditional checks:
+
+#### 1. Alignment with Original Request
+
+| Element from Request | Addressed? | Location |
+|---------------------|------------|----------|
+| [Extract each element] | Yes/No | [Where in deliverables] |
+
+#### 2. Clarification Fulfillment
+
+| Clarification | Implemented? | Notes |
+|---------------|--------------|-------|
+| [Each clarification] | Yes/No | [How implemented] |
+
+#### 3. Plan Commitments
+
+| Commitment | Fulfilled? | Deviation Notes |
+|------------|------------|-----------------|
+| Data source | Yes/No | |
+| Methodology | Yes/No | |
+| Output format | Yes/No | |
+| Visualizations | Yes/No | |
+
+#### 4. Quality Checklist
+
+| Category | Item | Status |
+|----------|------|--------|
+| **Data Integrity** | CP1-CP4 passed | [ ] |
+| | Coded values handled | [ ] |
+| | Suppression documented | [ ] |
+| **Documentation** | Plan complete | [ ] |
+| | Notebook documented | [ ] |
+| | Report complete | [ ] |
+| | Citations included | [ ] |
+| | LEARNINGS.md created | [ ] |
+| **Files** | All files named correctly | [ ] |
+| | Parquet saved | [ ] |
+| | Figures exported | [ ] |
+
+#### 5. Deviations
+
+Document any deviations from the original Plan:
+
+| Deviation | Reason | Impact |
+|-----------|--------|--------|
+| [What changed] | [Why] | [Effect] |
+
+### Review Outcome
+
+**PASSED:** All checks complete, proceed to delivery.
+
+**ISSUES FOUND:**
+1. Document issues
+2. Resolve issues
+3. Re-run affected checkpoints
+4. Re-run Final Review
+
+---
+
 ### Step 2: Orchestrator Consolidation and Delivery
 
 1. **Check Alignment**
@@ -218,6 +429,41 @@ data-verifier returns:
    - File locations
    - Key findings
    - Limitations
+
+#### Delivery Format
+
+After passing Final Review, deliver to user:
+
+```
+**Analysis Complete: [Title]**
+
+**Summary:**
+[2-3 sentence summary of findings]
+
+**Deliverables:**
+- Plan: `research/[folder]/[Plan file]`
+- Notebook: `research/[folder]/[Notebook file]`
+- Report: `research/[folder]/[Report file]`
+- Data: `research/[folder]/data/`
+- Figures: `research/[folder]/output/figures/`
+- Learnings: `research/[folder]/LEARNINGS.md`
+
+**Key Findings:**
+1. [Finding 1]
+2. [Finding 2]
+3. [Finding 3]
+
+**Limitations:**
+- [Key limitation 1]
+- [Key limitation 2]
+
+**Data Citation:**
+> [Full citation]
+
+**Lessons Learned:** [Brief summary of key insights captured - data access gotchas, methodology improvements, etc.]
+
+Let me know if you have any questions or would like any modifications.
+```
 
 ### Consolidation & Action Plan Checklist
 

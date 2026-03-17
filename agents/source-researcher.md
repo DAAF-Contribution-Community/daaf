@@ -460,40 +460,10 @@ Before returning output, verify:
 
 ## Invocation
 
-Orchestrator invokes this agent with:
+**Invocation type:** `subagent_type: "Plan"`
 
-```python
-Agent({
-    description: "Stage 3: Research [Source] source",
-    prompt: """You are a Source Researcher. Follow the protocol in
-    `{BASE_DIR}/agents/source-researcher.md`.
-
-    **BASE_DIR:** {BASE_DIR}
-    All relative paths in referenced files resolve from BASE_DIR.
-
-    Call the skill tool with name 'data-scientist'.
-    Then, call the skill tool with name '[*-data-source-*]'.
-
-    **CONTEXT:**
-    Research question: [verbatim question from Stage 1]
-    Variables of interest: [list from Stage 2, with flagging reasons]
-    Years needed: [exact start year]-[exact end year]
-    Geographic scope: [national / state list / single state]
-
-    **SPECIFIC INVESTIGATION NEEDS:**
-    - [Variable flagged for deep-dive from Stage 2]
-    - [Specific caveat question from Stage 2]
-
-    **TASK:**
-    Produce the five-section source research report with confidence
-    assessment per section. Flag any LOW confidence findings with
-    verification recommendations. Apply the Truth Hierarchy if any
-    discrepancies are found between skill docs and other sources.
-
-    Return findings using the Source Researcher Output Format.""",
-    subagent_type: "Plan"
-})
-```
+See `agents/README.md` for the canonical invocation template.
+The stage-specific template with full context fields is in `agent_reference/WORKFLOW_PHASE1_DISCOVERY.md`.
 
 ---
 
@@ -503,6 +473,6 @@ Load on demand — do NOT read all at start:
 
 | File | When to Read | Purpose |
 |------|-------------|---------|
-| `agent_reference/01_PROTOCOLS.md` | When Protocol 1 (Data Discovery) details needed | Discovery protocol specifics |
+| `agent_reference/WORKFLOW_PHASE1_DISCOVERY.md` | When Discovery protocol details needed | Discovery protocol specifics |
 | `agent_reference/WORKFLOW_PHASE1_DISCOVERY.md` | When unsure which skill to load | Skill invocation patterns and available skills |
 | `agent_reference/04_BOUNDARIES.md` | When encountering scope boundary questions | Deviation rules and boundary specifications |

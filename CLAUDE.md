@@ -105,25 +105,37 @@ Session context utilization must always be monitored to ensure high performance 
 |-------------|--------|-----------------|
 | **0-40%** | NOMINAL | Continue normally |
 | **40-60%** | ELEVATED | Monitor closely; consider how realistic the scope of work remaining is and how to redelegate work (the orchestrator can delegate work to subagents; subagents can return work early to the orchestrator to be redelegated and completed as needed) |
-| **60-75%** | HIGH | Complete current atomic unit at full quality; report to back to user (for orchestrator) or orchestrator (for subagents); do not start new stages of work; Orchestrator must update STATE.md with restart prompt |
+| **60-75%** | HIGH | Complete current atomic unit at full quality; report back to user (for orchestrator) or orchestrator (for subagents); do not start new stages of work; Orchestrator must update STATE.md with restart prompt |
 | **75%+** | CRITICAL | Cease work immediately and report back to user (for orchestrator) or orchestrator (for subagents); Orchestrator must finalize STATE.md |
 
 ### Symptoms of Context Degradation
 
-| Symptom | Severity |
-|---------|----------|
-| Repeating information already stated | MEDIUM |
-| Forgetting earlier decisions | HIGH |
-| Generating contradictory outputs | CRITICAL |
-| Incomplete or truncated responses | CRITICAL |
-| Losing track of current stage | HIGH |
-| Mixing up file names or paths | MEDIUM |
+| Symptom | Severity | Indicates |
+|---------|----------|-----------|
+| Repeating information already stated | MEDIUM | 40-60% utilization |
+| Forgetting earlier decisions | HIGH | 60%+ utilization |
+| Generating contradictory outputs | CRITICAL | 70%+ utilization |
+| Incomplete or truncated responses | CRITICAL | Near limit |
+| Losing track of current stage | HIGH | Context fragmentation |
+| Mixing up file names or paths | MEDIUM | Working memory strain |
 
 **If degradation symptoms are observed:** treat as equivalent to HIGH regardless of actual utilization — prepare for restart immediately.
 
 ### Quality Primacy Rule
 
 Context management is NEVER about reducing the quality or completeness of work. Subagent prompt fidelity, documentation completeness, and inlined context are non-negotiable regardless of utilization level. If maintaining quality means reaching a restart point sooner, that is the correct outcome.
+
+### Behavioral Guardrails
+
+**What thresholds control:** Utilization determines WHEN to restart, never WHETHER to maintain fidelity. At ELEVATED, delegate more execution to subagents but construct prompts with the same thoroughness as at NOMINAL.
+
+**STATE.md fidelity is critical:** When updating STATE.md under context pressure, resist the urge to abbreviate. STATE.md is what the next session reads to resume — every shortcut taken here becomes a gap in the recovery context.
+
+**Context monitoring protocol at stage transitions:**
+1. CHECK utilization from hook report
+2. UPDATE STATE.md if >= 40%
+3. DECIDE per threshold table above
+4. Flush learning signals to LEARNINGS.md if at a phase boundary
 
 ---
 
@@ -299,13 +311,11 @@ research/2026-01-24_School_Poverty_Analysis/
 | `agent_reference/QA_CHECKPOINTS.md` | QA checkpoint definitions (QA1-QA4b) |
 | `agent_reference/05_VALIDATION_CHECKPOINTS.md` | Validation checkpoint code templates |
 | `agent_reference/REPORT_TEMPLATE.md` | Output report template |
-| `agent_reference/01_PROTOCOLS.md` | Core orchestration protocols |
-| `agent_reference/WORKFLOW_PREAMBLE.md` | Universal orchestration preamble |
-| `agent_reference/WORKFLOW_PHASE1_DISCOVERY.md` | Phase 1: Stages 1-3.5 |
-| `agent_reference/WORKFLOW_PHASE2_PLANNING.md` | Phase 2: Stages 4-4.5 |
-| `agent_reference/WORKFLOW_PHASE3_ACQUISITION.md` | Phase 3: Stages 5-6 |
-| `agent_reference/WORKFLOW_PHASE4_ANALYSIS.md` | Phase 4: Stages 7-10 |
-| `agent_reference/WORKFLOW_PHASE5_SYNTHESIS.md` | Phase 5: Stages 11-12 |
+| `agent_reference/WORKFLOW_PHASE1_DISCOVERY.md` | Full pipeline analysis Phase 1: Stages 1-3.5 |
+| `agent_reference/WORKFLOW_PHASE2_PLANNING.md` | Full pipeline analysis Phase 2: Stages 4-4.5 |
+| `agent_reference/WORKFLOW_PHASE3_ACQUISITION.md` | Full pipeline analysis Phase 3: Stages 5-6 |
+| `agent_reference/WORKFLOW_PHASE4_ANALYSIS.md` | Full pipeline analysis Phase 4: Stages 7-10 |
+| `agent_reference/WORKFLOW_PHASE5_SYNTHESIS.md` | Full pipeline analysis Phase 5: Stages 11-12 |
 | `agent_reference/04_BOUNDARIES.md` | Agent boundary definitions |
 | `agent_reference/06_ERROR_RECOVERY.md` | Error recovery protocols |
 | `agent_reference/DATA_SOURCE_SKILL_TEMPLATE.md` | Data source skill authoring template |

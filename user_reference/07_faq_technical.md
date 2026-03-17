@@ -405,7 +405,7 @@ DAAF has several mechanisms to handle this:
 1. **Context monitoring** catches this proactively. The system should flag elevated utilization before it gets this bad.
 2. **STATE.md** records all key decisions, so even if Claude "forgets," the information is retrievable from the file.
 3. **The Plan document** serves as persistent memory for methodology decisions.
-4. **Session restart** via Protocol 6 gives Claude a completely fresh context window while preserving all progress.
+4. **Session restart** via Session Recovery gives Claude a completely fresh context window while preserving all progress.
 
 If you notice Claude asking questions it already asked, or making decisions that contradict earlier ones, the best course of action is to prompt it to check its STATE.md and Plan, or to restart the session with `/clear` and the restart prompt.
 

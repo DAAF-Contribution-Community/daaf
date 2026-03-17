@@ -1,6 +1,6 @@
 # Workflow Reference: Phase 3 — Data Acquisition & Preparation
 
-Stages 5, 6. See `WORKFLOW_PREAMBLE.md` for universal orchestration guidance (prompt structure, task types, context inlining, QA patterns, code-reviewer invocation).
+Stages 5, 6. Cross-phase orchestration guidance (invocation templates, QA protocols, context requirements) is in `full-pipeline.md`.
 
 **Execution Model:** All scripts follow the file-first execution pattern. See `SCRIPT_EXECUTION_REFERENCE.md` for the complete protocol.
 
@@ -149,7 +149,7 @@ After completing the skill's Required Actions, return findings using the format 
 ### QA Follow-Up (MANDATORY)
 
 **After research-executor completes EACH individual Stage 5 fetch script, orchestrator MUST immediately invoke code-reviewer to separately review that script.**
-Use the **code-reviewer invocation template** from `WORKFLOW_PREAMBLE.md`
+Use the **code-reviewer invocation template** from `full-pipeline.md`
 with stage-specific values for Stage 5.
 
 **Do NOT start the next Stage 5 script until QA returns PASSED or WARNING for the current script.**
@@ -359,7 +359,7 @@ After completing the skill's Required Actions, return findings using the format 
 ### QA Follow-Up (MANDATORY)
 
 **After research-executor completes EACH individual Stage 6 cleaning script, orchestrator MUST immediately invoke code-reviewer to separately review that script.**
-Use the **code-reviewer invocation template** from `WORKFLOW_PREAMBLE.md`
+Use the **code-reviewer invocation template** from `full-pipeline.md`
 with stage-specific values for Stage 6.
 
 **Do NOT start the next Stage 6 script until QA returns PASSED or WARNING for the current script.**
@@ -449,5 +449,12 @@ assert len(clean_df) > len(raw_df) * 0.1, "STOP: >90% data loss"
 - **Request different cleaning approach** → Return to Stage 6 with revised parameters
 - **Flag concern about data quality** → Orchestrator investigates and reports back
 - **Ask questions** → Answer, then re-present approval request
+
+### Post-Script Action Checklist (Stages 5-6)
+
+After each script execution:
+1. **QA:** Invoke code-reviewer immediately (see `full-pipeline.md` > Code-Reviewer Invocation)
+2. **State:** Update STATE.md transformation progress table
+3. **Next:** Proceed to next script in wave, or check gate if wave complete
 
 ---

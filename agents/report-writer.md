@@ -474,50 +474,10 @@ Before returning output, verify:
 
 ## Invocation
 
-Orchestrator invokes this agent with:
+**Invocation type:** `subagent_type: "general-purpose"`
 
-```
-Agent({
-    description: "Stage 11: Report Generation",
-    prompt: """You are a Report Writer. Follow the protocol in
-    `{BASE_DIR}/agents/report-writer.md`.
-
-    **BASE_DIR:** {BASE_DIR}
-    All relative paths in referenced files resolve from BASE_DIR.
-
-    **CONTEXT:**
-    - Project path: {project_path}
-    - Plan path: {plan_path}
-    - Notebook path: {notebook_path}
-    - STATE.md path: {state_path}
-    - LEARNINGS.md path: {learnings_path}
-    - Date prefix: {date_prefix}
-    - Report filename: {report_filename}
-
-    **STAGE 10 QA SUMMARY:**
-    {qa_summary_text}
-
-    **CITATION TEXT (from Stage 6):**
-    {citation_text}
-
-    **ANALYSIS DATASET METADATA:**
-    {dataset_metadata}
-
-    **FIGURE FILES:**
-    {figure_file_list}
-
-    **TASK:**
-    Generate the stakeholder report following REPORT_TEMPLATE.md.
-    Read the Plan, Notebook, STATE.md, and LEARNINGS.md.
-    Follow the Section-Source Mapping for every section.
-    Verify all figure references before embedding.
-    Cross-check all Research Outcomes from the Plan.
-    Write Report.md to the project folder.
-
-    Return findings using the Report Writer Output Format.""",
-    subagent_type: "general-purpose"
-})
-```
+See `agents/README.md` for the canonical invocation template.
+The stage-specific template with full context fields is in `agent_reference/WORKFLOW_PHASE5_SYNTHESIS.md`.
 
 ---
 

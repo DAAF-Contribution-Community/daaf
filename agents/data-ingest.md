@@ -600,8 +600,8 @@ The skill `{skill-name}` has been created but is **not yet discoverable** by the
 | Priority | File | Section to Update | What to Add |
 |----------|------|-------------------|-------------|
 | 1 (Required) | `.claude/skills/daaf-orchestrator/references/skill-catalog.md` | Data Source Quick Lookup | New row with data need and skill name |
-| 2 (Required) | `agent_reference/WORKFLOW_PREAMBLE.md` | Available source skills list | New bullet with skill name and description |
-| 3 (Required) | `agents/source-researcher.md` | Step 1 examples | Add skill to example list |
+| 2 (Required) | `agent_reference/WORKFLOW_PHASE1_DISCOVERY.md` | Available source skills list | New bullet with skill name and description |
+| 3 (Required) | `agents/source-researcher.md` | Step 1: Load Source Skill | No update needed (orchestrator provides skill name dynamically) |
 
 **Would you like me to make these updates now?**
 
@@ -808,55 +808,9 @@ Before returning output, verify:
 
 ## Invocation
 
-Orchestrator invokes this agent with:
+**Invocation type:** `subagent_type: "general-purpose"`
 
-```
-Agent({
-    description: "Ingest: {data_name}",
-    prompt: """You are a Data Ingest Specialist. Follow the protocol in
-    `{BASE_DIR}/agents/data-ingest.md`.
-
-    **BASE_DIR:** {BASE_DIR}
-    All relative paths in referenced files resolve from BASE_DIR.
-
-    First, call the skill tool with name 'skill-authoring' to understand
-    generic skill structure. Then read
-    `{BASE_DIR}/agent_reference/DATA_SOURCE_SKILL_TEMPLATE.md` for the
-    canonical data source skill section order. The template OVERRIDES the
-    generic skill-authoring layout.
-
-    **DATA FILE:**
-    Path: {data_file_path}
-    Format: {csv | parquet | xlsx | tsv}
-
-    **DOCUMENTATION FILES:** (if any)
-    - {doc_path_1}: {description}
-
-    **DOCUMENTATION WEBSITE:** (if any)
-    URL: {website_url}
-    Description: {what information is available there}
-
-    **PROVENANCE:**
-    Data pull date: {YYYY-MM-DD when the data file was downloaded}
-
-    **SKILL CONFIGURATION:**
-    Target skill name: {skill-name}
-    Intended use: {how the data will be used}
-    Priority columns: {columns requiring extra attention}
-    Domain context: {domain for semantic interpretation}
-
-    **TASK:**
-    1. Profile the data file exhaustively (Mode 1: Phases 1-5)
-    2. Generate preliminary semantic interpretations (Phase 5)
-    3. Fetch website documentation (if URL provided)
-    4. Read and reconcile local documentation (Mode 2: if docs provided)
-    5. Create complete skill at `.claude/skills/{skill-name}/`
-    6. Report all discrepancies AND preliminary interpretations for review
-
-    Return findings using the Data Ingest Output Format.""",
-    subagent_type: "general-purpose"
-})
-```
+See `agents/README.md` for the canonical invocation template.
 
 ---
 
@@ -879,8 +833,8 @@ After creating a new data skill, it must be **registered in the workflow documen
 | Priority | File | Section to Update | What to Add |
 |----------|------|-------------------|-------------|
 | 1 (Required) | `.claude/skills/daaf-orchestrator/references/skill-catalog.md` | Data Source Quick Lookup | New row with data need and skill name |
-| 2 (Required) | `agent_reference/WORKFLOW_PREAMBLE.md` | Available source skills list | New bullet with skill name and description |
-| 3 (Required) | `agents/source-researcher.md` | Step 1 examples | Add skill to example list |
+| 2 (Required) | `agent_reference/WORKFLOW_PHASE1_DISCOVERY.md` | Available source skills list | New bullet with skill name and description |
+| 3 (Required) | `agents/source-researcher.md` | Step 1: Load Source Skill | No update needed (orchestrator provides skill name dynamically) |
 
 **Why manual registration?** The system prioritizes explicit, searchable documentation over dynamic discovery. Human reviewers need to know what skills exist, and agents receive skill names in Agent prompts by explicit reference.
 

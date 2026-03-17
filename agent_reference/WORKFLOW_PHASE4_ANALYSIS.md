@@ -1,6 +1,6 @@
 # Workflow Reference: Phase 4 — Analysis & Notebook Development
 
-Stages 7, 8, 9, 10. See `WORKFLOW_PREAMBLE.md` for universal orchestration guidance (prompt structure, task types, context inlining, QA patterns, code-reviewer invocation).
+Stages 7, 8, 9, 10. Cross-phase orchestration guidance (invocation templates, QA protocols, context requirements) is in `full-pipeline.md`.
 
 **Execution Model:** All scripts follow the file-first execution pattern. See `SCRIPT_EXECUTION_REFERENCE.md` for the complete protocol.
 
@@ -357,7 +357,7 @@ Return the Polars code to accomplish this, with validation.""",
 ### QA Follow-Up (MANDATORY)
 
 **After research-executor returns from EACH Stage 7 transformation, orchestrator MUST invoke code-reviewer.**
-Use the **code-reviewer invocation template** from `WORKFLOW_PREAMBLE.md`
+Use the **code-reviewer invocation template** from `full-pipeline.md`
 with stage-specific values for Stage 7.
 
 **Do NOT proceed to transformation #{n+1} until QA returns PASSED or WARNING.**
@@ -615,7 +615,7 @@ Do NOT proceed to next analysis task. Return to orchestrator for approval.""",
 #### QA Follow-Up for Stage 8.1 (MANDATORY)
 
 **After research-executor completes each Stage 8.1 analysis script, orchestrator MUST invoke code-reviewer.**
-Use the **code-reviewer invocation template** from `WORKFLOW_PREAMBLE.md`
+Use the **code-reviewer invocation template** from `full-pipeline.md`
 with stage-specific values for Stage 8. Use **QA4a** (statistical validity) for the analysis script.
 
 **If the analysis script also produced figures**, invoke code-reviewer again with **QA4b** (visualization quality) for those figures.
@@ -721,7 +721,7 @@ Return the plotting code and confirm files are saved.""",
 #### QA Follow-Up for Stage 8.2 (MANDATORY)
 
 **After research-executor completes each Stage 8.2 visualization script, orchestrator MUST invoke code-reviewer.**
-Use the **code-reviewer invocation template** from `WORKFLOW_PREAMBLE.md`
+Use the **code-reviewer invocation template** from `full-pipeline.md`
 with stage-specific values for Stage 8. Use **QA4b** (visualization quality) for visualization scripts.
 
 **Do NOT proceed to Stage 9 until QA4b returns PASSED or WARNING for all visualization scripts.**
@@ -821,6 +821,69 @@ fig.write_image(f"output/figures/{date_prefix}_plot_name.png")
 - [ ] **All QA4b statuses:** PASSED/WARNING (any BLOCKER resolved via revision before next script)
 - [ ] **QA scripts saved to `scripts/cr/stage8_{step}_cra1.py`** (analysis) and **`stage8_{step}_crb1.py`** (viz)
 - [ ] **STATE.md updated:** Current Stage: 8, QA4a and QA4b status, analysis result paths, figure paths recorded
+
+### Multi-Skill Invocation Templates
+
+#### Combined EDA + Transformation (Stage 7)
+
+When EDA and transformation are closely linked:
+
+```python
+Agent({
+    description: "Stage 7: EDA & Transformation",
+    prompt: """You are a Research Executor. Follow the protocol in `{BASE_DIR}/agents/research-executor.md`.
+
+**BASE_DIR:** {BASE_DIR}
+All relative paths in referenced files resolve from BASE_DIR.
+
+Call the skill tool with name 'data-scientist' for methodology.
+Then, call the skill tool with name 'polars' for implementation.
+
+**DATA LOCATION:** data/processed/{filename}
+
+**TASK:**
+1. Profile the data following data-scientist principles
+2. Implement transformations using Polars
+3. Validate each step
+
+**TRANSFORMATION SPECIFICATION:**
+{transformation_spec_from_plan}
+
+Return comprehensive EDA findings and validated transformation code.""",
+    subagent_type: "general-purpose"
+})
+```
+
+#### Combined Visualization (Stage 8.2)
+
+When both static and interactive plots are needed:
+
+```python
+Agent({
+    description: "Stage 8.2: Visualization - Combined",
+    prompt: """You are a Research Executor. Follow the protocol in `{BASE_DIR}/agents/research-executor.md`.
+
+**BASE_DIR:** {BASE_DIR}
+All relative paths in referenced files resolve from BASE_DIR.
+
+Call the skill tool with name 'data-scientist' for methodology.
+Call the skill tool with name 'plotnine' for static publication plots.
+Call the skill tool with name 'plotly' for interactive exploration plots.
+
+**DATA LOCATION:** data/processed/{filename}
+
+**STATIC PLOTS (plotnine):**
+{static_plot_specs}
+
+**INTERACTIVE PLOTS (plotly):**
+{interactive_plot_specs}
+
+**OUTPUT:** output/figures/
+
+Return all plotting code and confirm files saved.""",
+    subagent_type: "general-purpose"
+})
+```
 
 ---
 
@@ -1033,6 +1096,13 @@ The ONLY acceptable new code is `pl.read_parquet()` + `mo.ui.table()`.""",
 Stage 10 is performed by the orchestrator directly (no dedicated subagent). The orchestrator reviews all accumulated code-reviewer findings from Stages 5-8.
 
 **PSU Note:** Stage 10 concludes Phase 4. The orchestrator will present PSU4 to the user with the complete analysis picture. PSU4 is compiled from accumulated Stage 7-8 results plus this QA aggregation.
+
+### Post-Script Action Checklist (Stages 7-8)
+
+After each script execution:
+1. **QA:** Invoke code-reviewer immediately (see `full-pipeline.md` > Code-Reviewer Invocation)
+2. **State:** Update STATE.md transformation progress table
+3. **Next:** Proceed to next script in wave, or check gate if wave complete
 
 ### Gate Criteria (G10)
 

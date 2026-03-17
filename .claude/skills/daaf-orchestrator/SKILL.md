@@ -27,7 +27,7 @@ Before executing any user request, classify it into one of four engagement modes
 
 ### Pre-Check: Session Recovery
 
-Before classifying, check: **Is the user asking to resume a previous session?** If yes, read Protocol 6 in `agent_reference/01_PROTOCOLS.md`, then read the project's `STATE.md` to establish position and resume from the current stage.
+Before classifying, check: **Is the user asking to resume a previous session?** If yes, read `{SKILL_REFS}/session-recovery.md`, then read the project's `STATE.md` to establish position and resume from the current stage.
 
 ### Mode Decision Framework
 
@@ -101,11 +101,12 @@ Await explicit user confirmation before proceeding.
 
 | Reference File | Content | When to Load |
 |----------------|---------|--------------|
-| `{SKILL_REFS}/full-pipeline.md` | Complete 12-stage workflow, QA loops, gates, checklists, PSU templates, quality framework | After confirming Full Pipeline mode |
+| `{SKILL_REFS}/full-pipeline.md` | Complete 12-stage workflow, invocation templates, QA protocols, context requirements, gates, checklists, PSU templates, quality framework | After confirming Full Pipeline mode |
 | `{SKILL_REFS}/discovery-mode.md` | Discovery workflow, exploration patterns, escalation | After confirming Discovery mode |
 | `{SKILL_REFS}/targeted-assist-mode.md` | Single skill invocation, response format | After confirming Targeted Assist mode |
 | `{SKILL_REFS}/revision-mode.md` | Version control, revision classification, re-run guidance | After confirming Revision mode |
 | `{SKILL_REFS}/skill-catalog.md` | Skill quick reference, data source lookup tables | When constructing subagent prompts or answering data source questions |
+| `{BASE_DIR}/agent_reference/MODE_TEMPLATE.md` | Mode addition template and checklist | When adding new engagement modes |
 
 ### Documentation Loading Decision Tree
 
@@ -114,11 +115,16 @@ Mode Confirmed
     │
     ├─ Full Pipeline Mode
     │   └─ Read: {SKILL_REFS}/full-pipeline.md (contains all checklists, PSU templates,
-    │          │   verification protocols, and quality framework inline)
-    │          ├─ Invocation templates: Read {BASE_DIR}/agent_reference/WORKFLOW_PREAMBLE.md
+    │          │   invocation templates, QA protocols, and quality framework inline)
     │          ├─ Code execution: Read {BASE_DIR}/agent_reference/05_VALIDATION_CHECKPOINTS.md
     │          ├─ Error handling: Read {BASE_DIR}/agent_reference/06_ERROR_RECOVERY.md
-    │          └─ Skill/source lookup: Read {SKILL_REFS}/skill-catalog.md
+    │          ├─ Skill/source lookup: Read {SKILL_REFS}/skill-catalog.md
+    │          └─ Stage-specific (load progressively per phase):
+    │              ├─ Phase 1: {BASE_DIR}/agent_reference/WORKFLOW_PHASE1_DISCOVERY.md
+    │              ├─ Phase 2: {BASE_DIR}/agent_reference/WORKFLOW_PHASE2_PLANNING.md
+    │              ├─ Phase 3: {BASE_DIR}/agent_reference/WORKFLOW_PHASE3_ACQUISITION.md
+    │              ├─ Phase 4: {BASE_DIR}/agent_reference/WORKFLOW_PHASE4_ANALYSIS.md
+    │              └─ Phase 5: {BASE_DIR}/agent_reference/WORKFLOW_PHASE5_SYNTHESIS.md
     │
     ├─ Discovery Mode
     │   └─ Read: {SKILL_REFS}/discovery-mode.md
@@ -173,7 +179,7 @@ Every subagent prompt MUST include:
 All relative paths in referenced files resolve from BASE_DIR.
 ```
 
-All file paths in Agent prompts MUST be absolute. See `agent_reference/WORKFLOW_PREAMBLE.md` for universal prompt structure and the appropriate `WORKFLOW_PHASE*.md` file for stage-specific invocation templates.
+All file paths in Agent prompts MUST be absolute. See `full-pipeline.md` > "Standard Agent Prompt Structure" for the universal prompt template and the appropriate `WORKFLOW_PHASE*.md` file for stage-specific invocation templates.
 
 ### Subagent Type Selection
 
@@ -220,24 +226,7 @@ When a subagent returns findings:
 
 ### Context Recovery
 
-**At NOMINAL (0-40%):**
-- Continue normally
-
-**At ELEVATED (40-60%):**
-1. Prefer subagent delegation for heavy execution tasks
-2. Maintain full prompt quality
-3. Update STATE.md proactively
-
-**At HIGH (60-75%):**
-1. Complete current atomic unit at full quality
-2. Update STATE.md with restart prompt
-3. Report to user
-4. Do not start new stages
-
-**At CRITICAL (75%+):**
-1. Finalize STATE.md
-2. Recommend session restart
-3. No new work
+Follow the context utilization thresholds defined in `CLAUDE.md` > "Context & Session Health" > "Context Quality Curve". The orchestrator-specific relief mechanism is session restart via STATE.md (see `{SKILL_REFS}/session-recovery.md`).
 
 **Emergency Context Reset Template:**
 ```
@@ -247,5 +236,5 @@ I'm experiencing context degradation that may affect output quality.
 Current state captured in STATE.md.
 
 **To resume:** Copy the restart prompt from STATE.md, run `/clear`, then paste.
-I'll use Protocol 6 (Session Recovery) to resume with fresh context.
+I'll use Session Recovery (see session-recovery.md) to resume with fresh context.
 ```

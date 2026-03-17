@@ -25,6 +25,8 @@ Findings Synthesis
 
 **Stage 2-3 can run in parallel** when exploring multiple sources — dispatch one subagent per source following the Universal Prompt Requirements in `SKILL.md` and the invocation templates in `agent_reference/WORKFLOW_PHASE1_DISCOVERY.md`. Use `Plan` subagent type (read-only is sufficient for exploration).
 
+**Note:** Discovery mode does NOT require loading `agent_reference/04_BOUNDARIES.md`, or `full-pipeline.md`. These contain execution-stage guidance (QA substages, code review patterns, git commit protocol) that is irrelevant to Discovery's read-only exploration. The invocation templates in `WORKFLOW_PHASE1_DISCOVERY.md` are sufficient.
+
 ## Subagent Invocation
 
 Discovery uses read-only subagents to explore data availability. Follow the Universal Prompt Requirements in `SKILL.md` and the invocation templates in `agent_reference/WORKFLOW_PHASE1_DISCOVERY.md`, with these specifics:
@@ -55,7 +57,7 @@ Present findings as a structured summary:
 
 ## Boundaries
 
-These boundaries supplement the universal boundaries in `CLAUDE.md` and `agent_reference/04_BOUNDARIES.md`.
+These boundaries supplement the universal safety boundaries in `CLAUDE.md`. The detailed execution boundaries in `agent_reference/04_BOUNDARIES.md` (autonomous deviation rules, git commit protocol, STOP conditions) do not apply to Discovery mode's read-only exploration.
 
 **Always Do:**
 - Focus on data availability and feasibility

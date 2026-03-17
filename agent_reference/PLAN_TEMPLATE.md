@@ -1098,7 +1098,7 @@ Document risks identified during discovery and planning, with mitigation strateg
 - **Timeline:** Risk that data sources have unexpected lag times
 - **QA:** Risk that secondary validation will find issues requiring revision or escalation
 
-**Update Triggers:** See `01_PROTOCOLS.md: Risk Register Updates` for complete trigger list.
+**Update Triggers:** See `full-pipeline.md` > "Risk Register Updates" for complete trigger list.
 
 **When to Update:**
 - **Stage 3 (Source Deep-Dive):** Add risks from source caveats that affect validity/completeness

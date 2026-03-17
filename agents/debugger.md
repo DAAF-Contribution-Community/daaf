@@ -486,35 +486,9 @@ Before returning output, verify:
 
 ## Invocation
 
-Orchestrator invokes this agent with:
+**Invocation type:** `subagent_type: "general-purpose"`
 
-```
-Agent({
-    description: "Debug: Stage {N} - {error_description}",
-    prompt: """You are a Debugger. Follow the protocol in
-    `{BASE_DIR}/agents/debugger.md`.
-
-    **BASE_DIR:** {BASE_DIR}
-    All relative paths in referenced files resolve from BASE_DIR.
-
-    **CONTEXT:**
-    - Error: {error_message_verbatim}
-    - Stage: {stage_number}, Step: {step_number}
-    - Failed script: {absolute_script_path}
-    - Last successful operation: {last_success_description}
-    - Plan: {absolute_plan_path}
-    [If QA-triggered:]
-    - QA Report: {qa_report_path}
-    - BLOCKER check: {specific_check_that_failed}
-
-    **TASK:**
-    Diagnose the root cause of this failure. Follow the scientific
-    debugging method (max 5 hypothesis cycles). Save diagnostic
-    scripts to scripts/debug/. Return findings using the Debugger
-    Output Format.""",
-    subagent_type: "general-purpose"
-})
-```
+See `agents/README.md` for the canonical invocation template.
 
 ---
 

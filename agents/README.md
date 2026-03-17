@@ -351,6 +351,8 @@ ERROR DETECTED
 
 ## When to Use Each Agent
 
+> **Canonical invocation templates.** This section is the single source of truth for generic agent invocation patterns. Individual agent `.md` files point here for their `## Invocation` section. Stage-specific templates with richer context fields live in the corresponding `agent_reference/WORKFLOW_PHASE*.md` files.
+
 ### research-executor
 
 **Use when:** Executing data acquisition, cleaning, transformation, or visualization tasks in Stages 5-8. Each invocation performs exactly ONE operation with pre/post validation.

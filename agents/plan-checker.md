@@ -627,45 +627,10 @@ Before returning output, verify:
 
 ## Invocation
 
-Orchestrator invokes this agent with:
+**Invocation type:** `subagent_type: "Plan"`
 
-```
-Agent({
-    description: "Stage 4.5: Plan Verification",
-    prompt: """You are a Plan Checker. Follow the protocol in
-    `{BASE_DIR}/agents/plan-checker.md`.
-
-    Call the skill tool with name 'data-scientist'.
-
-    **BASE_DIR:** {BASE_DIR}
-    All relative paths in referenced files resolve from BASE_DIR.
-
-    **PLAN CONTENT:**
-    {inline the full plan content here}
-
-    **ORIGINAL REQUEST:**
-    {inline the original user request verbatim}
-
-    **CLARIFICATIONS:**
-    {inline any user clarifications, or "None"}
-
-    Validate the plan across all six dimensions (Completeness, Consistency,
-    Feasibility, Testability, Clarity, Scope). Return structured report with
-    per-dimension confidence and issues in YAML format.
-
-    Return findings using the Plan Checker Output Format.""",
-    subagent_type: "Plan"
-})
-```
-
-**Post-Validation Actions:**
-
-| Result | Orchestrator Action |
-|--------|-------------------|
-| PASSED | Update STATE.md Plan Validation = PASSED, Gate G4.5 = SATISFIED; proceed to Stage 5 |
-| PASSED_WITH_WARNINGS | Update STATE.md; log warnings in Plan; proceed with cautions |
-| ISSUES_FOUND (blockers) | Re-invoke data-planner with structured issues; re-verify after revision |
-| ISSUES_FOUND after 2 cycles | Escalate to user with issues summary |
+See `agents/README.md` for the canonical invocation template and post-validation action table.
+The stage-specific template with full context fields is in `agent_reference/WORKFLOW_PHASE2_PLANNING.md`.
 
 ## References
 

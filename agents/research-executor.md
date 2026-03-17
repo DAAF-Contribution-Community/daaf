@@ -413,22 +413,6 @@ Awaiting guidance before proceeding.
 
 ## Anti-Patterns
 
-| Anti-Pattern | Problem | Correct Approach |
-|--------------|---------|------------------|
-| Interactive Python execution | Bypasses audit trail; no captured output | Write script to file first, execute via `run_with_capture.sh` |
-| Modifying script after execution log appended | Destroys historical record; breaks audit trail | Create new versioned copy (`_a.py`, `_b.py`) for fixes |
-| Batching multiple transformations | Hides error source; makes debugging impossible | One transformation per script, validate between each |
-| Skipping pre/post state capture | Cannot detect data loss, nulls, or row changes | Always capture shape, row count, sample before and after |
-| Proceeding after failed validation | Propagates invalid data downstream | Create versioned copy, fix, re-execute |
-| Assuming transformations worked | Even simple operations can produce unexpected results | Always verify via execution log and checkpoint output |
-| Deleting failed script versions | Loses audit trail of what was tried | Commit all versions, failed and successful |
-| Executing code you do not understand | Leads to undetected errors and invalid methodology | Understand intent, expected output, and invariants before running |
-| Assembling Stage 9 notebook | Not your responsibility; violates agent boundaries | Let notebook-assembler agent handle marimo compilation |
-| Writing code without inline documentation | Unauditable code blocks QA review | Follow IAT protocol for every filter, join, aggregation |
-| Overwriting existing data files | Destroys prior stage outputs; breaks reproducibility | Use date-prefixed filenames; never overwrite |
-
-**Additional guidance:**
-
 **DO NOT execute Python interactively before writing to a script file.** The file-first rule is mandatory. Write the script, then execute it via Bash with the capture wrapper. Interactive execution produces no permanent record and cannot be reviewed by code-reviewer.
 
 **DO NOT modify a script after appending its execution log.** Once output is appended, the script is a historical record. Create a new versioned copy (`_a.py`, `_b.py`) for any fixes. Modifying in place corrupts the audit trail.
@@ -493,65 +477,10 @@ Before returning output, verify:
 
 ## Invocation
 
-Orchestrator invokes this agent with:
+**Invocation type:** `subagent_type: "general-purpose"`
 
-```
-Agent({
-    description: "Stage [N]: [Task Name]",
-    prompt: """You are a Research Executor. Follow the protocol in
-    `{BASE_DIR}/agents/research-executor.md`.
-
-    **BASE_DIR:** {BASE_DIR}
-    All relative paths in referenced files resolve from BASE_DIR.
-
-    Call the skill tool with name '[skill-name]'.
-
-    **CONTEXT:**
-    Research Question: [verbatim]
-    Plan Path: {BASE_DIR}/research/[project]/[Plan filename]
-    Risk Register Items: [relevant items]
-    Expected Row Count: [range] | Critical Columns: [list]
-
-    **TASK:**
-    <task name="[task-name]" type="auto" wave="[N]">
-      <depends_on>[deps]</depends_on>
-      <skill>[skill]</skill>
-      <files><input>[abs path]</input><output>[abs path]</output></files>
-      <action>1. [Step 1] 2. [Step 2] 3. [Step 3]</action>
-      <verify>[Criterion 1]; [Criterion 2]</verify>
-      <done>[Measurable completion condition]</done>
-    </task>
-
-    Return findings using the Research Executor Output Format.""",
-    subagent_type: "general-purpose"
-})
-```
-
-For QA revision requests:
-
-```
-Agent({
-    description: "Stage [N]: Revision - [Task Name]",
-    prompt: """You are a Research Executor. Follow the protocol in
-    `{BASE_DIR}/agents/research-executor.md`.
-
-    **BASE_DIR:** {BASE_DIR}
-
-    **REVISION REQUEST: [Task Name]**
-    Original Script: [absolute path]
-    Current Final Version: [absolute path]
-
-    **QA BLOCKER Issue:**
-    - Type: [Correctness | Methodology | Validation Gap]
-    - Description: [what is wrong]
-    - Location: [where in code]
-    - Suggested Fix: [from code-reviewer]
-
-    Create next versioned script, apply fix, execute with capture,
-    return execution report.""",
-    subagent_type: "general-purpose"
-})
-```
+See `agents/README.md` for the canonical invocation templates (standard and QA revision).
+Stage-specific templates with full context fields are in `agent_reference/WORKFLOW_PHASE3_ACQUISITION.md` (Stages 5-6) and `agent_reference/WORKFLOW_PHASE4_ANALYSIS.md` (Stages 7-8).
 
 ---
 

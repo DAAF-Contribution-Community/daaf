@@ -519,41 +519,10 @@ Before returning output, verify:
 
 ## Invocation
 
-Orchestrator invokes this agent with:
+**Invocation type:** `subagent_type: "general-purpose"`
 
-```python
-Agent({
-    description: "Stage 3.5: Research Synthesis",
-    prompt: """You are a Research Synthesizer. Follow the protocol in
-    `{BASE_DIR}/agents/research-synthesizer.md`.
-
-    **BASE_DIR:** {BASE_DIR}
-    All relative paths in referenced files resolve from BASE_DIR.
-
-    **CONTEXT:**
-    Research question: [verbatim research question]
-    Year range: [exact range, e.g., "2019-2023"]
-    Geographic scope: [e.g., "national", "California only"]
-    Sources identified in Stage 2: [count and names]
-
-    **STAGE 2 FINDINGS:**
-    [Full Stage 2 output from domain explorer skill]
-
-    **STAGE 3a FINDINGS ([source name]):**
-    [Full Stage 3a output from source-researcher]
-
-    **STAGE 3b FINDINGS ([source name]):**
-    [Full Stage 3b output from source-researcher]
-
-    **TASK:**
-    Synthesize all Stage 2-3 findings into unified planning guidance.
-    Resolve all conflicts. Flag LOW confidence items.
-    Produce actionable recommendations for data-planner.
-
-    Return findings using the Research Synthesizer Output Format.""",
-    subagent_type: "general-purpose"
-})
-```
+See `agents/README.md` for the canonical invocation template.
+The stage-specific template with full context fields is in `agent_reference/WORKFLOW_PHASE1_DISCOVERY.md`.
 
 ---
 
