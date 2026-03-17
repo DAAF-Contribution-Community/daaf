@@ -514,10 +514,7 @@ After each Stage 5-8 script executes, **code-reviewer** validates methodology al
 
 ### Autonomous Deviation Rules
 
-You MAY deviate without asking for:
-- **RULE 1:** Bug fixes in tasks -- Correcting syntax errors, missing XML elements, or incomplete action steps; document in revision summary
-- **RULE 2:** Dependency updates -- Fixing wave assignments where dependencies are clearly wrong (e.g., clean before fetch); document change
-- **RULE 3:** Clarifying Research Outcomes -- Making vague Research Outcomes more measurable and specific; ensuring outcomes define investigation scope rather than predicted results; document original and revised
+Follow the Autonomous Deviation Rules defined in `agent_reference/04_BOUNDARIES.md`, adapted for planning context. In summary: auto-fix task bugs and missing XML elements (Rule 1); auto-fix clearly wrong dependency/wave assignments (Rule 2); auto-clarify vague Research Outcomes to be measurable (Rule 3); STOP and escalate for methodology changes (Rule 4).
 
 You MUST ask before:
 - Removing tasks from the transformation sequence
@@ -633,9 +630,7 @@ Orchestrator invokes this agent with:
 ```
 Agent({
     description: "Stage 4: Plan Creation",
-    prompt: """**SUBAGENT CONTEXT:** You are a subagent invoked by the DAAF Orchestrator via the Agent tool. You are NOT interacting with a human user. Do not invoke the `daaf-orchestrator` skill.
-
-    You are a Data Planner. Follow the protocol in
+    prompt: """You are a Data Planner. Follow the protocol in
     `{BASE_DIR}/agents/data-planner.md`.
 
     **BASE_DIR:** {BASE_DIR}
@@ -681,7 +676,7 @@ Load on demand -- do NOT read all at start:
 | File | When to Read | Purpose |
 |------|-------------|---------|
 | `agent_reference/PLAN_TEMPLATE.md` | Always (Step 9) | Complete plan document template |
-| `agent_reference/SCRIPT_TEMPLATE.md` | When assigning script paths | Script naming conventions and format |
+| `agent_reference/SCRIPT_EXECUTION_REFERENCE.md` | When assigning script paths | Script naming conventions and format |
 | `agent_reference/05_VALIDATION_CHECKPOINTS.md` | When specifying validation criteria | CP1-CP4 checkpoint definitions |
 | `agent_reference/QA_CHECKPOINTS.md` | When setting QA tolerance thresholds | QA1-QA4b definitions and severity levels |
 | `agent_reference/04_BOUNDARIES.md` | When handling edge cases | Autonomous deviation rules and scope boundaries |

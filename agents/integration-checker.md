@@ -546,9 +546,7 @@ Orchestrator invokes this agent with:
 ```
 Agent({
     description: "Stage [9|11|12]: Integration Check",
-    prompt: """**SUBAGENT CONTEXT:** You are a subagent invoked by the DAAF Orchestrator via the Agent tool. You are NOT interacting with a human user. Do not invoke the `daaf-orchestrator` skill.
-
-    You are an Integration Checker. Follow the protocol in
+    prompt: """You are an Integration Checker. Follow the protocol in
     `{BASE_DIR}/agents/integration-checker.md`.
 
     **BASE_DIR:** {BASE_DIR}
@@ -587,4 +585,4 @@ Load on demand — do NOT read all at start:
 |------|-------------|---------|
 | `agent_reference/PLAN_TEMPLATE.md` | Step 1 (Map Data Flow) | File Manifest and Transformation Sequence format |
 | `agent_reference/QA_CHECKPOINTS.md` | Step 2 (QA Script Coverage) | QA script naming conventions and expectations |
-| `agent_reference/SCRIPT_TEMPLATE.md` | Step 2 (Script Verification) | Script naming patterns for stage directories |
+| `agent_reference/SCRIPT_EXECUTION_REFERENCE.md` | Step 2 (Script Verification) | Script naming patterns for stage directories |

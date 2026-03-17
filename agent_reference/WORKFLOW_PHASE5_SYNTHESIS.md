@@ -54,9 +54,7 @@ The report-writer follows a systematic mapping from REPORT_TEMPLATE.md sections 
 ```python
 Agent({
     description: "Stage 11: Report Generation",
-    prompt: """**SUBAGENT CONTEXT:** You are a subagent invoked by the DAAF Orchestrator via the Agent tool. You are NOT interacting with a human user. Do not invoke the `daaf-orchestrator` skill.
-
-You are a Report Writer. Follow the protocol in
+    prompt: """You are a Report Writer. Follow the protocol in
     `{BASE_DIR}/agents/report-writer.md`.
 
     Call the skill tool with name 'data-scientist'.
@@ -146,9 +144,7 @@ The data-verifier agent performs adversarial, goal-backward verification across 
 ```
 Agent({
     description: "Stage 12: Final Verification",
-    prompt: """**SUBAGENT CONTEXT:** You are a subagent invoked by the DAAF Orchestrator via the Agent tool. You are NOT interacting with a human user. Do not invoke the `daaf-orchestrator` skill.
-
-    You are a Data Verifier. Follow the protocol in
+    prompt: """You are a Data Verifier. Follow the protocol in
     `{BASE_DIR}/agents/data-verifier.md`.
 
     **BASE_DIR:** {BASE_DIR}

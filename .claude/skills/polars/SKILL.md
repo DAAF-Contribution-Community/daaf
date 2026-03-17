@@ -155,10 +155,10 @@ Having issues?
 3. Validation results get automatically embedded in scripts as comments
 4. If failed, create versioned copy for fixes
 
-Closely read `agent_reference/EXECUTION_CAPTURE.md` for the mandatory file-first execution protocol covering complete code file writing, output capture, and file versioning rules.
+Closely read `agent_reference/SCRIPT_EXECUTION_REFERENCE.md` for the mandatory file-first execution protocol covering complete code file writing, output capture, and file versioning rules.
 
 **See:**
-- `agent_reference/SCRIPT_TEMPLATE.md` — Script format with validation
+- `agent_reference/SCRIPT_EXECUTION_REFERENCE.md` — Script execution protocol and format with validation
 
 The examples below show Polars syntax. In research workflows, wrap them in scripts following the file-first pattern.
 

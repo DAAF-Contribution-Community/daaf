@@ -119,7 +119,7 @@ In the research pipeline, data-scientist methodology is applied within the **fil
 - Validation results get automatically embedded in scripts as comments
 - Marimo notebook assembles validated scripts for interactive review
 
-Closely read `agent_reference/EXECUTION_CAPTURE.md` for the mandatory file-first execution protocol covering complete code file writing, output capture, and file versioning rules.
+Closely read `agent_reference/SCRIPT_EXECUTION_REFERENCE.md` for the mandatory file-first execution protocol covering complete code file writing, output capture, and file versioning rules.
 
 **Load for Specific Needs:**
 ```

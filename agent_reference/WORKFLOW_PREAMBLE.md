@@ -177,11 +177,7 @@ Closely read `agent_reference/SCRIPT_EXECUTION_REFERENCE.md` for the mandatory f
 ```python
 Agent({
     description: "[3-5 word summary]",
-    prompt: """
-**SUBAGENT CONTEXT:** You are a subagent invoked by the DAAF Orchestrator via the Agent tool. You are NOT interacting with a human user. Do not invoke the `daaf-orchestrator` skill.
-
-## AGENT PROTOCOL
-Follow the protocol in `{BASE_DIR}/agents/[agent-name].md`.
+    prompt: """You are a [Agent Role]. Follow the protocol in `{BASE_DIR}/agents/[agent-name].md`.
 
 **BASE_DIR:** {BASE_DIR}
 All relative paths in referenced files resolve from BASE_DIR.
@@ -385,10 +381,7 @@ These are efficiency TARGETS for typical tasks, not hard ceilings that override 
 ```python
 Agent({
     description: "Stage [N]: [Name]",
-    prompt: """**SUBAGENT CONTEXT:** You are a subagent invoked by the DAAF Orchestrator via the Agent tool. You are NOT interacting with a human user. Do not invoke the `daaf-orchestrator` skill.
-
-## AGENT PROTOCOL
-Follow the protocol in `{BASE_DIR}/agents/[agent-name].md`.
+    prompt: """You are a [Agent Role]. Follow the protocol in `{BASE_DIR}/agents/[agent-name].md`.
 
 **BASE_DIR:** {BASE_DIR}
 All relative paths in referenced files resolve from BASE_DIR.
@@ -523,9 +516,12 @@ See daaf-orchestrator SKILL.md "Subagent Type Selection" for capabilities by typ
 ```python
 Agent({
     description: "Stage [N]: [Name]",
-    prompt: """**SUBAGENT CONTEXT:** You are a subagent invoked by the DAAF Orchestrator via the Agent tool. You are NOT interacting with a human user. Do not invoke the `daaf-orchestrator` skill.
+    prompt: """You are a [Agent Role]. Follow the protocol in `{BASE_DIR}/agents/[agent-name].md`.
 
-You have access to a skill tool. First, call the skill tool with name '[skill-name]'.
+**BASE_DIR:** {BASE_DIR}
+All relative paths in referenced files resolve from BASE_DIR.
+
+Call the skill tool with name '[skill-name]'.
 
 **CONTEXT:**
 [Relevant context from Plan or prior stages]
@@ -559,9 +555,7 @@ After completing the skill's Required Actions, return findings using the format 
 ```python
 Agent({
     description: "QA Review: Stage {N} Step {step} - {task_name}",
-    prompt: """**SUBAGENT CONTEXT:** You are a subagent invoked by the DAAF Orchestrator via the Agent tool. You are NOT interacting with a human user. Do not invoke the `daaf-orchestrator` skill.
-
-You are a Code Reviewer. Follow the protocol in `{BASE_DIR}/agents/code-reviewer.md`.
+    prompt: """You are a Code Reviewer. Follow the protocol in `{BASE_DIR}/agents/code-reviewer.md`.
 
 **BASE_DIR:** {BASE_DIR}
 All relative paths in referenced files resolve from BASE_DIR.
@@ -659,9 +653,7 @@ When code-reviewer returns BLOCKER, orchestrator sends revision request to resea
 ```python
 Agent({
     description: "Revision: Stage {N} Step {step} - {task_name}",
-    prompt: """**SUBAGENT CONTEXT:** You are a subagent invoked by the DAAF Orchestrator via the Agent tool. You are NOT interacting with a human user. Do not invoke the `daaf-orchestrator` skill.
-
-You are a Research Executor. Follow the protocol in `{BASE_DIR}/agents/research-executor.md`.
+    prompt: """You are a Research Executor. Follow the protocol in `{BASE_DIR}/agents/research-executor.md`.
 
 **BASE_DIR:** {BASE_DIR}
 All relative paths in referenced files resolve from BASE_DIR.
@@ -703,9 +695,7 @@ All relative paths in referenced files resolve from BASE_DIR.
 # If subagent returns error, retry with clarification
 Agent({
     description: "Stage [N] - Retry",
-    prompt: """**SUBAGENT CONTEXT:** You are a subagent invoked by the DAAF Orchestrator via the Agent tool. You are NOT interacting with a human user. Do not invoke the `daaf-orchestrator` skill.
-
-Previous attempt encountered: {error_description}
+    prompt: """Previous attempt encountered: {error_description}
 
 **CORRECTIVE CONTEXT:**
 {what_went_wrong}

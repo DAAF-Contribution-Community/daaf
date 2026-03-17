@@ -23,7 +23,8 @@ Every agent that writes or executes Python code (research-executor, code-reviewe
 Every Python execution follows these steps in order. No exceptions.
 
 ```
-WRITE  -->  EXECUTE  -->  CAPTURE  -->  VERSION (if failed)  -->  REPEAT
+WRITE  -->  EXECUTE  -->  CAPTURE  -->  COMMIT
+            (if failed: VERSION the script, then REPEAT from WRITE)
 ```
 
 ### Step 1: Write the Script to a File
@@ -40,7 +41,7 @@ Create the script file BEFORE executing any code. Use the standard template form
 Run the script using the execution wrapper, which handles output capture and log appending automatically:
 
 ```bash
-bash /path/to/research/[project]/scripts/run_with_capture.sh /path/to/research/[project]/scripts/stage{N}_{type}/{step}_{task-name}.py
+bash {PROJECT_DIR}/scripts/run_with_capture.sh {PROJECT_DIR}/scripts/stage{N}_{type}/{step}_{task-name}.py
 ```
 
 **Single command only.** Do not chain with `&&` or `;`. Do not prefix with `cd`. Use absolute paths.
@@ -67,7 +68,17 @@ If the script fails (non-zero exit code or failed validation):
 4. Execute the new copy with `run_with_capture.sh`
 5. If it fails again, create `_b.py`, then `_c.py`, etc.
 
-**Never modify a script after its execution log has been appended.** The log documents that exact code. Any fix goes in a new versioned file.
+**Never modify a script after its execution log has been appended.** See Script Versioning below for complete suffix conventions, examples, and rules.
+
+### Step 5: Commit
+
+After successful execution:
+1. Commit the script (two separate Bash calls):
+   - `git add scripts/stage{N}_{type}/{step}_{task-name}.py`
+   - `git commit -m "feat(stage{N}-{step}): {brief description}"`
+2. Proceed to next step in the Transformation Sequence
+
+If the script went through versioned revisions (Step 4), commit **all** versions for audit trail completeness.
 
 ---
 
@@ -177,21 +188,36 @@ This separation — exhaustive in the files, concise in the message — is what 
 
 ## Critical Rules
 
+### Inviolable (NEVER)
+
 | Rule | Rationale |
 |------|-----------|
 | **NEVER execute Python interactively before writing to a file** | Scripts are the primary artifact. Interactive execution bypasses the audit trail. |
 | **NEVER modify a script after appending its execution log** | The log documents that exact code. Modifications make the log misleading. |
 | **NEVER run `python script.py` directly** | Use `run_with_capture.sh` so output is captured and appended automatically. |
 | **NEVER delete failed script versions** | All versions form the audit trail. They document what was tried and what failed. |
+| **NEVER use function definitions (`def main()`, helpers)** | Sequential scripts read top-to-bottom. Functions add indirection without reuse value. |
+
+### Required Practices (ALWAYS)
+
+| Rule | Rationale |
+|------|-----------|
 | **ALWAYS create a new versioned copy for fixes** | Preserves the full history of attempts and outputs. |
 | **ALWAYS use the wrapper for execution** | It handles capture, timing, log appending, and re-run protection. |
 | **ALWAYS use the final successful version downstream** | Notebook and report reference only the version that passed. |
 | **ALWAYS follow one-operation-per-script** | Mixing multiple transformations hides the source of errors. |
 | **ALWAYS commit all versions** | Audit trail shows evolution of code and results. |
+| **ALWAYS include shebang, metadata docstring, and config section** | Required for traceability and reproducibility. |
+| **ALWAYS use `Path` with `PROJECT_DIR` constant** | Hardcoded paths break when project location changes. |
+| **ALWAYS capture pre/post state around transformations** | Enables validation of row count changes and data integrity. |
+| **ALWAYS include checkpoint validation (`assert` + `print`)** | Every transformation needs inline proof of correctness. |
+| **ALWAYS follow IAT protocol (INTENT, REASONING, ASSUMES)** | Uncommented transformations block QA review. See `INLINE_AUDIT_TRAIL.md`. |
 
 ---
 
 # Part 2: Script Format and Templates
+
+Part 1 defined **what to do** (the execution lifecycle). Part 2 defines **what the files look like** — the directory layout, naming conventions, and complete script templates for each stage. Use this as a reference when writing new scripts.
 
 ## Directory Structure
 
@@ -972,6 +998,173 @@ print("=" * 60)
 
 ---
 
+### Stage 8: Analysis Script Example
+
+Stage 8 encompasses both statistical analysis (8.1) and visualization (8.2). This example covers 8.1 (analysis). For 8.2 (visualization), follow the same template structure but output figures to `output/figures/` and use the `plotnine` or `plotly` skills for plot construction. See `agent_reference/QA_CHECKPOINTS.md` for the QA4a (analysis) and QA4b (visualization) checkpoint definitions.
+
+```python
+#!/usr/bin/env python3
+"""
+Stage 8.1: Regression analysis — poverty rate vs. enrollment metrics.
+
+Task: regression-poverty
+Wave: 4, Step: 1, Stage: 8
+Depends on: join-ccd-meps (Stage 7)
+Input: data/processed/2026-01-24_analysis.parquet
+Output: output/analysis/2026-01-24_regression_results.parquet
+Checkpoint: CP4
+"""
+
+import polars as pl
+import numpy as np
+from pathlib import Path
+
+# --- Config ---
+# Configuration for poverty-enrollment regression analysis.
+# Model specification and variable selections from Plan Section 5 (Analysis Design).
+PROJECT_DIR = Path("/daaf/research/2026-01-24_School_Analysis")
+DATE_PREFIX = "2026-01-24"
+
+INPUT_PATH = PROJECT_DIR / "data" / "processed" / f"{DATE_PREFIX}_analysis.parquet"
+OUTPUT_PATH = PROJECT_DIR / "output" / "analysis" / f"{DATE_PREFIX}_regression_results.parquet"
+
+OUTCOME_VAR = "enrollment"
+PREDICTOR_VAR = "poverty_rate"
+CONTROL_VARS = ["teachers_fte", "urban_centric_locale"]
+
+# --- Load ---
+# Load the joined analysis dataset and verify shape before proceeding.
+print("=" * 60)
+print("Stage 8.1: Poverty-Enrollment Regression")
+print("=" * 60)
+
+df = pl.read_parquet(INPUT_PATH)
+print(f"Loaded: {df.shape[0]:,} rows x {df.shape[1]} cols")
+
+# --- Pre-state ---
+# Verify all analysis variables exist, then create complete-case dataset.
+pre_rows = df.shape[0]
+analysis_vars = [OUTCOME_VAR, PREDICTOR_VAR] + CONTROL_VARS
+
+missing_vars = [v for v in analysis_vars if v not in df.columns]
+assert not missing_vars, f"STOP: Missing analysis variables: {missing_vars}"
+
+# INTENT: Create complete-case dataset for regression via listwise deletion.
+# REASONING: OLS requires complete observations. Listwise deletion is appropriate
+# when missingness is < 10% (Plan Section 5 specifies this threshold).
+# ASSUMES: Missingness is MCAR or MAR — not systematically related to outcomes.
+df_complete = df.drop_nulls(subset=analysis_vars)
+dropped = pre_rows - df_complete.shape[0]
+drop_pct = dropped / pre_rows * 100
+print(f"Complete cases: {df_complete.shape[0]:,} ({dropped:,} rows dropped, {drop_pct:.1f}%)")
+
+assert drop_pct < 10, f"STOP: Listwise deletion removed {drop_pct:.1f}% of rows (threshold: 10%)"
+
+# --- Analysis ---
+# INTENT: Estimate OLS regression of enrollment on poverty rate with controls.
+# REASONING: OLS is the Plan-specified method (Section 5). Using numpy for
+# coefficient estimation to avoid heavy dependencies (statsmodels/sklearn).
+# ASSUMES: Linear relationship is appropriate for this exploratory analysis.
+# Results are descriptive associations, not causal estimates.
+
+# Build design matrix
+y = df_complete[OUTCOME_VAR].to_numpy().astype(float)
+X_cols = [PREDICTOR_VAR] + CONTROL_VARS
+X = np.column_stack([
+    df_complete[col].to_numpy().astype(float) for col in X_cols
+])
+
+# Add intercept
+X = np.column_stack([np.ones(len(y)), X])
+col_names = ["intercept"] + X_cols
+
+# OLS: beta = (X'X)^-1 X'y
+# INTENT: Compute OLS coefficients via normal equations.
+# REASONING: Direct normal equation is stable for datasets of this size
+# (typically < 100K rows, < 10 predictors). No need for iterative solvers.
+XtX_inv = np.linalg.inv(X.T @ X)
+beta = XtX_inv @ (X.T @ y)
+
+# Residuals and standard errors
+y_hat = X @ beta
+residuals = y - y_hat
+n, k = X.shape
+dof = n - k
+mse = np.sum(residuals**2) / dof
+se = np.sqrt(np.diag(mse * XtX_inv))
+t_stats = beta / se
+r_squared = 1 - np.sum(residuals**2) / np.sum((y - np.mean(y))**2)
+
+print(f"\nR-squared: {r_squared:.4f}")
+print(f"Observations: {n:,}")
+print(f"Degrees of freedom: {dof:,}")
+print(f"\n{'Variable':<25} {'Coef':>12} {'Std Err':>12} {'t-stat':>10}")
+print("-" * 60)
+for i, name in enumerate(col_names):
+    print(f"{name:<25} {beta[i]:>12.4f} {se[i]:>12.4f} {t_stats[i]:>10.2f}")
+
+# --- Save ---
+# Persist regression results as a structured parquet file for downstream use.
+OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)
+
+results_df = pl.DataFrame({
+    "variable": col_names,
+    "coefficient": beta.tolist(),
+    "std_error": se.tolist(),
+    "t_statistic": t_stats.tolist(),
+})
+results_df = results_df.with_columns([
+    pl.lit(r_squared).alias("r_squared"),
+    pl.lit(n).alias("n_obs"),
+    pl.lit(dof).alias("degrees_of_freedom"),
+])
+
+results_df.write_parquet(OUTPUT_PATH)
+print(f"\nSaved: {OUTPUT_PATH}")
+
+# --- CP4 Validation ---
+# Checkpoint validation: verify regression produced valid results,
+# coefficients are finite, and model diagnostics are reasonable.
+print("\n" + "=" * 60)
+print("CHECKPOINT 4 VALIDATION")
+print("=" * 60)
+
+# CP4.1: All coefficients finite
+all_finite = np.all(np.isfinite(beta)) and np.all(np.isfinite(se))
+print(f"  [{'PASS' if all_finite else 'FAIL'}] All coefficients finite")
+
+# CP4.2: R-squared in valid range
+r2_valid = 0 <= r_squared <= 1
+print(f"  [{'PASS' if r2_valid else 'FAIL'}] R-squared in [0, 1]: {r_squared:.4f}")
+
+# CP4.3: Sufficient observations for number of predictors (n > 10*k)
+obs_adequate = n > 10 * k
+print(f"  [{'PASS' if obs_adequate else 'WARN'}] n/k ratio: {n}/{k} = {n/k:.0f} (>10 required)")
+
+# CP4.4: Primary predictor has expected sign (from Plan hypothesis)
+predictor_idx = col_names.index(PREDICTOR_VAR)
+sign_expected = beta[predictor_idx] < 0  # Plan hypothesizes negative association
+print(f"  [{'PASS' if sign_expected else 'NOTE'}] Primary predictor sign: {beta[predictor_idx]:.4f} (expected negative)")
+
+assert all_finite, "STOP: Non-finite coefficients"
+assert r2_valid, "STOP: R-squared out of range"
+
+print("\n" + "=" * 60)
+print("CP4 VALIDATION: PASSED")
+print("=" * 60)
+
+# =============================================================================
+# EXECUTION LOG
+# Executed: [auto-appended after running]
+# Duration: [auto-appended]
+# Exit code: [auto-appended]
+# --- STDOUT ---
+# [auto-appended]
+# =============================================================================
+```
+
+---
+
 ### Debug Script Example
 
 ```python
@@ -1262,31 +1455,3 @@ if not all_passed:
 | **Exit non-zero on failure** | Use `raise SystemExit(1)` so the wrapper captures failure |
 | **Save to scripts/cr/** | Keeps QA scripts separate from execution scripts |
 
----
-
-## Anti-Patterns
-
-### DO NOT:
-
-| Anti-Pattern | Problem | Correct Approach |
-|--------------|---------|------------------|
-| **Missing shebang** | Script not directly executable | Always include `#!/usr/bin/env python3` |
-| **Hardcoded paths** | Scripts break when project moves | Use `Path` with `PROJECT_DIR` constant |
-| **Missing docstring** | No metadata for traceability | Include task, wave, step, stage info |
-| **No validation** | Can't verify success | Always include checkpoint validation |
-| **No pre/post state** | Can't track changes | Capture row counts and shapes |
-| **Mixed concerns** | Hard to debug | One transformation per script |
-| **Function wrappers** | Unnecessary indirection | Write flat sequential code, no `def main()` |
-| **Uncommented transformations** | Unauditable code blocks QA review | Follow IAT: add INTENT, REASONING, ASSUMES comments |
-
-### DO:
-
-- Write flat, sequential code that reads top-to-bottom (no `def main()`, no `if __name__`)
-- Include full metadata in docstring header
-- Use a config section for all paths and constants
-- Capture pre-state before any transformation
-- Execute exactly ONE major operation per script
-- Capture post-state after transformation
-- Use `assert` statements for checkpoint validation (script exits non-zero on failure)
-- Save parquet format
-- Write verbose inline comments following the IAT protocol (see `agent_reference/INLINE_AUDIT_TRAIL.md`)

@@ -151,7 +151,7 @@ mo.ui.table(df.head(100))
 
 **See:**
 - `agents/notebook-assembler.md` for the complete behavioral protocol
-- `agent_reference/02_WORKFLOW_STAGES.md` Stage 9 for template
+- `agent_reference/WORKFLOW_PHASE4_ANALYSIS.md` Stage 9 for template
 
 ---
 

@@ -199,22 +199,6 @@ permissionMode: default          # Or: plan (read-only agents)
 
 ---
 
-### 11. Subagent Identity Preamble
-
-Every agent's Invocation Pattern MUST include the **Subagent Identity Preamble** as the first line of the `prompt:` value, before the role assignment:
-
-```markdown
-**SUBAGENT CONTEXT:** You are a subagent invoked by the DAAF Orchestrator via the Agent tool. You are NOT interacting with a human user. Do not invoke the `daaf-orchestrator` skill.
-```
-
-Followed by a blank line, then the agent's role (e.g., `You are a Research Executor...`).
-
-**Why:** Claude Code's Agent tool does not inject any signal distinguishing subagent sessions from top-level human-facing sessions. Without this preamble, subagents receive the same `CLAUDE.md` and environment context as the orchestrator and will incorrectly attempt to invoke the `daaf-orchestrator` skill or apply human-interaction behaviors.
-
-See `agents/README.md` "Subagent Identity Preamble" section for full documentation.
-
----
-
 ## Verification Script
 
 After writing an agent, verify all standards are met:
@@ -231,11 +215,6 @@ grep -c "## Identity\|Core Distinction\|## Inputs\|## Core Behaviors\|## Protoco
 echo "=== Standardized Elements ==="
 grep -c "HIGH.*MEDIUM.*LOW\|Learning Signal\|BLOCKER.*WARNING\|STOP Conditions\|<anti_patterns>\|<upstream_input>\|<downstream_consumer>" "$AGENT_FILE"
 # Expected: 7+ matches
-
-# Check subagent identity preamble in invocation
-echo "=== Subagent Identity Preamble ==="
-grep -c "SUBAGENT CONTEXT" "$AGENT_FILE"
-# Expected: 1+ (every prompt: """ must have it)
 
 # Check length
 echo "=== Length ==="

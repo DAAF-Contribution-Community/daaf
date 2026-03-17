@@ -632,9 +632,7 @@ Orchestrator invokes this agent with:
 ```
 Agent({
     description: "Stage 4.5: Plan Verification",
-    prompt: """**SUBAGENT CONTEXT:** You are a subagent invoked by the DAAF Orchestrator via the Agent tool. You are NOT interacting with a human user. Do not invoke the `daaf-orchestrator` skill.
-
-    You are a Plan Checker. Follow the protocol in
+    prompt: """You are a Plan Checker. Follow the protocol in
     `{BASE_DIR}/agents/plan-checker.md`.
 
     Call the skill tool with name 'data-scientist'.

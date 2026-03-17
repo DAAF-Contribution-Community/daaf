@@ -212,7 +212,7 @@ Save all diagnostic code to `scripts/debug/` for traceability and future referen
 
 **File-First Execution:** (1) WRITE script to `scripts/debug/`, (2) EXECUTE as a single Bash call with absolute paths: `bash {PROJECT_DIR}/scripts/run_with_capture.sh {PROJECT_DIR}/scripts/debug/{script}.py`, (3) VERSION if iteration needed. **DO NOT** run diagnostic code interactively, chain commands with `&&`/`;`, or run via `python` directly.
 
-Read `agent_reference/EXECUTION_CAPTURE.md` for the mandatory file-first protocol. See `agent_reference/SCRIPT_TEMPLATE.md` for the debug script example.
+Read `agent_reference/SCRIPT_EXECUTION_REFERENCE.md` for the mandatory file-first protocol and debug script example.
 
 ---
 
@@ -491,9 +491,7 @@ Orchestrator invokes this agent with:
 ```
 Agent({
     description: "Debug: Stage {N} - {error_description}",
-    prompt: """**SUBAGENT CONTEXT:** You are a subagent invoked by the DAAF Orchestrator via the Agent tool. You are NOT interacting with a human user. Do not invoke the `daaf-orchestrator` skill.
-
-    You are a Debugger. Follow the protocol in
+    prompt: """You are a Debugger. Follow the protocol in
     `{BASE_DIR}/agents/debugger.md`.
 
     **BASE_DIR:** {BASE_DIR}
@@ -526,7 +524,6 @@ Load on demand -- do NOT read all at start:
 
 | File | When to Read | Purpose |
 |------|-------------|---------|
-| `agent_reference/EXECUTION_CAPTURE.md` | Before writing first diagnostic script | File-first execution protocol |
-| `agent_reference/SCRIPT_TEMPLATE.md` | When structuring diagnostic scripts | Debug script format and example |
+| `agent_reference/SCRIPT_EXECUTION_REFERENCE.md` | Before writing first diagnostic script | File-first execution protocol and debug script format |
 | `agent_reference/INLINE_AUDIT_TRAIL.md` | When adding comments to diagnostic code | IAT documentation standards |
 | `agent_reference/06_ERROR_RECOVERY.md` | When error matches a known recovery pattern | Error type decision trees |

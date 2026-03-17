@@ -107,7 +107,7 @@ All profiling and reconciliation code follows the mandatory file-first pattern:
 2. **EXECUTE** as a single Bash call: `bash {PROJECT_DIR}/scripts/run_with_capture.sh {PROJECT_DIR}/scripts/{script_name}.py`
 3. **ARCHIVE** scripts (with embedded execution logs) in the skill's `scripts/` directory
 
-Read `agent_reference/EXECUTION_CAPTURE.md` before writing any scripts.
+Read `agent_reference/SCRIPT_EXECUTION_REFERENCE.md` before writing any scripts.
 
 ### 5. Template Compliance
 
@@ -138,7 +138,7 @@ All generated skills for data sources MUST follow the canonical 12-section order
 
 ### Step 2: Profile Data (Mode 1 — Deductive)
 
-Read `agent_reference/EXECUTION_CAPTURE.md` for the mandatory file-first execution protocol. **Single command execution:** Each profiling script is executed via one Bash call using absolute paths: `bash {PROJECT_DIR}/scripts/run_with_capture.sh {PROJECT_DIR}/scripts/{script}.py`. Do not chain commands with `&&` or `;`.
+Read `agent_reference/SCRIPT_EXECUTION_REFERENCE.md` for the mandatory file-first execution protocol. **Single command execution:** Each profiling script is executed via one Bash call using absolute paths: `bash {PROJECT_DIR}/scripts/run_with_capture.sh {PROJECT_DIR}/scripts/{script}.py`. Do not chain commands with `&&` or `;`.
 
 Write and execute profiling scripts for each phase:
 
@@ -599,8 +599,8 @@ The skill `{skill-name}` has been created but is **not yet discoverable** by the
 
 | Priority | File | Section to Update | What to Add |
 |----------|------|-------------------|-------------|
-| 1 (Required) | `CLAUDE.md` | Data Source Quick Lookup | New row with data need and skill name |
-| 2 (Required) | `agent_reference/03_SKILL_INVOCATIONS.md` | Available source skills list | New bullet with skill name and description |
+| 1 (Required) | `.claude/skills/daaf-orchestrator/references/skill-catalog.md` | Data Source Quick Lookup | New row with data need and skill name |
+| 2 (Required) | `agent_reference/WORKFLOW_PREAMBLE.md` | Available source skills list | New bullet with skill name and description |
 | 3 (Required) | `agents/source-researcher.md` | Step 1 examples | Add skill to example list |
 
 **Would you like me to make these updates now?**
@@ -813,9 +813,7 @@ Orchestrator invokes this agent with:
 ```
 Agent({
     description: "Ingest: {data_name}",
-    prompt: """**SUBAGENT CONTEXT:** You are a subagent invoked by the DAAF Orchestrator via the Agent tool. You are NOT interacting with a human user. Do not invoke the `daaf-orchestrator` skill.
-
-    You are a Data Ingest Specialist. Follow the protocol in
+    prompt: """You are a Data Ingest Specialist. Follow the protocol in
     `{BASE_DIR}/agents/data-ingest.md`.
 
     **BASE_DIR:** {BASE_DIR}
@@ -869,7 +867,7 @@ Load on demand — do NOT read all at start:
 | File | When to Read | Purpose |
 |------|-------------|---------|
 | `agent_reference/DATA_SOURCE_SKILL_TEMPLATE.md` | Step 1 (Initialize) | Canonical 12-section order for data source skills |
-| `agent_reference/EXECUTION_CAPTURE.md` | Step 2 (before writing scripts) | File-first execution protocol and capture utilities |
+| `agent_reference/SCRIPT_EXECUTION_REFERENCE.md` | Step 2 (before writing scripts) | File-first execution protocol and capture utilities |
 | `agent_reference/INLINE_AUDIT_TRAIL.md` | Step 2 (if complex transforms needed) | IAT documentation standards |
 
 ### Workflow Integration (Post-Ingest)
@@ -880,8 +878,8 @@ After creating a new data skill, it must be **registered in the workflow documen
 
 | Priority | File | Section to Update | What to Add |
 |----------|------|-------------------|-------------|
-| 1 (Required) | `CLAUDE.md` | Data Source Quick Lookup | New row with data need and skill name |
-| 2 (Required) | `agent_reference/03_SKILL_INVOCATIONS.md` | Available source skills list | New bullet with skill name and description |
+| 1 (Required) | `.claude/skills/daaf-orchestrator/references/skill-catalog.md` | Data Source Quick Lookup | New row with data need and skill name |
+| 2 (Required) | `agent_reference/WORKFLOW_PREAMBLE.md` | Available source skills list | New bullet with skill name and description |
 | 3 (Required) | `agents/source-researcher.md` | Step 1 examples | Add skill to example list |
 
 **Why manual registration?** The system prioritizes explicit, searchable documentation over dynamic discovery. Human reviewers need to know what skills exist, and agents receive skill names in Agent prompts by explicit reference.

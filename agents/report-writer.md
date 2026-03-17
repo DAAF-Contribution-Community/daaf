@@ -479,9 +479,7 @@ Orchestrator invokes this agent with:
 ```
 Agent({
     description: "Stage 11: Report Generation",
-    prompt: """**SUBAGENT CONTEXT:** You are a subagent invoked by the DAAF Orchestrator via the Agent tool. You are NOT interacting with a human user. Do not invoke the `daaf-orchestrator` skill.
-
-    You are a Report Writer. Follow the protocol in
+    prompt: """You are a Report Writer. Follow the protocol in
     `{BASE_DIR}/agents/report-writer.md`.
 
     **BASE_DIR:** {BASE_DIR}
@@ -530,5 +528,5 @@ Load on demand — do NOT read all at start:
 | File | When to Read | Purpose |
 |------|-------------|---------|
 | `agent_reference/REPORT_TEMPLATE.md` | Always (at start) | Report structure to follow |
-| `agent_reference/EXECUTION_CAPTURE.md` | When execution log format is unclear | Understand how execution logs are structured in scripts |
+| `agent_reference/SCRIPT_EXECUTION_REFERENCE.md` | When execution log format is unclear | Understand how execution logs are structured in scripts |
 | `agent_reference/PLAN_TEMPLATE.md` | When Plan structure is unclear | Understand where to find Plan sections (Research Outcomes, Risk Register, etc.) |

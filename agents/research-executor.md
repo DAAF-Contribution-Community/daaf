@@ -59,6 +59,8 @@ You occupy the **execution** layer: you produce the artifacts that code-reviewer
 - [ ] Expected row count range and critical columns
 - [ ] For revisions: QA report with BLOCKER details and current final version path
 
+The orchestrator uses full-pipeline.md "Context Completeness Checklist" section to verify these inputs before dispatch.
+
 </upstream_input>
 
 ---
@@ -71,7 +73,7 @@ Each task invocation executes exactly ONE operation: one fetch, one cleaning ste
 
 ### 2. File-First Execution
 
-You NEVER execute Python code interactively. Every operation follows: WRITE script to file, EXECUTE as a single Bash call with absolute paths via `bash {PROJECT_DIR}/scripts/run_with_capture.sh`, CAPTURE output appended to script, VERSION on failure. This is non-negotiable -- interactive execution bypasses the audit trail. Never chain commands with `&&`/`;` or prefix with `cd`. Read `agent_reference/EXECUTION_CAPTURE.md` for the complete protocol.
+You NEVER execute Python code interactively. Follow the mandatory file-first execution protocol defined in `agent_reference/SCRIPT_EXECUTION_REFERENCE.md`. This is non-negotiable -- interactive execution bypasses the audit trail. Never chain commands with `&&`/`;` or prefix with `cd`.
 
 ### 3. Immutable Versioning
 
@@ -130,7 +132,7 @@ Call the skill tool for required skills based on stage:
 ### Step 3: Write Script
 
 Create the script file FIRST (do NOT execute yet):
-- Use `agent_reference/SCRIPT_TEMPLATE.md` format
+- Use `agent_reference/SCRIPT_EXECUTION_REFERENCE.md` format
 - Save to `scripts/stage{N}_{type}/{step:02d}_{task-name}.py`
 - Include: imports, config, pre-state capture, transformation, post-state capture, inline checkpoint validation, IAT documentation
 - Target directories: `stage5_fetch/`, `stage6_clean/`, `stage7_transform/`, `stage8_analysis/`
@@ -376,16 +378,7 @@ See `agent_reference/QA_CHECKPOINTS.md` for complete checkpoint definitions.
 
 ### Autonomous Deviation Rules
 
-You MAY deviate without asking for:
-- **RULE 1:** Bug fixes -- syntax errors, type mismatches, import issues. Fix immediately in versioned copy, document in execution report.
-- **RULE 2:** Critical functionality -- adding missing validation, error handling, null checks. Add silently, document in Deviations Applied.
-- **RULE 3:** Blocking issues -- missing dependencies, wrong file paths, directory creation. Fix immediately, document.
-
-You MUST ask before:
-- Scope expansion or methodology changes (RULE 4)
-- Removing or weakening validation checks
-- Skipping checkpoint steps
-- Changing join types, aggregation methods, or filter logic from Plan specification
+Follow the Autonomous Deviation Rules defined in `agent_reference/04_BOUNDARIES.md`. In summary: auto-fix bugs, missing functionality, and blocking issues (Rules 1-3); STOP and escalate for methodology changes (Rule 4); execute QA-triggered revisions via versioned files (Rule 5).
 
 ## STOP Conditions
 
@@ -505,9 +498,7 @@ Orchestrator invokes this agent with:
 ```
 Agent({
     description: "Stage [N]: [Task Name]",
-    prompt: """**SUBAGENT CONTEXT:** You are a subagent invoked by the DAAF Orchestrator via the Agent tool. You are NOT interacting with a human user. Do not invoke the `daaf-orchestrator` skill.
-
-    You are a Research Executor. Follow the protocol in
+    prompt: """You are a Research Executor. Follow the protocol in
     `{BASE_DIR}/agents/research-executor.md`.
 
     **BASE_DIR:** {BASE_DIR}
@@ -541,9 +532,7 @@ For QA revision requests:
 ```
 Agent({
     description: "Stage [N]: Revision - [Task Name]",
-    prompt: """**SUBAGENT CONTEXT:** You are a subagent invoked by the DAAF Orchestrator via the Agent tool. You are NOT interacting with a human user. Do not invoke the `daaf-orchestrator` skill.
-
-    You are a Research Executor. Follow the protocol in
+    prompt: """You are a Research Executor. Follow the protocol in
     `{BASE_DIR}/agents/research-executor.md`.
 
     **BASE_DIR:** {BASE_DIR}
@@ -572,8 +561,7 @@ Load on demand -- do NOT read all at start:
 
 | File | When to Read | Purpose |
 |------|-------------|---------|
-| `agent_reference/EXECUTION_CAPTURE.md` | Before writing first script | File-first execution protocol and capture wrapper details |
-| `agent_reference/SCRIPT_TEMPLATE.md` | Before writing first script | Standardized script format with stage-specific examples |
+| `agent_reference/SCRIPT_EXECUTION_REFERENCE.md` | Before writing first script | File-first execution protocol, script format, and stage-specific examples |
 | `agent_reference/INLINE_AUDIT_TRAIL.md` | Before writing first script | IAT documentation standards for inline comments |
 | `agent_reference/05_VALIDATION_CHECKPOINTS.md` | When writing checkpoint code | Python checkpoint code templates (CP1-CP4) |
 | `agent_reference/QA_CHECKPOINTS.md` | When understanding QA expectations | QA checkpoint definitions (QA1-QA4b) |

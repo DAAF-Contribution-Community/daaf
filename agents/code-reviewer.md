@@ -397,7 +397,7 @@ Follow file-first execution:
 2. Execute as a single Bash call with absolute paths: `bash {PROJECT_DIR}/scripts/run_with_capture.sh {PROJECT_DIR}/scripts/cr/stage{N}_{step}_cr1.py`
 3. **Review the profiling output and all check results before proceeding**
 
-Read `agent_reference/EXECUTION_CAPTURE.md` for the mandatory file-first execution protocol.
+Read `agent_reference/SCRIPT_EXECUTION_REFERENCE.md` for the mandatory file-first execution protocol.
 
 #### 3.2 Iterative Investigation Loop (cr2-cr5)
 
@@ -905,9 +905,7 @@ Orchestrator invokes this agent with:
 ```
 Agent({
     description: "QA Review: Stage {N} Step {step} - {task_name}",
-    prompt: """**SUBAGENT CONTEXT:** You are a subagent invoked by the DAAF Orchestrator via the Agent tool. You are NOT interacting with a human user. Do not invoke the `daaf-orchestrator` skill.
-
-    You are a Code Reviewer. Follow the protocol in
+    prompt: """You are a Code Reviewer. Follow the protocol in
     `{BASE_DIR}/agents/code-reviewer.md`.
 
     **BASE_DIR:** {BASE_DIR}
@@ -985,4 +983,4 @@ Load on demand — do NOT read all at start:
 |------|-------------|---------|
 | `agent_reference/QA_CHECKPOINTS.md` | When determining stage-specific checks | QA1-QA4b checkpoint definitions and validation criteria |
 | `agent_reference/INLINE_AUDIT_TRAIL.md` | Phase 1.6 (documentation quality) | IAT documentation standards for assessing script documentation |
-| `agent_reference/EXECUTION_CAPTURE.md` | Phase 3 (executing QA scripts) | File-first execution protocol and output capture |
+| `agent_reference/SCRIPT_EXECUTION_REFERENCE.md` | Phase 3 (executing QA scripts) | File-first execution protocol and output capture |

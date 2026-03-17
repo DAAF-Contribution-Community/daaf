@@ -465,9 +465,7 @@ Orchestrator invokes this agent with:
 ```python
 Agent({
     description: "Stage 3: Research [Source] source",
-    prompt: """**SUBAGENT CONTEXT:** You are a subagent invoked by the DAAF Orchestrator via the Agent tool. You are NOT interacting with a human user. Do not invoke the `daaf-orchestrator` skill.
-
-    You are a Source Researcher. Follow the protocol in
+    prompt: """You are a Source Researcher. Follow the protocol in
     `{BASE_DIR}/agents/source-researcher.md`.
 
     **BASE_DIR:** {BASE_DIR}
@@ -506,5 +504,5 @@ Load on demand — do NOT read all at start:
 | File | When to Read | Purpose |
 |------|-------------|---------|
 | `agent_reference/01_PROTOCOLS.md` | When Protocol 1 (Data Discovery) details needed | Discovery protocol specifics |
-| `agent_reference/03_SKILL_INVOCATIONS.md` | When unsure which skill to load | Skill invocation patterns and available skills |
+| `agent_reference/WORKFLOW_PHASE1_DISCOVERY.md` | When unsure which skill to load | Skill invocation patterns and available skills |
 | `agent_reference/04_BOUNDARIES.md` | When encountering scope boundary questions | Deviation rules and boundary specifications |

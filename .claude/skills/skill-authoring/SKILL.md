@@ -208,6 +208,14 @@ Content here.
 - Don't include time-sensitive information (use "Old patterns" `<details>` sections if needed)
 - Don't use Windows-style backslash paths (always forward slashes)
 
+### Skill Registration
+
+After creating a new skill, register it in the DAAF orchestrator's catalog so the orchestrator can discover and route to it:
+
+1. Add a row to the **Skill Quick Reference** table in `.claude/skills/daaf-orchestrator/references/skill-catalog.md`
+2. For data source skills: also add a row to the **Data Source Quick Lookup** table in the same file
+3. If the skill is used by a specific pipeline stage: update the **Skill-to-Stage Mapping** in `.claude/skills/daaf-orchestrator/references/full-pipeline.md`
+
 ## Data Source Skills: Metadata References
 
 When authoring a data source skill, include a codebook reference section if codebooks exist for the source. Follow the existing pattern (modeled after PSEO):

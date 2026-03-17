@@ -524,9 +524,7 @@ Orchestrator invokes this agent with:
 ```python
 Agent({
     description: "Stage 3.5: Research Synthesis",
-    prompt: """**SUBAGENT CONTEXT:** You are a subagent invoked by the DAAF Orchestrator via the Agent tool. You are NOT interacting with a human user. Do not invoke the `daaf-orchestrator` skill.
-
-    You are a Research Synthesizer. Follow the protocol in
+    prompt: """You are a Research Synthesizer. Follow the protocol in
     `{BASE_DIR}/agents/research-synthesizer.md`.
 
     **BASE_DIR:** {BASE_DIR}

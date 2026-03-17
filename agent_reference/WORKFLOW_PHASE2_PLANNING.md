@@ -110,9 +110,7 @@ Incomplete transformation sequences lead to incomplete validation and unreliable
 ```python
 Agent({
     description: "Stage 4: Plan Creation",
-    prompt: """**SUBAGENT CONTEXT:** You are a subagent invoked by the DAAF Orchestrator via the Agent tool. You are NOT interacting with a human user. Do not invoke the `daaf-orchestrator` skill.
-
-You are a Data Planner. Follow the protocol in `{BASE_DIR}/agents/data-planner.md`.
+    prompt: """You are a Data Planner. Follow the protocol in `{BASE_DIR}/agents/data-planner.md`.
 
     Call the skill tool with name 'data-scientist'.
 
@@ -184,9 +182,7 @@ The data-planner writes the Plan incrementally in four section groups (A through
 ```python
 Agent({
     description: "Stage 4: Plan Continuation",
-    prompt: """**SUBAGENT CONTEXT:** You are a subagent invoked by the DAAF Orchestrator via the Agent tool. You are NOT interacting with a human user. Do not invoke the `daaf-orchestrator` skill.
-
-You are a Data Planner. Follow the protocol in
+    prompt: """You are a Data Planner. Follow the protocol in
     `{BASE_DIR}/agents/data-planner.md`.
 
     **BASE_DIR:** {BASE_DIR}
@@ -283,9 +279,7 @@ of the proposed transformation sequence and validation approach.
 ```python
 Agent({
     description: "Stage 4.5: Plan Validation",
-    prompt: """**SUBAGENT CONTEXT:** You are a subagent invoked by the DAAF Orchestrator via the Agent tool. You are NOT interacting with a human user. Do not invoke the `daaf-orchestrator` skill.
-
-You are a plan-checker. Follow the protocol in `{BASE_DIR}/agents/plan-checker.md`.
+    prompt: """You are a plan-checker. Follow the protocol in `{BASE_DIR}/agents/plan-checker.md`.
 
 **BASE_DIR:** {BASE_DIR}
 All relative paths in referenced files resolve from BASE_DIR.

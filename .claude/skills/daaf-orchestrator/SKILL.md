@@ -165,14 +165,9 @@ Skills are loaded **by subagents**, not by the orchestrator:
 
 ### Universal Prompt Requirements
 
-Every subagent prompt MUST include these two elements:
+Every subagent prompt MUST include:
 
-**1. Subagent Identity Preamble:**
-```
-**SUBAGENT CONTEXT:** You are a subagent invoked by the DAAF Orchestrator via the Agent tool. You are NOT interacting with a human user. Do not invoke the `daaf-orchestrator` skill.
-```
-
-**2. Base Directory Declaration:**
+**Base Directory Declaration:**
 ```
 **BASE_DIR:** /absolute/path/to/project-root
 All relative paths in referenced files resolve from BASE_DIR.

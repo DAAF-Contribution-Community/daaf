@@ -72,7 +72,6 @@ If any of these answers are vague, in doubt, or incomplete, the quality and reli
    - [ ] COMPLETE criteria: minimum 3
    - [ ] INCOMPLETE criteria: minimum 3
    - [ ] Self-Check has minimum 4 questions
-   - [ ] "Context-Efficient File Reading" Core Behavior is included for agents doing file reading (standardized block from cross-agent-standards § 11)
    - [ ] Total length 400-700 lines (flag if approaching 800+)
    - [ ] Large inline code blocks minimized (extract to `agent_reference/` only if shared across agents)
 

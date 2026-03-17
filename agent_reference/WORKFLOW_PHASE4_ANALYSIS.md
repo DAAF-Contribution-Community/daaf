@@ -202,9 +202,7 @@ cp3_status = "PASSED" | "WARNING" | "FAILED"
 # Step 1: Initial EDA (no transformations yet)
 Agent({
     description: "Stage 7.1: Initial EDA",
-    prompt: """**SUBAGENT CONTEXT:** You are a subagent invoked by the DAAF Orchestrator via the Agent tool. You are NOT interacting with a human user. Do not invoke the `daaf-orchestrator` skill.
-
-You are a Research Executor. Follow the protocol in `{BASE_DIR}/agents/research-executor.md`.
+    prompt: """You are a Research Executor. Follow the protocol in `{BASE_DIR}/agents/research-executor.md`.
 
 **BASE_DIR:** {BASE_DIR}
 All relative paths in referenced files resolve from BASE_DIR.
@@ -247,9 +245,7 @@ Do NOT proceed to transformations. Return findings for orchestrator review.""",
 
 Agent({
     description: "Stage 7.2: Execute Transformation #{n}",
-    prompt: """**SUBAGENT CONTEXT:** You are a subagent invoked by the DAAF Orchestrator via the Agent tool. You are NOT interacting with a human user. Do not invoke the `daaf-orchestrator` skill.
-
-You are a Research Executor. Follow the protocol in `{BASE_DIR}/agents/research-executor.md`.
+    prompt: """You are a Research Executor. Follow the protocol in `{BASE_DIR}/agents/research-executor.md`.
 
 **BASE_DIR:** {BASE_DIR}
 All relative paths in referenced files resolve from BASE_DIR.
@@ -341,9 +337,7 @@ Typically invoked alongside `data-scientist` skill. Use for specific Polars synt
 ```python
 Agent({
     description: "Polars Operation: {operation_name}",
-    prompt: """**SUBAGENT CONTEXT:** You are a subagent invoked by the DAAF Orchestrator via the Agent tool. You are NOT interacting with a human user. Do not invoke the `daaf-orchestrator` skill.
-
-You have access to a skill tool. First, call the skill tool with name 'polars'.
+    prompt: """You have access to a skill tool. First, call the skill tool with name 'polars'.
 
 **OPERATION NEEDED:**
 {description_of_operation}
@@ -376,9 +370,7 @@ with stage-specific values for Stage 7.
 # Step 4: Final CP3 Validation (after all transformations complete)
 Agent({
     description: "Stage 7.3: Final CP3 Validation",
-    prompt: """**SUBAGENT CONTEXT:** You are a subagent invoked by the DAAF Orchestrator via the Agent tool. You are NOT interacting with a human user. Do not invoke the `daaf-orchestrator` skill.
-
-You are a Research Executor. Follow the protocol in `{BASE_DIR}/agents/research-executor.md`.
+    prompt: """You are a Research Executor. Follow the protocol in `{BASE_DIR}/agents/research-executor.md`.
 
 **BASE_DIR:** {BASE_DIR}
 All relative paths in referenced files resolve from BASE_DIR.
@@ -515,9 +507,7 @@ Stage 8.2.x: Visualization (one script per visualization task)
 
 Agent({
     description: "Stage 8.1: Statistical Analysis - {analysis_name}",
-    prompt: """**SUBAGENT CONTEXT:** You are a subagent invoked by the DAAF Orchestrator via the Agent tool. You are NOT interacting with a human user. Do not invoke the `daaf-orchestrator` skill.
-
-You are a Research Executor. Follow the protocol in `{BASE_DIR}/agents/research-executor.md`.
+    prompt: """You are a Research Executor. Follow the protocol in `{BASE_DIR}/agents/research-executor.md`.
 
 **BASE_DIR:** {BASE_DIR}
 All relative paths in referenced files resolve from BASE_DIR.
@@ -661,9 +651,7 @@ with stage-specific values for Stage 8. Use **QA4a** (statistical validity) for 
 ```python
 Agent({
     description: "Stage 8.2: Visualization - Static Plots",
-    prompt: """**SUBAGENT CONTEXT:** You are a subagent invoked by the DAAF Orchestrator via the Agent tool. You are NOT interacting with a human user. Do not invoke the `daaf-orchestrator` skill.
-
-You are a Research Executor. Follow the protocol in `{BASE_DIR}/agents/research-executor.md`.
+    prompt: """You are a Research Executor. Follow the protocol in `{BASE_DIR}/agents/research-executor.md`.
 
 **BASE_DIR:** {BASE_DIR}
 All relative paths in referenced files resolve from BASE_DIR.
@@ -702,9 +690,7 @@ Return the plotting code and confirm files are saved.""",
 ```python
 Agent({
     description: "Stage 8.2: Visualization - Interactive Plots",
-    prompt: """**SUBAGENT CONTEXT:** You are a subagent invoked by the DAAF Orchestrator via the Agent tool. You are NOT interacting with a human user. Do not invoke the `daaf-orchestrator` skill.
-
-You are a Research Executor. Follow the protocol in `{BASE_DIR}/agents/research-executor.md`.
+    prompt: """You are a Research Executor. Follow the protocol in `{BASE_DIR}/agents/research-executor.md`.
 
 **BASE_DIR:** {BASE_DIR}
 All relative paths in referenced files resolve from BASE_DIR.
@@ -894,9 +880,7 @@ The following are **NEVER ALLOWED** in Stage 9 notebooks:
 ```python
 Agent({
     description: "Stage 9: Compile Scripts into Notebook",
-    prompt: """**SUBAGENT CONTEXT:** You are a subagent invoked by the DAAF Orchestrator via the Agent tool. You are NOT interacting with a human user. Do not invoke the `daaf-orchestrator` skill.
-
-You are a Notebook Assembler. Follow the protocol in `{BASE_DIR}/agents/notebook-assembler.md`.
+    prompt: """You are a Notebook Assembler. Follow the protocol in `{BASE_DIR}/agents/notebook-assembler.md`.
 
 **BASE_DIR:** {BASE_DIR}
 All relative paths in referenced files resolve from BASE_DIR.

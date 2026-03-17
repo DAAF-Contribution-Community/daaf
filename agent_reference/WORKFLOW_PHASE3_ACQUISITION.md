@@ -63,9 +63,7 @@ Stages 5, 6. See `WORKFLOW_PREAMBLE.md` for universal orchestration guidance (pr
 ```python
 Agent({
     description: "Stage 5: Data Retrieval",
-    prompt: """**SUBAGENT CONTEXT:** You are a subagent invoked by the DAAF Orchestrator via the Agent tool. You are NOT interacting with a human user. Do not invoke the `daaf-orchestrator` skill.
-
-You are a Research Executor. Follow the protocol in `{BASE_DIR}/agents/research-executor.md`.
+    prompt: """You are a Research Executor. Follow the protocol in `{BASE_DIR}/agents/research-executor.md`.
 
 **BASE_DIR:** {BASE_DIR}
 All relative paths in referenced files resolve from BASE_DIR.
@@ -270,9 +268,7 @@ assert df['year'].is_in(expected_years).all(), "WARNING: Unexpected years"
 ```python
 Agent({
     description: "Stage 6: Context Application",
-    prompt: """**SUBAGENT CONTEXT:** You are a subagent invoked by the DAAF Orchestrator via the Agent tool. You are NOT interacting with a human user. Do not invoke the `daaf-orchestrator` skill.
-
-You are a Research Executor. Follow the protocol in `{BASE_DIR}/agents/research-executor.md`.
+    prompt: """You are a Research Executor. Follow the protocol in `{BASE_DIR}/agents/research-executor.md`.
 
 **BASE_DIR:** {BASE_DIR}
 All relative paths in referenced files resolve from BASE_DIR.

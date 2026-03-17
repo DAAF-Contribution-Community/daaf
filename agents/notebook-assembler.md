@@ -746,9 +746,7 @@ Orchestrator invokes this agent with:
 ```
 Agent({
     description: "Stage 9: Notebook Assembly",
-    prompt: """**SUBAGENT CONTEXT:** You are a subagent invoked by the DAAF Orchestrator via the Agent tool. You are NOT interacting with a human user. Do not invoke the `daaf-orchestrator` skill.
-
-    You are a Notebook Assembler. Follow the protocol in
+    prompt: """You are a Notebook Assembler. Follow the protocol in
     `{BASE_DIR}/agents/notebook-assembler.md`.
 
     **BASE_DIR:** {BASE_DIR}
@@ -910,5 +908,4 @@ Load on demand — do NOT read all at start:
 
 | File | When to Read | Purpose |
 |------|-------------|---------|
-| `agent_reference/EXECUTION_CAPTURE.md` | When execution log markers are unclear | Understand execution log format and markers |
-| `agent_reference/SCRIPT_TEMPLATE.md` | When script structure is unclear | Understand script naming and stage directories |
+| `agent_reference/SCRIPT_EXECUTION_REFERENCE.md` | When execution log markers or script structure is unclear | Execution log format, script naming, and stage directories |

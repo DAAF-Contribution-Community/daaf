@@ -19,60 +19,13 @@ All agents in this directory MUST follow the canonical template at `agent_refere
 
 ---
 
-## Subagent Identity Preamble
-
-All agent invocation prompts MUST begin with the **Subagent Identity Preamble**. Without this preamble, subagents receive the same `CLAUDE.md` and environment context as a top-level human-facing session and will incorrectly attempt to invoke the `daaf-orchestrator` skill or apply human-interaction behaviors.
-
-**Required preamble** (first line of every agent prompt, before the role assignment):
-
-```
-**SUBAGENT CONTEXT:** You are a subagent invoked by the DAAF Orchestrator via the Agent tool. You are NOT interacting with a human user. Do not invoke the `daaf-orchestrator` skill.
-```
-
-**Why this is needed:** Claude Code's Agent tool does not inject any signal distinguishing subagent sessions from top-level sessions. The subagent sees identical `CLAUDE.md` instructions, git status, and environment metadata. Without an explicit preamble, subagents confidently (95%+) conclude they are talking to a human user.
-
----
-
 ## Code Style: Sequential Inline Python
 
-All Python code produced by agents follows a **flat, sequential** style. Scripts read top-to-bottom like lab notebooks — no function definitions, no class hierarchies, no module abstractions.
-
-### Rules
-
-1. **No function definitions** — No `def main()`, no helper functions, no `if __name__ == "__main__"` guards
-2. **Exceptions to Rule 1:**
-   - Marimo cell wrappers (`def _():`) — framework convention, not user functions
-   - Standalone CLI tools (e.g., `fetch_paginated.py`) — argparse requires `main()`
-3. **Inline validation** — Use `print()` statements and `assert` for validation, never a separate `validation.py` module
-4. **Section separators** — Organize scripts with comment headers:
-   ```python
-   # --- Config ---
-   # --- Load ---
-   # --- Transform ---
-   # --- Validate ---
-   # --- Save ---
-   ```
-5. **No type annotations** — Sequential scripts don't define function signatures, so type hints are unnecessary
-6. **No test files** — Validation is inline (`assert` + `print`), not in `tests/` directories
-7. **Inline Audit Trail (IAT)** — All transformations, filters, joins, and aggregations must include verbose inline comments documenting intent, reasoning, and assumptions. See `agent_reference/INLINE_AUDIT_TRAIL.md` for the full standard.
-
-### Why This Style?
-
-Research scripts are **write-once, execute-once, archive** artifacts — fundamentally different from application code. Functions add cognitive overhead (What does it return? Where's the entry point?) without providing reuse value. Sequential code is immediately readable and self-documenting through its execution order. Combined with the IAT documentation protocol, sequential code becomes not just readable but self-explanatory — a human auditor can follow every decision without running the code.
+See `CLAUDE.md` > "Code Style: Sequential Inline Python" for the canonical rules. All agents follow flat, sequential Python with IAT documentation (`agent_reference/INLINE_AUDIT_TRAIL.md`).
 
 ### Bash Execution Rule: Single Command Per Call
 
-**Rule:** Every Bash tool call must contain exactly one command. No `&&`, `;`, or `||` chaining.
-
-All code-executing agents (research-executor, code-reviewer, debugger, data-ingest, notebook-assembler) follow this:
-- Each script invocation is a single call to `run_with_capture.sh` using absolute paths
-- Never chain commands (e.g., `cd /path && ./scripts/run.sh`)
-- If multiple scripts must execute in sequence, use separate Bash calls
-
-**Execution pattern:**
-```bash
-bash {PROJECT_DIR}/scripts/run_with_capture.sh {PROJECT_DIR}/scripts/stage{N}_{type}/{step}_{task}.py
-```
+See `CLAUDE.md` > "Bash Command Rule: One Command Per Call" for the canonical rule. Execution pattern: `bash {PROJECT_DIR}/scripts/run_with_capture.sh {PROJECT_DIR}/scripts/stage{N}_{type}/{step}_{task}.py`
 
 ---
 
@@ -410,7 +363,7 @@ This agent MUST follow the file-first execution pattern:
 3. Validation results get automatically embedded in scripts as comments
 4. Version failed scripts with `_a`, `_b`, `_c` suffixes
 
-Closely read `agent_reference/EXECUTION_CAPTURE.md` for the mandatory file-first execution protocol covering complete code file writing, output capture, and file versioning rules.
+Closely read `agent_reference/SCRIPT_EXECUTION_REFERENCE.md` for the mandatory file-first execution protocol covering complete code file writing, output capture, and file versioning rules.
 
 **Key behaviors:**
 - **File-first execution** (no interactive Python)
@@ -423,9 +376,7 @@ Closely read `agent_reference/EXECUTION_CAPTURE.md` for the mandatory file-first
 ```python
 Agent({
     description: "Stage [N]: [Task Name]",
-    prompt: """**SUBAGENT CONTEXT:** You are a subagent invoked by the DAAF Orchestrator via the Agent tool. You are NOT interacting with a human user. Do not invoke the `daaf-orchestrator` skill.
-
-    You are a Research Executor. Follow the protocol in
+    prompt: """You are a Research Executor. Follow the protocol in
     `{BASE_DIR}/agents/research-executor.md`.
 
     **BASE_DIR:** {BASE_DIR}
@@ -471,9 +422,7 @@ Agent({
 ```python
 Agent({
     description: "Stage 4: Plan Creation",
-    prompt: """**SUBAGENT CONTEXT:** You are a subagent invoked by the DAAF Orchestrator via the Agent tool. You are NOT interacting with a human user. Do not invoke the `daaf-orchestrator` skill.
-
-    You are a Data Planner. Follow the protocol in
+    prompt: """You are a Data Planner. Follow the protocol in
     `{BASE_DIR}/agents/data-planner.md`.
 
     Call the skill tool with name 'data-scientist'.
@@ -530,9 +479,7 @@ Agent({
 ```python
 Agent({
     description: "Stage 12: Final Verification",
-    prompt: """**SUBAGENT CONTEXT:** You are a subagent invoked by the DAAF Orchestrator via the Agent tool. You are NOT interacting with a human user. Do not invoke the `daaf-orchestrator` skill.
-
-    You are a Data Verifier. Follow the protocol in
+    prompt: """You are a Data Verifier. Follow the protocol in
     `{BASE_DIR}/agents/data-verifier.md`.
 
     **BASE_DIR:** {BASE_DIR}
@@ -576,9 +523,7 @@ Agent({
 ```python
 Agent({
     description: "Stage 3.5: Research Synthesis",
-    prompt: """**SUBAGENT CONTEXT:** You are a subagent invoked by the DAAF Orchestrator via the Agent tool. You are NOT interacting with a human user. Do not invoke the `daaf-orchestrator` skill.
-
-    You are a Research Synthesizer. Follow the protocol in
+    prompt: """You are a Research Synthesizer. Follow the protocol in
     `{BASE_DIR}/agents/research-synthesizer.md`.
 
     Call the skill tool with name 'data-scientist'.
@@ -628,9 +573,7 @@ Agent({
 ```python
 Agent({
     description: "Debug: Stage {N} - {error_description}",
-    prompt: """**SUBAGENT CONTEXT:** You are a subagent invoked by the DAAF Orchestrator via the Agent tool. You are NOT interacting with a human user. Do not invoke the `daaf-orchestrator` skill.
-
-    You are a Debugger. Follow the protocol in
+    prompt: """You are a Debugger. Follow the protocol in
     `{BASE_DIR}/agents/debugger.md`.
 
     **BASE_DIR:** {BASE_DIR}
@@ -673,9 +616,7 @@ Agent({
 ```python
 Agent({
     description: "Stage 4.5: Plan Verification",
-    prompt: """**SUBAGENT CONTEXT:** You are a subagent invoked by the DAAF Orchestrator via the Agent tool. You are NOT interacting with a human user. Do not invoke the `daaf-orchestrator` skill.
-
-    You are a Plan Checker. Follow the protocol in
+    prompt: """You are a Plan Checker. Follow the protocol in
     `{BASE_DIR}/agents/plan-checker.md`.
 
     Call the skill tool with name 'data-scientist'.
@@ -718,9 +659,7 @@ Agent({
 ```python
 Agent({
     description: "Stage 3: Research [Source] source",
-    prompt: """**SUBAGENT CONTEXT:** You are a subagent invoked by the DAAF Orchestrator via the Agent tool. You are NOT interacting with a human user. Do not invoke the `daaf-orchestrator` skill.
-
-    You are a Source Researcher. Follow the protocol in
+    prompt: """You are a Source Researcher. Follow the protocol in
     `{BASE_DIR}/agents/source-researcher.md`.
 
     **BASE_DIR:** {BASE_DIR}
@@ -790,9 +729,7 @@ Agent({
 ```python
 Agent({
     description: "Stage 9: Notebook Assembly",
-    prompt: """**SUBAGENT CONTEXT:** You are a subagent invoked by the DAAF Orchestrator via the Agent tool. You are NOT interacting with a human user. Do not invoke the `daaf-orchestrator` skill.
-
-    You are a Notebook Assembler. Follow the protocol in
+    prompt: """You are a Notebook Assembler. Follow the protocol in
     `{BASE_DIR}/agents/notebook-assembler.md`.
 
     **BASE_DIR:** {BASE_DIR}
@@ -843,9 +780,7 @@ Agent({
 ```python
 Agent({
     description: "Stage 11: Report Generation",
-    prompt: """**SUBAGENT CONTEXT:** You are a subagent invoked by the DAAF Orchestrator via the Agent tool. You are NOT interacting with a human user. Do not invoke the `daaf-orchestrator` skill.
-
-    You are a Report Writer. Follow the protocol in
+    prompt: """You are a Report Writer. Follow the protocol in
     `{BASE_DIR}/agents/report-writer.md`.
 
     Call the skill tool with name 'data-scientist'.
@@ -904,9 +839,7 @@ Agent({
 ```python
 Agent({
     description: "Stage [9|11|12]: Integration Check",
-    prompt: """**SUBAGENT CONTEXT:** You are a subagent invoked by the DAAF Orchestrator via the Agent tool. You are NOT interacting with a human user. Do not invoke the `daaf-orchestrator` skill.
-
-    You are an Integration Checker. Follow the protocol in
+    prompt: """You are an Integration Checker. Follow the protocol in
     `{BASE_DIR}/agents/integration-checker.md`.
 
     **BASE_DIR:** {BASE_DIR}
@@ -974,9 +907,7 @@ code-reviewer returns QA report
 ```python
 Agent({
     description: "QA Review: Stage {N} Step {step} - {task_name}",
-    prompt: """**SUBAGENT CONTEXT:** You are a subagent invoked by the DAAF Orchestrator via the Agent tool. You are NOT interacting with a human user. Do not invoke the `daaf-orchestrator` skill.
-
-    You are a Code Reviewer. Follow the protocol in
+    prompt: """You are a Code Reviewer. Follow the protocol in
     `{BASE_DIR}/agents/code-reviewer.md`.
 
     **BASE_DIR:** {BASE_DIR}
@@ -1060,9 +991,7 @@ code-reviewer returns BLOCKER
 ```python
 Agent({
     description: "Ingest: {data_name}",
-    prompt: """**SUBAGENT CONTEXT:** You are a subagent invoked by the DAAF Orchestrator via the Agent tool. You are NOT interacting with a human user. Do not invoke the `daaf-orchestrator` skill.
-
-    You are a Data Ingest Specialist. Follow the protocol in
+    prompt: """You are a Data Ingest Specialist. Follow the protocol in
     `{BASE_DIR}/agents/data-ingest.md`.
 
     **BASE_DIR:** {BASE_DIR}
@@ -1131,9 +1060,7 @@ Some tasks benefit from combining an agent protocol with skill knowledge. The do
 ```python
 Agent({
     description: "Stage 6: Clean CCD data",
-    prompt: """**SUBAGENT CONTEXT:** You are a subagent invoked by the DAAF Orchestrator via the Agent tool. You are NOT interacting with a human user. Do not invoke the `daaf-orchestrator` skill.
-
-    You are a Research Executor. Follow the protocol in `{BASE_DIR}/agents/research-executor.md`.
+    prompt: """You are a Research Executor. Follow the protocol in `{BASE_DIR}/agents/research-executor.md`.
 
     **BASE_DIR:** {BASE_DIR}
     All relative paths in referenced files resolve from BASE_DIR.
@@ -1210,7 +1137,7 @@ permissionMode: default                          # Or: plan (read-only agents)
 After writing the agent file, update these registries at minimum:
 
 - [ ] `agents/README.md` — Agent Index + "When to Use" section + Coordination Matrix
-- [ ] `CLAUDE.md` — Specialized Agents table (2 locations) + Skill-to-Stage Mapping (if stage-specific)
+- [ ] `agents/README.md` — Agent catalog table (canonical Specialized Agents registry) + `full-pipeline.md` > Skill-to-Stage Mapping (if stage-specific)
 - [ ] `README.md` — Agent Ecosystem table + update agent count
 
 For the **complete 29-item integration checklist** (including conditional workflow and narrative updates), invoke the `agent-authoring` skill and read `references/integration-checklist.md`.

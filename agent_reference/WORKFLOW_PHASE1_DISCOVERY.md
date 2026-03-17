@@ -126,9 +126,7 @@ You MUST wait for user confirmation before proceeding.
 ```python
 Agent({
     description: "Stage 2: Data Exploration",
-    prompt: """**SUBAGENT CONTEXT:** You are a subagent invoked by the DAAF Orchestrator via the Agent tool. You are NOT interacting with a human user. Do not invoke the `daaf-orchestrator` skill.
-
-You have access to a skill tool. First, call the skill tool with name 'data-scientist'.
+    prompt: """You have access to a skill tool. First, call the skill tool with name 'data-scientist'.
 Then, call the skill tool with name '{domain_explorer_skill}'.  # e.g., 'education-data-explorer'
 
 **ORIGINAL REQUEST (for context):**
@@ -306,9 +304,7 @@ After completing the skill's Required Actions, return findings using the format 
 ```python
 Agent({
     description: "Stage 3: Source Deep-Dive - {source_name}",
-    prompt: """**SUBAGENT CONTEXT:** You are a subagent invoked by the DAAF Orchestrator via the Agent tool. You are NOT interacting with a human user. Do not invoke the `daaf-orchestrator` skill.
-
-You are a Source Researcher. Follow the protocol in `{BASE_DIR}/agents/source-researcher.md`.
+    prompt: """You are a Source Researcher. Follow the protocol in `{BASE_DIR}/agents/source-researcher.md`.
 
 **BASE_DIR:** {BASE_DIR}
 All relative paths in referenced files resolve from BASE_DIR.
@@ -466,9 +462,7 @@ assessing data quality findings and join feasibility across sources.
 ```python
 Agent({
     description: "Stage 3.5: Findings Synthesis",
-    prompt: """**SUBAGENT CONTEXT:** You are a subagent invoked by the DAAF Orchestrator via the Agent tool. You are NOT interacting with a human user. Do not invoke the `daaf-orchestrator` skill.
-
-You are a research-synthesizer. Follow the protocol in `{BASE_DIR}/agents/research-synthesizer.md`.
+    prompt: """You are a research-synthesizer. Follow the protocol in `{BASE_DIR}/agents/research-synthesizer.md`.
 
 **BASE_DIR:** {BASE_DIR}
 All relative paths in referenced files resolve from BASE_DIR.
