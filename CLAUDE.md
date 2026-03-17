@@ -3,14 +3,8 @@
 ## Identity
 
 You are operating within the **Data Analyst Augmentation Framework (DAAF)**, a
-domain-extensible data analysis and research orchestration system.
-
-**If you are interacting directly with the human user and they are making any kind of request, 
-you MUST FIRST invoke the `daaf-orchestrator` skill before responding and doing any work.** 
-This skill contains your complete workflow, engagement modes, subagent coordination 
-protocols, and quality framework. Subagents being called by the orchestrator's 
-Agent tool do not need to load this skill — your behavioral protocol is in 
-your agent definition file.
+domain-extensible data analysis and research orchestration system designed to help 
+Claude Code work more rigorously and reproducibly for scientific research purposes.
 
 ---
 
@@ -30,7 +24,7 @@ These principles apply to all agents writing code in the DAAF system:
 
   Interactive execution bypasses the audit trail and produces no permanent record
   that can be reviewed by code-reviewer. Never run `python script.py` directly.
-  See `agent_reference/EXECUTION_CAPTURE.md` for the complete protocol.
+  See `agent_reference/SCRIPT_EXECUTION_REFERENCE.md` for the complete protocol.
 - **Inline Audit Trail (IAT):** Every filter, join, aggregation, and derived
   column must have inline comments using `# INTENT:`, `# REASONING:`, and
   `# ASSUMES:` prefixes documenting intent, reasoning, and assumptions. Sparse
@@ -101,6 +95,38 @@ This preserves context window budget — especially important at ELEVATED utiliz
 
 ---
 
+## Context & Session Health
+
+Session context utilization must always be monitored to ensure high performance quality. The `context-reporter` hook provides objective, continuous utilization measurements on every turn. Use the reported percentage directly for gating decisions. Utilization helps agents manage their workloads and report back before issues arise.
+
+### Context Quality Curve
+
+| Utilization | Status | Required Action |
+|-------------|--------|-----------------|
+| **0-40%** | NOMINAL | Continue normally |
+| **40-60%** | ELEVATED | Monitor closely; consider how realistic the scope of work remaining is and how to redelegate work (the orchestrator can delegate work to subagents; subagents can return work early to the orchestrator to be redelegated and completed as needed) |
+| **60-75%** | HIGH | Complete current atomic unit at full quality; report to back to user (for orchestrator) or orchestrator (for subagents); do not start new stages of work; Orchestrator must update STATE.md with restart prompt |
+| **75%+** | CRITICAL | Cease work immediately and report back to user (for orchestrator) or orchestrator (for subagents); Orchestrator must finalize STATE.md |
+
+### Symptoms of Context Degradation
+
+| Symptom | Severity |
+|---------|----------|
+| Repeating information already stated | MEDIUM |
+| Forgetting earlier decisions | HIGH |
+| Generating contradictory outputs | CRITICAL |
+| Incomplete or truncated responses | CRITICAL |
+| Losing track of current stage | HIGH |
+| Mixing up file names or paths | MEDIUM |
+
+**If degradation symptoms are observed:** treat as equivalent to HIGH regardless of actual utilization — prepare for restart immediately.
+
+### Quality Primacy Rule
+
+Context management is NEVER about reducing the quality or completeness of work. Subagent prompt fidelity, documentation completeness, and inlined context are non-negotiable regardless of utilization level. If maintaining quality means reaching a restart point sooner, that is the correct outcome.
+
+---
+
 ## Boundaries & Safety
 
 > **Safety guardrails are enforced programmatically by PreToolUse hooks and permission deny rules.** They are documented here for transparency — the hooks block violations regardless of instructions.
@@ -128,7 +154,7 @@ This preserves context window budget — especially important at ELEVATED utiliz
 ### Scope Boundaries
 
 - You SHOULD confirm before modifying files outside the `research/` and `scripts/` directories during Full Pipeline execution
-- You MUST NOT expand analysis scope, change methodology, or add data sources without user approval (see daaf-orchestrator skill for behavioral boundaries)
+- You MUST NOT expand analysis scope, change methodology, or add data sources without user approval
 
 ### Defense-in-Depth Architecture
 
@@ -208,7 +234,7 @@ All executed scripts are archived in the `scripts/` folder with stage-based orga
 
 **Step numbering:** Use the step number from the Transformation Sequence (e.g., Step 1.1 → `01`, Step 2.3 → `03`).
 
-See `agent_reference/SCRIPT_TEMPLATE.md` for complete script template and examples.
+See `agent_reference/SCRIPT_EXECUTION_REFERENCE.md` for complete script template and examples.
 
 ---
 
@@ -266,21 +292,22 @@ research/2026-01-24_School_Poverty_Analysis/
 
 | File | Purpose |
 |------|---------|
-| `agent_reference/EXECUTION_CAPTURE.md` | File-first code execution protocol |
+| `agent_reference/SCRIPT_EXECUTION_REFERENCE.md` | Script execution protocol, format templates, and stage-specific examples |
 | `agent_reference/INLINE_AUDIT_TRAIL.md` | Script documentation standards (IAT) |
-| `agent_reference/SCRIPT_TEMPLATE.md` | Script format with stage-specific examples |
 | `agent_reference/PLAN_TEMPLATE.md` | Research plan template |
 | `agent_reference/STATE_TEMPLATE.md` | Session state file template |
 | `agent_reference/QA_CHECKPOINTS.md` | QA checkpoint definitions (QA1-QA4b) |
 | `agent_reference/05_VALIDATION_CHECKPOINTS.md` | Validation checkpoint code templates |
 | `agent_reference/REPORT_TEMPLATE.md` | Output report template |
-| `agent_reference/08_LESSONS_LEARNED.md` | Lessons learned protocol |
 | `agent_reference/01_PROTOCOLS.md` | Core orchestration protocols |
-| `agent_reference/02_WORKFLOW_STAGES.md` | Workflow stage definitions |
-| `agent_reference/03_SKILL_INVOCATIONS.md` | Skill invocation templates per stage |
+| `agent_reference/WORKFLOW_PREAMBLE.md` | Universal orchestration preamble |
+| `agent_reference/WORKFLOW_PHASE1_DISCOVERY.md` | Phase 1: Stages 1-3.5 |
+| `agent_reference/WORKFLOW_PHASE2_PLANNING.md` | Phase 2: Stages 4-4.5 |
+| `agent_reference/WORKFLOW_PHASE3_ACQUISITION.md` | Phase 3: Stages 5-6 |
+| `agent_reference/WORKFLOW_PHASE4_ANALYSIS.md` | Phase 4: Stages 7-10 |
+| `agent_reference/WORKFLOW_PHASE5_SYNTHESIS.md` | Phase 5: Stages 11-12 |
 | `agent_reference/04_BOUNDARIES.md` | Agent boundary definitions |
 | `agent_reference/06_ERROR_RECOVERY.md` | Error recovery protocols |
-| `agent_reference/07_CONTEXT_MANAGEMENT.md` | Context window management |
 | `agent_reference/DATA_SOURCE_SKILL_TEMPLATE.md` | Data source skill authoring template |
 | `agent_reference/AGENT_TEMPLATE.md` | Agent definition file template |
 | `agents/README.md` | Agent index and usage guide |

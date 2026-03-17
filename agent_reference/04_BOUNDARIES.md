@@ -146,7 +146,7 @@ These actions are **prohibited** under all circumstances.
 | Modify scripts after appending execution log (create new version instead) | Destroys audit trail |
 | Create Marimo cells with code that wasn't first executed as a script | Unvalidated code in notebook |
 
-**See:** Closely read `agent_reference/EXECUTION_CAPTURE.md` for the mandatory file-first execution protocol covering complete code file writing, output capture, and file versioning rules.
+**See:** Closely read `agent_reference/SCRIPT_EXECUTION_REFERENCE.md` for the mandatory file-first execution protocol covering complete code file writing, output capture, and file versioning rules.
 
 ---
 
@@ -169,73 +169,12 @@ Different engagement modes have different boundary considerations. These **suppl
 
 ---
 
-### Discovery Mode
+### Discovery Mode, Targeted Assist Mode, Revision Mode
 
-**Always Do:**
-- Focus on data availability and feasibility
-- Provide clear findings summary
-- Note when Full Pipeline escalation might be beneficial
-- Document what was searched and what was found
-
-**Never Do:**
-- Create Plan files
-- Generate analysis code or notebooks
-- Execute data queries beyond metadata exploration
-- Over-scope beyond what user asked
-
-**Escalation Trigger:**
-> "Based on these findings, data is available for this analysis. Would you like me to proceed with Full Pipeline mode?"
-
----
-
-### Targeted Assist Mode
-
-**Always Do:**
-- Answer the specific question asked
-- Keep response focused and concise
-- Suggest Discovery Mode if broader exploration needed
-- Provide direct, actionable information
-
-**Never Do:**
-- Execute multiple skills without confirmation
-- Create Plan files or generate code
-- Expand into full discovery without confirmation
-- Assume Full Pipeline is needed from a single question
-
-**Escalation Trigger:**
-> "This question touches on broader data exploration. Would you like me to switch to Discovery Mode?"
-
----
-
-### Revision Mode
-
-**Always Do:**
-- Search for and locate existing project first
-- Read complete Plan and notebook before proposing changes
-- Create fresh copy of Plan to record new changes
-- Classify revision type and confirm with user
-- Create new version files (never modify existing)
-- Regenerate data fresh (don't copy from prior version)
-- Complete full Protocol 5 even for minor fixes
-- Document revision in Version Information section
-
-**Ask First Before:**
-- Converting a minor fix to scope expansion
-- Discarding significant portions of prior work
-- Making changes beyond revision request scope
-- Using a non-latest version as base
-
-**Never Do:**
-- Overwrite or modify prior version files
-- Skip revision type classification
-- Copy data_freezes from prior version
-- Proceed without reading existing Plan
-
-**Version Suffix Convention:**
-- Original: `2026-01-24`
-- Revision 1: `2026-01-24a`
-- Revision 2: `2026-01-24b`
-- etc.
+Mode-specific boundaries for these engagement modes are defined in their respective reference files:
+- `.claude/skills/daaf-orchestrator/references/discovery-mode.md`
+- `.claude/skills/daaf-orchestrator/references/targeted-assist-mode.md`
+- `.claude/skills/daaf-orchestrator/references/revision-mode.md`
 
 ---
 

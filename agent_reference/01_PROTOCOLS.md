@@ -34,7 +34,7 @@ Before writing any data query or analysis code, discover and understand availabl
 
 ### Invocation Pattern
 
-See `03_SKILL_INVOCATIONS.md` for the complete Stage 2 invocation template.
+See `WORKFLOW_PHASE1_DISCOVERY.md` for the complete Stage 2 invocation template.
 
 ### Expected Output
 
@@ -65,7 +65,7 @@ Before proceeding to Stage 3:
 
 ### Invocation Pattern
 
-See `03_SKILL_INVOCATIONS.md` for the complete Stage 3 invocation template.
+See `WORKFLOW_PHASE1_DISCOVERY.md` for the complete Stage 3 invocation template.
 
 **Note:** If multiple sources are needed (e.g., CCD + CRDC), invoke Stage 3 separately for each source.
 
@@ -130,7 +130,7 @@ PSU1 synthesizes all Protocol 1 findings into a comprehensive status update cove
 - Feasibility assessment and recommended analytical approach
 - Any unresolved LOW-confidence items
 
-**The orchestrator MUST wait for explicit user confirmation before invoking Stage 4 (Plan Creation).** See CLAUDE.md "Phase Status Updates" section for the full PSU template and content requirements.
+**The orchestrator MUST wait for explicit user confirmation before invoking Stage 4 (Plan Creation).** See full-pipeline.md "Phase Status Updates (Mandatory)" section for the full PSU template and content requirements.
 
 ---
 
@@ -152,12 +152,7 @@ Retrieve data from the data access mirrors and apply proper context/cleaning bas
 
 ## File-First Execution
 
-**CRITICAL:** All code in Protocol 2 follows the **file-first pattern**:
-1. Write script to `scripts/stage{5,6}_{type}/` before execution
-2. Execute as a single Bash call with absolute paths: `bash {PROJECT_DIR}/scripts/run_with_capture.sh {PROJECT_DIR}/scripts/...` (automatically captures output and appends execution log)
-3. Version failed scripts (`_a`, `_b`, etc.) — re-run wrapper on new version
-
-Closely read `agent_reference/EXECUTION_CAPTURE.md` for the mandatory file-first execution protocol covering complete code file writing, output capture, and file versioning rules.
+**CRITICAL:** All code in Protocol 2 follows the mandatory file-first execution protocol defined in `agent_reference/SCRIPT_EXECUTION_REFERENCE.md`.
 
 ## Stage 5: Data Retrieval
 
@@ -166,24 +161,11 @@ Closely read `agent_reference/EXECUTION_CAPTURE.md` for the mandatory file-first
 
 ### Invocation Pattern
 
-See `03_SKILL_INVOCATIONS.md` for the complete Stage 5 invocation template.
+See `WORKFLOW_PHASE3_ACQUISITION.md` for the complete Stage 5 invocation template.
 
 ### Validation (CP1)
 
-Immediately after data fetch:
-
-```python
-# CP1: Post-Fetch Validation
-print(f"Shape: {df.shape}")
-print(f"Columns: {df.columns.to_list()}")
-print(f"Types:\n{df.dtypes}")
-print(f"Null counts:\n{df.null_count()}")
-print(f"Years present: {df['year'].unique().to_list()}")
-
-# STOP conditions
-assert len(df) > 0, "STOP: Empty dataset returned"
-assert len(df) < 1_000_000, "WARNING: Very large dataset - verify expected"
-```
+See `agent_reference/05_VALIDATION_CHECKPOINTS.md` for CP1 checkpoint code templates and STOP thresholds.
 
 ### Gate Criteria (G5)
 
@@ -207,27 +189,11 @@ Before proceeding to Stage 6:
 
 ### Invocation Pattern
 
-See `03_SKILL_INVOCATIONS.md` for the complete Stage 6 invocation template.
+See `WORKFLOW_PHASE3_ACQUISITION.md` for the complete Stage 6 invocation template.
 
 ### Validation (CP2)
 
-After cleaning:
-
-```python
-# CP2: Post-Cleaning Validation
-print(f"Original rows: {len(raw_df)}")
-print(f"Clean rows: {len(clean_df)}")
-print(f"Rows removed: {len(raw_df) - len(clean_df)} ({(len(raw_df) - len(clean_df)) / len(raw_df) * 100:.1f}%)")
-
-# Check suppression rate
-suppressed = (raw_df['key_variable'] == SUPPRESSION_CODE).sum()  # SUPPRESSION_CODE from Plan domain config (e.g., -3 for education)
-suppression_rate = suppressed / len(raw_df)
-print(f"Suppression rate: {suppression_rate:.1%}")
-
-# STOP conditions
-assert suppression_rate < 0.5, f"STOP: Suppression rate {suppression_rate:.1%} exceeds 50%"
-assert len(clean_df) > len(raw_df) * 0.1, "STOP: >90% data loss after cleaning"
-```
+See `agent_reference/05_VALIDATION_CHECKPOINTS.md` for CP2 checkpoint code templates and STOP thresholds.
 
 ### Gate Criteria (G6)
 
@@ -332,7 +298,7 @@ The Plan must be **self-contained**: any subagent should be able to execute its 
 
 ### Plan Completeness Verification (REQUIRED)
 
-Before proceeding to Phase 3, verify the Plan meets completeness standards. See `02_WORKFLOW_STAGES.md: Stage 4 - Plan Completeness Gate` for the complete verification checklist.
+Before proceeding to Phase 3, verify the Plan meets completeness standards. See `WORKFLOW_PHASE2_PLANNING.md: Stage 4 - Plan Completeness Gate` for the complete verification checklist.
 
 **Critical sections that must be complete:**
 1. Query Specification (all fields populated)
@@ -413,7 +379,7 @@ All agents include a **Learning Signal** field in their output (per AGENT_TEMPLA
 The orchestrator extracts and buffers these signals in STATE.md, then flushes to LEARNINGS.md
 at phase boundaries.
 
-See CLAUDE.md "Learning Signal Extraction" section for the complete extraction and flush protocol.
+See agent_reference/WORKFLOW_PREAMBLE.md "Learning Signal Protocol" section for the complete extraction and flush protocol.
 
 #### Phase Status Update 2 (PSU2)
 
@@ -714,8 +680,8 @@ After data-verifier returns and before delivery, the orchestrator consolidates L
 4. Generate System Update Action Plan section
 5. Include action item count in delivery message
 
-See `agent_reference/08_LESSONS_LEARNED.md` for the complete consolidation protocol
-and `02_WORKFLOW_STAGES.md` Stage 12 for the consolidation checklist.
+See `agent_reference/WORKFLOW_PHASE5_SYNTHESIS.md` for the Stage 12 consolidation checklist
+and `agent_reference/WORKFLOW_PREAMBLE.md` for the complete learning signal protocol.
 
 ## Delivery Format
 

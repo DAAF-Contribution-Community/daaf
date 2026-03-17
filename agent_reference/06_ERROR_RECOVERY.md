@@ -382,7 +382,7 @@ Awaiting guidance.
 
 **CRITICAL: File-First Script Versioning**
 
-Closely read `agent_reference/EXECUTION_CAPTURE.md` for the mandatory file-first execution protocol covering complete code file writing, output capture, and file versioning rules.
+Closely read `agent_reference/SCRIPT_EXECUTION_REFERENCE.md` for the mandatory file-first execution protocol covering complete code file writing, output capture, and file versioning rules.
 
 When a script fails, DO NOT modify the original. Instead:
 1. Original script (`01_task.py`) keeps its failed output appended (audit trail)

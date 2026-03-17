@@ -14,8 +14,7 @@ The workflow is:
 3. Validation results get automatically embedded in scripts as comments
 4. Checkpoint status (PASSED/FAILED) is captured in the embedded execution log
 
-Closely read `agent_reference/EXECUTION_CAPTURE.md` for the mandatory file-first execution protocol covering complete code file writing, output capture, and file versioning rules.
-See `agent_reference/SCRIPT_TEMPLATE.md` for complete script format with checkpoint integration.
+Closely read `agent_reference/SCRIPT_EXECUTION_REFERENCE.md` for the mandatory file-first execution protocol, complete script format, and checkpoint integration.
 
 ---
 

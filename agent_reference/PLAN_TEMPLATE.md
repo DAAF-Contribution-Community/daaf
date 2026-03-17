@@ -613,6 +613,30 @@ The cardinality specified here is passed to `validate_join()` function during St
 
 **Revisions Column:** Count of script revisions due to QA BLOCKER findings (max 2 before escalation)
 
+### Stage Interface Specifications
+
+Define the expected data contracts between stages. The data-planner populates these during Plan creation. Code-reviewer validates against them during QA.
+
+#### Stage 5 → Stage 6 (Raw → Clean)
+- **Artifact pattern:** `data/raw/{date}_{source}.parquet`
+- **Expected columns:** [list key columns per dataset]
+- **Row count range:** [estimated min-max]
+- **Key invariants:** [e.g., "year column is not null", "ncessch is unique per year"]
+
+#### Stage 6 → Stage 7 (Clean → Transform)
+- **Artifact pattern:** `data/processed/{date}_{source}_clean.parquet`
+- **Expected columns:** [columns surviving cleaning]
+- **Row count range:** [post-cleaning estimate]
+- **Key invariants:** [e.g., "no coded missing values remain in critical columns"]
+
+#### Stage 7 → Stage 8 (Transform → Analysis)
+- **Artifact pattern:** `data/processed/{date}_analysis.parquet`
+- **Expected columns:** [final analysis columns including derived variables]
+- **Row count range:** [post-transformation estimate]
+- **Key invariants:** [e.g., "one row per school per year", "poverty_rate between 0 and 1"]
+
+*Populate the bracketed fields with specifics for this analysis. Add or remove interface sections as needed based on the actual stage sequence.*
+
 ---
 
 ## Executable Task Sequence
@@ -1098,25 +1122,11 @@ and QA reviewers understand what was intentionally accepted.*
 
 ---
 
-## Current Status & To-Do's
+### Current Status
 
-### Current Phase
+Progress tracking is maintained in `STATE.md`, not in this Plan document. See `agent_reference/STATE_TEMPLATE.md` for the state file template.
 
-**Phase:** [1 | 2 | 3 | 4 | 5]
-**Stage:** [1-12]
-**Status:** [In Progress | Blocked | Complete]
-
-### Active To-Do's
-
-- [ ] [Task 1]
-- [ ] [Task 2]
-- [ ] [Task 3]
-
-### Blocked Items
-
-| Item | Blocker | Awaiting |
-|------|---------|----------|
-| [Item] | [What's blocking] | [User guidance | Data | Resolution] |
+The Plan document captures **decisions and specifications** (what we planned, what we decided, what could go wrong). STATE.md captures **operational state** (where we are, what's next, what's blocked).
 
 ---
 
