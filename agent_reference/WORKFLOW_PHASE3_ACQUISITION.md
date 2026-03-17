@@ -450,6 +450,31 @@ assert len(clean_df) > len(raw_df) * 0.1, "STOP: >90% data loss"
 - **Flag concern about data quality** → Orchestrator investigates and reports back
 - **Ask questions** → Answer, then re-present approval request
 
+#### PSU3 Checkpoint Purpose
+
+Include in the "Why this checkpoint" field:
+> "I'm checking in to confirm the data is clean and trustworthy before running any statistics on it."
+
+#### PSU3 Phase Transition Bridge
+
+Include in the "What Comes Next" field:
+> "The data is ready. Now comes the analysis itself — transformations, statistics, and visualizations, all following the plan we agreed on. Each script goes through a quality review. I'll compile all results and come back for one more checkpoint before writing the final report."
+
+#### PSU3 Feedback Guidance
+
+Include in the "What's Most Useful From You Here" field:
+> "Are the data quality levels acceptable for your purposes? Any concerns about missing data rates or the cleaning decisions I made?"
+
+#### PSU3 Content Requirements
+
+The PSU3 checkpoint MUST include:
+- Datasets acquired: source, shape, date range, file paths
+- Data quality summary: missingness rates, suppression rates per dataset
+- Cleaning actions taken and their impact (rows removed, values recoded)
+- QA summary: QA1/QA2 results for each script (PASSED/WARNING with details)
+- Any deviations from the Plan during fetch/clean
+- Data readiness assessment for analysis phase
+
 ### Post-Script Action Checklist (Stages 5-6)
 
 After each script execution:
@@ -462,3 +487,28 @@ After each script execution:
 ## Error Recovery
 
 For decision trees, retry logic, and escalation procedures for errors encountered during data acquisition stages, see `agent_reference/ERROR_RECOVERY.md`.
+
+---
+
+## Verification Checklists
+
+Apply the relevant checklist after each subagent returns findings for the corresponding stage.
+
+### Stage 5 (Data Retrieval) Verification
+
+- [ ] Fetch Summary has actual counts (not "TBD")
+- [ ] CP1 Status explicitly stated (PASSED/FAILED/WARNING)
+- [ ] File locations provided with actual filenames
+- [ ] If CP1 FAILED: Stop reason documented
+- [ ] If data lag ≥3 years: Flagged for user notification
+- [ ] If flag years (per FLAG_YEARS in Plan Domain Configuration) included: Flagged with warning
+
+### Stage 6 (Context Application) Verification
+
+- [ ] Cleaning Applied table shows actual row counts removed
+- [ ] CP2 Status explicitly stated
+- [ ] Suppression rate calculated and reported
+- [ ] Validity Check completed (Yes/No/Conditional)
+- [ ] Citation text present and complete
+- [ ] File locations provided
+- [ ] If CP2 FAILED: Stop reason documented

@@ -323,7 +323,7 @@ Run plan-checker
 - [ ] Plan validation completed
 - [ ] Status is PASSED or PASSED_WITH_WARNINGS
 - [ ] If PASSED_WITH_WARNINGS: warnings documented in Plan
-- [ ] **PSU2 presented to user with Plan summary, exact Plan filepath for their deeper inspection of the full file, and validation results**
+- [ ] **PSU2 presented to user with Plan summary, exact Plan filepath, clear indication that the user should read the full Plan before approving, and validation results**
 - [ ] **User confirmed PSU2 (explicit approval of Plan)**
 
 ### Phase Status Update 2 (PSU2): Plan Ready for Approval
@@ -331,13 +331,16 @@ Run plan-checker
 **Trigger:** Gate G4.5 satisfied (plan-checker PASSED or PASSED_WITH_WARNINGS)
 **Blocking:** YES — Stage 5 CANNOT begin until user confirms PSU2
 
+**Important: Summary vs. Full Plan**
+The PSU2 checkpoint presents a **high-level summary** of the Plan — not the Plan itself. The full Plan document contains critical detail (exact query specifications, complete transformation sequences with validation criteria, full risk registers, etc.) that cannot be adequately conveyed in a checkpoint summary. The user must be clearly told that reviewing the full Plan file is expected before they approve.
+
 **Actions:**
-1. Compile Plan summary and plan-checker results
-2. Present PSU2 to user using the PSU template
-3. Share the exact Plan filepath and indicate to the user that they should read it closely at this time
+1. Compile a high-level Plan summary and plan-checker results
+2. Present PSU2 to user using the PSU template, explicitly framing it as a summary
+3. Share the exact Plan filepath and clearly tell the user that this summary does not replace reading the full Plan — they should review the complete document before approving
 4. WAIT for explicit user confirmation
 
-**PSU2 Content Requirements:**
+**PSU2 Content Requirements (this is a SUMMARY — not the full Plan):**
 - Research question as stated in the Plan
 - Methodology summary: statistical approach, key analytical decisions
 - Data sources confirmed: endpoints, year ranges, geographic scope
@@ -346,10 +349,59 @@ Run plan-checker
 - Risk Register highlights: top risks and mitigation strategies
 - Plan-checker result: PASSED or PASSED_WITH_WARNINGS (include any warnings verbatim)
 - Estimated scope: approximate record counts, number of scripts
-- User informed of full Plan filepath and instructed to read it closely for their deep review
+- **Full Plan filepath prominently displayed, with clear language that this checkpoint is a summary and the user should read the full Plan document before approving** (e.g., "This is a summary — the full plan with complete specifications is at [path]. Please review it before approving.")
 
 **User Response Handling:**
 - **Approve** → Proceed to Stage 5 (Data Retrieval)
 - **Request Plan changes** → Invoke data-planner for revision, re-run plan-checker, then re-present PSU2
 - **Adjust scope/methodology** → Revise Plan accordingly, re-validate, re-present PSU2
 - **Ask questions** → Answer, then re-present approval request
+
+#### PSU2 Checkpoint Purpose
+
+Include in the "Why this checkpoint" field:
+> "This is your most important review point — the plan defines exactly what analysis will be performed and how. What I'm presenting here is a summary; the full plan document has the complete details. Please review the full plan before approving — once you do, I'll start writing and executing code."
+
+#### PSU2 Phase Transition Bridge
+
+Include in the "What Comes Next" field:
+> "With the plan approved, I'll now download and clean the data according to the plan. I'll run automated quality checks on everything and report back on data health before analysis begins."
+
+#### PSU2 Feedback Guidance
+
+Include in the "What's Most Useful From You Here" field:
+> "What I've shared above is a high-level summary. The full plan — with complete query specifications, the detailed transformation sequence, validation criteria, and risk register — is at the filepath above. Please read through it before approving. Does the methodology match your intent? Are the research outcomes what you want to investigate? Any variables to add or remove?"
+
+#### PSU2 Content Requirements
+
+The PSU2 checkpoint presents a **summary**, not the full Plan. It MUST include:
+- Research question as stated in Plan
+- Methodology summary (statistical approach, key decisions)
+- Data sources and year ranges confirmed
+- Transformation sequence overview (number of tasks, waves)
+- Research Outcomes the analysis will investigate
+- Hypotheses (if any) and their basis
+- Risk Register highlights
+- Plan-checker validation result (PASSED/PASSED_WITH_WARNINGS and any warnings)
+- **Full Plan filepath prominently displayed, with clear language that the user should read the complete Plan document before approving** — this summary covers the highlights but does not replace reviewing the full specification
+
+---
+
+## Verification Checklists
+
+Apply this checklist after the data-planner subagent returns the Plan document.
+
+### Stage 4 (Plan Creation) Verification
+
+- [ ] Research question clearly stated (not placeholder)
+- [ ] Research Outcomes section has ≥3 investigation/measurement objectives that do not pre-specify directional results
+- [ ] Hypotheses (if any) are clearly separated from Research Outcomes and include basis citations
+- [ ] Data Sources table complete with endpoints and years
+- [ ] Transformation Sequence table has all tasks with waves assigned
+- [ ] Every task has explicit file paths (no placeholders like "TBD")
+- [ ] Every task has a skill or agent identified
+- [ ] Every join task has cardinality specified (1:1, 1:many, many:1)
+- [ ] Every task has verifiable "done" condition
+- [ ] Risk Register identifies ≥1 risk with mitigation
+- [ ] Wave dependencies are correct (no circular dependencies)
+- [ ] Validation checkpoints specified for each phase

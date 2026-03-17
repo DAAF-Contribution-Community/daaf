@@ -756,6 +756,22 @@ These quick notes can be expanded into full entries at Stage 12.
 
 ---
 
+## Verification Checklists
+
+Apply this checklist after the data-verifier subagent returns its final review findings.
+
+### Stage 12 (Final Verification) Output Verification
+
+- [ ] Independent assessment performed (expectations listed before Plan comparison)
+- [ ] All four verification layers completed (Existence, Substantive, Wired, Coherent)
+- [ ] Research question stress test result stated with reasoning
+- [ ] At least one key finding traced end-to-end (Telephone Game test performed)
+- [ ] Confidence assessment completed for all five aspects with rationale
+- [ ] Verification Quality Self-Check results included (all 8 questions)
+- [ ] If PASSED: conclusion articulates WHY the analysis is sound, not just absence of failures
+
+---
+
 ## Pre-Pipeline Skills
 
 ### data-ingest

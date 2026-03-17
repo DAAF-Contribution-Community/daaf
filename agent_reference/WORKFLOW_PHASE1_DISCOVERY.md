@@ -483,8 +483,68 @@ Consolidate these parallel findings into a unified context for Plan creation.
 - **Adjust scope** → Update research question/scope, re-confirm, then proceed to Stage 4
 - **Ask questions** → Answer, then re-present approval request
 
+#### PSU1 Checkpoint Purpose
+
+Include in the "Why this checkpoint" field:
+> "I'm pausing here to make sure we've identified the right data and understand its limitations before investing time in methodology design."
+
+#### PSU1 Phase Transition Bridge
+
+Include in the "What Comes Next" field:
+> "Now that we know what data is available and what its limitations are, I'll design a detailed analysis plan — including the methodology, the specific data to acquire, and the sequence of analytical steps. You'll review the full plan before any code runs."
+
+#### PSU1 Feedback Guidance
+
+Include in the "What's Most Useful From You Here" field:
+> "Are these the right data sources for your question? Any sources I may have missed? Any concerns about the limitations I identified?"
+
+#### PSU1 Content Requirements
+
+The PSU1 checkpoint MUST include:
+- Data sources identified (with endpoints and year ranges)
+- Key variables and their availability
+- Source-specific caveats and limitations discovered
+- Suppression patterns and cross-region comparability issues (e.g., cross-state for education)
+- Feasibility assessment and recommended analytical approach
+- Any LOW-confidence items requiring user input
+
 ---
 
 ### Re-run Guidance
 
 See `agent_reference/ERROR_RECOVERY.md` > "Re-run Procedures" for complete re-run decision trees when Discovery stages need to be repeated.
+
+---
+
+## Verification Checklists
+
+Apply the relevant checklist after each subagent returns findings for the corresponding stage.
+
+### Stage 2 (Data Exploration) Verification
+
+- [ ] Recommended Data Level specified (not "TBD" or placeholder)
+- [ ] Candidate Endpoints table has ≥1 endpoint with complete rows
+- [ ] Key Variables table has actual variable names (not "[add more]")
+- [ ] Variables Flagged for Deep-Dive has rationale for each flag
+- [ ] Completeness Assessment checkboxes all marked
+- [ ] Confidence Assessment present with overall confidence level
+- [ ] If confidence is LOW: resolution plan or escalation present
+
+### Stage 3 (Source Deep-Dive) Verification
+
+- [ ] Source name explicitly stated
+- [ ] Source-Specific Caveats table populated (not empty)
+- [ ] Coded Value Mappings complete for all flagged variables
+- [ ] Suppression Patterns documented with typical rates
+- [ ] Cross-region comparability assessed (if multi-region analysis, e.g., cross-state for education)
+- [ ] Critical Warnings have mitigation strategies
+- [ ] Confidence Assessment present
+- [ ] If confidence is LOW: resolution present
+
+### Stage 3.5 (Findings Synthesis) Verification
+
+- [ ] All source findings consolidated into unified summary
+- [ ] Cross-source conflicts identified and resolved (or flagged for Plan)
+- [ ] Join feasibility assessed with key considerations documented
+- [ ] Unified guidance ready for data-planner input
+- [ ] Confidence Assessment present

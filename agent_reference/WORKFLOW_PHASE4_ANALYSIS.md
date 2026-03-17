@@ -1146,6 +1146,71 @@ After each script execution:
 
 ---
 
+## Phase Status Update 4 (PSU4): Analysis Complete
+
+After Stage 10 (QA Aggregation — performed by the orchestrator), present PSU4 to the user. Use the generic PSU template from `full-pipeline.md` with the content below.
+
+### PSU4 Checkpoint Purpose
+
+Include in the "Why this checkpoint" field:
+> "This is your chance to review all results and the quality review summary before they're synthesized into the final report."
+
+### PSU4 Phase Transition Bridge
+
+Include in the "What Comes Next" field:
+> "All analysis is complete and quality-reviewed. I'll now compile everything into a final report and run an independent verification pass to make sure the report accurately reflects the data and methodology."
+
+### PSU4 Feedback Guidance
+
+Include in the "What's Most Useful From You Here" field:
+> "Do the results make sense substantively? Are there additional analyses or visualizations you'd like to see? Any results that seem surprising and worth investigating further?"
+
+### PSU4 Content Requirements
+
+The PSU4 checkpoint MUST include:
+- Transformation summary: joins performed, derived variables, final analysis dataset shape
+- Statistical analysis results: key findings with effect sizes and confidence intervals
+- Key visualizations produced (reference file paths for user to inspect)
+- QA summary: QA3/QA4a/QA4b results across all scripts
+- Accumulated warnings from Stages 5-8 (the Stage 10 QA aggregation)
+- Any deviations from Plan methodology
+- Notebook compilation status
+
+---
+
+## Verification Checklists
+
+Apply the relevant checklist after each subagent returns findings for the corresponding stage.
+
+### Stage 7 (Transformation) Verification
+
+- [ ] Pre-state and post-state both documented
+- [ ] Row change percentage calculated
+- [ ] Invariants checked with PASS/FAIL status
+- [ ] Overall status: PASSED/FAILED/WARNING
+- [ ] If FAILED: Issue description and proposed fix present
+- [ ] For joins: Cardinality validation performed
+
+### Stage 8.1 (Statistical Analysis) Verification
+
+- [ ] Statistical method appropriate for data type and research question
+- [ ] Assumptions validated before analysis (documented in script)
+- [ ] Results saved to `output/analysis/` as parquet
+- [ ] Key findings documented with effect sizes and confidence intervals
+- [ ] Interpretation aligned with Research Outcomes in Plan
+- [ ] Overall status: PASSED/FAILED/WARNING
+
+### Stage 8.2 (Visualization) Verification
+
+- [ ] All Plan-specified figures generated
+- [ ] Figures saved to `output/figures/` as PNG
+- [ ] Proper labeling (title, axes, legend, source note)
+- [ ] Data source in visualization matches analysis dataset
+- [ ] Colorblind-safe palette used
+- [ ] Overall status: PASSED/FAILED/WARNING
+
+---
+
 ## Error Recovery
 
 For decision trees, retry logic, and escalation procedures for errors encountered during analysis stages, see `agent_reference/ERROR_RECOVERY.md`.

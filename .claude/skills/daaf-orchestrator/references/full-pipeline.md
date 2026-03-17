@@ -24,10 +24,11 @@ This reference is loaded after the orchestrator classifies a request as Full Pip
 
 > **Domain Extensibility:** This workflow is domain-agnostic. Skill names referenced below (e.g., `education-data-explorer`, `education-data-query`, `education-data-context`) are the demonstration domain defaults. The orchestrator resolves actual skill names from the Plan's Domain Configuration section and provides them in Agent prompts. New domains can be added by authoring domain-specific Skills and registering them in the Plan's Domain Configuration.
 
-> **Invocation Pattern Authority:** Three layers, from most to least specific:
-> 1. **`WORKFLOW_PHASE*.md`** — stage-specific invocation templates with full context fields, thoroughness directives, and gate criteria. **Start here** when constructing a subagent prompt.
-> 2. **`agents/README.md`** — canonical generic templates for each agent. The PHASE files build on these; consult README when a PHASE file doesn't cover a particular agent or for the baseline pattern.
-> 3. **This file (`full-pipeline.md`)** — orchestrator-level guidance: prompt structure, context inlining protocol, QA enforcement, and prompt size targets.
+> **Invocation Pattern Authority:** Two layers:
+> 1. **`WORKFLOW_PHASE*.md`** — stage-specific invocation templates with full context fields, thoroughness directives, gate criteria, verification checklists, and PSU content. **Start here** when constructing a subagent prompt.
+> 2. **This file (`full-pipeline.md`)** — cross-phase templates (code-reviewer invocation, revision requests), generic prompt structure, context inlining protocol, QA enforcement, and prompt size targets.
+>
+> **`agents/README.md`** provides agent behavioral specs and input/output contracts — consult when understanding an agent's capabilities, not for constructing invocation prompts.
 
 > **Parallel Dispatch Limit:** The orchestrator MUST NOT dispatch more than **5 subagents concurrently** — this applies to wave-based task dispatch, Stage 3 source-researcher dispatch, and any other parallel invocation. If more than 5 independent tasks need to run, sub-batch into groups of ≤5 and wait for each sub-batch to complete before dispatching the next. Parallel dispatch is achieved by making multiple Agent tool calls in a **single response message** (foreground parallel). **NEVER use `run_in_background`** — background agents cannot prompt for permissions and will silently fail.
 
@@ -35,39 +36,7 @@ This reference is loaded after the orchestrator classifies a request as Full Pip
 
 ## Pre-Flight Checklist
 
-**REQUIRED:** Before proceeding past Stage 1 in Full Pipeline mode, include the following in the initial confirmation of engagement mode with user:
-
-```
-**Full Pipeline Analysis: Pre-Flight Check**
-
-This analysis will create:
-- [ ] Research Plan document summarizing all key goals, considerations, decisions, risks, interpretations, work stage summaries, and final work review notes
-- [ ] STATE.md session state file (for progress tracking and session recovery)
-- [ ] Comprehensive analytic scripts covering data fetch, clean, join, transformation, analysis, and QA for all of the above
-- [ ] Validated datasets (raw + processed)
-- [ ] Marimo notebook "walkthrough" of successfully completed analysis scripts and their execution runtime logs for inspection
-- [ ] Statistical analysis results (saved to output/analysis/)
-- [ ] Illustrative key data visualizations
-- [ ] Summary stakeholder report synthesizing key findings and interpreting key data visualizations
-- [ ] LEARNINGS.md lessons learned
-
-Estimated scope:
-- Data sources: [identified sources]
-- Years: [year range]
-- Approximate records: [estimate]
-- Geographic scope: [geography]
-
-**Please confirm whether you'd like me to begin with this approach, or let me know if you have any changes you'd like to make.**
-```
-
-**User may:**
-- Confirm → Proceed to Stage 2
-- Request scope adjustment → Clarify and reconfirm
-- Decline → Switch to Discovery or Targeted Assist mode
-
-You MUST wait until the user has provided confirmation to begin the next steps. Do NOT immediately proceed.
-
-See `agent_reference/WORKFLOW_PHASE1_DISCOVERY.md` (Stage 1) for complete Pre-Flight Checklist.
+See `agent_reference/WORKFLOW_PHASE1_DISCOVERY.md` > "Pre-Flight Checklist (Full Pipeline Mode Only)" for the complete pre-flight checklist to present during initial mode confirmation.
 
 ---
 
@@ -173,9 +142,9 @@ The Full Pipeline workflow consists of **5 Phases** and **12 Stages**.
                           ↓
             ┌─────────────────────────────────┐
             │  ★ PSU2: Phase Status Update 2  │
-            │  Present Plan for user review,  │
-            │  await confirmation before      │
-            │  data acquisition               │
+            │  Present Plan SUMMARY for user  │
+            │  review; user reads full Plan   │
+            │  before confirming              │
             └─────────────────────────────────┘
                           ↓
 ┌─────────────────────────────────────────────────────────────────────────────┐
@@ -470,25 +439,9 @@ These operations may be executed without preview:
 
 ## Orchestrator Responsibilities
 
-As the orchestrator, you maintain overall context and coordinate subagent execution.
+See the Orchestrator Context Budget in SKILL.md for the general framework (what stays in main context vs. what gets delegated to subagents).
 
-### What Stays in Main Context
-
-- Original user request and clarifications
-- Mode classification and scope decisions
-- High-level findings from each phase (summaries, not raw data)
-- Plan document location and status
-- Current stage and progress
-- Errors and blockers requiring escalation
-
-### What Gets Delegated to Subagents
-
-- Detailed data exploration (skill invocations)
-- Source-specific deep dives
-- Code-heavy analysis work
-- Visualization generation
-- **QA code review (code-reviewer agent invoked to closely inspect each individual Stage 5-8 script)**
-- Final report writing and review
+**Pipeline-specific delegation:** In addition to the standard delegation list, Full Pipeline mode delegates **QA code review** — the code-reviewer agent is invoked to closely inspect each individual Stage 5-8 script immediately after execution.
 
 ### Task Types
 
@@ -637,7 +590,7 @@ Report to the user **adaptively** at these trigger points:
 | ID | Transition | After Stage | Before Stage | What User Reviews |
 |---|---|---|---|---|
 | PSU1 | Phase 1 → Phase 2 | 3.5 (Synthesis) | 4 (Plan Creation) | Discovery findings, data availability, source caveats, feasibility, recommended approach |
-| PSU2 | Phase 2 → Phase 3 | 4.5 (Plan Validation) | 5 (Data Retrieval) | The Plan document — methodology, scope, task sequence, research outcomes, hypotheses (if any) |
+| PSU2 | Phase 2 → Phase 3 | 4.5 (Plan Validation) | 5 (Data Retrieval) | Plan summary (methodology, scope, task sequence, research outcomes, hypotheses) — user directed to read full Plan before approving |
 | PSU3 | Phase 3 → Phase 4 | 6 (Context Application) | 7 (EDA & Transformation) | Data quality metrics, suppression rates, datasets acquired, QA1/QA2 summaries |
 | PSU4 | Phase 4 → Phase 5 | 10 (QA Aggregation) | 11 (Report Generation) | Statistical results, key visualizations, QA aggregation, deviations from Plan |
 
@@ -693,76 +646,16 @@ what just happened to what comes next, written as a coherent story.]
 **Ready to move forward, or would you like to discuss anything first?**
 ```
 
-#### Checkpoint Purpose Text (per PSU)
+#### PSU-Specific Content
 
-Include the appropriate line in the "Why this checkpoint" field:
+The checkpoint purpose text, phase transition bridge text, feedback guidance, and content requirements for each PSU live in the respective WORKFLOW_PHASE file alongside the PSU definition:
 
-| PSU | Checkpoint Purpose |
-|-----|-------------------|
-| PSU1 | "I'm pausing here to make sure we've identified the right data and understand its limitations before investing time in methodology design." |
-| PSU2 | "This is your most important review point — the plan defines exactly what analysis will be performed and how. Once you approve, I'll start writing and executing code." |
-| PSU3 | "I'm checking in to confirm the data is clean and trustworthy before running any statistics on it." |
-| PSU4 | "This is your chance to review all results and the quality review summary before they're synthesized into the final report." |
-
-#### Phase Transition Bridge Text (per PSU)
-
-Include the appropriate narrative in the "What Comes Next" field:
-
-| PSU | Bridge Narrative |
-|-----|-----------------|
-| PSU1 | "Now that we know what data is available and what its limitations are, I'll design a detailed analysis plan — including the methodology, the specific data to acquire, and the sequence of analytical steps. You'll review the full plan before any code runs." |
-| PSU2 | "With the plan approved, I'll now download and clean the data according to the plan. I'll run automated quality checks on everything and report back on data health before analysis begins." |
-| PSU3 | "The data is ready. Now comes the analysis itself — transformations, statistics, and visualizations, all following the plan we agreed on. Each script goes through a quality review. I'll compile all results and come back for one more checkpoint before writing the final report." |
-| PSU4 | "All analysis is complete and quality-reviewed. I'll now compile everything into a final report and run an independent verification pass to make sure the report accurately reflects the data and methodology." |
-
-#### Feedback Guidance Text (per PSU)
-
-Include the appropriate guidance in the "What's Most Useful From You Here" field:
-
-| PSU | Feedback Guidance |
-|-----|------------------|
-| PSU1 | "Are these the right data sources for your question? Any sources I may have missed? Any concerns about the limitations I identified?" |
-| PSU2 | "Does the methodology match your intent? Are the research outcomes what you want to investigate? Any variables to add or remove? I've included the full plan filepath above — I'd recommend reading through it closely." |
-| PSU3 | "Are the data quality levels acceptable for your purposes? Any concerns about missing data rates or the cleaning decisions I made?" |
-| PSU4 | "Do the results make sense substantively? Are there additional analyses or visualizations you'd like to see? Any results that seem surprising and worth investigating further?" |
-
-##### PSU-Specific Content Requirements
-
-**PSU1 (Discovery → Planning):**
-- Data sources identified (with endpoints and year ranges)
-- Key variables and their availability
-- Source-specific caveats and limitations discovered
-- Suppression patterns and cross-region comparability issues (e.g., cross-state for education)
-- Feasibility assessment and recommended analytical approach
-- Any LOW-confidence items requiring user input
-
-**PSU2 (Planning → Data Acquisition):**
-- Research question as stated in Plan
-- Methodology summary (statistical approach, key decisions)
-- Data sources and year ranges confirmed
-- Transformation sequence overview (number of tasks, waves)
-- Research Outcomes the analysis will investigate
-- Hypotheses (if any) and their basis
-- Risk Register highlights
-- Plan-checker validation result (PASSED/PASSED_WITH_WARNINGS and any warnings)
-- User informed of full Plan filepath and instructed to read it closely for their deep review
-
-**PSU3 (Data Acquisition → Analysis):**
-- Datasets acquired: source, shape, date range, file paths
-- Data quality summary: missingness rates, suppression rates per dataset
-- Cleaning actions taken and their impact (rows removed, values recoded)
-- QA summary: QA1/QA2 results for each script (PASSED/WARNING with details)
-- Any deviations from the Plan during fetch/clean
-- Data readiness assessment for analysis phase
-
-**PSU4 (Analysis → Synthesis):**
-- Transformation summary: joins performed, derived variables, final analysis dataset shape
-- Statistical analysis results: key findings with effect sizes and confidence intervals
-- Key visualizations produced (reference file paths for user to inspect)
-- QA summary: QA3/QA4a/QA4b results across all scripts
-- Accumulated warnings from Stages 5-8 (the Stage 10 QA aggregation)
-- Any deviations from Plan methodology
-- Notebook compilation status
+| PSU | Location |
+|-----|----------|
+| PSU1 | `WORKFLOW_PHASE1_DISCOVERY.md` > Phase Status Update 1 |
+| PSU2 | `WORKFLOW_PHASE2_PLANNING.md` > Phase Status Update 2 |
+| PSU3 | `WORKFLOW_PHASE3_ACQUISITION.md` > Phase Status Update 3 |
+| PSU4 | `WORKFLOW_PHASE4_ANALYSIS.md` > Phase Status Update 4 |
 
 #### User Response Handling
 
@@ -865,59 +758,7 @@ See `agent_reference/PLAN_TEMPLATE.md` for wave-based task table format.
 
 ### Thoroughness Directives by Stage
 
-**Stage 2 (Data Exploration):**
-- Search ALL relevant data levels (e.g., schools, districts, colleges for education)
-- Consider multiple potential data sources
-- Flag variables that need source-specific deep dives
-- Include "Limitations Encountered" section
-
-**Stage 3 (Source Deep-Dive):**
-- Load the specific domain source skill for each source (per Plan domain config)
-- Extract all relevant caveats and limitations
-- Document suppression patterns and thresholds
-- Note any cross-region comparability issues (e.g., cross-state comparability for education)
-
-**Stage 3.5 (Findings Synthesis):**
-- Consolidate all Stage 2 and Stage 3 findings into unified guidance
-- Identify and resolve conflicts across multiple sources
-- Assess join feasibility and data compatibility
-- Document unified path forward for Plan creation
-
-**Stage 5 (Data Retrieval):**
-- Download from configured mirrors (per mirrors.yaml)
-- Validate response shape immediately after fetch
-- Save only parquet format
-- Document which mirror was used
-
-**Stage 6 (Context Application):**
-- Assess missingness and filter coded values appropriately
-- Calculate and report suppression rates
-- BLOCK invalid analysis types (e.g., cross-state assessment comparison)
-- Generate citation text
-
-**Stage 7 (EDA & Transformation):**
-- Verify all Transformation Sequence tasks are complete
-- Follow data-scientist skill principles rigorously
-- Validate before AND after every transformation
-- Document any deviations from Plan in Plan document
-- Document every methodological decision
-- Report surprising findings to user
-
-**Stage 8.1 (Statistical Analysis):**
-- Select statistical methods appropriate to research question and data characteristics
-- Validate assumptions before running analyses (normality, independence, sample size)
-- Document all parameter choices and their rationale
-- Save analysis results as parquet to `output/analysis/`
-- Report key findings with effect sizes and confidence intervals where applicable
-
-**Stage 8.2 (Visualization):**
-- Generate both exploratory and publication-quality plots
-- Use colorblind-safe palettes by default
-- Include proper titles, axis labels, legends, and source notes
-- Save to `output/figures/` in PNG format
-- Ensure visualizations accurately represent the underlying data and analysis results
-
-See the appropriate `agent_reference/WORKFLOW_PHASE*.md` file for complete invocation templates.
+See the Thoroughness Directive section in the appropriate `agent_reference/WORKFLOW_PHASE*.md` file for stage-specific requirements.
 
 ### Handoff Specifications
 
@@ -1065,37 +906,6 @@ Status: Skill loaded successfully, proceeding with data exploration
 ### Subagent Type Selection
 
 See daaf-orchestrator SKILL.md "Subagent Type Selection" for capabilities by type (`Plan` = read-only; `general-purpose` = full capabilities including file writes).
-
-### Standard Invocation Pattern
-
-```python
-Agent({
-    description: "Stage [N]: [Name]",
-    prompt: """You are a [Agent Role]. Follow the protocol in `{BASE_DIR}/agents/[agent-name].md`.
-
-**BASE_DIR:** {BASE_DIR}
-All relative paths in referenced files resolve from BASE_DIR.
-
-Call the skill tool with name '[skill-name]'.
-
-**CONTEXT:**
-[Relevant context from Plan or prior stages]
-
-**TASK:**
-[Specific task to complete]
-
-**THOROUGHNESS DIRECTIVE:**
-[Stage-specific requirements]
-
-**OUTPUT FORMAT:**
-[Expected output structure]
-
-After completing the skill's Required Actions, return findings using the format above.""",
-    subagent_type: "[Plan | general-purpose]"
-})
-```
-
----
 
 ## Standard Agent Prompt Structure
 
@@ -1924,95 +1734,17 @@ These conditions trigger an immediate STOP with escalation to user. See `agent_r
 
 ### Verification Checklists by Stage
 
-**Stage 4 (Plan Creation) Verification:**
-- [ ] Research question clearly stated (not placeholder)
-- [ ] Research Outcomes section has ≥3 investigation/measurement objectives that do not pre-specify directional results
-- [ ] Hypotheses (if any) are clearly separated from Research Outcomes and include basis citations
-- [ ] Data Sources table complete with endpoints and years
-- [ ] Transformation Sequence table has all tasks with waves assigned
-- [ ] Every task has explicit file paths (no placeholders like "TBD")
-- [ ] Every task has a skill or agent identified
-- [ ] Every join task has cardinality specified (1:1, 1:many, many:1)
-- [ ] Every task has verifiable "done" condition
-- [ ] Risk Register identifies ≥1 risk with mitigation
-- [ ] Wave dependencies are correct (no circular dependencies)
-- [ ] Validation checkpoints specified for each phase
+Each stage has a verification checklist for subagent output. These checklists live in the appropriate `agent_reference/WORKFLOW_PHASE*.md` file alongside the stage they verify:
 
-**Stage 2 (Data Exploration) Verification:**
-- [ ] Recommended Data Level specified (not "TBD" or placeholder)
-- [ ] Candidate Endpoints table has ≥1 endpoint with complete rows
-- [ ] Key Variables table has actual variable names (not "[add more]")
-- [ ] Variables Flagged for Deep-Dive has rationale for each flag
-- [ ] Completeness Assessment checkboxes all marked
-- [ ] Confidence Assessment present with overall confidence level
-- [ ] If confidence is LOW: resolution plan or escalation present
+| Stages | Checklist Location |
+|--------|--------------------|
+| 2, 3, 3.5 | `WORKFLOW_PHASE1_DISCOVERY.md` > Verification Checklists |
+| 4 | `WORKFLOW_PHASE2_PLANNING.md` > Verification Checklists |
+| 5, 6 | `WORKFLOW_PHASE3_ACQUISITION.md` > Verification Checklists |
+| 7, 8.1, 8.2 | `WORKFLOW_PHASE4_ANALYSIS.md` > Verification Checklists |
+| 12 | `WORKFLOW_PHASE5_SYNTHESIS.md` > Verification Checklists |
 
-**Stage 3 (Source Deep-Dive) Verification:**
-- [ ] Source name explicitly stated
-- [ ] Source-Specific Caveats table populated (not empty)
-- [ ] Coded Value Mappings complete for all flagged variables
-- [ ] Suppression Patterns documented with typical rates
-- [ ] Cross-region comparability assessed (if multi-region analysis, e.g., cross-state for education)
-- [ ] Critical Warnings have mitigation strategies
-- [ ] Confidence Assessment present
-- [ ] If confidence is LOW: resolution present
-
-**Stage 3.5 (Findings Synthesis) Verification:**
-- [ ] All source findings consolidated into unified summary
-- [ ] Cross-source conflicts identified and resolved (or flagged for Plan)
-- [ ] Join feasibility assessed with key considerations documented
-- [ ] Unified guidance ready for data-planner input
-- [ ] Confidence Assessment present
-
-**Stage 5 (Data Retrieval) Verification:**
-- [ ] Fetch Summary has actual counts (not "TBD")
-- [ ] CP1 Status explicitly stated (PASSED/FAILED/WARNING)
-- [ ] File locations provided with actual filenames
-- [ ] If CP1 FAILED: Stop reason documented
-- [ ] If data lag ≥3 years: Flagged for user notification
-- [ ] If flag years (per FLAG_YEARS in Plan Domain Configuration) included: Flagged with warning
-
-**Stage 6 (Context Application) Verification:**
-- [ ] Cleaning Applied table shows actual row counts removed
-- [ ] CP2 Status explicitly stated
-- [ ] Suppression rate calculated and reported
-- [ ] Validity Check completed (Yes/No/Conditional)
-- [ ] Citation text present and complete
-- [ ] File locations provided
-- [ ] If CP2 FAILED: Stop reason documented
-
-**Stage 7 (Transformation) Verification:**
-- [ ] Pre-state and post-state both documented
-- [ ] Row change percentage calculated
-- [ ] Invariants checked with PASS/FAIL status
-- [ ] Overall status: PASSED/FAILED/WARNING
-- [ ] If FAILED: Issue description and proposed fix present
-- [ ] For joins: Cardinality validation performed
-
-**Stage 8.1 (Statistical Analysis) Verification:**
-- [ ] Statistical method appropriate for data type and research question
-- [ ] Assumptions validated before analysis (documented in script)
-- [ ] Results saved to `output/analysis/` as parquet
-- [ ] Key findings documented with effect sizes and confidence intervals
-- [ ] Interpretation aligned with Research Outcomes in Plan
-- [ ] Overall status: PASSED/FAILED/WARNING
-
-**Stage 8.2 (Visualization) Verification:**
-- [ ] All Plan-specified figures generated
-- [ ] Figures saved to `output/figures/` as PNG
-- [ ] Proper labeling (title, axes, legend, source note)
-- [ ] Data source in visualization matches analysis dataset
-- [ ] Colorblind-safe palette used
-- [ ] Overall status: PASSED/FAILED/WARNING
-
-**Stage 12 (Final Verification) Output Verification:**
-- [ ] Independent assessment performed (expectations listed before Plan comparison)
-- [ ] All four verification layers completed (Existence, Substantive, Wired, Coherent)
-- [ ] Research question stress test result stated with reasoning
-- [ ] At least one key finding traced end-to-end (Telephone Game test performed)
-- [ ] Confidence assessment completed for all five aspects with rationale
-- [ ] Verification Quality Self-Check results included (all 8 questions)
-- [ ] If PASSED: conclusion articulates WHY the analysis is sound, not just absence of failures
+**When to check:** After each subagent returns, apply the relevant stage's checklist before proceeding.
 
 ---
 

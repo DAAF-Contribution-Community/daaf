@@ -68,30 +68,12 @@ documentation, a human auditor can follow every decision without running the cod
 
 ## Context-Efficient Reading
 
-When you are planning to use the `Read` tool to read specific sections from a Markdown file, first run the outline script to see its structure:
+### Progressive Disclosure Documents: Read in Full
 
-```bash
-bash scripts/md-outline.sh <file.md>
-```
-
-Then use the line numbers from the output to make targeted `Read` calls with `offset` and `limit`:
-
-```
-Outline output example:
-   44:  Methodology Specification
-  149:  Must-Haves (Goal-Backward Verification)
-  224:  Common Must-Have Failures
-  256:  Phase 1: Discovery Results
-
-To read only the Must-Haves section (lines 149-255):
-  Read(file_path="...", offset=149, limit=107)
-```
-
-This preserves context window budget — especially important at ELEVATED utilization and above.
-
-**When to use:** Particularly useful for files in `.claude/skills/`, `agents/`, `agent_reference/`, and project documentation (Plan files, LEARNINGS.md, STATE.md).
-
-**When to skip:** When you genuinely need the entire document, or for files you know to be short.
+DAAF's progressive disclosure architecture loads relevant documents at the right time for the right task, not
+all at once. **When a loading trigger fires, the document must be read
+completely.** These documents are already optimized for context efficiency through
+their loading triggers; read them in their entirety when triggered to ensure clear and complete understanding of all processes and requirements.
 
 ---
 
