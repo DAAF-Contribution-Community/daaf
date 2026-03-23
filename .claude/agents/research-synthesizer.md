@@ -457,18 +457,18 @@ Awaiting guidance before proceeding.
 
 ## Anti-Patterns
 
-| Anti-Pattern | Problem | Correct Approach |
-|--------------|---------|------------------|
-| Concatenation without synthesis | Listing findings source-by-source without integration | Cross-reference, compare, resolve conflicts, produce unified recommendations |
-| LOW confidence passed as authoritative | Planner builds on uncertain foundations | Resolve LOW items or flag with explicit risk and escalation |
-| Hidden conflicts | Disagreements between sources buried or omitted | Document every conflict with both sides, resolution, and risk |
-| Vague recommendations | "Consider exploring..." gives planner no direction | "Use CCD schools endpoint, join on ncessch, filter years 2019-2022" (education domain example) |
-| Cherry-picking favorable data | Using only the finding that supports a preferred approach | Present all evidence; resolve conflicts transparently |
-| Ignoring temporal mismatches | Treating data from different years as contemporaneous (e.g., 2019 CCD and 2022 MEPS) | Document year alignment; recommend intersection or explicit lag handling |
-| Treating all sources as equally authoritative | Weighting a LOW-confidence finding the same as HIGH | Apply Truth Hierarchy; weight by confidence and source quality |
-| Synthesizing without reading all source findings | Returning output based on partial Stage 3 inputs | Verify input manifest completeness before starting synthesis |
-| Inflated summaries | Padding sparse findings to fill space | If findings are sparse, say so; do not manufacture content |
-| Missing source attribution | Constraints without traceability to Stage 2/3 findings | Every constraint and recommendation cites its source stage and finding |
+| # | Anti-Pattern | Problem | Correct Approach |
+|---|--------------|---------|------------------|
+| 1 | Concatenation without synthesis | Listing findings source-by-source without integration | Cross-reference, compare, resolve conflicts, produce unified recommendations |
+| 2 | LOW confidence passed as authoritative | Planner builds on uncertain foundations | Resolve LOW items or flag with explicit risk and escalation |
+| 3 | Hidden conflicts | Disagreements between sources buried or omitted | Document every conflict with both sides, resolution, and risk |
+| 4 | Vague recommendations | "Consider exploring..." gives planner no direction | "Use CCD schools endpoint, join on ncessch, filter years 2019-2022" (education domain example) |
+| 5 | Cherry-picking favorable data | Using only the finding that supports a preferred approach | Present all evidence; resolve conflicts transparently |
+| 6 | Ignoring temporal mismatches | Treating data from different years as contemporaneous (e.g., 2019 CCD and 2022 MEPS) | Document year alignment; recommend intersection or explicit lag handling |
+| 7 | Treating all sources as equally authoritative | Weighting a LOW-confidence finding the same as HIGH | Apply Truth Hierarchy; weight by confidence and source quality |
+| 8 | Synthesizing without reading all source findings | Returning output based on partial Stage 3 inputs | Verify input manifest completeness before starting synthesis |
+| 9 | Inflated summaries | Padding sparse findings to fill space | If findings are sparse, say so; do not manufacture content |
+| 10 | Missing source attribution | Constraints without traceability to Stage 2/3 findings | Every constraint and recommendation cites its source stage and finding |
 
 **DO NOT concatenate findings without synthesizing.** Synthesis means resolving conflicts, identifying patterns, and producing actionable recommendations — not just listing what each source said. Transform scattered discoveries into coherent guidance.
 
@@ -505,16 +505,16 @@ Awaiting guidance before proceeding.
 
 Before returning output, verify:
 
-| Question | If NO |
-|----------|-------|
-| Did I inventory every finding from every Stage 2-3 input? | Go back and create a complete manifest before synthesizing |
-| Did I resolve every conflict with evidence and rationale (not just note it)? | Apply the Conflict Resolution matrix; document evidence for each |
-| Are all recommendations specific and actionable (not advisory)? | Rewrite vague recommendations with concrete sources, keys, years, variables |
-| Does overall confidence correctly reflect the weakest link? | Recalculate; explain any deviation from weakest-link rule |
-| Have I verified Stage 3 coverage matches Stage 2 source count? | Check input manifest; STOP if any source is missing |
-| Is the Synthesis Completeness Check filled out with no unchecked items? | Complete the checklist; address any gaps before returning |
-| Would the data-planner be able to create a Plan using ONLY this synthesis? | Add missing context; the synthesis must be self-contained for planning |
-| Did I attribute every constraint to its source stage and finding? | Add source attribution to all constraints and recommendations |
+| # | Question | If NO |
+|---|----------|-------|
+| 1 | Did I inventory every finding from every Stage 2-3 input? | Go back and create a complete manifest before synthesizing |
+| 2 | Did I resolve every conflict with evidence and rationale (not just note it)? | Apply the Conflict Resolution matrix; document evidence for each |
+| 3 | Are all recommendations specific and actionable (not advisory)? | Rewrite vague recommendations with concrete sources, keys, years, variables |
+| 4 | Does overall confidence correctly reflect the weakest link? | Recalculate; explain any deviation from weakest-link rule |
+| 5 | Have I verified Stage 3 coverage matches Stage 2 source count? | Check input manifest; STOP if any source is missing |
+| 6 | Is the Synthesis Completeness Check filled out with no unchecked items? | Complete the checklist; address any gaps before returning |
+| 7 | Would the data-planner be able to create a Plan using ONLY this synthesis? | Add missing context; the synthesis must be self-contained for planning |
+| 8 | Did I attribute every constraint to its source stage and finding? | Add source attribution to all constraints and recommendations |
 
 ---
 
@@ -522,8 +522,7 @@ Before returning output, verify:
 
 **Invocation type:** `subagent_type: "research-synthesizer"`
 
-See `WORKFLOW_PHASE1_DISCOVERY.md` for the stage-specific invocation template.
-The stage-specific template with full context fields is in `agent_reference/WORKFLOW_PHASE1_DISCOVERY.md`.
+See `agent_reference/WORKFLOW_PHASE1_DISCOVERY.md` for the stage-specific invocation template.
 
 ---
 

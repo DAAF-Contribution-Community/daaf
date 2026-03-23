@@ -76,6 +76,93 @@ Awaiting your guidance before proceeding.
 | **QA Methodology Issue** | Code contradicts Plan | Escalate immediately | 0 revisions |
 | **Resource** | Memory, timeout | Optimize or escalate | 1 attempt |
 
+## Error Recovery Routing
+
+When errors occur during pipeline execution, this routing determines which agent handles recovery:
+
+```
+ERROR DETECTED
+      |
+      +- Data issue (empty, wrong shape)?
+      |       +-> research-executor retry (max 2)
+      |               +-> debugger (if still failing)
+      |
+      +- QA BLOCKER found (code-reviewer)?
+      |       +-> Is it a methodology issue?
+      |               +-> YES -> ESCALATE to user immediately
+      |               +-> NO -> research-executor revision
+      |                       +-> code-reviewer re-reviews
+      |                               +-> Resolved -> Proceed
+      |                               +-> Still BLOCKER after 2 attempts -> ESCALATE
+      |
+      +- Transformation issue (unexpected row loss)?
+      |       +-> debugger
+      |               +-> Fix identified -> research-executor applies fix
+      |               +-> Root cause unclear -> ESCALATE to user
+      |
+      +- Plan issue (missing section, ambiguous task)?
+      |       +-> data-planner (revision)
+      |               +-> plan-checker validates
+      |
+      +- Integration issue (broken references)?
+      |       +-> integration-checker diagnoses
+      |               +-> Orchestrator coordinates fix
+      |
+      +- Verification failure (stub detected, missing artifact)?
+              +-> data-verifier documents
+                      +-> Orchestrator coordinates completion
+```
+
+**Agent-Specific Error Budgets:**
+
+| Agent | Max Attempts | Then |
+|-------|-------------|------|
+| research-executor | 2 retries per task | Invoke debugger |
+| code-reviewer | 2 revision cycles per script | Escalate to user |
+| debugger | 5 hypothesis cycles | Escalate to user |
+| data-planner | 2 revision cycles | Escalate to user |
+| Any agent | Context degradation detected | Compress and continue or restart |
+
+---
+
+## Debugger Invocation Template
+
+The debugger agent is invoked during error recovery, not at a fixed pipeline stage. It is the only agent invoked on-demand rather than at a predetermined stage.
+
+```python
+Agent({
+    description: "Debug: [Brief Error Description]",
+    prompt: """You are a Debugger. Read and follow the protocol in
+    `{BASE_DIR}/.claude/agents/debugger.md`.
+
+    **BASE_DIR:** {BASE_DIR}
+    All relative paths in referenced files resolve from BASE_DIR.
+
+    Call the skill tool with name 'data-scientist'.
+    [If data transformation issue: Also call the skill tool with name 'polars'.]
+
+    **CONTEXT:**
+    Research Question: [verbatim]
+    Plan Path: {BASE_DIR}/research/[project]/[Plan filename]
+    Plan Tasks Path: {BASE_DIR}/research/[project]/[Plan_Tasks filename]
+
+    **ERROR DETAILS:**
+    - Error message: [verbatim error or symptom]
+    - Stage and step: [Stage N, Step M]
+    - Failed script: {BASE_DIR}/research/[project]/scripts/[path]
+    - Last successful operation: [description + output]
+    [If QA-triggered:]
+    - QA report: {BASE_DIR}/research/[project]/scripts/cr/[cr script path]
+    - Specific BLOCKER check: [which check failed]
+
+    Diagnose the root cause using scientific hypothesis-testing.
+    Return findings using the Debugger Output Format.""",
+    subagent_type: "debugger"
+})
+```
+
+---
+
 ## Session Error Budget
 
 To prevent infinite retry loops and excessive resource consumption, track cumulative errors across the entire analysis session.

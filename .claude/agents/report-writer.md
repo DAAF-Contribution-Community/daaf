@@ -480,7 +480,7 @@ Before returning output, verify:
 
 **Invocation type:** `subagent_type: "report-writer"`
 
-See `WORKFLOW_PHASE5_SYNTHESIS.md` for the stage-specific invocation template.
+See `agent_reference/WORKFLOW_PHASE5_SYNTHESIS.md` for the stage-specific invocation template.
 
 ---
 

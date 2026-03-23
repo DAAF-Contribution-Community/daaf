@@ -881,20 +881,20 @@ Awaiting guidance before proceeding.
 
 Before returning output, verify:
 
-| Question | If NO |
-|----------|-------|
-| Did I form my own understanding of the code BEFORE checking Plan.md? | Re-read code without Plan.md anchoring |
-| Did I identify at least one thing the original validation DIDN'T check? | Add an adversarial check to QA script |
-| Can I explain WHY the code is correct (not just that it didn't fail)? | Deepen review until you can articulate reasoning |
-| Did my QA script include at least one check not in the template? | Add a script-specific or spot-check validation |
-| Did I consider what would happen with different (but plausible) data? | Apply the Counterfactual lens |
-| Did I check what the code DOESN'T do, not just what it does? | Apply the Absence lens |
-| Would a domain expert reading my QA report learn something about the data? | Add substantive observations to INFO items |
-| Did cr1 include at least 5 script-specific checks and 5 spot-checks? | Expand cr1 before proceeding |
-| Did I review cr1's profiling output before deciding whether to continue? | Review profiling, then decide |
-| Do all cr2+ scripts have documented triggers from prior iterations? | Add trigger documentation |
-| Does the report synthesize findings across ALL iterations? | Write Investigation Narrative |
-| If iterations < 5 and PASSED: can I articulate why further investigation is unnecessary? | Document reasoning for stopping |
+| # | Question | If NO |
+|---|----------|-------|
+| 1 | Did I form my own understanding of the code BEFORE checking Plan.md? | Re-read code without Plan.md anchoring |
+| 2 | Did I identify at least one thing the original validation DIDN'T check? | Add an adversarial check to QA script |
+| 3 | Can I explain WHY the code is correct (not just that it didn't fail)? | Deepen review until you can articulate reasoning |
+| 4 | Did my QA script include at least one check not in the template? | Add a script-specific or spot-check validation |
+| 5 | Did I consider what would happen with different (but plausible) data? | Apply the Counterfactual lens |
+| 6 | Did I check what the code DOESN'T do, not just what it does? | Apply the Absence lens |
+| 7 | Would a domain expert reading my QA report learn something about the data? | Add substantive observations to INFO items |
+| 8 | Did cr1 include at least 5 script-specific checks and 5 spot-checks? | Expand cr1 before proceeding |
+| 9 | Did I review cr1's profiling output before deciding whether to continue? | Review profiling, then decide |
+| 10 | Do all cr2+ scripts have documented triggers from prior iterations? | Add trigger documentation |
+| 11 | Does the report synthesize findings across ALL iterations? | Write Investigation Narrative |
+| 12 | If iterations < 5 and PASSED: can I articulate why further investigation is unnecessary? | Document reasoning for stopping |
 
 **A high-quality review produces a QA report where the reasoning is visible** — the reader can see *how* you arrived at your conclusions, not just what they are.
 
@@ -904,8 +904,7 @@ Before returning output, verify:
 
 **Invocation type:** `subagent_type: "code-reviewer"`
 
-See `full-pipeline.md` and `WORKFLOW_PHASE*.md` for stage-specific invocation templates and the revision flow diagram.
-The cross-phase QA invocation template with full context fields is in `.claude/skills/daaf-orchestrator/references/full-pipeline.md`.
+See `full-pipeline.md` and the appropriate `agent_reference/WORKFLOW_PHASE*.md` for stage-specific invocation templates and the revision flow diagram.
 
 ---
 

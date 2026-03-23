@@ -94,15 +94,15 @@ Execute the appropriate checkpoint WITHIN the script, printing results to stdout
 
 See `agent_reference/VALIDATION_CHECKPOINTS.md` for checkpoint code templates.
 
-### 5. Pre/Post State Capture
+### 6. Pre/Post State Capture
 
 Always capture and report the state before and after every transformation: row count, shape, column list, sample identifiers, and null counts for critical columns. Without state capture, data loss, unexpected nulls, and row count changes go undetected.
 
-### 6. IAT-Compliant Documentation
+### 7. IAT-Compliant Documentation
 
 Every filter, join, aggregation, and derived column must have inline comments explaining intent, reasoning, and assumptions. Sparse comments make code unauditable and block QA review. Follow `agent_reference/INLINE_AUDIT_TRAIL.md`.
 
-### 7. Single Command Execution
+### 8. Single Command Execution
 
 Every Bash tool call must contain exactly one command. No `&&`, `;`, or `||` chaining. Use absolute paths — no `cd` required:
 ```
@@ -463,16 +463,16 @@ Awaiting guidance before proceeding.
 
 Before returning output, verify:
 
-| Question | If NO |
-|----------|-------|
-| Did I write the script to a file before executing? | STOP -- rewrite as file, re-execute with capture wrapper |
-| Does the execution log show checkpoint validation results? | Add checkpoint to script, create versioned copy, re-execute |
-| Are pre-state and post-state both documented in my report? | Read execution log, extract state information, update report |
-| Did row count change stay within expected bounds? | Investigate cause; if >90% loss, STOP and escalate |
-| Are all output files verified to exist on disk? | Check with `ls`; if missing, investigate script save logic |
-| Does my report include all required sections from Output Format? | Add missing sections before returning |
-| Did I follow IAT documentation standards in the script? | Create versioned copy with proper inline comments |
-| Is my Confidence Assessment evidence-based (not just labels)? | Add specific evidence: checkpoint results, counts, error details |
+| # | Question | If NO |
+|---|----------|-------|
+| 1 | Did I write the script to a file before executing? | STOP -- rewrite as file, re-execute with capture wrapper |
+| 2 | Does the execution log show checkpoint validation results? | Add checkpoint to script, create versioned copy, re-execute |
+| 3 | Are pre-state and post-state both documented in my report? | Read execution log, extract state information, update report |
+| 4 | Did row count change stay within expected bounds? | Investigate cause; if >90% loss, STOP and escalate |
+| 5 | Are all output files verified to exist on disk? | Check with `ls`; if missing, investigate script save logic |
+| 6 | Does my report include all required sections from Output Format? | Add missing sections before returning |
+| 7 | Did I follow IAT documentation standards in the script? | Create versioned copy with proper inline comments |
+| 8 | Is my Confidence Assessment evidence-based (not just labels)? | Add specific evidence: checkpoint results, counts, error details |
 
 ---
 
@@ -480,8 +480,7 @@ Before returning output, verify:
 
 **Invocation type:** `subagent_type: "research-executor"`
 
-See `WORKFLOW_PHASE3_ACQUISITION.md` and `WORKFLOW_PHASE4_ANALYSIS.md` for stage-specific invocation templates (standard and QA revision).
-Stage-specific templates with full context fields are in `agent_reference/WORKFLOW_PHASE3_ACQUISITION.md` (Stages 5-6) and `agent_reference/WORKFLOW_PHASE4_ANALYSIS.md` (Stages 7-8).
+See `agent_reference/WORKFLOW_PHASE3_ACQUISITION.md` and `agent_reference/WORKFLOW_PHASE4_ANALYSIS.md` for stage-specific invocation templates (standard and QA revision).
 
 ---
 

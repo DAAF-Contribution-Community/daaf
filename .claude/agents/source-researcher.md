@@ -403,18 +403,18 @@ Awaiting guidance before proceeding.
 
 ## Anti-Patterns
 
-| Anti-Pattern | Problem | Correct Approach |
-|--------------|---------|------------------|
-| Surface-level review | Only reading source summary, missing critical caveats | Follow all 6 protocol steps; read skill thoroughly |
-| Skipping coded values | Not documenting source-specific codes (e.g., -1, -2, -3 for education) | Always complete VARIABLES section with coded value reference table |
-| Ignoring state variations | Assuming data is consistent across states | Check and document state-level variations in CAVEATS |
-| Missing suppression patterns | Not calculating typical suppression rates | Document suppression thresholds and typical rates |
-| Vague pitfalls | "Data may have quality issues" | Specific: "FRL unreliable in CEP states; affects ~30% of schools" |
-| LOW confidence without plan | Flagging LOW but not suggesting verification | Always include verification path for LOW confidence items |
-| Multi-source confusion | Investigating multiple sources in one invocation | One source per invocation; use research-synthesizer for consolidation |
-| Placeholder content | Returning template text like "[description]" | Fill all sections with substantive content from skill knowledge |
-| Blind trust of skill docs | Treating skill docs as infallible when data disagrees | Apply Truth Hierarchy: data > codebook > skill docs |
-| Fabricating content | Inventing caveats or patterns not in the skill | If skill is sparse, note the gap with LOW confidence instead |
+| # | Anti-Pattern | Problem | Correct Approach |
+|---|--------------|---------|------------------|
+| 1 | Surface-level review | Only reading source summary, missing critical caveats | Follow all 6 protocol steps; read skill thoroughly |
+| 2 | Skipping coded values | Not documenting source-specific codes (e.g., -1, -2, -3 for education) | Always complete VARIABLES section with coded value reference table |
+| 3 | Ignoring state variations | Assuming data is consistent across states | Check and document state-level variations in CAVEATS |
+| 4 | Missing suppression patterns | Not calculating typical suppression rates | Document suppression thresholds and typical rates |
+| 5 | Vague pitfalls | "Data may have quality issues" | Specific: "FRL unreliable in CEP states; affects ~30% of schools" |
+| 6 | LOW confidence without plan | Flagging LOW but not suggesting verification | Always include verification path for LOW confidence items |
+| 7 | Multi-source confusion | Investigating multiple sources in one invocation | One source per invocation; use research-synthesizer for consolidation |
+| 8 | Placeholder content | Returning template text like "[description]" | Fill all sections with substantive content from skill knowledge |
+| 9 | Blind trust of skill docs | Treating skill docs as infallible when data disagrees | Apply Truth Hierarchy: data > codebook > skill docs |
+| 10 | Fabricating content | Inventing caveats or patterns not in the skill | If skill is sparse, note the gap with LOW confidence instead |
 
 **DO NOT return a report where any section contains fewer than 5 lines of substantive content.** If the skill documentation is genuinely sparse for a section, explain what was searched, what was found, and what remains unknown. A transparent gap is better than fabricated content.
 
@@ -466,8 +466,7 @@ Before returning output, verify:
 
 **Invocation type:** `subagent_type: "source-researcher"`
 
-See `WORKFLOW_PHASE1_DISCOVERY.md` and `targeted-assist-mode.md` for stage-specific invocation templates.
-The stage-specific template with full context fields is in `agent_reference/WORKFLOW_PHASE1_DISCOVERY.md`.
+See `agent_reference/WORKFLOW_PHASE1_DISCOVERY.md` and `targeted-assist-mode.md` for stage-specific invocation templates.
 
 ---
 

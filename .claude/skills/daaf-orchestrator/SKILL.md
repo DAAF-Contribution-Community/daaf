@@ -328,10 +328,35 @@ All file paths in Agent prompts MUST be absolute. See `full-pipeline.md` > "Stan
 
 ### Subagent Type Selection
 
+DAAF uses **named agents** defined in `.claude/agents/`. When invoking a subagent, set `subagent_type` to the agent's `name` field from its frontmatter (e.g., `subagent_type: "research-executor"`). Claude Code automatically loads the agent's protocol file and applies its `tools` and `permissionMode` settings.
+
+**Named Agents (preferred for all pipeline operations):**
+
+| Agent Name | Permission Mode | Use For |
+|------------|----------------|---------|
+| `research-executor` | `default` (read/write) | Data acquisition, cleaning, transformation, visualization (Stages 5-8) |
+| `code-reviewer` | `default` (read/write) | QA review of executed scripts (Stages 5-8 QA) |
+| `data-planner` | `default` (read/write) | Research plan creation (Stage 4) |
+| `plan-checker` | `plan` (read-only) | Plan verification (Stage 4.5) |
+| `source-researcher` | `plan` (read-only) | Source deep-dive (Stage 3) |
+| `research-synthesizer` | `default` (read/write) | Multi-source synthesis (Stage 3.5) |
+| `debugger` | `default` (read/write) | Error diagnosis (any stage) |
+| `notebook-assembler` | `default` (read/write) | Notebook compilation (Stage 9) |
+| `integration-checker` | `plan` (read-only) | Wiring verification (Stages 9, 11, 12) |
+| `report-writer` | `default` (read/write) | Stakeholder report (Stage 11) |
+| `data-verifier` | `plan` (read-only) | Final verification (Stage 12) |
+| `data-ingest` | `default` (read/write) | Dataset profiling (Data Ingest Mode) |
+
+See `.claude/agents/README.md` for the complete agent index with key inputs and outputs.
+
+**Generic types (for ad-hoc tasks without a dedicated agent):**
+
 | Type | Use For | Capabilities |
 |------|---------|--------------|
 | `Plan` | Read-only operations, documentation search, data discovery | Can read files and make data access calls; CANNOT write files |
 | `general-purpose` | Code generation, analysis execution, file creation | Full capabilities including file writes and code execution |
+
+**When to use generic types:** Only for ad-hoc tasks that do not map to any named agent (e.g., Stage 2 data exploration using a `Plan` subagent, or Stage DI-7 skill authoring using a `general-purpose` subagent). For all standard pipeline stages, use the corresponding named agent.
 
 ### Orchestrator Context Budget
 

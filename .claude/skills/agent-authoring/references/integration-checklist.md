@@ -16,7 +16,7 @@
 **What to add:** New row with Agent, Purpose, Subagent Type, Stage(s), Key Distinction
 
 ```markdown
-| **new-agent** | [Purpose] | `[general-purpose \| Plan]` | [Stage(s)] | [One-line differentiator] |
+| **new-agent** | [Purpose] | `[agent-name]` | [Stage(s)] | [One-line differentiator] |
 ```
 
 ### 2. `.claude/agents/README.md` — "When to Use" section
@@ -25,7 +25,7 @@
 **What to add:** Complete subsection with:
 - `**Use when:**` trigger description
 - `**Key behaviors:**` bulleted list (3-5 items)
-- `**Invocation pattern:**` complete Agent() code block
+- `**Invocation template:**` reference to the appropriate `agent_reference/WORKFLOW_PHASE*.md` or mode reference file
 - Any additional context (constraints, revision flow, etc.)
 
 Follow the format of existing agent subsections in this file.
@@ -98,17 +98,16 @@ Follow the format of existing agent subsections in this file.
 **Section:** "Orchestration Flow" (ASCII diagram)
 **What to add:** Agent box in the relevant position
 
-### 15. `.claude/agents/README.md` — Error Recovery Routing
+### 15. `agent_reference/ERROR_RECOVERY.md` — Error Recovery Routing
 
 **Condition:** Agent handles specific error types or participates in error recovery
 **Section:** "Error Recovery Routing"
 **What to add:** New branch in the routing diagram and/or error budget entry
 
-### 16. `.claude/agents/README.md` — Agent + Skill Combinations table
+### 16. Agent file — `skills:` frontmatter field
 
 **Condition:** Agent uses one or more skills during execution
-**Section:** "Agent + Skill Combinations"
-**What to add:** New row with Task, Agent, Skill(s)
+**What to add:** Ensure the agent's `skills:` frontmatter field lists preloaded skills. Stage-specific skill loading is documented in the agent's Protocol section and the corresponding `agent_reference/WORKFLOW_PHASE*.md` invocation templates.
 
 ---
 
@@ -210,8 +209,8 @@ done
 - [ ] agent_reference/WORKFLOW_PHASE*.md — Individual stage section (if stage-specific)
 - [ ] agent_reference/WORKFLOW_PHASE*.md — Stage invocation template (if unique invocation template)
 - [ ] .claude/agents/README.md — Orchestration Flow diagram (if changes workflow)
-- [ ] .claude/agents/README.md — Error Recovery Routing (if handles errors)
-- [ ] .claude/agents/README.md — Agent + Skill Combinations (if uses skills)
+- [ ] agent_reference/ERROR_RECOVERY.md — Error Recovery Routing (if handles errors)
+- [ ] Agent file — `skills:` frontmatter field (if uses skills)
 
 ### Tier 3: CONDITIONAL (review applicability)
 - [ ] Appropriate agent_reference/WORKFLOW_PHASE*.md (if implements workflow phase)

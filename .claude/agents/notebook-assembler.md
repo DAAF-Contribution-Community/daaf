@@ -681,18 +681,18 @@ Awaiting guidance before proceeding.
 
 ## Anti-Patterns
 
-| Anti-Pattern | Problem | Correct Approach |
-|--------------|---------|------------------|
-| Writing new aggregation code | Violates "LITERAL COPY" principle; notebook is a viewer, not an analysis tool | Copy script code verbatim; only new code is `pl.read_parquet()` + `mo.ui.table()` |
-| Creating interactive widgets | Turns notebook into a dashboard; not reproducible from scripts alone | No `mo.ui.dropdown()`, `mo.ui.slider()`, `mo.ui.multiselect()`, `mo.ui.text()` |
-| Leaving script code uncommented | Causes execution conflicts: import collisions, variable redefinition, print side effects | Prefix every line with `# ` and end cell with `pass` |
-| Summarizing execution logs | Loses audit detail; paraphrased logs cannot be compared to script output | Copy execution log verbatim into accordion |
-| Hiding failed script versions | Breaks audit trail; user cannot see what was tried and why | Document version history in Cell 1 header |
-| Transforming data in load cells | Adds undocumented transformations outside of audited scripts | Cell 4 contains ONLY `pl.read_parquet()` + `mo.ui.table()` — no `.with_columns()`, `.filter()`, `.select()` |
-| Creating "Data Overview" sections | Generates new analysis not in any script; not reproducible | Notebook shows what scripts did, not new analysis |
-| Omitting scripts | Breaks audit completeness; missing steps make analysis unreproducible | Every script in `scripts/stage{5,6,7,8}_*/` must appear |
-| Forgetting `pass` statement | Code archive cell with only comments is not valid Python; marimo will error | Every code archive cell ends with `pass` |
-| Modifying original scripts | Corrupts the source of truth; scripts are immutable artifacts | READ scripts to extract code and logs; never WRITE to `scripts/` |
+| # | Anti-Pattern | Problem | Correct Approach |
+|---|--------------|---------|------------------|
+| 1 | Writing new aggregation code | Violates "LITERAL COPY" principle; notebook is a viewer, not an analysis tool | Copy script code verbatim; only new code is `pl.read_parquet()` + `mo.ui.table()` |
+| 2 | Creating interactive widgets | Turns notebook into a dashboard; not reproducible from scripts alone | No `mo.ui.dropdown()`, `mo.ui.slider()`, `mo.ui.multiselect()`, `mo.ui.text()` |
+| 3 | Leaving script code uncommented | Causes execution conflicts: import collisions, variable redefinition, print side effects | Prefix every line with `# ` and end cell with `pass` |
+| 4 | Summarizing execution logs | Loses audit detail; paraphrased logs cannot be compared to script output | Copy execution log verbatim into accordion |
+| 5 | Hiding failed script versions | Breaks audit trail; user cannot see what was tried and why | Document version history in Cell 1 header |
+| 6 | Transforming data in load cells | Adds undocumented transformations outside of audited scripts | Cell 4 contains ONLY `pl.read_parquet()` + `mo.ui.table()` — no `.with_columns()`, `.filter()`, `.select()` |
+| 7 | Creating "Data Overview" sections | Generates new analysis not in any script; not reproducible | Notebook shows what scripts did, not new analysis |
+| 8 | Omitting scripts | Breaks audit completeness; missing steps make analysis unreproducible | Every script in `scripts/stage{5,6,7,8}_*/` must appear |
+| 9 | Forgetting `pass` statement | Code archive cell with only comments is not valid Python; marimo will error | Every code archive cell ends with `pass` |
+| 10 | Modifying original scripts | Corrupts the source of truth; scripts are immutable artifacts | READ scripts to extract code and logs; never WRITE to `scripts/` |
 
 **DO NOT create "Executive Summary" or "Data Explorer" sections with new code.** If a summary does not exist in a script, do not create it. The notebook shows what the scripts did, not new analysis.
 
@@ -744,7 +744,7 @@ Before returning output, verify:
 
 **Invocation type:** `subagent_type: "notebook-assembler"`
 
-See `WORKFLOW_PHASE4_ANALYSIS.md` for the stage-specific invocation template.
+See `agent_reference/WORKFLOW_PHASE4_ANALYSIS.md` for the stage-specific invocation template.
 
 ---
 

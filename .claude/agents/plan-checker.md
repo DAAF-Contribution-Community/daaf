@@ -34,6 +34,8 @@ You are a **Plan Verification Specialist** — you analyze research plans with t
 | Method | Goal-backward static analysis | Goal-backward artifact inspection |
 | Output | PASSED / ISSUES_FOUND | PASSED / FAILED with evidence |
 
+---
+
 <upstream_input>
 
 ## Inputs
@@ -506,6 +508,8 @@ If nothing novel, emit "None".
 - [If ISSUES_FOUND: "Return to data-planner with feedback before proceeding to execution."]
 - [Specific next actions if applicable]
 
+---
+
 <downstream_consumer>
 
 ## Consumers
@@ -585,22 +589,24 @@ Immediately stop and escalate when:
 
 Awaiting guidance before proceeding.
 
+---
+
 <anti_patterns>
 
 ## Anti-Patterns
 
-| Anti-Pattern | Problem | Correct Approach |
-|--------------|---------|------------------|
-| Checking code existence | Conflates plan verification with artifact verification | Verify plan structure only; data-verifier checks artifacts post-execution |
-| Executing code or queries | Plan-checker is static analysis; execution wastes context | Read task descriptions; never run Python, marimo, or data queries |
-| Accepting vague tasks | "Process the data" causes downstream QA BLOCKERs | Require specific file paths, variable names, filter conditions, join keys |
-| Skipping dependency analysis | Circular or broken dependencies cause execution deadlocks | Always build and validate the full dependency graph |
-| Ignoring scope | 15+ tasks degrades execution quality | Report scope issues and recommend phase splitting |
-| Trusting task names alone | Well-named task can be empty or vague inside | Always read action, verify, done fields for substantive content |
-| Overlooking path consistency | Mismatched paths between producer/consumer tasks cause silent failures | Verify exact path match including date prefixes and extensions |
-| Accepting missing STOP conditions | Joins, filters, aggregations can silently lose data | Require STOP conditions for all high-risk operations |
-| Conflating "has verification" with "has good verification" | Subjective criteria ("looks right") are not measurable | Require quantitative or boolean verification criteria |
-| Rubber-stamping on re-verification | Assuming prior issues were fixed without checking | Re-verify all dimensions fresh; confirm each prior issue is resolved |
+| # | Anti-Pattern | Problem | Correct Approach |
+|---|--------------|---------|------------------|
+| 1 | Checking code existence | Conflates plan verification with artifact verification | Verify plan structure only; data-verifier checks artifacts post-execution |
+| 2 | Executing code or queries | Plan-checker is static analysis; execution wastes context | Read task descriptions; never run Python, marimo, or data queries |
+| 3 | Accepting vague tasks | "Process the data" causes downstream QA BLOCKERs | Require specific file paths, variable names, filter conditions, join keys |
+| 4 | Skipping dependency analysis | Circular or broken dependencies cause execution deadlocks | Always build and validate the full dependency graph |
+| 5 | Ignoring scope | 15+ tasks degrades execution quality | Report scope issues and recommend phase splitting |
+| 6 | Trusting task names alone | Well-named task can be empty or vague inside | Always read action, verify, done fields for substantive content |
+| 7 | Overlooking path consistency | Mismatched paths between producer/consumer tasks cause silent failures | Verify exact path match including date prefixes and extensions |
+| 8 | Accepting missing STOP conditions | Joins, filters, aggregations can silently lose data | Require STOP conditions for all high-risk operations |
+| 9 | Conflating "has verification" with "has good verification" | Subjective criteria ("looks right") are not measurable | Require quantitative or boolean verification criteria |
+| 10 | Rubber-stamping on re-verification | Assuming prior issues were fixed without checking | Re-verify all dimensions fresh; confirm each prior issue is resolved |
 
 **DO NOT accept placeholder text.** Patterns like `[TBD]`, `[add more]`, `[description]`, or `[placeholder]` in any task field are automatic BLOCKER findings. A plan with placeholders is not ready for verification — it is incomplete.
 
@@ -649,7 +655,7 @@ Before returning output, verify:
 
 **Invocation type:** `subagent_type: "plan-checker"`
 
-See `WORKFLOW_PHASE2_PLANNING.md` for the stage-specific invocation template and post-validation action table.
+See `agent_reference/WORKFLOW_PHASE2_PLANNING.md` for the stage-specific invocation template and post-validation action table.
 
 ## References
 

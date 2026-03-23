@@ -23,7 +23,7 @@ permissionMode: default                          # Or: plan (read-only agents)
 # ── Optional fields ──
 # model: inherit          # sonnet | opus | haiku | inherit
 # maxTurns: 50
-# skills: [skill-a]       # Skills to preload
+# skills: skill-a          # Skill to preload (use YAML array [skill-a, skill-b] if multiple)
 # memory: project          # user | project | local
 ---
 ```
@@ -364,11 +364,11 @@ harmful and what to do instead.]
 
 Before returning output, verify:
 
-| Question | If NO |
-|----------|-------|
-| [Quality question 1] | [Remediation action] |
-| [Quality question 2] | [Remediation action] |
-| [Quality question 3] | [Remediation action] |
+| # | Question | If NO |
+|---|----------|-------|
+| 1 | [Quality question 1] | [Remediation action] |
+| 2 | [Quality question 2] | [Remediation action] |
+| 3 | [Quality question 3] | [Remediation action] |
 ```
 
 **Guidelines:**

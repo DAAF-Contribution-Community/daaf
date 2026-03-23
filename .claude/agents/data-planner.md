@@ -573,21 +573,21 @@ Awaiting guidance before proceeding.
 
 ## Anti-Patterns
 
-| Anti-Pattern | Problem | Correct Approach |
-|--------------|---------|------------------|
-| Vague file paths | "data files" gives no actionable location | Use: `data/raw/2026-01-24_ccd_schools.parquet` |
-| Missing cardinality | Join tasks without cardinality specification | Always specify: 1:1, 1:many, many:1 |
-| Missing script path | Task without script path in Transformation Sequence | Use: `scripts/stage5_fetch/01_fetch-ccd.py` |
-| Implicit dependencies | Assuming task order implies dependency | Explicit `depends_on` for every task |
-| Batched validation | Single checkpoint after many transforms | Validate after EACH transformation |
-| Placeholder skills | "appropriate skill" instead of specific skill | Name exact skill (e.g., `education-data-query` for education domain) |
-| Unmeasurable done | "data is clean" as completion condition | Measurable: "No -1/-2/-3 values in FRL column" |
-| Hidden assumptions | Assuming column names, data types without stating | Document assumptions in Risk Register |
-| Over-planning | 20 tasks in 10 waves for simple analysis | Right-size: 2-4 waves for most analyses |
-| Under-specifying | "Process the data" as action step | Specific: "Filter rows where frl_pct < 0" |
-| Full rewrite in revision | Rewriting entire plan for minor checker issue | Target only flagged sections |
-| Scope creep in revision | Adding unrelated improvements during revision | Only address reported issues |
-| Silent fixes in revision | Making changes without documenting what changed | Return complete revision summary |
+| # | Anti-Pattern | Problem | Correct Approach |
+|---|--------------|---------|------------------|
+| 1 | Vague file paths | "data files" gives no actionable location | Use: `data/raw/2026-01-24_ccd_schools.parquet` |
+| 2 | Missing cardinality | Join tasks without cardinality specification | Always specify: 1:1, 1:many, many:1 |
+| 3 | Missing script path | Task without script path in Transformation Sequence | Use: `scripts/stage5_fetch/01_fetch-ccd.py` |
+| 4 | Implicit dependencies | Assuming task order implies dependency | Explicit `depends_on` for every task |
+| 5 | Batched validation | Single checkpoint after many transforms | Validate after EACH transformation |
+| 6 | Placeholder skills | "appropriate skill" instead of specific skill | Name exact skill (e.g., `education-data-query` for education domain) |
+| 7 | Unmeasurable done | "data is clean" as completion condition | Measurable: "No -1/-2/-3 values in FRL column" |
+| 8 | Hidden assumptions | Assuming column names, data types without stating | Document assumptions in Risk Register |
+| 9 | Over-planning | 20 tasks in 10 waves for simple analysis | Right-size: 2-4 waves for most analyses |
+| 10 | Under-specifying | "Process the data" as action step | Specific: "Filter rows where frl_pct < 0" |
+| 11 | Full rewrite in revision | Rewriting entire plan for minor checker issue | Target only flagged sections |
+| 12 | Scope creep in revision | Adding unrelated improvements during revision | Only address reported issues |
+| 13 | Silent fixes in revision | Making changes without documenting what changed | Return complete revision summary |
 
 **DO NOT create tasks with vague methodology.** The Methodology Rigor Requirement (Core Behavior 3) exists because vague plans cause cascading QA failures. A task that says "clean the data" forces the executing agent to guess your intent AND forces code-reviewer to guess whether the implementation matches. Specify exact variable names, filter conditions, aggregation functions, and join keys.
 
@@ -645,8 +645,7 @@ Before returning output, verify:
 
 **Invocation type:** `subagent_type: "data-planner"`
 
-See `WORKFLOW_PHASE2_PLANNING.md` for stage-specific invocation templates (standard, revision, and continuation modes).
-The stage-specific template with full context fields is in `agent_reference/WORKFLOW_PHASE2_PLANNING.md`.
+See `agent_reference/WORKFLOW_PHASE2_PLANNING.md` for stage-specific invocation templates (standard, revision, and continuation modes).
 
 ---
 

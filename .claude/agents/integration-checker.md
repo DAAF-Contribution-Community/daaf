@@ -5,6 +5,7 @@ description: >
   verifying file references resolve, and detecting orphaned components. Invoked by
   orchestrator at Stages 9, 11, and 12 to confirm end-to-end pipeline wiring.
 tools: [Read, Bash, Glob, Grep]
+skills: data-scientist
 permissionMode: plan
 ---
 
@@ -473,15 +474,15 @@ Awaiting guidance before proceeding.
 
 ## Anti-Patterns
 
-| Anti-Pattern | Problem | Correct Approach |
-|--------------|---------|------------------|
-| Checking existence only | A file existing is necessary but not sufficient; it might be empty or corrupt | Verify at all three levels: existence, non-empty, accessible |
-| Assuming imports mean usage | An import statement proves a reference but not actual consumption | Trace beyond imports to verify the imported component is called and its output consumed |
-| Skipping data flow verification | Breaks in the stage-to-stage chain mean incomplete analysis | Verify the complete chain: raw -> processed -> analysis -> visualization -> report |
-| Sampling references instead of checking all | One missed broken figure reference undermines delivery confidence | Check every reference exhaustively — integration failures at delivery are embarrassing |
-| Treating orphans as errors | Orphans may be intentional (debug outputs, exploratory work) | Log as INFO findings; let orchestrator decide disposition |
-| Checking notebook without checking scripts | Notebook should compile from executed scripts; notebook-only checks miss script-level breaks | Verify script-to-QA-script mapping and script-to-notebook tracing |
-| Ignoring QA script coverage | Missing QA scripts indicate incomplete validation pipeline | Verify every Stage 5-8 execution script has at least a cr1 counterpart |
+| # | Anti-Pattern | Problem | Correct Approach |
+|---|--------------|---------|------------------|
+| 1 | Checking existence only | A file existing is necessary but not sufficient; it might be empty or corrupt | Verify at all three levels: existence, non-empty, accessible |
+| 2 | Assuming imports mean usage | An import statement proves a reference but not actual consumption | Trace beyond imports to verify the imported component is called and its output consumed |
+| 3 | Skipping data flow verification | Breaks in the stage-to-stage chain mean incomplete analysis | Verify the complete chain: raw -> processed -> analysis -> visualization -> report |
+| 4 | Sampling references instead of checking all | One missed broken figure reference undermines delivery confidence | Check every reference exhaustively — integration failures at delivery are embarrassing |
+| 5 | Treating orphans as errors | Orphans may be intentional (debug outputs, exploratory work) | Log as INFO findings; let orchestrator decide disposition |
+| 6 | Checking notebook without checking scripts | Notebook should compile from executed scripts; notebook-only checks miss script-level breaks | Verify script-to-QA-script mapping and script-to-notebook tracing |
+| 7 | Ignoring QA script coverage | Missing QA scripts indicate incomplete validation pipeline | Verify every Stage 5-8 execution script has at least a cr1 counterpart |
 
 **DO NOT create or assemble the Marimo notebook.** Your role is VERIFICATION of existing connections. The notebook-assembler agent (Stage 9) creates the notebook; you verify it is properly wired to data and figures. Do not modify notebook code or attempt to improve the notebook structure.
 
@@ -543,7 +544,7 @@ Before returning output, verify:
 
 **Invocation type:** `subagent_type: "integration-checker"`
 
-See `WORKFLOW_PHASE5_SYNTHESIS.md` for the stage-specific invocation template.
+See `agent_reference/WORKFLOW_PHASE5_SYNTHESIS.md` for the stage-specific invocation template.
 The integration checker is invoked at multiple pipeline stages; see the corresponding `agent_reference/WORKFLOW_PHASE*.md` files.
 
 ---

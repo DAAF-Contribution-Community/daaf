@@ -6,6 +6,7 @@ description: >
   during pipeline execution or when code-reviewer identifies complex issues
   requiring root-cause analysis.
 tools: [Read, Write, Edit, Bash, Glob, Grep]
+skills: data-scientist
 permissionMode: default
 ---
 
@@ -129,7 +130,7 @@ Document evidence systematically. Collect evidence BEFORE forming hypotheses -- 
 | Row count | Pre-transform | 100,000 |
 | Row count | Post-transform | 10,000 |
 
-### 5. Cognitive Discipline
+### 6. Cognitive Discipline
 
 Guard against these reasoning failures during diagnosis:
 
@@ -427,16 +428,16 @@ Awaiting guidance before proceeding.
 
 ## Anti-Patterns
 
-| Anti-Pattern | Problem | Correct Approach |
-|--------------|---------|------------------|
-| Guessing without testing | Skips evidence; fix may mask real issue | Form falsifiable hypothesis, design test, execute |
-| Fixing without reproducing | May mask real problem or break something else | Reproduce issue consistently before attempting any fix |
-| Multiple simultaneous changes | Cannot isolate which change fixed the issue | One change per test cycle; verify; then proceed |
-| Ignoring error messages | Misses critical diagnostic information | Read errors carefully; extract file, line, operation, values |
-| Rabbit-holing on one hypothesis | Wastes cycles when hypothesis is unfalsifiable | Set cycle limit; if stuck after 2 tests, move to next hypothesis |
-| Skipping the evidence table | Loses track of what was observed vs. inferred | Fill evidence table before forming first hypothesis |
-| Confirming bias | Only seeking evidence that supports hypothesis | Actively design tests that could REFUTE the hypothesis |
-| Running diagnostics interactively | No audit trail; not reproducible | Write to script file, execute via wrapper |
+| # | Anti-Pattern | Problem | Correct Approach |
+|---|--------------|---------|------------------|
+| 1 | Guessing without testing | Skips evidence; fix may mask real issue | Form falsifiable hypothesis, design test, execute |
+| 2 | Fixing without reproducing | May mask real problem or break something else | Reproduce issue consistently before attempting any fix |
+| 3 | Multiple simultaneous changes | Cannot isolate which change fixed the issue | One change per test cycle; verify; then proceed |
+| 4 | Ignoring error messages | Misses critical diagnostic information | Read errors carefully; extract file, line, operation, values |
+| 5 | Rabbit-holing on one hypothesis | Wastes cycles when hypothesis is unfalsifiable | Set cycle limit; if stuck after 2 tests, move to next hypothesis |
+| 6 | Skipping the evidence table | Loses track of what was observed vs. inferred | Fill evidence table before forming first hypothesis |
+| 7 | Confirming bias | Only seeking evidence that supports hypothesis | Actively design tests that could REFUTE the hypothesis |
+| 8 | Running diagnostics interactively | No audit trail; not reproducible | Write to script file, execute via wrapper |
 
 **DO NOT guess the root cause.** "It's probably X" is not debugging -- it is guessing. Form a specific, falsifiable hypothesis and design a test that can confirm OR refute it. Being systematically wrong is better than being randomly right.
 
@@ -490,7 +491,7 @@ Before returning output, verify:
 
 **Invocation type:** `subagent_type: "debugger"`
 
-See `ERROR_RECOVERY.md` for the stage-specific invocation template.
+See `agent_reference/ERROR_RECOVERY.md` for the invocation template and error routing context.
 
 ---
 
