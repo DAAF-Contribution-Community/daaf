@@ -202,9 +202,7 @@ cp3_status = "PASSED" | "WARNING" | "FAILED"
 # Step 1: Initial EDA (no transformations yet)
 Agent({
     description: "Stage 7.1: Initial EDA",
-    prompt: """You are a Research Executor. Follow the protocol in `{BASE_DIR}/agents/research-executor.md`.
-
-**BASE_DIR:** {BASE_DIR}
+    prompt: """**BASE_DIR:** {BASE_DIR}
 All relative paths in referenced files resolve from BASE_DIR.
 
 Call the skill tool with name 'data-scientist'.
@@ -236,7 +234,7 @@ Return EDA summary ONLY:
 **Issues Requiring Resolution:** [list or "None"]
 
 Do NOT proceed to transformations. Return findings for orchestrator review.""",
-    subagent_type: "general-purpose"
+    subagent_type: "research-executor"
 })
 
 # Step 2: Execute transformations iteratively (one at a time, atomically)
@@ -245,9 +243,7 @@ Do NOT proceed to transformations. Return findings for orchestrator review.""",
 
 Agent({
     description: "Stage 7.2: Execute Transformation #{n}",
-    prompt: """You are a Research Executor. Follow the protocol in `{BASE_DIR}/agents/research-executor.md`.
-
-**BASE_DIR:** {BASE_DIR}
+    prompt: """**BASE_DIR:** {BASE_DIR}
 All relative paths in referenced files resolve from BASE_DIR.
 
 Call the skill tool with name 'data-scientist'.
@@ -322,7 +318,7 @@ If FAILED:
 - Proposed fix: [how to correct]
 
 Do NOT proceed to transformation #{n+1}. Return to orchestrator for approval.""",
-    subagent_type: "general-purpose"
+    subagent_type: "research-executor"
 })
 ```
 
@@ -370,9 +366,7 @@ with stage-specific values for Stage 7.
 # Step 4: Final CP3 Validation (after all transformations complete)
 Agent({
     description: "Stage 7.3: Final CP3 Validation",
-    prompt: """You are a Research Executor. Follow the protocol in `{BASE_DIR}/agents/research-executor.md`.
-
-**BASE_DIR:** {BASE_DIR}
+    prompt: """**BASE_DIR:** {BASE_DIR}
 All relative paths in referenced files resolve from BASE_DIR.
 
 Call the skill tool with name 'data-scientist'.
@@ -405,7 +399,7 @@ Call the skill tool with name 'data-scientist'.
 **CP3 Status:** PASSED | FAILED | WARNING
 
 If WARNING or FAILED, provide recommendations.""",
-    subagent_type: "general-purpose"
+    subagent_type: "research-executor"
 })
 ```
 
@@ -507,9 +501,7 @@ Stage 8.2.x: Visualization (one script per visualization task)
 
 Agent({
     description: "Stage 8.1: Statistical Analysis - {analysis_name}",
-    prompt: """You are a Research Executor. Follow the protocol in `{BASE_DIR}/agents/research-executor.md`.
-
-**BASE_DIR:** {BASE_DIR}
+    prompt: """**BASE_DIR:** {BASE_DIR}
 All relative paths in referenced files resolve from BASE_DIR.
 
 Call the skill tool with name 'data-scientist'.
@@ -608,7 +600,7 @@ Return analysis report:
 If FAILED: [issue description and proposed fix]
 
 Do NOT proceed to next analysis task. Return to orchestrator for approval.""",
-    subagent_type: "general-purpose"
+    subagent_type: "research-executor"
 })
 ```
 
@@ -651,9 +643,7 @@ with stage-specific values for Stage 8. Use **QA4a** (statistical validity) for 
 ```python
 Agent({
     description: "Stage 8.2: Visualization - Static Plots",
-    prompt: """You are a Research Executor. Follow the protocol in `{BASE_DIR}/agents/research-executor.md`.
-
-**BASE_DIR:** {BASE_DIR}
+    prompt: """**BASE_DIR:** {BASE_DIR}
 All relative paths in referenced files resolve from BASE_DIR.
 
 Call the skill tool with name 'data-scientist'.
@@ -676,7 +666,7 @@ Then, call the skill tool with name 'plotnine'.
 - Dimensions: as appropriate for content
 
 Return the plotting code and confirm files are saved.""",
-    subagent_type: "general-purpose"
+    subagent_type: "research-executor"
 })
 ```
 
@@ -690,9 +680,7 @@ Return the plotting code and confirm files are saved.""",
 ```python
 Agent({
     description: "Stage 8.2: Visualization - Interactive Plots",
-    prompt: """You are a Research Executor. Follow the protocol in `{BASE_DIR}/agents/research-executor.md`.
-
-**BASE_DIR:** {BASE_DIR}
+    prompt: """**BASE_DIR:** {BASE_DIR}
 All relative paths in referenced files resolve from BASE_DIR.
 
 Call the skill tool with name 'data-scientist'.
@@ -714,7 +702,7 @@ Then, call the skill tool with name 'plotly'.
 - Selection: {selection_type}
 
 Return the plotting code and confirm files are saved.""",
-    subagent_type: "general-purpose"
+    subagent_type: "research-executor"
 })
 ```
 
@@ -832,9 +820,7 @@ When EDA and transformation are closely linked:
 ```python
 Agent({
     description: "Stage 7: EDA & Transformation",
-    prompt: """You are a Research Executor. Follow the protocol in `{BASE_DIR}/agents/research-executor.md`.
-
-**BASE_DIR:** {BASE_DIR}
+    prompt: """**BASE_DIR:** {BASE_DIR}
 All relative paths in referenced files resolve from BASE_DIR.
 
 Call the skill tool with name 'data-scientist' for methodology.
@@ -851,7 +837,7 @@ Then, call the skill tool with name 'polars' for implementation.
 {transformation_spec_from_plan}
 
 Return comprehensive EDA findings and validated transformation code.""",
-    subagent_type: "general-purpose"
+    subagent_type: "research-executor"
 })
 ```
 
@@ -862,9 +848,7 @@ When both static and interactive plots are needed:
 ```python
 Agent({
     description: "Stage 8.2: Visualization - Combined",
-    prompt: """You are a Research Executor. Follow the protocol in `{BASE_DIR}/agents/research-executor.md`.
-
-**BASE_DIR:** {BASE_DIR}
+    prompt: """**BASE_DIR:** {BASE_DIR}
 All relative paths in referenced files resolve from BASE_DIR.
 
 Call the skill tool with name 'data-scientist' for methodology.
@@ -882,7 +866,7 @@ Call the skill tool with name 'plotly' for interactive exploration plots.
 **OUTPUT:** output/figures/
 
 Return all plotting code and confirm files saved.""",
-    subagent_type: "general-purpose"
+    subagent_type: "research-executor"
 })
 ```
 
@@ -890,12 +874,12 @@ Return all plotting code and confirm files saved.""",
 
 ## Stage 9: Script Compilation (NOT Dashboard Building)
 
-**Agent:** `notebook-assembler` (see `agents/notebook-assembler.md`)
+**Agent:** `notebook-assembler` (see `.claude/agents/notebook-assembler.md`)
 **Executor:** Subagent (general-purpose)
 **Skill:** `marimo` (for basic syntax only; agent provides behavioral constraints)
 **Purpose:** LITERALLY COPY script file contents into marimo cells
 
-> **CRITICAL:** Stage 9 is a FILE COMPILATION task. See `agents/notebook-assembler.md`
+> **CRITICAL:** Stage 9 is a FILE COMPILATION task. See `.claude/agents/notebook-assembler.md`
 > for the complete protocol including the Four-Cell Pattern, helper functions, and
 > WRONG vs. RIGHT examples.
 
@@ -933,7 +917,7 @@ The following are **NEVER ALLOWED** in Stage 9 notebooks:
 
 **Purpose:** COMPILE executed scripts into notebook by LITERALLY COPYING file contents
 **Stage:** 9 (Script Compilation)
-**Agent:** notebook-assembler (see `agents/notebook-assembler.md`)
+**Agent:** notebook-assembler (see `.claude/agents/notebook-assembler.md`)
 **Subagent:** general-purpose
 
 > **CRITICAL CONSTRAINT:** The notebook LITERALLY COPIES script file contents into cells. It does NOT generate new code, dashboards, filters, or interactive widgets. The notebook is a script viewer.
@@ -944,9 +928,7 @@ The following are **NEVER ALLOWED** in Stage 9 notebooks:
 ```python
 Agent({
     description: "Stage 9: Compile Scripts into Notebook",
-    prompt: """You are a Notebook Assembler. Follow the protocol in `{BASE_DIR}/agents/notebook-assembler.md`.
-
-**BASE_DIR:** {BASE_DIR}
+    prompt: """**BASE_DIR:** {BASE_DIR}
 All relative paths in referenced files resolve from BASE_DIR.
 
 Also call the skill tool with name 'marimo' for basic marimo syntax.
@@ -1029,7 +1011,7 @@ Count your code cells. If you have ANY of these, you failed:
 - with_columns in data inspection: FAIL
 
 The ONLY acceptable new code is `pl.read_parquet()` + `mo.ui.table()`.""",
-    subagent_type: "general-purpose"
+    subagent_type: "notebook-assembler"
 })
 ```
 

@@ -54,10 +54,7 @@ The report-writer follows a systematic mapping from REPORT_TEMPLATE.md sections 
 ```python
 Agent({
     description: "Stage 11: Report Generation",
-    prompt: """You are a Report Writer. Follow the protocol in
-    `{BASE_DIR}/agents/report-writer.md`.
-
-    Call the skill tool with name 'data-scientist'.
+    prompt: """Call the skill tool with name 'data-scientist'.
 
     **BASE_DIR:** {BASE_DIR}
     All relative paths in referenced files resolve from BASE_DIR.
@@ -92,7 +89,7 @@ Agent({
     Write Report.md to the project folder.
 
     Return findings using the Report Writer Output Format.""",
-    subagent_type: "general-purpose"
+    subagent_type: "report-writer"
 })
 ```
 
@@ -144,10 +141,7 @@ The data-verifier agent performs adversarial, goal-backward verification across 
 ```
 Agent({
     description: "Stage 12: Final Verification",
-    prompt: """You are a Data Verifier. Follow the protocol in
-    `{BASE_DIR}/agents/data-verifier.md`.
-
-    **BASE_DIR:** {BASE_DIR}
+    prompt: """**BASE_DIR:** {BASE_DIR}
     All relative paths in referenced files resolve from BASE_DIR.
 
     **CONTEXT:**
@@ -168,7 +162,7 @@ Agent({
     failure audit, and QA history review.
 
     Return findings using the Data Verifier Output Format.""",
-    subagent_type: "Plan"
+    subagent_type: "data-verifier"
 })
 ```
 
@@ -185,7 +179,7 @@ data-verifier returns:
 
 Before marking any analysis complete, verify each of the three categories below. This approach works backward from the goal state to ensure nothing is missing.
 
-**Verification Stance:** The data-verifier agent approaches this framework with adversarial skepticism — its default hypothesis is that something was missed. See `agents/data-verifier.md` for the complete adversarial verification protocol including cross-artifact coherence, research question stress testing, and the Hidden Narrative principle.
+**Verification Stance:** The data-verifier agent approaches this framework with adversarial skepticism — its default hypothesis is that something was missed. See `.claude/agents/data-verifier.md` for the complete adversarial verification protocol including cross-artifact coherence, research question stress testing, and the Hidden Narrative principle.
 
 #### 1. What Must Be EXAMINED (Research Outcomes)
 
@@ -525,7 +519,7 @@ serves as a work queue for future system maintenance.*
 #### Skills (`.claude/skills/*/SKILL.md`)
 - [ ] [Skill name]: [What to add/change] (from Learning #N)
 
-#### Agents (`agents/*.md`)
+#### Agents (`.claude/agents/*.md`)
 - [ ] [Agent name]: [What to add/change] (from Learning #N)
 
 #### Agent Reference (`agent_reference/*.md`)
@@ -779,10 +773,10 @@ Apply this checklist after the data-verifier subagent returns its final review f
 
 **Purpose:** Profile new datasets and author comprehensive Skills
 **Stage:** Pre-pipeline (on demand, when new data files arrive)
-**Agent:** `data-ingest` (see `agents/data-ingest.md`)
+**Agent:** `data-ingest` (see `.claude/agents/data-ingest.md`)
 **Subagent:** general-purpose
 
-For the complete invocation pattern, see `agents/README.md` data-ingest section
-or `agents/data-ingest.md` Invocation section.
+For the complete invocation pattern, see `.claude/agents/README.md` data-ingest section
+or `.claude/agents/data-ingest.md` Invocation section.
 
 ---

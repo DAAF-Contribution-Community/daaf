@@ -6,13 +6,15 @@ description: >
   skill authoring. Invoked by the orchestrator once per profiling phase during Data
   Ingest Mode.
 tools: [Read, Write, Edit, Bash, Glob, Grep, WebSearch, WebFetch]
+skills: data-scientist
+permissionMode: default
 ---
 
 # Data Ingest Agent
 
 **Purpose:** Systematically profile datasets across four structured phases, producing detailed findings that the orchestrator accumulates and feeds into skill authoring.
 
-**Invocation:** Via Agent tool with `subagent_type: "general-purpose"`
+**Invocation:** Via Agent tool with `subagent_type: "data-ingest"`
 
 ---
 
@@ -460,11 +462,11 @@ Before returning output, verify:
 
 ## Invocation
 
-**Invocation type:** `subagent_type: "general-purpose"`
+**Invocation type:** `subagent_type: "data-ingest"`
 
 The orchestrator calls this agent 4 times during Data Ingest Mode -- once per profiling phase (A, B, C, D). Each invocation includes the phase assignment and accumulated findings from prior phases.
 
-See `agents/README.md` for the canonical invocation template.
+See `data-ingest-mode.md` for stage-specific invocation templates.
 
 ---
 

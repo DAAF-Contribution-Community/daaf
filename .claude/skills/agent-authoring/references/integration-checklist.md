@@ -10,7 +10,7 @@
 
 **Update ALL of these for EVERY new agent. No exceptions.**
 
-### 1. `agents/README.md` — Agent Index table
+### 1. `.claude/agents/README.md` — Agent Index table
 
 **Section:** "Agent Index"
 **What to add:** New row with Agent, Purpose, Subagent Type, Stage(s), Key Distinction
@@ -19,7 +19,7 @@
 | **new-agent** | [Purpose] | `[general-purpose \| Plan]` | [Stage(s)] | [One-line differentiator] |
 ```
 
-### 2. `agents/README.md` — "When to Use" section
+### 2. `.claude/agents/README.md` — "When to Use" section
 
 **Section:** "When to Use Each Agent" (add new subsection)
 **What to add:** Complete subsection with:
@@ -30,14 +30,14 @@
 
 Follow the format of existing agent subsections in this file.
 
-### 3. `agents/README.md` — Agent Coordination Matrix
+### 3. `.claude/agents/README.md` — Agent Coordination Matrix
 
 **Section:** "Agent Coordination Matrix"
 **What to add:** Producer/consumer row(s) showing:
 - What this agent produces and who consumes it
 - What this agent consumes and who produces it
 
-### 4. `agents/README.md` — Agent catalog table (canonical location)
+### 4. `.claude/agents/README.md` — Agent catalog table (canonical location)
 
 **Section:** Agent Index table (this is the canonical Specialized Agents registry)
 **What to add:** New row with Agent, Purpose, Subagent Type, Primary Stage(s), Key Inputs, Key Outputs
@@ -92,19 +92,19 @@ Follow the format of existing agent subsections in this file.
 **What to add:** Complete invocation template following the file's existing format
 **Phase mapping:** Same as item 12 above
 
-### 14. `agents/README.md` — Orchestration Flow diagram
+### 14. `.claude/agents/README.md` — Orchestration Flow diagram
 
 **Condition:** Agent changes the orchestration workflow
 **Section:** "Orchestration Flow" (ASCII diagram)
 **What to add:** Agent box in the relevant position
 
-### 15. `agents/README.md` — Error Recovery Routing
+### 15. `.claude/agents/README.md` — Error Recovery Routing
 
 **Condition:** Agent handles specific error types or participates in error recovery
 **Section:** "Error Recovery Routing"
 **What to add:** New branch in the routing diagram and/or error budget entry
 
-### 16. `agents/README.md` — Agent + Skill Combinations table
+### 16. `.claude/agents/README.md` — Agent + Skill Combinations table
 
 **Condition:** Agent uses one or more skills during execution
 **Section:** "Agent + Skill Combinations"
@@ -154,18 +154,18 @@ After completing all applicable tiers, run these checks:
 ```bash
 # Verify agent name appears in all Tier 1 files
 AGENT_NAME="new-agent-name"
-for f in agents/README.md; do
+for f in .claude/agents/README.md; do
   echo "$f: $(grep -c "$AGENT_NAME" "$f") references"
 done
 ```
 
-**Expected:** agents/README.md has 3+ references (index, when-to-use, coordination matrix).
+**Expected:** .claude/agents/README.md has 3+ references (index, when-to-use, coordination matrix).
 
 ### 2. Agent Count Consistency
 
 ```bash
 # Count actual agent files (excluding README, _revised, and this file)
-ACTUAL=$(ls agents/*.md | grep -v README | grep -v _revised | wc -l)
+ACTUAL=$(ls .claude/agents/*.md | grep -v README | grep -v _revised | wc -l)
 echo "Actual agent files: $ACTUAL"
 
 # Check README.md header
@@ -176,11 +176,11 @@ grep "Specialized Agents" README.md
 ### 3. Cross-Reference Integrity
 
 ```bash
-# Verify no broken agent references in agents/README.md
-# (Every agent mentioned in agents/README.md should have a file in agents/)
-grep -oP '\*\*\w[\w-]+\*\*' agents/README.md | sort -u | while read agent; do
+# Verify no broken agent references in .claude/agents/README.md
+# (Every agent mentioned in .claude/agents/README.md should have a file in .claude/agents/)
+grep -oP '\*\*\w[\w-]+\*\*' .claude/agents/README.md | sort -u | while read agent; do
   name=$(echo "$agent" | tr -d '*')
-  if [ -f "agents/${name}.md" ]; then
+  if [ -f ".claude/agents/${name}.md" ]; then
     echo "OK: $name"
   else
     echo "MISSING: $name"
@@ -196,10 +196,10 @@ done
 ## New Agent Integration: [agent-name]
 
 ### Tier 1: MANDATORY
-- [ ] agents/README.md — Agent Index table (new row)
-- [ ] agents/README.md — "When to Use" section (new subsection)
-- [ ] agents/README.md — Agent Coordination Matrix (producer/consumer rows)
-- [ ] agents/README.md — Agent catalog table (canonical Specialized Agents registry)
+- [ ] .claude/agents/README.md — Agent Index table (new row)
+- [ ] .claude/agents/README.md — "When to Use" section (new subsection)
+- [ ] .claude/agents/README.md — Agent Coordination Matrix (producer/consumer rows)
+- [ ] .claude/agents/README.md — Agent catalog table (canonical Specialized Agents registry)
 
 ### Tier 2: CONDITIONAL (check applicability)
 - [ ] full-pipeline.md — Skill-to-Stage Mapping (if stage-specific)
@@ -209,9 +209,9 @@ done
 - [ ] full-pipeline.md — Stage Overview (if stage-specific)
 - [ ] agent_reference/WORKFLOW_PHASE*.md — Individual stage section (if stage-specific)
 - [ ] agent_reference/WORKFLOW_PHASE*.md — Stage invocation template (if unique invocation template)
-- [ ] agents/README.md — Orchestration Flow diagram (if changes workflow)
-- [ ] agents/README.md — Error Recovery Routing (if handles errors)
-- [ ] agents/README.md — Agent + Skill Combinations (if uses skills)
+- [ ] .claude/agents/README.md — Orchestration Flow diagram (if changes workflow)
+- [ ] .claude/agents/README.md — Error Recovery Routing (if handles errors)
+- [ ] .claude/agents/README.md — Agent + Skill Combinations (if uses skills)
 
 ### Tier 3: CONDITIONAL (review applicability)
 - [ ] Appropriate agent_reference/WORKFLOW_PHASE*.md (if implements workflow phase)

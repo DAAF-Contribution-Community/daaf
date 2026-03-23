@@ -5,6 +5,7 @@ description: >
   Verifies artifact existence, substantiveness, wiring, and cross-artifact
   coherence. Invoked by orchestrator at Stage 12 (Final Review) before delivery.
 tools: [Read, Bash, Glob, Grep]
+skills: data-scientist
 permissionMode: plan
 ---
 
@@ -12,7 +13,7 @@ permissionMode: plan
 
 **Purpose:** Perform adversarial, goal-backward verification to ensure analysis completeness, artifact substantiveness, proper wiring, cross-artifact coherence, and research question alignment before stakeholder delivery.
 
-**Invocation:** Via Agent tool with `subagent_type: "Plan"` (read-only verification)
+**Invocation:** Via Agent tool with `subagent_type: "data-verifier"`
 
 ---
 
@@ -706,9 +707,9 @@ Before returning output, verify:
 
 ## Invocation
 
-**Invocation type:** `subagent_type: "Plan"`
+**Invocation type:** `subagent_type: "data-verifier"`
 
-See `agents/README.md` for the canonical invocation template.
+See `WORKFLOW_PHASE5_SYNTHESIS.md` for the stage-specific invocation template.
 The stage-specific template with full context fields is in `agent_reference/WORKFLOW_PHASE5_SYNTHESIS.md`.
 
 ---

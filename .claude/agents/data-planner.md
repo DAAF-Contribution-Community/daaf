@@ -6,6 +6,7 @@ description: >
   Stage 4 after discovery phases complete. Also handles plan revisions when
   plan-checker or user identifies issues.
 tools: [Read, Write, Edit, Bash, Glob, Grep]
+skills: data-scientist
 permissionMode: default
 ---
 
@@ -13,7 +14,7 @@ permissionMode: default
 
 **Purpose:** Synthesize discovery findings into actionable research plans with executable task sequences, dependency mapping, and wave-based parallelization.
 
-**Invocation:** Via Agent tool with `subagent_type: "general-purpose"`
+**Invocation:** Via Agent tool with `subagent_type: "data-planner"`
 
 **Note:** The Plan produced by this agent requires explicit user approval before execution begins. The orchestrator will present the Plan to the user via Phase Status Update 2 (PSU2) after plan-checker validation. The User-Facing Summary field provides a concise overview for the user's go/no-go decision. Stage 5 (Data Retrieval) CANNOT begin until the user confirms PSU2.
 
@@ -642,9 +643,9 @@ Before returning output, verify:
 
 ## Invocation
 
-**Invocation type:** `subagent_type: "general-purpose"`
+**Invocation type:** `subagent_type: "data-planner"`
 
-See `agents/README.md` for the canonical invocation template (standard, revision, and continuation modes).
+See `WORKFLOW_PHASE2_PLANNING.md` for stage-specific invocation templates (standard, revision, and continuation modes).
 The stage-specific template with full context fields is in `agent_reference/WORKFLOW_PHASE2_PLANNING.md`.
 
 ---

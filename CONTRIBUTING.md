@@ -234,7 +234,7 @@ These contributions require more engagement but are well within reach for anyone
 
 These contributions involve modifying the core framework -- the agents, protocols, validation logic, or orchestration workflow. They require a solid understanding of DAAF's architecture and a willingness to engage with the project's strongly opinionated design philosophy. If you're considering work at this level, I'd strongly recommend opening an issue to discuss your approach *before* writing code. This saves everyone time and helps me give early feedback on whether the direction aligns with the project's design principles.
 
-- **Writing or modifying agent protocols.** DAAF has many specialized agents, each with detailed behavioral protocols (in the `agents/` directory). Modifying an existing agent's protocol -- say, making the code-reviewer more thorough about a specific class of errors, or improving the research-executor's handling of edge cases -- requires understanding how that agent fits into the broader pipeline, what its inputs and outputs look like, and how changes ripple through dependent stages. New agents are an even bigger undertaking. Read [`agents/README.md`](agents/README.md) for the full landscape, and see the `agent-authoring` skill for the creation workflow if you're adding a new one. The key thing to understand: agents don't work in isolation. Every agent has producers (who send it input) and consumers (who depend on its output), and changes need to respect those contracts. Extensive pre/post testing is **essential** to ensuring its proper use and integration without causing unintended consequences downstream.
+- **Writing or modifying agent protocols.** DAAF has many specialized agents, each with detailed behavioral protocols (in the `.claude/agents/` directory). Modifying an existing agent's protocol -- say, making the code-reviewer more thorough about a specific class of errors, or improving the research-executor's handling of edge cases -- requires understanding how that agent fits into the broader pipeline, what its inputs and outputs look like, and how changes ripple through dependent stages. New agents are an even bigger undertaking. Read [`.claude/agents/README.md`](.claude/agents/README.md) for the full landscape, and see the `agent-authoring` skill for the creation workflow if you're adding a new one. The key thing to understand: agents don't work in isolation. Every agent has producers (who send it input) and consumers (who depend on its output), and changes need to respect those contracts. Extensive pre/post testing is **essential** to ensuring its proper use and integration without causing unintended consequences downstream.
 
 - **Changing validation logic or checkpoint definitions.** The validation framework (CP1-CP4 checkpoints, QA1-QA4b reviews, stage gates) is one of the most carefully designed parts of DAAF, and is arguably the most important part of how it all works. It exists to catch both operational failures (empty data, wrong types) and logical errors (wrong methodology, misinterpretation). If you want to modify checkpoint thresholds, add new validation criteria, or change the gate enforcement logic, you'll need to understand the full validation chain documented in [`agent_reference/VALIDATION_CHECKPOINTS.md`](agent_reference/VALIDATION_CHECKPOINTS.md) and [`agent_reference/QA_CHECKPOINTS.md`](agent_reference/QA_CHECKPOINTS.md). Changes here have outsized impact -- a relaxed threshold might let subtle data corruption through, while an overly strict one might cause unnecessary STOP conditions.
 
@@ -250,11 +250,11 @@ These contributions involve modifying the core framework -- the agents, protocol
 
 This comes up often enough that it's worth being explicit. The rule of thumb from [**04. Extending DAAF**](user_reference/04_extending_daaf.md):
 
-> **If you're adding a new `.md` file to `.claude/skills/` or `agents/`, you're extending. If you're editing existing files in `agent_reference/`, `agents/`, or the root `CLAUDE.md`, you're contributing.**
+> **If you're adding a new `.md` file to `.claude/skills/` or `.claude/agents/`, you're extending. If you're editing existing files in `agent_reference/`, `.claude/agents/`, or the root `CLAUDE.md`, you're contributing.**
 
 This distinction matters for two reasons. First, it determines which guide to follow -- extension workflows are in [**04. Extending DAAF**](user_reference/04_extending_daaf.md), contribution workflows are here. Second, it has licensing implications under LGPL-3.0: extensions you build on top of DAAF are yours to keep proprietary or open-source as you choose, while modifications to the core framework must be shared back if you distribute them. See the [**README**](README.md#why-open-source-what-does-it-mean-for-daaf) for the full details.
 
-In practice, many contributions involve *both* -- for example, creating a new data source skill (extension) and then registering it in `skill-catalog.md` and `agents/README.md` (contribution). That's totally fine. Just be aware that the registration edits to core files fall under the contribution category.
+In practice, many contributions involve *both* -- for example, creating a new data source skill (extension) and then registering it in `skill-catalog.md` and `.claude/agents/README.md` (contribution). That's totally fine. Just be aware that the registration edits to core files fall under the contribution category.
 
 ---
 
@@ -278,7 +278,7 @@ Not every contribution needs to be huge, but every contribution should meet a ba
 
 ### Agent and Protocol Contributions
 
-- **Understand the ripple effects.** Agents and protocols are deeply interconnected. Before modifying one, trace its dependencies -- what sends it input? What consumes its output? What stage gates does it affect? The `agents/README.md` file has a coordination matrix that maps these relationships.
+- **Understand the ripple effects.** Agents and protocols are deeply interconnected. Before modifying one, trace its dependencies -- what sends it input? What consumes its output? What stage gates does it affect? The `.claude/agents/README.md` file has a coordination matrix that maps these relationships.
 - **Maintain the validation chain.** DAAF's core principle is "every transformation has a validation." Contributions that weaken this chain -- by relaxing thresholds, skipping checkpoints, or bypassing gates -- will face significant scrutiny. If you think a threshold is too strict, make the case with evidence from real analyses.
 - **Document your reasoning.** In the PR description, explain *why* you're making the change, not just *what* you changed. What problem did you encounter? What alternatives did you consider? Why is this approach better?
 
@@ -354,7 +354,7 @@ If you're submitting a new or modified skill, run through this sequence (also de
 
 Agent and protocol changes are the hardest to test because their effects cascade through the pipeline:
 
-1. **Trace the dependency chain.** Before testing, identify which stages and other agents are affected by your change. The [`agents/README.md`](agents/README.md) coordination matrix is your friend here.
+1. **Trace the dependency chain.** Before testing, identify which stages and other agents are affected by your change. The [`.claude/agents/README.md`](.claude/agents/README.md) coordination matrix is your friend here.
 
 2. **Run the affected stage.** The minimum viable test is running a DAAF analysis that exercises the stage your change affects. Watch the session log carefully for the specific agent invocations related to your change.
 

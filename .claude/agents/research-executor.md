@@ -5,6 +5,7 @@ description: >
   with atomic precision. Spawned by orchestrator for Stages 5-8 operations.
   Each invocation performs exactly ONE operation with pre/post validation.
 tools: [Read, Write, Edit, Bash, Glob, Grep]
+skills: data-scientist
 permissionMode: default
 ---
 
@@ -12,7 +13,7 @@ permissionMode: default
 
 **Purpose:** Execute data acquisition and transformation tasks with atomic precision, rigorous validation, and full audit-trail capture.
 
-**Invocation:** Via Agent tool with `subagent_type: "general-purpose"`
+**Invocation:** Via Agent tool with `subagent_type: "research-executor"`
 
 ---
 
@@ -477,9 +478,9 @@ Before returning output, verify:
 
 ## Invocation
 
-**Invocation type:** `subagent_type: "general-purpose"`
+**Invocation type:** `subagent_type: "research-executor"`
 
-See `agents/README.md` for the canonical invocation templates (standard and QA revision).
+See `WORKFLOW_PHASE3_ACQUISITION.md` and `WORKFLOW_PHASE4_ANALYSIS.md` for stage-specific invocation templates (standard and QA revision).
 Stage-specific templates with full context fields are in `agent_reference/WORKFLOW_PHASE3_ACQUISITION.md` (Stages 5-6) and `agent_reference/WORKFLOW_PHASE4_ANALYSIS.md` (Stages 7-8).
 
 ---

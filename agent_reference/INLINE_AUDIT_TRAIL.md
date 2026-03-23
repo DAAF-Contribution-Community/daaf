@@ -412,7 +412,7 @@ For agents to scan before writing code:
 
 ## Enforcement
 
-- **research-executor:** Must follow IAT when writing scripts (see `agents/research-executor.md`)
+- **research-executor:** Must follow IAT when writing scripts (see `.claude/agents/research-executor.md`)
 - **code-reviewer:** Checks IAT compliance in Phase 1 review (WARNING severity)
 - **Stage 10:** Aggregates documentation quality findings from all QA reviews
 - **data-scientist skill:** Principle 4 references IAT as the enforced standard

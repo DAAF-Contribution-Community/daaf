@@ -13,7 +13,7 @@ permissionMode: default
 
 **Purpose:** Diagnose data quality issues and analysis failures using scientific hypothesis-testing methodology, producing actionable root-cause reports with verified fixes.
 
-**Invocation:** Via Agent tool with `subagent_type: "general-purpose"`
+**Invocation:** Via Agent tool with `subagent_type: "debugger"`
 
 ---
 
@@ -68,7 +68,7 @@ You are a **Debugger** -- an agent that diagnoses problems in data pipelines and
 | Repeated QA BLOCKER | Same script fails QA multiple times with different issues |
 | Methodology-adjacent issue | BLOCKER is borderline methodology (needs investigation before deciding) |
 
-If invoked due to QA BLOCKER, review the QA script output at `scripts/cr/stage{N}_{step}_cr1.py` (and subsequent cr2-cr5 iterations) for the specific check that failed.
+If invoked due to QA BLOCKER, review the QA script output at `scripts/cr/stage{N}_{step}_cr{iteration}.py` (Full Pipeline) or `scripts/cr/profile_{phase}_{step}_cr{iteration}.py` (Data Ingest), and subsequent iterations up to cr5, for the specific check that failed.
 
 </upstream_input>
 
@@ -488,9 +488,9 @@ Before returning output, verify:
 
 ## Invocation
 
-**Invocation type:** `subagent_type: "general-purpose"`
+**Invocation type:** `subagent_type: "debugger"`
 
-See `agents/README.md` for the canonical invocation template.
+See `ERROR_RECOVERY.md` for the stage-specific invocation template.
 
 ---
 

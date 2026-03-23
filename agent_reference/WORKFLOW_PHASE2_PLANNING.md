@@ -103,16 +103,14 @@ Incomplete transformation sequences lead to incomplete validation and unreliable
 
 **Purpose:** Create comprehensive research plan with executable task sequences
 **Stage:** 4 (Plan Creation)
-**Agent:** `data-planner` (see `agents/data-planner.md`)
+**Agent:** `data-planner` (see `.claude/agents/data-planner.md`)
 **Subagent:** general-purpose
 **Skills:** `data-scientist`
 
 ```python
 Agent({
     description: "Stage 4: Plan Creation",
-    prompt: """You are a Data Planner. Follow the protocol in `{BASE_DIR}/agents/data-planner.md`.
-
-    Call the skill tool with name 'data-scientist'.
+    prompt: """Call the skill tool with name 'data-scientist'.
 
 **BASE_DIR:** {BASE_DIR}
 All relative paths in referenced files resolve from BASE_DIR.
@@ -151,7 +149,7 @@ Do NOT paraphrase or summarize — copy the exact text.
 - Structure follows `{BASE_DIR}/agent_reference/PLAN_TEMPLATE.md`
 - All sections populated (no placeholders)
 """,
-    subagent_type: "general-purpose"
+    subagent_type: "data-planner"
 })
 ```
 
@@ -183,10 +181,7 @@ The data-planner writes the Plan incrementally in four section groups (A through
 ```python
 Agent({
     description: "Stage 4: Plan Continuation",
-    prompt: """You are a Data Planner. Follow the protocol in
-    `{BASE_DIR}/agents/data-planner.md`.
-
-    **BASE_DIR:** {BASE_DIR}
+    prompt: """**BASE_DIR:** {BASE_DIR}
     All relative paths in referenced files resolve from BASE_DIR.
 
     Call the skill tool with name 'data-scientist'.
@@ -210,7 +205,7 @@ Agent({
     Follow the Sectional Writing Protocol (Step 9 of your protocol).
 
     Return findings using the Data Planner Output Format.""",
-    subagent_type: "general-purpose"
+    subagent_type: "data-planner"
 })
 ```
 
@@ -266,12 +261,12 @@ Stage 4.5 catches these issues **before** expensive data acquisition begins.
 
 **Purpose:** Validate research plan before execution
 **Stage:** 4.5 (after Plan creation, before Stage 5)
-**Agent:** `plan-checker` (see `agents/plan-checker.md`)
+**Agent:** `plan-checker` (see `.claude/agents/plan-checker.md`)
 **Subagent:** Plan
 **Skills:** `data-scientist`
 
-For the complete invocation pattern, see `agents/plan-checker.md` Invocation section
-and `agents/README.md` plan-checker section. The orchestrator inlines BOTH Plan.md and
+For the complete invocation pattern, see `.claude/agents/plan-checker.md` Invocation section
+and `.claude/agents/README.md` plan-checker section. The orchestrator inlines BOTH Plan.md and
 Plan_Tasks.md content along with the original user request. The agent validates across six dimensions.
 
 **Skill Loading:** Include `Call the skill tool with name 'data-scientist'.` in the Agent prompt.
@@ -281,9 +276,7 @@ of the proposed transformation sequence and validation approach.
 ```python
 Agent({
     description: "Stage 4.5: Plan Validation",
-    prompt: """You are a plan-checker. Follow the protocol in `{BASE_DIR}/agents/plan-checker.md`.
-
-**BASE_DIR:** {BASE_DIR}
+    prompt: """**BASE_DIR:** {BASE_DIR}
 All relative paths in referenced files resolve from BASE_DIR.
 
 **PLAN.MD CONTENT:**
@@ -307,7 +300,7 @@ Validate BOTH Plan.md and Plan_Tasks.md across all 6 dimensions (Completeness, C
 3. Recommended Fixes (if ISSUES_FOUND)
 4. Overall Status: PASSED / PASSED_WITH_WARNINGS / ISSUES_FOUND
 """,
-    subagent_type: "Plan"
+    subagent_type: "plan-checker"
 })
 ```
 

@@ -7,6 +7,7 @@ description: >
   Stage 3.5 when multiple sources have been explored and findings need
   integration before Plan creation.
 tools: [Read, Write, Edit, Bash, Glob, Grep]
+skills: data-scientist
 permissionMode: default
 ---
 
@@ -14,7 +15,7 @@ permissionMode: default
 
 **Purpose:** Consolidate findings from parallel research/exploration tasks into actionable guidance for planning and execution.
 
-**Invocation:** Via Agent tool with `subagent_type: "general-purpose"`
+**Invocation:** Via Agent tool with `subagent_type: "research-synthesizer"`
 
 **Note:** The output of this agent concludes Phase 1 (Discovery & Scoping). The orchestrator will present findings to the user via Phase Status Update 1 (PSU1) and wait for explicit user approval before proceeding to Phase 2 (Planning). The User-Facing Summary field in the output format is specifically designed for this purpose.
 
@@ -519,9 +520,9 @@ Before returning output, verify:
 
 ## Invocation
 
-**Invocation type:** `subagent_type: "general-purpose"`
+**Invocation type:** `subagent_type: "research-synthesizer"`
 
-See `agents/README.md` for the canonical invocation template.
+See `WORKFLOW_PHASE1_DISCOVERY.md` for the stage-specific invocation template.
 The stage-specific template with full context fields is in `agent_reference/WORKFLOW_PHASE1_DISCOVERY.md`.
 
 ---

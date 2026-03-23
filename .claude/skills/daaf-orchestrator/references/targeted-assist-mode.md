@@ -88,9 +88,7 @@ Use when the question requires investigating caveats, coded values, or suppressi
 ```python
 Agent({
     description: "Targeted Assist: [question summary]",
-    prompt: """You are a Source Researcher. Follow the protocol in `{BASE_DIR}/agents/source-researcher.md`.
-
-**BASE_DIR:** {BASE_DIR}
+    prompt: """**BASE_DIR:** {BASE_DIR}
 All relative paths in referenced files resolve from BASE_DIR.
 
 ## SKILL LOADING
@@ -118,7 +116,7 @@ only touches one area (e.g., coded values only → focus on VARIABLES section).
 - Supporting detail from the relevant report section(s)
 - Confidence level (HIGH/MEDIUM/LOW) with rationale
 - Any caveats or warnings the user should know""",
-    subagent_type: "Plan"
+    subagent_type: "source-researcher"
 })
 ```
 

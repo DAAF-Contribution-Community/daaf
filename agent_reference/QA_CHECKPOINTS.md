@@ -32,7 +32,7 @@ QA checkpoints exist because **primary validation has a structural blind spot**:
 
 **Passing QA means "I tried hard to find problems and couldn't" — not "I ran some checks and they passed."**
 
-The code-reviewer applies five skeptical lenses (Counterfactual, Semantic, Boundary, Absence, Downstream) to every script and hunts for "sleeping bugs" — errors latent in the logic that don't manifest with current data but could with different inputs. See `agents/code-reviewer.md` § Review Mindset for the full framework.
+The code-reviewer applies five skeptical lenses (Counterfactual, Semantic, Boundary, Absence, Downstream) to every script and hunts for "sleeping bugs" — errors latent in the logic that don't manifest with current data but could with different inputs. See `.claude/agents/code-reviewer.md` § Review Mindset for the full framework.
 
 ---
 
@@ -133,7 +133,7 @@ Add when appropriate:
 | Value range | Numeric analysis | Values within expected bounds |
 | Category coverage | Categorical analysis | All expected categories present |
 | Cross-source consistency | Multi-source fetch | Same entities across sources |
-| **Concrete trace** | **Always (at minimum 5)** — see `agents/code-reviewer.md` for the five required categories | **Pick one entity (e.g., a specific school or state) and verify its record looks plausible** |
+| **Concrete trace** | **Always (at minimum 5)** — see `.claude/agents/code-reviewer.md` for the five required categories | **Pick one entity (e.g., a specific school or state) and verify its record looks plausible** |
 
 **Creative check prompt:** Before writing your QA1 script, ask: *"If the data access mirror returned data for the wrong geography or wrong year range, how would I detect that from the data alone?"* Design at least one check to answer that question.
 
@@ -236,7 +236,7 @@ print("=" * 60)
 | Distribution comparison | Statistical analysis | Pre/post distributions similar |
 | Outlier retention | Outlier-sensitive analysis | Correct outlier handling |
 | Null pattern | Complex null logic | Nulls handled per specification |
-| **Complement inspection** | **Always (at minimum 5)** — see `agents/code-reviewer.md` for the five required categories | **Examine what was REMOVED by cleaning — do the removed rows look like what you'd expect?** |
+| **Complement inspection** | **Always (at minimum 5)** — see `.claude/agents/code-reviewer.md` for the five required categories | **Examine what was REMOVED by cleaning — do the removed rows look like what you'd expect?** |
 
 **Creative check prompt:** Before writing your QA2 script, ask: *"If the cleaning logic had an off-by-one error in the filter condition (e.g., `>= -1` instead of `== -1`), what would the symptom look like in the cleaned data?"* Design at least one check to catch that class of error.
 
@@ -360,7 +360,7 @@ print("=" * 60)
 | Business logic | Complex derivations | Derived values match business rules |
 | Cross-validation | Multiple sources | Results consistent across methods |
 | Temporal consistency | Time-series | No impossible date sequences |
-| **Concrete trace** | **Always (at minimum 5)** — see `agents/code-reviewer.md` for the five required categories | **Pick one entity and verify its journey through the transformation end-to-end** |
+| **Concrete trace** | **Always (at minimum 5)** — see `.claude/agents/code-reviewer.md` for the five required categories | **Pick one entity and verify its journey through the transformation end-to-end** |
 
 **Creative check prompt:** Before writing your QA3 script, ask: *"If this transformation had a subtle bug that affected 5% of records, what would the symptom look like in the output data? How would I detect it?"* Design at least one check to answer that question.
 
@@ -502,7 +502,7 @@ print("=" * 60)
 | Sample size adequacy | Statistical tests | Sufficient N for claimed significance |
 | Multiple comparison adjustment | Multiple hypotheses tested | p-values adjusted appropriately |
 | Outlier influence | Regression analysis | Results not driven by a few extreme observations |
-| **Concrete trace** | **Always (at minimum 5)** — see `agents/code-reviewer.md` for the five required categories | **Pick one data point and verify its representation in the analysis output is accurate** |
+| **Concrete trace** | **Always (at minimum 5)** — see `.claude/agents/code-reviewer.md` for the five required categories | **Pick one data point and verify its representation in the analysis output is accurate** |
 
 **Creative check prompt:** Before writing your QA4a script, ask: *"If the script used the wrong column for a key calculation, or aggregated at the wrong level, how would the output differ from correct output?"* Design at least one check to catch that class of error.
 
@@ -635,7 +635,7 @@ print("=" * 60)
 | Font size | Presentation figures | Text readable at intended display size |
 | Annotation accuracy | Annotated plots | Annotation text matches data values |
 | Multi-panel consistency | Faceted plots | Consistent scales across panels |
-| **Visual trace** | **Always (at minimum 5)** — see `agents/code-reviewer.md` for the five required categories | **Pick one data point and verify it appears in the correct position in the figure** |
+| **Visual trace** | **Always (at minimum 5)** — see `.claude/agents/code-reviewer.md` for the five required categories | **Pick one data point and verify it appears in the correct position in the figure** |
 
 **Creative check prompt:** Before writing your QA4b script, ask: *"If a figure were missing its legend, had truncated axes, or used a color scheme indistinguishable to colorblind readers, how would I detect that programmatically?"* Design at least one check to catch that class of error.
 

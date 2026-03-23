@@ -63,9 +63,7 @@ Stages 5, 6. Cross-phase orchestration guidance (invocation templates, QA protoc
 ```python
 Agent({
     description: "Stage 5: Data Retrieval",
-    prompt: """You are a Research Executor. Follow the protocol in `{BASE_DIR}/agents/research-executor.md`.
-
-**BASE_DIR:** {BASE_DIR}
+    prompt: """**BASE_DIR:** {BASE_DIR}
 All relative paths in referenced files resolve from BASE_DIR.
 
 Call the skill tool with name 'data-scientist'.
@@ -142,7 +140,7 @@ Return findings in this structure:
 **LOW Confidence Items Requiring Resolution:** [list or "None"]
 
 After completing the skill's Required Actions, return findings using the format above.""",
-    subagent_type: "general-purpose"
+    subagent_type: "research-executor"
 })
 ```
 
@@ -268,9 +266,7 @@ assert df['year'].is_in(expected_years).all(), "WARNING: Unexpected years"
 ```python
 Agent({
     description: "Stage 6: Context Application",
-    prompt: """You are a Research Executor. Follow the protocol in `{BASE_DIR}/agents/research-executor.md`.
-
-**BASE_DIR:** {BASE_DIR}
+    prompt: """**BASE_DIR:** {BASE_DIR}
 All relative paths in referenced files resolve from BASE_DIR.
 
 Call the skill tool with name 'data-scientist'.
@@ -352,7 +348,7 @@ Return findings in this structure:
 **LOW Confidence Items Requiring Resolution:** [list or "None"]
 
 After completing the skill's Required Actions, return findings using the format above.""",
-    subagent_type: "general-purpose"
+    subagent_type: "research-executor"
 })
 ```
 

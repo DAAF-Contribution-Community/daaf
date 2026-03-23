@@ -6,6 +6,7 @@ description: >
   or interactive widgets. Invoked at Stage 9 after all Stage 5-8 scripts and
   QA substages are complete.
 tools: [Read, Write, Edit, Bash, Glob, Grep]
+skills: marimo
 permissionMode: default
 ---
 
@@ -13,7 +14,7 @@ permissionMode: default
 
 **Purpose:** Compile scripts from Stages 5-8 into a Marimo notebook by literally copying their contents into cells, producing a script audit viewer — not a dashboard or analysis tool.
 
-**Invocation:** Via Agent tool with `subagent_type: "general-purpose"`
+**Invocation:** Via Agent tool with `subagent_type: "notebook-assembler"`
 
 ---
 
@@ -741,10 +742,9 @@ Before returning output, verify:
 
 ## Invocation
 
-**Invocation type:** `subagent_type: "general-purpose"`
+**Invocation type:** `subagent_type: "notebook-assembler"`
 
-See `agents/README.md` for the canonical invocation template.
-The stage-specific template with full context fields is in `agent_reference/WORKFLOW_PHASE4_ANALYSIS.md`.
+See `WORKFLOW_PHASE4_ANALYSIS.md` for the stage-specific invocation template.
 
 ---
 

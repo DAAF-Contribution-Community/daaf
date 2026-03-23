@@ -82,7 +82,7 @@ If new to marimo, first understand:
 
 ### Stage 9 Notebook Assembly
 
-Stage 9 is handled by the **notebook-assembler agent** (see `agents/notebook-assembler.md`), which:
+Stage 9 is handled by the **notebook-assembler agent** (see `.claude/agents/notebook-assembler.md`), which:
 1. READS script files from `scripts/stage{5,6,7,8}_*/`
 2. COPIES script code VERBATIM into code cells
 3. COPIES execution logs VERBATIM into accordion cells
@@ -146,7 +146,7 @@ mo.ui.table(df.head(100))
 ```
 
 **See:**
-- `agents/notebook-assembler.md` for the complete behavioral protocol
+- `.claude/agents/notebook-assembler.md` for the complete behavioral protocol
 - `agent_reference/WORKFLOW_PHASE4_ANALYSIS.md` Stage 9 for template
 
 ---

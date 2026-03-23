@@ -28,7 +28,7 @@ This reference is loaded after the orchestrator classifies a request as Full Pip
 > 1. **`WORKFLOW_PHASE*.md`** — stage-specific invocation templates with full context fields, thoroughness directives, gate criteria, verification checklists, and PSU content. **Start here** when constructing a subagent prompt.
 > 2. **This file (`full-pipeline.md`)** — cross-phase templates (code-reviewer invocation, revision requests), generic prompt structure, context inlining protocol, QA enforcement, and prompt size targets.
 >
-> **`agents/README.md`** provides agent behavioral specs and input/output contracts — consult when understanding an agent's capabilities, not for constructing invocation prompts.
+> **`.claude/agents/README.md`** provides agent behavioral specs and input/output contracts — consult when understanding an agent's capabilities, not for constructing invocation prompts.
 
 > **Parallel Dispatch Limit:** The orchestrator MUST NOT dispatch more than **5 subagents concurrently** — this applies to wave-based task dispatch, Stage 3 source-researcher dispatch, and any other parallel invocation. If more than 5 independent tasks need to run, sub-batch into groups of ≤5 and wait for each sub-batch to complete before dispatching the next. Parallel dispatch is achieved by making multiple Agent tool calls in a **single response message** (foreground parallel). **NEVER use `run_in_background`** — background agents cannot prompt for permissions and will silently fail.
 
@@ -264,7 +264,7 @@ The Full Pipeline workflow consists of **5 Phases** and **12 Stages**.
 
 ## Stage 5-8 Per-Script Execution & QA Loop
 
-**Every stage from 5 through 8 is executed as MULTIPLE subagent calls with interleaved QA, NOT as a single invocation per stage.** Each script in Plan.md's Transformation Sequence table is executed by research-executor, then **immediately and separately** reviewed by code-reviewer, before the next script begins. This applies equally to Stage 5 (fetch scripts), Stage 6 (clean scripts), Stage 7 (transformation scripts), and Stage 8 (analysis and visualization scripts). Any Stage writing net new code must adhere to this. QA scripts are saved to `scripts/cr/stage{N}_{step}_cr{1..5}.py`. The **Stage 5-8 Composite Execution Pattern** below defines the authoritative execution flow — it is the MANDATORY atomic unit for all Stage 5-8 work. See `agents/code-reviewer.md` for the complete QA protocol and `agent_reference/QA_CHECKPOINTS.md` for checkpoint definitions.
+**Every stage from 5 through 8 is executed as MULTIPLE subagent calls with interleaved QA, NOT as a single invocation per stage.** Each script in Plan.md's Transformation Sequence table is executed by research-executor, then **immediately and separately** reviewed by code-reviewer, before the next script begins. This applies equally to Stage 5 (fetch scripts), Stage 6 (clean scripts), Stage 7 (transformation scripts), and Stage 8 (analysis and visualization scripts). Any Stage writing net new code must adhere to this. QA scripts are saved to `scripts/cr/stage{N}_{step}_cr{1..5}.py`. The **Stage 5-8 Composite Execution Pattern** below defines the authoritative execution flow — it is the MANDATORY atomic unit for all Stage 5-8 work. See `.claude/agents/code-reviewer.md` for the complete QA protocol and `agent_reference/QA_CHECKPOINTS.md` for checkpoint definitions.
 
 **Why this matters:**
 - The core principle "Every transformation has a validation" requires separate execution cycles
@@ -279,7 +279,7 @@ The Full Pipeline workflow consists of **5 Phases** and **12 Stages**.
 
 **Expectation for QA depth:** The code-reviewer is not a rubber-stamp. The reviewer should reason adversarially about the script, not merely run templated checks. A high-quality QA report includes reasoning about *why* the code is correct, not just confirmation that checks passed. If a code-reviewer returns PASSED with only template-level checks and no script-specific observations, consider whether the review was thorough enough.
 
-The complete QA invocation workflow is defined in the **Stage 5-8 Composite Execution Pattern** below. See `agents/code-reviewer.md` for the QA protocol and `agent_reference/QA_CHECKPOINTS.md` for checkpoint definitions.
+The complete QA invocation workflow is defined in the **Stage 5-8 Composite Execution Pattern** below. See `.claude/agents/code-reviewer.md` for the QA protocol and `agent_reference/QA_CHECKPOINTS.md` for checkpoint definitions.
 
 ### Stage 5-8 Composite Execution Pattern (MANDATORY)
 
@@ -348,9 +348,7 @@ Invoke a subagent to generate the transformation code but explicitly instruct it
 ```python
 Agent({
     description: "Generate transformation code",
-    prompt: """You are a Research Executor. Follow the protocol in {BASE_DIR}/agents/research-executor.md.
-
-Generate code for: {transformation_description}
+    prompt: """Generate code for: {transformation_description}
 
 **DO NOT execute the code yet.** Return only:
 1. Proposed code with comments
@@ -362,7 +360,8 @@ Format:
 
 Expected: {outcome}
 Validation: {approach}
-"""
+""",
+    subagent_type: "research-executor"
 })
 ```
 
@@ -378,9 +377,7 @@ Invoke a subagent to execute the approved code with full validation:
 ```python
 Agent({
     description: "Execute validated transformation",
-    prompt: """You are a Research Executor. Follow the protocol in {BASE_DIR}/agents/research-executor.md.
-
-Execute the following approved code:
+    prompt: """Execute the following approved code:
 
 {approved_code}
 
@@ -389,7 +386,8 @@ Use the Iteration Protocol:
 2. Execute transformation
 3. Validate results
 4. Report PASS/FAIL status
-"""
+""",
+    subagent_type: "research-executor"
 })
 ```
 
@@ -569,7 +567,7 @@ See the "Task Types" section below for the complete taxonomy, behavioral descrip
 
 **If any checklist item is unchecked:** Add the missing context before invoking. Incomplete context = subagent asks clarifying questions = wasted round-trip.
 
-These checklists correspond to the input requirements defined in each agent's definition file (e.g., `agents/research-executor.md` > Inputs).
+These checklists correspond to the input requirements defined in each agent's definition file (e.g., `.claude/agents/research-executor.md` > Inputs).
 
 ### Progress Reporting Protocol
 
@@ -970,9 +968,7 @@ All code execution in Stages 5-8 MUST follow the file-first pattern (write → e
 ```python
 Agent({
     description: "[3-5 word summary]",
-    prompt: """You are a [Agent Role]. Follow the protocol in `{BASE_DIR}/agents/[agent-name].md`.
-
-**BASE_DIR:** {BASE_DIR}
+    prompt: """**BASE_DIR:** {BASE_DIR}
 All relative paths in referenced files resolve from BASE_DIR.
 
 ## SKILL LOADING
@@ -1064,7 +1060,7 @@ Return findings in this EXACT structure:
 
 **Commit:** [If task completed, suggested commit message]
 """,
-    subagent_type: "[Plan | general-purpose]"
+    subagent_type: "[agent-name]"
 })
 ```
 
@@ -1175,9 +1171,7 @@ These are efficiency TARGETS for typical tasks, not hard ceilings that override 
 ```python
 Agent({
     description: "Stage [N]: [Name]",
-    prompt: """You are a [Agent Role]. Follow the protocol in `{BASE_DIR}/agents/[agent-name].md`.
-
-**BASE_DIR:** {BASE_DIR}
+    prompt: """**BASE_DIR:** {BASE_DIR}
 All relative paths in referenced files resolve from BASE_DIR.
 
 ## SKILL LOADING
@@ -1206,7 +1200,7 @@ Call the skill tool with name '[skill-name]'.
 ...
 </task>
 """,
-    subagent_type: "[type]"
+    subagent_type: "[agent-name]"
 })
 ```
 
@@ -1239,9 +1233,7 @@ See "Prompt Size Targets by Subagent Type" above for size targets. The same targ
 ```python
 Agent({
     description: "QA Review: Stage {N} Step {step} - {task_name}",
-    prompt: """You are a Code Reviewer. Follow the protocol in `{BASE_DIR}/agents/code-reviewer.md`.
-
-**BASE_DIR:** {BASE_DIR}
+    prompt: """**BASE_DIR:** {BASE_DIR}
 All relative paths in referenced files resolve from BASE_DIR.
 
 **SCRIPT TO REVIEW:**
@@ -1327,7 +1319,7 @@ Return findings in this structure. Do NOT paste QA script code, raw execution lo
 **Recommendation:** [PROCEED | REVISION_REQUIRED | ESCALATE]
 **If Revision:** [Specific changes needed]
 """,
-    subagent_type: "general-purpose"
+    subagent_type: "code-reviewer"
 })
 ```
 
@@ -1338,9 +1330,7 @@ When code-reviewer returns BLOCKER, orchestrator sends revision request to resea
 ```python
 Agent({
     description: "Revision: Stage {N} Step {step} - {task_name}",
-    prompt: """You are a Research Executor. Follow the protocol in `{BASE_DIR}/agents/research-executor.md`.
-
-**BASE_DIR:** {BASE_DIR}
+    prompt: """**BASE_DIR:** {BASE_DIR}
 All relative paths in referenced files resolve from BASE_DIR.
 
 **REVISION REQUEST**
@@ -1372,7 +1362,7 @@ All relative paths in referenced files resolve from BASE_DIR.
 **OUTPUT FORMAT:**
 [Standard research-executor output format]
 """,
-    subagent_type: "general-purpose"
+    subagent_type: "research-executor"
 })
 ```
 
@@ -1397,7 +1387,7 @@ Agent({
 Please retry the task with this correction.
 
 [Original task specification]""",
-    subagent_type: "..."
+    subagent_type: "[agent-name]"
 })
 ```
 
@@ -1630,7 +1620,7 @@ When interpreting data values and resolving discrepancies between sources, apply
 - When codebook contradicts observed data → trust the data, but investigate (codebook may describe a different year)
 - When skill docs contradict codebook → trust the codebook, update skill docs
 - For education domain: Codebook URLs are cataloged in `datasets-reference.md` (codebook column); use `get_codebook_url()` in `fetch-patterns.md` to construct download URLs. Other domains will use analogous structures in their domain query skill.
-- See also: `agents/data-ingest.md` Data Primacy table for the same hierarchy applied during data ingest
+- See also: `.claude/agents/data-ingest.md` Data Primacy table for the same hierarchy applied during data ingest
 
 ### Validation Checkpoints
 
@@ -1673,7 +1663,7 @@ In addition to CP checkpoints (embedded in code), **QA checkpoints** provide ind
 - **WARNING:** Log for Stage 10 aggregation, proceed
 - **INFO:** Log only, proceed
 
-See `agent_reference/QA_CHECKPOINTS.md` for complete definitions and `agents/code-reviewer.md` for the QA agent protocol.
+See `agent_reference/QA_CHECKPOINTS.md` for complete definitions and `.claude/agents/code-reviewer.md` for the QA agent protocol.
 
 ### Stage Gates (Cannot Proceed Without)
 

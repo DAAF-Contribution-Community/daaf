@@ -180,7 +180,7 @@ For data source skills, the orchestrator automatically provides registration gui
 |----------|------|-------------------|-------------|
 | 1 (Required) | `.claude/skills/daaf-orchestrator/references/skill-catalog.md` | Data Source Quick Lookup table | New row mapping data need to skill name |
 | 2 (Required) | `agent_reference/WORKFLOW_PHASE1_DISCOVERY.md` | Available source skills list | New bullet with skill name and description |
-| 3 (Required) | `agents/source-researcher.md` | Step 1: Load Source Skill | No update needed (orchestrator provides skill name dynamically) |
+| 3 (Required) | `.claude/agents/source-researcher.md` | Step 1: Load Source Skill | No update needed (orchestrator provides skill name dynamically) |
 
 The orchestrator will typically offer to make these updates for you at the end of the Data Ingest workflow -- just confirm and it'll handle the file edits. You still need to approve the updates, as they touch core framework files. Note that these registration edits fall under the "contribution" category if you plan to share them (see [When to Extend vs. When to Contribute](#when-to-extend-vs-when-to-contribute)).
 
@@ -223,7 +223,7 @@ If any of these answers are vague, the agent-authoring skill will push you to sh
 
 **Phase 3: Integrate.** This is the step where the most things can go wrong if you're not careful. A new agent needs to be registered across multiple files in the DAAF ecosystem. The agent-authoring skill provides a complete integration checklist organized into tiers:
 
-- **Tier 1 (Mandatory):** Every new agent must be registered in `agents/README.md` (the canonical agent registry, with entries in 4 sections: Agent Index, When to Use, Coordination Matrix, and Agent catalog)
+- **Tier 1 (Mandatory):** Every new agent must be registered in `.claude/agents/README.md` (the canonical agent registry, with entries in 4 sections: Agent Index, When to Use, Coordination Matrix, and Agent catalog)
 - **Tier 2 (Conditional):** Additional updates if the agent maps to a specific pipeline stage
 - **Tier 3 (Conditional):** Additional updates if the agent affects specific workflow areas
 
@@ -237,7 +237,7 @@ If any of these answers are vague, the agent-authoring skill will push you to sh
 |----------|---------|
 | `agent-authoring` skill | Full workflow with integration checklist |
 | `agent_reference/AGENT_TEMPLATE.md` | Canonical 12-section template |
-| `agents/README.md` | Current agent landscape, commonly confused pairs, coordination matrix |
+| `.claude/agents/README.md` | Current agent landscape, commonly confused pairs, coordination matrix |
 
 For changes to *existing* agents (modifying behavior rather than adding new ones), see [**05. Contributing to DAAF**](../CONTRIBUTING.md).
 

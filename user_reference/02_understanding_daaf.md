@@ -180,22 +180,22 @@ The orchestrator is the most important part of DAAF, because it needs to simulta
 
 ### Specialized Agents: Your Research Team
 
-The "team members" in this lab are **agents** -- versions of Claude provided a clear behavioral protocol and persona defining exactly how they should think and operate. You can even see the exact context instructions provided to each in [the agents folder](../agents/). Agents are not knowledge repositories; they're *behavioral definitions*. An agent answers the question: "How should I behave when I'm doing this specific type of work?"
+The "team members" in this lab are **agents** -- versions of Claude provided a clear behavioral protocol and persona defining exactly how they should think and operate. You can even see the exact context instructions provided to each in [the agents folder](../.claude/agents/). Agents are not knowledge repositories; they're *behavioral definitions*. An agent answers the question: "How should I behave when I'm doing this specific type of work?"
 
 Here's a few examples of the team members with the links to each of their actual instruction files if you want to dig in more:
 
 | Agent | Role in the Lab Analogy | What They Actually Do | 
 |-------|------------------------|----------------------|
-| [**research-executor**](../agents/research-executor.md) | Technician/Analyst | Executes one data task at a time (fetch, clean, transform, analyze) with meticulous pre/post validation |
-| [**code-reviewer**](../agents/code-reviewer.md) | Senior Technician/Analyst | Reviews every single script the research-executor produces, looking for bugs, methodology errors, and data quality issues |
-| [**source-researcher**](../agents/source-researcher.md) | Research Assistant | Deep-dives into a specific data source's documentation, collection protocols, caveats, and gotchas for shared team awareness |
-| [**data-planner**](../agents/data-planner.md) | Research Design Lead | Synthesizes all the preliminary findings into a detailed, executable research plan |
+| [**research-executor**](../.claude/agents/research-executor.md) | Technician/Analyst | Executes one data task at a time (fetch, clean, transform, analyze) with meticulous pre/post validation |
+| [**code-reviewer**](../.claude/agents/code-reviewer.md) | Senior Technician/Analyst | Reviews every single script the research-executor produces, looking for bugs, methodology errors, and data quality issues |
+| [**source-researcher**](../.claude/agents/source-researcher.md) | Research Assistant | Deep-dives into a specific data source's documentation, collection protocols, caveats, and gotchas for shared team awareness |
+| [**data-planner**](../.claude/agents/data-planner.md) | Research Design Lead | Synthesizes all the preliminary findings into a detailed, executable research plan |
 
 The point here is that we want to provide very different context to Claude when faced with different tasks. Trying to get Claude to do everything equally well is impossible given fixed context window limitations, and trying to do so will ultimately confuse it and cause dreaded **context rot** (where an LLM becomes unpredictable, incoherent, and erratic due to over-filled or poorly structured context it can't make sense of). This means that we need to split responsibilities across "versions" of Claude provided very different instructions and behavioral protocols to get it to perform these tasks well in tandem.
 
 > **Quick definitional note:** An **Agent** is the general phrase we use to describe any tailored/pre-specified set of behavioral protocols for an LLM assistant. Each of the above team members in this analogy are Agent definitions. As a user, you can ask Claude directly to take on an agent persona and begin working. However, with DAAF's default workflows, the orchestrator actually calls up and tasks each agent above itself, so you never have to; agents become **subagents** when they are called by another assistant in this way, instead of directly by the user.
 
-Ultimately, the orchestrator's job is to know which agent/team member to call up at any one time, and to also know very thoughtfully what it needs to tell that subagent in order for the subagent to do its job effectively with necessary context and guidance. You can see how the orchestrator is trained to talk with these agents in [the agents README](../agents/README.md) and [the orchestrator's full pipeline reference](../.claude/skills/daaf-orchestrator/references/full-pipeline.md)). Subagent orchestration is an extremely new and active area of development in the broader field of AI at-large right now, which is part of why a system as complex as DAAF has only recently become possible.
+Ultimately, the orchestrator's job is to know which agent/team member to call up at any one time, and to also know very thoughtfully what it needs to tell that subagent in order for the subagent to do its job effectively with necessary context and guidance. You can see how the orchestrator is trained to talk with these agents in [the agents README](../.claude/agents/README.md) and [the orchestrator's full pipeline reference](../.claude/skills/daaf-orchestrator/references/full-pipeline.md)). Subagent orchestration is an extremely new and active area of development in the broader field of AI at-large right now, which is part of why a system as complex as DAAF has only recently become possible.
 
 ### Skills: Your Team's Reference Library
 
@@ -622,7 +622,7 @@ Here's a quick reference for what each part of the DAAF repository contains and 
 |-----------|-------------|-------------|
 | `research/` | Your analysis projects -- notebooks, data, reports, scripts | **You** (this is where all your work lives) |
 | `user_reference/` | User documentation (you're reading one right now) | **You** (human-written guides and FAQs) |
-| `agents/` | Specialized agent protocols (12 behavioral definitions) | **DAAF** (and curious users who want to understand how agents work) |
+| `.claude/agents/` | Specialized agent protocols (12 behavioral definitions) | **DAAF** (and curious users who want to understand how agents work) |
 | `agent_reference/` | Detailed workflow documentation, templates, validation rules | **DAAF** (internal reference material for the orchestrator and agents) |
 | `.claude/skills/` | Skill definitions providing domain knowledge | **DAAF** (and users who want to create new skills) |
 | `scripts/` | Shared utility scripts (like `run_with_capture.sh`) | **DAAF** (copied into each project during setup) |

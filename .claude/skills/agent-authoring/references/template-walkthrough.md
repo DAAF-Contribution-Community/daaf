@@ -46,7 +46,7 @@
 
 **Core Distinction Table (CRITICAL):**
 
-This is the **#1 failure mode in multi-agent systems** — overlapping responsibilities. Before writing, consult `agents/README.md` for:
+This is the **#1 failure mode in multi-agent systems** — overlapping responsibilities. Before writing, consult `.claude/agents/README.md` for:
 - The Agent Index table (Key Distinction column)
 - The "Commonly Confused Pairs" subsection
 
@@ -315,7 +315,7 @@ Before returning output, verify:
 
 ## Section 11: Invocation Pattern
 
-**What it is:** A pointer to the canonical invocation template in `agents/README.md`.
+**What it is:** A pointer to the canonical invocation template in the appropriate `WORKFLOW_PHASE*.md` file or mode reference file.
 
 **Format:**
 ```markdown
@@ -323,15 +323,15 @@ Before returning output, verify:
 
 **Invocation type:** `subagent_type: "[general-purpose | Plan]"`
 
-See `agents/README.md` for the canonical invocation template.
-The stage-specific template with full context fields is in `agent_reference/WORKFLOW_PHASE[N]_[NAME].md`.
+See the appropriate `agent_reference/WORKFLOW_PHASE[N]_[NAME].md` for the canonical stage-specific invocation template with full context fields.
+For agent landscape context, see `.claude/agents/README.md`.
 ```
 
 **Guidance:**
-- Do NOT include a full Agent() call template — `agents/README.md` is the single source of truth
+- Do NOT include a full Agent() call template — the `agent_reference/WORKFLOW_PHASE*.md` files and mode reference files are the sources of truth for invocation templates
 - Specify `subagent_type` so readers know the agent's capability level at a glance
-- Reference the relevant WORKFLOW_PHASE file if stage-specific templates exist
-- The canonical template in README.md must map to Upstream Inputs (Section 3)
+- Reference the relevant WORKFLOW_PHASE file for stage-specific invocation templates (e.g., `WORKFLOW_PHASE3_ACQUISITION.md` for Stage 5-6 agents)
+- The invocation template must map to Upstream Inputs (Section 3)
 
 ---
 

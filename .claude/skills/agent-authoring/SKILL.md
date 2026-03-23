@@ -36,7 +36,7 @@ What are you doing?
 │   └─ Read: references/cross-agent-standards.md
 │
 └─ Understanding the current agent landscape before adding to it
-    └─ Read: agents/README.md (Agent Index + "Commonly Confused Pairs")
+    └─ Read: .claude/agents/README.md (Agent Index + "Commonly Confused Pairs")
 ```
 
 ## New Agent Workflow
@@ -47,7 +47,7 @@ Before beginning, you MUST have a clear, coherent, and compelling answer to each
 
 1. **Define the role** in one sentence — what does this agent do and why does it exist?
 2. **Identify pipeline stage(s)** — which stage(s) does it operate in, or is it "any/on-demand"?
-3. **Identify similar agents** — read `agents/README.md` (Agent Index + "Commonly Confused Pairs") to find the 1-3 most similar existing agents. You MUST differentiate from these in your Core Distinction table.
+3. **Identify similar agents** — read `.claude/agents/README.md` (Agent Index + "Commonly Confused Pairs") to find the 1-3 most similar existing agents. You MUST differentiate from these in your Core Distinction table.
 4. **Determine subagent type:**
    - `general-purpose` — needs file writes, code execution, or tool access beyond reading
    - `Plan` — read-only validation, discovery, or verification
@@ -60,7 +60,7 @@ If any of these answers are vague, in doubt, or incomplete, the quality and reli
 1. Read `agent_reference/AGENT_TEMPLATE.md` for the canonical 12-section structure
 2. Read `references/template-walkthrough.md` for section-by-section guidance and common mistakes
 3. Read `references/cross-agent-standards.md` for mandatory standardized elements
-4. Write the agent file to `agents/[agent-name].md` following the template exactly
+4. Write the agent file to `.claude/agents/[agent-name].md` following the template exactly
 5. Run self-validation:
    - [ ] All 12 sections present (11 REQUIRED + 1 CONDITIONAL)
    - [ ] Core Distinction table differentiates from identified similar agents
@@ -89,13 +89,13 @@ Run these verification checks:
 
 ```bash
 # 1. Verify agent appears in all registry files
-grep -l "agent-name" agents/README.md CLAUDE.md README.md
+grep -l "agent-name" .claude/agents/README.md CLAUDE.md README.md
 
 # 2. Cross-agent consistency (run for new agent file)
-grep -c "HIGH.*MEDIUM.*LOW\|BLOCKER.*WARNING.*INFO\|Learning Signal\|STOP Conditions" agents/[agent-name].md
+grep -c "HIGH.*MEDIUM.*LOW\|BLOCKER.*WARNING.*INFO\|Learning Signal\|STOP Conditions" .claude/agents/[agent-name].md
 
 # 3. Verify agent count matches actual count
-ls agents/*.md | grep -v README | grep -v _revised | wc -l
+ls .claude/agents/*.md | grep -v README | grep -v _revised | wc -l
 # Compare with the number in README.md "Agent Ecosystem (N Specialized Agents)"
 ```
 
@@ -105,7 +105,7 @@ Before any agent authoring process is fully complete, a human user MUST review i
 
 ## Quick Reference: Current Agent Landscape
 
-Consult `agents/README.md` for the authoritative Agent Index with:
+Consult `.claude/agents/README.md` for the authoritative Agent Index with:
 - Agent name, purpose, subagent type, stage(s), and key distinction
 - Commonly Confused Pairs (critical for writing your Core Distinction)
 - Agent Coordination Matrix (producer/consumer relationships)
@@ -126,12 +126,12 @@ Consult `agents/README.md` for the authoritative Agent Index with:
 | `skill-authoring` skill | Invoke separately if the new agent also needs a companion skill |
 | `agent_reference/AGENT_TEMPLATE.md` | The structural blueprint — read directly during Phase 2 |
 | `agent_reference/PLAN_TEMPLATE.md` | Reference for wave-based task sequencing and plan structure |
-| `agents/README.md` | The single source of truth for the agent landscape — read during Phase 1 |
+| `.claude/agents/README.md` | The single source of truth for the agent landscape — read during Phase 1 |
 | `data-ingest` agent | Related: creates new data source skills; agent-authoring creates new agents |
 
 ## Naming Convention
 
-- **File:** `agents/[lowercase-hyphenated].md`
+- **File:** `.claude/agents/[lowercase-hyphenated].md`
 - **Frontmatter name:** `lowercase-hyphenated` (must match directory/file convention)
 - **Title:** `# [Agent Name] Agent` (title case with "Agent" suffix)
 - **Description:** Third person, includes WHAT the agent does AND WHEN to use it

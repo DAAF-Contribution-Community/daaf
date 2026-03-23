@@ -204,7 +204,7 @@ permissionMode: default          # Or: plan (read-only agents)
 After writing an agent, verify all standards are met:
 
 ```bash
-AGENT_FILE="agents/[agent-name].md"
+AGENT_FILE=".claude/agents/[agent-name].md"
 
 # Check for required sections
 echo "=== Required Sections ==="

@@ -109,7 +109,7 @@ git clone https://github.com/DAAF-Contribution-Community/daaf.git
 cd daaf
 ```
 
-This creates a `daaf` folder containing all the project files. You should now be inside the project directory. You can confirm this worked correctly by typing `ls` to list the installation files in this folder: you'll see files like `CLAUDE.md`, `docker-compose.yml`, `Dockerfile`, and folders like `agents/`, `user_reference/`, etc.
+This creates a `daaf` folder containing all the project files. You should now be inside the project directory. You can confirm this worked correctly by typing `ls` to list the installation files in this folder: you'll see files like `CLAUDE.md`, `docker-compose.yml`, `Dockerfile`, and folders like `agent_reference/`, `user_reference/`, etc.
 
 > **Important:** The `git clone` command creates a folder named `daaf` by default. **Do not rename this folder** before you finish this full process.
 

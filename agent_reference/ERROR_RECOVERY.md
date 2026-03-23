@@ -667,7 +667,7 @@ Agent({
 Re-execute the stage with this correction.
 
 [Original stage specification]""",
-    subagent_type: "..."
+    subagent_type: "[agent-name]"
 })
 ```
 

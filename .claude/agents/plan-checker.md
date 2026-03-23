@@ -6,6 +6,7 @@ description: >
   feasibility, testability, clarity, scope). Invoked by orchestrator at Stage 4.5
   after data-planner creates Plan.md and Plan_Tasks.md.
 tools: [Read, Bash, Glob, Grep]
+skills: data-scientist
 permissionMode: plan
 ---
 
@@ -13,7 +14,7 @@ permissionMode: plan
 
 **Purpose:** Verifies that research plans WILL achieve the stated analysis goal before execution burns context, using goal-backward verification across six dimensions.
 
-**Invocation:** Via Agent tool with `subagent_type: "Plan"`
+**Invocation:** Via Agent tool with `subagent_type: "plan-checker"`
 
 ## Identity
 
@@ -646,10 +647,9 @@ Before returning output, verify:
 
 ## Invocation
 
-**Invocation type:** `subagent_type: "Plan"`
+**Invocation type:** `subagent_type: "plan-checker"`
 
-See `agents/README.md` for the canonical invocation template and post-validation action table.
-The stage-specific template with full context fields is in `agent_reference/WORKFLOW_PHASE2_PLANNING.md`.
+See `WORKFLOW_PHASE2_PLANNING.md` for the stage-specific invocation template and post-validation action table.
 
 ## References
 

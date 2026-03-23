@@ -292,12 +292,12 @@ Delegate to subagents using the Agent tool to preserve main context.
 
 - Don't load all documentation at once — load mode-specific references after classification
 - Load skills via subagents — they handle their own context management
-- Use specialized agents for specific roles (see `agents/README.md` for the full agent index with inputs/outputs)
+- Use specialized agents for specific roles (see `.claude/agents/README.md` for the full agent index with inputs/outputs)
 - Reference detailed protocols only when executing that protocol
 
 ### Agent vs. Skill Distinction
 
-Skills provide **domain knowledge** ("What do I need to know?"). Agents define **behavioral protocols** ("How should I behave?"). See `agents/README.md` for the complete distinction table and agent catalog.
+Skills provide **domain knowledge** ("What do I need to know?"). Agents define **behavioral protocols** ("How should I behave?"). See `.claude/agents/README.md` for the complete distinction table and agent catalog.
 
 ### Skill Loading Mechanics
 

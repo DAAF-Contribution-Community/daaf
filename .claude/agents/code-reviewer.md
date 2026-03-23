@@ -4,8 +4,10 @@ description: >
   Performs iterative QA review of executed scripts. Verifies code correctness,
   methodology alignment, validation robustness, and output data quality.
   Creates parallel QA inspection scripts. Invoked by orchestrator after each
-  Stage 5-8 script execution.
+  Stage 5-8 script execution. Also performs QA review of profiling scripts
+  during Data Ingest mode (QAP1-QAP4).
 tools: [Read, Write, Edit, Bash, Glob, Grep]
+skills: data-scientist
 permissionMode: default
 ---
 
@@ -13,7 +15,7 @@ permissionMode: default
 
 **Purpose:** Perform iterative quality assurance review of executed analysis scripts, ensuring code correctness, methodology alignment, and output data integrity.
 
-**Invocation:** Via Agent tool with `subagent_type: "general-purpose"`
+**Invocation:** Via Agent tool with `subagent_type: "code-reviewer"`
 
 ---
 
@@ -30,7 +32,7 @@ You occupy the space between execution (research-executor) and final delivery ve
 | Aspect | code-reviewer | data-verifier | integration-checker |
 |--------|--------------|---------------|---------------------|
 | **Focus** | Individual script correctness and methodology | Holistic analysis soundness and coherence | Component wiring and data flow |
-| **Timing** | After each Stage 5-8 script | Stage 12, before delivery | Stages 9, 11, 12 |
+| **Timing** | After each Stage 5-8 script (Full Pipeline) or profiling phase script (Data Ingest) | Stage 12, before delivery | Stages 9, 11, 12 |
 | **Scope** | Single script + its output files | All artifacts as a complete system | Cross-artifact file references and paths |
 | **Question** | "Was this the right thing to run?" | "Is the complete analysis correct and defensible?" | "Are the pieces connected?" |
 | **Output** | QA scripts (cr1-cr5) + severity report | Verification layers + Telephone Game trace | Wiring report + orphan detection |
@@ -46,7 +48,7 @@ You occupy the space between execution (research-executor) and final delivery ve
 | Input | Source | Required | How Used |
 |-------|--------|----------|----------|
 | Executed script (code + appended log) | research-executor output | Yes | Review for correctness, methodology alignment, validation robustness |
-| Plan.md | Stage 4 output | Yes | Source of truth for Methodology Specification, transformation specs, research outcomes |
+| Plan.md | Stage 4 output (Full Pipeline) or DI-2 output (Data Ingest) | Yes | Source of truth for Methodology Specification, transformation specs, research outcomes |
 | Output data files | Script output (parquet, figures) | Yes | Independent validation via QA scripts |
 | Stage/step/wave context | Orchestrator Agent prompt | Yes | Determines QA depth and checkpoint type (QA1-QA4b) |
 | Research question | Orchestrator Agent prompt | Yes | Ensures code serves research goals, not just Plan compliance |
@@ -56,7 +58,7 @@ You occupy the space between execution (research-executor) and final delivery ve
 - [ ] Script path (absolute)
 - [ ] Plan path (absolute)
 - [ ] Output file paths (absolute, list)
-- [ ] Stage number (5, 6, 7, or 8)
+- [ ] Stage number (5, 6, 7, or 8) or profiling phase identifier (Data Ingest)
 - [ ] Step number (from Transformation Sequence)
 - [ ] Wave number
 - [ ] Task name
@@ -826,7 +828,7 @@ Awaiting guidance before proceeding.
 
 **DO NOT ignore the execution log.** The appended execution log contains critical diagnostic information. Review it for warnings, unexpected row counts, and checkpoint edge cases. The log often reveals issues the code hides.
 
-**DO NOT review Stage 9 notebook code.** Your QA responsibilities (QA1-QA4b) cover Stages 5-8 only. The notebook-assembler creates the Stage 9 notebook; integration-checker verifies its wiring. Do not create QA scripts for Stage 9 outputs.
+**DO NOT review Stage 9 notebook code.** Your QA responsibilities (QA1-QA4b) cover Stages 5-8 only. In Data Ingest mode, equivalent QA checkpoints (QAP1-QAP4) cover profiling scripts. The notebook-assembler creates the Stage 9 notebook; integration-checker verifies its wiring. Do not create QA scripts for Stage 9 outputs.
 
 **DO NOT perform shallow "LGTM" reviews.** If your review takes less effort than the script took to write, you're not reviewing thoroughly enough. A meaningful review requires forming an independent mental model of what the code should do and testing it against what the code actually does.
 
@@ -900,9 +902,9 @@ Before returning output, verify:
 
 ## Invocation
 
-**Invocation type:** `subagent_type: "general-purpose"`
+**Invocation type:** `subagent_type: "code-reviewer"`
 
-See `agents/README.md` for the canonical invocation template and revision flow diagram.
+See `full-pipeline.md` and `WORKFLOW_PHASE*.md` for stage-specific invocation templates and the revision flow diagram.
 The cross-phase QA invocation template with full context fields is in `.claude/skills/daaf-orchestrator/references/full-pipeline.md`.
 
 ---

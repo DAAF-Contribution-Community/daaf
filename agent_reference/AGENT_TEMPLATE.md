@@ -1,7 +1,7 @@
 # Agent Definition Template
 
 > **Purpose:** Canonical template for authoring agent protocol files in the DAAF system.
-> All agents in `agents/` MUST follow this structure. Sections marked REQUIRED cannot be omitted.
+> All agents in `.claude/agents/` MUST follow this structure. Sections marked REQUIRED cannot be omitted.
 > Sections marked CONDITIONAL are required only for agents matching the stated criteria.
 > Target length: **400-700 lines** (never exceed 1000).
 
@@ -35,7 +35,7 @@ permissionMode: default                          # Or: plan (read-only agents)
 
 **Purpose:** [One sentence — what this agent does and why it exists in the system.]
 
-**Invocation:** Via Agent tool with `subagent_type: "[general-purpose | Plan]"`
+**Invocation:** Via Agent tool with `subagent_type: "[agent-name]"`
 ```
 
 **Guidelines:**
@@ -383,19 +383,16 @@ Before returning output, verify:
 ```markdown
 ## Invocation
 
-**Invocation type:** `subagent_type: "[general-purpose | Plan]"`
+**Invocation type:** `subagent_type: "[agent-name]"`
 
-See `agents/README.md` for the canonical invocation template.
-[If stage-specific template exists:]
-The stage-specific template with full context fields is in `agent_reference/WORKFLOW_PHASE[N]_[NAME].md`.
+The stage-specific invocation template with full context fields is in the relevant `agent_reference/WORKFLOW_PHASE[N]_[NAME].md` or mode reference file.
 ```
 
 **Guidelines:**
-- Points to `agents/README.md` as the single source of truth for invocation templates
 - Specifies the `subagent_type` for quick reference
-- References the relevant WORKFLOW_PHASE file for stage-specific context fields
-- The canonical template in README.md must map to Upstream Inputs (Section 3)
-- Do NOT duplicate the full Agent() call syntax here — that lives in README.md
+- References the relevant WORKFLOW_PHASE file or mode reference file for stage-specific context fields and invocation templates
+- The invocation template must map to Upstream Inputs (Section 3)
+- Do NOT duplicate the full Agent() call syntax here — that lives in the WORKFLOW_PHASE or mode reference files
 
 ---
 

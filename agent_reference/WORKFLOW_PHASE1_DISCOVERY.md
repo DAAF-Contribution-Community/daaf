@@ -290,9 +290,7 @@ After completing the skill's Required Actions, return findings using the format 
 ```python
 Agent({
     description: "Stage 3: Source Deep-Dive - {source_name}",
-    prompt: """You are a Source Researcher. Follow the protocol in `{BASE_DIR}/agents/source-researcher.md`.
-
-**BASE_DIR:** {BASE_DIR}
+    prompt: """**BASE_DIR:** {BASE_DIR}
 All relative paths in referenced files resolve from BASE_DIR.
 
 Call the skill tool with name 'data-scientist'.
@@ -355,13 +353,13 @@ Return findings in this structure:
 **LOW Confidence Items Requiring Resolution:** [list or "None"]
 
 After completing the skill's Required Actions, return findings using the format above.""",
-    subagent_type: "Plan"
+    subagent_type: "source-researcher"
 })
 ```
 
 ### Output Format
 
-**Output Format:** See `agents/source-researcher.md` > "Output Format" section for the authoritative output structure. The source-researcher agent returns a structured report with five deliverables (SOURCE_SUMMARY, VARIABLES, CAVEATS, PATTERNS, PITFALLS) plus confidence assessment and learning signal.
+**Output Format:** See `.claude/agents/source-researcher.md` > "Output Format" section for the authoritative output structure. The source-researcher agent returns a structured report with five deliverables (SOURCE_SUMMARY, VARIABLES, CAVEATS, PATTERNS, PITFALLS) plus confidence assessment and learning signal.
 
 ### Gate Criteria (G3)
 
@@ -403,11 +401,11 @@ After completing the skill's Required Actions, return findings using the format 
 
 **Purpose:** Consolidate Stage 2-3 findings into unified planning guidance
 **Stage:** 3.5 (after all Stage 3 source research completes)
-**Agent:** `research-synthesizer` (see `agents/research-synthesizer.md`)
+**Agent:** `research-synthesizer` (see `.claude/agents/research-synthesizer.md`)
 **Subagent:** general-purpose
 **Skills:** `data-scientist`
 
-For the complete invocation pattern, see `agents/research-synthesizer.md` Invocation section.
+For the complete invocation pattern, see `.claude/agents/research-synthesizer.md` Invocation section.
 The orchestrator provides all Stage 2 and Stage 3 outputs as context. The agent returns
 a unified synthesis with cross-source conflict resolution and join feasibility assessment.
 
@@ -420,9 +418,7 @@ assessing data quality findings and join feasibility across sources.
 ```python
 Agent({
     description: "Stage 3.5: Findings Synthesis",
-    prompt: """You are a research-synthesizer. Follow the protocol in `{BASE_DIR}/agents/research-synthesizer.md`.
-
-**BASE_DIR:** {BASE_DIR}
+    prompt: """**BASE_DIR:** {BASE_DIR}
 All relative paths in referenced files resolve from BASE_DIR.
 
 **STAGE 2 FINDINGS:**
@@ -441,7 +437,7 @@ Consolidate these parallel findings into a unified context for Plan creation.
 4. Consolidated Limitations
 5. Recommended Approach
 """,
-    subagent_type: "general-purpose"
+    subagent_type: "research-synthesizer"
 })
 ```
 

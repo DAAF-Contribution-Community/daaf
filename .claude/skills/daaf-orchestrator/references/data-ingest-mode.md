@@ -503,14 +503,12 @@ Invocation templates for all profiling, QA, and skill authoring subagent calls a
 ```python
 Agent({
     description: "Phase A: Structural Discovery (scripts 01-03)",
-    prompt: """You are a Data Ingest Specialist. Follow the protocol in `{BASE_DIR}/agents/data-ingest.md`.
-
-**BASE_DIR:** {BASE_DIR}
+    prompt: """**BASE_DIR:** {BASE_DIR}
 All relative paths in referenced files resolve from BASE_DIR.
 
 Call the skill tool with name 'data-scientist'.
 
-**AGENT PROTOCOL:** Read `agents/data-ingest.md`. Execute ONLY Phase A work (scripts 01-03).
+**AGENT PROTOCOL:** Read `.claude/agents/data-ingest.md`. Execute ONLY Phase A work (scripts 01-03).
 Read `agent_reference/SCRIPT_EXECUTION_REFERENCE.md` for the file-first protocol.
 
 **CONTEXT:**
@@ -536,7 +534,7 @@ Execute: bash {PROJECT_DIR}/scripts/run_with_capture.sh {PROJECT_DIR}/scripts/pr
 - Script 05/06/08: [EXECUTE/SKIP] — [reason]
 ### Scripts Created
 - [paths with execution status]""",
-    subagent_type: "general-purpose"
+    subagent_type: "data-ingest"
 })
 ```
 
@@ -547,14 +545,12 @@ Execute: bash {PROJECT_DIR}/scripts/run_with_capture.sh {PROJECT_DIR}/scripts/pr
 ```python
 Agent({
     description: "Phase B: Statistical Deep Dive (scripts 04-06)",
-    prompt: """You are a Data Ingest Specialist. Follow the protocol in `{BASE_DIR}/agents/data-ingest.md`.
-
-**BASE_DIR:** {BASE_DIR}
+    prompt: """**BASE_DIR:** {BASE_DIR}
 All relative paths in referenced files resolve from BASE_DIR.
 
 Call the skill tool with name 'data-scientist'.
 
-**AGENT PROTOCOL:** Read `agents/data-ingest.md`. Execute ONLY Phase B work (scripts 04-06).
+**AGENT PROTOCOL:** Read `.claude/agents/data-ingest.md`. Execute ONLY Phase B work (scripts 04-06).
 Read `agent_reference/SCRIPT_EXECUTION_REFERENCE.md` for the file-first protocol.
 
 **CONTEXT:**
@@ -576,7 +572,7 @@ Execute: bash {PROJECT_DIR}/scripts/run_with_capture.sh {PROJECT_DIR}/scripts/pr
 - CPP2 Status, distribution summary, outlier summary, multimodality
 - Temporal/entity coverage: [executed/skipped — key findings]
 ### Scripts Created""",
-    subagent_type: "general-purpose"
+    subagent_type: "data-ingest"
 })
 ```
 
@@ -587,14 +583,12 @@ Execute: bash {PROJECT_DIR}/scripts/run_with_capture.sh {PROJECT_DIR}/scripts/pr
 ```python
 Agent({
     description: "Phase C: Relational Analysis (scripts 07-09)",
-    prompt: """You are a Data Ingest Specialist. Follow the protocol in `{BASE_DIR}/agents/data-ingest.md`.
-
-**BASE_DIR:** {BASE_DIR}
+    prompt: """**BASE_DIR:** {BASE_DIR}
 All relative paths in referenced files resolve from BASE_DIR.
 
 Call the skill tool with name 'data-scientist'.
 
-**AGENT PROTOCOL:** Read `agents/data-ingest.md`. Execute ONLY Phase C work (scripts 07-09).
+**AGENT PROTOCOL:** Read `.claude/agents/data-ingest.md`. Execute ONLY Phase C work (scripts 07-09).
 Read `agent_reference/SCRIPT_EXECUTION_REFERENCE.md` for the file-first protocol.
 
 **CONTEXT:**
@@ -616,7 +610,7 @@ Execute: bash {PROJECT_DIR}/scripts/run_with_capture.sh {PROJECT_DIR}/scripts/pr
 - CPP3 Status, recommended key, dependencies, high correlations
 - Coded missing values found, anomaly catalog counts, duplicate rows
 ### Scripts Created""",
-    subagent_type: "general-purpose"
+    subagent_type: "data-ingest"
 })
 ```
 
@@ -627,14 +621,12 @@ Execute: bash {PROJECT_DIR}/scripts/run_with_capture.sh {PROJECT_DIR}/scripts/pr
 ```python
 Agent({
     description: "Phase D: Interpretation & Reconciliation (scripts 10-12)",
-    prompt: """You are a Data Ingest Specialist. Follow the protocol in `{BASE_DIR}/agents/data-ingest.md`.
-
-**BASE_DIR:** {BASE_DIR}
+    prompt: """**BASE_DIR:** {BASE_DIR}
 All relative paths in referenced files resolve from BASE_DIR.
 
 Call the skill tool with name 'data-scientist'.
 
-**AGENT PROTOCOL:** Read `agents/data-ingest.md`. Execute ONLY Phase D work (scripts 10-12).
+**AGENT PROTOCOL:** Read `.claude/agents/data-ingest.md`. Execute ONLY Phase D work (scripts 10-12).
 Read `agent_reference/SCRIPT_EXECUTION_REFERENCE.md` for the file-first protocol.
 
 **CONTEXT:**
@@ -659,7 +651,7 @@ Execute: bash {PROJECT_DIR}/scripts/run_with_capture.sh {PROJECT_DIR}/scripts/pr
 ### Preliminary Interpretations (top 10)
 | Column | Interpretation | Confidence | Basis |
 ### Scripts Created""",
-    subagent_type: "general-purpose"
+    subagent_type: "data-ingest"
 })
 ```
 
@@ -670,9 +662,7 @@ Invoked after each profiling phase completes. Orchestrator substitutes phase-spe
 ```python
 Agent({
     description: "QA Review: Phase {A/B/C/D} — {Phase Name}",
-    prompt: """You are a Code Reviewer. Follow the protocol in `{BASE_DIR}/agents/code-reviewer.md`.
-
-**BASE_DIR:** {BASE_DIR}
+    prompt: """**BASE_DIR:** {BASE_DIR}
 All relative paths in referenced files resolve from BASE_DIR.
 
 **SCRIPTS TO REVIEW:**
@@ -702,7 +692,7 @@ Plan_Tasks.md: {plan_tasks_path}
 **Checks Performed:** [table]
 **Issues Found:** BLOCKER / WARNING / INFO lists
 **Recommendation:** [PROCEED | REVISION_REQUIRED | ESCALATE]""",
-    subagent_type: "general-purpose"
+    subagent_type: "code-reviewer"
 })
 ```
 
@@ -715,9 +705,7 @@ Invoked at Stage DI-7 after PSU-DI2 user confirmation of preliminary interpretat
 ```python
 Agent({
     description: "Stage DI-7: Skill Authoring for {skill_name}",
-    prompt: """You are a Data Ingest Specialist performing skill authoring. Follow `{BASE_DIR}/agents/data-ingest.md`.
-
-**BASE_DIR:** {BASE_DIR}
+    prompt: """**BASE_DIR:** {BASE_DIR}
 All relative paths in referenced files resolve from BASE_DIR.
 
 Call the skill tool with name 'data-scientist'.
@@ -755,7 +743,7 @@ Read `agent_reference/DATA_SOURCE_SKILL_TEMPLATE.md` for the canonical 12-sectio
 **OUTPUT FORMAT (1000-word hard cap):**
 ### Skill Authoring: {skill_name}
 - CPP-SKILL Status, line count, reference files, compliance, registration guidance""",
-    subagent_type: "general-purpose"
+    subagent_type: "data-ingest"
 })
 ```
 

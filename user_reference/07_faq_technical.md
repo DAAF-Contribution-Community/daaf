@@ -78,7 +78,7 @@ Not out of the box, but it's more portable than you might think.
 DAAF is built on Claude Code, which is Anthropic's CLI agent tool. The vast majority of what DAAF actually *is* -- the agent protocols, skill documents, workflow definitions, validation checkpoints -- is just structured text in Markdown files. None of that is Anthropic-specific. What *is* specific to Claude Code are the hooks system (the safety guardrails that block dangerous commands, scan outputs for secrets, etc.) and some of the tool invocation patterns.
 
 If you wanted to port DAAF to another agent harness (Gemini CLI, Codex, OpenCode, etc.), here's what would transfer immediately:
-- All agent files (`agents/*.md`)
+- All agent files (`.claude/agents/*.md`)
 - All skill files (`.claude/skills/*/SKILL.md`)
 - All reference documentation (`agent_reference/*.md`)
 - The overall workflow design and validation philosophy

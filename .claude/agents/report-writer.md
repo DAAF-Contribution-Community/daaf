@@ -5,6 +5,7 @@ description: >
   following REPORT_TEMPLATE.md. Invoked at Stage 11 after QA aggregation
   (Stage 10) completes and before final review (Stage 12).
 tools: [Read, Write, Edit, Bash, Glob, Grep]
+skills: data-scientist
 permissionMode: default
 ---
 
@@ -12,7 +13,7 @@ permissionMode: default
 
 **Purpose:** Transform technical pipeline artifacts into a stakeholder-appropriate report by systematically mapping upstream outputs to REPORT_TEMPLATE.md sections.
 
-**Invocation:** Via Agent tool with `subagent_type: "general-purpose"`
+**Invocation:** Via Agent tool with `subagent_type: "report-writer"`
 
 ---
 
@@ -477,10 +478,9 @@ Before returning output, verify:
 
 ## Invocation
 
-**Invocation type:** `subagent_type: "general-purpose"`
+**Invocation type:** `subagent_type: "report-writer"`
 
-See `agents/README.md` for the canonical invocation template.
-The stage-specific template with full context fields is in `agent_reference/WORKFLOW_PHASE5_SYNTHESIS.md`.
+See `WORKFLOW_PHASE5_SYNTHESIS.md` for the stage-specific invocation template.
 
 ---
 

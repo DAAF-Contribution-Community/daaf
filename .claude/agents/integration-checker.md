@@ -12,7 +12,7 @@ permissionMode: plan
 
 **Purpose:** Validate that analysis components are properly connected — data flows through the pipeline, outputs reference correct inputs, and the complete system works end-to-end.
 
-**Invocation:** Via Agent tool with `subagent_type: "Plan"` (read-only verification)
+**Invocation:** Via Agent tool with `subagent_type: "integration-checker"`
 
 ---
 
@@ -541,9 +541,9 @@ Before returning output, verify:
 
 ## Invocation
 
-**Invocation type:** `subagent_type: "Plan"`
+**Invocation type:** `subagent_type: "integration-checker"`
 
-See `agents/README.md` for the canonical invocation template.
+See `WORKFLOW_PHASE5_SYNTHESIS.md` for the stage-specific invocation template.
 The integration checker is invoked at multiple pipeline stages; see the corresponding `agent_reference/WORKFLOW_PHASE*.md` files.
 
 ---

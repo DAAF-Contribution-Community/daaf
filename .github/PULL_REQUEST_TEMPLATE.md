@@ -9,7 +9,7 @@
 - [ ] Bug fix (non-breaking change that fixes an issue)
 - [ ] New feature (non-breaking change that adds functionality)
 - [ ] New or modified skill (.claude/skills/)
-- [ ] New or modified agent (agents/)
+- [ ] New or modified agent (.claude/agents/)
 - [ ] Documentation update
 - [ ] Refactoring (no functional change)
 - [ ] Breaking change (existing functionality would not work as expected)
@@ -20,7 +20,7 @@
 
 - [ ] CLAUDE.md (universal execution rules)
 - [ ] Orchestrator skill (.claude/skills/daaf-orchestrator/)
-- [ ] Agent protocols (agents/)
+- [ ] Agent protocols (.claude/agents/)
 - [ ] Agent reference files (agent_reference/)
 - [ ] Skills (.claude/skills/)
 - [ ] Hooks (.claude/hooks/)
