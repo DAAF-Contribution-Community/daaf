@@ -25,6 +25,13 @@ permissionMode: default                          # Or: plan (read-only agents)
 # maxTurns: 50
 # skills: skill-a          # Skill to preload (use YAML array [skill-a, skill-b] if multiple)
 # memory: project          # user | project | local
+# hooks:                   # Per-agent hook registration (scoped to this agent only)
+#   PreToolUse:
+#     - matcher: "Bash"
+#       hooks:
+#         - type: command
+#           command: "$CLAUDE_PROJECT_DIR/.claude/hooks/hook-name.sh"
+#           timeout: 5
 ---
 ```
 
@@ -459,3 +466,4 @@ These elements MUST be identical across all agents:
 | Terminology | "STOP Conditions" (not "Escalation", not "When to Escalate") |
 | Path resolution | All paths absolute; BASE_DIR in every Agent prompt |
 | Frontmatter description | Third person; includes what AND when |
+| Per-agent hooks | Use `hooks` frontmatter for agent-scoped enforcement; see `agent-authoring` skill |

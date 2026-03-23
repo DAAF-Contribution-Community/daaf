@@ -8,6 +8,13 @@ description: >
 tools: [Read, Write, Edit, Bash, Glob, Grep]
 skills: data-scientist
 permissionMode: default
+hooks:
+  PreToolUse:
+    - matcher: "Bash"
+      hooks:
+        - type: command
+          command: "$CLAUDE_PROJECT_DIR/.claude/hooks/enforce-file-first.sh"
+          timeout: 5
 ---
 
 # Debugger Agent

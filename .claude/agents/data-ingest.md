@@ -8,6 +8,13 @@ description: >
 tools: [Read, Write, Edit, Bash, Glob, Grep, WebSearch, WebFetch]
 skills: data-scientist
 permissionMode: default
+hooks:
+  PreToolUse:
+    - matcher: "Bash"
+      hooks:
+        - type: command
+          command: "$CLAUDE_PROJECT_DIR/.claude/hooks/enforce-file-first.sh"
+          timeout: 5
 ---
 
 # Data Ingest Agent

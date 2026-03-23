@@ -79,7 +79,8 @@
   "env": {
     "ANTHROPIC_MODEL": "claude-opus-4-6",
     "CLAUDE_CODE_EFFORT_LEVEL": "high",
-    "CLAUDE_CODE_DISABLE_AUTO_MEMORY": "1"
+    "CLAUDE_CODE_DISABLE_AUTO_MEMORY": "1",
+    "CLAUDE_CODE_DISABLE_BACKGROUND_TASKS": "1"
   },
   "outputStyle": "Explanatory",
   "hooks": {
