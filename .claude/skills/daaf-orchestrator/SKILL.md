@@ -52,7 +52,7 @@ Every conversation begins with a brief preamble before mode classification. Expa
 When a user asks for more information, expand naturally on these points:
 
 - DAAF structures analysis into phases with human oversight — you pause at each milestone for feedback rather than running start-to-finish
-- Four modes: Full Analysis (complete pipeline, 4 checkpoints), Data Discovery (lightweight exploration, no code), Quick Lookup (focused answer), Revision (new version of existing work)
+- Five modes: Full Analysis (complete pipeline, 4 checkpoints), Data Discovery (lightweight exploration, no code), Quick Lookup (focused answer), Revision (new version of existing work), Data Ingest (profile new datasets, create reusable data source skills)
 - The user is always in control — you explain what to expect and wait for go-ahead
 
 For more depth, consult `{BASE_DIR}/user_reference/02_understanding_daaf.md` and summarize relevant sections. Point the user to the file path if they want to read it directly. After orienting, proceed to mode classification.
@@ -61,7 +61,7 @@ For more depth, consult `{BASE_DIR}/user_reference/02_understanding_daaf.md` and
 
 ## Engagement Mode Classification
 
-Before executing any user request, classify it into one of four engagement modes. This classification determines your workflow, outputs, and which references to load.
+Before executing any user request, classify it into one of five engagement modes. This classification determines your workflow, outputs, and which references to load.
 
 ### Pre-Check: Session Recovery
 
@@ -84,9 +84,11 @@ User Request
     ├─ References existing analysis that needs changes?
     │   └─ YES → Revision Mode
     │
+    ├─ Asks to add/ingest a new dataset, or profile raw data?
+    │   └─ YES → Data Ingest Mode
+    │
     └─ None of the above?
-        ├─ Asks to add/ingest a new dataset → Invoke data-ingest agent
-        └─ Otherwise → Ask clarifying questions to determine mode,
+        └─ Ask clarifying questions to determine mode,
            or explain available modes to the user
 ```
 
@@ -100,6 +102,7 @@ Keywords are heuristics, not deterministic. When multiple modes seem applicable,
 | **Discovery** | "what data", "is it possible", "feasibility", "explore" | Findings summary | `discovery-mode.md` |
 | **Targeted Assist** | "what are the values", "how is X defined", "lookup" | Direct answer | `targeted-assist-mode.md` |
 | **Revision** | "fix", "update", "change", "modify the analysis" | Updated Plan.md + Plan_Tasks.md + Notebook + Report (new version) | `revision-mode.md` |
+| **Data Ingest** | "ingest", "profile", "new dataset", "add data source" | SKILL.md + Research Project with profiling scripts | `data-ingest-mode.md` |
 
 ### Mode Confirmation Gate (MANDATORY)
 
@@ -151,13 +154,19 @@ Even for simple lookups, always confirm — the user may want broader context th
 **Revision:**
 > [Classification reasoning]. [What will change]. New version — original untouched. **Shall I proceed?**
 
+**Data Ingest:**
+> [Classification reasoning]. 3 phases with 2 checkpoints — I'll profile your data thoroughly, then you review the findings and interpretations before I create the Skill that'll allow us to use the dataset in all future work with DAAF. I'll also create a project folder that contains all the reproducible data exploration scripts. **Shall I proceed?**
+
 ### Mode Escalation Paths
 
 | From Mode | To Mode | Trigger |
 |-----------|---------|---------|
 | Discovery | Full Pipeline | Findings suggest analysis is feasible and valuable |
+| Discovery | Data Ingest | Data file available but no skill exists for it |
 | Targeted Assist | Discovery | Question reveals broader data exploration needed |
 | Targeted Assist | Full Pipeline | Lookup reveals actionable analysis opportunity |
+| Data Ingest | Full Pipeline | Skill created, user wants to analyze the data |
+| Full Pipeline (Phase 1) | Data Ingest | Required data source has no existing skill |
 
 When escalation is appropriate, propose it explicitly:
 > "Based on these findings, would you like me to proceed with [escalated mode]?"
@@ -233,6 +242,7 @@ During any mode, watch for signals that the user needs additional guidance and r
 | `{SKILL_REFS}/discovery-mode.md` | Discovery workflow, exploration patterns, escalation | After confirming Discovery mode |
 | `{SKILL_REFS}/targeted-assist-mode.md` | Single skill invocation, response format | After confirming Targeted Assist mode |
 | `{SKILL_REFS}/revision-mode.md` | Version control, revision classification, re-run guidance | After confirming Revision mode |
+| `{SKILL_REFS}/data-ingest-mode.md` | Data Ingest workflow, gates, PSU templates, profiling protocol overview | After confirming Data Ingest mode |
 | `{SKILL_REFS}/skill-catalog.md` | Skill quick reference, data source lookup tables | When constructing subagent prompts or answering data source questions |
 | `{BASE_DIR}/agent_reference/MODE_TEMPLATE.md` | Mode addition template and checklist | When adding new engagement modes |
 
@@ -263,9 +273,13 @@ Mode Confirmed
     │   └─ Read: {SKILL_REFS}/targeted-assist-mode.md
     │          └─ Skill/source lookup: Read {SKILL_REFS}/skill-catalog.md
     │
-    └─ Revision Mode
-        └─ Read: {SKILL_REFS}/revision-mode.md
-               └─ (References full-pipeline.md internally for re-execution)
+    ├─ Revision Mode
+    │   └─ Read: {SKILL_REFS}/revision-mode.md
+    │          └─ (References full-pipeline.md internally for re-execution)
+    │
+    └─ Data Ingest Mode
+        └─ Read: {SKILL_REFS}/data-ingest-mode.md
+               └─ Error handling: Read {BASE_DIR}/agent_reference/ERROR_RECOVERY.md
 ```
 
 ---

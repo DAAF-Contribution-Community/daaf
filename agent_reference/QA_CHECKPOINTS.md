@@ -865,6 +865,90 @@ QA checkpoints can trigger STOP conditions that prevent proceeding:
 
 ---
 
+## Profiling QA Checkpoints (QAP1-QAP4)
+
+> **Mode:** These checkpoints apply to Data Ingest Mode only. They are the profiling equivalent of QA1-QA4b. See `.claude/skills/daaf-orchestrator/references/data-ingest-mode.md` for complete profiling protocol details.
+
+### QAP Overview
+
+| Checkpoint | Phase | Focus | BLOCKER When |
+|------------|-------|-------|-------------|
+| QAP1 | A (Structural) | Load fidelity, schema accuracy | Wrong delimiter/encoding, type inference errors, row/column count mismatch |
+| QAP2 | B (Statistical) | Statistical characterization | Distribution claims wrong, temporal breaks missed, coverage gaps undetected |
+| QAP3 | C (Relational) | Relationship discovery | Key uniqueness misidentified, dependencies missed, anomalies uncatalogued |
+| QAP4 | D (Interpretation) | Semantic accuracy | Interpretations stated as facts (missing [PRELIMINARY]), reconciliation gaps |
+
+### QAP1: Post-Structural (Phase A)
+
+**Trigger:** After scripts 01-03 complete and CPP1 passes.
+
+**Default Checks:**
+| Check | Validates | BLOCKER If |
+|-------|-----------|------------|
+| Re-load verification | Load with alternative parameters produces same data | Row/column counts differ across methods |
+| Sample row spot-check | Random rows match raw file inspection | Values corrupted or truncated |
+| Encoding verification | No mojibake or replacement characters | Non-ASCII characters corrupted |
+| Schema stability | Re-running type inference produces same types | Types change between runs |
+| Column coverage | Every column appears in profile output | Any column missing from profile |
+
+### QAP2: Post-Statistical (Phase B)
+
+**Trigger:** After scripts 04-06 (conditional) complete and CPP2 passes.
+
+**Default Checks:**
+| Check | Validates | BLOCKER If |
+|-------|-----------|------------|
+| Independent stat verification | Recompute mean/median for random columns | Independently computed stat differs |
+| Distribution label accuracy | Distribution claims pass appropriate tests | "Normal" claim fails normality test at p < 0.01 |
+| Outlier boundary reasonableness | IQR fences are sensible | Fences exclude >20% of data without explanation |
+| Temporal break detection | Obvious structural breaks are flagged | Dramatic year-to-year changes missed |
+| Coverage completeness | Entity/geographic coverage is assessed | Known universe not checked when identifiers present |
+
+### QAP3: Post-Relational (Phase C)
+
+**Trigger:** After scripts 07-09 (conditional) complete and CPP3 passes.
+
+**Default Checks:**
+| Check | Validates | BLOCKER If |
+|-------|-----------|------------|
+| Key uniqueness counter-check | Claimed keys tested independently | Claimed unique key has duplicates |
+| Dependency verification | Functional dependencies are real | Counter-examples exist for claimed A->B dependency |
+| Anomaly catalog completeness | All major anomalies found | Known pattern (duplicates, coded values) present but uncatalogued |
+| Cross-column consistency | Consistency rules are complete | Obvious logical constraint violated but not flagged |
+| Coded value scan completeness | Standard sentinels checked | Numeric columns not scanned for -1, -2, -3, -9, -99, -999 |
+
+### QAP4: Post-Interpretation (Phase D)
+
+**Trigger:** After scripts 10-12 (conditional) complete and CPP4 passes.
+
+**Default Checks:**
+| Check | Validates | BLOCKER If |
+|-------|-----------|------------|
+| PRELIMINARY marking | All interpretations hedged | Any interpretation stated as fact without [PRELIMINARY] marker |
+| Documentation coverage | All documented claims checked against data | Documented column present but not reconciled |
+| Discrepancy evidence | Every discrepancy has actual-vs-documented values | Discrepancy noted without showing evidence |
+| Synthesis completeness | All executed scripts' findings aggregated | Synthesis report missing findings from any profiling script |
+| Quality score reasonableness | Quality dimensions scored consistently | Score contradicts observed evidence |
+
+### QAP Severity Classification
+
+Profiling QA uses the same severity levels as analysis QA:
+- **BLOCKER:** Data characterization is incorrect, profiling methodology violated, or output is unreliable
+- **WARNING:** Quality concern or minor gap that should be documented but does not block progression
+- **INFO:** Suggestion or observation for improvement
+
+### QAP Script Naming Convention
+
+```
+scripts/cr/
+  profile_structural_cr{N}.py     # QAP1 review scripts
+  profile_statistical_cr{N}.py    # QAP2 review scripts
+  profile_relational_cr{N}.py     # QAP3 review scripts
+  profile_interpretation_cr{N}.py # QAP4 review scripts
+```
+
+---
+
 ## Anti-Patterns
 
 **DO NOT skip QA for "simple" scripts.** Even simple fetch or filter operations can produce surprising results. Every Stage 5-8 script gets a QA checkpoint.

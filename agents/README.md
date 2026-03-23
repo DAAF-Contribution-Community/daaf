@@ -56,7 +56,7 @@ See `CLAUDE.md` > "Bash Command Rule: One Command Per Call" for the canonical ru
 | **debugger** | Diagnose data quality issues and analysis failures using scientific hypothesis-testing methodology | `general-purpose` | Any (on error) | Error message/symptom, failed script path, Plan.md, Plan_Tasks.md (optional), last successful operation | Root cause report with hypothesis log and verified fix |
 | **notebook-assembler** | Compile scripts into Marimo notebook via VERBATIM copy (NO dashboards, NO widgets, NO new code) | `general-purpose` | 9 | Completed scripts (stages 5-8), Plan.md, data files, figure files, project path | Marimo `.py` notebook with script walkthroughs and data inspection cells |
 | **integration-checker** | Validate component wiring: data flows, file references, and orphan detection | `Plan` | 9, 11, 12 | Plan.md, Notebook, Report, project folder, script-to-output mappings | Integration check report: CONNECTED / ISSUES FOUND with flow diagrams |
-| **data-ingest** | Profile new datasets and author comprehensive Skills documenting structure, values, and quality | `general-purpose` | Pre-pipeline (on demand) | Data file path + format, target skill name, intended use, domain context, optional docs | New Skill at `.claude/skills/` + Data Ingest Report |
+| **data-ingest** | Profile new datasets and produce comprehensive findings for skill authoring | `general-purpose` | Data Ingest Mode (Stages DI-3 to DI-6) | Data file path + format, target skill name, intended use, domain context, optional docs | Phase-specific profiling findings for orchestrator |
 | **report-writer** | Synthesize pipeline artifacts into stakeholder report following REPORT_TEMPLATE.md | `general-purpose` | 11 | Plan.md, Notebook, STATE.md, LEARNINGS.md, QA summary, figures, citations, dataset metadata | Report.md (stakeholder prose) |
 
 ### Commonly Confused Pairs
@@ -68,7 +68,7 @@ When adding a new agent, ensure it doesn't overlap with these frequently confuse
 | **code-reviewer** vs **data-verifier** | Reviewer validates individual scripts *during* execution (Stages 5-8); verifier performs adversarial whole-analysis check *after* completion (Stage 12) |
 | **code-reviewer** vs **debugger** | Reviewer validates *correctness* of working code; debugger diagnoses *failures* when code doesn't work |
 | **source-researcher** vs **research-synthesizer** | Researcher examines a *single* source in depth; synthesizer *combines* findings across multiple sources |
-| **source-researcher** vs **data-ingest** | Researcher examines *existing* skills for a known source; ingest *creates new* skills from raw data files |
+| **source-researcher** vs **data-ingest** | Researcher examines *existing* skills for a known source; ingest profiles data across four phases; skill authoring is handled by a separate subagent at Stage DI-7 |
 | **data-planner** vs **plan-checker** | Planner *creates* plans; checker *validates* plans (never fixes them) |
 | **notebook-assembler** vs **integration-checker** | Assembler *builds* the notebook (verbatim script compilation); checker *verifies* wiring between components |
 | **report-writer** vs **research-synthesizer** | Writer synthesizes *post-execution* artifacts into a stakeholder report (Stage 11); synthesizer combines *pre-execution* research findings into planning guidance (Stage 3.5) |
@@ -290,7 +290,8 @@ Shows which agents produce output consumed by other agents:
 | **report-writer** | integration-checker | Report.md (stakeholder report following REPORT_TEMPLATE.md) | After Stage 11 completes |
 | **report-writer** | data-verifier | Report.md (stakeholder report) | Before Stage 12 verification |
 | **report-writer** | Orchestrator | Status report (COMPLETE / COMPLETE_WITH_GAPS / BLOCKED) | After report generation |
-| **data-ingest** | Orchestrator | New Skill at `.claude/skills/` + Data Ingest Report | Pre-pipeline, on demand |
+| **Orchestrator** | data-ingest | Phase assignment (A/B/C/D), prior phase findings, conditional script decisions | Stages DI-3 to DI-6 (per-phase) |
+| **data-ingest** | Orchestrator | Phase-specific profiling findings, confidence assessment, issues | Stages DI-3 to DI-6 (per-phase) |
 
 ---
 
@@ -976,42 +977,47 @@ code-reviewer returns BLOCKER
 
 ### data-ingest
 
-**Use when:** User provides a new data file (CSV, parquet, Excel, TSV) for profiling and integration into the workflow.
+**Use when:** The orchestrator is running Data Ingest Mode and needs to dispatch a profiling phase (A/B/C/D) for a new data file. Each phase is a separate subagent invocation managed by the orchestrator.
 
-**Purpose:** Exhaustively profile new datasets and create comprehensive Skills that document:
-- Data structure, types, and quality characteristics
-- Coded values and their meanings
-- **Preliminary semantic interpretations** (variable meanings, flagged for user review)
-- Discrepancies between documentation and actual data
-- Usage patterns and loading examples
+**Purpose:** Profile new datasets across four orchestrator-managed phases:
+- **Phase A:** Structure & schema profiling (types, shapes, nulls)
+- **Phase B:** Value distribution & quality profiling (uniques, outliers, coded values)
+- **Phase C:** Cross-column relationships & semantic interpretation
+- **Phase D:** Documentation reconciliation (docs vs. actual data)
 
 **Key behaviors:**
-- Two-mode investigation: Deductive (data -> understanding) + Documentation reconciliation (docs -> verification)
-- **Semantic interpretation:** Infers likely variable meanings from names, values, patterns (marked PRELIMINARY)
-- **Website documentation support:** Can fetch and parse documentation from provided URLs
+- Operates as an orchestrator-managed profiling specialist (one phase per invocation)
+- Receives phase assignment and prior phase findings from orchestrator
 - Data file is source of truth; documentation claims are verified against data
-- Creates complete skill with references and archived profiling scripts
-- Reports all discrepancies AND preliminary interpretations for user review
+- Returns phase-specific profiling findings with confidence assessment
+- Skill authoring is NOT performed by this agent (handled at Stage DI-7 by a separate subagent)
 
-**Invocation pattern:**
+**Invocation pattern (phase-specific):**
 ```python
 Agent({
-    description: "Ingest: {data_name}",
+    description: "Data Ingest Phase {profiling_phase}: {data_name}",
     prompt: """You are a Data Ingest Specialist. Follow the protocol in
     `{BASE_DIR}/agents/data-ingest.md`.
 
     **BASE_DIR:** {BASE_DIR}
     All relative paths in referenced files resolve from BASE_DIR.
 
-    First, call the skill tool with name 'skill-authoring' to understand
-    generic skill structure. Then read
-    `{BASE_DIR}/agent_reference/DATA_SOURCE_SKILL_TEMPLATE.md` for the
-    canonical data source skill section order. The template OVERRIDES the
-    generic skill-authoring layout.
+    Call the skill tool with name 'data-scientist'.
+
+    **PROFILING PHASE:** {profiling_phase}  # A, B, C, or D
 
     **DATA FILE:**
     Path: {data_file_path}
     Format: {csv | parquet | xlsx | tsv}
+
+    **PRIOR PHASE FINDINGS:**
+    {prior_phase_findings}  # Empty for Phase A; cumulative for B/C/D
+
+    **CONDITIONAL SCRIPT DECISIONS:**
+    {conditional_script_decisions}  # Orchestrator decisions on optional scripts
+
+    **PROJECT SCRIPT DIR:** {project_script_dir}
+    **RUN WITH CAPTURE PATH:** {run_with_capture_path}
 
     **DOCUMENTATION FILES:** (if any)
     - {doc_path_1}: {description}
@@ -1022,19 +1028,15 @@ Agent({
 
     **SKILL CONFIGURATION:**
     Target skill name: {skill-name}
-    Intended use: {how the data will be used}
-    Priority columns: {columns requiring extra attention}
+    Data pull date: {data_pull_date}
     Domain context: {domain for semantic interpretation}
+    Priority columns: {columns requiring extra attention}
 
     **TASK:**
-    1. Profile the data file exhaustively (Mode 1: Phases 1-5)
-    2. Generate preliminary semantic interpretations (Phase 5)
-    3. Fetch website documentation (if URL provided)
-    4. Read and reconcile local documentation (Mode 2: if docs provided)
-    5. Create complete skill at `.claude/skills/{skill-name}/`
-    6. Report all discrepancies AND preliminary interpretations for review
-
-    Return findings using the Data Ingest Output Format.""",
+    Execute profiling Phase {profiling_phase} for this dataset.
+    Write scripts to {project_script_dir}. Execute via
+    `bash {run_with_capture_path} <script_path>`.
+    Return phase-specific findings using the Data Ingest Output Format.""",
     subagent_type: "general-purpose"
 })
 ```
@@ -1060,7 +1062,9 @@ Some tasks benefit from combining an agent protocol with skill knowledge. The do
 | Generate report (Stage 11) | report-writer | data-scientist |
 | Final verification (Stage 12) | data-verifier | data-scientist |
 | Diagnose failure (any) | debugger | data-scientist, polars |
-| Ingest new dataset (pre-pipeline) | data-ingest | skill-authoring, polars |
+| Profile new dataset (Data Ingest Mode, Stages DI-3 to DI-6) | data-ingest | data-scientist, polars |
+
+> **Stage DI-7 skill authoring:** Stage DI-7 uses a general-purpose subagent with the `skill-authoring` skill for SKILL.md creation. This is invoked directly by the orchestrator, not by the data-ingest agent.
 
 **Invocation pattern for combined** *(education domain example -- substitute domain-specific skill names)*:
 ```python

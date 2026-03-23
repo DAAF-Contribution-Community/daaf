@@ -9,7 +9,7 @@ This guide focuses on the primary extension path: bringing new datasets, data do
 ## Table of Contents
 
 - [**The Extension Model: Skills, Agents, and Data-Ingest**](#the-extension-model-skills-agents-and-data-ingest)
-- [**Step-by-Step: Profiling a New Dataset with Data-Ingest**](#step-by-step-profiling-a-new-dataset-with-data-ingest)
+- [**Step-by-Step: Profiling a New Dataset with Data Ingest Mode**](#step-by-step-profiling-a-new-dataset-with-data-ingest-mode)
 - [**Step-by-Step: Authoring Other Types of New Skills**](#step-by-step-authoring-other-types-of-new-skills)
 - [**Adding a New Agent**](#adding-a-new-agent)
 - [**Testing Your New Extension End-to-End**](#testing-your-new-extension-end-to-end)
@@ -34,17 +34,17 @@ This separation is what makes DAAF extensible without being fragile. When you wa
 
 | Extension Type | What You're Adding | Tool to Use | Result |
 |----------------|-------------------|-------------|--------|
-| **Data source** | Knowledge about a specific dataset | `data-ingest` agent | A new `data-source-skill` |
+| **Data source** | Knowledge about a specific dataset | Data Ingest Mode | A new `data-source-skill` |
 | **Methodology** | Knowledge about a statistical or analytical method | `skill-authoring` skill | A new `methodology-skill` |
 | **Domain expertise** | Knowledge about a content area or field | `skill-authoring` skill | A new `context-skill` |
 
-The most common extension path by far -- and the one I'll spend the most time on in this guide -- is adding new data sources. DAAF ships with a dedicated agent specifically for this purpose: the `data-ingest` agent, which does the heavy lifting of profiling a dataset and generating the skill documentation for you. You still need to review its output (this is *always* true with DAAF), but it should dramatically reduce the manual effort involved.
+The most common extension path by far -- and the one I'll spend the most time on in this guide -- is adding new data sources. DAAF has a dedicated engagement mode for this purpose: **Data Ingest Mode**, which orchestrates a thorough profiling protocol and generates the skill documentation for you. You still need to review its output (this is *always* true with DAAF), but it should dramatically reduce the manual effort involved.
 
 For methodology and domain expertise skills, the process is lighter-weight -- you ask DAAF to use the `skill-authoring` skill, point it at documentation or literature to research, and it drafts a skill for you to review and refine. I'll cover that process too, but it's more straightforward than data ingestion.
 
-## Step-by-Step: Profiling a New Dataset with Data-Ingest
+## Step-by-Step: Profiling a New Dataset with Data Ingest Mode
 
-The [`data-ingest`](../agents/data-ingest.md) agent is DAAF's built-in tool for turning a raw dataset (or online dataset source) into a comprehensive data source skill it can begin using in tandem with other data source skills. It automates the tedious but critical work of profiling every column, detecting coded values, checking data quality, and reconciling what any provided documentation says against what the data actually contains. In addition to the instructions below, I've also made a [10-minute video tutorial](https://youtu.be/G5uKSlI6jls) giving you the intuition and overview for how this works.
+Data Ingest Mode is DAAF's built-in workflow for turning a raw dataset (or online dataset source) into a comprehensive data source skill it can begin using in tandem with other data source skills. It automates the tedious but critical work of profiling every column, detecting coded values, checking data quality, and reconciling what any provided documentation says against what the data actually contains. The entire process is tracked in a reproducible research project folder under `research/`. In addition to the instructions below, I've also made a [10-minute video tutorial](https://youtu.be/G5uKSlI6jls) giving you the intuition and overview for how this works.
 
 ### Before You Start
 
@@ -74,7 +74,7 @@ The fetch mechanics (Stage 5) are mostly handled by the query skill and mirror c
 
 ### Preparing Your Data
 
-Place your data file somewhere accessible within the Docker volume (the easiest spot is the `research/` directory or a subfolder of it). Exactly where doesn't really matter, as long as you provide Claude with the actual filepaths when you start the conversation. If you have documentation files, put those inside the same folder. See [**01. Installation and Quickstart**](01_installation_and_quickstart.md) for reminders on managing files within the Docker volume if needed.
+Place your data file in the data drop folder at `/daaf/data/ingest/{source-name}/` (e.g., `/daaf/data/ingest/county-elections/`). This is the conventional location for files being ingested. If you have documentation files (codebooks, data dictionaries, etc.), put those in the same folder. See [**01. Installation and Quickstart**](01_installation_and_quickstart.md) for reminders on managing files within the Docker volume if needed.
 
 A few practical considerations:
 
@@ -82,9 +82,9 @@ A few practical considerations:
 - **File format:** Parquet is ideal (fast, preserves types). CSV works fine but may have type inference quirks. Excel files work using the `openpyxl` library, included with the standard installation Docker for DAAF.
 - **Multiple files:** If your data source spans multiple files (e.g., one file per year), start with a single representative file. The skill can document the multi-file structure, but profiling works best on one file at a time.
 
-### Running the Data-Ingest Agent
+### Running Data Ingest Mode
 
-You don't need to invoke the agent directly -- just ask DAAF conversationally. Something like:
+Just ask DAAF to ingest or profile a new dataset conversationally -- it will classify the request as Data Ingest Mode automatically. Something like:
 
 ```
 I have a new dataset I'd like to profile and integrate into DAAF.
@@ -98,19 +98,17 @@ important columns are probably the ones related to total spending,
 enrollment counts, and state identifiers.
 ```
 
-DAAF will classify this as a data-ingest task and dispatch the `data-ingest` agent, which will then execute a systematic profiling protocol:
+DAAF will classify this as a Data Ingest request, set up a research project folder, and execute a systematic 12-script profiling protocol across four phases:
 
-**Phase 1 -- Structural Profile:** Basic shape of the data (rows, columns, memory footprint, column types). This gives the agent a bird's-eye view of what it's working with.
+**Phase 1 -- Structural Analysis:** Basic shape of the data (rows, columns, memory footprint, column types) and initial column-level profiling. This gives the agent a bird's-eye view of what it's working with, including null rates, unique value counts, and basic distributions.
 
-**Phase 2 -- Column-Level Profile:** Detailed statistics for every column -- null rates, unique value counts, distributions, min/max ranges. For numeric columns, it checks for potential coded values (those suspicious negative numbers like -1, -2, -9 that often mean "missing" or "suppressed" rather than being real values). For categorical columns, it enumerates all unique values.
+**Phase 2 -- Statistical Deep Dive:** Detailed statistics for every column -- full distribution analysis for numeric columns, category enumeration for categorical columns, and detection of potential coded values (those suspicious negative numbers like -1, -2, -9 that often mean "missing" or "suppressed" rather than being real values). Also includes temporal pattern analysis and outlier detection.
 
-**Phase 3 -- Relationship Profiling:** Identifying potential key columns (high uniqueness suggests an identifier), foreign keys (naming patterns like `_id` suffixes), and hierarchical relationships between columns.
+**Phase 3 -- Relational Analysis:** Identifying potential key columns (high uniqueness suggests an identifier), foreign keys (naming patterns like `_id` suffixes), hierarchical relationships between columns, and cross-column dependency patterns.
 
-**Phase 4 -- Quality Profile:** Systematic data quality checks -- completeness rates, coded missing value detection, anomalous patterns, potential duplicates.
+**Phase 4 -- Semantic Interpretation:** This is where it gets interesting. The agent uses column names, value patterns, and domain conventions to make educated guesses about what each column *means*. Every interpretation is explicitly marked as `[PRELIMINARY]` -- the agent knows it's hypothesizing, not asserting. Column named `fips`? Probably a FIPS geographic code. Column with values 0 and 1? Probably a binary indicator, but is 1 "Yes" or "Male" or "Urban"? The agent will flag the ambiguity. This phase also produces overall data quality scores and a comprehensive profile summary.
 
-**Phase 5 -- Semantic Interpretation:** This is where it gets interesting. The agent uses column names, value patterns, and domain conventions to make educated guesses about what each column *means*. Every interpretation is explicitly marked as `[PRELIMINARY]` -- the agent knows it's hypothesizing, not asserting. Column named `fips`? Probably a FIPS geographic code. Column with values 0 and 1? Probably a binary indicator, but is 1 "Yes" or "Male" or "Urban"? The agent will flag the ambiguity.
-
-If you provided documentation, the agent also runs **Documentation Reconciliation (Mode 2)**: it parses your codebook or data dictionary, extracts every claim it can find (column definitions, expected types, coded value meanings), and then *verifies each claim against the actual data.* Documentation says there are 50 columns? The agent checks. Codebook says `state_code` should be a string? The agent confirms or flags the mismatch. This reconciliation is one of the most valuable things the data-ingest agent does -- it catches the disturbingly common case where documentation is outdated or describes a different version of the data than what you actually have.
+If you provided documentation, the profiling protocol also runs **Documentation Reconciliation**: it parses your codebook or data dictionary, extracts every claim it can find (column definitions, expected types, coded value meanings), and then *verifies each claim against the actual data.* Documentation says there are 50 columns? The agent checks. Codebook says `state_code` should be a string? The agent confirms or flags the mismatch. This reconciliation is one of the most valuable things Data Ingest Mode does -- it catches the disturbingly common case where documentation is outdated or describes a different version of the data than what you actually have.
 
 ### Reviewing the Profile Output
 
@@ -176,7 +174,7 @@ in depth before coming up with a plan for my approval.
 
 Here's the part that people will sometimes miss: **creating the skill file is not enough.** DAAF uses a manual, documentation-based discovery system -- auto-discovery of skills with Claude Code is imperfect and can't always be relied on. After creating a new skill, it needs to be registered in several places to ensure that the orchestrator and agents can find it and know when to use it.
 
-For data source skills, the `data-ingest` agent will provide you with a specific registration checklist at the end of its report. It looks something like this:
+For data source skills, the orchestrator automatically provides registration guidance at the end of the Data Ingest workflow (Stage DI-8). It presents a specific registration checklist that looks something like this:
 
 | Priority | File | Section to Update | What to Add |
 |----------|------|-------------------|-------------|
@@ -184,7 +182,7 @@ For data source skills, the `data-ingest` agent will provide you with a specific
 | 2 (Required) | `agent_reference/WORKFLOW_PHASE1_DISCOVERY.md` | Available source skills list | New bullet with skill name and description |
 | 3 (Required) | `agents/source-researcher.md` | Step 1: Load Source Skill | No update needed (orchestrator provides skill name dynamically) |
 
-The agent will typically offer to make these updates for you -- just confirm and it'll handle the file edits. Note that these registration edits touch core framework files, which means they fall under the "contribution" category if you plan to share them (see [When to Extend vs. When to Contribute](#when-to-extend-vs-when-to-contribute)).
+The orchestrator will typically offer to make these updates for you at the end of the Data Ingest workflow -- just confirm and it'll handle the file edits. You still need to approve the updates, as they touch core framework files. Note that these registration edits fall under the "contribution" category if you plan to share them (see [When to Extend vs. When to Contribute](#when-to-extend-vs-when-to-contribute)).
 
 For methodology and domain expertise skills, registration is simpler -- you primarily need to update the skill catalog at `.claude/skills/daaf-orchestrator/references/skill-catalog.md` so the orchestrator knows the skill exists and when to recommend loading it.
 

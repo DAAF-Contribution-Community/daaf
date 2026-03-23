@@ -10,7 +10,7 @@ This guide is designed to turn a new user into a confident user. It expands on t
 
 ## Table of Contents
 - [**Core Concept: Context Windows and Prompt Engineering 101**](#core-concept-context-windows-and-prompt-engineering-101)
-- [**The Four Engagement Modes**](#the-four-engagement-modes)
+- [**The Five Engagement Modes**](#the-five-engagement-modes)
 - [**The Mental Model: Orchestrator, Agents, Skills, Validation**](#the-mental-model-orchestrator-agents-skills-validation)
 - [**What a Full Pipeline Analysis Looks Like**](#what-a-full-pipeline-analysis-looks-like)
 - [**Anatomy of a Completed Analysis**](#anatomy-of-a-completed-analysis)
@@ -44,9 +44,9 @@ So that's the gist for now. Onward, to actually using DAAF!
 
 ---
 
-## The Four Engagement Modes
+## The Five Engagement Modes
 
-DAAF first classifies every request you make into one of four **engagement modes**. This is how we properly prompt-engineer Claude, because each mode triggers a fundamentally different workflow, different outputs, and different expectations for what input you'll need to provide to steer it well. Understanding these modes is the single most useful thing you can do to work with DAAF effectively, because it helps you frame your questions in the way most likely to get you what you actually want, and better understand what's going on behind the scenes.
+DAAF first classifies every request you make into one of five **engagement modes**. This is how we properly prompt-engineer Claude, because each mode triggers a fundamentally different workflow, different outputs, and different expectations for what input you'll need to provide to steer it well. Understanding these modes is the single most useful thing you can do to work with DAAF effectively, because it helps you frame your questions in the way most likely to get you what you actually want, and better understand what's going on behind the scenes.
 
 Before doing anything else, DAAF will tell you which mode it's classifying your request into, explain why, and ask you to confirm. This is intentional. You should always have the chance to say "actually, I just wanted a quick lookup" or "actually, let's go deeper on this." Here's what each of them do, and how the workflow works so you know when and why you'd use each:
 
@@ -126,6 +126,21 @@ Before doing anything else, DAAF will tell you which mode it's classifying your 
 
 **How the version system works:** All versions live in the same project folder. Prior versions are **never** modified or overwritten -- that's a non-negotiable rule. The versioning uses date suffixes: the original analysis might be `2026-01-24`, revision 1 becomes `2026-01-24a`, revision 2 becomes `2026-01-24b`, and so on. This means you always have a full audit trail of how the analysis evolved.
 
+### Data Ingest
+
+**When to use:** You have a raw data file (CSV, Parquet, Excel, etc.) that you want to profile and add as a reusable data source for future analyses.
+
+**What happens:** DAAF runs a thorough 12-script profiling protocol across four phases (structural analysis, statistical deep dive, relational analysis, and semantic interpretation). You review the findings and confirm the interpretations before DAAF creates a standalone data source skill. The entire process is tracked in a reproducible research project folder.
+
+**What you get:** A standalone data source skill (`.claude/skills/`) that future analyses can reference, plus a research project folder with all profiling scripts, QA reviews, and session state.
+
+**Checkpoints:** 2 -- one after project setup (to confirm the profiling plan), and one after profiling completes (to review and confirm/modify the preliminary interpretations before they become part of the skill).
+
+**Example prompts:**
+- "I have a CSV of county-level election returns I'd like to profile and add as a data source"
+- "Profile this parquet file and create a skill I can use in future analyses"
+- "I want to ingest a new dataset about hospital readmission rates"
+
 ### Switching Between Modes
 
 DAAF supports clean transitions between modes when it makes sense:
@@ -135,6 +150,9 @@ DAAF supports clean transitions between modes when it makes sense:
 | Discovery | Full Pipeline | Findings suggest a feasible and valuable analysis |
 | Targeted Assist | Discovery | Your question reveals a broader data landscape worth exploring |
 | Targeted Assist | Full Pipeline | A quick lookup reveals an actionable analysis opportunity |
+| Discovery | Data Ingest | Do you have a raw data file you want to profile and make reusable? |
+| Data Ingest | Full Pipeline | Skill created — would you like to analyze this data now? |
+| Full Pipeline | Data Ingest | Analysis needs a dataset that has no existing skill yet |
 
 DAAF will always propose these escalations explicitly and wait for your confirmation. It should never silently switch modes on you.
 
@@ -456,7 +474,27 @@ I know there are a couple of different ways of measuring school poverty. Can you
 
 **What you're testing:** How does DAAF surface relevant information, variables, tables, and so on, when faced with broader options and less explicit direction? What issues might arise, and does it seem to recognize strengths/pitfalls of each possibility it flags appropriately?
 
-### Level 3: Single Variable Analysis (Simple Full Pipeline)
+### Level 3: Data Ingestion (Data Ingest Mode)
+
+If you have your own dataset that you'd like to bring into DAAF, try profiling it with Data Ingest mode. This is a great way to expand DAAF's capabilities with your own data.
+
+```
+I have a CSV of county-level election returns I'd like to profile
+and add as a data source. The file is at:
+/daaf/data/ingest/county-elections/election_returns_2024.csv
+```
+
+or
+
+```
+Profile this parquet file and create a skill I can use in future
+analyses: /daaf/research/my-data/hospital_readmissions.parquet
+I also have a data dictionary at: /daaf/research/my-data/codebook.pdf
+```
+
+**What you're testing:** Can DAAF systematically profile a dataset you know well, detect its structure, identify coded values and quality issues, and produce a reusable skill? Do its preliminary interpretations match your domain knowledge? This is also a great way to contribute back to the community by sharing new data source skills.
+
+### Level 4: Single Variable Analysis (Simple Full Pipeline)
 
 Ask DAAF to analyze a single variable from a single dataset you already know well. This will kick off a Full Pipeline run, but a very simple and approachable one.
 
@@ -469,7 +507,7 @@ statistics and a histogram.
 
 **What you're testing:** Can DAAF correctly fetch, clean, and describe a dataset you're already familiar with? Do the descriptive statistics match what you'd expect? Is the cleaning approach reasonable? This is where you start validating DAAF's *execution* quality, not just its knowledge.
 
-### Level 4: Simple Correlational/Longitudinal Analysis
+### Level 5: Simple Correlational/Longitudinal Analysis
 
 Ask DAAF to look at the relationship between two variables of interest, possibly over time.
 
@@ -482,7 +520,7 @@ and any notable patterns.
 
 **What you're testing:** Can DAAF handle multi-year data, create meaningful groupings, and produce time-series visualizations? Are the trends sensible? Does it properly handle years with data quality issues (COVID years, for instance)?
 
-### Level 5: Multivariate Analysis
+### Level 6: Multivariate Analysis
 
 Now get more abstract and complex. Ask about relationships between multiple variables that require joining data sources and more sophisticated statistical approaches.
 
@@ -513,7 +551,7 @@ data available. Can you suggest a few options related to
 educational equity?
 ```
 
-### Level 6: Replication Exercises
+### Level 7: Replication Exercises
 
 The ultimate test of an analytical framework: can it reproduce results from published research? I am actively trying to assess DAAF's performance by replicating studies conducted by the [Urban Institute's Learning Curve series](https://www.urban.org/projects/learning-curve), which leverage the same Education Data Portal datasets DAAF currently has access to. Many of these studies have [open-source code available](https://github.com/UrbanInstitute/The-Learning-Curve/tree/main) for direct comparison.
 
@@ -523,7 +561,7 @@ You'll want to pick one where the data was solely pulled from the Education Data
 
 If you run replication exercises, I would genuinely love to hear about your results. Please share your findings by [opening an issue](https://github.com/DAAF-Contribution-Community/daaf/issues) -- this kind of validation is invaluable for the entire community.
 
-### Level 7: Charting your own path
+### Level 8: Charting your own path
 
 From here, you've hopefully gotten a good sense of what DAAF can and cannot do as of right now. It's got strengths, it's got limitations, and there are ways to use it that will probably be more or less useful for different people. My goal here is not to make the single, end-all-be-all best tool for everyone, but to create a unified, pretty good starting point. Use it how you see fit, and if you find ways to make it work better for you, people in the community would probably also benefit from you sharing that knowledge back with others! See [**04. Extending DAAF**](04_extending_daaf.md) and [**05. Contributing**](../CONTRIBUTING.md) for more info there.
 

@@ -1430,3 +1430,148 @@ Before delivery, verify all of the following pass:
 > **Note:** Validation code is inline within each script, not imported from a module. The Marimo notebook assembles successful scripts verbatim. Validation output is captured in each script's execution log (appended as comments), which becomes part of the audit trail.
 
 Validation results appear in the notebook as accordion sections containing the script's execution log. The notebook-assembler agent copies script content verbatim, including the inline validation blocks.
+
+---
+
+## Profiling Validation Checkpoints (CPP1-CPP4, CPP-SKILL)
+
+> **Mode:** These checkpoints apply to Data Ingest Mode only. They are the profiling equivalent of CP1-CP4. See `.claude/skills/daaf-orchestrator/references/data-ingest-mode.md` for complete code templates.
+
+### CPP Overview
+
+| Checkpoint | After Phase | Purpose | STOP If |
+|------------|------------|---------|---------|
+| CPP1 | A (Structural) | Data loads correctly | Zero rows, zero columns, >50% null, encoding errors |
+| CPP2 | B (Statistical) | Stats are internally consistent | Mean outside [min,max], non-monotonic percentiles |
+| CPP3 | C (Relational) | Relationships are coherent | Non-symmetric correlation, uniqueness disagreement, empty anomaly catalog |
+| CPP4 | D (Interpretation) | Interpretations are disciplined | Missing [PRELIMINARY] markers, synthesis gaps |
+| CPP-SKILL | Skill Authoring | Skill template compliance | Missing required sections, >500 lines, failed self-check |
+
+### CPP1: Post-Load Validation
+
+**Embedded in:** `scripts/profile_structural/01_load-and-format.py`
+
+```python
+# --- CPP1: Post-Load Validation ---
+# INTENT: Verify data loaded correctly before profiling begins
+assert df.shape[0] > 0, "STOP: Zero rows loaded"
+assert df.shape[1] > 0, "STOP: Zero columns detected"
+
+# INTENT: Check overall data quality
+total_cells = df.shape[0] * df.shape[1]
+total_nulls = sum(df[col].null_count() for col in df.columns)
+null_rate = total_nulls / total_cells
+assert null_rate < 0.5, f"STOP: Overall null rate {null_rate:.1%} exceeds 50%"
+
+# INTENT: Warn about potential issues without stopping
+for col in df.columns:
+    if df[col].null_count() == df.shape[0]:
+        print(f"WARNING: Column '{col}' is entirely null")
+if df.shape[0] < 100:
+    print("WARNING: Dataset has < 100 rows - possible partial file")
+
+print(f"CPP1 PASSED: {df.shape[0]:,} rows, {df.shape[1]} columns, {null_rate:.1%} null rate")
+```
+
+### CPP2: Post-Statistical Validation
+
+**Embedded in:** Last script of Phase B (04, 05, or 06 depending on conditional execution)
+
+```python
+# --- CPP2: Post-Statistical Validation ---
+# INTENT: Verify statistical computations are internally consistent
+for col in df.columns:
+    if df[col].dtype in [pl.Float64, pl.Float32, pl.Int64, pl.Int32]:
+        col_min = df[col].min()
+        col_max = df[col].max()
+        col_mean = df[col].mean()
+        if col_min is not None and col_max is not None and col_mean is not None:
+            assert col_min <= col_mean <= col_max, (
+                f"STOP: {col} mean {col_mean} outside [{col_min}, {col_max}]"
+            )
+
+print("CPP2 PASSED: Statistical computations internally consistent")
+```
+
+### CPP3: Post-Relational Validation
+
+**Embedded in:** `scripts/profile_relational/09_quality-anomaly.py`
+
+```python
+# --- CPP3: Post-Relational Validation ---
+# INTENT: Verify relational analysis produced meaningful results
+# ASSUMES: anomaly_catalog is a list populated during quality profiling
+assert len(anomaly_catalog) > 0, (
+    "STOP: Anomaly catalog is empty - every dataset has at least one quality note"
+)
+
+print(f"CPP3 PASSED: {len(anomaly_catalog)} anomalies cataloged")
+```
+
+### CPP4: Post-Interpretation Validation
+
+**Embedded in:** `scripts/profile_interpretation/12_profile-synthesis.py`
+
+```python
+# --- CPP4: Post-Interpretation Validation ---
+# INTENT: Verify interpretation discipline was maintained
+import re
+
+# ASSUMES: interpretation_output is the string output from script 10
+# REASONING: Every semantic claim must be hedged with [PRELIMINARY]
+interpretations = re.findall(r"(?:->|interpretation:)\s*(.+)", interpretation_output)
+for interp in interpretations:
+    if "[NO INTERPRETATION]" not in interp:
+        assert "[PRELIMINARY]" in interp, (
+            f"STOP: Interpretation missing [PRELIMINARY] marker: {interp[:80]}"
+        )
+
+# INTENT: Verify synthesis covers all executed scripts
+# ASSUMES: executed_scripts is a list of script names that ran
+for script in executed_scripts:
+    assert script in synthesis_output, (
+        f"STOP: Synthesis report missing findings from {script}"
+    )
+
+print("CPP4 PASSED: All interpretations marked PRELIMINARY, synthesis complete")
+```
+
+### CPP-SKILL: Post-Authoring Validation
+
+**Embedded in:** Stage DI-7 skill authoring subagent output
+
+```python
+# --- CPP-SKILL: Template Compliance Check ---
+# INTENT: Verify generated skill follows canonical 12-section template
+import os
+
+skill_path = f"{skill_draft_dir}/SKILL.md"
+assert os.path.exists(skill_path), "STOP: SKILL.md not created"
+
+with open(skill_path) as f:
+    content = f.read()
+    lines = content.split("\n")
+
+# INTENT: Check line count constraint
+assert len(lines) <= 500, f"STOP: SKILL.md is {len(lines)} lines (limit: 500)"
+
+# INTENT: Verify required sections present
+required_sections = [
+    "## What is",
+    "## Reference File Structure",
+    "## Decision Trees",
+    "## Quick Reference",
+    "## Data Access",
+    "## Common Pitfalls",
+    "## Topic Index",
+]
+for section in required_sections:
+    assert section in content, f"STOP: Missing required section: {section}"
+
+# INTENT: Verify reference files created
+ref_dir = f"{skill_draft_dir}/references"
+for ref_file in ["columns.md", "coded-values.md", "quality-notes.md"]:
+    assert os.path.exists(f"{ref_dir}/{ref_file}"), f"STOP: Missing reference file: {ref_file}"
+
+print(f"CPP-SKILL PASSED: {len(lines)} lines, all required sections present")
+```
