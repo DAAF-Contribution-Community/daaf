@@ -195,13 +195,13 @@ Context management is NEVER about reducing the quality or completeness of work. 
 |-------|-----------|----------------|
 | **PreToolUse Hook** | `bash-safety.sh` — exit code 2 blocks execution | Destructive commands, privilege escalation, pipe-to-shell, data exfiltration, container escape |
 | **PreToolUse Hook (agent-scoped)** | `enforce-file-first.sh` — registered in agent frontmatter for coding agents only (research-executor, code-reviewer, debugger, data-ingest) | Blocks direct `python`/`python3` execution; enforces `run_with_capture.sh` wrapper for audit trail. Not active for the orchestrator or read-only agents. |
-| **Permission Deny Rules** | `settings.json` deny list | `rm -rf`, `sudo`, `docker`, credential file reads/writes |
+| **Permission Deny Rules** | `settings.json` deny list | `rm -rf`, `sudo`, `docker`, credential file reads/writes, audit log writes/edits |
 | **Permission Allow List** | `settings.json` allow list | Only approved tools auto-execute; everything else prompts |
 | **PostToolUse Hooks** | `audit-log.sh`, `output-scanner.sh` | Audit trail, secret detection in output |
 | **Context Reporting Hook** | `context-reporter.sh` | Context utilization injection for gating decisions |
 | **Session Archive Hook** | `archive-session.sh` | Session transcript archiving on exit |
 | **Container Isolation** | Docker with `cap_drop: ALL`, non-root user | OS-level blast radius containment |
-| **`.claudeignore`** | File-level exclusion | Prevents indexing of credentials and session logs |
+| **`.claudeignore`** | File-level exclusion | Prevents indexing of credentials |
 | **Pre-commit Hooks** | `.pre-commit-config.yaml` | Catches large files, private keys, merge conflicts at commit time |
 
 ---
@@ -270,6 +270,7 @@ All executed scripts are archived in the `scripts/` folder with stage-based orga
 | DI-4 (Statistical) | `scripts/profile_statistical/` | `{NN}_{task-name}.py` | `04_distribution-analysis.py` |
 | DI-5 (Relational) | `scripts/profile_relational/` | `{NN}_{task-name}.py` | `07_key-integrity.py` |
 | DI-6 (Interpretation) | `scripts/profile_interpretation/` | `{NN}_{task-name}.py` | `10_semantic-interpretation.py` |
+| RV-2 (Reproduction) | `scripts/repro/{stage_dir}/` | `{original_script_name}` | `01_fetch-ccd.py` |
 
 **Step numbering:** Use the step number from the Transformation Sequence (e.g., Step 1.1 → `01`, Step 2.3 → `03`).
 
@@ -362,6 +363,41 @@ research/2026-03-23_Ingest_County_Elections/
         └── SKILL.md                               # Draft skill before final placement
 ```
 
+### Reproducibility Verification Example Project Structure
+
+```
+research/2026-03-24_College_Graduation_Analysis_Reproduction/
+├── Reproduction_Report.md                         # Central artifact + session state (REQUIRED)
+├── original_files/
+│   ├── 2026-02-15_College_Graduation_Report.md    # Original Report (copied, read-only)
+│   ├── 2026-02-15_College_Graduation_Analysis.py  # Original Notebook (copied, read-only)
+│   └── scripts/                                   # Decompiled from notebook
+│       ├── MANIFEST.md                            # Decompiler output manifest
+│       ├── stage5_fetch/
+│       │   ├── 01_fetch-directory_a.py
+│       │   └── 02_fetch-ipeds.py
+│       ├── stage6_clean/
+│       │   └── 01_clean-data.py
+│       ├── stage7_transform/
+│       │   └── 01_join-data.py
+│       └── stage8_analysis/
+│           ├── 01_regression.py
+│           └── 02_visualization.py
+└── scripts/
+    ├── run_with_capture.sh                        # Copied from /daaf/scripts/
+    └── repro/                                     # Re-executed scripts (with new logs)
+        ├── stage5_fetch/
+        │   ├── 01_fetch-directory_a.py
+        │   └── 02_fetch-ipeds.py
+        ├── stage6_clean/
+        │   └── 01_clean-data.py
+        ├── stage7_transform/
+        │   └── 01_join-data.py
+        └── stage8_analysis/
+            ├── 01_regression.py
+            └── 02_visualization.py
+```
+
 ---
 
 ## Reference Files
@@ -378,6 +414,7 @@ research/2026-03-23_Ingest_County_Elections/
 | `agent_reference/VALIDATION_CHECKPOINTS.md` | Validation checkpoint code templates |
 | `agent_reference/REPORT_TEMPLATE.md` | Output report template |
 | `agent_reference/AI_DISCLOSURE_REFERENCE.md` | AI use attribution and GUIDE-LLM checklist mapping for all modes |
+| `agent_reference/REPRODUCTION_REPORT_TEMPLATE.md` | Reproduction Report template (Reproducibility Verification mode) |
 | `agent_reference/WORKFLOW_PHASE1_DISCOVERY.md` | Full pipeline analysis Phase 1: Stages 1-3.5 |
 | `agent_reference/WORKFLOW_PHASE2_PLANNING.md` | Full pipeline analysis Phase 2: Stages 4-4.5 |
 | `agent_reference/WORKFLOW_PHASE3_ACQUISITION.md` | Full pipeline analysis Phase 3: Stages 5-6 |

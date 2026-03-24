@@ -37,17 +37,17 @@ All agents in this directory MUST follow the canonical template at `agent_refere
 | Agent | Purpose | Subagent Type | Stage(s) | Key Inputs | Key Outputs |
 |-------|---------|---------------|----------|------------|-------------|
 | **research-executor** | Execute data tasks with atomic precision, rigorous validation, and full audit-trail capture | `research-executor` | 5, 6, 7, 8 | Task spec XML, Plan.md, skill knowledge, dependency outputs | Script + execution log + data files (parquet) |
-| **code-reviewer** | Iterative QA review verifying code correctness, methodology alignment, and output data quality | `code-reviewer` | 5-QA, 6-QA, 7-QA, 8-QA | Executed script + log, Plan.md, output data files, stage/step/wave context | QA scripts (cr1-cr5) + severity report (PASSED/WARNING/BLOCKER) |
+| **code-reviewer** | Iterative QA review verifying code correctness, methodology alignment, and output data quality | `code-reviewer` | 5-QA, 6-QA, 7-QA, 8-QA, RV-2 | Executed script + log, Plan.md, output data files, stage/step/wave context | QA scripts (cr1-cr5) + severity report (PASSED/WARNING/BLOCKER) |
 | **data-planner** | Synthesize discovery findings into research plans with executable task sequences and wave-based parallelization | `data-planner` | 4 | User request, clarifications, Stage 2-3 findings, project folder path | Plan.md + Plan_Tasks.md documents |
 | **plan-checker** | Verify research plans will achieve analysis goals via goal-backward analysis across six dimensions | `plan-checker` | 4.5 | Plan.md + Plan_Tasks.md content (inlined), original user request, clarifications | Validation report: PASSED / PASSED_WITH_WARNINGS / ISSUES_FOUND |
-| **data-verifier** | Adversarial goal-backward verification of completed analyses with cross-artifact coherence | `data-verifier` | 12 | Plan.md, Notebook, Report, project folder, STATE.md, LEARNINGS.md, QA summary | Verification report: PASSED / ISSUES_FOUND with four-layer evidence; STATE.md Final Review Log |
+| **data-verifier** | Adversarial goal-backward verification of completed analyses with cross-artifact coherence | `data-verifier` | 12, RV-3 | Plan.md, Notebook, Report, project folder, STATE.md, LEARNINGS.md, QA summary | Verification report: PASSED / ISSUES_FOUND with four-layer evidence; STATE.md Final Review Log |
 | **source-researcher** | Deep-dive into a single data source for caveats, coded values, suppression patterns, and pitfalls | `source-researcher` | 3 | Source name, variables of interest, research question, years, geographic scope | Five-section source report (Summary, Variables, Caveats, Patterns, Pitfalls) |
 | **research-synthesizer** | Consolidate parallel Stage 2-3 findings into actionable planning guidance with conflict resolution | `research-synthesizer` | 3.5 | Stage 2 findings, all Stage 3 findings, research question, year range, geographic scope | Integrated synthesis with conflicts, resolutions, and planning recommendations |
 | **debugger** | Diagnose data quality issues and analysis failures using scientific hypothesis-testing methodology | `debugger` | Any (on error) | Error message/symptom, failed script path, Plan.md, Plan_Tasks.md (optional), last successful operation | Root cause report with hypothesis log and verified fix |
 | **notebook-assembler** | Compile scripts into Marimo notebook via VERBATIM copy (NO dashboards, NO widgets, NO new code) | `notebook-assembler` | 9 | Completed scripts (stages 5-8), Plan.md, data files, figure files, project path | Marimo `.py` notebook with script walkthroughs and data inspection cells |
 | **integration-checker** | Validate component wiring: data flows, file references, and orphan detection | `integration-checker` | 9, 11, 12 | Plan.md, Notebook, Report, project folder, script-to-output mappings | Integration check report: CONNECTED / ISSUES FOUND with flow diagrams |
 | **data-ingest** | Profile new datasets and produce comprehensive findings for skill authoring | `data-ingest` | Data Ingest Mode (Stages DI-3 to DI-6) | Data file path + format, target skill name, intended use, domain context, optional docs | Part-specific profiling findings for orchestrator |
-| **report-writer** | Synthesize pipeline artifacts into stakeholder report following REPORT_TEMPLATE.md | `report-writer` | 11 | Plan.md, Notebook, STATE.md, LEARNINGS.md, QA summary, figures, citations, dataset metadata | Report.md (stakeholder prose) |
+| **report-writer** | Synthesize pipeline artifacts into stakeholder report following REPORT_TEMPLATE.md | `report-writer` | 11, RV-4 | Plan.md, Notebook, STATE.md, LEARNINGS.md, QA summary, figures, citations, dataset metadata | Report.md (stakeholder prose) |
 
 ### Commonly Confused Pairs
 
@@ -230,6 +230,9 @@ Shows which agents produce output consumed by other agents:
 | **report-writer** | Orchestrator | Status report (COMPLETE / COMPLETE_WITH_GAPS / BLOCKED) | After report generation |
 | **Orchestrator** | data-ingest | Part assignment (A/B/C/D), prior part findings, conditional script decisions | Stages DI-3 to DI-6 (per-part) |
 | **data-ingest** | Orchestrator | Part-specific profiling findings, confidence assessment, issues | Stages DI-3 to DI-6 (per-part) |
+| **code-reviewer** (RV-2) | Orchestrator | Per-script reproduction status + comparison metrics + deviations | RV-2 (per script) |
+| **data-verifier** (RV-3) | Orchestrator | Report verification findings (claims, figures, findings checked) | RV-3 |
+| **report-writer** (RV-4) | Orchestrator | Completed Reproduction Report with synthesis | RV-4 |
 
 ---
 
@@ -287,6 +290,8 @@ Closely read `agent_reference/SCRIPT_EXECUTION_REFERENCE.md` for the mandatory f
 - Research question stress test
 - Independent assessment before Plan anchoring
 - Stub detection and silent failure audit
+
+**Reproducibility Verification (RV-3):** In RV mode, data-verifier performs adversarial cross-checking of the original Report's claims against reproduced outputs. It RETURNS findings to the orchestrator (read-only) — it does not write the Reproduction Report directly. See `reproducibility-verification-mode.md` for the invocation template.
 
 **Invocation template:** See the appropriate WORKFLOW_PHASE*.md or mode reference file for stage-specific invocation templates.
 
@@ -414,6 +419,8 @@ Closely read `agent_reference/SCRIPT_EXECUTION_REFERENCE.md` for the mandatory f
 - Cross-checks all Research Outcomes from Plan against Key Findings
 - Verifies all figure file paths resolve before embedding references
 
+**Reproducibility Verification (RV-4):** In RV mode, report-writer synthesizes the Reproduction Report by writing the Executive Summary, Methodological Concerns Synthesis, and overall assessment. See `reproducibility-verification-mode.md` for the invocation template.
+
 **Invocation template:** See the appropriate WORKFLOW_PHASE*.md or mode reference file for stage-specific invocation templates.
 
 ---
@@ -483,6 +490,8 @@ code-reviewer returns BLOCKER
                [After 2 attempts, still BLOCKER?]
                 +- YES -> ESCALATE to user
 ```
+
+**Reproducibility Verification (RV-2):** In RV mode, the code-reviewer both re-executes scripts and evaluates output comparison — combining mechanical reproduction with skeptical assessment. The invocation template in `reproducibility-verification-mode.md` provides all RV-specific context.
 
 **Invocation template:** See the appropriate WORKFLOW_PHASE*.md or mode reference file for stage-specific invocation templates.
 

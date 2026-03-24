@@ -793,6 +793,28 @@ Revision and Extension mode re-executes pipeline stages using Full Pipeline's er
 
 For QA BLOCKER revision requests during re-execution, use the standard Revision Request format from the Full Pipeline section above.
 
+### Reproducibility Verification Mode Error Recovery
+
+RV mode has a lightweight error recovery pattern. The per-script atomic cycle handles most failures inline — the code-reviewer creates versioned modifications (`_repro_a.py`, `_repro_b.py`) when scripts fail.
+
+| Stage | Common Errors | Recovery Action |
+|-------|--------------|-----------------|
+| RV-1 (Intake) | Notebook not found, decompiler fails, Report missing | Verify paths; check notebook is valid marimo format; re-run decompiler with verbose output |
+| RV-2 (Re-execution) | Script fails to execute, execution log not stripped properly | Create `_repro_a.py` with minimal fixes; verify `# EXECUTION LOG` marker removed; dispatch debugger if modification also fails (max 3 debugger dispatches per session) |
+| RV-2 (Re-execution) | Data re-fetch returns different data | Log as Data change deviation; if schema differs, STOP and present to user (escalation trigger) |
+| RV-3 (Verification) | Claim cannot be traced to any script | Document as unverifiable; note in Report Verification |
+| RV-4 (Synthesis) | Reproduction Report incomplete | Return to orchestrator; orchestrator fills gaps before re-dispatching |
+
+**RV-Specific Error Budget:**
+
+| Error Type | Per-Script Limit | Session Limit | After Max |
+|------------|-----------------|---------------|-----------|
+| Script modification versions | 2 (`_repro_a.py`, `_repro_b.py`) | — | Mark FAILED, continue to next script |
+| Debugger dispatches | 1 per script | 3 per session | Mark FAILED, continue |
+| Data source schema change | — | — | STOP, present to user immediately |
+
+**Key difference from Full Pipeline:** RV mode does NOT stop on individual script failures. The goal is a complete reproduction picture — failed scripts are documented and the process continues to the next script.
+
 ---
 
 ## Re-run Procedures

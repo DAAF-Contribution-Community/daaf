@@ -52,7 +52,7 @@ Every conversation begins with a brief preamble before mode classification. Expa
 When a user asks for more information, expand naturally on these points:
 
 - DAAF structures analysis into phases with human oversight — you pause at each milestone for feedback rather than running start-to-finish
-- Five modes: Full Pipeline (complete pipeline, 4 checkpoints), Data Discovery (lightweight exploration, no code), Data Lookup (focused answer), Revision and Extension (revise or extend existing work), Data Ingest (profile new datasets, create reusable data source skills)
+- Six modes: Full Pipeline (complete pipeline, 4 checkpoints), Data Discovery (lightweight exploration, no code), Data Lookup (focused answer), Revision and Extension (revise or extend existing work), Data Ingest (profile new datasets, create reusable data source skills), Reproducibility Verification (re-run an existing analysis to verify its findings reproduce)
 - The user is always in control — you explain what to expect and wait for go-ahead
 
 For more depth, consult `{BASE_DIR}/user_reference/02_understanding_daaf.md` and summarize relevant sections. Point the user to the file path if they want to read it directly. After orienting, proceed to mode classification.
@@ -61,7 +61,7 @@ For more depth, consult `{BASE_DIR}/user_reference/02_understanding_daaf.md` and
 
 ## Engagement Mode Classification
 
-Before executing any user request, classify it into one of five engagement modes. This classification determines your workflow, outputs, and which references to load.
+Before executing any user request, classify it into one of six engagement modes. This classification determines your workflow, outputs, and which references to load.
 
 ### Pre-Check: Session Recovery
 
@@ -87,6 +87,9 @@ User Request
     ├─ Asks to add/ingest a new dataset, or profile raw data?
     │   └─ YES → Data Ingest Mode
     │
+    ├─ Asks to reproduce, verify, or re-run an existing analysis?
+    │   └─ YES → Reproducibility Verification Mode
+    │
     └─ None of the above?
         └─ Ask clarifying questions to determine mode,
            or explain available modes to the user
@@ -103,6 +106,7 @@ Keywords are heuristics, not deterministic. When multiple modes seem applicable,
 | **Data Lookup** | "what are the values", "how is X defined", "lookup" | Direct answer | `data-lookup-mode.md` |
 | **Revision and Extension** | "fix", "update", "change", "modify the analysis", "extend" | Updated Plan.md + Plan_Tasks.md + Notebook + Report (new version) | `revision-and-extension-mode.md` |
 | **Data Ingest** | "ingest", "profile", "new dataset", "add data source" | SKILL.md + Research Project with profiling scripts | `data-ingest-mode.md` |
+| **Reproducibility Verification** | "reproduce", "verify", "re-run", "replication", "reproducibility" | Reproduction Report | `reproducibility-verification-mode.md` |
 
 ### Mode Confirmation Gate (MANDATORY)
 
@@ -155,7 +159,10 @@ Even for simple lookups, always confirm — the user may want broader context th
 > [Classification reasoning]. [What will change]. New version — original untouched. I'll classify the change type, re-run only the affected steps (with the same quality checks as the original), and present a summary when complete. **Shall I proceed?**
 
 **Data Ingest:**
-> [Classification reasoning]. 3 phases with 2 checkpoints — I'll profile your data thoroughly, then you review the findings and interpretations before I create the Skill that'll allow us to use the dataset in all future work with DAAF. I'll also create a project folder that contains all the reproducible data exploration scripts. **Shall I proceed?**
+> [Classification reasoning]. 3 phases with 2 checkpoints — I'll profile your data thoroughly, then you review the findings and interpretations before I create the Skill and wire it into DAAF so the dataset is immediately available for all future work. I'll also create a project folder that contains all the reproducible data exploration scripts. **Shall I proceed?**
+
+**Reproducibility Verification:**
+> [Classification reasoning]. I'll decompile the marimo notebook into individual scripts, re-execute each one, and compare outputs against the originals. Then I'll cross-reference the Report's claims against the reproduced data. You'll get a Reproduction Report documenting what matched, what diverged, and any methodological concerns. Two decisions to confirm: (1) should I re-fetch data from mirrors or use frozen data from the folder (default: re-fetch from mirrors), and (2) how deep should the methodological review/critique be beyond checking for mechanical reproducibility (default: light, obvious concerns only)? I'll confirm both again after setup once the scope is concrete. **Shall I proceed with these defaults?**
 
 ### Mode Escalation Paths
 
@@ -170,6 +177,9 @@ Even for simple lookups, always confirm — the user may want broader context th
 | Full Pipeline (complete) | Revision and Extension | User requests changes to a just-completed analysis |
 | Revision and Extension | Full Pipeline | Revision scope expands beyond targeted modification |
 | Data Ingest (complete) | Revision and Extension | User wants to modify the skill just created |
+| Full Pipeline (complete) | Reproducibility Verification | User wants to verify their analysis reproduces |
+| Reproducibility Verification | Revision and Extension | Divergence found, user wants to fix original |
+| Reproducibility Verification | Full Pipeline | Original analysis is fundamentally broken |
 
 When escalation is appropriate, propose it explicitly:
 > "Based on these findings, would you like me to proceed with [escalated mode]?"
@@ -246,6 +256,7 @@ During any mode, watch for signals that the user needs additional guidance and r
 | `{SKILL_REFS}/data-lookup-mode.md` | Single skill invocation, response format | After confirming Data Lookup mode |
 | `{SKILL_REFS}/revision-and-extension-mode.md` | Version control, revision classification, re-run guidance | After confirming Revision and Extension mode |
 | `{SKILL_REFS}/data-ingest-mode.md` | Data Ingest workflow, gates, PSU templates, profiling protocol overview | After confirming Data Ingest mode |
+| `{SKILL_REFS}/reproducibility-verification-mode.md` | Reproducibility workflow (RV-1 through RV-4), invocation templates, comparison tolerances | After confirming Reproducibility Verification mode |
 | `{SKILL_REFS}/skill-catalog.md` | Skill quick reference, data source lookup tables | When constructing subagent prompts or answering data source questions |
 | `{BASE_DIR}/agent_reference/MODE_TEMPLATE.md` | Mode addition template and checklist | When adding new engagement modes |
 
@@ -287,9 +298,14 @@ Mode Confirmed
     │              ├─ Stage 7-8: {BASE_DIR}/agent_reference/WORKFLOW_PHASE4_ANALYSIS.md
     │              └─ Stage 9-12: {BASE_DIR}/agent_reference/WORKFLOW_PHASE4_ANALYSIS.md + WORKFLOW_PHASE5_SYNTHESIS.md
     │
-    └─ Data Ingest Mode
-        └─ Read: {SKILL_REFS}/data-ingest-mode.md
-               ├─ Stage DI-2 (project setup): Read {BASE_DIR}/agent_reference/STATE_TEMPLATE_INGEST.md
+    ├─ Data Ingest Mode
+    │   └─ Read: {SKILL_REFS}/data-ingest-mode.md
+    │          ├─ Stage DI-2 (project setup): Read {BASE_DIR}/agent_reference/STATE_TEMPLATE_INGEST.md
+    │          └─ Error handling: Read {BASE_DIR}/agent_reference/ERROR_RECOVERY.md
+    │
+    └─ Reproducibility Verification Mode
+        └─ Read: {SKILL_REFS}/reproducibility-verification-mode.md
+               ├─ Report template: Read {BASE_DIR}/agent_reference/REPRODUCTION_REPORT_TEMPLATE.md
                └─ Error handling: Read {BASE_DIR}/agent_reference/ERROR_RECOVERY.md
 ```
 

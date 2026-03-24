@@ -270,6 +270,33 @@ Before resuming a Revision and Extension session:
 - [ ] Any blocking issues presented to user
 - [ ] User confirmed ready to proceed
 
+### Recovery from Reproducibility Verification Mode
+
+**Identification:** STATE references `RV-` stages, or project folder name contains `_Reproduction`.
+
+**Recovery procedure:**
+1. Read `Reproduction_Report.md` (primary recovery document — contains script inventory, per-script results, and session continuity section)
+2. Check the Session Continuity section for last completed script and current stage
+3. Verify `original_files/` contains the decompiled scripts and original artifacts
+4. Verify `scripts/repro/` contains re-executed scripts up to the last completed point
+5. Resume from the next unprocessed script in the inventory
+
+**Recovery stages:**
+
+| Current Stage | Resume Action |
+|---------------|---------------|
+| RV-1 (Setup) | Verify decompilation completed; check Script Inventory populated |
+| RV-2 (Re-execution) | Find last PENDING script in inventory; resume from there |
+| RV-3 (Report Verification) | Re-read reproduced outputs; resume cross-referencing |
+| RV-4 (Synthesis) | Re-read Reproduction Report; resume writing synthesis sections |
+
+**Verification checklist:**
+- [ ] Reproduction_Report.md exists and is readable
+- [ ] original_files/ contains Report, Notebook, and decompiled scripts
+- [ ] scripts/repro/ contains re-executed scripts (count matches inventory)
+- [ ] Script Inventory status column is current
+- [ ] No partially written Per-Script Results sections
+
 ## Data Ingest Recovery Verification Checklist
 
 Before resuming a Data Ingest session:

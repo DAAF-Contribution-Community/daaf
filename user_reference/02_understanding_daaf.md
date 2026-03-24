@@ -10,7 +10,7 @@ This guide is designed to turn a new user into a confident user. It expands on t
 
 ## Table of Contents
 - [**Core Concept: Context Windows and Prompt Engineering 101**](#core-concept-context-windows-and-prompt-engineering-101)
-- [**The Five Engagement Modes**](#the-five-engagement-modes)
+- [**The Six Engagement Modes**](#the-six-engagement-modes)
 - [**The Mental Model: Orchestrator, Agents, Skills, Validation**](#the-mental-model-orchestrator-agents-skills-validation)
 - [**What a Full Pipeline Analysis Looks Like**](#what-a-full-pipeline-analysis-looks-like)
 - [**Anatomy of a Completed Analysis**](#anatomy-of-a-completed-analysis)
@@ -44,9 +44,9 @@ So that's the gist for now. Onward, to actually using DAAF!
 
 ---
 
-## The Five Engagement Modes
+## The Six Engagement Modes
 
-DAAF first classifies every request you make into one of five **engagement modes**. This is how we properly prompt-engineer Claude, because each mode triggers a fundamentally different workflow, different outputs, and different expectations for what input you'll need to provide to steer it well. Understanding these modes is the single most useful thing you can do to work with DAAF effectively, because it helps you frame your questions in the way most likely to get you what you actually want, and better understand what's going on behind the scenes.
+DAAF first classifies every request you make into one of six **engagement modes**. This is how we properly prompt-engineer Claude, because each mode triggers a fundamentally different workflow, different outputs, and different expectations for what input you'll need to provide to steer it well. Understanding these modes is the single most useful thing you can do to work with DAAF effectively, because it helps you frame your questions in the way most likely to get you what you actually want, and better understand what's going on behind the scenes.
 
 Before doing anything else, DAAF will tell you which mode it's classifying your request into, explain why, and ask you to confirm. This is intentional. You should always have the chance to say "actually, I just wanted a quick lookup" or "actually, let's go deeper on this." Here's what each of them do, and how the workflow works so you know when and why you'd use each:
 
@@ -143,6 +143,27 @@ Before doing anything else, DAAF will tell you which mode it's classifying your 
 - "Profile this parquet file and create a skill I can use in future analyses"
 - "I want to ingest a new dataset about hospital readmission rates"
 
+### Reproducibility Verification Mode
+
+**Trigger words:** "verify," "reproduce," "reproduction," "does this replicate," "check reproducibility," "verify this analysis..."
+
+**What it is:** You have an existing completed analysis (from a Full Pipeline run or otherwise) and you want to mechanically verify that it reproduces from its marimo notebook. DAAF decompiles the notebook back into standalone scripts, re-executes each one, compares the new outputs against the originals, and cross-references the Report's claims against the actual analytic results. The goal is to provide an independent, systematic assessment of whether the analysis holds up end-to-end.
+
+**What you get:**
+- A Reproduction Report documenting what matched, what diverged, and any methodological concerns discovered during the process
+- An overall assessment of **FULLY REPRODUCED** (all outputs match within tolerance, report claims supported), **PARTIALLY REPRODUCED** (some outputs diverge or some claims unsupported, but core findings hold), or **NOT REPRODUCED** (significant divergences or unsupported claims that undermine the analysis)
+- Detailed comparison logs showing exactly where and how outputs differed, if at all
+
+**Two key user decisions:**
+- **Whether to re-fetch data** (default: yes). Re-fetching tests whether the analysis reproduces against the current state of the data source. Skipping re-fetch tests whether the analysis reproduces from the already-downloaded raw data files.
+- **Methodological review depth** (default: light). A light review focuses on mechanical reproduction -- do the scripts run and produce matching outputs? A deep review additionally scrutinizes methodological choices, statistical assumptions, and interpretation quality.
+
+**Expected time investment:** Depends on the complexity of the original analysis. A straightforward single-source analysis might take 15-30 minutes; a multi-source analysis with extensive transformations could take longer. You'll review the Reproduction Report at the end.
+
+**When to use it:** After completing a Full Pipeline analysis and wanting to verify it reproduces before sharing or publishing. When reviewing someone else's DAAF analysis and wanting an independent verification. For periodic verification of important findings to ensure they still hold against updated data sources.
+
+**When NOT to use it:** When you already know the analysis needs changes -- use Revision and Extension mode instead. When the analysis was never completed or has no notebook -- there's nothing to reproduce from.
+
 ### Switching Between Modes
 
 DAAF supports clean transitions between modes when it makes sense:
@@ -158,6 +179,9 @@ DAAF supports clean transitions between modes when it makes sense:
 | Full Pipeline | Revision and Extension | You just completed an analysis and want to adjust or extend something |
 | Revision and Extension | Full Pipeline | The revision scope grows beyond what targeted modification can handle |
 | Data Ingest | Revision and Extension | You want to modify or extend the skill that was just created |
+| Full Pipeline (complete) | Reproducibility Verification | User wants to verify their analysis reproduces |
+| Reproducibility Verification | Revision and Extension | Divergence found, user wants to fix original |
+| Reproducibility Verification | Full Pipeline | Original analysis is fundamentally broken |
 
 DAAF will always propose these escalations explicitly and wait for your confirmation. It should never silently switch modes on you.
 

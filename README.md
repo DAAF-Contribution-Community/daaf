@@ -92,7 +92,7 @@ A full start-to-finish project, from potentially vague idea to report, and any f
 
 ### Engagement Modes
 
-DAAF supports five engagement modes, each tailored to a different type of request:
+DAAF supports six engagement modes, each tailored to a different type of request:
 
 | Mode | What It Does | Key Output |
 |------|-------------|------------|
@@ -101,6 +101,7 @@ DAAF supports five engagement modes, each tailored to a different type of reques
 | **Data Lookup** | Quick lookup of a variable, coded value, or definition | Direct answer |
 | **Revision and Extension** | Update or extend an existing analysis (new version, original preserved) | Updated artifacts |
 | **Data Ingest** | Profile a new dataset and create a reusable data source skill | SKILL.md + Research project |
+| **Reproducibility Verification** | Verify that an existing analysis reproduces from its notebook | Reproduction Report |
 
 Ready to get started? See [**01. Installation & Quick Start**](user_reference/01_installation_and_quickstart.md) for installation instructions and [**02. Understanding and Working with DAAF**](user_reference/02_understanding_daaf.md) for in-depth guidance on how to start piloting the system for yourself.
 

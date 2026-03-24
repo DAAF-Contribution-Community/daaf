@@ -109,6 +109,19 @@ Different engagement modes involve different levels of AI assistance. The disclo
 **Template:**
 > Dataset profiling was conducted using DAAF (Data Analyst Augmentation Framework) with [model ID] via Claude Code CLI on [date]. DAAF version: [commit hash]. The AI executed structured profiling scripts across four phases (structural, statistical, relational, interpretation) to characterize the dataset. All profiling scripts underwent automated QA review. The researcher reviewed profiling findings at two checkpoints before the data source skill was finalized. All profiling scripts and execution logs are archived in the project's `scripts/` directory.
 
+### Reproducibility Verification Mode
+
+**Disclosure depth:** Moderate
+
+**Key points to disclose:**
+- AI performed mechanical re-execution of existing analysis scripts and output comparison
+- AI assessed methodological concerns at user-selected depth (light or full)
+- AI cross-referenced original Report claims against reproduced data
+- Human researcher reviewed the final Reproduction Report and assessed the significance of all findings and deviations
+
+**Template paragraph:**
+> This reproduction was conducted using the DAAF Reproducibility Verification mode. An AI agent re-executed all [N] analysis scripts from the original marimo notebook, compared outputs against the original execution logs, and cross-referenced the Report's quantitative claims against reproduced results. The human researcher reviewed the resulting Reproduction Report, including all deviations and methodological concerns, and determined the overall reproducibility assessment.
+
 ### Consultative Mode (Planned)
 
 **Depth:** Variable — depends on the nature of the consultation.
