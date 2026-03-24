@@ -1908,7 +1908,7 @@ See `agent_reference/ERROR_RECOVERY.md` for complete decision trees and recovery
 
 ### Re-run Guidance
 
-For the complete re-run guidance table (situations, stages to re-run, and refresh/additive modes), see `{SKILL_REFS}/revision-mode.md` > Re-run Guidance.
+For the complete re-run guidance table (situations, stages to re-run, and refresh/additive modes), see `{SKILL_REFS}/revision-and-extension-mode.md` > Re-run Guidance.
 
 See `agent_reference/ERROR_RECOVERY.md` "Re-run Procedures" for complete re-run decision trees.
 

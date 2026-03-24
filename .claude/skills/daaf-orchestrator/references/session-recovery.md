@@ -7,7 +7,7 @@
 
 ## Purpose
 
-Enable stateless recovery when resuming an interrupted analysis after LLM context has been cleared. Persistent memory varies by mode: Full Pipeline uses Plan.md + Plan_Tasks.md + STATE.md; Data Ingest uses STATE.md only.
+Enable stateless recovery when resuming an interrupted analysis after LLM context has been cleared. Persistent memory varies by mode: Full Pipeline uses Plan.md + Plan_Tasks.md + STATE.md; Revision and Extension uses prior version Plan.md + Plan_Tasks.md + STATE.md plus new-version Plan files; Data Ingest uses STATE.md only.
 
 ## When to Use
 
@@ -238,6 +238,35 @@ Before resuming work:
 - [ ] File system state verified
 - [ ] Resume point identified
 - [ ] LEARNINGS.md reviewed (if present) and key signals noted
+- [ ] Any blocking issues presented to user
+- [ ] User confirmed ready to proceed
+
+## Recovery from Interrupted Revision and Extension Sessions
+
+Revision and Extension projects are identified by the presence of a `## Revision History` section in STATE.md and multiple version-suffixed Plan files in the same project folder.
+
+**Recovery steps:** Follow the standard Steps 1-6 above, with these Revision-specific additions:
+- **Step 2:** Additionally read the Revision History table and the Revision section of STATE.md to identify which revision is in progress, its type, affected stages, and re-entry point
+- **Step 3:** Read both the prior version and current version Plan.md files. The prior version establishes original intent; the current version documents the revision rationale
+- **Step 5:** Resume point is determined by the re-entry stage from the Revision section, cross-referenced with Transformation Progress for per-script status
+
+| Stage Interrupted | Recovery Action | Additional Context |
+|-------------------|-----------------|-------------------|
+| Revision classification | Re-read existing Plan.md + STATE.md, re-classify with user | Prior version Plan.md |
+| Re-execution (Stages 5-8) | Check which revised scripts completed via Transformation Progress | Current version Plan.md + Plan_Tasks.md |
+| Re-execution QA | Check QA status per script in Transformation Progress | QA Findings Summary |
+| Stage 9-12 (downstream) | Resume as in Full Pipeline recovery | Standard Full Pipeline guidance |
+
+### Revision and Extension Recovery Verification Checklist
+
+Before resuming a Revision and Extension session:
+- [ ] STATE.md read, including Revision History and Revision section
+- [ ] Both prior and current version Plan.md files read
+- [ ] Revision type, affected stages, and re-entry point identified
+- [ ] Transformation Progress reviewed for per-script completion status
+- [ ] QA Findings Summary reviewed for resolved/pending issues
+- [ ] File system verified (new-version scripts and data present as expected)
+- [ ] Resume point identified and consistent with STATE.md
 - [ ] Any blocking issues presented to user
 - [ ] User confirmed ready to proceed
 

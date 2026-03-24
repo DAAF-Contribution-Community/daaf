@@ -108,11 +108,11 @@ Before doing anything else, DAAF will tell you which mode it's classifying your 
 
 **When NOT to use it:** When you just need a quick answer, a variable definition, or want to know if certain data even exists. That's what the other modes are for -- and using Full Pipeline mode for a simple question is like driving a semi-truck to the corner store.
 
-### Revision Mode
+### Revision and Extension Mode
 
-**Trigger words:** "fix," "update," "change," "modify the analysis," "revise," "redo," "can you adjust"
+**Trigger words:** "fix," "update," "change," "modify the analysis," "revise," "redo," "can you adjust," "extend"
 
-**What it is:** You have an existing analysis that needs changes, and you want DAAF's help to improve it. Maybe you want to rethink a measure, add a new variable, change the year range, run a different statistical test, or fix something that didn't look right. First, point DAAF to the name of the project folder. Then, DAAF locates your existing project, reads the Plan, and creates a *new version* of the relevant artifacts -- it never modifies the originals.
+**What it is:** You have an existing analysis that needs changes or extension, and you want DAAF's help to improve it. Maybe you want to rethink a measure, add a new variable, change the year range, run a different statistical test, or fix something that didn't look right. First, point DAAF to the name of the project folder. Then, DAAF locates your existing project, reads the Plan, and creates a *new version* of the relevant artifacts -- it never modifies the originals.
 
 **What you get:**
 - A new version of the Plan document incorporating your changes
@@ -125,6 +125,8 @@ Before doing anything else, DAAF will tell you which mode it's classifying your 
 **When to use it:** After you've received a completed analysis and want to adjust something. Reference your project by keywords or date -- e.g., "Can you update the Texas poverty analysis to include 2023 data?" or "In the 2026-01-15 enrollment study, can we use a different measure of school size?"
 
 **How the version system works:** All versions live in the same project folder. Prior versions are **never** modified or overwritten -- that's a non-negotiable rule. The versioning uses date suffixes: the original analysis might be `2026-01-24`, revision 1 becomes `2026-01-24a`, revision 2 becomes `2026-01-24b`, and so on. This means you always have a full audit trail of how the analysis evolved.
+
+**When NOT to use it:** When your existing analysis is fundamentally flawed or you want to ask a substantially different research question. At that point, starting a new Full Pipeline analysis with better-targeted prompts will produce cleaner results than trying to revise the original into something it wasn't designed to answer.
 
 ### Data Ingest
 
@@ -153,6 +155,9 @@ DAAF supports clean transitions between modes when it makes sense:
 | Discovery | Data Ingest | Do you have a raw data file you want to profile and make reusable? |
 | Data Ingest | Full Pipeline | Skill created — would you like to analyze this data now? |
 | Full Pipeline | Data Ingest | Analysis needs a dataset that has no existing skill yet |
+| Full Pipeline | Revision and Extension | You just completed an analysis and want to adjust or extend something |
+| Revision and Extension | Full Pipeline | The revision scope grows beyond what targeted modification can handle |
+| Data Ingest | Revision and Extension | You want to modify or extend the skill that was just created |
 
 DAAF will always propose these escalations explicitly and wait for your confirmation. It should never silently switch modes on you.
 
@@ -349,7 +354,7 @@ Let's go through each piece.
 
 **How to read it:** Start with the Research Question and Research Outcomes -- do they match your intent? If any outcomes read like hypotheses (predicting a direction), flag them. Check the Key Decisions Log for anything surprising. Plan.md is meant to be comprehensive enough that someone unfamiliar with the project could understand exactly what was done and why.
 
-**Why it matters:** Plan.md is your audit trail. If you or a colleague ever needs to understand how a finding was derived, Plan.md traces the full chain of reasoning from question to methodology to execution. It's also what makes Revision Mode possible -- DAAF reads the existing Plan.md to understand what was done before proposing changes.
+**Why it matters:** Plan.md is your audit trail. If you or a colleague ever needs to understand how a finding was derived, Plan.md traces the full chain of reasoning from question to methodology to execution. It's also what makes Revision and Extension Mode possible -- DAAF reads the existing Plan.md to understand what was done before proposing changes.
 
 A companion file, **Plan_Tasks.md**, contains the detailed machine-readable task specifications that DAAF uses internally to execute each step. It includes the exact ordered Transformation Sequence of tasks (fetch, clean, transform, analyze, visualize) with dependencies, wave assignments for parallel execution, and input/output file paths. Both files are frozen after planning completes. You can review Plan_Tasks.md if you want to audit the specific task definitions, but Plan.md is the primary document for understanding the research design.
 

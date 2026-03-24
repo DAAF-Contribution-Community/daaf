@@ -779,6 +779,20 @@ Fix the identified issue in a new script version ({script_name}_a.py).
 The original script with its execution log is an immutable audit artifact — do not modify it.
 ```
 
+### Revision and Extension Mode Error Recovery
+
+Revision and Extension mode re-executes pipeline stages using Full Pipeline's error recovery patterns. The standard QA BLOCKER revision flow (max 2 attempts, then escalate) applies to all re-executed scripts.
+
+**Revision-specific considerations:**
+
+| Error | Source | Recovery |
+|-------|--------|----------|
+| Prior version data files missing/corrupted | Re-execution depends on prior Stage 5-6 outputs | Re-run from earliest affected stage rather than just the revision's re-entry point |
+| Revision scope grows beyond classification | Mid-execution discovery | STOP, present to user, re-classify or escalate to Full Pipeline |
+| STATE.md from prior version is incomplete | Missing execution context | Reconstruct from filesystem (script execution logs, git history) before planning revision |
+
+For QA BLOCKER revision requests during re-execution, use the standard Revision Request format from the Full Pipeline section above.
+
 ---
 
 ## Re-run Procedures

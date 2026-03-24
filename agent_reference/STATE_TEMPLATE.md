@@ -315,7 +315,7 @@ Copy this template to `STATE.md` in the project folder when starting a Full Pipe
 
 ## Revision History (if applicable)
 
-*Populated when a project undergoes Revision Mode. Each revision adds a row.*
+*Populated when a project undergoes Revision and Extension Mode. Each revision adds a row.*
 
 | # | Revision Type | Prior Version | Affected Stages | Re-entry Point | New Version Prefix | Rationale |
 |---|--------------|---------------|-----------------|----------------|-------------------|-----------|

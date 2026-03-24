@@ -52,7 +52,7 @@ Every conversation begins with a brief preamble before mode classification. Expa
 When a user asks for more information, expand naturally on these points:
 
 - DAAF structures analysis into phases with human oversight — you pause at each milestone for feedback rather than running start-to-finish
-- Five modes: Full Analysis (complete pipeline, 4 checkpoints), Data Discovery (lightweight exploration, no code), Quick Lookup (focused answer), Revision (new version of existing work), Data Ingest (profile new datasets, create reusable data source skills)
+- Five modes: Full Pipeline (complete pipeline, 4 checkpoints), Discovery (lightweight exploration, no code), Targeted Assist (focused answer), Revision and Extension (revise or extend existing work), Data Ingest (profile new datasets, create reusable data source skills)
 - The user is always in control — you explain what to expect and wait for go-ahead
 
 For more depth, consult `{BASE_DIR}/user_reference/02_understanding_daaf.md` and summarize relevant sections. Point the user to the file path if they want to read it directly. After orienting, proceed to mode classification.
@@ -81,8 +81,8 @@ User Request
     ├─ Asks a specific lookup question (coded values, variable info)?
     │   └─ YES → Targeted Assist Mode
     │
-    ├─ References existing analysis that needs changes?
-    │   └─ YES → Revision Mode
+    ├─ References existing analysis that needs changes or extension?
+    │   └─ YES → Revision and Extension Mode
     │
     ├─ Asks to add/ingest a new dataset, or profile raw data?
     │   └─ YES → Data Ingest Mode
@@ -101,7 +101,7 @@ Keywords are heuristics, not deterministic. When multiple modes seem applicable,
 | **Full Pipeline** | "analyze", "research", "create", "generate" | Plan.md + Plan_Tasks.md + Notebook + Report | `full-pipeline.md` |
 | **Discovery** | "what data", "is it possible", "feasibility", "explore" | Findings summary | `discovery-mode.md` |
 | **Targeted Assist** | "what are the values", "how is X defined", "lookup" | Direct answer | `targeted-assist-mode.md` |
-| **Revision** | "fix", "update", "change", "modify the analysis" | Updated Plan.md + Plan_Tasks.md + Notebook + Report (new version) | `revision-mode.md` |
+| **Revision and Extension** | "fix", "update", "change", "modify the analysis", "extend" | Updated Plan.md + Plan_Tasks.md + Notebook + Report (new version) | `revision-and-extension-mode.md` |
 | **Data Ingest** | "ingest", "profile", "new dataset", "add data source" | SKILL.md + Research Project with profiling scripts | `data-ingest-mode.md` |
 
 ### Mode Confirmation Gate (MANDATORY)
@@ -151,8 +151,8 @@ Use the appropriate boilerplate below as a starting point. Fill in the bracketed
 
 Even for simple lookups, always confirm — the user may want broader context than the question implies.
 
-**Revision:**
-> [Classification reasoning]. [What will change]. New version — original untouched. **Shall I proceed?**
+**Revision and Extension:**
+> [Classification reasoning]. [What will change]. New version — original untouched. I'll classify the change type, re-run only the affected steps (with the same quality checks as the original), and present a summary when complete. **Shall I proceed?**
 
 **Data Ingest:**
 > [Classification reasoning]. 3 phases with 2 checkpoints — I'll profile your data thoroughly, then you review the findings and interpretations before I create the Skill that'll allow us to use the dataset in all future work with DAAF. I'll also create a project folder that contains all the reproducible data exploration scripts. **Shall I proceed?**
@@ -167,6 +167,9 @@ Even for simple lookups, always confirm — the user may want broader context th
 | Targeted Assist | Full Pipeline | Lookup reveals actionable analysis opportunity |
 | Data Ingest | Full Pipeline | Skill created, user wants to analyze the data |
 | Full Pipeline (Phase 1) | Data Ingest | Required data source has no existing skill |
+| Full Pipeline (complete) | Revision and Extension | User requests changes to a just-completed analysis |
+| Revision and Extension | Full Pipeline | Revision scope expands beyond targeted modification |
+| Data Ingest (complete) | Revision and Extension | User wants to modify the skill just created |
 
 When escalation is appropriate, propose it explicitly:
 > "Based on these findings, would you like me to proceed with [escalated mode]?"
@@ -241,7 +244,7 @@ During any mode, watch for signals that the user needs additional guidance and r
 | `{SKILL_REFS}/full-pipeline.md` | Complete 12-stage workflow, invocation templates, QA protocols, context requirements, gates, checklists, PSU templates, quality framework | After confirming Full Pipeline mode |
 | `{SKILL_REFS}/discovery-mode.md` | Discovery workflow, exploration patterns, escalation | After confirming Discovery mode |
 | `{SKILL_REFS}/targeted-assist-mode.md` | Single skill invocation, response format | After confirming Targeted Assist mode |
-| `{SKILL_REFS}/revision-mode.md` | Version control, revision classification, re-run guidance | After confirming Revision mode |
+| `{SKILL_REFS}/revision-and-extension-mode.md` | Version control, revision classification, re-run guidance | After confirming Revision and Extension mode |
 | `{SKILL_REFS}/data-ingest-mode.md` | Data Ingest workflow, gates, PSU templates, profiling protocol overview | After confirming Data Ingest mode |
 | `{SKILL_REFS}/skill-catalog.md` | Skill quick reference, data source lookup tables | When constructing subagent prompts or answering data source questions |
 | `{BASE_DIR}/agent_reference/MODE_TEMPLATE.md` | Mode addition template and checklist | When adding new engagement modes |
@@ -273,9 +276,16 @@ Mode Confirmed
     │   └─ Read: {SKILL_REFS}/targeted-assist-mode.md
     │          └─ Skill/source lookup: Read {SKILL_REFS}/skill-catalog.md
     │
-    ├─ Revision Mode
-    │   └─ Read: {SKILL_REFS}/revision-mode.md
-    │          └─ (References full-pipeline.md internally for re-execution)
+    ├─ Revision and Extension Mode
+    │   └─ Read: {SKILL_REFS}/revision-and-extension-mode.md
+    │          ├─ Re-execution: Read {SKILL_REFS}/full-pipeline.md (QA enforcement, composite execution pattern)
+    │          ├─ Error handling: Read {BASE_DIR}/agent_reference/ERROR_RECOVERY.md
+    │          └─ Re-entry stage-specific (load progressively):
+    │              ├─ Stage 2-3: {BASE_DIR}/agent_reference/WORKFLOW_PHASE1_DISCOVERY.md
+    │              ├─ Stage 4-4.5: {BASE_DIR}/agent_reference/WORKFLOW_PHASE2_PLANNING.md
+    │              ├─ Stage 5-6: {BASE_DIR}/agent_reference/WORKFLOW_PHASE3_ACQUISITION.md
+    │              ├─ Stage 7-8: {BASE_DIR}/agent_reference/WORKFLOW_PHASE4_ANALYSIS.md
+    │              └─ Stage 9-12: {BASE_DIR}/agent_reference/WORKFLOW_PHASE4_ANALYSIS.md + WORKFLOW_PHASE5_SYNTHESIS.md
     │
     └─ Data Ingest Mode
         └─ Read: {SKILL_REFS}/data-ingest-mode.md
