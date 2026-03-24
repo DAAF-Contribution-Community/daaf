@@ -247,7 +247,7 @@ For changes to *existing* agents (modifying behavior rather than adding new ones
 
 You've created a new skill (or agent). How do you know it actually works? Here's a practical testing sequence, ordered from lightest to heaviest.
 
-### Discovery Test
+### Data Discovery Test
 
 The simplest test: can DAAF find your new skill and understand what it's for?
 

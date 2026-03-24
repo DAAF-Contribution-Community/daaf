@@ -108,7 +108,7 @@ Your data does pass through Anthropic's API when Claude Code processes it -- tha
 
 ### Q: Is there a free way to use DAAF?
 
-Not in a practical sense for full-pipeline analyses, unfortunately. The free and Pro tiers of Claude simply don't provide enough usage for the volume of work DAAF demands. You might be able to do some lightweight Discovery Mode queries (asking what data is available, looking up variable definitions), but a full analysis pipeline will exhaust a lower-tier plan very quickly.
+Not in a practical sense for full-pipeline analyses, unfortunately. The free and Pro tiers of Claude simply don't provide enough usage for the volume of work DAAF demands. You might be able to do some lightweight Data Discovery Mode queries (asking what data is available, looking up variable definitions), but a full analysis pipeline will exhaust a lower-tier plan very quickly.
 
 This is genuinely the biggest barrier to entry for DAAF, and I wish it were different. I hope that as model costs continue to decrease and open-source models become more capable, a more accessible option will emerge. If you have the capacity to test DAAF with open-source models or alternative providers, please reach out -- that's high on the list of things I'd love community help with.
 
@@ -286,7 +286,7 @@ This usually means one of a few things:
 
 **What you can do:**
 1. Ask DAAF to try a broader query (fewer filters, wider year range) to see if any data is available at all
-2. Use Discovery Mode to explore what data *is* available for your topic before committing to a full analysis
+2. Use Data Discovery Mode to explore what data *is* available for your topic before committing to a full analysis
 3. Check the Education Data Portal documentation directly to confirm the data you want actually exists
 4. If the portal seems down, wait and try again later
 

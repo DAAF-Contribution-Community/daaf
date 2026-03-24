@@ -274,7 +274,7 @@ Not every contribution needs to be huge, but every contribution should meet a ba
 - **No `[PRELIMINARY]` markers.** If the `data-ingest` agent flagged interpretations as preliminary, you need to resolve them before submitting. That's the whole point of the human review step.
 - **Follow the canonical structure.** Data source skills have a 12-section template (see [**04. Extending DAAF**](user_reference/04_extending_daaf.md) for the full walkthrough). Methodology and domain skills are more free-form, but should still follow the patterns in the `skill-authoring` skill.
 - **Substantive pitfalls section.** The Common Pitfalls section is arguably the most valuable part of any data source skill. "Data may have missing values" is not a useful pitfall. "Free/reduced lunch counts are unreliable after ~2014 due to Community Eligibility Provision (CEP) -- use direct certification data instead" is a useful pitfall. The difference is specificity and actionability.
-- **Tested end-to-end.** At minimum, run a Discovery Test and a Fetch Test (see [Testing Your Changes](#testing-your-changes) below).
+- **Tested end-to-end.** At minimum, run a Data Discovery Test and a Fetch Test (see [Testing Your Changes](#testing-your-changes) below).
 
 ### Agent and Protocol Contributions
 
@@ -297,7 +297,7 @@ A well-written issue saves everyone time -- including yours, because it means I 
 
 When opening a bug report, the more context you can provide, the faster it gets resolved. The ideal bug report includes:
 
-- **What you asked DAAF/Claude to do** -- the prompt or request you gave. Exact wording is helpful because DAAF's behavior depends heavily on how requests are classified (Full Pipeline vs. Discovery vs. Data Lookup).
+- **What you asked DAAF/Claude to do** -- the prompt or request you gave. Exact wording is helpful because DAAF's behavior depends heavily on how requests are classified (Full Pipeline vs. Data Discovery vs. Data Lookup).
 - **What happened vs. what you expected** -- be specific about the failure. "It didn't work" is hard to debug. "It produced a cleaned dataset with 50,000 rows when I expected ~200,000, and the suppression rate was 75% which triggered a STOP condition" is very debuggable.
 - **Which stage failed** -- if you can identify it. DAAF's multi-stage pipeline means the same symptom can have very different causes depending on where it occurs. Even a rough sense ("it failed during data fetch" or "the plan looked wrong" or "the code reviewer flagged something as a BLOCKER") helps narrow things down enormously. Look at the output files for each as needed, as well as any failed script file versions and accompanying comments/output logs.
 - **Session log excerpts** -- check `.claude/logs/sessions/` for the relevant Markdown log. These logs capture the full sequence of tool calls, subagent invocations, and their results. Copy the section where things went wrong (redact any API keys or sensitive content first!!!). See [Using Session Logs](#using-session-logs-for-debugging-and-issue-reports) below for details on finding and reading these logs.
@@ -342,7 +342,7 @@ Documentation changes are the easiest to test:
 
 If you're submitting a new or modified skill, run through this sequence (also described in more detail in [**04. Extending DAAF**](user_reference/04_extending_daaf.md)):
 
-1. **Discovery test.** Ask DAAF: "What data sources does DAAF know about? Can you tell me about [your new data source]?" If the skill is properly registered, DAAF should describe it accurately. If it can't find the skill, check your registration entries in `.claude/skills/daaf-orchestrator/references/skill-catalog.md` and the other files in the registration checklist.
+1. **Data Discovery test.** Ask DAAF: "What data sources does DAAF know about? Can you tell me about [your new data source]?" If the skill is properly registered, DAAF should describe it accurately. If it can't find the skill, check your registration entries in `.claude/skills/daaf-orchestrator/references/skill-catalog.md` and the other files in the registration checklist.
 
 2. **Fetch test.** Ask DAAF to fetch data using your skill and show basic summary statistics. This tests the data access pathway -- dataset paths, mirror configuration, and loading mechanics. If CP1 validation fails, it usually means the dataset path doesn't match what's available on the mirror.
 

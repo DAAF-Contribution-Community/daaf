@@ -1278,10 +1278,10 @@ During Full Pipeline Discovery (Stages 2-3), if a required data source has no ex
 
 If confirmed, pause Full Pipeline (record state in STATE.md), switch to Data Ingest mode. After skill creation, resume Full Pipeline from the point of interruption.
 
-### Discovery to Data Ingest
+### Data Discovery to Data Ingest
 
-During Discovery mode, if the user has a data file but no skill exists for it, propose escalation:
+During Data Discovery mode, if the user has a data file but no skill exists for it, propose escalation:
 
 > "It looks like you have a data file for [source name] but there is no skill for it yet. Would you like to switch to Data Ingest mode to profile it and create a skill?"
 
-If confirmed, load this mode reference and begin Data Ingest. The user can return to Discovery afterward if needed.
+If confirmed, load this mode reference and begin Data Ingest. The user can return to Data Discovery afterward if needed.

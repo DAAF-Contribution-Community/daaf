@@ -1,6 +1,6 @@
 # Workflow Reference: Phase 1 — Discovery & Scoping
 
-Stages 1, 2, 3, 3.5. Cross-phase orchestration guidance (invocation templates, QA protocols, context requirements) is in `full-pipeline.md` (loaded only for Full Pipeline mode; not needed for standalone Discovery mode).
+Stages 1, 2, 3, 3.5. Cross-phase orchestration guidance (invocation templates, QA protocols, context requirements) is in `full-pipeline.md` (loaded only for Full Pipeline mode; not needed for standalone Data Discovery mode).
 
 ---
 
@@ -43,7 +43,7 @@ Stages 1, 2, 3, 3.5. Cross-phase orchestration guidance (invocation templates, Q
 - [ ] Research question clearly stated
 - [ ] Any clarifications documented
 
-> **Full Pipeline Only:** The Pre-Flight Checklist below applies only to Full Pipeline mode. Discovery mode skips this section.
+> **Full Pipeline Only:** The Pre-Flight Checklist below applies only to Full Pipeline mode. Data Discovery mode skips this section.
 
 ### Pre-Flight Checklist (Full Pipeline Mode Only)
 
@@ -74,7 +74,7 @@ Estimated scope:
 **User may:**
 - Confirm → Proceed to Stage 2
 - Request scope adjustment → Clarify and reconfirm
-- Decline → Switch to Discovery or Data Lookup mode
+- Decline → Switch to Data Discovery or Data Lookup mode
 You MUST wait for user confirmation before proceeding.
 
 ---
@@ -374,7 +374,7 @@ After completing the skill's Required Actions, return findings using the format 
 
 ## Stage 3.5: Findings Synthesis
 
-> **Full Pipeline Only:** Stage 3.5 (Findings Synthesis into PSU1) applies only when Discovery is Phase 1 of Full Pipeline. In standalone Discovery mode, synthesis is handled directly by the orchestrator per `discovery-mode.md`.
+> **Full Pipeline Only:** Stage 3.5 (Findings Synthesis into PSU1) applies only when Discovery is Phase 1 of Full Pipeline. In standalone Data Discovery mode, synthesis is handled directly by the orchestrator per `data-discovery-mode.md`.
 
 **Executor:** Subagent (general-purpose)
 **Agent:** `research-synthesizer`
@@ -441,7 +441,7 @@ Consolidate these parallel findings into a unified context for Plan creation.
 })
 ```
 
-> **Full Pipeline Only:** Gate G3.5 applies only to Full Pipeline mode. In standalone Discovery mode, the orchestrator manages synthesis and presentation directly.
+> **Full Pipeline Only:** Gate G3.5 applies only to Full Pipeline mode. In standalone Data Discovery mode, the orchestrator manages synthesis and presentation directly.
 
 ### Gate Criteria (G3.5)
 
@@ -451,7 +451,7 @@ Consolidate these parallel findings into a unified context for Plan creation.
 - [ ] **PSU1 presented to user**
 - [ ] **User confirmed PSU1**
 
-> **Full Pipeline Only:** PSU1 is presented only in Full Pipeline mode. In standalone Discovery mode, findings are presented using the output format in `discovery-mode.md`.
+> **Full Pipeline Only:** PSU1 is presented only in Full Pipeline mode. In standalone Data Discovery mode, findings are presented using the output format in `data-discovery-mode.md`.
 
 ### Phase Status Update 1 (PSU1): Discovery Complete
 

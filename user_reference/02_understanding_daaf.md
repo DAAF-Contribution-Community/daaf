@@ -65,9 +65,9 @@ Before doing anything else, DAAF will tell you which mode it's classifying your 
 
 **When to use it:** When you already know what you're looking for and just need the specific detail. "What does `free_lunch` mean in the CCD data?" "What years are available for CRDC?" "What's the difference between `enrollment` and `fall_enrollment` in IPEDS?"
 
-**When NOT to use it:** When your question is actually broader than you realize. If you find yourself asking five Data Lookup questions in a row, you probably want Discovery mode instead (described next). DAAF will suggest this if it notices the pattern.
+**When NOT to use it:** When your question is actually broader than you realize. If you find yourself asking five Data Lookup questions in a row, you probably want Data Discovery mode instead (described next). DAAF will suggest this if it notices the pattern.
 
-### Discovery Mode
+### Data Discovery Mode
 
 **Trigger words:** "what data exists," "is it possible," "feasibility," "what's available," "can DAAF do," "explore", "can you tell me more about variables related to..."
 
@@ -85,7 +85,7 @@ Before doing anything else, DAAF will tell you which mode it's classifying your 
 
 **When NOT to use it:** When you already know what general data exists and you're ready to analyze it with a specific research question. In that case, jump straight to Full Pipeline.
 
-**Escalation:** If Discovery turns up promising data, DAAF will suggest: "Based on these findings, would you like me to proceed with a Full Pipeline analysis?" You can say yes, refine the question, or say no and walk away with just the findings.
+**Escalation:** If Data Discovery turns up promising data, DAAF will suggest: "Based on these findings, would you like me to proceed with a Full Pipeline analysis?" You can say yes, refine the question, or say no and walk away with just the findings.
 
 ### Full Pipeline Mode
 
@@ -149,10 +149,10 @@ DAAF supports clean transitions between modes when it makes sense:
 
 | From | To | When it happens |
 |------|----|-----------------|
-| Discovery | Full Pipeline | Findings suggest a feasible and valuable analysis |
-| Data Lookup | Discovery | Your question reveals a broader data landscape worth exploring |
+| Data Discovery | Full Pipeline | Findings suggest a feasible and valuable analysis |
+| Data Lookup | Data Discovery | Your question reveals a broader data landscape worth exploring |
 | Data Lookup | Full Pipeline | A quick lookup reveals an actionable analysis opportunity |
-| Discovery | Data Ingest | Do you have a raw data file you want to profile and make reusable? |
+| Data Discovery | Data Ingest | Do you have a raw data file you want to profile and make reusable? |
 | Data Ingest | Full Pipeline | Skill created — would you like to analyze this data now? |
 | Full Pipeline | Data Ingest | Analysis needs a dataset that has no existing skill yet |
 | Full Pipeline | Revision and Extension | You just completed an analysis and want to adjust or extend something |
@@ -175,7 +175,7 @@ When you type a message to DAAF, you're talking to the **orchestrator**, whose c
 
 The orchestrator should NOT be doing the hands-on work itself, because its primary value-add and contribution is coordination and workflow management. It doesn't write analysis scripts, it doesn't clean data, it doesn't run regressions. What it does is:
 
-- **Classify your request** into an engagement mode (Full Pipeline, Discovery, etc.)
+- **Classify your request** into an engagement mode (Full Pipeline, Data Discovery, etc.)
 - **Delegate tasks** in proper sequence to specialized agents, itself providing them with the right context and instructions they need to do their jobs well
 - **Enforce quality gates** -- certain milestones that MUST be passed before work continues and the work product changes hands from one agent to another
 - **Report progress** to you and pause for your approval at key junctures to ensure you, the PI, approve of the direction of the work. It will also enforce work revisions as needed if you request it
@@ -463,7 +463,7 @@ data? What are the coded values?
 
 **What you're testing:** Does DAAF know the data as well as you do? Are there gaps in its knowledge? Does it mention the right caveats? Feel free to ask follow-ups or dig into specific details -- this is a safe, low-stakes way to calibrate your trust.
 
-### Level 2: Thorough Documentation Review (Discovery Mode)
+### Level 2: Thorough Documentation Review (Data Discovery Mode)
 
 Ask Claude to help you figure out what's available within a broad conceptual category of data. This tests DAAF's ability to explore multiple options, consider trade-offs, notice year overlaps or gaps, and so on.
 

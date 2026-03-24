@@ -42,7 +42,7 @@ Match agent protocol weight to question complexity:
 | Coded values, suppression patterns, caveats | `source-researcher` | Source (`*-data-source-*`) | "What are the suppression rules for CRDC discipline data?" |
 | What data exists (narrow, single-source) | None (skill-only) | Explorer | "Does CCD include charter school flags?" |
 
-> **Note:** Broad landscape questions ("What data exists about school poverty?") are better served by Discovery Mode. The Explorer row above is for narrow, source-specific existence checks where the user already knows which domain to look in.
+> **Note:** Broad landscape questions ("What data exists about school poverty?") are better served by Data Discovery Mode. The Explorer row above is for narrow, source-specific existence checks where the user already knows which domain to look in.
 
 **Default:** No agent protocol (skill-only). Use `source-researcher` when the question requires structured investigation of caveats, coded values, or suppression patterns — the cases where its 5-section output contract adds value.
 
@@ -141,19 +141,19 @@ These boundaries supplement the universal safety boundaries in `CLAUDE.md`. The 
 **Always Do:**
 - Answer the specific question asked
 - Keep response focused and concise
-- Suggest Discovery Mode if broader exploration needed
+- Suggest Data Discovery Mode if broader exploration needed
 - Provide direct, actionable information
 
 **Never Do:**
 - Execute multiple skills without confirmation
 - Create Plan files or generate code
-- Expand into full discovery without confirmation
+- Expand into full data discovery without confirmation
 - Assume Full Pipeline is needed from a single question
 
 ## Escalation Triggers
 
-**To Discovery Mode** — when the question reveals broader data exploration is needed:
-> "This question touches on broader data exploration. Would you like me to switch to Discovery Mode?"
+**To Data Discovery Mode** — when the question reveals broader data exploration is needed:
+> "This question touches on broader data exploration. Would you like me to switch to Data Discovery Mode?"
 
 **To Full Pipeline** — when the lookup reveals an actionable analysis opportunity:
 > "This lookup suggests an interesting analysis could be done. Would you like me to explore this further?"

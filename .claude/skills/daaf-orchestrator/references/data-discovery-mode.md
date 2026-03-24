@@ -1,6 +1,6 @@
-# Discovery Mode
+# Data Discovery Mode
 
-Discovery mode is for answering "what data exists?" and "is this analysis feasible?" questions. It executes a subset of the Full Pipeline workflow (Stages 1-3 + synthesis) without producing Plans, code, or analysis artifacts.
+Data Discovery mode is for answering "what data exists?" and "is this analysis feasible?" questions. It executes a subset of the Full Pipeline workflow (Stages 1-3 + synthesis) without producing Plans, code, or analysis artifacts.
 
 ## User Orientation
 
@@ -16,10 +16,10 @@ After mode confirmation, briefly orient the user. Key points:
 
 ---
 
-## Discovery Workflow
+## Data Discovery Workflow
 
 ```
-Stage 1: Classify as Discovery Mode → Confirm with user
+Stage 1: Classify as Data Discovery Mode → Confirm with user
     ↓
 Stage 2: Data Exploration
     ├─ Invoke domain explorer skill via subagent (Plan type, read-only)
@@ -41,11 +41,11 @@ Findings Synthesis
 
 **Before dispatching subagents:** Read `{BASE_DIR}/agent_reference/WORKFLOW_PHASE1_DISCOVERY.md` for the detailed invocation templates (Stage 2: Domain Explorer, Stage 3: Source Deep-Dive). These templates specify the exact prompt structure, context fields, thoroughness directives, and output formats for each subagent type.
 
-**Note:** Discovery mode does NOT require loading `agent_reference/BOUNDARIES.md`, or `full-pipeline.md`. These contain execution-stage guidance (QA substages, code review patterns, git commit protocol) that is irrelevant to Discovery's read-only exploration.
+**Note:** Data Discovery mode does NOT require loading `agent_reference/BOUNDARIES.md`, or `full-pipeline.md`. These contain execution-stage guidance (QA substages, code review patterns, git commit protocol) that is irrelevant to Data Discovery's read-only exploration.
 
 ## Subagent Invocation
 
-Discovery uses read-only subagents to explore data availability. Follow the invocation templates in `{BASE_DIR}/agent_reference/WORKFLOW_PHASE1_DISCOVERY.md`, with these specifics:
+Data Discovery uses read-only subagents to explore data availability. Follow the invocation templates in `{BASE_DIR}/agent_reference/WORKFLOW_PHASE1_DISCOVERY.md`, with these specifics:
 
 - **Stage 2:** Subagent invokes the domain explorer skill (e.g., `education-data-explorer` for education domain)
 - **Stage 3:** Subagent invokes domain source skill(s) (e.g., `education-data-source-ccd`) for deep dives on specific sources flagged in Stage 2
@@ -57,7 +57,7 @@ Discovery uses read-only subagents to explore data availability. Follow the invo
 Present findings as a structured summary:
 
 ```
-**Discovery Findings**
+**Data Discovery Findings**
 
 **Data Availability:**
 - [Source 1]: [What's available, key variables, years covered]
@@ -73,7 +73,7 @@ Present findings as a structured summary:
 
 ## Multi-Source Synthesis Protocol
 
-When Discovery explores multiple data sources (multiple Stage 3 returns), the orchestrator consolidates findings directly (without dispatching the research-synthesizer agent). Follow this protocol:
+When Data Discovery explores multiple data sources (multiple Stage 3 returns), the orchestrator consolidates findings directly (without dispatching the research-synthesizer agent). Follow this protocol:
 
 1. **Merge structured outputs.** For each source-researcher return, extract: variables identified, temporal coverage, geographic coverage, key caveats, and coded values.
 2. **Identify conflicts.** Flag cases where the same concept (e.g., "poverty rate") is measured differently across sources, or where temporal/geographic coverage doesn't align.
@@ -84,7 +84,7 @@ When Discovery explores multiple data sources (multiple Stage 3 returns), the or
 
 ## Boundaries
 
-These boundaries supplement the universal safety boundaries in `CLAUDE.md`. The detailed execution boundaries in `agent_reference/BOUNDARIES.md` (autonomous deviation rules, git commit protocol, STOP conditions) do not apply to Discovery mode's read-only exploration.
+These boundaries supplement the universal safety boundaries in `CLAUDE.md`. The detailed execution boundaries in `agent_reference/BOUNDARIES.md` (autonomous deviation rules, git commit protocol, STOP conditions) do not apply to Data Discovery mode's read-only exploration.
 
 **Always Do:**
 - Focus on data availability and feasibility
