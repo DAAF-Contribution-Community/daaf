@@ -69,6 +69,10 @@ Present findings as a structured summary:
 
 **Recommended Next Steps:**
 - [Specific suggestion — e.g., proceed to Full Pipeline, narrow scope, etc.]
+
+**AI Disclosure Note:** This exploration was conducted using DAAF with [model ID] on [date].
+DAAF version: [commit hash]. See `agent_reference/AI_DISCLOSURE_REFERENCE.md` for
+disclosure guidance if incorporating these findings into published work.
 ```
 
 ## Multi-Source Synthesis Protocol

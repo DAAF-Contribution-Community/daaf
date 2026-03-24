@@ -130,6 +130,8 @@ Provide a direct, actionable answer:
 [Direct answer to the question]
 
 **Source:** [Which skill/data source this comes from]
+
+*If referencing in published work, see `agent_reference/AI_DISCLOSURE_REFERENCE.md` for disclosure guidance.*
 ```
 
 Keep responses concise. The user asked a specific question — answer it specifically.

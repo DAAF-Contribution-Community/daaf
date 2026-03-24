@@ -78,8 +78,14 @@ Agent({
     **FIGURE FILES:**
     {figure_file_list}
 
+    **AI DISCLOSURE METADATA (from STATE.md Session Metadata):**
+    - DAAF Version: {daaf_commit_hash}
+    - Model ID: {model_id}
+    - Session Date(s): {session_dates}
+
     **TASK:**
     Generate the stakeholder report following REPORT_TEMPLATE.md.
+    Include the AI Use Disclosure section (Step 6b) using AI_DISCLOSURE_REFERENCE.md.
     Read Plan.md, Notebook, STATE.md, and LEARNINGS.md.
     Follow the Section-Source Mapping for every section.
     Verify all figure references before embedding.
@@ -105,6 +111,8 @@ Before invoking report-writer, verify:
 - [ ] Date prefix specified
 - [ ] Report filename specified (following naming convention)
 - [ ] Project path specified (absolute)
+- [ ] DAAF commit hash provided (from STATE.md Session Metadata)
+- [ ] Model ID provided (from STATE.md Session Metadata)
 
 #### Expected Output
 
@@ -122,6 +130,7 @@ report-writer returns:
 - [ ] Executive Summary is 4-5 sentences
 - [ ] All statistics trace to execution logs or dataset metadata
 - [ ] Citation text included verbatim
+- [ ] AI Use Disclosure section populated (GUIDE-LLM items addressed or marked N/A)
 
 ---
 

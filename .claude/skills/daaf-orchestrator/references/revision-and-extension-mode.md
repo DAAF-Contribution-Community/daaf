@@ -192,6 +192,14 @@ All deliverables are new-version copies; originals remain untouched:
 - Notebook (reassembled with final script versions)
 - Report (regenerated to reflect changes)
 
+### AI Use Disclosure in Revisions
+
+When the report is regenerated (Stage 11), the AI Use Disclosure section should **inherit the original disclosure and append a revision note.** The report-writer carries forward the original analysis's `[AUTO]` metadata and adds:
+
+> **Revision conducted on [date]:** AI assistance was used to [describe revision scope]. The same QA review process was applied to all re-executed code. DAAF version: [commit hash].
+
+If the original report predates the AI Use Disclosure section (i.e., was created before this feature), the report-writer should generate a full disclosure section for the revised version. See `agent_reference/AI_DISCLOSURE_REFERENCE.md` for the Revision and Extension mode template.
+
 ## Subagent Invocation
 
 Revision and Extension mode reuses the standard invocation templates from the relevant `WORKFLOW_PHASE*.md` file for each re-executed stage. Construct subagent prompts using:

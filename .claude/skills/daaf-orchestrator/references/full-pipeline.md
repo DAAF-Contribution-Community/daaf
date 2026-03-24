@@ -446,7 +446,7 @@ These operations may be executed without preview:
 
 **Notes:**
 - Stages 5 and 6 use `general-purpose` subagent type because they require file write capability (saving parquet files to `data/raw/` and `data/processed/`).
-- **Stage 4 responsibility split:** The `data-planner` agent creates Plan.md and Plan_Tasks.md. The **orchestrator** is responsible for creating STATE.md (from `agent_reference/STATE_TEMPLATE.md`) and the LEARNINGS.md skeleton (from `agent_reference/WORKFLOW_PHASE5_SYNTHESIS.md`) after the data-planner returns. Gate G4 requires all four files.
+- **Stage 4 responsibility split:** The `data-planner` agent creates Plan.md and Plan_Tasks.md. The **orchestrator** is responsible for creating STATE.md (from `agent_reference/STATE_TEMPLATE.md`) and the LEARNINGS.md skeleton (from `agent_reference/WORKFLOW_PHASE5_SYNTHESIS.md`) after the data-planner returns. Gate G4 requires all four files. **When creating STATE.md, populate the Session Metadata section:** run `git rev-parse --short HEAD` to capture the DAAF version, and record the model ID (e.g., "claude-opus-4-6") and session start date. These feed into the AI Use Disclosure section of the final report.
 - **Stage 10** has no dedicated agent — the orchestrator performs QA aggregation directly by reviewing accumulated code-reviewer findings from Stages 5-8.
 
 **Stage 10 Protocol:** Read STATE.md's Transformation Progress table as the sole input. For each script: (1) Check QA status (PASS / PASS_WITH_WARNINGS / N/A), (2) Aggregate WARNING items into a summary, (3) Verify no unresolved BLOCKERs exist, (4) Compose QA Aggregation Summary for PSU4. Do NOT re-read individual QA scripts — STATE.md already tracks all QA outcomes.
@@ -1879,6 +1879,11 @@ The orchestrator receives actual context utilization via the `context-reporter` 
 - **Create:** At Stage 4 (Plan creation) — IMMEDIATELY after Plan.md file is written
 - **Gate:** Stage 5 CANNOT begin until STATE.md exists alongside Plan.md + Plan_Tasks.md (see Gate G4) and Plan-Checker Status is PASSED or PASSED_WITH_WARNINGS (see Gate G4.5).
 - **Required Sections:** STATE.md must include skeleton sections for Runtime Risks, QA Findings Summary, and Final Review Log at creation time.
+- **Session Metadata (required at creation):** Populate the Session Metadata section immediately when creating STATE.md:
+  - **DAAF Version:** Run `git rev-parse --short HEAD` in the DAAF repository root and record the result
+  - **Model ID:** Record the current model identifier (e.g., "claude-opus-4-6")
+  - **Session Date(s):** Record today's date; update if the project spans multiple sessions
+  - **Session Transcript:** Leave as "Populated at session end" — the archive hook fills this
 
 **Update Triggers:** See the **STATE.md Update Gates** table above for the complete list of mandatory update events and which fields to update.
 

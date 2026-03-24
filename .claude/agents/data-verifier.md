@@ -702,6 +702,9 @@ Before returning output, verify:
 - [ ] CP1-CP4 all passed
 - [ ] Suppression rate documented
 - [ ] No unexpected nulls in critical columns
+- [ ] AI Use Disclosure section present in Report (not stub/placeholder)
+- [ ] All `[AUTO]` disclosure fields populated with actual values (no template text remaining)
+- [ ] All `[RESEARCHER]` disclosure fields contain clear prompts for researcher completion
 
 ---
 
@@ -723,3 +726,4 @@ Load on demand — do NOT read all at start:
 | `agent_reference/QA_CHECKPOINTS.md` | Step 7.5 (QA History Review) | QA1-QA4b definitions and severity standards |
 | `agent_reference/WORKFLOW_PHASE5_SYNTHESIS.md` | If Final Review details needed | Goal-backward verification, traditional review checklist, review outcome |
 | `agent_reference/REPORT_TEMPLATE.md` | Step 6 (Coherence) | Expected report structure for completeness verification |
+| `agent_reference/AI_DISCLOSURE_REFERENCE.md` | Pre-Delivery Checklist (disclosure verification) | GUIDE-LLM item list for verifying disclosure completeness |
