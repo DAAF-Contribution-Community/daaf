@@ -160,11 +160,17 @@ This analysis has the following limitations that should be considered when inter
 
 > [Citation 2 if applicable]
 
+### Software & Tools
+
+> Kim, B. H. (2026). *DAAF: Data Analyst Augmentation Framework* (Version 2.0.0) [Computer software]. https://github.com/DAAF-Contribution-Community/daaf
+
+> [AUTO — report-writer: Always include the DAAF citation above. Update the version number if CITATION.cff in the DAAF repository root specifies a different version.]
+
 ---
 
 ## AI Use Disclosure
 
-> This analysis was conducted using the **Data Analyst Augmentation Framework (DAAF)**, an open-source AI-assisted research orchestration system built on Claude Code (Anthropic). The following disclosure follows the GUIDE-LLM reporting checklist (Feuerriegel et al., 2026). For complete guidance, see `agent_reference/AI_DISCLOSURE_REFERENCE.md`.
+> This analysis was conducted using the **Data Analyst Augmentation Framework (DAAF)** (Kim, 2026), an open-source AI-assisted research orchestration system built on Claude Code (Anthropic). The following disclosure follows the GUIDE-LLM reporting checklist (Feuerriegel et al., 2026). For complete guidance, see `agent_reference/AI_DISCLOSURE_REFERENCE.md`.
 
 **Date of analysis:** [AUTO — session date(s) from orchestrator date prefix]
 **DAAF version:** [AUTO — short git commit hash captured at project setup]

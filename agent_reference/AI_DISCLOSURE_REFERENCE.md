@@ -128,11 +128,11 @@ For researchers writing up DAAF-assisted work for publication, the following boi
 
 ### Short Version (for methods sections with space constraints)
 
-> Data analysis was conducted using the Data Analyst Augmentation Framework (DAAF; [DAAF repository URL]), an open-source AI-assisted research orchestration system built on Claude Code (Anthropic, [model ID]). DAAF enforces human-in-the-loop oversight through structured checkpoints, automated code review, and full audit trail preservation. All analysis code, data files, and AI interaction transcripts are archived for reproducibility. A completed GUIDE-LLM checklist (Feuerriegel et al., 2026) is included as supplementary material.
+> Data analysis was conducted using the Data Analyst Augmentation Framework (DAAF; Kim, 2026), an open-source AI-assisted research orchestration system built on Claude Code (Anthropic, [model ID]). DAAF enforces human-in-the-loop oversight through structured checkpoints, automated code review, and full audit trail preservation. All analysis code, data files, and AI interaction transcripts are archived for reproducibility. A completed GUIDE-LLM checklist (Feuerriegel et al., 2026) is included as supplementary material.
 
 ### Long Version (for detailed methods sections or supplementary materials)
 
-> Data analysis was conducted using the Data Analyst Augmentation Framework (DAAF; [DAAF repository URL]), an open-source AI-assisted research orchestration system built on Claude Code (Anthropic). DAAF structures the analysis pipeline into discrete phases — discovery, planning, data acquisition, analysis, and synthesis — with mandatory human review checkpoints between each phase. The AI generated all analysis code, which was then reviewed by a separate AI instance acting as an automated quality reviewer before the researcher's own review. The researcher reviewed and approved the analytical methodology before any code was executed, verified data quality after acquisition, and validated all results before report generation.
+> Data analysis was conducted using the Data Analyst Augmentation Framework (DAAF; Kim, 2026), an open-source AI-assisted research orchestration system built on Claude Code (Anthropic). DAAF structures the analysis pipeline into discrete phases — discovery, planning, data acquisition, analysis, and synthesis — with mandatory human review checkpoints between each phase. The AI generated all analysis code, which was then reviewed by a separate AI instance acting as an automated quality reviewer before the researcher's own review. The researcher reviewed and approved the analytical methodology before any code was executed, verified data quality after acquisition, and validated all results before report generation.
 >
 > The specific model used was [model ID], accessed via the Claude Code CLI with default API parameters on [date(s)]. DAAF version [commit hash] was used. No personally identifiable information was submitted to the AI model. The complete set of analysis scripts with execution logs, intermediate data files, a consolidated analytic notebook, and the full AI session transcript are available as supplementary materials. All AI prompts and system instructions are version-controlled in the DAAF repository. A completed GUIDE-LLM reporting checklist (Feuerriegel et al., 2026) is included as Supplementary Material [X].
 
@@ -162,6 +162,29 @@ AI disclosure requirements vary across journals and are evolving rapidly. The fo
 When referencing the GUIDE-LLM framework in publications, use:
 
 > Feuerriegel, S., Barrie, C., Crockett, M. J., Globig, L. K., McLoughlin, K. L., Mirea, D.-M., Spirling, A., Yang, D., ..., Rathje, S., & Ribeiro, M. H. (2026). A consensus-based reporting checklist for large language models in behavioral and social science. Available at: https://llm-checklist.com/
+
+---
+
+## DAAF Citation
+
+When citing DAAF in publications, use:
+
+> Kim, B. H. (2026). *DAAF: The Data Analyst Augmentation Framework* (Version 2.0.0) [Computer software]. https://github.com/DAAF-Contribution-Community/daaf
+
+**BibTeX:**
+
+```bibtex
+@software{kim2026daaf,
+  author = {Kim, Brian Heseung},
+  title = {{DAAF}: The Data Analyst Augmentation Framework},
+  year = {2026},
+  url = {https://github.com/DAAF-Contribution-Community/daaf},
+  version = {2.0.0},
+  license = {LGPL-3.0-or-later}
+}
+```
+
+**Version note:** If the version in `CITATION.cff` at the DAAF repository root differs from the version shown above, use the version from `CITATION.cff`.
 
 ---
 

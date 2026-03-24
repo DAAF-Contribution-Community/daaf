@@ -39,6 +39,7 @@ Learn more about my vision for DAAF, what makes DAAF different from other attemp
 - [**What DAAF can do today**](#what-daaf-can-do-today)
 - [**What DAAF can do with your help**](#what-daaf-can-do-with-your-help)
 - [**Why open-source? What does it mean for DAAF?**](#why-open-source-what-does-it-mean-for-daaf)
+- [**How to Cite**](#how-to-cite)
 - [**Recommended Next Steps**](#recommended-next-steps)
 - [**About the Author**](#about-the-author)
 - [**Acknowledgments**](#acknowledgments)
@@ -143,6 +144,48 @@ This project is very intentionally licensed under the **GNU Lesser General Publi
 More restrictions kick in if, and only if, you want to **distribute a modified version** of DAAF to others. If you make improvements or changes to the **core DAAF framework** and want to distribute that version as your own, you can -- but only if those core framework improvements **are also** licensed open-source. However, any **extensions you build in addition to and on top of the framework** (e.g., skills for proprietary and private datasets, skills methodological tools, bespoke agents for new domains, etc.) can remain private and yours to use and distribute (or not) as you wish under any license.
 
 This specific GNU LGPL-3.0-or-later license ensures that the core research tooling offered by DAAF remains open and transparent and community-driven. At the same time, it allows DAAF to be used in a diverse range of contexts -- including those involving sensitive, proprietary, or classified data -- without requiring users to open-source their data configurations, research methodologies, or analysis outputs. This matters because many of the researchers and analysts who would benefit most from DAAF work with data that cannot be made public (government agencies, healthcare researchers, private-sector analysts, etc.).
+
+---
+
+## How to Cite
+
+If you use DAAF in your research, please cite it. Software citation ensures credit for open-source tools and supports reproducibility by recording the exact version used.
+
+**Plain text (APA):**
+
+> Kim, B. H. (2026). *DAAF: Data Analyst Augmentation Framework* (Version 2.0.0) [Computer software]. https://github.com/DAAF-Contribution-Community/daaf
+
+**BibTeX:**
+
+```bibtex
+@software{kim2026daaf,
+  author = {Kim, Brian Heseung},
+  title = {{DAAF}: Data Analyst Augmentation Framework},
+  year = {2026},
+  url = {https://github.com/DAAF-Contribution-Community/daaf},
+  version = {2.0.0},
+  license = {LGPL-3.0-or-later}
+}
+```
+
+GitHub also provides a "Cite this repository" button (powered by the [`CITATION.cff`](CITATION.cff) file at the repo root) that generates APA and BibTeX citations automatically.
+
+### Layered Citation Guidance
+
+When using DAAF, there are multiple layers of tooling involved in your analysis. We recommend citing each layer that substantively contributed:
+
+| Layer | What to Cite | When |
+|-------|-------------|------|
+| **DAAF** (this framework) | Kim (2026), as above | Always — if DAAF managed your workflow |
+| **Claude** (the AI model) | Anthropic model card or technical report for the model version used | Always — see the [AI Use Disclosure](#attribution--ai-use-disclosure) section |
+| **Data sources** | Per data source documentation (e.g., Urban Institute Education Data Portal) | Always — cite every data source used |
+| **GUIDE-LLM checklist** | Feuerriegel et al. (2026), as cited in [Attribution & AI Use Disclosure](#attribution--ai-use-disclosure) | When including AI use disclosure in publications |
+
+This layered approach follows established norms in the AI/ML ecosystem (e.g., citing both Hugging Face Transformers *and* the specific model used) and aligns with the [FORCE11 Software Citation Principles](https://force11.org/info/software-citation-principles-published-2016/).
+
+### Version-Specific Citation
+
+Following FORCE11 Principle 6 (Specificity), please cite the **exact version** of DAAF you used. Every DAAF report automatically records the DAAF git commit hash and version in its [AI Use Disclosure](#attribution--ai-use-disclosure) section. <!-- TODO: Once Zenodo integration is active, each release will also have a version-specific DOI for persistent identification. -->
 
 ---
 
