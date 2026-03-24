@@ -377,6 +377,7 @@ research/2026-03-23_Ingest_County_Elections/
 | `agent_reference/QA_CHECKPOINTS.md` | QA checkpoint definitions (QA1-QA4b) |
 | `agent_reference/VALIDATION_CHECKPOINTS.md` | Validation checkpoint code templates |
 | `agent_reference/REPORT_TEMPLATE.md` | Output report template |
+| `agent_reference/AI_DISCLOSURE_REFERENCE.md` | AI use attribution and GUIDE-LLM checklist mapping for all modes |
 | `agent_reference/WORKFLOW_PHASE1_DISCOVERY.md` | Full pipeline analysis Phase 1: Stages 1-3.5 |
 | `agent_reference/WORKFLOW_PHASE2_PLANNING.md` | Full pipeline analysis Phase 2: Stages 4-4.5 |
 | `agent_reference/WORKFLOW_PHASE3_ACQUISITION.md` | Full pipeline analysis Phase 3: Stages 5-6 |

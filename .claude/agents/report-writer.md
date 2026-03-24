@@ -69,6 +69,8 @@ Secondary distinction from **data-verifier**: the report-writer creates the repo
 - [ ] Date prefix (e.g., "2026-02-11")
 - [ ] Project path (absolute)
 - [ ] Report filename (full name following naming convention)
+- [ ] DAAF commit hash (short hash from `git rev-parse --short HEAD`)
+- [ ] Model ID (e.g., "claude-opus-4-6")
 
 </upstream_input>
 
@@ -101,6 +103,8 @@ Each report section has defined primary and secondary source artifacts. Follow t
 | Summary Statistics | Analysis dataset metadata (from orchestrator) + Stage 7 EDA execution logs | Notebook data inspection cells |
 | Limitations | Plan.md Risk Register (planning risks) + Plan.md source caveats from Stage 3 + suppression rates from Stage 6 + LEARNINGS.md data quality entries | STATE.md blockers encountered + STATE.md Runtime Risks |
 | Data Sources & Citations | Citation text (inlined from Stage 6 by orchestrator) | Plan.md Data Sources table |
+| AI Use Disclosure: Role + Model + Prompts + Validation + Reproducibility | STATE.md (session dates, checkpoint statuses) + QA summary + `agent_reference/AI_DISCLOSURE_REFERENCE.md` | CLAUDE.md (model info), DAAF commit hash (from orchestrator) |
+| AI Use Disclosure: Data Privacy + Post-processing + Funding | N/A — `[RESEARCHER]` fields | Report-writer inserts placeholder prompts for researcher |
 | Technical Notes: Reproducibility | Project file paths (notebook, data, scripts) | — |
 | Technical Notes: Environment | Standard (Python 3.12, polars, plotnine, marimo) | — |
 | Appendix | Additional figures not in main findings + extended methodology from Plan.md | — |
@@ -200,8 +204,26 @@ Follow REPORT_TEMPLATE.md section by section. For each section:
 7. Summary Statistics (from dataset metadata)
 8. Limitations (minimum 3, each with impact statement)
 9. Data Sources & Citations (verbatim from Stage 6)
-10. Technical Notes (Reproducibility, Environment)
-11. Appendix (additional figures, extended methodology)
+10. AI Use Disclosure (from Step 6b — GUIDE-LLM checklist items with `[AUTO]`/`[RESEARCHER]` tags)
+11. Technical Notes (Reproducibility, Environment)
+12. Appendix (additional figures, extended methodology)
+
+### Step 6b: Draft AI Use Disclosure Section
+
+Read `agent_reference/AI_DISCLOSURE_REFERENCE.md` for the GUIDE-LLM mapping and populate the AI Use Disclosure section of the report:
+
+1. **`[AUTO]` fields** — populate from available artifacts:
+   - Purpose and human oversight model from Plan.md methodology
+   - Model ID, date of use, and DAAF version from orchestrator-provided metadata
+   - Checkpoint statuses from STATE.md
+   - Script and notebook paths from project structure
+   - Session transcript archive note (flag for researcher: *"Your full session transcript has been archived and can be included as supplementary material"*)
+2. **`[RESEARCHER]` fields** — insert clear placeholder prompts:
+   - Data Privacy: prompt researcher to confirm PII handling
+   - Post-processing: prompt researcher to document any manual edits
+   - Funding & Conflicts: prompt researcher to disclose funding and relationships
+
+**Decision point:** If the orchestrator did not provide a DAAF commit hash, note the gap: "DAAF version: [Not captured — researcher should run `git rev-parse --short HEAD` in the DAAF repository]".
 
 ### Step 7: Cross-Check Research Outcomes and Hypotheses
 
@@ -473,6 +495,8 @@ Before returning output, verify:
 | 6 | Did I follow the Section-Source Mapping for every section? | Re-check each section against its primary source artifact |
 | 7 | Is the citation text included verbatim (not paraphrased)? | Replace with exact citation text from Stage 6 |
 | 8 | Would a non-technical stakeholder understand the Key Findings? | Simplify language; add context and interpretation |
+| 9 | Does the AI Use Disclosure section address all GUIDE-LLM core items (or mark N/A)? | Consult `agent_reference/AI_DISCLOSURE_REFERENCE.md`; populate missing `[AUTO]` fields; ensure `[RESEARCHER]` placeholders are clear |
+| 10 | Are `[RESEARCHER]` placeholder prompts clear enough for the researcher to complete? | Rewrite ambiguous prompts with specific questions |
 
 ---
 
@@ -491,5 +515,6 @@ Load on demand — do NOT read all at start:
 | File | When to Read | Purpose |
 |------|-------------|---------|
 | `agent_reference/REPORT_TEMPLATE.md` | Always (at start) | Report structure to follow |
+| `agent_reference/AI_DISCLOSURE_REFERENCE.md` | At Step 6b (AI Use Disclosure drafting) | GUIDE-LLM checklist mapping, `[AUTO]`/`[RESEARCHER]` field definitions, mode-specific templates |
 | `agent_reference/SCRIPT_EXECUTION_REFERENCE.md` | When execution log format is unclear | Understand how execution logs are structured in scripts |
 | `agent_reference/PLAN_TEMPLATE.md` | When Plan structure is unclear | Understand where to find Plan sections (Research Outcomes, Risk Register, etc.) |

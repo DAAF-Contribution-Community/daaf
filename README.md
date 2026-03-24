@@ -96,7 +96,7 @@ DAAF supports five engagement modes, each tailored to a different type of reques
 | Mode | What It Does | Key Output |
 |------|-------------|------------|
 | **Full Pipeline** | End-to-end research analysis with 4 human checkpoints | Plan + Scripts + Notebook + Report |
-| **Discovery** | Read-only data exploration — no code, no downloads | Findings summary |
+| **Data Discovery** | Read-only data exploration — no code, no downloads | Findings summary |
 | **Data Lookup** | Quick lookup of a variable, coded value, or definition | Direct answer |
 | **Revision and Extension** | Update or extend an existing analysis (new version, original preserved) | Updated artifacts |
 | **Data Ingest** | Profile a new dataset and create a reusable data source skill | SKILL.md + Research project |
@@ -171,6 +171,21 @@ I am deeply grateful to the Urban Institute for:
 - Supporting the research community with responsive maintenance and updates
 
 If you use DAAF or the Education Data Portal in your work, please cite the Urban Institute appropriately. See the [Education Data Portal documentation](https://educationdata.urban.org/documentation/) for citation guidelines. Please be extremely kind and appreciative of them -- they were not aware of DAAF until well into development (in fairness, it didn't seem worth sharing until I could confirm it actually worked well!).
+
+### Attribution & AI Use Disclosure
+
+DAAF integrates the **[GUIDE-LLM](https://llm-checklist.com/)** reporting checklist into all of its output workflows to help researchers transparently and rigorously disclose how AI was used in their work. GUIDE-LLM is a consensus-based reporting standard developed by over 80 experts for studies using large language models in the behavioral and social sciences.
+
+If you use DAAF in your research, we strongly encourage you to:
+
+1. **Include the AI Use Disclosure section** that DAAF automatically generates in your reports (see `agent_reference/AI_DISCLOSURE_REFERENCE.md` for mode-specific guidance)
+2. **Complete the `[RESEARCHER]` fields** in the disclosure section (data privacy, post-processing, funding/conflicts) — these require your judgment and cannot be auto-populated
+3. **Submit the completed GUIDE-LLM checklist** as supplementary material with your manuscript
+4. **Include your archived session transcript** as supplementary material when possible — DAAF automatically archives full session transcripts, providing unparalleled transparency into the AI-assisted research process
+
+For the GUIDE-LLM checklist, please cite:
+
+> Feuerriegel, S., Barrie, C., Crockett, M. J., Globig, L. K., McLoughlin, K. L., Mirea, D.-M., Spirling, A., Yang, D., ..., Rathje, S., & Ribeiro, M. H. (2026). A consensus-based reporting checklist for large language models in behavioral and social science. Available at: https://llm-checklist.com/
 
 ### Inspiration
 
