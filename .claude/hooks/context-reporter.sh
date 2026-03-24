@@ -1,19 +1,20 @@
 #!/bin/bash
-# context-reporter.sh — Multi-event context utilization hook
+# context-reporter.sh — Multi-event context utilization & timestamp hook
 #
-# Injects context window utilization into Claude's conversation so the model
-# can make informed decisions about delegation, state persistence, and session
-# recovery (see CLAUDE.md utilization gates at 40%/60%/75%).
+# Injects context window utilization and a current timestamp into Claude's
+# conversation so the model can make informed decisions about delegation, state
+# persistence, and session recovery (see CLAUDE.md utilization gates at
+# 40%/60%/75%).
 #
 # Registered events:
 #   UserPromptSubmit  — stdout text → injected as <user-prompt-submit-hook>
 #   PreToolUse        — JSON additionalContext → injected before tool executes
 #
-# Deduplication:
-#   A cache file stores the last-reported message. PreToolUse only injects
-#   when the utilization message has changed (avoiding identical noise across
-#   consecutive tool calls within the same exchange). UserPromptSubmit always
-#   reports (it fires once per user message, so dedup isn't needed).
+# Rate limiting:
+#   Both events share a single 60-second injection gate (per session).
+#   Whichever event fires first resets the timer for both. This prevents
+#   redundant context injection across rapid tool calls and user messages.
+#   The gate uses an epoch-timestamp cache file in /tmp.
 #
 # Performance:
 #   Uses `tail -50` to read only the end of the transcript, avoiding full-file
@@ -28,8 +29,9 @@ HOOK_EVENT=$(echo "$INPUT" | jq -r '.hook_event_name // empty' 2>/dev/null) || H
 SESSION_ID=$(echo "$INPUT" | jq -r '.session_id // "default"' 2>/dev/null) || SESSION_ID="default"
 TRANSCRIPT_PATH=$(echo "$INPUT" | jq -r '.transcript_path // empty' 2>/dev/null) || TRANSCRIPT_PATH=""
 
-# Cache for deduplication (one per session, stores last reported message)
-CACHE_FILE="/tmp/claude-ctx-${SESSION_ID}"
+# Rate-limit gate: epoch seconds of last injection (shared across all events, one per session)
+LAST_INJECT_FILE="/tmp/claude-ctx-ts-${SESSION_ID}"
+INJECT_INTERVAL=60  # seconds between injections
 
 # Read context window size from shared cache (written by context-bar.sh statusline).
 # Falls back to 200k if cache doesn't exist yet (e.g., first turn before statusline runs).
@@ -42,7 +44,8 @@ MAX_K=$((MAX_CONTEXT / 1000))
 
 # ---------------------------------------------------------------------------
 # calculate: Parse the transcript's most recent usage data and format a
-# utilization message. Uses tail -50 to avoid parsing the entire JSONL file.
+# utilization message with timestamp. Uses tail -50 to avoid parsing the
+# entire JSONL file.
 # Outputs a single line to stdout, or nothing if data is unavailable.
 # ---------------------------------------------------------------------------
 calculate() {
@@ -76,7 +79,10 @@ calculate() {
     else                         severity="NOMINAL"
     fi
 
-    echo "Context utilization [${severity}]: ${used_k}k / ${MAX_K}k tokens (${pct}%)"
+    local ts
+    ts=$(date '+%Y-%m-%d %H:%M:%S %Z')
+
+    echo "Context utilization [${severity}]: ${used_k}k / ${MAX_K}k tokens (${pct}%) | ${ts}"
 }
 
 # ---------------------------------------------------------------------------
@@ -98,43 +104,44 @@ cache_model() {
 }
 
 # ---------------------------------------------------------------------------
-# Event dispatch
+# Shared rate-limit check (used by both events)
+# ---------------------------------------------------------------------------
+cache_model "$TRANSCRIPT_PATH"
+
+NOW=$(date +%s)
+LAST_INJECT=0
+[[ -f "$LAST_INJECT_FILE" ]] && LAST_INJECT=$(cat "$LAST_INJECT_FILE" 2>/dev/null)
+
+if [[ $((NOW - LAST_INJECT)) -lt $INJECT_INTERVAL ]]; then
+    # Interval not elapsed — skip injection, don't block
+    exit 0
+fi
+
+# Interval elapsed — calculate and emit
+MSG=$(calculate "$TRANSCRIPT_PATH")
+[[ -z "$MSG" ]] && exit 0
+
+# Update the shared timestamp gate
+echo "$NOW" > "$LAST_INJECT_FILE" 2>/dev/null
+
+# ---------------------------------------------------------------------------
+# Event dispatch (format differs per event, but both share the gate above)
 # ---------------------------------------------------------------------------
 case "$HOOK_EVENT" in
 
     UserPromptSubmit)
-        # Always calculate and report (fires once per user message).
-        # stdout → injected into Claude's context.
-        cache_model "$TRANSCRIPT_PATH"
-        MSG=$(calculate "$TRANSCRIPT_PATH")
-        if [[ -n "$MSG" ]]; then
-            echo "$MSG" > "$CACHE_FILE" 2>/dev/null
-            echo "$MSG"
-        fi
+        # stdout → injected into Claude's context as <user-prompt-submit-hook>
+        echo "$MSG"
         ;;
 
     PreToolUse)
-        # Calculate and inject ONLY if utilization has changed since last report.
-        # This prevents identical messages on consecutive Read/Glob/Grep calls.
-        cache_model "$TRANSCRIPT_PATH"
-        MSG=$(calculate "$TRANSCRIPT_PATH")
-        if [[ -n "$MSG" ]]; then
-            CACHED=""
-            [[ -f "$CACHE_FILE" ]] && CACHED=$(cat "$CACHE_FILE" 2>/dev/null)
-
-            if [[ "$MSG" != "$CACHED" ]]; then
-                echo "$MSG" > "$CACHE_FILE" 2>/dev/null
-                # PreToolUse requires JSON with additionalContext to inject
-                # into Claude's context. No permissionDecision = normal flow.
-                jq -n --arg ctx "$MSG" '{
-                    hookSpecificOutput: {
-                        hookEventName: "PreToolUse",
-                        additionalContext: $ctx
-                    }
-                }'
-            fi
-            # If unchanged → exit 0 with no output → tool proceeds, no injection
-        fi
+        # JSON additionalContext → injected as <system-reminder> before tool executes
+        jq -n --arg ctx "$MSG" '{
+            hookSpecificOutput: {
+                hookEventName: "PreToolUse",
+                additionalContext: $ctx
+            }
+        }'
         ;;
 
     *)
