@@ -70,6 +70,8 @@ hierarchies, no module abstractions.
 3. **Section separators** — Organize scripts with comment headers:
    `# --- Config ---`, `# --- Load ---`, `# --- Transform ---`,
    `# --- Validate ---`, `# --- Save ---`
+   Data Ingest profiling scripts use: `# --- Config ---`, `# --- Load ---`,
+   `# --- Profile ---`, `# --- Validate ---`, `# --- Summary ---`
 4. **No type annotations** — Sequential scripts don't define function signatures
 5. **No test files** — Validation is inline (`assert` + `print`), not in
    `tests/` directories
@@ -264,6 +266,10 @@ All executed scripts are archived in the `scripts/` folder with stage-based orga
 | 7 (Transform) | `scripts/stage7_transform/` | `{step:02d}_{task-name}.py` | `01_join-data.py` |
 | 8 (Analysis & Viz) | `scripts/stage8_analysis/` | `{step:02d}_{task-name}.py` | `01_regression-poverty.py` |
 | Debug | `scripts/debug/` | `{seq:02d}_diag-{slug}.py` | `01_diag-key-mismatch.py` |
+| DI-3 (Structural) | `scripts/profile_structural/` | `{NN}_{task-name}.py` | `01_load-and-format.py` |
+| DI-4 (Statistical) | `scripts/profile_statistical/` | `{NN}_{task-name}.py` | `04_distribution-analysis.py` |
+| DI-5 (Relational) | `scripts/profile_relational/` | `{NN}_{task-name}.py` | `07_key-integrity.py` |
+| DI-6 (Interpretation) | `scripts/profile_interpretation/` | `{NN}_{task-name}.py` | `10_semantic-interpretation.py` |
 
 **Step numbering:** Use the step number from the Transformation Sequence (e.g., Step 1.1 → `01`, Step 2.3 → `03`).
 
@@ -320,6 +326,42 @@ research/2026-01-24_School_Poverty_Analysis/
 └── STATE.md                                       # Session state (REQUIRED for Full Pipeline)
 ```
 
+### Data Ingest Example Project Structure
+
+```
+research/2026-03-23_Ingest_County_Elections/
+├── STATE.md                                       # Session state (REQUIRED)
+├── LEARNINGS.md                                   # Session learnings (REQUIRED)
+├── scripts/
+│   ├── run_with_capture.sh                        # Copied from /daaf/scripts/
+│   ├── profile_structural/
+│   │   ├── 01_load-and-format.py
+│   │   ├── 02_structural-profile.py
+│   │   └── 03_column-profile.py
+│   ├── profile_statistical/
+│   │   ├── 04_distribution-analysis.py
+│   │   ├── 05_temporal-coverage.py
+│   │   └── 06_entity-coverage.py
+│   ├── profile_relational/
+│   │   ├── 07_key-integrity.py
+│   │   ├── 08_correlation-dependency.py
+│   │   └── 09_quality-anomaly.py
+│   ├── profile_interpretation/
+│   │   ├── 10_semantic-interpretation.py
+│   │   └── 11_reconcile-docs.py
+│   └── cr/                                        # QA review scripts (phase-based)
+│       ├── profile_structural_cr1.py              # QAP1 review
+│       ├── profile_statistical_cr1.py             # QAP2 review
+│       ├── profile_relational_cr1.py              # QAP3 review
+│       └── profile_interpretation_cr1.py          # QAP4 review
+├── data/
+│   └── raw/
+│       └── 2026-03-23_countypres.parquet
+└── output/
+    └── skill_draft/
+        └── SKILL.md                               # Draft skill before final placement
+```
+
 ---
 
 ## Reference Files
@@ -328,9 +370,10 @@ research/2026-01-24_School_Poverty_Analysis/
 |------|---------|
 | `agent_reference/SCRIPT_EXECUTION_REFERENCE.md` | Script execution protocol, format templates, and stage-specific examples |
 | `agent_reference/INLINE_AUDIT_TRAIL.md` | Script documentation standards (IAT) |
-| `agent_reference/PLAN_TEMPLATE.md` | Research plan template |
-| `agent_reference/PLAN_TASKS_TEMPLATE.md` | Plan Tasks document template |
-| `agent_reference/STATE_TEMPLATE.md` | Session state file template |
+| `agent_reference/PLAN_TEMPLATE.md` | Research plan template (Full Pipeline) |
+| `agent_reference/PLAN_TASKS_TEMPLATE.md` | Plan Tasks document template (Full Pipeline) |
+| `agent_reference/STATE_TEMPLATE.md` | Session state file template (Full Pipeline) |
+| `agent_reference/STATE_TEMPLATE_INGEST.md` | Session state file template (Data Ingest mode) |
 | `agent_reference/QA_CHECKPOINTS.md` | QA checkpoint definitions (QA1-QA4b) |
 | `agent_reference/VALIDATION_CHECKPOINTS.md` | Validation checkpoint code templates |
 | `agent_reference/REPORT_TEMPLATE.md` | Output report template |

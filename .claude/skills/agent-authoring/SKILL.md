@@ -187,9 +187,15 @@ requiring the agent to invoke the Skill tool.
 # Single skill
 skills: data-scientist
 
-# Multiple skills
-skills: [data-scientist, polars]
+# Multiple skills (YAML block list — matches official Claude Code docs)
+skills:
+  - data-scientist
+  - polars
 ```
+
+The full skill content is injected into the agent's context at startup. The agent
+does NOT need to call the Skill tool for preloaded skills — doing so would load
+the content a second time and waste context tokens.
 
 **When to assign skills to an agent:**
 - The agent routinely needs the skill's domain knowledge (e.g., all coding agents preload `data-scientist`)
@@ -205,7 +211,7 @@ skills: [data-scientist, polars]
 
 | Skill | Assigned to |
 |-------|-------------|
-| `data-scientist` | research-executor, code-reviewer, debugger, data-ingest, data-planner, plan-checker, data-verifier, source-researcher, research-synthesizer, integration-checker, report-writer |
+| `data-scientist` | research-executor, code-reviewer, debugger, data-ingest, data-planner, plan-checker, data-verifier, source-researcher, research-synthesizer, integration-checker, report-writer, notebook-assembler |
 | `marimo` | notebook-assembler |
 
 ## Naming Convention
