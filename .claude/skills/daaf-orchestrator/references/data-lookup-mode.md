@@ -1,6 +1,6 @@
-# Targeted Assist Mode
+# Data Lookup Mode
 
-Targeted Assist mode is for specific lookup questions — coded values, variable definitions, data source details, or quick factual answers. It invokes a single relevant skill and returns a direct answer.
+Data Lookup mode is for specific lookup questions — coded values, variable definitions, data source details, or quick factual answers. It invokes a single relevant skill and returns a direct answer.
 
 ## User Orientation
 
@@ -10,10 +10,10 @@ For unfamiliar users, add something like: *"If it turns out your question touche
 
 ---
 
-## Targeted Assist Workflow
+## Data Lookup Workflow
 
 ```
-Stage 1: Classify as Targeted Assist → Confirm with user
+Stage 1: Classify as Data Lookup → Confirm with user
     ↓
 Identify the single most relevant skill for the question
     ↓
@@ -50,7 +50,7 @@ Match agent protocol weight to question complexity:
 
 ```python
 Agent({
-    description: "Targeted Assist: [question summary]",
+    description: "Data Lookup: [question summary]",
     prompt: """You are answering a specific data lookup question.
 
 **BASE_DIR:** {BASE_DIR}
@@ -87,7 +87,7 @@ Use when the question requires investigating caveats, coded values, or suppressi
 
 ```python
 Agent({
-    description: "Targeted Assist: [question summary]",
+    description: "Data Lookup: [question summary]",
     prompt: """**BASE_DIR:** {BASE_DIR}
 All relative paths in referenced files resolve from BASE_DIR.
 
@@ -136,7 +136,7 @@ Keep responses concise. The user asked a specific question — answer it specifi
 
 ## Boundaries
 
-These boundaries supplement the universal safety boundaries in `CLAUDE.md`. The detailed execution boundaries in `agent_reference/BOUNDARIES.md` do not apply to Targeted Assist mode (no code execution, no data transformations, no commits).
+These boundaries supplement the universal safety boundaries in `CLAUDE.md`. The detailed execution boundaries in `agent_reference/BOUNDARIES.md` do not apply to Data Lookup mode (no code execution, no data transformations, no commits).
 
 **Always Do:**
 - Answer the specific question asked

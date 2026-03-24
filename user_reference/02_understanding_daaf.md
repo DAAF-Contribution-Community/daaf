@@ -50,7 +50,7 @@ DAAF first classifies every request you make into one of five **engagement modes
 
 Before doing anything else, DAAF will tell you which mode it's classifying your request into, explain why, and ask you to confirm. This is intentional. You should always have the chance to say "actually, I just wanted a quick lookup" or "actually, let's go deeper on this." Here's what each of them do, and how the workflow works so you know when and why you'd use each:
 
-### Targeted Assist Mode
+### Data Lookup Mode
 
 **Trigger words:** "what are the values for," "how is X defined," "lookup," "what does this variable mean," "explain this table..."
 
@@ -65,7 +65,7 @@ Before doing anything else, DAAF will tell you which mode it's classifying your 
 
 **When to use it:** When you already know what you're looking for and just need the specific detail. "What does `free_lunch` mean in the CCD data?" "What years are available for CRDC?" "What's the difference between `enrollment` and `fall_enrollment` in IPEDS?"
 
-**When NOT to use it:** When your question is actually broader than you realize. If you find yourself asking five Targeted Assist questions in a row, you probably want Discovery mode instead (described next). DAAF will suggest this if it notices the pattern.
+**When NOT to use it:** When your question is actually broader than you realize. If you find yourself asking five Data Lookup questions in a row, you probably want Discovery mode instead (described next). DAAF will suggest this if it notices the pattern.
 
 ### Discovery Mode
 
@@ -150,8 +150,8 @@ DAAF supports clean transitions between modes when it makes sense:
 | From | To | When it happens |
 |------|----|-----------------|
 | Discovery | Full Pipeline | Findings suggest a feasible and valuable analysis |
-| Targeted Assist | Discovery | Your question reveals a broader data landscape worth exploring |
-| Targeted Assist | Full Pipeline | A quick lookup reveals an actionable analysis opportunity |
+| Data Lookup | Discovery | Your question reveals a broader data landscape worth exploring |
+| Data Lookup | Full Pipeline | A quick lookup reveals an actionable analysis opportunity |
 | Discovery | Data Ingest | Do you have a raw data file you want to profile and make reusable? |
 | Data Ingest | Full Pipeline | Skill created — would you like to analyze this data now? |
 | Full Pipeline | Data Ingest | Analysis needs a dataset that has no existing skill yet |
@@ -445,7 +445,7 @@ In any case, this demo project should give you a good sense of what to expect, a
 
 Rather than try to jump in with a complete Full Pipeline Analysis at once, I strongly recommend testing out the simpler features and engagement modes first. The whole premise of this project is that DAAF is surprisingly robust, but I think the right way to build confidence is to start small and work your way up. Here's a concrete progression I'd recommend, designed to let you assess DAAF's knowledge and capabilities at each level of complexity:
 
-### Level 1: Quick Ask (Targeted Assist Mode)
+### Level 1: Quick Ask (Data Lookup Mode)
 
 Ask Claude to explain a single dataset or variable you're already familiar with. This tests DAAF's domain knowledge against your own expertise.
 

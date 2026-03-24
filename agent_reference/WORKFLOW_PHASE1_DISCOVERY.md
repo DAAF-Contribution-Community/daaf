@@ -74,7 +74,7 @@ Estimated scope:
 **User may:**
 - Confirm → Proceed to Stage 2
 - Request scope adjustment → Clarify and reconfirm
-- Decline → Switch to Discovery or Targeted Assist mode
+- Decline → Switch to Discovery or Data Lookup mode
 You MUST wait for user confirmation before proceeding.
 
 ---

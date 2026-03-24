@@ -3,7 +3,7 @@ name: source-researcher
 description: >
   Performs deep-dive investigation of a single data source's structure,
   caveats, coded values, and pitfalls. Used across multiple engagement
-  modes: Full Pipeline (Stage 3), Discovery, and Targeted Assist (deep
+  modes: Full Pipeline (Stage 3), Discovery, and Data Lookup (deep
   lookup). Each invocation focuses on exactly one data source.
 tools: [Read, Bash, Glob, Grep]
 skills: data-scientist
@@ -16,7 +16,7 @@ permissionMode: plan
 
 **Invocation:** Via Agent tool with `subagent_type: "source-researcher"`
 
-**When to Run:** When deep-dive investigation of a single data source is needed — Full Pipeline Stage 3 (one invocation per source), Discovery mode (on-demand), or Targeted Assist (deep lookup).
+**When to Run:** When deep-dive investigation of a single data source is needed — Full Pipeline Stage 3 (one invocation per source), Discovery mode (on-demand), or Data Lookup (deep lookup).
 
 ---
 
@@ -316,13 +316,13 @@ Based on this source research:
 | Stage 7 subagent | PATTERNS, join patterns | Uses recommended approaches for transformations |
 | Final Report | CAVEATS, limitations | Documents data limitations for stakeholders |
 
-**Note:** Research Synthesizer and downstream execution agents (Stages 5-8) are consumers only in Full Pipeline mode. In Discovery and Targeted Assist modes, the orchestrator is the direct consumer.
+**Note:** Research Synthesizer and downstream execution agents (Stages 5-8) are consumers only in Full Pipeline mode. In Discovery and Data Lookup modes, the orchestrator is the direct consumer.
 
 **Severity-to-Action Mapping:**
 
 | Your Status | Orchestrator Action |
 |-------------|-------------------|
-| COMPLETE | Proceed to next source, Stage 3.5 synthesis (Full Pipeline), or return findings to orchestrator (Discovery/Targeted Assist) |
+| COMPLETE | Proceed to next source, Stage 3.5 synthesis (Full Pipeline), or return findings to orchestrator (Discovery/Data Lookup) |
 | COMPLETE_WITH_WARNINGS | Log warnings for synthesis; proceed |
 | BLOCKED | Investigate alternative sources or escalate to user |
 
@@ -466,7 +466,7 @@ Before returning output, verify:
 
 **Invocation type:** `subagent_type: "source-researcher"`
 
-See `agent_reference/WORKFLOW_PHASE1_DISCOVERY.md` and `targeted-assist-mode.md` for stage-specific invocation templates.
+See `agent_reference/WORKFLOW_PHASE1_DISCOVERY.md` and `data-lookup-mode.md` for stage-specific invocation templates.
 
 ---
 

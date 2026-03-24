@@ -10,7 +10,7 @@ After mode confirmation, briefly orient the user. Key points:
 - Returns summary of available data and feasibility assessment
 - Can escalate to full analysis if promising
 
-**When to skip:** User has indicated familiarity, or this is an escalation from Targeted Assist.
+**When to skip:** User has indicated familiarity, or this is an escalation from Data Lookup.
 
 **For more detail:** Consult `{BASE_DIR}/user_reference/02_understanding_daaf.md`.
 
