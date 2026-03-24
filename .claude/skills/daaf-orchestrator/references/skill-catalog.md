@@ -4,6 +4,8 @@ This catalog provides quick-reference tables for identifying which skills to use
 
 The education data source skills (`education-data-source-*`) listed below access data through the **Urban Institute Education Data Portal (EDP)**, not directly from original federal source agencies. The EDP curates, standardizes (lowercase variable names, integer-encoded categoricals, standardized missing values), and may subset the original source data. Each skill documents what is available through the Portal and notes any known gaps relative to the original data collection.
 
+**Naming Convention:** Data source skills follow `{domain}-data-source-{acronym}` (e.g., `education-data-source-ccd`, `election-data-source-countypres`). See `data-ingest-mode.md` > "Skill Naming Convention" for full rules.
+
 ## Skill Quick Reference
 
 | Skill | Purpose | When to Use |

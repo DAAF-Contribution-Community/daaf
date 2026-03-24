@@ -66,6 +66,12 @@ provenance:
 
 <!-- RULES:
   - name: must match the directory name exactly
+  - NAMING CONVENTION: {domain}-data-source-{acronym}
+    - {domain} groups related sources and must match metadata.domain
+    - {acronym} is the standard abbreviation (CCD, IPEDS, CRDC) — not the full name
+    - Examples: education-data-source-ccd, election-data-source-countypres
+    - When a source has multiple tables, append a table identifier
+      (e.g., education-data-source-ccd-schools)
   - description: max 1024 chars, no angle brackets (< >)
   - description: MUST include both "what it does" AND "when to use it"
   - domain: ALWAYS use a consistent domain identifier for your domain (e.g., "education-data" for education; not variants like "education-civil-rights")

@@ -113,6 +113,34 @@ After mode confirmation, briefly orient the user. Key points:
 
 ---
 
+## Skill Naming Convention
+
+At Stage DI-1, the orchestrator must determine the **target skill name** — the identifier used for the skill directory and frontmatter `name` field.
+
+### Convention: `{domain}-data-source-{acronym}`
+
+All data source skills follow this pattern. The `{domain}` groups related sources for pattern-based discovery, and the `{acronym}` is the standard abbreviation researchers use for the source.
+
+**Examples:** `education-data-source-ccd`, `education-data-source-ipeds`, `election-data-source-countypres`
+
+### Naming Rules
+
+| Rule | Correct | Incorrect | Rationale |
+|------|---------|-----------|-----------|
+| Use the standard acronym when one exists | `education-data-source-ccd` | `education-data-source-common-core` | Acronyms are how researchers reference sources |
+| Domain prefix must match `metadata.domain` | `election-data-source-countypres` (domain: `election-data`) | `voting-data-source-countypres` | Consistency enables pattern-based discovery |
+| Identify specific tables when a source has multiple | `education-data-source-ccd-schools` | `education-data-source-ccd` (if ambiguous) | Prevents conflicts when ingesting additional tables later |
+| Follow frontmatter validation: lowercase, hyphens only | `education-data-source-nhgis` | `education_data_source_NHGIS` | Regex: `^[a-z0-9]+(-[a-z0-9]+)*$` |
+
+### Orchestrator Responsibilities at DI-1
+
+1. **If the user provides a skill name:** Validate it against the `{domain}-data-source-{acronym}` convention. If it doesn't follow the pattern, suggest a corrected version and explain the convention briefly. Accept the user's preference if they insist.
+2. **If the user does not provide a skill name:** Propose one using the source name, domain context, and any acronym the user mentions. Present the proposed name for confirmation.
+3. **Always check** for conflicts against existing skills in `.claude/skills/` before confirming.
+4. **Record** the confirmed skill name in STATE.md's Data Source Info section.
+
+---
+
 ## Gate Definitions
 
 | Gate | After Stage | Criteria | STOP If |
