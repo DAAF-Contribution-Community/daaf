@@ -23,7 +23,10 @@ permissionMode: default                          # Or: plan (read-only agents)
 # ── Optional fields ──
 # model: inherit          # sonnet | opus | haiku | inherit
 # maxTurns: 50
-# skills: skill-a          # Skill to preload (use YAML array [skill-a, skill-b] if multiple)
+# skills: skill-a          # Skill to preload at startup (full content injected)
+# skills:                  # Multiple skills use YAML block list:
+#   - skill-a
+#   - skill-b
 # memory: project          # user | project | local
 # hooks:                   # Per-agent hook registration (scoped to this agent only)
 #   PreToolUse:

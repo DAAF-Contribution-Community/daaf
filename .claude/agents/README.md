@@ -46,7 +46,7 @@ All agents in this directory MUST follow the canonical template at `agent_refere
 | **debugger** | Diagnose data quality issues and analysis failures using scientific hypothesis-testing methodology | `debugger` | Any (on error) | Error message/symptom, failed script path, Plan.md, Plan_Tasks.md (optional), last successful operation | Root cause report with hypothesis log and verified fix |
 | **notebook-assembler** | Compile scripts into Marimo notebook via VERBATIM copy (NO dashboards, NO widgets, NO new code) | `notebook-assembler` | 9 | Completed scripts (stages 5-8), Plan.md, data files, figure files, project path | Marimo `.py` notebook with script walkthroughs and data inspection cells |
 | **integration-checker** | Validate component wiring: data flows, file references, and orphan detection | `integration-checker` | 9, 11, 12 | Plan.md, Notebook, Report, project folder, script-to-output mappings | Integration check report: CONNECTED / ISSUES FOUND with flow diagrams |
-| **data-ingest** | Profile new datasets and produce comprehensive findings for skill authoring | `data-ingest` | Data Ingest Mode (Stages DI-3 to DI-6) | Data file path + format, target skill name, intended use, domain context, optional docs | Phase-specific profiling findings for orchestrator |
+| **data-ingest** | Profile new datasets and produce comprehensive findings for skill authoring | `data-ingest` | Data Ingest Mode (Stages DI-3 to DI-6) | Data file path + format, target skill name, intended use, domain context, optional docs | Part-specific profiling findings for orchestrator |
 | **report-writer** | Synthesize pipeline artifacts into stakeholder report following REPORT_TEMPLATE.md | `report-writer` | 11 | Plan.md, Notebook, STATE.md, LEARNINGS.md, QA summary, figures, citations, dataset metadata | Report.md (stakeholder prose) |
 
 ### Commonly Confused Pairs
@@ -58,7 +58,7 @@ When adding a new agent, ensure it doesn't overlap with these frequently confuse
 | **code-reviewer** vs **data-verifier** | Reviewer validates individual scripts *during* execution (Stages 5-8); verifier performs adversarial whole-analysis check *after* completion (Stage 12) |
 | **code-reviewer** vs **debugger** | Reviewer validates *correctness* of working code; debugger diagnoses *failures* when code doesn't work |
 | **source-researcher** vs **research-synthesizer** | Researcher examines a *single* source in depth; synthesizer *combines* findings across multiple sources |
-| **source-researcher** vs **data-ingest** | Researcher examines *existing* skills for a known source; ingest profiles data across four phases; skill authoring is handled by a separate subagent at Stage DI-7 |
+| **source-researcher** vs **data-ingest** | Researcher examines *existing* skills for a known source; ingest profiles data across four parts; skill authoring is handled by a separate subagent at Stage DI-7 |
 | **data-planner** vs **plan-checker** | Planner *creates* plans; checker *validates* plans (never fixes them) |
 | **notebook-assembler** vs **integration-checker** | Assembler *builds* the notebook (verbatim script compilation); checker *verifies* wiring between components |
 | **report-writer** vs **research-synthesizer** | Writer synthesizes *post-execution* artifacts into a stakeholder report (Stage 11); synthesizer combines *pre-execution* research findings into planning guidance (Stage 3.5) |
@@ -228,8 +228,8 @@ Shows which agents produce output consumed by other agents:
 | **report-writer** | integration-checker | Report.md (stakeholder report following REPORT_TEMPLATE.md) | After Stage 11 completes |
 | **report-writer** | data-verifier | Report.md (stakeholder report) | Before Stage 12 verification |
 | **report-writer** | Orchestrator | Status report (COMPLETE / COMPLETE_WITH_GAPS / BLOCKED) | After report generation |
-| **Orchestrator** | data-ingest | Phase assignment (A/B/C/D), prior phase findings, conditional script decisions | Stages DI-3 to DI-6 (per-phase) |
-| **data-ingest** | Orchestrator | Phase-specific profiling findings, confidence assessment, issues | Stages DI-3 to DI-6 (per-phase) |
+| **Orchestrator** | data-ingest | Part assignment (A/B/C/D), prior part findings, conditional script decisions | Stages DI-3 to DI-6 (per-part) |
+| **data-ingest** | Orchestrator | Part-specific profiling findings, confidence assessment, issues | Stages DI-3 to DI-6 (per-part) |
 
 ---
 
@@ -490,19 +490,19 @@ code-reviewer returns BLOCKER
 
 ### data-ingest
 
-**Use when:** The orchestrator is running Data Ingest Mode and needs to dispatch a profiling phase (A/B/C/D) for a new data file. Each phase is a separate subagent invocation managed by the orchestrator.
+**Use when:** The orchestrator is running Data Ingest Mode and needs to dispatch a profiling part (A/B/C/D) for a new data file. Each part is a separate subagent invocation managed by the orchestrator.
 
-**Purpose:** Profile new datasets across four orchestrator-managed phases:
-- **Phase A:** Structure & schema profiling (types, shapes, nulls)
-- **Phase B:** Value distribution & quality profiling (uniques, outliers, coded values)
-- **Phase C:** Cross-column relationships & semantic interpretation
-- **Phase D:** Documentation reconciliation (docs vs. actual data)
+**Purpose:** Profile new datasets across four orchestrator-managed parts:
+- **Part A:** Structural Discovery (schema, types, shapes, nulls)
+- **Part B:** Statistical Deep Dive (distributions, temporal coverage, entity coverage)
+- **Part C:** Relational Analysis (key candidates, correlations, quality anomalies)
+- **Part D:** Interpretation & Reconciliation (semantic classification, documentation reconciliation)
 
 **Key behaviors:**
-- Operates as an orchestrator-managed profiling specialist (one phase per invocation)
-- Receives phase assignment and prior phase findings from orchestrator
+- Operates as an orchestrator-managed profiling specialist (one part per invocation)
+- Receives part assignment and prior part findings from orchestrator
 - Data file is source of truth; documentation claims are verified against data
-- Returns phase-specific profiling findings with confidence assessment
+- Returns part-specific profiling findings with confidence assessment
 - Skill authoring is NOT performed by this agent (handled at Stage DI-7 by a separate subagent)
 
 **Invocation template:** See the appropriate WORKFLOW_PHASE*.md or mode reference file for stage-specific invocation templates.

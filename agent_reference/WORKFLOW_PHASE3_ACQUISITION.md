@@ -66,8 +66,7 @@ Agent({
     prompt: """**BASE_DIR:** {BASE_DIR}
 All relative paths in referenced files resolve from BASE_DIR.
 
-Call the skill tool with name 'data-scientist'.
-Then, call the skill tool with name '{domain_query_skill}'.  # e.g., 'education-data-query'
+Call the skill tool with name '{domain_query_skill}'.  # e.g., 'education-data-query'
 
 **QUERY SPECIFICATION:**
 - Dataset Path: {dataset_path}  (from datasets-reference.md, flat format e.g. "ccd/schools_ccd_directory")
@@ -269,8 +268,7 @@ Agent({
     prompt: """**BASE_DIR:** {BASE_DIR}
 All relative paths in referenced files resolve from BASE_DIR.
 
-Call the skill tool with name 'data-scientist'.
-Then, call the skill tool with name '{domain_context_skill}'.  # e.g., 'education-data-context'
+Call the skill tool with name '{domain_context_skill}'.  # e.g., 'education-data-context'
 
 **DATA SOURCE:** {source_name}
 

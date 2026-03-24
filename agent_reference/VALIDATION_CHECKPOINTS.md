@@ -1439,8 +1439,8 @@ Validation results appear in the notebook as accordion sections containing the s
 
 ### CPP Overview
 
-| Checkpoint | After Phase | Purpose | STOP If |
-|------------|------------|---------|---------|
+| Checkpoint | After Part | Purpose | STOP If |
+|------------|-----------|---------|---------|
 | CPP1 | A (Structural) | Data loads correctly | Zero rows, zero columns, >50% null, encoding errors |
 | CPP2 | B (Statistical) | Stats are internally consistent | Mean outside [min,max], non-monotonic percentiles |
 | CPP3 | C (Relational) | Relationships are coherent | Non-symmetric correlation, uniqueness disagreement, empty anomaly catalog |
@@ -1475,22 +1475,31 @@ print(f"CPP1 PASSED: {df.shape[0]:,} rows, {df.shape[1]} columns, {null_rate:.1%
 
 ### CPP2: Post-Statistical Validation
 
-**Embedded in:** Last script of Phase B (04, 05, or 06 depending on conditional execution)
+**Embedded in:** Last script of Part B (04, 05, or 06 depending on conditional execution)
 
 ```python
 # --- CPP2: Post-Statistical Validation ---
-# INTENT: Verify statistical computations are internally consistent
-for col in df.columns:
-    if df[col].dtype in [pl.Float64, pl.Float32, pl.Int64, pl.Int32]:
-        col_min = df[col].min()
-        col_max = df[col].max()
-        col_mean = df[col].mean()
-        if col_min is not None and col_max is not None and col_mean is not None:
-            assert col_min <= col_mean <= col_max, (
-                f"STOP: {col} mean {col_mean} outside [{col_min}, {col_max}]"
-            )
-
-print("CPP2 PASSED: Statistical computations internally consistent")
+# INTENT: Verify numeric summary statistics are internally consistent
+for col in numeric_columns:
+    col_min = df[col].min()
+    col_max = df[col].max()
+    col_mean = df[col].mean()
+    # REASONING: Mean must fall within [min, max] for any valid distribution
+    assert col_min <= col_mean <= col_max, (
+        f"STOP: Mean for '{col}' ({col_mean}) outside [{col_min}, {col_max}]"
+    )
+    # REASONING: Percentiles must be monotonically non-decreasing
+    p25 = df[col].quantile(0.25)
+    p50 = df[col].quantile(0.50)
+    p75 = df[col].quantile(0.75)
+    assert p25 <= p50 <= p75, (
+        f"STOP: Percentile monotonicity violated for '{col}': p25={p25}, p50={p50}, p75={p75}"
+    )
+# INTENT: Verify temporal script found time columns if dataset is temporal
+# ASSUMES: Orchestrator marked dataset as temporal based on Part A findings
+if temporal_expected and not time_columns_found:
+    print("WARNING: Dataset expected to have temporal columns but none identified")
+print("CPP2 PASSED: Statistical summaries internally consistent")
 ```
 
 ### CPP3: Post-Relational Validation
@@ -1499,18 +1508,39 @@ print("CPP2 PASSED: Statistical computations internally consistent")
 
 ```python
 # --- CPP3: Post-Relational Validation ---
-# INTENT: Verify relational analysis produced meaningful results
-# ASSUMES: anomaly_catalog is a list populated during quality profiling
+# NOTE: This checkpoint is embedded in script 09 (quality-anomaly.py).
+# Variables from other scripts (e.g., uniqueness_results from script 07,
+# correlation_matrix from script 08) must be recomputed or loaded within
+# this script before validation. Each profiling script runs independently;
+# there is no shared in-memory state between scripts.
+
+# INTENT: Anomaly catalog must be non-empty (at minimum INFO-level observations)
 assert len(anomaly_catalog) > 0, (
-    "STOP: Anomaly catalog is empty - every dataset has at least one quality note"
+    "STOP: Anomaly catalog is empty — quality analysis must produce at least one observation"
 )
 
-print(f"CPP3 PASSED: {len(anomaly_catalog)} anomalies cataloged")
+# INTENT: Verify correlation matrix is symmetric (if computed in this script or loaded)
+if correlation_matrix is not None:
+    import numpy as np
+    assert np.allclose(correlation_matrix, correlation_matrix.T, atol=1e-10), (
+        "STOP: Correlation matrix is not symmetric"
+    )
+
+# INTENT: Verify uniqueness counts agree with n_unique
+# ASSUMES: uniqueness_results was computed or loaded in this script (not inherited from script 07)
+for col in key_candidates:
+    reported_unique = uniqueness_results[col]
+    actual_unique = df[col].n_unique()
+    assert reported_unique == actual_unique, (
+        f"STOP: Uniqueness count mismatch for '{col}': reported {reported_unique}, actual {actual_unique}"
+    )
+
+print(f"CPP3 PASSED: Relational checks consistent, {len(anomaly_catalog)} anomalies cataloged")
 ```
 
 ### CPP4: Post-Interpretation Validation
 
-**Embedded in:** `scripts/profile_interpretation/12_profile-synthesis.py`
+**Embedded in:** The last executed Part D script (script 11 if docs provided, otherwise script 10).
 
 ```python
 # --- CPP4: Post-Interpretation Validation ---
@@ -1526,14 +1556,15 @@ for interp in interpretations:
             f"STOP: Interpretation missing [PRELIMINARY] marker: {interp[:80]}"
         )
 
-# INTENT: Verify synthesis covers all executed scripts
-# ASSUMES: executed_scripts is a list of script names that ran
-for script in executed_scripts:
-    assert script in synthesis_output, (
-        f"STOP: Synthesis report missing findings from {script}"
+# INTENT: If docs were provided, reconciliation must have run
+# ASSUMES: documentation_provided is True if user supplied documentation at intake
+if documentation_provided:
+    assert reconciliation_ran, (
+        "STOP: Documentation was provided but reconciliation script did not execute"
     )
 
-print("CPP4 PASSED: All interpretations marked PRELIMINARY, synthesis complete")
+print(f"CPP4 PASSED: All interpretations marked PRELIMINARY, "
+      f"documentation reconciliation: {'completed' if documentation_provided else 'N/A (no docs)'}")
 ```
 
 ### CPP-SKILL: Post-Authoring Validation
@@ -1570,8 +1601,24 @@ for section in required_sections:
 
 # INTENT: Verify reference files created
 ref_dir = f"{skill_draft_dir}/references"
-for ref_file in ["columns.md", "coded-values.md", "quality-notes.md"]:
+for ref_file in ["columns.md", "coded-values.md", "data-quality.md", "variable-definitions.md"]:
     assert os.path.exists(f"{ref_dir}/{ref_file}"), f"STOP: Missing reference file: {ref_file}"
 
-print(f"CPP-SKILL PASSED: {len(lines)} lines, all required sections present")
+# INTENT: Verify key structural requirements from CPP-SKILL checklist
+# REASONING: These checks catch common skill authoring omissions
+assert "## Value Encodings" in content, "STOP: Missing Value Encodings Warning section"
+assert content.index("## Value Encodings") < content.index("## Decision Trees"), (
+    "STOP: Value Encodings Warning must appear before Decision Trees (position 4)"
+)
+decision_tree_count = content.count("```\n")  # Approximate tree block count
+assert "## Decision Trees" in content, "STOP: Missing Decision Trees section"
+assert "### Missing Data Codes" in content or "Missing Data Codes" in content, (
+    "STOP: Missing Data Codes subsection in Quick Reference"
+)
+assert "> **Truth Hierarchy" in content or "Truth Hierarchy" in content, (
+    "STOP: Missing Truth Hierarchy in Data Access section"
+)
+assert "## Common Pitfalls" in content, "STOP: Missing Common Pitfalls section"
+
+print(f"CPP-SKILL PASSED: {len(lines)} lines, all required sections and reference files present")
 ```

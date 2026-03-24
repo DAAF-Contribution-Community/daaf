@@ -205,13 +205,11 @@ Agent({
     prompt: """**BASE_DIR:** {BASE_DIR}
 All relative paths in referenced files resolve from BASE_DIR.
 
-Call the skill tool with name 'data-scientist'.
-
 **DATA LOCATION:** data/processed/{processed_data_filename}
 
 **TASK:** Perform ONLY initial exploratory data analysis. DO NOT transform data yet.
 
-**REQUIRED ACTIONS (from data-scientist skill):**
+**REQUIRED ACTIONS (from data-scientist skill — preloaded via frontmatter):**
 1. Load data
 2. Check shape, types, memory usage
 3. Profile distributions (head, describe, value_counts)
@@ -245,8 +243,6 @@ Agent({
     description: "Stage 7.2: Execute Transformation #{n}",
     prompt: """**BASE_DIR:** {BASE_DIR}
 All relative paths in referenced files resolve from BASE_DIR.
-
-Call the skill tool with name 'data-scientist'.
 
 **IMPORTANT:** This is script-based execution, NOT marimo. Write transformations to script files following `{BASE_DIR}/agent_reference/SCRIPT_EXECUTION_REFERENCE.md`.
 
@@ -368,8 +364,6 @@ Agent({
     description: "Stage 7.3: Final CP3 Validation",
     prompt: """**BASE_DIR:** {BASE_DIR}
 All relative paths in referenced files resolve from BASE_DIR.
-
-Call the skill tool with name 'data-scientist'.
 
 **TASK:** Perform final CP3 validation after all transformations complete.
 
@@ -504,8 +498,7 @@ Agent({
     prompt: """**BASE_DIR:** {BASE_DIR}
 All relative paths in referenced files resolve from BASE_DIR.
 
-Call the skill tool with name 'data-scientist'.
-Then, call the skill tool with name 'polars'.
+Call the skill tool with name 'polars'.
 
 **IMPORTANT:** This is script-based execution, NOT marimo. Write analysis to script files following `{BASE_DIR}/agent_reference/SCRIPT_EXECUTION_REFERENCE.md`.
 
@@ -646,8 +639,7 @@ Agent({
     prompt: """**BASE_DIR:** {BASE_DIR}
 All relative paths in referenced files resolve from BASE_DIR.
 
-Call the skill tool with name 'data-scientist'.
-Then, call the skill tool with name 'plotnine'.
+Call the skill tool with name 'plotnine'.
 
 **VISUALIZATION SPECIFICATION (from Plan.md):**
 {visualization_requirements}
@@ -683,8 +675,7 @@ Agent({
     prompt: """**BASE_DIR:** {BASE_DIR}
 All relative paths in referenced files resolve from BASE_DIR.
 
-Call the skill tool with name 'data-scientist'.
-Then, call the skill tool with name 'plotly'.
+Call the skill tool with name 'plotly'.
 
 **VISUALIZATION SPECIFICATION (from Plan.md):**
 {visualization_requirements}
@@ -823,13 +814,12 @@ Agent({
     prompt: """**BASE_DIR:** {BASE_DIR}
 All relative paths in referenced files resolve from BASE_DIR.
 
-Call the skill tool with name 'data-scientist' for methodology.
-Then, call the skill tool with name 'polars' for implementation.
+Call the skill tool with name 'polars'.
 
 **DATA LOCATION:** data/processed/{filename}
 
 **TASK:**
-1. Profile the data following data-scientist principles
+1. Profile the data following data-scientist methodology (preloaded via frontmatter)
 2. Implement transformations using Polars
 3. Validate each step
 
@@ -851,7 +841,6 @@ Agent({
     prompt: """**BASE_DIR:** {BASE_DIR}
 All relative paths in referenced files resolve from BASE_DIR.
 
-Call the skill tool with name 'data-scientist' for methodology.
 Call the skill tool with name 'plotnine' for static publication plots.
 Call the skill tool with name 'plotly' for interactive exploration plots.
 

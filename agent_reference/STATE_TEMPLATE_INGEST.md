@@ -21,8 +21,6 @@ Copy this template to `STATE.md` in the project folder when starting a Data Inge
 | Field | Value |
 |-------|-------|
 | **Project** | [Full title, e.g., "County Presidential Election Returns Ingest"] |
-| **Plan Location** | `research/[folder]/[filename]_Plan.md` |
-| **Plan Tasks Location** | `research/[folder]/[filename]_Plan_Tasks.md` |
 | **Current Phase** | [DI-1/DI-2/DI-3]: [Phase Name] |
 | **Current Stage** | [DI-1 through DI-8]: [Stage Name] |
 | **Status** | [In Progress / Blocked / Complete] |
@@ -43,7 +41,7 @@ Copy this template to `STATE.md` in the project folder when starting a Data Inge
 
 ### Secondary Validation (QAP1-QAP4)
 
-| Checkpoint | Phase | Status | BLOCKERs | WARNINGs | Revisions | Timestamp |
+| Checkpoint | Part | Status | BLOCKERs | WARNINGs | Revisions | Timestamp |
 |------------|-------|--------|----------|----------|-----------|-----------|
 | QAP1 (Post-Structural) | A | [PENDING/PASSED/ISSUES] | [count] | [count] | [count] | [time] |
 | QAP2 (Post-Statistical) | B | [PENDING/PASSED/ISSUES] | [count] | [count] | [count] | [time] |
@@ -51,8 +49,8 @@ Copy this template to `STATE.md` in the project folder when starting a Data Inge
 | QAP4 (Post-Interpretation) | D | [PENDING/PASSED/ISSUES] | [count] | [count] | [count] | [time] |
 
 **QA Status Values:**
-- **PENDING** — QA checkpoint not yet executed for this phase
-- **PASSED** — All scripts in phase passed QA review (no BLOCKERs, WARNINGs logged)
+- **PENDING** — QA checkpoint not yet executed for this part
+- **PASSED** — All scripts in part passed QA review (no BLOCKERs, WARNINGs logged)
 - **ISSUES** — BLOCKERs resolved via revision, or WARNINGs logged
 
 ---
@@ -62,22 +60,38 @@ Copy this template to `STATE.md` in the project folder when starting a Data Inge
 | Field | Value |
 |-------|-------|
 | **Source Name** | [e.g., "County Presidential Election Returns"] |
+| **Source Provider** | [e.g., "MIT Election Data and Science Lab (MEDSL)"] |
+| **Origin URL** | [URL where data was obtained, or "User-provided file"] |
 | **Target Skill Name** | [e.g., "election-data-source-countypres"] |
 | **File Format** | [CSV/TSV/Parquet/Excel/JSON] |
-| **File Location** | `data/ingest/[source-name]/raw/[filename]` |
+| **File Location** | `data/raw/[filename]` (inside research project) |
 | **File Size** | [e.g., "8.4 MB"] |
 | **Documentation Available** | [Yes: list files / No] |
 | **Data Pull Date** | [YYYY-MM-DD] |
 | **Domain Context** | [e.g., "U.S. election data, county-level"] |
 | **Priority Columns** | [list or "None specified"] |
+| **User Notes** | [Any additional context provided by user, or "None"] |
+
+---
+
+## User Request
+
+### Original Request
+
+> [Paste the verbatim user request here]
+
+### Clarifications Received
+
+1. **[Topic]:** [User's response]
+2. **[Topic]:** [User's response]
 
 ---
 
 ## Profiling Progress
 
-*Tracks each profiling script's execution and QA status. Scripts marked "Conditional" may be skipped based on Phase A findings.*
+*Tracks each profiling script's execution and QA status. Scripts marked "Conditional" may be skipped based on Part A findings.*
 
-| # | Phase | Script | Script Path | Conditional? | Status | CPP | QA Status | QA Script Path | Revisions | Notes |
+| # | Part | Script | Script Path | Conditional? | Status | CPP | QA Status | QA Script Path | Revisions | Notes |
 |---|-------|--------|-------------|-------------|--------|-----|-----------|----------------|-----------|-------|
 | 01 | A | load-and-format | `scripts/profile_structural/01_load-and-format.py` | No | [PENDING/DONE/SKIPPED] | [—/PASSED/FAILED] | [NOT_RUN/PASSED/WARNING/REVISED] | `scripts/cr/profile_structural_cr1.py` | [0-2] | |
 | 02 | A | structural-profile | `scripts/profile_structural/02_structural-profile.py` | No | [PENDING/DONE/SKIPPED] | [—/PASSED/FAILED] | | | [0-2] | |
@@ -90,39 +104,38 @@ Copy this template to `STATE.md` in the project folder when starting a Data Inge
 | 09 | C | quality-anomaly | `scripts/profile_relational/09_quality-anomaly.py` | No | [PENDING/DONE/SKIPPED] | [—/PASSED/FAILED] | | | [0-2] | |
 | 10 | D | semantic-interpretation | `scripts/profile_interpretation/10_semantic-interpretation.py` | No | [PENDING/DONE/SKIPPED] | [—/PASSED/FAILED] | [NOT_RUN/PASSED/WARNING/REVISED] | `scripts/cr/profile_interpretation_cr1.py` | [0-2] | |
 | 11 | D | reconcile-docs | `scripts/profile_interpretation/11_reconcile-docs.py` | Yes: docs provided | [PENDING/DONE/SKIPPED] | [—/PASSED/FAILED] | | | [0-2] | |
-| 12 | D | profile-synthesis | `scripts/profile_interpretation/12_profile-synthesis.py` | No | [PENDING/DONE/SKIPPED] | [—/PASSED/FAILED] | | | [0-2] | |
 
 **Status Values:**
 - **PENDING** — Script not yet executed
 - **DONE** — Script executed successfully
 - **SKIPPED** — Conditional script skipped (reason in Notes)
 
-**QA Status Values (phase-level):**
-- **NOT_RUN** — Code-reviewer not yet invoked for this phase
-- **PASSED** — Phase QA review passed (no issues)
+**QA Status Values (part-level):**
+- **NOT_RUN** — Code-reviewer not yet invoked for this part
+- **PASSED** — Part QA review passed (no issues)
 - **WARNING** — Non-blocking issues logged
 - **REVISED** — BLOCKER resolved via script revision
 
-**Note:** QA is phase-level, not per-script. The QA Script Path column is populated only for the first script in each phase (the QA review covers all scripts in that phase together).
+**Note:** QA is part-level, not per-script. The QA Script Path column is populated only for the first script in each part (the QA review covers all scripts in that part together).
 
 ---
 
 ## Interpretation Tracking
 
-*Tracks preliminary interpretations from Phase D and user decisions at PSU-DI2.*
+*Tracks preliminary interpretations from Part D and user decisions at PSU-DI2.*
 
 | Column/Feature | Preliminary Interpretation | User Decision | Final Interpretation | Notes |
 |----------------|---------------------------|---------------|---------------------|-------|
 | [column name] | [PRELIMINARY: interpretation from script 10] | [CONFIRMED/REJECTED/MODIFIED] | [final interpretation or "—" if rejected] | [user feedback] |
 | [pattern/anomaly] | [PRELIMINARY: interpretation from script 10] | [CONFIRMED/REJECTED/MODIFIED] | [final interpretation] | [user feedback] |
 
-**Populated:** Phase D (script 10 output) → PSU-DI2 (user review) → Stage DI-7 (skill authoring uses Final Interpretation column)
+**Populated:** Part D (script 10 output) → PSU-DI2 (user review) → Stage DI-7 (skill authoring uses Final Interpretation column)
 
 ---
 
 ## Documentation Reconciliation Summary
 
-*Populated during Phase D (script 11) if documentation was provided.*
+*Populated during Part D (script 11) if documentation was provided.*
 
 | # | Discrepancy | Severity | Documented Claim | Observed Reality | Resolution |
 |---|-------------|----------|------------------|------------------|------------|
@@ -150,24 +163,24 @@ Copy this template to `STATE.md` in the project folder when starting a Data Inge
 | [None or description] | [DI-N] | [effect] | [what's needed] |
 
 ### QA Blockers (Pending Resolution)
-| Script | Phase | Issue | Revision Attempts | Status |
-|--------|-------|-------|-------------------|--------|
+| Script | Part | Issue | Revision Attempts | Status |
+|--------|------|-------|-------------------|--------|
 | [None or script.py] | [A/B/C/D] | [QA finding] | [0/1/2] | [Pending/Resolved/Escalated] |
 
 ---
 
 ## Error Budget Consumed
 
-### Per-Phase (Current Phase)
+### Per-Part (Current Part)
 | Resource | Used | Limit | Remaining |
 |----------|------|-------|-----------|
 | Code Attempts | [X] | 2 | [Y] |
 | Subagent Re-invocations | [X] | 3 | [Y] |
 | **QA BLOCKER Revisions** | [X] | 2 | [Y] |
 
-### QA Budget (Phases A-D)
-| Phase | Scripts | BLOCKERs Resolved | WARNINGs Logged | Escalations |
-|-------|---------|-------------------|-----------------|-------------|
+### QA Budget (Parts A-D)
+| Part | Scripts | BLOCKERs Resolved | WARNINGs Logged | Escalations |
+|------|---------|-------------------|-----------------|-------------|
 | A (Structural) | [N] | [N] | [N] | [N] |
 | B (Statistical) | [N] | [N] | [N] | [N] |
 | C (Relational) | [N] | [N] | [N] | [N] |
@@ -178,8 +191,18 @@ Copy this template to `STATE.md` in the project folder when starting a Data Inge
 |----------|------|-------|-----------|
 | Code Attempts | [X] | 6 | [Y] |
 | Subagent Re-invocations | [X] | 9 | [Y] |
+| **QA BLOCKER Revisions** | [X] | 8 | [Y] |
 | STOP Conditions | [X] | 3 | [Y] |
 | **QA Escalations** | [X] | 3 | [Y] |
+
+**Budget Category Definitions:**
+- **Code Attempts:** Script execution attempts that fail and require a new versioned script
+- **Subagent Re-invocations:** Times the orchestrator must re-invoke a subagent for the same phase (includes revision requests)
+- **QA BLOCKER Revisions:** Script revisions triggered by code-reviewer BLOCKER findings (max 2 per script before escalation)
+- **STOP Conditions:** Data-ingest agent STOP conditions triggered (file issues, data corruption, missing keys)
+- **QA Escalations:** Incremented when a QA BLOCKER remains unresolved after the maximum revision attempts (2 per script) and must be escalated to the user for resolution
+
+> **Budget asymmetry:** Session limits are deliberately lower than per-part × 4 to prevent error concentration. A session consuming full per-part budgets in every part indicates systemic issues warranting user intervention.
 
 ---
 
@@ -201,12 +224,12 @@ Copy this template to `STATE.md` in the project folder when starting a Data Inge
 
 ## QA Findings Summary
 
-*Aggregated after Phase D completes, finalized during Stage DI-8.*
+*Aggregated after Part D completes, finalized during Stage DI-8.*
 
 ### QA Checkpoint Summary
 
-| Checkpoint | Phase | Scripts Reviewed | BLOCKERs | WARNINGs | INFOs | Revisions Applied |
-|------------|-------|------------------|----------|----------|-------|-------------------|
+| Checkpoint | Part | Scripts Reviewed | BLOCKERs | WARNINGs | INFOs | Revisions Applied |
+|------------|------|------------------|----------|----------|-------|-------------------|
 | QAP1 (Post-Structural) | A | [count] | [count] | [count] | [count] | [count] |
 | QAP2 (Post-Statistical) | B | [count] | [count] | [count] | [count] | [count] |
 | QAP3 (Post-Relational) | C | [count] | [count] | [count] | [count] | [count] |
@@ -215,14 +238,14 @@ Copy this template to `STATE.md` in the project folder when starting a Data Inge
 
 ### BLOCKERs Resolved
 
-| Phase | Script | Issue | Resolution | Revision |
-|-------|--------|-------|------------|----------|
+| Part | Script | Issue | Resolution | Revision |
+|------|--------|-------|------------|----------|
 | [A-D] | [filename.py] | [What QA found] | [How fixed] | [_a/_b] |
 
 ### WARNINGs Logged
 
-| Phase | Script | Warning | Accepted Rationale |
-|-------|--------|---------|--------------------|
+| Part | Script | Warning | Accepted Rationale |
+|------|--------|---------|--------------------|
 | [A-D] | [filename.py] | [Warning description] | [Why acceptable] |
 
 ---
@@ -249,9 +272,9 @@ Copy this template to `STATE.md` in the project folder when starting a Data Inge
 
 ## Pending Learning Signals
 
-*Buffer for learning signals from subagents. Flushed to LEARNINGS.md at phase boundaries and at session end.*
+*Buffer for learning signals from subagents. Flushed to LEARNINGS.md at part boundaries and at session end.*
 
-| Stage.Phase | Category | Signal | Source Agent |
+| Stage.Part | Category | Signal | Source Agent |
 |-------------|----------|--------|-------------|
 | [e.g., DI-3.A] | [Access/Data/Method/Perf/Process] | [One-line insight] | [data-ingest/code-reviewer] |
 
@@ -323,16 +346,16 @@ Copy this template to `STATE.md` in the project folder when starting a Data Inge
 
 **To resume in a new session, run `/clear` to reset context, then paste this into the chat:**
 
-> Resume the [Source Name] data ingest. Plan: `[exact plan path]`. Plan Tasks: `[exact Plan_Tasks path]`. State: `[exact STATE.md path]`. Currently at Stage [DI-N] ([Stage Name]) — next step is [task description].
+> Resume the [Source Name] data ingest. State: `[exact STATE.md path]`. Currently at Stage [DI-N] ([Stage Name]) — next step is [task description].
 
 ### Resumption Instructions (Agent Reference)
 
 **For the orchestrator when recovering via Session Recovery:**
 
 1. **Read this STATE.md first** — primary recovery document
-2. **Locate Plan at:** `[exact path]` and Plan Tasks at: `[exact Plan_Tasks path]`
-3. **Check Profiling Progress table** for current phase and script status
-4. **Check Interpretation Tracking** if past Phase D (user decisions must be preserved)
+2. **Review User Request and Data Source Info** for original scope and provenance
+3. **Check Profiling Progress table** for current part and script status
+4. **Check Interpretation Tracking** if past Part D (user decisions must be preserved)
 5. **Current Phase:** [DI-N] — [Phase Name]
 6. **Next Task:** `[task or script description]`
 
@@ -340,7 +363,7 @@ Copy this template to `STATE.md` in the project folder when starting a Data Inge
 - [ ] STATE.md read and understood (position, checkpoints, blockers)
 - [ ] Profiling Progress table reviewed (which scripts done/pending/skipped)
 - [ ] Interpretation Tracking reviewed (if past PSU-DI2)
-- [ ] Plan loaded selectively
+- [ ] User Request and Data Source Info reviewed
 - [ ] Open blockers identified
 - [ ] Next action ready for execution
 ```
@@ -355,9 +378,11 @@ Create STATE.md at **Stage DI-2 (Project Setup)** for all Data Ingest Mode sessi
 
 ### When to Update
 
+**Authoritative cycle:** The Per-Part Execution Cycle in `data-ingest-mode.md` defines the mandatory STATE.md read/write rhythm for profiling parts DI-3 through DI-6. The list below enumerates the specific trigger events; the STATE.md Update Gates table in `data-ingest-mode.md` maps each event to the exact fields that must be updated.
+
 Update STATE.md after:
 - Each profiling script executes (update Profiling Progress row)
-- Each phase QA completes (update Checkpoint Status + QA Findings)
+- Each part QA completes (update Checkpoint Status + QA Findings)
 - PSU-DI1 presented (update Current Position)
 - PSU-DI2 user response received (populate Interpretation Tracking)
 - Skill authoring completes (update Skill Authoring Status)
@@ -381,7 +406,7 @@ For quick updates during execution:
 ### Full Update Pattern
 
 Use full template update:
-- At end of each profiling phase (A, B, C, D)
+- At end of each profiling part (A, B, C, D)
 - When blockers encountered
 - Before session breaks
 - After PSU-DI2 user review

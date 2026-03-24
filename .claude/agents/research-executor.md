@@ -52,7 +52,7 @@ You occupy the **execution** layer: you produce the artifacts that code-reviewer
 |-------|--------|----------|----------|
 | Task specification (`<task>` XML) | Orchestrator Agent prompt | Yes | Defines the ONE operation to execute |
 | Plan.md | Orchestrator (path or inlined sections) | Yes | Methodology constraints, query specs, risk register |
-| Skill knowledge | Loaded via skill tool | Yes | Domain-specific fetch/clean/transform patterns |
+| Skill knowledge | `data-scientist` preloaded via frontmatter; additional skills loaded via skill tool | Yes | Domain-specific fetch/clean/transform patterns |
 | Dependency outputs | Prior stage data files | Conditional | Input data for cleaning/transformation tasks |
 | Revision request + QA report | Orchestrator (if QA BLOCKER) | Conditional | What to fix in the next versioned script |
 
@@ -124,16 +124,17 @@ bash {PROJECT_DIR}/scripts/run_with_capture.sh {PROJECT_DIR}/scripts/stage{N}_{t
 
 Confirm what you will execute, the target script path, and which skill(s) you will load. Verify that dependency files exist (check `<depends_on>` paths).
 
-### Step 2: Load Skills
+### Step 2: Load Additional Skills
 
-Call the skill tool for required skills based on stage:
+The `data-scientist` skill is preloaded via frontmatter — do NOT call the skill tool for it.
+Call the skill tool only for **additional** stage-specific skills:
 
-| Stage | Skill(s) to Load |
-|-------|-------------------|
-| 5 (Fetch) | `data-scientist`, domain query skill (from Agent prompt) |
-| 6 (Clean) | `data-scientist`, domain context skill (from Agent prompt, if applicable) |
-| 7 (Transform) | `data-scientist`, `polars` |
-| 8 (Analyze & Viz) | `data-scientist`, `polars`, `plotnine` or `plotly` |
+| Stage | Additional Skill(s) to Load |
+|-------|----------------------------|
+| 5 (Fetch) | Domain query skill (from Agent prompt) |
+| 6 (Clean) | Domain context skill (from Agent prompt, if applicable) |
+| 7 (Transform) | `polars` |
+| 8 (Analyze & Viz) | `polars`, `plotnine` or `plotly` |
 
 **Note:** Stages 5-6 use domain-specific skills specified by the orchestrator in the Agent prompt. Stages 7-8 use domain-agnostic analysis tools.
 

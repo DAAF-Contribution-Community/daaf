@@ -130,7 +130,7 @@ Before doing anything else, DAAF will tell you which mode it's classifying your 
 
 **When to use:** You have a raw data file (CSV, Parquet, Excel, etc.) that you want to profile and add as a reusable data source for future analyses.
 
-**What happens:** DAAF runs a thorough 12-script profiling protocol across four phases (structural analysis, statistical deep dive, relational analysis, and semantic interpretation). You review the findings and confirm the interpretations before DAAF creates a standalone data source skill. The entire process is tracked in a reproducible research project folder.
+**What happens:** DAAF runs a thorough profiling protocol (up to 11 scripts, depending on data characteristics) in 3 top-level phases (Setup, Profiling, Skill Creation). The Profiling phase contains 4 sub-phases: Structural Discovery, Statistical Deep Dive, Relational Analysis, and Interpretation & Reconciliation. You review the findings and confirm the interpretations before DAAF creates a standalone data source skill. The entire process is tracked in a reproducible research project folder.
 
 **What you get:** A standalone data source skill (`.claude/skills/`) that future analyses can reference, plus a research project folder with all profiling scripts, QA reviews, and session state.
 
@@ -481,7 +481,7 @@ If you have your own dataset that you'd like to bring into DAAF, try profiling i
 ```
 I have a CSV of county-level election returns I'd like to profile
 and add as a data source. The file is at:
-/daaf/data/ingest/county-elections/election_returns_2024.csv
+/daaf/data/county-elections/election_returns_2024.csv
 ```
 
 or

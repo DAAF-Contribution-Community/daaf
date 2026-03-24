@@ -409,9 +409,9 @@ For the complete invocation pattern, see `.claude/agents/research-synthesizer.md
 The orchestrator provides all Stage 2 and Stage 3 outputs as context. The agent returns
 a unified synthesis with cross-source conflict resolution and join feasibility assessment.
 
-**Skill Loading:** Include `Call the skill tool with name 'data-scientist'.` in the Agent prompt
-before providing context. The data-scientist skill provides methodological rigor for
-assessing data quality findings and join feasibility across sources.
+**Skill Loading:** The `research-synthesizer` agent preloads `data-scientist` via frontmatter —
+do NOT include a redundant `Call the skill tool` instruction in the Agent prompt. The skill
+provides methodological rigor for assessing data quality findings and join feasibility across sources.
 
 **PSU Note:** This task concludes Phase 1. The orchestrator will present PSU1 to the user using findings from this synthesis. Ensure the User-Facing Summary provides a clear, complete picture of discovery results suitable for user review.
 

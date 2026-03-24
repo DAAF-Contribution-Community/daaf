@@ -6,7 +6,9 @@ description: >
   or interactive widgets. Invoked at Stage 9 after all Stage 5-8 scripts and
   QA substages are complete.
 tools: [Read, Write, Edit, Bash, Glob, Grep]
-skills: marimo
+skills:
+  - data-scientist
+  - marimo
 permissionMode: default
 ---
 

@@ -279,6 +279,7 @@ Mode Confirmed
     │
     └─ Data Ingest Mode
         └─ Read: {SKILL_REFS}/data-ingest-mode.md
+               ├─ Stage DI-2 (project setup): Read {BASE_DIR}/agent_reference/STATE_TEMPLATE_INGEST.md
                └─ Error handling: Read {BASE_DIR}/agent_reference/ERROR_RECOVERY.md
 ```
 

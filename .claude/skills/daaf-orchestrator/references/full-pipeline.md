@@ -456,6 +456,8 @@ These operations may be executed without preview:
 
 **Note:** Stages 2, 3, 5, and 6 use domain-specific skills resolved by the orchestrator based on the active domain configuration in Plan.md.
 
+**Skill loading mechanism:** All named agents preload `data-scientist` via frontmatter (full content injected at startup). The orchestrator's Agent prompts should only include `Call the skill tool` instructions for **additional** skills (domain skills, `polars`, `plotnine`, `plotly`). Stages 2 and 3 use unnamed `Plan` subagents — these DO require explicit skill tool calls since they have no frontmatter.
+
 ---
 
 ## Orchestrator Responsibilities
@@ -972,7 +974,9 @@ Agent({
 All relative paths in referenced files resolve from BASE_DIR.
 
 ## SKILL LOADING
-Call the skill tool with name '[skill-name]'.
+[Only include skill tool calls for skills NOT preloaded via agent frontmatter.
+Named agents already have `data-scientist` injected at startup — do not re-load it.
+Call the skill tool only for additional skills like polars, plotnine, plotly, or domain skills.]
 
 ## CONTEXT FROM PLAN
 [Paste relevant Plan.md methodology sections and Plan_Tasks.md task blocks - Context Completeness Checklist always takes priority over brevity]

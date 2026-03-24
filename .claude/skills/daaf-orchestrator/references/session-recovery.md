@@ -7,7 +7,7 @@
 
 ## Purpose
 
-Enable stateless recovery when resuming an interrupted analysis after LLM context has been cleared. The Plan documents (Plan.md + Plan_Tasks.md) and STATE.md serve as persistent memory for session continuity.
+Enable stateless recovery when resuming an interrupted analysis after LLM context has been cleared. Persistent memory varies by mode: Full Pipeline uses Plan.md + Plan_Tasks.md + STATE.md; Data Ingest uses STATE.md only.
 
 ## When to Use
 
@@ -43,6 +43,8 @@ Read the full STATE.md file. This is the primary recovery document:
 If the project has a `LEARNINGS.md` file, read it to recover accumulated insights from prior sessions. These signals — data quirks discovered, access patterns, performance notes, methodology decisions — prevent re-encountering resolved issues. Prioritize entries tagged with the current or upcoming stages.
 
 ### Step 3: Read Plan.md Selectively
+
+> **Data Ingest projects:** Skip Steps 3-5 entirely (there is no Plan.md or Plan_Tasks.md). Proceed directly to the "Recovery from Different Stages (Data Ingest)" table below.
 
 **Do NOT read the entire Plan.md file.** Use targeted section loading to minimize context consumption and preserve capacity for execution work. Also verify that Plan_Tasks.md exists alongside Plan.md.
 
@@ -104,7 +106,7 @@ expected_files = {
 
 **Stale State Detection:** If STATE.md's last-updated information or session history timestamp is older than the most recent script file in `scripts/`, the state file may be stale (the prior session may have crashed before updating STATE.md). In this case:
 1. Check git log for commits after the STATE.md timestamp
-2. List scripts in `scripts/stage*_*/` and compare against the Transformation Progress table
+2. List scripts in `scripts/stage*_*/` (Full Pipeline) or `scripts/profile_*/` (Data Ingest) and compare against the Transformation Progress or Profiling Progress table
 3. If discrepancies exist, reconstruct current position from the filesystem and git history rather than trusting STATE.md alone
 4. Note reconstructed entries in the Recovery Summary with a `[reconstructed]` tag
 
@@ -148,7 +150,7 @@ I found your in-progress analysis:
 Ready to continue from Stage 7, Transformation #4?
 ```
 
-## Recovery from Different Stages
+## Recovery from Different Stages (Full Pipeline)
 
 | Stage Interrupted | Recovery Action | Additional Sections to Load |
 |-------------------|-----------------|---------------------------|
@@ -161,6 +163,30 @@ Ready to continue from Stage 7, Transformation #4?
 | 9 (Notebook Assembly) | Check if notebook exists; if missing, invoke notebook-assembler agent | Plan.md `Output Specification` |
 | 10 (QA Aggregation) | Re-aggregate QA findings from Stages 5-8 | STATE.md QA Findings Summary |
 | 11-12 (Delivery) | Check if report exists, regenerate if needed | Plan.md `Must-Haves` + `Output Specification`; STATE.md QA Findings Summary + Final Review Log |
+
+## Recovery from Different Stages (Data Ingest)
+
+Data Ingest projects use a different STATE.md structure (from `agent_reference/STATE_TEMPLATE_INGEST.md`) with ingest-specific sections: DI-1 through DI-8 stages, Profiling Progress table, Interpretation Tracking, Documentation Reconciliation Summary, and Skill Authoring Status.
+
+**Identification:** A Data Ingest project can be recognized by:
+- STATE.md contains `Phase DI-` stage references instead of numbered Stages 1-12
+- STATE.md contains a `Profiling Progress` table with script-level tracking
+- STATE.md contains `User Request` and `Data Source Info` sections (no separate Plan.md in Data Ingest mode)
+
+| Stage Interrupted | Recovery Action | Additional Sections to Load |
+|-------------------|-----------------|---------------------------|
+| DI-1 (Intake) | Re-collect missing inputs, verify file accessible | — |
+| DI-2 (Project Setup) | Check project folder structure, verify STATE.md exists | `agent_reference/STATE_TEMPLATE_INGEST.md` |
+| DI-3 (Structural Profile) | Check scripts 01-03 execution status in Profiling Progress table | STATE.md Profiling Progress + current phase scripts |
+| DI-4 (Statistical Profile) | Check scripts 04-06 execution status, note conditional skips | STATE.md Profiling Progress + current phase scripts |
+| DI-5 (Relational Analysis) | Check scripts 07-09 execution status, note conditional skips | STATE.md Profiling Progress + current phase scripts |
+| DI-6 (Interpretation) | Check scripts 10-11 execution status; check Interpretation Tracking and Documentation Reconciliation Summary | STATE.md Profiling Progress + Interpretation Tracking + Documentation Reconciliation Summary |
+| DI-7 (Skill Authoring) | Check if SKILL.md exists in `.claude/skills/{skill-name}/`; check Skill Authoring Status in STATE.md | STATE.md Skill Authoring Status + Interpretation Tracking |
+| DI-8 (Review & Delivery) | Check if skill is finalized; present to user for review | STATE.md Skill Authoring Status |
+
+**PSU Intermediate States:**
+- **Between DI-2 and DI-3 (PSU-DI1 pending):** Check if PSU-DI1 was presented but not yet confirmed. Look at Current Position — if stage is DI-2 and status is "Awaiting Confirmation," re-present PSU-DI1 to the user.
+- **Between DI-6 and DI-7 (PSU-DI2 pending):** Check the Interpretation Tracking table. If the "User Decision" column is empty for all rows, PSU-DI2 has not been collected yet — present findings to user before proceeding to DI-7.
 
 ## On-Demand Plan Loading
 
@@ -212,5 +238,18 @@ Before resuming work:
 - [ ] File system state verified
 - [ ] Resume point identified
 - [ ] LEARNINGS.md reviewed (if present) and key signals noted
+- [ ] Any blocking issues presented to user
+- [ ] User confirmed ready to proceed
+
+## Data Ingest Recovery Verification Checklist
+
+Before resuming a Data Ingest session:
+- [ ] STATE.md read and understood (current DI-stage, checkpoints, blockers, error budget)
+- [ ] Profiling Progress table reviewed (which scripts done/pending/skipped per phase)
+- [ ] Interpretation Tracking reviewed (if past PSU-DI2 — user decisions must be preserved)
+- [ ] Documentation Reconciliation Summary reviewed (if populated)
+- [ ] Skill Authoring Status reviewed (if past DI-6)
+- [ ] Error budget checked (remaining budget > 0 for current phase and session)
+- [ ] Data Source Info and User Request sections reviewed for original scope
 - [ ] Any blocking issues presented to user
 - [ ] User confirmed ready to proceed

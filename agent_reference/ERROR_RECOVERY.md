@@ -138,8 +138,7 @@ Agent({
     **BASE_DIR:** {BASE_DIR}
     All relative paths in referenced files resolve from BASE_DIR.
 
-    Call the skill tool with name 'data-scientist'.
-    [If data transformation issue: Also call the skill tool with name 'polars'.]
+    [If data transformation issue: Call the skill tool with name 'polars'.]
 
     **CONTEXT:**
     Research Question: [verbatim]
@@ -178,6 +177,20 @@ To prevent infinite retry loops and excessive resource consumption, track cumula
 | Subagent re-invocations | 3 | 9 | STOP, fundamental issue present |
 | Validation failures (STOP conditions) | 0 | 3 | STOP, analysis may not be feasible |
 
+### Data Ingest Error Budgets
+
+| Resource | Per-Part Limit | Session Limit | Notes |
+|----------|---------------|---------------|-------|
+| Code fix attempts | 2 | 6 | Per profiling part (A/B/C/D) |
+| Subagent re-invocations | 3 | 9 | Per profiling part |
+| QA BLOCKER revisions | 2 | 8 | Per script within phase; 2 max before escalation |
+| STOP conditions | — | 3 | Session-wide |
+| QA escalations | — | 3 | Incremented when QA BLOCKER remains unresolved after max revision attempts and must be escalated to user |
+
+> **Budget asymmetry note:** Session limits are deliberately lower than the sum of per-part limits (e.g., Code fix: 2/part × 4 = 8, but session limit is 6). This prevents error concentration — a session that consumes its full per-part budget in every part indicates systemic issues that warrant user intervention rather than continued automated recovery.
+
+**Budget read-gating:** The Per-Part Execution Cycle's Step 0 (in `.claude/skills/daaf-orchestrator/references/data-ingest-mode.md`) performs budget read-gating before each profiling part. If remaining budget is 0 for any category, the orchestrator must escalate to the user before proceeding.
+
 ### Budget Tracking
 
 The orchestrator MUST track cumulative errors in STATE.md's `## Error Budget Consumed` section:
@@ -196,6 +209,8 @@ The orchestrator MUST track cumulative errors in STATE.md's `## Error Budget Con
 ### Budget Read-Gating
 
 The orchestrator reads the Error Budget Consumed section from STATE.md at Step 0 of each Composite Execution Pattern cycle (see `full-pipeline.md`). If any category has remaining budget ≤ 0, the orchestrator MUST STOP and follow the Budget Exhaustion Protocol below rather than dispatching the next task. This ensures budget enforcement is data-driven (read from STATE.md) rather than memory-dependent.
+
+**Data Ingest mode:** The Per-Part Execution Cycle's Step 0 (in `data-ingest-mode.md`) performs budget read-gating before each profiling part. The orchestrator reads STATE.md's Error Budget Consumed section and confirms remaining budget > 0 before dispatching the next part's subagent.
 
 ### Budget Exhaustion Protocol
 
@@ -539,6 +554,14 @@ Awaiting guidance.
 | **Data Corruption** | Unexpected nulls, wrong row count | Fix transformation |
 | **Methodology** | Code contradicts Plan specification | ESCALATE immediately (Rule 4) |
 
+**Additional BLOCKER types for Data Ingest profiling QA (QAP1-QAP4):**
+
+| Type | Example | Remediation |
+|------|---------|-------------|
+| Profiling Accuracy | Distribution claim unsupported by data; uniqueness count incorrect | Re-run profiling script with corrected logic |
+| Interpretation Discipline | Semantic interpretation missing [PRELIMINARY] marker | Re-run interpretation script with markers enforced |
+| Coded Value Omission | Standard sentinels (-1, -9, -99, -999) present but not catalogued | Re-run quality-anomaly script with expanded scan |
+
 **Recovery Flow:**
 
 ```
@@ -708,6 +731,53 @@ Validation Failure
 | Unresolved BLOCKER from Stages 5-8 | Review revision history; escalate if 2 attempts already exhausted |
 | Systemic WARNING pattern detected | Assess cumulative impact; escalate if pattern indicates methodology flaw |
 | Missing QA reviews | Invoke code-reviewer for any unreviewed scripts before proceeding |
+
+---
+
+## Recovery from Different Stages (Data Ingest)
+
+Data Ingest uses a different error recovery pattern than the Full Pipeline. The Per-Part Execution Cycle in `data-ingest-mode.md` defines the atomic unit of work, and STATE.md (the sole persistent document) tracks all progress.
+
+### Stage-Specific Recovery
+
+| Stage | Common Errors | Recovery Action |
+|-------|--------------|-----------------|
+| DI-1 (Intake) | File not found, file empty, missing inputs | Re-collect inputs from user; verify file path and accessibility |
+| DI-2 (Project Setup) | Folder creation fails, run_with_capture.sh missing | Create folder manually; copy run_with_capture.sh from `{BASE_DIR}/scripts/run_with_capture.sh` |
+| DI-3 (Part A) | Encoding errors, format detection failure, CPP1 fails | Check file format; try alternative encoding; re-invoke data-ingest subagent |
+| DI-4 (Part B) | Distribution analysis errors, temporal column misidentified | Review Part A conditional decisions; re-invoke with corrected decisions |
+| DI-5 (Part C) | Key detection failure, no candidate keys found | Expand composite key search; consult user about grain of data |
+| DI-6 (Part D) | Interpretation ambiguity, documentation contradicts data | Flag uncertainties as [PRELIMINARY] with LOW confidence; proceed to PSU-DI2 for user review |
+| DI-7 (Skill Authoring) | Template compliance failure (CPP-SKILL) | Revise skill draft (max 2 attempts); escalate if still non-compliant |
+| DI-8 (Review & Delivery) | User rejects skill | Collect feedback; return to DI-7 with revision instructions |
+
+### Data Ingest STOP Conditions
+
+| Condition | Triggered By | Recovery Path |
+|-----------|-------------|---------------|
+| File cannot be loaded | data-ingest agent (Part A) | User provides corrected file or format info |
+| File is empty | data-ingest agent (Part A) | User provides correct file |
+| >50% documented columns missing | data-ingest agent (Part D) or Gate GDI-6 | Verify correct file version; user confirms column mapping |
+| File >1GB without sampling guidance | data-ingest agent or Gate GDI-3 | User approves sampling strategy |
+| Critical columns entirely null | data-ingest agent | User verifies data extraction was complete |
+| >50% of columns entirely null | Gate GDI-4 | User verifies file is not truncated or corrupted |
+| No candidate keys identifiable | Gate GDI-5 | User provides domain knowledge about data grain |
+| Template compliance fails after 2 revisions | Gate GDI-7 | Escalate to user; manual skill editing may be needed |
+
+### Revision Request Format (Data Ingest)
+
+When re-invoking the data-ingest subagent to fix a BLOCKER:
+
+```
+**REVISION REQUEST**
+Part: {A/B/C/D}
+Failing script: {script_path}
+BLOCKER: {description from code-reviewer}
+QA script: {qa_script_path}
+
+Fix the identified issue in a new script version ({script_name}_a.py).
+The original script with its execution log is an immutable audit artifact — do not modify it.
+```
 
 ---
 

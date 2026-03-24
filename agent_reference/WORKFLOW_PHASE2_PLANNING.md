@@ -110,9 +110,7 @@ Incomplete transformation sequences lead to incomplete validation and unreliable
 ```python
 Agent({
     description: "Stage 4: Plan Creation",
-    prompt: """Call the skill tool with name 'data-scientist'.
-
-**BASE_DIR:** {BASE_DIR}
+    prompt: """**BASE_DIR:** {BASE_DIR}
 All relative paths in referenced files resolve from BASE_DIR.
 
 **ORIGINAL USER REQUEST (VERBATIM — paste into Plan as-is):**
@@ -183,8 +181,6 @@ Agent({
     description: "Stage 4: Plan Continuation",
     prompt: """**BASE_DIR:** {BASE_DIR}
     All relative paths in referenced files resolve from BASE_DIR.
-
-    Call the skill tool with name 'data-scientist'.
 
     **MODE:** continuation
 
@@ -269,9 +265,10 @@ For the complete invocation pattern, see `.claude/agents/plan-checker.md` Invoca
 and `.claude/agents/README.md` plan-checker section. The orchestrator inlines BOTH Plan.md and
 Plan_Tasks.md content along with the original user request. The agent validates across six dimensions.
 
-**Skill Loading:** Include `Call the skill tool with name 'data-scientist'.` in the Agent prompt.
-The data-scientist skill helps the plan-checker assess methodological soundness
-of the proposed transformation sequence and validation approach.
+**Skill Loading:** The `plan-checker` agent preloads `data-scientist` via frontmatter —
+do NOT include a redundant `Call the skill tool` instruction in the Agent prompt. The skill
+helps the plan-checker assess methodological soundness of the proposed transformation sequence
+and validation approach.
 
 ```python
 Agent({

@@ -22,6 +22,8 @@ This document defines the continuous Quality Assurance checkpoint system that ru
 
 **Cross-Reference:** See `agent_reference/VALIDATION_CHECKPOINTS.md` for CP1-CP4 code templates and checkpoint classification system.
 
+> **Data Ingest Equivalents:** Data Ingest Mode uses parallel naming: **CPP1-CPP4** (primary validation embedded in profiling scripts) and **QAP1-QAP4** (secondary validation by code-reviewer). CPP = "Checkpoint Profiling" and QAP = "QA Profiling." See the QAP section below and `data-ingest-mode.md` for full definitions.
+
 ---
 
 ## QA Philosophy
@@ -766,6 +768,8 @@ scripts/
 - Script `02_aggregate.py` in Stage 7 → `stage7_02_cr1.py`
 - Script `01_regression-analysis.py` in Stage 8 → `stage8_01_cra1.py` (QA4a), `stage8_01_crb1.py` (QA4b)
 
+**Data Ingest profiling QA naming:** For the profiling QA naming convention (`profile_{phase}_cr{N}.py`), see `.claude/skills/daaf-orchestrator/references/data-ingest-mode.md` and the QAP Script Naming Convention section within this document.
+
 ---
 
 ## QA Report Format
@@ -871,14 +875,14 @@ QA checkpoints can trigger STOP conditions that prevent proceeding:
 
 ### QAP Overview
 
-| Checkpoint | Phase | Focus | BLOCKER When |
-|------------|-------|-------|-------------|
+| Checkpoint | Part | Focus | BLOCKER When |
+|------------|------|-------|-------------|
 | QAP1 | A (Structural) | Load fidelity, schema accuracy | Wrong delimiter/encoding, type inference errors, row/column count mismatch |
 | QAP2 | B (Statistical) | Statistical characterization | Distribution claims wrong, temporal breaks missed, coverage gaps undetected |
 | QAP3 | C (Relational) | Relationship discovery | Key uniqueness misidentified, dependencies missed, anomalies uncatalogued |
 | QAP4 | D (Interpretation) | Semantic accuracy | Interpretations stated as facts (missing [PRELIMINARY]), reconciliation gaps |
 
-### QAP1: Post-Structural (Phase A)
+### QAP1: Post-Structural (Part A)
 
 **Trigger:** After scripts 01-03 complete and CPP1 passes.
 
@@ -891,7 +895,7 @@ QA checkpoints can trigger STOP conditions that prevent proceeding:
 | Schema stability | Re-running type inference produces same types | Types change between runs |
 | Column coverage | Every column appears in profile output | Any column missing from profile |
 
-### QAP2: Post-Statistical (Phase B)
+### QAP2: Post-Statistical (Part B)
 
 **Trigger:** After scripts 04-06 (conditional) complete and CPP2 passes.
 
@@ -904,7 +908,7 @@ QA checkpoints can trigger STOP conditions that prevent proceeding:
 | Temporal break detection | Obvious structural breaks are flagged | Dramatic year-to-year changes missed |
 | Coverage completeness | Entity/geographic coverage is assessed | Known universe not checked when identifiers present |
 
-### QAP3: Post-Relational (Phase C)
+### QAP3: Post-Relational (Part C)
 
 **Trigger:** After scripts 07-09 (conditional) complete and CPP3 passes.
 
@@ -917,9 +921,9 @@ QA checkpoints can trigger STOP conditions that prevent proceeding:
 | Cross-column consistency | Consistency rules are complete | Obvious logical constraint violated but not flagged |
 | Coded value scan completeness | Standard sentinels checked | Numeric columns not scanned for -1, -2, -3, -9, -99, -999 |
 
-### QAP4: Post-Interpretation (Phase D)
+### QAP4: Post-Interpretation (Part D)
 
-**Trigger:** After scripts 10-12 (conditional) complete and CPP4 passes.
+**Trigger:** After scripts 10-11 (conditional) complete and CPP4 passes.
 
 **Default Checks:**
 | Check | Validates | BLOCKER If |
@@ -927,8 +931,7 @@ QA checkpoints can trigger STOP conditions that prevent proceeding:
 | PRELIMINARY marking | All interpretations hedged | Any interpretation stated as fact without [PRELIMINARY] marker |
 | Documentation coverage | All documented claims checked against data | Documented column present but not reconciled |
 | Discrepancy evidence | Every discrepancy has actual-vs-documented values | Discrepancy noted without showing evidence |
-| Synthesis completeness | All executed scripts' findings aggregated | Synthesis report missing findings from any profiling script |
-| Quality score reasonableness | Quality dimensions scored consistently | Score contradicts observed evidence |
+| Interpretation completeness | All columns with non-trivial semantics have an interpretation entry | Column with identifiable meaning has no interpretation |
 
 ### QAP Severity Classification
 

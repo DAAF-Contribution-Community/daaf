@@ -438,6 +438,8 @@ df = fetch_from_mirrors(
 
 ## Size Guidelines
 
+**Line guidance:** Target 200-350 lines for SKILL.md. Skills over 500 lines should split content into reference files. This is a guideline, not a strict rule — clarity and completeness take priority over line count.
+
 | Metric | Target | Hard Limit |
 |--------|--------|------------|
 | Total SKILL.md lines | 200-350 | 500 |
@@ -454,7 +456,7 @@ df = fetch_from_mirrors(
 
 Use this checklist when reviewing a skill for template compliance:
 
-- [ ] Frontmatter: `domain: education-data` (not other values)
+- [ ] Frontmatter: `domain: [appropriate-domain]` (must match the dataset's domain consistently throughout; e.g., education-data, election-data, economic-mobility)
 - [ ] Frontmatter: description includes "what" AND "when to use"
 - [ ] Frontmatter: `provenance.skill_authored` and `provenance.skill_last_updated` present with ISO-8601 dates
 - [ ] Title: `# [ACRONYM] Data Source Reference` format
@@ -472,4 +474,3 @@ Use this checklist when reviewing a skill for template compliance:
 - [ ] No content lost from original (spot-check source-specific sections)
 - [ ] Total lines under 500
 - [ ] Registered in `.claude/skills/daaf-orchestrator/references/skill-catalog.md` (Skill Quick Reference table)
-- [ ] Registered in `.claude/skills/daaf-orchestrator/references/skill-catalog.md` (Data Source Quick Lookup table)

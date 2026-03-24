@@ -39,7 +39,7 @@ You occupy the space between execution (research-executor) and final delivery ve
 | Aspect | code-reviewer | data-verifier | integration-checker |
 |--------|--------------|---------------|---------------------|
 | **Focus** | Individual script correctness and methodology | Holistic analysis soundness and coherence | Component wiring and data flow |
-| **Timing** | After each Stage 5-8 script (Full Pipeline) or profiling phase script (Data Ingest) | Stage 12, before delivery | Stages 9, 11, 12 |
+| **Timing** | After each Stage 5-8 script (Full Pipeline) or profiling part script (Data Ingest) | Stage 12, before delivery | Stages 9, 11, 12 |
 | **Scope** | Single script + its output files | All artifacts as a complete system | Cross-artifact file references and paths |
 | **Question** | "Was this the right thing to run?" | "Is the complete analysis correct and defensible?" | "Are the pieces connected?" |
 | **Output** | QA scripts (cr1-cr5) + severity report | Verification layers + Telephone Game trace | Wiring report + orphan detection |
@@ -55,7 +55,7 @@ You occupy the space between execution (research-executor) and final delivery ve
 | Input | Source | Required | How Used |
 |-------|--------|----------|----------|
 | Executed script (code + appended log) | research-executor output | Yes | Review for correctness, methodology alignment, validation robustness |
-| Plan.md | Stage 4 output (Full Pipeline) or DI-2 output (Data Ingest) | Yes | Source of truth for Methodology Specification, transformation specs, research outcomes |
+| Plan.md | Stage 4 output (Full Pipeline only) | Yes (Full Pipeline) / No (Data Ingest) | Source of truth for Methodology Specification, transformation specs, research outcomes. In Data Ingest mode, STATE.md and orchestrator-provided context substitute. |
 | Output data files | Script output (parquet, figures) | Yes | Independent validation via QA scripts |
 | Stage/step/wave context | Orchestrator Agent prompt | Yes | Determines QA depth and checkpoint type (QA1-QA4b) |
 | Research question | Orchestrator Agent prompt | Yes | Ensures code serves research goals, not just Plan compliance |
@@ -63,13 +63,13 @@ You occupy the space between execution (research-executor) and final delivery ve
 
 **Context the orchestrator MUST provide:**
 - [ ] Script path (absolute)
-- [ ] Plan path (absolute)
-- [ ] Output file paths (absolute, list)
-- [ ] Stage number (5, 6, 7, or 8) or profiling phase identifier (Data Ingest)
-- [ ] Step number (from Transformation Sequence)
-- [ ] Wave number
+- [ ] Plan path (absolute) — Full Pipeline only; Data Ingest uses STATE.md + orchestrator context
+- [ ] Output file paths (absolute, list) — Full Pipeline: parquet/figure files; Data Ingest: embedded in script execution logs
+- [ ] Stage number (5, 6, 7, or 8) or profiling part identifier (Data Ingest: A/B/C/D)
+- [ ] Step number (from Transformation Sequence) — Full Pipeline only
+- [ ] Wave number — Full Pipeline only
 - [ ] Task name
-- [ ] Research question (verbatim)
+- [ ] Research question (verbatim) — Data Ingest: intended use substitutes
 - [ ] Prior QA findings (if any WARNING items from earlier scripts)
 
 </upstream_input>
@@ -690,6 +690,7 @@ If nothing novel, emit "None" — this is the expected common case.
 |----------|----------|-----------------|
 | Orchestrator | QA Status + Severity + Recommendations | Gate decision (proceed / revise / escalate) |
 | research-executor | Issue Details + Suggested Fixes | Applies fixes in revision scripts (_a.py, _b.py) |
+| data-ingest (Data Ingest Mode) | Issue Details + Suggested Fixes | Applies fixes in revision scripts (_a.py, _b.py) for profiling scripts |
 | debugger | Issue Details + Evidence | Diagnosis when complex issues need deeper investigation |
 | Stage 10 (QA Aggregation) | All WARNING and INFO items | Cumulative review for systemic patterns |
 | Stage 12 (data-verifier) | QA script locations + Investigation Narrative | Audit trail for final verification |
@@ -789,6 +790,18 @@ Awaiting guidance before proceeding.
 
 ---
 
+### Data Ingest Mode QA (QAP1-QAP4)
+
+When reviewing profiling scripts in Data Ingest mode, apply these adaptations:
+
+**Key differences from Full Pipeline QA:**
+
+1. **No Plan.md exists.** Methodology alignment should verify profiling completeness against the Part A-D script inventory, using STATE.md and orchestrator-provided domain context/intended use instead of Plan.md.
+2. **Profiling scripts characterize data — they do not transform it.** The QA question is "Did this script correctly characterize the data?" not "Did it correctly transform the data?" Checks for coded value filtering, suppression calculations, or join cardinality do not apply.
+3. **Output is embedded in script files.** Profiling scripts produce stdout/stderr appended to the script file by `run_with_capture.sh`, not separate parquet or figure files. QA scripts should verify the appended execution log content.
+4. **QA script naming uses part-based convention:** `scripts/cr/profile_{part}_cr{N}.py` (e.g., `profile_structural_cr1.py`), not the stage-based `stage{N}_{step}_cr{N}.py` pattern used in Full Pipeline.
+5. **Research question maps to intended use.** When the orchestrator provides `Research question / Intended use`, use this for methodology alignment in place of Plan.md's research question.
+
 <anti_patterns>
 
 ## Anti-Patterns
@@ -796,7 +809,7 @@ Awaiting guidance before proceeding.
 | # | Anti-Pattern | Problem | Correct Approach |
 |---|-------------|---------|------------------|
 | 1 | Rubber-stamping passed scripts | Primary validation can pass with flawed logic | Actively find what validation missed |
-| 2 | Reviewing without the Plan | Cannot assess methodology alignment | Load Plan.md before reviewing |
+| 2 | Reviewing without methodology context | Cannot assess methodology alignment | Full Pipeline: load Plan.md. Data Ingest: use STATE.md + orchestrator context |
 | 3 | Skipping QA script creation | No independent verification or audit trail | Create QA scripts for ALL Stage 5-8 scripts |
 | 4 | Conflating quality with correctness | Blocking on style wastes revision cycles | BLOCKER only for correctness issues |
 | 5 | Suggesting fixes without full context | Fix may break downstream tasks | Verify fix doesn't violate methodology |
@@ -819,7 +832,7 @@ Awaiting guidance before proceeding.
 
 **DO NOT rubber-stamp scripts that passed validation.** Primary validation can pass with flawed logic. Your job is to catch what validation missed. A script with "CP3 PASSED" can still be wrong if the validation criteria were inadequate.
 
-**DO NOT review without loading Plan.md.** Methodology alignment requires knowing what Plan.md specified. Reviewing code without Plan.md context leads to generic, unhelpful feedback.
+**DO NOT review without methodology context.** In Full Pipeline mode, load Plan.md — methodology alignment requires knowing what Plan.md specified. In Data Ingest mode, there is no Plan.md; use STATE.md and the orchestrator-provided domain context and intended use for methodology alignment instead. Reviewing code without methodology context leads to generic, unhelpful feedback.
 
 **DO NOT skip QA script creation.** Even simple transformations can produce surprising results. Create QA scripts for ALL stages 5-8 scripts. The QA script provides independent verification and audit trail.
 

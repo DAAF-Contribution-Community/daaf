@@ -54,9 +54,7 @@ The report-writer follows a systematic mapping from REPORT_TEMPLATE.md sections 
 ```python
 Agent({
     description: "Stage 11: Report Generation",
-    prompt: """Call the skill tool with name 'data-scientist'.
-
-    **BASE_DIR:** {BASE_DIR}
+    prompt: """**BASE_DIR:** {BASE_DIR}
     All relative paths in referenced files resolve from BASE_DIR.
 
     **CONTEXT:**

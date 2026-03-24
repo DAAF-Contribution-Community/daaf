@@ -26,7 +26,7 @@ The education data source skills (`education-data-source-*`) listed below access
 | `education-data-source-nacubo` | NACUBO | College endowment market values (7 cols in Portal; full study separate) |
 | `education-data-source-campus-safety` | Campus Safety (ED) | Campus crime statistics (hate crimes only in Portal; full data via ED) |
 | `election-data-source-countypres` | MEDSL (MIT) | County-level presidential election returns 2000-2024 (not EDP) |
-| `data-scientist` | Methodology and rigor | All analysis stages |
+| `data-scientist` | Methodology and rigor | All analysis stages; Data Ingest profiling (DI-3 through DI-6) |
 | `polars` | DataFrame operations | Stage 7-8: Data transformation and statistical analysis |
 | `plotnine` | Static visualization | Stage 8.2: Publication plots |
 | `plotly` | Interactive visualization | Stage 8.2: Interactive plots |
@@ -36,7 +36,7 @@ The education data source skills (`education-data-source-*`) listed below access
 
 | Skill | Purpose | When to Use |
 |-------|---------|-------------|
-| `skill-authoring` | Guide for creating Skills | When creating a new skill, reviewing skill structure, or debugging skill loading issues |
+| `skill-authoring` | Guide for creating Skills | When creating a new skill (including Data Ingest Stage DI-7), reviewing skill structure, or debugging skill loading issues |
 | `agent-authoring` | Guide for creating Agents | When creating a new agent definition file or verifying agent integration |
 
 ## Skill Locations

@@ -74,7 +74,7 @@ The fetch mechanics (Stage 5) are mostly handled by the query skill and mirror c
 
 ### Preparing Your Data
 
-Place your data file in the data drop folder at `/daaf/data/ingest/{source-name}/` (e.g., `/daaf/data/ingest/county-elections/`). This is the conventional location for files being ingested. If you have documentation files (codebooks, data dictionaries, etc.), put those in the same folder. See [**01. Installation and Quickstart**](01_installation_and_quickstart.md) for reminders on managing files within the Docker volume if needed.
+Place your data file anywhere accessible inside `/daaf/` — the ingest process will copy it into the research project's `data/raw/` folder during setup. A common convention is to place files in `/daaf/data/` or alongside the research folder (e.g., `/daaf/data/county-elections/election_returns_2024.csv`). If you have documentation files (codebooks, data dictionaries, etc.), put those alongside the data file. See [**01. Installation and Quickstart**](01_installation_and_quickstart.md) for reminders on managing files within the Docker volume if needed.
 
 A few practical considerations:
 
@@ -98,15 +98,15 @@ important columns are probably the ones related to total spending,
 enrollment counts, and state identifiers.
 ```
 
-DAAF will classify this as a Data Ingest request, set up a research project folder, and execute a systematic 12-script profiling protocol across four phases:
+DAAF will classify this as a Data Ingest request, set up a research project folder, and execute a systematic profiling protocol (up to 11 scripts, depending on your data's characteristics). The profiling runs across 4 sub-phases:
 
-**Phase 1 -- Structural Analysis:** Basic shape of the data (rows, columns, memory footprint, column types) and initial column-level profiling. This gives the agent a bird's-eye view of what it's working with, including null rates, unique value counts, and basic distributions.
+**Phase 1 -- Structural Discovery:** Basic shape of the data (rows, columns, memory footprint, column types) and initial column-level profiling. This gives the agent a bird's-eye view of what it's working with, including null rates, unique value counts, and basic distributions.
 
-**Phase 2 -- Statistical Deep Dive:** Detailed statistics for every column -- full distribution analysis for numeric columns, category enumeration for categorical columns, and detection of potential coded values (those suspicious negative numbers like -1, -2, -9 that often mean "missing" or "suppressed" rather than being real values). Also includes temporal pattern analysis and outlier detection.
+**Phase 2 -- Statistical Deep Dive:** Detailed statistics for every column -- full distribution analysis for numeric columns, category enumeration for categorical columns, temporal pattern analysis, and outlier detection. If your data has date/year columns or geographic identifiers, this phase also analyzes temporal coverage gaps and entity coverage against known universes.
 
-**Phase 3 -- Relational Analysis:** Identifying potential key columns (high uniqueness suggests an identifier), foreign keys (naming patterns like `_id` suffixes), hierarchical relationships between columns, and cross-column dependency patterns.
+**Phase 3 -- Relational Analysis:** Identifying potential key columns (high uniqueness suggests an identifier), foreign keys (naming patterns like `_id` suffixes), hierarchical relationships between columns, cross-column dependency patterns, and detection of coded values (those suspicious negative numbers like -1, -2, -9 that often mean "missing" or "suppressed" rather than being real values).
 
-**Phase 4 -- Semantic Interpretation:** This is where it gets interesting. The agent uses column names, value patterns, and domain conventions to make educated guesses about what each column *means*. Every interpretation is explicitly marked as `[PRELIMINARY]` -- the agent knows it's hypothesizing, not asserting. Column named `fips`? Probably a FIPS geographic code. Column with values 0 and 1? Probably a binary indicator, but is 1 "Yes" or "Male" or "Urban"? The agent will flag the ambiguity. This phase also produces overall data quality scores and a comprehensive profile summary.
+**Phase 4 -- Interpretation & Reconciliation:** This is where it gets interesting. The agent uses column names, value patterns, and domain conventions to make educated guesses about what each column *means*. Every interpretation is explicitly marked as `[PRELIMINARY]` -- the agent knows it's hypothesizing, not asserting. Column named `fips`? Probably a FIPS geographic code. Column with values 0 and 1? Probably a binary indicator, but is 1 "Yes" or "Male" or "Urban"? The agent will flag the ambiguity. This phase also produces overall data quality scores and a comprehensive profile summary.
 
 If you provided documentation, the profiling protocol also runs **Documentation Reconciliation**: it parses your codebook or data dictionary, extracts every claim it can find (column definitions, expected types, coded value meanings), and then *verifies each claim against the actual data.* Documentation says there are 50 columns? The agent checks. Codebook says `state_code` should be a string? The agent confirms or flags the mismatch. This reconciliation is one of the most valuable things Data Ingest Mode does -- it catches the disturbingly common case where documentation is outdated or describes a different version of the data than what you actually have.
 
@@ -178,11 +178,11 @@ For data source skills, the orchestrator automatically provides registration gui
 
 | Priority | File | Section to Update | What to Add |
 |----------|------|-------------------|-------------|
-| 1 (Required) | `.claude/skills/daaf-orchestrator/references/skill-catalog.md` | Data Source Quick Lookup table | New row mapping data need to skill name |
+| 1 (Required) | `.claude/skills/daaf-orchestrator/references/skill-catalog.md` | Skill Quick Reference table | New row mapping data need to skill name |
 | 2 (Required) | `agent_reference/WORKFLOW_PHASE1_DISCOVERY.md` | Available source skills list | New bullet with skill name and description |
 | 3 (Required) | `.claude/agents/source-researcher.md` | Step 1: Load Source Skill | No update needed (orchestrator provides skill name dynamically) |
 
-The orchestrator will typically offer to make these updates for you at the end of the Data Ingest workflow -- just confirm and it'll handle the file edits. You still need to approve the updates, as they touch core framework files. Note that these registration edits fall under the "contribution" category if you plan to share them (see [When to Extend vs. When to Contribute](#when-to-extend-vs-when-to-contribute)).
+The orchestrator will typically offer to make these updates for you at the end of the Data Ingest workflow -- just confirm and it'll handle the file edits. You still need to approve the updates, as they touch core framework files. Note that these registration edits fall under the "contribution" category if you plan to share them (see [Submitting Your Extension for Inclusion](#submitting-your-extension-for-inclusion)).
 
 For methodology and domain expertise skills, registration is simpler -- you primarily need to update the skill catalog at `.claude/skills/daaf-orchestrator/references/skill-catalog.md` so the orchestrator knows the skill exists and when to recommend loading it.
 

@@ -249,6 +249,14 @@ research/YYYY-MM-DD_[Title]/
 │       └── 01_diag-key-mismatch.py
 ```
 
+**Data Ingest profiling scripts** follow a parallel directory convention under `scripts/`:
+- `profile_structural/` (Part A, scripts 01-03)
+- `profile_statistical/` (Part B, scripts 04-06)
+- `profile_relational/` (Part C, scripts 07-09)
+- `profile_interpretation/` (Part D, scripts 10-11)
+
+Profiling scripts use the same file-first execution pattern, IAT documentation standards, and `run_with_capture.sh` wrapper. See `.claude/skills/daaf-orchestrator/references/data-ingest-mode.md` for the profiling script template and part-specific details.
+
 ---
 
 ## Naming Convention
