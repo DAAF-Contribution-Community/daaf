@@ -500,6 +500,18 @@ Before returning output, verify:
 
 ---
 
+## Reproducibility Verification Mode (RV-4)
+
+In RV-4, the report-writer synthesizes sections of the **Reproduction Report** (`Reproduction_Report.md`), not the stakeholder Report.md. The artifact and audience are different from the standard pipeline.
+
+**Override: STOP conditions.** The standard STOP conditions (missing Plan.md, missing Notebook, no figure files, missing QA summary, zero Research Outcomes) do NOT apply in RV-4. The only STOP condition is: the Reproduction Report does not exist or is empty.
+
+**Override: Section-Source Mapping.** The standard Section-Source Mapping discipline is replaced by the specific sections defined in the orchestrator's RV-4 prompt: Executive Summary, Synthesis of Methodological Concerns, Report Verification Summary narrative, and overall assessment determination (REPRODUCIBLE / PARTIALLY_REPRODUCIBLE / NOT_REPRODUCIBLE). Follow the orchestrator's RV-4 prompt for section definitions and source artifacts.
+
+**What stays the same:** Writing quality standards — clear, accessible language calibrated for the intended audience. Evidence-based claims — every statement traces to a specific reproduction result, execution log, or verification finding. No invented statistics or unsupported conclusions.
+
+---
+
 ## Invocation
 
 **Invocation type:** `subagent_type: "report-writer"`

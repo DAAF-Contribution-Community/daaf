@@ -191,6 +191,13 @@ All deliverables are new-version copies; originals remain untouched:
 - Updated data files (regenerated, not copied)
 - Notebook (reassembled with final script versions)
 - Report (regenerated to reflect changes)
+- Session logs collected into `logs/` (run `collect_session_logs.sh` before report generation)
+
+**Session Log Collection:** Before Stage 11 (Report), the orchestrator runs:
+```
+bash {BASE_DIR}/scripts/collect_session_logs.sh {PROJECT_DIR}
+```
+This collects transcripts from both the original analysis sessions and the revision session(s), since both reference the same project folder basename.
 
 ### AI Use Disclosure in Revisions
 
@@ -273,6 +280,14 @@ These boundaries supplement the universal boundaries in `CLAUDE.md` and `agent_r
 - Proceed without reading existing Plan.md, Plan_Tasks.md, and STATE.md
 
 **Version Suffix Convention:** See `CLAUDE.md` > "Version Control Protocol" for the canonical convention (e.g., original → `a` → `b` → `c`).
+
+## Arriving from Reproducibility Verification Mode
+
+When a user arrives at Revision and Extension mode from Reproducibility Verification (RV) mode, it is because the Reproduction Report identified divergences or methodological concerns that the user wants to fix in the original analysis. The Reproduction Report's Deviation Log and Methodological Concerns sections serve as the specification for what needs to change — they document exactly where the original analysis diverged from expected behavior and why.
+
+The orchestrator should reference specific deviations from the Reproduction Report when constructing the revision scope and classifying the revision type. For example, a deviation flagged as "data source returned different values" may indicate a Scope Change or Bug Fix depending on the cause, while a methodological concern may indicate a Methodology Change. The Reproduction Report provides the evidence base that informs these classifications.
+
+Note that the **original project** (not the reproduction project) is the target of revision. The reproduction project folder is a read-only verification artifact. When setting up the revision, locate the original project's Plan.md, Plan_Tasks.md, and STATE.md as described in the standard workflow above, and use the Reproduction Report as supplementary context for understanding what went wrong and what needs to change.
 
 ## Escalation Triggers
 

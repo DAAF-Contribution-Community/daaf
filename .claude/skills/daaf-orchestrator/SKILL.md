@@ -362,16 +362,16 @@ DAAF uses **named agents** defined in `.claude/agents/`. When invoking a subagen
 | Agent Name | Permission Mode | Use For |
 |------------|----------------|---------|
 | `research-executor` | `default` (read/write) | Data acquisition, cleaning, transformation, visualization (Stages 5-8) |
-| `code-reviewer` | `default` (read/write) | QA review of executed scripts (Stages 5-8 QA) |
+| `code-reviewer` | `default` (read/write) | QA review of executed scripts (Stages 5-8 QA, RV-2) |
 | `data-planner` | `default` (read/write) | Research plan creation (Stage 4) |
 | `plan-checker` | `plan` (read-only) | Plan verification (Stage 4.5) |
 | `source-researcher` | `plan` (read-only) | Source deep-dive (Stage 3) |
 | `research-synthesizer` | `default` (read/write) | Multi-source synthesis (Stage 3.5) |
-| `debugger` | `default` (read/write) | Error diagnosis (any stage) |
+| `debugger` | `default` (read/write) | Error diagnosis (any stage, RV-2 escalation) |
 | `notebook-assembler` | `default` (read/write) | Notebook compilation (Stage 9) |
 | `integration-checker` | `plan` (read-only) | Wiring verification (Stages 9, 11, 12) |
-| `report-writer` | `default` (read/write) | Stakeholder report (Stage 11) |
-| `data-verifier` | `plan` (read-only) | Final verification (Stage 12) |
+| `report-writer` | `default` (read/write) | Stakeholder report (Stage 11, RV-4) |
+| `data-verifier` | `plan` (read-only) | Final verification (Stage 12, RV-3) |
 | `data-ingest` | `default` (read/write) | Dataset profiling (Data Ingest Mode) |
 
 See `.claude/agents/README.md` for the complete agent index with key inputs and outputs.

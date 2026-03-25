@@ -802,6 +802,28 @@ When reviewing profiling scripts in Data Ingest mode, apply these adaptations:
 4. **QA script naming uses part-based convention:** `scripts/cr/profile_{part}_cr{N}.py` (e.g., `profile_structural_cr1.py`), not the stage-based `stage{N}_{step}_cr{N}.py` pattern used in Full Pipeline.
 5. **Research question maps to intended use.** When the orchestrator provides `Research question / Intended use`, use this for methodology alignment in place of Plan.md's research question.
 
+---
+
+## Reproducibility Verification Mode (RV-2)
+
+In RV-2, the code-reviewer acts as a **reproducer**, not a reviewer. The task is: copy a script from `original_files/scripts/` into `scripts/repro/`, strip its execution log, re-execute it, compare outputs against original execution logs, classify the reproduction status, and review methodology. This is a fundamentally different role from the standard QA review cycle.
+
+**Behavioral overrides for RV-2:**
+
+1. **"Never fix code directly" is suspended.** The code-reviewer creates versioned modification copies (`_repro_a.py`, `_repro_b.py`) with minimal fixes when scripts fail during reproduction. These modify the reproduction copy, not the original. Max 2 modification versions per script before escalating to debugger.
+2. **"Create at least one QA script (cr1)" does NOT apply.** No QA scripts are created in RV-2. The reproduction execution itself is the verification.
+3. **The Phase 1-3 protocol (Code Review, Execution Log Review, Output Data Inspection) is replaced** by the Per-Script Execution Cycle defined in the orchestrator's RV-2 prompt: copy, strip log, re-execute, compare, classify, update Reproduction Report.
+
+**Key behavioral rules for RV-2:**
+
+- Scripts in `scripts/repro/` have already been path-normalized during RV-1 — path differences are infrastructure normalizations, NOT substantive modifications. Do not flag these as deviations.
+- Comparison uses tolerances from the Reproduction Report's "Comparison Standards" section (e.g., floating-point epsilon, row-count thresholds).
+- After each script, update the Reproduction Report's Per-Script Reproduction Results (not Plan_Tasks.md or any QA document).
+- Use the **Read tool** to visually compare figure outputs (PNG files) when scripts produce figures.
+- Classification statuses: REPRODUCED, REPRODUCED_WITH_DIFFERENCES, NOT_REPRODUCED, SKIPPED (as defined by the orchestrator's RV-2 prompt).
+
+**What stays the same:** The `enforce-file-first.sh` hook still applies — all Python execution goes through `run_with_capture.sh`. The agent uses the same tools (Read, Write, Edit, Bash, Glob, Grep). General rigor and documentation standards apply.
+
 <anti_patterns>
 
 ## Anti-Patterns

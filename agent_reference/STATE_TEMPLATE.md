@@ -38,7 +38,7 @@ Copy this template to `STATE.md` in the project folder when starting a Full Pipe
 | **DAAF Version** | [Short git commit hash — from `git rev-parse --short HEAD` at project setup] |
 | **Model ID** | [Claude model identifier — e.g., "claude-opus-4-6"] |
 | **Session Date(s)** | [Date(s) of analysis sessions — e.g., "2026-02-11"] |
-| **Session Transcript** | [Path to archived session transcript, if available — populated at session end] |
+| **Session Transcript(s)** | `logs/` — collected at project completion via `collect_session_logs.sh` |
 
 ---
 
@@ -370,10 +370,10 @@ Copy this template to `STATE.md` in the project folder when starting a Full Pipe
 
 *Track multi-session analyses*
 
-| Session | Date | Stages Completed | Notes |
-|---------|------|------------------|-------|
-| 1 | [date] | [1-N] | [summary] |
-| 2 | [date] | [N-M] | [summary] |
+| Session | Date | Stages Completed | Archive | Notes |
+|---------|------|------------------|---------|-------|
+| 1 | [date] | [1-N] | [filename or "pre-project"] | [summary] |
+| 2 | [date] | [N-M] | [filename] | [summary] |
 
 ---
 

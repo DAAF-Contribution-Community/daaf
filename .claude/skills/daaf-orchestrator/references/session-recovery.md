@@ -7,7 +7,7 @@
 
 ## Purpose
 
-Enable stateless recovery when resuming an interrupted analysis after LLM context has been cleared. Persistent memory varies by mode: Full Pipeline uses Plan.md + Plan_Tasks.md + STATE.md; Revision and Extension uses prior version Plan.md + Plan_Tasks.md + STATE.md plus new-version Plan files; Data Ingest uses STATE.md only.
+Enable stateless recovery when resuming an interrupted analysis after LLM context has been cleared. Persistent memory varies by mode: Full Pipeline uses Plan.md + Plan_Tasks.md + STATE.md; Revision and Extension uses prior version Plan.md + Plan_Tasks.md + STATE.md plus new-version Plan files; Data Ingest uses STATE.md only; Reproducibility Verification uses Reproduction_Report.md (no STATE.md).
 
 ## When to Use
 
@@ -272,7 +272,7 @@ Before resuming a Revision and Extension session:
 
 ### Recovery from Reproducibility Verification Mode
 
-**Identification:** STATE references `RV-` stages, or project folder name contains `_Reproduction`.
+**Identification:** Reproduction_Report.md exists in project root, or project folder name contains `_Reproduction`.
 
 **Recovery procedure:**
 1. Read `Reproduction_Report.md` (primary recovery document — contains script inventory, per-script results, and session continuity section)

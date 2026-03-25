@@ -97,6 +97,14 @@ Agent({
 })
 ```
 
+#### Pre-Report: Session Log Collection
+
+Before invoking report-writer, collect session transcripts into the project:
+```
+bash {BASE_DIR}/scripts/collect_session_logs.sh {PROJECT_DIR}
+```
+Then update STATE.md: confirm `logs/` contains collected files, and fill in the `Archive` column in the Session History table with the archive filenames for each session row.
+
 #### Context Completeness Checklist (Stage 11)
 
 Before invoking report-writer, verify:
@@ -113,6 +121,7 @@ Before invoking report-writer, verify:
 - [ ] Project path specified (absolute)
 - [ ] DAAF commit hash provided (from STATE.md Session Metadata)
 - [ ] Model ID provided (from STATE.md Session Metadata)
+- [ ] Session logs collected into `logs/` (collect_session_logs.sh run)
 
 #### Expected Output
 
@@ -754,6 +763,7 @@ These quick notes can be expanded into full entries at Stage 12.
 - [ ] **Key findings flagged for repository consolidation** (in Action Plan)
 - [ ] **Action item count included in delivery message**
 - [ ] **STATE.md finalized:** Status: Complete, all checkpoints marked, Session History complete
+- [ ] **Session logs collected** into `logs/` (WARNING if empty or not run — does not block delivery)
 - [ ] User notified with delivery summary
 
 ---

@@ -238,6 +238,9 @@ The Full Pipeline workflow consists of **5 Phases** and **12 Stages**.
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │ PHASE 5: SYNTHESIS & DELIVERY                                               │
 ├─────────────────────────────────────────────────────────────────────────────┤
+│  Pre-Report: Collect session logs into project                              │
+│      └─ bash {BASE_DIR}/scripts/collect_session_logs.sh {PROJECT_DIR}       │
+│                          ↓                                                  │
 │  Stage 11: Report Generation ←── report-writer agent                        │
 │      ├─ Synthesize Plan.md, Notebook, STATE.md, LEARNINGS.md, QA            │
 │      ├─ Follow Section-Source Mapping for each REPORT_TEMPLATE.md section   │
@@ -1883,7 +1886,7 @@ The orchestrator receives actual context utilization via the `context-reporter` 
   - **DAAF Version:** Run `git rev-parse --short HEAD` in the DAAF repository root and record the result
   - **Model ID:** Record the current model identifier (e.g., "claude-opus-4-6")
   - **Session Date(s):** Record today's date; update if the project spans multiple sessions
-  - **Session Transcript:** Leave as "Populated at session end" — the archive hook fills this
+  - **Session Transcript(s):** Leave as the default value — project-local logs are collected at completion
 
 **Update Triggers:** See the **STATE.md Update Gates** table above for the complete list of mandatory update events and which fields to update.
 
@@ -1892,6 +1895,21 @@ See `agent_reference/STATE_TEMPLATE.md` for the complete template.
 ### Session Transcript Archiving
 
 On session end, the `archive-session.sh` hook automatically archives the full session transcript (JSONL + readable Markdown) to `.claude/logs/sessions/`. This provides a complete audit trail independent of STATE.md, useful for debugging cross-session issues or reviewing past decisions.
+
+### Session Log Collection (Pre-Report)
+
+**Trigger:** Between Stage 10 (QA Aggregation) and Stage 11 (Report Generation), after all execution is complete.
+
+**Action:** The orchestrator runs:
+```
+bash {BASE_DIR}/scripts/collect_session_logs.sh {PROJECT_DIR}
+```
+
+This searches all archived session transcripts for references to the project folder and copies matching JSONL + MD pairs into `{PROJECT_DIR}/logs/`. The report-writer can then reference these project-local logs in the Reproducibility section.
+
+After collection, update STATE.md:
+- **Session Metadata → Session Transcript(s):** Confirm `logs/` contains the collected files
+- **Session History → Archive column:** Fill in the archive filenames for each session row
 
 ---
 

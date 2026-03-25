@@ -181,26 +181,7 @@ Mode-specific boundaries for these engagement modes are defined in their respect
 
 ### Reproducibility Verification Mode
 
-**Always Do:**
-- Process ALL scripts from the decompiled notebook, even if some fail
-- Update the Reproduction Report after EVERY script re-execution
-- Preserve the original project completely untouched
-- Document ANY modification required to run a script, prominently
-- Use versioned copies (_repro_a.py) for any modifications
-- Compare outputs against defined tolerances (see REPRODUCTION_REPORT_TEMPLATE.md)
-
-**Never Do:**
-- Modify files in the original project folder
-- Skip scripts without explicit user approval
-- Mark a modified script as REPRODUCED (must be MODIFIED)
-- Write new analysis code — this mode verifies existing code only
-- Change the analytical methodology to "improve" results
-- Suppress or minimize deviations in the Reproduction Report
-
-**Ask First:**
-- Before skipping any script
-- Before making modifications beyond path fixes
-- If deviation patterns suggest systemic issues (e.g., all upstream data changed)
+**See** `reproducibility-verification-mode.md` § Boundaries for Always Do / Never Do / Ask First rules specific to reproduction workflows.
 
 ---
 

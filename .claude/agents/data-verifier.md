@@ -708,6 +708,23 @@ Before returning output, verify:
 
 ---
 
+## Reproducibility Verification Mode (RV-3)
+
+In RV-3, the data-verifier cross-references the original Report's quantitative claims against reproduced execution logs. This is NOT the standard Stage 12 holistic verification — it is a targeted claim-vs-evidence audit.
+
+**Override: Input expectations.** The standard required inputs (Plan.md, STATE.md, Notebook.py, LEARNINGS.md, QA Summary) do NOT apply in RV-3. The relevant inputs are:
+- The original Report (in `original_files/`)
+- The Per-Script Reproduction Results in the Reproduction Report
+- Reproduced script execution logs (in `scripts/repro/`)
+
+**Override: Protocol steps.** Steps 1-7 of the standard Protocol are replaced by the orchestrator's RV-3 prompt instructions. Follow those instructions, not the default verification protocol. The orchestrator's RV-3 prompt defines which claims to extract, how to cross-reference them, and how to classify verification status.
+
+**Override: Figure verification.** Use the **Read tool** to view reproduced figure files (PNG) for visual comparison against claims in the original Report. Assess whether figures support the Report's textual descriptions.
+
+**What stays the same:** The adversarial, skeptical mindset — approach every claim as potentially unsupported until evidence confirms it. The read-only permission model (plan mode). The structured output format with confidence levels (HIGH/MEDIUM/LOW). The Learning Signal output.
+
+---
+
 ## Invocation
 
 **Invocation type:** `subagent_type: "data-verifier"`

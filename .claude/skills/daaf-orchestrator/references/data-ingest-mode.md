@@ -104,6 +104,7 @@ After mode confirmation, briefly orient the user. Key points:
 │      └─ Gate GDI-7: CPP-SKILL PASSED (includes wiring verification)        │
 │                          ↓                                                  │
 │  Stage DI-8: Review & Delivery                                              │
+│      ├─ Collect session logs: collect_session_logs.sh                        │
 │      ├─ Present completed skill + wiring to user for review                 │
 │      ├─ Finalize STATE.md, LEARNINGS.md                                     │
 │      └─ Gate GDI-8: User confirms skill is acceptable                       │
@@ -1242,6 +1243,12 @@ print("=" * 60)
 
 ### Final Delivery (Stage DI-8)
 
+Before presenting to the user, collect session logs into the project:
+```
+bash {BASE_DIR}/scripts/collect_session_logs.sh {PROJECT_DIR}
+```
+Then update STATE.md Session Metadata to confirm log collection.
+
 Present to the user after Stage DI-7 completes and the skill passes compliance (including wiring verification):
 
 ```
@@ -1268,6 +1275,7 @@ If you'd like to adjust any of these registrations (e.g., change the description
 **Research Project:**
 - Location: [absolute path to research project folder]
 - Contains: [N] profiling scripts, [N] QA reviews, STATE.md, LEARNINGS.md
+- Session logs: `logs/` (collected via `collect_session_logs.sh`)
 
 **Confidence Assessment:**
 - Structural profile: [HIGH/MEDIUM/LOW] — [brief rationale]

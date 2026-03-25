@@ -243,6 +243,9 @@ bash {PROJECT_DIR}/scripts/run_with_capture.sh {PROJECT_DIR}/scripts/stage5_fetc
 | Raw Data | `YYYY-MM-DD[suffix]_[source]_[description].parquet` | `2026-01-24a_ccd_schools.parquet` |
 | Processed Data | `YYYY-MM-DD[suffix]_[description].parquet` | `2026-01-24a_analysis_data.parquet` |
 | Figures | `YYYY-MM-DD[suffix]_[description].png` | `2026-01-24a_enrollment_trends.png` |
+| Reproduction Report | `Reproduction_Report.md` | `Reproduction_Report.md` |
+
+> **Note:** The Reproduction Report uses a fixed name (not date-prefixed) because it serves as both the primary deliverable and the session state document for Reproducibility Verification mode.
 
 ### Project Folder Structure
 
@@ -287,6 +290,9 @@ research/2026-01-24_School_Poverty_Analysis/
 ├── 2026-01-24_School_Poverty_Analysis.py
 ├── 2026-01-24_School_Poverty_Analysis_Report.md
 ├── LEARNINGS.md                                   # Session learnings (REQUIRED)
+├── logs/                                          # Session transcripts (collected at completion)
+│   ├── 2026-01-24_19-30-41_7226a42c.jsonl         # Raw JSONL transcript
+│   └── 2026-01-24_19-30-41_7226a42c.md            # Human-readable transcript
 ├── scripts/                                       # All executed scripts (code archive)
 │   ├── run_with_capture.sh           # Copied from /daaf/scripts/ during project setup
 │   ├── stage5_fetch/
@@ -333,6 +339,9 @@ research/2026-01-24_School_Poverty_Analysis/
 research/2026-03-23_Ingest_County_Elections/
 ├── STATE.md                                       # Session state (REQUIRED)
 ├── LEARNINGS.md                                   # Session learnings (REQUIRED)
+├── logs/                                          # Session transcripts (collected at completion)
+│   ├── 2026-03-23_22-15-08_b3f1c9d2.jsonl
+│   └── 2026-03-23_22-15-08_b3f1c9d2.md
 ├── scripts/
 │   ├── run_with_capture.sh                        # Copied from /daaf/scripts/
 │   ├── profile_structural/
@@ -368,6 +377,11 @@ research/2026-03-23_Ingest_County_Elections/
 ```
 research/2026-03-24_College_Graduation_Analysis_Reproduction/
 ├── Reproduction_Report.md                         # Central artifact + session state (REQUIRED)
+├── # Note: No STATE.md or LEARNINGS.md — the Reproduction Report serves as
+├── # session state, and methodological observations are recorded within it.
+├── logs/                                          # Session transcripts (collected at completion)
+│   ├── 2026-03-24_18-45-12_c4e2a7f1.jsonl
+│   └── 2026-03-24_18-45-12_c4e2a7f1.md
 ├── original_files/
 │   ├── 2026-02-15_College_Graduation_Report.md    # Original Report (copied, read-only)
 │   ├── 2026-02-15_College_Graduation_Analysis.py  # Original Notebook (copied, read-only)

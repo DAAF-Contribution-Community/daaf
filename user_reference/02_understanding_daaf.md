@@ -633,6 +633,8 @@ The project folder is at research/2026-01-24_School_Poverty_Analysis/
 
 DAAF will read STATE.md, understand where it stopped, and resume from that exact point. You don't need to re-explain your research question or re-run any completed stages.
 
+**Reproducibility Verification mode note:** RV mode uses `Reproduction_Report.md` as its session state document instead of STATE.md. If an RV session is interrupted, the Reproduction Report contains a "Session Continuity" section with a restart prompt. The recovery process works the same way — start a new session and paste the restart prompt, and DAAF will pick up where it left off.
+
 ### Tips for Multi-Session Work
 
 - **Don't panic if a session ends mid-analysis.** This is undesired but not unexpected for complex analyses. The whole STATE.md system exists precisely for this reason.

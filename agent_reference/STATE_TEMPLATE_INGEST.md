@@ -27,6 +27,19 @@ Copy this template to `STATE.md` in the project folder when starting a Data Inge
 
 ---
 
+## Session Metadata
+
+> Captured at project setup for AI use disclosure (see `agent_reference/AI_DISCLOSURE_REFERENCE.md`). The orchestrator populates these fields when creating STATE.md.
+
+| Field | Value |
+|-------|-------|
+| **DAAF Version** | [Short git commit hash — from `git rev-parse --short HEAD` at project setup] |
+| **Model ID** | [Claude model identifier — e.g., "claude-opus-4-6"] |
+| **Session Date(s)** | [Date(s) of profiling sessions — e.g., "2026-03-23"] |
+| **Session Transcript(s)** | `logs/` — collected at project completion via `collect_session_logs.sh` |
+
+---
+
 ## Checkpoint Status
 
 ### Primary Validation (CPP1-CPP4 + CPP-SKILL)

@@ -233,6 +233,7 @@ Shows which agents produce output consumed by other agents:
 | **code-reviewer** (RV-2) | Orchestrator | Per-script reproduction status + comparison metrics + deviations | RV-2 (per script) |
 | **data-verifier** (RV-3) | Orchestrator | Report verification findings (claims, figures, findings checked) | RV-3 |
 | **report-writer** (RV-4) | Orchestrator | Completed Reproduction Report with synthesis | RV-4 |
+| **debugger** (RV-2) | Orchestrator | Root cause analysis + minimal fix for reproduction failure | RV-2 (on error) |
 
 ---
 
@@ -326,6 +327,8 @@ Closely read `agent_reference/SCRIPT_EXECUTION_REFERENCE.md` for the mandatory f
 - 2 diagnostic cycles maximum before escalating to user
 - If root cause is a methodology issue, escalate immediately
 - If root cause is unclear after 2 cycles, escalate with hypothesis log
+
+**Reproducibility Verification (RV-2):** The debugger serves as an escalation target during RV-2 when the code-reviewer cannot resolve a script reproduction failure within 2 modification attempts (`_repro_a.py`, `_repro_b.py`). The debugger diagnoses root causes of reproduction failures (e.g., environment differences, missing dependencies, data drift) and provides minimal fixes to enable reproduction.
 
 **Invocation template:** See the appropriate WORKFLOW_PHASE*.md or mode reference file for stage-specific invocation templates.
 

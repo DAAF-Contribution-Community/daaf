@@ -214,7 +214,7 @@ This analysis has the following limitations that should be considered when inter
 `[AUTO]`
 - All analysis scripts with execution logs: `scripts/` directory
 - Consolidated analytic notebook: `[notebook filename]`
-- Session transcript: Archived via DAAF session archiving (available as supplementary material)
+- Session transcript(s): `logs/` directory (full JSONL + human-readable MD for each work session)
 
 ### Funding & Conflicts of Interest (GUIDE-LLM G.1)
 
@@ -229,6 +229,7 @@ This analysis has the following limitations that should be considered when inter
 - **Notebook:** `YYYY-MM-DD_[Title].py`
 - **Processed data:** `data/processed/YYYY-MM-DD_*.parquet`
 - **Raw data:** `data/raw/YYYY-MM-DD_*.parquet`
+- **Session logs:** `logs/*.{jsonl,md}` (complete interaction transcripts)
 
 ### Analysis Environment
 

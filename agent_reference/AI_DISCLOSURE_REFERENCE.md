@@ -59,7 +59,7 @@ Every disclosure should include version and temporal metadata to support reprodu
 | **Date of analysis** | Session date(s) from STATE.md or orchestrator | Report-writer uses the date prefix (e.g., "2026-02-11") provided by orchestrator |
 | **DAAF version** | Git commit hash of the DAAF repository at time of analysis | Orchestrator captures via `git rev-parse --short HEAD` at project setup and provides to report-writer |
 | **Model ID** | Claude model identifier | From CLAUDE.md or session metadata (e.g., "claude-opus-4-6") |
-| **Session transcript** | Archived session log | Path to session archive; flag for researcher: *"Your full session transcript has been archived and can be included as supplementary material per GUIDE-LLM optional item on conversation transcripts"* |
+| **Session transcript** | Archived session log | Project-local copies in `logs/` (collected at completion via `collect_session_logs.sh`); global archives in `.claude/logs/sessions/`. Flag for researcher: *"Your full session transcripts have been collected into your project folder and can be included as supplementary material per GUIDE-LLM optional item on conversation transcripts"* |
 
 **Note on session transcripts:** DAAF automatically archives full session transcripts via the `archive-session.sh` hook. These transcripts are a powerful differentiator — most AI-assisted research cannot point to a complete record of the human-AI interaction. Researchers are encouraged to include these as supplementary material when submitting to journals, as they provide unparalleled transparency into the AI-assisted research process.
 

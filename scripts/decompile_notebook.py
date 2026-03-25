@@ -182,18 +182,38 @@ def reconstruct_script(code, log_text):
     text from notebook accordions (the notebook-assembler may or may not strip
     comment prefixes when storing logs in accordion cells).
     """
-    # Normalize: strip any existing comment prefixes from log lines.
-    # This prevents double-commenting (# # EXECUTION LOG) which would cause
-    # run_with_capture.sh to fail its "^# EXECUTION LOG" guard check.
     log_lines = log_text.split('\n')
-    cleaned_lines = []
-    for line in log_lines:
-        if line.startswith('# '):
-            cleaned_lines.append(line[2:])
-        elif line == '#':
-            cleaned_lines.append('')
-        else:
-            cleaned_lines.append(line)
+
+    # Detect whether the log text is already comment-prefixed (pre-commented)
+    # by checking if early lines look like commented execution log markers.
+    # The known assembler (_build_notebook.py) strips comment prefixes, so
+    # accordion text is normally plain. But we handle both cases defensively.
+    is_precommented = False
+    for line in log_lines[:10]:
+        stripped = line.strip()
+        if stripped in ('# EXECUTION LOG', '# ====', '# ====='):
+            is_precommented = True
+            break
+        if stripped.startswith('# ===') and '=' * 10 in stripped:
+            is_precommented = True
+            break
+
+    if is_precommented:
+        # Strip existing comment prefixes to normalize, then re-add them.
+        # This prevents double-commenting (# # EXECUTION LOG).
+        cleaned_lines = []
+        for line in log_lines:
+            if line.startswith('# '):
+                cleaned_lines.append(line[2:])
+            elif line == '#':
+                cleaned_lines.append('')
+            else:
+                cleaned_lines.append(line)
+    else:
+        # Log text is plain (not pre-commented). Preserve it exactly —
+        # any '# ' at line starts is genuine content (e.g., Python comments
+        # captured in stderr), not a comment prefix to strip.
+        cleaned_lines = log_lines
 
     # Re-comment cleanly (single level of '# ' prefix)
     commented_log_lines = []
@@ -250,10 +270,16 @@ def decompile(notebook_path, output_dir):
         cell_type, content = classify_cell(cell)
         classified.append((cell_type, content))
 
-    # Pair source_code cells with their following execution_log cells
+    # Pair source_code cells with their preceding markdown_header and
+    # following execution_log cells to capture full metadata per script.
     i = 0
+    pending_header = {}
     while i < len(classified):
         cell_type, content = classified[i]
+
+        # Track the most recent markdown_header — it precedes the source_code cell
+        if cell_type == 'markdown_header':
+            pending_header = content
 
         if cell_type == 'source_code' and content.get('source_path'):
             source_path = content['source_path']
@@ -270,7 +296,9 @@ def decompile(notebook_path, output_dir):
                 'source_path': source_path,
                 'code': code,
                 'log_text': log_text,
+                'header_metadata': pending_header,
             })
+            pending_header = {}
 
         i += 1
 
@@ -295,9 +323,16 @@ def decompile(notebook_path, output_dir):
         output_path.parent.mkdir(parents=True, exist_ok=True)
 
         output_path.write_text(script_content)
+        # Extract stage directory and original output from header metadata
+        stage_dir = str(Path(source_path).parent) if '/' in source_path else '—'
+        header_meta = script_info.get('header_metadata', {})
+        original_output = header_meta.get('output_path', '—')
+
         manifest.append({
             'source_path': source_path,
             'output_path': str(output_path),
+            'stage': stage_dir,
+            'original_output': original_output,
             'code_lines': len(code.split('\n')),
             'has_log': bool(log_text.strip()),
         })
@@ -311,12 +346,12 @@ def decompile(notebook_path, output_dir):
         f'**Source Notebook:** `{notebook_path.name}`',
         f'**Decompiled:** {len(scripts_extracted)} scripts',
         '',
-        '| # | Script | Code Lines | Has Log |',
-        '|---|--------|-----------|---------|',
+        '| # | Script | Stage | Original Output | Code Lines | Has Log |',
+        '|---|--------|-------|-----------------|-----------|---------|',
     ]
     for idx, m in enumerate(manifest, 1):
         manifest_lines.append(
-            f"| {idx} | `{m['source_path']}` | {m['code_lines']} | {'Yes' if m['has_log'] else 'No'} |"
+            f"| {idx} | `{m['source_path']}` | {m['stage']} | `{m['original_output']}` | {m['code_lines']} | {'Yes' if m['has_log'] else 'No'} |"
         )
     manifest_path.write_text('\n'.join(manifest_lines) + '\n')
     print(f"\nManifest written to: {manifest_path}")

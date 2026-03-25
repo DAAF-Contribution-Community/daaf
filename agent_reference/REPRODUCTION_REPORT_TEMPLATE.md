@@ -78,6 +78,7 @@ Copy this template to `Reproduction_Report.md` in the reproduction project folde
 | Original Notebook | `original_files/[notebook_name]` | [Yes/No] |
 | Decompiled Scripts | `original_files/scripts/` | [Yes/No] |
 | Decompilation Manifest | `original_files/scripts/MANIFEST.md` | [Yes/No] |
+| Reproduction Session Logs | `logs/` | [Yes/No] |
 
 ### Script Inventory
 
@@ -101,6 +102,29 @@ Copy this template to `Reproduction_Report.md` in the reproduction project folde
 | Re-fetch data from mirrors? | [Yes / No — use existing data] | [Why] |
 | Methodological review depth | [Light / Full] | [Why] |
 | Scripts excluded from reproduction | [None / list with reasons] | [Why] |
+
+### Infrastructure Normalizations
+
+> **Applied during RV-1 extraction.** Infrastructure normalizations are mechanical path/environment adjustments that make scripts executable in the reproduction project. They do not affect reproduction status — a script requiring only infrastructure normalizations retains REPRODUCED status.
+
+| File | Original Value | Normalized Value | Type |
+|------|----------------|------------------|------|
+| [script_name] | `PROJECT_DIR = Path("/daaf/research/original_project/")` | `PROJECT_DIR = Path("/daaf/research/reproduction_project/")` | PROJECT_DIR path |
+
+### Comparison Standards
+
+> **Reference tolerances for RV-2 output comparison.** Apply these when classifying deviations as substantive or cosmetic.
+
+| Metric | Tolerance | Notes |
+|--------|-----------|-------|
+| Row count | Exact match | 0 difference required |
+| Column count | Exact match | 0 difference required |
+| Float values | 1e-6 relative tolerance | Minor floating-point variance is expected |
+| String values | Exact match | 0 difference required |
+| Integer values | Exact match | 0 difference required |
+| Timestamps in logs | Expected to differ | Cosmetic — do not flag |
+| File paths in logs | Expected to differ | Cosmetic — do not flag |
+| Figures | Visual inspection via Read tool | Minor rendering differences (anti-aliasing, font rendering) are expected |
 
 ---
 
@@ -139,6 +163,7 @@ Copy this template to `Reproduction_Report.md` in the reproduction project folde
 > If no modifications were needed, write "None — original script executed successfully."
 > **If ANY modification was required, this must be prominently flagged.** Modifications undermine reproduction fidelity.
 
+- **Modification type:** [Infrastructure / Substantive / None]
 - **What was changed:** [exact description]
 - **Why it was necessary:** [root cause]
 - **Impact on output:** [whether the change could affect results]
