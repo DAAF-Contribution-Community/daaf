@@ -205,7 +205,9 @@ DAAF supports clean transitions between modes when it makes sense:
 | Ad Hoc Collaboration | Full Pipeline | Your working session evolves into a formal analysis |
 | Ad Hoc Collaboration | Data Discovery | You want systematic data exploration across sources |
 | Ad Hoc Collaboration | Data Ingest | You have raw data that needs profiling |
+| Ad Hoc Collaboration | Revision and Extension | Debugging reveals an existing analysis needs revision |
 | Data Discovery | Ad Hoc Collaboration | You want to discuss findings and iterate on approach |
+| Full Pipeline (early) | Ad Hoc Collaboration | You realize you just want to talk through the approach, not run the full pipeline |
 | Full Pipeline (complete) | Ad Hoc Collaboration | You want to discuss results or plan next steps informally |
 
 DAAF will always propose these escalations explicitly and wait for your confirmation. It should never silently switch modes on you.

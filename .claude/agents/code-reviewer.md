@@ -952,6 +952,8 @@ When the orchestrator prompt includes `**MODE: Ad Hoc Collaboration**`:
 - **No stage/wave/step context.** QA depth assignment, checkpoint type (QA1-QA4b), and Transformation Sequence alignment do not apply.
 - **Output audience:** The QA report is relayed to the user. Emphasize actionable recommendations and clear explanations of issues found.
 
+**QA script naming for Ad Hoc:** Without stage/step context, use the pattern `adhoc_{task-slug}_cr{N}.py` (e.g., `adhoc_enrollment-filter_cr1.py`).
+
 **What stays the same:**
 - Five skeptical lenses and adversarial inspection mindset
 - QA inspection script creation in `scripts/cr/`

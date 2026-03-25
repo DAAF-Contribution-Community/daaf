@@ -8,7 +8,7 @@ After mode confirmation, briefly orient the user:
 
 - This is a flexible working session -- bring whatever you need help with
 - I can review code, debug scripts, investigate data sources, write analysis code, brainstorm approaches, explain packages, and more
-- A lightweight workspace is set up automatically for anything we create or produce
+- A workspace will be created automatically if we produce anything (scripts, data, figures) and to track session notes
 - You're in control -- change topics freely, ask follow-ups, or escalate to a full analysis pipeline at any time
 
 **When to skip:** User has indicated familiarity, is a returning user, or immediately dives into a specific task.
@@ -44,11 +44,15 @@ Unlike pipeline modes, Ad Hoc Collaboration has no fixed stage progression. The 
 
 There are no mandatory checkpoints, gates, or phase transitions. The user drives the conversation. The orchestrator's role is to identify what the user needs and bring the right capabilities to bear -- either by responding directly or by dispatching to a specialized agent.
 
+**Intent confirmation for multi-step tasks:** When the orchestrator infers a multi-step task from a loose conversational request (e.g., the user says "can you take a look at my enrollment analysis?" and the orchestrator prepares to dispatch research-executor), confirm the user's intent before executing. A brief "I'm going to write a script that [does X] -- does that match what you had in mind?" prevents wasted effort when the interpretation is wrong.
+
 ---
 
 ## Workspace Setup
 
-On mode confirmation, the orchestrator creates a lightweight project folder:
+Workspace creation is **deferred until the first artifact-producing action.** If the session remains purely conversational (advice, brainstorming, package questions, methodology discussion), no workspace is needed.
+
+When an artifact-producing action is triggered (dispatching a coding agent, saving a file, running a script), the orchestrator creates:
 
 ```
 research/YYYY-MM-DD_AdHoc_{Topic}/
@@ -65,11 +69,13 @@ research/YYYY-MM-DD_AdHoc_{Topic}/
     └── figures/
 ```
 
-**Topic naming:** Auto-generate a short topic label from the user's initial request. Confirm with the user during mode confirmation (e.g., "I'll call the workspace 'Geospatial_Join_Debug' -- does that work?").
+**Topic naming:** Auto-generate a short topic label from the user's request context. Confirm with the user during mode confirmation (e.g., "If we produce anything, I'll save it to a workspace called 'Geospatial_Join_Debug' -- does that work?"). If the user's initial request has no clear topic (e.g., "I have a few things to work on today"), use the fallback `YYYY-MM-DD_AdHoc_Session`.
 
-**No STATE.md.** No LEARNINGS.md. No Plan.md. These can be created later if the session evolves to need them (e.g., the user asks for a formal plan, or decides to escalate to Full Pipeline).
+**No STATE.md. No Plan.md.** These can be created later if the session evolves to need them (e.g., the user asks for a formal plan, or decides to escalate to Full Pipeline).
 
-**Setup commands:** Execute these as individual Bash calls after the user confirms:
+**LEARNINGS.md** is not created by default. If the session produces reusable insights (e.g., a data source caveat discovered during debugging, a methodology lesson), the orchestrator may create one in the workspace to capture them.
+
+**Setup commands:** Execute these as individual Bash calls when workspace creation is triggered:
 
 ```bash
 mkdir -p {PROJECT_DIR}/scripts/adhoc
@@ -120,18 +126,22 @@ The orchestrator dispatches to a specialized agent when:
 
 ### Dispatch Table
 
-| User Need | Agent | Notes |
-|-----------|-------|-------|
+| User Need | `subagent_type` | Notes |
+|-----------|----------------|-------|
 | Write or run analysis code | `research-executor` | Orchestrator frames the user's request as a `<task>` block |
 | Debug a script or diagnose an error | `debugger` | User provides script path + error description |
 | Review code for correctness and methodology | `code-reviewer` | User provides script; orchestrator provides methodology context |
 | Deep investigation of a data source | `source-researcher` | Standard multi-mode agent; already works in Data Lookup and Data Discovery |
-| Compare multiple data sources | Parallel `source-researcher` + `research-synthesizer` | Orchestrator dispatches in parallel, then synthesizes |
-| Plan an analysis (advisory) | `data-planner` (advisory mode) | Lighter output than Full Pipeline; produces outline, not Plan.md |
-| Critique or review a plan | `plan-checker` | Can accept plans in any reasonable format |
+| Compare multiple data sources | Parallel `source-researcher` + `research-synthesizer` | Dispatch source-researchers in parallel, then synthesize. For synthesis guidance, follow the Multi-Source Synthesis Protocol in `data-discovery-mode.md`. |
+| Plan an analysis (advisory) | `data-planner` | Include `**MODE: Ad Hoc Collaboration**` in prompt to trigger advisory output (outline, not full Plan.md) |
+| Critique or review a plan | `plan-checker` | Orchestrator must format the user's plan into a structured document in the prompt; plan-checker requires structured input |
 | Quick data fetch or query | `research-executor` | With appropriate domain query skill |
 
 **When uncertain:** Err toward responding directly first. If the question proves deeper than expected, dispatch to the appropriate agent. A lightweight direct answer followed by "Want me to dig deeper with a specialist?" is better than over-dispatching.
+
+**Requests outside DAAF's capabilities:** If the user asks for something DAAF genuinely cannot/should not do (e.g., "access my university's database," "submit my draft to this journal"), explain the limitation clearly and suggest alternatives the user can pursue independently. Maintain the collaborative spirit -- frame it as "here's what I can't do and here's what might work instead" rather than a refusal.
+
+**Invocation template variability:** Unlike pipeline modes, Ad Hoc tasks are inherently variable and unpredictable. The Standard Agent Prompt Structure below is a skeleton, not a rigid template. The orchestrator should adapt the prompt content to fit each specific request, providing whatever context the agent needs to do its work well. When in doubt, err toward providing more context rather than less.
 
 ---
 
@@ -187,7 +197,11 @@ mode. Context for this task:
 
 ## Agent Output Handling
 
-In pipeline modes, agent output is a concise signal to the orchestrator (1000-word cap, processed internally). In Ad Hoc Collaboration mode, agent findings are typically **the deliverable to the user**:
+In pipeline modes, agent output is a concise signal to the orchestrator (1000-word cap, processed internally). In Ad Hoc Collaboration mode, agent findings are typically **the deliverable to the user**, so output handling changes:
+
+**Output cap override:** When dispatching agents in Ad Hoc Collaboration mode, include this instruction in the prompt: "Output cap is relaxed to 2000 words. Your findings will be relayed directly to the user, so prioritize clarity and completeness over brevity." This applies to all agents dispatched in this mode. The standard 1000-word pipeline cap remains in effect for all other modes.
+
+**Relay guidelines:**
 
 - **Relay substantively:** The orchestrator relays agent findings to the user with brief contextual framing (e.g., "Here's what the code review found:"). Do not strip substantive content.
 - **Add explanation:** When relaying technical agent output, add a brief interpretive note if it would help the user understand implications or next steps.
@@ -200,19 +214,95 @@ In pipeline modes, agent output is a concise signal to the orchestrator (1000-wo
 
 Users in Ad Hoc Collaboration frequently reference their own files -- scripts they've written, data files they're working with, plans they've drafted. These files may live anywhere on the filesystem, not just in the workspace.
 
-- **Read files wherever they are.** The orchestrator and agents have filesystem read access. Do not copy user files into the workspace unless there's a reason to (e.g., the debugger needs to modify a copy).
+- **Read files wherever they are.** The orchestrator and agents have filesystem read access. Do not copy user files into the workspace unless there's a reason to (e.g., the debugger needs to modify a copy, or an agent needs to execute a user's script via `run_with_capture.sh`).
 - **Write outputs to the workspace.** Any new scripts, data files, or figures produced during the session go to the workspace folder.
 - **User's originals stay untouched** unless the user explicitly asks for in-place modification.
 
 ---
 
-## Context Management
+## Session Notes and Continuity
 
-Ad Hoc Collaboration sessions can be wide-ranging, touching many topics across many turns. Context management considerations:
+Ad Hoc sessions can be wide-ranging and long-running. Unlike pipeline modes, there is no STATE.md. Instead, the orchestrator maintains a lightweight **SESSION_NOTES.md** in the workspace to provide continuity.
 
-- **No STATE.md to anchor recovery.** If context pressure builds, the orchestrator should summarize what's been accomplished and what's in the workspace. The workspace folder IS the session state -- scripts, data, and outputs document what happened.
+### When to Create SESSION_NOTES.md
+
+Create `SESSION_NOTES.md` in the workspace root when the **first substantive milestone** occurs -- whichever comes first:
+
+- A task plan or advisory outline is produced
+- A key decision is made (e.g., "we'll use CCD instead of IPEDS for this")
+- A deliverable is completed (script executed, code review returned, debugging resolved)
+- Context utilization reaches ELEVATED (40-60%)
+
+If the session remains purely conversational with no milestones, SESSION_NOTES.md is not needed.
+
+### What SESSION_NOTES.md Contains
+
+```markdown
+# Session Notes: {Topic}
+
+**Started:** YYYY-MM-DD
+**Workspace:** {PROJECT_DIR}
+
+## Accomplishments
+
+- [What was completed, with file paths where relevant]
+
+## Key Decisions
+
+- [Decisions made during the session, with rationale]
+
+## In Progress
+
+- [What the user was working on when the session ended or notes were last updated]
+
+## Open Questions
+
+- [Unresolved questions or next steps the user mentioned]
+
+## AI Disclosure
+
+This session used DAAF (Data Analyst Augmentation Framework) in Ad Hoc
+Collaboration mode. DAAF contributed to: [list specific contributions --
+code review, script writing, debugging, methodology advice, etc.].
+The researcher directed all work and made all analytical decisions.
+```
+
+### When to Update SESSION_NOTES.md
+
+Update after each of these events (not every turn -- only at milestones):
+
+| Event | What to Update |
+|-------|---------------|
+| Plan or advisory outline produced | Accomplishments + Key Decisions |
+| Key analytical decision made | Key Decisions |
+| Deliverable completed (script executed, review done) | Accomplishments |
+| User changes topic substantially | In Progress (update current focus) |
+| Context reaches ELEVATED (40-60%) | All sections (full checkpoint) |
+| User signals session is ending | All sections (final summary) |
+| Before any escalation to another mode | All sections + note the escalation |
+
+After updating, run the session logging capture script if available:
+```bash
+bash {BASE_DIR}/scripts/archive-session-notes.sh {PROJECT_DIR}
+```
+
+### Context Recovery
+
+At context thresholds (per CLAUDE.md > Context Quality Curve), the orchestrator should:
+
+1. Update SESSION_NOTES.md with current state
+2. Summarize what's been accomplished and what's in progress
+3. Suggest the user start a fresh session
+4. Point to SESSION_NOTES.md and the workspace folder as the continuity mechanism
+
+When a user resumes an ad hoc session ("let's pick up where we left off on X"), the orchestrator reads SESSION_NOTES.md to reconstruct context: what was accomplished, what decisions were made, what was in progress, and what open questions remain.
+
+---
+
+## Dispatch and Context Management
+
 - **Dispatch generously to subagents.** Each subagent gets a fresh context window. For tasks that involve code execution, deep research, or formal review, dispatching preserves orchestrator context for the ongoing conversation.
-- **At context thresholds** (per CLAUDE.md > Context Quality Curve): summarize the session's key accomplishments and workspace contents, then suggest the user start a fresh session. Point to the workspace folder as the continuity mechanism.
+- **Limit orchestrator skill loading.** The orchestrator loads `data-scientist` at session start. Additional skills should generally be loaded by subagents. If the orchestrator has loaded more than 2-3 skills directly, prefer dispatching to subagents for subsequent tasks to avoid context pressure.
 
 ---
 
@@ -237,14 +327,17 @@ Ad Hoc Collaboration has no mandatory output format. Outputs depend on what the 
 
 ## Boundaries
 
+These boundaries supplement the universal safety boundaries in `CLAUDE.md`. See also `agent_reference/BOUNDARIES.md` > Ad Hoc Collaboration Mode.
+
 ### Always Do
 
-- Create workspace on mode confirmation
-- Load `data-scientist` skill at session start
 - Maintain file-first execution for all code produced by agents (`enforce-file-first` hook applies)
 - Follow IAT documentation standards (`# INTENT:`, `# REASONING:`, `# ASSUMES:`) in any code produced
 - Save all scripts and outputs to the workspace
 - Relay agent findings to user with contextual framing
+- Load `data-scientist` skill at session start
+- Create workspace when first artifact-producing action is triggered
+- Update SESSION_NOTES.md at milestones (plans, decisions, deliverables)
 
 ### Ask First Before
 
@@ -252,6 +345,7 @@ Ad Hoc Collaboration has no mandatory output format. Outputs depend on what the 
 - Running queries that might return >100K records
 - Scope expansion that would effectively constitute a Full Pipeline analysis
 - Modifying user's original files in place (vs. copying to workspace)
+- Installing packages or making environment changes
 
 ### Never Do
 
@@ -261,6 +355,7 @@ Ad Hoc Collaboration has no mandatory output format. Outputs depend on what the 
 - Create STATE.md unless escalating to a pipeline mode
 - Refuse a task because it doesn't fit a predefined category
 - Execute Python interactively (file-first execution still applies for all code)
+- Overwrite or modify user-provided files outside the workspace without explicit permission
 
 ---
 
@@ -277,18 +372,21 @@ Ad Hoc Collaboration has no mandatory output format. Outputs depend on what the 
 
 All escalations require explicit user confirmation. Frame escalations as opportunities, not obligations -- the user may prefer to continue working ad hoc.
 
-**De-escalation is also valid.** If a user realizes they don't need a full pipeline and just want to talk through the approach, offer to switch to Ad Hoc Collaboration. The orchestrator should recognize this pattern and accommodate it.
+**De-escalation is also valid.** If a user started in a heavier mode and realizes they just want to talk through the approach, offer to switch to Ad Hoc Collaboration. This includes early-stage Full Pipeline sessions where the user decides they don't need formal deliverables after all.
 
 ---
 
 ## Session Wrap-Up
 
-There is no mandatory wrap-up protocol. The session ends when the user is done. However, if the session produced artifacts, the orchestrator should offer a brief summary:
+There is no mandatory wrap-up protocol. The session ends when the user is done. However, if the session produced artifacts:
+
+1. Update SESSION_NOTES.md with a final summary
+2. Offer a brief summary to the user:
 
 > "Here's what we produced today in `research/YYYY-MM-DD_AdHoc_{Topic}/`:
 > - [List of scripts, data files, figures]
 > - [Key findings or decisions made]
 >
-> Everything's saved in that folder if you want to come back to it."
+> Session notes are saved in `SESSION_NOTES.md` if you want to come back to it."
 
 This is a courtesy, not a gate. If the user just says "thanks" and leaves, that's fine.

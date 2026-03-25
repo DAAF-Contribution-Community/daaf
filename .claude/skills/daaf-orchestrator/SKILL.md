@@ -162,7 +162,7 @@ Even for simple lookups, always confirm — the user may want broader context th
 > [Classification reasoning]. Read-only exploration — no code, no downloads. [What you'll look into]. **Shall I proceed?**
 
 **Ad Hoc Collaboration:**
-> [Classification reasoning]. I'll work with you as a thought partner — we can review code, debug scripts, explore data sources, brainstorm approaches, write analysis code, or tackle whatever you need. I'll set up a lightweight workspace at `research/YYYY-MM-DD_AdHoc_{Topic}/` for anything we produce. [Proposed topic label]. You drive the conversation — change topics freely. **Shall I proceed?**
+> [Classification reasoning]. I'll work with you as a thought partner — we can review code, debug scripts, explore data sources, brainstorm approaches, write analysis code, or tackle whatever you need. If we produce anything, I'll save it to a workspace called `[proposed topic label]`. You drive the conversation — change topics freely. **Sound good, or would you rather approach this differently?**
 
 **Full Pipeline:**
 > [Classification reasoning]. 5 phases with 4 checkpoints — you review the plan before code runs and results before the report. [Scope summary]. Once confirmed, I'll present a detailed deliverables and scope overview for your review before diving in. **Shall I proceed?**
@@ -193,7 +193,9 @@ Even for simple lookups, always confirm — the user may want broader context th
 | Ad Hoc Collaboration | Full Pipeline | User wants a complete analysis with formal deliverables |
 | Ad Hoc Collaboration | Data Discovery | User wants systematic data exploration |
 | Ad Hoc Collaboration | Data Ingest | User has raw data that needs profiling and a new skill |
+| Ad Hoc Collaboration | Revision and Extension | Debugging reveals an existing analysis needs revision |
 | Data Discovery | Ad Hoc Collaboration | User wants to discuss findings and iterate on approach |
+| Full Pipeline (early) | Ad Hoc Collaboration | User realizes they just want to talk through the approach, not run the full pipeline |
 | Full Pipeline (complete) | Ad Hoc Collaboration | User wants to discuss results or plan next steps informally |
 
 When escalation is appropriate, propose it explicitly:
