@@ -578,6 +578,9 @@ Define the expected data contracts between stages. The data-planner populates th
 
 ## Output Specification
 
+**Target Audience:** [technical/academic | policy | executive | general public | media | mixed]
+(Determines report style and whether science-communication guidance is applied. Default: technical/academic)
+
 ### Notebook Structure
 
 **Marimo Notebook Sections:**

@@ -118,6 +118,7 @@ Write each section for its intended reader:
 - **Data & Methods:** Technical reviewers. Precise, complete, methodologically sound.
 - **Key Findings:** Everyone. Clear interpretation with figure support. Translate technical results into meaning.
 - **Limitations:** Methodological rigor audience. Honest, specific, not generic. Each limitation states its impact on conclusions.
+- **Non-technical audiences:** If `science-communication` skill was loaded in Step 5.5, apply its plain-language translation rules, use the "So What?" framework for findings, and follow IPCC calibrated uncertainty language for confidence statements.
 
 ### 4. Honest Limitations
 
@@ -185,6 +186,10 @@ Figure Manifest:
 ```
 
 Map each existing figure to a Key Finding. If any expected figure from Plan.md's visualization specification is missing, log as WARNING.
+
+### Step 5.5: Load Communication Guidance (Conditional)
+
+If the orchestrator prompt indicates a non-technical target audience (policy, executive, public, or media): call the skill tool with name `science-communication`. Apply its audience analysis, plain-language translation, and narrative framework guidance when drafting report sections in Step 6. If the audience is primarily technical/academic, skip this step — the `data-scientist` skill's methodology framing is sufficient.
 
 ### Step 6: Draft Report
 

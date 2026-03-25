@@ -83,6 +83,8 @@ Agent({
     - Model ID: {model_id}
     - Session Date(s): {session_dates}
 
+    **Target Audience:** {target_audience} (from Plan.md; if non-technical, include instruction to load science-communication skill)
+
     **TASK:**
     Generate the stakeholder report following REPORT_TEMPLATE.md.
     Include the AI Use Disclosure section (Step 6b) using AI_DISCLOSURE_REFERENCE.md.
@@ -122,6 +124,7 @@ Before invoking report-writer, verify:
 - [ ] DAAF commit hash provided (from STATE.md Session Metadata)
 - [ ] Model ID provided (from STATE.md Session Metadata)
 - [ ] Session logs collected into `logs/` (collect_session_logs.sh run)
+- [ ] Target audience specified (from Plan.md; if non-technical, include `science-communication` skill loading instruction)
 
 #### Expected Output
 
