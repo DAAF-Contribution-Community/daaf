@@ -42,6 +42,7 @@ RUN uv pip install --system \
     urllib3==2.6.3 \
     pre-commit==4.5.1 \
     scikit-learn==1.8.0 \
+    umap-learn==0.5.11 \
     pyyaml==6.0.3 \
     statsmodels==0.14.6 \
     pyfixest==0.40.0
