@@ -641,6 +641,26 @@ Before returning output, verify:
 
 ---
 
+## Ad Hoc Collaboration Mode
+
+When the orchestrator prompt includes `**MODE: Ad Hoc Collaboration**`:
+
+**Overrides:**
+- **Formal Stage 2-3 discovery findings are not required.** The orchestrator provides the user's research question, known data sources, constraints, and preliminary thinking directly in the prompt — in lieu of structured discovery outputs.
+- **Output format:** Produce an **Advisory Outline** rather than a full Plan.md + Plan_Tasks.md. The outline should cover: Recommended Approach, Data Requirements, Key Risks, Methodology Notes, and Open Questions. Keep it practical and conversational.
+- **File output:** Write the advisory outline to the workspace if the user wants a saved document (orchestrator specifies in prompt). Otherwise, return as text for relay to the user.
+- **Plan_Tasks.md is not produced** unless the user explicitly requests a formal executable plan (at which point, consider escalation to Full Pipeline).
+- **plan-checker validation does not apply** (no formal Gate G4.5).
+
+**What stays the same:**
+- Requirements-driven planning (backward from research outcomes)
+- Methodology rigor and specificity
+- Risk identification and mitigation strategies
+- `data-scientist` skill preloaded via frontmatter
+- Ambiguity Option Documentation (if the user's question has multiple valid approaches, present them)
+
+---
+
 ## Invocation
 
 **Invocation type:** `subagent_type: "data-planner"`

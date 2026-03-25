@@ -484,6 +484,27 @@ Before returning output, verify:
 
 ---
 
+## Ad Hoc Collaboration Mode
+
+When the orchestrator prompt includes `**MODE: Ad Hoc Collaboration**`:
+
+**Overrides:**
+- **Plan.md is not required.** Task context is provided directly by the orchestrator in the prompt, drawn from the user's request and conversation context. The `<task>` XML block still applies — the orchestrator constructs it from the user's description.
+- **Script directory:** Write scripts to `scripts/adhoc/` (not stage-based directories). Use naming pattern `{NN}_{task-slug}.py` with sequential numbering.
+- **No wave/stage context** is provided. Stage number, wave number, and step number fields from the standard orchestrator checklist do not apply.
+- **Output audience:** Results are relayed to the user, not consumed silently by the orchestrator pipeline.
+
+**What stays the same:**
+- Atomic execution (one operation per invocation)
+- File-first execution via `run_with_capture.sh`
+- Pre/post validation with inline assertions
+- IAT documentation (`# INTENT:`, `# REASONING:`, `# ASSUMES:`)
+- Immutable script versioning (`_a.py`, `_b.py` for revisions)
+- `data-scientist` skill preloaded via frontmatter
+- Parquet-only data format
+
+---
+
 ## Invocation
 
 **Invocation type:** `subagent_type: "research-executor"`

@@ -23,7 +23,7 @@ All agents in this directory MUST follow the canonical template at `agent_refere
 
 **All agents returning output to the orchestrator MUST respect these universal constraints:**
 
-1. **Hard cap: 1000 words maximum** for Agent return output
+1. **Hard cap: 1000 words maximum** for Agent return output (exception: `data-ingest` agent uses a 2500-word cap because profiling findings feed directly into skill authoring and must be comprehensive)
 2. **Do NOT include:** Raw execution logs, data samples, Polars/pandas table displays, full checkpoint output, QA script code, or multi-paragraph explanations in any section
 3. **Script files are the archive; the Agent return is the signal.** Execution logs are already appended to script files by `run_with_capture.sh`. Reference files by path — do not reproduce their contents.
 4. **Summarize, don't echo.** "CP1 PASSED: 2,528 rows, 12 cols, 0.3% missing" — not the full stdout.
@@ -36,9 +36,9 @@ All agents in this directory MUST follow the canonical template at `agent_refere
 
 | Agent | Purpose | Subagent Type | Stage(s) | Key Inputs | Key Outputs |
 |-------|---------|---------------|----------|------------|-------------|
-| **research-executor** | Execute data tasks with atomic precision, rigorous validation, and full audit-trail capture | `research-executor` | 5, 6, 7, 8 | Task spec XML, Plan.md, skill knowledge, dependency outputs | Script + execution log + data files (parquet) |
-| **code-reviewer** | Iterative QA review verifying code correctness, methodology alignment, and output data quality | `code-reviewer` | 5-QA, 6-QA, 7-QA, 8-QA, RV-2 | Executed script + log, Plan.md, output data files, stage/step/wave context | QA scripts (cr1-cr5) + severity report (PASSED/WARNING/BLOCKER) |
-| **data-planner** | Synthesize discovery findings into research plans with executable task sequences and wave-based parallelization | `data-planner` | 4 | User request, clarifications, Stage 2-3 findings, project folder path | Plan.md + Plan_Tasks.md documents |
+| **research-executor** | Execute data tasks with atomic precision, rigorous validation, and full audit-trail capture | `research-executor` | 5, 6, 7, 8, Ad Hoc | Task spec XML, Plan.md (or orchestrator context in Ad Hoc), skill knowledge, dependency outputs | Script + execution log + data files (parquet) |
+| **code-reviewer** | Iterative QA review verifying code correctness, methodology alignment, and output data quality | `code-reviewer` | 5-QA, 6-QA, 7-QA, 8-QA, RV-2, Ad Hoc | Executed script + log, Plan.md (or orchestrator context in Ad Hoc), output data files, stage/step/wave context | QA scripts (cr1-cr5) + severity report (PASSED/WARNING/BLOCKER) |
+| **data-planner** | Synthesize discovery findings into research plans with executable task sequences and wave-based parallelization | `data-planner` | 4, Ad Hoc | User request, clarifications, Stage 2-3 findings (or user-provided context in Ad Hoc), project folder path | Plan.md + Plan_Tasks.md (Full Pipeline) or Advisory Outline (Ad Hoc) |
 | **plan-checker** | Verify research plans will achieve analysis goals via goal-backward analysis across six dimensions | `plan-checker` | 4.5 | Plan.md + Plan_Tasks.md content (inlined), original user request, clarifications | Validation report: PASSED / PASSED_WITH_WARNINGS / ISSUES_FOUND |
 | **data-verifier** | Adversarial goal-backward verification of completed analyses with cross-artifact coherence | `data-verifier` | 12, RV-3 | Plan.md, Notebook, Report, project folder, STATE.md, LEARNINGS.md, QA summary | Verification report: PASSED / ISSUES_FOUND with four-layer evidence; STATE.md Final Review Log |
 | **source-researcher** | Deep-dive into a single data source for caveats, coded values, suppression patterns, and pitfalls | `source-researcher` | 3 | Source name, variables of interest, research question, years, geographic scope | Five-section source report (Summary, Variables, Caveats, Patterns, Pitfalls) |
@@ -262,6 +262,8 @@ Closely read `agent_reference/SCRIPT_EXECUTION_REFERENCE.md` for the mandatory f
 - Checkpoint integration (CP1-CP4)
 - Immutable versioning (never modify after execution log appended)
 
+**Ad Hoc Collaboration:** In Ad Hoc mode, research-executor writes scripts to `scripts/adhoc/` instead of stage-based directories. Plan.md is replaced by orchestrator-provided task context. See `ad-hoc-collaboration-mode.md` for the invocation pattern.
+
 **Invocation template:** See the appropriate WORKFLOW_PHASE*.md or mode reference file for stage-specific invocation templates.
 
 ---
@@ -275,6 +277,8 @@ Closely read `agent_reference/SCRIPT_EXECUTION_REFERENCE.md` for the mandatory f
 - Task specificity test (every task unambiguous for any agent)
 - Wave-based sequencing for parallel execution
 - Dependency mapping
+
+**Ad Hoc Collaboration:** In Ad Hoc mode, data-planner produces an Advisory Outline (not full Plan.md + Plan_Tasks.md) from user-provided context instead of formal Stage 2-3 findings. See `ad-hoc-collaboration-mode.md`.
 
 **Invocation template:** See the appropriate WORKFLOW_PHASE*.md or mode reference file for stage-specific invocation templates.
 
@@ -329,6 +333,8 @@ Closely read `agent_reference/SCRIPT_EXECUTION_REFERENCE.md` for the mandatory f
 - If root cause is unclear after 2 cycles, escalate with hypothesis log
 
 **Reproducibility Verification (RV-2):** The debugger serves as an escalation target during RV-2 when the code-reviewer cannot resolve a script reproduction failure within 2 modification attempts (`_repro_a.py`, `_repro_b.py`). The debugger diagnoses root causes of reproduction failures (e.g., environment differences, missing dependencies, data drift) and provides minimal fixes to enable reproduction.
+
+**Ad Hoc Collaboration:** In Ad Hoc mode, the debugger accepts user-provided scripts and error descriptions directly, without Plan.md. Diagnostic output is more explanatory since the user is the audience. See `ad-hoc-collaboration-mode.md`.
 
 **Invocation template:** See the appropriate WORKFLOW_PHASE*.md or mode reference file for stage-specific invocation templates.
 
@@ -495,6 +501,8 @@ code-reviewer returns BLOCKER
 ```
 
 **Reproducibility Verification (RV-2):** In RV mode, the code-reviewer both re-executes scripts and evaluates output comparison — combining mechanical reproduction with skeptical assessment. The invocation template in `reproducibility-verification-mode.md` provides all RV-specific context.
+
+**Ad Hoc Collaboration:** In Ad Hoc mode, code-reviewer can review user-provided scripts that may lack execution logs or Plan.md context. Methodology alignment is evaluated against the user's stated intent rather than a formal Plan. See `ad-hoc-collaboration-mode.md`.
 
 **Invocation template:** See the appropriate WORKFLOW_PHASE*.md or mode reference file for stage-specific invocation templates.
 

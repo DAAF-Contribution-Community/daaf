@@ -169,11 +169,12 @@ Different engagement modes have different boundary considerations. These **suppl
 
 ---
 
-### Data Discovery Mode, Data Lookup Mode, Revision and Extension Mode, Data Ingest Mode
+### Data Discovery Mode, Data Lookup Mode, Ad Hoc Collaboration Mode, Revision and Extension Mode, Data Ingest Mode
 
 Mode-specific boundaries for these engagement modes are defined in their respective reference files:
 - `.claude/skills/daaf-orchestrator/references/data-discovery-mode.md`
 - `.claude/skills/daaf-orchestrator/references/data-lookup-mode.md`
+- `.claude/skills/daaf-orchestrator/references/ad-hoc-collaboration-mode.md`
 - `.claude/skills/daaf-orchestrator/references/revision-and-extension-mode.md`
 - `.claude/skills/daaf-orchestrator/references/data-ingest-mode.md`
 

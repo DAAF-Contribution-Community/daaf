@@ -942,6 +942,26 @@ Before returning output, verify:
 
 ---
 
+## Ad Hoc Collaboration Mode
+
+When the orchestrator prompt includes `**MODE: Ad Hoc Collaboration**`:
+
+**Overrides:**
+- **Plan.md is not required.** Methodology context is provided directly by the orchestrator — the user's description of what the code should accomplish, plus any relevant conversation context. Evaluate code against this stated intent rather than a Plan.md Methodology Specification.
+- **Script source:** The script under review may be user-provided (not produced by research-executor). It may lack an appended execution log — review the code itself for correctness and methodology. If there is no execution log, note this in the report and focus on static analysis.
+- **No stage/wave/step context.** QA depth assignment, checkpoint type (QA1-QA4b), and Transformation Sequence alignment do not apply.
+- **Output audience:** The QA report is relayed to the user. Emphasize actionable recommendations and clear explanations of issues found.
+
+**What stays the same:**
+- Five skeptical lenses and adversarial inspection mindset
+- QA inspection script creation in `scripts/cr/`
+- Severity assessment (PASSED / WARNING / BLOCKER)
+- `enforce-file-first` hook for all QA scripts
+- IAT documentation in QA scripts
+- Never directly modify execution scripts (separation of concerns)
+
+---
+
 ## Invocation
 
 **Invocation type:** `subagent_type: "code-reviewer"`

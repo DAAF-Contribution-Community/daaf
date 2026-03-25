@@ -52,7 +52,7 @@ Every conversation begins with a brief preamble before mode classification. Expa
 When a user asks for more information, expand naturally on these points:
 
 - DAAF structures analysis into phases with human oversight — you pause at each milestone for feedback rather than running start-to-finish
-- Six modes: Data Ingest (profile new datasets, create reusable data source skills), Data Lookup (focused answer), Data Discovery (lightweight exploration, no code), Full Pipeline (complete pipeline, 4 checkpoints), Revision and Extension (revise or extend existing work), Reproducibility Verification (re-run an existing analysis to verify its findings reproduce)
+- Seven modes: Data Ingest (profile new datasets, create reusable data source skills), Data Lookup (focused answer), Data Discovery (lightweight exploration, no code), Ad Hoc Collaboration (flexible, multi-turn working session), Full Pipeline (complete pipeline, 4 checkpoints), Revision and Extension (revise or extend existing work), Reproducibility Verification (re-run an existing analysis to verify its findings reproduce)
 - The user is always in control — you explain what to expect and wait for go-ahead
 
 For more depth, consult `{BASE_DIR}/user_reference/02_understanding_daaf.md` and summarize relevant sections. Point the user to the file path if they want to read it directly. After orienting, proceed to mode classification.
@@ -61,7 +61,7 @@ For more depth, consult `{BASE_DIR}/user_reference/02_understanding_daaf.md` and
 
 ## Engagement Mode Classification
 
-Before executing any user request, classify it into one of six engagement modes. This classification determines your workflow, outputs, and which references to load.
+Before executing any user request, classify it into one of seven engagement modes. This classification determines your workflow, outputs, and which references to load.
 
 ### Pre-Check: Session Recovery
 
@@ -80,6 +80,11 @@ User Request
     │
     ├─ Asks what data exists or if something is feasible?
     │   └─ YES → Data Discovery Mode
+    │
+    ├─ Asks for ad hoc help — reviewing code, debugging, brainstorming
+    │  an approach, exploring a tool, or other collaborative support
+    │  (without requesting formal deliverables)?
+    │   └─ YES → Ad Hoc Collaboration Mode
     │
     ├─ Asks for analysis, research, or data deliverable?
     │   └─ YES → Full Pipeline Mode
@@ -104,6 +109,7 @@ Keywords are heuristics, not deterministic. When multiple modes seem applicable,
 | **Data Ingest** | "ingest", "profile", "new dataset", "add data source" | SKILL.md + Research Project with profiling scripts | `data-ingest-mode.md` |
 | **Data Lookup** | "what are the values", "how is X defined", "lookup" | Direct answer | `data-lookup-mode.md` |
 | **Data Discovery** | "what data", "is it possible", "feasibility", "explore" | Findings summary | `data-discovery-mode.md` |
+| **Ad Hoc Collaboration** | "help me with", "review this", "debug this", "how do I", "advise on", "think through" | Conversation + optional workspace artifacts | `ad-hoc-collaboration-mode.md` |
 | **Full Pipeline** | "analyze", "research", "create", "generate" | Plan.md + Plan_Tasks.md + Notebook + Report | `full-pipeline.md` |
 | **Revision and Extension** | "fix", "update", "change", "modify the analysis", "extend" | Updated Plan.md + Plan_Tasks.md + Notebook + Report (new version) | `revision-and-extension-mode.md` |
 | **Reproducibility Verification** | "reproduce", "verify", "re-run", "replication", "reproducibility" | Reproduction Report | `reproducibility-verification-mode.md` |
@@ -155,6 +161,9 @@ Even for simple lookups, always confirm — the user may want broader context th
 **Data Discovery:**
 > [Classification reasoning]. Read-only exploration — no code, no downloads. [What you'll look into]. **Shall I proceed?**
 
+**Ad Hoc Collaboration:**
+> [Classification reasoning]. I'll work with you as a thought partner — we can review code, debug scripts, explore data sources, brainstorm approaches, write analysis code, or tackle whatever you need. I'll set up a lightweight workspace at `research/YYYY-MM-DD_AdHoc_{Topic}/` for anything we produce. [Proposed topic label]. You drive the conversation — change topics freely. **Shall I proceed?**
+
 **Full Pipeline:**
 > [Classification reasoning]. 5 phases with 4 checkpoints — you review the plan before code runs and results before the report. [Scope summary]. Once confirmed, I'll present a detailed deliverables and scope overview for your review before diving in. **Shall I proceed?**
 
@@ -171,6 +180,7 @@ Even for simple lookups, always confirm — the user may want broader context th
 | Data Discovery | Full Pipeline | Findings suggest analysis is feasible and valuable |
 | Data Discovery | Data Ingest | Data file available but no skill exists for it |
 | Data Lookup | Data Discovery | Question reveals broader data exploration needed |
+| Data Lookup | Ad Hoc Collaboration | Question evolves into multi-turn advisory discussion |
 | Data Lookup | Full Pipeline | Lookup reveals actionable analysis opportunity |
 | Data Ingest | Full Pipeline | Skill created, user wants to analyze the data |
 | Full Pipeline (Phase 1) | Data Ingest | Required data source has no existing skill |
@@ -180,6 +190,11 @@ Even for simple lookups, always confirm — the user may want broader context th
 | Full Pipeline (complete) | Reproducibility Verification | User wants to verify their analysis reproduces |
 | Reproducibility Verification | Revision and Extension | Divergence found, user wants to fix original |
 | Reproducibility Verification | Full Pipeline | Original analysis is fundamentally broken |
+| Ad Hoc Collaboration | Full Pipeline | User wants a complete analysis with formal deliverables |
+| Ad Hoc Collaboration | Data Discovery | User wants systematic data exploration |
+| Ad Hoc Collaboration | Data Ingest | User has raw data that needs profiling and a new skill |
+| Data Discovery | Ad Hoc Collaboration | User wants to discuss findings and iterate on approach |
+| Full Pipeline (complete) | Ad Hoc Collaboration | User wants to discuss results or plan next steps informally |
 
 When escalation is appropriate, propose it explicitly:
 > "Based on these findings, would you like me to proceed with [escalated mode]?"
@@ -254,6 +269,7 @@ During any mode, watch for signals that the user needs additional guidance and r
 | `{SKILL_REFS}/data-ingest-mode.md` | Data Ingest workflow, gates, PSU templates, profiling protocol overview | After confirming Data Ingest mode |
 | `{SKILL_REFS}/data-lookup-mode.md` | Single skill invocation, response format | After confirming Data Lookup mode |
 | `{SKILL_REFS}/data-discovery-mode.md` | Data Discovery workflow, exploration patterns, escalation | After confirming Data Discovery mode |
+| `{SKILL_REFS}/ad-hoc-collaboration-mode.md` | Ad hoc dispatch loop, workspace setup, agent invocation patterns, output handling | After confirming Ad Hoc Collaboration mode |
 | `{SKILL_REFS}/full-pipeline.md` | Complete 12-stage workflow, invocation templates, QA protocols, context requirements, gates, checklists, PSU templates, quality framework | After confirming Full Pipeline mode |
 | `{SKILL_REFS}/revision-and-extension-mode.md` | Version control, revision classification, re-run guidance | After confirming Revision and Extension mode |
 | `{SKILL_REFS}/reproducibility-verification-mode.md` | Reproducibility workflow (RV-1 through RV-4), invocation templates, comparison tolerances | After confirming Reproducibility Verification mode |
@@ -275,6 +291,11 @@ Mode Confirmed
     ├─ Data Discovery Mode
     │   └─ Read: {SKILL_REFS}/data-discovery-mode.md
     │          └─ Subagent dispatch: Read {BASE_DIR}/agent_reference/WORKFLOW_PHASE1_DISCOVERY.md
+    │
+    ├─ Ad Hoc Collaboration Mode
+    │   └─ Read: {SKILL_REFS}/ad-hoc-collaboration-mode.md
+    │          ├─ Load skill: data-scientist (orchestrator loads directly — exception to standard pattern)
+    │          └─ Skill/source lookup: Read {SKILL_REFS}/skill-catalog.md (on demand)
     │
     ├─ Full Pipeline Mode
     │   └─ Read: {SKILL_REFS}/full-pipeline.md (contains all checklists, PSU templates,

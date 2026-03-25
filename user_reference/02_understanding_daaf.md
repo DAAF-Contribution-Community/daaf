@@ -44,9 +44,9 @@ So that's the gist for now. Onward, to actually using DAAF!
 
 ---
 
-## The Six Engagement Modes
+## The Seven Engagement Modes
 
-DAAF first classifies every request you make into one of six **engagement modes**. This is how we properly prompt-engineer Claude, because each mode triggers a fundamentally different workflow, different outputs, and different expectations for what input you'll need to provide to steer it well. Understanding these modes is the single most useful thing you can do to work with DAAF effectively, because it helps you frame your questions in the way most likely to get you what you actually want, and better understand what's going on behind the scenes.
+DAAF first classifies every request you make into one of seven **engagement modes**. This is how we properly prompt-engineer Claude, because each mode triggers a fundamentally different workflow, different outputs, and different expectations for what input you'll need to provide to steer it well. Understanding these modes is the single most useful thing you can do to work with DAAF effectively, because it helps you frame your questions in the way most likely to get you what you actually want, and better understand what's going on behind the scenes.
 
 Before doing anything else, DAAF will tell you which mode it's classifying your request into, explain why, and ask you to confirm. This is intentional. You should always have the chance to say "actually, I just wanted a quick lookup" or "actually, let's go deeper on this." Here's what each of them do, and how the workflow works so you know when and why you'd use each:
 
@@ -86,6 +86,25 @@ Before doing anything else, DAAF will tell you which mode it's classifying your 
 **When NOT to use it:** When you already know what general data exists and you're ready to analyze it with a specific research question. In that case, jump straight to Full Pipeline.
 
 **Escalation:** If Data Discovery turns up promising data, DAAF will suggest: "Based on these findings, would you like me to proceed with a Full Pipeline analysis?" You can say yes, refine the question, or say no and walk away with just the findings.
+
+### Ad Hoc Collaboration Mode
+
+**Trigger words:** "help me with," "review this," "debug this," "how do I," "advise on," "think through this with me," "what's the best approach for..."
+
+**What it is:** A flexible, multi-turn working session where you bring whatever you're working on and DAAF acts as a thought partner. This is the mode for skilled researchers who want rigorous support without committing to a formal pipeline. You might ask DAAF to review your code, help you debug a script, brainstorm an analytic approach, explain how to use a particular Python package, investigate a data source, or write a one-off analysis script. The conversation flows naturally -- you change topics, ask follow-ups, and go wherever the work takes you.
+
+**What you get:**
+- A lightweight workspace folder for anything produced during the session (scripts, data, figures)
+- Access to all of DAAF's specialized capabilities -- code execution, debugging, data source research, code review, analysis planning -- on demand, as you need them
+- Rigorous, methodology-aware advice grounded in the same domain expertise that powers the full pipeline
+
+**Expected time investment:** As long as you need. There are no mandatory checkpoints or gates -- the session ends when you're done. If the session produces artifacts, DAAF will summarize what's in the workspace at the end.
+
+**When to use it:** When you want a capable research partner for whatever you're working on right now. Some examples: "Can you review this script I wrote for cleaning CCD data?" "I'm getting a weird join error -- help me figure out what's going on." "What's the best way to handle suppressed data in a trend analysis?" "How do I use plotnine to create faceted bar charts?" "Help me think through the right approach for a school-level poverty analysis."
+
+**When NOT to use it:** When you know you want a complete, formal analysis with a Plan, Notebook, and Report -- that's Full Pipeline mode. When you just need a quick variable definition -- that's Data Lookup. Ad Hoc Collaboration is for the messy, real-world middle ground where you're actively working on something and want a knowledgeable partner.
+
+**Escalation:** If the conversation naturally evolves toward a full analysis, DAAF will suggest: "This is shaping up to be a full analysis -- want me to formalize it into a Full Pipeline?" You can say yes, or keep working ad hoc. The workspace artifacts carry forward either way.
 
 ### Full Pipeline Mode
 
@@ -172,6 +191,7 @@ DAAF supports clean transitions between modes when it makes sense:
 |------|----|-----------------|
 | Data Discovery | Full Pipeline | Findings suggest a feasible and valuable analysis |
 | Data Lookup | Data Discovery | Your question reveals a broader data landscape worth exploring |
+| Data Lookup | Ad Hoc Collaboration | Your question evolves into a multi-turn discussion |
 | Data Lookup | Full Pipeline | A quick lookup reveals an actionable analysis opportunity |
 | Data Discovery | Data Ingest | Do you have a raw data file you want to profile and make reusable? |
 | Data Ingest | Full Pipeline | Skill created — would you like to analyze this data now? |
@@ -182,6 +202,11 @@ DAAF supports clean transitions between modes when it makes sense:
 | Full Pipeline (complete) | Reproducibility Verification | User wants to verify their analysis reproduces |
 | Reproducibility Verification | Revision and Extension | Divergence found, user wants to fix original |
 | Reproducibility Verification | Full Pipeline | Original analysis is fundamentally broken |
+| Ad Hoc Collaboration | Full Pipeline | Your working session evolves into a formal analysis |
+| Ad Hoc Collaboration | Data Discovery | You want systematic data exploration across sources |
+| Ad Hoc Collaboration | Data Ingest | You have raw data that needs profiling |
+| Data Discovery | Ad Hoc Collaboration | You want to discuss findings and iterate on approach |
+| Full Pipeline (complete) | Ad Hoc Collaboration | You want to discuss results or plan next steps informally |
 
 DAAF will always propose these escalations explicitly and wait for your confirmation. It should never silently switch modes on you.
 

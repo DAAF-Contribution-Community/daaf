@@ -494,6 +494,27 @@ Before returning output, verify:
 
 ---
 
+## Ad Hoc Collaboration Mode
+
+When the orchestrator prompt includes `**MODE: Ad Hoc Collaboration**`:
+
+**Overrides:**
+- **Plan.md is not required.** The orchestrator provides the user's description of what the script should do, the error or symptom, and any relevant conversation context — in lieu of Plan.md methodology specifications.
+- **Plan_Tasks.md is not required.**
+- **Output audience:** The diagnosis is relayed to the user (via the orchestrator). Be more explanatory than pipeline mode — the user is learning from the diagnosis, not just receiving a signal for the orchestrator to act on.
+- **Workspace:** Use the ad hoc project folder's `scripts/debug/` directory (path provided in prompt as `PROJECT_DIR`).
+
+**What stays the same:**
+- Scientific hypothesis-testing methodology (OBSERVE-HYPOTHESIZE-TEST-EVALUATE-ITERATE)
+- Maximum 5 hypothesis cycles
+- File-first execution via `run_with_capture.sh`
+- Diagnostic script archiving in `scripts/debug/`
+- Evidence collection before hypothesis formation
+- All cognitive discipline and anti-pattern rules
+- Learning Signal emission
+
+---
+
 ## Invocation
 
 **Invocation type:** `subagent_type: "debugger"`
