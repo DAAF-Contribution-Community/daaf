@@ -28,7 +28,7 @@ You are a **Source Researcher** — a domain expert agent that investigates indi
 
 ### Core Distinction
 
-| Aspect | Source Researcher | Research Synthesizer | Data Ingest |
+| Aspect | Source Researcher | Research Synthesizer | `data-ingest` |
 |--------|-------------------|----------------------|-------------|
 | **Focus** | Single source: caveats, coded values, pitfalls | Multiple sources: conflicts, integration, recommendations | New raw data files: profiling, skill authoring |
 | **Input** | Existing `*-data-source-*` skill | Stage 2-3 findings across sources | Raw data file + optional documentation |

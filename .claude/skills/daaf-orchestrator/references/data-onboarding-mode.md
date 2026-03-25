@@ -1,6 +1,6 @@
-# Data Ingest Mode
+# Data Onboarding Mode
 
-Data Ingest mode is triggered when a user wants to profile raw data files and create a standalone data source skill. It produces a SKILL.md + reference files in `.claude/skills/` backed by a fully reproducible research project containing profiling scripts, QA reviews, and session state tracking.
+Data Onboarding mode is triggered when a user wants to profile raw data files and create a standalone data source skill. It produces a SKILL.md + reference files in `.claude/skills/` backed by a fully reproducible research project containing profiling scripts, QA reviews, and session state tracking.
 
 ## User Orientation
 
@@ -13,13 +13,13 @@ After mode confirmation, briefly orient the user. Key points:
 - Key characteristic: thorough automated profiling, but you review all interpretations before they are encoded into the skill
 - Typical duration: a single session for files under 500 columns; larger files may require batched profiling across sessions
 
-**When to skip:** User has completed a data ingest before and indicates familiarity.
+**When to skip:** User has completed a data onboarding before and indicates familiarity.
 
 **For more detail:** Consult `{BASE_DIR}/user_reference/04_extending_daaf.md`.
 
 ---
 
-## Data Ingest Mode Workflow
+## Data Onboarding Mode Workflow
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
@@ -35,7 +35,7 @@ After mode confirmation, briefly orient the user. Key points:
 │  Stage DI-2: Project Setup                                                  │
 │      ├─ Create research project folder under research/                       │
 │      ├─ Copy raw data into research project data/raw/                        │
-│      ├─ Initialize STATE.md from agent_reference/STATE_TEMPLATE_INGEST.md   │
+│      ├─ Initialize STATE.md from agent_reference/STATE_TEMPLATE_ONBOARDING.md   │
 │      ├─ Initialize LEARNINGS.md                                             │
 │      ├─ Copy run_with_capture.sh into project scripts/                       │
 │      └─ Gate GDI-2: Project folder ready, STATE.md initialized              │
@@ -111,6 +111,8 @@ After mode confirmation, briefly orient the user. Key points:
 
 > **AUTHORITATIVE EXECUTION LOOP:** The Per-Part Execution Cycle referenced in each stage above (DI-3 through DI-6) is defined in full detail in the **Per-Part Execution Cycle** section below. That cycle is the MANDATORY atomic unit for all profiling work. The workflow diagram above is a visual summary; the Per-Part Execution Cycle is the binding specification.
 
+> **Note:** The "DI-" prefix on stage identifiers (DI-1 through DI-8) is a historical abbreviation from when this mode was named "Data Ingest." The prefix is retained for backward compatibility with existing projects and scripts.
+
 ---
 
 ## Skill Naming Convention
@@ -129,7 +131,7 @@ All data source skills follow this pattern. The `{domain}` groups related source
 |------|---------|-----------|-----------|
 | Use the standard acronym when one exists | `education-data-source-ccd` | `education-data-source-common-core` | Acronyms are how researchers reference sources |
 | Domain prefix must match `metadata.domain` | `election-data-source-countypres` (domain: `election-data`) | `voting-data-source-countypres` | Consistency enables pattern-based discovery |
-| Identify specific tables when a source has multiple | `education-data-source-ccd-schools` | `education-data-source-ccd` (if ambiguous) | Prevents conflicts when ingesting additional tables later |
+| Identify specific tables when a source has multiple | `education-data-source-ccd-schools` | `education-data-source-ccd` (if ambiguous) | Prevents conflicts when onboarding additional tables later |
 | Follow frontmatter validation: lowercase, hyphens only | `education-data-source-nhgis` | `education_data_source_NHGIS` | Regex: `^[a-z0-9]+(-[a-z0-9]+)*$` |
 
 ### Orchestrator Responsibilities at DI-1
@@ -146,7 +148,7 @@ All data source skills follow this pattern. The `{domain}` groups related source
 | Gate | After Stage | Criteria | STOP If |
 |------|-------------|----------|---------|
 | GDI-1 | DI-1 | Required inputs collected, file accessible and non-empty | File cannot be loaded, file empty, or required inputs missing |
-| GDI-2 | DI-2 | Project folder created, STATE.md initialized (from `agent_reference/STATE_TEMPLATE_INGEST.md`), data staged | Folder creation fails, run_with_capture.sh missing |
+| GDI-2 | DI-2 | Project folder created, STATE.md initialized (from `agent_reference/STATE_TEMPLATE_ONBOARDING.md`), data staged | Folder creation fails, run_with_capture.sh missing |
 | GDI-3 | DI-3 | CPP1 PASSED, QAP1 PASSED or WARNING | File >1GB without sampling plan approved by user, or critical columns entirely null |
 | GDI-4 | DI-4 | CPP2 PASSED, QAP2 PASSED or WARNING | >50% of columns are entirely null |
 | GDI-5 | DI-5 | CPP3 PASSED, QAP3 PASSED or WARNING | No candidate keys identifiable across any table |
@@ -160,7 +162,7 @@ All data source skills follow this pattern. The `{domain}` groups related source
 
 ## Per-Part Execution Cycle (MANDATORY)
 
-For EACH profiling part (DI-3 through DI-6), follow this complete cycle. **Do NOT skip any step.** This is the Data Ingest equivalent of the Full Pipeline's Stage 5-8 Composite Execution Pattern.
+For EACH profiling part (DI-3 through DI-6), follow this complete cycle. **Do NOT skip any step.** This is the Data Onboarding equivalent of the Full Pipeline's Stage 5-8 Composite Execution Pattern.
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
@@ -255,9 +257,9 @@ For EACH profiling part (DI-3 through DI-6), follow this complete cycle. **Do NO
 
 ### Context Management
 
-Context utilization thresholds from `CLAUDE.md` > "Context & Session Health" > "Context Quality Curve" apply to Data Ingest mode. The Per-Part Execution Cycle is the atomic unit for gating decisions.
+Context utilization thresholds from `CLAUDE.md` > "Context & Session Health" > "Context Quality Curve" apply to Data Onboarding mode. The Per-Part Execution Cycle is the atomic unit for gating decisions.
 
-| Utilization | Status | Data Ingest Action |
+| Utilization | Status | Data Onboarding Action |
 |-------------|--------|--------------------|
 | **0-40%** | NOMINAL | Continue normally through profiling parts |
 | **40-60%** | ELEVATED | Complete current part cycle; assess whether remaining parts are feasible in this session; update STATE.md Context Snapshot |
@@ -556,7 +558,7 @@ print(f"CPP4 PASSED: {len(data_dictionary_draft)} columns interpreted, "
 Present after Stage DI-2 completes. All user-facing text uses plain language — no internal terms (gate, QA, CPP, stage DI-N).
 
 ```
-**Data Ingest: Setup Complete**
+**Data Onboarding: Setup Complete**
 
 **Data Source Summary:**
 - File: [file name and path]
@@ -591,7 +593,7 @@ Profiling runs through all four parts automatically. After profiling completes, 
 Present after Stage DI-6 completes. This is the CRITICAL user review point — interpretations presented here become the basis for the skill definition in Stage DI-7.
 
 ```
-**Data Ingest: Profiling Complete — Review Needed**
+**Data Onboarding: Profiling Complete — Review Needed**
 
 **Quality Summary:**
 [From Part A-D profiling findings — overall data quality assessment in plain language]
@@ -884,14 +886,14 @@ Agent({
     prompt: """**BASE_DIR:** {BASE_DIR}
 All relative paths in referenced files resolve from BASE_DIR.
 
-**AGENT PROTOCOL:** Read `.claude/agents/code-reviewer.md`. This is a Data Ingest QA review (not Full Pipeline) — there is no Plan.md. Use the context below for methodology alignment instead.
+**AGENT PROTOCOL:** Read `.claude/agents/code-reviewer.md`. This is a Data Onboarding QA review (not Full Pipeline) — there is no Plan.md. Use the context below for methodology alignment instead.
 
 **SCRIPTS TO REVIEW:**
 {list_of_script_paths_in_part}
 
 **CPP RESULT:** {cpp_checkpoint_status_and_output}
 
-**DATA INGEST CONTEXT:**
+**DATA ONBOARDING CONTEXT:**
 Task name: QAP{N} review of {part_name} profiling scripts
 Domain context: {domain_context}
 Research question / Intended use: {intended_use}
@@ -902,7 +904,7 @@ run_with_capture path: {run_with_capture_path}
 Prior QA findings: {prior_qap_summary_or_none}
 IAT compliance: Required per agent_reference/INLINE_AUDIT_TRAIL.md
 
-**Note:** In Data Ingest mode, profiling scripts produce embedded output (appended to script files via run_with_capture.sh), not separate data files. QA scripts should verify the appended execution log, not look for separate output files.
+**Note:** In Data Onboarding mode, profiling scripts produce embedded output (appended to script files via run_with_capture.sh), not separate data files. QA scripts should verify the appended execution log, not look for separate output files.
 
 **QAP FOCUS AREAS (Part {A/B/C/D}):**
 {qap_focus_table_from_relevant_part_section}
@@ -1191,12 +1193,12 @@ Before dispatching the skill authoring subagent (Stage DI-7), verify:
 
 ### Data Location Convention
 
-All data for a Data Ingest project lives inside the research project folder, following the same pattern as Full Pipeline projects.
+All data for a Data Onboarding project lives inside the research project folder, following the same pattern as Full Pipeline projects.
 
 #### Project Data Structure
 
 ```
-research/YYYY-MM-DD_{Source_Name}_Ingest/
+research/YYYY-MM-DD_{Source_Name}_Onboarding/
 ├── data/
 │   └── raw/                    # Original data files (immutable after drop)
 │       ├── {file1}.parquet
@@ -1209,7 +1211,7 @@ research/YYYY-MM-DD_{Source_Name}_Ingest/
 1. **Stage DI-2:** Create the research project folder under `research/`
 2. **Create `data/raw/`** subdirectory inside the research project
 3. **Copy** user-provided data files into `data/raw/`
-4. **Initialize STATE.md** from `{BASE_DIR}/agent_reference/STATE_TEMPLATE_INGEST.md` — this template has ingest-specific sections (DI-1 through DI-8 stages, Profiling Progress table, Interpretation Tracking, Skill Authoring Status) that differ from the Full Pipeline template. Populate the Data Source Info and User Request sections with intake information.
+4. **Initialize STATE.md** from `{BASE_DIR}/agent_reference/STATE_TEMPLATE_ONBOARDING.md` — this template has onboarding-specific sections (DI-1 through DI-8 stages, Profiling Progress table, Interpretation Tracking, Skill Authoring Status) that differ from the Full Pipeline template. Populate the Data Source Info and User Request sections with intake information.
 5. **Instruct user** if files need manual placement (e.g., files too large to copy, or user prefers to place them directly)
 
 ### Script-to-Skill-Template Mapping
@@ -1330,7 +1332,7 @@ Then update STATE.md Session Metadata to confirm log collection.
 Present to the user after Stage DI-7 completes and the skill passes compliance:
 
 ```
-**Data Ingest Complete**
+**Data Onboarding Complete**
 
 **Skill Created:**
 - Name: {skill-name}
@@ -1362,7 +1364,7 @@ The skill is automatically discoverable via its YAML frontmatter and ready for u
 
 ## Boundaries
 
-These boundaries supplement the universal safety boundaries in `CLAUDE.md`. This section is the canonical source for all Data Ingest Mode-specific boundaries.
+These boundaries supplement the universal safety boundaries in `CLAUDE.md`. This section is the canonical source for all Data Onboarding Mode-specific boundaries.
 
 **Always Do:**
 1. Verify file accessibility and non-emptiness before starting profiling
@@ -1392,7 +1394,7 @@ These boundaries supplement the universal safety boundaries in `CLAUDE.md`. This
 
 ## Escalation Triggers
 
-### Data Ingest to Full Pipeline
+### Data Onboarding to Full Pipeline
 
 After skill creation completes (Stage DI-8), the user may want to analyze the data they just profiled. Propose escalation:
 
@@ -1400,18 +1402,18 @@ After skill creation completes (Stage DI-8), the user may want to analyze the da
 
 If confirmed, load `{SKILL_REFS}/full-pipeline.md` and begin Full Pipeline mode. The newly created skill is immediately available for the pipeline's domain configuration.
 
-### Full Pipeline Phase 1 to Data Ingest
+### Full Pipeline Phase 1 to Data Onboarding
 
 During Full Pipeline Discovery (Stages 2-3), if a required data source has no existing skill and the user has the raw data file, propose escalation:
 
-> "This analysis needs [source name] data, but no skill exists for it yet. You have the raw file — would you like to pause the pipeline and run Data Ingest to create the skill first?"
+> "This analysis needs [source name] data, but no skill exists for it yet. You have the raw file — would you like to pause the pipeline and run Data Onboarding to create the skill first?"
 
-If confirmed, pause Full Pipeline (record state in STATE.md), switch to Data Ingest mode. After skill creation, resume Full Pipeline from the point of interruption.
+If confirmed, pause Full Pipeline (record state in STATE.md), switch to Data Onboarding mode. After skill creation, resume Full Pipeline from the point of interruption.
 
-### Data Discovery to Data Ingest
+### Data Discovery to Data Onboarding
 
 During Data Discovery mode, if the user has a data file but no skill exists for it, propose escalation:
 
-> "It looks like you have a data file for [source name] but there is no skill for it yet. Would you like to switch to Data Ingest mode to profile it and create a skill?"
+> "It looks like you have a data file for [source name] but there is no skill for it yet. Would you like to switch to Data Onboarding mode to profile it and create a skill?"
 
-If confirmed, load this mode reference and begin Data Ingest. The user can return to Data Discovery afterward if needed.
+If confirmed, load this mode reference and begin Data Onboarding. The user can return to Data Discovery afterward if needed.

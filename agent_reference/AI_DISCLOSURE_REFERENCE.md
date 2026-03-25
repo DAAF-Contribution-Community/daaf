@@ -102,7 +102,7 @@ Different engagement modes involve different levels of AI assistance. The disclo
 **Template:** Include the original analysis's disclosure, then append:
 > **Revision conducted on [date]:** AI assistance was used to [describe revision scope — e.g., "modify the poverty threshold variable and re-run affected analysis stages"]. The same QA review process was applied to all re-executed code. DAAF version: [commit hash].
 
-### Data Ingest Mode
+### Data Onboarding Mode
 
 **Depth:** Moderate. AI profiled dataset structure and generated a reusable data source skill.
 

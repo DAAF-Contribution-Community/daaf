@@ -46,7 +46,7 @@ All agents in this directory MUST follow the canonical template at `agent_refere
 | **debugger** | Diagnose data quality issues and analysis failures using scientific hypothesis-testing methodology | `debugger` | Any (on error) | Error message/symptom, failed script path, Plan.md, Plan_Tasks.md (optional), last successful operation | Root cause report with hypothesis log and verified fix |
 | **notebook-assembler** | Compile scripts into Marimo notebook via VERBATIM copy (NO dashboards, NO widgets, NO new code) | `notebook-assembler` | 9 | Completed scripts (stages 5-8), Plan.md, data files, figure files, project path | Marimo `.py` notebook with script walkthroughs and data inspection cells |
 | **integration-checker** | Validate component wiring: data flows, file references, and orphan detection | `integration-checker` | 9, 11, 12 | Plan.md, Notebook, Report, project folder, script-to-output mappings | Integration check report: CONNECTED / ISSUES FOUND with flow diagrams |
-| **data-ingest** | Profile new datasets and produce comprehensive findings for skill authoring | `data-ingest` | Data Ingest Mode (Stages DI-3 to DI-6) | Data file path + format, target skill name, intended use, domain context, optional docs | Part-specific profiling findings for orchestrator |
+| **data-ingest** | Profile new datasets and produce comprehensive findings for skill authoring | `data-ingest` | Data Onboarding Mode (Stages DI-3 to DI-6) | Data file path + format, target skill name, intended use, domain context, optional docs | Part-specific profiling findings for orchestrator |
 | **report-writer** | Synthesize pipeline artifacts into stakeholder report following REPORT_TEMPLATE.md | `report-writer` | 11, RV-4 | Plan.md, Notebook, STATE.md, LEARNINGS.md, QA summary, figures, citations, dataset metadata | Report.md (stakeholder prose) |
 
 ### Commonly Confused Pairs
@@ -510,7 +510,7 @@ code-reviewer returns BLOCKER
 
 ### data-ingest
 
-**Use when:** The orchestrator is running Data Ingest Mode and needs to dispatch a profiling part (A/B/C/D) for a new data file. Each part is a separate subagent invocation managed by the orchestrator.
+**Use when:** The orchestrator is running Data Onboarding Mode and needs to dispatch a profiling part (A/B/C/D) for a new data file. Each part is a separate subagent invocation managed by the orchestrator.
 
 **Purpose:** Profile new datasets across four orchestrator-managed parts:
 - **Part A:** Structural Discovery (schema, types, shapes, nulls)

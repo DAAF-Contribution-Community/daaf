@@ -331,7 +331,7 @@ When interpreting data values and resolving discrepancies between sources, apply
 |-------|----------|
 | Stage 3 (Source Deep-Dive) | Verify variable definitions and coded values against authoritative codebook |
 | Stage 6 (Context Application) | Resolve coded value ambiguities by consulting codebook |
-| Data Ingest | Reconcile observed data against codebook documentation |
+| Data Onboarding | Reconcile observed data against codebook documentation |
 | Discrepancy Investigation | When skill docs and observed data disagree, check codebook as tiebreaker |
 
 ### get_codebook_url()

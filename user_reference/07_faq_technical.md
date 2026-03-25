@@ -329,9 +329,9 @@ DAAF knows about these lags -- during the Discovery phase (Stage 2), it will che
 
 ### Q: Can I use my own data files instead of the built-in sources?
 
-Yes, and DAAF has a built-in mode for exactly this -- **Data Ingest Mode**.
+Yes, and DAAF has a built-in mode for exactly this -- **Data Onboarding Mode**.
 
-Data Ingest Mode helps you profile a new dataset and create the documentation artifacts (a "skill") that DAAF's other agents need to work with your data effectively. This includes cataloging variables, documenting types and distributions, identifying potential data quality issues, and creating the structured metadata that DAAF uses during analysis.
+Data Onboarding Mode helps you profile a new dataset and create the documentation artifacts (a "skill") that DAAF's other agents need to work with your data effectively. This includes cataloging variables, documenting types and distributions, identifying potential data quality issues, and creating the structured metadata that DAAF uses during analysis.
 
 See [**04. Extending DAAF**](04_extending_daaf.md) for detailed guidance on this process.
 

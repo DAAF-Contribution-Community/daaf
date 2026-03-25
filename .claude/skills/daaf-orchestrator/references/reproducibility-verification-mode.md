@@ -636,7 +636,7 @@ Reproducibility Verification can span many scripts, each consuming subagent cont
 
 Reproducibility Verification mode does NOT use `STATE.md`. The **Reproduction Report itself is the sole session state document**.
 
-**Design rationale:** In Full Pipeline and Data Ingest, STATE.md exists separately because the primary deliverables are not updated incrementally during execution. The Reproduction Report, by contrast, is designed for continuous incremental updates after every script re-execution. It already tracks:
+**Design rationale:** In Full Pipeline and Data Onboarding, STATE.md exists separately because the primary deliverables are not updated incrementally during execution. The Reproduction Report, by contrast, is designed for continuous incremental updates after every script re-execution. It already tracks:
 
 - **Current position** — Session Continuity § Current Position
 - **Progress** — Script Inventory (every script has a status)

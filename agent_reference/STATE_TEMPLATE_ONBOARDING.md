@@ -1,15 +1,15 @@
-# STATE.md Template (Data Ingest Mode)
+# STATE.md Template (Data Onboarding Mode)
 
-This template defines the session state file for Data Ingest Mode. It is a lightweight adaptation of the Full Pipeline STATE template, tailored for profiling workflows.
+This template defines the session state file for Data Onboarding Mode. It is a lightweight adaptation of the Full Pipeline STATE template, tailored for profiling workflows.
 
 ---
 
 ## Template
 
-Copy this template to `STATE.md` in the project folder when starting a Data Ingest Mode session.
+Copy this template to `STATE.md` in the project folder when starting a Data Onboarding Mode session.
 
 ```markdown
-# Session State: [Source Name] Data Ingest
+# Session State: [Source Name] Data Onboarding
 
 **Last Updated:** [YYYY-MM-DD HH:MM]
 **Session Count:** [N]
@@ -20,7 +20,7 @@ Copy this template to `STATE.md` in the project folder when starting a Data Inge
 
 | Field | Value |
 |-------|-------|
-| **Project** | [Full title, e.g., "County Presidential Election Returns Ingest"] |
+| **Project** | [Full title, e.g., "County Presidential Election Returns Onboarding"] |
 | **Current Phase** | [DI-1/DI-2/DI-3]: [Phase Name] |
 | **Current Stage** | [DI-1 through DI-8]: [Stage Name] |
 | **Status** | [In Progress / Blocked / Complete] |
@@ -160,7 +160,7 @@ Copy this template to `STATE.md` in the project folder when starting a Data Inge
 
 ## Key Decisions Made
 
-> All runtime decisions made during the ingest session are recorded here.
+> All runtime decisions made during the onboarding session are recorded here.
 
 | Decision | Choice | Rationale | Stage |
 |----------|--------|-----------|-------|
@@ -355,7 +355,7 @@ Skills are automatically discoverable via YAML frontmatter once placed in `.clau
 
 **To resume in a new session, run `/clear` to reset context, then paste this into the chat:**
 
-> Resume the [Source Name] data ingest. State: `[exact STATE.md path]`. Currently at Stage [DI-N] ([Stage Name]) — next step is [task description].
+> Resume the [Source Name] data onboarding. State: `[exact STATE.md path]`. Currently at Stage [DI-N] ([Stage Name]) — next step is [task description].
 
 ### Resumption Instructions (Agent Reference)
 
@@ -383,11 +383,11 @@ Skills are automatically discoverable via YAML frontmatter once placed in `.clau
 
 ### When to Create
 
-Create STATE.md at **Stage DI-2 (Project Setup)** for all Data Ingest Mode sessions.
+Create STATE.md at **Stage DI-2 (Project Setup)** for all Data Onboarding Mode sessions.
 
 ### When to Update
 
-**Authoritative cycle:** The Per-Part Execution Cycle in `data-ingest-mode.md` defines the mandatory STATE.md read/write rhythm for profiling parts DI-3 through DI-6. The list below enumerates the specific trigger events; the STATE.md Update Gates table in `data-ingest-mode.md` maps each event to the exact fields that must be updated.
+**Authoritative cycle:** The Per-Part Execution Cycle in `data-onboarding-mode.md` defines the mandatory STATE.md read/write rhythm for profiling parts DI-3 through DI-6. The list below enumerates the specific trigger events; the STATE.md Update Gates table in `data-onboarding-mode.md` maps each event to the exact fields that must be updated.
 
 Update STATE.md after:
 - Each profiling script executes (update Profiling Progress row)

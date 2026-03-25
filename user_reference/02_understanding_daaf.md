@@ -10,7 +10,7 @@ This guide is designed to turn a new user into a confident user. It expands on t
 
 ## Table of Contents
 - [**Core Concept: Context Windows and Prompt Engineering 101**](#core-concept-context-windows-and-prompt-engineering-101)
-- [**The Six Engagement Modes**](#the-six-engagement-modes)
+- [**The Seven Engagement Modes**](#the-seven-engagement-modes)
 - [**The Mental Model: Orchestrator, Agents, Skills, Validation**](#the-mental-model-orchestrator-agents-skills-validation)
 - [**What a Full Pipeline Analysis Looks Like**](#what-a-full-pipeline-analysis-looks-like)
 - [**Anatomy of a Completed Analysis**](#anatomy-of-a-completed-analysis)
@@ -147,7 +147,7 @@ Before doing anything else, DAAF will tell you which mode it's classifying your 
 
 **When NOT to use it:** When your existing analysis is fundamentally flawed or you want to ask a substantially different research question. At that point, starting a new Full Pipeline analysis with better-targeted prompts will produce cleaner results than trying to revise the original into something it wasn't designed to answer.
 
-### Data Ingest
+### Data Onboarding
 
 **When to use:** You have a raw data file (CSV, Parquet, Excel, etc.) that you want to profile and add as a reusable data source for future analyses.
 
@@ -193,18 +193,18 @@ DAAF supports clean transitions between modes when it makes sense:
 | Data Lookup | Data Discovery | Your question reveals a broader data landscape worth exploring |
 | Data Lookup | Ad Hoc Collaboration | Your question evolves into a multi-turn discussion |
 | Data Lookup | Full Pipeline | A quick lookup reveals an actionable analysis opportunity |
-| Data Discovery | Data Ingest | Do you have a raw data file you want to profile and make reusable? |
-| Data Ingest | Full Pipeline | Skill created — would you like to analyze this data now? |
-| Full Pipeline | Data Ingest | Analysis needs a dataset that has no existing skill yet |
+| Data Discovery | Data Onboarding | Do you have a raw data file you want to profile and make reusable? |
+| Data Onboarding | Full Pipeline | Skill created — would you like to analyze this data now? |
+| Full Pipeline | Data Onboarding | Analysis needs a dataset that has no existing skill yet |
 | Full Pipeline | Revision and Extension | You just completed an analysis and want to adjust or extend something |
 | Revision and Extension | Full Pipeline | The revision scope grows beyond what targeted modification can handle |
-| Data Ingest | Revision and Extension | You want to modify or extend the skill that was just created |
+| Data Onboarding | Revision and Extension | You want to modify or extend the skill that was just created |
 | Full Pipeline (complete) | Reproducibility Verification | User wants to verify their analysis reproduces |
 | Reproducibility Verification | Revision and Extension | Divergence found, user wants to fix original |
 | Reproducibility Verification | Full Pipeline | Original analysis is fundamentally broken |
 | Ad Hoc Collaboration | Full Pipeline | Your working session evolves into a formal analysis |
 | Ad Hoc Collaboration | Data Discovery | You want systematic data exploration across sources |
-| Ad Hoc Collaboration | Data Ingest | You have raw data that needs profiling |
+| Ad Hoc Collaboration | Data Onboarding | You have raw data that needs profiling |
 | Ad Hoc Collaboration | Revision and Extension | Debugging reveals an existing analysis needs revision |
 | Data Discovery | Ad Hoc Collaboration | You want to discuss findings and iterate on approach |
 | Full Pipeline (early) | Ad Hoc Collaboration | You realize you just want to talk through the approach, not run the full pipeline |
@@ -530,9 +530,9 @@ I know there are a couple of different ways of measuring school poverty. Can you
 
 **What you're testing:** How does DAAF surface relevant information, variables, tables, and so on, when faced with broader options and less explicit direction? What issues might arise, and does it seem to recognize strengths/pitfalls of each possibility it flags appropriately?
 
-### Level 3: Data Ingestion (Data Ingest Mode)
+### Level 3: Data Onboarding (Data Onboarding Mode)
 
-If you have your own dataset that you'd like to bring into DAAF, try profiling it with Data Ingest mode. This is a great way to expand DAAF's capabilities with your own data.
+If you have your own dataset that you'd like to bring into DAAF, try profiling it with Data Onboarding mode. This is a great way to expand DAAF's capabilities with your own data.
 
 ```
 I have a CSV of county-level election returns I'd like to profile

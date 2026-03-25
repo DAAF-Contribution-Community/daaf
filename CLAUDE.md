@@ -70,7 +70,7 @@ hierarchies, no module abstractions.
 3. **Section separators** — Organize scripts with comment headers:
    `# --- Config ---`, `# --- Load ---`, `# --- Transform ---`,
    `# --- Validate ---`, `# --- Save ---`
-   Data Ingest profiling scripts use: `# --- Config ---`, `# --- Load ---`,
+   Data Onboarding profiling scripts use: `# --- Config ---`, `# --- Load ---`,
    `# --- Profile ---`, `# --- Validate ---`, `# --- Summary ---`
 4. **No type annotations** — Sequential scripts don't define function signatures
 5. **No test files** — Validation is inline (`assert` + `print`), not in
@@ -333,10 +333,10 @@ research/2026-01-24_School_Poverty_Analysis/
 └── STATE.md                                       # Session state (REQUIRED for Full Pipeline)
 ```
 
-### Data Ingest Example Project Structure
+### Data Onboarding Example Project Structure
 
 ```
-research/2026-03-23_Ingest_County_Elections/
+research/2026-03-23_Onboarding_County_Elections/
 ├── STATE.md                                       # Session state (REQUIRED)
 ├── LEARNINGS.md                                   # Session learnings (REQUIRED)
 ├── logs/                                          # Session transcripts (collected at completion)
@@ -431,7 +431,7 @@ research/2026-03-24_College_Graduation_Analysis_Reproduction/
 | `agent_reference/PLAN_TEMPLATE.md` | Research plan template (Full Pipeline) |
 | `agent_reference/PLAN_TASKS_TEMPLATE.md` | Plan Tasks document template (Full Pipeline) |
 | `agent_reference/STATE_TEMPLATE.md` | Session state file template (Full Pipeline) |
-| `agent_reference/STATE_TEMPLATE_INGEST.md` | Session state file template (Data Ingest mode) |
+| `agent_reference/STATE_TEMPLATE_ONBOARDING.md` | Session state file template (Data Onboarding mode) |
 | `agent_reference/QA_CHECKPOINTS.md` | QA checkpoint definitions (QA1-QA4b) |
 | `agent_reference/VALIDATION_CHECKPOINTS.md` | Validation checkpoint code templates |
 | `agent_reference/REPORT_TEMPLATE.md` | Output report template |

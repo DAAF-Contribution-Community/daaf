@@ -7,7 +7,7 @@
 
 ## Purpose
 
-Enable stateless recovery when resuming an interrupted analysis after LLM context has been cleared. Persistent memory varies by mode: Full Pipeline uses Plan.md + Plan_Tasks.md + STATE.md; Revision and Extension uses prior version Plan.md + Plan_Tasks.md + STATE.md plus new-version Plan files; Data Ingest uses STATE.md only; Reproducibility Verification uses Reproduction_Report.md (no STATE.md).
+Enable stateless recovery when resuming an interrupted analysis after LLM context has been cleared. Persistent memory varies by mode: Full Pipeline uses Plan.md + Plan_Tasks.md + STATE.md; Revision and Extension uses prior version Plan.md + Plan_Tasks.md + STATE.md plus new-version Plan files; Data Onboarding uses STATE.md only; Reproducibility Verification uses Reproduction_Report.md (no STATE.md).
 
 ## When to Use
 
@@ -44,7 +44,7 @@ If the project has a `LEARNINGS.md` file, read it to recover accumulated insight
 
 ### Step 3: Read Plan.md Selectively
 
-> **Data Ingest projects:** Skip Steps 3-5 entirely (there is no Plan.md or Plan_Tasks.md). Proceed directly to the "Recovery from Different Stages (Data Ingest)" table below.
+> **Data Onboarding projects:** Skip Steps 3-5 entirely (there is no Plan.md or Plan_Tasks.md). Proceed directly to the "Recovery from Different Stages (Data Onboarding)" table below.
 
 **Do NOT read the entire Plan.md file.** Use targeted section loading to minimize context consumption and preserve capacity for execution work. Also verify that Plan_Tasks.md exists alongside Plan.md.
 
@@ -106,7 +106,7 @@ expected_files = {
 
 **Stale State Detection:** If STATE.md's last-updated information or session history timestamp is older than the most recent script file in `scripts/`, the state file may be stale (the prior session may have crashed before updating STATE.md). In this case:
 1. Check git log for commits after the STATE.md timestamp
-2. List scripts in `scripts/stage*_*/` (Full Pipeline) or `scripts/profile_*/` (Data Ingest) and compare against the Transformation Progress or Profiling Progress table
+2. List scripts in `scripts/stage*_*/` (Full Pipeline) or `scripts/profile_*/` (Data Onboarding) and compare against the Transformation Progress or Profiling Progress table
 3. If discrepancies exist, reconstruct current position from the filesystem and git history rather than trusting STATE.md alone
 4. Note reconstructed entries in the Recovery Summary with a `[reconstructed]` tag
 
@@ -164,19 +164,19 @@ Ready to continue from Stage 7, Transformation #4?
 | 10 (QA Aggregation) | Re-aggregate QA findings from Stages 5-8 | STATE.md QA Findings Summary |
 | 11-12 (Delivery) | Check if report exists, regenerate if needed | Plan.md `Must-Haves` + `Output Specification`; STATE.md QA Findings Summary + Final Review Log |
 
-## Recovery from Different Stages (Data Ingest)
+## Recovery from Different Stages (Data Onboarding)
 
-Data Ingest projects use a different STATE.md structure (from `agent_reference/STATE_TEMPLATE_INGEST.md`) with ingest-specific sections: DI-1 through DI-8 stages, Profiling Progress table, Interpretation Tracking, Documentation Reconciliation Summary, and Skill Authoring Status.
+Data Onboarding projects use a different STATE.md structure (from `agent_reference/STATE_TEMPLATE_ONBOARDING.md`) with onboarding-specific sections: DI-1 through DI-8 stages, Profiling Progress table, Interpretation Tracking, Documentation Reconciliation Summary, and Skill Authoring Status.
 
-**Identification:** A Data Ingest project can be recognized by:
+**Identification:** A Data Onboarding project can be recognized by:
 - STATE.md contains `Phase DI-` stage references instead of numbered Stages 1-12
 - STATE.md contains a `Profiling Progress` table with script-level tracking
-- STATE.md contains `User Request` and `Data Source Info` sections (no separate Plan.md in Data Ingest mode)
+- STATE.md contains `User Request` and `Data Source Info` sections (no separate Plan.md in Data Onboarding mode)
 
 | Stage Interrupted | Recovery Action | Additional Sections to Load |
 |-------------------|-----------------|---------------------------|
 | DI-1 (Intake) | Re-collect missing inputs, verify file accessible | — |
-| DI-2 (Project Setup) | Check project folder structure, verify STATE.md exists | `agent_reference/STATE_TEMPLATE_INGEST.md` |
+| DI-2 (Project Setup) | Check project folder structure, verify STATE.md exists | `agent_reference/STATE_TEMPLATE_ONBOARDING.md` |
 | DI-3 (Structural Profile) | Check scripts 01-03 execution status in Profiling Progress table | STATE.md Profiling Progress + current phase scripts |
 | DI-4 (Statistical Profile) | Check scripts 04-06 execution status, note conditional skips | STATE.md Profiling Progress + current phase scripts |
 | DI-5 (Relational Analysis) | Check scripts 07-09 execution status, note conditional skips | STATE.md Profiling Progress + current phase scripts |
@@ -297,9 +297,9 @@ Before resuming a Revision and Extension session:
 - [ ] Script Inventory status column is current
 - [ ] No partially written Per-Script Results sections
 
-## Data Ingest Recovery Verification Checklist
+## Data Onboarding Recovery Verification Checklist
 
-Before resuming a Data Ingest session:
+Before resuming a Data Onboarding session:
 - [ ] STATE.md read and understood (current DI-stage, checkpoints, blockers, error budget)
 - [ ] Profiling Progress table reviewed (which scripts done/pending/skipped per phase)
 - [ ] Interpretation Tracking reviewed (if past PSU-DI2 — user decisions must be preserved)

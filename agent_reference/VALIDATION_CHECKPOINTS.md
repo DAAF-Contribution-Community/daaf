@@ -1435,7 +1435,7 @@ Validation results appear in the notebook as accordion sections containing the s
 
 ## Profiling Validation Checkpoints (CPP1-CPP4, CPP-SKILL)
 
-> **Mode:** These checkpoints apply to Data Ingest Mode only. They are the profiling equivalent of CP1-CP4. See `.claude/skills/daaf-orchestrator/references/data-ingest-mode.md` for complete code templates.
+> **Mode:** These checkpoints apply to Data Onboarding Mode only. They are the profiling equivalent of CP1-CP4. See `.claude/skills/daaf-orchestrator/references/data-onboarding-mode.md` for complete code templates.
 
 ### CPP Overview
 

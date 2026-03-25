@@ -17,7 +17,7 @@ SESSION_ID=$(echo "$INPUT" | jq -r '.session_id // "default"' 2>/dev/null) || SE
 FLAG="/tmp/claude-daaf-orchestrator-${SESSION_ID}"
 
 if [[ ! -f "$FLAG" ]]; then
-    echo "You are interacting with a human user. You MUST IMMEDIATELY invoke the daaf-orchestrator skill (Skill tool with skill: \"daaf-orchestrator\") BEFORE doing any other work. There are NO EXCEPTIONS to this rule, load the Skill now."
+    echo "You are interacting with a human user. You MUST IMMEDIATELY invoke the daaf-orchestrator skill (Skill tool with skill: \"daaf-orchestrator\") BEFORE doing any other work."
 fi
 
 exit 0

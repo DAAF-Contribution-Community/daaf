@@ -4,7 +4,7 @@ description: >
   Systematically profiles tabular datasets across four structured parts (Structural,
   Statistical, Relational, Interpretation), producing detailed findings that feed into
   skill authoring. Invoked by the orchestrator once per profiling part during Data
-  Ingest Mode.
+  Onboarding Mode.
 tools: [Read, Write, Edit, Bash, Glob, Grep, WebSearch, WebFetch, Skill]
 skills: data-scientist
 permissionMode: default
@@ -158,7 +158,7 @@ Do NOT execute scripts from other parts. Do NOT author the skill (that is Stage 
 
 ### Part Dispatch
 
-When invoked, check the `profiling_part` parameter and execute the corresponding section below. For script templates and detailed profiling instructions, see `.claude/skills/daaf-orchestrator/references/data-ingest-mode.md`.
+When invoked, check the `profiling_part` parameter and execute the corresponding section below. For script templates and detailed profiling instructions, see `.claude/skills/daaf-orchestrator/references/data-onboarding-mode.md`.
 
 ### Part A: Structural Discovery (Scripts 01-03)
 
@@ -502,9 +502,9 @@ Before returning output, verify:
 
 **Invocation type:** `subagent_type: "data-ingest"`
 
-The orchestrator calls this agent 4 times during Data Ingest Mode -- once per profiling part (A, B, C, D). Each invocation includes the part assignment and accumulated findings from prior parts.
+The orchestrator calls this agent 4 times during Data Onboarding Mode -- once per profiling part (A, B, C, D). Each invocation includes the part assignment and accumulated findings from prior parts.
 
-See `.claude/skills/daaf-orchestrator/references/data-ingest-mode.md` for stage-specific invocation templates.
+See `.claude/skills/daaf-orchestrator/references/data-onboarding-mode.md` for stage-specific invocation templates.
 
 ---
 
@@ -514,7 +514,7 @@ Load on demand -- do NOT read all at start:
 
 | File | When to Read | Purpose |
 |------|-------------|---------|
-| `.claude/skills/daaf-orchestrator/references/data-ingest-mode.md` | Before writing scripts in any part | Profiling protocol details, script templates, part-specific instructions |
-| `agent_reference/STATE_TEMPLATE_INGEST.md` | When reading or updating STATE.md | Expected STATE.md structure for Data Ingest projects |
+| `.claude/skills/daaf-orchestrator/references/data-onboarding-mode.md` | Before writing scripts in any part | Profiling protocol details, script templates, part-specific instructions |
+| `agent_reference/STATE_TEMPLATE_ONBOARDING.md` | When reading or updating STATE.md | Expected STATE.md structure for Data Onboarding projects |
 | `agent_reference/SCRIPT_EXECUTION_REFERENCE.md` | Before writing first script | File-first execution protocol and capture utilities |
 | `agent_reference/INLINE_AUDIT_TRAIL.md` | When writing scripts with transforms | IAT documentation standards |

@@ -22,7 +22,7 @@ This document defines the continuous Quality Assurance checkpoint system that ru
 
 **Cross-Reference:** See `agent_reference/VALIDATION_CHECKPOINTS.md` for CP1-CP4 code templates and checkpoint classification system.
 
-> **Data Ingest Equivalents:** Data Ingest Mode uses parallel naming: **CPP1-CPP4** (primary validation embedded in profiling scripts) and **QAP1-QAP4** (secondary validation by code-reviewer). CPP = "Checkpoint Profiling" and QAP = "QA Profiling." See the QAP section below and `data-ingest-mode.md` for full definitions.
+> **Data Onboarding Equivalents:** Data Onboarding Mode uses parallel naming: **CPP1-CPP4** (primary validation embedded in profiling scripts) and **QAP1-QAP4** (secondary validation by code-reviewer). CPP = "Checkpoint Profiling" and QAP = "QA Profiling." See the QAP section below and `data-onboarding-mode.md` for full definitions.
 
 ---
 
@@ -768,7 +768,7 @@ scripts/
 - Script `02_aggregate.py` in Stage 7 → `stage7_02_cr1.py`
 - Script `01_regression-analysis.py` in Stage 8 → `stage8_01_cra1.py` (QA4a), `stage8_01_crb1.py` (QA4b)
 
-**Data Ingest profiling QA naming:** For the profiling QA naming convention (`profile_{phase}_cr{N}.py`), see `.claude/skills/daaf-orchestrator/references/data-ingest-mode.md` and the QAP Script Naming Convention section within this document.
+**Data Onboarding profiling QA naming:** For the profiling QA naming convention (`profile_{phase}_cr{N}.py`), see `.claude/skills/daaf-orchestrator/references/data-onboarding-mode.md` and the QAP Script Naming Convention section within this document.
 
 ---
 
@@ -871,7 +871,7 @@ QA checkpoints can trigger STOP conditions that prevent proceeding:
 
 ## Profiling QA Checkpoints (QAP1-QAP4)
 
-> **Mode:** These checkpoints apply to Data Ingest Mode only. They are the profiling equivalent of QA1-QA4b. See `.claude/skills/daaf-orchestrator/references/data-ingest-mode.md` for complete profiling protocol details.
+> **Mode:** These checkpoints apply to Data Onboarding Mode only. They are the profiling equivalent of QA1-QA4b. See `.claude/skills/daaf-orchestrator/references/data-onboarding-mode.md` for complete profiling protocol details.
 
 ### QAP Overview
 

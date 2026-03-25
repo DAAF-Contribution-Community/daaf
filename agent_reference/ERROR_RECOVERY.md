@@ -177,7 +177,7 @@ To prevent infinite retry loops and excessive resource consumption, track cumula
 | Subagent re-invocations | 3 | 9 | STOP, fundamental issue present |
 | Validation failures (STOP conditions) | 0 | 3 | STOP, analysis may not be feasible |
 
-### Data Ingest Error Budgets
+### Data Onboarding Error Budgets
 
 | Resource | Per-Part Limit | Session Limit | Notes |
 |----------|---------------|---------------|-------|
@@ -189,7 +189,7 @@ To prevent infinite retry loops and excessive resource consumption, track cumula
 
 > **Budget asymmetry note:** Session limits are deliberately lower than the sum of per-part limits (e.g., Code fix: 2/part × 4 = 8, but session limit is 6). This prevents error concentration — a session that consumes its full per-part budget in every part indicates systemic issues that warrant user intervention rather than continued automated recovery.
 
-**Budget read-gating:** The Per-Part Execution Cycle's Step 0 (in `.claude/skills/daaf-orchestrator/references/data-ingest-mode.md`) performs budget read-gating before each profiling part. If remaining budget is 0 for any category, the orchestrator must escalate to the user before proceeding.
+**Budget read-gating:** The Per-Part Execution Cycle's Step 0 (in `.claude/skills/daaf-orchestrator/references/data-onboarding-mode.md`) performs budget read-gating before each profiling part. If remaining budget is 0 for any category, the orchestrator must escalate to the user before proceeding.
 
 ### Budget Tracking
 
@@ -210,7 +210,7 @@ The orchestrator MUST track cumulative errors in STATE.md's `## Error Budget Con
 
 The orchestrator reads the Error Budget Consumed section from STATE.md at Step 0 of each Composite Execution Pattern cycle (see `full-pipeline.md`). If any category has remaining budget ≤ 0, the orchestrator MUST STOP and follow the Budget Exhaustion Protocol below rather than dispatching the next task. This ensures budget enforcement is data-driven (read from STATE.md) rather than memory-dependent.
 
-**Data Ingest mode:** The Per-Part Execution Cycle's Step 0 (in `data-ingest-mode.md`) performs budget read-gating before each profiling part. The orchestrator reads STATE.md's Error Budget Consumed section and confirms remaining budget > 0 before dispatching the next part's subagent.
+**Data Onboarding mode:** The Per-Part Execution Cycle's Step 0 (in `data-onboarding-mode.md`) performs budget read-gating before each profiling part. The orchestrator reads STATE.md's Error Budget Consumed section and confirms remaining budget > 0 before dispatching the next part's subagent.
 
 ### Budget Exhaustion Protocol
 
@@ -554,7 +554,7 @@ Awaiting guidance.
 | **Data Corruption** | Unexpected nulls, wrong row count | Fix transformation |
 | **Methodology** | Code contradicts Plan specification | ESCALATE immediately (Rule 4) |
 
-**Additional BLOCKER types for Data Ingest profiling QA (QAP1-QAP4):**
+**Additional BLOCKER types for Data Onboarding profiling QA (QAP1-QAP4):**
 
 | Type | Example | Remediation |
 |------|---------|-------------|
@@ -734,9 +734,9 @@ Validation Failure
 
 ---
 
-## Recovery from Different Stages (Data Ingest)
+## Recovery from Different Stages (Data Onboarding)
 
-Data Ingest uses a different error recovery pattern than the Full Pipeline. The Per-Part Execution Cycle in `data-ingest-mode.md` defines the atomic unit of work, and STATE.md (the sole persistent document) tracks all progress.
+Data Onboarding uses a different error recovery pattern than the Full Pipeline. The Per-Part Execution Cycle in `data-onboarding-mode.md` defines the atomic unit of work, and STATE.md (the sole persistent document) tracks all progress.
 
 ### Stage-Specific Recovery
 
@@ -751,7 +751,7 @@ Data Ingest uses a different error recovery pattern than the Full Pipeline. The 
 | DI-7 (Skill Authoring) | Template compliance failure (CPP-SKILL) | Revise skill draft (max 2 attempts); escalate if still non-compliant |
 | DI-8 (Review & Delivery) | User rejects skill | Collect feedback; return to DI-7 with revision instructions |
 
-### Data Ingest STOP Conditions
+### Data Onboarding STOP Conditions
 
 | Condition | Triggered By | Recovery Path |
 |-----------|-------------|---------------|
@@ -764,7 +764,7 @@ Data Ingest uses a different error recovery pattern than the Full Pipeline. The 
 | No candidate keys identifiable | Gate GDI-5 | User provides domain knowledge about data grain |
 | Template compliance fails after 2 revisions | Gate GDI-7 | Escalate to user; manual skill editing may be needed |
 
-### Revision Request Format (Data Ingest)
+### Revision Request Format (Data Onboarding)
 
 When re-invoking the data-ingest subagent to fix a BLOCKER:
 
