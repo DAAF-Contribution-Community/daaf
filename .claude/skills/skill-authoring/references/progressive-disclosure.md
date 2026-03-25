@@ -51,7 +51,7 @@ my-skill/
 ```
 
 - `scripts/`: May execute without reading
-- `references/`: Read when agent needs information
+- `references/`: Read when agent needs information — **no size limit**; these should be comprehensive since their token cost is only incurred on demand
 - `assets/`: Used directly, not read into context
 
 ## Why Progressive Disclosure Matters
@@ -250,15 +250,27 @@ For database schema details, see `./references/schema.md`.
 See `./references/schema.md`.
 ```
 
-## Design Principle: Concise is Key
+## Design Principle: Right-Size Each Level
 
-Challenge each piece of content:
+### SKILL.md (Level 2): Concise is Key
+
+Challenge each piece of SKILL.md content:
 
 - "Does the agent really need this explanation?"
 - "Does this paragraph justify its token cost?"
 - "Could this be an example instead of prose?"
 
 **Default assumption:** The agent is already smart. Only add context it doesn't already have.
+
+### Reference Files (Level 3): Thorough is Key
+
+Reference files have fundamentally different token economics — they are loaded only when an agent specifically needs that information. Apply a different lens:
+
+- "Would a researcher need this detail to use the data correctly?"
+- "Would omitting this cause an analyst to make a wrong assumption?"
+- "Is this knowledge that would be lost if not encoded here?"
+
+**Default assumption for reference files:** Encode everything discovered during profiling. Information not written down is information lost. The cost of including too much in a reference file is near-zero (it only loads when needed); the cost of omitting important detail is a future analyst making avoidable mistakes.
 
 ## Summary
 

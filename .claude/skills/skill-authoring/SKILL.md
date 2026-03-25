@@ -172,7 +172,8 @@ Content here.
 
 | Principle | Meaning |
 |-----------|---------|
-| **Concise is Key** | Context window is shared; justify every token. Claude is already smart — only add context it doesn't already have |
+| **Concise is Key (SKILL.md)** | The SKILL.md body shares context with conversation history; justify every token there. Claude is already smart — only add context it doesn't already have |
+| **Thorough is Key (references)** | Reference files are loaded on-demand at Level 3. Their token cost is incurred only when needed, so they should be comprehensive — encode all discovered knowledge rather than summarizing. Err on the side of more detail in reference files |
 | **Progressive Disclosure** | Load only what's needed, when needed |
 | **Appropriate Freedom** | Match specificity to task fragility (high freedom for flexible tasks, low freedom for fragile/critical operations) |
 | **Explain the Why** | Use reasoning over rigid directives. If you find yourself writing ALWAYS/NEVER in all caps, reframe and explain the reasoning instead — it's more effective |

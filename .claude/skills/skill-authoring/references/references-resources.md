@@ -390,14 +390,12 @@ In SKILL.md, explain:
 - When to use it
 - How to invoke/reference it
 
-### Keeping Resources Minimal
+### Keeping Resources Right-Sized
 
-Only include resources that:
-- Get used repeatedly
-- Provide significant value
-- Can't be easily regenerated
+**For `scripts/` and `assets/`:** Keep minimal. Only include resources that get used repeatedly, provide significant value, and can't be easily regenerated. Don't include one-off scripts or large files that could be fetched.
 
-Don't include:
-- One-off scripts
-- Rarely-needed documentation
-- Large files that could be fetched
+**For `references/`:** Thoroughness is preferred over minimalism. Reference files load on-demand (Level 3), so their token cost is incurred only when needed. For data source skills, reference files should be comprehensive — collectively targeting 3x+ the SKILL.md line count. See `progressive-disclosure.md` for the "Thorough is Key" principle and `DATA_SOURCE_SKILL_TEMPLATE.md` for density guidelines.
+
+Don't include in any resource type:
+- Files that duplicate content already in SKILL.md
+- Files with no clear consumer (who will read this and when?)

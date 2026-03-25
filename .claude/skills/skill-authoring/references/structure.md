@@ -518,9 +518,9 @@ To filter a DataFrame, use the filter method with a column expression
 that specifies the condition you want to match against the data.
 ```
 
-### Be Concise
+### Be Concise (in SKILL.md)
 
-Every line should justify its token cost.
+Every line in SKILL.md should justify its token cost. Reference files have different economics — see `progressive-disclosure.md` for guidance on thorough reference file authoring.
 
 ```markdown
 # Good
