@@ -92,13 +92,14 @@ A full start-to-finish project, from potentially vague idea to report, and any f
 
 ### Engagement Modes
 
-DAAF supports six engagement modes, each tailored to a different type of request:
+DAAF supports seven engagement modes, each tailored to a different type of request:
 
 | Mode | What It Does | Key Output |
 |------|-------------|------------|
 | **Data Ingest** | Profile a new dataset and create a reusable data source skill | SKILL.md + Research project |
 | **Data Lookup** | Quick lookup of a variable, coded value, or definition | Direct answer |
 | **Data Discovery** | Read-only data exploration — no code, no downloads | Findings summary |
+| **Ad Hoc Collaboration** | Flexible working session — debug, review code, brainstorm approaches, write scripts | Conversation + workspace artifacts |
 | **Full Pipeline** | End-to-end research analysis with 4 human checkpoints | Plan + Scripts + Notebook + Report |
 | **Revision and Extension** | Update or extend an existing analysis (new version, original preserved) | Updated artifacts |
 | **Reproducibility Verification** | Verify that an existing analysis reproduces from its notebook | Reproduction Report |
