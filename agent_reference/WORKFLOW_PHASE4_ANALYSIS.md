@@ -9,7 +9,7 @@ Stages 7, 8, 9, 10. Cross-phase orchestration guidance (invocation templates, QA
 ## Stage 7: EDA & Transformation
 
 **Executor:** Subagent (general-purpose) - ITERATIVE INVOCATION REQUIRED
-**Skills:** `data-scientist`, `polars`
+**Skills:** `data-scientist`, `polars`, `geopandas` (if spatial data)
 **Purpose:** Explore data and create analysis dataset through step-by-step validated transformations
 
 **CRITICAL:** This stage is executed in MULTIPLE subagent calls, NOT a single invocation. Follow the Iteration Protocol.
@@ -448,7 +448,7 @@ MANDATORY EXECUTION PATTERN:
 ## Stage 8: Analysis & Visualization
 
 **Executor:** Subagent (general-purpose) — ITERATIVE INVOCATION REQUIRED
-**Skills:** `data-scientist`, `polars` (Stage 8.1), `plotnine`, `plotly` (Stage 8.2)
+**Skills:** `data-scientist`, `polars`, modeling library per Plan (`statsmodels` / `pyfixest` / `linearmodels` / `geopandas` / `scikit-learn`), (Stage 8.1), `plotnine`, `plotly`, `geopandas` (if map viz) (Stage 8.2)
 **Purpose:** Conduct final statistical analyses on the analysis dataset AND generate visualizations specified in Plan
 
 ### Execution Pattern
@@ -487,7 +487,7 @@ Stage 8.2.x: Visualization (one script per visualization task)
 **Purpose:** Run statistical analyses (regression, hypothesis tests, model fitting)
 **Stage:** 8.1 (Statistical Analysis)
 **Subagent:** general-purpose
-**Skills:** `data-scientist`, `polars`
+**Skills:** `data-scientist`, `polars`, modeling library per Plan (`statsmodels` / `pyfixest` / `linearmodels` / `geopandas` / `scikit-learn`)
 
 ```python
 # ITERATIVE INVOCATION PATTERN (Required for Stage 8.1)
@@ -499,6 +499,7 @@ Agent({
 All relative paths in referenced files resolve from BASE_DIR.
 
 Call the skill tool with name 'polars'.
+Call the skill tool with name '{modeling_library}' (one of: statsmodels, pyfixest, linearmodels, geopandas, scikit-learn -- as specified in the <skill> element of Plan_Tasks.md for this task). For spatial regression tasks, geopandas IS the modeling library (via PySAL/spreg).
 
 **IMPORTANT:** This is script-based execution, NOT marimo. Write analysis to script files following `{BASE_DIR}/agent_reference/SCRIPT_EXECUTION_REFERENCE.md`.
 
@@ -697,6 +698,48 @@ Return the plotting code and confirm files are saved.""",
 })
 ```
 
+#### Invocation Template: geopandas (Map Visualization)
+
+**Purpose:** Choropleth maps, spatial plots, dot-density maps
+**Stage:** 8.2 (Map Visualization)
+**Subagent:** general-purpose
+**Skills:** `data-scientist`, `geopandas`
+
+```python
+Agent({
+    description: "[3-5 word summary]",
+    subagent_type: "research-executor",
+    prompt: """**BASE_DIR:** {BASE_DIR}
+All relative paths in referenced files resolve from BASE_DIR.
+
+## SKILL LOADING
+Call the skill tool with name 'geopandas'.
+
+## CONTEXT FROM PLAN
+[Paste relevant Plan.md methodology sections and Plan_Tasks.md task blocks]
+
+Research Question: {research_question}
+Current Stage: 8.2
+
+## TASK
+**Script Target:** {BASE_DIR}/research/{project_folder}/scripts/stage8_analysis/{step:02d}_{task-name}.py
+**Map Type:** {map_type} (e.g., choropleth, dot-density, proportional symbol, bivariate)
+**Geographic Unit:** {geographic_unit} (e.g., county, state, school district, tract)
+**Variable(s) to Map:** {variables}
+**Classification Scheme:** {scheme} (e.g., quantiles, natural breaks, equal interval)
+**Output:** {BASE_DIR}/research/{project_folder}/output/figures/{date}_{description}.png
+**Input Data:** {input_data_path}
+**Shapefile/Geometry Source:** {geometry_source}
+
+## EXECUTION
+Follow the file-first execution protocol:
+1. Write script to target path
+2. Execute via: bash {BASE_DIR}/scripts/run_with_capture.sh {script_path}
+3. Verify output file exists and is non-zero size
+"""
+})
+```
+
 #### QA Follow-Up for Stage 8.2 (MANDATORY)
 
 **After research-executor completes each Stage 8.2 visualization script, orchestrator MUST invoke code-reviewer.**
@@ -815,6 +858,7 @@ Agent({
 All relative paths in referenced files resolve from BASE_DIR.
 
 Call the skill tool with name 'polars'.
+If this task involves spatial operations (spatial join, point-in-polygon, buffer, geocoding, or working with geometry columns): also call the skill tool with name 'geopandas'.
 
 **DATA LOCATION:** data/processed/{filename}
 

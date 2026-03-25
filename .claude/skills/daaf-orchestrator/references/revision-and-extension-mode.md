@@ -96,6 +96,8 @@ Version suffixes follow the convention defined in `CLAUDE.md` > "Version Control
 - New versions of BOTH Plan.md AND Plan_Tasks.md document the revision rationale and what changed
 - Version suffix applies consistently to both files (e.g., both get `_a` suffix)
 
+**Skill element update:** When a Methodology Change revision changes the statistical approach (e.g., OLS to fixed effects, or adding spatial analysis), update the `<skill>` element in the relevant Plan_Tasks.md task blocks to reflect the new modeling library. Consult the `data-scientist` skill's routing tree or full-pipeline.md's "Modeling library selection" section for the canonical routing.
+
 ## Re-run Guidance
 
 | Situation | Stage(s) to Re-run | Mode |
@@ -294,6 +296,6 @@ Note that the **original project** (not the reproduction project) is the target 
 | Condition | Escalate To | Action |
 |-----------|-------------|--------|
 | Revision scope expands to require new data sources or fundamentally different methodology | Full Pipeline | Propose starting a new Full Pipeline analysis, referencing the existing project for context |
-| Revision requires a data source with no existing skill | Data Ingest | Propose ingesting the data source first, then returning to the revision |
+| Revision requires a data source with no existing skill | Data Onboarding | Propose onboarding the data source first, then returning to the revision |
 
 When escalation is appropriate, propose explicitly and await user confirmation before proceeding.

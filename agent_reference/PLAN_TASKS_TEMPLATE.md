@@ -157,3 +157,86 @@ total_waves: 0                        # Total wave count (populated by data-plan
   </verify>
   <done>CP3 PASSED (join validation), file saved</done>
 </task>
+
+### Wave 4: Analysis & Visualization (depends on Wave 3)
+
+### Task 4.1: regression-poverty [Stage 8.1]
+
+<task name="regression-poverty" type="auto" wave="4">
+  <depends_on>join-ccd-meps</depends_on>
+  <skill>data-scientist, pyfixest</skill>
+  <agent>research-executor</agent>
+  <files>
+    <input>data/processed/YYYY-MM-DD_analysis.parquet</input>
+    <output>output/analysis/YYYY-MM-DD_regression_results.parquet</output>
+  </files>
+  <action>
+    1. Load skills (polars + modeling library specified above)
+    2. Load analysis dataset
+    3. Specify model: {model_type} with DV={dependent_var}, IV={independent_vars}, controls={control_vars}
+    4. Check assumptions: {assumptions_to_verify}
+    5. Estimate model, extract coefficients and SEs
+    6. Run robustness checks: {robustness_specifications}
+    7. Save results to output/analysis/
+    8. Run CP4 validation
+  </action>
+  <verify>
+    - Output file exists and is non-zero
+    - Sample sizes documented
+    - Model assumptions validated (no convergence warnings)
+    - Effect sizes are substantively reasonable
+  </verify>
+  <done>CP4 PASSED (analysis), file saved</done>
+</task>
+
+### Task 4.1b: subgroup-poverty-profile [Stage 8.1 — Descriptive]
+
+<task name="subgroup-poverty-profile" type="auto" wave="4">
+  <depends_on>join-ccd-meps</depends_on>
+  <skill>data-scientist, polars</skill>
+  <agent>research-executor</agent>
+  <files>
+    <input>data/processed/YYYY-MM-DD_analysis.parquet</input>
+    <output>output/analysis/YYYY-MM-DD_subgroup_profile.parquet</output>
+  </files>
+  <action>
+    1. Load polars skill
+    2. Load analysis dataset
+    3. Compute summary statistics (mean, median, SD, IQR, N) by {subgroup_variable}
+    4. Compute distributional measures (percentile ratios, Gini if applicable)
+    5. Test for group differences ({test_type}: t-test, Mann-Whitney, chi-square)
+    6. Save results table to output/analysis/
+    7. Run CP4 validation
+  </action>
+  <verify>
+    - Output file exists and is non-zero
+    - All subgroups have sufficient N (>= minimum threshold)
+    - Summary statistics are substantively reasonable
+  </verify>
+  <done>CP4 PASSED (descriptive analysis), file saved</done>
+</task>
+
+### Task 4.2: plot-poverty-distribution [Stage 8.2]
+
+<task name="plot-poverty-distribution" type="auto" wave="4">
+  <depends_on>join-ccd-meps</depends_on>
+  <skill>plotnine</skill>
+  <agent>research-executor</agent>
+  <files>
+    <input>data/processed/YYYY-MM-DD_analysis.parquet</input>
+    <output>output/figures/YYYY-MM-DD_poverty_distribution.png</output>
+  </files>
+  <action>
+    1. Load skills (plotnine or plotly or geopandas for maps)
+    2. Load analysis dataset
+    3. Create {chart_type} showing {variables}
+    4. Apply styling: {title}, {axes}, {facets}, colorblind-safe palette
+    5. Export at {dpi} DPI to output/figures/
+    6. Verify file exists and is non-zero
+  </action>
+  <verify>
+    - File exists
+    - File size > 0
+  </verify>
+  <done>CP4 PASSED (visualization), figure saved</done>
+</task>

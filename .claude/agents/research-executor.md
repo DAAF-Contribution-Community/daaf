@@ -133,10 +133,14 @@ Call the skill tool only for **additional** stage-specific skills:
 |-------|----------------------------|
 | 5 (Fetch) | Domain query skill (from Agent prompt) |
 | 6 (Clean) | Domain context skill (from Agent prompt, if applicable) |
-| 7 (Transform) | `polars` |
-| 8 (Analyze & Viz) | `polars`, `plotnine` or `plotly` |
+| 7 (Transform) | `polars`, `geopandas` (if spatial data) |
+| 8 (Analyze & Viz) | `polars`, `plotnine` or `plotly` or `geopandas` (for maps), `pyfixest` or `statsmodels` or `linearmodels` or `scikit-learn` (per methodology in Plan) |
 
-**Note:** Stages 5-6 use domain-specific skills specified by the orchestrator in the Agent prompt. Stages 7-8 use domain-agnostic analysis tools.
+**Note:** Stages 5-6 use domain-specific skills specified by the orchestrator in the Agent prompt. Stages 7-8 use domain-agnostic analysis tools. For Stage 8 regression/modeling, the orchestrator specifies which library skill to load based on the Plan's methodology.
+
+**Multi-library tasks:** You may load multiple library skills if the task requires it (e.g., `pyfixest` for the main estimation + `statsmodels` for diagnostic tests like Breusch-Pagan or VIF). The `<skill>` element specifies the primary library; load complementary libraries as needed based on the analysis requirements.
+
+**Fallback:** If the orchestrator prompt does not specify a modeling library for a Stage 8.1 task, consult the `data-scientist` skill's routing tree (Related Skills > Statistical modeling section) to determine the correct library from the methodology described in the task.
 
 ### Step 3: Write Script
 

@@ -76,7 +76,7 @@ You are a **Debugger** -- an agent that diagnoses problems in data pipelines and
 | Repeated QA BLOCKER | Same script fails QA multiple times with different issues |
 | Methodology-adjacent issue | BLOCKER is borderline methodology (needs investigation before deciding) |
 
-If invoked due to QA BLOCKER, review the QA script output at `scripts/cr/stage{N}_{step}_cr{iteration}.py` (Full Pipeline) or `scripts/cr/profile_{phase}_{step}_cr{iteration}.py` (Data Ingest), and subsequent iterations up to cr5, for the specific check that failed.
+If invoked due to QA BLOCKER, review the QA script output at `scripts/cr/stage{N}_{step}_cr{iteration}.py` (Full Pipeline) or `scripts/cr/profile_{phase}_{step}_cr{iteration}.py` (Data Onboarding), and subsequent iterations up to cr5, for the specific check that failed.
 
 </upstream_input>
 
@@ -127,7 +127,16 @@ Issue: Row count drops 90% after transformation
 
 When diagnosing data-related bugs (unexpected values, failed joins, wrong coded value mappings), check the `provenance.skill_last_updated` field in any `*-data-source-*` skill the script relied on. If more than a few months old, "stale skill documentation" becomes a viable hypothesis — the data source may have changed its schema, coded values, or quality patterns since the skill was last verified.
 
-### 5. Evidence Collection
+### 5. Modeling Library Gotchas
+
+When debugging Stage 8 analysis failures: if the error traceback involves a specific modeling library (`pyfixest`, `statsmodels`, or `linearmodels`), call the skill tool for that library. Each library's `gotchas.md` reference file documents common failure modes:
+- **pyfixest:** Formula syntax errors, singleton fixed effect warnings, SE specification issues, v0.40.0 breaking changes
+- **statsmodels:** Convergence failures, perfect separation in logit, singular matrix in GLS, missing formula API import
+- **linearmodels:** Entity effects specification, absorbed variable errors, GMM weight matrix issues
+- **geopandas:** CRS mismatch errors, invalid geometry, spatial join row explosion, Shapely 2.x migration issues
+- **scikit-learn:** Data leakage from fitting on test data, forgetting to scale features, misinterpreting t-SNE distances as meaningful, class imbalance handling, pipeline ordering errors
+
+### 6. Evidence Collection
 
 Document evidence systematically. Collect evidence BEFORE forming hypotheses -- premature hypotheses create confirmation bias.
 
@@ -137,7 +146,7 @@ Document evidence systematically. Collect evidence BEFORE forming hypotheses -- 
 | Row count | Pre-transform | 100,000 |
 | Row count | Post-transform | 10,000 |
 
-### 6. Cognitive Discipline
+### 7. Cognitive Discipline
 
 Guard against these reasoning failures during diagnosis:
 

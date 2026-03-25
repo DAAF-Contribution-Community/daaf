@@ -96,7 +96,7 @@ cp {BASE_DIR}/scripts/run_with_capture.sh {PROJECT_DIR}/scripts/run_with_capture
 
 **Rationale:** In this mode, the orchestrator frequently responds directly to the user -- advising on methodology, discussing approaches, explaining concepts -- and needs the `data-scientist` skill's methodology knowledge to provide rigorous advice without dispatching a subagent for every question.
 
-Additional domain skills (e.g., `education-data-source-ccd`, `polars`, `plotnine`) are loaded by subagents when dispatched, following the standard pattern. However, if the user asks a question about a specific tool or package and the orchestrator can answer it directly by loading the relevant skill, this is permitted.
+Additional domain skills (e.g., `education-data-source-ccd`, `polars`, `plotnine`, `statsmodels`, `pyfixest`, `linearmodels`, `geopandas`, `scikit-learn`) are loaded by subagents when dispatched, following the standard pattern. However, if the user asks a question about a specific tool or package and the orchestrator can answer it directly by loading the relevant skill, this is permitted.
 
 ---
 
@@ -109,7 +109,7 @@ The orchestrator identifies what the user needs and responds accordingly. This i
 The orchestrator responds directly (without dispatching a subagent) when:
 
 - The user asks about methodology, statistical approaches, or research design
-- The user asks about a package or tool that the orchestrator can answer from a loaded skill (e.g., `polars`, `plotnine`, `marimo`)
+- The user asks about a package or tool that the orchestrator can answer from a loaded skill (e.g., `polars`, `plotnine`, `marimo`, `statsmodels`, `pyfixest`, `linearmodels`, `geopandas`, `scikit-learn`, `science-communication`)
 - The user asks a conceptual question about data or analysis
 - The user wants to brainstorm or think through an approach
 - The question can be answered adequately from the orchestrator's loaded skills and general knowledge
@@ -128,7 +128,7 @@ The orchestrator dispatches to a specialized agent when:
 
 | User Need | `subagent_type` | Notes |
 |-----------|----------------|-------|
-| Write or run analysis code | `research-executor` | Orchestrator frames the user's request as a `<task>` block |
+| Write or run analysis code | `research-executor` | Orchestrator frames the user's request as a `<task>` block. When the task involves statistical modeling, use the `data-scientist` skill's routing tree (Related Skills > Statistical modeling section) to select the library: `statsmodels` for standard regression/GLM/diagnostics, `pyfixest` for fixed effects/DiD/IV, `linearmodels` for random effects/IV-GMM/SUR, `geopandas` for spatial regression. Include the selected library in the task block. |
 | Debug a script or diagnose an error | `debugger` | User provides script path + error description |
 | Review code for correctness and methodology | `code-reviewer` | User provides script; orchestrator provides methodology context |
 | Deep investigation of a data source | `source-researcher` | Standard multi-mode agent; already works in Data Lookup and Data Discovery |
@@ -365,7 +365,7 @@ These boundaries supplement the universal safety boundaries in `CLAUDE.md`. See 
 |-----------|-------------|--------|
 | User requests formal deliverables (Plan + Notebook + Report) | Full Pipeline | Propose escalation; workspace artifacts carry forward |
 | User wants systematic data exploration across multiple sources | Data Discovery | Propose escalation; ad hoc findings inform discovery |
-| User has raw data file that needs profiling and a new skill | Data Ingest | Propose escalation |
+| User has raw data file that needs profiling and a new skill | Data Onboarding | Propose escalation |
 | Session has naturally produced a research plan | Full Pipeline | Suggest: "This is shaping up to be a full analysis -- want me to formalize it?" |
 | Debugging reveals an existing analysis needs revision | Revision and Extension | Propose escalation to modify the original project |
 | User wants to verify an existing analysis reproduces | Reproducibility Verification | Propose escalation |

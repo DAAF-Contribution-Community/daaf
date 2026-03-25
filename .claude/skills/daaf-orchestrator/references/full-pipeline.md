@@ -75,7 +75,7 @@ See `agent_reference/WORKFLOW_PHASE1_DISCOVERY.md` > "Pre-Flight Checklist (Full
 | 5 | 3 | Data Retrieval | Domain query skill (e.g., `education-data-query`) | general-purpose |
 | 6 | 3 | Context Application | Domain context skill (e.g., `education-data-context`) | general-purpose |
 | 7 | 4 | EDA & Transformation | `data-scientist`, `polars` | general-purpose |
-| 8 | 4 | Analysis & Visualization | `data-scientist`, `polars`, `plotnine`, `plotly` | general-purpose |
+| 8 | 4 | Analysis & Visualization | `data-scientist`, `polars`, modeling library (`statsmodels`/`pyfixest`/`linearmodels` per Plan), `plotnine`/`plotly`, `geopandas` (if spatial) | general-purpose |
 | 9 | 4 | Notebook Assembly | `marimo` | general-purpose |
 | 10 | 4 | QA Aggregation | — (orchestrator) | — |
 | 11 | 5 | Report Generation | `report-writer` agent | general-purpose |
@@ -207,10 +207,12 @@ The Full Pipeline workflow consists of **5 Phases** and **12 Stages**.
 │      ├─ [Per-script QA loop — see Composite Execution Pattern below]        │
 │      └─ Gate G7: All CP3 PASSED, all QA3 PASSED/WARNING                     │
 │                          ↓                                                  │
-│  Stage 8: Analysis & Visualization                                          │
+│  Stage 8: Analysis & Visualization ←── modeling + viz skills                │
 │      ├─ 8.1: Run statistical analyses (save to output/analysis/)            │
+│      │   ├─ Load modeling skill per Plan: statsmodels/pyfixest/linearmodels │
 │      │   └─ [Per-script QA loop (QA4a) — see Composite Execution Pattern]   │
 │      ├─ 8.2: Generate exploratory and final plots (save to output/figures/) │
+│      │   ├─ Load viz skill: plotnine/plotly, or geopandas for maps          │
 │      │   └─ [Per-script QA loop (QA4b) — see Composite Execution Pattern]   │
 │      └─ Gate G8: Analyses + viz complete, QA4a AND QA4b PASSED/WARNING      │
 │                          ↓                                                  │
@@ -438,13 +440,14 @@ These operations may be executed without preview:
 | **5-QA** | `data-scientist` | general-purpose | `code-reviewer` agent (after each Stage 5 script) |
 | 6 | `data-scientist`, domain context skill | general-purpose | Subagent invokes skill |
 | **6-QA** | `data-scientist` | general-purpose | `code-reviewer` agent (after each Stage 6 script) |
-| 7 | `data-scientist`, `polars` | general-purpose | Subagent invokes skills |
+| 7 | `data-scientist`, `polars`, `geopandas` (if spatial data) | general-purpose | Subagent invokes skills |
 | **7-QA** | `data-scientist` | general-purpose | `code-reviewer` agent (after each Stage 7 script) |
-| 8 | `data-scientist`, `polars`, `plotnine`, `plotly` | general-purpose | Subagent invokes skill |
+| 8.1 | `data-scientist`, `polars`, modeling library per Plan (`statsmodels` / `pyfixest` / `linearmodels` / `scikit-learn` / `geopandas`), `geopandas` (if spatial) | general-purpose | Subagent invokes skills |
+| 8.2 | `data-scientist`, `plotnine` or `plotly`, `geopandas` (if map visualization) | general-purpose | Subagent invokes skills |
 | **8-QA** | `data-scientist` | general-purpose | `code-reviewer` agent (after each Stage 8 script) |
 | 9 | `marimo` | general-purpose | `notebook-assembler` agent (COMPILES scripts — NO new code, NO dashboards) |
 | 10 | — | — | Orchestrator aggregates QA findings (no subagent) |
-| 11 | `data-scientist` | general-purpose | `report-writer` agent |
+| 11 | `data-scientist`, `science-communication` (if non-technical audience) | general-purpose | `report-writer` agent |
 | 12 | `data-scientist` | Plan | `data-verifier` agent |
 
 **Notes:**
@@ -459,7 +462,18 @@ These operations may be executed without preview:
 
 **Note:** Stages 2, 3, 5, and 6 use domain-specific skills resolved by the orchestrator based on the active domain configuration in Plan.md.
 
-**Skill loading mechanism:** All named agents preload `data-scientist` via frontmatter (full content injected at startup). The orchestrator's Agent prompts should only include `Call the skill tool` instructions for **additional** skills (domain skills, `polars`, `plotnine`, `plotly`). Stages 2 and 3 use unnamed `Plan` subagents — these DO require explicit skill tool calls since they have no frontmatter.
+**Skill loading mechanism:** All named agents preload `data-scientist` via frontmatter (full content injected at startup). The orchestrator's Agent prompts should only include `Call the skill tool` instructions for **additional** skills (domain skills, `polars`, `plotnine`, `plotly`, `statsmodels`, `pyfixest`, `linearmodels`, `scikit-learn`, `geopandas`, `science-communication`). Stages 2 and 3 use unnamed `Plan` subagents — these DO require explicit skill tool calls since they have no frontmatter.
+
+**Modeling library selection for Stage 8.1:** The Plan_Tasks.md `<skill>` element specifies which modeling library to load. The orchestrator passes this to the research-executor. The `data-scientist` skill's routing tree provides the canonical decision logic:
+- Standard regression (OLS, GLM, logit/probit) → `statsmodels`
+- Fixed effects, IV with FE, or DiD → `pyfixest`
+- Random effects, between estimation, Fama-MacBeth, IV-GMM, SUR/3SLS → `linearmodels`
+- Spatial analysis → `geopandas`
+- Unsupervised analysis (clustering, PCA, dimensionality reduction) → `scikit-learn`
+
+**Parsing the `<skill>` element:** When constructing the Stage 8.1 Agent prompt, extract the modeling library from the Plan_Tasks.md task block's `<skill>` element. The format is `<skill>data-scientist, {library}</skill>` — the second comma-separated value is the modeling library to substitute for `{modeling_library}` in the invocation template. For unsupervised analysis tasks, the library may be `scikit-learn`.
+
+**Audience type for Stage 11:** The Plan.md "Target Audience" field determines whether the report-writer loads `science-communication`. When constructing the Stage 11 Agent prompt, include `**TARGET AUDIENCE:** {audience}` from the Plan. If the audience is non-technical (policy, executive, public, media), add: "Call the skill tool with name 'science-communication'."
 
 ---
 
@@ -546,7 +560,8 @@ See the "Task Types" section below for the complete taxonomy, behavioral descrip
 - [ ] Significance thresholds or interpretation guidelines provided
 - [ ] Research Outcome contribution stated
 - [ ] Risk Register items included
-- [ ] Skill(s) to load specified
+- [ ] Modeling library skill specified (`statsmodels` / `pyfixest` / `linearmodels` per Plan methodology; see "Modeling library selection" above)
+- [ ] If spatial analysis: `geopandas` skill specified
 - [ ] Script follows IAT documentation standards
 
 **Stage 8.2 (Visualization) Checklist:**
@@ -560,7 +575,7 @@ See the "Task Types" section below for the complete taxonomy, behavioral descrip
 - [ ] Accessibility considerations noted (colorblind-safe palette, etc.)
 - [ ] Research Outcome contribution stated
 - [ ] Risk Register items included
-- [ ] Skill(s) to load specified
+- [ ] Visualization skill specified (`plotnine` for static, `plotly` for interactive, `geopandas` for maps/choropleths)
 - [ ] Script follows IAT documentation standards
 
 **Revision Request Checklist (when re-invoking research-executor after QA BLOCKER):**
@@ -979,7 +994,7 @@ All relative paths in referenced files resolve from BASE_DIR.
 ## SKILL LOADING
 [Only include skill tool calls for skills NOT preloaded via agent frontmatter.
 Named agents already have `data-scientist` injected at startup — do not re-load it.
-Call the skill tool only for additional skills like polars, plotnine, plotly, or domain skills.]
+Call the skill tool only for additional skills like polars, plotnine, plotly, statsmodels, pyfixest, linearmodels, geopandas, scikit-learn, science-communication, or domain skills.]
 
 ## CONTEXT FROM PLAN
 [Paste relevant Plan.md methodology sections and Plan_Tasks.md task blocks - Context Completeness Checklist always takes priority over brevity]
@@ -1627,7 +1642,7 @@ When interpreting data values and resolving discrepancies between sources, apply
 - When codebook contradicts observed data → trust the data, but investigate (codebook may describe a different year)
 - When skill docs contradict codebook → trust the codebook, update skill docs
 - For education domain: Codebook URLs are cataloged in `datasets-reference.md` (codebook column); use `get_codebook_url()` in `fetch-patterns.md` to construct download URLs. Other domains will use analogous structures in their domain query skill.
-- See also: `.claude/agents/data-ingest.md` Data Primacy table for the same hierarchy applied during data ingest
+- See also: `.claude/agents/data-ingest.md` Data Primacy table for the same hierarchy applied during data onboarding
 
 ### Validation Checkpoints
 
