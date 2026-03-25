@@ -129,6 +129,19 @@ All profiling code follows the mandatory file-first pattern:
 
 Read `agent_reference/SCRIPT_EXECUTION_REFERENCE.md` before writing any scripts.
 
+### 4a. Execution Log Verbosity vs. Return Verbosity
+
+**These are two different outputs with different constraints:**
+
+| Output | Destination | Constraint | Purpose |
+|--------|-------------|------------|---------|
+| **Execution log** (stdout from script) | Appended to script file on disk | **No size limit** — the log is an archival artifact | Primary source material for DI-7 skill authoring |
+| **Subagent return** (your response to orchestrator) | Orchestrator context window | **2500-word hard cap** | Signal for orchestrator decision-making and STATE.md |
+
+**Scripts should print comprehensive, complete results to stdout.** For datasets under 100 columns, print EVERY column's full profile. The execution log costs nothing in context — it lives on disk. The DI-7 skill authoring subagent reads these logs as its primary source for building reference files. Thin execution logs produce thin skills.
+
+**Your return to the orchestrator summarizes the key findings** within the 2500-word cap. The orchestrator does not need per-column detail — it needs status, key observations, confidence, and issues.
+
 ### 5. Part-Scoped Execution
 
 When invoked, you execute ONLY the profiling part specified in `profiling_part`:
@@ -173,7 +186,13 @@ When invoked, check the `profiling_part` parameter and execute the corresponding
    - Value distributions for categoricals (top 20)
    - Determine conditional script decisions for Parts B-D based on findings
 
-**Part A Output:** Return structured findings including schema, column types, data characteristics, and conditional script recommendations (which Part B-D scripts should run).
+**Part A Script Print Requirements (execution log — no size limit):**
+- Script 03 MUST print a complete per-column stats table for ALL columns (type, null count, null rate, unique count, min, max, mean for numerics, top values for categoricals)
+- Script 03 MUST print the full value distribution for every categorical column with <50 unique values
+- Script 03 MUST print coded value indicators (columns with negative values, sentinel values like 999/9999)
+- For datasets under 100 columns, print EVERY column's profile — no abbreviation
+
+**Part A Output (return to orchestrator — 2500-word cap):** Summarize schema, column type distribution, key observations, and conditional script recommendations. The execution logs contain the complete detail.
 
 ### Part B: Statistical Deep Dive (Scripts 04-06)
 
@@ -191,7 +210,12 @@ When invoked, check the `profiling_part` parameter and execute the corresponding
 3. **Script 06: entity-coverage.py** (CONDITIONAL -- only if geographic/entity ID column identified) -- Write to `{project_script_dir}/profile_statistical/06_entity-coverage.py`
    - Coverage vs known universe, identifier format validation, geographic anomalies
 
-**Part B Output:** Return statistical findings, temporal analysis (if run), entity coverage (if run).
+**Part B Script Print Requirements (execution log — no size limit):**
+- Script 04 MUST print distribution classification, outlier counts, and multimodality flags for EVERY numeric column
+- Script 05 (if run) MUST print the complete temporal coverage table with record counts per time period
+- Script 06 (if run) MUST print full entity coverage results including coverage rate vs. known universe
+
+**Part B Output (return to orchestrator — 2500-word cap):** Summarize distribution patterns, notable outliers, temporal/entity coverage highlights. The execution logs contain the complete detail.
 
 ### Part C: Relational Analysis (Scripts 07-09)
 
@@ -209,7 +233,12 @@ When invoked, check the `profiling_part` parameter and execute the corresponding
 3. **Script 09: quality-anomaly.py** (ALWAYS) -- Write to `{project_script_dir}/profile_relational/09_quality-anomaly.py`
    - Coded missing value scan, duplicate detection, consistency rules, anomaly catalog
 
-**Part C Output:** Return key candidates, dependencies, correlations (if run), anomaly catalog.
+**Part C Script Print Requirements (execution log — no size limit):**
+- Script 07 MUST print uniqueness stats for ALL candidate key columns and composite key combinations tested
+- Script 09 MUST print the COMPLETE coded value scan results: every sentinel value found, in which columns, with counts
+- Script 09 MUST print the full anomaly catalog with severity classifications
+
+**Part C Output (return to orchestrator — 2500-word cap):** Summarize recommended keys, dependency highlights, top anomalies. The execution logs contain the complete detail.
 
 ### Part D: Interpretation & Reconciliation (Scripts 10-11)
 
@@ -226,7 +255,12 @@ When invoked, check the `profiling_part` parameter and execute the corresponding
    - Verify all documentation claims against data
    - Structured discrepancy report (BLOCKER/WARNING/INFO)
 
-**Part D Output:** Return interpretations (all `[PRELIMINARY]`), discrepancies (if docs provided).
+**Part D Script Print Requirements (execution log — no size limit):**
+- Script 10 MUST print a complete data dictionary draft with an interpretation row for EVERY column (not just highlights)
+- Script 10 MUST print semantic family groupings (identifiers, outcomes, demographics, etc.) covering all columns
+- Script 11 (if run) MUST print the COMPLETE discrepancy report: every doc claim checked, with observed vs documented values
+
+**Part D Output (return to orchestrator — 2500-word cap):** Summarize interpretation count, confidence distribution, key discrepancies. Include the full interpretation table for ALL columns (this is critical for PSU-DI2 user review). The execution logs contain additional detail.
 
 ### Decision Points
 
@@ -242,7 +276,7 @@ When invoked, check the `profiling_part` parameter and execute the corresponding
 
 ## Output Format
 
-Return part-specific findings in this structure (max 1000 words):
+Return part-specific findings in this structure (max 2500 words):
 
 ### Part Summary
 **Status:** [COMPLETE | COMPLETE_WITH_WARNINGS | BLOCKED]
@@ -329,7 +363,7 @@ Categories: Access | Data | Method | Perf | Process
 - Include complete discrepancy report with evidence
 - Archive all profiling scripts in the project's scripts directory
 - Execute only the assigned profiling part
-- Return findings within the 1000-word output cap
+- Return findings within the 2500-word output cap
 - Include conditional script recommendations in Part A output
 
 ### Ask First Before
@@ -445,7 +479,7 @@ Awaiting guidance before proceeding.
 - Discrepancies are noted without evidence
 - Preliminary interpretations are not marked as `[PRELIMINARY]`
 - Conditional script decisions are not documented (Part A)
-- Output exceeds 1000-word cap
+- Output exceeds 2500-word cap
 
 ### Self-Check
 
@@ -459,7 +493,7 @@ Before returning output, verify:
 | 4 | Are ALL semantic interpretations marked `[PRELIMINARY]`? | Add markers to every interpretation |
 | 5 | Does the output include evidence for every discrepancy? | Add observed vs documented evidence |
 | 6 | Are conditional script recommendations included (Part A)? | Add recommendations with rationale |
-| 7 | Is the output within the 1000-word cap? | Compress; focus on findings, not prose |
+| 7 | Is the output within the 2500-word cap? | Compress findings tables; keep all columns represented but condense prose |
 | 8 | Are all scripts written to the correct part subdirectory? | Move scripts to correct paths |
 
 ---

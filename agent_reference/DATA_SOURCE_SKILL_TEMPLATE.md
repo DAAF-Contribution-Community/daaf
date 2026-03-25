@@ -198,7 +198,7 @@ When in doubt, re-run data-ingest to re-verify against fresh data.
 
 <!-- RULES:
   - MUST be a 3-column table: File | Purpose | When to Read
-  - Every skill should have at minimum: variable-definitions.md and data-quality.md
+  - Every skill should have at minimum: variable-definitions.md, data-quality.md, and analytical-context.md
   - File paths use backtick formatting
   - "When to Read" should be action-oriented (e.g., "Working with enrollment data")
 -->
@@ -444,17 +444,60 @@ df = fetch_from_mirrors(
 
 ## Size Guidelines
 
-**Line guidance:** Target 200-350 lines for SKILL.md. Skills over 500 lines should split content into reference files. This is a guideline, not a strict rule — clarity and completeness take priority over line count.
+**Line guidance:** Target 250-400 lines for SKILL.md. Skills over 500 lines should split content into reference files. This is a guideline, not a strict rule — clarity and completeness take priority over line count.
 
 | Metric | Target | Hard Limit |
 |--------|--------|------------|
-| Total SKILL.md lines | 200-350 | 500 |
+| Total SKILL.md lines | 250-400 | 500 |
 | Frontmatter description | 100-200 chars | 1024 chars |
 | Summary paragraph | 1-2 sentences | 3 sentences |
 | Decision trees | 2-4 trees | 6 trees |
 | Quick Reference subsections | 3-6 | 10 |
 | Common Pitfalls rows | 3-8 | 12 |
 | Topic Index rows | 10-30 | 50 |
+
+### Reference File Density Guidelines
+
+Reference files are loaded on-demand (Level 3 progressive disclosure), meaning their token cost is only incurred when an agent actually needs that information. This makes them the ideal location for comprehensive, detailed documentation — the token budget pressure that applies to SKILL.md (which is loaded whenever the skill triggers) does NOT apply to reference files.
+
+**Principle: SKILL.md is the concise navigation hub; reference files are the comprehensive knowledge base.**
+
+| Metric | Target | Floor |
+|--------|--------|-------|
+| Total reference file lines | 3-6x SKILL.md lines | 2x SKILL.md lines |
+| columns.md lines per column | 3-5 lines | 2 lines |
+| coded-values.md | All coded values enumerated | Top values only is insufficient |
+| data-quality.md | All profiling anomalies cataloged | 150+ lines for complex sources |
+| variable-definitions.md | Semantic families with examples | 150+ lines |
+| Topic-specific files | 1 per major analytical domain | 0 (but encouraged) |
+
+**Benchmark:** The hand-authored education data source skills average ~2,200 lines of reference content across 5-8 files, with individual files averaging ~400 lines. Skills authored by the data-ingest pipeline should aim toward this benchmark.
+
+**Standard reference files for data source skills:**
+
+| File | Content | Required? |
+|------|---------|-----------|
+| `columns.md` | Full column definitions, types, null rates, value ranges | Yes |
+| `coded-values.md` | All coded/sentinel value mappings | Yes |
+| `data-quality.md` | Anomalies, suppression, quality observations | Yes |
+| `variable-definitions.md` | Semantic families, derived metrics, join guidance | Yes |
+| `analytical-context.md` | Study design, population coverage, valid/invalid analyses, limitations by research context, alternative sources | Yes |
+| Topic-specific files | Deep coverage of major analytical domains | When applicable |
+
+**What belongs in reference files (not SKILL.md):**
+- Complete column-by-column documentation
+- Full coded value enumeration tables
+- Methodology explanations and limitations for specific analytical domains
+- Worked examples showing valid vs. invalid analysis patterns
+- Historical context (schema changes across years, policy transitions)
+- Cross-source comparison guidance for related datasets
+- Study/survey design context that researchers need for proper interpretation
+
+**Content quality target:** Reference files should be approximately 40-60% interpretive/
+analytical guidance (why limitations exist, how they affect specific analyses, what
+alternatives exist, when comparisons are valid vs invalid) and 40-60% factual data
+description (code tables, column definitions, value enumerations). Avoid reference files
+that are purely factual data dumps — these are less useful than the raw data itself.
 
 ---
 
@@ -478,4 +521,7 @@ Use this checklist when reviewing a skill for template compliance:
 - [ ] Related Data Sources: 3-column table, includes explorer + query skills
 - [ ] Topic Index: 2-column table as final section
 - [ ] No content lost from original (spot-check source-specific sections)
-- [ ] Total lines under 500
+- [ ] Total SKILL.md lines under 500
+- [ ] Reference files collectively total >= 2x SKILL.md lines (3x+ preferred)
+- [ ] columns.md covers ALL columns, not just a subset
+- [ ] coded-values.md enumerates ALL coded/sentinel values

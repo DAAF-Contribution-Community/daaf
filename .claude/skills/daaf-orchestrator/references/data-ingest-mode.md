@@ -680,7 +680,7 @@ Read `agent_reference/SCRIPT_EXECUTION_REFERENCE.md` for the file-first protocol
 Scripts go to: scripts/profile_structural/
 Execute: bash {project_script_dir}/run_with_capture.sh {project_script_dir}/profile_structural/{script}.py
 
-**OUTPUT FORMAT (1000-word hard cap):**
+**OUTPUT FORMAT (2500-word hard cap):**
 ### Part A: Structural Discovery
 - CPP1 Status, Rows/Columns/Memory, type summary
 - Potential identifiers (>95% unique), categoricals (<50 unique)
@@ -742,7 +742,7 @@ Read `agent_reference/SCRIPT_EXECUTION_REFERENCE.md` for the file-first protocol
 Scripts go to: scripts/profile_statistical/
 Execute: bash {project_script_dir}/run_with_capture.sh {project_script_dir}/profile_statistical/{script}.py
 
-**OUTPUT FORMAT (1000-word hard cap):**
+**OUTPUT FORMAT (2500-word hard cap):**
 ### Part B: Statistical Deep Dive
 - CPP2 Status, distribution summary, outlier summary, multimodality
 - Temporal/entity coverage: [executed/skipped — key findings]
@@ -797,7 +797,7 @@ Read `agent_reference/SCRIPT_EXECUTION_REFERENCE.md` for the file-first protocol
 Scripts go to: scripts/profile_relational/
 Execute: bash {project_script_dir}/run_with_capture.sh {project_script_dir}/profile_relational/{script}.py
 
-**OUTPUT FORMAT (1000-word hard cap):**
+**OUTPUT FORMAT (2500-word hard cap):**
 ### Part C: Relational Analysis
 - CPP3 Status, recommended key, dependencies, high correlations
 - Coded missing values found, anomaly catalog counts, duplicate rows
@@ -853,11 +853,11 @@ Read `agent_reference/SCRIPT_EXECUTION_REFERENCE.md` for the file-first protocol
 Scripts go to: scripts/profile_interpretation/
 Execute: bash {project_script_dir}/run_with_capture.sh {project_script_dir}/profile_interpretation/{script}.py
 
-**OUTPUT FORMAT (1000-word hard cap):**
+**OUTPUT FORMAT (2500-word hard cap):**
 ### Part D: Interpretation & Reconciliation
 - CPP4 Status, interpretation count
 - Documentation reconciliation: [executed/skipped — discrepancy count]
-### Preliminary Interpretations (top 10)
+### Preliminary Interpretations (ALL columns)
 | Column | Interpretation | Confidence | Basis |
 ### Scripts Created
 ### Confidence Assessment
@@ -914,7 +914,7 @@ IAT compliance: Required per agent_reference/INLINE_AUDIT_TRAIL.md
 4. Execute QA scripts and synthesize findings
 5. Return QA report with severity classification
 
-**OUTPUT FORMAT (1000-word hard cap):**
+**OUTPUT FORMAT (2500-word hard cap):**
 ### QA Review: Part {X}
 **QAP{N} Status:** [PASSED | ISSUES_FOUND]
 **Severity:** [BLOCKER | WARNING | INFO | None]
@@ -997,8 +997,15 @@ Read the full STATE.md file. Key sections for skill authoring:
 - **Documentation Reconciliation Summary** — discrepancies between docs and data (if populated)
 - **Profiling Progress** — script paths for all executed profiling scripts
 
+**SOURCE DOCUMENTATION:** Before authoring, read any available documentation files referenced
+in STATE.md (codebook PDFs, README files, technical documentation, methodology papers).
+These are the source of methodological context, study design information, population coverage,
+and analytical limitations that cannot be derived from profiling scripts alone. Reference
+files must synthesize both profiling-derived observations AND documentation-derived context.
+If a documentation website URL is in STATE.md, fetch key pages for methodology context.
+
 **PROFILING SCRIPTS:** All executed scripts with execution logs are in `{project_dir}/scripts/`.
-Read these scripts as primary sources for skill content:
+Read these scripts as primary sources for data-level skill content:
 - Scripts 01-03 (structural) → schema, column details, data access patterns
 - Script 04 (distributions) → distribution notes, Common Pitfalls
 - Scripts 05-06 (temporal/entity) → coverage scope, Common Pitfalls (if executed)
@@ -1006,6 +1013,13 @@ Read these scripts as primary sources for skill content:
 - Scripts 08-09 (correlation/quality) → anomaly catalog, coded values, Common Pitfalls
 - Script 10 (interpretation) → Decision Trees, variable definitions
 - Script 11 (reconciliation) → data-quality, discrepancies (if executed)
+
+**BENCHMARK CALIBRATION:** Before writing reference files, read 1-2 reference files from an
+existing hand-authored data source skill to calibrate expected depth and density. Good
+examples: `education-data-source-ipeds/references/graduation-rates.md` (methodology +
+valid/invalid + alternatives) or `education-data-source-ccd/references/variable-definitions.md`
+(comprehensive per-variable documentation with semantic groupings). If these paths do not
+exist in the current environment, proceed using the density targets below as your guide.
 
 **TARGET SKILL:**
 - Name: {skill_name}
@@ -1024,7 +1038,76 @@ Part 1 — Skill Authoring:
    - coded-values.md — all coded/sentinel value mappings (from scripts 03, 09)
    - data-quality.md — data quality observations, anomalies, doc discrepancies (from scripts 09, 11)
    - variable-definitions.md — semantic column interpretations, user-confirmed (from script 10 + PSU-DI2)
+   - Additional topic-specific reference files as warranted by the data source (see guidance below)
 6. Save draft to {project_dir}/output/skill_draft/ and final to .claude/skills/{skill_name}/
+
+**REFERENCE FILE THOROUGHNESS GUIDANCE:**
+Reference files are the primary vehicle for encoding detailed knowledge. They are loaded
+on-demand (not at startup), so their token cost is incurred only when relevant. This means
+reference files should be COMPREHENSIVE — err on the side of more detail, not less.
+
+Density targets for reference files:
+- columns.md: Every column documented with type, null rate, unique count, value range,
+  and a semantic description. For datasets with <100 columns, include ALL columns.
+  Target: 3-5 lines per column minimum.
+- coded-values.md: Every coded/sentinel value fully enumerated. Include value-to-meaning
+  mappings for ALL categorical columns, not just the most important ones. Document
+  sentinel values (-1, -2, -3, 999, etc.) with their specific meanings per column if
+  they differ. Target: comprehensive enough that an analyst never needs to inspect raw data
+  to understand a code.
+- data-quality.md: Every anomaly from the profiling scripts cataloged with severity,
+  affected columns, row counts, and recommended handling. Include cross-column consistency
+  observations. Document suppression patterns, rounding conventions, and any data-vs-docs
+  discrepancies. Target: 150+ lines for complex sources.
+- variable-definitions.md: Group columns by semantic family (identifiers, outcomes,
+  demographics, etc.). Include derived metric recipes, naming convention patterns,
+  join key guidance with specific examples, and temporal/coverage notes. Target: 150+ lines.
+- analytical-context.md (REQUIRED for all skills): Methodology and research context that
+  cannot be derived from data profiling alone. This file synthesizes documentation,
+  codebooks, and domain knowledge. Required sections:
+  * **Study/Survey Design:** Who collected this data, under what mandate/methodology, and
+    why? (e.g., "mandated by Student Right-to-Know Act" or "linked IRS tax records to
+    Census data"). Draw from documentation files referenced in STATE.md.
+  * **Population Coverage:** Who is included AND excluded, and why? What are the
+    implications for generalizability?
+  * **Valid and Invalid Analyses:** Structured tables showing what analyses are appropriate
+    vs. problematic, with reasoning:
+    ### Valid Analyses
+    | Analysis | Why Valid |
+    |----------|----------|
+    | [specific analysis pattern] | [reasoning] |
+    ### Invalid or Problematic Analyses
+    | Analysis | Why Problematic |
+    |----------|-----------------|
+    | [specific analysis pattern] | [reasoning] |
+    Minimum: 3 valid and 3 invalid patterns.
+  * **Limitations by Research Context:** How do data limitations differentially affect
+    specific research designs? Provide 2-3 worked scenarios (e.g., "if studying gender
+    gaps within Black outcomes at high income levels, suppression substantially reduces
+    your sample" vs. "if studying overall racial mobility gaps using pooled gender,
+    suppression has minimal impact").
+  * **Alternative/Complementary Sources:** What other datasets address this source's gaps?
+    Include specific variable names and access guidance, not just source names.
+  Target: 200+ lines.
+- Additional topic-specific files: Create when ANY of these apply:
+  (a) The source has a major known limitation requiring >50 lines of explanation
+  (b) The source spans multiple survey components or analytical domains
+  (c) The source has significant historical changes affecting longitudinal use
+  (d) The source's data collection process is non-obvious and affects interpretation
+  (e) The source is commonly used alongside another specific source
+  Use the hand-authored education data source skills as benchmarks — they average
+  ~400 lines per reference file.
+
+Overall reference file target: Collectively, reference files should total at least 3x
+the SKILL.md line count. For a 300-line SKILL.md, aim for 900+ lines of reference
+files. The hand-authored education skills average ~2,200 lines of reference content.
+
+**Content quality target:** Reference files should be approximately 40-60% interpretive/
+analytical guidance (why limitations exist, how they affect specific analyses, what
+alternatives exist, when comparisons are valid vs invalid) and 40-60% factual data
+description (code tables, column definitions, value enumerations). Pure data description
+without analytical guidance produces reference files that are less useful than the
+raw data itself.
 
 Part 2 — CPP-SKILL Validation:
 7. Run CPP-SKILL validation (checklist below). ALL checks must pass.
@@ -1041,7 +1124,18 @@ Skill template compliance:
 - [ ] Common Pitfalls: 3-column table with >=3 rows
 - [ ] Total SKILL.md under 500 lines
 
-**OUTPUT FORMAT (1000-word hard cap):**
+Reference file density:
+- [ ] columns.md covers ALL columns (not just a subset)
+- [ ] coded-values.md enumerates ALL coded/sentinel values found during profiling
+- [ ] data-quality.md catalogs ALL anomalies from profiling scripts
+- [ ] variable-definitions.md groups columns by semantic family with descriptions
+- [ ] analytical-context.md exists with study design, population coverage, and valid/invalid analysis sections
+- [ ] analytical-context.md contains >= 3 valid and >= 3 invalid analysis patterns
+- [ ] Total reference file lines >= 3x SKILL.md lines (target; not a blocker if close)
+- [ ] Reference files contain ~40-60% interpretive/analytical content (not purely data description)
+- [ ] Additional topic-specific reference files created where source complexity warrants
+
+**OUTPUT FORMAT (2500-word hard cap):**
 ### Skill Authoring: {skill_name}
 - CPP-SKILL Status (template compliance), line count, reference files created""",
     subagent_type: "general-purpose"

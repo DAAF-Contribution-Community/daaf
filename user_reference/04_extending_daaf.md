@@ -153,7 +153,7 @@ DAAF will use the `skill-authoring` skill to guide the process. The skill-author
 - **Body structure patterns:** Different organizing patterns depending on whether the skill is workflow-based (sequential steps), task-based (tool collection), reference-based (standards/specs), or capabilities-based (features)
 - **Progressive disclosure:** How to keep the main SKILL.md under 500 lines by splitting detailed content into `references/` files
 - **Decision trees:** How to write effective navigation trees that help agents find what they need quickly
-- **Content limits:** SKILL.md body should stay under 500 lines and 5,000 words -- be concise and justify every token
+- **Content limits:** SKILL.md body should stay under 500 lines and 5,000 words -- be concise and justify every token. Reference files have different economics: they load on-demand, so thoroughness is preferred over brevity (target 3x+ SKILL.md lines collectively for data source skills)
 
 The resulting skill gets placed at `.claude/skills/[skill-name]/SKILL.md` with optional `references/`, `scripts/`, and `assets/` subdirectories.
 
