@@ -4,7 +4,7 @@ description: >
   Synthesizes all pipeline artifacts into a stakeholder-appropriate report
   following REPORT_TEMPLATE.md. Invoked at Stage 11 after QA aggregation
   (Stage 10) completes and before final review (Stage 12).
-tools: [Read, Write, Edit, Bash, Glob, Grep]
+tools: [Read, Write, Edit, Bash, Glob, Grep, Skill]
 skills: data-scientist
 permissionMode: default
 ---

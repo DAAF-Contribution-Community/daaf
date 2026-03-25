@@ -92,20 +92,16 @@ After mode confirmation, briefly orient the user. Key points:
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │ PHASE DI-3: SKILL AUTHORING & DELIVERY                                      │
 ├─────────────────────────────────────────────────────────────────────────────┤
-│  Stage DI-7: Skill Authoring & Wiring                                       │
+│  Stage DI-7: Skill Authoring                                       │
 │      ├─ Synthesize profiling results + user-confirmed interpretations       │
 │      ├─ Create SKILL.md using DATA_SOURCE_SKILL_TEMPLATE.md                 │
 │      ├─ Create reference files in .claude/skills/{skill-name}/references/   │
-│      ├─ Wire skill into ecosystem:                                          │
-│      │   ├─ Add entry to skill-catalog.md (Skill Quick Reference table)    │
-│      │   ├─ Add source to WORKFLOW_PHASE1_DISCOVERY.md (source list)       │
-│      │   └─ Add source to source-researcher.md (known sources)             │
-│      ├─ Compliance check: template + wiring (CPP-SKILL)                     │
-│      └─ Gate GDI-7: CPP-SKILL PASSED (includes wiring verification)        │
+│      ├─ Compliance check: template (CPP-SKILL)                              │
+│      └─ Gate GDI-7: CPP-SKILL PASSED                                       │
 │                          ↓                                                  │
 │  Stage DI-8: Review & Delivery                                              │
 │      ├─ Collect session logs: collect_session_logs.sh                        │
-│      ├─ Present completed skill + wiring to user for review                 │
+│      ├─ Present completed skill to user for review                          │
 │      ├─ Finalize STATE.md, LEARNINGS.md                                     │
 │      └─ Gate GDI-8: User confirms skill is acceptable                       │
 └─────────────────────────────────────────────────────────────────────────────┘
@@ -155,8 +151,8 @@ All data source skills follow this pattern. The `{domain}` groups related source
 | GDI-4 | DI-4 | CPP2 PASSED, QAP2 PASSED or WARNING | >50% of columns are entirely null |
 | GDI-5 | DI-5 | CPP3 PASSED, QAP3 PASSED or WARNING | No candidate keys identifiable across any table |
 | GDI-6 | DI-6 | CPP4 PASSED, QAP4 PASSED or WARNING | >50% of documented columns missing from data |
-| GDI-7 | DI-7 | CPP-SKILL PASSED (template compliance + wiring verification) | Template compliance or wiring verification fails after 2 revision attempts |
-| GDI-8 | DI-8 | User confirms skill and wiring are acceptable | N/A (user decision point) |
+| GDI-7 | DI-7 | CPP-SKILL PASSED (template compliance) | Template compliance fails after 2 revision attempts |
+| GDI-8 | DI-8 | User confirms skill is acceptable | N/A (user decision point) |
 
 **Gate enforcement:** Gates GDI-1 through GDI-7 are mandatory checkpoints. If a gate's STOP condition is triggered, halt execution, present the issue to the user, and await guidance before proceeding. Update STATE.md with the gate failure and resolution.
 
@@ -234,7 +230,7 @@ For EACH profiling part (DI-3 through DI-6), follow this complete cycle. **Do NO
 
 **CRITICAL:** Steps 0-5 form an atomic unit. Step 0 runs before each new part cycle. NEVER proceed to the next part without completing all steps. NEVER invoke a new profiling subagent without first completing QA review and STATE.md update for the previous part.
 
-**Stage DI-7 (Skill Authoring & Wiring):** Does not follow this cycle. It has its own gate (GDI-7) and updates the Skill Authoring Status section of STATE.md directly. DI-7 includes both skill file creation AND ecosystem wiring (skill-catalog.md, WORKFLOW_PHASE1_DISCOVERY.md, source-researcher.md). Stage DI-8 finalizes STATE.md as described in the Output Format section.
+**Stage DI-7 (Skill Authoring):** Does not follow this cycle. It has its own gate (GDI-7) and updates the Skill Authoring Status section of STATE.md directly. DI-7 includes skill file creation and template compliance validation. Skills are automatically discovered via YAML frontmatter once placed in `.claude/skills/`. Stage DI-8 finalizes STATE.md as described in the Output Format section.
 
 ### STATE.md Update Gates
 
@@ -252,7 +248,7 @@ For EACH profiling part (DI-3 through DI-6), follow this complete cycle. **Do NO
 | Key decision made | Key Decisions Made table |
 | Context utilization >= 40% | Session Continuity → Context Snapshot |
 | PSU-DI2 user response received | Interpretation Tracking table (all rows populated with user decisions) |
-| Skill authoring + wiring completes (DI-7) | Skill Authoring Status table; Registration Status (COMPLETE with file paths edited) |
+| Skill authoring completes (DI-7) | Skill Authoring Status table; Discovery Status (confirmed) |
 | Session break / finalization | Session Continuity → all fields; Session History |
 | Learning signal received | Pending Learning Signals buffer |
 | Files created | Files Created This Session table |
@@ -976,15 +972,15 @@ Read your agent protocol at `.claude/agents/data-ingest.md`.
 
 **Expected Output:** Same as standard part output, but focused on the revised script's status.
 
-### Skill Authoring & Wiring Invocation Template
+### Skill Authoring Invocation Template
 
 Invoked at Stage DI-7 after PSU-DI2 user confirmation of preliminary interpretations.
 
-**Purpose:** Author the data source skill and wire it into the ecosystem  |  **Stage:** DI-7  |  **Subagent:** general-purpose  |  **Skills:** `data-scientist`, `skill-authoring`
+**Purpose:** Author the data source skill  |  **Stage:** DI-7  |  **Subagent:** general-purpose  |  **Skills:** `data-scientist`, `skill-authoring`
 
 ```python
 Agent({
-    description: "Stage DI-7: Skill Authoring & Wiring for {skill_name}",
+    description: "Stage DI-7: Skill authoring for {skill_name}",
     prompt: """**BASE_DIR:** {BASE_DIR}
 All relative paths in referenced files resolve from BASE_DIR.
 
@@ -1030,13 +1026,8 @@ Part 1 — Skill Authoring:
    - variable-definitions.md — semantic column interpretations, user-confirmed (from script 10 + PSU-DI2)
 6. Save draft to {project_dir}/output/skill_draft/ and final to .claude/skills/{skill_name}/
 
-Part 2 — Ecosystem Wiring:
-7. Read `{SKILL_REFS}/skill-catalog.md` and add an entry for {skill_name} to the Skill Quick Reference table, following the format of existing entries
-8. Read `{BASE_DIR}/agent_reference/WORKFLOW_PHASE1_DISCOVERY.md` and add {skill_name} to the data source list, following the format of existing entries
-9. Read `{BASE_DIR}/.claude/agents/source-researcher.md` and add {skill_name} to the known sources list, following the format of existing entries
-
-Part 3 — CPP-SKILL Validation:
-10. Run CPP-SKILL validation (checklist below). ALL checks must pass.
+Part 2 — CPP-SKILL Validation:
+7. Run CPP-SKILL validation (checklist below). ALL checks must pass.
 
 **CPP-SKILL VALIDATION:**
 
@@ -1050,15 +1041,9 @@ Skill template compliance:
 - [ ] Common Pitfalls: 3-column table with >=3 rows
 - [ ] Total SKILL.md under 500 lines
 
-Ecosystem wiring:
-- [ ] Entry added to skill-catalog.md (Skill Quick Reference table)
-- [ ] Source added to WORKFLOW_PHASE1_DISCOVERY.md (data source list)
-- [ ] Source added to source-researcher.md (known sources list)
-
 **OUTPUT FORMAT (1000-word hard cap):**
-### Skill Authoring & Wiring: {skill_name}
-- CPP-SKILL Status (template compliance + wiring), line count, reference files created
-- Wiring: list of files edited with what was added to each""",
+### Skill Authoring: {skill_name}
+- CPP-SKILL Status (template compliance), line count, reference files created""",
     subagent_type: "general-purpose"
 })
 ```
@@ -1095,7 +1080,7 @@ Before dispatching a code-reviewer subagent (QAP1 through QAP4), verify:
 - [ ] QA tolerance thresholds specified (BLOCKER if, WARNING if)
 - [ ] Prior QA findings inlined (for QAP2-QAP4: issues from earlier parts)
 
-### Skill Authoring & Wiring Invocation Checklist
+### Skill Authoring Invocation Checklist
 
 Before dispatching the skill authoring subagent (Stage DI-7), verify:
 
@@ -1104,8 +1089,7 @@ Before dispatching the skill authoring subagent (Stage DI-7), verify:
 - [ ] PSU-DI2 user review is complete (Interpretation Tracking table has Final Interpretation column populated)
 - [ ] Target skill name and directory path specified
 - [ ] Skill name conflict checked (no existing skill at `.claude/skills/{skill_name}/`)
-- [ ] `{SKILL_REFS}` path specified (for skill-catalog.md wiring)
-- [ ] `{BASE_DIR}` path specified (for WORKFLOW_PHASE1_DISCOVERY.md and source-researcher.md wiring)
+- [ ] `{BASE_DIR}` path specified (for skill placement in `.claude/skills/`)
 
 ---
 
@@ -1249,7 +1233,7 @@ bash {BASE_DIR}/scripts/collect_session_logs.sh {PROJECT_DIR}
 ```
 Then update STATE.md Session Metadata to confirm log collection.
 
-Present to the user after Stage DI-7 completes and the skill passes compliance (including wiring verification):
+Present to the user after Stage DI-7 completes and the skill passes compliance:
 
 ```
 **Data Ingest Complete**
@@ -1264,13 +1248,7 @@ Present to the user after Stage DI-7 completes and the skill passes compliance (
 - [Key quality findings in 2-3 bullets]
 - [Temporal/geographic coverage summary if applicable]
 
-**Ecosystem Wiring (Done):**
-The skill has been wired into DAAF and is ready for use in future analyses:
-- skill-catalog.md — entry added
-- WORKFLOW_PHASE1_DISCOVERY.md — source added to discovery list
-- source-researcher.md — source added to known sources
-
-If you'd like to adjust any of these registrations (e.g., change the description or trigger conditions), let me know.
+The skill is automatically discoverable via its YAML frontmatter and ready for use in future analyses. If you'd like to adjust the description or trigger conditions, edit the skill's frontmatter in `.claude/skills/{skill-name}/SKILL.md`.
 
 **Research Project:**
 - Location: [absolute path to research project folder]

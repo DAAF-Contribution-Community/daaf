@@ -273,13 +273,9 @@ Copy this template to `STATE.md` in the project folder when starting a Data Inge
 | **Reference Files Created** | [list or PENDING] |
 | **Skill Line Count** | [N] (target: 200-350, hard limit: 500) |
 
-### Registration Status
+### Discovery Status
 
-| Registration Target | Status | Notes |
-|--------------------|--------|-------|
-| `skill-catalog.md` | [PENDING/DONE] | [row added to table] |
-| `WORKFLOW_PHASE1_DISCOVERY.md` | [PENDING/DONE] | [source added to explorer] |
-| `source-researcher.md` | [PENDING/DONE] | [source added to known sources] |
+Skills are automatically discoverable via YAML frontmatter once placed in `.claude/skills/`. No manual registration required.
 
 ---
 

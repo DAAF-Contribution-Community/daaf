@@ -29,7 +29,6 @@ executed script file.
 
 import re
 import sys
-import textwrap
 from pathlib import Path
 
 

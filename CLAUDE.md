@@ -377,14 +377,18 @@ research/2026-03-23_Ingest_County_Elections/
 ```
 research/2026-03-24_College_Graduation_Analysis_Reproduction/
 ├── Reproduction_Report.md                         # Central artifact + session state (REQUIRED)
-├── # Note: No STATE.md or LEARNINGS.md — the Reproduction Report serves as
-├── # session state, and methodological observations are recorded within it.
+│   # Note: No STATE.md or LEARNINGS.md in RV projects — the Reproduction
+│   # Report serves as session state; methodological observations go within it.
 ├── logs/                                          # Session transcripts (collected at completion)
 │   ├── 2026-03-24_18-45-12_c4e2a7f1.jsonl
 │   └── 2026-03-24_18-45-12_c4e2a7f1.md
 ├── original_files/
 │   ├── 2026-02-15_College_Graduation_Report.md    # Original Report (copied, read-only)
 │   ├── 2026-02-15_College_Graduation_Analysis.py  # Original Notebook (copied, read-only)
+│   ├── output/                                    # Original output (copied, read-only)
+│   │   └── figures/
+│   │       ├── 2026-02-15_selectivity_scatter.png
+│   │       └── 2026-02-15_graduation_heatmap.png
 │   └── scripts/                                   # Decompiled from notebook
 │       ├── MANIFEST.md                            # Decompiler output manifest
 │       ├── stage5_fetch/
@@ -397,6 +401,10 @@ research/2026-03-24_College_Graduation_Analysis_Reproduction/
 │       └── stage8_analysis/
 │           ├── 01_regression.py
 │           └── 02_visualization.py
+├── output/                                        # Reproduced output (generated during RV-2)
+│   └── figures/
+│       ├── 2026-03-24_selectivity_scatter.png
+│       └── 2026-03-24_graduation_heatmap.png
 └── scripts/
     ├── run_with_capture.sh                        # Copied from /daaf/scripts/
     └── repro/                                     # Re-executed scripts (with new logs)

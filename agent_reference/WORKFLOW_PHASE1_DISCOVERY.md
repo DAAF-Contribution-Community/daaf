@@ -283,7 +283,7 @@ After completing the skill's Required Actions, return findings using the format 
 **Subagent:** Plan
 **Skills:** `data-scientist`, `education-data-source-*`
 
-**Available source skills:** See `{BASE_DIR}/.claude/skills/daaf-orchestrator/references/skill-catalog.md` for the complete list of available data source skills with their coverage, key variables, and primary use cases.
+**Available source skills:** Review the skill inventory in the system message for the complete list of available data source skills with their coverage, key variables, and primary use cases.
 
 > The orchestrator resolves source skill names based on the active domain and provides them in the Agent prompt.
 

@@ -539,7 +539,7 @@ code-reviewer returns BLOCKER
 name: agent-name-here
 description: >
   [Third person. What it does AND when to use it.]
-tools: [Read, Write, Edit, Bash, Glob, Grep]   # Explicit allowlist. Omit for all.
+tools: [Read, Write, Edit, Bash, Glob, Grep, Skill]   # Explicit allowlist. Omit for all.
 permissionMode: default                          # Or: plan (read-only agents)
 ---
 ```

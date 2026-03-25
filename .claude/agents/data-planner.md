@@ -5,7 +5,7 @@ description: >
   (Plan_Tasks.md) with wave-based parallelization. Invoked by orchestrator at
   Stage 4 after discovery phases complete. Also handles plan revisions when
   plan-checker or user identifies issues.
-tools: [Read, Write, Edit, Bash, Glob, Grep]
+tools: [Read, Write, Edit, Bash, Glob, Grep, Skill]
 skills: data-scientist
 permissionMode: default
 ---

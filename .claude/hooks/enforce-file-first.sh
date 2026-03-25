@@ -6,6 +6,11 @@
 # script file as an immutable audit artifact. Direct `python` or `python3`
 # invocations bypass this audit trail and are blocked.
 #
+# Exception: Framework utility scripts in /daaf/scripts/ (e.g.,
+# compare_execution_logs.py, normalize_project_dir.py) are standalone CLI
+# tools, not pipeline scripts. They produce stdout output, not audit
+# artifacts, and may be run directly.
+#
 # Exit codes (Claude Code PreToolUse convention):
 #   0 = allow the command to proceed
 #   2 = BLOCK the command (stderr message shown to the model)
@@ -58,6 +63,21 @@ fi
 NORM_CMD=$(echo "$CMD" | tr '\n' ';' | tr -s '[:space:]' ' ')
 
 # ---------------------------------------------------------------------------
+# WHITELIST: Framework utility scripts in /daaf/scripts/
+#
+# These are standalone CLI tools (not pipeline scripts) that produce stdout
+# output rather than audit artifacts. They may be run directly by any agent.
+#
+# The whitelist checks for python/python3 invocations that target a .py file
+# within the /daaf/scripts/ directory (the framework root, NOT a research
+# project's scripts/ directory).
+# ---------------------------------------------------------------------------
+DAAF_ROOT="${CLAUDE_PROJECT_DIR:-/daaf}"
+if echo "$NORM_CMD" | grep -qE "python3?[.0-9]*\s+${DAAF_ROOT}/scripts/[A-Za-z0-9_-]+\.py"; then
+    exit 0
+fi
+
+# ---------------------------------------------------------------------------
 # Detect python/python3 invoked as a command. The regex accounts for:
 #
 # Command boundaries (where a new command can begin):
@@ -84,6 +104,7 @@ NORM_CMD=$(echo "$CMD" | tr '\n' ';' | tr -s '[:space:]' ' ')
 #
 # ALLOWS:
 #   bash .../run_with_capture.sh script.py  — correct file-first pattern
+#   python /daaf/scripts/utility.py         — whitelisted framework utility
 #   pip install polars                      — package management
 #   marimo run notebook.py                  — marimo runtime
 #   grep python file.txt                   — python as argument, not command
@@ -111,6 +132,9 @@ All Python scripts must be executed via run_with_capture.sh:
 
 This ensures execution output is captured and appended to the script file
 as an immutable audit trail. See SCRIPT_EXECUTION_REFERENCE.md for details.
+
+Exception: Framework utility scripts in /daaf/scripts/ may be run directly
+(e.g., python /daaf/scripts/compare_execution_logs.py ...).
 
 If you need to write a quick check, write it as a script file first,
 then execute it through the capture wrapper.

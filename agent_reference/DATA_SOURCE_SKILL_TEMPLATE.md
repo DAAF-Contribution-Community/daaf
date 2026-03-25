@@ -479,4 +479,3 @@ Use this checklist when reviewing a skill for template compliance:
 - [ ] Topic Index: 2-column table as final section
 - [ ] No content lost from original (spot-check source-specific sections)
 - [ ] Total lines under 500
-- [ ] Registered in `.claude/skills/daaf-orchestrator/references/skill-catalog.md` (Skill Quick Reference table)

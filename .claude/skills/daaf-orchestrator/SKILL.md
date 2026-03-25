@@ -52,7 +52,7 @@ Every conversation begins with a brief preamble before mode classification. Expa
 When a user asks for more information, expand naturally on these points:
 
 - DAAF structures analysis into phases with human oversight — you pause at each milestone for feedback rather than running start-to-finish
-- Six modes: Full Pipeline (complete pipeline, 4 checkpoints), Data Discovery (lightweight exploration, no code), Data Lookup (focused answer), Revision and Extension (revise or extend existing work), Data Ingest (profile new datasets, create reusable data source skills), Reproducibility Verification (re-run an existing analysis to verify its findings reproduce)
+- Six modes: Data Ingest (profile new datasets, create reusable data source skills), Data Lookup (focused answer), Data Discovery (lightweight exploration, no code), Full Pipeline (complete pipeline, 4 checkpoints), Revision and Extension (revise or extend existing work), Reproducibility Verification (re-run an existing analysis to verify its findings reproduce)
 - The user is always in control — you explain what to expect and wait for go-ahead
 
 For more depth, consult `{BASE_DIR}/user_reference/02_understanding_daaf.md` and summarize relevant sections. Point the user to the file path if they want to read it directly. After orienting, proceed to mode classification.
@@ -72,20 +72,20 @@ Before classifying, check: **Is the user asking to resume a previous session?** 
 ```
 User Request
     │
-    ├─ Asks for analysis, research, or data deliverable?
-    │   └─ YES → Full Pipeline Mode
-    │
-    ├─ Asks what data exists or if something is feasible?
-    │   └─ YES → Data Discovery Mode
+    ├─ Asks to add/ingest a new dataset, or profile raw data?
+    │   └─ YES → Data Ingest Mode
     │
     ├─ Asks a specific lookup question (coded values, variable info)?
     │   └─ YES → Data Lookup Mode
     │
+    ├─ Asks what data exists or if something is feasible?
+    │   └─ YES → Data Discovery Mode
+    │
+    ├─ Asks for analysis, research, or data deliverable?
+    │   └─ YES → Full Pipeline Mode
+    │
     ├─ References existing analysis that needs changes or extension?
     │   └─ YES → Revision and Extension Mode
-    │
-    ├─ Asks to add/ingest a new dataset, or profile raw data?
-    │   └─ YES → Data Ingest Mode
     │
     ├─ Asks to reproduce, verify, or re-run an existing analysis?
     │   └─ YES → Reproducibility Verification Mode
@@ -101,11 +101,11 @@ Keywords are heuristics, not deterministic. When multiple modes seem applicable,
 
 | Mode | Trigger Keywords | Primary Output | Reference File |
 |------|------------------|----------------|----------------|
-| **Full Pipeline** | "analyze", "research", "create", "generate" | Plan.md + Plan_Tasks.md + Notebook + Report | `full-pipeline.md` |
-| **Data Discovery** | "what data", "is it possible", "feasibility", "explore" | Findings summary | `data-discovery-mode.md` |
-| **Data Lookup** | "what are the values", "how is X defined", "lookup" | Direct answer | `data-lookup-mode.md` |
-| **Revision and Extension** | "fix", "update", "change", "modify the analysis", "extend" | Updated Plan.md + Plan_Tasks.md + Notebook + Report (new version) | `revision-and-extension-mode.md` |
 | **Data Ingest** | "ingest", "profile", "new dataset", "add data source" | SKILL.md + Research Project with profiling scripts | `data-ingest-mode.md` |
+| **Data Lookup** | "what are the values", "how is X defined", "lookup" | Direct answer | `data-lookup-mode.md` |
+| **Data Discovery** | "what data", "is it possible", "feasibility", "explore" | Findings summary | `data-discovery-mode.md` |
+| **Full Pipeline** | "analyze", "research", "create", "generate" | Plan.md + Plan_Tasks.md + Notebook + Report | `full-pipeline.md` |
+| **Revision and Extension** | "fix", "update", "change", "modify the analysis", "extend" | Updated Plan.md + Plan_Tasks.md + Notebook + Report (new version) | `revision-and-extension-mode.md` |
 | **Reproducibility Verification** | "reproduce", "verify", "re-run", "replication", "reproducibility" | Reproduction Report | `reproducibility-verification-mode.md` |
 
 ### Mode Confirmation Gate (MANDATORY)
@@ -144,22 +144,22 @@ Before sending your confirmation response, verify:
 
 Use the appropriate boilerplate below as a starting point. Fill in the bracketed fields, expand naturally based on context, and **always end with a confirmation question.**
 
-**Full Pipeline:**
-> [Classification reasoning]. 5 phases with 4 checkpoints — you review the plan before code runs and results before the report. [Scope summary]. Once confirmed, I'll present a detailed deliverables and scope overview for your review before diving in. **Shall I proceed?**
-
-**Data Discovery:**
-> [Classification reasoning]. Read-only exploration — no code, no downloads. [What you'll look into]. **Shall I proceed?**
+**Data Ingest:**
+> [Classification reasoning]. 3 phases with 2 checkpoints — I'll profile your data thoroughly, then you review the findings and interpretations before I create the Skill so the dataset is immediately available for all future work. I'll also create a project folder that contains all the reproducible data exploration scripts. **Shall I proceed?**
 
 **Data Lookup:**
 > [Classification reasoning]. [What you'll look up and where]. **Sound good?**
 
 Even for simple lookups, always confirm — the user may want broader context than the question implies.
 
+**Data Discovery:**
+> [Classification reasoning]. Read-only exploration — no code, no downloads. [What you'll look into]. **Shall I proceed?**
+
+**Full Pipeline:**
+> [Classification reasoning]. 5 phases with 4 checkpoints — you review the plan before code runs and results before the report. [Scope summary]. Once confirmed, I'll present a detailed deliverables and scope overview for your review before diving in. **Shall I proceed?**
+
 **Revision and Extension:**
 > [Classification reasoning]. [What will change]. New version — original untouched. I'll classify the change type, re-run only the affected steps (with the same quality checks as the original), and present a summary when complete. **Shall I proceed?**
-
-**Data Ingest:**
-> [Classification reasoning]. 3 phases with 2 checkpoints — I'll profile your data thoroughly, then you review the findings and interpretations before I create the Skill and wire it into DAAF so the dataset is immediately available for all future work. I'll also create a project folder that contains all the reproducible data exploration scripts. **Shall I proceed?**
 
 **Reproducibility Verification:**
 > [Classification reasoning]. I'll decompile the marimo notebook into individual scripts, re-execute each one, and compare outputs against the originals. Then I'll cross-reference the Report's claims against the reproduced data. You'll get a Reproduction Report documenting what matched, what diverged, and any methodological concerns. Two decisions to confirm: (1) should I re-fetch data from mirrors or use frozen data from the folder (default: re-fetch from mirrors), and (2) how deep should the methodological review/critique be beyond checking for mechanical reproducibility (default: light, obvious concerns only)? I'll confirm both again after setup once the scope is concrete. **Shall I proceed with these defaults?**
@@ -251,13 +251,12 @@ During any mode, watch for signals that the user needs additional guidance and r
 
 | Reference File | Content | When to Load |
 |----------------|---------|--------------|
-| `{SKILL_REFS}/full-pipeline.md` | Complete 12-stage workflow, invocation templates, QA protocols, context requirements, gates, checklists, PSU templates, quality framework | After confirming Full Pipeline mode |
-| `{SKILL_REFS}/data-discovery-mode.md` | Data Discovery workflow, exploration patterns, escalation | After confirming Data Discovery mode |
-| `{SKILL_REFS}/data-lookup-mode.md` | Single skill invocation, response format | After confirming Data Lookup mode |
-| `{SKILL_REFS}/revision-and-extension-mode.md` | Version control, revision classification, re-run guidance | After confirming Revision and Extension mode |
 | `{SKILL_REFS}/data-ingest-mode.md` | Data Ingest workflow, gates, PSU templates, profiling protocol overview | After confirming Data Ingest mode |
+| `{SKILL_REFS}/data-lookup-mode.md` | Single skill invocation, response format | After confirming Data Lookup mode |
+| `{SKILL_REFS}/data-discovery-mode.md` | Data Discovery workflow, exploration patterns, escalation | After confirming Data Discovery mode |
+| `{SKILL_REFS}/full-pipeline.md` | Complete 12-stage workflow, invocation templates, QA protocols, context requirements, gates, checklists, PSU templates, quality framework | After confirming Full Pipeline mode |
+| `{SKILL_REFS}/revision-and-extension-mode.md` | Version control, revision classification, re-run guidance | After confirming Revision and Extension mode |
 | `{SKILL_REFS}/reproducibility-verification-mode.md` | Reproducibility workflow (RV-1 through RV-4), invocation templates, comparison tolerances | After confirming Reproducibility Verification mode |
-| `{SKILL_REFS}/skill-catalog.md` | Skill quick reference, data source lookup tables | When constructing subagent prompts or answering data source questions |
 | `{BASE_DIR}/agent_reference/MODE_TEMPLATE.md` | Mode addition template and checklist | When adding new engagement modes |
 
 ### Documentation Loading Decision Tree
@@ -265,27 +264,29 @@ During any mode, watch for signals that the user needs additional guidance and r
 ```
 Mode Confirmed
     │
+    ├─ Data Ingest Mode
+    │   └─ Read: {SKILL_REFS}/data-ingest-mode.md
+    │          ├─ Stage DI-2 (project setup): Read {BASE_DIR}/agent_reference/STATE_TEMPLATE_INGEST.md
+    │          └─ Error handling: Read {BASE_DIR}/agent_reference/ERROR_RECOVERY.md
+    │
+    ├─ Data Lookup Mode
+    │   └─ Read: {SKILL_REFS}/data-lookup-mode.md
+    │
+    ├─ Data Discovery Mode
+    │   └─ Read: {SKILL_REFS}/data-discovery-mode.md
+    │          └─ Subagent dispatch: Read {BASE_DIR}/agent_reference/WORKFLOW_PHASE1_DISCOVERY.md
+    │
     ├─ Full Pipeline Mode
     │   └─ Read: {SKILL_REFS}/full-pipeline.md (contains all checklists, PSU templates,
     │          │   invocation templates, QA protocols, and quality framework inline)
     │          ├─ Code execution: Read {BASE_DIR}/agent_reference/VALIDATION_CHECKPOINTS.md
     │          ├─ Error handling: Read {BASE_DIR}/agent_reference/ERROR_RECOVERY.md
-    │          ├─ Skill/source lookup: Read {SKILL_REFS}/skill-catalog.md
     │          └─ Stage-specific (load progressively per phase):
     │              ├─ Phase 1: {BASE_DIR}/agent_reference/WORKFLOW_PHASE1_DISCOVERY.md
     │              ├─ Phase 2: {BASE_DIR}/agent_reference/WORKFLOW_PHASE2_PLANNING.md
     │              ├─ Phase 3: {BASE_DIR}/agent_reference/WORKFLOW_PHASE3_ACQUISITION.md
     │              ├─ Phase 4: {BASE_DIR}/agent_reference/WORKFLOW_PHASE4_ANALYSIS.md
     │              └─ Phase 5: {BASE_DIR}/agent_reference/WORKFLOW_PHASE5_SYNTHESIS.md
-    │
-    ├─ Data Discovery Mode
-    │   └─ Read: {SKILL_REFS}/data-discovery-mode.md
-    │          ├─ Skill/source lookup: Read {SKILL_REFS}/skill-catalog.md
-    │          └─ Subagent dispatch: Read {BASE_DIR}/agent_reference/WORKFLOW_PHASE1_DISCOVERY.md
-    │
-    ├─ Data Lookup Mode
-    │   └─ Read: {SKILL_REFS}/data-lookup-mode.md
-    │          └─ Skill/source lookup: Read {SKILL_REFS}/skill-catalog.md
     │
     ├─ Revision and Extension Mode
     │   └─ Read: {SKILL_REFS}/revision-and-extension-mode.md
@@ -297,11 +298,6 @@ Mode Confirmed
     │              ├─ Stage 5-6: {BASE_DIR}/agent_reference/WORKFLOW_PHASE3_ACQUISITION.md
     │              ├─ Stage 7-8: {BASE_DIR}/agent_reference/WORKFLOW_PHASE4_ANALYSIS.md
     │              └─ Stage 9-12: {BASE_DIR}/agent_reference/WORKFLOW_PHASE4_ANALYSIS.md + WORKFLOW_PHASE5_SYNTHESIS.md
-    │
-    ├─ Data Ingest Mode
-    │   └─ Read: {SKILL_REFS}/data-ingest-mode.md
-    │          ├─ Stage DI-2 (project setup): Read {BASE_DIR}/agent_reference/STATE_TEMPLATE_INGEST.md
-    │          └─ Error handling: Read {BASE_DIR}/agent_reference/ERROR_RECOVERY.md
     │
     └─ Reproducibility Verification Mode
         └─ Read: {SKILL_REFS}/reproducibility-verification-mode.md

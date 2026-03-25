@@ -4,7 +4,7 @@ description: >
   Validates that analysis components are properly connected by tracing data flows,
   verifying file references resolve, and detecting orphaned components. Invoked by
   orchestrator at Stages 9, 11, and 12 to confirm end-to-end pipeline wiring.
-tools: [Read, Bash, Glob, Grep]
+tools: [Read, Bash, Glob, Grep, Skill]
 skills: data-scientist
 permissionMode: plan
 ---

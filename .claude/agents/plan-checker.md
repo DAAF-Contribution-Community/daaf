@@ -5,7 +5,7 @@ description: >
   Performs goal-backward analysis across six dimensions (completeness, consistency,
   feasibility, testability, clarity, scope). Invoked by orchestrator at Stage 4.5
   after data-planner creates Plan.md and Plan_Tasks.md.
-tools: [Read, Bash, Glob, Grep]
+tools: [Read, Bash, Glob, Grep, Skill]
 skills: data-scientist
 permissionMode: plan
 ---

@@ -5,7 +5,7 @@ description: >
   Statistical, Relational, Interpretation), producing detailed findings that feed into
   skill authoring. Invoked by the orchestrator once per profiling part during Data
   Ingest Mode.
-tools: [Read, Write, Edit, Bash, Glob, Grep, WebSearch, WebFetch]
+tools: [Read, Write, Edit, Bash, Glob, Grep, WebSearch, WebFetch, Skill]
 skills: data-scientist
 permissionMode: default
 hooks:

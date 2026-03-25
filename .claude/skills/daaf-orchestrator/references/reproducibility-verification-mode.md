@@ -46,7 +46,7 @@ User points to existing analysis folder
 │  4. Copy Report + Notebook → original_files/        │
 │  5. Copy run_with_capture.sh → scripts/             │
 │  6. Run decompiler → original_files/scripts/        │
-│  7. Path normalization: record & prepare rewrites   │
+│  7. Batch path normalization via normalizer script   │
 │  8. Create Reproduction_Report.md from template     │
 │  9. Populate Script Inventory + Source Artifacts     │
 │                                                     │
@@ -94,7 +94,8 @@ User points to existing analysis folder
                        ▼
 ┌─────────────────────────────────────────────────────┐
 │ Pre-Synthesis: Collect session logs                  │
-│  └─ bash collect_session_logs.sh {PROJECT_DIR}      │
+│  └─ bash {BASE_DIR}/scripts/collect_session_logs.sh  │
+│     {PROJECT_DIR}                                    │
 └──────────────────────┬──────────────────────────────┘
                        │
                        ▼
@@ -126,16 +127,14 @@ User points to existing analysis folder
 1. User provides path to existing analysis folder
 2. Validate that the folder contains both a Report (`*_Report.md`) and a Notebook (`*.py` with `import marimo`)
 3. Create new project folder: `research/YYYY-MM-DD_[OriginalProjectName]_Reproduction/`
-4. Create subdirectories: `original_files/`, `original_files/scripts/`, `scripts/`, `scripts/repro/`
-5. Copy the Report and Notebook into `original_files/`
+4. Create subdirectories: `original_files/`, `original_files/scripts/`, `original_files/output/figures/`, `scripts/`, `scripts/repro/`, `output/figures/`
+5. Copy the Report and Notebook into `original_files/`. Copy `output/figures/` from the original project into `original_files/output/figures/` (these are the original figures needed for visual comparison during RV-2 and RV-3).
 6. Copy `run_with_capture.sh` from `/daaf/scripts/` into `scripts/`
 7. Run the decompiler: `python /daaf/scripts/decompile_notebook.py <notebook_path> <project>/original_files/scripts/`
-8. **Path normalization** — deterministic scan-and-replace applied to all decompiled scripts before reproduction:
-   - Scan all `.py` files in `original_files/scripts/` for lines matching `PROJECT_DIR = Path("...")`
-   - Record the original `PROJECT_DIR` value (the path embedded in the original script)
-   - When copying scripts to `scripts/repro/` (during RV-2), replace the `PROJECT_DIR` value with the reproduction project's absolute path
-   - Document every replacement in the Reproduction Report's **Infrastructure Normalizations** section (file, original value, normalized value)
-   - This is an **infrastructure normalization**, NOT a substantive modification — it does not affect reproduction status. Scripts that required only path normalization retain REPRODUCED status.
+8. **Path normalization** — run the batch normalizer on all decompiled scripts:
+   `python /daaf/scripts/normalize_project_dir.py <project>/original_files/scripts/ <project_absolute_path>`
+   This deterministically replaces all `PROJECT_DIR = Path("...")` values with the reproduction project path. Record the normalizer's output in the Reproduction Report's **Infrastructure Normalizations** section.
+   This is an **infrastructure normalization**, NOT a substantive modification — it does not affect reproduction status.
 9. Create `Reproduction_Report.md` from `agent_reference/REPRODUCTION_REPORT_TEMPLATE.md`
 10. Populate the Script Inventory table from the decompiler's `MANIFEST.md`, mapping fields as follows:
    - `#` and `Script` — map directly from MANIFEST
@@ -165,11 +164,12 @@ User points to existing analysis folder
    - Column counts and schema
    - Checkpoint pass/fail results
    - Key statistics printed in validation output
-5. **ASSESS:** Classify the result as REPRODUCED / DIVERGED / FAILED
+   If the script produces figure output (PNG files), use the **Read tool** to view both original and reproduced figures for visual comparison.
+5. **ASSESS:** Classify the result as REPRODUCED / DIVERGED / FAILED. If a modified script also produces divergent output, classify as MODIFIED (document the divergence in the Deviations section).
 6. **METHODOLOGICAL REVIEW:** Examine the script's analytical approach:
    - **Light mode (default):** Note only NOTABLE or CRITICAL concerns
    - **Full mode:** Apply the Five Lenses of Skeptical Review
-7. **UPDATE REPORT:** Update Reproduction_Report.md — Script Inventory status, Per-Script Reproduction Results section, Deviation Log if applicable, Concerns Log if applicable
+7. **UPDATE REPORT:** Update Reproduction_Report.md — Script Inventory status, Per-Script Reproduction Results section, Deviation Log if applicable, Concerns Log if applicable, Session Continuity (Last Script Completed, Next Script)
 8. **IF FAILED:** If the script fails and a modification is needed for it to run:
    - Create versioned copy: `{script_name%.py}_repro_a.py`
    - Document the modification prominently in Per-Script Reproduction Results
@@ -199,6 +199,7 @@ All project-relative paths resolve from PROJECT_DIR. All repo-level paths resolv
 
 **ORIGINAL SCRIPT:** `{PROJECT_DIR}/original_files/scripts/{stage_dir}/{script_name}`
 **REPRODUCTION TARGET:** `{PROJECT_DIR}/scripts/repro/{stage_dir}/{script_name}`
+**ORIGINAL FIGURES:** `{PROJECT_DIR}/original_files/output/figures/` (copied from original project during RV-1)
 
 **INSTRUCTIONS:**
 1. Copy the original script to the reproduction target path
@@ -207,25 +208,29 @@ All project-relative paths resolve from PROJECT_DIR. All repo-level paths resolv
    After stripping, verify the file does NOT contain `# EXECUTION LOG` —
    run_with_capture.sh will refuse to execute scripts that still have a log marker.
 3. Execute via: `bash {PROJECT_DIR}/scripts/run_with_capture.sh {PROJECT_DIR}/scripts/repro/{stage_dir}/{script_name}`
-4. Compare the new execution log against the original script's execution log
-5. When a script produces figure output (PNG files), use the **Read tool** to view both
-   the original figure and the reproduced figure side by side. The Read tool can display
-   images for visual comparison. Document whether figures appear visually consistent.
+4. Compare the new execution log against the original script's execution log.
+   You may use the structured comparison utility for this:
+   `python /daaf/scripts/compare_execution_logs.py {original_script_path} {reproduced_script_path}`
+   Or compare manually via the Read tool. Both approaches are acceptable.
+   If the script produces figure output (PNG files), use the **Read tool** to view both
+   the original figure (in `{PROJECT_DIR}/original_files/output/figures/`) and the
+   reproduced figure (in `{PROJECT_DIR}/output/figures/`) side by side.
    Minor rendering differences (anti-aliasing, font rendering) are expected and do not
    constitute divergence.
-6. Classify result: REPRODUCED / DIVERGED / FAILED
-7. Methodological review depth: {LIGHT | FULL}
-8. Update `{PROJECT_DIR}/Reproduction_Report.md`:
+5. Classify result: REPRODUCED / DIVERGED / FAILED. If a modified script also produces
+   divergent output, classify as MODIFIED (document divergence in Deviations section).
+6. Methodological review depth: {LIGHT | FULL}
+7. Update `{PROJECT_DIR}/Reproduction_Report.md`:
    - Script Inventory table: update Repro Status for script #{N}
    - Per-Script Reproduction Results: fill in section for Script #{N}
    - Deviation Log: add row if any deviations found
    - Concerns Log: add row if concerns found
    - Session Continuity: update Last Script Completed and Next Script
 
-**NOTE:** Scripts in `scripts/repro/` have already been path-normalized during RV-1
-(PROJECT_DIR values rewritten to the reproduction project path). Path differences
-between original and reproduction scripts are infrastructure normalizations, NOT
-substantive modifications — do NOT count them as modifications or deviations.
+**NOTE:** Scripts in `original_files/scripts/` were batch path-normalized during RV-1
+(PROJECT_DIR values rewritten to the reproduction project path via `normalize_project_dir.py`).
+Path differences between original and reproduction scripts are infrastructure normalizations,
+NOT substantive modifications — do NOT count them as modifications or deviations.
 
 **COMPARISON TOLERANCES:** See Reproduction Report § Comparison Standards
 
@@ -282,7 +287,9 @@ All project-relative paths resolve from PROJECT_DIR. All repo-level paths resolv
 **MODE:** Reproducibility Verification — RV-3 (Report Verification)
 
 **ORIGINAL REPORT:** `{PROJECT_DIR}/original_files/{report_filename}`
+**ORIGINAL FIGURES:** `{PROJECT_DIR}/original_files/output/figures/`
 **REPRODUCED SCRIPTS:** `{PROJECT_DIR}/scripts/repro/`
+**REPRODUCED FIGURES:** `{PROJECT_DIR}/output/figures/`
 **REPRODUCTION REPORT:** `{PROJECT_DIR}/Reproduction_Report.md`
 
 **INSTRUCTIONS:**
@@ -336,6 +343,7 @@ Agent({
 ```
 **BASE_DIR:** /daaf
 **PROJECT_DIR:** {absolute_project_path}
+All project-relative paths resolve from PROJECT_DIR. All repo-level paths resolve from BASE_DIR.
 
 **TASK:** Write the synthesis sections of the Reproduction Report.
 
@@ -377,6 +385,9 @@ research/YYYY-MM-DD_[OriginalProject]_Reproduction/
 ├── original_files/
 │   ├── [original_report].md            # Copied from original project
 │   ├── [original_notebook].py          # Copied from original project
+│   ├── output/                         # Copied from original project
+│   │   └── figures/                    # Original figures for visual comparison
+│   │       └── *.png
 │   └── scripts/                        # Decompiled from notebook
 │       ├── MANIFEST.md                 # Decompiler output manifest
 │       ├── stage5_fetch/
@@ -385,6 +396,9 @@ research/YYYY-MM-DD_[OriginalProject]_Reproduction/
 │       ├── stage6_clean/
 │       ├── stage7_transform/
 │       └── stage8_analysis/
+├── output/                             # Reproduced output (generated during RV-2)
+│   └── figures/
+│       └── *.png
 └── scripts/
     ├── run_with_capture.sh             # Copied from /daaf/scripts/
     └── repro/                          # Re-executed scripts
@@ -545,14 +559,15 @@ The RV-2 per-script cycle is lightweight compared to Full Pipeline's Composite E
 | 0 | READ | Check Reproduction Report § Session Continuity for current position |
 | 1 | COPY | Copy original script to `scripts/repro/{stage_dir}/` |
 | 2 | STRIP | Remove execution log (verify no `# EXECUTION LOG` marker remains) |
-| 3 | NORMALIZE | Apply path normalization: replace original `PROJECT_DIR` value with reproduction project path (per RV-1 step 8). This is an infrastructure normalization — do NOT count as a modification. |
-| 4 | EXECUTE | Run via `run_with_capture.sh` |
-| 5 | COMPARE | Compare new log against original log (apply tolerances). For scripts producing figure output (PNG files), use the Read tool to view both original and reproduced figures for visual comparison. |
-| 6 | UPDATE | Update Reproduction Report (Script Inventory + Per-Script Reproduction Results + Deviation Log + Concerns Log + Session Continuity) |
-| 7 | RETURN | Return concise summary to orchestrator |
+| 3 | EXECUTE | Run via `run_with_capture.sh` |
+| 4 | COMPARE | Compare new log against original log (apply tolerances). For figures, use the Read tool for visual comparison. |
+| 5 | ASSESS | Classify: REPRODUCED / DIVERGED / FAILED / MODIFIED |
+| 6 | REVIEW | Methodological review (Light: notable/critical only; Full: Five Lenses) |
+| 7 | UPDATE | Update Reproduction Report (Script Inventory + Per-Script Reproduction Results + Deviation Log + Concerns Log + Session Continuity) |
+| 8 | RETURN | Return concise summary to orchestrator |
 
 **Error handling within the cycle:**
-- If Step 4 fails: create `_repro_a.py` with minimal fixes, document modification, re-execute, mark MODIFIED
+- If Step 3 fails: create `_repro_a.py` with minimal fixes, document modification, re-execute, mark MODIFIED
 - If modification also fails: create `_repro_b.py` (max 2 versions), then mark FAILED
 - If FAILED after 2 modification attempts: orchestrator may dispatch debugger (max 1 per script, max 3 per session)
 
@@ -637,6 +652,6 @@ A separate STATE.md would duplicate this without adding value.
 **Update discipline:** The Reproduction Report MUST be updated after every atomic action:
 - After each script re-execution (RV-2): Script Inventory + Per-Script Reproduction Results + Session Continuity
 - After report verification (RV-3): Report Verification sections
-- After synthesis (RV-4): Executive Summary + Methodological Synthesis
+- After synthesis (RV-4): Executive Summary + Synthesis of Methodological Concerns
 - At every stage transition: Session Continuity § Current Stage
 - Before any session break: Session Continuity § Restart Prompt

@@ -18,7 +18,7 @@ description: >
   [Third person. What it does AND when to use it.]
   Example: "Reviews executed scripts for correctness, methodology alignment,
   and data integrity. Invoked after each Stage 5-8 script execution."
-tools: [Read, Write, Edit, Bash, Glob, Grep]   # Explicit allowlist. Omit for all.
+tools: [Read, Write, Edit, Bash, Glob, Grep, Skill]   # Explicit allowlist. Omit for all.
 permissionMode: default                          # Or: plan (read-only agents)
 # ── Optional fields ──
 # model: inherit          # sonnet | opus | haiku | inherit

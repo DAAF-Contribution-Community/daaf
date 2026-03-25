@@ -76,6 +76,7 @@ Copy this template to `Reproduction_Report.md` in the reproduction project folde
 |----------|----------|---------|
 | Original Report | `original_files/[report_name]` | [Yes/No] |
 | Original Notebook | `original_files/[notebook_name]` | [Yes/No] |
+| Original Figures | `original_files/output/figures/` | [Yes/No] |
 | Decompiled Scripts | `original_files/scripts/` | [Yes/No] |
 | Decompilation Manifest | `original_files/scripts/MANIFEST.md` | [Yes/No] |
 | Reproduction Session Logs | `logs/` | [Yes/No] |
@@ -105,11 +106,11 @@ Copy this template to `Reproduction_Report.md` in the reproduction project folde
 
 ### Infrastructure Normalizations
 
-> **Applied during RV-1 extraction.** Infrastructure normalizations are mechanical path/environment adjustments that make scripts executable in the reproduction project. They do not affect reproduction status — a script requiring only infrastructure normalizations retains REPRODUCED status.
+> **Applied during RV-1 setup** by running `normalize_project_dir.py` on all decompiled scripts in batch. Infrastructure normalizations are mechanical path/environment adjustments that make scripts executable in the reproduction project. They do not affect reproduction status — a script requiring only infrastructure normalizations retains REPRODUCED status. Paste the normalizer's Markdown table output below.
 
 | File | Original Value | Normalized Value | Type |
 |------|----------------|------------------|------|
-| [script_name] | `PROJECT_DIR = Path("/daaf/research/original_project/")` | `PROJECT_DIR = Path("/daaf/research/reproduction_project/")` | PROJECT_DIR path |
+| `stage5_fetch/01_fetch-data.py` | `PROJECT_DIR = Path("/daaf/research/original_project/")` | `PROJECT_DIR = Path("/daaf/research/reproduction_project/")` | PROJECT_DIR path |
 
 ### Comparison Standards
 
@@ -248,8 +249,10 @@ Copy this template to `Reproduction_Report.md` in the reproduction project folde
 |------|------|-------|
 | `original_files/[report]` | Original Report (copied) | RV-1 |
 | `original_files/[notebook]` | Original Notebook (copied) | RV-1 |
+| `original_files/output/figures/` | Original figures (copied) | RV-1 |
 | `original_files/scripts/[...]` | Decompiled scripts (from notebook) | RV-1 |
 | `scripts/repro/[...]` | Re-executed scripts (with new logs) | RV-2 |
+| `output/figures/[...]` | Reproduced figures (generated) | RV-2 |
 | `Reproduction_Report.md` | This document | RV-1 |
 
 ---
@@ -333,7 +336,7 @@ When comparing original vs. reproduced outputs, apply these tolerances:
 | Row ordering | No | Order-independent comparison acceptable |
 | Timestamps in logs | No | Expected to differ |
 | File paths in logs | No | Expected to differ if project moved |
-| Figure pixel comparison | No | Visual inspection sufficient |
+| Figure pixel comparison | No | Visual inspection via Read tool |
 
 ### Substantive vs. Cosmetic Deviations
 

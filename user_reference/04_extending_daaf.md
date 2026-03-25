@@ -172,19 +172,9 @@ in depth before coming up with a plan for my approval.
 
 ### Registering Your New Skill
 
-Here's the part that people will sometimes miss: **creating the skill file is not enough.** DAAF uses a manual, documentation-based discovery system -- auto-discovery of skills with Claude Code is imperfect and can't always be relied on. After creating a new skill, it needs to be registered in several places to ensure that the orchestrator and agents can find it and know when to use it.
+Skills are automatically discovered via their YAML frontmatter — every skill with a `SKILL.md` file in `.claude/skills/{skill-name}/` appears in the system message at conversation start. No manual registration is needed for any skill type (data source, methodology, or domain expertise).
 
-For data source skills, the orchestrator automatically provides registration guidance at the end of the Data Ingest workflow (Stage DI-8). It presents a specific registration checklist that looks something like this:
-
-| Priority | File | Section to Update | What to Add |
-|----------|------|-------------------|-------------|
-| 1 (Required) | `.claude/skills/daaf-orchestrator/references/skill-catalog.md` | Skill Quick Reference table | New row mapping data need to skill name |
-| 2 (Required) | `agent_reference/WORKFLOW_PHASE1_DISCOVERY.md` | Available source skills list | New bullet with skill name and description |
-| 3 (Required) | `.claude/agents/source-researcher.md` | Step 1: Load Source Skill | No update needed (orchestrator provides skill name dynamically) |
-
-The orchestrator will typically offer to make these updates for you at the end of the Data Ingest workflow -- just confirm and it'll handle the file edits. You still need to approve the updates, as they touch core framework files. Note that these registration edits fall under the "contribution" category if you plan to share them (see [Submitting Your Extension for Inclusion](#submitting-your-extension-for-inclusion)).
-
-For methodology and domain expertise skills, registration is simpler -- you primarily need to update the skill catalog at `.claude/skills/daaf-orchestrator/references/skill-catalog.md` so the orchestrator knows the skill exists and when to recommend loading it.
+The key to good discoverability is writing a clear, descriptive `description` field in your skill's YAML frontmatter. This description is what the orchestrator sees when deciding which skill to load, so make it specific about what the skill covers and when to use it.
 
 ---
 
@@ -256,7 +246,7 @@ What data sources does DAAF know about? Can you tell me about
 [your new data source]?
 ```
 
-If the skill is properly registered, DAAF should be able to describe the data source, list key variables, and mention important caveats. If it can't find the skill or gives a generic response, check your registration entries in `.claude/skills/daaf-orchestrator/references/skill-catalog.md` and the other files listed in the registration checklist.
+If the skill is properly placed, DAAF should be able to describe the data source, list key variables, and mention important caveats. If it can't find the skill or gives a generic response, verify that the skill's YAML frontmatter has a clear `description` field and that `SKILL.md` is in `.claude/skills/{skill-name}/`.
 
 ### Fetch Test
 

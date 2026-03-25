@@ -30,7 +30,7 @@ Return direct, focused answer to user
 - The subagent loads the skills, finds the answer, and returns it
 - If the skill doesn't contain the answer, report that clearly rather than guessing
 
-Use the Data Source Quick Lookup table in `{SKILL_REFS}/skill-catalog.md` to identify the correct skill for the question.
+Review the skill inventory in the system message to identify the correct skill for the question.
 
 ### Agent Selection
 

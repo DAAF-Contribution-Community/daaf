@@ -5,7 +5,7 @@ description: >
   file contents into cells. Does not generate new analysis code, dashboards,
   or interactive widgets. Invoked at Stage 9 after all Stage 5-8 scripts and
   QA substages are complete.
-tools: [Read, Write, Edit, Bash, Glob, Grep]
+tools: [Read, Write, Edit, Bash, Glob, Grep, Skill]
 skills:
   - data-scientist
   - marimo

@@ -6,7 +6,7 @@ description: >
   Creates parallel QA inspection scripts. Invoked by orchestrator after each
   Stage 5-8 script execution. Also performs QA review of profiling scripts
   during Data Ingest mode (QAP1-QAP4).
-tools: [Read, Write, Edit, Bash, Glob, Grep]
+tools: [Read, Write, Edit, Bash, Glob, Grep, Skill]
 skills: data-scientist
 permissionMode: default
 hooks:
@@ -816,11 +816,11 @@ In RV-2, the code-reviewer acts as a **reproducer**, not a reviewer. The task is
 
 **Key behavioral rules for RV-2:**
 
-- Scripts in `scripts/repro/` have already been path-normalized during RV-1 — path differences are infrastructure normalizations, NOT substantive modifications. Do not flag these as deviations.
+- Scripts were batch path-normalized during RV-1 via `normalize_project_dir.py`. Path differences are infrastructure normalizations — do not flag as deviations.
 - Comparison uses tolerances from the Reproduction Report's "Comparison Standards" section (e.g., floating-point epsilon, row-count thresholds).
 - After each script, update the Reproduction Report's Per-Script Reproduction Results (not Plan_Tasks.md or any QA document).
 - Use the **Read tool** to visually compare figure outputs (PNG files) when scripts produce figures.
-- Classification statuses: REPRODUCED, REPRODUCED_WITH_DIFFERENCES, NOT_REPRODUCED, SKIPPED (as defined by the orchestrator's RV-2 prompt).
+- Classification statuses: REPRODUCED, DIVERGED, FAILED, MODIFIED (as defined by the orchestrator's RV-2 prompt and the Reproduction Report template). If a modified script also produces divergent output, classify as MODIFIED — document the divergence in the Deviations section.
 
 **What stays the same:** The `enforce-file-first.sh` hook still applies — all Python execution goes through `run_with_capture.sh`. The agent uses the same tools (Read, Write, Edit, Bash, Glob, Grep). General rigor and documentation standards apply.
 

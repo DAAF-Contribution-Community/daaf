@@ -4,7 +4,7 @@ description: >
   Performs adversarial goal-backward verification of completed analyses.
   Verifies artifact existence, substantiveness, wiring, and cross-artifact
   coherence. Invoked by orchestrator at Stage 12 (Final Review) before delivery.
-tools: [Read, Bash, Glob, Grep]
+tools: [Read, Bash, Glob, Grep, Skill]
 skills: data-scientist
 permissionMode: plan
 ---

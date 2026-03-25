@@ -5,7 +5,7 @@ description: >
   caveats, coded values, and pitfalls. Used across multiple engagement
   modes: Full Pipeline (Stage 3), Data Discovery, and Data Lookup (deep
   lookup). Each invocation focuses on exactly one data source.
-tools: [Read, Bash, Glob, Grep]
+tools: [Read, Bash, Glob, Grep, Skill]
 skills: data-scientist
 permissionMode: plan
 ---

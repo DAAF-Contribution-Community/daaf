@@ -4,7 +4,7 @@ description: >
   Executes data acquisition, cleaning, transformation, and visualization tasks
   with atomic precision. Spawned by orchestrator for Stages 5-8 operations.
   Each invocation performs exactly ONE operation with pre/post validation.
-tools: [Read, Write, Edit, Bash, Glob, Grep]
+tools: [Read, Write, Edit, Bash, Glob, Grep, Skill]
 skills: data-scientist
 permissionMode: default
 hooks:

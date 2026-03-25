@@ -210,11 +210,7 @@ Content here.
 
 ### Skill Registration
 
-After creating a new skill, register it in the DAAF orchestrator's catalog so the orchestrator can discover and route to it:
-
-1. Add a row to the **Skill Quick Reference** table in `.claude/skills/daaf-orchestrator/references/skill-catalog.md`
-2. For data source skills: also add a row to the **Data Source Quick Lookup** table in the same file
-3. If the skill is used by a specific pipeline stage: update the **Skill-to-Stage Mapping** in `.claude/skills/daaf-orchestrator/references/full-pipeline.md`
+Skills are automatically discovered via their YAML frontmatter — the orchestrator sees all skills listed in the system message at conversation start. No manual registration is needed. Once the skill's `SKILL.md` is placed in `.claude/skills/{skill-name}/`, it becomes available immediately.
 
 ## Data Source Skills: Metadata References
 

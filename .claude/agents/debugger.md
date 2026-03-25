@@ -5,7 +5,7 @@ description: >
   hypothesis-testing methodology. Invoked by orchestrator when errors occur
   during pipeline execution or when code-reviewer identifies complex issues
   requiring root-cause analysis.
-tools: [Read, Write, Edit, Bash, Glob, Grep]
+tools: [Read, Write, Edit, Bash, Glob, Grep, Skill, WebFetch, WebSearch]
 skills: data-scientist
 permissionMode: default
 hooks:

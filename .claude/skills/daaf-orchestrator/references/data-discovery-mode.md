@@ -49,7 +49,7 @@ Data Discovery uses read-only subagents to explore data availability. Follow the
 
 - **Stage 2:** Subagent invokes the domain explorer skill (e.g., `education-data-explorer` for education domain)
 - **Stage 3:** Subagent invokes domain source skill(s) (e.g., `education-data-source-ccd`) for deep dives on specific sources flagged in Stage 2
-- **Skill lookup:** See `{SKILL_REFS}/skill-catalog.md` for the complete skill-to-source mapping
+- **Skill lookup:** Review the skill inventory in the system message for the complete skill-to-source mapping
 - **Subagent type:** `Plan` (read-only — no data downloads or code execution)
 
 ## Output Format

@@ -16,6 +16,7 @@ Both arguments are paths to Python scripts with execution logs appended
 """
 
 import argparse
+import math
 import re
 import sys
 from pathlib import Path
@@ -139,9 +140,12 @@ def extract_checkpoints(lines):
     """
     results = []
     for line in lines:
-        # Lines like: CP1 PASSED, CP2 FAILED, CP3 PASSED (with WARNINGS)
-        m = re.search(r'\b(CP\d+[a-z]?)\s+(PASS(?:ED)?|FAIL(?:ED)?)', line, re.IGNORECASE)
+        # Lines like: CP1 PASSED, CP1 VALIDATION: PASSED, CP4: PASSED,
+        # CP4 VALIDATION: PASSED WITH WARNINGS
+        m = re.search(r'\b(CP\d+[a-z]?)\b.*?(PASS(?:ED)?|FAIL(?:ED)?)', line, re.IGNORECASE)
         if m:
+            # Normalize "PASSED WITH WARNINGS" to PASSED (the WITH WARNINGS
+            # part is after the captured group and doesn't change the status)
             results.append((m.group(1).upper(), m.group(2).upper()))
             continue
         # Lines starting with # CP or containing PASS/FAIL with a label
@@ -159,7 +163,8 @@ def extract_key_statistics(lines):
     results = []
     stat_labels = [
         'mean', 'median', 'std', 'min', 'max', 'count', 'sum',
-        'correlation', 'r_squared', 'r²', 'r2', 'p-value', 'p_value',
+        'correlation', 'r_squared', 'r-squared', 'adj. r-squared',
+        'adjusted r-squared', 'r²', 'r2', 'p-value', 'p_value',
         'rmse', 'mae', 'mse', 'variance', 'skewness', 'kurtosis',
         'coefficient', 'intercept', 'slope',
     ]
@@ -243,6 +248,13 @@ def extract_errors_warnings(lines):
 
 def floats_match(a, b, rel_tol=1e-6):
     """Check if two floats match within relative tolerance."""
+    # Handle NaN: two NaNs are considered matching
+    if isinstance(a, float) and isinstance(b, float):
+        if math.isnan(a) and math.isnan(b):
+            return True
+        if math.isnan(a) or math.isnan(b):
+            return False
+    # Handle infinities: identical infinities match
     if a == b:
         return True
     if a == 0 or b == 0:

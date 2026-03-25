@@ -6,7 +6,7 @@ description: >
   documents uncertainty, and produces structured recommendations. Invoked at
   Stage 3.5 when multiple sources have been explored and findings need
   integration before Plan creation.
-tools: [Read, Write, Edit, Bash, Glob, Grep]
+tools: [Read, Write, Edit, Bash, Glob, Grep, Skill]
 skills: data-scientist
 permissionMode: default
 ---

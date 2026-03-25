@@ -254,7 +254,7 @@ This comes up often enough that it's worth being explicit. The rule of thumb fro
 
 This distinction matters for two reasons. First, it determines which guide to follow -- extension workflows are in [**04. Extending DAAF**](user_reference/04_extending_daaf.md), contribution workflows are here. Second, it has licensing implications under LGPL-3.0: extensions you build on top of DAAF are yours to keep proprietary or open-source as you choose, while modifications to the core framework must be shared back if you distribute them. See the [**README**](README.md#why-open-source-what-does-it-mean-for-daaf) for the full details.
 
-In practice, many contributions involve *both* -- for example, creating a new data source skill (extension) and then registering it in `skill-catalog.md` and `.claude/agents/README.md` (contribution). That's totally fine. Just be aware that the registration edits to core files fall under the contribution category.
+In practice, many contributions involve *both* -- for example, creating a new data source skill (extension) that also touches agent definitions or reference files (contribution). That's totally fine. Just be aware that edits to core framework files fall under the contribution category.
 
 ---
 
@@ -342,7 +342,7 @@ Documentation changes are the easiest to test:
 
 If you're submitting a new or modified skill, run through this sequence (also described in more detail in [**04. Extending DAAF**](user_reference/04_extending_daaf.md)):
 
-1. **Data Discovery test.** Ask DAAF: "What data sources does DAAF know about? Can you tell me about [your new data source]?" If the skill is properly registered, DAAF should describe it accurately. If it can't find the skill, check your registration entries in `.claude/skills/daaf-orchestrator/references/skill-catalog.md` and the other files in the registration checklist.
+1. **Data Discovery test.** Ask DAAF: "What data sources does DAAF know about? Can you tell me about [your new data source]?" Skills are auto-discovered via YAML frontmatter, so DAAF should describe it accurately. If it can't find the skill, verify that the skill's YAML frontmatter has a clear description and that `SKILL.md` is placed in `.claude/skills/{skill-name}/`.
 
 2. **Fetch test.** Ask DAAF to fetch data using your skill and show basic summary statistics. This tests the data access pathway -- dataset paths, mirror configuration, and loading mechanics. If CP1 validation fails, it usually means the dataset path doesn't match what's available on the mirror.
 
