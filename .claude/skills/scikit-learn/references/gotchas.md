@@ -236,3 +236,10 @@ X_processed = preprocessor.fit_transform(df)
 | Unknown `.score()` metric | Use explicit `sklearn.metrics` functions |
 | Mixed data clustering | Gower distance or careful `ColumnTransformer` |
 | Convergence warning | Increase `max_iter` |
+
+## Advanced Resampling for Class Imbalance
+
+For advanced resampling methods (SMOTE, ADASYN, BorderlineSMOTE), the
+`imbalanced-learn` library is available but not pre-installed. In most cases,
+`class_weight="balanced"` is sufficient for tree-based models. Install if needed:
+`uv pip install --system imbalanced-learn`

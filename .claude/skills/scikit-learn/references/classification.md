@@ -230,3 +230,41 @@ for name, clf in classifiers.items():
     scores = cross_val_score(pipe, X, y, cv=5, scoring="accuracy")
     print(f"{name}: {scores.mean():.3f} +/- {scores.std():.3f}")
 ```
+
+## Beyond HistGradientBoosting: LightGBM and XGBoost
+
+For use cases where scikit-learn's HistGradientBoostingClassifier is not sufficient, LightGBM and XGBoost provide additional capabilities. Both follow the scikit-learn estimator API (`fit`/`predict`/`predict_proba`).
+
+```python
+# LightGBM (available in DAAF Dockerfile)
+import lightgbm as lgb
+model = lgb.LGBMClassifier(
+    n_estimators=100,
+    learning_rate=0.1,
+    num_leaves=31,
+    random_state=42,
+)
+model.fit(X_train, y_train)
+
+# XGBoost (optional install: uv pip install --system --no-deps xgboost)
+import xgboost as xgb
+model = xgb.XGBClassifier(
+    n_estimators=100,
+    learning_rate=0.1,
+    max_depth=6,
+    random_state=42,
+)
+model.fit(X_train, y_train)
+```
+
+### Comparison
+
+| Feature | HistGradientBoosting | LightGBM | XGBoost |
+|---------|---------------------|----------|---------|
+| In Dockerfile | Yes | Yes | No (optional) |
+| SHAP TreeExplainer | Approximate | Native (fast) | Native (fast) |
+| Custom loss functions | No | Yes | Yes |
+| Categorical features | Native | Native | Requires encoding |
+| GPU support | No | Yes | Yes |
+
+> **Guidance:** For most DAAF use cases, HistGradientBoosting is sufficient. Use LightGBM when SHAP TreeExplainer performance matters. Use XGBoost for custom loss functions.

@@ -1,10 +1,20 @@
 ---
 name: scikit-learn
-description: General-purpose machine learning with scikit-learn. Covers unsupervised methods (clustering, GMM, PCA, t-SNE, manifold learning, evaluation metrics), supervised methods (classification, regression, ensemble methods, model evaluation, cross-validation), and shared infrastructure (preprocessing, pipelines, feature selection). Use when performing cluster analysis, dimension reduction, classification, regression with ML methods, or model evaluation in Python. For econometric regression (OLS, FE, IV, DiD), see pyfixest and statsmodels skills instead.
+description: >-
+  General-purpose machine learning with scikit-learn. Covers unsupervised
+  methods (clustering, GMM, PCA, t-SNE, UMAP, manifold learning, evaluation
+  metrics), supervised methods (classification, prediction-focused regression
+  via Ridge/Lasso/ensemble methods, model evaluation, cross-validation), and
+  shared infrastructure (preprocessing, Pipeline construction, feature
+  selection). Use when performing cluster analysis, dimension reduction,
+  classification, prediction-focused regression, or model evaluation in
+  Python. For econometric regression (OLS, FE, IV, DiD), see pyfixest and
+  statsmodels skills instead.
 metadata:
-  audience: python-developers
-  domain: data-science
+  audience: research-coders
+  domain: python-library
   library-version: "1.8.0"
+  skill-last-updated: "2026-03-26"
 ---
 
 # scikit-learn Skill
@@ -48,6 +58,8 @@ Each topic in `./references/` contains focused documentation:
 | `evaluation-supervised.md` | Accuracy, F1, ROC-AUC, confusion matrix, cross_val_score, GridSearchCV | Evaluating supervised models |
 | `feature-selection.md` | SelectKBest, RFE, permutation_importance, VarianceThreshold | Selecting informative features |
 | `gotchas.md` | Data leakage, scaling errors, t-SNE misinterpretation, class imbalance | Avoiding common mistakes |
+| `interpretation.md` | SHAP values (TreeExplainer, KernelExplainer), permutation importance visualization, partial dependence plots, ICE plots | After training a model, when interpretation or explanation is needed |
+| `fairness.md` | fairlearn MetricFrame, ThresholdOptimizer, ExponentiatedGradient, demographic parity, equalized odds | Assessing or mitigating fairness of supervised models |
 
 ### Reading Order
 
@@ -56,6 +68,8 @@ Each topic in `./references/` contains focused documentation:
 3. **Classification task?** Read `classification.md`, then `evaluation-supervised.md`
 4. **Need preprocessing?** Read `preprocessing.md` (covers Pipeline construction)
 5. **Having issues?** Check `gotchas.md` first
+6. **Interpretation task?** Read `interpretation.md`, then check `supervised-ml.md` in data-scientist skill for methodology
+7. **Fairness assessment?** Read `fairness.md`, then check `supervised-ml.md` in data-scientist skill for conceptual framework
 
 ## Related Skills
 
@@ -67,6 +81,7 @@ Each topic in `./references/` contains focused documentation:
 | `polars` | Data preparation before ML (convert to pandas/numpy before passing to scikit-learn) |
 | `geopandas` | Spatial analysis — use geopandas for geographic data, not scikit-learn |
 | `plotnine` | Custom visualization beyond scikit-learn's built-in plotting |
+| `data-scientist` | Load `supervised-ml.md` for supervised ML methodology — the "when and why" behind prediction, interpretation, and fairness |
 
 **Routing guidance:**
 - For econometric regression (hypothesis testing, standard errors, coefficient interpretation), use `pyfixest` or `statsmodels` — not scikit-learn
@@ -159,6 +174,22 @@ What kind of evaluation?
     ├─ R-squared, RMSE, MAE (./references/evaluation-supervised.md)
     └─ Model selection → cross_val_score or GridSearchCV
         (./references/evaluation-supervised.md)
+```
+
+### "I need to interpret or explain a model"
+
+```
+What kind of interpretation?
+├─ Feature importance (global) → SHAP beeswarm/bar or permutation importance
+│   (./references/interpretation.md)
+├─ Single prediction explanation → SHAP waterfall or force plot
+│   (./references/interpretation.md)
+├─ Feature effect visualization → PDP or SHAP dependence plot
+│   (./references/interpretation.md)
+├─ Fairness across demographic groups → MetricFrame
+│   (./references/fairness.md)
+└─ CAUTION: feature importance ≠ causal importance
+    (see data-scientist supervised-ml.md for methodology)
 ```
 
 ## File-First Execution in Research Workflows
@@ -283,3 +314,15 @@ labels = kmeans.labels_
 | t-SNE/UMAP distance interpretation | `./references/gotchas.md` |
 | Class imbalance | `./references/gotchas.md` |
 | random_state reproducibility | `./references/gotchas.md` |
+| SHAP values (TreeExplainer, KernelExplainer) | `./references/interpretation.md` |
+| Permutation importance visualization | `./references/interpretation.md` |
+| Partial dependence plots (PDP) | `./references/interpretation.md` |
+| ICE plots | `./references/interpretation.md` |
+| Model interpretation caveats | `./references/interpretation.md` |
+| fairlearn MetricFrame | `./references/fairness.md` |
+| ThresholdOptimizer | `./references/fairness.md` |
+| ExponentiatedGradient | `./references/fairness.md` |
+| Demographic parity | `./references/fairness.md` |
+| Equalized odds | `./references/fairness.md` |
+| LightGBM (LGBMClassifier, LGBMRegressor) | `./references/classification.md`, `./references/regression-ml.md` |
+| XGBoost (XGBClassifier, XGBRegressor) | `./references/classification.md`, `./references/regression-ml.md` |

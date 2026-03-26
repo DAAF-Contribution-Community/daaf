@@ -83,6 +83,12 @@ RUN uv pip install --system \
     plotly==6.5.2 \
     marimo==0.19.11
 
+# Install ML interpretation & fairness packages
+RUN uv pip install --system \
+    shap==0.51.0 \
+    fairlearn==0.12.0 \
+    lightgbm==4.6.0
+
 # ============================================
 # Create non-root user for security
 # ============================================

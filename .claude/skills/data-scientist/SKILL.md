@@ -1,9 +1,20 @@
 ---
 name: data-scientist
-description: Python data science methodology and mindset. Enforces rigorous EDA, data validation, documentation, and verification practices before and during analysis. Use for any data analysis, exploration, transformation, or modeling task in Python.
+description: >-
+  Rigorous data science methodology and mindset for Python research. Covers
+  EDA, data validation, transformation verification, documentation standards,
+  visualization design, descriptive analysis, statistical modeling, causal
+  inference method selection (IV, DiD, RD, synthetic control), unsupervised
+  analysis (clustering, PCA, UMAP), supervised ML methodology (prediction vs.
+  inference, cross-validation, model interpretation, fairness), and geospatial
+  analysis. Provides methodology decisions and analytical approach guidance.
+  For implementation syntax, load the tool-specific skill (polars, statsmodels,
+  plotnine, pyfixest, scikit-learn, geopandas, etc.). Use for any data
+  analysis, exploration, transformation, or modeling task — especially when
+  choosing methods, checking assumptions, or structuring an analysis.
 metadata:
-  audience: python-developers
-  domain: data-science
+  audience: any-agent
+  domain: research-methodology
 ---
 
 # Data Scientist Skill
@@ -146,6 +157,15 @@ What task are you performing?
 │       ├─ System estimation (SUR, 3SLS) → Load `linearmodels` skill
 │       └─ Spatial regression (spatial lag, spatial error, GWR) → Load `geopandas` skill
 │           (spatial regression uses PySAL/spreg via geopandas; also read geospatial refs)
+├─ Supervised ML (prediction, classification, risk scoring)
+│   ├─ Methodology (when to use ML, how to validate, interpret, report)
+│   │   → Read supervised-ml.md
+│   ├─ Implementation (algorithms, syntax, evaluation)
+│   │   → Load `scikit-learn` skill
+│   ├─ Model interpretation (SHAP, feature importance)
+│   │   → Read supervised-ml.md "Interpreting ML Models" + scikit-learn interpretation.md
+│   └─ Fairness assessment
+│       → Read supervised-ml.md "Fairness" + scikit-learn fairness.md
 ├─ Unsupervised analysis (clustering, dimensionality reduction, pattern discovery)
 │   └─ Stage 8.1 — FIRST read ./references/exploratory-unsupervised.md
 │       THEN load `scikit-learn` skill for implementation
@@ -199,6 +219,7 @@ This skill assumes familiarity with:
 | `geospatial-analysis.md` | Spatial thinking, MAUP, CRS, methods decision guide, autocorrelation, regression | **Any task involving geographic/spatial data** |
 | `geospatial-operations.md` | Spatial joins, weights, LISA interpretation, interpolation, zonal statistics, geometry validity | **Planning or executing spatial operations (joins, overlays, weights, interpolation, zonal statistics), or interpreting spatial statistics results (Moran's I, LISA)** |
 | `exploratory-unsupervised.md` | Cluster analysis, dimension reduction (PCA), Gaussian mixture models, nonlinear embeddings (t-SNE, UMAP), cluster validation, classify-analyze problem | Stage 8 tasks involving unsupervised methods, typology construction, or pattern discovery |
+| `supervised-ml.md` | Supervised ML methodology: prediction vs. inference (Shmueli 2010), bias-variance tradeoff, cross-validation for structured data (grouped, temporal, spatial), model selection, classification and ML regression methodology, ensemble methods, interpretation caveats (feature importance is not causation), algorithmic fairness and equity (impossibility theorems), deep learning orientation, reporting standards | Stage 8 tasks involving classification, prediction, risk scoring, ML-based variable selection, or any task where the goal is predicting outcomes rather than estimating causal parameters |
 
 ### Validation Tracking
 
@@ -415,6 +436,23 @@ Geospatial analysis task?
 │       THEN → ./references/visualization-execution.md (color, accessibility)
 └─ Implementation syntax (geopandas, PySAL, rasterio)
     └─ Load `geopandas` skill
+```
+
+### "I need to predict an outcome or classify observations"
+
+```
+Am I predicting or explaining?
+├─ Explaining (estimating a causal or associational parameter)
+│   └─ Use pyfixest or statsmodels — see statistical-modeling.md
+├─ Predicting (minimizing prediction error on new data)
+│   ├─ Read supervised-ml.md for methodology
+│   ├─ Load scikit-learn skill for implementation
+│   ├─ Tabular data → Start with logistic regression baseline,
+│   │   then try HistGradientBoosting or LightGBM
+│   ├─ Text data → See supervised-ml.md "When Deep Learning Methods Are Appropriate"
+│   ├─ Need to explain predictions → scikit-learn interpretation.md (SHAP)
+│   └─ Need fairness assessment → scikit-learn fairness.md
+└─ Not sure → Read supervised-ml.md "Prediction vs. Inference"
 ```
 
 ## Essential Workflows
@@ -750,3 +788,14 @@ Use markdown cells liberally:
 | Cluster validation (silhouette, stability, ARI) | `./references/exploratory-unsupervised.md` |
 | Classify-analyze problem | `./references/exploratory-unsupervised.md` |
 | Typology construction | `./references/exploratory-unsupervised.md` |
+| Prediction vs. inference distinction | `./references/supervised-ml.md` |
+| Bias-variance tradeoff | `./references/supervised-ml.md` |
+| Cross-validation for social science data (grouped, temporal, spatial) | `./references/supervised-ml.md` |
+| Model selection (supervised ML) | `./references/supervised-ml.md` |
+| Classification methodology | `./references/supervised-ml.md` |
+| ML regression (prediction-focused) | `./references/supervised-ml.md` |
+| Ensemble methods (random forests, boosting) | `./references/supervised-ml.md` |
+| Feature importance interpretation (SHAP, permutation importance) | `./references/supervised-ml.md` |
+| Algorithmic fairness and bias | `./references/supervised-ml.md` |
+| Deep learning orientation | `./references/supervised-ml.md` |
+| Reporting standards for ML | `./references/supervised-ml.md` |

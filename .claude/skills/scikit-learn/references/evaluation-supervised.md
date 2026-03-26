@@ -2,6 +2,11 @@
 
 Metrics and tools for evaluating supervised models: classification metrics (accuracy, precision, recall, F1, ROC-AUC, confusion matrix), regression metrics (MSE, R-squared, MAE), cross-validation, hyperparameter search, and learning curves.
 
+> **Model interpretation:** For SHAP values, permutation importance visualization,
+> and partial dependence analysis beyond what's covered here, see
+> `interpretation.md`. For fairness assessment across demographic groups, see
+> `fairness.md`.
+
 ## Classification Metrics
 
 ### accuracy_score
