@@ -801,6 +801,7 @@ When reviewing profiling scripts in Data Onboarding mode, apply these adaptation
 3. **Output is embedded in script files.** Profiling scripts produce stdout/stderr appended to the script file by `run_with_capture.sh`, not separate parquet or figure files. QA scripts should verify the appended execution log content.
 4. **QA script naming uses part-based convention:** `scripts/cr/profile_{part}_cr{N}.py` (e.g., `profile_structural_cr1.py`), not the stage-based `stage{N}_{step}_cr{N}.py` pattern used in Full Pipeline.
 5. **Research question maps to intended use.** When the orchestrator provides `Research question / Intended use`, use this for methodology alignment in place of Plan.md's research question.
+6. **Multi-file (HIERARCHICAL) QA:** When reviewing profiling parts that contain per-file suffixed scripts (e.g., `01a_`, `01b_`, `07a_`, `09a_`), one QA script per part reviews ALL suffixed scripts together. Verify: (a) consistent canonical load patterns across suffixed scripts, (b) suffix-to-file mapping matches the schema map, (c) per-file conditional script decisions are independently correct. For cross-file script `07b_cross-level-linkage.py`, additionally verify: key type comparison was performed before join simulation, orphan counts are plausible given the coverage rates, and join loss simulation includes both inner-join survival rate and duplication check.
 
 ---
 

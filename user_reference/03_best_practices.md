@@ -470,6 +470,23 @@ The first two are your responsibility: Be thorough and thoughtful about what you
 
 ---
 
+## Tips for Data Onboarding
+
+Data Onboarding mode profiles raw data files and creates reusable data source skills. Here are some tips to get the most out of it:
+
+**Before you start:**
+- **Have your data file ready** in a common tabular format (CSV, TSV, Parquet, or Excel). Parquet is preferred for speed and type preservation, but any of these work.
+- **Gather any documentation** you have — codebooks, data dictionaries, README files, methodology papers. Providing documentation lets DAAF cross-check what the documentation says against what the data actually shows, catching discrepancies that could trip you up later.
+- **Know your data's provenance** — where it came from, when you downloaded it, and what it covers. DAAF records this in the skill for future reference.
+- **If your data comes from an API**, have the API key set up in your environment before starting. DAAF will write a reproducible fetch script for you, but it needs the key to test the download.
+
+**During the process:**
+- **The interpretation review is the most important checkpoint.** When DAAF presents its preliminary interpretations, take the time to carefully confirm, reject, or modify each one. These interpretations become the foundation of the skill that all future analyses will rely on.
+- **Don't worry about getting everything perfect.** The skill is a living artifact — you can refine it later using Framework Development mode as you discover more about the data through actual use.
+- **Flag priority columns** if you know which ones matter most for your research. DAAF will give them extra attention during profiling.
+
+---
+
 ## Recommended Next Steps
 
 - [**04. Extending DAAF**](04_extending_daaf.md) — How to add new data source skills, analytical tools and methodologies, and creating your own additional specialized agents

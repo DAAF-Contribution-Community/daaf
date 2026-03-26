@@ -19,18 +19,42 @@ After mode confirmation, briefly orient the user. Key points:
 
 ---
 
+## Scope
+
+Data Onboarding is designed for **tabular datasets** — files with rows and columns in formats like CSV, TSV, Parquet, Excel, or row-oriented JSON. The profiling protocol examines column types, distributions, keys, and inter-column relationships that are specific to tabular data.
+
+**Not designed for:** Spatial data (shapefiles, GeoPackage), deeply nested JSON/XML, graph databases, unstructured text corpora, or image/audio datasets. If your data is non-tabular, consider Ad Hoc Collaboration mode for a more flexible approach to understanding the data.
+
+**Text-heavy tabular data:** If your dataset has columns with significant free-text content (e.g., survey open-ended responses, administrative notes), the profiling protocol will characterize these columns structurally (string lengths, null rates, unique counts) but does not perform text analysis (topic modeling, sentiment, etc.). Consider a Full Pipeline analysis for text-specific methodology.
+
+---
+
 ## Data Onboarding Mode Workflow
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│ PHASE DI-1: INTAKE & SETUP                                                  │
+│ PHASE DO-1: INTAKE & SETUP                                                  │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │  Stage DI-1: Initial Intake                                                 │
-│      ├─ Collect: file path, format, source name, target skill name          │
+│      ├─ Collect: file path(s), format, source name, target skill name       │
 │      ├─ Collect: domain context, documentation links, priority columns      │
+│      ├─ Determine access method:                                            │
+│      │   ├─ LOCAL FILE — user provides file path(s) on disk                │
+│      │   │   └─ Continue DI-1 (file structure classification below)        │
+│      │   └─ API — user describes API endpoint(s)                           │
+│      │       └─ Invoke PHASE DO-0 (see conditional side-phase below),      │
+│      │          then resume DI-1 with downloaded file(s)                   │
+│      ├─ Determine file structure (if multiple files provided):              │
+│      │   ├─ SINGLE — one data file (default)                               │
+│      │   ├─ HORIZONTAL — multiple files, same schema (e.g., one per year) │
+│      │   └─ HIERARCHICAL — different schemas/levels, linked by keys        │
+│      ├─ If HIERARCHICAL: collect entity descriptions and linking keys       │
+│      ├─ Skill structure decision (multi-file only):                         │
+│      │   ├─ UNIFIED — one skill for the whole source (default)             │
+│      │   └─ PER-ENTITY — one skill per entity type                         │
 │      ├─ Check for skill name conflict in .claude/skills/                     │
-│      ├─ Verify file accessible and non-empty                                │
-│      └─ Gate GDI-1: Required inputs collected, file accessible              │
+│      ├─ Verify file(s) accessible and non-empty (skip if API — DI-0 first) │
+│      └─ Gate GDI-1: Required inputs collected, file(s) accessible           │
 │                          ↓                                                  │
 │  Stage DI-2: Project Setup                                                  │
 │      ├─ Create research project folder under research/                       │
@@ -41,6 +65,39 @@ After mode confirmation, briefly orient the user. Key points:
 │      └─ Gate GDI-2: Project folder ready, STATE.md initialized              │
 └─────────────────────────────────────────────────────────────────────────────┘
                           ↓
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ PHASE DO-0: API DISCOVERY & ACQUISITION (CONDITIONAL — invoked from DI-1)   │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  Stage DI-0: API Acquisition (only if access method = API)                 │
+│      ├─ Triggered when DI-1 intake determines access method = API          │
+│      ├─ Verify API key is set in environment; if missing → STOP with      │
+│      │   setup instructions (see API Key Setup Guidance below)             │
+│      ├─ DI-0a: WRITE PHASE — Invoke data-ingest (profiling_part = "DI-0") │
+│      │   ├─ Agent researches API (WebFetch docs, WebSearch if needed)      │
+│      │   ├─ Identifies endpoints, response format, pagination, rate limits │
+│      │   ├─ Writes acquisition script: scripts/stage5_fetch/00_api-fetch.py│
+│      │   └─ Returns: script path, API findings, confidence assessment     │
+│      │   (Agent does NOT execute the script — returns after writing)       │
+│      ├─ Orchestrator presents script to user for review and approval      │
+│      │   ├─ Show: API endpoint, auth method, query params, save path      │
+│      │   └─ User confirms or requests modifications                       │
+│      ├─ DI-0b: EXECUTE PHASE — Orchestrator executes approved script      │
+│      │   ├─ Execute via run_with_capture.sh                               │
+│      │   ├─ Verify downloaded file is non-empty and loadable              │
+│      │   └─ If execution fails: present error, allow user to adjust       │
+│      └─ Gate GDI-0: File downloaded, accessible, non-empty                │
+│                          ↓                                                  │
+│  Feed downloaded file path(s) into DI-1 as the data file(s)                │
+│  DI-1 resumes with downloaded file(s) for structure classification          │
+│                                                                             │
+│  NOTE: API + HIERARCHICAL combined case — if the user describes an API     │
+│  with multiple endpoints at different levels (e.g., schools endpoint +      │
+│  districts endpoint), invoke DI-0 once per endpoint. Each invocation       │
+│  produces a separate 00{x}_api-fetch.py script (00a_, 00b_, etc.) and      │
+│  a separate downloaded file. DI-1 then classifies file structure as        │
+│  HIERARCHICAL with all downloaded files as inputs.                          │
+└─────────────────────────────────────────────────────────────────────────────┘
+                          ↓
             ┌──────────────────────────────────┐
             │  PSU-DI1: Setup Confirmation     │
             │  Present setup summary, profiling│
@@ -48,7 +105,7 @@ After mode confirmation, briefly orient the user. Key points:
             └──────────────────────────────────┘
                           ↓
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│ PHASE DI-2: PROFILING & RECONCILIATION                                      │
+│ PHASE DO-2: PROFILING & RECONCILIATION                                      │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │  Stage DI-3: Structural Profile (Part A — scripts 01-03, sequential)        │
 │      ├─ 01: Format detection, encoding validation, canonical load pattern   │
@@ -90,7 +147,7 @@ After mode confirmation, briefly orient the user. Key points:
             └──────────────────────────────────┘
                           ↓
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│ PHASE DI-3: SKILL AUTHORING & DELIVERY                                      │
+│ PHASE DO-3: SKILL AUTHORING & DELIVERY                                      │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │  Stage DI-7: Skill Authoring                                       │
 │      ├─ Synthesize profiling results + user-confirmed interpretations       │
@@ -141,13 +198,247 @@ All data source skills follow this pattern. The `{domain}` groups related source
 3. **Always check** for conflicts against existing skills in `.claude/skills/` before confirming.
 4. **Record** the confirmed skill name in STATE.md's Data Source Info section.
 
+### Access Method Determination
+
+At DI-1, determine how the user's data will be accessed:
+
+```
+Does the user have a data file on disk?
+├─ YES → Does the user also want the API access pattern documented in the skill?
+│   ├─ YES → Access method = LOCAL FILE + API DOCS
+│   │   └─ Skip DI-0 data download; DI-0 researches API only (write phase)
+│   │      to populate the skill's Data Access section with API patterns
+│   └─ NO → Access method = LOCAL FILE
+│       └─ Proceed to file structure classification
+└─ NO → Does the user have an API to pull from?
+    ├─ YES → Access method = API
+    │   └─ Collect API details; Stage DI-0 will execute before DI-1 resumes
+    └─ NO → Ask clarifying questions:
+        ├─ "Is the data available online for download?"
+        │   └─ YES → Help user download it, or use DI-0 to fetch via URL
+        └─ "Can you provide the data file directly?"
+            └─ Guide user to place file in an accessible location
+```
+
+**If access method = API, collect:**
+- API documentation URL (or user description of API endpoints)
+- Name of the environment variable holding the API key (e.g., `MY_API_KEY`)
+- Target endpoint(s) and any query parameters (date range, filters, format)
+- Data persistence preference (ask explicitly):
+
+> **How would you like to access this data in future analyses?**
+>
+> 1. **Download once and work locally** (default) — I'll download the data now, save it as a parquet file, and future analyses will use the local copy. Simpler, works offline, and faster for repeated use.
+> 2. **Query the API each time** — I'll document the API access pattern so future analyses always pull fresh data directly from the source. Keeps data current, but requires API access and a valid key each time.
+>
+> Either way, I'll create a reproducible fetch script you can re-run any time.
+
+Record all API details and the persistence preference in STATE.md's Data Source Info section.
+
+### File Structure Classification
+
+For users providing one or more local files (or after DI-0 downloads data):
+
+```
+How many data files are involved?
+├─ ONE file → File structure = SINGLE (default, no further questions)
+└─ MULTIPLE files → Ask the user:
+    ├─ "Are these files structured the same way (same columns), just
+    │    covering different time periods or segments?"
+    │   └─ YES → File structure = HORIZONTAL
+    │       └─ Confirm: "I'll combine these into one dataset for profiling,
+    │          adding a tracking column so we know which file each row came
+    │          from. Does that sound right, or would you prefer I profile
+    │          them separately?"
+    └─ "Do these files represent different levels of data (e.g., one file
+        for schools, another for districts) that link together on key columns?"
+        └─ YES → File structure = HIERARCHICAL
+            └─ Collect:
+                ├─ Which entity does each file represent?
+                ├─ What columns link them together?
+                └─ Do all files cover the same time period?
+```
+
+### Skill Structure Decision (Multi-File Only)
+
+For HORIZONTAL or HIERARCHICAL file structures, present this decision:
+
+> **Skill structure decision:** You're providing [N] related data files. By default, I'll create **one unified skill** that documents the entire data source — all files, their relationships, join patterns, and caveats in one place. This is simpler to load and keeps all context together.
+>
+> Alternatively, I can create **one skill per entity type** (e.g., `your-source-schools`, `your-source-districts`). This gives more granular detail per table within each skill but means loading multiple skills when working across levels.
+>
+> **Which do you prefer?** (Default: one unified skill)
+
+If the user chooses PER-ENTITY:
+- Each file gets its own skill name following the `{domain}-data-source-{acronym}-{entity}` convention
+- Each skill is profiled and authored independently
+- A brief cross-reference section in each skill points to the related entity skills
+- The orchestrator runs the full profiling cycle per file, then authors skills separately
+
+Record the choice in STATE.md Key Decisions Made.
+
+### API Complexity Assessment (During DI-0)
+
+After the orchestrator (or data-ingest agent during DI-0) has researched the API, assess complexity and present a recommendation:
+
+**Simple API** (1-3 endpoints, single dataset, straightforward auth):
+
+> This API has a straightforward structure — I'll document the access pattern directly in the data source skill's "Data Access" section. This keeps everything in one place.
+
+**Complex API** (many endpoints, multiple datasets, rich query parameters, pagination):
+
+> This API offers many endpoints and datasets. I can either:
+>
+> 1. **Document access in the data source skill** (default) — covers the specific dataset(s) you're onboarding now
+> 2. **Create a separate query/connector skill** (e.g., `your-domain-data-query`) — a reusable reference for accessing any dataset from this API, useful if you plan to onboard multiple datasets from this source over time
+>
+> I'd recommend option 1 unless you know you'll be working extensively with this API. You can always create the query skill later.
+
+Record the decision in STATE.md Key Decisions Made.
+
+### API Key Setup Guidance (Orchestrator Reference)
+
+When the user needs to set up an API key and it's not currently available in the environment, present these options:
+
+**For the current session (temporary):**
+
+> Before launching Claude Code, run this in your Docker container terminal:
+> ```bash
+> export YOUR_API_KEY_NAME="your_key_here"
+> ```
+> You can also type `! export YOUR_API_KEY_NAME="your_key_here"` directly in the Claude Code prompt to set it for this session.
+
+**For persistence across sessions:**
+
+> Add the export to your shell profile inside the container:
+> ```bash
+> echo 'export YOUR_API_KEY_NAME="your_key_here"' >> ~/.bashrc
+> ```
+
+**For Docker Compose (recommended for team or repeated use):**
+
+> Add to the `environment:` section in `docker-compose.yml`:
+> ```yaml
+> environment:
+>   - YOUR_API_KEY_NAME=${YOUR_API_KEY_NAME}
+> ```
+> Then set the variable on your host machine before running `docker compose up`.
+
+**Security notes to convey to user:**
+- DAAF's safety guardrails prevent reading or writing `.env` files — this is by design
+- Credentials stay in temporary memory only and are never written to files
+- The acquisition script references `os.environ["KEY_NAME"]`, never hardcodes the key value
+- The script is archived in the project for reproducibility, but the key value is never in it
+
+**OAuth / complex authentication:** If the API requires OAuth 2.0 (token refresh, browser-based authorization code flow) or other multi-step authentication, DI-0 cannot handle this automatically. In this case, advise the user to:
+1. Complete the OAuth flow manually outside DAAF (e.g., using the API's web portal or a CLI tool)
+2. Obtain a bearer token or access token
+3. Set it as an environment variable (e.g., `export MY_API_TOKEN="bearer_token_here"`)
+4. Proceed with DI-0 using the token as a simple API key
+
+Note in the skill's Data Access section that the token may expire and needs periodic renewal. Alternatively, the user can download the data manually and provide it as a local file.
+
+### Data Persistence Preference Effects
+
+The user's persistence preference (collected at DI-1) determines how the skill documents data access:
+
+| Preference | Skill "Data Access" Section | Acquisition Script | Future Pipeline Behavior |
+|------------|---------------------------|-------------------|------------------------|
+| **Local storage** (default) | Documents download procedure + local file path pattern | Downloads full dataset to `data/raw/` | Stage 5 loads from local parquet; re-fetch only if user requests |
+| **Live query** | Documents API endpoint + query code pattern | Downloads for onboarding profiling only | Stage 5 queries API directly each time; script includes the full API call |
+
+Both preferences produce the same profiling outcome — the difference is in what the skill tells future pipeline stages about how to access the data.
+
+When "Live query" is selected, the skill's Data Access section includes both patterns: the API query code (primary) AND a note about local caching for offline use or performance.
+
+### DI-0 Invocation Template
+
+When access method = API, the orchestrator invokes the data-ingest agent for DI-0:
+
+```
+**MODE: Data Onboarding — Stage DI-0 (API Acquisition)**
+**BASE_DIR:** {absolute path to DAAF root}
+**PROJECT_DIR:** {absolute path to research project}
+
+## Task
+
+Research the target API and write an acquisition script that downloads the
+user's requested dataset to the project's data/raw/ directory.
+
+## API Details
+
+- **API Documentation URL:** {url or "None — user description below"}
+- **User Description of API:** {what the user told us about the API}
+- **API Key Env Var:** {env var name, e.g., "HARVARD_DATAVERSE_API_KEY"}
+- **Target Endpoint(s):** {what data to download}
+- **Query Parameters:** {filters, date range, format preferences}
+- **Data Persistence Preference:** {Local storage / Live query}
+
+## Instructions
+
+**DI-0 uses a split execution model: the agent WRITES the script but does NOT execute it.** The orchestrator presents the script to the user for approval, then executes it separately. This is because DI-0 makes external network calls — the user should see exactly what API call will be made before it runs.
+
+1. Load the `data-scientist` skill for methodology guidance
+2. Research the API via WebFetch (read API docs) and WebSearch if needed
+3. Identify: available endpoints, response format, pagination method, rate limits, auth method
+4. Write acquisition script to: `{project_script_dir}/stage5_fetch/00_api-fetch.py`
+   - Script MUST check `os.environ["{env_var_name}"]` with clear error if missing
+   - Script MUST use `requests` library for API calls
+   - Script MUST handle pagination if the API paginates results
+   - Script MUST save result as parquet to `{project_dir}/data/raw/{date}_{source}.parquet`
+   - Script MUST print: rows fetched, columns, file size, file path
+   - Script MUST include IAT comments (INTENT, REASONING, ASSUMES)
+   - Follow file-first execution protocol (read SCRIPT_EXECUTION_REFERENCE.md)
+5. **STOP — do NOT execute the script.** Return the script path and API findings to the orchestrator. The orchestrator will present the script to the user and execute after approval.
+
+## Output Format
+
+Return findings in this structure (max 2500 words):
+
+### DI-0 Summary
+**Status:** [SCRIPT_READY | BLOCKED]
+**Script Path:** [absolute path to 00_api-fetch.py]
+**Expected Output Path:** [where the parquet will be saved]
+
+### API Findings
+- **Base URL:** [discovered base URL]
+- **Auth Method:** [API key via query param / header / bearer token]
+- **Rate Limits:** [if discovered]
+- **Pagination:** [method if applicable]
+- **Available Endpoints:** [brief inventory of what else this API offers]
+- **API Complexity Assessment:** [Simple / Complex — with reasoning]
+
+### Acquisition Script
+**Path:** [absolute path to 00_api-fetch.py]
+
+### Confidence Assessment
+**DI-0 Confidence:** [HIGH | MEDIUM | LOW]
+
+| Aspect | Confidence | Rationale |
+|--------|------------|-----------|
+| API authentication | [H/M/L] | [evidence] |
+| Data completeness | [H/M/L] | [did we get everything the user requested?] |
+| Response format | [H/M/L] | [was the format as expected?] |
+
+### Issues
+[Any issues encountered, or "None"]
+
+### Recommendations
+- **Proceed?** [YES -- data acquired successfully | NO -- issues block acquisition]
+- [Specific next actions or items for orchestrator attention]
+
+### Learning Signal
+**Learning Signal:** [Category] -- [One-line insight] | "None"
+```
+
 ---
 
 ## Gate Definitions
 
 | Gate | After Stage | Criteria | STOP If |
 |------|-------------|----------|---------|
-| GDI-1 | DI-1 | Required inputs collected, file accessible and non-empty | File cannot be loaded, file empty, or required inputs missing |
+| GDI-0 | DI-0 | API key verified, data downloaded, file non-empty, acquisition script archived | API auth fails, empty response, rate limited (conditional — only if access method = API) |
+| GDI-1 | DI-1 | Required inputs collected, file(s) accessible and non-empty, access method determined, file structure classified | File cannot be loaded, file empty, required inputs missing, or API acquisition failed |
 | GDI-2 | DI-2 | Project folder created, STATE.md initialized (from `agent_reference/STATE_TEMPLATE_ONBOARDING.md`), data staged | Folder creation fails, run_with_capture.sh missing |
 | GDI-3 | DI-3 | CPP1 PASSED, QAP1 PASSED or WARNING | File >1GB without sampling plan approved by user, or critical columns entirely null |
 | GDI-4 | DI-4 | CPP2 PASSED, QAP2 PASSED or WARNING | >50% of columns are entirely null |
@@ -175,7 +466,7 @@ For EACH profiling part (DI-3 through DI-6), follow this complete cycle. **Do NO
 │  STEP 1: INVOKE data-ingest subagent                                        │
 │      │                                                                      │
 │      │   Use the part-specific invocation template (Part A/B/C/D)          │
-│      │   from the Invocation Templates section below.                      │
+│      │   from WORKFLOW_PHASE_DO_PROFILING.md.                              │
 │      │                                                                      │
 │      │   Capture from return: script paths, CPP status, part summary,      │
 │      │   conditional script decisions (Part A only), learning signals.     │
@@ -223,6 +514,21 @@ For EACH profiling part (DI-3 through DI-6), follow this complete cycle. **Do NO
 │      ├─ Verify gate criteria (CPP + QAP status) before proceeding         │
 │      └─ Proceed to next part or PSU-DI2                                    │
 ├─────────────────────────────────────────────────────────────────────────────┤
+│  STEP 6: PROGRESS UPDATE (informational — no user action required)         │
+│      │                                                                      │
+│      │   After each part's QA completes and STATE.md is updated, print    │
+│      │   a brief, informal progress message to the user:                  │
+│      │                                                                      │
+│      │   **Profiling progress: [Part Name] complete**                     │
+│      │   - [1-2 key findings from this part]                              │
+│      │   - Next: [what comes next — next part or PSU-DI2 review]          │
+│      │                                                                      │
+│      │   This is a heartbeat, not a checkpoint. No user action needed.    │
+│      │   Keep it to 3-4 lines. Do NOT present detailed findings —         │
+│      │   those are for PSU-DI2.                                           │
+│      │                                                                      │
+│      └─ Proceed to next part (back to STEP 0) or PSU-DI2                  │
+├─────────────────────────────────────────────────────────────────────────────┤
 │  STEP 0 (before each cycle): READ STATE.md                                  │
 │      ├─ Verify current position and prior part statuses                    │
 │      ├─ Check Error Budget — confirm remaining budget > 0                  │
@@ -230,7 +536,7 @@ For EACH profiling part (DI-3 through DI-6), follow this complete cycle. **Do NO
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
-**CRITICAL:** Steps 0-5 form an atomic unit. Step 0 runs before each new part cycle. NEVER proceed to the next part without completing all steps. NEVER invoke a new profiling subagent without first completing QA review and STATE.md update for the previous part.
+**CRITICAL:** Steps 0-6 form an atomic unit. Step 0 runs before each new part cycle. NEVER proceed to the next part without completing all steps. NEVER invoke a new profiling subagent without first completing QA review and STATE.md update for the previous part.
 
 **Stage DI-7 (Skill Authoring):** Does not follow this cycle. It has its own gate (GDI-7) and updates the Skill Authoring Status section of STATE.md directly. DI-7 includes skill file creation and template compliance validation. Skills are automatically discovered via YAML frontmatter once placed in `.claude/skills/`. Stage DI-8 finalizes STATE.md as described in the Output Format section.
 
@@ -238,6 +544,8 @@ For EACH profiling part (DI-3 through DI-6), follow this complete cycle. **Do NO
 
 | Event | Required STATE.md Field Updates |
 |-------|--------------------------------|
+| DI-0 script approved and executed | Profiling Progress row 00 → DONE; API Access Info → all fields populated; Files Created; Current Position |
+| DI-0 blocked (auth failure, empty response) | Blockers → Execution Blockers; Current Position → Status=Blocked |
 | Part starts (DI-3/4/5/6) | Current Position → Current Stage, Current Phase |
 | Part cycle Step 5 completes | Profiling Progress → script Status and CPP columns for each script in part |
 | Conditional script skipped | Profiling Progress → Status=SKIPPED, Notes=reason; Key Decisions Made |
@@ -281,276 +589,6 @@ This is a **mandatory gate** — DI-7 cannot be invoked until Interpretation Tra
 
 ---
 
-## Profiling Protocol
-
-### Script Inventory
-
-| # | Part | Script Name | Purpose | Conditional? | Script Path Pattern |
-|---|-------|-------------|---------|--------------|---------------------|
-| 01 | A | load-and-format | Format detection, encoding validation, canonical load pattern | No | `scripts/profile_structural/01_load-and-format.py` |
-| 02 | A | structural-profile | Row/column counts, memory, types, schema | No | `scripts/profile_structural/02_structural-profile.py` |
-| 03 | A | column-profile | Per-column statistics, value distributions | No | `scripts/profile_structural/03_column-profile.py` |
-| 04 | B | distribution-analysis | Distribution fitting, outlier detection, multimodality | No | `scripts/profile_statistical/04_distribution-analysis.py` |
-| 05 | B | temporal-coverage | Time coverage gaps, record count trends, drift | Yes: time column | `scripts/profile_statistical/05_temporal-coverage.py` |
-| 06 | B | entity-coverage | Entity/geographic coverage, ID format validation | Yes: entity/geo ID | `scripts/profile_statistical/06_entity-coverage.py` |
-| 07 | C | key-integrity | Uniqueness testing, composite keys, functional dependencies | No | `scripts/profile_relational/07_key-integrity.py` |
-| 08 | C | correlation-dependency | Pearson/Spearman, Cramer's V, redundant column detection | Yes: >=3 numeric cols | `scripts/profile_relational/08_correlation-dependency.py` |
-| 09 | C | quality-anomaly | Completeness, coded missing values, duplicates, anomaly catalog | No | `scripts/profile_relational/09_quality-anomaly.py` |
-| 10 | D | semantic-interpretation | Column name/value pattern matching, data dictionary draft | No | `scripts/profile_interpretation/10_semantic-interpretation.py` |
-| 11 | D | reconcile-docs | Documentation verification, discrepancy report | Yes: docs provided | `scripts/profile_interpretation/11_reconcile-docs.py` |
-
-### Part Dependency Diagram
-
-```
-Part A: Structural Discovery            Part B: Statistical Deep Dive
-  01 ──> 02 ──> 03                       04 (ALWAYS)
-  (sequential — canonical load             05? (time column found)
-   pattern established in 01)              06? (entity/geo ID found)
-       │                                 (independent within part)
-       │  Part A findings gate             │
-       │  conditional decisions            │
-       v                                   v
-Part C: Relational Analysis             Part D: Interpretation & Reconciliation
-  07 (ALWAYS)                              10 ──> 11?
-  08? (>=3 numeric cols)                   (sequential — 11 verifies docs
-  09 (ALWAYS)                               if provided)
-  (independent within part)
-```
-
-### Conditional Execution Rules
-
-Scripts 05, 06, 08, and 11 are conditional. The orchestrator decides at part boundaries based on Part A structural findings and intake information.
-
-```
-Script 05 (Temporal Analysis):
-    Part A found date/time/year columns?
-        YES → Execute script 05
-        NO  → Skip; document "no temporal columns detected" in STATE.md
-
-Script 06 (Entity Coverage):
-    Part A found entity/geographic ID columns (state, county, FIPS, zip, entity ID)?
-        YES → Execute script 06
-        NO  → Skip; document "no entity/geographic ID columns detected" in STATE.md
-
-Script 08 (Correlation/Dependency):
-    Part A found >= 3 numeric columns?
-        YES → Execute script 08
-        NO  → Skip; document "fewer than 3 numeric columns — correlation analysis not applicable" in STATE.md
-
-Script 11 (Documentation Reconciliation):
-    User provided documentation at intake?
-        YES → Execute script 11
-        NO  → Skip; document "no documentation provided for reconciliation" in STATE.md
-```
-
-Document all skip decisions in STATE.md with the reasoning. Conditional scripts that are skipped do not affect gate passage — gates evaluate only the scripts that executed.
-
-### Column Batching Strategy
-
-For datasets with more than 100 columns, profiling scripts that inspect individual columns (02, 03, 04, 10) must be batched to avoid context overflow in subagent invocations.
-
-- **Batch size:** ~50 columns per invocation
-- **Batching method:** Partition the column list into groups of ~50; dispatch one subagent invocation per batch
-- **Priority columns first:** If the user specified priority columns at intake, include them in the first batch
-- **Merge outputs:** After all batches complete, merge per-batch outputs into a single consolidated result before proceeding to the next part
-- **STATE.md tracking:** Record batch boundaries and completion status for each batch
-
-### Multi-File Profiling
-
-When intake includes multiple data files:
-
-1. **Script 01** inventories all files, designates **primary** (largest/most complete) vs **auxiliary**
-2. **Part A** runs on each file independently (scripts suffixed: `01a_`, `01b_`, etc.)
-3. **Parts B-C** handle cross-file analysis: script 07 tests referential integrity across files, script 09 checks cross-file consistency
-4. **Skill authoring subagent** synthesizes per-file and cross-file findings from all scripts
-
----
-
-## Part Details
-
-### Part A -- Structural Discovery
-
-Scripts 01-03 establish foundational understanding. Always fully executed.
-
-**01_load-and-format.py:** Detect file format (CSV/TSV/Parquet/Excel/JSON), validate encoding (BOM, line endings, delimiter inference), analyze character set, establish canonical `pl.read_*` call with exact parameters reused by all subsequent scripts. Outputs: detected format/encoding, canonical load statement, CPP1 results.
-
-**02_structural-profile.py:** Extract row/column counts, estimated memory footprint (MB), column data types and order, first/last 5 rows for visual inspection, schema summary table. Outputs: shape, memory, type distribution, schema.
-
-**03_column-profile.py:** Per-column stats: nulls, uniques, uniqueness ratio. Numerics: min/max/mean/median/std, percentiles (p5/p25/p50/p75/p95), skewness, kurtosis. Strings: min/max length, empty count, pattern detection (emails/phones/dates/IDs). Categoricals (<50 unique): top 20 value counts. Outputs: complete per-column profile, potential identifier flags (>95% unique).
-
-#### CPP1: Post-Load Validation
-
-Embedded in script 01.
-
-```python
-# --- CPP1: Post-Load Validation ---
-assert df.shape[0] > 0, "STOP: Zero rows loaded"
-assert df.shape[1] > 0, "STOP: Zero columns detected"
-total_cells = df.shape[0] * df.shape[1]
-total_nulls = sum(df[col].null_count() for col in df.columns)
-null_rate = total_nulls / total_cells
-assert null_rate < 0.5, f"STOP: Overall null rate {null_rate:.1%} exceeds 50%"
-# INTENT: Warn about entirely null columns but don't stop
-for col in df.columns:
-    if df[col].null_count() == df.shape[0]:
-        print(f"WARNING: Column '{col}' is entirely null")
-if df.shape[0] < 100:
-    print("WARNING: Dataset has < 100 rows — possible partial file")
-print(f"CPP1 PASSED: {df.shape[0]} rows, {df.shape[1]} columns, {null_rate:.1%} null rate")
-```
-
-#### QAP1: Post-Structural QA
-
-| Check | Validates | BLOCKER If |
-|-------|-----------|------------|
-| Re-load verification | Load with alternative params produces same result | Row/column counts differ |
-| Sample row spot-check | Random rows match raw file inspection | Values corrupted |
-| Encoding verification | No mojibake or replacement characters | Non-ASCII corrupted |
-| Schema stability | Re-running type inference produces same types | Types change between runs |
-| Column coverage | Every column appears in profile output | Column missing from profile |
-
-**QA Script Path:** `scripts/cr/profile_structural_cr1.py`
-
-### Part B -- Statistical Deep Dive
-
-Scripts 04-06 analyze distributions, temporal patterns, and entity coverage. Independent within part. Scripts 05 and 06 are conditional.
-
-**04_distribution-analysis.py (ALWAYS):** Distribution fitting per numeric column, multimodality detection (histogram gap analysis), outlier ID via IQR (1.5x/3x) and z-score (|z|>3), skewness/kurtosis interpretation, heavy-tail flagging. Outputs: distribution classifications, outlier counts/percentages, multimodality flags.
-
-**05_temporal-coverage.py (CONDITIONAL: time column):** Year/period coverage gaps, record count trends over time, value drift across periods, panel completeness (entity-time matrix), structural break detection. Outputs: coverage listing, trend analysis, completeness matrix, break flags.
-
-**06_entity-coverage.py (CONDITIONAL: entity/geo ID):** Coverage completeness vs known universe, identifier format validation (FIPS padding, ISO codes), geographic anomaly catalog, entity appearance frequency distribution. Outputs: completeness ratio, format validation results, anomaly catalog.
-
-#### CPP2: Post-Statistical Validation
-
-Embedded in the last executed script of Part B.
-
-```python
-# --- CPP2: Post-Statistical Validation ---
-# INTENT: Verify numeric summary statistics are internally consistent
-for col in numeric_columns:
-    col_min = df[col].min()
-    col_max = df[col].max()
-    col_mean = df[col].mean()
-    # REASONING: Mean must fall within [min, max] for any valid distribution
-    assert col_min <= col_mean <= col_max, (
-        f"STOP: Mean for '{col}' ({col_mean}) outside [{col_min}, {col_max}]"
-    )
-    # REASONING: Percentiles must be monotonically non-decreasing
-    p25 = df[col].quantile(0.25)
-    p50 = df[col].quantile(0.50)
-    p75 = df[col].quantile(0.75)
-    assert p25 <= p50 <= p75, (
-        f"STOP: Percentile monotonicity violated for '{col}': p25={p25}, p50={p50}, p75={p75}"
-    )
-# INTENT: Verify temporal script found time columns if dataset is temporal
-# ASSUMES: Orchestrator marked dataset as temporal based on Part A findings
-if temporal_expected and not time_columns_found:
-    print("WARNING: Dataset expected to have temporal columns but none identified")
-print("CPP2 PASSED: Statistical summaries internally consistent")
-```
-
-#### QAP2: Post-Statistical QA
-
-| Check | Validates | BLOCKER If |
-|-------|-----------|------------|
-| Independent stat verification | Recompute mean/median for random columns | Independently computed stat differs |
-| Distribution label accuracy | Distribution claims pass appropriate tests | "Normal" claim fails normality test at p < 0.01 |
-| Outlier boundary reasonableness | IQR fences are sensible | Fences exclude >20% of data without explanation |
-| Temporal break detection | Obvious structural breaks are flagged | Dramatic year-to-year changes missed |
-| Coverage completeness | Entity/geographic coverage is assessed | Known universe not checked when identifiers present |
-
-**QA Script Path:** `scripts/cr/profile_statistical_cr1.py`
-
-### Part C -- Relational Analysis
-
-Scripts 07-09 examine inter-column relationships. Independent within part. Script 08 is conditional.
-
-**07_key-integrity.py (ALWAYS):** Single-column uniqueness for all columns, composite key combinatorial testing (pairs/triples), functional dependency detection, near-duplicate keys (edit distance for strings), multi-file referential integrity. Outputs: uniqueness results, composite key candidates, dependency map, recommended primary key.
-
-**08_correlation-dependency.py (CONDITIONAL: >=3 numeric):** Pearson/Spearman correlation matrices, Cramer's V for categoricals, high-correlation flagging (|r|>0.8), redundant column detection (|r|>0.95), conditional distributions across categorical groups. Outputs: correlation matrices, redundancy candidates, conditional summaries.
-
-**09_quality-anomaly.py (ALWAYS):** Completeness summary, coded missing value scan (negatives: -1,-2,-3,-9,-99,-999; strings: "NA","N/A","Missing","","Unknown","."; high sentinels: 999,9999), exact/near duplicate rows, cross-column consistency rules, anomaly catalog with BLOCKER/WARNING/INFO severity. Outputs: completeness table, sentinel scan results, duplicate counts, anomaly catalog.
-
-#### CPP3: Post-Relational Validation
-
-Embedded in the last executed script of Part C.
-
-```python
-# --- CPP3: Post-Relational Validation ---
-# INTENT: Verify correlation matrix is symmetric (basic sanity)
-if correlation_matrix is not None:
-    import numpy as np
-    assert np.allclose(correlation_matrix, correlation_matrix.T, atol=1e-10), (
-        "STOP: Correlation matrix is not symmetric"
-    )
-# INTENT: Verify uniqueness counts agree with n_unique
-for col in key_candidates:
-    reported_unique = uniqueness_results[col]
-    actual_unique = df[col].n_unique()
-    assert reported_unique == actual_unique, (
-        f"STOP: Uniqueness count mismatch for '{col}': reported {reported_unique}, actual {actual_unique}"
-    )
-# INTENT: Anomaly catalog must be non-empty (at minimum INFO-level observations)
-assert len(anomaly_catalog) > 0, (
-    "STOP: Anomaly catalog is empty — quality analysis must produce at least one observation"
-)
-print(f"CPP3 PASSED: Relational checks consistent, {len(anomaly_catalog)} anomalies cataloged")
-```
-
-#### QAP3: Post-Relational QA
-
-| Check | Validates | BLOCKER If |
-|-------|-----------|------------|
-| Key uniqueness counter-check | Claimed keys tested independently | Claimed unique key has duplicates |
-| Dependency verification | Functional dependencies are real | Counter-examples exist for claimed A->B dependency |
-| Anomaly catalog completeness | All major anomalies found | Known pattern (duplicates, coded values) present but uncatalogued |
-| Cross-column consistency | Consistency rules are complete | Obvious logical constraint violated but not flagged |
-| Coded value scan completeness | Standard sentinels checked | Numeric columns not scanned for -1, -2, -3, -9, -99, -999 |
-
-**QA Script Path:** `scripts/cr/profile_relational_cr1.py`
-
-### Part D -- Interpretation & Reconciliation
-
-Scripts 10-11 produce interpretations and reconciliation. Sequential: 10 before 11 (if applicable).
-
-**10_semantic-interpretation.py (ALWAYS):** Column name pattern matching (FIPS->geo, _id->identifier, _pct->percentage, _dt->temporal, _cd->categorical), value patterns (binary 0/1, year-like 1900-2100, percentage-like 0-100 or 0-1), domain heuristics, derived metric feasibility, join key candidates, data dictionary draft. ALL marked `[PRELIMINARY]`. Outputs: role assignments, pattern classifications, draft data dictionary.
-
-**11_reconcile-docs.py (CONDITIONAL: docs provided):** Column existence/order/type verification against documentation, value enumeration verification, scope verification (time range, coverage, entity count), cross-document consistency, discrepancy report with BLOCKER/WARNING/INFO severity. Outputs: verification results per documented claim, discrepancy catalog.
-
-#### CPP4: Post-Interpretation Validation
-
-Embedded in the last executed Part D script (script 11 if docs provided, otherwise script 10).
-
-```python
-# --- CPP4: Post-Interpretation Validation ---
-# INTENT: All semantic interpretations must contain [PRELIMINARY] marker
-for entry in data_dictionary_draft:
-    assert "[PRELIMINARY]" in entry["interpretation"], (
-        f"STOP: Interpretation for '{entry['column']}' missing [PRELIMINARY] marker"
-    )
-# INTENT: If docs were provided, reconciliation must have run
-if documentation_provided:
-    assert reconciliation_ran, (
-        "STOP: Documentation was provided but reconciliation script did not execute"
-    )
-print(f"CPP4 PASSED: {len(data_dictionary_draft)} columns interpreted, "
-      f"documentation reconciliation: {'completed' if documentation_provided else 'N/A (no docs)'}")
-```
-
-#### QAP4: Post-Interpretation QA
-
-| Check | Validates | BLOCKER If |
-|-------|-----------|------------|
-| PRELIMINARY marking | All interpretations hedged | Any interpretation stated as fact without [PRELIMINARY] marker |
-| Documentation coverage | All documented claims checked against data | Documented column present but not reconciled |
-| Discrepancy evidence | Every discrepancy has actual-vs-documented values | Discrepancy noted without showing evidence |
-| Interpretation completeness | All columns with non-trivial semantics have an interpretation entry | Column with identifiable meaning has no interpretation |
-
-**QA Script Path:** `scripts/cr/profile_interpretation_cr1.py`
-
----
-
 ## PSU Templates
 
 ### PSU-DI1: Setup Confirmation
@@ -561,32 +599,66 @@ Present after Stage DI-2 completes. All user-facing text uses plain language —
 **Data Onboarding: Setup Complete**
 
 **Data Source Summary:**
-- File: [file name and path]
+- File(s): [file name(s) and path(s); list all if multi-file]
 - Format: [parquet / CSV / etc.]
-- Size: [file size]
+- Size: [file size; combined total if multi-file]
 - Source name: [source-name]
 - Target skill: [skill-name]
+- Access method: [Local file / API (data downloaded via [API name])]
+[If multi-file:]
+- File structure: [Horizontal (same schema) / Hierarchical (different levels)]
+- Skill structure: [One unified skill / One skill per entity type]
+[If HIERARCHICAL:]
+- Entity hierarchy: [e.g., "Schools → Districts → States"]
+- Linking keys: [e.g., "leaid links schools to districts; state_fips links districts to states"]
+[If API:]
+- Data persistence: [Downloaded locally / Will query API live in future analyses]
 
 **Project Folder:** [absolute path to research project]
 
 **Profiling Plan:**
 The following profiling parts will run automatically:
+[If SINGLE or HORIZONTAL:]
 - Part A: Structural profiling (schema, column details, file metadata) — scripts 01-03
 - Part B: Statistical profiling (distributions[, temporal analysis][, geographic analysis]) — scripts 04[-06]
 - Part C: Relational analysis (key candidates[, cross-table joins], referential integrity) — scripts 07[-09]
 - Part D: Interpretation (semantic classification[, documentation reconciliation]) — scripts 10[-11]
+[If HIERARCHICAL:]
+- Part A: Structural profiling — per-file (scripts 01a-03a, 01b-03b, etc.)
+- Part B: Statistical profiling — per-file (scripts 04a[-06a], 04b[-06b], etc.)
+- Part C: Relational analysis — per-file + cross-file linkage testing (scripts 07a, 07b, 08?, 09a, etc.)
+- Part D: Interpretation — per-file + cross-file schema map (scripts 10a, 10b, [11])
 
 [Note which scripts are conditional and why they will/will not run based on intake info.]
 
 **What You Receive:**
 - A standalone data source skill for use in future DAAF analyses
 - A research project folder with all profiling scripts, outputs, and QA reviews
+[If API:] - A reproducible API fetch script you can re-run any time
 
 **What Happens Next:**
-Profiling runs through all four parts automatically. After profiling completes, you will review the findings and confirm or adjust interpretations before the skill is written.
+Profiling runs through all [four] parts automatically. After profiling completes, you will review the findings and confirm or adjust interpretations before the skill is written.
 
 **Does this look correct? Ready to begin profiling?**
 ```
+
+### PSU-DI2 Presentation at Scale
+
+For datasets with many columns (>30), the full interpretation table can be overwhelming. Structure the presentation to prioritize user attention:
+
+**For datasets with 30+ columns:**
+
+1. **Lead with low-confidence interpretations** that genuinely need user input (group under "Interpretations Needing Your Review")
+2. **Follow with high-confidence interpretations** for quick scanning (group under "Likely Correct — Please Confirm")
+3. **Group by semantic family** (identifiers, outcomes, demographics, temporal, etc.) within each confidence tier — this mirrors how script 10 organizes its output
+
+**For datasets with 60+ columns:**
+
+Consider a two-tier approach:
+- **Tier 1 (presented in detail):** Low/medium-confidence interpretations + all identifier and key columns + user-specified priority columns
+- **Tier 2 (summarized):** High-confidence interpretations presented as a condensed table ("These N columns are straightforward — see full list below")
+
+The goal is to focus user attention where it adds the most value, not to hide information. Both tiers should be visible, but the user's limited review time should be directed to where uncertainty exists.
 
 ### PSU-DI2: Profiling Findings Review
 
@@ -598,16 +670,41 @@ Present after Stage DI-6 completes. This is the CRITICAL user review point — i
 **Quality Summary:**
 [From Part A-D profiling findings — overall data quality assessment in plain language]
 
+[If SINGLE or HORIZONTAL:]
+
 **Structural Findings:**
 - Rows: [count]
 - Columns: [count]
 - Data types: [summary of type distribution]
 - [Notable structural observations]
+[If HORIZONTAL:] - Schema compatibility: [identical / divergent — details]
 
 **Column Highlights:**
 - Key columns: [identified primary/candidate keys]
 - High-null columns: [columns with significant missingness and rates]
 - Distribution notes: [notable distributions, outliers, or skew]
+
+[If HIERARCHICAL — repeat per file, then show cross-file:]
+
+**Per-File Findings:**
+
+**[File 1: Entity Type] ([filename])**
+- Rows: [count], Columns: [count]
+- Key columns: [identified keys]
+- Notable: [highlights for this file]
+
+**[File 2: Entity Type] ([filename])**
+- Rows: [count], Columns: [count]
+- Key columns: [identified keys]
+- Notable: [highlights for this file]
+
+**Cross-File Relationships:**
+
+| Link | Key Column(s) | Cardinality | Coverage | Orphan Count | Notes |
+|------|--------------|-------------|----------|--------------|-------|
+| [File1 → File2] | [key] | [1:M / M:M] | [% match] | [count] | [observations] |
+
+[Common to all structures:]
 
 **Temporal Coverage:** [date range, granularity — or "N/A" if no temporal columns]
 
@@ -620,11 +717,11 @@ Present after Stage DI-6 completes. This is the CRITICAL user review point — i
 
 **Preliminary Interpretations:**
 
-| # | Interpretation | Basis | Status |
-|---|---------------|-------|--------|
-| 1 | [e.g., "Column X appears to be a fiscal year indicator"] | [evidence from profiling] | CONFIRM / REJECT / MODIFY |
-| 2 | [e.g., "Table grain is one row per school per year"] | [evidence from profiling] | CONFIRM / REJECT / MODIFY |
-| ... | ... | ... | ... |
+| # | [File] | Interpretation | Basis | Status |
+|---|--------|---------------|-------|--------|
+| 1 | [file or "All"] | [e.g., "Column X appears to be a fiscal year indicator"] | [evidence] | CONFIRM / REJECT / MODIFY |
+| 2 | [file or "Cross-file"] | [e.g., "leaid links schools to districts as a 1:M relationship"] | [evidence] | CONFIRM / REJECT / MODIFY |
+| ... | ... | ... | ... | ... |
 
 [If documentation was provided and reconciled:]
 **Documentation Discrepancies:**
@@ -637,512 +734,6 @@ Please review each interpretation above. For each row, indicate:
 - **MODIFY** — interpretation is partially correct; provide adjustment
 
 **Are these interpretations accurate? Please confirm, reject, or modify each one.**
-```
-
----
-
-## Invocation Templates
-
-Invocation templates for all profiling, QA, and skill authoring subagent calls are below.
-
-### Part A: Structural Discovery
-
-**Purpose:** Execute scripts 01-03  |  **Stage:** DI-3, Part A  |  **Subagent:** data-ingest  |  **Skills:** `data-scientist`
-
-```python
-Agent({
-    description: "Part A: Structural Discovery (scripts 01-03)",
-    prompt: """**BASE_DIR:** {BASE_DIR}
-All relative paths in referenced files resolve from BASE_DIR.
-
-**AGENT PROTOCOL:** Read `.claude/agents/data-ingest.md`. Execute ONLY Part A work (scripts 01-03).
-Read `agent_reference/SCRIPT_EXECUTION_REFERENCE.md` for the file-first protocol.
-
-**CONTEXT:**
-- Profiling part: A
-- Data file: {data_file_path}
-- File format: {file_format}
-- File size: {file_size}
-- Target skill name: {skill_name}
-- Domain context: {domain_context}
-- Intended use: {intended_use}
-- Data pull date: {data_pull_date}
-- Project script dir: {project_script_dir}
-- run_with_capture path: {run_with_capture_path}
-- Priority columns: {priority_columns_or_none}
-- Documentation files: {doc_file_paths_or_none}
-- Documentation website URL: {doc_url_or_none}
-- Prior part findings: (none — this is Part A)
-- Conditional script decisions: (determined by Part A output)
-
-**TASK:**
-1. Write and execute 01_load-and-format.py — canonical load pattern, embed CPP1
-2. Write and execute 02_structural-profile.py — shape, types, memory, schema
-3. Write and execute 03_column-profile.py — per-column stats, value distributions
-Scripts go to: scripts/profile_structural/
-Execute: bash {project_script_dir}/run_with_capture.sh {project_script_dir}/profile_structural/{script}.py
-
-**OUTPUT FORMAT (2500-word hard cap):**
-### Part A: Structural Discovery
-- CPP1 Status, Rows/Columns/Memory, type summary
-- Potential identifiers (>95% unique), categoricals (<50 unique)
-- Coded value indicators (negative values or sentinels)
-### Conditional Script Decisions
-- Script 05: [EXECUTE/SKIP] -- [reason based on temporal/date columns]
-- Script 06: [EXECUTE/SKIP] -- [reason based on entity/geo ID columns]
-- Script 08: [EXECUTE/SKIP] -- [reason based on numeric column count]
-- Script 11: [EXECUTE/SKIP] -- [reason based on documentation availability]
-### Scripts Created
-- [paths with execution status]
-### Confidence Assessment
-**Part Confidence:** [HIGH | MEDIUM | LOW]
-| Aspect | Confidence | Rationale |
-### Issues Requiring Attention
-[BLOCKERs, WARNINGs, or "None"]
-### Learning Signal
-**Learning Signal:** [Category] -- [One-line insight] | "None"
-### Recommendations
-- **Proceed?** [YES | NO -- issues block | NO -- escalate]
-- [Specific next actions] """,
-    subagent_type: "data-ingest"
-})
-```
-
-### Part B: Statistical Deep Dive
-
-**Purpose:** Execute scripts 04-06  |  **Stage:** DI-4, Part B  |  **Subagent:** data-ingest  |  **Skills:** `data-scientist`
-
-```python
-Agent({
-    description: "Part B: Statistical Deep Dive (scripts 04-06)",
-    prompt: """**BASE_DIR:** {BASE_DIR}
-All relative paths in referenced files resolve from BASE_DIR.
-
-**AGENT PROTOCOL:** Read `.claude/agents/data-ingest.md`. Execute ONLY Part B work (scripts 04-06).
-Read `agent_reference/SCRIPT_EXECUTION_REFERENCE.md` for the file-first protocol.
-
-**CONTEXT:**
-- Profiling part: B
-- Data file: {data_file_path}
-- File format: {file_format}
-- Canonical load pattern: {canonical_load_from_part_a}
-- Prior part findings: {part_a_summary}
-- Conditional script decisions: Script 05 [{EXECUTE/SKIP}], Script 06 [{EXECUTE/SKIP}]
-- Target skill name: {skill_name}
-- Domain context: {domain_context}
-- Intended use: {intended_use}
-- Data pull date: {data_pull_date}
-- Project script dir: {project_script_dir}
-- run_with_capture path: {run_with_capture_path}
-- Priority columns: {priority_columns_or_none}
-
-**TASK:**
-1. Write and execute 04_distribution-analysis.py — distributions, outliers, multimodality
-2. If EXECUTE: 05_temporal-coverage.py — time gaps, trends, drift
-3. If EXECUTE: 06_entity-coverage.py — coverage, ID validation
-4. Embed CPP2 in last executed script
-Scripts go to: scripts/profile_statistical/
-Execute: bash {project_script_dir}/run_with_capture.sh {project_script_dir}/profile_statistical/{script}.py
-
-**OUTPUT FORMAT (2500-word hard cap):**
-### Part B: Statistical Deep Dive
-- CPP2 Status, distribution summary, outlier summary, multimodality
-- Temporal/entity coverage: [executed/skipped — key findings]
-### Scripts Created
-### Confidence Assessment
-**Part Confidence:** [HIGH | MEDIUM | LOW]
-| Aspect | Confidence | Rationale |
-### Issues Requiring Attention
-[BLOCKERs, WARNINGs, or "None"]
-### Learning Signal
-**Learning Signal:** [Category] -- [One-line insight] | "None"
-### Recommendations
-- **Proceed?** [YES | NO -- issues block | NO -- escalate]
-- [Specific next actions] """,
-    subagent_type: "data-ingest"
-})
-```
-
-### Part C: Relational Analysis
-
-**Purpose:** Execute scripts 07-09  |  **Stage:** DI-5, Part C  |  **Subagent:** data-ingest  |  **Skills:** `data-scientist`
-
-```python
-Agent({
-    description: "Part C: Relational Analysis (scripts 07-09)",
-    prompt: """**BASE_DIR:** {BASE_DIR}
-All relative paths in referenced files resolve from BASE_DIR.
-
-**AGENT PROTOCOL:** Read `.claude/agents/data-ingest.md`. Execute ONLY Part C work (scripts 07-09).
-Read `agent_reference/SCRIPT_EXECUTION_REFERENCE.md` for the file-first protocol.
-
-**CONTEXT:**
-- Profiling part: C
-- Data file: {data_file_path}
-- File format: {file_format}
-- Canonical load pattern: {canonical_load_from_part_a}
-- Prior part findings: {part_a_summary}, {part_b_summary}
-- Conditional script decisions: Script 08 [{EXECUTE/SKIP}]
-- Target skill name: {skill_name}
-- Domain context: {domain_context}
-- Intended use: {intended_use}
-- Data pull date: {data_pull_date}
-- Project script dir: {project_script_dir}
-- run_with_capture path: {run_with_capture_path}
-- Priority columns: {priority_columns_or_none}
-
-**TASK:**
-1. Write and execute 07_key-integrity.py — uniqueness, composite keys, dependencies
-2. If EXECUTE: 08_correlation-dependency.py — correlations, redundancy
-3. Write and execute 09_quality-anomaly.py — completeness, coded values, anomaly catalog
-4. Embed CPP3 in last executed script
-Scripts go to: scripts/profile_relational/
-Execute: bash {project_script_dir}/run_with_capture.sh {project_script_dir}/profile_relational/{script}.py
-
-**OUTPUT FORMAT (2500-word hard cap):**
-### Part C: Relational Analysis
-- CPP3 Status, recommended key, dependencies, high correlations
-- Coded missing values found, anomaly catalog counts, duplicate rows
-### Scripts Created
-### Confidence Assessment
-**Part Confidence:** [HIGH | MEDIUM | LOW]
-| Aspect | Confidence | Rationale |
-### Issues Requiring Attention
-[BLOCKERs, WARNINGs, or "None"]
-### Learning Signal
-**Learning Signal:** [Category] -- [One-line insight] | "None"
-### Recommendations
-- **Proceed?** [YES | NO -- issues block | NO -- escalate]
-- [Specific next actions] """,
-    subagent_type: "data-ingest"
-})
-```
-
-### Part D: Interpretation & Reconciliation
-
-**Purpose:** Execute scripts 10-11  |  **Stage:** DI-6, Part D  |  **Subagent:** data-ingest  |  **Skills:** `data-scientist`
-
-```python
-Agent({
-    description: "Part D: Interpretation & Reconciliation (scripts 10-11)",
-    prompt: """**BASE_DIR:** {BASE_DIR}
-All relative paths in referenced files resolve from BASE_DIR.
-
-**AGENT PROTOCOL:** Read `.claude/agents/data-ingest.md`. Execute ONLY Part D work (scripts 10-11).
-Read `agent_reference/SCRIPT_EXECUTION_REFERENCE.md` for the file-first protocol.
-
-**CONTEXT:**
-- Profiling part: D
-- Data file: {data_file_path}
-- File format: {file_format}
-- Canonical load pattern: {canonical_load_from_part_a}
-- Prior part findings: {part_a_summary}, {part_b_summary}, {part_c_summary}
-- Documentation files: {doc_file_paths_or_none}
-- Conditional script decisions: Script 11 [{EXECUTE/SKIP}]
-- Target skill name: {skill_name}
-- Domain context: {domain_context}
-- Intended use: {intended_use}
-- Data pull date: {data_pull_date}
-- Project script dir: {project_script_dir}
-- run_with_capture path: {run_with_capture_path}
-- Documentation website URL: {doc_url_or_none}
-- Priority columns: {priority_columns_or_none}
-
-**TASK:**
-1. Write and execute 10_semantic-interpretation.py — ALL outputs marked [PRELIMINARY]
-2. If EXECUTE: 11_reconcile-docs.py — verify docs against data
-3. Embed CPP4 in the last executed script (script 11 if docs provided, otherwise script 10)
-Scripts go to: scripts/profile_interpretation/
-Execute: bash {project_script_dir}/run_with_capture.sh {project_script_dir}/profile_interpretation/{script}.py
-
-**OUTPUT FORMAT (2500-word hard cap):**
-### Part D: Interpretation & Reconciliation
-- CPP4 Status, interpretation count
-- Documentation reconciliation: [executed/skipped — discrepancy count]
-### Preliminary Interpretations (ALL columns)
-| Column | Interpretation | Confidence | Basis |
-### Scripts Created
-### Confidence Assessment
-**Part Confidence:** [HIGH | MEDIUM | LOW]
-| Aspect | Confidence | Rationale |
-### Issues Requiring Attention
-[BLOCKERs, WARNINGs, or "None"]
-### Learning Signal
-**Learning Signal:** [Category] -- [One-line insight] | "None"
-### Recommendations
-- **Proceed?** [YES | NO -- issues block | NO -- escalate]
-- [Specific next actions] """,
-    subagent_type: "data-ingest"
-})
-```
-
-### QA Invocation Template
-
-Invoked after each profiling part completes. Orchestrator substitutes part-specific values.
-
-```python
-Agent({
-    description: "QA Review: Part {A/B/C/D} — {Part Name}",
-    prompt: """**BASE_DIR:** {BASE_DIR}
-All relative paths in referenced files resolve from BASE_DIR.
-
-**AGENT PROTOCOL:** Read `.claude/agents/code-reviewer.md`. This is a Data Onboarding QA review (not Full Pipeline) — there is no Plan.md. Use the context below for methodology alignment instead.
-
-**SCRIPTS TO REVIEW:**
-{list_of_script_paths_in_part}
-
-**CPP RESULT:** {cpp_checkpoint_status_and_output}
-
-**DATA ONBOARDING CONTEXT:**
-Task name: QAP{N} review of {part_name} profiling scripts
-Domain context: {domain_context}
-Research question / Intended use: {intended_use}
-Data file: {data_file_path}
-File format: {file_format}
-Data characteristics: {row_count} rows, {col_count} columns, {file_size}
-run_with_capture path: {run_with_capture_path}
-Prior QA findings: {prior_qap_summary_or_none}
-IAT compliance: Required per agent_reference/INLINE_AUDIT_TRAIL.md
-
-**Note:** In Data Onboarding mode, profiling scripts produce embedded output (appended to script files via run_with_capture.sh), not separate data files. QA scripts should verify the appended execution log, not look for separate output files.
-
-**QAP FOCUS AREAS (Part {A/B/C/D}):**
-{qap_focus_table_from_relevant_part_section}
-
-**TASK:**
-1. Review all executed scripts in Part {X} for correctness and completeness
-2. Verify CPP{N} results are legitimate (not bypassed or incomplete)
-3. Create QA scripts at: scripts/cr/profile_{part_dir}_cr1.py (+ cr2..cr5 as warranted)
-4. Execute QA scripts and synthesize findings
-5. Return QA report with severity classification
-
-**OUTPUT FORMAT (2500-word hard cap):**
-### QA Review: Part {X}
-**QAP{N} Status:** [PASSED | ISSUES_FOUND]
-**Severity:** [BLOCKER | WARNING | INFO | None]
-**Scripts Reviewed / QA Scripts Created**
-**Checks Performed:** [table]
-**Issues Found:** BLOCKER / WARNING / INFO lists
-**Recommendation:** [PROCEED | REVISION_REQUIRED | ESCALATE]""",
-    subagent_type: "code-reviewer"
-})
-```
-
-### Revision Invocation Template
-
-When a code-reviewer QAP review returns a BLOCKER, the orchestrator re-invokes the data-ingest agent to create a revised script. Use this template:
-
-**Agent:** `subagent_type: "data-ingest"`
-
-```
-**BASE_DIR:** {BASE_DIR}
-
-Read your agent protocol at `.claude/agents/data-ingest.md`.
-
-**TASK:** Revise a failing profiling script based on QA BLOCKER findings.
-
-**CONTEXT:**
-- Profiling part: {A/B/C/D}
-- Data file: {data_file_path}
-- File format: {file_format}
-- Target skill name: {skill_name}
-- Project script dir: {project_script_dir}
-- run_with_capture path: {run_with_capture_path}
-- Canonical load pattern: {canonical_load_from_part_a}
-
-**FAILING SCRIPT:**
-- Script path: {failing_script_path}
-- Script version: {original or _a/_b suffix}
-
-**QA BLOCKER DETAILS:**
-{code_reviewer_blocker_findings}
-
-**REVISION INSTRUCTIONS:**
-1. Read the failing script and its appended execution log
-2. Read the code-reviewer's QA script and its findings
-3. Create a NEW versioned script with suffix _a (or _b if _a exists): `{failing_script_name_without_ext}_a.py`
-4. Fix ONLY the issues identified in the BLOCKER findings
-5. Preserve all IAT documentation from the original script
-6. Execute via run_with_capture.sh
-7. Verify the fix resolves the identified issues
-
-**CONSTRAINTS:**
-- Do NOT modify the original script (it is an immutable audit artifact with its execution log)
-- Do NOT change the script's scope or add new functionality
-- Maximum 2 revision attempts per script (_a, _b) before escalating to user
-```
-
-**Expected Output:** Same as standard part output, but focused on the revised script's status.
-
-### Skill Authoring Invocation Template
-
-Invoked at Stage DI-7 after PSU-DI2 user confirmation of preliminary interpretations.
-
-**Purpose:** Author the data source skill  |  **Stage:** DI-7  |  **Subagent:** general-purpose  |  **Skills:** `data-scientist`, `skill-authoring`
-
-```python
-Agent({
-    description: "Stage DI-7: Skill authoring for {skill_name}",
-    prompt: """**BASE_DIR:** {BASE_DIR}
-All relative paths in referenced files resolve from BASE_DIR.
-
-Call the skill tool with name 'data-scientist'.
-Then, call the skill tool with name 'skill-authoring'.
-Read `agent_reference/DATA_SOURCE_SKILL_TEMPLATE.md` for the canonical 12-section order.
-
-**PROJECT DIRECTORY:** {project_dir}
-
-**PROJECT STATE:** {path_to_STATE_md}
-Read the full STATE.md file. Key sections for skill authoring:
-- **Data Source Info** — provenance, source provider, origin URL, format, domain context
-- **Interpretation Tracking** — user-confirmed interpretations (use Final Interpretation column, not Preliminary)
-- **Documentation Reconciliation Summary** — discrepancies between docs and data (if populated)
-- **Profiling Progress** — script paths for all executed profiling scripts
-
-**SOURCE DOCUMENTATION:** Before authoring, read any available documentation files referenced
-in STATE.md (codebook PDFs, README files, technical documentation, methodology papers).
-These are the source of methodological context, study design information, population coverage,
-and analytical limitations that cannot be derived from profiling scripts alone. Reference
-files must synthesize both profiling-derived observations AND documentation-derived context.
-If a documentation website URL is in STATE.md, fetch key pages for methodology context.
-
-**PROFILING SCRIPTS:** All executed scripts with execution logs are in `{project_dir}/scripts/`.
-Read these scripts as primary sources for data-level skill content:
-- Scripts 01-03 (structural) → schema, column details, data access patterns
-- Script 04 (distributions) → distribution notes, Common Pitfalls
-- Scripts 05-06 (temporal/entity) → coverage scope, Common Pitfalls (if executed)
-- Script 07 (key-integrity) → Key Identifiers, join keys
-- Scripts 08-09 (correlation/quality) → anomaly catalog, coded values, Common Pitfalls
-- Script 10 (interpretation) → Decision Trees, variable definitions
-- Script 11 (reconciliation) → data-quality, discrepancies (if executed)
-
-**BENCHMARK CALIBRATION:** Before writing reference files, read 1-2 reference files from an
-existing hand-authored data source skill to calibrate expected depth and density. Good
-examples: `education-data-source-ipeds/references/graduation-rates.md` (methodology +
-valid/invalid + alternatives) or `education-data-source-ccd/references/variable-definitions.md`
-(comprehensive per-variable documentation with semantic groupings). If these paths do not
-exist in the current environment, proceed using the density targets below as your guide.
-
-**TARGET SKILL:**
-- Name: {skill_name}
-- Location: .claude/skills/{skill_name}/SKILL.md
-- Draft: {project_dir}/output/skill_draft/SKILL.md
-
-**TASK:**
-
-Part 1 — Skill Authoring:
-1. Read all executed profiling scripts from {project_dir}/scripts/ (check STATE.md Profiling Progress for paths)
-2. Read STATE.md for provenance, user-confirmed interpretations, and reconciliation findings
-3. Use user-confirmed interpretations (not preliminary) for all semantic claims
-4. Author SKILL.md per canonical 12-section data source template
-5. Create reference files in .claude/skills/{skill_name}/references/:
-   - columns.md — full column definitions, types, null rates (from scripts 02, 03)
-   - coded-values.md — all coded/sentinel value mappings (from scripts 03, 09)
-   - data-quality.md — data quality observations, anomalies, doc discrepancies (from scripts 09, 11)
-   - variable-definitions.md — semantic column interpretations, user-confirmed (from script 10 + PSU-DI2)
-   - Additional topic-specific reference files as warranted by the data source (see guidance below)
-6. Save draft to {project_dir}/output/skill_draft/ and final to .claude/skills/{skill_name}/
-
-**REFERENCE FILE THOROUGHNESS GUIDANCE:**
-Reference files are the primary vehicle for encoding detailed knowledge. They are loaded
-on-demand (not at startup), so their token cost is incurred only when relevant. This means
-reference files should be COMPREHENSIVE — err on the side of more detail, not less.
-
-Density targets for reference files:
-- columns.md: Every column documented with type, null rate, unique count, value range,
-  and a semantic description. For datasets with <100 columns, include ALL columns.
-  Target: 3-5 lines per column minimum.
-- coded-values.md: Every coded/sentinel value fully enumerated. Include value-to-meaning
-  mappings for ALL categorical columns, not just the most important ones. Document
-  sentinel values (-1, -2, -3, 999, etc.) with their specific meanings per column if
-  they differ. Target: comprehensive enough that an analyst never needs to inspect raw data
-  to understand a code.
-- data-quality.md: Every anomaly from the profiling scripts cataloged with severity,
-  affected columns, row counts, and recommended handling. Include cross-column consistency
-  observations. Document suppression patterns, rounding conventions, and any data-vs-docs
-  discrepancies. Target: 150+ lines for complex sources.
-- variable-definitions.md: Group columns by semantic family (identifiers, outcomes,
-  demographics, etc.). Include derived metric recipes, naming convention patterns,
-  join key guidance with specific examples, and temporal/coverage notes. Target: 150+ lines.
-- analytical-context.md (REQUIRED for all skills): Methodology and research context that
-  cannot be derived from data profiling alone. This file synthesizes documentation,
-  codebooks, and domain knowledge. Required sections:
-  * **Study/Survey Design:** Who collected this data, under what mandate/methodology, and
-    why? (e.g., "mandated by Student Right-to-Know Act" or "linked IRS tax records to
-    Census data"). Draw from documentation files referenced in STATE.md.
-  * **Population Coverage:** Who is included AND excluded, and why? What are the
-    implications for generalizability?
-  * **Valid and Invalid Analyses:** Structured tables showing what analyses are appropriate
-    vs. problematic, with reasoning:
-    ### Valid Analyses
-    | Analysis | Why Valid |
-    |----------|----------|
-    | [specific analysis pattern] | [reasoning] |
-    ### Invalid or Problematic Analyses
-    | Analysis | Why Problematic |
-    |----------|-----------------|
-    | [specific analysis pattern] | [reasoning] |
-    Minimum: 3 valid and 3 invalid patterns.
-  * **Limitations by Research Context:** How do data limitations differentially affect
-    specific research designs? Provide 2-3 worked scenarios (e.g., "if studying gender
-    gaps within Black outcomes at high income levels, suppression substantially reduces
-    your sample" vs. "if studying overall racial mobility gaps using pooled gender,
-    suppression has minimal impact").
-  * **Alternative/Complementary Sources:** What other datasets address this source's gaps?
-    Include specific variable names and access guidance, not just source names.
-  Target: 200+ lines.
-- Additional topic-specific files: Create when ANY of these apply:
-  (a) The source has a major known limitation requiring >50 lines of explanation
-  (b) The source spans multiple survey components or analytical domains
-  (c) The source has significant historical changes affecting longitudinal use
-  (d) The source's data collection process is non-obvious and affects interpretation
-  (e) The source is commonly used alongside another specific source
-  Use the hand-authored education data source skills as benchmarks — they average
-  ~400 lines per reference file.
-
-Overall reference file target: Collectively, reference files should total at least 3x
-the SKILL.md line count. For a 300-line SKILL.md, aim for 900+ lines of reference
-files. The hand-authored education skills average ~2,200 lines of reference content.
-
-**Content quality target:** Reference files should be approximately 40-60% interpretive/
-analytical guidance (why limitations exist, how they affect specific analyses, what
-alternatives exist, when comparisons are valid vs invalid) and 40-60% factual data
-description (code tables, column definitions, value enumerations). Pure data description
-without analytical guidance produces reference files that are less useful than the
-raw data itself.
-
-Part 2 — CPP-SKILL Validation:
-7. Run CPP-SKILL validation (checklist below). ALL checks must pass.
-
-**CPP-SKILL VALIDATION:**
-
-Skill template compliance:
-- [ ] All 12 canonical sections in correct order
-- [ ] Frontmatter includes provenance dates
-- [ ] Value Encodings Warning in position 4 with comparison table
-- [ ] Decision Trees: at least 2
-- [ ] Missing Data Codes subsection in Quick Reference
-- [ ] Truth Hierarchy blockquote in Data Access
-- [ ] Common Pitfalls: 3-column table with >=3 rows
-- [ ] Total SKILL.md under 500 lines
-
-Reference file density:
-- [ ] columns.md covers ALL columns (not just a subset)
-- [ ] coded-values.md enumerates ALL coded/sentinel values found during profiling
-- [ ] data-quality.md catalogs ALL anomalies from profiling scripts
-- [ ] variable-definitions.md groups columns by semantic family with descriptions
-- [ ] analytical-context.md exists with study design, population coverage, and valid/invalid analysis sections
-- [ ] analytical-context.md contains >= 3 valid and >= 3 invalid analysis patterns
-- [ ] Total reference file lines >= 3x SKILL.md lines (target; not a blocker if close)
-- [ ] Reference files contain ~40-60% interpretive/analytical content (not purely data description)
-- [ ] Additional topic-specific reference files created where source complexity warrants
-
-**OUTPUT FORMAT (2500-word hard cap):**
-### Skill Authoring: {skill_name}
-- CPP-SKILL Status (template compliance), line count, reference files created""",
-    subagent_type: "general-purpose"
-})
-```
 ```
 
 ---
@@ -1178,14 +769,7 @@ Before dispatching a code-reviewer subagent (QAP1 through QAP4), verify:
 
 ### Skill Authoring Invocation Checklist
 
-Before dispatching the skill authoring subagent (Stage DI-7), verify:
-
-- [ ] Project directory path specified (absolute)
-- [ ] STATE.md path specified (subagent reads full file)
-- [ ] PSU-DI2 user review is complete (Interpretation Tracking table has Final Interpretation column populated)
-- [ ] Target skill name and directory path specified
-- [ ] Skill name conflict checked (no existing skill at `.claude/skills/{skill_name}/`)
-- [ ] `{BASE_DIR}` path specified (for skill placement in `.claude/skills/`)
+See `WORKFLOW_PHASE_DO_AUTHORING.md` for the complete skill authoring invocation checklist (loaded at Stage DI-7).
 
 ---
 
@@ -1213,109 +797,6 @@ research/YYYY-MM-DD_{Source_Name}_Onboarding/
 3. **Copy** user-provided data files into `data/raw/`
 4. **Initialize STATE.md** from `{BASE_DIR}/agent_reference/STATE_TEMPLATE_ONBOARDING.md` — this template has onboarding-specific sections (DI-1 through DI-8 stages, Profiling Progress table, Interpretation Tracking, Skill Authoring Status) that differ from the Full Pipeline template. Populate the Data Source Info and User Request sections with intake information.
 5. **Instruct user** if files need manual placement (e.g., files too large to copy, or user prefers to place them directly)
-
-### Script-to-Skill-Template Mapping
-
-| Script | Feeds SKILL.md Section(s) |
-|--------|---------------------------|
-| 01 load-and-format | Data Access (Example Fetch, load parameters) |
-| 02 structural-profile | Summary, "What is [Source]?" |
-| 03 column-profile | Quick Reference (Key Identifiers), Reference File Structure |
-| 04 distribution-analysis | Quick Reference (distribution notes), Common Pitfalls |
-| 05 temporal-coverage | "What is" (years, frequency), Common Pitfalls |
-| 06 entity-coverage | "What is" (coverage scope), Decision Trees, Common Pitfalls |
-| 07 key-integrity | Quick Reference (Key Identifiers), Data Access (join keys) |
-| 08 correlation-dependency | Common Pitfalls (redundant columns), Decision Trees |
-| 09 quality-anomaly | Value Encodings Warning, Quick Reference (Missing Data Codes), Common Pitfalls |
-| 10 semantic-interpretation | Decision Trees, coded value tables |
-| 11 reconcile-docs | Reference File Structure, data-quality.md |
-
-### Profiling Script Template
-
-```python
-#!/usr/bin/env python3
-"""
-Script: {NN}_{name}.py
-Part: {A/B/C/D} — {Part Name}
-Project: {project_name}
-Created: {YYYY-MM-DD}
-
-Purpose: {brief description}
-"""
-import polars as pl
-
-# --- Config ---
-# INTENT: Central configuration for file paths and parameters
-DATA_FILE = "{absolute_path_to_data_file}"
-# ASSUMES: Canonical load pattern established by script 01
-
-# --- Load ---
-# INTENT: Load data using canonical pattern from script 01
-# REASONING: Reuse exact load parameters to ensure consistency across scripts
-df = pl.read_{format}(DATA_FILE, {canonical_params})
-print(f"Loaded: {df.shape[0]} rows, {df.shape[1]} columns")
-
-# --- Profile ---
-# INTENT: {part-specific profiling purpose}
-{profiling_logic}
-
-# --- Validate ---
-# INTENT: {CPP checkpoint if this is the last script in part}
-{validation_code_if_applicable}
-
-# --- Summary ---
-# INTENT: Structured output for orchestrator consumption
-print("=" * 60)
-print(f"PART {part} PROFILING COMPLETE: {script_name}")
-print("=" * 60)
-{structured_summary_output}
-
-# === EXECUTION LOG ===
-# (Appended by run_with_capture.sh — do not edit below this line)
-```
-
-**Conventions:** Polars only (never pandas). IAT comments (INTENT:, REASONING:, ASSUMES:) on every non-trivial operation. Section separators: Config, Load, Profile, Validate, Summary. No function definitions. Canonical load pattern from script 01 reused verbatim.
-
-### Verification Checklists
-
-#### Part A (Structural Discovery)
-
-- [ ] Script 01 established canonical load pattern (format, encoding, params documented)
-- [ ] CPP1 PASSED with row count, column count, and null rate reported
-- [ ] Script 02 produced row/column counts, memory footprint, and complete type listing
-- [ ] Script 03 produced per-column stats for every column (none missing)
-- [ ] Conditional script decisions documented with Part A evidence
-- [ ] All scripts saved to `scripts/profile_structural/` with execution logs
-- [ ] QAP1 completed (code-reviewer invoked, QA script in `scripts/cr/`)
-
-#### Part B (Statistical Deep Dive)
-
-- [ ] Script 04 produced distribution classification for all numeric columns
-- [ ] Script 05 executed or skipped with documented rationale
-- [ ] Script 06 executed or skipped with documented rationale
-- [ ] CPP2 PASSED (mean within [min,max], percentile monotonicity)
-- [ ] Outlier counts and thresholds documented per column
-- [ ] All scripts saved to `scripts/profile_statistical/` with execution logs
-- [ ] QAP2 completed
-
-#### Part C (Relational Analysis)
-
-- [ ] Script 07 tested single-column uniqueness for all columns
-- [ ] Script 08 executed or skipped with documented rationale
-- [ ] Script 09 produced anomaly catalog with severity classifications
-- [ ] CPP3 PASSED (correlation symmetry, uniqueness agreement, non-empty catalog)
-- [ ] Coded missing value scan covered all standard sentinels
-- [ ] Recommended primary key documented with uniqueness ratio
-- [ ] All scripts saved to `scripts/profile_relational/` with execution logs
-- [ ] QAP3 completed
-
-#### Part D (Interpretation & Reconciliation)
-
-- [ ] Script 10 marked ALL interpretations with `[PRELIMINARY]`
-- [ ] Script 11 executed or skipped with documented rationale
-- [ ] CPP4 PASSED (PRELIMINARY markers verified, reconciliation confirmed if docs provided)
-- [ ] All scripts saved to `scripts/profile_interpretation/` with execution logs
-- [ ] QAP4 completed
 
 ---
 
@@ -1356,9 +837,28 @@ The skill is automatically discoverable via its YAML frontmatter and ready for u
 - Statistical profile: [HIGH/MEDIUM/LOW] — [brief rationale]
 - Semantic interpretation: [HIGH/MEDIUM/LOW] — [brief rationale]
 
+**Skill Maturity:**
+This skill is at **v1 (Initial)** — created through automated profiling with your confirmed interpretations. As you use this data in future analyses, you'll discover additional edge cases and domain-specific patterns worth documenting. You can refine the skill at any time using Framework Development mode.
+
+**Want to adjust the skill?**
+If anything in the skill doesn't look right — descriptions, decision trees, reference file content — let me know and I can make targeted revisions. For more substantial restructuring, we can switch to Framework Development mode.
+
 **Recommendations:**
 - [Any follow-up actions: e.g., columns needing manual review, documentation gaps, suggested analyses]
 ```
+
+---
+
+## Phase-Specific References
+
+The orchestrator loads these files progressively — only when the corresponding phase begins:
+
+| Phase | Reference File | When to Load |
+|-------|---------------|--------------|
+| DO-2 (Profiling) | `WORKFLOW_PHASE_DO_PROFILING.md` | Before dispatching the first profiling subagent (Stage DI-3) |
+| DO-3 (Skill Authoring) | `WORKFLOW_PHASE_DO_AUTHORING.md` | After PSU-DI2 user confirmation, before Stage DI-7 |
+
+**Do NOT load both files at mode start.** Load each file just-in-time for its phase to conserve orchestrator context.
 
 ---
 

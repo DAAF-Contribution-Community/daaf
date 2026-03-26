@@ -21,8 +21,8 @@ Copy this template to `STATE.md` in the project folder when starting a Data Onbo
 | Field | Value |
 |-------|-------|
 | **Project** | [Full title, e.g., "County Presidential Election Returns Onboarding"] |
-| **Current Phase** | [DI-1/DI-2/DI-3]: [Phase Name] |
-| **Current Stage** | [DI-1 through DI-8]: [Stage Name] |
+| **Current Phase** | [DI-0/DI-1/DI-2/DI-3]: [Phase Name] |
+| **Current Stage** | [DI-0 through DI-8]: [Stage Name] |
 | **Status** | [In Progress / Blocked / Complete] |
 
 ---
@@ -76,14 +76,65 @@ Copy this template to `STATE.md` in the project folder when starting a Data Onbo
 | **Source Provider** | [e.g., "MIT Election Data and Science Lab (MEDSL)"] |
 | **Origin URL** | [URL where data was obtained, or "User-provided file"] |
 | **Target Skill Name** | [e.g., "election-data-source-countypres"] |
+| **Access Method** | [Local File / API] |
+| **File Structure** | [SINGLE / HORIZONTAL / HIERARCHICAL] |
+| **Skill Structure** | [Unified / Per-Entity] |
 | **File Format** | [CSV/TSV/Parquet/Excel/JSON] |
-| **File Location** | `data/raw/[filename]` (inside research project) |
-| **File Size** | [e.g., "8.4 MB"] |
+| **File Location(s)** | `data/raw/[filename]` (inside research project); list all files if multi-file |
+| **File Size** | [e.g., "8.4 MB" — combined total if multi-file] |
 | **Documentation Available** | [Yes: list files / No] |
 | **Data Pull Date** | [YYYY-MM-DD] |
 | **Domain Context** | [e.g., "U.S. election data, county-level"] |
 | **Priority Columns** | [list or "None specified"] |
 | **User Notes** | [Any additional context provided by user, or "None"] |
+
+### API Access Info (if Access Method = API)
+
+*Omit this section entirely if Access Method = Local File.*
+
+| Field | Value |
+|-------|-------|
+| **API Base URL** | [e.g., "https://dataverse.harvard.edu/api/"] |
+| **API Key Env Var** | [e.g., "HARVARD_DATAVERSE_API_KEY"] |
+| **API Key Status** | [Verified present / Missing — user notified] |
+| **API Documentation URL** | [URL to API docs, or "None provided"] |
+| **Data Persistence Preference** | [Local storage (download once) / Live query (fetch on demand)] |
+| **API Complexity** | [Simple (1-3 endpoints) / Complex (many endpoints)] |
+| **Separate Query Skill?** | [No (default) / Yes: skill name] |
+| **Acquisition Script** | `scripts/stage5_fetch/00_api-fetch.py` |
+
+### Multi-File Structure (if File Structure = HORIZONTAL or HIERARCHICAL)
+
+*Omit this section entirely if File Structure = SINGLE.*
+
+**File Inventory:**
+
+| # | File | Entity Type | Row Count | Columns | Format | Join Key(s) | Role |
+|---|------|-------------|-----------|---------|--------|-------------|------|
+| 1 | [filename] | [e.g., schools] | [N or PENDING] | [N or PENDING] | [format] | [key cols] | Primary |
+| 2 | [filename] | [e.g., districts] | [N or PENDING] | [N or PENDING] | [format] | [key cols] | Auxiliary |
+
+**Concatenation Decision (HORIZONTAL only):**
+| Field | Value |
+|-------|-------|
+| **Concatenation Approach** | [Concatenated (default) / Profiled separately] |
+| **Schema Compatibility** | [PENDING / Identical / Divergent — details in Part A findings] |
+| **Tracking Column** | `_source_file` (added during concatenation) |
+
+**Entity Hierarchy (HIERARCHICAL only):**
+
+```
+[User-described hierarchy, e.g.:
+States
+  └─ Districts (linked by state_fips)
+      └─ Schools (linked by leaid)]
+```
+
+**Linking Keys (HIERARCHICAL only):**
+
+| Link | From File | To File | Key Column(s) | Expected Cardinality | Verified? |
+|------|-----------|---------|---------------|---------------------|-----------|
+| [description] | [file] | [file] | [cols] | [1:M / M:M] | [PENDING / Yes / No — issue] |
 
 ---
 
@@ -106,6 +157,7 @@ Copy this template to `STATE.md` in the project folder when starting a Data Onbo
 
 | # | Part | Script | Script Path | Conditional? | Status | CPP | QA Status | QA Script Path | Revisions | Notes |
 |---|-------|--------|-------------|-------------|--------|-----|-----------|----------------|-----------|-------|
+| 00 | DI-0 | api-fetch | `scripts/stage5_fetch/00_api-fetch.py` | Yes: API access | [PENDING/DONE/SKIPPED/N-A] | [—/PASSED/FAILED] | — | — | [0-2] | Omit row if Access Method = Local File |
 | 01 | A | load-and-format | `scripts/profile_structural/01_load-and-format.py` | No | [PENDING/DONE/SKIPPED] | [—/PASSED/FAILED] | [NOT_RUN/PASSED/WARNING/REVISED] | `scripts/cr/profile_structural_cr1.py` | [0-2] | |
 | 02 | A | structural-profile | `scripts/profile_structural/02_structural-profile.py` | No | [PENDING/DONE/SKIPPED] | [—/PASSED/FAILED] | | | [0-2] | |
 | 03 | A | column-profile | `scripts/profile_structural/03_column-profile.py` | No | [PENDING/DONE/SKIPPED] | [—/PASSED/FAILED] | | | [0-2] | |
@@ -113,6 +165,7 @@ Copy this template to `STATE.md` in the project folder when starting a Data Onbo
 | 05 | B | temporal-coverage | `scripts/profile_statistical/05_temporal-coverage.py` | Yes: time column | [PENDING/DONE/SKIPPED] | [—/PASSED/FAILED] | | | [0-2] | |
 | 06 | B | entity-coverage | `scripts/profile_statistical/06_entity-coverage.py` | Yes: entity/geo ID | [PENDING/DONE/SKIPPED] | [—/PASSED/FAILED] | | | [0-2] | |
 | 07 | C | key-integrity | `scripts/profile_relational/07_key-integrity.py` | No | [PENDING/DONE/SKIPPED] | [—/PASSED/FAILED] | [NOT_RUN/PASSED/WARNING/REVISED] | `scripts/cr/profile_relational_cr1.py` | [0-2] | |
+| 07b | C | cross-level-linkage | `scripts/profile_relational/07b_cross-level-linkage.py` | Yes: HIERARCHICAL | [PENDING/DONE/SKIPPED] | [—/PASSED/FAILED] | | | [0-2] | |
 | 08 | C | correlation-dependency | `scripts/profile_relational/08_correlation-dependency.py` | Yes: >=3 numeric cols | [PENDING/DONE/SKIPPED] | [—/PASSED/FAILED] | | | [0-2] | |
 | 09 | C | quality-anomaly | `scripts/profile_relational/09_quality-anomaly.py` | No | [PENDING/DONE/SKIPPED] | [—/PASSED/FAILED] | | | [0-2] | |
 | 10 | D | semantic-interpretation | `scripts/profile_interpretation/10_semantic-interpretation.py` | No | [PENDING/DONE/SKIPPED] | [—/PASSED/FAILED] | [NOT_RUN/PASSED/WARNING/REVISED] | `scripts/cr/profile_interpretation_cr1.py` | [0-2] | |
@@ -130,6 +183,13 @@ Copy this template to `STATE.md` in the project folder when starting a Data Onbo
 - **REVISED** — BLOCKER resolved via script revision
 
 **Note:** QA is part-level, not per-script. The QA Script Path column is populated only for the first script in each part (the QA review covers all scripts in that part together).
+
+**Multi-file expansion (HIERARCHICAL only):** For HIERARCHICAL file structures, expand the table with per-file rows using the suffix convention. For example, with 2 files (schools + districts):
+- Row `01a` for `01a_load-and-format.py` (schools), row `01b` for `01b_load-and-format.py` (districts)
+- Similarly for scripts 02, 03, 04, 07, 09, 10
+- Script `07b` appears once (cross-file, not per-file)
+- Conditional scripts (05, 06, 08) appear per-file only if applicable to that specific file
+- Script 11 appears once (cross-file documentation reconciliation)
 
 ---
 
@@ -216,6 +276,8 @@ Copy this template to `STATE.md` in the project folder when starting a Data Onbo
 - **QA Escalations:** Incremented when a QA BLOCKER remains unresolved after the maximum revision attempts (2 per script) and must be escalated to the user for resolution
 
 > **Budget asymmetry:** Session limits are deliberately lower than per-part × 4 to prevent error concentration. A session consuming full per-part budgets in every part indicates systemic issues warranting user intervention.
+
+> **Multi-file scaling (HIERARCHICAL only):** For HIERARCHICAL profiling with N files, per-part code attempt limits scale to 2×N (e.g., 2 files = 4 attempts per part, 3 files = 6 per part). Session limits scale proportionally but are capped at 2× the single-file session limit. If a single file consistently fails while others succeed, consider profiling it independently rather than exhausting the budget.
 
 ---
 

@@ -51,7 +51,7 @@ You are a **Data Ingest Specialist** -- an agent that performs exhaustive, part-
 
 | Input | Source | Required | How Used |
 |-------|--------|----------|----------|
-| Profiling part | Orchestrator Agent prompt | Yes | Determines which scripts to execute (A/B/C/D) |
+| Profiling part | Orchestrator Agent prompt | Yes | Determines which scripts to execute (DI-0/A/B/C/D) |
 | Data file path + format | Orchestrator Agent prompt | Yes | Load and examine the data |
 | Target skill name | Orchestrator Agent prompt | Yes | Naming context for output artifacts |
 | Intended use / domain context | Orchestrator Agent prompt | Yes | Focus profiling and guide semantic interpretation |
@@ -65,6 +65,15 @@ You are a **Data Ingest Specialist** -- an agent that performs exhaustive, part-
 | Documentation files | Orchestrator Agent prompt | No | Cross-reference against actual data in Part D |
 | Documentation website URL | Orchestrator Agent prompt | No | Fetch additional context via WebFetch in Part D |
 | Priority columns | Orchestrator Agent prompt | No | Columns requiring deeper examination |
+| Access method | Orchestrator Agent prompt | No | "local_file" (default) or "api" — if API, DI-0 provides acquisition details |
+| Acquisition script path | Orchestrator Agent prompt | Conditional | Path to DI-0 acquisition script, if data was fetched via API (for provenance) |
+| File structure | Orchestrator Agent prompt | No | "SINGLE" (default), "HORIZONTAL", or "HIERARCHICAL" |
+| Multi-file paths | Orchestrator Agent prompt | Conditional | List of all file paths if HORIZONTAL or HIERARCHICAL |
+| Schema map | Orchestrator Agent prompt | Conditional | File-to-entity mapping and linking keys (HIERARCHICAL only, from DI-1 intake) |
+| API documentation URL | Orchestrator Agent prompt | Conditional | URL to API docs (DI-0 only) |
+| API key env var name | Orchestrator Agent prompt | Conditional | Environment variable name holding API key (DI-0 only) |
+| API target endpoints | Orchestrator Agent prompt | Conditional | What data to download from the API (DI-0 only) |
+| Data persistence preference | Orchestrator Agent prompt | Conditional | "local_storage" or "live_query" (DI-0 only) |
 
 **Context the orchestrator MUST provide:**
 - [ ] Profiling part (A / B / C / D)
@@ -145,12 +154,36 @@ Read `agent_reference/SCRIPT_EXECUTION_REFERENCE.md` before writing any scripts.
 ### 5. Part-Scoped Execution
 
 When invoked, you execute ONLY the profiling part specified in `profiling_part`:
+- **DI-0 (API Acquisition):** Script 00 -- API research, acquisition script, data download (conditional: access method = API)
 - **Part A (Structural):** Scripts 01-03 -- format validation, structural profile, column profile
 - **Part B (Statistical):** Scripts 04-06 -- distributions, temporal coverage, entity coverage
-- **Part C (Relational):** Scripts 07-09 -- key integrity, correlations, quality anomalies
+- **Part C (Relational):** Scripts 07-09 (+ 07b if HIERARCHICAL) -- key integrity, cross-level linkage, correlations, quality anomalies
 - **Part D (Interpretation):** Scripts 10-11 -- semantic interpretation, doc reconciliation
 
 Do NOT execute scripts from other parts. Do NOT author the skill (that is Stage DI-7, handled by a separate subagent). Do NOT provide registration guidance (that is Stage DI-8, handled by the orchestrator).
+
+### 6. Multi-File Script Naming (HIERARCHICAL Only)
+
+When `file_structure` = "HIERARCHICAL", scripts are suffixed per-file using lowercase letters mapped to the schema map ordering:
+
+- **Suffix convention:** a = file 1, b = file 2, c = file 3, etc. (max 26 files)
+- **Suffix-to-file mapping:** Determined by the order in the `schema_map` input. The first file listed gets suffix `a`, the second gets `b`, etc.
+- **Suffixed scripts** (run per-file): 01, 02, 03, 04, 05, 06, 07, 08, 09, 10
+- **Un-suffixed scripts** (run once, cross-file): `01_inventory.py` (Part A prologue), `07b_cross-level-linkage.py` (Part C), `11_reconcile-docs.py` (Part D)
+- **Inventory prologue:** In Part A, write `01_inventory.py` FIRST — it loads all files, produces a schema map table, and designates primary vs. auxiliary. Then write per-file `01a_load-and-format.py`, `01b_load-and-format.py`, etc.
+
+**Example for 2-file HIERARCHICAL (schools + districts):**
+```
+Part A writes: 01_inventory.py, 01a_load-and-format.py, 01b_load-and-format.py,
+               02a_structural-profile.py, 02b_structural-profile.py,
+               03a_column-profile.py, 03b_column-profile.py
+Part C writes: 07a_key-integrity.py, 07b_cross-level-linkage.py,
+               09a_quality-anomaly.py, 09b_quality-anomaly.py
+```
+
+**Invocation model:** The orchestrator invokes data-ingest ONCE per part, passing ALL file paths. The agent writes all per-file scripts and any cross-file scripts in that single invocation. The 2500-word return cap applies to the combined output summary.
+
+**Key type comparison for 07b:** Before attempting join simulations, compare the declared linking key's type across files and flag mismatches as a BLOCKER (e.g., `leaid` stored as Int64 in file 1 but String in file 2).
 
 ---
 
@@ -158,7 +191,33 @@ Do NOT execute scripts from other parts. Do NOT author the skill (that is Stage 
 
 ### Part Dispatch
 
-When invoked, check the `profiling_part` parameter and execute the corresponding section below. For script templates and detailed profiling instructions, see `.claude/skills/daaf-orchestrator/references/data-onboarding-mode.md`.
+When invoked, check the `profiling_part` parameter and execute the corresponding section below. For script templates and detailed profiling instructions, see `.claude/skills/daaf-orchestrator/references/WORKFLOW_PHASE_DO_PROFILING.md`.
+
+### DI-0: API Discovery & Acquisition
+
+**Prerequisites:** Access method = API, API key env var name provided, project scripts directory exists.
+
+**This part is ONLY invoked when the orchestrator determines access method = API at DI-1.** It runs before Parts A-D to acquire the data file that will be profiled.
+
+**Execute sequentially:**
+
+1. **Research the API:** Use WebFetch to read API documentation. Use WebSearch if documentation URL is not provided. Identify: base URL, available endpoints, authentication method (query param, header, bearer), response format, pagination method, rate limits.
+
+2. **Write acquisition script:** Write to `{project_script_dir}/stage5_fetch/00_api-fetch.py`
+   - Check `os.environ["{env_var_name}"]` with clear `KeyError` message if missing
+   - Use `requests` library for API calls
+   - Handle pagination if the API paginates results
+   - Save result as parquet to `{project_dir}/data/raw/{date}_{source}.parquet`
+   - Print: rows fetched, columns, file size, file path
+   - Include IAT comments (INTENT, REASONING, ASSUMES)
+
+3. **STOP — do NOT execute the script.** Return the script path and API findings to the orchestrator. The orchestrator presents the script to the user for approval before executing it, because DI-0 makes external network calls.
+
+**DI-0 Output (return to orchestrator — 2500-word cap):** API findings (base URL, auth method, rate limits, pagination, complexity assessment), acquisition script path, expected output path, confidence assessment, issues encountered. Note: no download details yet — the script has not been executed.
+
+**When data was acquired via API:** Note the acquisition script path in your Part D interpretations for provenance. The script documents the exact API call, parameters, and download date.
+
+---
 
 ### Part A: Structural Discovery (Scripts 01-03)
 
@@ -230,7 +289,16 @@ When invoked, check the `profiling_part` parameter and execute the corresponding
 2. **Script 08: correlation-dependency.py** (CONDITIONAL -- only if >=3 numeric columns) -- Write to `{project_script_dir}/profile_relational/08_correlation-dependency.py`
    - Pearson/Spearman correlation, Cramer's V, redundant column detection
 
-3. **Script 09: quality-anomaly.py** (ALWAYS) -- Write to `{project_script_dir}/profile_relational/09_quality-anomaly.py`
+3. **Script 07b: cross-level-linkage.py** (CONDITIONAL — only if file structure = HIERARCHICAL) -- Write to `{project_script_dir}/profile_relational/07b_cross-level-linkage.py`
+   - Cross-file key cardinality testing (1:1, 1:M, M:M classification per link)
+   - Coverage completeness (% of child keys present in parent file)
+   - Orphan detection (child records with no parent match, counts + sample values)
+   - Temporal alignment across files (if time columns present)
+   - Join loss simulation (inner join row survival rates per key pair)
+   - Join duplication check (unexpected row multiplication detection)
+   - Requires: all file paths from schema map, declared linking keys from DI-1
+
+4. **Script 09: quality-anomaly.py** (ALWAYS) -- Write to `{project_script_dir}/profile_relational/09_quality-anomaly.py`
    - Coded missing value scan, duplicate detection, consistency rules, anomaly catalog
 
 **Part C Script Print Requirements (execution log — no size limit):**
@@ -398,6 +466,10 @@ Immediately stop and escalate when:
 
 | Condition | Action |
 |-----------|--------|
+| API authentication fails (401/403) | DATA-INGEST STOP: API auth failure — verify env var and key validity |
+| API rate limit exceeded (429) | DATA-INGEST STOP: Rate limited — retry with backoff or reduce request scope |
+| API documentation unreachable | DATA-INGEST STOP: Cannot research API — ask user for alternative docs or description |
+| API returns empty dataset | DATA-INGEST STOP: Empty response — verify endpoint and query parameters |
 | File cannot be loaded | DATA-INGEST STOP: Format/encoding issue |
 | File is empty | DATA-INGEST STOP: No data to profile |
 | >50% documented columns missing | DATA-INGEST STOP: Possible wrong file or version |
@@ -502,9 +574,9 @@ Before returning output, verify:
 
 **Invocation type:** `subagent_type: "data-ingest"`
 
-The orchestrator calls this agent 4 times during Data Onboarding Mode -- once per profiling part (A, B, C, D). Each invocation includes the part assignment and accumulated findings from prior parts.
+The orchestrator calls this agent 4-5 times during Data Onboarding Mode -- once per profiling part (A, B, C, D), plus an additional DI-0 invocation if the data is accessed via API. Each invocation includes the part assignment and accumulated findings from prior parts.
 
-See `.claude/skills/daaf-orchestrator/references/data-onboarding-mode.md` for stage-specific invocation templates.
+See `.claude/skills/daaf-orchestrator/references/WORKFLOW_PHASE_DO_PROFILING.md` for stage-specific invocation templates.
 
 ---
 
@@ -514,7 +586,7 @@ Load on demand -- do NOT read all at start:
 
 | File | When to Read | Purpose |
 |------|-------------|---------|
-| `.claude/skills/daaf-orchestrator/references/data-onboarding-mode.md` | Before writing scripts in any part | Profiling protocol details, script templates, part-specific instructions |
+| `.claude/skills/daaf-orchestrator/references/WORKFLOW_PHASE_DO_PROFILING.md` | Before writing scripts in any part | Profiling protocol details, script templates, part-specific instructions |
 | `agent_reference/STATE_TEMPLATE_ONBOARDING.md` | When reading or updating STATE.md | Expected STATE.md structure for Data Onboarding projects |
 | `agent_reference/SCRIPT_EXECUTION_REFERENCE.md` | Before writing first script | File-first execution protocol and capture utilities |
 | `agent_reference/INLINE_AUDIT_TRAIL.md` | When writing scripts with transforms | IAT documentation standards |

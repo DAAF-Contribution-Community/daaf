@@ -177,7 +177,9 @@ Opus 4.6 (unlike Opus 4.5) also allows you to select its "thinking level" by tap
 
 Most DAAF data sources — including all built-in education data from the Urban Institute — are **freely accessible with no authentication required**. You can skip this step entirely if you're only working with education data.
 
-However, some data domains require API keys from their hosting platforms. If you plan to use any of these data sources, you'll need to set the corresponding environment variable **inside the Docker container, before launching Claude Code**:
+However, some data domains require API keys from their hosting platforms. The table below shows API keys for data sources that ship with DAAF. When you onboard a new data source from an API via Data Onboarding Mode, DAAF will guide you through setting up the appropriate environment variable using the same pattern shown here. You can set multiple API keys simultaneously — each uses a unique environment variable name.
+
+If you plan to use any of these data sources, you'll need to set the corresponding environment variable **inside the Docker container, before launching Claude Code**:
 
 | Data Source | Environment Variable | Where to Get a Key |
 |-------------|---------------------|-------------------|

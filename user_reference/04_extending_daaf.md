@@ -2,6 +2,8 @@
 
 This guide focuses on the primary extension path: bringing new datasets, data domain expertise, and methodological tooling into DAAF for your own purposes. If you want to make any of these modifications available to the broader community by sharing these changes/extensions back with the DAAF project, see [**05. Contributing to DAAF**](../CONTRIBUTING.md).
 
+> **Guided framework modification:** For any of the extension tasks below, you can use DAAF's **Framework Development mode** — just tell DAAF you want to create or modify a skill, agent, mode, or template, and it will scope the work, follow canonical templates, execute integration checklists, and run a multi-angle review pass to ensure consistency. Framework Development mode is especially useful for complex changes that touch multiple files.
+
 [**Back to main**](https://github.com/DAAF-Contribution-Community/daaf/tree/main)
 
 ---
@@ -50,9 +52,37 @@ Data Onboarding Mode is DAAF's built-in workflow for turning a raw dataset (or o
 
 You'll need:
 
-1. **A data file or link** in a supported format (parquet, CSV, Excel, or TSV). Public data sources are strongly preferred. If you're working with proprietary or sensitive data, please be *extremely* careful to abide by your organization's AI policy and data protection standards -- Claude will be examining the actual contents of the data.
+1. **A data file or API access** — either a data file in a supported format (parquet, CSV, Excel, or TSV) or access to an API that serves the data (see "Onboarding Data from an API" below). Public data sources are strongly preferred. If you're working with proprietary or sensitive data, please be *extremely* careful to abide by your organization's AI policy and data protection standards -- Claude will be examining the actual contents of the data.
 2. **Any available documentation** -- codebooks, data dictionaries, README files, or documentation website URLs. These aren't strictly required, but they dramatically improve the quality of the resulting skill because the agent can cross-reference what the documentation *says* against what the data *actually shows*.
 3. **A sense of how the data will be used** -- what research questions it might inform, what domain it belongs to, and which columns are most important for your purposes.
+
+### Onboarding Data from an API
+
+If your data source is available via a REST API rather than as a downloadable file, DAAF can handle the acquisition for you during Data Onboarding. You'll need:
+
+1. **API documentation** — a URL to the API docs, or a description of how the API works (endpoints, authentication method, response format). DAAF will research the API on your behalf, but having documentation to point to dramatically improves the quality of the resulting fetch scripts.
+2. **An API key** — most APIs require authentication. Set up your key as an environment variable inside the Docker container before starting (see [Step 8 in the Installation Guide](01_installation_and_quickstart.md#step-8-optional-set-up-data-source-api-keys) for the pattern). DAAF will ask you which environment variable name holds your key.
+3. **A sense of what you want to download** — which endpoint, what filters (date range, geography, etc.), and roughly how much data to expect.
+
+DAAF will research the API, write a fetch script for your approval, download the data, and then proceed with the standard profiling workflow. The fetch script is saved as a reproducible artifact — you (or DAAF) can re-run it any time to get fresh data.
+
+**Local vs. live access:** During setup, DAAF will ask whether you prefer to download the data once and work with the local copy (simpler, works offline) or always query the API live in future analyses (keeps data current). You can change this preference later by modifying the data source skill's "Data Access" section.
+
+**Complex APIs:** If the API you're working with offers many endpoints and datasets (like Harvard Dataverse, or a large government open data platform), DAAF will suggest whether the API access documentation should live inside the data source skill (simpler, fine for most cases) or in a separate query/connector skill (better if you plan to onboard multiple datasets from the same API over time). This is always your call.
+
+**OAuth-protected APIs:** DAAF handles simple API key authentication natively (you set an environment variable, and DAAF writes scripts that read it). If your API requires OAuth (browser-based login, token refresh flows), you'll need to obtain a bearer/access token manually first and provide it as an environment variable. DAAF will guide you through this if it detects the API uses OAuth during its research phase.
+
+### Onboarding Multiple Related Files
+
+If your data source comes as multiple related files — for example, one file per year (same structure), or a set of files at different levels of aggregation (schools, districts, states) — DAAF can profile them all together as a single onboarding project.
+
+When you provide multiple files, DAAF will ask you:
+- **Same structure or different?** Files with the same columns (one per year, one per state) are combined into one dataset for profiling. Files with different structures (schools vs. districts) are profiled separately with cross-file relationship testing.
+- **One skill or many?** By default, DAAF creates one unified skill covering all files. You can also opt for one skill per entity type if you prefer more granular documentation per table.
+
+The important thing is to provide all related files at intake rather than profiling them one at a time — this lets DAAF test the relationships between files (join coverage, key integrity, temporal alignment) and document those relationships in the resulting skill.
+
+---
 
 ### Where Your New Skill Will Fit in
 
@@ -80,7 +110,7 @@ A few practical considerations:
 
 - **File size:** The agent can handle files up to about 1GB without special handling. For larger files, it'll ask you about a sampling strategy before proceeding.
 - **File format:** Parquet is ideal (fast, preserves types). CSV works fine but may have type inference quirks. Excel files work using the `openpyxl` library, included with the standard installation Docker for DAAF.
-- **Multiple files:** If your data source spans multiple files (e.g., one file per year), start with a single representative file. The skill can document the multi-file structure, but profiling works best on one file at a time.
+- **Multiple files:** If your data source spans multiple files (e.g., one file per year, or separate files for schools vs. districts), you can provide them all at once during Data Onboarding — see "Onboarding Multiple Related Files" below. DAAF will profile them together and test cross-file relationships automatically.
 
 ### Running Data Onboarding Mode
 

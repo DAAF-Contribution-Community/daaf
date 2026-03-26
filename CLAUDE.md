@@ -269,6 +269,7 @@ All executed scripts are archived in the `scripts/` folder with stage-based orga
 | 7 (Transform) | `scripts/stage7_transform/` | `{step:02d}_{task-name}.py` | `01_join-data.py` |
 | 8 (Analysis & Viz) | `scripts/stage8_analysis/` | `{step:02d}_{task-name}.py` | `01_regression-poverty.py` |
 | Debug | `scripts/debug/` | `{seq:02d}_diag-{slug}.py` | `01_diag-key-mismatch.py` |
+| DI-0 (API Fetch) | `scripts/stage5_fetch/` | `00_api-fetch.py` | `00_api-fetch.py` |
 | DI-3 (Structural) | `scripts/profile_structural/` | `{NN}_{task-name}.py` | `01_load-and-format.py` |
 | DI-4 (Statistical) | `scripts/profile_statistical/` | `{NN}_{task-name}.py` | `04_distribution-analysis.py` |
 | DI-5 (Relational) | `scripts/profile_relational/` | `{NN}_{task-name}.py` | `07_key-integrity.py` |
@@ -372,6 +373,12 @@ research/2026-03-23_Onboarding_County_Elections/
         └── SKILL.md                               # Draft skill before final placement
 ```
 
+**Variants for API and HIERARCHICAL onboarding:** The example above shows the single-file local-file case. For other configurations, the following additional artifacts appear:
+
+- **API acquisition (DI-0):** `scripts/stage5_fetch/00_api-fetch.py` added; `data/raw/` contains the API-downloaded file
+- **HIERARCHICAL (multi-file):** Scripts are suffixed per-file (`01_inventory.py`, `01a_load-and-format.py`, `01b_load-and-format.py`, etc.); `scripts/profile_relational/07b_cross-level-linkage.py` added; `data/raw/` contains one file per entity type
+- **API + HIERARCHICAL:** Both patterns combined; multiple `00{x}_api-fetch.py` scripts if multiple endpoints
+
 ### Reproducibility Verification Example Project Structure
 
 ```
@@ -447,4 +454,5 @@ research/2026-03-24_College_Graduation_Analysis_Reproduction/
 | `agent_reference/DATA_SOURCE_SKILL_TEMPLATE.md` | Data source skill authoring template |
 | `agent_reference/AGENT_TEMPLATE.md` | Agent definition file template |
 | `agent_reference/MODE_TEMPLATE.md` | Engagement mode definition template |
+| `agent_reference/FRAMEWORK_INTEGRATION_CHECKLIST.md` | Comprehensive registration-point checklists for all framework component types |
 | `.claude/agents/README.md` | Agent index and usage guide |

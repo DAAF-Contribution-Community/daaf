@@ -742,6 +742,7 @@ Data Onboarding uses a different error recovery pattern than the Full Pipeline. 
 
 | Stage | Common Errors | Recovery Action |
 |-------|--------------|-----------------|
+| DI-0 (API Acquisition) | API auth failure (401/403), rate limit (429), empty response, unreachable docs, pagination error | Verify API key env var is set and valid; retry with backoff (max 3); adjust query params if empty response; fall back to user description if docs unreachable; reduce page size if pagination fails |
 | DI-1 (Intake) | File not found, file empty, missing inputs | Re-collect inputs from user; verify file path and accessibility |
 | DI-2 (Project Setup) | Folder creation fails, run_with_capture.sh missing | Create folder manually; copy run_with_capture.sh from `{BASE_DIR}/scripts/run_with_capture.sh` |
 | DI-3 (Part A) | Encoding errors, format detection failure, CPP1 fails | Check file format; try alternative encoding; re-invoke data-ingest subagent |
@@ -755,6 +756,9 @@ Data Onboarding uses a different error recovery pattern than the Full Pipeline. 
 
 | Condition | Triggered By | Recovery Path |
 |-----------|-------------|---------------|
+| API authentication fails | data-ingest agent (DI-0) or Gate GDI-0 | User verifies API key env var name and value; re-generate key if expired |
+| API returns empty dataset | data-ingest agent (DI-0) or Gate GDI-0 | User verifies endpoint URL and query parameters; check if filters are too restrictive |
+| API rate limited | data-ingest agent (DI-0) | Retry with exponential backoff; reduce request scope; wait and retry |
 | File cannot be loaded | data-ingest agent (Part A) | User provides corrected file or format info |
 | File is empty | data-ingest agent (Part A) | User provides correct file |
 | >50% documented columns missing | data-ingest agent (Part D) or Gate GDI-6 | Verify correct file version; user confirms column mapping |
@@ -814,6 +818,19 @@ RV mode has a lightweight error recovery pattern. The per-script atomic cycle ha
 | Data source schema change | — | — | STOP, present to user immediately |
 
 **Key difference from Full Pipeline:** RV mode does NOT stop on individual script failures. The goal is a complete reproduction picture — failed scripts are documented and the process continues to the next script.
+
+### Framework Development Mode Error Recovery
+
+Framework Development errors are typically file-level issues (template compliance failures, integration checklist gaps, cross-reference breaks). Recovery is straightforward:
+
+| Error Type | Recovery |
+|------------|----------|
+| Template compliance failure | Re-read the canonical template, identify missing sections, create revised artifact |
+| Integration checklist gap | Re-read FRAMEWORK_INTEGRATION_CHECKLIST.md, identify and complete missing items |
+| Cross-file inconsistency | Grep for the component name across all framework files, fix discrepancies |
+| Name collision | Choose a different name; update all already-written references |
+
+**STOP Conditions:** If the error involves safety-critical files (CLAUDE.md, settings.json, hooks), escalate to the user immediately.
 
 ---
 

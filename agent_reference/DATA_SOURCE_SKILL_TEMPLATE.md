@@ -36,7 +36,10 @@ Every data source SKILL.md MUST contain these sections in this exact order:
 Optional sections (insert between 10 and 11 if needed):
 - `## Limitations` — only if content doesn't fit naturally in Common Pitfalls
 - `## Common Use Cases` — if the source has distinct research applications worth enumerating
-- `## [Source-Specific Critical Section]` — e.g., EDFacts' cross-state warning, Scorecard's Title IV limitation. Place after Common Pitfalls, before Related Data Sources.
+- `## [Source-Specific Critical Section]` — e.g., EDFacts' cross-state warning, Scorecard's Title IV limitation
+- `## Multi-File Structure` — for HIERARCHICAL data sources with multiple related files (see Section 11.5 in the annotated skeleton)
+
+> **Section numbering note:** The annotated skeleton below numbers optional sections as 11 and 11.5, which shifts Related Data Sources and Topic Index to positions 12 and 13 in the skeleton. The **canonical count is 12 mandatory sections** (numbered 1–12 in the list above). In the final generated skill, if no optional sections are used, Related Data Sources is the 11th section and Topic Index is the 12th. The skeleton's higher numbers are an annotation artifact, not a different count.
 
 ---
 
@@ -52,35 +55,41 @@ Everything below this line is the template. Annotations appear in `<!-- HTML com
 ---
 name: *-data-source-[acronym]
 description: >-
-  [Full source name] ([ACRONYM]) [what it covers]. Use when [specific trigger
-  conditions — what research questions or data needs should cause this skill
-  to be loaded]. [One sentence on key limitation or scope if critical.]
+  [Full source name] ([ACRONYM]) — [what it is and what it covers] ([year range]).
+  Use when [specific research questions or data needs that should trigger this skill].
+  [Key constraint: Portal-only data scope, coverage gap, or critical limitation.]
 metadata:
-  audience: data-analysts
-  domain: education-data  # Use your active domain identifier (e.g., "education-data", "health-data")
-provenance:
-  skill_authored: "YYYY-MM-DD"      # Date this skill was first created
-  skill_last_updated: "YYYY-MM-DD"  # Date this skill was last updated or re-verified
+  audience: any-agent
+  domain: data-source
+  skill-authored: "YYYY-MM-DD"      # Date this skill was first created
+  skill-last-updated: "YYYY-MM-DD"  # Date this skill was last updated or re-verified
 ---
 ```
 
 <!-- RULES:
   - name: must match the directory name exactly
-  - NAMING CONVENTION: {domain}-data-source-{acronym}
-    - {domain} groups related sources and must match metadata.domain
+  - NAMING CONVENTION: {content-domain}-data-source-{acronym}
+    - {content-domain} groups related sources by subject area (education, election, health)
+    - This is distinct from metadata.domain which categorizes the functional type ("data-source")
     - {acronym} is the standard abbreviation (CCD, IPEDS, CRDC) — not the full name
     - Examples: education-data-source-ccd, election-data-source-countypres
     - When a source has multiple tables, append a table identifier
       (e.g., education-data-source-ccd-schools)
   - description: max 1024 chars, no angle brackets (< >)
   - description: MUST include both "what it does" AND "when to use it"
-  - domain: ALWAYS use a consistent domain identifier for your domain (e.g., "education-data" for education; not variants like "education-civil-rights")
-  - audience: ALWAYS use "data-analysts" for source skills
-  - PROVENANCE (REQUIRED for all data source skills):
-    - skill_authored: ISO-8601 date when the skill was first created (never changes after initial authoring)
-    - skill_last_updated: ISO-8601 date when the skill was last updated or re-verified against data
-    - On updates: change skill_last_updated only; skill_authored remains fixed
-    - STALENESS: If skill_last_updated is more than a few months old, treat skill
+  - description: MUST include approximate year coverage for the source (e.g., "2009-2022")
+  - description: Front-load the source identity (name + what it is), NOT skill-document
+    framing — write "Common Core of Data (CCD) — the federal universe database of..."
+    not "Deep reference for the Common Core of Data (CCD)..."
+  - description: Include Portal-specific data scope when it differs from the full source
+    (e.g., "Portal mirror provides only 7 columns; full study requires separate access")
+  - domain: ALWAYS use "data-source" for all data source skills
+  - audience: ALWAYS use "any-agent" for data source skills
+  - PROVENANCE (REQUIRED for all data source skills — stored as metadata keys):
+    - skill-authored: ISO-8601 date when the skill was first created (never changes)
+    - skill-last-updated: ISO-8601 date when the skill was last updated or re-verified
+    - On updates: change skill-last-updated only; skill-authored remains fixed
+    - STALENESS: If skill-last-updated is more than a few months old, treat skill
       claims with caution — data sources evolve and skill documentation may have drifted
 -->
 
@@ -149,9 +158,9 @@ Should orient the reader immediately — what this source provides that others d
 
 > **Note:** This warning is NOT a separate section in the generated SKILL.md.
 > It is guidance for agents and humans consuming the skill. The provenance
-> dates in frontmatter are sufficient — this rule governs interpretation.
+> metadata keys (`skill-authored`, `skill-last-updated`) are sufficient — this rule governs interpretation.
 
-**Rule:** If `skill_last_updated` is **more than a few months old**, treat the
+**Rule:** If `skill-last-updated` is **more than a few months old**, treat the
 skill's claims about column definitions, coded values, suppression patterns,
 and data quality with caution. Data sources evolve — new years are added,
 schemas change, coded values are revised, and suppression thresholds shift.
@@ -327,26 +336,118 @@ df = fetch_from_mirrors(
 
 <!-- RULES:
   - Section name: ALWAYS "## Data Access" (not "Data Fetching", "API Gotchas", etc.)
-  - MUST have all four subsections: Dataset Paths, Codebooks, Example Fetch, Filtering
-  - Dataset Paths table: 3 columns (Topic | Type | Path) — canonical paths from datasets-reference.md
-  - Codebooks table: 2 columns (Dataset | Codebook Path) + standard blockquote note
-  - Example Fetch: ALWAYS use fetch_from_mirrors() pattern from fetch-patterns.md
-  - Example Fetch: Include at least one filter (fips + year is the standard pattern)
-  - Filtering subsection: Show source-specific filter patterns (e.g., grade codes for CCD)
-  - If a source has data NOT available via mirrors, note that explicitly
-  - The Filtering subsection can be omitted ONLY if Example Fetch already shows
-    all common filter patterns (to avoid redundancy)
-  - MUST include Truth Hierarchy blockquote in this section (after Codebooks, before
-    Example Fetch). This is the CANONICAL location for Truth Hierarchy across all skills.
-    Use this exact format:
-      > **Truth Hierarchy:** When interpreting variable values, apply this priority:
-      > 1. **Actual data file** (what you observe in the parquet/CSV) — this IS the truth
-      > 2. **Live codebook** (.xls in mirror) — authoritative documentation, may lag
-      > 3. **This skill documentation** — convenient summary, may drift from codebook
-      >
-      > If this documentation contradicts the codebook, trust the codebook.
-      > If the codebook contradicts observed data, trust the data and investigate.
+  - TWO ACCESS MODELS: Choose the appropriate skeleton based on how the data is accessed:
+    - MIRROR-BASED: Use the skeleton above (Dataset Paths, Codebooks, Example Fetch, Filtering)
+    - API-BASED: Use the alternative skeleton below (Prerequisites, Dataset Endpoints,
+      Example Fetch with API pattern, Data Persistence, Filtering)
+    - A skill may include BOTH if the data is available through mirrors AND an API
+  - MIRROR-BASED RULES:
+    - MUST have all four subsections: Dataset Paths, Codebooks, Example Fetch, Filtering
+    - Dataset Paths table: 3 columns (Topic | Type | Path) — canonical paths from datasets-reference.md
+    - Codebooks table: 2 columns (Dataset | Codebook Path) + standard blockquote note
+    - Example Fetch: ALWAYS use fetch_from_mirrors() pattern from fetch-patterns.md
+    - Example Fetch: Include at least one filter (fips + year is the standard pattern)
+  - API-BASED RULES:
+    - MUST have Prerequisites subsection if authentication is required
+    - MUST have Example Fetch using os.environ for API key (NEVER hardcode keys)
+    - MUST have Data Persistence subsection documenting both local-storage and
+      live-query patterns when the source supports API access
+    - The election-data-source-countypres skill is the reference implementation
+      for the API access pattern
+  - COMMON RULES (both models):
+    - Filtering subsection: Show source-specific filter patterns
+    - The Filtering subsection can be omitted ONLY if Example Fetch already shows
+      all common filter patterns (to avoid redundancy)
+    - MUST include Truth Hierarchy blockquote in this section (after Codebooks/Endpoints,
+      before Example Fetch). This is the CANONICAL location for Truth Hierarchy across
+      all skills. Use this exact format:
+        > **Truth Hierarchy:** When interpreting variable values, apply this priority:
+        > 1. **Actual data file** (what you observe in the parquet/CSV) — this IS the truth
+        > 2. **Live codebook** (.xls in mirror) — authoritative documentation, may lag
+        > 3. **This skill documentation** — convenient summary, may drift from codebook
+        >
+        > If this documentation contradicts the codebook, trust the codebook.
+        > If the codebook contradicts observed data, trust the data and investigate.
 -->
+
+#### Alternative Skeleton: API-Based Data Access
+
+Use this skeleton instead of (or in addition to) the mirror-based skeleton above when the data source is accessed via API:
+
+```markdown
+## Data Access
+
+### Prerequisites
+
+> **API Key Required:** This data source requires authentication.
+> Set the `[ENV_VAR_NAME]` environment variable before launching Claude Code.
+> See the Installation Guide (Step 8) for setup instructions.
+
+| Requirement | Details |
+|-------------|---------|
+| Environment variable | `[ENV_VAR_NAME]` |
+| Where to get a key | [URL + brief instructions] |
+| Rate limits | [if known, or "Unknown"] |
+
+### Dataset Endpoints
+
+| Dataset | Endpoint / DOI | Format | Notes |
+|---------|---------------|--------|-------|
+| [name] | [URL or DOI] | [TSV/JSON/CSV/Parquet] | [notes] |
+
+> **Truth Hierarchy:** When interpreting variable values, apply this priority:
+> 1. **Actual data file** (what you observe in the downloaded data) — this IS the truth
+> 2. **API documentation / codebook** — authoritative, may lag behind actual data
+> 3. **This skill documentation** — convenient summary, may drift from source docs
+>
+> If this documentation contradicts the API docs, trust the API docs.
+> If the API docs contradict observed data, trust the data and investigate.
+
+### Example Fetch
+
+```python
+import os, io, requests
+import polars as pl
+
+# --- Config ---
+API_KEY = os.environ["[ENV_VAR_NAME]"]
+ENDPOINT = "[base_url/endpoint]"
+
+# --- Fetch ---
+# INTENT: Download [dataset] via [API name]
+# ASSUMES: API key is set in environment
+r = requests.get(ENDPOINT, params={"key": API_KEY})
+r.raise_for_status()
+df = pl.read_csv(io.BytesIO(r.content), separator="\t")
+
+# --- Validate ---
+print(f"Shape: {df.shape}")
+assert df.shape[0] > 0, "STOP: Empty response from API"
+```
+
+### Data Persistence
+
+**Local storage (download once, then use local file):**
+```python
+# Save to project data/raw/ after fetching
+df.write_parquet(f"{DATA_DIR}/raw/{DATE}_{source}_{dataset}.parquet")
+# Subsequent scripts load from local parquet — no API access needed
+```
+
+**Live query (fetch from API each time):**
+```python
+# Include the full API call pattern above in each Stage 5 script
+# Data is always current but requires API access and a valid key
+# Consider saving a local backup for offline use
+```
+
+### Filtering
+
+```python
+# [Source-specific filtering examples after download]
+# All filtering is done locally with Polars after the API response is received
+```
+```
 
 ---
 
@@ -393,6 +494,72 @@ df = fetch_from_mirrors(
     place them here
   - This section is OPTIONAL — only use when content is critical and doesn't belong
     in Quick Reference or Common Pitfalls
+-->
+
+---
+
+### Section 11.5 (Optional): Multi-File Structure
+
+Use this section when the data source comprises multiple related files at different levels of aggregation (HIERARCHICAL file structure from Data Onboarding).
+
+```markdown
+## Multi-File Structure
+
+> This data source comprises multiple related files at different levels
+> of aggregation. Load the appropriate file(s) for your analysis level.
+
+### Schema Map
+
+| File / Table | Entity Type | Grain | Row Count | Key Column(s) |
+|-------------|-------------|-------|-----------|---------------|
+| [file/table 1] | [e.g., Schools] | One row per school per year | [N] | `[key]` |
+| [file/table 2] | [e.g., Districts] | One row per district per year | [N] | `[key]` |
+
+### Entity Hierarchy
+
+```
+[Level 1: States]
+    └─ [Level 2: Districts] (linked by state_fips)
+        └─ [Level 3: Schools] (linked by leaid)
+```
+
+### Join Patterns
+
+```python
+# Join schools to districts
+schools_with_district = schools.join(
+    districts,
+    on="leaid",
+    how="left",
+    suffix="_district"
+)
+# ASSUMES: leaid is present in both files
+# WARNING: Check for leaid values in schools that have no district match
+unmatched = schools_with_district.filter(pl.col("col_district").is_null()).shape[0]
+print(f"Join coverage: {len(schools_with_district) - unmatched} / {len(schools_with_district)}")
+```
+
+### Cross-Level Caveats
+
+| Caveat | Affected Levels | Impact |
+|--------|----------------|--------|
+| [e.g., "Not all schools have district records"] | Schools → Districts | [X]% of school rows lose district data on join |
+| [e.g., "District aggregates don't sum to state totals"] | Districts → States | State file uses independent estimates |
+```
+
+<!-- RULES:
+  - ONLY include for sources with HIERARCHICAL file structure (multiple files
+    at different aggregation levels)
+  - Do NOT include for SINGLE or HORIZONTAL file structures
+  - Schema Map MUST include all files/tables with grain description and key columns
+  - Entity Hierarchy MUST use ASCII tree diagram showing parent-child relationships
+  - Join Patterns MUST include working Polars code with:
+    - Explicit join type (left, inner, etc.) with rationale
+    - Validation check (count unmatched rows)
+    - IAT comments (ASSUMES, WARNING)
+  - Cross-Level Caveats MUST document known join issues discovered during profiling
+    (from script 07b cross-level-linkage findings)
+  - Place between Common Pitfalls / Additional Sections and Related Data Sources
 -->
 
 ---
@@ -505,9 +672,10 @@ that are purely factual data dumps — these are less useful than the raw data i
 
 Use this checklist when reviewing a skill for template compliance:
 
-- [ ] Frontmatter: `domain: [appropriate-domain]` (must match the dataset's domain consistently throughout; e.g., education-data, election-data, economic-mobility)
-- [ ] Frontmatter: description includes "what" AND "when to use"
-- [ ] Frontmatter: `provenance.skill_authored` and `provenance.skill_last_updated` present with ISO-8601 dates
+- [ ] Frontmatter: `domain: data-source` (all data source skills use this functional category)
+- [ ] Frontmatter: description includes "what" AND "when to use" AND approximate year coverage
+- [ ] Frontmatter: description front-loads source identity (not "Deep reference for...")
+- [ ] Frontmatter: `skill-authored` and `skill-last-updated` present as metadata keys with ISO-8601 dates
 - [ ] Title: `# [ACRONYM] Data Source Reference` format
 - [ ] Summary: 1-2 sentences after title
 - [ ] Value Encodings Warnings: blockquote in position 4 with comparison table
@@ -525,3 +693,9 @@ Use this checklist when reviewing a skill for template compliance:
 - [ ] Reference files collectively total >= 2x SKILL.md lines (3x+ preferred)
 - [ ] columns.md covers ALL columns, not just a subset
 - [ ] coded-values.md enumerates ALL coded/sentinel values
+- [ ] If API-based: Prerequisites subsection present with env var name and setup link
+- [ ] If API-based: Data Persistence subsection documents both local and live patterns
+- [ ] If API-based: Example Fetch uses `os.environ` (never hardcodes keys)
+- [ ] If multi-file (HIERARCHICAL): Multi-File Structure section present with Schema Map
+- [ ] If multi-file (HIERARCHICAL): Join Patterns include working Polars code with validation
+- [ ] If multi-file (HIERARCHICAL): Cross-Level Caveats table populated from 07b findings

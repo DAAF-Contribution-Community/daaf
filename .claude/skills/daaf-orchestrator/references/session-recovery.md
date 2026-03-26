@@ -7,7 +7,7 @@
 
 ## Purpose
 
-Enable stateless recovery when resuming an interrupted analysis after LLM context has been cleared. Persistent memory varies by mode: Full Pipeline uses Plan.md + Plan_Tasks.md + STATE.md; Revision and Extension uses prior version Plan.md + Plan_Tasks.md + STATE.md plus new-version Plan files; Data Onboarding uses STATE.md only; Reproducibility Verification uses Reproduction_Report.md (no STATE.md).
+Enable stateless recovery when resuming an interrupted analysis after LLM context has been cleared. Persistent memory varies by mode: Full Pipeline uses Plan.md + Plan_Tasks.md + STATE.md; Revision and Extension uses prior version Plan.md + Plan_Tasks.md + STATE.md plus new-version Plan files; Data Onboarding uses STATE.md only; Reproducibility Verification uses Reproduction_Report.md (no STATE.md). Framework Development uses SESSION_NOTES.md (same lightweight pattern as Ad Hoc Collaboration); no STATE.md by default.
 
 ## When to Use
 
@@ -166,7 +166,7 @@ Ready to continue from Stage 7, Transformation #4?
 
 ## Recovery from Different Stages (Data Onboarding)
 
-Data Onboarding projects use a different STATE.md structure (from `agent_reference/STATE_TEMPLATE_ONBOARDING.md`) with onboarding-specific sections: DI-1 through DI-8 stages, Profiling Progress table, Interpretation Tracking, Documentation Reconciliation Summary, and Skill Authoring Status.
+Data Onboarding projects use a different STATE.md structure (from `agent_reference/STATE_TEMPLATE_ONBOARDING.md`) with onboarding-specific sections: DI-0 through DI-8 stages, Profiling Progress table, Interpretation Tracking, Documentation Reconciliation Summary, Skill Authoring Status, and optionally API Access Info and Multi-File Structure sections.
 
 **Identification:** A Data Onboarding project can be recognized by:
 - STATE.md contains `Phase DI-` stage references instead of numbered Stages 1-12
@@ -175,6 +175,7 @@ Data Onboarding projects use a different STATE.md structure (from `agent_referen
 
 | Stage Interrupted | Recovery Action | Additional Sections to Load |
 |-------------------|-----------------|---------------------------|
+| DI-0 (API Acquisition) | Check if acquisition script exists in `scripts/stage5_fetch/`; if data file exists in `data/raw/`, skip DI-0 and proceed to DI-1 file structure classification; if script exists but no data file, re-present script to user for approval and execution; if no script exists, re-invoke data-ingest for DI-0 | STATE.md API Access Info + Profiling Progress row 00 |
 | DI-1 (Intake) | Re-collect missing inputs, verify file accessible | — |
 | DI-2 (Project Setup) | Check project folder structure, verify STATE.md exists | `agent_reference/STATE_TEMPLATE_ONBOARDING.md` |
 | DI-3 (Structural Profile) | Check scripts 01-03 execution status in Profiling Progress table | STATE.md Profiling Progress + current phase scripts |
@@ -184,7 +185,10 @@ Data Onboarding projects use a different STATE.md structure (from `agent_referen
 | DI-7 (Skill Authoring) | Check if SKILL.md exists in `.claude/skills/{skill-name}/`; check Skill Authoring Status in STATE.md | STATE.md Skill Authoring Status + Interpretation Tracking |
 | DI-8 (Review & Delivery) | Check if skill is finalized; present to user for review | STATE.md Skill Authoring Status |
 
+**HIERARCHICAL partial-recovery:** For HIERARCHICAL projects with per-file suffixed scripts, the Profiling Progress table tracks each suffixed script independently (e.g., `01a` DONE, `01b` PENDING). When resuming mid-part, re-invoke data-ingest for the full part with a note in the prompt indicating which per-file scripts are already complete. The agent should check existing scripts in the project directory and resume from the first incomplete per-file script rather than re-running the entire part.
+
 **PSU Intermediate States:**
+- **DI-0 script written but not executed:** Check if acquisition script exists in `scripts/stage5_fetch/` but no data file in `data/raw/`. Re-present the script to the user for approval and execute.
 - **Between DI-2 and DI-3 (PSU-DI1 pending):** Check if PSU-DI1 was presented but not yet confirmed. Look at Current Position — if stage is DI-2 and status is "Awaiting Confirmation," re-present PSU-DI1 to the user.
 - **Between DI-6 and DI-7 (PSU-DI2 pending):** Check the Interpretation Tracking table. If the "User Decision" column is empty for all rows, PSU-DI2 has not been collected yet — present findings to user before proceeding to DI-7.
 
@@ -296,6 +300,12 @@ Before resuming a Revision and Extension session:
 - [ ] scripts/repro/ contains re-executed scripts (count matches inventory)
 - [ ] Script Inventory status column is current
 - [ ] No partially written Per-Script Results sections
+
+### Recovery from Framework Development Mode
+
+**Identification:** SESSION_NOTES.md exists in project root, or project context indicates framework component authoring.
+
+**Recovery procedure:** For Framework Development: read SESSION_NOTES.md to reconstruct completed items and remaining integration checklist items.
 
 ## Data Onboarding Recovery Verification Checklist
 
