@@ -469,6 +469,7 @@ These operations may be executed without preview:
 - Fixed effects, IV with FE, or DiD → `pyfixest`
 - Random effects, between estimation, Fama-MacBeth, IV-GMM, SUR/3SLS → `linearmodels`
 - Spatial analysis → `geopandas`
+- Supervised ML (classification, prediction, risk scoring) → `scikit-learn`
 - Unsupervised analysis (clustering, PCA, dimensionality reduction) → `scikit-learn`
 
 **Parsing the `<skill>` element:** When constructing the Stage 8.1 Agent prompt, extract the modeling library from the Plan_Tasks.md task block's `<skill>` element. The format is `<skill>data-scientist, {library}</skill>` — the second comma-separated value is the modeling library to substitute for `{modeling_library}` in the invocation template. For unsupervised analysis tasks, the library may be `scikit-learn`.
@@ -560,7 +561,7 @@ See the "Task Types" section below for the complete taxonomy, behavioral descrip
 - [ ] Significance thresholds or interpretation guidelines provided
 - [ ] Research Outcome contribution stated
 - [ ] Risk Register items included
-- [ ] Modeling library skill specified (`statsmodels` / `pyfixest` / `linearmodels` per Plan methodology; see "Modeling library selection" above)
+- [ ] Modeling library skill specified (`statsmodels` / `pyfixest` / `linearmodels` / `scikit-learn` / `geopandas` per Plan methodology; see "Modeling library selection" above)
 - [ ] If spatial analysis: `geopandas` skill specified
 - [ ] Script follows IAT documentation standards
 
