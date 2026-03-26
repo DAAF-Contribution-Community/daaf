@@ -140,18 +140,51 @@ Additional key-value pairs for categorization. Values must be strings.
 
 ```yaml
 metadata:
-  audience: python-developers
-  domain: data-science
-  version: "1.0"
+  audience: research-coders
+  domain: python-library
+  library-version: "1.x"
 ```
 
-Common metadata keys:
+### Controlled Vocabulary
 
-| Key | Purpose | Example Values |
-|-----|---------|----------------|
-| `audience` | Target users | `developers`, `data-scientists`, `devops` |
-| `domain` | Subject area | `testing`, `visualization`, `deployment` |
-| `version` | Skill version | `1.0`, `2.3.1` |
+DAAF uses a controlled vocabulary for `audience` and `domain` to enable consistent skill routing. Use the exact values below — do not invent new values without updating this spec.
+
+#### `audience` — Which agent role benefits from this skill?
+
+| Value | Targets | Example Skills |
+|-------|---------|----------------|
+| `any-agent` | Broadly useful across roles | data sources, data-scientist, skill-authoring |
+| `research-orchestrator` | Orchestrator agent only | daaf-orchestrator |
+| `research-planner` | Planning/discovery agents | education-data-explorer |
+| `research-coders` | Anyone writing or reviewing code | Python libraries, education-data-query |
+| `research-writers` | Anyone writing or reviewing narrative | science-communication |
+
+#### `domain` — What functional category does this skill belong to?
+
+| Value | Covers | Example Skills |
+|-------|--------|----------------|
+| `data-source` | Reference guides for specific datasets | education-data-source-ccd, election-data-source-countypres |
+| `data-access` | Fetching/discovering data | education-data-query, education-data-explorer |
+| `data-documentation` | Provenance, caveats, interpretation | education-data-context |
+| `python-library` | Library syntax/API reference | polars, plotly, statsmodels |
+| `research-methodology` | Analytical approach, rigor, mindset | data-scientist |
+| `research-orchestration` | Workflow/pipeline management | daaf-orchestrator |
+| `research-communication` | Translating findings for audiences | science-communication |
+| `skill-development` | Meta-skills for building skills/agents | skill-authoring, agent-authoring |
+
+#### Other Standard Metadata Keys
+
+| Key | Purpose | Example Values | When to Include |
+|-----|---------|----------------|-----------------|
+| `library-version` | Library version tracked by the skill | `"1.x"`, `"0.40.0"` | Python library skills only |
+| `skill-authored` | ISO-8601 creation date | `"2026-02-09"` | Data source skills (required) |
+| `skill-last-updated` | ISO-8601 last-verified date | `"2026-02-09"` | Data source skills (required); Python library skills (recommended) |
+
+> **Provenance in metadata:** Data source skills MUST include `skill-authored` and `skill-last-updated` as metadata keys. These track when the skill was created and when it was last verified against actual data. On updates, change only `skill-last-updated`; `skill-authored` remains fixed. If `skill-last-updated` is more than a few months old, treat skill claims with caution — re-run data onboarding to re-verify.
+
+> **Library skill staleness:** Python library skills SHOULD include `skill-last-updated` to signal when the `library-version` claim was last verified. Library APIs evolve — if the tracked version is outdated, the skill's syntax examples and API patterns may have drifted.
+
+> **Metadata routing semantics:** The `audience` and `domain` fields are used for skill inventory management, human auditing, and maintenance — not for programmatic agent routing. Agent skill selection is driven by description text matching and explicit skill name references in orchestrator dispatch tables and agent frontmatter. These fields help maintainers answer questions like "show me all skills relevant to code-writing agents" or "list all data source skills" without affecting runtime behavior.
 
 ## Field Reference Table
 
@@ -174,12 +207,17 @@ Unknown frontmatter fields are ignored but may cause validation errors in strict
 
 ```yaml
 ---
-name: polars-helper
-description: Assists with Polars DataFrame operations. Covers lazy/eager execution, expressions, I/O, aggregations, joins, and performance optimization. Use for any Polars data manipulation task.
+name: polars
+description: >-
+  Polars DataFrame library for high-performance data manipulation in Python.
+  Covers lazy/eager execution, expressions, I/O, aggregations, joins,
+  string/datetime operations, pandas/NumPy interop, and performance
+  optimization. Use when working with Polars DataFrames, migrating from
+  pandas, reading Parquet files, or optimizing data pipeline performance.
 metadata:
-  audience: python-developers
-  domain: data-science
-  polars-version: "1.x"
+  audience: research-coders
+  domain: python-library
+  library-version: "1.x"
 ---
 ```
 
