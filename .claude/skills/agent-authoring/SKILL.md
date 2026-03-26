@@ -1,9 +1,17 @@
 ---
 name: agent-authoring
-description: >
-  Guide for creating new DAAF agent definition files with full ecosystem integration.
-  Use when adding a new specialized agent, revising agent structure, or verifying
-  agent integration completeness across documentation.
+description: >-
+  Guide for creating new DAAF agent definition files with full ecosystem
+  integration. Covers the 12-section agent template, cross-agent consistency
+  standards, per-agent hook registration, skills-in-frontmatter assignment,
+  and the complete integration checklist for wiring new agents into
+  documentation. Use when adding a new specialized agent, revising agent
+  structure, configuring per-agent hooks, or verifying agent integration
+  completeness. For creating SKILL.md files (not agent definition files),
+  use skill-authoring instead.
+metadata:
+  audience: any-agent
+  domain: skill-development
 ---
 
 # Agent Authoring
@@ -79,11 +87,11 @@ If any of these answers are vague, in doubt, or incomplete, the quality and reli
 
 ### Phase 3: Integrate (wire into the ecosystem)
 
-1. Read `references/integration-checklist.md` for the COMPLETE list of files to update
-2. Execute Tier 1 updates (MANDATORY for every new agent — 6 files)
-3. Execute Tier 2 updates (CONDITIONAL — if agent maps to a specific stage)
-4. Execute Tier 3 updates (CONDITIONAL — if agent affects specific workflow areas)
-5. Update the agent count in `README.md` "Agent Ecosystem" header
+1. Read `agent_reference/FRAMEWORK_INTEGRATION_CHECKLIST.md` § 2 for the canonical checklist of registration points
+2. Execute all [M] (mandatory) items — A1-A5, A14
+3. Review and execute applicable [C] (conditional) items — A6-A13, A15-A16
+4. Run cross-cutting consistency checks (§ 6) — count words, cross-references, naming
+5. For supplementary walkthrough detail, also consult `references/integration-checklist.md`
 
 ### Phase 4: Validate (confirm completeness)
 

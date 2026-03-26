@@ -1,18 +1,18 @@
 ---
 name: education-data-source-nacubo
 description: >-
-  NACUBO-Commonfund Study of Endowments (NCSE) data for college/university
-  endowment market values, investment returns, asset allocations, spending
-  rates, and governance practices. Use when researching higher education
-  endowment performance, portfolio composition, or spending policies.
-  Portal mirror contains only 7 market-value columns; full study requires
-  separate NACUBO access.
+  NACUBO endowment data for U.S. college and university endowments (~650
+  institutions). Portal mirror provides only 7 market-value columns (total
+  endowment, per-FTE endowment, year-over-year change; 2012-2022). Use when
+  analyzing institution-level endowment size or trends. Full investment
+  returns, asset allocations, spending rates, and governance data require
+  separate NACUBO study access. For comprehensive endowment coverage across
+  all institutions, use IPEDS finance data.
 metadata:
-  audience: data-analysts
-  domain: education-data
-provenance:
-  skill_authored: "2026-02-09"
-  skill_last_updated: "2026-02-09"
+  audience: any-agent
+  domain: data-source
+  skill-authored: "2026-02-09"
+  skill-last-updated: "2026-02-09"
 ---
 
 # NACUBO Data Source Reference

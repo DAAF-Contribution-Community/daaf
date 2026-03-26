@@ -1,9 +1,18 @@
 ---
 name: science-communication
-description: Translating technical data science work for non-technical audiences. Covers audience analysis, narrative frameworks, plain-language translation, executive summaries, policy briefs, causal language guidance, hedging and uncertainty communication, and accessibility standards. Use when presenting findings to stakeholders, writing executive summaries, creating policy briefs, or communicating statistical results to non-statisticians.
+description: >-
+  Translating technical data science findings for non-technical audiences.
+  Covers audience analysis, narrative frameworks (Pyramid Principle, SCQA,
+  AIDA), plain-language translation, executive summaries, policy briefs,
+  causal language guidance, hedging and uncertainty communication, and
+  accessibility standards. Complements data-scientist visualization references
+  — handles what story to tell and to whom, not how to build charts. Use when
+  presenting findings to stakeholders, writing executive summaries or policy
+  briefs, communicating statistical results to non-statisticians, or reviewing
+  a draft deliverable for clarity and audience fit.
 metadata:
-  audience: data-analysts
-  domain: data-science
+  audience: research-writers
+  domain: research-communication
 ---
 
 # Science Communication

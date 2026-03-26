@@ -1,9 +1,17 @@
 ---
 name: education-data-context
-description: Data provenance, caveats, and interpretation guidance for Urban Institute Education Data Portal datasets. Use after pulling education data to understand limitations, special values, source-specific notes, and proper citation for schools, districts, or colleges data.
+description: >-
+  Data origin, caveats, and interpretation guidance for Urban Institute
+  Education Data Portal datasets. Use when interpreting Portal coded values
+  (-1/-2/-3 missing/not-applicable/suppressed), understanding year definitions
+  (fall vs. academic year), applying correct grade encoding (grade=-1 means
+  Pre-K, not missing), assessing suppression rates, citing data under ODC-By
+  license, or reviewing any Portal data before analysis. Also covers joining
+  identifiers across CCD, IPEDS, CRDC, and other sources, and routes to
+  source-specific deep-dive skills.
 metadata:
-  audience: data-analysts
-  domain: education-data
+  audience: any-agent
+  domain: data-documentation
 ---
 
 # Education Data Context

@@ -1,9 +1,18 @@
 ---
 name: marimo
-description: Reactive Python notebook for reproducible, interactive data work. Covers cell reactivity, UI elements (sliders, tables, forms), SQL cells, dataframes, plotting, and deployment as apps/scripts. Use for any marimo notebook development task.
+description: >-
+  marimo reactive Python notebook system for reproducible and interactive data
+  work. Covers cell reactivity model, UI elements (sliders, dropdowns, tables,
+  forms), SQL cells, DataFrame display, plotting integration, validation
+  patterns for data pipelines, and deployment as apps, scripts, or WASM. Use
+  when assembling Stage 9 research notebooks, developing reactive marimo
+  notebooks, building interactive data apps, or converting Jupyter notebooks
+  to marimo's Git-friendly .py format.
 metadata:
-  audience: python-developers
-  domain: notebooks
+  audience: research-coders
+  domain: python-library
+  library-version: "0.10.x"
+  skill-last-updated: "2026-03-26"
 ---
 
 # marimo

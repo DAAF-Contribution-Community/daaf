@@ -1,9 +1,16 @@
 ---
 name: skill-authoring
-description: Guide for creating Agent Skills. Covers SKILL.md format, frontmatter requirements, progressive disclosure patterns, decision trees, reference files, and bundled resources. Use when creating a new skill, reviewing skill structure, or debugging skill loading issues.
+description: >-
+  Guide for creating and auditing DAAF agent skills. Covers SKILL.md format,
+  frontmatter requirements and validation rules, controlled vocabulary for
+  metadata, progressive disclosure patterns, decision trees, reference files,
+  and bundled resource organization. Use when creating a new skill, reviewing
+  or auditing skill structure and frontmatter, or debugging skill loading and
+  triggering issues. For creating agent definition files (.claude/agents/*.md),
+  use agent-authoring instead.
 metadata:
-  audience: llm-agents
-  domain: meta-skill
+  audience: any-agent
+  domain: skill-development
 ---
 
 # Skill Authoring
@@ -182,6 +189,7 @@ Content here.
 
 ### Essential Do's
 
+- Before creating a new skill, read 1-2 existing skills of the same type as structural exemplars (e.g., for data source skills, read an existing data source SKILL.md; for tool skills, read `polars` or `plotnine`)
 - Include "what it does" AND "when to use it" in description
 - Write descriptions in third person ("Processes files" not "I help you process files")
 - Make descriptions slightly "pushy" to combat undertriggering
@@ -211,7 +219,9 @@ Content here.
 
 ### Skill Registration
 
-Skills are automatically discovered via their YAML frontmatter — the orchestrator sees all skills listed in the system message at conversation start. No manual registration is needed. Once the skill's `SKILL.md` is placed in `.claude/skills/{skill-name}/`, it becomes available immediately.
+Skills are automatically discovered via their YAML frontmatter — the orchestrator sees all skills listed in the system message at conversation start. No manual registration is needed for triggering. Once the skill's `SKILL.md` is placed in `.claude/skills/{skill-name}/`, it becomes available immediately.
+
+**Framework integration beyond discovery:** If the skill should be preloaded by specific agents (via `skills:` frontmatter), referenced in pipeline stage mappings, or wired into workflow documentation, additional registration is required. See `agent_reference/FRAMEWORK_INTEGRATION_CHECKLIST.md` § 1 (items S8-S10) for the complete list of conditional integration points.
 
 ## Data Source Skills: Metadata References
 

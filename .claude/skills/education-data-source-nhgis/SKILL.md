@@ -1,18 +1,18 @@
 ---
 name: education-data-source-nhgis
 description: >-
-  IPUMS NHGIS (National Historical Geographic Information System) census
-  geography and demographic data for education research. Use when working with
-  census geography, demographic data for school communities, time series
-  analysis, geographic crosswalks, or linking schools to census tracts/block
-  groups. Portal data is pre-processed crosswalks; direct NHGIS requires
-  IPUMS registration.
+  IPUMS NHGIS — census geography crosswalks and demographic data for education
+  research. Via the Education Data Portal: geographic crosswalk tables linking
+  K-12 schools (ncessch) and colleges (unitid) to census tracts, block groups,
+  CBSAs, and regions (census 1990-2020). Census demographic variables (income,
+  poverty, race, educational attainment) are NOT in the Portal — access
+  directly from NHGIS via free IPUMS registration. Use when linking school or
+  institutional data to census geography for contextual analysis.
 metadata:
-  audience: data-analysts
-  domain: education-data
-provenance:
-  skill_authored: "2026-02-09"
-  skill_last_updated: "2026-02-09"
+  audience: any-agent
+  domain: data-source
+  skill-authored: "2026-02-09"
+  skill-last-updated: "2026-02-09"
 ---
 
 # NHGIS Data Source Reference

@@ -1,10 +1,18 @@
 ---
 name: plotly
-description: Interactive visualization library for Python. Covers Plotly Express and Graph Objects for scatter, line, bar, histogram, box plots, subplots, styling, and export. Use when creating interactive plots with Plotly, building web-based visualizations, or needing hover/zoom functionality.
+description: >-
+  Plotly interactive visualization library for Python. Covers Plotly Express
+  and Graph Objects for scatter, line, bar, histogram, box, heatmap, 3D, and
+  geographic charts; subplots and faceting; styling; and HTML/image export.
+  Use when creating interactive visualizations with hover/zoom/pan, building
+  web-based charts, or producing geographic or 3D plots. Prefer over plotnine
+  when interactivity is required; for spatial analysis, projections, or
+  GIS-style mapping, use geopandas.
 metadata:
-  audience: python-developers
-  domain: data-visualization
-  plotly-version: "6.x"
+  audience: research-coders
+  domain: python-library
+  library-version: "6.x"
+  skill-last-updated: "2026-03-26"
 ---
 
 # Plotly Skill

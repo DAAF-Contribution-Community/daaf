@@ -1,18 +1,19 @@
 ---
 name: education-data-source-ccd
 description: >-
-  Deep reference for the Common Core of Data (CCD), the US Department of
-  Education's primary database on public K-12 education. Use when working with
-  CCD data to understand survey components, variable definitions, data quality
-  issues, historical changes, and state-level variations. Essential for
-  interpreting enrollment, staffing, finance, and directory data from public
-  schools and districts.
+  Common Core of Data (CCD) — the federal complete-universe database of all
+  U.S. public K-12 schools and districts (~100,000 schools, ~18,000
+  districts), collecting enrollment, staffing, finance, and directory data
+  annually (1986-present). Use when analyzing public school enrollment by
+  grade/race/sex, district finances, school staffing, or directory attributes.
+  Public schools and districts only; excludes private schools and
+  postsecondary. Note significant variable encoding and race/ethnicity
+  definition changes over time.
 metadata:
-  audience: data-analysts
-  domain: education-data
-provenance:
-  skill_authored: "2026-02-09"
-  skill_last_updated: "2026-02-09"
+  audience: any-agent
+  domain: data-source
+  skill-authored: "2026-02-09"
+  skill-last-updated: "2026-02-09"
 ---
 
 # CCD Data Source Reference

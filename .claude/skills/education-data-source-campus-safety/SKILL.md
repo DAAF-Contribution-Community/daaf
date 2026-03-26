@@ -1,17 +1,18 @@
 ---
 name: education-data-source-campus-safety
 description: >-
-  Campus Safety and Security (CSS) data from the Clery Act reporting system.
-  Covers campus crime statistics, fire safety, VAWA offenses, hate crimes, and
-  geographic reporting categories. Use when analyzing college/university crime
-  data, understanding Clery Act requirements, or interpreting campus safety
-  statistics and their limitations.
+  Campus Safety and Security (CSS) — annual Clery Act crime and fire safety
+  reporting for all Title IV postsecondary institutions. Full dataset covers
+  primary offenses, VAWA offenses, hate crimes, arrests/referrals, and fire
+  safety. Portal mirror provides only hate crimes data (2005-2021); primary
+  offenses, VAWA, arrests, and fire safety require direct access to
+  ope.ed.gov/campussafety. Use when analyzing campus hate crimes via Portal
+  or understanding Clery Act reporting structure. Identified by IPEDS unitid.
 metadata:
-  audience: data-analysts
-  domain: education-data
-provenance:
-  skill_authored: "2026-02-09"
-  skill_last_updated: "2026-02-09"
+  audience: any-agent
+  domain: data-source
+  skill-authored: "2026-02-09"
+  skill-last-updated: "2026-02-09"
 ---
 
 # Campus Safety Data Source Reference

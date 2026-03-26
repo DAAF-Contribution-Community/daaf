@@ -1,10 +1,18 @@
 ---
 name: linearmodels
-description: Panel data, IV/GMM, system regression, and asset pricing models in Python. Covers PanelOLS (FE/RE), BetweenOLS, Fama-MacBeth, IV2SLS/LIML/GMM, SUR, 3SLS, and Driscoll-Kraay SEs. Use when needing random effects, between estimation, first difference, system models (SUR, 3SLS), LIML/GMM IV, Fama-MacBeth regressions, or Driscoll-Kraay standard errors. Complements pyfixest (modern FE + DiD) and statsmodels (GLM + time series).
+description: >-
+  linearmodels: panel data, IV/GMM, system regression, and asset pricing
+  models in Python. Covers PanelOLS (FE/RE), BetweenOLS, FirstDifferenceOLS,
+  Fama-MacBeth, IV2SLS/LIML/GMM, SUR, IV3SLS, and Driscoll-Kraay SEs. Use
+  for random effects estimation, between or first-difference panel models,
+  system estimation (SUR, 3SLS), LIML/GMM instrumental variables,
+  Fama-MacBeth regressions, or Driscoll-Kraay standard errors. Complements
+  pyfixest (high-dimensional FE + DiD) and statsmodels (GLM + time series).
 metadata:
-  audience: python-developers
-  domain: data-science
+  audience: research-coders
+  domain: python-library
   library-version: "7.0"
+  skill-last-updated: "2026-03-26"
 ---
 
 # linearmodels Skill

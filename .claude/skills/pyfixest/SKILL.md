@@ -1,10 +1,20 @@
 ---
 name: pyfixest
-description: Fast high-dimensional fixed effects estimation in Python. Covers OLS/IV/Poisson regression with multi-way fixed effects, difference-in-differences estimators (TWFE, did2s, lpdid, Sun-Abraham), clustered standard errors, wild bootstrap, publication tables, and coefficient plots. Use when running regressions with fixed effects, instrumental variables, or difference-in-differences designs.
+description: >-
+  pyfixest: fast high-dimensional fixed effects estimation for Python. Covers
+  OLS, Poisson, and IV regression with multi-way fixed effects;
+  difference-in-differences estimators (TWFE, did2s, lpdid, Sun-Abraham);
+  clustered standard errors; wild bootstrap; and publication output (etable
+  regression tables, coefplot, iplot event study plots). Use when running
+  fixed effects regressions, difference-in-differences designs, Poisson count
+  models with FE, or producing publication-ready regression tables. For panel
+  random/between effects, use linearmodels; for GLM/time series without FE,
+  use statsmodels.
 metadata:
-  audience: python-developers
-  domain: data-science
+  audience: research-coders
+  domain: python-library
   library-version: "0.40.0"
+  skill-last-updated: "2026-03-26"
 ---
 
 # pyfixest Skill

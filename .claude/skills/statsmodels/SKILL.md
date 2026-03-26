@@ -1,10 +1,19 @@
 ---
 name: statsmodels
-description: General-purpose statistical modeling in Python. Covers OLS, GLM (logit, probit, Poisson), time series (ARIMA, VAR), discrete choice models, hypothesis tests, and comprehensive diagnostics. Use when running regressions without fixed effects, fitting GLMs, analyzing time series, or performing diagnostic tests. Complements pyfixest for non-FE models.
+description: >-
+  statsmodels general-purpose statistical modeling library for Python. Covers
+  OLS/WLS/GLS, GLM (logit, probit, Poisson, negative binomial), discrete
+  choice models, time series (ARIMA, SARIMAX, VAR), mixed effects (MixedLM),
+  robust regression, hypothesis tests, and comprehensive diagnostics. Supports
+  R-style formula API. Use when fitting regressions without fixed effects,
+  running GLMs or logit/probit, analyzing time series, or using formula
+  syntax. For fixed effects or DiD, use pyfixest; for panel/IV/system models,
+  use linearmodels.
 metadata:
-  audience: python-developers
-  domain: data-science
+  audience: research-coders
+  domain: python-library
   library-version: "0.14.6"
+  skill-last-updated: "2026-03-26"
 ---
 
 # statsmodels Skill

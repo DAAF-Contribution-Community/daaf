@@ -1,8 +1,7 @@
 # Agent Integration Checklist
 
-> **Purpose:** Complete registry of every file that must be updated when adding a new agent to DAAF.
-> This checklist is the authoritative source — if a file is not listed here, it does not need updating.
-> Organized into four tiers by update obligation.
+> **Purpose:** Supplementary walkthrough for agent integration, organized by update obligation.
+> The canonical registration-point checklist is `agent_reference/FRAMEWORK_INTEGRATION_CHECKLIST.md` § 2 — use it as the primary checklist. This document provides additional context, verification scripts, and tier-based organization to complement the canonical checklist.
 
 ---
 
@@ -10,13 +9,15 @@
 
 **Update ALL of these for EVERY new agent. No exceptions.**
 
+> These items correspond to FRAMEWORK_INTEGRATION_CHECKLIST.md items A3-A5 and A14. Consult that document for the canonical specification; this section provides walkthrough detail.
+
 ### 1. `.claude/agents/README.md` — Agent Index table
 
 **Section:** "Agent Index"
-**What to add:** New row with Agent, Purpose, Subagent Type, Stage(s), Key Distinction
+**What to add:** New row with Agent, Purpose, Subagent Type, Stage(s), Key Inputs, Key Outputs
 
 ```markdown
-| **new-agent** | [Purpose] | `[agent-name]` | [Stage(s)] | [One-line differentiator] |
+| **new-agent** | [Purpose] | `[agent-name]` | [Stage(s)] | [Key Inputs] | [Key Outputs] |
 ```
 
 ### 2. `.claude/agents/README.md` — "When to Use" section
@@ -37,10 +38,10 @@ Follow the format of existing agent subsections in this file.
 - What this agent produces and who consumes it
 - What this agent consumes and who produces it
 
-### 4. `.claude/agents/README.md` — Agent catalog table (canonical location)
+### 4. `README.md` (project root) — Agent count and table
 
-**Section:** Agent Index table (this is the canonical Specialized Agents registry)
-**What to add:** New row with Agent, Purpose, Subagent Type, Primary Stage(s), Key Inputs, Key Outputs
+**Section:** Agent Ecosystem
+**What to add:** Update agent count and add row to agent table if one exists. This is the project root `README.md`, distinct from `.claude/agents/README.md`.
 
 ---
 
@@ -48,63 +49,63 @@ Follow the format of existing agent subsections in this file.
 
 **Update these IF the new agent maps to a specific pipeline stage or changes the workflow.**
 
-### 7. `full-pipeline.md` — Skill-to-Stage Mapping table
+### 5. `full-pipeline.md` — Skill-to-Stage Mapping table
 
 **Condition:** Agent has a primary pipeline stage
 **Section:** "Skill-to-Stage Mapping" (in `.claude/skills/daaf-orchestrator/references/full-pipeline.md`)
 **What to add:** New or updated row with Stage, Primary Skill(s), Subagent Type, Invocation Pattern
 
-### 8. `full-pipeline.md` — Core Workflow Overview diagram
+### 6. `full-pipeline.md` — Core Workflow Overview diagram
 
 **Condition:** Agent appears in the main workflow flow (not on-demand/any-stage agents)
 **Section:** "Core Workflow Overview" (in `.claude/skills/daaf-orchestrator/references/full-pipeline.md`)
 **What to add:** Agent reference in the relevant stage description
 
-### 9. `full-pipeline.md` — Handoff Specifications table
+### 7. `full-pipeline.md` — Handoff Specifications table
 
 **Condition:** Agent produces or consumes stage output that affects gate criteria
 **Section:** "Handoff Specifications" (in `.claude/skills/daaf-orchestrator/references/full-pipeline.md`)
 **What to add:** Updated gate criteria for affected stages
 
-### 10. `full-pipeline.md` — Stage Gates table
+### 8. `full-pipeline.md` — Stage Gates table
 
 **Condition:** Agent introduces a new gate or modifies an existing gate
 **Section:** "Stage Gates (Cannot Proceed Without)" (in `.claude/skills/daaf-orchestrator/references/full-pipeline.md`)
 **What to add:** New or updated gate row
 
-### 11. `full-pipeline.md` — Stage Overview table
+### 9. `full-pipeline.md` — Stage Overview table
 
 **Condition:** Agent maps to a specific stage
 **Section:** "Stage Overview"
 **What to add:** New or updated row with Stage, Phase, Name, Primary Skill/Agent, Subagent type
 
-### 12. Appropriate `agent_reference/WORKFLOW_PHASE*.md` — Individual stage section
+### 10. Appropriate `agent_reference/WORKFLOW_PHASE*.md` — Individual stage section
 
 **Condition:** Agent operates within a specific stage
 **Section:** The individual stage section (e.g., "Stage 7: EDA & Transformation")
 **What to add:** Agent/subagent subsection or update to existing section
 **Phase mapping:** Stages 1-3.5 → `WORKFLOW_PHASE1_DISCOVERY.md`, Stages 4-4.5 → `WORKFLOW_PHASE2_PLANNING.md`, Stages 5-6 → `WORKFLOW_PHASE3_ACQUISITION.md`, Stages 7-10 → `WORKFLOW_PHASE4_ANALYSIS.md`, Stages 11-12 → `WORKFLOW_PHASE5_SYNTHESIS.md`
 
-### 13. Appropriate `agent_reference/WORKFLOW_PHASE*.md` — Stage invocation template
+### 11. Appropriate `agent_reference/WORKFLOW_PHASE*.md` — Stage invocation template
 
 **Condition:** Agent has a unique invocation template not covered by existing patterns
 **Section:** Add new stage-specific template section in the appropriate phase file
 **What to add:** Complete invocation template following the file's existing format
-**Phase mapping:** Same as item 12 above
+**Phase mapping:** Same as item 10 above
 
-### 14. `.claude/agents/README.md` — Orchestration Flow diagram
+### 12. `.claude/agents/README.md` — Orchestration Flow diagram
 
 **Condition:** Agent changes the orchestration workflow
 **Section:** "Orchestration Flow" (ASCII diagram)
 **What to add:** Agent box in the relevant position
 
-### 15. `agent_reference/ERROR_RECOVERY.md` — Error Recovery Routing
+### 13. `agent_reference/ERROR_RECOVERY.md` — Error Recovery Routing
 
 **Condition:** Agent handles specific error types or participates in error recovery
 **Section:** "Error Recovery Routing"
 **What to add:** New branch in the routing diagram and/or error budget entry
 
-### 16. Agent file — `skills:` frontmatter field
+### 14. Agent file — `skills:` frontmatter field
 
 **Condition:** Agent uses one or more skills during execution
 **What to add:** Ensure the agent's `skills:` frontmatter field lists preloaded skills. Stage-specific skill loading is documented in the agent's Protocol section and the corresponding `agent_reference/WORKFLOW_PHASE*.md` invocation templates.
@@ -117,19 +118,19 @@ Follow the format of existing agent subsections in this file.
 
 | # | File | Update Condition |
 |---|------|-----------------|
-| 17 | Appropriate `agent_reference/WORKFLOW_PHASE*.md` | Agent implements or extends a workflow phase |
-| 18 | `agent_reference/BOUNDARIES.md` | Agent has special deviation authority or unique boundaries |
-| 19 | `agent_reference/VALIDATION_CHECKPOINTS.md` | Agent runs validation checkpoints |
-| 20 | `agent_reference/QA_CHECKPOINTS.md` | Agent participates in QA review |
-| 21 | `agent_reference/ERROR_RECOVERY.md` | Agent handles specific error types |
-| 22 | `CLAUDE.md` > "Context & Session Health" | Agent has special context considerations |
-| 23 | `full-pipeline.md` > "Learning Signal Protocol" | Agent generates learning signals |
-| 24 | `agent_reference/PLAN_TEMPLATE.md` | Agent reads or writes Plan.md |
-| 24b | `agent_reference/PLAN_TASKS_TEMPLATE.md` | Agent reads or writes Plan_Tasks.md |
-| 25 | `agent_reference/STATE_TEMPLATE.md` | Agent affects STATE.md fields |
-| 26 | `user_reference/02_understanding_daaf.md` | Agent changes the architecture description for users |
-| 27 | `user_reference/04_extending_daaf.md` | Agent enables new extension patterns |
-| 28 | `user_reference/07_faq_technical.md` | Agent affects common technical questions |
+| 15 | Appropriate `agent_reference/WORKFLOW_PHASE*.md` | Agent implements or extends a workflow phase |
+| 16 | `agent_reference/BOUNDARIES.md` | Agent has special deviation authority or unique boundaries |
+| 17 | `agent_reference/VALIDATION_CHECKPOINTS.md` | Agent runs validation checkpoints |
+| 18 | `agent_reference/QA_CHECKPOINTS.md` | Agent participates in QA review |
+| 19 | `agent_reference/ERROR_RECOVERY.md` | Agent handles specific error types |
+| 20 | `CLAUDE.md` > "Context & Session Health" | Agent has special context considerations |
+| 21 | `full-pipeline.md` > "Learning Signal Protocol" | Agent generates learning signals |
+| 22 | `agent_reference/PLAN_TEMPLATE.md` | Agent reads or writes Plan.md |
+| 23 | `agent_reference/PLAN_TASKS_TEMPLATE.md` | Agent reads or writes Plan_Tasks.md |
+| 24 | `agent_reference/STATE_TEMPLATE.md` | Agent affects STATE.md fields |
+| 25 | `user_reference/02_understanding_daaf.md` | Agent changes the architecture description for users |
+| 26 | `user_reference/04_extending_daaf.md` | Agent enables new extension patterns |
+| 27 | `user_reference/07_faq_technical.md` | Agent affects common technical questions |
 
 ---
 
@@ -194,11 +195,13 @@ done
 ```markdown
 ## New Agent Integration: [agent-name]
 
+> Canonical checklist: `agent_reference/FRAMEWORK_INTEGRATION_CHECKLIST.md` § 2
+
 ### Tier 1: MANDATORY
 - [ ] .claude/agents/README.md — Agent Index table (new row)
 - [ ] .claude/agents/README.md — "When to Use" section (new subsection)
 - [ ] .claude/agents/README.md — Agent Coordination Matrix (producer/consumer rows)
-- [ ] .claude/agents/README.md — Agent catalog table (canonical Specialized Agents registry)
+- [ ] README.md (project root) — Agent count and table
 
 ### Tier 2: CONDITIONAL (check applicability)
 - [ ] full-pipeline.md — Skill-to-Stage Mapping (if stage-specific)

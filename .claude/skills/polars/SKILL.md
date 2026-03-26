@@ -1,10 +1,16 @@
 ---
 name: polars
-description: Fast DataFrame library for Python data science. Covers lazy/eager execution, expressions, I/O, aggregations, joins, string/datetime ops, and performance optimization. Use for any Polars data manipulation task.
+description: >-
+  Polars DataFrame library for high-performance data manipulation in Python.
+  Covers lazy/eager execution, expressions, I/O (CSV, Parquet, JSON, database),
+  aggregations, joins, string/datetime operations, pandas/NumPy interop, and
+  performance optimization. Use when working with Polars DataFrames, migrating
+  from pandas, reading Parquet files, or optimizing data pipeline performance.
 metadata:
-  audience: python-developers
-  domain: data-science
-  polars-version: "1.x"
+  audience: research-coders
+  domain: python-library
+  library-version: "1.x"
+  skill-last-updated: "2026-03-26"
 ---
 
 # Polars Skill
