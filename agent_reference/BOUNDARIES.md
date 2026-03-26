@@ -186,6 +186,12 @@ Mode-specific boundaries for these engagement modes are defined in their respect
 
 ---
 
+### Framework Development Mode
+
+**See** `framework-development-mode.md` § Boundaries for Always Do / Ask First / Never Do rules specific to framework modification workflows. Key constraints: mandatory scoping before modifications, canonical template compliance, integration checklist execution, and explicit user approval before modifying safety-critical files (CLAUDE.md, settings.json, hooks).
+
+---
+
 ### QA-Specific Boundaries (Stages 5-8)
 
 **Always Do:**

@@ -10,7 +10,7 @@ This guide is designed to turn a new user into a confident user. It expands on t
 
 ## Table of Contents
 - [**Core Concept: Context Windows and Prompt Engineering 101**](#core-concept-context-windows-and-prompt-engineering-101)
-- [**The Seven Engagement Modes**](#the-seven-engagement-modes)
+- [**The Eight Engagement Modes**](#the-eight-engagement-modes)
 - [**The Mental Model: Orchestrator, Agents, Skills, Validation**](#the-mental-model-orchestrator-agents-skills-validation)
 - [**What a Full Pipeline Analysis Looks Like**](#what-a-full-pipeline-analysis-looks-like)
 - [**Anatomy of a Completed Analysis**](#anatomy-of-a-completed-analysis)
@@ -44,9 +44,9 @@ So that's the gist for now. Onward, to actually using DAAF!
 
 ---
 
-## The Seven Engagement Modes
+## The Eight Engagement Modes
 
-DAAF first classifies every request you make into one of seven **engagement modes**. This is how we properly prompt-engineer Claude, because each mode triggers a fundamentally different workflow, different outputs, and different expectations for what input you'll need to provide to steer it well. Understanding these modes is the single most useful thing you can do to work with DAAF effectively, because it helps you frame your questions in the way most likely to get you what you actually want, and better understand what's going on behind the scenes.
+DAAF first classifies every request you make into one of eight **engagement modes**. This is how we properly prompt-engineer Claude, because each mode triggers a fundamentally different workflow, different outputs, and different expectations for what input you'll need to provide to steer it well. Understanding these modes is the single most useful thing you can do to work with DAAF effectively, because it helps you frame your questions in the way most likely to get you what you actually want, and better understand what's going on behind the scenes.
 
 Before doing anything else, DAAF will tell you which mode it's classifying your request into, explain why, and ask you to confirm. This is intentional. You should always have the chance to say "actually, I just wanted a quick lookup" or "actually, let's go deeper on this." Here's what each of them do, and how the workflow works so you know when and why you'd use each:
 
@@ -183,6 +183,24 @@ Before doing anything else, DAAF will tell you which mode it's classifying your 
 
 **When NOT to use it:** When you already know the analysis needs changes -- use Revision and Extension mode instead. When the analysis was never completed or has no notebook -- there's nothing to reproduce from.
 
+### Framework Development
+
+**Trigger words:** "create a skill", "add an agent", "add a mode", "modify DAAF", "update the template", "extend the framework"
+
+**What it is:** A structured collaboration mode for modifying DAAF itself — its skills, agents, modes, reference files, templates, and configuration. The orchestrator scopes the current state of whatever you want to change, presents findings, then authors or modifies framework artifacts following canonical templates with a full integration checklist.
+
+**What you get:** Modified or new framework components placed directly in the DAAF codebase, with a multi-angle review pass ensuring cross-file consistency.
+
+**When to use it:** When you want to add a new data source skill, create a new agent, add a new engagement mode, update templates or reference documents, or make any other structural change to the DAAF framework.
+
+**When NOT to use it:** When you want to onboard a dataset by profiling it (use Data Onboarding), when you want to run an analysis (use Full Pipeline), or when you want general help (use Ad Hoc Collaboration).
+
+**Two checkpoints:**
+1. After scoping — confirm the approach before any modifications begin
+2. After review — approve the final state of all changes
+
+**Escalation:** Can escalate to Data Onboarding (if you need to profile data, not just create a skill template), Full Pipeline (to test a new skill with actual analysis), or Ad Hoc Collaboration (if you need general help rather than framework changes).
+
 ### Switching Between Modes
 
 DAAF supports clean transitions between modes when it makes sense:
@@ -209,6 +227,14 @@ DAAF supports clean transitions between modes when it makes sense:
 | Data Discovery | Ad Hoc Collaboration | You want to discuss findings and iterate on approach |
 | Full Pipeline (early) | Ad Hoc Collaboration | You realize you just want to talk through the approach, not run the full pipeline |
 | Full Pipeline (complete) | Ad Hoc Collaboration | You want to discuss results or plan next steps informally |
+| Ad Hoc Collaboration | Framework Development | User wants to create or modify DAAF framework components |
+| Framework Development | Data Onboarding | User wants to onboard a dataset, not just create a skill template |
+| Framework Development | Full Pipeline | User wants to test a new skill with actual analysis |
+| Framework Development | Ad Hoc Collaboration | User needs analysis help, not framework changes |
+| Framework Development | Revision and Extension | User wants to review or revise an analysis that used the framework |
+| Framework Development | Data Discovery | Framework change requires testing with a specific data source |
+| Data Onboarding (complete) | Framework Development | User wants to refine the skill beyond what Onboarding produced |
+| Full Pipeline (complete) | Framework Development | User identifies framework improvements from analysis experience |
 
 DAAF will always propose these escalations explicitly and wait for your confirmation. It should never silently switch modes on you.
 

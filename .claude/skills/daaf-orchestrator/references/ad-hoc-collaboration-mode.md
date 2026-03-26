@@ -369,6 +369,7 @@ These boundaries supplement the universal safety boundaries in `CLAUDE.md`. See 
 | Session has naturally produced a research plan | Full Pipeline | Suggest: "This is shaping up to be a full analysis -- want me to formalize it?" |
 | Debugging reveals an existing analysis needs revision | Revision and Extension | Propose escalation to modify the original project |
 | User wants to verify an existing analysis reproduces | Reproducibility Verification | Propose escalation |
+| User wants to create or modify DAAF framework components (skills, agents, modes) | Framework Development | Propose escalation: "That's framework development work. Want me to switch to Framework Development mode?" |
 
 All escalations require explicit user confirmation. Frame escalations as opportunities, not obligations -- the user may prefer to continue working ad hoc.
 

@@ -133,6 +133,18 @@ Different engagement modes involve different levels of AI assistance. The disclo
 
 > AI assistance (DAAF with [model ID], [date], version [commit hash]) was used for [specific consultation purpose — e.g., "designing the regression specification" or "reviewing data cleaning logic"]. The researcher independently verified [what was verified] and takes responsibility for all final analytical decisions.
 
+### Framework Development Mode
+
+**Depth:** Minimal
+
+**Template:**
+> This [component type] was created/modified using DAAF (Data Analyst Augmentation Framework) in Framework Development mode. DAAF provided template guidance, integration checklist execution, and cross-file consistency verification. The framework developer directed all design decisions and reviewed all changes.
+
+**Key points to document:**
+- What framework components were created or modified
+- That the human developer made all design decisions
+- That canonical templates were followed
+
 ---
 
 ## Boilerplate: Methods Section Language

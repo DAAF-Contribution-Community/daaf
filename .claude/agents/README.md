@@ -46,7 +46,8 @@ All agents in this directory MUST follow the canonical template at `agent_refere
 | **debugger** | Diagnose data quality issues and analysis failures using scientific hypothesis-testing methodology | `debugger` | Any (on error) | Error message/symptom, failed script path, Plan.md, Plan_Tasks.md (optional), last successful operation | Root cause report with hypothesis log and verified fix |
 | **notebook-assembler** | Compile scripts into Marimo notebook via VERBATIM copy (NO dashboards, NO widgets, NO new code) | `notebook-assembler` | 9 | Completed scripts (stages 5-8), Plan.md, data files, figure files, project path | Marimo `.py` notebook with script walkthroughs and data inspection cells |
 | **integration-checker** | Validate component wiring: data flows, file references, and orphan detection | `integration-checker` | 9, 11, 12 | Plan.md, Notebook, Report, project folder, script-to-output mappings | Integration check report: CONNECTED / ISSUES FOUND with flow diagrams |
-| **data-ingest** | Profile new datasets and produce comprehensive findings for skill authoring | `data-ingest` | Data Onboarding Mode (Stages DI-3 to DI-6) | Data file path + format, target skill name, intended use, domain context, optional docs | Part-specific profiling findings for orchestrator |
+| **data-ingest** | Profile new datasets and produce comprehensive findings for skill authoring; also handles API acquisition (DI-0) | `data-ingest` | Data Onboarding Mode (Stages DI-0, DI-3 to DI-6) | Data file path(s) + format, target skill name, intended use, domain context, optional docs, API details (if DI-0) | Part-specific profiling findings for orchestrator; DI-0: acquisition script + API findings |
+| **framework-engineer** | Author, modify, and integrate DAAF framework artifacts with template compliance and cross-file consistency | `framework-engineer` | Framework Development Mode | Work type + scope + scoping findings + affected file paths | Framework artifacts (.md files) + integration checklist report |
 | **report-writer** | Synthesize pipeline artifacts into stakeholder report following REPORT_TEMPLATE.md | `report-writer` | 11, RV-4 | Plan.md, Notebook, STATE.md, LEARNINGS.md, QA summary, figures, citations, dataset metadata | Report.md (stakeholder prose) |
 
 ### Commonly Confused Pairs
@@ -62,6 +63,7 @@ When adding a new agent, ensure it doesn't overlap with these frequently confuse
 | **data-planner** vs **plan-checker** | Planner *creates* plans; checker *validates* plans (never fixes them) |
 | **notebook-assembler** vs **integration-checker** | Assembler *builds* the notebook (verbatim script compilation); checker *verifies* wiring between components |
 | **report-writer** vs **research-synthesizer** | Writer synthesizes *post-execution* artifacts into a stakeholder report (Stage 11); synthesizer combines *pre-execution* research findings into planning guidance (Stage 3.5) |
+| **framework-engineer** vs **data-ingest** | Engineer creates/modifies *framework* artifacts (skills, agents, modes, config); ingest *profiles data* to produce findings for skill authoring |
 
 ---
 
@@ -228,12 +230,15 @@ Shows which agents produce output consumed by other agents:
 | **report-writer** | integration-checker | Report.md (stakeholder report following REPORT_TEMPLATE.md) | After Stage 11 completes |
 | **report-writer** | data-verifier | Report.md (stakeholder report) | Before Stage 12 verification |
 | **report-writer** | Orchestrator | Status report (COMPLETE / COMPLETE_WITH_GAPS / BLOCKED) | After report generation |
-| **Orchestrator** | data-ingest | Part assignment (A/B/C/D), prior part findings, conditional script decisions | Stages DI-3 to DI-6 (per-part) |
-| **data-ingest** | Orchestrator | Part-specific profiling findings, confidence assessment, issues | Stages DI-3 to DI-6 (per-part) |
+| **Orchestrator** | data-ingest | Part assignment (DI-0/A/B/C/D), prior part findings, conditional script decisions, API details (DI-0), multi-file paths + schema map (HIERARCHICAL) | Stages DI-0, DI-3 to DI-6 |
+| **data-ingest** | Orchestrator | Part-specific profiling findings, confidence assessment, issues; DI-0: acquisition script path + API findings | Stages DI-0, DI-3 to DI-6 |
 | **code-reviewer** (RV-2) | Orchestrator | Per-script reproduction status + comparison metrics + deviations | RV-2 (per script) |
 | **data-verifier** (RV-3) | Orchestrator | Report verification findings (claims, figures, findings checked) | RV-3 |
 | **report-writer** (RV-4) | Orchestrator | Completed Reproduction Report with synthesis | RV-4 |
 | **debugger** (RV-2) | Orchestrator | Root cause analysis + minimal fix for reproduction failure | RV-2 (on error) |
+| **Orchestrator** | framework-engineer | Work type, scope, scoping findings, affected file paths | Framework Development Mode |
+| **framework-engineer** | Orchestrator | Framework Engineering Report (status, artifacts, checklist, confidence) | Framework Development Mode |
+| **framework-engineer** | Review subagents (Plan) | Created/modified files for multi-angle review | Framework Development Mode Phase 4 |
 
 ---
 
@@ -526,6 +531,23 @@ code-reviewer returns BLOCKER
 - Skill authoring is NOT performed by this agent (handled at Stage DI-7 by a separate subagent)
 
 **Invocation template:** See the appropriate WORKFLOW_PHASE*.md or mode reference file for stage-specific invocation templates.
+
+---
+
+### framework-engineer
+
+**Use when:** The orchestrator is running Framework Development Mode and needs to create or modify framework components (skills, agents, modes, reference files). Each invocation handles one work type (new skill, new agent, new mode, modify existing, or multi-component).
+
+**Key behaviors:**
+- Template fidelity (follows AGENT_TEMPLATE, MODE_TEMPLATE, skill-authoring rules exactly)
+- Read before write (never modify a file without reading it first)
+- Integration completeness (executes FRAMEWORK_INTEGRATION_CHECKLIST.md for every component)
+- Cross-file consistency verification after all edits
+- Minimal disruption (surgical edits, match existing style)
+
+**Preloaded skills:** `skill-authoring`, `agent-authoring` (loaded via frontmatter)
+
+**Invocation template:** See `framework-development-mode.md` for the invocation pattern.
 
 ---
 

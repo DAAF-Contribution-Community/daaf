@@ -1,14 +1,16 @@
 ---
 name: daaf-orchestrator
 description: >-
-  Complete orchestration framework for the Data Analyst Augmentation Framework.
-  Provides workflow stages, engagement modes, subagent coordination patterns,
-  quality validation framework, and phase management. Use for all research
-  orchestration, pipeline execution, and multi-agent coordination tasks.
+  Operational framework for the DAAF orchestrator agent. Defines the eight
+  engagement modes and their confirmation protocol, subagent dispatch patterns,
+  context budget rules, communication standards, and progressive
+  reference-loading decision tree. Loaded exclusively by the orchestrator
+  agent to govern its own execution — not a general-purpose orchestration
+  reference and should not be loaded by subagents or in response to user
+  questions about pipeline coordination.
 metadata:
-  audience: orchestrator-agent
+  audience: research-orchestrator
   domain: research-orchestration
-  loading: orchestrator-only
 ---
 
 # DAAF Orchestrator Framework
@@ -52,7 +54,7 @@ Every conversation begins with a brief preamble before mode classification. Expa
 When a user asks for more information, expand naturally on these points:
 
 - DAAF structures analysis into phases with human oversight — you pause at each milestone for feedback rather than running start-to-finish
-- Seven modes: Data Onboarding (profile new datasets, create reusable data source skills), Data Lookup (focused answer), Data Discovery (lightweight exploration, no code), Ad Hoc Collaboration (flexible, multi-turn working session), Full Pipeline (complete pipeline, 4 checkpoints), Revision and Extension (revise or extend existing work), Reproducibility Verification (re-run an existing analysis to verify its findings reproduce)
+- Eight modes: Data Onboarding (profile new datasets, create reusable data source skills), Data Lookup (focused answer), Data Discovery (lightweight exploration, no code), Ad Hoc Collaboration (flexible, multi-turn working session), Full Pipeline (complete pipeline, 4 checkpoints), Revision and Extension (revise or extend existing work), Reproducibility Verification (re-run an existing analysis to verify its findings reproduce), Framework Development (modify DAAF itself — skills, agents, modes, templates, configuration)
 - The user is always in control — you explain what to expect and wait for go-ahead
 
 For more depth, consult `{BASE_DIR}/user_reference/02_understanding_daaf.md` and summarize relevant sections. Point the user to the file path if they want to read it directly. After orienting, proceed to mode classification.
@@ -61,7 +63,7 @@ For more depth, consult `{BASE_DIR}/user_reference/02_understanding_daaf.md` and
 
 ## Engagement Mode Classification
 
-Before executing any user request, classify it into one of seven engagement modes. This classification determines your workflow, outputs, and which references to load.
+Before executing any user request, classify it into one of eight engagement modes. This classification determines your workflow, outputs, and which references to load.
 
 ### Pre-Check: Session Recovery
 
@@ -95,6 +97,10 @@ User Request
     ├─ Asks to reproduce, verify, or re-run an existing analysis?
     │   └─ YES → Reproducibility Verification Mode
     │
+    ├─ Asks to modify, extend, or create DAAF framework components
+    │  (skills, agents, modes, templates, hooks, configuration)?
+    │   └─ YES → Framework Development Mode
+    │
     └─ None of the above?
         └─ Ask clarifying questions to determine mode,
            or explain available modes to the user
@@ -113,6 +119,7 @@ Keywords are heuristics, not deterministic. When multiple modes seem applicable,
 | **Full Pipeline** | "analyze", "research", "create", "generate" | Plan.md + Plan_Tasks.md + Notebook + Report | `full-pipeline.md` |
 | **Revision and Extension** | "fix", "update", "change", "modify the analysis", "extend" | Updated Plan.md + Plan_Tasks.md + Notebook + Report (new version) | `revision-and-extension-mode.md` |
 | **Reproducibility Verification** | "reproduce", "verify", "re-run", "replication", "reproducibility" | Reproduction Report | `reproducibility-verification-mode.md` |
+| **Framework Development** | "create a skill", "add an agent", "add a mode", "update the template", "modify DAAF", "extend the framework" | Framework artifacts (skills, agents, modes, reference files) | `framework-development-mode.md` |
 
 ### Mode Confirmation Gate (MANDATORY)
 
@@ -151,7 +158,7 @@ Before sending your confirmation response, verify:
 Use the appropriate boilerplate below as a starting point. Fill in the bracketed fields, expand naturally based on context, and **always end with a confirmation question.**
 
 **Data Onboarding:**
-> [Classification reasoning]. 3 phases with 2 checkpoints — I'll profile your data thoroughly, then you review the findings and interpretations before I create the Skill so the dataset is immediately available for all future work. I'll also create a project folder that contains all the reproducible data exploration scripts. **Shall I proceed?**
+> [Classification reasoning]. I'll profile your data thoroughly across up to 4 automated phases with 2 checkpoints — you review the findings and interpretations before I create the Skill so the dataset is immediately available for all future work. I can work with local files, API endpoints, or multiple related files at different levels of aggregation. I'll also create a project folder with all the reproducible profiling scripts. **Shall I proceed?**
 
 **Data Lookup:**
 > [Classification reasoning]. [What you'll look up and where]. **Sound good?**
@@ -172,6 +179,9 @@ Even for simple lookups, always confirm — the user may want broader context th
 
 **Reproducibility Verification:**
 > [Classification reasoning]. I'll decompile the marimo notebook into individual scripts, re-execute each one, and compare outputs against the originals. Then I'll cross-reference the Report's claims against the reproduced data. You'll get a Reproduction Report documenting what matched, what diverged, and any methodological concerns. Two decisions to confirm: (1) should I re-fetch data from mirrors or use frozen data from the folder (default: re-fetch from mirrors), and (2) how deep should the methodological review/critique be beyond checking for mechanical reproducibility (default: light, obvious concerns only)? I'll confirm both again after setup once the scope is concrete. **Shall I proceed with these defaults?**
+
+**Framework Development:**
+> [Classification reasoning]. I'll start by thoroughly scoping the current state of the framework components you want to modify — what exists, how it connects, and what will be affected. You'll review and confirm the scope before I make any changes. Then I'll author or modify the artifacts following DAAF's canonical templates, execute the integration checklist to wire everything consistently, and run a multi-angle review pass at the end. Two checkpoints: (1) after scoping to confirm approach, and (2) after the review pass to approve final state. [Scope summary]. **Shall I proceed?**
 
 ### Mode Escalation Paths
 
@@ -197,6 +207,14 @@ Even for simple lookups, always confirm — the user may want broader context th
 | Data Discovery | Ad Hoc Collaboration | User wants to discuss findings and iterate on approach |
 | Full Pipeline (early) | Ad Hoc Collaboration | User realizes they just want to talk through the approach, not run the full pipeline |
 | Full Pipeline (complete) | Ad Hoc Collaboration | User wants to discuss results or plan next steps informally |
+| Ad Hoc Collaboration | Framework Development | User wants to create or modify DAAF framework components |
+| Framework Development | Data Onboarding | User wants to onboard a dataset (not just create a skill template) |
+| Framework Development | Full Pipeline | User wants to test a new skill with actual analysis |
+| Framework Development | Ad Hoc Collaboration | User realizes they need analysis help, not framework changes |
+| Framework Development | Revision and Extension | User wants to review or revise an analysis that used the framework |
+| Framework Development | Data Discovery | Framework change requires testing with a specific data source |
+| Data Onboarding (complete) | Framework Development | User wants to refine the skill just created beyond what Onboarding produced |
+| Full Pipeline (complete) | Framework Development | User identifies framework improvements based on analysis experience |
 
 When escalation is appropriate, propose it explicitly:
 > "Based on these findings, would you like me to proceed with [escalated mode]?"
@@ -268,13 +286,16 @@ During any mode, watch for signals that the user needs additional guidance and r
 
 | Reference File | Content | When to Load |
 |----------------|---------|--------------|
-| `{SKILL_REFS}/data-onboarding-mode.md` | Data Onboarding workflow, gates, PSU templates, profiling protocol overview | After confirming Data Onboarding mode |
+| `{SKILL_REFS}/data-onboarding-mode.md` | Data Onboarding workflow, gates, execution cycle, PSU templates, intake decisions, boundaries | After confirming Data Onboarding mode |
+| `{SKILL_REFS}/WORKFLOW_PHASE_DO_PROFILING.md` | Part A-D details, CPP/QAP checks, profiling invocation templates, multi-file protocols, verification checklists | Before dispatching first profiling subagent (Stage DI-3) |
+| `{SKILL_REFS}/WORKFLOW_PHASE_DO_AUTHORING.md` | Skill authoring invocation template, CPP-SKILL validation, DI-8 iteration loop, skill maturity framing | After PSU-DI2 confirmation, before Stage DI-7 |
 | `{SKILL_REFS}/data-lookup-mode.md` | Single skill invocation, response format | After confirming Data Lookup mode |
 | `{SKILL_REFS}/data-discovery-mode.md` | Data Discovery workflow, exploration patterns, escalation | After confirming Data Discovery mode |
 | `{SKILL_REFS}/ad-hoc-collaboration-mode.md` | Ad hoc dispatch loop, workspace setup, agent invocation patterns, output handling | After confirming Ad Hoc Collaboration mode |
 | `{SKILL_REFS}/full-pipeline.md` | Complete 12-stage workflow, invocation templates, QA protocols, context requirements, gates, checklists, PSU templates, quality framework | After confirming Full Pipeline mode |
 | `{SKILL_REFS}/revision-and-extension-mode.md` | Version control, revision classification, re-run guidance | After confirming Revision and Extension mode |
 | `{SKILL_REFS}/reproducibility-verification-mode.md` | Reproducibility workflow (RV-1 through RV-4), invocation templates, comparison tolerances | After confirming Reproducibility Verification mode |
+| `{SKILL_REFS}/framework-development-mode.md` | Framework Development workflow, work type routing, dispatch patterns, review protocol | After confirming Framework Development mode |
 | `{BASE_DIR}/agent_reference/MODE_TEMPLATE.md` | Mode addition template and checklist | When adding new engagement modes |
 
 ### Documentation Loading Decision Tree
@@ -285,6 +306,8 @@ Mode Confirmed
     ├─ Data Onboarding Mode
     │   └─ Read: {SKILL_REFS}/data-onboarding-mode.md
     │          ├─ Stage DI-2 (project setup): Read {BASE_DIR}/agent_reference/STATE_TEMPLATE_ONBOARDING.md
+    │          ├─ Profiling (Stages DI-3–6): Read {SKILL_REFS}/WORKFLOW_PHASE_DO_PROFILING.md
+    │          ├─ Skill Authoring (Stages DI-7–8): Read {SKILL_REFS}/WORKFLOW_PHASE_DO_AUTHORING.md
     │          └─ Error handling: Read {BASE_DIR}/agent_reference/ERROR_RECOVERY.md
     │
     ├─ Data Lookup Mode
@@ -321,10 +344,16 @@ Mode Confirmed
     │              ├─ Stage 7-8: {BASE_DIR}/agent_reference/WORKFLOW_PHASE4_ANALYSIS.md
     │              └─ Stage 9-12: {BASE_DIR}/agent_reference/WORKFLOW_PHASE4_ANALYSIS.md + WORKFLOW_PHASE5_SYNTHESIS.md
     │
-    └─ Reproducibility Verification Mode
-        └─ Read: {SKILL_REFS}/reproducibility-verification-mode.md
-               ├─ Report template: Read {BASE_DIR}/agent_reference/REPRODUCTION_REPORT_TEMPLATE.md
-               └─ Error handling: Read {BASE_DIR}/agent_reference/ERROR_RECOVERY.md
+    ├─ Reproducibility Verification Mode
+    │   └─ Read: {SKILL_REFS}/reproducibility-verification-mode.md
+    │          ├─ Report template: Read {BASE_DIR}/agent_reference/REPRODUCTION_REPORT_TEMPLATE.md
+    │          └─ Error handling: Read {BASE_DIR}/agent_reference/ERROR_RECOVERY.md
+    │
+    └─ Framework Development Mode
+        └─ Read: {SKILL_REFS}/framework-development-mode.md
+               ├─ Integration checklist: Read {BASE_DIR}/agent_reference/FRAMEWORK_INTEGRATION_CHECKLIST.md
+               ├─ Load skill: skill-authoring (orchestrator loads directly — exception to standard pattern)
+               └─ Load skill: agent-authoring (orchestrator loads directly — exception to standard pattern)
 ```
 
 ---
@@ -391,6 +420,7 @@ DAAF uses **named agents** defined in `.claude/agents/`. When invoking a subagen
 | `report-writer` | `default` (read/write) | Stakeholder report (Stage 11, RV-4) |
 | `data-verifier` | `plan` (read-only) | Final verification (Stage 12, RV-3) |
 | `data-ingest` | `default` (read/write) | Dataset profiling (Data Onboarding Mode) |
+| `framework-engineer` | `default` (read/write) | Framework artifact authoring and integration (Framework Development Mode) |
 
 See `.claude/agents/README.md` for the complete agent index with key inputs and outputs.
 
