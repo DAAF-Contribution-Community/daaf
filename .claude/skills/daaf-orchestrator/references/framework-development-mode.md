@@ -548,6 +548,7 @@ These boundaries supplement the universal safety boundaries in `CLAUDE.md`. See 
 - Present changes for user review at Checkpoint 2
 - Load `skill-authoring` and `agent-authoring` at mode start
 - Commit intermediate state (or update SESSION_NOTES.md) before non-trivial multi-file modifications, so that a session interruption does not leave the framework in an inconsistent state
+- Set executable permissions (`chmod +x` + `git update-index --chmod=+x`) on any newly created or modified `.sh` files (hooks, utility scripts) and verify with `git ls-files -s` that the mode is `100755`
 
 ### Ask First Before
 

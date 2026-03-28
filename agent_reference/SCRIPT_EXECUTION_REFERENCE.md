@@ -90,6 +90,8 @@ The canonical wrapper lives at the **repo root**: `{BASE_DIR}/scripts/run_with_c
 
 All scripts reference this single canonical copy directly — there is no need to copy it into individual project directories. This avoids drift and ensures every project uses the same version.
 
+**Executable permission required:** `run_with_capture.sh` must have its executable bit set both on the filesystem (`chmod +x`) and in Git's index (`git update-index --chmod=+x`). The file's mode in `git ls-files -s` must be `100755`. Without this, `./run_with_capture.sh` invocations will fail, and clones of the repository will receive a non-executable copy. The same requirement applies to `collect_session_logs.sh` and any other `.sh` utility in `scripts/`.
+
 ### What It Does
 
 1. Validates the script path exists

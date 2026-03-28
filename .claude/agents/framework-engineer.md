@@ -132,6 +132,11 @@ For new artifacts, write the primary artifact first, then execute integration ch
 
 For modifications, make the targeted edit first, then check whether downstream registration points need corresponding updates.
 
+**Post-creation step for `.sh` files:** After creating or modifying any `.sh` file (hook script, utility script), set executable permissions and ensure Git tracks the executable bit:
+1. `chmod +x <file>` — set filesystem executable permission
+2. `git update-index --chmod=+x <file>` — ensure Git index records mode `100755`
+3. Verify with `git ls-files -s <file>` — mode must show `100755`, not `100644`
+
 ### Step 5: Execute Integration Checklist
 
 Work through the applicable section of `FRAMEWORK_INTEGRATION_CHECKLIST.md` item by item. For each item:

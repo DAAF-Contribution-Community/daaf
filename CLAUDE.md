@@ -220,6 +220,10 @@ Context management is NEVER about reducing the quality or completeness of work. 
 bash {BASE_DIR}/scripts/run_with_capture.sh {PROJECT_DIR}/scripts/stage5_fetch/01_fetch-ccd.py
 ```
 
+### Shell Script Permissions
+
+**All `.sh` files must be committed with the executable bit set.** After creating or modifying any shell script, run `chmod +x <file>` to set filesystem permissions, then `git update-index --chmod=+x <file>` to ensure Git's index tracks the file as mode `100755`. Verify with `git ls-files -s <file>` — the mode column must show `100755`, not `100644`. This applies to hooks in `.claude/hooks/` and utility scripts in `scripts/`.
+
 ### Version Control Protocol
 
 **Every change creates new version files.** No in-place modifications.

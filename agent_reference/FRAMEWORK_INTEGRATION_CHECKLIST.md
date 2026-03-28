@@ -158,10 +158,13 @@ After completing each item, note the status: Done, Skipped (with reason), or N/A
 | # | Item | Req | File | Section / Location |
 |---|------|-----|------|--------------------|
 | H1 | Create hook script in `.claude/hooks/` | [M] | `.claude/hooks/{hook-name}.sh` | Must follow fail-closed design (ERR trap → exit 2) |
+| H1b | Set executable permissions and ensure Git tracks the executable bit | [M] | `.claude/hooks/{hook-name}.sh` | Run `chmod +x <file>`, then `git update-index --chmod=+x <file>`. Verify with `git ls-files -s <file>` — mode must be `100755`, not `100644`. |
 | H2 | Register in settings.json (project-wide) OR agent frontmatter (per-agent) | [M] | `.claude/settings.json` or `.claude/agents/{agent}.md` | `hooks` section with event type + matcher |
 | H3 | Add to CLAUDE.md Defense-in-Depth Architecture table | [M] | `CLAUDE.md` | Defense-in-Depth Architecture table |
 | H4 | Add to hooks registration summary in framework hierarchy docs | [C] | Documentation | Hook event type table |
 | H5 | Test with both allow and block scenarios | [M] | — | Verify exit code 0 (allow) and exit code 2 (block) |
+
+> **Applies to all `.sh` files, not just hooks.** Item H1b (executable permissions) applies whenever any `.sh` file is created or modified in the repository — including utility scripts in `scripts/` (e.g., `run_with_capture.sh`, `collect_session_logs.sh`). Shell scripts that are not executable will fail silently when invoked with `./script.sh` syntax and will be stored incorrectly in Git history. Always run `chmod +x` and `git update-index --chmod=+x` for every `.sh` file.
 
 ---
 

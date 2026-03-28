@@ -383,6 +383,17 @@ python ./scripts/process.py test-input.txt
 echo $?
 ```
 
+### Setting Executable Permissions
+
+All `.sh` files in `scripts/` must have executable permissions set both on the filesystem and in Git's index. After creating a shell script, run:
+
+```bash
+chmod +x ./scripts/generate_report.sh
+git update-index --chmod=+x ./scripts/generate_report.sh
+```
+
+Verify with `git ls-files -s` — mode should be `100755`, not `100644`. See `CLAUDE.md` > Project Conventions > Shell Script Permissions for the full convention.
+
 ### Documenting Resources
 
 In SKILL.md, explain:
