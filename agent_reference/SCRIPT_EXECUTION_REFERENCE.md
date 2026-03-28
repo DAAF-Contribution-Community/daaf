@@ -41,7 +41,7 @@ Create the script file BEFORE executing any code. Use the standard template form
 Run the script using the execution wrapper, which handles output capture and log appending automatically:
 
 ```bash
-bash {PROJECT_DIR}/scripts/run_with_capture.sh {PROJECT_DIR}/scripts/stage{N}_{type}/{step}_{task-name}.py
+bash {BASE_DIR}/scripts/run_with_capture.sh {PROJECT_DIR}/scripts/stage{N}_{type}/{step}_{task-name}.py
 ```
 
 **Single command only.** Do not chain with `&&` or `;`. Do not prefix with `cd`. Use absolute paths.
@@ -86,16 +86,9 @@ If the script went through versioned revisions (Step 4), commit **all** versions
 
 ### Location and Setup
 
-The canonical wrapper lives at the **repo root**: `/daaf/scripts/run_with_capture.sh`.
+The canonical wrapper lives at the **repo root**: `{BASE_DIR}/scripts/run_with_capture.sh` (i.e., `/daaf/scripts/run_with_capture.sh`).
 
-During project setup (Stage 4), copy it into the project's `scripts/` directory:
-
-```bash
-cp /daaf/scripts/run_with_capture.sh scripts/run_with_capture.sh
-chmod +x scripts/run_with_capture.sh
-```
-
-**Do NOT recreate this script from memory or documentation.** Always copy from the repo-level source to avoid drift.
+All scripts reference this single canonical copy directly — there is no need to copy it into individual project directories. This avoids drift and ensures every project uses the same version.
 
 ### What It Does
 
@@ -110,12 +103,12 @@ chmod +x scripts/run_with_capture.sh
 
 ```bash
 # Execute a script (single Bash call, absolute paths)
-bash {PROJECT_DIR}/scripts/run_with_capture.sh {PROJECT_DIR}/scripts/stage5_fetch/01_fetch-ccd.py
+bash {BASE_DIR}/scripts/run_with_capture.sh {PROJECT_DIR}/scripts/stage5_fetch/01_fetch-ccd.py
 
 # If it fails, create a versioned copy and fix
 cp {PROJECT_DIR}/scripts/stage5_fetch/01_fetch-ccd.py {PROJECT_DIR}/scripts/stage5_fetch/01_fetch-ccd_a.py
 # Edit 01_fetch-ccd_a.py with fixes, then execute the new version
-bash {PROJECT_DIR}/scripts/run_with_capture.sh {PROJECT_DIR}/scripts/stage5_fetch/01_fetch-ccd_a.py
+bash {BASE_DIR}/scripts/run_with_capture.sh {PROJECT_DIR}/scripts/stage5_fetch/01_fetch-ccd_a.py
 ```
 
 ### Re-run Protection

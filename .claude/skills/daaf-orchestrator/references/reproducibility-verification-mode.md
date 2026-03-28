@@ -44,11 +44,10 @@ User points to existing analysis folder
 │  3. Create reproduction project folder              │
 │     YYYY-MM-DD_[OriginalProject]_Reproduction/      │
 │  4. Copy Report + Notebook → original_files/        │
-│  5. Copy run_with_capture.sh → scripts/             │
-│  6. Run decompiler → original_files/scripts/        │
-│  7. Batch path normalization via normalizer script   │
-│  8. Create Reproduction_Report.md from template     │
-│  9. Populate Script Inventory + Source Artifacts     │
+│  5. Run decompiler → original_files/scripts/        │
+│  6. Batch path normalization via normalizer script   │
+│  7. Create Reproduction_Report.md from template     │
+│  8. Populate Script Inventory + Source Artifacts     │
 │                                                     │
 │  PSU: Present inventory, reconfirm scope decisions  │
 │  GATE: User confirms before proceeding              │
@@ -129,21 +128,20 @@ User points to existing analysis folder
 3. Create new project folder: `research/YYYY-MM-DD_[OriginalProjectName]_Reproduction/`
 4. Create subdirectories: `original_files/`, `original_files/scripts/`, `original_files/output/figures/`, `scripts/`, `scripts/repro/`, `output/figures/`
 5. Copy the Report and Notebook into `original_files/`. Copy `output/figures/` from the original project into `original_files/output/figures/` (these are the original figures needed for visual comparison during RV-2 and RV-3).
-6. Copy `run_with_capture.sh` from `/daaf/scripts/` into `scripts/`
-7. Run the decompiler: `python /daaf/scripts/decompile_notebook.py <notebook_path> <project>/original_files/scripts/`
-8. **Path normalization** — run the batch normalizer on all decompiled scripts:
+6. Run the decompiler: `python /daaf/scripts/decompile_notebook.py <notebook_path> <project>/original_files/scripts/`
+7. **Path normalization** — run the batch normalizer on all decompiled scripts:
    `python /daaf/scripts/normalize_project_dir.py <project>/original_files/scripts/ <project_absolute_path>`
    This deterministically replaces all `PROJECT_DIR = Path("...")` values with the reproduction project path. Record the normalizer's output in the Reproduction Report's **Infrastructure Normalizations** section.
    This is an **infrastructure normalization**, NOT a substantive modification — it does not affect reproduction status.
-9. Create `Reproduction_Report.md` from `agent_reference/REPRODUCTION_REPORT_TEMPLATE.md`
-10. Populate the Script Inventory table from the decompiler's `MANIFEST.md`, mapping fields as follows:
+8. Create `Reproduction_Report.md` from `agent_reference/REPRODUCTION_REPORT_TEMPLATE.md`
+9. Populate the Script Inventory table from the decompiler's `MANIFEST.md`, mapping fields as follows:
    - `#` and `Script` — map directly from MANIFEST
    - `Step` — extract from script filename (e.g., `01_fetch-ccd.py` → step `01`)
    - `Stage` — extract from parent directory (e.g., `stage5_fetch/` → stage `5`)
    - `Type` — infer from stage directory name (`fetch`, `clean`, `transform`, `analysis`)
    - `Original Output` — extract from the Cell 1 header metadata if available, otherwise `—`
    - `Repro Status` — initialize all rows to `PENDING`
-11. Populate Source Artifacts table and Reproduction Environment section
+10. Populate Source Artifacts table and Reproduction Environment section
 
 **Gate RV-1:** All source artifacts present, decompiler succeeded, script inventory populated, user reconfirms scope decisions.
 
@@ -157,7 +155,7 @@ User points to existing analysis folder
 
 1. **COPY:** Copy `original_files/scripts/{stage_dir}/{script_name}` to `scripts/repro/{stage_dir}/{script_name}`
 2. **STRIP:** Remove the execution log from the copy. Find the line matching `# EXECUTION LOG` (or the `# =====` separator immediately preceding it) and delete from that point to EOF. After stripping, verify the file does NOT contain the string `# EXECUTION LOG` — `run_with_capture.sh` will refuse to execute scripts that already have a log marker.
-3. **EXECUTE:** `bash {PROJECT_DIR}/scripts/run_with_capture.sh {PROJECT_DIR}/scripts/repro/{stage_dir}/{script_name}`
+3. **EXECUTE:** `bash {BASE_DIR}/scripts/run_with_capture.sh {PROJECT_DIR}/scripts/repro/{stage_dir}/{script_name}`
 4. **COMPARE:** Read both the original script (with original log) and the re-executed script (with new log). Compare:
    - Exit codes
    - Row counts from stdout
@@ -207,10 +205,10 @@ All project-relative paths resolve from PROJECT_DIR. All repo-level paths resolv
    (or the `# =====` separator immediately preceding it) and delete from that point to EOF.
    After stripping, verify the file does NOT contain `# EXECUTION LOG` —
    run_with_capture.sh will refuse to execute scripts that still have a log marker.
-3. Execute via: `bash {PROJECT_DIR}/scripts/run_with_capture.sh {PROJECT_DIR}/scripts/repro/{stage_dir}/{script_name}`
+3. Execute via: `bash {BASE_DIR}/scripts/run_with_capture.sh {PROJECT_DIR}/scripts/repro/{stage_dir}/{script_name}`
 4. Compare the new execution log against the original script's execution log.
    You may use the structured comparison utility for this:
-   `python /daaf/scripts/compare_execution_logs.py {original_script_path} {reproduced_script_path}`
+   `python {BASE_DIR}/scripts/compare_execution_logs.py {original_script_path} {reproduced_script_path}`
    Or compare manually via the Read tool. Both approaches are acceptable.
    If the script produces figure output (PNG files), use the **Read tool** to view both
    the original figure (in `{PROJECT_DIR}/original_files/output/figures/`) and the
@@ -400,7 +398,6 @@ research/YYYY-MM-DD_[OriginalProject]_Reproduction/
 │   └── figures/
 │       └── *.png
 └── scripts/
-    ├── run_with_capture.sh             # Copied from /daaf/scripts/
     └── repro/                          # Re-executed scripts
         ├── stage5_fetch/
         │   ├── 01_fetch-*.py           # Re-executed with new logs

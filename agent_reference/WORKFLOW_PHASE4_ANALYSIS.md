@@ -153,7 +153,7 @@ else:
     print(f"CP3 STATUS: FAILED - Row loss {row_loss_pct:.1%}")
 
 # EXECUTION LOG will be appended here after running:
-# bash {PROJECT_DIR}/scripts/run_with_capture.sh {PROJECT_DIR}/scripts/stage7_transform/01_join-data.py
+# bash {BASE_DIR}/scripts/run_with_capture.sh {PROJECT_DIR}/scripts/stage7_transform/01_join-data.py
 ```
 
 **If validation fails:** Create a new versioned script (`01_join-data_a.py`) with fixes. Do NOT modify the original—it serves as audit trail.

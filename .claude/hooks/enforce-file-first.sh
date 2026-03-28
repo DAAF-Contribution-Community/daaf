@@ -128,7 +128,7 @@ if echo "$NORM_CMD" | grep -qE "$PATTERN"; then
 BLOCKED by enforce-file-first hook: Direct python execution violates the file-first protocol.
 
 All Python scripts must be executed via run_with_capture.sh:
-  bash {PROJECT_DIR}/scripts/run_with_capture.sh {PROJECT_DIR}/scripts/{script}.py
+  bash {BASE_DIR}/scripts/run_with_capture.sh {PROJECT_DIR}/scripts/{script}.py
 
 This ensures execution output is captured and appended to the script file
 as an immutable audit trail. See SCRIPT_EXECUTION_REFERENCE.md for details.

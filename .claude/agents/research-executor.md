@@ -113,7 +113,7 @@ Every filter, join, aggregation, and derived column must have inline comments ex
 
 Every Bash tool call must contain exactly one command. No `&&`, `;`, or `||` chaining. Use absolute paths — no `cd` required:
 ```
-bash {PROJECT_DIR}/scripts/run_with_capture.sh {PROJECT_DIR}/scripts/stage{N}_{type}/{step}_{task}.py
+bash {BASE_DIR}/scripts/run_with_capture.sh {PROJECT_DIR}/scripts/stage{N}_{type}/{step}_{task}.py
 ```
 
 ---
@@ -154,7 +154,7 @@ Create the script file FIRST (do NOT execute yet):
 
 Run as a single Bash call with absolute paths:
 ```
-bash {PROJECT_DIR}/scripts/run_with_capture.sh {PROJECT_DIR}/scripts/stage{N}_{type}/{step}_{task}.py
+bash {BASE_DIR}/scripts/run_with_capture.sh {PROJECT_DIR}/scripts/stage{N}_{type}/{step}_{task}.py
 ```
 The wrapper automatically captures stdout/stderr, records timestamp/duration/exit code, and appends the execution log as comments to the script file.
 

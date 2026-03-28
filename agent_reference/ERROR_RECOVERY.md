@@ -503,7 +503,7 @@ When a script fails, DO NOT modify the original. Instead:
 2. Identify the root cause
 3. Create new versioned copy (e.g., 01_task_a.py)
 4. Apply fix in the new copy
-5. Execute (single Bash call): `bash {PROJECT_DIR}/scripts/run_with_capture.sh {PROJECT_DIR}/scripts/.../01_task_a.py`
+5. Execute (single Bash call): `bash {BASE_DIR}/scripts/run_with_capture.sh {PROJECT_DIR}/scripts/.../01_task_a.py`
 ```
 
 **Attempt 2: Alternative approach in new version**
@@ -744,7 +744,7 @@ Data Onboarding uses a different error recovery pattern than the Full Pipeline. 
 |-------|--------------|-----------------|
 | DI-0 (API Acquisition) | API auth failure (401/403), rate limit (429), empty response, unreachable docs, pagination error | Verify API key env var is set and valid; retry with backoff (max 3); adjust query params if empty response; fall back to user description if docs unreachable; reduce page size if pagination fails |
 | DI-1 (Intake) | File not found, file empty, missing inputs | Re-collect inputs from user; verify file path and accessibility |
-| DI-2 (Project Setup) | Folder creation fails, run_with_capture.sh missing | Create folder manually; copy run_with_capture.sh from `{BASE_DIR}/scripts/run_with_capture.sh` |
+| DI-2 (Project Setup) | Folder creation fails | Create folder manually; verify `{BASE_DIR}/scripts/run_with_capture.sh` is accessible |
 | DI-3 (Part A) | Encoding errors, format detection failure, CPP1 fails | Check file format; try alternative encoding; re-invoke data-ingest subagent |
 | DI-4 (Part B) | Distribution analysis errors, temporal column misidentified | Review Part A conditional decisions; re-invoke with corrected decisions |
 | DI-5 (Part C) | Key detection failure, no candidate keys found | Expand composite key search; consult user about grain of data |

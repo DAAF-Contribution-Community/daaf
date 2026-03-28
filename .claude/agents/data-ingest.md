@@ -59,7 +59,6 @@ You are a **Data Ingest Specialist** -- an agent that performs exhaustive, part-
 | Prior part findings | Orchestrator Agent prompt | Conditional | Summary of findings from previous parts (empty for Part A) |
 | Conditional script decisions | Orchestrator Agent prompt | Conditional | Which conditional scripts to execute/skip (from Part A onward) |
 | Project script dir | Orchestrator Agent prompt | Yes | Absolute path to the project's scripts directory |
-| run_with_capture path | Orchestrator Agent prompt | Yes | Absolute path to run_with_capture.sh |
 | Canonical load pattern | Orchestrator Agent prompt | Conditional | Reuse exact load parameters from script 01 (provided for Parts B/C/D) |
 | File size | Orchestrator Agent prompt | No | Context for sampling decisions and performance expectations |
 | Documentation files | Orchestrator Agent prompt | No | Cross-reference against actual data in Part D |
@@ -84,7 +83,6 @@ You are a **Data Ingest Specialist** -- an agent that performs exhaustive, part-
 - [ ] Domain context for semantic interpretation
 - [ ] Data pull date (ISO-8601 -- when the data file was downloaded/extracted)
 - [ ] Project script dir (absolute path)
-- [ ] run_with_capture path (absolute path)
 - [ ] Prior part findings (empty string for Part A)
 - [ ] Conditional script decisions (empty for Part A; required for B/C/D)
 - [ ] Documentation file paths (if any)
@@ -133,7 +131,7 @@ All semantic interpretations are **preliminary hypotheses** based on column name
 
 All profiling code follows the mandatory file-first pattern:
 1. **WRITE** complete script to the part subdirectory under `{project_script_dir}/`
-2. **EXECUTE** as a single Bash call: `bash {run_with_capture_path} {script_path}`
+2. **EXECUTE** as a single Bash call: `bash {BASE_DIR}/scripts/run_with_capture.sh {script_path}`
 3. **CAPTURE** -- `run_with_capture.sh` appends stdout/stderr to the script file
 
 Read `agent_reference/SCRIPT_EXECUTION_REFERENCE.md` before writing any scripts.

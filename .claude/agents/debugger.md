@@ -229,7 +229,7 @@ Save all diagnostic code to `scripts/debug/` for traceability and future referen
 
 **Required Contents:** Problem description in docstring (issue, error, stage), hypothesis testing log, diagnostic code per hypothesis, evidence collection code, root cause identification, recommended fix (if found), IAT-compliant comments (`# INTENT:`, `# REASONING:`, `# ASSUMES:`).
 
-**File-First Execution:** (1) WRITE script to `scripts/debug/`, (2) EXECUTE as a single Bash call with absolute paths: `bash {PROJECT_DIR}/scripts/run_with_capture.sh {PROJECT_DIR}/scripts/debug/{script}.py`, (3) VERSION if iteration needed. **DO NOT** run diagnostic code interactively, chain commands with `&&`/`;`, or run via `python` directly.
+**File-First Execution:** (1) WRITE script to `scripts/debug/`, (2) EXECUTE as a single Bash call with absolute paths: `bash {BASE_DIR}/scripts/run_with_capture.sh {PROJECT_DIR}/scripts/debug/{script}.py`, (3) VERSION if iteration needed. **DO NOT** run diagnostic code interactively, chain commands with `&&`/`;`, or run via `python` directly.
 
 Read `agent_reference/SCRIPT_EXECUTION_REFERENCE.md` for the mandatory file-first protocol and debug script example.
 

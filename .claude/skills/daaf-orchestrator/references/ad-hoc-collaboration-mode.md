@@ -57,7 +57,6 @@ When an artifact-producing action is triggered (dispatching a coding agent, savi
 ```
 research/YYYY-MM-DD_AdHoc_{Topic}/
 ├── scripts/
-│   ├── run_with_capture.sh        # Copied from {BASE_DIR}/scripts/
 │   ├── adhoc/                     # For research-executor tasks
 │   ├── debug/                     # For debugger agent
 │   └── cr/                        # For code-reviewer agent
@@ -85,7 +84,6 @@ mkdir -p {PROJECT_DIR}/data/raw
 mkdir -p {PROJECT_DIR}/data/processed
 mkdir -p {PROJECT_DIR}/output/analysis
 mkdir -p {PROJECT_DIR}/output/figures
-cp {BASE_DIR}/scripts/run_with_capture.sh {PROJECT_DIR}/scripts/run_with_capture.sh
 ```
 
 ---

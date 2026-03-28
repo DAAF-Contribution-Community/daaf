@@ -61,7 +61,7 @@ Data Onboarding is designed for **tabular datasets** — files with rows and col
 │      ├─ Copy raw data into research project data/raw/                        │
 │      ├─ Initialize STATE.md from agent_reference/STATE_TEMPLATE_ONBOARDING.md   │
 │      ├─ Initialize LEARNINGS.md                                             │
-│      ├─ Copy run_with_capture.sh into project scripts/                       │
+│      ├─ Verify {BASE_DIR}/scripts/run_with_capture.sh is accessible          │
 │      └─ Gate GDI-2: Project folder ready, STATE.md initialized              │
 └─────────────────────────────────────────────────────────────────────────────┘
                           ↓
@@ -439,7 +439,7 @@ Return findings in this structure (max 2500 words):
 |------|-------------|----------|---------|
 | GDI-0 | DI-0 | API key verified, data downloaded, file non-empty, acquisition script archived | API auth fails, empty response, rate limited (conditional — only if access method = API) |
 | GDI-1 | DI-1 | Required inputs collected, file(s) accessible and non-empty, access method determined, file structure classified | File cannot be loaded, file empty, required inputs missing, or API acquisition failed |
-| GDI-2 | DI-2 | Project folder created, STATE.md initialized (from `agent_reference/STATE_TEMPLATE_ONBOARDING.md`), data staged | Folder creation fails, run_with_capture.sh missing |
+| GDI-2 | DI-2 | Project folder created, STATE.md initialized (from `agent_reference/STATE_TEMPLATE_ONBOARDING.md`), data staged | Folder creation fails |
 | GDI-3 | DI-3 | CPP1 PASSED, QAP1 PASSED or WARNING | File >1GB without sampling plan approved by user, or critical columns entirely null |
 | GDI-4 | DI-4 | CPP2 PASSED, QAP2 PASSED or WARNING | >50% of columns are entirely null |
 | GDI-5 | DI-5 | CPP3 PASSED, QAP3 PASSED or WARNING | No candidate keys identifiable across any table |
@@ -752,7 +752,7 @@ Before dispatching a profiling subagent (Stages DI-3 through DI-6), verify:
 - [ ] Conditional script decisions documented with reasoning
 - [ ] Priority columns from intake highlighted (if any)
 - [ ] Documentation excerpts inlined (if provided and relevant to current part)
-- [ ] run_with_capture.sh path specified
+- [ ] Execution command uses {BASE_DIR}/scripts/run_with_capture.sh
 - [ ] IAT documentation standards referenced
 
 ### QA Invocation Checklist

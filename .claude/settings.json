@@ -12,7 +12,6 @@
       "Bash(python3 *)",
       "Bash(python3:*)",
       "Bash(bash *)",
-      "Bash(./scripts/run_with_capture.sh *)",
       "Bash(ls *)",
       "Bash(mkdir *)",
       "Bash(mkdir:*)",

@@ -400,7 +400,6 @@ Read `agent_reference/SCRIPT_EXECUTION_REFERENCE.md` for the file-first protocol
 - Intended use: {intended_use}
 - Data pull date: {data_pull_date}
 - Project script dir: {project_script_dir}
-- run_with_capture path: {run_with_capture_path}
 - Priority columns: {priority_columns_or_none}
 - Documentation files: {doc_file_paths_or_none}
 - Documentation website URL: {doc_url_or_none}
@@ -424,7 +423,7 @@ Read `agent_reference/SCRIPT_EXECUTION_REFERENCE.md` for the file-first protocol
 3. For each file: write and execute 02{x}_structural-profile.py
 4. For each file: write and execute 03{x}_column-profile.py
 Scripts go to: scripts/profile_structural/
-Execute: bash {project_script_dir}/run_with_capture.sh {project_script_dir}/profile_structural/{script}.py
+Execute: bash {BASE_DIR}/scripts/run_with_capture.sh {project_script_dir}/profile_structural/{script}.py
 
 **OUTPUT FORMAT (2500-word hard cap):**
 ### Part A: Structural Discovery
@@ -477,7 +476,6 @@ Read `agent_reference/SCRIPT_EXECUTION_REFERENCE.md` for the file-first protocol
 - Intended use: {intended_use}
 - Data pull date: {data_pull_date}
 - Project script dir: {project_script_dir}
-- run_with_capture path: {run_with_capture_path}
 - Priority columns: {priority_columns_or_none}
 - File structure: {SINGLE_or_HORIZONTAL_or_HIERARCHICAL}
 - Multi-file paths: {list_of_all_file_paths_or_none}
@@ -493,7 +491,7 @@ Read `agent_reference/SCRIPT_EXECUTION_REFERENCE.md` for the file-first protocol
 2. For each file where applicable: 05{x}_temporal-coverage.py, 06{x}_entity-coverage.py
 4. Embed CPP2 in last executed script
 Scripts go to: scripts/profile_statistical/
-Execute: bash {project_script_dir}/run_with_capture.sh {project_script_dir}/profile_statistical/{script}.py
+Execute: bash {BASE_DIR}/scripts/run_with_capture.sh {project_script_dir}/profile_statistical/{script}.py
 
 **OUTPUT FORMAT (2500-word hard cap):**
 ### Part B: Statistical Deep Dive
@@ -539,7 +537,6 @@ Read `agent_reference/SCRIPT_EXECUTION_REFERENCE.md` for the file-first protocol
 - Intended use: {intended_use}
 - Data pull date: {data_pull_date}
 - Project script dir: {project_script_dir}
-- run_with_capture path: {run_with_capture_path}
 - Priority columns: {priority_columns_or_none}
 - File structure: {SINGLE_or_HORIZONTAL_or_HIERARCHICAL}
 - Multi-file paths: {list_of_all_file_paths_or_none}
@@ -557,7 +554,7 @@ Read `agent_reference/SCRIPT_EXECUTION_REFERENCE.md` for the file-first protocol
 4. For each file: write and execute 09{x}_quality-anomaly.py
 5. Embed CPP3 in last executed script
 Scripts go to: scripts/profile_relational/
-Execute: bash {project_script_dir}/run_with_capture.sh {project_script_dir}/profile_relational/{script}.py
+Execute: bash {BASE_DIR}/scripts/run_with_capture.sh {project_script_dir}/profile_relational/{script}.py
 
 **OUTPUT FORMAT (2500-word hard cap):**
 ### Part C: Relational Analysis
@@ -604,7 +601,6 @@ Read `agent_reference/SCRIPT_EXECUTION_REFERENCE.md` for the file-first protocol
 - Intended use: {intended_use}
 - Data pull date: {data_pull_date}
 - Project script dir: {project_script_dir}
-- run_with_capture path: {run_with_capture_path}
 - Documentation website URL: {doc_url_or_none}
 - Priority columns: {priority_columns_or_none}
 - Access method: {local_file_or_api}
@@ -624,7 +620,7 @@ Read `agent_reference/SCRIPT_EXECUTION_REFERENCE.md` for the file-first protocol
 3. If EXECUTE: 11_reconcile-docs.py (once, cross-file) — verify docs against all files
 4. Embed CPP4 in the last executed script
 Scripts go to: scripts/profile_interpretation/
-Execute: bash {project_script_dir}/run_with_capture.sh {project_script_dir}/profile_interpretation/{script}.py
+Execute: bash {BASE_DIR}/scripts/run_with_capture.sh {project_script_dir}/profile_interpretation/{script}.py
 
 **OUTPUT FORMAT (2500-word hard cap):**
 ### Part D: Interpretation & Reconciliation
@@ -671,7 +667,6 @@ Research question / Intended use: {intended_use}
 Data file: {data_file_path}
 File format: {file_format}
 Data characteristics: {row_count} rows, {col_count} columns, {file_size}
-run_with_capture path: {run_with_capture_path}
 Prior QA findings: {prior_qap_summary_or_none}
 IAT compliance: Required per agent_reference/INLINE_AUDIT_TRAIL.md
 
@@ -718,7 +713,6 @@ Read your agent protocol at `.claude/agents/data-ingest.md`.
 - File format: {file_format}
 - Target skill name: {skill_name}
 - Project script dir: {project_script_dir}
-- run_with_capture path: {run_with_capture_path}
 - Canonical load pattern: {canonical_load_from_part_a}
 
 **FAILING SCRIPT:**

@@ -35,7 +35,7 @@ These principles apply to all agents writing code in the DAAF system:
   operation follows the mandatory file-first pattern:
   1. **WRITE** complete script to the appropriate `scripts/` directory
   2. **EXECUTE** as a single Bash call with absolute paths:
-     `bash {PROJECT_DIR}/scripts/run_with_capture.sh {PROJECT_DIR}/scripts/{script_name}.py`
+     `bash {BASE_DIR}/scripts/run_with_capture.sh {PROJECT_DIR}/scripts/{script_name}.py`
   3. **CAPTURE** — `run_with_capture.sh` appends stdout/stderr to the script file
 
   Interactive execution bypasses the audit trail and produces no permanent record
@@ -217,7 +217,7 @@ Context management is NEVER about reducing the quality or completeness of work. 
 
 **Script execution:** Use absolute paths — no `cd` required:
 ```
-bash {PROJECT_DIR}/scripts/run_with_capture.sh {PROJECT_DIR}/scripts/stage5_fetch/01_fetch-ccd.py
+bash {BASE_DIR}/scripts/run_with_capture.sh {PROJECT_DIR}/scripts/stage5_fetch/01_fetch-ccd.py
 ```
 
 ### Version Control Protocol
@@ -295,7 +295,6 @@ research/2026-01-24_School_Poverty_Analysis/
 │   ├── 2026-01-24_19-30-41_7226a42c.jsonl         # Raw JSONL transcript
 │   └── 2026-01-24_19-30-41_7226a42c.md            # Human-readable transcript
 ├── scripts/                                       # All executed scripts (code archive)
-│   ├── run_with_capture.sh           # Copied from /daaf/scripts/ during project setup
 │   ├── stage5_fetch/
 │   │   ├── 01_fetch-ccd.py
 │   │   ├── 02_fetch-ipeds.py
@@ -344,7 +343,6 @@ research/2026-03-23_Onboarding_County_Elections/
 │   ├── 2026-03-23_22-15-08_b3f1c9d2.jsonl
 │   └── 2026-03-23_22-15-08_b3f1c9d2.md
 ├── scripts/
-│   ├── run_with_capture.sh                        # Copied from /daaf/scripts/
 │   ├── profile_structural/
 │   │   ├── 01_load-and-format.py
 │   │   ├── 02_structural-profile.py
@@ -413,7 +411,6 @@ research/2026-03-24_College_Graduation_Analysis_Reproduction/
 │       ├── 2026-03-24_selectivity_scatter.png
 │       └── 2026-03-24_graduation_heatmap.png
 └── scripts/
-    ├── run_with_capture.sh                        # Copied from /daaf/scripts/
     └── repro/                                     # Re-executed scripts (with new logs)
         ├── stage5_fetch/
         │   ├── 01_fetch-directory_a.py

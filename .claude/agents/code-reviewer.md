@@ -403,7 +403,7 @@ if "year" in df.columns:
 
 Follow file-first execution:
 1. Write cr1 script to `scripts/cr/stage{N}_{step}_cr1.py`
-2. Execute as a single Bash call with absolute paths: `bash {PROJECT_DIR}/scripts/run_with_capture.sh {PROJECT_DIR}/scripts/cr/stage{N}_{step}_cr1.py`
+2. Execute as a single Bash call with absolute paths: `bash {BASE_DIR}/scripts/run_with_capture.sh {PROJECT_DIR}/scripts/cr/stage{N}_{step}_cr1.py`
 3. **Review the profiling output and all check results before proceeding**
 
 Read `agent_reference/SCRIPT_EXECUTION_REFERENCE.md` for the mandatory file-first execution protocol.
@@ -425,7 +425,7 @@ After reviewing cr1 output, apply the iteration decision tree:
 2. **State the hypothesis:** What does this script test?
 3. **Define expected outcome:** What confirms vs. refutes the hypothesis?
 4. Write investigation script to `scripts/cr/stage{N}_{step}_cr{M}.py`
-5. Execute as a single Bash call: `bash {PROJECT_DIR}/scripts/run_with_capture.sh {PROJECT_DIR}/scripts/cr/stage{N}_{step}_cr{M}.py`
+5. Execute as a single Bash call: `bash {BASE_DIR}/scripts/run_with_capture.sh {PROJECT_DIR}/scripts/cr/stage{N}_{step}_cr{M}.py`
 6. **Interpret:** CONFIRMED or REFUTED? Implications? Further investigation needed?
 7. Apply the decision tree again with updated findings
 
@@ -867,7 +867,7 @@ In RV-2, the code-reviewer acts as a **reproducer**, not a reviewer. The task is
 
 **DO NOT attempt to fix code directly.** You are a reviewer, not an executor. Flag issues and suggest fixes, but let research-executor apply them. Maintaining separation of concerns preserves the audit trail.
 
-**DO NOT skip appending the execution log to QA scripts.** Always execute as a single Bash call with absolute paths: `bash {PROJECT_DIR}/scripts/run_with_capture.sh {PROJECT_DIR}/scripts/cr/...` — it automatically appends the log. Never run `python script.py` directly or chain commands with `&&`/`;`, as this bypasses output capture. Without appended output, the cr script is just code with no proof of what it produced.
+**DO NOT skip appending the execution log to QA scripts.** Always execute as a single Bash call with absolute paths: `bash {BASE_DIR}/scripts/run_with_capture.sh {PROJECT_DIR}/scripts/cr/...` — it automatically appends the log. Never run `python script.py` directly or chain commands with `&&`/`;`, as this bypasses output capture. Without appended output, the cr script is just code with no proof of what it produced.
 
 **DO NOT ignore the execution log.** The appended execution log contains critical diagnostic information. Review it for warnings, unexpected row counts, and checkpoint edge cases. The log often reveals issues the code hides.
 
