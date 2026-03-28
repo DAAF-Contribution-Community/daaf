@@ -52,7 +52,7 @@ echo ""
 
 # Execute with timing
 START_TIME=$(date +%s.%N)
-python "$SCRIPT_PATH" 2>&1 | tee "$TEMP_LOG"
+python3 "$SCRIPT_PATH" 2>&1 | tee "$TEMP_LOG"
 EXIT_CODE=${PIPESTATUS[0]}
 END_TIME=$(date +%s.%N)
 DURATION=$(echo "$END_TIME - $START_TIME" | bc)
@@ -76,7 +76,7 @@ cat >> "$SCRIPT_PATH" << EOF
 # =============================================================================
 #
 # Executed: $TIMESTAMP
-# Command: python $SCRIPT_PATH
+# Command: python3 $SCRIPT_PATH
 # Duration: ${DURATION}s
 # Exit code: $EXIT_CODE
 #
