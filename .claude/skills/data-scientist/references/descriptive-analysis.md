@@ -548,9 +548,27 @@ Not all weights serve the same purpose. Using the wrong type of weight is a comm
 - The **effective sample size** is N / DEFF. A survey with N = 10,000 and DEFF = 2.5 has the statistical precision of a simple random sample of 4,000.
 - Always report effective sample sizes alongside actual sample sizes when using complex survey data.
 
+### Domain (Subpopulation) Estimation
+
+When computing weighted statistics for a subgroup (e.g., female students, low-income households), you must NOT filter the dataframe before analysis. Correct survey variance estimation requires information about the full design — all strata and all PSUs. Filtering the data first may drop entire PSUs or strata, corrupting the variance estimates and producing standard errors that are too small.
+
+**The correct approach:** Use your survey software's domain/subpopulation mechanism, which retains the full design structure but zeros out contributions from out-of-domain observations for the point estimate. For implementation details, load the `svy` skill. For a thorough treatment of why this matters and what goes wrong, see `./survey-analysis.md`.
+
+This rule applies to all survey-weighted analyses: descriptive statistics, cross-tabulations, and regression. It is one of the most common and most consequential errors in applied survey research.
+
+### Replicate Weights
+
+Many federal surveys provide **replicate weight columns** alongside the main analysis weight (e.g., ACS PUMS provides 80, CPS ASEC provides 160, MEPS provides 128). Replicate weights are constructed from the true (internal) survey design before disclosure avoidance masking, so they produce more accurate variance estimates than Taylor linearization with the (possibly perturbed) public-use design variables.
+
+**Practical rule:** If the data file provides replicate weights, prefer them over Taylor linearization. Load the `svy` skill for implementation syntax. For the full conceptual treatment of variance estimation methods, see `./survey-analysis.md`.
+
 ### Weighted Percentiles
 
 Computing weighted percentiles is less straightforward than weighted means. The standard approach interpolates the empirical CDF using the weights. Most statistical packages implement this, but be aware that different packages may use slightly different interpolation methods, which can affect results at the tails.
+
+### Further Reading
+
+For comprehensive guidance on complex survey analysis methodology — including survey design anatomy, weight selection, variance estimation methods, plausible values, and a pitfalls checklist — see `./survey-analysis.md`. For implementation syntax, load the `svy` skill.
 
 ## Inequality Measurement
 

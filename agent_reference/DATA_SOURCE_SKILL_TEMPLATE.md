@@ -38,6 +38,7 @@ Optional sections (insert between 10 and 11 if needed):
 - `## Common Use Cases` — if the source has distinct research applications worth enumerating
 - `## [Source-Specific Critical Section]` — e.g., EDFacts' cross-state warning, Scorecard's Title IV limitation
 - `## Multi-File Structure` — for HIERARCHICAL data sources with multiple related files (see Section 11.5 in the annotated skeleton)
+- `## Survey Design` — for data sources that are complex probability surveys (not censuses or admin data). Include: design type (stratified, clustered, multistage), weight variable names and when to use each, strata and PSU variable names, replicate weight information (type, count, Fay coefficient if BRR), recommended variance estimation method, and a pointer to load the `svy` skill for implementation syntax and `data-scientist/references/survey-analysis.md` for methodology. See ECLS-K, HSLS:09, ACS PUMS, CPS, NHANES, and MEPS as examples of sources requiring this section.
 
 > **Section numbering note:** The annotated skeleton below numbers optional sections as 11 and 11.5, which shifts Related Data Sources and Topic Index to positions 12 and 13 in the skeleton. The **canonical count is 12 mandatory sections** (numbered 1–12 in the list above). In the final generated skill, if no optional sections are used, Related Data Sources is the 11th section and Topic Index is the 12th. The skeleton's higher numbers are an annotation artifact, not a different count.
 

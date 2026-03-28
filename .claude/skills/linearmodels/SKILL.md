@@ -12,7 +12,7 @@ metadata:
   audience: research-coders
   domain: python-library
   library-version: "7.0"
-  skill-last-updated: "2026-03-26"
+  skill-last-updated: "2026-03-27"
 ---
 
 # linearmodels Skill
@@ -58,6 +58,7 @@ linearmodels extends statsmodels with specialized model classes for structured d
 |-------|-------------|
 | `pyfixest` | Preferred for high-dimensional FE, FE + IV, DiD, fast demeaning, publication tables. Use linearmodels when pyfixest cannot do what you need (RE, system models, LIML/GMM, Fama-MacBeth) |
 | `statsmodels` | Foundation library. Use statsmodels for GLM, time series, diagnostics. linearmodels extends statsmodels for panel/IV/system models |
+| `svy` | Survey-weighted regression with complex survey designs. linearmodels supports `weights` for population/precision weighting in panel models, but this is NOT equivalent to design-based survey inference — it does not handle stratification, clustering as a design feature, or replicate weights. If your data comes from a complex probability survey, use `svy` |
 | `data-scientist` | Methodology guidance — load for "why and when" behind model choices |
 | `polars` | Data preparation before estimation; convert to pandas with `.to_pandas()` before passing to linearmodels |
 

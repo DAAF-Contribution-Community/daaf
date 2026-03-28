@@ -175,6 +175,14 @@ What task are you performing?
 ├─ Causal / quasi-experimental analysis
 │   └─ FIRST read ./references/causal-inference.md
 │       THEN load appropriate library skill (pyfixest for DiD/IV/FE, linearmodels for panel RE/IV-GMM, statsmodels for RD/matching)
+├─ Complex survey data analysis (NHANES, ACS PUMS, CPS, ECLS-K, MEPS, etc.)
+│   └─ FIRST read ./references/survey-analysis.md (methodology, pitfalls, weight selection)
+│       THEN load `svy` skill for implementation syntax
+│       ├─ Survey-weighted descriptive statistics → svy estimation.md
+│       ├─ Survey-weighted regression (OLS, logistic, Poisson) → svy regression.md
+│       ├─ Survey design setup / replicate weights → svy design-weights.md
+│       └─ Advanced models not in svy (ordinal, survival, IV) → rpy2 + R survey package
+│           (see svy skill "rpy2 Bridge" section)
 ├─ Communicating to non-technical audiences
 │   └─ Load `science-communication` skill
 ├─ Geospatial / spatial analysis (any kind)
@@ -216,6 +224,7 @@ This skill assumes familiarity with:
 | `descriptive-analysis.md` | Summary statistics, subgroups, distributions, decompositions, weighting, inequality, correlation, missing data | Stage 8 analysis when the research contribution is descriptive |
 | `statistical-modeling.md` | Model selection, assumption checking, robust inference, coefficient interpretation, robustness checks | Stage 8.1 analysis involving regression, modeling, or hypothesis testing |
 | `causal-inference.md` | Causal identification, DAGs, RCTs, IV, RD, DiD, synthetic control, matching | Stage 8.1 analysis requiring causal claims |
+| `survey-analysis.md` | Complex survey methodology: design anatomy, weight selection, variance estimation, domain estimation, plausible values, survey-weighted regression, federal survey reference table, pitfalls checklist | **Any task involving data from a complex probability survey** (NHANES, ACS PUMS, CPS, ECLS-K, HSLS, MEPS, NAEP, etc.) |
 | `geospatial-analysis.md` | Spatial thinking, MAUP, CRS, methods decision guide, autocorrelation, regression | **Any task involving geographic/spatial data** |
 | `geospatial-operations.md` | Spatial joins, weights, LISA interpretation, interpolation, zonal statistics, geometry validity | **Planning or executing spatial operations (joins, overlays, weights, interpolation, zonal statistics), or interpreting spatial statistics results (Moran's I, LISA)** |
 | `exploratory-unsupervised.md` | Cluster analysis, dimension reduction (PCA), Gaussian mixture models, nonlinear embeddings (t-SNE, UMAP), cluster validation, classify-analyze problem | Stage 8 tasks involving unsupervised methods, typology construction, or pattern discovery |
@@ -751,6 +760,18 @@ Use markdown cells liberally:
 | Difference-in-differences (DiD, modern methods) | `./references/causal-inference.md` |
 | Synthetic control methods | `./references/causal-inference.md` |
 | Matching and propensity scores | `./references/causal-inference.md` |
+| Complex survey design (strata, PSUs, clustering) | `./references/survey-analysis.md` |
+| Survey weight selection and types | `./references/survey-analysis.md` |
+| Variance estimation (Taylor linearization, BRR, jackknife) | `./references/survey-analysis.md` |
+| Design effects (DEFF) and effective sample size | `./references/survey-analysis.md` |
+| Domain / subpopulation estimation (never subset rule) | `./references/survey-analysis.md` |
+| Plausible values (NAEP, PISA, TIMSS) | `./references/survey-analysis.md` |
+| Survey-weighted regression methodology | `./references/survey-analysis.md` |
+| Replicate weights (BRR, jackknife, bootstrap) | `./references/survey-analysis.md` |
+| Federal survey data sources reference table | `./references/survey-analysis.md` |
+| Survey analysis pitfalls checklist | `./references/survey-analysis.md` |
+| Finite population corrections (FPC) | `./references/survey-analysis.md` |
+| When to weight regressions (Solon-Haider-Wooldridge) | `./references/survey-analysis.md` |
 | Spatial thinking and Tobler's Law | `./references/geospatial-analysis.md` |
 | MAUP (Modifiable Areal Unit Problem) | `./references/geospatial-analysis.md` |
 | Ecological fallacy | `./references/geospatial-analysis.md` |

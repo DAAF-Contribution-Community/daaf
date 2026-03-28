@@ -49,14 +49,15 @@ RUN uv pip install --system \
 
 # Install econometrics & statistical modeling packages
 # Primary: pyfixest + statsmodels already above
-# Secondary: panel models, RDD, marginal effects, volatility, dynamic panels
+# Secondary: panel models, RDD, marginal effects, volatility, dynamic panels, survey statistics
 # NOTE: lifelines excluded — latest (0.30.3) requires pandas<3.0, incompatible with pandas==3.0.0
 RUN uv pip install --system \
     linearmodels \
     rdrobust \
     marginaleffects \
     arch \
-    pydynpd==0.2.1
+    pydynpd==0.2.1 \
+    svy==0.13.0
 
 # Install geospatial packages
 # Core: vector (geopandas + deps), raster (rasterio + xarray), mapping, PySAL spatial stats

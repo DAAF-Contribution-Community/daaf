@@ -448,7 +448,7 @@ MANDATORY EXECUTION PATTERN:
 ## Stage 8: Analysis & Visualization
 
 **Executor:** Subagent (general-purpose) — ITERATIVE INVOCATION REQUIRED
-**Skills:** `data-scientist`, `polars`, modeling library per Plan (`statsmodels` / `pyfixest` / `linearmodels` / `geopandas` / `scikit-learn`), (Stage 8.1), `plotnine`, `plotly`, `geopandas` (if map viz) (Stage 8.2)
+**Skills:** `data-scientist`, `polars`, modeling library per Plan (`statsmodels` / `pyfixest` / `linearmodels` / `svy` / `geopandas` / `scikit-learn`), (Stage 8.1), `plotnine`, `plotly`, `geopandas` (if map viz) (Stage 8.2)
 **Purpose:** Conduct final statistical analyses on the analysis dataset AND generate visualizations specified in Plan
 
 ### Execution Pattern
@@ -487,7 +487,7 @@ Stage 8.2.x: Visualization (one script per visualization task)
 **Purpose:** Run statistical analyses (regression, hypothesis tests, model fitting)
 **Stage:** 8.1 (Statistical Analysis)
 **Subagent:** general-purpose
-**Skills:** `data-scientist`, `polars`, modeling library per Plan (`statsmodels` / `pyfixest` / `linearmodels` / `geopandas` / `scikit-learn`)
+**Skills:** `data-scientist`, `polars`, modeling library per Plan (`statsmodels` / `pyfixest` / `linearmodels` / `svy` / `geopandas` / `scikit-learn`)
 
 ```python
 # ITERATIVE INVOCATION PATTERN (Required for Stage 8.1)
@@ -499,7 +499,7 @@ Agent({
 All relative paths in referenced files resolve from BASE_DIR.
 
 Call the skill tool with name 'polars'.
-Call the skill tool with name '{modeling_library}' (one of: statsmodels, pyfixest, linearmodels, geopandas, scikit-learn -- as specified in the <skill> element of Plan_Tasks.md for this task). For spatial regression tasks, geopandas IS the modeling library (via PySAL/spreg).
+Call the skill tool with name '{modeling_library}' (one of: statsmodels, pyfixest, linearmodels, svy, geopandas, scikit-learn -- as specified in the <skill> element of Plan_Tasks.md for this task). For spatial regression tasks, geopandas IS the modeling library (via PySAL/spreg). For complex survey data, svy IS the modeling library (design-based inference with Taylor/BRR/jackknife variance).
 
 **IMPORTANT:** This is script-based execution, NOT marimo. Write analysis to script files following `{BASE_DIR}/agent_reference/SCRIPT_EXECUTION_REFERENCE.md`.
 

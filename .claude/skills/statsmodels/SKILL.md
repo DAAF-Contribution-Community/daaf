@@ -13,7 +13,7 @@ metadata:
   audience: research-coders
   domain: python-library
   library-version: "0.14.6"
-  skill-last-updated: "2026-03-26"
+  skill-last-updated: "2026-03-27"
 ---
 
 # statsmodels Skill
@@ -55,6 +55,7 @@ statsmodels is the general-purpose **statistical modeling** library for Python:
 
 - **pyfixest**: Use instead of statsmodels when your model needs absorbed fixed effects, IV with FE, or difference-in-differences. pyfixest is faster for FE models; statsmodels is broader for everything else
 - **linearmodels**: Use for panel data models (FE, RE, between, first difference, Fama-MacBeth), IV/GMM without FE (2SLS, LIML, GMM), system estimation (SUR, 3SLS), and asset pricing. Built on top of statsmodels; extends it for structured data
+- **svy**: Use for survey-weighted regression and estimation with complex survey designs. **Important:** statsmodels WLS is NOT equivalent to survey-weighted regression — WLS handles heteroscedastic errors but does not account for stratification, clustering, or finite population corrections. If your data comes from a complex probability survey (NHANES, ACS PUMS, CPS, ECLS-K, etc.), load the `svy` skill instead
 - **data-scientist**: Provides methodology guidance (when to use which model, assumption checking protocol, interpretation). Load alongside statsmodels for the "why"; statsmodels provides the "how"
 - **polars**: Data manipulation before modeling. statsmodels accepts pandas DataFrames; convert with `df.to_pandas()` if using Polars
 - **plotnine**: Publication-quality visualization of model results and diagnostics
@@ -68,6 +69,7 @@ What kind of regression?
 ├─ Linear (continuous outcome)
 │   ├─ Basic OLS → ./references/linear-models.md
 │   ├─ Weighted least squares → ./references/linear-models.md
+│   │   (⚠ WLS ≠ survey-weighted regression — for complex surveys, use `svy` skill)
 │   ├─ Correlated errors (GLS) → ./references/linear-models.md
 │   ├─ Robust to outliers (M-estimator) → ./references/linear-models.md
 │   └─ Quantile regression → ./references/linear-models.md

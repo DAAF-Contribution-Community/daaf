@@ -75,7 +75,7 @@ See `agent_reference/WORKFLOW_PHASE1_DISCOVERY.md` > "Pre-Flight Checklist (Full
 | 5 | 3 | Data Retrieval | Domain query skill (e.g., `education-data-query`) | general-purpose |
 | 6 | 3 | Context Application | Domain context skill (e.g., `education-data-context`) | general-purpose |
 | 7 | 4 | EDA & Transformation | `data-scientist`, `polars` | general-purpose |
-| 8 | 4 | Analysis & Visualization | `data-scientist`, `polars`, modeling library (`statsmodels`/`pyfixest`/`linearmodels` per Plan), `plotnine`/`plotly`, `geopandas` (if spatial) | general-purpose |
+| 8 | 4 | Analysis & Visualization | `data-scientist`, `polars`, modeling library (`statsmodels`/`pyfixest`/`linearmodels`/`svy` per Plan), `plotnine`/`plotly`, `geopandas` (if spatial) | general-purpose |
 | 9 | 4 | Notebook Assembly | `marimo` | general-purpose |
 | 10 | 4 | QA Aggregation | — (orchestrator) | — |
 | 11 | 5 | Report Generation | `report-writer` agent | general-purpose |
@@ -209,7 +209,7 @@ The Full Pipeline workflow consists of **5 Phases** and **12 Stages**.
 │                          ↓                                                  │
 │  Stage 8: Analysis & Visualization ←── modeling + viz skills                │
 │      ├─ 8.1: Run statistical analyses (save to output/analysis/)            │
-│      │   ├─ Load modeling skill per Plan: statsmodels/pyfixest/linearmodels │
+│      │   ├─ Load modeling skill per Plan: statsmodels/pyfixest/linearmodels/svy │
 │      │   └─ [Per-script QA loop (QA4a) — see Composite Execution Pattern]   │
 │      ├─ 8.2: Generate exploratory and final plots (save to output/figures/) │
 │      │   ├─ Load viz skill: plotnine/plotly, or geopandas for maps          │
@@ -442,7 +442,7 @@ These operations may be executed without preview:
 | **6-QA** | `data-scientist` | general-purpose | `code-reviewer` agent (after each Stage 6 script) |
 | 7 | `data-scientist`, `polars`, `geopandas` (if spatial data) | general-purpose | Subagent invokes skills |
 | **7-QA** | `data-scientist` | general-purpose | `code-reviewer` agent (after each Stage 7 script) |
-| 8.1 | `data-scientist`, `polars`, modeling library per Plan (`statsmodels` / `pyfixest` / `linearmodels` / `scikit-learn` / `geopandas`), `geopandas` (if spatial) | general-purpose | Subagent invokes skills |
+| 8.1 | `data-scientist`, `polars`, modeling library per Plan (`statsmodels` / `pyfixest` / `linearmodels` / `svy` / `scikit-learn` / `geopandas`), `geopandas` (if spatial) | general-purpose | Subagent invokes skills |
 | 8.2 | `data-scientist`, `plotnine` or `plotly`, `geopandas` (if map visualization) | general-purpose | Subagent invokes skills |
 | **8-QA** | `data-scientist` | general-purpose | `code-reviewer` agent (after each Stage 8 script) |
 | 9 | `marimo` | general-purpose | `notebook-assembler` agent (COMPILES scripts — NO new code, NO dashboards) |
@@ -462,12 +462,13 @@ These operations may be executed without preview:
 
 **Note:** Stages 2, 3, 5, and 6 use domain-specific skills resolved by the orchestrator based on the active domain configuration in Plan.md.
 
-**Skill loading mechanism:** All named agents preload `data-scientist` via frontmatter (full content injected at startup). The orchestrator's Agent prompts should only include `Call the skill tool` instructions for **additional** skills (domain skills, `polars`, `plotnine`, `plotly`, `statsmodels`, `pyfixest`, `linearmodels`, `scikit-learn`, `geopandas`, `science-communication`). Stages 2 and 3 use unnamed `Plan` subagents — these DO require explicit skill tool calls since they have no frontmatter.
+**Skill loading mechanism:** All named agents preload `data-scientist` via frontmatter (full content injected at startup). The orchestrator's Agent prompts should only include `Call the skill tool` instructions for **additional** skills (domain skills, `polars`, `plotnine`, `plotly`, `statsmodels`, `pyfixest`, `linearmodels`, `svy`, `scikit-learn`, `geopandas`, `science-communication`). Stages 2 and 3 use unnamed `Plan` subagents — these DO require explicit skill tool calls since they have no frontmatter.
 
 **Modeling library selection for Stage 8.1:** The Plan_Tasks.md `<skill>` element specifies which modeling library to load. The orchestrator passes this to the research-executor. The `data-scientist` skill's routing tree provides the canonical decision logic:
 - Standard regression (OLS, GLM, logit/probit) → `statsmodels`
 - Fixed effects, IV with FE, or DiD → `pyfixest`
 - Random effects, between estimation, Fama-MacBeth, IV-GMM, SUR/3SLS → `linearmodels`
+- Survey-weighted analysis (complex survey design) → `svy`
 - Spatial analysis → `geopandas`
 - Supervised ML (classification, prediction, risk scoring) → `scikit-learn`
 - Unsupervised analysis (clustering, PCA, dimensionality reduction) → `scikit-learn`
@@ -561,7 +562,7 @@ See the "Task Types" section below for the complete taxonomy, behavioral descrip
 - [ ] Significance thresholds or interpretation guidelines provided
 - [ ] Research Outcome contribution stated
 - [ ] Risk Register items included
-- [ ] Modeling library skill specified (`statsmodels` / `pyfixest` / `linearmodels` / `scikit-learn` / `geopandas` per Plan methodology; see "Modeling library selection" above)
+- [ ] Modeling library skill specified (`statsmodels` / `pyfixest` / `linearmodels` / `svy` / `scikit-learn` / `geopandas` per Plan methodology; see "Modeling library selection" above)
 - [ ] If spatial analysis: `geopandas` skill specified
 - [ ] Script follows IAT documentation standards
 
@@ -995,7 +996,7 @@ All relative paths in referenced files resolve from BASE_DIR.
 ## SKILL LOADING
 [Only include skill tool calls for skills NOT preloaded via agent frontmatter.
 Named agents already have `data-scientist` injected at startup — do not re-load it.
-Call the skill tool only for additional skills like polars, plotnine, plotly, statsmodels, pyfixest, linearmodels, geopandas, scikit-learn, science-communication, or domain skills.]
+Call the skill tool only for additional skills like polars, plotnine, plotly, statsmodels, pyfixest, linearmodels, svy, geopandas, scikit-learn, science-communication, or domain skills.]
 
 ## CONTEXT FROM PLAN
 [Paste relevant Plan.md methodology sections and Plan_Tasks.md task blocks - Context Completeness Checklist always takes priority over brevity]
