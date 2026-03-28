@@ -139,8 +139,8 @@ print(f"Between R-sq: {res.rsquared_between:.4f}")
 print(f"Overall R-sq: {res.rsquared_overall:.4f}")
 
 # F-test for poolability (entity effects jointly zero)
-print(f"F-stat (poolable): {res.f_poolable.stat:.4f}")
-print(f"F p-value: {res.f_poolable.pval:.4f}")
+print(f"F-stat (poolable): {res.f_pooled.stat:.4f}")
+print(f"F p-value: {res.f_pooled.pval:.4f}")
 ```
 
 ### Extracting Fixed Effects
@@ -429,8 +429,8 @@ print(res.fitted_values.head())
 
 # Number of observations and entities
 print(f"N obs: {res.nobs}")
-print(f"N entities: {res.entity_info.total}")
-print(f"N time periods: {res.time_info.total}")
+print(f"N entities: {res.entity_info['total']}")
+print(f"N time periods: {res.time_info['total']}")
 ```
 
 ## References and Further Reading

@@ -201,7 +201,7 @@ df.with_columns(
     pl.col("id").cum_count().over("category").alias("row_num"),
     
     # Using arange
-    pl.arange(1, pl.len() + 1).over("category").alias("row_num2")
+    pl.int_range(1, pl.len() + 1).over("category").alias("row_num2")  # pl.arange deprecated; use pl.int_range
 )
 ```
 

@@ -191,7 +191,7 @@ The R² in WLS is weighted; interpret with care relative to OLS R².
 
 Use when errors are correlated or have non-constant variance and the full covariance structure of errors is known (or estimable).
 
-### Array API (no formula API for GLS)
+### Array API
 
 ```python
 import statsmodels.api as sm
@@ -614,9 +614,10 @@ Common use cases in education research:
 - Repeated test scores for the same student over time (longitudinal)
 - Schools nested in districts with district-level predictors
 
-Convergence: MixedLM uses the EM algorithm by default. For faster convergence or when EM fails, try:
+Convergence: MixedLM uses gradient-based optimization by default (BFGS, L-BFGS-B, CG sequence). For convergence issues, try:
 ```python
-results = model.fit(method="lbfgs")       # L-BFGS-B optimizer
+results = model.fit(method=["powell"])     # Powell optimizer
+results = model.fit(maxiter=200)           # Increase max iterations
 results = model.fit(reml=False)            # ML instead of REML
 ```
 

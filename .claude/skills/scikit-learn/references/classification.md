@@ -23,6 +23,7 @@ from sklearn.linear_model import LogisticRegression
 
 model = LogisticRegression(
     penalty="l2",            # Regularization: 'l1', 'l2', 'elasticnet', None
+                             # Note: penalty param deprecated in 1.8+; L2 is still the default behavior
     C=1.0,                   # Inverse regularization strength (smaller = stronger)
     solver="lbfgs",          # Solver: 'lbfgs' (default), 'saga' (for l1/elasticnet)
     max_iter=1000,           # Increase if convergence warning
@@ -264,7 +265,7 @@ model.fit(X_train, y_train)
 | In Dockerfile | Yes | Yes | No (optional) |
 | SHAP TreeExplainer | Approximate | Native (fast) | Native (fast) |
 | Custom loss functions | No | Yes | Yes |
-| Categorical features | Native | Native | Requires encoding |
+| Categorical features | Native | Native | Native support via `enable_categorical=True` (1.5+); otherwise requires encoding |
 | GPU support | No | Yes | Yes |
 
 > **Guidance:** For most DAAF use cases, HistGradientBoosting is sufficient. Use LightGBM when SHAP TreeExplainer performance matters. Use XGBoost for custom loss functions.

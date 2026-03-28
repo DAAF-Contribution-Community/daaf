@@ -155,8 +155,10 @@ fit = pf.did2s(data=df, yname="y", first_stage="~ 0 | entity + year",
 ## 5. No Automatic Singleton Removal
 
 Unlike pyfixest (which drops singleton fixed-effect groups by default since
-v0.40 via `fixef_rm="singleton"`), linearmodels does not detect or remove
-singletons. Singleton groups -- entity-time combinations with exactly one
+v0.40 via `fixef_rm="singleton"`), linearmodels historically did not detect or
+remove singletons. As of recent versions, `PanelOLS` now has a `singletons`
+parameter (default `True`) that controls whether singleton groups are kept or
+dropped. Singleton groups -- entity-time combinations with exactly one
 observation -- can inflate degrees of freedom and produce misleading inference.
 
 ### Check for Singletons Manually

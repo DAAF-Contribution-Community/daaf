@@ -457,7 +457,7 @@ Sinha, P., Calfee, C.S., and Delucchi, K.L. (2021). "Practitioner's guide to lat
 
 Pedregosa, F. et al. (2011). "Scikit-learn: Machine Learning in Python." *Journal of Machine Learning Research*, 12, 2825-2830. https://scikit-learn.org/
 
-McInnes, L., Healy, J., and Astels, S. (2018). umap-learn: Uniform Manifold Approximation and Projection. https://umap-learn.readthedocs.io/
+McInnes, L., Healy, J., Saul, N., and Grossberger, L. (2018). "UMAP: Uniform Manifold Approximation and Projection." *Journal of Open Source Software*, 3(29), 861. https://umap-learn.readthedocs.io/
 
 ### Interactive Resources
 

@@ -324,7 +324,7 @@ These frameworks are not mutually exclusive. Common combinations:
 
 Dykes, B. (2019). *Effective Data Storytelling: How to Drive Change with Data, Narrative, and Visuals*. Wiley. https://www.effectivedatastorytelling.com/
 
-Minto, B. (2009). *The Pyramid Principle: Logic in Writing and Thinking*. 3rd Edition. Pearson.
+Minto, B. (2010). *The Pyramid Principle: Logic in Writing and Thinking*. 3rd Edition. Pearson.
 
 Nussbaumer Knaflic, C. (2015). *Storytelling with Data: A Data Visualization Guide for Business Professionals*. Wiley. https://www.storytellingwithdata.com/
 

@@ -371,7 +371,7 @@ res_restricted = mod.fit(constraints=constraint)
 
 ## References and Further Reading
 
-- Sheppard, K. linearmodels System documentation. https://bashtage.github.io/linearmodels/system/introduction.html
+- Sheppard, K. linearmodels System documentation. https://bashtage.github.io/linearmodels/system/index.html
 - Zellner, A. (1962). "An Efficient Method of Estimating Seemingly Unrelated Regressions and Tests for Aggregation Bias." *JASA*, 57(298), 348-368.
 - Zellner, A. and Theil, H. (1962). "Three-Stage Least Squares: Simultaneous Estimation of Simultaneous Equations." *Econometrica*, 30(1), 54-78.
 - Greene, W.H. (2018). *Econometric Analysis*. 8th ed. Pearson. Ch. 10 (Systems of Equations).

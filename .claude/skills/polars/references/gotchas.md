@@ -277,7 +277,7 @@ df.head(5)           # First 5 rows
 df.tail(5)           # Last 5 rows
 df.slice(0, 5)       # Rows 0-4
 df.row(0)            # Single row as tuple
-df[0]                # First row as dict (Polars 1.0+)
+df.row(0, named=True)  # First row as dict
 ```
 
 ### Chained Assignment

@@ -119,7 +119,7 @@ Language evolves continuously. Some notes on current usage in research contexts:
 
 ## Urban Institute Do No Harm Principles
 
-The Urban Institute's "Do No Harm Guide: Applying Equity Awareness in Data Visualization" (Schwabish et al., 2021) provides a comprehensive framework for equity-aware data communication. Its central diagnostic question is: *"If I were one of the data points on this visualization, would I feel offended?"*
+The Urban Institute's "Do No Harm Guide: Applying Equity Awareness in Data Visualization" (Schwabish & Feng, 2021) provides a comprehensive framework for equity-aware data communication. Its central diagnostic question is: *"If I were one of the data points on this visualization, would I feel offended?"*
 
 ### Core Principles
 

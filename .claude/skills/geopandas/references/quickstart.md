@@ -300,6 +300,6 @@ For complete spatial operation reference, see `spatial-operations.md`.
 
 Jordahl, K. et al. (2024). *geopandas: Python tools for geographic data*. https://geopandas.org/
 
-Tenkanen, H., Heikinheimo, V., and Whipp, D. (forthcoming). *Introduction to Python for Geographic Data Analysis*. CRC Press. https://pythongis.org/
+Tenkanen, H., Heikinheimo, V., and Whipp, D. (2024). *Introduction to Python for Geographic Data Analysis*. CRC Press. https://pythongis.org/
 
 Dorman, M., Graser, A., Nowosad, J., and Lovelace, R. (2025). *Geocomputation with Python*. CRC Press. https://py.geocompx.org/

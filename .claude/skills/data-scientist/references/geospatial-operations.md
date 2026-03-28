@@ -412,4 +412,4 @@ Goodchild, M.F. and Lam, N.S. (1980). "Areal Interpolation: A Variant of the Tra
 
 ### Software
 
-Rey, S.J. et al. (2022). "The PySAL Ecosystem." *Journal of Open Source Software*. https://pysal.org/
+Rey, S.J. et al. (2022). "The PySAL Ecosystem: Philosophy and Implementation." *Geographical Analysis*, 54(3), 467-487. https://pysal.org/

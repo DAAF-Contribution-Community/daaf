@@ -96,7 +96,7 @@ Compare with pyfixest pipe-separated syntax:
 - **Parameter estimates**: Coefficients, standard errors, t-stats, p-values, CIs
 - **First-stage diagnostics** (per endogenous variable):
   - Partial R-squared of excluded instruments
-  - Partial F-statistic (Shea's) — rule of thumb: F > 10 suggests instruments are
+  - Partial F-statistic — rule of thumb: F > 10 suggests instruments are
     not weak (Staiger-Stock)
 - **Sargan/Hansen J-test**: Test of overidentifying restrictions (only when
   `# instruments > # endogenous`). H0: instruments are valid. Rejection suggests

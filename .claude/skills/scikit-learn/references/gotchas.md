@@ -137,7 +137,7 @@ kmeans = KMeans(n_clusters=4, random_state=42)
 
 **Why:** KMeans converges to local optima depending on initial centroid placement. A single random initialization may find a poor solution.
 
-**Fix:** Use `n_init=10` or higher (10 is the default for `init="k-means++"` since 1.4). Each initialization runs the full algorithm, and the best result (lowest inertia) is kept.
+**Fix:** Use `n_init=10` or higher. Under `n_init='auto'` (default since 1.4), n_init=1 for `init='k-means++'` and n_init=10 for `init='random'`. Each initialization runs the full algorithm, and the best result (lowest inertia) is kept.
 
 ```python
 # --- Use multiple initializations ---

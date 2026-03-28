@@ -209,7 +209,7 @@ pre_states = df.select("fips").n_unique()
 # Transform
 df_agg = df.group_by("fips").agg([
     pl.col("enrollment").sum().alias("total_enrollment"),
-    pl.count().alias("school_count")
+    pl.len().alias("school_count")
 ])
 ```
 

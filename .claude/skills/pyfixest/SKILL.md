@@ -14,7 +14,7 @@ metadata:
   audience: research-coders
   domain: python-library
   library-version: "0.40.0"
-  skill-last-updated: "2026-03-26"
+  skill-last-updated: "2026-03-27"
 ---
 
 # pyfixest Skill
@@ -70,6 +70,7 @@ Each topic in `./references/` contains focused documentation:
 | `data-scientist` | Methodology guidance — load for "why and when" behind methods |
 | `statsmodels` | Complement for non-FE models: GLM, time series, diagnostics |
 | `linearmodels` | Random effects, GMM, system estimation when pyfixest's FE-only approach is insufficient |
+| `svy` | Survey-weighted regression with complex survey designs. pyfixest's clustered SEs account for within-group correlation but do NOT handle full survey design features (stratification, unequal probability weights, FPC). If your data comes from a complex probability survey, use `svy` for design-based inference |
 | `polars` | Data preparation before estimation (convert to pandas before passing to pyfixest) |
 | `plotnine` | Custom visualization beyond pyfixest's built-in plots |
 
@@ -176,7 +177,7 @@ import pyfixest as pf
 | `pf.feols("Y ~ X \| fe", data=df)` | OLS with fixed effects |
 | `pf.fepois("Y ~ X \| fe", data=df)` | Poisson with fixed effects |
 | `pf.feols("Y ~ X2 \| fe \| X1 ~ Z1", data=df)` | IV / 2SLS |
-| `pf.did2s(data, yname, first_stage, second_stage, treatment, cluster)` | Gardner (2021) DiD |
+| `pf.did2s(data, yname, first_stage, second_stage, treatment, cluster)` | Gardner (2022) DiD |
 | `pf.event_study(data, yname, idname, tname, gname, estimator)` | Unified event study |
 | `pf.lpdid(data, yname, idname, tname, gname)` | Local projections DiD |
 

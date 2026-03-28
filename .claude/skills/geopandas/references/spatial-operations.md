@@ -355,7 +355,7 @@ Jordahl, K. et al. (2024). *geopandas: Merging data*. https://geopandas.org/en/s
 
 Jordahl, K. et al. (2024). *geopandas: Set operations with overlay*. https://geopandas.org/en/stable/docs/user_guide/set_operations.html
 
-Rey, S.J., Arribas-Bel, D., and Wolf, L.J. (2023). *Geographic Data Science with Python*, Ch. 4: "Spatial data." https://geographicdata.science/book/
+Rey, S.J., Arribas-Bel, D., and Wolf, L.J. (2023). *Geographic Data Science with Python*, Ch. 4: "Spatial weights." https://geographicdata.science/book/
 
 Dorman, M., Graser, A., Nowosad, J., and Lovelace, R. (2025). *Geocomputation with Python*, Chs. 3-4: "Attribute data operations" and "Spatial data operations." https://py.geocompx.org/
 

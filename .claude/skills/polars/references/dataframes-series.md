@@ -272,7 +272,7 @@ df.with_columns(
     pl.col("value").fill_null(0),                    # With constant
     pl.col("value").fill_null(strategy="forward"),   # Forward fill
     pl.col("value").fill_null(strategy="backward"),  # Backward fill
-    pl.col("value").fill_null(strategy="mean"),      # Mean of column
+    pl.col("value").fill_null(pl.col("value").mean()), # No strategy="mean"; compute mean explicitly
     pl.col("value").fill_null(pl.col("default"))     # From another column
 )
 ```

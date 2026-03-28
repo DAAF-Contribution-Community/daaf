@@ -72,7 +72,7 @@ All links are under `sm.families.links`:
 | `InversePower()` | 1/μ | 1/η |
 | `InverseSquared()` | 1/μ² | 1/√η |
 | `Power(power=1)` | μ^p | η^(1/p) |
-| `Cauchy()` | arctan(μ) | tan(η) |
+| `Cauchy()` | tan(π·(p - 0.5)) | arctan(η)/π + 0.5 |
 
 ### Specifying a Non-Default Link
 

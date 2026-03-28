@@ -876,7 +876,7 @@ Rambachan, A. and Roth, J. (2023). "A More Credible Approach to Parallel Trends.
 
 ### Causal Language in Research
 
-Haber, N.A. et al. (2022). "Causal and Associational Language in Observational Health Research." *American Journal of Epidemiology*, 191(12), 2020-2028.
+Haber, N.A. et al. (2022). "Causal and Associational Language in Observational Health Research." *American Journal of Epidemiology*, 191(12), 2084-2097.
 
 ### Teaching Resources
 

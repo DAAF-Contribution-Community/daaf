@@ -9,6 +9,7 @@ Guidance for model selection, assumption checking, robust inference, and interpr
 - For chart selection when presenting model results, see `./visualization-design.md`
 - For causal identification strategies (DiD, IV, RDD), see `./causal-inference.md`
 - For regression as a purely descriptive tool, weighted analysis, or missing data characterization, see `./descriptive-analysis.md`
+- For survey-weighted regression with complex survey designs (NHANES, ACS PUMS, CPS, ECLS-K, etc.), see `./survey-analysis.md` for methodology and load the `svy` skill for implementation. Standard regression (OLS, logit, Poisson) is inappropriate for complex survey data — it produces incorrect standard errors.
 
 ## Contents
 
@@ -478,7 +479,7 @@ Seabold, S. and Perktold, J. (2010). "Statsmodels: Econometric and Statistical M
 
 Angrist, J.D. "Mastering Econometrics." Marginal Revolution University. https://mru.org/mastering-econometrics-joshua-angrist
 
-McDermott, G.R. "A Better Way to Adjust Your Standard Errors." https://grantmcdermott.com/better-way-adjust-SEs/
+McDermott, G.R. "A Better Way to Adjust Your Standard Errors." https://grantmcdermott.com/posts/better-way-adjust-ses/
 
 McDermott, G.R. "Data Science for Economists and Other Animals." https://grantmcdermott.com/ds4e/
 

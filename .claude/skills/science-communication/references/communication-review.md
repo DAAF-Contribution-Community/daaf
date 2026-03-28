@@ -32,7 +32,7 @@ Apply to every deliverable — executive summary, policy brief, presentation, re
 
 ## Seven Deadly Sins of Statistical Misinterpretation
 
-From Winton & Gaynor (2017), adapted for data communication review. Each sin represents a way that statistical findings can be misrepresented or misunderstood in communication.
+From Louis & Chapman (2017), adapted for data communication review. Each sin represents a way that statistical findings can be misrepresented or misunderstood in communication.
 
 ### Sin 1: Treating Small Differences as Meaningful
 
@@ -194,7 +194,7 @@ Before sharing any deliverable, spend 10 minutes on this rapid review:
 
 Haber, N.A. et al. (2022). "Causal and Associational Language in Observational Health Research." *American Journal of Epidemiology*, 191(12), 2084-2097.
 
-Winton, B. and Gaynor, M. (2017). "The Seven Deadly Sins of Statistical Misinterpretation, and How to Avoid Them." *The Conversation*.
+Louis, W. and Chapman, C. (2017). "The Seven Deadly Sins of Statistical Misinterpretation, and How to Avoid Them." *The Conversation*. https://theconversation.com/the-seven-deadly-sins-of-statistical-misinterpretation-and-how-to-avoid-them-74306
 
 IES. "Six Strategies for Effectively Communicating Research Findings to Decision Makers." https://ies.ed.gov/blogs/research/post/six-strategies-for-effectively-communicating-research-findings-to-decision-makers
 

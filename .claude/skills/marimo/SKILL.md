@@ -11,7 +11,7 @@ description: >-
 metadata:
   audience: research-coders
   domain: python-library
-  library-version: "0.10.x"
+  library-version: "0.19.x"
   skill-last-updated: "2026-03-26"
 ---
 

@@ -301,6 +301,6 @@ pyogrio documentation. https://pyogrio.readthedocs.io/
 
 GeoParquet specification. https://geoparquet.org/
 
-Tenkanen, H., Heikinheimo, V., and Whipp, D. (forthcoming). *Introduction to Python for Geographic Data Analysis*, Ch. 6: "Reading and writing spatial data." https://pythongis.org/
+Tenkanen, H., Heikinheimo, V., and Whipp, D. (2024). *Introduction to Python for Geographic Data Analysis*, Ch. 6: "Reading and writing spatial data." https://pythongis.org/
 
 Boeing, G. (2017). "OSMnx: New methods for acquiring, constructing, analyzing, and visualizing complex street networks." *Computers, Environment and Urban Systems*, 65, 126-139.

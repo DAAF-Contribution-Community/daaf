@@ -697,7 +697,7 @@ Fotheringham, A.S., Brunsdon, C., and Charlton, M. (2002). *Geographically Weigh
 
 ### Software Ecosystem
 
-Rey, S.J. et al. (2022). "The PySAL Ecosystem." *Journal of Open Source Software*. https://pysal.org/
+Rey, S.J. et al. (2022). "The PySAL Ecosystem: Philosophy and Implementation." *Geographical Analysis*, 54(3), 467-487. https://pysal.org/
 
 ### Additional Resources
 

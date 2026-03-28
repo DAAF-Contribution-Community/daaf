@@ -255,7 +255,7 @@ When a single analysis produces multiple deliverable types (e.g., a full report,
 
 IES. "Six Strategies for Effectively Communicating Research Findings to Decision Makers." https://ies.ed.gov/blogs/research/post/six-strategies-for-effectively-communicating-research-findings-to-decision-makers
 
-Minto, B. (2009). *The Pyramid Principle: Logic in Writing and Thinking*. 3rd Edition. Pearson.
+Minto, B. (2010). *The Pyramid Principle: Logic in Writing and Thinking*. 3rd Edition. Pearson.
 
 Nussbaumer Knaflic, C. (2015). *Storytelling with Data: A Data Visualization Guide for Business Professionals*. Wiley.
 

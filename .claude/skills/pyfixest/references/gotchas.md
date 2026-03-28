@@ -333,7 +333,7 @@ Passing a Polars DataFrame directly may raise a `TypeError` or produce unexpecte
 
 ## References and Further Reading
 
-- pyfixest changelog: https://github.com/py-econometrics/pyfixest/blob/master/CHANGELOG.md
+- pyfixest changelog: https://py-econometrics.github.io/pyfixest/changelog.html
 - pyfixest GitHub issues: https://github.com/py-econometrics/pyfixest/issues
 - Berge, L., Butts, K., and McDermott, G. (2026). "Fast and User-Friendly Econometrics Estimations: The R Package fixest." arXiv:2601.21749
 - Cameron, A.C. and Miller, D.L. (2015). "A Practitioner's Guide to Cluster-Robust Inference." *Journal of Human Resources*, 50(2), 317-372

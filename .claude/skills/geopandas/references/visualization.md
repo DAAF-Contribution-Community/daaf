@@ -125,7 +125,7 @@ gdf.plot(
 | `Quantiles` | Equal number of observations per class | Ensuring visual balance; skewed distributions |
 | `EqualInterval` | Equal range per class | Uniformly distributed data |
 | `FisherJenks` | Minimizes within-class variance | General purpose — default recommendation |
-| `NaturalBreaks` | Synonym for Fisher-Jenks | Same as above |
+| `NaturalBreaks` | Jenks optimization (similar to FisherJenks) | General purpose |
 | `StdMean` | Classes based on standard deviations from mean | Highlighting deviation from average |
 | `Percentiles` | Custom percentile boundaries | Specific breakpoints needed |
 | `BoxPlot` | Based on IQR (outlier detection) | Highlighting extremes |

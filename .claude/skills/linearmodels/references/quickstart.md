@@ -99,7 +99,7 @@ df = df_polars.to_pandas().set_index(["firm_id", "year"])
 Passing a DataFrame without a MultiIndex raises an error:
 
 ```
-TypeError: Panel models require a MultiIndex with 2 levels that corresponds
+ValueError: Panel models require a MultiIndex with 2 levels that corresponds
 to entities and time periods
 ```
 
@@ -340,8 +340,8 @@ All attributes are available on the results object returned by `.fit()`.
 | `res.resids` | Series | Residuals |
 | `res.fitted_values` | Series | Fitted values |
 | `res.nobs` | int | Number of observations |
-| `res.entity_info` | dict | Entity counts and observation distribution |
-| `res.time_info` | dict | Time period counts |
+| `res.entity_info` | Series | Entity counts and observation distribution |
+| `res.time_info` | Series | Time period counts |
 | `res.conf_int()` | DataFrame | Confidence intervals (default 95%) |
 | `res.summary` | Summary | Full summary table (property, no parentheses) |
 

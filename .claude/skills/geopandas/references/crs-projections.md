@@ -135,7 +135,7 @@ What does your analysis need?
 | 3857 | Web Mercator | Web tile display only | Meters (distorted) |
 | 32617 | UTM Zone 17N | US East Coast local analysis | Meters |
 | 32610 | UTM Zone 10N | US West Coast local analysis | Meters |
-| 2163 | US National Atlas | General US reference maps | Meters |
+| 2163 | US National Atlas (deprecated; prefer 9311) | General US reference maps | Meters |
 
 ### State Plane Coordinate Systems
 
@@ -254,7 +254,7 @@ print(f"EPSG:{utm_results[0].code}")  # e.g., EPSG:32618
 
 Dorman, M., Graser, A., Nowosad, J., and Lovelace, R. (2025). *Geocomputation with Python*, Chs. 1 and 6: "Geographic data" and "Reprojecting geographic data." https://py.geocompx.org/
 
-Tenkanen, H., Heikinheimo, V., and Whipp, D. (forthcoming). *Introduction to Python for Geographic Data Analysis*, Ch. 5: "Map projections." https://pythongis.org/
+Tenkanen, H., Heikinheimo, V., and Whipp, D. (2024). *Introduction to Python for Geographic Data Analysis*, Ch. 5: "Map projections." https://pythongis.org/
 
 pyproj documentation. https://pyproj4.github.io/pyproj/
 

@@ -79,7 +79,7 @@ print(f"SHAP values shape: {shap_values.shape}")
 > an `Explanation` object (access values via `.values`). KernelExplainer uses
 > `.shap_values(X)` returning a numpy array directly. Do not mix these patterns.
 
-**Performance note:** KernelExplainer is O(2^F) where F is the number of features. For datasets with many features, use `shap.sample()` or `shap.kmeans()` to summarize the background data and limit the number of test samples explained.
+**Performance note:** Exact Shapley values require O(2^F) evaluations; KernelExplainer uses sampling approximation (default nsamples = 2*M + 2048), but remains slow for many features. Use `shap.sample()` or `shap.kmeans()` to summarize the background data and limit the number of test samples explained.
 
 ### Visualization API
 

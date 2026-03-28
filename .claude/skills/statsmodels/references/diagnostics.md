@@ -102,7 +102,7 @@ stat, pvalue = shapiro(results.resid)
 ```
 
 - More powerful than Jarque-Bera for small samples
-- Limited to N ≤ 5000 in scipy implementation
+- For N > 5000, scipy issues a warning that p-values may not be accurate
 - H0: sample is drawn from a normal distribution
 
 ### Anderson-Darling (scipy)

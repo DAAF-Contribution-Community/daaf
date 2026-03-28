@@ -226,18 +226,18 @@ form = mo.ui.text(label="Query").form(submit_button_label="Search")
 # form.value only updates when submitted
 ```
 
-Or wrap multiple elements:
+Or wrap multiple elements using `.batch().form()`:
 
 ```python
-form = mo.ui.form(
-    mo.md("""
-    **Search Settings**
-    
-    Query: {query}
-    Max results: {max_results}
-    """),
-    {"query": mo.ui.text(), "max_results": mo.ui.number(1, 100, 10)}
-)
+form = mo.md("""
+**Search Parameters**
+
+Query: {query}
+Max results: {max_results}
+""").batch(
+    query=mo.ui.text(placeholder="Enter search term"),
+    max_results=mo.ui.number(start=1, stop=100, value=10),
+).form()
 # form.value is {"query": "...", "max_results": 10}
 ```
 

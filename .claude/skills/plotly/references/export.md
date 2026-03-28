@@ -175,6 +175,7 @@ fig = go.Figure(fig_dict)
 <!DOCTYPE html>
 <html>
 <head>
+    <!-- Warning: plotly-latest.min.js is frozen at v1.58.5. For Plotly 6.x, use a versioned URL, e.g., plotly-2.35.2.min.js -->
     <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
 </head>
 <body>
@@ -255,6 +256,8 @@ fig = pio.read_json("plot.json")
 import plotly.io as pio
 
 # Use kaleido (recommended)
+# Note (Plotly 6.2+): pio.kaleido.scope.* is deprecated. Use pio.defaults.* instead,
+# e.g., pio.defaults.default_format = 'png'
 pio.kaleido.scope.default_format = "png"
 pio.kaleido.scope.default_width = 800
 pio.kaleido.scope.default_height = 600

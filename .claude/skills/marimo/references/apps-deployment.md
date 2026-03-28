@@ -68,19 +68,10 @@ Access command-line args:
 ```python
 # In notebook
 args = mo.cli_args()
-# args is a dict of passed arguments
+input_file = args.get("input", "default.csv")
 
 # Usage
 python notebook.py -- --input data.csv --output results.json
-```
-
-Define expected args:
-
-```python
-mo.cli_args({
-    "input": mo.cli_arg("i", "input", help="Input file"),
-    "output": mo.cli_arg("o", "output", default="out.json")
-})
 ```
 
 ### Query Parameters (Web)
@@ -242,7 +233,7 @@ Use ASGI middleware for OAuth, SSO, etc.
 from marimo import App
 
 app = App("notebook.py")
-result = app.run()
+outputs, defs = app.run()
 ```
 
 ### Embed in Other Apps
@@ -253,7 +244,7 @@ from fastapi import FastAPI
 from marimo import create_asgi_app
 
 app = FastAPI()
-marimo_app = create_asgi_app("notebook.py")
+marimo_app = create_asgi_app().with_app(path="", root="notebook.py").build()
 app.mount("/marimo", marimo_app)
 ```
 

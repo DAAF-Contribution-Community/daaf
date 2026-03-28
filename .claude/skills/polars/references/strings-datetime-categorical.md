@@ -46,7 +46,7 @@ df.with_columns(
     pl.col("text").str.contains("pat.*n", literal=False),# Regex match
     pl.col("text").str.starts_with("prefix"),            # Starts with
     pl.col("text").str.ends_with("suffix"),              # Ends with
-    pl.col("text").str.find("needle"),                   # Index of first match (-1 if not found)
+    pl.col("text").str.find("needle"),                   # Index of first match (null if not found)
     pl.col("text").str.count_matches("a"),               # Count occurrences
 )
 
@@ -187,7 +187,7 @@ df.with_columns(
     pl.col("datetime").dt.microsecond().alias("microsecond"),
     pl.col("datetime").dt.nanosecond().alias("nanosecond"),
     
-    # Day of week (0=Monday, 6=Sunday)
+    # Day of week (1=Monday, 7=Sunday)
     pl.col("datetime").dt.weekday().alias("weekday"),
     
     # Week of year

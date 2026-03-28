@@ -552,13 +552,14 @@ Rey, S.J., Arribas-Bel, D., and Wolf, L.J. (2023). *Geographic Data Science with
 - Ch. 6: Global spatial autocorrelation
 - Ch. 7: Local spatial autocorrelation
 - Ch. 8: Point pattern analysis
-- Ch. 11-12: Spatial regression
+- Ch. 11: Spatial regression
+- Ch. 12: Spatial feature engineering
 
 Anselin, L. (1995). "Local Indicators of Spatial Association — LISA." *Geographical Analysis*, 27(2), 93-115.
 
 Anselin, L. and Rey, S.J. (2014). *Modern Spatial Econometrics in Practice*. GeoDa Press.
 
-Rey, S.J. et al. (2022). "The PySAL Ecosystem." *Journal of Open Source Software*. https://pysal.org/
+Rey, S.J. et al. (2022). "The PySAL Ecosystem: Philosophy and Implementation." *Geographical Analysis*, 54(3), 467-487. https://pysal.org/
 
 PySAL API documentation:
 - libpysal: https://pysal.org/libpysal/
