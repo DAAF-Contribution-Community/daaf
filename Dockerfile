@@ -36,6 +36,7 @@ RUN uv pip install --system \
     polars==1.38.1 \
     scipy==1.17.0 \
     openpyxl==3.1.5 \
+    fastexcel==0.19.0 \
     xlrd==2.0.2 \
     requests==2.32.5 \
     pyarrow==23.0.0 \
@@ -45,17 +46,20 @@ RUN uv pip install --system \
     umap-learn==0.5.11 \
     pyyaml==6.0.3 \
     statsmodels==0.14.6 \
-    pyfixest==0.40.0
+    pyfixest==0.40.0 \
+    tabulate==0.10.0 \
+    great-tables==0.21.0 \
+    wildboottest==0.3.2
 
 # Install econometrics & statistical modeling packages
 # Primary: pyfixest + statsmodels already above
 # Secondary: panel models, RDD, marginal effects, volatility, dynamic panels, survey statistics
 # NOTE: lifelines excluded — latest (0.30.3) requires pandas<3.0, incompatible with pandas==3.0.0
 RUN uv pip install --system \
-    linearmodels \
-    rdrobust \
-    marginaleffects \
-    arch \
+    linearmodels==7.0 \
+    rdrobust==1.3.0 \
+    marginaleffects==0.5.0 \
+    arch==8.0.0 \
     pydynpd==0.2.1 \
     svy==0.13.0
 
@@ -63,18 +67,18 @@ RUN uv pip install --system \
 # Core: vector (geopandas + deps), raster (rasterio + xarray), mapping, PySAL spatial stats
 RUN uv pip install --system \
     geopandas==1.1.3 \
-    rasterio \
-    xarray \
-    rioxarray \
-    contextily \
-    folium \
-    libpysal \
-    esda \
-    spreg \
-    mapclassify \
-    rasterstats \
-    geopy \
-    osmnx
+    rasterio==1.5.0 \
+    xarray==2026.2.0 \
+    rioxarray==0.22.0 \
+    contextily==1.7.0 \
+    folium==0.20.0 \
+    libpysal==4.14.1 \
+    esda==2.9.0 \
+    spreg==1.9.0 \
+    mapclassify==2.10.0 \
+    rasterstats==0.20.0 \
+    geopy==2.4.1 \
+    osmnx==2.1.0
 
 # Install visualization packages
 RUN uv pip install --system \

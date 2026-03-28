@@ -1265,7 +1265,7 @@ summary = df.group_by("state").agg(pl.col("enrollment").mean())
 ```python
 # RED FLAG - Figure generated but not in report:
 fig = px.scatter(df, x="poverty_rate", y="enrollment")
-fig.write_image("output/figures/scatter.png")
+fig.write_html("output/figures/scatter.html")  # kaleido/write_image not available in DAAF
 # Report.md doesn't reference scatter.png
 ```
 
@@ -1381,7 +1381,7 @@ else:
 # Check 3: Figures referenced in report
 if report_path and report_path.exists():
     report_content = report_path.read_text()
-    figures_saved = re.findall(r'(?:savefig|write_image)\(["\']([^"\']+)', notebook_content)
+    figures_saved = re.findall(r'(?:savefig|write_image|write_html)\(["\']([^"\']+)', notebook_content)
     for fig_path_str in figures_saved:
         fig_name = Path(fig_path_str).name
         if fig_name not in report_content:

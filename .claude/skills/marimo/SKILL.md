@@ -12,7 +12,7 @@ metadata:
   audience: research-coders
   domain: python-library
   library-version: "0.19.x"
-  skill-last-updated: "2026-03-26"
+  skill-last-updated: "2026-03-28"
 ---
 
 # marimo
@@ -241,7 +241,7 @@ Having issues?
 | `marimo run notebook.py` | Run as read-only app |
 | `python notebook.py` | Execute as script |
 | `marimo tutorial intro` | Run interactive tutorial |
-| `marimo convert nb.ipynb -o nb.py` | Convert from Jupyter |
+| `marimo convert nb.ipynb -o nb.py` | Convert other formats INTO marimo (inbound only) |
 | `marimo export html notebook.py` | Export to HTML |
 
 > **Docker:** When running in a container, add `--host 0.0.0.0 --port 2718 --headless` to `run` and `edit` commands.

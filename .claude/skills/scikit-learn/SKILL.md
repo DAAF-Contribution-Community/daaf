@@ -14,7 +14,7 @@ metadata:
   audience: research-coders
   domain: python-library
   library-version: "1.8.0"
-  skill-last-updated: "2026-03-26"
+  skill-last-updated: "2026-03-28"
 ---
 
 # scikit-learn Skill

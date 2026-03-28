@@ -217,10 +217,10 @@ Some Shapely 1.x functions were removed; others still work but have modern equiv
 # Removed (will raise ImportError)
 from shapely.ops import cascaded_union  # Use shapely.union_all() instead
 
-# Still works, but modern equivalent exists
-from shapely.ops import unary_union     # Works fine in 2.x
-from shapely import union_all           # Newer vectorized equivalent
-# In geopandas: gdf.geometry.unary_union → gdf.geometry.union_all()
+# Deprecated — use the modern equivalents
+from shapely.ops import unary_union     # Deprecated in shapely; use union_all()
+from shapely import union_all           # Preferred vectorized equivalent
+# In geopandas: gdf.geometry.union_all() (unary_union is deprecated in 1.1.3)
 
 # Repair pattern
 geom.buffer(0)                # Classic fix — still works

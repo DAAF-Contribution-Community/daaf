@@ -118,12 +118,21 @@ print(model)
 - SEs are on the log-odds scale; exponentiate the confidence interval bounds for OR CIs
 
 ```python
-# [VERIFY API] Converting to odds ratios
 import numpy as np
-# If model results are accessible as attributes:
-# odds_ratios = np.exp(model.coefficients)
-# or_ci_lower = np.exp(model.ci_lower)
-# or_ci_upper = np.exp(model.ci_upper)
+
+# sample.glm.fit() returns the GLM accessor; the GLMFit result is at glm.fitted
+glm = sample.glm.fit(y="obese_flag", x=["ridageyr", svy.Cat("riagendr")], family="binomial")
+fit = glm.fitted                          # GLMFit object
+
+# Convert to odds ratios via the GLMFit.to_polars() DataFrame
+coef_df = fit.to_polars()                 # columns: term, estimate, std_err, conf_low, conf_high, statistic, p_value, df
+odds_ratios = np.exp(coef_df["estimate"])
+or_ci_lower = np.exp(coef_df["conf_low"])
+or_ci_upper = np.exp(coef_df["conf_high"])
+
+# Or access individual coefficients via fit.coefs (list of GLMCoef objects)
+for c in fit.coefs:
+    print(f"{c.term}: OR={np.exp(c.est):.3f}  [{np.exp(c.lci):.3f}, {np.exp(c.uci):.3f}]")
 ```
 
 ### Important: Quasi-Binomial in R vs. svy
@@ -202,13 +211,7 @@ model = sample.glm.fit(
 ### Interactions
 
 ```python
-# [VERIFY API] Interaction terms
-# The exact syntax for specifying interactions in svy is not confirmed.
-# Possible patterns:
-# 1. Pre-compute interaction columns in Polars before passing to svy
-# 2. svy may support an interaction syntax within the x list
-
-# Safe approach: pre-compute in Polars
+# Pre-compute interaction columns in Polars before passing to svy
 data = data.with_columns(
     (pl.col("age") * pl.col("income")).alias("age_x_income")
 )
@@ -237,15 +240,27 @@ print(model)
 
 ### Accessing Individual Components
 
+`sample.glm.fit()` returns the `GLM` accessor. The fitted result (`GLMFit`) is stored at `glm.fitted`:
+
 ```python
-# [VERIFY API] The exact attribute names for extracting results
-# Likely patterns based on documentation:
-# model.coefficients    — point estimates
-# model.std_errors      — design-based standard errors
-# model.t_statistics    — t-values
-# model.p_values        — two-sided p-values
-# model.conf_int        — confidence intervals (lower, upper)
+glm = sample.glm.fit(y="bmxbmi", x=["ridageyr", svy.Cat("riagendr")], family="gaussian")
+fit = glm.fitted                          # GLMFit object
+
+# --- Tabular output (recommended) ---
+coef_df = fit.to_polars()
+# columns: term, estimate, std_err, conf_low, conf_high, statistic, p_value, df
+
+# --- Individual coefficient objects ---
+for c in fit.coefs:                       # list of GLMCoef
+    print(c.term, c.est, c.se, c.lci, c.uci)
+    # c.wald  — TDist with .value (t-statistic) and .p_value
+
+# --- Model statistics ---
+stats = fit.stats                         # GLMStats
+print(stats.n, stats.r_squared, stats.aic, stats.bic, stats.deviance)
 ```
+
+**Important:** `sample.glm` creates a new `GLM` object each time it is accessed (it is a property). You must hold a reference to the return value of `.fit()` to access `glm.fitted` and `glm.predict()` later.
 
 ### Reporting Results
 
@@ -329,10 +344,16 @@ Traditional R-squared is not well-defined for survey-weighted regression because
 ### Residual Analysis
 
 ```python
-# [VERIFY API] Extracting residuals from survey regression
-# Possible pattern:
-# residuals = model.residuals
-# fitted_values = model.fitted_values
+# Residuals and fitted values are obtained via glm.predict()
+glm = sample.glm.fit(y="bmxbmi", x=["ridageyr", svy.Cat("riagendr")], family="gaussian")
+
+# Pass y_col to get residuals (without it, pred.residuals is None)
+pred = glm.predict(new_data=data, y_col="bmxbmi")
+residuals = pred.residuals               # numpy array
+fitted_values = pred.yhat                 # numpy array
+
+# As a Polars DataFrame:
+pred_df = pred.to_polars()                # columns: yhat, se, lci, uci, residuals
 ```
 
 Residual plots for survey regressions should use weighted residuals. Unweighted residual plots can be misleading because they treat all observations equally regardless of their representation of the population.
@@ -347,9 +368,12 @@ Standard diagnostic tests (Breusch-Pagan, RESET, VIF) from statsmodels are desig
 ### Model Comparison
 
 ```python
-# [VERIFY API] AIC/BIC for survey models
-# Survey-adjusted information criteria may be available:
-# model.aic  or  model.bic
+glm = sample.glm.fit(y="bmxbmi", x=["ridageyr", svy.Cat("riagendr")], family="gaussian")
+fit = glm.fitted
+
+# AIC/BIC are on the GLMStats object (fit.stats), not the model directly
+print(f"AIC: {fit.stats.aic}")
+print(f"BIC: {fit.stats.bic}")
 ```
 
 For comparing nested survey regression models, use Wald tests based on the design-based covariance matrix rather than likelihood ratio tests (which assume independent observations).
@@ -365,17 +389,11 @@ To fit a regression model for a subpopulation (domain), do NOT pre-filter the da
 # females = data.filter(pl.col("gender") == 2)
 # female_sample = svy.Sample(data=females, design=design)
 # model = female_sample.glm.fit(...)  # <-- WRONG SEs
-
-# [VERIFY API] CORRECT: domain regression
-# The exact syntax for domain-restricted regression is not confirmed.
-# Possible patterns:
-# model = sample.glm.fit(y="bmi", x=["age"], family="gaussian", by="gender")
-# or
-# model = sample.glm.fit(y="bmi", x=["age"], family="gaussian",
-#                         subset=pl.col("gender") == 2)
 ```
 
-Domain regression preserves the full design structure for variance estimation while restricting the model to the subpopulation of interest. This is methodologically equivalent to R's `svyglm(..., design=subset(design, gender == 2))` where the subsetting is done within the survey design framework.
+> **Limitation (v0.13.0):** Domain-restricted regression (fitting a model within a subpopulation while preserving the full design) is **not supported** in `sample.glm.fit()`. The `fit()` method has no `by=`, `subset=`, or `where=` parameter. For domain estimation of means/totals/proportions, use `sample.estimation.mean(..., by="group")`, which does support correct domain analysis. For regression within a subpopulation, the only current option is to pre-filter the data, with the caveat that SEs will not fully account for the original design structure. Document this limitation in your analysis with an `# ASSUMES:` comment.
+
+Domain regression preserves the full design structure for variance estimation while restricting the model to the subpopulation of interest. This is methodologically equivalent to R's `svyglm(..., design=subset(design, gender == 2))` where the subsetting is done within the survey design framework. Monitor future svy releases for this feature.
 
 ---
 
@@ -386,7 +404,7 @@ When svy does not support the needed model (ordinal logistic, Cox survival, nega
 ### Setup
 
 ```python
-# [VERIFY API] rpy2 bridge pattern — this is standard rpy2, not svy-specific
+# rpy2 bridge pattern — this is standard rpy2, not svy-specific
 import rpy2.robjects as ro
 from rpy2.robjects import pandas2ri
 from rpy2.robjects.packages import importr
@@ -495,7 +513,8 @@ print(model)
 # --- Validate ---
 # Verify model ran on expected sample size
 print(f"Input data rows: {data.shape[0]}")
-# [VERIFY API] Check model diagnostics
-# print(f"Model N: {model.nobs}")
-# print(f"Model df: {model.df_resid}")
+fit = model.fitted
+print(f"Model N: {fit.stats.n}")
+print(f"R-squared: {fit.stats.r_squared:.4f}")
+print(f"AIC: {fit.stats.aic:.2f}")
 ```

@@ -45,11 +45,16 @@ fig.update_traces(marker_size=15)
 
 ## Common Errors
 
-### "No module named 'kaleido'"
+### "No module named 'kaleido'" / write_image fails
 
 **Error**: `ValueError: Image export using the "kaleido" engine requires the kaleido package`
 
-**Fix**: Install kaleido for static image export.
+**DAAF context**: kaleido is intentionally excluded from the DAAF container due to
+its heavy Chromium dependency (~300MB binary + 9 system shared libraries). Use
+**plotnine** for static figure export (PNG/SVG) and reserve Plotly for interactive
+HTML output via `write_html()`.
+
+If you need kaleido in a custom environment:
 
 ```bash
 pip install -U kaleido

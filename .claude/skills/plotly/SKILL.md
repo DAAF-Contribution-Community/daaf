@@ -12,7 +12,7 @@ metadata:
   audience: research-coders
   domain: python-library
   library-version: "6.x"
-  skill-last-updated: "2026-03-26"
+  skill-last-updated: "2026-03-28"
 ---
 
 # Plotly Skill
@@ -179,8 +179,10 @@ fig.show()
 # Interactive HTML
 fig.write_html("plot.html")
 
-# Static image (requires kaleido)
-fig.write_image("plot.png")
+# Static image export (PNG/SVG/PDF) is NOT available in DAAF — kaleido is not
+# installed due to its heavy Chromium dependency. Use plotnine for static figures.
+# For interactive output, use HTML:
+# fig.write_image("plot.png")  # Would require: pip install kaleido + Chromium
 ```
 
 ## Topic Index

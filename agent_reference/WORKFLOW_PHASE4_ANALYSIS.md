@@ -786,7 +786,7 @@ import plotly.express as px
 
 fig = px.scatter(df, x='var1', y='var2', color='category')
 fig.write_html(f"output/figures/{date_prefix}_plot_name.html")
-fig.write_image(f"output/figures/{date_prefix}_plot_name.png")
+# Note: kaleido/write_image is not available in DAAF — use plotnine for static PNG export
 ```
 
 ### Context Requirements

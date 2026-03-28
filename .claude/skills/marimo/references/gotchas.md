@@ -286,10 +286,12 @@ Remember: execution order is by dependencies, not position.
 2. **Variable reuse**: Can't redefine globals
 3. **Stateful code**: Hidden state won't exist
 
-### Automatic Conversion
+### Automatic Conversion (Inbound)
 
 ```bash
+# marimo convert imports OTHER formats INTO marimo (inbound only)
 marimo convert notebook.ipynb -o notebook.py
+# To export FROM marimo, use: marimo export md notebook.py, marimo export html notebook.py
 ```
 
 Then review and fix:

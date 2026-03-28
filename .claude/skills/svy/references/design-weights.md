@@ -104,7 +104,7 @@ sample = svy.Sample(data=data, design=design)
 | `stratum` | `str` or `tuple[str, ...]` | Stratification variable(s). Optional. |
 | `psu` | `str` | Primary sampling unit (cluster) variable. Optional. |
 | `wgt` | `str` | Survey weight column name. Required. |
-| `fpc` | `str` | Finite population correction variable. Optional. See FPC section. |
+| `pop_size` | `str` | Finite population correction column name. Optional. See FPC section. **Non-functional in v0.13.0.** |
 
 ---
 
@@ -115,13 +115,15 @@ When the data provider supplies replicate weights (common for public-use files f
 ### Bootstrap Replicate Weights
 
 ```python
-# [VERIFY API] Bootstrap replicate weight design
-# The exact parameter name for specifying replicate weights is not confirmed.
-# Likely pattern based on documentation references:
+# Create a RepWeights object specifying the column prefix, count, and method
+rep_wgts = svy.RepWeights(
+    prefix="pwgtp",                       # Column name prefix (matches pwgtp1, pwgtp2, ...)
+    n_reps=80,                            # Number of replicate weight columns
+    method=svy.EstimationMethod.BOOTSTRAP # Replication method
+)
 design = svy.Design(
     wgt="pwgtp",                          # Main analysis weight
-    rep_weights="pwgtp1-pwgtp80",         # 80 bootstrap replicate columns
-    rep_type="bootstrap"                  # Replication method
+    rep_wgts=rep_wgts                     # RepWeights object
 )
 sample = svy.Sample(data=data, design=design)
 ```
@@ -129,12 +131,12 @@ sample = svy.Sample(data=data, design=design)
 ### BRR (Balanced Repeated Replication) Weights
 
 ```python
-# [VERIFY API] BRR replicate weight design
-design = svy.Design(
-    wgt="finalwgt",
-    rep_weights="brr_wt1-brr_wt64",      # BRR replicate columns
-    rep_type="brr"
+rep_wgts = svy.RepWeights(
+    prefix="brr_wt",                      # Column name prefix (matches brr_wt1, brr_wt2, ...)
+    n_reps=64,                            # Number of replicate weight columns
+    method=svy.EstimationMethod.BRR       # BRR method
 )
+design = svy.Design(wgt="finalwgt", rep_wgts=rep_wgts)
 sample = svy.Sample(data=data, design=design)
 ```
 
@@ -143,25 +145,25 @@ sample = svy.Sample(data=data, design=design)
 Fay's method is a variant of BRR that perturbs rather than deletes half-samples, reducing instability for small domains. The Fay coefficient (rho) is typically between 0.3 and 0.5.
 
 ```python
-# [VERIFY API] Fay's BRR modification
-design = svy.Design(
-    wgt="finalwgt",
-    rep_weights="brr_wt1-brr_wt64",
-    rep_type="fay",
-    fay_coefficient=0.5                   # Fay's rho
+rep_wgts = svy.RepWeights(
+    prefix="brr_wt",
+    n_reps=64,
+    method=svy.EstimationMethod.BRR,
+    fay_coef=0.5                          # Fay's rho (parameter name is fay_coef)
 )
+design = svy.Design(wgt="finalwgt", rep_wgts=rep_wgts)
 sample = svy.Sample(data=data, design=design)
 ```
 
 ### Jackknife Replicate Weights
 
 ```python
-# [VERIFY API] Jackknife replicate weight design
-design = svy.Design(
-    wgt="finalwgt",
-    rep_weights="jk_wt1-jk_wt50",
-    rep_type="jkn"                        # JKn (delete-one-PSU jackknife)
+rep_wgts = svy.RepWeights(
+    prefix="jk_wt",
+    n_reps=50,
+    method=svy.EstimationMethod.JACKKNIFE # JKn (delete-one-PSU jackknife)
 )
+design = svy.Design(wgt="finalwgt", rep_wgts=rep_wgts)
 sample = svy.Sample(data=data, design=design)
 ```
 
@@ -171,16 +173,15 @@ Jackknife methods:
 
 ### Replicate Weight Column Specification
 
+Replicate weight columns are specified through the `svy.RepWeights` object using a `prefix` and `n_reps` count. The prefix must match the column naming pattern in the data (e.g., prefix `"pwgtp"` matches columns `pwgtp1`, `pwgtp2`, ..., `pwgtp80`).
+
 ```python
-# [VERIFY API] Different ways to specify replicate weight columns
-
-# Pattern with prefix and range
-design = svy.Design(wgt="pwgtp", rep_weights="pwgtp1-pwgtp80", rep_type="bootstrap")
-
-# Alternatively, an explicit list of column names may be supported:
-# rep_cols = [f"pwgtp{i}" for i in range(1, 81)]
-# design = svy.Design(wgt="pwgtp", rep_weights=rep_cols, rep_type="bootstrap")
+# Specify columns by prefix and count
+rep_wgts = svy.RepWeights(prefix="pwgtp", n_reps=80, method=svy.EstimationMethod.BOOTSTRAP)
+design = svy.Design(wgt="pwgtp", rep_wgts=rep_wgts)
 ```
+
+**Available `EstimationMethod` values:** `TAYLOR`, `BRR`, `BOOTSTRAP`, `JACKKNIFE`, `SDR`
 
 ### When to Use Replicate Weights vs. Taylor
 
@@ -200,16 +201,17 @@ design = svy.Design(wgt="pwgtp", rep_weights="pwgtp1-pwgtp80", rep_type="bootstr
 The FPC adjusts variance estimates when a substantial fraction of the population is sampled (typically > 5-10%). Without FPC, variance estimates are conservative (too large).
 
 ```python
-# [VERIFY API] FPC specification
-# FPC can be the population size per stratum or the sampling fraction
+# The Design parameter for FPC is `pop_size` (not `fpc`):
 design = svy.Design(
     stratum="stratum",
     psu="psu_id",
     wgt="weight",
-    fpc="pop_size"                        # Population size column
+    pop_size="pop_size"                   # Column name containing population size
 )
 sample = svy.Sample(data=data, design=design)
 ```
+
+> **Known issue (v0.13.0):** The `pop_size` parameter is accepted by `svy.Design` (type `str | None`, expecting a column name) but `svy.Sample` validation rejects the column at estimation time regardless of input form. FPC is non-functional in 0.13.0. Omit `pop_size` and note in your analysis that variance estimates are conservative (not FPC-adjusted). Monitor future releases for a fix.
 
 **When to apply FPC:**
 - Sampling fraction > 5% of the population within strata
@@ -260,13 +262,11 @@ svy supports weight adjustment methods to improve estimates by incorporating kno
 Post-stratification adjusts weights so that weighted sample totals match known population totals (e.g., Census counts by age/sex/race).
 
 ```python
-# [VERIFY API] Post-stratification
-# The exact API for calibration/post-stratification is not confirmed.
-# Likely pattern based on samplics lineage:
-# sample = sample.calibrate(
-#     margins={"age_group": {1: 50_000_000, 2: 60_000_000, 3: 40_000_000}},
-#     method="poststratify"
-# )
+# Post-stratification via the weighting accessor
+sample = sample.weighting.poststratify(
+    controls={"18-34": 50_000_000, "35-64": 60_000_000, "65+": 40_000_000},
+    by="age_group"
+)
 ```
 
 ### Raking (Iterative Proportional Fitting)
@@ -274,15 +274,14 @@ Post-stratification adjusts weights so that weighted sample totals match known p
 Raking adjusts weights to match marginal distributions of multiple variables simultaneously.
 
 ```python
-# [VERIFY API] Raking calibration
-# sample = sample.calibrate(
-#     margins={
-#         "gender": {1: 160_000_000, 2: 165_000_000},
-#         "age_group": {1: 50_000_000, 2: 60_000_000, 3: 40_000_000},
-#         "region": {1: 55_000_000, 2: 65_000_000, 3: 75_000_000, 4: 80_000_000},
-#     },
-#     method="raking"
-# )
+# Raking via the weighting accessor — controls is a dict of {variable: {level: target_total}}
+sample = sample.weighting.rake(
+    controls={
+        "gender": {"Male": 160_000_000, "Female": 165_000_000},
+        "age_group": {"18-34": 50_000_000, "35-64": 60_000_000, "65+": 40_000_000},
+        "region": {"NE": 55_000_000, "MW": 65_000_000, "S": 75_000_000, "W": 80_000_000},
+    }
+)
 ```
 
 ### GREG (Generalized Regression Estimator)
@@ -290,11 +289,10 @@ Raking adjusts weights to match marginal distributions of multiple variables sim
 GREG calibration uses a regression model to adjust weights, incorporating both categorical and continuous auxiliary variables.
 
 ```python
-# [VERIFY API] GREG calibration
-# sample = sample.calibrate(
-#     margins={"total_pop": 330_000_000, "mean_income": 65_000},
-#     method="greg"
-# )
+# GREG calibration via the weighting accessor
+sample = sample.weighting.calibrate(
+    controls={svy.Cat("gender"): {"Male": 160_000_000, "Female": 165_000_000}}
+)
 ```
 
 **Note:** Calibration is typically performed by the data producer before public release. Analysts working with public-use files usually do not need to calibrate — the provided weights already incorporate these adjustments. Only calibrate if you are working with raw sampling weights or need to adjust for a specific target population.
@@ -313,19 +311,26 @@ A "singleton PSU" (or "lonely PSU") occurs when a stratum contains only one prim
 
 ### Handling Options
 
-```python
-# [VERIFY API] Singleton PSU options
-# svy likely provides an option in Design or Sample for handling singletons.
-# Common approaches (following R survey package conventions):
-# - "certainty": Treat singleton strata as certainty PSUs (contribute zero variance)
-# - "adjust": Center at the grand mean instead of the stratum mean
-# - "average": Pool singleton strata with other strata
+Singleton handling is on the `sample.singleton` accessor, not on `Design`:
 
-# Possible API pattern:
-# design = svy.Design(stratum="strata", psu="psu", wgt="wgt", lonely_psu="adjust")
+```python
+# Detect singleton strata
+if sample.singleton.exists():
+    print(sample.singleton.summary())
+
+    # Handle singletons — choose one method:
+    sample = sample.singleton.certainty()    # zero variance contribution (for true certainty strata)
+    sample = sample.singleton.center()       # center at grand mean (equivalent to R's "adjust")
+    sample = sample.singleton.combine()      # combine singleton strata
+    sample = sample.singleton.collapse()     # collapse into other strata
+    sample = sample.singleton.pool()         # pool with neighboring strata
+    sample = sample.singleton.scale()        # scale variance contribution
+    sample = sample.singleton.skip()         # skip singleton strata
 ```
 
-**Best practice:** The "adjust" or "average" approach is generally safest. The "certainty" approach (zero variance contribution) is appropriate only when the stratum truly is a certainty selection. Always report how singleton PSUs were handled.
+**`SingletonHandling` enum values:** `ERROR`, `CERTAINTY`, `SKIP`, `COMBINE`, `COLLAPSE`, `POOL`, `SCALE`, `CENTER`
+
+**Best practice:** The `center()` or `pool()` approach is generally safest. The `certainty()` approach (zero variance contribution) is appropriate only when the stratum truly is a certainty selection. Always report how singleton PSUs were handled.
 
 ### Prevention
 
@@ -421,15 +426,11 @@ import polars as pl
 
 data = pl.read_parquet("data/raw/acs_pums_2022.parquet")
 
-# INTENT: ACS PUMS uses successive-difference replication (bootstrap variant)
+# INTENT: ACS PUMS uses successive-difference replication (SDR)
 # REASONING: No design variables in public-use file; must use replicate weights
 # ASSUMES: Person-level analysis using person weight and person replicate weights
-# [VERIFY API] Exact replicate weight specification syntax
-design = svy.Design(
-    wgt="pwgtp",
-    rep_weights="pwgtp1-pwgtp80",
-    rep_type="bootstrap"
-)
+rep_wgts = svy.RepWeights(prefix="pwgtp", n_reps=80, method=svy.EstimationMethod.SDR)
+design = svy.Design(wgt="pwgtp", rep_wgts=rep_wgts)
 sample = svy.Sample(data=data, design=design)
 ```
 

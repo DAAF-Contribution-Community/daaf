@@ -52,7 +52,7 @@ The result includes: point estimate, standard error (SE), 95% confidence interva
 ### Multiple Variables
 
 ```python
-# [VERIFY API] Estimate means for multiple variables at once
+# Call mean() once per variable — no multi-variable shorthand
 result_income = sample.estimation.mean("income")
 result_age = sample.estimation.mean("age")
 ```
@@ -200,7 +200,7 @@ The `by` parameter handles domain estimation correctly by keeping the full desig
 ### Multiple Grouping Variables
 
 ```python
-# [VERIFY API] Domain estimation by multiple variables
+# Multiple grouping variables passed as a tuple
 result = sample.estimation.mean("income", by=("gender", "education"))
 ```
 
@@ -211,11 +211,18 @@ result = sample.estimation.mean("income", by=("gender", "education"))
 ### Survey-Weighted Contingency Tables
 
 ```python
-# [VERIFY API] Cross-tabulation of two categorical variables
+# Cross-tabulation via prop() with by=
 result = sample.estimation.prop("employment_status", by="education_level")
 ```
 
 This produces a survey-weighted cross-tabulation showing the estimated population proportion in each cell, with design-based SEs. Equivalent to R's `svytable()` or `svyby(~var, ~by_var, design, svymean)`.
+
+For a full contingency table with chi-square test, use the `categorical.tabulate()` method:
+
+```python
+# Formal cross-tabulation with test statistics
+table = sample.categorical.tabulate(rowvar="employment_status", colvar="education_level")
+```
 
 ---
 
@@ -224,12 +231,15 @@ This produces a survey-weighted cross-tabulation showing the estimated populatio
 ### Comparing Domain Means
 
 ```python
-# [VERIFY API] Survey-weighted comparison of means across domains
-# The by parameter produces estimates for each domain; differences can be tested
+# Domain means via the by= parameter
 result = sample.estimation.mean("income", by="gender")
+
+# Formal two-group t-test via the categorical accessor
+ttest_result = sample.categorical.ttest(y="income", group="gender")
+print(ttest_result)
 ```
 
-For formal hypothesis testing of differences between domains, svy computes design-adjusted t-statistics that account for the complex sampling structure. The degrees of freedom are based on the number of PSUs minus the number of strata (not the sample size), which can substantially affect p-values for small numbers of clusters.
+For formal hypothesis testing of differences between domains, svy computes design-adjusted t-statistics that account for the complex sampling structure via `sample.categorical.ttest()`. The `group` parameter specifies the binary grouping variable. The degrees of freedom are based on the number of PSUs minus the number of strata (not the sample size), which can substantially affect p-values for small numbers of clusters.
 
 ### Key Difference from Unweighted Tests
 

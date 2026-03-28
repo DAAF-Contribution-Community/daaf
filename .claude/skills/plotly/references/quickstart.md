@@ -6,8 +6,8 @@
 # Basic install
 pip install plotly
 
-# With image export support
-pip install plotly kaleido
+# With image export support (not installed in DAAF — use plotnine for static figures)
+# pip install plotly kaleido
 
 # Using conda
 conda install -c conda-forge plotly

@@ -109,7 +109,7 @@ from sklearn.metrics import (
 )
 
 mse = mean_squared_error(y_test, y_pred)
-rmse = root_mean_squared_error(y_test, y_pred)  # Added in 1.4
+rmse = root_mean_squared_error(y_test, y_pred)  # Use this — squared param removed from mean_squared_error in 1.8
 mae = mean_absolute_error(y_test, y_pred)
 r2 = r2_score(y_test, y_pred)
 

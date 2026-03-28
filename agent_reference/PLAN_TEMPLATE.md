@@ -228,8 +228,8 @@ must_haves:
 
     - from: "YYYY-MM-DD_[Title].py"
       to: "output/figures/"
-      via: "ggplot.save() or fig.write_image()"
-      pattern: "(ggsave|write_image|savefig)"
+      via: "ggplot.save() or fig.write_html()"
+      pattern: "(ggsave|write_image|write_html|savefig)"
 
     - from: "YYYY-MM-DD_[Title]_Report.md"
       to: "output/figures/"

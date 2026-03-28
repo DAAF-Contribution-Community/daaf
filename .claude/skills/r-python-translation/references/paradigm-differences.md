@@ -382,7 +382,7 @@ The same coverage in Python requires multiple packages:
 | `fixest::feols()` | `pyfixest.feols()` | OLS/FE/IV/Poisson |
 | `fixest::etable()` | `pyfixest.etable()` | Regression tables |
 | `fixest::sunab()` | `pyfixest` with `sunab()` | Sun-Abraham DiD |
-| `survey::svyglm()` | `samplics` / `svy` skill | Survey-weighted |
+| `survey::svyglm()` | `svy` | Survey-weighted |
 | `lme4::lmer()` | `statsmodels.MixedLM` | Mixed effects |
 | `survival::coxph()` | `lifelines.CoxPHFitter` | Survival analysis |
 | `marginaleffects::slopes()` | `marginaleffects` (Python port) | Marginal effects |

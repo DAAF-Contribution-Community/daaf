@@ -179,7 +179,7 @@ Which R package?
 | linearmodels | plm + lme4 + estimatr | Medium | Requires pandas MultiIndex for panel structure |
 | scikit-learn | tidymodels / caret | Medium | Imperative fit/predict vs declarative recipe pipeline |
 | geopandas | sf + terra | Medium | shapely geometries vs sfc; different CRS handling |
-| svy | survey (Lumley) | Medium | Limited GLM family coverage; no calibration |
+| svy | survey (Lumley) | Medium | Limited GLM family coverage (gaussian/binomial/Poisson only) |
 | marimo | Quarto / RMarkdown | Medium | Reactive cells vs knit-based linear execution |
 
 **Fidelity key:** High = near-direct translation, same mental model. Medium = same capability, different API patterns. Low = fundamentally different paradigm requiring conceptual remapping.

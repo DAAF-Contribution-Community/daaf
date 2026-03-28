@@ -548,8 +548,7 @@ these as the "source" for the patterns that DAAF's Python stack translates.
 - **Homepage:** http://r-survey.r-forge.r-project.org/survey/
 - **Type:** R package documentation
 - **Last verified:** 2026-03-28
-- **DAAF Python equivalent:** samplics, or manual Taylor linearization / replicate
-  weight methods. See the DAAF svy skill for the full translation approach.
+- **DAAF Python equivalent:** svy (see DAAF svy skill)
 - **Key mapping:** No single Python package replicates the full survey package.
   DAAF's svy skill documents the multi-library approach needed for design-based
   inference in Python.
