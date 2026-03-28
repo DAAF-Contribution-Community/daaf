@@ -547,3 +547,4 @@ Load on demand -- do NOT read all at start:
 | Skill | Trigger | What It Does |
 |-------|---------|-------------|
 | `r-python-translation` | Orchestrator indicates user has R background | When debugging for an R-background user, load this skill to explain Python errors and fixes in R-equivalent terms. Load via Skill tool when directed. |
+| `stata-python-translation` | Orchestrator indicates user has Stata background | When debugging for a Stata-background user, load this skill to explain Python errors and fixes in Stata-equivalent terms. Load via Skill tool when directed. |

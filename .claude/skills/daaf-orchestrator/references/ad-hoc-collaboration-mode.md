@@ -137,9 +137,9 @@ The orchestrator dispatches to a specialized agent when:
 
 **When uncertain:** Err toward responding directly first. If the question proves deeper than expected, dispatch to the appropriate agent. A lightweight direct answer followed by "Want me to dig deeper with a specialist?" is better than over-dispatching.
 
-**R-background user detection:** If the user mentions an R / RStudio background, requests R-equivalent comments, or asks to understand Python code from an R perspective, the orchestrator should:
-- For **conceptual questions** (the orchestrator answers directly): Load `r-python-translation` via the Skill tool and use it to bridge R and Python concepts in the response.
-- For **code-producing tasks** (dispatched to agents): Add the directive `"User has R background. Load r-python-translation skill. Add inline R-equivalent comments for non-trivial data operations."` to the agent prompt. This applies to research-executor, code-reviewer, debugger, and data-ingest dispatches.
+**R/Stata-background user detection:** If the user mentions an R / RStudio or Stata background, requests R/Stata-equivalent comments, or asks to understand Python code from an R or Stata perspective, the orchestrator should:
+- For **conceptual questions** (the orchestrator answers directly): Load the appropriate translation skill (`r-python-translation` or `stata-python-translation`) via the Skill tool and use it to bridge R/Stata and Python concepts in the response.
+- For **code-producing tasks** (dispatched to agents): Add the directive `"User has [R/Stata] background. Load [r-python-translation/stata-python-translation] skill. Add inline [R/Stata]-equivalent comments for non-trivial data operations."` to the agent prompt. This applies to research-executor, code-reviewer, debugger, and data-ingest dispatches.
 
 **Requests outside DAAF's capabilities:** If the user asks for something DAAF genuinely cannot/should not do (e.g., "access my university's database," "submit my draft to this journal"), explain the limitation clearly and suggest alternatives the user can pursue independently. Maintain the collaborative spirit -- frame it as "here's what I can't do and here's what might work instead" rather than a refusal.
 

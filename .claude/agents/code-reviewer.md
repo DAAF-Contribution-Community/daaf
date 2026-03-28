@@ -988,3 +988,4 @@ Load on demand — do NOT read all at start:
 | Skill | Trigger | What It Does |
 |-------|---------|-------------|
 | `r-python-translation` | Orchestrator indicates user has R background | When reviewing code annotated with `# R:` comments for an R-background user, load this skill to verify R-equivalent annotations are accurate. Load via Skill tool when directed. |
+| `stata-python-translation` | Orchestrator indicates user has Stata background | When reviewing code annotated with `# Stata:` comments for a Stata-background user, load this skill to verify Stata-equivalent annotations are accurate. Load via Skill tool when directed. |

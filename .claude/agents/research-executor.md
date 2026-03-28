@@ -147,6 +147,7 @@ Call the skill tool only for **additional** stage-specific skills:
 | Skill | Trigger | What It Does |
 |-------|---------|-------------|
 | `r-python-translation` | Orchestrator indicates user has R background | Adds inline `# R:` equivalent comments to Python code for R-background users. Load via Skill tool when directed. |
+| `stata-python-translation` | Orchestrator indicates user has Stata background | Adds inline `# Stata:` equivalent comments to Python code for Stata-background users. Load via Skill tool when directed. |
 
 ### Step 3: Write Script
 

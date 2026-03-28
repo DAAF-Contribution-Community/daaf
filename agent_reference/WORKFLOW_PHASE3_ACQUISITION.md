@@ -67,7 +67,7 @@ Agent({
 All relative paths in referenced files resolve from BASE_DIR.
 
 Call the skill tool with name '{domain_query_skill}'.  # e.g., 'education-data-query'
-If user has R background, also include: "User has R background. Load r-python-translation skill. Add inline R-equivalent comments for non-trivial data operations."
+If user has R/Stata background, also include: "User has [R/Stata] background. Load [r-python-translation/stata-python-translation] skill. Add inline [R/Stata]-equivalent comments for non-trivial data operations."
 
 **QUERY SPECIFICATION:**
 - Dataset Path: {dataset_path}  (from datasets-reference.md, flat format e.g. "ccd/schools_ccd_directory")
@@ -270,7 +270,7 @@ Agent({
 All relative paths in referenced files resolve from BASE_DIR.
 
 Call the skill tool with name '{domain_context_skill}'.  # e.g., 'education-data-context'
-If user has R background, also include: "User has R background. Load r-python-translation skill. Add inline R-equivalent comments for non-trivial data operations."
+If user has R/Stata background, also include: "User has [R/Stata] background. Load [r-python-translation/stata-python-translation] skill. Add inline [R/Stata]-equivalent comments for non-trivial data operations."
 
 **DATA SOURCE:** {source_name}
 

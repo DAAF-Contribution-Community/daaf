@@ -209,7 +209,7 @@ All relative paths in referenced files resolve from BASE_DIR.
 
 **TASK:** Perform ONLY initial exploratory data analysis. DO NOT transform data yet.
 
-If user has R background, also include: "User has R background. Load r-python-translation skill. Add inline R-equivalent comments for non-trivial data operations."
+If user has R/Stata background, also include: "User has [R/Stata] background. Load [r-python-translation/stata-python-translation] skill. Add inline [R/Stata]-equivalent comments for non-trivial data operations."
 
 **REQUIRED ACTIONS (from data-scientist skill — preloaded via frontmatter):**
 1. Load data
@@ -247,7 +247,7 @@ Agent({
 All relative paths in referenced files resolve from BASE_DIR.
 
 **IMPORTANT:** This is script-based execution, NOT marimo. Write transformations to script files following `{BASE_DIR}/agent_reference/SCRIPT_EXECUTION_REFERENCE.md`.
-If user has R background, also include: "User has R background. Load r-python-translation skill. Add inline R-equivalent comments for non-trivial data operations."
+If user has R/Stata background, also include: "User has [R/Stata] background. Load [r-python-translation/stata-python-translation] skill. Add inline [R/Stata]-equivalent comments for non-trivial data operations."
 
 **DATA LOCATION:** {current_data_location}
 
@@ -503,7 +503,7 @@ All relative paths in referenced files resolve from BASE_DIR.
 
 Call the skill tool with name 'polars'.
 Call the skill tool with name '{modeling_library}' (one of: statsmodels, pyfixest, linearmodels, svy, geopandas, scikit-learn -- as specified in the <skill> element of Plan_Tasks.md for this task). For spatial regression tasks, geopandas IS the modeling library (via PySAL/spreg). For complex survey data, svy IS the modeling library (design-based inference with Taylor/BRR/jackknife variance).
-If user has R background, also include: "User has R background. Load r-python-translation skill. Add inline R-equivalent comments for non-trivial data operations."
+If user has R/Stata background, also include: "User has [R/Stata] background. Load [r-python-translation/stata-python-translation] skill. Add inline [R/Stata]-equivalent comments for non-trivial data operations."
 
 **IMPORTANT:** This is script-based execution, NOT marimo. Write analysis to script files following `{BASE_DIR}/agent_reference/SCRIPT_EXECUTION_REFERENCE.md`.
 
@@ -645,7 +645,7 @@ Agent({
 All relative paths in referenced files resolve from BASE_DIR.
 
 Call the skill tool with name 'plotnine'.
-If user has R background, also include: "User has R background. Load r-python-translation skill. Add inline R-equivalent comments for non-trivial data operations."
+If user has R/Stata background, also include: "User has [R/Stata] background. Load [r-python-translation/stata-python-translation] skill. Add inline [R/Stata]-equivalent comments for non-trivial data operations."
 
 **VISUALIZATION SPECIFICATION (from Plan.md):**
 {visualization_requirements}
@@ -682,7 +682,7 @@ Agent({
 All relative paths in referenced files resolve from BASE_DIR.
 
 Call the skill tool with name 'plotly'.
-If user has R background, also include: "User has R background. Load r-python-translation skill. Add inline R-equivalent comments for non-trivial data operations."
+If user has R/Stata background, also include: "User has [R/Stata] background. Load [r-python-translation/stata-python-translation] skill. Add inline [R/Stata]-equivalent comments for non-trivial data operations."
 
 **VISUALIZATION SPECIFICATION (from Plan.md):**
 {visualization_requirements}
@@ -720,7 +720,7 @@ All relative paths in referenced files resolve from BASE_DIR.
 
 ## SKILL LOADING
 Call the skill tool with name 'geopandas'.
-If user has R background, also include: "User has R background. Load r-python-translation skill. Add inline R-equivalent comments for non-trivial data operations."
+If user has R/Stata background, also include: "User has [R/Stata] background. Load [r-python-translation/stata-python-translation] skill. Add inline [R/Stata]-equivalent comments for non-trivial data operations."
 
 ## CONTEXT FROM PLAN
 [Paste relevant Plan.md methodology sections and Plan_Tasks.md task blocks]
@@ -866,7 +866,7 @@ All relative paths in referenced files resolve from BASE_DIR.
 
 Call the skill tool with name 'polars'.
 If this task involves spatial operations (spatial join, point-in-polygon, buffer, geocoding, or working with geometry columns): also call the skill tool with name 'geopandas'.
-If user has R background, also include: "User has R background. Load r-python-translation skill. Add inline R-equivalent comments for non-trivial data operations."
+If user has R/Stata background, also include: "User has [R/Stata] background. Load [r-python-translation/stata-python-translation] skill. Add inline [R/Stata]-equivalent comments for non-trivial data operations."
 
 **DATA LOCATION:** data/processed/{filename}
 
@@ -895,7 +895,7 @@ All relative paths in referenced files resolve from BASE_DIR.
 
 Call the skill tool with name 'plotnine' for static publication plots.
 Call the skill tool with name 'plotly' for interactive exploration plots.
-If user has R background, also include: "User has R background. Load r-python-translation skill. Add inline R-equivalent comments for non-trivial data operations."
+If user has R/Stata background, also include: "User has [R/Stata] background. Load [r-python-translation/stata-python-translation] skill. Add inline [R/Stata]-equivalent comments for non-trivial data operations."
 
 **DATA LOCATION:** data/processed/{filename}
 

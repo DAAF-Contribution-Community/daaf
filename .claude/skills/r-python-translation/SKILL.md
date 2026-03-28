@@ -288,6 +288,7 @@ fit = pf.feols("y ~ x1 + x2 | state + year", data=pdf, vcov={"CRV1": "state"})
 | `geopandas` | Python-side spatial data — covers sf/terra equivalents |
 | `svy` | Python-side survey analysis — covers survey (Lumley) equivalents |
 | `marimo` | Python-side notebooks — covers Quarto/RMarkdown workflow equivalents |
+| `stata-python-translation` | Parallel skill for Stata-background users — shares the same Python target stack |
 
 **Note:** Individual tool skills contain library-specific usage guidance (syntax, gotchas, performance). This skill provides the R-to-Python conceptual bridge — use both together when an R-background user is working with a specific library.
 

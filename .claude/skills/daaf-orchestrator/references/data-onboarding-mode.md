@@ -754,7 +754,7 @@ Before dispatching a profiling subagent (Stages DI-3 through DI-6), verify:
 - [ ] Documentation excerpts inlined (if provided and relevant to current part)
 - [ ] Execution command uses {BASE_DIR}/scripts/run_with_capture.sh
 - [ ] IAT documentation standards referenced
-- [ ] If user has R background: include `r-python-translation` directive in prompt ("User has R background. Load r-python-translation skill. Add inline R-equivalent comments for non-trivial data operations.")
+- [ ] If user has R/Stata background: include translation skill directive in prompt ("User has [R/Stata] background. Load [r-python-translation/stata-python-translation] skill. Add inline [R/Stata]-equivalent comments for non-trivial data operations.")
 
 ### QA Invocation Checklist
 

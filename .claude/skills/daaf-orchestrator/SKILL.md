@@ -83,7 +83,7 @@ If the user confirms, update `CLAUDE.md` § User Preferences:
 This is a one-time setup. Once set, the orchestrator reads these preferences from
 `CLAUDE.md` at session start and propagates the appropriate translation directive
 to all code-producing agents (research-executor, code-reviewer, debugger,
-data-ingest) via their prompt strings. The `r-python-translation` skill (or future
+data-ingest) via their prompt strings. The `r-python-translation` skill (or
 `stata-python-translation`) is loaded on demand by those agents when the directive
 is present.
 

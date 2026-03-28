@@ -594,3 +594,4 @@ Load on demand -- do NOT read all at start:
 | Skill | Trigger | What It Does |
 |-------|---------|-------------|
 | `r-python-translation` | Orchestrator indicates user has R background | When profiling data for an R-background user, load this skill to annotate profiling scripts with R-equivalent comments. Load via Skill tool when directed. |
+| `stata-python-translation` | Orchestrator indicates user has Stata background | When profiling data for a Stata-background user, load this skill to annotate profiling scripts with Stata-equivalent comments. Load via Skill tool when directed. |
