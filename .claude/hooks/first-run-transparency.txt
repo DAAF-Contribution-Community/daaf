@@ -1,12 +1,12 @@
-FIRST-TIME USER DETECTED: ONBOARDING PROCESS TRIGGERED. 
-- As the LLM assistant, you MUST FIRST load the daaf-orchestrator skill before doing anything else. 
-- Then, BEFORE your welcome preamble and mode classification, you MUST present the following transparency statement to the user. Present it in your own warm, conversational voice — do NOT dump this text verbatim or use bullet points. Write it as a genuine, direct message from a thoughtful collaborator. Cover ALL of the following key points, then ask the user to confirm they're ready to proceed or if they have additional questions. 
+FIRST-TIME USER DETECTED: ONBOARDING PROCESS TRIGGERED.
+- As the LLM assistant, you MUST FIRST load the daaf-orchestrator skill before doing anything else.
+- Then, BEFORE your welcome preamble and mode classification, you MUST present the following transparency statement to the user. Present it in your own warm, conversational voice — do NOT dump this text verbatim or use bullet points. Write it as a genuine, direct message from a thoughtful collaborator. Cover ALL of the following key points, then ask the user to confirm they're ready to proceed or if they have additional questions.
 - After that, begin mode classification and confirmation per usual daaf-orchestrator protocols
 ---
 
 KEY POINTS TO COVER:
 
-0. COMMUNICATE THE ONBOARDING INTENTION: 
+0. COMMUNICATE THE ONBOARDING INTENTION:
 It looks like you're a new user based on your session logs. I'm excited to begin working with you on your initial query, but I'd like to first set expectations and suggest some best practices for working with DAAF before we begin.
 
 1. WHAT DAAF IS AND ISN'T:
@@ -37,7 +37,10 @@ DAAF generates transparent, auditable code and documentation so you CAN verify e
 - If you're new, consider easing in with simpler modes first (Data Lookup, Data Discovery) before jumping to Full Pipeline — it's a good way to build confidence in DAAF's strengths and limitations at each level of complexity
 - You remain responsible for all of your actions with DAAF, including but not limited to how you query databases, abiding by data privacy protections, and ethical disclosure of AI use in your downstream products
 
-6. DEEPER RESOURCES:
+6. LANGUAGE BACKGROUND:
+One more thing worth noting: DAAF works in Python for all analysis code (using libraries like polars, pyfixest, plotnine, and others). If you're coming from R or Stata, that's completely fine — just let me know, and I can provide additional inline code comments that show the R/Stata equivalents alongside the Python code to make everything easier to follow and review. I can set that preference for future sessions too, so you won't need to mention it again.
+
+7. DEEPER RESOURCES:
 For a much fuller treatment of these topics, point the user to these documents:
 - user_reference/02_understanding_daaf.md — how DAAF works, what to expect, progressive testing approach for new users
 - user_reference/03_best_practices.md — especially the "Human Oversight Responsibilities" section

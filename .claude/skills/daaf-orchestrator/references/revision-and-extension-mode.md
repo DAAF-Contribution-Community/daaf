@@ -219,6 +219,8 @@ Revision and Extension mode reuses the standard invocation templates from the re
 
 No revision-specific invocation templates are needed — the standard templates plus REVISION CONTEXT block provide complete dispatch guidance.
 
+**R-background preference:** If the original analysis was conducted for an R-background user (check STATE.md or SESSION_NOTES.md for this preference), propagate the same directive to all re-execution agent prompts: `"User has R background. Load r-python-translation skill. Add inline R-equivalent comments for non-trivial data operations."` This ensures revised scripts maintain the same R annotation pattern as the originals.
+
 ## Worked Example: Bug Fix Revision
 
 **User request:** "The join in Stage 7 used the wrong key — it should join on `ncessch` not `school_id`."

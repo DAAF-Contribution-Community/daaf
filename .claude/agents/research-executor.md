@@ -142,6 +142,12 @@ Call the skill tool only for **additional** stage-specific skills:
 
 **Fallback:** If the orchestrator prompt does not specify a modeling library for a Stage 8.1 task, consult the `data-scientist` skill's routing tree (Related Skills > Statistical modeling section) to determine the correct library from the methodology described in the task.
 
+**Conditional cross-stage skill:**
+
+| Skill | Trigger | What It Does |
+|-------|---------|-------------|
+| `r-python-translation` | Orchestrator indicates user has R background | Adds inline `# R:` equivalent comments to Python code for R-background users. Load via Skill tool when directed. |
+
 ### Step 3: Write Script
 
 Create the script file FIRST (do NOT execute yet):

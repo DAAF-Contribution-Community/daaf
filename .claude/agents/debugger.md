@@ -541,3 +541,9 @@ Load on demand -- do NOT read all at start:
 | `agent_reference/SCRIPT_EXECUTION_REFERENCE.md` | Before writing first diagnostic script | File-first execution protocol and debug script format |
 | `agent_reference/INLINE_AUDIT_TRAIL.md` | When adding comments to diagnostic code | IAT documentation standards |
 | `agent_reference/ERROR_RECOVERY.md` | When error matches a known recovery pattern | Error type decision trees |
+
+**Conditional on-demand skill:**
+
+| Skill | Trigger | What It Does |
+|-------|---------|-------------|
+| `r-python-translation` | Orchestrator indicates user has R background | When debugging for an R-background user, load this skill to explain Python errors and fixes in R-equivalent terms. Load via Skill tool when directed. |

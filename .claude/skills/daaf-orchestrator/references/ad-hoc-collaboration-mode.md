@@ -137,6 +137,10 @@ The orchestrator dispatches to a specialized agent when:
 
 **When uncertain:** Err toward responding directly first. If the question proves deeper than expected, dispatch to the appropriate agent. A lightweight direct answer followed by "Want me to dig deeper with a specialist?" is better than over-dispatching.
 
+**R-background user detection:** If the user mentions an R / RStudio background, requests R-equivalent comments, or asks to understand Python code from an R perspective, the orchestrator should:
+- For **conceptual questions** (the orchestrator answers directly): Load `r-python-translation` via the Skill tool and use it to bridge R and Python concepts in the response.
+- For **code-producing tasks** (dispatched to agents): Add the directive `"User has R background. Load r-python-translation skill. Add inline R-equivalent comments for non-trivial data operations."` to the agent prompt. This applies to research-executor, code-reviewer, debugger, and data-ingest dispatches.
+
 **Requests outside DAAF's capabilities:** If the user asks for something DAAF genuinely cannot/should not do (e.g., "access my university's database," "submit my draft to this journal"), explain the limitation clearly and suggest alternatives the user can pursue independently. Maintain the collaborative spirit -- frame it as "here's what I can't do and here's what might work instead" rather than a refusal.
 
 **Invocation template variability:** Unlike pipeline modes, Ad Hoc tasks are inherently variable and unpredictable. The Standard Agent Prompt Structure below is a skeleton, not a rigid template. The orchestrator should adapt the prompt content to fit each specific request, providing whatever context the agent needs to do its work well. When in doubt, err toward providing more context rather than less.

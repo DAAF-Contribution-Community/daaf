@@ -982,3 +982,9 @@ Load on demand — do NOT read all at start:
 | `agent_reference/QA_CHECKPOINTS.md` | When determining stage-specific checks | QA1-QA4b checkpoint definitions and validation criteria |
 | `agent_reference/INLINE_AUDIT_TRAIL.md` | Phase 1.6 (documentation quality) | IAT documentation standards for assessing script documentation |
 | `agent_reference/SCRIPT_EXECUTION_REFERENCE.md` | Phase 3 (executing QA scripts) | File-first execution protocol and output capture |
+
+**Conditional on-demand skill:**
+
+| Skill | Trigger | What It Does |
+|-------|---------|-------------|
+| `r-python-translation` | Orchestrator indicates user has R background | When reviewing code annotated with `# R:` comments for an R-background user, load this skill to verify R-equivalent annotations are accurate. Load via Skill tool when directed. |

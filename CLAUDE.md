@@ -457,3 +457,19 @@ research/2026-03-24_College_Graduation_Analysis_Reproduction/
 | `agent_reference/MODE_TEMPLATE.md` | Engagement mode definition template |
 | `agent_reference/FRAMEWORK_INTEGRATION_CHECKLIST.md` | Comprehensive registration-point checklists for all framework component types |
 | `.claude/agents/README.md` | Agent index and usage guide |
+
+---
+
+## User Preferences
+
+User-specific preferences that the orchestrator and agents should respect. These
+defaults can be updated by the orchestrator (with user confirmation) when a user
+indicates a preference during conversation.
+
+- **Primary analysis language background:** Python
+- **Cross-language code annotations:** disabled
+  <!-- Set to "enabled" and specify language (R or Stata) to have code-producing
+       agents add inline comments showing equivalent syntax in the user's primary
+       language. The orchestrator will load the appropriate translation skill
+       (r-python-translation or stata-python-translation) and pass the annotation
+       directive to all code-producing agents. -->

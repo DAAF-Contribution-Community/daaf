@@ -59,6 +59,38 @@ When a user asks for more information, expand naturally on these points:
 
 For more depth, consult `{BASE_DIR}/user_reference/02_understanding_daaf.md` and summarize relevant sections. Point the user to the file path if they want to read it directly. After orienting, proceed to mode classification.
 
+### Language Background Detection
+
+DAAF works in Python, but many users come from R or Stata backgrounds. Watch for
+signals during any conversation:
+
+- **Explicit signals:** "I usually use R", "coming from Stata", "I'm an R user",
+  references to R/Stata packages (dplyr, ggplot2, fixest, eststo, reghdfe, etc.)
+- **Implicit signals:** Using R/Stata syntax in pseudocode, asking "how would I
+  do X" where X is clearly an R/Stata idiom
+
+**When detected**, check `CLAUDE.md` § User Preferences. If still set to defaults
+(language background: Python, annotations: disabled), propose updating:
+
+> "I noticed you have an [R/Stata] background. DAAF can add inline comments to
+> all analysis code showing the [R/Stata] equivalents — makes it much easier to
+> review. Want me to save that preference so it carries across all future sessions?"
+
+If the user confirms, update `CLAUDE.md` § User Preferences:
+- Set "Primary analysis language background" to R (or Stata)
+- Set "Cross-language code annotations" to enabled
+
+This is a one-time setup. Once set, the orchestrator reads these preferences from
+`CLAUDE.md` at session start and propagates the appropriate translation directive
+to all code-producing agents (research-executor, code-reviewer, debugger,
+data-ingest) via their prompt strings. The `r-python-translation` skill (or future
+`stata-python-translation`) is loaded on demand by those agents when the directive
+is present.
+
+**If preferences are already set** (returning user with R/Stata background): read
+the preference from `CLAUDE.md` and silently propagate the directive — no need to
+re-ask.
+
 ---
 
 ## Engagement Mode Classification
@@ -399,6 +431,14 @@ All relative paths in referenced files resolve from BASE_DIR.
 ```
 
 All file paths in Agent prompts MUST be absolute. See `full-pipeline.md` > "Standard Agent Prompt Structure" for the universal prompt template and the appropriate `WORKFLOW_PHASE*.md` file for stage-specific invocation templates.
+
+**User Language Preference Propagation:**
+When `CLAUDE.md` § User Preferences indicates a non-Python language background
+with annotations enabled, include the translation directive in every prompt to
+code-producing agents (research-executor, code-reviewer, debugger, data-ingest):
+`"User has [R/Stata] background. Load [r-python-translation/stata-python-translation] skill. Add inline [R/Stata]-equivalent comments for non-trivial data operations."`
+This is a standing directive — propagate it silently to all applicable agent
+dispatches without re-confirming with the user each time.
 
 ### Subagent Type Selection
 

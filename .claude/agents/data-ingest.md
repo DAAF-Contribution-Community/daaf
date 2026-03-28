@@ -588,3 +588,9 @@ Load on demand -- do NOT read all at start:
 | `agent_reference/STATE_TEMPLATE_ONBOARDING.md` | When reading or updating STATE.md | Expected STATE.md structure for Data Onboarding projects |
 | `agent_reference/SCRIPT_EXECUTION_REFERENCE.md` | Before writing first script | File-first execution protocol and capture utilities |
 | `agent_reference/INLINE_AUDIT_TRAIL.md` | When writing scripts with transforms | IAT documentation standards |
+
+**Conditional on-demand skill:**
+
+| Skill | Trigger | What It Does |
+|-------|---------|-------------|
+| `r-python-translation` | Orchestrator indicates user has R background | When profiling data for an R-background user, load this skill to annotate profiling scripts with R-equivalent comments. Load via Skill tool when directed. |
