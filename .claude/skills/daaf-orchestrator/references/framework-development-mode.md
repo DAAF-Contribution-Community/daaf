@@ -106,7 +106,7 @@ For ambiguous requests, ask clarifying questions before classifying.
 
 ### Exploration Protocol
 
-Launch **3 Plan subagents** in parallel to thoroughly explore the relevant existing framework state. These are read-only research agents dispatched via the Agent tool with `subagent_type: "Plan"` — they can read files and search code but cannot write. The exact focus of each subagent depends on the work type:
+Launch **3 search-agent subagents** in parallel to thoroughly explore the relevant existing framework state. These are read-only research agents dispatched via the Agent tool with `subagent_type: "search-agent"` — they can read files, search code, and fetch web pages but cannot write. The exact focus of each subagent depends on the work type:
 
 **For New Skill:**
 1. **Existing skills survey:** List all skills in the same category (data source, tool, methodology). Read 2-3 exemplar SKILL.md files for structural patterns.
@@ -169,7 +169,7 @@ Keep output under 800 words. Focus on findings, not descriptions of what you rea
 
 ### Phase 1 Exploration Prompt Template: Incorporate Learnings
 
-For the "Incorporate Learnings" work type, the 3 Plan subagents have specialized prompts:
+For the "Incorporate Learnings" work type, the 3 search-agent subagents have specialized prompts:
 
 **Subagent 1: Learnings Scan**
 ```
@@ -388,8 +388,8 @@ Phase 4 scales with complexity, mirroring Phase 2's adaptive behavior:
 | Complexity | Phase 4 Behavior |
 |-----------|-----------------|
 | **Simple** (single-file edit, count word update, cross-reference fix) | Orchestrator performs a quick consistency check directly (grep for count words, verify file paths). Skip subagent review. |
-| **Moderate** (new skill, modified agent protocol) | Launch **1 Plan subagent** for a focused completeness review against the applicable FRAMEWORK_INTEGRATION_CHECKLIST section. |
-| **Complex** (new agent, new mode, multi-component work) | Launch **3 Plan subagents** in parallel for full multi-angle review. |
+| **Moderate** (new skill, modified agent protocol) | Launch **1 search-agent subagent** for a focused completeness review against the applicable FRAMEWORK_INTEGRATION_CHECKLIST section. |
+| **Complex** (new agent, new mode, multi-component work) | Launch **3 search-agent subagents** in parallel for full multi-angle review. |
 
 For **Complex** work, launch 3 read-only research subagents in parallel:
 

@@ -22,7 +22,7 @@ After mode confirmation, briefly orient the user. Key points:
 Stage 1: Classify as Data Discovery Mode → Confirm with user
     ↓
 Stage 2: Data Exploration
-    ├─ Invoke domain explorer skill via subagent (Plan type, read-only)
+    ├─ Invoke domain explorer skill via subagent (search-agent, read-only)
     ├─ Identify available endpoints and variables
     └─ Flag variables needing source-specific deep dives
     ↓
@@ -37,7 +37,7 @@ Findings Synthesis
     └─ Present to user with escalation option
 ```
 
-**Stage 2-3 can run in parallel** when exploring multiple sources — dispatch one subagent per source using `Plan` subagent type (read-only is sufficient for exploration).
+**Stage 2-3 can run in parallel** when exploring multiple sources — dispatch one subagent per source using `search-agent` subagent type (read-only is sufficient for exploration).
 
 **Before dispatching subagents:** Read `{BASE_DIR}/agent_reference/WORKFLOW_PHASE1_DISCOVERY.md` for the detailed invocation templates (Stage 2: Domain Explorer, Stage 3: Source Deep-Dive). These templates specify the exact prompt structure, context fields, thoroughness directives, and output formats for each subagent type.
 
@@ -50,7 +50,7 @@ Data Discovery uses read-only subagents to explore data availability. Follow the
 - **Stage 2:** Subagent invokes the domain explorer skill (e.g., `education-data-explorer` for education domain)
 - **Stage 3:** Subagent invokes domain source skill(s) (e.g., `education-data-source-ccd`) for deep dives on specific sources flagged in Stage 2
 - **Skill lookup:** Review the skill inventory in the system message for the complete skill-to-source mapping
-- **Subagent type:** `Plan` (read-only — no data downloads or code execution)
+- **Subagent type:** `search-agent` (read-only — no data downloads or code execution)
 
 ## Output Format
 

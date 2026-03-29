@@ -17,7 +17,7 @@ Stage 1: Classify as Data Lookup → Confirm with user
     ↓
 Identify the single most relevant skill for the question
     ↓
-Invoke skill via subagent (Plan type, read-only)
+Invoke skill via subagent (search-agent, read-only)
     ↓
 Return direct, focused answer to user
 ```
@@ -25,7 +25,7 @@ Return direct, focused answer to user
 ## Subagent Invocation
 
 - Invoke **one** subagent with the relevant skill (e.g., `education-data-source-ccd` for a CCD variable question)
-- Use `Plan` subagent type (read-only)
+- Use `search-agent` subagent type (read-only)
 - **Always load `data-scientist`** in addition to the domain skill — it provides methodological rigor for interpreting results
 - The subagent loads the skills, finds the answer, and returns it
 - If the skill doesn't contain the answer, report that clearly rather than guessing
@@ -77,7 +77,7 @@ Provide:
 
 If the question cannot be fully answered from the available skill, say so
 clearly and suggest what additional exploration might help.""",
-    subagent_type: "Plan"
+    subagent_type: "search-agent"
 })
 ```
 

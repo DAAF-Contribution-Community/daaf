@@ -67,7 +67,7 @@ See `agent_reference/WORKFLOW_PHASE1_DISCOVERY.md` > "Pre-Flight Checklist (Full
 | Stage | Phase | Name | Primary Skill/Agent | Subagent |
 |-------|-------|------|---------------------|----------|
 | 1 | 1 | Initial Intake | — | Orchestrator |
-| 2 | 1 | Data Exploration | Domain explorer skill (e.g., `education-data-explorer`) | Plan |
+| 2 | 1 | Data Exploration | Domain explorer skill (e.g., `education-data-explorer`) | search-agent |
 | 3 | 1 | Source Deep-Dive | `*-data-source-*` | Plan |
 | **3.5** | 1 | Findings Synthesis | `research-synthesizer` agent | general-purpose |
 | 4 | 2 | Plan Creation | `data-planner` agent | Orchestrator (invokes data-planner) |
@@ -432,8 +432,8 @@ These operations may be executed without preview:
 
 | Stage | Primary Skill(s) | Subagent Type | Invocation Pattern |
 |-------|------------------|---------------|-------------------|
-| 2 | `data-scientist`, domain explorer skill | Plan | Subagent invokes skill |
-| 3 | `data-scientist`, domain source skill(s) | Plan | Subagent invokes skill(s) |
+| 2 | `data-scientist`, domain explorer skill | search-agent | Subagent invokes skill |
+| 3 | `data-scientist`, domain source skill(s) | source-researcher | Subagent invokes skill(s) |
 | 3.5 | `data-scientist` | general-purpose | `research-synthesizer` agent |
 | 4 | `data-scientist` | general-purpose | `data-planner` agent |
 | 4.5 | `data-scientist` | Plan | `plan-checker` agent |
@@ -458,12 +458,12 @@ These operations may be executed without preview:
 
 **Stage 10 Protocol:** Read STATE.md's Transformation Progress table as the sole input. For each script: (1) Check QA status (PASS / PASS_WITH_WARNINGS / N/A), (2) Aggregate WARNING items into a summary, (3) Verify no unresolved BLOCKERs exist, (4) Compose QA Aggregation Summary for PSU4. Do NOT re-read individual QA scripts — STATE.md already tracks all QA outcomes.
 - **QA substages** (5-QA through 8-QA) run code-reviewer after each script execution in the parent stage.
-- The `Plan` type is read-only and cannot write files.
+- The `search-agent` type is read-only and cannot write files.
 - All Stages 5-8 scripts must follow IAT documentation standards (`agent_reference/INLINE_AUDIT_TRAIL.md`).
 
 **Note:** Stages 2, 3, 5, and 6 use domain-specific skills resolved by the orchestrator based on the active domain configuration in Plan.md.
 
-**Skill loading mechanism:** All named agents preload `data-scientist` via frontmatter (full content injected at startup). The orchestrator's Agent prompts should only include `Call the skill tool` instructions for **additional** skills (domain skills, `polars`, `plotnine`, `plotly`, `statsmodels`, `pyfixest`, `linearmodels`, `svy`, `scikit-learn`, `geopandas`, `science-communication`). Stages 2 and 3 use unnamed `Plan` subagents — these DO require explicit skill tool calls since they have no frontmatter.
+**Skill loading mechanism:** All named agents preload `data-scientist` via frontmatter (full content injected at startup). The orchestrator's Agent prompts should only include `Call the skill tool` instructions for **additional** skills (domain skills, `polars`, `plotnine`, `plotly`, `statsmodels`, `pyfixest`, `linearmodels`, `svy`, `scikit-learn`, `geopandas`, `science-communication`). Stage 2 uses `search-agent` and Stage 3 uses `source-researcher` — both are named agents that preload `data-scientist` via frontmatter, but still require explicit skill tool calls for domain-specific skills (explorer, source).
 
 **R/Stata-background user preference:** When the user has indicated an R / RStudio or Stata background (detected during intake or mode confirmation), add this directive to all Stage 5-8 agent prompts: `"User has [R/Stata] background. Load [r-python-translation/stata-python-translation] skill. Add inline [R/Stata]-equivalent comments for non-trivial data operations."` This propagates to research-executor (code annotation), code-reviewer (annotation verification), debugger (R/Stata-framed error explanations), and data-ingest (profiling script annotation during Data Onboarding). The translation skills are loaded on demand via the Skill tool — they are NOT preloaded in any agent's frontmatter.
 
@@ -978,7 +978,7 @@ Status: Skill loaded successfully, proceeding with data exploration
 
 ### Subagent Type Selection
 
-See daaf-orchestrator SKILL.md "Subagent Type Selection" for capabilities by type (`Plan` = read-only; `general-purpose` = full capabilities including file writes).
+See daaf-orchestrator SKILL.md "Subagent Type Selection" for capabilities by type (`search-agent` = read-only; `general-purpose` = full capabilities including file writes).
 
 ## Standard Agent Prompt Structure
 

@@ -43,7 +43,7 @@ You occupy the space between execution (research-executor) and final delivery ve
 | **Scope** | Single script + its output files | All artifacts as a complete system | Cross-artifact file references and paths |
 | **Question** | "Was this the right thing to run?" | "Is the complete analysis correct and defensible?" | "Are the pieces connected?" |
 | **Output** | QA scripts (cr1-cr5) + severity report | Verification layers + Telephone Game trace | Wiring report + orphan detection |
-| **Can write files** | Yes (QA scripts) | No (read-only, Plan subagent) | No (read-only, Plan subagent) |
+| **Can write files** | Yes (QA scripts) | No (read-only, search-agent) | No (read-only, search-agent) |
 | **Catches** | Logic errors, methodology drift, data corruption in individual steps | Holistic incoherence, unsupported conclusions, missing Research Outcomes | Broken references, orphaned files, disconnected data flows |
 
 ---

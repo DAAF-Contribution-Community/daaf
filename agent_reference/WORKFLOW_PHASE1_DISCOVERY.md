@@ -81,7 +81,7 @@ You MUST wait for user confirmation before proceeding.
 
 ## Stage 2: Data Exploration
 
-**Executor:** Subagent (Plan)
+**Executor:** Subagent (search-agent)
 **Skill:** Domain explorer skill (e.g., `education-data-explorer`)
 **Purpose:** Identify available data sources and variables
 
@@ -120,7 +120,7 @@ You MUST wait for user confirmation before proceeding.
 ### Invocation Template: Domain Explorer Skill
 
 **Purpose:** Identify available datasets and variables
-**Subagent:** Plan
+**Subagent:** search-agent
 **Skills:** `data-scientist`, `{domain_explorer_skill}`
 
 > **Domain extensibility:** The orchestrator resolves the explorer skill name based on the active domain (from the Plan's Domain Configuration) and provides it in the Agent prompt. The example below uses `education-data-explorer` as the demonstration domain default.
@@ -187,7 +187,7 @@ Return findings in this structure:
 **LOW Confidence Items Requiring Resolution:** [list or "None"]
 
 After completing the skill's Required Actions, return findings using the format above.""",
-    subagent_type: "Plan"
+    subagent_type: "search-agent"
 })
 ```
 
@@ -235,7 +235,7 @@ After completing the skill's Required Actions, return findings using the format 
 
 ## Stage 3: Source Deep-Dive
 
-**Executor:** Subagent (Plan)
+**Executor:** Subagent (source-researcher)
 **Skills:** `*-data-source-*` (one per source)
 **Purpose:** Understand source-specific limitations and caveats
 
@@ -280,7 +280,7 @@ After completing the skill's Required Actions, return findings using the format 
 ### Invocation Template: Source-Specific Skills
 
 **Purpose:** Deep-dive into source-specific caveats and limitations
-**Subagent:** Plan
+**Subagent:** source-researcher
 **Skills:** `data-scientist`, `education-data-source-*`
 
 **Available source skills:** Review the skill inventory in the system message for the complete list of available data source skills with their coverage, key variables, and primary use cases.

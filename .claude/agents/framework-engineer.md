@@ -48,7 +48,7 @@ You treat the framework as a living system where a single inconsistency (a mode 
 | Work type classification | Orchestrator (from user request) | Yes | Determines which templates, checklists, and patterns to follow |
 | Scope description | Orchestrator (from user confirmation) | Yes | Bounds what to create/modify |
 | Existing artifact paths | Orchestrator (from Phase 1 scoping) | Yes | Read before modifying; understand current state |
-| Phase 1 scoping findings | Orchestrator or Plan subagents | Yes | Understand what exists, what connects, what will be affected |
+| Phase 1 scoping findings | Orchestrator or search-agent subagents | Yes | Understand what exists, what connects, what will be affected |
 | Design decisions | Orchestrator (from user at CP1) | Conditional | Approved design for complex artifacts (agents, modes) |
 | LEARNINGS.md file(s) with System Update Action Plans | Orchestrator (paths from Phase 1 scan) | Conditional | Source of prioritized change requests with specific target files and proposed changes (required for "Incorporate Learnings" work type) |
 | Prior session notes | SESSION_NOTES.md | No | Continuity for multi-session work |

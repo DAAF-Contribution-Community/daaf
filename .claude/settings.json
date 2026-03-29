@@ -37,9 +37,11 @@
       "Task(general-purpose)",
       "Task(Plan)",
       "Task(Explore)",
+      "Task(search-agent)",
       "Agent(general-purpose)",
       "Agent(Plan)",
       "Agent(Explore)",
+      "Agent(search-agent)",
       "WebSearch"
     ],
     "deny": [

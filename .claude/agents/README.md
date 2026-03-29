@@ -49,6 +49,7 @@ All agents in this directory MUST follow the canonical template at `agent_refere
 | **data-ingest** | Profile new datasets and produce comprehensive findings for skill authoring; also handles API acquisition (DI-0) | `data-ingest` | Data Onboarding Mode (Stages DI-0, DI-3 to DI-6) | Data file path(s) + format, target skill name, intended use, domain context, optional docs, API details (if DI-0) | Part-specific profiling findings for orchestrator; DI-0: acquisition script + API findings |
 | **framework-engineer** | Author, modify, and integrate DAAF framework artifacts with template compliance and cross-file consistency | `framework-engineer` | Framework Development Mode | Work type + scope + scoping findings + affected file paths | Framework artifacts (.md files) + integration checklist report |
 | **report-writer** | Synthesize pipeline artifacts into stakeholder report following REPORT_TEMPLATE.md | `report-writer` | 11, RV-4 | Plan.md, Notebook, STATE.md, LEARNINGS.md, QA summary, figures, citations, dataset metadata | Report.md (stakeholder prose) |
+| **search-agent** | Broad-purpose read-only exploration across codebases, documentation, and web sources | `search-agent` | Any (replaces generic Plan dispatches) | Search prompt, BASE_DIR, optional scope constraints | Flexible findings report with source citations and confidence assessment |
 
 ### Commonly Confused Pairs
 
@@ -64,6 +65,8 @@ When adding a new agent, ensure it doesn't overlap with these frequently confuse
 | **notebook-assembler** vs **integration-checker** | Assembler *builds* the notebook (verbatim script compilation); checker *verifies* wiring between components |
 | **report-writer** vs **research-synthesizer** | Writer synthesizes *post-execution* artifacts into a stakeholder report (Stage 11); synthesizer combines *pre-execution* research findings into planning guidance (Stage 3.5) |
 | **framework-engineer** vs **data-ingest** | Engineer creates/modifies *framework* artifacts (skills, agents, modes, config); ingest *profiles data* to produce findings for skill authoring |
+| **search-agent** vs **source-researcher** | Search-agent explores *broadly* across any information space with flexible output; source-researcher examines a *single known data source* in depth using an existing DAAF skill, producing a fixed five-section deliverable |
+| **search-agent** vs **plan-checker** | Search-agent *gathers information* before or during work (exploration); plan-checker *validates* an existing plan against six dimensions (verification) |
 
 ---
 
@@ -239,6 +242,11 @@ Shows which agents produce output consumed by other agents:
 | **Orchestrator** | framework-engineer | Work type, scope, scoping findings, affected file paths | Framework Development Mode |
 | **framework-engineer** | Orchestrator | Framework Engineering Report (status, artifacts, checklist, confidence) | Framework Development Mode |
 | **framework-engineer** | Review subagents (Plan) | Created/modified files for multi-angle review | Framework Development Mode Phase 4 |
+| **Orchestrator** | search-agent | Search prompts with scope constraints and output expectations | Any mode/stage |
+| **search-agent** | data-planner | Stage 2 exploration findings (data landscape, variables, endpoints) | Full Pipeline Stage 2 |
+| **search-agent** | research-synthesizer | Exploration baseline findings across sources | Full Pipeline Stage 3.5 |
+| **search-agent** | framework-engineer | Scoping findings (current state, affected files, patterns) | Framework Development Mode |
+| **search-agent** | Orchestrator | Flexible findings report with confidence assessment | Any mode/stage |
 
 ---
 
@@ -548,6 +556,25 @@ code-reviewer returns BLOCKER
 **Preloaded skills:** `skill-authoring`, `agent-authoring` (loaded via frontmatter)
 
 **Invocation template:** See `framework-development-mode.md` for the invocation pattern.
+
+---
+
+### search-agent
+
+**Use when:** The orchestrator needs to find information across codebases, documentation, datasets, or the web. Replaces all generic `Plan` and `Explore` subagent type dispatches with a DAAF-native agent that understands the framework's conventions and skill ecosystem.
+
+**Key behaviors:**
+- Breadth-first exploration (scan broadly, then drill into best candidates)
+- Evidence-based findings with mandatory source citations (file:line or URL)
+- Flexible output format adapted to the task (inventories, direct answers, surveys)
+- Web-capable research via WebSearch and WebFetch (unique among read-only agents)
+- Skill-aware domain knowledge (loads relevant DAAF skills for authoritative context)
+
+**Key distinction from source-researcher:** The source-researcher examines a single known data source in depth using an existing DAAF skill, producing a fixed five-section deliverable. The search-agent explores broadly across any information space with flexible output. If you already know which data source skill to investigate, use source-researcher.
+
+**Key distinction from plan-checker and data-verifier:** Those agents perform verification of completed work. The search-agent gathers information before or during work -- it explores, it does not verify.
+
+**Invocation template:** See the search-agent definition file for invocation patterns used across multiple modes and stages.
 
 ---
 

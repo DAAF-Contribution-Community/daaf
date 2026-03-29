@@ -18,7 +18,7 @@
 
 **Purpose:** [One sentence — what this agent does and why it exists.]
 
-**Invocation:** Via Agent tool with `subagent_type: "[general-purpose | Plan]"`
+**Invocation:** Via Agent tool with `subagent_type: "[general-purpose | search-agent]"`
 ```
 
 **Guidance:**
@@ -321,7 +321,7 @@ Before returning output, verify:
 ```markdown
 ## Invocation
 
-**Invocation type:** `subagent_type: "[general-purpose | Plan]"`
+**Invocation type:** `subagent_type: "[general-purpose | search-agent]"`
 
 See the appropriate `agent_reference/WORKFLOW_PHASE[N]_[NAME].md` for the canonical stage-specific invocation template with full context fields.
 For agent landscape context, see `.claude/agents/README.md`.

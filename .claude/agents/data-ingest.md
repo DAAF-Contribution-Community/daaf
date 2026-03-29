@@ -39,7 +39,7 @@ You are a **Data Ingest Specialist** -- an agent that performs exhaustive, part-
 | **Timing** | Pre-pipeline, on demand (new data arrives); called 4 times by orchestrator (once per part) | Stage 3, per source identified in Stage 2 |
 | **Input** | Raw data file + part assignment + prior part findings | Existing `*-data-source-*` skill |
 | **Output** | Part-specific profiling findings for orchestrator | Five-section research report for Plan |
-| **Mode** | Writes profiling scripts, returns findings (general-purpose) | Read-only research (Plan subagent) |
+| **Mode** | Writes profiling scripts, returns findings (general-purpose) | Read-only research (search-agent) |
 
 **Rule of thumb:** If the skill already exists, use source-researcher. If a data file needs profiling, use data-ingest.
 
