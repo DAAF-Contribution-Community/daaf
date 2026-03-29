@@ -18,6 +18,7 @@
 #   {date}_{time}_{session-short}_orchestrator.jsonl   — main session transcript
 #   {date}_{time}_{session-short}_orchestrator.md      — human-readable rendering
 #   {date}_{time}_{session-short}_subagent_{agent-id-short}.jsonl — subagent transcripts
+#   {date}_{time}_{session-short}_subagent_{agent-id-short}.md   — subagent human-readable rendering
 
 # Fail OPEN: archival is observability-only, not a security gate.
 # A malformed JSONL line should produce a gap in the archive, not kill it entirely.
@@ -262,6 +263,36 @@ JQEOF
                 if [ -n "$SA_TP" ] && [ -f "$SA_TP" ]; then
                     cp "$SA_TP" "$ARCHIVE_DIR/$SA_ARCHIVE_NAME" 2>/dev/null
                     ARCHIVE_REF="\`$SA_ARCHIVE_NAME\`"
+
+                    # Generate human-readable MD for subagent transcript
+                    # Uses a subshell so stdout goes to the subagent MD file,
+                    # not to the parent block's orchestrator MD redirect.
+                    SA_MD_ARCHIVE_NAME="${TIMESTAMP}_${SESSION_SHORT}_subagent_${SA_ID_SHORT}.md"
+                    (
+                        echo "# Subagent Session Log"
+                        echo ""
+                        echo "**Agent Type:** $SA_TYPE"
+                        echo "**Agent ID:** $SA_ID"
+                        echo "**Parent Session:** $SESSION_SHORT"
+                        echo "**Date:** $(date '+%Y-%m-%d %H:%M:%S')"
+                        echo "**DAAF Version:** $DAAF_VERSION"
+                        echo ""
+                        echo "---"
+                        echo ""
+
+                        while IFS= read -r sa_line; do
+                            [ -z "$sa_line" ] && continue
+                            printf '%s\n' "$sa_line" | jq -r -f "$JQ_PROG" 2>/dev/null \
+                                || echo "*(skipped malformed entry)*"
+                        done < "$ARCHIVE_DIR/$SA_ARCHIVE_NAME"
+
+                        echo ""
+                        echo "## 📊 Subagent Summary"
+                        echo ""
+                        echo "**Total messages:** $(wc -l < "$ARCHIVE_DIR/$SA_ARCHIVE_NAME")"
+                        echo "**Agent Type:** $SA_TYPE"
+                        echo "**Archive:** \`$SA_ARCHIVE_NAME\`"
+                    ) > "$ARCHIVE_DIR/$SA_MD_ARCHIVE_NAME" 2>/dev/null
                 else
                     ARCHIVE_REF="*(transcript not found)*"
                 fi
