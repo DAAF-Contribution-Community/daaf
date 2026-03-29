@@ -194,14 +194,14 @@ fit = pf.feols("Y ~ X1 + X2 | fe", data=df)
 
 fit.summary()                          # Print results
 fit.tidy()                             # DataFrame of coefficients
-fit.vcov("hetero")                     # Switch to robust SEs
-fit.vcov({"CRV1": "state"})            # Switch to clustered SEs
+fit.vcov("hetero")                     # Re-estimate with robust SEs (requires arg)
+fit.vcov({"CRV1": "state"})            # Re-estimate with clustered SEs
 fit.coef()                             # Coefficient values
 fit.se()                               # Standard errors
 fit.confint()                          # Confidence intervals
 fit.predict()                          # Fitted values
 fit.resid()                            # Residuals
-fit.fixef()                            # Extract fixed effects
+fit.fixef()                            # Dict of FE name → numpy array (not a DataFrame)
 ```
 
 ### Reporting

@@ -105,13 +105,16 @@ pf.etable([fit_twfe, fit_did2s])
 
 ### Working with Multiple Estimation
 
-When using `sw()`, `csw()`, or multiple dependent variables, `feols()` returns a `FixestMulti` object that can be passed directly:
+When using `sw()`, `csw()`, or multiple dependent variables, `feols()` returns a `FixestMulti` object. Pass it directly to `etable()` — do **not** wrap it in a list:
 
 ```python
 # Multiple models from single estimation call
 fits = pf.feols("Y ~ csw0(X1, X2, X3) | f1", data=data)
-pf.etable(fits)
+pf.etable(fits)              # Correct: pass FixestMulti directly
+# pf.etable([fits])          # Wrong: wrapping in list causes TypeError
 ```
+
+Individual `Feols` models from separate calls can still be combined as `pf.etable([model1, model2])`.
 
 ## coefplot: Coefficient Plots
 

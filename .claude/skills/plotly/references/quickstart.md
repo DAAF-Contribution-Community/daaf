@@ -148,8 +148,8 @@ fig.show()  # Opens in browser
 Or save to file:
 
 ```python
-fig.write_html("plot.html")  # Interactive
-fig.write_image("plot.png")  # Static (requires kaleido)
+fig.write_html("plot.html")  # Interactive (primary export in DAAF)
+# fig.write_image("plot.png")  # NOT available — kaleido not installed; use plotnine for static
 ```
 
 ### Renderer Configuration

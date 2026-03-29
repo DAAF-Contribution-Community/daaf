@@ -211,7 +211,7 @@ design = svy.Design(
 sample = svy.Sample(data=data, design=design)
 ```
 
-> **Known issue (v0.13.0):** The `pop_size` parameter is accepted by `svy.Design` (type `str | None`, expecting a column name) but `svy.Sample` validation rejects the column at estimation time regardless of input form. FPC is non-functional in 0.13.0. Omit `pop_size` and note in your analysis that variance estimates are conservative (not FPC-adjusted). Monitor future releases for a fix.
+> **Known issue (v0.13.0):** The `pop_size` parameter is accepted by `svy.Design` as a column name string (type `str | None`), but `Sample._calculate_fpc()` performs `isinstance(value, Number)` on the raw string rather than resolving the column from the DataFrame, causing a `TypeError`. FPC is non-functional in 0.13.0. **Workaround:** Omit `pop_size` and note in your analysis that variance estimates are conservative (not FPC-adjusted). If FPC is critical, apply the finite population correction factor manually to variance estimates. Monitor future releases for a fix.
 
 **When to apply FPC:**
 - Sampling fraction > 5% of the population within strata

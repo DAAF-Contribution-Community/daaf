@@ -91,6 +91,8 @@ fit.summary()
 fit.iplot()  # Event study plot
 ```
 
+**Data requirement:** The dataset must include units that are **never treated** (treatment indicator = 0 for all periods). The did2s estimator uses these never-treated units in Stage 1 to estimate time fixed effects. Datasets where all units are eventually treated will cause estimation failure (shape mismatches or singular matrix errors).
+
 **How it works:**
 1. **Stage 1**: Estimate entity and time FE using only untreated (and not-yet-treated) observations
 2. **Stage 2**: Impute the counterfactual for treated observations, then regress the residual on treatment indicators

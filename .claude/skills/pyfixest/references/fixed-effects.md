@@ -45,13 +45,14 @@ Key parameters controlling demeaning:
 ```python
 fit = pf.feols("Y ~ X1 | entity + year", data=df)
 
-# Get estimated fixed effects as a dictionary of Series
+# Get estimated fixed effects as a dict of numpy arrays
 fe_dict = fit.fixef()
-# fe_dict["entity"] → Series of entity FE estimates
-# fe_dict["year"] → Series of year FE estimates
+# fe_dict["entity"] → numpy array of entity FE estimates
+# fe_dict["year"] → numpy array of year FE estimates
+# To inspect: {name: vals[:5] for name, vals in fe_dict.items()}
 ```
 
-The `fixef()` method recovers the absorbed intercepts via the algorithm in Berge (2018). Parameters `atol` and `btol` control recovery precision.
+The `fixef()` method returns a **`dict`** mapping FE names to numpy arrays (not a DataFrame). It recovers the absorbed intercepts via the algorithm in Berge (2018). Parameters `atol` and `btol` control recovery precision.
 
 ### When to Use Fixed Effects
 

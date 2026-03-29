@@ -299,11 +299,12 @@ import plotly.io as pio
 pio.templates.default = "plotly_white"
 ```
 
-### 3. Save Both HTML and Image
+### 3. Save Output
 
 ```python
-fig.write_html("plot.html")           # Interactive
-fig.write_image("plot.png", scale=2)  # Static, high-res
+fig.write_html("plot.html")           # Interactive (primary export in DAAF)
+# fig.write_image() is NOT available — kaleido not installed
+# Use plotnine for static PNG/SVG figures in reports
 ```
 
 ### 4. Use Meaningful Hover Templates
@@ -330,7 +331,7 @@ print(df.isna().sum())
 | Problem | Solution |
 |---------|----------|
 | Plot not showing | `fig.show()` or check renderer |
-| Image export fails | `pip install -U kaleido` |
+| Image export fails | Not available in DAAF (no kaleido); use plotnine for static images |
 | Wrong colors | Check `color=` vs `marker_color=` |
 | Axis wrong type | `fig.update_xaxes(type="linear")` |
 | Slow with big data | Use `go.Scattergl` |
