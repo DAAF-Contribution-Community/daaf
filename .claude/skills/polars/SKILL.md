@@ -315,3 +315,13 @@ lf.explain()  # Show plan
 | Performance Anti-Patterns | `./references/gotchas.md` |
 | Migration from Pandas | `./references/gotchas.md` |
 | Memory Issues | `./references/gotchas.md` |
+
+## Citation
+
+When this library is used as a primary analytical tool, include in the report's
+Software & Tools references:
+
+> Vink, R. et al. Polars: Blazingly fast DataFrames [Computer software]. https://pola.rs/
+
+**Cite when:** Polars is the core data processing engine for the analysis (typically always true in DAAF pipelines).
+**Do not cite when:** Only used for trivial file I/O in a script primarily using another tool.

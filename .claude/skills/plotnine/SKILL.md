@@ -159,3 +159,13 @@ p.save("plot.png", width=10, height=8, dpi=300)
 | Labels/titles | `./references/facets-themes.md` |
 | Common errors | `./references/gotchas.md` |
 | Best practices | `./references/gotchas.md` |
+
+## Citation
+
+When this library is used as a primary analytical tool, include in the report's
+Software & Tools references:
+
+> Kibirige, H. et al. plotnine: Grammar of graphics for Python [Computer software]. https://plotnine.org/
+
+**Cite when:** plotnine is the primary visualization library producing figures included in the report.
+**Do not cite when:** Only used for quick exploratory plots not included in deliverables.

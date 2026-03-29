@@ -812,3 +812,16 @@ Use markdown cells liberally:
 | Algorithmic fairness and bias | `./references/supervised-ml.md` |
 | Deep learning orientation | `./references/supervised-ml.md` |
 | Reporting standards for ML | `./references/supervised-ml.md` |
+
+## Citation Responsibility
+
+When analytical methods from this skill's reference materials are used in DAAF analyses,
+the research-executor includes relevant citations in its structured output. Focus on
+**primary citations** — the papers and tools that directly enable the analytical results,
+not every background reference mentioned in the reference files.
+
+Each citation must include a brief rationale explaining why it is included, so the
+researcher can make informed decisions about what to keep in the final report.
+
+For the master citation index and inclusion thresholds, consult
+`agent_reference/CITATION_REFERENCE.md`.

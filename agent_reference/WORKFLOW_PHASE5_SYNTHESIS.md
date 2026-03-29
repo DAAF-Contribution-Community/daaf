@@ -20,7 +20,7 @@ Stages 11, 12. Cross-phase orchestration guidance (invocation templates, QA prot
 | Stage 10 QA summary | Stage 10 | Aggregated QA findings (WARNINGs, resolved BLOCKERs) |
 | Statistical results | Stage 8.1 (`output/analysis/`) | Analysis findings for Key Findings and interpretation |
 | Figure files | Stage 8.2 (`output/figures/`) | Visualizations to embed in Key Findings |
-| Citation text | Stage 6 (education-data-context) | Pre-formatted data source citations |
+| Citations Accumulated | STATE.md (accumulated during Stages 5-8) | Data source, methodological, software, and reporting standard citations with rationale |
 | Analysis dataset metadata | Stage 7 | Final dataset shape, column list, key statistics |
 
 ### Section-Source Mapping
@@ -35,7 +35,7 @@ The report-writer follows a systematic mapping from REPORT_TEMPLATE.md sections 
 | Quality Assurance | STATE.md QA Findings Summary | STATE.md checkpoint statuses |
 | Key Findings | Stage 7 transforms + Stage 8.1 analysis results + Stage 8.2 figures | Plan.md Research Outcomes |
 | Limitations | Plan.md Risk Register + STATE.md Runtime Risks + source caveats + suppression rates + LEARNINGS.md | STATE.md blockers |
-| Citations | Stage 6 citation text | Plan.md Data Sources table |
+| References | STATE.md Citations Accumulated | Plan.md Data Citations + CITATION_REFERENCE.md (verification) |
 
 ### Actions
 
@@ -69,8 +69,8 @@ Agent({
     **STAGE 10 QA SUMMARY:**
     {qa_summary_text}
 
-    **CITATION TEXT (from Stage 6):**
-    {citation_text}
+    **CITATIONS:** Read STATE.md > Citations Accumulated for all citation data.
+    For verification, consult agent_reference/CITATION_REFERENCE.md.
 
     **ANALYSIS DATASET METADATA:**
     {dataset_metadata}
@@ -115,7 +115,7 @@ Before invoking report-writer, verify:
 - [ ] STATE.md path provided (absolute)
 - [ ] LEARNINGS.md path provided (absolute)
 - [ ] Stage 10 QA summary inlined (not just path reference)
-- [ ] Citation text inlined from Stage 6
+- [ ] STATE.md Citations Accumulated section populated (orchestrator responsibility during Stages 5-8)
 - [ ] Analysis dataset metadata inlined (shape, columns, key stats)
 - [ ] Figure file paths listed (all files in output/figures/)
 - [ ] Date prefix specified
@@ -141,7 +141,7 @@ report-writer returns:
 - [ ] All Research Outcomes from Plan.md addressed in Key Findings
 - [ ] Executive Summary is 4-5 sentences
 - [ ] All statistics trace to execution logs or dataset metadata
-- [ ] Citation text included verbatim
+- [ ] References section populated from STATE.md > Citations Accumulated (all four subsections addressed; cross-referenced against CITATION_REFERENCE.md if available)
 - [ ] AI Use Disclosure section populated (GUIDE-LLM items addressed or marked N/A)
 
 ---
@@ -304,14 +304,14 @@ These connections between components must be valid:
 | Report → Figures | All figure references point to existing files | [ ] |
 | Notebook → Data | Import statements load from correct paths | [ ] |
 | Plan → Decisions | All methodology decisions documented | [ ] |
-| Report → Citations | Citation text matches data sources used | [ ] |
+| Report → Citations | Report References section includes all citations from STATE.md > Citations Accumulated | [ ] |
 | Files → Naming convention | All files follow YYYY-MM-DD pattern | [ ] |
 
 **Verification Protocol:**
 1. Read figure references in Report, verify paths exist
 2. Check notebook imports, verify data files exist
 3. Compare Plan decisions to implementation
-4. Verify citation sources match data used
+4. Verify Report References includes all STATE.md > Citations Accumulated entries; cross-reference against CITATION_REFERENCE.md if available
 
 #### Verification Execution Protocol
 

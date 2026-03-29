@@ -260,3 +260,16 @@ pf.panelview(data, unit, time, treat)  # Treatment pattern visualization
 | numba issues | `./references/gotchas.md` |
 | Formula parsing | `./references/gotchas.md` |
 | R fixest differences | `./references/gotchas.md` |
+
+## Citation
+
+When this library is used as a primary analytical tool, include in the report's
+Software & Tools references:
+
+> Berge, L., Butts, K., & McDermott, G. (2026). pyfixest: Fast high-dimensional fixed effects estimation [Computer software]. Based on fixest (R).
+
+**Cite when:** pyfixest is used for regression estimation (OLS, Poisson, IV) or difference-in-differences analysis.
+**Do not cite when:** Only imported but no estimation performed.
+
+For method-specific citations (e.g., individual DiD estimators or inference techniques),
+consult the reference files in this skill and `agent_reference/CITATION_REFERENCE.md`.

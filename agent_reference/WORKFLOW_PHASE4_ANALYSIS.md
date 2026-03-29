@@ -1127,7 +1127,11 @@ Stage 10 is performed by the orchestrator directly (no dedicated subagent). The 
 After each script execution:
 1. **QA:** Invoke code-reviewer immediately (see `full-pipeline.md` > Code-Reviewer Invocation)
 2. **State:** Update STATE.md transformation progress table
-3. **Next:** Proceed to next script in wave, or check gate if wave complete
+3. **Citations (Stages 7-8):** After each Stage 7 or Stage 8 script completes, check the research-executor's output for a `### Citations` section. If present, extract each citation entry and append to the appropriate STATE.md > Citations Accumulated table:
+   - `software` type --> Software & Tools table
+   - `method` type --> Methodological References table
+   Deduplicate: if a citation with the same Library/Method name already exists in STATE.md, skip it (first occurrence wins). Include the rationale, stage number, and script filename.
+4. **Next:** Proceed to next script in wave, or check gate if wave complete
 
 ### Gate Criteria (G10)
 

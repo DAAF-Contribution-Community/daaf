@@ -248,3 +248,16 @@ print(f"Index levels: {df.index.nlevels}")
 | pyfixest vs linearmodels boundary | `./references/gotchas.md` |
 | statsmodels vs linearmodels boundary | `./references/gotchas.md` |
 | Constant term handling | `./references/gotchas.md` |
+
+## Citation
+
+When this library is used as a primary analytical tool, include in the report's
+Software & Tools references:
+
+> Sheppard, K. linearmodels: Econometric models for panel data, IV/GMM, and system regression [Computer software]. https://bashtage.github.io/linearmodels/
+
+**Cite when:** linearmodels is used for panel estimation (RE, between), IV/GMM, Fama-MacBeth, or system regression (SUR, 3SLS).
+**Do not cite when:** Only imported but no estimation performed.
+
+For method-specific citations (e.g., individual estimators or techniques),
+consult the reference files in this skill and `agent_reference/CITATION_REFERENCE.md`.

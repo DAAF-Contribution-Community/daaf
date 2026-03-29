@@ -19,7 +19,7 @@
 | Key Findings | Stage 7-8 outputs + figures | Plan.md § Research Outcomes + Plan.md § Hypotheses (if any) |
 | Summary Statistics | Analysis dataset metadata + Stage 7 EDA logs | Notebook data cells |
 | Limitations | Plan.md § Risk Register (planning risks) + STATE.md Runtime Risks + STATE.md Blockers | LEARNINGS.md + source caveats |
-| Data Sources & Citations | Stage 6 citation text (verbatim) | Plan.md § Data Sources |
+| References | STATE.md > Citations Accumulated | Plan.md § Data Citations + CITATION_REFERENCE.md (verification) |
 | AI Use Disclosure | STATE.md (session metadata) + QA summary + `agent_reference/AI_DISCLOSURE_REFERENCE.md` | CLAUDE.md (model info), DAAF commit hash from orchestrator |
 | Technical Notes | Project file paths | — |
 | Appendix | Additional figures + extended methodology from Plan.md | — |
@@ -150,21 +150,37 @@ This analysis has the following limitations that should be considered when inter
 
 ---
 
-## Data Sources & Citations
+## References
 
-### Primary Data
+### Data Sources
 
-> [Full citation from domain context skill (per Plan Domain Configuration)]
+> [Full citation from STATE.md > Citations Accumulated > Data Sources]
 
-### Additional Sources
+### Methodological References
 
-> [Citation 2 if applicable]
+[Only include if methodological citations were accumulated in STATE.md.
+ Omit this subsection entirely for purely descriptive analyses.]
+
+> [Citation entry from STATE.md]
+> *Cited because: [rationale from STATE.md]*
 
 ### Software & Tools
 
-> Kim, B. H. (2026). *DAAF: Data Analyst Augmentation Framework* (Version 2.0.0) [Computer software]. https://github.com/DAAF-Contribution-Community/daaf
+> Kim, B.H. (2026). *DAAF: Data Analyst Augmentation Framework* (Version 2.0.0) [Computer software]. https://github.com/DAAF-Contribution-Community/daaf
+> *Cited because: Analysis framework*
 
-> [AUTO — report-writer: Always include the DAAF citation above. Update the version number if CITATION.cff in the DAAF repository root specifies a different version.]
+> [Additional software citations from STATE.md > Citations Accumulated > Software & Tools]
+> *Cited because: [rationale from STATE.md]*
+
+> [AUTO — report-writer: The DAAF and marimo citations are always included (pre-populated in STATE.md). Additional software citations come from STATE.md. Update the DAAF version number if CITATION.cff specifies a different version.]
+
+### Reporting Standards
+
+[Only include if reporting standard citations were accumulated in STATE.md.
+ Omit this subsection entirely if none apply.]
+
+> [Citation entry from STATE.md]
+> *Cited because: [rationale from STATE.md]*
 
 ---
 

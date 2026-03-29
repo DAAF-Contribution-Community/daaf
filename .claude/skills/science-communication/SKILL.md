@@ -205,3 +205,15 @@ The AAAS communication framework captures this as **Goal → Audience → Messag
 | Stereotype-aware color choices | `./references/accessibility-equity.md` |
 | Evolving terminology guidance | `./references/accessibility-equity.md` |
 | Identity-first vs people-first language | `./references/accessibility-equity.md` |
+
+## Citation Responsibility
+
+When reporting standards or communication frameworks from this skill shape how findings
+are presented in a DAAF report (causal language guidelines, uncertainty frameworks,
+equity-sensitive visualization principles), the report-writer includes the relevant
+citation in the report's Reporting Standards references section.
+
+Each citation must include a brief rationale explaining why it is included.
+
+For the master citation index and inclusion thresholds, consult
+`agent_reference/CITATION_REFERENCE.md`.

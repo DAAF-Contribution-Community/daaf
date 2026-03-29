@@ -91,7 +91,11 @@ When a script fails, the original keeps its appended execution log as a historic
 
 When loading a `*-data-source-*` skill for a task, check its `provenance.skill_last_updated` frontmatter field. If more than a few months old, note this in the script's header comments as a staleness caveat — the skill's coded value mappings, column definitions, or quality patterns may have drifted from the current data.
 
-### 5. Checkpoint Integration
+### 5. Citation Tracking
+
+When using analytical functionality from a loaded skill (regression, visualization, spatial analysis, etc.), check whether the skill's SKILL.md contains a `## Citation` section. If it does and the threshold is met, include the citation in your `### Citations` output. For method-specific citations, check the skill's reference files for "Cite When" guidance. Focus on primary citations that directly enable analytical results -- routine data loading and preprocessing do not warrant citation. Omit the `### Citations` section entirely for fetch-only (Stage 5) or routine cleaning scripts.
+
+### 6. Checkpoint Integration
 
 Execute the appropriate checkpoint WITHIN the script, printing results to stdout for capture:
 - **After fetch (Stage 5):** CP1 -- shape, types, missingness, year coverage
@@ -101,15 +105,15 @@ Execute the appropriate checkpoint WITHIN the script, printing results to stdout
 
 See `agent_reference/VALIDATION_CHECKPOINTS.md` for checkpoint code templates.
 
-### 6. Pre/Post State Capture
+### 7. Pre/Post State Capture
 
 Always capture and report the state before and after every transformation: row count, shape, column list, sample identifiers, and null counts for critical columns. Without state capture, data loss, unexpected nulls, and row count changes go undetected.
 
-### 7. IAT-Compliant Documentation
+### 8. IAT-Compliant Documentation
 
 Every filter, join, aggregation, and derived column must have inline comments explaining intent, reasoning, and assumptions. Sparse comments make code unauditable and block QA review. Follow `agent_reference/INLINE_AUDIT_TRAIL.md`.
 
-### 8. Single Command Execution
+### 9. Single Command Execution
 
 Every Bash tool call must contain exactly one command. No `&&`, `;`, or `||` chaining. Use absolute paths — no `cd` required:
 ```
@@ -290,6 +294,16 @@ Return findings in this structure:
 
 ### Deviations Applied
 - [Per RULE 1-3, or "None"]
+
+### Citations
+
+[Include only when analytical functionality from a loaded skill produces results.
+Omit this section entirely for fetch-only (Stage 5) or routine cleaning scripts.]
+
+| Type | Citation | Rationale |
+|------|----------|-----------|
+| software | [canonical citation from skill's Citation section] | [1 sentence: why this library warrants citation for THIS script] |
+| method | [citation for the specific estimator/technique used] | [1 sentence: why this method warrants citation] |
 
 ### Confidence Assessment
 **Overall Confidence:** [HIGH | MEDIUM | LOW]
@@ -536,3 +550,4 @@ Load on demand -- do NOT read all at start:
 | `agent_reference/QA_CHECKPOINTS.md` | When understanding QA expectations | QA checkpoint definitions (QA1-QA4b) |
 | `agent_reference/BOUNDARIES.md` | When encountering deviation decisions | Complete autonomous deviation rules |
 | `agent_reference/ERROR_RECOVERY.md` | When errors occur | Recovery procedures and escalation templates |
+| `agent_reference/CITATION_REFERENCE.md` | Citation index -- consult for citation verification when unsure whether a method or library warrants citation | On demand at Stages 7-8 (not routinely loaded) |

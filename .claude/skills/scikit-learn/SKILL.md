@@ -320,3 +320,16 @@ labels = kmeans.labels_
 | Equalized odds | `./references/fairness.md` |
 | LightGBM (LGBMClassifier, LGBMRegressor) | `./references/classification.md`, `./references/regression-ml.md` |
 | XGBoost (XGBClassifier, XGBRegressor) | `./references/classification.md`, `./references/regression-ml.md` |
+
+## Citation
+
+When this library is used as a primary analytical tool, include in the report's
+Software & Tools references:
+
+> Pedregosa, F. et al. (2011). "Scikit-learn: Machine Learning in Python." Journal of Machine Learning Research, 12, 2825-2830.
+
+**Cite when:** scikit-learn is used for machine learning models, clustering, dimensionality reduction, or cross-validation central to the analysis.
+**Do not cite when:** Only used for a single preprocessing step (e.g., StandardScaler in a pipeline where the primary model is from another library).
+
+For method-specific citations (e.g., individual algorithms or techniques),
+consult the reference files in this skill and `agent_reference/CITATION_REFERENCE.md`.

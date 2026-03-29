@@ -206,3 +206,13 @@ fig.write_html("plot.html")
 | Common errors | `./references/gotchas.md` |
 | Performance | `./references/gotchas.md` |
 | Best practices | `./references/gotchas.md` |
+
+## Citation
+
+When this library is used as a primary analytical tool, include in the report's
+Software & Tools references:
+
+> Plotly Technologies Inc. Plotly: Interactive graphing library [Computer software]. https://plotly.com/
+
+**Cite when:** Plotly is the primary visualization library producing interactive figures included in the report or notebook.
+**Do not cite when:** Only used for quick exploratory plots not included in deliverables.

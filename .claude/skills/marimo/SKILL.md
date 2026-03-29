@@ -277,3 +277,13 @@ Having issues?
 | Export & Deploy | `./references/apps-deployment.md` |
 | Common Errors | `./references/gotchas.md` |
 | Best Practices | `./references/gotchas.md` |
+
+## Citation
+
+When this library is used as a primary analytical tool, include in the report's
+Software & Tools references:
+
+> marimo team. marimo: Reactive Python notebook [Computer software]. https://marimo.io/
+
+**Cite when:** The analysis notebook is delivered as a marimo notebook (typically always true in DAAF pipelines).
+**Do not cite when:** marimo is not used for the analysis delivery format.

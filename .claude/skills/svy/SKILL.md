@@ -257,3 +257,16 @@ model = sample.glm.fit(y="bmxbmi", x=["ridageyr", svy.Cat("riagendr")], family="
 | rpy2 bridge to R survey package | `./references/regression.md` |
 | samplics migration | `./references/design-weights.md` |
 | Polars DataFrame integration | `./references/design-weights.md` |
+
+## Citation
+
+When this library is used as a primary analytical tool, include in the report's
+Software & Tools references:
+
+> Diallo, M.S. svy: Python package for complex survey sampling and analysis [Computer software]. (Formerly samplics.)
+
+**Cite when:** svy is used for survey-weighted estimation with complex survey designs (strata, PSU, replicate weights).
+**Do not cite when:** Only imported but no survey estimation performed.
+
+For method-specific citations (e.g., variance estimation techniques),
+consult the reference files in this skill and `agent_reference/CITATION_REFERENCE.md`.

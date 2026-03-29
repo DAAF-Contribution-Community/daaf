@@ -274,3 +274,16 @@ import statsmodels.formula.api as smf  # Formula API (R-style)
 | NaN / missing data | `./references/gotchas.md` |
 | DataFrame index issues | `./references/gotchas.md` |
 | statsmodels vs pyfixest | `./references/gotchas.md` |
+
+## Citation
+
+When this library is used as a primary analytical tool, include in the report's
+Software & Tools references:
+
+> Seabold, S. & Perktold, J. (2010). "Statsmodels: Econometric and Statistical Modeling with Python." *Proceedings of the 9th Python in Science Conference*.
+
+**Cite when:** statsmodels is used for GLM estimation, time series modeling, or statistical hypothesis testing central to the analysis.
+**Do not cite when:** Only used for post-estimation diagnostics supporting another library's primary estimation.
+
+For method-specific citations (e.g., individual estimators or techniques),
+consult the reference files in this skill and `agent_reference/CITATION_REFERENCE.md`.

@@ -476,7 +476,8 @@ The PSU3 checkpoint MUST include:
 After each script execution:
 1. **QA:** Invoke code-reviewer immediately (see `full-pipeline.md` > Code-Reviewer Invocation)
 2. **State:** Update STATE.md transformation progress table
-3. **Next:** Proceed to next script in wave, or check gate if wave complete
+3. **Citations (Stage 6):** After each Stage 6 script completes, extract the data source citation from the research-executor's output (the `### Citation` section in the Stage 6 output format). Append the citation to STATE.md > Citations Accumulated > Data Sources table with the source name, full citation text, stage number, and script filename. If the citation already exists in the table (duplicate source), skip it.
+4. **Next:** Proceed to next script in wave, or check gate if wave complete
 
 ---
 

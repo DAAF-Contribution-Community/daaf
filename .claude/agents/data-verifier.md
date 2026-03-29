@@ -744,3 +744,4 @@ Load on demand — do NOT read all at start:
 | `agent_reference/WORKFLOW_PHASE5_SYNTHESIS.md` | If Final Review details needed | Goal-backward verification, traditional review checklist, review outcome |
 | `agent_reference/REPORT_TEMPLATE.md` | Step 6 (Coherence) | Expected report structure for completeness verification |
 | `agent_reference/AI_DISCLOSURE_REFERENCE.md` | Pre-Delivery Checklist (disclosure verification) | GUIDE-LLM item list for verifying disclosure completeness |
+| `agent_reference/CITATION_REFERENCE.md` | Step 4 (Wiring Check — citation verification) | Citation verification index — verify Report References includes all STATE.md citations |

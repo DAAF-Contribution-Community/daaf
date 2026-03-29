@@ -51,7 +51,7 @@ Secondary distinction from **data-verifier**: the report-writer creates the repo
 | LEARNINGS.md | Orchestrator (path) | Yes | Data quality insights, methodology lessons, process observations — informs Limitations section |
 | Stage 10 QA summary | Orchestrator (inlined in prompt) | Yes | Aggregated QA findings, resolved BLOCKERs, accumulated WARNINGs — populates QA section |
 | Figure file paths | Orchestrator (list in prompt) | Yes | Exact paths for figure embedding in Key Findings section |
-| Citation text | Orchestrator (inlined from Stage 6) | Yes | Pre-formatted data source citations for Data Sources section |
+| Citation text | STATE.md > Citations Accumulated (primary); orchestrator may also inline Stage 6 citation text as fallback | Yes | Pre-formatted data source citations for Data Sources section; methodological, software, and reporting standard citations for References section |
 | Analysis dataset metadata | Orchestrator (inlined) | Yes | Final dataset shape, column list, key descriptive statistics |
 | Date prefix | Orchestrator (in prompt) | Yes | File naming convention (e.g., "2026-02-11") |
 | Project path | Orchestrator (absolute path) | Yes | Where to write Report.md |
@@ -64,7 +64,7 @@ Secondary distinction from **data-verifier**: the report-writer creates the repo
 - [ ] LEARNINGS.md path (absolute)
 - [ ] Stage 10 QA summary (inlined text)
 - [ ] Figure file paths (list with absolute paths)
-- [ ] Citation text (inlined from Stage 6)
+- [ ] Citation text (STATE.md > Citations Accumulated as primary source; Stage 6 citation text inlined as fallback)
 - [ ] Analysis dataset metadata (inlined — shape, columns, key statistics)
 - [ ] Date prefix (e.g., "2026-02-11")
 - [ ] Project path (absolute)
@@ -102,7 +102,7 @@ Each report section has defined primary and secondary source artifacts. Follow t
 | Key Findings | Stage 7 transformation outputs + Stage 8 analysis results (`output/analysis/`) + Stage 8 figures (`output/figures/`) + notebook execution logs | Plan.md Research Outcomes (for organizing findings by investigation area) + Plan.md Hypotheses (for transparent assessment) |
 | Summary Statistics | Analysis dataset metadata (from orchestrator) + Stage 7 EDA execution logs | Notebook data inspection cells |
 | Limitations | Plan.md Risk Register (planning risks) + Plan.md source caveats from Stage 3 + suppression rates from Stage 6 + LEARNINGS.md data quality entries | STATE.md blockers encountered + STATE.md Runtime Risks |
-| Data Sources & Citations | Citation text (inlined from Stage 6 by orchestrator) | Plan.md Data Sources table |
+| References | STATE.md > Citations Accumulated (primary). Plan.md Data Citations (fallback). CITATION_REFERENCE.md (verification/completeness check). | Plan.md Data Sources table |
 | AI Use Disclosure: Role + Model + Prompts + Validation + Reproducibility | STATE.md (session dates, checkpoint statuses) + QA summary + `agent_reference/AI_DISCLOSURE_REFERENCE.md` | CLAUDE.md (model info), DAAF commit hash (from orchestrator) |
 | AI Use Disclosure: Data Privacy + Post-processing + Funding | N/A — `[RESEARCHER]` fields | Report-writer inserts placeholder prompts for researcher |
 | Technical Notes: Reproducibility | Project file paths (notebook, data, scripts) | — |
@@ -134,6 +134,10 @@ Every figure referenced in the report must exist on disk. Before embedding a fig
 ### 6. Statistics Accuracy
 
 All numbers in the report (row counts, percentages, suppression rates, year ranges) must come from execution logs or dataset metadata provided by the orchestrator. Never round creatively, estimate, or hallucinate statistics. When in doubt, quote the source verbatim rather than paraphrasing a number. Misquoted statistics undermine the entire report's credibility.
+
+### 7. Citation Formatting
+
+The report's References section has four subsections: Data Sources, Methodological References, Software & Tools, and Reporting Standards. Populate each from the corresponding STATE.md > Citations Accumulated table. Each citation in Methodological References, Software & Tools, and Reporting Standards must include an italicized "*Cited because: [rationale]*" line immediately after the citation entry, using the rationale from STATE.md. Data Source citations do not need rationale lines (their relevance is self-evident from the Data Sources table). Omit Methodological References and Reporting Standards subsections entirely if their STATE.md tables are empty. Cross-reference against CITATION_REFERENCE.md if available for completeness verification.
 
 ---
 
@@ -208,7 +212,7 @@ Follow REPORT_TEMPLATE.md section by section. For each section:
 6. Key Findings (one subsection per finding, each with figure + interpretation)
 7. Summary Statistics (from dataset metadata)
 8. Limitations (minimum 3, each with impact statement)
-9. Data Sources & Citations (verbatim from Stage 6)
+9. References (from STATE.md > Citations Accumulated; Stage 6 text as fallback)
 10. AI Use Disclosure (from Step 6b — GUIDE-LLM checklist items with `[AUTO]`/`[RESEARCHER]` tags)
 11. Technical Notes (Reproducibility, Environment)
 12. Appendix (additional figures, extended methodology)
@@ -375,7 +379,7 @@ If nothing novel, emit "None" — this is the expected common case.
 - Read all four upstream files (Plan.md, Notebook, STATE.md, LEARNINGS.md) before writing any section
 - Follow the Section-Source Mapping for every report section
 - Quote the research question verbatim from Plan.md
-- Include citation text verbatim from Stage 6 (no paraphrasing)
+- Source citations from STATE.md > Citations Accumulated (primary) with Stage 6 text as fallback
 - Verify every figure path exists on disk before referencing it
 - Address every Research Outcome from Plan.md in Key Findings
 - Include at least 3 specific limitations with impact statements
@@ -473,7 +477,7 @@ Awaiting guidance before proceeding.
 4. [ ] Executive Summary is exactly 4-5 sentences
 5. [ ] All statistics trace to execution logs or dataset metadata
 6. [ ] Limitations section includes at least 3 specific limitations from pipeline artifacts, each with impact statement
-7. [ ] Citation text is included verbatim from Stage 6
+7. [ ] Citations populated from STATE.md > Citations Accumulated (all four subsections addressed)
 8. [ ] Report written to disk at the orchestrator-specified path
 
 **This report is INCOMPLETE if:**
@@ -483,7 +487,7 @@ Awaiting guidance before proceeding.
 - Limitations section is generic rather than analysis-specific
 - Figure references point to nonexistent files
 - Executive Summary exceeds 5 sentences
-- Citation text is missing or paraphrased
+- Citations section is missing or not sourced from STATE.md > Citations Accumulated
 - Research question is paraphrased rather than quoted verbatim
 
 ### Self-Check
@@ -498,7 +502,7 @@ Before returning output, verify:
 | 4 | Is every Research Outcome from the Plan addressed in Key Findings? | Add coverage for missing outcomes or note why not addressed |
 | 5 | Are Limitations specific to this analysis (not generic)? | Rewrite with specific rates, sources, and impact on conclusions |
 | 6 | Did I follow the Section-Source Mapping for every section? | Re-check each section against its primary source artifact |
-| 7 | Is the citation text included verbatim (not paraphrased)? | Replace with exact citation text from Stage 6 |
+| 7 | Are citations sourced from STATE.md > Citations Accumulated (with rationale lines for non-data-source entries)? | Read STATE.md Citations Accumulated; populate all four subsections; add "*Cited because:*" lines |
 | 8 | Would a non-technical stakeholder understand the Key Findings? | Simplify language; add context and interpretation |
 | 9 | Does the AI Use Disclosure section address all GUIDE-LLM core items (or mark N/A)? | Consult `agent_reference/AI_DISCLOSURE_REFERENCE.md`; populate missing `[AUTO]` fields; ensure `[RESEARCHER]` placeholders are clear |
 | 10 | Are `[RESEARCHER]` placeholder prompts clear enough for the researcher to complete? | Rewrite ambiguous prompts with specific questions |
@@ -533,5 +537,6 @@ Load on demand — do NOT read all at start:
 |------|-------------|---------|
 | `agent_reference/REPORT_TEMPLATE.md` | Always (at start) | Report structure to follow |
 | `agent_reference/AI_DISCLOSURE_REFERENCE.md` | At Step 6b (AI Use Disclosure drafting) | GUIDE-LLM checklist mapping, `[AUTO]`/`[RESEARCHER]` field definitions, mode-specific templates |
+| `agent_reference/CITATION_REFERENCE.md` | At Stage 11 (citation verification) | Citation verification index -- completeness check for accumulated citations |
 | `agent_reference/SCRIPT_EXECUTION_REFERENCE.md` | When execution log format is unclear | Understand how execution logs are structured in scripts |
 | `agent_reference/PLAN_TEMPLATE.md` | When Plan structure is unclear | Understand where to find Plan sections (Research Outcomes, Risk Register, etc.) |

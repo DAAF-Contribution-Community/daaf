@@ -258,6 +258,38 @@ Copy this template to `STATE.md` in the project folder when starting a Full Pipe
 
 ---
 
+## Citations Accumulated
+
+> Orchestrator populates this section after each Stage 6, 7, and 8 script completion,
+> extracting citation data from research-executor output. The report-writer reads this
+> as the primary source for the report's References section.
+> Pre-populated entries (DAAF, marimo, GUIDE-LLM) are added at project setup.
+
+### Data Sources
+
+| Source | Citation | Stage | Script |
+|--------|----------|-------|--------|
+
+### Methodological References
+
+| Method | Citation | Rationale | Stage | Script |
+|--------|----------|-----------|-------|--------|
+
+### Software & Tools
+
+| Library | Citation | Rationale | Stage | Script |
+|---------|----------|-----------|-------|--------|
+| DAAF | Kim, B.H. (2026). *DAAF: Data Analyst Augmentation Framework* (Version 2.0.0) [Computer software]. https://github.com/DAAF-Contribution-Community/daaf | Analysis framework | — | — |
+| marimo | marimo team. marimo: Reactive Python notebook [Computer software]. https://marimo.io/ | Analysis notebook format | — | — |
+
+### Reporting Standards
+
+| Standard | Citation | Rationale | Stage | Script |
+|----------|----------|-----------|-------|--------|
+| GUIDE-LLM | Feuerriegel, S. et al. (2026). "Generative AI Models in Science: Risks and Opportunities -- The GUIDE-LLM Checklist." | AI disclosure framework | — | — |
+
+---
+
 ## Final Review Log
 
 *Completed during Phase 5, Stage 12 by data-verifier.*
@@ -484,6 +516,7 @@ Update STATE.md after:
 - Before any planned break
 - Learning signals received from subagents (append to Pending buffer)
 - Flush triggers met (flush buffer → LEARNINGS.md)
+- Citations extracted from research-executor output (append to Citations Accumulated)
 - QA findings reported by code-reviewer (append to QA Findings Summary)
 - Runtime risks discovered (append to Runtime Risks)
 - Stage 10 QA aggregation (finalize QA Findings Summary)
