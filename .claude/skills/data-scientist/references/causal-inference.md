@@ -542,7 +542,7 @@ Three key decomposition results formalize these problems:
 - **Goodman-Bacon (2021)** decomposed the TWFE estimator into all the implicit 2x2
   DiD comparisons it combines, revealing that comparisons using already-treated units
   as controls receive substantial weight
-- **de Chaisemartin and d'Haultfoeuille (2020)** showed directly that some individual
+- **de Chaisemartin and D'Haultfoeuille (2020)** showed directly that some individual
   treatment effects receive negative weights in TWFE, so the aggregate is not a
   convex combination of causal effects
 - **Sun and Abraham (2021)** demonstrated that event-study specifications using TWFE
@@ -826,11 +826,19 @@ Pearl, J. (1995). "Causal Diagrams for Empirical Research." *Biometrika*, 82(4),
 
 Baker, A., Callaway, B., Cunningham, S., Goodman-Bacon, A., and Sant'Anna, P.H.C. (Forthcoming). "Difference-in-Differences Designs: A Practitioner's Guide." *Journal of Economic Literature*. arXiv:2503.13323.
 
+Baker, A., Larcker, D.F., and Wang, C.C.Y. (2022). "How Much Should We Trust Staggered Difference-in-Differences Estimates?" *Journal of Financial Economics*, 144(2), 370-395.
+
+Borusyak, K., Jaravel, X., and Spiess, J. (2024). "Revisiting Event-Study Designs: Robust and Efficient Estimation." *Review of Economic Studies*, 91(6), 3253-3285.
+
+Caetano, C., Callaway, B., and Sant'Anna, P.H.C. (2024). "Difference-in-Differences with Time-Varying Covariates." arXiv:2202.02903.
+
 Callaway, B. and Sant'Anna, P.H.C. (2021). "Difference-in-Differences with Multiple Time Periods." *Journal of Econometrics*, 225(2), 200-230. https://doi.org/10.1016/j.jeconom.2020.12.001
 
 Callaway, B., Goodman-Bacon, A., and Sant'Anna, P.H.C. (Forthcoming). "Difference-in-Differences with a Continuous Treatment." *American Economic Review*. arXiv:2107.02637.
 
-de Chaisemartin, C. and d'Haultfoeuille, X. (2020). "Two-Way Fixed Effects Estimators with Heterogeneous Treatment Effects." *American Economic Review*, 110(9), 2964-2996.
+de Chaisemartin, C. and D'Haultfoeuille, X. (2020). "Two-Way Fixed Effects Estimators with Heterogeneous Treatment Effects." *American Economic Review*, 110(9), 2964-2996.
+
+Gardner, J. (2022). "Two-Stage Differences in Differences." arXiv:2207.05943.
 
 Goodman-Bacon, A. (2021). "Difference-in-Differences with Variation in Treatment Timing." *Journal of Econometrics*, 225(2), 254-277.
 
@@ -843,6 +851,8 @@ Roth, J., Sant'Anna, P.H.C., Bilinski, A., and Poe, J. (2023). "What's Trending 
 Sant'Anna, P.H.C. and Zhao, J. (2020). "Doubly Robust Difference-in-Differences Estimators." *Journal of Econometrics*, 219(1), 101-122. https://doi.org/10.1016/j.jeconom.2020.06.003
 
 Sun, L. and Abraham, S. (2021). "Estimating Dynamic Treatment Effects in Event Studies with Heterogeneous Treatment Effects." *Journal of Econometrics*, 225(2), 175-199.
+
+Wooldridge, J.M. (2021). "Two-Way Fixed Effects, the Two-Way Mundlak Regression, and Difference-in-Differences Estimators." Working Paper. https://doi.org/10.2139/ssrn.3906345
 
 ### Key Papers -- Methods
 
