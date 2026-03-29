@@ -1,14 +1,7 @@
 ---
 name: geopandas
 description: >-
-  geopandas spatial data library for Python: manipulation, analysis, and
-  visualization of geographic data. Covers GeoDataFrames, spatial joins,
-  CRS/projections, vector operations, raster integration (rasterio, xarray),
-  choropleth mapping, interactive maps (folium), basemap tiles (contextily),
-  spatial autocorrelation, and the PySAL ecosystem. Use when working with
-  geographic data, reading/writing spatial files (Shapefile, GeoPackage,
-  GeoParquet), making maps, or running spatial statistics. For interactive
-  web-based geographic charts without spatial analysis, use plotly.
+  Spatial data: GeoDataFrames, spatial joins, CRS/projections, choropleth/interactive maps, spatial autocorrelation, PySAL. Use for geographic data, spatial files (Shapefile, GeoPackage, GeoParquet), or spatial stats. For charts without GIS use plotly.
 metadata:
   audience: research-coders
   domain: python-library
@@ -17,6 +10,8 @@ metadata:
 ---
 
 # GeoPandas Skill
+
+geopandas spatial data library for Python: manipulation, analysis, and visualization of geographic data. Covers GeoDataFrames, spatial joins, CRS/projections, vector operations, raster integration (rasterio, xarray), choropleth mapping, interactive maps (folium), basemap tiles (contextily), spatial autocorrelation, and the PySAL ecosystem. Use when working with geographic data, reading/writing spatial files (Shapefile, GeoPackage, GeoParquet), making maps, or running spatial statistics. For interactive web-based geographic charts without spatial analysis, use plotly.
 
 Comprehensive skill for spatial data analysis with geopandas and the broader Python geospatial stack. Use the decision trees below to find the right guidance, then load detailed references as needed.
 

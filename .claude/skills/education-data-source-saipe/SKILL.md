@@ -1,13 +1,7 @@
 ---
 name: education-data-source-saipe
 description: >-
-  Census Bureau Small Area Income and Poverty Estimates (SAIPE) — annual
-  model-based poverty estimates for school districts (Portal mirror; county
-  and state data not in Portal). Use when district-level poverty is needed for
-  Title I allocation interpretation, annual poverty trend analysis, or
-  school-age children in poverty estimates. Estimates have ~18-month lag and
-  no race/ethnicity disaggregation at district level — use ACS 5-year for
-  race-disaggregated poverty.
+  SAIPE — annual Census poverty estimates for school districts (Portal; county/state not in Portal). Use for district poverty, Title I context, or trends. ~18-month lag. No race/ethnicity disaggregation at district level — use ACS 5-year for that.
 metadata:
   audience: any-agent
   domain: data-source
@@ -16,6 +10,8 @@ metadata:
 ---
 
 # SAIPE Data Source Reference
+
+Census Bureau Small Area Income and Poverty Estimates (SAIPE) — annual model-based poverty estimates for school districts (Portal mirror; county and state data not in Portal). Use when district-level poverty is needed for Title I allocation interpretation, annual poverty trend analysis, or school-age children in poverty estimates. Estimates have ~18-month lag and no race/ethnicity disaggregation at district level — use ACS 5-year for race-disaggregated poverty.
 
 Reference for understanding Census Bureau poverty estimates for school districts, counties, and states. SAIPE is the only annual, district-level poverty source and the legally mandated basis for Title I education funding allocations.
 

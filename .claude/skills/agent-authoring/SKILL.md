@@ -1,20 +1,15 @@
 ---
 name: agent-authoring
 description: >-
-  Guide for creating new DAAF agent definition files with full ecosystem
-  integration. Covers the 12-section agent template, cross-agent consistency
-  standards, per-agent hook registration, skills-in-frontmatter assignment,
-  and the complete integration checklist for wiring new agents into
-  documentation. Use when adding a new specialized agent, revising agent
-  structure, configuring per-agent hooks, or verifying agent integration
-  completeness. For creating SKILL.md files (not agent definition files),
-  use skill-authoring instead.
+  Guide for creating DAAF agent definition files. Covers 12-section template, hook registration, skills-in-frontmatter, integration checklist. Use when adding or revising agents. For SKILL.md files, use skill-authoring instead.
 metadata:
   audience: any-agent
   domain: skill-development
 ---
 
 # Agent Authoring
+
+Guide for creating new DAAF agent definition files with full ecosystem integration. Covers the 12-section agent template, cross-agent consistency standards, per-agent hook registration, skills-in-frontmatter assignment, and the complete integration checklist for wiring new agents into documentation. Use when adding a new specialized agent, revising agent structure, configuring per-agent hooks, or verifying agent integration completeness. For creating SKILL.md files (not agent definition files), use skill-authoring instead.
 
 Create new DAAF agents that conform to the canonical template and are fully wired into the system documentation for discoverability and usability.
 

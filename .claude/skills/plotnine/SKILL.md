@@ -1,12 +1,7 @@
 ---
 name: plotnine
 description: >-
-  plotnine static visualization library for Python, implementing the grammar
-  of graphics (ggplot2 syntax). Covers geoms (point, line, bar, histogram,
-  boxplot, smooth), aesthetics, scales, coordinates, facets, and themes. Use
-  when creating static publication-quality figures with ggplot2-style syntax,
-  producing charts for print or reports, or working with an R ggplot2
-  background. Prefer over plotly when static output is needed.
+  plotnine static visualization (ggplot2 syntax for Python). Geoms, aesthetics, scales, coordinates, facets, themes. Use for static publication-quality figures with grammar-of-graphics syntax. For interactive charts use plotly; for maps use geopandas.
 metadata:
   audience: research-coders
   domain: python-library
@@ -15,6 +10,8 @@ metadata:
 ---
 
 # Plotnine Skill
+
+plotnine static visualization library for Python, implementing the grammar of graphics (ggplot2 syntax). Covers geoms (point, line, bar, histogram, boxplot, smooth), aesthetics, scales, coordinates, facets, and themes. Use when creating static publication-quality figures with ggplot2-style syntax, producing charts for print or reports, or working with an R ggplot2 background. Prefer over plotly when static output is needed.
 
 Quick reference for creating data visualizations with plotnine, a Python implementation of the grammar of graphics (ggplot2).
 

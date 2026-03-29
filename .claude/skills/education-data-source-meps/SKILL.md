@@ -1,13 +1,7 @@
 ---
 name: education-data-source-meps
 description: >-
-  Model Estimates of Poverty in Schools (MEPS) — Urban Institute modeled
-  estimates of school-level poverty (% students at or below 100% FPL),
-  derived from CCD and Census SAIPE data (public schools, 2009-2022, 2-3 year
-  lag). Use when analyzing school poverty rates, comparing poverty across
-  states, or when FRPL data is unreliable due to CEP enrollment. Unlike FRPL,
-  MEPS provides consistent cross-state measurement at a standardized 100% FPL
-  threshold. Public schools only.
+  MEPS — Urban Institute modeled school-level poverty (% at 100% FPL), from CCD + SAIPE (public schools, 2009-2022, 2-3yr lag). Use when FRPL is unreliable due to CEP. Consistent cross-state measurement. Public schools only.
 metadata:
   audience: any-agent
   domain: data-source
@@ -16,6 +10,8 @@ metadata:
 ---
 
 # MEPS Data Source Reference
+
+Model Estimates of Poverty in Schools (MEPS) — Urban Institute modeled estimates of school-level poverty (% students at or below 100% FPL), derived from CCD and Census SAIPE data (public schools, 2009-2022, 2-3 year lag). Use when analyzing school poverty rates, comparing poverty across states, or when FRPL data is unreliable due to CEP enrollment. Unlike FRPL, MEPS provides consistent cross-state measurement at a standardized 100% FPL threshold. Public schools only.
 
 School-level poverty measure from the Urban Institute that is **comparable across states and time**, unlike Free/Reduced-Price Lunch (FRPL) data.
 

@@ -1,15 +1,7 @@
 ---
 name: election-data-source-countypres
 description: >-
-  County Presidential Election Returns 2000-2024 from MIT Election Data and
-  Science Lab (MEDSL). Use when analyzing county-level presidential vote
-  shares, party trends, turnout, or geographic voting patterns. Key join
-  column county_fips enables linking to census, education (CCD/SAIPE), and
-  demographic datasets. Requires Harvard Dataverse API key
-  (HARVARD_DATAVERSE_API_KEY env var). Categorical variables use uppercase
-  strings, not Portal integer codes. Critical caveat: naive mode='TOTAL'
-  filtering silently drops ~1,000 counties in 2020+ data — use 3-pattern
-  reconstruction.
+  County Presidential Returns 2000-2024 (MIT MEDSL). Vote shares, party trends, turnout by county_fips (joins census/education data). Requires HARVARD_DATAVERSE_API_KEY. Critical: mode='TOTAL' drops ~1K counties post-2020 — use 3-pattern reconstruction
 metadata:
   audience: any-agent
   domain: data-source
@@ -18,6 +10,8 @@ metadata:
 ---
 
 # County Presidential Data Source Reference
+
+County Presidential Election Returns 2000-2024 from MIT Election Data and Science Lab (MEDSL). Use when analyzing county-level presidential vote shares, party trends, turnout, or geographic voting patterns. Key join column county_fips enables linking to census, education (CCD/SAIPE), and demographic datasets. Requires Harvard Dataverse API key (HARVARD_DATAVERSE_API_KEY env var). Categorical variables use uppercase strings, not Portal integer codes. Critical caveat: naive mode='TOTAL' filtering silently drops ~1,000 counties in 2020+ data — use 3-pattern reconstruction.
 
 The authoritative source for county-level U.S. presidential election returns spanning 2000-2024. Provides candidate-level vote counts across all 50 states and DC, enabling vote share analysis, partisan trend mapping, and cross-domain geographic research via FIPS code joins.
 

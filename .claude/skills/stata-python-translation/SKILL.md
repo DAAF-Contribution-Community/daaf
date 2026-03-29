@@ -1,15 +1,7 @@
 ---
 name: stata-python-translation
 description: >-
-  Stata-to-Python translation reference for quantitative social science
-  data analysis. Maps Stata commands and packages (reghdfe, xtreg, ivregress,
-  margins, esttab, svy:, graph twoway) to DAAF Python equivalents (polars,
-  pyfixest, statsmodels, linearmodels, marginaleffects, svy, plotnine).
-  Use when user mentions Stata background, requests Stata-equivalent code
-  comments, needs to understand Python analysis code from a Stata perspective,
-  or wants to translate Stata data analysis concepts to Python. Covers paradigm
-  differences, command-by-command operation translations, regression modeling,
-  causal inference, visualization, and workflow adaptation.
+  Stata-to-Python translation for data analysis. Maps Stata commands (reghdfe, xtreg, ivregress, margins, esttab, svy:) to Python (polars, pyfixest, statsmodels, svy). Use when user has Stata background or requests Stata-equivalent code comments.
 metadata:
   audience: research-coders
   domain: research-methodology
@@ -17,6 +9,8 @@ metadata:
 ---
 
 # Stata-to-Python Translation Skill
+
+Stata-to-Python translation reference for quantitative social science data analysis. Maps Stata commands and packages (reghdfe, xtreg, ivregress, margins, esttab, svy:, graph twoway) to DAAF Python equivalents (polars, pyfixest, statsmodels, linearmodels, marginaleffects, svy, plotnine). Use when user mentions Stata background, requests Stata-equivalent code comments, needs to understand Python analysis code from a Stata perspective, or wants to translate Stata data analysis concepts to Python. Covers paradigm differences, command-by-command operation translations, regression modeling, causal inference, visualization, and workflow adaptation.
 
 Cross-language translation reference for researchers moving between the Stata and Python data analysis ecosystems. This skill maps Stata commands, idioms, and workflows to their DAAF Python equivalents so that Stata-background users can audit, understand, and learn from DAAF-produced code, and so that code-producing agents can annotate their output with Stata equivalents when directed.
 

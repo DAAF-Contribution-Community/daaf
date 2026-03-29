@@ -1,15 +1,7 @@
 ---
 name: education-data-source-ipeds
 description: >-
-  IPEDS (Integrated Postsecondary Education Data System) — the primary federal
-  data system for ~6,500 U.S. postsecondary institutions, comprising 12+
-  annual survey components: enrollment, completions, graduation rates, finance,
-  financial aid, admissions, human resources, and institutional characteristics
-  (1980-present, varies by component). Use when analyzing postsecondary
-  enrollment, degree completions by CIP code, institutional finances, or
-  admissions data. Graduation rates track first-time full-time students only
-  (150% cohort). Cross-sector finance comparisons require care due to GASB vs.
-  FASB accounting.
+  IPEDS — primary federal postsecondary data (~6,500 institutions, 1980-present): enrollment, completions, graduation rates, finance, aid, admissions, HR. For college/university analysis. Grad rates = first-time full-time; finance needs GASB/FASB care.
 metadata:
   audience: any-agent
   domain: data-source
@@ -18,6 +10,8 @@ metadata:
 ---
 
 # IPEDS Data Source Reference
+
+IPEDS (Integrated Postsecondary Education Data System) — the primary federal data system for ~6,500 U.S. postsecondary institutions, comprising 12+ annual survey components: enrollment, completions, graduation rates, finance, financial aid, admissions, human resources, and institutional characteristics (1980-present, varies by component). Use when analyzing postsecondary enrollment, degree completions by CIP code, institutional finances, or admissions data. Graduation rates track first-time full-time students only (150% cohort). Cross-sector finance comparisons require care due to GASB vs. FASB accounting.
 
 Comprehensive guide to understanding and using IPEDS data correctly. IPEDS is the most widely used source for postsecondary education data but has significant complexities — including sector-specific accounting standards, cohort-limited graduation rates, and integer-encoded categorical variables — that users must understand.
 

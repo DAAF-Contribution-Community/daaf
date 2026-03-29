@@ -1,13 +1,7 @@
 ---
 name: education-data-source-eada
 description: >-
-  Equity in Athletics Disclosure Act (EADA) data for college athletics gender
-  equity analysis covering ~2,000+ institutions (2002-2021). Use when
-  analyzing athletic participation, coaching staff, salaries, expenses,
-  revenues, or athletic aid by gender at colleges/universities, or
-  understanding Title IX context in athletics. EADA is NOT Title IX
-  compliance data. Note: no sector column; join to IPEDS on unitid to filter
-  by institution type.
+  EADA — college athletics gender equity (~2,000+ institutions, 2002-2021). Participation, coaching, salaries, expenses, revenues, athletic aid by gender. Not Title IX compliance data. No sector column; join IPEDS on unitid for institution type.
 metadata:
   audience: any-agent
   domain: data-source
@@ -16,6 +10,8 @@ metadata:
 ---
 
 # EADA Data Source Reference
+
+Equity in Athletics Disclosure Act (EADA) data for college athletics gender equity analysis covering ~2,000+ institutions (2002-2021). Use when analyzing athletic participation, coaching staff, salaries, expenses, revenues, or athletic aid by gender at colleges/universities, or understanding Title IX context in athletics. EADA is NOT Title IX compliance data. Note: no sector column; join to IPEDS on unitid to filter by institution type.
 
 The EADA provides the only standardized, publicly available dataset on college athletics participation, coaching, finances, and athletic aid by gender across ~2,000+ postsecondary institutions, enabling gender equity analysis in intercollegiate athletics.
 

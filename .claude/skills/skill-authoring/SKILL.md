@@ -1,19 +1,15 @@
 ---
 name: skill-authoring
 description: >-
-  Guide for creating and auditing DAAF agent skills. Covers SKILL.md format,
-  frontmatter requirements and validation rules, controlled vocabulary for
-  metadata, progressive disclosure patterns, decision trees, reference files,
-  and bundled resource organization. Use when creating a new skill, reviewing
-  or auditing skill structure and frontmatter, or debugging skill loading and
-  triggering issues. For creating agent definition files (.claude/agents/*.md),
-  use agent-authoring instead.
+  Guide for creating and auditing DAAF skills (SKILL.md). Covers frontmatter, metadata vocabulary, progressive disclosure, decision trees, reference files. Use when creating, reviewing, or debugging skill loading. For agent files, use agent-authoring.
 metadata:
   audience: any-agent
   domain: skill-development
 ---
 
 # Skill Authoring
+
+Guide for creating and auditing DAAF agent skills. Covers SKILL.md format, frontmatter requirements and validation rules, controlled vocabulary for metadata, progressive disclosure patterns, decision trees, reference files, and bundled resource organization. Use when creating a new skill, reviewing or auditing skill structure and frontmatter, or debugging skill loading and triggering issues. For creating agent definition files (.claude/agents/*.md), use agent-authoring instead.
 
 Quick reference for creating well-structured Skills. Use decision trees below to find guidance, then load detailed references as needed.
 
@@ -170,7 +166,8 @@ Content here.
 | Component | Limit | Notes |
 |-----------|-------|-------|
 | Name | 64 chars | Lowercase hyphen-case |
-| Description | 1024 chars | Loaded at startup for all skills |
+| Description (frontmatter) | 250 chars | **Hard limit** — truncated at 250 chars in system prompt; all agents see this |
+| Description (body) | ~500 chars | Full description as plain paragraph after `# Title`; loaded with skill |
 | SKILL.md body | <500 lines | Guideline, not enforced |
 | SKILL.md body | <5000 words | Keep concise |
 | Metadata per skill | ~100 words | Always in context |
@@ -191,6 +188,9 @@ Content here.
 
 - Before creating a new skill, read 1-2 existing skills of the same type as structural exemplars (e.g., for data source skills, read an existing data source SKILL.md; for tool skills, read `polars` or `plotnine`)
 - Include "what it does" AND "when to use it" in description
+- Keep frontmatter description ≤250 chars — this is the ONLY text agents see when deciding whether to load a skill; it gets truncated at 250 chars in the system prompt
+- Preserve the full description as a plain paragraph immediately after the `# Title` heading in the body — this provides complete context once the skill is loaded
+- Prioritize in the 250-char budget: (1) what it is, (2) key triggers/use cases, (3) disambiguation from similar skills (e.g., "For FE use pyfixest; for GLM use statsmodels")
 - Write descriptions in third person ("Processes files" not "I help you process files")
 - Make descriptions slightly "pushy" to combat undertriggering
 - Front-load important words in description (may be truncated in UI)

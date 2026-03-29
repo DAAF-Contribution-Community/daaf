@@ -1,13 +1,7 @@
 ---
 name: education-data-source-crdc
 description: >-
-  Civil Rights Data Collection (CRDC) — mandatory biennial OCR survey of all
-  U.S. public schools measuring educational opportunity and civil rights
-  compliance (2011-2021). Use when analyzing school discipline disparities by
-  race/disability, course access equity, harassment, restraint/seclusion, or
-  chronic absenteeism. Data disaggregated by race, sex, disability, and
-  English learner status. Note: 2020-21 is COVID-impacted and not directly
-  comparable to other years; 2011-14 are sampled, not universe.
+  CRDC — biennial OCR survey of all U.S. public schools (2011-2021). Discipline, course access, harassment, restraint/seclusion by race/sex/disability/EL. Use for civil rights and equity analysis. 2020-21 COVID-impacted; 2011-14 sampled, not universe.
 metadata:
   audience: any-agent
   domain: data-source
@@ -16,6 +10,8 @@ metadata:
 ---
 
 # CRDC Data Source Reference
+
+Civil Rights Data Collection (CRDC) — mandatory biennial OCR survey of all U.S. public schools measuring educational opportunity and civil rights compliance (2011-2021). Use when analyzing school discipline disparities by race/disability, course access equity, harassment, restraint/seclusion, or chronic absenteeism. Data disaggregated by race, sex, disability, and English learner status. Note: 2020-21 is COVID-impacted and not directly comparable to other years; 2011-14 are sampled, not universe.
 
 The Civil Rights Data Collection is a mandatory biennial survey of all U.S. public schools measuring educational opportunity and civil rights compliance. It is the only national source for school-level discipline disparities, course access equity, harassment, and restraint/seclusion data disaggregated by race, sex, disability, and English learner status.
 

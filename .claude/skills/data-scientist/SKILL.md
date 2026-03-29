@@ -1,23 +1,15 @@
 ---
 name: data-scientist
 description: >-
-  Rigorous data science methodology and mindset for Python research. Covers
-  EDA, data validation, transformation verification, documentation standards,
-  visualization design, descriptive analysis, statistical modeling, causal
-  inference method selection (IV, DiD, RD, synthetic control), unsupervised
-  analysis (clustering, PCA, UMAP), supervised ML methodology (prediction vs.
-  inference, cross-validation, model interpretation, fairness), and geospatial
-  analysis. Provides methodology decisions and analytical approach guidance.
-  For implementation syntax, load the tool-specific skill (polars, statsmodels,
-  plotnine, pyfixest, scikit-learn, geopandas, etc.). Use for any data
-  analysis, exploration, transformation, or modeling task — especially when
-  choosing methods, checking assumptions, or structuring an analysis.
+  Data science methodology for Python research: EDA, validation, causal inference (IV, DiD, RD, synthetic control), clustering/PCA/UMAP, supervised ML, geospatial, visualization. Method selection guidance. For syntax, load tool-specific skills.
 metadata:
   audience: any-agent
   domain: research-methodology
 ---
 
 # Data Scientist Skill
+
+Rigorous data science methodology and mindset for Python research. Covers EDA, data validation, transformation verification, documentation standards, visualization design, descriptive analysis, statistical modeling, causal inference method selection (IV, DiD, RD, synthetic control), unsupervised analysis (clustering, PCA, UMAP), supervised ML methodology (prediction vs. inference, cross-validation, model interpretation, fairness), and geospatial analysis. Provides methodology decisions and analytical approach guidance. For implementation syntax, load the tool-specific skill (polars, statsmodels, plotnine, pyfixest, scikit-learn, geopandas, etc.). Use for any data analysis, exploration, transformation, or modeling task — especially when choosing methods, checking assumptions, or structuring an analysis.
 
 Establishes a rigorous, methodical approach to data science work. This skill is about *how* to think and work, not specific tools. Load specialized skills (polars, plotnine, plotly, marimo, etc.) for tool-specific guidance.
 

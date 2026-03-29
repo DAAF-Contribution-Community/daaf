@@ -1,15 +1,7 @@
 ---
 name: scikit-learn
 description: >-
-  General-purpose machine learning with scikit-learn. Covers unsupervised
-  methods (clustering, GMM, PCA, t-SNE, UMAP, manifold learning, evaluation
-  metrics), supervised methods (classification, prediction-focused regression
-  via Ridge/Lasso/ensemble methods, model evaluation, cross-validation), and
-  shared infrastructure (preprocessing, Pipeline construction, feature
-  selection). Use when performing cluster analysis, dimension reduction,
-  classification, prediction-focused regression, or model evaluation in
-  Python. For econometric regression (OLS, FE, IV, DiD), see pyfixest and
-  statsmodels skills instead.
+  Machine learning: clustering, PCA/t-SNE/UMAP, classification, prediction regression (Ridge/Lasso/ensemble), cross-validation, Pipelines. For unsupervised analysis, classification, or prediction. For econometric regression use pyfixest/statsmodels.
 metadata:
   audience: research-coders
   domain: python-library
@@ -18,6 +10,8 @@ metadata:
 ---
 
 # scikit-learn Skill
+
+General-purpose machine learning with scikit-learn. Covers unsupervised methods (clustering, GMM, PCA, t-SNE, UMAP, manifold learning, evaluation metrics), supervised methods (classification, prediction-focused regression via Ridge/Lasso/ensemble methods, model evaluation, cross-validation), and shared infrastructure (preprocessing, Pipeline construction, feature selection). Use when performing cluster analysis, dimension reduction, classification, prediction-focused regression, or model evaluation in Python. For econometric regression (OLS, FE, IV, DiD), see pyfixest and statsmodels skills instead.
 
 Comprehensive skill for machine learning in Python with scikit-learn. Covers unsupervised methods (clustering, decomposition, manifold learning), supervised methods (classification, regression), and shared infrastructure (preprocessing, pipelines, evaluation). Use decision trees below to find the right guidance, then load detailed references.
 

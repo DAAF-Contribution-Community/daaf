@@ -1,19 +1,15 @@
 ---
 name: daaf-orchestrator
 description: >-
-  Operational framework for the DAAF orchestrator agent. Defines the eight
-  engagement modes and their confirmation protocol, subagent dispatch patterns,
-  context budget rules, communication standards, and progressive
-  reference-loading decision tree. Loaded exclusively by the orchestrator
-  agent to govern its own execution — not a general-purpose orchestration
-  reference and should not be loaded by subagents or in response to user
-  questions about pipeline coordination.
+  Operational framework for the DAAF orchestrator. Defines engagement modes, confirmation protocol, subagent dispatch, context budget, and reference-loading. Loaded exclusively by the orchestrator — not for subagents or user questions.
 metadata:
   audience: research-orchestrator
   domain: research-orchestration
 ---
 
 # DAAF Orchestrator Framework
+
+Operational framework for the DAAF orchestrator agent. Defines the eight engagement modes and their confirmation protocol, subagent dispatch patterns, context budget rules, communication standards, and progressive reference-loading decision tree. Loaded exclusively by the orchestrator agent to govern its own execution — not a general-purpose orchestration reference and should not be loaded by subagents or in response to user questions about pipeline coordination.
 
 ## Identity & Mission
 

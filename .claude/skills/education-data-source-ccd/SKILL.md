@@ -1,14 +1,7 @@
 ---
 name: education-data-source-ccd
 description: >-
-  Common Core of Data (CCD) — the federal complete-universe database of all
-  U.S. public K-12 schools and districts (~100,000 schools, ~18,000
-  districts), collecting enrollment, staffing, finance, and directory data
-  annually (1986-present). Use when analyzing public school enrollment by
-  grade/race/sex, district finances, school staffing, or directory attributes.
-  Public schools and districts only; excludes private schools and
-  postsecondary. Note significant variable encoding and race/ethnicity
-  definition changes over time.
+  CCD — federal universe of all U.S. public K-12 schools (~100K) and districts (~18K). Enrollment, staffing, finance, directory data (1986-present). Use for public school analysis by grade/race/sex. Public only; excludes private and postsecondary.
 metadata:
   audience: any-agent
   domain: data-source
@@ -17,6 +10,8 @@ metadata:
 ---
 
 # CCD Data Source Reference
+
+Common Core of Data (CCD) — the federal complete-universe database of all U.S. public K-12 schools and districts (~100,000 schools, ~18,000 districts), collecting enrollment, staffing, finance, and directory data annually (1986-present). Use when analyzing public school enrollment by grade/race/sex, district finances, school staffing, or directory attributes. Public schools and districts only; excludes private schools and postsecondary. Note significant variable encoding and race/ethnicity definition changes over time.
 
 The CCD is the Department of Education's comprehensive, annual, national database of all public elementary and secondary schools and school districts in the United States. It is the only federal dataset that provides a complete universe census (not a sample) of U.S. public K-12 education.
 

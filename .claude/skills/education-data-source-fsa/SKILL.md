@@ -1,13 +1,7 @@
 ---
 name: education-data-source-fsa
 description: >-
-  Federal Student Aid (FSA) — institutional-level Title IV aid data for
-  ~5,500 postsecondary institutions, covering Pell Grants, Direct and PLUS
-  loans, campus-based aid (FWS, FSEOG, Perkins), financial responsibility
-  composite scores, and 90/10 revenue metrics (1999-2021, varies by dataset).
-  Use when analyzing Pell Grant distribution by institution type, student loan
-  volume, campus-based aid allocation, or for-profit financial health and
-  90/10 compliance. Identified by IPEDS unitid.
+  FSA — Title IV aid at institution level (~5,500 institutions, 1999-2021). Pell Grants, Direct/PLUS loans, campus-based aid, financial responsibility scores, 90/10 metrics. Use for aid distribution, loan volume, or for-profit analysis. By unitid.
 metadata:
   audience: any-agent
   domain: data-source
@@ -16,6 +10,8 @@ metadata:
 ---
 
 # FSA Data Source Reference
+
+Federal Student Aid (FSA) — institutional-level Title IV aid data for ~5,500 postsecondary institutions, covering Pell Grants, Direct and PLUS loans, campus-based aid (FWS, FSEOG, Perkins), financial responsibility composite scores, and 90/10 revenue metrics (1999-2021, varies by dataset). Use when analyzing Pell Grant distribution by institution type, student loan volume, campus-based aid allocation, or for-profit financial health and 90/10 compliance. Identified by IPEDS unitid.
 
 Reference guide for FSA data available through the Urban Institute Education Data Portal. FSA data provides institutional-level information on Title IV federal student aid programs administered by the U.S. Department of Education.
 

@@ -1,15 +1,7 @@
 ---
 name: svy
 description: >-
-  svy: design-based analysis of complex survey data in Python. Covers survey
-  design specification (strata, PSU, weights, FPC), variance estimation (Taylor
-  linearization, BRR, jackknife, bootstrap), descriptive estimation (means,
-  totals, proportions, ratios, medians), survey-weighted GLM regression
-  (gaussian, binomial, Poisson), domain/subpopulation analysis, calibration,
-  and survey data I/O (SAS, SPSS, Stata). Uses Polars DataFrames natively.
-  Use when analyzing data from complex sample surveys (NHANES, CPS, ACS PUMS,
-  MEPS, ECLS-K, BRFSS, DHS). For non-survey regression, use statsmodels; for
-  fixed effects, use pyfixest; for panel/IV models, use linearmodels.
+  Complex survey analysis: strata/PSU/weights, variance estimation (Taylor, BRR, jackknife, bootstrap), survey GLM, domain analysis, calibration. Polars-native. Use for NHANES, CPS, ACS PUMS, BRFSS, DHS. Non-survey regression: statsmodels/pyfixest.
 metadata:
   audience: research-coders
   domain: python-library
@@ -18,6 +10,8 @@ metadata:
 ---
 
 # svy Skill
+
+svy: design-based analysis of complex survey data in Python. Covers survey design specification (strata, PSU, weights, FPC), variance estimation (Taylor linearization, BRR, jackknife, bootstrap), descriptive estimation (means, totals, proportions, ratios, medians), survey-weighted GLM regression (gaussian, binomial, Poisson), domain/subpopulation analysis, calibration, and survey data I/O (SAS, SPSS, Stata). Uses Polars DataFrames natively. Use when analyzing data from complex sample surveys (NHANES, CPS, ACS PUMS, MEPS, ECLS-K, BRFSS, DHS). For non-survey regression, use statsmodels; for fixed effects, use pyfixest; for panel/IV models, use linearmodels.
 
 Comprehensive skill for complex survey data analysis with svy. Use decision trees below to find the right guidance, then load detailed references.
 

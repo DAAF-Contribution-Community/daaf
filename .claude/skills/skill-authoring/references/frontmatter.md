@@ -62,15 +62,26 @@ The primary triggering mechanism. This is what agents see when deciding whether 
 
 | Rule | Limit |
 |------|-------|
-| Length | 1-1024 characters |
+| Length | **≤250 characters** (hard limit — truncated in system prompt beyond this) |
+| YAML max | 1024 characters (YAML parser limit, but irrelevant given the 250-char display limit) |
 | No angle brackets | Cannot contain `<` or `>` |
 | Non-empty | Must have content after trimming whitespace |
 
-**Must Include:**
+> **Why 250 chars?** Claude Code truncates frontmatter descriptions at ~250 characters in the system prompt. This is the ONLY text agents see when deciding whether to load a skill — everything beyond 250 chars is silently dropped. The full description is preserved in the skill body (see "Full Description in Body" below).
 
-1. **What the skill does** - Functionality overview
-2. **When to use it** - Specific triggering conditions
-3. **Third-person voice** - Write as "Processes files" not "I help you process files" or "You can use this to process files"
+**Must Include (within 250 chars):**
+
+1. **What the skill does** - Functionality overview (identity + scope)
+2. **When to use it** - Key triggering conditions
+3. **Disambiguation** - What NOT to use this for, especially when similar skills exist (e.g., "For FE use pyfixest; for GLM use statsmodels")
+4. **Third-person voice** - Write as "Processes files" not "I help you process files"
+
+**Budget priorities** (what to keep when space is tight):
+1. Core identity (what it is) — always keep
+2. Key disambiguation (prevents wrong-skill loading) — always keep
+3. Most common triggers — keep the top 2-3
+4. Scope limitations — include if space permits
+5. Detailed coverage list — move to body description
 
 **Good Examples:**
 
@@ -121,6 +132,40 @@ If a skill loads for unrelated queries, add negative triggers to narrow scope:
 ```yaml
 description: Advanced statistical analysis for CSV datasets. Use for regression modeling, clustering, and hypothesis testing. Do NOT use for simple data exploration or basic charting (use data-viz skill instead).
 ```
+
+### Full Description in Body
+
+Since frontmatter is limited to 250 chars, the **full description** must be preserved as a plain paragraph immediately after the `# Title` heading in the SKILL.md body. This ensures agents have complete context once the skill is loaded.
+
+**Pattern:**
+
+```markdown
+---
+name: my-skill
+description: >-
+  Condensed description ≤250 chars. What it does, when to use, disambiguation.
+metadata:
+  audience: research-coders
+  domain: python-library
+---
+
+# My Skill
+
+Full, detailed description that was too long for frontmatter. Covers all
+capabilities, specific triggers, scope limitations, disambiguation guidance,
+and any other context that helps agents use this skill correctly. This text
+is only visible after the skill is loaded — it does NOT influence triggering
+decisions, but it provides essential orientation once an agent is working
+with the skill.
+
+[Rest of SKILL.md body...]
+```
+
+**Rules:**
+- The body description is a plain paragraph (no heading, no blockquote) directly after `# Title`
+- It should contain everything the frontmatter description couldn't fit — expanded scope, additional triggers, detailed disambiguation
+- It should NOT duplicate the frontmatter description verbatim — expand and elaborate instead
+- Existing DAAF skills follow this pattern as of 2026-03-29
 
 ### Naming Conventions
 
@@ -191,7 +236,7 @@ DAAF uses a controlled vocabulary for `audience` and `domain` to enable consiste
 | Field | Required | Type | Max Length | Notes |
 |-------|----------|------|------------|-------|
 | `name` | Yes | String | 64 chars | Lowercase hyphen-case |
-| `description` | Yes | String | 1024 chars | No `<` or `>` |
+| `description` | Yes | String | 250 chars (effective) | No `<` or `>`; truncated at 250 chars in system prompt |
 | `metadata` | No | Dict | - | String values only |
 
 ## Unknown Fields
@@ -209,17 +254,28 @@ Unknown frontmatter fields are ignored but may cause validation errors in strict
 ---
 name: polars
 description: >-
-  Polars DataFrame library for high-performance data manipulation in Python.
-  Covers lazy/eager execution, expressions, I/O, aggregations, joins,
-  string/datetime operations, pandas/NumPy interop, and performance
-  optimization. Use when working with Polars DataFrames, migrating from
-  pandas, reading Parquet files, or optimizing data pipeline performance.
+  Polars DataFrame library for high-performance data manipulation. Lazy/eager
+  execution, expressions, I/O (CSV, Parquet, JSON), aggregations, joins,
+  string/datetime ops, pandas interop. Use for Polars DataFrames or
+  reading/writing Parquet files.
 metadata:
   audience: research-coders
   domain: python-library
   library-version: "1.x"
 ---
+
+# Polars Skill
+
+Polars DataFrame library for high-performance data manipulation in Python.
+Covers lazy/eager execution, expressions, I/O (CSV, Parquet, JSON, database),
+aggregations, joins, string/datetime operations, pandas/NumPy interop, and
+performance optimization. Use when working with Polars DataFrames, migrating
+from pandas, reading Parquet files, or optimizing data pipeline performance.
+
+[Rest of skill body...]
 ```
+
+Note how the frontmatter description (243 chars) captures the essentials, while the body paragraph preserves the full detail including database I/O, NumPy interop, and migration use cases that didn't fit.
 
 ## Description Writing Tips
 

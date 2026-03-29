@@ -1,14 +1,7 @@
 ---
 name: education-data-source-pseo
 description: >-
-  Postsecondary Employment Outcomes (PSEO) — Census Bureau experimental
-  statistics linking college graduates to employment outcomes via UI wage
-  records (LEHD program). Covers earnings (25th/50th/75th percentile, measured
-  1, 5, and 10 years post-graduation) and employment flows by institution,
-  degree level, and CIP field. Use when comparing graduate earnings across
-  programs or institutions, analyzing industry entry patterns, or studying
-  geographic migration of graduates. Coverage limited to ~29% of graduates
-  from ~31 participating states.
+  PSEO — Census data linking graduates to employment via LEHD wage records. Earnings percentiles at 1/5/10 years post-graduation by institution, degree, CIP. Use for graduate earnings analysis. Coverage: ~29% of graduates from ~31 states.
 metadata:
   audience: any-agent
   domain: data-source
@@ -17,6 +10,8 @@ metadata:
 ---
 
 # PSEO Data Source Reference
+
+Postsecondary Employment Outcomes (PSEO) — Census Bureau experimental statistics linking college graduates to employment outcomes via UI wage records (LEHD program). Covers earnings (25th/50th/75th percentile, measured 1, 5, and 10 years post-graduation) and employment flows by institution, degree level, and CIP field. Use when comparing graduate earnings across programs or institutions, analyzing industry entry patterns, or studying geographic migration of graduates. Coverage limited to ~29% of graduates from ~31 participating states.
 
 Postsecondary Employment Outcomes (PSEO) is an experimental data product from the U.S. Census Bureau that links college graduate records to national employment data, providing earnings and employment outcomes by institution, degree level, and field of study.
 

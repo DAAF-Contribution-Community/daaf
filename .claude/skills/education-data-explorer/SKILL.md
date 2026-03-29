@@ -1,20 +1,15 @@
 ---
 name: education-data-explorer
 description: >-
-  Discovers available education data from the Urban Institute Education Data
-  Portal: endpoints, variables, year coverage, and join keys for schools,
-  districts, and colleges (CCD, IPEDS, CRDC, Scorecard, SAIPE, and more). Use
-  during discovery and scoping phases when identifying what data exists,
-  mapping research questions to endpoints, or resolving variable name
-  discrepancies between documentation and actual field names. Load before
-  education-data-query — this skill covers discovery; education-data-query
-  handles the download.
+  Discovers education data from Urban Institute Portal: endpoints, variables, year coverage, join keys (CCD, IPEDS, CRDC, Scorecard, SAIPE). Use to map questions to data. Load before education-data-query — discovery here, download there.
 metadata:
   audience: research-planner
   domain: data-access
 ---
 
 # Education Data Explorer
+
+Discovers available education data from the Urban Institute Education Data Portal: endpoints, variables, year coverage, and join keys for schools, districts, and colleges (CCD, IPEDS, CRDC, Scorecard, SAIPE, and more). Use during discovery and scoping phases when identifying what data exists, mapping research questions to endpoints, or resolving variable name discrepancies between documentation and actual field names. Load before education-data-query — this skill covers discovery; education-data-query handles the download.
 
 Discover available education data from the Urban Institute Education Data Portal for research planning and query design.
 

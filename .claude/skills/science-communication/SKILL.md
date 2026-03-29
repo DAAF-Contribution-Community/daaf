@@ -1,21 +1,15 @@
 ---
 name: science-communication
 description: >-
-  Translating technical data science findings for non-technical audiences.
-  Covers audience analysis, narrative frameworks (Pyramid Principle, SCQA,
-  AIDA), plain-language translation, executive summaries, policy briefs,
-  causal language guidance, hedging and uncertainty communication, and
-  accessibility standards. Complements data-scientist visualization references
-  — handles what story to tell and to whom, not how to build charts. Use when
-  presenting findings to stakeholders, writing executive summaries or policy
-  briefs, communicating statistical results to non-statisticians, or reviewing
-  a draft deliverable for clarity and audience fit.
+  Translating technical findings for non-technical audiences. Narrative frameworks (Pyramid Principle, SCQA), plain-language translation, executive summaries, policy briefs, causal language. Use when presenting to stakeholders or reviewing deliverables
 metadata:
   audience: research-writers
   domain: research-communication
 ---
 
 # Science Communication
+
+Translating technical data science findings for non-technical audiences. Covers audience analysis, narrative frameworks (Pyramid Principle, SCQA, AIDA), plain-language translation, executive summaries, policy briefs, causal language guidance, hedging and uncertainty communication, and accessibility standards. Complements data-scientist visualization references — handles what story to tell and to whom, not how to build charts. Use when presenting findings to stakeholders, writing executive summaries or policy briefs, communicating statistical results to non-statisticians, or reviewing a draft deliverable for clarity and audience fit.
 
 Guidance for translating rigorous data science work into clear, compelling communication for non-technical audiences. This skill is **additive** to data-scientist's visualization references — it covers *what story the chart tells and to whom*, not *how to build the chart*.
 

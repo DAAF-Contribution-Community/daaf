@@ -1,14 +1,7 @@
 ---
 name: education-data-source-edfacts
 description: >-
-  EDFacts — federal K-12 outcome data from State Education Agencies, covering
-  state assessment proficiency rates, ACGR graduation rates, and ESSA
-  accountability indicators at school and district level (assessments
-  2009-2020, graduation rates 2010-2019). Use when analyzing within-state
-  achievement trends, subgroup proficiency gaps, or adjusted cohort graduation
-  rates. Complements CCD (school characteristics) with outcome data. State
-  assessment scores CANNOT be compared across states; use NAEP for cross-state
-  comparisons.
+  EDFacts — K-12 outcomes: assessment proficiency, ACGR graduation rates, ESSA accountability at school/district level (2009-2020). Within-state trends and subgroup gaps. Complements CCD with outcome data. Cannot compare across states — use NAEP.
 metadata:
   audience: any-agent
   domain: data-source
@@ -17,6 +10,8 @@ metadata:
 ---
 
 # EDFacts Data Source Reference
+
+EDFacts — federal K-12 outcome data from State Education Agencies, covering state assessment proficiency rates, ACGR graduation rates, and ESSA accountability indicators at school and district level (assessments 2009-2020, graduation rates 2010-2019). Use when analyzing within-state achievement trends, subgroup proficiency gaps, or adjusted cohort graduation rates. Complements CCD (school characteristics) with outcome data. State assessment scores CANNOT be compared across states; use NAEP for cross-state comparisons.
 
 EDFacts is the U.S. Department of Education's centralized data collection system for pre-K through grade 12 education data from State Education Agencies (SEAs). It provides state assessment proficiency rates, graduation rates, and accountability indicators — the authoritative federal source for state-level K-12 outcome data.
 

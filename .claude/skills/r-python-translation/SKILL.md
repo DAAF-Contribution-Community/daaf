@@ -1,16 +1,7 @@
 ---
 name: r-python-translation
 description: >-
-  R-to-Python translation reference for quantitative social science
-  data analysis. Maps R ecosystem packages (tidyverse/dplyr, ggplot2,
-  fixest, survey, sf, plm, lme4, marginaleffects, rdrobust) to DAAF
-  Python equivalents (polars, plotnine, pyfixest, statsmodels,
-  linearmodels, svy, geopandas). Use when user mentions R/RStudio
-  background, requests R-equivalent code comments, needs to understand
-  Python analysis code from an R perspective, or wants to translate
-  R data analysis concepts to Python. Covers paradigm differences,
-  verb-by-verb operation translations, regression modeling, causal
-  inference, visualization, and workflow adaptation.
+  R-to-Python translation for data analysis. Maps R packages (tidyverse, ggplot2, fixest, survey, sf, plm) to Python equivalents (polars, plotnine, pyfixest, svy, geopandas). Use when user has R background or requests R-equivalent code comments.
 metadata:
   audience: research-coders
   domain: research-methodology
@@ -18,6 +9,8 @@ metadata:
 ---
 
 # R-to-Python Translation Skill
+
+R-to-Python translation reference for quantitative social science data analysis. Maps R ecosystem packages (tidyverse/dplyr, ggplot2, fixest, survey, sf, plm, lme4, marginaleffects, rdrobust) to DAAF Python equivalents (polars, plotnine, pyfixest, statsmodels, linearmodels, svy, geopandas). Use when user mentions R/RStudio background, requests R-equivalent code comments, needs to understand Python analysis code from an R perspective, or wants to translate R data analysis concepts to Python. Covers paradigm differences, verb-by-verb operation translations, regression modeling, causal inference, visualization, and workflow adaptation.
 
 Cross-language translation reference for researchers moving between the R and Python data analysis ecosystems. This skill maps R packages, idioms, and workflows to their DAAF Python equivalents so that R-background users can audit, understand, and learn from DAAF-produced code, and so that code-producing agents can annotate their output with R equivalents when directed.
 

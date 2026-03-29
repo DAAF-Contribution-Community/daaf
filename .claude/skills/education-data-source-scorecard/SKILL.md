@@ -1,13 +1,7 @@
 ---
 name: education-data-source-scorecard
 description: >-
-  College Scorecard — the primary institutional-level source for post-enrollment
-  labor market outcomes, linking NSLDS financial aid records to IRS/Treasury
-  earnings data. Use when comparing institutions on post-graduation earnings,
-  loan repayment, or student debt, or when actual tax-record-based earnings are
-  required rather than survey estimates. Covers six sub-datasets accessed via
-  Portal mirrors. Critical limitation: tracks only Title IV federal aid
-  recipients, not all students.
+  College Scorecard — post-enrollment outcomes linking aid records to IRS/Treasury earnings. Earnings, loan repayment, debt via six Portal sub-datasets. Use when tax-record-based earnings needed. Tracks only Title IV aid recipients, not all students.
 metadata:
   audience: any-agent
   domain: data-source
@@ -16,6 +10,8 @@ metadata:
 ---
 
 # Scorecard Data Source Reference
+
+College Scorecard — the primary institutional-level source for post-enrollment labor market outcomes, linking NSLDS financial aid records to IRS/Treasury earnings data. Use when comparing institutions on post-graduation earnings, loan repayment, or student debt, or when actual tax-record-based earnings are required rather than survey estimates. Covers six sub-datasets accessed via Portal mirrors. Critical limitation: tracks only Title IV federal aid recipients, not all students.
 
 Federal data on post-college outcomes including earnings, debt, and repayment for students who received Title IV financial aid. Links education records to IRS tax data for actual earnings, making it the primary source for post-college labor market outcomes.
 
