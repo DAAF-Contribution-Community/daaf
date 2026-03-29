@@ -26,6 +26,18 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # ============================================
+# Install Geospatial System Libraries (GDAL/GEOS/PROJ)
+# ============================================
+# Required by fiona (rasterstats dep) and beneficial for rasterio, geopandas, osmnx
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libgdal-dev \
+    gdal-bin \
+    libgeos-dev \
+    libproj-dev \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+# ============================================
 # Install Python Data Science Packages via uv
 # ============================================
 
