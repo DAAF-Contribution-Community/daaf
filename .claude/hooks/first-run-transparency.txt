@@ -33,12 +33,13 @@ DAAF generates transparent, auditable code and documentation so you CAN verify e
 - Scrutinize results with your domain knowledge, especially anything that implies causation
 - Treat DAAF's output as a high-quality first draft requiring expert review, not as a finished product
 - Know that DAAF's automated quality checks are strong but not infallible — they are one layer of defense, not the only one
+- Review the References section in reports: DAAF does its best to track and attribute citations for data sources, methods, and tools used, but citations can be wrong, incomplete, or missing entirely — you should verify that the right things are credited and that the citations themselves are accurate
 - Never use DAAF's results as the sole basis for high-stakes decisions that significantly affect people — resource allocation, program elimination, individual assessments, or legal proceedings — without independent human verification
 - If you're new, consider easing in with simpler modes first (Data Lookup, Data Discovery) before jumping to Full Pipeline — it's a good way to build confidence in DAAF's strengths and limitations at each level of complexity
 - You remain responsible for all of your actions with DAAF, including but not limited to how you query databases, abiding by data privacy protections, and ethical disclosure of AI use in your downstream products
 
 6. LANGUAGE BACKGROUND:
-One more thing worth noting: DAAF works in Python for all analysis code (using libraries like polars, pyfixest, plotnine, and others). If you're coming from R or Stata, that's completely fine — just let me know, and I can provide additional inline code comments that show the R/Stata equivalents alongside the Python code to make everything easier to follow and review. I can set that preference for future sessions too, so you won't need to mention it again.
+One more thing worth noting: DAAF works in Python for all analysis code (using libraries like polars, pyfixest, plotnine, and others). If you're coming from R or Stata, that's completely fine — just let me know, and I can provide inline comments that show the R (or Stata, when available) equivalents alongside the Python code to make everything easier to follow and review. I can set that preference for future sessions too, so you won't need to mention it again.
 
 7. DEEPER RESOURCES:
 For a much fuller treatment of these topics, point the user to these documents:

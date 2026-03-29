@@ -481,6 +481,7 @@ Then open [http://localhost:2718](http://localhost:2718) in your normal web brow
 - Executive summary with headline findings
 - Detailed methodology section (data sources, cleaning approach, statistical methods)
 - Key findings with supporting statistics and figure references
+- References section (data sources, methodological references, software & tools, and reporting standards — DAAF tracks these automatically during execution, though you should verify they are accurate and complete)
 - Data limitations and caveats
 - Appendices with technical details
 
@@ -504,7 +505,7 @@ Then open [http://localhost:2718](http://localhost:2718) in your normal web brow
 
 ### STATE.md and LEARNINGS.md
 
-**STATE.md** -- A session state file that tracks DAAF's progress through the analysis. It records transformation progress, checkpoint statuses, runtime decisions, and any blockers encountered. It also accumulates the QA Findings Summary (aggregated quality review results across all stages), the Final Review Log (from the end-of-pipeline verification), and any Runtime Risks discovered during execution. If a session is interrupted (context exhaustion, network issues, etc.), STATE.md allows DAAF to resume exactly where it left off. You generally don't need to read this unless debugging a session issue.
+**STATE.md** -- A session state file that tracks DAAF's progress through the analysis. It records transformation progress, checkpoint statuses, runtime decisions, and any blockers encountered. It also accumulates the QA Findings Summary (aggregated quality review results across all stages), the Final Review Log (from the end-of-pipeline verification), any Runtime Risks discovered during execution, and Citations Accumulated (a running ledger of data source, methodological, software, and reporting standard citations extracted as each script executes). If a session is interrupted (context exhaustion, network issues, etc.), STATE.md allows DAAF to resume exactly where it left off. You generally don't need to read this unless debugging a session issue.
 
 **LEARNINGS.md** -- A lessons-learned document capturing insights about the data and the analysis process. This includes data idiosyncrasies discovered during the analysis, interpretation concerns, and suggested improvements to DAAF's documentation. This file is designed to be immediately actionable -- you can share it back with the community to help improve DAAF for future users.
 

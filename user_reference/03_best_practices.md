@@ -246,7 +246,7 @@ The report follows a standard structure (Executive Summary, Key Findings, Data &
 
 **Figure references:** The report should reference specific figures by filename. Verify that the referenced figures exist and actually show what the report says they show. This is a simple but effective check.
 
-**Data source citations:** The report should cite each data source used. Verify that these match the sources specified in the Plan.
+**References:** The report includes a References section with up to four subsections: data sources, methodological references (e.g., the specific DiD estimator or survey weighting approach used), software & tools, and reporting standards. DAAF does its best to track these automatically as each script executes, but citations can be wrong, incomplete, or missing -- verify that the right methods and tools are credited, that the citations themselves are accurate, and that nothing important was overlooked or unnecessarily included.
 
 ### Reading the Notebook
 
@@ -316,7 +316,7 @@ These safeguards run without your involvement throughout the pipeline:
 | **STOP Conditions** | Automatic pause when data quality thresholds are breached | Throughout execution |
 | **Version Control** | Every file revision is saved separately -- nothing is ever overwritten | All stages |
 | **Plan-Checker Validation** | Automated 6-dimension validation of the Plan before execution begins | Stage 4.5 |
-| **Source Citations** | Proper citations generated automatically for all data sources used | Report generation |
+| **Citation Tracking** | Attempts to track and attribute citations for data sources, methods, software, and reporting standards as each script executes -- best-effort, not guaranteed | Throughout execution and report generation |
 
 That is a substantial amount of automated quality control. It means that the majority of *operational* errors -- wrong data types, broken joins, corrupted files, missing columns, data loss during transformation -- will be caught before you ever see the results.
 
