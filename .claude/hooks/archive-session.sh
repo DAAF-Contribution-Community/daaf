@@ -5,9 +5,10 @@
 # This hook reads the full JSONL transcript (which includes ALL assistant
 # responses, tool calls, and results) and converts it to readable Markdown.
 #
-# Performance: Uses a single jq invocation per JSONL line via a precompiled
-# jq program file (vs 10-15 spawns per line in the naive approach). Maintains
-# streaming line-by-line processing for fail-open resilience.
+# Performance: Uses a single jq invocation per JSONL file. The jq program
+# processes each top-level JSON object in the JSONL stream independently,
+# converting the entire transcript in one process spawn.  Registry entries
+# are parsed with one jq call per entry (mapfile), not one per field.
 #
 # Subagent archiving: If a subagent registry exists for this session
 # (populated by subagent-registry.sh SubagentStop hook), subagent transcripts
@@ -211,12 +212,8 @@ JQEOF
         echo "---"
         echo ""
 
-        # Process each line — ONE jq call per line using precompiled program
-        while IFS= read -r line; do
-            [ -z "$line" ] && continue
-            printf '%s\n' "$line" | jq -r -f "$JQ_PROG" 2>/dev/null \
-                || echo "*(skipped malformed entry)*"
-        done < "$JSONL_ARCHIVE"
+        # Process entire JSONL in a single jq invocation
+        jq -r -f "$JQ_PROG" "$JSONL_ARCHIVE" 2>/dev/null
 
         # --- Subagent Activity Section ---
         # Check for a per-session subagent registry (populated by subagent-registry.sh)
@@ -238,14 +235,21 @@ JQEOF
             while IFS= read -r entry; do
                 [ -z "$entry" ] && continue
 
-                # Parse registry entry fields
-                SA_TYPE=$(printf '%s' "$entry" | jq -r '.agent_type // "unknown"' 2>/dev/null) || SA_TYPE="unknown"
-                SA_ID=$(printf '%s' "$entry" | jq -r '.agent_id // "unknown"' 2>/dev/null) || SA_ID="unknown"
-                SA_TS=$(printf '%s' "$entry" | jq -r '.timestamp // ""' 2>/dev/null) || SA_TS=""
-                SA_TP=$(printf '%s' "$entry" | jq -r '.transcript_path // ""' 2>/dev/null) || SA_TP=""
-                SA_MSG=$(printf '%s' "$entry" | jq -r '.last_message // ""' 2>/dev/null) || SA_MSG=""
-                SA_TOOLS=$(printf '%s' "$entry" | jq -r '.tool_uses // 0' 2>/dev/null) || SA_TOOLS="0"
-                SA_DUR=$(printf '%s' "$entry" | jq -r '.duration_ms // 0' 2>/dev/null) || SA_DUR="0"
+                # Parse all registry fields in a single jq call
+                mapfile -t _sa < <(printf '%s' "$entry" | jq -r '
+                    (.agent_type // "unknown"),
+                    (.agent_id // "unknown"),
+                    (.timestamp // ""),
+                    (.transcript_path // ""),
+                    (.tool_uses // 0 | tostring),
+                    (.duration_ms // 0 | tostring)
+                ' 2>/dev/null)
+                SA_TYPE="${_sa[0]:-unknown}"
+                SA_ID="${_sa[1]:-unknown}"
+                SA_TS="${_sa[2]:-}"
+                SA_TP="${_sa[3]:-}"
+                SA_TOOLS="${_sa[4]:-0}"
+                SA_DUR="${_sa[5]:-0}"
 
                 SA_ID_SHORT="${SA_ID:0:8}"
 
@@ -280,11 +284,7 @@ JQEOF
                         echo "---"
                         echo ""
 
-                        while IFS= read -r sa_line; do
-                            [ -z "$sa_line" ] && continue
-                            printf '%s\n' "$sa_line" | jq -r -f "$JQ_PROG" 2>/dev/null \
-                                || echo "*(skipped malformed entry)*"
-                        done < "$ARCHIVE_DIR/$SA_ARCHIVE_NAME"
+                        jq -r -f "$JQ_PROG" "$ARCHIVE_DIR/$SA_ARCHIVE_NAME" 2>/dev/null
 
                         echo ""
                         echo "## 📊 Subagent Summary"
@@ -309,9 +309,14 @@ JQEOF
             while IFS= read -r entry; do
                 [ -z "$entry" ] && continue
 
-                SA_TYPE=$(printf '%s' "$entry" | jq -r '.agent_type // "unknown"' 2>/dev/null) || SA_TYPE="unknown"
-                SA_ID=$(printf '%s' "$entry" | jq -r '.agent_id // "unknown"' 2>/dev/null) || SA_ID="unknown"
-                SA_MSG=$(printf '%s' "$entry" | jq -r '.last_message // ""' 2>/dev/null) || SA_MSG=""
+                mapfile -t _sa2 < <(printf '%s' "$entry" | jq -r '
+                    (.agent_type // "unknown"),
+                    (.agent_id // "unknown"),
+                    ((.last_message // "") | gsub("\n"; " "))
+                ' 2>/dev/null)
+                SA_TYPE="${_sa2[0]:-unknown}"
+                SA_ID="${_sa2[1]:-unknown}"
+                SA_MSG="${_sa2[2]:-}"
                 SA_ID_SHORT="${SA_ID:0:8}"
 
                 if [ -n "$SA_MSG" ]; then
@@ -336,6 +341,10 @@ JQEOF
         echo "**Model:** $MODEL"
         echo "**DAAF Version:** $DAAF_VERSION"
         echo "**Archive:** \`$JSONL_ARCHIVE\`"
+
+
+        echo ""
+        echo "*Archive completed: $(date '+%Y-%m-%d %H:%M:%S')*"
 
     } > "$MD_ARCHIVE"
 

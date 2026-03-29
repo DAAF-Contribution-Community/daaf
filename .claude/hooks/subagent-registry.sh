@@ -34,13 +34,24 @@ trap '' ERR
 INPUT=$(cat)
 
 # --- Parse fields from SubagentStop hook input ---
-SESSION_ID=$(echo "$INPUT" | jq -r '.session_id // "unknown"' 2>/dev/null) || SESSION_ID="unknown"
-AGENT_TYPE=$(echo "$INPUT" | jq -r '.agent_type // "unknown"' 2>/dev/null) || AGENT_TYPE="unknown"
-AGENT_ID=$(echo "$INPUT" | jq -r '.agent_id // "unknown"' 2>/dev/null) || AGENT_ID="unknown"
-TRANSCRIPT=$(echo "$INPUT" | jq -r '.agent_transcript_path // ""' 2>/dev/null) || TRANSCRIPT=""
-LAST_MSG=$(echo "$INPUT" | jq -r '.last_assistant_message // "" | .[0:500]' 2>/dev/null) || LAST_MSG=""
-TOOL_USES=$(echo "$INPUT" | jq -r '.tool_uses // 0' 2>/dev/null) || TOOL_USES="0"
-DURATION_MS=$(echo "$INPUT" | jq -r '.duration_ms // 0' 2>/dev/null) || DURATION_MS="0"
+mapfile -t _fields < <(
+    printf '%s' "$INPUT" | jq -r '
+        (.session_id // "unknown"),
+        (.agent_type // "unknown"),
+        (.agent_id // "unknown"),
+        (.agent_transcript_path // ""),
+        ((.last_assistant_message // "")[0:500] | gsub("\n"; " ")),
+        (.tool_uses // 0 | tostring),
+        (.duration_ms // 0 | tostring)
+    ' 2>/dev/null
+)
+SESSION_ID="${_fields[0]:-unknown}"
+AGENT_TYPE="${_fields[1]:-unknown}"
+AGENT_ID="${_fields[2]:-unknown}"
+TRANSCRIPT="${_fields[3]:-}"
+LAST_MSG="${_fields[4]:-}"
+TOOL_USES="${_fields[5]:-0}"
+DURATION_MS="${_fields[6]:-0}"
 TIMESTAMP=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
 
 # --- Determine registry location ---
