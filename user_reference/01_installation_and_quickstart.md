@@ -168,10 +168,10 @@ Rather than let Claude use and edit files directly on your computer, we're going
 
 ```bash
 # This uses Docker to help us copy files from your installation folder into a place Docker can work in later
-docker run --rm -v "${PWD}:/source:ro" -v "daaf_daaf-data:/dest" busybox sh -c 'cp -a /source/. /dest/ && chown -R 1000:1000 /dest/'
+docker run --rm -v "${PWD}:/source:ro" -v "daaf_daaf-data:/dest" busybox sh -c 'cp -a /source/. /dest/'
 ```
 
-This copies all the project files into a **"Docker volume"** — a storage area managed by Docker that will serve as the Docker container's working directory. Think of it like creating a dedicated workspace inside Docker where all your research, data, and outputs will live. The project folder on your computer (e.g., `daaf-main/`) is used as the starting point here, but going forward, the Docker volume is where the actual work happens (see "How to Manage DAAF Project Files and Output" below for more on this). You can confirm this worked correctly by looking at the Volumes panel in the Docker Desktop app left-side toolbar: you should see a Volume listed named `daaf_daaf-data` in the list.
+This copies all the project files into a **"Docker volume"** — a storage area managed by Docker that will serve as the Docker container's working directory. Think of it like creating a dedicated workspace inside Docker where all your research, data, and outputs will live. The project folder on your computer (e.g., `daaf-main/`) is used as the starting point here, but going forward, the Docker volume is where the actual work happens (see "How to Manage DAAF Project Files and Output" below for more on this). File permissions inside the volume are fixed automatically on every startup (see Step 4), so you don't need to worry about ownership issues here. You can confirm this worked correctly by looking at the Volumes panel in the Docker Desktop app left-side toolbar: you should see a Volume listed named `daaf_daaf-data` in the list.
 
 ### Step 4: Use Docker to create and start the container
 
@@ -180,7 +180,16 @@ This copies all the project files into a **"Docker volume"** — a storage area 
 docker compose up -d --build
 ```
 
-This builds an isolated/protected Docker container with all the necessary tools pre-installed (Python, data science packages, Claude Code) using the Dockerfile provided and the copied project files from the Docker volume we just made. The first time, this downloads base images and installs all packages — expect it to take a few minutes as it pulls in all the needed software. Subsequent starts are really fast since Docker caches everything. You can confirm this worked correctly by looking at the Images panel in the Docker Desktop app left-side toolbar: you should see an Image listed named `daaf-daaf-docker` in the list. You'll also see one named `busybox` -- this was just a temporary super-basic image we used to do the file transfer in the step above!
+This builds an isolated/protected Docker container with all the necessary tools pre-installed (Python, data science packages, Claude Code) using the Dockerfile provided and the copied project files from the Docker volume we just made. The first time, this downloads base images and installs all packages — expect it to take a few minutes as it pulls in all the needed software. Subsequent starts are really fast since Docker caches everything.
+
+Behind the scenes, this command does a few important things automatically:
+
+- **Fixes file permissions.** An init service runs before the main container starts, ensuring all files in the Docker volume are owned by the correct user. This prevents "Permission denied" errors, especially on macOS where Docker volumes can end up with mismatched ownership.
+- **Initializes a git repository.** On first startup, the container's entrypoint script automatically creates a local git repository inside the Docker volume. This enables DAAF's version tracking and audit trail features — you don't need to set this up yourself. The git repo is local-only (no remote configured), purely for traceability within your projects.
+- **Pins Claude Code.** The Dockerfile installs a specific, tested version of Claude Code (with auto-updates disabled) to ensure consistent behavior across builds.
+- **Enforces security hardening.** The container runs as a non-root user with all Linux capabilities dropped (`cap_drop: ALL`) and privilege escalation explicitly blocked (`no-new-privileges`). Even if Claude Code somehow tried to do something it shouldn't, the operating system kernel would stop it.
+
+You can confirm this worked correctly by looking at the Images panel in the Docker Desktop app left-side toolbar: you should see an Image listed named `daaf-daaf-docker` in the list. You'll also see one named `busybox` — this is a tiny utility image used by the init service for permission fixing.
 
 ### Step 5: Open a terminal session inside the Docker container
 
@@ -306,7 +315,6 @@ Once you've completed the above Docker installation steps, your daily workflow i
 
 ```bash
 # Get into the project directory, inputting the right file path for your own system
-# (this is "daaf-main" if you downloaded the ZIP, or "daaf" if you used git clone)
 cd "C:\Users\Documents\daaf-main"
 # Make sure Docker Desktop is running on your computer, then start the Docker container:
 docker compose up -d
@@ -358,7 +366,7 @@ From here, you can download copies of individual folders or files to your comput
 
 Since your research files live inside the Docker volume, it'll be extremely important to regularly back up your work separately from the Docker volume. You can do that most easily using the Docker Desktop method above (go into the Docker volume file viewer and download the whole daaf or research folder to somewhere else on your computer).
 
-**A note on git and DAAF:** During research sessions, DAAF's agents will make **local git commits** inside the container to track every script version, data transformation, and plan update — this creates a detailed audit trail of your research that you can review with standard git tools (like `git log`). However, you generally won't be able to push these commits up to a remote repository without more configuration (because by default DAAF will attempt to push to this public repo, and we don't want you sharing every single project file back with the full community). All to say, your research work lives safely in the Docker volume, and the local git history is there purely for traceability and reproducibility within your own projects. If you want a GitHub backup for your work, ask Claude how to make your own repository and save to it accordingly.
+**A note on git and DAAF:** A local git repository is automatically created inside the Docker volume the first time the container starts (via the entrypoint script — see Step 4). During research sessions, DAAF's agents will make **local git commits** inside the container to track every script version, data transformation, and plan update — this creates a detailed audit trail of your research that you can review with standard git tools (like `git log`). This git repo is local-only — no remote repository is configured by default, so nothing is pushed anywhere. Your research work lives safely in the Docker volume, and the local git history is there purely for traceability and reproducibility within your own projects. If you want a GitHub backup for your work, ask Claude how to make your own repository and save to it accordingly.
 
 ### Viewing report Markdown (.md) files
 
@@ -368,9 +376,9 @@ LLM assistants work best on text files, which means that proprietary document fo
 
 ## Keeping DAAF Updated
 
-DAAF is actively being developed and updated. If you'd like to pull in the latest fixes, extensions, and updates (which for a while may be as often as daily!!), updating is straightforward. Since the project files live inside the Docker volume, the update process re-downloads the latest files and copies them into the volume. Before updating, I recommend backing up your Docker volume's research folder as a precaution (see "Backing Up Your Work" above).
+DAAF is actively being developed and updated. If you'd like to pull in the latest fixes, extensions, and updates (which for a while may be as often as daily!!), updating is straightforward. Before updating, I recommend backing up your Docker volume's research folder as a precaution (see "Backing Up Your Work" above).
 
-The update process downloads a fresh copy of the DAAF framework files and copies them into your Docker volume. Your research files (everything in the `research/` folder) will not be affected.
+The update process has two parts: (1) copying the latest framework files into your Docker volume, and (2) rebuilding the Docker image to pick up any changes to installed software or container configuration. Your research files (everything in the `research/` folder) will not be affected by either step.
 
 <table>
 <tr>
@@ -391,10 +399,15 @@ curl -L -o daaf.zip https://github.com/DAAF-Contribution-Community/daaf/archive/
 # Extract it
 unzip -o daaf.zip
 
-# Copy the updated files into your Docker volume
-# (Make sure Docker Desktop is running!)
+# Enter the extracted directory
+cd daaf-main
+
+# Copy the updated framework files into your
+# Docker volume (skips research/ to preserve
+# your projects). Make sure Docker Desktop is
+# running!
 docker run --rm \
-  -v "$PWD/daaf-main:/source:ro" \
+  -v "${PWD}:/source:ro" \
   -v "daaf_daaf-data:/dest" \
   busybox sh -c '\
     for item in /source/*; do \
@@ -403,7 +416,12 @@ docker run --rm \
         rm -rf "/dest/$name"; \
         cp -a "$item" "/dest/$name"; \
       fi; \
-    done && chown -R 1000:1000 /dest/'
+    done'
+
+# Rebuild the Docker image to pick up any
+# changes to installed packages, Claude Code
+# version, or container configuration
+docker compose up -d --build
 ```
 
 </td>
@@ -420,10 +438,15 @@ Invoke-WebRequest -Uri "https://github.com/DAAF-Contribution-Community/daaf/arch
 # Extract it (overwrite existing)
 Expand-Archive -Path daaf.zip -DestinationPath . -Force
 
-# Copy the updated files into your Docker volume
-# (Make sure Docker Desktop is running!)
+# Enter the extracted directory
+cd daaf-main
+
+# Copy the updated framework files into your
+# Docker volume (skips research/ to preserve
+# your projects). Make sure Docker Desktop is
+# running!
 docker run --rm `
-  -v "${PWD}/daaf-main:/source:ro" `
+  -v "${PWD}:/source:ro" `
   -v "daaf_daaf-data:/dest" `
   busybox sh -c '
     for item in /source/*; do
@@ -432,16 +455,23 @@ docker run --rm `
         rm -rf "/dest/$name";
         cp -a "$item" "/dest/$name";
       fi;
-    done && chown -R 1000:1000 /dest/'
+    done'
+
+# Rebuild the Docker image to pick up any
+# changes to installed packages, Claude Code
+# version, or container configuration
+docker compose up -d --build
 ```
 
 </td>
 </tr>
 </table>
 
-The update commands above deliberately skip the `research/` folder so your projects, data, and outputs are preserved. All other framework files (agents, skills, templates, etc.) are replaced with the latest versions.
+**What each step does:**
+- The `docker run ... busybox` command copies all framework files (agents, skills, templates, hooks, etc.) into your Docker volume while deliberately skipping the `research/` folder so your projects, data, and outputs are preserved. File permissions are fixed automatically by the init service when the container next starts.
+- The `docker compose up -d --build` command rebuilds the Docker image from the newly downloaded `Dockerfile` and `docker-compose.yml`. This ensures you pick up any changes to installed Python packages, the Claude Code version, or container configuration (like security settings). If nothing in the Dockerfile changed, Docker's layer caching makes this very fast.
 
-> **Note for Git users:** If you installed DAAF using Git and prefer to update via `git pull`, you can still do so inside the Docker container: start the container (`docker compose up -d`), enter it (`docker compose exec daaf-docker bash`), and run `git pull origin main`. This won't impact your research files, but may require resolving merge conflicts if you've edited core framework files.
+> **Note on git inside the container:** The git repository inside the Docker volume is local-only — it was created by the container's entrypoint script for DAAF's internal version tracking, and has no remote configured. Running `git pull` inside the container will not work unless you've manually added a remote. The update process above is the recommended way to stay current.
 
 **Prefer to update to specific releases only?** If you'd rather update in discrete, tested versions instead of tracking the latest changes on `main`, download a specific release tag instead. Check the [Releases page](https://github.com/DAAF-Contribution-Community/daaf/releases) to see what's changed in each version before updating, and replace `main` in the download URL with the version tag (e.g., replace `refs/heads/main.zip` with `refs/tags/v1.0.0.zip`).
 
@@ -453,7 +483,6 @@ The assistant uses a python library called "marimo" to create streamlined python
 
 ```bash
 # Get into the project directory, inputting the right file path for your own system
-# (this is "daaf-main" if you downloaded the ZIP, or "daaf" if you used git clone)
 cd "C:\Users\Documents\daaf-main"
 # Make sure Docker Desktop is running on your computer, then start the Docker container:
 docker compose up -d
@@ -479,15 +508,14 @@ marimo edit 'research/YYYY-MM-DD_Title/YYYY-MM-DD_Notebook_Name.py' --host 0.0.0
 - **"docker: The term 'docker' is not recognized as the name of a cmdlet, function, script file, or operable program" or "docker: command not found"** — Make sure you have Docker installed successfully. You may need to restart your computer after installation for it to fully register in your Terminal.
 - **"unable to get image 'daaf-daaf-docker'"** — Make sure Docker Desktop is running and that you've run the initial `docker compose up -d --build` command during installation to create the necessary Docker image first. You can confirm it exists in the Docker Desktop app Images panel on the left-side toolbar.
 - **"service "daaf-docker" is not running"** — Make sure Docker Desktop is running and that you've run the `docker compose up -d` command to start the Docker container first. You can confirm it's running in the Docker Desktop app Containers panel on the left-side toolbar.
-- **Container seems really slow to build the first time** — The first `docker compose up --build` downloads base images and installs all packages. This is a one-time cost — subsequent starts are fast since Docker caches everything.
+- **Container seems really slow to build the first time** — The first `docker compose up -d --build` downloads base images and installs all packages. This is a one-time cost — subsequent starts are fast since Docker caches everything.
 - **"I can't find my research files on my computer"** — With Docker volumes, your research files live inside Docker's managed storage, not in the project folder on your computer. See **How to Manage DAAF Project Files and Output** above for more information.
 - **"Port 2718 already in use" when trying to view Marimo notebooks** — Another process is using that port. Either stop it, or change the port mapping in `docker-compose.yml` (e.g., `"3000:2718"` to use port 3000 on your host).
-- **Permission denied errors inside the container (especially on macOS)** — If you see errors like `Permission denied` when Claude tries to read or write files, the Docker volume likely has files owned by root or your host UID instead of the container's `appuser` (UID 1000). This is a known issue with Docker Desktop on macOS. To fix it, run the following command from your project directory (outside the container, with Docker Desktop running):
+- **Permission denied errors inside the container (especially on macOS)** — If you see errors like `Permission denied` when Claude tries to read or write files, the Docker volume likely has files owned by root or your host UID instead of the container's `appuser` (UID 1000). This is a known issue with Docker Desktop on macOS. The `docker-compose.yml` includes an init service (`daaf-init`) that automatically fixes file ownership on every startup. To resolve this: stop the container (`docker compose down`), then restart it (`docker compose up -d`) — the init service will repair permissions before the main container starts. If you still have issues, you can fix permissions manually:
   ```bash
   docker run --rm -v "daaf_daaf-data:/daaf" busybox chown -R 1000:1000 /daaf
   ```
-  Then restart the container with `docker compose up -d`. The latest version of `docker-compose.yml` includes an init service that automatically fixes this on every startup — if you're still hitting this after updating, make sure you have the latest `docker-compose.yml`.
-- **Claude Code asks for an API key every time** — Claude Code stores its configuration inside the container. If you fully remove the container (`docker compose down`), you may need to re-authenticate next time. To avoid this, you can set `ANTHROPIC_API_KEY` as an environment variable in a `.env` file in the project root (the `.gitignore` already prevents `.env` from being shared publicly).
+- **Claude Code asks for an API key every time** — Claude Code stores its configuration inside the Docker volume, so it persists across normal container restarts. However, if your authentication state is lost, you can persist your API key by adding it to `~/.bashrc` inside the container: `echo 'export ANTHROPIC_API_KEY="your_key_here"' >> ~/.bashrc`. Note: DAAF's safety guardrails prevent Claude from reading `.env` files, so environment variables should be set directly in the shell or via `~/.bashrc` (consistent with the API key setup in Step 8).
 
 ---
 

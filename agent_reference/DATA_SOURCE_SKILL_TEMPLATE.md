@@ -395,7 +395,7 @@ Use this skeleton instead of (or in addition to) the mirror-based skeleton above
 
 > **API Key Required:** This data source requires authentication.
 > Set the `[ENV_VAR_NAME]` environment variable before launching Claude Code.
-> See the Installation Guide (Step 8) for setup instructions.
+> See the [Installation Guide — Set up data source API keys](../user_reference/01_installation_and_quickstart.md#step-8-optional-set-up-data-source-api-keys) for setup instructions.
 
 | Requirement | Details |
 |-------------|---------|
