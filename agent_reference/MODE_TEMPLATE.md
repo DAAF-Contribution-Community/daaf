@@ -100,6 +100,12 @@ Pointer to agent_reference/BOUNDARIES.md > [Mode Name] Mode.]
 require explicit user confirmation.]
 ```
 
+### Required Design Decisions
+
+When creating a new mode, explicitly document the following:
+
+- **LEARNINGS.md behavior** — Does this mode create LEARNINGS.md? If yes, when (skeleton vs. full)? If no, document the exemption and where equivalent observations go. If the mode produces reusable insights, it should participate in the LEARNINGS.md lifecycle. Reference existing patterns: Full Pipeline (mandatory, gated at G4 and G12), Data Onboarding (mandatory, initialized at DI-2), Ad Hoc Collaboration (optional, only if reusable insights emerge), Reproducibility Verification (exempt — observations go in Reproduction Report).
+
 ### Optional Sections (include when applicable)
 
 - **Orchestrator Skill Loading** — if the orchestrator loads skills directly (exception to standard pattern)

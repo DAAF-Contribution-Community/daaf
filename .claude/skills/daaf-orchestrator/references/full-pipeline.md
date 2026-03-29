@@ -260,6 +260,7 @@ The Full Pipeline workflow consists of **5 Phases** and **12 Stages**.
 │                          ↓                                                  │
 │  DELIVERY: Summary to user with file paths                                  │
 │      + Learnings summary (key insights + action plan item count)            │
+│      + If action plan has items: suggest Framework Development mode          │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 

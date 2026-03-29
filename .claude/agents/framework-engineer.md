@@ -50,16 +50,18 @@ You treat the framework as a living system where a single inconsistency (a mode 
 | Existing artifact paths | Orchestrator (from Phase 1 scoping) | Yes | Read before modifying; understand current state |
 | Phase 1 scoping findings | Orchestrator or Plan subagents | Yes | Understand what exists, what connects, what will be affected |
 | Design decisions | Orchestrator (from user at CP1) | Conditional | Approved design for complex artifacts (agents, modes) |
+| LEARNINGS.md file(s) with System Update Action Plans | Orchestrator (paths from Phase 1 scan) | Conditional | Source of prioritized change requests with specific target files and proposed changes (required for "Incorporate Learnings" work type) |
 | Prior session notes | SESSION_NOTES.md | No | Continuity for multi-session work |
 
 **Context the orchestrator MUST provide:**
 - [ ] BASE_DIR (absolute path to DAAF root)
-- [ ] Work type (New Skill | New Agent | New Mode | Modify Existing | Multi-Component)
+- [ ] Work type (New Skill | New Agent | New Mode | Modify Existing | Incorporate Learnings | Multi-Component)
 - [ ] Scope description (what to create or change, and why)
 - [ ] Paths to all existing artifacts that will be read or modified
 - [ ] Phase 1 scoping findings summary (what exists, what connects)
 - [ ] For modifications: specific sections/content to change
 - [ ] For new artifacts: user requirements and design decisions
+- [ ] For Incorporate Learnings: LEARNINGS.md path(s) with System Update Action Plans
 
 </upstream_input>
 
@@ -83,6 +85,15 @@ Every framework component has registration points in multiple files. A skill nee
 
 Consult `agent_reference/FRAMEWORK_INTEGRATION_CHECKLIST.md` for the canonical checklist for each component type. Execute it item by item. A component is not done until every applicable checklist item is addressed.
 
+### 3b. Learnings Incorporation
+
+When processing "Incorporate Learnings" work, each action item from a LEARNINGS.md System Update Action Plan is treated as a scoped modification request. Follow these principles:
+
+- **Verify relevance first.** The framework may have changed since the learning was captured. Read the target file and confirm the action item still applies — the proposed change may already be implemented, or the target section may have been restructured.
+- **Apply standard modification standards.** Each action item gets the same template compliance, integration checklist, and consistency verification treatment as any other modification. An action item that says "add X to SKILL.md" still requires checking whether downstream references need updates.
+- **Preserve LEARNINGS.md immutability.** LEARNINGS.md files are project artifacts — do NOT modify them. Track which action items were addressed in the framework-engineer output report, not by editing the source file.
+- **Respect priority ordering.** Process P1 (correctness) items before P2 (efficiency) before P3 (polish). If context budget requires stopping mid-backlog, ensure all P1 items are addressed first.
+
 ### 4. Cross-File Consistency
 
 When updating a count ("seven engagement modes" → "eight"), search for ALL occurrences across the codebase, not just the one you know about. When adding a table row, verify the row matches the column schema of existing rows. When adding an escalation path, verify both the "from" and "to" modes acknowledge the path.
@@ -104,7 +115,7 @@ For new files (new agent, new skill, new mode reference), write the complete fil
 ### Step 1: Understand the Task
 
 Read the orchestrator's prompt carefully. Identify:
-- **Work type:** New Skill | New Agent | New Mode | Modify Existing | Multi-Component
+- **Work type:** New Skill | New Agent | New Mode | Modify Existing | Incorporate Learnings | Multi-Component
 - **Scope:** What to create or change
 - **Affected files:** What will be read, created, or modified
 
@@ -118,6 +129,7 @@ Load context based on work type:
 | New Agent | `agent-authoring` skill (preloaded), `AGENT_TEMPLATE.md`, exemplar agent |
 | New Mode | `MODE_TEMPLATE.md`, closest analog mode reference file |
 | Modify Existing | The target file in full, plus files that reference it |
+| Incorporate Learnings | LEARNINGS.md file(s), target files referenced in action items |
 | Multi-Component | All of the above as applicable |
 
 ### Step 3: Read Existing State
@@ -176,7 +188,7 @@ Return findings in this structure:
 ## Summary
 **Status:** [COMPLETED | PARTIAL | BLOCKED]
 **Severity:** [None | WARNING | BLOCKER]
-**Work Type:** [New Skill | New Agent | New Mode | Modify Existing | Multi-Component]
+**Work Type:** [New Skill | New Agent | New Mode | Modify Existing | Incorporate Learnings | Multi-Component]
 **Components Affected:** [count] files created, [count] files modified
 
 ## Artifacts Created

@@ -349,7 +349,9 @@ If you're not comfortable with the pull request process, you can also [open an i
 
 Even if you're not creating new skills, there's a contribution path that requires almost zero effort: **sharing your LEARNINGS.md files.** Every time DAAF completes a Full Pipeline project, it produces a LEARNINGS.md file documenting everything it learned about data quirks, process issues, and methodology edge cases along the way. These learnings are written to be immediately actionable -- they often contain specific suggestions for updating skills, improving documentation, or adding new pitfall entries.
 
-If you [open an issue](https://github.com/DAAF-Contribution-Community/daaf/issues) with your LEARNINGS.md content, the community can fold those insights back into the framework. This is genuinely one of the most impactful things you can do -- every project run generates practical knowledge that benefits every future project.
+You can also incorporate learnings directly into your own DAAF instance: start a new session and say "incorporate learnings" — Framework Development mode will scan your project LEARNINGS.md files, present a consolidated backlog of framework improvements, and walk you through implementing them.
+
+To share learnings with the broader community, [open an issue](https://github.com/DAAF-Contribution-Community/daaf/issues) with your LEARNINGS.md content — the community can fold those insights back into the shared framework. This is genuinely one of the most impactful things you can do — every project run generates practical knowledge that benefits every future project.
 
 ---
 

@@ -242,7 +242,8 @@ Even for simple lookups, always confirm — the user may want broader context th
 | Framework Development | Revision and Extension | User wants to review or revise an analysis that used the framework |
 | Framework Development | Data Discovery | Framework change requires testing with a specific data source |
 | Data Onboarding (complete) | Framework Development | User wants to refine the skill just created beyond what Onboarding produced |
-| Full Pipeline (complete) | Framework Development | User identifies framework improvements based on analysis experience |
+| Full Pipeline (complete) | Framework Development | User identifies framework improvements based on analysis experience; System Update Action Plan in LEARNINGS.md has actionable items — proactively suggest "incorporate learnings" |
+| Data Onboarding (complete) | Framework Development | System Update Action Plan in LEARNINGS.md has actionable items (e.g., skill template gaps discovered during profiling) |
 
 When escalation is appropriate, propose it explicitly:
 > "Based on these findings, would you like me to proceed with [escalated mode]?"

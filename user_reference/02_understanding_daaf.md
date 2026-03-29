@@ -191,7 +191,7 @@ Before doing anything else, DAAF will tell you which mode it's classifying your 
 
 **What you get:** Modified or new framework components placed directly in the DAAF codebase, with a multi-angle review pass ensuring cross-file consistency.
 
-**When to use it:** When you want to add a new data source skill, create a new agent, add a new engagement mode, update templates or reference documents, or make any other structural change to the DAAF framework.
+**When to use it:** When you want to add a new data source skill, create a new agent, add a new engagement mode, update templates or reference documents, incorporate learnings from completed analyses back into the framework, or make any other structural change to the DAAF framework.
 
 **When NOT to use it:** When you want to onboard a dataset by profiling it (use Data Onboarding), when you want to run an analysis (use Full Pipeline), or when you want general help (use Ad Hoc Collaboration).
 
@@ -234,7 +234,8 @@ DAAF supports clean transitions between modes when it makes sense:
 | Framework Development | Revision and Extension | User wants to review or revise an analysis that used the framework |
 | Framework Development | Data Discovery | Framework change requires testing with a specific data source |
 | Data Onboarding (complete) | Framework Development | User wants to refine the skill beyond what Onboarding produced |
-| Full Pipeline (complete) | Framework Development | User identifies framework improvements from analysis experience |
+| Full Pipeline (complete) | Framework Development | User identifies framework improvements from analysis experience, or LEARNINGS.md has actionable items to incorporate |
+| Data Onboarding (complete) | Framework Development | LEARNINGS.md from profiling has actionable framework improvements (e.g., skill template gaps) |
 
 DAAF will always propose these escalations explicitly and wait for your confirmation. It should never silently switch modes on you.
 

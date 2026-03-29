@@ -161,7 +161,9 @@ Data Onboarding is designed for **tabular datasets** — files with rows and col
 │  Stage DI-8: Review & Delivery                                              │
 │      ├─ Collect session logs: collect_session_logs.sh                        │
 │      ├─ Present completed skill to user for review                          │
-│      ├─ Finalize STATE.md, LEARNINGS.md                                     │
+│      ├─ Finalize STATE.md                                                   │
+│      ├─ Consolidate LEARNINGS.md (review entries, populate key sections)     │
+│      ├─ Add System Update Action Plan if generalizable learnings found       │
 │      └─ Gate GDI-8: User confirms skill is acceptable                       │
 └─────────────────────────────────────────────────────────────────────────────┘
                           ↓
@@ -540,7 +542,14 @@ For EACH profiling part (DI-3 through DI-6), follow this complete cycle. **Do NO
 
 **CRITICAL:** Steps 0-6 form an atomic unit. Step 0 runs before each new part cycle. NEVER proceed to the next part without completing all steps. NEVER invoke a new profiling subagent without first completing QA review and STATE.md update for the previous part.
 
-**Stage DI-7 (Skill Authoring):** Does not follow this cycle. It has its own gate (GDI-7) and updates the Skill Authoring Status section of STATE.md directly. DI-7 includes skill file creation and template compliance validation. Skills are automatically discovered via YAML frontmatter once placed in `.claude/skills/`. Stage DI-8 finalizes STATE.md as described in the Output Format section.
+**Stage DI-7 (Skill Authoring):** Does not follow this cycle. It has its own gate (GDI-7) and updates the Skill Authoring Status section of STATE.md directly. DI-7 includes skill file creation and template compliance validation. Skills are automatically discovered via YAML frontmatter once placed in `.claude/skills/`.
+
+**Stage DI-8 (Review & Delivery):** Finalizes STATE.md and consolidates LEARNINGS.md as described in the Output Format section. The LEARNINGS.md consolidation protocol for DI-8:
+1. Review LEARNINGS.md entries captured during profiling phases (DI-3 through DI-6)
+2. Ensure **Access/Data Gotchas** and **Data Quality Notes** sections are populated — these are the most relevant sections for onboarding work, since profiling surfaces source-specific quirks that future analyses need to know about
+3. If profiling revealed issues with existing skills, agent protocols, or templates (e.g., "the data source skill template does not account for a pattern we discovered"), add a **System Update Action Plan** section following the same format as Full Pipeline (see `WORKFLOW_PHASE5_SYNTHESIS.md`). Keep it lightweight — only include genuinely generalizable improvements, not project-specific observations.
+4. If no generalizable framework updates were identified, add a brief statement: "No generalizable framework updates identified during this onboarding."
+5. Include the action plan item count (or zero) in the delivery message
 
 ### STATE.md Update Gates
 
@@ -848,6 +857,9 @@ If anything in the skill doesn't look right — descriptions, decision trees, re
 
 **Recommendations:**
 - [Any follow-up actions: e.g., columns needing manual review, documentation gaps, suggested analyses]
+
+[If System Update Action Plan has action items:]
+**Framework Updates Available:** Profiling generated [N] action items for improving DAAF skills, templates, or protocols. To incorporate these, start a new session and say "incorporate learnings" — this uses Framework Development mode to process the action plan.
 ```
 
 ---

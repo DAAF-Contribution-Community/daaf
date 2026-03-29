@@ -476,6 +476,9 @@ After passing Final Review, deliver to user:
 
 **Lessons Learned:** [Brief summary of key insights captured - data access gotchas, methodology improvements, etc.]
 
+[If System Update Action Plan has action items:]
+**Framework Updates Available:** The analysis generated [N] action items for improving DAAF's skills, agents, or reference files. To incorporate these into the framework, start a new session and say "incorporate learnings from [project name]" — this will use Framework Development mode to process the action plan.
+
 Let me know if you have any questions or would like any modifications.
 ```
 
@@ -519,7 +522,10 @@ After consolidation, the orchestrator adds a final section to LEARNINGS.md:
 
 *Generated at project completion. Each item maps a learning to a specific
 system file with a proposed change. This plan is NOT auto-executed — it
-serves as a work queue for future system maintenance.*
+serves as a work queue for future system maintenance. To process this
+queue, use Framework Development mode with the "Incorporate Learnings"
+work type, which scans project LEARNINGS.md files and presents a
+consolidated backlog for implementation.*
 
 ### Priority Legend
 - **P1 (High):** Prevents incorrect results in future analyses

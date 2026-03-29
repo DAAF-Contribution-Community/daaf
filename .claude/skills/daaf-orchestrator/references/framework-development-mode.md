@@ -99,6 +99,7 @@ When the user describes their framework need, classify it into one of these work
 | **New Mode** | "add a new mode for...", "create a workflow..." | `MODE_TEMPLATE.md` | FRAMEWORK_INTEGRATION_CHECKLIST.md § 3 |
 | **New Reference File** | "create a reference for...", "document the protocol for..." | Examine 2-3 existing exemplars | FRAMEWORK_INTEGRATION_CHECKLIST.md § 4 |
 | **Modify Existing** | "update the X skill...", "change the Y agent..." | Read existing artifact + template | FRAMEWORK_INTEGRATION_CHECKLIST.md § modification subsection |
+| **Incorporate Learnings** | "incorporate learnings", "apply learnings", "process LEARNINGS.md", "update framework from learnings" | Existing LEARNINGS.md System Update Action Plans | FRAMEWORK_INTEGRATION_CHECKLIST.md (section varies by action item target) |
 | **Multi-Component** | Complex work touching multiple component types | All applicable | Multiple sections |
 
 For ambiguous requests, ask clarifying questions before classifying.
@@ -126,6 +127,11 @@ Launch **3 Plan subagents** in parallel to thoroughly explore the relevant exist
 1. **Current state:** Read the target artifact in full. Read files that reference it (grep for filename).
 2. **Template compliance:** Read the canonical template for this artifact type. Note any structural gaps.
 3. **Downstream impact:** Identify which other files reference or depend on the content being modified.
+
+**For Incorporate Learnings:**
+1. **Learnings scan:** Scan all `research/*/LEARNINGS.md` files. Extract every System Update Action Plan table. Consolidate action items across projects, noting source project for each. Flag duplicates where multiple projects identified the same issue.
+2. **Current state check:** For each action item, read the target file(s) mentioned. Determine whether the proposed change has already been made (fully or partially). Mark items as "already addressed", "partially addressed", or "still needed".
+3. **Dependency and ordering analysis:** Identify dependencies across action items (e.g., a skill change that requires an agent change). Group items by target file to minimize file-switching. Propose an execution order respecting dependencies and priority (P1 before P2 before P3).
 
 **For Multi-Component:**
 Combine the relevant exploration sets. Distribute across 3 subagents by grouping related explorations.
@@ -161,6 +167,103 @@ Provide a structured report with:
 Keep output under 800 words. Focus on findings, not descriptions of what you read.
 ```
 
+### Phase 1 Exploration Prompt Template: Incorporate Learnings
+
+For the "Incorporate Learnings" work type, the 3 Plan subagents have specialized prompts:
+
+**Subagent 1: Learnings Scan**
+```
+**BASE_DIR:** {absolute path to DAAF root}
+
+## Task: Framework Exploration — Learnings Scan
+
+You are a READ-ONLY research agent. Do NOT write or modify any files.
+
+## Focus
+
+Scan all LEARNINGS.md files across research projects. Extract every System Update
+Action Plan section. Consolidate action items into a single deduplicated backlog.
+
+## Files to Read
+
+- Glob: `{BASE_DIR}/research/*/LEARNINGS.md`
+- For each file found: read the "System Update Action Plan" section (if present)
+
+## Expected Output
+
+Provide a structured report with:
+1. List of LEARNINGS.md files found (with project names and dates)
+2. Consolidated action items table: #, Learning, Target File, Change Type,
+   Proposed Change, Priority, Source Project(s)
+3. Duplicates identified (same target + same proposed change from multiple projects)
+4. Total counts: action items found, unique after dedup, by priority (P1/P2/P3)
+
+Keep output under 800 words. Focus on the consolidated backlog, not descriptions
+of each file.
+```
+
+**Subagent 2: Current State Check**
+```
+**BASE_DIR:** {absolute path to DAAF root}
+
+## Task: Framework Exploration — Current State of Action Item Targets
+
+You are a READ-ONLY research agent. Do NOT write or modify any files.
+
+## Focus
+
+For each action item from the consolidated backlog, check whether the proposed
+change has already been made in the target file.
+
+## Action Items to Check
+
+{Paste consolidated action items table from Subagent 1, or instruct orchestrator
+to inline the items here after Subagent 1 returns}
+
+## Expected Output
+
+Provide a structured report with:
+1. For each action item: status (Already Addressed / Partially Addressed /
+   Still Needed) with evidence (quote the relevant section or note its absence)
+2. Summary counts: already done, partial, still needed
+3. Any target files that no longer exist or have been restructured
+
+Keep output under 800 words.
+```
+
+**Subagent 3: Dependency and Ordering Analysis**
+```
+**BASE_DIR:** {absolute path to DAAF root}
+
+## Task: Framework Exploration — Dependency and Ordering Analysis
+
+You are a READ-ONLY research agent. Do NOT write or modify any files.
+
+## Focus
+
+Analyze the "still needed" action items for dependencies, grouping, and
+execution order.
+
+## Action Items to Analyze
+
+{Paste "still needed" items from Subagent 2, or instruct orchestrator to inline
+them here after Subagent 2 returns}
+
+## Expected Output
+
+Provide a structured report with:
+1. Dependency map: which items must precede others (e.g., template change before
+   agent change that references the template)
+2. Grouping by target file (to minimize file-switching during execution)
+3. Recommended execution order respecting: dependencies first, then P1 > P2 > P3
+4. Estimated complexity per item (Simple / Moderate / Complex) based on the
+   number of files affected and nature of the change
+
+Keep output under 800 words.
+```
+
+**Note:** Subagents 2 and 3 depend on earlier results. The orchestrator may run Subagent 1 first, then Subagents 2 and 3 in sequence (or parallel if the orchestrator inlines findings). Alternatively, the orchestrator can run all three with standing instructions and let each subagent scan independently — trading some duplication for parallelism.
+
 ### PSU-FD1: Scope Confirmation
 
 Present after Phase 1 exploration completes. All user-facing text uses plain language — no internal terms (gate, GFD, PSU, subagent).
@@ -168,7 +271,7 @@ Present after Phase 1 exploration completes. All user-facing text uses plain lan
 ```
 **Framework Development: Scope Review**
 
-**Work Type:** [New Skill | New Agent | New Mode | Modify Existing | Multi-Component]
+**Work Type:** [New Skill | New Agent | New Mode | Modify Existing | Incorporate Learnings | Multi-Component]
 
 **Current State:**
 - [What exists today and how it connects]
@@ -245,7 +348,7 @@ The orchestrator dispatches to the `framework-engineer` agent for authoring and 
 
 ## Task
 
-**Work Type:** [New Skill | New Agent | New Mode | Modify Existing | Multi-Component]
+**Work Type:** [New Skill | New Agent | New Mode | Modify Existing | Incorporate Learnings | Multi-Component]
 **Scope:** [What to create or change, and why]
 
 ## Context
@@ -456,7 +559,7 @@ If the session remains purely conversational with no milestones, SESSION_NOTES.m
 
 **Started:** YYYY-MM-DD
 **Workspace:** {PROJECT_DIR}
-**Work Type:** [New Skill | New Agent | New Mode | Modify Existing | Multi-Component]
+**Work Type:** [New Skill | New Agent | New Mode | Modify Existing | Incorporate Learnings | Multi-Component]
 
 ## Accomplishments
 
@@ -529,6 +632,7 @@ Framework Development has variable outputs depending on the work:
 | New Agent | Agent .md file | README.md updates, integration wiring |
 | New Mode | Mode reference .md file | SKILL.md updates, BOUNDARIES.md, user_reference, README.md, supporting references |
 | Modify Existing | Updated file(s) | Downstream updates if scope changed |
+| Incorporate Learnings | Updated framework file(s) per action plan items | Integration updates as needed per standard modification standards |
 | Multi-Component | Multiple of the above | Cross-component consistency verification |
 
 All outputs are framework files placed directly in the DAAF codebase.
