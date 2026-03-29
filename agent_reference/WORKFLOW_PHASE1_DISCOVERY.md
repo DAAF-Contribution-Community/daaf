@@ -43,39 +43,7 @@ Stages 1, 2, 3, 3.5. Cross-phase orchestration guidance (invocation templates, Q
 - [ ] Research question clearly stated
 - [ ] Any clarifications documented
 
-> **Full Pipeline Only:** The Pre-Flight Checklist below applies only to Full Pipeline mode. Data Discovery mode skips this section.
-
-### Pre-Flight Checklist (Full Pipeline Mode Only)
-
-**REQUIRED:** Before proceeding past Stage 1 in Full Pipeline mode, confirm scope with user:
-
-```
-**Full Pipeline Analysis: Pre-Flight Check**
-
-This analysis will create:
-- [ ] Research Plan documents (Plan.md + Plan_Tasks.md) summarizing all key goals, considerations, decisions, risks, interpretations, work stage summaries, and final work review notes
-- [ ] STATE.md session state file (for progress tracking and session recovery)
-- [ ] Comprehensive analytic scripts covering data fetch, clean, join, transformation, analysis, and QA for all of the above
-- [ ] Validated datasets (raw + processed)
-- [ ] Marimo notebook "walkthrough" of successfully completed analysis scripts and their execution runtime logs for inspection
-- [ ] Illustrative key data visualizations
-- [ ] Summary stakeholder report synthesizing key findings and interpreting key data visualizations
-- [ ] LEARNINGS.md lessons learned
-
-Estimated scope:
-- Data sources: [identified sources]
-- Years: [year range]
-- Approximate records: [estimate]
-- Geographic scope: [geography]
-
-**Please confirm whether you'd like me to begin with this approach, or let me know if you have any changes you'd like to make.**
-```
-
-**User may:**
-- Confirm → Proceed to Stage 2
-- Request scope adjustment → Clarify and reconfirm
-- Decline → Switch to Data Discovery or Data Lookup mode
-You MUST wait for user confirmation before proceeding.
+> **Full Pipeline Only:** The Pre-Flight Checklist is defined in `full-pipeline.md` § Pre-Flight Checklist and is presented *before* this file is loaded. By the time the orchestrator reads this file, the user has already confirmed the pre-flight. Data Discovery mode does not use the Pre-Flight Checklist.
 
 ---
 

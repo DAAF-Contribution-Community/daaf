@@ -200,7 +200,7 @@ Even for simple lookups, always confirm — the user may want broader context th
 > [Classification reasoning]. I'll work with you as a thought partner — we can review code, debug scripts, explore data sources, brainstorm approaches, write analysis code, or tackle whatever you need. If we produce anything, I'll save it to a workspace called `[proposed topic label]`. You drive the conversation — change topics freely. **Sound good, or would you rather approach this differently?**
 
 **Full Pipeline:**
-> [Classification reasoning]. 5 phases with 4 checkpoints — you review the plan before code runs and results before the report. [Scope summary]. Once confirmed, I'll present a detailed deliverables and scope overview for your review before diving in. **Shall I proceed?**
+> [Classification reasoning]. This is DAAF's most comprehensive mode — a full research pipeline with 5 phases and 4 checkpoints where you review data sources, approve the methodology, check data quality, and confirm results before the final report. Once confirmed, I'll present a pre-flight checklist with the full deliverables list and estimated scope for your review. **Shall I proceed?**
 
 **Revision and Extension:**
 > [Classification reasoning]. [What will change]. New version — original untouched. I'll classify the change type, re-run only the affected steps (with the same quality checks as the original), and present a summary when complete. **Shall I proceed?**
@@ -351,16 +351,17 @@ Mode Confirmed
     │          └─ Load skill: data-scientist (orchestrator loads directly — exception to standard pattern)
     │
     ├─ Full Pipeline Mode
-    │   └─ Read: {SKILL_REFS}/full-pipeline.md (contains all checklists, PSU templates,
-    │          │   invocation templates, QA protocols, and quality framework inline)
+    │   └─ Read: {SKILL_REFS}/full-pipeline.md (contains pre-flight checklist,
+    │          │   all PSU templates, invocation templates, QA protocols, quality framework)
+    │          ├─ ★ PRESENT Pre-Flight Checklist to user (STOP — wait for confirmation)
+    │          ├─ After pre-flight confirmed, load progressively per phase:
+    │          │   ├─ Phase 1: {BASE_DIR}/agent_reference/WORKFLOW_PHASE1_DISCOVERY.md
+    │          │   ├─ Phase 2: {BASE_DIR}/agent_reference/WORKFLOW_PHASE2_PLANNING.md
+    │          │   ├─ Phase 3: {BASE_DIR}/agent_reference/WORKFLOW_PHASE3_ACQUISITION.md
+    │          │   ├─ Phase 4: {BASE_DIR}/agent_reference/WORKFLOW_PHASE4_ANALYSIS.md
+    │          │   └─ Phase 5: {BASE_DIR}/agent_reference/WORKFLOW_PHASE5_SYNTHESIS.md
     │          ├─ Code execution: Read {BASE_DIR}/agent_reference/VALIDATION_CHECKPOINTS.md
-    │          ├─ Error handling: Read {BASE_DIR}/agent_reference/ERROR_RECOVERY.md
-    │          └─ Stage-specific (load progressively per phase):
-    │              ├─ Phase 1: {BASE_DIR}/agent_reference/WORKFLOW_PHASE1_DISCOVERY.md
-    │              ├─ Phase 2: {BASE_DIR}/agent_reference/WORKFLOW_PHASE2_PLANNING.md
-    │              ├─ Phase 3: {BASE_DIR}/agent_reference/WORKFLOW_PHASE3_ACQUISITION.md
-    │              ├─ Phase 4: {BASE_DIR}/agent_reference/WORKFLOW_PHASE4_ANALYSIS.md
-    │              └─ Phase 5: {BASE_DIR}/agent_reference/WORKFLOW_PHASE5_SYNTHESIS.md
+    │          └─ Error handling: Read {BASE_DIR}/agent_reference/ERROR_RECOVERY.md
     │
     ├─ Revision and Extension Mode
     │   └─ Read: {SKILL_REFS}/revision-and-extension-mode.md

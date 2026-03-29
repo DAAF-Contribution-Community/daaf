@@ -1,21 +1,5 @@
 # Full Pipeline Mode
 
-## User Orientation
-
-After mode confirmation but before starting Phase 1, briefly present the phase-by-checkpoint roadmap. Expand naturally on these points:
-
-- 5 phases: Discovery → Planning → Data Acquisition → Analysis → Synthesis
-- Checkpoint after each of the first 4 phases (data sources? plan? data quality? results?)
-- Planning checkpoint is the most important review — approves methodology before code runs
-- Nothing moves forward without user go-ahead
-- Session progress is saved if conversation gets long
-
-**When to skip:** User has indicated familiarity, or this is a session recovery.
-
-**For more detail:** Consult `{BASE_DIR}/user_reference/02_understanding_daaf.md`.
-
----
-
 This reference is loaded after the orchestrator classifies a request as Full Pipeline mode and the user confirms. It contains the complete 5-phase, 12-stage workflow, subagent coordination patterns, quality framework, and session management protocol.
 
 **Path variables** (defined in core SKILL.md):
@@ -36,13 +20,70 @@ This reference is loaded after the orchestrator classifies a request as Full Pip
 
 ## Pre-Flight Checklist
 
-After mode confirmation (Gate G1) and before starting Stage 2, present the scope confirmation to the user:
+> **Template note:** This section serves as both the **User Orientation** and scope confirmation for Full Pipeline mode, consolidated into a single pre-flight message. Other modes define these as a separate `## User Orientation` section per `MODE_TEMPLATE.md`.
 
-- **Deliverables:** Plan.md + Plan_Tasks.md, STATE.md, analytic scripts, validated datasets, marimo notebook, visualizations, stakeholder report, LEARNINGS.md
-- **Estimated scope:** Data sources, year range, approximate records, geographic scope
-- **User gate:** User confirms, adjusts scope, or switches mode before proceeding
+After mode confirmation (Gate G1) and before beginning Phase 1 work, present the pre-flight checklist to the user. This is a **single combined message** that orients the user to the Full Pipeline workflow and confirms the deliverables and scope.
 
-See `agent_reference/WORKFLOW_PHASE1_DISCOVERY.md` > "Pre-Flight Checklist (Full Pipeline Mode Only)" for the complete template with exact wording.
+**Orientation overview** — expand naturally on these points:
+- 5 phases: Discovery → Planning → Data Acquisition → Analysis → Synthesis
+- Checkpoint after each of the first 4 phases (data sources? plan? data quality? results?)
+- Planning checkpoint is the most important review — approves methodology before code runs
+- Nothing moves forward without user go-ahead
+- Session progress is saved if conversation gets long
+
+**Scope confirmation** — then present:
+
+```
+**Full Pipeline Analysis: Pre-Flight Check**
+
+This analysis will create:
+- [ ] Research Plan documents (Plan.md + Plan_Tasks.md) summarizing all key goals, considerations, decisions, risks, interpretations, work stage summaries, and final work review notes
+- [ ] STATE.md session state file (for progress tracking and session recovery)
+- [ ] Comprehensive analytic scripts covering data fetch, clean, join, transformation, analysis, and QA for all of the above
+- [ ] Validated datasets (raw + processed)
+- [ ] Marimo notebook "walkthrough" of successfully completed analysis scripts and their execution runtime logs for inspection
+- [ ] Illustrative key data visualizations
+- [ ] Summary stakeholder report synthesizing key findings and interpreting key data visualizations
+- [ ] LEARNINGS.md lessons learned
+
+Estimated scope:
+- Data sources: [identified sources]
+- Years: [year range]
+- Approximate records: [estimate]
+- Geographic scope: [geography]
+
+**Please confirm whether you'd like me to begin with this approach, or let me know if you have any changes you'd like to make.**
+```
+
+**When to abbreviate:** If the user has indicated familiarity or this is a session recovery, present just the scope confirmation (deliverables + estimated scope) without the orientation overview.
+
+**For more detail:** Consult `{BASE_DIR}/user_reference/02_understanding_daaf.md`.
+
+**User may:**
+- Confirm → Proceed to Phase 1 (Stage 2: Data Exploration)
+- Request scope adjustment → Clarify and reconfirm
+- Decline → Switch to Data Discovery or Data Lookup mode
+
+#### Pre-Flight Turn Boundary Rule
+
+Your pre-flight message MUST be the ONLY content in that response turn. Specifically, in the same turn as the pre-flight message:
+- Do NOT load phase-specific workflow files (no `Read` of `WORKFLOW_PHASE1_DISCOVERY.md`, etc.)
+- Do NOT dispatch any subagents (no `Agent` tool calls)
+- Do NOT begin Stage 2 exploration work
+- Do NOT read any other reference files
+
+The pre-flight message is a STOPPING POINT. You MUST wait for user confirmation before proceeding. Phase-specific workflow files are loaded *after* the user confirms the pre-flight, in a subsequent turn.
+
+#### Pre-Flight Self-Check
+
+Before sending your pre-flight response, verify:
+- [ ] Orientation overview included (unless user indicated familiarity)
+- [ ] Deliverables list presented
+- [ ] Estimated scope filled in with preliminary details from the user's request
+- [ ] Message ends with an explicit question to the user
+- [ ] No phase workflow files loaded in this turn
+- [ ] No subagents dispatched in this turn
+- [ ] No other tool calls in this turn
 
 ---
 
@@ -99,11 +140,11 @@ The Full Pipeline workflow consists of **5 Phases** and **12 Stages**.
 │      ├─ Output: Research question + scope confirmed                         │
 │      └─ Gate G1: Mode classified, scope confirmed                           │
 │                          ↓                                                  │
-│  ┌─ PRE-FLIGHT CHECKLIST (present to user) ─────────────────────────────┐   │
-│  │  □ Present deliverables list (Plan, scripts, notebook, report, etc.) │   │
+│  ┌─ PRE-FLIGHT CHECKLIST (see § Pre-Flight Checklist above) ────────────┐   │
+│  │  □ Present orientation overview + deliverables list                   │   │
 │  │  □ Confirm estimated scope (sources, years, records, geography)      │   │
 │  │  □ User confirms or adjusts before proceeding                        │   │
-│  │  See WORKFLOW_PHASE1_DISCOVERY.md > Pre-Flight Checklist             │   │
+│  │  ★ STOP — Pre-Flight Turn Boundary Rule applies                      │   │
 │  └──────────────────────────────────────────────────────────────────────┘   │
 │                          ↓                                                  │
 │  Stage 2: Data Exploration ←── domain explorer skill                        │
