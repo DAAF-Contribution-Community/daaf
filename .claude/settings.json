@@ -83,7 +83,9 @@
     "ANTHROPIC_MODEL": "claude-opus-4-6[1m]",
     "CLAUDE_CODE_EFFORT_LEVEL": "high",
     "CLAUDE_CODE_DISABLE_AUTO_MEMORY": "1",
-    "CLAUDE_CODE_DISABLE_BACKGROUND_TASKS": "1"
+    "CLAUDE_CODE_DISABLE_BACKGROUND_TASKS": "1",
+    "DISABLE_AUTOUPDATER": "1",
+    "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1"
   },
   "outputStyle": "Explanatory",
   "showThinkingSummaries": true,

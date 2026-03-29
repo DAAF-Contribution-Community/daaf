@@ -119,8 +119,9 @@ WORKDIR /daaf
 RUN chown appuser:appuser /daaf
 USER appuser
 
-# Install Claude Code as appuser (installs to ~/.claude/local/bin/)
-RUN curl -fsSL https://claude.ai/install.sh | bash
+# Install Claude Code as appuser (pinned version)
+ARG CLAUDE_CODE_VERSION=2.1.87
+RUN curl -fsSL https://claude.ai/install.sh | bash -s ${CLAUDE_CODE_VERSION}
 ENV PATH="/home/appuser/.local/bin:${PATH}"
 
 # Default command
