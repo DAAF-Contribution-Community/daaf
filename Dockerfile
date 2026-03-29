@@ -124,5 +124,10 @@ ARG CLAUDE_CODE_VERSION=2.1.87
 RUN curl -fsSL https://claude.ai/install.sh | bash -s ${CLAUDE_CODE_VERSION}
 ENV PATH="/home/appuser/.local/bin:${PATH}"
 
+# Copy and configure entrypoint script for git initialization
+COPY --chown=appuser:appuser scripts/entrypoint.sh /daaf/scripts/entrypoint.sh
+RUN chmod +x /daaf/scripts/entrypoint.sh
+ENTRYPOINT ["/daaf/scripts/entrypoint.sh"]
+
 # Default command
 CMD ["bash"]
