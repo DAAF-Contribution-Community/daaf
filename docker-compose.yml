@@ -1,3 +1,5 @@
+name: daaf
+
 services:
   daaf-docker:
     build: .
