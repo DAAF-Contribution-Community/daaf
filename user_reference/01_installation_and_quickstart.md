@@ -168,7 +168,7 @@ Rather than let Claude use and edit files directly on your computer, we're going
 
 ```bash
 # This uses Docker to help us copy files from your installation folder into a place Docker can work in later
-docker run --rm -v "${PWD}:/source:ro" -v "daaf_daaf-data:/dest" busybox cp -a /source/. /dest/
+docker run --rm -v "${PWD}:/source:ro" -v "daaf_daaf-data:/dest" busybox sh -c 'cp -a /source/. /dest/ && chown -R 1000:1000 /dest/'
 ```
 
 This copies all the project files into a **"Docker volume"** — a storage area managed by Docker that will serve as the Docker container's working directory. Think of it like creating a dedicated workspace inside Docker where all your research, data, and outputs will live. The project folder on your computer (e.g., `daaf-main/`) is used as the starting point here, but going forward, the Docker volume is where the actual work happens (see "How to Manage DAAF Project Files and Output" below for more on this). You can confirm this worked correctly by looking at the Volumes panel in the Docker Desktop app left-side toolbar: you should see a Volume listed named `daaf_daaf-data` in the list.
@@ -403,7 +403,7 @@ docker run --rm \
         rm -rf "/dest/$name"; \
         cp -a "$item" "/dest/$name"; \
       fi; \
-    done'
+    done && chown -R 1000:1000 /dest/'
 ```
 
 </td>
@@ -432,7 +432,7 @@ docker run --rm `
         rm -rf "/dest/$name";
         cp -a "$item" "/dest/$name";
       fi;
-    done'
+    done && chown -R 1000:1000 /dest/'
 ```
 
 </td>
@@ -482,6 +482,11 @@ marimo edit 'research/YYYY-MM-DD_Title/YYYY-MM-DD_Notebook_Name.py' --host 0.0.0
 - **Container seems really slow to build the first time** — The first `docker compose up --build` downloads base images and installs all packages. This is a one-time cost — subsequent starts are fast since Docker caches everything.
 - **"I can't find my research files on my computer"** — With Docker volumes, your research files live inside Docker's managed storage, not in the project folder on your computer. See **How to Manage DAAF Project Files and Output** above for more information.
 - **"Port 2718 already in use" when trying to view Marimo notebooks** — Another process is using that port. Either stop it, or change the port mapping in `docker-compose.yml` (e.g., `"3000:2718"` to use port 3000 on your host).
+- **Permission denied errors inside the container (especially on macOS)** — If you see errors like `Permission denied` when Claude tries to read or write files, the Docker volume likely has files owned by root or your host UID instead of the container's `appuser` (UID 1000). This is a known issue with Docker Desktop on macOS. To fix it, run the following command from your project directory (outside the container, with Docker Desktop running):
+  ```bash
+  docker run --rm -v "daaf_daaf-data:/daaf" busybox chown -R 1000:1000 /daaf
+  ```
+  Then restart the container with `docker compose up -d`. The latest version of `docker-compose.yml` includes an init service that automatically fixes this on every startup — if you're still hitting this after updating, make sure you have the latest `docker-compose.yml`.
 - **Claude Code asks for an API key every time** — Claude Code stores its configuration inside the container. If you fully remove the container (`docker compose down`), you may need to re-authenticate next time. To avoid this, you can set `ANTHROPIC_API_KEY` as an environment variable in a `.env` file in the project root (the `.gitignore` already prevents `.env` from being shared publicly).
 
 ---
