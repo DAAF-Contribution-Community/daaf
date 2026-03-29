@@ -84,6 +84,7 @@
     "CLAUDE_CODE_DISABLE_BACKGROUND_TASKS": "1"
   },
   "outputStyle": "Explanatory",
+  "showThinkingSummaries": true,
   "hooks": {
     "UserPromptSubmit": [
       {
@@ -187,6 +188,18 @@
             "type": "command",
             "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/flag-orchestrator-loaded.sh",
             "timeout": 5
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/subagent-registry.sh",
+            "timeout": 10
           }
         ]
       }
