@@ -122,8 +122,11 @@ Claude Code automatically archives a complete log of every session when it ends.
 
 | Format | File Pattern | Purpose |
 |--------|-------------|---------|
-| **Markdown** (`.md`) | `YYYY-MM-DD_HH-MM-SS_<session-id>.md` | Human-readable transcript with tool calls, timestamps, and token usage |
-| **JSONL** (`.jsonl`) | `YYYY-MM-DD_HH-MM-SS_<session-id>.jsonl` | Raw machine-readable transcript (full API-level detail) |
+| **Markdown** (`.md`) | `YYYY-MM-DD_HH-MM-SS_<session-id>_orchestrator.md` | Human-readable transcript with tool calls, timestamps, and token usage |
+| **JSONL** (`.jsonl`) | `YYYY-MM-DD_HH-MM-SS_<session-id>_orchestrator.jsonl` | Raw machine-readable transcript (full API-level detail) |
+| **Subagent JSONL** | `YYYY-MM-DD_HH-MM-SS_<session-id>_subagent_<agent-id>.jsonl` | Raw transcript for each subagent dispatched during the session |
+
+The orchestrator Markdown archive includes a **Subagent Activity** summary table listing each subagent's type, duration, tool uses, and a final-message excerpt.
 
 Additionally, `.claude/logs/activity.log` records a timestamped entry every time a session starts, giving you a quick overview of usage history.
 
