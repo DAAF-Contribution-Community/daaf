@@ -62,16 +62,40 @@ exist in the current environment, proceed using the density targets below as you
 
 Part 1 — Skill Authoring:
 1. Read all executed profiling scripts from {project_dir}/scripts/ (check STATE.md Profiling Progress for paths)
-2. Read STATE.md for provenance, user-confirmed interpretations, and reconciliation findings
+2. Read STATE.md for provenance, user-confirmed interpretations, reconciliation findings, and any known exclusions from intake
 3. Use user-confirmed interpretations (not preliminary) for all semantic claims
-4. Author SKILL.md per canonical 12-section data source template
-5. Create reference files in .claude/skills/{skill_name}/references/:
+4. **Domain Assessment:** Before writing reference files, identify the source's 2-3 major
+   analytical domains — the distinct research areas or methodological concerns that warrant
+   dedicated documentation. Group columns and use cases into clusters. For each domain that
+   requires 50+ lines of explanation (methodology, limitations, valid/invalid usage), plan a
+   dedicated topic-specific reference file (e.g., `movers-design.md`, `vote-mode-reconstruction.md`,
+   `covariate-structure.md`). If the source has 3+ distinct analytical use cases, at least one
+   topic-specific file is required. These files should be 40-60% interpretive — explaining *why*
+   limitations exist and *how* they affect specific analyses.
+5. **Cross-Dataset Discovery:** Glob for all `.claude/skills/*-data-source-*/SKILL.md` files.
+   Read their frontmatter descriptions to identify complementary data sources that share join
+   keys (e.g., county FIPS, unitid, state codes). For sources with shared keys, create a worked
+   Polars join example in the Related Data Sources section or in analytical-context.md's
+   Alternative/Complementary Sources section. Include actual column names, join type, and a
+   validation check.
+6. Author SKILL.md per canonical 12-section data source template
+7. Create reference files in .claude/skills/{skill_name}/references/:
    - columns.md — full column definitions, types, null rates (from scripts 02, 03)
-   - coded-values.md — all coded/sentinel value mappings (from scripts 03, 09)
+   - coded-values.md — all coded/sentinel value mappings (from scripts 03, 09).
+     **If no coded/sentinel values were found** (script 09 confirmed no sentinels):
+     create `value-interpretation.md` instead. Document what values ARE present —
+     negative value semantics, null patterns, expected ranges, value patterns that
+     could be mistaken for codes. More useful than a file that merely states "no codes found."
    - data-quality.md — data quality observations, anomalies, doc discrepancies (from scripts 09, 11)
    - variable-definitions.md — semantic column interpretations, user-confirmed (from script 10 + PSU-DI2)
-   - Additional topic-specific reference files as warranted by the data source (see guidance below)
-6. Save draft to {project_dir}/output/skill_draft/ and final to .claude/skills/{skill_name}/
+   - analytical-context.md — study design, population coverage, valid/invalid analyses (see detailed guidance below)
+   - Topic-specific files — one per major analytical domain identified in the Domain Assessment (step 4)
+8. Save draft to {project_dir}/output/skill_draft/ and final to .claude/skills/{skill_name}/
+9. **Bundle Profiling Scripts:** Copy all executed profiling scripts (from STATE.md Profiling
+   Progress table) to `.claude/skills/{skill_name}/scripts/`. These provide provenance and
+   enable re-profiling if the source data updates. Do NOT copy QA review scripts (cr/ directory)
+   — only the primary profiling scripts. Add a row to the Topic Index pointing to `./scripts/`
+   for "Data profiling scripts (provenance)".
 
 **REFERENCE FILE THOROUGHNESS GUIDANCE:**
 Reference files are the primary vehicle for encoding detailed knowledge. They are loaded
@@ -101,9 +125,26 @@ Density targets for reference files:
     why? (e.g., "mandated by Student Right-to-Know Act" or "linked IRS tax records to
     Census data"). Draw from documentation files referenced in STATE.md.
   * **Population Coverage:** Who is included AND excluded, and why? What are the
-    implications for generalizability?
+    implications for generalizability? MUST include an explicit **"What is NOT Included"**
+    subsection documenting known exclusions:
+    ### What is NOT Included
+    | Exclusion | Evidence | Impact on Research |
+    |-----------|----------|-------------------|
+    | [e.g., "Private schools"] | [Source: documentation / profiling observation] | [e.g., "Cannot generalize to all K-12"] |
+    Minimum: 2 exclusions documented (even if obvious, like "private schools not included").
+    Sources of exclusion information: user-provided exclusions from DI-1 intake (recorded
+    in STATE.md), exclusion statements extracted from documentation during Part D
+    reconciliation, and coverage boundaries observed during Part B entity profiling.
+  * **Temporal Scope:** What time period does this data cover? What cohorts, years, or
+    waves? For cross-sectional data: what historical moment does this represent, and can
+    it be compared to other time periods? For longitudinal data: are there schema changes
+    or methodology breaks? Include explicit "DO NOT compare across this boundary" guidance
+    if applicable (following the education skills' historical-changes.md pattern). If the
+    data could be confused with more recent or more frequent data, flag this prominently.
   * **Valid and Invalid Analyses:** Structured tables showing what analyses are appropriate
-    vs. problematic, with reasoning:
+    vs. problematic, with reasoning. Use concrete examples with real place names, variable
+    names, or values where possible (following the OI Neighborhoods analytical-context.md
+    pattern):
     ### Valid Analyses
     | Analysis | Why Valid |
     |----------|----------|
@@ -119,7 +160,9 @@ Density targets for reference files:
     your sample" vs. "if studying overall racial mobility gaps using pooled gender,
     suppression has minimal impact").
   * **Alternative/Complementary Sources:** What other datasets address this source's gaps?
-    Include specific variable names and access guidance, not just source names.
+    Include specific variable names and access guidance, not just source names. Use the
+    cross-dataset discovery results (step 5) to identify DAAF skills that complement this
+    source. Include worked Polars join examples for sources with shared join keys.
   Target: 200+ lines.
 - Additional topic-specific files: Create when ANY of these apply:
   (a) The source has a major known limitation requiring >50 lines of explanation
@@ -159,15 +202,19 @@ Skill template compliance:
 
 Reference file density:
 - [ ] columns.md covers ALL columns (not just a subset)
-- [ ] coded-values.md enumerates ALL coded/sentinel values found during profiling
+- [ ] coded-values.md enumerates ALL coded/sentinel values found during profiling (or value-interpretation.md if no codes — documenting negative value semantics, null patterns, expected ranges)
 - [ ] data-quality.md catalogs ALL anomalies from profiling scripts
 - [ ] variable-definitions.md groups columns by semantic family with descriptions
-- [ ] analytical-context.md exists with study design, population coverage, and valid/invalid analysis sections
-- [ ] analytical-context.md contains >= 3 valid and >= 3 invalid analysis patterns
-- [ ] Total reference file lines >= 3x SKILL.md lines (target; not a blocker if close)
+- [ ] analytical-context.md exists with study design, population coverage, temporal scope, and valid/invalid analysis sections
+- [ ] analytical-context.md Population Coverage contains explicit "What is NOT Included" subsection with >= 2 exclusions
+- [ ] analytical-context.md contains Temporal Scope section documenting time coverage and comparison boundaries
+- [ ] analytical-context.md contains >= 3 valid and >= 3 invalid analysis patterns (with concrete examples)
+- [ ] Total reference file lines >= 3x SKILL.md lines (hard minimum; target 4-6x for complex sources)
 - [ ] Reference files contain ~40-60% interpretive/analytical content (not purely data description)
+- [ ] If source has 3+ distinct analytical use cases: at least one topic-specific reference file exists
+- [ ] If source shares join keys with other DAAF skills: cross-dataset join example present in Related Data Sources or analytical-context.md
+- [ ] Profiling scripts bundled in .claude/skills/{skill_name}/scripts/ (excluding QA/cr scripts)
 - [ ] CPP-SKILL results reported as itemized pass/fail per check item (not just overall status)
-- [ ] Additional topic-specific reference files created where source complexity warrants
 
 **OUTPUT FORMAT (2500-word hard cap):**
 ### Skill Authoring: {skill_name}

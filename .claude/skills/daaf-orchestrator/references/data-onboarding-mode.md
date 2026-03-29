@@ -9,7 +9,7 @@ After mode confirmation, briefly orient the user. Key points:
 - 3 phases: Setup, Profiling (4 parts of scripted analysis), Skill Creation
 - 2 checkpoints where you review: after setup (to confirm scope) and after profiling (to confirm interpretations before they become part of the skill)
 - You receive: a standalone data source skill ready for use in future analyses, plus a research project folder with all profiling evidence
-- You need to provide: data file(s), source name, file format, and optionally any documentation and priority columns
+- You need to provide: data file(s), source name, file format, and optionally any documentation, priority columns, and known exclusions
 - Key characteristic: thorough automated profiling, but you review all interpretations before they are encoded into the skill
 - Typical duration: a single session for files under 500 columns; larger files may require batched profiling across sessions
 
@@ -38,6 +38,8 @@ Data Onboarding is designed for **tabular datasets** — files with rows and col
 │  Stage DI-1: Initial Intake                                                 │
 │      ├─ Collect: file path(s), format, source name, target skill name       │
 │      ├─ Collect: domain context, documentation links, priority columns      │
+│      ├─ Collect: known exclusions (populations/periods/geographies NOT in   │
+│      │   the data — feeds analytical-context.md Population Coverage)        │
 │      ├─ Determine access method:                                            │
 │      │   ├─ LOCAL FILE — user provides file path(s) on disk                │
 │      │   │   └─ Continue DI-1 (file structure classification below)        │
@@ -819,7 +821,7 @@ Present to the user after Stage DI-7 completes and the skill passes compliance:
 **Skill Created:**
 - Name: {skill-name}
 - Location: {BASE_DIR}/.claude/skills/{skill-name}/
-- Files: SKILL.md + [N] reference files
+- Files: SKILL.md + [N] reference files + [N] bundled profiling scripts
 
 **Profiling Summary:**
 - [Row count] rows, [column count] columns
@@ -839,7 +841,7 @@ The skill is automatically discoverable via its YAML frontmatter and ready for u
 - Semantic interpretation: [HIGH/MEDIUM/LOW] — [brief rationale]
 
 **Skill Maturity:**
-This skill is at **v1 (Initial)** — created through automated profiling with your confirmed interpretations. As you use this data in future analyses, you'll discover additional edge cases and domain-specific patterns worth documenting. You can refine the skill at any time using Framework Development mode.
+This skill is at **v1 (Initial)** — created through automated profiling with your confirmed interpretations. Profiling scripts are bundled with the skill for reproducibility — re-run them to re-verify if the source data is updated. As you use this data in future analyses, you'll discover additional edge cases and domain-specific patterns worth documenting. You can refine the skill at any time using Framework Development mode.
 
 **Want to adjust the skill?**
 If anything in the skill doesn't look right — descriptions, decision trees, reference file content — let me know and I can make targeted revisions. For more substantial restructuring, we can switch to Framework Development mode.

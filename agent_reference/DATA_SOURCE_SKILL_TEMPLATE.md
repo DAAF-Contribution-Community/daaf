@@ -594,9 +594,12 @@ print(f"Join coverage: {len(schools_with_district) - unmatched} / {len(schools_w
   - Section name: ALWAYS "## Related Data Sources"
   - NOT "Related Skills and Tools", "Cross-Reference to Related Skills", etc.
   - 3-column table: Source | Relationship | When to Use
-  - ALWAYS include the domain's explorer and query skill rows (e.g., `education-data-explorer` and `education-data-query` for education)
+  - ALWAYS include the domain's explorer and query skill rows (e.g., `education-data-explorer` and `education-data-query` for education). If no domain-specific explorer/query skills exist yet, note this (see countypres for example).
   - Include complementary data sources (e.g., CCD includes CRDC, SAIPE, MEPS)
   - Include join key information if relevant (e.g., "Join on unitid")
+  - For sources with cross-domain join potential, include a worked Polars join
+    example either in this section or with a pointer to analytical-context.md
+    (see "Cross-Dataset Join Examples" in Reference File Density Guidelines)
 -->
 
 ---
@@ -645,25 +648,28 @@ Reference files are loaded on-demand (Level 3 progressive disclosure), meaning t
 
 | Metric | Target | Floor |
 |--------|--------|-------|
-| Total reference file lines | 3-6x SKILL.md lines | 2x SKILL.md lines |
+| Total reference file lines | 4-6x SKILL.md lines | 3x SKILL.md lines |
 | columns.md lines per column | 3-5 lines | 2 lines |
-| coded-values.md | All coded values enumerated | Top values only is insufficient |
+| coded-values.md (or value-interpretation.md) | All coded values enumerated; see below for no-codes case | Top values only is insufficient |
 | data-quality.md | All profiling anomalies cataloged | 150+ lines for complex sources |
 | variable-definitions.md | Semantic families with examples | 150+ lines |
-| Topic-specific files | 1 per major analytical domain | 0 (but encouraged) |
+| analytical-context.md | Study design, exclusions, valid/invalid analyses | 200+ lines |
+| Topic-specific files | 1 per major analytical domain (see Domain Assessment below) | At least 1 if source has 3+ distinct analytical use cases |
 
-**Benchmark:** The hand-authored education data source skills average ~2,200 lines of reference content across 5-8 files, with individual files averaging ~400 lines. Skills authored by the data-ingest pipeline should aim toward this benchmark.
+**Benchmark:** The hand-authored education data source skills average ~2,400 lines of reference content across 5-8 files, with individual files averaging ~370 lines and reference-to-SKILL ratios of 4-8×. Skills below 3× are likely under-documented. Skills authored by the data onboarding pipeline should aim toward this benchmark.
 
 **Standard reference files for data source skills:**
 
 | File | Content | Required? |
 |------|---------|-----------|
 | `columns.md` | Full column definitions, types, null rates, value ranges | Yes |
-| `coded-values.md` | All coded/sentinel value mappings | Yes |
+| `coded-values.md` | All coded/sentinel value mappings | Yes (see note below for no-codes case) |
 | `data-quality.md` | Anomalies, suppression, quality observations | Yes |
 | `variable-definitions.md` | Semantic families, derived metrics, join guidance | Yes |
-| `analytical-context.md` | Study design, population coverage, valid/invalid analyses, limitations by research context, alternative sources | Yes |
-| Topic-specific files | Deep coverage of major analytical domains | When applicable |
+| `analytical-context.md` | Study design, population coverage (including exclusions), valid/invalid analyses, limitations by research context, alternative sources | Yes |
+| Topic-specific files | Deep coverage of major analytical domains (see Domain Assessment below) | Yes, if source has 3+ distinct analytical use cases |
+
+**No-codes case (`value-interpretation.md`):** If profiling confirms the dataset has NO coded or sentinel values (e.g., no -1/-2/-3 codes, no integer-encoded categoricals), create `value-interpretation.md` instead of `coded-values.md`. This file documents: (1) what negative values mean (substantive vs. error), (2) null/missing value semantics and patterns, (3) value range expectations by column family, (4) any unusual value patterns that could be mistaken for codes. The file remains required — it shifts from a code lookup table to a value semantics guide. Reference it as `value-interpretation.md` in the Reference File Structure table and Topic Index.
 
 **What belongs in reference files (not SKILL.md):**
 - Complete column-by-column documentation
@@ -673,6 +679,35 @@ Reference files are loaded on-demand (Level 3 progressive disclosure), meaning t
 - Historical context (schema changes across years, policy transitions)
 - Cross-source comparison guidance for related datasets
 - Study/survey design context that researchers need for proper interpretation
+
+### Domain Assessment
+
+Before authoring reference files, identify the source's major analytical domains — the distinct research areas or methodological concerns that warrant dedicated documentation. Each domain that requires 50+ lines of explanation (methodology, limitations, valid/invalid usage) should get its own topic-specific reference file.
+
+**How to identify domains:** Group the source's columns and documented use cases into clusters. For IPEDS, the domains are enrollment, graduation rates, finance, financial aid, completions, and institutional identifiers — each with distinct methodology, limitations, and pitfalls. For an election dataset, domains might be vote-share calculation, geographic aggregation, and voting-mode reconstruction. For a mobility dataset, domains might be the causal identification strategy, covariate structure, and shrinkage estimation.
+
+**Rule:** If the source spans 3+ distinct analytical use cases, at least one topic-specific reference file is expected. Topic-specific files should be 40-60% interpretive — explaining *why* limitations exist and *how* they affect specific analyses (following the model of IPEDS `graduation-rates.md` or countypres `mode-reconstruction.md`), not merely listing column names.
+
+| Source Complexity | Expected Topic-Specific Files | Example |
+|---|---|---|
+| Simple (1 table, <20 columns, 1-2 use cases) | 0 | SAIPE poverty estimates |
+| Moderate (1-2 tables, 20-100 columns, 3-4 use cases) | 1-2 | Election returns, MEPS |
+| Complex (multiple tables/components, 100+ columns, 5+ use cases) | 3-6 | IPEDS, CCD |
+
+### Provenance Scripts
+
+Data source skills may include a `scripts/` subdirectory containing the profiling scripts that generated the reference file content. These are not loaded by agents but provide provenance and reproducibility — if the source data updates, the profiling scripts can be re-run to verify or update the skill. Skills created via Data Onboarding should always bundle their profiling scripts.
+
+### Cross-Dataset Join Examples
+
+When a data source shares join keys with other DAAF data source skills (e.g., county FIPS, unitid, state codes), the Related Data Sources section or `analytical-context.md` should include worked Polars join examples with actual column names, explicit join type, and a validation check. This is especially valuable for cross-domain joins (e.g., election data joined to education data via county FIPS) where the column names and formats may differ between sources.
+
+### Temporal and Historical Documentation
+
+All data source skills should document temporal scope in `analytical-context.md` or a dedicated `temporal-coverage.md`/`historical-changes.md` file:
+- **Cross-sectional data:** What historical moment does this represent? What cohorts or time periods? What is NOT covered temporally?
+- **Longitudinal data:** Are there schema changes, methodology breaks, or coverage gaps across years? Document explicit "DO NOT compare across this boundary" guidance with the year and nature of the break (following the education skills' `historical-changes.md` pattern).
+- **All sources:** What temporal resolution is available (annual, biennial, one-time)? If the data could be confused with more recent or more frequent data, flag this prominently.
 
 **Content quality target:** Reference files should be approximately 40-60% interpretive/
 analytical guidance (why limitations exist, how they affect specific analyses, what
@@ -705,9 +740,13 @@ Use this checklist when reviewing a skill for template compliance:
 - [ ] Topic Index: 2-column table as final section
 - [ ] No content lost from original (spot-check source-specific sections)
 - [ ] Total SKILL.md lines under 500
-- [ ] Reference files collectively total >= 2x SKILL.md lines (3x+ preferred)
+- [ ] Reference files collectively total >= 3x SKILL.md lines (4x+ preferred)
 - [ ] columns.md covers ALL columns, not just a subset
-- [ ] coded-values.md enumerates ALL coded/sentinel values
+- [ ] coded-values.md enumerates ALL coded/sentinel values (or value-interpretation.md if no codes)
+- [ ] analytical-context.md includes Population Coverage with explicit "What is NOT Included" subsection
+- [ ] If source has 3+ analytical use cases: at least one topic-specific reference file exists
+- [ ] If source shares join keys with other DAAF skills: cross-dataset join example present
+- [ ] Temporal scope documented (in analytical-context.md or dedicated file)
 - [ ] If API-based: Prerequisites subsection present with env var name and setup link
 - [ ] If API-based: Data Persistence subsection documents both local and live patterns
 - [ ] If API-based: Example Fetch uses `os.environ` (never hardcodes keys)

@@ -336,9 +336,9 @@ print(f"CPP3 PASSED: Relational checks consistent, {len(anomaly_catalog)} anomal
 
 Scripts 10-11 produce interpretations and reconciliation. Sequential: 10 before 11 (if applicable).
 
-**10_semantic-interpretation.py (ALWAYS):** Column name pattern matching (FIPS->geo, _id->identifier, _pct->percentage, _dt->temporal, _cd->categorical), value patterns (binary 0/1, year-like 1900-2100, percentage-like 0-100 or 0-1), domain heuristics, derived metric feasibility, join key candidates, data dictionary draft. ALL marked `[PRELIMINARY]`. Outputs: role assignments, pattern classifications, draft data dictionary.
+**10_semantic-interpretation.py (ALWAYS):** Column name pattern matching (FIPS->geo, _id->identifier, _pct->percentage, _dt->temporal, _cd->categorical), value patterns (binary 0/1, year-like 1900-2100, percentage-like 0-100 or 0-1), domain heuristics, derived metric feasibility, join key candidates, data dictionary draft. ALL marked `[PRELIMINARY]`. **Domain decomposition:** Group columns into analytical domains and assess which warrant dedicated reference files in the skill. **Exclusion observations:** Note any apparent population boundaries based on entity coverage and column scope. Outputs: role assignments, pattern classifications, draft data dictionary, domain decomposition, exclusion observations.
 
-**11_reconcile-docs.py (CONDITIONAL: docs provided):** Column existence/order/type verification against documentation, value enumeration verification, scope verification (time range, coverage, entity count), cross-document consistency, discrepancy report with BLOCKER/WARNING/INFO severity. Outputs: verification results per documented claim, discrepancy catalog.
+**11_reconcile-docs.py (CONDITIONAL: docs provided):** Column existence/order/type verification against documentation, value enumeration verification, scope verification (time range, coverage, entity count), cross-document consistency, discrepancy report with BLOCKER/WARNING/INFO severity. **Exclusion extraction:** Extract all exclusion statements from documentation ("does not include," "excludes," "limited to," "only covers"). Outputs: verification results per documented claim, discrepancy catalog, exclusions identified.
 
 #### CPP4: Post-Interpretation Validation
 
@@ -622,12 +622,35 @@ Read `agent_reference/SCRIPT_EXECUTION_REFERENCE.md` for the file-first protocol
 Scripts go to: scripts/profile_interpretation/
 Execute: bash {BASE_DIR}/scripts/run_with_capture.sh {project_script_dir}/profile_interpretation/{script}.py
 
+**ADDITIONAL PART D REQUIREMENTS:**
+
+**Domain Decomposition (in script 10):** After semantic classification, group columns into
+analytical domains (e.g., "outcome variables," "geographic identifiers," "temporal indicators,"
+"covariates/controls," "survey design variables"). For each domain cluster with 5+ columns
+OR with distinct methodology/limitations, note whether it warrants a dedicated reference file
+in the skill. Include this domain decomposition in your return under "Domain Decomposition."
+
+**Exclusion Extraction (in script 11, if docs provided):** When reading documentation, extract
+all exclusion statements — phrases like "does not include," "excludes," "limited to," "only
+covers," "not available for." Report these in a structured "Exclusions Identified" section in
+your return, with source citation for each exclusion. Even without documentation, note any
+apparent population boundaries observed during profiling (e.g., "data appears limited to
+public institutions only" based on entity coverage in Part B).
+
 **OUTPUT FORMAT (2500-word hard cap):**
 ### Part D: Interpretation & Reconciliation
 - CPP4 Status, interpretation count
 - Documentation reconciliation: [executed/skipped — discrepancy count]
 ### Preliminary Interpretations (ALL columns)
 | Column | Interpretation | Confidence | Basis |
+### Domain Decomposition
+| Domain | Columns | Dedicated Reference File? | Rationale |
+|--------|---------|--------------------------|-----------|
+| [e.g., "Outcome variables"] | [column list or count] | [Yes/No] | [Why — methodology complexity, distinct limitations, etc.] |
+### Exclusions Identified
+| Exclusion | Source | Impact |
+|-----------|--------|--------|
+| [e.g., "Private schools not included"] | [Documentation page/section or profiling observation] | [Generalizability implication] |
 ### Scripts Created
 ### Confidence Assessment
 **Part Confidence:** [HIGH | MEDIUM | LOW]
@@ -843,7 +866,10 @@ print("=" * 60)
 #### Part D (Interpretation & Reconciliation)
 
 - [ ] Script 10 marked ALL interpretations with `[PRELIMINARY]`
+- [ ] Script 10 produced domain decomposition (columns grouped into analytical domains with reference file recommendations)
+- [ ] Script 10 noted apparent population boundaries / exclusion observations
 - [ ] Script 11 executed or skipped with documented rationale
+- [ ] Script 11 extracted exclusion statements from documentation (if docs provided)
 - [ ] CPP4 PASSED (PRELIMINARY markers verified, reconciliation confirmed if docs provided)
 - [ ] All scripts saved to `scripts/profile_interpretation/` with execution logs
 - [ ] QAP4 completed
