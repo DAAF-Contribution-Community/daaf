@@ -20,6 +20,13 @@
 #   Uses `tail -50` to read only the end of the transcript, avoiding full-file
 #   parsing. The last usage entry is always near the end of the JSONL.
 #
+# Subagent support:
+#   Subagents run with different session IDs, so the session-specific context
+#   window cache (written by context-bar.sh statusline) won't exist for them.
+#   The script falls back to the most recent cache from any session (typically
+#   the parent orchestrator), ensuring subagents report utilization against
+#   the correct context window size.
+#
 # Exit codes:
 #   0 = success (stdout/JSON processed by Claude Code)
 #   All error paths exit 0 to never block tool execution.
@@ -34,10 +41,17 @@ LAST_INJECT_FILE="/tmp/claude-ctx-ts-${SESSION_ID}"
 INJECT_INTERVAL=60  # seconds between injections
 
 # Read context window size from shared cache (written by context-bar.sh statusline).
-# Falls back to 200k if cache doesn't exist yet (e.g., first turn before statusline runs).
+# For subagents (which have different session IDs), the session-specific cache won't
+# exist. Fall back to the most recent cache from any session (typically the parent
+# orchestrator), then to 200k as a last resort.
 CTX_CACHE="/tmp/claude-ctx-window-${SESSION_ID}"
 if [[ -f "$CTX_CACHE" ]]; then
     MAX_CONTEXT=$(cat "$CTX_CACHE" 2>/dev/null)
+else
+    LATEST_CTX=$(ls -t /tmp/claude-ctx-window-* 2>/dev/null | head -1)
+    if [[ -n "$LATEST_CTX" ]]; then
+        MAX_CONTEXT=$(cat "$LATEST_CTX" 2>/dev/null)
+    fi
 fi
 MAX_CONTEXT=${MAX_CONTEXT:-200000}
 MAX_K=$((MAX_CONTEXT / 1000))

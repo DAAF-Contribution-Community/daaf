@@ -118,9 +118,11 @@ context prevents misinterpretation of the target section.
 
 ## Context & Session Health
 
-Session context utilization must always be monitored to ensure high performance quality. The `context-reporter` hook provides objective, continuous utilization measurements on every turn. Use the reported percentage directly for gating decisions. Utilization helps agents manage their workloads and report back before issues arise.
+Session context utilization must always be monitored to ensure high performance quality. The `context-reporter` hook provides objective, continuous utilization measurements on every turn. It fires for **both the orchestrator and all subagents** via the `PreToolUse` registration in `settings.json` — every agent in the system receives periodic utilization data as `<system-reminder>` injections. Use the reported percentage directly for gating decisions. Utilization helps agents manage their workloads and report back before issues arise.
 
 ### Context Quality Curve
+
+These thresholds apply to **all agents** — orchestrator and subagents alike. The "Required Action" column specifies role-appropriate responses for each.
 
 | Utilization | Status | Required Action |
 |-------------|--------|-----------------|
@@ -128,6 +130,28 @@ Session context utilization must always be monitored to ensure high performance 
 | **40-60%** | ELEVATED | Monitor closely; consider how realistic the scope of work remaining is and how to redelegate work (the orchestrator can delegate work to subagents; subagents can return work early to the orchestrator to be redelegated and completed as needed) |
 | **60-75%** | HIGH | Complete current atomic unit at full quality; report back to user (for orchestrator) or orchestrator (for subagents); do not start new stages of work; Orchestrator must update STATE.md with restart prompt |
 | **75%+** | CRITICAL | Cease work immediately and report back to user (for orchestrator) or orchestrator (for subagents); Orchestrator must finalize STATE.md |
+
+### Subagent Context Monitoring
+
+Subagents receive the same `context-reporter` utilization injections as the orchestrator. **Every subagent must act on these signals.** Subagents that exhaust their context without reporting back waste the orchestrator's context budget (which must re-dispatch the work) and risk losing completed work.
+
+**Subagent-specific actions by threshold:**
+
+| Status | Subagent Action |
+|--------|-----------------|
+| **NOMINAL** | Continue executing the assigned task normally |
+| **ELEVATED** | Assess remaining work honestly. If completion is uncertain, begin structuring your return output — summarize key findings so far, note what remains. Continue working but prioritize completing the most valuable deliverables first |
+| **HIGH** | **Return early.** Complete only the current atomic unit (the script, review, or analysis step you are in the middle of). Format your return output with: (1) completed work and findings, (2) a clear list of incomplete items so the orchestrator can redelegate them, (3) any file paths created or modified. Do not start new work items |
+| **CRITICAL** | **Stop immediately and return.** Report whatever has been completed, clearly mark the output as incomplete, and list all remaining work items. An incomplete but well-documented return is far more valuable than a context-exhausted agent that produces degraded output |
+
+**Early return protocol:** When returning early due to context pressure, subagents should structure their response to maximize the orchestrator's ability to continue the work — either by redelegating to a fresh subagent or by handling it directly. Include:
+- All file paths created or modified (absolute paths)
+- Summary of completed analysis or findings
+- Explicit list of tasks not yet started or partially completed
+- Any decisions made or assumptions applied that the next agent needs to know
+- Confidence assessment of completed work
+
+**STATE.md updates:** Subagents do not write STATE.md directly — that is the orchestrator's responsibility. However, subagents returning early under context pressure should include enough structured information in their return output for the orchestrator to update STATE.md accurately. The orchestrator must update STATE.md whenever a subagent returns early due to ELEVATED or higher utilization.
 
 ### Symptoms of Context Degradation
 
@@ -140,7 +164,7 @@ Session context utilization must always be monitored to ensure high performance 
 | Losing track of current stage | HIGH | Context fragmentation |
 | Mixing up file names or paths | MEDIUM | Working memory strain |
 
-**If degradation symptoms are observed:** treat as equivalent to HIGH regardless of actual utilization — prepare for restart immediately.
+**If degradation symptoms are observed:** treat as equivalent to HIGH regardless of actual utilization — prepare for restart immediately. For subagents, this means returning early with structured output per the protocol above.
 
 ### Quality Primacy Rule
 
@@ -198,7 +222,7 @@ Context management is NEVER about reducing the quality or completeness of work. 
 | **Permission Deny Rules** | `settings.json` deny list | `rm -rf`, `sudo`, `docker`, credential file reads/writes, audit log writes/edits |
 | **Permission Allow List** | `settings.json` allow list | Only approved tools auto-execute; everything else prompts |
 | **PostToolUse Hooks** | `audit-log.sh`, `output-scanner.sh` | Audit trail, secret detection in output |
-| **Context Reporting Hook** | `context-reporter.sh` | Context utilization injection for gating decisions |
+| **Context Reporting Hook** | `context-reporter.sh` — fires for orchestrator and all subagents via `PreToolUse` | Context utilization injection for gating decisions (orchestrator + subagents) |
 | **Session Archive Hook** | `archive-session.sh` | Session transcript archiving on exit |
 | **Container Isolation** | Docker with `cap_drop: ALL`, non-root user | OS-level blast radius containment |
 | **`.claudeignore`** | File-level exclusion | Prevents indexing of credentials |
