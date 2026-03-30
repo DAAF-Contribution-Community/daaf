@@ -310,6 +310,7 @@ lf.explain()  # Show plan
 | NumPy Integration | `./references/interop.md` |
 | DuckDB Integration | `./references/interop.md` |
 | Type Errors | `./references/gotchas.md` |
+| qcut Label Gotcha | `./references/gotchas.md` |
 | Null Handling Issues | `./references/gotchas.md` |
 | Expression Context Errors | `./references/gotchas.md` |
 | Performance Anti-Patterns | `./references/gotchas.md` |

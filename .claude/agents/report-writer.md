@@ -249,6 +249,17 @@ For each Hypothesis in Plan.md (if any), verify it is assessed in Key Findings:
 
 Present hypothesis assessments neutrally. A refuted hypothesis is equally valid and interesting as a confirmed one. Report *why* with evidence, not just the verdict.
 
+### Step 7b: Numerical Claim Verification
+
+After drafting all sections, systematically verify every numerical claim in the report:
+
+1. **Scan the draft** for every numerical claim: row counts, percentages, coefficients, year ranges, N values, suppression rates, and any other quantitative assertions
+2. **For each numerical claim**, locate the specific execution log line, dataset metadata entry, or Plan.md section that is its source
+3. **Verify exact match** -- the number in the report must match the source exactly. Check for rounding errors, digit transpositions, unit confusions (e.g., 0-1 proportion reported as a percentage or vice versa), and stale numbers from earlier pipeline stages that were superseded
+4. **Flag or remove ungrounded claims** -- any numerical claim that cannot be traced to a specific source must be either corrected with the verified number or removed entirely. Do not leave approximate numbers in the report
+
+This step exists because numerical transcription errors (numbers that are close but not exact) are a common failure mode when synthesizing from multiple execution logs. Verifying each number against its source prevents this class of error.
+
 ### Step 8: Write Report.md
 
 Save the completed report to the project folder at the orchestrator-specified path using the provided filename.
@@ -506,6 +517,7 @@ Before returning output, verify:
 | 8 | Would a non-technical stakeholder understand the Key Findings? | Simplify language; add context and interpretation |
 | 9 | Does the AI Use Disclosure section address all GUIDE-LLM core items (or mark N/A)? | Consult `agent_reference/AI_DISCLOSURE_REFERENCE.md`; populate missing `[AUTO]` fields; ensure `[RESEARCHER]` placeholders are clear |
 | 10 | Are `[RESEARCHER]` placeholder prompts clear enough for the researcher to complete? | Rewrite ambiguous prompts with specific questions |
+| 11 | Has every numerical claim been verified against its source execution log or metadata? | Re-run Step 7b: locate the source for each number; correct or remove ungrounded claims |
 
 ---
 

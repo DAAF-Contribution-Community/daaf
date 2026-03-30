@@ -11,6 +11,8 @@ Common mistakes, error patterns, and troubleshooting for Polars.
 - [Migration from Pandas](#migration-from-pandas)
 - [Memory Issues](#memory-issues)
 
+> See also: `qcut()` label format surprise under [Type Errors](#type-errors).
+
 ## Type Errors
 
 ### "Expected X, got Y" in Expressions
@@ -152,6 +154,41 @@ df.group_by("cat").agg(
     pl.col("val").sum().alias("total"),
     pl.col("val").mean().alias("average")
 )
+```
+
+### `qcut()` Labels Get Unexpected Suffixes
+
+**Problem:** `pl.Series.qcut()` and `pl.Expr.qcut()` with custom labels append
+descriptive suffixes to the first and last labels when `include_breaks=False`
+(the default).
+
+```python
+# Requesting labels ["Q1", "Q2", "Q3", "Q4", "Q5"] with 5 quantiles
+# produces: "Q1 (Lowest)", "Q2", "Q3", "Q4", "Q5 (Highest)"
+s = pl.Series("val", range(100))
+result = s.qcut(5, labels=["Q1", "Q2", "Q3", "Q4", "Q5"])
+print(result.unique())  # Shows "Q1 (Lowest)" and "Q5 (Highest)"
+```
+
+This causes failures when downstream code uses exact string matching:
+
+```python
+# WRONG: no rows match because actual label is "Q1 (Lowest)"
+df.filter(pl.col("quintile") == "Q1")
+
+# CORRECT: use starts_with or contains
+df.filter(pl.col("quintile").str.starts_with("Q1"))
+df.filter(pl.col("quintile").str.contains("Q1"))
+```
+
+**Best practice:** Always inspect `value_counts()` on `qcut` output before
+building downstream logic on label values:
+
+```python
+df = df.with_columns(
+    pl.col("score").qcut(5, labels=["Q1", "Q2", "Q3", "Q4", "Q5"]).alias("quintile")
+)
+print(df["quintile"].value_counts())  # Inspect actual label values
 ```
 
 ## Performance Anti-Patterns

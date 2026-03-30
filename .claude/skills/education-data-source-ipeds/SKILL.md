@@ -240,6 +240,7 @@ Datasets for IPEDS are available via the mirror system. See `datasets-reference.
 
 > **Known Portal gaps:**
 > - **Distance education enrollment variables** (`efdeexc`, `efdesom`, `efdenom`) are not in Portal mirror datasets. Use the NCES IPEDS Data Center for these.
+> - **Open-admissions policy variable** (`OPENADMP`) is not in Portal mirror datasets. Note: `open_public` is NOT the same thing — see Common Pitfalls below.
 > - **Finance data** may have a year lag relative to NCES releases (last verified through 2017 in some datasets).
 >
 > For data not available through Portal mirrors, access NCES directly at https://nces.ed.gov/ipeds/.
@@ -342,6 +343,9 @@ IPEDS has multiple enrollment-related datasets in the Portal:
 | Ignoring mergers/closures | Institutions merge, close, or change sector over time | Check `currently_active_ipeds` and `year_deleted`; track UNITID changes; see `./references/institution-identifiers.md` |
 | `inst_size` as enrollment | `inst_size` is a 1-5 category code, not an enrollment count | Use enrollment endpoints for actual counts |
 | Distance education variables missing | `efdeexc`, `efdesom`, `efdenom` are not in Portal mirror datasets | Use the NCES IPEDS Data Center directly for distance education enrollment |
+| GRS duplicate rows per institution | Graduation rates data has multiple rows per `unitid` within the same subcohort/year, differing in `cohort_rev` and count columns | Filter to target subcohort first (e.g., `subcohort == 2` for bachelor's-seeking at 4-yr), then deduplicate: sort by `completion_rate_150pct` descending (nulls last), then `unique(subset=["unitid"], keep="first")` |
+| `open_public` is not open admissions | `open_public` (from `openpubl`) means "open to the general public" (i.e., a currently operating institution) — Harvard has `open_public=1`. The actual open-admissions policy variable (`OPENADMP`) is not available in the Portal mirror | Do not use `open_public` to identify open-admissions institutions. Use admissions data (admit rate near 100%) as a proxy, or access `OPENADMP` via the IPEDS API directly |
+| SFA `type_of_aid=9` is all grants, not Pell | `type_of_aid=9` in `sfa_grants_and_net_price` captures ALL grant/scholarship recipients (Pell + institutional + state/local). The median ratio to total students is ~0.98 — nearly universal. This dramatically overestimates "Pell share" if used as a Pell proxy | For Pell-specific data, use FSA (pre-2020) or College Scorecard bulk download. SFA `type_of_aid=9` is appropriate for total grant aid analysis but not for Pell isolation |
 
 ## Critical Limitations
 
@@ -390,10 +394,11 @@ def ipeds_quality_check(df):
     """Basic IPEDS data quality checks using Portal variable names."""
     issues = []
 
-    # Check graduation rates are 0-100
+    # Check graduation rates — Portal stores as 0-1 proportions (not 0-100)
+    # See education-data-context skill > Rate and Proportion Normalization
     if "completion_rate_150pct" in df.columns:
         bad = df.filter(
-            (pl.col("completion_rate_150pct") > 100) |
+            (pl.col("completion_rate_150pct") > 1.0) |
             (pl.col("completion_rate_150pct") < 0)
         )
         if bad.height > 0:
@@ -461,3 +466,7 @@ def ipeds_quality_check(df):
 | Data quality issues | `./references/data-quality.md` |
 | Missing data codes | `./references/data-quality.md` |
 | Sector comparisons | `./references/data-quality.md` |
+| Subcohort codes (GRS) | `./references/graduation-rates.md` |
+| GRS deduplication | `./references/graduation-rates.md` |
+| `open_public` vs open admissions | Common Pitfalls (this file) |
+| SFA `type_of_aid` codes | `./references/financial-aid.md` |

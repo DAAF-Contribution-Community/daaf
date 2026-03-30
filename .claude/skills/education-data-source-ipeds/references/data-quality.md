@@ -332,9 +332,11 @@ def validate_ipeds_data(df, key_vars):
             issues.append(f"Missing {var}: {missing} rows")
     
     # 3. Check for implausible values
+    # Portal stores grad rates as 0-1 proportions (not 0-100)
+    # See education-data-context skill > Rate and Proportion Normalization
     if "completion_rate_150pct" in df.columns:
         bad_grad = df.filter(
-            (pl.col("completion_rate_150pct") > 100) | (pl.col("completion_rate_150pct") < 0)
+            (pl.col("completion_rate_150pct") > 1.0) | (pl.col("completion_rate_150pct") < 0)
         )
         if bad_grad.height > 0:
             issues.append(f"Invalid grad rates: {bad_grad.height}")

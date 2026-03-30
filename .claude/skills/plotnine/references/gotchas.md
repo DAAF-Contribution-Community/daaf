@@ -123,6 +123,69 @@ aes(color="factor(cyl)")
 
 Not all ggplot2 functions exist. Check API reference for alternatives.
 
+### plotnine vs ggplot2 Divergences
+
+These gotchas catch R ggplot2 users who translate code directly to plotnine.
+
+**`stat_summary` requires a callable, not a string:**
+
+In R ggplot2, `stat_summary(fun="mean")` accepts a string function name. In
+plotnine, the `fun_y`, `fun_ymin`, and `fun_ymax` parameters require a Python
+callable — not a string.
+
+```python
+import numpy as np
+
+# WRONG: R-style string name
+stat_summary(fun_y="mean")  # Error
+
+# CORRECT: Python callable
+stat_summary(fun_y=np.mean)
+stat_summary(fun_y=np.mean, fun_ymin=np.min, fun_ymax=np.max)
+```
+
+**`guide=False` is deprecated in scale functions:**
+
+In R ggplot2, `guide=FALSE` or `guide="none"` inside a scale function removes
+that scale's legend entry. In recent plotnine versions, `guide=False` inside
+scale functions is deprecated. Use `theme(legend_position="none")` to remove all
+legends, or `guides(color=None)` to remove a specific scale's legend.
+
+```python
+# WRONG: deprecated in recent plotnine
+scale_color_brewer(guide=False)
+
+# CORRECT: remove all legends
+theme(legend_position="none")
+
+# CORRECT: remove specific scale legend
+guides(color=None)
+```
+
+**R color names are not valid:**
+
+Named colors from R like `"gray40"`, `"grey80"`, `"steelblue1"` are not
+recognized by plotnine/matplotlib. Use hex codes or matplotlib named colors.
+
+```python
+# WRONG: R-style color names
+geom_point(color="gray40")    # Not recognized
+geom_point(color="steelblue1")  # Not recognized
+
+# CORRECT: hex codes
+geom_point(color="#666666")
+
+# CORRECT: matplotlib named colors
+geom_point(color="steelblue")
+geom_point(color="gray")
+```
+
+**`guide_colorbar()` parameters differ from R:**
+
+The parameter names and behavior of `guide_colorbar()` differ between R ggplot2
+and plotnine. Always check the plotnine docs for exact parameter names rather
+than copying R code directly.
+
 ## Performance Tips
 
 ### Large Datasets
@@ -255,7 +318,7 @@ p + geom_point()
 | Problem | Fix |
 |---------|-----|
 | Plot not showing | Add `.draw()` or ensure last expression |
-| Legend unwanted | `+ guides(color=False)` |
+| Legend unwanted | `+ theme(legend_position="none")` or `+ guides(color=None)` |
 | Axis labels overlapping | `+ theme(axis_text_x=element_text(angle=45))` |
 | Too many legend items | Filter data or use `scale_*_manual()` |
 | Bars not stacking | Check `position="stack"` |

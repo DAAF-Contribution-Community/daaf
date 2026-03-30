@@ -203,6 +203,22 @@ Portal variable names are lowercase, not the uppercase names from original NCES 
 - `grade` not `GRADE`
 - `fips` not `FIPS` or `STATE`
 
+### Rate and Proportion Normalization
+
+The Portal normalizes certain rate and proportion variables to a 0-1 scale, while the original IPEDS surveys report them as 0-100 percentages. This is a Portal transformation, not an IPEDS source issue.
+
+**Known affected variables:**
+
+| Variable | Source Survey | Portal Scale | Original IPEDS Scale |
+|----------|-------------|-------------|---------------------|
+| `completion_rate_150pct` | GRS (Graduation Rates) | 0-1 | 0-100 |
+| `retention_rate` | EF (Fall Enrollment / Retention) | 0-1 | 0-100 |
+
+**Guidance:**
+- Always check the actual range of rate variables after fetching -- if `max <= 1.0`, the variable is on a 0-1 scale and may need rescaling to 0-100 for interpretability
+- Do not assume all rate variables across all datasets are normalized -- this finding is specific to the IPEDS variables listed above
+- Quality checks testing `value > 100` will not catch invalid data on 0-1 scaled variables; adjust thresholds accordingly (e.g., test `value > 1.0` instead)
+
 ### Missing Value Codes
 
 | Code | Meaning | How to Handle |
@@ -408,6 +424,9 @@ Data availability lags behind the current year. As of January 2026:
 
 6. **Merge data across years assuming stable identifiers**
    - Schools and districts merge, split, and change IDs
+
+7. **Assume Portal rate variables are on a 0-100 percentage scale**
+   - Some IPEDS rate variables (e.g., `completion_rate_150pct`, `retention_rate`) are normalized to 0-1 proportions in the Portal, even though the original IPEDS surveys use 0-100. Always check the actual range after fetching. See "Rate and Proportion Normalization" above.
 
 ### DO:
 

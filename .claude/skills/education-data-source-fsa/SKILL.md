@@ -274,6 +274,7 @@ df_recent = df_grants.filter(pl.col("year").is_between(2015, 2021))
 | Perkins Loan discontinuation | Perkins Loans ended after 2017; campus-based data still includes historical records | Filter by year or award_type to avoid mixing discontinued and active programs |
 | Data lag | FSA data typically lags 1-2 years behind the current award year | Verify latest available year before planning analysis |
 | Mixing aggregate and detail loan types | Loan type codes include both individual types (1-8, 10-13) and aggregate totals (3, 6, 9, 14) | Filter to specific types or aggregates, never sum both together |
+| Pell recipient counts unavailable for 2020+ | `grant_recipients_unitid` is 100% NULL for Pell grants (`grant_type==1`) in the 2020-2021 data year. Disbursement amounts also appear null | Use IPEDS SFA (`sfa_grants_and_net_price`) as a proxy for grant recipient counts. Note that SFA `type_of_aid=9` captures all grant/scholarship aid, not Pell-specific (see IPEDS skill) |
 
 ## Joining FSA Data with Other Sources
 
