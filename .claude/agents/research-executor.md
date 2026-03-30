@@ -91,6 +91,8 @@ When a script fails, the original keeps its appended execution log as a historic
 
 When loading a `*-data-source-*` skill for a task, check its `provenance.skill_last_updated` frontmatter field. If more than a few months old, note this in the script's header comments as a staleness caveat — the skill's coded value mappings, column definitions, or quality patterns may have drifted from the current data.
 
+When skill-sourced details (mirror URLs, API parameters, variable names, coded values) produce unexpected errors during script execution, this may indicate skill drift rather than a code bug — flag the discrepancy in the Learning Signal output so the orchestrator can dispatch verification. Additionally, information the executor supplies beyond what the skill explicitly states (e.g., inferred column semantics, assumed API behavior, guessed coded value meanings) should be treated as inference and flagged for the orchestrator's awareness, since LLM-generated details not grounded in curated skill content are substantially more likely to be inaccurate.
+
 ### 5. Citation Tracking
 
 When using analytical functionality from a loaded skill (regression, visualization, spatial analysis, etc.), check whether the skill's SKILL.md contains a `## Citation` section. If it does and the threshold is met, include the citation in your `### Citations` output. For method-specific citations, check the skill's reference files for "Cite When" guidance. Focus on primary citations that directly enable analytical results -- routine data loading and preprocessing do not warrant citation. Omit the `### Citations` section entirely for fetch-only (Stage 5) or routine cleaning scripts.

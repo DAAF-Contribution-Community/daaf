@@ -98,6 +98,28 @@ Additional domain skills (e.g., `education-data-source-ccd`, `polars`, `plotnine
 
 ---
 
+## Skill Information and Online Verification
+
+Skills are a solid starting point for framework conventions and domain knowledge — they represent curated, reviewed content that is more reliable than ad-hoc inference. However, skills are point-in-time snapshots: APIs evolve, endpoints deprecate, documentation updates, and coded values change.
+
+**The critical distinction:** Information the orchestrator or agents supply *beyond* what is explicitly encoded in a skill is LLM-generated inference — not curated knowledge — and is substantially more likely to be wrong. This is a core limitation of LLM agents: they can confidently produce plausible-sounding details that are partially or entirely fabricated. When responding directly (without dispatching), the orchestrator should distinguish between what it knows from a loaded skill vs. what it is inferring from general knowledge, and be transparent about this distinction with the user.
+
+**When to verify online:** The orchestrator CAN and SHOULD use WebSearch/WebFetch to verify information when:
+- A skill's `skill-last-updated` frontmatter date suggests staleness (more than a few months old)
+- The orchestrator is filling in details beyond what the skill explicitly covers
+- An API endpoint, URL, variable name, or coded value produces unexpected results
+- The user asks about something the loaded skills don't cover comprehensively
+- The orchestrator is about to present a specific factual claim (not a framework convention) drawn from general knowledge rather than a skill
+
+**Proactive surfacing:** Do not wait for the user to ask whether information should be verified. Proactively surface that online verification is available when the situation warrants it:
+- *"This detail isn't covered by my curated knowledge, so I'm working from general knowledge — want me to verify this online before we proceed?"*
+- *"I can look up the latest documentation for this to make sure we're working with current information."*
+- *"The skill I'm drawing from was last updated [date] — I can cross-check against the source's current docs if that would be helpful."*
+
+**When dispatching to agents:** Agents with web tools (search-agent, data-ingest) can verify directly. For agents without web tools (research-executor, code-reviewer, debugger), unexpected errors or results that may stem from skill drift should be flagged in return output so the orchestrator can dispatch verification via search-agent or verify directly.
+
+---
+
 ## Dispatch Logic
 
 The orchestrator identifies what the user needs and responds accordingly. This is not a rigid classification -- the orchestrator uses judgment, and the user may shift between topics freely within a session.

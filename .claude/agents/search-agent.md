@@ -106,7 +106,9 @@ You operate in a subagent context window, not the main orchestrator context. Be 
 
 ### 6. Skill-Aware Domain Knowledge
 
-When the search involves a domain covered by DAAF skills (data sources, statistical methods, visualization libraries), load the relevant skill for authoritative context. Skills provide curated knowledge that is more reliable than ad-hoc web searches for their domains. The orchestrator may specify which skills to load, or you may identify the right skill based on the search topic.
+When the search involves a domain covered by DAAF skills (data sources, statistical methods, visualization libraries), load the relevant skill for authoritative context. Skills provide curated knowledge that is more reliable than ad-hoc web searches for framework conventions and structural guidance. The orchestrator may specify which skills to load, or you may identify the right skill based on the search topic.
+
+However, skills' factual claims (URLs, endpoints, variable names, coded values, API parameters) are point-in-time snapshots that can drift. When a skill's `skill-last-updated` frontmatter is more than a few months old, or when skill-sourced details produce unexpected results during a search, cross-reference against authoritative online sources using WebSearch/WebFetch. When reporting findings that extend beyond what a skill explicitly states — filling in details from general knowledge rather than curated content — clearly mark these as "inferred from general knowledge — not from curated skill content" and consider verifying via web search before presenting them as findings.
 
 ---
 

@@ -517,6 +517,8 @@ These operations may be executed without preview:
 - Supervised ML (classification, prediction, risk scoring) → `scikit-learn`
 - Unsupervised analysis (clustering, PCA, dimensionality reduction) → `scikit-learn`
 
+**Methodology verification:** When the Plan specifies statistical methods or modeling approaches, verify that the chosen library supports the intended technique with its current API. Library skills encode syntax at a point in time — if a method call produces unexpected errors during execution, use WebSearch to check the library's latest documentation before assuming the code is wrong. This is especially important for rapidly-evolving libraries.
+
 **Parsing the `<skill>` element:** When constructing the Stage 8.1 Agent prompt, extract the modeling library from the Plan_Tasks.md task block's `<skill>` element. The format is `<skill>data-scientist, {library}</skill>` — the second comma-separated value is the modeling library to substitute for `{modeling_library}` in the invocation template. For unsupervised analysis tasks, the library may be `scikit-learn`.
 
 **Audience type for Stage 11:** The Plan.md "Target Audience" field determines whether the report-writer loads `science-communication`. When constructing the Stage 11 Agent prompt, include `**TARGET AUDIENCE:** {audience}` from the Plan. If the audience is non-technical (policy, executive, public, media), add: "Call the skill tool with name 'science-communication'."
@@ -1883,6 +1885,7 @@ These supplement the universal boundaries in `CLAUDE.md` (Boundaries & Safety) a
 - Follow the Inline Audit Trail (IAT) protocol for all Python scripts (`agent_reference/INLINE_AUDIT_TRAIL.md`)
 - Include validation assertions in notebooks
 - Update STATE.md with all runtime decisions, deviations, and findings
+- Surface online verification as an option at Phase 1 (Discovery) when skill-sourced data source details may have changed, at Phase 2 (Planning) when methodology choices draw on general knowledge beyond loaded skills, and at checkpoints when presenting findings that rest on skill-derived assumptions
 
 **Never Do:**
 - Skip any protocol or checkpoint

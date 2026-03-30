@@ -418,6 +418,32 @@ Skills are loaded **by subagents**, not by the orchestrator:
 - Don't pre-load all skills at conversation start
 - Don't copy skill content into your prompts to subagents
 
+**Skill information is a starting point, not ground truth.** Skills encode curated
+domain knowledge, but they are point-in-time snapshots that can drift as APIs
+evolve, endpoints change, and documentation updates. More importantly, when an
+agent fills in details *beyond* what a skill explicitly states, that is
+LLM-generated inference — not curated knowledge — and is substantially more
+likely to be inaccurate. When the orchestrator or a subagent encounters
+unexpected results, errors, or uncertainty while working with skill-sourced
+information, online verification via WebSearch/WebFetch is the appropriate
+response. For agents without web tools, flag the uncertainty in the return output
+so the orchestrator can dispatch verification. See `CLAUDE.md` § Execution
+Philosophy > "Skill information awareness" for the universal principle.
+
+**Surfacing verification to users:** When presenting findings or encountering
+ambiguity during any mode, proactively let the user know that online verification
+is available and valuable. Examples:
+- *"The skill says X, but this endpoint returned an unexpected error — want me to
+  check the current API documentation online?"*
+- *"I'm drawing on skill knowledge for this, but the data doesn't quite match
+  what I'd expect — I can verify against the source's latest docs if you'd like."*
+- *"This detail isn't covered in the skill, so I'm inferring from general
+  knowledge — I'd recommend I verify this online before we build on it."*
+
+The goal is to make the user aware that verification is always an option, and
+especially valuable when the agent is operating beyond what skills explicitly
+encode.
+
 ### Universal Prompt Requirements
 
 Every subagent prompt MUST include:
