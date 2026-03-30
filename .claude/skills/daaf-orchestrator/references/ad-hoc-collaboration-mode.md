@@ -233,7 +233,7 @@ Create `SESSION_NOTES.md` in the workspace root when the **first substantive mil
 - A task plan or advisory outline is produced
 - A key decision is made (e.g., "we'll use CCD instead of IPEDS for this")
 - A deliverable is completed (script executed, code review returned, debugging resolved)
-- Context utilization reaches ELEVATED (40-60%)
+- Context utilization reaches ELEVATED (≥ 40% or ≥ 150k tokens)
 
 If the session remains purely conversational with no milestones, SESSION_NOTES.md is not needed.
 
@@ -279,7 +279,7 @@ Update after each of these events (not every turn -- only at milestones):
 | Key analytical decision made | Key Decisions |
 | Deliverable completed (script executed, review done) | Accomplishments |
 | User changes topic substantially | In Progress (update current focus) |
-| Context reaches ELEVATED (40-60%) | All sections (full checkpoint) |
+| Context reaches ELEVATED (≥ 40% or ≥ 150k tokens) | All sections (full checkpoint) |
 | User signals session is ending | All sections (final summary) |
 | Before any escalation to another mode | All sections + note the escalation |
 

@@ -123,7 +123,7 @@ context prevents misinterpretation of the target section.
 
 ## Context & Session Health
 
-Session context utilization must always be monitored to ensure high performance quality. The `context-reporter` hook provides objective, continuous utilization measurements on every turn. It fires for **both the orchestrator and all subagents** via the `PreToolUse` registration in `settings.json` — every agent in the system receives periodic utilization data as `<system-reminder>` injections. Use the reported percentage directly for gating decisions. Utilization helps agents manage their workloads and report back before issues arise.
+Session context utilization must always be monitored to ensure high performance quality. The `context-reporter` hook provides objective, continuous utilization measurements on every turn. It fires for **both the orchestrator and all subagents** via the `PreToolUse` registration in `settings.json` — every agent in the system receives periodic utilization data as `<system-reminder>` injections. Use the reported severity level directly for gating decisions — the hook applies dual thresholds (percentage OR absolute token count, whichever fires first) to cap effective session length on large context windows. Utilization helps agents manage their workloads and report back before issues arise.
 
 ### Context Quality Curve
 
@@ -131,10 +131,10 @@ These thresholds apply to **all agents** — orchestrator and subagents alike. T
 
 | Utilization | Status | Required Action |
 |-------------|--------|-----------------|
-| **0-40%** | NOMINAL | Continue normally |
-| **40-60%** | ELEVATED | Monitor closely; consider how realistic the scope of work remaining is and how to redelegate work (the orchestrator can delegate work to subagents; subagents can return work early to the orchestrator to be redelegated and completed as needed) |
-| **60-75%** | HIGH | Complete current atomic unit at full quality; report back to user (for orchestrator) or orchestrator (for subagents); do not start new stages of work; Orchestrator must update STATE.md with restart prompt |
-| **75%+** | CRITICAL | Cease work immediately and report back to user (for orchestrator) or orchestrator (for subagents); Orchestrator must finalize STATE.md |
+| **< 40% and < 150k tokens** | NOMINAL | Continue normally |
+| **≥ 40% or ≥ 150k tokens** | ELEVATED | Monitor closely; consider how realistic the scope of work remaining is and how to redelegate work (the orchestrator can delegate work to subagents; subagents can return work early to the orchestrator to be redelegated and completed as needed) |
+| **≥ 60% or ≥ 250k tokens** | HIGH | Complete current atomic unit at full quality; report back to user (for orchestrator) or orchestrator (for subagents); do not start new stages of work; Orchestrator must update STATE.md with restart prompt |
+| **≥ 75% or ≥ 350k tokens** | CRITICAL | Cease work immediately and report back to user (for orchestrator) or orchestrator (for subagents); Orchestrator must finalize STATE.md |
 
 ### Subagent Context Monitoring
 
@@ -183,7 +183,7 @@ Context management is NEVER about reducing the quality or completeness of work. 
 
 **Context monitoring protocol at stage transitions:**
 1. CHECK utilization from hook report
-2. UPDATE STATE.md if >= 40%
+2. UPDATE STATE.md if ELEVATED or higher (≥ 40% or ≥ 150k tokens)
 3. DECIDE per threshold table above
 4. Flush learning signals to LEARNINGS.md if at a phase boundary
 

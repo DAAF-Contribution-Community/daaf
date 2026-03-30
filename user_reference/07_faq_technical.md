@@ -379,14 +379,14 @@ If you've run the `marimo run` command but can't see anything at `http://localho
 
 This isn't an error -- it's DAAF being responsible about Claude's working memory.
 
-Claude has a finite context window (roughly 200K tokens). As a session progresses and Claude processes more information, that window fills up. DAAF monitors this continuously and has defined thresholds:
+Claude has a finite context window. As a session progresses and Claude processes more information, that window fills up. Even with large context windows (up to 1M tokens), quality can degrade well before the window is full, so DAAF enforces both percentage-based and absolute token thresholds — whichever fires first:
 
 | Utilization | Status | What happens |
 |-------------|--------|-------------|
-| <40% | NOMINAL | Normal operations |
-| 40-60% | ELEVATED | Works normally but starts delegating more to subagents |
-| 60-75% | HIGH | Finishes current work, prepares for session restart |
-| >75% | CRITICAL | Stops new work, asks you to restart the session |
+| < 40% and < 150k tokens | NOMINAL | Normal operations |
+| ≥ 40% or ≥ 150k tokens | ELEVATED | Works normally but starts delegating more to subagents |
+| ≥ 60% or ≥ 250k tokens | HIGH | Finishes current work, prepares for session restart |
+| ≥ 75% or ≥ 350k tokens | CRITICAL | Stops new work, asks you to restart the session |
 
 When you see CRITICAL, it means Claude's context window is nearly full and continuing would degrade the quality of its work. This is by design -- DAAF would rather stop and restart cleanly than continue with increasingly unreliable output.
 

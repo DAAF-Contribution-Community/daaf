@@ -658,16 +658,16 @@ Real research analyses take time -- often more time than a single Claude Code se
 
 ### Understanding Context and Sessions
 
-Claude Code operates within a fixed context window (at time of writing) of roughly 200,000 tokens. As DAAF works through a Full Pipeline analysis, delegating tasks to agents, receiving results, and coordinating the workflow, it gradually fills up this context. When it gets too full, Claude's performance degrades, and it becomes increasingly susceptible to erratic behavior due to **context rot**.
+Claude Code operates within a context window that can be up to 1M tokens. However, quality can degrade well before the window is full, so DAAF enforces dual thresholds — both percentage-based and absolute token counts, whichever fires first. As DAAF works through a Full Pipeline analysis, delegating tasks to agents, receiving results, and coordinating the workflow, it gradually fills up this context. When it gets too full, Claude's performance degrades, and it becomes increasingly susceptible to erratic behavior due to **context rot**.
 
 To prevent this, DAAF monitors its own context utilization continuously and manages this proactively:
 
 | Utilization | What Happens |
 |-------------|-------------|
-| **Below 40%** | Normal operation, no special actions |
-| **40-60%** | DAAF starts delegating more work to subagents to keep the orchestrator's context lean |
-| **60-75%** | DAAF finishes its current work unit, updates STATE.md thoroughly, and warns you that a restart may be needed soon |
-| **Above 75%** | DAAF finalizes STATE.md and recommends restarting the session |
+| **Below 40% and below 150k tokens** | Normal operation, no special actions |
+| **≥ 40% or ≥ 150k tokens** | DAAF starts delegating more work to subagents to keep the orchestrator's context lean |
+| **≥ 60% or ≥ 250k tokens** | DAAF finishes its current work unit, updates STATE.md thoroughly, and warns you that a restart may be needed soon |
+| **≥ 75% or ≥ 350k tokens** | DAAF finalizes STATE.md and recommends restarting the session |
 
 ### How Session Recovery Works
 

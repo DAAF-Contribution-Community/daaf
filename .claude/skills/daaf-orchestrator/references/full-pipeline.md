@@ -1645,7 +1645,7 @@ The orchestrator writes buffered signals to LEARNINGS.md at these points:
 1. **Phase boundary** — end of Phase 1 (after Stage 3/3.5), Phase 2 (after Stage 4.5), Phase 3 (after Stage 6-QA), Phase 4 (after Stage 10 — QA Aggregation)
 2. **After blocker resolution** — a resolved BLOCKER often yields the richest learnings
 3. **After debugging session** — debugger agent's Prevention section feeds learnings directly
-4. **At utilization gates** (40%, 60%) — ensures learnings are persisted before potential session end
+4. **At utilization gates** (ELEVATED, HIGH) — ensures learnings are persisted before potential session end
 
 *Not* at every stage transition or every subagent return — that would be too frequent and disruptive.
 
@@ -1834,7 +1834,7 @@ Agents use domain-specific status vocabularies. The orchestrator translates thes
 | QA finding recorded | QA Findings Summary (incremental — append per code-reviewer return) |
 | Analysis result addresses hypothesis | Hypothesis Assessment Progress table |
 | Final review completed | Final Review Log |
-| Context Utilization ≥40% | Context Snapshot section |
+| Context Utilization ≥ ELEVATED (≥ 40% or ≥ 150k tokens) | Context Snapshot section |
 | Phase boundary reached | Phase Status Update section + User confirmation status |
 | Phase completes | Session History (if multi-session) |
 
