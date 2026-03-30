@@ -500,6 +500,19 @@ After the iterative loop completes (whether at cr1 or cr5):
 - Build the Investigation Narrative (cr1 findings -> cr2 trigger -> cr2 result -> ...)
 - Determine overall QA status based on the worst severity found
 
+#### 3.4 Visual Inspection of Figures (QA4b — Stage 8.2 visualization scripts)
+
+When reviewing visualization scripts that produce PNG output, use the **Read tool** to visually inspect each generated figure file. This supplements programmatic checks (file existence, size, script-level label detection) with direct visual verification that no programmatic check can replace.
+
+**What to verify visually:**
+- Layout renders correctly (no overlapping elements, truncated labels, or empty plot areas)
+- Axis labels, titles, and legends are readable and accurate
+- Color encoding is distinguishable and appropriate
+- Data representation matches the analysis intent (correct chart type, no misleading scales)
+- Annotations (if any) are correctly positioned and legible
+
+**This does NOT replace programmatic QA4b checks** — it adds a visual verification layer. Report visual issues as BLOCKER (if data is misrepresented) or WARNING (if readability or aesthetics are degraded).
+
 ### Decision Points
 
 | Condition | Action |

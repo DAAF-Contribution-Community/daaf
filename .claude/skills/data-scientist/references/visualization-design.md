@@ -169,6 +169,7 @@ Before finalizing any visualization:
 - [ ] Sample sizes (N) are disclosed for all groups shown
 - [ ] Suppressed or missing values are noted (not silently excluded)
 - [ ] Axis labels include units of measurement
+- [ ] **Visual inspection performed via the Read tool on the generated PNG** — programmatic checks alone cannot verify layout, readability, color rendering, or overall visual coherence; every figure must be viewed directly before declaring it complete
 
 ## Key References
 

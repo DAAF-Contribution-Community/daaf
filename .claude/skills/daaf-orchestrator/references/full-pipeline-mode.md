@@ -1724,7 +1724,7 @@ In addition to CP checkpoints (embedded in code), **QA checkpoints** provide ind
 | **QA2** | After clean (6) | Coded value handling, filtering logic, methodology | Cleaning logic invalid |
 | **QA3** | After transform (7) | Join cardinality, aggregation logic, derived columns | Transformation produces wrong results |
 | **QA4a** | After analysis (8.1) | Statistical validity, assumption checks, result interpretation | Analysis methodology invalid or results unreliable |
-| **QA4b** | After viz (8.2) | Figure existence, data source accuracy, labeling | Visualization misleading or incorrect |
+| **QA4b** | After viz (8.2) | Figure existence, data source accuracy, labeling, visual inspection via **Read tool** | Visualization misleading or incorrect |
 
 **Key Difference:** CP checkpoints catch **operational failures** (empty data, wrong types). QA checkpoints catch **logical errors** (wrong methodology, misinterpretation).
 

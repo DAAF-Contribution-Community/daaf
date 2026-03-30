@@ -663,6 +663,8 @@ If user has R/Stata background, also include: "User has [R/Stata] background. Lo
 - DPI: 300
 - Dimensions: as appropriate for content
 
+**VISUAL INSPECTION:** After successful execution, use the **Read tool** to view each generated PNG file. Verify layout, labels, legend readability, and data representation before reporting.
+
 Return the plotting code and confirm files are saved.""",
     subagent_type: "research-executor"
 })
@@ -698,6 +700,8 @@ If user has R/Stata background, also include: "User has [R/Stata] background. Lo
 **INTERACTIVITY REQUIREMENTS:**
 - Hover information: {hover_fields}
 - Selection: {selection_type}
+
+**VISUAL INSPECTION:** After successful execution, use the **Read tool** to view each generated PNG file. Verify layout, labels, legend readability, and data representation before reporting.
 
 Return the plotting code and confirm files are saved.""",
     subagent_type: "research-executor"
@@ -743,6 +747,7 @@ Follow the file-first execution protocol:
 1. Write script to target path
 2. Execute via: bash {BASE_DIR}/scripts/run_with_capture.sh {script_path}
 3. Verify output file exists and is non-zero size
+4. Use the **Read tool** to view each generated PNG file — verify layout, labels, legend readability, geographic accuracy, and data representation before reporting
 """
 })
 ```
@@ -1237,6 +1242,7 @@ Apply the relevant checklist after each subagent returns findings for the corres
 - [ ] Proper labeling (title, axes, legend, source note)
 - [ ] Data source in visualization matches analysis dataset
 - [ ] Colorblind-safe palette used
+- [ ] Visual inspection performed via **Read tool** on generated PNG files
 - [ ] Overall status: PASSED/FAILED/WARNING
 
 ---

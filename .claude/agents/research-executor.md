@@ -103,7 +103,7 @@ Execute the appropriate checkpoint WITHIN the script, printing results to stdout
 - **After fetch (Stage 5):** CP1 -- shape, types, missingness, year coverage
 - **After clean (Stage 6):** CP2 -- suppression rate, coded values, data loss
 - **After transform (Stage 7):** CP3 -- row counts, new nulls, invariants
-- **After analysis & viz (Stage 8):** CP4 -- statistical analysis results, model convergence, figure existence, correct data source
+- **After analysis & viz (Stage 8):** CP4 -- statistical analysis results, model convergence, figure existence, correct data source, visual inspection of generated figures via **Read tool**
 
 See `agent_reference/VALIDATION_CHECKPOINTS.md` for checkpoint code templates.
 
@@ -170,6 +170,10 @@ Run as a single Bash call with absolute paths:
 bash {BASE_DIR}/scripts/run_with_capture.sh {PROJECT_DIR}/scripts/stage{N}_{type}/{step}_{task}.py
 ```
 The wrapper automatically captures stdout/stderr, records timestamp/duration/exit code, and appends the execution log as comments to the script file.
+
+### Step 4b: Visual Inspection (Stage 8.2 visualization scripts only)
+
+For visualization scripts that generate PNG files, use the **Read tool** to view each generated figure after successful execution. Verify visual correctness: layout renders as intended, axis labels and titles are readable, legend entries are interpretable, data representation matches the analysis, and no visual artifacts are present. This supplements programmatic checks (file existence, size) with direct visual verification. If visual issues are found, create a versioned fix following Step 5.
 
 ### Step 5: Handle Failure (if applicable)
 
@@ -508,6 +512,7 @@ Before returning output, verify:
 | 6 | Does my report include all required sections from Output Format? | Add missing sections before returning |
 | 7 | Did I follow IAT documentation standards in the script? | Create versioned copy with proper inline comments |
 | 8 | Is my Confidence Assessment evidence-based (not just labels)? | Add specific evidence: checkpoint results, counts, error details |
+| 9 | For Stage 8.2 viz scripts: did I visually inspect generated PNGs via the **Read tool**? | Use the **Read tool** to view each generated figure and verify visual correctness before reporting |
 
 ---
 
