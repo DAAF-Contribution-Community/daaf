@@ -49,11 +49,10 @@ After mode confirmation, briefly orient the user:
 └──────────────────┬──────────────────┘
                    │
 ┌──────────────────▼──────────────────┐
-│   PHASE 4: REVIEW (adaptive)         │
-│   Scales with complexity: quick     │
-│   check (simple), focused review    │
-│   (moderate), 3-angle review        │
-│   (complex)                         │
+│   PHASE 4: REVIEW (mandatory)        │
+│   Always dispatches review agents:  │
+│   2-angle (simple) or 3-angle       │
+│   (moderate/complex)                │
 └──────────────────┬──────────────────┘
                    │
 ┌──────────────────▼──────────────────┐
@@ -291,9 +290,9 @@ Present after Phase 1 exploration completes. All user-facing text uses plain lan
 - [Complex: multiple dispatches with design review]
 
 **What Happens Next:**
-[If Simple:] I'll make the changes directly and run a quick consistency check.
-[If Moderate:] I'll dispatch to the framework specialist, then run a review pass.
-[If Complex:] I'll present a design for your review first, then proceed with authoring and a full review pass.
+[If Simple:] I'll make the changes directly and run a consistency and completeness review.
+[If Moderate:] I'll dispatch to the framework specialist, then run a full 3-angle review pass.
+[If Complex:] I'll present a design for your review first, then proceed with authoring and a full 3-angle review pass.
 
 **Does this scope and approach look right? Any adjustments before I proceed?**
 ```
@@ -381,17 +380,17 @@ Follow the standard framework-engineer output format (§ Output Format in agent 
 
 ---
 
-## Phase 4: Review (Adaptive)
+## Phase 4: Review (Mandatory)
 
-Phase 4 scales with complexity, mirroring Phase 2's adaptive behavior:
+Phase 4 review is **mandatory for all work, regardless of complexity.** Review subagents must always be dispatched — the orchestrator never self-reviews in lieu of subagent dispatch. The number of review subagents scales with complexity:
 
 | Complexity | Phase 4 Behavior |
 |-----------|-----------------|
-| **Simple** (single-file edit, count word update, cross-reference fix) | Orchestrator performs a quick consistency check directly (grep for count words, verify file paths). Skip subagent review. |
-| **Moderate** (new skill, modified agent protocol) | Launch **1 search-agent subagent** for a focused completeness review against the applicable FRAMEWORK_INTEGRATION_CHECKLIST section. |
-| **Complex** (new agent, new mode, multi-component work) | Launch **3 search-agent subagents** in parallel for full multi-angle review. |
+| **Simple** (single-file edit, count word update, cross-reference fix) | Launch **2 search-agent subagents** in parallel: Consistency Review + Completeness Review. |
+| **Moderate** (new skill, modified agent protocol) | Launch **3 search-agent subagents** in parallel: Consistency Review + Quality Review + Completeness Review. |
+| **Complex** (new agent, new mode, multi-component work) | Launch **3 search-agent subagents** in parallel: Consistency Review + Quality Review + Completeness Review. |
 
-For **Complex** work, launch 3 read-only research subagents in parallel:
+For **Moderate** and **Complex** work, launch 3 read-only research subagents in parallel. For **Simple** work, launch Subagent 1 (Consistency) and Subagent 3 (Completeness) in parallel:
 
 ### Subagent 1: Consistency Review
 
@@ -484,16 +483,14 @@ Present after Phase 4 review completes. All user-facing text uses plain language
 
 **Review Findings:**
 
-[If Complex — synthesize from 3 review subagents:]
+[If Moderate or Complex — synthesize from 3 review subagents:]
 *Consistency:* [summary — issues found or "no issues"]
 *Quality:* [summary — issues found or "template-compliant, no issues"]
 *Completeness:* [summary — missing registrations or "all registration points verified"]
 
-[If Moderate — from single completeness review:]
-*Completeness:* [summary of findings]
-
-[If Simple — from orchestrator's direct check:]
-*Quick check:* [count words verified, cross-references resolve]
+[If Simple — synthesize from 2 review subagents:]
+*Consistency:* [summary — issues found or "no issues"]
+*Completeness:* [summary — missing registrations or "all registration points verified"]
 
 **Issues to Resolve:** [if any — organized by severity]
 - [Issue]: [what and where]
@@ -648,7 +645,7 @@ These boundaries supplement the universal safety boundaries in `CLAUDE.md`. See 
 - Scope the existing state before modifying anything (Phase 1 is mandatory)
 - Follow canonical templates for all new artifacts
 - Execute the applicable FRAMEWORK_INTEGRATION_CHECKLIST.md section
-- Run Phase 4 review at the appropriate depth for the work's complexity (see Phase 4 adaptive table)
+- Always dispatch review subagents in Phase 4 — minimum 2 (Simple) or 3 (Moderate/Complex). The orchestrator must never self-review in lieu of subagent dispatch.
 - Present changes for user review at Checkpoint 2
 - Load `skill-authoring` and `agent-authoring` at mode start
 - Commit intermediate state (or update SESSION_NOTES.md) before non-trivial multi-file modifications, so that a session interruption does not leave the framework in an inconsistent state
@@ -668,6 +665,7 @@ These boundaries supplement the universal safety boundaries in `CLAUDE.md`. See 
 - Create or modify files in `.claude/hooks/` without explicit user permission
 - Skip Phase 1 scoping (even for "simple" changes — you might discover unexpected connections)
 - Skip Checkpoint 1 (user must confirm scope before modifications begin)
+- Skip Phase 4 review subagent dispatch for any reason, including low complexity — self-review is never a substitute
 - Create research project artifacts (scripts/, data/, output/) — escalate to appropriate mode
 - Proceed with modifications when safety-critical files are involved without explicit approval
 - Assume a change is isolated — always check for downstream impacts

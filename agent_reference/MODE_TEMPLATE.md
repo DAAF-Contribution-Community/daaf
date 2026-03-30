@@ -125,7 +125,7 @@ When creating a new mode, read 1-2 existing mode files as structural exemplars:
 | `full-pipeline-mode.md` | Modes with formal stages, gates, and QA | Most comprehensive — PSU templates, gate definitions, invocation templates, error budgets |
 | `data-onboarding-mode.md` | Modes with subagent dispatch and multi-phase profiling | Clear workflow diagram, detailed PSU templates, checkpoint-based user interaction |
 | `ad-hoc-collaboration-mode.md` | Lightweight modes with flexible dispatch loops | SESSION_NOTES.md pattern, deferred workspace, direct skill loading exception |
-| `framework-development-mode.md` | Modes with review passes and adaptive complexity | Adaptive Phase 2, multi-angle review, integration checklist pattern |
+| `framework-development-mode.md` | Modes with mandatory review passes and adaptive design | Adaptive Phase 2, mandatory multi-angle review, integration checklist pattern |
 
 ---
 

@@ -90,7 +90,7 @@ mkdir -p {PROJECT_DIR}/output/figures
 
 ## Orchestrator Skill Loading
 
-**Exception to standard pattern:** The orchestrator loads `data-scientist` directly via the Skill tool at the start of Ad Hoc Collaboration mode. This is the only mode where the orchestrator itself loads a skill (normally skills are loaded by subagents only).
+**Exception to standard pattern:** The orchestrator loads `data-scientist` directly via the Skill tool at the start of Ad Hoc Collaboration mode. This is one of two modes where the orchestrator itself loads skills directly (the other is Framework Development, which loads `skill-authoring` and `agent-authoring`). Normally skills are loaded by subagents only.
 
 **Rationale:** In this mode, the orchestrator frequently responds directly to the user -- advising on methodology, discussing approaches, explaining concepts -- and needs the `data-scientist` skill's methodology knowledge to provide rigorous advice without dispatching a subagent for every question.
 
