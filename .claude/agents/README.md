@@ -623,7 +623,7 @@ permissionMode: default                          # Or: plan (read-only agents)
 After writing the agent file, update these registries at minimum:
 
 - [ ] `.claude/agents/README.md` — Agent Index + "When to Use" section + Coordination Matrix
-- [ ] `.claude/agents/README.md` — Agent catalog table (canonical Specialized Agents registry) + `full-pipeline.md` > Skill-to-Stage Mapping (if stage-specific)
+- [ ] `.claude/agents/README.md` — Agent catalog table (canonical Specialized Agents registry) + `full-pipeline-mode.md` > Skill-to-Stage Mapping (if stage-specific)
 - [ ] `README.md` — Agent Ecosystem table + update agent count
 
 For the **complete 29-item integration checklist** (including conditional workflow and narrative updates), invoke the `agent-authoring` skill and read `references/integration-checklist.md`.

@@ -208,7 +208,7 @@ The orchestrator MUST track cumulative errors in STATE.md's `## Error Budget Con
 
 ### Budget Read-Gating
 
-The orchestrator reads the Error Budget Consumed section from STATE.md at Step 0 of each Composite Execution Pattern cycle (see `full-pipeline.md`). If any category has remaining budget ≤ 0, the orchestrator MUST STOP and follow the Budget Exhaustion Protocol below rather than dispatching the next task. This ensures budget enforcement is data-driven (read from STATE.md) rather than memory-dependent.
+The orchestrator reads the Error Budget Consumed section from STATE.md at Step 0 of each Composite Execution Pattern cycle (see `full-pipeline-mode.md`). If any category has remaining budget ≤ 0, the orchestrator MUST STOP and follow the Budget Exhaustion Protocol below rather than dispatching the next task. This ensures budget enforcement is data-driven (read from STATE.md) rather than memory-dependent.
 
 **Data Onboarding mode:** The Per-Part Execution Cycle's Step 0 (in `data-onboarding-mode.md`) performs budget read-gating before each profiling part. The orchestrator reads STATE.md's Error Budget Consumed section and confirms remaining budget > 0 before dispatching the next part's subagent.
 

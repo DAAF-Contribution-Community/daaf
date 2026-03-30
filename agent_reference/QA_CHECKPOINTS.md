@@ -774,7 +774,7 @@ scripts/
 
 ## QA Report Format
 
-QA checkpoint results follow this conceptual schema. The actual output to the orchestrator uses Markdown format (see the code-reviewer invocation template in `full-pipeline.md`). This YAML schema documents the logical structure:
+QA checkpoint results follow this conceptual schema. The actual output to the orchestrator uses Markdown format (see the code-reviewer invocation template in `full-pipeline-mode.md`). This YAML schema documents the logical structure:
 
 ```yaml
 qa_report:

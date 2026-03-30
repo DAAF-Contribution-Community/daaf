@@ -750,7 +750,7 @@ Document risks identified during discovery and planning, with mitigation strateg
 - **Timeline:** Risk that data sources have unexpected lag times
 - **QA:** Risk that secondary validation will find issues requiring revision or escalation
 
-**Update Triggers:** See `full-pipeline.md` > "Runtime Risk Tracking" for complete trigger list. Planning-phase risks are documented here; runtime risks go to STATE.md `## Runtime Risks`.
+**Update Triggers:** See `full-pipeline-mode.md` > "Runtime Risk Tracking" for complete trigger list. Planning-phase risks are documented here; runtime risks go to STATE.md `## Runtime Risks`.
 
 **When to Update (during planning, Stages 1-4 only):**
 - **Stage 3 (Source Deep-Dive):** Add risks from source caveats that affect validity/completeness

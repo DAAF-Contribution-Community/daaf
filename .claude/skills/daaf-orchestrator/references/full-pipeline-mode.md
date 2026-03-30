@@ -10,7 +10,7 @@ This reference is loaded after the orchestrator classifies a request as Full Pip
 
 > **Invocation Pattern Authority:** Two layers:
 > 1. **`WORKFLOW_PHASE*.md`** — stage-specific invocation templates with full context fields, thoroughness directives, gate criteria, verification checklists, and PSU content. **Start here** when constructing a subagent prompt.
-> 2. **This file (`full-pipeline.md`)** — cross-phase templates (code-reviewer invocation, revision requests), generic prompt structure, context inlining protocol, QA enforcement, and prompt size targets.
+> 2. **This file (`full-pipeline-mode.md`)** — cross-phase templates (code-reviewer invocation, revision requests), generic prompt structure, context inlining protocol, QA enforcement, and prompt size targets.
 >
 > **`.claude/agents/README.md`** provides agent behavioral specs and input/output contracts — consult when understanding an agent's capabilities, not for constructing invocation prompts.
 

@@ -41,7 +41,7 @@ Findings Synthesis
 
 **Before dispatching subagents:** Read `{BASE_DIR}/agent_reference/WORKFLOW_PHASE1_DISCOVERY.md` for the detailed invocation templates (Stage 2: Domain Explorer, Stage 3: Source Deep-Dive). These templates specify the exact prompt structure, context fields, thoroughness directives, and output formats for each subagent type.
 
-**Note:** Data Discovery mode does NOT require loading `agent_reference/BOUNDARIES.md`, or `full-pipeline.md`. These contain execution-stage guidance (QA substages, code review patterns, git commit protocol) that is irrelevant to Data Discovery's read-only exploration.
+**Note:** Data Discovery mode does NOT require loading `agent_reference/BOUNDARIES.md`, or `full-pipeline-mode.md`. These contain execution-stage guidance (QA substages, code review patterns, git commit protocol) that is irrelevant to Data Discovery's read-only exploration.
 
 ## Subagent Invocation
 
@@ -109,4 +109,4 @@ When findings suggest analysis is feasible and valuable, propose escalation:
 
 > "Based on these findings, data is available for this analysis. Would you like me to proceed with Full Pipeline mode?"
 
-Wait for explicit user confirmation before switching modes. If the user confirms, load `{SKILL_REFS}/full-pipeline.md` to begin the full workflow.
+Wait for explicit user confirmation before switching modes. If the user confirms, load `{SKILL_REFS}/full-pipeline-mode.md` to begin the full workflow.

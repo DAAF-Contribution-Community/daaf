@@ -1,6 +1,6 @@
 # Workflow Reference: Phase 1 — Discovery & Scoping
 
-Stages 1, 2, 3, 3.5. Cross-phase orchestration guidance (invocation templates, QA protocols, context requirements) is in `full-pipeline.md` (loaded only for Full Pipeline mode; not needed for standalone Data Discovery mode).
+Stages 1, 2, 3, 3.5. Cross-phase orchestration guidance (invocation templates, QA protocols, context requirements) is in `full-pipeline-mode.md` (loaded only for Full Pipeline mode; not needed for standalone Data Discovery mode).
 
 ---
 
@@ -43,7 +43,7 @@ Stages 1, 2, 3, 3.5. Cross-phase orchestration guidance (invocation templates, Q
 - [ ] Research question clearly stated
 - [ ] Any clarifications documented
 
-> **Full Pipeline Only:** The Pre-Flight Checklist is defined in `full-pipeline.md` § Pre-Flight Checklist and is presented *before* this file is loaded. By the time the orchestrator reads this file, the user has already confirmed the pre-flight. Data Discovery mode does not use the Pre-Flight Checklist.
+> **Full Pipeline Only:** The Pre-Flight Checklist is defined in `full-pipeline-mode.md` § Pre-Flight Checklist and is presented *before* this file is loaded. By the time the orchestrator reads this file, the user has already confirmed the pre-flight. Data Discovery mode does not use the Pre-Flight Checklist.
 
 ---
 
@@ -428,7 +428,7 @@ Consolidate these parallel findings into a unified context for Plan creation.
 
 **Actions:**
 1. Compile discovery findings from Stages 2, 3, and 3.5
-2. Present PSU1 to user using the PSU template (see full-pipeline.md "Phase Status Updates (Mandatory)" section)
+2. Present PSU1 to user using the PSU template (see full-pipeline-mode.md "Phase Status Updates (Mandatory)" section)
 3. WAIT for explicit user confirmation
 
 **PSU1 Content Requirements:**

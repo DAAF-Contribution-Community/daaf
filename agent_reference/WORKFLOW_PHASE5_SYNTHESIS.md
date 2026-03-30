@@ -1,6 +1,6 @@
 # Workflow Reference: Phase 5 — Synthesis & Delivery
 
-Stages 11, 12. Cross-phase orchestration guidance (invocation templates, QA protocols, context requirements) is in `full-pipeline.md`.
+Stages 11, 12. Cross-phase orchestration guidance (invocation templates, QA protocols, context requirements) is in `full-pipeline-mode.md`.
 
 ---
 

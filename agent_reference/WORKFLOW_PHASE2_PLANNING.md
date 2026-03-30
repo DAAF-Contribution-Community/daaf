@@ -1,6 +1,6 @@
 # Workflow Reference: Phase 2 — Planning
 
-Stages 4, 4.5. Cross-phase orchestration guidance (invocation templates, QA protocols, context requirements) is in `full-pipeline.md`.
+Stages 4, 4.5. Cross-phase orchestration guidance (invocation templates, QA protocols, context requirements) is in `full-pipeline-mode.md`.
 
 ---
 

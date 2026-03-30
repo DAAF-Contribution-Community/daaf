@@ -915,7 +915,7 @@ After skill creation completes (Stage DI-8), the user may want to analyze the da
 
 > "The data source skill is ready. Would you like to proceed with a Full Pipeline analysis using this data?"
 
-If confirmed, load `{SKILL_REFS}/full-pipeline.md` and begin Full Pipeline mode. The newly created skill is immediately available for the pipeline's domain configuration.
+If confirmed, load `{SKILL_REFS}/full-pipeline-mode.md` and begin Full Pipeline mode. The newly created skill is immediately available for the pipeline's domain configuration.
 
 ### Full Pipeline Phase 1 to Data Onboarding
 

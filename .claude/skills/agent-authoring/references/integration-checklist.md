@@ -49,31 +49,31 @@ Follow the format of existing agent subsections in this file.
 
 **Update these IF the new agent maps to a specific pipeline stage or changes the workflow.**
 
-### 5. `full-pipeline.md` — Skill-to-Stage Mapping table
+### 5. `full-pipeline-mode.md` — Skill-to-Stage Mapping table
 
 **Condition:** Agent has a primary pipeline stage
-**Section:** "Skill-to-Stage Mapping" (in `.claude/skills/daaf-orchestrator/references/full-pipeline.md`)
+**Section:** "Skill-to-Stage Mapping" (in `.claude/skills/daaf-orchestrator/references/full-pipeline-mode.md`)
 **What to add:** New or updated row with Stage, Primary Skill(s), Subagent Type, Invocation Pattern
 
-### 6. `full-pipeline.md` — Core Workflow Overview diagram
+### 6. `full-pipeline-mode.md` — Core Workflow Overview diagram
 
 **Condition:** Agent appears in the main workflow flow (not on-demand/any-stage agents)
-**Section:** "Core Workflow Overview" (in `.claude/skills/daaf-orchestrator/references/full-pipeline.md`)
+**Section:** "Core Workflow Overview" (in `.claude/skills/daaf-orchestrator/references/full-pipeline-mode.md`)
 **What to add:** Agent reference in the relevant stage description
 
-### 7. `full-pipeline.md` — Handoff Specifications table
+### 7. `full-pipeline-mode.md` — Handoff Specifications table
 
 **Condition:** Agent produces or consumes stage output that affects gate criteria
-**Section:** "Handoff Specifications" (in `.claude/skills/daaf-orchestrator/references/full-pipeline.md`)
+**Section:** "Handoff Specifications" (in `.claude/skills/daaf-orchestrator/references/full-pipeline-mode.md`)
 **What to add:** Updated gate criteria for affected stages
 
-### 8. `full-pipeline.md` — Stage Gates table
+### 8. `full-pipeline-mode.md` — Stage Gates table
 
 **Condition:** Agent introduces a new gate or modifies an existing gate
-**Section:** "Stage Gates (Cannot Proceed Without)" (in `.claude/skills/daaf-orchestrator/references/full-pipeline.md`)
+**Section:** "Stage Gates (Cannot Proceed Without)" (in `.claude/skills/daaf-orchestrator/references/full-pipeline-mode.md`)
 **What to add:** New or updated gate row
 
-### 9. `full-pipeline.md` — Stage Overview table
+### 9. `full-pipeline-mode.md` — Stage Overview table
 
 **Condition:** Agent maps to a specific stage
 **Section:** "Stage Overview"
@@ -124,7 +124,7 @@ Follow the format of existing agent subsections in this file.
 | 18 | `agent_reference/QA_CHECKPOINTS.md` | Agent participates in QA review |
 | 19 | `agent_reference/ERROR_RECOVERY.md` | Agent handles specific error types |
 | 20 | `CLAUDE.md` > "Context & Session Health" | Agent has special context considerations |
-| 21 | `full-pipeline.md` > "Learning Signal Protocol" | Agent generates learning signals |
+| 21 | `full-pipeline-mode.md` > "Learning Signal Protocol" | Agent generates learning signals |
 | 22 | `agent_reference/PLAN_TEMPLATE.md` | Agent reads or writes Plan.md |
 | 23 | `agent_reference/PLAN_TASKS_TEMPLATE.md` | Agent reads or writes Plan_Tasks.md |
 | 24 | `agent_reference/STATE_TEMPLATE.md` | Agent affects STATE.md fields |
@@ -204,11 +204,11 @@ done
 - [ ] README.md (project root) — Agent count and table
 
 ### Tier 2: CONDITIONAL (check applicability)
-- [ ] full-pipeline.md — Skill-to-Stage Mapping (if stage-specific)
-- [ ] full-pipeline.md — Core Workflow diagram (if in main flow)
-- [ ] full-pipeline.md — Handoff Specifications (if affects gates)
-- [ ] full-pipeline.md — Stage Gates table (if new/modified gate)
-- [ ] full-pipeline.md — Stage Overview (if stage-specific)
+- [ ] full-pipeline-mode.md — Skill-to-Stage Mapping (if stage-specific)
+- [ ] full-pipeline-mode.md — Core Workflow diagram (if in main flow)
+- [ ] full-pipeline-mode.md — Handoff Specifications (if affects gates)
+- [ ] full-pipeline-mode.md — Stage Gates table (if new/modified gate)
+- [ ] full-pipeline-mode.md — Stage Overview (if stage-specific)
 - [ ] agent_reference/WORKFLOW_PHASE*.md — Individual stage section (if stage-specific)
 - [ ] agent_reference/WORKFLOW_PHASE*.md — Stage invocation template (if unique invocation template)
 - [ ] .claude/agents/README.md — Orchestration Flow diagram (if changes workflow)
@@ -222,7 +222,7 @@ done
 - [ ] agent_reference/QA_CHECKPOINTS.md (if participates in QA)
 - [ ] agent_reference/ERROR_RECOVERY.md (if handles error types)
 - [ ] CLAUDE.md > "Context & Session Health" (if special context needs)
-- [ ] full-pipeline.md > "Learning Signal Protocol" (if generates learning signals)
+- [ ] full-pipeline-mode.md > "Learning Signal Protocol" (if generates learning signals)
 - [ ] agent_reference/PLAN_TEMPLATE.md (if reads/writes Plan.md)
 - [ ] agent_reference/PLAN_TASKS_TEMPLATE.md (if reads/writes Plan_Tasks.md)
 - [ ] agent_reference/STATE_TEMPLATE.md (if affects STATE.md)

@@ -32,7 +32,7 @@ After completing each item, note the status: Done, Skipped (with reason), or N/A
 | S6 | Verify SKILL.md body is under 500 lines / 5000 words | [M] | `.claude/skills/{skill-name}/SKILL.md` | Extract overflow to `references/` |
 | S7 | Verify description triggers appropriately (no undertriggering or overtriggering) | [M] | `.claude/skills/{skill-name}/SKILL.md` | Test with realistic prompts |
 | S8 | If skill should be preloaded by an agent, add to that agent's `skills:` frontmatter | [C] | `.claude/agents/{agent-name}.md` | YAML frontmatter `skills` field |
-| S9 | If skill is used in a specific pipeline stage, add to `full-pipeline.md` > Skill-to-Stage Mapping | [C] | `.claude/skills/daaf-orchestrator/references/full-pipeline.md` | Skill-to-Stage Mapping table |
+| S9 | If skill is used in a specific pipeline stage, add to `full-pipeline-mode.md` > Skill-to-Stage Mapping | [C] | `.claude/skills/daaf-orchestrator/references/full-pipeline-mode.md` | Skill-to-Stage Mapping table |
 | S10 | If skill is used in WORKFLOW_PHASE invocation templates, add reference there | [C] | `agent_reference/WORKFLOW_PHASE*.md` | Stage-specific invocation template |
 
 ### Modifying an Existing Skill
@@ -63,7 +63,7 @@ After completing each item, note the status: Done, Skipped (with reason), or N/A
 | A6 | Add to Commonly Confused Pairs if applicable | [C] | `.claude/agents/README.md` | Commonly Confused Pairs table |
 | A7 | Update Orchestration Flow diagram if agent participates in pipeline | [C] | `.claude/agents/README.md` | Orchestration Flow ASCII diagram |
 | A8 | Add to Subagent Type Selection table in orchestrator SKILL.md | [C] | `.claude/skills/daaf-orchestrator/SKILL.md` | Named Agents table |
-| A9 | Add to `full-pipeline.md` Core Workflow tables if stage-specific | [C] | `.claude/skills/daaf-orchestrator/references/full-pipeline.md` | Core Workflow, Handoffs, Stage Gates tables |
+| A9 | Add to `full-pipeline-mode.md` Core Workflow tables if stage-specific | [C] | `.claude/skills/daaf-orchestrator/references/full-pipeline-mode.md` | Core Workflow, Handoffs, Stage Gates tables |
 | A10 | Add invocation template to appropriate WORKFLOW_PHASE file | [C] | `agent_reference/WORKFLOW_PHASE*.md` | Stage-specific section |
 | A11 | Add to BOUNDARIES.md if agent has unique boundary considerations | [C] | `agent_reference/BOUNDARIES.md` | Appropriate section |
 | A12 | Add to ERROR_RECOVERY.md if agent has error recovery patterns | [C] | `agent_reference/ERROR_RECOVERY.md` | Agent-specific section or routing table |

@@ -1,6 +1,6 @@
 # Workflow Reference: Phase 4 — Analysis & Notebook Development
 
-Stages 7, 8, 9, 10. Cross-phase orchestration guidance (invocation templates, QA protocols, context requirements) is in `full-pipeline.md`.
+Stages 7, 8, 9, 10. Cross-phase orchestration guidance (invocation templates, QA protocols, context requirements) is in `full-pipeline-mode.md`.
 
 **Execution Model:** All scripts follow the file-first execution pattern. See `SCRIPT_EXECUTION_REFERENCE.md` for the complete protocol.
 
@@ -352,7 +352,7 @@ Return the Polars code to accomplish this, with validation.""",
 ### QA Follow-Up (MANDATORY)
 
 **After research-executor returns from EACH Stage 7 transformation, orchestrator MUST invoke code-reviewer.**
-Use the **code-reviewer invocation template** from `full-pipeline.md`
+Use the **code-reviewer invocation template** from `full-pipeline-mode.md`
 with stage-specific values for Stage 7.
 
 **Do NOT proceed to transformation #{n+1} until QA returns PASSED or WARNING.**
@@ -605,7 +605,7 @@ Do NOT proceed to next analysis task. Return to orchestrator for approval.""",
 #### QA Follow-Up for Stage 8.1 (MANDATORY)
 
 **After research-executor completes each Stage 8.1 analysis script, orchestrator MUST invoke code-reviewer.**
-Use the **code-reviewer invocation template** from `full-pipeline.md`
+Use the **code-reviewer invocation template** from `full-pipeline-mode.md`
 with stage-specific values for Stage 8. Use **QA4a** (statistical validity) for the analysis script.
 
 **If the analysis script also produced figures**, invoke code-reviewer again with **QA4b** (visualization quality) for those figures.
@@ -750,7 +750,7 @@ Follow the file-first execution protocol:
 #### QA Follow-Up for Stage 8.2 (MANDATORY)
 
 **After research-executor completes each Stage 8.2 visualization script, orchestrator MUST invoke code-reviewer.**
-Use the **code-reviewer invocation template** from `full-pipeline.md`
+Use the **code-reviewer invocation template** from `full-pipeline-mode.md`
 with stage-specific values for Stage 8. Use **QA4b** (visualization quality) for visualization scripts.
 
 **Do NOT proceed to Stage 9 until QA4b returns PASSED or WARNING for all visualization scripts.**
@@ -1125,7 +1125,7 @@ Stage 10 is performed by the orchestrator directly (no dedicated subagent). The 
 ### Post-Script Action Checklist (Stages 7-8)
 
 After each script execution:
-1. **QA:** Invoke code-reviewer immediately (see `full-pipeline.md` > Code-Reviewer Invocation)
+1. **QA:** Invoke code-reviewer immediately (see `full-pipeline-mode.md` > Code-Reviewer Invocation)
 2. **State:** Update STATE.md transformation progress table
 3. **Citations (Stages 7-8):** After each Stage 7 or Stage 8 script completes, check the research-executor's output for a `### Citations` section. If present, extract each citation entry and append to the appropriate STATE.md > Citations Accumulated table:
    - `software` type --> Software & Tools table
@@ -1178,7 +1178,7 @@ After each script execution:
 
 ## Phase Status Update 4 (PSU4): Analysis Complete
 
-After Stage 10 (QA Aggregation — performed by the orchestrator), present PSU4 to the user. Use the generic PSU template from `full-pipeline.md` with the content below.
+After Stage 10 (QA Aggregation — performed by the orchestrator), present PSU4 to the user. Use the generic PSU template from `full-pipeline-mode.md` with the content below.
 
 ### PSU4 Checkpoint Purpose
 

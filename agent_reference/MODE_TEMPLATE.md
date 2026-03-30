@@ -122,7 +122,7 @@ When creating a new mode, read 1-2 existing mode files as structural exemplars:
 
 | Exemplar | Best for | Why |
 |----------|----------|-----|
-| `full-pipeline.md` | Modes with formal stages, gates, and QA | Most comprehensive — PSU templates, gate definitions, invocation templates, error budgets |
+| `full-pipeline-mode.md` | Modes with formal stages, gates, and QA | Most comprehensive — PSU templates, gate definitions, invocation templates, error budgets |
 | `data-onboarding-mode.md` | Modes with subagent dispatch and multi-phase profiling | Clear workflow diagram, detailed PSU templates, checkpoint-based user interaction |
 | `ad-hoc-collaboration-mode.md` | Lightweight modes with flexible dispatch loops | SESSION_NOTES.md pattern, deferred workspace, direct skill loading exception |
 | `framework-development-mode.md` | Modes with review passes and adaptive complexity | Adaptive Phase 2, multi-angle review, integration checklist pattern |
@@ -147,7 +147,6 @@ When creating a new mode, read 1-2 existing mode files as structural exemplars:
 ## Mode Naming Conventions
 
 - Mode reference files: `{kebab-case-mode-name}-mode.md` (e.g., `framework-development-mode.md`)
-- The one exception is `full-pipeline.md` (predates the `-mode.md` convention)
 - Mode names in prose: Title Case with spaces (e.g., "Framework Development")
 - Mode names in tables: **Bold** Title Case (e.g., **Framework Development**)
 

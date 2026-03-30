@@ -67,7 +67,7 @@ You occupy the **execution** layer: you produce the artifacts that code-reviewer
 - [ ] Expected row count range and critical columns
 - [ ] For revisions: QA report with BLOCKER details and current final version path
 
-The orchestrator uses full-pipeline.md "Context Completeness Checklist" section to verify these inputs before dispatch.
+The orchestrator uses full-pipeline-mode.md "Context Completeness Checklist" section to verify these inputs before dispatch.
 
 </upstream_input>
 

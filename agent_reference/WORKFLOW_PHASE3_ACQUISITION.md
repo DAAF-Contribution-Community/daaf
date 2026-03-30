@@ -1,6 +1,6 @@
 # Workflow Reference: Phase 3 — Data Acquisition & Preparation
 
-Stages 5, 6. Cross-phase orchestration guidance (invocation templates, QA protocols, context requirements) is in `full-pipeline.md`.
+Stages 5, 6. Cross-phase orchestration guidance (invocation templates, QA protocols, context requirements) is in `full-pipeline-mode.md`.
 
 **Execution Model:** All scripts follow the file-first execution pattern. See `SCRIPT_EXECUTION_REFERENCE.md` for the complete protocol.
 
@@ -147,7 +147,7 @@ After completing the skill's Required Actions, return findings using the format 
 ### QA Follow-Up (MANDATORY)
 
 **After research-executor completes EACH individual Stage 5 fetch script, orchestrator MUST immediately invoke code-reviewer to separately review that script.**
-Use the **code-reviewer invocation template** from `full-pipeline.md`
+Use the **code-reviewer invocation template** from `full-pipeline-mode.md`
 with stage-specific values for Stage 5.
 
 **Do NOT start the next Stage 5 script until QA returns PASSED or WARNING for the current script.**
@@ -355,7 +355,7 @@ After completing the skill's Required Actions, return findings using the format 
 ### QA Follow-Up (MANDATORY)
 
 **After research-executor completes EACH individual Stage 6 cleaning script, orchestrator MUST immediately invoke code-reviewer to separately review that script.**
-Use the **code-reviewer invocation template** from `full-pipeline.md`
+Use the **code-reviewer invocation template** from `full-pipeline-mode.md`
 with stage-specific values for Stage 6.
 
 **Do NOT start the next Stage 6 script until QA returns PASSED or WARNING for the current script.**
@@ -474,7 +474,7 @@ The PSU3 checkpoint MUST include:
 ### Post-Script Action Checklist (Stages 5-6)
 
 After each script execution:
-1. **QA:** Invoke code-reviewer immediately (see `full-pipeline.md` > Code-Reviewer Invocation)
+1. **QA:** Invoke code-reviewer immediately (see `full-pipeline-mode.md` > Code-Reviewer Invocation)
 2. **State:** Update STATE.md transformation progress table
 3. **Citations (Stage 6):** After each Stage 6 script completes, extract the data source citation from the research-executor's output (the `### Citation` section in the Stage 6 output format). Append the citation to STATE.md > Citations Accumulated > Data Sources table with the source name, full citation text, stage number, and script filename. If the citation already exists in the table (duplicate source), skip it.
 4. **Next:** Proceed to next script in wave, or check gate if wave complete

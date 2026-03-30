@@ -32,7 +32,7 @@ Classify Revision Type → Confirm with user
 Create New Version
     ├─ Create new versions of BOTH Plan.md AND Plan_Tasks.md (e.g., 2026-01-24a → 2026-01-24b)
     ├─ Document revision request and type in new Plan.md + updated task specs in new Plan_Tasks.md
-    └─ Execute required stages (load full-pipeline.md if needed)
+    └─ Execute required stages (load full-pipeline-mode.md if needed)
     ↓
 Final Review
     └─ Complete full Final Review even for minor fixes
@@ -96,7 +96,7 @@ Version suffixes follow the convention defined in `CLAUDE.md` > "Version Control
 - New versions of BOTH Plan.md AND Plan_Tasks.md document the revision rationale and what changed
 - Version suffix applies consistently to both files (e.g., both get `_a` suffix)
 
-**Skill element update:** When a Methodology Change revision changes the statistical approach (e.g., OLS to fixed effects, or adding spatial analysis), update the `<skill>` element in the relevant Plan_Tasks.md task blocks to reflect the new modeling library. Consult the `data-scientist` skill's routing tree or full-pipeline.md's "Modeling library selection" section for the canonical routing.
+**Skill element update:** When a Methodology Change revision changes the statistical approach (e.g., OLS to fixed effects, or adding spatial analysis), update the `<skill>` element in the relevant Plan_Tasks.md task blocks to reflect the new modeling library. Consult the `data-scientist` skill's routing tree or full-pipeline-mode.md's "Modeling library selection" section for the canonical routing.
 
 ## Re-run Guidance
 
@@ -115,9 +115,9 @@ Version suffixes follow the convention defined in `CLAUDE.md` > "Version Control
 
 The canonical re-run decision trees live in `agent_reference/ERROR_RECOVERY.md`. The table above is a quick reference for revision-specific scenarios.
 
-For stages that need re-execution, load `{SKILL_REFS}/full-pipeline.md` and follow the relevant stage's Composite Execution Pattern. All QA requirements from the full pipeline apply to re-executed stages.
+For stages that need re-execution, load `{SKILL_REFS}/full-pipeline-mode.md` and follow the relevant stage's Composite Execution Pattern. All QA requirements from the full pipeline apply to re-executed stages.
 
-**Gate applicability:** Stage gates from `full-pipeline.md` apply to all re-executed stages. Gates for stages that are NOT being re-executed are considered already satisfied from the prior version. PSUs are NOT required (replaced by Revision Status Update), but gates within re-executed stages are mandatory.
+**Gate applicability:** Stage gates from `full-pipeline-mode.md` apply to all re-executed stages. Gates for stages that are NOT being re-executed are considered already satisfied from the prior version. PSUs are NOT required (replaced by Revision Status Update), but gates within re-executed stages are mandatory.
 
 ### Re-Entry File Loading
 
@@ -131,7 +131,7 @@ When re-executing pipeline stages for a revision, load these files based on the 
 | Stage 7-8 (Analysis) | `WORKFLOW_PHASE4_ANALYSIS.md` | Transform/analysis templates + QA pattern |
 | Stage 9-10 (Assembly) | `WORKFLOW_PHASE4_ANALYSIS.md` | Notebook assembly, QA aggregation |
 | Stage 11-12 (Synthesis) | `WORKFLOW_PHASE5_SYNTHESIS.md` | Report generation, final review |
-| Any stage | `full-pipeline.md` | QA enforcement protocol, invocation templates, context checklists |
+| Any stage | `full-pipeline-mode.md` | QA enforcement protocol, invocation templates, context checklists |
 
 **Progressive loading:** Only load the phase file for the re-entry point and any downstream phases. Do not load all phase files at once.
 
@@ -215,7 +215,7 @@ Revision and Extension mode reuses the standard invocation templates from the re
 
 1. **Base:** The stage-specific invocation template from the appropriate phase file (see Re-Entry File Loading table above)
 2. **Augment:** Add the REVISION CONTEXT block (see Revision-Specific Subagent Context above) to every subagent prompt
-3. **QA:** Invoke code-reviewer after each re-executed script, following the same QA pattern from `full-pipeline.md`
+3. **QA:** Invoke code-reviewer after each re-executed script, following the same QA pattern from `full-pipeline-mode.md`
 
 No revision-specific invocation templates are needed — the standard templates plus REVISION CONTEXT block provide complete dispatch guidance.
 
@@ -235,7 +235,7 @@ No revision-specific invocation templates are needed — the standard templates 
 
 **Step 5: Load references.**
 - `revision-and-extension-mode.md` (already loaded)
-- `full-pipeline.md` (for composite execution pattern and QA enforcement)
+- `full-pipeline-mode.md` (for composite execution pattern and QA enforcement)
 - `WORKFLOW_PHASE4_ANALYSIS.md` (for Stage 7-8 invocation templates)
 - `WORKFLOW_PHASE5_SYNTHESIS.md` (for Stage 11-12 templates)
 
