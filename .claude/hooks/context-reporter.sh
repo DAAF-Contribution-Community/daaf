@@ -4,7 +4,7 @@
 # Injects context window utilization and a current timestamp into Claude's
 # conversation so the model can make informed decisions about delegation, state
 # persistence, and session recovery (see CLAUDE.md utilization gates at
-# 40%/60%/75% OR 150k/250k/350k tokens, whichever fires first).
+# 40%/60%/75% OR 150k/200k/250k tokens, whichever fires first).
 #
 # Registered events:
 #   UserPromptSubmit  — stdout text → injected as <user-prompt-submit-hook>
@@ -91,8 +91,8 @@ calculate() {
     # windows (1M) where percentage thresholds would allow excessive token usage.
     # See CLAUDE.md § Context Quality Curve for the authoritative threshold table.
     local severity
-    if   [[ $pct -ge 75 ]] || [[ $used_k -ge 350 ]]; then severity="CRITICAL"
-    elif [[ $pct -ge 60 ]] || [[ $used_k -ge 250 ]]; then severity="HIGH"
+    if   [[ $pct -ge 75 ]] || [[ $used_k -ge 250 ]]; then severity="CRITICAL"
+    elif [[ $pct -ge 60 ]] || [[ $used_k -ge 200 ]]; then severity="HIGH"
     elif [[ $pct -ge 40 ]] || [[ $used_k -ge 150 ]]; then severity="ELEVATED"
     else                                                    severity="NOMINAL"
     fi

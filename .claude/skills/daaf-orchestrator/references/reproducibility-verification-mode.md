@@ -622,8 +622,8 @@ Reproducibility Verification can span many scripts, each consuming subagent cont
 |-------------|--------|
 | < 40% and < 150k tokens (NOMINAL) | Continue normally |
 | ≥ 40% or ≥ 150k tokens (ELEVATED) | Update Session Continuity after each script; monitor closely |
-| ≥ 60% or ≥ 250k tokens (HIGH) | Complete current script's atomic cycle; update Session Continuity; present checkpoint to user with restart guidance |
-| ≥ 75% or ≥ 350k tokens (CRITICAL) | Cease work; update Session Continuity; present restart prompt to user |
+| ≥ 60% or ≥ 200k tokens (HIGH) | Complete current script's atomic cycle; update Session Continuity; present checkpoint to user with restart guidance |
+| ≥ 75% or ≥ 250k tokens (CRITICAL) | Cease work; update Session Continuity; present restart prompt to user |
 
 **Restart procedure:** User copies the Restart Prompt from the Reproduction Report's Session Continuity section, runs `/clear`, and pastes it. The new session reads the Reproduction Report to establish position and resumes from the next unprocessed script.
 

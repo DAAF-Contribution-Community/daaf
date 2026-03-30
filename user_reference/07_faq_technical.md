@@ -385,8 +385,8 @@ Claude has a finite context window. As a session progresses and Claude processes
 |-------------|--------|-------------|
 | < 40% and < 150k tokens | NOMINAL | Normal operations |
 | ≥ 40% or ≥ 150k tokens | ELEVATED | Works normally but starts delegating more to subagents |
-| ≥ 60% or ≥ 250k tokens | HIGH | Finishes current work, prepares for session restart |
-| ≥ 75% or ≥ 350k tokens | CRITICAL | Stops new work, asks you to restart the session |
+| ≥ 60% or ≥ 200k tokens | HIGH | Finishes current work, prepares for session restart |
+| ≥ 75% or ≥ 250k tokens | CRITICAL | Stops new work, asks you to restart the session |
 
 When you see CRITICAL, it means Claude's context window is nearly full and continuing would degrade the quality of its work. This is by design -- DAAF would rather stop and restart cleanly than continue with increasingly unreliable output.
 

@@ -56,6 +56,18 @@ These principles apply to all agents writing code in the DAAF system:
   appended execution log as a historical record. Fixes go into a new versioned
   copy (`_a.py`, `_b.py`, etc.). Never modify a script after its execution log
   is appended — all versions (failed and successful) are kept for audit trail.
+- **Skill information awareness:** Skills contain curated domain knowledge that
+  represents a point-in-time snapshot — APIs evolve, endpoints deprecate,
+  documentation updates, and coded values change. Skills are the best available
+  starting point and should be followed for framework conventions, but factual
+  claims (URLs, endpoints, variable names, coded values, schemas) can drift.
+  When encountering unexpected errors, ambiguous results, or information that
+  feels stale, cross-reference against authoritative online sources before
+  assuming the skill is correct. Critically, information that an agent supplies
+  *beyond* what is explicitly encoded in a skill is LLM-generated inference —
+  not curated knowledge — and should be verified with even greater diligence.
+  Agents with web access (WebSearch, WebFetch) should verify directly; agents
+  without web access should flag uncertainty for the orchestrator to resolve.
 
 ---
 
@@ -133,8 +145,8 @@ These thresholds apply to **all agents** — orchestrator and subagents alike. T
 |-------------|--------|-----------------|
 | **< 40% and < 150k tokens** | NOMINAL | Continue normally |
 | **≥ 40% or ≥ 150k tokens** | ELEVATED | Monitor closely; consider how realistic the scope of work remaining is and how to redelegate work (the orchestrator can delegate work to subagents; subagents can return work early to the orchestrator to be redelegated and completed as needed) |
-| **≥ 60% or ≥ 250k tokens** | HIGH | Complete current atomic unit at full quality; report back to user (for orchestrator) or orchestrator (for subagents); do not start new stages of work; Orchestrator must update STATE.md with restart prompt |
-| **≥ 75% or ≥ 350k tokens** | CRITICAL | Cease work immediately and report back to user (for orchestrator) or orchestrator (for subagents); Orchestrator must finalize STATE.md |
+| **≥ 60% or ≥ 200k tokens** | HIGH | Complete current atomic unit at full quality; report back to user (for orchestrator) or orchestrator (for subagents); do not start new stages of work; Orchestrator must update STATE.md with restart prompt |
+| **≥ 75% or ≥ 250k tokens** | CRITICAL | Cease work immediately and report back to user (for orchestrator) or orchestrator (for subagents); Orchestrator must finalize STATE.md |
 
 ### Subagent Context Monitoring
 

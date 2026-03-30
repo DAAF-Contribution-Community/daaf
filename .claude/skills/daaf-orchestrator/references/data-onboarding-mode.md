@@ -582,8 +582,8 @@ Context utilization thresholds from `CLAUDE.md` > "Context & Session Health" > "
 |-------------|--------|--------------------|
 | **< 40% and < 150k tokens** | NOMINAL | Continue normally through profiling parts |
 | **≥ 40% or ≥ 150k tokens** | ELEVATED | Complete current part cycle; assess whether remaining parts are feasible in this session; update STATE.md Context Snapshot |
-| **≥ 60% or ≥ 250k tokens** | HIGH | Complete current part cycle at full quality; update STATE.md with restart prompt; report to user; do not start next part |
-| **≥ 75% or ≥ 350k tokens** | CRITICAL | **Overrides atomic-unit requirement** — save STATE.md immediately (Current Position, Next Actions, Context Snapshot) and cease work; do not attempt to finish the current part cycle |
+| **≥ 60% or ≥ 200k tokens** | HIGH | Complete current part cycle at full quality; update STATE.md with restart prompt; report to user; do not start next part |
+| **≥ 75% or ≥ 250k tokens** | CRITICAL | **Overrides atomic-unit requirement** — save STATE.md immediately (Current Position, Next Actions, Context Snapshot) and cease work; do not attempt to finish the current part cycle |
 
 **Post-PSU-DI2 is a natural restart boundary.** If utilization is ELEVATED or higher after Part D completes, present PSU-DI2 findings, collect user decisions, populate Interpretation Tracking in STATE.md, then recommend restarting for DI-7 (skill authoring) in a fresh session.
 

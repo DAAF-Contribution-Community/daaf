@@ -666,8 +666,8 @@ To prevent this, DAAF monitors its own context utilization continuously and mana
 |-------------|-------------|
 | **Below 40% and below 150k tokens** | Normal operation, no special actions |
 | **≥ 40% or ≥ 150k tokens** | DAAF starts delegating more work to subagents to keep the orchestrator's context lean |
-| **≥ 60% or ≥ 250k tokens** | DAAF finishes its current work unit, updates STATE.md thoroughly, and warns you that a restart may be needed soon |
-| **≥ 75% or ≥ 350k tokens** | DAAF finalizes STATE.md and recommends restarting the session |
+| **≥ 60% or ≥ 200k tokens** | DAAF finishes its current work unit, updates STATE.md thoroughly, and warns you that a restart may be needed soon |
+| **≥ 75% or ≥ 250k tokens** | DAAF finalizes STATE.md and recommends restarting the session |
 
 ### How Session Recovery Works
 

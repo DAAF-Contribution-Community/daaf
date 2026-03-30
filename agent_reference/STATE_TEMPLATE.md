@@ -466,7 +466,7 @@ Copy this template to `STATE.md` in the project folder when starting a Full Pipe
 
 > Resume the [Project Title] analysis. Plan: `[exact plan path]`. Plan Tasks: `[exact Plan_Tasks path]`. State: `[exact STATE.md path]`. Currently at Stage [N] ([Stage Name]) — next step is [task description].
 
-**Orchestrator:** Update this prompt whenever hitting HIGH/CRITICAL utilization gates (≥ 60%/250k or ≥ 75%/350k tokens), before planned session breaks, or when the user decides to stop. Use concrete values — no brackets or placeholders in the actual prompt.
+**Orchestrator:** Update this prompt whenever hitting HIGH/CRITICAL utilization gates (≥ 60%/200k or ≥ 75%/250k tokens), before planned session breaks, or when the user decides to stop. Use concrete values — no brackets or placeholders in the actual prompt.
 
 ### Resumption Instructions (Agent Reference)
 
