@@ -88,11 +88,13 @@ marimo export ipynb notebook.py -o output.ipynb
 marimo export script notebook.py -o flat_script.py
 ```
 
-### Convert from Jupyter
+### Convert from Jupyter (Inbound)
 
 ```bash
-# Convert .ipynb to marimo
+# Convert .ipynb INTO marimo (inbound only — marimo convert is for importing)
 marimo convert notebook.ipynb -o notebook.py
+# To export FROM marimo to other formats, use: marimo export {format}
+# e.g., marimo export md notebook.py, marimo export html notebook.py
 ```
 
 ## First Notebook

@@ -62,15 +62,26 @@ The primary triggering mechanism. This is what agents see when deciding whether 
 
 | Rule | Limit |
 |------|-------|
-| Length | 1-1024 characters |
+| Length | **≤250 characters** (hard limit — truncated in system prompt beyond this) |
+| YAML max | 1024 characters (YAML parser limit, but irrelevant given the 250-char display limit) |
 | No angle brackets | Cannot contain `<` or `>` |
 | Non-empty | Must have content after trimming whitespace |
 
-**Must Include:**
+> **Why 250 chars?** Claude Code truncates frontmatter descriptions at ~250 characters in the system prompt. This is the ONLY text agents see when deciding whether to load a skill — everything beyond 250 chars is silently dropped. The full description is preserved in the skill body (see "Full Description in Body" below).
 
-1. **What the skill does** - Functionality overview
-2. **When to use it** - Specific triggering conditions
-3. **Third-person voice** - Write as "Processes files" not "I help you process files" or "You can use this to process files"
+**Must Include (within 250 chars):**
+
+1. **What the skill does** - Functionality overview (identity + scope)
+2. **When to use it** - Key triggering conditions
+3. **Disambiguation** - What NOT to use this for, especially when similar skills exist (e.g., "For FE use pyfixest; for GLM use statsmodels")
+4. **Third-person voice** - Write as "Processes files" not "I help you process files"
+
+**Budget priorities** (what to keep when space is tight):
+1. Core identity (what it is) — always keep
+2. Key disambiguation (prevents wrong-skill loading) — always keep
+3. Most common triggers — keep the top 2-3
+4. Scope limitations — include if space permits
+5. Detailed coverage list — move to body description
 
 **Good Examples:**
 
@@ -122,6 +133,40 @@ If a skill loads for unrelated queries, add negative triggers to narrow scope:
 description: Advanced statistical analysis for CSV datasets. Use for regression modeling, clustering, and hypothesis testing. Do NOT use for simple data exploration or basic charting (use data-viz skill instead).
 ```
 
+### Full Description in Body
+
+Since frontmatter is limited to 250 chars, the **full description** must be preserved as a plain paragraph immediately after the `# Title` heading in the SKILL.md body. This ensures agents have complete context once the skill is loaded.
+
+**Pattern:**
+
+```markdown
+---
+name: my-skill
+description: >-
+  Condensed description ≤250 chars. What it does, when to use, disambiguation.
+metadata:
+  audience: research-coders
+  domain: python-library
+---
+
+# My Skill
+
+Full, detailed description that was too long for frontmatter. Covers all
+capabilities, specific triggers, scope limitations, disambiguation guidance,
+and any other context that helps agents use this skill correctly. This text
+is only visible after the skill is loaded — it does NOT influence triggering
+decisions, but it provides essential orientation once an agent is working
+with the skill.
+
+[Rest of SKILL.md body...]
+```
+
+**Rules:**
+- The body description is a plain paragraph (no heading, no blockquote) directly after `# Title`
+- It should contain everything the frontmatter description couldn't fit — expanded scope, additional triggers, detailed disambiguation
+- It should NOT duplicate the frontmatter description verbatim — expand and elaborate instead
+- Existing DAAF skills follow this pattern as of 2026-03-29
+
 ### Naming Conventions
 
 Consider using **gerund form** (verb + -ing) for skill names, as this clearly describes the activity the skill provides:
@@ -140,25 +185,58 @@ Additional key-value pairs for categorization. Values must be strings.
 
 ```yaml
 metadata:
-  audience: python-developers
-  domain: data-science
-  version: "1.0"
+  audience: research-coders
+  domain: python-library
+  library-version: "1.x"
 ```
 
-Common metadata keys:
+### Controlled Vocabulary
 
-| Key | Purpose | Example Values |
-|-----|---------|----------------|
-| `audience` | Target users | `developers`, `data-scientists`, `devops` |
-| `domain` | Subject area | `testing`, `visualization`, `deployment` |
-| `version` | Skill version | `1.0`, `2.3.1` |
+DAAF uses a controlled vocabulary for `audience` and `domain` to enable consistent skill routing. Use the exact values below — do not invent new values without updating this spec.
+
+#### `audience` — Which agent role benefits from this skill?
+
+| Value | Targets | Example Skills |
+|-------|---------|----------------|
+| `any-agent` | Broadly useful across roles | data sources, data-scientist, skill-authoring |
+| `research-orchestrator` | Orchestrator agent only | daaf-orchestrator |
+| `research-planner` | Planning/discovery agents | education-data-explorer |
+| `research-coders` | Anyone writing or reviewing code | Python libraries, education-data-query |
+| `research-writers` | Anyone writing or reviewing narrative | science-communication |
+
+#### `domain` — What functional category does this skill belong to?
+
+| Value | Covers | Example Skills |
+|-------|--------|----------------|
+| `data-source` | Reference guides for specific datasets | education-data-source-ccd, election-data-source-countypres |
+| `data-access` | Fetching/discovering data | education-data-query, education-data-explorer |
+| `data-documentation` | Provenance, caveats, interpretation | education-data-context |
+| `python-library` | Library syntax/API reference | polars, plotly, statsmodels |
+| `research-methodology` | Analytical approach, rigor, mindset | data-scientist |
+| `research-orchestration` | Workflow/pipeline management | daaf-orchestrator |
+| `research-communication` | Translating findings for audiences | science-communication |
+| `skill-development` | Meta-skills for building skills/agents | skill-authoring, agent-authoring |
+
+#### Other Standard Metadata Keys
+
+| Key | Purpose | Example Values | When to Include |
+|-----|---------|----------------|-----------------|
+| `library-version` | Library version tracked by the skill | `"1.x"`, `"0.40.0"` | Python library skills only |
+| `skill-authored` | ISO-8601 creation date | `"2026-02-09"` | Data source skills (required) |
+| `skill-last-updated` | ISO-8601 last-verified date | `"2026-02-09"` | Data source skills (required); Python library skills (recommended) |
+
+> **Provenance in metadata:** Data source skills MUST include `skill-authored` and `skill-last-updated` as metadata keys. These track when the skill was created and when it was last verified against actual data. On updates, change only `skill-last-updated`; `skill-authored` remains fixed. If `skill-last-updated` is more than a few months old, treat skill claims with caution — re-run data onboarding to re-verify.
+
+> **Library skill staleness:** Python library skills SHOULD include `skill-last-updated` to signal when the `library-version` claim was last verified. Library APIs evolve — if the tracked version is outdated, the skill's syntax examples and API patterns may have drifted.
+
+> **Metadata routing semantics:** The `audience` and `domain` fields are used for skill inventory management, human auditing, and maintenance — not for programmatic agent routing. Agent skill selection is driven by description text matching and explicit skill name references in orchestrator dispatch tables and agent frontmatter. These fields help maintainers answer questions like "show me all skills relevant to code-writing agents" or "list all data source skills" without affecting runtime behavior.
 
 ## Field Reference Table
 
 | Field | Required | Type | Max Length | Notes |
 |-------|----------|------|------------|-------|
 | `name` | Yes | String | 64 chars | Lowercase hyphen-case |
-| `description` | Yes | String | 1024 chars | No `<` or `>` |
+| `description` | Yes | String | 250 chars (effective) | No `<` or `>`; truncated at 250 chars in system prompt |
 | `metadata` | No | Dict | - | String values only |
 
 ## Unknown Fields
@@ -174,14 +252,30 @@ Unknown frontmatter fields are ignored but may cause validation errors in strict
 
 ```yaml
 ---
-name: polars-helper
-description: Assists with Polars DataFrame operations. Covers lazy/eager execution, expressions, I/O, aggregations, joins, and performance optimization. Use for any Polars data manipulation task.
+name: polars
+description: >-
+  Polars DataFrame library for high-performance data manipulation. Lazy/eager
+  execution, expressions, I/O (CSV, Parquet, JSON), aggregations, joins,
+  string/datetime ops, pandas interop. Use for Polars DataFrames or
+  reading/writing Parquet files.
 metadata:
-  audience: python-developers
-  domain: data-science
-  polars-version: "1.x"
+  audience: research-coders
+  domain: python-library
+  library-version: "1.x"
 ---
+
+# Polars Skill
+
+Polars DataFrame library for high-performance data manipulation in Python.
+Covers lazy/eager execution, expressions, I/O (CSV, Parquet, JSON, database),
+aggregations, joins, string/datetime operations, pandas/NumPy interop, and
+performance optimization. Use when working with Polars DataFrames, migrating
+from pandas, reading Parquet files, or optimizing data pipeline performance.
+
+[Rest of skill body...]
 ```
+
+Note how the frontmatter description (243 chars) captures the essentials, while the body paragraph preserves the full detail including database I/O, NumPy interop, and migration use cases that didn't fit.
 
 ## Description Writing Tips
 

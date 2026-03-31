@@ -52,9 +52,11 @@ With that in mind, there are actually some appreciable trade-offs in being too v
 
 ## Reviewing the Plan Before Execution
 
-The Plan is arguably the most important artifact DAAF produces. It is your **last chance** to shape the entire analysis before any data is fetched, any code is written, or any computation is spent. I cannot overstate this: time spent carefully reviewing the Plan is the single highest-leverage activity in the entire DAAF workflow.
+Plan.md is arguably the most important artifact DAAF produces. It is your **last chance** to shape the entire analysis before any data is fetched, any code is written, or any computation is spent. I cannot overstate this: time spent carefully reviewing Plan.md is the single highest-leverage activity in the entire DAAF workflow.
 
-After DAAF creates the Plan and validates it internally (via the plan-checker agent), it will present you with a Phase Status Update (PSU2) that summarizes the Plan and gives you the exact file path to read it yourself. **Read the actual file.** The PSU2 summary is helpful but it is a summary -- the full Plan contains critical details about methodology, risk, and scope that the summary necessarily condenses.
+After DAAF creates the Plan and validates it internally (via the plan-checker agent), it will present you with a Phase Status Update (PSU2) that summarizes the Plan and gives you the exact file path to read it yourself. **Read the actual file.** The PSU2 summary is helpful but it is a summary -- the full Plan.md contains critical details about methodology, risk, and scope that the summary necessarily condenses.
+
+A companion file, Plan_Tasks.md, is also created during planning. It contains the detailed machine-readable task definitions that DAAF uses to execute each step. Plan_Tasks.md is available for auditing specific task definitions if you want to inspect the exact transformation sequence, dependencies, and file paths.
 
 ### Key Sections to Review
 
@@ -76,9 +78,9 @@ There should be at least 3 research outcomes. If any of them read like hypothese
 
 If DAAF has also included **Hypotheses**, these are directional predictions based on prior literature or domain knowledge. They will be assessed as SUPPORTED / NOT SUPPORTED / PARTIALLY SUPPORTED. Either outcome is a valid finding -- a rigorously refuted hypothesis is excellent science.
 
-**3. Transformation Sequence**
+**3. Transformation Sequence (in Plan_Tasks.md)**
 
-This is the table of every data operation DAAF plans to execute, in order, with dependencies. Each row will become a separate script that gets executed and reviewed. Look for:
+This is the table of every data operation DAAF plans to execute, in order, with dependencies. It lives in Plan_Tasks.md (the companion file to Plan.md). Each row will become a separate script that gets executed and reviewed. Look for:
 
 - **Does the sequence make logical sense?** Data should be fetched before it is cleaned, cleaned before it is joined, joined before it is analyzed.
 - **Are the join keys specified?** If DAAF plans to merge two datasets, the Plan should specify exactly which columns will be used for the join and what kind of join it is (1:1, 1:many, etc.).
@@ -228,7 +230,7 @@ I recommend this review order:
 
 1. **Report** -- Start here for the big picture. Does the narrative make sense? Do the findings answer your research question?
 2. **Figures** -- Look at the visualizations referenced in the report. Do they show what the report claims they show?
-3. **Plan** -- Skim the Final Review Log section (appended at the end) to see if DAAF flagged any deviations or concerns.
+3. **Plan.md and STATE.md** -- Skim Plan.md for methodology and key decisions. Check STATE.md for the Final Review Log and QA Findings Summary to see if DAAF flagged any deviations or concerns.
 4. **Notebook** -- Dive into specific stages if you want to verify how a particular result was derived.
 5. **Script logs** -- Go here for the deepest level of detail on any specific step.
 
@@ -244,7 +246,7 @@ The report follows a standard structure (Executive Summary, Key Findings, Data &
 
 **Figure references:** The report should reference specific figures by filename. Verify that the referenced figures exist and actually show what the report says they show. This is a simple but effective check.
 
-**Data source citations:** The report should cite each data source used. Verify that these match the sources specified in the Plan.
+**References:** The report includes a References section with up to four subsections: data sources, methodological references (e.g., the specific DiD estimator or survey weighting approach used), software & tools, and reporting standards. DAAF does its best to track these automatically as each script executes, but citations can be wrong, incomplete, or missing -- verify that the right methods and tools are credited, that the citations themselves are accurate, and that nothing important was overlooked or unnecessarily included.
 
 ### Reading the Notebook
 
@@ -314,7 +316,7 @@ These safeguards run without your involvement throughout the pipeline:
 | **STOP Conditions** | Automatic pause when data quality thresholds are breached | Throughout execution |
 | **Version Control** | Every file revision is saved separately -- nothing is ever overwritten | All stages |
 | **Plan-Checker Validation** | Automated 6-dimension validation of the Plan before execution begins | Stage 4.5 |
-| **Source Citations** | Proper citations generated automatically for all data sources used | Report generation |
+| **Citation Tracking** | Attempts to track and attribute citations for data sources, methods, software, and reporting standards as each script executes -- best-effort, not guaranteed | Throughout execution and report generation |
 
 That is a substantial amount of automated quality control. It means that the majority of *operational* errors -- wrong data types, broken joins, corrupted files, missing columns, data loss during transformation -- will be caught before you ever see the results.
 
@@ -465,6 +467,23 @@ Secondly, one of the most common attack surfaces for Claude Code is what's known
 3. Lastly, someone hijacks the DAAF project and sneaks in hidden, malicious code/instructions into the fabric of the project documentation.
 
 The first two are your responsibility: Be thorough and thoughtful about what you have Claude read/do/search on your behalf. The last one is my responsibility: I will do everything I can to make sure all edits and changes from here are thoroughly vetted, reviewed, and sanitized for the benefit of all users. 
+
+---
+
+## Tips for Data Onboarding
+
+Data Onboarding mode profiles raw data files and creates reusable data source skills. Here are some tips to get the most out of it:
+
+**Before you start:**
+- **Have your data file ready** in a common tabular format (CSV, TSV, Parquet, or Excel). Parquet is preferred for speed and type preservation, but any of these work.
+- **Gather any documentation** you have — codebooks, data dictionaries, README files, methodology papers. Providing documentation lets DAAF cross-check what the documentation says against what the data actually shows, catching discrepancies that could trip you up later.
+- **Know your data's provenance** — where it came from, when you downloaded it, and what it covers. DAAF records this in the skill for future reference.
+- **If your data comes from an API**, have the API key set up in your environment before starting. DAAF will write a reproducible fetch script for you, but it needs the key to test the download.
+
+**During the process:**
+- **The interpretation review is the most important checkpoint.** When DAAF presents its preliminary interpretations, take the time to carefully confirm, reject, or modify each one. These interpretations become the foundation of the skill that all future analyses will rely on.
+- **Don't worry about getting everything perfect.** The skill is a living artifact — you can refine it later using Framework Development mode as you discover more about the data through actual use.
+- **Flag priority columns** if you know which ones matter most for your research. DAAF will give them extra attention during profiling.
 
 ---
 

@@ -1,21 +1,17 @@
 ---
 name: education-data-source-pseo
 description: >-
-  Postsecondary Employment Outcomes (PSEO) data source from the Census Bureau
-  LEHD program. Experimental tabulations linking college graduates to employment
-  outcomes. Use when researching graduate earnings, employment by industry,
-  geographic flows of graduates, or comparing outcomes across institutions and
-  degree programs. Coverage limited to ~29% of graduates from participating
-  states.
+  PSEO — Census data linking graduates to employment via LEHD wage records. Earnings percentiles at 1/5/10 years post-graduation by institution, degree, CIP. Use for graduate earnings analysis. Coverage: ~29% of graduates from ~31 states.
 metadata:
-  audience: data-analysts
-  domain: education-data
-provenance:
-  skill_authored: "2026-02-09"
-  skill_last_updated: "2026-02-09"
+  audience: any-agent
+  domain: data-source
+  skill-authored: "2026-02-09"
+  skill-last-updated: "2026-02-09"
 ---
 
 # PSEO Data Source Reference
+
+Postsecondary Employment Outcomes (PSEO) — Census Bureau experimental statistics linking college graduates to employment outcomes via UI wage records (LEHD program). Covers earnings (25th/50th/75th percentile, measured 1, 5, and 10 years post-graduation) and employment flows by institution, degree level, and CIP field. Use when comparing graduate earnings across programs or institutions, analyzing industry entry patterns, or studying geographic migration of graduates. Coverage limited to ~29% of graduates from ~31 participating states.
 
 Postsecondary Employment Outcomes (PSEO) is an experimental data product from the U.S. Census Bureau that links college graduate records to national employment data, providing earnings and employment outcomes by institution, degree level, and field of study.
 
@@ -41,6 +37,7 @@ Postsecondary Employment Outcomes (PSEO) is an experimental data product from th
 - **Frequency**: Updated periodically; cohorts span 3-year (Bachelor's) or 5-year (all others) windows
 - **Primary identifiers**: `unitid` (IPEDS Unit ID, integer), `opeid` (integer in Portal data)
 - **Privacy method**: Differential privacy mechanisms protect individual data
+- **Available through**: Education Data Portal mirrors (restructured from Census Bureau LEHD format with integer encodings and lowercase variable names)
 
 ## Reference File Structure
 
@@ -168,7 +165,7 @@ Checking data availability?
 
 ## Data Access
 
-Datasets for PSEO are available via the mirror system. See `datasets-reference.md` for canonical paths, `mirrors.yaml` for mirror configuration, and `fetch-patterns.md` for fetch code patterns.
+Datasets for PSEO are available via the Education Data Portal mirror system. See `datasets-reference.md` for canonical paths, `mirrors.yaml` for mirror configuration, and `fetch-patterns.md` for fetch code patterns.
 
 | Dataset | Type | Path | Codebook |
 |---------|------|------|----------|

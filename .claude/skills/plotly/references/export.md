@@ -69,6 +69,13 @@ fig.write_html(
 
 ## Static Images
 
+> **DAAF note:** kaleido is NOT installed in the DAAF container. Static image
+> export (`write_image`) is unavailable. Use **plotnine** for static PNG/SVG
+> figures in reports. Reserve Plotly for interactive HTML output. The kaleido
+> package requires a bundled Chromium browser (~300MB) plus 9 system shared
+> libraries, which is excessive for this use case. The reference below is
+> retained for completeness if kaleido is installed in a custom environment.
+
 ### Installation
 
 ```bash
@@ -175,6 +182,7 @@ fig = go.Figure(fig_dict)
 <!DOCTYPE html>
 <html>
 <head>
+    <!-- Warning: plotly-latest.min.js is frozen at v1.58.5. For Plotly 6.x, use a versioned URL, e.g., plotly-2.35.2.min.js -->
     <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
 </head>
 <body>
@@ -255,6 +263,8 @@ fig = pio.read_json("plot.json")
 import plotly.io as pio
 
 # Use kaleido (recommended)
+# Note (Plotly 6.2+): pio.kaleido.scope.* is deprecated. Use pio.defaults.* instead,
+# e.g., pio.defaults.default_format = 'png'
 pio.kaleido.scope.default_format = "png"
 pio.kaleido.scope.default_width = 800
 pio.kaleido.scope.default_height = 600

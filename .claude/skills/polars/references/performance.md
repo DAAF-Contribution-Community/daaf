@@ -252,7 +252,7 @@ Polars automatically parallelizes operations across CPU cores.
 
 ```python
 import polars as pl
-print(pl.thread_pool_size())
+print(pl.threadpool_size())
 ```
 
 ### Control Parallelism
@@ -342,7 +342,7 @@ df.write_parquet("data.parquet", compression="lz4")     # Fastest
 
 # Compression levels (zstd)
 df.write_parquet("data.parquet", compression="zstd", compression_level=3)  # Default
-df.write_parquet("data.parquet", compression="zstd", compression_level=19) # Max compression
+df.write_parquet("data.parquet", compression="zstd", compression_level=19) # High compression (max is 22)
 ```
 
 ## Common Performance Issues

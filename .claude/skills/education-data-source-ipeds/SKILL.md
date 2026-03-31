@@ -1,20 +1,17 @@
 ---
 name: education-data-source-ipeds
 description: >-
-  Deep reference for IPEDS (Integrated Postsecondary Education Data System) -
-  the primary federal data source on U.S. colleges and universities. Use when
-  analyzing postsecondary data, understanding graduation rate limitations,
-  comparing institution finances, interpreting enrollment metrics, or working
-  with UNITID/OPEID identifiers.
+  IPEDS — primary federal postsecondary data (~6,500 institutions, 1980-present): enrollment, completions, graduation rates, finance, aid, admissions, HR. For college/university analysis. Grad rates = first-time full-time; finance needs GASB/FASB care.
 metadata:
-  audience: data-analysts
-  domain: education-data
-provenance:
-  skill_authored: "2026-02-09"
-  skill_last_updated: "2026-02-09"
+  audience: any-agent
+  domain: data-source
+  skill-authored: "2026-02-09"
+  skill-last-updated: "2026-02-09"
 ---
 
 # IPEDS Data Source Reference
+
+IPEDS (Integrated Postsecondary Education Data System) — the primary federal data system for ~6,500 U.S. postsecondary institutions, comprising 12+ annual survey components: enrollment, completions, graduation rates, finance, financial aid, admissions, human resources, and institutional characteristics (1980-present, varies by component). Use when analyzing postsecondary enrollment, degree completions by CIP code, institutional finances, or admissions data. Graduation rates track first-time full-time students only (150% cohort). Cross-sector finance comparisons require care due to GASB vs. FASB accounting.
 
 Comprehensive guide to understanding and using IPEDS data correctly. IPEDS is the most widely used source for postsecondary education data but has significant complexities — including sector-specific accounting standards, cohort-limited graduation rates, and integer-encoded categorical variables — that users must understand.
 
@@ -39,6 +36,7 @@ IPEDS (Integrated Postsecondary Education Data System) is a system of 12+ interr
 - **Mandate**: Required for Title IV federal student aid participation
 - **Available years**: 1980-present (varies by component)
 - **Primary identifier**: UNITID (6-digit institution ID)
+- **Available through**: Education Data Portal mirrors (32 datasets covering most survey components; some variables not mirrored — see Data Access section)
 
 ## Reference File Structure
 
@@ -240,6 +238,13 @@ Datasets for IPEDS are available via the mirror system. See `datasets-reference.
 
 32 IPEDS datasets exist in the mirror (5 shown above). See `datasets-reference.md` for the complete list with all paths and codebook paths.
 
+> **Known Portal gaps:**
+> - **Distance education enrollment variables** (`efdeexc`, `efdesom`, `efdenom`) are not in Portal mirror datasets. Use the NCES IPEDS Data Center for these.
+> - **Open-admissions policy variable** (`OPENADMP`) is not in Portal mirror datasets. Note: `open_public` is NOT the same thing — see Common Pitfalls below.
+> - **Finance data** may have a year lag relative to NCES releases (last verified through 2017 in some datasets).
+>
+> For data not available through Portal mirrors, access NCES directly at https://nces.ed.gov/ipeds/.
+
 Codebooks are `.xls` files co-located with data in all mirrors. Use `get_codebook_url()` from `fetch-patterns.md` to construct download URLs:
 
 ```python
@@ -337,6 +342,10 @@ IPEDS has multiple enrollment-related datasets in the Portal:
 | No `institution_level` 3 | Codes are 1, 2, 4 — not sequential 1, 2, 3 | Use exact codes: 1=less-than-2yr, 2=2yr, 4=4yr+ |
 | Ignoring mergers/closures | Institutions merge, close, or change sector over time | Check `currently_active_ipeds` and `year_deleted`; track UNITID changes; see `./references/institution-identifiers.md` |
 | `inst_size` as enrollment | `inst_size` is a 1-5 category code, not an enrollment count | Use enrollment endpoints for actual counts |
+| Distance education variables missing | `efdeexc`, `efdesom`, `efdenom` are not in Portal mirror datasets | Use the NCES IPEDS Data Center directly for distance education enrollment |
+| GRS duplicate rows per institution | Graduation rates data has multiple rows per `unitid` within the same subcohort/year, differing in `cohort_rev` and count columns | Filter to target subcohort first (e.g., `subcohort == 2` for bachelor's-seeking at 4-yr), then deduplicate: sort by `completion_rate_150pct` descending (nulls last), then `unique(subset=["unitid"], keep="first")` |
+| `open_public` is not open admissions | `open_public` (from `openpubl`) means "open to the general public" (i.e., a currently operating institution) — Harvard has `open_public=1`. The actual open-admissions policy variable (`OPENADMP`) is not available in the Portal mirror | Do not use `open_public` to identify open-admissions institutions. Use admissions data (admit rate near 100%) as a proxy, or access `OPENADMP` via the IPEDS API directly |
+| SFA `type_of_aid=9` is all grants, not Pell | `type_of_aid=9` in `sfa_grants_and_net_price` captures ALL grant/scholarship recipients (Pell + institutional + state/local). The median ratio to total students is ~0.98 — nearly universal. This dramatically overestimates "Pell share" if used as a Pell proxy | For Pell-specific data, use FSA (pre-2020) or College Scorecard bulk download. SFA `type_of_aid=9` is appropriate for total grant aid analysis but not for Pell isolation |
 
 ## Critical Limitations
 
@@ -385,10 +394,11 @@ def ipeds_quality_check(df):
     """Basic IPEDS data quality checks using Portal variable names."""
     issues = []
 
-    # Check graduation rates are 0-100
+    # Check graduation rates — Portal stores as 0-1 proportions (not 0-100)
+    # See education-data-context skill > Rate and Proportion Normalization
     if "completion_rate_150pct" in df.columns:
         bad = df.filter(
-            (pl.col("completion_rate_150pct") > 100) |
+            (pl.col("completion_rate_150pct") > 1.0) |
             (pl.col("completion_rate_150pct") < 0)
         )
         if bad.height > 0:
@@ -456,3 +466,7 @@ def ipeds_quality_check(df):
 | Data quality issues | `./references/data-quality.md` |
 | Missing data codes | `./references/data-quality.md` |
 | Sector comparisons | `./references/data-quality.md` |
+| Subcohort codes (GRS) | `./references/graduation-rates.md` |
+| GRS deduplication | `./references/graduation-rates.md` |
+| `open_public` vs open admissions | Common Pitfalls (this file) |
+| SFA `type_of_aid` codes | `./references/financial-aid.md` |

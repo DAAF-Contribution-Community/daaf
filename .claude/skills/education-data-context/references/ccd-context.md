@@ -1,6 +1,6 @@
 # Common Core of Data (CCD) Context
 
-The Common Core of Data is the primary source for K-12 public school and district information in the United States.
+The Common Core of Data is the primary source for K-12 public school and district information in the United States. In this system, CCD data is accessed through the Urban Institute Education Data Portal, which standardizes variable names to lowercase, applies integer encoding to categorical variables, and provides a curated subset of the full CCD variable catalog.
 
 ## Source Overview
 

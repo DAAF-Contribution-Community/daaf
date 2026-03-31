@@ -266,7 +266,7 @@ references/
 
 **Problem:** 800+ line SKILL.md file.
 
-**Fix:** Split into references. Keep SKILL.md as navigation hub (<500 lines).
+**Fix:** Split into references. Keep SKILL.md as navigation hub (<500 lines). Note: the opposite problem — *anemic reference files* — is equally harmful. Reference files should be comprehensive since they load on-demand. Aim for total reference content >= 3x SKILL.md lines for data source skills.
 
 ### Missing Decision Trees
 
@@ -404,7 +404,7 @@ Before finalizing, ask:
 
 2. **Completeness:** Does the skill contain everything needed to accomplish its purpose?
 
-3. **Conciseness:** Does every line justify its token cost?
+3. **Conciseness (SKILL.md):** Does every line in SKILL.md justify its token cost? (Reference files have different economics — thoroughness is preferred; see `progressive-disclosure.md`.)
 
 4. **Navigation:** Can users quickly find what they need?
 

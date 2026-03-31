@@ -38,21 +38,9 @@ must_haves:
       to: "[target file or resource]"
       via: "[connection mechanism]"
       pattern: "[regex pattern to verify connection]"
-
-# Execution metadata (populated during execution)
-execution:
-  current_stage: 1
-  checkpoints_passed: []
-  blockers: []
 ---
 
 # [Analysis Title]
-
-## Philosophy: Plans are Prompts
-
-**This document is not just documentation — it is an executable specification.**
-
-Every task in the "Executable Task Sequence" section is written as a prompt that will be dispatched directly to a subagent. The task IS the instruction.
 
 **Key Principles:**
 
@@ -71,8 +59,6 @@ Every task in the "Executable Task Sequence" section is written as a prompt that
 4. **Done criteria must be measurable.**
    - Invalid: "Task complete"
    - Valid: "CP1 PASSED, files saved to data/raw/"
-
-**The Test:** If you copy-paste a task XML into a fresh conversation with Claude + the relevant skill, can Claude execute it without asking questions?
 
 ---
 
@@ -96,6 +82,18 @@ Every task in the "Executable Task Sequence" section is written as a prompt that
 - [Key change 2]
 
 **Data Regeneration Note:** Data regenerated fresh for this revision (not copied from prior version).
+
+---
+
+## Companion Files
+
+| File | Purpose |
+|------|---------|
+| `YYYY-MM-DD_[Title]_Plan_Tasks.md` | Machine-readable executable task sequence — contains all XML task blocks, wave execution rules, and task-specific operational details. Created by data-planner during Stage 4. |
+| `STATE.md` | Operational state tracking during execution — contains transformation progress, checkpoint status, runtime risks, QA findings summary, final review log, and session recovery context. Created by orchestrator during Stage 4. |
+| `LEARNINGS.md` | Session learnings — accumulated data quality insights, methodology lessons, and process observations. Created by orchestrator during Stage 4. |
+
+> **Immutability Rule:** This Plan document and the companion Plan_Tasks.md are **100% frozen after Stage 4.5** (Plan Validation). No runtime updates of any kind. All execution state goes to STATE.md. All runtime decisions go to STATE.md Key Decisions Made. All runtime risks go to STATE.md Runtime Risks.
 
 ---
 
@@ -230,8 +228,8 @@ must_haves:
 
     - from: "YYYY-MM-DD_[Title].py"
       to: "output/figures/"
-      via: "ggplot.save() or fig.write_image()"
-      pattern: "(ggsave|write_image|savefig)"
+      via: "ggplot.save() or fig.write_html()"
+      pattern: "(ggsave|write_image|write_html|savefig)"
 
     - from: "YYYY-MM-DD_[Title]_Report.md"
       to: "output/figures/"
@@ -522,16 +520,16 @@ If analysis includes 2020 or 2021 data, CP1 Check 7 will flag this automatically
 
 #### Wave-Based Task Table
 
-| Wave | Step | Task Name | Operation | Expected Outcome | Script Path | Cardinality | Depends On | Status |
-|------|------|-----------|-----------|------------------|-------------|-------------|------------|--------|
-| 1 | 1.1 | fetch-ccd | Fetch CCD schools data | ~100K rows | `scripts/stage5_fetch/01_fetch-ccd.py` | N/A | — | ⬜ Pending |
-| 1 | 1.2 | fetch-meps | Fetch MEPS poverty data | ~100K rows | `scripts/stage5_fetch/02_fetch-meps.py` | N/A | — | ⬜ Pending |
-| 2 | 2.1 | clean-ccd | Filter coded values | ~95K rows (5% loss) | `scripts/stage6_clean/01_clean-ccd.py` | N/A | 1.1 | ⬜ Pending |
-| 2 | 2.2 | clean-meps | Filter coded values | ~98K rows (2% loss) | `scripts/stage6_clean/02_clean-meps.py` | N/A | 1.2 | ⬜ Pending |
-| 3 | 3.1 | join-data | Join CCD + MEPS on ncessch | ~93K rows | `scripts/stage7_transform/01_join-data.py` | 1:1 | 2.1, 2.2 | ⬜ Pending |
-| 4 | 4.1 | filter-state | Filter to FIPS == 6 (CA) | ~9K rows (10% retained) | `scripts/stage7_transform/02_filter-state.py` | N/A | 3.1 | ⬜ Pending |
-| 4 | 4.2 | calc-ratio | Calculate student-teacher ratio | Add 1 column | `scripts/stage7_transform/03_calc-ratio.py` | N/A | 3.1 | ⬜ Pending |
-| 5 | 5.1 | aggregate | Aggregate by district | ~1K rows | `scripts/stage7_transform/04_aggregate.py` | N/A | 4.1, 4.2 | ⬜ Pending |
+| Wave | Step | Task Name | Operation | Expected Outcome | Script Path | Cardinality | Depends On |
+|------|------|-----------|-----------|------------------|-------------|-------------|------------|
+| 1 | 1.1 | fetch-ccd | Fetch CCD schools data | ~100K rows | `scripts/stage5_fetch/01_fetch-ccd.py` | N/A | — |
+| 1 | 1.2 | fetch-meps | Fetch MEPS poverty data | ~100K rows | `scripts/stage5_fetch/02_fetch-meps.py` | N/A | — |
+| 2 | 2.1 | clean-ccd | Filter coded values | ~95K rows (5% loss) | `scripts/stage6_clean/01_clean-ccd.py` | N/A | 1.1 |
+| 2 | 2.2 | clean-meps | Filter coded values | ~98K rows (2% loss) | `scripts/stage6_clean/02_clean-meps.py` | N/A | 1.2 |
+| 3 | 3.1 | join-data | Join CCD + MEPS on ncessch | ~93K rows | `scripts/stage7_transform/01_join-data.py` | 1:1 | 2.1, 2.2 |
+| 4 | 4.1 | filter-state | Filter to FIPS == 6 (CA) | ~9K rows (10% retained) | `scripts/stage7_transform/02_filter-state.py` | N/A | 3.1 |
+| 4 | 4.2 | calc-ratio | Calculate student-teacher ratio | Add 1 column | `scripts/stage7_transform/03_calc-ratio.py` | N/A | 3.1 |
+| 5 | 5.1 | aggregate | Aggregate by district | ~1K rows | `scripts/stage7_transform/04_aggregate.py` | N/A | 4.1, 4.2 |
 
 **Script Path Convention:**
 - Pattern: `scripts/stage{N}_{type}/{step:02d}_{task-name}.py`
@@ -540,374 +538,48 @@ If analysis includes 2020 or 2021 data, CP1 Check 7 will flag this automatically
 - Stage 7 (transform) → `scripts/stage7_transform/`
 - Stage 8 (analysis & viz) → `scripts/stage8_analysis/`
 
-#### Wave Execution Rules
+> **Full Task Definitions:** The complete XML task specifications for each entry in this table are in the companion `Plan_Tasks.md` file. See `agent_reference/PLAN_TASKS_TEMPLATE.md` for the task definition template.
 
-**Parallelization:**
-- Same-wave tasks (e.g., 1.1 and 1.2) can run in parallel
-- **Maximum 5 tasks per wave.** The orchestrator NEVER dispatches more than 5 subagents concurrently. If a wave somehow exceeds 5 tasks, the orchestrator will sub-batch into groups of ≤5.
-- Each parallel task gets a fresh subagent context (200K tokens)
-- Independent execution prevents context degradation
+### Stage Interface Specifications
 
-**Dependencies:**
-- Later-wave tasks wait for ALL prior waves to complete
-- `Depends On` column shows explicit task dependencies
-- Dependencies MUST be satisfied before task can start
+Define the expected data contracts between stages. The data-planner populates these during Plan creation. Code-reviewer validates against them during QA.
 
-**Context Freshness:**
-- Each wave starts with fresh subagent contexts
-- Plan document provides continuity across waves
-- No accumulated context degradation
+#### Stage 5 → Stage 6 (Raw → Clean)
+- **Artifact pattern:** `data/raw/{date}_{source}.parquet`
+- **Expected columns:** [list key columns per dataset]
+- **Row count range:** [estimated min-max]
+- **Key invariants:** [e.g., "year column is not null", "ncessch is unique per year"]
 
-#### Cardinality Reference
+#### Stage 6 → Stage 7 (Clean → Transform)
+- **Artifact pattern:** `data/processed/{date}_{source}_clean.parquet`
+- **Expected columns:** [columns surviving cleaning]
+- **Row count range:** [post-cleaning estimate]
+- **Key invariants:** [e.g., "no coded missing values remain in critical columns"]
 
-| Value | Meaning | Expected Row Change |
-|-------|---------|-------------------|
-| **N/A** | Not a join operation | Per operation logic |
-| **1:1** | One-to-one match | Result ≈ left rows |
-| **1:many** | One matches many | Result ≥ left rows (fan-out) |
-| **many:1** | Many match one | Result ≈ left rows |
-| **many:many** | Complex matching | Validate carefully |
+#### Stage 7 → Stage 8 (Transform → Analysis)
+- **Artifact pattern:** `data/processed/{date}_analysis.parquet`
+- **Expected columns:** [final analysis columns including derived variables]
+- **Row count range:** [post-transformation estimate]
+- **Key invariants:** [e.g., "one row per school per year", "poverty_rate between 0 and 1"]
 
-**Validation Linkage:**
-The cardinality specified here is passed to `validate_join()` function during Stage 7 execution. See `05_VALIDATION_CHECKPOINTS.md: Join-Specific Validation` for the validation logic.
-
-#### Execution Protocol
-
-1. **Wave Start:** Identify all tasks in current wave (max 5 — hard limit)
-2. **Parallel Dispatch:** Create multiple Agent calls in a single response message to run simultaneously in the foreground (if >5 tasks, sub-batch into groups of ≤5). **NEVER use `run_in_background`.**
-3. **Wave Completion:** Wait for ALL wave tasks to complete
-4. **Validation:** Review each task's CP status
-5. **Wave Advance:** If all PASSED, proceed to next wave
-6. **Update Status:** ⬜ Pending → ⏳ In Progress → ✅ Passed → ❌ Failed
-
-**Per-Script QA Requirement:** After each script in this table completes execution (CP checkpoint passes), code-reviewer MUST be separately invoked to review that individual script before the next script begins. The Transformation Log below tracks both CP and QA status per script. A script is NOT fully gated until both CP and QA statuses are recorded.
-
-**If any task fails:**
-- Attempt fix (max 2 tries)
-- If still failing, STOP and escalate
-- Do NOT proceed to next wave
-
-#### Transformation Log
-
-*Updated during execution — one row per completed task*
-
-> *(Education domain example below — replace task names with your domain's actual tasks.)*
-
-| Wave | Step | Task | Pre-Rows | Post-Rows | Change % | CP Status | QA Status | Revisions | Commit Hash | Notes |
-|------|------|------|----------|-----------|----------|-----------|-----------|-----------|-------------|-------|
-| 1 | 1.1 | fetch-ccd | — | — | — | — | — | 0 | — | — |
-| 1 | 1.2 | fetch-meps | — | — | — | — | — | 0 | — | — |
-| 2 | 2.1 | clean-ccd | — | — | — | — | — | 0 | — | — |
-| 2 | 2.2 | clean-meps | — | — | — | — | — | 0 | — | — |
-| 3 | 3.1 | join-data | — | — | — | — | — | 0 | — | — |
-| 4 | 4.1 | filter-state | — | — | — | — | — | 0 | — | — |
-| 4 | 4.2 | calc-ratio | — | — | — | — | — | 0 | — | — |
-| 5 | 5.1 | aggregate | — | — | — | — | — | 0 | — | — |
-
-**QA Status Values (per-script, independent per row):**
-- **PENDING** — QA review not yet executed for this script
-- **PASSED** — QA review passed for this script (no issues or INFO only)
-- **WARNING** — QA review found non-blocking issues in this script (logged for Stage 10)
-- **BLOCKER** → **REVISED** — QA found blocking issue in this script, revision applied
-- **ESCALATED** — QA BLOCKER unresolved after 2 revision attempts for this script
-
-**Revisions Column:** Count of script revisions due to QA BLOCKER findings (max 2 before escalation)
-
----
-
-## Executable Task Sequence
-
-**PURPOSE:** Each task below is a self-contained specification that can be dispatched to a subagent. Tasks pass the **Task Specificity Test**: a fresh Claude instance with only this task + skill access can complete it without clarifying questions.
-
-**WAVE EXECUTION:** Tasks are grouped by wave. Same-wave tasks dispatch in parallel. Later waves wait for all prior waves.
-
-### Wave 1: Data Acquisition (Parallel)
-
-> *Task examples below use education domain skills (`education-data-query`, `education-data-context`). Substitute your domain's query and context skills per Domain Configuration.*
-
-<task name="fetch-ccd-schools" type="auto" wave="1">
-  <depends_on>none</depends_on>
-  <skill>education-data-query</skill>
-  <agent>research-executor</agent>
-  <files>
-    <output>data/raw/YYYY-MM-DD_ccd_schools.parquet</output>
-  </files>
-  <action>
-    1. Load education-data-query skill
-    2. Use mirror fetch pattern (see skill's fetch-patterns.md):
-       - Dataset Paths: {dataset_paths}  (from datasets-reference.md)
-       - File type: {single | yearly}
-    3. Apply local filters with Polars:
-       - Years: pl.col("year").is_in([year list])
-       - Filters: [filter parameters as Polars expressions]
-    4. Save to parquet format
-    5. Run CP1 validation
-  </action>
-  <verify>
-    - Row count: [min]-[max] expected
-    - Required columns present: [list]
-    - Years present: [list]
-    - Null rate < 10% for critical fields
-    - Mirror used logged in script output
-  </verify>
-  <done>CP1 PASSED, files saved to data/raw/</done>
-</task>
-
-<task name="fetch-meps-poverty" type="auto" wave="1">
-  <depends_on>none</depends_on>
-  <skill>education-data-query</skill>
-  <agent>research-executor</agent>
-  <files>
-    <output>data/raw/YYYY-MM-DD_meps_poverty.parquet</output>
-  </files>
-  <action>
-    1. Load education-data-query skill
-    2. Use mirror fetch pattern for MEPS poverty data
-    3. Apply local filters with Polars
-    4. Save to parquet format
-    5. Run CP1 validation
-  </action>
-  <verify>
-    - Row count: [expected]
-    - Join key (ncessch) present
-    - Years match CCD fetch
-  </verify>
-  <done>CP1 PASSED, files saved to data/raw/</done>
-</task>
-
-### Wave 2: Data Cleaning (Parallel, depends on Wave 1)
-
-<task name="clean-ccd" type="auto" wave="2">
-  <depends_on>fetch-ccd-schools</depends_on>
-  <skill>education-data-context</skill>
-  <agent>research-executor</agent>
-  <files>
-    <input>data/raw/YYYY-MM-DD_ccd_schools.parquet</input>
-    <output>data/processed/YYYY-MM-DD_ccd_clean.parquet</output>
-  </files>
-  <action>
-    1. Load education-data-context skill
-    2. Load raw data from input file
-    3. Filter coded values:
-       - Remove rows where [variable] == -1 (missing)
-       - Remove rows where [variable] == -2 (not applicable)
-       - Remove rows where [variable] == -3 (suppressed)
-       *(Coded values above are education domain defaults — replace with values from Domain Configuration.)*
-    4. Calculate suppression rate for key variable
-    5. Generate citation text
-    6. Save to parquet format
-    7. Run CP2 validation
-  </action>
-  <verify>
-    - Suppression rate < 50%
-    - No coded missing values (per Domain Configuration) remain
-    - Data loss < 90%
-    - Citation text complete
-  </verify>
-  <done>CP2 PASSED, files saved to data/processed/</done>
-</task>
-
-### Wave 3: Transformation (depends on Wave 2)
-
-<task name="join-ccd-meps" type="auto" wave="3">
-  <depends_on>clean-ccd, clean-meps</depends_on>
-  <skill>data-scientist, polars</skill>
-  <agent>research-executor</agent>
-  <cardinality>1:1</cardinality>
-  <files>
-    <input>data/processed/YYYY-MM-DD_ccd_clean.parquet</input>
-    <input>data/processed/YYYY-MM-DD_meps_clean.parquet</input>
-    <output>data/processed/YYYY-MM-DD_analysis.parquet</output>
-  </files>
-  <action>
-    1. Load both skills
-    2. Load both input files
-    3. Capture pre-state (row counts, key overlap)
-    4. Perform inner join on ncessch
-    5. Validate cardinality (1:1 expected)
-    6. Check for fan-out or data loss
-    7. Save result
-    8. Run CP3 validation
-  </action>
-  <verify>
-    - Join key overlap: > 90%
-    - No fan-out (result rows ≤ left rows)
-    - Data loss < 50%
-    - No unexpected nulls in joined columns
-  </verify>
-  <done>CP3 PASSED (join validation), file saved</done>
-</task>
-
-### Task Specificity Test
-
-**REQUIRED:** Before dispatching any task, verify it passes this test.
-
-**The Fresh Claude Test:** Could a new Claude instance with ONLY this task description + skill access execute it without asking clarifying questions?
-
-#### Specificity Checklist
-
-- [ ] **Unambiguous Scope:** File paths are explicit (no `[placeholders]` in final plan)
-- [ ] **Concrete Actions:** Each step is a specific operation, not "process data"
-- [ ] **Verifiable Completion:** "done" condition can be programmatically checked
-- [ ] **No Hidden Dependencies:** All prerequisites in `depends_on`
-- [ ] **Skill Identified:** Which skill to load is explicit
-- [ ] **Agent Identified:** Which agent protocol to follow
-- [ ] **Wave Assigned:** Enables parallel execution scheduling
-
-#### Quick Validation
-
-Read each task aloud and ask:
-1. **Can I execute without asking "what does X mean?"** → If no, add specificity
-2. **Are all file paths real?** → Replace any `[bracket]` placeholders
-3. **Is verification executable?** → Should be code-checkable, not subjective
-4. **Is done measurable?** → Should be yes/no, not "looks good"
-
-#### Examples: Specific vs Vague
-
-| Aspect | Vague (FAIL) | Specific (PASS) |
-|--------|--------------|-----------------|
-| Action | "Clean the data" | "Filter rows where enrollment == -1 OR enrollment == -2" |
-| File | `data/raw/[source].parquet` | `data/raw/2026-01-31_ccd_schools.parquet` |
-| Verify | "Data looks correct" | "Row count: 90,000-100,000; Null rate < 5% for enrollment" |
-| Done | "Cleaning complete" | "CP2 PASSED, suppression rate 12%, files saved to data/processed/" |
-
-#### If Any Check Fails
-
-1. Add specificity until all checks pass
-2. If you can't make it specific, the task may need to be split
-3. Consult the Plan's Methodology section for guidance
-4. Ask orchestrator for clarification if blocked
-
-### Stage 6 Tasks
-
-<task name="clean-[description]">
-files:
-  - input: data/raw/YYYY-MM-DD_[source]_[description].parquet
-  - output: data/processed/YYYY-MM-DD_[description]_clean.parquet
-action: |
-  1. Call domain context skill (per Domain Configuration)
-  2. Load raw data from input file
-  3. Filter coded values:
-     - Remove rows where [variable] == -1 (missing)
-     - Remove rows where [variable] == -2 (not applicable)
-     - Remove rows where [variable] == -3 (suppressed)
-     *(Coded values above are education domain defaults — replace with values from Domain Configuration.)*
-  4. Calculate suppression rate for [key variable]
-  5. Generate citation text
-  6. Save to parquet format
-  7. Run CP2 validation
-verify: |
-  - Suppression rate < 50%
-  - No coded values (-1, -2, -3) remain in analysis variables
-  - Data loss < 90%
-  - Citation text complete
-done: CP2 validation PASSED, files saved to data/processed/
-</task>
-
-### Stage 7 Tasks
-
-<task name="transform-[step-number]-[description]">
-files:
-  - input: [current data file]
-  - output: [output data file, or same if in-place]
-action: |
-  1. Call data-scientist skill
-  2. Load data from input file
-  3. Capture pre-state: shape, sample of key columns
-  4. Execute transformation:
-     [Specific transformation description]
-  5. Capture post-state: shape, sample of key columns
-  6. Validate transformation:
-     [Specific validation criteria]
-  7. Save if output file differs from input
-verify: |
-  - Pre-state captured: [expected shape]
-  - Post-state: [expected shape]
-  - Row change: [expected percentage or relationship]
-  - Invariants: [list of invariants to check]
-  - No unexpected nulls introduced
-done: Transformation validated, PASSED status reported
-</task>
-
-### Stage 8 Tasks
-
-#### Stage 8.1: Statistical Analysis Tasks
-
-<task name="analyze-[description]">
-files:
-  - input: data/processed/YYYY-MM-DD_[description].parquet
-  - output: output/analysis/YYYY-MM-DD_[analysis-name].parquet
-action: |
-  1. Call data-scientist and polars skills
-  2. Load analysis dataset
-  3. Perform statistical analysis:
-     - Type: [descriptive/comparative/regression/correlation]
-     - Variables: [target and predictor variables]
-     - Grouping: [if applicable]
-  4. Validate results:
-     - Sample sizes adequate for chosen method
-     - Assumptions checked (normality, homoscedasticity, etc.)
-     - Effect sizes calculated alongside significance tests
-  5. Save results to output/analysis/
-verify: |
-  - Output file exists at expected path
-  - Results contain expected columns/metrics
-  - Sample sizes documented
-  - No unexpected NAs in result columns
-  - Statistical assumptions validated or violations documented
-done: Analysis results saved to output/analysis/, assumptions documented
-</task>
-
-#### Stage 8.2: Visualization Tasks
-
-<task name="visualize-[description]">
-files:
-  - input: data/processed/YYYY-MM-DD_[description].parquet
-  - output: output/figures/YYYY-MM-DD_[figure-name].png
-action: |
-  1. Call plotnine or plotly skill (specify which)
-  2. Load analysis data
-  3. Create visualization:
-     - Type: [chart type]
-     - X-axis: [variable]
-     - Y-axis: [variable]
-     - Color/facet: [if applicable]
-  4. Apply styling:
-     - Theme: minimal
-     - DPI: 300
-  5. Save to output/figures/
-verify: |
-  - File exists at output path
-  - File size > 0
-  - Visual elements present (not blank)
-done: Figure saved to output/figures/
-</task>
-
-### Task Specificity Checklist
-
-Before finalizing each task above, verify:
-
-- [ ] **Unambiguous Scope:** File paths are explicit, not placeholders
-- [ ] **Concrete Actions:** Each step is a specific operation, not "process data"
-- [ ] **Verifiable Completion:** "done" condition can be programmatically checked
-- [ ] **No Hidden Dependencies:** All required inputs listed in files section
-- [ ] **Skill Identified:** Which skill to load is explicit
-
-**Test:** Read the task aloud. Could you execute it without asking "what does X mean?"
+*Populate the bracketed fields with specifics for this analysis. Add or remove interface sections as needed based on the actual stage sequence.*
 
 ### Aggregation Specification
 
 | Aggregation | Group By | Metrics | Output |
 |-------------|----------|---------|--------|
-| State summary | `fips`, `year` | `mean(enrollment)`, `sum(frl_count)` | state_summary_df |
+| [Description] | [columns] | [functions] | [result name] |
 
 ### Analysis Approach
 
-[Describe the analytical methodology: descriptive statistics, comparisons, trends, etc.]
+[Describe the analytical methodology: descriptive statistics, comparisons, trends, regressions, effect sizes, etc. This section provides the high-level analysis strategy that maps to Stage 8 task specifications in Plan_Tasks.md.]
 
 ---
 
 ## Output Specification
+
+**Target Audience:** [technical/academic | policy | executive | general public | media | mixed]
+(Determines report style and whether science-communication guidance is applied. Default: technical/academic)
 
 ### Notebook Structure
 
@@ -1033,6 +705,8 @@ Code-reviewer uses these to calibrate BLOCKER vs WARNING severity.*
 
 ## Decisions Log
 
+> **Frozen after Stage 4.5.** This section captures planning-phase decisions only. All runtime decisions made during Stages 5-12 are recorded in STATE.md `## Key Decisions Made`.
+
 | Decision | Options Considered | Choice Made | Rationale |
 |----------|-------------------|-------------|-----------|
 | Data source | CCD vs. PSS | CCD | Research question focuses on public schools |
@@ -1060,6 +734,8 @@ Skip this for obvious choices (e.g., "CCD because the question is about public s
 
 Document risks identified during discovery and planning, with mitigation strategies.
 
+> **Frozen after Stage 4.5.** This section captures planning-phase risks identified during Stages 1-4. Risks discovered during execution (Stages 5-12) are recorded in STATE.md `## Runtime Risks`.
+
 | Risk | Likelihood | Impact | Mitigation | Owner/Stage |
 |------|------------|--------|------------|-------------|
 | High suppression in key variable | Medium | High | Aggregate to district level if >30%; proceed with caveat if 30-50% | Stage 6 |
@@ -1074,14 +750,13 @@ Document risks identified during discovery and planning, with mitigation strateg
 - **Timeline:** Risk that data sources have unexpected lag times
 - **QA:** Risk that secondary validation will find issues requiring revision or escalation
 
-**Update Triggers:** See `01_PROTOCOLS.md: Risk Register Updates` for complete trigger list.
+**Update Triggers:** See `full-pipeline-mode.md` > "Runtime Risk Tracking" for complete trigger list. Planning-phase risks are documented here; runtime risks go to STATE.md `## Runtime Risks`.
 
-**When to Update:**
+**When to Update (during planning, Stages 1-4 only):**
 - **Stage 3 (Source Deep-Dive):** Add risks from source caveats that affect validity/completeness
-- **Stage 5 (Data Retrieval):** Add risks when CP1 reveals unexpected shape, data lag, or quality issues
-- **Stage 6 (Context Application):** Add risks when suppression rate is 30-50% (below STOP but elevated)
-- **Stage 7 (Transformation):** Add risks when unexpected row loss or cardinality violations occur
-- **Any stage:** Add risks when data definitions changed between years or other quality issues arise
+- **Any planning stage:** Add risks when data definitions changed between years or other quality issues arise
+
+> **Execution-phase risks** (Stage 5+), such as unexpected row loss or cardinality violations, are recorded in STATE.md `## Runtime Risks`.
 
 ---
 
@@ -1095,135 +770,6 @@ and QA reviewers understand what was intentionally accepted.*
 |-------------|-------------|----------|
 | [e.g., Older data (2022 vs 2023)] | [Use MEPS poverty measure] | [1-year lag] |
 | [e.g., State-only scope] | [Avoid cross-state comparability issues] | [Less generalizable] |
-
----
-
-## Current Status & To-Do's
-
-### Current Phase
-
-**Phase:** [1 | 2 | 3 | 4 | 5]
-**Stage:** [1-12]
-**Status:** [In Progress | Blocked | Complete]
-
-### Active To-Do's
-
-- [ ] [Task 1]
-- [ ] [Task 2]
-- [ ] [Task 3]
-
-### Blocked Items
-
-| Item | Blocker | Awaiting |
-|------|---------|----------|
-| [Item] | [What's blocking] | [User guidance | Data | Resolution] |
-
----
-
-## QA Findings Summary
-
-*Aggregated during Stage 10, finalized during Stage 12*
-
-### QA Checkpoint Summary
-
-| Checkpoint | Stage | Scripts Reviewed | BLOCKERs | WARNINGs | INFOs | Revisions Applied |
-|------------|-------|------------------|----------|----------|-------|-------------------|
-| QA1 (Post-Fetch) | 5 | [count] | [count] | [count] | [count] | [count] |
-| QA2 (Post-Clean) | 6 | [count] | [count] | [count] | [count] | [count] |
-| QA3 (Post-Transform) | 7 | [count] | [count] | [count] | [count] | [count] |
-| QA4a (Post-Analysis) | 8.1 | [count] | [count] | [count] | [count] | [count] |
-| QA4b (Post-Viz) | 8.2 | [count] | [count] | [count] | [count] | [count] |
-| **Total** | — | [sum] | [sum] | [sum] | [sum] | [sum] |
-
-### BLOCKERs Resolved
-
-*Document each QA BLOCKER that was resolved via revision*
-
-| Stage | Script | Issue | Resolution | Revision |
-|-------|--------|-------|------------|----------|
-| [N] | [filename.py] | [What QA found] | [How fixed] | [_a/_b] |
-
-### WARNINGs Logged
-
-*Document QA WARNINGs for transparency (did not block execution)*
-
-| Stage | Script | Warning | Impact Assessment |
-|-------|--------|---------|-------------------|
-| [N] | [filename.py] | [Warning description] | [Low/Medium — why acceptable] |
-
-### Unresolved Issues
-
-*Document any QA issues that could not be fully resolved*
-
-| Stage | Issue | Attempts | Outcome | User Decision |
-|-------|-------|----------|---------|---------------|
-| [N] | [Description] | [N/2] | [Escalated/Accepted] | [Decision] |
-
-**Note:** QA scripts are archived in `scripts/cr/` for reproducibility. See `agent_reference/QA_CHECKPOINTS.md` for checkpoint definitions.
-
----
-
-## Final Review Log
-
-*Complete during Phase 5, Stage 12*
-
-### Review Date
-
-[YYYY-MM-DD]
-
-### Alignment Check
-
-| Original Request Element | Addressed? | Location |
-|--------------------------|------------|----------|
-| [Element 1 from request] | [ ] Yes / No | [Section/file] |
-| [Element 2 from request] | [ ] Yes / No | [Section/file] |
-
-### Clarification Fulfillment
-
-| Clarification | Implemented? | Notes |
-|---------------|--------------|-------|
-| [Clarification 1] | [ ] Yes / No | [Notes] |
-| [Clarification 2] | [ ] Yes / No | [Notes] |
-
-### Plan Commitments
-
-| Commitment | Fulfilled? | Deviation Notes |
-|------------|------------|-----------------|
-| [Methodology commitment] | [ ] Yes / No | [If deviated, explain] |
-| [Output commitment] | [ ] Yes / No | [If deviated, explain] |
-
-### Quality Checklist
-
-| Category | Item | Status |
-|----------|------|--------|
-| **Data Integrity** | Validation checkpoints passed | [ ] |
-| | Coded values handled | [ ] |
-| | Suppression documented | [ ] |
-| **Documentation** | Plan complete | [ ] |
-| | Notebook documented | [ ] |
-| | Report complete | [ ] |
-| | Citations included | [ ] |
-
-### Deviations from Plan
-
-| Deviation | Reason | Impact |
-|-----------|--------|--------|
-| [What changed] | [Why] | [Effect on analysis] |
-
-### Issues Identified
-
-| Issue | Severity | Resolution |
-|-------|----------|------------|
-| [Issue] | [Low/Medium/High] | [How resolved or documented] |
-
-### Final Status
-
-**Review Outcome:** [PASSED | ISSUES FOUND]
-
-**If ISSUES FOUND:**
-- Issues must be resolved before delivery
-- Document resolution in this section
-- Re-run Final Review after resolution
 
 ---
 
@@ -1250,6 +796,7 @@ and QA reviewers understand what was intentionally accepted.*
 | File | Path | Description |
 |------|------|-------------|
 | Plan | `research/YYYY-MM-DD_[Title]/YYYY-MM-DD_[Title]_Plan.md` | This document |
+| Plan Tasks | `research/YYYY-MM-DD_[Title]/YYYY-MM-DD_[Title]_Plan_Tasks.md` | Executable task sequence (companion to Plan) |
 | Notebook | `research/YYYY-MM-DD_[Title]/YYYY-MM-DD_[Title].py` | Marimo analysis notebook |
 | Report | `research/YYYY-MM-DD_[Title]/YYYY-MM-DD_[Title]_Report.md` | Stakeholder report |
 | **Learnings** | `research/YYYY-MM-DD_[Title]/LEARNINGS.md` | **Session learnings (skeleton at Stage 4, incremental during 5-8, consolidated at Stage 12)** |

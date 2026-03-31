@@ -1,13 +1,17 @@
 ---
 name: polars
-description: Fast DataFrame library for Python data science. Covers lazy/eager execution, expressions, I/O, aggregations, joins, string/datetime ops, and performance optimization. Use for any Polars data manipulation task.
+description: >-
+  Polars DataFrame library for high-performance data manipulation. Lazy/eager execution, expressions, I/O (CSV, Parquet, JSON), aggregations, joins, string/datetime ops, pandas interop. Use for Polars DataFrames or reading/writing Parquet files.
 metadata:
-  audience: python-developers
-  domain: data-science
-  polars-version: "1.x"
+  audience: research-coders
+  domain: python-library
+  library-version: "1.x"
+  skill-last-updated: "2026-03-26"
 ---
 
 # Polars Skill
+
+Polars DataFrame library for high-performance data manipulation in Python. Covers lazy/eager execution, expressions, I/O (CSV, Parquet, JSON, database), aggregations, joins, string/datetime operations, pandas/NumPy interop, and performance optimization. Use when working with Polars DataFrames, migrating from pandas, reading Parquet files, or optimizing data pipeline performance.
 
 Comprehensive skill for high-performance data manipulation with Polars. Use decision trees below to find the right guidance, then load detailed references.
 
@@ -155,10 +159,10 @@ Having issues?
 3. Validation results get automatically embedded in scripts as comments
 4. If failed, create versioned copy for fixes
 
-Closely read `agent_reference/EXECUTION_CAPTURE.md` for the mandatory file-first execution protocol covering complete code file writing, output capture, and file versioning rules.
+Closely read `agent_reference/SCRIPT_EXECUTION_REFERENCE.md` for the mandatory file-first execution protocol covering complete code file writing, output capture, and file versioning rules.
 
 **See:**
-- `agent_reference/SCRIPT_TEMPLATE.md` — Script format with validation
+- `agent_reference/SCRIPT_EXECUTION_REFERENCE.md` — Script execution protocol and format with validation
 
 The examples below show Polars syntax. In research workflows, wrap them in scripts following the file-first pattern.
 
@@ -306,8 +310,19 @@ lf.explain()  # Show plan
 | NumPy Integration | `./references/interop.md` |
 | DuckDB Integration | `./references/interop.md` |
 | Type Errors | `./references/gotchas.md` |
+| qcut Label Gotcha | `./references/gotchas.md` |
 | Null Handling Issues | `./references/gotchas.md` |
 | Expression Context Errors | `./references/gotchas.md` |
 | Performance Anti-Patterns | `./references/gotchas.md` |
 | Migration from Pandas | `./references/gotchas.md` |
 | Memory Issues | `./references/gotchas.md` |
+
+## Citation
+
+When this library is used as a primary analytical tool, include in the report's
+Software & Tools references:
+
+> Vink, R. et al. Polars: Blazingly fast DataFrames [Computer software]. https://pola.rs/
+
+**Cite when:** Polars is the core data processing engine for the analysis (typically always true in DAAF pipelines).
+**Do not cite when:** Only used for trivial file I/O in a script primarily using another tool.

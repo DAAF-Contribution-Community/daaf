@@ -9,19 +9,20 @@
 
 | Report Section | Primary Source | Secondary Sources |
 |---|---|---|
-| Executive Summary | Plan § Research Outcomes + Stage 7-8 execution logs | LEARNINGS.md |
-| Research Question | Plan § Research Question (verbatim) | Plan § Context |
-| Data & Methods: Data Sources | Plan § Data Sources table | Stage 5 execution logs |
-| Data & Methods: Key Variables | Plan § Key Variables | — |
-| Data & Methods: Methodology | Plan § Methodology Specification | Plan § Key Decisions |
+| Executive Summary | Plan.md § Research Outcomes + Stage 7-8 execution logs | LEARNINGS.md |
+| Research Question | Plan.md § Research Question (verbatim) | Plan.md § Context |
+| Data & Methods: Data Sources | Plan.md § Data Sources table | Stage 5 execution logs |
+| Data & Methods: Key Variables | Plan.md § Key Variables | — |
+| Data & Methods: Methodology | Plan.md § Methodology Specification | Plan.md § Key Decisions |
 | Data & Methods: Data Cleaning | Stage 6 execution logs | STATE.md checkpoints |
-| Quality Assurance | Stage 10 QA summary | STATE.md QA sections |
-| Key Findings | Stage 7-8 outputs + figures | Plan § Research Outcomes + Plan § Hypotheses (if any) |
+| Quality Assurance | STATE.md QA Findings Summary | Stage 10 QA execution logs |
+| Key Findings | Stage 7-8 outputs + figures | Plan.md § Research Outcomes + Plan.md § Hypotheses (if any) |
 | Summary Statistics | Analysis dataset metadata + Stage 7 EDA logs | Notebook data cells |
-| Limitations | Plan § Risk Register + source caveats + LEARNINGS.md | STATE.md blockers |
-| Data Sources & Citations | Stage 6 citation text (verbatim) | Plan § Data Sources |
+| Limitations | Plan.md § Risk Register (planning risks) + STATE.md Runtime Risks + STATE.md Blockers | LEARNINGS.md + source caveats |
+| References | STATE.md > Citations Accumulated | Plan.md § Data Citations + CITATION_REFERENCE.md (verification) |
+| AI Use Disclosure | STATE.md (session metadata) + QA summary + `agent_reference/AI_DISCLOSURE_REFERENCE.md` | CLAUDE.md (model info), DAAF commit hash from orchestrator |
 | Technical Notes | Project file paths | — |
-| Appendix | Additional figures + extended methodology from Plan | — |
+| Appendix | Additional figures + extended methodology from Plan.md | — |
 
 ---
 
@@ -149,15 +150,91 @@ This analysis has the following limitations that should be considered when inter
 
 ---
 
-## Data Sources & Citations
+## References
 
-### Primary Data
+### Data Sources
 
-> [Full citation from domain context skill (per Plan Domain Configuration)]
+> [Full citation from STATE.md > Citations Accumulated > Data Sources]
 
-### Additional Sources
+### Methodological References
 
-> [Citation 2 if applicable]
+[Only include if methodological citations were accumulated in STATE.md.
+ Omit this subsection entirely for purely descriptive analyses.]
+
+> [Citation entry from STATE.md]
+> *Cited because: [rationale from STATE.md]*
+
+### Software & Tools
+
+> Kim, B.H. (2026). *DAAF: Data Analyst Augmentation Framework* (Version 2.0.0) [Computer software]. https://github.com/DAAF-Contribution-Community/daaf
+> *Cited because: Analysis framework*
+
+> [Additional software citations from STATE.md > Citations Accumulated > Software & Tools]
+> *Cited because: [rationale from STATE.md]*
+
+> [AUTO — report-writer: The DAAF and marimo citations are always included (pre-populated in STATE.md). Additional software citations come from STATE.md. Update the DAAF version number if CITATION.cff specifies a different version.]
+
+### Reporting Standards
+
+[Only include if reporting standard citations were accumulated in STATE.md.
+ Omit this subsection entirely if none apply.]
+
+> [Citation entry from STATE.md]
+> *Cited because: [rationale from STATE.md]*
+
+---
+
+## AI Use Disclosure
+
+> This analysis was conducted using the **Data Analyst Augmentation Framework (DAAF)** (Kim, 2026), an open-source AI-assisted research orchestration system built on Claude Code (Anthropic). The following disclosure follows the GUIDE-LLM reporting checklist (Feuerriegel et al., 2026). For complete guidance, see `agent_reference/AI_DISCLOSURE_REFERENCE.md`.
+
+**Date of analysis:** [AUTO — session date(s) from orchestrator date prefix]
+**DAAF version:** [AUTO — short git commit hash captured at project setup]
+
+### Role of AI in This Analysis (GUIDE-LLM A.1-A.2)
+
+- **Purpose:** `[AUTO]` [Derived from Plan.md — e.g., "AI was used for data acquisition, cleaning script generation, transformation logic, statistical analysis code, and visualization generation. All code was reviewed through automated QA checkpoints and human oversight gates."]
+- **Human oversight model:** `[AUTO]` Human-in-the-loop. The researcher reviewed and approved methodology (Checkpoint 2), data quality (Checkpoint 3), and analytical results (Checkpoint 4) before each phase advanced.
+
+### Model & Configuration (GUIDE-LLM B.1-B.5)
+
+| Item | Value | Source |
+|------|-------|--------|
+| Model | `[AUTO]` [e.g., Claude Opus 4.6 (claude-opus-4-6)] | Session metadata |
+| Provider | `[AUTO]` Anthropic | — |
+| Access method | `[AUTO]` Claude Code CLI (local execution via API) | — |
+| Date of use | `[AUTO]` [Session date(s)] | STATE.md |
+| Parameters | `[AUTO]` Default API parameters; no user-configured overrides | — |
+| Customization | `[AUTO]` DAAF framework: domain-specific skills, agent definitions, and system instructions (see Technical Notes for repository link) | — |
+| Session state | `[AUTO]` Stateful within sessions; STATE.md tracks cross-session continuity | — |
+
+### Prompts & Instructions (GUIDE-LLM C.1-C.2)
+
+`[AUTO]` All prompts and system instructions are version-controlled in the DAAF repository:
+- System instructions: `CLAUDE.md`
+- Agent behavioral specifications: `.claude/agents/` directory
+- Domain knowledge skills: `.claude/skills/` directory
+
+### Data Privacy (GUIDE-LLM D.1)
+
+`[RESEARCHER]` [Researcher must confirm: What data was submitted to the AI model? Was any personally identifiable information (PII) involved? Default for public federal data: "No personally identifiable information was submitted to the LLM. All data accessed was from public federal data sources."]
+
+### Validation of AI Outputs (GUIDE-LLM E.1-E.2)
+
+- **Automated code review:** `[AUTO]` All scripts underwent automated QA review by a separate AI instance (see Quality Assurance section above)
+- **Human validation:** `[AUTO]` [Derived from STATE.md checkpoint statuses — e.g., "Researcher approved methodology at Checkpoint 2, verified data quality at Checkpoint 3, and validated analytical results at Checkpoint 4"]
+- **Post-processing:** `[RESEARCHER]` [Researcher documents any manual edits made to AI-generated outputs after delivery. Default if none: "No manual post-processing was applied to AI-generated outputs."]
+
+### Reproducibility (GUIDE-LLM F.1)
+
+`[AUTO]`
+- All analysis scripts with execution logs: `scripts/` directory
+- Consolidated analytic notebook: `[notebook filename]`
+- Session transcript(s): `logs/` directory (full JSONL + human-readable MD for each work session)
+
+### Funding & Conflicts of Interest (GUIDE-LLM G.1)
+
+`[RESEARCHER]` [Researcher must disclose: Funding sources for this research, approximate API costs incurred, and any relevant relationships with AI providers or other potential conflicts of interest.]
 
 ---
 
@@ -168,6 +245,7 @@ This analysis has the following limitations that should be considered when inter
 - **Notebook:** `YYYY-MM-DD_[Title].py`
 - **Processed data:** `data/processed/YYYY-MM-DD_*.parquet`
 - **Raw data:** `data/raw/YYYY-MM-DD_*.parquet`
+- **Session logs:** `logs/*.{jsonl,md}` (complete interaction transcripts)
 
 ### Analysis Environment
 

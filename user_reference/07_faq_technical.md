@@ -25,7 +25,7 @@ Technically yes, but I really don't recommend it, and it's not something I will 
 
 Docker does three important things for DAAF beyond just convenience:
 
-1. **Isolation and safety.** The container runs as a non-root user and privilege escalation explicitly blocked. This means even if Claude Code tried to do something destructive, the operating system itself would prevent it. Running natively on your machine without these protections in place means Claude Code has whatever permissions *you* have -- which is probably a lot more than you'd want an AI assistant to have when they suffer from context rot and act extremely erratically.
+1. **Isolation and safety.** The container runs as a non-root user with all Linux capabilities dropped (`cap_drop: ALL`) and privilege escalation explicitly blocked (`no-new-privileges`). This means even if Claude Code tried to do something destructive, the operating system itself would prevent it. Running natively on your machine without these protections in place means Claude Code has whatever permissions *you* have -- which is probably a lot more than you'd want an AI assistant to have when they suffer from context rot and act extremely erratically.
 
 2. **Reproducibility.** The Dockerfile pins every dependency -- Python 3.12, specific versions of Polars, plotnine, statsmodels, and everything else. When I say "this works," I mean it works with *that* exact stack. It also abstracts away issues with OS management (e.g., Windows versus Linux), and other extremely annoying variables that can affect how well or predictably software runs. Running natively means you're on your own for dependency management, and a surprising number of things can go wrong when library versions don't match. Python management has historically been a nightmare, and I am thoroughly shocked at how much Docker smooths over, which is time worth its weight in gold in my view.
 
@@ -78,7 +78,7 @@ Not out of the box, but it's more portable than you might think.
 DAAF is built on Claude Code, which is Anthropic's CLI agent tool. The vast majority of what DAAF actually *is* -- the agent protocols, skill documents, workflow definitions, validation checkpoints -- is just structured text in Markdown files. None of that is Anthropic-specific. What *is* specific to Claude Code are the hooks system (the safety guardrails that block dangerous commands, scan outputs for secrets, etc.) and some of the tool invocation patterns.
 
 If you wanted to port DAAF to another agent harness (Gemini CLI, Codex, OpenCode, etc.), here's what would transfer immediately:
-- All agent files (`agents/*.md`)
+- All agent files (`.claude/agents/*.md`)
 - All skill files (`.claude/skills/*/SKILL.md`)
 - All reference documentation (`agent_reference/*.md`)
 - The overall workflow design and validation philosophy
@@ -108,7 +108,7 @@ Your data does pass through Anthropic's API when Claude Code processes it -- tha
 
 ### Q: Is there a free way to use DAAF?
 
-Not in a practical sense for full-pipeline analyses, unfortunately. The free and Pro tiers of Claude simply don't provide enough usage for the volume of work DAAF demands. You might be able to do some lightweight Discovery Mode queries (asking what data is available, looking up variable definitions), but a full analysis pipeline will exhaust a lower-tier plan very quickly.
+Not in a practical sense for full-pipeline analyses, unfortunately. The free and Pro tiers of Claude simply don't provide enough usage for the volume of work DAAF demands. You might be able to do some lightweight Data Discovery Mode queries (asking what data is available, looking up variable definitions), but a full analysis pipeline will exhaust a lower-tier plan very quickly.
 
 This is genuinely the biggest barrier to entry for DAAF, and I wish it were different. I hope that as model costs continue to decrease and open-source models become more capable, a more accessible option will emerge. If you have the capacity to test DAAF with open-source models or alternative providers, please reach out -- that's high on the list of things I'd love community help with.
 
@@ -122,8 +122,11 @@ Claude Code automatically archives a complete log of every session when it ends.
 
 | Format | File Pattern | Purpose |
 |--------|-------------|---------|
-| **Markdown** (`.md`) | `YYYY-MM-DD_HH-MM-SS_<session-id>.md` | Human-readable transcript with tool calls, timestamps, and token usage |
-| **JSONL** (`.jsonl`) | `YYYY-MM-DD_HH-MM-SS_<session-id>.jsonl` | Raw machine-readable transcript (full API-level detail) |
+| **Markdown** (`.md`) | `YYYY-MM-DD_HH-MM-SS_<session-id>_orchestrator.md` | Human-readable transcript with tool calls, timestamps, and token usage |
+| **JSONL** (`.jsonl`) | `YYYY-MM-DD_HH-MM-SS_<session-id>_orchestrator.jsonl` | Raw machine-readable transcript (full API-level detail) |
+| **Subagent JSONL** | `YYYY-MM-DD_HH-MM-SS_<session-id>_subagent_<agent-id>.jsonl` | Raw transcript for each subagent dispatched during the session |
+
+The orchestrator Markdown archive includes a **Subagent Activity** summary table listing each subagent's type, duration, tool uses, and a final-message excerpt.
 
 Additionally, `.claude/logs/activity.log` records a timestamped entry every time a session starts, giving you a quick overview of usage history.
 
@@ -150,7 +153,7 @@ They serve very different purposes:
 
 **Session logs** are a complete, raw transcript of everything that happened in a Claude Code session. They're automatically generated, stored in `.claude/logs/`, and are primarily useful for debugging after the fact. Think of these as a security camera recording -- comprehensive but not curated.
 
-**STATE.md** is a structured progress tracker that DAAF creates during full-pipeline analyses. It lives inside your project folder (`research/[project]/STATE.md`) and tracks what stage the analysis is at, which checkpoints have passed, what decisions were made, and what needs to happen next. Its primary purpose is enabling **session recovery** -- if your session runs out of context (the model's working memory fills up), you can start a fresh session and STATE.md tells the new session exactly where to pick up. Think of this as a bookmark with detailed notes.
+**STATE.md** is a structured progress tracker that DAAF creates during full-pipeline analyses. It lives inside your project folder (`research/[project]/STATE.md`) and tracks what stage the analysis is at, which checkpoints have passed, what decisions were made, and what needs to happen next. It also accumulates the QA Findings Summary (aggregated quality review results across all stages), the Final Review Log (from the data-verifier's end-of-pipeline check), and any Runtime Risks encountered during execution. Its primary purpose is enabling **session recovery** -- if your session runs out of context (the model's working memory fills up), you can start a fresh session and STATE.md tells the new session exactly where to pick up. Think of this as a bookmark with detailed notes.
 
 ---
 
@@ -233,7 +236,7 @@ Here's what's happening under the hood: DAAF breaks every analysis into 12 stage
 | Phase | What's happening | Typical duration |
 |-------|-----------------|------------------|
 | Phase 1 (Discovery) | Exploring data sources, deep-diving into documentation | 5-15 minutes |
-| Phase 2 (Planning) | Creating the research plan, validating it | 20-30 minutes |
+| Phase 2 (Planning) | Creating Plan.md and Plan_Tasks.md, validating them | 20-30 minutes |
 | Phase 3 (Data Acquisition) | Fetching data, cleaning it, QA on each script | 30-45 minutes |
 | Phase 4 (Analysis) | Transformations, statistical analysis, visualizations, QA on each | 60-90 minutes |
 | Phase 5 (Synthesis) | Assembling notebook, writing report, final review | 20-30 minutes |
@@ -266,7 +269,7 @@ For most DAAF analyses, the defaults are fine. If you're working with datasets i
 
 Yes! Because each Claude Code session runs independently with its own context, you can absolutely open multiple terminal windows, each running their own Claude Code session inside the same Docker container, each working on different research questions simultaneously.
 
-This is one of the exciting aspects of the workflow -- you can kick off an analysis on school enrollment trends, then open a new terminal and start a completely separate analysis on college graduation rates, and they'll run side by side without interfering with each other. Each project gets its own folder in `research/`, its own Plan, its own STATE.md, and its own set of scripts.
+This is one of the exciting aspects of the workflow -- you can kick off an analysis on school enrollment trends, then open a new terminal and start a completely separate analysis on college graduation rates, and they'll run side by side without interfering with each other. Each project gets its own folder in `research/`, its own Plan.md and Plan_Tasks.md, its own STATE.md, and its own set of scripts.
 
 The practical constraint is your Anthropic usage allocation. Each parallel session consumes tokens independently, so running three analyses simultaneously will eat through your Max plan allocation roughly three times as fast. Plan accordingly.
 
@@ -286,7 +289,7 @@ This usually means one of a few things:
 
 **What you can do:**
 1. Ask DAAF to try a broader query (fewer filters, wider year range) to see if any data is available at all
-2. Use Discovery Mode to explore what data *is* available for your topic before committing to a full analysis
+2. Use Data Discovery Mode to explore what data *is* available for your topic before committing to a full analysis
 3. Check the Education Data Portal documentation directly to confirm the data you want actually exists
 4. If the portal seems down, wait and try again later
 
@@ -329,9 +332,9 @@ DAAF knows about these lags -- during the Discovery phase (Stage 2), it will che
 
 ### Q: Can I use my own data files instead of the built-in sources?
 
-Yes, and DAAF has a built-in tool for exactly this -- the **data-ingest agent**.
+Yes, and DAAF has a built-in mode for exactly this -- **Data Onboarding Mode**.
 
-The data-ingest agent helps you profile a new dataset and create the documentation artifacts (a "skill") that DAAF's other agents need to work with your data effectively. This includes cataloging variables, documenting types and distributions, identifying potential data quality issues, and creating the structured metadata that DAAF uses during analysis.
+Data Onboarding Mode helps you profile a new dataset and create the documentation artifacts (a "skill") that DAAF's other agents need to work with your data effectively. This includes cataloging variables, documenting types and distributions, identifying potential data quality issues, and creating the structured metadata that DAAF uses during analysis.
 
 See [**04. Extending DAAF**](04_extending_daaf.md) for detailed guidance on this process.
 
@@ -376,14 +379,14 @@ If you've run the `marimo run` command but can't see anything at `http://localho
 
 This isn't an error -- it's DAAF being responsible about Claude's working memory.
 
-Claude has a finite context window (roughly 200K tokens). As a session progresses and Claude processes more information, that window fills up. DAAF monitors this continuously and has defined thresholds:
+Claude has a finite context window. As a session progresses and Claude processes more information, that window fills up. Even with large context windows (up to 1M tokens), quality can degrade well before the window is full, so DAAF enforces both percentage-based and absolute token thresholds — whichever fires first:
 
 | Utilization | Status | What happens |
 |-------------|--------|-------------|
-| <40% | NOMINAL | Normal operations |
-| 40-60% | ELEVATED | Works normally but starts delegating more to subagents |
-| 60-75% | HIGH | Finishes current work, prepares for session restart |
-| >75% | CRITICAL | Stops new work, asks you to restart the session |
+| < 40% and < 150k tokens | NOMINAL | Normal operations |
+| ≥ 40% or ≥ 150k tokens | ELEVATED | Works normally but starts delegating more to subagents |
+| ≥ 60% or ≥ 200k tokens | HIGH | Finishes current work, prepares for session restart |
+| ≥ 75% or ≥ 250k tokens | CRITICAL | Stops new work, asks you to restart the session |
 
 When you see CRITICAL, it means Claude's context window is nearly full and continuing would degrade the quality of its work. This is by design -- DAAF would rather stop and restart cleanly than continue with increasingly unreliable output.
 
@@ -404,15 +407,15 @@ DAAF has several mechanisms to handle this:
 
 1. **Context monitoring** catches this proactively. The system should flag elevated utilization before it gets this bad.
 2. **STATE.md** records all key decisions, so even if Claude "forgets," the information is retrievable from the file.
-3. **The Plan document** serves as persistent memory for methodology decisions.
-4. **Session restart** via Protocol 6 gives Claude a completely fresh context window while preserving all progress.
+3. **Plan.md** serves as the methodology specification; **STATE.md** tracks execution progress, QA findings, and runtime state.
+4. **Session restart** via Session Recovery gives Claude a completely fresh context window while preserving all progress.
 
-If you notice Claude asking questions it already asked, or making decisions that contradict earlier ones, the best course of action is to prompt it to check its STATE.md and Plan, or to restart the session with `/clear` and the restart prompt.
+If you notice Claude asking questions it already asked, or making decisions that contradict earlier ones, the best course of action is to prompt it to check its STATE.md and Plan.md, or to restart the session with `/clear` and the restart prompt.
 
 ---
 
 ## Recommended Next Steps
 
-- [**00. README**](https://github.com/DAAF-Contribution-Community/daaf/tree/main?tab=readme-ov-file#summary-what-is-daaf) — Vision and purpose, project goals, what DAAF does and does not do, core design philosophy, acknowledgments
-- [**01. Installation & Quick Start**](01_installation_and_quickstart.md) — Get started! Installation prerequisites, step-by-step 5-minute setup, day-to-day usage, and troubleshooting
+- [**00. README**](https://github.com/DAAF-Contribution-Community/daaf/tree/main?tab=readme-ov-file#summary-what-is-daaf) — Project overview, quick start, design philosophy, capabilities, and acknowledgments
+- [**01. Installation & Quick Start**](01_installation_and_quickstart.md) — Get started! Installation prerequisites, step-by-step setup, day-to-day usage, and troubleshooting
 - [**Back to main**](https://github.com/DAAF-Contribution-Community/daaf/tree/main)

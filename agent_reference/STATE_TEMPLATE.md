@@ -22,9 +22,23 @@ Copy this template to `STATE.md` in the project folder when starting a Full Pipe
 |-------|-------|
 | **Project** | [Full title] |
 | **Plan Location** | `research/[folder]/[filename]_Plan.md` |
+| **Plan Tasks Location** | `research/[folder]/[filename]_Plan_Tasks.md` |
 | **Current Phase** | [1-5]: [Phase Name] |
 | **Current Stage** | [1-12]: [Stage Name] |
 | **Status** | [In Progress / Blocked / Complete] |
+
+---
+
+## Session Metadata
+
+> Captured at project setup for AI use disclosure (see `agent_reference/AI_DISCLOSURE_REFERENCE.md`). The orchestrator populates these fields when creating STATE.md.
+
+| Field | Value |
+|-------|-------|
+| **DAAF Version** | [Short git commit hash — from `git rev-parse --short HEAD` at project setup] |
+| **Model ID** | [Claude model identifier — e.g., "claude-opus-4-6"] |
+| **Session Date(s)** | [Date(s) of analysis sessions — e.g., "2026-02-11"] |
+| **Session Transcript(s)** | `logs/` — collected at project completion via `collect_session_logs.sh` |
 
 ---
 
@@ -106,6 +120,8 @@ Copy this template to `STATE.md` in the project folder when starting a Full Pipe
 
 ## Key Decisions Made
 
+> **Planning-phase decisions** are in Plan.md `## Decisions Log` (frozen at Stage 4.5). All **runtime decisions** made during Stages 5-12 are recorded here.
+
 | Decision | Choice | Rationale | Stage |
 |----------|--------|-----------|-------|
 | [Topic] | [What was decided] | [Why] | [N] |
@@ -183,6 +199,175 @@ Copy this template to `STATE.md` in the project folder when starting a Full Pipe
 
 ---
 
+## Runtime Risks
+
+> **Planning-phase risks** are in Plan.md `## Risk Register` (frozen at Stage 4.5). Risks discovered during execution (Stages 5-12) are recorded here.
+
+| Risk | Likelihood | Impact | Mitigation | Stage Discovered |
+|------|------------|--------|------------|------------------|
+| [None or description] | [Low/Medium/High] | [Low/Medium/High] | [Mitigation strategy] | [N] |
+
+**When to Add:**
+- Stage 5: CP1 reveals unexpected data shape, data lag, or quality issues
+- Stage 6: Suppression rate is 30-50% (below STOP but elevated)
+- Stage 7: Unexpected row loss or cardinality violations occur
+- Any stage: Data definitions changed between years, other quality issues arise
+
+---
+
+## QA Findings Summary
+
+*Aggregated during Stage 10, finalized during Stage 12.*
+
+### QA Checkpoint Summary
+
+| Checkpoint | Stage | Scripts Reviewed | BLOCKERs | WARNINGs | INFOs | Revisions Applied |
+|------------|-------|------------------|----------|----------|-------|-------------------|
+| QA1 (Post-Fetch) | 5 | [count] | [count] | [count] | [count] | [count] |
+| QA2 (Post-Clean) | 6 | [count] | [count] | [count] | [count] | [count] |
+| QA3 (Post-Transform) | 7 | [count] | [count] | [count] | [count] | [count] |
+| QA4a (Post-Analysis) | 8.1 | [count] | [count] | [count] | [count] | [count] |
+| QA4b (Post-Viz) | 8.2 | [count] | [count] | [count] | [count] | [count] |
+| **Total** | — | [sum] | [sum] | [sum] | [sum] | [sum] |
+
+### BLOCKERs Resolved
+
+*Document each QA BLOCKER that was resolved via revision.*
+
+| Stage | Script | Issue | Resolution | Revision |
+|-------|--------|-------|------------|----------|
+| [N] | [filename.py] | [What QA found] | [How fixed] | [_a/_b] |
+
+### WARNINGs Logged
+
+*Document QA WARNINGs for transparency (did not block execution).*
+
+| Stage | Script | Warning | Accepted Rationale |
+|-------|--------|---------|--------------------|
+| [N] | [filename.py] | [Warning description] | [Why acceptable] |
+
+### Unresolved Issues
+
+*Document any QA issues that could not be fully resolved.*
+
+| Stage | Issue | Attempts | Outcome | User Decision |
+|-------|-------|----------|---------|---------------|
+| [N] | [Description] | [N/2] | [Escalated/Accepted] | [Decision] |
+
+**Note:** QA scripts are archived in `scripts/cr/` for reproducibility. See `agent_reference/QA_CHECKPOINTS.md` for checkpoint definitions.
+
+---
+
+## Citations Accumulated
+
+> Orchestrator populates this section after each Stage 6, 7, and 8 script completion,
+> extracting citation data from research-executor output. The report-writer reads this
+> as the primary source for the report's References section.
+> Pre-populated entries (DAAF, marimo, GUIDE-LLM) are added at project setup.
+
+### Data Sources
+
+| Source | Citation | Stage | Script |
+|--------|----------|-------|--------|
+
+### Methodological References
+
+| Method | Citation | Rationale | Stage | Script |
+|--------|----------|-----------|-------|--------|
+
+### Software & Tools
+
+| Library | Citation | Rationale | Stage | Script |
+|---------|----------|-----------|-------|--------|
+| DAAF | Kim, B.H. (2026). *DAAF: Data Analyst Augmentation Framework* (Version 2.0.0) [Computer software]. https://github.com/DAAF-Contribution-Community/daaf | Analysis framework | — | — |
+| marimo | marimo team. marimo: Reactive Python notebook [Computer software]. https://marimo.io/ | Analysis notebook format | — | — |
+
+### Reporting Standards
+
+| Standard | Citation | Rationale | Stage | Script |
+|----------|----------|-----------|-------|--------|
+| GUIDE-LLM | Feuerriegel, S. et al. (2026). "Generative AI Models in Science: Risks and Opportunities -- The GUIDE-LLM Checklist." | AI disclosure framework | — | — |
+
+---
+
+## Final Review Log
+
+*Completed during Phase 5, Stage 12 by data-verifier.*
+
+### Review Date
+
+[YYYY-MM-DD]
+
+### Alignment Check
+
+| Research Outcome | Addressed? | Evidence Location | Quality |
+|------------------|------------|-------------------|---------|
+| [Outcome 1 from Plan] | [Yes / No] | [Section/file] | [HIGH/MEDIUM/LOW] |
+| [Outcome 2 from Plan] | [Yes / No] | [Section/file] | [HIGH/MEDIUM/LOW] |
+
+### Clarification Fulfillment
+
+| Clarification | Fulfilled? | How |
+|---------------|------------|-----|
+| [Clarification 1] | [Yes / No] | [Notes] |
+| [Clarification 2] | [Yes / No] | [Notes] |
+
+### Plan Commitments
+
+| Commitment | Met? | Notes |
+|------------|------|-------|
+| [Methodology commitment] | [Yes / No] | [If deviated, explain] |
+| [Output commitment] | [Yes / No] | [If deviated, explain] |
+
+### Quality Checklist
+
+| Category | Item | Status |
+|----------|------|--------|
+| **Data Integrity** | Validation checkpoints passed | [ ] |
+| | Coded values handled | [ ] |
+| | Suppression documented | [ ] |
+| **Documentation** | Plan complete | [ ] |
+| | Notebook documented | [ ] |
+| | Report complete | [ ] |
+| | Citations included | [ ] |
+
+### Deviations from Plan
+
+| Aspect | Planned | Actual | Rationale |
+|--------|---------|--------|-----------|
+| [What changed] | [Original plan] | [What actually happened] | [Why] |
+
+### Issues Identified
+
+| Issue | Severity | Recommendation |
+|-------|----------|----------------|
+| [Issue] | [Low/Medium/High] | [How resolved or documented] |
+
+### Final Status
+
+**Review Outcome:** [COMPLETE | COMPLETE_WITH_CAVEATS | INCOMPLETE]
+
+**If COMPLETE_WITH_CAVEATS:**
+- Caveats must be documented in Report.md Limitations section
+- Document each caveat and its impact on conclusions
+
+**If INCOMPLETE:**
+- Issues must be resolved before delivery
+- Document resolution in this section
+- Re-run Final Review after resolution
+
+---
+
+## Revision History (if applicable)
+
+*Populated when a project undergoes Revision and Extension Mode. Each revision adds a row.*
+
+| # | Revision Type | Prior Version | Affected Stages | Re-entry Point | New Version Prefix | Rationale |
+|---|--------------|---------------|-----------------|----------------|-------------------|-----------|
+| 1 | [Bug Fix / Scope Change / Methodology Change / Extension / Correction] | [prior date prefix] | [list of stages re-run] | [Stage N] | [new date+suffix prefix] | [brief description] |
+
+---
+
 ## Pending Learning Signals
 
 *Buffer for learning signals from subagents. Flushed to LEARNINGS.md at phase boundaries, after blocker resolution, after debugging, and at utilization gates.*
@@ -217,10 +402,10 @@ Copy this template to `STATE.md` in the project folder when starting a Full Pipe
 
 *Track multi-session analyses*
 
-| Session | Date | Stages Completed | Notes |
-|---------|------|------------------|-------|
-| 1 | [date] | [1-N] | [summary] |
-| 2 | [date] | [N-M] | [summary] |
+| Session | Date | Stages Completed | Archive | Notes |
+|---------|------|------------------|---------|-------|
+| 1 | [date] | [1-N] | [filename or "pre-project"] | [summary] |
+| 2 | [date] | [N-M] | [filename] | [summary] |
 
 ---
 
@@ -262,7 +447,7 @@ Copy this template to `STATE.md` in the project folder when starting a Full Pipe
 
 ### Context Snapshot
 
-**Orchestrator Utilization:** [actual % from context-reporter hook, e.g., "125k / 200k tokens (62%)"]
+**Orchestrator Utilization:** [actual % from context-reporter hook, e.g., "125k / 1000k tokens (12%)"]
 
 **Key Findings Summary (max 5 bullets):**
 - [Critical finding 1]
@@ -279,20 +464,20 @@ Copy this template to `STATE.md` in the project folder when starting a Full Pipe
 
 **To resume in a new session, run `/clear` to reset context, then paste this into the chat:**
 
-> Resume the [Project Title] analysis. Plan: `[exact plan path]`. State: `[exact STATE.md path]`. Currently at Stage [N] ([Stage Name]) — next step is [task description].
+> Resume the [Project Title] analysis. Plan: `[exact plan path]`. Plan Tasks: `[exact Plan_Tasks path]`. State: `[exact STATE.md path]`. Currently at Stage [N] ([Stage Name]) — next step is [task description].
 
-**Orchestrator:** Update this prompt whenever hitting 60%/75% utilization gates, before planned session breaks, or when the user decides to stop. Use concrete values — no brackets or placeholders in the actual prompt.
+**Orchestrator:** Update this prompt whenever hitting HIGH/CRITICAL utilization gates (≥ 60%/200k or ≥ 75%/250k tokens), before planned session breaks, or when the user decides to stop. Use concrete values — no brackets or placeholders in the actual prompt.
 
 ### Resumption Instructions (Agent Reference)
 
-**For the orchestrator when recovering via Protocol 6:**
+**For the orchestrator when recovering via Session Recovery:**
 
 1. **Read this STATE.md first** — This is the primary recovery document
-2. **Locate Plan at:** `[exact path]`
+2. **Locate Plan at:** `[exact path]` and Plan Tasks at: `[exact Plan_Tasks path]`
 3. **Read Plan SELECTIVELY** — Search for `## ` headings, then load only:
    - **Always:** Original Request, Goal & Context, Decisions Log, Risk Register, Current Status
-   - **Stage-conditional:** See Protocol 6 Step 3c table for additional sections based on current stage
-   - **On-demand:** Load specific wave task blocks only when dispatching (see Protocol 6 "On-Demand Plan Loading")
+   - **Stage-conditional:** See Session Recovery Step 3c table for additional sections based on current stage
+   - **On-demand:** Load specific wave task blocks only when dispatching (see Session Recovery "On-Demand Plan Loading")
 4. **Current Phase:** [N] — [Phase Name]
 5. **Current Stage:** [N] — [Stage Name]
 6. **Next Task:** `[task-name]` (Wave [N])
@@ -331,6 +516,11 @@ Update STATE.md after:
 - Before any planned break
 - Learning signals received from subagents (append to Pending buffer)
 - Flush triggers met (flush buffer → LEARNINGS.md)
+- Citations extracted from research-executor output (append to Citations Accumulated)
+- QA findings reported by code-reviewer (append to QA Findings Summary)
+- Runtime risks discovered (append to Runtime Risks)
+- Stage 10 QA aggregation (finalize QA Findings Summary)
+- Stage 12 final review (populate Final Review Log)
 
 ### Minimal Update Pattern
 
@@ -353,9 +543,9 @@ Use full template update:
 
 ---
 
-## Integration with Protocol 6
+## Integration with Session Recovery
 
-STATE.md is the primary input for Protocol 6 (Session Recovery):
+STATE.md is the primary input for the Session Recovery procedure:
 
 1. **Recovery starts** with reading STATE.md
 2. **Current position** tells where to resume
@@ -364,4 +554,4 @@ STATE.md is the primary input for Protocol 6 (Session Recovery):
 5. **Blockers** surface issues needing resolution
 6. **Error budget** prevents infinite retries
 
-See `01_PROTOCOLS.md` Protocol 6 for complete recovery procedure.
+See `{BASE_DIR}/.claude/skills/daaf-orchestrator/references/session-recovery.md` for complete recovery procedure.

@@ -391,6 +391,8 @@ grant_coverage = total_grants / cost_of_attendance * 100
 
 **`type_of_aid` codes in this dataset:** 1, 2, 3, 4, 5, 7, 8, 10, 11, 12
 
+> **Note on `type_of_aid` codes:** These are integer codes identifying aid categories. Definitions vary by dataset. In `sfa_grants_and_net_price`, code `9` = **all grant and scholarship aid** (Pell + institutional + state/local combined) -- this is NOT Pell-specific. Consult the codebook for the specific dataset you are using: `get_codebook_url("ipeds/codebook_colleges_ipeds_sfa_ftft")`.
+
 #### SFA Grants and Net Price (`sfa_grants_and_net_price`) — 15 columns
 
 | Portal Column | Type | Description |

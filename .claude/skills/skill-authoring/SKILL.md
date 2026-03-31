@@ -1,12 +1,15 @@
 ---
 name: skill-authoring
-description: Guide for creating Agent Skills. Covers SKILL.md format, frontmatter requirements, progressive disclosure patterns, decision trees, reference files, and bundled resources. Use when creating a new skill, reviewing skill structure, or debugging skill loading issues.
+description: >-
+  Guide for creating and auditing DAAF skills (SKILL.md). Covers frontmatter, metadata vocabulary, progressive disclosure, decision trees, reference files. Use when creating, reviewing, or debugging skill loading. For agent files, use agent-authoring.
 metadata:
-  audience: llm-agents
-  domain: meta-skill
+  audience: any-agent
+  domain: skill-development
 ---
 
 # Skill Authoring
+
+Guide for creating and auditing DAAF agent skills. Covers SKILL.md format, frontmatter requirements and validation rules, controlled vocabulary for metadata, progressive disclosure patterns, decision trees, reference files, and bundled resource organization. Use when creating a new skill, reviewing or auditing skill structure and frontmatter, or debugging skill loading and triggering issues. For creating agent definition files (.claude/agents/*.md), use agent-authoring instead.
 
 Quick reference for creating well-structured Skills. Use decision trees below to find guidance, then load detailed references as needed.
 
@@ -163,7 +166,8 @@ Content here.
 | Component | Limit | Notes |
 |-----------|-------|-------|
 | Name | 64 chars | Lowercase hyphen-case |
-| Description | 1024 chars | Loaded at startup for all skills |
+| Description (frontmatter) | 250 chars | **Hard limit** — truncated at 250 chars in system prompt; all agents see this |
+| Description (body) | ~500 chars | Full description as plain paragraph after `# Title`; loaded with skill |
 | SKILL.md body | <500 lines | Guideline, not enforced |
 | SKILL.md body | <5000 words | Keep concise |
 | Metadata per skill | ~100 words | Always in context |
@@ -172,7 +176,8 @@ Content here.
 
 | Principle | Meaning |
 |-----------|---------|
-| **Concise is Key** | Context window is shared; justify every token. Claude is already smart — only add context it doesn't already have |
+| **Concise is Key (SKILL.md)** | The SKILL.md body shares context with conversation history; justify every token there. Claude is already smart — only add context it doesn't already have |
+| **Thorough is Key (references)** | Reference files are loaded on-demand at Level 3. Their token cost is incurred only when needed, so they should be comprehensive — encode all discovered knowledge rather than summarizing. Err on the side of more detail in reference files |
 | **Progressive Disclosure** | Load only what's needed, when needed |
 | **Appropriate Freedom** | Match specificity to task fragility (high freedom for flexible tasks, low freedom for fragile/critical operations) |
 | **Explain the Why** | Use reasoning over rigid directives. If you find yourself writing ALWAYS/NEVER in all caps, reframe and explain the reasoning instead — it's more effective |
@@ -181,7 +186,11 @@ Content here.
 
 ### Essential Do's
 
+- Before creating a new skill, read 1-2 existing skills of the same type as structural exemplars (e.g., for data source skills, read an existing data source SKILL.md; for tool skills, read `polars` or `plotnine`)
 - Include "what it does" AND "when to use it" in description
+- Keep frontmatter description ≤250 chars — this is the ONLY text agents see when deciding whether to load a skill; it gets truncated at 250 chars in the system prompt
+- Preserve the full description as a plain paragraph immediately after the `# Title` heading in the body — this provides complete context once the skill is loaded
+- Prioritize in the 250-char budget: (1) what it is, (2) key triggers/use cases, (3) disambiguation from similar skills (e.g., "For FE use pyfixest; for GLM use statsmodels")
 - Write descriptions in third person ("Processes files" not "I help you process files")
 - Make descriptions slightly "pushy" to combat undertriggering
 - Front-load important words in description (may be truncated in UI)
@@ -207,6 +216,12 @@ Content here.
 - Don't offer too many options — provide a default with an escape hatch
 - Don't include time-sensitive information (use "Old patterns" `<details>` sections if needed)
 - Don't use Windows-style backslash paths (always forward slashes)
+
+### Skill Registration
+
+Skills are automatically discovered via their YAML frontmatter — the orchestrator sees all skills listed in the system message at conversation start. No manual registration is needed for triggering. Once the skill's `SKILL.md` is placed in `.claude/skills/{skill-name}/`, it becomes available immediately.
+
+**Framework integration beyond discovery:** If the skill should be preloaded by specific agents (via `skills:` frontmatter), referenced in pipeline stage mappings, or wired into workflow documentation, additional registration is required. See `agent_reference/FRAMEWORK_INTEGRATION_CHECKLIST.md` § 1 (items S8-S10) for the complete list of conditional integration points.
 
 ## Data Source Skills: Metadata References
 

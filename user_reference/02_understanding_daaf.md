@@ -10,7 +10,7 @@ This guide is designed to turn a new user into a confident user. It expands on t
 
 ## Table of Contents
 - [**Core Concept: Context Windows and Prompt Engineering 101**](#core-concept-context-windows-and-prompt-engineering-101)
-- [**The Four Engagement Modes**](#the-four-engagement-modes)
+- [**The Eight Engagement Modes**](#the-eight-engagement-modes)
 - [**The Mental Model: Orchestrator, Agents, Skills, Validation**](#the-mental-model-orchestrator-agents-skills-validation)
 - [**What a Full Pipeline Analysis Looks Like**](#what-a-full-pipeline-analysis-looks-like)
 - [**Anatomy of a Completed Analysis**](#anatomy-of-a-completed-analysis)
@@ -44,13 +44,13 @@ So that's the gist for now. Onward, to actually using DAAF!
 
 ---
 
-## The Four Engagement Modes
+## The Eight Engagement Modes
 
-DAAF first classifies every request you make into one of four **engagement modes**. This is how we properly prompt-engineer Claude, because each mode triggers a fundamentally different workflow, different outputs, and different expectations for what input you'll need to provide to steer it well. Understanding these modes is the single most useful thing you can do to work with DAAF effectively, because it helps you frame your questions in the way most likely to get you what you actually want, and better understand what's going on behind the scenes.
+DAAF first classifies every request you make into one of eight **engagement modes**. This is how we properly prompt-engineer Claude, because each mode triggers a fundamentally different workflow, different outputs, and different expectations for what input you'll need to provide to steer it well. Understanding these modes is the single most useful thing you can do to work with DAAF effectively, because it helps you frame your questions in the way most likely to get you what you actually want, and better understand what's going on behind the scenes.
 
 Before doing anything else, DAAF will tell you which mode it's classifying your request into, explain why, and ask you to confirm. This is intentional. You should always have the chance to say "actually, I just wanted a quick lookup" or "actually, let's go deeper on this." Here's what each of them do, and how the workflow works so you know when and why you'd use each:
 
-### Targeted Assist Mode
+### Data Lookup Mode
 
 **Trigger words:** "what are the values for," "how is X defined," "lookup," "what does this variable mean," "explain this table..."
 
@@ -65,9 +65,9 @@ Before doing anything else, DAAF will tell you which mode it's classifying your 
 
 **When to use it:** When you already know what you're looking for and just need the specific detail. "What does `free_lunch` mean in the CCD data?" "What years are available for CRDC?" "What's the difference between `enrollment` and `fall_enrollment` in IPEDS?"
 
-**When NOT to use it:** When your question is actually broader than you realize. If you find yourself asking five Targeted Assist questions in a row, you probably want Discovery mode instead (described next). DAAF will suggest this if it notices the pattern.
+**When NOT to use it:** When your question is actually broader than you realize. If you find yourself asking five Data Lookup questions in a row, you probably want Data Discovery mode instead (described next). DAAF will suggest this if it notices the pattern.
 
-### Discovery Mode
+### Data Discovery Mode
 
 **Trigger words:** "what data exists," "is it possible," "feasibility," "what's available," "can DAAF do," "explore", "can you tell me more about variables related to..."
 
@@ -85,7 +85,26 @@ Before doing anything else, DAAF will tell you which mode it's classifying your 
 
 **When NOT to use it:** When you already know what general data exists and you're ready to analyze it with a specific research question. In that case, jump straight to Full Pipeline.
 
-**Escalation:** If Discovery turns up promising data, DAAF will suggest: "Based on these findings, would you like me to proceed with a Full Pipeline analysis?" You can say yes, refine the question, or say no and walk away with just the findings.
+**Escalation:** If Data Discovery turns up promising data, DAAF will suggest: "Based on these findings, would you like me to proceed with a Full Pipeline analysis?" You can say yes, refine the question, or say no and walk away with just the findings.
+
+### Ad Hoc Collaboration Mode
+
+**Trigger words:** "help me with," "review this," "debug this," "how do I," "advise on," "think through this with me," "what's the best approach for..."
+
+**What it is:** A flexible, multi-turn working session where you bring whatever you're working on and DAAF acts as a thought partner. This is the mode for skilled researchers who want rigorous support without committing to a formal pipeline. You might ask DAAF to review your code, help you debug a script, brainstorm an analytic approach, explain how to use a particular Python package, investigate a data source, or write a one-off analysis script. The conversation flows naturally -- you change topics, ask follow-ups, and go wherever the work takes you.
+
+**What you get:**
+- A lightweight workspace folder for anything produced during the session (scripts, data, figures)
+- Access to all of DAAF's specialized capabilities -- code execution, debugging, data source research, code review, analysis planning -- on demand, as you need them
+- Rigorous, methodology-aware advice grounded in the same domain expertise that powers the full pipeline
+
+**Expected time investment:** As long as you need. There are no mandatory checkpoints or gates -- the session ends when you're done. If the session produces artifacts, DAAF will summarize what's in the workspace at the end.
+
+**When to use it:** When you want a capable research partner for whatever you're working on right now. Some examples: "Can you review this script I wrote for cleaning CCD data?" "I'm getting a weird join error -- help me figure out what's going on." "What's the best way to handle suppressed data in a trend analysis?" "How do I use plotnine to create faceted bar charts?" "Help me think through the right approach for a school-level poverty analysis."
+
+**When NOT to use it:** When you know you want a complete, formal analysis with a Plan, Notebook, and Report -- that's Full Pipeline mode. When you just need a quick variable definition -- that's Data Lookup. Ad Hoc Collaboration is for the messy, real-world middle ground where you're actively working on something and want a knowledgeable partner.
+
+**Escalation:** If the conversation naturally evolves toward a full analysis, DAAF will suggest: "This is shaping up to be a full analysis -- want me to formalize it into a Full Pipeline?" You can say yes, or keep working ad hoc. The workspace artifacts carry forward either way.
 
 ### Full Pipeline Mode
 
@@ -108,11 +127,11 @@ Before doing anything else, DAAF will tell you which mode it's classifying your 
 
 **When NOT to use it:** When you just need a quick answer, a variable definition, or want to know if certain data even exists. That's what the other modes are for -- and using Full Pipeline mode for a simple question is like driving a semi-truck to the corner store.
 
-### Revision Mode
+### Revision and Extension Mode
 
-**Trigger words:** "fix," "update," "change," "modify the analysis," "revise," "redo," "can you adjust"
+**Trigger words:** "fix," "update," "change," "modify the analysis," "revise," "redo," "can you adjust," "extend"
 
-**What it is:** You have an existing analysis that needs changes, and you want DAAF's help to improve it. Maybe you want to rethink a measure, add a new variable, change the year range, run a different statistical test, or fix something that didn't look right. First, point DAAF to the name of the project folder. Then, DAAF locates your existing project, reads the Plan, and creates a *new version* of the relevant artifacts -- it never modifies the originals.
+**What it is:** You have an existing analysis that needs changes or extension, and you want DAAF's help to improve it. Maybe you want to rethink a measure, add a new variable, change the year range, run a different statistical test, or fix something that didn't look right. First, point DAAF to the name of the project folder. Then, DAAF locates your existing project, reads the Plan, and creates a *new version* of the relevant artifacts -- it never modifies the originals.
 
 **What you get:**
 - A new version of the Plan document incorporating your changes
@@ -126,15 +145,97 @@ Before doing anything else, DAAF will tell you which mode it's classifying your 
 
 **How the version system works:** All versions live in the same project folder. Prior versions are **never** modified or overwritten -- that's a non-negotiable rule. The versioning uses date suffixes: the original analysis might be `2026-01-24`, revision 1 becomes `2026-01-24a`, revision 2 becomes `2026-01-24b`, and so on. This means you always have a full audit trail of how the analysis evolved.
 
+**When NOT to use it:** When your existing analysis is fundamentally flawed or you want to ask a substantially different research question. At that point, starting a new Full Pipeline analysis with better-targeted prompts will produce cleaner results than trying to revise the original into something it wasn't designed to answer.
+
+### Data Onboarding
+
+**When to use:** You have a raw data file (CSV, Parquet, Excel, etc.) that you want to profile and add as a reusable data source for future analyses.
+
+**What happens:** DAAF runs a thorough profiling protocol (up to 11 scripts, depending on data characteristics) in 3 top-level phases (Setup, Profiling, Skill Creation). The Profiling phase contains 4 sub-phases: Structural Discovery, Statistical Deep Dive, Relational Analysis, and Interpretation & Reconciliation. You review the findings and confirm the interpretations before DAAF creates a standalone data source skill. The entire process is tracked in a reproducible research project folder.
+
+**What you get:** A standalone data source skill (`.claude/skills/`) that future analyses can reference, plus a research project folder with all profiling scripts, QA reviews, and session state.
+
+**Checkpoints:** 2 -- one after project setup (to confirm the profiling plan), and one after profiling completes (to review and confirm/modify the preliminary interpretations before they become part of the skill).
+
+**Example prompts:**
+- "I have a CSV of county-level election returns I'd like to profile and add as a data source"
+- "Profile this parquet file and create a skill I can use in future analyses"
+- "I want to ingest a new dataset about hospital readmission rates"
+
+### Reproducibility Verification Mode
+
+**Trigger words:** "verify," "reproduce," "reproduction," "does this replicate," "check reproducibility," "verify this analysis..."
+
+**What it is:** You have an existing completed analysis (from a Full Pipeline run or otherwise) and you want to mechanically verify that it reproduces from its marimo notebook. DAAF decompiles the notebook back into standalone scripts, re-executes each one, compares the new outputs against the originals, and cross-references the Report's claims against the actual analytic results. The goal is to provide an independent, systematic assessment of whether the analysis holds up end-to-end.
+
+**What you get:**
+- A Reproduction Report documenting what matched, what diverged, and any methodological concerns discovered during the process
+- An overall assessment of **FULLY REPRODUCED** (all outputs match within tolerance, report claims supported), **PARTIALLY REPRODUCED** (some outputs diverge or some claims unsupported, but core findings hold), or **NOT REPRODUCED** (significant divergences or unsupported claims that undermine the analysis)
+- Detailed comparison logs showing exactly where and how outputs differed, if at all
+
+**Two key user decisions:**
+- **Whether to re-fetch data** (default: yes). Re-fetching tests whether the analysis reproduces against the current state of the data source. Skipping re-fetch tests whether the analysis reproduces from the already-downloaded raw data files.
+- **Methodological review depth** (default: light). A light review focuses on mechanical reproduction -- do the scripts run and produce matching outputs? A deep review additionally scrutinizes methodological choices, statistical assumptions, and interpretation quality.
+
+**Expected time investment:** Depends on the complexity of the original analysis. A straightforward single-source analysis might take 15-30 minutes; a multi-source analysis with extensive transformations could take longer. You'll review the Reproduction Report at the end.
+
+**When to use it:** After completing a Full Pipeline analysis and wanting to verify it reproduces before sharing or publishing. When reviewing someone else's DAAF analysis and wanting an independent verification. For periodic verification of important findings to ensure they still hold against updated data sources.
+
+**When NOT to use it:** When you already know the analysis needs changes -- use Revision and Extension mode instead. When the analysis was never completed or has no notebook -- there's nothing to reproduce from.
+
+### Framework Development
+
+**Trigger words:** "create a skill", "add an agent", "add a mode", "modify DAAF", "update the template", "extend the framework"
+
+**What it is:** A structured collaboration mode for modifying DAAF itself — its skills, agents, modes, reference files, templates, and configuration. The orchestrator scopes the current state of whatever you want to change, presents findings, then authors or modifies framework artifacts following canonical templates with a full integration checklist.
+
+**What you get:** Modified or new framework components placed directly in the DAAF codebase, with a multi-angle review pass ensuring cross-file consistency.
+
+**When to use it:** When you want to add a new data source skill, create a new agent, add a new engagement mode, update templates or reference documents, incorporate learnings from completed analyses back into the framework, or make any other structural change to the DAAF framework.
+
+**When NOT to use it:** When you want to onboard a dataset by profiling it (use Data Onboarding), when you want to run an analysis (use Full Pipeline), or when you want general help (use Ad Hoc Collaboration).
+
+**Two checkpoints:**
+1. After scoping — confirm the approach before any modifications begin
+2. After review — approve the final state of all changes
+
+**Escalation:** Can escalate to Data Onboarding (if you need to profile data, not just create a skill template), Full Pipeline (to test a new skill with actual analysis), or Ad Hoc Collaboration (if you need general help rather than framework changes).
+
 ### Switching Between Modes
 
 DAAF supports clean transitions between modes when it makes sense:
 
 | From | To | When it happens |
 |------|----|-----------------|
-| Discovery | Full Pipeline | Findings suggest a feasible and valuable analysis |
-| Targeted Assist | Discovery | Your question reveals a broader data landscape worth exploring |
-| Targeted Assist | Full Pipeline | A quick lookup reveals an actionable analysis opportunity |
+| Data Discovery | Full Pipeline | Findings suggest a feasible and valuable analysis |
+| Data Lookup | Data Discovery | Your question reveals a broader data landscape worth exploring |
+| Data Lookup | Ad Hoc Collaboration | Your question evolves into a multi-turn discussion |
+| Data Lookup | Full Pipeline | A quick lookup reveals an actionable analysis opportunity |
+| Data Discovery | Data Onboarding | Do you have a raw data file you want to profile and make reusable? |
+| Data Onboarding | Full Pipeline | Skill created — would you like to analyze this data now? |
+| Full Pipeline | Data Onboarding | Analysis needs a dataset that has no existing skill yet |
+| Full Pipeline | Revision and Extension | You just completed an analysis and want to adjust or extend something |
+| Revision and Extension | Full Pipeline | The revision scope grows beyond what targeted modification can handle |
+| Data Onboarding | Revision and Extension | You want to modify or extend the skill that was just created |
+| Full Pipeline (complete) | Reproducibility Verification | User wants to verify their analysis reproduces |
+| Reproducibility Verification | Revision and Extension | Divergence found, user wants to fix original |
+| Reproducibility Verification | Full Pipeline | Original analysis is fundamentally broken |
+| Ad Hoc Collaboration | Full Pipeline | Your working session evolves into a formal analysis |
+| Ad Hoc Collaboration | Data Discovery | You want systematic data exploration across sources |
+| Ad Hoc Collaboration | Data Onboarding | You have raw data that needs profiling |
+| Ad Hoc Collaboration | Revision and Extension | Debugging reveals an existing analysis needs revision |
+| Data Discovery | Ad Hoc Collaboration | You want to discuss findings and iterate on approach |
+| Full Pipeline (early) | Ad Hoc Collaboration | You realize you just want to talk through the approach, not run the full pipeline |
+| Full Pipeline (complete) | Ad Hoc Collaboration | You want to discuss results or plan next steps informally |
+| Ad Hoc Collaboration | Framework Development | User wants to create or modify DAAF framework components |
+| Framework Development | Data Onboarding | User wants to onboard a dataset, not just create a skill template |
+| Framework Development | Full Pipeline | User wants to test a new skill with actual analysis |
+| Framework Development | Ad Hoc Collaboration | User needs analysis help, not framework changes |
+| Framework Development | Revision and Extension | User wants to review or revise an analysis that used the framework |
+| Framework Development | Data Discovery | Framework change requires testing with a specific data source |
+| Data Onboarding (complete) | Framework Development | User wants to refine the skill beyond what Onboarding produced |
+| Full Pipeline (complete) | Framework Development | User identifies framework improvements from analysis experience, or LEARNINGS.md has actionable items to incorporate |
+| Data Onboarding (complete) | Framework Development | LEARNINGS.md from profiling has actionable framework improvements (e.g., skill template gaps) |
 
 DAAF will always propose these escalations explicitly and wait for your confirmation. It should never silently switch modes on you.
 
@@ -148,11 +249,11 @@ I'm going to use an analogy that I think captures it well: **DAAF is intended to
 
 ### The Orchestrator: Your Lab Director
 
-When you type a message to DAAF, you're talking to the **orchestrator**, whose behavior is dictated by the [`CLAUDE.md`](../CLAUDE.md) file as its main context. Think of the orchestrator as a lab director -- the person who takes your research question, figures out what needs to be done, decides who on the team should do each piece, coordinates the whole effort, and reports back to you at key milestones.
+When you type a message to DAAF, you're talking to the **orchestrator**, whose core orchestration behavior is defined by the [`daaf-orchestrator` skill](../.claude/skills/daaf-orchestrator/SKILL.md), while universal execution rules come from [`CLAUDE.md`](../CLAUDE.md). Think of the orchestrator as a lab director -- the person who takes your research question, figures out what needs to be done, decides who on the team should do each piece, coordinates the whole effort, and reports back to you at key milestones.
 
 The orchestrator should NOT be doing the hands-on work itself, because its primary value-add and contribution is coordination and workflow management. It doesn't write analysis scripts, it doesn't clean data, it doesn't run regressions. What it does is:
 
-- **Classify your request** into an engagement mode (Full Pipeline, Discovery, etc.)
+- **Classify your request** into an engagement mode (Full Pipeline, Data Discovery, etc.)
 - **Delegate tasks** in proper sequence to specialized agents, itself providing them with the right context and instructions they need to do their jobs well
 - **Enforce quality gates** -- certain milestones that MUST be passed before work continues and the work product changes hands from one agent to another
 - **Report progress** to you and pause for your approval at key junctures to ensure you, the PI, approve of the direction of the work. It will also enforce work revisions as needed if you request it
@@ -162,22 +263,22 @@ The orchestrator is the most important part of DAAF, because it needs to simulta
 
 ### Specialized Agents: Your Research Team
 
-The "team members" in this lab are **agents** -- versions of Claude provided a clear behavioral protocol and persona defining exactly how they should think and operate. You can even see the exact context instructions provided to each in [the agents folder](../agents/). Agents are not knowledge repositories; they're *behavioral definitions*. An agent answers the question: "How should I behave when I'm doing this specific type of work?"
+The "team members" in this lab are **agents** -- versions of Claude provided a clear behavioral protocol and persona defining exactly how they should think and operate. You can even see the exact context instructions provided to each in [the agents folder](../.claude/agents/). Agents are not knowledge repositories; they're *behavioral definitions*. An agent answers the question: "How should I behave when I'm doing this specific type of work?"
 
 Here's a few examples of the team members with the links to each of their actual instruction files if you want to dig in more:
 
 | Agent | Role in the Lab Analogy | What They Actually Do | 
 |-------|------------------------|----------------------|
-| [**research-executor**](../agents/research-executor.md) | Technician/Analyst | Executes one data task at a time (fetch, clean, transform, analyze) with meticulous pre/post validation |
-| [**code-reviewer**](../agents/code-reviewer.md) | Senior Technician/Analyst | Reviews every single script the research-executor produces, looking for bugs, methodology errors, and data quality issues |
-| [**source-researcher**](../agents/source-researcher.md) | Research Assistant | Deep-dives into a specific data source's documentation, collection protocols, caveats, and gotchas for shared team awareness |
-| [**data-planner**](../agents/data-planner.md) | Research Design Lead | Synthesizes all the preliminary findings into a detailed, executable research plan |
+| [**research-executor**](../.claude/agents/research-executor.md) | Technician/Analyst | Executes one data task at a time (fetch, clean, transform, analyze) with meticulous pre/post validation |
+| [**code-reviewer**](../.claude/agents/code-reviewer.md) | Senior Technician/Analyst | Reviews every single script the research-executor produces, looking for bugs, methodology errors, and data quality issues |
+| [**source-researcher**](../.claude/agents/source-researcher.md) | Research Assistant | Deep-dives into a specific data source's documentation, collection protocols, caveats, and gotchas for shared team awareness |
+| [**data-planner**](../.claude/agents/data-planner.md) | Research Design Lead | Synthesizes all the preliminary findings into a detailed, executable research plan |
 
 The point here is that we want to provide very different context to Claude when faced with different tasks. Trying to get Claude to do everything equally well is impossible given fixed context window limitations, and trying to do so will ultimately confuse it and cause dreaded **context rot** (where an LLM becomes unpredictable, incoherent, and erratic due to over-filled or poorly structured context it can't make sense of). This means that we need to split responsibilities across "versions" of Claude provided very different instructions and behavioral protocols to get it to perform these tasks well in tandem.
 
 > **Quick definitional note:** An **Agent** is the general phrase we use to describe any tailored/pre-specified set of behavioral protocols for an LLM assistant. Each of the above team members in this analogy are Agent definitions. As a user, you can ask Claude directly to take on an agent persona and begin working. However, with DAAF's default workflows, the orchestrator actually calls up and tasks each agent above itself, so you never have to; agents become **subagents** when they are called by another assistant in this way, instead of directly by the user.
 
-Ultimately, the orchestrator's job is to know which agent/team member to call up at any one time, and to also know very thoughtfully what it needs to tell that subagent in order for the subagent to do its job effectively with necessary context and guidance. You can see how the orchestrator is trained to talk with these agents in [the agents README](../agents/README.md) and [the orchestrator skill invocation reference](../agent_reference/03_SKILL_INVOCATIONS.md)). Subagent orchestration is an extremely new and active area of development in the broader field of AI at-large right now, which is part of why a system as complex as DAAF has only recently become possible.
+Ultimately, the orchestrator's job is to know which agent/team member to call up at any one time, and to also know very thoughtfully what it needs to tell that subagent in order for the subagent to do its job effectively with necessary context and guidance. You can see how the orchestrator is trained to talk with these agents in [the agents README](../.claude/agents/README.md) and [the orchestrator's full pipeline reference](../.claude/skills/daaf-orchestrator/references/full-pipeline-mode.md)). Subagent orchestration is an extremely new and active area of development in the broader field of AI at-large right now, which is part of why a system as complex as DAAF has only recently become possible.
 
 ### Skills: Your Team's Reference Library
 
@@ -276,12 +377,12 @@ Every analysis lives in a self-contained folder under `research/`, named with th
 ```
 research/2026-01-24_School_Poverty_Analysis/
 ├── 2026-01-24_School_Poverty_Analysis_Plan.md
+├── 2026-01-24_School_Poverty_Analysis_Plan_Tasks.md
 ├── 2026-01-24_School_Poverty_Analysis.py
 ├── 2026-01-24_School_Poverty_Analysis_Report.md
 ├── LEARNINGS.md
 ├── STATE.md
 ├── scripts/
-│   ├── run_with_capture.sh
 │   ├── stage5_fetch/
 │   │   ├── 01_fetch-ccd.py
 │   │   └── 02_fetch-meps.py
@@ -316,23 +417,23 @@ research/2026-01-24_School_Poverty_Analysis/
 
 Let's go through each piece.
 
-### The Plan Document
+### The Plan Document (Plan.md)
 
-**What it is:** The single most important artifact in the project. The Plan is DAAF's research design document -- it captures everything about what was done and *why*. If the scripts are the "what," the Plan is the "why."
+**What it is:** The single most important artifact in the project. Plan.md is DAAF's strategic research specification -- it captures everything about what was done and *why*. If the scripts are the "what," Plan.md is the "why."
 
 **What's inside:**
 - **Research Question** -- your original question, verbatim, plus any clarifications
 - **Research Outcomes** -- specific, measurable topics the analysis must rigorously investigate and report on (e.g., "Relationship between school poverty rates and AP course enrollment is characterized with direction, magnitude, significance, and confidence intervals"). These define what must be *examined*, not what the answer should be. Directional predictions belong in the optional Hypotheses section.
 - **Data Sources** -- which datasets are being used, what endpoints, what years, and why
 - **Methodology** -- the statistical approach, key decisions, and their rationale
-- **Transformation Sequence** -- the exact ordered list of tasks (fetch, clean, transform, analyze, visualize) with dependencies, wave assignments for parallel execution, and input/output file paths
 - **Risk Register** -- what could go wrong and how to handle it
 - **Key Decisions Log** -- every methodological choice made during the project, with reasoning
-- **Final Review Log** -- notes from the data-verifier's final check
 
-**How to read it:** Start with the Research Question and Research Outcomes -- do they match your intent? If any outcomes read like hypotheses (predicting a direction), flag them. Then skim the Transformation Sequence table to understand the flow of work. Check the Key Decisions Log for anything surprising. The Plan is meant to be comprehensive enough that someone unfamiliar with the project could understand exactly what was done and why.
+**How to read it:** Start with the Research Question and Research Outcomes -- do they match your intent? If any outcomes read like hypotheses (predicting a direction), flag them. Check the Key Decisions Log for anything surprising. Plan.md is meant to be comprehensive enough that someone unfamiliar with the project could understand exactly what was done and why.
 
-**Why it matters:** The Plan is your audit trail. If you or a colleague ever needs to understand how a finding was derived, the Plan traces the full chain of reasoning from question to methodology to execution. It's also what makes Revision Mode possible -- DAAF reads the existing Plan to understand what was done before proposing changes.
+**Why it matters:** Plan.md is your audit trail. If you or a colleague ever needs to understand how a finding was derived, Plan.md traces the full chain of reasoning from question to methodology to execution. It's also what makes Revision and Extension Mode possible -- DAAF reads the existing Plan.md to understand what was done before proposing changes.
+
+A companion file, **Plan_Tasks.md**, contains the detailed machine-readable task specifications that DAAF uses internally to execute each step. It includes the exact ordered Transformation Sequence of tasks (fetch, clean, transform, analyze, visualize) with dependencies, wave assignments for parallel execution, and input/output file paths. Both files are frozen after planning completes. You can review Plan_Tasks.md if you want to audit the specific task definitions, but Plan.md is the primary document for understanding the research design.
 
 ### The Scripts Directory
 
@@ -380,6 +481,7 @@ Then open [http://localhost:2718](http://localhost:2718) in your normal web brow
 - Executive summary with headline findings
 - Detailed methodology section (data sources, cleaning approach, statistical methods)
 - Key findings with supporting statistics and figure references
+- References section (data sources, methodological references, software & tools, and reporting standards — DAAF tracks these automatically during execution, though you should verify they are accurate and complete)
 - Data limitations and caveats
 - Appendices with technical details
 
@@ -403,7 +505,7 @@ Then open [http://localhost:2718](http://localhost:2718) in your normal web brow
 
 ### STATE.md and LEARNINGS.md
 
-**STATE.md** -- A session state file that tracks DAAF's progress through the analysis. If a session is interrupted (context exhaustion, network issues, etc.), STATE.md allows DAAF to resume exactly where it left off. You generally don't need to read this unless debugging a session issue.
+**STATE.md** -- A session state file that tracks DAAF's progress through the analysis. It records transformation progress, checkpoint statuses, runtime decisions, and any blockers encountered. It also accumulates the QA Findings Summary (aggregated quality review results across all stages), the Final Review Log (from the end-of-pipeline verification), any Runtime Risks discovered during execution, and Citations Accumulated (a running ledger of data source, methodological, software, and reporting standard citations extracted as each script executes). If a session is interrupted (context exhaustion, network issues, etc.), STATE.md allows DAAF to resume exactly where it left off. You generally don't need to read this unless debugging a session issue.
 
 **LEARNINGS.md** -- A lessons-learned document capturing insights about the data and the analysis process. This includes data idiosyncrasies discovered during the analysis, interpretation concerns, and suggested improvements to DAAF's documentation. This file is designed to be immediately actionable -- you can share it back with the community to help improve DAAF for future users.
 
@@ -421,7 +523,7 @@ In any case, this demo project should give you a good sense of what to expect, a
 
 Rather than try to jump in with a complete Full Pipeline Analysis at once, I strongly recommend testing out the simpler features and engagement modes first. The whole premise of this project is that DAAF is surprisingly robust, but I think the right way to build confidence is to start small and work your way up. Here's a concrete progression I'd recommend, designed to let you assess DAAF's knowledge and capabilities at each level of complexity:
 
-### Level 1: Quick Ask (Targeted Assist Mode)
+### Level 1: Quick Ask (Data Lookup Mode)
 
 Ask Claude to explain a single dataset or variable you're already familiar with. This tests DAAF's domain knowledge against your own expertise.
 
@@ -439,7 +541,7 @@ data? What are the coded values?
 
 **What you're testing:** Does DAAF know the data as well as you do? Are there gaps in its knowledge? Does it mention the right caveats? Feel free to ask follow-ups or dig into specific details -- this is a safe, low-stakes way to calibrate your trust.
 
-### Level 2: Thorough Documentation Review (Discovery Mode)
+### Level 2: Thorough Documentation Review (Data Discovery Mode)
 
 Ask Claude to help you figure out what's available within a broad conceptual category of data. This tests DAAF's ability to explore multiple options, consider trade-offs, notice year overlaps or gaps, and so on.
 
@@ -455,7 +557,27 @@ I know there are a couple of different ways of measuring school poverty. Can you
 
 **What you're testing:** How does DAAF surface relevant information, variables, tables, and so on, when faced with broader options and less explicit direction? What issues might arise, and does it seem to recognize strengths/pitfalls of each possibility it flags appropriately?
 
-### Level 3: Single Variable Analysis (Simple Full Pipeline)
+### Level 3: Data Onboarding (Data Onboarding Mode)
+
+If you have your own dataset that you'd like to bring into DAAF, try profiling it with Data Onboarding mode. This is a great way to expand DAAF's capabilities with your own data.
+
+```
+I have a CSV of county-level election returns I'd like to profile
+and add as a data source. The file is at:
+/daaf/data/county-elections/election_returns_2024.csv
+```
+
+or
+
+```
+Profile this parquet file and create a skill I can use in future
+analyses: /daaf/research/my-data/hospital_readmissions.parquet
+I also have a data dictionary at: /daaf/research/my-data/codebook.pdf
+```
+
+**What you're testing:** Can DAAF systematically profile a dataset you know well, detect its structure, identify coded values and quality issues, and produce a reusable skill? Do its preliminary interpretations match your domain knowledge? This is also a great way to contribute back to the community by sharing new data source skills.
+
+### Level 4: Single Variable Analysis (Simple Full Pipeline)
 
 Ask DAAF to analyze a single variable from a single dataset you already know well. This will kick off a Full Pipeline run, but a very simple and approachable one.
 
@@ -468,7 +590,7 @@ statistics and a histogram.
 
 **What you're testing:** Can DAAF correctly fetch, clean, and describe a dataset you're already familiar with? Do the descriptive statistics match what you'd expect? Is the cleaning approach reasonable? This is where you start validating DAAF's *execution* quality, not just its knowledge.
 
-### Level 4: Simple Correlational/Longitudinal Analysis
+### Level 5: Simple Correlational/Longitudinal Analysis
 
 Ask DAAF to look at the relationship between two variables of interest, possibly over time.
 
@@ -481,7 +603,7 @@ and any notable patterns.
 
 **What you're testing:** Can DAAF handle multi-year data, create meaningful groupings, and produce time-series visualizations? Are the trends sensible? Does it properly handle years with data quality issues (COVID years, for instance)?
 
-### Level 5: Multivariate Analysis
+### Level 6: Multivariate Analysis
 
 Now get more abstract and complex. Ask about relationships between multiple variables that require joining data sources and more sophisticated statistical approaches.
 
@@ -512,7 +634,7 @@ data available. Can you suggest a few options related to
 educational equity?
 ```
 
-### Level 6: Replication Exercises
+### Level 7: Replication Exercises
 
 The ultimate test of an analytical framework: can it reproduce results from published research? I am actively trying to assess DAAF's performance by replicating studies conducted by the [Urban Institute's Learning Curve series](https://www.urban.org/projects/learning-curve), which leverage the same Education Data Portal datasets DAAF currently has access to. Many of these studies have [open-source code available](https://github.com/UrbanInstitute/The-Learning-Curve/tree/main) for direct comparison.
 
@@ -522,7 +644,7 @@ You'll want to pick one where the data was solely pulled from the Education Data
 
 If you run replication exercises, I would genuinely love to hear about your results. Please share your findings by [opening an issue](https://github.com/DAAF-Contribution-Community/daaf/issues) -- this kind of validation is invaluable for the entire community.
 
-### Level 7: Charting your own path
+### Level 8: Charting your own path
 
 From here, you've hopefully gotten a good sense of what DAAF can and cannot do as of right now. It's got strengths, it's got limitations, and there are ways to use it that will probably be more or less useful for different people. My goal here is not to make the single, end-all-be-all best tool for everyone, but to create a unified, pretty good starting point. Use it how you see fit, and if you find ways to make it work better for you, people in the community would probably also benefit from you sharing that knowledge back with others! See [**04. Extending DAAF**](04_extending_daaf.md) and [**05. Contributing**](../CONTRIBUTING.md) for more info there.
 
@@ -536,16 +658,16 @@ Real research analyses take time -- often more time than a single Claude Code se
 
 ### Understanding Context and Sessions
 
-Claude Code operates within a fixed context window (at time of writing) of roughly 200,000 tokens. As DAAF works through a Full Pipeline analysis, delegating tasks to agents, receiving results, and coordinating the workflow, it gradually fills up this context. When it gets too full, Claude's performance degrades, and it becomes increasingly susceptible to erratic behavior due to **context rot**.
+Claude Code operates within a context window that can be up to 1M tokens. However, quality can degrade well before the window is full, so DAAF enforces dual thresholds — both percentage-based and absolute token counts, whichever fires first. As DAAF works through a Full Pipeline analysis, delegating tasks to agents, receiving results, and coordinating the workflow, it gradually fills up this context. When it gets too full, Claude's performance degrades, and it becomes increasingly susceptible to erratic behavior due to **context rot**.
 
 To prevent this, DAAF monitors its own context utilization continuously and manages this proactively:
 
 | Utilization | What Happens |
 |-------------|-------------|
-| **Below 40%** | Normal operation, no special actions |
-| **40-60%** | DAAF starts delegating more work to subagents to keep the orchestrator's context lean |
-| **60-75%** | DAAF finishes its current work unit, updates STATE.md thoroughly, and warns you that a restart may be needed soon |
-| **Above 75%** | DAAF finalizes STATE.md and recommends restarting the session |
+| **Below 40% and below 150k tokens** | Normal operation, no special actions |
+| **≥ 40% or ≥ 150k tokens** | DAAF starts delegating more work to subagents to keep the orchestrator's context lean |
+| **≥ 60% or ≥ 200k tokens** | DAAF finishes its current work unit, updates STATE.md thoroughly, and warns you that a restart may be needed soon |
+| **≥ 75% or ≥ 250k tokens** | DAAF finalizes STATE.md and recommends restarting the session |
 
 ### How Session Recovery Works
 
@@ -565,6 +687,8 @@ The project folder is at research/2026-01-24_School_Poverty_Analysis/
 
 DAAF will read STATE.md, understand where it stopped, and resume from that exact point. You don't need to re-explain your research question or re-run any completed stages.
 
+**Reproducibility Verification mode note:** RV mode uses `Reproduction_Report.md` as its session state document instead of STATE.md. If an RV session is interrupted, the Reproduction Report contains a "Session Continuity" section with a restart prompt. The recovery process works the same way — start a new session and paste the restart prompt, and DAAF will pick up where it left off.
+
 ### Tips for Multi-Session Work
 
 - **Don't panic if a session ends mid-analysis.** This is undesired but not unexpected for complex analyses. The whole STATE.md system exists precisely for this reason.
@@ -583,10 +707,10 @@ Here's a quick reference for what each part of the DAAF repository contains and 
 |-----------|-------------|-------------|
 | `research/` | Your analysis projects -- notebooks, data, reports, scripts | **You** (this is where all your work lives) |
 | `user_reference/` | User documentation (you're reading one right now) | **You** (human-written guides and FAQs) |
-| `agents/` | Specialized agent protocols (12 behavioral definitions) | **DAAF** (and curious users who want to understand how agents work) |
+| `.claude/agents/` | Specialized agent protocols (12 behavioral definitions) | **DAAF** (and curious users who want to understand how agents work) |
 | `agent_reference/` | Detailed workflow documentation, templates, validation rules | **DAAF** (internal reference material for the orchestrator and agents) |
 | `.claude/skills/` | Skill definitions providing domain knowledge | **DAAF** (and users who want to create new skills) |
-| `scripts/` | Shared utility scripts (like `run_with_capture.sh`) | **DAAF** (copied into each project during setup) |
+| `scripts/` | Shared utility scripts (like `run_with_capture.sh`) | **DAAF** (used from the DAAF root directory; not copied into projects) |
 
 **Key insight for new users:** Everything you need to review, share, or reproduce is inside the project folder. You can copy the entire folder to a colleague and they'd have everything needed to understand and verify the analysis. That's the whole point of reproducibility.
 

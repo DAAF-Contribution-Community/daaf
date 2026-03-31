@@ -45,7 +45,7 @@ fig = go.Figure(go.Scatter(
 | `hover_name` | Main hover label |
 | `text` | Text labels on points |
 | `trendline` | Add trendline ("ols", "lowess") |
-| `marginal_x/y` | Marginal plots ("histogram", "box", "violin") |
+| `marginal_x/y` | Marginal plots ("histogram", "box", "violin", "rug") |
 
 ---
 
@@ -165,7 +165,7 @@ fig = go.Figure(go.Histogram(
 | Parameter | Purpose |
 |-----------|---------|
 | `nbins` | Number of bins |
-| `histnorm` | Normalization: "percent", "probability", "density" |
+| `histnorm` | Normalization: "percent", "probability", "density", "probability density" |
 | `cumulative` | Cumulative histogram |
 | `barmode` | "stack", "overlay", "group" |
 | `marginal` | Add marginal plot: "rug", "box", "violin" |
@@ -184,7 +184,7 @@ fig = px.box(df, y="value")
 fig = px.box(df, x="category", y="value")
 
 # With individual points
-fig = px.box(df, x="category", y="value", points="all")  # "all", "outliers", False
+fig = px.box(df, x="category", y="value", points="all")  # "all", "outliers", "suspectedoutliers", False
 
 # Notched (confidence interval)
 fig = px.box(df, x="category", y="value", notched=True)

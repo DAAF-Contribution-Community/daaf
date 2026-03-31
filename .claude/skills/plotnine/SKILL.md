@@ -1,13 +1,17 @@
 ---
 name: plotnine
-description: Grammar of graphics for Python data visualization. Covers ggplot syntax, geoms, aesthetics, scales, facets, and themes. Use when creating plots with plotnine, using ggplot2-style syntax in Python, or building publication-ready visualizations.
+description: >-
+  plotnine static visualization (ggplot2 syntax for Python). Geoms, aesthetics, scales, coordinates, facets, themes. Use for static publication-quality figures with grammar-of-graphics syntax. For interactive charts use plotly; for maps use geopandas.
 metadata:
-  audience: python-developers
-  domain: data-visualization
-  plotnine-version: "0.15.x"
+  audience: research-coders
+  domain: python-library
+  library-version: "0.15.x"
+  skill-last-updated: "2026-03-26"
 ---
 
 # Plotnine Skill
+
+plotnine static visualization library for Python, implementing the grammar of graphics (ggplot2 syntax). Covers geoms (point, line, bar, histogram, boxplot, smooth), aesthetics, scales, coordinates, facets, and themes. Use when creating static publication-quality figures with ggplot2-style syntax, producing charts for print or reports, or working with an R ggplot2 background. Prefer over plotly when static output is needed.
 
 Quick reference for creating data visualizations with plotnine, a Python implementation of the grammar of graphics (ggplot2).
 
@@ -79,10 +83,10 @@ Common issues?
 3. Validation results get automatically embedded in scripts as comments
 4. If failed, create versioned copy for fixes
 
-Closely read `agent_reference/EXECUTION_CAPTURE.md` for the mandatory file-first execution protocol covering complete code file writing, output capture, and file versioning rules.
+Closely read `agent_reference/SCRIPT_EXECUTION_REFERENCE.md` for the mandatory file-first execution protocol covering complete code file writing, output capture, and file versioning rules.
 
 **See:**
-- `agent_reference/02_WORKFLOW_STAGES.md` — Stage 8 (Analysis & Visualization)
+- `agent_reference/WORKFLOW_PHASE4_ANALYSIS.md` — Stage 8 (Analysis & Visualization)
 
 The examples below show plotnine syntax. In research workflows, wrap them in scripts following the file-first pattern.
 
@@ -155,3 +159,13 @@ p.save("plot.png", width=10, height=8, dpi=300)
 | Labels/titles | `./references/facets-themes.md` |
 | Common errors | `./references/gotchas.md` |
 | Best practices | `./references/gotchas.md` |
+
+## Citation
+
+When this library is used as a primary analytical tool, include in the report's
+Software & Tools references:
+
+> Kibirige, H. et al. plotnine: Grammar of graphics for Python [Computer software]. https://plotnine.org/
+
+**Cite when:** plotnine is the primary visualization library producing figures included in the report.
+**Do not cite when:** Only used for quick exploratory plots not included in deliverables.

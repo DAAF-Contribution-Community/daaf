@@ -363,6 +363,26 @@ transfer_adjusted = grad_rate_150 + transfer_out_rate
 | `sex` | Sex (integer codes: 1=Male, 2=Female, 99=Total) |
 | `institution_level` | Institution level |
 
+#### Subcohort Codes (`subcohort`)
+
+The `subcohort` variable identifies which student population is tracked:
+
+| Code | Meaning | Notes |
+|------|---------|-------|
+| 1 | Degree/certificate-seeking at less-than-4-year institutions | 2-year and less-than-2-year programs |
+| 2 | Degree/certificate-seeking at 4-year institutions (bachelor's-seeking cohort) | Standard cohort for 4-year graduation rate analysis; ~2,010 institutions |
+| 99 | Total cohort (all subcohorts combined) | Aggregate across subcohort types |
+
+For standard 4-year bachelor's graduation rate analysis, filter to `subcohort == 2`. Note that multiple rows per institution may exist within a subcohort due to `cohort_rev` variants. To get one row per institution, sort by `completion_rate_150pct` descending (nulls last) and deduplicate:
+
+```python
+gr_bach = (
+    df.filter(pl.col("subcohort") == 2)
+    .sort("completion_rate_150pct", descending=True, nulls_last=True)
+    .unique(subset=["unitid"], keep="first")
+)
+```
+
 #### NCES Raw File Names (for reference only)
 
 The following variable names appear in NCES documentation and raw IPEDS data files but are NOT used in the Portal:

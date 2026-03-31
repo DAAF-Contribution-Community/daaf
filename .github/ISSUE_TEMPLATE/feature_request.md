@@ -20,7 +20,7 @@ assignees: ''
 
 ## Which area does this affect? Check all that apply
 
-- [ ] Agent protocols (agents/)
+- [ ] Agent protocols (.claude/agents/)
 - [ ] Skills / data source knowledge (.claude/skills/)
 - [ ] Workflow stages or validation
 - [ ] Documentation

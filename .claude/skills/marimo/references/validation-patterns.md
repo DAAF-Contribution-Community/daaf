@@ -209,7 +209,7 @@ pre_states = df.select("fips").n_unique()
 # Transform
 df_agg = df.group_by("fips").agg([
     pl.col("enrollment").sum().alias("total_enrollment"),
-    pl.count().alias("school_count")
+    pl.len().alias("school_count")
 ])
 ```
 
@@ -405,9 +405,9 @@ mo.md(f"Pre: {pre_shape}, Post: {post_shape}")
 mo.stop(post_shape[0] == 0, "Empty result!")
 ```
 
-## Integration with Education Data Checkpoints
+## Integration with Checkpoints
 
-These patterns implement the 4 validation checkpoints from the education data workflow:
+These patterns implement the 4 validation checkpoints from the full pipeline workflow:
 
 | Checkpoint | Pattern | When |
 |------------|---------|------|

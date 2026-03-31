@@ -1,12 +1,17 @@
 ---
 name: marimo
-description: Reactive Python notebook for reproducible, interactive data work. Covers cell reactivity, UI elements (sliders, tables, forms), SQL cells, dataframes, plotting, and deployment as apps/scripts. Use for any marimo notebook development task.
+description: >-
+  Reactive Python notebook system. Cell reactivity, UI elements (sliders, dropdowns, tables), SQL cells, plotting, app deployment. Use when assembling Stage 9 notebooks, building data apps, or converting Jupyter to marimo .py format.
 metadata:
-  audience: python-developers
-  domain: notebooks
+  audience: research-coders
+  domain: python-library
+  library-version: "0.19.x"
+  skill-last-updated: "2026-03-28"
 ---
 
 # marimo
+
+marimo reactive Python notebook system for reproducible and interactive data work. Covers cell reactivity model, UI elements (sliders, dropdowns, tables, forms), SQL cells, DataFrame display, plotting integration, validation patterns for data pipelines, and deployment as apps, scripts, or WASM. Use when assembling Stage 9 research notebooks, developing reactive marimo notebooks, building interactive data apps, or converting Jupyter notebooks to marimo's Git-friendly .py format.
 
 Comprehensive skill for building reactive Python notebooks with marimo. Use decision trees below to find the right guidance, then load detailed references.
 
@@ -55,10 +60,6 @@ Load these skills together with marimo for comprehensive workflow support:
 - `plotnine` - Static publication-quality plots (ggplot2 style)
 - `plotly` - Interactive visualizations with hover/zoom
 
-**Load for Education Data Work:**
-- `education-data-context` - Understanding coded values and data limitations
-- Relevant `education-data-source-*` skills - Source-specific documentation
-
 **Prerequisite Knowledge:**
 If new to marimo, first understand:
 1. Python basics
@@ -86,7 +87,7 @@ If new to marimo, first understand:
 
 ### Stage 9 Notebook Assembly
 
-Stage 9 is handled by the **notebook-assembler agent** (see `agents/notebook-assembler.md`), which:
+Stage 9 is handled by the **notebook-assembler agent** (see `.claude/agents/notebook-assembler.md`), which:
 1. READS script files from `scripts/stage{5,6,7,8}_*/`
 2. COPIES script code VERBATIM into code cells
 3. COPIES execution logs VERBATIM into accordion cells
@@ -150,8 +151,8 @@ mo.ui.table(df.head(100))
 ```
 
 **See:**
-- `agents/notebook-assembler.md` for the complete behavioral protocol
-- `agent_reference/02_WORKFLOW_STAGES.md` Stage 9 for template
+- `.claude/agents/notebook-assembler.md` for the complete behavioral protocol
+- `agent_reference/WORKFLOW_PHASE4_ANALYSIS.md` Stage 9 for template
 
 ---
 
@@ -236,7 +237,7 @@ Having issues?
 | `marimo run notebook.py` | Run as read-only app |
 | `python notebook.py` | Execute as script |
 | `marimo tutorial intro` | Run interactive tutorial |
-| `marimo convert nb.ipynb -o nb.py` | Convert from Jupyter |
+| `marimo convert nb.ipynb -o nb.py` | Convert other formats INTO marimo (inbound only) |
 | `marimo export html notebook.py` | Export to HTML |
 
 > **Docker:** When running in a container, add `--host 0.0.0.0 --port 2718 --headless` to `run` and `edit` commands.
@@ -276,3 +277,13 @@ Having issues?
 | Export & Deploy | `./references/apps-deployment.md` |
 | Common Errors | `./references/gotchas.md` |
 | Best Practices | `./references/gotchas.md` |
+
+## Citation
+
+When this library is used as a primary analytical tool, include in the report's
+Software & Tools references:
+
+> marimo team. marimo: Reactive Python notebook [Computer software]. https://marimo.io/
+
+**Cite when:** The analysis notebook is delivered as a marimo notebook (typically always true in DAAF pipelines).
+**Do not cite when:** marimo is not used for the analysis delivery format.

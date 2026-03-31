@@ -1,21 +1,17 @@
 ---
 name: education-data-source-fsa
 description: >-
-  Federal Student Aid (FSA) data source for the Urban Institute Education Data
-  Portal. Covers Title IV programs including Pell Grants, Direct Loans, PLUS
-  loans, campus-based aid, financial responsibility composite scores, and
-  90/10 rule metrics. Use when working with federal student aid data, analyzing
-  institutional aid distributions, or understanding Title IV program
-  participation.
+  FSA — Title IV aid at institution level (~5,500 institutions, 1999-2021). Pell Grants, Direct/PLUS loans, campus-based aid, financial responsibility scores, 90/10 metrics. Use for aid distribution, loan volume, or for-profit analysis. By unitid.
 metadata:
-  audience: data-analysts
-  domain: education-data
-provenance:
-  skill_authored: "2026-02-09"
-  skill_last_updated: "2026-02-09"
+  audience: any-agent
+  domain: data-source
+  skill-authored: "2026-02-09"
+  skill-last-updated: "2026-02-09"
 ---
 
 # FSA Data Source Reference
+
+Federal Student Aid (FSA) — institutional-level Title IV aid data for ~5,500 postsecondary institutions, covering Pell Grants, Direct and PLUS loans, campus-based aid (FWS, FSEOG, Perkins), financial responsibility composite scores, and 90/10 revenue metrics (1999-2021, varies by dataset). Use when analyzing Pell Grant distribution by institution type, student loan volume, campus-based aid allocation, or for-profit financial health and 90/10 compliance. Identified by IPEDS unitid.
 
 Reference guide for FSA data available through the Urban Institute Education Data Portal. FSA data provides institutional-level information on Title IV federal student aid programs administered by the U.S. Department of Education.
 
@@ -278,6 +274,7 @@ df_recent = df_grants.filter(pl.col("year").is_between(2015, 2021))
 | Perkins Loan discontinuation | Perkins Loans ended after 2017; campus-based data still includes historical records | Filter by year or award_type to avoid mixing discontinued and active programs |
 | Data lag | FSA data typically lags 1-2 years behind the current award year | Verify latest available year before planning analysis |
 | Mixing aggregate and detail loan types | Loan type codes include both individual types (1-8, 10-13) and aggregate totals (3, 6, 9, 14) | Filter to specific types or aggregates, never sum both together |
+| Pell recipient counts unavailable for 2020+ | `grant_recipients_unitid` is 100% NULL for Pell grants (`grant_type==1`) in the 2020-2021 data year. Disbursement amounts also appear null | Use IPEDS SFA (`sfa_grants_and_net_price`) as a proxy for grant recipient counts. Note that SFA `type_of_aid=9` captures all grant/scholarship aid, not Pell-specific (see IPEDS skill) |
 
 ## Joining FSA Data with Other Sources
 

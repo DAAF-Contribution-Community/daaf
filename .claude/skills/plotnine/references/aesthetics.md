@@ -131,6 +131,8 @@ color="#FF5733"
 
 ### Shapes
 
+**Note:** plotnine uses matplotlib marker codes, not ggplot2's 0-25 integer system. Common markers: `'o'` (circle), `'s'` (square), `'^'` (triangle up), `'D'` (diamond), `'v'` (triangle down), `'+'` (plus), `'x'` (cross). The ggplot2 integer codes below may work for some shapes but matplotlib string markers are preferred.
+
 Integer codes (0-25) or names:
 
 | Code | Name |

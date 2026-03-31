@@ -9,9 +9,3 @@
 *.pfx
 **/credentials*
 **/secrets/
-
-# Session transcripts (contain full conversation history)
-.claude/logs/sessions/
-
-# Audit logs (prevent reading/modifying audit trail)
-.claude/logs/audit.jsonl

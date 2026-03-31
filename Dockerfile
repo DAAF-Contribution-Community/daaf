@@ -21,6 +21,19 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     jq \
     git \
+    poppler-utils \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+# ============================================
+# Install Geospatial System Libraries (GDAL/GEOS/PROJ)
+# ============================================
+# Required by fiona (rasterstats dep) and beneficial for rasterio, geopandas, osmnx
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libgdal-dev \
+    gdal-bin \
+    libgeos-dev \
+    libproj-dev \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
@@ -35,15 +48,49 @@ RUN uv pip install --system \
     polars==1.38.1 \
     scipy==1.17.0 \
     openpyxl==3.1.5 \
+    fastexcel==0.19.0 \
     xlrd==2.0.2 \
     requests==2.32.5 \
     pyarrow==23.0.0 \
     urllib3==2.6.3 \
     pre-commit==4.5.1 \
     scikit-learn==1.8.0 \
+    umap-learn==0.5.11 \
     pyyaml==6.0.3 \
     statsmodels==0.14.6 \
-    pyfixest==0.40.0
+    pyfixest==0.40.0 \
+    tabulate==0.10.0 \
+    great-tables==0.21.0 \
+    wildboottest==0.3.2
+
+# Install econometrics & statistical modeling packages
+# Primary: pyfixest + statsmodels already above
+# Secondary: panel models, RDD, marginal effects, volatility, dynamic panels, survey statistics
+# NOTE: lifelines excluded — latest (0.30.3) requires pandas<3.0, incompatible with pandas==3.0.0
+RUN uv pip install --system \
+    linearmodels==7.0 \
+    rdrobust==1.3.0 \
+    marginaleffects==0.5.0 \
+    arch==8.0.0 \
+    pydynpd==0.2.1 \
+    svy==0.13.0
+
+# Install geospatial packages
+# Core: vector (geopandas + deps), raster (rasterio + xarray), mapping, PySAL spatial stats
+RUN uv pip install --system \
+    geopandas==1.1.3 \
+    rasterio==1.5.0 \
+    xarray==2026.2.0 \
+    rioxarray==0.22.0 \
+    contextily==1.7.0 \
+    folium==0.20.0 \
+    libpysal==4.14.1 \
+    esda==2.9.0 \
+    spreg==1.9.0 \
+    mapclassify==2.10.0 \
+    rasterstats==0.20.0 \
+    geopy==2.4.1 \
+    osmnx==2.1.0
 
 # Install visualization packages
 RUN uv pip install --system \
@@ -52,6 +99,12 @@ RUN uv pip install --system \
     plotnine==0.15.3 \
     plotly==6.5.2 \
     marimo==0.19.11
+
+# Install ML interpretation & fairness packages
+RUN uv pip install --system \
+    shap==0.51.0 \
+    fairlearn==0.12.0 \
+    lightgbm==4.6.0
 
 # ============================================
 # Create non-root user for security
@@ -66,9 +119,15 @@ WORKDIR /daaf
 RUN chown appuser:appuser /daaf
 USER appuser
 
-# Install Claude Code as appuser (installs to ~/.claude/local/bin/)
-RUN curl -fsSL https://claude.ai/install.sh | bash
+# Install Claude Code as appuser (pinned version)
+ARG CLAUDE_CODE_VERSION=2.1.87
+RUN curl -fsSL https://claude.ai/install.sh | bash -s ${CLAUDE_CODE_VERSION}
 ENV PATH="/home/appuser/.local/bin:${PATH}"
+
+# Copy and configure entrypoint script for git initialization
+COPY --chown=appuser:appuser scripts/entrypoint.sh /daaf/scripts/entrypoint.sh
+RUN chmod +x /daaf/scripts/entrypoint.sh
+ENTRYPOINT ["/daaf/scripts/entrypoint.sh"]
 
 # Default command
 CMD ["bash"]

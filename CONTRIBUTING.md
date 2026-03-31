@@ -222,7 +222,7 @@ These contributions require more engagement but are well within reach for anyone
 
 - **Improving existing documentation.** This goes beyond "point out what's confusing" to actually rewriting sections, adding examples, restructuring for clarity, or filling gaps. Good documentation contributions require understanding the material well enough to explain it better -- which often means running DAAF yourself and noting where the docs don't match reality. The user-facing documentation (`user_reference/` files and this CONTRIBUTING guide) is a great starting point. If you're comfortable with the internal architecture, the `agent_reference/` files could also use fresh eyes from people who aren't me.
 
-- **Adding new data source skills.** This is probably the single most impactful medium-effort contribution. DAAF ships with skills for 40+ education data sources, but there are entire data domains waiting to be integrated. Use the `data-ingest` agent to profile a public dataset, review its output carefully, and submit the resulting skill. The full process is documented in [**04. Extending DAAF**](user_reference/04_extending_daaf.md) -- the `data-ingest` agent does the heavy lifting, but your domain expertise in reviewing and correcting its output is what makes the skill actually reliable. **Important:** To distinctions above, creating the skill is an *extension*. Submitting it to the shared repository via PR is the *contribution*.
+- **Adding new data source skills.** This is probably the single most impactful medium-effort contribution. DAAF ships with skills for 40+ education data sources, but there are entire data domains waiting to be integrated. Use **Data Onboarding mode** to profile a public dataset (the `data-ingest` agent handles the profiling work), review its output carefully, and submit the resulting skill. The full process is documented in [**04. Extending DAAF**](user_reference/04_extending_daaf.md) -- the profiling agent does the heavy lifting, but your domain expertise in reviewing and correcting its output is what makes the skill actually reliable. **Important:** To distinctions above, creating the skill is an *extension*. Submitting it to the shared repository via PR is the *contribution*.
 
 - **Adding methodology or domain expertise skills.** Similarly, if you have deep knowledge of a statistical method (pyfixest, Bayesian analysis, cluster analysis), a Python library (geopandas, networkx), or a domain area (school finance policy, graduation rate interpretation), you can use the `skill-authoring` skill to draft a new skill and submit it. These skills directly expand what DAAF can do competently -- without them, DAAF falls back to the model's general training, which is often not specific enough for rigorous work.
 
@@ -234,11 +234,11 @@ These contributions require more engagement but are well within reach for anyone
 
 These contributions involve modifying the core framework -- the agents, protocols, validation logic, or orchestration workflow. They require a solid understanding of DAAF's architecture and a willingness to engage with the project's strongly opinionated design philosophy. If you're considering work at this level, I'd strongly recommend opening an issue to discuss your approach *before* writing code. This saves everyone time and helps me give early feedback on whether the direction aligns with the project's design principles.
 
-- **Writing or modifying agent protocols.** DAAF has many specialized agents, each with detailed behavioral protocols (in the `agents/` directory). Modifying an existing agent's protocol -- say, making the code-reviewer more thorough about a specific class of errors, or improving the research-executor's handling of edge cases -- requires understanding how that agent fits into the broader pipeline, what its inputs and outputs look like, and how changes ripple through dependent stages. New agents are an even bigger undertaking. Read [`agents/README.md`](agents/README.md) for the full landscape, and see the `agent-authoring` skill for the creation workflow if you're adding a new one. The key thing to understand: agents don't work in isolation. Every agent has producers (who send it input) and consumers (who depend on its output), and changes need to respect those contracts. Extensive pre/post testing is **essential** to ensuring its proper use and integration without causing unintended consequences downstream.
+- **Writing or modifying agent protocols.** DAAF has many specialized agents, each with detailed behavioral protocols (in the `.claude/agents/` directory). Modifying an existing agent's protocol -- say, making the code-reviewer more thorough about a specific class of errors, or improving the research-executor's handling of edge cases -- requires understanding how that agent fits into the broader pipeline, what its inputs and outputs look like, and how changes ripple through dependent stages. New agents are an even bigger undertaking. Read [`.claude/agents/README.md`](.claude/agents/README.md) for the full landscape, and see the `agent-authoring` skill for the creation workflow if you're adding a new one. The key thing to understand: agents don't work in isolation. Every agent has producers (who send it input) and consumers (who depend on its output), and changes need to respect those contracts. Extensive pre/post testing is **essential** to ensuring its proper use and integration without causing unintended consequences downstream.
 
-- **Changing validation logic or checkpoint definitions.** The validation framework (CP1-CP4 checkpoints, QA1-QA4b reviews, stage gates) is one of the most carefully designed parts of DAAF, and is arguably the most important part of how it all works. It exists to catch both operational failures (empty data, wrong types) and logical errors (wrong methodology, misinterpretation). If you want to modify checkpoint thresholds, add new validation criteria, or change the gate enforcement logic, you'll need to understand the full validation chain documented in [`agent_reference/05_VALIDATION_CHECKPOINTS.md`](agent_reference/05_VALIDATION_CHECKPOINTS.md) and [`agent_reference/QA_CHECKPOINTS.md`](agent_reference/QA_CHECKPOINTS.md). Changes here have outsized impact -- a relaxed threshold might let subtle data corruption through, while an overly strict one might cause unnecessary STOP conditions.
+- **Changing validation logic or checkpoint definitions.** The validation framework (CP1-CP4 checkpoints, QA1-QA4b reviews, stage gates) is one of the most carefully designed parts of DAAF, and is arguably the most important part of how it all works. It exists to catch both operational failures (empty data, wrong types) and logical errors (wrong methodology, misinterpretation). If you want to modify checkpoint thresholds, add new validation criteria, or change the gate enforcement logic, you'll need to understand the full validation chain documented in [`agent_reference/VALIDATION_CHECKPOINTS.md`](agent_reference/VALIDATION_CHECKPOINTS.md) and [`agent_reference/QA_CHECKPOINTS.md`](agent_reference/QA_CHECKPOINTS.md). Changes here have outsized impact -- a relaxed threshold might let subtle data corruption through, while an overly strict one might cause unnecessary STOP conditions.
 
-- **Adding new framework capabilities.** This is the broadest category -- anything from adding support for new output formats, to implementing parallel execution optimizations, to building new orchestration patterns. The bar for framework changes is high because DAAF's components are deeply interconnected. A change to the workflow stages, for instance, potentially affects [`CLAUDE.md`](CLAUDE.md), [`agent_reference/02_WORKFLOW_STAGES.md`](agent_reference/02_WORKFLOW_STAGES.md), multiple agent protocols, the Plan template, the State template, and the integration checker. That said, well-considered framework improvements are exactly the kind of contribution that benefits everyone, and I'm genuinely excited to collaborate on them.
+- **Adding new framework capabilities.** This is the broadest category -- anything from adding support for new output formats, to implementing parallel execution optimizations, to building new orchestration patterns. The bar for framework changes is high because DAAF's components are deeply interconnected. A change to the workflow stages, for instance, potentially affects the [orchestrator skill references](.claude/skills/daaf-orchestrator/references/full-pipeline-mode.md), the [workflow phase files](agent_reference/) in `agent_reference/`, [`CLAUDE.md`](CLAUDE.md), multiple agent protocols, the Plan template, the State template, and the integration checker. That said, well-considered framework improvements are exactly the kind of contribution that benefits everyone, and I'm genuinely excited to collaborate on them.
 
 - **Improving the Docker setup or CI/CD pipeline.** If you have DevOps expertise, the containerization and deployment infrastructure could definitely benefit from more experienced hands. I built the Docker setup to be functional and secure, but I'm a researcher, not a DevOps engineer -- there are almost certainly improvements to be made in build performance, layer caching, security hardening, and CI/CD automation. Please help!
 
@@ -250,11 +250,11 @@ These contributions involve modifying the core framework -- the agents, protocol
 
 This comes up often enough that it's worth being explicit. The rule of thumb from [**04. Extending DAAF**](user_reference/04_extending_daaf.md):
 
-> **If you're adding a new `.md` file to `.claude/skills/` or `agents/`, you're extending. If you're editing existing files in `agent_reference/`, `agents/`, or the root `CLAUDE.md`, you're contributing.**
+> **If you're adding a new `.md` file to `.claude/skills/` or `.claude/agents/`, you're extending. If you're editing existing files in `agent_reference/`, `.claude/agents/`, or the root `CLAUDE.md`, you're contributing.**
 
-This distinction matters for two reasons. First, it determines which guide to follow -- extension workflows are in [**04. Extending DAAF**](user_reference/04_extending_daaf.md), contribution workflows are here. Second, it has licensing implications under LGPL-3.0: extensions you build on top of DAAF are yours to keep proprietary or open-source as you choose, while modifications to the core framework must be shared back if you distribute them. See the [**README**](README.md#why-open-source-what-does-it-mean-for-daaf) for the full details.
+This distinction matters for two reasons. First, it determines which guide to follow -- extension workflows are in [**04. Extending DAAF**](user_reference/04_extending_daaf.md), contribution workflows are here. Second, it has licensing implications under LGPL-3.0: extensions you build on top of DAAF are yours to keep proprietary or open-source as you choose, while modifications to the core framework must be shared back if you distribute them. See the [**README**](README.md#open-source--licensing) for the full details.
 
-In practice, many contributions involve *both* -- for example, creating a new data source skill (extension) and then registering it in `CLAUDE.md` (contribution). That's totally fine. Just be aware that the registration edits to core files fall under the contribution category.
+In practice, many contributions involve *both* -- for example, creating a new data source skill (extension) that also touches agent definitions or reference files (contribution). That's totally fine. Just be aware that edits to core framework files fall under the contribution category.
 
 ---
 
@@ -271,20 +271,20 @@ Not every contribution needs to be huge, but every contribution should meet a ba
 
 ### Skill Contributions
 
-- **No `[PRELIMINARY]` markers.** If the `data-ingest` agent flagged interpretations as preliminary, you need to resolve them before submitting. That's the whole point of the human review step.
+- **No `[PRELIMINARY]` markers.** If the Data Onboarding process flagged interpretations as preliminary, you need to resolve them before submitting. That's the whole point of the human review step.
 - **Follow the canonical structure.** Data source skills have a 12-section template (see [**04. Extending DAAF**](user_reference/04_extending_daaf.md) for the full walkthrough). Methodology and domain skills are more free-form, but should still follow the patterns in the `skill-authoring` skill.
 - **Substantive pitfalls section.** The Common Pitfalls section is arguably the most valuable part of any data source skill. "Data may have missing values" is not a useful pitfall. "Free/reduced lunch counts are unreliable after ~2014 due to Community Eligibility Provision (CEP) -- use direct certification data instead" is a useful pitfall. The difference is specificity and actionability.
-- **Tested end-to-end.** At minimum, run a Discovery Test and a Fetch Test (see [Testing Your Changes](#testing-your-changes) below).
+- **Tested end-to-end.** At minimum, run a Data Discovery Test and a Fetch Test (see [Testing Your Changes](#testing-your-changes) below).
 
 ### Agent and Protocol Contributions
 
-- **Understand the ripple effects.** Agents and protocols are deeply interconnected. Before modifying one, trace its dependencies -- what sends it input? What consumes its output? What stage gates does it affect? The `agents/README.md` file has a coordination matrix that maps these relationships.
+- **Understand the ripple effects.** Agents and protocols are deeply interconnected. Before modifying one, trace its dependencies -- what sends it input? What consumes its output? What stage gates does it affect? The `.claude/agents/README.md` file has a coordination matrix that maps these relationships.
 - **Maintain the validation chain.** DAAF's core principle is "every transformation has a validation." Contributions that weaken this chain -- by relaxing thresholds, skipping checkpoints, or bypassing gates -- will face significant scrutiny. If you think a threshold is too strict, make the case with evidence from real analyses.
 - **Document your reasoning.** In the PR description, explain *why* you're making the change, not just *what* you changed. What problem did you encounter? What alternatives did you consider? Why is this approach better?
 
 ### Code Contributions
 
-- **Follow the existing patterns.** DAAF's Python code follows specific conventions -- Polars over pandas, parquet over CSV, file-first execution (write to file then run, never inline execution), inline audit trail documentation. Read [`agent_reference/EXECUTION_CAPTURE.md`](agent_reference/EXECUTION_CAPTURE.md) and [`agent_reference/INLINE_AUDIT_TRAIL.md`](agent_reference/INLINE_AUDIT_TRAIL.md) for the standards. These don't need to be hard-and-fast forever, but you should have a good reason for deviating if you do.
+- **Follow the existing patterns.** DAAF's Python code follows specific conventions -- Polars over pandas, parquet over CSV, file-first execution (write to file then run, never inline execution), inline audit trail documentation. Read [`agent_reference/SCRIPT_EXECUTION_REFERENCE.md`](agent_reference/SCRIPT_EXECUTION_REFERENCE.md) and [`agent_reference/INLINE_AUDIT_TRAIL.md`](agent_reference/INLINE_AUDIT_TRAIL.md) for the standards. These don't need to be hard-and-fast forever, but you should have a good reason for deviating if you do.
 - **Include validation.** Every script should validate its own output -- check shapes, assert expected conditions, report statistics. This is a core framework requirement and expectation of users based on the primary goals/framing of the project.
 
 ---
@@ -297,7 +297,7 @@ A well-written issue saves everyone time -- including yours, because it means I 
 
 When opening a bug report, the more context you can provide, the faster it gets resolved. The ideal bug report includes:
 
-- **What you asked DAAF/Claude to do** -- the prompt or request you gave. Exact wording is helpful because DAAF's behavior depends heavily on how requests are classified (Full Pipeline vs. Discovery vs. Targeted Assist).
+- **What you asked DAAF/Claude to do** -- the prompt or request you gave. Exact wording is helpful because DAAF's behavior depends heavily on how requests are classified (Full Pipeline vs. Data Discovery vs. Data Lookup).
 - **What happened vs. what you expected** -- be specific about the failure. "It didn't work" is hard to debug. "It produced a cleaned dataset with 50,000 rows when I expected ~200,000, and the suppression rate was 75% which triggered a STOP condition" is very debuggable.
 - **Which stage failed** -- if you can identify it. DAAF's multi-stage pipeline means the same symptom can have very different causes depending on where it occurs. Even a rough sense ("it failed during data fetch" or "the plan looked wrong" or "the code reviewer flagged something as a BLOCKER") helps narrow things down enormously. Look at the output files for each as needed, as well as any failed script file versions and accompanying comments/output logs.
 - **Session log excerpts** -- check `.claude/logs/sessions/` for the relevant Markdown log. These logs capture the full sequence of tool calls, subagent invocations, and their results. Copy the section where things went wrong (redact any API keys or sensitive content first!!!). See [Using Session Logs](#using-session-logs-for-debugging-and-issue-reports) below for details on finding and reading these logs.
@@ -342,7 +342,7 @@ Documentation changes are the easiest to test:
 
 If you're submitting a new or modified skill, run through this sequence (also described in more detail in [**04. Extending DAAF**](user_reference/04_extending_daaf.md)):
 
-1. **Discovery test.** Ask DAAF: "What data sources does DAAF know about? Can you tell me about [your new data source]?" If the skill is properly registered, DAAF should describe it accurately. If it can't find the skill, check your registration entries in `CLAUDE.md` and the other files in the registration checklist.
+1. **Data Discovery test.** Ask DAAF: "What data sources does DAAF know about? Can you tell me about [your new data source]?" Skills are auto-discovered via YAML frontmatter, so DAAF should describe it accurately. If it can't find the skill, verify that the skill's YAML frontmatter has a clear description and that `SKILL.md` is placed in `.claude/skills/{skill-name}/`.
 
 2. **Fetch test.** Ask DAAF to fetch data using your skill and show basic summary statistics. This tests the data access pathway -- dataset paths, mirror configuration, and loading mechanics. If CP1 validation fails, it usually means the dataset path doesn't match what's available on the mirror.
 
@@ -354,11 +354,11 @@ If you're submitting a new or modified skill, run through this sequence (also de
 
 Agent and protocol changes are the hardest to test because their effects cascade through the pipeline:
 
-1. **Trace the dependency chain.** Before testing, identify which stages and other agents are affected by your change. The [`agents/README.md`](agents/README.md) coordination matrix is your friend here.
+1. **Trace the dependency chain.** Before testing, identify which stages and other agents are affected by your change. The [`.claude/agents/README.md`](.claude/agents/README.md) coordination matrix is your friend here.
 
 2. **Run the affected stage.** The minimum viable test is running a DAAF analysis that exercises the stage your change affects. Watch the session log carefully for the specific agent invocations related to your change.
 
-3. **Check gate satisfaction.** Every stage has gate criteria (documented in `CLAUDE.md`). Verify that your change doesn't cause a previously-passing gate to fail, or a previously-failing gate to pass when it shouldn't.
+3. **Check gate satisfaction.** Every stage has gate criteria (documented in `.claude/skills/daaf-orchestrator/references/full-pipeline-mode.md`). Verify that your change doesn't cause a previously-passing gate to fail, or a previously-failing gate to pass when it shouldn't.
 
 4. **Run a full pipeline (strongly recommended).** For changes to core agents (research-executor, code-reviewer, data-planner) or validation logic, nothing substitutes for running a complete analysis start-to-finish and verifying that all stages complete successfully.
 
@@ -382,8 +382,11 @@ Claude Code automatically archives a complete log of every session when it ends.
 
 | Format | File Pattern | Purpose |
 |--------|-------------|---------|
-| **Markdown** (`.md`) | `YYYY-MM-DD_HH-MM-SS_<session-id>.md` | Human-readable transcript with tool calls, timestamps, and token usage |
-| **JSONL** (`.jsonl`) | `YYYY-MM-DD_HH-MM-SS_<session-id>.jsonl` | Raw machine-readable transcript (full API-level detail) |
+| **Markdown** (`.md`) | `YYYY-MM-DD_HH-MM-SS_<session-id>_orchestrator.md` | Human-readable transcript with tool calls, timestamps, and token usage |
+| **JSONL** (`.jsonl`) | `YYYY-MM-DD_HH-MM-SS_<session-id>_orchestrator.jsonl` | Raw machine-readable transcript (full API-level detail) |
+| **Subagent JSONL** | `YYYY-MM-DD_HH-MM-SS_<session-id>_subagent_<agent-id>.jsonl` | Raw transcript for each subagent dispatched during the session |
+
+The orchestrator Markdown archive includes a **Subagent Activity** summary table listing each subagent's type, duration, tool uses, and a final-message excerpt.
 
 Additionally, `.claude/logs/activity.log` records a timestamped entry every time a session starts, giving you a quick overview of usage history, while `.claude/logs/audit.jsonl` gives a full inventory of every tool call by Claude for additional diagnostics.
 
@@ -440,7 +443,7 @@ DAAF is licensed under **LGPL-3.0-or-later** (GNU Lesser General Public License 
 - **Extensions you build on top of the framework** (custom skills, agents, analysis scripts, data configurations) are yours. The LGPL does not require you to open-source extensions that use the framework's interfaces without modifying the framework itself.
 - **If you distribute modified versions of the core framework**, you must release those core modifications under LGPL-3.0-or-later and make the corresponding source code available.
 
-For a detailed explanation of what counts as "core" versus "extension," including practical examples, see the [**Why open-source? What does it mean for DAAF?**](README.md#why-open-source-what-does-it-mean-for-daaf) section of the README.
+For a detailed explanation of what counts as "core" versus "extension," including practical examples, see the [**Open Source & Licensing**](README.md#open-source--licensing) section of the README.
 
 ---
 

@@ -6,8 +6,8 @@
 # Basic install
 pip install plotly
 
-# With image export support
-pip install plotly kaleido
+# With image export support (not installed in DAAF — use plotnine for static figures)
+# pip install plotly kaleido
 
 # Using conda
 conda install -c conda-forge plotly
@@ -148,8 +148,8 @@ fig.show()  # Opens in browser
 Or save to file:
 
 ```python
-fig.write_html("plot.html")  # Interactive
-fig.write_image("plot.png")  # Static (requires kaleido)
+fig.write_html("plot.html")  # Interactive (primary export in DAAF)
+# fig.write_image("plot.png")  # NOT available — kaleido not installed; use plotnine for static
 ```
 
 ### Renderer Configuration

@@ -12,7 +12,6 @@
       "Bash(python3 *)",
       "Bash(python3:*)",
       "Bash(bash *)",
-      "Bash(./scripts/run_with_capture.sh *)",
       "Bash(ls *)",
       "Bash(mkdir *)",
       "Bash(mkdir:*)",
@@ -25,6 +24,7 @@
       "Bash(chmod +x *)",
       "Bash(cd *)",
       "Bash(head *)",
+      "Bash(wc -l *)",
       "Bash(file *)",
       "Bash(git --version)",
       "Bash(git status *)",
@@ -37,9 +37,11 @@
       "Task(general-purpose)",
       "Task(Plan)",
       "Task(Explore)",
+      "Task(search-agent)",
       "Agent(general-purpose)",
       "Agent(Plan)",
       "Agent(Explore)",
+      "Agent(search-agent)",
       "WebSearch"
     ],
     "deny": [
@@ -72,15 +74,21 @@
       "Edit(.env)",
       "Edit(.env.*)",
       "Edit(.claude/hooks/*)",
-      "Write(.claude/hooks/*)"
+      "Write(.claude/hooks/*)",
+      "Edit(.claude/logs/*)",
+      "Write(.claude/logs/*)"
     ]
   },
   "env": {
-    "ANTHROPIC_MODEL": "claude-opus-4-6",
+    "ANTHROPIC_MODEL": "claude-opus-4-6[1m]",
     "CLAUDE_CODE_EFFORT_LEVEL": "high",
-    "CLAUDE_CODE_DISABLE_AUTO_MEMORY": "1"
+    "CLAUDE_CODE_DISABLE_AUTO_MEMORY": "1",
+    "CLAUDE_CODE_DISABLE_BACKGROUND_TASKS": "1",
+    "DISABLE_AUTOUPDATER": "1",
+    "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1"
   },
   "outputStyle": "Explanatory",
+  "showThinkingSummaries": true,
   "hooks": {
     "UserPromptSubmit": [
       {
@@ -89,6 +97,11 @@
           {
             "type": "command",
             "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/context-reporter.sh",
+            "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/remind-orchestrator.sh",
             "timeout": 5
           }
         ]
@@ -117,6 +130,11 @@
             "type": "command",
             "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/enforce-foreground-agents.sh",
             "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/deny-claude-code-guide.sh",
+            "timeout": 5
           }
         ]
       },
@@ -131,6 +149,11 @@
           {
             "type": "command",
             "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/enforce-foreground-agents.sh",
+            "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/deny-claude-code-guide.sh",
             "timeout": 5
           }
         ]
@@ -159,6 +182,28 @@
             "type": "command",
             "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/output-scanner.sh",
             "timeout": 5
+          }
+        ]
+      },
+      {
+        "matcher": "Skill",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/flag-orchestrator-loaded.sh",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/subagent-registry.sh",
+            "timeout": 10
           }
         ]
       }

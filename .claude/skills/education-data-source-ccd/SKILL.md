@@ -1,21 +1,17 @@
 ---
 name: education-data-source-ccd
 description: >-
-  Deep reference for the Common Core of Data (CCD), the US Department of
-  Education's primary database on public K-12 education. Use when working with
-  CCD data to understand survey components, variable definitions, data quality
-  issues, historical changes, and state-level variations. Essential for
-  interpreting enrollment, staffing, finance, and directory data from public
-  schools and districts.
+  CCD — federal universe of all U.S. public K-12 schools (~100K) and districts (~18K). Enrollment, staffing, finance, directory data (1986-present). Use for public school analysis by grade/race/sex. Public only; excludes private and postsecondary.
 metadata:
-  audience: data-analysts
-  domain: education-data
-provenance:
-  skill_authored: "2026-02-09"
-  skill_last_updated: "2026-02-09"
+  audience: any-agent
+  domain: data-source
+  skill-authored: "2026-02-09"
+  skill-last-updated: "2026-02-09"
 ---
 
 # CCD Data Source Reference
+
+Common Core of Data (CCD) — the federal complete-universe database of all U.S. public K-12 schools and districts (~100,000 schools, ~18,000 districts), collecting enrollment, staffing, finance, and directory data annually (1986-present). Use when analyzing public school enrollment by grade/race/sex, district finances, school staffing, or directory attributes. Public schools and districts only; excludes private schools and postsecondary. Note significant variable encoding and race/ethnicity definition changes over time.
 
 The CCD is the Department of Education's comprehensive, annual, national database of all public elementary and secondary schools and school districts in the United States. It is the only federal dataset that provides a complete universe census (not a sample) of U.S. public K-12 education.
 
@@ -42,6 +38,7 @@ The CCD is the Department of Education's comprehensive, annual, national databas
 - **Coverage**: ~100,000 public schools and ~18,000 school districts nationwide
 - **Historical depth**: Data available from 1986 to present (varies by component)
 - **Collector**: National Center for Education Statistics (NCES) via EDFacts
+- **Available through**: Education Data Portal mirrors (5 of 6 survey components; see Data Access section for details)
 
 ## Reference File Structure
 
@@ -120,6 +117,8 @@ Building a time series?
 | Finance (State) | State | Revenue, expenditure by source/function | 1989+ | Annual (1-2 yr lag) |
 | Finance (District) | LEA | Revenue, expenditure, per-pupil | 1989+ | Annual (2 yr lag) |
 | Dropout/Completers | LEA, State | Dropout counts, diploma recipients | 1991+ | Annual |
+
+> **Note:** Not all components listed above are available through the Portal mirrors. See the Data Access section for which datasets are mirrored.
 
 ### Key Identifiers
 
@@ -233,6 +232,12 @@ Datasets for CCD are available via the mirror system. See `datasets-reference.md
 | District Directory | Single | `ccd/school-districts_lea_directory` | `ccd/codebook_districts_ccd_directory` |
 | District Enrollment | Yearly (1986-2023) | `ccd/schools_ccd_lea_enrollment_{year}` | `ccd/codebook_districts_ccd_enrollment` |
 | District Finance | Single | `ccd/districts_ccd_finance` | `ccd/codebook_districts_ccd_finance` |
+
+> **Not in Portal mirrors:** The following CCD components are documented in this skill for reference but are **not available** through the Education Data Portal mirrors:
+> - **Dropout/Completers** — completion and dropout data by demographics
+> - **State Finance (NPEFS)** — state-level education revenue and expenditure
+>
+> For these components, access NCES directly at https://nces.ed.gov/ccd/.
 
 Codebooks are `.xls` files co-located with data in all mirrors. Use `get_codebook_url()` from `fetch-patterns.md` to construct download URLs:
 

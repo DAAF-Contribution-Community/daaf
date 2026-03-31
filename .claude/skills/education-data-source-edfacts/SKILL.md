@@ -1,19 +1,17 @@
 ---
 name: education-data-source-edfacts
 description: >-
-  EDFacts state accountability data for K-12 assessments, graduation rates, and
-  federal reporting. Use when working with state proficiency data, ACGR graduation
-  rates, or ESSA accountability indicators. CRITICAL - state assessment scores
-  CANNOT be compared across states.
+  EDFacts — K-12 outcomes: assessment proficiency, ACGR graduation rates, ESSA accountability at school/district level (2009-2020). Within-state trends and subgroup gaps. Complements CCD with outcome data. Cannot compare across states — use NAEP.
 metadata:
-  audience: data-analysts
-  domain: education-data
-provenance:
-  skill_authored: "2026-02-09"
-  skill_last_updated: "2026-02-09"
+  audience: any-agent
+  domain: data-source
+  skill-authored: "2026-02-09"
+  skill-last-updated: "2026-02-09"
 ---
 
 # EDFacts Data Source Reference
+
+EDFacts — federal K-12 outcome data from State Education Agencies, covering state assessment proficiency rates, ACGR graduation rates, and ESSA accountability indicators at school and district level (assessments 2009-2020, graduation rates 2010-2019). Use when analyzing within-state achievement trends, subgroup proficiency gaps, or adjusted cohort graduation rates. Complements CCD (school characteristics) with outcome data. State assessment scores CANNOT be compared across states; use NAEP for cross-state comparisons.
 
 EDFacts is the U.S. Department of Education's centralized data collection system for pre-K through grade 12 education data from State Education Agencies (SEAs). It provides state assessment proficiency rates, graduation rates, and accountability indicators — the authoritative federal source for state-level K-12 outcome data.
 
@@ -37,6 +35,7 @@ EDFacts is the U.S. Department of Education's centralized data collection system
 - **Available years**: Assessments 2009-10 to present; Graduation rates 2010-11 to present
 - **Primary identifiers**: `ncessch` (school ID, Int64), `leaid` (district ID, Int64), `fips` (state FIPS code, Int64)
 - **Key limitation**: State assessment scores CANNOT be compared across states (different tests, different cut scores)
+- **Available through**: Education Data Portal mirrors
 
 ## Reference File Structure
 
@@ -225,7 +224,7 @@ For `homeless`, `migrant`, `econ_disadvantaged`, `foster_care`, `military_connec
 
 ## Data Access
 
-All EDFacts data is fetched via the **mirror-based bulk download system**. There is no API access.
+All EDFacts data is fetched via the **Education Data Portal mirror system**. There is no API access.
 
 **Key references:**
 - **`mirrors.yaml`** -- Mirror definitions, URL templates, read strategies

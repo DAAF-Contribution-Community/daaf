@@ -238,12 +238,19 @@ geom_text(position=position_nudge(y=0.5))
 # Legend title
 scale_color_brewer(name="Category", palette="Set1")
 
-# Remove legend
-scale_color_brewer(guide=False)
+# Remove all legends
+theme(legend_position="none")
+
+# Remove legend for a specific scale
+guides(color=None)
 
 # Customize legend
 guides(color=guide_legend(title="My Title", nrow=2))
 ```
+
+> **Note:** `guide=False` inside scale functions (e.g., `scale_color_brewer(guide=False)`)
+> is deprecated in recent plotnine versions. Use `theme(legend_position="none")` to remove
+> all legends, or `guides(color=None)` for a specific scale.
 
 ### guide_legend()
 
@@ -267,6 +274,10 @@ guide_colorbar(
     barheight=100
 )
 ```
+
+> **Note:** The parameter names and behavior of `guide_colorbar()` differ between
+> R ggplot2 and plotnine. Always check the plotnine docs for exact parameter names
+> rather than copying R code directly.
 
 ## Common Patterns
 

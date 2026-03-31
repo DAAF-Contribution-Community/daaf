@@ -1,7 +1,7 @@
 # Agent Definition Template
 
 > **Purpose:** Canonical template for authoring agent protocol files in the DAAF system.
-> All agents in `agents/` MUST follow this structure. Sections marked REQUIRED cannot be omitted.
+> All agents in `.claude/agents/` MUST follow this structure. Sections marked REQUIRED cannot be omitted.
 > Sections marked CONDITIONAL are required only for agents matching the stated criteria.
 > Target length: **400-700 lines** (never exceed 1000).
 
@@ -18,13 +18,23 @@ description: >
   [Third person. What it does AND when to use it.]
   Example: "Reviews executed scripts for correctness, methodology alignment,
   and data integrity. Invoked after each Stage 5-8 script execution."
-tools: [Read, Write, Edit, Bash, Glob, Grep]   # Explicit allowlist. Omit for all.
+tools: [Read, Write, Edit, Bash, Glob, Grep, Skill]   # Explicit allowlist. Omit for all.
 permissionMode: default                          # Or: plan (read-only agents)
 # ── Optional fields ──
 # model: inherit          # sonnet | opus | haiku | inherit
 # maxTurns: 50
-# skills: [skill-a]       # Skills to preload
+# skills: skill-a          # Skill to preload at startup (full content injected)
+# skills:                  # Multiple skills use YAML block list:
+#   - skill-a
+#   - skill-b
 # memory: project          # user | project | local
+# hooks:                   # Per-agent hook registration (scoped to this agent only)
+#   PreToolUse:
+#     - matcher: "Bash"
+#       hooks:
+#         - type: command
+#           command: "$CLAUDE_PROJECT_DIR/.claude/hooks/hook-name.sh"
+#           timeout: 5
 ---
 ```
 
@@ -35,7 +45,7 @@ permissionMode: default                          # Or: plan (read-only agents)
 
 **Purpose:** [One sentence — what this agent does and why it exists in the system.]
 
-**Invocation:** Via Agent tool with `subagent_type: "[general-purpose | Plan]"`
+**Invocation:** Via Agent tool with `subagent_type: "[agent-name]"`
 ```
 
 **Guidelines:**
@@ -126,7 +136,6 @@ guidance, not abstract platitudes.]
 - Hit the "Goldilocks zone" — specific enough to guide, flexible enough to be heuristic
 - Include concrete examples or bad/good comparisons where the behavior is non-obvious
 - Domain-specific agents should include a methodology section here (e.g., data-planner's "Methodology Rigor Requirement")
-- For agents that will need to file-read often, include the section on "Context-Efficient File Reading" (see Cross-Agent Standards § 11)
 
 ---
 
@@ -220,7 +229,7 @@ If nothing novel, emit "None" — this is the expected common case.
 
 **Guidelines:**
 - Every agent MUST include: Status + Severity, Confidence Assessment, Learning Signal, Recommendations
-- **Two-field status convention:** Status captures the outcome (PASSED, ISSUES_FOUND, or agent-specific vocabulary); Severity captures impact level (BLOCKER/WARNING/INFO/None). The orchestrator maps agent-specific status to gate decisions via the Gate Status Translation table in CLAUDE.md.
+- **Two-field status convention:** Status captures the outcome (PASSED, ISSUES_FOUND, or agent-specific vocabulary); Severity captures impact level (BLOCKER/WARNING/INFO/None). The orchestrator maps agent-specific status to gate decisions via the Gate Status Translation table in `.claude/skills/daaf-orchestrator/references/full-pipeline-mode.md`.
 - **Heading levels:** Output sections use `##` headings (Summary, Confidence Assessment, etc.) since the returned output is a standalone message. Add a `#` title heading at the top.
 - Confidence model is STANDARDIZED across all agents (H/M/L with rationale)
 - Learning Signal categories are STANDARDIZED (Access/Data/Method/Perf/Process)
@@ -365,11 +374,11 @@ harmful and what to do instead.]
 
 Before returning output, verify:
 
-| Question | If NO |
-|----------|-------|
-| [Quality question 1] | [Remediation action] |
-| [Quality question 2] | [Remediation action] |
-| [Quality question 3] | [Remediation action] |
+| # | Question | If NO |
+|---|----------|-------|
+| 1 | [Quality question 1] | [Remediation action] |
+| 2 | [Quality question 2] | [Remediation action] |
+| 3 | [Quality question 3] | [Remediation action] |
 ```
 
 **Guidelines:**
@@ -384,35 +393,16 @@ Before returning output, verify:
 ```markdown
 ## Invocation
 
-Orchestrator invokes this agent with:
+**Invocation type:** `subagent_type: "[agent-name]"`
 
-Agent({
-    description: "Stage [N]: [Stage Name]",
-    prompt: """You are a [Agent Name]. Follow the protocol in
-    `{BASE_DIR}/agents/[agent-name].md`.
-
-    **BASE_DIR:** {BASE_DIR}
-    All relative paths in referenced files resolve from BASE_DIR.
-
-    [Skill loading instruction, if applicable:]
-    Call the skill tool with name '[skill-name]'.
-
-    **CONTEXT:**
-    [What orchestrator provides — mapped to Upstream Inputs]
-
-    **TASK:**
-    [Specific task specification]
-
-    Return findings using the [Agent Name] Output Format.""",
-    subagent_type: "[general-purpose | Plan]"
-})
+The stage-specific invocation template with full context fields is in the relevant `agent_reference/WORKFLOW_PHASE[N]_[NAME].md` or mode reference file.
 ```
 
 **Guidelines:**
-- Shows the EXACT Agent() call syntax the orchestrator should use
-- Maps to Upstream Inputs (Section 3) — everything listed there should appear here
-- Includes BASE_DIR line (mandatory for path resolution)
-- Includes skill loading instruction if agent uses skills
+- Specifies the `subagent_type` for quick reference
+- References the relevant WORKFLOW_PHASE file or mode reference file for stage-specific context fields and invocation templates
+- The invocation template must map to Upstream Inputs (Section 3)
+- Do NOT duplicate the full Agent() call syntax here — that lives in the WORKFLOW_PHASE or mode reference files
 
 ---
 
@@ -479,3 +469,4 @@ These elements MUST be identical across all agents:
 | Terminology | "STOP Conditions" (not "Escalation", not "When to Escalate") |
 | Path resolution | All paths absolute; BASE_DIR in every Agent prompt |
 | Frontmatter description | Third person; includes what AND when |
+| Per-agent hooks | Use `hooks` frontmatter for agent-scoped enforcement; see `agent-authoring` skill |

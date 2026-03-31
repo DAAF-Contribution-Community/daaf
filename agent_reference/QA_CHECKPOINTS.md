@@ -20,7 +20,9 @@ This document defines the continuous Quality Assurance checkpoint system that ru
 
 **Why Both?** CP checkpoints catch operational failures (data access errors, type mismatches). QA checkpoints catch logical errors (wrong approach, inadequate validation, methodology drift).
 
-**Cross-Reference:** See `agent_reference/05_VALIDATION_CHECKPOINTS.md` for CP1-CP4 code templates and checkpoint classification system.
+**Cross-Reference:** See `agent_reference/VALIDATION_CHECKPOINTS.md` for CP1-CP4 code templates and checkpoint classification system.
+
+> **Data Onboarding Equivalents:** Data Onboarding Mode uses parallel naming: **CPP1-CPP4** (primary validation embedded in profiling scripts) and **QAP1-QAP4** (secondary validation by code-reviewer). CPP = "Checkpoint Profiling" and QAP = "QA Profiling." See the QAP section below and `data-onboarding-mode.md` for full definitions.
 
 ---
 
@@ -32,7 +34,7 @@ QA checkpoints exist because **primary validation has a structural blind spot**:
 
 **Passing QA means "I tried hard to find problems and couldn't" — not "I ran some checks and they passed."**
 
-The code-reviewer applies five skeptical lenses (Counterfactual, Semantic, Boundary, Absence, Downstream) to every script and hunts for "sleeping bugs" — errors latent in the logic that don't manifest with current data but could with different inputs. See `agents/code-reviewer.md` § Review Mindset for the full framework.
+The code-reviewer applies five skeptical lenses (Counterfactual, Semantic, Boundary, Absence, Downstream) to every script and hunts for "sleeping bugs" — errors latent in the logic that don't manifest with current data but could with different inputs. See `.claude/agents/code-reviewer.md` § Review Mindset for the full framework.
 
 ---
 
@@ -64,7 +66,7 @@ The code-reviewer applies five skeptical lenses (Counterfactual, Semantic, Bound
 | ID uniqueness | Primary keys are unique | Duplicate IDs present |
 | Dataset completeness | Expected rows and fields present | Partial data fetch |
 
-### QA1 qa1 Script Template
+### QA1 Standard Check Script (cr1)
 
 ```python
 import polars as pl
@@ -133,7 +135,7 @@ Add when appropriate:
 | Value range | Numeric analysis | Values within expected bounds |
 | Category coverage | Categorical analysis | All expected categories present |
 | Cross-source consistency | Multi-source fetch | Same entities across sources |
-| **Concrete trace** | **Always (at minimum 5)** — see `agents/code-reviewer.md` for the five required categories | **Pick one entity (e.g., a specific school or state) and verify its record looks plausible** |
+| **Concrete trace** | **Always (at minimum 5)** — see `.claude/agents/code-reviewer.md` § Five Lenses of Skeptical Review | **Pick one entity (e.g., a specific school or state) and verify its record looks plausible** |
 
 **Creative check prompt:** Before writing your QA1 script, ask: *"If the data access mirror returned data for the wrong geography or wrong year range, how would I detect that from the data alone?"* Design at least one check to answer that question.
 
@@ -165,7 +167,7 @@ Observations from qa1 that should trigger qa2+ investigation:
 | Filter correctness | Correct rows removed | Wrong filter criteria applied |
 | Type consistency | Data types are appropriate | Analysis columns have wrong types |
 
-### QA2 qa1 Script Template
+### QA2 Standard Check Script (cr1)
 
 ```python
 import polars as pl
@@ -236,7 +238,7 @@ print("=" * 60)
 | Distribution comparison | Statistical analysis | Pre/post distributions similar |
 | Outlier retention | Outlier-sensitive analysis | Correct outlier handling |
 | Null pattern | Complex null logic | Nulls handled per specification |
-| **Complement inspection** | **Always (at minimum 5)** — see `agents/code-reviewer.md` for the five required categories | **Examine what was REMOVED by cleaning — do the removed rows look like what you'd expect?** |
+| **Complement inspection** | **Always (at minimum 5)** — see `.claude/agents/code-reviewer.md` § Five Lenses of Skeptical Review | **Examine what was REMOVED by cleaning — do the removed rows look like what you'd expect?** |
 
 **Creative check prompt:** Before writing your QA2 script, ask: *"If the cleaning logic had an off-by-one error in the filter condition (e.g., `>= -1` instead of `== -1`), what would the symptom look like in the cleaned data?"* Design at least one check to catch that class of error.
 
@@ -269,7 +271,7 @@ Observations from qa1 that should trigger qa2+ investigation:
 | Column creation | New columns calculated correctly | Derived columns have wrong values |
 | No surprise nulls | Expected nulls only | Unexpected nulls introduced |
 
-### QA3 qa1 Script Template
+### QA3 Standard Check Script (cr1)
 
 ```python
 import polars as pl
@@ -360,7 +362,7 @@ print("=" * 60)
 | Business logic | Complex derivations | Derived values match business rules |
 | Cross-validation | Multiple sources | Results consistent across methods |
 | Temporal consistency | Time-series | No impossible date sequences |
-| **Concrete trace** | **Always (at minimum 5)** — see `agents/code-reviewer.md` for the five required categories | **Pick one entity and verify its journey through the transformation end-to-end** |
+| **Concrete trace** | **Always (at minimum 5)** — see `.claude/agents/code-reviewer.md` § Five Lenses of Skeptical Review | **Pick one entity and verify its journey through the transformation end-to-end** |
 
 **Creative check prompt:** Before writing your QA3 script, ask: *"If this transformation had a subtle bug that affected 5% of records, what would the symptom look like in the output data? How would I detect it?"* Design at least one check to answer that question.
 
@@ -502,7 +504,7 @@ print("=" * 60)
 | Sample size adequacy | Statistical tests | Sufficient N for claimed significance |
 | Multiple comparison adjustment | Multiple hypotheses tested | p-values adjusted appropriately |
 | Outlier influence | Regression analysis | Results not driven by a few extreme observations |
-| **Concrete trace** | **Always (at minimum 5)** — see `agents/code-reviewer.md` for the five required categories | **Pick one data point and verify its representation in the analysis output is accurate** |
+| **Concrete trace** | **Always (at minimum 5)** — see `.claude/agents/code-reviewer.md` § Five Lenses of Skeptical Review | **Pick one data point and verify its representation in the analysis output is accurate** |
 
 **Creative check prompt:** Before writing your QA4a script, ask: *"If the script used the wrong column for a key calculation, or aggregated at the wrong level, how would the output differ from correct output?"* Design at least one check to catch that class of error.
 
@@ -635,9 +637,9 @@ print("=" * 60)
 | Font size | Presentation figures | Text readable at intended display size |
 | Annotation accuracy | Annotated plots | Annotation text matches data values |
 | Multi-panel consistency | Faceted plots | Consistent scales across panels |
-| **Visual trace** | **Always (at minimum 5)** — see `agents/code-reviewer.md` for the five required categories | **Pick one data point and verify it appears in the correct position in the figure** |
+| **Visual trace** | **Always (at minimum 5)** — see `.claude/agents/code-reviewer.md` § Five Lenses of Skeptical Review | **Use the Read tool to visually inspect each generated PNG file.** Additionally, pick one data point and verify programmatically that it appears in the correct position in the figure |
 
-**Creative check prompt:** Before writing your QA4b script, ask: *"If a figure were missing its legend, had truncated axes, or used a color scheme indistinguishable to colorblind readers, how would I detect that programmatically?"* Design at least one check to catch that class of error.
+**Creative check prompt:** Before writing your QA4b script, ask: *"If a figure were missing its legend, had truncated axes, or used a color scheme indistinguishable to colorblind readers, how would I detect that programmatically and visually (via the **Read tool** on the PNG output)?"* Design at least one check to catch that class of error.
 
 ### QA4b Iterative Investigation Triggers
 
@@ -766,11 +768,13 @@ scripts/
 - Script `02_aggregate.py` in Stage 7 → `stage7_02_cr1.py`
 - Script `01_regression-analysis.py` in Stage 8 → `stage8_01_cra1.py` (QA4a), `stage8_01_crb1.py` (QA4b)
 
+**Data Onboarding profiling QA naming:** For the profiling QA naming convention (`profile_{phase}_cr{N}.py`), see `.claude/skills/daaf-orchestrator/references/data-onboarding-mode.md` and the QAP Script Naming Convention section within this document.
+
 ---
 
 ## QA Report Format
 
-QA checkpoint results are returned in a standardized format:
+QA checkpoint results follow this conceptual schema. The actual output to the orchestrator uses Markdown format (see the code-reviewer invocation template in `full-pipeline-mode.md`). This YAML schema documents the logical structure:
 
 ```yaml
 qa_report:
@@ -862,6 +866,89 @@ QA checkpoints can trigger STOP conditions that prevent proceeding:
 | Statistical misrepresentation detected | QA4a | STOP, revision required |
 | Missing critical figures | QA4b | STOP, revision required |
 | QA script execution fails | Any | STOP, investigate |
+
+---
+
+## Profiling QA Checkpoints (QAP1-QAP4)
+
+> **Mode:** These checkpoints apply to Data Onboarding Mode only. They are the profiling equivalent of QA1-QA4b. See `.claude/skills/daaf-orchestrator/references/data-onboarding-mode.md` for complete profiling protocol details.
+
+### QAP Overview
+
+| Checkpoint | Part | Focus | BLOCKER When |
+|------------|------|-------|-------------|
+| QAP1 | A (Structural) | Load fidelity, schema accuracy | Wrong delimiter/encoding, type inference errors, row/column count mismatch |
+| QAP2 | B (Statistical) | Statistical characterization | Distribution claims wrong, temporal breaks missed, coverage gaps undetected |
+| QAP3 | C (Relational) | Relationship discovery | Key uniqueness misidentified, dependencies missed, anomalies uncatalogued |
+| QAP4 | D (Interpretation) | Semantic accuracy | Interpretations stated as facts (missing [PRELIMINARY]), reconciliation gaps |
+
+### QAP1: Post-Structural (Part A)
+
+**Trigger:** After scripts 01-03 complete and CPP1 passes.
+
+**Default Checks:**
+| Check | Validates | BLOCKER If |
+|-------|-----------|------------|
+| Re-load verification | Load with alternative parameters produces same data | Row/column counts differ across methods |
+| Sample row spot-check | Random rows match raw file inspection | Values corrupted or truncated |
+| Encoding verification | No mojibake or replacement characters | Non-ASCII characters corrupted |
+| Schema stability | Re-running type inference produces same types | Types change between runs |
+| Column coverage | Every column appears in profile output | Any column missing from profile |
+
+### QAP2: Post-Statistical (Part B)
+
+**Trigger:** After scripts 04-06 (conditional) complete and CPP2 passes.
+
+**Default Checks:**
+| Check | Validates | BLOCKER If |
+|-------|-----------|------------|
+| Independent stat verification | Recompute mean/median for random columns | Independently computed stat differs |
+| Distribution label accuracy | Distribution claims pass appropriate tests | "Normal" claim fails normality test at p < 0.01 |
+| Outlier boundary reasonableness | IQR fences are sensible | Fences exclude >20% of data without explanation |
+| Temporal break detection | Obvious structural breaks are flagged | Dramatic year-to-year changes missed |
+| Coverage completeness | Entity/geographic coverage is assessed | Known universe not checked when identifiers present |
+
+### QAP3: Post-Relational (Part C)
+
+**Trigger:** After scripts 07-09 (conditional) complete and CPP3 passes.
+
+**Default Checks:**
+| Check | Validates | BLOCKER If |
+|-------|-----------|------------|
+| Key uniqueness counter-check | Claimed keys tested independently | Claimed unique key has duplicates |
+| Dependency verification | Functional dependencies are real | Counter-examples exist for claimed A->B dependency |
+| Anomaly catalog completeness | All major anomalies found | Known pattern (duplicates, coded values) present but uncatalogued |
+| Cross-column consistency | Consistency rules are complete | Obvious logical constraint violated but not flagged |
+| Coded value scan completeness | Standard sentinels checked | Numeric columns not scanned for -1, -2, -3, -9, -99, -999 |
+
+### QAP4: Post-Interpretation (Part D)
+
+**Trigger:** After scripts 10-11 (conditional) complete and CPP4 passes.
+
+**Default Checks:**
+| Check | Validates | BLOCKER If |
+|-------|-----------|------------|
+| PRELIMINARY marking | All interpretations hedged | Any interpretation stated as fact without [PRELIMINARY] marker |
+| Documentation coverage | All documented claims checked against data | Documented column present but not reconciled |
+| Discrepancy evidence | Every discrepancy has actual-vs-documented values | Discrepancy noted without showing evidence |
+| Interpretation completeness | All columns with non-trivial semantics have an interpretation entry | Column with identifiable meaning has no interpretation |
+
+### QAP Severity Classification
+
+Profiling QA uses the same severity levels as analysis QA:
+- **BLOCKER:** Data characterization is incorrect, profiling methodology violated, or output is unreliable
+- **WARNING:** Quality concern or minor gap that should be documented but does not block progression
+- **INFO:** Suggestion or observation for improvement
+
+### QAP Script Naming Convention
+
+```
+scripts/cr/
+  profile_structural_cr{N}.py     # QAP1 review scripts
+  profile_statistical_cr{N}.py    # QAP2 review scripts
+  profile_relational_cr{N}.py     # QAP3 review scripts
+  profile_interpretation_cr{N}.py # QAP4 review scripts
+```
 
 ---
 

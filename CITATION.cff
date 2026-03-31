@@ -1,0 +1,27 @@
+cff-version: 1.2.0
+message: "If you use DAAF in your research, please cite it as below."
+type: software
+title: "DAAF: The Data Analyst Augmentation Framework"
+abstract: >-
+  An open-source, domain-extensible research orchestration framework
+  that structures AI-assisted data analysis with human-in-the-loop
+  oversight, automated quality review, and full audit trail preservation.
+  Built on Claude Code (Anthropic), DAAF enforces transparent, rigorous,
+  and reproducible workflows for quantitative research.
+authors:
+  - family-names: Kim
+    given-names: Brian Heseung
+    orcid: "https://orcid.org/0000-0002-7988-1802"
+version: "2.0.0"
+date-released: "2026-03-26"
+license: LGPL-3.0-or-later
+url: "https://github.com/DAAF-Contribution-Community/daaf"
+repository-code: "https://github.com/DAAF-Contribution-Community/daaf"
+keywords:
+  - research-automation
+  - ai-assisted-research
+  - data-analysis
+  - reproducible-research
+  - human-in-the-loop
+  - claude-code
+# doi: 10.5281/zenodo.XXXXX  # TODO: Add after Zenodo registration

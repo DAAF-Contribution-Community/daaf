@@ -15,7 +15,7 @@ df = pl.read_csv(
     skip_rows=1,                # Skip first N rows
     n_rows=1000,                # Only read first N rows
     columns=["a", "b", "c"],    # Only these columns
-    dtypes={"id": pl.Int32},    # Override types
+    schema_overrides={"id": pl.Int32},  # Override types ("dtypes" renamed to "schema_overrides" in 0.20.31)
     null_values=["NA", ""],     # Treat as null
     ignore_errors=True,         # Skip bad rows
     encoding="utf8",            # Encoding (default: utf8)
@@ -34,7 +34,7 @@ lf = pl.scan_csv(
     separator=",",
     skip_rows=0,
     n_rows=None,                # None = all rows
-    dtypes={"id": pl.Int32},
+    schema_overrides={"id": pl.Int32},
     null_values=["NA"],
     infer_schema_length=10000,  # Rows to infer types (default: 100)
     low_memory=False,           # Reduce memory at cost of speed
@@ -319,7 +319,7 @@ df.write_ipc("output.feather", compression="zstd")
 ## Avro Files
 
 ```python
-# Requires: pip install polars[avro]
+# Avro support is built into polars (no extra install needed)
 
 df = pl.read_avro("data.avro")
 df.write_avro("output.avro", compression="snappy")
@@ -334,8 +334,8 @@ df = pl.read_delta("delta_table_path/")
 lf = pl.scan_delta("delta_table_path/")
 
 # With version
+# Version is passed directly: pl.read_delta("path/", version=5)
 df = pl.read_delta("delta_table/", version=5)
-df = pl.read_delta("delta_table/", delta_table_options={"version": 5})
 ```
 
 ## Common Patterns

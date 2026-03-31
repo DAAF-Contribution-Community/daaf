@@ -383,6 +383,17 @@ python ./scripts/process.py test-input.txt
 echo $?
 ```
 
+### Setting Executable Permissions
+
+All `.sh` files in `scripts/` must have executable permissions set both on the filesystem and in Git's index. After creating a shell script, run:
+
+```bash
+chmod +x ./scripts/generate_report.sh
+git update-index --chmod=+x ./scripts/generate_report.sh
+```
+
+Verify with `git ls-files -s` — mode should be `100755`, not `100644`. See `CLAUDE.md` > Project Conventions > Shell Script Permissions for the full convention.
+
 ### Documenting Resources
 
 In SKILL.md, explain:
@@ -390,14 +401,12 @@ In SKILL.md, explain:
 - When to use it
 - How to invoke/reference it
 
-### Keeping Resources Minimal
+### Keeping Resources Right-Sized
 
-Only include resources that:
-- Get used repeatedly
-- Provide significant value
-- Can't be easily regenerated
+**For `scripts/` and `assets/`:** Keep minimal. Only include resources that get used repeatedly, provide significant value, and can't be easily regenerated. Don't include one-off scripts or large files that could be fetched.
 
-Don't include:
-- One-off scripts
-- Rarely-needed documentation
-- Large files that could be fetched
+**For `references/`:** Thoroughness is preferred over minimalism. Reference files load on-demand (Level 3), so their token cost is incurred only when needed. For data source skills, reference files should be comprehensive — collectively targeting 3x+ the SKILL.md line count. See `progressive-disclosure.md` for the "Thorough is Key" principle and `DATA_SOURCE_SKILL_TEMPLATE.md` for density guidelines.
+
+Don't include in any resource type:
+- Files that duplicate content already in SKILL.md
+- Files with no clear consumer (who will read this and when?)

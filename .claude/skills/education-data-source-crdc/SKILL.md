@@ -1,20 +1,17 @@
 ---
 name: education-data-source-crdc
 description: >-
-  Deep reference for Civil Rights Data Collection (CRDC) - biennial OCR survey
-  of all public schools. Use when analyzing school discipline disparities,
-  course access equity, harassment data, restraint/seclusion, chronic
-  absenteeism, or any civil rights education indicators. Covers legal
-  framework, data elements, quality issues, and historical changes.
+  CRDC — biennial OCR survey of all U.S. public schools (2011-2021). Discipline, course access, harassment, restraint/seclusion by race/sex/disability/EL. Use for civil rights and equity analysis. 2020-21 COVID-impacted; 2011-14 sampled, not universe.
 metadata:
-  audience: data-analysts
-  domain: education-data
-provenance:
-  skill_authored: "2026-02-09"
-  skill_last_updated: "2026-02-09"
+  audience: any-agent
+  domain: data-source
+  skill-authored: "2026-02-09"
+  skill-last-updated: "2026-02-09"
 ---
 
 # CRDC Data Source Reference
+
+Civil Rights Data Collection (CRDC) — mandatory biennial OCR survey of all U.S. public schools measuring educational opportunity and civil rights compliance (2011-2021). Use when analyzing school discipline disparities by race/disability, course access equity, harassment, restraint/seclusion, or chronic absenteeism. Data disaggregated by race, sex, disability, and English learner status. Note: 2020-21 is COVID-impacted and not directly comparable to other years; 2011-14 are sampled, not universe.
 
 The Civil Rights Data Collection is a mandatory biennial survey of all U.S. public schools measuring educational opportunity and civil rights compliance. It is the only national source for school-level discipline disparities, course access equity, harassment, and restraint/seclusion data disaggregated by race, sex, disability, and English learner status.
 
@@ -43,6 +40,7 @@ The Civil Rights Data Collection is a **mandatory biennial survey** of all publi
 - **Disaggregation**: Race/ethnicity, sex, disability status, English learner status
 - **History**: Collected since 1968 (as Elementary and Secondary School Civil Rights Survey)
 - **Available years**: 2011, 2013, 2015, 2017, 2020, 2021 (biennial — no data for even-numbered school years)
+- **Available through**: Education Data Portal mirrors
 
 ## Reference File Structure
 
@@ -214,7 +212,7 @@ Data quality issue?
 
 ## Data Access
 
-Datasets for CRDC are available via the mirror system. See `datasets-reference.md` for canonical paths, `mirrors.yaml` for mirror configuration, and `fetch-patterns.md` for fetch code patterns including `fetch_from_mirrors()` and `fetch_yearly_from_mirrors()`.
+Datasets for CRDC are available via the Education Data Portal mirror system. See `datasets-reference.md` for canonical paths, `mirrors.yaml` for mirror configuration, and `fetch-patterns.md` for fetch code patterns including `fetch_from_mirrors()` and `fetch_yearly_from_mirrors()`.
 
 **Key datasets (6 of 22 total):**
 

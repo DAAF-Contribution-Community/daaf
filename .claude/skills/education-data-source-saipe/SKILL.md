@@ -1,20 +1,17 @@
 ---
 name: education-data-source-saipe
 description: >-
-  Census Bureau Small Area Income and Poverty Estimates (SAIPE) for school
-  districts, counties, and states. Use when working with district-level poverty
-  data, understanding poverty estimation methodology, interpreting Title I
-  allocation data, or analyzing school-age children in poverty estimates.
-  Estimates are model-based with ~18-month lag.
+  SAIPE — annual Census poverty estimates for school districts (Portal; county/state not in Portal). Use for district poverty, Title I context, or trends. ~18-month lag. No race/ethnicity disaggregation at district level — use ACS 5-year for that.
 metadata:
-  audience: data-analysts
-  domain: education-data
-provenance:
-  skill_authored: "2026-02-09"
-  skill_last_updated: "2026-02-09"
+  audience: any-agent
+  domain: data-source
+  skill-authored: "2026-02-09"
+  skill-last-updated: "2026-02-09"
 ---
 
 # SAIPE Data Source Reference
+
+Census Bureau Small Area Income and Poverty Estimates (SAIPE) — annual model-based poverty estimates for school districts (Portal mirror; county and state data not in Portal). Use when district-level poverty is needed for Title I allocation interpretation, annual poverty trend analysis, or school-age children in poverty estimates. Estimates have ~18-month lag and no race/ethnicity disaggregation at district level — use ACS 5-year for race-disaggregated poverty.
 
 Reference for understanding Census Bureau poverty estimates for school districts, counties, and states. SAIPE is the only annual, district-level poverty source and the legally mandated basis for Title I education funding allocations.
 
@@ -43,6 +40,7 @@ SAIPE is the Census Bureau's program for producing **model-based** estimates of 
 - **Available years**: 1995-2023 (gaps at 1996, 1998; annual from 1999)
 - **Primary identifier**: FIPS code + LEAID (district ID)
 - **Methodology**: Model-based — combines ACS survey data with administrative records (IRS tax returns, SNAP data) using regression models with "shrinkage" techniques; school district estimates are allocated from county totals using within-county shares; all estimates contain uncertainty and confidence intervals are essential
+- **Available through**: Education Data Portal mirrors (district-level only; state and county SAIPE are not in Portal mirrors — see Data Access section)
 
 ## Reference File Structure
 
@@ -182,7 +180,7 @@ between 4,200 and 5,800.
 
 ## Data Access
 
-Datasets for SAIPE are available via the mirror system. See `datasets-reference.md` for canonical paths, `mirrors.yaml` for mirror configuration, and `fetch-patterns.md` for fetch code patterns.
+Datasets for SAIPE are available via the Education Data Portal mirror system. See `datasets-reference.md` for canonical paths, `mirrors.yaml` for mirror configuration, and `fetch-patterns.md` for fetch code patterns.
 
 | Dataset | Type | Years | Path | Codebook |
 |---------|------|-------|------|----------|

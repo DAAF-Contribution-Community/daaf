@@ -1,14 +1,17 @@
 ---
 name: education-data-query
-description: Download education data from configured mirror sources. Use when fetching education data for research, downloading datasets by source, or filtering large files locally with Polars.
+description: >-
+  Downloads education datasets from configured mirror sources (parquet/CSV) with local Polars filtering. Use when writing fetch scripts or retrieving CCD, IPEDS, CRDC, SAIPE data. Load after education-data-explorer — retrieval here, not discovery.
 metadata:
-  audience: data-analysts
-  domain: education-data
+  audience: research-coders
+  domain: data-access
 ---
 
 # Education Data Query
 
-Download datasets from the Education Data Portal via configured mirror sources (defined in mirrors.yaml). Mirrors are tried in priority order. All filtering is done locally with Polars.
+Downloads education datasets from configured mirror sources (parquet or CSV) using priority-ordered fallback, with local Polars filtering. Use when writing Stage 5 fetch scripts, downloading a specific CCD, IPEDS, CRDC, SAIPE, or other education dataset by path, discovering which files are available on a mirror, or retrieving codebook metadata. Load after using education-data-explorer to identify endpoints — this skill handles actual data retrieval, not endpoint discovery.
+
+Download datasets from the Education Data Portal via configured mirror sources (defined in mirrors.yaml). Mirrors are tried in priority order. All filtering is done locally with Polars. The mirror data originates from the Urban Institute Education Data Portal (EDP), which is a curation and standardization layer over original federal data sources — data has been restructured with lowercase variable names, integer-encoded categoricals, and standardized missing value codes (`-1`, `-2`, `-3`).
 
 ## What This Skill Does
 

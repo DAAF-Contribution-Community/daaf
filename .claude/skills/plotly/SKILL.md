@@ -1,13 +1,17 @@
 ---
 name: plotly
-description: Interactive visualization library for Python. Covers Plotly Express and Graph Objects for scatter, line, bar, histogram, box plots, subplots, styling, and export. Use when creating interactive plots with Plotly, building web-based visualizations, or needing hover/zoom functionality.
+description: >-
+  Plotly interactive visualization. Express and Graph Objects: scatter, line, bar, heatmap, 3D, geographic charts; subplots; styling; export. Use when interactivity (hover/zoom) is needed. For static figures use plotnine; for GIS use geopandas.
 metadata:
-  audience: python-developers
-  domain: data-visualization
-  plotly-version: "6.x"
+  audience: research-coders
+  domain: python-library
+  library-version: "6.x"
+  skill-last-updated: "2026-03-28"
 ---
 
 # Plotly Skill
+
+Plotly interactive visualization library for Python. Covers Plotly Express and Graph Objects for scatter, line, bar, histogram, box, heatmap, 3D, and geographic charts; subplots and faceting; styling; and HTML/image export. Use when creating interactive visualizations with hover/zoom/pan, building web-based charts, or producing geographic or 3D plots. Prefer over plotnine when interactivity is required; for spatial analysis, projections, or GIS-style mapping, use geopandas.
 
 Quick reference for creating interactive data visualizations with Plotly, featuring both the high-level Plotly Express API and low-level Graph Objects.
 
@@ -101,10 +105,10 @@ Common issues?
 3. Validation results get automatically embedded in scripts as comments
 4. If failed, create versioned copy for fixes
 
-Closely read `agent_reference/EXECUTION_CAPTURE.md` for the mandatory file-first execution protocol covering complete code file writing, output capture, and file versioning rules.
+Closely read `agent_reference/SCRIPT_EXECUTION_REFERENCE.md` for the mandatory file-first execution protocol covering complete code file writing, output capture, and file versioning rules.
 
 **See:**
-- `agent_reference/02_WORKFLOW_STAGES.md` — Stage 8 (Analysis & Visualization)
+- `agent_reference/WORKFLOW_PHASE4_ANALYSIS.md` — Stage 8 (Analysis & Visualization)
 
 The examples below show Plotly syntax. In research workflows, wrap them in scripts following the file-first pattern.
 
@@ -171,8 +175,10 @@ fig.show()
 # Interactive HTML
 fig.write_html("plot.html")
 
-# Static image (requires kaleido)
-fig.write_image("plot.png")
+# Static image export (PNG/SVG/PDF) is NOT available in DAAF — kaleido is not
+# installed due to its heavy Chromium dependency. Use plotnine for static figures.
+# For interactive output, use HTML:
+# fig.write_image("plot.png")  # Would require: pip install kaleido + Chromium
 ```
 
 ## Topic Index
@@ -200,3 +206,13 @@ fig.write_image("plot.png")
 | Common errors | `./references/gotchas.md` |
 | Performance | `./references/gotchas.md` |
 | Best practices | `./references/gotchas.md` |
+
+## Citation
+
+When this library is used as a primary analytical tool, include in the report's
+Software & Tools references:
+
+> Plotly Technologies Inc. Plotly: Interactive graphing library [Computer software]. https://plotly.com/
+
+**Cite when:** Plotly is the primary visualization library producing interactive figures included in the report or notebook.
+**Do not cite when:** Only used for quick exploratory plots not included in deliverables.

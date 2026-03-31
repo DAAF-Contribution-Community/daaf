@@ -1,12 +1,15 @@
 ---
 name: education-data-context
-description: Data provenance, caveats, and interpretation guidance for Urban Institute Education Data Portal datasets. Use after pulling education data to understand limitations, special values, source-specific notes, and proper citation for schools, districts, or colleges data.
+description: >-
+  Interpretation guidance for Urban Institute Portal datasets. Coded values (-1/-2/-3), year definitions, grade encoding, suppression, licensing, cross-source joins. Use when interpreting Portal data before analysis. Routes to source-specific skills.
 metadata:
-  audience: data-analysts
-  domain: education-data
+  audience: any-agent
+  domain: data-documentation
 ---
 
 # Education Data Context
+
+Data origin, caveats, and interpretation guidance for Urban Institute Education Data Portal datasets. Use when interpreting Portal coded values (-1/-2/-3 missing/not-applicable/suppressed), understanding year definitions (fall vs. academic year), applying correct grade encoding (grade=-1 means Pre-K, not missing), assessing suppression rates, citing data under ODC-By license, or reviewing any Portal data before analysis. Also covers joining identifiers across CCD, IPEDS, CRDC, and other sources, and routes to source-specific deep-dive skills.
 
 This skill provides critical context for interpreting data from the Urban Institute Education Data Portal. Education data has source-specific limitations that can significantly affect analysis validity.
 
@@ -18,6 +21,19 @@ This skill provides critical context for interpreting data from the Urban Instit
 - **State comparisons require caution**: State-level data often cannot be directly compared
 - **Citation is required**: The ODC Attribution License mandates proper citation
 - **Skill provenance matters**: Each `*-data-source-*` skill includes `provenance.skill_last_updated` in its frontmatter. If this date is more than a few months old, treat the skill's claims about coded values, suppression patterns, and data quality with caution — data sources evolve and skill documentation may have drifted. Consider re-running data-ingest to re-verify.
+
+## Data Provenance: The Education Data Portal
+
+All education data currently accessible through this system is obtained from the **Urban Institute Education Data Portal (EDP)**, not directly from original source agencies (NCES, Census Bureau, Department of Education, etc.). The EDP is a curation and standardization layer that:
+
+- **Renames variables** to lowercase (e.g., `enrollment` not `MEMBER`)
+- **Re-encodes categoricals** as integers (e.g., `1` not `"Regular school"`)
+- **Standardizes missing values** using codes `-1` (missing), `-2` (not applicable), `-3` (suppressed)
+- **May subset** each source's full variable catalog — not all variables from the original source are necessarily available through the Portal
+
+Each `education-data-source-*` skill documents what is available through the Portal for that source, including any known gaps relative to the original data collection. When a skill also documents variables or components only available from the original source directly, this is clearly noted.
+
+> **Note:** This provenance applies specifically to the current education data source skills. Future data source skills may access data from other providers with different characteristics.
 
 ## Reference File Structure
 
@@ -33,6 +49,8 @@ This skill provides critical context for interpreting data from the Urban Instit
 | `./references/data-relationships.md` | Joining tables, identifiers | When merging datasets |
 
 ### Deep-Dive Source Skills (Comprehensive Documentation)
+
+These skills document both EDP-available data and original source context. Each skill notes when content applies only to the original source (not available through the Portal).
 
 For comprehensive understanding beyond the quick context files above, load the dedicated data source skill:
 
@@ -184,6 +202,22 @@ Portal variable names are lowercase, not the uppercase names from original NCES 
 - `enrollment` not `MEMBER` or `ENROLLMENT`
 - `grade` not `GRADE`
 - `fips` not `FIPS` or `STATE`
+
+### Rate and Proportion Normalization
+
+The Portal normalizes certain rate and proportion variables to a 0-1 scale, while the original IPEDS surveys report them as 0-100 percentages. This is a Portal transformation, not an IPEDS source issue.
+
+**Known affected variables:**
+
+| Variable | Source Survey | Portal Scale | Original IPEDS Scale |
+|----------|-------------|-------------|---------------------|
+| `completion_rate_150pct` | GRS (Graduation Rates) | 0-1 | 0-100 |
+| `retention_rate` | EF (Fall Enrollment / Retention) | 0-1 | 0-100 |
+
+**Guidance:**
+- Always check the actual range of rate variables after fetching -- if `max <= 1.0`, the variable is on a 0-1 scale and may need rescaling to 0-100 for interpretability
+- Do not assume all rate variables across all datasets are normalized -- this finding is specific to the IPEDS variables listed above
+- Quality checks testing `value > 100` will not catch invalid data on 0-1 scaled variables; adjust thresholds accordingly (e.g., test `value > 1.0` instead)
 
 ### Missing Value Codes
 
@@ -390,6 +424,9 @@ Data availability lags behind the current year. As of January 2026:
 
 6. **Merge data across years assuming stable identifiers**
    - Schools and districts merge, split, and change IDs
+
+7. **Assume Portal rate variables are on a 0-100 percentage scale**
+   - Some IPEDS rate variables (e.g., `completion_rate_150pct`, `retention_rate`) are normalized to 0-1 proportions in the Portal, even though the original IPEDS surveys use 0-100. Always check the actual range after fetching. See "Rate and Proportion Normalization" above.
 
 ### DO:
 

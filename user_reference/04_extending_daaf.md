@@ -2,14 +2,16 @@
 
 This guide focuses on the primary extension path: bringing new datasets, data domain expertise, and methodological tooling into DAAF for your own purposes. If you want to make any of these modifications available to the broader community by sharing these changes/extensions back with the DAAF project, see [**05. Contributing to DAAF**](../CONTRIBUTING.md).
 
+> **Guided framework modification:** For any of the extension tasks below, you can use DAAF's **Framework Development mode** — just tell DAAF you want to create or modify a skill, agent, mode, or template, and it will scope the work, follow canonical templates, execute integration checklists, and run a multi-angle review pass to ensure consistency. Framework Development mode is especially useful for complex changes that touch multiple files.
+
 [**Back to main**](https://github.com/DAAF-Contribution-Community/daaf/tree/main)
 
 ---
 
 ## Table of Contents
 
-- [**The Extension Model: Skills, Agents, and Data-Ingest**](#the-extension-model-skills-agents-and-data-ingest)
-- [**Step-by-Step: Profiling a New Dataset with Data-Ingest**](#step-by-step-profiling-a-new-dataset-with-data-ingest)
+- [**The Extension Model: Skills, Agents, and Data Onboarding**](#the-extension-model-skills-agents-and-data-onboarding)
+- [**Step-by-Step: Profiling a New Dataset with Data Onboarding Mode**](#step-by-step-profiling-a-new-dataset-with-data-onboarding-mode)
 - [**Step-by-Step: Authoring Other Types of New Skills**](#step-by-step-authoring-other-types-of-new-skills)
 - [**Adding a New Agent**](#adding-a-new-agent)
 - [**Testing Your New Extension End-to-End**](#testing-your-new-extension-end-to-end)
@@ -18,7 +20,7 @@ This guide focuses on the primary extension path: bringing new datasets, data do
 
 ---
 
-## The Extension Model: Skills, Agents, and Data-Ingest
+## The Extension Model: Skills, Agents, and Data Onboarding
 
 Here's the fundamental insight behind DAAF's extensibility: **the framework is intended to separate what it *knows* from how it *behaves*.** This is a really important distinction that makes the whole extension model work, so let me try to explain it clearly.
 
@@ -34,25 +36,53 @@ This separation is what makes DAAF extensible without being fragile. When you wa
 
 | Extension Type | What You're Adding | Tool to Use | Result |
 |----------------|-------------------|-------------|--------|
-| **Data source** | Knowledge about a specific dataset | `data-ingest` agent | A new `data-source-skill` |
+| **Data source** | Knowledge about a specific dataset | Data Onboarding Mode | A new `data-source-skill` |
 | **Methodology** | Knowledge about a statistical or analytical method | `skill-authoring` skill | A new `methodology-skill` |
 | **Domain expertise** | Knowledge about a content area or field | `skill-authoring` skill | A new `context-skill` |
 
-The most common extension path by far -- and the one I'll spend the most time on in this guide -- is adding new data sources. DAAF ships with a dedicated agent specifically for this purpose: the `data-ingest` agent, which does the heavy lifting of profiling a dataset and generating the skill documentation for you. You still need to review its output (this is *always* true with DAAF), but it should dramatically reduce the manual effort involved.
+The most common extension path by far -- and the one I'll spend the most time on in this guide -- is adding new data sources. DAAF has a dedicated engagement mode for this purpose: **Data Onboarding Mode**, which orchestrates a thorough profiling protocol and generates the skill documentation for you. You still need to review its output (this is *always* true with DAAF), but it should dramatically reduce the manual effort involved.
 
-For methodology and domain expertise skills, the process is lighter-weight -- you ask DAAF to use the `skill-authoring` skill, point it at documentation or literature to research, and it drafts a skill for you to review and refine. I'll cover that process too, but it's more straightforward than data ingestion.
+For methodology and domain expertise skills, the process is lighter-weight -- you ask DAAF to use the `skill-authoring` skill, point it at documentation or literature to research, and it drafts a skill for you to review and refine. I'll cover that process too, but it's more straightforward than data onboarding.
 
-## Step-by-Step: Profiling a New Dataset with Data-Ingest
+## Step-by-Step: Profiling a New Dataset with Data Onboarding Mode
 
-The [`data-ingest`](../agents/data-ingest.md) agent is DAAF's built-in tool for turning a raw dataset (or online dataset source) into a comprehensive data source skill it can begin using in tandem with other data source skills. It automates the tedious but critical work of profiling every column, detecting coded values, checking data quality, and reconciling what any provided documentation says against what the data actually contains. In addition to the instructions below, I've also made a [10-minute video tutorial](https://youtu.be/G5uKSlI6jls) giving you the intuition and overview for how this works.
+Data Onboarding Mode is DAAF's built-in workflow for turning a raw dataset (or online dataset source) into a comprehensive data source skill it can begin using in tandem with other data source skills. It automates the tedious but critical work of profiling every column, detecting coded values, checking data quality, and reconciling what any provided documentation says against what the data actually contains. The entire process is tracked in a reproducible research project folder under `research/`. In addition to the instructions below, I've also made a [10-minute video tutorial](https://youtu.be/G5uKSlI6jls) giving you the intuition and overview for how this works.
 
 ### Before You Start
 
 You'll need:
 
-1. **A data file or link** in a supported format (parquet, CSV, Excel, or TSV). Public data sources are strongly preferred. If you're working with proprietary or sensitive data, please be *extremely* careful to abide by your organization's AI policy and data protection standards -- Claude will be examining the actual contents of the data.
+1. **A data file or API access** — either a data file in a supported format (parquet, CSV, Excel, or TSV) or access to an API that serves the data (see "Onboarding Data from an API" below). Public data sources are strongly preferred. If you're working with proprietary or sensitive data, please be *extremely* careful to abide by your organization's AI policy and data protection standards -- Claude will be examining the actual contents of the data.
 2. **Any available documentation** -- codebooks, data dictionaries, README files, or documentation website URLs. These aren't strictly required, but they dramatically improve the quality of the resulting skill because the agent can cross-reference what the documentation *says* against what the data *actually shows*.
 3. **A sense of how the data will be used** -- what research questions it might inform, what domain it belongs to, and which columns are most important for your purposes.
+
+### Onboarding Data from an API
+
+If your data source is available via a REST API rather than as a downloadable file, DAAF can handle the acquisition for you during Data Onboarding. You'll need:
+
+1. **API documentation** — a URL to the API docs, or a description of how the API works (endpoints, authentication method, response format). DAAF will research the API on your behalf, but having documentation to point to dramatically improves the quality of the resulting fetch scripts.
+2. **An API key** — most APIs require authentication. Set up your key as an environment variable inside the Docker container before starting (see [Step 8 in the Installation Guide](01_installation_and_quickstart.md#step-8-optional-set-up-data-source-api-keys) for the pattern). DAAF will ask you which environment variable name holds your key.
+3. **A sense of what you want to download** — which endpoint, what filters (date range, geography, etc.), and roughly how much data to expect.
+
+DAAF will research the API, write a fetch script for your approval, download the data, and then proceed with the standard profiling workflow. The fetch script is saved as a reproducible artifact — you (or DAAF) can re-run it any time to get fresh data.
+
+**Local vs. live access:** During setup, DAAF will ask whether you prefer to download the data once and work with the local copy (simpler, works offline) or always query the API live in future analyses (keeps data current). You can change this preference later by modifying the data source skill's "Data Access" section.
+
+**Complex APIs:** If the API you're working with offers many endpoints and datasets (like Harvard Dataverse, or a large government open data platform), DAAF will suggest whether the API access documentation should live inside the data source skill (simpler, fine for most cases) or in a separate query/connector skill (better if you plan to onboard multiple datasets from the same API over time). This is always your call.
+
+**OAuth-protected APIs:** DAAF handles simple API key authentication natively (you set an environment variable, and DAAF writes scripts that read it). If your API requires OAuth (browser-based login, token refresh flows), you'll need to obtain a bearer/access token manually first and provide it as an environment variable. DAAF will guide you through this if it detects the API uses OAuth during its research phase.
+
+### Onboarding Multiple Related Files
+
+If your data source comes as multiple related files — for example, one file per year (same structure), or a set of files at different levels of aggregation (schools, districts, states) — DAAF can profile them all together as a single onboarding project.
+
+When you provide multiple files, DAAF will ask you:
+- **Same structure or different?** Files with the same columns (one per year, one per state) are combined into one dataset for profiling. Files with different structures (schools vs. districts) are profiled separately with cross-file relationship testing.
+- **One skill or many?** By default, DAAF creates one unified skill covering all files. You can also opt for one skill per entity type if you prefer more granular documentation per table.
+
+The important thing is to provide all related files at intake rather than profiling them one at a time — this lets DAAF test the relationships between files (join coverage, key integrity, temporal alignment) and document those relationships in the resulting skill.
+
+---
 
 ### Where Your New Skill Will Fit in
 
@@ -74,17 +104,17 @@ The fetch mechanics (Stage 5) are mostly handled by the query skill and mirror c
 
 ### Preparing Your Data
 
-Place your data file somewhere accessible within the Docker volume (the easiest spot is the `research/` directory or a subfolder of it). Exactly where doesn't really matter, as long as you provide Claude with the actual filepaths when you start the conversation. If you have documentation files, put those inside the same folder. See [**01. Installation and Quickstart**](01_installation_and_quickstart.md) for reminders on managing files within the Docker volume if needed.
+Place your data file anywhere accessible inside `/daaf/` — the ingest process will copy it into the research project's `data/raw/` folder during setup. A common convention is to place files in `/daaf/data/` or alongside the research folder (e.g., `/daaf/data/county-elections/election_returns_2024.csv`). If you have documentation files (codebooks, data dictionaries, etc.), put those alongside the data file. See [**01. Installation and Quickstart**](01_installation_and_quickstart.md) for reminders on managing files within the Docker volume if needed.
 
 A few practical considerations:
 
 - **File size:** The agent can handle files up to about 1GB without special handling. For larger files, it'll ask you about a sampling strategy before proceeding.
 - **File format:** Parquet is ideal (fast, preserves types). CSV works fine but may have type inference quirks. Excel files work using the `openpyxl` library, included with the standard installation Docker for DAAF.
-- **Multiple files:** If your data source spans multiple files (e.g., one file per year), start with a single representative file. The skill can document the multi-file structure, but profiling works best on one file at a time.
+- **Multiple files:** If your data source spans multiple files (e.g., one file per year, or separate files for schools vs. districts), you can provide them all at once during Data Onboarding — see "Onboarding Multiple Related Files" below. DAAF will profile them together and test cross-file relationships automatically.
 
-### Running the Data-Ingest Agent
+### Running Data Onboarding Mode
 
-You don't need to invoke the agent directly -- just ask DAAF conversationally. Something like:
+Just ask DAAF to ingest or profile a new dataset conversationally -- it will classify the request as Data Onboarding Mode automatically. Something like:
 
 ```
 I have a new dataset I'd like to profile and integrate into DAAF.
@@ -98,19 +128,17 @@ important columns are probably the ones related to total spending,
 enrollment counts, and state identifiers.
 ```
 
-DAAF will classify this as a data-ingest task and dispatch the `data-ingest` agent, which will then execute a systematic profiling protocol:
+DAAF will classify this as a Data Onboarding request, set up a research project folder, and execute a systematic profiling protocol (up to 11 scripts, depending on your data's characteristics). The profiling runs across 4 sub-phases:
 
-**Phase 1 -- Structural Profile:** Basic shape of the data (rows, columns, memory footprint, column types). This gives the agent a bird's-eye view of what it's working with.
+**Phase 1 -- Structural Discovery:** Basic shape of the data (rows, columns, memory footprint, column types) and initial column-level profiling. This gives the agent a bird's-eye view of what it's working with, including null rates, unique value counts, and basic distributions.
 
-**Phase 2 -- Column-Level Profile:** Detailed statistics for every column -- null rates, unique value counts, distributions, min/max ranges. For numeric columns, it checks for potential coded values (those suspicious negative numbers like -1, -2, -9 that often mean "missing" or "suppressed" rather than being real values). For categorical columns, it enumerates all unique values.
+**Phase 2 -- Statistical Deep Dive:** Detailed statistics for every column -- full distribution analysis for numeric columns, category enumeration for categorical columns, temporal pattern analysis, and outlier detection. If your data has date/year columns or geographic identifiers, this phase also analyzes temporal coverage gaps and entity coverage against known universes.
 
-**Phase 3 -- Relationship Profiling:** Identifying potential key columns (high uniqueness suggests an identifier), foreign keys (naming patterns like `_id` suffixes), and hierarchical relationships between columns.
+**Phase 3 -- Relational Analysis:** Identifying potential key columns (high uniqueness suggests an identifier), foreign keys (naming patterns like `_id` suffixes), hierarchical relationships between columns, cross-column dependency patterns, and detection of coded values (those suspicious negative numbers like -1, -2, -9 that often mean "missing" or "suppressed" rather than being real values).
 
-**Phase 4 -- Quality Profile:** Systematic data quality checks -- completeness rates, coded missing value detection, anomalous patterns, potential duplicates.
+**Phase 4 -- Interpretation & Reconciliation:** This is where it gets interesting. The agent uses column names, value patterns, and domain conventions to make educated guesses about what each column *means*. Every interpretation is explicitly marked as `[PRELIMINARY]` -- the agent knows it's hypothesizing, not asserting. Column named `fips`? Probably a FIPS geographic code. Column with values 0 and 1? Probably a binary indicator, but is 1 "Yes" or "Male" or "Urban"? The agent will flag the ambiguity. This phase also produces overall data quality scores and a comprehensive profile summary.
 
-**Phase 5 -- Semantic Interpretation:** This is where it gets interesting. The agent uses column names, value patterns, and domain conventions to make educated guesses about what each column *means*. Every interpretation is explicitly marked as `[PRELIMINARY]` -- the agent knows it's hypothesizing, not asserting. Column named `fips`? Probably a FIPS geographic code. Column with values 0 and 1? Probably a binary indicator, but is 1 "Yes" or "Male" or "Urban"? The agent will flag the ambiguity.
-
-If you provided documentation, the agent also runs **Documentation Reconciliation (Mode 2)**: it parses your codebook or data dictionary, extracts every claim it can find (column definitions, expected types, coded value meanings), and then *verifies each claim against the actual data.* Documentation says there are 50 columns? The agent checks. Codebook says `state_code` should be a string? The agent confirms or flags the mismatch. This reconciliation is one of the most valuable things the data-ingest agent does -- it catches the disturbingly common case where documentation is outdated or describes a different version of the data than what you actually have.
+If you provided documentation, the profiling protocol also runs **Documentation Reconciliation**: it parses your codebook or data dictionary, extracts every claim it can find (column definitions, expected types, coded value meanings), and then *verifies each claim against the actual data.* Documentation says there are 50 columns? The agent checks. Codebook says `state_code` should be a string? The agent confirms or flags the mismatch. This reconciliation is one of the most valuable things Data Onboarding Mode does -- it catches the disturbingly common case where documentation is outdated or describes a different version of the data than what you actually have.
 
 ### Reviewing the Profile Output
 
@@ -134,7 +162,7 @@ Once you've provided your feedback, the agent uses your corrections to finalize 
 
 ### Methodology Skills (via Skill-Authoring)
 
-For adding knowledge about a statistical method, Python library, or analytical technique, you'll use the `skill-authoring` skill directly. This is more free-form than data ingestion, and the content depends heavily on what you're documenting. You may find it helpful to refer DAAF to other standard skills this one will be most like. Python library? Try referencing the `plotnine` or `polars` skills. Wanting to do something more methodological in nature? Try pointing it to the `data-scientist` skill. And so on. My hope is that as the community continues to extend DAAF in a few directions, we'll have plenty of exemplars to point to.
+For adding knowledge about a statistical method, Python library, or analytical technique, you'll use the `skill-authoring` skill directly. This is more free-form than data onboarding, and the content depends heavily on what you're documenting. You may find it helpful to refer DAAF to other standard skills this one will be most like. Python library? Try referencing the `plotnine` or `polars` skills. Wanting to do something more methodological in nature? Try pointing it to the `data-scientist` skill. And so on. My hope is that as the community continues to extend DAAF in a few directions, we'll have plenty of exemplars to point to.
 
 Ask DAAF something like:
 
@@ -155,7 +183,7 @@ DAAF will use the `skill-authoring` skill to guide the process. The skill-author
 - **Body structure patterns:** Different organizing patterns depending on whether the skill is workflow-based (sequential steps), task-based (tool collection), reference-based (standards/specs), or capabilities-based (features)
 - **Progressive disclosure:** How to keep the main SKILL.md under 500 lines by splitting detailed content into `references/` files
 - **Decision trees:** How to write effective navigation trees that help agents find what they need quickly
-- **Content limits:** SKILL.md body should stay under 500 lines and 5,000 words -- be concise and justify every token
+- **Content limits:** SKILL.md body should stay under 500 lines and 5,000 words -- be concise and justify every token. Reference files have different economics: they load on-demand, so thoroughness is preferred over brevity (target 3x+ SKILL.md lines collectively for data source skills)
 
 The resulting skill gets placed at `.claude/skills/[skill-name]/SKILL.md` with optional `references/`, `scripts/`, and `assets/` subdirectories.
 
@@ -174,19 +202,9 @@ in depth before coming up with a plan for my approval.
 
 ### Registering Your New Skill
 
-Here's the part that people will sometimes miss: **creating the skill file is not enough.** DAAF uses a manual, documentation-based discovery system -- auto-discovery of skills with Claude Code is imperfect and can't always be relied on. After creating a new skill, it needs to be registered in several places to ensure that the orchestrator and agents can find it and know when to use it.
+Skills are automatically discovered via their YAML frontmatter — every skill with a `SKILL.md` file in `.claude/skills/{skill-name}/` appears in the system message at conversation start. No manual registration is needed for any skill type (data source, methodology, or domain expertise).
 
-For data source skills, the `data-ingest` agent will provide you with a specific registration checklist at the end of its report. It looks something like this:
-
-| Priority | File | Section to Update | What to Add |
-|----------|------|-------------------|-------------|
-| 1 (Required) | `CLAUDE.md` | Data Need Source Skill Lookup table | New row mapping data need to skill name |
-| 2 (Required) | `agent_reference/03_SKILL_INVOCATIONS.md` | Available source skills list | New bullet with skill name and description |
-| 3 (Required) | `agents/source-researcher.md` | Step 1 examples | Add skill to example list |
-
-The agent will typically offer to make these updates for you -- just confirm and it'll handle the file edits. Note that these registration edits touch core framework files, which means they fall under the "contribution" category if you plan to share them (see [When to Extend vs. When to Contribute](#when-to-extend-vs-when-to-contribute)).
-
-For methodology and domain expertise skills, registration is simpler -- you primarily need to update `CLAUDE.md` so the orchestrator knows the skill exists and when to recommend loading it.
+The key to good discoverability is writing a clear, descriptive `description` field in your skill's YAML frontmatter. This description is what the orchestrator sees when deciding which skill to load, so make it specific about what the skill covers and when to use it.
 
 ---
 
@@ -225,7 +243,7 @@ If any of these answers are vague, the agent-authoring skill will push you to sh
 
 **Phase 3: Integrate.** This is the step where the most things can go wrong if you're not careful. A new agent needs to be registered across multiple files in the DAAF ecosystem. The agent-authoring skill provides a complete integration checklist organized into tiers:
 
-- **Tier 1 (Mandatory, 6 files):** Every new agent must be registered in `agents/README.md`, `CLAUDE.md`, `README.md`, and several other core files
+- **Tier 1 (Mandatory):** Every new agent must be registered in `.claude/agents/README.md` (the canonical agent registry, with entries in 4 sections: Agent Index, When to Use, Coordination Matrix, and Agent catalog)
 - **Tier 2 (Conditional):** Additional updates if the agent maps to a specific pipeline stage
 - **Tier 3 (Conditional):** Additional updates if the agent affects specific workflow areas
 
@@ -239,7 +257,7 @@ If any of these answers are vague, the agent-authoring skill will push you to sh
 |----------|---------|
 | `agent-authoring` skill | Full workflow with integration checklist |
 | `agent_reference/AGENT_TEMPLATE.md` | Canonical 12-section template |
-| `agents/README.md` | Current agent landscape, commonly confused pairs, coordination matrix |
+| `.claude/agents/README.md` | Current agent landscape, commonly confused pairs, coordination matrix |
 
 For changes to *existing* agents (modifying behavior rather than adding new ones), see [**05. Contributing to DAAF**](../CONTRIBUTING.md).
 
@@ -249,7 +267,7 @@ For changes to *existing* agents (modifying behavior rather than adding new ones
 
 You've created a new skill (or agent). How do you know it actually works? Here's a practical testing sequence, ordered from lightest to heaviest.
 
-### Discovery Test
+### Data Discovery Test
 
 The simplest test: can DAAF find your new skill and understand what it's for?
 
@@ -258,7 +276,7 @@ What data sources does DAAF know about? Can you tell me about
 [your new data source]?
 ```
 
-If the skill is properly registered, DAAF should be able to describe the data source, list key variables, and mention important caveats. If it can't find the skill or gives a generic response, check your registration entries in `CLAUDE.md` and the other files listed in the registration checklist.
+If the skill is properly placed, DAAF should be able to describe the data source, list key variables, and mention important caveats. If it can't find the skill or gives a generic response, verify that the skill's YAML frontmatter has a clear `description` field and that `SKILL.md` is in `.claude/skills/{skill-name}/`.
 
 ### Fetch Test
 
@@ -316,7 +334,7 @@ If you've created a useful skill or agent and want to share it with the broader 
 
 A few things to check:
 
-- **Quality:** Did you thoroughly review the data-ingest output and correct any preliminary interpretations? Skills with `[PRELIMINARY]` markers still in place aren't ready for sharing.
+- **Quality:** Did you thoroughly review the Data Onboarding output and correct any preliminary interpretations? Skills with `[PRELIMINARY]` markers still in place aren't ready for sharing.
 - **Completeness:** Does the skill follow the appropriate template (for data sources)? Does it have at least 2 decision trees? Is the Common Pitfalls section substantive?
 - **Privacy:** Does the skill reference only publicly accessible data? If it was built from proprietary data, make sure the skill documentation doesn't leak any confidential information or values.
 - **Testing:** Have you run at least a Discovery Test and a Fetch Test to confirm the skill works end-to-end?
@@ -331,7 +349,9 @@ If you're not comfortable with the pull request process, you can also [open an i
 
 Even if you're not creating new skills, there's a contribution path that requires almost zero effort: **sharing your LEARNINGS.md files.** Every time DAAF completes a Full Pipeline project, it produces a LEARNINGS.md file documenting everything it learned about data quirks, process issues, and methodology edge cases along the way. These learnings are written to be immediately actionable -- they often contain specific suggestions for updating skills, improving documentation, or adding new pitfall entries.
 
-If you [open an issue](https://github.com/DAAF-Contribution-Community/daaf/issues) with your LEARNINGS.md content, the community can fold those insights back into the framework. This is genuinely one of the most impactful things you can do -- every project run generates practical knowledge that benefits every future project.
+You can also incorporate learnings directly into your own DAAF instance: start a new session and say "incorporate learnings" — Framework Development mode will scan your project LEARNINGS.md files, present a consolidated backlog of framework improvements, and walk you through implementing them.
+
+To share learnings with the broader community, [open an issue](https://github.com/DAAF-Contribution-Community/daaf/issues) with your LEARNINGS.md content — the community can fold those insights back into the shared framework. This is genuinely one of the most impactful things you can do — every project run generates practical knowledge that benefits every future project.
 
 ---
 

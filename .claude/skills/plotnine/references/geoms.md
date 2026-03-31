@@ -114,7 +114,7 @@ ggplot(df, aes("x", ymin="lower", ymax="upper")) + geom_ribbon(alpha=0.3)
 | `geom_smooth()` | Smoothed conditional mean | x, y |
 
 ```python
-# Default loess smooth
+# Default: method="auto" (loess for n<1000, glm otherwise)
 ggplot(df, aes("x", "y")) + geom_point() + geom_smooth()
 
 # Linear regression

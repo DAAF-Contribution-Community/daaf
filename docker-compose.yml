@@ -1,4 +1,16 @@
+name: daaf
+
 services:
+  daaf-init:
+    image: busybox
+    volumes:
+      - daaf-data:/daaf
+    command: sh -c 'chown -R 1000:1000 /daaf'
+    # Runs as root to fix volume ownership for appuser (UID 1000).
+    # Docker named volumes may have files owned by root or the host UID
+    # (e.g., UID 501 on macOS), which blocks appuser from reading/writing.
+    # This init container repairs ownership on every startup.
+
   daaf-docker:
     build: .
     ports:
@@ -12,6 +24,9 @@ services:
       - ALL             # Drop all Linux capabilities (least privilege)
     security_opt:
       - no-new-privileges:true  # Prevent privilege escalation inside container
+    depends_on:
+      daaf-init:
+        condition: service_completed_successfully
 
 volumes:
   daaf-data:                    # Docker manages this storage

@@ -2,9 +2,11 @@
 
 Key demographic variables available from NHGIS for education research contexts.
 
-> **Note**: This document covers two contexts:
+> **IMPORTANT**: This document covers two contexts:
 > 1. **Portal NHGIS data** — School/college-to-census links via Education Data Portal mirrors (integer encodings)
 > 2. **NHGIS direct access** — Census variables from NHGIS Data Finder (original table codes)
+>
+> Only Section 1 (Portal Integer Encodings) documents data available through this system. All subsequent sections require direct NHGIS access.
 >
 > For Portal integer encodings, see the [Portal Encodings](#portal-integer-encodings) section below.
 
@@ -141,6 +143,14 @@ Legal or statistical area description code for the state legislative district lo
 | `60`-`62` | Minor civil divisions (governmentally active) |
 | `70`-`73` | Census-designated places |
 | `80`-`86` | Other minor civil divisions and statistical areas |
+
+---
+
+> **STOP — Portal Boundary**
+>
+> **The variables documented below are NOT available through the Education Data Portal mirrors.** They are available only through direct NHGIS access (free IPUMS registration required at https://www.nhgis.org/). See `data-access.md` for direct access methods.
+>
+> If your analysis plan relies on census demographic variables (population, poverty, income, race, education attainment, etc.), you **cannot** fetch them through the DAAF mirror system. You must use direct NHGIS access.
 
 ---
 

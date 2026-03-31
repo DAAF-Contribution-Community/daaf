@@ -45,11 +45,16 @@ fig.update_traces(marker_size=15)
 
 ## Common Errors
 
-### "No module named 'kaleido'"
+### "No module named 'kaleido'" / write_image fails
 
 **Error**: `ValueError: Image export using the "kaleido" engine requires the kaleido package`
 
-**Fix**: Install kaleido for static image export.
+**DAAF context**: kaleido is intentionally excluded from the DAAF container due to
+its heavy Chromium dependency (~300MB binary + 9 system shared libraries). Use
+**plotnine** for static figure export (PNG/SVG) and reserve Plotly for interactive
+HTML output via `write_html()`.
+
+If you need kaleido in a custom environment:
 
 ```bash
 pip install -U kaleido
@@ -294,11 +299,12 @@ import plotly.io as pio
 pio.templates.default = "plotly_white"
 ```
 
-### 3. Save Both HTML and Image
+### 3. Save Output
 
 ```python
-fig.write_html("plot.html")           # Interactive
-fig.write_image("plot.png", scale=2)  # Static, high-res
+fig.write_html("plot.html")           # Interactive (primary export in DAAF)
+# fig.write_image() is NOT available — kaleido not installed
+# Use plotnine for static PNG/SVG figures in reports
 ```
 
 ### 4. Use Meaningful Hover Templates
@@ -325,7 +331,7 @@ print(df.isna().sum())
 | Problem | Solution |
 |---------|----------|
 | Plot not showing | `fig.show()` or check renderer |
-| Image export fails | `pip install -U kaleido` |
+| Image export fails | Not available in DAAF (no kaleido); use plotnine for static images |
 | Wrong colors | Check `color=` vs `marker_color=` |
 | Axis wrong type | `fig.update_xaxes(type="linear")` |
 | Slow with big data | Use `go.Scattergl` |

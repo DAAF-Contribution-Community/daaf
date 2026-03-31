@@ -1,21 +1,17 @@
 ---
 name: education-data-source-nhgis
 description: >-
-  IPUMS NHGIS (National Historical Geographic Information System) census
-  geography and demographic data for education research. Use when working with
-  census geography, demographic data for school communities, time series
-  analysis, geographic crosswalks, or linking schools to census tracts/block
-  groups. Portal data is pre-processed crosswalks; direct NHGIS requires
-  IPUMS registration.
+  NHGIS — census geography crosswalks via Portal: links schools (ncessch) and colleges (unitid) to tracts, block groups, CBSAs (1990-2020). Census demographics NOT in Portal — access NHGIS directly. Use for linking education data to census geography.
 metadata:
-  audience: data-analysts
-  domain: education-data
-provenance:
-  skill_authored: "2026-02-09"
-  skill_last_updated: "2026-02-09"
+  audience: any-agent
+  domain: data-source
+  skill-authored: "2026-02-09"
+  skill-last-updated: "2026-02-09"
 ---
 
 # NHGIS Data Source Reference
+
+IPUMS NHGIS — census geography crosswalks and demographic data for education research. Via the Education Data Portal: geographic crosswalk tables linking K-12 schools (ncessch) and colleges (unitid) to census tracts, block groups, CBSAs, and regions (census 1990-2020). Census demographic variables (income, poverty, race, educational attainment) are NOT in the Portal — access directly from NHGIS via free IPUMS registration. Use when linking school or institutional data to census geography for contextual analysis.
 
 Census geography and demographic data source for education research. NHGIS provides the foundation for linking schools to community characteristics via census tracts, block groups, and school district boundaries.
 
@@ -35,6 +31,14 @@ Census geography and demographic data source for education research. NHGIS provi
 >
 > See `./references/variable-catalog.md` for complete encoding tables.
 
+> **CRITICAL: Portal Data Scope**
+>
+> The Education Data Portal provides ONLY **geographic crosswalk tables** that link schools and colleges to census geography (tracts, block groups, regions, CBSAs). These contain geographic identifiers and assignment columns — approximately 35-47 columns per file.
+>
+> The Portal does **NOT** provide census demographic data (population, income, poverty, race, education attainment, housing, language, etc.). For demographic variables, you must access NHGIS directly via IPUMS (free registration required). See `./references/data-access.md` for direct access methods.
+>
+> This skill documents both contexts: Portal crosswalk data (with integer encodings above) and direct NHGIS census variables (in `./references/variable-catalog.md`, clearly marked as requiring direct NHGIS access).
+
 ## What is NHGIS?
 
 NHGIS (from IPUMS, University of Minnesota) provides free access to census geography and demographic data.
@@ -46,6 +50,7 @@ NHGIS (from IPUMS, University of Minnesota) provides free access to census geogr
 - **Available years**: 1790-2020 (decennial), 2005-2023 (ACS 5-year)
 - **Primary identifiers**: GISJOIN (NHGIS internal), GEOID (Census Bureau standard)
 - **Education relevance**: Links school locations to community demographics via census tracts, block groups, and school district boundaries
+- **Available through Education Data Portal**: Geographic crosswalk tables only (school-to-census and college-to-census links for census 1990, 2000, 2010, 2020). Census demographic data requires direct NHGIS access.
 
 ## Reference File Structure
 

@@ -60,3 +60,4 @@ Thumbs.db
 .claude/logs/sessions/
 .claude/logs/activity.log
 .claude/logs/audit.jsonl
+.claude/logs/subagent-registry-*.jsonl

@@ -1,19 +1,17 @@
 ---
 name: education-data-source-eada
 description: >-
-  Equity in Athletics Disclosure Act (EADA) data for college athletics gender
-  equity analysis. Use when analyzing athletic participation, coaching staff,
-  salaries, expenses, or revenues at colleges/universities, or understanding
-  Title IX context in athletics. EADA is NOT Title IX compliance data.
+  EADA — college athletics gender equity (~2,000+ institutions, 2002-2021). Participation, coaching, salaries, expenses, revenues, athletic aid by gender. Not Title IX compliance data. No sector column; join IPEDS on unitid for institution type.
 metadata:
-  audience: data-analysts
-  domain: education-data
-provenance:
-  skill_authored: "2026-02-09"
-  skill_last_updated: "2026-02-09"
+  audience: any-agent
+  domain: data-source
+  skill-authored: "2026-02-09"
+  skill-last-updated: "2026-02-09"
 ---
 
 # EADA Data Source Reference
+
+Equity in Athletics Disclosure Act (EADA) data for college athletics gender equity analysis covering ~2,000+ institutions (2002-2021). Use when analyzing athletic participation, coaching staff, salaries, expenses, revenues, or athletic aid by gender at colleges/universities, or understanding Title IX context in athletics. EADA is NOT Title IX compliance data. Note: no sector column; join to IPEDS on unitid to filter by institution type.
 
 The EADA provides the only standardized, publicly available dataset on college athletics participation, coaching, finances, and athletic aid by gender across ~2,000+ postsecondary institutions, enabling gender equity analysis in intercollegiate athletics.
 
@@ -42,6 +40,7 @@ The EADA provides the only standardized, publicly available dataset on college a
 - **Available years**: 2002–2021 (Portal mirror)
 - **Primary identifier**: `unitid` (6-digit IPEDS institution ID)
 - **Content**: Athletic participation, coaching staff, salaries, expenses, revenues, and athletic aid — all reported by gender
+- **Available through**: Education Data Portal mirrors
 
 ## Reference File Structure
 
@@ -206,7 +205,7 @@ Interpretation question?
 
 ## Data Access
 
-Datasets for EADA are available via the mirror system. All data fetching uses `fetch_from_mirrors()` from `fetch-patterns.md`, with mirrors defined in `mirrors.yaml` and canonical paths in `datasets-reference.md`.
+Datasets for EADA are available via the Education Data Portal mirror system. All data fetching uses `fetch_from_mirrors()` from `fetch-patterns.md`, with mirrors defined in `mirrors.yaml` and canonical paths in `datasets-reference.md`.
 
 **Key datasets:**
 

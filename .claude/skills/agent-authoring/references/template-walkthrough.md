@@ -18,7 +18,7 @@
 
 **Purpose:** [One sentence — what this agent does and why it exists.]
 
-**Invocation:** Via Agent tool with `subagent_type: "[general-purpose | Plan]"`
+**Invocation:** Via Agent tool with `subagent_type: "[general-purpose | search-agent]"`
 ```
 
 **Guidance:**
@@ -46,7 +46,7 @@
 
 **Core Distinction Table (CRITICAL):**
 
-This is the **#1 failure mode in multi-agent systems** — overlapping responsibilities. Before writing, consult `agents/README.md` for:
+This is the **#1 failure mode in multi-agent systems** — overlapping responsibilities. Before writing, consult `.claude/agents/README.md` for:
 - The Agent Index table (Key Distinction column)
 - The "Commonly Confused Pairs" subsection
 
@@ -123,8 +123,6 @@ Your Core Distinction table must use this format:
 - Domain-specific agents should include methodology subsections here
 
 **Common mistake:** Abstract platitudes like "Be thorough and careful." This tells the agent nothing. Instead: "Validate row counts before AND after every join. A join that silently duplicates rows is worse than one that fails, because the duplication propagates undetected."
-
-**File reading:** Many agents that will do substantial file reading should get the Core Behavior section on "Context-Efficient File Reading" (standardized block — see `cross-agent-standards.md` § 11). Number it to follow the agent's other behaviors.
 
 **Best exemplar:** `research-executor.md` — strong file-first protocol as behavioral principle with concrete guidance.
 
@@ -208,7 +206,7 @@ Your Core Distinction table must use this format:
 **Guidance:**
 - ALWAYS include the orchestrator as a consumer
 - The severity-to-action mapping makes the output contract explicit — no ambiguity
-- Think about ALL consumers: orchestrator, next-stage agents, STATE.md, LEARNINGS.md
+- Think about ALL consumers: orchestrator, next-stage agents, Plan.md, Plan_Tasks.md, STATE.md, LEARNINGS.md
 
 **Common mistake:** Omitting the orchestrator. Every agent's primary consumer is the orchestrator.
 
@@ -317,43 +315,23 @@ Before returning output, verify:
 
 ## Section 11: Invocation Pattern
 
-**What it is:** The EXACT Agent() call syntax the orchestrator should use.
+**What it is:** A pointer to the canonical invocation template in the appropriate `WORKFLOW_PHASE*.md` file or mode reference file.
 
 **Format:**
 ```markdown
 ## Invocation
 
-Orchestrator invokes this agent with:
+**Invocation type:** `subagent_type: "[general-purpose | search-agent]"`
 
-Agent({
-    description: "Stage [N]: [Stage Name]",
-    prompt: """You are a [Agent Name]. Follow the protocol in
-    `{BASE_DIR}/agents/[agent-name].md`.
-
-    **BASE_DIR:** {BASE_DIR}
-    All relative paths in referenced files resolve from BASE_DIR.
-
-    [Skill loading instruction, if applicable:]
-    Call the skill tool with name '[skill-name]'.
-
-    **CONTEXT:**
-    [Mapped from Upstream Inputs]
-
-    **TASK:**
-    [Task specification]
-
-    Return findings using the [Agent Name] Output Format.""",
-    subagent_type: "[general-purpose | Plan]"
-})
+See the appropriate `agent_reference/WORKFLOW_PHASE[N]_[NAME].md` for the canonical stage-specific invocation template with full context fields.
+For agent landscape context, see `.claude/agents/README.md`.
 ```
 
 **Guidance:**
-- Must include BASE_DIR line (mandatory for path resolution)
-- Must map to Upstream Inputs (Section 3) — everything listed there should appear here
-- Include skill loading instruction if agent uses skills
-- This section should be copy-pasteable by the orchestrator
-
-**Common mistake:** Forgetting the BASE_DIR line. Without it, subagents must guess the working directory — and often guess wrong.
+- Do NOT include a full Agent() call template — the `agent_reference/WORKFLOW_PHASE*.md` files and mode reference files are the sources of truth for invocation templates
+- Specify `subagent_type` so readers know the agent's capability level at a glance
+- Reference the relevant WORKFLOW_PHASE file for stage-specific invocation templates (e.g., `WORKFLOW_PHASE3_ACQUISITION.md` for Stage 5-6 agents)
+- The invocation template must map to Upstream Inputs (Section 3)
 
 ---
 

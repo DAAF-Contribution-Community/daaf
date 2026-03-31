@@ -1,20 +1,17 @@
 ---
 name: education-data-source-nccs
 description: >-
-  National Center for Charitable Statistics (NCCS) nonprofit organization data
-  from the Urban Institute. Use when researching private nonprofit colleges and
-  universities, understanding Form 990 financial data, analyzing nonprofit higher
-  education institutions, or supplementing IPEDS data with detailed financial and
-  governance information from IRS filings.
+  NCCS — Form 990 data for private nonprofit colleges (Portal: IPEDS-matched, 1993-2016). Revenue, expenses, assets, endowment, governance beyond IPEDS. Use when IRS financial depth needed. Portal ends 2016; public institutions excluded (no Form 990).
 metadata:
-  audience: data-analysts
-  domain: education-data
-provenance:
-  skill_authored: "2026-02-09"
-  skill_last_updated: "2026-02-09"
+  audience: any-agent
+  domain: data-source
+  skill-authored: "2026-02-09"
+  skill-last-updated: "2026-02-09"
 ---
 
 # NCCS Data Source Reference
+
+National Center for Charitable Statistics (NCCS) Form 990 data for private nonprofit colleges and universities (Portal mirror: IPEDS-matched institutions, 1993-2016). Use when IRS-based financial data — revenue, expenses, assets, endowment details — or governance information (board composition, executive compensation) is needed beyond what IPEDS provides. Portal data ends at 2016; for current filings use full NCCS directly. Public institutions do not file Form 990 and are excluded.
 
 The NCCS (National Center for Charitable Statistics) is the principal U.S. repository for empirical data on the nonprofit sector, derived from IRS Form 990 filings. It provides financial depth, governance detail, and historical coverage for private nonprofit colleges and universities that goes well beyond what IPEDS collects.
 

@@ -33,7 +33,7 @@ Returns all rows from both DataFrames:
 
 ```python
 df1.join(df2, on="key", how="full")
-df1.join(df2, on="key", how="outer")  # Alias
+# Note: how="outer" is NOT valid in Polars 1.x; use how="full"
 ```
 
 ### Cross Join
