@@ -7,6 +7,8 @@ This document seeks to grapple with some of the bigger implications of DAAF and 
 ---
 
 ## Table of Contents
+- [**Q: What are the goals behind DAAF?**](#q-what-are-the-goals-behind-daaf)
+- [**Q: What's the story behind DAAF? How did this project start?**](#q-whats-the-story-behind-daaf-how-did-this-project-start)
 - [**Q: Won't this tool lead to misuse and misinformation? Couldn't this be an engine for slop and pseudoscience?**](#q-wont-this-tool-lead-to-misuse-and-misinformation-couldnt-this-be-an-engine-for-slop-and-pseudoscience)
 - [**Q: What's the appropriate level of trust for AI-generated analysis?**](#q-whats-the-appropriate-level-of-trust-for-ai-generated-analysis)
 - [**Q: So what do you see as the main value-add for AI assistance in research workflows after all of this?**](#q-so-what-do-you-see-as-the-main-value-add-for-ai-assistance-in-research-workflows-after-all-of-this)
@@ -15,6 +17,29 @@ This document seeks to grapple with some of the bigger implications of DAAF and 
 - [**Q: What does this all mean for the next generation of researchers?**](#q-what-does-this-all-mean-for-the-next-generation-of-researchers)
 - [**Q: What about the environmental and energy costs of this kind of intensive AI use?**](#q-what-about-the-environmental-and-energy-costs-of-this-kind-of-intensive-ai-use)
 - [**Recommended Next Steps**](#recommended-next-steps)
+
+---
+
+## Vision & Goals
+
+### Q: What are the goals behind DAAF?
+
+The main goals in working on DAAF and releasing it as an open and extensible framework are four-fold:
+
+- **Awareness:** Many researchers are simply not aware of the pace of progress in AI and how it can genuinely benefit their work **today**. Whether people end up building on DAAF or using it at all, it's most important that it serves as a way to spread awareness among the research community and accelerate the very important conversations we need to be grappling with as AI continues to advance.
+- **Education:** Related to the above, DAAF is designed to be an approachable and educational on-ramp to this new frontier of agentic AI systems. By making it easy to both install AND start to understand with an intensive array of educational materials, tutorials, blog deep-dives, and videos via project documentation and the [DAAF Field Guide Substack](https://daafguide.substack.com/), the hope is to rapidly accelerate the readiness of the scientific community to genuinely and critically engage with AI disruption and transformation writ large.
+- **Establishing High Standards:** These tools *are here* and will only continue to proliferate, whether it's DAAF or something else. The goal is to ensure that we as researchers, and the stakeholders downstream who use and benefit from our research, can be **critical and careful consumers** of these tools, using DAAF as a clear demonstration of what can and should be possible.
+- **Accelerating research:** Ultimately, DAAF is designed to be genuinely useful as a tool for accelerating research in the broader scientific community. A lot of time, thought, and care has been poured into making something worth building on and extending, and the hope is that DAAF helps researchers discover and learn more about our world.
+
+Even if DAAF helps move the needle on even **one** of these frontiers, everything here will have been worth it.
+
+### Q: What's the story behind DAAF? How did this project start?
+
+DAAF began in the summer of 2025 after its creator, Brian Heseung Kim ([@brhkim](https://github.com/brhkim)), first read [Dr. Korinek's working paper on AI Agents for Economic Research](https://www.genaiforecon.org/JEL-2025-Aug-AIAgents.pdf). The central question was: With a sufficiently carefully crafted set of agents, why *wouldn't* it be possible to accelerate research work on multiple frontiers? And with detailed and intentional prompting instructions, why *wouldn't* it be possible to make an AI assistant as cautious and thoughtful about data as a trained researcher?
+
+Initial exploration of agentic frameworks found that they were still too far from formalized to be worth investing in, and that model quality just didn't quite seem to be there yet. That all seemed to change in late November 2025 with the [release of Claude Opus 4.5](https://www.anthropic.com/news/claude-opus-4-5) and the increasing capabilities built into [agentic workflows via Claude Code](https://www.anthropic.com/news/enabling-claude-code-to-work-more-autonomously) and similar agentic coding harnesses (e.g., Codex, Gemini CLI, OpenCode, etc.). Experimentation began in December 2025, and actual development on the first stages of DAAF in January 2026. When it became clear just how well it handled data nuances, data documentation issues, data harmonization issues, and more, the decision was made to move this beyond a pet project as soon as possible. Several very intense marathon weekends of coding, testing, writing, and scoping with colleagues later, and here we are today.
+
+Brian's background as a traditionally-certified public high school English teacher is part of why so much of DAAF is packaged as an educational endeavor: while his research career has been focused on formalizing research toolsets and rigorous guardrails, one of his most important value-adds for the field today is in helping peers and colleagues rapidly skill-up on this frontier. His work on responsible use of ML/AI in social science research goes back to roughly 2018 (starting with [this early exploration](https://drive.google.com/file/d/1ShZeS2wRWu_ifWREfctj3D4TyYZch0hL/view?usp=drive_link)), and his [Ph.D. dissertation](https://libraetd.lib.virginia.edu/public_view/nz806060w) -- completed in mid-2022, months before ChatGPT was released -- focused entirely on teaching others how to use these tools responsibly. He [continues](https://journals.sagepub.com/doi/10.3102/0013189X241276814) to [work](https://journals.sagepub.com/doi/10.3102/00028312241292309) on [that frontier](https://link.springer.com/article/10.1007/s11162-025-09847-5) today.
 
 ---
 
