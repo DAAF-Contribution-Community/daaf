@@ -18,14 +18,28 @@ LLM-based AI assistants are becoming **increasingly capable**, but they are alwa
 
 **Yes** -- but only with the right guidance, right guardrails, and in expert hands to direct all core decisions and verify all key outputs.
 
-Enter **DAAF, the Data Analyst Augmentation Framework.** DAAF is a free and open-source instructions framework for [Claude Code](https://docs.anthropic.com/en/docs/claude-code) that helps skilled researchers rapidly scale their expertise and accelerate data analysis across any domain with AI assistance -- without sacrificing the transparency, rigor, or reproducibility that good science demands. DAAF sits between you and Claude Code to automatically and consistently help Claude think more like a responsible and rigorous researcher. 
+Enter **DAAF, the Data Analyst Augmentation Framework.** DAAF is a free and open-source instructions framework for [Claude Code](https://docs.anthropic.com/en/docs/claude-code) that helps skilled researchers rapidly scale their expertise and accelerate data analysis across any domain with AI assistance -- without sacrificing the transparency, rigor, or reproducibility that good science demands. DAAF sits between you and Claude Code to automatically and consistently help Claude think more like a responsible and rigorous researcher by:
+
+- Enforcing strict auditability and reproducibility standards for all work, allowing you to **verify everything** Claude does on your behalf
+- Preventing potentially dangerous unintended file access and editing, sandboxing Claude with strict protections and logging traces
+- Setting high standards of care, rigor, and thoroughness in all data analysis, forcing Claude to commnet, verify, and review all analytic code before you ever see it
+- Embedding best practices for a wide variety of research methodologies like causal inference and geospatial analysis, providing rich Skills that extend Claude's base capabilities with real research and resources
+- Collaborating with **you**, the human expert, directly on all key decisions, keeping you firmly in the driver's seat
 
 Think of it as a **force-multiplying exoskeleton** for human researchers -- a tool explicitly designed to **augment** your hard-earned expertise, not replace it. The goal is to make it easy for researchers to use Claude Code effectively **and** responsibly. Importantly, DAAF is not and will never be perfect -- but it is already immensely useful, and this is the worst a tool like DAAF will ever be from now on with the help and support of the broader research community.
 
 Install and begin using it in as little as 10 minutes from a fresh install with a high-usage Anthropic account.
 
+Watch the 4 minute v2.0.0 Showcase video below, or read on for more information!
+  <p align="center">                                                                                                  
+    <a href="https://youtu.be/747r7VT4a78">
+      <img width="607" height="339" alt="image" src="https://github.com/user-attachments/assets/ba265c65-ba25-4a98-9789-d4a1d5af6815" alt="Watch the DAAF v2.0.0 Showcase />
+      <img src="https://img.youtube.com/vi/747r7VT4a78/maxresdefault.jpg" "        
+  width="720" />                                                                                                      
+    </a>                                                                                                              
+  </p>    
+
 <p align="center">
-  <a href="https://youtu.be/747r7VT4a78"><strong>Watch the v2.0.0 Showcase</strong></a> &nbsp;|&nbsp;
   <a href="https://youtu.be/ZAM9OA0AlUs"><strong>Watch the v1.0.0 10-minute demo/walkthrough</strong></a> &nbsp;|&nbsp;
   <a href="user_reference/01_installation_and_quickstart.md"><strong>Installation Guide</strong></a> &nbsp;|&nbsp;
   <a href="#full-user-documentation-reference-and-recommended-next-steps"><strong>User Documentation Reference</strong></a> &nbsp;|&nbsp;
