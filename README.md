@@ -1,29 +1,10 @@
 <!--
   README v2.0.0 — Revised draft
-
-  Content migrated to FAQ (user_reference/06_faq_philosophy.md):
-  - Author's four project goals (Awareness, Education, High Standards, Accelerating Research)
-  - Extended licensing philosophy beyond the summary here
-  - Full author biography and origin story (condensed here)
-
-  Anchor changes from v1 README:
-  - #summary-what-is-daaf → removed (summary is now the opening section)
-  - #vision--purpose → removed (content merged into summary + design principles)
-  - #what-daaf-can-do-today → removed (content distributed to summary, engagement modes, capabilities)
-  - #what-daaf-can-do-with-your-help → #contributing (condensed)
-  - #why-open-source-what-does-it-mean-for-daaf → #open-source--licensing
-  - #how-to-cite → #how-to-cite (preserved)
-  - #recommended-next-steps → #recommended-next-steps (preserved)
-  - #about-the-author → #about-the-author (preserved)
-  - #acknowledgments → #acknowledgments (preserved)
-  - NEW anchors: #quick-start, #design-principles, #engagement-modes,
-    #capabilities, #demo--sample-project, #why-education-data,
-    #user-documentation
 -->
 
 ## Summary: What is DAAF?
 
-<img width="4096" height="1296" alt="DAAF Logo" src="https://github.com/user-attachments/assets/616fae4e-2bd7-44aa-a52c-954d473dbb10" />
+<img width="1258" height="433" alt="daaf_20_thumbnail3" src="https://github.com/user-attachments/assets/b9bfc613-170d-41e4-b35f-b871989dc428" />
 
 <p align="center">
   <a href="https://github.com/DAAF-Contribution-Community/daaf/releases"><img src="https://img.shields.io/badge/version-v2.0.0-blue" alt="Version v2.0.0"></a>
@@ -43,18 +24,22 @@ Think of it as a **force-multiplying exoskeleton** for human researchers -- a to
 Install and begin using it in as little as 10 minutes from a fresh install with a high-usage Anthropic account.
 
 <p align="center">
-  <a href="https://youtu.be/ZAM9OA0AlUs"><strong>Watch the Demo</strong></a> &nbsp;|&nbsp;
+  <a href="https://youtu.be/747r7VT4a78"><strong>Watch the v2.0.0 Showcase</strong></a> &nbsp;|&nbsp;
+  <a href="https://youtu.be/ZAM9OA0AlUs"><strong>Watch the v1.0.0 10-minute demo/walkthrough</strong></a> &nbsp;|&nbsp;
   <a href="user_reference/01_installation_and_quickstart.md"><strong>Installation Guide</strong></a> &nbsp;|&nbsp;
-  <a href="#user-documentation"><strong>Documentation</strong></a> &nbsp;|&nbsp;
-  <a href="https://daafguide.substack.com/"><strong>Substack</strong></a> &nbsp;|&nbsp;
-  <a href="CONTRIBUTING.md"><strong>Contributing</strong></a>
+  <a href="#full-user-documentation-reference-and-recommended-next-steps"><strong>User Documentation Reference</strong></a> &nbsp;|&nbsp;
+  <a href="https://daafguide.substack.com/"><strong>DAAF Field Guide Substack</strong></a> &nbsp;|&nbsp;
+  <a href="https://discord.gg/7FWTnZJDqy"><strong>AI for Responsible and Rigorous Research Discord</strong></a> &nbsp;|&nbsp;
+  <a href="CONTRIBUTING.md"><strong>Contributing to DAAF</strong></a>
 </p>
 
 ---
 
 ## Quick Start
 
-**Requirements:** [Docker Desktop](https://www.docker.com/products/docker-desktop/) (running) and an [Anthropic Max subscription](https://claude.com/pricing/max) ($100-200/mo) or [API key](https://console.anthropic.com/). Opus 4.5/4.6 models required. See the [Installation Guide](user_reference/01_installation_and_quickstart.md) for full details, prerequisites, and troubleshooting.
+If you're already comfortable with the Terminal and Claude Code, you can get started almost immediately using the Quick Start instructions below. Otherwise, I recommend starting with the full [Installation Guide](user_reference/01_installation_and_quickstart.md) for beginner-friendly details, prerequisites, and troubleshooting.
+
+**Requirements:** [Docker Desktop](https://www.docker.com/products/docker-desktop/) (running) and an [Anthropic Max subscription](https://claude.com/pricing/max) ($100-200/mo) or [API key](https://console.anthropic.com/). 
 
 <table>
 <tr>
@@ -121,7 +106,7 @@ claude
 </tr>
 </table>
 
-On first launch, Claude Code will prompt you to authenticate. Set your model to **Opus 4.5** or **Opus 4.6** via `/model`, and set **Auto-compact** to **False** and **Verbose output** to **True** via `/config`. You're ready to go; see [Understanding DAAF](user_reference/02_understanding_daaf.md) for some suggestions on how to get started with progressively more complex tasks with DAAF.
+On first launch, Claude Code will prompt you to authenticate. Set your model to **Opus 4.6** via `/model`, and set **Auto-compact** to **False** and **Verbose output** to **True** via `/config`. You're ready to go; see [Understanding DAAF](user_reference/02_understanding_daaf.md) for some suggestions on how to get started with progressively more complex tasks with DAAF!
 
 ---
 
@@ -200,10 +185,13 @@ Interactive dashboards (Plotly) &bull; Reactive analytic notebooks (marimo) &bul
 
 ---
 
-## Demo & Sample Project
+## Demos & Sample Projects
 
-- [**Watch the 10-minute demo**](https://youtu.be/ZAM9OA0AlUs) walking through all the main functionalities of DAAF
-- Browse the corresponding [full sample project archive](./research/2026-02-15_College_Graduation_Rate_Selectivity_Analysis/) or jump straight to the [main report](./research/2026-02-15_College_Graduation_Rate_Selectivity_Analysis/2026-02-15_College_Graduation_Rate_Selectivity_Analysis_Report.md)
+- [**Watch the v2.0.0 Showcase**](https://youtu.be/747r7VT4a78) highlighting all the current functionalities of DAAF
+- [**Explore a sample Full Pipeline project**](https://github.com/DAAF-Contribution-Community/daaf/tree/main/research/2026-03-29_College_Graduation_Rate_Selectivity_Analysis) to see what kinds of reports, visualizations, reproducible scripts, and other artifacts DAAF can produce
+- [**Explore a sample Reproducibility Verification project**](https://github.com/DAAF-Contribution-Community/daaf/tree/main/research/2026-03-30_College_Graduation_Rate_Selectivity_Analysis_Reproduction) to explore the outputs of a Reproducibility Verification process (using the same Full Pipeline project above)
+- [**Watch the data onboarding demo**](https://www.youtube.com/watch?v=G5uKSlI6jls) explaining how the data onboarding process works (formerly "data ingestion" in v1.0.0) and talking through a use-case where we replicate the NYTimes' "Red Shift" interactive data visualization
+- [**Watch the v1.0.0 10-minute demo**](https://youtu.be/ZAM9OA0AlUs) talking through the original modes, philosophy, and intentions behind DAAF
 
 ---
 
