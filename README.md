@@ -125,47 +125,55 @@ DAAF explicitly embraces the fact that LLM research assistants will never be per
 
 ## Engagement Modes
 
-When you open DAAF, just begin by asking it any question or for support with any type of task. DAAF intelligently responds to your needs by automatically selecting and walking you through one of eight possible research workflow modes (and you can feel free to redirect it if it gets it wrong!):
+When you open DAAF, just begin by asking it any question or for support with any type of task. DAAF intelligently responds to your needs by automatically selecting and walking you through one of eight possible research workflow modes (and you can feel free to redirect it if it gets it wrong!) while providing easy opportunities to transition across supported workflows as needed:
 
 **Data Onboarding:** Make Claude an expert in **your** data
 - *What you do:* Point DAAF to your data (local file, web download, or API) and any associated documentation
 - *What DAAF does:* Runs a multi-stage data profiling process to learn all the ins and outs, with fully reproducible code
 - *What you get:* An in-depth data documentation Skill that DAAF references for all future work with your data -- fully portable, share with colleagues
+- *Example:* I've got a new BLS employment dataset I want to explore and understand a bit more. I've got this link to the dataset and a technical paper from them: can you start profiling it?
 
 **Data Lookup:** Your personal data documentation oracle
 - *What you do:* Ask DAAF a specific question about any dataset it has access to
 - *What DAAF does:* Loads the data documentation Skill and reviews all relevant reference information in seconds
 - *What you get:* A precise, documentation-informed answer with opportunities to dig deeper
+- *Example:* Can you give me a sense of what the year variables actually indicate in the various IPEDS datasets?
 
 **Data Discovery:** Connect the dots across data sources and topics
 - *What you do:* Ask DAAF a broad data or research scoping question
 - *What DAAF does:* Launches explorations across all available data documentation relevant to your question
 - *What you get:* An in-depth summary of relevant opportunities, insights, clarifications, and caveats to consider
+- *Example:* What are all the socioeconomic status related variables we have access to across the Urban Institute Education Portal datasets?
 
 **Ad Hoc Collaboration:** A smarter, more grounded research partner
 - *What you do:* Ask DAAF to help you riff on anything research-related -- code review, debugging, brainstorming, writing scripts
 - *What DAAF does:* Engages as a collaborator with embedded domain and methodological expertise guiding the way
 - *What you get:* A much more knowledgeable and careful Claude assistant for flexible, multi-turn working sessions
+- *Example:* How would I implement a diff-in-diff design in Python? I know how in R but not the Python equivalents
 
 **Full Pipeline:** From research question to results, with your guidance every step of the way
 - *What you do:* Ask DAAF for support answering any arbitrarily complex research question with your data
 - *What DAAF does:* Data scoping, analytic planning, data acquisition and cleaning, in-depth code review, analysis, visualization, and report writing -- the works
 - *What you get:* A pre-analysis plan, a fully reproducible end-to-end analysis for close review, and a summary report with key findings, data visualizations, limitations, and citations
+- *Example:* I want to analyze how graduation rates relate to admissions selectivity, while better accounting for factors like Pell share, student demographics, and other related factors
 
 **Revision and Extension:** Make the first draft better and build beyond
 - *What you do:* Ask for revisions to or new deliverables from any prior analysis
 - *What DAAF does:* Reviews the prior analysis, launches targeted revisions, reruns analyses as needed, updates all downstream work
 - *What you get:* Refined analyses, new dashboards, additional visualizations, stakeholder reports -- whatever you need
+- *Example:* The scatter plots from yesterday look scrunched -- fix the sizing and propagate the changes downstream
 
 **Reproducibility Verification:** Verify, don't trust. Ensure prior work is fully reproducible.
 - *What you do:* Point DAAF to a completed Full Pipeline analysis (yours or someone else's)
 - *What DAAF does:* Reruns and re-verifies every script against the final report, critiquing and exploring along the way
 - *What you get:* An in-depth reproducibility report with issues, concerns, and summary takeaways
+- *Example:* I want to verify that the graduation rate analysis reproduces correctly from its replication notebook before we share it with our collaborators
 
 **Framework Development:** Make DAAF work for **you**
 - *What you do:* Ask DAAF to improve its own functionality: new methodologies, new Python libraries, new domain expertise, or new modes entirely
 - *What DAAF does:* Reviews its own architecture, conducts in-depth research, and meticulously updates its functionality
 - *What you get:* A better DAAF with modular skills and agents you can share with colleagues or the community
+- *Example:* I want to explore building in more supports for more sophisticated natural language processing techniques that allow us to classify open-response text
 
 ---
 
