@@ -7,6 +7,13 @@ This is the inverse of _build_notebook.py. It parses a DAAF marimo notebook
 into a standalone .py file with its execution log appended — exactly as it
 existed before notebook assembly.
 
+After extraction, runs a cross-cell variable reference validation pass using
+Python's ast module. Scripts that reference variables not defined within them
+(likely cross-cell dependencies from the marimo notebook) are flagged with
+warnings in both stdout and a "Dangling Reference Warnings" section in the
+output MANIFEST.md. This helps Reproducibility Verification (RV-2) anticipate
+scripts that may need modification before re-execution.
+
 Usage:
     python decompile_notebook.py <notebook_path> <output_dir>
 
@@ -27,6 +34,7 @@ log re-formatted as comments — a faithful reconstruction of the original
 executed script file.
 """
 
+import ast
 import re
 import sys
 from pathlib import Path
@@ -242,6 +250,145 @@ def reconstruct_script(code, log_text):
     return script
 
 
+def validate_references(code):
+    """Check for names referenced but never defined in a script's code.
+
+    Uses Python's ast module to find all Name nodes that are loaded (read)
+    vs stored (assigned/defined). Returns a list of names that are referenced
+    but never defined within the script. Filters out common builtins, stdlib
+    modules, and standard DAAF imports to reduce false positives.
+
+    Returns list of (name, line_number) tuples for dangling references.
+    """
+    # Common names that are always available (builtins, common imports, etc.)
+    # We intentionally keep this conservative — better to have a few false
+    # positives than miss real dangling references.
+    KNOWN_SAFE = {
+        # Python builtins
+        'print', 'len', 'range', 'str', 'int', 'float', 'bool', 'list',
+        'dict', 'set', 'tuple', 'type', 'isinstance', 'enumerate', 'zip',
+        'map', 'filter', 'sorted', 'reversed', 'min', 'max', 'sum', 'abs',
+        'round', 'any', 'all', 'open', 'None', 'True', 'False',
+        'ValueError', 'TypeError', 'KeyError', 'IndexError', 'FileNotFoundError',
+        'RuntimeError', 'Exception', 'AssertionError', 'StopIteration',
+        'NotImplementedError', 'ZeroDivisionError', 'OSError', 'IOError',
+        'super', 'property', 'staticmethod', 'classmethod', 'object',
+        'hasattr', 'getattr', 'setattr', 'delattr', 'callable', 'id',
+        'hash', 'repr', 'format', 'input', 'vars', 'dir', 'help',
+        'hex', 'oct', 'bin', 'ord', 'chr', 'ascii', 'iter', 'next',
+        'slice', 'memoryview', 'bytearray', 'bytes', 'frozenset',
+        'complex', 'divmod', 'pow', 'eval', 'exec', 'compile',
+        'breakpoint', 'exit', 'quit',
+        '__name__', '__file__', '__doc__', '__all__',
+        # Common stdlib modules used at top-level
+        'os', 'sys', 'math', 'json', 'csv', 'datetime', 'time',
+        'warnings', 'logging', 'pathlib', 'collections', 'functools',
+        'itertools', 'io', 'copy', 'glob', 'shutil', 'tempfile',
+        'textwrap', 're', 'hashlib', 'urllib', 'subprocess',
+        # Common DAAF / data science imports
+        'pl', 'pd', 'np', 'plt', 'sns', 'sm', 'scipy', 'sklearn',
+        'Path', 'polars', 'pandas', 'numpy', 'matplotlib', 'seaborn',
+        'plotnine', 'statsmodels', 'yaml', 'toml',
+        'ggplot', 'aes', 'geom_point', 'geom_line', 'geom_bar',
+        'geom_boxplot', 'geom_col', 'geom_hline', 'geom_vline',
+        'geom_text', 'geom_label', 'geom_tile', 'geom_jitter',
+        'geom_smooth', 'geom_abline', 'geom_ribbon', 'geom_area',
+        'geom_histogram', 'geom_density', 'geom_segment', 'geom_rect',
+        'facet_wrap', 'facet_grid',
+        'labs', 'theme', 'theme_minimal', 'theme_bw', 'theme_classic',
+        'theme_void', 'theme_gray', 'theme_light', 'theme_dark',
+        'scale_fill_manual', 'scale_color_manual', 'scale_fill_brewer',
+        'scale_color_brewer', 'scale_fill_gradient', 'scale_fill_gradient2',
+        'scale_color_gradient', 'scale_color_gradient2',
+        'scale_x_continuous', 'scale_y_continuous',
+        'scale_x_discrete', 'scale_y_discrete',
+        'scale_x_log10', 'scale_y_log10',
+        'scale_fill_viridis_c', 'scale_fill_cmap',
+        'coord_flip', 'coord_cartesian',
+        'element_text', 'element_blank', 'element_rect', 'element_line',
+        'ggsave', 'position_jitter', 'position_dodge',
+        'guide_legend', 'guides', 'after_stat',
+        'stat_summary', 'annotate',
+        # matplotlib direct usage
+        'figure', 'Figure', 'FigureCanvasSVG', 'FigureCanvasAgg',
+        'subplots_adjust',
+    }
+
+    try:
+        tree = ast.parse(code)
+    except SyntaxError:
+        return []  # Can't parse — skip validation
+
+    # Collect all names that are defined (assigned, imported, used as targets)
+    defined = set()
+    # Collect all names that are referenced (loaded)
+    referenced = []  # (name, lineno)
+
+    for node in ast.walk(tree):
+        # Definitions: assignments, imports, for-loop targets, with-as, etc.
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                defined.add(alias.asname or alias.name.split('.')[0])
+        elif isinstance(node, ast.ImportFrom):
+            for alias in node.names:
+                if alias.name == '*':
+                    continue  # Can't track star imports
+                defined.add(alias.asname or alias.name)
+        elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            defined.add(node.name)
+            for arg in node.args.args + node.args.posonlyargs + node.args.kwonlyargs:
+                defined.add(arg.arg)
+            if node.args.vararg:
+                defined.add(node.args.vararg.arg)
+            if node.args.kwarg:
+                defined.add(node.args.kwarg.arg)
+        elif isinstance(node, ast.ClassDef):
+            defined.add(node.name)
+        elif isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store):
+            defined.add(node.id)
+        elif isinstance(node, ast.For):
+            if isinstance(node.target, ast.Name):
+                defined.add(node.target.id)
+            elif isinstance(node.target, ast.Tuple):
+                for elt in node.target.elts:
+                    if isinstance(elt, ast.Name):
+                        defined.add(elt.id)
+        elif isinstance(node, ast.ExceptHandler):
+            if node.name:
+                defined.add(node.name)
+        elif isinstance(node, ast.Lambda):
+            for arg in node.args.args + node.args.posonlyargs + node.args.kwonlyargs:
+                defined.add(arg.arg)
+            if node.args.vararg:
+                defined.add(node.args.vararg.arg)
+            if node.args.kwarg:
+                defined.add(node.args.kwarg.arg)
+        elif isinstance(node, ast.withitem):
+            if node.optional_vars and isinstance(node.optional_vars, ast.Name):
+                defined.add(node.optional_vars.id)
+        elif isinstance(node, ast.comprehension):
+            if isinstance(node.target, ast.Name):
+                defined.add(node.target.id)
+            elif isinstance(node.target, ast.Tuple):
+                for elt in node.target.elts:
+                    if isinstance(elt, ast.Name):
+                        defined.add(elt.id)
+
+        # References: names that are loaded (read)
+        if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load):
+            referenced.append((node.id, node.lineno))
+
+    # Find dangling references (referenced but not defined, and not known-safe)
+    dangling = []
+    seen = set()
+    for name, lineno in referenced:
+        if name not in defined and name not in KNOWN_SAFE and name not in seen:
+            dangling.append((name, lineno))
+            seen.add(name)
+
+    return dangling
+
+
 def decompile(notebook_path, output_dir):
     """Main decompilation: parse notebook, extract scripts, write files."""
     notebook_path = Path(notebook_path)
@@ -337,6 +484,26 @@ def decompile(notebook_path, output_dir):
         })
         print(f"  -> {source_path} ({len(code.split(chr(10)))} code lines, log: {'yes' if log_text.strip() else 'no'})")
 
+    # --- Validate cross-cell references ---
+    print()
+    scripts_with_warnings = []
+    for script_info in scripts_extracted:
+        code = script_info['code']
+        source_path = script_info['source_path']
+        dangling = validate_references(code)
+        if dangling:
+            scripts_with_warnings.append((source_path, dangling))
+            names_str = ', '.join(f'{n} (line {ln})' for n, ln in dangling)
+            print(f"  WARNING: {source_path} — dangling references: {names_str}")
+        script_info['dangling_refs'] = dangling
+
+    if scripts_with_warnings:
+        print(f"\n  {len(scripts_with_warnings)} script(s) have dangling references (variables used but never defined).")
+        print("  These may be cross-cell dependencies lost during decompilation.")
+        print("  Review these scripts before re-execution in Reproducibility Verification.")
+    else:
+        print("  Reference validation: all scripts are self-contained (no dangling references detected).")
+
     # Write manifest
     manifest_path = output_dir / 'MANIFEST.md'
     manifest_lines = [
@@ -352,6 +519,23 @@ def decompile(notebook_path, output_dir):
         manifest_lines.append(
             f"| {idx} | `{m['source_path']}` | {m['stage']} | `{m['original_output']}` | {m['code_lines']} | {'Yes' if m['has_log'] else 'No'} |"
         )
+
+    # Add dangling reference warnings to manifest
+    if scripts_with_warnings:
+        manifest_lines.append('')
+        manifest_lines.append('## Dangling Reference Warnings')
+        manifest_lines.append('')
+        manifest_lines.append('The following scripts reference variables that are not defined within the script.')
+        manifest_lines.append('These may be cross-cell dependencies from the marimo notebook that were lost during decompilation.')
+        manifest_lines.append('Scripts with dangling references may fail during re-execution and require modification.')
+        manifest_lines.append('')
+        manifest_lines.append('| Script | Undefined Names | Lines |')
+        manifest_lines.append('|--------|----------------|-------|')
+        for source_path, dangling in scripts_with_warnings:
+            names = ', '.join(f'`{n}`' for n, _ in dangling)
+            lines = ', '.join(str(ln) for _, ln in dangling)
+            manifest_lines.append(f'| `{source_path}` | {names} | {lines} |')
+
     manifest_path.write_text('\n'.join(manifest_lines) + '\n')
     print(f"\nManifest written to: {manifest_path}")
 

@@ -131,7 +131,7 @@ User points to existing analysis folder
 6. Run the decompiler: `python /daaf/scripts/decompile_notebook.py <notebook_path> <project>/original_files/scripts/`
 7. **Path normalization** — run the batch normalizer on all decompiled scripts:
    `python /daaf/scripts/normalize_project_dir.py <project>/original_files/scripts/ <project_absolute_path>`
-   This deterministically replaces all `PROJECT_DIR = Path("...")` values with the reproduction project path. Record the normalizer's output in the Reproduction Report's **Infrastructure Normalizations** section.
+   This deterministically replaces all `PROJECT_DIR` assignments (both `Path("...")` and plain string `"..."` styles) with the reproduction project path. Record the normalizer's output in the Reproduction Report's **Infrastructure Normalizations** section.
    This is an **infrastructure normalization**, NOT a substantive modification — it does not affect reproduction status.
 8. Create `Reproduction_Report.md` from `agent_reference/REPRODUCTION_REPORT_TEMPLATE.md`
 9. Populate the Script Inventory table from the decompiler's `MANIFEST.md`, mapping fields as follows:
@@ -141,7 +141,8 @@ User points to existing analysis folder
    - `Type` — infer from stage directory name (`fetch`, `clean`, `transform`, `analysis`)
    - `Original Output` — extract from the Cell 1 header metadata if available, otherwise `—`
    - `Repro Status` — initialize all rows to `PENDING`
-10. Populate Source Artifacts table and Reproduction Environment section
+10. **Check for dangling references** — inspect the decompiler's `MANIFEST.md` for a "Dangling Reference Warnings" section. If present, these scripts reference variables that were defined in other marimo notebook cells and may fail during RV-2 re-execution. Record the warnings in the Reproduction Report's **Runtime Notes** and flag affected scripts in the PSU-RV1 checkpoint so the user is aware before re-execution begins.
+11. Populate Source Artifacts table and Reproduction Environment section
 
 **Gate RV-1:** All source artifacts present, decompiler succeeded, script inventory populated, user reconfirms scope decisions.
 

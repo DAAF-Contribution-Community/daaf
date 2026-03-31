@@ -2,8 +2,9 @@
 """Batch-normalize PROJECT_DIR paths in decompiled scripts.
 
 Standalone CLI tool for Reproducibility Verification mode (RV-1).
-Scans all .py files in a directory tree, finds PROJECT_DIR = Path("...")
-assignments, and rewrites them to point at the reproduction project path.
+Scans all .py files in a directory tree, finds PROJECT_DIR assignments
+(both `Path("...")` and plain string `"..."` styles), and rewrites them
+to point at the reproduction project path.
 
 Usage:
     python normalize_project_dir.py <scripts_dir> <target_project_dir>
@@ -29,37 +30,63 @@ def find_py_files(scripts_dir):
 
 
 def normalize_file(py_path, target_project_dir):
-    """Replace PROJECT_DIR = Path("...") with the target path.
+    """Replace PROJECT_DIR = Path("...") or PROJECT_DIR = "..." with the target path.
 
-    Returns (original_value, True) if a replacement was made,
-    (None, False) if no matching line was found.
+    Matches two patterns:
+      1. PROJECT_DIR = Path("...")   (pathlib style)
+      2. PROJECT_DIR = "..."         (plain string style)
+
+    Returns (original_value, was_modified, pattern_style) where pattern_style
+    is 'Path' or 'string' (or None if no match).
     """
-    pattern = re.compile(
+    # Pattern 1: PROJECT_DIR = Path("...")
+    path_pattern = re.compile(
         r"""^(\s*PROJECT_DIR\s*=\s*Path\()(['"])(.*?)\2(\).*)$"""
     )
+    # Pattern 2: PROJECT_DIR = "..." or PROJECT_DIR = '...'
+    # Cannot match Path("...") lines because those start with Path( not a quote
+    string_pattern = re.compile(
+        r"""^(\s*PROJECT_DIR\s*=\s*)(['"])((?:(?!\2).)*)\2(\s*#.*)?$"""
+    )
+
     text = py_path.read_text(encoding="utf-8")
     lines = text.splitlines(keepends=True)
 
     original_value = None
     modified = False
+    pattern_style = None
 
     for i, line in enumerate(lines):
-        m = pattern.match(line)
+        # Try Path("...") pattern first
+        m = path_pattern.match(line)
         if m:
             prefix = m.group(1)      # e.g. 'PROJECT_DIR = Path('
             quote = m.group(2)        # ' or "
             original_value = m.group(3)
             suffix = m.group(4)       # e.g. ')'
-            # Only rewrite if the value actually differs
+            pattern_style = 'Path'
             if original_value != target_project_dir:
                 lines[i] = f"{prefix}{quote}{target_project_dir}{quote}{suffix}\n"
                 modified = True
-            break  # Only process the first matching line per file
+            break
+
+        # Try plain string pattern
+        m = string_pattern.match(line)
+        if m:
+            prefix = m.group(1)      # e.g. 'PROJECT_DIR = '
+            quote = m.group(2)        # ' or "
+            original_value = m.group(3)
+            trailing = m.group(4) or ''  # optional inline comment
+            pattern_style = 'string'
+            if original_value != target_project_dir:
+                lines[i] = f"{prefix}{quote}{target_project_dir}{quote}{trailing}\n"
+                modified = True
+            break
 
     if modified:
         py_path.write_text("".join(lines), encoding="utf-8")
 
-    return original_value, modified
+    return original_value, modified, pattern_style
 
 
 def main():
@@ -107,13 +134,13 @@ def main():
 
     for py_path in py_files:
         rel_path = py_path.relative_to(scripts_dir)
-        original_value, was_modified = normalize_file(py_path, target_project_dir)
+        original_value, was_modified, pattern_style = normalize_file(py_path, target_project_dir)
 
         if original_value is None:
             no_match_count += 1
         elif was_modified:
             normalized_count += 1
-            table_rows.append((str(rel_path), original_value, target_project_dir))
+            table_rows.append((str(rel_path), original_value, target_project_dir, pattern_style))
             print(f"  NORMALIZED: {rel_path}")
             print(f"    original : {original_value}")
             print(f"    new      : {target_project_dir}")
@@ -134,12 +161,19 @@ def main():
         print()
         print("| File | Original Value | Normalized Value | Type |")
         print("|------|----------------|------------------|------|")
-        for rel, orig, new in table_rows:
+        for rel, orig, new, style in table_rows:
+            if style == 'Path':
+                orig_display = f'PROJECT_DIR = Path("{orig}")'
+                new_display = f'PROJECT_DIR = Path("{new}")'
+            else:
+                orig_display = f'PROJECT_DIR = "{orig}"'
+                new_display = f'PROJECT_DIR = "{new}"'
+            note = " (string, not Path)" if style == 'string' else ""
             print(
                 f"| `{rel}` "
-                f"| `PROJECT_DIR = Path(\"{orig}\")` "
-                f"| `PROJECT_DIR = Path(\"{new}\")` "
-                f"| PROJECT_DIR path |"
+                f"| `{orig_display}` "
+                f"| `{new_display}` "
+                f"| PROJECT_DIR path{note} |"
             )
     else:
         print("No normalizations were required.")
