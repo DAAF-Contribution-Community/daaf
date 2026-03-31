@@ -13,7 +13,7 @@ authors:
     given-names: Brian Heseung
     orcid: "https://orcid.org/0000-0002-7988-1802"
 version: "2.0.0"
-date-released: "2026-03-26"
+date-released: "2026-03-31"
 license: LGPL-3.0-or-later
 url: "https://github.com/DAAF-Contribution-Community/daaf"
 repository-code: "https://github.com/DAAF-Contribution-Community/daaf"
@@ -24,4 +24,4 @@ keywords:
   - reproducible-research
   - human-in-the-loop
   - claude-code
-# doi: 10.5281/zenodo.XXXXX  # TODO: Add after Zenodo registration
+doi: 10.5281/zenodo.19343886
