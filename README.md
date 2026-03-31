@@ -11,6 +11,7 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-LGPL--3.0--or--later-green" alt="License: LGPL-3.0-or-later"></a>
   <a href="https://github.com/DAAF-Contribution-Community/daaf/stargazers"><img src="https://img.shields.io/github/stars/DAAF-Contribution-Community/daaf?style=flat" alt="GitHub Stars"></a>
   <a href="https://github.com/DAAF-Contribution-Community/daaf/commits/main"><img src="https://img.shields.io/github/last-commit/DAAF-Contribution-Community/daaf" alt="Last Commit"></a>
+  <a href="https://doi.org/10.5281/zenodo.19343886"><img src="https://zenodo.org/badge/1152411514.svg" alt="DOI"></a>
 </p>
 
 LLM-based AI assistants are becoming **increasingly capable**, but they are always at risk of hallucination, sycophancy, over-confidence, and laziness. So can these flawed and non-deterministic tools ever be useful for conducting rigorous data analysis? 
@@ -239,7 +240,7 @@ If you use DAAF in your research, please cite it and all underlying data sources
 
 **Plain text (APA):**
 
-> Kim, B. H. (2026). *DAAF: Data Analyst Augmentation Framework* (Version 2.0.0) [Computer software]. https://github.com/DAAF-Contribution-Community/daaf
+> Kim, B. H. (2026). *DAAF: Data Analyst Augmentation Framework* (Version 2.0.0) [Computer software]. [https://doi.org/10.5281/zenodo.19343886](https://doi.org/10.5281/zenodo.19343886)
 
 **BibTeX:**
 
@@ -249,6 +250,7 @@ If you use DAAF in your research, please cite it and all underlying data sources
   title = {{DAAF}: Data Analyst Augmentation Framework},
   year = {2026},
   url = {https://github.com/DAAF-Contribution-Community/daaf},
+  doi = {10.5281/zenodo.19343886},
   version = {2.0.0},
   license = {LGPL-3.0-or-later}
 }
