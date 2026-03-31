@@ -127,12 +127,13 @@ On first launch, Claude Code will prompt you to authenticate. Set your model to 
 
 ## Design Principles
 
-DAAF explicitly embraces the fact that LLM research assistants will never be perfect and can never be trusted as a matter of course. But with the right guardrails, they can still be immensely valuable for critically-minded researchers. Every design decision serves four core requirements:
+DAAF explicitly embraces the fact that LLM research assistants will never be perfect and can never be trusted as a matter of course. But with the right guardrails, they can still be immensely valuable for critically-minded researchers. Every design decision serves five core requirements:
 
 - **Transparent.** Because LLMs will always be susceptible to lying, hallucinating, and cutting corners, DAAF forces Claude Code to operate using file-first principles: all data operations are drafted and run as actual Python files, all reasoning is stored as verbose comments, plan documents, and structured code output that you can review and intervene on at any time.
 - **Scalable.** Because most LLMs are trained as generalists susceptible to sycophancy and overconfidence, DAAF provides a comprehensive and extensible set of explicit instructions and standards enforcing highly opinionated best practices (via agent and skill documents), injecting the right information at the right time for any specific task -- so you don't have to hold its hand every time to get good output.
 - **Rigorous.** Because LLMs can work at speeds orders of magnitude faster than humans, DAAF's workflows force Claude to be meticulous, cautious, self-checking, and extremely thorough. Code is broken into hyper-atomic steps and adversarially reviewed. Plans and reports are informed by deep-dives into actual data documentation and actual exploratory analyses, then also reviewed by equally informed counterparts.
 - **Reproducible.** Because good science needs to be reproducible, every single data file, script, and output is automatically stored throughout the entire process. You **do not** have to just trust DAAF or Claude Code -- you can and should verify everything yourself.
+- **Responsible.** Because AI-assisted research demands accountability, DAAF ensures that data sources are properly cited, AI assistance is transparently disclosed via the [GUIDE-LLM](https://llm-checklist.com/) reporting standard, data usage terms are respected, limitations are honestly acknowledged, and the human researcher's judgment remains the final authority on all analytical decisions.
 
 ---
 

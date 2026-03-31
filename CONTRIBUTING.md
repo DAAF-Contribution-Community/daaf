@@ -252,7 +252,7 @@ This comes up often enough that it's worth being explicit. The rule of thumb fro
 
 > **If you're adding a new `.md` file to `.claude/skills/` or `.claude/agents/`, you're extending. If you're editing existing files in `agent_reference/`, `.claude/agents/`, or the root `CLAUDE.md`, you're contributing.**
 
-This distinction matters for two reasons. First, it determines which guide to follow -- extension workflows are in [**04. Extending DAAF**](user_reference/04_extending_daaf.md), contribution workflows are here. Second, it has licensing implications under LGPL-3.0: extensions you build on top of DAAF are yours to keep proprietary or open-source as you choose, while modifications to the core framework must be shared back if you distribute them. See the [**README**](README.md#why-open-source-what-does-it-mean-for-daaf) for the full details.
+This distinction matters for two reasons. First, it determines which guide to follow -- extension workflows are in [**04. Extending DAAF**](user_reference/04_extending_daaf.md), contribution workflows are here. Second, it has licensing implications under LGPL-3.0: extensions you build on top of DAAF are yours to keep proprietary or open-source as you choose, while modifications to the core framework must be shared back if you distribute them. See the [**README**](README.md#open-source--licensing) for the full details.
 
 In practice, many contributions involve *both* -- for example, creating a new data source skill (extension) that also touches agent definitions or reference files (contribution). That's totally fine. Just be aware that edits to core framework files fall under the contribution category.
 
@@ -443,7 +443,7 @@ DAAF is licensed under **LGPL-3.0-or-later** (GNU Lesser General Public License 
 - **Extensions you build on top of the framework** (custom skills, agents, analysis scripts, data configurations) are yours. The LGPL does not require you to open-source extensions that use the framework's interfaces without modifying the framework itself.
 - **If you distribute modified versions of the core framework**, you must release those core modifications under LGPL-3.0-or-later and make the corresponding source code available.
 
-For a detailed explanation of what counts as "core" versus "extension," including practical examples, see the [**Why open-source? What does it mean for DAAF?**](README.md#why-open-source-what-does-it-mean-for-daaf) section of the README.
+For a detailed explanation of what counts as "core" versus "extension," including practical examples, see the [**Open Source & Licensing**](README.md#open-source--licensing) section of the README.
 
 ---
 
