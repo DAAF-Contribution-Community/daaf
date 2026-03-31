@@ -20,11 +20,11 @@ LLM-based AI assistants are becoming **increasingly capable**, but they are alwa
 
 Enter **DAAF, the Data Analyst Augmentation Framework.** DAAF is a free and open-source instructions framework for [Claude Code](https://docs.anthropic.com/en/docs/claude-code) that helps skilled researchers rapidly scale their expertise and accelerate data analysis across any domain with AI assistance -- without sacrificing the transparency, rigor, or reproducibility that good science demands. DAAF sits between you and Claude Code to automatically and consistently help Claude think more like a responsible and rigorous researcher by:
 
-- Enforcing strict auditability and reproducibility standards for all work, allowing you to **verify everything** Claude does on your behalf
-- Preventing potentially dangerous unintended file access and editing, sandboxing Claude with strict protections and logging traces
-- Setting high standards of care, rigor, and thoroughness in all data analysis, forcing Claude to commnet, verify, and review all analytic code before you ever see it
-- Embedding best practices for a wide variety of research methodologies like causal inference and geospatial analysis, providing rich Skills that extend Claude's base capabilities with real research and resources
-- Collaborating with **you**, the human expert, directly on all key decisions, keeping you firmly in the driver's seat
+- Enforcing strict auditability and reproducibility standards for all work, thus allowing you to **verify everything** Claude does on your behalf
+- Preventing potentially dangerous unintended file access and editing, by sandboxing Claude with strict protections and logging traces
+- Setting high standards of care, rigor, and thoroughness in all data analysis, by forcing Claude to comment, verify, and review all analytic code before you ever see it
+- Embedding best practices for a wide variety of research methodologies like causal inference and geospatial analysis, by providing rich Skills that extend Claude's base capabilities with real research and resources
+- Collaborating with **you**, the human expert, directly on all key decisions, thus keeping you firmly in the driver's seat
 
 Think of it as a **force-multiplying exoskeleton** for human researchers -- a tool explicitly designed to **augment** your hard-earned expertise, not replace it. The goal is to make it easy for researchers to use Claude Code effectively **and** responsibly. Importantly, DAAF is not and will never be perfect -- but it is already immensely useful, and this is the worst a tool like DAAF will ever be from now on with the help and support of the broader research community.
 
