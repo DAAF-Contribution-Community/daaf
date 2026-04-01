@@ -53,8 +53,8 @@ if echo "$RESPONSE" | grep -qE '(ghp_|gho_|ghs_|ghr_|github_pat_)[A-Za-z0-9_]{20
     WARNINGS="${WARNINGS}  - GitHub token detected\n"
 fi
 
-# Private key headers
-if echo "$RESPONSE" | grep -qE '-----BEGIN[[:space:]]+(RSA|DSA|EC|OPENSSH|PGP)?[[:space:]]*PRIVATE KEY-----'; then
+# Private key headers (-- stops grep from interpreting leading dashes as options)
+if echo "$RESPONSE" | grep -qE -- '-----BEGIN[[:space:]]+(RSA|DSA|EC|OPENSSH|PGP)?[[:space:]]*PRIVATE KEY-----'; then
     WARNINGS="${WARNINGS}  - Private key block detected\n"
 fi
 

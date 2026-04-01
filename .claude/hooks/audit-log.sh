@@ -52,7 +52,7 @@ case "$TOOL_NAME" in
     Grep)
         TARGET=$(echo "$INPUT" | jq -r '.tool_input.pattern // ""' 2>/dev/null) || TARGET=""
         ;;
-    Task)
+    Task|Agent)
         TARGET=$(echo "$INPUT" | jq -r '.tool_input.description // ""' 2>/dev/null) || TARGET=""
         ;;
     WebFetch)
