@@ -8,6 +8,7 @@ Operational questions with concrete answers. If you're stuck, troubleshooting, o
 
 ## Table of Contents
 - [**Setup and Settings**](#setup-and-settings)
+- [**Packages and Environment**](#packages-and-environment)
 - [**Session Logs and Diagnostics**](#session-logs-and-diagnostics)
 - [**Technology Choices**](#technology-choices)
 - [**Performance and Configuration**](#performance-and-configuration)
@@ -121,6 +122,40 @@ In User Support mode, DAAF loads its own documentation and responds conversation
 For self-guided reading, the full user documentation suite is in `user_reference/`:
 - [**02. Understanding and Working with DAAF**](02_understanding_daaf.md) covers modes, architecture, and what to expect
 - [**03. Best Practices**](03_best_practices.md) covers effective prompts, reviewing output, and managing sessions
+
+---
+
+## Packages and Environment
+
+### Q: How do I install additional Python packages?
+
+The recommended approach is to add the package to the `Dockerfile` and rebuild the container (it's very wise to ask DAAF/Claude Code for help on this!):
+
+1. Open the `Dockerfile` in the project root
+2. Add your package (e.g., `networkx==3.4.2`) to the appropriate `RUN uv pip install --system` block
+3. Rebuild from outside the container: `docker compose up -d --build`
+
+For a quick test during an active session, you can also run `uv pip install --user <package>` inside the container -- but be aware that runtime installs are **temporary** and will be lost when the container is rebuilt or restarted. The Dockerfile approach is the only way to make a package permanent.
+
+For detailed instructions, common scenarios, and examples, see [**04. Extending DAAF -- Customizing Your Python Environment**](04_extending_daaf.md#customizing-your-python-environment).
+
+### Q: Can I use `apt-get` or `sudo` inside the container?
+
+No. The DAAF container runs as a non-root user (`appuser`) with all Linux capabilities dropped and privilege escalation blocked. This is a deliberate security hardening measure -- `apt-get`, `sudo`, and other system-level commands are completely unavailable at runtime.
+
+If you need system-level packages (for example, a C library that a Python package depends on), add them to the `apt-get install` block in the `Dockerfile` and rebuild with `docker compose up -d --build`. The Dockerfile build process runs as root, so it has full access to install system packages. See [**04. Extending DAAF -- Customizing Your Python Environment**](04_extending_daaf.md#adding-system-level-dependencies) for details.
+
+### Q: Will packages I install at runtime persist across restarts?
+
+No. Packages installed at runtime (via `uv pip install --user` or `pip install --user`) are stored in the container's filesystem, which is **separate** from the Docker volume where your research data lives. Your research files, scripts, and outputs persist across restarts because they're in the named volume (`daaf-data`). But runtime-installed packages live in the container image layer, so they disappear whenever the container is rebuilt or recreated (e.g., after `docker compose down` + `docker compose up -d`, or after `docker compose up -d --build`).
+
+To make a package permanent, add it to the `Dockerfile` and rebuild. See [**04. Extending DAAF -- Customizing Your Python Environment**](04_extending_daaf.md#the-recommended-path-modify-the-dockerfile) for the full process.
+
+### Q: What package manager does DAAF use?
+
+DAAF uses **[uv](https://docs.astral.sh/uv/)**, a fast Rust-based Python package manager by Astral (the makers of Ruff). It's fully compatible with pip -- it reads the same package index (PyPI) and supports the same package specifiers -- but it's significantly faster, often 10-50x for large installs.
+
+In the `Dockerfile`, packages are installed with `uv pip install --system` (system-wide, during the root build phase). At runtime inside the container, use `uv pip install --user <package>` (user-local, since you're not root). Regular `pip install --user <package>` also works if you prefer -- both tools install from the same source.
 
 ---
 
