@@ -13,9 +13,8 @@ This guide is designed to turn a new user into a confident user. It expands on t
 - [**Three Dimensions of AI Capability**](#three-dimensions-of-ai-capability)
 - [**The Nine Engagement Modes**](#the-nine-engagement-modes)
 - [**The Mental Model: Orchestrator, Agents, Skills, Validation**](#the-mental-model-orchestrator-agents-skills-validation)
-- [**What a Full Pipeline Analysis Looks Like**](#what-a-full-pipeline-analysis-looks-like)
 - [**Anatomy of a Completed Analysis**](#anatomy-of-a-completed-analysis)
-- [**Looking at an Actual Example Project**](#looking-at-an-actual-example-project)
+- [**Looking at the Sample Projects**](#looking-at-the-sample-projects)
 - [**Easing in with Progressively More Advanced Queries**](#easing-in-with-progressively-more-advanced-queries)
 - [**Session Management: Multi-Session Work and Recovery**](#session-management-multi-session-work-and-recovery)
 - [**Where Things Live in the Repository**](#where-things-live-in-the-repository)
@@ -53,13 +52,15 @@ One useful way to think about where AI is right now -- and why people seem to di
 2. **The Body** -- the orchestration frameworks and tooling that let the model actually *do things*: read files, run code, search the web, delegate tasks to other models. Claude Code is the "body" that lets Claude's "mind" interact with your computer. DAAF adds a much more structured and capable body on top of that.
 3. **The Instructions** -- your skill in communicating what you want, plus whatever pre-built instructions the system provides. This covers everything from how you phrase a question to how an entire orchestration system like DAAF structures its instructions behind the scenes.
 
+<img width="1253" height="419" alt="2026-03-03 AI Progress Diagram" src="https://github.com/user-attachments/assets/12c0acd5-313a-451c-ab13-851923555db2" />
+
 Each dimension is necessary but insufficient on its own. A brilliant model with no tools can only chat. Powerful tools connected to a weak model will produce sophisticated-looking garbage. A strong model with great tools but vague instructions will go confidently in the wrong direction. The real capability of any AI system is a product of all three working together -- which is why blanket statements about "what AI can and can't do" are so often wrong. It depends enormously on the configuration.
 
 This framework also explains why people have such wildly different experiences with AI. Someone chatting casually with a basic web interface is experiencing one narrow slice of what's possible. Someone using Claude Code with DAAF and specific, well-crafted prompts is operating in a genuinely different capability regime -- not because the underlying model is different, but because the other two dimensions are dramatically more developed. The information gradient here is steep: people who have invested in tooling and instruction quality are seeing capabilities that are invisible to casual users, and vice versa. This is a significant part of why the discourse around AI can feel so polarized -- people are often talking past each other because they're working with very different combinations of these three dimensions.
 
 This brings us to one more concept worth knowing: **context engineering**. You may have encountered this term in the AI space recently -- it refers to the practice of designing systems, instructions, and processes that help an LLM intelligently manage and assemble its own context for each specific task. It's a step beyond prompt engineering (which is about crafting individual prompts well) into something more architectural: how do you set up an entire system so the right information gets loaded at the right time, every time?
 
-That's what DAAF is, at its core -- a context engineering framework designed specifically for research workflows. Everything in DAAF -- the skills, the agents, the orchestrator, the progressive loading of reference files -- is fundamentally an answer to the question: "What context does Claude need right now to do this specific research task well?" The [DAAF Field Guide](https://daafguide.substack.com/) has more detail on these concepts if you'd like to explore them further.
+That's what DAAF is, at its core -- a context engineering framework designed specifically for research workflows. Everything in DAAF -- the skills, the agents, the orchestrator, the progressive loading of reference files -- is fundamentally an answer to the question: "What context does Claude need right now to do this specific research task well?" The [DAAF Field Guide](https://daafguide.substack.com/p/ai-progress-mental-model) has more detail on these concepts if you'd like to explore them further.
 
 Alright -- now, onward to actually using DAAF!
 
@@ -356,9 +357,9 @@ DAAF's skills are currently organized into a few categories:
 - `skill-authoring` for creating and integrating new skills in a unified format and with best practices
 - `agent-authoring` for creating and integrating new agents in a unified format, and with best practices 
 
-**The key insight:** In DAAF, skills are generally intended to be loaded *by agents*, not by the orchestrator. When the orchestrator delegates a task to the research-executor, it tells the agent: "Load the `education-data-source-ccd` skill for this task." The agent pulls up the relevant reference material, uses it to guide its work, and then returns its findings to the orchestrator. This keeps the orchestrator's context lean (it doesn't need to hold the full contents of every skill in memory) and ensures each agent gets exactly the knowledge it needs for its specific task.
+**The key insight:** In DAAF, skills are generally intended to be loaded *by agents*, not by the orchestrator. When the orchestrator delegates a task to the research-executor, it tells the agent: "Load the `education-data-source-scorecard` skill for this task." The agent pulls up the relevant reference material, uses it to guide its work, and then returns its findings to the orchestrator. This keeps the orchestrator's context lean (it doesn't need to hold the full contents of every skill in memory) and ensures each agent gets exactly the knowledge it needs for its specific task.
 
-<img width="743" height="377" alt="orchestrator_diagram" src="https://github.com/user-attachments/assets/d8c297e0-376e-4543-b219-98ea44a74e93" />
+<img width="2398" height="1053" alt="orchestrator_diagram" src="https://github.com/user-attachments/assets/d142b457-3459-498b-b718-4b0cb7123d29" />
 
 ### Dual-Layer Validation: Your Lab's Quality Control System
 
