@@ -64,6 +64,10 @@ Moreover: we have decades of experience understanding how human analysts make er
 
 One framing I find useful: the goal of a tool like DAAF is not to make AI outputs *trustworthy* -- it's to shift the distribution of output quality far enough that the outputs become *worth reviewing*. Without guardrails, the ratio of useful-to-useless AI output for research tasks is too low to justify the time spent checking it. With enough structure, context, and verification layered in, that ratio can shift to the point where what comes back is 80-90% of the way there, often enough that the remaining review and correction work is genuinely worth your time. But "worth reviewing" is a very different standard from "trustworthy," and keeping that distinction front and center is important.
 
+<img width="1225" height="648" alt="Screenshot 2026-04-05 105523" src="https://github.com/user-attachments/assets/8605478c-1555-4e65-9bb7-7d8d37ca16c2" />
+
+(and note that identifying and evaluating output relative to the threshold of "Acceptable" **requires** an expert human in the loop!)
+
 That's my only real suggestion! Be overly cautious, get informed, make your own judgments, update them constantly.
 
 ### Q: So what do you see as the main value-add for AI assistance in research workflows after all of this?
