@@ -211,10 +211,10 @@ Interactive dashboards (Plotly) &bull; Reactive analytic notebooks (marimo) &bul
 ## Demos & Sample Projects
 
 - [**Watch the v2.0.0 Showcase**](https://youtu.be/747r7VT4a78) highlighting all the current functionalities of DAAF
-- [**Explore a sample Full Pipeline project**](https://github.com/DAAF-Contribution-Community/daaf/tree/main/research/2026-03-29_College_Graduation_Rate_Selectivity_Analysis) to see what kinds of reports, visualizations, reproducible scripts, and other artifacts DAAF can produce
-- [**Explore a sample Reproducibility Verification project**](https://github.com/DAAF-Contribution-Community/daaf/tree/main/research/2026-03-30_College_Graduation_Rate_Selectivity_Analysis_Reproduction) to explore the outputs of a Reproducibility Verification process (using the same Full Pipeline project above)
+- [**Explore a sample Full Pipeline project**](research/2026-03-29_College_Graduation_Rate_Selectivity_Analysis/README.md) to see what kinds of reports, visualizations, reproducible scripts, and other artifacts DAAF can produce. See the linked project README for a guided walkthrough of every artifact.
+- [**Explore a sample Reproducibility Verification project**](research/2026-03-30_College_Graduation_Rate_Selectivity_Analysis_Reproduction/README.md) to explore the outputs of a Reproducibility Verification process (using the same Full Pipeline project above) -- see the project README for a guided walkthrough.
 - [**Watch the data onboarding demo**](https://www.youtube.com/watch?v=G5uKSlI6jls) explaining how the data onboarding process works (formerly "data ingestion" in v1.0.0) and talking through a use-case where we replicate the NYTimes' "Red Shift" interactive data visualization
-- [**Watch the v1.0.0 10-minute demo**](https://youtu.be/ZAM9OA0AlUs) talking through the original modes, philosophy, and intentions behind DAAF
+- [**Watch the v1.0.0 10-minute demo**](https://youtu.be/ZAM9OA0AlUs) talking through the original modes, philosophy, and intentions behind DAAF, while showing the actual interactions with DAAF to produce a Full Pipeline analysis
 
 ---
 

@@ -5,9 +5,6 @@
 
 ---
 
-## MAINTAINER'S NOTE
-This analysis was conducted as a demonstration of the project Full Pipeline mode workflow. It is presented in its entirety without editing; the author did a couple of quick visualization fixes after the fact via Revision and Extension mode, but all products and outputs are exactly as Claude produced them. The goal here is not to demonstrate a perfect project, but to demonstrate a realistic output that can and should be thoroughly reviewed by the user.
-
 ## Executive Summary
 
 This analysis of 1,946 four-year degree-granting institutions finds that while more selective colleges do graduate students at higher rates, selectivity itself explains only about 11% of the variation in graduation rates -- far less than commonly assumed. Institutional resources like spending per student and first-year retention rates collectively explain over 55% of the variation, dwarfing the role of admissions selectivity alone. In fact, after accounting for institutional resources, the relationship between admission rate and graduation rate weakens by more than half -- and this attenuation is driven entirely by resources (spending, retention support, staffing), not by differences in student demographics. Roughly 1 in 6 institutions (248 schools) graduate students at rates well above what their selectivity would predict, suggesting that institutional practices -- not just the students they admit -- matter enormously. These findings challenge the common use of graduation rates as a simple barometer of college "quality" and point instead toward a more nuanced picture where what a school does with its students matters at least as much as which students it selects.

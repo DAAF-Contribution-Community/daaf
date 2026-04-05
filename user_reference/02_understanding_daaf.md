@@ -509,13 +509,27 @@ Then open [http://localhost:2718](http://localhost:2718) in your normal web brow
 
 **LEARNINGS.md** -- A lessons-learned document capturing insights about the data and the analysis process. This includes data idiosyncrasies discovered during the analysis, interpretation concerns, and suggested improvements to DAAF's documentation. This file is designed to be immediately actionable -- you can share it back with the community to help improve DAAF for future users.
 
-## Looking at an Actual Example Project
+## Looking at the Sample Projects
 
-To help illustrate what DAAF does and how it works, I've included in the main repository an example project in the research folder focused on trying to tease out the [**complicated/misleading relationship between college selectivity and graduation rates**](../research/2026-02-15_College_Graduation_Rate_Selectivity_Analysis/). With that folder, you can explore basically everything that DAAF has to offer for a Full Pipeline Analysis -- from the [Plan document](../research/2026-02-15_College_Graduation_Rate_Selectivity_Analysis/2026-02-15_College_Graduation_Rate_Selectivity_Analysis_Plan.md), the [full report](../research/2026-02-15_College_Graduation_Rate_Selectivity_Analysis/2026-02-15_College_Graduation_Rate_Selectivity_Analysis_Report.md), and a variety of analytic scripts along the way (see a [data fetch example](../research/2026-02-15_College_Graduation_Rate_Selectivity_Analysis/scripts/stage5_fetch/03_fetch-admissions.py), a [data transformation/join example](../research/2026-02-15_College_Graduation_Rate_Selectivity_Analysis/scripts/stage7_transform/03_join-resources.py), a [code QA example](../research/2026-02-15_College_Graduation_Rate_Selectivity_Analysis/scripts/cr/stage6_08_cr2.py), and a [statistical analysis example](../research/2026-02-15_College_Graduation_Rate_Selectivity_Analysis/scripts/stage8_analysis/03_correlation-matrix.py)).
+To help illustrate what DAAF does and how it works, the repository includes two sample projects in the `research/` folder. Each has its own README with a detailed walkthrough of every artifact.
 
-This was just a random test run that I decided to record via video for demo purposes, and it felt appropriate to upload the full and complete output in all dimensions for transparency's sake. I do **not** post this because I think it's spotless and perfect and great -- I present this warts and all, knowing that it isn't great with some of its interpretation, and some of the report is frankly a little overblown in its conclusions. That's part of the point here: there's a LOT to be impressed by in this work, but it IS NOT PERFECT and DOES need human review. Please use DAAF accordingly!!!
+### Full Pipeline Sample
 
-In any case, this demo project should give you a good sense of what to expect, and how DAAF ultimately works.
+The [**College Graduation Rate & Selectivity Analysis**](../research/2026-03-29_College_Graduation_Rate_Selectivity_Analysis/) demonstrates a complete Full Pipeline analysis exploring the complicated relationship between college selectivity and graduation rates. Start with the [project README](../research/2026-03-29_College_Graduation_Rate_Selectivity_Analysis/README.md) for a guided tour, or jump straight to the highlights:
+
+- [**The Report**](../research/2026-03-29_College_Graduation_Rate_Selectivity_Analysis/2026-03-29_College_Graduation_Rate_Selectivity_Analysis_Report.md) -- A stakeholder-ready research report with 8 key findings, 6 visualizations, and full AI use disclosure
+- [**The Plan**](../research/2026-03-29_College_Graduation_Rate_Selectivity_Analysis/2026-03-29_College_Graduation_Rate_Selectivity_Analysis_Plan.md) -- The research blueprint showing DAAF's discovery findings, methodology, and 33-task execution plan
+- [**A data fetch script**](../research/2026-03-29_College_Graduation_Rate_Selectivity_Analysis/scripts/stage5_fetch/02_fetch-admissions.py), a [**data join script**](../research/2026-03-29_College_Graduation_Rate_Selectivity_Analysis/scripts/stage7_transform/01_join-core.py), a [**code QA script**](../research/2026-03-29_College_Graduation_Rate_Selectivity_Analysis/scripts/cr/stage6_07_cr2.py), and a [**statistical analysis script**](../research/2026-03-29_College_Graduation_Rate_Selectivity_Analysis/scripts/stage8_analysis/06_regression-models.py)
+
+This project is presented warts and all -- some of the interpretation is arguably overblown, and some analytical choices could be questioned. That's the point: DAAF produces work that is **worth reviewing**, not work that can be trusted blindly. There's a LOT to be impressed by here, but it IS NOT PERFECT and DOES need human review. Please use DAAF accordingly!
+
+### Reproducibility Verification Sample
+
+The [**Reproducibility Verification of the same analysis**](../research/2026-03-30_College_Graduation_Rate_Selectivity_Analysis_Reproduction/) demonstrates what it looks like when DAAF independently re-runs and verifies a completed project. Start with the [project README](../research/2026-03-30_College_Graduation_Rate_Selectivity_Analysis_Reproduction/README.md) for a guided tour, or jump to:
+
+- [**The Reproduction Report**](../research/2026-03-30_College_Graduation_Rate_Selectivity_Analysis_Reproduction/Reproduction_Report.md) -- The full verification verdict: 34 scripts re-executed, 53 quantitative claims verified, all findings supported
+
+These sample projects together should give you a good sense of what to expect across DAAF's most comprehensive modes.
 
 ---
 
