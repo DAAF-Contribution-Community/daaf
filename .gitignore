@@ -61,3 +61,5 @@ Thumbs.db
 .claude/logs/activity.log
 .claude/logs/audit.jsonl
 .claude/logs/subagent-registry-*.jsonl
+.claude/logs/pending_log_collection.jsonl
+.claude/logs/.last_recovery

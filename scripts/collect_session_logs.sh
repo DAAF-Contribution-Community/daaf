@@ -142,3 +142,20 @@ if [ $COPIED -gt 0 ] || [ $SKIPPED -gt 0 ]; then
         echo "  $line"
     done
 fi
+
+# --- Write pending log collection marker for deferred archiving ---
+# The current session's archive won't exist yet (SessionEnd hasn't fired).
+# Record a marker so archive-session.sh can copy the archive to this project
+# when the session ends. If the session crashes, recover-session-logs.sh
+# processes stale markers on the next session start.
+PENDING_FILE="$REPO_ROOT/.claude/logs/pending_log_collection.jsonl"
+jq -n -c \
+    --arg pp "$PROJECT_PATH" \
+    --arg pb "$PROJECT_BASENAME" \
+    --arg ts "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" \
+    '{project_path: $pp, project_basename: $pb, requested_at: $ts}' \
+    >> "$PENDING_FILE" 2>/dev/null
+
+echo ""
+echo "Pending collection marker written for deferred archiving."
+echo "The current session's transcript will be collected when the session ends."

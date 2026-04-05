@@ -7,19 +7,24 @@
 #
 # Performance: Uses a single jq invocation per JSONL file. The jq program
 # processes each top-level JSON object in the JSONL stream independently,
-# converting the entire transcript in one process spawn.  Registry entries
-# are parsed with one jq call per entry (mapfile), not one per field.
+# converting the entire transcript in one process spawn.
 #
-# Subagent archiving: If a subagent registry exists for this session
-# (populated by subagent-registry.sh SubagentStop hook), subagent transcripts
-# are copied into the archive alongside the orchestrator transcript, and a
-# summary section is appended to the Markdown archive.
+# Subagent archiving: Discovers subagent transcripts directly from Claude
+# Code's raw file hierarchy ({session-uuid}/subagents/), reading agent
+# metadata from .meta.json files alongside each transcript. This replaces
+# the previous registry-based approach and works for both normal archiving
+# and crash recovery (where no registry would exist).
+#
+# Idempotency: Uses file-size comparison to skip sessions that have already
+# been archived with the same or more content. If the source transcript has
+# grown (e.g., a concurrent session was prematurely archived by recovery),
+# the old archive is replaced with the complete version.
 #
 # Archive naming convention:
-#   {date}_{time}_{session-short}_orchestrator.jsonl   — main session transcript
-#   {date}_{time}_{session-short}_orchestrator.md      — human-readable rendering
-#   {date}_{time}_{session-short}_subagent_{agent-id-short}.jsonl — subagent transcripts
-#   {date}_{time}_{session-short}_subagent_{agent-id-short}.md   — subagent human-readable rendering
+#   {date}_{time}_{session-short}_orchestrator.jsonl   -- main session transcript
+#   {date}_{time}_{session-short}_orchestrator.md      -- human-readable rendering
+#   {date}_{time}_{session-short}_subagent_{agent-id-short}.jsonl -- subagent transcripts
+#   {date}_{time}_{session-short}_subagent_{agent-id-short}.md   -- subagent human-readable rendering
 
 # Fail OPEN: archival is observability-only, not a security gate.
 # A malformed JSONL line should produce a gap in the archive, not kill it entirely.
@@ -28,7 +33,7 @@ trap '' ERR
 # Read JSON input from stdin
 INPUT=$(cat)
 
-# Extract session info — single jq call for all 4 fields
+# Extract session info -- single jq call for all 4 fields
 mapfile -t _meta < <(
     printf '%s' "$INPUT" | jq -r '
         (.session_id // "unknown"),
@@ -51,8 +56,50 @@ mkdir -p "$ARCHIVE_DIR"
 TIMESTAMP=$(date '+%Y-%m-%d_%H-%M-%S')
 SESSION_SHORT="${SESSION_ID:0:8}"
 
-# Archive filename stem — orchestrator role suffix
+# Archive filename stem -- orchestrator role suffix
 STEM="${TIMESTAMP}_${SESSION_SHORT}_orchestrator"
+
+# --- Idempotency: skip if already archived with same or more content ---
+if [ -n "$TRANSCRIPT_PATH" ] && [ -f "$TRANSCRIPT_PATH" ]; then
+    EXISTING_ARCHIVE=$(ls "$ARCHIVE_DIR"/*_${SESSION_SHORT}_orchestrator.jsonl 2>/dev/null | head -1)
+    if [ -n "$EXISTING_ARCHIVE" ] && [ -f "$EXISTING_ARCHIVE" ]; then
+        SOURCE_SIZE=$(stat -c%s "$TRANSCRIPT_PATH" 2>/dev/null || stat -f%z "$TRANSCRIPT_PATH" 2>/dev/null || echo 0)
+        EXISTING_SIZE=$(stat -c%s "$EXISTING_ARCHIVE" 2>/dev/null || stat -f%z "$EXISTING_ARCHIVE" 2>/dev/null || echo 0)
+        if [ "$SOURCE_SIZE" -le "$EXISTING_SIZE" ] 2>/dev/null; then
+            echo "Session $SESSION_SHORT already archived (${EXISTING_SIZE} bytes), skipping."
+            # Still process pending log collection before exiting
+            PENDING_FILE="$PROJECT_DIR/.claude/logs/pending_log_collection.jsonl"
+            if [ -f "$PENDING_FILE" ]; then
+                PENDING_TMP="${PENDING_FILE}.processing.$$"
+                if mv "$PENDING_FILE" "$PENDING_TMP" 2>/dev/null; then
+                    # Re-derive the existing archive paths for pending collection
+                    JSONL_ARCHIVE="$EXISTING_ARCHIVE"
+                    while IFS= read -r entry; do
+                        [ -z "$entry" ] && continue
+                        P_BASENAME=$(printf '%s' "$entry" | jq -r '.project_basename // empty' 2>/dev/null)
+                        P_PATH=$(printf '%s' "$entry" | jq -r '.project_path // empty' 2>/dev/null)
+                        [ -z "$P_BASENAME" ] || [ -z "$P_PATH" ] || [ ! -d "$P_PATH" ] && continue
+                        if grep -q -- "$P_BASENAME" "$JSONL_ARCHIVE" 2>/dev/null; then
+                            DEST="$P_PATH/logs"
+                            mkdir -p "$DEST"
+                            for src in "$ARCHIVE_DIR"/*_${SESSION_SHORT}_*.jsonl "$ARCHIVE_DIR"/*_${SESSION_SHORT}_*.md; do
+                                [ -f "$src" ] || continue
+                                tgt="$DEST/$(basename "$src")"
+                                [ -f "$tgt" ] || cp "$src" "$tgt" 2>/dev/null
+                            done
+                        fi
+                    done < "$PENDING_TMP"
+                    rm -f "$PENDING_TMP" 2>/dev/null
+                fi
+            fi
+            exit 0
+        fi
+        # Source is larger -- remove stale archive set before re-archiving
+        OLD_STEM=$(basename "$EXISTING_ARCHIVE" .jsonl)
+        rm -f "$ARCHIVE_DIR/${OLD_STEM}.jsonl" "$ARCHIVE_DIR/${OLD_STEM}.md" 2>/dev/null
+        rm -f "$ARCHIVE_DIR"/*_${SESSION_SHORT}_subagent_*.jsonl "$ARCHIVE_DIR"/*_${SESSION_SHORT}_subagent_*.md 2>/dev/null
+    fi
+fi
 
 # Extract provenance metadata before archiving
 DAAF_VERSION=$(git -C "$PROJECT_DIR" describe --always --dirty 2>/dev/null || echo "unknown")
@@ -145,11 +192,11 @@ elif $role == "user" then
   else false end) as $has_tr |
 
   if $has_tr then
-    # Tool results — compact rendering, no separator
+    # Tool results -- compact rendering, no separator
     ([.message.content[] | select(.type == "tool_result") | render_tool_result]
       | join("\n"))
   else
-    # Real user message — with separator
+    # Real user message -- with separator
     "## 👤 User\n" +
     (if $time != "" then "**Time:** \($time)\n" else "" end) +
     "\n" +
@@ -216,56 +263,81 @@ JQEOF
         jq -r -f "$JQ_PROG" "$JSONL_ARCHIVE" 2>/dev/null
 
         # --- Subagent Activity Section ---
-        # Check for a per-session subagent registry (populated by subagent-registry.sh)
-        LOG_DIR="$PROJECT_DIR/.claude/logs"
-        REGISTRY_FILE="$LOG_DIR/subagent-registry-${SESSION_ID}.jsonl"
+        # Discover subagents from Claude Code's raw file hierarchy
+        TRANSCRIPT_DIR=$(dirname "$TRANSCRIPT_PATH")
+        SA_DIR="$TRANSCRIPT_DIR/${SESSION_ID}/subagents"
 
-        if [ -f "$REGISTRY_FILE" ] && [ -s "$REGISTRY_FILE" ]; then
-            SUBAGENT_COUNT=$(wc -l < "$REGISTRY_FILE")
+        if [ -d "$SA_DIR" ]; then
+            # Collect subagent JSONL files
+            SA_JSONL_FILES=()
+            for f in "$SA_DIR"/agent-*.jsonl; do
+                [ -f "$f" ] && SA_JSONL_FILES+=("$f")
+            done
 
-            echo ""
-            echo "## 🤖 Subagent Activity"
-            echo ""
-            echo "**Subagents dispatched:** $SUBAGENT_COUNT"
-            echo ""
-            echo "| Agent Type | Agent ID | Timestamp | Duration | Tool Uses | Archive |"
-            echo "|---|---|---|---|---|---|"
+            if [ ${#SA_JSONL_FILES[@]} -gt 0 ]; then
+                SUBAGENT_COUNT=${#SA_JSONL_FILES[@]}
 
-            # Build summary table and copy transcripts
-            while IFS= read -r entry; do
-                [ -z "$entry" ] && continue
+                echo ""
+                echo "## 🤖 Subagent Activity"
+                echo ""
+                echo "**Subagents dispatched:** $SUBAGENT_COUNT"
+                echo ""
+                echo "| Agent Type | Agent ID | Timestamp | Duration | Tool Uses | Archive |"
+                echo "|---|---|---|---|---|---|"
 
-                # Parse all registry fields in a single jq call
-                mapfile -t _sa < <(printf '%s' "$entry" | jq -r '
-                    (.agent_type // "unknown"),
-                    (.agent_id // "unknown"),
-                    (.timestamp // ""),
-                    (.transcript_path // ""),
-                    (.tool_uses // 0 | tostring),
-                    (.duration_ms // 0 | tostring)
-                ' 2>/dev/null)
-                SA_TYPE="${_sa[0]:-unknown}"
-                SA_ID="${_sa[1]:-unknown}"
-                SA_TS="${_sa[2]:-}"
-                SA_TP="${_sa[3]:-}"
-                SA_TOOLS="${_sa[4]:-0}"
-                SA_DUR="${_sa[5]:-0}"
+                # Build summary table and copy transcripts
+                for SA_JSONL in "${SA_JSONL_FILES[@]}"; do
+                    # Extract agent ID from filename: agent-{id}.jsonl -> {id}
+                    SA_FILENAME=$(basename "$SA_JSONL")
+                    SA_ID="${SA_FILENAME#agent-}"
+                    SA_ID="${SA_ID%.jsonl}"
+                    SA_ID_SHORT="${SA_ID:0:8}"
 
-                SA_ID_SHORT="${SA_ID:0:8}"
+                    # Read agent type from .meta.json
+                    SA_META="${SA_JSONL%.jsonl}.meta.json"
+                    if [ -f "$SA_META" ]; then
+                        SA_TYPE=$(jq -r '.agentType // "unknown"' "$SA_META" 2>/dev/null)
+                    else
+                        SA_TYPE="unknown"
+                    fi
 
-                # Format duration as human-readable
-                if [ "$SA_DUR" -gt 60000 ] 2>/dev/null; then
-                    DUR_HR="$((SA_DUR / 60000))m $((SA_DUR % 60000 / 1000))s"
-                elif [ "$SA_DUR" -gt 0 ] 2>/dev/null; then
-                    DUR_HR="$((SA_DUR / 1000))s"
-                else
-                    DUR_HR="—"
-                fi
+                    # Extract metrics from transcript in a single jq invocation
+                    mapfile -t _sa_metrics < <(
+                        jq -s '
+                            def tool_count: [.[].message.content[]? | select(.type == "tool_use")] | length;
+                            def first_ts: [.[].timestamp // null | select(. != null)] | first // "";
+                            def last_ts: [.[].timestamp // null | select(. != null)] | last // "";
+                            (tool_count | tostring),
+                            first_ts,
+                            last_ts
+                        ' "$SA_JSONL" 2>/dev/null
+                    )
+                    SA_TOOLS="${_sa_metrics[0]:-0}"
+                    SA_FIRST_TS="${_sa_metrics[1]:-}"
+                    SA_LAST_TS="${_sa_metrics[2]:-}"
 
-                # Copy subagent transcript to archive
-                SA_ARCHIVE_NAME="${TIMESTAMP}_${SESSION_SHORT}_subagent_${SA_ID_SHORT}.jsonl"
-                if [ -n "$SA_TP" ] && [ -f "$SA_TP" ]; then
-                    cp "$SA_TP" "$ARCHIVE_DIR/$SA_ARCHIVE_NAME" 2>/dev/null
+                    # Compute duration from timestamp difference
+                    SA_DUR=0
+                    if [ -n "$SA_FIRST_TS" ] && [ -n "$SA_LAST_TS" ] && [ "$SA_FIRST_TS" != "$SA_LAST_TS" ]; then
+                        FIRST_EPOCH=$(date -d "$SA_FIRST_TS" '+%s' 2>/dev/null || echo 0)
+                        LAST_EPOCH=$(date -d "$SA_LAST_TS" '+%s' 2>/dev/null || echo 0)
+                        if [ "$FIRST_EPOCH" -gt 0 ] && [ "$LAST_EPOCH" -gt 0 ] 2>/dev/null; then
+                            SA_DUR=$(( (LAST_EPOCH - FIRST_EPOCH) * 1000 ))
+                        fi
+                    fi
+
+                    # Format duration as human-readable
+                    if [ "$SA_DUR" -gt 60000 ] 2>/dev/null; then
+                        DUR_HR="$((SA_DUR / 60000))m $((SA_DUR % 60000 / 1000))s"
+                    elif [ "$SA_DUR" -gt 0 ] 2>/dev/null; then
+                        DUR_HR="$((SA_DUR / 1000))s"
+                    else
+                        DUR_HR="—"
+                    fi
+
+                    # Copy subagent transcript to archive
+                    SA_ARCHIVE_NAME="${TIMESTAMP}_${SESSION_SHORT}_subagent_${SA_ID_SHORT}.jsonl"
+                    cp "$SA_JSONL" "$ARCHIVE_DIR/$SA_ARCHIVE_NAME" 2>/dev/null
                     ARCHIVE_REF="\`$SA_ARCHIVE_NAME\`"
 
                     # Generate human-readable MD for subagent transcript
@@ -293,45 +365,43 @@ JQEOF
                         echo "**Agent Type:** $SA_TYPE"
                         echo "**Archive:** \`$SA_ARCHIVE_NAME\`"
                     ) > "$ARCHIVE_DIR/$SA_MD_ARCHIVE_NAME" 2>/dev/null
-                else
-                    ARCHIVE_REF="*(transcript not found)*"
-                fi
 
-                # Extract time portion from ISO timestamp
-                SA_TIME=$(echo "$SA_TS" | sed 's/.*T//' | sed 's/Z$//')
+                    # Extract time portion from last timestamp
+                    SA_TIME=$(echo "$SA_LAST_TS" | sed 's/.*T//' | sed 's/\..*//' | sed 's/Z$//')
 
-                echo "| $SA_TYPE | $SA_ID_SHORT | $SA_TIME | $DUR_HR | $SA_TOOLS | $ARCHIVE_REF |"
-            done < "$REGISTRY_FILE"
+                    echo "| $SA_TYPE | $SA_ID_SHORT | $SA_TIME | $DUR_HR | $SA_TOOLS | $ARCHIVE_REF |"
+                done
 
-            echo ""
+                echo ""
 
-            # Subagent summaries (last_message excerpts)
-            while IFS= read -r entry; do
-                [ -z "$entry" ] && continue
+                # Subagent summaries (last_message excerpts)
+                for SA_JSONL in "${SA_JSONL_FILES[@]}"; do
+                    SA_FILENAME=$(basename "$SA_JSONL")
+                    SA_ID="${SA_FILENAME#agent-}"
+                    SA_ID="${SA_ID%.jsonl}"
+                    SA_ID_SHORT="${SA_ID:0:8}"
 
-                mapfile -t _sa2 < <(printf '%s' "$entry" | jq -r '
-                    (.agent_type // "unknown"),
-                    (.agent_id // "unknown"),
-                    ((.last_message // "") | gsub("\n"; " "))
-                ' 2>/dev/null)
-                SA_TYPE="${_sa2[0]:-unknown}"
-                SA_ID="${_sa2[1]:-unknown}"
-                SA_MSG="${_sa2[2]:-}"
-                SA_ID_SHORT="${SA_ID:0:8}"
-
-                if [ -n "$SA_MSG" ]; then
-                    echo "### $SA_TYPE ($SA_ID_SHORT)"
-                    echo ""
-                    echo "> ${SA_MSG:0:300}"
-                    if [ ${#SA_MSG} -gt 300 ]; then
-                        echo "> *(truncated — see full transcript)*"
+                    SA_META="${SA_JSONL%.jsonl}.meta.json"
+                    if [ -f "$SA_META" ]; then
+                        SA_TYPE=$(jq -r '.agentType // "unknown"' "$SA_META" 2>/dev/null)
+                    else
+                        SA_TYPE="unknown"
                     fi
-                    echo ""
-                fi
-            done < "$REGISTRY_FILE"
 
-            # Clean up per-session registry file
-            rm -f "$REGISTRY_FILE" 2>/dev/null
+                    # Extract last assistant message text
+                    SA_MSG=$(jq -r 'select(.message.role == "assistant") | [.message.content[]? | select(.type == "text") | .text // ""] | join(" ")' "$SA_JSONL" 2>/dev/null | tail -1 | tr '\n' ' ')
+
+                    if [ -n "$SA_MSG" ]; then
+                        echo "### $SA_TYPE ($SA_ID_SHORT)"
+                        echo ""
+                        echo "> ${SA_MSG:0:300}"
+                        if [ ${#SA_MSG} -gt 300 ]; then
+                            echo "> *(truncated -- see full transcript)*"
+                        fi
+                        echo ""
+                    fi
+                done
+            fi
         fi
 
         echo ""
@@ -351,6 +421,33 @@ JQEOF
     echo "Session archived: $MD_ARCHIVE"
 else
     echo "No transcript found at: $TRANSCRIPT_PATH"
+fi
+
+# --- Process pending log collection requests ---
+PENDING_FILE="$PROJECT_DIR/.claude/logs/pending_log_collection.jsonl"
+if [ -f "$PENDING_FILE" ]; then
+    # Atomic move to prevent TOCTOU race with concurrent appenders
+    PENDING_TMP="${PENDING_FILE}.processing.$$"
+    if mv "$PENDING_FILE" "$PENDING_TMP" 2>/dev/null; then
+        while IFS= read -r entry; do
+            [ -z "$entry" ] && continue
+            P_BASENAME=$(printf '%s' "$entry" | jq -r '.project_basename // empty' 2>/dev/null)
+            P_PATH=$(printf '%s' "$entry" | jq -r '.project_path // empty' 2>/dev/null)
+            [ -z "$P_BASENAME" ] || [ -z "$P_PATH" ] || [ ! -d "$P_PATH" ] && continue
+            # Check if the just-archived transcript references this project
+            if [ -f "$JSONL_ARCHIVE" ] && grep -q -- "$P_BASENAME" "$JSONL_ARCHIVE" 2>/dev/null; then
+                DEST="$P_PATH/logs"
+                mkdir -p "$DEST"
+                # Copy orchestrator + subagent archives (idempotent -- skip existing)
+                for src in "$ARCHIVE_DIR"/*_${SESSION_SHORT}_*.jsonl "$ARCHIVE_DIR"/*_${SESSION_SHORT}_*.md; do
+                    [ -f "$src" ] || continue
+                    tgt="$DEST/$(basename "$src")"
+                    [ -f "$tgt" ] || cp "$src" "$tgt" 2>/dev/null
+                done
+            fi
+        done < "$PENDING_TMP"
+        rm -f "$PENDING_TMP" 2>/dev/null
+    fi
 fi
 
 exit 0
