@@ -10,6 +10,7 @@ This guide is designed to turn a new user into a confident user. It expands on t
 
 ## Table of Contents
 - [**Core Concept: Context Windows and Prompt Engineering 101**](#core-concept-context-windows-and-prompt-engineering-101)
+- [**Three Dimensions of AI Capability**](#three-dimensions-of-ai-capability)
 - [**The Nine Engagement Modes**](#the-nine-engagement-modes)
 - [**The Mental Model: Orchestrator, Agents, Skills, Validation**](#the-mental-model-orchestrator-agents-skills-validation)
 - [**What a Full Pipeline Analysis Looks Like**](#what-a-full-pipeline-analysis-looks-like)
@@ -40,7 +41,27 @@ This then leads to three (hopefully very intuitive) of the core things to be awa
 * The system is **designed to intelligently select and inject the right context to Claude before your query/question/chat**, based on what you provide in your query/question/chat. But this is **NOT** foolproof, and simply cannot account for every possibility. Feel free to go off the beaten path at will, but just be aware that it's going to necessarily be less supported and structured from there; you may ultimately find it's not working very well for what you want, because I wasn't able to design for that style of work. Trying to write your query in a different way can help, or you can help us improve DAAF by [opening an issue](https://github.com/DAAF-Contribution-Community/daaf/issues) and telling us about it!
 * Because thoughtfully shaping the context is our way of shaping Claude's thinking from what I lovingly describe as an over-eager recent MBA graduate to a thoughtful, careful research colleague, DAAF really only works with the cutting-edge models like Opus 4.6, and it pushes them to their limit to take advantage of their full context windows where possible. **This is why it is SO expensive to use at this time**; settling for less, we sacrifice a lot of expertise and reliability and rigor. It's a careful balancing act of optimization that no one really has fully figured out!
 
-So that's the gist for now. Onward, to actually using DAAF!
+So that's the gist for now. But before we move on to how DAAF actually works, there's one more mental model that I think is really helpful for understanding *why* people have such different experiences with AI right now -- and why something like DAAF matters in the first place.
+
+---
+
+## Three Dimensions of AI Capability
+
+One useful way to think about where AI is right now -- and why people seem to disagree so strongly about how capable it is -- is to think about AI capability as having three interdependent dimensions:
+
+1. **The Mind** -- the base model's raw intelligence and reasoning ability. This is what Anthropic, Google, and OpenAI are competing on with each new model release, and it's the dimension that gets the most attention when people talk about "AI progress."
+2. **The Body** -- the orchestration frameworks and tooling that let the model actually *do things*: read files, run code, search the web, delegate tasks to other models. Claude Code is the "body" that lets Claude's "mind" interact with your computer. DAAF adds a much more structured and capable body on top of that.
+3. **The Instructions** -- your skill in communicating what you want, plus whatever pre-built instructions the system provides. This covers everything from how you phrase a question to how an entire orchestration system like DAAF structures its instructions behind the scenes.
+
+Each dimension is necessary but insufficient on its own. A brilliant model with no tools can only chat. Powerful tools connected to a weak model will produce sophisticated-looking garbage. A strong model with great tools but vague instructions will go confidently in the wrong direction. The real capability of any AI system is a product of all three working together -- which is why blanket statements about "what AI can and can't do" are so often wrong. It depends enormously on the configuration.
+
+This framework also explains why people have such wildly different experiences with AI. Someone chatting casually with a basic web interface is experiencing one narrow slice of what's possible. Someone using Claude Code with DAAF and specific, well-crafted prompts is operating in a genuinely different capability regime -- not because the underlying model is different, but because the other two dimensions are dramatically more developed. The information gradient here is steep: people who have invested in tooling and instruction quality are seeing capabilities that are invisible to casual users, and vice versa. This is a significant part of why the discourse around AI can feel so polarized -- people are often talking past each other because they're working with very different combinations of these three dimensions.
+
+This brings us to one more concept worth knowing: **context engineering**. You may have encountered this term in the AI space recently -- it refers to the practice of designing systems, instructions, and processes that help an LLM intelligently manage and assemble its own context for each specific task. It's a step beyond prompt engineering (which is about crafting individual prompts well) into something more architectural: how do you set up an entire system so the right information gets loaded at the right time, every time?
+
+That's what DAAF is, at its core -- a context engineering framework designed specifically for research workflows. Everything in DAAF -- the skills, the agents, the orchestrator, the progressive loading of reference files -- is fundamentally an answer to the question: "What context does Claude need right now to do this specific research task well?" The [DAAF Field Guide](https://daafguide.substack.com/) has more detail on these concepts if you'd like to explore them further.
+
+Alright -- now, onward to actually using DAAF!
 
 ---
 
