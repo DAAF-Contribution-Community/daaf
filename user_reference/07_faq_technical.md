@@ -112,6 +112,16 @@ Not in a practical sense for full-pipeline analyses, unfortunately. The free and
 
 This is genuinely the biggest barrier to entry for DAAF, and I wish it were different. I hope that as model costs continue to decrease and open-source models become more capable, a more accessible option will emerge. If you have the capacity to test DAAF with open-source models or alternative providers, please reach out -- that's high on the list of things I'd love community help with.
 
+### Q: How do I get help understanding or using DAAF itself?
+
+Just ask! DAAF has a dedicated **User Support** mode for questions about the framework itself and the tools it runs on (Docker, Git, Claude Code) -- what it is, how it works, which mode fits your needs, how to troubleshoot setup or tool issues, or how to get the most out of the system. Simply type a question like "What is DAAF?", "How do engagement modes work?", "Something's not working right," "How do I give Docker more memory?", or "Help me understand the pipeline" and DAAF will recognize it as a User Support request. It can also look up official documentation for Docker, Git, and Claude Code online when needed.
+
+In User Support mode, DAAF loads its own documentation and responds conversationally -- no subagents, no formal outputs, no workspace creation. It's just a helpful conversation. When your questions naturally evolve into wanting to *do* something (run an analysis, look up data, debug a script), DAAF will suggest switching to the appropriate mode.
+
+For self-guided reading, the full user documentation suite is in `user_reference/`:
+- [**02. Understanding and Working with DAAF**](02_understanding_daaf.md) covers modes, architecture, and what to expect
+- [**03. Best Practices**](03_best_practices.md) covers effective prompts, reviewing output, and managing sessions
+
 ---
 
 ## Session Logs and Diagnostics

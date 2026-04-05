@@ -10,7 +10,7 @@ This guide is designed to turn a new user into a confident user. It expands on t
 
 ## Table of Contents
 - [**Core Concept: Context Windows and Prompt Engineering 101**](#core-concept-context-windows-and-prompt-engineering-101)
-- [**The Eight Engagement Modes**](#the-eight-engagement-modes)
+- [**The Nine Engagement Modes**](#the-nine-engagement-modes)
 - [**The Mental Model: Orchestrator, Agents, Skills, Validation**](#the-mental-model-orchestrator-agents-skills-validation)
 - [**What a Full Pipeline Analysis Looks Like**](#what-a-full-pipeline-analysis-looks-like)
 - [**Anatomy of a Completed Analysis**](#anatomy-of-a-completed-analysis)
@@ -44,9 +44,9 @@ So that's the gist for now. Onward, to actually using DAAF!
 
 ---
 
-## The Eight Engagement Modes
+## The Nine Engagement Modes
 
-DAAF first classifies every request you make into one of eight **engagement modes**. This is how we properly prompt-engineer Claude, because each mode triggers a fundamentally different workflow, different outputs, and different expectations for what input you'll need to provide to steer it well. Understanding these modes is the single most useful thing you can do to work with DAAF effectively, because it helps you frame your questions in the way most likely to get you what you actually want, and better understand what's going on behind the scenes.
+DAAF first classifies every request you make into one of nine **engagement modes**. This is how we properly prompt-engineer Claude, because each mode triggers a fundamentally different workflow, different outputs, and different expectations for what input you'll need to provide to steer it well. Understanding these modes is the single most useful thing you can do to work with DAAF effectively, because it helps you frame your questions in the way most likely to get you what you actually want, and better understand what's going on behind the scenes.
 
 Before doing anything else, DAAF will tell you which mode it's classifying your request into, explain why, and ask you to confirm. This is intentional. You should always have the chance to say "actually, I just wanted a quick lookup" or "actually, let's go deeper on this." Here's what each of them do, and how the workflow works so you know when and why you'd use each:
 
@@ -201,6 +201,27 @@ Before doing anything else, DAAF will tell you which mode it's classifying your 
 
 **Escalation:** Can escalate to Data Onboarding (if you need to profile data, not just create a skill template), Full Pipeline (to test a new skill with actual analysis), or Ad Hoc Collaboration (if you need general help rather than framework changes).
 
+### User Support Mode
+
+**Trigger words:** "what is DAAF," "how does this work," "help me understand," "something's not working," "what can you do," "explain this to me," "Docker," "Git," "Claude Code help"
+
+**What it is:** A lightweight, conversational mode for questions about DAAF itself and the tools it runs on -- Docker, Git, and Claude Code. If you want to know how DAAF works, what it can do, how to troubleshoot a Docker or setup problem, how to use Git with your projects, or how to get the most out of the framework -- this is where you start. The orchestrator loads the core user documentation and responds directly, and can look up official documentation for Docker, Git, and Claude Code online when needed. No subagents are dispatched, no workspace is created, and no formal deliverables are produced. This is the only mode where DAAF itself (and its technology stack) is the subject, rather than your data or analysis.
+
+**What you get:**
+- Direct, educational answers to any question about DAAF -- its modes, agents, skills, architecture, design philosophy, troubleshooting, and best practices
+- Help with the underlying tools: Docker container management, Git version control, Claude Code configuration and features
+- Answers grounded in official documentation when needed (Docker docs, Git docs, Claude Code docs)
+- File paths to relevant documentation if you want to read further
+- Gentle routing to the right mode when your questions naturally evolve into wanting to *do* something, not just learn about something
+
+**Expected time investment:** As long as you need. There are no checkpoints, no gates, no deliverables. Just a conversation.
+
+**When to use it:** When you're new and want to understand what DAAF is before jumping in. When you want to know which mode fits your needs. When you're troubleshooting a Docker, Git, or setup issue. When you're curious about how agents, skills, or the pipeline work under the hood. When you want tips on writing better prompts or reviewing output more effectively. When you have questions about Claude Code features or configuration.
+
+**When NOT to use it:** When you already know what you want to do. If you have a specific data question, a research question, or a hands-on task -- jump straight into the relevant mode (Data Lookup, Full Pipeline, Ad Hoc Collaboration, etc.). User Support is for *understanding* DAAF and its tools, not for *using* it to work with data.
+
+**Escalation:** When your questions naturally evolve into an action ("Okay, I think I'm ready to try running an analysis"), DAAF will suggest the appropriate mode and wait for your confirmation. It routes, it doesn't gatekeep -- you never need to "graduate" from User Support before using other modes.
+
 ### Switching Between Modes
 
 DAAF supports clean transitions between modes when it makes sense:
@@ -236,6 +257,14 @@ DAAF supports clean transitions between modes when it makes sense:
 | Data Onboarding (complete) | Framework Development | User wants to refine the skill beyond what Onboarding produced |
 | Full Pipeline (complete) | Framework Development | User identifies framework improvements from analysis experience, or LEARNINGS.md has actionable items to incorporate |
 | Data Onboarding (complete) | Framework Development | LEARNINGS.md from profiling has actionable framework improvements (e.g., skill template gaps) |
+| User Support | Data Lookup | User's question is really about a specific data variable or definition |
+| User Support | Data Discovery | User wants to explore what data is available for a topic |
+| User Support | Full Pipeline | User is ready to run an analysis |
+| User Support | Ad Hoc Collaboration | User wants hands-on help with code, debugging, or a specific task |
+| User Support | Data Onboarding | User wants to add or profile a new dataset |
+| User Support | Revision and Extension | User wants to modify an existing analysis |
+| User Support | Reproducibility Verification | User wants to verify an analysis reproduces |
+| User Support | Framework Development | User wants to modify DAAF itself |
 
 DAAF will always propose these escalations explicitly and wait for your confirmation. It should never silently switch modes on you.
 

@@ -96,7 +96,7 @@ When processing "Incorporate Learnings" work, each action item from a LEARNINGS.
 
 ### 4. Cross-File Consistency
 
-When updating a count ("seven engagement modes" → "eight"), search for ALL occurrences across the codebase, not just the one you know about. When adding a table row, verify the row matches the column schema of existing rows. When adding an escalation path, verify both the "from" and "to" modes acknowledge the path.
+When updating a count ("eight engagement modes" → "nine"), search for ALL occurrences across the codebase, not just the one you know about. When adding a table row, verify the row matches the column schema of existing rows. When adding an escalation path, verify both the "from" and "to" modes acknowledge the path.
 
 Use `Grep` proactively to find all mentions of related terms before declaring a change complete.
 
@@ -295,7 +295,7 @@ Return findings in this structure:
 
 You MAY deviate without asking for:
 - **RULE 1:** Fixing obvious typos, broken links, or formatting inconsistencies in files you're already editing
-- **RULE 2:** Updating count words ("seven" → "eight") discovered via consistency checks, even if not explicitly scoped
+- **RULE 2:** Updating count words ("eight" → "nine") discovered via consistency checks, even if not explicitly scoped
 - **RULE 3:** Adding missing cross-references when a registration point clearly requires one
 
 You MUST ask before:
@@ -368,7 +368,7 @@ Awaiting guidance before proceeding.
 **This engineering task is INCOMPLETE if:**
 - Any mandatory integration checklist item is unaddressed
 - A new artifact is missing required template sections
-- Count words are stale (e.g., "seven modes" when eight exist)
+- Count words are stale (e.g., "eight modes" when nine exist)
 - Cross-references point to non-existent files or sections
 - The output report omits files that were created or modified
 

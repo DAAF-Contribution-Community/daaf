@@ -139,7 +139,7 @@ DAAF explicitly embraces the fact that LLM research assistants will never be per
 
 ## Engagement Modes
 
-When you open DAAF, just begin by asking it any question or for support with any type of task. DAAF intelligently responds to your needs by automatically selecting and walking you through one of eight possible research workflow modes (and you can feel free to redirect it if it gets it wrong!) while providing easy opportunities to transition across supported workflows as needed:
+When you open DAAF, just begin by asking it any question or for support with any type of task. DAAF intelligently responds to your needs by automatically selecting and walking you through one of nine possible research workflow modes (and you can feel free to redirect it if it gets it wrong!) while providing easy opportunities to transition across supported workflows as needed:
 
 **Data Onboarding:** Make Claude an expert in **your** data
 - *What you do:* Point DAAF to your data (local file, web download, or API) and any associated documentation
@@ -188,6 +188,12 @@ When you open DAAF, just begin by asking it any question or for support with any
 - *What DAAF does:* Reviews its own architecture, conducts in-depth research, and meticulously updates its functionality
 - *What you get:* A better DAAF with modular skills and agents you can share with colleagues or the community
 - *Example:* I want to explore building in more supports for more sophisticated natural language processing techniques that allow us to classify open-response text
+
+**User Support:** Get help understanding and using DAAF itself and its underlying tools (Docker, Git, Claude Code)
+- *What you do:* Ask DAAF any question about what it is, how it works, how to troubleshoot setup or tool issues, or what to expect
+- *What DAAF does:* Loads its own documentation and responds directly with clear, educational guidance -- can also look up official Docker, Git, and Claude Code docs online when needed
+- *What you get:* A conversational, patient explanation of anything about DAAF or its technology stack, plus pointers to the right mode when you're ready to do something specific
+- *Example:* I'm new here -- can you walk me through what DAAF actually does? Also, how do I give Docker more memory?
 
 ---
 

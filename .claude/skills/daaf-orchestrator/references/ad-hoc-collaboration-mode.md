@@ -394,6 +394,7 @@ These boundaries supplement the universal safety boundaries in `CLAUDE.md`. See 
 | Debugging reveals an existing analysis needs revision | Revision and Extension | Propose escalation to modify the original project |
 | User wants to verify an existing analysis reproduces | Reproducibility Verification | Propose escalation |
 | User wants to create or modify DAAF framework components (skills, agents, modes) | Framework Development | Propose escalation: "That's framework development work. Want me to switch to Framework Development mode?" |
+| User's questions shift from hands-on work to understanding DAAF, its tools, or setup | User Support | Propose: "It sounds like you want to understand DAAF better first. Want me to switch to User Support mode?" |
 
 All escalations require explicit user confirmation. Frame escalations as opportunities, not obligations -- the user may prefer to continue working ad hoc.
 
