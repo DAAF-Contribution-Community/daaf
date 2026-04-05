@@ -327,7 +327,7 @@ The orchestrator dispatches to the `framework-engineer` agent for authoring and 
 
 ### When the Orchestrator Handles Directly
 
-- Simple count word updates ("seven" → "eight")
+- Simple count word updates ("eight" → "nine")
 - Single table row additions when the row content is obvious from context
 - Brief prose edits to user_reference when the change is straightforward
 - Cross-reference fixes identified during review

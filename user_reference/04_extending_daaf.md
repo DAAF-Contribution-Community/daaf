@@ -16,6 +16,7 @@ This guide focuses on the primary extension path: bringing new datasets, data do
 - [**Adding a New Agent**](#adding-a-new-agent)
 - [**Testing Your New Extension End-to-End**](#testing-your-new-extension-end-to-end)
 - [**Submitting Your Extension for Inclusion**](#submitting-your-extension-for-inclusion)
+- [**Customizing Your Python Environment**](#customizing-your-python-environment)
 - [**Recommended Next Steps**](#recommended-next-steps)
 
 ---
@@ -352,6 +353,140 @@ Even if you're not creating new skills, there's a contribution path that require
 You can also incorporate learnings directly into your own DAAF instance: start a new session and say "incorporate learnings" — Framework Development mode will scan your project LEARNINGS.md files, present a consolidated backlog of framework improvements, and walk you through implementing them.
 
 To share learnings with the broader community, [open an issue](https://github.com/DAAF-Contribution-Community/daaf/issues) with your LEARNINGS.md content — the community can fold those insights back into the shared framework. This is genuinely one of the most impactful things you can do — every project run generates practical knowledge that benefits every future project.
+
+---
+
+## Customizing Your Python Environment
+
+DAAF ships with a comprehensive Python data science stack (50+ packages covering statistics, econometrics, geospatial analysis, machine learning, visualization, and more). But research is unpredictable -- you may need a package we didn't anticipate. This section covers how to add Python packages, system-level libraries, and other software to your DAAF environment.
+
+### The Recommended Path: Modify the Dockerfile
+
+The best way to add packages is to edit the `Dockerfile` and rebuild the container (preferably using DAAF/Claude Code to do so in Framework Development mode so you have all the guardrails and supports you need). This approach is:
+
+- **Reproducible** -- anyone building from your Dockerfile gets the same environment, every time
+- **Persistent** -- your packages survive container rebuilds, restarts, and updates
+- **Permission-safe** -- Dockerfile installs run as root during the build process, so you never hit the permission restrictions that exist at runtime
+
+Here's the step-by-step process:
+
+**1. Open the Dockerfile.** It's at the root of your DAAF project directory (`Dockerfile`). You'll see several organized `RUN uv pip install --system` blocks with comment headers describing each category (core data science, econometrics, geospatial, visualization, ML). There's also a comment block at the top of the Python packages section with a quick reference for this process.
+
+**2. Add your package to the appropriate block.** Find the `RUN` block that best matches your package's category, and add a new line with your package name and version. For example, to add `networkx` for graph analysis, you'd add it to the core data science block:
+
+```dockerfile
+# Install core data science packages
+RUN uv pip install --system \
+    numpy==2.4.2 \
+    pandas==3.0.0 \
+    polars==1.38.1 \
+    ...
+    scikit-learn==1.8.0 \
+    networkx==3.4.2
+```
+
+A few things to note about the syntax:
+- Every line except the last ends with a backslash (`\`) to continue the command
+- Pin your version with `==` (e.g., `networkx==3.4.2`) for reproducibility -- you can find the latest version on [PyPI](https://pypi.org/)
+- If you're not sure which version to pin, you can use just the package name (e.g., `networkx`) and `uv` will install the latest compatible version -- but pinning is strongly recommended
+
+**3. Rebuild the container.** From your project directory (outside the container), run:
+
+```bash
+docker compose up -d --build
+```
+
+Docker uses **layer caching**, which means it only re-runs the layers that changed. If you added a package to one of the later `RUN` blocks, the earlier blocks won't need to reinstall -- so rebuilds are usually fast (30 seconds to a couple of minutes, depending on the package).
+
+**4. Re-enter the container and verify.** After the rebuild completes:
+
+```bash
+docker compose exec daaf-docker bash
+pip list | grep networkx
+```
+
+That's it. Your new package is now permanently part of your DAAF environment.
+
+### Adding System-Level Dependencies
+
+Some Python packages require underlying C libraries to compile or run correctly. Geospatial packages are the most common example -- `geopandas` needs GDAL, GEOS, and PROJ, which is why DAAF's Dockerfile already installs those system libraries via `apt-get`.
+
+If you're adding a Python package that needs a system library, you'll need to update **two** places in the Dockerfile:
+
+**1. Add the system library** to the appropriate `apt-get install` block near the top of the Dockerfile:
+
+```dockerfile
+# ============================================
+# Install System Dependencies (Git)
+# ============================================
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    curl \
+    jq \
+    git \
+    poppler-utils \
+    libfoo-dev \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+```
+
+**2. Add the Python package** to the appropriate `RUN uv pip install --system` block (as described above).
+
+Then rebuild with `docker compose up -d --build`. If you're unsure whether a Python package needs a system library, try adding just the Python package first -- the build will fail with a clear error message if a system dependency is missing, and you can add it then.
+
+### Runtime Installation for Quick Testing
+
+Sometimes you just want to try a package quickly during a session without going through the rebuild process. You can do that:
+
+```bash
+uv pip install --user networkx
+```
+
+This installs the package into your user directory inside the container, which works because it doesn't require root privileges. You can start using the package immediately in your current session.
+
+**Important caveat:** Runtime-installed packages are **ephemeral**. They are stored in the container's filesystem, not in the Docker volume where your research data lives. This means they will be **lost** when the container is rebuilt or restarted (e.g., after running `docker compose up -d --build` or `docker compose down` followed by `docker compose up -d`). Think of runtime installs as a test drive -- once you've confirmed the package works for your needs, add it to the Dockerfile to make it permanent.
+
+The recommended workflow is:
+1. Install at runtime to test: `uv pip install --user <package>`
+2. Verify it works for your use case
+3. Add it to the Dockerfile and rebuild to make it permanent
+
+### Understanding the `uv` Package Manager
+
+You may have noticed that DAAF uses `uv` rather than plain `pip` for package installation. `uv` is a fast, Rust-based Python package manager that's fully compatible with pip but significantly faster -- often 10-50x faster for large installs. The Dockerfile uses `uv pip install --system` (which installs packages system-wide during the build, when running as root). At runtime, since you're running as a non-root user, use `uv pip install --user` instead.
+
+Both `uv` and regular `pip` work at runtime -- `pip install --user <package>` is equally valid. The main advantage of `uv` is speed, which matters more during Dockerfile rebuilds than during one-off runtime installs.
+
+### Checking What's Already Installed
+
+Before adding a package, you might want to check if it's already available. You have a few options:
+
+- **Ask DAAF directly:** "What Python packages are installed?" -- DAAF can check for you
+- **Run `pip list`** inside the container to see all installed packages
+- **Run `pip show <package>`** to check if a specific package is installed and see its version
+- **Read the Dockerfile** to see exactly what's pinned and organized by category
+
+### Common Scenarios
+
+**"I need networkx for graph analysis"**
+
+Add `networkx==3.4.2` (or your preferred version) to the core data science `RUN` block in the Dockerfile, then rebuild. No system dependencies needed.
+
+**"I need a specific version of a package that's already installed"**
+
+Edit the version pin in the Dockerfile. For example, to change Polars from `1.38.1` to `1.39.0`, find `polars==1.38.1` and change it to `polars==1.39.0`, then rebuild. Be cautious with version changes -- other packages may depend on the currently pinned version, so test your analysis after upgrading. Ask DAAF/Claude Code to try running a uv dry-run to test compatibility between all the package versions before actually rebuilding the container.
+
+**"I need an R package or want to use R"**
+
+DAAF is a Python-based environment and does not include R. However, DAAF includes translation skills (`r-python-translation` and `stata-python-translation`) that can help you find Python equivalents for R or Stata operations you're familiar with. If you tell DAAF "I usually do this in R with dplyr," it can show you how to accomplish the same thing in Python with Polars.
+
+**"I need a package that requires compilation and it's failing"**
+
+Some packages need a C/C++ compiler or specific development headers. Check the package's installation documentation for required system dependencies, add them to the `apt-get install` block in the Dockerfile, and rebuild. Common examples include packages needing `build-essential`, `libhdf5-dev`, or database client libraries.
+
+**"Can I use `apt-get` or `sudo` inside the running container?"**
+
+No. The container runs as a non-root user (`appuser`) with all Linux capabilities dropped (`cap_drop: ALL`) and privilege escalation explicitly blocked. This is a deliberate security hardening measure -- it prevents both you and Claude from accidentally (or intentionally) making system-level changes at runtime that could compromise the container's integrity. All system-level software must be installed through the Dockerfile and built into the image.
 
 ---
 

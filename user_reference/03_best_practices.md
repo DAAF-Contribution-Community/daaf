@@ -489,7 +489,7 @@ Data Onboarding mode profiles raw data files and creates reusable data source sk
 
 ## Recommended Next Steps
 
-- [**04. Extending DAAF**](04_extending_daaf.md) — How to add new data source skills, analytical tools and methodologies, and creating your own additional specialized agents
+- [**04. Extending DAAF**](04_extending_daaf.md) — How to add new data source skills, analytical tools and methodologies, creating your own additional specialized agents, and customizing the Python environment
 - [**06. FAQ: Philosophy**](06_faq_philosophy.md) — Grapples with the broader implications of this work, AI automation in general, model advancement pace, approaching the "exponential", environmental ethics, what this means for the next generation of researchers, and more
 - [**07. FAQ: Technical Support**](07_faq_technical.md) — Covers frequently asked questions about Docker, issues with Claude Code, usage limits, authentication errors, and other common errors
 - [**Back to main**](https://github.com/DAAF-Contribution-Community/daaf/tree/main)

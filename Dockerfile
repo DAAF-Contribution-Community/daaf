@@ -40,6 +40,21 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # ============================================
 # Install Python Data Science Packages via uv
 # ============================================
+#
+# CUSTOMIZATION: Adding Your Own Python Packages
+# -----------------------------------------------
+# To add a Python package, append it to the appropriate RUN block below
+# (or add a new block), then rebuild:
+#
+#   docker compose up -d --build
+#
+# Docker layer caching makes rebuilds fast — only changed layers re-run.
+# For packages needing C libraries (e.g., libfoo-dev), also add them to
+# the apt-get block in "Install System Dependencies" above.
+#
+# For full guidance, common scenarios, and runtime install options, see:
+#   user_reference/04_extending_daaf.md
+# -----------------------------------------------
 
 # Install core data science packages
 RUN uv pip install --system \

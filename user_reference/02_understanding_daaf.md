@@ -10,11 +10,11 @@ This guide is designed to turn a new user into a confident user. It expands on t
 
 ## Table of Contents
 - [**Core Concept: Context Windows and Prompt Engineering 101**](#core-concept-context-windows-and-prompt-engineering-101)
-- [**The Eight Engagement Modes**](#the-eight-engagement-modes)
+- [**Three Dimensions of AI Capability**](#three-dimensions-of-ai-capability)
+- [**The Nine Engagement Modes**](#the-nine-engagement-modes)
 - [**The Mental Model: Orchestrator, Agents, Skills, Validation**](#the-mental-model-orchestrator-agents-skills-validation)
-- [**What a Full Pipeline Analysis Looks Like**](#what-a-full-pipeline-analysis-looks-like)
 - [**Anatomy of a Completed Analysis**](#anatomy-of-a-completed-analysis)
-- [**Looking at an Actual Example Project**](#looking-at-an-actual-example-project)
+- [**Looking at the Sample Projects**](#looking-at-the-sample-projects)
 - [**Easing in with Progressively More Advanced Queries**](#easing-in-with-progressively-more-advanced-queries)
 - [**Session Management: Multi-Session Work and Recovery**](#session-management-multi-session-work-and-recovery)
 - [**Where Things Live in the Repository**](#where-things-live-in-the-repository)
@@ -40,13 +40,35 @@ This then leads to three (hopefully very intuitive) of the core things to be awa
 * The system is **designed to intelligently select and inject the right context to Claude before your query/question/chat**, based on what you provide in your query/question/chat. But this is **NOT** foolproof, and simply cannot account for every possibility. Feel free to go off the beaten path at will, but just be aware that it's going to necessarily be less supported and structured from there; you may ultimately find it's not working very well for what you want, because I wasn't able to design for that style of work. Trying to write your query in a different way can help, or you can help us improve DAAF by [opening an issue](https://github.com/DAAF-Contribution-Community/daaf/issues) and telling us about it!
 * Because thoughtfully shaping the context is our way of shaping Claude's thinking from what I lovingly describe as an over-eager recent MBA graduate to a thoughtful, careful research colleague, DAAF really only works with the cutting-edge models like Opus 4.6, and it pushes them to their limit to take advantage of their full context windows where possible. **This is why it is SO expensive to use at this time**; settling for less, we sacrifice a lot of expertise and reliability and rigor. It's a careful balancing act of optimization that no one really has fully figured out!
 
-So that's the gist for now. Onward, to actually using DAAF!
+So that's the gist for now. But before we move on to how DAAF actually works, there's one more mental model that I think is really helpful for understanding *why* people have such different experiences with AI right now -- and why something like DAAF matters in the first place.
 
 ---
 
-## The Eight Engagement Modes
+## Three Dimensions of AI Capability
 
-DAAF first classifies every request you make into one of eight **engagement modes**. This is how we properly prompt-engineer Claude, because each mode triggers a fundamentally different workflow, different outputs, and different expectations for what input you'll need to provide to steer it well. Understanding these modes is the single most useful thing you can do to work with DAAF effectively, because it helps you frame your questions in the way most likely to get you what you actually want, and better understand what's going on behind the scenes.
+One useful way to think about where AI is right now -- and why people seem to disagree so strongly about how capable it is -- is to think about AI capability as having three interdependent dimensions:
+
+1. **The Mind** -- the base model's raw intelligence and reasoning ability. This is what Anthropic, Google, and OpenAI are competing on with each new model release, and it's the dimension that gets the most attention when people talk about "AI progress."
+2. **The Body** -- the orchestration frameworks and tooling that let the model actually *do things*: read files, run code, search the web, delegate tasks to other models. Claude Code is the "body" that lets Claude's "mind" interact with your computer. DAAF adds a much more structured and capable body on top of that.
+3. **The Instructions** -- your skill in communicating what you want, plus whatever pre-built instructions the system provides. This covers everything from how you phrase a question to how an entire orchestration system like DAAF structures its instructions behind the scenes.
+
+<img width="1253" height="419" alt="2026-03-03 AI Progress Diagram" src="https://github.com/user-attachments/assets/12c0acd5-313a-451c-ab13-851923555db2" />
+
+Each dimension is necessary but insufficient on its own. A brilliant model with no tools can only chat. Powerful tools connected to a weak model will produce sophisticated-looking garbage. A strong model with great tools but vague instructions will go confidently in the wrong direction. The real capability of any AI system is a product of all three working together -- which is why blanket statements about "what AI can and can't do" are so often wrong. It depends enormously on the configuration.
+
+This framework also explains why people have such wildly different experiences with AI. Someone chatting casually with a basic web interface is experiencing one narrow slice of what's possible. Someone using Claude Code with DAAF and specific, well-crafted prompts is operating in a genuinely different capability regime -- not because the underlying model is different, but because the other two dimensions are dramatically more developed. The information gradient here is steep: people who have invested in tooling and instruction quality are seeing capabilities that are invisible to casual users, and vice versa. This is a significant part of why the discourse around AI can feel so polarized -- people are often talking past each other because they're working with very different combinations of these three dimensions.
+
+This brings us to one more concept worth knowing: **context engineering**. You may have encountered this term in the AI space recently -- it refers to the practice of designing systems, instructions, and processes that help an LLM intelligently manage and assemble its own context for each specific task. It's a step beyond prompt engineering (which is about crafting individual prompts well) into something more architectural: how do you set up an entire system so the right information gets loaded at the right time, every time?
+
+That's what DAAF is, at its core -- a context engineering framework designed specifically for research workflows. Everything in DAAF -- the skills, the agents, the orchestrator, the progressive loading of reference files -- is fundamentally an answer to the question: "What context does Claude need right now to do this specific research task well?" The [DAAF Field Guide](https://daafguide.substack.com/p/ai-progress-mental-model) has more detail on these concepts if you'd like to explore them further.
+
+Alright -- now, onward to actually using DAAF!
+
+---
+
+## The Nine Engagement Modes
+
+DAAF first classifies every request you make into one of nine **engagement modes**. This is how we properly prompt-engineer Claude, because each mode triggers a fundamentally different workflow, different outputs, and different expectations for what input you'll need to provide to steer it well. Understanding these modes is the single most useful thing you can do to work with DAAF effectively, because it helps you frame your questions in the way most likely to get you what you actually want, and better understand what's going on behind the scenes.
 
 Before doing anything else, DAAF will tell you which mode it's classifying your request into, explain why, and ask you to confirm. This is intentional. You should always have the chance to say "actually, I just wanted a quick lookup" or "actually, let's go deeper on this." Here's what each of them do, and how the workflow works so you know when and why you'd use each:
 
@@ -201,6 +223,27 @@ Before doing anything else, DAAF will tell you which mode it's classifying your 
 
 **Escalation:** Can escalate to Data Onboarding (if you need to profile data, not just create a skill template), Full Pipeline (to test a new skill with actual analysis), or Ad Hoc Collaboration (if you need general help rather than framework changes).
 
+### User Support Mode
+
+**Trigger words:** "what is DAAF," "how does this work," "help me understand," "something's not working," "what can you do," "explain this to me," "Docker," "Git," "Claude Code help"
+
+**What it is:** A lightweight, conversational mode for questions about DAAF itself and the tools it runs on -- Docker, Git, and Claude Code. If you want to know how DAAF works, what it can do, how to troubleshoot a Docker or setup problem, how to use Git with your projects, or how to get the most out of the framework -- this is where you start. The orchestrator loads the core user documentation and responds directly, and can look up official documentation for Docker, Git, and Claude Code online when needed. No subagents are dispatched, no workspace is created, and no formal deliverables are produced. This is the only mode where DAAF itself (and its technology stack) is the subject, rather than your data or analysis.
+
+**What you get:**
+- Direct, educational answers to any question about DAAF -- its modes, agents, skills, architecture, design philosophy, troubleshooting, and best practices
+- Help with the underlying tools: Docker container management, Git version control, Claude Code configuration and features
+- Answers grounded in official documentation when needed (Docker docs, Git docs, Claude Code docs)
+- File paths to relevant documentation if you want to read further
+- Gentle routing to the right mode when your questions naturally evolve into wanting to *do* something, not just learn about something
+
+**Expected time investment:** As long as you need. There are no checkpoints, no gates, no deliverables. Just a conversation.
+
+**When to use it:** When you're new and want to understand what DAAF is before jumping in. When you want to know which mode fits your needs. When you're troubleshooting a Docker, Git, or setup issue. When you're curious about how agents, skills, or the pipeline work under the hood. When you want tips on writing better prompts or reviewing output more effectively. When you have questions about Claude Code features or configuration.
+
+**When NOT to use it:** When you already know what you want to do. If you have a specific data question, a research question, or a hands-on task -- jump straight into the relevant mode (Data Lookup, Full Pipeline, Ad Hoc Collaboration, etc.). User Support is for *understanding* DAAF and its tools, not for *using* it to work with data.
+
+**Escalation:** When your questions naturally evolve into an action ("Okay, I think I'm ready to try running an analysis"), DAAF will suggest the appropriate mode and wait for your confirmation. It routes, it doesn't gatekeep -- you never need to "graduate" from User Support before using other modes.
+
 ### Switching Between Modes
 
 DAAF supports clean transitions between modes when it makes sense:
@@ -236,6 +279,14 @@ DAAF supports clean transitions between modes when it makes sense:
 | Data Onboarding (complete) | Framework Development | User wants to refine the skill beyond what Onboarding produced |
 | Full Pipeline (complete) | Framework Development | User identifies framework improvements from analysis experience, or LEARNINGS.md has actionable items to incorporate |
 | Data Onboarding (complete) | Framework Development | LEARNINGS.md from profiling has actionable framework improvements (e.g., skill template gaps) |
+| User Support | Data Lookup | User's question is really about a specific data variable or definition |
+| User Support | Data Discovery | User wants to explore what data is available for a topic |
+| User Support | Full Pipeline | User is ready to run an analysis |
+| User Support | Ad Hoc Collaboration | User wants hands-on help with code, debugging, or a specific task |
+| User Support | Data Onboarding | User wants to add or profile a new dataset |
+| User Support | Revision and Extension | User wants to modify an existing analysis |
+| User Support | Reproducibility Verification | User wants to verify an analysis reproduces |
+| User Support | Framework Development | User wants to modify DAAF itself |
 
 DAAF will always propose these escalations explicitly and wait for your confirmation. It should never silently switch modes on you.
 
@@ -306,9 +357,9 @@ DAAF's skills are currently organized into a few categories:
 - `skill-authoring` for creating and integrating new skills in a unified format and with best practices
 - `agent-authoring` for creating and integrating new agents in a unified format, and with best practices 
 
-**The key insight:** In DAAF, skills are generally intended to be loaded *by agents*, not by the orchestrator. When the orchestrator delegates a task to the research-executor, it tells the agent: "Load the `education-data-source-ccd` skill for this task." The agent pulls up the relevant reference material, uses it to guide its work, and then returns its findings to the orchestrator. This keeps the orchestrator's context lean (it doesn't need to hold the full contents of every skill in memory) and ensures each agent gets exactly the knowledge it needs for its specific task.
+**The key insight:** In DAAF, skills are generally intended to be loaded *by agents*, not by the orchestrator. When the orchestrator delegates a task to the research-executor, it tells the agent: "Load the `education-data-source-scorecard` skill for this task." The agent pulls up the relevant reference material, uses it to guide its work, and then returns its findings to the orchestrator. This keeps the orchestrator's context lean (it doesn't need to hold the full contents of every skill in memory) and ensures each agent gets exactly the knowledge it needs for its specific task.
 
-<img width="743" height="377" alt="orchestrator_diagram" src="https://github.com/user-attachments/assets/d8c297e0-376e-4543-b219-98ea44a74e93" />
+<img width="2398" height="1053" alt="orchestrator_diagram" src="https://github.com/user-attachments/assets/d142b457-3459-498b-b718-4b0cb7123d29" />
 
 ### Dual-Layer Validation: Your Lab's Quality Control System
 

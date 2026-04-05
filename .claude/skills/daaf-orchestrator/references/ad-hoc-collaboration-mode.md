@@ -305,11 +305,6 @@ Update after each of these events (not every turn -- only at milestones):
 | User signals session is ending | All sections (final summary) |
 | Before any escalation to another mode | All sections + note the escalation |
 
-After updating, run the session logging capture script if available:
-```bash
-bash {BASE_DIR}/scripts/archive-session-notes.sh {PROJECT_DIR}
-```
-
 ### Context Recovery
 
 At context thresholds (per CLAUDE.md > Context Quality Curve), the orchestrator should:
@@ -394,6 +389,7 @@ These boundaries supplement the universal safety boundaries in `CLAUDE.md`. See 
 | Debugging reveals an existing analysis needs revision | Revision and Extension | Propose escalation to modify the original project |
 | User wants to verify an existing analysis reproduces | Reproducibility Verification | Propose escalation |
 | User wants to create or modify DAAF framework components (skills, agents, modes) | Framework Development | Propose escalation: "That's framework development work. Want me to switch to Framework Development mode?" |
+| User's questions shift from hands-on work to understanding DAAF, its tools, or setup | User Support | Propose: "It sounds like you want to understand DAAF better first. Want me to switch to User Support mode?" |
 
 All escalations require explicit user confirmation. Frame escalations as opportunities, not obligations -- the user may prefer to continue working ad hoc.
 
@@ -405,13 +401,17 @@ All escalations require explicit user confirmation. Frame escalations as opportu
 
 There is no mandatory wrap-up protocol. The session ends when the user is done. However, if the session produced artifacts:
 
-1. Update SESSION_NOTES.md with a final summary
-2. Offer a brief summary to the user:
+1. Collect session logs into the project workspace:
+   ```bash
+   bash {BASE_DIR}/scripts/collect_session_logs.sh {PROJECT_DIR}
+   ```
+2. Update SESSION_NOTES.md with a final summary
+3. Offer a brief summary to the user:
 
 > "Here's what we produced today in `research/YYYY-MM-DD_AdHoc_{Topic}/`:
 > - [List of scripts, data files, figures]
 > - [Key findings or decisions made]
 >
-> Session notes are saved in `SESSION_NOTES.md` if you want to come back to it."
+> Session notes are saved in `SESSION_NOTES.md` if you want to come back to it. I've also copied in the session logs in the project logs folder."
 
 This is a courtesy, not a gate. If the user just says "thanks" and leaves, that's fine.

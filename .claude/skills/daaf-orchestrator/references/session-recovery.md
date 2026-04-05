@@ -7,7 +7,7 @@
 
 ## Purpose
 
-Enable stateless recovery when resuming an interrupted analysis after LLM context has been cleared. Persistent memory varies by mode: Full Pipeline uses Plan.md + Plan_Tasks.md + STATE.md; Revision and Extension uses prior version Plan.md + Plan_Tasks.md + STATE.md plus new-version Plan files; Data Onboarding uses STATE.md only; Reproducibility Verification uses Reproduction_Report.md (no STATE.md). Framework Development uses SESSION_NOTES.md (same lightweight pattern as Ad Hoc Collaboration); no STATE.md by default.
+Enable stateless recovery when resuming an interrupted analysis after LLM context has been cleared. Persistent memory varies by mode: Full Pipeline uses Plan.md + Plan_Tasks.md + STATE.md; Revision and Extension uses prior version Plan.md + Plan_Tasks.md + STATE.md plus new-version Plan files; Data Onboarding uses STATE.md only; Reproducibility Verification uses Reproduction_Report.md (no STATE.md). Framework Development uses SESSION_NOTES.md (same lightweight pattern as Ad Hoc Collaboration); no STATE.md by default. User Support has no persistent state — sessions are fully stateless.
 
 ## When to Use
 
@@ -306,6 +306,12 @@ Before resuming a Revision and Extension session:
 **Identification:** SESSION_NOTES.md exists in project root, or project context indicates framework component authoring.
 
 **Recovery procedure:** For Framework Development: read SESSION_NOTES.md to reconstruct completed items and remaining integration checklist items.
+
+### Recovery from User Support Mode
+
+**Identification:** User references a prior help conversation about DAAF.
+
+**Recovery procedure:** User Support has no persistent session state — no STATE.md, no SESSION_NOTES.md, no workspace, no project folder. There is nothing to recover. If the user wants to resume a help conversation, simply re-enter User Support mode and continue from the user's current question. Prior conversation context is not preserved between sessions.
 
 ## Data Onboarding Recovery Verification Checklist
 

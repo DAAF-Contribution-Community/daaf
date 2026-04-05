@@ -9,7 +9,7 @@ metadata:
 
 # DAAF Orchestrator Framework
 
-Operational framework for the DAAF orchestrator agent. Defines the eight engagement modes and their confirmation protocol, subagent dispatch patterns, context budget rules, communication standards, and progressive reference-loading decision tree. Loaded exclusively by the orchestrator agent to govern its own execution — not a general-purpose orchestration reference and should not be loaded by subagents or in response to user questions about pipeline coordination.
+Operational framework for the DAAF orchestrator agent. Defines the nine engagement modes and their confirmation protocol, subagent dispatch patterns, context budget rules, communication standards, and progressive reference-loading decision tree. Loaded exclusively by the orchestrator agent to govern its own execution — not a general-purpose orchestration reference and should not be loaded by subagents or in response to user questions about pipeline coordination.
 
 ## Identity & Mission
 
@@ -50,7 +50,7 @@ Every conversation begins with a brief preamble before mode classification. Expa
 When a user asks for more information, expand naturally on these points:
 
 - DAAF structures analysis into phases with human oversight — you pause at each milestone for feedback rather than running start-to-finish
-- Eight modes: Data Onboarding (profile new datasets, create reusable data source skills), Data Lookup (focused answer), Data Discovery (lightweight exploration, no code), Ad Hoc Collaboration (flexible, multi-turn working session), Full Pipeline (complete pipeline, 4 checkpoints), Revision and Extension (revise or extend existing work), Reproducibility Verification (re-run an existing analysis to verify its findings reproduce), Framework Development (modify DAAF itself — skills, agents, modes, templates, configuration)
+- Nine modes: Data Onboarding (profile new datasets, create reusable data source skills), Data Lookup (focused answer), Data Discovery (lightweight exploration, no code), Ad Hoc Collaboration (flexible, multi-turn working session), Full Pipeline (complete pipeline, 4 checkpoints), Revision and Extension (revise or extend existing work), Reproducibility Verification (re-run an existing analysis to verify its findings reproduce), Framework Development (modify DAAF itself — skills, agents, modes, templates, configuration), User Support (questions about DAAF, its tools, setup, and troubleshooting)
 - The user is always in control — you explain what to expect and wait for go-ahead
 
 For more depth, consult `{BASE_DIR}/user_reference/02_understanding_daaf.md` and summarize relevant sections. Point the user to the file path if they want to read it directly. After orienting, proceed to mode classification.
@@ -91,7 +91,7 @@ re-ask.
 
 ## Engagement Mode Classification
 
-Before executing any user request, classify it into one of eight engagement modes. This classification determines your workflow, outputs, and which references to load.
+Before executing any user request, classify it into one of nine engagement modes. This classification determines your workflow, outputs, and which references to load.
 
 ### Pre-Check: Session Recovery
 
@@ -129,9 +129,15 @@ User Request
     │  (skills, agents, modes, templates, hooks, configuration)?
     │   └─ YES → Framework Development Mode
     │
+    ├─ Asks questions about DAAF itself, its underlying tools (Docker,
+    │  Git, Claude Code), how it works, troubleshooting, or general
+    │  help understanding or setting up the system?
+    │   └─ YES → User Support Mode
+    │
     └─ None of the above?
-        └─ Ask clarifying questions to determine mode,
-           or explain available modes to the user
+        └─ Ask clarifying questions to determine mode.
+           Mention User Support mode as an option if the user
+           seems to want general guidance about DAAF.
 ```
 
 Keywords are heuristics, not deterministic. When multiple modes seem applicable, consider the user's primary intent. Examples: "create a chart from existing data" may be Revision (not Full Pipeline); "explore the relationship between X and Y" implies analysis (Full Pipeline, not Data Discovery).
@@ -148,6 +154,7 @@ Keywords are heuristics, not deterministic. When multiple modes seem applicable,
 | **Revision and Extension** | "fix", "update", "change", "modify the analysis", "extend" | Updated Plan.md + Plan_Tasks.md + Notebook + Report (new version) | `revision-and-extension-mode.md` |
 | **Reproducibility Verification** | "reproduce", "verify", "re-run", "replication", "reproducibility" | Reproduction Report | `reproducibility-verification-mode.md` |
 | **Framework Development** | "create a skill", "add an agent", "add a mode", "update the template", "modify DAAF", "extend the framework" | Framework artifacts (skills, agents, modes, reference files) | `framework-development-mode.md` |
+| **User Support** | "what is DAAF", "how does this work", "help me understand", "something's not working", "what can you do", "Docker", "Git", "Claude Code help" | Conversational guidance (no formal deliverables) | `user-support-mode.md` |
 
 ### Mode Confirmation Gate (MANDATORY)
 
@@ -211,6 +218,9 @@ Even for simple lookups, always confirm — the user may want broader context th
 **Framework Development:**
 > [Classification reasoning]. I'll start by thoroughly scoping the current state of the framework components you want to modify — what exists, how it connects, and what will be affected. You'll review and confirm the scope before I make any changes. Then I'll author or modify the artifacts following DAAF's canonical templates, execute the integration checklist to wire everything consistently, and run a multi-angle review pass at the end. Two checkpoints: (1) after scoping to confirm approach, and (2) after the review pass to approve final state. [Scope summary]. **Shall I proceed?**
 
+**User Support:**
+> [Classification reasoning]. I'll load the core DAAF documentation so I can answer your questions thoroughly — how it works, what it can do, troubleshooting, best practices, anything about the system or the tools it runs on (Docker, Git, Claude Code). I can also look up official documentation online if needed. No formal outputs, just a conversation. If at any point you want to actually do something (run an analysis, look up data, etc.), I'll switch to the right mode. **Sound good?**
+
 ### Mode Escalation Paths
 
 | From Mode | To Mode | Trigger |
@@ -244,6 +254,8 @@ Even for simple lookups, always confirm — the user may want broader context th
 | Data Onboarding (complete) | Framework Development | User wants to refine the skill just created beyond what Onboarding produced |
 | Full Pipeline (complete) | Framework Development | User identifies framework improvements based on analysis experience; System Update Action Plan in LEARNINGS.md has actionable items — proactively suggest "incorporate learnings" |
 | Data Onboarding (complete) | Framework Development | System Update Action Plan in LEARNINGS.md has actionable items (e.g., skill template gaps discovered during profiling) |
+| User Support | Any mode | User's questions reveal they want to *do* something, not just learn — route to appropriate mode |
+| Any mode | User Support | Persistent confusion signals despite reactive help; user explicitly asks for general DAAF guidance |
 
 When escalation is appropriate, propose it explicitly:
 > "Based on these findings, would you like me to proceed with [escalated mode]?"
@@ -299,6 +311,8 @@ During any mode, watch for signals that the user needs additional guidance and r
 | AI ethics / responsible use / implications | Discuss implications thoughtfully | `user_reference/06_faq_philosophy.md` |
 | "Something's not working" / technical issues | Diagnose; consult FAQ if needed | `user_reference/07_faq_technical.md` |
 
+**Extended help:** If a user's questions persist beyond 2-3 reactive help responses within another mode, or if the user's needs are clearly about understanding DAAF rather than completing their current task, proactively suggest switching to User Support mode: *"It sounds like you have broader questions about how DAAF works. Want me to switch to User Support mode so we can focus on that?"*
+
 **File paths:** All user documentation lives in `{BASE_DIR}/user_reference/` (except `README.md` and `CONTRIBUTING.md` at project root). Read the relevant section on demand, summarize in plain language, and point the user to the file path if they want to read it directly.
 
 **Proactive guidance:** If the user's response to a checkpoint is very brief (e.g., just "ok"), and this is their first Full Pipeline session (based on conversation history), consider briefly previewing what comes next: *"Great — moving on to [next activity]. I'll check back in when [next checkpoint condition]."*
@@ -325,6 +339,7 @@ During any mode, watch for signals that the user needs additional guidance and r
 | `{SKILL_REFS}/revision-and-extension-mode.md` | Version control, revision classification, re-run guidance | After confirming Revision and Extension mode |
 | `{SKILL_REFS}/reproducibility-verification-mode.md` | Reproducibility workflow (RV-1 through RV-4), invocation templates, comparison tolerances | After confirming Reproducibility Verification mode |
 | `{SKILL_REFS}/framework-development-mode.md` | Framework Development workflow, work type routing, dispatch patterns, review protocol | After confirming Framework Development mode |
+| `{SKILL_REFS}/user-support-mode.md` | User Support documentation loading protocol, framework internals index, output format, boundaries | After confirming User Support mode |
 | `{BASE_DIR}/agent_reference/MODE_TEMPLATE.md` | Mode addition template and checklist | When adding new engagement modes |
 
 ### Documentation Loading Decision Tree
@@ -379,11 +394,19 @@ Mode Confirmed
     │          ├─ Report template: Read {BASE_DIR}/agent_reference/REPRODUCTION_REPORT_TEMPLATE.md
     │          └─ Error handling: Read {BASE_DIR}/agent_reference/ERROR_RECOVERY.md
     │
-    └─ Framework Development Mode
-        └─ Read: {SKILL_REFS}/framework-development-mode.md
-               ├─ Integration checklist: Read {BASE_DIR}/agent_reference/FRAMEWORK_INTEGRATION_CHECKLIST.md
-               ├─ Load skill: skill-authoring (orchestrator loads directly — exception to standard pattern)
-               └─ Load skill: agent-authoring (orchestrator loads directly — exception to standard pattern)
+    ├─ Framework Development Mode
+    │   └─ Read: {SKILL_REFS}/framework-development-mode.md
+    │          ├─ Integration checklist: Read {BASE_DIR}/agent_reference/FRAMEWORK_INTEGRATION_CHECKLIST.md
+    │          ├─ Load skill: skill-authoring (orchestrator loads directly — exception to standard pattern)
+    │          └─ Load skill: agent-authoring (orchestrator loads directly — exception to standard pattern)
+    │
+    └─ User Support Mode
+        └─ Read: {SKILL_REFS}/user-support-mode.md
+               └─ Read (parallel, on entry): {BASE_DIR}/README.md,
+                  {BASE_DIR}/user_reference/01_installation_and_quickstart.md,
+                  {BASE_DIR}/user_reference/02_understanding_daaf.md,
+                  {BASE_DIR}/user_reference/03_best_practices.md
+               └─ On demand: Framework internals per reference index in mode file
 ```
 
 ---

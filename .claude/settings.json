@@ -196,18 +196,6 @@
         ]
       }
     ],
-    "SubagentStop": [
-      {
-        "matcher": "",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/subagent-registry.sh",
-            "timeout": 10
-          }
-        ]
-      }
-    ],
     "SessionEnd": [
       {
         "matcher": "",
@@ -226,7 +214,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "mkdir -p \"$CLAUDE_PROJECT_DIR\"/.claude/logs && echo \"Session started: $(date '+%Y-%m-%d %H:%M:%S') | DAAF: $(git -C \"$CLAUDE_PROJECT_DIR\" describe --always --dirty 2>/dev/null || echo 'unknown')\" >> \"$CLAUDE_PROJECT_DIR\"/.claude/logs/activity.log",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/recover-session-logs.sh",
             "timeout": 5
           }
         ]

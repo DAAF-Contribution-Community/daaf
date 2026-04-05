@@ -1,6 +1,6 @@
 # 05. Contributing to DAAF
 
-This guide covers all forms of contribution to DAAF, from filing an issue to modifying core framework components. Whether you've found a bug, want to improve documentation, or want to help the broader community by building new functionality: this is where to start. That being said, there's an important distinction between generally **extending** DAAF for your own purposes (adding new skills, data sources, and agents; see [**04. Extending DAAF**](user_reference/04_extending_daaf.md) for more there) and **contributing** to DAAF itself (sharing back your work, improvements, suggestions, and ideas with the broader community; this guide).
+This guide covers all forms of contribution to DAAF, from filing an issue to modifying core framework components. Whether you've found a bug, want to improve documentation, or want to help the broader community by building new functionality: this is where to start. That being said, there's an important distinction between generally **extending** DAAF for your own purposes (adding new skills, data sources, and agents; see [**04. Extending DAAF**](user_reference/04_extending_daaf.md) for more there) and **contributing** to DAAF itself (sharing back your work, improvements, suggestions, and ideas with the broader community; this guide). If you're still getting oriented and want to understand how DAAF works before contributing, you can ask DAAF directly -- it has a **User Support** mode for exactly that kind of question (see [**02. Understanding and Working with DAAF**](user_reference/02_understanding_daaf.md) for more).
 
 [**Back to main**](https://github.com/DAAF-Contribution-Community/daaf/tree/main)
 
@@ -449,7 +449,7 @@ For a detailed explanation of what counts as "core" versus "extension," includin
 
 ## Recommended Next Steps
 
-- [**04. Extending DAAF**](user_reference/04_extending_daaf.md) -- How to add new data source skills, analytical tools and methodologies, and creating your own additional specialized agents
+- [**04. Extending DAAF**](user_reference/04_extending_daaf.md) -- How to add new data source skills, analytical tools and methodologies, creating your own additional specialized agents, and customizing the Python environment
 - [**06. FAQ: Philosophy**](user_reference/06_faq_philosophy.md) -- Grapples with the broader implications of this work, AI automation in general, model advancement pace, approaching the "exponential", environmental ethics, what this means for the next generation of researchers, and more
 - [**07. FAQ: Technical Support**](user_reference/07_faq_technical.md) -- Covers frequently asked questions about Docker, issues with Claude Code, usage limits, authentication errors, and other common errors
 - [**Back to main**](https://github.com/DAAF-Contribution-Community/daaf/tree/main)

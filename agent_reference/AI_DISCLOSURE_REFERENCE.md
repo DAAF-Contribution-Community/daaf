@@ -122,6 +122,17 @@ Different engagement modes involve different levels of AI assistance. The disclo
 **Template paragraph:**
 > This reproduction was conducted using the DAAF Reproducibility Verification mode. An AI agent re-executed all [N] analysis scripts from the original marimo notebook, compared outputs against the original execution logs, and cross-referenced the Report's quantitative claims against reproduced results. The human researcher reviewed the resulting Reproduction Report, including all deviations and methodological concerns, and determined the overall reproducibility assessment.
 
+### User Support Mode
+
+**Depth:** None — User Support produces no research artifacts, analysis outputs, or formal deliverables. All interaction is conversational guidance about DAAF itself.
+
+**Guidance:** User Support conversations typically require no AI disclosure because they produce no publishable or shareable research output. If a User Support session leads to mode escalation (e.g., the user decides to start a Full Pipeline analysis), the escalated mode's disclosure guidance applies to the work produced in that mode — the preceding User Support conversation is not separately disclosable.
+
+**Exception:** If a researcher cites specific guidance received during a User Support session in a methods section (e.g., "DAAF's orchestrator recommended using Data Onboarding mode before analysis"), a brief acknowledgment is sufficient:
+> Methodological guidance was obtained through DAAF's User Support mode ([model ID], [date]). DAAF version: [commit hash].
+
+---
+
 ### Consultative Mode (Planned)
 
 **Depth:** Variable — depends on the nature of the consultation.

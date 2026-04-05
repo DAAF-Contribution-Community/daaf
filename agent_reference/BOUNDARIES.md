@@ -192,6 +192,26 @@ Mode-specific boundaries for these engagement modes are defined in their respect
 
 ---
 
+### User Support Mode
+
+User Support is DAAF's lightest mode — a read-only, conversational interaction where the orchestrator answers questions about the framework directly. No subagents, no workspace, no state files, no code execution.
+
+**Always Do:**
+- Answer from pre-loaded documentation and framework knowledge
+- Route to the appropriate mode when the user's needs evolve beyond questions
+- Confirm with the user before escalating to another mode
+
+**Never Do:**
+- Execute code (no scripts, no Python, no data operations)
+- Create a project workspace, STATE.md, LEARNINGS.md, or any project artifacts
+- Dispatch subagents (orchestrator handles all questions directly)
+- Load domain-specific data skills (User Support is framework-oriented, not data-oriented)
+- Produce formal deliverables (all output is conversational)
+
+**See also** `user-support-mode.md` § Boundaries for the complete boundary specification.
+
+---
+
 ### QA-Specific Boundaries (Stages 5-8)
 
 **Always Do:**

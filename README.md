@@ -139,7 +139,7 @@ DAAF explicitly embraces the fact that LLM research assistants will never be per
 
 ## Engagement Modes
 
-When you open DAAF, just begin by asking it any question or for support with any type of task. DAAF intelligently responds to your needs by automatically selecting and walking you through one of eight possible research workflow modes (and you can feel free to redirect it if it gets it wrong!) while providing easy opportunities to transition across supported workflows as needed:
+When you open DAAF, just begin by asking it any question or for support with any type of task. DAAF intelligently responds to your needs by automatically selecting and walking you through one of nine possible research workflow modes (and you can feel free to redirect it if it gets it wrong!) while providing easy opportunities to transition across supported workflows as needed:
 
 **Data Onboarding:** Make Claude an expert in **your** data
 - *What you do:* Point DAAF to your data (local file, web download, or API) and any associated documentation
@@ -189,6 +189,12 @@ When you open DAAF, just begin by asking it any question or for support with any
 - *What you get:* A better DAAF with modular skills and agents you can share with colleagues or the community
 - *Example:* I want to explore building in more supports for more sophisticated natural language processing techniques that allow us to classify open-response text
 
+**User Support:** Get help understanding and using DAAF itself and its underlying tools (Docker, Git, Claude Code)
+- *What you do:* Ask DAAF any question about what it is, how it works, how to troubleshoot setup or tool issues, or what to expect
+- *What DAAF does:* Loads its own documentation and responds directly with clear, educational guidance -- can also look up official Docker, Git, and Claude Code docs online when needed
+- *What you get:* A conversational, patient explanation of anything about DAAF or its technology stack, plus pointers to the right mode when you're ready to do something specific
+- *Example:* I'm new here -- can you walk me through what DAAF actually does? Also, how do I give Docker more memory?
+
 ---
 
 ## Capabilities
@@ -202,6 +208,8 @@ Difference-in-differences &bull; Fixed/random effects &bull; Mixed effects model
 
 **Python library expertise:**
 polars &bull; pyfixest &bull; linearmodels &bull; statsmodels &bull; scikit-learn &bull; geopandas &bull; plotly &bull; plotnine &bull; marimo &bull; svy &bull; fairlearn &bull; SHAP &bull; PySAL &bull; LightGBM &bull; seaborn &bull; rdrobust &bull; marginaleffects
+
+Need a package that isn't listed? You can add your own by editing the Dockerfile and rebuilding -- see [Customizing Your Python Environment](user_reference/04_extending_daaf.md#customizing-your-python-environment) for instructions.
 
 **Additional features:**
 Interactive dashboards (Plotly) &bull; Reactive analytic notebooks (marimo) &bull; R/tidyverse-Python code translation &bull; Stata-Python code translation &bull; Citation propagation & verification &bull; GUIDE-LLM AI use disclosure &bull; Git version control &bull; Session transcript archiving &bull; Docker-based safety sandboxing &bull; Destructive command prevention &bull; Secret/credential scanning &bull; File-first execution enforcement &bull; Science communication
@@ -249,7 +257,7 @@ See [**Contributing to DAAF**](CONTRIBUTING.md) for the full contribution guide 
 - [**01. Installation & Quick Start**](user_reference/01_installation_and_quickstart.md) — **(Recommended Next Step)** Get started! Installation prerequisites, step-by-step setup, day-to-day usage, and troubleshooting
 - [**02. Understanding and Working with DAAF**](user_reference/02_understanding_daaf.md) — Learn to work with DAAF for the first time: what to expect, how to use it, and how to test its strengths and limitations
 - [**03. Best Practices**](user_reference/03_best_practices.md) — Tips for working with Claude Code, writing effective prompts, ensuring quality and rigor with DAAF, reviewing outputs, and managing context
-- [**04. Extending DAAF**](user_reference/04_extending_daaf.md) — How to add new data source skills, analytical tools and methodologies, and creating your own additional specialized agents
+- [**04. Extending DAAF**](user_reference/04_extending_daaf.md) — How to add new data source skills, analytical tools and methodologies, creating your own additional specialized agents, and customizing the Python environment
 - [**05. Contributing to DAAF**](CONTRIBUTING.md) — Get involved in developing DAAF! How to file issues via GitHub, support expanding the capabilities of the framework, contribute to educational tutorials and how-to's, and more!
 - [**06. FAQ: Philosophy**](user_reference/06_faq_philosophy.md) — **(Recommended Next Step)** Grapples with the broader implications of this work, AI automation in general, model advancement pace, approaching the "exponential", environmental ethics, what this means for the next generation of researchers, and more
 - [**07. FAQ: Technical Support**](user_reference/07_faq_technical.md) — Covers frequently asked questions about Docker, issues with Claude Code, usage limits, authentication errors, and other common errors
