@@ -177,6 +177,12 @@ Additionally, `.claude/logs/activity.log` records a timestamped entry every time
 
 **These logs are gitignored by default** (they may contain sensitive content or API details), so they stay on your local machine and are never pushed to the repository.
 
+### Q: What happens to session logs if Claude Code crashes or I close the terminal unexpectedly?
+
+They're preserved automatically. On the next session start, DAAF runs a background recovery scan that detects any un-archived transcripts from prior sessions and archives them retroactively. Recovered archives use the timestamp from when the original session last ran (not when recovery discovered them), so they sort chronologically alongside your other session logs.
+
+You don't need to do anything -- just start a new session and recovery happens silently in the background. If you check `.claude/logs/activity.log`, you may occasionally see a line like `RECOVERY: archived 1 session(s)` -- that's the recovery hook doing its job.
+
 ### Q: How can I use session logs for debugging?
 
 Session logs are invaluable when something goes wrong. The Markdown logs show you exactly what the assistant did, in order -- every tool call, every file read/write, every subagent invocation, and the full output at each step.

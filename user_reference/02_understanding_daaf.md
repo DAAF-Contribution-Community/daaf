@@ -433,6 +433,7 @@ research/2026-01-24_School_Poverty_Analysis/
 ├── 2026-01-24_School_Poverty_Analysis_Report.md
 ├── LEARNINGS.md
 ├── STATE.md
+├── logs/                             (session transcripts, collected at completion)
 ├── scripts/
 │   ├── stage5_fetch/
 │   │   ├── 01_fetch-ccd.py
@@ -557,6 +558,8 @@ Then open [http://localhost:2718](http://localhost:2718) in your normal web brow
 ### STATE.md and LEARNINGS.md
 
 **STATE.md** -- A session state file that tracks DAAF's progress through the analysis. It records transformation progress, checkpoint statuses, runtime decisions, and any blockers encountered. It also accumulates the QA Findings Summary (aggregated quality review results across all stages), the Final Review Log (from the end-of-pipeline verification), any Runtime Risks discovered during execution, and Citations Accumulated (a running ledger of data source, methodological, software, and reporting standard citations extracted as each script executes). If a session is interrupted (context exhaustion, network issues, etc.), STATE.md allows DAAF to resume exactly where it left off. You generally don't need to read this unless debugging a session issue.
+
+**`logs/`** -- Session transcripts collected into the project folder at completion. When a project finishes, DAAF gathers all session transcripts that touched the project's files into this directory, making each project self-contained for audit purposes. If an analysis spanned multiple sessions, you'll find transcripts from each one here. These are copies of the global archives in `.claude/logs/sessions/` -- see the [Session Logs and Diagnostics FAQ](07_faq_technical.md#session-logs-and-diagnostics) for details on formats and storage.
 
 **LEARNINGS.md** -- A lessons-learned document capturing insights about the data and the analysis process. This includes data idiosyncrasies discovered during the analysis, interpretation concerns, and suggested improvements to DAAF's documentation. This file is designed to be immediately actionable -- you can share it back with the community to help improve DAAF for future users.
 
@@ -742,6 +745,7 @@ When a session needs to restart (whether due to context exhaustion, network inte
 2. **The Plan document** contains the full methodology and task sequence
 3. **All scripts and data files** are already saved to disk
 4. **LEARNINGS.md** captures any insights accumulated so far
+5. **Session transcripts** are archived automatically when a session ends -- and if a session crashes before that happens, a recovery hook archives the orphaned transcript on the next session start, so no interaction records are lost
 
 To resume a session, simply start a new Claude Code session and tell DAAF to pick up where it left off:
 

@@ -241,6 +241,7 @@ Context management is NEVER about reducing the quality or completeness of work. 
 | **PostToolUse Hooks** | `audit-log.sh`, `output-scanner.sh` | Audit trail, secret detection in output |
 | **Context Reporting Hook** | `context-reporter.sh` — fires for orchestrator and all subagents via `PreToolUse` | Context utilization injection for gating decisions (orchestrator + subagents) |
 | **Session Archive Hook** | `archive-session.sh` | Session transcript archiving on exit |
+| **Session Recovery Hook** | `recover-session-logs.sh` — fires on `SessionStart` | Activity logging + crash recovery: archives orphaned transcripts from sessions that terminated without reaching `SessionEnd` |
 | **Container Isolation** | Docker with `cap_drop: ALL`, non-root user | OS-level blast radius containment |
 | **`.claudeignore`** | File-level exclusion | Prevents indexing of credentials |
 | **Pre-commit Hooks** | `.pre-commit-config.yaml` | Catches large files, private keys, merge conflicts at commit time |

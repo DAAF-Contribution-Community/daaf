@@ -20,6 +20,12 @@
 # grown (e.g., a concurrent session was prematurely archived by recovery),
 # the old archive is replaced with the complete version.
 #
+# Timestamp derivation: For recovered sessions (reason="recovered"), the
+# archive timestamp is derived from the last entry in the JSONL transcript
+# rather than the current wall clock. This ensures recovered archives sort
+# chronologically by when the session actually ran, not when recovery
+# discovered them. Normal SessionEnd archiving uses wall clock as before.
+#
 # Archive naming convention:
 #   {date}_{time}_{session-short}_orchestrator.jsonl   -- main session transcript
 #   {date}_{time}_{session-short}_orchestrator.md      -- human-readable rendering
@@ -55,6 +61,20 @@ mkdir -p "$ARCHIVE_DIR"
 # Timestamp for archive
 TIMESTAMP=$(date '+%Y-%m-%d_%H-%M-%S')
 SESSION_SHORT="${SESSION_ID:0:8}"
+
+# For recovered sessions, derive timestamp from the transcript's last entry
+# rather than the current wall clock, so archives sort chronologically by
+# when the session actually ran (not when recovery discovered it).
+if [ "$REASON" = "recovered" ] && [ -n "$TRANSCRIPT_PATH" ] && [ -f "$TRANSCRIPT_PATH" ]; then
+    LAST_TS=$(jq -r '.timestamp // empty' "$TRANSCRIPT_PATH" 2>/dev/null | tail -1)
+    if [ -n "$LAST_TS" ]; then
+        # Convert ISO timestamp (2026-04-05T14:39:58.123Z) to archive format (2026-04-05_14-39-58)
+        # Strip fractional seconds and trailing Z separately to handle both
+        # "...58.123Z" and "...58Z" (no fractional seconds) correctly
+        RECOVERED_TS=$(echo "$LAST_TS" | sed 's/T/_/; s/\.[0-9]*//; s/Z$//; s/:/-/g')
+        [ -n "$RECOVERED_TS" ] && TIMESTAMP="$RECOVERED_TS"
+    fi
+fi
 
 # Archive filename stem -- orchestrator role suffix
 STEM="${TIMESTAMP}_${SESSION_SHORT}_orchestrator"

@@ -938,3 +938,14 @@ All errors should be logged in the Plan document:
 |-----------|-------|-------|------------|
 | YYYY-MM-DD HH:MM | Stage N | [Brief description] | [How resolved or escalated] |
 ```
+
+---
+
+## Session-Level Recovery
+
+Session transcript archiving is handled automatically by two hooks that work as a pair:
+
+- **`archive-session.sh`** (fires on `SessionEnd`): Archives the complete JSONL transcript and a human-readable Markdown rendering to `.claude/logs/sessions/`, including all subagent transcripts discovered from Claude Code's raw file hierarchy.
+- **`recover-session-logs.sh`** (fires on `SessionStart`): Runs a background scan for raw transcripts that were never archived — typically from sessions that crashed, were killed, or lost network connectivity before `SessionEnd` fired. For each orphaned transcript found, it pipes a synthesized payload to `archive-session.sh`, reusing all existing archiving logic. Recovered archives are timestamped using the last entry in the original transcript (not the recovery runtime), so they sort chronologically by when the session actually ran.
+
+**No manual intervention is required.** Orphaned transcripts are recovered automatically on the next session start. The idempotency guard in `archive-session.sh` (file-size comparison keyed on session ID) prevents duplicate archives and ensures that if a still-running session was prematurely archived by recovery, the complete version from `SessionEnd` replaces the partial one.
