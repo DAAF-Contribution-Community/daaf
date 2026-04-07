@@ -44,16 +44,29 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # CUSTOMIZATION: Adding Your Own Python Packages
 # -----------------------------------------------
 # To add a Python package, append it to the appropriate RUN block below
-# (or add a new block), then rebuild:
+# (or add a new block), then rebuild.
 #
+# IMPORTANT — CONTAINER-HOST BOUNDARY: If you (or DAAF/Claude Code) are
+# editing this file from inside a running DAAF container, your edits
+# live in the VOLUME copy of the Dockerfile — NOT the HOST copy that
+# Docker Compose actually reads at build time. You must copy the
+# modified Dockerfile back to the host project folder BEFORE running
+# the rebuild, or your changes will silently fail to take effect (the
+# build will "succeed" with no errors, but your new package will not
+# be installed). From your host terminal, in your DAAF project folder:
+#
+#   docker cp daaf-daaf-docker-1:/daaf/Dockerfile ./Dockerfile
 #   docker compose up -d --build
 #
 # Docker layer caching makes rebuilds fast — only changed layers re-run.
 # For packages needing C libraries (e.g., libfoo-dev), also add them to
-# the apt-get block in "Install System Dependencies" above.
+# the apt-get block in "Install System Dependencies" above (a single
+# copy-back step covers both edits, since they're in the same file).
 #
-# For full guidance, common scenarios, and runtime install options, see:
+# For the full explanation, step-by-step procedure, common scenarios,
+# and runtime install options, see:
 #   user_reference/04_extending_daaf.md
+#   (section: "The Recommended Path: Modify the Dockerfile")
 # -----------------------------------------------
 
 # Install core data science packages

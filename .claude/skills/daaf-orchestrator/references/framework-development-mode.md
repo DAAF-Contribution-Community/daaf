@@ -658,7 +658,7 @@ These boundaries supplement the universal safety boundaries in `CLAUDE.md`. See 
 - Changing the structure of existing templates (AGENT_TEMPLATE.md, MODE_TEMPLATE.md, etc.)
 - Deleting or renaming existing framework files
 - Making changes beyond the user's stated scope
-- Modifying Dockerfile or docker-compose.yml
+- Modifying Dockerfile or docker-compose.yml. **When the user approves the edit, you must also remind them about the container-host boundary** before they rebuild: the file you just edited lives in the volume copy, but `docker compose up -d --build` reads the host copy. After making the edit, instruct the user to (1) exit Claude Code (`/exit`) and the container (`exit`), (2) run `docker cp daaf-daaf-docker-1:/daaf/<filename> ./<filename>` from their host terminal in the DAAF project folder (substituting `Dockerfile` or `docker-compose.yml` for `<filename>`), and (3) then run `docker compose up -d --build`. Skipping the copy-back step causes the rebuild to silently use the unchanged host file. Point them to `user_reference/04_extending_daaf.md` § "The Recommended Path: Modify the Dockerfile" for the full procedure if they want more detail.
 
 ### Never Do
 
