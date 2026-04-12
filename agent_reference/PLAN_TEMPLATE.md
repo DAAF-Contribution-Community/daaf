@@ -644,6 +644,7 @@ Define the expected data contracts between stages. The data-planner populates th
 | Raw data | `research/[project]/data/raw/` | `.parquet` |
 | Processed data | `research/[project]/data/processed/` | `.parquet` |
 | Figures | `research/[project]/output/figures/` | `.png` |
+| Discovery preliminary notes | `research/[project]/output/preliminary_notes/` | `.md` |
 
 ---
 
@@ -803,6 +804,7 @@ and QA reviewers understand what was intentionally accepted.*
 | Raw Data | `research/YYYY-MM-DD_[Title]/data/raw/YYYY-MM-DD_*.parquet` | Original data downloads |
 | Processed Data | `research/YYYY-MM-DD_[Title]/data/processed/YYYY-MM-DD_*.parquet` | Cleaned data |
 | Figures | `research/YYYY-MM-DD_[Title]/output/figures/YYYY-MM-DD_*.png` | Visualizations |
+| Discovery Preliminary Notes | `research/YYYY-MM-DD_[Title]/output/preliminary_notes/{date}_stage{N}_{desc}.md` | Lossless agent findings from discovery phase (Stages 2, 3, 3.5) |
 | Fetch Scripts | `research/YYYY-MM-DD_[Title]/scripts/stage5_fetch/*.py` | Data retrieval code |
 | Clean Scripts | `research/YYYY-MM-DD_[Title]/scripts/stage6_clean/*.py` | Context application code |
 | Transform Scripts | `research/YYYY-MM-DD_[Title]/scripts/stage7_transform/*.py` | Transformation code |

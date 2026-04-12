@@ -36,7 +36,19 @@ and analytical limitations that cannot be derived from profiling scripts alone. 
 files must synthesize both profiling-derived observations AND documentation-derived context.
 If a documentation website URL is in STATE.md, fetch key pages for methodology context.
 
+**PROFILING PRELIMINARY NOTES:** Consolidated profiling findings from each phase are at:
+- {project_dir}/output/preliminary_notes/{date}_partA_structural-discovery.md
+- {project_dir}/output/preliminary_notes/{date}_partB_statistical-deep-dive.md
+- {project_dir}/output/preliminary_notes/{date}_partC_relational-analysis.md
+- {project_dir}/output/preliminary_notes/{date}_partD_interpretation-reconciliation.md
+Read these preliminary notes FIRST for structured summaries and recommendations from
+each profiling phase. These complement the execution logs in scripts/ — the preliminary
+notes provide the narrative, confidence assessments, and recommendations; the execution
+logs provide the granular data-level detail.
+
 **PROFILING SCRIPTS:** All executed scripts with execution logs are in `{project_dir}/scripts/`.
+The preliminary notes above provide a consolidated narrative layer; consult the execution
+logs below for granular data when the notes reference specific findings.
 Read these scripts as primary sources for data-level skill content:
 - Scripts 01-03 (structural) → schema, column details, data access patterns
 - Script 04 (distributions) → distribution notes, Common Pitfalls
@@ -216,7 +228,7 @@ Reference file density:
 - [ ] Profiling scripts bundled in .claude/skills/{skill_name}/scripts/ (excluding QA/cr scripts)
 - [ ] CPP-SKILL results reported as itemized pass/fail per check item (not just overall status)
 
-**OUTPUT FORMAT (2500-word hard cap):**
+**OUTPUT FORMAT (3500-word hard cap):**
 ### Skill Authoring: {skill_name}
 - CPP-SKILL Status (template compliance) — itemized pass/fail per checklist item
 - Line count: SKILL.md [N] lines, reference files [N] total lines ([ratio]x)

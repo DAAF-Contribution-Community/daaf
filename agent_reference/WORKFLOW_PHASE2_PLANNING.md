@@ -25,7 +25,8 @@ Stages 4, 4.5. Cross-phase orchestration guidance (invocation templates, QA prot
    │   └── processed/
    └── output/
        ├── analysis/
-       └── figures/
+       ├── figures/
+       └── preliminary_notes/
    ```
 
 2. **Synthesize Phase 1 Findings**
@@ -122,14 +123,19 @@ All relative paths in referenced files resolve from BASE_DIR.
 **RESEARCH QUESTION (orchestrator formulation):**
 {research_question}
 
-**STAGE 2 FINDINGS (Data Exploration):**
-{stage_2_output_summary}
+**DISCOVERY PRELIMINARY NOTES:**
+Read these files for full-fidelity discovery findings:
+- Stage 2: {project_dir}/output/preliminary_notes/{date}_stage2_data-exploration.md
+- Stage 3 (per source):
+  - {project_dir}/output/preliminary_notes/{date}_stage3_{source1}_source-research.md
+  - {project_dir}/output/preliminary_notes/{date}_stage3_{source2}_source-research.md
+  [...one path per source]
+- Stage 3.5: {project_dir}/output/preliminary_notes/{date}_stage3.5_research-synthesis.md
 
-**STAGE 3 FINDINGS (Source Deep-Dive):**
-{stage_3_output_summary}
-
-**STAGE 3.5 FINDINGS (research synthesis):**
-{stage_3_5_synthesis}
+**ORCHESTRATOR CONTEXT (orientation summary):**
+[5-8 sentence summary of the discovery phase — key sources, main constraints,
+recommended approach. This is for quick orientation; consult the full preliminary
+notes above for complete detail.]
 
 **PROJECT FOLDER:**
 research/{date}_{title}/
@@ -154,9 +160,8 @@ Do NOT paraphrase or summarize — copy the exact text.
 **Orchestrator Checklist Before Invoking data-planner:**
 - [ ] Original user request text available (verbatim, not paraphrased)
 - [ ] Clarifications documented (numbered list)
-- [ ] Stage 2 findings summarized
-- [ ] Stage 3 findings summarized (per source)
-- [ ] Stage 3.5 synthesis included
+- [ ] Preliminary notes file paths confirmed on disk (Stage 2, Stage 3 per source, Stage 3.5)
+- [ ] Orientation summary drafted (5-8 sentences covering key sources, constraints, approach)
 - [ ] Project folder path determined
 
 ### Continuation Handling (Complex Plans)
@@ -218,7 +223,7 @@ Agent({
 - [ ] **STATE.md created** at `research/[folder]/STATE.md` (MANDATORY — Gate G4) — includes Runtime Risks, QA Findings Summary, and Final Review Log skeleton sections
 - [ ] **LEARNINGS.md skeleton created** at `research/[folder]/LEARNINGS.md` (MANDATORY — Gate G4)
 - [ ] **Plan Completeness Gate passed** (all sections verified in both Plan.md and Plan_Tasks.md)
-- [ ] Project folder structure created (`data/raw/`, `data/processed/`, `output/analysis/`, `output/figures/`)
+- [ ] Project folder structure created (`data/raw/`, `data/processed/`, `output/analysis/`, `output/figures/`, `output/preliminary_notes/`)
 - [ ] User notified (PSU2 presented after Stage 4.5 completes)
 
 **Gate G4 Enforcement:** Plan-checker (Stage 4.5) CANNOT be invoked without Plan.md, Plan_Tasks.md, STATE.md, and LEARNINGS.md all existing. (Stage 5 additionally requires G4.5 — see below.)
@@ -288,14 +293,25 @@ All relative paths in referenced files resolve from BASE_DIR.
 **CLARIFICATIONS:**
 {inline any user clarifications, or "None"}
 
+**DISCOVERY PRELIMINARY NOTES (for verification against Plan):**
+Read these files to verify the Plan accurately represents the data landscape:
+- {project_dir}/output/preliminary_notes/{date}_stage2_data-exploration.md
+- {project_dir}/output/preliminary_notes/{date}_stage3_{source1}_source-research.md
+- {project_dir}/output/preliminary_notes/{date}_stage3_{source2}_source-research.md
+- {project_dir}/output/preliminary_notes/{date}_stage3.5_research-synthesis.md
+
+Use these to verify:
+- All caveats from source research are reflected in the Plan's Risk Register
+- Coded value handling matches source-researcher recommendations
+- Suppression thresholds are documented as constraints
+- The Plan's methodology aligns with the synthesis's Recommended Approach
+
 **TASK:**
 Validate BOTH Plan.md and Plan_Tasks.md across all 6 dimensions (Completeness, Consistency, Feasibility, Testability, Clarity, Scope). Return structured report with per-dimension confidence and issues in YAML format.
 
 **OUTPUT FORMAT:**
-1. Dimension Scores (PASS/WARN/FAIL for each)
-2. Issues Found (with severity and location)
-3. Recommended Fixes (if ISSUES_FOUND)
-4. Overall Status: PASSED / PASSED_WITH_WARNINGS / ISSUES_FOUND
+Return findings using the Plan Checker Output Format
+(see your agent protocol, § Output Format).
 """,
     subagent_type: "plan-checker"
 })

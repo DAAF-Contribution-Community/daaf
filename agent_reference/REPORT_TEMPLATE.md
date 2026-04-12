@@ -15,6 +15,7 @@
 | Data & Methods: Key Variables | Plan.md § Key Variables | — |
 | Data & Methods: Methodology | Plan.md § Methodology Specification | Plan.md § Key Decisions |
 | Data & Methods: Data Cleaning | Stage 6 execution logs | STATE.md checkpoints |
+| Data Sources, Methodology | `output/preliminary_notes/` | Discovery-phase agent findings (source caveats, coded values, limitations) |
 | Quality Assurance | STATE.md QA Findings Summary | Stage 10 QA execution logs |
 | Key Findings | Stage 7-8 outputs + figures | Plan.md § Research Outcomes + Plan.md § Hypotheses (if any) |
 | Summary Statistics | Analysis dataset metadata + Stage 7 EDA logs | Notebook data cells |

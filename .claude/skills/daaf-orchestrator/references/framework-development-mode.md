@@ -163,7 +163,7 @@ Provide a structured report with:
 3. Potential impacts or dependencies discovered
 4. Recommended approach considerations
 
-Keep output under 800 words. Focus on findings, not descriptions of what you read.
+Keep output under 1500 words. Focus on findings, not descriptions of what you read.
 ```
 
 ### Phase 1 Exploration Prompt Template: Incorporate Learnings
@@ -197,7 +197,7 @@ Provide a structured report with:
 3. Duplicates identified (same target + same proposed change from multiple projects)
 4. Total counts: action items found, unique after dedup, by priority (P1/P2/P3)
 
-Keep output under 800 words. Focus on the consolidated backlog, not descriptions
+Keep output under 1500 words. Focus on the consolidated backlog, not descriptions
 of each file.
 ```
 
@@ -227,7 +227,7 @@ Provide a structured report with:
 2. Summary counts: already done, partial, still needed
 3. Any target files that no longer exist or have been restructured
 
-Keep output under 800 words.
+Keep output under 1500 words.
 ```
 
 **Subagent 3: Dependency and Ordering Analysis**
@@ -258,7 +258,7 @@ Provide a structured report with:
 4. Estimated complexity per item (Simple / Moderate / Complex) based on the
    number of files affected and nature of the change
 
-Keep output under 800 words.
+Keep output under 1500 words.
 ```
 
 **Note:** Subagents 2 and 3 depend on earlier results. The orchestrator may run Subagent 1 first, then Subagents 2 and 3 in sequence (or parallel if the orchestrator inlines findings). Alternatively, the orchestrator can run all three with standing instructions and let each subagent scan independently — trading some duplication for parallelism.

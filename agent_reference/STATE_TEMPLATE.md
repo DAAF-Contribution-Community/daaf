@@ -258,6 +258,29 @@ Copy this template to `STATE.md` in the project folder when starting a Full Pipe
 
 ---
 
+## Discovery Preliminary Notes
+
+> Orchestrator writes lossless agent findings to disk as preliminary notes files
+> immediately upon receiving each discovery-phase agent's return. These files
+> persist the full agent output (zero compression) and are referenced by
+> downstream agents (data-planner, plan-checker, data-verifier) for full-fidelity
+> access to discovery findings. Gate conditions prevent downstream stages from
+> proceeding until the relevant files exist on disk.
+
+| Stage | Agent | File Path | Status |
+|-------|-------|-----------|--------|
+| 2 | search-agent | `output/preliminary_notes/{date}_stage2_data-exploration.md` | [PENDING/WRITTEN] |
+| 3 | source-researcher | `output/preliminary_notes/{date}_stage3_{source}_source-research.md` | [PENDING/WRITTEN] |
+| 3.5 | research-synthesizer | `output/preliminary_notes/{date}_stage3.5_research-synthesis.md` | [PENDING/WRITTEN] |
+
+**Status Values:**
+- **PENDING** — Agent not yet dispatched or return not yet persisted
+- **WRITTEN** — File exists on disk with full lossless agent return
+
+**Note:** Add one row per source-researcher dispatch (one per data source). All rows must show WRITTEN before Stage 4 can proceed.
+
+---
+
 ## Citations Accumulated
 
 > Orchestrator populates this section after each Stage 6, 7, and 8 script completion,

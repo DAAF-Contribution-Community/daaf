@@ -397,7 +397,7 @@ user's requested dataset to the project's data/raw/ directory.
 
 ## Output Format
 
-Return findings in this structure (max 2500 words):
+Return findings in this structure (max 3500 words):
 
 ### DI-0 Summary
 **Status:** [SCRIPT_READY | BLOCKED]
@@ -474,6 +474,9 @@ For EACH profiling part (DI-3 through DI-6), follow this complete cycle. **Do NO
 │      │                                                                      │
 │      │   Capture from return: script paths, CPP status, part summary,      │
 │      │   conditional script decisions (Part A only), learning signals.     │
+│      │                                                                      │
+│      │   Write the full, unmodified agent return to markdown file on disk  │
+│      │   (see Preliminary Notes Persistence in WORKFLOW_PHASE docs)        │
 │      │                                                                      │
 │      └─ WAIT for data-ingest subagent to return before proceeding          │
 ├─────────────────────────────────────────────────────────────────────────────┤
@@ -759,7 +762,7 @@ Before dispatching a profiling subagent (Stages DI-3 through DI-6), verify:
 - [ ] Data file path(s) specified (absolute)
 - [ ] Source name and format inlined
 - [ ] Column batching boundaries specified (if >100 columns)
-- [ ] Prior part outputs inlined (for Parts B-D: structural findings from Part A)
+- [ ] Prior part findings provided (for Parts B-D: orientation summary + preliminary notes file paths)
 - [ ] Conditional script decisions documented with reasoning
 - [ ] Priority columns from intake highlighted (if any)
 - [ ] Documentation excerpts inlined (if provided and relevant to current part)
@@ -799,13 +802,16 @@ research/YYYY-MM-DD_{Source_Name}_Onboarding/
 │   └── raw/                    # Original data files (immutable after drop)
 │       ├── {file1}.parquet
 │       └── {file2}.parquet
+├── output/
+│   ├── skill_draft/            # Draft skill before final placement
+│   └── preliminary_notes/      # Lossless agent returns persisted by orchestrator
 ├── ...
 ```
 
 #### Setup Protocol
 
 1. **Stage DI-2:** Create the research project folder under `research/`
-2. **Create `data/raw/`** subdirectory inside the research project
+2. **Create `data/raw/`** and **`output/preliminary_notes/`** subdirectories inside the research project
 3. **Copy** user-provided data files into `data/raw/`
 4. **Initialize STATE.md** from `{BASE_DIR}/agent_reference/STATE_TEMPLATE_ONBOARDING.md` — this template has onboarding-specific sections (DI-1 through DI-8 stages, Profiling Progress table, Interpretation Tracking, Skill Authoring Status) that differ from the Full Pipeline template. Populate the Data Source Info and User Request sections with intake information.
 5. **Instruct user** if files need manual placement (e.g., files too large to copy, or user prefers to place them directly)

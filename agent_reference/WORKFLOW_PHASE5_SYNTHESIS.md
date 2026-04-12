@@ -173,6 +173,16 @@ Agent({
     - LEARNINGS.md path: {learnings_path}
     - QA Summary findings: {qa_summary_or_path}
 
+    **DISCOVERY PRELIMINARY NOTES (for Telephone Game trace):**
+    The following preliminary notes contain the original source research. Use these
+    for the Telephone Game trace — verify that constraints, caveats, and coded value
+    rules established in discovery are faithfully reflected through Plan -> scripts -> output:
+    - {project_dir}/output/preliminary_notes/{date}_stage2_data-exploration.md
+    - {project_dir}/output/preliminary_notes/{date}_stage3_{source1}_source-research.md
+    - {project_dir}/output/preliminary_notes/{date}_stage3_{source2}_source-research.md
+    [...one path per source]
+    - {project_dir}/output/preliminary_notes/{date}_stage3.5_research-synthesis.md
+
     **TASK:**
     Perform adversarial goal-backward verification of the completed
     analysis. Verify all four layers (existence, substantiveness,

@@ -425,31 +425,28 @@ Read `agent_reference/SCRIPT_EXECUTION_REFERENCE.md` for the file-first protocol
 Scripts go to: scripts/profile_structural/
 Execute: bash {BASE_DIR}/scripts/run_with_capture.sh {project_script_dir}/profile_structural/{script}.py
 
-**OUTPUT FORMAT (2500-word hard cap):**
-### Part A: Structural Discovery
-- CPP1 Status, Rows/Columns/Memory, type summary
-- Potential identifiers (>95% unique), categoricals (<50 unique)
+**OUTPUT FORMAT:**
+Return findings using the Data Ingest Output Format
+(see your agent protocol, § Output Format).
+
+**Emphasis for this invocation (Part A):**
+- CPP1 status and structural findings (rows, columns, memory, types)
+- Potential identifiers (>95% unique) and categoricals (<50 unique)
 - Coded value indicators (negative values or sentinels)
-### Conditional Script Decisions
-- Script 05: [EXECUTE/SKIP] -- [reason based on temporal/date columns]
-- Script 06: [EXECUTE/SKIP] -- [reason based on entity/geo ID columns]
-- Script 08: [EXECUTE/SKIP] -- [reason based on numeric column count]
-- Script 11: [EXECUTE/SKIP] -- [reason based on documentation availability]
-### Scripts Created
-- [paths with execution status]
-### Confidence Assessment
-**Part Confidence:** [HIGH | MEDIUM | LOW]
-| Aspect | Confidence | Rationale |
-### Issues Requiring Attention
-[BLOCKERs, WARNINGs, or "None"]
-### Learning Signal
-**Learning Signal:** [Category] -- [One-line insight] | "None"
-### Recommendations
-- **Proceed?** [YES | NO -- issues block | NO -- escalate]
-- [Specific next actions] """,
+- Conditional Script Decisions for Parts B-D (Script 05, 06, 08, 11 — EXECUTE/SKIP with reason) """,
     subagent_type: "data-ingest"
 })
 ```
+
+#### Preliminary Notes Persistence: Part A
+
+After the Part A data-ingest agent returns, the orchestrator persists the full return to disk:
+
+| Agent Return | Write To |
+|-------------|----------|
+| data-ingest (Part A) | `{project_dir}/output/preliminary_notes/{date}_partA_structural-discovery.md` |
+
+**Gate condition:** Part A preliminary notes must exist on disk before dispatching Part B data-ingest agent. The orchestrator confirms the file was written in Subagent Return Processing step 1 (see orchestrator SKILL.md).
 
 ### Part B: Statistical Deep Dive
 
@@ -469,7 +466,9 @@ Read `agent_reference/SCRIPT_EXECUTION_REFERENCE.md` for the file-first protocol
 - Data file: {data_file_path} (primary file if multi-file)
 - File format: {file_format}
 - Canonical load pattern: {canonical_load_from_part_a}
-- Prior part findings: {part_a_summary}
+- Prior part findings (orientation summary): {part_a_summary_brief}
+- Prior part full preliminary notes:
+  Read: {project_dir}/output/preliminary_notes/{date}_partA_structural-discovery.md
 - Conditional script decisions: Script 05 [{EXECUTE/SKIP}], Script 06 [{EXECUTE/SKIP}]
 - Target skill name: {skill_name}
 - Domain context: {domain_context}
@@ -493,24 +492,27 @@ Read `agent_reference/SCRIPT_EXECUTION_REFERENCE.md` for the file-first protocol
 Scripts go to: scripts/profile_statistical/
 Execute: bash {BASE_DIR}/scripts/run_with_capture.sh {project_script_dir}/profile_statistical/{script}.py
 
-**OUTPUT FORMAT (2500-word hard cap):**
-### Part B: Statistical Deep Dive
-- CPP2 Status, distribution summary, outlier summary, multimodality
-- Temporal/entity coverage: [executed/skipped — key findings]
-### Scripts Created
-### Confidence Assessment
-**Part Confidence:** [HIGH | MEDIUM | LOW]
-| Aspect | Confidence | Rationale |
-### Issues Requiring Attention
-[BLOCKERs, WARNINGs, or "None"]
-### Learning Signal
-**Learning Signal:** [Category] -- [One-line insight] | "None"
-### Recommendations
-- **Proceed?** [YES | NO -- issues block | NO -- escalate]
-- [Specific next actions] """,
+**OUTPUT FORMAT:**
+Return findings using the Data Ingest Output Format
+(see your agent protocol, § Output Format).
+
+**Emphasis for this invocation (Part B):**
+- CPP2 status, distribution summaries, outlier findings
+- Temporal coverage: [executed/skipped — key findings]
+- Entity coverage: [executed/skipped — key findings] """,
     subagent_type: "data-ingest"
 })
 ```
+
+#### Preliminary Notes Persistence: Part B
+
+After the Part B data-ingest agent returns, the orchestrator persists the full return:
+
+| Agent Return | Write To |
+|-------------|----------|
+| data-ingest (Part B) | `{project_dir}/output/preliminary_notes/{date}_partB_statistical-deep-dive.md` |
+
+**Gate condition:** Part B preliminary notes must exist on disk before dispatching Part C.
 
 ### Part C: Relational Analysis
 
@@ -530,7 +532,10 @@ Read `agent_reference/SCRIPT_EXECUTION_REFERENCE.md` for the file-first protocol
 - Data file: {data_file_path} (primary file if multi-file)
 - File format: {file_format}
 - Canonical load pattern: {canonical_load_from_part_a}
-- Prior part findings: {part_a_summary}, {part_b_summary}
+- Prior part findings (orientation summary): {accumulated_brief_summary}
+- Prior part full preliminary notes:
+  Read: {project_dir}/output/preliminary_notes/{date}_partA_structural-discovery.md
+  Read: {project_dir}/output/preliminary_notes/{date}_partB_statistical-deep-dive.md
 - Conditional script decisions: Script 07b [{EXECUTE/SKIP}], Script 08 [{EXECUTE/SKIP}]
 - Target skill name: {skill_name}
 - Domain context: {domain_context}
@@ -556,24 +561,27 @@ Read `agent_reference/SCRIPT_EXECUTION_REFERENCE.md` for the file-first protocol
 Scripts go to: scripts/profile_relational/
 Execute: bash {BASE_DIR}/scripts/run_with_capture.sh {project_script_dir}/profile_relational/{script}.py
 
-**OUTPUT FORMAT (2500-word hard cap):**
-### Part C: Relational Analysis
-- CPP3 Status, recommended key, dependencies, high correlations
-- Coded missing values found, anomaly catalog counts, duplicate rows
-### Scripts Created
-### Confidence Assessment
-**Part Confidence:** [HIGH | MEDIUM | LOW]
-| Aspect | Confidence | Rationale |
-### Issues Requiring Attention
-[BLOCKERs, WARNINGs, or "None"]
-### Learning Signal
-**Learning Signal:** [Category] -- [One-line insight] | "None"
-### Recommendations
-- **Proceed?** [YES | NO -- issues block | NO -- escalate]
-- [Specific next actions] """,
+**OUTPUT FORMAT:**
+Return findings using the Data Ingest Output Format
+(see your agent protocol, § Output Format).
+
+**Emphasis for this invocation (Part C):**
+- CPP3 status, recommended key, dependencies, high correlations
+- Coded missing values found, anomaly catalog counts
+- Cross-level linkage findings (if HIERARCHICAL) """,
     subagent_type: "data-ingest"
 })
 ```
+
+#### Preliminary Notes Persistence: Part C
+
+After the Part C data-ingest agent returns, the orchestrator persists the full return:
+
+| Agent Return | Write To |
+|-------------|----------|
+| data-ingest (Part C) | `{project_dir}/output/preliminary_notes/{date}_partC_relational-analysis.md` |
+
+**Gate condition:** Part C preliminary notes must exist on disk before dispatching Part D.
 
 ### Part D: Interpretation & Reconciliation
 
@@ -593,7 +601,11 @@ Read `agent_reference/SCRIPT_EXECUTION_REFERENCE.md` for the file-first protocol
 - Data file: {data_file_path} (primary file if multi-file)
 - File format: {file_format}
 - Canonical load pattern: {canonical_load_from_part_a}
-- Prior part findings: {part_a_summary}, {part_b_summary}, {part_c_summary}
+- Prior part findings (orientation summary): {accumulated_brief_summary}
+- Prior part full preliminary notes:
+  Read: {project_dir}/output/preliminary_notes/{date}_partA_structural-discovery.md
+  Read: {project_dir}/output/preliminary_notes/{date}_partB_statistical-deep-dive.md
+  Read: {project_dir}/output/preliminary_notes/{date}_partC_relational-analysis.md
 - Documentation files: {doc_file_paths_or_none}
 - Conditional script decisions: Script 11 [{EXECUTE/SKIP}]
 - Target skill name: {skill_name}
@@ -637,34 +649,28 @@ your return, with source citation for each exclusion. Even without documentation
 apparent population boundaries observed during profiling (e.g., "data appears limited to
 public institutions only" based on entity coverage in Part B).
 
-**OUTPUT FORMAT (2500-word hard cap):**
-### Part D: Interpretation & Reconciliation
-- CPP4 Status, interpretation count
-- Documentation reconciliation: [executed/skipped — discrepancy count]
-### Preliminary Interpretations (ALL columns)
-| Column | Interpretation | Confidence | Basis |
-### Domain Decomposition
-| Domain | Columns | Dedicated Reference File? | Rationale |
-|--------|---------|--------------------------|-----------|
-| [e.g., "Outcome variables"] | [column list or count] | [Yes/No] | [Why — methodology complexity, distinct limitations, etc.] |
-### Exclusions Identified
-| Exclusion | Source | Impact |
-|-----------|--------|--------|
-| [e.g., "Private schools not included"] | [Documentation page/section or profiling observation] | [Generalizability implication] |
-### Scripts Created
-### Confidence Assessment
-**Part Confidence:** [HIGH | MEDIUM | LOW]
-| Aspect | Confidence | Rationale |
-### Issues Requiring Attention
-[BLOCKERs, WARNINGs, or "None"]
-### Learning Signal
-**Learning Signal:** [Category] -- [One-line insight] | "None"
-### Recommendations
-- **Proceed?** [YES | NO -- issues block | NO -- escalate]
-- [Specific next actions] """,
+**OUTPUT FORMAT:**
+Return findings using the Data Ingest Output Format
+(see your agent protocol, § Output Format).
+
+**Emphasis for this invocation (Part D):**
+- CPP4 status, interpretation count, documentation reconciliation
+- Full Preliminary Interpretations table (ALL columns — critical for PSU-DI2 user review)
+- Domain Decomposition table
+- Exclusions Identified table """,
     subagent_type: "data-ingest"
 })
 ```
+
+#### Preliminary Notes Persistence: Part D
+
+After the Part D data-ingest agent returns, the orchestrator persists the full return:
+
+| Agent Return | Write To |
+|-------------|----------|
+| data-ingest (Part D) | `{project_dir}/output/preliminary_notes/{date}_partD_interpretation-reconciliation.md` |
+
+**Gate condition:** Part D preliminary notes must exist on disk before presenting PSU-DI2 to the user and before dispatching DI-7 (skill authoring). All four profiling preliminary notes (Parts A-D) must be on disk before DI-7 can proceed.
 
 ### QA Invocation Template
 
@@ -705,7 +711,7 @@ IAT compliance: Required per agent_reference/INLINE_AUDIT_TRAIL.md
 4. Execute QA scripts and synthesize findings
 5. Return QA report with severity classification
 
-**OUTPUT FORMAT (2500-word hard cap):**
+**OUTPUT FORMAT (3500-word hard cap):**
 ### QA Review: Part {X}
 **QAP{N} Status:** [PASSED | ISSUES_FOUND]
 **Severity:** [BLOCKER | WARNING | INFO | None]

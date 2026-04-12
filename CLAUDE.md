@@ -289,6 +289,7 @@ bash {BASE_DIR}/scripts/run_with_capture.sh {PROJECT_DIR}/scripts/stage5_fetch/0
 | Raw Data | `YYYY-MM-DD[suffix]_[source]_[description].parquet` | `2026-01-24a_ccd_schools.parquet` |
 | Processed Data | `YYYY-MM-DD[suffix]_[description].parquet` | `2026-01-24a_analysis_data.parquet` |
 | Figures | `YYYY-MM-DD[suffix]_[description].png` | `2026-01-24a_enrollment_trends.png` |
+| Preliminary Notes | `YYYY-MM-DD[suffix]_[stage]_[descriptor].md` | `2026-01-24a_stage3_ccd_source-research.md` |
 | Reproduction Report | `Reproduction_Report.md` | `Reproduction_Report.md` |
 
 > **Note:** The Reproduction Report uses a fixed name (not date-prefixed) because it serves as both the primary deliverable and the session state document for Reproducibility Verification mode.
@@ -374,8 +375,12 @@ research/2026-01-24_School_Poverty_Analysis/
 ├── output/
 │   ├── analysis/
 │   │   └── 2026-01-24_regression_results.parquet
-│   └── figures/
-│       └── 2026-01-24_poverty_distribution.png
+│   ├── figures/
+│   │   └── 2026-01-24_poverty_distribution.png
+│   └── preliminary_notes/                             # Lossless agent findings from discovery
+│       ├── 2026-01-24_stage2_data-exploration.md
+│       ├── 2026-01-24_stage3_ccd_source-research.md
+│       └── 2026-01-24_stage3.5_research-synthesis.md
 └── STATE.md                                       # Session state (REQUIRED for Full Pipeline)
 ```
 
@@ -413,8 +418,13 @@ research/2026-03-23_Onboarding_County_Elections/
 │   └── raw/
 │       └── 2026-03-23_countypres.parquet
 └── output/
-    └── skill_draft/
-        └── SKILL.md                               # Draft skill before final placement
+    ├── skill_draft/
+    │   └── SKILL.md                               # Draft skill before final placement
+    └── preliminary_notes/                             # Lossless agent findings from profiling
+        ├── 2026-03-23_partA_structural-discovery.md
+        ├── 2026-03-23_partB_statistical-deep-dive.md
+        ├── 2026-03-23_partC_relational-analysis.md
+        └── 2026-03-23_partD_interpretation-reconciliation.md
 ```
 
 **Variants for API and HIERARCHICAL onboarding:** The example above shows the single-file local-file case. For other configurations, the following additional artifacts appear:
@@ -437,9 +447,13 @@ research/2026-03-24_College_Graduation_Analysis_Reproduction/
 │   ├── 2026-02-15_College_Graduation_Report.md    # Original Report (copied, read-only)
 │   ├── 2026-02-15_College_Graduation_Analysis.py  # Original Notebook (copied, read-only)
 │   ├── output/                                    # Original output (copied, read-only)
-│   │   └── figures/
-│   │       ├── 2026-02-15_selectivity_scatter.png
-│   │       └── 2026-02-15_graduation_heatmap.png
+│   │   ├── figures/
+│   │   │   ├── 2026-02-15_selectivity_scatter.png
+│   │   │   └── 2026-02-15_graduation_heatmap.png
+│   │   └── preliminary_notes/                     # Original discovery findings (copied, read-only)
+│   │       ├── 2026-02-15_stage2_data-exploration.md
+│   │       ├── 2026-02-15_stage3_ipeds_source-research.md
+│   │       └── 2026-02-15_stage3.5_research-synthesis.md
 │   └── scripts/                                   # Decompiled from notebook
 │       ├── MANIFEST.md                            # Decompiler output manifest
 │       ├── stage5_fetch/
@@ -452,10 +466,12 @@ research/2026-03-24_College_Graduation_Analysis_Reproduction/
 │       └── stage8_analysis/
 │           ├── 01_regression.py
 │           └── 02_visualization.py
-├── output/                                        # Reproduced output (generated during RV-2)
-│   └── figures/
-│       ├── 2026-03-24_selectivity_scatter.png
-│       └── 2026-03-24_graduation_heatmap.png
+├── output/                                        # Reproduced output (generated during RV-2/RV-3)
+│   ├── figures/
+│   │   ├── 2026-03-24_selectivity_scatter.png
+│   │   └── 2026-03-24_graduation_heatmap.png
+│   └── preliminary_notes/                         # Lossless agent returns persisted by orchestrator
+│       └── 2026-03-24_rv3_report-verification.md
 └── scripts/
     └── repro/                                     # Re-executed scripts (with new logs)
         ├── stage5_fetch/

@@ -221,9 +221,9 @@ mode. Context for this task:
 
 ## Agent Output Handling
 
-In pipeline modes, agent output is a concise signal to the orchestrator (1000-word cap, processed internally). In Ad Hoc Collaboration mode, agent findings are typically **the deliverable to the user**, so output handling changes:
+In pipeline modes, agent output is a concise signal to the orchestrator (2000-word cap, processed internally). In Ad Hoc Collaboration mode, agent findings are typically **the deliverable to the user**, so output handling changes:
 
-**Output cap override:** When dispatching agents in Ad Hoc Collaboration mode, include this instruction in the prompt: "Output cap is relaxed to 2000 words. Your findings will be relayed directly to the user, so prioritize clarity and completeness over brevity." This applies to all agents dispatched in this mode. The standard 1000-word pipeline cap remains in effect for all other modes.
+**Output cap override:** When dispatching agents in Ad Hoc Collaboration mode, include this instruction in the prompt: "Output cap is relaxed to 3000 words. Your findings will be relayed directly to the user, so prioritize clarity and completeness over brevity." This applies to all agents dispatched in this mode. The standard 2000-word pipeline cap remains in effect for all other modes.
 
 **Relay guidelines:**
 

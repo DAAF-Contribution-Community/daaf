@@ -23,12 +23,12 @@ All agents in this directory MUST follow the canonical template at `agent_refere
 
 **All agents returning output to the orchestrator MUST respect these universal constraints:**
 
-1. **Hard cap: 1000 words maximum** for Agent return output (exception: `data-ingest` agent uses a 2500-word cap because profiling findings feed directly into skill authoring and must be comprehensive)
+1. **Hard cap: 2000 words maximum** for Agent return output (exception: `data-ingest` agent uses a 3500-word cap because profiling findings feed directly into skill authoring and must be comprehensive)
 2. **Do NOT include:** Raw execution logs, data samples, Polars/pandas table displays, full checkpoint output, QA script code, or multi-paragraph explanations in any section
 3. **Script files are the archive; the Agent return is the signal.** Execution logs are already appended to script files by `run_with_capture.sh`. Reference files by path — do not reproduce their contents.
 4. **Summarize, don't echo.** "CP1 PASSED: 2,528 rows, 12 cols, 0.3% missing" — not the full stdout.
 
-**Why this matters:** The orchestrator context window is shared across the entire pipeline. A single verbose subagent return (2,000+ words) consumes ~4,000 tokens. Over 10 subagent round-trips in a stage, that's 40,000 tokens — 20% of the orchestrator's total capacity — consumed by output alone.
+**Why this matters:** The orchestrator context window is shared across the entire pipeline. A single verbose subagent return (4,000+ words) consumes ~8,000 tokens. Over 10 subagent round-trips in a stage, that's 80,000 tokens — a meaningful share of the orchestrator's capacity — consumed by output alone.
 
 ---
 
@@ -247,6 +247,8 @@ Shows which agents produce output consumed by other agents:
 | **search-agent** | research-synthesizer | Exploration baseline findings across sources | Full Pipeline Stage 3.5 |
 | **search-agent** | framework-engineer | Scoping findings (current state, affected files, patterns) | Framework Development Mode |
 | **search-agent** | Orchestrator | Flexible findings report with confidence assessment | Any mode/stage |
+
+**Preliminary Notes Persistence:** Discovery and profiling agents' full returns are persisted to `output/preliminary_notes/` as lossless markdown files by the orchestrator. Downstream agents reference these files by path for full-fidelity access, while the orchestrator retains compressed summaries for its own coordination. This applies to search-agent (Stage 2), source-researcher (Stage 3), research-synthesizer (Stage 3.5), and data-ingest (DI-3 through DI-6) returns. See orchestrator SKILL.md for the complete protocol.
 
 ---
 

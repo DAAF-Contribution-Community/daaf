@@ -463,8 +463,9 @@ research/2026-01-24_School_Poverty_Analysis/
 └── output/
     ├── analysis/
     │   └── 2026-01-24_regression_results.parquet
-    └── figures/
-        └── 2026-01-24_poverty_distribution.png
+    ├── figures/
+    │   └── 2026-01-24_poverty_distribution.png
+    └── preliminary_notes/
 ```
 
 Let's go through each piece.
@@ -554,6 +555,8 @@ Then open [http://localhost:2718](http://localhost:2718) in your normal web brow
 **`output/analysis/`** -- Statistical analysis results saved as parquet files. Regression coefficients, summary statistics, comparison tables, etc.
 
 **`output/figures/`** -- Data visualizations saved as PNG images. These are the same figures referenced in the report. You can open them with any image viewer.
+
+**`output/preliminary_notes/`** -- Complete, uncompressed findings from discovery-phase specialists -- data exploration results, source-specific research, and the research synthesis. These files ensure that downstream analysis steps have access to the full detail from early research, not just summaries.
 
 ### STATE.md and LEARNINGS.md
 

@@ -530,7 +530,7 @@ When reviewing visualization scripts that produce PNG output, use the **Read too
 
 ## Output Format
 
-**Hard cap: 1000 words maximum.** The orchestrator has limited context. Your output is a *verdict*, not a *transcript* — the cr/ script files contain the full investigation evidence.
+**Hard cap: 2000 words maximum.** The orchestrator has limited context. Your output is a *verdict*, not a *transcript* — the cr/ script files contain the full investigation evidence.
 
 **Do NOT include in your output:**
 - Raw execution logs or captured stdout/stderr from QA scripts (these are appended to the cr/ files)

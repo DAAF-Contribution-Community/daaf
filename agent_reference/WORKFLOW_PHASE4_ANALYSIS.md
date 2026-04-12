@@ -219,19 +219,13 @@ If user has R/Stata background, also include: "User has [R/Stata] background. Lo
 5. Document findings
 
 **OUTPUT FORMAT:**
-Return EDA summary ONLY:
-- Shape: [rows x cols]
-- Key distributions: [summary]
-- Data quality issues: [list]
-- Ready for transformations: [Yes/No]
+Return findings using the Research Executor Output Format
+(see your agent protocol, § Output Format).
 
-**Confidence Assessment:**
-| Aspect | Confidence | Rationale |
-|--------|------------|-----------|
-| Data quality | HIGH/MEDIUM/LOW | [why] |
-
-**Overall Confidence:** [HIGH | MEDIUM | LOW]
-**Issues Requiring Resolution:** [list or "None"]
+**Emphasis for this invocation:**
+- Data shape, type summary, and memory usage
+- Key distributions and data quality issues identified
+- Readiness assessment for transformations (Yes/No with justification)
 
 Do NOT proceed to transformations. Return findings for orchestrator review.""",
     subagent_type: "research-executor"
@@ -302,19 +296,14 @@ If user has R/Stata background, also include: "User has [R/Stata] background. Lo
 - Use script-based validation (see `{BASE_DIR}/agent_reference/SCRIPT_EXECUTION_REFERENCE.md`)
 - Report clear PASS/FAIL with metrics
 
-**OUTPUT FORMAT (1000-word hard cap):**
-Return validation report:
+**OUTPUT FORMAT:**
+Return findings using the Research Executor Output Format
+(see your agent protocol, § Output Format).
 
-### Transformation #{n}: {description}
-**Pre-state:** {shape}, sample: {sample_ids}
-**Post-state:** {shape}, sample: {sample_ids}
-**Row change:** {percent}
-**Invariants:** {list with pass/fail}
-**Status:** PASSED | FAILED
-
-If FAILED:
-- Issue description: [what went wrong]
-- Proposed fix: [how to correct]
+**Emphasis for this invocation:**
+- Pre/post row counts and shape changes for this transformation
+- Invariant validation results (pass/fail per invariant)
+- Transformation status (PASSED/FAILED) with issue details if failed
 
 Do NOT proceed to transformation #{n+1}. Return to orchestrator for approval.""",
     subagent_type: "research-executor"
@@ -568,34 +557,14 @@ During execution, ACTIVELY MONITOR for watch-for symptoms. Escalate if detected.
 - Save all results as parquet for downstream use
 - If producing figures, save to output/figures/
 
-**OUTPUT FORMAT (1000-word hard cap):**
-Return analysis report:
+**OUTPUT FORMAT:**
+Return findings using the Research Executor Output Format
+(see your agent protocol, § Output Format).
 
-### Statistical Analysis: {analysis_name}
-**Model:** {model_type}
-**Hypothesis:** {hypothesis}
-
-**Assumption Checks:**
-| Assumption | Test | Result | Status |
-|------------|------|--------|--------|
-| {assumption} | {test_name} | {value} | PASS/FAIL/WARNING |
-
-**Primary Results:**
-- {key_result_1}
-- {key_result_2}
-- Effect size: {effect_size}
-
-**Robustness Checks:**
-| Check | Result | Consistent with Primary? |
-|-------|--------|------------------------|
-| {check_name} | {result} | Yes/No |
-
-**Files Created:**
-- `output/analysis/{filename}`: {description}
-- `output/figures/{filename}`: {description} (if applicable)
-
-**Status:** PASSED | FAILED | WARNING
-If FAILED: [issue description and proposed fix]
+**Emphasis for this invocation:**
+- Analysis results summary (key coefficients, effect sizes, p-values, model fit)
+- Assumption check outcomes and robustness check consistency
+- File paths created (`output/analysis/`, `output/figures/` if applicable)
 
 Do NOT proceed to next analysis task. Return to orchestrator for approval.""",
     subagent_type: "research-executor"

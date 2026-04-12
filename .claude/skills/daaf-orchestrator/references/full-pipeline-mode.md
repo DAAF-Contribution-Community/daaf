@@ -910,11 +910,12 @@ Each stage has explicit input/output contracts and gate criteria:
 
 | Check | What to Verify | Action if Failed |
 |-------|----------------|------------------|
-| **Size** | Output is under 1000 words | Extract only structured summary fields; discard verbose sections, raw logs, and data samples before integrating into context. If chronic, re-invoke with emphasis on the 1000-word hard cap. |
+| **Size** | Output is under 2000 words | Extract only structured summary fields; discard verbose sections, raw logs, and data samples before integrating into context. If chronic, re-invoke with emphasis on the 2000-word hard cap. |
 | **Completeness** | All required output sections present | Re-invoke with clarification |
 | **Format** | Output matches specified OUTPUT FORMAT | Re-invoke with format emphasis |
 | **Confidence** | No LOW confidence items without resolution | Request resolution or escalate |
 | **Substantive** | Real findings, not template placeholders | Re-invoke with thoroughness emphasis |
+| **Persistence** | Preliminary notes file written to disk (notes-producing agents only: search-agent Stage 2, source-researcher Stage 3, research-synthesizer Stage 3.5) | Retry write; if retry fails, stop and report to user |
 
 **Verification Procedure:**
 
@@ -1083,7 +1084,7 @@ Closely read `{BASE_DIR}/agent_reference/SCRIPT_EXECUTION_REFERENCE.md` for the 
 
 ## OUTPUT FORMAT
 
-**Hard cap: 1000 words maximum.** The orchestrator has limited context — every word you return consumes shared capacity across the entire pipeline. Your Agent output is a *signal to the orchestrator*, not an archive. The script files on disk are the archive.
+**Hard cap: 2000 words maximum.** The orchestrator has limited context — every word you return consumes shared capacity across the entire pipeline. Your Agent output is a *signal to the orchestrator*, not an archive. The script files on disk are the archive.
 
 **Do NOT include in your output:**
 - Raw execution logs or captured stdout/stderr (already appended to the script file by `run_with_capture.sh`)
@@ -1361,33 +1362,14 @@ Addressed when: {verification_condition}
 **PRIOR QA FINDINGS (if any):**
 {accumulated_warnings_from_prior_scripts}
 
-**OUTPUT FORMAT (1000-word hard cap):**
-Return findings in this structure. Do NOT paste QA script code, raw execution logs, or data samples — reference cr/ script paths instead.
+**OUTPUT FORMAT:**
+Return findings using the Code Reviewer Output Format
+(see your agent protocol, § Output Format).
 
-### QA Review: {task_name}
-
-**QA Status:** [PASSED | ISSUES_FOUND]
-**Severity:** [BLOCKER | WARNING | INFO | None]
-**Script Reviewed:** scripts/stage{N}_{type}/{step}_{task-name}.py
-**QA Scripts Created:** scripts/cr/stage{N}_{step}_cr1.py [+ cr2..cr5 if created]
-
-**Code Review:**
-| Check | Status | Notes |
-|-------|--------|-------|
-| Operations match intent | PASS/FAIL | [1 sentence] |
-| Methodology alignment | PASS/FAIL | [1 sentence] |
-| Validation robustness | PASS/FAIL | [1 sentence] |
-
-**QA Script Results:**
-[1-2 sentence summary per cr script — PASSED/FAILED + key finding. Do NOT paste raw output.]
-
-**Issues Found:**
-- BLOCKER: [list or "None"]
-- WARNING: [list or "None"]
-- INFO: [list or "None"]
-
-**Recommendation:** [PROCEED | REVISION_REQUIRED | ESCALATE]
-**If Revision:** [Specific changes needed]
+**Emphasis for this invocation:**
+- Code correctness and execution success
+- Methodology alignment with Plan specifications
+- IAT documentation completeness
 """,
     subagent_type: "code-reviewer"
 })

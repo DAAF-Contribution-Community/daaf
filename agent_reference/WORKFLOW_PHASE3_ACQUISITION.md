@@ -106,40 +106,14 @@ Use the mirror-based fetch pattern from the education-data-query skill:
 - Verify all requested years are present
 - Verify all requested columns are present
 
-**OUTPUT FORMAT (1000-word hard cap):**
-Return findings in this structure:
+**OUTPUT FORMAT:**
+Return findings using the Research Executor Output Format
+(see your agent protocol, § Output Format).
 
-### Fetch Summary
-- Mirror used: [name from mirrors.yaml]
-- Download URL: [full URL used]
-- Records retrieved: [count]
-- Columns retrieved: [list]
-- Years present: [list]
-- Mirror fallback: [None | fell through from {mirror_name} due to {reason}]
-
-### Initial Validation (CP1)
-- Shape: [rows] x [cols]
-- Expected rows: [from Plan.md]
-- Row count ratio: [actual/expected]
-- Missing values by column:
-  | Column | Null Count | Null % |
-  |--------|------------|--------|
-- Critical columns present: [Yes/No]
-- **CP1 Status:** [PASSED | FAILED | WARNING]
-- **If FAILED:** [Stop reason]
-
-### File Locations
-- Parquet: data/raw/{filename}.parquet
-
-### Confidence Assessment
-| Check | Confidence | Rationale |
-|-------|------------|-----------|
-| Data completeness | HIGH/MEDIUM/LOW | [why this confidence level] |
-
-**Overall Confidence:** [HIGH | MEDIUM | LOW]
-**LOW Confidence Items Requiring Resolution:** [list or "None"]
-
-After completing the skill's Required Actions, return findings using the format above.""",
+**Emphasis for this invocation:**
+- File locations (parquet paths in `data/raw/`), mirror used, and any fallback events
+- Row counts, column lists, year coverage, and CP1 validation status
+- Initial data quality observations (missingness, coded values present)""",
     subagent_type: "research-executor"
 })
 ```
@@ -305,49 +279,14 @@ During execution, ACTIVELY MONITOR for watch-for symptoms. Escalate if detected.
 - Generate complete citation text with access date
 - Document all cleaning decisions and row impacts
 
-**OUTPUT FORMAT (1000-word hard cap):**
-Return findings in this structure:
+**OUTPUT FORMAT:**
+Return findings using the Research Executor Output Format
+(see your agent protocol, § Output Format).
 
-### Cleaning Applied
-| Code Filtered | Variable(s) | Rows Removed | % of Total |
-|---------------|-------------|--------------|------------|
-| -1 (Missing) | | | |
-| -2 (N/A) | | | |
-| -3 (Suppressed) | | | |
-| **Total** | | | |
-
-*(Coded values shown are education domain defaults. Substitute values from Plan Domain Configuration.)*
-
-### Data Quality Report (CP2)
-- Original rows: [count]
-- Clean rows: [count]
-- Total loss: [count] ([%])
-- Suppression rate (key variable): [%]
-- **CP2 Status:** [PASSED | FAILED]
-- **If FAILED:** [Stop reason]
-
-### Validity Check
-- Analysis type: {analysis_description}
-- Cross-state comparison: [Yes/No]
-- **Valid:** [Yes | No | Conditional]
-- **Warnings:** [list any concerns]
-
-### Citation
-> {full_citation_text}
-
-### File Locations
-- Parquet: data/processed/{filename}.parquet
-
-### Confidence Assessment
-| Check | Confidence | Rationale |
-|-------|------------|-----------|
-| Data quality | HIGH/MEDIUM/LOW | [why this confidence level] |
-| Analysis validity | HIGH/MEDIUM/LOW | [why this confidence level] |
-
-**Overall Confidence:** [HIGH | MEDIUM | LOW]
-**LOW Confidence Items Requiring Resolution:** [list or "None"]
-
-After completing the skill's Required Actions, return findings using the format above.""",
+**Emphasis for this invocation:**
+- Cleaning operations applied (coded value filters, row removal counts, suppression rates)
+- Data quality metrics (CP2 status, original vs. clean row counts, loss percentage)
+- Citation data (full citation text with access date) and file locations""",
     subagent_type: "research-executor"
 })
 ```

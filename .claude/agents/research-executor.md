@@ -240,7 +240,7 @@ When you receive a revision request due to QA BLOCKER:
 
 ## Output Format
 
-**Hard cap: 1000 words maximum.** The orchestrator has limited context. Your output is a *signal*, not an *archive* — the script files themselves are the audit trail.
+**Hard cap: 2000 words maximum.** The orchestrator has limited context. Your output is a *signal*, not an *archive* — the script files themselves are the audit trail.
 
 **Do NOT include in your output:**
 - Raw execution logs or captured stdout/stderr (these are already appended to the script file)
