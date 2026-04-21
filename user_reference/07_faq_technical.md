@@ -186,6 +186,24 @@ Session logs are invaluable when something goes wrong. The Markdown logs show yo
 
 The `.jsonl` file contains the complete raw transcript if deeper inspection is needed.
 
+### Q: Can I browse session logs visually instead of reading raw files?
+
+Yes. DAAF includes an interactive **Session Log Viewer** that renders your session transcripts as a visual timeline in your web browser. It shows the orchestrator's actions as a horizontal timeline bar, with subagent dispatches waterfalling downward. Click any block to see exactly what files were read, written, or executed -- with plain-language descriptions and clickable file references.
+
+To generate and view it:
+
+```bash
+# First, collect logs into your project (if not already done)
+bash /daaf/scripts/collect_session_logs.sh /daaf/research/YYYY-MM-DD_Your_Project
+
+# Generate the viewer and start the server
+bash /daaf/scripts/generate_log_viewer.sh /daaf/research/YYYY-MM-DD_Your_Project --serve
+```
+
+Then open the URL it prints (typically `http://localhost:2719/research/.../logs/log_viewer.html`) in your browser. Press Ctrl+C to stop the server when you're done.
+
+**Note:** The `--serve` flag requires port 2719 to be mapped in your `docker-compose.yml`. If you set up DAAF after this feature was added, it's already there. If not, add `- "2719:2719"` under the `ports:` section and restart your container with `docker compose down && docker compose up -d`.
+
 ### Q: Are session logs shared or uploaded anywhere?
 
 No. Session logs are gitignored and stay entirely on your local machine (specifically, inside the Docker volume). They are never pushed to the repository, never uploaded to Anthropic, and never shared with anyone. If you choose to file a bug report and include log excerpts, that's your choice -- but the system never does this automatically.

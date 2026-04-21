@@ -13,6 +13,7 @@ This is the complete first-time installation and setup guide for DAAF. This docu
 - [**How to Manage DAAF Project Files and Output**](#how-to-manage-daaf-project-files-and-output)
 - [**Keeping DAAF Updated**](#keeping-daaf-updated)
 - [**Viewing Marimo Notebooks in Your Browser**](#viewing-marimo-notebooks-in-your-browser)
+- [**Viewing Session Logs in Your Browser**](#viewing-session-logs-in-your-browser)
 - [**Setup Troubleshooting**](#setup-troubleshooting)
 - [**Recommended Next Steps**](#recommended-next-steps)
 
@@ -509,6 +510,25 @@ marimo edit 'research/YYYY-MM-DD_Title/YYYY-MM-DD_Notebook_Name.py' --host 0.0.0
 
 ---
 
+## Viewing Session Logs in Your Browser
+
+DAAF can generate an interactive timeline viewer for your session logs, letting you visually explore what happened during an analysis -- every tool call, subagent dispatch, and file reference, organized chronologically.
+
+```bash
+# Inside the container:
+# 1. Collect logs into your project (if not already done)
+bash /daaf/scripts/collect_session_logs.sh /daaf/research/YYYY-MM-DD_Your_Project
+
+# 2. Generate the viewer and start the server
+bash /daaf/scripts/generate_log_viewer.sh /daaf/research/YYYY-MM-DD_Your_Project --serve
+```
+
+Then open the URL it prints (typically `http://localhost:2719/...`) in your browser. Press Ctrl+C to stop the server when done.
+
+Port 2719 is mapped in `docker-compose.yml` for this purpose, alongside port 2718 (Marimo notebooks).
+
+---
+
 ## Setup Troubleshooting
 
 > **Tip:** If you run into an issue not listed here, or you want more help understanding any of these errors, try asking DAAF directly -- its **User Support** mode can help troubleshoot Docker, Git, and Claude Code problems and can look up the latest official documentation online.
@@ -519,6 +539,7 @@ marimo edit 'research/YYYY-MM-DD_Title/YYYY-MM-DD_Notebook_Name.py' --host 0.0.0
 - **Container seems really slow to build the first time** — The first `docker compose up -d --build` downloads base images and installs all packages. This is a one-time cost — subsequent starts are fast since Docker caches everything.
 - **"I can't find my research files on my computer"** — With Docker volumes, your research files live inside Docker's managed storage, not in the project folder on your computer. See **How to Manage DAAF Project Files and Output** above for more information.
 - **"Port 2718 already in use" when trying to view Marimo notebooks** — Another process is using that port. Either stop it, or change the port mapping in `docker-compose.yml` (e.g., `"3000:2718"` to use port 3000 on your host).
+- **"Port 2719 already in use" when trying to view session logs** — Same fix: stop the conflicting process, or change the port mapping (e.g., `"3001:2719"`). Port 2719 is used by the session log viewer (`generate_log_viewer.sh --serve`).
 - **Permission denied errors inside the container (especially on macOS)** — If you see errors like `Permission denied` when Claude tries to read or write files, the Docker volume likely has files owned by root or your host UID instead of the container's `appuser` (UID 1000). This is a known issue with Docker Desktop on macOS. The `docker-compose.yml` includes an init service (`daaf-init`) that automatically fixes file ownership on every startup. To resolve this: stop the container (`docker compose down`), then restart it (`docker compose up -d`) — the init service will repair permissions before the main container starts. If you still have issues, you can fix permissions manually:
   ```bash
   docker run --rm -v "daaf_daaf-data:/daaf" busybox chown -R 1000:1000 /daaf

@@ -185,7 +185,7 @@ polars &bull; pyfixest &bull; linearmodels &bull; statsmodels &bull; scikit-lear
 Need a package that isn't listed? You can add your own by editing the Dockerfile and rebuilding -- see [Customizing Your Python Environment](user_reference/04_extending_daaf.md#customizing-your-python-environment) for instructions.
 
 **Additional features:**
-Interactive dashboards (Plotly) &bull; Reactive analytic notebooks (marimo) &bull; R/tidyverse-Python code translation &bull; Stata-Python code translation &bull; Citation propagation & verification &bull; GUIDE-LLM AI use disclosure &bull; Git version control &bull; Session transcript archiving &bull; Docker-based safety sandboxing &bull; Destructive command prevention &bull; Secret/credential scanning &bull; File-first execution enforcement &bull; Science communication
+Interactive dashboards (Plotly) &bull; Reactive analytic notebooks (marimo) &bull; R/tidyverse-Python code translation &bull; Stata-Python code translation &bull; Citation propagation & verification &bull; GUIDE-LLM AI use disclosure &bull; Git version control &bull; Session transcript archiving &bull; Interactive session log viewer &bull; Docker-based safety sandboxing &bull; Destructive command prevention &bull; Secret/credential scanning &bull; File-first execution enforcement &bull; Science communication
 
 ---
 

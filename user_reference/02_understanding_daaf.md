@@ -782,7 +782,7 @@ Here's a quick reference for what each part of the DAAF repository contains and 
 | `.claude/agents/` | Specialized agent protocols (12 behavioral definitions) | **DAAF** (and curious users who want to understand how agents work) |
 | `agent_reference/` | Detailed workflow documentation, templates, validation rules | **DAAF** (internal reference material for the orchestrator and agents) |
 | `.claude/skills/` | Skill definitions providing domain knowledge | **DAAF** (and users who want to create new skills) |
-| `scripts/` | Shared utility scripts (like `run_with_capture.sh`) | **DAAF** (used from the DAAF root directory; not copied into projects) |
+| `scripts/` | Shared utility scripts (`run_with_capture.sh`, `collect_session_logs.sh`, `generate_log_viewer.sh`) | **DAAF** (used from the DAAF root directory; not copied into projects) |
 
 **Key insight for new users:** Everything you need to review, share, or reproduce is inside the project folder. You can copy the entire folder to a colleague and they'd have everything needed to understand and verify the analysis. That's the whole point of reproducibility.
 

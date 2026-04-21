@@ -15,6 +15,7 @@ services:
     build: .
     ports:
       - "2718:2718"   # Marimo notebook server
+      - "2719:2719"   # Session log viewer
     volumes:
       - daaf-data:/daaf        # Named volume instead of bind mount
     working_dir: /daaf
