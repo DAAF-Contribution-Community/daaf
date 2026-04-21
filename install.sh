@@ -64,7 +64,7 @@ docker compose -f "${INSTALL_DIR}/docker-compose.yml" up -d --build
 echo "      Waiting for container to be ready ..."
 RETRIES=0
 MAX_RETRIES=30
-until docker compose -f "${INSTALL_DIR}/docker-compose.yml" exec -T daaf-docker true 2>/dev/null; do
+until docker compose -f "${INSTALL_DIR}/docker-compose.yml" exec -T daaf-docker true </dev/null 2>/dev/null; do
     RETRIES=$((RETRIES + 1))
     if [ "${RETRIES}" -ge "${MAX_RETRIES}" ]; then
         echo "ERROR: Container did not become ready within 60 seconds."
@@ -78,7 +78,7 @@ done
 # --- Clone the full repository into the Docker volume ---
 echo "[4/4] Cloning DAAF repository files into the Docker container ..."
 if ! docker compose -f "${INSTALL_DIR}/docker-compose.yml" exec -T daaf-docker \
-    git clone --depth 1 -b "${BRANCH}" "https://github.com/${REPO}.git" /tmp/daaf-clone; then
+    git clone --depth 1 -b "${BRANCH}" "https://github.com/${REPO}.git" /tmp/daaf-clone </dev/null; then
     echo ""
     echo "ERROR: Failed to clone the DAAF repository."
     echo "The Docker image was built successfully, but the repository could not be downloaded."
@@ -91,7 +91,7 @@ if ! docker compose -f "${INSTALL_DIR}/docker-compose.yml" exec -T daaf-docker \
 fi
 
 if ! docker compose -f "${INSTALL_DIR}/docker-compose.yml" exec -T daaf-docker \
-    bash -c 'cp -a /tmp/daaf-clone/. /daaf/ && rm -rf /tmp/daaf-clone'; then
+    bash -c 'cp -a /tmp/daaf-clone/. /daaf/ && rm -rf /tmp/daaf-clone' </dev/null; then
     echo ""
     echo "ERROR: Failed to copy repository files into the container."
     echo "The clone succeeded, but copying to /daaf/ failed (possibly a permissions issue)."
