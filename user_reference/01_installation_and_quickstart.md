@@ -126,10 +126,12 @@ By default, the installer pulls the latest code from the `main` branch. To insta
 
 ```bash
 # Install a tagged release
-DAAF_BRANCH=v2.1.0 curl -fsSL https://raw.githubusercontent.com/DAAF-Contribution-Community/daaf/main/install.sh | bash
+export DAAF_BRANCH=v2.1.0
+curl -fsSL "https://raw.githubusercontent.com/DAAF-Contribution-Community/daaf/${DAAF_BRANCH}/install.sh" | bash
 
 # Install from a development branch
-DAAF_BRANCH=dev curl -fsSL https://raw.githubusercontent.com/DAAF-Contribution-Community/daaf/main/install.sh | bash
+export DAAF_BRANCH=dev
+curl -fsSL "https://raw.githubusercontent.com/DAAF-Contribution-Community/daaf/${DAAF_BRANCH}/install.sh" | bash
 ```
 
 </td>
@@ -137,17 +139,17 @@ DAAF_BRANCH=dev curl -fsSL https://raw.githubusercontent.com/DAAF-Contribution-C
 
 ```powershell
 # Install a tagged release
-$env:DAAF_BRANCH="v2.1.0"; irm https://raw.githubusercontent.com/DAAF-Contribution-Community/daaf/main/install.ps1 | iex
+$env:DAAF_BRANCH="v2.1.0"; irm "https://raw.githubusercontent.com/DAAF-Contribution-Community/daaf/$env:DAAF_BRANCH/install.ps1" | iex
 
 # Install from a development branch
-$env:DAAF_BRANCH="dev"; irm https://raw.githubusercontent.com/DAAF-Contribution-Community/daaf/main/install.ps1 | iex
+$env:DAAF_BRANCH="dev"; irm "https://raw.githubusercontent.com/DAAF-Contribution-Community/daaf/$env:DAAF_BRANCH/install.ps1" | iex
 ```
 
 </td>
 </tr>
 </table>
 
-This controls both the Docker build files and the repository clone, so everything comes from the specified branch or tag consistently. Check the [Releases page](https://github.com/DAAF-Contribution-Community/daaf/releases) to see available versions. If `DAAF_BRANCH` is not set, the installer defaults to `main`.
+This fetches the installer itself from the specified branch, and also controls the Docker build files and repository clone, so everything comes from the specified branch or tag consistently. The `export` on macOS/Linux is required so that the variable is inherited by the `bash` process on the other side of the pipe. Check the [Releases page](https://github.com/DAAF-Contribution-Community/daaf/releases) to see available versions. If `DAAF_BRANCH` is not set, the installer defaults to `main`.
 
 #### What the installer does
 

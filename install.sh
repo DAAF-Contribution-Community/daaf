@@ -90,8 +90,16 @@ if ! docker compose -f "${INSTALL_DIR}/docker-compose.yml" exec -T daaf-docker \
     exit 1
 fi
 
-docker compose -f "${INSTALL_DIR}/docker-compose.yml" exec -T daaf-docker \
-    bash -c 'cp -a /tmp/daaf-clone/. /daaf/ && rm -rf /tmp/daaf-clone'
+if ! docker compose -f "${INSTALL_DIR}/docker-compose.yml" exec -T daaf-docker \
+    bash -c 'cp -a /tmp/daaf-clone/. /daaf/ && rm -rf /tmp/daaf-clone'; then
+    echo ""
+    echo "ERROR: Failed to copy repository files into the container."
+    echo "The clone succeeded, but copying to /daaf/ failed (possibly a permissions issue)."
+    echo "You can retry manually with:"
+    echo "  docker compose -f ${INSTALL_DIR}/docker-compose.yml exec -T daaf-docker \\"
+    echo "    bash -c 'cp -a /tmp/daaf-clone/. /daaf/ && rm -rf /tmp/daaf-clone'"
+    exit 1
+fi
 
 echo ""
 echo "=========================================="
