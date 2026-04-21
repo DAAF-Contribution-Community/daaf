@@ -168,16 +168,32 @@ You can confirm the install worked by looking at Docker Desktop: in the **Images
 
 #### Enter the container and launch Claude Code
 
+<table>
+<tr>
+<td><strong>macOS / Linux (Terminal)</strong></td>
+<td><strong>Windows (PowerShell)</strong></td>
+</tr>
+<tr>
+<td>
+
 ```bash
-# Navigate to the install directory
 cd daaf-docker
-
-# Enter the container
-docker compose exec daaf-docker bash
-
-# Launch Claude Code
-claude
+bash run_daaf.sh
 ```
+
+</td>
+<td>
+
+```powershell
+cd daaf-docker
+.\run_daaf.ps1
+```
+
+</td>
+</tr>
+</table>
+
+The `run_daaf` script starts the container if needed and launches Claude Code directly. To enter the container shell instead (e.g., for setting API keys), pass `bash` as an argument: `bash run_daaf.sh bash` (or `.\run_daaf.ps1 bash` on Windows). You can also use the manual commands if you prefer: `docker compose exec daaf-docker bash` to enter the container, then `claude` to launch.
 
 On first launch, Claude Code should prompt you to authenticate (API key or subscription login). Follow its instructions to complete the process as needed based on your method. Remember that CTRL+C actually exits the terminal, so use (Windows/Linux: CTRL+SHIFT+C and CTRL+V) and (macOS: Cmd+C and Cmd+V) if you want to copy/paste.
 
