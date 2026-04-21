@@ -47,10 +47,13 @@ fi
 echo "[1/4] Creating initial directory for installation files at ${INSTALL_DIR} ..."
 mkdir -p "${INSTALL_DIR}"
 
-# --- Download the 2 build-context files ---
+# --- Download build-context and utility files ---
 echo "[2/4] Downloading installation files ..."
 curl -fsSL "${RAW_BASE}/Dockerfile"              -o "${INSTALL_DIR}/Dockerfile"
 curl -fsSL "${RAW_BASE}/docker-compose.yml"       -o "${INSTALL_DIR}/docker-compose.yml"
+curl -fsSL "${RAW_BASE}/run_daaf.sh"              -o "${INSTALL_DIR}/run_daaf.sh"
+curl -fsSL "${RAW_BASE}/backup_daaf.sh"           -o "${INSTALL_DIR}/backup_daaf.sh"
+chmod +x "${INSTALL_DIR}/run_daaf.sh" "${INSTALL_DIR}/backup_daaf.sh"
 
 # --- Build the Docker image ---
 echo "[3/4] Building Docker image (this may take a few minutes on first run since there are a lot of Python libraries to install)..."
@@ -115,6 +118,10 @@ echo ""
 echo "For day-to-day usage and more, see:"
 echo "  https://github.com/${REPO}/blob/${BRANCH}/user_reference/01_installation_and_quickstart.md"
 echo ""
-echo "Install directory: ${INSTALL_DIR}"
-echo "  (Keep this directory — it contains the Dockerfile needed for rebuilds.)"
+echo "Utility scripts (in ${INSTALL_DIR}):"
+echo "  bash run_daaf.sh             Launch Claude Code (starts container if needed)"
+echo "  bash run_daaf.sh bash        Enter the container shell"
+echo "  bash backup_daaf.sh          Back up the Docker volume to a dated folder"
+echo ""
+echo "Keep this directory — it contains the Dockerfile needed for rebuilds."
 echo ""

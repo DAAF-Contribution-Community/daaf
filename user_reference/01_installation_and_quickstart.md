@@ -150,7 +150,7 @@ This controls both the Docker build files and the repository clone, so everythin
 
 #### What the installer does
 
-1. **Creates an installation directory** called `daaf-docker/` in whatever folder your terminal is currently in, containing just 2 files (~5 KB total): the Dockerfile and docker-compose.yml. This is the minimal set needed to build the Docker image. For example, if you open your terminal and it starts in your home folder (`~` on Mac/Linux, `C:\Users\YourName` on Windows), that's where `daaf-docker/` will be created. You can `cd` to a different location first if you'd prefer to install elsewhere.
+1. **Creates an installation directory** called `daaf-docker/` in whatever folder your terminal is currently in, containing the Dockerfile, docker-compose.yml, and utility scripts (`run_daaf` and `backup_daaf`). For example, if you open your terminal and it starts in your home folder (`~` on Mac/Linux, `C:\Users\YourName` on Windows), that's where `daaf-docker/` will be created. You can `cd` to a different location first if you'd prefer to install elsewhere.
 2. **Builds the Docker image** with Python 3.12, 50+ data science packages, geospatial libraries, and Claude Code pre-installed. The first build downloads everything and takes a few minutes; subsequent rebuilds use Docker's layer cache and are much faster.
 3. **Downloads the DAAF repository** directly into the Docker volume inside the container. This gives you a full git repository.
 4. **Prints post-install instructions** showing you how to enter the container, launch Claude Code, and configure it.
@@ -279,9 +279,43 @@ Now that you've got DAAF installed and running for the first time, let's talk th
 
 ### Starting a New Session
 
-Once you've completed the installation, your daily workflow is just to open your terminal again and run the following commands. Make sure Docker Desktop is running first!
+Once you've completed the installation, your daily workflow is just to open your terminal again and run a single command. Make sure Docker Desktop is running first!
 
-**If you used the one-line installer:**
+**Quick start (recommended):**
+
+<table>
+<tr>
+<td><strong>macOS / Linux (Terminal)</strong></td>
+<td><strong>Windows (PowerShell)</strong></td>
+</tr>
+<tr>
+<td>
+
+```bash
+cd daaf-docker
+bash run_daaf.sh
+```
+
+</td>
+<td>
+
+```powershell
+cd daaf-docker
+.\run_daaf.ps1
+```
+
+</td>
+</tr>
+</table>
+
+The `run_daaf` script handles everything: starts the container if it's not already running, then launches Claude Code directly. To enter the container shell instead of Claude Code (for manual commands, setting API keys, etc.), pass `bash` as an argument:
+
+```bash
+bash run_daaf.sh bash        # macOS / Linux
+.\run_daaf.ps1 bash          # Windows
+```
+
+**Manual alternative (if you prefer individual commands):**
 
 ```bash
 # Navigate to your daaf-docker folder (wherever you ran the installer)
@@ -314,7 +348,7 @@ docker compose down
 
 ## How to Manage DAAF Project Files and Output
 
-Your research files, data, and outputs live inside the **Docker volume** we created during installation — a storage area managed by Docker, **copied from** the project folder on your computer (e.g., `daaf-main/`). Think of that folder on your computer as the "recipe" that was used to set everything up, while the Docker volume is the actual "kitchen" where all the work happens.
+Your research files, data, and outputs live inside the **Docker volume** we created during installation — a storage area managed by Docker. Think of the `daaf-docker/` folder on your computer as the "recipe" that was used to set everything up, while the Docker volume is the actual "kitchen" where all the work happens.
 
 This means:
 - **Your work persists** — stopping or restarting the container does NOT delete anything. The Docker volume retains all your research outputs, data, and notebooks across restarts, rebuilds, and even `docker compose down`.
@@ -335,7 +369,36 @@ From here, you can download copies of individual folders or files to your comput
 
 ### Backing Up Your Work
 
-Since your research files live inside the Docker volume, it'll be extremely important to regularly back up your work separately from the Docker volume. You can do that most easily using the Docker Desktop method above (go into the Docker volume file viewer and download the whole daaf or research folder to somewhere else on your computer).
+Since your research files live inside the Docker volume, it'll be extremely important to regularly back up your work separately from the Docker volume. The easiest way is with the included backup script:
+
+<table>
+<tr>
+<td><strong>macOS / Linux (Terminal)</strong></td>
+<td><strong>Windows (PowerShell)</strong></td>
+</tr>
+<tr>
+<td>
+
+```bash
+cd daaf-docker
+bash backup_daaf.sh
+```
+
+</td>
+<td>
+
+```powershell
+cd daaf-docker
+.\backup_daaf.ps1
+```
+
+</td>
+</tr>
+</table>
+
+The backup script creates a date-versioned folder (e.g., `2026-04-21_daaf_backup/`) in your `daaf-docker` directory. Multiple backups on the same day are automatically suffixed (`2026-04-21a_daaf_backup/`, `2026-04-21b_daaf_backup/`, etc.). Move or copy these folders to another location on your computer (or an external drive) for safekeeping.
+
+You can also back up manually using Docker Desktop's GUI: go into the Docker volume file viewer (see above) and download the whole `daaf` or `research` folder to somewhere else on your computer.
 
 **A note on git and DAAF:** A full git repository is set up inside the Docker volume during installation (via the `git clone` in the installer). During research sessions, DAAF's agents will make **local git commits** inside the container to track every script version, data transformation, and plan update — this creates a detailed audit trail of your research that you can review with standard git tools (like `git log`). A remote is configured by default (pointing to the upstream DAAF repository for updates), but nothing is ever pushed there without your explicit instruction. Your research work lives safely in the Docker volume, and the local git history is there purely for traceability and reproducibility within your own projects. If you want a GitHub backup for your work, ask Claude how to make your own repository and save to it accordingly.
 

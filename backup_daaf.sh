@@ -1,0 +1,94 @@
+#!/usr/bin/env bash
+# ============================================================================
+# DAAF Backup Utility (macOS / Linux)
+# ============================================================================
+# Creates a timestamped backup of your DAAF Docker volume on the host.
+#
+# Usage:
+#   cd daaf-docker
+#   bash backup_daaf.sh
+#
+# Backups are created in the current directory with date-versioned names:
+#   2026-04-21_daaf_backup/     (first backup of the day)
+#   2026-04-21a_daaf_backup/    (second backup)
+#   2026-04-21b_daaf_backup/    (third backup)
+# ============================================================================
+
+set -euo pipefail
+
+# --- Configuration ---
+VOLUME_NAME="daaf_daaf-data"
+TODAY=$(date +%Y-%m-%d)
+
+echo ""
+echo "=========================================="
+echo "  DAAF Backup"
+echo "=========================================="
+echo ""
+
+# --- Preflight ---
+if ! command -v docker &> /dev/null; then
+    echo "ERROR: Docker is not installed or not in your PATH."
+    exit 1
+fi
+
+if ! docker info &> /dev/null; then
+    echo "ERROR: Docker Desktop does not seem to be running. Please start it and try again."
+    exit 1
+fi
+
+# Check the volume exists
+if ! docker volume inspect "${VOLUME_NAME}" &> /dev/null; then
+    echo "ERROR: Docker volume '${VOLUME_NAME}' not found."
+    echo "Have you run the DAAF installer yet?"
+    exit 1
+fi
+
+# --- Generate date-versioned backup name ---
+BACKUP_NAME="${TODAY}_daaf_backup"
+
+if [ -e "${BACKUP_NAME}" ]; then
+    # First backup of the day already exists — find next available suffix
+    SUFFIX_NUM=0
+    while true; do
+        # Convert number to letter: 0=a, 1=b, 2=c, ...
+        SUFFIX=$(printf "\\$(printf '%03o' $((97 + SUFFIX_NUM)))")
+        BACKUP_NAME="${TODAY}${SUFFIX}_daaf_backup"
+        if [ ! -e "${BACKUP_NAME}" ]; then
+            break
+        fi
+        SUFFIX_NUM=$((SUFFIX_NUM + 1))
+        if [ "${SUFFIX_NUM}" -ge 26 ]; then
+            echo "ERROR: Too many backups for today (26 max). Please remove some old backups."
+            exit 1
+        fi
+    done
+fi
+
+echo "Backup name: ${BACKUP_NAME}/"
+echo ""
+
+# --- Create backup ---
+echo "Copying files from Docker volume (this may take a moment)..."
+mkdir -p "${BACKUP_NAME}"
+
+docker run --rm \
+    -v "${VOLUME_NAME}:/source:ro" \
+    -v "$(pwd)/${BACKUP_NAME}:/dest" \
+    busybox sh -c "cp -a /source/. /dest/"
+
+# --- Verify ---
+FILE_COUNT=$(find "${BACKUP_NAME}" -type f | wc -l)
+
+echo ""
+echo "=========================================="
+echo "  Backup complete!"
+echo "=========================================="
+echo ""
+echo "Location: $(pwd)/${BACKUP_NAME}/"
+echo "Files:    ${FILE_COUNT} files copied"
+echo ""
+echo "To restore from this backup in the future, you can copy files back"
+echo "into the Docker volume using Docker Desktop's Files tab, or with:"
+echo "  docker run --rm -v \"$(pwd)/${BACKUP_NAME}:/source:ro\" -v \"${VOLUME_NAME}:/dest\" busybox sh -c 'cp -a /source/. /dest/'"
+echo ""

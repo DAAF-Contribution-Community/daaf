@@ -51,10 +51,12 @@ if ($LASTEXITCODE -ne 0) {
 Write-Host "[1/4] Creating an initial directory for installation files at $InstallDir ..."
 New-Item -ItemType Directory -Path "$InstallDir" -Force | Out-Null
 
-# --- Download the 2 build-context files ---
+# --- Download build-context and utility files ---
 Write-Host "[2/4] Downloading installation files ..."
 Invoke-WebRequest -Uri "$RawBase/Dockerfile"           -OutFile "$InstallDir\Dockerfile"
 Invoke-WebRequest -Uri "$RawBase/docker-compose.yml"   -OutFile "$InstallDir\docker-compose.yml"
+Invoke-WebRequest -Uri "$RawBase/run_daaf.ps1"         -OutFile "$InstallDir\run_daaf.ps1"
+Invoke-WebRequest -Uri "$RawBase/backup_daaf.ps1"      -OutFile "$InstallDir\backup_daaf.ps1"
 
 # --- Build the Docker image ---
 Write-Host "[3/4] Building Docker image (this may take a few minutes on first run since there are a lot of Python libraries to install)..."
@@ -131,6 +133,10 @@ Write-Host ""
 Write-Host "For day-to-day usage and more, see:"
 Write-Host "  https://github.com/$Repo/blob/$Branch/user_reference/01_installation_and_quickstart.md"
 Write-Host ""
-Write-Host "Install directory: $InstallDir"
-Write-Host "  (Keep this directory - it contains the Dockerfile needed for rebuilds.)"
+Write-Host "Utility scripts (in $InstallDir):"
+Write-Host "  .\run_daaf.ps1               Launch Claude Code (starts container if needed)"
+Write-Host "  .\run_daaf.ps1 bash           Enter the container shell"
+Write-Host "  .\backup_daaf.ps1             Back up the Docker volume to a dated folder"
+Write-Host ""
+Write-Host "Keep this directory - it contains the Dockerfile needed for rebuilds."
 Write-Host ""
