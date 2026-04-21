@@ -32,6 +32,8 @@ Write-Host "=========================================="
 Write-Host "  DAAF Installer"
 Write-Host "=========================================="
 Write-Host ""
+Write-Host "Branch: $Branch"
+Write-Host ""
 
 # --- Preflight checks ---
 if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
@@ -53,10 +55,19 @@ New-Item -ItemType Directory -Path "$InstallDir" -Force | Out-Null
 
 # --- Download build-context and utility files ---
 Write-Host "[2/4] Downloading installation files ..."
-Invoke-WebRequest -Uri "$RawBase/Dockerfile"           -OutFile "$InstallDir\Dockerfile"
-Invoke-WebRequest -Uri "$RawBase/docker-compose.yml"   -OutFile "$InstallDir\docker-compose.yml"
-Invoke-WebRequest -Uri "$RawBase/run_daaf.ps1"         -OutFile "$InstallDir\run_daaf.ps1"
-Invoke-WebRequest -Uri "$RawBase/backup_daaf.ps1"      -OutFile "$InstallDir\backup_daaf.ps1"
+try {
+    Invoke-WebRequest -UseBasicParsing -Uri "$RawBase/Dockerfile"           -OutFile "$InstallDir\Dockerfile"
+    Invoke-WebRequest -UseBasicParsing -Uri "$RawBase/docker-compose.yml"   -OutFile "$InstallDir\docker-compose.yml"
+    Invoke-WebRequest -UseBasicParsing -Uri "$RawBase/run_daaf.ps1"         -OutFile "$InstallDir\run_daaf.ps1"
+    Invoke-WebRequest -UseBasicParsing -Uri "$RawBase/backup_daaf.ps1"      -OutFile "$InstallDir\backup_daaf.ps1"
+} catch {
+    Write-Host ""
+    Write-Host "ERROR: Failed to download installation files from branch '$Branch'." -ForegroundColor Red
+    Write-Host "Please verify that the branch name is correct and that you have an internet connection."
+    Write-Host "You can check available branches at: https://github.com/$Repo/branches"
+    Write-Host "Details: $_"
+    exit 1
+}
 
 # --- Build the Docker image ---
 Write-Host "[3/4] Building Docker image (this may take a few minutes on first run since there are a lot of Python libraries to install)..."
@@ -64,6 +75,7 @@ $env:COMPOSE_PROJECT_NAME = "daaf"
 docker compose -f "$InstallDir\docker-compose.yml" up -d --build
 if ($LASTEXITCODE -ne 0) {
     Write-Host "ERROR: Docker image build failed. Check the output above for details." -ForegroundColor Red
+    Write-Host "You can safely re-run this installer to retry."
     exit 1
 }
 
@@ -87,7 +99,7 @@ if ($retries -ge $maxRetries) {
 # --- Clone the full repository into the Docker volume ---
 Write-Host "[4/4] Cloning DAAF repository files into the Docker container ..."
 docker compose -f "$InstallDir\docker-compose.yml" exec -T daaf-docker `
-    git clone --depth 1 -b $Branch "https://github.com/$Repo.git" /tmp/daaf-clone
+    git clone --depth 1 -b "$Branch" "https://github.com/$Repo.git" /tmp/daaf-clone
 
 if ($LASTEXITCODE -ne 0) {
     Write-Host ""
@@ -98,13 +110,34 @@ if ($LASTEXITCODE -ne 0) {
     Write-Host "    git clone --depth 1 -b $Branch https://github.com/$Repo.git /tmp/daaf-clone"
     Write-Host "  docker compose -f $InstallDir\docker-compose.yml exec -T daaf-docker ``"
     Write-Host "    bash -c 'cp -a /tmp/daaf-clone/. /daaf/ && rm -rf /tmp/daaf-clone'"
+    Write-Host "You can also safely re-run this installer to retry from scratch."
     exit 1
 }
 
 docker compose -f "$InstallDir\docker-compose.yml" exec -T daaf-docker `
     bash -c 'cp -a /tmp/daaf-clone/. /daaf/ && rm -rf /tmp/daaf-clone'
 if ($LASTEXITCODE -ne 0) {
+    Write-Host ""
     Write-Host "ERROR: Failed to copy repository files into the container." -ForegroundColor Red
+    Write-Host "The clone succeeded, but copying to /daaf/ failed (possibly a permissions issue)."
+    Write-Host "You can retry manually with:"
+    Write-Host "  docker compose -f $InstallDir\docker-compose.yml exec -T daaf-docker ``"
+    Write-Host "    bash -c 'cp -a /tmp/daaf-clone/. /daaf/ && rm -rf /tmp/daaf-clone'"
+    Write-Host "You can also safely re-run this installer to retry from scratch."
+    exit 1
+}
+
+# --- Verify DAAF files are present ---
+docker compose -f "$InstallDir\docker-compose.yml" exec -T daaf-docker test -f /daaf/CLAUDE.md 2>&1 | Out-Null
+if ($LASTEXITCODE -ne 0) {
+    Write-Host ""
+    Write-Host "WARNING: Installation may be incomplete — /daaf/CLAUDE.md was not found in the container." -ForegroundColor Yellow
+    Write-Host "The Docker image was built, but the repository files may not have copied correctly."
+    Write-Host "You can try cloning manually inside the container:"
+    Write-Host "  cd $InstallDir"
+    Write-Host "  docker compose exec daaf-docker bash"
+    Write-Host "  git clone --depth 1 -b $Branch https://github.com/$Repo.git /tmp/daaf-clone"
+    Write-Host "  cp -a /tmp/daaf-clone/. /daaf/ && rm -rf /tmp/daaf-clone"
     exit 1
 }
 

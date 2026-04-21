@@ -30,6 +30,8 @@ echo "=========================================="
 echo "  DAAF Installer"
 echo "=========================================="
 echo ""
+echo "Branch: ${BRANCH}"
+echo ""
 
 # --- Preflight checks ---
 if ! command -v docker &> /dev/null; then
@@ -49,16 +51,27 @@ mkdir -p "${INSTALL_DIR}"
 
 # --- Download build-context and utility files ---
 echo "[2/4] Downloading installation files ..."
-curl -fsSL "${RAW_BASE}/Dockerfile"              -o "${INSTALL_DIR}/Dockerfile"
-curl -fsSL "${RAW_BASE}/docker-compose.yml"       -o "${INSTALL_DIR}/docker-compose.yml"
-curl -fsSL "${RAW_BASE}/run_daaf.sh"              -o "${INSTALL_DIR}/run_daaf.sh"
-curl -fsSL "${RAW_BASE}/backup_daaf.sh"           -o "${INSTALL_DIR}/backup_daaf.sh"
+if ! curl -fsSL "${RAW_BASE}/Dockerfile"              -o "${INSTALL_DIR}/Dockerfile" ||
+   ! curl -fsSL "${RAW_BASE}/docker-compose.yml"       -o "${INSTALL_DIR}/docker-compose.yml" ||
+   ! curl -fsSL "${RAW_BASE}/run_daaf.sh"              -o "${INSTALL_DIR}/run_daaf.sh" ||
+   ! curl -fsSL "${RAW_BASE}/backup_daaf.sh"           -o "${INSTALL_DIR}/backup_daaf.sh"; then
+    echo ""
+    echo "ERROR: Failed to download installation files from branch '${BRANCH}'."
+    echo "Please verify that the branch name is correct and that you have an internet connection."
+    echo "You can check available branches at: https://github.com/${REPO}/branches"
+    exit 1
+fi
 chmod +x "${INSTALL_DIR}/run_daaf.sh" "${INSTALL_DIR}/backup_daaf.sh"
 
 # --- Build the Docker image ---
 echo "[3/4] Building Docker image (this may take a few minutes on first run since there are a lot of Python libraries to install)..."
 export COMPOSE_PROJECT_NAME=daaf
-docker compose -f "${INSTALL_DIR}/docker-compose.yml" up -d --build
+if ! docker compose -f "${INSTALL_DIR}/docker-compose.yml" up -d --build; then
+    echo ""
+    echo "ERROR: Docker image build failed. Check the output above for details."
+    echo "You can safely re-run this installer to retry."
+    exit 1
+fi
 
 # --- Wait for container to be ready ---
 echo "      Waiting for container to be ready ..."
@@ -87,6 +100,7 @@ if ! docker compose -f "${INSTALL_DIR}/docker-compose.yml" exec -T daaf-docker \
     echo "    git clone --depth 1 -b ${BRANCH} https://github.com/${REPO}.git /tmp/daaf-clone"
     echo "  docker compose -f ${INSTALL_DIR}/docker-compose.yml exec -T daaf-docker \\"
     echo "    bash -c 'cp -a /tmp/daaf-clone/. /daaf/ && rm -rf /tmp/daaf-clone'"
+    echo "You can also safely re-run this installer to retry from scratch."
     exit 1
 fi
 
@@ -98,6 +112,21 @@ if ! docker compose -f "${INSTALL_DIR}/docker-compose.yml" exec -T daaf-docker \
     echo "You can retry manually with:"
     echo "  docker compose -f ${INSTALL_DIR}/docker-compose.yml exec -T daaf-docker \\"
     echo "    bash -c 'cp -a /tmp/daaf-clone/. /daaf/ && rm -rf /tmp/daaf-clone'"
+    echo "You can also safely re-run this installer to retry from scratch."
+    exit 1
+fi
+
+# --- Verify DAAF files are present ---
+if ! docker compose -f "${INSTALL_DIR}/docker-compose.yml" exec -T daaf-docker \
+    test -f /daaf/CLAUDE.md </dev/null 2>/dev/null; then
+    echo ""
+    echo "WARNING: Installation may be incomplete — /daaf/CLAUDE.md was not found in the container."
+    echo "The Docker image was built, but the repository files may not have copied correctly."
+    echo "You can try cloning manually inside the container:"
+    echo "  cd ${INSTALL_DIR}"
+    echo "  docker compose exec daaf-docker bash"
+    echo "  git clone --depth 1 -b ${BRANCH} https://github.com/${REPO}.git /tmp/daaf-clone"
+    echo "  cp -a /tmp/daaf-clone/. /daaf/ && rm -rf /tmp/daaf-clone"
     exit 1
 fi
 

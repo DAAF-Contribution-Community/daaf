@@ -81,7 +81,15 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 # --- Verify ---
-$FileCount = @(Get-ChildItem -Path $BackupName -Recurse -File).Count
+$FileCount = @(Get-ChildItem -Path $BackupName -Recurse -File -Force).Count
+
+if ($FileCount -eq 0) {
+    Write-Host ""
+    Write-Host "WARNING: Backup completed but 0 files were copied." -ForegroundColor Yellow
+    Write-Host "The Docker volume may be empty. Is DAAF properly installed?"
+    Write-Host "Location: $HostPath\"
+    exit 1
+}
 
 Write-Host ""
 Write-Host "=========================================="

@@ -72,13 +72,25 @@ echo ""
 echo "Copying files from Docker volume (this may take a moment)..."
 mkdir -p "${BACKUP_NAME}"
 
-docker run --rm \
+if ! docker run --rm \
     -v "${VOLUME_NAME}:/source:ro" \
     -v "$(pwd)/${BACKUP_NAME}:/dest" \
-    busybox sh -c "cp -a /source/. /dest/"
+    busybox sh -c "cp -a /source/. /dest/"; then
+    echo ""
+    echo "ERROR: Backup failed. Check Docker Desktop for errors."
+    exit 1
+fi
 
 # --- Verify ---
 FILE_COUNT=$(find "${BACKUP_NAME}" -type f | wc -l)
+
+if [ "${FILE_COUNT}" -eq 0 ]; then
+    echo ""
+    echo "WARNING: Backup completed but 0 files were copied."
+    echo "The Docker volume may be empty. Is DAAF properly installed?"
+    echo "Location: $(pwd)/${BACKUP_NAME}/"
+    exit 1
+fi
 
 echo ""
 echo "=========================================="
