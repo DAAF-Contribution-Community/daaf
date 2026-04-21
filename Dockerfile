@@ -147,15 +147,16 @@ WORKDIR /daaf
 RUN chown appuser:appuser /daaf
 USER appuser
 
+# Configure git identity for DAAF's internal version tracking.
+# Agents make local commits during research sessions to create an audit trail.
+# This identity is used for those automated commits inside the container only.
+RUN git config --global user.email "daaf@local" \
+    && git config --global user.name "DAAF Container"
+
 # Install Claude Code as appuser (pinned version)
 ARG CLAUDE_CODE_VERSION=2.1.87
 RUN curl -fsSL https://claude.ai/install.sh | bash -s ${CLAUDE_CODE_VERSION}
 ENV PATH="/home/appuser/.local/bin:${PATH}"
-
-# Copy and configure entrypoint script for git initialization
-COPY --chown=appuser:appuser scripts/entrypoint.sh /daaf/scripts/entrypoint.sh
-RUN chmod +x /daaf/scripts/entrypoint.sh
-ENTRYPOINT ["/daaf/scripts/entrypoint.sh"]
 
 # Default command
 CMD ["bash"]

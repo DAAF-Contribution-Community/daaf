@@ -62,7 +62,7 @@ You'll need:
 If your data source is available via a REST API rather than as a downloadable file, DAAF can handle the acquisition for you during Data Onboarding. You'll need:
 
 1. **API documentation** — a URL to the API docs, or a description of how the API works (endpoints, authentication method, response format). DAAF will research the API on your behalf, but having documentation to point to dramatically improves the quality of the resulting fetch scripts.
-2. **An API key** — most APIs require authentication. Set up your key as an environment variable inside the Docker container before starting (see [Step 8 in the Installation Guide](01_installation_and_quickstart.md#step-8-optional-set-up-data-source-api-keys) for the pattern). DAAF will ask you which environment variable name holds your key.
+2. **An API key** — most APIs require authentication. Set up your key as an environment variable inside the Docker container before starting (see [API Keys in the Installation Guide](01_installation_and_quickstart.md#optional-set-up-data-source-api-keys) for the pattern). DAAF will ask you which environment variable name holds your key.
 3. **A sense of what you want to download** — which endpoint, what filters (date range, geography, etc.), and roughly how much data to expect.
 
 DAAF will research the API, write a fetch script for your approval, download the data, and then proceed with the standard profiling workflow. The fetch script is saved as a reproducible artifact — you (or DAAF) can re-run it any time to get fresh data.
@@ -372,16 +372,16 @@ The best way to add packages is to ask DAAF to edit the `Dockerfile` and then re
 
 #### The Container-Host Boundary (Read This First)
 
-When you initially installed DAAF, the `docker run ... busybox cp` command copied your entire host project folder *into* the Docker volume -- including the Dockerfile. From that moment on, **there are two copies of the Dockerfile and docker-compose.yml**, and they live in different places:
+When DAAF is installed, the Docker image is built from files on your host computer, but the full DAAF codebase (including a copy of the Dockerfile) lives inside the Docker volume. This means **there are two copies of the Dockerfile and docker-compose.yml**, and they live in different places:
 
 | Copy | Location | Who edits it | Who reads it |
 |------|----------|--------------|--------------|
-| **Volume copy** (inside the container) | `/daaf/Dockerfile` as seen from inside the running container | DAAF/Claude Code, while you're running a session | Nothing -- it's just a working copy that traveled along when you installed DAAF |
-| **Host copy** (on your computer) | Your DAAF project folder on your host (e.g., `daaf-main/Dockerfile`) | You, via a "copy back" command after DAAF finishes | `docker compose up -d --build`, when run from the host |
+| **Volume copy** (inside the container) | `/daaf/Dockerfile` as seen from inside the running container | DAAF/Claude Code, while you're running a session | Nothing -- it's just a working copy inside the container |
+| **Host copy** (on your computer) | Your `daaf-docker/` build directory on your host (wherever you ran the installer, or `daaf-main/Dockerfile` if you installed manually) | You, via a "copy back" command after DAAF finishes | `docker compose up -d --build`, when run from the host |
 
-The two files start out identical, but they can drift apart as soon as either side is modified. Critically, **`docker compose up -d --build` only ever reads the host copy** -- it has no knowledge of the volume copy at all. But when you ask DAAF to add a package to the Dockerfile, DAAF edits the **volume copy** (the only one Claude can see and edit from inside the container). 
+The two files start out identical, but they can drift apart as soon as either side is modified. Critically, **`docker compose up -d --build` only ever reads the host copy** -- it has no knowledge of the volume copy at all. But when you ask DAAF to add a package to the Dockerfile, DAAF edits the **volume copy** (the only one Claude can see and edit from inside the container).
 
-**The fix is simple but easy to forget:** after DAAF edits the in-container Dockerfile (or docker-compose.yml), you need to copy that updated file back to the host project folder *before* running the container rebuild. The step-by-step process below walks through this carefully, and you should follow it exactly the first time.
+**The fix is simple but easy to forget:** after DAAF edits the in-container Dockerfile (or docker-compose.yml), you need to copy that updated file back to the host build directory *before* running the container rebuild. The step-by-step process below walks through this carefully, and you should follow it exactly the first time.
 
 #### Step-by-Step Process
 
@@ -423,10 +423,17 @@ A few things to note about the Dockerfile syntax (DAAF will handle these for you
 exit
 ```
 
-You should now be back in your terminal on your host computer. Make sure you're in your DAAF project folder (e.g., `daaf-main/`) -- if you're not sure, type `pwd` to check, and `cd` into the right folder if needed. Then run this command to copy the updated Dockerfile out of the running container and into the host folder, replacing the host's stale copy:
+You should now be back in your terminal on your host computer. Run this command to copy the updated Dockerfile out of the running container and into your host build directory, replacing the host's stale copy:
 
 ```bash
+# Navigate to your daaf-docker folder (wherever you ran the installer)
+cd daaf-docker
+
+# Copy the updated Dockerfile from the container to your host build directory
 docker cp daaf-daaf-docker-1:/daaf/Dockerfile ./Dockerfile
+
+# If you installed manually (build directory is your daaf-main folder), run the
+# same docker cp command from inside your daaf-main folder instead.
 ```
 
 **Alternative (Docker Desktop GUI):** If you'd rather not use the command line, you can do the same thing through Docker Desktop's interface:
@@ -434,13 +441,14 @@ docker cp daaf-daaf-docker-1:/daaf/Dockerfile ./Dockerfile
 2. Click **Containers** in the left toolbar → expand **`daaf`** → click on **`daaf-daaf-docker-1`**
 3. Click the **Files** tab to browse the container's filesystem
 4. Navigate to `/daaf/` and find `Dockerfile`
-5. Right-click `Dockerfile` → **Save** (or **Download**), and save it directly into your host DAAF project folder, **overwriting** the existing `Dockerfile` there
+5. Right-click `Dockerfile` → **Save** (or **Download**), and save it directly into your host build directory, **overwriting** the existing `Dockerfile` there
 
 Either approach works -- use whichever feels more comfortable. If you want to confirm the copy worked before rebuilding, open the host `Dockerfile` in any text editor and look for your new package -- it should be there.
 
-**3. Rebuild the container.** Now that the host Dockerfile is up to date, you can rebuild. From your DAAF project folder on your host computer, run:
+**3. Rebuild the container.** Now that the host Dockerfile is up to date, you can rebuild. From your host terminal, run:
 
 ```bash
+# From inside your daaf-docker folder (or daaf-main if you installed manually):
 docker compose up -d --build
 ```
 

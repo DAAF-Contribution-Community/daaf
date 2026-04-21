@@ -54,7 +54,7 @@ Watch the 4 minute v2.0.0 Showcase video below, or read on for more information!
 
 If you're already comfortable with the Terminal and Claude Code, you can get started almost immediately using the Quick Start instructions below. Otherwise, I recommend starting with the full [Installation Guide](user_reference/01_installation_and_quickstart.md) for beginner-friendly details, prerequisites, and troubleshooting.
 
-**Requirements:** [Docker Desktop](https://www.docker.com/products/docker-desktop/) (running) and an [Anthropic Max subscription](https://claude.com/pricing/max) ($100-200/mo) or [API key](https://console.anthropic.com/). 
+**Requirements:** [Docker Desktop](https://www.docker.com/products/docker-desktop/) (running) and an [Anthropic Max subscription](https://claude.com/pricing/max) ($100-200/mo) or [API key](https://console.anthropic.com/).
 
 <table>
 <tr>
@@ -65,61 +65,34 @@ If you're already comfortable with the Terminal and Claude Code, you can get sta
 <td>
 
 ```bash
-# 1. Download the project files
-curl -L -o daaf.zip https://github.com/DAAF-Contribution-Community/daaf/archive/refs/heads/main.zip
-
-# 2. Extract the ZIP file
-unzip daaf.zip
-
-# 3. Enter the project directory
-cd daaf-main
-
-# 4. Copy files into a secure Docker volume
-docker run --rm -v "${PWD}:/source:ro" \
-  -v "daaf_daaf-data:/dest" \
-  busybox sh -c 'cp -a /source/. /dest/'
-
-# 5. Build and start the container
-docker compose up -d --build
-
-# 6. Enter the container
-docker compose exec daaf-docker bash
-
-# 7. Launch Claude Code
-claude
+# Install DAAF with one command
+curl -fsSL https://raw.githubusercontent.com/DAAF-Contribution-Community/daaf/main/install.sh | bash
 ```
 
 </td>
 <td>
 
 ```powershell
-# 1. Download the project files
-Invoke-WebRequest -Uri "https://github.com/DAAF-Contribution-Community/daaf/archive/refs/heads/main.zip" -OutFile daaf.zip
-
-# 2. Extract the ZIP file
-Expand-Archive -Path daaf.zip -DestinationPath .
-
-# 3. Enter the project directory
-cd daaf-main
-
-# 4. Copy files into a secure Docker volume
-docker run --rm -v "${PWD}:/source:ro" `
-  -v "daaf_daaf-data:/dest" `
-  busybox sh -c 'cp -a /source/. /dest/'
-
-# 5. Build and start the container
-docker compose up -d --build
-
-# 6. Enter the container
-docker compose exec daaf-docker bash
-
-# 7. Launch Claude Code
-claude
+# Install DAAF with one command
+irm https://raw.githubusercontent.com/DAAF-Contribution-Community/daaf/main/install.ps1 | iex
 ```
 
 </td>
 </tr>
 </table>
+
+The installer downloads the Docker build files, builds the image with all dependencies, and clones DAAF into the container. When it finishes, follow the printed instructions to enter the container and launch Claude Code:
+
+```bash
+# Navigate to the install directory (created wherever you ran the installer)
+cd daaf-docker
+
+# Enter the container
+docker compose exec daaf-docker bash
+
+# Launch Claude Code
+claude
+```
 
 On first launch, Claude Code will prompt you to authenticate. Set your model to **Opus 4.6** via `/model`, and set **Auto-compact** to **False** and **Verbose output** to **True** via `/config`. You're ready to go; see [Understanding DAAF](user_reference/02_understanding_daaf.md) for some suggestions on how to get started with progressively more complex tasks with DAAF!
 

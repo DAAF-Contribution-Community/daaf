@@ -1,0 +1,136 @@
+# ============================================================================
+# DAAF One-Line Installer (Windows PowerShell)
+# ============================================================================
+# Usage:
+#   irm https://raw.githubusercontent.com/DAAF-Contribution-Community/daaf/main/install.ps1 | iex
+#
+# What this script does:
+#   1. Creates a minimal build directory (2 files, ~5 KB)
+#   2. Downloads the Dockerfile and docker-compose.yml
+#   3. Builds the Docker image (Python, data science stack, Claude Code)
+#   4. Clones the full DAAF repository into the Docker volume
+#   5. Prints instructions for first launch
+#
+# Prerequisites:
+#   - Docker Desktop installed and running
+#   - Internet connection
+# ============================================================================
+
+$ErrorActionPreference = "Stop"
+
+# Ensure TLS 1.2 for GitHub downloads (required on PowerShell 5.1)
+[Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
+
+# --- Configuration ---
+$Repo = "DAAF-Contribution-Community/daaf"
+$Branch = if ($env:DAAF_BRANCH) { $env:DAAF_BRANCH } else { "main" }
+$RawBase = "https://raw.githubusercontent.com/$Repo/$Branch"
+$InstallDir = Join-Path (Get-Location).Path "daaf-docker"
+
+Write-Host ""
+Write-Host "=========================================="
+Write-Host "  DAAF Installer"
+Write-Host "=========================================="
+Write-Host ""
+
+# --- Preflight checks ---
+if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
+    Write-Host "ERROR: Docker is either not installed or not configured properly in your system PATH to allow it to be used from Powershell." -ForegroundColor Red
+    Write-Host "Please install Docker Desktop: https://www.docker.com/products/docker-desktop/"
+    exit 1
+}
+
+# Check Docker daemon is running (compatible with PowerShell 5.1 and 7+)
+$null = docker info 2>&1
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "ERROR: Docker Desktop does not seem to be running. Please start Docker Desktop on your computer and try again." -ForegroundColor Red
+    exit 1
+}
+
+# --- Create minimal build directory ---
+Write-Host "[1/4] Creating an initial directory for installation files at $InstallDir ..."
+New-Item -ItemType Directory -Path "$InstallDir" -Force | Out-Null
+
+# --- Download the 2 build-context files ---
+Write-Host "[2/4] Downloading installation files ..."
+Invoke-WebRequest -Uri "$RawBase/Dockerfile"           -OutFile "$InstallDir\Dockerfile"
+Invoke-WebRequest -Uri "$RawBase/docker-compose.yml"   -OutFile "$InstallDir\docker-compose.yml"
+
+# --- Build the Docker image ---
+Write-Host "[3/4] Building Docker image (this may take a few minutes on first run since there are a lot of Python libraries to install)..."
+$env:COMPOSE_PROJECT_NAME = "daaf"
+docker compose -f "$InstallDir\docker-compose.yml" up -d --build
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "ERROR: Docker image build failed. Check the output above for details." -ForegroundColor Red
+    exit 1
+}
+
+# --- Wait for container to be ready ---
+Write-Host "      Waiting for container to be ready ..."
+$retries = 0
+$maxRetries = 30
+while ($retries -lt $maxRetries) {
+    docker compose -f "$InstallDir\docker-compose.yml" exec -T daaf-docker true 2>&1 | Out-Null
+    if ($LASTEXITCODE -eq 0) { break }
+    $retries++
+    Start-Sleep -Seconds 2
+}
+if ($retries -ge $maxRetries) {
+    Write-Host "ERROR: Container did not become ready within 60 seconds." -ForegroundColor Red
+    Write-Host "Check Docker Desktop for errors, then retry with:"
+    Write-Host "  docker compose -f $InstallDir\docker-compose.yml up -d"
+    exit 1
+}
+
+# --- Clone the full repository into the Docker volume ---
+Write-Host "[4/4] Cloning DAAF repository files into the Docker container ..."
+docker compose -f "$InstallDir\docker-compose.yml" exec -T daaf-docker `
+    git clone --depth 1 -b $Branch "https://github.com/$Repo.git" /tmp/daaf-clone
+
+if ($LASTEXITCODE -ne 0) {
+    Write-Host ""
+    Write-Host "ERROR: Failed to clone the DAAF repository." -ForegroundColor Red
+    Write-Host "The Docker image was built successfully, but the repository could not be downloaded."
+    Write-Host "Check your internet connection and retry with:"
+    Write-Host "  docker compose -f $InstallDir\docker-compose.yml exec -T daaf-docker ``"
+    Write-Host "    git clone --depth 1 -b $Branch https://github.com/$Repo.git /tmp/daaf-clone"
+    Write-Host "  docker compose -f $InstallDir\docker-compose.yml exec -T daaf-docker ``"
+    Write-Host "    bash -c 'cp -a /tmp/daaf-clone/. /daaf/ && rm -rf /tmp/daaf-clone'"
+    exit 1
+}
+
+docker compose -f "$InstallDir\docker-compose.yml" exec -T daaf-docker `
+    bash -c 'cp -a /tmp/daaf-clone/. /daaf/ && rm -rf /tmp/daaf-clone'
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "ERROR: Failed to copy repository files into the container." -ForegroundColor Red
+    exit 1
+}
+
+Write-Host ""
+Write-Host "=========================================="
+Write-Host "  Installation complete!"
+Write-Host "=========================================="
+Write-Host ""
+Write-Host "To start using DAAF:"
+Write-Host ""
+Write-Host "  1. Navigate to the install directory and enter the container:"
+Write-Host "     cd $InstallDir"
+Write-Host "     docker compose exec daaf-docker bash"
+Write-Host ""
+Write-Host "  2. Launch Claude Code by just typing:"
+Write-Host "     claude"
+Write-Host ""
+Write-Host "  3. On first launch, you'll be asked to authenticate with your Anthropic account."
+Write-Host ""
+Write-Host "  4. Configure Claude Code (required):"
+Write-Host "     - Type /config and set:"
+Write-Host "         Auto-compact  -> False"
+Write-Host "         Verbose output -> True"
+Write-Host "     - Press ESC to return to the chat"
+Write-Host ""
+Write-Host "For day-to-day usage and more, see:"
+Write-Host "  https://github.com/$Repo/blob/$Branch/user_reference/01_installation_and_quickstart.md"
+Write-Host ""
+Write-Host "Install directory: $InstallDir"
+Write-Host "  (Keep this directory - it contains the Dockerfile needed for rebuilds.)"
+Write-Host ""
