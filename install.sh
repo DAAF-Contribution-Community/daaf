@@ -6,8 +6,8 @@
 #   curl -fsSL https://raw.githubusercontent.com/DAAF-Contribution-Community/daaf/main/install.sh | bash
 #
 # What this script does:
-#   1. Creates a minimal build directory (2 files, ~5 KB)
-#   2. Downloads the Dockerfile and docker-compose.yml
+#   1. Creates a minimal build directory (~5 KB)
+#   2. Downloads the Dockerfile, docker-compose.yml, and convenience scripts
 #   3. Builds the Docker image (Python, data science stack, Claude Code)
 #   4. Clones the full DAAF repository into the Docker volume
 #   5. Prints instructions for first launch
@@ -54,14 +54,15 @@ echo "[2/4] Downloading installation files ..."
 if ! curl -fsSL "${RAW_BASE}/Dockerfile"              -o "${INSTALL_DIR}/Dockerfile" ||
    ! curl -fsSL "${RAW_BASE}/docker-compose.yml"       -o "${INSTALL_DIR}/docker-compose.yml" ||
    ! curl -fsSL "${RAW_BASE}/run_daaf.sh"              -o "${INSTALL_DIR}/run_daaf.sh" ||
-   ! curl -fsSL "${RAW_BASE}/backup_daaf.sh"           -o "${INSTALL_DIR}/backup_daaf.sh"; then
+   ! curl -fsSL "${RAW_BASE}/backup_daaf.sh"           -o "${INSTALL_DIR}/backup_daaf.sh" ||
+   ! curl -fsSL "${RAW_BASE}/rebuild_daaf.sh"          -o "${INSTALL_DIR}/rebuild_daaf.sh"; then
     echo ""
     echo "ERROR: Failed to download installation files from branch '${BRANCH}'."
     echo "Please verify that the branch name is correct and that you have an internet connection."
     echo "You can check available branches at: https://github.com/${REPO}/branches"
     exit 1
 fi
-chmod +x "${INSTALL_DIR}/run_daaf.sh" "${INSTALL_DIR}/backup_daaf.sh"
+chmod +x "${INSTALL_DIR}/run_daaf.sh" "${INSTALL_DIR}/backup_daaf.sh" "${INSTALL_DIR}/rebuild_daaf.sh"
 
 # --- Build the Docker image ---
 echo "[3/4] Building Docker image (this may take a few minutes on first run since there are a lot of Python libraries to install)..."
@@ -137,28 +138,32 @@ echo "=========================================="
 echo ""
 echo "To start using DAAF:"
 echo ""
-echo "  1. Navigate to the install directory and enter the container:"
+echo "  1. Navigate to the install directory and launch Claude Code:"
 echo "     cd ${INSTALL_DIR}"
-echo "     docker compose exec daaf-docker bash"
+echo "     bash run_daaf.sh"
 echo ""
-echo "  2. Launch Claude Code by just typing:"
-echo "     claude"
+echo "     This starts the container (if needed) and launches Claude Code directly."
 echo ""
-echo "  3. On first launch, you'll be asked to authenticate with your Anthropic account."
+echo "  2. On first launch, you'll be asked to authenticate with your Anthropic account."
 echo ""
-echo "  4. Configure Claude Code (required):"
+echo "  3. Configure Claude Code (required):"
 echo "     - Type /config and set:"
 echo "         Auto-compact  -> False"
 echo "         Verbose output -> True"
 echo "     - Press ESC to return to the chat"
 echo ""
+echo "Convenience scripts (in ${INSTALL_DIR}):"
+echo "  bash run_daaf.sh             Launch Claude Code (starts container if needed)"
+echo "  bash run_daaf.sh bash        Enter the container shell (e.g., for API keys)"
+echo "  bash backup_daaf.sh          Back up the Docker volume to a dated folder"
+echo "  bash rebuild_daaf.sh         Copy build files from container and rebuild image"
+echo ""
+echo "Manual alternative (if you prefer individual commands):"
+echo "  docker compose exec daaf-docker bash   # enter the container"
+echo "  claude                                  # launch Claude Code"
+echo ""
 echo "For day-to-day usage and more, see:"
 echo "  https://github.com/${REPO}/blob/${BRANCH}/user_reference/01_installation_and_quickstart.md"
-echo ""
-echo "Utility scripts (in ${INSTALL_DIR}):"
-echo "  bash run_daaf.sh             Launch Claude Code (starts container if needed)"
-echo "  bash run_daaf.sh bash        Enter the container shell"
-echo "  bash backup_daaf.sh          Back up the Docker volume to a dated folder"
 echo ""
 echo "Keep this directory — it contains the Dockerfile needed for rebuilds."
 echo ""

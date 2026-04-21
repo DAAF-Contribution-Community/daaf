@@ -153,7 +153,7 @@ This fetches the installer itself from the specified branch, and also controls t
 
 #### What the installer does
 
-1. **Creates an installation directory** called `daaf-docker/` in whatever folder your terminal is currently in, containing the Dockerfile, docker-compose.yml, and utility scripts (`run_daaf` and `backup_daaf`). For example, if you open your terminal and it starts in your home folder (`~` on Mac/Linux, `C:\Users\YourName` on Windows), that's where `daaf-docker/` will be created. You can `cd` to a different location first if you'd prefer to install elsewhere.
+1. **Creates an installation directory** called `daaf-docker/` in whatever folder your terminal is currently in, containing the Dockerfile, docker-compose.yml, and convenience scripts (`run_daaf`, `backup_daaf`, and `rebuild_daaf`). For example, if you open your terminal and it starts in your home folder (`~` on Mac/Linux, `C:\Users\YourName` on Windows), that's where `daaf-docker/` will be created. You can `cd` to a different location first if you'd prefer to install elsewhere.
 2. **Builds the Docker image** with Python 3.12, 50+ data science packages, geospatial libraries, and Claude Code pre-installed. The first build downloads everything and takes a few minutes; subsequent rebuilds use Docker's layer cache and are much faster.
 3. **Downloads the DAAF repository** directly into the Docker volume inside the container. This gives you a full git repository.
 4. **Prints post-install instructions** showing you how to enter the container, launch Claude Code, and configure it.
@@ -433,16 +433,19 @@ DAAF is actively being developed and updated. If you'd like to pull in the lates
 
 ### If you installed with the one-line installer (recommended method)
 
-If you used `install.sh` or `install.ps1`, your DAAF container has a full git repository with a remote configured. Updating is a single command:
+If you used `install.sh` or `install.ps1`, your DAAF container has a full git repository with a remote configured. Updating is a single command run inside the container:
 
 ```bash
-# Navigate to your daaf-docker folder and enter the container (if you're not already inside)
+# Navigate to your daaf-docker folder and enter the container shell (if you're not already inside)
 cd daaf-docker
-docker compose exec daaf-docker bash
+bash run_daaf.sh bash        # macOS / Linux
+.\run_daaf.ps1 bash          # Windows
 
 # Run the update script
 bash /daaf/scripts/update.sh
 ```
+
+You can also enter the container manually with `docker compose exec daaf-docker bash` if you prefer.
 
 The update script handles everything for you:
 - **Checks for a remote** — if you used the manual install (no remote), it tells you how to add one
@@ -466,29 +469,35 @@ git stash pop
 git diff
 ```
 
-**If the Dockerfile changed** (new packages, updated Claude Code version, etc.), you'll also need to rebuild the Docker image. The update script will detect this automatically and print instructions. If you're updating manually, check whether `Dockerfile` appears in the `git pull` output — if so, exit the container, copy the updated files to your host, then rebuild:
+**If the Dockerfile changed** (new packages, updated Claude Code version, etc.), you'll also need to rebuild the Docker image. The update script will detect this automatically and print instructions. If you're updating manually, check whether `Dockerfile` appears in the `git pull` output — if so, exit the container and run the rebuild script:
 
 ```bash
 # Exit Claude Code and the container
 /exit
 exit
+
+# From your host terminal, navigate to your daaf-docker folder and rebuild
+cd daaf-docker
+bash rebuild_daaf.sh         # macOS / Linux
+.\rebuild_daaf.ps1           # Windows
 ```
 
-From your **host terminal**, navigate to your `daaf-docker` folder, copy the updated Docker files out of the container, then rebuild:
+The rebuild script handles everything: it copies the updated Dockerfile and docker-compose.yml from the container to the host, then rebuilds the image. This copy step is needed because `docker compose up --build` reads the host copy of the Dockerfile, not the one inside the container.
+
+<details>
+<summary>Manual alternative (if you prefer individual commands)</summary>
 
 ```bash
-# Navigate to your daaf-docker folder
 cd daaf-docker
-
-# Copy updated files from the container to the host build directory
 docker cp daaf-daaf-docker-1:/daaf/Dockerfile ./Dockerfile
 docker cp daaf-daaf-docker-1:/daaf/docker-compose.yml ./docker-compose.yml
-
-# Then rebuild
 docker compose up -d --build
 ```
 
-The copy step must come **before** the rebuild — `docker compose up --build` reads the host copy of the Dockerfile, so it needs to be up to date first. Most updates don't change the Dockerfile, so usually `git pull` inside the container is all you need.
+The copy step must come **before** the rebuild.
+</details>
+
+Most updates don't change the Dockerfile, so usually `git pull` inside the container is all you need.
 
 **Prefer to update to specific releases only?** If you'd rather update in discrete, tested versions instead of tracking the latest changes on `main`, you can check out a specific tag:
 
@@ -507,13 +516,12 @@ Check the [Releases page](https://github.com/DAAF-Contribution-Community/daaf/re
 The assistant uses a python library called "marimo" to create streamlined python code "notebooks" as part of its analysis. It can also use this library to create nice, interactive dashboards for you of analyses it has completed. To **view** one in your browser:
 
 ```bash
-# Navigate to your daaf-docker folder
+# Navigate to your daaf-docker folder and enter the container shell
 cd daaf-docker
-# Make sure Docker Desktop is running on your computer, then start the Docker container:
-docker compose up -d
-# Enter into the Docker container again
-docker compose exec daaf-docker bash
-# Inside the container, you can run the following command to view a notebook
+bash run_daaf.sh bash        # macOS / Linux
+.\run_daaf.ps1 bash          # Windows
+
+# Inside the container, run the following command to view a notebook
 # (replace the path with your actual notebook)
 marimo run 'research/YYYY-MM-DD_Title/YYYY-MM-DD_Notebook_Name.py' --host 0.0.0.0 --port 2718 --headless
 ```
@@ -526,6 +534,8 @@ To **edit** a notebook interactively, use `marimo edit` instead of `marimo run`:
 marimo edit 'research/YYYY-MM-DD_Title/YYYY-MM-DD_Notebook_Name.py' --host 0.0.0.0 --port 2718 --headless
 ```
 
+If you prefer manual Docker commands, you can also enter the container with `docker compose up -d` followed by `docker compose exec daaf-docker bash`.
+
 ---
 
 ## Viewing Session Logs in Your Browser
@@ -533,7 +543,11 @@ marimo edit 'research/YYYY-MM-DD_Title/YYYY-MM-DD_Notebook_Name.py' --host 0.0.0
 DAAF can generate an interactive timeline viewer for your session logs, letting you visually explore what happened during an analysis -- every tool call, subagent dispatch, and file reference, organized chronologically.
 
 ```bash
-# Inside the container:
+# Enter the container shell (if you're not already inside)
+cd daaf-docker
+bash run_daaf.sh bash        # macOS / Linux
+.\run_daaf.ps1 bash          # Windows
+
 # 1. Collect logs into your project (if not already done)
 bash /daaf/scripts/collect_session_logs.sh /daaf/research/YYYY-MM-DD_Your_Project
 

@@ -5,8 +5,8 @@
 #   irm https://raw.githubusercontent.com/DAAF-Contribution-Community/daaf/main/install.ps1 | iex
 #
 # What this script does:
-#   1. Creates a minimal build directory (2 files, ~5 KB)
-#   2. Downloads the Dockerfile and docker-compose.yml
+#   1. Creates a minimal build directory (~5 KB)
+#   2. Downloads the Dockerfile, docker-compose.yml, and convenience scripts
 #   3. Builds the Docker image (Python, data science stack, Claude Code)
 #   4. Clones the full DAAF repository into the Docker volume
 #   5. Prints instructions for first launch
@@ -60,6 +60,7 @@ try {
     Invoke-WebRequest -UseBasicParsing -Uri "$RawBase/docker-compose.yml"   -OutFile "$InstallDir\docker-compose.yml"
     Invoke-WebRequest -UseBasicParsing -Uri "$RawBase/run_daaf.ps1"         -OutFile "$InstallDir\run_daaf.ps1"
     Invoke-WebRequest -UseBasicParsing -Uri "$RawBase/backup_daaf.ps1"      -OutFile "$InstallDir\backup_daaf.ps1"
+    Invoke-WebRequest -UseBasicParsing -Uri "$RawBase/rebuild_daaf.ps1"     -OutFile "$InstallDir\rebuild_daaf.ps1"
 } catch {
     Write-Host ""
     Write-Host "ERROR: Failed to download installation files from branch '$Branch'." -ForegroundColor Red
@@ -148,28 +149,32 @@ Write-Host "=========================================="
 Write-Host ""
 Write-Host "To start using DAAF:"
 Write-Host ""
-Write-Host "  1. Navigate to the install directory and enter the container:"
+Write-Host "  1. Navigate to the install directory and launch Claude Code:"
 Write-Host "     cd $InstallDir"
-Write-Host "     docker compose exec daaf-docker bash"
+Write-Host "     .\run_daaf.ps1"
 Write-Host ""
-Write-Host "  2. Launch Claude Code by just typing:"
-Write-Host "     claude"
+Write-Host "     This starts the container (if needed) and launches Claude Code directly."
 Write-Host ""
-Write-Host "  3. On first launch, you'll be asked to authenticate with your Anthropic account."
+Write-Host "  2. On first launch, you'll be asked to authenticate with your Anthropic account."
 Write-Host ""
-Write-Host "  4. Configure Claude Code (required):"
+Write-Host "  3. Configure Claude Code (required):"
 Write-Host "     - Type /config and set:"
 Write-Host "         Auto-compact  -> False"
 Write-Host "         Verbose output -> True"
 Write-Host "     - Press ESC to return to the chat"
 Write-Host ""
+Write-Host "Convenience scripts (in $InstallDir):"
+Write-Host "  .\run_daaf.ps1               Launch Claude Code (starts container if needed)"
+Write-Host "  .\run_daaf.ps1 bash           Enter the container shell (e.g., for API keys)"
+Write-Host "  .\backup_daaf.ps1             Back up the Docker volume to a dated folder"
+Write-Host "  .\rebuild_daaf.ps1            Copy build files from container and rebuild image"
+Write-Host ""
+Write-Host "Manual alternative (if you prefer individual commands):"
+Write-Host "  docker compose exec daaf-docker bash   # enter the container"
+Write-Host "  claude                                  # launch Claude Code"
+Write-Host ""
 Write-Host "For day-to-day usage and more, see:"
 Write-Host "  https://github.com/$Repo/blob/$Branch/user_reference/01_installation_and_quickstart.md"
-Write-Host ""
-Write-Host "Utility scripts (in $InstallDir):"
-Write-Host "  .\run_daaf.ps1               Launch Claude Code (starts container if needed)"
-Write-Host "  .\run_daaf.ps1 bash           Enter the container shell"
-Write-Host "  .\backup_daaf.ps1             Back up the Docker volume to a dated folder"
 Write-Host ""
 Write-Host "Keep this directory - it contains the Dockerfile needed for rebuilds."
 Write-Host ""

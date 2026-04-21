@@ -42,7 +42,7 @@ The authoritative source for county-level U.S. presidential election returns spa
 >    ```bash
 >    export HARVARD_DATAVERSE_API_KEY="your_token_here"
 >    ```
->    For Docker users: run this inside the container after `docker compose exec daaf-docker bash`
+>    For Docker users: enter the container shell with `bash run_daaf.sh bash` (or `.\run_daaf.ps1 bash` on Windows)
 >    but before `claude`. To make it persistent across sessions, add it to `~/.bashrc`.
 >
 > **If the key is missing**, any fetch script will fail with a `KeyError: 'HARVARD_DATAVERSE_API_KEY'`.

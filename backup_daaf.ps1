@@ -27,7 +27,8 @@ Write-Host ""
 
 # --- Preflight ---
 if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
-    Write-Host "ERROR: Docker is not installed or not in your PATH." -ForegroundColor Red
+    Write-Host "ERROR: Docker is either not installed or not configured properly in your system PATH to allow it to be used from PowerShell." -ForegroundColor Red
+    Write-Host "Please install Docker Desktop: https://www.docker.com/products/docker-desktop/"
     exit 1
 }
 

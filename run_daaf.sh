@@ -22,7 +22,8 @@ if [ ! -f "docker-compose.yml" ]; then
 fi
 
 if ! command -v docker &> /dev/null; then
-    echo "ERROR: Docker is not installed or not in your PATH."
+    echo "ERROR: Docker is either not installed or not configured properly in your system PATH to allow it to be used from Terminal."
+    echo "Please install Docker Desktop: https://www.docker.com/products/docker-desktop/"
     exit 1
 fi
 
