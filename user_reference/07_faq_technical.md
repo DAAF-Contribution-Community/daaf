@@ -355,7 +355,7 @@ To make it persist across sessions, add the export line to `~/.bashrc` inside th
 echo 'export HARVARD_DATAVERSE_API_KEY="your_token_here"' >> ~/.bashrc
 ```
 
-See also: [Installation Guide — Data Source API Keys](01_installation_and_quickstart.md#step-8-optional-set-up-data-source-api-keys)
+See also: [Installation Guide — Data Source API Keys](01_installation_and_quickstart.md#optional-set-up-data-source-api-keys)
 
 ### Q: How current is the education data?
 
