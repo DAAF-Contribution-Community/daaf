@@ -153,7 +153,7 @@ This fetches the installer itself from the specified branch, and also controls t
 
 #### What the installer does
 
-1. **Creates an installation directory** called `daaf-docker/` in whatever folder your terminal is currently in, containing the Dockerfile, docker-compose.yml, and convenience scripts (`run_daaf`, `backup_daaf`, and `rebuild_daaf`). For example, if you open your terminal and it starts in your home folder (`~` on Mac/Linux, `C:\Users\YourName` on Windows), that's where `daaf-docker/` will be created. You can `cd` to a different location first if you'd prefer to install elsewhere.
+1. **Creates an installation directory** called `daaf-docker/` in whatever folder your terminal is currently in, containing the Dockerfile, docker-compose.yml, and convenience scripts (`run_daaf`, `view_logs`, `backup_daaf`, `rebuild_daaf`, and `update_daaf`). For example, if you open your terminal and it starts in your home folder (`~` on Mac/Linux, `C:\Users\YourName` on Windows), that's where `daaf-docker/` will be created. You can `cd` to a different location first if you'd prefer to install elsewhere.
 2. **Builds the Docker image** with Python 3.12, 50+ data science packages, geospatial libraries, and Claude Code pre-installed. The first build downloads everything and takes a few minutes; subsequent rebuilds use Docker's layer cache and are much faster.
 3. **Downloads the DAAF repository** directly into the Docker volume inside the container. This gives you a full git repository.
 4. **Prints post-install instructions** showing you how to enter the container, launch Claude Code, and configure it.
@@ -365,6 +365,17 @@ docker compose down
 # You can then just close your terminal. All the DAAF files and research outputs remain safe and persist in the Docker volume we created at installation time
 ```
 
+### Reviewing a Completed Session
+
+After ending a session, you can review everything that happened using the **DAAF Log Explorer** — an interactive timeline that shows orchestrator actions, subagent dispatches, tool calls, and file references in your browser. Run it from your `daaf-docker` folder (no need to re-enter the container):
+
+```bash
+bash view_logs.sh            # macOS / Linux
+.\view_logs.ps1              # Windows
+```
+
+Open the URL it prints in your browser. Press Ctrl+C to stop the server. See [**Viewing Session Logs in Your Browser**](#viewing-session-logs-in-your-browser) for more details, including per-project viewing.
+
 ## How to Manage DAAF Project Files and Output
 
 Your research files, data, and outputs live inside the **Docker volume** we created during installation — a storage area managed by Docker. Think of the `daaf-docker/` folder on your computer as the "recipe" that was used to set everything up, while the Docker volume is the actual "kitchen" where all the work happens.
@@ -415,7 +426,7 @@ cd daaf-docker
 </tr>
 </table>
 
-The backup script creates a date-versioned folder (e.g., `2026-04-21_daaf_backup/`) in your `daaf-docker` directory. Multiple backups on the same day are automatically suffixed (`2026-04-21a_daaf_backup/`, `2026-04-21b_daaf_backup/`, etc.). Move or copy these folders to another location on your computer (or an external drive) for safekeeping.
+The backup script creates a date-versioned folder (e.g., `2026-04-21_daaf_backup/`) in your `daaf-docker` directory. Multiple backups on the same day are automatically suffixed (`2026-04-21a_daaf_backup/`, `2026-04-21b_daaf_backup/`, etc.). Feel free to move or copy these folders to another location on your computer (or an external drive) for safekeeping.
 
 You can also back up manually using Docker Desktop's GUI: go into the Docker volume file viewer (see above) and download the whole `daaf` or `research` folder to somewhere else on your computer.
 
@@ -433,26 +444,37 @@ DAAF is actively being developed and updated. If you'd like to pull in the lates
 
 ### If you installed with the one-line installer (recommended method)
 
-If you used `install.sh` or `install.ps1`, your DAAF container has a full git repository with a remote configured. Updating is a single command run inside the container:
+Assuming you used `install.sh` or `install.ps1`, your DAAF container has a full git repository with a remote configured. Updating is a single command run from your `daaf-docker` folder on the host:
 
 ```bash
-# Navigate to your daaf-docker folder and enter the container shell (if you're not already inside)
 cd daaf-docker
-bash run_daaf.sh bash        # macOS / Linux
-.\run_daaf.ps1 bash          # Windows
 
-# Run the update script
-bash /daaf/scripts/update.sh
+bash update_daaf.sh          # macOS / Linux
+.\update_daaf.ps1            # Windows
 ```
 
-You can also enter the container manually with `docker compose exec daaf-docker bash` if you prefer.
-
 The update script handles everything for you:
-- **Checks for a remote** — if you used the manual install (no remote), it tells you how to add one
+- **Offers to back up first** — runs `backup_daaf` to create a full copy of your Docker volume before making any changes
+- **Checks for the GitHub remote copy** — if you used the manual install (no remote), it tells you how to add one
 - **Fetches and compares** — shows you how many new commits are available
 - **Checks for local edits** — if you've customized any framework files (CLAUDE.md, a skill, a template, etc.), it shows you exactly what you changed and presents options instead of overwriting anything
+- **Handles local commits** — if you've committed your own changes, it offers to merge or rebase them with the update
 - **Pulls safely** — if there are no local changes, it pulls the latest updates automatically
-- **Detects Dockerfile changes** — if the Dockerfile or docker-compose.yml changed, it prints the exact copy-back and rebuild commands you need to run on your host
+- **Offers Claude Code for conflicts** — if a merge conflict occurs, you can launch Claude Code directly to help resolve it interactively
+- **Syncs utility scripts** — automatically copies any updated host-side scripts (run, backup, rebuild, update) from the container
+- **Auto-rebuilds if needed** — if the Dockerfile or docker-compose.yml changed, it offers to run `rebuild_daaf` automatically
+
+By default, the update script auto-detects the remote's default branch (`main` or `master`). If you installed from a specific branch (e.g., `dev` or a release tag) and want to keep updating from that branch, set the `DAAF_BRANCH` environment variable — the same one used by the installer:
+
+```bash
+# macOS / Linux
+DAAF_BRANCH=dev bash update_daaf.sh
+
+# Windows PowerShell
+$env:DAAF_BRANCH = "dev"; .\update_daaf.ps1
+```
+
+If `DAAF_BRANCH` is not set, the updater defaults to `main` (or `master` if `main` doesn't exist). The script validates that the specified branch exists on the remote before proceeding.
 
 Your research files in `research/` are not tracked by git (they're local to your volume), so they are completely unaffected by updates.
 
@@ -540,22 +562,27 @@ If you prefer manual Docker commands, you can also enter the container with `doc
 
 ## Viewing Session Logs in Your Browser
 
-DAAF can generate an interactive timeline viewer for your session logs, letting you visually explore what happened during an analysis -- every tool call, subagent dispatch, and file reference, organized chronologically.
+DAAF includes an interactive timeline viewer (the **DAAF Log Explorer**) that lets you visually explore what happened during any session -- every tool call, subagent dispatch, and file reference, organized chronologically.
+
+**Quickest way -- from your host machine (no container shell needed):**
 
 ```bash
-# Enter the container shell (if you're not already inside)
 cd daaf-docker
-bash run_daaf.sh bash        # macOS / Linux
-.\run_daaf.ps1 bash          # Windows
-
-# 1. Collect logs into your project (if not already done)
-bash /daaf/scripts/collect_session_logs.sh /daaf/research/YYYY-MM-DD_Your_Project
-
-# 2. Generate the viewer and start the server
-bash /daaf/scripts/generate_log_viewer.sh /daaf/research/YYYY-MM-DD_Your_Project --serve
+bash view_logs.sh            # macOS / Linux
+.\view_logs.ps1              # Windows
 ```
 
-Then open the URL it prints (typically `http://localhost:2719/...`) in your browser. Press Ctrl+C to stop the server when done.
+This starts the container (if needed), generates the manifest from all sessions in the overarching session logs folder, and starts the server. Open the URL it prints in your browser. Press Ctrl+C to stop.
+
+**From inside the container** (for per-project viewing):
+
+```bash
+# 1. Copy and collect relevant logs into your project (if not already done)
+bash /daaf/scripts/collect_session_logs.sh /daaf/research/YYYY-MM-DD_Your_Project
+
+# 2. Generate the project-specific manifest and start the server
+bash /daaf/scripts/generate_log_viewer.sh /daaf/research/YYYY-MM-DD_Your_Project
+```
 
 Port 2719 is mapped in `docker-compose.yml` for this purpose, alongside port 2718 (Marimo notebooks).
 
@@ -571,7 +598,7 @@ Port 2719 is mapped in `docker-compose.yml` for this purpose, alongside port 271
 - **Container seems really slow to build the first time** — The first `docker compose up -d --build` downloads base images and installs all packages. This is a one-time cost — subsequent starts are fast since Docker caches everything.
 - **"I can't find my research files on my computer"** — With Docker volumes, your research files live inside Docker's managed storage, not in the project folder on your computer. See **How to Manage DAAF Project Files and Output** above for more information.
 - **"Port 2718 already in use" when trying to view Marimo notebooks** — Another process is using that port. Either stop it, or change the port mapping in `docker-compose.yml` (e.g., `"3000:2718"` to use port 3000 on your host).
-- **"Port 2719 already in use" when trying to view session logs** — Same fix: stop the conflicting process, or change the port mapping (e.g., `"3001:2719"`). Port 2719 is used by the session log viewer (`generate_log_viewer.sh --serve`).
+- **"Port 2719 already in use" when trying to view session logs** — Same fix: stop the conflicting process, or change the port mapping (e.g., `"3001:2719"`). Port 2719 is used by the session log viewer (`generate_log_viewer.sh`).
 - **Permission denied errors inside the container (especially on macOS)** — If you see errors like `Permission denied` when Claude tries to read or write files, the Docker volume likely has files owned by root or your host UID instead of the container's `appuser` (UID 1000). This is a known issue with Docker Desktop on macOS. The `docker-compose.yml` includes an init service (`daaf-init`) that automatically fixes file ownership on every startup. To resolve this: stop the container (`docker compose down`), then restart it (`docker compose up -d`) — the init service will repair permissions before the main container starts. If you still have issues, you can fix permissions manually:
   ```bash
   docker run --rm -v "daaf_daaf-data:/daaf" busybox chown -R 1000:1000 /daaf

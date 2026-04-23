@@ -179,30 +179,31 @@ You don't need to do anything -- just start a new session and recovery happens s
 
 Session logs are invaluable when something goes wrong. The Markdown logs show you exactly what the assistant did, in order -- every tool call, every file read/write, every subagent invocation, and the full output at each step.
 
-1. Find the relevant session log in `.claude/logs/sessions/` (sorted by timestamp)
-2. Open the `.md` file to review what happened in a readable format
-3. Look for the point where things went wrong -- you'll see the exact tool calls and their results
-4. When filing an issue, include relevant excerpts from the log (redact any sensitive data first)
+DAAF includes an interactive **Session Log Viewer** that renders your session transcripts as a visual timeline in your web browser. It shows the orchestrator's actions as a horizontal timeline bar, with subagent dispatches waterfalling downward. Click any block to see exactly what files were read, written, or executed -- with plain-language descriptions and clickable file references.
 
-The `.jsonl` file contains the complete raw transcript if deeper inspection is needed.
-
-### Q: Can I browse session logs visually instead of reading raw files?
-
-Yes. DAAF includes an interactive **Session Log Viewer** that renders your session transcripts as a visual timeline in your web browser. It shows the orchestrator's actions as a horizontal timeline bar, with subagent dispatches waterfalling downward. Click any block to see exactly what files were read, written, or executed -- with plain-language descriptions and clickable file references.
-
-To generate and view it:
+The quickest way to access this is from your host machine (no container shell needed):
 
 ```bash
-# First, collect logs into your project (if not already done)
-bash /daaf/scripts/collect_session_logs.sh /daaf/research/YYYY-MM-DD_Your_Project
-
-# Generate the viewer and start the server
-bash /daaf/scripts/generate_log_viewer.sh /daaf/research/YYYY-MM-DD_Your_Project --serve
+cd daaf-docker
+bash view_logs.sh            # macOS / Linux
+.\view_logs.ps1              # Windows
 ```
 
-Then open the URL it prints (typically `http://localhost:2719/research/.../logs/log_viewer.html`) in your browser. Press Ctrl+C to stop the server when you're done.
+This starts the container if needed, generates an activity manifest from all sessions, and starts the server. Open the URL it prints in the terminal into your browser.
 
-**Note:** The `--serve` flag requires port 2719 to be mapped in your `docker-compose.yml`. If you set up DAAF after this feature was added, it's already there. If not, add `- "2719:2719"` under the `ports:` section and restart your container with `docker compose down && docker compose up -d`.
+For more specific per-project session log viewing and diagnostics, you can also run it from a terminal inside the container:
+
+```bash
+bash /daaf/scripts/collect_session_logs.sh /daaf/research/YYYY-MM-DD_Your_Project
+bash /daaf/scripts/generate_log_viewer.sh /daaf/research/YYYY-MM-DD_Your_Project
+```
+
+**Note:** The server requires port 2719 to be mapped in your `docker-compose.yml`. If you set up DAAF after this feature was added, it's already there. If not, add `- "2719:2719"` under the `ports:` section and restart your container with `docker compose down && docker compose up -d`.
+
+Alternatively, DAAF also processes every individual log transcript into a more intuitive markdown file showing the flow of the conversation alongside tool calling segments.
+
+You can read these by finding the relevant `.md` session log in `.claude/logs/sessions/` (sorted by timestamp). The raw `.jsonl` file contains the complete raw transcript if deeper inspection is needed.
+
 
 ### Q: Are session logs shared or uploaded anywhere?
 
@@ -212,7 +213,7 @@ No. Session logs are gitignored and stay entirely on your local machine (specifi
 
 They serve very different purposes:
 
-**Session logs** are a complete, raw transcript of everything that happened in a Claude Code session. They're automatically generated, stored in `.claude/logs/`, and are primarily useful for debugging after the fact. Think of these as a security camera recording -- comprehensive but not curated.
+**Session logs** are a complete, raw transcript of everything that happened in a Claude Code session. They're automatically generated, stored in `.claude/logs/`, and are primarily useful for debugging after the fact. Think of these as a security camera recording -- comprehensive but not curated. You can browse them visually using the DAAF Log Explorer (`bash view_logs.sh` from your `daaf-docker` folder) rather than reading the raw files.
 
 **STATE.md** is a structured progress tracker that DAAF creates during full-pipeline analyses. It lives inside your project folder (`research/[project]/STATE.md`) and tracks what stage the analysis is at, which checkpoints have passed, what decisions were made, and what needs to happen next. It also accumulates the QA Findings Summary (aggregated quality review results across all stages), the Final Review Log (from the data-verifier's end-of-pipeline check), and any Runtime Risks encountered during execution. Its primary purpose is enabling **session recovery** -- if your session runs out of context (the model's working memory fills up), you can start a fresh session and STATE.md tells the new session exactly where to pick up. Think of this as a bookmark with detailed notes.
 

@@ -7,13 +7,16 @@ session_manifest.json for the HTML viewer.
 
 Usage:
     python3 generate_log_viewer.py <project_path>
+    python3 generate_log_viewer.py --logs-dir <logs_directory>
 
 Arguments:
     project_path: Absolute path to a DAAF research project
                   (e.g., /daaf/research/2026-03-29_College_...)
+    --logs-dir:   Direct path to a directory containing JSONL files
+                  (e.g., /daaf/.claude/logs/sessions for archive mode)
 
 Output:
-    {project_path}/logs/session_manifest.json
+    {logs_dir}/session_manifest.json
 """
 
 import argparse
@@ -116,32 +119,76 @@ def truncate(text, max_len):
     return text[:max_len - 3] + "..."
 
 
+def extract_bash_file_paths(command):
+    """Extract file paths from a Bash command string."""
+    import re
+    paths = []
+    # Match absolute paths (starting with /)
+    for match in re.finditer(r'(?:^|\s)(/\S+)', command):
+        p = match.group(1).rstrip(';,|&)')
+        # Skip common non-file arguments
+        if p in ('/', '/dev/null') or p.startswith('/proc/') or p.startswith('/sys/'):
+            continue
+        # Must look like a real file path (has at least one directory separator beyond root)
+        if '/' in p[1:]:
+            paths.append(strip_daaf_prefix(p))
+    return paths
+
+
 def tool_description(tool_name, tool_input):
     """Build human-readable description for a tool call."""
     inp = tool_input or {}
 
     if tool_name == "Read":
-        return f"Read: {strip_daaf_prefix(inp.get('file_path', ''))}"
+        path = strip_daaf_prefix(inp.get('file_path', ''))
+        desc = f"Read {path}"
+        offset = inp.get('offset')
+        limit = inp.get('limit')
+        if offset and limit:
+            end_line = offset + limit - 1
+            desc += f" (lines {offset}-{end_line})"
+        elif offset:
+            desc += f" (from line {offset})"
+        elif limit:
+            desc += f" (first {limit} lines)"
+        return desc
     elif tool_name == "Write":
-        return f"Wrote: {strip_daaf_prefix(inp.get('file_path', ''))}"
+        path = strip_daaf_prefix(inp.get('file_path', ''))
+        return f"Wrote {path}"
     elif tool_name == "Edit":
-        return f"Edited: {strip_daaf_prefix(inp.get('file_path', ''))}"
+        path = strip_daaf_prefix(inp.get('file_path', ''))
+        return f"Edited {path}"
     elif tool_name == "Bash":
         cmd = inp.get("command", "")
-        return f"Ran: {truncate(cmd, 100)}"
+        desc = inp.get("description", "")
+        if desc:
+            return f"Ran command: {desc}"
+        return f"Ran: {cmd}"
     elif tool_name == "Glob":
-        return f"File search: {inp.get('pattern', '')}"
+        pattern = inp.get('pattern', '')
+        path = inp.get('path', '')
+        desc = f"Searched for files matching {pattern}"
+        if path:
+            desc += f" in {strip_daaf_prefix(path)}"
+        return desc
     elif tool_name == "Grep":
-        desc = f"Content search: '{inp.get('pattern', '')}'"
+        pattern = inp.get('pattern', '')
+        desc = f"Searched file contents for '{pattern}'"
         if inp.get("path"):
             desc += f" in {strip_daaf_prefix(inp['path'])}"
+        mode = inp.get("output_mode", "")
+        if mode == "content":
+            desc += " (showing matches)"
+        elif mode == "count":
+            desc += " (counting matches)"
         return desc
     elif tool_name == "Skill":
-        return f"Loaded skill: {inp.get('skill', '')}"
+        skill_name = inp.get('skill', '')
+        return f"Loaded skill: {skill_name}"
     elif tool_name == "Agent":
         agent_type = inp.get("subagent_type", "agent")
         description = inp.get("description", "")
-        return f"Dispatched {agent_type}: {description}"
+        return f"Dispatched {agent_type} specialist: {description}"
     elif tool_name == "WebSearch":
         return f"Web search: '{inp.get('query', '')}'"
     elif tool_name == "WebFetch":
@@ -167,7 +214,25 @@ def tool_target(tool_name, tool_input):
         p = inp.get("path")
         if p:
             return strip_daaf_prefix(p)
+    elif tool_name == "Skill":
+        skill_name = inp.get("skill", "")
+        if skill_name:
+            return f".claude/skills/{skill_name}/SKILL.md"
+    elif tool_name == "Bash":
+        paths = extract_bash_file_paths(inp.get("command", ""))
+        if paths:
+            return paths[0]
     return None
+
+
+def tool_extra_targets(tool_name, tool_input):
+    """Extract additional file path targets beyond the primary one (e.g., multiple paths in Bash)."""
+    inp = tool_input or {}
+    if tool_name == "Bash":
+        paths = extract_bash_file_paths(inp.get("command", ""))
+        if len(paths) > 1:
+            return paths[1:]
+    return []
 
 
 def tool_category(tool_name):
@@ -203,6 +268,41 @@ def extract_user_text(content):
                     parts.append(block.get("text", ""))
         return "\n".join(parts)
     return ""
+
+
+# ---------------------------------------------------------------------------
+# Agent Frontmatter Parsing
+# ---------------------------------------------------------------------------
+
+
+def extract_agent_frontmatter_skills(agent_type):
+    """Extract skills list from an agent definition file's YAML frontmatter."""
+    if not agent_type:
+        return []
+    agent_file = os.path.join(DAAF_ROOT, ".claude", "agents", f"{agent_type}.md")
+    if not os.path.exists(agent_file):
+        return []
+    try:
+        import yaml
+        with open(agent_file, "r", encoding="utf-8") as f:
+            content = f.read(4096)
+        if not content.startswith("---"):
+            return []
+        end_idx = content.index("---", 3)
+        frontmatter = content[3:end_idx]
+        parsed = yaml.safe_load(frontmatter)
+        if not isinstance(parsed, dict):
+            return []
+        skills = parsed.get("skills")
+        if skills is None:
+            return []
+        if isinstance(skills, str):
+            return [skills]
+        if isinstance(skills, list):
+            return [str(s) for s in skills if s]
+        return []
+    except Exception:
+        return []
 
 
 # ---------------------------------------------------------------------------
@@ -421,7 +521,7 @@ def extract_activities_from_content(content, line_num):
                 activities.append({
                     "type": "text",
                     "tool": None,
-                    "description": truncate(text, 200),
+                    "description": text,
                     "target": None,
                     "line": line_num,
                     "resultLine": None,
@@ -435,11 +535,14 @@ def extract_activities_from_content(content, line_num):
             desc = tool_description(tname, tinput)
             target = tool_target(tname, tinput)
 
+            extras = tool_extra_targets(tname, tinput)
+
             activity = {
                 "type": cat,
                 "tool": tname,
                 "description": desc,
                 "target": target,
+                "extraTargets": extras if extras else None,
                 "line": line_num,
                 "resultLine": None,
                 "error": None,
@@ -512,9 +615,23 @@ def build_blocks(records, session_idx, file_rel):
                     if isinstance(block, dict) and block.get("type") == "tool_result":
                         tuid = block.get("tool_use_id")
                         if tuid:
+                            # Extract tool result content for search display
+                            result_content = ""
+                            raw_content = block.get("content", "")
+                            if isinstance(raw_content, str):
+                                result_content = raw_content
+                            elif isinstance(raw_content, list):
+                                rc_parts = []
+                                for rc_block in raw_content:
+                                    if isinstance(rc_block, dict) and rc_block.get("type") == "text":
+                                        rc_parts.append(rc_block.get("text", ""))
+                                    elif isinstance(rc_block, str):
+                                        rc_parts.append(rc_block)
+                                result_content = "\n".join(rc_parts)
                             tool_result_index[tuid] = {
                                 "resultLine": line_num,
                                 "error": block.get("is_error", False),
+                                "content": result_content,
                             }
 
             # Also check for Agent tool results
@@ -571,7 +688,7 @@ def build_blocks(records, session_idx, file_rel):
 
         if rtype == "user":
             content = msg.get("content", "")
-            summary = truncate(extract_user_text(content), 200)
+            summary = extract_user_text(content)
 
             blocks.append({
                 "id": block_id,
@@ -599,24 +716,17 @@ def build_blocks(records, session_idx, file_rel):
                         tri = tool_result_index[tuid]
                         act["resultLine"] = tri["resultLine"]
                         act["error"] = tri.get("error", False)
+                        # Capture search result content for display
+                        if act["tool"] in ("Glob", "Grep") and tri.get("content"):
+                            act["resultContent"] = truncate(tri["content"], 3000)
 
                 elif act["tool"] == "Agent":
-                    # Find matching Agent tool_use block
-                    for block_item in (content if isinstance(content, list) else []):
-                        if (isinstance(block_item, dict)
-                                and block_item.get("type") == "tool_use"
-                                and block_item.get("name") == "Agent"):
-                            tuid = block_item.get("id")
-                            tinput = block_item.get("input", {})
-
-                            if tuid and tuid in tool_result_index:
-                                tri = tool_result_index[tuid]
-                                act["resultLine"] = tri["resultLine"]
-                                act["error"] = tri.get("error", False)
-
-                            # Also check for agent return metadata
-                            # by scanning tool_result_index for matching agent type
-                            break
+                    # Use the activity's own tool_use_id for precise matching
+                    tuid = act.get("_tool_use_id")
+                    if tuid and tuid in tool_result_index:
+                        tri = tool_result_index[tuid]
+                        act["resultLine"] = tri["resultLine"]
+                        act["error"] = tri.get("error", False)
 
             # Collect Agent dispatches for subagent linking
             for block_item in (content if isinstance(content, list) else []):
@@ -746,14 +856,6 @@ def process_subagent_file(filepath, file_rel, agent_short_id, orchestrator_dispa
     agent_full_id = first_rec.get("agentId", "")
     start_time = first_rec.get("timestamp", "")
 
-    # Find matching dispatch in orchestrator by agentId
-    dispatch_info = None
-    dispatch_tuid = None
-    for tuid, dinfo in orchestrator_dispatches.items():
-        # We need to match by checking the tool result that returned the agentId
-        # The dispatch is linked when the orchestrator's Agent tool_result contains the agentId
-        pass
-
     # Find the last assistant record (the final report)
     last_assistant_line = None
     last_assistant_rec = None
@@ -771,21 +873,52 @@ def process_subagent_file(filepath, file_rel, agent_short_id, orchestrator_dispa
                 last_assistant_rec = rec
                 break
 
-    # Extract the dispatch prompt (first user record content)
+    # Extract the dispatch prompt (first user record content) — full text, no truncation
     prompt_preview = ""
     if first_rec.get("type") == "user":
         content = first_rec.get("message", {}).get("content", "")
         prompt_text = extract_text_from_content(content)
-        prompt_preview = truncate(prompt_text, 500)
+        prompt_preview = prompt_text
 
-    # Extract final report text
+    # Extract final report text — full text, no truncation
     report_preview = ""
     report_subagent_line = None
     if last_assistant_rec:
         content = last_assistant_rec.get("message", {}).get("content", [])
         report_text = extract_text_from_content(content)
-        report_preview = truncate(report_text, 500)
+        report_preview = report_text
         report_subagent_line = last_assistant_line or None
+
+    # Build tool result index for subagent (mirrors build_blocks logic)
+    sa_tool_result_index = {}
+    for line_num, rec in records:
+        if rec.get("type") != "user":
+            continue
+        content = rec.get("message", {}).get("content", [])
+        if not isinstance(content, list):
+            continue
+        for block in content:
+            if isinstance(block, dict) and block.get("type") == "tool_result":
+                tuid = block.get("tool_use_id")
+                if not tuid:
+                    continue
+                result_content = ""
+                raw_content = block.get("content", "")
+                if isinstance(raw_content, str):
+                    result_content = raw_content
+                elif isinstance(raw_content, list):
+                    rc_parts = []
+                    for rc_block in raw_content:
+                        if isinstance(rc_block, dict) and rc_block.get("type") == "text":
+                            rc_parts.append(rc_block.get("text", ""))
+                        elif isinstance(rc_block, str):
+                            rc_parts.append(rc_block)
+                    result_content = "\n".join(rc_parts)
+                sa_tool_result_index[tuid] = {
+                    "resultLine": line_num,
+                    "error": block.get("is_error", False),
+                    "content": result_content,
+                }
 
     # Build activities for subagent
     subagent_activities = []
@@ -793,6 +926,15 @@ def process_subagent_file(filepath, file_rel, agent_short_id, orchestrator_dispa
         if rec.get("type") == "assistant":
             content = rec.get("message", {}).get("content", [])
             acts = extract_activities_from_content(content, line_num)
+            # Back-patch tool result lines and search content
+            for act in acts:
+                tuid = act.get("_tool_use_id")
+                if tuid and tuid in sa_tool_result_index:
+                    tri = sa_tool_result_index[tuid]
+                    act["resultLine"] = tri["resultLine"]
+                    act["error"] = tri.get("error", False)
+                    if act.get("tool") in ("Glob", "Grep") and tri.get("content"):
+                        act["resultContent"] = truncate(tri["content"], 3000)
             subagent_activities.extend(acts)
 
     # Calculate totals from records
@@ -864,6 +1006,14 @@ def link_subagents_to_dispatches(subagents, agent_dispatches, orch_records, orch
         aid = tur.get("agentId", "")
         if aid:
             source_tool_uuid = rec.get("sourceToolAssistantUUID", "")
+            # Extract tool_use_id from the tool_result block for precise dispatch matching
+            tool_use_id = None
+            content = rec.get("message", {}).get("content", [])
+            if isinstance(content, list):
+                for cblock in content:
+                    if isinstance(cblock, dict) and cblock.get("type") == "tool_result":
+                        tool_use_id = cblock.get("tool_use_id")
+                        break
             agent_result_map[aid] = {
                 "line": line_num,
                 "agentType": tur.get("agentType", ""),
@@ -872,6 +1022,7 @@ def link_subagents_to_dispatches(subagents, agent_dispatches, orch_records, orch
                 "totalToolUseCount": tur.get("totalToolUseCount"),
                 "prompt": tur.get("prompt", ""),
                 "sourceToolAssistantUUID": source_tool_uuid,
+                "tool_use_id": tool_use_id,
             }
 
     # Also build a map from sourceToolAssistantUUID -> dispatch info
@@ -926,10 +1077,16 @@ def link_subagents_to_dispatches(subagents, agent_dispatches, orch_records, orch
             if result_info.get("agentType"):
                 sa["agentType"] = result_info["agentType"]
 
-            # Find the dispatch line via sourceToolAssistantUUID
-            source_uuid = result_info.get("sourceToolAssistantUUID", "")
-            if source_uuid and source_uuid in uuid_to_dispatch:
-                dispatch = uuid_to_dispatch[source_uuid]
+            # Match dispatch by tool_use_id first (precise), then UUID (fallback)
+            dispatch = None
+            tuid = result_info.get("tool_use_id")
+            if tuid and tuid in agent_dispatches:
+                dispatch = agent_dispatches[tuid]
+            else:
+                source_uuid = result_info.get("sourceToolAssistantUUID", "")
+                if source_uuid and source_uuid in uuid_to_dispatch:
+                    dispatch = uuid_to_dispatch[source_uuid]
+            if dispatch:
                 sa["invocation"]["orchestratorLine"] = dispatch["line"]
                 if not sa["agentType"]:
                     sa["agentType"] = dispatch.get("agentType", "")
@@ -945,7 +1102,7 @@ def link_subagents_to_dispatches(subagents, agent_dispatches, orch_records, orch
         if not sa["label"] and sa["invocation"]["promptPreview"]:
             # Use first line of prompt as label
             first_line_text = sa["invocation"]["promptPreview"].split("\n")[0]
-            sa["label"] = truncate(first_line_text, 80)
+            sa["label"] = first_line_text
 
 
 # ---------------------------------------------------------------------------
@@ -953,7 +1110,7 @@ def link_subagents_to_dispatches(subagents, agent_dispatches, orch_records, orch
 # ---------------------------------------------------------------------------
 
 
-def process_session(session_idx, session_prefix, session_files, project_path):
+def process_session(session_idx, session_prefix, session_files):
     """Process a single session (orchestrator + subagents). Returns a session dict."""
     orch_path = session_files["orchestrator"]
     if not orch_path or not os.path.exists(orch_path):
@@ -970,6 +1127,21 @@ def process_session(session_idx, session_prefix, session_files, project_path):
         return None
 
     records = merge_streaming_chunks(raw_records)
+
+    # Extract DAAF version from companion .md file
+    daaf_version = ""
+    md_path = orch_path.replace(".jsonl", ".md")
+    if os.path.exists(md_path):
+        try:
+            with open(md_path, "r", encoding="utf-8", errors="replace") as f:
+                for md_line in f:
+                    if md_line.startswith("**DAAF Version:**"):
+                        daaf_version = md_line.split("**DAAF Version:**")[1].strip()
+                        break
+                    if md_line.startswith("---"):
+                        break
+        except Exception:
+            pass
 
     # Extract session metadata from first meaningful record
     full_session_id = ""
@@ -1017,6 +1189,11 @@ def process_session(session_idx, session_prefix, session_files, project_path):
     # Link subagents to their orchestrator dispatches
     link_subagents_to_dispatches(subagents, agent_dispatches, records, orch_file_rel)
 
+    # Enrich subagents with frontmatter skills from agent definitions
+    for sa in subagents:
+        agent_type = sa.get("agentType", "")
+        sa["frontmatterSkills"] = extract_agent_frontmatter_skills(agent_type)
+
     # Also enrich agent-type activities in blocks with subagent IDs
     for block in blocks:
         for act in block.get("activities", []):
@@ -1037,6 +1214,7 @@ def process_session(session_idx, session_prefix, session_files, project_path):
         "durationSec": duration_between(start_time, end_time),
         "model": model,
         "cliVersion": cli_version,
+        "daafVersion": daaf_version,
         "gitBranch": git_branch,
         "orchestratorFile": orch_file_rel,
         "blocks": blocks,
@@ -1058,23 +1236,33 @@ def main():
     )
     parser.add_argument(
         "project_path",
+        nargs="?",
         help="Absolute path to a DAAF research project"
+    )
+    parser.add_argument(
+        "--logs-dir",
+        help="Direct path to directory containing JSONL files (overrides project_path/logs)"
     )
     args = parser.parse_args()
 
-    project_path = os.path.abspath(args.project_path)
-    logs_dir = os.path.join(project_path, "logs")
-
-    if not os.path.isdir(project_path):
-        print(f"ERROR: Project path does not exist: {project_path}")
-        sys.exit(1)
+    if args.logs_dir:
+        logs_dir = os.path.abspath(args.logs_dir)
+        project_name = "DAAF Session Archive"
+        project_rel = strip_daaf_prefix(os.path.dirname(logs_dir))
+    elif args.project_path:
+        project_path = os.path.abspath(args.project_path)
+        logs_dir = os.path.join(project_path, "logs")
+        project_name = os.path.basename(project_path)
+        project_rel = strip_daaf_prefix(project_path)
+    else:
+        parser.error("Either project_path or --logs-dir is required")
 
     if not os.path.isdir(logs_dir):
-        print(f"ERROR: No logs/ directory found in {project_path}")
+        print(f"ERROR: Logs directory does not exist: {logs_dir}")
         sys.exit(1)
 
     print(f"DAAF Log Manifest Builder")
-    print(f"Project: {project_path}")
+    print(f"Project: {project_name}")
     print(f"Logs dir: {logs_dir}")
     print()
 
@@ -1093,7 +1281,7 @@ def main():
     total_subagents = 0
 
     for idx, (prefix, files) in enumerate(sorted(session_groups.items())):
-        session_data = process_session(idx, prefix, files, project_path)
+        session_data = process_session(idx, prefix, files)
         if session_data:
             sessions.append(session_data)
             total_subagents += len(session_data.get("subagents", []))
@@ -1101,15 +1289,12 @@ def main():
     # Sort sessions chronologically
     sessions.sort(key=lambda s: s.get("startTime", ""))
 
-    # Build project-relative path
-    project_rel = strip_daaf_prefix(project_path)
-
     # Build manifest
     manifest = {
         "version": 1,
         "generated": iso_timestamp(),
         "project": {
-            "name": os.path.basename(project_path),
+            "name": project_name,
             "path": project_rel,
         },
         "sessions": sessions,
@@ -1121,6 +1306,8 @@ def main():
             return {k: strip_internal(v) for k, v in obj.items() if not k.startswith("_")}
         if isinstance(obj, list):
             return [strip_internal(item) for item in obj]
+        if isinstance(obj, set):
+            return list(obj)
         return obj
 
     manifest = strip_internal(manifest)

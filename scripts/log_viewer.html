@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>DAAF Session Viewer</title>
+<title>DAAF Log Explorer</title>
 <style>
 /* --- Reset & Base --- */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -22,47 +22,39 @@ body {
 .header {
   background: #1a1a2e;
   color: #fff;
-  padding: 12px 20px;
+  padding: 8px 20px;
   flex-shrink: 0;
-}
-.header h1 {
-  font-size: 1.15rem;
-  font-weight: 600;
-  letter-spacing: 0.02em;
-}
-.header .project-name {
-  font-size: 0.85rem;
-  color: #94a3b8;
-  margin-top: 2px;
-  font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
-}
-
-/* --- Session Tabs --- */
-.session-tabs {
   display: flex;
-  background: #e2e8f0;
-  border-bottom: 1px solid #cbd5e1;
-  flex-shrink: 0;
-  overflow-x: auto;
+  align-items: center;
+  gap: 16px;
 }
-.session-tab {
-  padding: 8px 18px;
-  cursor: pointer;
-  font-size: 0.85rem;
-  font-weight: 500;
-  color: #475569;
-  border-bottom: 2px solid transparent;
+.header h1 { font-size: 1.15rem; font-weight: 600; letter-spacing: 0.02em; white-space: nowrap; }
+.header .project-name {
+  font-size: 0.82rem;
+  color: #94a3b8;
+  font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
-  transition: color 0.15s, border-color 0.15s;
+  flex: 1;
+  min-width: 0;
 }
-.session-tab:hover { color: #1a1a2e; }
-.session-tab.active {
-  color: #1a1a2e;
-  border-bottom-color: #3b82f6;
-  background: #f8f9fa;
+.header .session-select {
+  background: #2d2d4e;
+  color: #e2e8f0;
+  border: 1px solid #475569;
+  border-radius: 4px;
+  padding: 4px 8px;
+  font-size: 0.8rem;
+  cursor: pointer;
+  flex-shrink: 0;
+  max-width: 360px;
 }
+.header .session-select:hover { border-color: #3b82f6; }
 
-/* --- Session Stats Bar --- */
+/* (session tabs replaced by header dropdown) */
+
+/* --- Stats Bar --- */
 .stats-bar {
   display: flex;
   gap: 24px;
@@ -86,16 +78,14 @@ body {
   min-height: 0;
 }
 
-/* --- Timeline Panel (top ~60%) --- */
+/* --- Timeline Panel (top) --- */
 .timeline-panel {
-  flex: 6;
+  flex: 3;
   overflow-y: auto;
   overflow-x: hidden;
   padding: 16px 20px;
-  min-height: 0;
+  min-height: 100px;
 }
-
-/* --- Section Labels --- */
 .section-label {
   font-size: 0.7rem;
   font-weight: 700;
@@ -105,21 +95,38 @@ body {
   margin-bottom: 8px;
 }
 
-/* --- Orchestrator Timeline --- */
+/* --- Unified Timeline --- */
+/* --- Scroll Proxy (top scrollbar for timeline) --- */
+.scroll-proxy {
+  overflow-x: auto;
+  overflow-y: hidden;
+  height: 12px;
+  min-height: 12px;
+  flex-shrink: 0;
+}
+.scroll-proxy-inner {
+  height: 1px;
+}
 .timeline-row {
   display: flex;
-  align-items: stretch;
+  align-items: flex-start;
   gap: 2px;
   overflow-x: auto;
-  padding-bottom: 8px;
-  margin-bottom: 16px;
+  padding-bottom: 4px;
   min-height: 48px;
+  scrollbar-width: none;           /* Firefox: hide bottom scrollbar */
+}
+.timeline-row::-webkit-scrollbar {
+  display: none;                   /* Chrome/Safari/Edge: hide bottom scrollbar */
+}
+.timeline-column {
+  flex-shrink: 0;
+  min-width: 28px;
+  display: flex;
+  flex-direction: column;
 }
 .timeline-block {
-  flex-shrink: 0;
-  min-width: 32px;
-  max-width: 400px;
-  height: 44px;
+  height: 36px;
   border-radius: 4px;
   cursor: pointer;
   display: flex;
@@ -165,7 +172,7 @@ body {
   font-size: 0.72rem;
   font-weight: 400;
   white-space: nowrap;
-  max-width: 300px;
+  max-width: 350px;
   overflow: hidden;
   text-overflow: ellipsis;
   pointer-events: none;
@@ -183,24 +190,24 @@ body {
 }
 .timeline-block:hover .block-tooltip { display: block; }
 
-/* --- Subagent Waterfall --- */
-.waterfall-area {
-  margin-bottom: 16px;
+/* --- Subagent Area (nested below orchestrator block) --- */
+.subagent-area {
+  background: rgba(0, 0, 0, 0.03);
+  border-radius: 0 0 4px 4px;
+  padding: 4px 2px 2px 2px;
+  margin-top: 1px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
 }
-.waterfall-lane {
-  position: relative;
-  height: 32px;
-  margin-bottom: 3px;
-}
-.waterfall-block {
-  position: absolute;
-  height: 28px;
-  border-radius: 4px;
+.subagent-bar {
+  height: 24px;
+  border-radius: 3px;
   cursor: pointer;
   display: flex;
   align-items: center;
-  padding: 0 8px;
-  font-size: 0.68rem;
+  padding: 0 6px;
+  font-size: 0.65rem;
   font-weight: 600;
   color: #fff;
   overflow: hidden;
@@ -208,45 +215,58 @@ body {
   white-space: nowrap;
   transition: transform 0.1s, box-shadow 0.1s;
   border: 1px solid rgba(255,255,255,0.2);
+  min-width: 20px;
 }
-.waterfall-block:hover {
+.subagent-bar:hover {
   transform: scaleY(1.1);
   box-shadow: 0 2px 8px rgba(0,0,0,0.2);
   z-index: 2;
 }
-.waterfall-block.selected {
+.subagent-bar.selected {
   outline: 2px solid #1a1a2e;
   outline-offset: 1px;
   box-shadow: 0 0 0 4px rgba(59,130,246,0.25);
-  transform: scaleY(1.1);
   z-index: 3;
 }
 /* Agent type colors */
-.waterfall-block.agent-search-agent { background: #f59e0b; }
-.waterfall-block.agent-source-researcher { background: #8b5cf6; }
-.waterfall-block.agent-research-executor { background: #ef4444; }
-.waterfall-block.agent-code-reviewer { background: #06b6d4; }
-.waterfall-block.agent-data-planner { background: #ec4899; }
-.waterfall-block.agent-research-synthesizer { background: #f97316; }
-.waterfall-block.agent-plan-checker { background: #84cc16; }
-.waterfall-block.agent-report-writer { background: #a855f7; }
-.waterfall-block.agent-data-verifier { background: #0ea5e9; }
-.waterfall-block.agent-notebook-assembler { background: #64748b; }
-.waterfall-block.agent-debugger { background: #dc2626; }
-.waterfall-block.agent-integration-checker { background: #059669; }
-.waterfall-block.agent-data-ingest { background: #d946ef; }
-.waterfall-block.agent-framework-engineer { background: #7c3aed; }
-.waterfall-block.agent-default { background: #6b7280; }
+.subagent-bar.agent-search-agent { background: #f59e0b; }
+.subagent-bar.agent-source-researcher { background: #8b5cf6; }
+.subagent-bar.agent-research-executor { background: #ef4444; }
+.subagent-bar.agent-code-reviewer { background: #06b6d4; }
+.subagent-bar.agent-data-planner { background: #ec4899; }
+.subagent-bar.agent-research-synthesizer { background: #f97316; }
+.subagent-bar.agent-plan-checker { background: #84cc16; }
+.subagent-bar.agent-report-writer { background: #a855f7; }
+.subagent-bar.agent-data-verifier { background: #0ea5e9; }
+.subagent-bar.agent-notebook-assembler { background: #64748b; }
+.subagent-bar.agent-debugger { background: #dc2626; }
+.subagent-bar.agent-integration-checker { background: #059669; }
+.subagent-bar.agent-data-ingest { background: #d946ef; }
+.subagent-bar.agent-framework-engineer { background: #7c3aed; }
+.subagent-bar.agent-default { background: #6b7280; }
 
-/* Connection lines from orchestrator to subagent */
-.waterfall-connector {
-  position: absolute;
-  border-left: 1px dashed #94a3b8;
-  pointer-events: none;
-  z-index: 0;
+/* --- Unlinked Subagents (fallback section) --- */
+.unlinked-section { margin-top: 12px; }
+.unlinked-lane {
+  position: relative;
+  height: 28px;
+  margin-bottom: 3px;
+}
+.unlinked-bar {
+  height: 24px;
+  border-radius: 3px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 8px;
+  font-size: 0.65rem;
+  font-weight: 600;
+  color: #fff;
+  margin-right: 4px;
+  border: 1px solid rgba(255,255,255,0.2);
 }
 
-/* --- Resize Handle --- */
+/* --- Resize Handle (horizontal, between timeline and bottom) --- */
 .resize-handle {
   height: 5px;
   background: #e2e8f0;
@@ -268,15 +288,24 @@ body {
   border-bottom: 1px solid #94a3b8;
 }
 
-/* --- Detail Panel (bottom ~40%) --- */
-.detail-panel {
-  flex: 4;
-  background: #fff;
+/* --- Bottom Panels (detail + file preview) --- */
+.bottom-panels {
+  flex: 7;
+  display: flex;
+  flex-direction: row;
+  min-height: 0;
   border-top: 1px solid #e2e8f0;
+  box-shadow: 0 -2px 8px rgba(0,0,0,0.04);
+}
+
+/* --- Detail Panel (bottom-left) --- */
+.detail-panel {
+  flex: 1;
+  background: #fff;
   overflow-y: auto;
   padding: 16px 20px;
+  min-width: 0;
   min-height: 0;
-  box-shadow: 0 -2px 8px rgba(0,0,0,0.04);
 }
 .detail-empty {
   color: #94a3b8;
@@ -291,11 +320,7 @@ body {
   margin-bottom: 10px;
   flex-wrap: wrap;
 }
-.detail-title {
-  font-size: 1rem;
-  font-weight: 700;
-  color: #1a1a2e;
-}
+.detail-title { font-size: 1rem; font-weight: 700; color: #1a1a2e; }
 .detail-badge {
   display: inline-block;
   padding: 2px 8px;
@@ -313,11 +338,6 @@ body {
   margin-bottom: 12px;
   line-height: 1.6;
 }
-.detail-meta a {
-  color: #3b82f6;
-  text-decoration: none;
-}
-.detail-meta a:hover { text-decoration: underline; }
 .detail-section-title {
   font-size: 0.75rem;
   font-weight: 700;
@@ -327,6 +347,102 @@ body {
   margin: 14px 0 6px 0;
   padding-top: 10px;
   border-top: 1px solid #f1f5f9;
+}
+
+/* --- Vertical Resize (between detail and preview) --- */
+.vertical-resize {
+  width: 5px;
+  background: #e2e8f0;
+  cursor: col-resize;
+  flex-shrink: 0;
+  position: relative;
+  transition: background 0.15s;
+}
+.vertical-resize:hover, .vertical-resize.dragging { background: #3b82f6; }
+.vertical-resize::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  height: 40px;
+  width: 3px;
+  border-left: 1px solid #94a3b8;
+  border-right: 1px solid #94a3b8;
+}
+
+/* --- File Preview Panel (bottom-right) --- */
+.file-preview {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-width: 0;
+  min-height: 0;
+  background: #fff;
+  border-left: 1px solid #e2e8f0;
+}
+.preview-empty {
+  color: #94a3b8;
+  font-size: 0.85rem;
+  text-align: center;
+  padding: 40px 20px;
+}
+.preview-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  background: #f1f5f9;
+  border-bottom: 1px solid #e2e8f0;
+  flex-shrink: 0;
+}
+.preview-path {
+  flex: 1;
+  font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+  font-size: 0.75rem;
+  color: #334155;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.preview-open-tab {
+  font-size: 0.7rem;
+  color: #3b82f6;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.preview-open-tab:hover { text-decoration: underline; }
+.preview-close {
+  background: none;
+  border: none;
+  color: #94a3b8;
+  cursor: pointer;
+  font-size: 1.1rem;
+  padding: 0 4px;
+  line-height: 1;
+}
+.preview-close:hover { color: #1a1a2e; }
+.preview-content {
+  flex: 1;
+  overflow: auto;
+}
+.file-content {
+  margin: 0;
+  padding: 8px 0;
+  font-size: 0.75rem;
+  line-height: 1.6;
+  font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+  white-space: pre;
+  tab-size: 4;
+}
+.file-content .ln {
+  display: inline-block;
+  width: 5em;
+  text-align: right;
+  color: #94a3b8;
+  padding-right: 1em;
+  user-select: none;
 }
 
 /* --- Activity List --- */
@@ -356,15 +472,28 @@ body {
 .activity-dot.type-other { background: #d1d5db; }
 .activity-dot.type-text { background: transparent; }
 
-.activity-desc { color: #334155; }
-.activity-desc.type-text { font-style: italic; color: #64748b; }
-.activity-desc .activity-target {
+.activity-desc { color: #334155; flex: 1; min-width: 0; }
+.activity-text-block {
+  word-break: break-word;
+  color: #475569;
+  line-height: 1.5;
+  font-size: 0.8rem;
+  padding: 4px 0;
+  max-height: 300px;
+  overflow-y: auto;
+}
+.activity-target {
   color: #3b82f6;
   text-decoration: none;
   font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
   font-size: 0.75rem;
+  cursor: pointer;
 }
-.activity-desc .activity-target:hover { text-decoration: underline; }
+.activity-target:hover { text-decoration: underline; }
+.activity-extra-targets {
+  display: inline;
+  font-size: 0.72rem;
+}
 .activity-line-ref {
   color: #94a3b8;
   font-size: 0.7rem;
@@ -373,32 +502,25 @@ body {
   cursor: pointer;
 }
 .activity-line-ref:hover { color: #3b82f6; }
-.activity-error { color: #ef4444; font-weight: 600; }
-
+.activity-error-badge {
+  display: inline-block;
+  background: #fef2f2;
+  color: #dc2626;
+  font-size: 0.65rem;
+  font-weight: 600;
+  padding: 1px 5px;
+  border-radius: 3px;
+  border: 1px solid #fecaca;
+  margin-left: 6px;
+  vertical-align: middle;
+}
 .delegate-arrow {
   display: inline-block;
-  width: 0;
-  height: 0;
+  width: 0; height: 0;
   border-top: 4px solid transparent;
   border-bottom: 4px solid transparent;
   border-left: 6px solid #8b5cf6;
   margin-right: 2px;
-}
-
-/* --- Subagent Detail Sections --- */
-.subagent-preview {
-  background: #f8fafc;
-  border: 1px solid #e2e8f0;
-  border-radius: 4px;
-  padding: 10px 12px;
-  font-size: 0.78rem;
-  color: #475569;
-  line-height: 1.5;
-  margin: 6px 0;
-  max-height: 150px;
-  overflow-y: auto;
-  white-space: pre-wrap;
-  font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
 }
 .view-full-link {
   font-size: 0.72rem;
@@ -409,7 +531,22 @@ body {
 }
 .view-full-link:hover { text-decoration: underline; }
 
-/* --- Raw JSONL Expansion --- */
+/* --- Subagent Preview Boxes (scrollable, full content) --- */
+.subagent-preview {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 4px;
+  padding: 10px 12px;
+  font-size: 0.78rem;
+  color: #475569;
+  line-height: 1.5;
+  margin: 6px 0;
+  max-height: 400px;
+  overflow-y: auto;
+  word-break: break-word;
+}
+
+/* --- Raw JSONL --- */
 .raw-jsonl-panel {
   background: #1e293b;
   color: #e2e8f0;
@@ -427,71 +564,59 @@ body {
 .raw-jsonl-panel .loading-msg { color: #94a3b8; font-style: italic; }
 .raw-jsonl-panel .error-msg { color: #fca5a5; }
 
-/* --- Legend Panel --- */
-.legend-toggle {
-  position: fixed;
-  top: 10px;
-  right: 20px;
-  background: rgba(255,255,255,0.9);
-  border: 1px solid #e2e8f0;
-  border-radius: 4px;
-  padding: 4px 10px;
-  font-size: 0.72rem;
-  cursor: pointer;
-  color: #64748b;
-  z-index: 200;
-  backdrop-filter: blur(4px);
+/* --- Activity Groups (visual delineation) --- */
+.activity-group {
+  margin: 6px 0;
+  border-radius: 5px;
+  padding: 6px 10px;
 }
-.legend-toggle:hover { color: #1a1a2e; border-color: #3b82f6; }
-.legend-panel {
-  position: fixed;
-  top: 40px;
-  right: 20px;
-  background: #fff;
-  border: 1px solid #e2e8f0;
-  border-radius: 6px;
-  padding: 14px 18px;
-  font-size: 0.75rem;
-  box-shadow: 0 4px 16px rgba(0,0,0,0.1);
-  z-index: 200;
-  max-width: 280px;
-  display: none;
+.activity-group.group-text {
+  background: #f8fafc;
+  border-left: 3px solid #94a3b8;
 }
-.legend-panel.visible { display: block; }
-.legend-panel h3 {
-  font-size: 0.8rem;
-  font-weight: 700;
-  margin-bottom: 8px;
-  color: #1a1a2e;
+.activity-group.group-tools {
+  background: #fafbff;
+  border: 1px solid #e8ecf2;
 }
-.legend-group { margin-bottom: 10px; }
-.legend-group-title {
-  font-size: 0.68rem;
+.activity-group .activity-list { margin: 0; }
+.activity-group-label {
+  font-size: 0.65rem;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.06em;
   color: #94a3b8;
   margin-bottom: 4px;
 }
-.legend-item {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 2px 0;
+
+/* --- Timestamp --- */
+.detail-timestamp {
+  font-size: 0.72rem;
+  color: #94a3b8;
+  font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+}
+
+/* --- Scrollable Content Box (for summaries, search results) --- */
+.content-box {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 4px;
+  padding: 10px 12px;
+  font-size: 0.82rem;
+  color: #334155;
+  line-height: 1.5;
+  margin: 6px 0;
+  max-height: 300px;
+  overflow-y: auto;
+  word-break: break-word;
+}
+.content-box.search-results {
+  font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+  font-size: 0.75rem;
   color: #475569;
+  max-height: 200px;
 }
-.legend-swatch {
-  width: 14px;
-  height: 10px;
-  border-radius: 2px;
-  flex-shrink: 0;
-}
-.legend-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  flex-shrink: 0;
-}
+
+/* (legend removed) */
 
 /* --- Error / Loading States --- */
 .state-message {
@@ -499,11 +624,7 @@ body {
   padding: 60px 20px;
   color: #64748b;
 }
-.state-message h2 {
-  font-size: 1.1rem;
-  color: #334155;
-  margin-bottom: 8px;
-}
+.state-message h2 { font-size: 1.1rem; color: #334155; margin-bottom: 8px; }
 .state-message p {
   font-size: 0.85rem;
   line-height: 1.6;
@@ -517,30 +638,7 @@ body {
   font-size: 0.8rem;
 }
 
-/* --- Token bar mini-chart --- */
-.token-bar-container {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  height: 8px;
-  margin: 4px 0;
-}
-.token-bar-segment {
-  height: 100%;
-  border-radius: 2px;
-  min-width: 2px;
-}
-.token-bar-segment.input { background: #3b82f6; }
-.token-bar-segment.output { background: #10b981; }
-.token-bar-segment.cache-read { background: #f59e0b; }
-.token-bar-segment.cache-write { background: #a855f7; }
-.token-bar-label {
-  font-size: 0.65rem;
-  color: #94a3b8;
-  white-space: nowrap;
-}
-
-/* --- Scrollbar Styling --- */
+/* --- Scrollbar --- */
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
@@ -550,11 +648,10 @@ body {
 <body>
 
 <div class="header">
-  <h1>DAAF Session Viewer</h1>
+  <h1>DAAF Log Explorer</h1>
   <div class="project-name" id="projectName">Loading...</div>
+  <select class="session-select" id="sessionSelect" style="display:none"></select>
 </div>
-
-<div class="session-tabs" id="sessionTabs"></div>
 
 <div class="stats-bar" id="statsBar"></div>
 
@@ -566,65 +663,67 @@ body {
     </div>
   </div>
   <div class="resize-handle" id="resizeHandle"></div>
-  <div class="detail-panel" id="detailPanel">
-    <div class="detail-empty">Click a block in the timeline to view details.</div>
+  <div class="bottom-panels" id="bottomPanels">
+    <div class="detail-panel" id="detailPanel">
+      <div class="detail-empty">Click a block in the timeline to view details.</div>
+    </div>
+    <div class="vertical-resize" id="verticalResize"></div>
+    <div class="file-preview" id="filePreview">
+      <div class="preview-empty">Click a file reference to preview it here.</div>
+    </div>
   </div>
 </div>
 
-<button class="legend-toggle" id="legendToggle">Legend</button>
-<div class="legend-panel" id="legendPanel">
-  <h3>Color Legend</h3>
-  <div class="legend-group">
-    <div class="legend-group-title">Orchestrator Blocks</div>
-    <div class="legend-item"><span class="legend-swatch" style="background:#3b82f6"></span> User</div>
-    <div class="legend-item"><span class="legend-swatch" style="background:#10b981"></span> Assistant</div>
-    <div class="legend-item"><span class="legend-swatch" style="background:#6b7280"></span> System</div>
-  </div>
-  <div class="legend-group">
-    <div class="legend-group-title">Subagent Types</div>
-    <div class="legend-item"><span class="legend-swatch" style="background:#f59e0b"></span> search-agent</div>
-    <div class="legend-item"><span class="legend-swatch" style="background:#8b5cf6"></span> source-researcher</div>
-    <div class="legend-item"><span class="legend-swatch" style="background:#ef4444"></span> research-executor</div>
-    <div class="legend-item"><span class="legend-swatch" style="background:#06b6d4"></span> code-reviewer</div>
-    <div class="legend-item"><span class="legend-swatch" style="background:#ec4899"></span> data-planner</div>
-    <div class="legend-item"><span class="legend-swatch" style="background:#6b7280"></span> Other (see tooltip)</div>
-  </div>
-  <div class="legend-group">
-    <div class="legend-group-title">Activity Markers</div>
-    <div class="legend-item"><span class="legend-dot" style="background:#3b82f6"></span> Read</div>
-    <div class="legend-item"><span class="legend-dot" style="background:#f97316"></span> Write</div>
-    <div class="legend-item"><span class="legend-dot" style="background:#ef4444"></span> Execute</div>
-    <div class="legend-item"><span class="legend-dot" style="background:#8b5cf6"></span> Delegate</div>
-    <div class="legend-item"><span class="legend-dot" style="background:#10b981"></span> Skill</div>
-    <div class="legend-item"><span class="legend-dot" style="background:#14b8a6"></span> Search</div>
-    <div class="legend-item"><span class="legend-dot" style="background:#9ca3af"></span> Track</div>
-    <div class="legend-item"><span style="font-style:italic;color:#94a3b8;font-size:0.7rem">italic</span> Text (no dot)</div>
-  </div>
-</div>
 
 <script>
-// --- State ---
-let manifest = null;
-let activeSessionIdx = 0;
-let selectedBlockId = null;
-let selectedSubagentId = null;
-let jsonlCache = {};
+// =====================================================================
+// State
+// =====================================================================
+var manifest = null;
+var activeSessionIdx = 0;
+var selectedBlockId = null;
+var selectedSubagentId = null;
+var jsonlCache = {};
+var fileCache = {};
+var mergedBlockLookup = {};
 
-// --- Helpers ---
+// =====================================================================
+// Helpers
+// =====================================================================
 function formatDuration(sec) {
   if (sec == null) return '?';
   if (sec < 60) return Math.round(sec) + 's';
   if (sec < 3600) return Math.floor(sec / 60) + 'm ' + Math.round(sec % 60) + 's';
-  const h = Math.floor(sec / 3600);
-  const m = Math.floor((sec % 3600) / 60);
+  var h = Math.floor(sec / 3600);
+  var m = Math.floor((sec % 3600) / 60);
   return h + 'h ' + m + 'm';
 }
 
-function formatTokenCount(n) {
-  if (n == null) return '?';
-  if (n < 1000) return String(n);
-  if (n < 1000000) return (n / 1000).toFixed(1).replace(/\.0$/, '') + 'k';
-  return (n / 1000000).toFixed(2).replace(/0$/, '') + 'M';
+function formatTimestamp(iso) {
+  if (!iso) return '';
+  try {
+    var d = new Date(iso);
+    if (isNaN(d.getTime())) return '';
+    var hh = String(d.getUTCHours()).padStart(2, '0');
+    var mm = String(d.getUTCMinutes()).padStart(2, '0');
+    var ss = String(d.getUTCSeconds()).padStart(2, '0');
+    return hh + ':' + mm + ':' + ss + ' UTC';
+  } catch (e) { return ''; }
+}
+
+function formatDateTimestamp(iso) {
+  if (!iso) return '';
+  try {
+    var d = new Date(iso);
+    if (isNaN(d.getTime())) return '';
+    var year = d.getUTCFullYear();
+    var mon = String(d.getUTCMonth() + 1).padStart(2, '0');
+    var day = String(d.getUTCDate()).padStart(2, '0');
+    var hh = String(d.getUTCHours()).padStart(2, '0');
+    var mm = String(d.getUTCMinutes()).padStart(2, '0');
+    var ss = String(d.getUTCSeconds()).padStart(2, '0');
+    return year + '-' + mon + '-' + day + ' ' + hh + ':' + mm + ':' + ss + ' UTC';
+  } catch (e) { return ''; }
 }
 
 function escapeHtml(str) {
@@ -632,8 +731,77 @@ function escapeHtml(str) {
   return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
+function renderMarkdown(text) {
+  if (!text) return '';
+  var s = escapeHtml(text);
+
+  // Phase 1: Extract code blocks into placeholders (protect from later passes)
+  var codeBlocks = [];
+  s = s.replace(/```[^\n]*\n([\s\S]*?)```/g, function(m, code) {
+    var idx = codeBlocks.length;
+    codeBlocks.push('<pre style="background:#f1f5f9;padding:8px 10px;border-radius:4px;font-size:0.75rem;overflow-x:auto;margin:4px 0"><code>' + code.replace(/\n$/, '') + '</code></pre>');
+    return '\x00CODEBLOCK' + idx + '\x00';
+  });
+  s = s.replace(/`([^`\n]+)`/g, function(m, code) {
+    var idx = codeBlocks.length;
+    codeBlocks.push('<code style="background:#f1f5f9;padding:1px 4px;border-radius:2px;font-size:0.85em">' + code + '</code>');
+    return '\x00CODEBLOCK' + idx + '\x00';
+  });
+
+  // Phase 2: Formatting (safe — code blocks are placeholders)
+  s = s.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+  s = s.replace(/^(#{1,4})\s+(.+)$/gm, function(m, hashes, text) {
+    var sizes = {'1':'1.15em','2':'1.05em','3':'0.95em','4':'0.88em'};
+    return '<div style="font-weight:700;font-size:' + (sizes[hashes.length] || '0.88em') + ';margin:8px 0 4px 0;color:#1a1a2e">' + text + '</div>';
+  });
+  s = s.replace(/^---+$/gm, '<hr style="border:none;border-top:1px solid #e2e8f0;margin:8px 0">');
+  s = s.replace(/^[-*]\s+(.+)$/gm, '<div style="padding-left:12px">\u2022 $1</div>');
+  s = s.replace(/^\d+\.\s+(.+)$/gm, function(m, content) {
+    var num = m.match(/^(\d+)\./)[1];
+    return '<div style="padding-left:12px">' + num + '. ' + content + '</div>';
+  });
+
+  // Phase 3: Tables
+  s = s.replace(/(^\|.+\|$\n^\|[-| :]+\|$\n(?:^\|.+\|$\n?)+)/gm, function(tableBlock) {
+    var rows = tableBlock.trim().split('\n');
+    if (rows.length < 2) return tableBlock;
+    var html = '<table style="border-collapse:collapse;font-size:0.78rem;margin:6px 0;width:100%">';
+    rows.forEach(function(row, ri) {
+      if (ri === 1 && /^[-| :]+$/.test(row.replace(/\|/g, '').trim().replace(/[- :]/g, ''))) return;
+      var cells = row.split('|').filter(function(c, i, a) { return i > 0 && i < a.length - 1; });
+      var tag = ri === 0 ? 'th' : 'td';
+      var bgStyle = ri === 0 ? 'background:#f1f5f9;font-weight:600;' : (ri % 2 === 0 ? 'background:#fafbfc;' : '');
+      html += '<tr>';
+      cells.forEach(function(cell) {
+        html += '<' + tag + ' style="' + bgStyle + 'padding:4px 8px;border:1px solid #e2e8f0;text-align:left">' + cell.trim() + '</' + tag + '>';
+      });
+      html += '</tr>';
+    });
+    html += '</table>';
+    return html;
+  });
+
+  // Phase 4: Restore code blocks
+  s = s.replace(/\x00CODEBLOCK(\d+)\x00/g, function(m, idx) {
+    return codeBlocks[parseInt(idx)];
+  });
+
+  // Phase 5: Convert remaining newlines to <br>, skip inside <pre> and <table>
+  var parts = s.split(/(<pre[^>]*>[\s\S]*?<\/pre>|<table[^>]*>[\s\S]*?<\/table>)/g);
+  s = parts.map(function(part, i) {
+    if (i % 2 === 1) return part;
+    return part.replace(/\n/g, '<br>');
+  }).join('');
+  return s;
+}
+
+function truncateStr(str, max) {
+  if (!str || str.length <= max) return str || '';
+  return str.substring(0, max - 1) + '\u2026';
+}
+
 function agentColorClass(agentType) {
-  const map = {
+  var map = {
     'search-agent': 'agent-search-agent',
     'source-researcher': 'agent-source-researcher',
     'research-executor': 'agent-research-executor',
@@ -657,29 +825,23 @@ function fileUrl(path) {
   return '/' + path.replace(/^\//, '');
 }
 
-function fileLink(path, label) {
-  if (!path) return '';
-  const display = label || path;
-  return '<a href="' + escapeHtml(fileUrl(path)) + '" target="_blank" class="activity-target" title="' + escapeHtml(path) + '">' + escapeHtml(display) + '</a>';
-}
-
-// --- JSONL fetching ---
+// =====================================================================
+// JSONL Fetching
+// =====================================================================
 async function fetchJsonlLine(filePath, lineNum) {
-  const url = fileUrl(filePath);
-  const cacheKey = url;
-  if (!jsonlCache[cacheKey]) {
+  var url = fileUrl(filePath);
+  if (!jsonlCache[url]) {
     try {
-      const resp = await fetch(url);
+      var resp = await fetch(url);
       if (!resp.ok) throw new Error('HTTP ' + resp.status);
-      const text = await resp.text();
-      jsonlCache[cacheKey] = text.split('\n');
+      var text = await resp.text();
+      jsonlCache[url] = text.split('\n');
     } catch (e) {
       return { error: 'Failed to fetch ' + filePath + ': ' + e.message };
     }
   }
-  const lines = jsonlCache[cacheKey];
-  // lineNum is 1-based
-  const idx = lineNum - 1;
+  var lines = jsonlCache[url];
+  var idx = lineNum - 1;
   if (idx < 0 || idx >= lines.length) {
     return { error: 'Line ' + lineNum + ' out of range (file has ' + lines.length + ' lines)' };
   }
@@ -691,33 +853,50 @@ async function fetchJsonlLine(filePath, lineNum) {
 }
 
 async function fetchJsonlRange(filePath, lineStart, lineEnd) {
-  const url = fileUrl(filePath);
-  const cacheKey = url;
-  if (!jsonlCache[cacheKey]) {
+  var url = fileUrl(filePath);
+  if (!jsonlCache[url]) {
     try {
-      const resp = await fetch(url);
+      var resp = await fetch(url);
       if (!resp.ok) throw new Error('HTTP ' + resp.status);
-      const text = await resp.text();
-      jsonlCache[cacheKey] = text.split('\n');
+      var text = await resp.text();
+      jsonlCache[url] = text.split('\n');
     } catch (e) {
       return { error: 'Failed to fetch ' + filePath + ': ' + e.message };
     }
   }
-  const lines = jsonlCache[cacheKey];
-  const start = Math.max(0, lineStart - 1);
-  const end = Math.min(lines.length, lineEnd);
+  var lines = jsonlCache[url];
+  var start = Math.max(0, lineStart - 1);
+  var end = Math.min(lines.length, lineEnd);
   return { lines: lines.slice(start, end) };
 }
 
-// --- Active session ---
+// =====================================================================
+// File Content Fetching (for preview panel)
+// =====================================================================
+async function fetchFileContent(path) {
+  var url = fileUrl(path);
+  if (fileCache[url]) return { content: fileCache[url] };
+  try {
+    var resp = await fetch(url);
+    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+    var text = await resp.text();
+    fileCache[url] = text;
+    return { content: text };
+  } catch (e) {
+    return { error: e.message };
+  }
+}
+
+// =====================================================================
+// Session Helpers
+// =====================================================================
 function activeSession() {
   if (!manifest || !manifest.sessions || !manifest.sessions[activeSessionIdx]) return null;
   return manifest.sessions[activeSessionIdx];
 }
 
-// --- Compute session-level aggregate stats ---
 function sessionStats(session) {
-  let totalInput = 0, totalOutput = 0, totalCacheRead = 0, totalCacheWrite = 0;
+  var totalInput = 0, totalOutput = 0, totalCacheRead = 0, totalCacheWrite = 0;
   (session.blocks || []).forEach(function(b) {
     if (b.tokenUsage) {
       totalInput += b.tokenUsage.input || 0;
@@ -726,16 +905,11 @@ function sessionStats(session) {
       totalCacheWrite += b.tokenUsage.cacheWrite || 0;
     }
   });
-  // Include subagent tokens in total
-  let subagentTokens = 0;
-  (session.subagents || []).forEach(function(sa) {
-    subagentTokens += sa.tokens || 0;
-  });
+  var subagentTokens = 0;
+  (session.subagents || []).forEach(function(sa) { subagentTokens += sa.tokens || 0; });
   return {
-    totalInput: totalInput,
-    totalOutput: totalOutput,
-    totalCacheRead: totalCacheRead,
-    totalCacheWrite: totalCacheWrite,
+    totalInput: totalInput, totalOutput: totalOutput,
+    totalCacheRead: totalCacheRead, totalCacheWrite: totalCacheWrite,
     orchestratorTokens: totalInput + totalOutput + totalCacheRead + totalCacheWrite,
     subagentTokens: subagentTokens,
     totalTokens: totalInput + totalOutput + totalCacheRead + totalCacheWrite + subagentTokens,
@@ -744,415 +918,555 @@ function sessionStats(session) {
   };
 }
 
-// --- Render ---
-function renderTabs() {
-  const el = document.getElementById('sessionTabs');
-  if (!manifest || !manifest.sessions || manifest.sessions.length === 0) {
-    el.innerHTML = '';
-    return;
-  }
-  el.innerHTML = manifest.sessions.map(function(s, i) {
-    const cls = i === activeSessionIdx ? 'session-tab active' : 'session-tab';
-    return '<div class="' + cls + '" data-idx="' + i + '">Session ' + (i + 1) + ' (' + escapeHtml(s.sessionId) + ')</div>';
-  }).join('');
-  el.querySelectorAll('.session-tab').forEach(function(tab) {
-    tab.addEventListener('click', function() {
-      activeSessionIdx = parseInt(this.dataset.idx);
-      selectedBlockId = null;
-      selectedSubagentId = null;
-      render();
-    });
+function buildBlockSubagentMap(session) {
+  var map = {};
+  (session.subagents || []).forEach(function(sa) {
+    if (sa.parentBlockId) {
+      if (!map[sa.parentBlockId]) map[sa.parentBlockId] = [];
+      map[sa.parentBlockId].push(sa);
+    }
   });
+  return map;
 }
 
+// =====================================================================
+// Rendering: Tabs
+// =====================================================================
+function renderSessionSelect() {
+  var el = document.getElementById('sessionSelect');
+  if (!manifest || !manifest.sessions || manifest.sessions.length === 0) {
+    el.style.display = 'none';
+    return;
+  }
+  el.style.display = '';
+  el.innerHTML = manifest.sessions.map(function(s, i) {
+    var sel = i === activeSessionIdx ? ' selected' : '';
+    var dateLabel = formatDateTimestamp(s.startTime);
+    var label = dateLabel ? dateLabel + ' \u2014 ' + escapeHtml(s.sessionId) : 'Session ' + (i + 1) + ' (' + escapeHtml(s.sessionId) + ')';
+    return '<option value="' + i + '"' + sel + '>' + label + '</option>';
+  }).join('');
+  el.onchange = function() {
+    activeSessionIdx = parseInt(this.value);
+    selectedBlockId = null;
+    selectedSubagentId = null;
+    render();
+  };
+}
+
+// =====================================================================
+// Rendering: Stats Bar
+// =====================================================================
 function renderStatsBar() {
-  const el = document.getElementById('statsBar');
-  const session = activeSession();
+  var el = document.getElementById('statsBar');
+  var session = activeSession();
   if (!session) { el.innerHTML = ''; return; }
-  const stats = sessionStats(session);
-  const parts = [];
-  parts.push('<span><span class="stat-label">Duration:</span><span class="stat-value">' + formatDuration(session.durationSec) + '</span></span>');
+  var stats = sessionStats(session);
+  var parts = [];
+  parts.push('<span><span class="stat-label">Session Duration:</span><span class="stat-value">' + formatDuration(session.durationSec) + '</span></span>');
   if (session.model) parts.push('<span><span class="stat-label">Model:</span><span class="stat-value">' + escapeHtml(session.model) + '</span></span>');
-  parts.push('<span><span class="stat-label">Tokens:</span><span class="stat-value">' + formatTokenCount(stats.totalTokens) + '</span></span>');
-  parts.push('<span><span class="stat-label">Blocks:</span><span class="stat-value">' + stats.blockCount + '</span></span>');
-  parts.push('<span><span class="stat-label">Subagents:</span><span class="stat-value">' + stats.subagentCount + '</span></span>');
-  if (session.cliVersion) parts.push('<span><span class="stat-label">CLI:</span><span class="stat-value">' + escapeHtml(session.cliVersion) + '</span></span>');
-  if (session.gitBranch) parts.push('<span><span class="stat-label">Branch:</span><span class="stat-value">' + escapeHtml(session.gitBranch) + '</span></span>');
+  parts.push('<span><span class="stat-label">Interaction Turns:</span><span class="stat-value">' + stats.blockCount + '</span></span>');
+  parts.push('<span><span class="stat-label">Specialist Subagents:</span><span class="stat-value">' + stats.subagentCount + '</span></span>');
+  if (session.cliVersion) parts.push('<span><span class="stat-label">Claude Code Version:</span><span class="stat-value">' + escapeHtml(session.cliVersion) + '</span></span>');
+  if (session.daafVersion) parts.push('<span><span class="stat-label">DAAF Version:</span><span class="stat-value">' + escapeHtml(session.daafVersion) + '</span></span>');
   el.innerHTML = parts.join('');
 }
 
+// =====================================================================
+// Rendering: Unified Timeline
+// =====================================================================
 function renderTimeline() {
-  const panel = document.getElementById('timelinePanel');
-  const session = activeSession();
+  var panel = document.getElementById('timelinePanel');
+  var session = activeSession();
   if (!session) {
-    panel.innerHTML = '<div class="state-message"><h2>No sessions found</h2><p>The manifest contains no session data for this project.</p></div>';
+    panel.innerHTML = '<div class="state-message"><h2>No sessions found</h2><p>The manifest contains no session data.</p></div>';
     return;
   }
-  const blocks = session.blocks || [];
-  const subagents = session.subagents || [];
+  var blocks = session.blocks || [];
   if (blocks.length === 0) {
-    panel.innerHTML = '<div class="state-message"><h2>Empty session</h2><p>This session has no recorded blocks.</p></div>';
+    panel.innerHTML = '<div class="state-message"><h2>Empty session</h2><p>No recorded blocks.</p></div>';
     return;
   }
 
-  // Compute timeline proportions from durations
-  const totalDuration = blocks.reduce(function(sum, b) { return sum + (b.durationSec || 0.5); }, 0);
+  var saMap = buildBlockSubagentMap(session);
+  mergedBlockLookup = {};
 
-  let html = '';
-
-  // Orchestrator timeline
-  html += '<div class="section-label">Orchestrator Timeline</div>';
-  html += '<div class="timeline-row" id="orchestratorTimeline">';
-  let blockCounter = { user: 0, assistant: 0, system: 0 };
+  // Preprocess: merge consecutive assistant blocks without subagents
+  var displayItems = [];
+  var mergeBuffer = [];
+  var mergeIdx = 0;
+  function flushMerge() {
+    if (mergeBuffer.length === 0) return;
+    if (mergeBuffer.length === 1) {
+      displayItems.push(mergeBuffer[0]);
+    } else {
+      var mid = 'merged_' + mergeIdx++;
+      var merged = { _merged: true, id: mid, blocks: mergeBuffer.slice(), type: 'assistant' };
+      displayItems.push(merged);
+      mergedBlockLookup[mid] = merged;
+    }
+    mergeBuffer = [];
+  }
   blocks.forEach(function(block) {
-    const bType = block.type || 'system';
-    blockCounter[bType] = (blockCounter[bType] || 0) + 1;
-    const label = (bType === 'user' ? 'U' : bType === 'assistant' ? 'A' : 'S') + blockCounter[bType];
-    const dur = block.durationSec || 0.5;
-    // Width proportional to duration, min 32px
-    const pct = Math.max(2, (dur / totalDuration) * 100);
-    const selectedCls = (selectedBlockId === block.id && !selectedSubagentId) ? ' selected' : '';
-    const summary = block.summary ? escapeHtml(block.summary.substring(0, 120)) : '';
-    html += '<div class="timeline-block type-' + bType + selectedCls + '" data-block-id="' + escapeHtml(block.id) + '" style="flex-basis:' + pct + '%; min-width:32px">';
-    html += label;
-    html += '<span class="block-tooltip">' + label + ' (' + formatDuration(dur) + ')' + (summary ? ' - ' + summary : '') + '</span>';
-    html += '</div>';
+    var bType = block.type || 'system';
+    var hasSubs = (saMap[block.id] || []).length > 0;
+    if (bType === 'assistant' && !hasSubs) {
+      mergeBuffer.push(block);
+    } else {
+      flushMerge();
+      displayItems.push(block);
+    }
   });
+  flushMerge();
+
+  // Compute effective durations
+  var effDurations = {};
+  displayItems.forEach(function(item) {
+    if (item._merged) {
+      var total = 0;
+      item.blocks.forEach(function(b) { total += b.durationSec || 0.5; });
+      effDurations[item.id] = total;
+    } else {
+      var eff = item.durationSec || 0.5;
+      (saMap[item.id] || []).forEach(function(sa) {
+        var saDur = (sa.durationMs || 0) / 1000;
+        if (saDur > eff) eff = saDur;
+      });
+      effDurations[item.id] = eff;
+    }
+  });
+  var totalEffDur = displayItems.reduce(function(s, item) { return s + effDurations[item.id]; }, 0) || 1;
+
+  var html = '<div class="scroll-proxy" id="scrollProxy"><div class="scroll-proxy-inner"></div></div>';
+  html += '<div class="timeline-row" id="timelineRow">';
+
+  var counters = { user: 0, assistant: 0, system: 0 };
+  displayItems.forEach(function(item) {
+    var effDur = effDurations[item.id];
+    var pct = Math.max(1.5, (effDur / totalEffDur) * 100);
+    var selCls = (selectedBlockId === item.id && !selectedSubagentId) ? ' selected' : '';
+
+    if (item._merged) {
+      var startNum = counters['assistant'] + 1;
+      counters['assistant'] += item.blocks.length;
+      var endNum = counters['assistant'];
+      var label = 'O' + startNum + '-' + endNum;
+      item._label = label;
+      var summaryParts = item.blocks.map(function(b) { return b.summary || ''; }).filter(Boolean);
+      var summary = summaryParts.length > 0 ? escapeHtml(truncateStr(summaryParts.join('; '), 120)) : '';
+
+      html += '<div class="timeline-column" style="flex-basis:' + pct.toFixed(2) + '%;min-width:28px">';
+      html += '<div class="timeline-block type-assistant' + selCls + '" data-block-id="' + escapeHtml(item.id) + '">';
+      html += label;
+      html += '<span class="block-tooltip">' + label + ' (' + item.blocks.length + ' steps, ' + formatDuration(effDur) + ')';
+      if (summary) html += ' \u2014 ' + summary;
+      html += '</span></div></div>';
+    } else {
+      var bType = item.type || 'system';
+      counters[bType] = (counters[bType] || 0) + 1;
+      var label = (bType === 'user' ? 'U' : bType === 'assistant' ? 'O' : 'S') + counters[bType];
+      var summary = item.summary ? escapeHtml(truncateStr(item.summary, 120)) : '';
+      var blockSas = saMap[item.id] || [];
+
+      html += '<div class="timeline-column" style="flex-basis:' + pct.toFixed(2) + '%;min-width:' + (blockSas.length > 0 ? '60' : '28') + 'px">';
+      html += '<div class="timeline-block type-' + bType + selCls + '" data-block-id="' + escapeHtml(item.id) + '">';
+      html += label;
+      html += '<span class="block-tooltip">' + label + ' (' + formatDuration(item.durationSec) + ')';
+      if (summary) html += ' \u2014 ' + summary;
+      html += '</span></div>';
+
+      if (blockSas.length > 0) {
+        html += '<div class="subagent-area">';
+        blockSas.forEach(function(sa) {
+          var saDurSec = (sa.durationMs || 0) / 1000;
+          var barPct = effDur > 0 ? Math.max(15, Math.min(100, (saDurSec / effDur) * 100)) : 100;
+          var colorCls = agentColorClass(sa.agentType);
+          var selSaCls = selectedSubagentId === sa.id ? ' selected' : '';
+          var displayLabel = (sa.agentType || 'agent') + ': ' + (sa.label || sa.id);
+          html += '<div class="subagent-bar ' + colorCls + selSaCls + '" data-subagent-id="' + escapeHtml(sa.id) + '" style="width:' + barPct.toFixed(1) + '%" title="' + escapeHtml(displayLabel) + ' (' + formatDuration(saDurSec) + ')">';
+          html += escapeHtml(truncateStr(displayLabel, 50));
+          html += '</div>';
+        });
+        html += '</div>';
+      }
+      html += '</div>';
+    }
+  });
+
   html += '</div>';
 
-  // Subagent waterfall
-  if (subagents.length > 0) {
-    html += '<div class="section-label">Subagent Waterfall</div>';
-    html += '<div class="waterfall-area" id="waterfallArea">';
-
-    // We need session time range for positioning
-    const sessionStart = new Date(session.startTime).getTime();
-    const sessionEnd = new Date(session.endTime).getTime();
-    const sessionSpan = sessionEnd - sessionStart || 1;
-
-    // Assign swim lanes to avoid overlap
-    const lanes = assignLanes(subagents);
-
-    lanes.forEach(function(lane, laneIdx) {
-      html += '<div class="waterfall-lane">';
-      lane.forEach(function(sa) {
-        const saStart = new Date(sa.startTime).getTime();
-        const saEnd = new Date(sa.endTime).getTime();
-        if (isNaN(saStart) || isNaN(saEnd)) return;
-        const leftPct = Math.max(0, ((saStart - sessionStart) / sessionSpan) * 100);
-        const widthPct = Math.max(1, Math.min(100, ((saEnd - saStart) / sessionSpan) * 100));
-        const colorCls = agentColorClass(sa.agentType);
-        const selectedCls = selectedSubagentId === sa.id ? ' selected' : '';
-        const displayLabel = (sa.agentType || 'agent') + ': ' + (sa.label || sa.id);
-        html += '<div class="waterfall-block ' + colorCls + selectedCls + '" data-subagent-id="' + escapeHtml(sa.id) + '" style="left:' + leftPct + '%;width:' + widthPct + '%" title="' + escapeHtml(displayLabel) + '">';
-        html += escapeHtml(displayLabel);
-        html += '</div>';
-      });
-      html += '</div>';
+  var unlinked = (session.subagents || []).filter(function(sa) { return !sa.parentBlockId; });
+  if (unlinked.length > 0) {
+    html += '<div class="unlinked-section">';
+    html += '<div class="section-label">Unlinked Specialists (' + unlinked.length + ')</div>';
+    unlinked.forEach(function(sa) {
+      var colorCls = agentColorClass(sa.agentType);
+      var selCls = selectedSubagentId === sa.id ? ' selected' : '';
+      var displayLabel = (sa.agentType || 'agent') + ': ' + (sa.label || sa.id);
+      html += '<div class="unlinked-bar ' + colorCls + selCls + '" data-subagent-id="' + escapeHtml(sa.id) + '" title="' + escapeHtml(displayLabel) + '">' + escapeHtml(truncateStr(displayLabel, 50)) + '</div>';
     });
     html += '</div>';
   }
 
   panel.innerHTML = html;
+  attachTimelineHandlers();
+  initScrollProxy('scrollProxy', 'timelineRow');
+}
 
-  // Attach click handlers
+// =====================================================================
+// Scroll Proxy Sync (top scrollbar for timeline)
+// =====================================================================
+function initScrollProxy(proxyId, contentId) {
+  var proxy = document.getElementById(proxyId);
+  var content = document.getElementById(contentId);
+  if (!proxy || !content) return;
+  var inner = proxy.firstElementChild;
+  if (inner) inner.style.width = content.scrollWidth + 'px';
+  var syncing = false;
+  proxy.addEventListener('scroll', function() {
+    if (syncing) { syncing = false; return; }
+    syncing = true;
+    content.scrollLeft = proxy.scrollLeft;
+  });
+  content.addEventListener('scroll', function() {
+    if (syncing) { syncing = false; return; }
+    syncing = true;
+    proxy.scrollLeft = content.scrollLeft;
+  });
+  // Re-sync proxy width on resize
+  if (typeof ResizeObserver !== 'undefined') {
+    new ResizeObserver(function() {
+      if (inner) inner.style.width = content.scrollWidth + 'px';
+    }).observe(content);
+  }
+}
+
+// =====================================================================
+// Timeline Click Handlers (attached once per render)
+// =====================================================================
+function attachTimelineHandlers() {
+  var panel = document.getElementById('timelinePanel');
   panel.querySelectorAll('.timeline-block').forEach(function(el) {
-    el.addEventListener('click', function() {
-      selectedBlockId = this.dataset.blockId;
-      selectedSubagentId = null;
-      render();
-    });
-  });
-  panel.querySelectorAll('.waterfall-block').forEach(function(el) {
-    el.addEventListener('click', function() {
-      selectedSubagentId = this.dataset.subagentId;
-      selectedBlockId = null;
-      render();
-    });
-  });
-}
-
-// Simple lane assignment: greedy, place each subagent in first lane where it fits
-function assignLanes(subagents) {
-  const sorted = subagents.slice().sort(function(a, b) {
-    return new Date(a.startTime).getTime() - new Date(b.startTime).getTime();
-  });
-  const lanes = [];
-  sorted.forEach(function(sa) {
-    const saStart = new Date(sa.startTime).getTime();
-    const saEnd = new Date(sa.endTime).getTime();
-    let placed = false;
-    for (let i = 0; i < lanes.length; i++) {
-      const lastInLane = lanes[i][lanes[i].length - 1];
-      if (new Date(lastInLane.endTime).getTime() <= saStart) {
-        lanes[i].push(sa);
-        placed = true;
-        break;
+    el.addEventListener('click', function(e) {
+      e.stopPropagation();
+      var blockId = this.dataset.blockId;
+      if (selectedBlockId === blockId && !selectedSubagentId) {
+        selectedBlockId = null;
+      } else {
+        selectedBlockId = blockId;
+        selectedSubagentId = null;
       }
-    }
-    if (!placed) {
-      lanes.push([sa]);
-    }
+      updateTimelineSelection();
+      renderDetail();
+    });
   });
-  return lanes;
+  panel.querySelectorAll('.subagent-bar, .unlinked-bar').forEach(function(el) {
+    el.addEventListener('click', function(e) {
+      e.stopPropagation();
+      var saId = this.dataset.subagentId;
+      if (selectedSubagentId === saId) {
+        selectedSubagentId = null;
+      } else {
+        selectedSubagentId = saId;
+        selectedBlockId = null;
+      }
+      updateTimelineSelection();
+      renderDetail();
+    });
+  });
 }
 
+// =====================================================================
+// Selection Management (CSS-only, no re-render)
+// =====================================================================
+function updateTimelineSelection() {
+  document.querySelectorAll('.timeline-block.selected, .subagent-bar.selected, .unlinked-bar.selected').forEach(function(el) {
+    el.classList.remove('selected');
+  });
+  if (selectedBlockId && !selectedSubagentId) {
+    var el = document.querySelector('.timeline-block[data-block-id="' + selectedBlockId + '"]');
+    if (el) el.classList.add('selected');
+  }
+  if (selectedSubagentId) {
+    var el = document.querySelector('[data-subagent-id="' + selectedSubagentId + '"]');
+    if (el) el.classList.add('selected');
+  }
+}
+
+// =====================================================================
+// Rendering: Detail Panel
+// =====================================================================
 function renderDetail() {
-  const panel = document.getElementById('detailPanel');
-  const session = activeSession();
+  var panel = document.getElementById('detailPanel');
+  var session = activeSession();
   if (!session) { panel.innerHTML = '<div class="detail-empty">No session data.</div>'; return; }
 
   if (selectedSubagentId) {
-    const sa = (session.subagents || []).find(function(s) { return s.id === selectedSubagentId; });
+    var sa = (session.subagents || []).find(function(s) { return s.id === selectedSubagentId; });
     if (sa) { renderSubagentDetail(panel, sa, session); return; }
   }
   if (selectedBlockId) {
-    const block = (session.blocks || []).find(function(b) { return b.id === selectedBlockId; });
+    if (mergedBlockLookup[selectedBlockId]) {
+      renderMergedBlockDetail(panel, mergedBlockLookup[selectedBlockId], session);
+      return;
+    }
+    var block = (session.blocks || []).find(function(b) { return b.id === selectedBlockId; });
     if (block) { renderBlockDetail(panel, block, session); return; }
   }
   panel.innerHTML = '<div class="detail-empty">Click a block in the timeline to view details.</div>';
 }
 
 function renderBlockDetail(panel, block, session) {
-  const bType = block.type || 'system';
-  const typeLabel = bType.charAt(0).toUpperCase() + bType.slice(1);
-  let html = '';
+  var bType = block.type || 'system';
+  var typeLabel = bType === 'user' ? 'User Message' : bType === 'assistant' ? 'Orchestrator Step' : 'System Event';
+  var html = '';
 
   html += '<div class="detail-header">';
-  html += '<span class="detail-title">' + typeLabel + ' Turn</span>';
+  html += '<span class="detail-title">' + typeLabel + '</span>';
   html += '<span class="detail-badge type-' + bType + '">' + escapeHtml(block.id) + '</span>';
+  if (block.startTime) html += ' <span class="detail-timestamp">' + formatTimestamp(block.startTime) + '</span>';
   html += '</div>';
 
-  // Meta
   html += '<div class="detail-meta">';
   html += '<strong>Duration:</strong> ' + formatDuration(block.durationSec);
-  if (block.tokenUsage) {
-    html += ' &nbsp;|&nbsp; <strong>Tokens:</strong> in ' + formatTokenCount(block.tokenUsage.input) + ' / out ' + formatTokenCount(block.tokenUsage.output);
-    if (block.tokenUsage.cacheRead) html += ' / cache-read ' + formatTokenCount(block.tokenUsage.cacheRead);
-    if (block.tokenUsage.cacheWrite) html += ' / cache-write ' + formatTokenCount(block.tokenUsage.cacheWrite);
-  }
-  html += '<br>';
   if (block.file) {
-    const lineRef = block.lineStart && block.lineEnd ? ':' + block.lineStart + '-' + block.lineEnd : '';
-    html += '<strong>Source:</strong> ' + fileLink(block.file, block.file + lineRef);
+    var lineRef = block.lineStart && block.lineEnd ? ':' + block.lineStart + '-' + block.lineEnd : '';
+    html += ' &nbsp;|&nbsp; <strong>Source:</strong> <a href="' + escapeHtml(fileUrl(block.file)) + '" class="activity-target" data-preview-path="' + escapeHtml(block.file) + '" title="' + escapeHtml(block.file) + '">' + escapeHtml(block.file + lineRef) + '</a>';
   }
   html += '</div>';
 
-  // Token usage bar
-  if (block.tokenUsage) {
-    html += renderTokenBar(block.tokenUsage);
+  if (bType === 'user' && block.summary) {
+    html += '<div class="detail-section-title">Message</div>';
+    html += '<div class="content-box">' + renderMarkdown(block.summary) + '</div>';
   }
 
-  // Summary
-  if (block.summary) {
-    html += '<div class="detail-section-title">Summary</div>';
-    html += '<div style="font-size:0.82rem;color:#334155;margin-bottom:6px">' + escapeHtml(block.summary) + '</div>';
-  }
-
-  // Activities
   if (block.activities && block.activities.length > 0) {
-    html += '<div class="detail-section-title">Activities</div>';
-    html += renderActivities(block.activities, block.file, session);
+    if (bType !== 'user') {
+      html += '<div class="detail-section-title">Activities (' + block.activities.length + ')</div>';
+    }
+    html += renderActivities(block.activities, block.file, block.startTime);
   }
 
-  // Raw JSONL expand area
-  if (block.file && block.lineStart) {
-    html += '<div class="detail-section-title">Raw JSONL</div>';
-    html += '<div><span class="view-full-link" data-action="load-raw" data-file="' + escapeHtml(block.file) + '" data-start="' + block.lineStart + '" data-end="' + (block.lineEnd || block.lineStart) + '">Load raw JSONL lines ' + block.lineStart + '-' + (block.lineEnd || block.lineStart) + '</span></div>';
-    html += '<div id="rawJsonlContainer"></div>';
-  }
+  panel.innerHTML = html;
+  attachDetailHandlers(panel);
+}
+
+function renderMergedBlockDetail(panel, merged, session) {
+  var html = '';
+  var label = merged._label || 'Merged Steps';
+  var firstBlock = merged.blocks[0];
+  var lastBlock = merged.blocks[merged.blocks.length - 1];
+  var totalDur = merged.blocks.reduce(function(s, b) { return s + (b.durationSec || 0); }, 0);
+
+  html += '<div class="detail-header">';
+  html += '<span class="detail-title">Orchestrator Steps ' + label + '</span>';
+  html += '<span class="detail-badge type-assistant">' + merged.blocks.length + ' steps</span>';
+  if (firstBlock.startTime) html += ' <span class="detail-timestamp">' + formatTimestamp(firstBlock.startTime) + ' \u2013 ' + formatTimestamp(lastBlock.endTime || lastBlock.startTime) + '</span>';
+  html += '</div>';
+
+  html += '<div class="detail-meta">';
+  html += '<strong>Duration:</strong> ' + formatDuration(totalDur);
+  html += '</div>';
+
+  merged.blocks.forEach(function(block, idx) {
+    html += '<div class="detail-section-title" style="display:flex;justify-content:space-between;align-items:center">';
+    html += 'Step ' + (idx + 1);
+    if (block.startTime) html += ' <span class="detail-timestamp">' + formatTimestamp(block.startTime) + '</span>';
+    html += '</div>';
+
+    if (block.activities && block.activities.length > 0) {
+      html += renderActivities(block.activities, block.file, block.startTime);
+    }
+  });
 
   panel.innerHTML = html;
   attachDetailHandlers(panel);
 }
 
 function renderSubagentDetail(panel, sa, session) {
-  let html = '';
+  var html = '';
   html += '<div class="detail-header">';
-  html += '<span class="detail-title">' + escapeHtml(sa.agentType || 'Subagent') + '</span>';
-  html += '<span class="detail-badge" style="background:#8b5cf6">' + escapeHtml(sa.id) + '</span>';
-  if (sa.label) {
-    html += '<span style="font-size:0.85rem;color:#64748b">' + escapeHtml(sa.label) + '</span>';
-  }
+  html += '<span class="detail-title">Subagent: ' + escapeHtml(sa.agentType || 'unknown') + ' [id: ' + escapeHtml(sa.id) + ']</span>';
   html += '</div>';
+  if (sa.label) html += '<div style="font-size:0.85rem;color:#64748b;margin-bottom:6px">' + escapeHtml(sa.label) + '</div>';
 
-  // Meta
   html += '<div class="detail-meta">';
-  const durSec = sa.durationMs != null ? sa.durationMs / 1000 : null;
+  var durSec = sa.durationMs != null ? sa.durationMs / 1000 : null;
   html += '<strong>Duration:</strong> ' + formatDuration(durSec);
-  if (sa.tokens != null) html += ' &nbsp;|&nbsp; <strong>Tokens:</strong> ' + formatTokenCount(sa.tokens);
   if (sa.toolUseCount != null) html += ' &nbsp;|&nbsp; <strong>Tool calls:</strong> ' + sa.toolUseCount;
+  if (sa.startTime) html += ' &nbsp;|&nbsp; <span class="detail-timestamp">' + formatDateTimestamp(sa.startTime) + '</span>';
   html += '<br>';
-  if (sa.file) {
-    html += '<strong>Log file:</strong> ' + fileLink(sa.file);
-  }
+  if (sa.file) html += '<strong>Log file:</strong> <a href="' + escapeHtml(fileUrl(sa.file)) + '" class="activity-target" data-preview-path="' + escapeHtml(sa.file) + '">' + escapeHtml(sa.file) + '</a>';
   if (sa.parentBlockId) {
     html += ' &nbsp;|&nbsp; <strong>Parent block:</strong> <span class="view-full-link" data-action="go-block" data-block-id="' + escapeHtml(sa.parentBlockId) + '">' + escapeHtml(sa.parentBlockId) + '</span>';
   }
   html += '</div>';
 
-  // Invocation
-  if (sa.invocation) {
-    html += '<div class="detail-section-title">Invocation (Dispatch Prompt)</div>';
-    if (sa.invocation.promptPreview) {
-      html += '<div class="subagent-preview">' + escapeHtml(sa.invocation.promptPreview) + '</div>';
-    }
-    if (sa.invocation.orchestratorFile && sa.invocation.orchestratorLine) {
-      html += '<div><span class="view-full-link" data-action="load-line" data-file="' + escapeHtml(sa.invocation.orchestratorFile) + '" data-line="' + sa.invocation.orchestratorLine + '">View Full Prompt</span>';
-      html += ' &mdash; ' + fileLink(sa.invocation.orchestratorFile, sa.invocation.orchestratorFile + ':' + sa.invocation.orchestratorLine);
-      html += '</div>';
-      html += '<div id="invocationExpand"></div>';
-    }
+  // Dispatch prompt (full, scrollable)
+  if (sa.invocation && sa.invocation.promptPreview) {
+    html += '<div class="detail-section-title">Dispatch Prompt</div>';
+    html += '<div class="subagent-preview">' + renderMarkdown(sa.invocation.promptPreview) + '</div>';
   }
 
-  // Report
-  if (sa.report) {
-    html += '<div class="detail-section-title">Report (Final Response)</div>';
-    if (sa.report.summaryPreview) {
-      html += '<div class="subagent-preview">' + escapeHtml(sa.report.summaryPreview) + '</div>';
-    }
-    if (sa.report.subagentFile && sa.report.subagentLine) {
-      html += '<div><span class="view-full-link" data-action="load-line" data-file="' + escapeHtml(sa.report.subagentFile) + '" data-line="' + sa.report.subagentLine + '">View Full Report</span>';
-      html += ' &mdash; ' + fileLink(sa.report.subagentFile, sa.report.subagentFile + ':' + sa.report.subagentLine);
+  // Agent protocol
+  if (sa.agentType) {
+    var protocolPath = '.claude/agents/' + sa.agentType + '.md';
+    html += '<div class="detail-section-title">Agent Protocol</div>';
+    html += '<div style="padding:4px 0;font-size:0.8rem">';
+    html += '<a href="' + escapeHtml(fileUrl(protocolPath)) + '" class="activity-target" data-preview-path="' + escapeHtml(protocolPath) + '" title="' + escapeHtml(protocolPath) + '">' + escapeHtml(protocolPath) + '</a>';
+    html += '</div>';
+  }
+
+  // Frontmatter skills (auto-loaded from agent specification)
+  if (sa.frontmatterSkills && sa.frontmatterSkills.length > 0) {
+    html += '<div class="detail-section-title">Agent Skills <span style="text-transform:none;font-weight:400;letter-spacing:0">(from specification)</span></div>';
+    html += '<div style="padding:4px 0;font-size:0.8rem">';
+    sa.frontmatterSkills.forEach(function(skillName) {
+      var skillPath = '.claude/skills/' + skillName + '/SKILL.md';
+      html += '<div style="padding:2px 0">';
+      html += '<span class="activity-dot type-skill" style="display:inline-block;vertical-align:middle;margin-right:6px"></span>';
+      html += '<a href="' + escapeHtml(fileUrl(skillPath)) + '" class="activity-target" data-preview-path="' + escapeHtml(skillPath) + '" title="' + escapeHtml(skillPath) + '">' + escapeHtml(skillName) + '</a>';
       html += '</div>';
-      html += '<div id="reportExpand"></div>';
-    }
+    });
+    html += '</div>';
   }
 
   // Activities
   if (sa.activities && sa.activities.length > 0) {
     html += '<div class="detail-section-title">Activities (' + sa.activities.length + ')</div>';
-    html += renderActivities(sa.activities, sa.file, session);
+    html += renderActivities(sa.activities, sa.file, sa.startTime);
   }
 
   panel.innerHTML = html;
   attachDetailHandlers(panel);
 }
 
-function renderActivities(activities, defaultFile, session) {
-  let html = '<ul class="activity-list">';
+// =====================================================================
+// Rendering: Activities
+// =====================================================================
+function renderActivities(activities, defaultFile, blockTime) {
+  // Group consecutive activities by type: text vs tool calls
+  var groups = [];
+  var currentGroup = null;
   activities.forEach(function(act) {
-    const aType = act.type || 'text';
-    const isError = act.error === true;
-    html += '<li class="activity-item">';
+    var isText = (act.type || 'text') === 'text';
+    var groupType = isText ? 'text' : 'tools';
+    if (!currentGroup || currentGroup.type !== groupType) {
+      currentGroup = { type: groupType, items: [] };
+      groups.push(currentGroup);
+    }
+    currentGroup.items.push(act);
+  });
 
-    if (aType === 'text') {
-      html += '<span class="activity-dot type-text"></span>';
+  var timeStr = blockTime ? ' <span class="detail-timestamp">' + formatTimestamp(blockTime) + '</span>' : '';
+  var html = '';
+  groups.forEach(function(group) {
+    html += '<div class="activity-group group-' + group.type + '">';
+    if (group.type === 'text') {
+      html += '<div class="activity-group-label">Message' + timeStr + '</div>';
     } else {
-      html += '<span class="activity-dot type-' + aType + '"></span>';
+      html += '<div class="activity-group-label">Tool Calls' + timeStr + '</div>';
     }
-
-    let descHtml = '';
-    if (aType === 'delegate') {
-      descHtml += '<span class="delegate-arrow"></span>';
-    }
-
-    const descText = act.description || (act.tool ? act.tool : aType);
-    descHtml += '<span' + (isError ? ' class="activity-error"' : '') + '>' + escapeHtml(descText) + '</span>';
-
-    if (act.target) {
-      descHtml += ' ' + fileLink(act.target);
-    }
-
-    if (aType === 'delegate' && act.subagentId) {
-      descHtml += ' <span class="view-full-link" data-action="go-subagent" data-subagent-id="' + escapeHtml(act.subagentId) + '">[view]</span>';
-    }
-
-    html += '<span class="activity-desc' + (aType === 'text' ? ' type-text' : '') + '">' + descHtml + '</span>';
-
-    // Line reference
-    if (act.line != null) {
-      const lineFile = defaultFile || '';
-      html += ' <span class="activity-line-ref" data-action="load-line" data-file="' + escapeHtml(lineFile) + '" data-line="' + act.line + '" title="Load raw JSONL line ' + act.line + '">[L' + act.line + ']</span>';
-    }
-
-    html += '</li>';
+    html += '<ul class="activity-list">';
+    group.items.forEach(function(act) {
+      html += renderSingleActivity(act, defaultFile);
+    });
+    html += '</ul>';
+    html += '</div>';
   });
-  html += '</ul>';
   return html;
 }
 
-function renderTokenBar(tokenUsage) {
-  const total = (tokenUsage.input || 0) + (tokenUsage.output || 0) + (tokenUsage.cacheRead || 0) + (tokenUsage.cacheWrite || 0);
-  if (total === 0) return '';
-  let html = '<div class="token-bar-container">';
-  const segments = [
-    { key: 'input', label: 'In', cls: 'input' },
-    { key: 'output', label: 'Out', cls: 'output' },
-    { key: 'cacheRead', label: 'Cache-R', cls: 'cache-read' },
-    { key: 'cacheWrite', label: 'Cache-W', cls: 'cache-write' }
-  ];
-  segments.forEach(function(seg) {
-    const val = tokenUsage[seg.key] || 0;
-    if (val > 0) {
-      const pct = Math.max(1, (val / total) * 100);
-      html += '<span class="token-bar-segment ' + seg.cls + '" style="width:' + pct + '%" title="' + seg.label + ': ' + formatTokenCount(val) + '"></span>';
-    }
-  });
-  html += '<span class="token-bar-label">';
-  segments.forEach(function(seg, i) {
-    const val = tokenUsage[seg.key] || 0;
-    if (val > 0) {
-      if (i > 0) html += ' ';
-      html += seg.label + ':' + formatTokenCount(val);
-    }
-  });
-  html += '</span>';
-  html += '</div>';
+function renderSingleActivity(act, defaultFile) {
+  var aType = act.type || 'text';
+  var isError = act.error === true;
+  var isSearch = act.tool === 'Glob' || act.tool === 'Grep';
+
+  // Text activities render as block-level pre-wrapped content
+  if (aType === 'text') {
+    var descText = act.description || '';
+    return '<li><div class="activity-text-block">' + renderMarkdown(descText) + '</div></li>';
+  }
+
+  var html = '<li class="activity-item">';
+  html += '<span class="activity-dot type-' + aType + '"></span>';
+
+  var descHtml = '';
+  if (aType === 'delegate') descHtml += '<span class="delegate-arrow"></span>';
+
+  var descText = act.description || (act.tool ? act.tool : aType);
+  descHtml += '<span>' + escapeHtml(descText) + '</span>';
+  if (isError) descHtml += '<span class="activity-error-badge">error</span>';
+
+  // Primary target file link (skip for search tools — results shown in box below)
+  if (act.target && !isSearch) {
+    descHtml += ' <a href="' + escapeHtml(fileUrl(act.target)) + '" class="activity-target" data-preview-path="' + escapeHtml(act.target) + '" title="Preview: ' + escapeHtml(act.target) + '">' + escapeHtml(act.target.split('/').pop()) + '</a>';
+  }
+
+  // Extra targets (e.g., multiple files in Bash commands)
+  if (act.extraTargets && act.extraTargets.length > 0) {
+    descHtml += ' <span class="activity-extra-targets">';
+    act.extraTargets.forEach(function(t) {
+      descHtml += ' <a href="' + escapeHtml(fileUrl(t)) + '" class="activity-target" data-preview-path="' + escapeHtml(t) + '" title="Preview: ' + escapeHtml(t) + '">' + escapeHtml(t.split('/').pop()) + '</a>';
+    });
+    descHtml += '</span>';
+  }
+
+  // Subagent link
+  if (aType === 'delegate' && act.subagentId) {
+    descHtml += ' <span class="view-full-link" data-action="go-subagent" data-subagent-id="' + escapeHtml(act.subagentId) + '">[view]</span>';
+  }
+
+  html += '<span class="activity-desc' + (aType === 'text' ? ' type-text' : '') + '">' + descHtml + '</span>';
+
+  // Line reference badge: prefer resultLine (tool output) over line (tool dispatch)
+  var refLine = (act.tool && act.resultLine != null) ? act.resultLine : act.line;
+  if (refLine != null) {
+    var lineFile = defaultFile || '';
+    html += ' <span class="activity-line-ref" data-action="load-line" data-file="' + escapeHtml(lineFile) + '" data-line="' + refLine + '" title="Load raw JSONL line ' + refLine + '">[L' + refLine + ']</span>';
+  }
+
+  html += '</li>';
+
+  // Search results box (Glob/Grep)
+  if (isSearch && act.resultContent) {
+    html += '<li class="activity-item" style="padding-left:16px"><div class="content-box search-results">' + escapeHtml(act.resultContent) + '</div></li>';
+  }
+
   return html;
 }
 
+// =====================================================================
+// Detail Panel Event Handlers (delegated)
+// =====================================================================
 function attachDetailHandlers(panel) {
-  // Load raw JSONL lines
-  panel.querySelectorAll('[data-action="load-raw"]').forEach(function(el) {
-    el.addEventListener('click', async function() {
-      const file = this.dataset.file;
-      const start = parseInt(this.dataset.start);
-      const end = parseInt(this.dataset.end);
-      const container = document.getElementById('rawJsonlContainer');
-      if (!container) return;
-      container.innerHTML = '<div class="raw-jsonl-panel"><span class="loading-msg">Loading lines ' + start + '-' + end + '...</span></div>';
-      const result = await fetchJsonlRange(file, start, end);
-      if (result.error) {
-        container.innerHTML = '<div class="raw-jsonl-panel"><span class="error-msg">' + escapeHtml(result.error) + '</span></div>';
-      } else {
-        let text = result.lines.map(function(line, i) {
-          try {
-            return 'L' + (start + i) + ': ' + JSON.stringify(JSON.parse(line), null, 2);
-          } catch (e) {
-            return 'L' + (start + i) + ': ' + line;
-          }
-        }).join('\n\n');
-        container.innerHTML = '<div class="raw-jsonl-panel">' + escapeHtml(text) + '</div>';
-      }
+  // File preview links (click loads preview, ctrl/cmd+click opens new tab)
+  panel.querySelectorAll('[data-preview-path]').forEach(function(el) {
+    el.addEventListener('click', function(e) {
+      if (e.ctrlKey || e.metaKey) return;
+      e.preventDefault();
+      loadFilePreview(this.dataset.previewPath);
     });
   });
 
-  // Load single JSONL line (for [LN] references and "View Full" links)
+  // Load single JSONL line (for [L] badges) — toggle on/off
   panel.querySelectorAll('[data-action="load-line"]').forEach(function(el) {
     el.addEventListener('click', async function() {
-      const file = this.dataset.file;
-      const line = parseInt(this.dataset.line);
+      var file = this.dataset.file;
+      var line = parseInt(this.dataset.line);
       if (!file || isNaN(line)) return;
 
-      // Find or create expand container nearby
-      let container = this.nextElementSibling;
-      if (!container || !container.classList.contains('raw-jsonl-panel')) {
-        // Check known containers
-        const invExpand = document.getElementById('invocationExpand');
-        const repExpand = document.getElementById('reportExpand');
-        if (invExpand && this.closest('.detail-panel') && this.dataset.file && invExpand.previousElementSibling && invExpand.previousElementSibling.contains(this)) {
-          container = invExpand;
-        } else if (repExpand && this.closest('.detail-panel') && repExpand.previousElementSibling && repExpand.previousElementSibling.contains(this)) {
-          container = repExpand;
-        } else {
-          // Create inline
-          container = document.createElement('div');
-          this.parentNode.insertBefore(container, this.nextSibling);
-        }
+      // Toggle: if panel already exists, remove it
+      var existing = this.nextElementSibling;
+      if (existing && existing.dataset.jsonlPanel === 'true') {
+        existing.remove();
+        return;
       }
+
+      var container = document.createElement('div');
+      container.dataset.jsonlPanel = 'true';
+      this.parentNode.insertBefore(container, this.nextSibling);
       container.innerHTML = '<div class="raw-jsonl-panel"><span class="loading-msg">Loading line ' + line + '...</span></div>';
-      const result = await fetchJsonlLine(file, line);
+      var result = await fetchJsonlLine(file, line);
       if (result.error) {
         container.innerHTML = '<div class="raw-jsonl-panel"><span class="error-msg">' + escapeHtml(result.error) + '</span></div>';
       } else if (result.data) {
@@ -1168,7 +1482,8 @@ function attachDetailHandlers(panel) {
     el.addEventListener('click', function() {
       selectedSubagentId = this.dataset.subagentId;
       selectedBlockId = null;
-      render();
+      updateTimelineSelection();
+      renderDetail();
     });
   });
 
@@ -1177,104 +1492,194 @@ function attachDetailHandlers(panel) {
     el.addEventListener('click', function() {
       selectedBlockId = this.dataset.blockId;
       selectedSubagentId = null;
-      render();
+      updateTimelineSelection();
+      renderDetail();
     });
   });
 }
 
+// =====================================================================
+// File Preview Panel
+// =====================================================================
+async function loadFilePreview(path) {
+  var panel = document.getElementById('filePreview');
+  var url = fileUrl(path);
+
+  panel.innerHTML =
+    '<div class="preview-header">' +
+    '<span class="preview-path" title="' + escapeHtml(path) + '">' + escapeHtml(path) + '</span>' +
+    '<a href="' + escapeHtml(url) + '" target="_blank" class="preview-open-tab">Open in new tab</a>' +
+    '<button class="preview-close" id="previewCloseBtn">\u00d7</button>' +
+    '</div>' +
+    '<div class="preview-content"><div style="padding:20px;color:#94a3b8;font-style:italic">Loading...</div></div>';
+
+  document.getElementById('previewCloseBtn').addEventListener('click', closeFilePreview);
+
+  // Detect binary/non-previewable files before fetching
+  var binaryExts = /\.(parquet|png|jpg|jpeg|gif|bmp|ico|pdf|zip|gz|tar|whl|pyc|pkl|pickle|sqlite|db|feather|arrow|xlsx|xls|doc|docx)$/i;
+  var contentEl = panel.querySelector('.preview-content');
+  if (binaryExts.test(path)) {
+    if (!contentEl) return;
+    var ext = path.match(/\.(\w+)$/)[1].toLowerCase();
+    var msg = '<div style="padding:30px 20px;text-align:center;color:#64748b">';
+    msg += '<div style="font-size:1.5rem;margin-bottom:8px">Binary file</div>';
+    msg += '<div style="font-size:0.85rem;margin-bottom:12px"><code style="background:#f1f5f9;padding:2px 6px;border-radius:3px">' + escapeHtml(path.split('/').pop()) + '</code></div>';
+    msg += '<div style="font-size:0.8rem;color:#94a3b8">.' + escapeHtml(ext) + ' files cannot be previewed in the browser.</div>';
+    msg += '</div>';
+    contentEl.innerHTML = msg;
+    return;
+  }
+
+  var result = await fetchFileContent(path);
+  if (!contentEl) return;
+
+  if (result.error) {
+    contentEl.innerHTML = '<div style="padding:20px;color:#ef4444">Failed to load: ' + escapeHtml(result.error) + '</div>';
+    return;
+  }
+
+  // Render .md files with markdown formatting
+  var isMd = /\.md$/i.test(path);
+  if (isMd) {
+    var text = result.content;
+    var maxChars = 200000;
+    if (text.length > maxChars) {
+      text = text.substring(0, maxChars) + '\n\n... (' + (text.length - maxChars) + ' more characters)';
+    }
+    contentEl.innerHTML = '<div style="padding:12px 16px;font-size:0.82rem;line-height:1.6;color:#334155;overflow:auto">' + renderMarkdown(text) + '</div>';
+    return;
+  }
+
+  var lines = result.content.split('\n');
+  var maxLines = 3000;
+  var display = lines.slice(0, maxLines);
+  var lineHtml = display.map(function(line, i) {
+    return '<span class="ln">' + String(i + 1).padStart(5) + '</span>' + escapeHtml(line);
+  }).join('\n');
+
+  if (lines.length > maxLines) {
+    lineHtml += '\n\n  ... (' + (lines.length - maxLines) + ' more lines)';
+  }
+
+  contentEl.innerHTML = '<pre class="file-content"><code>' + lineHtml + '</code></pre>';
+}
+
+function closeFilePreview() {
+  document.getElementById('filePreview').innerHTML = '<div class="preview-empty">Click a file reference to preview it here.</div>';
+}
+
+
+// =====================================================================
+// Render Entry Point
+// =====================================================================
 function render() {
-  renderTabs();
+  renderSessionSelect();
   renderStatsBar();
   renderTimeline();
   renderDetail();
 }
 
-// --- Resize handle ---
+// =====================================================================
+// Resize Handles
+// =====================================================================
 (function() {
-  const handle = document.getElementById('resizeHandle');
-  const timelinePanel = document.getElementById('timelinePanel');
-  const detailPanel = document.getElementById('detailPanel');
-  const mainContent = document.querySelector('.main-content');
-  let dragging = false;
-  let startY = 0;
-  let startTimelineFlex = 6;
-  let startDetailFlex = 4;
+  // --- Horizontal resize (between timeline and bottom panels) ---
+  var hHandle = document.getElementById('resizeHandle');
+  var timelinePanel = document.getElementById('timelinePanel');
+  var bottomPanels = document.getElementById('bottomPanels');
+  var mainContent = document.querySelector('.main-content');
+  var hDragging = false;
+  var hStartY = 0, hStartTopFlex = 6, hStartBotFlex = 4;
 
-  handle.addEventListener('mousedown', function(e) {
-    dragging = true;
-    startY = e.clientY;
-    const tRect = timelinePanel.getBoundingClientRect();
-    const dRect = detailPanel.getBoundingClientRect();
-    const total = tRect.height + dRect.height;
-    startTimelineFlex = tRect.height / total * 10;
-    startDetailFlex = dRect.height / total * 10;
-    handle.classList.add('dragging');
+  hHandle.addEventListener('mousedown', function(e) {
+    hDragging = true;
+    hStartY = e.clientY;
+    var tRect = timelinePanel.getBoundingClientRect();
+    var bRect = bottomPanels.getBoundingClientRect();
+    var total = tRect.height + bRect.height;
+    hStartTopFlex = tRect.height / total * 10;
+    hStartBotFlex = bRect.height / total * 10;
+    hHandle.classList.add('dragging');
     e.preventDefault();
   });
 
   document.addEventListener('mousemove', function(e) {
-    if (!dragging) return;
-    const dy = e.clientY - startY;
-    const mainRect = mainContent.getBoundingClientRect();
-    const totalHeight = mainRect.height - 5; // minus handle
-    const deltaFlex = (dy / totalHeight) * 10;
-    const newTimeline = Math.max(2, Math.min(8, startTimelineFlex + deltaFlex));
-    const newDetail = Math.max(2, Math.min(8, startDetailFlex - deltaFlex));
-    timelinePanel.style.flex = newTimeline;
-    detailPanel.style.flex = newDetail;
+    if (!hDragging && !vDragging) return;
+    if (hDragging) {
+      var dy = e.clientY - hStartY;
+      var mainRect = mainContent.getBoundingClientRect();
+      var totalH = mainRect.height - 5;
+      var deltaFlex = (dy / totalH) * 10;
+      timelinePanel.style.flex = Math.max(3, Math.min(8, hStartTopFlex + deltaFlex));
+      bottomPanels.style.flex = Math.max(2, Math.min(7, hStartBotFlex - deltaFlex));
+    }
+    if (vDragging) {
+      var dx = e.clientX - vStartX;
+      var containerRect = bottomPanels.getBoundingClientRect();
+      var totalW = containerRect.width - 5;
+      var deltaFlex = (dx / totalW) * 10;
+      detailPanelEl.style.flex = Math.max(1, Math.min(9, vStartLeftFlex + deltaFlex));
+      filePreviewEl.style.flex = Math.max(1, Math.min(9, vStartRightFlex - deltaFlex));
+    }
   });
 
   document.addEventListener('mouseup', function() {
-    if (dragging) {
-      dragging = false;
-      handle.classList.remove('dragging');
-    }
+    if (hDragging) { hDragging = false; hHandle.classList.remove('dragging'); }
+    if (vDragging) { vDragging = false; vHandle.classList.remove('dragging'); }
+  });
+
+  // --- Vertical resize (between detail and file preview) ---
+  var vHandle = document.getElementById('verticalResize');
+  var detailPanelEl = document.getElementById('detailPanel');
+  var filePreviewEl = document.getElementById('filePreview');
+  var vDragging = false;
+  var vStartX = 0, vStartLeftFlex = 1, vStartRightFlex = 1;
+
+  vHandle.addEventListener('mousedown', function(e) {
+    vDragging = true;
+    vStartX = e.clientX;
+    var lRect = detailPanelEl.getBoundingClientRect();
+    var rRect = filePreviewEl.getBoundingClientRect();
+    var total = lRect.width + rRect.width;
+    vStartLeftFlex = lRect.width / total * 10;
+    vStartRightFlex = rRect.width / total * 10;
+    vHandle.classList.add('dragging');
+    e.preventDefault();
   });
 })();
 
-// --- Legend toggle ---
-document.getElementById('legendToggle').addEventListener('click', function() {
-  document.getElementById('legendPanel').classList.toggle('visible');
-});
-// Close legend when clicking outside
-document.addEventListener('click', function(e) {
-  if (!e.target.closest('#legendPanel') && !e.target.closest('#legendToggle')) {
-    document.getElementById('legendPanel').classList.remove('visible');
-  }
-});
-
-// --- Load manifest ---
+// =====================================================================
+// Load Manifest
+// =====================================================================
 async function loadManifest() {
-  const loadingEl = document.getElementById('loadingMsg');
   try {
-    const resp = await fetch('./session_manifest.json');
-    if (!resp.ok) {
-      throw new Error('HTTP ' + resp.status + ' — could not load session_manifest.json');
+    var params = new URLSearchParams(window.location.search);
+    var manifestUrl = params.get('manifest') || './session_manifest.json';
+    // Prefix with / if it's a relative path without protocol (so it resolves from server root)
+    if (manifestUrl && !manifestUrl.startsWith('/') && !manifestUrl.startsWith('./') && !manifestUrl.startsWith('http')) {
+      manifestUrl = '/' + manifestUrl;
     }
+    var resp = await fetch(manifestUrl + (manifestUrl.indexOf('?') >= 0 ? '&' : '?') + 't=' + Date.now());
+    if (!resp.ok) throw new Error('HTTP ' + resp.status + ' \u2014 could not load manifest from ' + manifestUrl);
     manifest = await resp.json();
   } catch (e) {
-    const panel = document.getElementById('timelinePanel');
-    panel.innerHTML =
+    document.getElementById('timelinePanel').innerHTML =
       '<div class="state-message">' +
       '<h2>Failed to load session manifest</h2>' +
       '<p>' + escapeHtml(e.message) + '</p>' +
       '<p style="margin-top:12px">Make sure you are serving from the DAAF root directory:<br>' +
-      '<code>cd /daaf && python -m http.server 8000</code><br>' +
-      'Then open this viewer at the correct logs/ URL, e.g.:<br>' +
-      '<code>http://localhost:8000/research/.../logs/log_viewer.html</code></p>' +
-      '</div>';
+      '<code>bash /daaf/scripts/generate_log_viewer.sh &lt;project_path&gt;</code><br>' +
+      'or <code>bash /daaf/scripts/generate_log_viewer.sh --archive</code></p></div>';
     return;
   }
 
-  // Populate project name
   if (manifest.project) {
     document.getElementById('projectName').textContent = 'Project: ' + (manifest.project.name || manifest.project.path || 'Unknown');
   }
 
-  // Handle empty sessions
   if (!manifest.sessions || manifest.sessions.length === 0) {
     document.getElementById('timelinePanel').innerHTML =
-      '<div class="state-message"><h2>No sessions found</h2><p>The manifest exists but contains no session data for this project.</p></div>';
+      '<div class="state-message"><h2>No sessions found</h2><p>The manifest exists but contains no session data.</p></div>';
     return;
   }
 

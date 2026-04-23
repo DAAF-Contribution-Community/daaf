@@ -63,3 +63,6 @@ Thumbs.db
 .claude/logs/subagent-registry-*.jsonl
 .claude/logs/pending_log_collection.jsonl
 .claude/logs/.last_recovery
+
+# Generated log viewer artifacts (regenerated on demand)
+**/logs/session_manifest.json

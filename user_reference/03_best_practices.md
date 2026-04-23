@@ -236,6 +236,8 @@ I recommend this review order:
 
 You do *not* need to read everything in detail every time. The report is the synthesis; the notebook is the evidence; the scripts are the primary source. Go as deep as you need to based on how much you trust the results and how high-stakes the analysis is.
 
+**Tip:** Before diving into individual artifacts, consider browsing the session visually using the **DAAF Log Explorer**. Run `bash view_logs.sh` (or `.\view_logs.ps1` on Windows) from your `daaf-docker` folder to see an interactive timeline of every orchestrator action, subagent dispatch, and tool call. This gives you a high-level map of the entire session, making it easier to identify which stages or scripts deserve closer inspection.
+
 ### Reading the Report
 
 The report follows a standard structure (Executive Summary, Key Findings, Data & Methodology, Limitations, etc.). When reviewing it, focus on:
