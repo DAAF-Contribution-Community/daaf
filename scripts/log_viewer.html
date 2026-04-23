@@ -84,7 +84,7 @@ body {
   overflow-y: auto;
   overflow-x: hidden;
   padding: 16px 20px;
-  min-height: 100px;
+  min-height: 40px;
 }
 .section-label {
   font-size: 0.7rem;
@@ -388,6 +388,31 @@ body {
   text-align: center;
   padding: 40px 20px;
 }
+.preview-notice {
+  background: #fffbeb;
+  border-bottom: 1px solid #fde68a;
+  padding: 5px 12px;
+  font-size: 0.72rem;
+  color: #92400e;
+  flex-shrink: 0;
+  line-height: 1.4;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.preview-notice-text { flex: 1; }
+.preview-notice-dismiss {
+  background: none;
+  border: none;
+  color: #b45309;
+  cursor: pointer;
+  font-size: 0.85rem;
+  padding: 0 2px;
+  line-height: 1;
+  flex-shrink: 0;
+  opacity: 0.6;
+}
+.preview-notice-dismiss:hover { opacity: 1; }
 .preview-header {
   display: flex;
   align-items: center;
@@ -686,6 +711,7 @@ var selectedSubagentId = null;
 var jsonlCache = {};
 var fileCache = {};
 var mergedBlockLookup = {};
+var previewNoticeDismissed = false;
 
 // =====================================================================
 // Helpers
@@ -1511,9 +1537,22 @@ async function loadFilePreview(path) {
     '<a href="' + escapeHtml(url) + '" target="_blank" class="preview-open-tab">Open in new tab</a>' +
     '<button class="preview-close" id="previewCloseBtn">\u00d7</button>' +
     '</div>' +
+    (previewNoticeDismissed ? '' :
+    '<div class="preview-notice" id="previewNotice">' +
+    '<span class="preview-notice-text">Note: This file viewer shows the current version of this file on disk, which may differ from the version that existed when this session was recorded.</span>' +
+    '<button class="preview-notice-dismiss" id="previewNoticeDismiss" title="Dismiss">\u00d7</button>' +
+    '</div>') +
     '<div class="preview-content"><div style="padding:20px;color:#94a3b8;font-style:italic">Loading...</div></div>';
 
   document.getElementById('previewCloseBtn').addEventListener('click', closeFilePreview);
+  var noticeBtn = document.getElementById('previewNoticeDismiss');
+  if (noticeBtn) {
+    noticeBtn.addEventListener('click', function() {
+      previewNoticeDismissed = true;
+      var notice = document.getElementById('previewNotice');
+      if (notice) notice.remove();
+    });
+  }
 
   // Detect binary/non-previewable files before fetching
   var binaryExts = /\.(parquet|png|jpg|jpeg|gif|bmp|ico|pdf|zip|gz|tar|whl|pyc|pkl|pickle|sqlite|db|feather|arrow|xlsx|xls|doc|docx)$/i;
@@ -1610,8 +1649,8 @@ function render() {
       var mainRect = mainContent.getBoundingClientRect();
       var totalH = mainRect.height - 5;
       var deltaFlex = (dy / totalH) * 10;
-      timelinePanel.style.flex = Math.max(3, Math.min(8, hStartTopFlex + deltaFlex));
-      bottomPanels.style.flex = Math.max(2, Math.min(7, hStartBotFlex - deltaFlex));
+      timelinePanel.style.flex = Math.max(1, Math.min(8, hStartTopFlex + deltaFlex));
+      bottomPanels.style.flex = Math.max(2, Math.min(9, hStartBotFlex - deltaFlex));
     }
     if (vDragging) {
       var dx = e.clientX - vStartX;
