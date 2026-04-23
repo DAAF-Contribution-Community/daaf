@@ -57,7 +57,7 @@ echo ""
 if ! docker compose exec -T daaf-docker test -f /daaf/CLAUDE.md </dev/null 2>/dev/null; then
     echo "WARNING: DAAF does not appear to be installed in the container (/daaf is empty or missing key files)."
     echo "The container is running, but DAAF's repository files may not have been cloned."
-    echo "You can fix this by re-running the installer, or manually cloning inside the container:"
+    echo "You can fix this by running 'bash update_daaf.sh' from your daaf-docker folder, or manually cloning inside the container:"
     echo "  docker compose exec daaf-docker bash"
     echo "  git clone --depth 1 https://github.com/DAAF-Contribution-Community/daaf.git /tmp/daaf-clone"
     echo "  cp -a /tmp/daaf-clone/. /daaf/ && rm -rf /tmp/daaf-clone"

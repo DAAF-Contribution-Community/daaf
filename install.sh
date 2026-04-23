@@ -51,6 +51,36 @@ if ! docker info &> /dev/null; then
     exit 1
 fi
 
+# --- Check for existing installation ---
+if [ -f "${INSTALL_DIR}/docker-compose.yml" ]; then
+    if docker volume inspect daaf_daaf-data &>/dev/null; then
+        # Volume exists — this is a completed or substantially completed installation
+        if [ "${DAAF_FORCE_REINSTALL:-}" = "1" ]; then
+            echo "NOTE: Existing installation detected. Proceeding with re-install (DAAF_FORCE_REINSTALL=1)."
+            echo ""
+        else
+            echo "WARNING: An existing DAAF installation was detected."
+            echo ""
+            echo "Re-running the installer will overwrite framework files (CLAUDE.md, skills,"
+            echo "agents, templates) and local git history. Your research data will NOT be"
+            echo "deleted, but a backup is strongly recommended."
+            echo ""
+            echo "To update DAAF instead (recommended — preserves local changes):"
+            echo "  cd ${INSTALL_DIR}"
+            echo "  bash update_daaf.sh"
+            echo ""
+            echo "To force a fresh re-install, set DAAF_FORCE_REINSTALL=1:"
+            echo "  DAAF_FORCE_REINSTALL=1 bash -c \"\$(curl -fsSL ${RAW_BASE}/install.sh)\""
+            echo ""
+            exit 1
+        fi
+    else
+        echo "NOTE: A previous install attempt was detected but appears incomplete."
+        echo "      Proceeding with a fresh install."
+        echo ""
+    fi
+fi
+
 # --- Create minimal build directory ---
 echo "[1/4] Creating initial directory for installation files at ${INSTALL_DIR} ..."
 mkdir -p "${INSTALL_DIR}"
@@ -78,7 +108,7 @@ export COMPOSE_PROJECT_NAME=daaf
 if ! docker compose -f "${INSTALL_DIR}/docker-compose.yml" up -d --build; then
     echo ""
     echo "ERROR: Docker image build failed. Check the output above for details."
-    echo "You can safely re-run this installer to retry."
+    echo "You can safely re-run this installer to retry (set DAAF_FORCE_REINSTALL=1 if prompted)."
     exit 1
 fi
 
@@ -109,7 +139,7 @@ if ! docker compose -f "${INSTALL_DIR}/docker-compose.yml" exec -T daaf-docker \
     echo "    git clone --depth 1 -b ${BRANCH} https://github.com/${REPO}.git /tmp/daaf-clone"
     echo "  docker compose -f ${INSTALL_DIR}/docker-compose.yml exec -T daaf-docker \\"
     echo "    bash -c 'cp -a /tmp/daaf-clone/. /daaf/ && rm -rf /tmp/daaf-clone'"
-    echo "You can also safely re-run this installer to retry from scratch."
+    echo "You can also safely re-run this installer to retry from scratch (set DAAF_FORCE_REINSTALL=1 if prompted)."
     exit 1
 fi
 
@@ -121,7 +151,7 @@ if ! docker compose -f "${INSTALL_DIR}/docker-compose.yml" exec -T daaf-docker \
     echo "You can retry manually with:"
     echo "  docker compose -f ${INSTALL_DIR}/docker-compose.yml exec -T daaf-docker \\"
     echo "    bash -c 'cp -a /tmp/daaf-clone/. /daaf/ && rm -rf /tmp/daaf-clone'"
-    echo "You can also safely re-run this installer to retry from scratch."
+    echo "You can also safely re-run this installer to retry from scratch (set DAAF_FORCE_REINSTALL=1 if prompted)."
     exit 1
 fi
 

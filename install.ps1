@@ -58,6 +58,39 @@ if ($LASTEXITCODE -ne 0) {
     Pause-And-Exit 1
 }
 
+# --- Check for existing installation ---
+if (Test-Path "$InstallDir\docker-compose.yml") {
+    docker volume inspect daaf_daaf-data 2>&1 | Out-Null
+    $volumeExists = ($LASTEXITCODE -eq 0)
+    if ($volumeExists) {
+        # Volume exists — this is a completed or substantially completed installation
+        if ($env:DAAF_FORCE_REINSTALL -eq "1") {
+            Write-Host "NOTE: Existing installation detected. Proceeding with re-install (DAAF_FORCE_REINSTALL=1)."
+            Write-Host ""
+        } else {
+            Write-Host "WARNING: An existing DAAF installation was detected." -ForegroundColor Yellow
+            Write-Host ""
+            Write-Host "Re-running the installer will overwrite framework files (CLAUDE.md, skills,"
+            Write-Host "agents, templates) and local git history. Your research data will NOT be"
+            Write-Host "deleted, but a backup is strongly recommended."
+            Write-Host ""
+            Write-Host "To update DAAF instead (recommended - preserves local changes):"
+            Write-Host "  cd $InstallDir"
+            Write-Host "  .\update_daaf.ps1"
+            Write-Host ""
+            Write-Host "To force a fresh re-install:"
+            Write-Host '  $env:DAAF_FORCE_REINSTALL = "1"'
+            Write-Host "  irm $RawBase/install.ps1 | iex"
+            Write-Host ""
+            Pause-And-Exit 1
+        }
+    } else {
+        Write-Host "NOTE: A previous install attempt was detected but appears incomplete."
+        Write-Host "      Proceeding with a fresh install."
+        Write-Host ""
+    }
+}
+
 # --- Create minimal build directory ---
 Write-Host "[1/4] Creating an initial directory for installation files at $InstallDir ..."
 New-Item -ItemType Directory -Path "$InstallDir" -Force | Out-Null
@@ -87,7 +120,7 @@ $env:COMPOSE_PROJECT_NAME = "daaf"
 docker compose -f "$InstallDir\docker-compose.yml" up -d --build
 if ($LASTEXITCODE -ne 0) {
     Write-Host "ERROR: Docker image build failed. Check the output above for details." -ForegroundColor Red
-    Write-Host "You can safely re-run this installer to retry."
+    Write-Host "You can safely re-run this installer to retry (set DAAF_FORCE_REINSTALL=1 if prompted)."
     Pause-And-Exit 1
 }
 
@@ -122,7 +155,7 @@ if ($LASTEXITCODE -ne 0) {
     Write-Host "    git clone --depth 1 -b $Branch https://github.com/$Repo.git /tmp/daaf-clone"
     Write-Host "  docker compose -f $InstallDir\docker-compose.yml exec -T daaf-docker ``"
     Write-Host "    bash -c 'cp -a /tmp/daaf-clone/. /daaf/ && rm -rf /tmp/daaf-clone'"
-    Write-Host "You can also safely re-run this installer to retry from scratch."
+    Write-Host "You can also safely re-run this installer to retry from scratch (set DAAF_FORCE_REINSTALL=1 if prompted)."
     Pause-And-Exit 1
 }
 
@@ -135,7 +168,7 @@ if ($LASTEXITCODE -ne 0) {
     Write-Host "You can retry manually with:"
     Write-Host "  docker compose -f $InstallDir\docker-compose.yml exec -T daaf-docker ``"
     Write-Host "    bash -c 'cp -a /tmp/daaf-clone/. /daaf/ && rm -rf /tmp/daaf-clone'"
-    Write-Host "You can also safely re-run this installer to retry from scratch."
+    Write-Host "You can also safely re-run this installer to retry from scratch (set DAAF_FORCE_REINSTALL=1 if prompted)."
     Pause-And-Exit 1
 }
 

@@ -144,6 +144,36 @@ Behind the scenes, the Docker Compose setup also:
 
 You can confirm the install worked by looking at Docker Desktop: in the **Images** panel you should see `daaf-daaf-docker`, and in the **Containers** panel you should see `daaf` with a sub-entry `daaf-docker-1`.
 
+#### Re-installing DAAF
+
+If you run the installer on a system where DAAF is already installed, it will detect the existing installation and stop with a warning. This is a safety feature — re-running the installer would overwrite your framework files (CLAUDE.md, skills, agents, templates) and local git history, though your research data in `research/` would not be deleted.
+
+**To update DAAF** (recommended — preserves your local changes), use the update script instead:
+
+```bash
+cd daaf-docker
+bash update_daaf.sh          # macOS / Linux
+.\update_daaf.ps1            # Windows
+```
+
+See [**Keeping DAAF Updated**](#keeping-daaf-updated) for details on what the update script does.
+
+**To force a complete re-install** (overwrites all framework files), set the `DAAF_FORCE_REINSTALL` environment variable:
+
+**macOS / Linux:**
+```bash
+DAAF_FORCE_REINSTALL=1 bash -c "$(curl -fsSL https://raw.githubusercontent.com/DAAF-Contribution-Community/daaf/main/install.sh)"
+```
+
+**Windows (PowerShell):**
+```powershell
+$env:DAAF_FORCE_REINSTALL = "1"; irm https://raw.githubusercontent.com/DAAF-Contribution-Community/daaf/main/install.ps1 | iex
+```
+
+Back up your Docker volume first (see [**Backing Up Your Work**](#backing-up-your-work)) if you have research data or framework customizations you want to preserve.
+
+If the installer detects a previous attempt that didn't complete successfully (e.g., the Docker build failed partway through), it will note this and proceed automatically — no override needed.
+
 #### Launch Claude Code with DAAF
 
 Now, you'll use your terminal to enter the DAAF installation directory. Once you're in there, you can run a helper script I created to make it easy to launch DAAF and Claude Code in the Docker container automatically.

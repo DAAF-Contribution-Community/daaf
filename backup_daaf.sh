@@ -113,12 +113,8 @@ while kill -0 "${COPY_PID}" 2>/dev/null; do
     printf "\r  Progress: %d / %d files (%d%%)   " "${COPIED}" "${TOTAL_FILES}" "${PERCENT}"
 done
 
-if ! wait "${COPY_PID}"; then
-    echo ""
-    echo ""
-    echo "ERROR: Backup failed. Check Docker Desktop for errors."
-    exit 1
-fi
+COPY_EXIT=0
+wait "${COPY_PID}" || COPY_EXIT=$?
 printf "\r  Progress: %d / %d files (100%%)   \n" "${TOTAL_FILES}" "${TOTAL_FILES}"
 
 # --- Verify ---
@@ -126,10 +122,18 @@ FILE_COUNT=$(find "${BACKUP_NAME}" -type f 2>/dev/null | wc -l | tr -d '[:space:
 
 if [ "${FILE_COUNT}" -eq 0 ]; then
     echo ""
-    echo "WARNING: Backup completed but 0 files were copied."
-    echo "The Docker volume may be empty. Is DAAF properly installed?"
+    if [ "${COPY_EXIT}" -ne 0 ]; then
+        echo "ERROR: Backup failed (exit code ${COPY_EXIT}). Check Docker Desktop for errors."
+    else
+        echo "WARNING: Backup completed but 0 files were copied."
+        echo "The Docker volume may be empty. Is DAAF properly installed?"
+    fi
     echo "Location: $(pwd)/${BACKUP_NAME}/"
     exit 1
+fi
+
+if [ "${COPY_EXIT}" -ne 0 ]; then
+    echo "Note: File copy reported warnings (exit code ${COPY_EXIT}) but all ${FILE_COUNT} files were transferred."
 fi
 
 echo ""

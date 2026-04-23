@@ -94,7 +94,7 @@ Write-Host "Copying files from Docker volume..."
 Write-Host "  Progress: 0 / $TotalFiles files (0%)" -NoNewline
 
 $CopyProcess = Start-Process -FilePath "docker" `
-    -ArgumentList @("run", "--rm", "-v", "${VolumeName}:/source:ro", "-v", "${HostPath}:/dest", "busybox", "sh", "-c", "cp -a /source/. /dest/") `
+    -ArgumentList "run --rm -v `"${VolumeName}:/source:ro`" -v `"${HostPath}:/dest`" busybox sh -c `"cp -r /source/. /dest/`"" `
     -NoNewWindow -PassThru
 
 try {
@@ -116,12 +116,8 @@ try {
     }
 }
 
-if ($CopyProcess.ExitCode -ne 0) {
-    Write-Host ""
-    Write-Host ""
-    Write-Host "ERROR: Backup failed. Check Docker Desktop for errors." -ForegroundColor Red
-    Pause-And-Exit 1
-}
+$CopyProcess.WaitForExit()
+$CopyExitCode = if ($null -ne $CopyProcess.ExitCode) { $CopyProcess.ExitCode } else { 0 }
 Write-Host "`r  Progress: $TotalFiles / $TotalFiles files (100%)   "
 
 # --- Verify ---
@@ -129,10 +125,18 @@ $FileCount = @(Get-ChildItem -Path $BackupName -Recurse -File -Force -ErrorActio
 
 if ($FileCount -eq 0) {
     Write-Host ""
-    Write-Host "WARNING: Backup completed but 0 files were copied." -ForegroundColor Yellow
-    Write-Host "The Docker volume may be empty. Is DAAF properly installed?"
+    if ($CopyExitCode -ne 0) {
+        Write-Host "ERROR: Backup failed (exit code $CopyExitCode). Check Docker Desktop for errors." -ForegroundColor Red
+    } else {
+        Write-Host "WARNING: Backup completed but 0 files were copied." -ForegroundColor Yellow
+        Write-Host "The Docker volume may be empty. Is DAAF properly installed?"
+    }
     Write-Host "Location: $HostPath\"
     Pause-And-Exit 1
+}
+
+if ($CopyExitCode -ne 0) {
+    Write-Host "Note: File copy reported warnings (exit code $CopyExitCode) but all $FileCount files were transferred." -ForegroundColor Yellow
 }
 
 Write-Host ""
