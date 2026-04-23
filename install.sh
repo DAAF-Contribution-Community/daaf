@@ -55,14 +55,16 @@ if ! curl -fsSL "${RAW_BASE}/Dockerfile"              -o "${INSTALL_DIR}/Dockerf
    ! curl -fsSL "${RAW_BASE}/docker-compose.yml"       -o "${INSTALL_DIR}/docker-compose.yml" ||
    ! curl -fsSL "${RAW_BASE}/run_daaf.sh"              -o "${INSTALL_DIR}/run_daaf.sh" ||
    ! curl -fsSL "${RAW_BASE}/backup_daaf.sh"           -o "${INSTALL_DIR}/backup_daaf.sh" ||
-   ! curl -fsSL "${RAW_BASE}/rebuild_daaf.sh"          -o "${INSTALL_DIR}/rebuild_daaf.sh"; then
+   ! curl -fsSL "${RAW_BASE}/rebuild_daaf.sh"          -o "${INSTALL_DIR}/rebuild_daaf.sh" ||
+   ! curl -fsSL "${RAW_BASE}/update_daaf.sh"           -o "${INSTALL_DIR}/update_daaf.sh" ||
+   ! curl -fsSL "${RAW_BASE}/view_logs.sh"             -o "${INSTALL_DIR}/view_logs.sh"; then
     echo ""
     echo "ERROR: Failed to download installation files from branch '${BRANCH}'."
     echo "Please verify that the branch name is correct and that you have an internet connection."
     echo "You can check available branches at: https://github.com/${REPO}/branches"
     exit 1
 fi
-chmod +x "${INSTALL_DIR}/run_daaf.sh" "${INSTALL_DIR}/backup_daaf.sh" "${INSTALL_DIR}/rebuild_daaf.sh"
+chmod +x "${INSTALL_DIR}/run_daaf.sh" "${INSTALL_DIR}/backup_daaf.sh" "${INSTALL_DIR}/rebuild_daaf.sh" "${INSTALL_DIR}/update_daaf.sh" "${INSTALL_DIR}/view_logs.sh"
 
 # --- Build the Docker image ---
 echo "[3/4] Building Docker image (this may take a few minutes on first run since there are a lot of Python libraries to install)..."
@@ -156,7 +158,9 @@ echo "Convenience scripts (in ${INSTALL_DIR}):"
 echo "  bash run_daaf.sh             Launch Claude Code (starts container if needed)"
 echo "  bash run_daaf.sh bash        Enter the container shell (e.g., for API keys)"
 echo "  bash backup_daaf.sh          Back up the Docker volume to a dated folder"
+echo "  bash update_daaf.sh           Check for and apply DAAF updates"
 echo "  bash rebuild_daaf.sh         Copy build files from container and rebuild image"
+echo "  bash view_logs.sh            Browse session logs in your browser"
 echo ""
 echo "Manual alternative (if you prefer individual commands):"
 echo "  docker compose exec daaf-docker bash   # enter the container"

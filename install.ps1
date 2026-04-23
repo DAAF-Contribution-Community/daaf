@@ -61,6 +61,8 @@ try {
     Invoke-WebRequest -UseBasicParsing -Uri "$RawBase/run_daaf.ps1"         -OutFile "$InstallDir\run_daaf.ps1"
     Invoke-WebRequest -UseBasicParsing -Uri "$RawBase/backup_daaf.ps1"      -OutFile "$InstallDir\backup_daaf.ps1"
     Invoke-WebRequest -UseBasicParsing -Uri "$RawBase/rebuild_daaf.ps1"     -OutFile "$InstallDir\rebuild_daaf.ps1"
+    Invoke-WebRequest -UseBasicParsing -Uri "$RawBase/update_daaf.ps1"      -OutFile "$InstallDir\update_daaf.ps1"
+    Invoke-WebRequest -UseBasicParsing -Uri "$RawBase/view_logs.ps1"       -OutFile "$InstallDir\view_logs.ps1"
 } catch {
     Write-Host ""
     Write-Host "ERROR: Failed to download installation files from branch '$Branch'." -ForegroundColor Red
@@ -167,7 +169,9 @@ Write-Host "Convenience scripts (in $InstallDir):"
 Write-Host "  .\run_daaf.ps1               Launch Claude Code (starts container if needed)"
 Write-Host "  .\run_daaf.ps1 bash           Enter the container shell (e.g., for API keys)"
 Write-Host "  .\backup_daaf.ps1             Back up the Docker volume to a dated folder"
+Write-Host "  .\update_daaf.ps1              Check for and apply DAAF updates"
 Write-Host "  .\rebuild_daaf.ps1            Copy build files from container and rebuild image"
+Write-Host "  .\view_logs.ps1               Browse session logs in your browser"
 Write-Host ""
 Write-Host "Manual alternative (if you prefer individual commands):"
 Write-Host "  docker compose exec daaf-docker bash   # enter the container"

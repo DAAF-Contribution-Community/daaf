@@ -850,6 +850,10 @@ The skill is automatically discoverable via its YAML frontmatter and ready for u
 - Contains: [N] profiling scripts, [N] QA reviews, STATE.md, LEARNINGS.md
 - Session logs: `logs/` (collected via `collect_session_logs.sh`)
 
+**Explore Session Logs:**
+To browse the session timeline interactively in your browser, run in the Docker terminal:
+`bash /daaf/scripts/generate_log_viewer.sh {PROJECT_DIR}`
+
 **Confidence Assessment:**
 - Structural profile: [HIGH/MEDIUM/LOW] — [brief rationale]
 - Statistical profile: [HIGH/MEDIUM/LOW] — [brief rationale]

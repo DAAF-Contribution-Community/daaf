@@ -559,6 +559,10 @@ Present to the user after RV-4 completes:
 The full Reproduction Report is at: `[path]`
 Session logs collected in: `[project_dir]/logs/`
 
+**Explore Session Logs:**
+To browse the session timeline interactively in your browser, run in the Docker terminal:
+`bash /daaf/scripts/generate_log_viewer.sh [project_dir]`
+
 **What would you like to do?**
 - Review the Reproduction Report in detail
 - Discuss specific deviations or concerns

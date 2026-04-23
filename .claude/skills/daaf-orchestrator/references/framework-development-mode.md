@@ -672,6 +672,29 @@ These boundaries supplement the universal safety boundaries in `CLAUDE.md`. See 
 
 ---
 
+## Session Wrap-Up
+
+When the user signals the session is ending, or after Checkpoint 2 approval with no further work:
+
+1. Update SESSION_NOTES.md with a final summary (all sections)
+2. If a research project workspace was created (i.e., the work involved subagent dispatches worth reviewing), collect session logs:
+   ```bash
+   bash {BASE_DIR}/scripts/collect_session_logs.sh {PROJECT_DIR}
+   ```
+3. Offer a brief summary to the user:
+
+> "Here's what we modified:
+> - [List of framework files created/modified]
+> - [Integration points updated]
+>
+> Session notes are saved in `SESSION_NOTES.md`.
+>
+> [If logs were collected:]
+> To browse the session timeline interactively, run in the Docker terminal:
+> `bash /daaf/scripts/generate_log_viewer.sh {PROJECT_DIR}`"
+
+---
+
 ## Escalation Triggers
 
 | Condition | Target Mode | Action |

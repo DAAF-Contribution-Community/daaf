@@ -412,6 +412,9 @@ There is no mandatory wrap-up protocol. The session ends when the user is done. 
 > - [List of scripts, data files, figures]
 > - [Key findings or decisions made]
 >
-> Session notes are saved in `SESSION_NOTES.md` if you want to come back to it. I've also copied in the session logs in the project logs folder."
+> Session notes are saved in `SESSION_NOTES.md` if you want to come back to it. I've also copied in the session logs in the project logs folder.
+>
+> To browse the session timeline interactively, run in the Docker terminal:
+> `bash /daaf/scripts/generate_log_viewer.sh {PROJECT_DIR}`"
 
 This is a courtesy, not a gate. If the user just says "thanks" and leaves, that's fine.

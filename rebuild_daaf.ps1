@@ -6,12 +6,12 @@
 #
 # Use this after:
 #   - Adding Python packages via DAAF's Framework Development mode
-#   - Running update.sh when it reports Dockerfile or docker-compose.yml changes
+#   - Running update_daaf.ps1 when it reports Dockerfile or docker-compose.yml changes
 #   - Any other change to build files inside the container
 #
 # Why this is needed:
 #   The Dockerfile and docker-compose.yml live in two places - inside the Docker
-#   volume (where DAAF and update.sh modify them) and on the host (where docker
+#   volume (where DAAF and update_daaf.ps1 modify them) and on the host (where docker
 #   compose reads them for builds). This script bridges the gap so you don't
 #   have to remember the manual docker cp commands.
 #

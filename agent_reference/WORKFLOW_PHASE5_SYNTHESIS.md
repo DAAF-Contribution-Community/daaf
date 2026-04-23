@@ -471,6 +471,11 @@ After passing Final Review, deliver to user:
 - Data: `research/[folder]/data/`
 - Figures: `research/[folder]/output/figures/`
 - Learnings: `research/[folder]/LEARNINGS.md`
+- Session logs: `research/[folder]/logs/`
+
+**Explore Session Logs:**
+To browse the session timeline interactively in your browser, run in the Docker terminal:
+`bash /daaf/scripts/generate_log_viewer.sh /daaf/research/[folder]`
 
 **Key Findings:**
 1. [Finding 1]
