@@ -16,23 +16,32 @@
 
 $ErrorActionPreference = "Stop"
 
+function Pause-And-Exit {
+    param([int]$Code = 0)
+    if (-not $env:DAAF_NESTED) {
+        Write-Host ""
+        Read-Host "Press Enter to continue"
+    }
+    exit $Code
+}
+
 # --- Preflight ---
 if (-not (Test-Path "docker-compose.yml")) {
     Write-Host "ERROR: docker-compose.yml not found in the current directory." -ForegroundColor Red
     Write-Host "Please run this script from your daaf-docker folder."
-    exit 1
+    Pause-And-Exit 1
 }
 
 if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
     Write-Host "ERROR: Docker is not installed or not in your PATH." -ForegroundColor Red
     Write-Host "Please install Docker Desktop: https://www.docker.com/products/docker-desktop/"
-    exit 1
+    Pause-And-Exit 1
 }
 
 $null = docker info 2>&1
 if ($LASTEXITCODE -ne 0) {
     Write-Host "ERROR: Docker Desktop is not running. Please start it and try again." -ForegroundColor Red
-    exit 1
+    Pause-And-Exit 1
 }
 
 # --- Start container if not running ---
@@ -44,7 +53,7 @@ if ($Running -eq 0) {
     docker compose up -d
     if ($LASTEXITCODE -ne 0) {
         Write-Host "ERROR: Failed to start the container." -ForegroundColor Red
-        exit 1
+        Pause-And-Exit 1
     }
     Write-Host "Container started."
 } else {
@@ -57,6 +66,6 @@ Write-Host ""
 docker compose exec daaf-docker bash /daaf/scripts/generate_log_viewer.sh --archive
 
 # If the server was already running, the command above returns immediately
-# after printing the URL. Keep the window open so the user can read/copy it.
-Write-Host ""
-Read-Host "Press Enter to close this window"
+# after printing the URL. Pause-And-Exit keeps the window open so the user
+# can read/copy it.
+Pause-And-Exit 0

@@ -11,25 +11,34 @@
 
 $ErrorActionPreference = "Stop"
 
+function Pause-And-Exit {
+    param([int]$Code = 0)
+    if (-not $env:DAAF_NESTED) {
+        Write-Host ""
+        Read-Host "Press Enter to continue"
+    }
+    exit $Code
+}
+
 $Command = if ($args.Count -gt 0) { $args[0] } else { "claude" }
 
 # --- Preflight ---
 if (-not (Test-Path "docker-compose.yml")) {
     Write-Host "ERROR: docker-compose.yml not found in the current directory." -ForegroundColor Red
     Write-Host "Please run this script from your daaf-docker folder."
-    exit 1
+    Pause-And-Exit 1
 }
 
 if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
     Write-Host "ERROR: Docker is either not installed or not configured properly in your system PATH to allow it to be used from PowerShell." -ForegroundColor Red
     Write-Host "Please install Docker Desktop: https://www.docker.com/products/docker-desktop/"
-    exit 1
+    Pause-And-Exit 1
 }
 
 $null = docker info 2>&1
 if ($LASTEXITCODE -ne 0) {
     Write-Host "ERROR: Docker Desktop does not seem to be running. Please start it and try again." -ForegroundColor Red
-    exit 1
+    Pause-And-Exit 1
 }
 
 # --- Start container if not running ---
@@ -41,7 +50,7 @@ if ($Running -eq 0) {
     docker compose up -d
     if ($LASTEXITCODE -ne 0) {
         Write-Host "ERROR: Failed to start the container. Check Docker Desktop for errors." -ForegroundColor Red
-        exit 1
+        Pause-And-Exit 1
     }
     Write-Host "Container started."
 } else {
@@ -59,7 +68,7 @@ if ($LASTEXITCODE -ne 0) {
     Write-Host "  docker compose exec daaf-docker bash"
     Write-Host "  git clone --depth 1 https://github.com/DAAF-Contribution-Community/daaf.git /tmp/daaf-clone"
     Write-Host "  cp -a /tmp/daaf-clone/. /daaf/ && rm -rf /tmp/daaf-clone"
-    exit 1
+    Pause-And-Exit 1
 }
 
 # --- Launch ---
@@ -77,3 +86,5 @@ if ($Command -eq "claude") {
     Write-Host "Running: $Command"
     docker compose exec daaf-docker $Command
 }
+
+Pause-And-Exit 0

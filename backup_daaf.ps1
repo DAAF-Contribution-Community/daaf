@@ -15,6 +15,15 @@
 
 $ErrorActionPreference = "Stop"
 
+function Pause-And-Exit {
+    param([int]$Code = 0)
+    if (-not $env:DAAF_NESTED) {
+        Write-Host ""
+        Read-Host "Press Enter to continue"
+    }
+    exit $Code
+}
+
 # --- Configuration ---
 $VolumeName = "daaf_daaf-data"
 $Today = Get-Date -Format "yyyy-MM-dd"
@@ -29,20 +38,20 @@ Write-Host ""
 if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
     Write-Host "ERROR: Docker is either not installed or not configured properly in your system PATH to allow it to be used from PowerShell." -ForegroundColor Red
     Write-Host "Please install Docker Desktop: https://www.docker.com/products/docker-desktop/"
-    exit 1
+    Pause-And-Exit 1
 }
 
 $null = docker info 2>&1
 if ($LASTEXITCODE -ne 0) {
     Write-Host "ERROR: Docker Desktop does not seem to be running. Please start it and try again." -ForegroundColor Red
-    exit 1
+    Pause-And-Exit 1
 }
 
 $null = docker volume inspect $VolumeName 2>&1
 if ($LASTEXITCODE -ne 0) {
     Write-Host "ERROR: Docker volume '$VolumeName' not found." -ForegroundColor Red
     Write-Host "Have you run the DAAF installer yet?"
-    exit 1
+    Pause-And-Exit 1
 }
 
 # --- Generate date-versioned backup name ---
@@ -58,7 +67,7 @@ if (Test-Path $BackupName) {
         $SuffixNum++
         if ($SuffixNum -ge 26) {
             Write-Host "ERROR: Too many backups for today (26 max). Please remove some old backups." -ForegroundColor Red
-            exit 1
+            Pause-And-Exit 1
         }
     }
 }
@@ -78,7 +87,7 @@ docker run --rm `
 
 if ($LASTEXITCODE -ne 0) {
     Write-Host "ERROR: Backup failed. Check Docker Desktop for errors." -ForegroundColor Red
-    exit 1
+    Pause-And-Exit 1
 }
 
 # --- Verify ---
@@ -89,7 +98,7 @@ if ($FileCount -eq 0) {
     Write-Host "WARNING: Backup completed but 0 files were copied." -ForegroundColor Yellow
     Write-Host "The Docker volume may be empty. Is DAAF properly installed?"
     Write-Host "Location: $HostPath\"
-    exit 1
+    Pause-And-Exit 1
 }
 
 Write-Host ""
@@ -104,3 +113,4 @@ Write-Host "To restore from this backup in the future, you can copy files back"
 Write-Host "into the Docker volume using Docker Desktop's Files tab, or with:"
 Write-Host "  docker run --rm -v `"${HostPath}:/source:ro`" -v `"${VolumeName}:/dest`" busybox sh -c 'cp -a /source/. /dest/'"
 Write-Host ""
+Pause-And-Exit 0

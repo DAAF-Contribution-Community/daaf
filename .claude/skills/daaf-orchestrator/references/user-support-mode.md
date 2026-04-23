@@ -145,6 +145,61 @@ Users frequently have questions about the tools DAAF runs on, not just DAAF itse
 
 ---
 
+## Update Conflict Resolution Walkthrough
+
+When a user enters Claude Code with a prompt starting with "User support mode" and
+mentioning DAAF update conflicts, this is a structured handoff from the
+`update_daaf` script. The update script launched Claude Code via
+`docker compose exec -it` and is waiting for the user to type `/exit` so the
+script can complete its remaining post-update steps.
+
+### Conflict types
+
+The user's prompt will indicate one of three conflict types. The resolution
+walkthrough (steps 1–5 below) is the same for all three — only the completion
+command in step 4 differs.
+
+| Prompt mentions | What happened | Completion command (step 4) |
+|-----------------|---------------|---------------------------|
+| "merge conflicts" | User chose merge; upstream and local commits changed the same files | `git commit -m "Resolved merge conflicts from DAAF update"` |
+| "rebase conflicts" | User chose rebase; the squashed local commit conflicts with upstream | `git rebase --continue` |
+| "stash conflicts" | The merge/rebase succeeded, but the user's uncommitted edits (temporarily set aside) conflict with the updated files when re-applied | `git stash drop` (the stash contents are already in the working tree) |
+
+### What the orchestrator must do
+
+**1. Classify as User Support mode** — the "User support mode" prefix is an
+explicit mode signal. Skip the mode confirmation gate — the user already
+confirmed by choosing option 1 in the update script.
+
+**2. Determine the conflict type** — check the user's prompt for "merge",
+"rebase", or "stash". Then identify the conflicting files:
+`git diff --name-only --diff-filter=U`. Read each one to understand both sides.
+
+**3. Walk the user through resolution interactively** — for each file:
+- Explain what the local side is (the user's customization) and what the
+  upstream side is (the DAAF update)
+- Recommend which version to keep, or how to merge both intelligently
+- **Do not resolve or edit any file without the user's explicit approval.** Present the
+  proposed resolutions file-by-file and wait for confirmation for each individual case before making changes.
+- After the user approves a given resolution, edit the file to remove all conflict
+  markers (`<<<<<<<`, `=======`, `>>>>>>>`) and run `git add <file>`
+
+**4. Complete the git operation** — after all files are resolved, run the
+completion command from the table above based on the conflict type. Verify with
+`git status` that the working tree is clean (no unmerged files, no in-progress
+merge/rebase).
+
+**5. Instruct the user to return to the updater** — the update script is still
+running on the host. When the user types `/exit`, control returns to the script,
+which then syncs updated utility scripts to the host and checks whether a Docker
+rebuild is needed. If the user closes the terminal instead, those housekeeping
+steps are skipped. Tell the user:
+
+> "Great, all conflicts are resolved and committed. Type `/exit` now to return to the
+> update script so it can finish up."
+
+---
+
 ## Subagent Invocation
 
 User Support mode does **not** dispatch subagents under normal operation. The orchestrator handles all questions directly using pre-loaded documentation and on-demand reference reads.

@@ -17,6 +17,11 @@
 
 set -euo pipefail
 
+# Pause before exit so the user can review output (skip when called from another script)
+if [ -z "${DAAF_NESTED:-}" ]; then
+    trap 'echo ""; read -r -p "Press Enter to continue: "' EXIT
+fi
+
 # --- Preflight ---
 if [ ! -f "docker-compose.yml" ]; then
     echo "ERROR: docker-compose.yml not found in the current directory."
@@ -55,6 +60,5 @@ echo ""
 docker compose exec daaf-docker bash /daaf/scripts/generate_log_viewer.sh --archive
 
 # If the server was already running, the command above returns immediately
-# after printing the URL. Keep the terminal open so the user can read/copy it.
-echo ""
-read -r -p "Press Enter to close..."
+# after printing the URL. The EXIT trap keeps the terminal open so the user
+# can read/copy it.

@@ -27,6 +27,15 @@
 
 $ErrorActionPreference = "Stop"
 
+function Pause-And-Exit {
+    param([int]$Code = 0)
+    if (-not $env:DAAF_NESTED) {
+        Write-Host ""
+        Read-Host "Press Enter to continue"
+    }
+    exit $Code
+}
+
 $UpstreamRepo = "DAAF-Contribution-Community/daaf"
 $ContainerName = "daaf-daaf-docker-1"
 $Timestamp = Get-Date -Format "yyyy-MM-dd-HHmmss"
@@ -52,6 +61,12 @@ trap {
     Write-Host "  2. Re-run:  .\update_daaf.ps1"
     Write-Host "     (It is safe to re-run - it will pick up where it left off.)"
     Write-Host ""
+    if ($Stashed) {
+        Write-Host "Your uncommitted changes are safely saved in a stash."
+        Write-Host "To restore them after fixing the issue:"
+        Write-Host "  docker compose exec daaf-docker git -C /daaf stash pop"
+        Write-Host ""
+    }
     $branchExists = docker compose exec -T daaf-docker git -C /daaf rev-parse --verify $BackupBranch 2>&1
     if ($LASTEXITCODE -eq 0) {
         Write-Host "A restore point was saved before the update started. To undo"
@@ -59,7 +74,7 @@ trap {
         Write-Host "  docker compose exec daaf-docker git -C /daaf reset --hard $BackupBranch"
         Write-Host ""
     }
-    exit 1
+    Pause-And-Exit 1
 }
 
 # =====================================================================
@@ -114,18 +129,20 @@ function Handle-Conflict {
         Write-Host ""
         Write-Host "Launching Claude Code inside the container..."
         Write-Host ""
-        Write-Host "Suggested prompt to get started:"
+        Write-Host "Copy and paste this prompt to get started:"
         Write-Host ""
         if ($conflictFiles) {
-            Write-Host "  I just ran the DAAF updater and got $ConflictType conflicts in:"
+            Write-Host "  User support mode. I just ran the DAAF updater and got"
+            Write-Host "  $ConflictType conflicts in:"
             $conflictFiles -split "`n" | ForEach-Object { if ($_.Trim()) { Write-Host "    $_" } }
-            Write-Host "  Please help me resolve the conflicts and complete the $ConflictType."
+            Write-Host "  Please help me resolve them."
         } else {
-            Write-Host "  I just ran the DAAF updater and got $ConflictType conflicts."
-            Write-Host "  Please help me resolve the conflicts and complete the $ConflictType."
+            Write-Host "  User support mode. I just ran the DAAF updater and got"
+            Write-Host "  $ConflictType conflicts. Please help me resolve them."
         }
         Write-Host ""
-        Write-Host "Type /exit when you're done to return here."
+        Write-Host "IMPORTANT: When Claude Code is done, type /exit to return here."
+        Write-Host "The updater still needs to finish a few steps after this."
         Write-Host ""
         docker compose exec -it daaf-docker claude
         Write-Host ""
@@ -167,10 +184,12 @@ function Handle-Conflict {
             Write-Host "After resolving all files (inside the container):"
             Write-Host "  git add ."
             Write-Host "  git commit -m `"Resolved merge conflicts`""
+            Write-Host "  exit"
         } else {
             Write-Host "After resolving all files (inside the container):"
             Write-Host "  git add ."
             Write-Host "  git rebase --continue"
+            Write-Host "  exit"
         }
         Write-Host ""
         Write-Host "To undo the update instead (run from PowerShell, not the container):"
@@ -249,7 +268,9 @@ function Check-BuildChanges {
     if ($choice -eq "y") {
         Write-Host ""
         if (Test-Path "rebuild_daaf.ps1") {
+            $env:DAAF_NESTED = "1"
             & .\rebuild_daaf.ps1
+            Remove-Item Env:\DAAF_NESTED -ErrorAction SilentlyContinue
         } else {
             Write-Host "rebuild_daaf.ps1 is not in your daaf-docker folder."
             Write-Host "You can retrieve it from the container and run it:"
@@ -314,21 +335,21 @@ if (-not (Test-Path "docker-compose.yml")) {
     Write-Host "  .\update_daaf.ps1"
     Write-Host ""
     Write-Host "If you installed DAAF somewhere else, cd to that folder first."
-    exit 1
+    Pause-And-Exit 1
 }
 
 # --- Preflight: Docker installed ---
 if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
     Write-Host "ERROR: Docker is either not installed or not configured properly in your system PATH to allow it to be used from PowerShell." -ForegroundColor Red
     Write-Host "Please install Docker Desktop: https://www.docker.com/products/docker-desktop/"
-    exit 1
+    Pause-And-Exit 1
 }
 
 # --- Preflight: Docker running ---
 $null = docker info 2>&1
 if ($LASTEXITCODE -ne 0) {
     Write-Host "ERROR: Docker Desktop does not seem to be running. Please start it and try again." -ForegroundColor Red
-    exit 1
+    Pause-And-Exit 1
 }
 
 # --- Preflight: Start container if needed ---
@@ -349,7 +370,7 @@ if (-not $running) {
         Write-Host "  - Docker Desktop needs more memory (Settings > Resources)"
         Write-Host ""
         Write-Host "Try restarting Docker Desktop, then:  .\update_daaf.ps1"
-        exit 1
+        Pause-And-Exit 1
     }
 
     $retries = 0
@@ -370,7 +391,7 @@ if (-not $running) {
         Write-Host "Try:"
         Write-Host "  1. Restart Docker Desktop"
         Write-Host "  2. Re-run:  .\update_daaf.ps1"
-        exit 1
+        Pause-And-Exit 1
     }
     Write-Host "Container started."
     Write-Host ""
@@ -382,7 +403,7 @@ if ($LASTEXITCODE -ne 0) {
     Write-Host "ERROR: DAAF does not appear to be installed in the container." -ForegroundColor Red
     Write-Host "Run the installer first. See:"
     Write-Host "  https://github.com/$UpstreamRepo#quick-start"
-    exit 1
+    Pause-And-Exit 1
 }
 
 # =====================================================================
@@ -399,7 +420,9 @@ if (Test-Path "backup_daaf.ps1") {
     $choice = Prompt-Choice "  Run backup now? [y/n]" @("y", "n")
     if ($choice -eq "y") {
         Write-Host ""
+        $env:DAAF_NESTED = "1"
         & .\backup_daaf.ps1
+        Remove-Item Env:\DAAF_NESTED -ErrorAction SilentlyContinue
         Write-Host ""
     }
 } else {
@@ -435,7 +458,7 @@ if ([string]::IsNullOrWhiteSpace($OriginUrl)) {
     Write-Host "  exit"
     Write-Host ""
     Write-Host "Then re-run:  .\update_daaf.ps1"
-    exit 0
+    Pause-And-Exit 0
 }
 
 # --- Determine upstream remote ---
@@ -463,7 +486,7 @@ if ($OriginUrl -notlike "*$UpstreamRepo*") {
         Write-Host "  exit"
         Write-Host ""
         Write-Host "Then re-run:  .\update_daaf.ps1"
-        exit 0
+        Pause-And-Exit 0
     }
     Write-Host ""
 }
@@ -484,7 +507,7 @@ if ($LASTEXITCODE -ne 0) {
     Write-Host "  - Corporate firewall or proxy blocking the connection"
     Write-Host ""
     Write-Host "Once the issue is resolved, re-run:  .\update_daaf.ps1"
-    exit 1
+    Pause-And-Exit 1
 }
 
 # =====================================================================
@@ -503,7 +526,7 @@ if ($RemoteBranch) {
         Write-Host ""
         Write-Host "Your installation is unchanged. Double-check the branch name and try"
         Write-Host "again, or omit DAAF_BRANCH to use the default branch."
-        exit 1
+        Pause-And-Exit 1
     }
     Write-Host "Using branch: $RemoteBranch (from DAAF_BRANCH)"
 } else {
@@ -533,7 +556,7 @@ if (-not $RemoteBranch) {
     Write-Host ""
     Write-Host "If this persists, check:"
     Write-Host "  https://github.com/$UpstreamRepo/issues"
-    exit 1
+    Pause-And-Exit 1
 }
 
 # =====================================================================
@@ -558,7 +581,7 @@ if ([string]::IsNullOrWhiteSpace($CurrentBranch)) {
     Write-Host "Then re-run:  .\update_daaf.ps1"
     Write-Host ""
     Write-Host "No changes were made. Your research files are not affected."
-    exit 0
+    Pause-And-Exit 0
 }
 
 # =====================================================================
@@ -577,7 +600,7 @@ if (($CurrentBranch -eq $RemoteBranch) -and ($Local -eq $Remote) -and `
     Write-Host ""
     Write-Host "Already up to date! Nothing to do."
     Write-Host ""
-    exit 0
+    Pause-And-Exit 0
 }
 
 # =====================================================================
@@ -617,7 +640,7 @@ if ($CurrentBranch -ne $RemoteBranch) {
     if ($choice -eq "2") {
         Write-Host ""
         Write-Host "Aborted. No changes made."
-        exit 0
+        Pause-And-Exit 0
     }
 
     $Stashed = $false
@@ -639,7 +662,7 @@ if ($CurrentBranch -ne $RemoteBranch) {
             Write-Host "  git commit -m `"Save my changes before update`""
             Write-Host "  exit"
             Write-Host "  .\update_daaf.ps1"
-            exit 1
+            Pause-And-Exit 1
         }
         $Stashed = $true
     }
@@ -657,7 +680,7 @@ if ($CurrentBranch -ne $RemoteBranch) {
         }
         Write-Host ""
         Write-Host "Your research files are not affected."
-        exit 1
+        Pause-And-Exit 1
     }
 
     Write-Host "Pulling updates..."
@@ -678,7 +701,7 @@ if ($CurrentBranch -ne $RemoteBranch) {
         }
         Write-Host ""
         Write-Host "Your research files are not affected."
-        exit 1
+        Pause-And-Exit 1
     }
 
     Write-Host "Switching back to '$CurrentBranch'..."
@@ -702,7 +725,7 @@ if ($CurrentBranch -ne $RemoteBranch) {
             Write-Host "Your uncommitted changes are still saved. After switching back:"
             Write-Host "  docker compose exec daaf-docker git -C /daaf stash pop"
         }
-        exit 1
+        Pause-And-Exit 1
     }
 
     Write-Host "Merging $RemoteBranch into '$CurrentBranch'..."
@@ -715,7 +738,7 @@ if ($CurrentBranch -ne $RemoteBranch) {
                 Write-Host "restored after conflicts are resolved."
                 Write-Host "  docker compose exec daaf-docker git -C /daaf stash pop"
             }
-            exit 1
+            Pause-And-Exit 1
         }
     }
 
@@ -732,8 +755,8 @@ if ($CurrentBranch -ne $RemoteBranch) {
             Write-Host ""
             Write-Host "The easiest way to resolve this:"
             Write-Host "  1. Launch Claude Code:  .\run_daaf.ps1"
-            Write-Host "     Ask: 'I have stash conflicts after a DAAF update."
-            Write-Host "     Help me resolve them, then run: git stash drop'"
+            Write-Host "     Paste: 'User support mode. I have stash conflicts after"
+            Write-Host "     a DAAF update. Please help me resolve them.'"
             Write-Host ""
             Write-Host "  2. Or, to discard your uncommitted edits and keep the update"
             Write-Host "     (WARNING - this cannot be undone):"
@@ -743,12 +766,12 @@ if ($CurrentBranch -ne $RemoteBranch) {
             Write-Host "       exit"
             Write-Host ""
             Finish-Update $OldHead "Note: Uncommitted changes still need to be restored from the stash."
-            exit 0
+            Pause-And-Exit 0
         }
     }
 
     Finish-Update $OldHead
-    exit 0
+    Pause-And-Exit 0
 }
 
 # =====================================================================
@@ -781,7 +804,7 @@ if ([int]$Ahead -gt 0) {
     if ($choice -eq "3") {
         Write-Host ""
         Write-Host "Aborted. No changes made."
-        exit 0
+        Pause-And-Exit 0
     }
 
     $Stashed = $false
@@ -803,7 +826,7 @@ if ([int]$Ahead -gt 0) {
             Write-Host "  git commit -m `"Save my changes before update`""
             Write-Host "  exit"
             Write-Host "  .\update_daaf.ps1"
-            exit 1
+            Pause-And-Exit 1
         }
         $Stashed = $true
     }
@@ -822,7 +845,7 @@ if ([int]$Ahead -gt 0) {
                     Write-Host "restored after conflicts are resolved."
                     Write-Host "  docker compose exec daaf-docker git -C /daaf stash pop"
                 }
-                exit 1
+                Pause-And-Exit 1
             }
         }
     } else {
@@ -847,7 +870,7 @@ if ([int]$Ahead -gt 0) {
                 Write-Host "Your uncommitted changes are safely saved and will be"
                 Write-Host "restored automatically when you re-run the updater."
             }
-            exit 1
+            Pause-And-Exit 1
         }
 
         docker compose exec -T daaf-docker git -C /daaf reset --soft $MergeBase
@@ -865,7 +888,7 @@ if ([int]$Ahead -gt 0) {
             Write-Host "  .\update_daaf.ps1"
             Write-Host ""
             Write-Host "Your research files are not affected."
-            exit 1
+            Pause-And-Exit 1
         }
         docker compose exec -T daaf-docker git -C /daaf commit `
             -m "Local DAAF customizations ($Ahead commits, squashed before update on $Timestamp)"
@@ -883,7 +906,7 @@ if ([int]$Ahead -gt 0) {
             Write-Host "  .\update_daaf.ps1"
             Write-Host ""
             Write-Host "Your research files are not affected."
-            exit 1
+            Pause-And-Exit 1
         }
 
         Write-Host "Rebasing on top of the latest update..."
@@ -897,7 +920,7 @@ if ([int]$Ahead -gt 0) {
                     Write-Host "restored after conflicts are resolved."
                     Write-Host "  docker compose exec daaf-docker git -C /daaf stash pop"
                 }
-                exit 1
+                Pause-And-Exit 1
             }
         }
     }
@@ -916,8 +939,8 @@ if ([int]$Ahead -gt 0) {
             Write-Host ""
             Write-Host "The easiest way to resolve this:"
             Write-Host "  1. Launch Claude Code:  .\run_daaf.ps1"
-            Write-Host "     Ask: 'I have stash conflicts after a DAAF update."
-            Write-Host "     Help me resolve them, then run: git stash drop'"
+            Write-Host "     Paste: 'User support mode. I have stash conflicts after"
+            Write-Host "     a DAAF update. Please help me resolve them.'"
             Write-Host ""
             Write-Host "  2. Or, to discard your uncommitted edits and keep the update"
             Write-Host "     (WARNING - this cannot be undone):"
@@ -931,7 +954,7 @@ if ([int]$Ahead -gt 0) {
             } else {
                 Finish-Update $OldHead "Your commits were rebased. Uncommitted changes still need attention (see above)."
             }
-            exit 0
+            Pause-And-Exit 0
         }
     }
 
@@ -940,7 +963,7 @@ if ([int]$Ahead -gt 0) {
     } else {
         Finish-Update $OldHead "Your local changes have been rebased on top of the update."
     }
-    exit 0
+    Pause-And-Exit 0
 }
 
 # =====================================================================
@@ -963,7 +986,7 @@ if ($DirtyFiles) {
     if ($choice -eq "3") {
         Write-Host ""
         Write-Host "Aborted. No changes made."
-        exit 0
+        Pause-And-Exit 0
     }
 
     if ($choice -eq "2") {
@@ -980,7 +1003,7 @@ if ($DirtyFiles) {
         if ($choice -eq "3") {
             Write-Host ""
             Write-Host "Aborted. No changes made."
-            exit 0
+            Pause-And-Exit 0
         }
     }
 
@@ -1000,7 +1023,7 @@ if ($DirtyFiles) {
         Write-Host "  git commit -m `"Save my changes before update`""
         Write-Host "  exit"
         Write-Host "  .\update_daaf.ps1"
-        exit 1
+        Pause-And-Exit 1
     }
 
     Write-Host "Pulling updates..."
@@ -1020,14 +1043,18 @@ if ($DirtyFiles) {
         Write-Host "  docker compose exec daaf-docker git -C /daaf stash pop"
         Write-Host ""
         Write-Host "Your research files are not affected."
-        exit 1
+        Pause-And-Exit 1
     }
 
     Write-Host "Re-applying your changes..."
     docker compose exec -T daaf-docker git -C /daaf stash pop 2>&1 | Out-Null
     if ($LASTEXITCODE -ne 0) {
         Write-Host ""
-        Write-Host "Some of your changes conflict with the update."
+        Write-Host "The framework update was applied successfully!"
+        Write-Host ""
+        Write-Host "However, some of your uncommitted edits overlap with files that"
+        Write-Host "changed in the update. Your edits are NOT lost - they are saved"
+        Write-Host "in a temporary holding area."
         Write-Host ""
         Write-Host "Options:"
         Write-Host "  1) Launch Claude Code to help resolve the conflicts"
@@ -1037,13 +1064,15 @@ if ($DirtyFiles) {
 
         if ($choice -eq "1") {
             Write-Host ""
-            Write-Host "Launching Claude Code..."
+            Write-Host "Launching Claude Code inside the container..."
             Write-Host ""
-            Write-Host "Suggested prompt:"
-            Write-Host "  My stashed changes conflicted when re-applying after a DAAF update."
-            Write-Host "  Help me resolve the conflicts, then run: git stash drop"
+            Write-Host "Copy and paste this prompt to get started:"
             Write-Host ""
-            Write-Host "Type /exit when done."
+            Write-Host "  User support mode. I have stash conflicts after a DAAF"
+            Write-Host "  update. Please help me resolve them."
+            Write-Host ""
+            Write-Host "IMPORTANT: When Claude Code is done, type /exit to return here."
+            Write-Host "The updater still needs to finish a few steps after this."
             Write-Host ""
             docker compose exec -it daaf-docker claude
             Write-Host ""
@@ -1054,7 +1083,7 @@ if ($DirtyFiles) {
             if ([string]::IsNullOrWhiteSpace($remaining)) {
                 Write-Host "Conflicts resolved!"
                 Finish-Update $OldHead "Your local changes have been re-applied on top of the update."
-                exit 0
+                Pause-And-Exit 0
             } else {
                 Write-Host "Some conflicts still remain in these files:"
                 $remaining -split "`n" | ForEach-Object { if ($_.Trim()) { Write-Host "  $_" } }
@@ -1066,33 +1095,33 @@ if ($DirtyFiles) {
                 Write-Host "Or to undo the update entirely (your research files are not affected):"
                 Write-Host "  docker compose exec daaf-docker git -C /daaf reset --hard $BackupBranch"
                 Write-Host "  docker compose exec daaf-docker git -C /daaf stash pop"
-                exit 1
+                Pause-And-Exit 1
             }
         } else {
             Write-Host ""
-            Write-Host "The framework update was applied successfully!"
+            Write-Host "To resolve, enter the container:"
+            Write-Host "  .\run_daaf.ps1 bash"
+            Write-Host "  (edit the conflicting files to remove the <<<<<<< markers)"
+            Write-Host "  git add ."
+            Write-Host "  git stash drop"
+            Write-Host "  exit"
             Write-Host ""
-            Write-Host "However, some of your uncommitted edits overlap with files that"
-            Write-Host "changed in the update. Your edits are NOT lost - they are saved"
-            Write-Host "in a temporary holding area."
+            Write-Host "Or to discard your uncommitted edits and keep the update"
+            Write-Host "(WARNING - this cannot be undone):"
+            Write-Host "  .\run_daaf.ps1 bash"
+            Write-Host "  git checkout -- ."
+            Write-Host "  git stash drop"
+            Write-Host "  exit"
             Write-Host ""
-            Write-Host "The easiest way to resolve this:"
-            Write-Host "  1. Launch Claude Code:  .\run_daaf.ps1"
-            Write-Host "     Ask: 'I have stash conflicts after a DAAF update."
-            Write-Host "     Help me resolve them, then run: git stash drop'"
-            Write-Host ""
-            Write-Host "  2. Or, to discard your uncommitted edits and keep the update"
-            Write-Host "     (WARNING - this cannot be undone):"
-            Write-Host "       .\run_daaf.ps1 bash"
-            Write-Host "       git checkout -- ."
-            Write-Host "       git stash drop"
-            Write-Host "       exit"
-            exit 1
+            Write-Host "To undo the entire update:"
+            Write-Host "  docker compose exec daaf-docker git -C /daaf reset --hard $BackupBranch"
+            Write-Host "  docker compose exec daaf-docker git -C /daaf stash pop"
+            Pause-And-Exit 1
         }
     }
 
     Finish-Update $OldHead "Your local changes have been re-applied on top of the update."
-    exit 0
+    Pause-And-Exit 0
 }
 
 # =====================================================================
@@ -1102,5 +1131,20 @@ Write-Host ""
 Write-Host "Pulling updates..."
 docker compose exec -T daaf-docker `
     git -C /daaf pull $UpstreamRemote $RemoteBranch
+if ($LASTEXITCODE -ne 0) {
+    Write-Host ""
+    Write-Host "ERROR: Could not download the latest updates." -ForegroundColor Red
+    Write-Host ""
+    Write-Host "No changes were made to your installation."
+    Write-Host "Your research files are not affected."
+    Write-Host ""
+    Write-Host "Common causes:"
+    Write-Host "  - No internet connection"
+    Write-Host "  - GitHub may be down (check https://www.githubstatus.com)"
+    Write-Host ""
+    Write-Host "Once the issue is resolved, re-run:  .\update_daaf.ps1"
+    Pause-And-Exit 1
+}
 
 Finish-Update $OldHead
+Pause-And-Exit 0

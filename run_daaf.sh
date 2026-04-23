@@ -12,6 +12,11 @@
 
 set -euo pipefail
 
+# Pause before exit so the user can review output (skip when called from another script)
+if [ -z "${DAAF_NESTED:-}" ]; then
+    trap 'echo ""; read -r -p "Press Enter to continue: "' EXIT
+fi
+
 COMMAND="${1:-claude}"
 
 # --- Preflight ---

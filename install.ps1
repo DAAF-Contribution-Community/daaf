@@ -18,6 +18,15 @@
 
 $ErrorActionPreference = "Stop"
 
+function Pause-And-Exit {
+    param([int]$Code = 0)
+    if (-not $env:DAAF_NESTED) {
+        Write-Host ""
+        Read-Host "Press Enter to continue"
+    }
+    exit $Code
+}
+
 # Ensure TLS 1.2 for GitHub downloads (required on PowerShell 5.1)
 [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
 
@@ -39,14 +48,14 @@ Write-Host ""
 if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
     Write-Host "ERROR: Docker is either not installed or not configured properly in your system PATH to allow it to be used from Powershell." -ForegroundColor Red
     Write-Host "Please install Docker Desktop: https://www.docker.com/products/docker-desktop/"
-    exit 1
+    Pause-And-Exit 1
 }
 
 # Check Docker daemon is running (compatible with PowerShell 5.1 and 7+)
 $null = docker info 2>&1
 if ($LASTEXITCODE -ne 0) {
     Write-Host "ERROR: Docker Desktop does not seem to be running. Please start Docker Desktop on your computer and try again." -ForegroundColor Red
-    exit 1
+    Pause-And-Exit 1
 }
 
 # --- Create minimal build directory ---
@@ -69,7 +78,7 @@ try {
     Write-Host "Please verify that the branch name is correct and that you have an internet connection."
     Write-Host "You can check available branches at: https://github.com/$Repo/branches"
     Write-Host "Details: $_"
-    exit 1
+    Pause-And-Exit 1
 }
 
 # --- Build the Docker image ---
@@ -79,7 +88,7 @@ docker compose -f "$InstallDir\docker-compose.yml" up -d --build
 if ($LASTEXITCODE -ne 0) {
     Write-Host "ERROR: Docker image build failed. Check the output above for details." -ForegroundColor Red
     Write-Host "You can safely re-run this installer to retry."
-    exit 1
+    Pause-And-Exit 1
 }
 
 # --- Wait for container to be ready ---
@@ -96,7 +105,7 @@ if ($retries -ge $maxRetries) {
     Write-Host "ERROR: Container did not become ready within 60 seconds." -ForegroundColor Red
     Write-Host "Check Docker Desktop for errors, then retry with:"
     Write-Host "  docker compose -f $InstallDir\docker-compose.yml up -d"
-    exit 1
+    Pause-And-Exit 1
 }
 
 # --- Clone the full repository into the Docker volume ---
@@ -114,7 +123,7 @@ if ($LASTEXITCODE -ne 0) {
     Write-Host "  docker compose -f $InstallDir\docker-compose.yml exec -T daaf-docker ``"
     Write-Host "    bash -c 'cp -a /tmp/daaf-clone/. /daaf/ && rm -rf /tmp/daaf-clone'"
     Write-Host "You can also safely re-run this installer to retry from scratch."
-    exit 1
+    Pause-And-Exit 1
 }
 
 docker compose -f "$InstallDir\docker-compose.yml" exec -T daaf-docker `
@@ -127,7 +136,7 @@ if ($LASTEXITCODE -ne 0) {
     Write-Host "  docker compose -f $InstallDir\docker-compose.yml exec -T daaf-docker ``"
     Write-Host "    bash -c 'cp -a /tmp/daaf-clone/. /daaf/ && rm -rf /tmp/daaf-clone'"
     Write-Host "You can also safely re-run this installer to retry from scratch."
-    exit 1
+    Pause-And-Exit 1
 }
 
 # --- Verify DAAF files are present ---
@@ -141,7 +150,7 @@ if ($LASTEXITCODE -ne 0) {
     Write-Host "  docker compose exec daaf-docker bash"
     Write-Host "  git clone --depth 1 -b $Branch https://github.com/$Repo.git /tmp/daaf-clone"
     Write-Host "  cp -a /tmp/daaf-clone/. /daaf/ && rm -rf /tmp/daaf-clone"
-    exit 1
+    Pause-And-Exit 1
 }
 
 Write-Host ""
@@ -182,3 +191,4 @@ Write-Host "  https://github.com/$Repo/blob/$Branch/user_reference/01_installati
 Write-Host ""
 Write-Host "Keep this directory - it contains the Dockerfile needed for rebuilds."
 Write-Host ""
+Pause-And-Exit 0

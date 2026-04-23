@@ -19,6 +19,12 @@
 
 set -euo pipefail
 
+# Pause before exit so the user can review output
+# Skip when called from another script or piped (curl ... | bash)
+if [ -z "${DAAF_NESTED:-}" ] && [ -t 0 ]; then
+    trap 'echo ""; read -r -p "Press Enter to continue: "' EXIT
+fi
+
 # --- Configuration ---
 REPO="DAAF-Contribution-Community/daaf"
 BRANCH="${DAAF_BRANCH:-main}"
