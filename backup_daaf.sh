@@ -76,7 +76,11 @@ echo ""
 
 # --- Count source files ---
 echo "Scanning Docker volume..."
-SCAN_OUTPUT=$(docker run --rm -v "${VOLUME_NAME}:/source:ro" busybox sh -c "find /source -type f | wc -l && du -sh /source")
+SCAN_OUTPUT=$(docker run --rm -v "${VOLUME_NAME}:/source:ro" busybox sh -c "find /source -type f | wc -l && du -sh /source") || {
+    echo ""
+    echo "ERROR: Could not scan Docker volume."
+    exit 1
+}
 TOTAL_FILES=$(echo "${SCAN_OUTPUT}" | head -1 | tr -d '[:space:]')
 TOTAL_SIZE=$(echo "${SCAN_OUTPUT}" | tail -1 | awk '{print $1}')
 echo "Found ${TOTAL_FILES} files to copy (${TOTAL_SIZE})."
@@ -92,6 +96,7 @@ docker run --rm \
     -v "$(pwd)/${BACKUP_NAME}:/dest" \
     busybox sh -c "cp -a /source/. /dest/" &
 COPY_PID=$!
+trap 'kill "${COPY_PID}" 2>/dev/null; wait "${COPY_PID}" 2>/dev/null' INT TERM
 
 while kill -0 "${COPY_PID}" 2>/dev/null; do
     sleep 3
@@ -101,6 +106,7 @@ while kill -0 "${COPY_PID}" 2>/dev/null; do
     COPIED=$(find "${BACKUP_NAME}" -type f 2>/dev/null | wc -l | tr -d '[:space:]') || COPIED=0
     if [ "${TOTAL_FILES}" -gt 0 ]; then
         PERCENT=$((COPIED * 100 / TOTAL_FILES))
+        if [ "${PERCENT}" -gt 100 ]; then PERCENT=100; fi
     else
         PERCENT=0
     fi

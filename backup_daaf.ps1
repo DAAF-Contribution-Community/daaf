@@ -94,19 +94,26 @@ Write-Host "Copying files from Docker volume..."
 Write-Host "  Progress: 0 / $TotalFiles files (0%)" -NoNewline
 
 $CopyProcess = Start-Process -FilePath "docker" `
-    -ArgumentList "run --rm -v `"${VolumeName}:/source:ro`" -v `"${HostPath}:/dest`" busybox sh -c `"cp -a /source/. /dest/`"" `
+    -ArgumentList @("run", "--rm", "-v", "${VolumeName}:/source:ro", "-v", "${HostPath}:/dest", "busybox", "sh", "-c", "cp -a /source/. /dest/") `
     -NoNewWindow -PassThru
 
-while (-not $CopyProcess.HasExited) {
-    Start-Sleep -Seconds 3
-    if ($CopyProcess.HasExited) { break }
-    $Copied = @(Get-ChildItem -Path $BackupName -Recurse -File -Force -ErrorAction SilentlyContinue).Count
-    if ($TotalFiles -gt 0) {
-        $Percent = [math]::Floor($Copied * 100 / $TotalFiles)
-    } else {
-        $Percent = 0
+try {
+    while (-not $CopyProcess.HasExited) {
+        Start-Sleep -Seconds 3
+        if ($CopyProcess.HasExited) { break }
+        $Copied = @(Get-ChildItem -Path $BackupName -Recurse -File -Force -ErrorAction SilentlyContinue).Count
+        if ($TotalFiles -gt 0) {
+            $Percent = [math]::Min(100, [math]::Floor($Copied * 100 / $TotalFiles))
+        } else {
+            $Percent = 0
+        }
+        Write-Host "`r  Progress: $Copied / $TotalFiles files ($Percent%)   " -NoNewline
     }
-    Write-Host "`r  Progress: $Copied / $TotalFiles files ($Percent%)   " -NoNewline
+} finally {
+    if (-not $CopyProcess.HasExited) {
+        Stop-Process -Id $CopyProcess.Id -Force -ErrorAction SilentlyContinue
+        $CopyProcess.WaitForExit()
+    }
 }
 
 if ($CopyProcess.ExitCode -ne 0) {
