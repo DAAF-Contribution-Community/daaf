@@ -75,23 +75,50 @@ if (Test-Path $BackupName) {
 Write-Host "Backup name: $BackupName\"
 Write-Host ""
 
-# --- Create backup ---
-Write-Host "Copying files from Docker volume (this may take a moment)..."
-New-Item -ItemType Directory -Path $BackupName -Force | Out-Null
-
-$HostPath = (Resolve-Path $BackupName).Path
-docker run --rm `
-    -v "${VolumeName}:/source:ro" `
-    -v "${HostPath}:/dest" `
-    busybox sh -c "cp -a /source/. /dest/"
-
+# --- Count source files ---
+Write-Host "Scanning Docker volume..."
+$ScanOutput = docker run --rm -v "${VolumeName}:/source:ro" busybox sh -c "find /source -type f | wc -l && du -sh /source"
 if ($LASTEXITCODE -ne 0) {
+    Write-Host "ERROR: Could not scan Docker volume." -ForegroundColor Red
+    Pause-And-Exit 1
+}
+$TotalFiles = [int]($ScanOutput[0].Trim())
+$TotalSize = ($ScanOutput[1].Trim() -split '\s+')[0]
+Write-Host "Found $TotalFiles files to copy ($TotalSize)."
+Write-Host ""
+
+# --- Create backup ---
+New-Item -ItemType Directory -Path $BackupName -Force | Out-Null
+$HostPath = (Resolve-Path $BackupName).Path
+Write-Host "Copying files from Docker volume..."
+Write-Host "  Progress: 0 / $TotalFiles files (0%)" -NoNewline
+
+$CopyProcess = Start-Process -FilePath "docker" `
+    -ArgumentList "run --rm -v `"${VolumeName}:/source:ro`" -v `"${HostPath}:/dest`" busybox sh -c `"cp -a /source/. /dest/`"" `
+    -NoNewWindow -PassThru
+
+while (-not $CopyProcess.HasExited) {
+    Start-Sleep -Seconds 3
+    if ($CopyProcess.HasExited) { break }
+    $Copied = @(Get-ChildItem -Path $BackupName -Recurse -File -Force -ErrorAction SilentlyContinue).Count
+    if ($TotalFiles -gt 0) {
+        $Percent = [math]::Floor($Copied * 100 / $TotalFiles)
+    } else {
+        $Percent = 0
+    }
+    Write-Host "`r  Progress: $Copied / $TotalFiles files ($Percent%)   " -NoNewline
+}
+
+if ($CopyProcess.ExitCode -ne 0) {
+    Write-Host ""
+    Write-Host ""
     Write-Host "ERROR: Backup failed. Check Docker Desktop for errors." -ForegroundColor Red
     Pause-And-Exit 1
 }
+Write-Host "`r  Progress: $TotalFiles / $TotalFiles files (100%)   "
 
 # --- Verify ---
-$FileCount = @(Get-ChildItem -Path $BackupName -Recurse -File -Force).Count
+$FileCount = @(Get-ChildItem -Path $BackupName -Recurse -File -Force -ErrorAction SilentlyContinue).Count
 
 if ($FileCount -eq 0) {
     Write-Host ""

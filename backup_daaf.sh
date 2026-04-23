@@ -74,21 +74,49 @@ fi
 echo "Backup name: ${BACKUP_NAME}/"
 echo ""
 
-# --- Create backup ---
-echo "Copying files from Docker volume (this may take a moment)..."
-mkdir -p "${BACKUP_NAME}"
+# --- Count source files ---
+echo "Scanning Docker volume..."
+SCAN_OUTPUT=$(docker run --rm -v "${VOLUME_NAME}:/source:ro" busybox sh -c "find /source -type f | wc -l && du -sh /source")
+TOTAL_FILES=$(echo "${SCAN_OUTPUT}" | head -1 | tr -d '[:space:]')
+TOTAL_SIZE=$(echo "${SCAN_OUTPUT}" | tail -1 | awk '{print $1}')
+echo "Found ${TOTAL_FILES} files to copy (${TOTAL_SIZE})."
+echo ""
 
-if ! docker run --rm \
+# --- Create backup ---
+mkdir -p "${BACKUP_NAME}"
+echo "Copying files from Docker volume..."
+printf "  Progress: 0 / %d files (0%%)" "${TOTAL_FILES}"
+
+docker run --rm \
     -v "${VOLUME_NAME}:/source:ro" \
     -v "$(pwd)/${BACKUP_NAME}:/dest" \
-    busybox sh -c "cp -a /source/. /dest/"; then
+    busybox sh -c "cp -a /source/. /dest/" &
+COPY_PID=$!
+
+while kill -0 "${COPY_PID}" 2>/dev/null; do
+    sleep 3
+    if ! kill -0 "${COPY_PID}" 2>/dev/null; then
+        break
+    fi
+    COPIED=$(find "${BACKUP_NAME}" -type f 2>/dev/null | wc -l | tr -d '[:space:]') || COPIED=0
+    if [ "${TOTAL_FILES}" -gt 0 ]; then
+        PERCENT=$((COPIED * 100 / TOTAL_FILES))
+    else
+        PERCENT=0
+    fi
+    printf "\r  Progress: %d / %d files (%d%%)   " "${COPIED}" "${TOTAL_FILES}" "${PERCENT}"
+done
+
+if ! wait "${COPY_PID}"; then
+    echo ""
     echo ""
     echo "ERROR: Backup failed. Check Docker Desktop for errors."
     exit 1
 fi
+printf "\r  Progress: %d / %d files (100%%)   \n" "${TOTAL_FILES}" "${TOTAL_FILES}"
 
 # --- Verify ---
-FILE_COUNT=$(find "${BACKUP_NAME}" -type f | wc -l)
+FILE_COUNT=$(find "${BACKUP_NAME}" -type f 2>/dev/null | wc -l | tr -d '[:space:]') || FILE_COUNT=0
 
 if [ "${FILE_COUNT}" -eq 0 ]; then
     echo ""
