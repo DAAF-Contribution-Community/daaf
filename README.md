@@ -54,61 +54,29 @@ Watch the 4 minute v2.0.0 Showcase video below, or read on for more information!
 
 If you're already comfortable with the Terminal and Claude Code, you can get started almost immediately using the Quick Start instructions below. Otherwise, I recommend starting with the full [Installation Guide](user_reference/01_installation_and_quickstart.md) for beginner-friendly details, prerequisites, and troubleshooting.
 
-**Requirements:** [Docker Desktop](https://www.docker.com/products/docker-desktop/) (running) and an [Anthropic Max subscription](https://claude.com/pricing/max) ($100-200/mo) or [API key](https://console.anthropic.com/).
+**Requirements:** [Docker Desktop](https://www.docker.com/products/docker-desktop/) (running) and an [Anthropic Max subscription](https://claude.com/pricing/max) ($100-200/mo) or [API key](https://console.anthropic.com/). Open a terminal in your desired installation directory.
 
-<table>
-<tr>
-<td><strong>macOS / Linux (Terminal)</strong></td>
-<td><strong>Windows (PowerShell)</strong></td>
-</tr>
-<tr>
-<td>
+**macOS / Linux (Terminal):**
 
 ```bash
-# Install DAAF with one command
+# Install DAAF (downloads Docker build files, builds image, clones repo into container)
 curl -fsSL https://raw.githubusercontent.com/DAAF-Contribution-Community/daaf/main/install.sh | bash
-```
 
-</td>
-<td>
-
-```powershell
-# Install DAAF with one command
-irm https://raw.githubusercontent.com/DAAF-Contribution-Community/daaf/main/install.ps1 | iex
-```
-
-</td>
-</tr>
-</table>
-
-The installer downloads the Docker build files, builds the image with all dependencies, and clones DAAF into the container. When it finishes, follow the printed instructions to enter the container and launch Claude Code:
-
-<table>
-<tr>
-<td><strong>macOS / Linux (Terminal)</strong></td>
-<td><strong>Windows (PowerShell)</strong></td>
-</tr>
-<tr>
-<td>
-
-```bash
+# Enter the installation folder and launch Claude Code with a helper script
 cd daaf-docker
 bash run_daaf.sh
 ```
 
-</td>
-<td>
+**Windows (PowerShell):**
 
 ```powershell
+# Install DAAF (downloads Docker build files, builds image, clones repo into container)
+irm https://raw.githubusercontent.com/DAAF-Contribution-Community/daaf/main/install.ps1 | iex
+
+# Enter the installation folder and launch Claude Code with a helper script
 cd daaf-docker
 .\run_daaf.ps1
 ```
-
-</td>
-</tr>
-</table>
-
-The `run_daaf` script starts the container if needed and launches Claude Code directly. To enter the container shell instead (e.g., for setting API keys), pass `bash` as an argument: `bash run_daaf.sh bash` (or `.\run_daaf.ps1 bash` on Windows).
 
 On first launch, Claude Code will prompt you to authenticate. Set your model to **Opus 4.6** via `/model`, and set **Auto-compact** to **False** and **Verbose output** to **True** via `/config`. You're ready to go; see [Understanding DAAF](user_reference/02_understanding_daaf.md) for some suggestions on how to get started with progressively more complex tasks with DAAF!
 

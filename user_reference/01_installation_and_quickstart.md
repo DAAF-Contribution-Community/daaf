@@ -83,32 +83,21 @@ Docker is a program designed to help people create self-contained, isolated envi
 
 With all the prerequisites out of the way, installation is a single command that takes about 5 minutes with a decent internet connection. The installer downloads some initial helper files, builds a Docker image with the full data science stack and Claude Code in a fully replicable way, and then downloads the complete DAAF repository into the container so that Claude Code runs using all of the added DAAF files.
 
-### One-Line Install (Recommended)
+### One-Line Install
 
-Make sure Docker Desktop is running, then open your terminal and paste the command for your operating system:
+Make sure Docker Desktop is running, then open your terminal, navigate to your desired installation directory, and paste the command for your operating system:
 
-<table>
-<tr>
-<td><strong>macOS / Linux (Terminal)</strong></td>
-<td><strong>Windows (PowerShell)</strong></td>
-</tr>
-<tr>
-<td>
+**macOS / Linux (Terminal):**
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/DAAF-Contribution-Community/daaf/main/install.sh | bash
 ```
 
-</td>
-<td>
+**Windows (PowerShell):**
 
 ```powershell
 irm https://raw.githubusercontent.com/DAAF-Contribution-Community/daaf/main/install.ps1 | iex
 ```
-
-</td>
-</tr>
-</table>
 
 The installer will show its progress as it works through four steps: creating a build directory, downloading the Docker files, building the image, and cloning DAAF into the container. When it finishes, it prints instructions for entering the container and launching Claude Code.
 
@@ -116,13 +105,7 @@ The installer will show its progress as it works through four steps: creating a 
 
 By default, the installer pulls the latest code from the `main` branch. To install a specific release or branch instead, set the `DAAF_BRANCH` environment variable before running the installer:
 
-<table>
-<tr>
-<td><strong>macOS / Linux (Terminal)</strong></td>
-<td><strong>Windows (PowerShell)</strong></td>
-</tr>
-<tr>
-<td>
+**macOS / Linux (Terminal):**
 
 ```bash
 # Install a tagged release
@@ -134,8 +117,7 @@ export DAAF_BRANCH=dev
 curl -fsSL "https://raw.githubusercontent.com/DAAF-Contribution-Community/daaf/${DAAF_BRANCH}/install.sh" | bash
 ```
 
-</td>
-<td>
+**Windows (PowerShell):**
 
 ```powershell
 # Install a tagged release
@@ -144,10 +126,6 @@ $env:DAAF_BRANCH="v2.1.0"; irm "https://raw.githubusercontent.com/DAAF-Contribut
 # Install from a development branch
 $env:DAAF_BRANCH="dev"; irm "https://raw.githubusercontent.com/DAAF-Contribution-Community/daaf/$env:DAAF_BRANCH/install.ps1" | iex
 ```
-
-</td>
-</tr>
-</table>
 
 This fetches the installer itself from the specified branch, and also controls the Docker build files and repository clone, so everything comes from the specified branch or tag consistently. The `export` on macOS/Linux is required so that the variable is inherited by the `bash` process on the other side of the pipe. Check the [Releases page](https://github.com/DAAF-Contribution-Community/daaf/releases) to see available versions. If `DAAF_BRANCH` is not set, the installer defaults to `main`.
 
@@ -166,32 +144,23 @@ Behind the scenes, the Docker Compose setup also:
 
 You can confirm the install worked by looking at Docker Desktop: in the **Images** panel you should see `daaf-daaf-docker`, and in the **Containers** panel you should see `daaf` with a sub-entry `daaf-docker-1`.
 
-#### Enter the container and launch Claude Code
+#### Launch Claude Code with DAAF
 
-<table>
-<tr>
-<td><strong>macOS / Linux (Terminal)</strong></td>
-<td><strong>Windows (PowerShell)</strong></td>
-</tr>
-<tr>
-<td>
+Now, you'll use your terminal to enter the DAAF installation directory. Once you're in there, you can run a helper script I created to make it easy to launch DAAF and Claude Code in the Docker container automatically.
+
+**macOS / Linux (Terminal):**
 
 ```bash
 cd daaf-docker
 bash run_daaf.sh
 ```
 
-</td>
-<td>
+**Windows (PowerShell):**
 
 ```powershell
 cd daaf-docker
 .\run_daaf.ps1
 ```
-
-</td>
-</tr>
-</table>
 
 The `run_daaf` script starts the container if needed and launches Claude Code directly. To enter the container shell instead (e.g., for setting API keys), pass `bash` as an argument: `bash run_daaf.sh bash` (or `.\run_daaf.ps1 bash` on Windows). You can also use the manual commands if you prefer: `docker compose exec daaf-docker bash` to enter the container, then `claude` to launch.
 
@@ -302,30 +271,19 @@ Once you've completed the installation, your daily workflow is just to open your
 
 **Quick start (recommended):**
 
-<table>
-<tr>
-<td><strong>macOS / Linux (Terminal)</strong></td>
-<td><strong>Windows (PowerShell)</strong></td>
-</tr>
-<tr>
-<td>
+**macOS / Linux (Terminal):**
 
 ```bash
 cd daaf-docker
 bash run_daaf.sh
 ```
 
-</td>
-<td>
+**Windows (PowerShell):**
 
 ```powershell
 cd daaf-docker
 .\run_daaf.ps1
 ```
-
-</td>
-</tr>
-</table>
 
 The `run_daaf` script handles everything: starts the container if it's not already running, then launches Claude Code directly. To enter the container shell instead of Claude Code (for manual commands, setting API keys, etc.), pass `bash` as an argument:
 
@@ -401,30 +359,19 @@ From here, you can download copies of individual folders or files to your comput
 
 Since your research files live inside the Docker volume, it'll be extremely important to regularly back up your work separately from the Docker volume. The easiest way is with the included backup script:
 
-<table>
-<tr>
-<td><strong>macOS / Linux (Terminal)</strong></td>
-<td><strong>Windows (PowerShell)</strong></td>
-</tr>
-<tr>
-<td>
+**macOS / Linux (Terminal):**
 
 ```bash
 cd daaf-docker
 bash backup_daaf.sh
 ```
 
-</td>
-<td>
+**Windows (PowerShell):**
 
 ```powershell
 cd daaf-docker
 .\backup_daaf.ps1
 ```
-
-</td>
-</tr>
-</table>
 
 The backup script creates a date-versioned folder (e.g., `2026-04-21_daaf_backup/`) in your `daaf-docker` directory. Multiple backups on the same day are automatically suffixed (`2026-04-21a_daaf_backup/`, `2026-04-21b_daaf_backup/`, etc.). Feel free to move or copy these folders to another location on your computer (or an external drive) for safekeeping.
 
