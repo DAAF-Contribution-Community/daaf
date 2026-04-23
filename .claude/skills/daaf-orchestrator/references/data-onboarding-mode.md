@@ -798,14 +798,24 @@ All data for a Data Onboarding project lives inside the research project folder,
 
 ```
 research/YYYY-MM-DD_{Source_Name}_Onboarding/
+├── STATE.md                                       # Session state (REQUIRED)
+├── LEARNINGS.md                                   # Session learnings (REQUIRED)
+├── logs/                                          # Session transcripts (collected at completion)
+├── scripts/
+│   ├── profile_structural/                        # Part A profiling scripts
+│   ├── profile_statistical/                       # Part B profiling scripts
+│   ├── profile_relational/                        # Part C profiling scripts
+│   ├── profile_interpretation/                    # Part D profiling scripts
+│   ├── stage5_fetch/                              # API fetch scripts (if API acquisition)
+│   └── cr/                                        # QA review scripts (phase-based)
 ├── data/
-│   └── raw/                    # Original data files (immutable after drop)
+│   └── raw/                                       # Original data files (immutable after drop)
 │       ├── {file1}.parquet
 │       └── {file2}.parquet
-├── output/
-│   ├── skill_draft/            # Draft skill before final placement
-│   └── preliminary_notes/      # Lossless agent returns persisted by orchestrator
-├── ...
+└── output/
+    ├── skill_draft/                               # Draft skill before final placement
+    │   └── SKILL.md
+    └── preliminary_notes/                         # Lossless agent returns persisted by orchestrator
 ```
 
 #### Setup Protocol

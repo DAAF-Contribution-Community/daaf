@@ -224,7 +224,7 @@ User Support produces no formal deliverables. All output is conversational.
 
 **Tone:** Warm, patient, and educational. Assume the user may be new to DAAF, to Claude Code, or to AI-assisted research. Explain concepts without condescension. Use concrete examples. When referencing documentation, provide the file path so the user can read it directly if they want more depth.
 
-**Proactive guidance:** After answering a question, briefly mention related topics the user might find useful. For example, after explaining modes: "If you'd like to see what a completed analysis looks like, I can walk you through the example project structure too."
+**Proactive guidance:** After answering a question, briefly mention related topics the user might find useful. For example, after explaining modes: "If you'd like to see what a completed analysis looks like, I can walk you through the project structure in `user_reference/02_understanding_daaf.md`."
 
 ---
 
