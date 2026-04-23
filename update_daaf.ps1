@@ -549,10 +549,21 @@ if (-not $RemoteBranch) {
     Write-Host "Could not find the update branch on the server." -ForegroundColor Red
     Write-Host "(Looked for 'main' and 'master' on $UpstreamRemote, but neither exists.)"
     Write-Host ""
-    Write-Host "This is unusual. Your installation is unchanged."
+    Write-Host "Your installation is unchanged. No changes were made."
     Write-Host ""
-    Write-Host "You can specify a branch explicitly:"
-    Write-Host "  `$env:DAAF_BRANCH = 'your-branch'; .\update_daaf.ps1"
+    Write-Host "This usually means one of:"
+    Write-Host "  - The repository was recently restructured and uses a different"
+    Write-Host "    default branch name"
+    Write-Host "  - The remote URL points to an empty or misconfigured repository"
+    Write-Host "  - A network issue caused an incomplete fetch (try re-running)"
+    Write-Host ""
+    Write-Host "To troubleshoot:"
+    Write-Host "  1. Check what branches exist on the remote:"
+    Write-Host "       docker compose exec daaf-docker git -C /daaf ls-remote --heads $UpstreamRemote"
+    Write-Host "  2. If you see a branch listed, specify it explicitly:"
+    Write-Host "       `$env:DAAF_BRANCH = 'branch-name'; .\update_daaf.ps1"
+    Write-Host "  3. Verify your remote URL is correct:"
+    Write-Host "       docker compose exec daaf-docker git -C /daaf remote -v"
     Write-Host ""
     Write-Host "If this persists, check:"
     Write-Host "  https://github.com/$UpstreamRepo/issues"
@@ -619,6 +630,17 @@ if (-not $Behind) { $Behind = "0" }
 if ($Behind -ne "0") {
     Write-Host ""
     Write-Host "Updates available: $Behind new commit(s) on $UpstreamRemote/$RemoteBranch."
+}
+
+# =====================================================================
+# Early exit: no upstream updates for non-default branches
+# =====================================================================
+if (($CurrentBranch -ne $RemoteBranch) -and ($Behind -eq "0")) {
+    Write-Host ""
+    Write-Host "Already up to date! Your branch '$CurrentBranch' has all the latest"
+    Write-Host "changes from $UpstreamRemote/$RemoteBranch. Nothing to do."
+    Write-Host ""
+    Pause-And-Exit 0
 }
 
 # =====================================================================

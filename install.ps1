@@ -191,4 +191,8 @@ Write-Host "  https://github.com/$Repo/blob/$Branch/user_reference/01_installati
 Write-Host ""
 Write-Host "Keep this directory - it contains the Dockerfile needed for rebuilds."
 Write-Host ""
+Write-Host "To get started using any of those scripts, enter the install directory first:"
+Write-Host "  cd daaf-docker"
+Write-Host ""
+
 Pause-And-Exit 0

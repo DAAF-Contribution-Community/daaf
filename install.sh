@@ -177,3 +177,6 @@ echo "  https://github.com/${REPO}/blob/${BRANCH}/user_reference/01_installation
 echo ""
 echo "Keep this directory — it contains the Dockerfile needed for rebuilds."
 echo ""
+echo "To get started using any of those scripts, enter the install directory first:"
+echo "  cd daaf-docker"
+echo ""

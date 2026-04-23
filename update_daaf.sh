@@ -548,10 +548,21 @@ if [ -z "${REMOTE_BRANCH}" ]; then
     echo "Could not find the update branch on the server."
     echo "(Looked for 'main' and 'master' on ${UPSTREAM_REMOTE}, but neither exists.)"
     echo ""
-    echo "This is unusual. Your installation is unchanged."
+    echo "Your installation is unchanged. No changes were made."
     echo ""
-    echo "You can specify a branch explicitly:"
-    echo "  DAAF_BRANCH=your-branch bash update_daaf.sh"
+    echo "This usually means one of:"
+    echo "  - The repository was recently restructured and uses a different"
+    echo "    default branch name"
+    echo "  - The remote URL points to an empty or misconfigured repository"
+    echo "  - A network issue caused an incomplete fetch (try re-running)"
+    echo ""
+    echo "To troubleshoot:"
+    echo "  1. Check what branches exist on the remote:"
+    echo "       docker compose exec daaf-docker git -C /daaf ls-remote --heads ${UPSTREAM_REMOTE}"
+    echo "  2. If you see a branch listed, specify it explicitly:"
+    echo "       DAAF_BRANCH=branch-name bash update_daaf.sh"
+    echo "  3. Verify your remote URL is correct:"
+    echo "       docker compose exec daaf-docker git -C /daaf remote -v"
     echo ""
     echo "If this persists, check:"
     echo "  https://github.com/${UPSTREAM_REPO}/issues"
@@ -617,6 +628,17 @@ BEHIND=$(docker compose exec -T daaf-docker \
 if [ "${BEHIND}" != "0" ]; then
     echo ""
     echo "Updates available: ${BEHIND} new commit(s) on ${UPSTREAM_REMOTE}/${REMOTE_BRANCH}."
+fi
+
+# =====================================================================
+# Early exit: no upstream updates for non-default branches
+# =====================================================================
+if [ "${CURRENT_BRANCH}" != "${REMOTE_BRANCH}" ] && [ "${BEHIND}" = "0" ]; then
+    echo ""
+    echo "Already up to date! Your branch '${CURRENT_BRANCH}' has all the latest"
+    echo "changes from ${UPSTREAM_REMOTE}/${REMOTE_BRANCH}. Nothing to do."
+    echo ""
+    exit 0
 fi
 
 # =====================================================================
