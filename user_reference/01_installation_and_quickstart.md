@@ -419,6 +419,49 @@ LLM assistants work best on text files, which means that proprietary document fo
 
 DAAF is actively being developed and updated. If you'd like to pull in the latest fixes, extensions, and updates (which for a while may be as often as daily!!), updating is straightforward. Before updating, I recommend backing up your Docker volume's research folder as a precaution (see "Backing Up Your Work" above).
 
+### Migrating from an older installation
+
+If you installed DAAF **v2.0.1 or earlier** — back when the installation process involved downloading a ZIP file and copying it into Docker — you may not have the update scripts (`update_daaf.sh` / `update_daaf.ps1`) in your `daaf-docker` folder. Without these scripts, you can't use the standard update process described below.
+
+**How to tell if this applies to you:** Open your `daaf-docker` folder on your computer (wherever you originally set up DAAF). If you don't see a file called `update_daaf.sh` (macOS/Linux) or `update_daaf.ps1` (Windows), you need to run the one-time migration first.
+
+**What the migration does:**
+
+- Downloads the utility scripts (`run_daaf`, `update_daaf`, `backup_daaf`, `rebuild_daaf`, `view_logs`) to your host machine so you have all the same convenience tools as a fresh install
+- Creates a full backup of your Docker volume before making any changes
+- Connects your local git history to the official DAAF repository so that future updates can merge in cleanly
+- Preserves everything — your research files, any framework customizations you've made, and your full git audit trail are all kept intact
+
+**Running the migration:**
+
+The migration is a single command, just like the original installer. Make sure Docker Desktop is running, open your terminal, navigate to your `daaf-docker` folder, and run:
+
+| Platform | One-liner |
+|----------|-----------|
+| **macOS / Linux** | `curl -fsSL https://raw.githubusercontent.com/DAAF-Contribution-Community/daaf/main/migrate_daaf.sh \| bash` |
+| **Windows PowerShell** | `irm https://raw.githubusercontent.com/DAAF-Contribution-Community/daaf/main/migrate_daaf.ps1 \| iex` |
+
+<details>
+<summary>Prefer to download and inspect the script first?</summary>
+
+**macOS / Linux:**
+```bash
+curl -fsSL https://raw.githubusercontent.com/DAAF-Contribution-Community/daaf/main/migrate_daaf.sh -o migrate_daaf.sh
+bash migrate_daaf.sh
+```
+
+**Windows PowerShell:**
+```powershell
+Invoke-WebRequest -Uri https://raw.githubusercontent.com/DAAF-Contribution-Community/daaf/main/migrate_daaf.ps1 -OutFile migrate_daaf.ps1
+.\migrate_daaf.ps1
+```
+
+</details>
+
+The migration script is safe to re-run if it gets interrupted — it detects what's already been completed and picks up where it left off. Your research files are never modified; only git metadata (the connection to the upstream repository) is updated.
+
+**After migration:** You'll have all the same utility scripts as a fresh install. From this point forward, you can use `update_daaf.sh` / `update_daaf.ps1` for all future updates, exactly as described in the next section.
+
 ### If you installed with the one-line installer (recommended method)
 
 Assuming you used `install.sh` or `install.ps1`, your DAAF container has a full git repository with a remote configured. Updating is a single command run from your `daaf-docker` folder on the host:
