@@ -136,7 +136,7 @@ if ((-not $DockerfileChanged) -and (-not $ComposefileChanged)) {
 Write-Host ""
 Write-Host "[2/3] Rebuilding Docker image (this may take a few minutes if packages changed)..."
 Write-Host ""
-docker compose up -d --build
+docker compose up -d --build --progress plain
 if ($LASTEXITCODE -ne 0) {
     Write-Host ""
     Write-Host "ERROR: Rebuild failed. Check the output above for details." -ForegroundColor Red

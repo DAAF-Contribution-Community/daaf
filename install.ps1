@@ -115,7 +115,7 @@ try {
 # --- Build the Docker image ---
 Write-Host "[3/4] Building Docker image (this may take a few minutes on first run since there are a lot of Python libraries to install)..."
 $env:COMPOSE_PROJECT_NAME = "daaf"
-docker compose -f "$InstallDir\docker-compose.yml" up -d --build
+docker compose -f "$InstallDir\docker-compose.yml" up -d --build --progress plain
 if ($LASTEXITCODE -ne 0) {
     Write-Host "ERROR: Docker image build failed. Check the output above for details." -ForegroundColor Red
     Write-Host "You can safely re-run this installer to retry (set DAAF_FORCE_REINSTALL=1 if prompted)."
