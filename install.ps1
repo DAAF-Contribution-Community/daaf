@@ -18,13 +18,11 @@
 
 $ErrorActionPreference = "Stop"
 
-function Pause-And-Exit {
-    param([int]$Code = 0)
+function Pause-For-User {
     if (-not $env:DAAF_NESTED) {
         Write-Host ""
         Read-Host "Press Enter to continue"
     }
-    exit $Code
 }
 
 # Ensure TLS 1.2 for GitHub downloads (required on PowerShell 5.1)
@@ -48,14 +46,14 @@ Write-Host ""
 if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
     Write-Host "ERROR: Docker is either not installed or not configured properly in your system PATH to allow it to be used from Powershell." -ForegroundColor Red
     Write-Host "Please install Docker Desktop: https://www.docker.com/products/docker-desktop/"
-    Pause-And-Exit 1
+    Pause-For-User; return
 }
 
 # Check Docker daemon is running (compatible with PowerShell 5.1 and 7+)
 $null = docker info 2>&1
 if ($LASTEXITCODE -ne 0) {
     Write-Host "ERROR: Docker Desktop does not seem to be running. Please start Docker Desktop on your computer and try again." -ForegroundColor Red
-    Pause-And-Exit 1
+    Pause-For-User; return
 }
 
 # --- Check for existing installation ---
@@ -82,7 +80,7 @@ if (Test-Path "$InstallDir\docker-compose.yml") {
             Write-Host '  $env:DAAF_FORCE_REINSTALL = "1"'
             Write-Host "  irm $RawBase/install.ps1 | iex"
             Write-Host ""
-            Pause-And-Exit 1
+            Pause-For-User; return
         }
     } else {
         Write-Host "NOTE: A previous install attempt was detected but appears incomplete."
@@ -111,7 +109,7 @@ try {
     Write-Host "Please verify that the branch name is correct and that you have an internet connection."
     Write-Host "You can check available branches at: https://github.com/$Repo/branches"
     Write-Host "Details: $_"
-    Pause-And-Exit 1
+    Pause-For-User; return
 }
 
 # --- Build the Docker image ---
@@ -121,7 +119,7 @@ docker compose -f "$InstallDir\docker-compose.yml" up -d --build
 if ($LASTEXITCODE -ne 0) {
     Write-Host "ERROR: Docker image build failed. Check the output above for details." -ForegroundColor Red
     Write-Host "You can safely re-run this installer to retry (set DAAF_FORCE_REINSTALL=1 if prompted)."
-    Pause-And-Exit 1
+    Pause-For-User; return
 }
 
 # --- Wait for container to be ready ---
@@ -138,7 +136,7 @@ if ($retries -ge $maxRetries) {
     Write-Host "ERROR: Container did not become ready within 60 seconds." -ForegroundColor Red
     Write-Host "Check Docker Desktop for errors, then retry with:"
     Write-Host "  docker compose -f $InstallDir\docker-compose.yml up -d"
-    Pause-And-Exit 1
+    Pause-For-User; return
 }
 
 # --- Clone the full repository into the Docker volume ---
@@ -156,7 +154,7 @@ if ($LASTEXITCODE -ne 0) {
     Write-Host "  docker compose -f $InstallDir\docker-compose.yml exec -T daaf-docker ``"
     Write-Host "    bash -c 'cp -a /tmp/daaf-clone/. /daaf/ && rm -rf /tmp/daaf-clone'"
     Write-Host "You can also safely re-run this installer to retry from scratch (set DAAF_FORCE_REINSTALL=1 if prompted)."
-    Pause-And-Exit 1
+    Pause-For-User; return
 }
 
 docker compose -f "$InstallDir\docker-compose.yml" exec -T daaf-docker `
@@ -169,7 +167,7 @@ if ($LASTEXITCODE -ne 0) {
     Write-Host "  docker compose -f $InstallDir\docker-compose.yml exec -T daaf-docker ``"
     Write-Host "    bash -c 'cp -a /tmp/daaf-clone/. /daaf/ && rm -rf /tmp/daaf-clone'"
     Write-Host "You can also safely re-run this installer to retry from scratch (set DAAF_FORCE_REINSTALL=1 if prompted)."
-    Pause-And-Exit 1
+    Pause-For-User; return
 }
 
 # --- Verify DAAF files are present ---
@@ -183,7 +181,7 @@ if ($LASTEXITCODE -ne 0) {
     Write-Host "  docker compose exec daaf-docker bash"
     Write-Host "  git clone --depth 1 -b $Branch https://github.com/$Repo.git /tmp/daaf-clone"
     Write-Host "  cp -a /tmp/daaf-clone/. /daaf/ && rm -rf /tmp/daaf-clone"
-    Pause-And-Exit 1
+    Pause-For-User; return
 }
 
 Write-Host ""
@@ -228,4 +226,4 @@ Write-Host "To get started using any of those scripts, enter the install directo
 Write-Host "  cd daaf-docker"
 Write-Host ""
 
-Pause-And-Exit 0
+Pause-For-User
