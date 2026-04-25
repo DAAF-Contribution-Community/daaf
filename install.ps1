@@ -18,7 +18,63 @@
 
 $ErrorActionPreference = "Stop"
 
+# --- Console mode preservation (Windows) ---
+# Some subprocesses invoked below (notably the Docker CLI and git running
+# through `docker compose exec`) call SetConsoleMode on stdin to enable VT
+# processing or disable line input, and may exit without restoring it. The
+# hallmark symptom is a PowerShell session where typing is echoed but Enter
+# does not submit the line — ENABLE_LINE_INPUT (0x0002) has been cleared.
+# Capture the original mode at startup so we can restore it on every exit
+# path, and emit a defensive ANSI reset for VT modes that have no Win32 API.
+$Script:OriginalConsoleMode = $null
+$Script:StdinHandle = [System.IntPtr]::Zero
+try {
+    Add-Type -Namespace 'DAAFInstaller' -Name 'ConsoleMode' -MemberDefinition @'
+[System.Runtime.InteropServices.DllImport("kernel32.dll", SetLastError = true)]
+public static extern System.IntPtr GetStdHandle(int nStdHandle);
+
+[System.Runtime.InteropServices.DllImport("kernel32.dll", SetLastError = true)]
+public static extern bool GetConsoleMode(System.IntPtr hConsoleHandle, out uint lpMode);
+
+[System.Runtime.InteropServices.DllImport("kernel32.dll", SetLastError = true)]
+public static extern bool SetConsoleMode(System.IntPtr hConsoleHandle, uint dwMode);
+'@ -ErrorAction Stop
+    $Script:StdinHandle = [DAAFInstaller.ConsoleMode]::GetStdHandle(-10)  # STD_INPUT_HANDLE
+    $mode = [uint32]0
+    if ([DAAFInstaller.ConsoleMode]::GetConsoleMode($Script:StdinHandle, [ref]$mode)) {
+        $Script:OriginalConsoleMode = $mode
+    }
+} catch {
+    # Non-Windows host, restricted execution policy, or already-broken stdin —
+    # the ANSI reset in Restore-ConsoleState will still run as a best-effort
+    # fallback and the script remains functional without console restoration.
+}
+
+function Restore-ConsoleState {
+    # Restore the captured Win32 console input mode (re-enables ENABLE_LINE_INPUT
+    # if a subprocess turned it off, which is the root cause of the "Enter does
+    # nothing" symptom after install.ps1 exits).
+    if ($null -ne $Script:OriginalConsoleMode -and $Script:StdinHandle -ne [System.IntPtr]::Zero) {
+        try {
+            $null = [DAAFInstaller.ConsoleMode]::SetConsoleMode($Script:StdinHandle, $Script:OriginalConsoleMode)
+        } catch { }
+    }
+    # Defensive ANSI reset for VT-only modes that have no Win32 equivalent.
+    # PowerShell 5.1 lacks the `e escape, so use [char]27 for compatibility.
+    #   ESC[?2004l  disable bracketed paste mode
+    #   ESC[?1l     cursor keys to normal mode (DECCKM off)
+    #   ESC>        exit application keypad mode
+    #   ESC[?1049l  leave alternate screen buffer
+    try {
+        $esc = [char]27
+        [Console]::Write("$esc[?2004l$esc[?1l$esc>$esc[?1049l")
+    } catch { }
+}
+
 function Pause-For-User {
+    # Restore the console BEFORE Read-Host so the prompt itself works correctly
+    # even if a subprocess corrupted stdin earlier in this run.
+    Restore-ConsoleState
     if (-not $env:DAAF_NESTED) {
         Write-Host ""
         Read-Host "Press Enter to continue"
@@ -27,6 +83,8 @@ function Pause-For-User {
 
 # Ensure TLS 1.2 for GitHub downloads (required on PowerShell 5.1)
 [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
+
+try {
 
 # --- Configuration ---
 $Repo = "DAAF-Contribution-Community/daaf"
@@ -237,3 +295,10 @@ Write-Host "  cd daaf-docker"
 Write-Host ""
 
 Pause-For-User
+
+} finally {
+    # Final safety net — guarantees console state is restored on every exit
+    # path: success, early `return` after Pause-For-User, or unhandled
+    # exception (which $ErrorActionPreference = "Stop" can trigger).
+    Restore-ConsoleState
+}
