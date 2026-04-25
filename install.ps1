@@ -115,9 +115,19 @@ try {
 # --- Build the Docker image ---
 Write-Host "[3/4] Building Docker image (this may take a few minutes on first run since there are a lot of Python libraries to install)..."
 $env:COMPOSE_PROJECT_NAME = "daaf"
-docker compose -f "$InstallDir\docker-compose.yml" up -d --build --progress plain
+# Build and start are split into two commands so that --progress plain can be
+# applied to the build step (where it is universally supported) without relying
+# on `docker compose up --progress`, which is rejected as "unknown flag" on
+# Docker Compose versions prior to ~v2.27.
+docker compose -f "$InstallDir\docker-compose.yml" build --progress plain
 if ($LASTEXITCODE -ne 0) {
     Write-Host "ERROR: Docker image build failed. Check the output above for details." -ForegroundColor Red
+    Write-Host "You can safely re-run this installer to retry (set DAAF_FORCE_REINSTALL=1 if prompted)."
+    Pause-For-User; return
+}
+docker compose -f "$InstallDir\docker-compose.yml" up -d
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "ERROR: Failed to start the Docker container after build. Check the output above for details." -ForegroundColor Red
     Write-Host "You can safely re-run this installer to retry (set DAAF_FORCE_REINSTALL=1 if prompted)."
     Pause-For-User; return
 }
