@@ -136,13 +136,23 @@ if ((-not $DockerfileChanged) -and (-not $ComposefileChanged)) {
 Write-Host ""
 Write-Host "[2/3] Rebuilding Docker image (this may take a few minutes if packages changed)..."
 Write-Host ""
-docker compose up -d --build --progress plain
+# Build and start are split into two commands so that --progress plain can be
+# applied to the build step (where it is universally supported) without relying
+# on `docker compose up --progress`, which is rejected as "unknown flag" on
+# Docker Compose versions prior to ~v2.27.
+docker compose build --progress plain
 if ($LASTEXITCODE -ne 0) {
     Write-Host ""
     Write-Host "ERROR: Rebuild failed. Check the output above for details." -ForegroundColor Red
     if (Test-Path "Dockerfile.pre-rebuild") {
         Write-Host "Your previous Dockerfile was saved as Dockerfile.pre-rebuild"
     }
+    Pause-And-Exit 1
+}
+docker compose up -d
+if ($LASTEXITCODE -ne 0) {
+    Write-Host ""
+    Write-Host "ERROR: Failed to start the container after rebuild. Check the output above for details." -ForegroundColor Red
     Pause-And-Exit 1
 }
 
