@@ -41,6 +41,7 @@ RAW_BASE="https://raw.githubusercontent.com/${REPO}/${BRANCH}"
 VOLUME_NAME="daaf_daaf-data"
 CONTAINER_NAME=""
 BACKUP_COMPLETED=false
+IS_FORK=false
 
 # --- Trap handler for unexpected failures ---
 cleanup_on_error() {
@@ -383,8 +384,9 @@ if [ -n "${ORIGIN_URL}" ] && echo "${ORIGIN_URL}" | grep -qi "${REPO}"; then
     echo "Detected: clone-based installation (remote already configured)"
     echo "Remote URL: ${ORIGIN_URL}"
 elif [ -n "${ORIGIN_URL}" ]; then
-    # Remote exists but points somewhere unexpected
+    # Remote exists but points somewhere unexpected (likely a fork)
     DETECTED_ERA="1"
+    IS_FORK=true
     echo "Detected: clone-based installation (remote already configured)"
     echo "Remote URL: ${ORIGIN_URL}"
     echo ""
@@ -427,9 +429,51 @@ if [ "${DETECTED_ERA}" = "1" ]; then
     # Ensure tracking is set up
     container_git branch --set-upstream-to=origin/main main 2>/dev/null || true
 
+    # --- For fork users: add upstream remote for official updates ---
+    if [ "${IS_FORK}" = true ]; then
+        EXISTING_UPSTREAM=$(container_git remote get-url upstream 2>/dev/null || true)
+        if [ -z "${EXISTING_UPSTREAM}" ]; then
+            echo ""
+            echo "Your 'origin' remote points to a fork. Adding 'upstream' remote"
+            echo "for official DAAF updates..."
+            if container_git_verbose remote add upstream "https://github.com/${REPO}.git"; then
+                echo "Fetching upstream history..."
+                if container_git_verbose fetch upstream; then
+                    echo "Fetch complete."
+                else
+                    echo ""
+                    echo "WARNING: Could not fetch from upstream. The 'upstream' remote was"
+                    echo "added but the fetch failed. You can retry later:"
+                    echo "  bash run_daaf.sh bash"
+                    echo "  git fetch upstream"
+                    echo "  exit"
+                fi
+            else
+                echo ""
+                echo "WARNING: Could not add 'upstream' remote. You can add it"
+                echo "manually later:"
+                echo "  bash run_daaf.sh bash"
+                echo "  git remote add upstream https://github.com/${REPO}.git"
+                echo "  git fetch upstream"
+                echo "  exit"
+            fi
+        else
+            echo ""
+            echo "'upstream' remote already configured: ${EXISTING_UPSTREAM}"
+        fi
+    fi
+
     echo ""
-    echo "Migration complete. Your installation is connected to upstream"
-    echo "and update_daaf.sh will work immediately."
+    if [ "${IS_FORK}" = true ]; then
+        echo "Migration complete. Your installation is connected to your fork"
+        echo "(origin) and the official DAAF repository (upstream)."
+        echo ""
+        echo "update_daaf.sh will pull official updates from 'upstream' and merge"
+        echo "them with your fork's changes."
+    else
+        echo "Migration complete. Your installation is connected to upstream"
+        echo "and update_daaf.sh will work immediately."
+    fi
     echo ""
 
 # =====================================================================

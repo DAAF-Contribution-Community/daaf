@@ -510,6 +510,17 @@ if ($LASTEXITCODE -ne 0) {
     Pause-And-Exit 1
 }
 
+# --- Unshallow if needed (shallow clones can't compute merge-base) ---
+docker compose exec -T daaf-docker test -f /daaf/.git/shallow 2>&1 | Out-Null
+if ($LASTEXITCODE -eq 0) {
+    Write-Host "Deepening repository history (installed from a shallow clone)..."
+    docker compose exec -T daaf-docker git -C /daaf fetch --unshallow $UpstreamRemote 2>&1 | Out-Null
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "  (Already unshallowed or not needed.)"
+    }
+    Write-Host ""
+}
+
 # =====================================================================
 # Resolve remote branch
 # =====================================================================

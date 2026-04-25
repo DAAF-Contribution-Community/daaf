@@ -49,6 +49,7 @@ $RawBase = "https://raw.githubusercontent.com/$Repo/$Branch"
 $VolumeName = "daaf_daaf-data"
 $ContainerName = ""
 $BackupCompleted = $false
+$IsFork = $false
 $DetectedEra = ""
 $UpdateChoice = "n"
 
@@ -433,8 +434,9 @@ if (-not [string]::IsNullOrWhiteSpace($OriginUrl) -and $OriginUrl -match $Repo) 
     Write-Host "Detected: clone-based installation (remote already configured)"
     Write-Host "Remote URL: $OriginUrl"
 } elseif (-not [string]::IsNullOrWhiteSpace($OriginUrl)) {
-    # Remote exists but points somewhere unexpected
+    # Remote exists but points somewhere unexpected (likely a fork)
     $DetectedEra = "1"
+    $IsFork = $true
     Write-Host "Detected: clone-based installation (remote already configured)"
     Write-Host "Remote URL: $OriginUrl"
     Write-Host ""
@@ -477,9 +479,53 @@ if ($DetectedEra -eq "1") {
     # Ensure tracking is set up
     $null = Container-Git branch --set-upstream-to=origin/main main
 
+    # --- For fork users: add upstream remote for official updates ---
+    if ($IsFork) {
+        $ExistingUpstream = Container-Git remote get-url upstream
+        if ([string]::IsNullOrWhiteSpace($ExistingUpstream)) {
+            Write-Host ""
+            Write-Host "Your 'origin' remote points to a fork. Adding 'upstream' remote"
+            Write-Host "for official DAAF updates..."
+            $null = Container-Git-Verbose remote add upstream "https://github.com/$Repo.git"
+            if ($LASTEXITCODE -ne 0) {
+                Write-Host ""
+                Write-Host "WARNING: Could not add 'upstream' remote. You can add it" -ForegroundColor Yellow
+                Write-Host "manually later:"
+                Write-Host "  .\run_daaf.ps1 bash"
+                Write-Host "  git remote add upstream https://github.com/$Repo.git"
+                Write-Host "  git fetch upstream"
+                Write-Host "  exit"
+            } else {
+                Write-Host "Fetching upstream history..."
+                $fetchOutput = Container-Git-Verbose fetch upstream
+                if ($LASTEXITCODE -ne 0) {
+                    Write-Host ""
+                    Write-Host "WARNING: Could not fetch from upstream. The 'upstream' remote was" -ForegroundColor Yellow
+                    Write-Host "added but the fetch failed. You can retry later:"
+                    Write-Host "  .\run_daaf.ps1 bash"
+                    Write-Host "  git fetch upstream"
+                    Write-Host "  exit"
+                } else {
+                    Write-Host "Fetch complete."
+                }
+            }
+        } else {
+            Write-Host ""
+            Write-Host "'upstream' remote already configured: $ExistingUpstream"
+        }
+    }
+
     Write-Host ""
-    Write-Host "Migration complete. Your installation is connected to upstream"
-    Write-Host "and update_daaf.ps1 will work immediately."
+    if ($IsFork) {
+        Write-Host "Migration complete. Your installation is connected to your fork"
+        Write-Host "(origin) and the official DAAF repository (upstream)."
+        Write-Host ""
+        Write-Host "update_daaf.ps1 will pull official updates from 'upstream' and merge"
+        Write-Host "them with your fork's changes."
+    } else {
+        Write-Host "Migration complete. Your installation is connected to upstream"
+        Write-Host "and update_daaf.ps1 will work immediately."
+    }
     Write-Host ""
 
 # =====================================================================

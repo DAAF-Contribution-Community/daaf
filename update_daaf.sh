@@ -511,6 +511,17 @@ if ! docker compose exec -T daaf-docker \
     exit 1
 fi
 
+# --- Unshallow if needed (shallow clones can't compute merge-base) ---
+if docker compose exec -T daaf-docker \
+    test -f /daaf/.git/shallow </dev/null 2>/dev/null; then
+    echo "Deepening repository history (installed from a shallow clone)..."
+    if ! docker compose exec -T daaf-docker \
+        git -C /daaf fetch --unshallow "${UPSTREAM_REMOTE}" </dev/null 2>/dev/null; then
+        echo "  (Already unshallowed or not needed.)"
+    fi
+    echo ""
+fi
+
 # =====================================================================
 # Resolve remote branch
 # =====================================================================
@@ -667,22 +678,84 @@ if [ "${CURRENT_BRANCH}" != "${REMOTE_BRANCH}" ]; then
     if [ -n "${DIRTY_FILES}" ]; then
         echo ""
         echo "Setting aside your uncommitted changes for safekeeping..."
-        docker compose exec -T daaf-docker \
-            git -C /daaf stash push -m "DAAF update backup ${TIMESTAMP}" </dev/null
+        if ! docker compose exec -T daaf-docker \
+            git -C /daaf stash push -m "DAAF update backup ${TIMESTAMP}" </dev/null; then
+            echo ""
+            echo "ERROR: Could not safely set aside your uncommitted changes."
+            echo ""
+            echo "No changes were made — your files are exactly as they were."
+            echo ""
+            echo "This can happen if there are new files that need to be committed first."
+            echo "You can commit your changes, then re-run the updater:"
+            echo "  bash run_daaf.sh bash"
+            echo "  git add -A"
+            echo "  git commit -m \"Save my changes before update\""
+            echo "  exit"
+            echo "  bash update_daaf.sh"
+            exit 1
+        fi
         STASHED=true
     fi
 
     echo "Switching to ${REMOTE_BRANCH}..."
-    docker compose exec -T daaf-docker \
-        git -C /daaf checkout "${REMOTE_BRANCH}" </dev/null
+    if ! docker compose exec -T daaf-docker \
+        git -C /daaf checkout "${REMOTE_BRANCH}" </dev/null; then
+        echo ""
+        echo "ERROR: Could not switch to the '${REMOTE_BRANCH}' branch."
+        echo ""
+        echo "This is unusual. Your files are unchanged."
+        if [ "${STASHED}" = true ]; then
+            echo "Your uncommitted changes are safely saved."
+            echo "To restore them: docker compose exec daaf-docker git -C /daaf stash pop"
+        fi
+        echo ""
+        echo "Your research files are not affected."
+        exit 1
+    fi
 
     echo "Pulling updates..."
-    docker compose exec -T daaf-docker \
-        git -C /daaf pull "${UPSTREAM_REMOTE}" "${REMOTE_BRANCH}" </dev/null
+    if ! docker compose exec -T daaf-docker \
+        git -C /daaf pull "${UPSTREAM_REMOTE}" "${REMOTE_BRANCH}" </dev/null; then
+        echo ""
+        echo "ERROR: Could not download the latest updates."
+        echo ""
+        echo "Common causes:"
+        echo "  - No internet connection"
+        echo "  - GitHub may be down (check https://www.githubstatus.com)"
+        echo ""
+        echo "To get back to where you were:"
+        echo "  docker compose exec daaf-docker git -C /daaf checkout ${CURRENT_BRANCH}"
+        if [ "${STASHED}" = true ]; then
+            echo "  docker compose exec daaf-docker git -C /daaf stash pop"
+        fi
+        echo ""
+        echo "Your research files are not affected."
+        exit 1
+    fi
 
     echo "Switching back to '${CURRENT_BRANCH}'..."
-    docker compose exec -T daaf-docker \
-        git -C /daaf checkout "${CURRENT_BRANCH}" </dev/null
+    if ! docker compose exec -T daaf-docker \
+        git -C /daaf checkout "${CURRENT_BRANCH}" </dev/null; then
+        echo ""
+        echo "ERROR: Could not switch back to your '${CURRENT_BRANCH}' branch."
+        echo ""
+        echo "The updates were downloaded successfully, but the script could"
+        echo "not return to your branch. Your research files are safe."
+        echo ""
+        echo "To fix this, enter the container and switch manually:"
+        echo "  bash run_daaf.sh bash"
+        echo "  git checkout ${CURRENT_BRANCH}"
+        echo "  exit"
+        echo ""
+        echo "If that also fails, you can restore to before the update:"
+        echo "  docker compose exec daaf-docker git -C /daaf reset --hard ${BACKUP_BRANCH}"
+        if [ "${STASHED}" = true ]; then
+            echo ""
+            echo "Your uncommitted changes are still saved. After switching back:"
+            echo "  docker compose exec daaf-docker git -C /daaf stash pop"
+        fi
+        exit 1
+    fi
 
     echo "Merging ${REMOTE_BRANCH} into '${CURRENT_BRANCH}'..."
     if ! docker compose exec -T daaf-docker \
@@ -691,8 +764,8 @@ if [ "${CURRENT_BRANCH}" != "${REMOTE_BRANCH}" ]; then
             if [ "${STASHED}" = true ]; then
                 echo ""
                 echo "Your uncommitted changes are safely saved and will be"
-                echo "restored automatically when you re-run the updater."
-                echo "Your research files are safe."
+                echo "restored after conflicts are resolved."
+                echo "  docker compose exec daaf-docker git -C /daaf stash pop"
             fi
             exit 1
         fi
@@ -768,8 +841,22 @@ if [ "${AHEAD}" -gt 0 ]; then
     if [ -n "${DIRTY_FILES}" ]; then
         echo ""
         echo "Setting aside your uncommitted changes for safekeeping..."
-        docker compose exec -T daaf-docker \
-            git -C /daaf stash push -m "DAAF update backup ${TIMESTAMP}" </dev/null
+        if ! docker compose exec -T daaf-docker \
+            git -C /daaf stash push -m "DAAF update backup ${TIMESTAMP}" </dev/null; then
+            echo ""
+            echo "ERROR: Could not safely set aside your uncommitted changes."
+            echo ""
+            echo "No changes were made — your files are exactly as they were."
+            echo ""
+            echo "This can happen if there are new files that need to be committed first."
+            echo "You can commit your changes, then re-run the updater:"
+            echo "  bash run_daaf.sh bash"
+            echo "  git add -A"
+            echo "  git commit -m \"Save my changes before update\""
+            echo "  exit"
+            echo "  bash update_daaf.sh"
+            exit 1
+        fi
         STASHED=true
     fi
 
@@ -783,8 +870,8 @@ if [ "${AHEAD}" -gt 0 ]; then
                 if [ "${STASHED}" = true ]; then
                     echo ""
                     echo "Your uncommitted changes are safely saved and will be"
-                    echo "restored automatically when you re-run the updater."
-                    echo "Your research files are safe."
+                    echo "restored after conflicts are resolved."
+                    echo "  docker compose exec daaf-docker git -C /daaf stash pop"
                 fi
                 exit 1
             fi
@@ -828,8 +915,8 @@ if [ "${AHEAD}" -gt 0 ]; then
                 if [ "${STASHED}" = true ]; then
                     echo ""
                     echo "Your uncommitted changes are safely saved and will be"
-                    echo "restored automatically when you re-run the updater."
-                    echo "Your research files are safe."
+                    echo "restored after conflicts are resolved."
+                    echo "  docker compose exec daaf-docker git -C /daaf stash pop"
                 fi
                 exit 1
             fi
@@ -923,12 +1010,41 @@ if [ -n "${DIRTY_FILES}" ]; then
     fi
 
     echo "Setting aside your changes for safekeeping..."
-    docker compose exec -T daaf-docker \
-        git -C /daaf stash push -m "DAAF update backup ${TIMESTAMP}" </dev/null
+    if ! docker compose exec -T daaf-docker \
+        git -C /daaf stash push -m "DAAF update backup ${TIMESTAMP}" </dev/null; then
+        echo ""
+        echo "ERROR: Could not safely set aside your uncommitted changes."
+        echo ""
+        echo "No changes were made — your files are exactly as they were."
+        echo ""
+        echo "This can happen if there are new files that need to be committed first."
+        echo "You can commit your changes, then re-run the updater:"
+        echo "  bash run_daaf.sh bash"
+        echo "  git add -A"
+        echo "  git commit -m \"Save my changes before update\""
+        echo "  exit"
+        echo "  bash update_daaf.sh"
+        exit 1
+    fi
 
     echo "Pulling updates..."
-    docker compose exec -T daaf-docker \
-        git -C /daaf pull "${UPSTREAM_REMOTE}" "${REMOTE_BRANCH}" </dev/null
+    if ! docker compose exec -T daaf-docker \
+        git -C /daaf pull "${UPSTREAM_REMOTE}" "${REMOTE_BRANCH}" </dev/null; then
+        echo ""
+        echo "ERROR: Could not download the latest updates."
+        echo ""
+        echo "Your uncommitted changes are safely saved."
+        echo ""
+        echo "Common causes:"
+        echo "  - No internet connection"
+        echo "  - GitHub may be down (check https://www.githubstatus.com)"
+        echo ""
+        echo "To restore your changes:"
+        echo "  docker compose exec daaf-docker git -C /daaf stash pop"
+        echo ""
+        echo "Your research files are not affected."
+        exit 1
+    fi
 
     echo "Re-applying your changes..."
     if ! docker compose exec -T daaf-docker \
@@ -1015,7 +1131,20 @@ fi
 # =====================================================================
 echo ""
 echo "Pulling updates..."
-docker compose exec -T daaf-docker \
-    git -C /daaf pull "${UPSTREAM_REMOTE}" "${REMOTE_BRANCH}" </dev/null
+if ! docker compose exec -T daaf-docker \
+    git -C /daaf pull "${UPSTREAM_REMOTE}" "${REMOTE_BRANCH}" </dev/null; then
+    echo ""
+    echo "ERROR: Could not download the latest updates."
+    echo ""
+    echo "No changes were made to your installation."
+    echo "Your research files are not affected."
+    echo ""
+    echo "Common causes:"
+    echo "  - No internet connection"
+    echo "  - GitHub may be down (check https://www.githubstatus.com)"
+    echo ""
+    echo "Once the issue is resolved, re-run:  bash update_daaf.sh"
+    exit 1
+fi
 
 finish_update "${OLD_HEAD}"
