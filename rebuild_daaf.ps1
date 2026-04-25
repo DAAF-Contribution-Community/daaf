@@ -26,7 +26,7 @@ function Pause-And-Exit {
     param([int]$Code = 0)
     if (-not $env:DAAF_NESTED) {
         Write-Host ""
-        Read-Host "Press Enter to continue"
+        Read-Host "Press Enter to close this window"
     }
     exit $Code
 }

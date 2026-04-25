@@ -38,7 +38,7 @@ $ErrorActionPreference = "Stop"
 function Pause-For-User {
     if (-not $env:DAAF_NESTED) {
         Write-Host ""
-        Read-Host "Press Enter to continue"
+        Read-Host "Press Enter to close this window"
     }
 }
 
@@ -113,21 +113,21 @@ function Prompt-Choice {
 # Run a git command inside the container (strips carriage returns, suppresses stderr)
 function Container-Git {
     param([Parameter(ValueFromRemainingArguments=$true)]$GitArgs)
-    $result = docker exec -T $script:ContainerName git -C /daaf @GitArgs 2>$null | Out-String
+    $result = docker exec $script:ContainerName git -C /daaf @GitArgs 2>$null | Out-String
     return ($result -replace "`r","").Trim()
 }
 
 # Run a git command inside the container, allowing stderr through
 function Container-Git-Verbose {
     param([Parameter(ValueFromRemainingArguments=$true)]$GitArgs)
-    $result = docker exec -T $script:ContainerName git -C /daaf @GitArgs | Out-String
+    $result = docker exec $script:ContainerName git -C /daaf @GitArgs | Out-String
     return ($result -replace "`r","").Trim()
 }
 
 # Run an arbitrary command inside the container
 function Container-Exec {
     param([Parameter(ValueFromRemainingArguments=$true)]$ExecArgs)
-    docker exec -T $script:ContainerName @ExecArgs
+    docker exec $script:ContainerName @ExecArgs
 }
 
 # =====================================================================
@@ -338,7 +338,7 @@ if (-not [string]::IsNullOrWhiteSpace($ContainerName)) {
         $retries = 0
         $maxRetries = 30
         while ($retries -lt $maxRetries) {
-            docker exec -T $ContainerName true 2>&1 | Out-Null
+            docker exec $ContainerName true 2>&1 | Out-Null
             if ($LASTEXITCODE -eq 0) { break }
             $retries++
             Start-Sleep -Seconds 2
@@ -388,7 +388,7 @@ if (-not [string]::IsNullOrWhiteSpace($ContainerName)) {
     $retries = 0
     $maxRetries = 30
     while ($retries -lt $maxRetries) {
-        docker exec -T $ContainerName true 2>&1 | Out-Null
+        docker exec $ContainerName true 2>&1 | Out-Null
         if ($LASTEXITCODE -eq 0) { break }
         $retries++
         Start-Sleep -Seconds 2
@@ -612,7 +612,7 @@ if ($DetectedEra -eq "1") {
 
         # Get the blob fingerprint of the initial local commit
         # We compare only (blob_hash, filepath) pairs, ignoring file modes
-        $LocalTreeRaw = docker exec -T $ContainerName sh -c "cd /daaf && git ls-tree -r $InitialCommit | awk '{print `$3, `$4}' | sort" 2>$null | Out-String
+        $LocalTreeRaw = docker exec $ContainerName sh -c "cd /daaf && git ls-tree -r $InitialCommit | awk '{print `$3, `$4}' | sort" 2>$null | Out-String
         $LocalTree = ($LocalTreeRaw -replace "`r","").Trim()
 
         if ([string]::IsNullOrWhiteSpace($LocalTree)) {
@@ -663,7 +663,7 @@ if ($DetectedEra -eq "1") {
 
             Write-Host "  Checking $Candidate ($Step/$TotalCandidates)..." -NoNewline
 
-            $CandidateTreeRaw = docker exec -T $ContainerName sh -c "cd /daaf && git ls-tree -r $CandidateSha | awk '{print `$3, `$4}' | sort" 2>$null | Out-String
+            $CandidateTreeRaw = docker exec $ContainerName sh -c "cd /daaf && git ls-tree -r $CandidateSha | awk '{print `$3, `$4}' | sort" 2>$null | Out-String
             $CandidateTree = ($CandidateTreeRaw -replace "`r","").Trim()
 
             if ($LocalTree -eq $CandidateTree) {
@@ -699,7 +699,7 @@ if ($DetectedEra -eq "1") {
             # Run the full search inside the container in one exec call.
             # Output format: "EXACT:<sha>" or "BEST:<sha>:<overlap>:<local_count>"
             # Progress lines go to stderr (prefixed with PROGRESS:)
-            $SearchResultRaw = docker exec -T $ContainerName sh -c @"
+            $SearchResultRaw = docker exec $ContainerName sh -c @"
 cd /daaf
 INITIAL="$InitialCommit"
 SKIP_SHAS="$SkipList"
@@ -861,7 +861,7 @@ echo "BEST:`$BEST_SHA:`$BEST_OVERLAP:`$LOCAL_COUNT"
         Write-Host "Fixing file permissions (ZIP downloads don't preserve executable bits)..."
 
         # Get files that are 100755 upstream but 100644 locally
-        $UpstreamExecRaw = docker exec -T $ContainerName sh -c "cd /daaf && git ls-tree -r $MatchingCommit | grep '^100755' | awk '{print `$4}' | sort" 2>$null | Out-String
+        $UpstreamExecRaw = docker exec $ContainerName sh -c "cd /daaf && git ls-tree -r $MatchingCommit | grep '^100755' | awk '{print `$4}' | sort" 2>$null | Out-String
         $UpstreamExec = ($UpstreamExecRaw -replace "`r","").Trim()
 
         $PermFixed = 0

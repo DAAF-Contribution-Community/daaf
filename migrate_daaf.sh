@@ -93,17 +93,17 @@ prompt_choice() {
 
 # Run a git command inside the container (strips carriage returns)
 container_git() {
-    docker exec -T "${CONTAINER_NAME}" git -C /daaf "$@" </dev/null 2>/dev/null | tr -d '\r'
+    docker exec "${CONTAINER_NAME}" git -C /daaf "$@" </dev/null 2>/dev/null | tr -d '\r'
 }
 
 # Run a git command inside the container, allowing stderr through
 container_git_verbose() {
-    docker exec -T "${CONTAINER_NAME}" git -C /daaf "$@" </dev/null | tr -d '\r'
+    docker exec "${CONTAINER_NAME}" git -C /daaf "$@" </dev/null | tr -d '\r'
 }
 
 # Run a shell command inside the container
 container_exec() {
-    docker exec -T "${CONTAINER_NAME}" "$@" </dev/null
+    docker exec "${CONTAINER_NAME}" "$@" </dev/null
 }
 
 # =====================================================================
@@ -294,7 +294,7 @@ if [ -n "${CONTAINER_NAME}" ]; then
         # Wait for readiness
         RETRIES=0
         MAX_RETRIES=30
-        until docker exec -T "${CONTAINER_NAME}" true </dev/null 2>/dev/null; do
+        until docker exec "${CONTAINER_NAME}" true </dev/null 2>/dev/null; do
             RETRIES=$((RETRIES + 1))
             if [ "${RETRIES}" -ge "${MAX_RETRIES}" ]; then
                 echo ""
@@ -341,7 +341,7 @@ else
     # Wait for readiness
     RETRIES=0
     MAX_RETRIES=30
-    until docker exec -T "${CONTAINER_NAME}" true </dev/null 2>/dev/null; do
+    until docker exec "${CONTAINER_NAME}" true </dev/null 2>/dev/null; do
         RETRIES=$((RETRIES + 1))
         if [ "${RETRIES}" -ge "${MAX_RETRIES}" ]; then
             echo ""
@@ -623,7 +623,7 @@ else
             # Run the full search inside the container in one exec call.
             # Output format: "EXACT:<sha>" or "BEST:<sha>:<overlap>:<local_count>"
             # Progress lines go to stderr (prefixed with PROGRESS:)
-            SEARCH_RESULT=$(docker exec -T "${CONTAINER_NAME}" sh -c '
+            SEARCH_RESULT=$(docker exec "${CONTAINER_NAME}" sh -c '
                 cd /daaf
                 INITIAL="'"${INITIAL_COMMIT}"'"
                 SKIP_SHAS="'"${SKIP_LIST}"'"
