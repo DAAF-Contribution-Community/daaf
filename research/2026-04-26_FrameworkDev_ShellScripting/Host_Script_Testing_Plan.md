@@ -42,6 +42,23 @@ Committed as `5afb3ce` on branch `minor_revisions_v202`. All work passed a 3-ang
 - Q3: Weekly frequency chosen for Docker integration tests (Phase 5)
 - Q4: DAAF_TEST_MODE documented in all script headers
 
+### Local Test Execution (New Capability)
+
+The Dockerfile now includes all testing tools. After rebuilding the container (`bash rebuild_daaf.sh` from the host), tests can be run locally inside the container:
+
+```bash
+# BATS tests (bash lifecycle scripts)
+bats tests/bash/
+
+# Pester tests (PowerShell lifecycle scripts)
+pwsh -c "Invoke-Pester -Path ./tests/powershell/ -Output Detailed"
+
+# ShellCheck lint (static analysis)
+shellcheck scripts/host/*.sh
+```
+
+Pinned versions: bats-core 1.13.0, bats-support 0.3.0, bats-assert 2.1.0, bats-file 0.4.0, shellcheck 0.10.0, pwsh 7.4.15 LTS, Pester 5.7.1. BATS helper libraries installed to `/usr/lib/bats/` (already in `test_helper.bash` search path).
+
 ### Remaining (Future Sessions)
 
 | Phase | Status | Depends On | Notes |
