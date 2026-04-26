@@ -85,7 +85,7 @@ echo ""
 
 # --- Count source files ---
 echo "Scanning Docker volume..."
-SCAN_OUTPUT=$(docker run --rm -v "${VOLUME_NAME}:/source:ro" busybox sh -c "find /source -type f | wc -l && du -sk /source && du -sh /source && find /source -type f -exec stat -c '%s' {} + | awk '{s+=\$1} END {printf \"%d\n\", s/1024}'") || {
+SCAN_OUTPUT=$(docker run --rm -v "${VOLUME_NAME}:/source:ro" busybox sh -c 'find /source -type f | wc -l && du -sk /source && du -sh /source && find /source -type f -exec stat -c "%s" {} + | awk "{s+=\$1} END {print int(s/1024)}"') || {
     echo ""
     echo "ERROR: Could not scan Docker volume."
     exit 1
