@@ -2,14 +2,65 @@
 
 **Created:** 2026-04-26
 **Context:** Framework Development session — CI pipeline and testing infrastructure
-**Status:** Plan — reviewed and revised, awaiting implementation in a new session
+**Status:** Phase 1 + Phase 2 COMPLETE (Session 2, 2026-04-26). Phases 3-5 remain.
 **Reviewed by:** 2 search-agent subagents (feasibility + cross-platform/CI architecture)
 
 ---
 
-## Session Context for New Agents
+## Implementation Status
 
-This plan was produced during a Framework Development session that accomplished the following (all committed on branch `minor_revisions_v202`):
+### Session 2 (2026-04-26) — Phase 1 + Phase 2
+
+Committed as `5afb3ce` on branch `minor_revisions_v202`. All work passed a 3-angle review (consistency, quality, completeness).
+
+**Completed:**
+
+1. **Pre-Phase 1: flock portability fix** — Replaced `flock` with portable `mkdir`-based locking in `update_daaf.sh` and `migrate_daaf.sh`. Uses trap composition to chain lock cleanup with existing EXIT trap. Added `${LOCK_DIR:-}` guard in `cleanup_on_error()` for test mode safety. macOS compatibility confirmed (5/7 scripts were already bash 3.2 clean; the 2 with flock are now fixed).
+
+2. **Phase 1: DAAF_TEST_MODE guards** — Added to all 14 scripts (7 `.sh` + 7 `.ps1`). Guard uses `return 0 2>/dev/null || exit 0` (bash) and `return` (PowerShell). Placed after function definitions, before first executable logic. Header documentation added to all 14 scripts.
+
+3. **Phase 2: Enhanced behavioral tests** — 117 new test cases total:
+   - **2A:** `update_daaf.bats` — 22 new tests (state machine helpers, handle_conflict, sync_host_scripts, check_build_changes, prompt_choice, locking/safety)
+   - **2B:** `migrate_daaf.bats` — 15 new tests (container_git variants, era detection patterns, prompt_choice, locking/safety)
+   - **2C:** `install.bats` — 11 new tests (installation state detection, URL construction, download failure, readiness checks)
+   - **2D:** `backup_daaf.bats` — 10 new tests (suffix edge cases incl. z/exhaustion/gap-filling, disk space, size verification)
+   - **2E:** Pester behavioral tests — 59 new tests across `update_daaf.Tests.ps1` (+21), `migrate_daaf.Tests.ps1` (+18), `install.Tests.ps1` (+9), `backup_daaf.Tests.ps1` (+11)
+
+4. **Bug fix: test_helper.bash** — `MOCK_DOCKER_*` variables were not exported, making them invisible to subshells created by `run bash`. Fixed by adding `export` to all 14 mock control variables. This resolved pre-existing silent test failures.
+
+5. **Dockerfile: testing tools** — Added `bats-core` 1.13.0 (+ bats-support 0.3.0, bats-assert 2.1.0, bats-file 0.4.0), `shellcheck` 0.10.0, and `pwsh` 7.4.15 LTS (+ Pester 5.7.1) to the container for local test execution.
+
+6. **Bash 3.2 compatibility audit** — All 7 `.sh` scripts audited. No bash 4+ language features found (no associative arrays, mapfile, `${var,,}`, `|&`, coproc, nameref, lastpipe, or negative indexing). Only incompatibility was `flock` (now fixed).
+
+**Suite totals:** 126 BATS + 175 Pester = **301 tests** (up from 183).
+
+**Review corrections addressed:** #1 (function-less scripts), #2 (flock fix), #3 (guard syntax), #4 (guard placement), #7 (handle_conflict tests), #8 (ERR trap in test mode), #9 (sync_host_scripts partial failure), #10 (backup suffix gap-filling). Q4 (documentation) and Q5 (flock fix timing) also resolved.
+
+**Open questions resolved:**
+- Q1: Bash 3.2 audit complete — all clean
+- Q2: Pester behavioral tests implemented (59 new cases — feasible and useful)
+- Q3: Weekly frequency chosen for Docker integration tests (Phase 5)
+- Q4: DAAF_TEST_MODE documented in all script headers
+
+### Remaining (Future Sessions)
+
+| Phase | Status | Depends On | Notes |
+|-------|--------|------------|-------|
+| Phase 3 (Dry-Run Mode) | Not started | Phase 1 (done) | Two wrapper categories: fire-and-forget + output-producing. Must bypass preflight checks + locking. Some Pester tests deferred to this phase. |
+| Phase 4 (Cross-Platform Smoke CI) | Not started | Phase 3 | Add as Job 8 in ci-scripts.yml. Must resolve any remaining macOS-specific issues. |
+| Phase 5 (Docker Integration Tests) | Not started | Independent | ci-integration.yml, weekly schedule + dispatch + release tags. Add Docker cleanup step. |
+
+### Learnings
+
+- **Subshell variable isolation in BATS:** `call_count` variables inside `$()` command substitutions are invisible to the parent shell. Use argument-pattern matching (`case "$*"`) instead of call counting for docker mocks.
+- **Mock variable export:** BATS `run bash "$script"` creates a subshell — mock control variables must be `export`ed to propagate.
+- **ERR trap in test mode:** Scripts with ERR traps fire them when tests source the script. Tests must `trap - ERR; set +eu` after sourcing to neutralize the sourced script's safety settings.
+
+---
+
+## Session 1 Context
+
+This plan was produced during a prior Framework Development session that accomplished the following (all committed on branch `minor_revisions_v202`):
 
 1. **Created the `shell-scripting` skill** (`.claude/skills/shell-scripting/`) — DAAF coding standards for Bash and PowerShell scripts, with 5 reference files covering bash standards, PowerShell standards, error handling, testing (BATS/Pester/CI), and cross-platform gotchas.
 
@@ -21,7 +72,7 @@ This plan was produced during a Framework Development session that accomplished 
 
 5. **Moved all 14 lifecycle scripts** from repo root to `scripts/host/` — updated all internal cross-references (GitHub raw download URLs, container sync paths), CI workflow, test files, and documentation. Root directory went from 30 items to 16.
 
-**This plan** covers the NEXT phase of work: making the lifecycle scripts deeply testable via test mode guards, enhanced mock tests, dry-run mode, cross-platform smoke tests, and Docker integration tests. Read the "Review Findings & Revisions" section first — it contains critical corrections to the original plan body below.
+**This plan** covers the testing phases: making the lifecycle scripts deeply testable via test mode guards, enhanced mock tests, dry-run mode, cross-platform smoke tests, and Docker integration tests. Read the "Review Findings & Revisions" section first — it contains critical corrections to the original plan body below.
 
 ---
 
@@ -642,9 +693,9 @@ jobs:
 ## Priority and Sequencing
 
 ```
-Phase 1 (Test Mode Guards)     ─── LOW EFFORT, HIGH UNLOCK ───→ Enables Phase 2
+Phase 1 (Test Mode Guards)     ─── ✓ DONE (Session 2, 2026-04-26)
     │
-    ├── Phase 2 (Enhanced Mocks) ── MEDIUM EFFORT, HIGH VALUE ──→ Core logic coverage
+    ├── Phase 2 (Enhanced Mocks) ── ✓ DONE (Session 2, 2026-04-26)
     │
     └── Phase 3 (Dry-Run Mode)  ── MEDIUM EFFORT, MEDIUM VALUE ─→ Enables Phase 4
             │
@@ -654,10 +705,10 @@ Phase 5 (Integration Tests)    ── MEDIUM EFFORT, INSURANCE ────→ E
                                    (independent — can start anytime)
 ```
 
-**Recommended session plan:**
-- **Session 1:** Phase 1 + Phase 2 (test mode guards + enhanced mock tests) — this is the highest-impact work
-- **Session 2:** Phase 3 + Phase 4 (dry-run mode + cross-platform CI) — completes the cross-platform story
-- **Session 3:** Phase 5 (integration tests) + any fixes from Phase 4 findings
+**Session plan:**
+- **Session 2 (done):** Phase 1 + Phase 2 + flock fix + bash 3.2 audit + Dockerfile testing tools
+- **Session 3:** Phase 3 + Phase 4 (dry-run mode + cross-platform CI) — completes the cross-platform story
+- **Session 4:** Phase 5 (integration tests) + any fixes from Phase 4 findings
 
 ## Files Modified By This Plan
 
