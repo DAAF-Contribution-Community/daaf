@@ -24,3 +24,9 @@ repos:
 
       # Trim trailing whitespace
       - id: trailing-whitespace
+
+  - repo: https://github.com/shellcheck-py/shellcheck-py
+    rev: v0.10.0.1
+    hooks:
+      - id: shellcheck
+        args: ['--severity=warning', '--shell=bash']
