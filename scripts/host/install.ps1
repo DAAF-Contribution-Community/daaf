@@ -2,7 +2,7 @@
 # DAAF One-Line Installer (Windows PowerShell)
 # ============================================================================
 # Usage:
-#   irm https://raw.githubusercontent.com/DAAF-Contribution-Community/daaf/main/install.ps1 | iex
+#   irm https://raw.githubusercontent.com/DAAF-Contribution-Community/daaf/main/scripts/host/install.ps1 | iex
 #
 # What this script does:
 #   1. Creates a minimal build directory (~5 KB)
@@ -50,7 +50,12 @@ if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
 }
 
 # Check Docker daemon is running (compatible with PowerShell 5.1 and 7+)
+# Save/restore ErrorActionPreference around native commands to prevent PS 5.1
+# from promoting stderr output to a terminating error when $ErrorActionPreference
+# is "Stop".
+$savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
 $null = docker info 2>&1
+$ErrorActionPreference = $savedEAP
 if ($LASTEXITCODE -ne 0) {
     Write-Host "ERROR: Docker Desktop does not seem to be running. Please start Docker Desktop on your computer and try again." -ForegroundColor Red
     Pause-For-User; return
@@ -58,7 +63,9 @@ if ($LASTEXITCODE -ne 0) {
 
 # --- Check for existing installation ---
 if (Test-Path "$InstallDir\docker-compose.yml") {
+    $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
     docker volume inspect daaf_daaf-data 2>&1 | Out-Null
+    $ErrorActionPreference = $savedEAP
     $volumeExists = ($LASTEXITCODE -eq 0)
     if ($volumeExists) {
         # Volume exists — this is a completed or substantially completed installation
@@ -78,7 +85,7 @@ if (Test-Path "$InstallDir\docker-compose.yml") {
             Write-Host ""
             Write-Host "To force a fresh re-install:"
             Write-Host '  $env:DAAF_FORCE_REINSTALL = "1"'
-            Write-Host "  irm $RawBase/install.ps1 | iex"
+            Write-Host "  irm $RawBase/scripts/host/install.ps1 | iex"
             Write-Host ""
             Pause-For-User; return
         }
@@ -96,13 +103,13 @@ New-Item -ItemType Directory -Path "$InstallDir" -Force | Out-Null
 # --- Download build-context and utility files ---
 Write-Host "[2/4] Downloading installation files ..."
 try {
-    Invoke-WebRequest -UseBasicParsing -Uri "$RawBase/Dockerfile"           -OutFile "$InstallDir\Dockerfile"
-    Invoke-WebRequest -UseBasicParsing -Uri "$RawBase/docker-compose.yml"   -OutFile "$InstallDir\docker-compose.yml"
-    Invoke-WebRequest -UseBasicParsing -Uri "$RawBase/run_daaf.ps1"         -OutFile "$InstallDir\run_daaf.ps1"
-    Invoke-WebRequest -UseBasicParsing -Uri "$RawBase/backup_daaf.ps1"      -OutFile "$InstallDir\backup_daaf.ps1"
-    Invoke-WebRequest -UseBasicParsing -Uri "$RawBase/rebuild_daaf.ps1"     -OutFile "$InstallDir\rebuild_daaf.ps1"
-    Invoke-WebRequest -UseBasicParsing -Uri "$RawBase/update_daaf.ps1"      -OutFile "$InstallDir\update_daaf.ps1"
-    Invoke-WebRequest -UseBasicParsing -Uri "$RawBase/view_logs.ps1"       -OutFile "$InstallDir\view_logs.ps1"
+    Invoke-WebRequest -UseBasicParsing -Uri "$RawBase/Dockerfile"                          -OutFile "$InstallDir\Dockerfile"
+    Invoke-WebRequest -UseBasicParsing -Uri "$RawBase/docker-compose.yml"                   -OutFile "$InstallDir\docker-compose.yml"
+    Invoke-WebRequest -UseBasicParsing -Uri "$RawBase/scripts/host/run_daaf.ps1"             -OutFile "$InstallDir\run_daaf.ps1"
+    Invoke-WebRequest -UseBasicParsing -Uri "$RawBase/scripts/host/backup_daaf.ps1"          -OutFile "$InstallDir\backup_daaf.ps1"
+    Invoke-WebRequest -UseBasicParsing -Uri "$RawBase/scripts/host/rebuild_daaf.ps1"         -OutFile "$InstallDir\rebuild_daaf.ps1"
+    Invoke-WebRequest -UseBasicParsing -Uri "$RawBase/scripts/host/update_daaf.ps1"          -OutFile "$InstallDir\update_daaf.ps1"
+    Invoke-WebRequest -UseBasicParsing -Uri "$RawBase/scripts/host/view_logs.ps1"            -OutFile "$InstallDir\view_logs.ps1"
 } catch {
     Write-Host ""
     Write-Host "ERROR: Failed to download installation files from branch '$Branch'." -ForegroundColor Red
@@ -119,13 +126,17 @@ $env:COMPOSE_PROJECT_NAME = "daaf"
 # applied to the build step (where it is universally supported) without relying
 # on `docker compose up --progress`, which is rejected as "unknown flag" on
 # Docker Compose versions prior to ~v2.27.
+$savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
 docker compose -f "$InstallDir\docker-compose.yml" build --progress plain
+$ErrorActionPreference = $savedEAP
 if ($LASTEXITCODE -ne 0) {
     Write-Host "ERROR: Docker image build failed. Check the output above for details." -ForegroundColor Red
     Write-Host "You can safely re-run this installer to retry (set DAAF_FORCE_REINSTALL=1 if prompted)."
     Pause-For-User; return
 }
+$savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
 docker compose -f "$InstallDir\docker-compose.yml" up -d
+$ErrorActionPreference = $savedEAP
 if ($LASTEXITCODE -ne 0) {
     Write-Host "ERROR: Failed to start the Docker container after build. Check the output above for details." -ForegroundColor Red
     Write-Host "You can safely re-run this installer to retry (set DAAF_FORCE_REINSTALL=1 if prompted)."
@@ -136,23 +147,35 @@ if ($LASTEXITCODE -ne 0) {
 Write-Host "      Waiting for container to be ready ..."
 $retries = 0
 $maxRetries = 30
+$readyLog = [System.IO.Path]::GetTempFileName()
 while ($retries -lt $maxRetries) {
-    docker compose -f "$InstallDir\docker-compose.yml" exec -T daaf-docker true 2>&1 | Out-Null
+    $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
+    docker compose -f "$InstallDir\docker-compose.yml" exec -T daaf-docker true 2>> $readyLog
+    $ErrorActionPreference = $savedEAP
     if ($LASTEXITCODE -eq 0) { break }
     $retries++
     Start-Sleep -Seconds 2
 }
 if ($retries -ge $maxRetries) {
     Write-Host "ERROR: Container did not become ready within 60 seconds." -ForegroundColor Red
+    if ((Test-Path $readyLog) -and (Get-Item $readyLog).Length -gt 0) {
+        Write-Host "  Docker reported:" -ForegroundColor Red
+        Get-Content $readyLog -Tail 5 | ForEach-Object { Write-Host "    $_" -ForegroundColor Red }
+        Write-Host ""
+    }
     Write-Host "Check Docker Desktop for errors, then retry with:"
     Write-Host "  docker compose -f $InstallDir\docker-compose.yml up -d"
+    Remove-Item $readyLog -ErrorAction SilentlyContinue
     Pause-For-User; return
 }
+Remove-Item $readyLog -ErrorAction SilentlyContinue
 
 # --- Clone the full repository into the Docker volume ---
 Write-Host "[4/4] Cloning DAAF repository files into the Docker container ..."
+$savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
 docker compose -f "$InstallDir\docker-compose.yml" exec -T daaf-docker `
     git clone --depth 1 -b "$Branch" "https://github.com/$Repo.git" /tmp/daaf-clone
+$ErrorActionPreference = $savedEAP
 
 if ($LASTEXITCODE -ne 0) {
     Write-Host ""
@@ -167,8 +190,10 @@ if ($LASTEXITCODE -ne 0) {
     Pause-For-User; return
 }
 
+$savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
 docker compose -f "$InstallDir\docker-compose.yml" exec -T daaf-docker `
     bash -c 'cp -a /tmp/daaf-clone/. /daaf/ && rm -rf /tmp/daaf-clone'
+$ErrorActionPreference = $savedEAP
 if ($LASTEXITCODE -ne 0) {
     Write-Host ""
     Write-Host "ERROR: Failed to copy repository files into the container." -ForegroundColor Red
@@ -181,7 +206,9 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 # --- Verify DAAF files are present ---
+$savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
 docker compose -f "$InstallDir\docker-compose.yml" exec -T daaf-docker test -f /daaf/CLAUDE.md 2>&1 | Out-Null
+$ErrorActionPreference = $savedEAP
 if ($LASTEXITCODE -ne 0) {
     Write-Host ""
     Write-Host "WARNING: Installation may be incomplete — /daaf/CLAUDE.md was not found in the container." -ForegroundColor Yellow

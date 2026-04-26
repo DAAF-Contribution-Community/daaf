@@ -125,12 +125,23 @@ fi
 echo ""
 echo "[2/3] Rebuilding Docker image (this may take a few minutes if packages changed)..."
 echo ""
-if ! docker compose up -d --build; then
+# Build and start are split into two commands so that --progress plain can be
+# applied to the build step (where it is universally supported) without relying
+# on `docker compose up --progress`, which is rejected as "unknown flag" on
+# Docker Compose versions prior to ~v2.27.
+if ! docker compose build --progress plain; then
     echo ""
     echo "ERROR: Rebuild failed. Check the output above for details."
     if [ -f "Dockerfile.pre-rebuild" ]; then
         echo "Your previous Dockerfile was saved as Dockerfile.pre-rebuild"
     fi
+    exit 1
+fi
+echo ""
+echo "Starting container..."
+if ! docker compose up -d; then
+    echo ""
+    echo "ERROR: Failed to start the container after rebuild. Check the output above for details."
     exit 1
 fi
 
@@ -139,15 +150,23 @@ echo ""
 echo "      Waiting for container to be ready..."
 RETRIES=0
 MAX_RETRIES=30
-until docker compose exec -T daaf-docker true </dev/null 2>/dev/null; do
+READY_LOG=$(mktemp)
+until docker compose exec -T daaf-docker true </dev/null 2>>"$READY_LOG"; do
     RETRIES=$((RETRIES + 1))
     if [ "${RETRIES}" -ge "${MAX_RETRIES}" ]; then
-        echo "ERROR: Container did not become ready within 60 seconds."
-        echo "Check Docker Desktop for errors."
+        echo "ERROR: Container did not become ready within 60 seconds." >&2
+        if [ -s "$READY_LOG" ]; then
+            echo "  Docker reported:" >&2
+            tail -5 "$READY_LOG" | sed 's/^/    /' >&2
+            echo "" >&2
+        fi
+        echo "Check Docker Desktop for errors." >&2
+        rm -f "$READY_LOG"
         exit 1
     fi
     sleep 2
 done
+rm -f "$READY_LOG"
 
 # --- Verify ---
 echo ""

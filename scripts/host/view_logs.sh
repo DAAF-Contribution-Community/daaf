@@ -30,7 +30,7 @@ if [ ! -f "docker-compose.yml" ]; then
 fi
 
 if ! command -v docker &> /dev/null; then
-    echo "ERROR: Docker is not installed or not in your PATH."
+    echo "ERROR: Docker is either not installed or not configured properly in your system PATH to allow it to be used from Terminal."
     echo "Please install Docker Desktop: https://www.docker.com/products/docker-desktop/"
     exit 1
 fi
@@ -57,7 +57,12 @@ fi
 echo ""
 echo "Opening DAAF Log Explorer..."
 echo ""
-docker compose exec daaf-docker bash /daaf/scripts/generate_log_viewer.sh --archive
+if ! docker compose exec daaf-docker bash /daaf/scripts/generate_log_viewer.sh --archive; then
+    echo "" >&2
+    echo "ERROR: Failed to generate log viewer." >&2
+    echo "  The container may not be running, or there may be no session logs to display." >&2
+    echo "  Try: docker compose logs daaf-docker" >&2
+fi
 
 # If the server was already running, the command above returns immediately
 # after printing the URL. The EXIT trap keeps the terminal open so the user

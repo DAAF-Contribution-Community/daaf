@@ -41,13 +41,17 @@ if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
     Pause-And-Exit 1
 }
 
+$savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
 $null = docker info 2>&1
+$ErrorActionPreference = $savedEAP
 if ($LASTEXITCODE -ne 0) {
     Write-Host "ERROR: Docker Desktop does not seem to be running. Please start it and try again." -ForegroundColor Red
     Pause-And-Exit 1
 }
 
+$savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
 $null = docker volume inspect $VolumeName 2>&1
+$ErrorActionPreference = $savedEAP
 if ($LASTEXITCODE -ne 0) {
     Write-Host "ERROR: Docker volume '$VolumeName' not found." -ForegroundColor Red
     Write-Host "Have you run the DAAF installer yet?"
@@ -77,15 +81,32 @@ Write-Host ""
 
 # --- Count source files ---
 Write-Host "Scanning Docker volume..."
-$ScanOutput = docker run --rm -v "${VolumeName}:/source:ro" busybox sh -c "find /source -type f | wc -l && du -sh /source"
+$savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
+$ScanOutput = docker run --rm -v "${VolumeName}:/source:ro" busybox sh -c "find /source -type f | wc -l && du -sk /source && du -sh /source"
+$ErrorActionPreference = $savedEAP
 if ($LASTEXITCODE -ne 0) {
     Write-Host "ERROR: Could not scan Docker volume." -ForegroundColor Red
     Pause-And-Exit 1
 }
 $TotalFiles = [int]($ScanOutput[0].Trim())
-$TotalSize = ($ScanOutput[1].Trim() -split '\s+')[0]
+$VolumeSizeKB = [long](($ScanOutput[1].Trim() -split '\s+')[0])
+$TotalSize = ($ScanOutput[2].Trim() -split '\s+')[0]
 Write-Host "Found $TotalFiles files to copy ($TotalSize)."
 Write-Host ""
+
+# --- Disk space pre-check ---
+$BackupDrive = (Get-Item -Path ".").PSDrive.Name
+$DriveInfo = New-Object System.IO.DriveInfo($BackupDrive)
+$AvailableKB = [long]($DriveInfo.AvailableFreeSpace / 1024)
+# Add 10% buffer to account for filesystem overhead
+$RequiredKB = [long]($VolumeSizeKB * 110 / 100)
+if ($AvailableKB -lt $RequiredKB) {
+    $RequiredMB = [math]::Floor($RequiredKB / 1024)
+    $AvailableMB = [math]::Floor($AvailableKB / 1024)
+    Write-Host "ERROR: Insufficient disk space for backup." -ForegroundColor Red
+    Write-Host "       Required: ~${RequiredMB} MB (includes 10% buffer), Available: ${AvailableMB} MB"
+    Pause-And-Exit 1
+}
 
 # --- Create backup ---
 New-Item -ItemType Directory -Path $BackupName -Force | Out-Null
@@ -94,7 +115,7 @@ Write-Host "Copying files from Docker volume..."
 Write-Host "  Progress: 0 / $TotalFiles files (0%)" -NoNewline
 
 $CopyProcess = Start-Process -FilePath "docker" `
-    -ArgumentList "run --rm -v `"${VolumeName}:/source:ro`" -v `"${HostPath}:/dest`" busybox sh -c `"cp -r /source/. /dest/`"" `
+    -ArgumentList "run --rm -v `"${VolumeName}:/source:ro`" -v `"${HostPath}:/dest`" busybox sh -c `"cp -a /source/. /dest/`"" `
     -NoNewWindow -PassThru
 
 try {
@@ -137,6 +158,22 @@ if ($FileCount -eq 0) {
 
 if ($CopyExitCode -ne 0) {
     Write-Host "Note: File copy reported warnings (exit code $CopyExitCode) but all $FileCount files were transferred." -ForegroundColor Yellow
+}
+
+# --- Size verification ---
+# Compare source vs backup byte counts to detect truncated files
+$SourceSizeKB = $VolumeSizeKB
+$BackupSizeKB = [long]((Get-ChildItem -Path $BackupName -Recurse -Force -ErrorAction SilentlyContinue | Measure-Object -Property Length -Sum).Sum / 1024)
+if ($SourceSizeKB -gt 0 -and $BackupSizeKB -gt 0) {
+    # Allow 1% tolerance for filesystem metadata differences
+    $ToleranceKB = [math]::Max(1, [long]($SourceSizeKB / 100))
+    $DiffKB = [math]::Abs($SourceSizeKB - $BackupSizeKB)
+    if ($DiffKB -gt $ToleranceKB) {
+        Write-Host ""
+        Write-Host "WARNING: Backup size mismatch." -ForegroundColor Yellow
+        Write-Host "         Source: ${SourceSizeKB} KB, Backup: ${BackupSizeKB} KB (difference: ${DiffKB} KB)"
+        Write-Host "         The backup may be incomplete. Consider re-running."
+    }
 }
 
 Write-Host ""

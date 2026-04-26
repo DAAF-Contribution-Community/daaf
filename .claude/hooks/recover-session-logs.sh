@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # recover-session-logs.sh -- SessionStart hook: activity logging + crash recovery
 #
 # Replaces the previous inline SessionStart command. Performs:
@@ -109,8 +109,12 @@ if [ -n "$TRANSCRIPT_PATH" ]; then
 
             # Archive this session by piping synthesized JSON to archive-session.sh
             # archive-session.sh's own idempotency guard provides a second safety net
-            printf '{"session_id":"%s","transcript_path":"%s","cwd":"%s","reason":"recovered"}' \
-                "$uuid" "$raw" "$PROJECT_DIR" \
+            jq -n \
+                --arg session_id "$uuid" \
+                --arg transcript_path "$raw" \
+                --arg cwd "$PROJECT_DIR" \
+                --arg reason "recovered" \
+                '{"session_id": $session_id, "transcript_path": $transcript_path, "cwd": $cwd, "reason": $reason}' \
                 | "$PROJECT_DIR/.claude/hooks/archive-session.sh" 2>/dev/null
 
             RECOVERED=$((RECOVERED + 1))

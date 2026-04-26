@@ -11,10 +11,10 @@
 # forward.
 #
 # Usage (one-liner):
-#   curl -fsSL https://raw.githubusercontent.com/DAAF-Contribution-Community/daaf/main/migrate_daaf.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/DAAF-Contribution-Community/daaf/main/scripts/host/migrate_daaf.sh | bash
 #
 # Or download and run:
-#   curl -fsSL https://raw.githubusercontent.com/DAAF-Contribution-Community/daaf/main/migrate_daaf.sh -o migrate_daaf.sh
+#   curl -fsSL https://raw.githubusercontent.com/DAAF-Contribution-Community/daaf/main/scripts/host/migrate_daaf.sh -o migrate_daaf.sh
 #   bash migrate_daaf.sh
 #
 # Prerequisites:
@@ -107,6 +107,20 @@ container_exec() {
 }
 
 # =====================================================================
+# Concurrent-run lock
+# =====================================================================
+# Prevent two instances from operating on the same container simultaneously.
+# The lock is automatically released when the script exits (fd closes).
+
+LOCK_FILE="/tmp/daaf-migrate.lock"
+exec 200>"$LOCK_FILE"
+if ! flock -n 200; then
+    echo "ERROR: Another instance of migrate_daaf is already running." >&2
+    echo "       If you believe this is stale, remove: $LOCK_FILE" >&2
+    exit 1
+fi
+
+# =====================================================================
 # Main script
 # =====================================================================
 
@@ -149,7 +163,7 @@ if ! docker volume inspect "${VOLUME_NAME}" &> /dev/null; then
     echo ""
     echo "This script is for migrating an existing DAAF installation."
     echo "If you haven't installed DAAF yet, use the installer instead:"
-    echo "  curl -fsSL https://raw.githubusercontent.com/${REPO}/${BRANCH}/install.sh | bash"
+    echo "  curl -fsSL https://raw.githubusercontent.com/${REPO}/${BRANCH}/scripts/host/install.sh | bash"
     exit 1
 fi
 
@@ -182,7 +196,7 @@ echo "Downloading utility scripts from GitHub..."
 DOWNLOAD_FAILED=false
 
 for FILE in backup_daaf.sh rebuild_daaf.sh update_daaf.sh run_daaf.sh view_logs.sh; do
-    if curl -fsSL "${RAW_BASE}/${FILE}" -o "${HOST_DIR}/${FILE}"; then
+    if curl -fsSL "${RAW_BASE}/scripts/host/${FILE}" -o "${HOST_DIR}/${FILE}"; then
         echo "  Downloaded: ${FILE}"
     else
         echo "  FAILED: ${FILE}"
@@ -362,7 +376,7 @@ if ! container_exec test -f /daaf/CLAUDE.md; then
     echo "The volume exists but /daaf/CLAUDE.md was not found."
     echo ""
     echo "If this is a fresh installation, use the installer instead:"
-    echo "  curl -fsSL https://raw.githubusercontent.com/${REPO}/${BRANCH}/install.sh | bash"
+    echo "  curl -fsSL https://raw.githubusercontent.com/${REPO}/${BRANCH}/scripts/host/install.sh | bash"
     exit 1
 fi
 
@@ -517,7 +531,7 @@ else
     echo ""
 
     # --- Find the initial (root) commit ---
-    INITIAL_COMMITS=$(container_git rev-list --max-parents=0 HEAD || true)
+    INITIAL_COMMITS=$(container_git_verbose rev-list --max-parents=0 HEAD || true)
 
     if [ -z "${INITIAL_COMMITS}" ]; then
         echo ""
@@ -525,7 +539,7 @@ else
         echo "The volume exists but no git repository was found at /daaf/."
         echo ""
         echo "If this is a fresh installation, use the installer instead:"
-        echo "  curl -fsSL https://raw.githubusercontent.com/${REPO}/${BRANCH}/install.sh | bash"
+        echo "  curl -fsSL https://raw.githubusercontent.com/${REPO}/${BRANCH}/scripts/host/install.sh | bash"
         exit 1
     fi
 
@@ -539,7 +553,7 @@ else
     fi
 
     # --- Check if graft is already in place (idempotent) ---
-    INITIAL_PARENT_COUNT=$(container_git cat-file -p "${INITIAL_COMMIT}" 2>/dev/null | grep -c '^parent ' || echo "0")
+    INITIAL_PARENT_COUNT=$(container_git_verbose cat-file -p "${INITIAL_COMMIT}" | grep -c '^parent ' || echo "0")
 
     if [ "${INITIAL_PARENT_COUNT}" -gt 0 ]; then
         echo "History graft already in place (root commit has a parent)."
@@ -552,7 +566,7 @@ else
 
         # Get the blob fingerprint of the initial local commit
         # We compare only (blob_hash, filepath) pairs, ignoring file modes
-        LOCAL_TREE=$(container_exec sh -c "cd /daaf && git ls-tree -r ${INITIAL_COMMIT} | awk '{print \$3, \$4}' | sort" </dev/null | tr -d '\r')
+        LOCAL_TREE=$(container_exec sh -c "cd /daaf && git ls-tree -r '${INITIAL_COMMIT}' | awk '{print \$3, \$4}' | sort" </dev/null | tr -d '\r')
 
         MATCHING_COMMIT=""
         MATCH_TYPE=""
@@ -588,7 +602,7 @@ else
 
             printf "  Checking %s (%d/%d)..." "${CANDIDATE}" "${STEP}" "${TOTAL_CANDIDATES}"
 
-            CANDIDATE_TREE=$(container_exec sh -c "cd /daaf && git ls-tree -r ${CANDIDATE_SHA} | awk '{print \$3, \$4}' | sort" </dev/null | tr -d '\r')
+            CANDIDATE_TREE=$(container_exec sh -c "cd /daaf && git ls-tree -r '${CANDIDATE_SHA}' | awk '{print \$3, \$4}' | sort" </dev/null | tr -d '\r')
 
             if [ "${LOCAL_TREE}" = "${CANDIDATE_TREE}" ]; then
                 MATCHING_COMMIT="${CANDIDATE_SHA}"
@@ -757,7 +771,7 @@ else
 
         # --- Verify the graft works ---
         echo "Verifying graft..."
-        MERGE_BASE=$(container_git merge-base HEAD origin/main 2>/dev/null || true)
+        MERGE_BASE=$(container_git_verbose merge-base HEAD origin/main || true)
         if [ -n "${MERGE_BASE}" ]; then
             echo "  Verified: common ancestor found (${MERGE_BASE:0:12})"
             echo "  git merge and git pull will work correctly."
@@ -775,7 +789,7 @@ else
         echo "Fixing file permissions (ZIP downloads don't preserve executable bits)..."
 
         # Get files that are 100755 upstream but 100644 locally
-        UPSTREAM_EXEC=$(container_exec sh -c "cd /daaf && git ls-tree -r ${MATCHING_COMMIT} | grep '^100755' | awk '{print \$4}' | sort" </dev/null | tr -d '\r')
+        UPSTREAM_EXEC=$(container_exec sh -c "cd /daaf && git ls-tree -r '${MATCHING_COMMIT}' | grep '^100755' | awk '{print \$4}' | sort" </dev/null | tr -d '\r')
 
         PERM_FIXED=0
         PERM_FILES=""

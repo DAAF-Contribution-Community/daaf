@@ -90,13 +90,13 @@ Make sure Docker Desktop is running, then open your terminal, navigate to your d
 **macOS / Linux (Terminal):**
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/DAAF-Contribution-Community/daaf/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/DAAF-Contribution-Community/daaf/main/scripts/host/install.sh | bash
 ```
 
 **Windows (PowerShell):**
 
 ```powershell
-irm https://raw.githubusercontent.com/DAAF-Contribution-Community/daaf/main/install.ps1 | iex
+irm https://raw.githubusercontent.com/DAAF-Contribution-Community/daaf/main/scripts/host/install.ps1 | iex
 ```
 
 The installer will show its progress as it works through four steps: creating a build directory, downloading the Docker files, building the image, and cloning DAAF into the container. When it finishes, it prints instructions for entering the container and launching Claude Code.
@@ -110,21 +110,21 @@ By default, the installer pulls the latest code from the `main` branch. To insta
 ```bash
 # Install a tagged release
 export DAAF_BRANCH=v2.1.0
-curl -fsSL "https://raw.githubusercontent.com/DAAF-Contribution-Community/daaf/${DAAF_BRANCH}/install.sh" | bash
+curl -fsSL "https://raw.githubusercontent.com/DAAF-Contribution-Community/daaf/${DAAF_BRANCH}/scripts/host/install.sh" | bash
 
 # Install from a development branch
 export DAAF_BRANCH=dev
-curl -fsSL "https://raw.githubusercontent.com/DAAF-Contribution-Community/daaf/${DAAF_BRANCH}/install.sh" | bash
+curl -fsSL "https://raw.githubusercontent.com/DAAF-Contribution-Community/daaf/${DAAF_BRANCH}/scripts/host/install.sh" | bash
 ```
 
 **Windows (PowerShell):**
 
 ```powershell
 # Install a tagged release
-$env:DAAF_BRANCH="v2.1.0"; irm "https://raw.githubusercontent.com/DAAF-Contribution-Community/daaf/$env:DAAF_BRANCH/install.ps1" | iex
+$env:DAAF_BRANCH="v2.1.0"; irm "https://raw.githubusercontent.com/DAAF-Contribution-Community/daaf/$env:DAAF_BRANCH/scripts/host/install.ps1" | iex
 
 # Install from a development branch
-$env:DAAF_BRANCH="dev"; irm "https://raw.githubusercontent.com/DAAF-Contribution-Community/daaf/$env:DAAF_BRANCH/install.ps1" | iex
+$env:DAAF_BRANCH="dev"; irm "https://raw.githubusercontent.com/DAAF-Contribution-Community/daaf/$env:DAAF_BRANCH/scripts/host/install.ps1" | iex
 ```
 
 This fetches the installer itself from the specified branch, and also controls the Docker build files and repository clone, so everything comes from the specified branch or tag consistently. The `export` on macOS/Linux is required so that the variable is inherited by the `bash` process on the other side of the pipe. Check the [Releases page](https://github.com/DAAF-Contribution-Community/daaf/releases) to see available versions. If `DAAF_BRANCH` is not set, the installer defaults to `main`.
@@ -162,12 +162,12 @@ See [**Keeping DAAF Updated**](#keeping-daaf-updated) for details on what the up
 
 **macOS / Linux:**
 ```bash
-DAAF_FORCE_REINSTALL=1 bash -c "$(curl -fsSL https://raw.githubusercontent.com/DAAF-Contribution-Community/daaf/main/install.sh)"
+DAAF_FORCE_REINSTALL=1 bash -c "$(curl -fsSL https://raw.githubusercontent.com/DAAF-Contribution-Community/daaf/main/scripts/host/install.sh)"
 ```
 
 **Windows (PowerShell):**
 ```powershell
-$env:DAAF_FORCE_REINSTALL = "1"; irm https://raw.githubusercontent.com/DAAF-Contribution-Community/daaf/main/install.ps1 | iex
+$env:DAAF_FORCE_REINSTALL = "1"; irm https://raw.githubusercontent.com/DAAF-Contribution-Community/daaf/main/scripts/host/install.ps1 | iex
 ```
 
 Back up your Docker volume first (see [**Backing Up Your Work**](#backing-up-your-work)) if you have research data or framework customizations you want to preserve.
@@ -438,21 +438,21 @@ The migration is a single command, just like the original installer. Make sure D
 
 | Platform | One-liner |
 |----------|-----------|
-| **macOS / Linux** | `curl -fsSL https://raw.githubusercontent.com/DAAF-Contribution-Community/daaf/main/migrate_daaf.sh \| bash` |
-| **Windows PowerShell** | `irm https://raw.githubusercontent.com/DAAF-Contribution-Community/daaf/main/migrate_daaf.ps1 \| iex` |
+| **macOS / Linux** | `curl -fsSL https://raw.githubusercontent.com/DAAF-Contribution-Community/daaf/main/scripts/host/migrate_daaf.sh \| bash` |
+| **Windows PowerShell** | `irm https://raw.githubusercontent.com/DAAF-Contribution-Community/daaf/main/scripts/host/migrate_daaf.ps1 \| iex` |
 
 <details>
 <summary>Prefer to download and inspect the script first?</summary>
 
 **macOS / Linux:**
 ```bash
-curl -fsSL https://raw.githubusercontent.com/DAAF-Contribution-Community/daaf/main/migrate_daaf.sh -o migrate_daaf.sh
+curl -fsSL https://raw.githubusercontent.com/DAAF-Contribution-Community/daaf/main/scripts/host/migrate_daaf.sh -o migrate_daaf.sh
 bash migrate_daaf.sh
 ```
 
 **Windows PowerShell:**
 ```powershell
-Invoke-WebRequest -Uri https://raw.githubusercontent.com/DAAF-Contribution-Community/daaf/main/migrate_daaf.ps1 -OutFile migrate_daaf.ps1
+Invoke-WebRequest -Uri https://raw.githubusercontent.com/DAAF-Contribution-Community/daaf/main/scripts/host/migrate_daaf.ps1 -OutFile migrate_daaf.ps1
 .\migrate_daaf.ps1
 ```
 

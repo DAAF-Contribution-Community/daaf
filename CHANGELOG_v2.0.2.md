@@ -67,13 +67,13 @@ step.
 **macOS / Linux (Terminal):**
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/DAAF-Contribution-Community/daaf/main/migrate_daaf.sh | bash
+curl -fsSL https://raw.githubusercontent.com/DAAF-Contribution-Community/daaf/main/scripts/host/migrate_daaf.sh | bash
 ```
 
 **Windows (PowerShell):**
 
 ```powershell
-irm https://raw.githubusercontent.com/DAAF-Contribution-Community/daaf/main/migrate_daaf.ps1 | iex
+irm https://raw.githubusercontent.com/DAAF-Contribution-Community/daaf/main/scripts/host/migrate_daaf.ps1 | iex
 ```
 
 After the migration completes, use `update_daaf.sh` (or `update_daaf.ps1`) for
@@ -113,13 +113,13 @@ entirely.
 **macOS / Linux:**
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/DAAF-Contribution-Community/daaf/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/DAAF-Contribution-Community/daaf/main/scripts/host/install.sh | bash
 ```
 
 **Windows:**
 
 ```powershell
-irm https://raw.githubusercontent.com/DAAF-Contribution-Community/daaf/main/install.ps1 | iex
+irm https://raw.githubusercontent.com/DAAF-Contribution-Community/daaf/main/scripts/host/install.ps1 | iex
 ```
 
 **Note:** A fresh install creates a new DAAF volume. If you have an existing

@@ -29,6 +29,10 @@ $ErrorActionPreference = "Stop"
 
 function Pause-And-Exit {
     param([int]$Code = 0)
+    # Release the concurrent-run mutex if we hold it
+    if ($script:Mutex) {
+        try { $script:Mutex.ReleaseMutex() } catch { }
+    }
     if (-not $env:DAAF_NESTED) {
         Write-Host ""
         Read-Host "Press Enter to continue"
@@ -40,6 +44,7 @@ $UpstreamRepo = "DAAF-Contribution-Community/daaf"
 $ContainerName = "daaf-daaf-docker-1"
 $Timestamp = Get-Date -Format "yyyy-MM-dd-HHmmss"
 $BackupBranch = "backup/pre-update-$Timestamp"
+$Mutex = $null  # Initialized before trap; set to actual mutex after helper functions
 
 # --- Trap handler for unexpected failures ---
 trap {
@@ -67,12 +72,16 @@ trap {
         Write-Host "  docker compose exec daaf-docker git -C /daaf stash pop"
         Write-Host ""
     }
-    $branchExists = docker compose exec -T daaf-docker git -C /daaf rev-parse --verify $BackupBranch 2>&1
+    $branchExists = Compose-Git rev-parse --verify $BackupBranch
     if ($LASTEXITCODE -eq 0) {
         Write-Host "A restore point was saved before the update started. To undo"
         Write-Host "any partial changes:"
         Write-Host "  docker compose exec daaf-docker git -C /daaf reset --hard $BackupBranch"
         Write-Host ""
+    }
+    # Release the concurrent-run mutex if we hold it
+    if ($Mutex) {
+        try { $Mutex.ReleaseMutex() } catch { }
     }
     Pause-And-Exit 1
 }
@@ -80,6 +89,81 @@ trap {
 # =====================================================================
 # Helper functions
 # =====================================================================
+
+# Run docker compose exec with git, suppressing stderr (for commands where
+# stderr is expected/unwanted). Strips carriage returns and returns trimmed
+# string. Uses SilentlyContinue to prevent PS 5.1 from promoting stderr to
+# a terminating error when $ErrorActionPreference is "Stop" in the caller's
+# scope.
+function Compose-Git {
+    param([Parameter(ValueFromRemainingArguments=$true)]$GitArgs)
+    $savedEAP = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = "SilentlyContinue"
+        $result = docker compose exec -T daaf-docker git -C /daaf @GitArgs 2>$null | Out-String
+        return ($result -replace "`r","").Trim()
+    } finally {
+        $ErrorActionPreference = $savedEAP
+    }
+}
+
+# Run docker compose exec with git, allowing stderr through (for commands
+# that produce useful progress output). Strips carriage returns and returns
+# trimmed string. Uses SilentlyContinue to prevent PS 5.1 from promoting
+# stderr to a terminating error when $ErrorActionPreference is "Stop" in
+# the caller's scope.
+function Compose-Git-Verbose {
+    param([Parameter(ValueFromRemainingArguments=$true)]$GitArgs)
+    $savedEAP = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = "SilentlyContinue"
+        $result = docker compose exec -T daaf-docker git -C /daaf @GitArgs | Out-String
+        return ($result -replace "`r","").Trim()
+    } finally {
+        $ErrorActionPreference = $savedEAP
+    }
+}
+
+# Run docker compose exec with git, piping output to Out-Null (for commands
+# where we only care about $LASTEXITCODE). Uses SilentlyContinue to prevent
+# PS 5.1 from promoting stderr to a terminating error.
+function Compose-Git-Null {
+    param([Parameter(ValueFromRemainingArguments=$true)]$GitArgs)
+    $savedEAP = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = "SilentlyContinue"
+        docker compose exec -T daaf-docker git -C /daaf @GitArgs 2>&1 | Out-Null
+    } finally {
+        $ErrorActionPreference = $savedEAP
+    }
+}
+
+# Run docker compose with arbitrary args. Uses SilentlyContinue to prevent
+# PS 5.1 from promoting stderr to a terminating error.
+function Invoke-Compose {
+    param([Parameter(ValueFromRemainingArguments=$true)]$ComposeArgs)
+    $savedEAP = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = "SilentlyContinue"
+        docker compose @ComposeArgs
+    } finally {
+        $ErrorActionPreference = $savedEAP
+    }
+}
+
+# Run docker compose exec with arbitrary (non-git) args. Uses
+# SilentlyContinue to prevent PS 5.1 from promoting stderr to a
+# terminating error.
+function Compose-Exec {
+    param([Parameter(ValueFromRemainingArguments=$true)]$ExecArgs)
+    $savedEAP = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = "SilentlyContinue"
+        docker compose exec -T daaf-docker @ExecArgs
+    } finally {
+        $ErrorActionPreference = $savedEAP
+    }
+}
 
 function Prompt-Choice {
     param(
@@ -99,8 +183,7 @@ function Handle-Conflict {
         [string]$AbortCmd
     )
 
-    $conflictFiles = (docker compose exec -T daaf-docker `
-        git -C /daaf diff --name-only --diff-filter=U 2>$null | Out-String).Trim()
+    $conflictFiles = Compose-Git diff --name-only --diff-filter=U
 
     Write-Host ""
     Write-Host "-------------------------------------------"
@@ -144,11 +227,11 @@ function Handle-Conflict {
         Write-Host "IMPORTANT: When Claude Code is done, type /exit to return here."
         Write-Host "The updater still needs to finish a few steps after this."
         Write-Host ""
-        docker compose exec -it daaf-docker claude
+        $savedEAP = $ErrorActionPreference
+        try { $ErrorActionPreference = "SilentlyContinue"; docker compose exec -it daaf-docker claude } finally { $ErrorActionPreference = $savedEAP }
         Write-Host ""
 
-        $remaining = (docker compose exec -T daaf-docker `
-            git -C /daaf diff --name-only --diff-filter=U 2>$null | Out-String).Trim()
+        $remaining = Compose-Git diff --name-only --diff-filter=U
 
         if ([string]::IsNullOrWhiteSpace($remaining)) {
             Write-Host "Conflicts resolved!"
@@ -202,33 +285,32 @@ function Handle-Conflict {
 function Sync-HostScripts {
     param([string]$OldHead)
 
-    $newHead = (docker compose exec -T daaf-docker `
-        git -C /daaf rev-parse HEAD 2>$null | Out-String).Trim()
+    $newHead = Compose-Git rev-parse HEAD
 
     if ($OldHead -eq $newHead) { return }
 
-    $changedScripts = (docker compose exec -T daaf-docker `
-        git -C /daaf diff --name-only "$OldHead..$newHead" -- `
-        run_daaf.sh run_daaf.ps1 `
-        backup_daaf.sh backup_daaf.ps1 `
-        rebuild_daaf.sh rebuild_daaf.ps1 `
-        update_daaf.sh update_daaf.ps1 `
-        view_logs.sh view_logs.ps1 `
-        install.sh install.ps1 `
-        2>$null | Out-String).Trim()
+    $changedScripts = Compose-Git diff --name-only "$OldHead..$newHead" -- `
+        scripts/host/run_daaf.sh scripts/host/run_daaf.ps1 `
+        scripts/host/backup_daaf.sh scripts/host/backup_daaf.ps1 `
+        scripts/host/rebuild_daaf.sh scripts/host/rebuild_daaf.ps1 `
+        scripts/host/update_daaf.sh scripts/host/update_daaf.ps1 `
+        scripts/host/view_logs.sh scripts/host/view_logs.ps1 `
+        scripts/host/install.sh scripts/host/install.ps1
 
     if ([string]::IsNullOrWhiteSpace($changedScripts)) { return }
 
     Write-Host "Syncing updated utility scripts..."
     $changedScripts -split "`n" | ForEach-Object {
-        $script = $_.Trim()
-        if (-not $script) { return }
-        docker cp "${ContainerName}:/daaf/$script" "./$script" 2>$null
+        $repoPath = $_.Trim()
+        if (-not $repoPath) { return }
+        $scriptName = Split-Path $repoPath -Leaf
+        $savedEAP = $ErrorActionPreference
+        try { $ErrorActionPreference = "SilentlyContinue"; docker cp "${ContainerName}:/daaf/$repoPath" "./$scriptName" 2>$null } finally { $ErrorActionPreference = $savedEAP }
         if ($LASTEXITCODE -eq 0) {
-            Write-Host "  Updated: $script"
+            Write-Host "  Updated: $scriptName"
         } else {
-            Write-Host "  Warning: could not copy $script. You can copy it manually:" -ForegroundColor Yellow
-            Write-Host "    docker cp ${ContainerName}:/daaf/$script ./$script" -ForegroundColor Yellow
+            Write-Host "  Warning: could not copy $scriptName. You can copy it manually:" -ForegroundColor Yellow
+            Write-Host "    docker cp ${ContainerName}:/daaf/$repoPath ./$scriptName" -ForegroundColor Yellow
         }
     }
     Write-Host ""
@@ -237,8 +319,7 @@ function Sync-HostScripts {
 function Check-BuildChanges {
     param([string]$OldHead)
 
-    $newHead = (docker compose exec -T daaf-docker `
-        git -C /daaf rev-parse HEAD 2>$null | Out-String).Trim()
+    $newHead = Compose-Git rev-parse HEAD
 
     if ($OldHead -eq $newHead) {
         Write-Host "No Dockerfile changes - no container rebuild needed."
@@ -246,10 +327,8 @@ function Check-BuildChanges {
         return
     }
 
-    $buildChanges = (docker compose exec -T daaf-docker `
-        git -C /daaf diff --name-only "$OldHead..$newHead" -- `
-        Dockerfile docker-compose.yml `
-        2>$null | Out-String).Trim()
+    $buildChanges = Compose-Git diff --name-only "$OldHead..$newHead" -- `
+        Dockerfile docker-compose.yml
 
     if ([string]::IsNullOrWhiteSpace($buildChanges)) {
         Write-Host "No Dockerfile changes - no container rebuild needed."
@@ -274,7 +353,7 @@ function Check-BuildChanges {
         } else {
             Write-Host "rebuild_daaf.ps1 is not in your daaf-docker folder."
             Write-Host "You can retrieve it from the container and run it:"
-            Write-Host "  docker cp ${ContainerName}:/daaf/rebuild_daaf.ps1 .\rebuild_daaf.ps1"
+            Write-Host "  docker cp ${ContainerName}:/daaf/scripts/host/rebuild_daaf.ps1 .\rebuild_daaf.ps1"
             Write-Host "  .\rebuild_daaf.ps1"
         }
     } else {
@@ -314,6 +393,23 @@ function Finish-Update {
 }
 
 # =====================================================================
+# Concurrent-run lock (named mutex)
+# =====================================================================
+# Prevent two simultaneous update_daaf runs from corrupting git state
+# (double-stash, conflicting merges, backup branch pointing to wrong commit).
+$MutexName = "Global\DAAFUpdate"
+$Mutex = [System.Threading.Mutex]::new($false, $MutexName)
+try {
+    if (-not $Mutex.WaitOne(0)) {
+        Write-Host "ERROR: Another instance of update_daaf is already running." -ForegroundColor Red
+        Write-Host "       Wait for it to finish or restart Docker Desktop to clear the lock." -ForegroundColor Yellow
+        Pause-And-Exit 1
+    }
+} catch [System.Threading.AbandonedMutexException] {
+    # Previous instance crashed - we now own the mutex, continue
+}
+
+# =====================================================================
 # Main script
 # =====================================================================
 
@@ -346,19 +442,21 @@ if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
 }
 
 # --- Preflight: Docker running ---
-$null = docker info 2>&1
+$savedEAP = $ErrorActionPreference
+try { $ErrorActionPreference = "SilentlyContinue"; $null = docker info 2>&1 } finally { $ErrorActionPreference = $savedEAP }
 if ($LASTEXITCODE -ne 0) {
     Write-Host "ERROR: Docker Desktop does not seem to be running. Please start it and try again." -ForegroundColor Red
     Pause-And-Exit 1
 }
 
 # --- Preflight: Start container if needed ---
-$runningCheck = docker compose ps --status running --format '{{.Name}}' 2>$null
+$savedEAP = $ErrorActionPreference
+try { $ErrorActionPreference = "SilentlyContinue"; $runningCheck = docker compose ps --status running --format '{{.Name}}' 2>$null } finally { $ErrorActionPreference = $savedEAP }
 $running = ($runningCheck | Out-String) -match "daaf-docker"
 
 if (-not $running) {
     Write-Host "Starting DAAF container..."
-    docker compose up -d
+    Invoke-Compose up -d
     if ($LASTEXITCODE -ne 0) {
         Write-Host ""
         Write-Host "ERROR: Failed to start the DAAF container." -ForegroundColor Red
@@ -375,8 +473,11 @@ if (-not $running) {
 
     $retries = 0
     $maxRetries = 30
+    $readyLog = [System.IO.Path]::GetTempFileName()
     while ($retries -lt $maxRetries) {
-        docker compose exec -T daaf-docker true 2>&1 | Out-Null
+        $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
+        docker compose exec -T daaf-docker true 2>> $readyLog
+        $ErrorActionPreference = $savedEAP
         if ($LASTEXITCODE -eq 0) { break }
         $retries++
         Start-Sleep -Seconds 2
@@ -384,21 +485,27 @@ if (-not $running) {
     if ($retries -ge $maxRetries) {
         Write-Host ""
         Write-Host "ERROR: The DAAF container started but is not responding after 60 seconds." -ForegroundColor Red
-        Write-Host ""
+        if ((Test-Path $readyLog) -and (Get-Item $readyLog).Length -gt 0) {
+            Write-Host "  Docker reported:" -ForegroundColor Red
+            Get-Content $readyLog -Tail 5 | ForEach-Object { Write-Host "    $_" -ForegroundColor Red }
+            Write-Host ""
+        }
         Write-Host "No changes were made to your DAAF installation."
         Write-Host ""
         Write-Host "This can happen if Docker Desktop is under heavy load."
         Write-Host "Try:"
         Write-Host "  1. Restart Docker Desktop"
         Write-Host "  2. Re-run:  .\update_daaf.ps1"
+        Remove-Item $readyLog -ErrorAction SilentlyContinue
         Pause-And-Exit 1
     }
+    Remove-Item $readyLog -ErrorAction SilentlyContinue
     Write-Host "Container started."
     Write-Host ""
 }
 
 # --- Preflight: DAAF installed ---
-docker compose exec -T daaf-docker test -f /daaf/CLAUDE.md 2>&1 | Out-Null
+$null = Compose-Exec test -f /daaf/CLAUDE.md 2>&1
 if ($LASTEXITCODE -ne 0) {
     Write-Host "ERROR: DAAF does not appear to be installed in the container." -ForegroundColor Red
     Write-Host "Run the installer first. See:"
@@ -433,16 +540,14 @@ if (Test-Path "backup_daaf.ps1") {
 # =====================================================================
 # Create git backup branch (lightweight restore point)
 # =====================================================================
-docker compose exec -T daaf-docker git -C /daaf branch $BackupBranch 2>&1 | Out-Null
+Compose-Git-Null branch $BackupBranch
 
-$OldHead = (docker compose exec -T daaf-docker `
-    git -C /daaf rev-parse HEAD 2>$null | Out-String).Trim()
+$OldHead = Compose-Git rev-parse HEAD
 
 # =====================================================================
 # Check git remote
 # =====================================================================
-$OriginUrl = (docker compose exec -T daaf-docker `
-    git -C /daaf remote get-url origin 2>$null | Out-String).Trim()
+$OriginUrl = Compose-Git remote get-url origin
 
 if ([string]::IsNullOrWhiteSpace($OriginUrl)) {
     Write-Host ""
@@ -469,8 +574,7 @@ if ($OriginUrl -notlike "*$UpstreamRepo*") {
     Write-Host "  $OriginUrl"
     Write-Host ""
 
-    $upstreamUrl = (docker compose exec -T daaf-docker `
-        git -C /daaf remote get-url upstream 2>$null | Out-String).Trim()
+    $upstreamUrl = Compose-Git remote get-url upstream
 
     if ($upstreamUrl) {
         $UpstreamRemote = "upstream"
@@ -495,10 +599,20 @@ if ($OriginUrl -notlike "*$UpstreamRepo*") {
 # Fetch latest
 # =====================================================================
 Write-Host "Fetching latest changes from $UpstreamRemote..."
-docker compose exec -T daaf-docker git -C /daaf fetch $UpstreamRemote 2>&1 | Out-Null
-if ($LASTEXITCODE -ne 0) {
+# Use direct docker exec instead of Compose-Git-Null so we can capture stderr
+# for diagnostic output on failure (Compose-Git-Null discards all output).
+$savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
+$fetchOutput = docker compose exec -T daaf-docker git -C /daaf fetch $UpstreamRemote 2>&1
+$fetchExit = $LASTEXITCODE
+$ErrorActionPreference = $savedEAP
+if ($fetchExit -ne 0) {
     Write-Host ""
     Write-Host "Failed to fetch from $UpstreamRemote." -ForegroundColor Red
+    if ($fetchOutput) {
+        Write-Host "  Git reported:" -ForegroundColor Red
+        $fetchOutput | ForEach-Object { Write-Host "    $_" -ForegroundColor Red }
+    }
+    Write-Host ""
     Write-Host "No changes were made to your installation."
     Write-Host ""
     Write-Host "Common causes:"
@@ -511,10 +625,10 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 # --- Unshallow if needed (shallow clones can't compute merge-base) ---
-docker compose exec -T daaf-docker test -f /daaf/.git/shallow 2>&1 | Out-Null
+$null = Compose-Exec test -f /daaf/.git/shallow 2>&1
 if ($LASTEXITCODE -eq 0) {
     Write-Host "Deepening repository history (installed from a shallow clone)..."
-    docker compose exec -T daaf-docker git -C /daaf fetch --unshallow $UpstreamRemote 2>&1 | Out-Null
+    Compose-Git-Null fetch --unshallow $UpstreamRemote
     if ($LASTEXITCODE -ne 0) {
         Write-Host "  (Already unshallowed or not needed.)"
     }
@@ -528,8 +642,7 @@ $RemoteBranch = if ($env:DAAF_BRANCH) { $env:DAAF_BRANCH } else { "" }
 
 if ($RemoteBranch) {
     # User specified a branch - verify it exists on the remote
-    $null = docker compose exec -T daaf-docker `
-        git -C /daaf rev-parse --verify "$UpstreamRemote/$RemoteBranch" 2>&1
+    $null = Compose-Git rev-parse --verify "$UpstreamRemote/$RemoteBranch"
     if ($LASTEXITCODE -ne 0) {
         Write-Host ""
         Write-Host "The branch '$RemoteBranch' (from DAAF_BRANCH) was not found on" -ForegroundColor Red
@@ -542,13 +655,11 @@ if ($RemoteBranch) {
     Write-Host "Using branch: $RemoteBranch (from DAAF_BRANCH)"
 } else {
     # Auto-detect: try main, then master
-    $null = docker compose exec -T daaf-docker `
-        git -C /daaf rev-parse --verify "$UpstreamRemote/main" 2>&1
+    $null = Compose-Git rev-parse --verify "$UpstreamRemote/main"
     if ($LASTEXITCODE -eq 0) {
         $RemoteBranch = "main"
     } else {
-        $null = docker compose exec -T daaf-docker `
-            git -C /daaf rev-parse --verify "$UpstreamRemote/master" 2>&1
+        $null = Compose-Git rev-parse --verify "$UpstreamRemote/master"
         if ($LASTEXITCODE -eq 0) {
             $RemoteBranch = "master"
         }
@@ -584,8 +695,7 @@ if (-not $RemoteBranch) {
 # =====================================================================
 # Check current branch
 # =====================================================================
-$CurrentBranch = (docker compose exec -T daaf-docker `
-    git -C /daaf branch --show-current 2>$null | Out-String).Trim()
+$CurrentBranch = Compose-Git branch --show-current
 
 if ([string]::IsNullOrWhiteSpace($CurrentBranch)) {
     Write-Host ""
@@ -609,13 +719,10 @@ if ([string]::IsNullOrWhiteSpace($CurrentBranch)) {
 # =====================================================================
 # Check if already up to date
 # =====================================================================
-$Local = (docker compose exec -T daaf-docker `
-    git -C /daaf rev-parse HEAD 2>$null | Out-String).Trim()
-$Remote = (docker compose exec -T daaf-docker `
-    git -C /daaf rev-parse "$UpstreamRemote/$RemoteBranch" 2>$null | Out-String).Trim()
+$Local = Compose-Git rev-parse HEAD
+$Remote = Compose-Git rev-parse "$UpstreamRemote/$RemoteBranch"
 
-$DirtyFiles = (docker compose exec -T daaf-docker `
-    git -C /daaf diff --name-only HEAD 2>$null | Out-String).Trim()
+$DirtyFiles = Compose-Git diff --name-only HEAD
 
 if (($CurrentBranch -eq $RemoteBranch) -and ($Local -eq $Remote) -and `
     [string]::IsNullOrWhiteSpace($DirtyFiles)) {
@@ -628,14 +735,10 @@ if (($CurrentBranch -eq $RemoteBranch) -and ($Local -eq $Remote) -and `
 # =====================================================================
 # Compute ahead/behind
 # =====================================================================
-$Ahead = (docker compose exec -T daaf-docker `
-    git -C /daaf rev-list --count "$UpstreamRemote/$RemoteBranch..HEAD" `
-    2>$null | Out-String).Trim()
+$Ahead = Compose-Git rev-list --count "$UpstreamRemote/$RemoteBranch..HEAD"
 if (-not $Ahead) { $Ahead = "0" }
 
-$Behind = (docker compose exec -T daaf-docker `
-    git -C /daaf rev-list --count "HEAD..$UpstreamRemote/$RemoteBranch" `
-    2>$null | Out-String).Trim()
+$Behind = Compose-Git rev-list --count "HEAD..$UpstreamRemote/$RemoteBranch"
 if (-not $Behind) { $Behind = "0" }
 
 if ($Behind -ne "0") {
@@ -680,8 +783,7 @@ if ($CurrentBranch -ne $RemoteBranch) {
     if ($DirtyFiles) {
         Write-Host ""
         Write-Host "Setting aside your uncommitted changes for safekeeping..."
-        docker compose exec -T daaf-docker `
-            git -C /daaf stash push -m "DAAF update backup $Timestamp"
+        Compose-Git-Verbose stash push -m "DAAF update backup $Timestamp"
         if ($LASTEXITCODE -ne 0) {
             Write-Host ""
             Write-Host "ERROR: Could not safely set aside your uncommitted changes." -ForegroundColor Red
@@ -701,7 +803,7 @@ if ($CurrentBranch -ne $RemoteBranch) {
     }
 
     Write-Host "Switching to $RemoteBranch..."
-    docker compose exec -T daaf-docker git -C /daaf checkout $RemoteBranch
+    Compose-Git-Verbose checkout $RemoteBranch
     if ($LASTEXITCODE -ne 0) {
         Write-Host ""
         Write-Host "ERROR: Could not switch to the '$RemoteBranch' branch." -ForegroundColor Red
@@ -717,8 +819,7 @@ if ($CurrentBranch -ne $RemoteBranch) {
     }
 
     Write-Host "Pulling updates..."
-    docker compose exec -T daaf-docker `
-        git -C /daaf pull $UpstreamRemote $RemoteBranch
+    Compose-Git-Verbose pull $UpstreamRemote $RemoteBranch
     if ($LASTEXITCODE -ne 0) {
         Write-Host ""
         Write-Host "ERROR: Could not download the latest updates." -ForegroundColor Red
@@ -738,7 +839,7 @@ if ($CurrentBranch -ne $RemoteBranch) {
     }
 
     Write-Host "Switching back to '$CurrentBranch'..."
-    docker compose exec -T daaf-docker git -C /daaf checkout $CurrentBranch
+    Compose-Git-Verbose checkout $CurrentBranch
     if ($LASTEXITCODE -ne 0) {
         Write-Host ""
         Write-Host "ERROR: Could not switch back to your '$CurrentBranch' branch." -ForegroundColor Red
@@ -762,7 +863,7 @@ if ($CurrentBranch -ne $RemoteBranch) {
     }
 
     Write-Host "Merging $RemoteBranch into '$CurrentBranch'..."
-    docker compose exec -T daaf-docker git -C /daaf merge $RemoteBranch 2>&1 | Out-Null
+    Compose-Git-Null merge $RemoteBranch
     if ($LASTEXITCODE -ne 0) {
         if (-not (Handle-Conflict "merge" "merge --abort")) {
             if ($Stashed) {
@@ -777,7 +878,7 @@ if ($CurrentBranch -ne $RemoteBranch) {
 
     if ($Stashed) {
         Write-Host "Restoring your changes..."
-        docker compose exec -T daaf-docker git -C /daaf stash pop 2>&1 | Out-Null
+        Compose-Git-Null stash pop
         if ($LASTEXITCODE -ne 0) {
             Write-Host ""
             Write-Host "The framework update was applied successfully!"
@@ -816,9 +917,8 @@ if ([int]$Ahead -gt 0) {
     Write-Host "the official DAAF release."
     Write-Host ""
     Write-Host "Your local commits:"
-    docker compose exec -T daaf-docker `
-        git -C /daaf log --oneline "$UpstreamRemote/$RemoteBranch..HEAD" 2>$null `
-        | ForEach-Object { Write-Host "  $_" }
+    $logOutput = Compose-Git log --oneline "$UpstreamRemote/$RemoteBranch..HEAD"
+    $logOutput -split "`n" | ForEach-Object { if ($_.Trim()) { Write-Host "  $_" } }
     Write-Host ""
     Write-Host "Options:"
     Write-Host ""
@@ -844,8 +944,7 @@ if ([int]$Ahead -gt 0) {
     if ($DirtyFiles) {
         Write-Host ""
         Write-Host "Setting aside your uncommitted changes for safekeeping..."
-        docker compose exec -T daaf-docker `
-            git -C /daaf stash push -m "DAAF update backup $Timestamp"
+        Compose-Git-Verbose stash push -m "DAAF update backup $Timestamp"
         if ($LASTEXITCODE -ne 0) {
             Write-Host ""
             Write-Host "ERROR: Could not safely set aside your uncommitted changes." -ForegroundColor Red
@@ -867,9 +966,8 @@ if ([int]$Ahead -gt 0) {
     if ($choice -eq "1") {
         # --- Merge path ---
         Write-Host "Merging upstream updates..."
-        docker compose exec -T daaf-docker `
-            git -C /daaf merge "$UpstreamRemote/$RemoteBranch" `
-            -m "Merge DAAF upstream updates" 2>&1 | Out-Null
+        Compose-Git-Null merge "$UpstreamRemote/$RemoteBranch" `
+            -m "Merge DAAF upstream updates"
         if ($LASTEXITCODE -ne 0) {
             if (-not (Handle-Conflict "merge" "merge --abort")) {
                 if ($Stashed) {
@@ -885,9 +983,7 @@ if ([int]$Ahead -gt 0) {
         # --- Squash-then-rebase path ---
         Write-Host ""
         Write-Host "Bundling your $Ahead local commit(s) into a single commit..."
-        $MergeBase = (docker compose exec -T daaf-docker `
-            git -C /daaf merge-base HEAD "$UpstreamRemote/$RemoteBranch" `
-            2>$null | Out-String).Trim()
+        $MergeBase = Compose-Git merge-base HEAD "$UpstreamRemote/$RemoteBranch"
 
         if ([string]::IsNullOrWhiteSpace($MergeBase)) {
             Write-Host ""
@@ -906,7 +1002,7 @@ if ([int]$Ahead -gt 0) {
             Pause-And-Exit 1
         }
 
-        docker compose exec -T daaf-docker git -C /daaf reset --soft $MergeBase
+        Compose-Git-Verbose reset --soft $MergeBase
         if ($LASTEXITCODE -ne 0) {
             Write-Host ""
             Write-Host "ERROR: The rebase could not proceed - an internal step failed." -ForegroundColor Red
@@ -923,7 +1019,7 @@ if ([int]$Ahead -gt 0) {
             Write-Host "Your research files are not affected."
             Pause-And-Exit 1
         }
-        docker compose exec -T daaf-docker git -C /daaf commit `
+        Compose-Git-Verbose commit `
             -m "Local DAAF customizations ($Ahead commits, squashed before update on $Timestamp)"
         if ($LASTEXITCODE -ne 0) {
             Write-Host ""
@@ -943,8 +1039,7 @@ if ([int]$Ahead -gt 0) {
         }
 
         Write-Host "Rebasing on top of the latest update..."
-        docker compose exec -T daaf-docker `
-            git -C /daaf rebase "$UpstreamRemote/$RemoteBranch" 2>&1 | Out-Null
+        Compose-Git-Null rebase "$UpstreamRemote/$RemoteBranch"
         if ($LASTEXITCODE -ne 0) {
             if (-not (Handle-Conflict "rebase" "rebase --abort")) {
                 if ($Stashed) {
@@ -961,7 +1056,7 @@ if ([int]$Ahead -gt 0) {
     # Restore stashed changes
     if ($Stashed) {
         Write-Host "Restoring your changes..."
-        docker compose exec -T daaf-docker git -C /daaf stash pop 2>&1 | Out-Null
+        Compose-Git-Null stash pop
         if ($LASTEXITCODE -ne 0) {
             Write-Host ""
             Write-Host "The framework update was applied successfully!"
@@ -1024,7 +1119,7 @@ if ($DirtyFiles) {
 
     if ($choice -eq "2") {
         Write-Host ""
-        docker compose exec -T daaf-docker git -C /daaf diff 2>$null
+        Compose-Exec git -C /daaf diff 2>$null
         Write-Host ""
         Write-Host "Lines starting with + are additions, - are removals."
         Write-Host ""
@@ -1041,8 +1136,7 @@ if ($DirtyFiles) {
     }
 
     Write-Host "Setting aside your changes for safekeeping..."
-    docker compose exec -T daaf-docker `
-        git -C /daaf stash push -m "DAAF update backup $Timestamp"
+    Compose-Git-Verbose stash push -m "DAAF update backup $Timestamp"
     if ($LASTEXITCODE -ne 0) {
         Write-Host ""
         Write-Host "ERROR: Could not safely set aside your uncommitted changes." -ForegroundColor Red
@@ -1060,8 +1154,7 @@ if ($DirtyFiles) {
     }
 
     Write-Host "Pulling updates..."
-    docker compose exec -T daaf-docker `
-        git -C /daaf pull $UpstreamRemote $RemoteBranch
+    Compose-Git-Verbose pull $UpstreamRemote $RemoteBranch
     if ($LASTEXITCODE -ne 0) {
         Write-Host ""
         Write-Host "ERROR: Could not download the latest updates." -ForegroundColor Red
@@ -1080,7 +1173,7 @@ if ($DirtyFiles) {
     }
 
     Write-Host "Re-applying your changes..."
-    docker compose exec -T daaf-docker git -C /daaf stash pop 2>&1 | Out-Null
+    Compose-Git-Null stash pop
     if ($LASTEXITCODE -ne 0) {
         Write-Host ""
         Write-Host "The framework update was applied successfully!"
@@ -1107,11 +1200,11 @@ if ($DirtyFiles) {
             Write-Host "IMPORTANT: When Claude Code is done, type /exit to return here."
             Write-Host "The updater still needs to finish a few steps after this."
             Write-Host ""
-            docker compose exec -it daaf-docker claude
+            $savedEAP = $ErrorActionPreference
+            try { $ErrorActionPreference = "SilentlyContinue"; docker compose exec -it daaf-docker claude } finally { $ErrorActionPreference = $savedEAP }
             Write-Host ""
 
-            $remaining = (docker compose exec -T daaf-docker `
-                git -C /daaf diff --name-only --diff-filter=U 2>$null | Out-String).Trim()
+            $remaining = Compose-Git diff --name-only --diff-filter=U
 
             if ([string]::IsNullOrWhiteSpace($remaining)) {
                 Write-Host "Conflicts resolved!"
@@ -1162,8 +1255,7 @@ if ($DirtyFiles) {
 # =====================================================================
 Write-Host ""
 Write-Host "Pulling updates..."
-docker compose exec -T daaf-docker `
-    git -C /daaf pull $UpstreamRemote $RemoteBranch
+Compose-Git-Verbose pull $UpstreamRemote $RemoteBranch
 if ($LASTEXITCODE -ne 0) {
     Write-Host ""
     Write-Host "ERROR: Could not download the latest updates." -ForegroundColor Red

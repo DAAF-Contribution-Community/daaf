@@ -217,12 +217,12 @@ sync_host_scripts() {
     local changed_scripts
     changed_scripts=$(docker compose exec -T daaf-docker \
         git -C /daaf diff --name-only "${old_head}..${new_head}" -- \
-        run_daaf.sh run_daaf.ps1 \
-        backup_daaf.sh backup_daaf.ps1 \
-        rebuild_daaf.sh rebuild_daaf.ps1 \
-        update_daaf.sh update_daaf.ps1 \
-        view_logs.sh view_logs.ps1 \
-        install.sh install.ps1 \
+        scripts/host/run_daaf.sh scripts/host/run_daaf.ps1 \
+        scripts/host/backup_daaf.sh scripts/host/backup_daaf.ps1 \
+        scripts/host/rebuild_daaf.sh scripts/host/rebuild_daaf.ps1 \
+        scripts/host/update_daaf.sh scripts/host/update_daaf.ps1 \
+        scripts/host/view_logs.sh scripts/host/view_logs.ps1 \
+        scripts/host/install.sh scripts/host/install.ps1 \
         </dev/null 2>/dev/null | tr -d '\r' || true)
 
     if [ -z "${changed_scripts}" ]; then
@@ -230,14 +230,16 @@ sync_host_scripts() {
     fi
 
     echo "Syncing updated utility scripts..."
-    while IFS= read -r script; do
-        [ -z "${script}" ] && continue
-        if docker cp "${CONTAINER_NAME}:/daaf/${script}" "./${script}" 2>/dev/null; then
+    while IFS= read -r repo_path; do
+        [ -z "${repo_path}" ] && continue
+        local script
+        script=$(basename "${repo_path}")
+        if docker cp "${CONTAINER_NAME}:/daaf/${repo_path}" "./${script}" 2>/dev/null; then
             chmod +x "./${script}" 2>/dev/null || true
             echo "  Updated: ${script}"
         else
             echo "  Warning: could not copy ${script}. You can copy it manually:"
-            echo "    docker cp ${CONTAINER_NAME}:/daaf/${script} ./${script}"
+            echo "    docker cp ${CONTAINER_NAME}:/daaf/${repo_path} ./${script}"
         fi
     done <<< "${changed_scripts}"
     echo ""
@@ -284,7 +286,7 @@ check_build_changes() {
         else
             echo "rebuild_daaf.sh is not in your daaf-docker folder."
             echo "You can retrieve it from the container and run it:"
-            echo "  docker cp ${CONTAINER_NAME}:/daaf/rebuild_daaf.sh ./rebuild_daaf.sh"
+            echo "  docker cp ${CONTAINER_NAME}:/daaf/scripts/host/rebuild_daaf.sh ./rebuild_daaf.sh"
             echo "  chmod +x ./rebuild_daaf.sh"
             echo "  bash rebuild_daaf.sh"
         fi
@@ -321,6 +323,21 @@ finish_update() {
     echo "    bash run_daaf.sh"
     echo ""
 }
+
+# =====================================================================
+# Concurrent-run lock (flock)
+# =====================================================================
+# Prevent two simultaneous update_daaf runs from corrupting git state
+# (double-stash, conflicting merges, backup branch pointing to wrong commit).
+# The lock is automatically released when the script exits (fd closes),
+# including exits via the ERR trap.
+LOCK_FILE="/tmp/daaf-update.lock"
+exec 200>"$LOCK_FILE"
+if ! flock -n 200; then
+    echo "ERROR: Another instance of update_daaf is already running." >&2
+    echo "       If you believe this is stale, remove: $LOCK_FILE" >&2
+    exit 1
+fi
 
 # =====================================================================
 # Main script
@@ -381,21 +398,28 @@ if [ "${RUNNING}" -eq 0 ]; then
 
     RETRIES=0
     MAX_RETRIES=30
-    until docker compose exec -T daaf-docker true </dev/null 2>/dev/null; do
+    READY_LOG=$(mktemp)
+    until docker compose exec -T daaf-docker true </dev/null 2>>"$READY_LOG"; do
         RETRIES=$((RETRIES + 1))
         if [ "${RETRIES}" -ge "${MAX_RETRIES}" ]; then
-            echo "ERROR: The DAAF container started but is not responding after 60 seconds."
-            echo ""
-            echo "No changes were made to your DAAF installation."
-            echo ""
-            echo "This can happen if Docker Desktop is under heavy load."
-            echo "Try:"
-            echo "  1. Restart Docker Desktop"
-            echo "  2. Re-run:  bash update_daaf.sh"
+            echo "ERROR: The DAAF container started but is not responding after 60 seconds." >&2
+            if [ -s "$READY_LOG" ]; then
+                echo "  Docker reported:" >&2
+                tail -5 "$READY_LOG" | sed 's/^/    /' >&2
+                echo "" >&2
+            fi
+            echo "No changes were made to your DAAF installation." >&2
+            echo "" >&2
+            echo "This can happen if Docker Desktop is under heavy load." >&2
+            echo "Try:" >&2
+            echo "  1. Restart Docker Desktop" >&2
+            echo "  2. Re-run:  bash update_daaf.sh" >&2
+            rm -f "$READY_LOG"
             exit 1
         fi
         sleep 2
     done
+    rm -f "$READY_LOG"
     echo "Container started."
     echo ""
 fi

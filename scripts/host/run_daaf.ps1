@@ -35,19 +35,25 @@ if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
     Pause-And-Exit 1
 }
 
+$savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
 $null = docker info 2>&1
+$ErrorActionPreference = $savedEAP
 if ($LASTEXITCODE -ne 0) {
     Write-Host "ERROR: Docker Desktop does not seem to be running. Please start it and try again." -ForegroundColor Red
     Pause-And-Exit 1
 }
 
 # --- Start container if not running ---
+$savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
 $RunningOutput = docker compose ps --status running --format '{{.Name}}' 2>&1
+$ErrorActionPreference = $savedEAP
 $Running = ($RunningOutput | Select-String "daaf-docker").Count
 
 if ($Running -eq 0) {
     Write-Host "Starting DAAF container..."
+    $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
     docker compose up -d
+    $ErrorActionPreference = $savedEAP
     if ($LASTEXITCODE -ne 0) {
         Write-Host "ERROR: Failed to start the container. Check Docker Desktop for errors." -ForegroundColor Red
         Pause-And-Exit 1
@@ -60,7 +66,9 @@ if ($Running -eq 0) {
 Write-Host ""
 
 # --- Verify DAAF is installed in the container ---
+$savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
 docker compose exec -T daaf-docker test -f /daaf/CLAUDE.md 2>&1 | Out-Null
+$ErrorActionPreference = $savedEAP
 if ($LASTEXITCODE -ne 0) {
     Write-Host "WARNING: DAAF does not appear to be installed in the container (/daaf is empty or missing key files)." -ForegroundColor Yellow
     Write-Host "The container is running, but DAAF's repository files may not have been cloned."
@@ -76,15 +84,21 @@ if ($Command -eq "claude") {
     Write-Host "Launching Claude Code..."
     Write-Host "(Press Ctrl+C twice to exit Claude Code when done)"
     Write-Host ""
+    $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
     docker compose exec daaf-docker claude
+    $ErrorActionPreference = $savedEAP
 } elseif ($Command -eq "bash") {
     Write-Host "Entering container shell..."
     Write-Host "(Type 'exit' to leave the container)"
     Write-Host ""
+    $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
     docker compose exec daaf-docker bash
+    $ErrorActionPreference = $savedEAP
 } else {
     Write-Host "Running: $Command"
+    $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
     docker compose exec daaf-docker $Command
+    $ErrorActionPreference = $savedEAP
 }
 
 Pause-And-Exit 0

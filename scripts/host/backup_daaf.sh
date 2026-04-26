@@ -76,15 +76,26 @@ echo ""
 
 # --- Count source files ---
 echo "Scanning Docker volume..."
-SCAN_OUTPUT=$(docker run --rm -v "${VOLUME_NAME}:/source:ro" busybox sh -c "find /source -type f | wc -l && du -sh /source") || {
+SCAN_OUTPUT=$(docker run --rm -v "${VOLUME_NAME}:/source:ro" busybox sh -c "find /source -type f | wc -l && du -sk /source && du -sh /source") || {
     echo ""
     echo "ERROR: Could not scan Docker volume."
     exit 1
 }
 TOTAL_FILES=$(echo "${SCAN_OUTPUT}" | head -1 | tr -d '[:space:]')
+VOLUME_SIZE_KB=$(echo "${SCAN_OUTPUT}" | sed -n '2p' | awk '{print $1}')
 TOTAL_SIZE=$(echo "${SCAN_OUTPUT}" | tail -1 | awk '{print $1}')
 echo "Found ${TOTAL_FILES} files to copy (${TOTAL_SIZE})."
 echo ""
+
+# --- Disk space pre-check ---
+AVAILABLE_KB=$(df -P . | awk 'NR==2 {print $4}')
+# Add 10% buffer to account for filesystem overhead
+REQUIRED_KB=$(( VOLUME_SIZE_KB * 110 / 100 ))
+if [ "${AVAILABLE_KB}" -lt "${REQUIRED_KB}" ]; then
+    echo "ERROR: Insufficient disk space for backup." >&2
+    echo "       Required: ~$(( REQUIRED_KB / 1024 )) MB (includes 10% buffer), Available: $(( AVAILABLE_KB / 1024 )) MB" >&2
+    exit 1
+fi
 
 # --- Create backup ---
 mkdir -p "${BACKUP_NAME}"
@@ -134,6 +145,25 @@ fi
 
 if [ "${COPY_EXIT}" -ne 0 ]; then
     echo "Note: File copy reported warnings (exit code ${COPY_EXIT}) but all ${FILE_COUNT} files were transferred."
+fi
+
+# --- Size verification ---
+# Compare source vs backup byte counts to detect truncated files
+SOURCE_SIZE_KB="${VOLUME_SIZE_KB}"
+BACKUP_SIZE_KB=$(du -sk "${BACKUP_NAME}" 2>/dev/null | awk '{print $1}') || BACKUP_SIZE_KB=0
+if [ "${SOURCE_SIZE_KB}" -gt 0 ] && [ "${BACKUP_SIZE_KB}" -gt 0 ]; then
+    # Allow 1% tolerance for filesystem metadata differences
+    TOLERANCE_KB=$(( SOURCE_SIZE_KB / 100 ))
+    if [ "${TOLERANCE_KB}" -lt 1 ]; then TOLERANCE_KB=1; fi
+    DIFF_KB=$(( SOURCE_SIZE_KB - BACKUP_SIZE_KB ))
+    # Absolute value
+    if [ "${DIFF_KB}" -lt 0 ]; then DIFF_KB=$(( -DIFF_KB )); fi
+    if [ "${DIFF_KB}" -gt "${TOLERANCE_KB}" ]; then
+        echo ""
+        echo "WARNING: Backup size mismatch." >&2
+        echo "         Source: ${SOURCE_SIZE_KB} KB, Backup: ${BACKUP_SIZE_KB} KB (difference: ${DIFF_KB} KB)" >&2
+        echo "         The backup may be incomplete. Consider re-running." >&2
+    fi
 fi
 
 echo ""

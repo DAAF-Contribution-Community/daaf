@@ -52,14 +52,18 @@ if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
     Pause-And-Exit 1
 }
 
+$savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
 $null = docker info 2>&1
+$ErrorActionPreference = $savedEAP
 if ($LASTEXITCODE -ne 0) {
     Write-Host "ERROR: Docker Desktop does not seem to be running. Please start it and try again." -ForegroundColor Red
     Pause-And-Exit 1
 }
 
 # --- Check container exists (running or stopped) ---
+$savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
 $null = docker inspect $ContainerName 2>&1
+$ErrorActionPreference = $savedEAP
 if ($LASTEXITCODE -ne 0) {
     Write-Host "ERROR: Container '$ContainerName' not found." -ForegroundColor Red
     Write-Host "Have you run the DAAF installer? The container must exist (running or stopped)"
@@ -81,7 +85,9 @@ if (Test-Path "docker-compose.yml") {
     Copy-Item "docker-compose.yml" "docker-compose.yml.pre-rebuild" -Force
 }
 
+$savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
 docker cp "${ContainerName}:/daaf/Dockerfile" ./Dockerfile
+$ErrorActionPreference = $savedEAP
 if ($LASTEXITCODE -ne 0) {
     Write-Host "ERROR: Failed to copy Dockerfile from container." -ForegroundColor Red
     Write-Host "Make sure DAAF is installed in the container (run the installer if needed)."
@@ -89,7 +95,9 @@ if ($LASTEXITCODE -ne 0) {
 }
 Write-Host "      Copied Dockerfile"
 
+$savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
 docker cp "${ContainerName}:/daaf/docker-compose.yml" ./docker-compose.yml
+$ErrorActionPreference = $savedEAP
 if ($LASTEXITCODE -ne 0) {
     Write-Host "ERROR: Failed to copy docker-compose.yml from container." -ForegroundColor Red
     Pause-And-Exit 1
@@ -140,7 +148,9 @@ Write-Host ""
 # applied to the build step (where it is universally supported) without relying
 # on `docker compose up --progress`, which is rejected as "unknown flag" on
 # Docker Compose versions prior to ~v2.27.
+$savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
 docker compose build --progress plain
+$ErrorActionPreference = $savedEAP
 if ($LASTEXITCODE -ne 0) {
     Write-Host ""
     Write-Host "ERROR: Rebuild failed. Check the output above for details." -ForegroundColor Red
@@ -149,7 +159,9 @@ if ($LASTEXITCODE -ne 0) {
     }
     Pause-And-Exit 1
 }
+$savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
 docker compose up -d
+$ErrorActionPreference = $savedEAP
 if ($LASTEXITCODE -ne 0) {
     Write-Host ""
     Write-Host "ERROR: Failed to start the container after rebuild. Check the output above for details." -ForegroundColor Red
@@ -161,22 +173,34 @@ Write-Host ""
 Write-Host "      Waiting for container to be ready..."
 $retries = 0
 $maxRetries = 30
+$readyLog = [System.IO.Path]::GetTempFileName()
 while ($retries -lt $maxRetries) {
-    docker compose exec -T daaf-docker true 2>&1 | Out-Null
+    $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
+    docker compose exec -T daaf-docker true 2>> $readyLog
+    $ErrorActionPreference = $savedEAP
     if ($LASTEXITCODE -eq 0) { break }
     $retries++
     Start-Sleep -Seconds 2
 }
 if ($retries -ge $maxRetries) {
     Write-Host "ERROR: Container did not become ready within 60 seconds." -ForegroundColor Red
+    if ((Test-Path $readyLog) -and (Get-Item $readyLog).Length -gt 0) {
+        Write-Host "  Docker reported:" -ForegroundColor Red
+        Get-Content $readyLog -Tail 5 | ForEach-Object { Write-Host "    $_" -ForegroundColor Red }
+        Write-Host ""
+    }
     Write-Host "Check Docker Desktop for errors."
+    Remove-Item $readyLog -ErrorAction SilentlyContinue
     Pause-And-Exit 1
 }
+Remove-Item $readyLog -ErrorAction SilentlyContinue
 
 # --- Verify ---
 Write-Host ""
 Write-Host "[3/3] Verifying DAAF installation..."
+$savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
 docker compose exec -T daaf-docker test -f /daaf/CLAUDE.md 2>&1 | Out-Null
+$ErrorActionPreference = $savedEAP
 if ($LASTEXITCODE -ne 0) {
     Write-Host ""
     Write-Host "WARNING: Rebuild completed but DAAF files may not be intact." -ForegroundColor Yellow

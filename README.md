@@ -60,7 +60,7 @@ If you're already comfortable with the Terminal and Claude Code, you can get sta
 
 ```bash
 # Install DAAF (downloads Docker build files, builds image, clones repo into container)
-curl -fsSL https://raw.githubusercontent.com/DAAF-Contribution-Community/daaf/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/DAAF-Contribution-Community/daaf/main/scripts/host/install.sh | bash
 
 # Enter the installation folder and launch Claude Code with a helper script
 cd daaf-docker
@@ -71,7 +71,7 @@ bash run_daaf.sh
 
 ```powershell
 # Install DAAF (downloads Docker build files, builds image, clones repo into container)
-irm https://raw.githubusercontent.com/DAAF-Contribution-Community/daaf/main/install.ps1 | iex
+irm https://raw.githubusercontent.com/DAAF-Contribution-Community/daaf/main/scripts/host/install.ps1 | iex
 
 # Enter the installation folder and launch Claude Code with a helper script
 cd daaf-docker

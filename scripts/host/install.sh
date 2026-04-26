@@ -3,7 +3,7 @@
 # DAAF One-Line Installer (macOS / Linux)
 # ============================================================================
 # Usage:
-#   curl -fsSL https://raw.githubusercontent.com/DAAF-Contribution-Community/daaf/main/install.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/DAAF-Contribution-Community/daaf/main/scripts/host/install.sh | bash
 #
 # What this script does:
 #   1. Creates a minimal build directory (~5 KB)
@@ -70,7 +70,7 @@ if [ -f "${INSTALL_DIR}/docker-compose.yml" ]; then
             echo "  bash update_daaf.sh"
             echo ""
             echo "To force a fresh re-install, set DAAF_FORCE_REINSTALL=1:"
-            echo "  DAAF_FORCE_REINSTALL=1 bash -c \"\$(curl -fsSL ${RAW_BASE}/install.sh)\""
+            echo "  DAAF_FORCE_REINSTALL=1 bash -c \"\$(curl -fsSL ${RAW_BASE}/scripts/host/install.sh)\""
             echo ""
             exit 1
         fi
@@ -87,13 +87,13 @@ mkdir -p "${INSTALL_DIR}"
 
 # --- Download build-context and utility files ---
 echo "[2/4] Downloading installation files ..."
-if ! curl -fsSL "${RAW_BASE}/Dockerfile"              -o "${INSTALL_DIR}/Dockerfile" ||
-   ! curl -fsSL "${RAW_BASE}/docker-compose.yml"       -o "${INSTALL_DIR}/docker-compose.yml" ||
-   ! curl -fsSL "${RAW_BASE}/run_daaf.sh"              -o "${INSTALL_DIR}/run_daaf.sh" ||
-   ! curl -fsSL "${RAW_BASE}/backup_daaf.sh"           -o "${INSTALL_DIR}/backup_daaf.sh" ||
-   ! curl -fsSL "${RAW_BASE}/rebuild_daaf.sh"          -o "${INSTALL_DIR}/rebuild_daaf.sh" ||
-   ! curl -fsSL "${RAW_BASE}/update_daaf.sh"           -o "${INSTALL_DIR}/update_daaf.sh" ||
-   ! curl -fsSL "${RAW_BASE}/view_logs.sh"             -o "${INSTALL_DIR}/view_logs.sh"; then
+if ! curl -fsSL "${RAW_BASE}/Dockerfile"                          -o "${INSTALL_DIR}/Dockerfile" ||
+   ! curl -fsSL "${RAW_BASE}/docker-compose.yml"                   -o "${INSTALL_DIR}/docker-compose.yml" ||
+   ! curl -fsSL "${RAW_BASE}/scripts/host/run_daaf.sh"             -o "${INSTALL_DIR}/run_daaf.sh" ||
+   ! curl -fsSL "${RAW_BASE}/scripts/host/backup_daaf.sh"          -o "${INSTALL_DIR}/backup_daaf.sh" ||
+   ! curl -fsSL "${RAW_BASE}/scripts/host/rebuild_daaf.sh"         -o "${INSTALL_DIR}/rebuild_daaf.sh" ||
+   ! curl -fsSL "${RAW_BASE}/scripts/host/update_daaf.sh"          -o "${INSTALL_DIR}/update_daaf.sh" ||
+   ! curl -fsSL "${RAW_BASE}/scripts/host/view_logs.sh"            -o "${INSTALL_DIR}/view_logs.sh"; then
     echo ""
     echo "ERROR: Failed to download installation files from branch '${BRANCH}'."
     echo "Please verify that the branch name is correct and that you have an internet connection."
@@ -105,9 +105,20 @@ chmod +x "${INSTALL_DIR}/run_daaf.sh" "${INSTALL_DIR}/backup_daaf.sh" "${INSTALL
 # --- Build the Docker image ---
 echo "[3/4] Building Docker image (this may take a few minutes on first run since there are a lot of Python libraries to install)..."
 export COMPOSE_PROJECT_NAME=daaf
-if ! docker compose -f "${INSTALL_DIR}/docker-compose.yml" up -d --build; then
+# Build and start are split into two commands so that --progress plain can be
+# applied to the build step (where it is universally supported) without relying
+# on `docker compose up --progress`, which is rejected as "unknown flag" on
+# Docker Compose versions prior to ~v2.27.
+if ! docker compose -f "${INSTALL_DIR}/docker-compose.yml" build --progress plain; then
     echo ""
     echo "ERROR: Docker image build failed. Check the output above for details."
+    echo "You can safely re-run this installer to retry (set DAAF_FORCE_REINSTALL=1 if prompted)."
+    exit 1
+fi
+echo "Starting container..."
+if ! docker compose -f "${INSTALL_DIR}/docker-compose.yml" up -d; then
+    echo ""
+    echo "ERROR: Failed to start the Docker container after build. Check the output above for details."
     echo "You can safely re-run this installer to retry (set DAAF_FORCE_REINSTALL=1 if prompted)."
     exit 1
 fi
@@ -116,16 +127,24 @@ fi
 echo "      Waiting for container to be ready ..."
 RETRIES=0
 MAX_RETRIES=30
-until docker compose -f "${INSTALL_DIR}/docker-compose.yml" exec -T daaf-docker true </dev/null 2>/dev/null; do
+READY_LOG=$(mktemp)
+until docker compose -f "${INSTALL_DIR}/docker-compose.yml" exec -T daaf-docker true </dev/null 2>>"$READY_LOG"; do
     RETRIES=$((RETRIES + 1))
     if [ "${RETRIES}" -ge "${MAX_RETRIES}" ]; then
-        echo "ERROR: Container did not become ready within 60 seconds."
-        echo "Check Docker Desktop for errors, then retry with:"
-        echo "  docker compose -f ${INSTALL_DIR}/docker-compose.yml up -d"
+        echo "ERROR: Container did not become ready within 60 seconds." >&2
+        if [ -s "$READY_LOG" ]; then
+            echo "  Docker reported:" >&2
+            tail -5 "$READY_LOG" | sed 's/^/    /' >&2
+            echo "" >&2
+        fi
+        echo "Check Docker Desktop for errors, then retry with:" >&2
+        echo "  docker compose -f ${INSTALL_DIR}/docker-compose.yml up -d" >&2
+        rm -f "$READY_LOG"
         exit 1
     fi
     sleep 2
 done
+rm -f "$READY_LOG"
 
 # --- Clone the full repository into the Docker volume ---
 echo "[4/4] Cloning DAAF repository files into the Docker container ..."

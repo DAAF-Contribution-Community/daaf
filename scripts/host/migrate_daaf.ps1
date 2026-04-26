@@ -10,10 +10,10 @@
 # forward.
 #
 # Usage (one-liner):
-#   irm https://raw.githubusercontent.com/DAAF-Contribution-Community/daaf/main/migrate_daaf.ps1 | iex
+#   irm https://raw.githubusercontent.com/DAAF-Contribution-Community/daaf/main/scripts/host/migrate_daaf.ps1 | iex
 #
 # Or download and run:
-#   Invoke-WebRequest -Uri https://raw.githubusercontent.com/DAAF-Contribution-Community/daaf/main/migrate_daaf.ps1 -OutFile migrate_daaf.ps1
+#   Invoke-WebRequest -Uri https://raw.githubusercontent.com/DAAF-Contribution-Community/daaf/main/scripts/host/migrate_daaf.ps1 -OutFile migrate_daaf.ps1
 #   .\migrate_daaf.ps1
 #
 # Prerequisites:
@@ -91,6 +91,7 @@ trap {
     Write-Host "  2. Re-run:  .\migrate_daaf.ps1"
     Write-Host "     (It is safe to re-run - it will pick up where it left off.)"
     Write-Host ""
+    if ($Mutex) { try { $Mutex.ReleaseMutex() } catch {} }
     Pause-For-User; return
 }
 
@@ -111,23 +112,98 @@ function Prompt-Choice {
 }
 
 # Run a git command inside the container (strips carriage returns, suppresses stderr)
+# Uses SilentlyContinue to prevent PS 5.1 from promoting stderr to a terminating
+# error when $ErrorActionPreference is "Stop" in the caller's scope.
 function Container-Git {
     param([Parameter(ValueFromRemainingArguments=$true)]$GitArgs)
-    $result = docker exec $script:ContainerName git -C /daaf @GitArgs 2>$null | Out-String
-    return ($result -replace "`r","").Trim()
+    $savedEAP = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = "SilentlyContinue"
+        $result = docker exec $script:ContainerName git -C /daaf @GitArgs 2>$null | Out-String
+        return ($result -replace "`r","").Trim()
+    } finally {
+        $ErrorActionPreference = $savedEAP
+    }
 }
 
 # Run a git command inside the container, allowing stderr through
+# Uses SilentlyContinue to prevent PS 5.1 from promoting stderr to a terminating
+# error when $ErrorActionPreference is "Stop" in the caller's scope.
 function Container-Git-Verbose {
     param([Parameter(ValueFromRemainingArguments=$true)]$GitArgs)
-    $result = docker exec $script:ContainerName git -C /daaf @GitArgs | Out-String
-    return ($result -replace "`r","").Trim()
+    $savedEAP = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = "SilentlyContinue"
+        $result = docker exec $script:ContainerName git -C /daaf @GitArgs | Out-String
+        return ($result -replace "`r","").Trim()
+    } finally {
+        $ErrorActionPreference = $savedEAP
+    }
 }
 
 # Run an arbitrary command inside the container
+# Uses SilentlyContinue to prevent PS 5.1 from promoting stderr to a terminating
+# error when $ErrorActionPreference is "Stop" in the caller's scope.
 function Container-Exec {
     param([Parameter(ValueFromRemainingArguments=$true)]$ExecArgs)
-    docker exec $script:ContainerName @ExecArgs
+    $savedEAP = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = "SilentlyContinue"
+        docker exec $script:ContainerName @ExecArgs
+    } finally {
+        $ErrorActionPreference = $savedEAP
+    }
+}
+
+# Run a shell command inside the container, capturing stdout as a string.
+# Suppresses stderr and strips carriage returns. Returns trimmed string.
+# Uses SilentlyContinue to prevent PS 5.1 from promoting stderr to a terminating
+# error when $ErrorActionPreference is "Stop" in the caller's scope.
+function Container-Shell {
+    param([string]$ShellCommand)
+    $savedEAP = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = "SilentlyContinue"
+        $result = docker exec $script:ContainerName sh -c $ShellCommand 2>$null | Out-String
+        return ($result -replace "`r","").Trim()
+    } finally {
+        $ErrorActionPreference = $savedEAP
+    }
+}
+
+# Run a shell command inside the container, capturing stdout+stderr as a string.
+# Strips carriage returns. Returns trimmed string.
+# Uses SilentlyContinue to prevent PS 5.1 from promoting stderr to a terminating
+# error when $ErrorActionPreference is "Stop" in the caller's scope.
+function Container-Shell-Verbose {
+    param([string]$ShellCommand)
+    $savedEAP = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = "SilentlyContinue"
+        $result = docker exec $script:ContainerName sh -c $ShellCommand 2>&1 | Out-String
+        return ($result -replace "`r","").Trim()
+    } finally {
+        $ErrorActionPreference = $savedEAP
+    }
+}
+
+# =====================================================================
+# Concurrent-run lock
+# =====================================================================
+# Prevent two instances from operating on the same container simultaneously.
+# The mutex is released on normal exit or when the process terminates.
+
+$MutexName = "Global\DAAFMigrate"
+$Mutex = [System.Threading.Mutex]::new($false, $MutexName)
+try {
+    if (-not $Mutex.WaitOne(0)) {
+        Write-Host "ERROR: Another instance of migrate_daaf is already running." -ForegroundColor Red
+        Write-Host "       Wait for it to finish or restart Docker Desktop to clear the lock." -ForegroundColor Yellow
+        Pause-For-User
+        return
+    }
+} catch [System.Threading.AbandonedMutexException] {
+    # Previous instance crashed - we now own the mutex, continue
 }
 
 # =====================================================================
@@ -159,7 +235,9 @@ if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
 }
 
 # --- Docker running ---
+$savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
 $null = docker info 2>&1
+$ErrorActionPreference = $savedEAP
 if ($LASTEXITCODE -ne 0) {
     Write-Host "ERROR: Docker Desktop does not seem to be running. Please start it and try again." -ForegroundColor Red
     Pause-For-User; return
@@ -168,14 +246,16 @@ if ($LASTEXITCODE -ne 0) {
 Write-Host "Docker is running."
 
 # --- Volume exists ---
+$savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
 $null = docker volume inspect $VolumeName 2>&1
+$ErrorActionPreference = $savedEAP
 if ($LASTEXITCODE -ne 0) {
     Write-Host ""
     Write-Host "ERROR: Docker volume '$VolumeName' not found." -ForegroundColor Red
     Write-Host ""
     Write-Host "This script is for migrating an existing DAAF installation."
     Write-Host "If you haven't installed DAAF yet, use the installer instead:"
-    Write-Host "  irm $RawBase/install.ps1 | iex"
+    Write-Host "  irm $RawBase/scripts/host/install.ps1 | iex"
     Pause-For-User; return
 }
 
@@ -209,7 +289,7 @@ $DownloadFailed = $false
 
 foreach ($File in @("backup_daaf.ps1", "rebuild_daaf.ps1", "update_daaf.ps1", "run_daaf.ps1", "view_logs.ps1")) {
     try {
-        Invoke-WebRequest -UseBasicParsing -Uri "$RawBase/$File" -OutFile "$HostDir\$File"
+        Invoke-WebRequest -UseBasicParsing -Uri "$RawBase/scripts/host/$File" -OutFile "$HostDir\$File"
         Write-Host "  Downloaded: $File"
     } catch {
         Write-Host "  FAILED: $File"
@@ -307,7 +387,9 @@ Write-Host "-------------------------------------------"
 Write-Host ""
 
 # Discover container dynamically from the volume
+$savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
 $AllContainers = (docker ps -a --filter "volume=$VolumeName" --format '{{.Names}}' | Out-String) -replace "`r",""
+$ErrorActionPreference = $savedEAP
 $AllContainersList = $AllContainers.Trim() -split "`n" | Where-Object { $_.Trim() -ne "" }
 $ContainerCount = $AllContainersList.Count
 $ContainerName = if ($ContainerCount -gt 0) { $AllContainersList[0].Trim() } else { "" }
@@ -327,18 +409,22 @@ if (-not [string]::IsNullOrWhiteSpace($ContainerName)) {
     Write-Host "Found existing container: $ContainerName"
 
     # Check if it's running
+    $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
     $ContainerState = (docker inspect --format '{{.State.Status}}' $ContainerName 2>$null | Out-String).Trim() -replace "`r",""
+    $ErrorActionPreference = $savedEAP
     if ([string]::IsNullOrWhiteSpace($ContainerState)) { $ContainerState = "unknown" }
 
     if ($ContainerState -ne "running") {
         Write-Host "Container is $ContainerState. Starting it..."
+        $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
         docker start $ContainerName 2>&1 | Out-Null
+        $ErrorActionPreference = $savedEAP
 
         # Wait for readiness
         $retries = 0
         $maxRetries = 30
         while ($retries -lt $maxRetries) {
-            docker exec $ContainerName true 2>&1 | Out-Null
+            Container-Exec true 2>&1 | Out-Null
             if ($LASTEXITCODE -eq 0) { break }
             $retries++
             Start-Sleep -Seconds 2
@@ -359,7 +445,9 @@ if (-not [string]::IsNullOrWhiteSpace($ContainerName)) {
     $OriginalDirCompose = (Get-Location).Path
     Set-Location $HostDir
 
+    $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
     docker compose up -d
+    $ErrorActionPreference = $savedEAP
     if ($LASTEXITCODE -ne 0) {
         Write-Host ""
         Write-Host "ERROR: Failed to start the DAAF container." -ForegroundColor Red
@@ -374,7 +462,9 @@ if (-not [string]::IsNullOrWhiteSpace($ContainerName)) {
     }
 
     # After docker compose up, discover the container name
+    $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
     $ContainerName = (docker ps -a --filter "volume=$VolumeName" --format '{{.Names}}' | Select-Object -First 1 | Out-String).Trim() -replace "`r",""
+    $ErrorActionPreference = $savedEAP
     if ([string]::IsNullOrWhiteSpace($ContainerName)) {
         Write-Host "ERROR: Container started but could not be found." -ForegroundColor Red
         Write-Host "Try restarting Docker Desktop, then re-run:  .\migrate_daaf.ps1"
@@ -388,7 +478,7 @@ if (-not [string]::IsNullOrWhiteSpace($ContainerName)) {
     $retries = 0
     $maxRetries = 30
     while ($retries -lt $maxRetries) {
-        docker exec $ContainerName true 2>&1 | Out-Null
+        Container-Exec true 2>&1 | Out-Null
         if ($LASTEXITCODE -eq 0) { break }
         $retries++
         Start-Sleep -Seconds 2
@@ -411,7 +501,7 @@ if ($LASTEXITCODE -ne 0) {
     Write-Host "The volume exists but /daaf/CLAUDE.md was not found."
     Write-Host ""
     Write-Host "If this is a fresh installation, use the installer instead:"
-    Write-Host "  irm $RawBase/install.ps1 | iex"
+    Write-Host "  irm $RawBase/scripts/host/install.ps1 | iex"
     Pause-For-User; return
 }
 
@@ -569,7 +659,7 @@ if ($DetectedEra -eq "1") {
     Write-Host ""
 
     # --- Find the initial (root) commit ---
-    $InitialCommits = Container-Git rev-list --max-parents=0 HEAD
+    $InitialCommits = Container-Git-Verbose rev-list --max-parents=0 HEAD
 
     if ([string]::IsNullOrWhiteSpace($InitialCommits)) {
         Write-Host ""
@@ -577,7 +667,7 @@ if ($DetectedEra -eq "1") {
         Write-Host "The volume exists but no git repository was found at /daaf/."
         Write-Host ""
         Write-Host "If this is a fresh installation, use the installer instead:"
-        Write-Host "  irm $RawBase/install.ps1 | iex"
+        Write-Host "  irm $RawBase/scripts/host/install.ps1 | iex"
         Pause-For-User; return
     }
 
@@ -595,7 +685,7 @@ if ($DetectedEra -eq "1") {
     }
 
     # --- Check if graft is already in place (idempotent) ---
-    $CatFileOutput = Container-Git cat-file -p $InitialCommit
+    $CatFileOutput = Container-Git-Verbose cat-file -p $InitialCommit
     $InitialParentCount = 0
     if (-not [string]::IsNullOrWhiteSpace($CatFileOutput)) {
         $InitialParentCount = ($CatFileOutput -split "`n" | Where-Object { $_ -match '^parent ' }).Count
@@ -612,8 +702,7 @@ if ($DetectedEra -eq "1") {
 
         # Get the blob fingerprint of the initial local commit
         # We compare only (blob_hash, filepath) pairs, ignoring file modes
-        $LocalTreeRaw = docker exec $ContainerName sh -c "cd /daaf && git ls-tree -r $InitialCommit | awk '{print `$3, `$4}' | sort" 2>$null | Out-String
-        $LocalTree = ($LocalTreeRaw -replace "`r","").Trim()
+        $LocalTree = Container-Shell "cd /daaf && git ls-tree -r '$InitialCommit' | awk '{print `$3, `$4}' | sort"
 
         if ([string]::IsNullOrWhiteSpace($LocalTree)) {
             Write-Host ""
@@ -621,7 +710,7 @@ if ($DetectedEra -eq "1") {
             Write-Host "The git repository may be corrupted."
             Write-Host ""
             Write-Host "You can try a fresh install instead:"
-            Write-Host "  irm $RawBase/install.ps1 | iex"
+            Write-Host "  irm $RawBase/scripts/host/install.ps1 | iex"
             Pause-For-User; return
         }
 
@@ -663,8 +752,7 @@ if ($DetectedEra -eq "1") {
 
             Write-Host "  Checking $Candidate ($Step/$TotalCandidates)..." -NoNewline
 
-            $CandidateTreeRaw = docker exec $ContainerName sh -c "cd /daaf && git ls-tree -r $CandidateSha | awk '{print `$3, `$4}' | sort" 2>$null | Out-String
-            $CandidateTree = ($CandidateTreeRaw -replace "`r","").Trim()
+            $CandidateTree = Container-Shell "cd /daaf && git ls-tree -r '$CandidateSha' | awk '{print `$3, `$4}' | sort"
 
             if ($LocalTree -eq $CandidateTree) {
                 $MatchingCommit = $CandidateSha
@@ -699,6 +787,9 @@ if ($DetectedEra -eq "1") {
             # Run the full search inside the container in one exec call.
             # Output format: "EXACT:<sha>" or "BEST:<sha>:<overlap>:<local_count>"
             # Progress lines go to stderr (prefixed with PROGRESS:)
+            # Temporarily lower ErrorActionPreference so PS 5.1 does not promote
+            # stderr progress output to a terminating error.
+            $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
             $SearchResultRaw = docker exec $ContainerName sh -c @"
 cd /daaf
 INITIAL="$InitialCommit"
@@ -747,6 +838,7 @@ done
 rm -f /tmp/migrate_local_blobs.txt /tmp/migrate_cand_blobs.txt
 echo "BEST:`$BEST_SHA:`$BEST_OVERLAP:`$LOCAL_COUNT"
 "@ 2>&1 | Out-String
+            $ErrorActionPreference = $savedEAP
             $SearchResult = ($SearchResultRaw -replace "`r","").Trim()
 
             # Parse the result (last non-empty line matching EXACT/BEST is the result;
@@ -843,7 +935,7 @@ echo "BEST:`$BEST_SHA:`$BEST_OVERLAP:`$LOCAL_COUNT"
 
         # --- Verify the graft works ---
         Write-Host "Verifying graft..."
-        $MergeBase = Container-Git merge-base HEAD origin/main
+        $MergeBase = Container-Git-Verbose merge-base HEAD origin/main
         if (-not [string]::IsNullOrWhiteSpace($MergeBase)) {
             Write-Host "  Verified: common ancestor found ($($MergeBase.Substring(0, [Math]::Min(12, $MergeBase.Length))))"
             Write-Host "  git merge and git pull will work correctly."
@@ -861,8 +953,7 @@ echo "BEST:`$BEST_SHA:`$BEST_OVERLAP:`$LOCAL_COUNT"
         Write-Host "Fixing file permissions (ZIP downloads don't preserve executable bits)..."
 
         # Get files that are 100755 upstream but 100644 locally
-        $UpstreamExecRaw = docker exec $ContainerName sh -c "cd /daaf && git ls-tree -r $MatchingCommit | grep '^100755' | awk '{print `$4}' | sort" 2>$null | Out-String
-        $UpstreamExec = ($UpstreamExecRaw -replace "`r","").Trim()
+        $UpstreamExec = Container-Shell "cd /daaf && git ls-tree -r '$MatchingCommit' | grep '^100755' | awk '{print `$4}' | sort"
 
         $PermFixed = 0
         if (-not [string]::IsNullOrWhiteSpace($UpstreamExec)) {
@@ -983,4 +1074,5 @@ Write-Host "  .\rebuild_daaf.ps1    Rebuild the Docker image"
 Write-Host "  .\view_logs.ps1       Browse session logs"
 Write-Host ""
 
+if ($Mutex) { try { $Mutex.ReleaseMutex() } catch {} }
 Pause-For-User
