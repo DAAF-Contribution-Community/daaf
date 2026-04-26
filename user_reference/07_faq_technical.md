@@ -363,18 +363,43 @@ Election data (county presidential returns) is hosted on Harvard Dataverse, whic
 
 1. Create a free account at [dataverse.harvard.edu](https://dataverse.harvard.edu/)
 2. Log in, click your account name (top-right) → **API Token** → **Create Token**
-3. Copy the token, then run this **inside the Docker container, before launching Claude Code**:
+3. Add the key to the `.env` file in your `daaf-docker/` folder on the host:
    ```bash
-   export HARVARD_DATAVERSE_API_KEY="your_token_here"
+   HARVARD_DATAVERSE_API_KEY=your_token_here
    ```
-4. Then start Claude Code with `claude` as usual
+   If you don't have a `.env` file yet, copy the template first: `cp env.example .env` (macOS/Linux) or `Copy-Item env.example .env` (Windows).
+4. Restart the container: `docker compose down` then `bash run_daaf.sh` (or `.\run_daaf.ps1`)
 
-To make it persist across sessions, add the export line to `~/.bashrc` inside the container:
-```bash
-echo 'export HARVARD_DATAVERSE_API_KEY="your_token_here"' >> ~/.bashrc
-```
+Alternatively, you can set it manually inside the container before launching Claude Code: `export HARVARD_DATAVERSE_API_KEY="your_token_here"`
 
 See also: [Installation Guide — Data Source API Keys](01_installation_and_quickstart.md#optional-set-up-data-source-api-keys)
+
+### Q: I created a .env file but I can't see it in my file explorer
+
+This is normal! Files that start with a dot (like `.env`) are **hidden by default** on macOS, Windows, and Linux. Your file is there — you just need to tell your file explorer to show hidden files.
+
+**macOS (Finder):**
+- Press `Cmd + Shift + .` (period) to toggle hidden files on and off
+
+**Windows (File Explorer):**
+- Click **View** in the toolbar → check **Hidden items** (Windows 10)
+- Click **View** → **Show** → **Hidden items** (Windows 11)
+
+**Linux:**
+- Press `Ctrl + H` in most file managers to toggle hidden files
+
+**Or just edit from the terminal** — hidden files are always visible in the terminal:
+```bash
+cd daaf-docker
+
+# macOS / Linux
+nano .env            # or vim, or any terminal editor
+
+# Windows PowerShell
+notepad .env
+```
+
+The `.env` file is hidden because that's the convention for configuration files — it keeps your `daaf-docker/` folder looking clean while keeping the file fully accessible when you need it.
 
 ### Q: How current is the education data?
 

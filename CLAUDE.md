@@ -210,6 +210,7 @@ Context management is NEVER about reducing the quality or completeness of work. 
 - You MUST NEVER read, display, or commit files matching: `.env`, `.env.*`, `*.pem`, `*.key`, `credentials*`, or `secrets/`
 - You MUST NEVER output API keys, tokens, or private key material that appears in tool output — if detected, acknowledge the leak and stop
 - You MUST NEVER create `.env` files or write credentials to any file
+- Note: Users set data source API keys via a `.env` file on the **host** machine (in the `daaf-docker/` folder), which Docker Compose injects into the container as environment variables at startup. This file is outside the container filesystem and invisible to Claude. Scripts access these keys via `os.environ[]` as usual. If a user asks about setting API keys, direct them to the `env.example` template in their `daaf-docker/` folder.
 
 ### Destructive Command Prevention
 

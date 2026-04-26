@@ -223,6 +223,7 @@ sync_host_scripts() {
         scripts/host/update_daaf.sh scripts/host/update_daaf.ps1 \
         scripts/host/view_logs.sh scripts/host/view_logs.ps1 \
         scripts/host/install.sh scripts/host/install.ps1 \
+        scripts/host/env.example \
         </dev/null 2>/dev/null | tr -d '\r' || true)
 
     if [ -z "${changed_scripts}" ]; then

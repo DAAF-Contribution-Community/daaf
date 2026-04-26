@@ -93,7 +93,8 @@ if ! curl -fsSL "${RAW_BASE}/Dockerfile"                          -o "${INSTALL_
    ! curl -fsSL "${RAW_BASE}/scripts/host/backup_daaf.sh"          -o "${INSTALL_DIR}/backup_daaf.sh" ||
    ! curl -fsSL "${RAW_BASE}/scripts/host/rebuild_daaf.sh"         -o "${INSTALL_DIR}/rebuild_daaf.sh" ||
    ! curl -fsSL "${RAW_BASE}/scripts/host/update_daaf.sh"          -o "${INSTALL_DIR}/update_daaf.sh" ||
-   ! curl -fsSL "${RAW_BASE}/scripts/host/view_logs.sh"            -o "${INSTALL_DIR}/view_logs.sh"; then
+   ! curl -fsSL "${RAW_BASE}/scripts/host/view_logs.sh"            -o "${INSTALL_DIR}/view_logs.sh" ||
+   ! curl -fsSL "${RAW_BASE}/scripts/host/env.example"             -o "${INSTALL_DIR}/env.example"; then
     echo ""
     echo "ERROR: Failed to download installation files from branch '${BRANCH}'."
     echo "Please verify that the branch name is correct and that you have an internet connection."
@@ -211,11 +212,15 @@ echo "     - Press ESC to return to the chat"
 echo ""
 echo "Convenience scripts (in ${INSTALL_DIR}):"
 echo "  bash run_daaf.sh             Launch Claude Code (starts container if needed)"
-echo "  bash run_daaf.sh bash        Enter the container shell (e.g., for API keys)"
+echo "  bash run_daaf.sh bash        Enter the container shell"
 echo "  bash backup_daaf.sh          Back up the Docker volume to a dated folder"
 echo "  bash update_daaf.sh           Check for and apply DAAF updates"
 echo "  bash rebuild_daaf.sh         Copy build files from container and rebuild image"
 echo "  bash view_logs.sh            Browse session logs in your browser"
+echo ""
+echo "To set up data source API keys (optional):"
+echo "  cp env.example .env          Copy the template"
+echo "  Edit .env with your keys, then restart with: bash run_daaf.sh"
 echo ""
 echo "Manual alternative (if you prefer individual commands):"
 echo "  docker compose exec daaf-docker bash   # enter the container"

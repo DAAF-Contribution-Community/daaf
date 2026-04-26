@@ -216,26 +216,66 @@ Most DAAF data sources — including all built-in education data from the Urban 
 
 However, some data domains require API keys from their hosting platforms. The table below shows API keys for data sources that ship with DAAF. When you onboard a new data source from an API via Data Onboarding Mode, DAAF will guide you through setting up the appropriate environment variable using the same pattern shown here. You can set multiple API keys simultaneously — each uses a unique environment variable name.
 
-If you plan to use any of these data sources, you'll need to set the corresponding environment variable **inside the Docker container, before launching Claude Code**:
-
 | Data Source | Environment Variable | Where to Get a Key |
 |-------------|---------------------|-------------------|
 | County Presidential Election Returns (Harvard Dataverse) | `HARVARD_DATAVERSE_API_KEY` | [dataverse.harvard.edu](https://dataverse.harvard.edu/) → Log in → Account name (top-right) → API Token → Create Token |
 
-To set a key for your current session:
+#### Recommended: Use a .env file (persistent across restarts)
 
+Your `daaf-docker` folder includes an `env.example` template. Copy it to `.env` and fill in your keys:
+
+**macOS / Linux (Terminal):**
 ```bash
-# Run this inside the Docker container, BEFORE running `claude`
-export HARVARD_DATAVERSE_API_KEY="your_token_here"
+cd daaf-docker
+cp env.example .env
 ```
 
-To make it persist across container restarts, add the `export` line to `~/.bashrc` inside the container:
+**Windows (PowerShell):**
+```powershell
+cd daaf-docker
+Copy-Item env.example .env
+```
+
+Then open `.env` in any text editor and uncomment/fill in the keys you need:
+
+```bash
+# Remove the leading # and replace the placeholder with your actual key
+HARVARD_DATAVERSE_API_KEY=your_token_here
+```
+
+The `.env` file is loaded automatically when the container starts. After editing it, restart the container to pick up the changes:
+
+```bash
+docker compose down
+bash run_daaf.sh            # macOS / Linux
+.\run_daaf.ps1              # Windows
+```
+
+> **Security note:** The `.env` file lives on your host machine (in `daaf-docker/`), is gitignored by default, and is never visible to Claude inside the container. DAAF's safety guardrails prevent Claude from reading or writing `.env` files by design — your credentials stay strictly on your side of the boundary.
+
+#### Alternative: Set keys manually in the container shell
+
+If you prefer not to use a `.env` file, you can set environment variables directly inside the container before launching Claude Code:
+
+```bash
+# Enter the container shell
+bash run_daaf.sh bash        # macOS / Linux
+.\run_daaf.ps1 bash          # Windows
+
+# Set the key for this session
+export HARVARD_DATAVERSE_API_KEY="your_token_here"
+
+# Then launch Claude Code
+claude
+```
+
+To make manual exports persist across container restarts, add the `export` line to `~/.bashrc` inside the container:
 
 ```bash
 echo 'export HARVARD_DATAVERSE_API_KEY="your_token_here"' >> ~/.bashrc
 ```
 
-> **Note:** DAAF's safety guardrails prevent Claude from reading or writing `.env` files, so environment variables must be set directly in the shell. This is by design — your credentials stay in temporary memory only and are never written to files that could be accidentally committed to a public repository or shared outside the container.
+Note that the `.env` file approach above is simpler and recommended — it persists automatically and you can edit it with your normal text editor on your computer without entering the container.
 
 If you skip this step and later try to analyze election data, DAAF will inform you that the API key is missing and point you back to these instructions.
 
@@ -623,7 +663,7 @@ Port 2719 is mapped in `docker-compose.yml` for this purpose, alongside port 271
   ```bash
   docker run --rm -v "daaf_daaf-data:/daaf" busybox chown -R 1000:1000 /daaf
   ```
-- **Claude Code asks for an API key every time** — Claude Code stores its configuration inside the Docker volume, so it persists across normal container restarts. However, if your authentication state is lost, you can persist your API key by adding it to `~/.bashrc` inside the container: `echo 'export ANTHROPIC_API_KEY="your_key_here"' >> ~/.bashrc`. Note: DAAF's safety guardrails prevent Claude from reading `.env` files, so environment variables should be set directly in the shell or via `~/.bashrc` (consistent with the API key setup in Step 8).
+- **Claude Code asks for an API key every time** — Claude Code stores its configuration inside the Docker volume, so it persists across normal container restarts. However, if your authentication state is lost, you can persist your API key by adding it to `~/.bashrc` inside the container: `echo 'export ANTHROPIC_API_KEY="your_key_here"' >> ~/.bashrc`. Note: The `.env` file in your `daaf-docker` folder is for **data source** API keys (like Harvard Dataverse), not for your Anthropic API key — Claude Code manages its own authentication separately.
 
 ---
 

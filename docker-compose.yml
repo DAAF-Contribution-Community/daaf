@@ -13,6 +13,9 @@ services:
 
   daaf-docker:
     build: .
+    env_file:                      # Requires Docker Compose v2.17+ (Docker Desktop 4.15+)
+      - path: .env
+        required: false         # Container starts normally if .env doesn't exist
     ports:
       - "2718:2718"   # Marimo notebook server
       - "2719:2719"   # Session log viewer

@@ -394,8 +394,9 @@ Use this skeleton instead of (or in addition to) the mirror-based skeleton above
 ### Prerequisites
 
 > **API Key Required:** This data source requires authentication.
-> Set the `[ENV_VAR_NAME]` environment variable before launching Claude Code.
-> See the [Installation Guide — Set up data source API keys](../user_reference/01_installation_and_quickstart.md#step-8-optional-set-up-data-source-api-keys) for setup instructions.
+> Add `[ENV_VAR_NAME]=your_key_here` to the `.env` file in your `daaf-docker/` folder
+> (copy `env.example` to `.env` if you haven't already), then restart the container.
+> See the [Installation Guide — Set up data source API keys](../user_reference/01_installation_and_quickstart.md#optional-set-up-data-source-api-keys) for setup instructions.
 
 | Requirement | Details |
 |-------------|---------|

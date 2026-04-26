@@ -38,12 +38,13 @@ The authoritative source for county-level U.S. presidential election returns spa
 > 1. Create a free Harvard Dataverse account at https://dataverse.harvard.edu/
 > 2. Log in, navigate to your account name (top-right) → API Token
 > 3. Click "Create Token" and copy it
-> 4. Set the environment variable **before launching Claude Code**:
+> 4. Add it to the `.env` file in your `daaf-docker/` folder on the host machine:
 >    ```bash
->    export HARVARD_DATAVERSE_API_KEY="your_token_here"
+>    HARVARD_DATAVERSE_API_KEY=your_token_here
 >    ```
->    For Docker users: enter the container shell with `bash run_daaf.sh bash` (or `.\run_daaf.ps1 bash` on Windows)
->    but before `claude`. To make it persistent across sessions, add it to `~/.bashrc`.
+>    If you don't have a `.env` file yet, copy the template: `cp env.example .env`
+>    (or `Copy-Item env.example .env` on Windows). Then restart the container with `run_daaf`.
+>    Alternatively, set it manually inside the container: `export HARVARD_DATAVERSE_API_KEY="your_token_here"`
 >
 > **If the key is missing**, any fetch script will fail with a `KeyError: 'HARVARD_DATAVERSE_API_KEY'`.
 > The orchestrator should check for this variable's existence before dispatching Stage 5 fetch tasks

@@ -295,7 +295,8 @@ function Sync-HostScripts {
         scripts/host/rebuild_daaf.sh scripts/host/rebuild_daaf.ps1 `
         scripts/host/update_daaf.sh scripts/host/update_daaf.ps1 `
         scripts/host/view_logs.sh scripts/host/view_logs.ps1 `
-        scripts/host/install.sh scripts/host/install.ps1
+        scripts/host/install.sh scripts/host/install.ps1 `
+        scripts/host/env.example
 
     if ([string]::IsNullOrWhiteSpace($changedScripts)) { return }
 
