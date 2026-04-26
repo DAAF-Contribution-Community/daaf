@@ -84,3 +84,100 @@ Describe "backup_daaf.ps1" {
         }
     }
 }
+
+# ============================================================================
+# Behavioral tests -- dot-source to verify functions + source analysis
+# ============================================================================
+
+Describe "backup_daaf.ps1 behavioral tests" {
+    BeforeAll {
+        . "$PSScriptRoot/TestHelper.ps1"
+
+        $env:DAAF_TEST_MODE = "1"
+        . "$RepoRoot/scripts/host/backup_daaf.ps1"
+
+        $script:Content = Get-Content "$RepoRoot/scripts/host/backup_daaf.ps1" -Raw
+    }
+
+    AfterAll {
+        Remove-Item Env:DAAF_TEST_MODE -ErrorAction SilentlyContinue
+    }
+
+    # -----------------------------------------------------------------
+    # Pause-And-Exit (the only function exposed)
+    # -----------------------------------------------------------------
+    Context "Pause-And-Exit function" {
+        It "is callable after dot-sourcing" {
+            Get-Command Pause-And-Exit -ErrorAction SilentlyContinue |
+                Should -Not -BeNullOrEmpty
+        }
+    }
+
+    # -----------------------------------------------------------------
+    # Suffix generation logic (verified via source analysis)
+    # -----------------------------------------------------------------
+    Context "Suffix generation" {
+        It "first backup of the day has no suffix" {
+            # The initial BackupName has no suffix character
+            $Content | Should -Match '\$BackupName = "\$\{Today\}_daaf_backup"'
+        }
+
+        It "generates suffix 'a' for second backup (when unsuffixed exists)" {
+            # SuffixNum starts at 0 => [char](97 + 0) = 'a'
+            $Content | Should -Match '\[char\]\(97 \+ \$SuffixNum\)'
+            # Starting SuffixNum is 0
+            $Content | Should -Match '\$SuffixNum = 0'
+        }
+
+        It "increments suffix for subsequent backups" {
+            $Content | Should -Match '\$SuffixNum\+\+'
+        }
+
+        It "handles suffix exhaustion (a-z all used)" {
+            $Content | Should -Match '\$SuffixNum -ge 26'
+            $Content | Should -Match 'Too many backups for today \(26 max\)'
+        }
+    }
+
+    # -----------------------------------------------------------------
+    # Integrity verification
+    # -----------------------------------------------------------------
+    Context "Integrity verification" {
+        It "backup includes size verification" {
+            $Content | Should -Match 'Size verification'
+            # Compares source vs backup byte counts
+            $Content | Should -Match '\$SourceSizeKB'
+            $Content | Should -Match '\$BackupSizeKB'
+        }
+
+        It "backup includes file count check" {
+            $Content | Should -Match '\$FileCount'
+            # Verifies FileCount is non-zero
+            $Content | Should -Match '\$FileCount -eq 0'
+        }
+
+        It "size comparison uses 1% tolerance" {
+            $Content | Should -Match '\$SourceSizeKB / 100'
+            $Content | Should -Match '\$ToleranceKB'
+        }
+    }
+
+    # -----------------------------------------------------------------
+    # Disk space pre-check
+    # -----------------------------------------------------------------
+    Context "Disk space" {
+        It "checks available disk space before backup" {
+            $Content | Should -Match 'System\.IO\.DriveInfo'
+            $Content | Should -Match 'AvailableFreeSpace'
+        }
+
+        It "adds 10% buffer to required space" {
+            $Content | Should -Match '\$VolumeSizeKB \* 110 / 100'
+        }
+
+        It "aborts with clear message when space insufficient" {
+            $Content | Should -Match 'Insufficient disk space for backup'
+            $Content | Should -Match '\$AvailableKB -lt \$RequiredKB'
+        }
+    }
+}

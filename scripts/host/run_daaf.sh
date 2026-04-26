@@ -8,6 +8,8 @@
 #   cd daaf-docker
 #   bash run_daaf.sh          # Start container + launch Claude Code
 #   bash run_daaf.sh bash     # Start container + drop into bash shell
+#
+# Supports DAAF_TEST_MODE=1 for test framework sourcing (see tests/).
 # ============================================================================
 
 set -euo pipefail
@@ -18,6 +20,13 @@ if [ -z "${DAAF_NESTED:-}" ]; then
 fi
 
 COMMAND="${1:-claude}"
+
+# --- Test Mode Guard ---
+# When sourced for testing, define functions but skip execution.
+# Usage: DAAF_TEST_MODE=1 source scripts/host/run_daaf.sh
+if [ "${DAAF_TEST_MODE:-}" = "1" ]; then
+    return 0 2>/dev/null || exit 0
+fi
 
 # --- Preflight ---
 if [ ! -f "docker-compose.yml" ]; then
@@ -49,6 +58,28 @@ if [ "${RUNNING}" -eq 0 ]; then
     echo "Container started."
 else
     echo "DAAF container is already running."
+    # Check if .env has been modified since the container was created
+    if [ -f ".env" ]; then
+        _cid=$(docker compose ps -q daaf-docker 2>/dev/null || true)
+        if [ -n "${_cid}" ]; then
+            _created=$(docker inspect --format '{{.Created}}' "${_cid}" 2>/dev/null || true)
+            # Get .env mtime as epoch (Linux: -c %Y, macOS: -f %m)
+            _env_epoch=$(stat -c %Y .env 2>/dev/null || stat -f %m .env 2>/dev/null || echo "")
+            # Convert container creation ISO timestamp to epoch (Linux: date -d, macOS: date -j -f)
+            # Strip fractional seconds and trailing Z for macOS BSD date compatibility
+            _ts_clean=$(echo "${_created}" | sed 's/\.[0-9]*Z$//' | sed 's/Z$//')
+            _ctr_epoch=$(date -d "${_created}" +%s 2>/dev/null || \
+                date -j -f "%Y-%m-%dT%H:%M:%S" "${_ts_clean}" +%s 2>/dev/null || \
+                echo "")
+            if [ -n "${_ctr_epoch}" ] && [ -n "${_env_epoch}" ] && [ "${_env_epoch}" -gt "${_ctr_epoch}" ]; then
+                echo ""
+                echo "NOTE: Your .env file has been modified since this container was started."
+                echo "      To apply .env changes, close all DAAF sessions, then run:"
+                echo "        docker compose down"
+                echo "        bash run_daaf.sh"
+            fi
+        fi
+    fi
 fi
 
 echo ""

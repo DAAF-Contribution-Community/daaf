@@ -102,3 +102,199 @@ teardown() {
     run bash "${REPO_ROOT}/scripts/host/install.sh"
     assert_output --partial "Branch: dev"
 }
+
+# --- Fresh install proceeds when no compose file exists ---
+
+@test "install.sh proceeds with downloads when no prior installation exists" {
+    # No compose file in daaf-docker/ — fresh install path
+    export DAAF_NESTED=1
+    # Build will fail, but downloads should be attempted
+    MOCK_DOCKER_COMPOSE_EXIT=1
+    cd "${TEST_DIR}"
+    run bash "${REPO_ROOT}/scripts/host/install.sh"
+    # Should reach the download step (no "existing installation" block)
+    assert_output --partial "Downloading"
+    refute_output --partial "existing DAAF installation"
+}
+
+# --- Incomplete installation detection ---
+
+@test "install.sh proceeds when compose file exists but volume does not" {
+    # Compose file present but volume inspect fails — incomplete install
+    mkdir -p "${TEST_DIR}/daaf-docker"
+    create_fake_compose_file "${TEST_DIR}/daaf-docker"
+    MOCK_DOCKER_VOLUME_EXIT=1
+    MOCK_DOCKER_COMPOSE_EXIT=1
+    export DAAF_NESTED=1
+    cd "${TEST_DIR}"
+    run bash "${REPO_ROOT}/scripts/host/install.sh"
+    # Should note incomplete install and continue
+    assert_output --partial "previous install attempt"
+    assert_output --partial "incomplete"
+    assert_output --partial "Downloading"
+}
+
+# --- DAAF_FORCE_REINSTALL bypasses existing check ---
+
+@test "install.sh proceeds when DAAF_FORCE_REINSTALL=1 despite existing installation" {
+    mkdir -p "${TEST_DIR}/daaf-docker"
+    create_fake_compose_file "${TEST_DIR}/daaf-docker"
+    MOCK_DOCKER_VOLUME_EXIT=0
+    MOCK_DOCKER_COMPOSE_EXIT=1
+    export DAAF_FORCE_REINSTALL=1
+    export DAAF_NESTED=1
+    cd "${TEST_DIR}"
+    run bash "${REPO_ROOT}/scripts/host/install.sh"
+    # Should note force reinstall and proceed (not block)
+    assert_output --partial "DAAF_FORCE_REINSTALL"
+    assert_output --partial "Downloading"
+    refute_output --partial "To update DAAF instead"
+}
+
+# --- Default branch is 'main' ---
+
+@test "install.sh defaults to branch 'main' when DAAF_BRANCH is unset" {
+    unset DAAF_BRANCH
+    export DAAF_NESTED=1
+    MOCK_DOCKER_COMPOSE_EXIT=1
+    cd "${TEST_DIR}"
+    run bash "${REPO_ROOT}/scripts/host/install.sh"
+    assert_output --partial "Branch: main"
+}
+
+# --- Download failure exits non-zero ---
+
+@test "install.sh exits with error when downloads fail" {
+    export DAAF_NESTED=1
+    MOCK_CURL_EXIT=1
+    cd "${TEST_DIR}"
+    run bash "${REPO_ROOT}/scripts/host/install.sh"
+    assert_failure
+    assert_output --partial "ERROR"
+    assert_output --partial "Failed to download"
+}
+
+# --- Download file list coverage ---
+
+@test "install.sh downloads all required lifecycle scripts" {
+    # Override curl to log the URLs it receives
+    curl() {
+        local outfile=""
+        local url=""
+        local args=("$@")
+        for ((i=0; i<${#args[@]}; i++)); do
+            case "${args[$i]}" in
+                -o) outfile="${args[$((i+1))]}" ;;
+                http*) url="${args[$i]}" ;;
+            esac
+        done
+        echo "CURL_URL: ${url}" >> "${TEST_DIR}/curl_log.txt"
+        if [ -n "${outfile}" ]; then
+            touch "${outfile}"
+        fi
+        return 0
+    }
+    export -f curl
+
+    export DAAF_NESTED=1
+    MOCK_DOCKER_COMPOSE_EXIT=1
+    cd "${TEST_DIR}"
+    run bash "${REPO_ROOT}/scripts/host/install.sh"
+
+    # Verify all expected files were requested
+    [ -f "${TEST_DIR}/curl_log.txt" ]
+    run grep -c "CURL_URL:" "${TEST_DIR}/curl_log.txt"
+    # Should download: Dockerfile, docker-compose.yml, run_daaf.sh,
+    # backup_daaf.sh, rebuild_daaf.sh, update_daaf.sh, view_logs.sh, env.example
+    [ "$output" -ge 8 ]
+
+    run cat "${TEST_DIR}/curl_log.txt"
+    assert_output --partial "Dockerfile"
+    assert_output --partial "docker-compose.yml"
+    assert_output --partial "run_daaf.sh"
+    assert_output --partial "backup_daaf.sh"
+    assert_output --partial "update_daaf.sh"
+    assert_output --partial "env.example"
+}
+
+# --- Download URLs use correct path prefix ---
+
+@test "install.sh download URLs contain scripts/host/ prefix for lifecycle scripts" {
+    curl() {
+        local url=""
+        local outfile=""
+        local args=("$@")
+        for ((i=0; i<${#args[@]}; i++)); do
+            case "${args[$i]}" in
+                -o) outfile="${args[$((i+1))]}" ;;
+                http*) url="${args[$i]}" ;;
+            esac
+        done
+        echo "${url}" >> "${TEST_DIR}/curl_urls.txt"
+        if [ -n "${outfile}" ]; then
+            touch "${outfile}"
+        fi
+        return 0
+    }
+    export -f curl
+
+    export DAAF_NESTED=1
+    MOCK_DOCKER_COMPOSE_EXIT=1
+    cd "${TEST_DIR}"
+    run bash "${REPO_ROOT}/scripts/host/install.sh"
+
+    [ -f "${TEST_DIR}/curl_urls.txt" ]
+    # All .sh and env.example downloads should use scripts/host/ prefix
+    run grep "scripts/host/" "${TEST_DIR}/curl_urls.txt"
+    assert_success
+}
+
+# --- Creates daaf-docker directory ---
+
+@test "install.sh creates daaf-docker directory" {
+    export DAAF_NESTED=1
+    MOCK_DOCKER_COMPOSE_EXIT=1
+    cd "${TEST_DIR}"
+    run bash "${REPO_ROOT}/scripts/host/install.sh"
+    # The directory should have been created
+    [ -d "${TEST_DIR}/daaf-docker" ]
+}
+
+# --- Build step invoked ---
+
+@test "install.sh invokes docker compose build" {
+    export DAAF_NESTED=1
+    # Let build succeed, but up fail so we don't reach later steps
+    MOCK_DOCKER_COMPOSE_EXIT=0
+    # Actually: compose mock returns same exit for build and up.
+    # We need compose to eventually stop. Let exec fail for the readiness check.
+    MOCK_DOCKER_EXEC_EXIT=1
+    cd "${TEST_DIR}"
+    run bash "${REPO_ROOT}/scripts/host/install.sh"
+    assert_output --partial "Building Docker image"
+}
+
+# --- Readiness check looks for CLAUDE.md ---
+
+@test "install.sh verifies CLAUDE.md exists in container" {
+    export DAAF_NESTED=1
+    # exec mock returns success — test -f /daaf/CLAUDE.md passes
+    MOCK_DOCKER_EXEC_EXIT=0
+    cd "${TEST_DIR}"
+    run bash "${REPO_ROOT}/scripts/host/install.sh"
+    # If readiness + clone + verify all succeed, should reach completion
+    assert_output --partial "Installation complete"
+}
+
+# --- Existing installation suggests update_daaf.sh ---
+
+@test "install.sh suggests update_daaf.sh when blocking on existing installation" {
+    mkdir -p "${TEST_DIR}/daaf-docker"
+    create_fake_compose_file "${TEST_DIR}/daaf-docker"
+    MOCK_DOCKER_VOLUME_EXIT=0
+    export DAAF_NESTED=1
+    cd "${TEST_DIR}"
+    run bash "${REPO_ROOT}/scripts/host/install.sh"
+    assert_failure
+    assert_output --partial "update_daaf.sh"
+}

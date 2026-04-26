@@ -19,6 +19,8 @@
 # Usage:
 #   cd daaf-docker
 #   bash rebuild_daaf.sh
+#
+# Supports DAAF_TEST_MODE=1 for test framework sourcing (see tests/).
 # ============================================================================
 
 set -euo pipefail
@@ -29,6 +31,13 @@ if [ -z "${DAAF_NESTED:-}" ]; then
 fi
 
 CONTAINER_NAME="daaf-daaf-docker-1"
+
+# --- Test Mode Guard ---
+# When sourced for testing, define functions but skip execution.
+# Usage: DAAF_TEST_MODE=1 source scripts/host/rebuild_daaf.sh
+if [ "${DAAF_TEST_MODE:-}" = "1" ]; then
+    return 0 2>/dev/null || exit 0
+fi
 
 echo ""
 echo "=========================================="

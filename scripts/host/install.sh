@@ -15,6 +15,8 @@
 # Prerequisites:
 #   - Docker Desktop installed and running
 #   - Internet connection
+#
+# Supports DAAF_TEST_MODE=1 for test framework sourcing (see tests/).
 # ============================================================================
 
 set -euo pipefail
@@ -30,6 +32,13 @@ REPO="DAAF-Contribution-Community/daaf"
 BRANCH="${DAAF_BRANCH:-main}"
 RAW_BASE="https://raw.githubusercontent.com/${REPO}/${BRANCH}"
 INSTALL_DIR="$(pwd)/daaf-docker"
+
+# --- Test Mode Guard ---
+# When sourced for testing, define functions but skip execution.
+# Usage: DAAF_TEST_MODE=1 source scripts/host/install.sh
+if [ "${DAAF_TEST_MODE:-}" = "1" ]; then
+    return 0 2>/dev/null || exit 0
+fi
 
 echo ""
 echo "=========================================="

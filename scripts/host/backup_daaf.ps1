@@ -11,6 +11,8 @@
 #   2026-04-21_daaf_backup\     (first backup of the day)
 #   2026-04-21a_daaf_backup\    (second backup)
 #   2026-04-21b_daaf_backup\    (third backup)
+#
+# Supports $env:DAAF_TEST_MODE = "1" for Pester test dot-sourcing (see tests/).
 # ============================================================================
 
 $ErrorActionPreference = "Stop"
@@ -22,6 +24,13 @@ function Pause-And-Exit {
         Read-Host "Press Enter to continue"
     }
     exit $Code
+}
+
+# --- Test Mode Guard ---
+# When dot-sourced for testing, define functions but skip execution.
+# Usage: $env:DAAF_TEST_MODE = "1"; . ./scripts/host/backup_daaf.ps1
+if ($env:DAAF_TEST_MODE -eq "1") {
+    return
 }
 
 # --- Configuration ---

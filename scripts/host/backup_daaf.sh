@@ -12,6 +12,8 @@
 #   2026-04-21_daaf_backup/     (first backup of the day)
 #   2026-04-21a_daaf_backup/    (second backup)
 #   2026-04-21b_daaf_backup/    (third backup)
+#
+# Supports DAAF_TEST_MODE=1 for test framework sourcing (see tests/).
 # ============================================================================
 
 set -euo pipefail
@@ -24,6 +26,13 @@ fi
 # --- Configuration ---
 VOLUME_NAME="daaf_daaf-data"
 TODAY=$(date +%Y-%m-%d)
+
+# --- Test Mode Guard ---
+# When sourced for testing, define functions but skip execution.
+# Usage: DAAF_TEST_MODE=1 source scripts/host/backup_daaf.sh
+if [ "${DAAF_TEST_MODE:-}" = "1" ]; then
+    return 0 2>/dev/null || exit 0
+fi
 
 echo ""
 echo "=========================================="

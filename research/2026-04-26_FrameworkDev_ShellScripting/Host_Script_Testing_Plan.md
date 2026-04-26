@@ -1,0 +1,686 @@
+# Host Script Testing Plan
+
+**Created:** 2026-04-26
+**Context:** Framework Development session — CI pipeline and testing infrastructure
+**Status:** Plan — reviewed and revised, awaiting implementation in a new session
+**Reviewed by:** 2 search-agent subagents (feasibility + cross-platform/CI architecture)
+
+---
+
+## Session Context for New Agents
+
+This plan was produced during a Framework Development session that accomplished the following (all committed on branch `minor_revisions_v202`):
+
+1. **Created the `shell-scripting` skill** (`.claude/skills/shell-scripting/`) — DAAF coding standards for Bash and PowerShell scripts, with 5 reference files covering bash standards, PowerShell standards, error handling, testing (BATS/Pester/CI), and cross-platform gotchas.
+
+2. **Built a 7-job CI pipeline** (`.github/workflows/ci-scripts.yml`) — ShellCheck lint, PSScriptAnalyzer lint (Linux pwsh 7 + Windows PS 5.1), hygiene checks (executable bits, LF endings, script pair parity), BATS tests, Pester tests, and DAAF convention lint. PSScriptAnalyzer config lives at `.github/linters/PSScriptAnalyzerSettings.psd1`.
+
+3. **Created test infrastructure** (`tests/`) — 7 BATS test files + shared helper with Docker mocking (60+ tests), 7 Pester test files + shared helper (111+ tests), and a custom DAAF convention lint script. Added ShellCheck to `.pre-commit-config.yaml`.
+
+4. **Applied safety fixes** to lifecycle scripts — concurrent-run locking (flock/mutex) on migrate_daaf and update_daaf, SHA quoting in sh -c strings, verbose git for error-sensitive operations, disk space pre-check and size-based backup verification, cp -a parity fix, JSON injection fix in recover-session-logs.sh.
+
+5. **Moved all 14 lifecycle scripts** from repo root to `scripts/host/` — updated all internal cross-references (GitHub raw download URLs, container sync paths), CI workflow, test files, and documentation. Root directory went from 30 items to 16.
+
+**This plan** covers the NEXT phase of work: making the lifecycle scripts deeply testable via test mode guards, enhanced mock tests, dry-run mode, cross-platform smoke tests, and Docker integration tests. Read the "Review Findings & Revisions" section first — it contains critical corrections to the original plan body below.
+
+---
+
+## Review Findings & Revisions (2026-04-26)
+
+The plan was reviewed by two independent agents. Key corrections incorporated below:
+
+### Critical Corrections
+
+1. **5 of 7 scripts have NO functions (install, backup, rebuild, run, view_logs).** The `DAAF_TEST_MODE` guard is only useful for `update_daaf` and `migrate_daaf`, which define testable helper functions. The other 5 scripts are entirely inline logic. **Revised approach:** Phase 2 unit tests apply only to update_daaf and migrate_daaf. The function-less scripts are tested via Phase 3 dry-run + Phase 5 integration only. Phase 2C (install tests) and 2D (backup tests) are reclassified as dry-run behavioral tests under Phase 3.
+
+2. **`flock` is Linux-only — will fail on macOS.** The concurrent-run locking added to update_daaf.sh and migrate_daaf.sh uses `flock`, which is not available on macOS. **Fix:** Add a platform-aware locking wrapper that uses `flock` on Linux and `shlock` or mkdir-based locking on macOS. Alternatively, the dry-run mode must skip the locking block entirely. This is a **blocker for Phase 4 macOS smoke tests**.
+
+3. **Guard must use `return 0 2>/dev/null || exit 0`** (not `|| true`). The `|| true` variant silently continues execution if the script is run directly (not sourced), defeating the purpose. `|| exit 0` safely exits in both contexts.
+
+4. **Guard placement: between last function definition and the `flock` block.** The plan must explicitly state this to prevent the guard from being placed after the lock, which would create side-effect lock files during testing.
+
+5. **Dry-run mode needs TWO categories of Docker command wrappers:**
+   - **Fire-and-forget** (`docker compose up`, `docker cp`, `curl`): print `[DRY-RUN]` and return 0
+   - **Output-producing** (`docker compose ps`, `docker run ... find | wc -l`, `docker exec ... git rev-list`): return realistic mock output, not just a dry-run message. Scripts that parse Docker output will break if they receive `[DRY-RUN]` text instead of expected formats.
+
+6. **Dry-run must also bypass preflight checks.** `command -v docker` and `docker info` gates run before any wrapped command. On CI runners without Docker (macOS), these will fail. The preflight section needs a dry-run check: `if [ "${DAAF_DRY_RUN:-}" != "1" ]; then ... fi`
+
+### Additional Test Cases Identified
+
+7. **`handle_conflict()` in update_daaf is untested.** This ~107-line function handles merge conflict resolution, interactive Claude Code launch, conflict file detection, and abort command construction. It is the highest-risk user interaction point and must be added to Phase 2A.
+
+8. **ERR trap fires during test mode.** Both update_daaf and migrate_daaf register ERR traps before the test mode guard. If mocked functions return non-zero, the trap fires with alarming error messages. Tests must unregister the trap after sourcing: `trap - ERR`
+
+9. **`sync_host_scripts` partial failure.** The function's `docker cp ... 2>/dev/null` silently swallows per-file copy failures. Add a test for partial sync (some files succeed, some fail).
+
+10. **Backup suffix gap-filling behavior.** When lettered backups have gaps (a exists, b deleted, c exists), the script finds the first available slot. Add a test confirming this behavior.
+
+### CI Architecture Corrections
+
+11. **Integration workflow should also trigger on release tags:** `push: tags: ['v*']` ensures every release is validated end-to-end.
+
+12. **Add Docker cleanup to integration workflow:** `docker compose down -v --rmi local` as a final `if: always()` step.
+
+13. **`windows-latest` now points to Windows Server 2025.** PowerShell 5.1 has a known `Invoke-WebRequest` NonInteractive mode issue on recent images. Consider pinning to `windows-2022` if PS 5.1 tests prove flaky.
+
+14. **Bash 3.2 on macOS is confirmed** (Apple has not updated past 3.2.57 due to GPLv3). Scripts correctly avoid bash 4+ features (no associative arrays, no mapfile), but `set -u` with empty arrays needs auditing.
+
+15. **BATS is NOT pre-installed on macos-latest** — requires `brew install bats-core` or `bats-core/bats-action`. Current CI correctly runs BATS only on ubuntu-latest.
+
+### Revised Phase Structure
+
+```
+Phase 1 (Test Mode Guards)     ─── update_daaf + migrate_daaf ONLY (2 scripts × 2 languages = 4 files)
+    │
+    ├── Phase 2 (Enhanced Mocks) ── update_daaf + migrate_daaf behavioral tests only
+    │                                (~37 BATS cases + ~32 Pester cases)
+    │
+    └── Phase 3 (Dry-Run Mode)  ── ALL 14 scripts; includes install/backup/rebuild behavioral tests
+            │                       Two wrapper categories: fire-and-forget vs output-producing
+            │                       Must bypass preflight checks + locking
+            │
+            └── Phase 4 (Smoke CI) ── Must resolve flock-on-macOS before enabling macOS runner
+                                      Add as Job 8 in ci-scripts.yml (not separate workflow)
+
+Phase 5 (Integration Tests)    ── ci-integration.yml; trigger on schedule + dispatch + release tags
+                                   Add Docker cleanup step; 30-min timeout is adequate
+```
+
+### Open Questions Updated
+
+- **Q1 resolved:** macOS bash 3.2 is confirmed. Audit `set -u` + empty array patterns before Phase 4.
+- **Q2 revised:** Pester behavioral tests are feasible for update_daaf.ps1 and migrate_daaf.ps1 (which have functions). For function-less scripts, structural + smoke testing is sufficient.
+- **Q5 (new):** Should we fix the flock-on-macOS issue *before* this plan (as a safety fix), or as part of Phase 3 (dry-run would bypass it anyway)? Recommendation: fix it now since macOS users could encounter it in normal usage, not just CI.
+
+---
+
+## Goal
+
+Reduce the surface area of uncertainty about how the 14 host-side lifecycle scripts (.sh/.ps1) will behave on real user machines across Windows, macOS, and Linux. These scripts are the primary user-facing interface to DAAF — if install, update, or migrate fails on a user's machine, the entire framework is inaccessible.
+
+## Current State
+
+### What Exists
+
+- **7 BATS test files** (`tests/bash/*.bats`) covering syntax validation, preflight mocking (missing Docker, daemon not running), DAAF_NESTED behavior, and some structural checks
+- **7 Pester test files** (`tests/powershell/*.Tests.ps1`) covering syntax validation and structural content verification (no behavioral testing)
+- **Shared test helpers** (`test_helper.bash`, `TestHelper.ps1`) with Docker mock infrastructure
+- **CI workflow** (`ci-scripts.yml`) with 7 jobs: ShellCheck, PSScriptAnalyzer (Linux + Windows), hygiene checks, BATS tests, Pester tests, DAAF conventions lint
+- **Safety fixes applied:** concurrent-run locking (flock/mutex), SHA quoting, verbose git for error-sensitive ops, backup disk space + integrity checks, cp -a parity fix
+
+### What's Missing
+
+The current tests verify that scripts **load** correctly and **detect missing prerequisites**, but do not test the **behavioral logic** that runs after preflights pass. The untested surface area includes:
+
+| Script | Untested Critical Logic |
+|--------|------------------------|
+| **install.sh/ps1** | Download success/failure handling, partial download recovery, existing installation detection paths (fresh vs incomplete vs force-reinstall), container readiness wait loop, CLAUDE.md verification |
+| **update_daaf.sh/ps1** | The entire state machine: ahead/behind/dirty/diverged detection, merge vs rebase path selection, conflict resolution flow, stash create/restore, backup branch management, host script sync (`sync_host_scripts`), build change detection (`check_build_changes`) |
+| **migrate_daaf.sh/ps1** | Era 1 vs Era 2 detection, graft candidate search and matching, backup-before-migrate flow, idempotency marker check, the entire 400+ line migration sequence |
+| **backup_daaf.sh/ps1** | Date-suffix generation edge cases (26th backup overflow), disk space pre-check logic, size-based verification logic, actual copy integrity |
+| **rebuild_daaf.sh/ps1** | File hash comparison logic, docker cp correctness, pre-rebuild backup creation |
+| **run_daaf.sh/ps1** | Already-running container detection, custom command passthrough, CLAUDE.md verification failure path |
+| **view_logs.sh/ps1** | Container start attempt, log viewer invocation chain |
+
+### Why Current Tests Can't Cover This
+
+The scripts are **monolithic** — they execute their entire logic on load. When BATS runs `bash script.sh`, the script immediately starts calling Docker, downloading files, etc. There is no way to source the script to test individual functions without triggering execution. This is the fundamental blocker.
+
+---
+
+## Implementation Plan
+
+### Phase 1: Test Mode Guards
+
+**Goal:** Make scripts testable by adding a guard that prevents execution when sourced for testing.
+
+**Effort:** Low (3-4 lines per script, 14 files)
+
+**What to add to each .sh script:**
+
+```bash
+# --- Test Mode Guard ---
+# When sourced for testing, define functions but skip execution.
+# Usage: DAAF_TEST_MODE=1 source ./scripts/host/install.sh
+if [ "${DAAF_TEST_MODE:-}" = "1" ]; then
+    return 0 2>/dev/null || true
+fi
+```
+
+**Placement:** After all function definitions, before the first line of executable logic (i.e., before the first preflight check or Docker command). This means all functions defined above the guard are available to BATS tests, but the script's main execution flow is skipped.
+
+**What to add to each .ps1 script:**
+
+```powershell
+# --- Test Mode Guard ---
+# When dot-sourced for testing, define functions but skip execution.
+# Usage: $env:DAAF_TEST_MODE = "1"; . ./scripts/host/install.ps1
+if ($env:DAAF_TEST_MODE -eq "1") {
+    return
+}
+```
+
+**Placement:** Same principle — after function definitions, before main execution.
+
+#### Per-Script Guard Placement
+
+| Script | Functions Defined Before Guard | Guard Goes Before (First Executable Line) |
+|--------|-------------------------------|-------------------------------------------|
+| **install.sh** | `Pause-For-User` equivalent (trap) | The `docker-compose.yml` existence check |
+| **install.ps1** | `Pause-For-User` | The `Test-Path docker-compose.yml` check |
+| **update_daaf.sh** | `prompt_choice`, `sync_host_scripts`, `check_build_changes`, `finish_update`, ERR trap | The "Checking prerequisites" banner |
+| **update_daaf.ps1** | `Pause-And-Exit`, `Prompt-Choice`, `Compose-Git`, `Compose-Git-Verbose`, `Compose-Git-Null`, `Sync-HostScripts`, `Check-BuildChanges`, `Finish-Update`, `Handle-Conflict`, trap | The "Checking prerequisites" banner |
+| **migrate_daaf.sh** | `prompt_choice`, `container_git`, `container_git_verbose`, `container_exec` | The Docker prerequisite checks |
+| **migrate_daaf.ps1** | `Pause-For-User`, `Prompt-Choice`, `Container-Git`, `Container-Git-Verbose`, `Container-Exec`, `Container-Shell`, `Container-Shell-Verbose`, trap | The Docker prerequisite checks |
+| **backup_daaf.sh** | Pause trap | The compose file existence check |
+| **backup_daaf.ps1** | `Pause-And-Exit` | The compose file existence check |
+| **rebuild_daaf.sh** | Pause trap | The compose file existence check |
+| **rebuild_daaf.ps1** | `Pause-And-Exit` | The compose file existence check |
+| **run_daaf.sh** | Pause trap | The compose file existence check |
+| **run_daaf.ps1** | `Pause-And-Exit` | The compose file existence check |
+| **view_logs.sh** | Pause trap | The compose file existence check |
+| **view_logs.ps1** | `Pause-And-Exit` | The compose file existence check |
+
+#### Verification
+
+After adding guards, verify:
+1. `DAAF_TEST_MODE=1 bash -c 'source scripts/host/update_daaf.sh && type sync_host_scripts'` succeeds (function is defined)
+2. `bash scripts/host/update_daaf.sh` still works normally (guard is skipped when not sourced)
+3. Same for PowerShell: `$env:DAAF_TEST_MODE = "1"; . scripts/host/update_daaf.ps1; Get-Command Sync-HostScripts` succeeds
+
+---
+
+### Phase 2: Enhanced Mock Tests
+
+**Goal:** Write behavioral tests for the critical decision logic in update, migrate, and install.
+
+**Effort:** Medium (50-70 new test cases across 6 files)
+
+**Depends on:** Phase 1 (test mode guards must be in place)
+
+#### 2A. update_daaf State Machine Tests
+
+**File:** `tests/bash/update_daaf.bats` (extend existing)
+
+The update script's state machine is the most complex logic in DAAF's lifecycle scripts. It detects the relationship between the local and remote branches and chooses a strategy. The key decision variables are:
+
+- `BEHIND` — number of commits behind remote (from `git rev-list HEAD..origin/main --count`)
+- `AHEAD` — number of commits ahead of remote (from `git rev-list origin/main..HEAD --count`)
+- `DIRTY_COUNT` — number of uncommitted changes (from `git status --porcelain`)
+- `ON_DEFAULT_BRANCH` — whether the user is on the expected branch
+
+**State matrix to test:**
+
+| State | BEHIND | AHEAD | DIRTY | Expected Behavior |
+|-------|--------|-------|-------|-------------------|
+| Up to date | 0 | 0 | 0 | "Already up to date" message, exit 0 |
+| Clean fast-forward | >0 | 0 | 0 | `git pull --ff-only`, sync host scripts |
+| Dirty fast-forward | >0 | 0 | >0 | Stash → pull --ff-only → stash pop |
+| Ahead only | 0 | >0 | 0 | "Your branch is ahead" message, offer sync |
+| Clean diverged | >0 | >0 | 0 | Offer merge or squash-rebase |
+| Dirty diverged | >0 | >0 | >0 | Stash → offer merge/rebase → stash pop |
+| Non-default branch | any | any | any | Warning about non-default branch |
+
+**Test implementation approach:**
+
+```bash
+@test "update: clean fast-forward pulls and syncs" {
+    # Source script in test mode
+    DAAF_TEST_MODE=1 source "$REPO_ROOT/scripts/host/update_daaf.sh"
+
+    # Mock container_git to return specific rev-list counts
+    container_git() {
+        case "$*" in
+            *"rev-list HEAD..origin/main --count"*) echo "3" ;;
+            *"rev-list origin/main..HEAD --count"*) echo "0" ;;
+            *"status --porcelain"*) echo "" ;;
+            *"symbolic-ref --short HEAD"*) echo "main" ;;
+            *) echo "" ;;
+        esac
+    }
+    export -f container_git
+
+    # ... test the decision logic
+}
+```
+
+**Full test case list (~22 cases):**
+
+```
+# --- State machine: branch relationship detection ---
+@test "update: detects up-to-date state (behind=0, ahead=0)"
+@test "update: detects fast-forward state (behind>0, ahead=0)"
+@test "update: detects ahead-only state (behind=0, ahead>0)"
+@test "update: detects diverged state (behind>0, ahead>0)"
+@test "update: detects dirty working tree"
+@test "update: detects non-default branch"
+
+# --- State machine: action selection ---
+@test "update: fast-forward uses git pull --ff-only"
+@test "update: dirty fast-forward stashes before pull"
+@test "update: dirty fast-forward restores stash after pull"
+@test "update: diverged offers merge option"
+@test "update: diverged offers squash-rebase option"
+@test "update: ahead-only offers sync without pull"
+
+# --- Helper functions ---
+@test "update: sync_host_scripts detects changed files via git diff"
+@test "update: sync_host_scripts copies only changed files"
+@test "update: sync_host_scripts uses basename for host destination"
+@test "update: check_build_changes detects Dockerfile modifications"
+@test "update: check_build_changes detects docker-compose.yml modifications"
+@test "update: finish_update calls sync and check_build_changes"
+@test "update: prompt_choice accepts 'y' input"
+@test "update: prompt_choice accepts 'n' input"
+
+# --- Safety ---
+@test "update: backup branch created before merge"
+@test "update: locking prevents concurrent execution"
+```
+
+#### 2B. migrate_daaf Era Detection Tests
+
+**File:** `tests/bash/migrate_daaf.bats` (extend existing)
+
+The migrate script must identify which "era" the installation came from:
+- **Era 1:** ZIP download — no `.git` directory or no remote configured
+- **Era 2:** `git clone` — has remote but needs graft to upstream history
+
+**Test implementation approach:** Source script in test mode, mock `container_git` and `container_exec` to return specific outputs, then test the era detection logic.
+
+**Full test case list (~15 cases):**
+
+```
+# --- Era detection ---
+@test "migrate: detects Era 1 (no git remote configured)"
+@test "migrate: detects Era 2 (git remote exists, needs graft)"
+@test "migrate: detects already-migrated (idempotency marker tag exists)"
+@test "migrate: handles corrupted volume (no .git directory)"
+@test "migrate: handles empty volume"
+
+# --- Graft candidate search ---
+@test "migrate: finds matching commit by blob tree comparison"
+@test "migrate: handles no matching commit gracefully"
+@test "migrate: correctly skips non-matching candidates"
+@test "migrate: uses verbose git for error-sensitive operations"
+
+# --- Helper functions ---
+@test "migrate: container_git suppresses stderr"
+@test "migrate: container_git_verbose preserves stderr"
+@test "migrate: container_exec runs commands in container"
+@test "migrate: prompt_choice handles user input"
+
+# --- Safety ---
+@test "migrate: backup runs before any destructive operation"
+@test "migrate: locking prevents concurrent execution"
+```
+
+#### 2C. install Path Selection Tests
+
+**File:** `tests/bash/install.bats` (extend existing)
+
+**Full test case list (~12 cases):**
+
+```
+# --- Installation state detection ---
+@test "install: fresh install (no compose file, no volume)"
+@test "install: existing complete install detected (compose file + volume)"
+@test "install: incomplete install detected (compose file, no volume)"
+@test "install: force-reinstall bypasses existing check"
+
+# --- Download and URL construction ---
+@test "install: default branch is 'main'"
+@test "install: DAAF_BRANCH overrides default branch"
+@test "install: all 7 download URLs use scripts/host/ prefix"
+@test "install: download failure exits non-zero"
+
+# --- Container readiness ---
+@test "install: readiness wait retries up to max attempts"
+@test "install: readiness wait succeeds when CLAUDE.md found"
+@test "install: readiness wait times out after 30 retries"
+
+# --- Safety ---
+@test "install: does not overwrite existing installation without force flag"
+```
+
+#### 2D. backup Edge Case Tests
+
+**File:** `tests/bash/backup_daaf.bats` (extend existing)
+
+**Full test case list (~10 cases):**
+
+```
+# --- Date-suffix generation ---
+@test "backup: first backup of the day gets suffix 'a'"
+@test "backup: second backup of the day gets suffix 'b'"
+@test "backup: 26th backup reaches 'z' and errors gracefully"
+@test "backup: suffix skips existing directories"
+
+# --- Disk space ---
+@test "backup: fails when disk space is insufficient"
+@test "backup: passes with exactly 10% buffer available"
+@test "backup: reports required vs available space on failure"
+
+# --- Integrity verification ---
+@test "backup: warns when backup size differs from source by >1%"
+@test "backup: passes when sizes match within 1% tolerance"
+@test "backup: file count check still runs alongside size check"
+```
+
+#### 2E. Pester Behavioral Tests (Parallel to BATS)
+
+For each set of BATS tests above, write parallel Pester tests that cover the same logic in the .ps1 versions. The structure mirrors the BATS approach:
+
+```powershell
+Describe "update_daaf.ps1 state machine" {
+    BeforeAll {
+        $env:DAAF_TEST_MODE = "1"
+        . "$PSScriptRoot/../../scripts/host/update_daaf.ps1"
+    }
+
+    AfterAll {
+        Remove-Item Env:DAAF_TEST_MODE
+    }
+
+    Context "Branch relationship detection" {
+        It "detects up-to-date state" {
+            # Mock Compose-Git to return specific counts
+            function Compose-Git {
+                param([Parameter(ValueFromRemainingArguments)]$Args)
+                switch -Wildcard ("$Args") {
+                    "*rev-list HEAD..origin/main --count*" { "0" }
+                    "*rev-list origin/main..HEAD --count*" { "0" }
+                }
+            }
+            # Test detection logic...
+        }
+    }
+}
+```
+
+**Estimated Pester test counts:**
+- update_daaf.Tests.ps1: ~20 additional tests
+- migrate_daaf.Tests.ps1: ~12 additional tests
+- install.Tests.ps1: ~10 additional tests
+- backup_daaf.Tests.ps1: ~8 additional tests
+
+---
+
+### Phase 3: Dry-Run Mode
+
+**Goal:** Enable cross-platform smoke testing without Docker by adding a `DAAF_DRY_RUN` mode.
+
+**Effort:** Medium (modify all 14 scripts)
+
+**Depends on:** Phase 1 (can be done in parallel with Phase 2)
+
+#### Design
+
+When `DAAF_DRY_RUN=1` is set, scripts print what they would do instead of executing destructive operations. This is different from `DAAF_TEST_MODE`:
+
+| Variable | Purpose | Who Uses It |
+|----------|---------|-------------|
+| `DAAF_TEST_MODE` | Source script without executing; for BATS/Pester function-level tests | Test framework |
+| `DAAF_DRY_RUN` | Execute the script's logic but print instead of running Docker/curl/git | CI smoke tests, user verification |
+
+#### Implementation Pattern (Bash)
+
+```bash
+# Wrapper for Docker commands
+docker_cmd() {
+    if [ "${DAAF_DRY_RUN:-}" = "1" ]; then
+        echo "[DRY-RUN] docker $*"
+        return 0
+    fi
+    docker "$@"
+}
+
+# Wrapper for curl/download commands
+download_cmd() {
+    if [ "${DAAF_DRY_RUN:-}" = "1" ]; then
+        echo "[DRY-RUN] Would download: $2"  # $2 is the URL
+        return 0
+    fi
+    curl "$@"
+}
+```
+
+Replace direct `docker` and `curl` calls with `docker_cmd` and `download_cmd` throughout each script.
+
+#### Implementation Pattern (PowerShell)
+
+```powershell
+function Invoke-DockerCmd {
+    param([Parameter(ValueFromRemainingArguments)]$Arguments)
+    if ($env:DAAF_DRY_RUN -eq "1") {
+        Write-Host "[DRY-RUN] docker $($Arguments -join ' ')"
+        return
+    }
+    & docker @Arguments
+}
+```
+
+#### What Dry-Run Tests Verify
+
+- Script loads and runs its full logic path without crashing
+- All variable references resolve (no typos, no unset variables)
+- Control flow reaches the expected endpoints
+- Cross-platform syntax compatibility (bash 3.2 on macOS, PS 5.1 on Windows)
+- Correct URL construction for downloads
+- Correct path construction for Docker operations
+
+---
+
+### Phase 4: Cross-Platform Smoke CI Job
+
+**Goal:** Run dry-run smoke tests on all three OS platforms in CI.
+
+**Effort:** Low (add one job to ci-scripts.yml)
+
+**Depends on:** Phase 3 (dry-run mode must be in place)
+
+#### CI Workflow Addition
+
+```yaml
+# ---------------------------------------------------------------------------
+# Job 8: Cross-platform smoke tests (dry-run, no Docker needed)
+# ---------------------------------------------------------------------------
+smoke-tests:
+  name: Smoke Tests (${{ matrix.os }})
+  runs-on: ${{ matrix.os }}
+  strategy:
+    fail-fast: false
+    matrix:
+      os: [ubuntu-latest, macos-latest, windows-latest]
+  steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    # Bash smoke tests (skip on windows — Git Bash is unreliable for complex scripts)
+    - name: Smoke test .sh scripts (dry-run)
+      if: matrix.os != 'windows-latest'
+      run: |
+        for script in scripts/host/*.sh; do
+          echo "=== Smoke testing: $script ==="
+          DAAF_DRY_RUN=1 DAAF_NESTED=1 bash "$script" || {
+            echo "FAILED: $script"
+            exit 1
+          }
+        done
+
+    # PowerShell smoke tests (all platforms — pwsh is available everywhere)
+    - name: Smoke test .ps1 scripts (dry-run)
+      shell: pwsh
+      run: |
+        foreach ($script in Get-ChildItem scripts/host/*.ps1) {
+          Write-Host "=== Smoke testing: $($script.Name) ==="
+          $env:DAAF_DRY_RUN = "1"
+          $env:DAAF_NESTED = "1"
+          & $script.FullName
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host "FAILED: $($script.Name)"
+            exit 1
+          }
+        }
+
+    # Windows PowerShell 5.1 smoke test (windows only)
+    - name: Smoke test .ps1 scripts on Windows PS 5.1 (dry-run)
+      if: matrix.os == 'windows-latest'
+      shell: powershell
+      run: |
+        foreach ($script in Get-ChildItem scripts/host/*.ps1) {
+          Write-Host "=== Smoke testing (PS 5.1): $($script.Name) ==="
+          $env:DAAF_DRY_RUN = "1"
+          $env:DAAF_NESTED = "1"
+          & $script.FullName
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host "FAILED: $($script.Name)"
+            exit 1
+          }
+        }
+```
+
+#### What This Matrix Catches
+
+| Platform | Bash Version | PowerShell Version | Key Risks |
+|----------|-------------|-------------------|-----------|
+| ubuntu-latest | 5.x | pwsh 7.x | Baseline — should always pass |
+| macos-latest | **3.2** (Apple-shipped) | pwsh 7.x | Bash 3.2 lacks associative arrays, mapfile, ${var,,}. Most common cross-platform failure point. |
+| windows-latest | N/A (skip .sh) | **5.1** + pwsh 7.x | PS 5.1 $ErrorActionPreference quirks, alias differences, path separator issues |
+
+---
+
+### Phase 5: Docker Integration Tests (Nightly)
+
+**Goal:** End-to-end testing with real Docker to verify the full lifecycle.
+
+**Effort:** Medium (new workflow file, careful Docker setup)
+
+**Depends on:** Phases 1-4 are not prerequisites; this is independent
+
+#### Design Considerations
+
+- Runs on a **schedule** (nightly), not on every push — Docker tests are slow (~5-10 min) and can be flaky
+- Uses `ubuntu-latest` only (Docker is pre-installed)
+- Tests the full lifecycle: install → run → update → backup → rebuild
+- Each step verifies postconditions before proceeding
+- Requires network access (downloads from GitHub)
+
+#### New Workflow File: `.github/workflows/ci-integration.yml`
+
+```yaml
+name: CI - Integration Tests (Nightly)
+
+on:
+  schedule:
+    - cron: '0 6 * * *'  # 6 AM UTC daily
+  workflow_dispatch: {}   # Manual trigger for debugging
+
+permissions:
+  contents: read
+
+jobs:
+  lifecycle-test:
+    name: Full Lifecycle Test
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install DAAF
+        run: bash scripts/host/install.sh
+        env:
+          DAAF_NESTED: "1"
+
+      - name: Verify container is running
+        run: docker compose ps | grep -q "running"
+
+      - name: Verify CLAUDE.md exists in container
+        run: docker compose exec -T daaf-docker test -f /daaf/CLAUDE.md
+
+      - name: Run DAAF (quick command)
+        run: bash scripts/host/run_daaf.sh echo "DAAF is working"
+        env:
+          DAAF_NESTED: "1"
+
+      - name: Backup DAAF
+        run: bash scripts/host/backup_daaf.sh
+        env:
+          DAAF_NESTED: "1"
+
+      - name: Verify backup exists
+        run: ls -la daaf-backups/
+
+      - name: Update DAAF (should be no-op on fresh install)
+        run: bash scripts/host/update_daaf.sh
+        env:
+          DAAF_NESTED: "1"
+
+      - name: Rebuild DAAF
+        run: bash scripts/host/rebuild_daaf.sh
+        env:
+          DAAF_NESTED: "1"
+
+      - name: Verify container still running after rebuild
+        run: docker compose ps | grep -q "running"
+
+      - name: Final CLAUDE.md verification
+        run: docker compose exec -T daaf-docker test -f /daaf/CLAUDE.md
+```
+
+#### What This Catches That Unit Tests Cannot
+
+- Docker Compose version compatibility on GitHub runners
+- Actual download integrity from raw.githubusercontent.com
+- Real container startup timing and readiness detection
+- Volume persistence across rebuild cycles
+- Interaction between scripts (backup before update, sync after update)
+
+---
+
+## Priority and Sequencing
+
+```
+Phase 1 (Test Mode Guards)     ─── LOW EFFORT, HIGH UNLOCK ───→ Enables Phase 2
+    │
+    ├── Phase 2 (Enhanced Mocks) ── MEDIUM EFFORT, HIGH VALUE ──→ Core logic coverage
+    │
+    └── Phase 3 (Dry-Run Mode)  ── MEDIUM EFFORT, MEDIUM VALUE ─→ Enables Phase 4
+            │
+            └── Phase 4 (Smoke CI) ── LOW EFFORT, HIGH VALUE ───→ Cross-platform safety
+
+Phase 5 (Integration Tests)    ── MEDIUM EFFORT, INSURANCE ────→ End-to-end confidence
+                                   (independent — can start anytime)
+```
+
+**Recommended session plan:**
+- **Session 1:** Phase 1 + Phase 2 (test mode guards + enhanced mock tests) — this is the highest-impact work
+- **Session 2:** Phase 3 + Phase 4 (dry-run mode + cross-platform CI) — completes the cross-platform story
+- **Session 3:** Phase 5 (integration tests) + any fixes from Phase 4 findings
+
+## Files Modified By This Plan
+
+| Phase | Files Created | Files Modified |
+|-------|--------------|----------------|
+| Phase 1 | None | 14 scripts in `scripts/host/` (add guard) |
+| Phase 2 | None | 8 test files in `tests/bash/` and `tests/powershell/` (extend) |
+| Phase 3 | None | 14 scripts in `scripts/host/` (add dry-run wrappers) |
+| Phase 4 | None | `.github/workflows/ci-scripts.yml` (add smoke job) |
+| Phase 5 | `.github/workflows/ci-integration.yml` | None |
+
+## Success Criteria
+
+After all 5 phases:
+- Every decision branch in update_daaf's state machine has a test
+- Era detection in migrate_daaf has a test for each era type + edge cases
+- All scripts pass dry-run smoke tests on ubuntu, macOS, and Windows
+- A nightly CI run verifies the full install → run → update → backup → rebuild cycle with real Docker
+- No script can be modified without the corresponding test suite catching behavioral regressions
+
+## Open Questions for Session Start
+
+1. **Bash 3.2 compatibility:** Should we audit all .sh scripts for bash 4+ features before adding the smoke CI job, or let the macOS runner discover issues?
+2. **Pester behavioral tests:** The current Pester tests are structural. Phase 2E proposes behavioral Pester tests, but the PS scripts are harder to mock (function scoping rules differ from bash). Should we invest equally in Pester behavioral tests, or accept structural + smoke testing for PS?
+3. **Docker integration test frequency:** Nightly is proposed, but if CI minutes are a concern, weekly might suffice. User preference?
+4. **Test mode guard backward compatibility:** Adding `DAAF_TEST_MODE` is a no-op for normal users, but should we document it in the script headers for maintainability?

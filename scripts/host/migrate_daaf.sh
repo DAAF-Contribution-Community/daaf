@@ -24,6 +24,8 @@
 #
 # This script is idempotent — safe to run multiple times. If the migration
 # has already been completed, it will detect that and skip ahead.
+#
+# Supports DAAF_TEST_MODE=1 for test framework sourcing (see tests/).
 # ============================================================================
 
 set -euo pipefail
@@ -45,6 +47,7 @@ IS_FORK=false
 
 # --- Trap handler for unexpected failures ---
 cleanup_on_error() {
+    [ -n "${LOCK_DIR:-}" ] && rmdir "$LOCK_DIR" 2>/dev/null || true
     echo "" >&2
     echo "-------------------------------------------" >&2
     echo "  Something went wrong unexpectedly" >&2
@@ -106,19 +109,27 @@ container_exec() {
     docker exec "${CONTAINER_NAME}" "$@" </dev/null
 }
 
+# --- Test Mode Guard ---
+# When sourced for testing, define functions but skip execution.
+# Usage: DAAF_TEST_MODE=1 source scripts/host/migrate_daaf.sh
+if [ "${DAAF_TEST_MODE:-}" = "1" ]; then
+    return 0 2>/dev/null || exit 0
+fi
+
 # =====================================================================
-# Concurrent-run lock
+# Portable concurrent-run lock (mkdir)
 # =====================================================================
 # Prevent two instances from operating on the same container simultaneously.
-# The lock is automatically released when the script exits (fd closes).
-
-LOCK_FILE="/tmp/daaf-migrate.lock"
-exec 200>"$LOCK_FILE"
-if ! flock -n 200; then
+# mkdir is atomic on all POSIX systems (Linux, macOS, Git Bash on Windows).
+# The lock directory is cleaned up via the EXIT trap when the script exits.
+LOCK_DIR="/tmp/daaf-migrate.lock.d"
+if ! mkdir "$LOCK_DIR" 2>/dev/null; then
     echo "ERROR: Another instance of migrate_daaf is already running." >&2
-    echo "       If you believe this is stale, remove: $LOCK_FILE" >&2
+    echo "       If you believe this is stale, remove: $LOCK_DIR" >&2
     exit 1
 fi
+_daaf_prior_exit_trap=$(trap -p EXIT | sed -n "s/^trap -- '\\(.*\\)' EXIT$/\\1/p")
+trap 'rmdir "$LOCK_DIR" 2>/dev/null || true; '"$_daaf_prior_exit_trap" EXIT
 
 # =====================================================================
 # Main script

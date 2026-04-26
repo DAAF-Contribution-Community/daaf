@@ -14,6 +14,8 @@
 # Prerequisites:
 #   - Docker Desktop installed and running
 #   - Internet connection
+#
+# Supports $env:DAAF_TEST_MODE = "1" for Pester test dot-sourcing (see tests/).
 # ============================================================================
 
 $ErrorActionPreference = "Stop"
@@ -23,6 +25,14 @@ function Pause-For-User {
         Write-Host ""
         Read-Host "Press Enter to close this window"
     }
+    exit
+}
+
+# --- Test Mode Guard ---
+# When dot-sourced for testing, define functions but skip execution.
+# Usage: $env:DAAF_TEST_MODE = "1"; . ./scripts/host/install.ps1
+if ($env:DAAF_TEST_MODE -eq "1") {
+    return
 }
 
 # Ensure TLS 1.2 for GitHub downloads (required on PowerShell 5.1)

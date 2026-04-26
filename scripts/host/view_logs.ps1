@@ -12,6 +12,8 @@
 # Prerequisites:
 #   - Docker Desktop installed and running
 #   - Port 2719 mapped in docker-compose.yml
+#
+# Supports $env:DAAF_TEST_MODE = "1" for Pester test dot-sourcing (see tests/).
 # ============================================================================
 
 $ErrorActionPreference = "Stop"
@@ -23,6 +25,13 @@ function Pause-And-Exit {
         Read-Host "Press Enter to continue"
     }
     exit $Code
+}
+
+# --- Test Mode Guard ---
+# When dot-sourced for testing, define functions but skip execution.
+# Usage: $env:DAAF_TEST_MODE = "1"; . ./scripts/host/view_logs.ps1
+if ($env:DAAF_TEST_MODE -eq "1") {
+    return
 }
 
 # --- Preflight ---

@@ -23,6 +23,8 @@
 #   - Docker Desktop installed and running
 #   - Internet connection
 #   - Run from the daaf-docker directory
+#
+# Supports $env:DAAF_TEST_MODE = "1" for Pester test dot-sourcing (see tests/).
 # ============================================================================
 
 $ErrorActionPreference = "Stop"
@@ -391,6 +393,13 @@ function Finish-Update {
     Write-Host "  To launch DAAF:"
     Write-Host "    .\run_daaf.ps1"
     Write-Host ""
+}
+
+# --- Test Mode Guard ---
+# When dot-sourced for testing, define functions but skip execution.
+# Usage: $env:DAAF_TEST_MODE = "1"; . ./scripts/host/update_daaf.ps1
+if ($env:DAAF_TEST_MODE -eq "1") {
+    return
 }
 
 # =====================================================================

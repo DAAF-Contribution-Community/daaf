@@ -130,3 +130,282 @@ teardown() {
     run grep -c "cp -r /source" "${REPO_ROOT}/scripts/host/backup_daaf.sh"
     assert_failure
 }
+
+# --- Date-suffix versioning edge cases ---
+
+@test "backup: suffix picks first available letter sequentially" {
+    # Create base and 'a' — script should pick 'b' (next in sequence)
+    local today
+    today=$(date +%Y-%m-%d)
+    mkdir -p "${TEST_DIR}/${today}_daaf_backup"
+    mkdir -p "${TEST_DIR}/${today}a_daaf_backup"
+    # Also create 'c' to prove the script picks 'b' (first gap), not 'd'
+    mkdir -p "${TEST_DIR}/${today}c_daaf_backup"
+
+    MOCK_DOCKER_VOLUME_EXIT=0
+    MOCK_DOCKER_RUN_OUTPUT=$'100\n512\t/source\n500K\t/source'
+    MOCK_DOCKER_RUN_EXIT=0
+    export DAAF_NESTED=1
+
+    run bash "${REPO_ROOT}/scripts/host/backup_daaf.sh"
+    assert_output --partial "${today}b_daaf_backup"
+}
+
+@test "backup: 26th backup of the day reaches suffix 'z'" {
+    local today
+    today=$(date +%Y-%m-%d)
+    # Create base backup
+    mkdir -p "${TEST_DIR}/${today}_daaf_backup"
+    # Create suffixes a through y (25 directories)
+    for i in $(seq 0 24); do
+        suffix=$(printf "\\$(printf '%03o' $((97 + i)))")
+        mkdir -p "${TEST_DIR}/${today}${suffix}_daaf_backup"
+    done
+
+    MOCK_DOCKER_VOLUME_EXIT=0
+    MOCK_DOCKER_RUN_OUTPUT=$'100\n512\t/source\n500K\t/source'
+    MOCK_DOCKER_RUN_EXIT=0
+    export DAAF_NESTED=1
+
+    run bash "${REPO_ROOT}/scripts/host/backup_daaf.sh"
+    assert_output --partial "${today}z_daaf_backup"
+}
+
+@test "backup: errors when all 26 suffixes are exhausted" {
+    local today
+    today=$(date +%Y-%m-%d)
+    # Create base backup
+    mkdir -p "${TEST_DIR}/${today}_daaf_backup"
+    # Create all 26 suffixed directories (a through z)
+    for i in $(seq 0 25); do
+        suffix=$(printf "\\$(printf '%03o' $((97 + i)))")
+        mkdir -p "${TEST_DIR}/${today}${suffix}_daaf_backup"
+    done
+
+    MOCK_DOCKER_VOLUME_EXIT=0
+    export DAAF_NESTED=1
+
+    run bash "${REPO_ROOT}/scripts/host/backup_daaf.sh"
+    assert_failure
+    assert_output --partial "Too many backups"
+}
+
+# --- Disk space checks ---
+
+@test "backup: fails when disk space is insufficient" {
+    # Mock df to report very little available space
+    df() {
+        if [ "$1" = "-P" ]; then
+            printf "Filesystem     1024-blocks    Used Available Capacity Mounted on\n"
+            printf "/dev/sda1       100000000 99999990       10 100%% /\n"
+        else
+            builtin command df "$@"
+        fi
+    }
+    export -f df
+
+    MOCK_DOCKER_VOLUME_EXIT=0
+    # Report volume size as 10000 KB (10 MB) — much larger than 10 bytes available
+    MOCK_DOCKER_RUN_OUTPUT=$'100\n10000\t/source\n10M\t/source'
+    MOCK_DOCKER_RUN_EXIT=0
+    export DAAF_NESTED=1
+
+    run bash "${REPO_ROOT}/scripts/host/backup_daaf.sh"
+    assert_failure
+    assert_output --partial "Insufficient disk space"
+}
+
+@test "backup: reports required vs available space on disk space failure" {
+    df() {
+        if [ "$1" = "-P" ]; then
+            printf "Filesystem     1024-blocks    Used Available Capacity Mounted on\n"
+            printf "/dev/sda1       100000000 99999990       10 100%% /\n"
+        else
+            builtin command df "$@"
+        fi
+    }
+    export -f df
+
+    MOCK_DOCKER_VOLUME_EXIT=0
+    MOCK_DOCKER_RUN_OUTPUT=$'100\n10000\t/source\n10M\t/source'
+    MOCK_DOCKER_RUN_EXIT=0
+    export DAAF_NESTED=1
+
+    run bash "${REPO_ROOT}/scripts/host/backup_daaf.sh"
+    assert_failure
+    # Should report both required and available MB values
+    assert_output --partial "Required:"
+    assert_output --partial "Available:"
+}
+
+@test "backup: passes disk space check when sufficient space available" {
+    df() {
+        if [ "$1" = "-P" ]; then
+            printf "Filesystem     1024-blocks    Used Available Capacity Mounted on\n"
+            printf "/dev/sda1       100000000 50000000 50000000  50%% /\n"
+        else
+            builtin command df "$@"
+        fi
+    }
+    export -f df
+
+    MOCK_DOCKER_VOLUME_EXIT=0
+    # Small volume (512 KB) — plenty of space
+    MOCK_DOCKER_RUN_OUTPUT=$'100\n512\t/source\n500K\t/source'
+    MOCK_DOCKER_RUN_EXIT=0
+    export DAAF_NESTED=1
+
+    run bash "${REPO_ROOT}/scripts/host/backup_daaf.sh"
+    # Should pass the disk space check (no "Insufficient" error)
+    refute_output --partial "Insufficient disk space"
+}
+
+# --- Integrity verification: size mismatch ---
+
+@test "backup: warns when backup size differs from source by more than 1 percent" {
+    export DAAF_NESTED=1
+
+    # Custom docker mock: scan reports 10000 KB source; copy creates a file
+    # in the backup dir so FILE_COUNT > 0 and the script reaches size verification.
+    docker() {
+        case "$1" in
+            info)   return 0 ;;
+            volume) return 0 ;;
+            run)
+                shift
+                local args_str="$*"
+                if [[ "${args_str}" == *"cp -a"* ]]; then
+                    # Extract the host-side bind-mount path before ":/dest"
+                    local dest_dir=""
+                    for arg in "$@"; do
+                        if [[ "${arg}" == *":/dest"* ]]; then
+                            dest_dir="${arg%%:/dest*}"
+                            break
+                        fi
+                    done
+                    if [ -n "${dest_dir}" ]; then
+                        mkdir -p "${dest_dir}"
+                        touch "${dest_dir}/mock_file"
+                    fi
+                    return 0
+                else
+                    # Scan call: file count, du -sk, du -sh
+                    printf '10\n10000\t/source\n10M\t/source\n'
+                    return 0
+                fi
+                ;;
+            *)  return 0 ;;
+        esac
+    }
+    export -f docker
+
+    # Override du so the backup reports a much smaller size than source (10000 KB)
+    du() {
+        if [ "$1" = "-sk" ]; then
+            echo "5000	$2"
+        else
+            builtin command du "$@"
+        fi
+    }
+    export -f du
+
+    run bash "${REPO_ROOT}/scripts/host/backup_daaf.sh"
+    assert_output --partial "WARNING"
+    assert_output --partial "size mismatch"
+}
+
+# --- File count verification ---
+
+@test "backup: reports file count in output on success" {
+    export DAAF_NESTED=1
+
+    # Custom docker mock: copy step creates files so FILE_COUNT > 0
+    docker() {
+        case "$1" in
+            info)   return 0 ;;
+            volume) return 0 ;;
+            run)
+                shift
+                local args_str="$*"
+                if [[ "${args_str}" == *"cp -a"* ]]; then
+                    local dest_dir=""
+                    for arg in "$@"; do
+                        if [[ "${arg}" == *":/dest"* ]]; then
+                            dest_dir="${arg%%:/dest*}"
+                            break
+                        fi
+                    done
+                    if [ -n "${dest_dir}" ]; then
+                        mkdir -p "${dest_dir}"
+                        touch "${dest_dir}/file1" "${dest_dir}/file2"
+                    fi
+                    return 0
+                else
+                    printf '5\n512\t/source\n500K\t/source\n'
+                    return 0
+                fi
+                ;;
+            *)  return 0 ;;
+        esac
+    }
+    export -f docker
+
+    run bash "${REPO_ROOT}/scripts/host/backup_daaf.sh"
+    assert_output --partial "files copied"
+}
+
+# --- Core behavior ---
+
+@test "backup: creates backup directory with date-based name" {
+    export DAAF_NESTED=1
+    local today
+    today=$(date +%Y-%m-%d)
+
+    # Custom docker mock: copy step creates a file so the script reaches success
+    docker() {
+        case "$1" in
+            info)   return 0 ;;
+            volume) return 0 ;;
+            run)
+                shift
+                local args_str="$*"
+                if [[ "${args_str}" == *"cp -a"* ]]; then
+                    local dest_dir=""
+                    for arg in "$@"; do
+                        if [[ "${arg}" == *":/dest"* ]]; then
+                            dest_dir="${arg%%:/dest*}"
+                            break
+                        fi
+                    done
+                    if [ -n "${dest_dir}" ]; then
+                        mkdir -p "${dest_dir}"
+                        touch "${dest_dir}/file1"
+                    fi
+                    return 0
+                else
+                    printf '5\n512\t/source\n500K\t/source\n'
+                    return 0
+                fi
+                ;;
+            *)  return 0 ;;
+        esac
+    }
+    export -f docker
+
+    run bash "${REPO_ROOT}/scripts/host/backup_daaf.sh"
+    assert_output --partial "${today}_daaf_backup"
+    assert_output --partial "Backup complete"
+}
+
+@test "backup: scan failure exits with error" {
+    MOCK_DOCKER_VOLUME_EXIT=0
+    # docker run for scanning fails
+    MOCK_DOCKER_RUN_EXIT=1
+    MOCK_DOCKER_RUN_OUTPUT=""
+    export DAAF_NESTED=1
+
+    run bash "${REPO_ROOT}/scripts/host/backup_daaf.sh"
+    assert_failure
+    assert_output --partial "ERROR"
+    assert_output --partial "Could not scan"
+}

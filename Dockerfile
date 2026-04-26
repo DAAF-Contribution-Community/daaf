@@ -135,6 +135,41 @@ RUN uv pip install --system \
     lightgbm==4.6.0
 
 # ============================================
+# Install Testing Tools (BATS, ShellCheck, PowerShell + Pester)
+# ============================================
+# These enable running the host lifecycle script test suites locally:
+#   bats tests/bash/          — BATS tests for .sh scripts
+#   pwsh -c "Invoke-Pester"   — Pester tests for .ps1 scripts
+#   shellcheck scripts/host/  — Static analysis for .sh scripts
+
+# bats-core + helper libraries (bats-support, bats-assert, bats-file)
+ARG BATS_CORE_VERSION=1.13.0
+ARG BATS_SUPPORT_VERSION=0.3.0
+ARG BATS_ASSERT_VERSION=2.1.0
+ARG BATS_FILE_VERSION=0.4.0
+RUN curl -sSL "https://github.com/bats-core/bats-core/archive/refs/tags/v${BATS_CORE_VERSION}.tar.gz" \
+    | tar -xz -C /tmp && /tmp/bats-core-${BATS_CORE_VERSION}/install.sh /usr/local && rm -rf /tmp/bats-core-* \
+    && mkdir -p /usr/lib/bats \
+    && git clone --depth 1 --branch "v${BATS_SUPPORT_VERSION}" https://github.com/bats-core/bats-support.git /usr/lib/bats/bats-support \
+    && git clone --depth 1 --branch "v${BATS_ASSERT_VERSION}" https://github.com/bats-core/bats-assert.git /usr/lib/bats/bats-assert \
+    && git clone --depth 1 --branch "v${BATS_FILE_VERSION}" https://github.com/bats-core/bats-file.git /usr/lib/bats/bats-file \
+    && rm -rf /usr/lib/bats/*/.git
+
+# ShellCheck (static binary — apt on bookworm only has 0.9.0)
+ARG SHELLCHECK_VERSION=0.10.0
+RUN curl -sSL "https://github.com/koalaman/shellcheck/releases/download/v${SHELLCHECK_VERSION}/shellcheck-v${SHELLCHECK_VERSION}.linux.x86_64.tar.xz" \
+    | tar -xJ -C /tmp && mv /tmp/shellcheck-v${SHELLCHECK_VERSION}/shellcheck /usr/local/bin/ \
+    && rm -rf /tmp/shellcheck-*
+
+# PowerShell LTS + Pester test framework
+ARG POWERSHELL_VERSION=7.4.15
+ARG PESTER_VERSION=5.7.1
+RUN curl -sSL -o /tmp/pwsh.deb "https://github.com/PowerShell/PowerShell/releases/download/v${POWERSHELL_VERSION}/powershell-lts_${POWERSHELL_VERSION}-1.deb_amd64.deb" \
+    && apt-get update && apt-get install -y --no-install-recommends /tmp/pwsh.deb \
+    && rm /tmp/pwsh.deb && apt-get clean && rm -rf /var/lib/apt/lists/* \
+    && pwsh -NoProfile -Command "Install-Module -Name Pester -RequiredVersion ${PESTER_VERSION} -Force -Scope AllUsers -SkipPublisherCheck"
+
+# ============================================
 # Create non-root user for security
 # ============================================
 RUN groupadd --gid 1000 appuser \

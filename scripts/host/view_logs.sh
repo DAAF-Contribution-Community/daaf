@@ -13,6 +13,8 @@
 # Prerequisites:
 #   - Docker Desktop installed and running
 #   - Port 2719 mapped in docker-compose.yml
+#
+# Supports DAAF_TEST_MODE=1 for test framework sourcing (see tests/).
 # ============================================================================
 
 set -euo pipefail
@@ -20,6 +22,13 @@ set -euo pipefail
 # Pause before exit so the user can review output (skip when called from another script)
 if [ -z "${DAAF_NESTED:-}" ]; then
     trap 'echo ""; read -r -p "Press Enter to continue: "' EXIT
+fi
+
+# --- Test Mode Guard ---
+# When sourced for testing, define functions but skip execution.
+# Usage: DAAF_TEST_MODE=1 source scripts/host/view_logs.sh
+if [ "${DAAF_TEST_MODE:-}" = "1" ]; then
+    return 0 2>/dev/null || exit 0
 fi
 
 # --- Preflight ---

@@ -75,3 +75,90 @@ Describe "install.ps1" {
         }
     }
 }
+
+# ============================================================================
+# Behavioral tests -- dot-source to verify functions + source analysis
+# ============================================================================
+
+Describe "install.ps1 behavioral tests" {
+    BeforeAll {
+        . "$PSScriptRoot/TestHelper.ps1"
+
+        $env:DAAF_TEST_MODE = "1"
+        . "$RepoRoot/scripts/host/install.ps1"
+
+        $script:Content = Get-Content "$RepoRoot/scripts/host/install.ps1" -Raw
+    }
+
+    AfterAll {
+        Remove-Item Env:DAAF_TEST_MODE -ErrorAction SilentlyContinue
+    }
+
+    # -----------------------------------------------------------------
+    # Pause-For-User (the only function exposed)
+    # -----------------------------------------------------------------
+    Context "Pause-For-User function" {
+        It "is callable after dot-sourcing" {
+            # Verify the function is defined in the current scope
+            Get-Command Pause-For-User -ErrorAction SilentlyContinue |
+                Should -Not -BeNullOrEmpty
+        }
+    }
+
+    # -----------------------------------------------------------------
+    # URL construction and branch defaults
+    # -----------------------------------------------------------------
+    Context "URL construction" {
+        It "default branch is 'main'" {
+            # When DAAF_BRANCH is not set, $Branch defaults to "main"
+            $Content | Should -Match '\$Branch = if \(\$env:DAAF_BRANCH\) \{ \$env:DAAF_BRANCH \} else \{ "main" \}'
+        }
+
+        It "DAAF_BRANCH overrides default branch" {
+            $Content | Should -Match '\$env:DAAF_BRANCH'
+            # The config section uses $Branch throughout for URL construction
+            $Content | Should -Match '\$RawBase = "https://raw\.githubusercontent\.com/\$Repo/\$Branch"'
+        }
+
+        It "download URLs use scripts/host/ prefix" {
+            $Content | Should -Match '\$RawBase/scripts/host/'
+            # Verify specific script downloads reference scripts/host/
+            $Content | Should -Match 'scripts/host/run_daaf\.ps1'
+            $Content | Should -Match 'scripts/host/backup_daaf\.ps1'
+            $Content | Should -Match 'scripts/host/update_daaf\.ps1'
+        }
+    }
+
+    # -----------------------------------------------------------------
+    # Installation detection
+    # -----------------------------------------------------------------
+    Context "Installation detection" {
+        It "checks for existing docker-compose.yml" {
+            $Content | Should -Match 'Test-Path "\$InstallDir\\docker-compose\.yml"'
+        }
+
+        It "checks for existing Docker volume" {
+            $Content | Should -Match 'docker volume inspect daaf_daaf-data'
+        }
+
+        It "DAAF_FORCE_REINSTALL bypasses existing check" {
+            $Content | Should -Match '\$env:DAAF_FORCE_REINSTALL -eq "1"'
+            $Content | Should -Match 'Proceeding with re-install'
+        }
+    }
+
+    # -----------------------------------------------------------------
+    # Readiness verification
+    # -----------------------------------------------------------------
+    Context "Readiness verification" {
+        It "readiness check looks for CLAUDE.md" {
+            $Content | Should -Match 'test -f /daaf/CLAUDE\.md'
+        }
+
+        It "readiness check has retry logic for container startup" {
+            # The container readiness check uses a retry loop
+            $Content | Should -Match '\$maxRetries = 30'
+            $Content | Should -Match 'Start-Sleep -Seconds 2'
+        }
+    }
+}

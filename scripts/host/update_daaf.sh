@@ -20,6 +20,8 @@
 # operations. It composes the existing backup and rebuild scripts rather
 # than reimplementing their logic.
 #
+# Supports DAAF_TEST_MODE=1 for test framework sourcing (see tests/).
+#
 # Prerequisites:
 #   - Docker Desktop installed and running
 #   - Internet connection
@@ -40,6 +42,7 @@ BACKUP_BRANCH="backup/pre-update-${TIMESTAMP}"
 
 # --- Trap handler for unexpected failures ---
 cleanup_on_error() {
+    [ -n "${LOCK_DIR:-}" ] && rmdir "$LOCK_DIR" 2>/dev/null || true
     echo "" >&2
     echo "-------------------------------------------" >&2
     echo "  Something went wrong unexpectedly" >&2
@@ -325,20 +328,29 @@ finish_update() {
     echo ""
 }
 
+# --- Test Mode Guard ---
+# When sourced for testing, define functions but skip execution.
+# Usage: DAAF_TEST_MODE=1 source scripts/host/update_daaf.sh
+if [ "${DAAF_TEST_MODE:-}" = "1" ]; then
+    return 0 2>/dev/null || exit 0
+fi
+
 # =====================================================================
-# Concurrent-run lock (flock)
+# Portable concurrent-run lock (mkdir)
 # =====================================================================
 # Prevent two simultaneous update_daaf runs from corrupting git state
 # (double-stash, conflicting merges, backup branch pointing to wrong commit).
-# The lock is automatically released when the script exits (fd closes),
+# mkdir is atomic on all POSIX systems (Linux, macOS, Git Bash on Windows).
+# The lock directory is cleaned up via the EXIT trap when the script exits,
 # including exits via the ERR trap.
-LOCK_FILE="/tmp/daaf-update.lock"
-exec 200>"$LOCK_FILE"
-if ! flock -n 200; then
+LOCK_DIR="/tmp/daaf-update.lock.d"
+if ! mkdir "$LOCK_DIR" 2>/dev/null; then
     echo "ERROR: Another instance of update_daaf is already running." >&2
-    echo "       If you believe this is stale, remove: $LOCK_FILE" >&2
+    echo "       If you believe this is stale, remove: $LOCK_DIR" >&2
     exit 1
 fi
+_daaf_prior_exit_trap=$(trap -p EXIT | sed -n "s/^trap -- '\\(.*\\)' EXIT$/\\1/p")
+trap 'rmdir "$LOCK_DIR" 2>/dev/null || true; '"$_daaf_prior_exit_trap" EXIT
 
 # =====================================================================
 # Main script

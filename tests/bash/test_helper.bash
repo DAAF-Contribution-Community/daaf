@@ -105,19 +105,19 @@ common_teardown() {
 
 mock_docker() {
     DOCKER_CALLS=()
-    MOCK_DOCKER_EXIT=0
-    MOCK_DOCKER_INFO_EXIT=0
-    MOCK_DOCKER_COMPOSE_EXIT=0
-    MOCK_DOCKER_EXEC_EXIT=0
-    MOCK_DOCKER_EXEC_OUTPUT=""
-    MOCK_DOCKER_CP_EXIT=0
-    MOCK_DOCKER_VOLUME_EXIT=0
-    MOCK_DOCKER_PS_OUTPUT=""
-    MOCK_DOCKER_RUN_EXIT=0
-    MOCK_DOCKER_RUN_OUTPUT=""
-    MOCK_DOCKER_INSPECT_EXIT=0
-    MOCK_DOCKER_INSPECT_OUTPUT=""
-    MOCK_DOCKER_START_EXIT=0
+    export MOCK_DOCKER_EXIT=0
+    export MOCK_DOCKER_INFO_EXIT=0
+    export MOCK_DOCKER_COMPOSE_EXIT=0
+    export MOCK_DOCKER_EXEC_EXIT=0
+    export MOCK_DOCKER_EXEC_OUTPUT=""
+    export MOCK_DOCKER_CP_EXIT=0
+    export MOCK_DOCKER_VOLUME_EXIT=0
+    export MOCK_DOCKER_PS_OUTPUT=""
+    export MOCK_DOCKER_RUN_EXIT=0
+    export MOCK_DOCKER_RUN_OUTPUT=""
+    export MOCK_DOCKER_INSPECT_EXIT=0
+    export MOCK_DOCKER_INSPECT_OUTPUT=""
+    export MOCK_DOCKER_START_EXIT=0
 
     docker() {
         DOCKER_CALLS+=("$*")
@@ -217,6 +217,7 @@ YAML
 # ============================================================================
 
 mock_curl() {
+    export MOCK_CURL_EXIT=0
     curl() {
         # By default, create an empty file at the -o destination
         local outfile=""

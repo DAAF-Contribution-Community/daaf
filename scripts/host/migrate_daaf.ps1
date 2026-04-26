@@ -23,6 +23,8 @@
 #
 # This script is idempotent - safe to run multiple times. If the migration
 # has already been completed, it will detect that and skip ahead.
+#
+# Supports $env:DAAF_TEST_MODE = "1" for Pester test dot-sourcing (see tests/).
 # ============================================================================
 
 $ErrorActionPreference = "Stop"
@@ -31,15 +33,16 @@ $ErrorActionPreference = "Stop"
 [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
 
 # --- Pause before exit so the user can review output ---
-# Skip when called from another script
-# Uses 'return' instead of 'exit' so that irm ... | iex does not close
-# the user's PowerShell window. When run as .\migrate_daaf.ps1, 'return'
-# exits the script scope (same effect as exit for a standalone script).
+# Skip the prompt when called from another script (DAAF_NESTED).
+# Always calls exit so the window closes cleanly after the user presses
+# Enter — including when invoked via irm ... | iex (which terminates the
+# PowerShell session, but the user has already read the output).
 function Pause-For-User {
     if (-not $env:DAAF_NESTED) {
         Write-Host ""
         Read-Host "Press Enter to close this window"
     }
+    exit
 }
 
 # --- Configuration ---
@@ -185,6 +188,13 @@ function Container-Shell-Verbose {
     } finally {
         $ErrorActionPreference = $savedEAP
     }
+}
+
+# --- Test Mode Guard ---
+# When dot-sourced for testing, define functions but skip execution.
+# Usage: $env:DAAF_TEST_MODE = "1"; . ./scripts/host/migrate_daaf.ps1
+if ($env:DAAF_TEST_MODE -eq "1") {
+    return
 }
 
 # =====================================================================
