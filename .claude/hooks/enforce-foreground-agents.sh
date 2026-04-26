@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # enforce-foreground-agents.sh
 # Prevents agents from being launched in the background.
 # Background agents cannot prompt for user permissions, which causes

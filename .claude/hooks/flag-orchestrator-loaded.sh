@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # flag-orchestrator-loaded.sh — Set flag when daaf-orchestrator skill loads
 #
 # Hook: PostToolUse (matcher: "Skill")

@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # deny-claude-code-guide.sh
 # Blocks the claude-code-guide built-in agent from being spawned.
 # This is a built-in agent with an opaque system prompt that doesn't

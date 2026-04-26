@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # bash-safety.sh — PreToolUse hook that blocks dangerous Bash commands
 #
 # This is the primary safety guardrail for the DAAF environment. It reads
@@ -15,12 +15,20 @@
 #   rewrites remote history and is always blocked. Similarly, `curl <url>`
 #   is fine, but `curl <url> | bash` is arbitrary code execution.
 #
-# Hook event: PreToolUse (matcher: "Bash")                                                 
+# Hook event: PreToolUse (matcher: "Bash")
 # Registered in: .claude/settings.json
 
 # Fail CLOSED: if anything unexpected goes wrong, block the command.
 # This is a security hook — ambiguous failures must not silently allow execution.
 trap 'echo "BLOCKED by bash-safety hook: unexpected error in safety check" >&2; exit 2' ERR
+
+# --- Dependency check (fail-closed) ---
+# Without jq, we cannot inspect the tool invocation JSON. Failing open here
+# would silently bypass ALL safety checks, so we must block.
+if ! command -v jq &>/dev/null; then
+    echo "BLOCKED by bash-safety hook: jq is not installed (required for hook)" >&2
+    exit 2
+fi
 
 INPUT=$(cat)
 

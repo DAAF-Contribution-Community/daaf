@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # output-scanner.sh — PostToolUse hook that scans tool output for leaked secrets
 #
 # Checks tool_response content for patterns matching common credential formats:

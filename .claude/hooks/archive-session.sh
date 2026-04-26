@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # Claude Code Session Archiver
 # Archives complete session transcripts on session end
 #
