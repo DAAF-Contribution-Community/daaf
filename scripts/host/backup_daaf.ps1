@@ -91,7 +91,7 @@ Write-Host ""
 # --- Count source files ---
 Write-Host "Scanning Docker volume..."
 $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
-$ScanOutput = docker run --rm -v "${VolumeName}:/source:ro" busybox sh -c "find /source -type f | wc -l && du -sk /source && du -sh /source"
+$ScanOutput = docker run --rm -v "${VolumeName}:/source:ro" busybox sh -c "find /source -type f | wc -l && du -sk /source && du -sh /source && find /source -type f -exec stat -c '%s' {} + | awk '{s+=`$1} END {printf ""%d\n"", s/1024}'"
 $ErrorActionPreference = $savedEAP
 if ($LASTEXITCODE -ne 0) {
     Write-Host "ERROR: Could not scan Docker volume." -ForegroundColor Red
@@ -100,6 +100,7 @@ if ($LASTEXITCODE -ne 0) {
 $TotalFiles = [int]($ScanOutput[0].Trim())
 $VolumeSizeKB = [long](($ScanOutput[1].Trim() -split '\s+')[0])
 $TotalSize = ($ScanOutput[2].Trim() -split '\s+')[0]
+$VolumeLogicalKB = [long]($ScanOutput[3].Trim())
 Write-Host "Found $TotalFiles files to copy ($TotalSize)."
 Write-Host ""
 
@@ -170,8 +171,8 @@ if ($CopyExitCode -ne 0) {
 }
 
 # --- Size verification ---
-# Compare source vs backup byte counts to detect truncated files
-$SourceSizeKB = $VolumeSizeKB
+# Compare source vs backup logical byte sums to detect truncated files
+$SourceSizeKB = $VolumeLogicalKB
 $BackupSizeKB = [long]((Get-ChildItem -Path $BackupName -Recurse -Force -ErrorAction SilentlyContinue | Measure-Object -Property Length -Sum).Sum / 1024)
 if ($SourceSizeKB -gt 0 -and $BackupSizeKB -gt 0) {
     # Allow 1% tolerance for filesystem metadata differences

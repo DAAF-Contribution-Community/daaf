@@ -85,14 +85,15 @@ echo ""
 
 # --- Count source files ---
 echo "Scanning Docker volume..."
-SCAN_OUTPUT=$(docker run --rm -v "${VOLUME_NAME}:/source:ro" busybox sh -c "find /source -type f | wc -l && du -sk /source && du -sh /source") || {
+SCAN_OUTPUT=$(docker run --rm -v "${VOLUME_NAME}:/source:ro" busybox sh -c "find /source -type f | wc -l && du -sk /source && du -sh /source && find /source -type f -exec stat -c '%s' {} + | awk '{s+=\$1} END {printf \"%d\n\", s/1024}'") || {
     echo ""
     echo "ERROR: Could not scan Docker volume."
     exit 1
 }
 TOTAL_FILES=$(echo "${SCAN_OUTPUT}" | head -1 | tr -d '[:space:]')
 VOLUME_SIZE_KB=$(echo "${SCAN_OUTPUT}" | sed -n '2p' | awk '{print $1}')
-TOTAL_SIZE=$(echo "${SCAN_OUTPUT}" | tail -1 | awk '{print $1}')
+TOTAL_SIZE=$(echo "${SCAN_OUTPUT}" | sed -n '3p' | awk '{print $1}')
+VOLUME_LOGICAL_KB=$(echo "${SCAN_OUTPUT}" | sed -n '4p' | tr -d '[:space:]')
 echo "Found ${TOTAL_FILES} files to copy (${TOTAL_SIZE})."
 echo ""
 
@@ -157,9 +158,9 @@ if [ "${COPY_EXIT}" -ne 0 ]; then
 fi
 
 # --- Size verification ---
-# Compare source vs backup byte counts to detect truncated files
-SOURCE_SIZE_KB="${VOLUME_SIZE_KB}"
-BACKUP_SIZE_KB=$(du -sk "${BACKUP_NAME}" 2>/dev/null | awk '{print $1}') || BACKUP_SIZE_KB=0
+# Compare source vs backup logical byte sums to detect truncated files
+SOURCE_SIZE_KB="${VOLUME_LOGICAL_KB}"
+BACKUP_SIZE_KB=$(find "${BACKUP_NAME}" -type f -exec ls -ln {} + 2>/dev/null | awk '{s+=$5} END {printf "%d\n", s/1024}') || BACKUP_SIZE_KB=0
 if [ "${SOURCE_SIZE_KB}" -gt 0 ] && [ "${BACKUP_SIZE_KB}" -gt 0 ]; then
     # Allow 1% tolerance for filesystem metadata differences
     TOLERANCE_KB=$(( SOURCE_SIZE_KB / 100 ))

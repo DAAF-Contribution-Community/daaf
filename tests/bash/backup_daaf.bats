@@ -76,9 +76,9 @@ teardown() {
     mkdir -p "${TEST_DIR}/${today}_daaf_backup"
 
     # Mock volume inspect to succeed, mock docker run for scan
-    # Scan now outputs 3 lines: file count, du -sk, du -sh
+    # Scan now outputs 4 lines: file count, du -sk, du -sh, logical KB
     MOCK_DOCKER_VOLUME_EXIT=0
-    MOCK_DOCKER_RUN_OUTPUT=$'100\n512\t/source\n500K\t/source'
+    MOCK_DOCKER_RUN_OUTPUT=$'100\n512\t/source\n500K\t/source\n500'
     MOCK_DOCKER_RUN_EXIT=0
     export DAAF_NESTED=1
 
@@ -93,9 +93,9 @@ teardown() {
     mkdir -p "${TEST_DIR}/${today}_daaf_backup"
     mkdir -p "${TEST_DIR}/${today}a_daaf_backup"
 
-    # Scan now outputs 3 lines: file count, du -sk, du -sh
+    # Scan now outputs 4 lines: file count, du -sk, du -sh, logical KB
     MOCK_DOCKER_VOLUME_EXIT=0
-    MOCK_DOCKER_RUN_OUTPUT=$'100\n512\t/source\n500K\t/source'
+    MOCK_DOCKER_RUN_OUTPUT=$'100\n512\t/source\n500K\t/source\n500'
     MOCK_DOCKER_RUN_EXIT=0
     export DAAF_NESTED=1
 
@@ -143,7 +143,7 @@ teardown() {
     mkdir -p "${TEST_DIR}/${today}c_daaf_backup"
 
     MOCK_DOCKER_VOLUME_EXIT=0
-    MOCK_DOCKER_RUN_OUTPUT=$'100\n512\t/source\n500K\t/source'
+    MOCK_DOCKER_RUN_OUTPUT=$'100\n512\t/source\n500K\t/source\n500'
     MOCK_DOCKER_RUN_EXIT=0
     export DAAF_NESTED=1
 
@@ -163,7 +163,7 @@ teardown() {
     done
 
     MOCK_DOCKER_VOLUME_EXIT=0
-    MOCK_DOCKER_RUN_OUTPUT=$'100\n512\t/source\n500K\t/source'
+    MOCK_DOCKER_RUN_OUTPUT=$'100\n512\t/source\n500K\t/source\n500'
     MOCK_DOCKER_RUN_EXIT=0
     export DAAF_NESTED=1
 
@@ -206,7 +206,7 @@ teardown() {
 
     MOCK_DOCKER_VOLUME_EXIT=0
     # Report volume size as 10000 KB (10 MB) — much larger than 10 bytes available
-    MOCK_DOCKER_RUN_OUTPUT=$'100\n10000\t/source\n10M\t/source'
+    MOCK_DOCKER_RUN_OUTPUT=$'100\n10000\t/source\n10M\t/source\n9800'
     MOCK_DOCKER_RUN_EXIT=0
     export DAAF_NESTED=1
 
@@ -227,7 +227,7 @@ teardown() {
     export -f df
 
     MOCK_DOCKER_VOLUME_EXIT=0
-    MOCK_DOCKER_RUN_OUTPUT=$'100\n10000\t/source\n10M\t/source'
+    MOCK_DOCKER_RUN_OUTPUT=$'100\n10000\t/source\n10M\t/source\n9800'
     MOCK_DOCKER_RUN_EXIT=0
     export DAAF_NESTED=1
 
@@ -251,7 +251,7 @@ teardown() {
 
     MOCK_DOCKER_VOLUME_EXIT=0
     # Small volume (512 KB) — plenty of space
-    MOCK_DOCKER_RUN_OUTPUT=$'100\n512\t/source\n500K\t/source'
+    MOCK_DOCKER_RUN_OUTPUT=$'100\n512\t/source\n500K\t/source\n500'
     MOCK_DOCKER_RUN_EXIT=0
     export DAAF_NESTED=1
 
@@ -265,8 +265,9 @@ teardown() {
 @test "backup: warns when backup size differs from source by more than 1 percent" {
     export DAAF_NESTED=1
 
-    # Custom docker mock: scan reports 10000 KB source; copy creates a file
-    # in the backup dir so FILE_COUNT > 0 and the script reaches size verification.
+    # Custom docker mock: scan reports 9800 logical KB source; copy creates a
+    # small file in the backup dir so FILE_COUNT > 0 and size verification triggers.
+    # The backup file is ~1 KB vs 9800 KB source — well beyond 1% tolerance.
     docker() {
         case "$1" in
             info)   return 0 ;;
@@ -285,12 +286,13 @@ teardown() {
                     done
                     if [ -n "${dest_dir}" ]; then
                         mkdir -p "${dest_dir}"
-                        touch "${dest_dir}/mock_file"
+                        # Create a file with ~1 KB of content (far less than 9800 KB source)
+                        dd if=/dev/zero of="${dest_dir}/mock_file" bs=1024 count=1 2>/dev/null
                     fi
                     return 0
                 else
-                    # Scan call: file count, du -sk, du -sh
-                    printf '10\n10000\t/source\n10M\t/source\n'
+                    # Scan call: file count, du -sk, du -sh, logical KB
+                    printf '10\n10000\t/source\n10M\t/source\n9800\n'
                     return 0
                 fi
                 ;;
@@ -298,16 +300,6 @@ teardown() {
         esac
     }
     export -f docker
-
-    # Override du so the backup reports a much smaller size than source (10000 KB)
-    du() {
-        if [ "$1" = "-sk" ]; then
-            echo "5000	$2"
-        else
-            builtin command du "$@"
-        fi
-    }
-    export -f du
 
     run bash "${REPO_ROOT}/scripts/host/backup_daaf.sh"
     assert_output --partial "WARNING"
@@ -341,7 +333,7 @@ teardown() {
                     fi
                     return 0
                 else
-                    printf '5\n512\t/source\n500K\t/source\n'
+                    printf '5\n512\t/source\n500K\t/source\n500\n'
                     return 0
                 fi
                 ;;
@@ -383,7 +375,7 @@ teardown() {
                     fi
                     return 0
                 else
-                    printf '5\n512\t/source\n500K\t/source\n'
+                    printf '5\n512\t/source\n500K\t/source\n500\n'
                     return 0
                 fi
                 ;;

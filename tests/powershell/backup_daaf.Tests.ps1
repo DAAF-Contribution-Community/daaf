@@ -145,7 +145,7 @@ Describe "backup_daaf.ps1 behavioral tests" {
     Context "Integrity verification" {
         It "backup includes size verification" {
             $Content | Should -Match 'Size verification'
-            # Compares source vs backup byte counts
+            # Compares source vs backup logical byte sums
             $Content | Should -Match '\$SourceSizeKB'
             $Content | Should -Match '\$BackupSizeKB'
         }
