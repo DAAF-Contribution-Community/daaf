@@ -102,7 +102,7 @@ while IFS= read -r -d '' shfile; do
     #   - set -eu            (minimum)
     #   - set -o pipefail    (used by some utility scripts)
     #   - trap ... ERR       (fail-closed pattern used by hooks)
-    code_lines=$(grep -v '^\s*#' "${shfile}" | grep -v '^\s*$' | head -10)
+    code_lines=$(awk '!/^\s*#/ && !/^\s*$/ { print; if (++n == 10) exit }' "${shfile}")
     if ! echo "${code_lines}" | grep -qE 'set -e|trap .* ERR'; then
         # Allow BATS test files and test helpers to skip strict mode
         case "${filename}" in
