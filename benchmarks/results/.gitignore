@@ -1,0 +1,4 @@
+# Benchmark run results are ephemeral — regenerated on each run.
+# Only the .gitignore and .gitkeep are tracked.
+*.json
+*/
