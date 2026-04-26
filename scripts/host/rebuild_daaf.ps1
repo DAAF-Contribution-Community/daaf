@@ -24,7 +24,7 @@
 
 $ErrorActionPreference = "Stop"
 
-function Pause-And-Exit {
+function Wait-AndExit {
     param([int]$Code = 0)
     if (-not $env:DAAF_NESTED) {
         Write-Host ""
@@ -52,13 +52,13 @@ Write-Host ""
 if (-not (Test-Path "docker-compose.yml")) {
     Write-Host "ERROR: docker-compose.yml not found in the current directory." -ForegroundColor Red
     Write-Host "Please run this script from your daaf-docker folder."
-    Pause-And-Exit 1
+    Wait-AndExit 1
 }
 
 if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
     Write-Host "ERROR: Docker is either not installed or not configured properly in your system PATH to allow it to be used from PowerShell." -ForegroundColor Red
     Write-Host "Please install Docker Desktop: https://www.docker.com/products/docker-desktop/"
-    Pause-And-Exit 1
+    Wait-AndExit 1
 }
 
 $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
@@ -66,7 +66,7 @@ $null = docker info 2>&1
 $ErrorActionPreference = $savedEAP
 if ($LASTEXITCODE -ne 0) {
     Write-Host "ERROR: Docker Desktop does not seem to be running. Please start it and try again." -ForegroundColor Red
-    Pause-And-Exit 1
+    Wait-AndExit 1
 }
 
 # --- Check container exists (running or stopped) ---
@@ -77,7 +77,7 @@ if ($LASTEXITCODE -ne 0) {
     Write-Host "ERROR: Container '$ContainerName' not found." -ForegroundColor Red
     Write-Host "Have you run the DAAF installer? The container must exist (running or stopped)"
     Write-Host "for this script to copy the updated files from it."
-    Pause-And-Exit 1
+    Wait-AndExit 1
 }
 
 # --- Copy build files from container to host ---
@@ -100,7 +100,7 @@ $ErrorActionPreference = $savedEAP
 if ($LASTEXITCODE -ne 0) {
     Write-Host "ERROR: Failed to copy Dockerfile from container." -ForegroundColor Red
     Write-Host "Make sure DAAF is installed in the container (run the installer if needed)."
-    Pause-And-Exit 1
+    Wait-AndExit 1
 }
 Write-Host "      Copied Dockerfile"
 
@@ -109,7 +109,7 @@ docker cp "${ContainerName}:/daaf/docker-compose.yml" ./docker-compose.yml
 $ErrorActionPreference = $savedEAP
 if ($LASTEXITCODE -ne 0) {
     Write-Host "ERROR: Failed to copy docker-compose.yml from container." -ForegroundColor Red
-    Pause-And-Exit 1
+    Wait-AndExit 1
 }
 Write-Host "      Copied docker-compose.yml"
 
@@ -166,7 +166,7 @@ if ($LASTEXITCODE -ne 0) {
     if (Test-Path "Dockerfile.pre-rebuild") {
         Write-Host "Your previous Dockerfile was saved as Dockerfile.pre-rebuild"
     }
-    Pause-And-Exit 1
+    Wait-AndExit 1
 }
 $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
 docker compose up -d
@@ -174,7 +174,7 @@ $ErrorActionPreference = $savedEAP
 if ($LASTEXITCODE -ne 0) {
     Write-Host ""
     Write-Host "ERROR: Failed to start the container after rebuild. Check the output above for details." -ForegroundColor Red
-    Pause-And-Exit 1
+    Wait-AndExit 1
 }
 
 # --- Wait for container to be ready ---
@@ -200,7 +200,7 @@ if ($retries -ge $maxRetries) {
     }
     Write-Host "Check Docker Desktop for errors."
     Remove-Item $readyLog -ErrorAction SilentlyContinue
-    Pause-And-Exit 1
+    Wait-AndExit 1
 }
 Remove-Item $readyLog -ErrorAction SilentlyContinue
 
@@ -214,7 +214,7 @@ if ($LASTEXITCODE -ne 0) {
     Write-Host ""
     Write-Host "WARNING: Rebuild completed but DAAF files may not be intact." -ForegroundColor Yellow
     Write-Host "Try entering the container with: .\run_daaf.ps1 bash"
-    Pause-And-Exit 1
+    Wait-AndExit 1
 }
 
 Write-Host "      DAAF verified."
@@ -231,4 +231,4 @@ Write-Host ""
 Write-Host "The Docker image has been rebuilt with the latest Dockerfile."
 Write-Host "To launch DAAF:  .\run_daaf.ps1"
 Write-Host ""
-Pause-And-Exit 0
+Wait-AndExit 0

@@ -42,13 +42,11 @@ INPUT=$(cat)
 mapfile -t _meta < <(
     printf '%s' "$INPUT" | jq -r '
         (.session_id // "unknown"),
-        (.transcript_path // ""),
-        (.cwd // "unknown")
+        (.transcript_path // "")
     ' 2>/dev/null
 )
 SESSION_ID="${_meta[0]:-unknown}"
 TRANSCRIPT_PATH="${_meta[1]:-}"
-CWD="${_meta[2]:-unknown}"
 
 PROJECT_DIR="${CLAUDE_PROJECT_DIR:-$(pwd)}"
 LOG_DIR="$PROJECT_DIR/.claude/logs"

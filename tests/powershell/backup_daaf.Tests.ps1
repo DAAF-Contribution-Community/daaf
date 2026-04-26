@@ -23,11 +23,11 @@ Describe "backup_daaf.ps1" {
             $Content | Should -Match '\$ErrorActionPreference\s*=\s*[''"]Stop[''"]'
         }
 
-        It "defines Pause-And-Exit function" {
-            $Content | Should -Match 'function Pause-And-Exit'
+        It "defines Wait-AndExit function" {
+            $Content | Should -Match 'function Wait-AndExit'
         }
 
-        It "checks DAAF_NESTED in Pause-And-Exit" {
+        It "checks DAAF_NESTED in Wait-AndExit" {
             $Content | Should -Match 'DAAF_NESTED'
         }
 
@@ -104,11 +104,11 @@ Describe "backup_daaf.ps1 behavioral tests" {
     }
 
     # -----------------------------------------------------------------
-    # Pause-And-Exit (the only function exposed)
+    # Wait-AndExit (the only function exposed)
     # -----------------------------------------------------------------
-    Context "Pause-And-Exit function" {
+    Context "Wait-AndExit function" {
         It "is callable after dot-sourcing" {
-            Get-Command Pause-And-Exit -ErrorAction SilentlyContinue |
+            Get-Command Wait-AndExit -ErrorAction SilentlyContinue |
                 Should -Not -BeNullOrEmpty
         }
     }

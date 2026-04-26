@@ -1,4 +1,4 @@
-# ============================================================================
+﻿# ============================================================================
 # Pester Test Helper -- shared setup for all DAAF PowerShell script tests
 # ============================================================================
 # Dot-source this from every .Tests.ps1 file in BeforeAll:
@@ -76,6 +76,7 @@ function Test-ScriptSyntax {
 # ============================================================================
 
 function New-FakeComposeFile {
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '')]
     param(
         [string]$Directory = (Get-Location).Path
     )

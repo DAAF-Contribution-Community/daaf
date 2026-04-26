@@ -23,11 +23,11 @@ Describe "view_logs.ps1" {
             $Content | Should -Match '\$ErrorActionPreference\s*=\s*[''"]Stop[''"]'
         }
 
-        It "defines Pause-And-Exit function" {
-            $Content | Should -Match 'function Pause-And-Exit'
+        It "defines Wait-AndExit function" {
+            $Content | Should -Match 'function Wait-AndExit'
         }
 
-        It "checks DAAF_NESTED in Pause-And-Exit" {
+        It "checks DAAF_NESTED in Wait-AndExit" {
             $Content | Should -Match 'DAAF_NESTED'
         }
 

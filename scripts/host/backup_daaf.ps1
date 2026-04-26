@@ -17,7 +17,7 @@
 
 $ErrorActionPreference = "Stop"
 
-function Pause-And-Exit {
+function Wait-AndExit {
     param([int]$Code = 0)
     if (-not $env:DAAF_NESTED) {
         Write-Host ""
@@ -47,7 +47,7 @@ Write-Host ""
 if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
     Write-Host "ERROR: Docker is either not installed or not configured properly in your system PATH to allow it to be used from PowerShell." -ForegroundColor Red
     Write-Host "Please install Docker Desktop: https://www.docker.com/products/docker-desktop/"
-    Pause-And-Exit 1
+    Wait-AndExit 1
 }
 
 $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
@@ -55,7 +55,7 @@ $null = docker info 2>&1
 $ErrorActionPreference = $savedEAP
 if ($LASTEXITCODE -ne 0) {
     Write-Host "ERROR: Docker Desktop does not seem to be running. Please start it and try again." -ForegroundColor Red
-    Pause-And-Exit 1
+    Wait-AndExit 1
 }
 
 $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
@@ -64,7 +64,7 @@ $ErrorActionPreference = $savedEAP
 if ($LASTEXITCODE -ne 0) {
     Write-Host "ERROR: Docker volume '$VolumeName' not found." -ForegroundColor Red
     Write-Host "Have you run the DAAF installer yet?"
-    Pause-And-Exit 1
+    Wait-AndExit 1
 }
 
 # --- Generate date-versioned backup name ---
@@ -80,7 +80,7 @@ if (Test-Path $BackupName) {
         $SuffixNum++
         if ($SuffixNum -ge 26) {
             Write-Host "ERROR: Too many backups for today (26 max). Please remove some old backups." -ForegroundColor Red
-            Pause-And-Exit 1
+            Wait-AndExit 1
         }
     }
 }
@@ -91,11 +91,11 @@ Write-Host ""
 # --- Count source files ---
 Write-Host "Scanning Docker volume..."
 $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
-$ScanOutput = docker run --rm -v "${VolumeName}:/source:ro" busybox sh -c "find /source -type f | wc -l && du -sk /source && du -sh /source && find /source -type f -exec stat -c '%s' {} + | awk '{s+=`$1} END {printf ""%d\n"", s/1024}'"
+$ScanOutput = docker run --rm -v "${VolumeName}:/source:ro" busybox sh -c 'find /source -type f | wc -l && du -sk /source && du -sh /source && find /source -type f -exec stat -c "%s" {} + | awk "{s+=\$1} END {print int(s/1024)}"'
 $ErrorActionPreference = $savedEAP
 if ($LASTEXITCODE -ne 0) {
     Write-Host "ERROR: Could not scan Docker volume." -ForegroundColor Red
-    Pause-And-Exit 1
+    Wait-AndExit 1
 }
 $TotalFiles = [int]($ScanOutput[0].Trim())
 $VolumeSizeKB = [long](($ScanOutput[1].Trim() -split '\s+')[0])
@@ -115,7 +115,7 @@ if ($AvailableKB -lt $RequiredKB) {
     $AvailableMB = [math]::Floor($AvailableKB / 1024)
     Write-Host "ERROR: Insufficient disk space for backup." -ForegroundColor Red
     Write-Host "       Required: ~${RequiredMB} MB (includes 10% buffer), Available: ${AvailableMB} MB"
-    Pause-And-Exit 1
+    Wait-AndExit 1
 }
 
 # --- Create backup ---
@@ -163,7 +163,7 @@ if ($FileCount -eq 0) {
         Write-Host "The Docker volume may be empty. Is DAAF properly installed?"
     }
     Write-Host "Location: $HostPath\"
-    Pause-And-Exit 1
+    Wait-AndExit 1
 }
 
 if ($CopyExitCode -ne 0) {
@@ -198,4 +198,4 @@ Write-Host "To restore from this backup in the future, you can copy files back"
 Write-Host "into the Docker volume using Docker Desktop's Files tab, or with:"
 Write-Host "  docker run --rm -v `"${HostPath}:/source:ro`" -v `"${VolumeName}:/dest`" busybox sh -c 'cp -a /source/. /dest/'"
 Write-Host ""
-Pause-And-Exit 0
+Wait-AndExit 0

@@ -1,4 +1,4 @@
-# ============================================================================
+﻿# ============================================================================
 # DAAF Launcher (Windows PowerShell)
 # ============================================================================
 # Starts the DAAF container (if needed) and launches Claude Code.
@@ -13,7 +13,7 @@
 
 $ErrorActionPreference = "Stop"
 
-function Pause-And-Exit {
+function Wait-AndExit {
     param([int]$Code = 0)
     if (-not $env:DAAF_NESTED) {
         Write-Host ""
@@ -35,13 +35,13 @@ $Command = if ($args.Count -gt 0) { $args[0] } else { "claude" }
 if (-not (Test-Path "docker-compose.yml")) {
     Write-Host "ERROR: docker-compose.yml not found in the current directory." -ForegroundColor Red
     Write-Host "Please run this script from your daaf-docker folder."
-    Pause-And-Exit 1
+    Wait-AndExit 1
 }
 
 if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
     Write-Host "ERROR: Docker is either not installed or not configured properly in your system PATH to allow it to be used from PowerShell." -ForegroundColor Red
     Write-Host "Please install Docker Desktop: https://www.docker.com/products/docker-desktop/"
-    Pause-And-Exit 1
+    Wait-AndExit 1
 }
 
 $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
@@ -49,7 +49,7 @@ $null = docker info 2>&1
 $ErrorActionPreference = $savedEAP
 if ($LASTEXITCODE -ne 0) {
     Write-Host "ERROR: Docker Desktop does not seem to be running. Please start it and try again." -ForegroundColor Red
-    Pause-And-Exit 1
+    Wait-AndExit 1
 }
 
 # --- Start container if not running ---
@@ -65,7 +65,7 @@ if ($Running -eq 0) {
     $ErrorActionPreference = $savedEAP
     if ($LASTEXITCODE -ne 0) {
         Write-Host "ERROR: Failed to start the container. Check Docker Desktop for errors." -ForegroundColor Red
-        Pause-And-Exit 1
+        Wait-AndExit 1
     }
     Write-Host "Container started."
 } else {
@@ -92,7 +92,9 @@ if ($Running -eq 0) {
                     Write-Host "        .\run_daaf.ps1"
                 }
             } catch {
-                # Silently skip if date comparison fails
+                # Date-parsing edge cases (e.g., Docker nanosecond format) are
+                # non-critical — the .env-freshness hint is best-effort only.
+                Write-Verbose "Silenced: $_"
             }
         }
     }
@@ -111,7 +113,7 @@ if ($LASTEXITCODE -ne 0) {
     Write-Host "  docker compose exec daaf-docker bash"
     Write-Host "  git clone --depth 1 https://github.com/DAAF-Contribution-Community/daaf.git /tmp/daaf-clone"
     Write-Host "  cp -a /tmp/daaf-clone/. /daaf/ && rm -rf /tmp/daaf-clone"
-    Pause-And-Exit 1
+    Wait-AndExit 1
 }
 
 # --- Launch ---
@@ -136,4 +138,4 @@ if ($Command -eq "claude") {
     $ErrorActionPreference = $savedEAP
 }
 
-Pause-And-Exit 0
+Wait-AndExit 0

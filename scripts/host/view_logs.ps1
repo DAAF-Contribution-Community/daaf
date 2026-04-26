@@ -18,7 +18,7 @@
 
 $ErrorActionPreference = "Stop"
 
-function Pause-And-Exit {
+function Wait-AndExit {
     param([int]$Code = 0)
     if (-not $env:DAAF_NESTED) {
         Write-Host ""
@@ -38,13 +38,13 @@ if ($env:DAAF_TEST_MODE -eq "1") {
 if (-not (Test-Path "docker-compose.yml")) {
     Write-Host "ERROR: docker-compose.yml not found in the current directory." -ForegroundColor Red
     Write-Host "Please run this script from your daaf-docker folder."
-    Pause-And-Exit 1
+    Wait-AndExit 1
 }
 
 if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
     Write-Host "ERROR: Docker is either not installed or not configured properly in your system PATH to allow it to be used from Terminal." -ForegroundColor Red
     Write-Host "Please install Docker Desktop: https://www.docker.com/products/docker-desktop/"
-    Pause-And-Exit 1
+    Wait-AndExit 1
 }
 
 $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
@@ -52,7 +52,7 @@ $null = docker info 2>&1
 $ErrorActionPreference = $savedEAP
 if ($LASTEXITCODE -ne 0) {
     Write-Host "ERROR: Docker Desktop is not running. Please start it and try again." -ForegroundColor Red
-    Pause-And-Exit 1
+    Wait-AndExit 1
 }
 
 # --- Start container if not running ---
@@ -68,7 +68,7 @@ if ($Running -eq 0) {
     $ErrorActionPreference = $savedEAP
     if ($LASTEXITCODE -ne 0) {
         Write-Host "ERROR: Failed to start the container." -ForegroundColor Red
-        Pause-And-Exit 1
+        Wait-AndExit 1
     }
     Write-Host "Container started."
 } else {
@@ -89,6 +89,6 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 # If the server was already running, the command above returns immediately
-# after printing the URL. Pause-And-Exit keeps the window open so the user
+# after printing the URL. Wait-AndExit keeps the window open so the user
 # can read/copy it.
-Pause-And-Exit 0
+Wait-AndExit 0

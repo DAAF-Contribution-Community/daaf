@@ -23,36 +23,36 @@ Describe "migrate_daaf.ps1" {
             $Content | Should -Match '\$ErrorActionPreference\s*=\s*[''"]Stop[''"]'
         }
 
-        It "defines Pause-For-User function" {
-            $Content | Should -Match 'function Pause-For-User'
+        It "defines Wait-ForUser function" {
+            $Content | Should -Match 'function Wait-ForUser'
         }
 
-        It "checks DAAF_NESTED in Pause-For-User" {
+        It "checks DAAF_NESTED in Wait-ForUser" {
             $Content | Should -Match 'DAAF_NESTED'
         }
 
-        It "defines Prompt-Choice helper function" {
-            $Content | Should -Match 'function Prompt-Choice'
+        It "defines Read-UserChoice helper function" {
+            $Content | Should -Match 'function Read-UserChoice'
         }
 
-        It "defines Container-Git helper function" {
-            $Content | Should -Match 'function Container-Git\b'
+        It "defines Invoke-ContainerGit helper function" {
+            $Content | Should -Match 'function Invoke-ContainerGit\b'
         }
 
-        It "defines Container-Git-Verbose helper function" {
-            $Content | Should -Match 'function Container-Git-Verbose'
+        It "defines Invoke-ContainerGitVerbose helper function" {
+            $Content | Should -Match 'function Invoke-ContainerGitVerbose'
         }
 
-        It "defines Container-Exec helper function" {
-            $Content | Should -Match 'function Container-Exec'
+        It "defines Invoke-ContainerExec helper function" {
+            $Content | Should -Match 'function Invoke-ContainerExec'
         }
 
-        It "defines Container-Shell helper function" {
-            $Content | Should -Match 'function Container-Shell\b'
+        It "defines Invoke-ContainerShell helper function" {
+            $Content | Should -Match 'function Invoke-ContainerShell\b'
         }
 
-        It "defines Container-Shell-Verbose helper function" {
-            $Content | Should -Match 'function Container-Shell-Verbose'
+        It "defines Invoke-ContainerShellVerbose helper function" {
+            $Content | Should -Match 'function Invoke-ContainerShellVerbose'
         }
 
         It "has a trap handler for unexpected failures" {
@@ -141,96 +141,96 @@ Describe "migrate_daaf.ps1 behavioral tests" {
     }
 
     # -----------------------------------------------------------------
-    # Container-Git
+    # Invoke-ContainerGit
     # -----------------------------------------------------------------
-    Context "Container-Git" {
+    Context "Invoke-ContainerGit" {
         It "executes git command in container" {
             Mock docker { return "mock-sha-output" }
-            $result = Container-Git rev-parse HEAD
+            $null = Invoke-ContainerGit rev-parse HEAD
             Should -Invoke docker -Times 1
         }
 
         It "strips carriage returns from output" {
             Mock docker { return "abc123`r`ndef456`r`n" }
-            $result = Container-Git log --oneline
+            $result = Invoke-ContainerGit log --oneline
             $result | Should -Not -Match "`r"
         }
 
         It "returns trimmed output" {
             Mock docker { return "  abc123  " }
-            $result = Container-Git rev-parse HEAD
+            $result = Invoke-ContainerGit rev-parse HEAD
             $result | Should -Not -Match '^\s'
             $result | Should -Not -Match '\s$'
         }
     }
 
     # -----------------------------------------------------------------
-    # Container-Git-Verbose
+    # Invoke-ContainerGitVerbose
     # -----------------------------------------------------------------
-    Context "Container-Git-Verbose" {
+    Context "Invoke-ContainerGitVerbose" {
         It "preserves output content" {
             Mock docker { return "verbose-fetch-progress" }
-            $result = Container-Git-Verbose fetch origin
+            $result = Invoke-ContainerGitVerbose fetch origin
             $result | Should -BeLike "*verbose-fetch*"
         }
     }
 
     # -----------------------------------------------------------------
-    # Container-Exec
+    # Invoke-ContainerExec
     # -----------------------------------------------------------------
-    Context "Container-Exec" {
+    Context "Invoke-ContainerExec" {
         It "runs arbitrary command in container" {
             Mock docker { $global:LASTEXITCODE = 0 }
-            Container-Exec test -f /daaf/CLAUDE.md
+            Invoke-ContainerExec test -f /daaf/CLAUDE.md
             Should -Invoke docker -Times 1
             $LASTEXITCODE | Should -Be 0
         }
     }
 
     # -----------------------------------------------------------------
-    # Container-Shell / Container-Shell-Verbose
+    # Invoke-ContainerShell / Invoke-ContainerShellVerbose
     # -----------------------------------------------------------------
-    Context "Container-Shell" {
+    Context "Invoke-ContainerShell" {
         It "runs shell command and returns string" {
             Mock docker { return "shell-output-here" }
-            $result = Container-Shell "echo hello"
+            $result = Invoke-ContainerShell "echo hello"
             $result | Should -BeLike "*shell-output*"
         }
 
         It "strips carriage returns" {
             Mock docker { return "line1`r`nline2`r`n" }
-            $result = Container-Shell "ls /daaf"
+            $result = Invoke-ContainerShell "ls /daaf"
             $result | Should -Not -Match "`r"
         }
     }
 
-    Context "Container-Shell-Verbose" {
+    Context "Invoke-ContainerShellVerbose" {
         It "returns output including stderr content" {
             Mock docker { return "verbose-shell-output" }
-            $result = Container-Shell-Verbose "ls -la /daaf"
+            $result = Invoke-ContainerShellVerbose "ls -la /daaf"
             $result | Should -BeLike "*verbose-shell*"
         }
     }
 
     # -----------------------------------------------------------------
-    # Prompt-Choice
+    # Read-UserChoice
     # -----------------------------------------------------------------
-    Context "Prompt-Choice" {
+    Context "Read-UserChoice" {
         It "returns valid selection" {
             Mock Read-Host { return "y" }
-            $result = Prompt-Choice "Choose [y/n]" @("y", "n")
+            $result = Read-UserChoice "Choose [y/n]" @("y", "n")
             $result | Should -Be "y"
         }
 
         It "normalizes input to lowercase" {
             Mock Read-Host { return "Y" }
-            $result = Prompt-Choice "Choose [y/n]" @("y", "n")
+            $result = Read-UserChoice "Choose [y/n]" @("y", "n")
             $result | Should -Be "y"
         }
 
         It "trims whitespace from input" {
             Mock Read-Host { return "  n  " }
-            $result = Prompt-Choice "Choose [y/n]" @("y", "n")
+            $result = Read-UserChoice "Choose [y/n]" @("y", "n")
             $result | Should -Be "n"
         }
     }

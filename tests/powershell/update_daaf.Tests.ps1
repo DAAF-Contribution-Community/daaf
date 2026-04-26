@@ -23,52 +23,52 @@ Describe "update_daaf.ps1" {
             $Content | Should -Match '\$ErrorActionPreference\s*=\s*[''"]Stop[''"]'
         }
 
-        It "defines Pause-And-Exit function" {
-            $Content | Should -Match 'function Pause-And-Exit'
+        It "defines Wait-AndExit function" {
+            $Content | Should -Match 'function Wait-AndExit'
         }
 
-        It "checks DAAF_NESTED in Pause-And-Exit" {
+        It "checks DAAF_NESTED in Wait-AndExit" {
             $Content | Should -Match 'DAAF_NESTED'
         }
 
-        It "defines Compose-Git helper function" {
-            $Content | Should -Match 'function Compose-Git\b'
+        It "defines Invoke-ComposeGit helper function" {
+            $Content | Should -Match 'function Invoke-ComposeGit\b'
         }
 
-        It "defines Compose-Git-Verbose helper function" {
-            $Content | Should -Match 'function Compose-Git-Verbose'
+        It "defines Invoke-ComposeGitVerbose helper function" {
+            $Content | Should -Match 'function Invoke-ComposeGitVerbose'
         }
 
-        It "defines Compose-Git-Null helper function" {
-            $Content | Should -Match 'function Compose-Git-Null'
+        It "defines Invoke-ComposeGitNull helper function" {
+            $Content | Should -Match 'function Invoke-ComposeGitNull'
         }
 
         It "defines Invoke-Compose helper function" {
             $Content | Should -Match 'function Invoke-Compose'
         }
 
-        It "defines Compose-Exec helper function" {
-            $Content | Should -Match 'function Compose-Exec'
+        It "defines Invoke-ComposeExec helper function" {
+            $Content | Should -Match 'function Invoke-ComposeExec'
         }
 
-        It "defines Prompt-Choice helper function" {
-            $Content | Should -Match 'function Prompt-Choice'
+        It "defines Read-UserChoice helper function" {
+            $Content | Should -Match 'function Read-UserChoice'
         }
 
-        It "defines Handle-Conflict helper function" {
-            $Content | Should -Match 'function Handle-Conflict'
+        It "defines Resolve-Conflict helper function" {
+            $Content | Should -Match 'function Resolve-Conflict'
         }
 
-        It "defines Sync-HostScripts helper function" {
-            $Content | Should -Match 'function Sync-HostScripts'
+        It "defines Sync-HostScript helper function" {
+            $Content | Should -Match 'function Sync-HostScript'
         }
 
-        It "defines Check-BuildChanges helper function" {
-            $Content | Should -Match 'function Check-BuildChanges'
+        It "defines Test-BuildChange helper function" {
+            $Content | Should -Match 'function Test-BuildChange'
         }
 
-        It "defines Finish-Update helper function" {
-            $Content | Should -Match 'function Finish-Update'
+        It "defines Complete-Update helper function" {
+            $Content | Should -Match 'function Complete-Update'
         }
 
         It "has a trap handler for unexpected failures" {
@@ -134,56 +134,56 @@ Describe "update_daaf.ps1 behavioral tests" {
     }
 
     # -----------------------------------------------------------------
-    # Compose-Git / Compose-Git-Verbose / Compose-Git-Null
+    # Invoke-ComposeGit / Invoke-ComposeGitVerbose / Invoke-ComposeGitNull
     # -----------------------------------------------------------------
-    Context "Compose-Git" {
+    Context "Invoke-ComposeGit" {
         It "calls docker compose exec with git args" {
             Mock docker { return "mock-sha-output" }
-            $result = Compose-Git rev-parse HEAD
+            $null = Invoke-ComposeGit rev-parse HEAD
             Should -Invoke docker -Times 1
         }
 
         It "strips carriage returns from output" {
             Mock docker { return "abc123`r`ndef456`r`n" }
-            $result = Compose-Git rev-parse HEAD
+            $result = Invoke-ComposeGit rev-parse HEAD
             $result | Should -Not -Match "`r"
         }
 
         It "returns trimmed output" {
             Mock docker { return "  abc123  " }
-            $result = Compose-Git log --oneline
+            $result = Invoke-ComposeGit log --oneline
             # The Out-String + Trim logic should strip leading/trailing whitespace
             $result | Should -Not -Match '^\s'
             $result | Should -Not -Match '\s$'
         }
     }
 
-    Context "Compose-Git-Verbose" {
+    Context "Invoke-ComposeGitVerbose" {
         It "preserves stdout (does not redirect stderr to null)" {
             Mock docker { return "verbose-output-here" }
-            $result = Compose-Git-Verbose fetch origin
+            $result = Invoke-ComposeGitVerbose fetch origin
             $result | Should -BeLike "*verbose-output*"
         }
     }
 
-    Context "Compose-Git-Null" {
+    Context "Invoke-ComposeGitNull" {
         It "discards all output (returns nothing)" {
             Mock docker { return "should-be-discarded" }
-            $result = Compose-Git-Null branch test-branch
+            $result = Invoke-ComposeGitNull branch test-branch
             $result | Should -BeNullOrEmpty
         }
     }
 
     # -----------------------------------------------------------------
-    # Sync-HostScripts
+    # Sync-HostScript
     # -----------------------------------------------------------------
-    Context "Sync-HostScripts" {
+    Context "Sync-HostScript" {
         It "skips when HEAD unchanged" {
-            # Both calls to Compose-Git return the same SHA
+            # Both calls to Invoke-ComposeGit return the same SHA
             Mock docker { return "abc123" }
 
             # Capture information stream output (Write-Host goes to stream 6)
-            $output = Sync-HostScripts "abc123" 6>&1
+            $output = Sync-HostScript "abc123" 6>&1
             # Should produce no "Syncing" output since HEAD is unchanged
             $syncMsg = $output | Where-Object { $_ -match "Syncing" }
             $syncMsg | Should -BeNullOrEmpty
@@ -193,8 +193,8 @@ Describe "update_daaf.ps1 behavioral tests" {
             $callCount = 0
             Mock docker {
                 $callCount++
-                # First docker call: Compose-Git rev-parse HEAD -> new SHA
-                # Second docker call: Compose-Git diff -> changed file list
+                # First docker call: Invoke-ComposeGit rev-parse HEAD -> new SHA
+                # Second docker call: Invoke-ComposeGit diff -> changed file list
                 # Third docker call: docker cp
                 $allArgs = $args -join " "
                 if ($allArgs -match "rev-parse HEAD") {
@@ -208,7 +208,7 @@ Describe "update_daaf.ps1 behavioral tests" {
                 return ""
             }
 
-            $output = Sync-HostScripts "old-sha-111" 6>&1
+            $output = Sync-HostScript "old-sha-111" 6>&1
             $syncMsg = $output | Where-Object { $_ -match "Syncing" }
             $syncMsg | Should -Not -BeNullOrEmpty
         }
@@ -228,16 +228,16 @@ Describe "update_daaf.ps1 behavioral tests" {
             }
 
             # Should not throw -- it shows a warning instead
-            $output = Sync-HostScripts "old-sha-222" 6>&1
+            $output = Sync-HostScript "old-sha-222" 6>&1
             $warnMsg = $output | Where-Object { $_ -match "Warning" }
             $warnMsg | Should -Not -BeNullOrEmpty
         }
     }
 
     # -----------------------------------------------------------------
-    # Check-BuildChanges
+    # Test-BuildChange
     # -----------------------------------------------------------------
-    Context "Check-BuildChanges" {
+    Context "Test-BuildChange" {
         It "reports no changes when build files unchanged" {
             Mock docker {
                 $allArgs = $args -join " "
@@ -251,7 +251,7 @@ Describe "update_daaf.ps1 behavioral tests" {
                 return ""
             }
 
-            $output = Check-BuildChanges "old-sha-333" 6>&1
+            $output = Test-BuildChange "old-sha-333" 6>&1
             $noRebuild = $output | Where-Object { $_ -match "no container rebuild needed" }
             $noRebuild | Should -Not -BeNullOrEmpty
         }
@@ -260,7 +260,7 @@ Describe "update_daaf.ps1 behavioral tests" {
             # Same SHA => no rebuild needed
             Mock docker { return "same-sha-444" }
 
-            $output = Check-BuildChanges "same-sha-444" 6>&1
+            $output = Test-BuildChange "same-sha-444" 6>&1
             $noRebuild = $output | Where-Object { $_ -match "no container rebuild needed" }
             $noRebuild | Should -Not -BeNullOrEmpty
         }
@@ -276,10 +276,10 @@ Describe "update_daaf.ps1 behavioral tests" {
                 }
                 return ""
             }
-            # Mock Read-Host so Prompt-Choice doesn't block
+            # Mock Read-Host so Read-UserChoice doesn't block
             Mock Read-Host { return "n" }
 
-            $output = Check-BuildChanges "old-sha-555" 6>&1
+            $output = Test-BuildChange "old-sha-555" 6>&1
             $buildMsg = $output | Where-Object { $_ -match "Build files were updated" }
             $buildMsg | Should -Not -BeNullOrEmpty
         }
@@ -297,21 +297,21 @@ Describe "update_daaf.ps1 behavioral tests" {
             }
             Mock Read-Host { return "n" }
 
-            $output = Check-BuildChanges "old-sha-666" 6>&1
+            $output = Test-BuildChange "old-sha-666" 6>&1
             $buildMsg = $output | Where-Object { $_ -match "Build files were updated" }
             $buildMsg | Should -Not -BeNullOrEmpty
         }
     }
 
     # -----------------------------------------------------------------
-    # Finish-Update
+    # Complete-Update
     # -----------------------------------------------------------------
-    Context "Finish-Update" {
-        It "calls Sync-HostScripts and Check-BuildChanges" {
+    Context "Complete-Update" {
+        It "calls Sync-HostScript and Test-BuildChange" {
             # Both return same HEAD => no action, but both run
             Mock docker { return "same-sha-final" }
 
-            $output = Finish-Update "same-sha-final" 6>&1
+            $output = Complete-Update "same-sha-final" 6>&1
             $completeMsg = $output | Where-Object { $_ -match "Update complete" }
             $completeMsg | Should -Not -BeNullOrEmpty
         }
@@ -319,16 +319,16 @@ Describe "update_daaf.ps1 behavioral tests" {
         It "includes ExtraMsg when provided" {
             Mock docker { return "same-sha-extra" }
 
-            $output = Finish-Update "same-sha-extra" "Rebased successfully." 6>&1
+            $output = Complete-Update "same-sha-extra" "Rebased successfully." 6>&1
             $extraMsg = $output | Where-Object { $_ -match "Rebased successfully" }
             $extraMsg | Should -Not -BeNullOrEmpty
         }
     }
 
     # -----------------------------------------------------------------
-    # Handle-Conflict
+    # Resolve-Conflict
     # -----------------------------------------------------------------
-    Context "Handle-Conflict" {
+    Context "Resolve-Conflict" {
         It "shows conflicting file list" {
             Mock docker {
                 $allArgs = $args -join " "
@@ -340,7 +340,7 @@ Describe "update_daaf.ps1 behavioral tests" {
             # Choose option 2 to exit
             Mock Read-Host { return "2" }
 
-            $output = Handle-Conflict "merge" "merge --abort" 6>&1
+            $output = Resolve-Conflict "merge" "merge --abort" 6>&1
             $conflictHeader = $output | Where-Object { $_ -match "Conflict detected" }
             $conflictHeader | Should -Not -BeNullOrEmpty
         }
@@ -355,7 +355,7 @@ Describe "update_daaf.ps1 behavioral tests" {
             }
             Mock Read-Host { return "2" }
 
-            $output = Handle-Conflict "merge" "merge --abort" 6>&1
+            $output = Resolve-Conflict "merge" "merge --abort" 6>&1
             $mergeInst = $output | Where-Object { $_ -match 'git commit -m' }
             $mergeInst | Should -Not -BeNullOrEmpty
         }
@@ -370,7 +370,7 @@ Describe "update_daaf.ps1 behavioral tests" {
             }
             Mock Read-Host { return "2" }
 
-            $output = Handle-Conflict "rebase" "rebase --abort" 6>&1
+            $output = Resolve-Conflict "rebase" "rebase --abort" 6>&1
             $rebaseInst = $output | Where-Object { $_ -match 'rebase --continue' }
             $rebaseInst | Should -Not -BeNullOrEmpty
         }
@@ -385,11 +385,11 @@ Describe "update_daaf.ps1 behavioral tests" {
             }
             Mock Read-Host { return "2" }
 
-            $result = Handle-Conflict "merge" "merge --abort" 6>&1
-            # Handle-Conflict returns $false for option 2
+            $null = Resolve-Conflict "merge" "merge --abort" 6>&1
+            # Resolve-Conflict returns $false for option 2
             # The return value is mixed with Write-Host output in 6>&1
             # The function explicitly returns $false
-            Handle-Conflict "merge" "merge --abort" *> $null | Should -BeFalse
+            Resolve-Conflict "merge" "merge --abort" *> $null | Should -BeFalse
         }
     }
 

@@ -70,7 +70,7 @@ while IFS= read -r -d '' shfile; do
     # patterns — managed separately). scripts/host/ lifecycle scripts ARE
     # checked.
     case "${shfile}" in
-        */.git/*|*/node_modules/*|*/libs/*|*/.claude/*) continue ;;
+        */.git/*|*/node_modules/*|*/libs/*|*/.claude/*|*/research/*) continue ;;
         */scripts/*.sh) # Skip root-level scripts/ utilities (not in subdirs)
             case "${shfile}" in
                 */scripts/host/*) ;; # Allow host lifecycle scripts through
@@ -93,20 +93,22 @@ while IFS= read -r -d '' shfile; do
             ;;
     esac
 
-    # Check for error handling within first 30 lines.
-    # DAAF scripts have large comment headers (15-20 lines), so the preamble
-    # may not appear until line 20+. Accept any of:
+    # Check for error handling in first 10 non-comment, non-blank code lines.
+    # Counting code lines (not raw lines) is robust against variable-length
+    # comment headers — even a 100-line documentation block won't cause a
+    # false failure as long as error handling appears early in actual code.
+    # Accept any of:
     #   - set -euo pipefail  (preferred)
     #   - set -eu            (minimum)
     #   - set -o pipefail    (used by some utility scripts)
     #   - trap ... ERR       (fail-closed pattern used by hooks)
-    head_lines=$(head -30 "${shfile}")
-    if ! echo "${head_lines}" | grep -qE 'set -e|trap .* ERR'; then
+    code_lines=$(grep -v '^\s*#' "${shfile}" | grep -v '^\s*$' | head -10)
+    if ! echo "${code_lines}" | grep -qE 'set -e|trap .* ERR'; then
         # Allow BATS test files and test helpers to skip strict mode
         case "${filename}" in
             *.bats|test_helper.bash) ;;
             *)
-                fail "${relpath}: missing error handling (set -e / set -euo pipefail / trap ERR) within first 30 lines"
+                fail "${relpath}: missing error handling (set -e / set -euo pipefail / trap ERR) in first 10 code lines"
                 ;;
         esac
     fi

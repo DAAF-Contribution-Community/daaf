@@ -1,4 +1,4 @@
-# ============================================================================
+﻿# ============================================================================
 # DAAF Migration Script (Windows PowerShell)
 # ============================================================================
 # Migrates existing DAAF installations to the new update infrastructure.
@@ -37,7 +37,7 @@ $ErrorActionPreference = "Stop"
 # Always calls exit so the window closes cleanly after the user presses
 # Enter — including when invoked via irm ... | iex (which terminates the
 # PowerShell session, but the user has already read the output).
-function Pause-For-User {
+function Wait-ForUser {
     if (-not $env:DAAF_NESTED) {
         Write-Host ""
         Read-Host "Press Enter to close this window"
@@ -65,7 +65,8 @@ try {
         $NonInteractive = $true
     }
 } catch {
-    # If we can't determine, assume interactive
+    # Console properties unavailable (e.g., ISE, remoting) — default to interactive
+    Write-Verbose "Silenced: $_"
 }
 
 # --- Trap handler for unexpected failures ---
@@ -94,15 +95,15 @@ trap {
     Write-Host "  2. Re-run:  .\migrate_daaf.ps1"
     Write-Host "     (It is safe to re-run - it will pick up where it left off.)"
     Write-Host ""
-    if ($Mutex) { try { $Mutex.ReleaseMutex() } catch {} }
-    Pause-For-User; return
+    if ($Mutex) { try { $Mutex.ReleaseMutex() } catch { <# Mutex already released or not owned — safe to ignore #> Write-Verbose "Silenced: $_" } }
+    Wait-ForUser; return
 }
 
 # =====================================================================
 # Helper functions
 # =====================================================================
 
-function Prompt-Choice {
+function Read-UserChoice {
     param(
         [string]$PromptText,
         [string[]]$ValidChoices
@@ -117,7 +118,7 @@ function Prompt-Choice {
 # Run a git command inside the container (strips carriage returns, suppresses stderr)
 # Uses SilentlyContinue to prevent PS 5.1 from promoting stderr to a terminating
 # error when $ErrorActionPreference is "Stop" in the caller's scope.
-function Container-Git {
+function Invoke-ContainerGit {
     param([Parameter(ValueFromRemainingArguments=$true)]$GitArgs)
     $savedEAP = $ErrorActionPreference
     try {
@@ -132,7 +133,7 @@ function Container-Git {
 # Run a git command inside the container, allowing stderr through
 # Uses SilentlyContinue to prevent PS 5.1 from promoting stderr to a terminating
 # error when $ErrorActionPreference is "Stop" in the caller's scope.
-function Container-Git-Verbose {
+function Invoke-ContainerGitVerbose {
     param([Parameter(ValueFromRemainingArguments=$true)]$GitArgs)
     $savedEAP = $ErrorActionPreference
     try {
@@ -147,7 +148,7 @@ function Container-Git-Verbose {
 # Run an arbitrary command inside the container
 # Uses SilentlyContinue to prevent PS 5.1 from promoting stderr to a terminating
 # error when $ErrorActionPreference is "Stop" in the caller's scope.
-function Container-Exec {
+function Invoke-ContainerExec {
     param([Parameter(ValueFromRemainingArguments=$true)]$ExecArgs)
     $savedEAP = $ErrorActionPreference
     try {
@@ -162,7 +163,7 @@ function Container-Exec {
 # Suppresses stderr and strips carriage returns. Returns trimmed string.
 # Uses SilentlyContinue to prevent PS 5.1 from promoting stderr to a terminating
 # error when $ErrorActionPreference is "Stop" in the caller's scope.
-function Container-Shell {
+function Invoke-ContainerShell {
     param([string]$ShellCommand)
     $savedEAP = $ErrorActionPreference
     try {
@@ -178,7 +179,7 @@ function Container-Shell {
 # Strips carriage returns. Returns trimmed string.
 # Uses SilentlyContinue to prevent PS 5.1 from promoting stderr to a terminating
 # error when $ErrorActionPreference is "Stop" in the caller's scope.
-function Container-Shell-Verbose {
+function Invoke-ContainerShellVerbose {
     param([string]$ShellCommand)
     $savedEAP = $ErrorActionPreference
     try {
@@ -209,11 +210,12 @@ try {
     if (-not $Mutex.WaitOne(0)) {
         Write-Host "ERROR: Another instance of migrate_daaf is already running." -ForegroundColor Red
         Write-Host "       Wait for it to finish or restart Docker Desktop to clear the lock." -ForegroundColor Yellow
-        Pause-For-User
+        Wait-ForUser
         return
     }
 } catch [System.Threading.AbandonedMutexException] {
-    # Previous instance crashed - we now own the mutex, continue
+    # Previous instance crashed — we inherited ownership of the mutex, safe to continue
+    Write-Verbose "Silenced: $_"
 }
 
 # =====================================================================
@@ -241,7 +243,7 @@ Write-Host ""
 if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
     Write-Host "ERROR: Docker is either not installed or not configured properly in your system PATH to allow it to be used from PowerShell." -ForegroundColor Red
     Write-Host "Please install Docker Desktop: https://www.docker.com/products/docker-desktop/"
-    Pause-For-User; return
+    Wait-ForUser; return
 }
 
 # --- Docker running ---
@@ -250,7 +252,7 @@ $null = docker info 2>&1
 $ErrorActionPreference = $savedEAP
 if ($LASTEXITCODE -ne 0) {
     Write-Host "ERROR: Docker Desktop does not seem to be running. Please start it and try again." -ForegroundColor Red
-    Pause-For-User; return
+    Wait-ForUser; return
 }
 
 Write-Host "Docker is running."
@@ -266,7 +268,7 @@ if ($LASTEXITCODE -ne 0) {
     Write-Host "This script is for migrating an existing DAAF installation."
     Write-Host "If you haven't installed DAAF yet, use the installer instead:"
     Write-Host "  irm $RawBase/scripts/host/install.ps1 | iex"
-    Pause-For-User; return
+    Wait-ForUser; return
 }
 
 Write-Host "Found DAAF volume: $VolumeName"
@@ -311,7 +313,7 @@ if ($DownloadFailed) {
     Write-Host ""
     Write-Host "ERROR: Failed to download one or more utility scripts." -ForegroundColor Red
     Write-Host "Please check your internet connection and try again."
-    Pause-For-User; return
+    Wait-ForUser; return
 }
 
 # Download Dockerfile and docker-compose.yml if not already present
@@ -323,7 +325,7 @@ if (-not (Test-Path "$HostDir\Dockerfile")) {
         Write-Host ""
         Write-Host "ERROR: Failed to download Dockerfile." -ForegroundColor Red
         Write-Host "Please check your internet connection and try again."
-        Pause-For-User; return
+        Wait-ForUser; return
     }
 }
 
@@ -335,7 +337,7 @@ if (-not (Test-Path "$HostDir\docker-compose.yml")) {
         Write-Host ""
         Write-Host "ERROR: Failed to download docker-compose.yml." -ForegroundColor Red
         Write-Host "Please check your internet connection and try again."
-        Pause-For-User; return
+        Wait-ForUser; return
     }
 } else {
     # Even if docker-compose.yml exists, update it so it has name: daaf
@@ -382,7 +384,7 @@ if ($backupExit -ne 0) {
     Write-Host "ERROR: Backup failed (exit code $backupExit)."
     Write-Host "The migration will not proceed without a successful backup."
     Write-Host "Please resolve the backup issue and re-run: .\migrate_daaf.ps1"
-    Pause-For-User; return
+    Wait-ForUser; return
 }
 $BackupCompleted = $true
 
@@ -434,7 +436,7 @@ if (-not [string]::IsNullOrWhiteSpace($ContainerName)) {
         $retries = 0
         $maxRetries = 30
         while ($retries -lt $maxRetries) {
-            Container-Exec true 2>&1 | Out-Null
+            Invoke-ContainerExec true 2>&1 | Out-Null
             if ($LASTEXITCODE -eq 0) { break }
             $retries++
             Start-Sleep -Seconds 2
@@ -443,7 +445,7 @@ if (-not [string]::IsNullOrWhiteSpace($ContainerName)) {
             Write-Host ""
             Write-Host "ERROR: Container did not become ready within 60 seconds." -ForegroundColor Red
             Write-Host "Try restarting Docker Desktop, then re-run:  .\migrate_daaf.ps1"
-            Pause-For-User; return
+            Wait-ForUser; return
         }
         Write-Host "Container started."
     } else {
@@ -468,7 +470,7 @@ if (-not [string]::IsNullOrWhiteSpace($ContainerName)) {
         Write-Host ""
         Write-Host "Try restarting Docker Desktop, then re-run:  .\migrate_daaf.ps1"
         Set-Location $OriginalDirCompose
-        Pause-For-User; return
+        Wait-ForUser; return
     }
 
     # After docker compose up, discover the container name
@@ -479,7 +481,7 @@ if (-not [string]::IsNullOrWhiteSpace($ContainerName)) {
         Write-Host "ERROR: Container started but could not be found." -ForegroundColor Red
         Write-Host "Try restarting Docker Desktop, then re-run:  .\migrate_daaf.ps1"
         Set-Location $OriginalDirCompose
-        Pause-For-User; return
+        Wait-ForUser; return
     }
 
     Set-Location $OriginalDirCompose
@@ -488,7 +490,7 @@ if (-not [string]::IsNullOrWhiteSpace($ContainerName)) {
     $retries = 0
     $maxRetries = 30
     while ($retries -lt $maxRetries) {
-        Container-Exec true 2>&1 | Out-Null
+        Invoke-ContainerExec true 2>&1 | Out-Null
         if ($LASTEXITCODE -eq 0) { break }
         $retries++
         Start-Sleep -Seconds 2
@@ -497,7 +499,7 @@ if (-not [string]::IsNullOrWhiteSpace($ContainerName)) {
         Write-Host ""
         Write-Host "ERROR: Container started but is not responding after 60 seconds." -ForegroundColor Red
         Write-Host "Try restarting Docker Desktop, then re-run:  .\migrate_daaf.ps1"
-        Pause-For-User; return
+        Wait-ForUser; return
     }
     Write-Host "Container started: $ContainerName"
 }
@@ -505,14 +507,14 @@ if (-not [string]::IsNullOrWhiteSpace($ContainerName)) {
 Write-Host ""
 
 # --- Verify DAAF is in the container ---
-Container-Exec test -f /daaf/CLAUDE.md
+Invoke-ContainerExec test -f /daaf/CLAUDE.md
 if ($LASTEXITCODE -ne 0) {
     Write-Host "ERROR: DAAF does not appear to be installed in the container." -ForegroundColor Red
     Write-Host "The volume exists but /daaf/CLAUDE.md was not found."
     Write-Host ""
     Write-Host "If this is a fresh installation, use the installer instead:"
     Write-Host "  irm $RawBase/scripts/host/install.ps1 | iex"
-    Pause-For-User; return
+    Wait-ForUser; return
 }
 
 Write-Host "DAAF installation verified in container."
@@ -526,8 +528,8 @@ Write-Host "  Detecting installation type"
 Write-Host "-------------------------------------------"
 Write-Host ""
 
-$OriginUrl = Container-Git remote get-url origin
-# Container-Git returns "" on failure (stderr suppressed, empty stdout)
+$OriginUrl = Invoke-ContainerGit remote get-url origin
+# Invoke-ContainerGit returns "" on failure (stderr suppressed, empty stdout)
 
 if (-not [string]::IsNullOrWhiteSpace($OriginUrl) -and $OriginUrl -match $Repo) {
     $DetectedEra = "1"
@@ -562,7 +564,7 @@ if ($DetectedEra -eq "1") {
     Write-Host ""
 
     Write-Host "Running git fetch origin..."
-    $fetchOutput = Container-Git-Verbose fetch origin
+    $null = Invoke-ContainerGitVerbose fetch origin
     if ($LASTEXITCODE -ne 0) {
         Write-Host ""
         Write-Host "ERROR: Failed to fetch from origin." -ForegroundColor Red
@@ -572,21 +574,21 @@ if ($DetectedEra -eq "1") {
         Write-Host "  - GitHub may be experiencing an outage"
         Write-Host ""
         Write-Host "Once the issue is resolved, re-run:  .\migrate_daaf.ps1"
-        Pause-For-User; return
+        Wait-ForUser; return
     }
     Write-Host "Fetch complete."
 
     # Ensure tracking is set up
-    $null = Container-Git branch --set-upstream-to=origin/main main
+    $null = Invoke-ContainerGit branch --set-upstream-to=origin/main main
 
     # --- For fork users: add upstream remote for official updates ---
     if ($IsFork) {
-        $ExistingUpstream = Container-Git remote get-url upstream
+        $ExistingUpstream = Invoke-ContainerGit remote get-url upstream
         if ([string]::IsNullOrWhiteSpace($ExistingUpstream)) {
             Write-Host ""
             Write-Host "Your 'origin' remote points to a fork. Adding 'upstream' remote"
             Write-Host "for official DAAF updates..."
-            $null = Container-Git-Verbose remote add upstream "https://github.com/$Repo.git"
+            $null = Invoke-ContainerGitVerbose remote add upstream "https://github.com/$Repo.git"
             if ($LASTEXITCODE -ne 0) {
                 Write-Host ""
                 Write-Host "WARNING: Could not add 'upstream' remote. You can add it" -ForegroundColor Yellow
@@ -597,7 +599,7 @@ if ($DetectedEra -eq "1") {
                 Write-Host "  exit"
             } else {
                 Write-Host "Fetching upstream history..."
-                $fetchOutput = Container-Git-Verbose fetch upstream
+                $null = Invoke-ContainerGitVerbose fetch upstream
                 if ($LASTEXITCODE -ne 0) {
                     Write-Host ""
                     Write-Host "WARNING: Could not fetch from upstream. The 'upstream' remote was" -ForegroundColor Yellow
@@ -638,13 +640,13 @@ if ($DetectedEra -eq "1") {
     Write-Host ""
 
     # --- Check if remote was already added (idempotent) ---
-    $ExistingOrigin = Container-Git remote get-url origin
+    $ExistingOrigin = Invoke-ContainerGit remote get-url origin
     if (-not [string]::IsNullOrWhiteSpace($ExistingOrigin)) {
         Write-Host "Remote 'origin' already exists: $ExistingOrigin"
         Write-Host "Skipping remote add (previous migration attempt detected)."
     } else {
         Write-Host "Adding remote origin..."
-        $null = Container-Git-Verbose remote add origin "https://github.com/$Repo.git"
+        $null = Invoke-ContainerGitVerbose remote add origin "https://github.com/$Repo.git"
         Write-Host "Remote added."
     }
 
@@ -652,7 +654,7 @@ if ($DetectedEra -eq "1") {
 
     # --- Fetch full history ---
     Write-Host "Fetching upstream history (this may take a moment)..."
-    $fetchOutput = Container-Git-Verbose fetch origin
+    $null = Invoke-ContainerGitVerbose fetch origin
     if ($LASTEXITCODE -ne 0) {
         Write-Host ""
         Write-Host "ERROR: Failed to fetch from origin." -ForegroundColor Red
@@ -662,14 +664,14 @@ if ($DetectedEra -eq "1") {
         Write-Host "  - GitHub may be experiencing an outage"
         Write-Host ""
         Write-Host "Once the issue is resolved, re-run:  .\migrate_daaf.ps1"
-        Pause-For-User; return
+        Wait-ForUser; return
     }
     Write-Host "Fetch complete."
 
     Write-Host ""
 
     # --- Find the initial (root) commit ---
-    $InitialCommits = Container-Git-Verbose rev-list --max-parents=0 HEAD
+    $InitialCommits = Invoke-ContainerGitVerbose rev-list --max-parents=0 HEAD
 
     if ([string]::IsNullOrWhiteSpace($InitialCommits)) {
         Write-Host ""
@@ -678,7 +680,7 @@ if ($DetectedEra -eq "1") {
         Write-Host ""
         Write-Host "If this is a fresh installation, use the installer instead:"
         Write-Host "  irm $RawBase/scripts/host/install.ps1 | iex"
-        Pause-For-User; return
+        Wait-ForUser; return
     }
 
     # Parse commits into array
@@ -695,7 +697,7 @@ if ($DetectedEra -eq "1") {
     }
 
     # --- Check if graft is already in place (idempotent) ---
-    $CatFileOutput = Container-Git-Verbose cat-file -p $InitialCommit
+    $CatFileOutput = Invoke-ContainerGitVerbose cat-file -p $InitialCommit
     $InitialParentCount = 0
     if (-not [string]::IsNullOrWhiteSpace($CatFileOutput)) {
         $InitialParentCount = ($CatFileOutput -split "`n" | Where-Object { $_ -match '^parent ' }).Count
@@ -712,7 +714,7 @@ if ($DetectedEra -eq "1") {
 
         # Get the blob fingerprint of the initial local commit
         # We compare only (blob_hash, filepath) pairs, ignoring file modes
-        $LocalTree = Container-Shell "cd /daaf && git ls-tree -r '$InitialCommit' | awk '{print `$3, `$4}' | sort"
+        $LocalTree = Invoke-ContainerShell "cd /daaf && git ls-tree -r '$InitialCommit' | awk '{print `$3, `$4}' | sort"
 
         if ([string]::IsNullOrWhiteSpace($LocalTree)) {
             Write-Host ""
@@ -721,7 +723,7 @@ if ($DetectedEra -eq "1") {
             Write-Host ""
             Write-Host "You can try a fresh install instead:"
             Write-Host "  irm $RawBase/scripts/host/install.ps1 | iex"
-            Pause-For-User; return
+            Wait-ForUser; return
         }
 
         $MatchingCommit = ""
@@ -736,11 +738,11 @@ if ($DetectedEra -eq "1") {
         # Check which tags actually exist
         $ValidCandidates = @()
         foreach ($Tag in $Candidates) {
-            $null = Container-Git rev-parse --verify $Tag
+            $null = Invoke-ContainerGit rev-parse --verify $Tag
             if ($LASTEXITCODE -eq 0) {
                 $ValidCandidates += $Tag
             } else {
-                $null = Container-Git rev-parse --verify "origin/$Tag"
+                $null = Invoke-ContainerGit rev-parse --verify "origin/$Tag"
                 if ($LASTEXITCODE -eq 0) {
                     $ValidCandidates += "origin/$Tag"
                 }
@@ -755,14 +757,14 @@ if ($DetectedEra -eq "1") {
 
         foreach ($Candidate in $ValidCandidates) {
             $Step++
-            $CandidateSha = Container-Git rev-parse $Candidate
+            $CandidateSha = Invoke-ContainerGit rev-parse $Candidate
             if ([string]::IsNullOrWhiteSpace($CandidateSha)) {
                 continue
             }
 
             Write-Host "  Checking $Candidate ($Step/$TotalCandidates)..." -NoNewline
 
-            $CandidateTree = Container-Shell "cd /daaf && git ls-tree -r '$CandidateSha' | awk '{print `$3, `$4}' | sort"
+            $CandidateTree = Invoke-ContainerShell "cd /daaf && git ls-tree -r '$CandidateSha' | awk '{print `$3, `$4}' | sort"
 
             if ($LocalTree -eq $CandidateTree) {
                 $MatchingCommit = $CandidateSha
@@ -788,7 +790,7 @@ if ($DetectedEra -eq "1") {
             # Build a skip list of SHAs we already checked
             $SkipList = ""
             foreach ($Candidate in $ValidCandidates) {
-                $CandidateSha = Container-Git rev-parse $Candidate
+                $CandidateSha = Invoke-ContainerGit rev-parse $Candidate
                 if (-not [string]::IsNullOrWhiteSpace($CandidateSha)) {
                     $SkipList = "$SkipList $CandidateSha"
                 }
@@ -854,9 +856,9 @@ echo "BEST:`$BEST_SHA:`$BEST_OVERLAP:`$LOCAL_COUNT"
             # Parse the result (last non-empty line matching EXACT/BEST is the result;
             # earlier lines are progress)
             $ResultLine = ""
-            $SearchResult -split "`n" | ForEach-Object {
-                if ($_ -match '^(EXACT|BEST):') {
-                    $ResultLine = $_.Trim()
+            foreach ($line in ($SearchResult -split "`n")) {
+                if ($line -match '^(EXACT|BEST):') {
+                    $ResultLine = $line.Trim()
                 }
             }
 
@@ -898,12 +900,12 @@ echo "BEST:`$BEST_SHA:`$BEST_OVERLAP:`$LOCAL_COUNT"
 
             $FallbackTag = ""
             foreach ($Tag in @("v2.0.1", "v2.0.0", "v1.0.0")) {
-                $null = Container-Git rev-parse --verify $Tag
+                $null = Invoke-ContainerGit rev-parse --verify $Tag
                 if ($LASTEXITCODE -eq 0) {
                     $FallbackTag = $Tag
                     break
                 }
-                $null = Container-Git rev-parse --verify "origin/$Tag"
+                $null = Invoke-ContainerGit rev-parse --verify "origin/$Tag"
                 if ($LASTEXITCODE -eq 0) {
                     $FallbackTag = "origin/$Tag"
                     break
@@ -911,7 +913,7 @@ echo "BEST:`$BEST_SHA:`$BEST_OVERLAP:`$LOCAL_COUNT"
             }
 
             if (-not [string]::IsNullOrWhiteSpace($FallbackTag)) {
-                $MatchingCommit = Container-Git rev-parse $FallbackTag
+                $MatchingCommit = Invoke-ContainerGit rev-parse $FallbackTag
                 $MatchType = "fallback ($FallbackTag)"
                 Write-Host ""
                 Write-Host "  WARNING: Using fallback graft point: $FallbackTag ($($MatchingCommit.Substring(0, [Math]::Min(12, $MatchingCommit.Length))))" -ForegroundColor Yellow
@@ -920,7 +922,7 @@ echo "BEST:`$BEST_SHA:`$BEST_OVERLAP:`$LOCAL_COUNT"
                 Write-Host "  at the graft point. update_daaf.ps1 will still work correctly."
             } else {
                 # Last resort: use origin/main
-                $MatchingCommit = Container-Git rev-parse origin/main
+                $MatchingCommit = Invoke-ContainerGit rev-parse origin/main
                 $MatchType = "fallback (origin/main HEAD)"
                 Write-Host ""
                 Write-Host "  WARNING: No tags found. Using origin/main HEAD as graft point." -ForegroundColor Yellow
@@ -934,18 +936,18 @@ echo "BEST:`$BEST_SHA:`$BEST_OVERLAP:`$LOCAL_COUNT"
             Write-Host "ERROR: Could not determine a graft point." -ForegroundColor Red
             Write-Host "This is unexpected. Please report this issue at:"
             Write-Host "  https://github.com/$Repo/issues"
-            Pause-For-User; return
+            Wait-ForUser; return
         }
 
         # --- Graft local history onto upstream ---
         Write-Host "Connecting local history to upstream ($MatchType)..."
-        $null = Container-Git-Verbose replace --graft $InitialCommit $MatchingCommit
+        $null = Invoke-ContainerGitVerbose replace --graft $InitialCommit $MatchingCommit
         Write-Host "Graft complete."
         Write-Host ""
 
         # --- Verify the graft works ---
         Write-Host "Verifying graft..."
-        $MergeBase = Container-Git-Verbose merge-base HEAD origin/main
+        $MergeBase = Invoke-ContainerGitVerbose merge-base HEAD origin/main
         if (-not [string]::IsNullOrWhiteSpace($MergeBase)) {
             Write-Host "  Verified: common ancestor found ($($MergeBase.Substring(0, [Math]::Min(12, $MergeBase.Length))))"
             Write-Host "  git merge and git pull will work correctly."
@@ -963,7 +965,7 @@ echo "BEST:`$BEST_SHA:`$BEST_OVERLAP:`$LOCAL_COUNT"
         Write-Host "Fixing file permissions (ZIP downloads don't preserve executable bits)..."
 
         # Get files that are 100755 upstream but 100644 locally
-        $UpstreamExec = Container-Shell "cd /daaf && git ls-tree -r '$MatchingCommit' | grep '^100755' | awk '{print `$4}' | sort"
+        $UpstreamExec = Invoke-ContainerShell "cd /daaf && git ls-tree -r '$MatchingCommit' | grep '^100755' | awk '{print `$4}' | sort"
 
         $PermFixed = 0
         if (-not [string]::IsNullOrWhiteSpace($UpstreamExec)) {
@@ -974,11 +976,11 @@ echo "BEST:`$BEST_SHA:`$BEST_OVERLAP:`$LOCAL_COUNT"
 
                 # Check if the file exists locally and has wrong mode
                 # Use git ls-files -s -- <filepath> (no sh -c wrapper)
-                $LocalMode = Container-Git ls-files -s -- $FilePath
+                $LocalMode = Invoke-ContainerGit ls-files -s -- $FilePath
                 if (-not [string]::IsNullOrWhiteSpace($LocalMode)) {
                     $ModeField = ($LocalMode -split '\s+')[0]
                     if ($ModeField -eq "100644") {
-                        $null = Container-Git update-index --chmod=+x $FilePath
+                        $null = Invoke-ContainerGit update-index --chmod=+x $FilePath
                         $PermFixed++
                     }
                 }
@@ -991,7 +993,7 @@ echo "BEST:`$BEST_SHA:`$BEST_OVERLAP:`$LOCAL_COUNT"
             Write-Host "Committing permission fixes..."
             # Commit only the permission changes already staged by update-index
             # (do NOT use 'git add -A' which could sweep in unrelated changes)
-            $null = Container-Git-Verbose commit --allow-empty -m "Migration: normalize file permissions"
+            $null = Invoke-ContainerGitVerbose commit --allow-empty -m "Migration: normalize file permissions"
             Write-Host "Permission fixes committed."
         } else {
             Write-Host "  No permission fixes needed."
@@ -1002,7 +1004,7 @@ echo "BEST:`$BEST_SHA:`$BEST_OVERLAP:`$LOCAL_COUNT"
 
     # --- Set upstream tracking ---
     Write-Host "Setting upstream tracking branch..."
-    $null = Container-Git branch --set-upstream-to=origin/main main
+    $null = Invoke-ContainerGit branch --set-upstream-to=origin/main main
     Write-Host "Tracking set: main -> origin/main"
     Write-Host ""
 
@@ -1023,7 +1025,7 @@ Write-Host "Would you like to pull the latest updates now?"
 Write-Host ""
 
 if (-not $NonInteractive) {
-    $UpdateChoice = Prompt-Choice "  Run update_daaf.ps1 now? [y/n]" @("y", "n")
+    $UpdateChoice = Read-UserChoice "  Run update_daaf.ps1 now? [y/n]" @("y", "n")
 } else {
     # Non-interactive (piped) - skip the update
     Write-Host "  (Non-interactive mode detected - skipping update. Run it manually.)"
@@ -1084,5 +1086,5 @@ Write-Host "  .\rebuild_daaf.ps1    Rebuild the Docker image"
 Write-Host "  .\view_logs.ps1       Browse session logs"
 Write-Host ""
 
-if ($Mutex) { try { $Mutex.ReleaseMutex() } catch {} }
-Pause-For-User
+if ($Mutex) { try { $Mutex.ReleaseMutex() } catch { <# Mutex already released or not owned — safe to ignore #> Write-Verbose "Silenced: $_" } }
+Wait-ForUser

@@ -23,11 +23,11 @@ Describe "install.ps1" {
             $Content | Should -Match '\$ErrorActionPreference\s*=\s*[''"]Stop[''"]'
         }
 
-        It "defines Pause-For-User function" {
-            $Content | Should -Match 'function Pause-For-User'
+        It "defines Wait-ForUser function" {
+            $Content | Should -Match 'function Wait-ForUser'
         }
 
-        It "checks DAAF_NESTED in Pause-For-User" {
+        It "checks DAAF_NESTED in Wait-ForUser" {
             $Content | Should -Match 'DAAF_NESTED'
         }
 
@@ -95,12 +95,12 @@ Describe "install.ps1 behavioral tests" {
     }
 
     # -----------------------------------------------------------------
-    # Pause-For-User (the only function exposed)
+    # Wait-ForUser (the only function exposed)
     # -----------------------------------------------------------------
-    Context "Pause-For-User function" {
+    Context "Wait-ForUser function" {
         It "is callable after dot-sourcing" {
             # Verify the function is defined in the current scope
-            Get-Command Pause-For-User -ErrorAction SilentlyContinue |
+            Get-Command Wait-ForUser -ErrorAction SilentlyContinue |
                 Should -Not -BeNullOrEmpty
         }
     }

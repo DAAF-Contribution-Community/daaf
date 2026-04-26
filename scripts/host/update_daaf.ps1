@@ -29,11 +29,14 @@
 
 $ErrorActionPreference = "Stop"
 
-function Pause-And-Exit {
+function Wait-AndExit {
     param([int]$Code = 0)
     # Release the concurrent-run mutex if we hold it
     if ($script:Mutex) {
-        try { $script:Mutex.ReleaseMutex() } catch { }
+        try { $script:Mutex.ReleaseMutex() } catch {
+            # Mutex may not be held (e.g., exit before acquisition) — safe to ignore
+            Write-Verbose "Silenced: $_"
+        }
     }
     if (-not $env:DAAF_NESTED) {
         Write-Host ""
@@ -74,7 +77,7 @@ trap {
         Write-Host "  docker compose exec daaf-docker git -C /daaf stash pop"
         Write-Host ""
     }
-    $branchExists = Compose-Git rev-parse --verify $BackupBranch
+    $branchExists = Invoke-ComposeGit rev-parse --verify $BackupBranch
     if ($LASTEXITCODE -eq 0) {
         Write-Host "A restore point was saved before the update started. To undo"
         Write-Host "any partial changes:"
@@ -83,9 +86,12 @@ trap {
     }
     # Release the concurrent-run mutex if we hold it
     if ($Mutex) {
-        try { $Mutex.ReleaseMutex() } catch { }
+        try { $Mutex.ReleaseMutex() } catch {
+            # Mutex may not be held if trap fires before lock acquisition — safe to ignore
+            Write-Verbose "Silenced: $_"
+        }
     }
-    Pause-And-Exit 1
+    Wait-AndExit 1
 }
 
 # =====================================================================
@@ -97,7 +103,7 @@ trap {
 # string. Uses SilentlyContinue to prevent PS 5.1 from promoting stderr to
 # a terminating error when $ErrorActionPreference is "Stop" in the caller's
 # scope.
-function Compose-Git {
+function Invoke-ComposeGit {
     param([Parameter(ValueFromRemainingArguments=$true)]$GitArgs)
     $savedEAP = $ErrorActionPreference
     try {
@@ -114,7 +120,7 @@ function Compose-Git {
 # trimmed string. Uses SilentlyContinue to prevent PS 5.1 from promoting
 # stderr to a terminating error when $ErrorActionPreference is "Stop" in
 # the caller's scope.
-function Compose-Git-Verbose {
+function Invoke-ComposeGitVerbose {
     param([Parameter(ValueFromRemainingArguments=$true)]$GitArgs)
     $savedEAP = $ErrorActionPreference
     try {
@@ -129,7 +135,7 @@ function Compose-Git-Verbose {
 # Run docker compose exec with git, piping output to Out-Null (for commands
 # where we only care about $LASTEXITCODE). Uses SilentlyContinue to prevent
 # PS 5.1 from promoting stderr to a terminating error.
-function Compose-Git-Null {
+function Invoke-ComposeGitNull {
     param([Parameter(ValueFromRemainingArguments=$true)]$GitArgs)
     $savedEAP = $ErrorActionPreference
     try {
@@ -156,7 +162,7 @@ function Invoke-Compose {
 # Run docker compose exec with arbitrary (non-git) args. Uses
 # SilentlyContinue to prevent PS 5.1 from promoting stderr to a
 # terminating error.
-function Compose-Exec {
+function Invoke-ComposeExec {
     param([Parameter(ValueFromRemainingArguments=$true)]$ExecArgs)
     $savedEAP = $ErrorActionPreference
     try {
@@ -167,7 +173,7 @@ function Compose-Exec {
     }
 }
 
-function Prompt-Choice {
+function Read-UserChoice {
     param(
         [string]$PromptText,
         [string[]]$ValidChoices
@@ -179,13 +185,13 @@ function Prompt-Choice {
     }
 }
 
-function Handle-Conflict {
+function Resolve-Conflict {
     param(
         [string]$ConflictType,
         [string]$AbortCmd
     )
 
-    $conflictFiles = Compose-Git diff --name-only --diff-filter=U
+    $conflictFiles = Invoke-ComposeGit diff --name-only --diff-filter=U
 
     Write-Host ""
     Write-Host "-------------------------------------------"
@@ -208,7 +214,7 @@ function Handle-Conflict {
     Write-Host ""
     Write-Host "  2) Exit and resolve manually"
     Write-Host ""
-    $choice = Prompt-Choice "  Choose [1/2]" @("1", "2")
+    $choice = Read-UserChoice "  Choose [1/2]" @("1", "2")
 
     if ($choice -eq "1") {
         Write-Host ""
@@ -233,7 +239,7 @@ function Handle-Conflict {
         try { $ErrorActionPreference = "SilentlyContinue"; docker compose exec -it daaf-docker claude } finally { $ErrorActionPreference = $savedEAP }
         Write-Host ""
 
-        $remaining = Compose-Git diff --name-only --diff-filter=U
+        $remaining = Invoke-ComposeGit diff --name-only --diff-filter=U
 
         if ([string]::IsNullOrWhiteSpace($remaining)) {
             Write-Host "Conflicts resolved!"
@@ -284,14 +290,14 @@ function Handle-Conflict {
     }
 }
 
-function Sync-HostScripts {
+function Sync-HostScript {
     param([string]$OldHead)
 
-    $newHead = Compose-Git rev-parse HEAD
+    $newHead = Invoke-ComposeGit rev-parse HEAD
 
     if ($OldHead -eq $newHead) { return }
 
-    $changedScripts = Compose-Git diff --name-only "$OldHead..$newHead" -- `
+    $changedScripts = Invoke-ComposeGit diff --name-only "$OldHead..$newHead" -- `
         scripts/host/run_daaf.sh scripts/host/run_daaf.ps1 `
         scripts/host/backup_daaf.sh scripts/host/backup_daaf.ps1 `
         scripts/host/rebuild_daaf.sh scripts/host/rebuild_daaf.ps1 `
@@ -319,10 +325,10 @@ function Sync-HostScripts {
     Write-Host ""
 }
 
-function Check-BuildChanges {
+function Test-BuildChange {
     param([string]$OldHead)
 
-    $newHead = Compose-Git rev-parse HEAD
+    $newHead = Invoke-ComposeGit rev-parse HEAD
 
     if ($OldHead -eq $newHead) {
         Write-Host "No Dockerfile changes - no container rebuild needed."
@@ -330,7 +336,7 @@ function Check-BuildChanges {
         return
     }
 
-    $buildChanges = Compose-Git diff --name-only "$OldHead..$newHead" -- `
+    $buildChanges = Invoke-ComposeGit diff --name-only "$OldHead..$newHead" -- `
         Dockerfile docker-compose.yml
 
     if ([string]::IsNullOrWhiteSpace($buildChanges)) {
@@ -345,7 +351,7 @@ function Check-BuildChanges {
     Write-Host ""
     Write-Host "A rebuild is needed for these changes to take full effect."
     Write-Host ""
-    $choice = Prompt-Choice "  Run rebuild now? [y/n]" @("y", "n")
+    $choice = Read-UserChoice "  Run rebuild now? [y/n]" @("y", "n")
 
     if ($choice -eq "y") {
         Write-Host ""
@@ -366,14 +372,14 @@ function Check-BuildChanges {
     }
 }
 
-function Finish-Update {
+function Complete-Update {
     param(
         [string]$OldHead,
         [string]$ExtraMsg = ""
     )
 
-    Sync-HostScripts $OldHead
-    Check-BuildChanges $OldHead
+    Sync-HostScript $OldHead
+    Test-BuildChange $OldHead
 
     Write-Host ""
     Write-Host "=========================================="
@@ -413,10 +419,11 @@ try {
     if (-not $Mutex.WaitOne(0)) {
         Write-Host "ERROR: Another instance of update_daaf is already running." -ForegroundColor Red
         Write-Host "       Wait for it to finish or restart Docker Desktop to clear the lock." -ForegroundColor Yellow
-        Pause-And-Exit 1
+        Wait-AndExit 1
     }
 } catch [System.Threading.AbandonedMutexException] {
-    # Previous instance crashed - we now own the mutex, continue
+    # Previous instance crashed without releasing — we now own the mutex, continue
+    Write-Verbose "Silenced: $_"
 }
 
 # =====================================================================
@@ -441,14 +448,14 @@ if (-not (Test-Path "docker-compose.yml")) {
     Write-Host "  .\update_daaf.ps1"
     Write-Host ""
     Write-Host "If you installed DAAF somewhere else, cd to that folder first."
-    Pause-And-Exit 1
+    Wait-AndExit 1
 }
 
 # --- Preflight: Docker installed ---
 if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
     Write-Host "ERROR: Docker is either not installed or not configured properly in your system PATH to allow it to be used from PowerShell." -ForegroundColor Red
     Write-Host "Please install Docker Desktop: https://www.docker.com/products/docker-desktop/"
-    Pause-And-Exit 1
+    Wait-AndExit 1
 }
 
 # --- Preflight: Docker running ---
@@ -456,7 +463,7 @@ $savedEAP = $ErrorActionPreference
 try { $ErrorActionPreference = "SilentlyContinue"; $null = docker info 2>&1 } finally { $ErrorActionPreference = $savedEAP }
 if ($LASTEXITCODE -ne 0) {
     Write-Host "ERROR: Docker Desktop does not seem to be running. Please start it and try again." -ForegroundColor Red
-    Pause-And-Exit 1
+    Wait-AndExit 1
 }
 
 # --- Preflight: Start container if needed ---
@@ -478,7 +485,7 @@ if (-not $running) {
         Write-Host "  - Docker Desktop needs more memory (Settings > Resources)"
         Write-Host ""
         Write-Host "Try restarting Docker Desktop, then:  .\update_daaf.ps1"
-        Pause-And-Exit 1
+        Wait-AndExit 1
     }
 
     $retries = 0
@@ -507,7 +514,7 @@ if (-not $running) {
         Write-Host "  1. Restart Docker Desktop"
         Write-Host "  2. Re-run:  .\update_daaf.ps1"
         Remove-Item $readyLog -ErrorAction SilentlyContinue
-        Pause-And-Exit 1
+        Wait-AndExit 1
     }
     Remove-Item $readyLog -ErrorAction SilentlyContinue
     Write-Host "Container started."
@@ -515,12 +522,12 @@ if (-not $running) {
 }
 
 # --- Preflight: DAAF installed ---
-$null = Compose-Exec test -f /daaf/CLAUDE.md 2>&1
+$null = Invoke-ComposeExec test -f /daaf/CLAUDE.md 2>&1
 if ($LASTEXITCODE -ne 0) {
     Write-Host "ERROR: DAAF does not appear to be installed in the container." -ForegroundColor Red
     Write-Host "Run the installer first. See:"
     Write-Host "  https://github.com/$UpstreamRepo#quick-start"
-    Pause-And-Exit 1
+    Wait-AndExit 1
 }
 
 # =====================================================================
@@ -534,7 +541,7 @@ Write-Host "It's a good idea to back up before updating, especially if you have"
 Write-Host "research projects or local customizations you want to protect."
 Write-Host ""
 if (Test-Path "backup_daaf.ps1") {
-    $choice = Prompt-Choice "  Run backup now? [y/n]" @("y", "n")
+    $choice = Read-UserChoice "  Run backup now? [y/n]" @("y", "n")
     if ($choice -eq "y") {
         Write-Host ""
         $env:DAAF_NESTED = "1"
@@ -550,14 +557,14 @@ if (Test-Path "backup_daaf.ps1") {
 # =====================================================================
 # Create git backup branch (lightweight restore point)
 # =====================================================================
-Compose-Git-Null branch $BackupBranch
+Invoke-ComposeGitNull branch $BackupBranch
 
-$OldHead = Compose-Git rev-parse HEAD
+$OldHead = Invoke-ComposeGit rev-parse HEAD
 
 # =====================================================================
 # Check git remote
 # =====================================================================
-$OriginUrl = Compose-Git remote get-url origin
+$OriginUrl = Invoke-ComposeGit remote get-url origin
 
 if ([string]::IsNullOrWhiteSpace($OriginUrl)) {
     Write-Host ""
@@ -573,7 +580,7 @@ if ([string]::IsNullOrWhiteSpace($OriginUrl)) {
     Write-Host "  exit"
     Write-Host ""
     Write-Host "Then re-run:  .\update_daaf.ps1"
-    Pause-And-Exit 0
+    Wait-AndExit 0
 }
 
 # --- Determine upstream remote ---
@@ -584,7 +591,7 @@ if ($OriginUrl -notlike "*$UpstreamRepo*") {
     Write-Host "  $OriginUrl"
     Write-Host ""
 
-    $upstreamUrl = Compose-Git remote get-url upstream
+    $upstreamUrl = Invoke-ComposeGit remote get-url upstream
 
     if ($upstreamUrl) {
         $UpstreamRemote = "upstream"
@@ -600,7 +607,7 @@ if ($OriginUrl -notlike "*$UpstreamRepo*") {
         Write-Host "  exit"
         Write-Host ""
         Write-Host "Then re-run:  .\update_daaf.ps1"
-        Pause-And-Exit 0
+        Wait-AndExit 0
     }
     Write-Host ""
 }
@@ -609,8 +616,8 @@ if ($OriginUrl -notlike "*$UpstreamRepo*") {
 # Fetch latest
 # =====================================================================
 Write-Host "Fetching latest changes from $UpstreamRemote..."
-# Use direct docker exec instead of Compose-Git-Null so we can capture stderr
-# for diagnostic output on failure (Compose-Git-Null discards all output).
+# Use direct docker exec instead of Invoke-ComposeGitNull so we can capture stderr
+# for diagnostic output on failure (Invoke-ComposeGitNull discards all output).
 $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
 $fetchOutput = docker compose exec -T daaf-docker git -C /daaf fetch $UpstreamRemote 2>&1
 $fetchExit = $LASTEXITCODE
@@ -631,14 +638,14 @@ if ($fetchExit -ne 0) {
     Write-Host "  - Corporate firewall or proxy blocking the connection"
     Write-Host ""
     Write-Host "Once the issue is resolved, re-run:  .\update_daaf.ps1"
-    Pause-And-Exit 1
+    Wait-AndExit 1
 }
 
 # --- Unshallow if needed (shallow clones can't compute merge-base) ---
-$null = Compose-Exec test -f /daaf/.git/shallow 2>&1
+$null = Invoke-ComposeExec test -f /daaf/.git/shallow 2>&1
 if ($LASTEXITCODE -eq 0) {
     Write-Host "Deepening repository history (installed from a shallow clone)..."
-    Compose-Git-Null fetch --unshallow $UpstreamRemote
+    Invoke-ComposeGitNull fetch --unshallow $UpstreamRemote
     if ($LASTEXITCODE -ne 0) {
         Write-Host "  (Already unshallowed or not needed.)"
     }
@@ -652,7 +659,7 @@ $RemoteBranch = if ($env:DAAF_BRANCH) { $env:DAAF_BRANCH } else { "" }
 
 if ($RemoteBranch) {
     # User specified a branch - verify it exists on the remote
-    $null = Compose-Git rev-parse --verify "$UpstreamRemote/$RemoteBranch"
+    $null = Invoke-ComposeGit rev-parse --verify "$UpstreamRemote/$RemoteBranch"
     if ($LASTEXITCODE -ne 0) {
         Write-Host ""
         Write-Host "The branch '$RemoteBranch' (from DAAF_BRANCH) was not found on" -ForegroundColor Red
@@ -660,16 +667,16 @@ if ($RemoteBranch) {
         Write-Host ""
         Write-Host "Your installation is unchanged. Double-check the branch name and try"
         Write-Host "again, or omit DAAF_BRANCH to use the default branch."
-        Pause-And-Exit 1
+        Wait-AndExit 1
     }
     Write-Host "Using branch: $RemoteBranch (from DAAF_BRANCH)"
 } else {
     # Auto-detect: try main, then master
-    $null = Compose-Git rev-parse --verify "$UpstreamRemote/main"
+    $null = Invoke-ComposeGit rev-parse --verify "$UpstreamRemote/main"
     if ($LASTEXITCODE -eq 0) {
         $RemoteBranch = "main"
     } else {
-        $null = Compose-Git rev-parse --verify "$UpstreamRemote/master"
+        $null = Invoke-ComposeGit rev-parse --verify "$UpstreamRemote/master"
         if ($LASTEXITCODE -eq 0) {
             $RemoteBranch = "master"
         }
@@ -699,13 +706,13 @@ if (-not $RemoteBranch) {
     Write-Host ""
     Write-Host "If this persists, check:"
     Write-Host "  https://github.com/$UpstreamRepo/issues"
-    Pause-And-Exit 1
+    Wait-AndExit 1
 }
 
 # =====================================================================
 # Check current branch
 # =====================================================================
-$CurrentBranch = Compose-Git branch --show-current
+$CurrentBranch = Invoke-ComposeGit branch --show-current
 
 if ([string]::IsNullOrWhiteSpace($CurrentBranch)) {
     Write-Host ""
@@ -723,32 +730,32 @@ if ([string]::IsNullOrWhiteSpace($CurrentBranch)) {
     Write-Host "Then re-run:  .\update_daaf.ps1"
     Write-Host ""
     Write-Host "No changes were made. Your research files are not affected."
-    Pause-And-Exit 0
+    Wait-AndExit 0
 }
 
 # =====================================================================
 # Check if already up to date
 # =====================================================================
-$Local = Compose-Git rev-parse HEAD
-$Remote = Compose-Git rev-parse "$UpstreamRemote/$RemoteBranch"
+$Local = Invoke-ComposeGit rev-parse HEAD
+$Remote = Invoke-ComposeGit rev-parse "$UpstreamRemote/$RemoteBranch"
 
-$DirtyFiles = Compose-Git diff --name-only HEAD
+$DirtyFiles = Invoke-ComposeGit diff --name-only HEAD
 
 if (($CurrentBranch -eq $RemoteBranch) -and ($Local -eq $Remote) -and `
     [string]::IsNullOrWhiteSpace($DirtyFiles)) {
     Write-Host ""
     Write-Host "Already up to date! Nothing to do."
     Write-Host ""
-    Pause-And-Exit 0
+    Wait-AndExit 0
 }
 
 # =====================================================================
 # Compute ahead/behind
 # =====================================================================
-$Ahead = Compose-Git rev-list --count "$UpstreamRemote/$RemoteBranch..HEAD"
+$Ahead = Invoke-ComposeGit rev-list --count "$UpstreamRemote/$RemoteBranch..HEAD"
 if (-not $Ahead) { $Ahead = "0" }
 
-$Behind = Compose-Git rev-list --count "HEAD..$UpstreamRemote/$RemoteBranch"
+$Behind = Invoke-ComposeGit rev-list --count "HEAD..$UpstreamRemote/$RemoteBranch"
 if (-not $Behind) { $Behind = "0" }
 
 if ($Behind -ne "0") {
@@ -764,7 +771,7 @@ if (($CurrentBranch -ne $RemoteBranch) -and ($Behind -eq "0")) {
     Write-Host "Already up to date! Your branch '$CurrentBranch' has all the latest"
     Write-Host "changes from $UpstreamRemote/$RemoteBranch. Nothing to do."
     Write-Host ""
-    Pause-And-Exit 0
+    Wait-AndExit 0
 }
 
 # =====================================================================
@@ -781,19 +788,19 @@ if ($CurrentBranch -ne $RemoteBranch) {
     Write-Host "  1) Update: pull into $RemoteBranch, then merge into '$CurrentBranch'"
     Write-Host "  2) Abort (no changes made)"
     Write-Host ""
-    $choice = Prompt-Choice "  Choose [1/2]" @("1", "2")
+    $choice = Read-UserChoice "  Choose [1/2]" @("1", "2")
 
     if ($choice -eq "2") {
         Write-Host ""
         Write-Host "Aborted. No changes made."
-        Pause-And-Exit 0
+        Wait-AndExit 0
     }
 
     $Stashed = $false
     if ($DirtyFiles) {
         Write-Host ""
         Write-Host "Setting aside your uncommitted changes for safekeeping..."
-        Compose-Git-Verbose stash push -m "DAAF update backup $Timestamp"
+        Invoke-ComposeGitVerbose stash push -m "DAAF update backup $Timestamp"
         if ($LASTEXITCODE -ne 0) {
             Write-Host ""
             Write-Host "ERROR: Could not safely set aside your uncommitted changes." -ForegroundColor Red
@@ -807,13 +814,13 @@ if ($CurrentBranch -ne $RemoteBranch) {
             Write-Host "  git commit -m `"Save my changes before update`""
             Write-Host "  exit"
             Write-Host "  .\update_daaf.ps1"
-            Pause-And-Exit 1
+            Wait-AndExit 1
         }
         $Stashed = $true
     }
 
     Write-Host "Switching to $RemoteBranch..."
-    Compose-Git-Verbose checkout $RemoteBranch
+    Invoke-ComposeGitVerbose checkout $RemoteBranch
     if ($LASTEXITCODE -ne 0) {
         Write-Host ""
         Write-Host "ERROR: Could not switch to the '$RemoteBranch' branch." -ForegroundColor Red
@@ -825,11 +832,11 @@ if ($CurrentBranch -ne $RemoteBranch) {
         }
         Write-Host ""
         Write-Host "Your research files are not affected."
-        Pause-And-Exit 1
+        Wait-AndExit 1
     }
 
     Write-Host "Pulling updates..."
-    Compose-Git-Verbose pull $UpstreamRemote $RemoteBranch
+    Invoke-ComposeGitVerbose pull $UpstreamRemote $RemoteBranch
     if ($LASTEXITCODE -ne 0) {
         Write-Host ""
         Write-Host "ERROR: Could not download the latest updates." -ForegroundColor Red
@@ -845,11 +852,11 @@ if ($CurrentBranch -ne $RemoteBranch) {
         }
         Write-Host ""
         Write-Host "Your research files are not affected."
-        Pause-And-Exit 1
+        Wait-AndExit 1
     }
 
     Write-Host "Switching back to '$CurrentBranch'..."
-    Compose-Git-Verbose checkout $CurrentBranch
+    Invoke-ComposeGitVerbose checkout $CurrentBranch
     if ($LASTEXITCODE -ne 0) {
         Write-Host ""
         Write-Host "ERROR: Could not switch back to your '$CurrentBranch' branch." -ForegroundColor Red
@@ -869,26 +876,26 @@ if ($CurrentBranch -ne $RemoteBranch) {
             Write-Host "Your uncommitted changes are still saved. After switching back:"
             Write-Host "  docker compose exec daaf-docker git -C /daaf stash pop"
         }
-        Pause-And-Exit 1
+        Wait-AndExit 1
     }
 
     Write-Host "Merging $RemoteBranch into '$CurrentBranch'..."
-    Compose-Git-Null merge $RemoteBranch
+    Invoke-ComposeGitNull merge $RemoteBranch
     if ($LASTEXITCODE -ne 0) {
-        if (-not (Handle-Conflict "merge" "merge --abort")) {
+        if (-not (Resolve-Conflict "merge" "merge --abort")) {
             if ($Stashed) {
                 Write-Host ""
                 Write-Host "Your uncommitted changes are safely saved and will be"
                 Write-Host "restored after conflicts are resolved."
                 Write-Host "  docker compose exec daaf-docker git -C /daaf stash pop"
             }
-            Pause-And-Exit 1
+            Wait-AndExit 1
         }
     }
 
     if ($Stashed) {
         Write-Host "Restoring your changes..."
-        Compose-Git-Null stash pop
+        Invoke-ComposeGitNull stash pop
         if ($LASTEXITCODE -ne 0) {
             Write-Host ""
             Write-Host "The framework update was applied successfully!"
@@ -909,13 +916,13 @@ if ($CurrentBranch -ne $RemoteBranch) {
             Write-Host "       git stash drop"
             Write-Host "       exit"
             Write-Host ""
-            Finish-Update $OldHead "Note: Uncommitted changes still need to be restored from the stash."
-            Pause-And-Exit 0
+            Complete-Update $OldHead "Note: Uncommitted changes still need to be restored from the stash."
+            Wait-AndExit 0
         }
     }
 
-    Finish-Update $OldHead
-    Pause-And-Exit 0
+    Complete-Update $OldHead
+    Wait-AndExit 0
 }
 
 # =====================================================================
@@ -927,7 +934,7 @@ if ([int]$Ahead -gt 0) {
     Write-Host "the official DAAF release."
     Write-Host ""
     Write-Host "Your local commits:"
-    $logOutput = Compose-Git log --oneline "$UpstreamRemote/$RemoteBranch..HEAD"
+    $logOutput = Invoke-ComposeGit log --oneline "$UpstreamRemote/$RemoteBranch..HEAD"
     $logOutput -split "`n" | ForEach-Object { if ($_.Trim()) { Write-Host "  $_" } }
     Write-Host ""
     Write-Host "Options:"
@@ -942,19 +949,19 @@ if ([int]$Ahead -gt 0) {
     Write-Host ""
     Write-Host "  3) ABORT (no changes made)"
     Write-Host ""
-    $choice = Prompt-Choice "  Choose [1/2/3]" @("1", "2", "3")
+    $choice = Read-UserChoice "  Choose [1/2/3]" @("1", "2", "3")
 
     if ($choice -eq "3") {
         Write-Host ""
         Write-Host "Aborted. No changes made."
-        Pause-And-Exit 0
+        Wait-AndExit 0
     }
 
     $Stashed = $false
     if ($DirtyFiles) {
         Write-Host ""
         Write-Host "Setting aside your uncommitted changes for safekeeping..."
-        Compose-Git-Verbose stash push -m "DAAF update backup $Timestamp"
+        Invoke-ComposeGitVerbose stash push -m "DAAF update backup $Timestamp"
         if ($LASTEXITCODE -ne 0) {
             Write-Host ""
             Write-Host "ERROR: Could not safely set aside your uncommitted changes." -ForegroundColor Red
@@ -968,7 +975,7 @@ if ([int]$Ahead -gt 0) {
             Write-Host "  git commit -m `"Save my changes before update`""
             Write-Host "  exit"
             Write-Host "  .\update_daaf.ps1"
-            Pause-And-Exit 1
+            Wait-AndExit 1
         }
         $Stashed = $true
     }
@@ -976,24 +983,24 @@ if ([int]$Ahead -gt 0) {
     if ($choice -eq "1") {
         # --- Merge path ---
         Write-Host "Merging upstream updates..."
-        Compose-Git-Null merge "$UpstreamRemote/$RemoteBranch" `
+        Invoke-ComposeGitNull merge "$UpstreamRemote/$RemoteBranch" `
             -m "Merge DAAF upstream updates"
         if ($LASTEXITCODE -ne 0) {
-            if (-not (Handle-Conflict "merge" "merge --abort")) {
+            if (-not (Resolve-Conflict "merge" "merge --abort")) {
                 if ($Stashed) {
                     Write-Host ""
                     Write-Host "Your uncommitted changes are safely saved and will be"
                     Write-Host "restored after conflicts are resolved."
                     Write-Host "  docker compose exec daaf-docker git -C /daaf stash pop"
                 }
-                Pause-And-Exit 1
+                Wait-AndExit 1
             }
         }
     } else {
         # --- Squash-then-rebase path ---
         Write-Host ""
         Write-Host "Bundling your $Ahead local commit(s) into a single commit..."
-        $MergeBase = Compose-Git merge-base HEAD "$UpstreamRemote/$RemoteBranch"
+        $MergeBase = Invoke-ComposeGit merge-base HEAD "$UpstreamRemote/$RemoteBranch"
 
         if ([string]::IsNullOrWhiteSpace($MergeBase)) {
             Write-Host ""
@@ -1009,10 +1016,10 @@ if ([int]$Ahead -gt 0) {
                 Write-Host "Your uncommitted changes are safely saved and will be"
                 Write-Host "restored automatically when you re-run the updater."
             }
-            Pause-And-Exit 1
+            Wait-AndExit 1
         }
 
-        Compose-Git-Verbose reset --soft $MergeBase
+        Invoke-ComposeGitVerbose reset --soft $MergeBase
         if ($LASTEXITCODE -ne 0) {
             Write-Host ""
             Write-Host "ERROR: The rebase could not proceed - an internal step failed." -ForegroundColor Red
@@ -1027,9 +1034,9 @@ if ([int]$Ahead -gt 0) {
             Write-Host "  .\update_daaf.ps1"
             Write-Host ""
             Write-Host "Your research files are not affected."
-            Pause-And-Exit 1
+            Wait-AndExit 1
         }
-        Compose-Git-Verbose commit `
+        Invoke-ComposeGitVerbose commit `
             -m "Local DAAF customizations ($Ahead commits, squashed before update on $Timestamp)"
         if ($LASTEXITCODE -ne 0) {
             Write-Host ""
@@ -1045,20 +1052,20 @@ if ([int]$Ahead -gt 0) {
             Write-Host "  .\update_daaf.ps1"
             Write-Host ""
             Write-Host "Your research files are not affected."
-            Pause-And-Exit 1
+            Wait-AndExit 1
         }
 
         Write-Host "Rebasing on top of the latest update..."
-        Compose-Git-Null rebase "$UpstreamRemote/$RemoteBranch"
+        Invoke-ComposeGitNull rebase "$UpstreamRemote/$RemoteBranch"
         if ($LASTEXITCODE -ne 0) {
-            if (-not (Handle-Conflict "rebase" "rebase --abort")) {
+            if (-not (Resolve-Conflict "rebase" "rebase --abort")) {
                 if ($Stashed) {
                     Write-Host ""
                     Write-Host "Your uncommitted changes are safely saved and will be"
                     Write-Host "restored after conflicts are resolved."
                     Write-Host "  docker compose exec daaf-docker git -C /daaf stash pop"
                 }
-                Pause-And-Exit 1
+                Wait-AndExit 1
             }
         }
     }
@@ -1066,7 +1073,7 @@ if ([int]$Ahead -gt 0) {
     # Restore stashed changes
     if ($Stashed) {
         Write-Host "Restoring your changes..."
-        Compose-Git-Null stash pop
+        Invoke-ComposeGitNull stash pop
         if ($LASTEXITCODE -ne 0) {
             Write-Host ""
             Write-Host "The framework update was applied successfully!"
@@ -1088,20 +1095,20 @@ if ([int]$Ahead -gt 0) {
             Write-Host "       exit"
             Write-Host ""
             if ($choice -eq "1") {
-                Finish-Update $OldHead "Note: Uncommitted changes still need attention (see above)."
+                Complete-Update $OldHead "Note: Uncommitted changes still need attention (see above)."
             } else {
-                Finish-Update $OldHead "Your commits were rebased. Uncommitted changes still need attention (see above)."
+                Complete-Update $OldHead "Your commits were rebased. Uncommitted changes still need attention (see above)."
             }
-            Pause-And-Exit 0
+            Wait-AndExit 0
         }
     }
 
     if ($choice -eq "1") {
-        Finish-Update $OldHead
+        Complete-Update $OldHead
     } else {
-        Finish-Update $OldHead "Your local changes have been rebased on top of the update."
+        Complete-Update $OldHead "Your local changes have been rebased on top of the update."
     }
-    Pause-And-Exit 0
+    Wait-AndExit 0
 }
 
 # =====================================================================
@@ -1119,17 +1126,17 @@ if ($DirtyFiles) {
     Write-Host "  2) Show what changed first"
     Write-Host "  3) Abort (no changes made)"
     Write-Host ""
-    $choice = Prompt-Choice "  Choose [1/2/3]" @("1", "2", "3")
+    $choice = Read-UserChoice "  Choose [1/2/3]" @("1", "2", "3")
 
     if ($choice -eq "3") {
         Write-Host ""
         Write-Host "Aborted. No changes made."
-        Pause-And-Exit 0
+        Wait-AndExit 0
     }
 
     if ($choice -eq "2") {
         Write-Host ""
-        Compose-Exec git -C /daaf diff 2>$null
+        Invoke-ComposeExec git -C /daaf diff 2>$null
         Write-Host ""
         Write-Host "Lines starting with + are additions, - are removals."
         Write-Host ""
@@ -1137,16 +1144,16 @@ if ($DirtyFiles) {
         Write-Host "  1) Stash changes, update, then re-apply"
         Write-Host "  3) Abort"
         Write-Host ""
-        $choice = Prompt-Choice "  Choose [1/3]" @("1", "3")
+        $choice = Read-UserChoice "  Choose [1/3]" @("1", "3")
         if ($choice -eq "3") {
             Write-Host ""
             Write-Host "Aborted. No changes made."
-            Pause-And-Exit 0
+            Wait-AndExit 0
         }
     }
 
     Write-Host "Setting aside your changes for safekeeping..."
-    Compose-Git-Verbose stash push -m "DAAF update backup $Timestamp"
+    Invoke-ComposeGitVerbose stash push -m "DAAF update backup $Timestamp"
     if ($LASTEXITCODE -ne 0) {
         Write-Host ""
         Write-Host "ERROR: Could not safely set aside your uncommitted changes." -ForegroundColor Red
@@ -1160,11 +1167,11 @@ if ($DirtyFiles) {
         Write-Host "  git commit -m `"Save my changes before update`""
         Write-Host "  exit"
         Write-Host "  .\update_daaf.ps1"
-        Pause-And-Exit 1
+        Wait-AndExit 1
     }
 
     Write-Host "Pulling updates..."
-    Compose-Git-Verbose pull $UpstreamRemote $RemoteBranch
+    Invoke-ComposeGitVerbose pull $UpstreamRemote $RemoteBranch
     if ($LASTEXITCODE -ne 0) {
         Write-Host ""
         Write-Host "ERROR: Could not download the latest updates." -ForegroundColor Red
@@ -1179,11 +1186,11 @@ if ($DirtyFiles) {
         Write-Host "  docker compose exec daaf-docker git -C /daaf stash pop"
         Write-Host ""
         Write-Host "Your research files are not affected."
-        Pause-And-Exit 1
+        Wait-AndExit 1
     }
 
     Write-Host "Re-applying your changes..."
-    Compose-Git-Null stash pop
+    Invoke-ComposeGitNull stash pop
     if ($LASTEXITCODE -ne 0) {
         Write-Host ""
         Write-Host "The framework update was applied successfully!"
@@ -1196,7 +1203,7 @@ if ($DirtyFiles) {
         Write-Host "  1) Launch Claude Code to help resolve the conflicts"
         Write-Host "  2) Exit and resolve manually"
         Write-Host ""
-        $choice = Prompt-Choice "  Choose [1/2]" @("1", "2")
+        $choice = Read-UserChoice "  Choose [1/2]" @("1", "2")
 
         if ($choice -eq "1") {
             Write-Host ""
@@ -1214,12 +1221,12 @@ if ($DirtyFiles) {
             try { $ErrorActionPreference = "SilentlyContinue"; docker compose exec -it daaf-docker claude } finally { $ErrorActionPreference = $savedEAP }
             Write-Host ""
 
-            $remaining = Compose-Git diff --name-only --diff-filter=U
+            $remaining = Invoke-ComposeGit diff --name-only --diff-filter=U
 
             if ([string]::IsNullOrWhiteSpace($remaining)) {
                 Write-Host "Conflicts resolved!"
-                Finish-Update $OldHead "Your local changes have been re-applied on top of the update."
-                Pause-And-Exit 0
+                Complete-Update $OldHead "Your local changes have been re-applied on top of the update."
+                Wait-AndExit 0
             } else {
                 Write-Host "Some conflicts still remain in these files:"
                 $remaining -split "`n" | ForEach-Object { if ($_.Trim()) { Write-Host "  $_" } }
@@ -1231,7 +1238,7 @@ if ($DirtyFiles) {
                 Write-Host "Or to undo the update entirely (your research files are not affected):"
                 Write-Host "  docker compose exec daaf-docker git -C /daaf reset --hard $BackupBranch"
                 Write-Host "  docker compose exec daaf-docker git -C /daaf stash pop"
-                Pause-And-Exit 1
+                Wait-AndExit 1
             }
         } else {
             Write-Host ""
@@ -1252,12 +1259,12 @@ if ($DirtyFiles) {
             Write-Host "To undo the entire update:"
             Write-Host "  docker compose exec daaf-docker git -C /daaf reset --hard $BackupBranch"
             Write-Host "  docker compose exec daaf-docker git -C /daaf stash pop"
-            Pause-And-Exit 1
+            Wait-AndExit 1
         }
     }
 
-    Finish-Update $OldHead "Your local changes have been re-applied on top of the update."
-    Pause-And-Exit 0
+    Complete-Update $OldHead "Your local changes have been re-applied on top of the update."
+    Wait-AndExit 0
 }
 
 # =====================================================================
@@ -1265,7 +1272,7 @@ if ($DirtyFiles) {
 # =====================================================================
 Write-Host ""
 Write-Host "Pulling updates..."
-Compose-Git-Verbose pull $UpstreamRemote $RemoteBranch
+Invoke-ComposeGitVerbose pull $UpstreamRemote $RemoteBranch
 if ($LASTEXITCODE -ne 0) {
     Write-Host ""
     Write-Host "ERROR: Could not download the latest updates." -ForegroundColor Red
@@ -1278,8 +1285,8 @@ if ($LASTEXITCODE -ne 0) {
     Write-Host "  - GitHub may be down (check https://www.githubstatus.com)"
     Write-Host ""
     Write-Host "Once the issue is resolved, re-run:  .\update_daaf.ps1"
-    Pause-And-Exit 1
+    Wait-AndExit 1
 }
 
-Finish-Update $OldHead
-Pause-And-Exit 0
+Complete-Update $OldHead
+Wait-AndExit 0

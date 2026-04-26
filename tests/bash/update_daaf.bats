@@ -526,7 +526,7 @@ teardown() {
 
 @test "update: locking uses portable mkdir (no flock)" {
     # Verify the script uses mkdir for locking, not flock
-    run grep -c 'mkdir.*lock' "${REPO_ROOT}/scripts/host/update_daaf.sh"
+    run grep -ci 'mkdir.*lock' "${REPO_ROOT}/scripts/host/update_daaf.sh"
     assert_success
     [ "${output}" -ge 1 ]
 

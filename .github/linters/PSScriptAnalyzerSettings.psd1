@@ -1,4 +1,4 @@
-# PSScriptAnalyzer Settings for DAAF
+﻿# PSScriptAnalyzer Settings for DAAF
 #
 # Configuration for PSScriptAnalyzer linting of all .ps1 scripts.
 # Used by CI (ci-scripts.yml) and local development.
