@@ -180,6 +180,38 @@ if ($LASTEXITCODE -ne 0) {
 
 ---
 
+### Embedded Double-Quotes in Native Command Arguments on Windows
+
+**The problem:** When PowerShell on Windows passes a string containing `"` characters to a native executable (like `docker.exe`), the Windows C runtime argument parser (`CommandLineToArgvW`) can misinterpret quoting boundaries, silently truncating or mangling the argument. Multi-command `sh -c` pipelines are especially vulnerable:
+
+```powershell
+# BAD: PowerShell "" escapes produce literal " that Windows misparses
+$out = docker run --rm busybox sh -c "awk '{printf ""%d\n"", s/1024}'"
+# Result: awk receives a garbled program — "Unexpected token" or silent truncation
+
+# ALSO BAD: PowerShell single-quotes with sh double-quotes — literal " in the string
+$out = docker run --rm busybox sh -c 'stat -c "%s" file | awk "{s+=\$1} END {print s}"'
+# Result: Windows splits the argument at spaces between the " pairs
+
+# GOOD: PowerShell double-quotes with sh single-quotes — no " in the result
+$out = docker run --rm busybox sh -c "stat -c %s file | awk '{s+=`$1} END {print s}'"
+# Result: string has no embedded " — Windows passes it intact
+```
+
+**Why it happens:** On Windows, native executables receive their arguments as a single command-line string, not a pre-parsed array. The C runtime's `CommandLineToArgvW` re-parses that string using its own rules where `"` toggles quoted/unquoted state. When embedded `"` characters appear — whether from PowerShell `""` escapes or from literal `"` inside single-quoted strings — they create ambiguous boundaries that cause argument splitting or truncation. The failure is **completely silent**: no error, no warning, just wrong or missing output.
+
+**Fix:** Eliminate ALL `"` characters from the string that reaches the native executable:
+1. Use a **PowerShell double-quoted** outer string (for variable interpolation via `` `$ `` escaping)
+2. Use **sh single-quotes** for inner quoting (awk programs, format strings)
+3. Leave simple arguments **unquoted** at the sh level when safe (e.g., `stat -c %s` — no sh metacharacters in `%s`)
+4. Use `print` instead of `printf "%d\n"` in awk to avoid needing format-string quotes
+
+**Note:** This does **not** affect Bash. On Linux/macOS, Bash passes arguments via `execvp` as a pre-parsed array — there is no intermediate command-line string for a C runtime to reinterpret.
+
+**Severity:** High. The failure is completely silent — the command may exit 0 but produce truncated output. Any PowerShell script passing complex `sh -c` commands to Docker (or any native executable) on Windows is potentially affected.
+
+---
+
 ### Implicit Return Values
 
 **The problem:** Every expression in a function that produces output becomes part of the return value:
@@ -354,6 +386,7 @@ In Bash, `/` is always the separator. No cross-platform concern within Bash itse
 | Backtick nesting | Bash | Low | SC2006 |
 | `$?` for native commands | PowerShell | High | — |
 | `$ErrorActionPreference` scope | PowerShell | High | — |
+| Embedded `"` in native args | PowerShell | High | — |
 | Implicit return values | PowerShell | High | — |
 | `$null` in ForEach pipeline | PowerShell | Medium | — |
 | `-Version Latest` | PowerShell | Medium | — |

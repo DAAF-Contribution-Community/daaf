@@ -72,6 +72,7 @@ Pinned versions: bats-core 1.13.0, bats-support 0.3.0, bats-assert 2.1.0, bats-f
 - **Subshell variable isolation in BATS:** `call_count` variables inside `$()` command substitutions are invisible to the parent shell. Use argument-pattern matching (`case "$*"`) instead of call counting for docker mocks.
 - **Mock variable export:** BATS `run bash "$script"` creates a subshell — mock control variables must be `export`ed to propagate.
 - **ERR trap in test mode:** Scripts with ERR traps fire them when tests source the script. Tests must `trap - ERR; set +eu` after sourcing to neutralize the sourced script's safety settings.
+- **Windows native-command argument passing:** Embedded `"` characters in strings passed to native executables (e.g., `docker.exe`) on Windows get mangled by the C runtime's `CommandLineToArgvW` parser, causing silent argument truncation. Neither PSScriptAnalyzer (which only understands PowerShell syntax) nor the Pester structural tests (which pattern-match the source text) caught this — it only manifests at runtime on Windows with a real Docker daemon. Phase 5 Integration Tests (currently Linux-only) would not catch this either. Mitigation: added a structural regression test to `backup_daaf.Tests.ps1` that checks the Docker scan command avoids the known-bad pattern, and documented the gotcha in the `shell-scripting` skill's `gotchas.md`. A future Phase 5 expansion to include a Windows runner with Docker would provide the strongest coverage, but Windows Docker-in-Docker on GitHub Actions is complex.
 
 ---
 

@@ -802,54 +802,52 @@ if ($DetectedEra -eq "1") {
             # Temporarily lower ErrorActionPreference so PS 5.1 does not promote
             # stderr progress output to a terminating error.
             $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
-            $SearchResultRaw = docker exec $ContainerName sh -c @"
+            $SearchResultRaw = @'
 cd /daaf
-INITIAL="$InitialCommit"
-SKIP_SHAS="$SkipList"
 
 # Save local blob fingerprint to temp file
-git ls-tree -r "`$INITIAL" | awk '{print `$3, `$4}' | sort > /tmp/migrate_local_blobs.txt
-LOCAL_COUNT=`$(wc -l < /tmp/migrate_local_blobs.txt)
+git ls-tree -r "$INITIAL" | awk '{print $3, $4}' | sort > /tmp/migrate_local_blobs.txt
+LOCAL_COUNT=$(wc -l < /tmp/migrate_local_blobs.txt)
 
 BEST_SHA=""
 BEST_OVERLAP=0
-TOTAL=`$(git rev-list origin/main | wc -l)
+TOTAL=$(git rev-list origin/main | wc -l)
 NUM=0
 
-for COMMIT in `$(git rev-list origin/main); do
-    NUM=`$((NUM + 1))
+for COMMIT in $(git rev-list origin/main); do
+    NUM=$((NUM + 1))
 
     # Skip already-checked commits
-    case " `$SKIP_SHAS " in
-        *" `$COMMIT "*) continue ;;
+    case " $SKIP_SHAS " in
+        *" $COMMIT "*) continue ;;
     esac
 
     # Progress every 20 commits (to stderr so it does not mix with result)
-    if [ `$((NUM % 20)) -eq 0 ]; then
-        printf "  Searching commit %d/%d...\r" "`$NUM" "`$TOTAL" >&2
+    if [ $((NUM % 20)) -eq 0 ]; then
+        printf "  Searching commit %d/%d...\r" "$NUM" "$TOTAL" >&2
     fi
 
     # Generate candidate blob fingerprint
-    git ls-tree -r "`$COMMIT" | awk '{print `$3, `$4}' | sort > /tmp/migrate_cand_blobs.txt
+    git ls-tree -r "$COMMIT" | awk '{print $3, $4}' | sort > /tmp/migrate_cand_blobs.txt
 
     # Exact match check (fast)
     if diff -q /tmp/migrate_local_blobs.txt /tmp/migrate_cand_blobs.txt >/dev/null 2>&1; then
-        echo "EXACT:`$COMMIT"
+        echo "EXACT:$COMMIT"
         rm -f /tmp/migrate_local_blobs.txt /tmp/migrate_cand_blobs.txt
         exit 0
     fi
 
     # Track best fuzzy match
-    OVERLAP=`$(comm -12 /tmp/migrate_local_blobs.txt /tmp/migrate_cand_blobs.txt | wc -l)
-    if [ "`$OVERLAP" -gt "`$BEST_OVERLAP" ]; then
-        BEST_OVERLAP=`$OVERLAP
-        BEST_SHA=`$COMMIT
+    OVERLAP=$(comm -12 /tmp/migrate_local_blobs.txt /tmp/migrate_cand_blobs.txt | wc -l)
+    if [ "$OVERLAP" -gt "$BEST_OVERLAP" ]; then
+        BEST_OVERLAP=$OVERLAP
+        BEST_SHA=$COMMIT
     fi
 done
 
 rm -f /tmp/migrate_local_blobs.txt /tmp/migrate_cand_blobs.txt
-echo "BEST:`$BEST_SHA:`$BEST_OVERLAP:`$LOCAL_COUNT"
-"@ 2>&1 | Out-String
+echo "BEST:$BEST_SHA:$BEST_OVERLAP:$LOCAL_COUNT"
+'@ | docker exec -i -e "INITIAL=$InitialCommit" -e "SKIP_SHAS=$SkipList" $ContainerName sh 2>&1 | Out-String
             $ErrorActionPreference = $savedEAP
             $SearchResult = ($SearchResultRaw -replace "`r","").Trim()
 

@@ -82,6 +82,15 @@ Describe "backup_daaf.ps1" {
             $Content | Should -Match 'Size verification'
             $Content | Should -Match 'Backup size mismatch'
         }
+
+        It "docker scan command uses safe quoting for Windows arg passing" {
+            # Regression: embedded " in strings passed to native exes on Windows
+            # causes silent argument truncation. See shell-scripting gotchas.md.
+            $scanLine = ($Content -split "`n") | Where-Object { $_ -match 'stat.*awk' }
+            $scanLine | Should -Not -BeNullOrEmpty
+            $scanLine | Should -Match 'stat -c %s'
+            $scanLine | Should -Match "awk '"
+        }
     }
 }
 
