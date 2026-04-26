@@ -54,6 +54,8 @@ The tradeoffs:
 | **Rate limiting** | Minimal | May hit rate limits during very heavy sessions |
 | **Best for** | Light/occasional use, or organizational API budgets | Regular DAAF usage (recommended) |
 
+**Third option: OpenRouter.** If neither the API key nor a Max subscription works for you, [OpenRouter](https://openrouter.ai/) offers a middle ground. It's a third-party model gateway that gives you pay-per-token access to Claude (including Opus models) without an Anthropic subscription. No monthly commitment, no token markup -- just a 5.5% fee on credit purchases. From what I've seen, this can be particularly appealing if you want to test DAAF before committing to a subscription, or if your organization already uses OpenRouter. See [**01. Installation & Quick Start -- Configure authentication via .env**](01_installation_and_quickstart.md#optional-configure-authentication-via-env) for setup instructions.
+
 One thing to note: the Max plan does have usage limits per time window. If you're running several DAAF analyses in parallel (which you absolutely can do!), you may occasionally hit a rate limit and need to wait a bit. The API key doesn't have that issue, but your wallet will feel it instead.
 
 ### Q: Which Claude model should I use?
@@ -74,9 +76,13 @@ You can also adjust the thinking level for Opus 4.6 by pressing the left and rig
 
 ### Q: Can I use DAAF with a different AI provider (OpenAI, Google, etc.)?
 
-Not out of the box, but it's more portable than you might think.
+Yes -- partially. There are two different things this question might mean, so let me address both.
 
-DAAF is built on Claude Code, which is Anthropic's CLI agent tool. The vast majority of what DAAF actually *is* -- the agent protocols, skill documents, workflow definitions, validation checkpoints -- is just structured text in Markdown files. None of that is Anthropic-specific. What *is* specific to Claude Code are the hooks system (the safety guardrails that block dangerous commands, scan outputs for secrets, etc.) and some of the tool invocation patterns.
+**Using different models through OpenRouter (supported):** [OpenRouter](https://openrouter.ai/) is a model gateway that lets you route Claude Code through a single API key with pay-per-token billing. It's already configured as an authentication option in DAAF's `env.example` template (Option C). Through OpenRouter, you can access Anthropic's Claude models without a Max subscription -- and OpenRouter technically allows routing to non-Anthropic models as well. See [**01. Installation & Quick Start -- Configure authentication via .env**](01_installation_and_quickstart.md#optional-configure-authentication-via-env) for setup instructions (remember to run `/logout` first if you previously authenticated with Anthropic directly).
+
+**The practical reality for non-Anthropic models:** Claude Code is optimized for Anthropic models, and DAAF's complex multi-agent workflow (detailed protocols, nuanced judgment calls, multi-step tool chains) requires Opus-class reasoning to function reliably. OpenRouter's own documentation notes that Claude Code "is optimized for Anthropic models and may not work correctly with other providers." Some non-Claude models (e.g., GPT-4o) can handle basic operations, but they struggle with the tool-calling patterns and edit formatting that DAAF depends on heavily. Extended thinking -- which DAAF uses extensively -- works through OpenRouter when using Anthropic models, but does not work with non-Anthropic models at all. **Bottom line:** Use Anthropic's Opus models through OpenRouter for reliable DAAF results. Non-Anthropic models may technically load but will produce erratic, inconsistent output for DAAF's workflows.
+
+**Porting DAAF to a different CLI tool entirely:** This is also possible but requires more effort. DAAF is built on Claude Code, which is Anthropic's CLI agent tool. The vast majority of what DAAF actually *is* -- the agent protocols, skill documents, workflow definitions, validation checkpoints -- is just structured text in Markdown files. None of that is Anthropic-specific. What *is* specific to Claude Code are the hooks system (the safety guardrails that block dangerous commands, scan outputs for secrets, etc.) and some of the tool invocation patterns.
 
 If you wanted to port DAAF to another agent harness (Gemini CLI, Codex, OpenCode, etc.), here's what would transfer immediately:
 - All agent files (`.claude/agents/*.md`)
@@ -110,6 +116,8 @@ Your data does pass through Anthropic's API when Claude Code processes it -- tha
 ### Q: Is there a free way to use DAAF?
 
 Not in a practical sense for full-pipeline analyses, unfortunately. The free and Pro tiers of Claude simply don't provide enough usage for the volume of work DAAF demands. You might be able to do some lightweight Data Discovery Mode queries (asking what data is available, looking up variable definitions), but a full analysis pipeline will exhaust a lower-tier plan very quickly.
+
+**More flexible billing via OpenRouter:** While not free, [OpenRouter](https://openrouter.ai/) offers pay-per-token access to Claude's Opus models with no monthly subscription commitment. You only pay for what you use (with a 5.5% fee on credit purchases), which can be more accessible than a $100-200/mo Max subscription if you're doing occasional analyses rather than heavy daily use. See the [Installation Guide](01_installation_and_quickstart.md#optional-configure-authentication-via-env) for setup instructions.
 
 This is genuinely the biggest barrier to entry for DAAF, and I wish it were different. I hope that as model costs continue to decrease and open-source models become more capable, a more accessible option will emerge. If you have the capacity to test DAAF with open-source models or alternative providers, please reach out -- that's high on the list of things I'd love community help with.
 
@@ -368,7 +376,7 @@ Election data (county presidential returns) is hosted on Harvard Dataverse, whic
    HARVARD_DATAVERSE_API_KEY=your_token_here
    ```
    If you don't have a `.env` file yet, copy the template first: `cp env.example .env` (macOS/Linux) or `Copy-Item env.example .env` (Windows).
-4. Restart the container: `docker compose down` then `bash run_daaf.sh` (or `.\run_daaf.ps1`)
+4. Recreate the container: `docker compose down` then `bash run_daaf.sh` (or `.\run_daaf.ps1`)
 
 Alternatively, you can set it manually inside the container before launching Claude Code: `export HARVARD_DATAVERSE_API_KEY="your_token_here"`
 

@@ -311,7 +311,7 @@ When the user needs to set up an API key and it's not currently available in the
 > YOUR_API_KEY_NAME=your_key_here
 > ```
 > If you don't have a `.env` file yet, copy the template: `cp env.example .env`
-> (or `Copy-Item env.example .env` on Windows). Then restart the container with `run_daaf`.
+> (or `Copy-Item env.example .env` on Windows). Then recreate the container: `docker compose down` followed by `run_daaf`.
 
 **Alternative: Set for the current session only (temporary):**
 

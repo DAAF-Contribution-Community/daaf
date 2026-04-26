@@ -43,7 +43,7 @@ The authoritative source for county-level U.S. presidential election returns spa
 >    HARVARD_DATAVERSE_API_KEY=your_token_here
 >    ```
 >    If you don't have a `.env` file yet, copy the template: `cp env.example .env`
->    (or `Copy-Item env.example .env` on Windows). Then restart the container with `run_daaf`.
+>    (or `Copy-Item env.example .env` on Windows). Then recreate the container: `docker compose down` followed by `run_daaf`.
 >    Alternatively, set it manually inside the container: `export HARVARD_DATAVERSE_API_KEY="your_token_here"`
 >
 > **If the key is missing**, any fetch script will fail with a `KeyError: 'HARVARD_DATAVERSE_API_KEY'`.
