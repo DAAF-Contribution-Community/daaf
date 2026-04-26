@@ -1,0 +1,34 @@
+# Model matrix for DAAF Framework Adherence Benchmarks
+#
+# Each entry defines a model configuration to benchmark.
+# env_overrides are passed as environment variables to the claude CLI.
+
+models:
+  - id: "claude-haiku-4-5-20251001"
+    name: "Haiku 4.5"
+    cost_tier: "low"
+    env_overrides: {}
+
+  - id: "claude-sonnet-4-6"
+    name: "Sonnet 4.6"
+    cost_tier: "medium"
+    env_overrides: {}
+
+  - id: "claude-opus-4-6"
+    name: "Opus 4.6"
+    cost_tier: "high"
+    env_overrides: {}
+
+# Thinking level variants (uncomment to include in benchmark runs)
+#
+#  - id: "claude-sonnet-4-6"
+#    name: "Sonnet 4.6 (low effort)"
+#    cost_tier: "medium"
+#    env_overrides:
+#      CLAUDE_CODE_EFFORT_LEVEL: "low"
+#
+#  - id: "claude-sonnet-4-6"
+#    name: "Sonnet 4.6 (max effort)"
+#    cost_tier: "medium"
+#    env_overrides:
+#      CLAUDE_CODE_EFFORT_LEVEL: "max"
