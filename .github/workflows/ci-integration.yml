@@ -289,10 +289,13 @@ jobs:
         uses: actions/checkout@v4
 
       # --- Simulate Era 2 installation (ZIP extraction + docker compose up) ---
-      # Era 2 users downloaded a ZIP, extracted it, and ran docker compose up.
-      # We replicate this by: (1) building the container, then (2) copying the
-      # repo files WITHOUT .git into the container, then (3) initializing a
-      # fresh local git repo (as the Dockerfile's entrypoint would have done).
+      # Era 2 users downloaded a ZIP from a specific release tag, extracted it,
+      # and ran docker compose up. We replicate this by: (1) building the
+      # container, then (2) cloning a known tag inside the container (to get
+      # files matching a real historical commit), then (3) stripping .git and
+      # re-initializing as a local-only repo (matching what ZIP users had).
+      # Using v2.0.0 files ensures the migration's blob-tree search finds an
+      # exact match against the upstream v2.0.0 tag.
       - name: Build and start container
         run: docker compose up -d --build
 
@@ -304,10 +307,15 @@ jobs:
           done
           echo "ERROR: Container not ready"; docker compose ps; exit 1
 
-      - name: Populate /daaf without .git (ZIP simulation)
+      - name: Populate /daaf with v2.0.0 files (ZIP simulation)
         run: |
-          tar --exclude='.git' -cf - . \
-            | docker compose exec -T daaf-docker tar -xf - -C /daaf/
+          docker compose exec -T daaf-docker bash -c '
+            git clone --depth 1 -b v2.0.0 \
+              https://github.com/DAAF-Contribution-Community/daaf.git /tmp/daaf-zip
+            rm -rf /tmp/daaf-zip/.git
+            cp -a /tmp/daaf-zip/. /daaf/
+            rm -rf /tmp/daaf-zip
+          '
 
       - name: Initialize local git repo (as ZIP users would have)
         run: |

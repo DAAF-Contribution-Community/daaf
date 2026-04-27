@@ -345,6 +345,9 @@ Describe "update_daaf.ps1 behavioral tests" {
             $conflictHeader | Should -Not -BeNullOrEmpty
         }
 
+        # Resolve-Conflict calls Read-UserChoice, which auto-selects option 1
+        # in non-interactive mode (CI). Override Read-UserChoice to force
+        # option 2 so we can test the manual resolution output path.
         It "option 2 shows manual resolution instructions for merge" {
             Mock docker {
                 $allArgs = $args -join " "
@@ -353,7 +356,7 @@ Describe "update_daaf.ps1 behavioral tests" {
                 }
                 return ""
             }
-            Mock Read-Host { return "2" }
+            function Read-UserChoice { param($P, $V) return "2" }
 
             $output = Resolve-Conflict "merge" "merge --abort" 6>&1
             $mergeInst = $output | Where-Object { $_ -match 'git commit -m' }
@@ -368,7 +371,7 @@ Describe "update_daaf.ps1 behavioral tests" {
                 }
                 return ""
             }
-            Mock Read-Host { return "2" }
+            function Read-UserChoice { param($P, $V) return "2" }
 
             $output = Resolve-Conflict "rebase" "rebase --abort" 6>&1
             $rebaseInst = $output | Where-Object { $_ -match 'rebase --continue' }
@@ -383,12 +386,10 @@ Describe "update_daaf.ps1 behavioral tests" {
                 }
                 return ""
             }
-            Mock Read-Host { return "2" }
+            function Read-UserChoice { param($P, $V) return "2" }
 
             $null = Resolve-Conflict "merge" "merge --abort" 6>&1
             # Resolve-Conflict returns $false for option 2
-            # The return value is mixed with Write-Host output in 6>&1
-            # The function explicitly returns $false
             Resolve-Conflict "merge" "merge --abort" *> $null | Should -BeFalse
         }
     }

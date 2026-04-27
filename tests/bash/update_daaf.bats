@@ -432,6 +432,10 @@ teardown() {
     assert_output --partial "scripts/host/run_daaf.sh"
 }
 
+# handle_conflict calls prompt_choice internally. Since piped input triggers
+# the non-interactive auto-select (option 1), we override prompt_choice to
+# force option 2 so we can test the manual resolution path.
+
 @test "update: handle_conflict option 2 shows manual resolution instructions" {
     run bash -c '
         DAAF_TEST_MODE=1 source "'"${REPO_ROOT}"'/scripts/host/update_daaf.sh"
@@ -452,7 +456,8 @@ teardown() {
             esac
         }
 
-        echo "2" | handle_conflict "merge" "merge --abort" || true
+        prompt_choice() { echo "2"; }
+        handle_conflict "merge" "merge --abort" || true
     '
     assert_output --partial "resolve the conflicts manually"
 }
@@ -477,7 +482,8 @@ teardown() {
             esac
         }
 
-        echo "2" | handle_conflict "merge" "merge --abort" || true
+        prompt_choice() { echo "2"; }
+        handle_conflict "merge" "merge --abort" || true
     '
     assert_output --partial "git commit"
     # Merge type should NOT show rebase --continue
@@ -504,12 +510,13 @@ teardown() {
             esac
         }
 
-        echo "2" | handle_conflict "rebase" "rebase --abort" || true
+        prompt_choice() { echo "2"; }
+        handle_conflict "rebase" "rebase --abort" || true
     '
     assert_output --partial "git rebase --continue"
 }
 
-@test "update: handle_conflict returns 1 when manual resolution chosen" {
+@test "update: handle_conflict returns 1 when conflicts remain" {
     run bash -c '
         DAAF_TEST_MODE=1 source "'"${REPO_ROOT}"'/scripts/host/update_daaf.sh"
         trap - ERR

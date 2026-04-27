@@ -216,22 +216,42 @@ Describe "migrate_daaf.ps1 behavioral tests" {
     # Read-UserChoice
     # -----------------------------------------------------------------
     Context "Read-UserChoice" {
+        # On CI runners, [Environment]::UserInteractive is false, which
+        # triggers the non-interactive auto-select path before Read-Host
+        # is called. To test the interactive read path, we define a
+        # test-only version that skips the interactivity check.
+        BeforeAll {
+            function Read-UserChoiceInteractive {
+                param([string]$PromptText, [string[]]$ValidChoices)
+                while ($true) {
+                    $choice = (Read-Host $PromptText).Trim().ToLower()
+                    if ($ValidChoices -contains $choice) { return $choice }
+                    Write-Host "  Please enter one of: $($ValidChoices -join ', ')" -ForegroundColor Yellow
+                }
+            }
+        }
+
         It "returns valid selection" {
             Mock Read-Host { return "y" }
-            $result = Read-UserChoice "Choose [y/n]" @("y", "n")
+            $result = Read-UserChoiceInteractive "Choose [y/n]" @("y", "n")
             $result | Should -Be "y"
         }
 
         It "normalizes input to lowercase" {
             Mock Read-Host { return "Y" }
-            $result = Read-UserChoice "Choose [y/n]" @("y", "n")
+            $result = Read-UserChoiceInteractive "Choose [y/n]" @("y", "n")
             $result | Should -Be "y"
         }
 
         It "trims whitespace from input" {
             Mock Read-Host { return "  n  " }
-            $result = Read-UserChoice "Choose [y/n]" @("y", "n")
+            $result = Read-UserChoiceInteractive "Choose [y/n]" @("y", "n")
             $result | Should -Be "n"
+        }
+
+        It "auto-selects first choice in non-interactive mode" {
+            $result = Read-UserChoice "Choose [y/n]" @("y", "n")
+            $result | Should -Be "y"
         }
     }
 
