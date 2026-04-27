@@ -212,7 +212,7 @@ jobs:
       - name: Populate /daaf via git clone (Era 1 method)
         run: |
           docker compose exec -T daaf-docker \
-            git clone --depth 1 -b "$DAAF_BRANCH" \
+            git clone -b "$DAAF_BRANCH" \
             "https://github.com/DAAF-Contribution-Community/daaf.git" /tmp/daaf-clone
           docker compose exec -T daaf-docker \
             bash -c 'cp -a /tmp/daaf-clone/. /daaf/ && rm -rf /tmp/daaf-clone'
@@ -314,6 +314,7 @@ jobs:
           docker compose exec -T daaf-docker bash -c '
             cd /daaf
             git init
+            git branch -m main
             git add -A
             git commit -m "Initial DAAF installation"
           '
