@@ -21,6 +21,7 @@
 # than reimplementing their logic.
 #
 # Supports DAAF_TEST_MODE=1 for test framework sourcing (see tests/).
+# Supports DAAF_DRY_RUN=1 for CI cross-platform smoke testing (see tests/).
 #
 # Prerequisites:
 #   - Docker Desktop installed and running
@@ -39,6 +40,36 @@ UPSTREAM_REPO="DAAF-Contribution-Community/daaf"
 CONTAINER_NAME="daaf-daaf-docker-1"
 TIMESTAMP=$(date +%Y-%m-%d-%H%M%S)
 BACKUP_BRANCH="backup/pre-update-${TIMESTAMP}"
+
+# --- Dry-Run Support ---
+# When DAAF_DRY_RUN=1, simulate external commands (Docker, curl) for CI
+# cross-platform smoke testing without a Docker daemon.
+if [ "${DAAF_DRY_RUN:-}" = "1" ]; then
+    docker() {
+        case "$*" in
+            "info") return 0 ;;
+            *"compose ps"*"--format"*) echo "daaf-docker" ;;
+            *"compose exec"*"true"*) return 0 ;;
+            *"compose exec"*"test -f"*) return 0 ;;
+            *"fetch"*) return 0 ;;
+            *"rev-list HEAD..origin"*"--count"*) echo "0" ;;
+            *"rev-list"*"--count"*) echo "0" ;;
+            *"status --porcelain"*) echo "" ;;
+            *"symbolic-ref"*) echo "main" ;;
+            *"branch --show-current"*) echo "main" ;;
+            *"rev-parse --verify"*"backup/"*) return 1 ;;
+            *"rev-parse --verify"*"origin/"*) return 0 ;;
+            *"rev-parse"*"origin/main"*) echo "abc123def456" ;;
+            *"rev-parse"*"HEAD"*) echo "abc123def456" ;;
+            *"remote get-url"*"origin"*) echo "https://github.com/DAAF-Contribution-Community/daaf.git" ;;
+            *"diff --name-only"*"HEAD"*) echo "" ;;
+            *)
+                echo "[DRY-RUN] docker $*" >&2
+                return 0
+                ;;
+        esac
+    }
+fi
 
 # --- Trap handler for unexpected failures ---
 cleanup_on_error() {

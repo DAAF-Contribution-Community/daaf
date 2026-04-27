@@ -84,3 +84,18 @@ teardown() {
     assert_success
     [ "${output}" -ge 1 ]
 }
+
+# =========================================================================
+# Dry-run mode
+# =========================================================================
+
+@test "view_logs.sh: dry-run completes successfully" {
+    run env DAAF_DRY_RUN=1 DAAF_NESTED=1 bash "${REPO_ROOT}/scripts/host/view_logs.sh"
+    assert_success
+}
+
+@test "view_logs.sh: dry-run opens log explorer" {
+    run env DAAF_DRY_RUN=1 DAAF_NESTED=1 bash "${REPO_ROOT}/scripts/host/view_logs.sh" 2>&1
+    assert_success
+    assert_output --partial "Log Explorer"
+}

@@ -17,6 +17,7 @@
 #   - Internet connection
 #
 # Supports DAAF_TEST_MODE=1 for test framework sourcing (see tests/).
+# Supports DAAF_DRY_RUN=1 for CI cross-platform smoke testing (see tests/).
 # ============================================================================
 
 set -euo pipefail
@@ -32,6 +33,46 @@ REPO="DAAF-Contribution-Community/daaf"
 BRANCH="${DAAF_BRANCH:-main}"
 RAW_BASE="https://raw.githubusercontent.com/${REPO}/${BRANCH}"
 INSTALL_DIR="$(pwd)/daaf-docker"
+
+# --- Dry-Run Support ---
+# When DAAF_DRY_RUN=1, simulate external commands (Docker, curl) for CI
+# cross-platform smoke testing without a Docker daemon.
+if [ "${DAAF_DRY_RUN:-}" = "1" ]; then
+    docker() {
+        case "$*" in
+            "info") return 0 ;;
+            *"volume inspect"*) return 1 ;;
+            *"compose"*"build"*) return 0 ;;
+            *"compose"*"up"*) return 0 ;;
+            *"compose"*"exec"*"true"*) return 0 ;;
+            *"compose"*"exec"*"git clone"*) return 0 ;;
+            *"compose"*"exec"*"bash -c"*) return 0 ;;
+            *"compose"*"exec"*"test -f"*) return 0 ;;
+            *)
+                echo "[DRY-RUN] docker $*" >&2
+                return 0
+                ;;
+        esac
+    }
+    curl() {
+        # Parse -o flag to create empty target files so chmod +x succeeds
+        local outfile=""
+        local args=("$@")
+        local i
+        for (( i=0; i<${#args[@]}; i++ )); do
+            if [ "${args[$i]}" = "-o" ] && [ $((i+1)) -lt ${#args[@]} ]; then
+                outfile="${args[$((i+1))]}"
+                break
+            fi
+        done
+        if [ -n "${outfile}" ]; then
+            mkdir -p "$(dirname "${outfile}")"
+            touch "${outfile}"
+        fi
+        echo "[DRY-RUN] curl $*" >&2
+        return 0
+    }
+fi
 
 # --- Test Mode Guard ---
 # When sourced for testing, define functions but skip execution.

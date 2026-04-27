@@ -94,3 +94,18 @@ teardown() {
     assert_success
     [ "${output}" -ge 3 ]
 }
+
+# =========================================================================
+# Dry-run mode
+# =========================================================================
+
+@test "rebuild_daaf.sh: dry-run completes successfully" {
+    run env DAAF_DRY_RUN=1 DAAF_NESTED=1 bash "${REPO_ROOT}/scripts/host/rebuild_daaf.sh"
+    assert_success
+}
+
+@test "rebuild_daaf.sh: dry-run completes rebuild" {
+    run env DAAF_DRY_RUN=1 DAAF_NESTED=1 bash "${REPO_ROOT}/scripts/host/rebuild_daaf.sh" 2>&1
+    assert_success
+    assert_output --partial "Rebuild complete"
+}

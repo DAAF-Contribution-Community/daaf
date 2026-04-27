@@ -20,6 +20,7 @@
 #   .\rebuild_daaf.ps1
 #
 # Supports $env:DAAF_TEST_MODE = "1" for Pester test dot-sourcing (see tests/).
+# Supports DAAF_DRY_RUN=1 for CI cross-platform smoke testing (see tests/).
 # ============================================================================
 
 $ErrorActionPreference = "Stop"
@@ -31,6 +32,29 @@ function Wait-AndExit {
         Read-Host "Press Enter to close this window"
     }
     exit $Code
+}
+
+# --- Dry-Run Support ---
+# When DAAF_DRY_RUN=1, simulate external commands (Docker) for CI
+# cross-platform smoke testing without a Docker daemon.
+if ($env:DAAF_DRY_RUN -eq "1") {
+    function docker {
+        $argStr = $args -join ' '
+        $global:LASTEXITCODE = 0
+        switch -Wildcard ($argStr) {
+            "*info*" { return }
+            "*inspect*" { return }
+            "*cp *" { return }
+            "*compose build*" { return }
+            "*compose up*" { return }
+            "*compose exec*true*" { return }
+            "*compose exec*test -f*" { return }
+            default {
+                Write-Host "[DRY-RUN] docker $argStr"
+                return
+            }
+        }
+    }
 }
 
 # --- Test Mode Guard ---

@@ -417,3 +417,39 @@ Describe "update_daaf.ps1 behavioral tests" {
         }
     }
 }
+
+# ============================================================================
+# Dry-run mode
+# ============================================================================
+
+Describe "update_daaf.ps1 dry-run mode" {
+    BeforeAll {
+        . "$PSScriptRoot/TestHelper.ps1"
+        $script:OrigDryRun = $env:DAAF_DRY_RUN
+        $script:OrigNested = $env:DAAF_NESTED
+        $script:TestDir = New-Item -ItemType Directory -Path (Join-Path ([System.IO.Path]::GetTempPath()) "daaf-test-$(Get-Random)")
+        Push-Location $script:TestDir
+        New-FakeComposeFile
+    }
+
+    AfterAll {
+        $env:DAAF_DRY_RUN = $script:OrigDryRun
+        $env:DAAF_NESTED = $script:OrigNested
+        Pop-Location
+        Remove-Item -Recurse -Force $script:TestDir -ErrorAction SilentlyContinue
+    }
+
+    It "completes successfully with DAAF_DRY_RUN=1" {
+        $env:DAAF_DRY_RUN = "1"
+        $env:DAAF_NESTED = "1"
+        $output = & "$RepoRoot/scripts/host/update_daaf.ps1" *>&1
+        $LASTEXITCODE | Should -BeIn @(0, $null)
+    }
+
+    It "reports already up to date" {
+        $env:DAAF_DRY_RUN = "1"
+        $env:DAAF_NESTED = "1"
+        $output = & "$RepoRoot/scripts/host/update_daaf.ps1" *>&1
+        ($output | Out-String) | Should -BeLike "*Already up to date*"
+    }
+}

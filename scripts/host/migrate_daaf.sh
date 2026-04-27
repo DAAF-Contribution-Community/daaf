@@ -26,6 +26,7 @@
 # has already been completed, it will detect that and skip ahead.
 #
 # Supports DAAF_TEST_MODE=1 for test framework sourcing (see tests/).
+# Supports DAAF_DRY_RUN=1 for CI cross-platform smoke testing (see tests/).
 # ============================================================================
 
 set -euo pipefail
@@ -44,6 +45,47 @@ VOLUME_NAME="daaf_daaf-data"
 CONTAINER_NAME=""
 BACKUP_COMPLETED=false
 IS_FORK=false
+
+# --- Dry-Run Support ---
+# When DAAF_DRY_RUN=1, simulate external commands (Docker, curl) for CI
+# cross-platform smoke testing without a Docker daemon.
+if [ "${DAAF_DRY_RUN:-}" = "1" ]; then
+    docker() {
+        case "$*" in
+            "info") return 0 ;;
+            *"volume inspect"*) return 0 ;;
+            *"ps -a"*"--filter"*"volume="*"--format"*) echo "daaf-dry-run-1" ;;
+            *"inspect --format"*"State.Status"*) echo "running" ;;
+            *"exec"*"true"*) return 0 ;;
+            *"exec"*"test -f"*) return 0 ;;
+            *"exec"*"remote get-url"*"origin"*) echo "https://github.com/DAAF-Contribution-Community/daaf.git" ;;
+            *"exec"*"fetch"*) return 0 ;;
+            *"exec"*"branch --set-upstream"*) return 0 ;;
+            *)
+                echo "[DRY-RUN] docker $*" >&2
+                return 0
+                ;;
+        esac
+    }
+    curl() {
+        # Parse -o flag to create empty target files so chmod +x succeeds
+        local outfile=""
+        local args=("$@")
+        local i
+        for (( i=0; i<${#args[@]}; i++ )); do
+            if [ "${args[$i]}" = "-o" ] && [ $((i+1)) -lt ${#args[@]} ]; then
+                outfile="${args[$((i+1))]}"
+                break
+            fi
+        done
+        if [ -n "${outfile}" ]; then
+            mkdir -p "$(dirname "${outfile}")"
+            touch "${outfile}"
+        fi
+        echo "[DRY-RUN] curl $*" >&2
+        return 0
+    }
+fi
 
 # --- Trap handler for unexpected failures ---
 cleanup_on_error() {

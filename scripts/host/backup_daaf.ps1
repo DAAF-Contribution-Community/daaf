@@ -13,6 +13,7 @@
 #   2026-04-21b_daaf_backup\    (third backup)
 #
 # Supports $env:DAAF_TEST_MODE = "1" for Pester test dot-sourcing (see tests/).
+# Supports DAAF_DRY_RUN=1 for CI cross-platform smoke testing (see tests/).
 # ============================================================================
 
 $ErrorActionPreference = "Stop"
@@ -24,6 +25,33 @@ function Wait-AndExit {
         Read-Host "Press Enter to continue"
     }
     exit $Code
+}
+
+# --- Dry-Run Support ---
+# When DAAF_DRY_RUN=1, simulate external commands (Docker) for CI
+# cross-platform smoke testing without a Docker daemon.
+if ($env:DAAF_DRY_RUN -eq "1") {
+    function docker {
+        $argStr = $args -join ' '
+        $global:LASTEXITCODE = 0
+        switch -Wildcard ($argStr) {
+            "*info*" { return }
+            "*volume inspect*" { return }
+            "*run --rm*" {
+                # Scan command — return 4 lines matching the parsing expectations:
+                # Line 0: file count, Line 1: "KB\t/source", Line 2: "size\t/source", Line 3: logical KB
+                Write-Output "42"
+                Write-Output "1024`t/source"
+                Write-Output "1.0M`t/source"
+                Write-Output "1000"
+                return
+            }
+            default {
+                Write-Host "[DRY-RUN] docker $argStr"
+                return
+            }
+        }
+    }
 }
 
 # --- Test Mode Guard ---
@@ -116,6 +144,19 @@ if ($AvailableKB -lt $RequiredKB) {
     Write-Host "ERROR: Insufficient disk space for backup." -ForegroundColor Red
     Write-Host "       Required: ~${RequiredMB} MB (includes 10% buffer), Available: ${AvailableMB} MB"
     Wait-AndExit 1
+}
+
+# --- Dry-run early exit ---
+# The mock copy creates no files, so verification would fail. Exit cleanly
+# after confirming scan parsing works.
+if ($env:DAAF_DRY_RUN -eq "1") {
+    Write-Host "[DRY-RUN] Would copy $TotalFiles files ($TotalSize) to $BackupName\"
+    Write-Host ""
+    Write-Host "=========================================="
+    Write-Host "  Backup dry-run complete!"
+    Write-Host "=========================================="
+    Write-Host ""
+    Wait-AndExit 0
 }
 
 # --- Create backup ---

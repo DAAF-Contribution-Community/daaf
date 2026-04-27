@@ -15,6 +15,7 @@
 #   - Port 2719 mapped in docker-compose.yml
 #
 # Supports DAAF_TEST_MODE=1 for test framework sourcing (see tests/).
+# Supports DAAF_DRY_RUN=1 for CI cross-platform smoke testing (see tests/).
 # ============================================================================
 
 set -euo pipefail
@@ -22,6 +23,23 @@ set -euo pipefail
 # Pause before exit so the user can review output (skip when called from another script)
 if [ -z "${DAAF_NESTED:-}" ]; then
     trap 'echo ""; read -r -p "Press Enter to continue: "' EXIT
+fi
+
+# --- Dry-Run Support ---
+# When DAAF_DRY_RUN=1, simulate external commands (Docker, curl) for CI
+# cross-platform smoke testing without a Docker daemon.
+if [ "${DAAF_DRY_RUN:-}" = "1" ]; then
+    docker() {
+        case "$*" in
+            "info") return 0 ;;
+            *"compose ps --status running"*"--format"*) echo "daaf-docker" ;;
+            *"compose exec"*) return 0 ;;
+            *)
+                echo "[DRY-RUN] docker $*" >&2
+                return 0
+                ;;
+        esac
+    }
 fi
 
 # --- Test Mode Guard ---

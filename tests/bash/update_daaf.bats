@@ -564,3 +564,18 @@ teardown() {
     assert_success
     assert_output --partial "stash pop"
 }
+
+# =========================================================================
+# Dry-run mode
+# =========================================================================
+
+@test "update_daaf.sh: dry-run completes successfully" {
+    run env DAAF_DRY_RUN=1 DAAF_NESTED=1 bash "${REPO_ROOT}/scripts/host/update_daaf.sh"
+    assert_success
+}
+
+@test "update_daaf.sh: dry-run reports already up to date" {
+    run env DAAF_DRY_RUN=1 DAAF_NESTED=1 bash "${REPO_ROOT}/scripts/host/update_daaf.sh" 2>&1
+    assert_success
+    assert_output --partial "Already up to date"
+}

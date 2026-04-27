@@ -1,7 +1,7 @@
 # CI: Shell & PowerShell Script Quality
 #
 # Validates all .sh and .ps1 scripts across the repository.
-# Seven jobs:
+# Eight jobs:
 #   1. lint-bash           - ShellCheck on all .sh files (ubuntu)
 #   2. lint-powershell     - PSScriptAnalyzer on all .ps1 files (ubuntu/pwsh 7)
 #   3. hygiene-checks      - Executable bits, LF endings, script pair parity
@@ -9,6 +9,7 @@
 #   5. bats-tests          - BATS unit/smoke tests for .sh scripts (ubuntu)
 #   6. pester-tests        - Pester tests for .ps1 scripts (ubuntu + windows)
 #   7. daaf-conventions    - Custom DAAF-specific lint checks (ubuntu)
+#   8. smoke-tests         - Cross-platform dry-run smoke tests (ubuntu + macos + windows)
 #
 # Triggered only when shell-related files change (path filtering).
 
@@ -221,3 +222,80 @@ jobs:
 
       - name: Run DAAF convention checks
         run: bash tests/lint/check-daaf-conventions.sh
+
+  # ---------------------------------------------------------------------------
+  # Job 8: Cross-platform dry-run smoke tests (no Docker needed)
+  # ---------------------------------------------------------------------------
+  # Verifies that all lifecycle scripts load and run their full logic paths
+  # on all three OS platforms using DAAF_DRY_RUN=1 (mocked Docker/curl).
+  # Catches bash 3.2 incompatibilities (macOS), PS 5.1 quirks (Windows),
+  # unresolved variable references, and control flow errors.
+  smoke-tests:
+    name: Smoke Tests (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # Bash smoke tests (Linux/macOS only — Git Bash on Windows is unreliable
+      # for complex scripts with function overrides and subshells)
+      - name: Smoke test .sh scripts (dry-run)
+        if: matrix.os != 'windows-latest'
+        run: |
+          for script in scripts/host/*.sh; do
+            echo "=== Smoke testing: $script ==="
+            DAAF_DRY_RUN=1 DAAF_NESTED=1 bash "$script" || {
+              echo "FAILED: $script"
+              exit 1
+            }
+          done
+
+      # PowerShell 7 smoke tests (all platforms — pwsh is pre-installed)
+      - name: Smoke test .ps1 scripts (dry-run, pwsh 7)
+        shell: pwsh
+        run: |
+          $failed = 0
+          foreach ($script in Get-ChildItem scripts/host/*.ps1) {
+            Write-Host "=== Smoke testing: $($script.Name) ==="
+            $env:DAAF_DRY_RUN = "1"
+            $env:DAAF_NESTED = "1"
+            try {
+              & $script.FullName
+              if ($LASTEXITCODE -and $LASTEXITCODE -ne 0) {
+                Write-Host "FAILED: $($script.Name)"
+                $failed = 1
+              }
+            } catch {
+              Write-Host "FAILED: $($script.Name) - $_"
+              $failed = 1
+            }
+          }
+          if ($failed) { exit 1 }
+
+      # Windows PowerShell 5.1 smoke test (Windows only — catches PS 5.1
+      # $ErrorActionPreference quirks, alias differences, and path issues)
+      - name: Smoke test .ps1 scripts (dry-run, Windows PS 5.1)
+        if: matrix.os == 'windows-latest'
+        shell: powershell
+        run: |
+          $failed = 0
+          foreach ($script in Get-ChildItem scripts/host/*.ps1) {
+            Write-Host "=== Smoke testing (PS 5.1): $($script.Name) ==="
+            $env:DAAF_DRY_RUN = "1"
+            $env:DAAF_NESTED = "1"
+            try {
+              & $script.FullName
+              if ($LASTEXITCODE -and $LASTEXITCODE -ne 0) {
+                Write-Host "FAILED: $($script.Name)"
+                $failed = 1
+              }
+            } catch {
+              Write-Host "FAILED: $($script.Name) - $_"
+              $failed = 1
+            }
+          }
+          if ($failed) { exit 1 }

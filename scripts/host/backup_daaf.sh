@@ -14,6 +14,7 @@
 #   2026-04-21b_daaf_backup/    (third backup)
 #
 # Supports DAAF_TEST_MODE=1 for test framework sourcing (see tests/).
+# Supports DAAF_DRY_RUN=1 for CI cross-platform smoke testing (see tests/).
 # ============================================================================
 
 set -euo pipefail
@@ -26,6 +27,27 @@ fi
 # --- Configuration ---
 VOLUME_NAME="daaf_daaf-data"
 TODAY=$(date +%Y-%m-%d)
+
+# --- Dry-Run Support ---
+# When DAAF_DRY_RUN=1, simulate external commands (Docker, curl) for CI
+# cross-platform smoke testing without a Docker daemon.
+if [ "${DAAF_DRY_RUN:-}" = "1" ]; then
+    docker() {
+        case "$*" in
+            "info") return 0 ;;
+            *"volume inspect"*) return 0 ;;
+            *"run --rm"*"find /source"*)
+                printf '100\n1024\t/source\n1M\t/source\n1024\n'
+                return 0
+                ;;
+            *"run --rm"*"cp -a"*) return 0 ;;
+            *)
+                echo "[DRY-RUN] docker $*" >&2
+                return 0
+                ;;
+        esac
+    }
+fi
 
 # --- Test Mode Guard ---
 # When sourced for testing, define functions but skip execution.
@@ -105,6 +127,16 @@ if [ "${AVAILABLE_KB}" -lt "${REQUIRED_KB}" ]; then
     echo "ERROR: Insufficient disk space for backup." >&2
     echo "       Required: ~$(( REQUIRED_KB / 1024 )) MB (includes 10% buffer), Available: $(( AVAILABLE_KB / 1024 )) MB" >&2
     exit 1
+fi
+
+# --- Dry-run early exit ---
+# The mock docker copy creates no files, so file-count verification would fail.
+# Exit after validating the full pre-backup logic path.
+if [ "${DAAF_DRY_RUN:-}" = "1" ]; then
+    echo ""
+    echo "[DRY-RUN] Would create backup at: $(pwd)/${BACKUP_NAME}/"
+    echo "[DRY-RUN] Source: ${TOTAL_FILES} files (${TOTAL_SIZE}), Space required: ~$((REQUIRED_KB / 1024)) MB"
+    exit 0
 fi
 
 # --- Create backup ---

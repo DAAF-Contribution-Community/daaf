@@ -25,6 +25,7 @@
 # has already been completed, it will detect that and skip ahead.
 #
 # Supports $env:DAAF_TEST_MODE = "1" for Pester test dot-sourcing (see tests/).
+# Supports DAAF_DRY_RUN=1 for CI cross-platform smoke testing (see tests/).
 # ============================================================================
 
 $ErrorActionPreference = "Stop"
@@ -67,6 +68,65 @@ try {
 } catch {
     # Console properties unavailable (e.g., ISE, remoting) — default to interactive
     Write-Verbose "Silenced: $_"
+}
+
+# --- Dry-Run Support ---
+# When DAAF_DRY_RUN=1, simulate external commands (Docker, Invoke-WebRequest)
+# for CI cross-platform smoke testing without a Docker daemon.
+# Mock simulates an era-1 clone-based installation (already migrated path).
+if ($env:DAAF_DRY_RUN -eq "1") {
+    function docker {
+        $argStr = $args -join ' '
+        $global:LASTEXITCODE = 0
+        switch -Wildcard ($argStr) {
+            "*info*" { return }
+            "*volume inspect*" { return }
+            "*ps -a*--filter*volume=*--format*" {
+                Write-Output "daaf-daaf-docker-1"
+            }
+            "*inspect*--format*Status*" {
+                Write-Output "running"
+            }
+            "*exec*true*" { return }
+            "*exec*test -f*" { return }
+            "*exec*git -C /daaf remote get-url origin*" {
+                Write-Output "https://github.com/DAAF-Contribution-Community/daaf.git"
+            }
+            "*exec*git -C /daaf fetch*" { return }
+            "*exec*git -C /daaf branch --set-upstream*" { return }
+            "*exec*git -C /daaf remote get-url upstream*" {
+                $global:LASTEXITCODE = 1
+                return
+            }
+            "*exec*git*" { return }
+            "*exec*" { return }
+            "*start*" { return }
+            "*compose up*" { return }
+            default {
+                Write-Host "[DRY-RUN] docker $argStr"
+                return
+            }
+        }
+    }
+
+    function Invoke-WebRequest {
+        param(
+            [switch]$UseBasicParsing,
+            [string]$Uri,
+            [string]$OutFile
+        )
+        if ($OutFile) {
+            $parentDir = Split-Path $OutFile -Parent
+            if ($parentDir -and -not (Test-Path $parentDir)) {
+                New-Item -ItemType Directory -Path $parentDir -Force | Out-Null
+            }
+            # Write a minimal stub that exits cleanly (for nested script calls)
+            Set-Content -Path $OutFile -Value "exit 0"
+        }
+    }
+
+    # Force non-interactive to skip the update prompt at the end
+    $NonInteractive = $true
 }
 
 # --- Trap handler for unexpected failures ---
@@ -402,7 +462,7 @@ Write-Host ""
 $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
 $AllContainers = (docker ps -a --filter "volume=$VolumeName" --format '{{.Names}}' | Out-String) -replace "`r",""
 $ErrorActionPreference = $savedEAP
-$AllContainersList = $AllContainers.Trim() -split "`n" | Where-Object { $_.Trim() -ne "" }
+$AllContainersList = @($AllContainers.Trim() -split "`n" | Where-Object { $_.Trim() -ne "" })
 $ContainerCount = $AllContainersList.Count
 $ContainerName = if ($ContainerCount -gt 0) { $AllContainersList[0].Trim() } else { "" }
 

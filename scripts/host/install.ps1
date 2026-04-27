@@ -16,6 +16,7 @@
 #   - Internet connection
 #
 # Supports $env:DAAF_TEST_MODE = "1" for Pester test dot-sourcing (see tests/).
+# Supports DAAF_DRY_RUN=1 for CI cross-platform smoke testing (see tests/).
 # ============================================================================
 
 $ErrorActionPreference = "Stop"
@@ -26,6 +27,50 @@ function Wait-ForUser {
         Read-Host "Press Enter to close this window"
     }
     exit
+}
+
+# --- Dry-Run Support ---
+# When DAAF_DRY_RUN=1, simulate external commands (Docker, Invoke-WebRequest)
+# for CI cross-platform smoke testing without a Docker daemon.
+if ($env:DAAF_DRY_RUN -eq "1") {
+    function docker {
+        $argStr = $args -join ' '
+        $global:LASTEXITCODE = 0
+        switch -Wildcard ($argStr) {
+            "*info*" { return }
+            "*volume inspect*" {
+                # Simulate volume-not-found for fresh install path
+                $global:LASTEXITCODE = 1
+                return
+            }
+            "*compose*build*" { return }
+            "*compose*up*" { return }
+            "*compose*exec*true*" { return }
+            "*compose*exec*git clone*" { return }
+            "*compose*exec*bash -c*" { return }
+            "*compose*exec*test -f*" { return }
+            default {
+                Write-Host "[DRY-RUN] docker $argStr"
+                return
+            }
+        }
+    }
+
+    function Invoke-WebRequest {
+        param(
+            [switch]$UseBasicParsing,
+            [string]$Uri,
+            [string]$OutFile
+        )
+        if ($OutFile) {
+            # Create parent directory if needed, then an empty file
+            $parentDir = Split-Path $OutFile -Parent
+            if ($parentDir -and -not (Test-Path $parentDir)) {
+                New-Item -ItemType Directory -Path $parentDir -Force | Out-Null
+            }
+            Set-Content -Path $OutFile -Value ""
+        }
+    }
 }
 
 # --- Test Mode Guard ---

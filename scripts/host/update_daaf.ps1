@@ -25,6 +25,7 @@
 #   - Run from the daaf-docker directory
 #
 # Supports $env:DAAF_TEST_MODE = "1" for Pester test dot-sourcing (see tests/).
+# Supports DAAF_DRY_RUN=1 for CI cross-platform smoke testing (see tests/).
 # ============================================================================
 
 $ErrorActionPreference = "Stop"
@@ -43,6 +44,59 @@ function Wait-AndExit {
         Read-Host "Press Enter to continue"
     }
     exit $Code
+}
+
+# --- Dry-Run Support ---
+# When DAAF_DRY_RUN=1, simulate external commands (Docker) for CI
+# cross-platform smoke testing without a Docker daemon.
+# Mock git returns simulate an "already up to date" state for clean exit.
+if ($env:DAAF_DRY_RUN -eq "1") {
+    function docker {
+        $argStr = $args -join ' '
+        $global:LASTEXITCODE = 0
+        switch -Wildcard ($argStr) {
+            "*info*" { return }
+            "*compose ps*--format*" { Write-Output "daaf-docker" }
+            "*compose up*" { return }
+            "*compose exec*test -f*/daaf/.git/shallow*" {
+                # Not a shallow clone
+                $global:LASTEXITCODE = 1
+                return
+            }
+            "*compose exec*test -f*" { return }
+            "*compose exec*git -C /daaf remote get-url origin*" {
+                Write-Output "https://github.com/DAAF-Contribution-Community/daaf.git"
+            }
+            "*compose exec*git -C /daaf fetch*" { return }
+            "*compose exec*git -C /daaf rev-parse --verify*origin/main*" {
+                Write-Output "abc123def456"
+            }
+            "*compose exec*git -C /daaf rev-parse HEAD*" {
+                Write-Output "abc123def456"
+            }
+            "*compose exec*git -C /daaf rev-parse*origin/main*" {
+                Write-Output "abc123def456"
+            }
+            "*compose exec*git -C /daaf branch*--show-current*" {
+                Write-Output "main"
+            }
+            "*compose exec*git -C /daaf branch*" { return }
+            "*compose exec*git -C /daaf diff --name-only*" {
+                # No dirty files
+                return
+            }
+            "*compose exec*git -C /daaf rev-list*" {
+                Write-Output "0"
+            }
+            "*compose exec*git*" { return }
+            "*compose exec*" { return }
+            "*cp *" { return }
+            default {
+                Write-Host "[DRY-RUN] docker $argStr"
+                return
+            }
+        }
+    }
 }
 
 $UpstreamRepo = "DAAF-Contribution-Community/daaf"

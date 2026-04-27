@@ -456,3 +456,24 @@ Initial commit"
     # Backup must come before the graft operation
     [ "${backup_line}" -lt "${graft_line}" ]
 }
+
+# =========================================================================
+# Dry-run mode
+# =========================================================================
+
+@test "migrate_daaf.sh: dry-run completes successfully" {
+    run env DAAF_DRY_RUN=1 DAAF_NESTED=1 bash "${REPO_ROOT}/scripts/host/migrate_daaf.sh"
+    assert_success
+}
+
+@test "migrate_daaf.sh: dry-run produces DRY-RUN markers" {
+    run env DAAF_DRY_RUN=1 DAAF_NESTED=1 bash "${REPO_ROOT}/scripts/host/migrate_daaf.sh" 2>&1
+    assert_success
+    assert_output --partial "[DRY-RUN]"
+}
+
+@test "migrate_daaf.sh: dry-run completes migration" {
+    run env DAAF_DRY_RUN=1 DAAF_NESTED=1 bash "${REPO_ROOT}/scripts/host/migrate_daaf.sh" 2>&1
+    assert_success
+    assert_output --partial "Migration complete"
+}

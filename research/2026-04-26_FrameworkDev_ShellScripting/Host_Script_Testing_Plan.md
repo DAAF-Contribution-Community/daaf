@@ -2,7 +2,7 @@
 
 **Created:** 2026-04-26
 **Context:** Framework Development session — CI pipeline and testing infrastructure
-**Status:** Phase 1 + Phase 2 COMPLETE (Session 2, 2026-04-26). Phases 3-5 remain.
+**Status:** Phases 1-4 COMPLETE (Sessions 2-3). Phase 5 remains.
 **Reviewed by:** 2 search-agent subagents (feasibility + cross-platform/CI architecture)
 
 ---
@@ -59,12 +59,28 @@ shellcheck scripts/host/*.sh
 
 Pinned versions: bats-core 1.13.0, bats-support 0.3.0, bats-assert 2.1.0, bats-file 0.4.0, shellcheck 0.10.0, pwsh 7.4.15 LTS, Pester 5.7.1. BATS helper libraries installed to `/usr/lib/bats/` (already in `test_helper.bash` search path).
 
+### Session 3 (2026-04-27) — Phase 3 + Phase 4
+
+**Completed:**
+
+1. **Phase 3: Dry-run mode** — Added `DAAF_DRY_RUN=1` support to all 14 scripts (7 `.sh` + 7 `.ps1`). Uses function override approach: defines `docker()` and `curl()` shell functions that shadow native commands, intercepting all Docker/curl calls with zero changes to script bodies. Per-script mock patterns return realistic data for output-producing commands (scan output, container status, git rev-list counts) and `[DRY-RUN]` messages for fire-and-forget commands. Preflight checks (`command -v docker`, `docker info`) pass automatically since function resolution finds the override. Locking (mkdir-based) runs through without issue since it doesn't use Docker. Backup scripts have early-exit guards after disk space check to avoid file-count verification on mock data. Update scripts simulate "already up to date" state; migrate scripts simulate "already migrated" / Era 1 path.
+
+2. **Phase 4: Cross-platform smoke CI** — Added Job 8 (`smoke-tests`) to `ci-scripts.yml`. Matrix: ubuntu-latest, macos-latest, windows-latest. Bash dry-run on Linux/macOS (skipped on Windows), PowerShell 7 dry-run on all 3 platforms, Windows PowerShell 5.1 dry-run on Windows only. `fail-fast: false` so all 3 OS report independently.
+
+3. **Dry-run smoke tests** — 31 new tests (17 BATS + 14 Pester) across all 14 test files. Each script verified to complete with exit 0 under `DAAF_DRY_RUN=1`, with assertions on meaningful output (e.g., "Already up to date", "Rebuild complete", `[DRY-RUN]` markers).
+
+4. **Bug fix: migrate_daaf.ps1 array indexing** — When `docker ps -a` returns exactly one container name, PowerShell unwraps the single-element array to a scalar string. `$AllContainersList[0]` then indexes into the string's characters, and `.Trim()` fails because `[char]` lacks that method. Fixed by wrapping the pipeline in `@()` to force array context.
+
+5. **Shell-scripting skill update** — Added two PowerShell gotchas to `gotchas.md`: (a) `$LASTEXITCODE` starts as `$null`, not 0 — mock functions must set `$global:LASTEXITCODE = 0` explicitly; (b) single-element pipeline array unwrapping — always wrap in `@()` when indexing output.
+
+**Suite totals:** 142 BATS + 190 Pester = **332 tests** (up from 301).
+
+**Review:** 3-angle review (consistency, quality, completeness) passed. Minor findings: cosmetic section ordering difference between 2 PS scripts and their bash counterparts (non-functional); testing plan status needed updating (done).
+
 ### Remaining (Future Sessions)
 
 | Phase | Status | Depends On | Notes |
 |-------|--------|------------|-------|
-| Phase 3 (Dry-Run Mode) | Not started | Phase 1 (done) | Two wrapper categories: fire-and-forget + output-producing. Must bypass preflight checks + locking. Some Pester tests deferred to this phase. |
-| Phase 4 (Cross-Platform Smoke CI) | Not started | Phase 3 | Add as Job 8 in ci-scripts.yml. Must resolve any remaining macOS-specific issues. |
 | Phase 5 (Docker Integration Tests) | Not started | Independent | ci-integration.yml, weekly schedule + dispatch + release tags. Add Docker cleanup step. |
 
 ### Learnings
@@ -715,9 +731,9 @@ Phase 1 (Test Mode Guards)     ─── ✓ DONE (Session 2, 2026-04-26)
     │
     ├── Phase 2 (Enhanced Mocks) ── ✓ DONE (Session 2, 2026-04-26)
     │
-    └── Phase 3 (Dry-Run Mode)  ── MEDIUM EFFORT, MEDIUM VALUE ─→ Enables Phase 4
+    └── Phase 3 (Dry-Run Mode)  ── ✓ DONE (Session 3, 2026-04-27)
             │
-            └── Phase 4 (Smoke CI) ── LOW EFFORT, HIGH VALUE ───→ Cross-platform safety
+            └── Phase 4 (Smoke CI) ── ✓ DONE (Session 3, 2026-04-27)
 
 Phase 5 (Integration Tests)    ── MEDIUM EFFORT, INSURANCE ────→ End-to-end confidence
                                    (independent — can start anytime)
@@ -725,7 +741,7 @@ Phase 5 (Integration Tests)    ── MEDIUM EFFORT, INSURANCE ────→ E
 
 **Session plan:**
 - **Session 2 (done):** Phase 1 + Phase 2 + flock fix + bash 3.2 audit + Dockerfile testing tools
-- **Session 3:** Phase 3 + Phase 4 (dry-run mode + cross-platform CI) — completes the cross-platform story
+- **Session 3 (done):** Phase 3 + Phase 4 (dry-run mode + cross-platform CI) + 2 gotchas added to skill
 - **Session 4:** Phase 5 (integration tests) + any fixes from Phase 4 findings
 
 ## Files Modified By This Plan

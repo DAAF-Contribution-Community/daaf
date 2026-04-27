@@ -401,3 +401,24 @@ teardown() {
     assert_output --partial "ERROR"
     assert_output --partial "Could not scan"
 }
+
+# =========================================================================
+# Dry-run mode
+# =========================================================================
+
+@test "backup_daaf.sh: dry-run completes successfully" {
+    run env DAAF_DRY_RUN=1 DAAF_NESTED=1 bash "${REPO_ROOT}/scripts/host/backup_daaf.sh"
+    assert_success
+}
+
+@test "backup_daaf.sh: dry-run produces DRY-RUN markers" {
+    run env DAAF_DRY_RUN=1 DAAF_NESTED=1 bash "${REPO_ROOT}/scripts/host/backup_daaf.sh" 2>&1
+    assert_success
+    assert_output --partial "[DRY-RUN]"
+}
+
+@test "backup_daaf.sh: dry-run shows backup summary" {
+    run env DAAF_DRY_RUN=1 DAAF_NESTED=1 bash "${REPO_ROOT}/scripts/host/backup_daaf.sh" 2>&1
+    assert_success
+    assert_output --partial "Would create backup at"
+}

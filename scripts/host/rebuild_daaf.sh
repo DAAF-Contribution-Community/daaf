@@ -21,6 +21,7 @@
 #   bash rebuild_daaf.sh
 #
 # Supports DAAF_TEST_MODE=1 for test framework sourcing (see tests/).
+# Supports DAAF_DRY_RUN=1 for CI cross-platform smoke testing (see tests/).
 # ============================================================================
 
 set -euo pipefail
@@ -31,6 +32,27 @@ if [ -z "${DAAF_NESTED:-}" ]; then
 fi
 
 CONTAINER_NAME="daaf-daaf-docker-1"
+
+# --- Dry-Run Support ---
+# When DAAF_DRY_RUN=1, simulate external commands (Docker, curl) for CI
+# cross-platform smoke testing without a Docker daemon.
+if [ "${DAAF_DRY_RUN:-}" = "1" ]; then
+    docker() {
+        case "$*" in
+            "info") return 0 ;;
+            "inspect"*) return 0 ;;
+            "cp"*) return 0 ;;
+            *"compose build"*) return 0 ;;
+            *"compose up"*) return 0 ;;
+            *"compose exec"*"true"*) return 0 ;;
+            *"compose exec"*"test -f"*) return 0 ;;
+            *)
+                echo "[DRY-RUN] docker $*" >&2
+                return 0
+                ;;
+        esac
+    }
+fi
 
 # --- Test Mode Guard ---
 # When sourced for testing, define functions but skip execution.

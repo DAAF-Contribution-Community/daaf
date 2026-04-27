@@ -87,3 +87,18 @@ teardown() {
     run bash "${REPO_ROOT}/scripts/host/run_daaf.sh" bash
     assert_output --partial "Entering container shell"
 }
+
+# =========================================================================
+# Dry-run mode
+# =========================================================================
+
+@test "run_daaf.sh: dry-run completes successfully" {
+    run env DAAF_DRY_RUN=1 DAAF_NESTED=1 bash "${REPO_ROOT}/scripts/host/run_daaf.sh"
+    assert_success
+}
+
+@test "run_daaf.sh: dry-run produces DRY-RUN markers" {
+    run env DAAF_DRY_RUN=1 DAAF_NESTED=1 bash "${REPO_ROOT}/scripts/host/run_daaf.sh" 2>&1
+    assert_success
+    assert_output --partial "[DRY-RUN]"
+}

@@ -298,3 +298,24 @@ teardown() {
     assert_failure
     assert_output --partial "update_daaf.sh"
 }
+
+# =========================================================================
+# Dry-run mode
+# =========================================================================
+
+@test "install.sh: dry-run completes successfully" {
+    cd "${TEST_DIR}"
+    run env DAAF_DRY_RUN=1 DAAF_NESTED=1 bash "${REPO_ROOT}/scripts/host/install.sh"
+    assert_success
+    # Clean up the daaf-docker directory created by install.sh
+    rm -r "${TEST_DIR}/daaf-docker" 2>/dev/null || true
+}
+
+@test "install.sh: dry-run produces DRY-RUN markers" {
+    cd "${TEST_DIR}"
+    run env DAAF_DRY_RUN=1 DAAF_NESTED=1 bash "${REPO_ROOT}/scripts/host/install.sh" 2>&1
+    assert_success
+    assert_output --partial "[DRY-RUN]"
+    # Clean up the daaf-docker directory created by install.sh
+    rm -r "${TEST_DIR}/daaf-docker" 2>/dev/null || true
+}

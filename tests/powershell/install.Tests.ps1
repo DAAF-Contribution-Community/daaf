@@ -162,3 +162,40 @@ Describe "install.ps1 behavioral tests" {
         }
     }
 }
+
+# ============================================================================
+# Dry-run mode
+# ============================================================================
+
+Describe "install.ps1 dry-run mode" {
+    BeforeAll {
+        . "$PSScriptRoot/TestHelper.ps1"
+        $script:OrigDryRun = $env:DAAF_DRY_RUN
+        $script:OrigNested = $env:DAAF_NESTED
+    }
+
+    AfterAll {
+        $env:DAAF_DRY_RUN = $script:OrigDryRun
+        $env:DAAF_NESTED = $script:OrigNested
+    }
+
+    It "completes successfully with DAAF_DRY_RUN=1" {
+        $env:DAAF_DRY_RUN = "1"
+        $env:DAAF_NESTED = "1"
+        $output = & "$RepoRoot/scripts/host/install.ps1" *>&1
+        $LASTEXITCODE | Should -BeIn @(0, $null)
+        # Clean up the daaf-docker directory created by install.ps1
+        $installDir = Join-Path (Get-Location).Path "daaf-docker"
+        if (Test-Path $installDir) { Remove-Item -Recurse -Force $installDir -ErrorAction SilentlyContinue }
+    }
+
+    It "completes full installation flow" {
+        $env:DAAF_DRY_RUN = "1"
+        $env:DAAF_NESTED = "1"
+        $output = & "$RepoRoot/scripts/host/install.ps1" *>&1
+        ($output | Out-String) | Should -BeLike "*Installation complete*"
+        # Clean up the daaf-docker directory created by install.ps1
+        $installDir = Join-Path (Get-Location).Path "daaf-docker"
+        if (Test-Path $installDir) { Remove-Item -Recurse -Force $installDir -ErrorAction SilentlyContinue }
+    }
+}

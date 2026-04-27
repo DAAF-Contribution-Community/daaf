@@ -180,6 +180,59 @@ if ($LASTEXITCODE -ne 0) {
 
 ---
 
+### `$LASTEXITCODE` Starts as `$null`, Not 0
+
+**The problem:** Before any native command has run in a session, `$LASTEXITCODE` is `$null`. Naive checks like `$LASTEXITCODE -ne 0` then evaluate `$null -ne 0` which is `$true`, falsely indicating failure:
+
+```powershell
+# BAD: fires a false positive before any native command has run
+if ($LASTEXITCODE -ne 0) {
+    throw "Command failed"  # Triggers when $LASTEXITCODE is $null
+}
+
+# GOOD: guard against $null
+if ($LASTEXITCODE -and $LASTEXITCODE -ne 0) {
+    throw "Command failed"
+}
+
+# ALSO GOOD: explicit null check
+if ($null -ne $LASTEXITCODE -and $LASTEXITCODE -ne 0) {
+    throw "Command failed"
+}
+```
+
+**Why it happens:** PowerShell only sets `$LASTEXITCODE` when a native executable actually runs. Functions, cmdlets, and mock overrides of native commands (e.g., defining a `docker` function for dry-run testing) do not update `$LASTEXITCODE`. If your script overrides `docker` with a PowerShell function, `$LASTEXITCODE` stays at whatever it was before — often `$null`.
+
+**When this bites:** CI smoke tests, dry-run modes, or any scenario where native commands are mocked with PowerShell functions. The mock function must explicitly set `$global:LASTEXITCODE = 0` if downstream code checks the exit code.
+
+**Severity:** Medium. The failure is immediate and obvious (a thrown exception), but it's confusing because there is no actual command failure.
+
+---
+
+### Single-Element Pipeline Array Unwrapping
+
+**The problem:** When a pipeline returns exactly one object, PowerShell unwraps it from an array to a scalar. Indexing into the result then indexes into the string's characters instead of array elements:
+
+```powershell
+# BAD: if docker returns exactly one container name, $result is a string
+$result = docker ps --format '{{.Names}}'
+$first = $result[0]           # Returns first CHARACTER, not first element
+$first.Trim()                 # Fails: [char] has no Trim() method
+
+# GOOD: force array context with @()
+$result = @(docker ps --format '{{.Names}}')
+$first = $result[0]           # Always returns first element (string)
+$first.Trim()                 # Works
+```
+
+**Why it happens:** PowerShell's pipeline is designed to stream individual objects. When a pipeline produces a single object, PowerShell "unwraps" the implicit single-element array and returns the bare object. Two or more items return an `[Object[]]` array, but one item returns the raw scalar. This means `[0]` on a string indexes characters, not array positions.
+
+**When this bites:** Any script that collects Docker/git output into a variable and indexes into it. The bug only manifests when exactly one line is returned — zero lines give `$null` (caught by null checks) and two or more lines give an array (indexing works). The single-line case silently produces wrong results.
+
+**Severity:** High. The failure mode is silent and data-dependent — the same code works in testing with multiple containers but fails in production with one.
+
+---
+
 ### Embedded Double-Quotes in Native Command Arguments on Windows
 
 **The problem:** When PowerShell on Windows passes a string containing `"` characters to a native executable (like `docker.exe`), the Windows C runtime argument parser (`CommandLineToArgvW`) can misinterpret quoting boundaries, silently truncating or mangling the argument. Multi-command `sh -c` pipelines are especially vulnerable:
