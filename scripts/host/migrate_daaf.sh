@@ -136,6 +136,18 @@ prompt_choice() {
     done
 }
 
+# Override prompt_choice in dry-run mode (must come after the real definition
+# since bash function definitions are global, not block-scoped)
+if [ "${DAAF_DRY_RUN:-}" = "1" ]; then
+    prompt_choice() {
+        local valid_choices="$2"
+        local first_choice
+        first_choice=$(echo "${valid_choices}" | awk '{print $1}')
+        echo "[DRY-RUN] Auto-selecting: ${first_choice}" >&2
+        echo "${first_choice}"
+    }
+fi
+
 # Run a git command inside the container (strips carriage returns)
 container_git() {
     docker exec "${CONTAINER_NAME}" git -C /daaf "$@" </dev/null 2>/dev/null | tr -d '\r'

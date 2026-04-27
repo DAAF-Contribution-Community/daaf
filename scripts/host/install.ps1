@@ -62,6 +62,8 @@ if ($env:DAAF_DRY_RUN -eq "1") {
             [string]$Uri,
             [string]$OutFile
         )
+        # Acknowledge parameters accepted for interface compatibility
+        $null = $UseBasicParsing, $Uri
         if ($OutFile) {
             # Create parent directory if needed, then an empty file
             $parentDir = Split-Path $OutFile -Parent

@@ -4,7 +4,7 @@
 # ============================================================================
 # Checks DAAF-specific patterns that standard linters do not cover:
 #   1. Bash preamble: shebang + set -euo pipefail (or set -eu / trap ERR)
-#   2. PowerShell preamble: $ErrorActionPreference set within first 30 lines
+#   2. PowerShell preamble: $ErrorActionPreference in first 15 code lines
 #   3. DAAF_NESTED consistency: host lifecycle scripts reference DAAF_NESTED
 #   4. Numbered progress: host lifecycle scripts use [N/M] indicators (warn only)
 #
@@ -134,12 +134,12 @@ while IFS= read -r -d '' ps1file; do
         *.Tests.ps1|TestHelper.ps1) continue ;;
     esac
 
-    # Check for $ErrorActionPreference within first 30 lines.
-    # DAAF PS1 scripts have large comment headers (15-20 lines), so the
-    # preamble typically appears around line 19-20.
-    head_lines=$(head -30 "${ps1file}")
-    if ! echo "${head_lines}" | grep -q 'ErrorActionPreference'; then
-        fail "${relpath}: missing '\$ErrorActionPreference' set within first 30 lines"
+    # Check for $ErrorActionPreference in first 15 non-comment, non-blank code lines.
+    # PowerShell comments start with # (like bash). Counting code lines is robust
+    # against variable-length comment headers and dry-run blocks.
+    code_lines=$(awk '!/^\s*#/ && !/^\s*$/ { print; if (++n == 15) exit }' "${ps1file}")
+    if ! echo "${code_lines}" | grep -q 'ErrorActionPreference'; then
+        fail "${relpath}: missing '\$ErrorActionPreference' in first 15 code lines"
     fi
 done < <(find "${REPO_ROOT}" -name '*.ps1' -type f -not -path '*/.git/*' -print0)
 

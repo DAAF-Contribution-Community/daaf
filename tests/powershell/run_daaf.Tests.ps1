@@ -85,7 +85,7 @@ Describe "run_daaf.ps1 dry-run mode" {
     It "completes successfully with DAAF_DRY_RUN=1" {
         $env:DAAF_DRY_RUN = "1"
         $env:DAAF_NESTED = "1"
-        $output = & "$RepoRoot/scripts/host/run_daaf.ps1" *>&1
+        $null = & "$RepoRoot/scripts/host/run_daaf.ps1" *>&1
         $LASTEXITCODE | Should -BeIn @(0, $null)
     }
 

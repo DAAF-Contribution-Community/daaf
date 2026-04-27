@@ -18,6 +18,12 @@
         # for user-facing output (colored progress messages, status indicators).
         # Write-Host is the correct choice for these scripts — they are not
         # library functions where output stream purity matters.
-        'PSAvoidUsingWriteHost'
+        'PSAvoidUsingWriteHost',
+
+        # DAAF_DRY_RUN mode intentionally overrides Invoke-WebRequest with a
+        # mock function that creates empty stub files instead of making real
+        # HTTP calls. This is by design for CI cross-platform smoke testing
+        # without network access.
+        'PSAvoidOverwritingBuiltInCmdlets'
     )
 }

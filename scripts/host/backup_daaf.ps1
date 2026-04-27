@@ -38,7 +38,7 @@ if ($env:DAAF_DRY_RUN -eq "1") {
             "*info*" { return }
             "*volume inspect*" { return }
             "*run --rm*" {
-                # Scan command — return 4 lines matching the parsing expectations:
+                # Scan command -- return 4 lines matching the parsing expectations:
                 # Line 0: file count, Line 1: "KB\t/source", Line 2: "size\t/source", Line 3: logical KB
                 Write-Output "42"
                 Write-Output "1024`t/source"

@@ -115,6 +115,8 @@ if ($env:DAAF_DRY_RUN -eq "1") {
             [string]$Uri,
             [string]$OutFile
         )
+        # Acknowledge parameters accepted for interface compatibility
+        $null = $UseBasicParsing, $Uri
         if ($OutFile) {
             $parentDir = Split-Path $OutFile -Parent
             if ($parentDir -and -not (Test-Path $parentDir)) {
@@ -172,6 +174,16 @@ function Read-UserChoice {
         $choice = (Read-Host $PromptText).Trim().ToLower()
         if ($ValidChoices -contains $choice) { return $choice }
         Write-Host "  Please enter one of: $($ValidChoices -join ', ')" -ForegroundColor Yellow
+    }
+}
+
+# Override Read-UserChoice in dry-run mode (must come after the real definition
+# since the later definition overwrites the earlier one at the same scope)
+if ($env:DAAF_DRY_RUN -eq "1") {
+    function Read-UserChoice {
+        param([string]$PromptText, [string[]]$ValidChoices)
+        Write-Host "[DRY-RUN] Auto-selecting: $($ValidChoices[0])"
+        return $ValidChoices[0]
     }
 }
 
