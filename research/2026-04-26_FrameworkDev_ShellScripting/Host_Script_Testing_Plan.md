@@ -2,7 +2,7 @@
 
 **Created:** 2026-04-26
 **Context:** Framework Development session — CI pipeline and testing infrastructure
-**Status:** Phases 1-4 COMPLETE (Sessions 2-3). Phase 5 remains.
+**Status:** All 5 phases COMPLETE (Sessions 2-4).
 **Reviewed by:** 2 search-agent subagents (feasibility + cross-platform/CI architecture)
 
 ---
@@ -77,11 +77,33 @@ Pinned versions: bats-core 1.13.0, bats-support 0.3.0, bats-assert 2.1.0, bats-f
 
 **Review:** 3-angle review (consistency, quality, completeness) passed. Minor findings: cosmetic section ordering difference between 2 PS scripts and their bash counterparts (non-functional); testing plan status needed updating (done).
 
-### Remaining (Future Sessions)
+### Session 4 (2026-04-27) — Phase 5
 
-| Phase | Status | Depends On | Notes |
-|-------|--------|------------|-------|
-| Phase 5 (Docker Integration Tests) | Not started | Independent | ci-integration.yml, weekly schedule + dispatch + release tags. Add Docker cleanup step. |
+**Completed:**
+
+1. **Phase 5: Docker integration tests** — Created `.github/workflows/ci-integration.yml` with 3 jobs:
+   - **lifecycle-test:** Full user journey — install → verify → run → backup → verify backup → update → verify → rebuild → verify. Uses scripts downloaded by `install.sh` (as a real user would).
+   - **migrate-era1:** Clone-based installation migration. Uses `install.sh` (which creates origin remote naturally), then runs `migrate_daaf.sh`. Verifies Era 1 detection, remote configuration, fetch capability, and idempotency (run twice).
+   - **migrate-era2:** ZIP-based installation migration. Uses `install.sh`, then removes origin remote to simulate ZIP extraction state. Runs `migrate_daaf.sh`, verifies Era 2 detection, remote addition, fetch, and idempotency (graft already in place).
+   - All jobs: ubuntu-latest, 30-min timeout, container readiness waits, `if: always()` Docker cleanup with `--remove-orphans`.
+   - Triggers: weekly Sunday 6 AM UTC, `workflow_dispatch`, release tags (`v*`).
+   - Branch targeting via `DAAF_BRANCH=${{ github.ref_name }}` — works correctly for all trigger types.
+
+2. **Windows Docker integration excluded by design** — GitHub-hosted Windows runners use Windows containers; DAAF uses Linux containers. Windows PowerShell logic already covered by Phase 4 dry-run smoke tests.
+
+3. **ci-scripts.yml cross-reference** — Added companion workflow note to header.
+
+**Review:** 3-angle review (consistency, quality, completeness) passed. Fixes applied: cron syntax (4→5 fields), header accuracy (3 jobs not 4), container readiness retry loops, post-update verification step, `--remove-orphans` on cleanup, `DAAF_BRANCH` tag behavior documented, `view_logs.sh` exclusion rationale added.
+
+### All Phases Complete
+
+| Phase | Status | Session |
+|-------|--------|---------|
+| Phase 1 (Test Mode Guards) | ✅ Complete | Session 2 |
+| Phase 2 (Enhanced Mocks) | ✅ Complete | Session 2 |
+| Phase 3 (Dry-Run Mode) | ✅ Complete | Session 3 |
+| Phase 4 (Cross-Platform Smoke CI) | ✅ Complete | Session 3 |
+| Phase 5 (Docker Integration Tests) | ✅ Complete | Session 4 |
 
 ### Learnings
 
@@ -739,14 +761,13 @@ Phase 1 (Test Mode Guards)     ─── ✓ DONE (Session 2, 2026-04-26)
             │
             └── Phase 4 (Smoke CI) ── ✓ DONE (Session 3, 2026-04-27)
 
-Phase 5 (Integration Tests)    ── MEDIUM EFFORT, INSURANCE ────→ End-to-end confidence
-                                   (independent — can start anytime)
+Phase 5 (Integration Tests)    ── ✓ DONE (Session 4, 2026-04-27)
 ```
 
 **Session plan:**
 - **Session 2 (done):** Phase 1 + Phase 2 + flock fix + bash 3.2 audit + Dockerfile testing tools
 - **Session 3 (done):** Phase 3 + Phase 4 (dry-run mode + cross-platform CI) + 2 gotchas added to skill
-- **Session 4:** Phase 5 (integration tests) + any fixes from Phase 4 findings
+- **Session 4 (done):** Phase 5 (Docker integration tests — lifecycle + migration Era 1/Era 2)
 
 ## Files Modified By This Plan
 

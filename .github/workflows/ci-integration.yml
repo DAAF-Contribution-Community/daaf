@@ -1,0 +1,379 @@
+# CI: Docker Integration Tests
+#
+# End-to-end tests for DAAF's host lifecycle scripts running against a real
+# Docker daemon. Verifies install, run, backup, update, rebuild, and migrate
+# workflows behave correctly with actual containers and volumes.
+#
+# Companion workflow: ci-scripts.yml handles lint, unit tests, and cross-platform
+# dry-run smoke tests (no Docker required).
+#
+# Three jobs:
+#   1. lifecycle-test  - Full lifecycle: install -> run -> backup -> update -> rebuild
+#   2. migrate-era1    - Migration of clone-based installations (origin remote present)
+#   3. migrate-era2    - Migration of ZIP-based installations (no remote, requires graft)
+#
+# Not tested here:
+#   - view_logs.sh/ps1: Invokes `docker compose logs --follow`, which is a
+#     blocking/streaming command unsuitable for CI. Covered by dry-run smoke
+#     tests in ci-scripts.yml.
+#   - Windows Docker integration: GitHub-hosted Windows runners have Docker
+#     configured for Windows containers, not Linux containers. DAAF uses Linux
+#     containers. Windows PowerShell logic is covered by the dry-run smoke
+#     tests in ci-scripts.yml.
+#
+# Triggers: weekly (Sunday 6 AM UTC), manual dispatch, release tags.
+# All jobs run on ubuntu-latest with a 30-minute timeout.
+
+name: CI - Integration
+
+on:
+  schedule:
+    - cron: '0 6 * * 0'  # Weekly on Sunday at 6 AM UTC
+  workflow_dispatch: {}
+  push:
+    tags: ['v*']  # Run on release tags
+
+permissions:
+  contents: read
+
+# DAAF_BRANCH tells all lifecycle scripts which branch to download from and
+# target. Resolves to the branch name for schedule/dispatch, or the tag name
+# for release-tag pushes (git treats tags as valid refs for --branch).
+# DAAF_NESTED suppresses the interactive pause-before-exit in all scripts.
+env:
+  DAAF_BRANCH: ${{ github.ref_name }}
+  DAAF_NESTED: "1"
+
+# ---------------------------------------------------------------------------
+# Job 1: Full lifecycle — install, run, backup, update, rebuild
+# ---------------------------------------------------------------------------
+# Exercises the standard user journey: install DAAF from scratch, verify the
+# container is operational, run a command inside it, create a backup, attempt
+# an update (no-op on fresh install), rebuild the image, and confirm
+# everything still works afterward.
+jobs:
+  lifecycle-test:
+    name: Lifecycle Test
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # --- Install ---
+      # install.sh creates daaf-docker/ in the current working directory,
+      # downloads docker-compose.yml, Dockerfile, and all host scripts there,
+      # builds the Docker image, and clones the repo into the container.
+      - name: Install DAAF via install.sh
+        run: bash scripts/host/install.sh
+
+      # --- Verify container is running ---
+      # install.sh has its own readiness wait, but add a retry loop as a
+      # safety net for slow CI runners.
+      - name: Verify container is running
+        working-directory: daaf-docker
+        run: |
+          for i in 1 2 3 4 5; do
+            docker compose ps | grep -q "running" && exit 0
+            echo "Waiting for container to be ready (attempt $i/5)..."
+            sleep 3
+          done
+          echo "ERROR: Container did not reach running state"
+          docker compose ps
+          exit 1
+
+      # --- Verify CLAUDE.md exists in the container ---
+      - name: Verify CLAUDE.md present in container
+        working-directory: daaf-docker
+        run: docker compose exec -T daaf-docker test -f /daaf/CLAUDE.md
+
+      # --- Run a quick command inside the container ---
+      # Uses the downloaded copy of run_daaf.sh (as a real user would).
+      - name: Run test command via run_daaf.sh
+        working-directory: daaf-docker
+        run: bash run_daaf.sh echo "DAAF is working"
+
+      # --- Backup ---
+      - name: Create backup via backup_daaf.sh
+        working-directory: daaf-docker
+        run: bash backup_daaf.sh
+
+      # backup_daaf.sh creates YYYY-MM-DD_daaf_backup/ in the current directory
+      - name: Verify backup directory was created
+        working-directory: daaf-docker
+        run: ls -la *_daaf_backup/
+
+      # --- Update (no-op on fresh install) ---
+      - name: Run update_daaf.sh (no-op on fresh install)
+        working-directory: daaf-docker
+        run: bash update_daaf.sh
+
+      - name: Verify container running after update
+        working-directory: daaf-docker
+        run: docker compose ps | grep -q "running"
+
+      # --- Simulate user work-in-progress ---
+      # Add a committed file and an uncommitted file to verify that rebuild
+      # preserves user data. Placed after update (which is a no-op on a fresh
+      # install) so the local commit doesn't trigger update's interactive
+      # prompt_choice for "ahead" branches.
+      - name: Add committed research file
+        working-directory: daaf-docker
+        run: |
+          docker compose exec -T daaf-docker bash -c '
+            mkdir -p /daaf/research
+            echo "My analysis notes" > /daaf/research/local_work.txt
+            git -C /daaf add research/local_work.txt
+            git -C /daaf commit -m "Local research work"
+          '
+
+      - name: Add uncommitted file edit
+        working-directory: daaf-docker
+        run: |
+          docker compose exec -T daaf-docker bash -c '
+            echo "Work in progress" > /daaf/research/uncommitted_draft.txt
+          '
+
+      # --- Rebuild ---
+      - name: Rebuild image via rebuild_daaf.sh
+        working-directory: daaf-docker
+        run: bash rebuild_daaf.sh
+
+      # --- Post-rebuild verification ---
+      - name: Verify container running after rebuild
+        working-directory: daaf-docker
+        run: docker compose ps | grep -q "running"
+
+      - name: Verify CLAUDE.md present after rebuild
+        working-directory: daaf-docker
+        run: docker compose exec -T daaf-docker test -f /daaf/CLAUDE.md
+
+      # --- Verify user work survived rebuild ---
+      - name: Verify committed file preserved after rebuild
+        working-directory: daaf-docker
+        run: |
+          docker compose exec -T daaf-docker bash -c '
+            grep -q "My analysis notes" /daaf/research/local_work.txt
+            git -C /daaf log --oneline -1 | grep -q "Local research work"
+          '
+
+      - name: Verify uncommitted file preserved after rebuild
+        working-directory: daaf-docker
+        run: |
+          docker compose exec -T daaf-docker bash -c '
+            grep -q "Work in progress" /daaf/research/uncommitted_draft.txt
+          '
+
+      # --- Cleanup ---
+      # Use conditional directory check because install.sh may not have created
+      # daaf-docker/ if it failed early.
+      - name: Docker cleanup
+        if: always()
+        run: |
+          if [ -d daaf-docker ]; then
+            cd daaf-docker
+            docker compose down -v --rmi local --remove-orphans
+          fi
+
+  # ---------------------------------------------------------------------------
+  # Job 2: Migration — Era 1 (clone-based installation, origin remote present)
+  # ---------------------------------------------------------------------------
+  # After install.sh, the container has a git clone with origin configured.
+  # This IS Era 1's natural state. migrate_daaf.sh should detect it as
+  # "clone-based installation, remote already configured" and succeed.
+  # The second run tests idempotency.
+  migrate-era1:
+    name: Migrate (Era 1 - Clone)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # install.sh creates the container with git clone --depth 1,
+      # which configures origin automatically — this is Era 1.
+      - name: Install DAAF via install.sh
+        run: bash scripts/host/install.sh
+
+      - name: Wait for container readiness
+        working-directory: daaf-docker
+        run: |
+          for i in 1 2 3 4 5; do
+            docker compose ps | grep -q "running" && exit 0
+            sleep 3
+          done
+          echo "ERROR: Container not ready"; docker compose ps; exit 1
+
+      # --- Simulate user work-in-progress ---
+      # migrate_daaf.sh only touches git history (remotes/grafts), not the
+      # working tree, so user files should be untouched after migration.
+      - name: Add committed research file
+        working-directory: daaf-docker
+        run: |
+          docker compose exec -T daaf-docker bash -c '
+            mkdir -p /daaf/research
+            echo "My analysis notes" > /daaf/research/local_work.txt
+            git -C /daaf add research/local_work.txt
+            git -C /daaf commit -m "Local research work"
+          '
+
+      - name: Add uncommitted file edit
+        working-directory: daaf-docker
+        run: |
+          docker compose exec -T daaf-docker bash -c '
+            echo "Work in progress" > /daaf/research/uncommitted_draft.txt
+          '
+
+      # Run migrate from the repo checkout copy (tests the code on this branch).
+      # migrate_daaf.sh discovers the container via the daaf_daaf-data volume
+      # and finds docker-compose.yml in daaf-docker/ (created by install.sh).
+      - name: Run migrate_daaf.sh (should detect Era 1)
+        working-directory: daaf-docker
+        run: bash ../scripts/host/migrate_daaf.sh
+
+      # Verify origin remote is configured and points to the repo
+      - name: Verify origin remote is configured
+        working-directory: daaf-docker
+        run: docker compose exec -T daaf-docker git -C /daaf remote -v
+
+      # Verify fetch works (future updates will succeed)
+      - name: Verify git fetch origin succeeds
+        working-directory: daaf-docker
+        run: docker compose exec -T daaf-docker git -C /daaf fetch origin
+
+      # Run again to confirm idempotency — should succeed without errors
+      - name: Run migrate_daaf.sh again (idempotency check)
+        working-directory: daaf-docker
+        run: bash ../scripts/host/migrate_daaf.sh
+
+      # --- Verify user work survived migration ---
+      - name: Verify committed file preserved after migration
+        working-directory: daaf-docker
+        run: |
+          docker compose exec -T daaf-docker bash -c '
+            grep -q "My analysis notes" /daaf/research/local_work.txt
+            git -C /daaf log --oneline | grep -q "Local research work"
+          '
+
+      - name: Verify uncommitted file preserved after migration
+        working-directory: daaf-docker
+        run: |
+          docker compose exec -T daaf-docker bash -c '
+            grep -q "Work in progress" /daaf/research/uncommitted_draft.txt
+          '
+
+      # --- Cleanup ---
+      - name: Docker cleanup
+        if: always()
+        run: |
+          if [ -d daaf-docker ]; then
+            cd daaf-docker
+            docker compose down -v --rmi local --remove-orphans
+          fi
+
+  # ---------------------------------------------------------------------------
+  # Job 3: Migration — Era 2 (ZIP-based installation, no remote)
+  # ---------------------------------------------------------------------------
+  # Simulates a user who downloaded DAAF as a ZIP file: the container has DAAF
+  # files and local git history but no remote. migrate_daaf.sh should detect
+  # "ZIP-based installation, no remote configured", add origin, fetch upstream
+  # history, and graft local history onto it.
+  migrate-era2:
+    name: Migrate (Era 2 - ZIP)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # Start with a normal install (which creates origin via git clone)
+      - name: Install DAAF via install.sh
+        run: bash scripts/host/install.sh
+
+      - name: Wait for container readiness
+        working-directory: daaf-docker
+        run: |
+          for i in 1 2 3 4 5; do
+            docker compose ps | grep -q "running" && exit 0
+            sleep 3
+          done
+          echo "ERROR: Container not ready"; docker compose ps; exit 1
+
+      # Remove the git remote to simulate a ZIP-based installation
+      - name: Remove origin remote (simulate ZIP install)
+        working-directory: daaf-docker
+        run: docker compose exec -T daaf-docker git -C /daaf remote remove origin
+
+      # Confirm remote is gone
+      - name: Verify origin remote is removed
+        working-directory: daaf-docker
+        run: |
+          output=$(docker compose exec -T daaf-docker git -C /daaf remote -v 2>&1 || true)
+          if echo "$output" | grep -q "origin"; then
+            echo "ERROR: origin remote still exists"
+            exit 1
+          fi
+          echo "Confirmed: no origin remote"
+
+      # --- Simulate user work-in-progress ---
+      - name: Add committed research file
+        working-directory: daaf-docker
+        run: |
+          docker compose exec -T daaf-docker bash -c '
+            mkdir -p /daaf/research
+            echo "My analysis notes" > /daaf/research/local_work.txt
+            git -C /daaf add research/local_work.txt
+            git -C /daaf commit -m "Local research work"
+          '
+
+      - name: Add uncommitted file edit
+        working-directory: daaf-docker
+        run: |
+          docker compose exec -T daaf-docker bash -c '
+            echo "Work in progress" > /daaf/research/uncommitted_draft.txt
+          '
+
+      # Run migrate — should detect Era 2, add origin, fetch, and graft
+      - name: Run migrate_daaf.sh (should detect Era 2)
+        working-directory: daaf-docker
+        run: bash ../scripts/host/migrate_daaf.sh
+
+      # Verify origin was added
+      - name: Verify origin remote was added
+        working-directory: daaf-docker
+        run: docker compose exec -T daaf-docker git -C /daaf remote -v | grep origin
+
+      # Verify fetch works (graft connected the histories)
+      - name: Verify git fetch origin succeeds
+        working-directory: daaf-docker
+        run: docker compose exec -T daaf-docker git -C /daaf fetch origin
+
+      # Run again to confirm idempotency — graft already in place
+      - name: Run migrate_daaf.sh again (idempotency check)
+        working-directory: daaf-docker
+        run: bash ../scripts/host/migrate_daaf.sh
+
+      # --- Verify user work survived migration ---
+      - name: Verify committed file preserved after migration
+        working-directory: daaf-docker
+        run: |
+          docker compose exec -T daaf-docker bash -c '
+            grep -q "My analysis notes" /daaf/research/local_work.txt
+            git -C /daaf log --oneline | grep -q "Local research work"
+          '
+
+      - name: Verify uncommitted file preserved after migration
+        working-directory: daaf-docker
+        run: |
+          docker compose exec -T daaf-docker bash -c '
+            grep -q "Work in progress" /daaf/research/uncommitted_draft.txt
+          '
+
+      # --- Cleanup ---
+      - name: Docker cleanup
+        if: always()
+        run: |
+          if [ -d daaf-docker ]; then
+            cd daaf-docker
+            docker compose down -v --rmi local --remove-orphans
+          fi

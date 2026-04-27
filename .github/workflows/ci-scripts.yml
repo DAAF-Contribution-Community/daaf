@@ -1,6 +1,8 @@
 # CI: Shell & PowerShell Script Quality
 #
 # Validates all .sh and .ps1 scripts across the repository.
+# Companion workflow: ci-integration.yml runs Docker integration tests weekly.
+#
 # Eight jobs:
 #   1. lint-bash           - ShellCheck on all .sh files (ubuntu)
 #   2. lint-powershell     - PSScriptAnalyzer on all .ps1 files (ubuntu/pwsh 7)
