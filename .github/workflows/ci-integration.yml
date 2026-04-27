@@ -32,6 +32,7 @@ on:
   workflow_dispatch: {}
   push:
     tags: ['v*']  # Run on release tags
+    branches: [minor_revisions_v202]  # TEMPORARY: remove after confirming tests pass
 
 permissions:
   contents: read
