@@ -89,6 +89,10 @@ Pinned versions: bats-core 1.13.0, bats-support 0.3.0, bats-assert 2.1.0, bats-f
 - **Mock variable export:** BATS `run bash "$script"` creates a subshell — mock control variables must be `export`ed to propagate.
 - **ERR trap in test mode:** Scripts with ERR traps fire them when tests source the script. Tests must `trap - ERR; set +eu` after sourcing to neutralize the sourced script's safety settings.
 - **Windows native-command argument passing:** Embedded `"` characters in strings passed to native executables (e.g., `docker.exe`) on Windows get mangled by the C runtime's `CommandLineToArgvW` parser, causing silent argument truncation. Neither PSScriptAnalyzer (which only understands PowerShell syntax) nor the Pester structural tests (which pattern-match the source text) caught this — it only manifests at runtime on Windows with a real Docker daemon. Phase 5 Integration Tests (currently Linux-only) would not catch this either. Mitigation: added a structural regression test to `backup_daaf.Tests.ps1` that checks the Docker scan command avoids the known-bad pattern, and documented the gotcha in the `shell-scripting` skill's `gotchas.md`. A future Phase 5 expansion to include a Windows runner with Docker would provide the strongest coverage, but Windows Docker-in-Docker on GitHub Actions is complex.
+- **Function override for dry-run mocking:** Defining `docker()` as a shell function that shadows the native `docker` binary is far less invasive than search-and-replacing every call site with `docker_cmd`. Bash resolves functions before PATH lookups, so `command -v docker` also finds the function — preflight checks pass automatically with no explicit bypass needed. Same principle works in PowerShell (function resolution precedes native command resolution).
+- **PowerShell `$LASTEXITCODE` starts as `$null`:** Before any native command runs, `$LASTEXITCODE` is `$null`, not 0. Checks like `$LASTEXITCODE -ne 0` evaluate `$null -ne 0` as `$true`, causing false failures. Guard with `$LASTEXITCODE -and $LASTEXITCODE -ne 0` or set `$global:LASTEXITCODE = 0` in mock functions.
+- **PowerShell single-element pipeline array unwrapping:** When a pipeline returns exactly one object, PowerShell unwraps it to a scalar. `$result[0]` then indexes into the string's characters, not array elements. Always wrap in `@()` when indexing: `$result = @(docker ps --format '{{.Names}}')`.
+- **Dry-run stub file cleanup:** The `migrate_daaf.ps1` dry-run mock creates stub script files in the CWD (for downstream `& .\backup_daaf.ps1` calls). These are left behind after local testing and must be manually cleaned up. CI runners are ephemeral so this is only a local testing concern.
 
 ---
 
@@ -190,7 +194,7 @@ Reduce the surface area of uncertainty about how the 14 host-side lifecycle scri
 - **7 BATS test files** (`tests/bash/*.bats`) covering syntax validation, preflight mocking (missing Docker, daemon not running), DAAF_NESTED behavior, and some structural checks
 - **7 Pester test files** (`tests/powershell/*.Tests.ps1`) covering syntax validation and structural content verification (no behavioral testing)
 - **Shared test helpers** (`test_helper.bash`, `TestHelper.ps1`) with Docker mock infrastructure
-- **CI workflow** (`ci-scripts.yml`) with 7 jobs: ShellCheck, PSScriptAnalyzer (Linux + Windows), hygiene checks, BATS tests, Pester tests, DAAF conventions lint
+- **CI workflow** (`ci-scripts.yml`) with 8 jobs: ShellCheck, PSScriptAnalyzer (Linux + Windows), hygiene checks, BATS tests, Pester tests, DAAF conventions lint, cross-platform dry-run smoke tests
 - **Safety fixes applied:** concurrent-run locking (flock/mutex), SHA quoting, verbose git for error-sensitive ops, backup disk space + integrity checks, cp -a parity fix
 
 ### What's Missing
@@ -750,7 +754,7 @@ Phase 5 (Integration Tests)    ── MEDIUM EFFORT, INSURANCE ────→ E
 |-------|--------------|----------------|
 | Phase 1 | None | 14 scripts in `scripts/host/` (add guard) |
 | Phase 2 | None | 8 test files in `tests/bash/` and `tests/powershell/` (extend) |
-| Phase 3 | None | 14 scripts in `scripts/host/` (add dry-run wrappers) |
+| Phase 3 | None | 14 scripts in `scripts/host/` (add dry-run wrappers), 14 test files (add dry-run tests), `gotchas.md` (+2 entries) |
 | Phase 4 | None | `.github/workflows/ci-scripts.yml` (add smoke job) |
 | Phase 5 | `.github/workflows/ci-integration.yml` | None |
 
@@ -765,7 +769,9 @@ After all 5 phases:
 
 ## Open Questions for Session Start
 
-1. **Bash 3.2 compatibility:** Should we audit all .sh scripts for bash 4+ features before adding the smoke CI job, or let the macOS runner discover issues?
-2. **Pester behavioral tests:** The current Pester tests are structural. Phase 2E proposes behavioral Pester tests, but the PS scripts are harder to mock (function scoping rules differ from bash). Should we invest equally in Pester behavioral tests, or accept structural + smoke testing for PS?
-3. **Docker integration test frequency:** Nightly is proposed, but if CI minutes are a concern, weekly might suffice. User preference?
-4. **Test mode guard backward compatibility:** Adding `DAAF_TEST_MODE` is a no-op for normal users, but should we document it in the script headers for maintainability?
+All original open questions have been resolved across Sessions 2-3:
+
+1. **Bash 3.2 compatibility:** ✓ Resolved (Session 2). Full audit complete — all 7 scripts clean. Only incompatibility was `flock` (replaced with portable `mkdir`-based locking).
+2. **Pester behavioral tests:** ✓ Resolved (Session 2). 59 Pester behavioral tests implemented. Function scoping handled via dot-sourcing with `DAAF_TEST_MODE`.
+3. **Docker integration test frequency:** ✓ Resolved (Session 2). Weekly chosen for Phase 5.
+4. **Test mode guard documentation:** ✓ Resolved (Session 2). Documented in all 14 script headers.
