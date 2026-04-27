@@ -244,6 +244,7 @@ function Read-UserChoice {
 if ($env:DAAF_DRY_RUN -eq "1") {
     function Read-UserChoice {
         param([string]$PromptText, [string[]]$ValidChoices)
+        $null = $PromptText  # Accept param for interface compatibility
         Write-Host "[DRY-RUN] Auto-selecting: $($ValidChoices[0])"
         return $ValidChoices[0]
     }
