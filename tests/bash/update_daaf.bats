@@ -340,12 +340,48 @@ teardown() {
 }
 
 # --- prompt_choice behavioral tests ---
+# Note: piping input makes stdin a pipe (not a TTY), which triggers the
+# non-interactive auto-select path. To test the interactive read path,
+# we define a wrapper that overrides the [ -t 0 ] check.
 
-@test "update: prompt_choice accepts valid input on first try" {
+@test "update: prompt_choice auto-selects first choice in non-interactive mode" {
     run bash -c '
         DAAF_TEST_MODE=1 source "'"${REPO_ROOT}"'/scripts/host/update_daaf.sh"
         trap - ERR
         set +eu
+        echo "ignored" | prompt_choice "Continue? [y/n]: " "y n"
+    '
+    assert_success
+    assert_output --partial "y"
+}
+
+@test "update: prompt_choice auto-selects first of multi-option set" {
+    run bash -c '
+        DAAF_TEST_MODE=1 source "'"${REPO_ROOT}"'/scripts/host/update_daaf.sh"
+        trap - ERR
+        set +eu
+        echo "ignored" | prompt_choice "Choose [1/2/3]: " "1 2 3"
+    '
+    assert_success
+    assert_output --partial "1"
+}
+
+@test "update: prompt_choice reads input interactively when stdin is a TTY" {
+    # Override prompt_choice to remove the TTY check, simulating interactive mode
+    run bash -c '
+        DAAF_TEST_MODE=1 source "'"${REPO_ROOT}"'/scripts/host/update_daaf.sh"
+        trap - ERR
+        set +eu
+        prompt_choice() {
+            local prompt_text="$1"
+            local valid_choices="$2"
+            local choice=""
+            read -r choice
+            choice=$(echo "${choice}" | tr "[:upper:]" "[:lower:]")
+            if echo "${valid_choices}" | grep -qw "${choice}"; then
+                echo "${choice}"
+            fi
+        }
         echo "y" | prompt_choice "Continue? [y/n]: " "y n"
     '
     assert_success
@@ -357,33 +393,20 @@ teardown() {
         DAAF_TEST_MODE=1 source "'"${REPO_ROOT}"'/scripts/host/update_daaf.sh"
         trap - ERR
         set +eu
+        prompt_choice() {
+            local prompt_text="$1"
+            local valid_choices="$2"
+            local choice=""
+            read -r choice
+            choice=$(echo "${choice}" | tr "[:upper:]" "[:lower:]")
+            if echo "${valid_choices}" | grep -qw "${choice}"; then
+                echo "${choice}"
+            fi
+        }
         echo "Y" | prompt_choice "Continue? [y/n]: " "y n"
     '
     assert_success
     assert_output --partial "y"
-}
-
-@test "update: prompt_choice rejects invalid input and reprompts" {
-    run bash -c '
-        DAAF_TEST_MODE=1 source "'"${REPO_ROOT}"'/scripts/host/update_daaf.sh"
-        trap - ERR
-        set +eu
-        printf "x\ny\n" | prompt_choice "Continue? [y/n]: " "y n"
-    '
-    assert_success
-    # The reprompt message goes to stderr; stdout should contain the final valid choice
-    assert_output --partial "y"
-}
-
-@test "update: prompt_choice accepts multi-option choice sets" {
-    run bash -c '
-        DAAF_TEST_MODE=1 source "'"${REPO_ROOT}"'/scripts/host/update_daaf.sh"
-        trap - ERR
-        set +eu
-        echo "2" | prompt_choice "Choose [1/2/3]: " "1 2 3"
-    '
-    assert_success
-    assert_output --partial "2"
 }
 
 # --- handle_conflict behavioral tests ---

@@ -356,7 +356,8 @@ echo ""
 
 # Discover container dynamically from the volume
 ALL_CONTAINERS=$(docker ps -a --filter "volume=${VOLUME_NAME}" --format '{{.Names}}')
-CONTAINER_COUNT=$(echo "${ALL_CONTAINERS}" | grep -c . || echo "0")
+CONTAINER_COUNT=$(echo "${ALL_CONTAINERS}" | grep -c . || true)
+CONTAINER_COUNT="${CONTAINER_COUNT:-0}"
 CONTAINER_NAME=$(echo "${ALL_CONTAINERS}" | head -1)
 
 if [ "${CONTAINER_COUNT}" -gt 1 ]; then
@@ -617,7 +618,8 @@ else
 
     # If multiple root commits exist, use the first (oldest) one
     INITIAL_COMMIT=$(echo "${INITIAL_COMMITS}" | tail -1)
-    ROOT_COUNT=$(echo "${INITIAL_COMMITS}" | grep -c . || echo "0")
+    ROOT_COUNT=$(echo "${INITIAL_COMMITS}" | grep -c . || true)
+    ROOT_COUNT="${ROOT_COUNT:-0}"
     if [ "${ROOT_COUNT}" -gt 1 ]; then
         echo "NOTE: Found ${ROOT_COUNT} root commits. Using the oldest one"
         echo "      (${INITIAL_COMMIT:0:12}) for graft matching."
