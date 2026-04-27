@@ -220,6 +220,26 @@ jobs:
       - name: Verify DAAF files present
         run: docker compose exec -T daaf-docker test -f /daaf/CLAUDE.md
 
+      # --- Pre-migration verification: confirm Era 1 simulation fidelity ---
+      # These checks verify the simulated environment matches what real Era 1
+      # (clone-based) installations looked like, BEFORE migration runs.
+      - name: "Pre-migration: verify origin remote exists (Era 1 marker)"
+        run: |
+          url=$(docker compose exec -T daaf-docker git -C /daaf remote get-url origin 2>/dev/null)
+          echo "Origin URL: $url"
+          echo "$url" | grep -qi "DAAF-Contribution-Community/daaf"
+
+      - name: "Pre-migration: verify .claude/agents/ exists (current-branch files)"
+        run: docker compose exec -T daaf-docker test -d /daaf/.claude/agents
+
+      - name: "Pre-migration: verify top-level agents/ does not exist (post-v1 layout)"
+        run: |
+          if docker compose exec -T daaf-docker test -d /daaf/agents 2>/dev/null; then
+            echo "ERROR: top-level agents/ should not exist on current branch"
+            exit 1
+          fi
+          echo "Confirmed: no top-level agents/ directory"
+
       # --- Simulate user work-in-progress ---
       - name: Add committed research file
         run: |
@@ -239,7 +259,19 @@ jobs:
       # migrate_daaf.sh discovers the container via the daaf_daaf-data volume.
       # It needs docker-compose.yml in the current directory to run backup.
       - name: Run migrate_daaf.sh (should detect Era 1)
-        run: bash scripts/host/migrate_daaf.sh
+        id: migrate_era1
+        run: bash scripts/host/migrate_daaf.sh 2>&1 | tee /tmp/migrate_era1_output.txt
+
+      # --- Post-migration verification: confirm Era 1 path was taken ---
+      - name: "Post-migration: verify 'clone-based' detected in output"
+        run: grep -qi "clone-based" /tmp/migrate_era1_output.txt
+
+      - name: "Post-migration: verify main tracks origin/main"
+        run: |
+          tracking=$(docker compose exec -T daaf-docker \
+            git -C /daaf rev-parse --abbrev-ref --symbolic-full-name '@{u}' 2>/dev/null || true)
+          echo "Tracking: $tracking"
+          echo "$tracking" | grep -q "origin/main"
 
       # Verify origin remote is configured and points to the repo
       - name: Verify origin remote is configured
@@ -251,7 +283,10 @@ jobs:
 
       # Run again to confirm idempotency — should succeed without errors
       - name: Run migrate_daaf.sh again (idempotency check)
-        run: bash scripts/host/migrate_daaf.sh
+        run: bash scripts/host/migrate_daaf.sh 2>&1 | tee /tmp/migrate_era1_idem.txt
+
+      - name: "Idempotency: verify Migration complete on re-run"
+        run: grep -qi "Migration complete" /tmp/migrate_era1_idem.txt
 
       # --- Verify user work survived migration ---
       - name: Verify committed file preserved after migration
@@ -339,6 +374,44 @@ jobs:
       - name: Verify DAAF files present
         run: docker compose exec -T daaf-docker test -f /daaf/CLAUDE.md
 
+      # --- Pre-migration verification: confirm Era 2 simulation fidelity ---
+      # These checks verify the simulated environment matches what real Era 2
+      # (ZIP-based v2.0.0) installations looked like, BEFORE migration runs.
+      # v2.0.0 had scripts/entrypoint.sh (removed in current era) and
+      # .claude/agents/ (moved from top-level agents/ in v1.0.0).
+      - name: "Pre-migration: verify scripts/entrypoint.sh exists (v2.0.0 marker)"
+        run: docker compose exec -T daaf-docker test -f /daaf/scripts/entrypoint.sh
+
+      - name: "Pre-migration: verify .claude/agents/ exists (v2.0.0 layout)"
+        run: docker compose exec -T daaf-docker test -d /daaf/.claude/agents
+
+      - name: "Pre-migration: verify top-level agents/ does not exist (v1-only)"
+        run: |
+          if docker compose exec -T daaf-docker test -d /daaf/agents 2>/dev/null; then
+            echo "ERROR: top-level agents/ should not exist in v2.0.0 layout"
+            exit 1
+          fi
+          echo "Confirmed: no top-level agents/ directory (correct for v2.0.0)"
+
+      - name: "Pre-migration: verify no tests/ directory (post-v2 only)"
+        run: |
+          if docker compose exec -T daaf-docker test -d /daaf/tests 2>/dev/null; then
+            echo "ERROR: tests/ should not exist in v2.0.0 layout"
+            exit 1
+          fi
+          echo "Confirmed: no tests/ directory (correct for v2.0.0)"
+
+      - name: "Pre-migration: verify no scripts/host/ directory (post-v2 only)"
+        run: |
+          if docker compose exec -T daaf-docker test -d /daaf/scripts/host 2>/dev/null; then
+            echo "ERROR: scripts/host/ should not exist in v2.0.0 layout"
+            exit 1
+          fi
+          echo "Confirmed: no scripts/host/ directory (correct for v2.0.0)"
+
+      - name: "Pre-migration: verify CITATION.cff exists (added in v2.0.0)"
+        run: docker compose exec -T daaf-docker test -f /daaf/CITATION.cff
+
       # --- Simulate user work-in-progress ---
       - name: Add committed research file
         run: |
@@ -357,7 +430,33 @@ jobs:
 
       # Run migrate — should detect Era 2, add origin, fetch, and graft
       - name: Run migrate_daaf.sh (should detect Era 2)
-        run: bash scripts/host/migrate_daaf.sh
+        id: migrate_era2
+        run: bash scripts/host/migrate_daaf.sh 2>&1 | tee /tmp/migrate_era2_output.txt
+
+      # --- Post-migration verification: confirm Era 2 path was taken ---
+      - name: "Post-migration: verify 'ZIP-based' detected in output"
+        run: grep -qi "ZIP-based" /tmp/migrate_era2_output.txt
+
+      - name: "Post-migration: verify graft was applied (initial commit has parent)"
+        run: |
+          docker compose exec -T daaf-docker bash -c '
+            initial=$(git -C /daaf rev-list --max-parents=0 HEAD | tail -1)
+            parent_count=$(git -C /daaf cat-file -p "$initial" | grep -c "^parent " || echo "0")
+            echo "Initial commit: $initial"
+            echo "Parent count: $parent_count"
+            if [ "$parent_count" -eq 0 ]; then
+              echo "ERROR: graft was not applied — initial commit has no parent"
+              exit 1
+            fi
+            echo "Confirmed: graft applied (initial commit has $parent_count parent(s))"
+          '
+
+      - name: "Post-migration: verify main tracks origin/main"
+        run: |
+          tracking=$(docker compose exec -T daaf-docker \
+            git -C /daaf rev-parse --abbrev-ref --symbolic-full-name '@{u}' 2>/dev/null || true)
+          echo "Tracking: $tracking"
+          echo "$tracking" | grep -q "origin/main"
 
       # Verify origin was added
       - name: Verify origin remote was added
@@ -369,7 +468,13 @@ jobs:
 
       # Run again to confirm idempotency — graft already in place
       - name: Run migrate_daaf.sh again (idempotency check)
-        run: bash scripts/host/migrate_daaf.sh
+        run: bash scripts/host/migrate_daaf.sh 2>&1 | tee /tmp/migrate_era2_idem.txt
+
+      - name: "Idempotency: verify remote already exists on re-run"
+        run: grep -qi "already exists" /tmp/migrate_era2_idem.txt
+
+      - name: "Idempotency: verify graft already in place on re-run"
+        run: grep -qi "graft already in place" /tmp/migrate_era2_idem.txt
 
       # --- Verify user work survived migration ---
       - name: Verify committed file preserved after migration

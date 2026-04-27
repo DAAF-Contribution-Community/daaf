@@ -356,7 +356,7 @@ Describe "update_daaf.ps1 behavioral tests" {
                 }
                 return ""
             }
-            function Read-UserChoice { param($P, $V) return "2" }
+            function Read-UserChoice { param($P, $V) $null = $P, $V; return "2" }
 
             $output = Resolve-Conflict "merge" "merge --abort" 6>&1
             $mergeInst = $output | Where-Object { $_ -match 'git commit -m' }
@@ -371,7 +371,7 @@ Describe "update_daaf.ps1 behavioral tests" {
                 }
                 return ""
             }
-            function Read-UserChoice { param($P, $V) return "2" }
+            function Read-UserChoice { param($P, $V) $null = $P, $V; return "2" }
 
             $output = Resolve-Conflict "rebase" "rebase --abort" 6>&1
             $rebaseInst = $output | Where-Object { $_ -match 'rebase --continue' }
@@ -386,7 +386,7 @@ Describe "update_daaf.ps1 behavioral tests" {
                 }
                 return ""
             }
-            function Read-UserChoice { param($P, $V) return "2" }
+            function Read-UserChoice { param($P, $V) $null = $P, $V; return "2" }
 
             $null = Resolve-Conflict "merge" "merge --abort" 6>&1
             # Resolve-Conflict returns $false for option 2

@@ -281,6 +281,49 @@ Describe "migrate_daaf.ps1 behavioral tests" {
     }
 
     # -----------------------------------------------------------------
+    # Era-specific file markers and output patterns
+    # -----------------------------------------------------------------
+    # These verify the migration script has distinct detection strings
+    # and code paths for each era. Complements the integration tests
+    # in ci-integration.yml which test against real Docker containers.
+    Context "Era-specific marker patterns" {
+        BeforeAll {
+            $script:Content = Get-Content "$RepoRoot/scripts/host/migrate_daaf.ps1" -Raw
+        }
+
+        It "emits 'clone-based installation' for Era 1 detection" {
+            $Content | Should -Match 'clone-based installation'
+        }
+
+        It "emits 'ZIP-based installation' for Era 2 detection" {
+            $Content | Should -Match 'ZIP-based installation'
+        }
+
+        It "has distinct code paths for Era 1 and Era 2" {
+            # Era 1 path
+            $Content | Should -Match '\$DetectedEra -eq "1"'
+            # Era 2 path uses graft
+            $Content | Should -Match 'replace --graft'
+        }
+
+        It "Era 2 path includes graft operation" {
+            # The graft is the critical Era 2 operation that connects
+            # local ZIP history to upstream timeline
+            $graftPos = $Content.IndexOf('replace --graft')
+            $graftPos | Should -BeGreaterThan -1
+        }
+
+        It "Era 1 and Era 2 detection strings are distinct" {
+            # Both detection strings must exist and be different
+            $era1Pos = $Content.IndexOf('clone-based installation')
+            $era2Pos = $Content.IndexOf('ZIP-based installation')
+            $era1Pos | Should -BeGreaterThan -1
+            $era2Pos | Should -BeGreaterThan -1
+            $era1Pos | Should -Not -Be $era2Pos
+        }
+    }
+
+    # -----------------------------------------------------------------
     # Safety mechanisms
     # -----------------------------------------------------------------
     Context "Safety mechanisms" {
@@ -339,5 +382,13 @@ Describe "migrate_daaf.ps1 dry-run mode" {
         $env:DAAF_NESTED = "1"
         $output = & "$RepoRoot/scripts/host/migrate_daaf.ps1" *>&1
         ($output | Out-String) | Should -BeLike "*Migration complete*"
+    }
+
+    It "dry-run output includes era detection string" {
+        $env:DAAF_DRY_RUN = "1"
+        $env:DAAF_NESTED = "1"
+        $output = & "$RepoRoot/scripts/host/migrate_daaf.ps1" *>&1
+        # Dry-run simulates Era 1 (clone-based) — verify detection output
+        ($output | Out-String) | Should -BeLike "*clone-based installation*"
     }
 }

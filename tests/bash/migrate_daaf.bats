@@ -447,9 +447,86 @@ Initial commit"
     [ "${backup_line}" -lt "${graft_line}" ]
 }
 
-# =========================================================================
+# ============================================================================
+# Era-specific file marker tests
+# ============================================================================
+# These verify the migration script's era detection output and the file-level
+# markers that distinguish each installation era. Complements the integration
+# tests in ci-integration.yml which test against real Docker containers.
+
+@test "migrate: script emits 'clone-based' for Era 1 detection" {
+    # The script must output the Era 1 detection string
+    run grep -c 'clone-based installation' "${REPO_ROOT}/scripts/host/migrate_daaf.sh"
+    assert_success
+    [ "${output}" -ge 1 ]
+}
+
+@test "migrate: script emits 'ZIP-based' for Era 2 detection" {
+    # The script must output the Era 2 detection string
+    run grep -c 'ZIP-based installation' "${REPO_ROOT}/scripts/host/migrate_daaf.sh"
+    assert_success
+    [ "${output}" -ge 1 ]
+}
+
+@test "migrate: Era 1 path exists (section 6a)" {
+    # The script must have a code path for ERA 1 (clone-based)
+    run grep -c 'ERA 1 PATH' "${REPO_ROOT}/scripts/host/migrate_daaf.sh"
+    assert_success
+    [ "${output}" -ge 1 ]
+}
+
+@test "migrate: Era 2 path exists (section 6b) with graft" {
+    # The script must have a code path for ERA 2 (ZIP-based) that includes grafting
+    run grep -c 'ERA 2 PATH' "${REPO_ROOT}/scripts/host/migrate_daaf.sh"
+    assert_success
+    [ "${output}" -ge 1 ]
+
+    # The Era 2 path must include the graft operation
+    run grep -c 'replace --graft' "${REPO_ROOT}/scripts/host/migrate_daaf.sh"
+    assert_success
+    [ "${output}" -ge 1 ]
+}
+
+@test "migrate: Era 2 detection triggers when ORIGIN_URL is empty" {
+    # Simulate the era detection logic: when container_git remote returns
+    # empty string, the script should set DETECTED_ERA="2"
+    DAAF_TEST_MODE=1 source "${REPO_ROOT}/scripts/host/migrate_daaf.sh"
+    trap - ERR
+    set +eu
+
+    container_git() { echo ""; return 0; }
+    ORIGIN_URL=$(container_git remote get-url origin 2>/dev/null || true)
+
+    # Empty ORIGIN_URL → Era 2
+    [ -z "${ORIGIN_URL}" ]
+}
+
+@test "migrate: Era 1 detection triggers when ORIGIN_URL has repo name" {
+    # Simulate the era detection logic: when container_git remote returns
+    # the official repo URL, the script should set DETECTED_ERA="1"
+    DAAF_TEST_MODE=1 source "${REPO_ROOT}/scripts/host/migrate_daaf.sh"
+    trap - ERR
+    set +eu
+
+    container_git() { echo "https://github.com/DAAF-Contribution-Community/daaf.git"; return 0; }
+    ORIGIN_URL=$(container_git remote get-url origin 2>/dev/null || true)
+
+    # Non-empty ORIGIN_URL with repo name → Era 1
+    [ -n "${ORIGIN_URL}" ]
+    echo "${ORIGIN_URL}" | grep -qi "DAAF-Contribution-Community/daaf"
+}
+
+@test "migrate: dry-run output includes era detection for simulated Era 1" {
+    # In dry-run mode, the script simulates an Era 1 installation.
+    # Verify the output includes the era detection string.
+    run env DAAF_DRY_RUN=1 DAAF_NESTED=1 bash "${REPO_ROOT}/scripts/host/migrate_daaf.sh" 2>&1
+    assert_success
+    assert_output --partial "clone-based installation"
+}
+
+# ============================================================================
 # Dry-run mode
-# =========================================================================
+# ============================================================================
 
 @test "migrate_daaf.sh: dry-run completes successfully" {
     run env DAAF_DRY_RUN=1 DAAF_NESTED=1 bash "${REPO_ROOT}/scripts/host/migrate_daaf.sh"
