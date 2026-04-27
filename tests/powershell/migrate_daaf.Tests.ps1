@@ -388,7 +388,7 @@ Describe "migrate_daaf.ps1 dry-run mode" {
         $env:DAAF_DRY_RUN = "1"
         $env:DAAF_NESTED = "1"
         $output = & "$RepoRoot/scripts/host/migrate_daaf.ps1" *>&1
-        # Dry-run simulates Era 1 (clone-based) — verify detection output
+        # Dry-run simulates Era 1 (clone-based) -- verify detection output
         ($output | Out-String) | Should -BeLike "*clone-based installation*"
     }
 }
