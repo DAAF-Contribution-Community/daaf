@@ -170,6 +170,13 @@ function Read-UserChoice {
         [string]$PromptText,
         [string[]]$ValidChoices
     )
+    # Non-interactive mode (CI, piped input): auto-select first valid choice
+    try { $interactive = [Environment]::UserInteractive -and (-not [Console]::IsInputRedirected) }
+    catch { $interactive = $false }
+    if (-not $interactive) {
+        Write-Host "  (Non-interactive mode - auto-selecting: $($ValidChoices[0]))"
+        return $ValidChoices[0]
+    }
     while ($true) {
         $choice = (Read-Host $PromptText).Trim().ToLower()
         if ($ValidChoices -contains $choice) { return $choice }

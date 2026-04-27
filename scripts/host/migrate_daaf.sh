@@ -125,6 +125,13 @@ prompt_choice() {
     local prompt_text="$1"
     local valid_choices="$2"
     local choice=""
+    # Non-interactive mode: auto-select first valid choice
+    if ! [ -t 0 ]; then
+        choice=$(echo "${valid_choices}" | awk '{print $1}')
+        echo "  (Non-interactive mode — auto-selecting: ${choice})" >&2
+        echo "${choice}"
+        return
+    fi
     while true; do
         read -r -p "${prompt_text}" choice
         choice=$(echo "${choice}" | tr '[:upper:]' '[:lower:]')
@@ -618,7 +625,8 @@ else
     fi
 
     # --- Check if graft is already in place (idempotent) ---
-    INITIAL_PARENT_COUNT=$(container_git_verbose cat-file -p "${INITIAL_COMMIT}" | grep -c '^parent ' || echo "0")
+    INITIAL_PARENT_COUNT=$(container_git_verbose cat-file -p "${INITIAL_COMMIT}" | grep -c '^parent ' || true)
+    INITIAL_PARENT_COUNT="${INITIAL_PARENT_COUNT:-0}"
 
     if [ "${INITIAL_PARENT_COUNT}" -gt 0 ]; then
         echo "History graft already in place (root commit has a parent)."

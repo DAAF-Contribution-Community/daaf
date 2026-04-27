@@ -117,6 +117,13 @@ prompt_choice() {
     local prompt_text="$1"
     local valid_choices="$2"
     local choice=""
+    # Non-interactive mode: auto-select first valid choice
+    if ! [ -t 0 ]; then
+        choice=$(echo "${valid_choices}" | awk '{print $1}')
+        echo "  (Non-interactive mode — auto-selecting: ${choice})" >&2
+        echo "${choice}"
+        return
+    fi
     while true; do
         read -r -p "${prompt_text}" choice
         choice=$(echo "${choice}" | tr '[:upper:]' '[:lower:]')
