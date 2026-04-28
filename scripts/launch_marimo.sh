@@ -148,7 +148,10 @@ echo ""
 echo "  Open in your browser:"
 echo "  http://localhost:$PORT"
 echo ""
+echo "  (Marimo will print its own URL below using 0.0.0.0 — ignore that,"
+echo "   use the localhost link above from your host browser.)"
+echo ""
 echo "  Press Ctrl+C to stop the server."
 echo ""
 
-exec marimo edit "$BROWSE_DIR" --host 0.0.0.0 --port "$PORT" --no-token --headless
+exec marimo edit "$BROWSE_DIR" --host 0.0.0.0 --port "$PORT" --no-token --headless --skip-update-check
