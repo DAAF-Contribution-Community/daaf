@@ -202,14 +202,6 @@ The rest of this guide covers day-to-day workflow, file management, keeping DAAF
 
 ---
 
-## Recommended Next Steps
-
-- [**02. Understanding and Working with DAAF**](02_understanding_daaf.md) — Learn to work with DAAF for the first time: what to expect, how to use it, and how to test its strengths and limitations
-- [**06. FAQ: Philosophy**](06_faq_philosophy.md) — Grapples with the broader implications of this work, AI automation in general, model advancement pace, approaching the "exponential", environmental ethics, what this means for the next generation of researchers, and more
-- [**07. FAQ: Technical Support**](07_faq_technical.md) — Covers frequently asked questions about Docker, issues with Claude Code, usage limits, authentication errors, and other common errors
-
----
-
 ## Day-to-Day Start/Stop Workflow
 
 Now that you've got DAAF installed and running for the first time, let's talk through simple commands you'll use to get in and out of this workflow day-to-day, as well as how to manage files produced by DAAF.
@@ -376,25 +368,7 @@ If `DAAF_BRANCH` is not set, the updater defaults to `main` (or `master` if `mai
 
 Your research files in `research/` are not tracked by git (they're local to your volume), so they are completely unaffected by updates.
 
-**If you prefer to update manually with git** (or need more control), you can always run `git pull` directly. If you've made local edits, git will warn you about conflicts instead of silently overwriting your changes:
-
-```bash
-# Option 1: Save your changes, update, then re-apply
-git stash
-git pull
-git stash pop
-# If there are conflicts, git will tell you which files need manual review
-
-# Option 2: See what you changed before deciding
-git diff
-```
-
-**If the Dockerfile changed** (new packages, updated Claude Code version, etc.), you'll also need to rebuild the Docker image. The update script will detect this automatically and print instructions. If you're updating manually, check whether `Dockerfile` appears in the `git pull` output — if so, exit the container and run the rebuild script:
-
-```bash
-# Exit Claude Code and the container
-/exit
-exit
+**If the Dockerfile changed** (new packages, updated Claude Code version, etc.), you'll also need to rebuild the Docker image. The update script will detect this automatically and print instructions. 
 
 # From your host terminal, navigate to your daaf-docker folder and rebuild
 cd daaf-docker
@@ -403,19 +377,6 @@ bash rebuild_daaf.sh         # macOS / Linux
 ```
 
 The rebuild script handles everything: it copies the updated Dockerfile and docker-compose.yml from the container to the host, then rebuilds the image. This copy step is needed because `docker compose up --build` reads the host copy of the Dockerfile, not the one inside the container.
-
-<details>
-<summary>Manual alternative (if you prefer individual commands)</summary>
-
-```bash
-cd daaf-docker
-docker cp daaf-daaf-docker-1:/daaf/Dockerfile ./Dockerfile
-docker cp daaf-daaf-docker-1:/daaf/docker-compose.yml ./docker-compose.yml
-docker compose up -d --build
-```
-
-The copy step must come **before** the rebuild.
-</details>
 
 Most updates don't change the Dockerfile, so usually `git pull` inside the container is all you need.
 
@@ -433,11 +394,11 @@ Check the [Releases page](https://github.com/DAAF-Contribution-Community/daaf/re
 
 If you installed DAAF **v2.0.1 or earlier** — back when the installation process involved downloading a ZIP file and copying it into Docker — you may not have the update scripts (`update_daaf.sh` / `update_daaf.ps1`) in your `daaf-docker` folder. Without these scripts, you can't use the standard update process described above.
 
-**How to tell if this applies to you:** Open your `daaf-docker` folder on your computer (wherever you originally set up DAAF). If you don't see a file called `update_daaf.sh` (macOS/Linux) or `update_daaf.ps1` (Windows), you need to run the one-time migration first.
+**How to tell if this applies to you:** Open your `daaf-docker` folder on your computer (wherever you originally set up DAAF). If you don't see a file called `update_daaf.sh` (macOS/Linux) or `update_daaf.ps1` (Windows), you need to run the one-time update migration first.
 
 **What the migration does:**
 
-- Downloads the utility scripts (`run_daaf`, `update_daaf`, `backup_daaf`, `rebuild_daaf`, `view_logs`, `view_notebooks`) to your host machine so you have all the same convenience tools as a fresh install
+- Downloads some utility scripts (`run_daaf`, `update_daaf`, `backup_daaf`, `rebuild_daaf`, `view_logs`, `view_notebooks`) to your host machine so you have all the same convenience tools as a fresh install
 - Creates a full backup of your Docker volume before making any changes
 - Connects your local git history to the official DAAF repository so that future updates can merge in cleanly
 - Preserves everything — your research files, any framework customizations you've made, and your full git audit trail are all kept intact
@@ -450,23 +411,6 @@ The migration is a single command, just like the original installer. Make sure D
 |----------|-----------|
 | **macOS / Linux** | `curl -fsSL https://raw.githubusercontent.com/DAAF-Contribution-Community/daaf/main/scripts/host/migrate_daaf.sh \| bash` |
 | **Windows PowerShell** | `irm https://raw.githubusercontent.com/DAAF-Contribution-Community/daaf/main/scripts/host/migrate_daaf.ps1 \| iex` |
-
-<details>
-<summary>Prefer to download and inspect the script first?</summary>
-
-**macOS / Linux:**
-```bash
-curl -fsSL https://raw.githubusercontent.com/DAAF-Contribution-Community/daaf/main/scripts/host/migrate_daaf.sh -o migrate_daaf.sh
-bash migrate_daaf.sh
-```
-
-**Windows PowerShell:**
-```powershell
-Invoke-WebRequest -Uri https://raw.githubusercontent.com/DAAF-Contribution-Community/daaf/main/scripts/host/migrate_daaf.ps1 -OutFile migrate_daaf.ps1
-.\migrate_daaf.ps1
-```
-
-</details>
 
 The migration script is safe to re-run if it gets interrupted — it detects what's already been completed and picks up where it left off. Your research files are never modified; only git metadata (the connection to the upstream repository) is updated.
 
@@ -486,22 +430,7 @@ bash view_notebooks.sh       # macOS / Linux
 .\view_notebooks.ps1         # Windows
 ```
 
-This opens marimo's built-in notebook browser at [http://localhost:2718](http://localhost:2718), where you can browse all your research projects and open any notebook for viewing or editing. The script handles starting the container if it isn't already running.
-
-**Alternative — view a single notebook read-only:**
-
-If you want to view one specific notebook without the full editor, enter the container shell and use `marimo run`:
-
-```bash
-cd daaf-docker
-bash run_daaf.sh bash        # macOS / Linux
-.\run_daaf.ps1 bash          # Windows
-
-# Inside the container (replace the path with your actual notebook)
-marimo run 'research/YYYY-MM-DD_Title/YYYY-MM-DD_Notebook_Name.py' --host 0.0.0.0 --port 2718 --headless
-```
-
-Then open [http://localhost:2718](http://localhost:2718) in your computer's browser. The notebook renders there as an interactive document. The nice thing about these is that they're also written in regular Python code, so you can inspect its code very easily in any text editor as well.
+This opens marimo's built-in notebook browser at [http://localhost:2718](http://localhost:2718), where you can browse all your research projects and open any notebook for viewing or editing. The script handles starting the container if it isn't already running. The nice thing about these is that they're also written in regular Python code, so you can inspect its code very easily in any text editor as well.
 
 ---
 
@@ -726,6 +655,14 @@ If you skip this step and later try to analyze election data, DAAF will inform y
   ```
 - **Claude Code asks for an API key every time** — Claude Code stores its authentication state inside the Docker volume, so it persists across normal container restarts. If your authentication state is lost, the most reliable fix is to configure your credentials in the `.env` file (see [**Configure authentication via .env**](#configure-authentication-via-env) above) — this ensures authentication persists automatically on every container start. Alternatively, you can add your key to `~/.bashrc` inside the container: `echo 'export ANTHROPIC_API_KEY="your_key_here"' >> ~/.bashrc`.
 - **OpenRouter: "model not found" or authentication errors** — Double-check three things: (1) `ANTHROPIC_BASE_URL` must be exactly `https://openrouter.ai/api` with no `/v1` suffix (the `/v1` variant is for OpenAI-compatible tools, not Claude Code), (2) `ANTHROPIC_API_KEY` must be set to an empty value (`ANTHROPIC_API_KEY=`), not removed entirely — if it's unset, Claude Code falls back to Anthropic's servers, and (3) if you previously logged in with Anthropic interactively, run `/logout` inside Claude Code to clear cached credentials. You can verify your connection is working by typing `/status` inside Claude Code and checking the [OpenRouter Activity Dashboard](https://openrouter.ai/activity) for incoming requests.
+
+---
+
+## Recommended Next Steps
+
+- [**02. Understanding and Working with DAAF**](02_understanding_daaf.md) — Learn to work with DAAF for the first time: what to expect, how to use it, and how to test its strengths and limitations
+- [**06. FAQ: Philosophy**](06_faq_philosophy.md) — Grapples with the broader implications of this work, AI automation in general, model advancement pace, approaching the "exponential", environmental ethics, what this means for the next generation of researchers, and more
+- [**07. FAQ: Technical Support**](07_faq_technical.md) — Covers frequently asked questions about Docker, issues with Claude Code, usage limits, authentication errors, and other common errors
 
 ---
 
