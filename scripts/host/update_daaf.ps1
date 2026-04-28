@@ -279,14 +279,22 @@ function Resolve-Conflict {
         $conflictFiles -split "`n" | ForEach-Object { if ($_.Trim()) { Write-Host "  $_" } }
         Write-Host ""
     }
-    Write-Host "Options:"
-    Write-Host "  1) Launch Claude Code to help resolve the conflicts"
-    Write-Host "     Claude Code can read the files, explain both sides, and walk"
-    Write-Host "     you through the resolution interactively."
-    Write-Host ""
-    Write-Host "  2) Exit and resolve manually"
-    Write-Host ""
-    $choice = Read-UserChoice "  Choose [1/2]" @("1", "2")
+    # Claude Code requires an interactive terminal (docker exec -it). When
+    # running non-interactively (e.g., nested from migrate_daaf.ps1), skip
+    # straight to manual resolution instructions.
+    $canInteract = $false
+    try { $canInteract = [Environment]::UserInteractive -and (-not [Console]::IsInputRedirected) } catch { Write-Verbose "Silenced: $_" }
+    $choice = "2"
+    if ($canInteract) {
+        Write-Host "Options:"
+        Write-Host "  1) Launch Claude Code to help resolve the conflicts"
+        Write-Host "     Claude Code can read the files, explain both sides, and walk"
+        Write-Host "     you through the resolution interactively."
+        Write-Host ""
+        Write-Host "  2) Exit and resolve manually"
+        Write-Host ""
+        $choice = Read-UserChoice "  Choose [1/2]" @("1", "2")
+    }
 
     if ($choice -eq "1") {
         Write-Host ""
@@ -1288,11 +1296,18 @@ if ($DirtyFiles) {
         Write-Host "changed in the update. Your edits are NOT lost - they are saved"
         Write-Host "in a temporary holding area."
         Write-Host ""
-        Write-Host "Options:"
-        Write-Host "  1) Launch Claude Code to help resolve the conflicts"
-        Write-Host "  2) Exit and resolve manually"
-        Write-Host ""
-        $choice = Read-UserChoice "  Choose [1/2]" @("1", "2")
+        # Claude Code requires an interactive terminal. When non-interactive,
+        # skip straight to manual resolution instructions.
+        $canInteract = $false
+        try { $canInteract = [Environment]::UserInteractive -and (-not [Console]::IsInputRedirected) } catch { Write-Verbose "Silenced: $_" }
+        $choice = "2"
+        if ($canInteract) {
+            Write-Host "Options:"
+            Write-Host "  1) Launch Claude Code to help resolve the conflicts"
+            Write-Host "  2) Exit and resolve manually"
+            Write-Host ""
+            $choice = Read-UserChoice "  Choose [1/2]" @("1", "2")
+        }
 
         if ($choice -eq "1") {
             Write-Host ""

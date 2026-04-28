@@ -24,14 +24,20 @@ set -euo pipefail
 
 # Interactivity detection: use /dev/tty instead of stdin (fd 0).
 # When users run `curl ... | bash`, stdin is the pipe — but the user's
-# terminal is still available at /dev/tty.
+# terminal is still available at /dev/tty. CI environments lack a real
+# terminal entirely.
+#
+# DAAF_NESTED is separate: it suppresses the exit prompt (so nested
+# scripts don't double-pause) but does NOT suppress interactive prompts.
 IS_INTERACTIVE=false
-if [ -z "${DAAF_NESTED:-}" ] && [ -z "${CI:-}" ] && [ -c /dev/tty ] && [ -t 1 ]; then
+if [ -z "${CI:-}" ] && [ -c /dev/tty ] && [ -t 1 ]; then
     IS_INTERACTIVE=true
 fi
 
-# Pause before exit so the user can review output
-if [ "${IS_INTERACTIVE}" = "true" ]; then
+# Pause before exit so the user can review output.
+# Suppressed by DAAF_NESTED (to avoid double-pause when called from
+# another script like test_migration.sh).
+if [ "${IS_INTERACTIVE}" = "true" ] && [ -z "${DAAF_NESTED:-}" ]; then
     trap 'echo ""; read -r -p "Press Enter to continue: " < /dev/tty' EXIT
 fi
 

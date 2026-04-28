@@ -26,7 +26,9 @@
 
 set -euo pipefail
 
-# Pause before exit so the user can review output
+# Pause before exit so the user can review output.
+# Suppressed by DAAF_NESTED (to avoid double-pause when called from
+# another script like update_daaf.sh).
 if [ -z "${DAAF_NESTED:-}" ] && [ -z "${CI:-}" ] && [ -c /dev/tty ] && [ -t 1 ]; then
     trap 'echo ""; read -r -p "Press Enter to continue: " < /dev/tty' EXIT
 fi

@@ -33,14 +33,22 @@ set -euo pipefail
 
 # Interactivity detection: use /dev/tty instead of stdin (fd 0).
 # When users run `curl ... | bash`, stdin is the pipe — but the user's
-# terminal is still available at /dev/tty.
+# terminal is still available at /dev/tty. CI environments lack a real
+# terminal entirely.
+#
+# DAAF_NESTED is separate: it suppresses the exit prompt (so nested
+# scripts don't double-pause) but does NOT suppress interactive prompts.
+# A nested script can still prompt the user for conflict resolution,
+# merge strategy, etc. — as long as a real terminal is available.
 IS_INTERACTIVE=false
-if [ -z "${DAAF_NESTED:-}" ] && [ -z "${CI:-}" ] && [ -c /dev/tty ] && [ -t 1 ]; then
+if [ -z "${CI:-}" ] && [ -c /dev/tty ] && [ -t 1 ]; then
     IS_INTERACTIVE=true
 fi
 
-# Pause before exit so the user can review output
-if [ "${IS_INTERACTIVE}" = "true" ]; then
+# Pause before exit so the user can review output.
+# Suppressed by DAAF_NESTED (to avoid double-pause when called from
+# another script like migrate_daaf.sh).
+if [ "${IS_INTERACTIVE}" = "true" ] && [ -z "${DAAF_NESTED:-}" ]; then
     trap 'echo ""; read -r -p "Press Enter to continue: " < /dev/tty' EXIT
 fi
 
@@ -178,15 +186,21 @@ handle_conflict() {
         echo "${conflict_files}" | sed 's/^/  /'
         echo ""
     fi
-    echo "Options:"
-    echo "  1) Launch Claude Code to help resolve the conflicts"
-    echo "     Claude Code can read the files, explain both sides, and walk"
-    echo "     you through the resolution interactively."
-    echo ""
-    echo "  2) Exit and resolve manually"
-    echo ""
-    local choice
-    choice=$(prompt_choice "  Choose [1/2]: " "1 2")
+    # Claude Code requires an interactive terminal (-it flag). When running
+    # non-interactively (e.g., nested from migrate_daaf.sh), skip straight
+    # to manual resolution instructions since launching Claude Code would
+    # fail with "the input device is not a TTY".
+    local choice="2"
+    if [ "${IS_INTERACTIVE}" = "true" ]; then
+        echo "Options:"
+        echo "  1) Launch Claude Code to help resolve the conflicts"
+        echo "     Claude Code can read the files, explain both sides, and walk"
+        echo "     you through the resolution interactively."
+        echo ""
+        echo "  2) Exit and resolve manually"
+        echo ""
+        choice=$(prompt_choice "  Choose [1/2]: " "1 2")
+    fi
 
     if [ "${choice}" = "1" ]; then
         echo ""
@@ -1168,11 +1182,16 @@ if [ -n "${DIRTY_FILES}" ]; then
         echo "changed in the update. Your edits are NOT lost — they are saved"
         echo "in a temporary holding area."
         echo ""
-        echo "Options:"
-        echo "  1) Launch Claude Code to help resolve the conflicts"
-        echo "  2) Exit and resolve manually"
-        echo ""
-        CHOICE=$(prompt_choice "  Choose [1/2]: " "1 2")
+        # Claude Code requires an interactive terminal. When non-interactive,
+        # skip straight to manual resolution instructions.
+        CHOICE="2"
+        if [ "${IS_INTERACTIVE}" = "true" ]; then
+            echo "Options:"
+            echo "  1) Launch Claude Code to help resolve the conflicts"
+            echo "  2) Exit and resolve manually"
+            echo ""
+            CHOICE=$(prompt_choice "  Choose [1/2]: " "1 2")
+        fi
 
         if [ "${CHOICE}" = "1" ]; then
             echo ""
