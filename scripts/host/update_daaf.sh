@@ -221,7 +221,7 @@ handle_conflict() {
         echo "IMPORTANT: When Claude Code is done, type /exit to return here."
         echo "The updater still needs to finish a few steps after this."
         echo ""
-        docker compose exec -it daaf-docker claude || true
+        docker compose exec -it daaf-docker claude < /dev/tty || true
         echo ""
 
         local remaining
@@ -1205,7 +1205,7 @@ if [ -n "${DIRTY_FILES}" ]; then
             echo "IMPORTANT: When Claude Code is done, type /exit to return here."
             echo "The updater still needs to finish a few steps after this."
             echo ""
-            docker compose exec -it daaf-docker claude || true
+            docker compose exec -it daaf-docker claude < /dev/tty || true
             echo ""
 
             remaining=$(docker compose exec -T daaf-docker \
