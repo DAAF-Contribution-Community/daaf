@@ -22,10 +22,17 @@
 
 set -euo pipefail
 
+# Interactivity detection: use /dev/tty instead of stdin (fd 0).
+# When users run `curl ... | bash`, stdin is the pipe — but the user's
+# terminal is still available at /dev/tty.
+IS_INTERACTIVE=false
+if [ -z "${DAAF_NESTED:-}" ] && [ -z "${CI:-}" ] && [ -c /dev/tty ] && [ -t 1 ]; then
+    IS_INTERACTIVE=true
+fi
+
 # Pause before exit so the user can review output
-# Skip when called from another script or piped (curl ... | bash)
-if [ -z "${DAAF_NESTED:-}" ] && [ -t 0 ]; then
-    trap 'echo ""; read -r -p "Press Enter to continue: "' EXIT
+if [ "${IS_INTERACTIVE}" = "true" ]; then
+    trap 'echo ""; read -r -p "Press Enter to continue: " < /dev/tty' EXIT
 fi
 
 # --- Configuration ---

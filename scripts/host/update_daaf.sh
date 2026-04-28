@@ -31,9 +31,17 @@
 
 set -euo pipefail
 
-# Pause before exit so the user can review output (skip when called from another script)
-if [ -z "${DAAF_NESTED:-}" ]; then
-    trap 'echo ""; read -r -p "Press Enter to continue: "' EXIT
+# Interactivity detection: use /dev/tty instead of stdin (fd 0).
+# When users run `curl ... | bash`, stdin is the pipe — but the user's
+# terminal is still available at /dev/tty.
+IS_INTERACTIVE=false
+if [ -z "${DAAF_NESTED:-}" ] && [ -z "${CI:-}" ] && [ -c /dev/tty ] && [ -t 1 ]; then
+    IS_INTERACTIVE=true
+fi
+
+# Pause before exit so the user can review output
+if [ "${IS_INTERACTIVE}" = "true" ]; then
+    trap 'echo ""; read -r -p "Press Enter to continue: " < /dev/tty' EXIT
 fi
 
 UPSTREAM_REPO="DAAF-Contribution-Community/daaf"
@@ -118,14 +126,14 @@ prompt_choice() {
     local valid_choices="$2"
     local choice=""
     # Non-interactive mode: auto-select first valid choice
-    if ! [ -t 0 ]; then
+    if [ "${IS_INTERACTIVE}" != "true" ]; then
         choice=$(echo "${valid_choices}" | awk '{print $1}')
         echo "  (Non-interactive mode — auto-selecting: ${choice})" >&2
         echo "${choice}"
         return
     fi
     while true; do
-        read -r -p "${prompt_text}" choice
+        read -r -p "${prompt_text}" choice < /dev/tty
         choice=$(echo "${choice}" | tr '[:upper:]' '[:lower:]')
         if echo "${valid_choices}" | grep -qw "${choice}"; then
             echo "${choice}"

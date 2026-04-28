@@ -278,9 +278,9 @@ teardown() {
 }
 
 # --- prompt_choice behavioral tests ---
-# Note: piping input makes stdin a pipe (not a TTY), which triggers the
-# non-interactive auto-select path. To test the interactive read path,
-# we define a wrapper that overrides the [ -t 0 ] check.
+# Note: IS_INTERACTIVE is false inside `bash -c` subshells (no /dev/tty),
+# which triggers the non-interactive auto-select path. To test the
+# interactive read path, we define a wrapper that bypasses the check.
 
 @test "migrate: prompt_choice auto-selects first choice in non-interactive mode" {
     run bash -c '

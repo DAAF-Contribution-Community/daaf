@@ -340,9 +340,9 @@ teardown() {
 }
 
 # --- prompt_choice behavioral tests ---
-# Note: piping input makes stdin a pipe (not a TTY), which triggers the
-# non-interactive auto-select path. To test the interactive read path,
-# we define a wrapper that overrides the [ -t 0 ] check.
+# Note: IS_INTERACTIVE is false inside `bash -c` subshells (no /dev/tty),
+# which triggers the non-interactive auto-select path. To test the
+# interactive read path, we define a wrapper that bypasses the check.
 
 @test "update: prompt_choice auto-selects first choice in non-interactive mode" {
     run bash -c '
@@ -432,9 +432,9 @@ teardown() {
     assert_output --partial "scripts/host/run_daaf.sh"
 }
 
-# handle_conflict calls prompt_choice internally. Since piped input triggers
-# the non-interactive auto-select (option 1), we override prompt_choice to
-# force option 2 so we can test the manual resolution path.
+# handle_conflict calls prompt_choice internally. Since IS_INTERACTIVE is
+# false in bash -c subshells, prompt_choice auto-selects option 1. We
+# override prompt_choice to force option 2 for testing the manual path.
 
 @test "update: handle_conflict option 2 shows manual resolution instructions" {
     run bash -c '

@@ -31,10 +31,18 @@
 
 set -euo pipefail
 
+# Interactivity detection: use /dev/tty instead of stdin (fd 0).
+# When users run `curl ... | bash`, stdin is the pipe — but the user's
+# terminal is still available at /dev/tty. CI runners either lack /dev/tty
+# or it is not a real terminal, so this naturally gives the right answer.
+IS_INTERACTIVE=false
+if [ -z "${DAAF_NESTED:-}" ] && [ -z "${CI:-}" ] && [ -c /dev/tty ] && [ -t 1 ]; then
+    IS_INTERACTIVE=true
+fi
+
 # Pause before exit so the user can review output
-# Skip when called from another script or piped (curl ... | bash)
-if [ -z "${DAAF_NESTED:-}" ] && [ -t 0 ]; then
-    trap 'echo ""; read -r -p "Press Enter to continue: "' EXIT
+if [ "${IS_INTERACTIVE}" = "true" ]; then
+    trap 'echo ""; read -r -p "Press Enter to continue: " < /dev/tty' EXIT
 fi
 
 # --- Configuration ---
@@ -126,14 +134,14 @@ prompt_choice() {
     local valid_choices="$2"
     local choice=""
     # Non-interactive mode: auto-select first valid choice
-    if ! [ -t 0 ]; then
+    if [ "${IS_INTERACTIVE}" != "true" ]; then
         choice=$(echo "${valid_choices}" | awk '{print $1}')
         echo "  (Non-interactive mode — auto-selecting: ${choice})" >&2
         echo "${choice}"
         return
     fi
     while true; do
-        read -r -p "${prompt_text}" choice
+        read -r -p "${prompt_text}" choice < /dev/tty
         choice=$(echo "${choice}" | tr '[:upper:]' '[:lower:]')
         if echo "${valid_choices}" | grep -qw "${choice}"; then
             echo "${choice}"
@@ -918,10 +926,10 @@ echo "Your installation is now connected to the upstream repository."
 echo "Would you like to pull the latest updates now?"
 echo ""
 
-if [ -t 0 ]; then
+if [ "${IS_INTERACTIVE}" = "true" ]; then
     CHOICE=$(prompt_choice "  Run update_daaf.sh now? [y/n]: " "y n")
 else
-    # Non-interactive (piped) — skip the update
+    # Non-interactive — skip the update
     echo "  (Non-interactive mode detected — skipping update. Run it manually.)"
     CHOICE="n"
 fi
@@ -958,11 +966,11 @@ else
     echo "  - Set upstream tracking (main -> origin/main)"
 fi
 echo ""
-if [ "${CHOICE}" = "n" ] && [ -t 0 ]; then
+if [ "${CHOICE}" = "n" ] && [ "${IS_INTERACTIVE}" = "true" ]; then
     # User chose not to update
     echo "To pull the latest updates when you're ready:"
-elif ! [ -t 0 ]; then
-    # Non-interactive mode (curl pipe) — update was skipped automatically
+elif [ "${IS_INTERACTIVE}" != "true" ]; then
+    # Non-interactive mode — update was skipped automatically
     echo "IMPORTANT: The update step was skipped because the script was run"
     echo "non-interactively. To pull the latest updates, run:"
 else
