@@ -520,11 +520,11 @@ A companion file, **Plan_Tasks.md**, contains the detailed machine-readable task
 
 **What you won't see:** New analysis code, interactive dashboards, filter widgets, or additional transformations. The notebook is a viewer, not an analysis tool. This is by design -- it ensures that what you see in the notebook is exactly what was executed and validated in the scripts, with nothing added or changed.
 
-**How to view it:** From inside your Docker container:
+**How to view it:** The easiest way is to run `bash view_notebooks.sh` (or `.\view_notebooks.ps1` on Windows) from your `daaf-docker` folder — this opens marimo's notebook browser at [http://localhost:2718](http://localhost:2718) where you can browse and open any notebook. Alternatively, from inside the container you can view a single notebook read-only with:
 ```bash
 marimo run 'research/YYYY-MM-DD_Title/YYYY-MM-DD_Notebook.py' --host 0.0.0.0 --port 2718 --headless
 ```
-Then open [http://localhost:2718](http://localhost:2718) in your normal web browser. You can also open the `.py` file in any text editor -- marimo notebooks are just Python.
+You can also open the `.py` file in any text editor -- marimo notebooks are just Python.
 
 ### The Report
 
@@ -782,8 +782,8 @@ Here's a quick reference for what each part of the DAAF repository contains and 
 | `.claude/agents/` | Specialized agent protocols (12 behavioral definitions) | **DAAF** (and curious users who want to understand how agents work) |
 | `agent_reference/` | Detailed workflow documentation, templates, validation rules | **DAAF** (internal reference material for the orchestrator and agents) |
 | `.claude/skills/` | Skill definitions providing domain knowledge | **DAAF** (and users who want to create new skills) |
-| `scripts/` | Shared utility scripts (`run_with_capture.sh`, `collect_session_logs.sh`, `generate_log_viewer.sh`) | **DAAF** (used from the DAAF root directory; not copied into projects) |
-| repo root | Host-side convenience scripts (`run_daaf`, `view_logs`, `backup_daaf`, `rebuild_daaf`, `update_daaf` — `.sh` and `.ps1` variants) | **You** (run from your `daaf-docker` folder on the host, outside the container) |
+| `scripts/` | Shared utility scripts (`run_with_capture.sh`, `collect_session_logs.sh`, `generate_log_viewer.sh`, `launch_marimo.sh`) | **DAAF** (used from the DAAF root directory; not copied into projects) |
+| repo root | Host-side convenience scripts (`run_daaf`, `view_logs`, `view_notebooks`, `backup_daaf`, `rebuild_daaf`, `update_daaf` — `.sh` and `.ps1` variants) | **You** (run from your `daaf-docker` folder on the host, outside the container) |
 
 **Key insight for new users:** Everything you need to review, share, or reproduce is inside the project folder. You can copy the entire folder to a colleague and they'd have everything needed to understand and verify the analysis. That's the whole point of reproducibility.
 

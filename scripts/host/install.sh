@@ -151,6 +151,7 @@ if ! curl -fsSL "${RAW_BASE}/Dockerfile"                          -o "${INSTALL_
    ! curl -fsSL "${RAW_BASE}/scripts/host/rebuild_daaf.sh"         -o "${INSTALL_DIR}/rebuild_daaf.sh" ||
    ! curl -fsSL "${RAW_BASE}/scripts/host/update_daaf.sh"          -o "${INSTALL_DIR}/update_daaf.sh" ||
    ! curl -fsSL "${RAW_BASE}/scripts/host/view_logs.sh"            -o "${INSTALL_DIR}/view_logs.sh" ||
+   ! curl -fsSL "${RAW_BASE}/scripts/host/view_notebooks.sh"      -o "${INSTALL_DIR}/view_notebooks.sh" ||
    ! curl -fsSL "${RAW_BASE}/scripts/host/env.example"             -o "${INSTALL_DIR}/env.example"; then
     echo ""
     echo "ERROR: Failed to download installation files from branch '${BRANCH}'."
@@ -158,7 +159,7 @@ if ! curl -fsSL "${RAW_BASE}/Dockerfile"                          -o "${INSTALL_
     echo "You can check available branches at: https://github.com/${REPO}/branches"
     exit 1
 fi
-chmod +x "${INSTALL_DIR}/run_daaf.sh" "${INSTALL_DIR}/backup_daaf.sh" "${INSTALL_DIR}/rebuild_daaf.sh" "${INSTALL_DIR}/update_daaf.sh" "${INSTALL_DIR}/view_logs.sh"
+chmod +x "${INSTALL_DIR}/run_daaf.sh" "${INSTALL_DIR}/backup_daaf.sh" "${INSTALL_DIR}/rebuild_daaf.sh" "${INSTALL_DIR}/update_daaf.sh" "${INSTALL_DIR}/view_logs.sh" "${INSTALL_DIR}/view_notebooks.sh"
 
 # --- Build the Docker image ---
 echo "[3/4] Building Docker image (this may take a few minutes on first run since there are a lot of Python libraries to install)..."
@@ -275,6 +276,7 @@ echo "  bash backup_daaf.sh          Back up the Docker volume to a dated folder
 echo "  bash update_daaf.sh           Check for and apply DAAF updates"
 echo "  bash rebuild_daaf.sh         Copy build files from container and rebuild image"
 echo "  bash view_logs.sh            Browse session logs in your browser"
+echo "  bash view_notebooks.sh       Browse and edit marimo notebooks in your browser"
 echo ""
 echo "To set up data source API keys (optional):"
 echo "  cp env.example .env          Copy the template"

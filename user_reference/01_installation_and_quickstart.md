@@ -9,13 +9,14 @@ This is the complete first-time installation and setup guide for DAAF. This docu
 ## Table of Contents
 - [**Prerequisites**](#prerequisites)
 - [**Installing DAAF**](#installing-daaf)
+- [**Recommended Next Steps**](#recommended-next-steps)
 - [**Day-to-Day Start/Stop Workflow**](#day-to-day-startstop-workflow)
 - [**How to Manage DAAF Project Files and Output**](#how-to-manage-daaf-project-files-and-output)
 - [**Keeping DAAF Updated**](#keeping-daaf-updated)
 - [**Viewing Marimo Notebooks in Your Browser**](#viewing-marimo-notebooks-in-your-browser)
 - [**Viewing Session Logs in Your Browser**](#viewing-session-logs-in-your-browser)
+- [**Advanced Installation & Configuration**](#advanced-installation--configuration)
 - [**Setup Troubleshooting**](#setup-troubleshooting)
-- [**Recommended Next Steps**](#recommended-next-steps)
 
 ---
 
@@ -35,12 +36,12 @@ For the account setup, you have several options:
 
 - **Anthropic Max subscription (recommended)** — [Get one here](https://claude.com/pricing/max), or if you already have an active Anthropic account, you can [upgrade your plan here](https://claude.ai/upgrade). I rarely hit my usage limits running multiple projects at once on the $200/mo plan; your mileage may vary on the $100/mo plan. You can also use an existing Team or Enterprise subscription, but your mileage may vary substantially there too based on your exact organizational settings/limits.
 - **Anthropic API key** — [Get one here](https://console.anthropic.com/). This is a pay-per-use key that you'll paste into Claude Code when prompted. This allows unlimited use as long as you're willing to pay -- but this can get VERY expensive, *very* quickly. A fairly straightforward descriptive analysis with relatively few dataset joins via raw API fees can easily be between $30-60. I HIGHLY recommend getting a Max subscription for this project, instead, as they are explicitly subsidizing these sorts of costs via their subscription model. Initial testing on my end indicates I would have paid roughly 10x more for my usage going with the API key versus just my Max subscription plan.
-- **OpenRouter** — [OpenRouter](https://openrouter.ai/) is a third-party model gateway that lets you access Claude via a pay-per-token API key with no Anthropic subscription required. I haven't tested this as extensively as the Max subscription path, but it's a solid alternative if you want to avoid a monthly subscription commitment or if your organization already uses OpenRouter. There's no token markup -- just a 5.5% fee on credit purchases. Setup involves creating a free OpenRouter account, generating an API key, and adding a few lines to your `.env` file -- see [**Optional: Configure authentication via .env**](#optional-configure-authentication-via-env) below for the step-by-step. **Important caveat:** While OpenRouter can technically route to non-Anthropic models, DAAF's complex multi-agent protocols require Opus-class reasoning. Stick with Anthropic's Opus models through OpenRouter for reliable results.
-- **Cloud providers (Bedrock, Vertex AI)** — If your organization has an Amazon Bedrock or Google Vertex AI arrangement with Anthropic, you can route Claude Code through those platforms instead. The `env.example` file in your `daaf-docker` folder documents the required environment variables for both. Follow your organization's instructions for credential setup and see [**Optional: Configure authentication via .env**](#optional-configure-authentication-via-env) below.
+- **OpenRouter** — [OpenRouter](https://openrouter.ai/) is a third-party model gateway that lets you access Claude via a pay-per-token API key with no Anthropic subscription required. I haven't tested this as extensively as the Max subscription path, but it's a solid alternative if you want to avoid a monthly subscription commitment or if your organization already uses OpenRouter. There's no token markup -- just a 5.5% fee on credit purchases. Setup involves creating a free OpenRouter account, generating an API key, and adding a few lines to your `.env` file -- see [**Configure authentication via .env**](#configure-authentication-via-env) below for the step-by-step. **Important caveat:** While OpenRouter can technically route to non-Anthropic models, DAAF's complex multi-agent protocols require Opus-class reasoning. Stick with Anthropic's Opus models through OpenRouter for reliable results.
+- **Cloud providers (Bedrock, Vertex AI)** — If your organization has an Amazon Bedrock or Google Vertex AI arrangement with Anthropic, you can route Claude Code through those platforms instead. The `env.example` file in your `daaf-docker` folder documents the required environment variables for both. Follow your organization's instructions for credential setup and see [**Configure authentication via .env**](#configure-authentication-via-env) below.
 
 For the **Max subscription** and **API key** options, Claude Code will prompt you to authenticate interactively the first time you run it — you don't need to configure anything in advance. For **OpenRouter** and **cloud provider** setups, you'll configure credentials via the `.env` file instead (instructions below). You can always switch between methods later; type `/login` inside Claude Code to change your interactive authentication, or update your `.env` file and restart the container. Note that many terminal interfaces "hide" any password-entry you're asked to do, so if you don't see your typing "working," it's working but hiding it from view for your privacy. If you're concerned about privacy otherwise: nothing (including your credentials) ever leaves your computer in the course of this project's workflows, and I've enforced a LOT of safety checks to ensure Claude doesn't accidentally share it with anyone, either. This can be directly verified in the code.
 
-Finally, note that you can easily port this whole project over to a CLI tool of your choice (OpenCode, Codex, Gemini CLI, etc.) with a little bit of effort (the hooks are really the only hard part -- everything like the agents and skills should port over immediately). Fork this repo, work with your favorite tool to convert it over, and please continue to share it broadly with others!!! I would be excited to have people test this on open-source models, as well -- please reach out if you've got capacity to that end.
+Finally, note that you can port this whole project over to a CLI tool of your choice (OpenCode, Codex, Gemini CLI, etc.) with a little bit of effort (the hooks are really the only hard part -- everything like the agents and skills should port over immediately). Fork this repo, work with your favorite tool to convert it over, and please continue to share it broadly with others!!! I would be excited to have people test this on open-source models, as well -- please reach out if you've got capacity to that end.
 
 ### 2. Terminal
 
@@ -74,8 +75,6 @@ It's probably going to feel a bit weird, but you'll interact with DAAF/Claude Co
 
 Docker is a program designed to help people create self-contained, isolated environments (called a "container") on your computer that are strictly separated from everything else, and extremely easy to replicate and share. This protects your computer and prevents Claude Code from messing with anything it shouldn't be, and it ensures that even if somehow things go catastrophic, you can easily spin up a new virtual environment back up in minutes with zero consequences. In this project, I also use Docker to install every needed piece of software in a predictable and stress-free way to have Python, data science libraries, and Claude Code all ready to go in one step. Think of it like a lightweight virtual computer running inside your computer that gets created via a very specific recipe, every single time. Docker Desktop includes everything you need (including Docker Compose, which coordinates the setup). After installing, make sure Docker Desktop is actually running before proceeding. If you're worried, you can see exactly what is installed by reading the Dockerfile in this repository -- feel free to ask your favorite LLM to help you interpret and inspect it, if you'd like. If you run into any Docker-related errors during install, you may need to restart your computer to let the install fully sink in.
 
-> **Need additional Python packages or tools?** DAAF comes pre-installed with a comprehensive data science stack, but you can add your own packages by editing the Dockerfile and rebuilding. See [**04. Extending DAAF -- Customizing Your Python Environment**](04_extending_daaf.md#customizing-your-python-environment) for step-by-step instructions, including how to test packages at runtime before making them permanent.
-
 **Install:** [docker.com/products/docker-desktop](https://www.docker.com/products/docker-desktop/)
 
 ---
@@ -86,7 +85,7 @@ With all the prerequisites out of the way, installation is a single command that
 
 ### One-Line Install
 
-Make sure Docker Desktop is running, then open your terminal, navigate to your desired installation directory, and paste the command for your operating system:
+Make sure Docker Desktop is running in the background, then open your terminal, navigate to your desired installation directory, and paste the command for your operating system:
 
 **macOS / Linux (Terminal):**
 
@@ -102,37 +101,9 @@ irm https://raw.githubusercontent.com/DAAF-Contribution-Community/daaf/main/scri
 
 The installer will show its progress as it works through four steps: creating a build directory, downloading the Docker files, building the image, and cloning DAAF into the container. When it finishes, it prints instructions for entering the container and launching Claude Code.
 
-#### Installing a specific version or branch
+### What the installer does
 
-By default, the installer pulls the latest code from the `main` branch. To install a specific release or branch instead, set the `DAAF_BRANCH` environment variable before running the installer:
-
-**macOS / Linux (Terminal):**
-
-```bash
-# Install a tagged release
-export DAAF_BRANCH=v2.1.0
-curl -fsSL "https://raw.githubusercontent.com/DAAF-Contribution-Community/daaf/${DAAF_BRANCH}/scripts/host/install.sh" | bash
-
-# Install from a development branch
-export DAAF_BRANCH=dev
-curl -fsSL "https://raw.githubusercontent.com/DAAF-Contribution-Community/daaf/${DAAF_BRANCH}/scripts/host/install.sh" | bash
-```
-
-**Windows (PowerShell):**
-
-```powershell
-# Install a tagged release
-$env:DAAF_BRANCH="v2.1.0"; irm "https://raw.githubusercontent.com/DAAF-Contribution-Community/daaf/$env:DAAF_BRANCH/scripts/host/install.ps1" | iex
-
-# Install from a development branch
-$env:DAAF_BRANCH="dev"; irm "https://raw.githubusercontent.com/DAAF-Contribution-Community/daaf/$env:DAAF_BRANCH/scripts/host/install.ps1" | iex
-```
-
-This fetches the installer itself from the specified branch, and also controls the Docker build files and repository clone, so everything comes from the specified branch or tag consistently. The `export` on macOS/Linux is required so that the variable is inherited by the `bash` process on the other side of the pipe. Check the [Releases page](https://github.com/DAAF-Contribution-Community/daaf/releases) to see available versions. If `DAAF_BRANCH` is not set, the installer defaults to `main`.
-
-#### What the installer does
-
-1. **Creates an installation directory** called `daaf-docker/` in whatever folder your terminal is currently in, containing the Dockerfile, docker-compose.yml, and convenience scripts (`run_daaf`, `view_logs`, `backup_daaf`, `rebuild_daaf`, and `update_daaf`). For example, if you open your terminal and it starts in your home folder (`~` on Mac/Linux, `C:\Users\YourName` on Windows), that's where `daaf-docker/` will be created. You can `cd` to a different location first if you'd prefer to install elsewhere.
+1. **Creates an installation directory** called `daaf-docker/` in whatever folder your terminal is currently in, containing the Dockerfile, docker-compose.yml, and convenience scripts (`run_daaf`, `view_logs`, `view_notebooks`, `backup_daaf`, `rebuild_daaf`, and `update_daaf`). For example, if you open your terminal and it starts in your home folder (`~` on Mac/Linux, `C:\Users\YourName` on Windows), that's where `daaf-docker/` will be created. You can `cd` to a different location first if you'd prefer to install elsewhere.
 2. **Builds the Docker image** with Python 3.12, 50+ data science packages, geospatial libraries, and Claude Code pre-installed. The first build downloads everything and takes a few minutes; subsequent rebuilds use Docker's layer cache and are much faster.
 3. **Downloads the DAAF repository** directly into the Docker volume inside the container. This gives you a full git repository.
 4. **Prints post-install instructions** showing you how to enter the container, launch Claude Code, and configure it.
@@ -145,37 +116,7 @@ Behind the scenes, the Docker Compose setup also:
 
 You can confirm the install worked by looking at Docker Desktop: in the **Images** panel you should see `daaf-daaf-docker`, and in the **Containers** panel you should see `daaf` with a sub-entry `daaf-docker-1`.
 
-#### Re-installing DAAF
-
-If you run the installer on a system where DAAF is already installed, it will detect the existing installation and stop with a warning. This is a safety feature — re-running the installer would overwrite your framework files (CLAUDE.md, skills, agents, templates) and local git history, though your research data in `research/` would not be deleted.
-
-**To update DAAF** (recommended — preserves your local changes), use the update script instead:
-
-```bash
-cd daaf-docker
-bash update_daaf.sh          # macOS / Linux
-.\update_daaf.ps1            # Windows
-```
-
-See [**Keeping DAAF Updated**](#keeping-daaf-updated) for details on what the update script does.
-
-**To force a complete re-install** (overwrites all framework files), set the `DAAF_FORCE_REINSTALL` environment variable:
-
-**macOS / Linux:**
-```bash
-DAAF_FORCE_REINSTALL=1 bash -c "$(curl -fsSL https://raw.githubusercontent.com/DAAF-Contribution-Community/daaf/main/scripts/host/install.sh)"
-```
-
-**Windows (PowerShell):**
-```powershell
-$env:DAAF_FORCE_REINSTALL = "1"; irm https://raw.githubusercontent.com/DAAF-Contribution-Community/daaf/main/scripts/host/install.ps1 | iex
-```
-
-Back up your Docker volume first (see [**Backing Up Your Work**](#backing-up-your-work)) if you have research data or framework customizations you want to preserve.
-
-If the installer detects a previous attempt that didn't complete successfully (e.g., the Docker build failed partway through), it will note this and proceed automatically — no override needed.
-
-#### Launch Claude Code with DAAF
+### Launch Claude Code with DAAF
 
 Now, you'll use your terminal to enter the DAAF installation directory. Once you're in there, you can run a helper script I created to make it easy to launch DAAF and Claude Code in the Docker container automatically.
 
@@ -197,7 +138,7 @@ The `run_daaf` script starts the container if needed and launches Claude Code di
 
 On first launch, Claude Code should prompt you to authenticate (API key or subscription login). Follow its instructions to complete the process as needed based on your method. Remember that CTRL+C actually exits the terminal, so use (Windows/Linux: CTRL+SHIFT+C and CTRL+V) and (macOS: Cmd+C and Cmd+V) if you want to copy/paste.
 
-#### Configure Claude Code (required)
+### Configure Claude Code (required)
 
 Once you're in, there are a few settings to adjust to ensure that the workflow is able to operate as expected. First, type the following into Claude's chat window:
 
@@ -205,133 +146,19 @@ Once you're in, there are a few settings to adjust to ensure that the workflow i
 /config
 ```
 
-And then change the **"Auto-compact"** setting to **False** and **"Verbose output"** setting to **True** by navigating down with your arrow keys and hitting Enter when the option is selected. When the settings are changed correctly, you can then hit the ESC key to return to the regular Claude chat and begin working.
+And then change the **"Auto-compact"** setting to **False** and **"Verbose output"** setting to **True** by navigating down with your arrow keys, editing settings with left-right arrow keys, and hitting Enter when done. After these settings at done, you're ready to begin working!
 
 **Recommended model:** You can check which Claude model is being used by checking the indicator below the chat line (Opus, Sonnet, Haiku). You can change which Claude model is being used at any time by typing `/model`. All development and testing of this project was done using **Opus 4.5** and **Opus 4.6**. I unfortunately think that these models are absolutely required; other models (Sonnet, Haiku) are not nearly as capable and produce erratic, inconsistent results. The complexity of tasks embedded in the DAAF workflow (multi-agent orchestration) relies on the model's ability to follow complex, multi-step protocols reliably. This is also the reason why the Claude Max subscription is a likely prerequisite here: Opus models are very resource-intensive, and it's hard to complete the DAAF workflows under the "Pro" or "Free" tiers accordingly.
 
 Opus 4.6 (unlike Opus 4.5) also allows you to select its "thinking level" by tapping left-and-right arrow keys while Opus 4.6 is selected on the /model selector in Claude Code. All tests I've conducted to date are using the "High" setting -- as this is a case where quality is far more important than quantity, I strongly recommend doing the same. This will have usage and API limit ramificiations, though, so it is a reasonable thing to test out the tradeoffs for yourself! Please do report back with any findings so we can incorporate that into our guidance here.
-
-### Optional: Configure authentication via .env
-
-By default, Claude Code prompts you to log in interactively the first time you launch it (browser-based OAuth or pasting an API key). This works great for Max subscription and direct API key setups. However, if you're using **OpenRouter**, a **cloud provider** (Bedrock/Vertex), or simply want your authentication to persist automatically without interactive login, you can configure it through the `.env` file in your `daaf-docker` folder.
-
-Your `daaf-docker` folder includes an `env.example` template that documents all five supported authentication methods with the exact environment variables needed for each. To set it up:
-
-1. **Copy the template** (if you haven't already):
-
-   **macOS / Linux (Terminal):**
-   ```bash
-   cd daaf-docker
-   cp env.example .env
-   ```
-
-   **Windows (PowerShell):**
-   ```powershell
-   cd daaf-docker
-   Copy-Item env.example .env
-   ```
-
-2. **Open `.env` in any text editor** and uncomment the section matching your authentication method. For example, to use OpenRouter:
-   ```bash
-   # --- Option C: OpenRouter (third-party model gateway) ---
-   ANTHROPIC_BASE_URL=https://openrouter.ai/api
-   ANTHROPIC_AUTH_TOKEN=your_openrouter_api_key_here
-   ANTHROPIC_API_KEY=
-   OPENROUTER_API_KEY=your_openrouter_api_key_here
-   ```
-   Replace `your_openrouter_api_key_here` with your actual OpenRouter API key (format: `sk-or-v1-...`). Get one at [openrouter.ai/settings/keys](https://openrouter.ai/settings/keys). Note that `ANTHROPIC_API_KEY=` must be set to an empty value (not removed entirely) — this tells Claude Code to use the auth token instead of trying to authenticate directly with Anthropic.
-
-3. **Restart the container** to pick up the changes:
-   ```bash
-   docker compose down
-   bash run_daaf.sh            # macOS / Linux
-   .\run_daaf.ps1              # Windows
-   ```
-
-4. **If you previously logged in interactively** with Anthropic, run `/logout` inside Claude Code before switching to a `.env`-based method — cached credentials can take priority over environment variables.
-
-> **Only uncomment ONE authentication section.** If multiple methods are set, Claude Code uses the highest-priority one (see the priority order documented in `env.example`). This can lead to unexpected billing if, for example, you have both an API key and an OAuth token set.
-
-> **Note:** The `.env` file is also where you'll configure data source API keys (covered in the next section). Both authentication and data source credentials live in the same file and are loaded together when the container starts.
-
-### Optional: Set up data source API keys
-
-Most DAAF data sources — including all built-in education data from the Urban Institute — are **freely accessible with no authentication required**. You can skip this step entirely if you're only working with education data.
-
-However, some data domains require API keys from their hosting platforms. The table below shows API keys for data sources that ship with DAAF. When you onboard a new data source from an API via Data Onboarding Mode, DAAF will guide you through setting up the appropriate environment variable using the same pattern shown here. You can set multiple API keys simultaneously — each uses a unique environment variable name.
-
-| Data Source | Environment Variable | Where to Get a Key |
-|-------------|---------------------|-------------------|
-| County Presidential Election Returns (Harvard Dataverse) | `HARVARD_DATAVERSE_API_KEY` | [dataverse.harvard.edu](https://dataverse.harvard.edu/) → Log in → Account name (top-right) → API Token → Create Token |
-
-#### Recommended: Use a .env file (persistent across restarts)
-
-Your `daaf-docker` folder includes an `env.example` template. Copy it to `.env` and fill in your keys:
-
-**macOS / Linux (Terminal):**
-```bash
-cd daaf-docker
-cp env.example .env
-```
-
-**Windows (PowerShell):**
-```powershell
-cd daaf-docker
-Copy-Item env.example .env
-```
-
-Then open `.env` in any text editor and uncomment/fill in the keys you need:
-
-```bash
-# Remove the leading # and replace the placeholder with your actual key
-HARVARD_DATAVERSE_API_KEY=your_token_here
-```
-
-The `.env` file is loaded automatically when the container starts. Edits to `.env` are not applied while the container is running — you need to recreate it to pick up changes:
-
-```bash
-docker compose down
-bash run_daaf.sh            # macOS / Linux
-.\run_daaf.ps1              # Windows
-```
-
-> **Security note:** The `.env` file lives on your host machine (in `daaf-docker/`), is gitignored by default, and is never visible to Claude inside the container. DAAF's safety guardrails prevent Claude from reading or writing `.env` files by design — your credentials stay strictly on your side of the boundary.
-
-#### Alternative: Set keys manually in the container shell
-
-If you prefer not to use a `.env` file, you can set environment variables directly inside the container before launching Claude Code:
-
-```bash
-# Enter the container shell
-bash run_daaf.sh bash        # macOS / Linux
-.\run_daaf.ps1 bash          # Windows
-
-# Set the key for this session
-export HARVARD_DATAVERSE_API_KEY="your_token_here"
-
-# Then launch Claude Code
-claude
-```
-
-To make manual exports persist across container restarts, add the `export` line to `~/.bashrc` inside the container:
-
-```bash
-echo 'export HARVARD_DATAVERSE_API_KEY="your_token_here"' >> ~/.bashrc
-```
-
-Note that the `.env` file approach above is simpler and recommended — it persists automatically and you can edit it with your normal text editor on your computer without entering the container.
-
-If you skip this step and later try to analyze election data, DAAF will inform you that the API key is missing and point you back to these instructions.
-
----
 
 ### First Launch: Confirming Everything Works
 
 Once you've gotten Claude Code running in your terminal and your model is set, you're ready to start interacting with the DAAF-empowered Claude Code. Before you do anything else, let's confirm that Claude is actually seeing and using all the DAAF resources/guidelines first:
 
 ```
-Hey Claude, can you tell me more about DAAF? What does it do, and 
-why is it useful for researchers wanting to use Claude Code for data 
+Hey Claude, can you tell me more about DAAF? What does it do, and
+why is it useful for researchers wanting to use Claude Code for data
 analysis work? Give me the elevator pitch for a newcomer
 ```
 
@@ -340,11 +167,11 @@ If setup was successful and everything went through correctly, you should get ba
 ```
 DAAF: Data Analyst Augmentation Framework
 The Elevator Pitch
-DAAF is an agent orchestration system built on top of Claude Code 
-that transforms it from a general-purpose coding assistant into a 
-rigorous, reproducible research pipeline. It's designed for 
-researchers who want AI-assisted data analysis but can't afford 
-the typical pitfalls: hallucinated results, unreproducible workflows, 
+DAAF is an agent orchestration system built on top of Claude Code
+that transforms it from a general-purpose coding assistant into a
+rigorous, reproducible research pipeline. It's designed for
+researchers who want AI-assisted data analysis but can't afford
+the typical pitfalls: hallucinated results, unreproducible workflows,
 silent data errors, or black-box methodology.
 
 The Problem It Solves
@@ -365,13 +192,21 @@ DAAF wraps Claude Code in a multi-agent pipeline with 12 stages across
 5 phases...
 ```
 
-I promise that's genuinely the first response I got back while testing this! Talking conversationally with Claude in this way is one easy way you could get oriented to using DAAF. Ask it questions, dig into features, talk about pros and cons, and so on. It will intelligently reference both the user documentation and the workflow documentation as relevant (but it never hurts to remind it, "Based on a thorough read of the DAAF project documentation, can you tell me...?"). 
+I promise that's genuinely the first response I got back while testing this! Talking conversationally with Claude in this way is one easy way you could get oriented to using DAAF. Ask it questions, dig into features, talk about pros and cons, and so on. It will intelligently reference both the user documentation and the workflow documentation as relevant (but it never hurts to remind it, "Based on a thorough read of the DAAF project documentation, can you tell me...?").
 
-From here, you can interact with Claude the same way you would with any AI assistant, but it'll "kick in" its DAAF-powered workflows and skillsets whenever relevant to supercharge anything related to data analysis work, data documentation spelunking, data exploration, and so on. If you want a gentle onboarding guide for actually using DAAF (fully written by a human for other humans!), we'll cover that in the next section: [**02. Understanding and Working with DAAF**](02_understanding_daaf.md). I used to be a high school English teacher, so this is the fun part for me, honestly. 
+From here, you can interact with Claude the same way you would with any AI assistant, but it'll "kick in" its DAAF-powered workflows and skillsets whenever relevant to supercharge anything related to data analysis work, data documentation spelunking, data exploration, and so on. If you want a gentle onboarding guide for actually using DAAF (fully written by a human for other humans!), head to [**02. Understanding and Working with DAAF**](02_understanding_daaf.md) next. I used to be a high school English teacher, so this is the fun part for me, honestly.
 
-That being said, let's go over just a few more technical details and how-to's before we get there.
+The rest of this guide covers day-to-day workflow, file management, keeping DAAF updated, and advanced configuration options — browse those at your own pace.
 
 > **Quick tip before you go any further**: Now that you have Claude Code up and running with DAAF, you can actually start asking Claude for help! If you have any questions, concerns, issues, or confusion about **anything** you read in this guide or other parts of the User Documentation: Ask Claude about it! DAAF has a dedicated **User Support** mode for exactly this -- just ask it what DAAF is, how something works, or what to do when you're stuck, and it will load its own documentation and walk you through it in plain language. This includes questions about the underlying tools too -- Docker, Git, Claude Code -- it can look up official documentation for those online when needed. Point it to any document, section, or sentence, and then ask it to help you understand it better. It has visibility into the whole project documentation at-will, so it should be able to help you out as you go. This kind of personalized assistance should be invaluable for anyone getting onboarded into using DAAF and Claude Code more generally!
+
+---
+
+## Recommended Next Steps
+
+- [**02. Understanding and Working with DAAF**](02_understanding_daaf.md) — Learn to work with DAAF for the first time: what to expect, how to use it, and how to test its strengths and limitations
+- [**06. FAQ: Philosophy**](06_faq_philosophy.md) — Grapples with the broader implications of this work, AI automation in general, model advancement pace, approaching the "exponential", environmental ethics, what this means for the next generation of researchers, and more
+- [**07. FAQ: Technical Support**](07_faq_technical.md) — Covers frequently asked questions about Docker, issues with Claude Code, usage limits, authentication errors, and other common errors
 
 ---
 
@@ -448,6 +283,8 @@ bash view_logs.sh            # macOS / Linux
 
 Open the URL it prints in your browser. Press Ctrl+C to stop the server. See [**Viewing Session Logs in Your Browser**](#viewing-session-logs-in-your-browser) for more details, including per-project viewing.
 
+---
+
 ## How to Manage DAAF Project Files and Output
 
 Your research files, data, and outputs live inside the **Docker volume** we created during installation — a storage area managed by Docker. Think of the `daaf-docker/` folder on your computer as the "recipe" that was used to set everything up, while the Docker volume is the actual "kitchen" where all the work happens.
@@ -495,56 +332,13 @@ You can also back up manually using Docker Desktop's GUI: go into the Docker vol
 
 ### Viewing report Markdown (.md) files
 
-LLM assistants work best on text files, which means that proprietary document formats like Microsoft Word or Google Docs aren't great for this type of work. DAAF produces all its output report documents in Markdown (.md) format. You can open these in any basic text editor, but basic text editors tend not to display the formatting very nicely. I recommend installing a basic Markdown viewer, or you can copy the Markdown text into any free online viewer (e.g., [StackEdit](https://stackedit.io/app)) 
+LLM assistants work best on text files, which means that proprietary document formats like Microsoft Word or Google Docs aren't great for this type of work. DAAF produces all its output report documents in Markdown (.md) format. You can open these in any basic text editor, but basic text editors tend not to display the formatting very nicely. I recommend installing a basic Markdown viewer, or you can copy the Markdown text into any free online viewer (e.g., [StackEdit](https://stackedit.io/app))
 
 ---
 
 ## Keeping DAAF Updated
 
 DAAF is actively being developed and updated. If you'd like to pull in the latest fixes, extensions, and updates (which for a while may be as often as daily!!), updating is straightforward. Before updating, I recommend backing up your Docker volume's research folder as a precaution (see "Backing Up Your Work" above).
-
-### Migrating from an older installation
-
-If you installed DAAF **v2.0.1 or earlier** — back when the installation process involved downloading a ZIP file and copying it into Docker — you may not have the update scripts (`update_daaf.sh` / `update_daaf.ps1`) in your `daaf-docker` folder. Without these scripts, you can't use the standard update process described below.
-
-**How to tell if this applies to you:** Open your `daaf-docker` folder on your computer (wherever you originally set up DAAF). If you don't see a file called `update_daaf.sh` (macOS/Linux) or `update_daaf.ps1` (Windows), you need to run the one-time migration first.
-
-**What the migration does:**
-
-- Downloads the utility scripts (`run_daaf`, `update_daaf`, `backup_daaf`, `rebuild_daaf`, `view_logs`) to your host machine so you have all the same convenience tools as a fresh install
-- Creates a full backup of your Docker volume before making any changes
-- Connects your local git history to the official DAAF repository so that future updates can merge in cleanly
-- Preserves everything — your research files, any framework customizations you've made, and your full git audit trail are all kept intact
-
-**Running the migration:**
-
-The migration is a single command, just like the original installer. Make sure Docker Desktop is running, open your terminal, navigate to your `daaf-docker` folder, and run:
-
-| Platform | One-liner |
-|----------|-----------|
-| **macOS / Linux** | `curl -fsSL https://raw.githubusercontent.com/DAAF-Contribution-Community/daaf/main/scripts/host/migrate_daaf.sh \| bash` |
-| **Windows PowerShell** | `irm https://raw.githubusercontent.com/DAAF-Contribution-Community/daaf/main/scripts/host/migrate_daaf.ps1 \| iex` |
-
-<details>
-<summary>Prefer to download and inspect the script first?</summary>
-
-**macOS / Linux:**
-```bash
-curl -fsSL https://raw.githubusercontent.com/DAAF-Contribution-Community/daaf/main/scripts/host/migrate_daaf.sh -o migrate_daaf.sh
-bash migrate_daaf.sh
-```
-
-**Windows PowerShell:**
-```powershell
-Invoke-WebRequest -Uri https://raw.githubusercontent.com/DAAF-Contribution-Community/daaf/main/scripts/host/migrate_daaf.ps1 -OutFile migrate_daaf.ps1
-.\migrate_daaf.ps1
-```
-
-</details>
-
-The migration script is safe to re-run if it gets interrupted — it detects what's already been completed and picks up where it left off. Your research files are never modified; only git metadata (the connection to the upstream repository) is updated.
-
-**After migration:** You'll have all the same utility scripts as a fresh install. From this point forward, you can use `update_daaf.sh` / `update_daaf.ps1` for all future updates, exactly as described in the next section.
 
 ### If you installed with the one-line installer (recommended method)
 
@@ -635,32 +429,79 @@ git checkout v2.1.0
 
 Check the [Releases page](https://github.com/DAAF-Contribution-Community/daaf/releases) to see what's changed in each version.
 
+### Migrating from an older installation
+
+If you installed DAAF **v2.0.1 or earlier** — back when the installation process involved downloading a ZIP file and copying it into Docker — you may not have the update scripts (`update_daaf.sh` / `update_daaf.ps1`) in your `daaf-docker` folder. Without these scripts, you can't use the standard update process described above.
+
+**How to tell if this applies to you:** Open your `daaf-docker` folder on your computer (wherever you originally set up DAAF). If you don't see a file called `update_daaf.sh` (macOS/Linux) or `update_daaf.ps1` (Windows), you need to run the one-time migration first.
+
+**What the migration does:**
+
+- Downloads the utility scripts (`run_daaf`, `update_daaf`, `backup_daaf`, `rebuild_daaf`, `view_logs`, `view_notebooks`) to your host machine so you have all the same convenience tools as a fresh install
+- Creates a full backup of your Docker volume before making any changes
+- Connects your local git history to the official DAAF repository so that future updates can merge in cleanly
+- Preserves everything — your research files, any framework customizations you've made, and your full git audit trail are all kept intact
+
+**Running the migration:**
+
+The migration is a single command, just like the original installer. Make sure Docker Desktop is running, open your terminal, navigate to your `daaf-docker` folder, and run:
+
+| Platform | One-liner |
+|----------|-----------|
+| **macOS / Linux** | `curl -fsSL https://raw.githubusercontent.com/DAAF-Contribution-Community/daaf/main/scripts/host/migrate_daaf.sh \| bash` |
+| **Windows PowerShell** | `irm https://raw.githubusercontent.com/DAAF-Contribution-Community/daaf/main/scripts/host/migrate_daaf.ps1 \| iex` |
+
+<details>
+<summary>Prefer to download and inspect the script first?</summary>
+
+**macOS / Linux:**
+```bash
+curl -fsSL https://raw.githubusercontent.com/DAAF-Contribution-Community/daaf/main/scripts/host/migrate_daaf.sh -o migrate_daaf.sh
+bash migrate_daaf.sh
+```
+
+**Windows PowerShell:**
+```powershell
+Invoke-WebRequest -Uri https://raw.githubusercontent.com/DAAF-Contribution-Community/daaf/main/scripts/host/migrate_daaf.ps1 -OutFile migrate_daaf.ps1
+.\migrate_daaf.ps1
+```
+
+</details>
+
+The migration script is safe to re-run if it gets interrupted — it detects what's already been completed and picks up where it left off. Your research files are never modified; only git metadata (the connection to the upstream repository) is updated.
+
+**After migration:** You'll have all the same utility scripts as a fresh install. From this point forward, you can use `update_daaf.sh` / `update_daaf.ps1` for all future updates, exactly as described in the section above.
+
 ---
 
 ## Viewing Marimo Notebooks in Your Browser
 
-The assistant uses a python library called "marimo" to create streamlined python code "notebooks" as part of its analysis. It can also use this library to create nice, interactive dashboards for you of analyses it has completed. To **view** one in your browser:
+The assistant uses a python library called "marimo" to create streamlined python code "notebooks" as part of its analysis. It can also use this library to create nice, interactive dashboards for you of analyses it has completed.
+
+**Quickest way — from your host machine (no container shell needed):**
 
 ```bash
-# Navigate to your daaf-docker folder and enter the container shell
+cd daaf-docker
+bash view_notebooks.sh       # macOS / Linux
+.\view_notebooks.ps1         # Windows
+```
+
+This opens marimo's built-in notebook browser at [http://localhost:2718](http://localhost:2718), where you can browse all your research projects and open any notebook for viewing or editing. The script handles starting the container if it isn't already running.
+
+**Alternative — view a single notebook read-only:**
+
+If you want to view one specific notebook without the full editor, enter the container shell and use `marimo run`:
+
+```bash
 cd daaf-docker
 bash run_daaf.sh bash        # macOS / Linux
 .\run_daaf.ps1 bash          # Windows
 
-# Inside the container, run the following command to view a notebook
-# (replace the path with your actual notebook)
+# Inside the container (replace the path with your actual notebook)
 marimo run 'research/YYYY-MM-DD_Title/YYYY-MM-DD_Notebook_Name.py' --host 0.0.0.0 --port 2718 --headless
 ```
 
-Then open [http://localhost:2718](http://localhost:2718) in your computer's browser (no need to mess with anything in the terminal here). The notebook renders there as an interactive document. The nice thing about these is that they're also written in regular Python code, so you can inspect its code very easily in any text browser as well.
-
-To **edit** a notebook interactively, use `marimo edit` instead of `marimo run`:
-
-```bash
-marimo edit 'research/YYYY-MM-DD_Title/YYYY-MM-DD_Notebook_Name.py' --host 0.0.0.0 --port 2718 --headless
-```
-
-If you prefer manual Docker commands, you can also enter the container with `docker compose up -d` followed by `docker compose exec daaf-docker bash`.
+Then open [http://localhost:2718](http://localhost:2718) in your computer's browser. The notebook renders there as an interactive document. The nice thing about these is that they're also written in regular Python code, so you can inspect its code very easily in any text editor as well.
 
 ---
 
@@ -692,6 +533,182 @@ Port 2719 is mapped in `docker-compose.yml` for this purpose, alongside port 271
 
 ---
 
+## Advanced Installation & Configuration
+
+The sections below cover additional installation options for users with specific needs. If you completed the standard installation above and everything is working, you can skip this entire section and come back later if and when you need it.
+
+### Installing a specific version or branch
+
+By default, the installer pulls the latest code from the `main` branch. To install a specific release or branch instead, set the `DAAF_BRANCH` environment variable before running the installer:
+
+**macOS / Linux (Terminal):**
+
+```bash
+# Install a tagged release
+export DAAF_BRANCH=v2.1.0
+curl -fsSL "https://raw.githubusercontent.com/DAAF-Contribution-Community/daaf/${DAAF_BRANCH}/scripts/host/install.sh" | bash
+
+# Install from a development branch
+export DAAF_BRANCH=dev
+curl -fsSL "https://raw.githubusercontent.com/DAAF-Contribution-Community/daaf/${DAAF_BRANCH}/scripts/host/install.sh" | bash
+```
+
+**Windows (PowerShell):**
+
+```powershell
+# Install a tagged release
+$env:DAAF_BRANCH="v2.1.0"; irm "https://raw.githubusercontent.com/DAAF-Contribution-Community/daaf/$env:DAAF_BRANCH/scripts/host/install.ps1" | iex
+
+# Install from a development branch
+$env:DAAF_BRANCH="dev"; irm "https://raw.githubusercontent.com/DAAF-Contribution-Community/daaf/$env:DAAF_BRANCH/scripts/host/install.ps1" | iex
+```
+
+This fetches the installer itself from the specified branch, and also controls the Docker build files and repository clone, so everything comes from the specified branch or tag consistently. The `export` on macOS/Linux is required so that the variable is inherited by the `bash` process on the other side of the pipe. Check the [Releases page](https://github.com/DAAF-Contribution-Community/daaf/releases) to see available versions. If `DAAF_BRANCH` is not set, the installer defaults to `main`.
+
+### Re-installing DAAF
+
+If you run the installer on a system where DAAF is already installed, it will detect the existing installation and stop with a warning. This is a safety feature — re-running the installer would overwrite your framework files (CLAUDE.md, skills, agents, templates) and local git history, though your research data in `research/` would not be deleted.
+
+**To update DAAF** (recommended — preserves your local changes), use the update script instead:
+
+```bash
+cd daaf-docker
+bash update_daaf.sh          # macOS / Linux
+.\update_daaf.ps1            # Windows
+```
+
+See [**Keeping DAAF Updated**](#keeping-daaf-updated) for details on what the update script does.
+
+**To force a complete re-install** (overwrites all framework files), set the `DAAF_FORCE_REINSTALL` environment variable:
+
+**macOS / Linux:**
+```bash
+DAAF_FORCE_REINSTALL=1 bash -c "$(curl -fsSL https://raw.githubusercontent.com/DAAF-Contribution-Community/daaf/main/scripts/host/install.sh)"
+```
+
+**Windows (PowerShell):**
+```powershell
+$env:DAAF_FORCE_REINSTALL = "1"; irm https://raw.githubusercontent.com/DAAF-Contribution-Community/daaf/main/scripts/host/install.ps1 | iex
+```
+
+Back up your Docker volume first (see [**Backing Up Your Work**](#backing-up-your-work)) if you have research data or framework customizations you want to preserve.
+
+If the installer detects a previous attempt that didn't complete successfully (e.g., the Docker build failed partway through), it will note this and proceed automatically — no override needed.
+
+### Configure authentication via .env
+
+By default, Claude Code prompts you to log in interactively the first time you launch it (browser-based OAuth or pasting an API key). This works great for Max subscription and direct API key setups. However, if you're using **OpenRouter**, a **cloud provider** (Bedrock/Vertex), or simply want your authentication to persist automatically without interactive login, you can configure it through the `.env` file in your `daaf-docker` folder.
+
+Your `daaf-docker` folder includes an `env.example` template that documents all five supported authentication methods with the exact environment variables needed for each. To set it up:
+
+1. **Copy the template** (if you haven't already):
+
+   **macOS / Linux (Terminal):**
+   ```bash
+   cd daaf-docker
+   cp env.example .env
+   ```
+
+   **Windows (PowerShell):**
+   ```powershell
+   cd daaf-docker
+   Copy-Item env.example .env
+   ```
+
+2. **Open `.env` in any text editor** and uncomment the section matching your authentication method. For example, to use OpenRouter:
+   ```bash
+   # --- Option C: OpenRouter (third-party model gateway) ---
+   ANTHROPIC_BASE_URL=https://openrouter.ai/api
+   ANTHROPIC_AUTH_TOKEN=your_openrouter_api_key_here
+   ANTHROPIC_API_KEY=
+   OPENROUTER_API_KEY=your_openrouter_api_key_here
+   ```
+   Replace `your_openrouter_api_key_here` with your actual OpenRouter API key (format: `sk-or-v1-...`). Get one at [openrouter.ai/settings/keys](https://openrouter.ai/settings/keys). Note that `ANTHROPIC_API_KEY=` must be set to an empty value (not removed entirely) — this tells Claude Code to use the auth token instead of trying to authenticate directly with Anthropic.
+
+3. **Restart the container** to pick up the changes:
+   ```bash
+   docker compose down
+   bash run_daaf.sh            # macOS / Linux
+   .\run_daaf.ps1              # Windows
+   ```
+
+4. **If you previously logged in interactively** with Anthropic, run `/logout` inside Claude Code before switching to a `.env`-based method — cached credentials can take priority over environment variables.
+
+> **Only uncomment ONE authentication section.** If multiple methods are set, Claude Code uses the highest-priority one (see the priority order documented in `env.example`). This can lead to unexpected billing if, for example, you have both an API key and an OAuth token set.
+
+> **Note:** The `.env` file is also where you'll configure data source API keys (covered in the next section). Both authentication and data source credentials live in the same file and are loaded together when the container starts.
+
+### Set up data source API keys
+
+Most DAAF data sources — including all built-in education data from the Urban Institute — are **freely accessible with no authentication required**. You can skip this step entirely if you're only working with education data.
+
+However, some data domains require API keys from their hosting platforms. The table below shows API keys for data sources that ship with DAAF. When you onboard a new data source from an API via Data Onboarding Mode, DAAF will guide you through setting up the appropriate environment variable using the same pattern shown here. You can set multiple API keys simultaneously — each uses a unique environment variable name.
+
+| Data Source | Environment Variable | Where to Get a Key |
+|-------------|---------------------|-------------------|
+| County Presidential Election Returns (Harvard Dataverse) | `HARVARD_DATAVERSE_API_KEY` | [dataverse.harvard.edu](https://dataverse.harvard.edu/) → Log in → Account name (top-right) → API Token → Create Token |
+
+#### Recommended: Use a .env file (persistent across restarts)
+
+Your `daaf-docker` folder includes an `env.example` template. Copy it to `.env` and fill in your keys:
+
+**macOS / Linux (Terminal):**
+```bash
+cd daaf-docker
+cp env.example .env
+```
+
+**Windows (PowerShell):**
+```powershell
+cd daaf-docker
+Copy-Item env.example .env
+```
+
+Then open `.env` in any text editor and uncomment/fill in the keys you need:
+
+```bash
+# Remove the leading # and replace the placeholder with your actual key
+HARVARD_DATAVERSE_API_KEY=your_token_here
+```
+
+The `.env` file is loaded automatically when the container starts. Edits to `.env` are not applied while the container is running — you need to recreate it to pick up changes:
+
+```bash
+docker compose down
+bash run_daaf.sh            # macOS / Linux
+.\run_daaf.ps1              # Windows
+```
+
+> **Security note:** The `.env` file lives on your host machine (in `daaf-docker/`), is gitignored by default, and is never visible to Claude inside the container. DAAF's safety guardrails prevent Claude from reading or writing `.env` files by design — your credentials stay strictly on your side of the boundary.
+
+#### Alternative: Set keys manually in the container shell
+
+If you prefer not to use a `.env` file, you can set environment variables directly inside the container before launching Claude Code:
+
+```bash
+# Enter the container shell
+bash run_daaf.sh bash        # macOS / Linux
+.\run_daaf.ps1 bash          # Windows
+
+# Set the key for this session
+export HARVARD_DATAVERSE_API_KEY="your_token_here"
+
+# Then launch Claude Code
+claude
+```
+
+To make manual exports persist across container restarts, add the `export` line to `~/.bashrc` inside the container:
+
+```bash
+echo 'export HARVARD_DATAVERSE_API_KEY="your_token_here"' >> ~/.bashrc
+```
+
+Note that the `.env` file approach above is simpler and recommended — it persists automatically and you can edit it with your normal text editor on your computer without entering the container.
+
+If you skip this step and later try to analyze election data, DAAF will inform you that the API key is missing and point you back to these instructions.
+
+---
+
 ## Setup Troubleshooting
 
 > **Tip:** If you run into an issue not listed here, or you want more help understanding any of these errors, try asking DAAF directly -- its **User Support** mode can help troubleshoot Docker, Git, and Claude Code problems and can look up the latest official documentation online.
@@ -707,14 +724,9 @@ Port 2719 is mapped in `docker-compose.yml` for this purpose, alongside port 271
   ```bash
   docker run --rm -v "daaf_daaf-data:/daaf" busybox chown -R 1000:1000 /daaf
   ```
-- **Claude Code asks for an API key every time** — Claude Code stores its authentication state inside the Docker volume, so it persists across normal container restarts. If your authentication state is lost, the most reliable fix is to configure your credentials in the `.env` file (see [**Configure authentication via .env**](#optional-configure-authentication-via-env) above) — this ensures authentication persists automatically on every container start. Alternatively, you can add your key to `~/.bashrc` inside the container: `echo 'export ANTHROPIC_API_KEY="your_key_here"' >> ~/.bashrc`.
+- **Claude Code asks for an API key every time** — Claude Code stores its authentication state inside the Docker volume, so it persists across normal container restarts. If your authentication state is lost, the most reliable fix is to configure your credentials in the `.env` file (see [**Configure authentication via .env**](#configure-authentication-via-env) above) — this ensures authentication persists automatically on every container start. Alternatively, you can add your key to `~/.bashrc` inside the container: `echo 'export ANTHROPIC_API_KEY="your_key_here"' >> ~/.bashrc`.
 - **OpenRouter: "model not found" or authentication errors** — Double-check three things: (1) `ANTHROPIC_BASE_URL` must be exactly `https://openrouter.ai/api` with no `/v1` suffix (the `/v1` variant is for OpenAI-compatible tools, not Claude Code), (2) `ANTHROPIC_API_KEY` must be set to an empty value (`ANTHROPIC_API_KEY=`), not removed entirely — if it's unset, Claude Code falls back to Anthropic's servers, and (3) if you previously logged in with Anthropic interactively, run `/logout` inside Claude Code to clear cached credentials. You can verify your connection is working by typing `/status` inside Claude Code and checking the [OpenRouter Activity Dashboard](https://openrouter.ai/activity) for incoming requests.
 
 ---
 
-## Recommended Next Steps
-
-- [**02. Understanding and Working with DAAF**](02_understanding_daaf.md) — Learn to work with DAAF for the first time: what to expect, how to use it, and how to test its strengths and limitations
-- [**06. FAQ: Philosophy**](06_faq_philosophy.md) — Grapples with the broader implications of this work, AI automation in general, model advancement pace, approaching the "exponential", environmental ethics, what this means for the next generation of researchers, and more
-- [**07. FAQ: Technical Support**](07_faq_technical.md) — Covers frequently asked questions about Docker, issues with Claude Code, usage limits, authentication errors, and other common errors
-- [**Back to main**](https://github.com/DAAF-Contribution-Community/daaf/tree/main)
+[**Back to main**](https://github.com/DAAF-Contribution-Community/daaf/tree/main)

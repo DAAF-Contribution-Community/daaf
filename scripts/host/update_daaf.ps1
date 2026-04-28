@@ -377,6 +377,7 @@ function Sync-HostScript {
         scripts/host/rebuild_daaf.ps1 `
         scripts/host/update_daaf.ps1 `
         scripts/host/view_logs.ps1 `
+        scripts/host/view_notebooks.ps1 `
         scripts/host/env.example
 
     if ([string]::IsNullOrWhiteSpace($changedScripts)) { return }

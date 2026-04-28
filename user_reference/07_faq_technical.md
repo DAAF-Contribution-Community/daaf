@@ -54,7 +54,7 @@ The tradeoffs:
 | **Rate limiting** | Minimal | May hit rate limits during very heavy sessions |
 | **Best for** | Light/occasional use, or organizational API budgets | Regular DAAF usage (recommended) |
 
-**Third option: OpenRouter.** If neither the API key nor a Max subscription works for you, [OpenRouter](https://openrouter.ai/) offers a middle ground. It's a third-party model gateway that gives you pay-per-token access to Claude (including Opus models) without an Anthropic subscription. No monthly commitment, no token markup -- just a 5.5% fee on credit purchases. From what I've seen, this can be particularly appealing if you want to test DAAF before committing to a subscription, or if your organization already uses OpenRouter. See [**01. Installation & Quick Start -- Configure authentication via .env**](01_installation_and_quickstart.md#optional-configure-authentication-via-env) for setup instructions.
+**Third option: OpenRouter.** If neither the API key nor a Max subscription works for you, [OpenRouter](https://openrouter.ai/) offers a middle ground. It's a third-party model gateway that gives you pay-per-token access to Claude (including Opus models) without an Anthropic subscription. No monthly commitment, no token markup -- just a 5.5% fee on credit purchases. From what I've seen, this can be particularly appealing if you want to test DAAF before committing to a subscription, or if your organization already uses OpenRouter. See [**01. Installation & Quick Start -- Configure authentication via .env**](01_installation_and_quickstart.md#configure-authentication-via-env) for setup instructions.
 
 One thing to note: the Max plan does have usage limits per time window. If you're running several DAAF analyses in parallel (which you absolutely can do!), you may occasionally hit a rate limit and need to wait a bit. The API key doesn't have that issue, but your wallet will feel it instead.
 
@@ -78,7 +78,7 @@ You can also adjust the thinking level for Opus 4.6 by pressing the left and rig
 
 Yes -- partially. There are two different things this question might mean, so let me address both.
 
-**Using different models through OpenRouter (supported):** [OpenRouter](https://openrouter.ai/) is a model gateway that lets you route Claude Code through a single API key with pay-per-token billing. It's already configured as an authentication option in DAAF's `env.example` template (Option C). Through OpenRouter, you can access Anthropic's Claude models without a Max subscription -- and OpenRouter technically allows routing to non-Anthropic models as well. See [**01. Installation & Quick Start -- Configure authentication via .env**](01_installation_and_quickstart.md#optional-configure-authentication-via-env) for setup instructions (remember to run `/logout` first if you previously authenticated with Anthropic directly).
+**Using different models through OpenRouter (supported):** [OpenRouter](https://openrouter.ai/) is a model gateway that lets you route Claude Code through a single API key with pay-per-token billing. It's already configured as an authentication option in DAAF's `env.example` template (Option C). Through OpenRouter, you can access Anthropic's Claude models without a Max subscription -- and OpenRouter technically allows routing to non-Anthropic models as well. See [**01. Installation & Quick Start -- Configure authentication via .env**](01_installation_and_quickstart.md#configure-authentication-via-env) for setup instructions (remember to run `/logout` first if you previously authenticated with Anthropic directly).
 
 **The practical reality for non-Anthropic models:** Claude Code is optimized for Anthropic models, and DAAF's complex multi-agent workflow (detailed protocols, nuanced judgment calls, multi-step tool chains) requires Opus-class reasoning to function reliably. OpenRouter's own documentation notes that Claude Code "is optimized for Anthropic models and may not work correctly with other providers." Some non-Claude models (e.g., GPT-4o) can handle basic operations, but they struggle with the tool-calling patterns and edit formatting that DAAF depends on heavily. Extended thinking -- which DAAF uses extensively -- works through OpenRouter when using Anthropic models, but does not work with non-Anthropic models at all. **Bottom line:** Use Anthropic's Opus models through OpenRouter for reliable DAAF results. Non-Anthropic models may technically load but will produce erratic, inconsistent output for DAAF's workflows.
 
@@ -117,7 +117,7 @@ Your data does pass through Anthropic's API when Claude Code processes it -- tha
 
 Not in a practical sense for full-pipeline analyses, unfortunately. The free and Pro tiers of Claude simply don't provide enough usage for the volume of work DAAF demands. You might be able to do some lightweight Data Discovery Mode queries (asking what data is available, looking up variable definitions), but a full analysis pipeline will exhaust a lower-tier plan very quickly.
 
-**More flexible billing via OpenRouter:** While not free, [OpenRouter](https://openrouter.ai/) offers pay-per-token access to Claude's Opus models with no monthly subscription commitment. You only pay for what you use (with a 5.5% fee on credit purchases), which can be more accessible than a $100-200/mo Max subscription if you're doing occasional analyses rather than heavy daily use. See the [Installation Guide](01_installation_and_quickstart.md#optional-configure-authentication-via-env) for setup instructions.
+**More flexible billing via OpenRouter:** While not free, [OpenRouter](https://openrouter.ai/) offers pay-per-token access to Claude's Opus models with no monthly subscription commitment. You only pay for what you use (with a 5.5% fee on credit purchases), which can be more accessible than a $100-200/mo Max subscription if you're doing occasional analyses rather than heavy daily use. See the [Installation Guide](01_installation_and_quickstart.md#configure-authentication-via-env) for setup instructions.
 
 This is genuinely the biggest barrier to entry for DAAF, and I wish it were different. I hope that as model costs continue to decrease and open-source models become more capable, a more accessible option will emerge. If you have the capacity to test DAAF with open-source models or alternative providers, please reach out -- that's high on the list of things I'd love community help with.
 
@@ -380,7 +380,7 @@ Election data (county presidential returns) is hosted on Harvard Dataverse, whic
 
 Alternatively, you can set it manually inside the container before launching Claude Code: `export HARVARD_DATAVERSE_API_KEY="your_token_here"`
 
-See also: [Installation Guide — Data Source API Keys](01_installation_and_quickstart.md#optional-set-up-data-source-api-keys)
+See also: [Installation Guide — Data Source API Keys](01_installation_and_quickstart.md#set-up-data-source-api-keys)
 
 ### Q: I created a .env file but I can't see it in my file explorer
 
@@ -453,7 +453,9 @@ When more than 50% of your data is suppressed, any statistical analysis on the r
 
 ### Q: The notebook won't render in my browser
 
-If you've run the `marimo run` command but can't see anything at `http://localhost:2718`, check these things in order:
+The easiest way to view notebooks is with the convenience script — run `bash view_notebooks.sh` (or `.\view_notebooks.ps1` on Windows) from your `daaf-docker` folder. This handles container startup, port binding, and flag configuration automatically, and includes built-in port conflict detection.
+
+If you're using the manual `marimo run` command and can't see anything at `http://localhost:2718`, check these things in order:
 
 1. **Is the container running?** Check Docker Desktop's Containers panel. The `daaf` container should show as running.
 
@@ -464,7 +466,7 @@ If you've run the `marimo run` command but can't see anything at `http://localho
 
 3. **Is the port mapped correctly?** Check your `docker-compose.yml` -- the line `"2718:2718"` under `ports:` maps the container's port to your host machine. If you changed this, use the host-side port in your browser.
 
-4. **Is something else using port 2718?** See the port conflict question above.
+4. **Is something else using port 2718?** See the port conflict question above. (The `view_notebooks` convenience script detects this automatically.)
 
 5. **Try a different browser or incognito/private window.** Occasionally, browser extensions or cached state can interfere.
 

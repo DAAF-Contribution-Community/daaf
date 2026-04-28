@@ -167,6 +167,7 @@ try {
     Invoke-WebRequest -UseBasicParsing -Uri "$RawBase/scripts/host/rebuild_daaf.ps1"         -OutFile "$InstallDir\rebuild_daaf.ps1"
     Invoke-WebRequest -UseBasicParsing -Uri "$RawBase/scripts/host/update_daaf.ps1"          -OutFile "$InstallDir\update_daaf.ps1"
     Invoke-WebRequest -UseBasicParsing -Uri "$RawBase/scripts/host/view_logs.ps1"            -OutFile "$InstallDir\view_logs.ps1"
+    Invoke-WebRequest -UseBasicParsing -Uri "$RawBase/scripts/host/view_notebooks.ps1"      -OutFile "$InstallDir\view_notebooks.ps1"
     Invoke-WebRequest -UseBasicParsing -Uri "$RawBase/scripts/host/env.example"              -OutFile "$InstallDir\env.example"
 } catch {
     Write-Host ""
@@ -308,6 +309,7 @@ Write-Host "  .\backup_daaf.ps1             Back up the Docker volume to a dated
 Write-Host "  .\update_daaf.ps1              Check for and apply DAAF updates"
 Write-Host "  .\rebuild_daaf.ps1            Copy build files from container and rebuild image"
 Write-Host "  .\view_logs.ps1               Browse session logs in your browser"
+Write-Host "  .\view_notebooks.ps1          Browse and edit marimo notebooks in your browser"
 Write-Host ""
 Write-Host "To set up data source API keys (optional):"
 Write-Host "  Copy-Item env.example .env     Copy the template"
