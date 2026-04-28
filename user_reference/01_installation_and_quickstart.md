@@ -370,6 +370,7 @@ Your research files in `research/` are not tracked by git (they're local to your
 
 **If the Dockerfile changed** (new packages, updated Claude Code version, etc.), you'll also need to rebuild the Docker image. The update script will detect this automatically and print instructions. 
 
+```bash
 # From your host terminal, navigate to your daaf-docker folder and rebuild
 cd daaf-docker
 bash rebuild_daaf.sh         # macOS / Linux

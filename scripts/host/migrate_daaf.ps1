@@ -1110,12 +1110,14 @@ if (-not $NonInteractive) {
     $UpdateChoice = "n"
 }
 
+$UpdateRan = $false
 if ($UpdateChoice -eq "y") {
     Write-Host ""
     $OriginalDirUpdate = (Get-Location).Path
     Set-Location $HostDir
     $env:DAAF_NESTED = "1"
     & .\update_daaf.ps1
+    if ($LASTEXITCODE -eq 0) { $UpdateRan = $true }
     Remove-Item Env:\DAAF_NESTED -ErrorAction SilentlyContinue
     Set-Location $OriginalDirUpdate
 }
@@ -1144,7 +1146,12 @@ if ($DetectedEra -eq "1") {
     Write-Host "  - Set upstream tracking (main -> origin/main)"
 }
 Write-Host ""
-if ($UpdateChoice -eq "n" -and (-not $NonInteractive)) {
+if ($UpdateChoice -eq "y" -and $UpdateRan) {
+    Write-Host "Going forward, you can update DAAF with:"
+} elseif ($UpdateChoice -eq "y" -and (-not $UpdateRan)) {
+    Write-Host "The update step encountered an issue (see above). Once resolved,"
+    Write-Host "you can update DAAF with:"
+} elseif ($UpdateChoice -eq "n" -and (-not $NonInteractive)) {
     # User chose not to update
     Write-Host "To pull the latest updates when you're ready:"
 } elseif ($NonInteractive) {

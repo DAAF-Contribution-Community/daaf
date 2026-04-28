@@ -687,19 +687,34 @@ if [ -z "${CURRENT_BRANCH}" ]; then
     echo ""
     echo "Your DAAF installation is not on a named branch right now."
     echo ""
-    echo "This can happen after a previous update was interrupted or after"
-    echo "running a manual git command inside the container. It's not a"
-    echo "problem, but the updater needs you on a branch to proceed."
+    echo "This can happen after installing from a specific version tag, after"
+    echo "a previous update was interrupted, or after running a manual git"
+    echo "command inside the container. Not a problem — I'll handle it."
     echo ""
-    echo "To fix this:"
-    echo "  bash run_daaf.sh bash"
-    echo "  git checkout ${REMOTE_BRANCH}"
-    echo "  exit"
-    echo ""
-    echo "Then re-run:  bash update_daaf.sh"
-    echo ""
-    echo "No changes were made. Your research files are not affected."
-    exit 0
+
+    # Create a branch at the current HEAD to preserve any local commits.
+    # Without this, checking out another branch would orphan those commits.
+    PRESERVED_BRANCH="local-work-$(date +%Y%m%d-%H%M%S)"
+    echo "Creating branch '${PRESERVED_BRANCH}' to preserve your current work..."
+    if docker compose exec -T daaf-docker \
+        git -C /daaf checkout -b "${PRESERVED_BRANCH}" </dev/null 2>/dev/null; then
+        CURRENT_BRANCH="${PRESERVED_BRANCH}"
+        echo "Done. Your commits are safe on branch '${PRESERVED_BRANCH}'."
+        echo ""
+    else
+        echo ""
+        echo "Could not create a branch from the current state."
+        echo ""
+        echo "To fix this manually:"
+        echo "  bash run_daaf.sh bash"
+        echo "  git checkout -b my-work"
+        echo "  exit"
+        echo ""
+        echo "Then re-run:  bash update_daaf.sh"
+        echo ""
+        echo "No changes were made. Your research files are not affected."
+        exit 1
+    fi
 fi
 
 # =====================================================================

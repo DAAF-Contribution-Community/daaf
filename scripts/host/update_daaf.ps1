@@ -792,19 +792,34 @@ if ([string]::IsNullOrWhiteSpace($CurrentBranch)) {
     Write-Host ""
     Write-Host "Your DAAF installation is not on a named branch right now."
     Write-Host ""
-    Write-Host "This can happen after a previous update was interrupted or after"
-    Write-Host "running a manual git command inside the container. It's not a"
-    Write-Host "problem, but the updater needs you on a branch to proceed."
+    Write-Host "This can happen after installing from a specific version tag, after"
+    Write-Host "a previous update was interrupted, or after running a manual git"
+    Write-Host "command inside the container. Not a problem - I'll handle it."
     Write-Host ""
-    Write-Host "To fix this:"
-    Write-Host "  .\run_daaf.ps1 bash"
-    Write-Host "  git checkout $RemoteBranch"
-    Write-Host "  exit"
-    Write-Host ""
-    Write-Host "Then re-run:  .\update_daaf.ps1"
-    Write-Host ""
-    Write-Host "No changes were made. Your research files are not affected."
-    Wait-AndExit 0
+
+    # Create a branch at the current HEAD to preserve any local commits.
+    # Without this, checking out another branch would orphan those commits.
+    $PreservedBranch = "local-work-$(Get-Date -Format 'yyyyMMdd-HHmmss')"
+    Write-Host "Creating branch '$PreservedBranch' to preserve your current work..."
+    Invoke-ComposeGitNull checkout -b $PreservedBranch
+    if ($LASTEXITCODE -eq 0) {
+        $CurrentBranch = $PreservedBranch
+        Write-Host "Done. Your commits are safe on branch '$PreservedBranch'."
+        Write-Host ""
+    } else {
+        Write-Host ""
+        Write-Host "Could not create a branch from the current state."
+        Write-Host ""
+        Write-Host "To fix this manually:"
+        Write-Host "  .\run_daaf.ps1 bash"
+        Write-Host "  git checkout -b my-work"
+        Write-Host "  exit"
+        Write-Host ""
+        Write-Host "Then re-run:  .\update_daaf.ps1"
+        Write-Host ""
+        Write-Host "No changes were made. Your research files are not affected."
+        Wait-AndExit 1
+    }
 }
 
 # =====================================================================

@@ -934,11 +934,16 @@ else
     CHOICE="n"
 fi
 
+UPDATE_RAN=false
 if [ "${CHOICE}" = "y" ]; then
     echo ""
     ORIGINAL_DIR_UPDATE="$(pwd)"
     cd "${HOST_DIR}"
-    DAAF_NESTED=1 bash update_daaf.sh
+    if DAAF_NESTED=1 bash update_daaf.sh; then
+        UPDATE_RAN=true
+    else
+        UPDATE_RAN=false
+    fi
     cd "${ORIGINAL_DIR_UPDATE}"
 fi
 
@@ -966,7 +971,12 @@ else
     echo "  - Set upstream tracking (main -> origin/main)"
 fi
 echo ""
-if [ "${CHOICE}" = "n" ] && [ "${IS_INTERACTIVE}" = "true" ]; then
+if [ "${CHOICE}" = "y" ] && [ "${UPDATE_RAN}" = true ]; then
+    echo "Going forward, you can update DAAF with:"
+elif [ "${CHOICE}" = "y" ] && [ "${UPDATE_RAN}" = false ]; then
+    echo "The update step encountered an issue (see above). Once resolved,"
+    echo "you can update DAAF with:"
+elif [ "${CHOICE}" = "n" ] && [ "${IS_INTERACTIVE}" = "true" ]; then
     # User chose not to update
     echo "To pull the latest updates when you're ready:"
 elif [ "${IS_INTERACTIVE}" != "true" ]; then
