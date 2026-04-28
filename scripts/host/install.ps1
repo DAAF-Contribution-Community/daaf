@@ -179,7 +179,8 @@ try {
 
 # --- Build the Docker image ---
 Write-Host "[3/4] Building Docker image (this may take a few minutes on first run since there are a lot of Python libraries to install)..."
-$env:COMPOSE_PROJECT_NAME = "daaf"
+# Project name is set declaratively via the top-level "name: daaf" key in
+# docker-compose.yml — no need to set COMPOSE_PROJECT_NAME here.
 # Build and start are split into two commands so that --progress plain can be
 # applied to the build step (where it is universally supported) without relying
 # on `docker compose up --progress`, which is rejected as "unknown flag" on

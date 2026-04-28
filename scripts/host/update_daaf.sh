@@ -276,14 +276,15 @@ sync_host_scripts() {
     fi
 
     local changed_scripts
+    # Only sync platform-appropriate scripts (.sh on Unix) and shared files.
+    # Excludes install.sh (not needed post-install) and all .ps1 files.
     changed_scripts=$(docker compose exec -T daaf-docker \
         git -C /daaf diff --name-only "${old_head}..${new_head}" -- \
-        scripts/host/run_daaf.sh scripts/host/run_daaf.ps1 \
-        scripts/host/backup_daaf.sh scripts/host/backup_daaf.ps1 \
-        scripts/host/rebuild_daaf.sh scripts/host/rebuild_daaf.ps1 \
-        scripts/host/update_daaf.sh scripts/host/update_daaf.ps1 \
-        scripts/host/view_logs.sh scripts/host/view_logs.ps1 \
-        scripts/host/install.sh scripts/host/install.ps1 \
+        scripts/host/run_daaf.sh \
+        scripts/host/backup_daaf.sh \
+        scripts/host/rebuild_daaf.sh \
+        scripts/host/update_daaf.sh \
+        scripts/host/view_logs.sh \
         scripts/host/env.example \
         </dev/null 2>/dev/null | tr -d '\r' || true)
 

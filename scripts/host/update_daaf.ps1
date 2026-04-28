@@ -369,13 +369,14 @@ function Sync-HostScript {
 
     if ($OldHead -eq $newHead) { return }
 
+    # Only sync platform-appropriate scripts (.ps1 on Windows) and shared files.
+    # Excludes install.ps1 (not needed post-install) and all .sh files.
     $changedScripts = Invoke-ComposeGit diff --name-only "$OldHead..$newHead" -- `
-        scripts/host/run_daaf.sh scripts/host/run_daaf.ps1 `
-        scripts/host/backup_daaf.sh scripts/host/backup_daaf.ps1 `
-        scripts/host/rebuild_daaf.sh scripts/host/rebuild_daaf.ps1 `
-        scripts/host/update_daaf.sh scripts/host/update_daaf.ps1 `
-        scripts/host/view_logs.sh scripts/host/view_logs.ps1 `
-        scripts/host/install.sh scripts/host/install.ps1 `
+        scripts/host/run_daaf.ps1 `
+        scripts/host/backup_daaf.ps1 `
+        scripts/host/rebuild_daaf.ps1 `
+        scripts/host/update_daaf.ps1 `
+        scripts/host/view_logs.ps1 `
         scripts/host/env.example
 
     if ([string]::IsNullOrWhiteSpace($changedScripts)) { return }
