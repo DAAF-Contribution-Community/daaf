@@ -324,10 +324,14 @@ function Resolve-Conflict {
         Write-Host "The updater still needs to finish a few steps after this."
         Write-Host ""
         $savedEAP = $ErrorActionPreference
-        # Use bare 'docker compose exec' (no -it flags) to let Docker auto-detect
-        # TTY -- explicit -it breaks Claude Code's isatty() check on Windows,
-        # causing it to enter --print mode with a 3s stdin timeout.
-        try { $ErrorActionPreference = "SilentlyContinue"; docker compose exec daaf-docker claude } finally { $ErrorActionPreference = $savedEAP }
+        # Do NOT wrap this in try { } -- PowerShell redirects stdin through
+        # a pipe inside try blocks, breaking Docker's TTY detection and
+        # causing Claude Code to enter --print mode (3s stdin timeout).
+        # EAP is lowered inline to prevent stderr from Docker triggering a
+        # terminating error under the script's global EAP = Stop.
+        $ErrorActionPreference = "SilentlyContinue"
+        docker compose exec -it daaf-docker claude
+        $ErrorActionPreference = $savedEAP
         Write-Host ""
 
         $remaining = Invoke-ComposeGit diff --name-only --diff-filter=U
@@ -1333,8 +1337,10 @@ if ($DirtyFiles) {
             Write-Host "The updater still needs to finish a few steps after this."
             Write-Host ""
             $savedEAP = $ErrorActionPreference
-            # See Handle-Conflict for rationale on omitting -it flags
-            try { $ErrorActionPreference = "SilentlyContinue"; docker compose exec daaf-docker claude } finally { $ErrorActionPreference = $savedEAP }
+            # See Resolve-Conflict for rationale on avoiding try { } here
+            $ErrorActionPreference = "SilentlyContinue"
+            docker compose exec -it daaf-docker claude
+            $ErrorActionPreference = $savedEAP
             Write-Host ""
 
             $remaining = Invoke-ComposeGit diff --name-only --diff-filter=U
