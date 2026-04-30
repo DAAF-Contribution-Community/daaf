@@ -324,7 +324,10 @@ function Resolve-Conflict {
         Write-Host "The updater still needs to finish a few steps after this."
         Write-Host ""
         $savedEAP = $ErrorActionPreference
-        try { $ErrorActionPreference = "SilentlyContinue"; docker compose exec -it daaf-docker claude } finally { $ErrorActionPreference = $savedEAP }
+        # Use bare 'docker compose exec' (no -it flags) to let Docker auto-detect
+        # TTY -- explicit -it breaks Claude Code's isatty() check on Windows,
+        # causing it to enter --print mode with a 3s stdin timeout.
+        try { $ErrorActionPreference = "SilentlyContinue"; docker compose exec daaf-docker claude } finally { $ErrorActionPreference = $savedEAP }
         Write-Host ""
 
         $remaining = Invoke-ComposeGit diff --name-only --diff-filter=U
@@ -1330,7 +1333,8 @@ if ($DirtyFiles) {
             Write-Host "The updater still needs to finish a few steps after this."
             Write-Host ""
             $savedEAP = $ErrorActionPreference
-            try { $ErrorActionPreference = "SilentlyContinue"; docker compose exec -it daaf-docker claude } finally { $ErrorActionPreference = $savedEAP }
+            # See Handle-Conflict for rationale on omitting -it flags
+            try { $ErrorActionPreference = "SilentlyContinue"; docker compose exec daaf-docker claude } finally { $ErrorActionPreference = $savedEAP }
             Write-Host ""
 
             $remaining = Invoke-ComposeGit diff --name-only --diff-filter=U
