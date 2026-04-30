@@ -255,6 +255,7 @@ Even for simple lookups, always confirm — the user may want broader context th
 | Full Pipeline (complete) | Framework Development | User identifies framework improvements based on analysis experience; System Update Action Plan in LEARNINGS.md has actionable items — proactively suggest "incorporate learnings" |
 | Data Onboarding (complete) | Framework Development | System Update Action Plan in LEARNINGS.md has actionable items (e.g., skill template gaps discovered during profiling) |
 | User Support | Any mode | User's questions reveal they want to *do* something, not just learn — route to appropriate mode |
+| User Support (update conflicts) | Framework Development | Conflict resolution reveals customizations needing architectural re-integration beyond merge fixes — finish git operation first, then new session |
 | Any mode | User Support | Persistent confusion signals despite reactive help; user explicitly asks for general DAAF guidance |
 
 When escalation is appropriate, propose it explicitly:

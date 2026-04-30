@@ -705,4 +705,13 @@ When the user signals the session is ending, or after Checkpoint 2 approval with
 | User wants to review or revise an analysis that used the framework | Revision and Extension | "That's a revision of existing analysis work. Want me to switch to Revision and Extension mode?" |
 | Framework change requires testing with a specific data source | Data Discovery | "Let me explore what's available for that data source first." |
 
+**Inbound from User Support (update conflicts):** When User Support's update
+conflict resolution walkthrough reveals that a user's customizations need
+architectural re-integration (not just merge fixes), the user is directed to
+start a new Framework Development session after the update completes. In this
+scenario, Phase 1 scoping should pay special attention to what changed upstream
+and how the user's custom components (agents, skills, modes) need to be rewired
+to the updated framework. The "Modify Existing" work type is the typical
+classification, though "Multi-Component" may apply for extensive customizations.
+
 All escalations require explicit user confirmation.

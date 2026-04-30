@@ -183,6 +183,9 @@ confirmed by choosing option 1 in the update script.
   proposed resolutions file-by-file and wait for confirmation for each individual case before making changes.
 - After the user approves a given resolution, edit the file to remove all conflict
   markers (`<<<<<<<`, `=======`, `>>>>>>>`) and run `git add <file>`
+- **Watch for escalation signals** — see "Escalation to Framework Development"
+  below. If you detect them, flag the situation before continuing with
+  mechanical resolution.
 
 **4. Complete the git operation** — after all files are resolved, run the
 completion command from the table above based on the conflict type. Verify with
@@ -197,6 +200,46 @@ steps are skipped. Tell the user:
 
 > "Great, all conflicts are resolved and committed. Type `/exit` now to return to the
 > update script so it can finish up."
+
+### Escalation to Framework Development
+
+Sometimes update conflicts are symptoms of a deeper integration problem. Resolving
+the conflict markers gets the git state clean, but the user's customization may
+not actually *work* with the updated framework. Watch for these signals during
+step 3:
+
+**Escalation signals:**
+
+| Signal | What It Suggests |
+|--------|-----------------|
+| Conflicts in an agent, mode, or skill file where the upstream side restructured sections, renamed fields, or changed the template format | The customization needs architectural re-integration, not just a merge fix |
+| User's custom component references registration points (tables, escalation paths, loading trees) that moved or changed structure upstream | Cross-file wiring is broken — resolving one file won't fix the integration |
+| Multiple interconnected files conflict (e.g., a custom mode's reference file + its entries in the orchestrator skill + BOUNDARIES.md) | The customization is a multi-component modification that needs systematic re-integration |
+| After resolving conflict markers, the merged result contains contradictions (e.g., a section references a field that no longer exists, or a table row doesn't match the new column structure) | Mechanical merge produced a syntactically clean but semantically broken artifact |
+| User asks "how do I make my customization work with this new version?" or "will my changes still work?" | The user recognizes the problem goes beyond conflict markers |
+
+**When signals are detected:**
+
+1. **Finish the git operation first.** The update script is waiting, so the
+   working tree must reach a clean state. Resolve conflict markers to the best
+   reasonable approximation (favor upstream for structural changes, preserve the
+   user's *intent* in comments if needed). Complete the merge/rebase/stash-drop.
+2. **Tell the user what you observed.** Be specific about which files have
+   deeper integration issues and why mechanical resolution isn't sufficient.
+3. **Propose the escalation:**
+
+> "The conflicts are resolved and your git state is clean, so you're safe to
+> `/exit` and let the update script finish. But I noticed that your
+> [customization description] may need more than a merge fix to work with the
+> updated framework — [brief explanation of what changed upstream]. After the
+> update finishes, you can start a new session and ask me to help with that in
+> Framework Development mode. I'd scope what changed, check how your
+> customization connects, and re-integrate it properly."
+
+4. **Do not attempt Framework Development work in this session.** The update
+   script is still running on the host and waiting for `/exit`. Framework
+   Development requires a normal session with full scoping and checkpoints.
+   The user should `/exit` to complete the update, then start a new session.
 
 ---
 
@@ -277,5 +320,6 @@ User Support is a natural entry point that routes to other modes once the user u
 | User wants to modify an existing analysis | Revision and Extension | "That's a revision of existing work. Want me to switch to Revision and Extension mode?" |
 | User wants to verify an analysis reproduces | Reproducibility Verification | "I can re-run that analysis to check. Want me to switch to Reproducibility Verification mode?" |
 | User wants to modify DAAF itself | Framework Development | "That's framework development work. Want me to switch to Framework Development mode?" |
+| Update conflict resolution reveals customizations that need architectural re-integration beyond merge fixes | Framework Development | Follow the "Escalation to Framework Development" procedure above. User-facing message: "The conflicts are resolved, but your [customization] may need deeper re-integration with the updated framework. After you `/exit` and the update finishes, start a new session and ask me to help in Framework Development mode." |
 
 **Routing, not gatekeeping:** The goal of User Support is to help users understand DAAF well enough to use it confidently. When a user's questions naturally evolve into wanting to *do* something, facilitate the transition warmly. Never make the user feel like they need to "graduate" from User Support before they can use other modes.
