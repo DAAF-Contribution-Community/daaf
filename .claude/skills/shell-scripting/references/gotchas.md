@@ -265,6 +265,42 @@ $out = docker run --rm busybox sh -c "stat -c %s file | awk '{s+=`$1} END {print
 
 ---
 
+### Expression Context Breaks Interactive Native Commands (TTY Loss)
+
+**The problem:** When a function containing an interactive native command (like `docker compose exec`) is called inside a PowerShell expression -- `if (-not (FunctionCall))`, `$result = FunctionCall`, `FunctionCall | ...` -- PowerShell captures the function's stdout through an internal pipe. Native commands that check both stdin AND stdout for TTY (e.g., Docker, ssh, interactive CLIs) see stdout as a pipe and refuse to allocate a TTY. The interactive program silently enters non-interactive/pipe mode:
+
+```powershell
+# BAD: expression context captures stdout through a pipe -- Docker sees non-TTY stdout
+function Resolve-Conflict {
+    docker compose exec daaf-docker claude   # Claude Code enters --print mode (3s timeout)
+    return $true
+}
+if (-not (Resolve-Conflict)) { ... }     # Expression context!
+$result = Resolve-Conflict                # Also expression context!
+
+# GOOD: call as a statement -- stdout flows to the console
+function Resolve-Conflict {
+    docker compose exec daaf-docker claude   # Claude Code starts interactively
+    $script:ConflictResolved = $true
+}
+Resolve-Conflict                             # Statement -- no pipe
+if (-not $script:ConflictResolved) { ... }   # Check variable separately
+```
+
+**Why it happens:** Docker's Go-based TTY detection (`golang.org/x/term.IsTerminal`) calls `GetConsoleMode` on BOTH stdin and stdout file handles. In expression context, PowerShell replaces stdout with a pipe to capture the function's output for evaluation. `GetConsoleMode` fails on the pipe handle, so Docker concludes the environment is non-interactive and skips PTY allocation. The containerized process then sees `isatty(0)` = false on its stdin.
+
+**What makes this insidious:**
+- The same function works perfectly when called as a statement (`FunctionCall` on its own line)
+- The same Docker command works at the PowerShell prompt and in simple scripts
+- No error message points to stdout piping -- the native command just silently enters non-interactive mode
+- `cmd /c`, `try/catch` removal, and `$ErrorActionPreference` changes do NOT fix it because the pipe is set up by the expression evaluation, not by any wrapping construct
+
+**This does NOT affect Bash.** In bash, `if ! function_call` evaluates the function's exit code without creating a subshell or capturing stdout. Stdout flows directly to the terminal.
+
+**Severity:** High. The failure is silent and difficult to diagnose. The function appears to run correctly (Docker starts, the program launches), but the interactive program immediately detects non-interactive I/O and falls back to a degraded mode or exits.
+
+---
+
 ### Implicit Return Values
 
 **The problem:** Every expression in a function that produces output becomes part of the return value:
@@ -457,6 +493,7 @@ In Bash, `/` is always the separator. No cross-platform concern within Bash itse
 | `cd` without `\|\| exit` | Bash | Medium | SC2164 |
 | Backtick nesting | Bash | Low | SC2006 |
 | `$?` for native commands | PowerShell | High | — |
+| Expression context breaks TTY | PowerShell | High | — |
 | `$ErrorActionPreference` scope | PowerShell | High | — |
 | Embedded `"` in native args | PowerShell | High | — |
 | Implicit return values | PowerShell | High | — |

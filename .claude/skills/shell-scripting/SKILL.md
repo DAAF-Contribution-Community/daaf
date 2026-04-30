@@ -152,6 +152,7 @@ Existing patterns in DAAF scripts that this skill codifies:
 | 7 | PSScriptAnalyzer clean | `Invoke-ScriptAnalyzer` |
 | 8 | Errors via `Write-Error` with guidance | Error output |
 | 9 | ASCII-only content (no BOM) | `file script.ps1` reports "ASCII text" |
+| 10 | No interactive native commands in expression-context function calls | No `if (Fn)`, `$x = Fn` for functions with `docker exec`, `ssh`, etc. |
 
 ## Exit Code Conventions
 

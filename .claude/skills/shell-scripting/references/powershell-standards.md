@@ -330,3 +330,4 @@ Write-Host "Done." -ForegroundColor Green
 | 12 | Full cmdlet names (no aliases like `ls`, `cat`) | PSScriptAnalyzer rule |
 | 13 | Progress steps use `[N/M]` format | Visual scan |
 | 14 | ASCII-only content (no em-dashes, curly quotes, no BOM) | `file script.ps1` should report "ASCII text" |
+| 15 | Functions with interactive native commands never called in expression context | No `if (Fn)`, `$x = Fn`, or `Fn \|` for functions containing `docker exec`, `ssh`, etc. -- use script-scoped variables for return values (see gotchas.md) |
