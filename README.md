@@ -33,9 +33,7 @@ Install and begin using it in as little as 10 minutes from a fresh install with 
 Watch the 4 minute v2.0.0 Showcase video below, or read on for more information!
   <p align="center">                                                                                                  
     <a href="https://youtu.be/747r7VT4a78">
-      <img width="607" height="339" alt="image" src="https://github.com/user-attachments/assets/ba265c65-ba25-4a98-9789-d4a1d5af6815" alt="Watch the DAAF v2.0.0 Showcase />
-      <img src="https://img.youtube.com/vi/747r7VT4a78/maxresdefault.jpg" "        
-  width="720" />                                                                                                      
+      <img width="720" alt="Watch the DAAF v2.0.0 Showcase" src="https://img.youtube.com/vi/747r7VT4a78/maxresdefault.jpg" />                                                                                                      
     </a>                                                                                                              
   </p>    
 
@@ -54,7 +52,7 @@ Watch the 4 minute v2.0.0 Showcase video below, or read on for more information!
 
 If you're already comfortable with the Terminal and Claude Code, you can get started almost immediately using the Quick Start instructions below. Otherwise, I recommend starting with the full [Installation Guide](user_reference/01_installation_and_quickstart.md) for beginner-friendly details, prerequisites, and troubleshooting.
 
-**Requirements:** [Docker Desktop](https://www.docker.com/products/docker-desktop/) (running) and an [Anthropic Max subscription](https://claude.com/pricing/max) ($100-200/mo) or [API key](https://console.anthropic.com/). Open a terminal in your desired installation directory.
+**Requirements:** [Docker Desktop](https://www.docker.com/products/docker-desktop/) (running) and an [Anthropic Max subscription](https://claude.com/pricing/max) ($100-200/mo), [API key](https://console.anthropic.com/), or [OpenRouter](https://openrouter.ai/) account (pay-per-token, no subscription). Open a terminal in your desired installation directory.
 
 **macOS / Linux (Terminal):**
 
@@ -78,7 +76,7 @@ cd daaf-docker
 .\run_daaf.ps1
 ```
 
-On first launch, Claude Code will prompt you to authenticate. Set your model to **Opus 4.6** via `/model`, and set **Auto-compact** to **False** and **Verbose output** to **True** via `/config`. You're ready to go; see [Understanding DAAF](user_reference/02_understanding_daaf.md) for some suggestions on how to get started with progressively more complex tasks with DAAF!
+On first launch, Claude Code will prompt you to authenticate. Set your model to **Opus 4.6** (or Opus 4.5) via `/model`, set the thinking level to **High** using the arrow keys while the model is selected, and set **Auto-compact** to **False** and **Verbose output** to **True** via `/config`. You're ready to go; see [Understanding DAAF](user_reference/02_understanding_daaf.md) for some suggestions on how to get started with progressively more complex tasks with DAAF!
 
 ---
 
@@ -169,7 +167,7 @@ polars &bull; pyfixest &bull; linearmodels &bull; statsmodels &bull; scikit-lear
 Need a package that isn't listed? You can add your own by editing the Dockerfile and rebuilding -- see [Customizing Your Python Environment](user_reference/04_extending_daaf.md#customizing-your-python-environment) for instructions.
 
 **Additional features:**
-Interactive dashboards (Plotly) &bull; Reactive analytic notebooks (marimo) &bull; R/tidyverse-Python code translation &bull; Stata-Python code translation &bull; Citation propagation & verification &bull; GUIDE-LLM AI use disclosure &bull; Git version control &bull; Session transcript archiving &bull; Interactive session log viewer &bull; Docker-based safety sandboxing &bull; Destructive command prevention &bull; Secret/credential scanning &bull; File-first execution enforcement &bull; Science communication
+Interactive dashboards (Plotly) &bull; Reactive analytic notebooks (marimo) &bull; R/tidyverse-Python code translation &bull; Stata-Python code translation &bull; Citation propagation & verification &bull; GUIDE-LLM AI use disclosure &bull; Git version control &bull; Session transcript archiving &bull; DAAF Log Explorer &bull; Docker-based safety sandboxing &bull; Destructive command prevention &bull; Secret/credential scanning &bull; File-first execution enforcement &bull; Science communication
 
 ---
 
@@ -215,7 +213,7 @@ See [**Contributing to DAAF**](CONTRIBUTING.md) for the full contribution guide 
 - [**02. Understanding and Working with DAAF**](user_reference/02_understanding_daaf.md) — Learn to work with DAAF for the first time: what to expect, how to use it, and how to test its strengths and limitations
 - [**03. Best Practices**](user_reference/03_best_practices.md) — Tips for working with Claude Code, writing effective prompts, ensuring quality and rigor with DAAF, reviewing outputs, and managing context
 - [**04. Extending DAAF**](user_reference/04_extending_daaf.md) — How to add new data source skills, analytical tools and methodologies, creating your own additional specialized agents, and customizing the Python environment
-- [**05. Contributing to DAAF**](CONTRIBUTING.md) — Get involved in developing DAAF! How to file issues via GitHub, support expanding the capabilities of the framework, contribute to educational tutorials and how-to's, and more!
+- [**05. Contributing to DAAF**](CONTRIBUTING.md) — Get involved in developing DAAF! How to file issues, contribute new skills and data sources, improve documentation and protocols, test your changes, and more!
 - [**06. FAQ: Philosophy**](user_reference/06_faq_philosophy.md) — **(Recommended Next Step)** Grapples with the broader implications of this work, AI automation in general, model advancement pace, approaching the "exponential", environmental ethics, what this means for the next generation of researchers, and more
 - [**07. FAQ: Technical Support**](user_reference/07_faq_technical.md) — Covers frequently asked questions about Docker, issues with Claude Code, usage limits, authentication errors, and other common errors
 

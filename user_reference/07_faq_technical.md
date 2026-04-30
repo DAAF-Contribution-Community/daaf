@@ -22,15 +22,7 @@ Operational questions with concrete answers. If you're stuck, troubleshooting, o
 
 ### Q: Can I run DAAF without Docker?
 
-Technically yes, but I really don't recommend it, and it's not something I will support. Part of my installation process is, explicitly, me paternalistically enforcing some best practices and guardrails for the many people using DAAF likely to be new to AI assistants.
-
-Docker does three important things for DAAF beyond just convenience:
-
-1. **Isolation and safety.** The container runs as a non-root user with all Linux capabilities dropped (`cap_drop: ALL`) and privilege escalation explicitly blocked (`no-new-privileges`). This means even if Claude Code tried to do something destructive, the operating system itself would prevent it. Running natively on your machine without these protections in place means Claude Code has whatever permissions *you* have -- which is probably a lot more than you'd want an AI assistant to have when they suffer from context rot and act extremely erratically.
-
-2. **Reproducibility.** The Dockerfile pins every dependency -- Python 3.12, specific versions of Polars, plotnine, statsmodels, and everything else. When I say "this works," I mean it works with *that* exact stack. It also abstracts away issues with OS management (e.g., Windows versus Linux), and other extremely annoying variables that can affect how well or predictably software runs. Running natively means you're on your own for dependency management, and a surprising number of things can go wrong when library versions don't match. Python management has historically been a nightmare, and I am thoroughly shocked at how much Docker smooths over, which is time worth its weight in gold in my view.
-
-3. **Clean slate recovery.** If something goes badly wrong inside the container, you can blow it away and rebuild from scratch in minutes with basically zero consequences to your actual machine. That's a really nice safety net when you're letting an AI write and execute code.
+Technically yes, but I really don't recommend it, and it's not something I will support. Docker provides security isolation (non-root, dropped capabilities), full reproducibility (pinned dependencies), and clean-slate recovery -- all critical when an AI agent is writing and executing code on your behalf. For the full rationale, see [**01. Installation -- Prerequisites: Docker Desktop**](01_installation_and_quickstart.md#3-docker-desktop).
 
 If you want to go this route: be my guest, but you'll need to figure it out on your own. I would firmly posit that anyone who's ready and qualified to do this independently **already** knows how to do it without my help.
 
@@ -38,13 +30,7 @@ If you want to go this route: be my guest, but you'll need to figure it out on y
 
 ### Q: Should I use an API key or a Max subscription?
 
-I strongly recommend the **Max subscription** ($100/mo or $200/mo depending on tier). Here's why:
-
-DAAF is extremely usage-intensive by design. It's doing a *lot* of work: deep-diving into data documentation, writing code, having another instance of Claude review that code line by line, writing plans, writing reports, and so on. All of that consumes tokens. With an API key, you pay per token, and a single full-pipeline analysis can easily burn through $50-100+ in API costs depending on the complexity. With a Max subscription, that same analysis is covered by your flat monthly rate.
-
-From my own testing, I estimate I'd pay roughly **10x more** going with API billing versus my Max subscription. The Max plan is Anthropic explicitly subsidizing heavy usage like this -- take advantage of it.
-
-The tradeoffs:
+I strongly recommend the **Max subscription** ($100/mo or $200/mo). DAAF is extremely usage-intensive by design, and from my own testing I estimate I'd pay roughly **10x more** going with API billing versus my Max subscription. A single full-pipeline analysis can easily cost $50-100+ via the API; the Max plan covers that at a flat monthly rate.
 
 | Factor | API Key | Max Subscription |
 |--------|---------|------------------|
@@ -54,7 +40,9 @@ The tradeoffs:
 | **Rate limiting** | Minimal | May hit rate limits during very heavy sessions |
 | **Best for** | Light/occasional use, or organizational API budgets | Regular DAAF usage (recommended) |
 
-**Third option: OpenRouter.** If neither the API key nor a Max subscription works for you, [OpenRouter](https://openrouter.ai/) offers a middle ground. It's a third-party model gateway that gives you pay-per-token access to Claude (including Opus models) without an Anthropic subscription. No monthly commitment, no token markup -- just a 5.5% fee on credit purchases. From what I've seen, this can be particularly appealing if you want to test DAAF before committing to a subscription, or if your organization already uses OpenRouter. See [**01. Installation & Quick Start -- Configure authentication via environment_settings.txt**](01_installation_and_quickstart.md#configure-authentication-via-environment_settingstxt) for setup instructions.
+**Third option: OpenRouter.** Pay-per-token access to Claude via [OpenRouter](https://openrouter.ai/) with no monthly commitment (5.5% fee on credit purchases). Good for testing DAAF before committing to a subscription. See [**01. Installation -- Configure authentication via environment_settings.txt**](01_installation_and_quickstart.md#configure-authentication-via-environment_settingstxt) for setup.
+
+For the full comparison of all authentication options, see [**01. Installation -- Anthropic Account & Authentication**](01_installation_and_quickstart.md#1-anthropic-account--authentication).
 
 One thing to note: the Max plan does have usage limits per time window. If you're running several DAAF analyses in parallel (which you absolutely can do!), you may occasionally hit a rate limit and need to wait a bit. The API key doesn't have that issue, but your wallet will feel it instead.
 
@@ -107,7 +95,7 @@ Your data does pass through Anthropic's API when Claude Code processes it -- tha
 
 3. **The container provides additional isolation.** Because DAAF runs inside Docker with dropped capabilities and no privilege escalation, the blast radius of any unexpected behavior is contained (i.e., files it can accidentally upload to the internet, or send via email, or etc. etc.).
 
-4. **DAAF enforces credential safety.** The framework actively prevents reading, writing, or committing files that look like credentials (`.env`, `*.pem`, `*.key`, etc.). It won't prevent everything, but it'll give you a good set of starting guardrails to help protect yourself.
+4. **DAAF enforces credential safety.** The framework actively prevents reading, writing, or committing files that look like credentials (`.env`, `*.pem`, `*.key`, `environment_settings*`, etc.). It won't prevent everything, but it'll give you a good set of starting guardrails to help protect yourself.
 
 **Bottom line:** If you're working with sensitive, proprietary, or regulated data, talk to your IT team and legal counsel before using DAAF or any AI tool with that data. DAAF provides strong *local* safety guarantees, but the data still transits through Anthropic's infrastructure for inference. Do not mess around here -- do your homework and be a good steward of your data.
 
@@ -120,6 +108,25 @@ Not in a practical sense for full-pipeline analyses, unfortunately. The free and
 **More flexible billing via OpenRouter:** While not free, [OpenRouter](https://openrouter.ai/) offers pay-per-token access to Claude's Opus models with no monthly subscription commitment. You only pay for what you use (with a 5.5% fee on credit purchases), which can be more accessible than a $100-200/mo Max subscription if you're doing occasional analyses rather than heavy daily use. See the [Installation Guide](01_installation_and_quickstart.md#configure-authentication-via-environment_settingstxt) for setup instructions.
 
 This is genuinely the biggest barrier to entry for DAAF, and I wish it were different. I hope that as model costs continue to decrease and open-source models become more capable, a more accessible option will emerge. If you have the capacity to test DAAF with open-source models or alternative providers, please reach out -- that's high on the list of things I'd love community help with.
+
+### Q: How much disk space does DAAF use?
+
+The Docker image is roughly **3-5 GB** after building. It includes a Debian Bookworm base image, Python 3.12, 57 pinned Python packages (data science, geospatial, econometrics, visualization, ML), geospatial system libraries (GDAL/GEOS/PROJ), and Claude Code. Docker also keeps build cache layers, so total Docker disk usage may be somewhat higher.
+
+Beyond the image, your Docker volume will grow as you create research projects. Each project accumulates scripts, parquet data files, session logs, and notebooks. A typical full-pipeline project might add 50-500 MB depending on how many datasets you fetch and how large they are.
+
+**To check your Docker disk usage:**
+- Open **Docker Desktop** and check the **Images** and **Volumes** sections for size information
+- Or from the terminal: `docker system df` shows a breakdown of images, containers, and volumes
+
+**To reclaim space:**
+- `docker system prune` removes stopped containers, unused networks, and dangling images
+- `docker builder prune` clears the build cache specifically
+- Be careful not to remove your `daaf_daaf-data` volume -- that's where your research files live
+
+### Q: Can I use DAAF offline?
+
+No. DAAF requires an active internet connection for two reasons: Claude Code communicates with Anthropic's API for all AI inference (nothing runs locally), and data fetching requires access to data portals like the Urban Institute Education Data Portal. If you lose connectivity mid-session, Claude Code will fail on the next API call, but your work-in-progress files and session state are preserved in the Docker volume -- just reconnect and resume.
 
 ### Q: How do I get help understanding or using DAAF itself?
 
@@ -187,7 +194,7 @@ You don't need to do anything -- just start a new session and recovery happens s
 
 Session logs are invaluable when something goes wrong. The Markdown logs show you exactly what the assistant did, in order -- every tool call, every file read/write, every subagent invocation, and the full output at each step.
 
-DAAF includes an interactive **Session Log Viewer** that renders your session transcripts as a visual timeline in your web browser. It shows the orchestrator's actions as a horizontal timeline bar, with subagent dispatches waterfalling downward. Click any block to see exactly what files were read, written, or executed -- with plain-language descriptions and clickable file references.
+DAAF includes an interactive **DAAF Log Explorer** that renders your session transcripts as a visual timeline in your web browser. It shows the orchestrator's actions as a horizontal timeline bar, with subagent dispatches waterfalling downward. Click any block to see exactly what files were read, written, or executed -- with plain-language descriptions and clickable file references.
 
 The quickest way to access this is from your host machine (no container shell needed):
 

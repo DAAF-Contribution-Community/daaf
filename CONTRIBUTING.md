@@ -73,6 +73,8 @@ Given what DAAF is, it would be somewhat ironic to ban AI-assisted contributions
 
 ## Quick Start: Contribution Workflow
 
+*New to Git and GitHub? GitHub's [contribution guide](https://docs.github.com/en/get-started/quickstart/contributing-to-projects) walks through the basics, or you can ask DAAF's User Support mode for help with the workflow.*
+
 The standard contribution workflow has ten steps:
 
 1. **Open an issue** and begin a conversation about what you want to improve/add/suggest (ideally starting here!) 
@@ -124,7 +126,8 @@ Use a prefix that describes the nature of the change, followed by a colon and a 
 
 All contributions to DAAF must be signed off under the [Developer Certificate of Origin v1.1](https://developercertificate.org/) (DCO). By signing off, you certify that you have the right to submit the contribution under the project's open-source license.
 
-### Full DCO Text
+<details>
+<summary><strong>Full DCO Text (click to expand)</strong></summary>
 
 ```
 Developer Certificate of Origin
@@ -161,6 +164,7 @@ By making a contribution to this project, I certify that:
     maintained indefinitely and may be redistributed consistent with
     this project or the open source license(s) involved.
 ```
+</details>
 
 ### How to Sign Off
 
@@ -374,38 +378,13 @@ If you're modifying hooks (`.claude/hooks/`), Docker configuration, or other inf
 
 ## Using Session Logs for Debugging and Issue Reports
 
-Session logs are one of DAAF's most valuable diagnostic tools. Here's how to find, read, and use them.
+Session logs are automatically archived transcripts of every Claude Code session, stored in `.claude/logs/sessions/` as both human-readable Markdown and machine-readable JSONL files. They capture every tool call, subagent dispatch, and file operation -- making them invaluable for debugging and issue reports.
 
-### Where Session Logs Are Stored
-
-Claude Code automatically archives a complete log of every session when it ends. These are stored locally in `.claude/logs/sessions/` in two formats:
-
-| Format | File Pattern | Purpose |
-|--------|-------------|---------|
-| **Markdown** (`.md`) | `YYYY-MM-DD_HH-MM-SS_<session-id>_orchestrator.md` | Human-readable transcript with tool calls, timestamps, and token usage |
-| **JSONL** (`.jsonl`) | `YYYY-MM-DD_HH-MM-SS_<session-id>_orchestrator.jsonl` | Raw machine-readable transcript (full API-level detail) |
-| **Subagent JSONL** | `YYYY-MM-DD_HH-MM-SS_<session-id>_subagent_<agent-id>.jsonl` | Raw transcript for each subagent dispatched during the session |
-
-The orchestrator Markdown archive includes a **Subagent Activity** summary table listing each subagent's type, duration, tool uses, and a final-message excerpt.
-
-Additionally, `.claude/logs/activity.log` records a timestamped entry every time a session starts, giving you a quick overview of usage history, while `.claude/logs/audit.jsonl` gives a full inventory of every tool call by Claude for additional diagnostics.
-
-**These logs are gitignored by default** (they may contain sensitive content or API details), so they stay on your local machine and are never pushed to the repository.
-
-### Reading Session Logs for Debugging
-
-Session logs are invaluable when something goes wrong. The Markdown logs show you exactly what the assistant did, in order -- every tool call, every file read/write, every subagent invocation, and the full output at each step. If you need to file a bug report or understand an unexpected result:
-
-1. Find the relevant session log in `.claude/logs/sessions/` (sorted by timestamp)
-2. Open the `.md` file to review what happened in a readable format
-3. Look for the point where things went wrong -- you will see the exact tool calls and their results
-4. When filing an issue, include relevant excerpts from the log (redact any sensitive data first)
-
-The `.jsonl` file contains the complete raw transcript if deeper inspection is needed.
+For details on finding, reading, and browsing session logs (including the DAAF Log Explorer interactive viewer), see [**FAQ: Session Logs and Diagnostics**](user_reference/07_faq_technical.md#session-logs-and-diagnostics).
 
 ### Including Log Excerpts in Issues
 
-When including session log excerpts in issues:
+When including session log excerpts in issue reports:
 
 1. Open the `.md` log file for the session where the problem occurred
 2. Find the relevant section (search for the stage or error message)

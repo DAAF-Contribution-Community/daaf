@@ -143,7 +143,7 @@ Before doing anything else, DAAF will tell you which mode it's classifying your 
 - A stakeholder report synthesizing key findings, methodology, and limitations
 - A lessons-learned document with data and process insights
 
-**Expected time investment:** About 5-10 minutes of active engagement time spread across 4-5 "check-in" points where DAAF pauses for your review and approval, a few hours of DAAF working independently in the background, and then whatever time you (rightfully, importantly) dedicate to reviewing the final outputs. And, of course, whatever API fees you incur along the way. Full duration will depend heavily on how complex your query is: primarily how many scripts it needs to write, rewrite, and QA. Plan accordingly!
+**Expected time investment:** About 5-10 minutes of active engagement time spread across four "check-in" points where DAAF pauses for your review and approval, a few hours of DAAF working independently in the background, and then whatever time you (rightfully, importantly) dedicate to reviewing the final outputs. And, of course, whatever API fees you incur along the way. Full duration will depend heavily on how complex your query is: primarily how many scripts it needs to write, rewrite, and QA. Plan accordingly!
 
 **When to use it:** When you have a genuine research question you want to explore with data. It can be as simple as "How has enrollment in rural schools changed over the past decade?" or as complex as "What's the relationship between school-level poverty, access to advanced coursework, and disciplinary disparities, controlling for school size and urbanicity?" DAAF will scope accordingly.
 
@@ -246,49 +246,20 @@ Before doing anything else, DAAF will tell you which mode it's classifying your 
 
 ### Switching Between Modes
 
-DAAF supports clean transitions between modes when it makes sense:
+DAAF supports clean transitions between modes when your work naturally evolves. You don't need to memorize every possible transition -- DAAF will suggest the right mode at natural breakpoints and wait for your confirmation. It should never silently switch modes on you.
+
+Here are the most common transitions you'll encounter:
 
 | From | To | When it happens |
 |------|----|-----------------|
-| Data Discovery | Full Pipeline | Findings suggest a feasible and valuable analysis |
-| Data Lookup | Data Discovery | Your question reveals a broader data landscape worth exploring |
-| Data Lookup | Ad Hoc Collaboration | Your question evolves into a multi-turn discussion |
-| Data Lookup | Full Pipeline | A quick lookup reveals an actionable analysis opportunity |
-| Data Discovery | Data Onboarding | Do you have a raw data file you want to profile and make reusable? |
-| Data Onboarding | Full Pipeline | Skill created — would you like to analyze this data now? |
-| Full Pipeline | Data Onboarding | Analysis needs a dataset that has no existing skill yet |
-| Full Pipeline | Revision and Extension | You just completed an analysis and want to adjust or extend something |
-| Revision and Extension | Full Pipeline | The revision scope grows beyond what targeted modification can handle |
-| Data Onboarding | Revision and Extension | You want to modify or extend the skill that was just created |
-| Full Pipeline (complete) | Reproducibility Verification | User wants to verify their analysis reproduces |
-| Reproducibility Verification | Revision and Extension | Divergence found, user wants to fix original |
-| Reproducibility Verification | Full Pipeline | Original analysis is fundamentally broken |
-| Ad Hoc Collaboration | Full Pipeline | Your working session evolves into a formal analysis |
-| Ad Hoc Collaboration | Data Discovery | You want systematic data exploration across sources |
-| Ad Hoc Collaboration | Data Onboarding | You have raw data that needs profiling |
-| Ad Hoc Collaboration | Revision and Extension | Debugging reveals an existing analysis needs revision |
-| Data Discovery | Ad Hoc Collaboration | You want to discuss findings and iterate on approach |
-| Full Pipeline (early) | Ad Hoc Collaboration | You realize you just want to talk through the approach, not run the full pipeline |
-| Full Pipeline (complete) | Ad Hoc Collaboration | You want to discuss results or plan next steps informally |
-| Ad Hoc Collaboration | Framework Development | User wants to create or modify DAAF framework components |
-| Framework Development | Data Onboarding | User wants to onboard a dataset, not just create a skill template |
-| Framework Development | Full Pipeline | User wants to test a new skill with actual analysis |
-| Framework Development | Ad Hoc Collaboration | User needs analysis help, not framework changes |
-| Framework Development | Revision and Extension | User wants to review or revise an analysis that used the framework |
-| Framework Development | Data Discovery | Framework change requires testing with a specific data source |
-| Data Onboarding (complete) | Framework Development | User wants to refine the skill beyond what Onboarding produced |
-| Full Pipeline (complete) | Framework Development | User identifies framework improvements from analysis experience, or LEARNINGS.md has actionable items to incorporate |
-| Data Onboarding (complete) | Framework Development | LEARNINGS.md from profiling has actionable framework improvements (e.g., skill template gaps) |
-| User Support | Data Lookup | User's question is really about a specific data variable or definition |
-| User Support | Data Discovery | User wants to explore what data is available for a topic |
-| User Support | Full Pipeline | User is ready to run an analysis |
-| User Support | Ad Hoc Collaboration | User wants hands-on help with code, debugging, or a specific task |
-| User Support | Data Onboarding | User wants to add or profile a new dataset |
-| User Support | Revision and Extension | User wants to modify an existing analysis |
-| User Support | Reproducibility Verification | User wants to verify an analysis reproduces |
-| User Support | Framework Development | User wants to modify DAAF itself |
+| Data Discovery | Full Pipeline | Your exploration revealed a feasible, interesting analysis |
+| Full Pipeline | Revision and Extension | You completed an analysis and want to adjust or extend it |
+| Data Onboarding | Full Pipeline | You profiled a dataset and now want to analyze it |
+| Ad Hoc Collaboration | Full Pipeline | Your working session evolved into something worth formalizing |
+| Full Pipeline | Reproducibility Verification | You want to verify a completed analysis reproduces |
+| Any mode | User Support | You have questions about how DAAF or its tools work |
 
-DAAF will always propose these escalations explicitly and wait for your confirmation. It should never silently switch modes on you.
+Beyond these common paths, DAAF supports transitions between any pair of modes where the shift makes sense -- for example, a Data Lookup that reveals a broader question might escalate to Data Discovery, or a completed analysis might surface framework improvements worth addressing in Framework Development mode. The full transition matrix is handled internally; the important thing to know is that DAAF will always propose a transition explicitly and explain why before making it.
 
 ---
 
@@ -761,6 +732,22 @@ DAAF will read STATE.md, understand where it stopped, and resume from that exact
 
 **Reproducibility Verification mode note:** RV mode uses `Reproduction_Report.md` as its session state document instead of STATE.md. If an RV session is interrupted, the Reproduction Report contains a "Session Continuity" section with a restart prompt. The recovery process works the same way — start a new session and paste the restart prompt, and DAAF will pick up where it left off.
 
+### How to Restart a Session
+
+When DAAF determines that context is running low, it will do three things:
+
+1. **Save progress** by updating STATE.md with everything completed so far
+2. **Provide a restart prompt** -- a pre-written message that captures exactly where the work left off, what has been done, and what needs to happen next
+3. **Tell you it's time to restart**
+
+To resume, the steps are simple:
+
+1. Type `/clear` in the Claude Code terminal to reset the session (this clears the context window but does not affect any files on disk)
+2. Paste the restart prompt that DAAF provided
+3. DAAF reads STATE.md, picks up where it left off, and continues working
+
+That's it. The restart prompt does the heavy lifting of re-establishing context so you don't have to re-explain anything. If you closed your terminal entirely (or the session crashed), just start a new Claude Code session and point DAAF to the project folder -- it will read STATE.md and figure out where to resume.
+
 ### Tips for Multi-Session Work
 
 - **Don't panic if a session ends mid-analysis.** This is undesired but not unexpected for complex analyses. The whole STATE.md system exists precisely for this reason.
@@ -779,11 +766,11 @@ Here's a quick reference for what each part of the DAAF repository contains and 
 |-----------|-------------|-------------|
 | `research/` | Your analysis projects -- notebooks, data, reports, scripts | **You** (this is where all your work lives) |
 | `user_reference/` | User documentation (you're reading one right now) | **You** (human-written guides and FAQs) |
-| `.claude/agents/` | Specialized agent protocols (12 behavioral definitions) | **DAAF** (and curious users who want to understand how agents work) |
+| `.claude/agents/` | Specialized agent protocols (14 behavioral definitions) | **DAAF** (and curious users who want to understand how agents work) |
 | `agent_reference/` | Detailed workflow documentation, templates, validation rules | **DAAF** (internal reference material for the orchestrator and agents) |
 | `.claude/skills/` | Skill definitions providing domain knowledge | **DAAF** (and users who want to create new skills) |
 | `scripts/` | Shared utility scripts (`run_with_capture.sh`, `collect_session_logs.sh`, `generate_log_viewer.sh`, `launch_marimo.sh`) | **DAAF** (used from the DAAF root directory; not copied into projects) |
-| repo root | Host-side convenience scripts (`run_daaf`, `view_logs`, `view_notebooks`, `backup_daaf`, `restore_from_backup`, `rebuild_daaf`, `update_daaf` — `.sh` and `.ps1` variants) | **You** (run from your `daaf-docker` folder on the host, outside the container) |
+| `scripts/host/` (copied to your `daaf-docker/` folder during installation) | Host-side convenience scripts (`run_daaf`, `view_logs`, `view_notebooks`, `backup_daaf`, `restore_from_backup`, `rebuild_daaf`, `update_daaf` -- `.sh` and `.ps1` variants) | **You** (run from your `daaf-docker` folder on the host, outside the container) |
 
 **Key insight for new users:** Everything you need to review, share, or reproduce is inside the project folder. You can copy the entire folder to a colleague and they'd have everything needed to understand and verify the analysis. That's the whole point of reproducibility.
 

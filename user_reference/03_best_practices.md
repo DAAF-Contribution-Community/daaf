@@ -397,7 +397,7 @@ When you are on the fence, DAAF will offer its assessment. But a useful rule of 
 
 ## Appropriate vs. Inappropriate Use Cases
 
-DAAF is still very much in its nasceny, and there is only so much that one person and his friends can do to check guardrails, test robustness, and so on. With that in mind, it is important to be extremely transparent about what that means in practice.
+DAAF is still very much still in active development, and there is only so much that one person and his friends can do to check guardrails, test robustness, and so on. With that in mind, it is important to be extremely transparent about what that means in practice.
 
 ### Appropriate Uses
 
@@ -429,7 +429,7 @@ These should not be done with DAAF (or any LLM-based system) regardless of the g
 
 ## Using Git Version Control
 
-When you start using DAAF, you'll find that it produces a LOT of files, and it does a LOT of things at once. Once best practice I'd strongly encourage is to get comfortable with using Git for version control. This is part of why I treat it as a prerequisite for using DAAF in the installation process (spoilers: there were other ways to do it!): This type of work with LLMs just benefits so immensely from having a full audit log of file edits and changes at all times, with the ability to roll back changes and identify issues quickly.
+When you start using DAAF, you'll find that it produces a LOT of files, and it does a LOT of things at once. One best practice I'd strongly encourage is to get comfortable with using Git for version control. This is part of why I treat it as a prerequisite for using DAAF in the installation process (spoilers: there were other ways to do it!): This type of work with LLMs just benefits so immensely from having a full audit log of file edits and changes at all times, with the ability to roll back changes and identify issues quickly.
 
 I would strongly recommend making a private "fork" of the DAAF repository for you to work in and back up all of your research files to (though DAAF by default will NOT back up your parquet data files to avoid accidentally sharing data up to the cloud). Teaching Git is a bit beyond the scope of this project, but you absolutely can and should ask Claude to tell you more about:
 
@@ -441,6 +441,16 @@ I would strongly recommend making a private "fork" of the DAAF repository for yo
 
 There are also a ton of guides online and on YouTube, etc. Take some time to get oriented! It's an immensely useful skillset.
 
+### Useful Git Commands for DAAF Work
+
+Here are a few concrete commands that are especially handy when working with DAAF:
+
+- **`git diff HEAD~1`** -- See exactly what changed in the last session. This is great for reviewing what DAAF produced overnight or after a long run. It shows every file that was added, modified, or deleted, with the specific changes highlighted.
+- **`git log --oneline -10`** -- See the 10 most recent commits in a compact format. Since DAAF's sessions are typically committed at the end, this gives you a quick history of recent sessions and what they produced.
+- **`git stash` / `git stash pop`** -- Temporarily set aside all uncommitted changes and restore them later. This is useful if you want to experiment with something (like testing a different analysis approach) without committing to it. Run `git stash` to save your current changes, do your experiment, and then run `git stash pop` to bring your original changes back.
+
+You can run these commands in the Claude Code terminal inside the container, or in any terminal connected to the DAAF repository.
+
 ---
 
 ## Using VSCode and Similar Interfaces
@@ -450,6 +460,8 @@ In addition to using Git, and part and parcel with it: I currently use [VSCode](
 - File editing for markdown files, and viewing markdown files in their rendered format
 - Tracking changes for files using Git in a super easy and intuitive interface
 - Doing intensive file searches, edits, and similar
+
+To connect VSCode to the DAAF Docker container, install the [Dev Containers extension](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-containers) and use the "Attach to Running Container" command to open the DAAF container's filesystem directly in VSCode. This gives you a full file browser, integrated terminal, and -- importantly -- syntax highlighting for `.py` files, which makes reviewing marimo notebooks and analysis scripts much more comfortable than reading them in a plain text editor.
 
 There are a bunch of similar alternatives that are also designed to be a bit more teched-up with coding agents built in (e.g., Cursor), but I've found VSCode to work great! Your mileage may vary -- the recommendation here is really just, find an interface that works for you and your workflow to make this work easier and reduce the frictions involved.
 
