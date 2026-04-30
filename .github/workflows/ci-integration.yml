@@ -105,6 +105,37 @@ jobs:
         working-directory: daaf-docker
         run: ls -la *_daaf_backup/
 
+      # --- Restore from backup (round-trip test) ---
+      # Stop the container so restore_from_backup.sh can clear the volume,
+      # then pipe selection "1" and confirmation "RESTORE" for non-interactive use.
+      - name: Stop container for restore test
+        working-directory: daaf-docker
+        run: docker compose stop
+
+      - name: Restore from backup via restore_from_backup.sh
+        working-directory: daaf-docker
+        run: printf '1\nRESTORE\n' | bash restore_from_backup.sh
+
+      - name: Start container after restore
+        working-directory: daaf-docker
+        run: docker compose start
+
+      - name: Wait for container readiness after restore
+        working-directory: daaf-docker
+        run: |
+          for i in 1 2 3 4 5; do
+            docker compose ps | grep -q "Up" && exit 0
+            echo "Waiting for container to be ready (attempt $i/5)..."
+            sleep 3
+          done
+          echo "ERROR: Container did not reach running state after restore"
+          docker compose ps
+          exit 1
+
+      - name: Verify CLAUDE.md present after restore
+        working-directory: daaf-docker
+        run: docker compose exec -T daaf-docker test -f /daaf/CLAUDE.md
+
       # --- Update (no-op on fresh install) ---
       - name: Run update_daaf.sh (no-op on fresh install)
         working-directory: daaf-docker
