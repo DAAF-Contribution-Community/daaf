@@ -304,14 +304,14 @@ Record the decision in STATE.md Key Decisions Made.
 
 When the user needs to set up an API key and it's not currently available in the environment, present these options:
 
-**Recommended: Use the .env file (persistent across restarts):**
+**Recommended: Use the environment_settings.txt file (persistent across restarts):**
 
-> Add your key to the `.env` file in your `daaf-docker/` folder on the host machine:
+> Add your key to the `environment_settings.txt` file in your `daaf-docker/` folder on the host machine:
 > ```bash
 > YOUR_API_KEY_NAME=your_key_here
 > ```
-> If you don't have a `.env` file yet, copy the template: `cp env.example .env`
-> (or `Copy-Item env.example .env` on Windows). Then recreate the container: `docker compose down` followed by `run_daaf`.
+> If you don't have an `environment_settings.txt` file yet, copy the template: `cp environment_settings_example.txt environment_settings.txt`
+> (or `Copy-Item environment_settings_example.txt environment_settings.txt` on Windows). Then recreate the container: `docker compose down` followed by `run_daaf`.
 
 **Alternative: Set for the current session only (temporary):**
 
@@ -322,15 +322,15 @@ When the user needs to set up an API key and it's not currently available in the
 > You can also type `! export YOUR_API_KEY_NAME="your_key_here"` directly in the Claude Code prompt to set it for this session.
 
 **Security notes to convey to user:**
-- The `.env` file lives on the host machine (in `daaf-docker/`), is gitignored, and is never visible to Claude inside the container
-- DAAF's safety guardrails prevent Claude from reading or writing `.env` files by design
+- The `environment_settings.txt` file lives on the host machine (in `daaf-docker/`), is gitignored, and is never visible to Claude inside the container
+- DAAF's safety guardrails prevent Claude from reading or writing environment settings files by design
 - The acquisition script references `os.environ["KEY_NAME"]`, never hardcodes the key value
 - The script is archived in the project for reproducibility, but the key value is never in it
 
 **OAuth / complex authentication:** If the API requires OAuth 2.0 (token refresh, browser-based authorization code flow) or other multi-step authentication, DI-0 cannot handle this automatically. In this case, advise the user to:
 1. Complete the OAuth flow manually outside DAAF (e.g., using the API's web portal or a CLI tool)
 2. Obtain a bearer token or access token
-3. Add it to their `.env` file (e.g., `MY_API_TOKEN=bearer_token_here`) or set it as an environment variable
+3. Add it to their `environment_settings.txt` file (e.g., `MY_API_TOKEN=bearer_token_here`) or set it as an environment variable
 4. Proceed with DI-0 using the token as a simple API key
 
 Note in the skill's Data Access section that the token may expire and needs periodic renewal. Alternatively, the user can download the data manually and provide it as a local file.

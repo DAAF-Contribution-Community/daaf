@@ -93,8 +93,8 @@ if ($Running -eq 0) {
     Write-Host "Container started."
 } else {
     Write-Host "DAAF container is already running."
-    # Check if .env has been modified since the container was created
-    if (Test-Path ".env") {
+    # Check if environment_settings.txt has been modified since the container was created
+    if (Test-Path "environment_settings.txt") {
         $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
         $_cid = docker compose ps -q daaf-docker 2>&1
         $ErrorActionPreference = $savedEAP
@@ -106,17 +106,17 @@ if ($Running -eq 0) {
                 # Truncate to 7 fractional digits -- .NET DateTimeOffset.Parse() rejects Docker's 9-digit nanoseconds
                 $_created = $_created -replace '(\.\d{7})\d+', '$1'
                 $ContainerStart = [DateTimeOffset]::Parse($_created).UtcDateTime
-                $EnvModified = (Get-Item ".env").LastWriteTimeUtc
+                $EnvModified = (Get-Item "environment_settings.txt").LastWriteTimeUtc
                 if ($EnvModified -gt $ContainerStart) {
                     Write-Host ""
-                    Write-Host "NOTE: Your .env file has been modified since this container was started." -ForegroundColor Yellow
-                    Write-Host "      To apply .env changes, close all DAAF sessions, then run:"
+                    Write-Host "NOTE: Your environment_settings.txt file has been modified since this container was started." -ForegroundColor Yellow
+                    Write-Host "      To apply environment_settings.txt changes, close all DAAF sessions, then run:"
                     Write-Host "        docker compose down"
                     Write-Host "        .\run_daaf.ps1"
                 }
             } catch {
                 # Date-parsing edge cases (e.g., Docker nanosecond format) are
-                # non-critical -- the .env-freshness hint is best-effort only.
+                # non-critical -- the environment_settings.txt freshness hint is best-effort only.
                 Write-Verbose "Silenced: $_"
             }
         }

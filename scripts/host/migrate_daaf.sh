@@ -280,7 +280,7 @@ echo "Downloading utility scripts from GitHub..."
 
 DOWNLOAD_FAILED=false
 
-for FILE in backup_daaf.sh restore_from_backup.sh rebuild_daaf.sh update_daaf.sh run_daaf.sh view_logs.sh view_notebooks.sh env.example; do
+for FILE in backup_daaf.sh restore_from_backup.sh rebuild_daaf.sh update_daaf.sh run_daaf.sh view_logs.sh view_notebooks.sh environment_settings_example.txt; do
     if curl -fsSL "${RAW_BASE}/scripts/host/${FILE}" -o "${HOST_DIR}/${FILE}"; then
         echo "  Downloaded: ${FILE}"
     else

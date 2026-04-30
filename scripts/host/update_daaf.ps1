@@ -417,7 +417,7 @@ function Sync-HostScript {
         scripts/host/update_daaf.ps1 `
         scripts/host/view_logs.ps1 `
         scripts/host/view_notebooks.ps1 `
-        scripts/host/env.example
+        scripts/host/environment_settings_example.txt
 
     if ([string]::IsNullOrWhiteSpace($changedScripts)) { return }
 

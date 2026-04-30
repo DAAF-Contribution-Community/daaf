@@ -1,19 +1,19 @@
 # ============================================================================
 # DAAF Environment Variables
 # ============================================================================
-# Copy this file to .env in your daaf-docker folder and fill in your keys:
+# Copy this file to environment_settings.txt in your daaf-docker folder and fill in your keys:
 #
-#   cp env.example .env            (macOS / Linux)
-#   Copy-Item env.example .env     (Windows PowerShell)
+#   cp environment_settings_example.txt environment_settings.txt            (macOS / Linux)
+#   Copy-Item environment_settings_example.txt environment_settings.txt     (Windows PowerShell)
 #
-# The .env file is loaded automatically when the container starts.
-# After editing .env, recreate the container to pick up changes:
+# The environment_settings.txt file is loaded automatically when the container starts.
+# After editing environment_settings.txt, recreate the container to pick up changes:
 #
 #   docker compose down
 #   bash run_daaf.sh            (macOS / Linux)
 #   .\run_daaf.ps1              (Windows)
 #
-# IMPORTANT: Never commit .env to version control — it is gitignored by default.
+# IMPORTANT: Never commit environment_settings.txt to version control — it is gitignored by default.
 # ============================================================================
 
 

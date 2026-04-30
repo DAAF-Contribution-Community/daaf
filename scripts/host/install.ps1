@@ -169,7 +169,7 @@ try {
     Invoke-WebRequest -UseBasicParsing -Uri "$RawBase/scripts/host/update_daaf.ps1"          -OutFile "$InstallDir\update_daaf.ps1"
     Invoke-WebRequest -UseBasicParsing -Uri "$RawBase/scripts/host/view_logs.ps1"            -OutFile "$InstallDir\view_logs.ps1"
     Invoke-WebRequest -UseBasicParsing -Uri "$RawBase/scripts/host/view_notebooks.ps1"      -OutFile "$InstallDir\view_notebooks.ps1"
-    Invoke-WebRequest -UseBasicParsing -Uri "$RawBase/scripts/host/env.example"              -OutFile "$InstallDir\env.example"
+    Invoke-WebRequest -UseBasicParsing -Uri "$RawBase/scripts/host/environment_settings_example.txt" -OutFile "$InstallDir\environment_settings_example.txt"
 } catch {
     Write-Host ""
     Write-Host "ERROR: Failed to download installation files from branch '$Branch'." -ForegroundColor Red
@@ -314,8 +314,8 @@ Write-Host "  .\view_logs.ps1                Browse session logs in your browser
 Write-Host "  .\view_notebooks.ps1           Browse and edit marimo notebooks in your browser"
 Write-Host ""
 Write-Host "To set up data source API keys (optional):"
-Write-Host "  Copy-Item env.example .env     Copy the template"
-Write-Host "  Edit .env with your keys, then restart with: .\run_daaf.ps1"
+Write-Host "  Copy-Item environment_settings_example.txt environment_settings.txt   Copy the template"
+Write-Host "  Edit environment_settings.txt with your keys, then restart with: .\run_daaf.ps1"
 Write-Host ""
 Write-Host "Manual alternative (if you prefer individual commands):"
 Write-Host "  docker compose exec daaf-docker bash   # enter the container"

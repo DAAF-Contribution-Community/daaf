@@ -159,7 +159,7 @@ if ! curl -fsSL "${RAW_BASE}/Dockerfile"                          -o "${INSTALL_
    ! curl -fsSL "${RAW_BASE}/scripts/host/update_daaf.sh"          -o "${INSTALL_DIR}/update_daaf.sh" ||
    ! curl -fsSL "${RAW_BASE}/scripts/host/view_logs.sh"            -o "${INSTALL_DIR}/view_logs.sh" ||
    ! curl -fsSL "${RAW_BASE}/scripts/host/view_notebooks.sh"      -o "${INSTALL_DIR}/view_notebooks.sh" ||
-   ! curl -fsSL "${RAW_BASE}/scripts/host/env.example"             -o "${INSTALL_DIR}/env.example"; then
+   ! curl -fsSL "${RAW_BASE}/scripts/host/environment_settings_example.txt" -o "${INSTALL_DIR}/environment_settings_example.txt"; then
     echo ""
     echo "ERROR: Failed to download installation files from branch '${BRANCH}'."
     echo "Please verify that the branch name is correct and that you have an internet connection."
@@ -287,8 +287,8 @@ echo "  bash view_logs.sh              Browse session logs in your browser"
 echo "  bash view_notebooks.sh         Browse and edit marimo notebooks in your browser"
 echo ""
 echo "To set up data source API keys (optional):"
-echo "  cp env.example .env          Copy the template"
-echo "  Edit .env with your keys, then restart with: bash run_daaf.sh"
+echo "  cp environment_settings_example.txt environment_settings.txt   Copy the template"
+echo "  Edit environment_settings.txt with your keys, then restart with: bash run_daaf.sh"
 echo ""
 echo "Manual alternative (if you prefer individual commands):"
 echo "  docker compose exec daaf-docker bash   # enter the container"

@@ -84,13 +84,13 @@ if [ "${RUNNING}" -eq 0 ]; then
     echo "Container started."
 else
     echo "DAAF container is already running."
-    # Check if .env has been modified since the container was created
-    if [ -f ".env" ]; then
+    # Check if environment_settings.txt has been modified since the container was created
+    if [ -f "environment_settings.txt" ]; then
         _cid=$(docker compose ps -q daaf-docker 2>/dev/null || true)
         if [ -n "${_cid}" ]; then
             _created=$(docker inspect --format '{{.Created}}' "${_cid}" 2>/dev/null || true)
-            # Get .env mtime as epoch (Linux: -c %Y, macOS: -f %m)
-            _env_epoch=$(stat -c %Y .env 2>/dev/null || stat -f %m .env 2>/dev/null || echo "")
+            # Get environment_settings.txt mtime as epoch (Linux: -c %Y, macOS: -f %m)
+            _env_epoch=$(stat -c %Y environment_settings.txt 2>/dev/null || stat -f %m environment_settings.txt 2>/dev/null || echo "")
             # Convert container creation ISO timestamp to epoch (Linux: date -d, macOS: date -j -f)
             # Strip fractional seconds and trailing Z for macOS BSD date compatibility
             _ts_clean=$(echo "${_created}" | sed 's/\.[0-9]*Z$//' | sed 's/Z$//')
@@ -99,8 +99,8 @@ else
                 echo "")
             if [ -n "${_ctr_epoch}" ] && [ -n "${_env_epoch}" ] && [ "${_env_epoch}" -gt "${_ctr_epoch}" ]; then
                 echo ""
-                echo "NOTE: Your .env file has been modified since this container was started."
-                echo "      To apply .env changes, close all DAAF sessions, then run:"
+                echo "NOTE: Your environment_settings.txt file has been modified since this container was started."
+                echo "      To apply environment_settings.txt changes, close all DAAF sessions, then run:"
                 echo "        docker compose down"
                 echo "        bash run_daaf.sh"
             fi

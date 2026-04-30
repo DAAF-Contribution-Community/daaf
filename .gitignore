@@ -54,6 +54,7 @@ Thumbs.db
 
 # Environment variables
 .env
+environment_settings*.txt
 
 # Claude Code
 .claude/settings.local.json

@@ -323,7 +323,7 @@ sync_host_scripts() {
         scripts/host/update_daaf.sh \
         scripts/host/view_logs.sh \
         scripts/host/view_notebooks.sh \
-        scripts/host/env.example \
+        scripts/host/environment_settings_example.txt \
         </dev/null 2>/dev/null | tr -d '\r' || true)
 
     if [ -z "${changed_scripts}" ]; then

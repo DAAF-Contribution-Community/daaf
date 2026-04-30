@@ -205,7 +205,7 @@ teardown() {
     [ -f "${TEST_DIR}/curl_log.txt" ]
     run grep -c "CURL_URL:" "${TEST_DIR}/curl_log.txt"
     # Should download: Dockerfile, docker-compose.yml, run_daaf.sh,
-    # backup_daaf.sh, rebuild_daaf.sh, update_daaf.sh, view_logs.sh, env.example
+    # backup_daaf.sh, rebuild_daaf.sh, update_daaf.sh, view_logs.sh, environment_settings_example.txt
     [ "$output" -ge 8 ]
 
     run cat "${TEST_DIR}/curl_log.txt"
@@ -214,7 +214,7 @@ teardown() {
     assert_output --partial "run_daaf.sh"
     assert_output --partial "backup_daaf.sh"
     assert_output --partial "update_daaf.sh"
-    assert_output --partial "env.example"
+    assert_output --partial "environment_settings_example.txt"
 }
 
 # --- Download URLs use correct path prefix ---
@@ -244,7 +244,7 @@ teardown() {
     run bash "${REPO_ROOT}/scripts/host/install.sh"
 
     [ -f "${TEST_DIR}/curl_urls.txt" ]
-    # All .sh and env.example downloads should use scripts/host/ prefix
+    # All .sh and environment_settings_example.txt downloads should use scripts/host/ prefix
     run grep "scripts/host/" "${TEST_DIR}/curl_urls.txt"
     assert_success
 }

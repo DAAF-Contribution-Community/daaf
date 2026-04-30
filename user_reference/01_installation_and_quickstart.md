@@ -36,10 +36,10 @@ For the account setup, you have several options:
 
 - **Anthropic Max subscription (recommended)** — [Get one here](https://claude.com/pricing/max), or if you already have an active Anthropic account, you can [upgrade your plan here](https://claude.ai/upgrade). I rarely hit my usage limits running multiple projects at once on the $200/mo plan; your mileage may vary on the $100/mo plan. You can also use an existing Team or Enterprise subscription, but your mileage may vary substantially there too based on your exact organizational settings/limits.
 - **Anthropic API key** — [Get one here](https://console.anthropic.com/). This is a pay-per-use key that you'll paste into Claude Code when prompted. This allows unlimited use as long as you're willing to pay -- but this can get VERY expensive, *very* quickly. A fairly straightforward descriptive analysis with relatively few dataset joins via raw API fees can easily be between $30-60. I HIGHLY recommend getting a Max subscription for this project, instead, as they are explicitly subsidizing these sorts of costs via their subscription model. Initial testing on my end indicates I would have paid roughly 10x more for my usage going with the API key versus just my Max subscription plan.
-- **OpenRouter** — [OpenRouter](https://openrouter.ai/) is a third-party model gateway that lets you access Claude via a pay-per-token API key with no Anthropic subscription required. I haven't tested this as extensively as the Max subscription path, but it's a solid alternative if you want to avoid a monthly subscription commitment or if your organization already uses OpenRouter. There's no token markup -- just a 5.5% fee on credit purchases. Setup involves creating a free OpenRouter account, generating an API key, and adding a few lines to your `.env` file -- see [**Configure authentication via .env**](#configure-authentication-via-env) below for the step-by-step. **Important caveat:** While OpenRouter can technically route to non-Anthropic models, DAAF's complex multi-agent protocols require Opus-class reasoning. Stick with Anthropic's Opus models through OpenRouter for reliable results.
-- **Cloud providers (Bedrock, Vertex AI)** — If your organization has an Amazon Bedrock or Google Vertex AI arrangement with Anthropic, you can route Claude Code through those platforms instead. The `env.example` file in your `daaf-docker` folder documents the required environment variables for both. Follow your organization's instructions for credential setup and see [**Configure authentication via .env**](#configure-authentication-via-env) below.
+- **OpenRouter** — [OpenRouter](https://openrouter.ai/) is a third-party model gateway that lets you access Claude via a pay-per-token API key with no Anthropic subscription required. I haven't tested this as extensively as the Max subscription path, but it's a solid alternative if you want to avoid a monthly subscription commitment or if your organization already uses OpenRouter. There's no token markup -- just a 5.5% fee on credit purchases. Setup involves creating a free OpenRouter account, generating an API key, and adding a few lines to your `environment_settings.txt` file -- see [**Configure authentication via environment_settings.txt**](#configure-authentication-via-environment_settingstxt) below for the step-by-step. **Important caveat:** While OpenRouter can technically route to non-Anthropic models, DAAF's complex multi-agent protocols require Opus-class reasoning. Stick with Anthropic's Opus models through OpenRouter for reliable results.
+- **Cloud providers (Bedrock, Vertex AI)** — If your organization has an Amazon Bedrock or Google Vertex AI arrangement with Anthropic, you can route Claude Code through those platforms instead. The `environment_settings_example.txt` file in your `daaf-docker` folder documents the required environment variables for both. Follow your organization's instructions for credential setup and see [**Configure authentication via environment_settings.txt**](#configure-authentication-via-environment_settingstxt) below.
 
-For the **Max subscription** and **API key** options, Claude Code will prompt you to authenticate interactively the first time you run it — you don't need to configure anything in advance. For **OpenRouter** and **cloud provider** setups, you'll configure credentials via the `.env` file instead (instructions below). You can always switch between methods later; type `/login` inside Claude Code to change your interactive authentication, or update your `.env` file and restart the container. Note that many terminal interfaces "hide" any password-entry you're asked to do, so if you don't see your typing "working," it's working but hiding it from view for your privacy. If you're concerned about privacy otherwise: nothing (including your credentials) ever leaves your computer in the course of this project's workflows, and I've enforced a LOT of safety checks to ensure Claude doesn't accidentally share it with anyone, either. This can be directly verified in the code.
+For the **Max subscription** and **API key** options, Claude Code will prompt you to authenticate interactively the first time you run it — you don't need to configure anything in advance. For **OpenRouter** and **cloud provider** setups, you'll configure credentials via the `environment_settings.txt` file instead (instructions below). You can always switch between methods later; type `/login` inside Claude Code to change your interactive authentication, or update your `environment_settings.txt` file and restart the container. Note that many terminal interfaces "hide" any password-entry you're asked to do, so if you don't see your typing "working," it's working but hiding it from view for your privacy. If you're concerned about privacy otherwise: nothing (including your credentials) ever leaves your computer in the course of this project's workflows, and I've enforced a LOT of safety checks to ensure Claude doesn't accidentally share it with anyone, either. This can be directly verified in the code.
 
 Finally, note that you can port this whole project over to a CLI tool of your choice (OpenCode, Codex, Gemini CLI, etc.) with a little bit of effort (the hooks are really the only hard part -- everything like the agents and skills should port over immediately). Fork this repo, work with your favorite tool to convert it over, and please continue to share it broadly with others!!! I would be excited to have people test this on open-source models, as well -- please reach out if you've got capacity to that end.
 
@@ -134,7 +134,7 @@ cd daaf-docker
 .\run_daaf.ps1
 ```
 
-The `run_daaf` script starts the container if needed and launches Claude Code directly. To enter the container shell instead (e.g., for setting API keys), pass `bash` as an argument: `bash run_daaf.sh bash` (or `.\run_daaf.ps1 bash` on Windows). You can also use the manual commands if you prefer: `docker compose exec daaf-docker bash` to enter the container, then `claude` to launch.
+The `run_daaf` script starts the container if needed and launches Claude Code directly. You can also use the manual commands if you prefer: `docker compose exec daaf-docker bash` to enter the container, then `claude` to launch.
 
 On first launch, Claude Code should prompt you to authenticate (API key or subscription login). Follow its instructions to complete the process as needed based on your method. Remember that CTRL+C actually exits the terminal, so use (Windows/Linux: CTRL+SHIFT+C and CTRL+V) and (macOS: Cmd+C and Cmd+V) if you want to copy/paste.
 
@@ -545,27 +545,27 @@ Back up your Docker volume first (see [**Backing Up Your Work**](#backing-up-you
 
 If the installer detects a previous attempt that didn't complete successfully (e.g., the Docker build failed partway through), it will note this and proceed automatically — no override needed.
 
-### Configure authentication via .env
+### Configure authentication via environment_settings.txt
 
-By default, Claude Code prompts you to log in interactively the first time you launch it (browser-based OAuth or pasting an API key). This works great for Max subscription and direct API key setups. However, if you're using **OpenRouter**, a **cloud provider** (Bedrock/Vertex), or simply want your authentication to persist automatically without interactive login, you can configure it through the `.env` file in your `daaf-docker` folder.
+By default, Claude Code prompts you to log in interactively the first time you launch it (browser-based OAuth or pasting an API key). This works great for Max subscription and direct API key setups. However, if you're using **OpenRouter**, a **cloud provider** (Bedrock/Vertex), or simply want your authentication to persist automatically without interactive login, you can configure it through the `environment_settings.txt` file in your `daaf-docker` folder.
 
-Your `daaf-docker` folder includes an `env.example` template that documents all five supported authentication methods with the exact environment variables needed for each. To set it up:
+Your `daaf-docker` folder includes an `environment_settings_example.txt` template that documents all five supported authentication methods with the exact environment variables needed for each. To set it up:
 
 1. **Copy the template** (if you haven't already):
 
    **macOS / Linux (Terminal):**
    ```bash
    cd daaf-docker
-   cp env.example .env
+   cp environment_settings_example.txt environment_settings.txt
    ```
 
    **Windows (PowerShell):**
    ```powershell
    cd daaf-docker
-   Copy-Item env.example .env
+   Copy-Item environment_settings_example.txt environment_settings.txt
    ```
 
-2. **Open `.env` in any text editor** and uncomment the section matching your authentication method. For example, to use OpenRouter:
+2. **Open `environment_settings.txt` in any text editor** and uncomment the section matching your authentication method. For example, to use OpenRouter:
    ```bash
    # --- Option C: OpenRouter (third-party model gateway) ---
    ANTHROPIC_BASE_URL=https://openrouter.ai/api
@@ -582,11 +582,11 @@ Your `daaf-docker` folder includes an `env.example` template that documents all 
    .\run_daaf.ps1              # Windows
    ```
 
-4. **If you previously logged in interactively** with Anthropic, run `/logout` inside Claude Code before switching to a `.env`-based method — cached credentials can take priority over environment variables.
+4. **If you previously logged in interactively** with Anthropic, run `/logout` inside Claude Code before switching to an `environment_settings.txt`-based method — cached credentials can take priority over environment variables.
 
-> **Only uncomment ONE authentication section.** If multiple methods are set, Claude Code uses the highest-priority one (see the priority order documented in `env.example`). This can lead to unexpected billing if, for example, you have both an API key and an OAuth token set.
+> **Only uncomment ONE authentication section.** If multiple methods are set, Claude Code uses the highest-priority one (see the priority order documented in `environment_settings_example.txt`). This can lead to unexpected billing if, for example, you have both an API key and an OAuth token set.
 
-> **Note:** The `.env` file is also where you'll configure data source API keys (covered in the next section). Both authentication and data source credentials live in the same file and are loaded together when the container starts.
+> **Note:** The `environment_settings.txt` file is also where you'll configure data source API keys (covered in the next section). Both authentication and data source credentials live in the same file and are loaded together when the container starts.
 
 ### Set up data source API keys
 
@@ -598,30 +598,30 @@ However, some data domains require API keys from their hosting platforms. The ta
 |-------------|---------------------|-------------------|
 | County Presidential Election Returns (Harvard Dataverse) | `HARVARD_DATAVERSE_API_KEY` | [dataverse.harvard.edu](https://dataverse.harvard.edu/) → Log in → Account name (top-right) → API Token → Create Token |
 
-#### Recommended: Use a .env file (persistent across restarts)
+#### Recommended: Use an environment_settings.txt file (persistent across restarts)
 
-Your `daaf-docker` folder includes an `env.example` template. Copy it to `.env` and fill in your keys:
+Your `daaf-docker` folder includes an `environment_settings_example.txt` template. Copy it to `environment_settings.txt` and fill in your keys:
 
 **macOS / Linux (Terminal):**
 ```bash
 cd daaf-docker
-cp env.example .env
+cp environment_settings_example.txt environment_settings.txt
 ```
 
 **Windows (PowerShell):**
 ```powershell
 cd daaf-docker
-Copy-Item env.example .env
+Copy-Item environment_settings_example.txt environment_settings.txt
 ```
 
-Then open `.env` in any text editor and uncomment/fill in the keys you need:
+Then open `environment_settings.txt` in any text editor and uncomment/fill in the keys you need:
 
 ```bash
 # Remove the leading # and replace the placeholder with your actual key
 HARVARD_DATAVERSE_API_KEY=your_token_here
 ```
 
-The `.env` file is loaded automatically when the container starts. Edits to `.env` are not applied while the container is running — you need to recreate it to pick up changes:
+The `environment_settings.txt` file is loaded automatically when the container starts. Edits to `environment_settings.txt` are not applied while the container is running — you need to recreate it to pick up changes:
 
 ```bash
 docker compose down
@@ -629,11 +629,11 @@ bash run_daaf.sh            # macOS / Linux
 .\run_daaf.ps1              # Windows
 ```
 
-> **Security note:** The `.env` file lives on your host machine (in `daaf-docker/`), is gitignored by default, and is never visible to Claude inside the container. DAAF's safety guardrails prevent Claude from reading or writing `.env` files by design — your credentials stay strictly on your side of the boundary.
+> **Security note:** The `environment_settings.txt` file lives on your host machine (in `daaf-docker/`), is gitignored by default, and is never visible to Claude inside the container. DAAF's safety guardrails prevent Claude from reading or writing environment settings files by design — your credentials stay strictly on your side of the boundary.
 
 #### Alternative: Set keys manually in the container shell
 
-If you prefer not to use a `.env` file, you can set environment variables directly inside the container before launching Claude Code:
+If you prefer not to use an `environment_settings.txt` file, you can set environment variables directly inside the container before launching Claude Code:
 
 ```bash
 # Enter the container shell
@@ -653,7 +653,7 @@ To make manual exports persist across container restarts, add the `export` line 
 echo 'export HARVARD_DATAVERSE_API_KEY="your_token_here"' >> ~/.bashrc
 ```
 
-Note that the `.env` file approach above is simpler and recommended — it persists automatically and you can edit it with your normal text editor on your computer without entering the container.
+Note that the `environment_settings.txt` file approach above is simpler and recommended — it persists automatically and you can edit it with your normal text editor on your computer without entering the container.
 
 If you skip this step and later try to analyze election data, DAAF will inform you that the API key is missing and point you back to these instructions.
 
@@ -674,7 +674,7 @@ If you skip this step and later try to analyze election data, DAAF will inform y
   ```bash
   docker run --rm -v "daaf_daaf-data:/daaf" busybox chown -R 1000:1000 /daaf
   ```
-- **Claude Code asks for an API key every time** — Claude Code stores its authentication state inside the Docker volume, so it persists across normal container restarts. If your authentication state is lost, the most reliable fix is to configure your credentials in the `.env` file (see [**Configure authentication via .env**](#configure-authentication-via-env) above) — this ensures authentication persists automatically on every container start. Alternatively, you can add your key to `~/.bashrc` inside the container: `echo 'export ANTHROPIC_API_KEY="your_key_here"' >> ~/.bashrc`.
+- **Claude Code asks for an API key every time** — Claude Code stores its authentication state inside the Docker volume, so it persists across normal container restarts. If your authentication state is lost, the most reliable fix is to configure your credentials in the `environment_settings.txt` file (see [**Configure authentication via environment_settings.txt**](#configure-authentication-via-environment_settingstxt) above) — this ensures authentication persists automatically on every container start. Alternatively, you can add your key to `~/.bashrc` inside the container: `echo 'export ANTHROPIC_API_KEY="your_key_here"' >> ~/.bashrc`.
 - **OpenRouter: "model not found" or authentication errors** — Double-check three things: (1) `ANTHROPIC_BASE_URL` must be exactly `https://openrouter.ai/api` with no `/v1` suffix (the `/v1` variant is for OpenAI-compatible tools, not Claude Code), (2) `ANTHROPIC_API_KEY` must be set to an empty value (`ANTHROPIC_API_KEY=`), not removed entirely — if it's unset, Claude Code falls back to Anthropic's servers, and (3) if you previously logged in with Anthropic interactively, run `/logout` inside Claude Code to clear cached credentials. You can verify your connection is working by typing `/status` inside Claude Code and checking the [OpenRouter Activity Dashboard](https://openrouter.ai/activity) for incoming requests.
 
 ---

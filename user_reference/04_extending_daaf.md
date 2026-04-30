@@ -62,7 +62,7 @@ You'll need:
 If your data source is available via a REST API rather than as a downloadable file, DAAF can handle the acquisition for you during Data Onboarding. You'll need:
 
 1. **API documentation** — a URL to the API docs, or a description of how the API works (endpoints, authentication method, response format). DAAF will research the API on your behalf, but having documentation to point to dramatically improves the quality of the resulting fetch scripts.
-2. **An API key** — most APIs require authentication. Add your key to the `.env` file in your `daaf-docker` folder on the host machine (see [API Keys in the Installation Guide](01_installation_and_quickstart.md#set-up-data-source-api-keys) for the pattern). DAAF will ask you which environment variable name holds your key.
+2. **An API key** — most APIs require authentication. Add your key to the `environment_settings.txt` file in your `daaf-docker` folder on the host machine (see [API Keys in the Installation Guide](01_installation_and_quickstart.md#set-up-data-source-api-keys) for the pattern). DAAF will ask you which environment variable name holds your key.
 3. **A sense of what you want to download** — which endpoint, what filters (date range, geography, etc.), and roughly how much data to expect.
 
 DAAF will research the API, write a fetch script for your approval, download the data, and then proceed with the standard profiling workflow. The fetch script is saved as a reproducible artifact — you (or DAAF) can re-run it any time to get fresh data.
