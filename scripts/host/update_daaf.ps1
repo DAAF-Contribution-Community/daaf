@@ -166,11 +166,13 @@ trap {
 # a terminating error when $ErrorActionPreference is "Stop" in the caller's
 # scope.
 function Invoke-ComposeGit {
-    param([Parameter(ValueFromRemainingArguments=$true)]$GitArgs)
+    # Uses $args (simple function) instead of [Parameter(ValueFromRemainingArguments)]
+    # so PowerShell does not add common parameters (-Debug, -Verbose,
+    # -PipelineVariable, ...) that silently consume single-letter git flags.
     $savedEAP = $ErrorActionPreference
     try {
         $ErrorActionPreference = "SilentlyContinue"
-        $result = docker compose exec -T daaf-docker git -C /daaf @GitArgs 2>$null | Out-String
+        $result = docker compose exec -T daaf-docker git -C /daaf @args 2>$null | Out-String
         return ($result -replace "`r","").Trim()
     } finally {
         $ErrorActionPreference = $savedEAP
@@ -183,11 +185,11 @@ function Invoke-ComposeGit {
 # stderr to a terminating error when $ErrorActionPreference is "Stop" in
 # the caller's scope.
 function Invoke-ComposeGitVerbose {
-    param([Parameter(ValueFromRemainingArguments=$true)]$GitArgs)
+    # Simple function — see Invoke-ComposeGit comment for rationale.
     $savedEAP = $ErrorActionPreference
     try {
         $ErrorActionPreference = "SilentlyContinue"
-        $result = docker compose exec -T daaf-docker git -C /daaf @GitArgs | Out-String
+        $result = docker compose exec -T daaf-docker git -C /daaf @args | Out-String
         return ($result -replace "`r","").Trim()
     } finally {
         $ErrorActionPreference = $savedEAP
@@ -198,11 +200,11 @@ function Invoke-ComposeGitVerbose {
 # where we only care about $LASTEXITCODE). Uses SilentlyContinue to prevent
 # PS 5.1 from promoting stderr to a terminating error.
 function Invoke-ComposeGitNull {
-    param([Parameter(ValueFromRemainingArguments=$true)]$GitArgs)
+    # Simple function — see Invoke-ComposeGit comment for rationale.
     $savedEAP = $ErrorActionPreference
     try {
         $ErrorActionPreference = "SilentlyContinue"
-        docker compose exec -T daaf-docker git -C /daaf @GitArgs 2>&1 | Out-Null
+        docker compose exec -T daaf-docker git -C /daaf @args 2>&1 | Out-Null
     } finally {
         $ErrorActionPreference = $savedEAP
     }
@@ -211,11 +213,11 @@ function Invoke-ComposeGitNull {
 # Run docker compose with arbitrary args. Uses SilentlyContinue to prevent
 # PS 5.1 from promoting stderr to a terminating error.
 function Invoke-Compose {
-    param([Parameter(ValueFromRemainingArguments=$true)]$ComposeArgs)
+    # Simple function — see Invoke-ComposeGit comment for rationale.
     $savedEAP = $ErrorActionPreference
     try {
         $ErrorActionPreference = "SilentlyContinue"
-        docker compose @ComposeArgs
+        docker compose @args
     } finally {
         $ErrorActionPreference = $savedEAP
     }
@@ -225,11 +227,11 @@ function Invoke-Compose {
 # SilentlyContinue to prevent PS 5.1 from promoting stderr to a
 # terminating error.
 function Invoke-ComposeExec {
-    param([Parameter(ValueFromRemainingArguments=$true)]$ExecArgs)
+    # Simple function — see Invoke-ComposeGit comment for rationale.
     $savedEAP = $ErrorActionPreference
     try {
         $ErrorActionPreference = "SilentlyContinue"
-        docker compose exec -T daaf-docker @ExecArgs
+        docker compose exec -T daaf-docker @args
     } finally {
         $ErrorActionPreference = $savedEAP
     }
@@ -584,7 +586,7 @@ $running = ($runningCheck | Out-String) -match "daaf-docker"
 
 if (-not $running) {
     Write-Host "Starting DAAF container..."
-    Invoke-Compose up --detach
+    Invoke-Compose up -d
     if ($LASTEXITCODE -ne 0) {
         Write-Host ""
         Write-Host "ERROR: Failed to start the DAAF container." -ForegroundColor Red

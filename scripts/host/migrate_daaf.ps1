@@ -207,11 +207,13 @@ if ($env:DAAF_DRY_RUN -eq "1") {
 # Uses SilentlyContinue to prevent PS 5.1 from promoting stderr to a terminating
 # error when $ErrorActionPreference is "Stop" in the caller's scope.
 function Invoke-ContainerGit {
-    param([Parameter(ValueFromRemainingArguments=$true)]$GitArgs)
+    # Uses $args (simple function) instead of [Parameter(ValueFromRemainingArguments)]
+    # so PowerShell does not add common parameters (-Debug, -Verbose,
+    # -PipelineVariable, ...) that silently consume single-letter git flags.
     $savedEAP = $ErrorActionPreference
     try {
         $ErrorActionPreference = "SilentlyContinue"
-        $result = docker exec $script:ContainerName git -C /daaf @GitArgs 2>$null | Out-String
+        $result = docker exec $script:ContainerName git -C /daaf @args 2>$null | Out-String
         return ($result -replace "`r","").Trim()
     } finally {
         $ErrorActionPreference = $savedEAP
@@ -222,11 +224,11 @@ function Invoke-ContainerGit {
 # Uses SilentlyContinue to prevent PS 5.1 from promoting stderr to a terminating
 # error when $ErrorActionPreference is "Stop" in the caller's scope.
 function Invoke-ContainerGitVerbose {
-    param([Parameter(ValueFromRemainingArguments=$true)]$GitArgs)
+    # Simple function — see Invoke-ContainerGit comment for rationale.
     $savedEAP = $ErrorActionPreference
     try {
         $ErrorActionPreference = "SilentlyContinue"
-        $result = docker exec $script:ContainerName git -C /daaf @GitArgs | Out-String
+        $result = docker exec $script:ContainerName git -C /daaf @args | Out-String
         return ($result -replace "`r","").Trim()
     } finally {
         $ErrorActionPreference = $savedEAP
@@ -237,11 +239,11 @@ function Invoke-ContainerGitVerbose {
 # Uses SilentlyContinue to prevent PS 5.1 from promoting stderr to a terminating
 # error when $ErrorActionPreference is "Stop" in the caller's scope.
 function Invoke-ContainerExec {
-    param([Parameter(ValueFromRemainingArguments=$true)]$ExecArgs)
+    # Simple function — see Invoke-ContainerGit comment for rationale.
     $savedEAP = $ErrorActionPreference
     try {
         $ErrorActionPreference = "SilentlyContinue"
-        docker exec $script:ContainerName @ExecArgs
+        docker exec $script:ContainerName @args
     } finally {
         $ErrorActionPreference = $savedEAP
     }
