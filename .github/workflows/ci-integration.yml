@@ -106,19 +106,15 @@ jobs:
         run: ls -la *_daaf_backup/
 
       # --- Restore from backup (round-trip test) ---
-      # Stop the container so restore_from_backup.sh can clear the volume,
-      # then pipe selection "1" and confirmation "RESTORE" for non-interactive use.
-      - name: Stop container for restore test
-        working-directory: daaf-docker
-        run: docker compose stop
-
+      # The restore script detects the running container and offers to stop it.
+      # Pipe: "y" (accept stop), "1" (select first backup), "RESTORE" (confirm).
       - name: Restore from backup via restore_from_backup.sh
         working-directory: daaf-docker
-        run: printf '1\nRESTORE\n' | bash restore_from_backup.sh
+        run: printf 'y\n1\nRESTORE\n' | bash restore_from_backup.sh
 
       - name: Start container after restore
         working-directory: daaf-docker
-        run: docker compose start
+        run: docker compose up -d
 
       - name: Wait for container readiness after restore
         working-directory: daaf-docker

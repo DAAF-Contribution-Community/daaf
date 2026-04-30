@@ -222,7 +222,7 @@ teardown() {
 
 # --- Running container detection ---
 
-@test "restore: blocks when containers are using the volume" {
+@test "restore: offers to stop running containers" {
     export DAAF_NESTED=1
     MOCK_DOCKER_VOLUME_EXIT=0
 
@@ -240,10 +240,15 @@ teardown() {
     }
     export -f docker
 
-    run bash "${REPO_ROOT}/scripts/host/restore_from_backup.sh"
-    assert_failure
-    assert_output --partial "containers are currently using"
-    assert_output --partial "docker compose down"
+    # Decline the stop prompt
+    run bash -c 'echo "n" | bash "'"${REPO_ROOT}"'/scripts/host/restore_from_backup.sh"'
+    assert_output --partial "container is currently running"
+    assert_output --partial "Restore cancelled"
+}
+
+@test "restore: warns about Claude Code sessions when containers running" {
+    run grep -c "Claude Code sessions" "${REPO_ROOT}/scripts/host/restore_from_backup.sh"
+    assert_success
 }
 
 # =========================================================================

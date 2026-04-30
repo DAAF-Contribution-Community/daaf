@@ -89,15 +89,31 @@ fi
 RUNNING_CONTAINERS=""
 RUNNING_CONTAINERS=$(docker ps --filter "volume=${VOLUME_NAME}" --format '{{.Names}}' 2>/dev/null || true)
 if [ -n "${RUNNING_CONTAINERS}" ]; then
-    echo "ERROR: The following containers are currently using the DAAF volume:" >&2
-    echo "" >&2
+    echo "The DAAF container is currently running:"
+    echo ""
     echo "${RUNNING_CONTAINERS}" | while IFS= read -r name; do
-        echo "  - ${name}" >&2
+        echo "  - ${name}"
     done
-    echo "" >&2
-    echo "Please stop them before restoring:" >&2
-    echo "  docker compose down" >&2
-    exit 1
+    echo ""
+    echo "The container must be stopped before restoring. This will terminate"
+    echo "any Claude Code sessions currently in progress."
+    echo ""
+    read -r -p "Stop the container now? (y/n): " STOP_CHOICE
+    if [ "${STOP_CHOICE}" = "y" ] || [ "${STOP_CHOICE}" = "Y" ]; then
+        echo ""
+        echo "Stopping containers..."
+        if ! docker compose down; then
+            echo "ERROR: Failed to stop containers." >&2
+            exit 1
+        fi
+        echo "Containers stopped."
+        echo ""
+    else
+        echo ""
+        echo "Restore cancelled. Stop the container manually and try again:"
+        echo "  docker compose down"
+        exit 0
+    fi
 fi
 
 # --- Find backup folders ---

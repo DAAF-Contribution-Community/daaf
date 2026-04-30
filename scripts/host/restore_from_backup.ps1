@@ -100,15 +100,34 @@ $ErrorActionPreference = $savedEAP
 $RunningContainers = @($RunningContainers | Where-Object { $_ -and $_.Trim() -ne "" })
 
 if ($RunningContainers.Count -gt 0) {
-    Write-Host "ERROR: The following containers are currently using the DAAF volume:" -ForegroundColor Red
+    Write-Host "The DAAF container is currently running:"
     Write-Host ""
     foreach ($name in $RunningContainers) {
         Write-Host "  - $name"
     }
     Write-Host ""
-    Write-Host "Please stop them before restoring:"
-    Write-Host "  docker compose down"
-    Wait-AndExit 1
+    Write-Host "The container must be stopped before restoring. This will terminate"
+    Write-Host "any Claude Code sessions currently in progress."
+    Write-Host ""
+    $StopChoice = Read-Host "Stop the container now? (y/n)"
+    if ($StopChoice -eq "y" -or $StopChoice -eq "Y") {
+        Write-Host ""
+        Write-Host "Stopping containers..."
+        $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
+        $null = docker compose down 2>&1
+        $ErrorActionPreference = $savedEAP
+        if ($LASTEXITCODE -ne 0) {
+            Write-Host "ERROR: Failed to stop containers." -ForegroundColor Red
+            Wait-AndExit 1
+        }
+        Write-Host "Containers stopped."
+        Write-Host ""
+    } else {
+        Write-Host ""
+        Write-Host "Restore cancelled. Stop the container manually and try again:"
+        Write-Host "  docker compose down"
+        Wait-AndExit 0
+    }
 }
 
 # --- Find backup folders ---
