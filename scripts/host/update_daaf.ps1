@@ -185,7 +185,7 @@ function Invoke-ComposeGit {
 # stderr to a terminating error when $ErrorActionPreference is "Stop" in
 # the caller's scope.
 function Invoke-ComposeGitVerbose {
-    # Simple function — see Invoke-ComposeGit comment for rationale.
+    # Simple function -- see Invoke-ComposeGit comment for rationale.
     $savedEAP = $ErrorActionPreference
     try {
         $ErrorActionPreference = "SilentlyContinue"
@@ -200,7 +200,7 @@ function Invoke-ComposeGitVerbose {
 # where we only care about $LASTEXITCODE). Uses SilentlyContinue to prevent
 # PS 5.1 from promoting stderr to a terminating error.
 function Invoke-ComposeGitNull {
-    # Simple function — see Invoke-ComposeGit comment for rationale.
+    # Simple function -- see Invoke-ComposeGit comment for rationale.
     $savedEAP = $ErrorActionPreference
     try {
         $ErrorActionPreference = "SilentlyContinue"
@@ -213,7 +213,7 @@ function Invoke-ComposeGitNull {
 # Run docker compose with arbitrary args. Uses SilentlyContinue to prevent
 # PS 5.1 from promoting stderr to a terminating error.
 function Invoke-Compose {
-    # Simple function — see Invoke-ComposeGit comment for rationale.
+    # Simple function -- see Invoke-ComposeGit comment for rationale.
     $savedEAP = $ErrorActionPreference
     try {
         $ErrorActionPreference = "SilentlyContinue"
@@ -227,7 +227,7 @@ function Invoke-Compose {
 # SilentlyContinue to prevent PS 5.1 from promoting stderr to a
 # terminating error.
 function Invoke-ComposeExec {
-    # Simple function — see Invoke-ComposeGit comment for rationale.
+    # Simple function -- see Invoke-ComposeGit comment for rationale.
     $savedEAP = $ErrorActionPreference
     try {
         $ErrorActionPreference = "SilentlyContinue"

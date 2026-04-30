@@ -224,7 +224,7 @@ function Invoke-ContainerGit {
 # Uses SilentlyContinue to prevent PS 5.1 from promoting stderr to a terminating
 # error when $ErrorActionPreference is "Stop" in the caller's scope.
 function Invoke-ContainerGitVerbose {
-    # Simple function — see Invoke-ContainerGit comment for rationale.
+    # Simple function -- see Invoke-ContainerGit comment for rationale.
     $savedEAP = $ErrorActionPreference
     try {
         $ErrorActionPreference = "SilentlyContinue"
@@ -239,7 +239,7 @@ function Invoke-ContainerGitVerbose {
 # Uses SilentlyContinue to prevent PS 5.1 from promoting stderr to a terminating
 # error when $ErrorActionPreference is "Stop" in the caller's scope.
 function Invoke-ContainerExec {
-    # Simple function — see Invoke-ContainerGit comment for rationale.
+    # Simple function -- see Invoke-ContainerGit comment for rationale.
     $savedEAP = $ErrorActionPreference
     try {
         $ErrorActionPreference = "SilentlyContinue"
@@ -773,8 +773,10 @@ if ($DetectedEra -eq "1") {
         Wait-ForUser; return
     }
 
-    # Parse commits into array
-    $InitialCommitsList = $InitialCommits -split "`n" | Where-Object { $_.Trim() -ne "" } | ForEach-Object { $_.Trim() }
+    # Parse commits into array (force @() to prevent single-element unwrapping --
+    # without it, a single root commit becomes a string and [-1] returns the
+    # last character instead of the last element)
+    $InitialCommitsList = @($InitialCommits -split "`n" | Where-Object { $_.Trim() -ne "" } | ForEach-Object { $_.Trim() })
     $RootCount = $InitialCommitsList.Count
 
     # If multiple root commits exist, use the last (oldest) one
@@ -1057,7 +1059,7 @@ echo "BEST:$BEST_SHA:$BEST_OVERLAP:$LOCAL_COUNT"
 
         $PermFixed = 0
         if (-not [string]::IsNullOrWhiteSpace($UpstreamExec)) {
-            $UpstreamExecFiles = $UpstreamExec -split "`n" | Where-Object { $_.Trim() -ne "" } | ForEach-Object { $_.Trim() }
+            $UpstreamExecFiles = @($UpstreamExec -split "`n" | Where-Object { $_.Trim() -ne "" } | ForEach-Object { $_.Trim() })
 
             foreach ($FilePath in $UpstreamExecFiles) {
                 if ([string]::IsNullOrWhiteSpace($FilePath)) { continue }
