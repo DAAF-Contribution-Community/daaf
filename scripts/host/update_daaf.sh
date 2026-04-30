@@ -235,14 +235,14 @@ handle_conflict() {
         echo "IMPORTANT: When Claude Code is done, type /exit to return here."
         echo "The updater still needs to finish a few steps after this."
         echo ""
-        # Do NOT use host-side < /dev/tty -- it strips TTY attributes through
-        # Docker's forwarding layer, breaking Claude Code's isatty() check.
-        # When stdin is a pipe (curl|bash), redirect inside the container
-        # where Docker's allocated PTY is /dev/tty.
+        # When stdin is a pipe (curl|bash), Docker rejects the -t flag with
+        # "the input device is not a TTY". Redirect from /dev/tty on the
+        # host side so Docker sees a real TTY and allocates a PTY inside
+        # the container.
         if [ -t 0 ]; then
             docker compose exec -it daaf-docker claude || true
         else
-            docker compose exec -it daaf-docker sh -c 'exec claude </dev/tty' || true
+            docker compose exec -it daaf-docker claude < /dev/tty || true
         fi
         echo ""
 
@@ -1261,7 +1261,7 @@ if [ -n "${DIRTY_FILES}" ]; then
             if [ -t 0 ]; then
                 docker compose exec -it daaf-docker claude || true
             else
-                docker compose exec -it daaf-docker sh -c 'exec claude </dev/tty' || true
+                docker compose exec -it daaf-docker claude < /dev/tty || true
             fi
             echo ""
 
