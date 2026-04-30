@@ -278,8 +278,8 @@ teardown() {
     assert_output --partial "2 backup(s)"
 }
 
-@test "restore: dry-run fails when no backups exist" {
+@test "restore: dry-run succeeds when no backups exist" {
     run env DAAF_DRY_RUN=1 DAAF_NESTED=1 bash "${REPO_ROOT}/scripts/host/restore_from_backup.sh"
-    assert_failure
+    assert_success
     assert_output --partial "No backup folders found"
 }

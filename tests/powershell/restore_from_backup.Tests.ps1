@@ -49,7 +49,7 @@ Describe "restore_from_backup.ps1" {
 
         It "searches for backup folders matching date pattern" {
             $Content | Should -Match 'daaf_backup'
-            $Content | Should -Match '\d{4}-\\d{2}-\\d{2}'
+            $Content | Should -Match '\\d\{4\}-\\d\{2\}-\\d\{2\}'
         }
 
         It "contains destructive warning text" {
@@ -151,13 +151,13 @@ Describe "restore_from_backup.ps1 dry-run mode" {
         Remove-Item -Recurse -Force $script:TestDir -ErrorAction SilentlyContinue
     }
 
-    It "dry-run fails when no backups exist" {
+    It "dry-run succeeds when no backups exist" {
         Push-Location $script:TestDir
         try {
             $env:DAAF_DRY_RUN = "1"
             $env:DAAF_NESTED = "1"
             $output = & "$RepoRoot/scripts/host/restore_from_backup.ps1" *>&1
-            $exitCode = $LASTEXITCODE
+            $LASTEXITCODE | Should -BeIn @(0, $null)
             ($output | Out-String) | Should -BeLike "*No backup folders found*"
         } finally {
             Pop-Location

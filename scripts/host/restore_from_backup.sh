@@ -111,6 +111,14 @@ done
 shopt -u nullglob
 
 if [ ${#BACKUPS[@]} -eq 0 ]; then
+    if [ "${DAAF_DRY_RUN:-}" = "1" ]; then
+        echo "[DRY-RUN] No backup folders found (expected in CI)."
+        echo ""
+        echo "=========================================="
+        echo "  Restore dry-run complete!"
+        echo "=========================================="
+        exit 0
+    fi
     echo "No backup folders found in the current directory." >&2
     echo "" >&2
     echo "Backup folders are created by backup_daaf.sh and follow the pattern:" >&2

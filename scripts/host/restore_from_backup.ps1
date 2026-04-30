@@ -117,6 +117,14 @@ $Backups = @(Get-ChildItem -Directory | Where-Object {
 } | Sort-Object Name -Descending)
 
 if ($Backups.Count -eq 0) {
+    if ($env:DAAF_DRY_RUN -eq "1") {
+        Write-Host "[DRY-RUN] No backup folders found (expected in CI)."
+        Write-Host ""
+        Write-Host "=========================================="
+        Write-Host "  Restore dry-run complete!"
+        Write-Host "=========================================="
+        Wait-AndExit 0
+    }
     Write-Host "No backup folders found in the current directory." -ForegroundColor Red
     Write-Host ""
     Write-Host "Backup folders are created by backup_daaf.ps1 and follow the pattern:"
