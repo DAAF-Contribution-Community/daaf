@@ -145,7 +145,15 @@ trap {
             Write-Verbose "Silenced: $_"
         }
     }
-    Wait-AndExit 1
+    # Inline Wait-AndExit logic — do not call the function here because trap
+    # blocks are scope-wide (active before function definitions execute), and
+    # Invoke-Expression evaluation may lose function definitions during scope
+    # unwinding, causing CommandNotFoundException.
+    if (-not $env:DAAF_NESTED) {
+        Write-Host ""
+        Read-Host "Press Enter to continue"
+    }
+    exit 1
 }
 
 # =====================================================================

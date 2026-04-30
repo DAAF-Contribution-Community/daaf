@@ -158,7 +158,15 @@ trap {
     Write-Host "     (It is safe to re-run - it will pick up where it left off.)"
     Write-Host ""
     if ($Mutex) { try { $Mutex.ReleaseMutex() } catch { <# Mutex already released or not owned — safe to ignore #> Write-Verbose "Silenced: $_" } }
-    Wait-ForUser; return
+    # Inline Wait-ForUser logic — do not call the function here because trap
+    # blocks are scope-wide (active before function definitions execute), and
+    # Invoke-Expression evaluation may lose function definitions during scope
+    # unwinding, causing CommandNotFoundException.
+    if (-not $env:DAAF_NESTED) {
+        Write-Host ""
+        Read-Host "Press Enter to close this window"
+    }
+    exit 1
 }
 
 # =====================================================================
