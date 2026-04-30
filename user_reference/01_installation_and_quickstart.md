@@ -103,7 +103,7 @@ The installer will show its progress as it works through four steps: creating a 
 
 ### What the installer does
 
-1. **Creates an installation directory** called `daaf-docker/` in whatever folder your terminal is currently in, containing the Dockerfile, docker-compose.yml, and convenience scripts (`run_daaf`, `view_logs`, `view_notebooks`, `backup_daaf`, `rebuild_daaf`, and `update_daaf`). For example, if you open your terminal and it starts in your home folder (`~` on Mac/Linux, `C:\Users\YourName` on Windows), that's where `daaf-docker/` will be created. You can `cd` to a different location first if you'd prefer to install elsewhere.
+1. **Creates an installation directory** called `daaf-docker/` in whatever folder your terminal is currently in, containing the Dockerfile, docker-compose.yml, and convenience scripts (`run_daaf`, `view_logs`, `view_notebooks`, `backup_daaf`, `restore_from_backup`, `rebuild_daaf`, and `update_daaf`). For example, if you open your terminal and it starts in your home folder (`~` on Mac/Linux, `C:\Users\YourName` on Windows), that's where `daaf-docker/` will be created. You can `cd` to a different location first if you'd prefer to install elsewhere.
 2. **Builds the Docker image** with Python 3.12, 50+ data science packages, geospatial libraries, and Claude Code pre-installed. The first build downloads everything and takes a few minutes; subsequent rebuilds use Docker's layer cache and are much faster.
 3. **Downloads the DAAF repository** directly into the Docker volume inside the container. This gives you a full git repository.
 4. **Prints post-install instructions** showing you how to enter the container, launch Claude Code, and configure it.
@@ -320,6 +320,26 @@ The backup script creates a date-versioned folder (e.g., `2026-04-21_daaf_backup
 
 You can also back up manually using Docker Desktop's GUI: go into the Docker volume file viewer (see above) and download the whole `daaf` or `research` folder to somewhere else on your computer.
 
+### Restoring from a Backup
+
+If you need to restore your DAAF installation from a backup, use the included restore script. It searches your `daaf-docker` folder for backup folders, lets you pick one, and handles replacing the Docker volume contents cleanly.
+
+**macOS / Linux (Terminal):**
+
+```bash
+cd daaf-docker
+bash restore_from_backup.sh
+```
+
+**Windows (PowerShell):**
+
+```powershell
+cd daaf-docker
+.\restore_from_backup.ps1
+```
+
+**Important:** Restoring is a destructive operation -- the script completely erases the current Docker volume contents and replaces them with the backup. Make sure DAAF is not running when you restore (run `docker compose down` first if needed). The script checks for running containers and warns you if any are active.
+
 **A note on git and DAAF:** A full git repository is set up inside the Docker volume during installation (via the `git clone` in the installer). During research sessions, DAAF's agents will make **local git commits** inside the container to track every script version, data transformation, and plan update — this creates a detailed audit trail of your research that you can review with standard git tools (like `git log`). A remote is configured by default (pointing to the upstream DAAF repository for updates), but nothing is ever pushed there without your explicit instruction. Your research work lives safely in the Docker volume, and the local git history is there purely for traceability and reproducibility within your own projects. If you want a GitHub backup for your work, ask Claude how to make your own repository and save to it accordingly.
 
 ### Viewing report Markdown (.md) files
@@ -399,7 +419,7 @@ If you installed DAAF **v2.0.1 or earlier** — back when the installation proce
 
 **What the migration does:**
 
-- Downloads some utility scripts (`run_daaf`, `update_daaf`, `backup_daaf`, `rebuild_daaf`, `view_logs`, `view_notebooks`) to your host machine so you have all the same convenience tools as a fresh install
+- Downloads some utility scripts (`run_daaf`, `update_daaf`, `backup_daaf`, `restore_from_backup`, `rebuild_daaf`, `view_logs`, `view_notebooks`) to your host machine so you have all the same convenience tools as a fresh install
 - Creates a full backup of your Docker volume before making any changes
 - Connects your local git history to the official DAAF repository so that future updates can merge in cleanly
 - Preserves everything — your research files, any framework customizations you've made, and your full git audit trail are all kept intact

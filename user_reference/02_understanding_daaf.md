@@ -783,7 +783,7 @@ Here's a quick reference for what each part of the DAAF repository contains and 
 | `agent_reference/` | Detailed workflow documentation, templates, validation rules | **DAAF** (internal reference material for the orchestrator and agents) |
 | `.claude/skills/` | Skill definitions providing domain knowledge | **DAAF** (and users who want to create new skills) |
 | `scripts/` | Shared utility scripts (`run_with_capture.sh`, `collect_session_logs.sh`, `generate_log_viewer.sh`, `launch_marimo.sh`) | **DAAF** (used from the DAAF root directory; not copied into projects) |
-| repo root | Host-side convenience scripts (`run_daaf`, `view_logs`, `view_notebooks`, `backup_daaf`, `rebuild_daaf`, `update_daaf` — `.sh` and `.ps1` variants) | **You** (run from your `daaf-docker` folder on the host, outside the container) |
+| repo root | Host-side convenience scripts (`run_daaf`, `view_logs`, `view_notebooks`, `backup_daaf`, `restore_from_backup`, `rebuild_daaf`, `update_daaf` — `.sh` and `.ps1` variants) | **You** (run from your `daaf-docker` folder on the host, outside the container) |
 
 **Key insight for new users:** Everything you need to review, share, or reproduce is inside the project folder. You can copy the entire folder to a colleague and they'd have everything needed to understand and verify the analysis. That's the whole point of reproducibility.
 

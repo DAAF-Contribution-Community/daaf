@@ -280,7 +280,7 @@ echo "Downloading utility scripts from GitHub..."
 
 DOWNLOAD_FAILED=false
 
-for FILE in backup_daaf.sh rebuild_daaf.sh update_daaf.sh run_daaf.sh view_logs.sh view_notebooks.sh env.example; do
+for FILE in backup_daaf.sh restore_from_backup.sh rebuild_daaf.sh update_daaf.sh run_daaf.sh view_logs.sh view_notebooks.sh env.example; do
     if curl -fsSL "${RAW_BASE}/scripts/host/${FILE}" -o "${HOST_DIR}/${FILE}"; then
         echo "  Downloaded: ${FILE}"
     else
@@ -995,9 +995,10 @@ echo "  cd ${HOST_DIR}"
 echo "  bash update_daaf.sh"
 echo ""
 echo "Other available scripts:"
-echo "  bash run_daaf.sh        Launch Claude Code"
-echo "  bash backup_daaf.sh     Back up the Docker volume"
-echo "  bash rebuild_daaf.sh    Rebuild the Docker image"
-echo "  bash view_logs.sh       Browse session logs"
-echo "  bash view_notebooks.sh  Browse and edit marimo notebooks"
+echo "  bash run_daaf.sh              Launch Claude Code"
+echo "  bash backup_daaf.sh           Back up the Docker volume"
+echo "  bash restore_from_backup.sh   Restore from a backup"
+echo "  bash rebuild_daaf.sh          Rebuild the Docker image"
+echo "  bash view_logs.sh              Browse session logs"
+echo "  bash view_notebooks.sh         Browse and edit marimo notebooks"
 echo ""
