@@ -4,7 +4,7 @@
 
 ## Summary: What is DAAF?
 
-<img width="1258" height="433" alt="daaf_20_thumbnail3" src="https://github.com/user-attachments/assets/b9bfc613-170d-41e4-b35f-b871989dc428" />
+<img width="1258" height="433" alt="daaf_20_thumbnail4" src="https://github.com/user-attachments/assets/21b17b1d-a4d8-4558-a91d-a9ecb0d43f22" />
 
 <p align="center">
   <a href="https://github.com/DAAF-Contribution-Community/daaf/releases"><img src="https://img.shields.io/badge/version-v2.0.1-blue" alt="Version v2.0.1"></a>
