@@ -142,7 +142,7 @@ Describe "restore_from_backup.ps1 dry-run mode" {
         . "$PSScriptRoot/TestHelper.ps1"
         $script:OrigDryRun = $env:DAAF_DRY_RUN
         $script:OrigNested = $env:DAAF_NESTED
-        $script:TestDir = New-Item -ItemType Directory -Path (Join-Path $env:TEMP "daaf-restore-test-$(Get-Random)")
+        $script:TestDir = New-Item -ItemType Directory -Path (Join-Path ([System.IO.Path]::GetTempPath()) "daaf-restore-test-$(Get-Random)")
     }
 
     AfterAll {
