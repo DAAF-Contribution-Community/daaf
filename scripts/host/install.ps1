@@ -1,4 +1,4 @@
-﻿# ============================================================================
+# ============================================================================
 # DAAF One-Line Installer (Windows PowerShell)
 # ============================================================================
 # Usage:
@@ -125,7 +125,7 @@ if (Test-Path "$InstallDir\docker-compose.yml") {
     $ErrorActionPreference = $savedEAP
     $volumeExists = ($LASTEXITCODE -eq 0)
     if ($volumeExists) {
-        # Volume exists — this is a completed or substantially completed installation
+        # Volume exists -- this is a completed or substantially completed installation
         if ($env:DAAF_FORCE_REINSTALL -eq "1") {
             Write-Host "NOTE: Existing installation detected. Proceeding with re-install (DAAF_FORCE_REINSTALL=1)."
             Write-Host ""
@@ -181,7 +181,7 @@ try {
 # --- Build the Docker image ---
 Write-Host "[3/4] Building Docker image (this may take a few minutes on first run since there are a lot of Python libraries to install)..."
 # Project name is set declaratively via the top-level "name: daaf" key in
-# docker-compose.yml — no need to set COMPOSE_PROJECT_NAME here.
+# docker-compose.yml -- no need to set COMPOSE_PROJECT_NAME here.
 # Build and start are split into two commands so that --progress plain can be
 # applied to the build step (where it is universally supported) without relying
 # on `docker compose up --progress`, which is rejected as "unknown flag" on
@@ -271,7 +271,7 @@ docker compose -f "$InstallDir\docker-compose.yml" exec -T daaf-docker test -f /
 $ErrorActionPreference = $savedEAP
 if ($LASTEXITCODE -ne 0) {
     Write-Host ""
-    Write-Host "WARNING: Installation may be incomplete — /daaf/CLAUDE.md was not found in the container." -ForegroundColor Yellow
+    Write-Host "WARNING: Installation may be incomplete -- /daaf/CLAUDE.md was not found in the container." -ForegroundColor Yellow
     Write-Host "The Docker image was built, but the repository files may not have copied correctly."
     Write-Host "You can try cloning manually inside the container:"
     Write-Host "  cd $InstallDir"

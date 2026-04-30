@@ -11,7 +11,7 @@
 #   - Any other change to build files inside the container
 #
 # Why this is needed:
-#   The Dockerfile and docker-compose.yml live in two places — inside the Docker
+#   The Dockerfile and docker-compose.yml live in two places -- inside the Docker
 #   volume (where DAAF and update_daaf.sh modify them) and on the host (where docker
 #   compose reads them for builds). This script bridges the gap so you don't
 #   have to remember the manual docker cp commands.
@@ -150,7 +150,7 @@ fi
 
 if [ "${DOCKERFILE_CHANGED}" = "no" ] && [ "${COMPOSEFILE_CHANGED}" = "no" ]; then
     echo ""
-    echo "      No changes detected — the host files already match the container."
+    echo "      No changes detected -- the host files already match the container."
     echo "      Rebuilding anyway to make sure the image is up to date."
 fi
 

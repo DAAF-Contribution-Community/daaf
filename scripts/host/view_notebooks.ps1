@@ -1,7 +1,7 @@
-﻿# ============================================================================
+# ============================================================================
 # DAAF Notebook Browser (Windows PowerShell)
 # ============================================================================
-# Opens marimo's notebook browser in your browser — browse, open, create, and
+# Opens marimo's notebook browser in your browser -- browse, open, create, and
 # edit marimo notebooks across all your research projects.
 # Starts the DAAF container if needed.
 #

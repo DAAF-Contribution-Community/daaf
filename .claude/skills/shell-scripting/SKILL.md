@@ -85,7 +85,8 @@ Script behaving unexpectedly?
 │   ├─ Native command error ignored → ./references/gotchas.md ($LASTEXITCODE)
 │   ├─ Unexpected return value → ./references/gotchas.md (implicit returns)
 │   ├─ $null in ForEach loop → ./references/gotchas.md
-│   └─ Validation not firing → ./references/gotchas.md (omitted params)
+│   ├─ Validation not firing → ./references/gotchas.md (omitted params)
+│   └─ irm | iex fails with BOM error → ./references/gotchas.md (UTF-8 BOM)
 └─ Cross-platform
     ├─ Env var case mismatch → ./references/gotchas.md
     ├─ Aliases missing → ./references/gotchas.md
@@ -150,6 +151,7 @@ Existing patterns in DAAF scripts that this skill codifies:
 | 6 | No reliance on `$?` for native commands | Grep for `$?` near docker/git |
 | 7 | PSScriptAnalyzer clean | `Invoke-ScriptAnalyzer` |
 | 8 | Errors via `Write-Error` with guidance | Error output |
+| 9 | ASCII-only content (no BOM) | `file script.ps1` reports "ASCII text" |
 
 ## Exit Code Conventions
 
@@ -173,6 +175,7 @@ Existing patterns in DAAF scripts that this skill codifies:
 | Bash signal handling and cleanup | `./references/bash-standards.md` |
 | Bash never-do list | `./references/bash-standards.md` |
 | PowerShell preamble | `./references/powershell-standards.md` |
+| PowerShell ASCII-only encoding | `./references/powershell-standards.md` |
 | PowerShell dual error system | `./references/powershell-standards.md` |
 | PowerShell defensive coding | `./references/powershell-standards.md` |
 | PowerShell output streams | `./references/powershell-standards.md` |
@@ -192,6 +195,7 @@ Existing patterns in DAAF scripts that this skill codifies:
 | Bash exit code masking | `./references/gotchas.md` |
 | Bash set -e edge cases | `./references/gotchas.md` |
 | PowerShell $LASTEXITCODE vs $? | `./references/gotchas.md` |
+| PowerShell UTF-8 BOM breaks iex | `./references/gotchas.md` |
 | PowerShell implicit returns | `./references/gotchas.md` |
 | PowerShell $null pipeline behavior | `./references/gotchas.md` |
 | Cross-platform env var casing | `./references/gotchas.md` |

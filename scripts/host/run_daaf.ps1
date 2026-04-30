@@ -1,4 +1,4 @@
-﻿# ============================================================================
+# ============================================================================
 # DAAF Launcher (Windows PowerShell)
 # ============================================================================
 # Starts the DAAF container (if needed) and launches Claude Code.
@@ -103,7 +103,7 @@ if ($Running -eq 0) {
             $_created = docker inspect --format '{{.Created}}' $_cid 2>&1
             $ErrorActionPreference = $savedEAP
             try {
-                # Truncate to 7 fractional digits — .NET DateTimeOffset.Parse() rejects Docker's 9-digit nanoseconds
+                # Truncate to 7 fractional digits -- .NET DateTimeOffset.Parse() rejects Docker's 9-digit nanoseconds
                 $_created = $_created -replace '(\.\d{7})\d+', '$1'
                 $ContainerStart = [DateTimeOffset]::Parse($_created).UtcDateTime
                 $EnvModified = (Get-Item ".env").LastWriteTimeUtc
@@ -116,7 +116,7 @@ if ($Running -eq 0) {
                 }
             } catch {
                 # Date-parsing edge cases (e.g., Docker nanosecond format) are
-                # non-critical — the .env-freshness hint is best-effort only.
+                # non-critical -- the .env-freshness hint is best-effort only.
                 Write-Verbose "Silenced: $_"
             }
         }

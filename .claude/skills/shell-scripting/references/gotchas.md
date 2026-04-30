@@ -333,6 +333,25 @@ Set-StrictMode -Version 3.0
 
 ---
 
+### UTF-8 BOM Breaks `Invoke-Expression`
+
+**The problem:** A `.ps1` script containing non-ASCII characters (em-dashes, curly quotes) requires a UTF-8 BOM for PowerShell 5.1 to interpret them correctly. When the script is executed via `irm URL | iex`, `Invoke-Expression` does not strip the BOM. The BOM character gets prepended to the first line, making `#` look like a command:
+
+```
+The term '﻿#' is not recognized as the name of a cmdlet, function, script file,
+or operable program.
+```
+
+If the script has a `trap` handler, the `CommandNotFoundException` is caught and the trap fires with a misleading error message, masking the actual root cause entirely.
+
+**Why it happens:** The UTF-8 BOM is three invisible bytes (`EF BB BF`) at the start of the file. When PowerShell reads a BOM-encoded file via `Get-Content` or dot-sourcing, it recognizes and strips the BOM. But `Invoke-Expression` receives the file content as a raw string from `Invoke-RestMethod` -- the BOM bytes decode to the Unicode character U+FEFF, which becomes a visible character prepended to the first token. `﻿#Requires` is not a valid command name.
+
+**Fix:** Use only ASCII characters (code points 0-127) in `.ps1` host scripts. Replace em-dashes (`---`) with `--`, curly quotes with straight quotes. Save files as UTF-8 without BOM. Verify with `file script.ps1` -- it should report "ASCII text", not "UTF-8 Unicode (with BOM)".
+
+**Severity:** High. The `irm | iex` pattern is the standard installation/setup one-liner. Any BOM-encoded script distributed this way will fail on every execution, and the error message gives no hint about encoding.
+
+---
+
 ### Parameter Validation on Omitted Parameters
 
 **The problem:** Validation attributes fire only when the parameter is *supplied*. If a parameter is omitted entirely, validation is bypassed:
@@ -441,6 +460,7 @@ In Bash, `/` is always the separator. No cross-platform concern within Bash itse
 | `$ErrorActionPreference` scope | PowerShell | High | — |
 | Embedded `"` in native args | PowerShell | High | — |
 | Implicit return values | PowerShell | High | — |
+| UTF-8 BOM breaks `iex` | PowerShell | High | — |
 | `$null` in ForEach pipeline | PowerShell | Medium | — |
 | `-Version Latest` | PowerShell | Medium | — |
 | Parameter validation bypass | PowerShell | Medium | — |

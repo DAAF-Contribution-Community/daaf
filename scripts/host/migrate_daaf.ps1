@@ -1,4 +1,4 @@
-﻿# ============================================================================
+# ============================================================================
 # DAAF Migration Script (Windows PowerShell)
 # ============================================================================
 # Migrates existing DAAF installations to the new update infrastructure.
@@ -36,7 +36,7 @@ $ErrorActionPreference = "Stop"
 # --- Pause before exit so the user can review output ---
 # Skip the prompt when called from another script (DAAF_NESTED).
 # Always calls exit so the window closes cleanly after the user presses
-# Enter — including when invoked via irm ... | iex (which terminates the
+# Enter -- including when invoked via irm ... | iex (which terminates the
 # PowerShell session, but the user has already read the output).
 function Wait-ForUser {
     if (-not $env:DAAF_NESTED) {
@@ -66,7 +66,7 @@ try {
         $NonInteractive = $true
     }
 } catch {
-    # Console properties unavailable (e.g., ISE, remoting) — default to interactive
+    # Console properties unavailable (e.g., ISE, remoting) -- default to interactive
     Write-Verbose "Silenced: $_"
 }
 
@@ -157,8 +157,8 @@ trap {
     Write-Host "  2. Re-run:  .\migrate_daaf.ps1"
     Write-Host "     (It is safe to re-run - it will pick up where it left off.)"
     Write-Host ""
-    if ($Mutex) { try { $Mutex.ReleaseMutex() } catch { <# Mutex already released or not owned — safe to ignore #> Write-Verbose "Silenced: $_" } }
-    # Inline Wait-ForUser logic — do not call the function here because trap
+    if ($Mutex) { try { $Mutex.ReleaseMutex() } catch { <# Mutex already released or not owned -- safe to ignore #> Write-Verbose "Silenced: $_" } }
+    # Inline Wait-ForUser logic -- do not call the function here because trap
     # blocks are scope-wide (active before function definitions execute), and
     # Invoke-Expression evaluation may lose function definitions during scope
     # unwinding, causing CommandNotFoundException.
@@ -302,7 +302,7 @@ try {
         return
     }
 } catch [System.Threading.AbandonedMutexException] {
-    # Previous instance crashed — we inherited ownership of the mutex, safe to continue
+    # Previous instance crashed -- we inherited ownership of the mutex, safe to continue
     Write-Verbose "Silenced: $_"
 }
 
@@ -1180,5 +1180,5 @@ Write-Host "  .\view_logs.ps1       Browse session logs"
 Write-Host "  .\view_notebooks.ps1  Browse and edit marimo notebooks"
 Write-Host ""
 
-if ($Mutex) { try { $Mutex.ReleaseMutex() } catch { <# Mutex already released or not owned — safe to ignore #> Write-Verbose "Silenced: $_" } }
+if ($Mutex) { try { $Mutex.ReleaseMutex() } catch { <# Mutex already released or not owned -- safe to ignore #> Write-Verbose "Silenced: $_" } }
 Wait-ForUser

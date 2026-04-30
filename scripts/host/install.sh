@@ -23,7 +23,7 @@
 set -euo pipefail
 
 # Interactivity detection: use /dev/tty instead of stdin (fd 0).
-# When users run `curl ... | bash`, stdin is the pipe — but the user's
+# When users run `curl ... | bash`, stdin is the pipe -- but the user's
 # terminal is still available at /dev/tty. CI environments lack a real
 # terminal entirely.
 #
@@ -117,7 +117,7 @@ fi
 # --- Check for existing installation ---
 if [ -f "${INSTALL_DIR}/docker-compose.yml" ]; then
     if docker volume inspect daaf_daaf-data &>/dev/null; then
-        # Volume exists — this is a completed or substantially completed installation
+        # Volume exists -- this is a completed or substantially completed installation
         if [ "${DAAF_FORCE_REINSTALL:-}" = "1" ]; then
             echo "NOTE: Existing installation detected. Proceeding with re-install (DAAF_FORCE_REINSTALL=1)."
             echo ""
@@ -128,7 +128,7 @@ if [ -f "${INSTALL_DIR}/docker-compose.yml" ]; then
             echo "agents, templates) and local git history. Your research data will NOT be"
             echo "deleted, but a backup is strongly recommended."
             echo ""
-            echo "To update DAAF instead (recommended — preserves local changes):"
+            echo "To update DAAF instead (recommended -- preserves local changes):"
             echo "  cd ${INSTALL_DIR}"
             echo "  bash update_daaf.sh"
             echo ""
@@ -170,7 +170,7 @@ chmod +x "${INSTALL_DIR}/run_daaf.sh" "${INSTALL_DIR}/backup_daaf.sh" "${INSTALL
 # --- Build the Docker image ---
 echo "[3/4] Building Docker image (this may take a few minutes on first run since there are a lot of Python libraries to install)..."
 # Project name is set declaratively via the top-level "name: daaf" key in
-# docker-compose.yml — no need to set COMPOSE_PROJECT_NAME here.
+# docker-compose.yml -- no need to set COMPOSE_PROJECT_NAME here.
 # Build and start are split into two commands so that --progress plain can be
 # applied to the build step (where it is universally supported) without relying
 # on `docker compose up --progress`, which is rejected as "unknown flag" on
@@ -244,7 +244,7 @@ fi
 if ! docker compose -f "${INSTALL_DIR}/docker-compose.yml" exec -T daaf-docker \
     test -f /daaf/CLAUDE.md </dev/null 2>/dev/null; then
     echo ""
-    echo "WARNING: Installation may be incomplete — /daaf/CLAUDE.md was not found in the container."
+    echo "WARNING: Installation may be incomplete -- /daaf/CLAUDE.md was not found in the container."
     echo "The Docker image was built, but the repository files may not have copied correctly."
     echo "You can try cloning manually inside the container:"
     echo "  cd ${INSTALL_DIR}"
@@ -295,7 +295,7 @@ echo ""
 echo "For day-to-day usage and more, see:"
 echo "  https://github.com/${REPO}/blob/${BRANCH}/user_reference/01_installation_and_quickstart.md"
 echo ""
-echo "Keep this directory — it contains the Dockerfile needed for rebuilds."
+echo "Keep this directory -- it contains the Dockerfile needed for rebuilds."
 echo ""
 echo "To get started using any of those scripts, enter the install directory first:"
 echo "  cd daaf-docker"

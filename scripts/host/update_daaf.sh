@@ -32,14 +32,14 @@
 set -euo pipefail
 
 # Interactivity detection: use /dev/tty instead of stdin (fd 0).
-# When users run `curl ... | bash`, stdin is the pipe — but the user's
+# When users run `curl ... | bash`, stdin is the pipe -- but the user's
 # terminal is still available at /dev/tty. CI environments lack a real
 # terminal entirely.
 #
 # DAAF_NESTED is separate: it suppresses the exit prompt (so nested
 # scripts don't double-pause) but does NOT suppress interactive prompts.
 # A nested script can still prompt the user for conflict resolution,
-# merge strategy, etc. — as long as a real terminal is available.
+# merge strategy, etc. -- as long as a real terminal is available.
 IS_INTERACTIVE=false
 if [ -z "${CI:-}" ] && [ -c /dev/tty ] && [ -t 1 ]; then
     IS_INTERACTIVE=true
@@ -95,7 +95,7 @@ cleanup_on_error() {
     echo "  Something went wrong unexpectedly" >&2
     echo "-------------------------------------------" >&2
     echo "" >&2
-    echo "Your research files and data are safe — updates only change" >&2
+    echo "Your research files and data are safe -- updates only change" >&2
     echo "framework files, not your research/ folder." >&2
     echo "" >&2
     echo "Most likely causes:" >&2
@@ -106,7 +106,7 @@ cleanup_on_error() {
     echo "To try again:" >&2
     echo "  1. Make sure Docker Desktop is running" >&2
     echo "  2. Re-run:  bash update_daaf.sh" >&2
-    echo "     (It is safe to re-run — it will pick up where it left off.)" >&2
+    echo "     (It is safe to re-run -- it will pick up where it left off.)" >&2
     echo "" >&2
     if [ "${STASHED:-false}" = true ]; then
         echo "Your uncommitted changes are safely saved in a stash." >&2
@@ -136,7 +136,7 @@ prompt_choice() {
     # Non-interactive mode: auto-select first valid choice
     if [ "${IS_INTERACTIVE}" != "true" ]; then
         choice=$(echo "${valid_choices}" | awk '{print $1}')
-        echo "  (Non-interactive mode — auto-selecting: ${choice})" >&2
+        echo "  (Non-interactive mode -- auto-selecting: ${choice})" >&2
         echo "${choice}"
         return
     fi
@@ -237,7 +237,7 @@ handle_conflict() {
             echo "Some conflicts still remain in these files:"
             echo "${remaining}" | sed 's/^/  /'
             echo ""
-            echo "You can keep working on them — launch Claude Code and pick up"
+            echo "You can keep working on them -- launch Claude Code and pick up"
             echo "where you left off:"
             echo "  bash run_daaf.sh"
             echo ""
@@ -331,7 +331,7 @@ check_build_changes() {
         git -C /daaf rev-parse HEAD </dev/null 2>/dev/null | tr -d '\r')
 
     if [ "${old_head}" = "${new_head}" ]; then
-        echo "No Dockerfile changes — no container rebuild needed."
+        echo "No Dockerfile changes -- no container rebuild needed."
         echo ""
         return
     fi
@@ -343,7 +343,7 @@ check_build_changes() {
         </dev/null 2>/dev/null | tr -d '\r' || true)
 
     if [ -z "${build_changes}" ]; then
-        echo "No Dockerfile changes — no container rebuild needed."
+        echo "No Dockerfile changes -- no container rebuild needed."
         echo ""
         return
     fi
@@ -537,7 +537,7 @@ if [ -f "backup_daaf.sh" ]; then
         echo ""
     fi
 else
-    echo "  (backup_daaf.sh not found in this directory — skipping)"
+    echo "  (backup_daaf.sh not found in this directory -- skipping)"
     echo ""
 fi
 
@@ -586,7 +586,7 @@ if ! echo "${ORIGIN_URL}" | grep -qi "${UPSTREAM_REPO}"; then
 
     if [ -n "${UPSTREAM_URL}" ]; then
         UPSTREAM_REMOTE="upstream"
-        echo "Found 'upstream' remote — will check for updates there."
+        echo "Found 'upstream' remote -- will check for updates there."
     else
         echo "Your installation is connected to a personal copy (fork) of DAAF,"
         echo "not the official release. To also receive official updates, run"
@@ -639,7 +639,7 @@ fi
 REMOTE_BRANCH="${DAAF_BRANCH:-}"
 
 if [ -n "${REMOTE_BRANCH}" ]; then
-    # User specified a branch — verify it exists on the remote
+    # User specified a branch -- verify it exists on the remote
     if ! docker compose exec -T daaf-docker \
         git -C /daaf rev-parse --verify "${UPSTREAM_REMOTE}/${REMOTE_BRANCH}" \
         </dev/null >/dev/null 2>&1; then
@@ -703,7 +703,7 @@ if [ -z "${CURRENT_BRANCH}" ]; then
     echo ""
     echo "This can happen after installing from a specific version tag, after"
     echo "a previous update was interrupted, or after running a manual git"
-    echo "command inside the container. Not a problem — I'll handle it."
+    echo "command inside the container. Not a problem -- I'll handle it."
     echo ""
 
     # Create a branch at the current HEAD to preserve any local commits.
@@ -809,7 +809,7 @@ if [ "${CURRENT_BRANCH}" != "${REMOTE_BRANCH}" ]; then
             echo ""
             echo "ERROR: Could not safely set aside your uncommitted changes."
             echo ""
-            echo "No changes were made — your files are exactly as they were."
+            echo "No changes were made -- your files are exactly as they were."
             echo ""
             echo "This can happen if there are new files that need to be committed first."
             echo "You can commit your changes, then re-run the updater:"
@@ -905,7 +905,7 @@ if [ "${CURRENT_BRANCH}" != "${REMOTE_BRANCH}" ]; then
             echo "The framework update was applied successfully!"
             echo ""
             echo "However, some of your uncommitted edits overlap with files that"
-            echo "changed in the update. Your edits are NOT lost — they are saved"
+            echo "changed in the update. Your edits are NOT lost -- they are saved"
             echo "in a temporary holding area."
             echo ""
             echo "The easiest way to resolve this:"
@@ -914,7 +914,7 @@ if [ "${CURRENT_BRANCH}" != "${REMOTE_BRANCH}" ]; then
             echo "     a DAAF update. Please help me resolve them.'"
             echo ""
             echo "  2. Or, to discard your uncommitted edits and keep the update"
-            echo "     (WARNING — this cannot be undone):"
+            echo "     (WARNING -- this cannot be undone):"
             echo "       bash run_daaf.sh bash"
             echo "       git checkout -- ."
             echo "       git stash drop"
@@ -931,7 +931,7 @@ if [ "${CURRENT_BRANCH}" != "${REMOTE_BRANCH}" ]; then
 fi
 
 # =====================================================================
-# On default branch — local commits
+# On default branch -- local commits
 # =====================================================================
 if [ "${AHEAD}" -gt 0 ]; then
     echo ""
@@ -972,7 +972,7 @@ if [ "${AHEAD}" -gt 0 ]; then
             echo ""
             echo "ERROR: Could not safely set aside your uncommitted changes."
             echo ""
-            echo "No changes were made — your files are exactly as they were."
+            echo "No changes were made -- your files are exactly as they were."
             echo ""
             echo "This can happen if there are new files that need to be committed first."
             echo "You can commit your changes, then re-run the updater:"
@@ -1058,7 +1058,7 @@ if [ "${AHEAD}" -gt 0 ]; then
             echo "The framework update was applied successfully!"
             echo ""
             echo "However, some of your uncommitted edits overlap with files that"
-            echo "changed in the update. Your edits are NOT lost — they are saved"
+            echo "changed in the update. Your edits are NOT lost -- they are saved"
             echo "in a temporary holding area."
             echo ""
             echo "The easiest way to resolve this:"
@@ -1067,7 +1067,7 @@ if [ "${AHEAD}" -gt 0 ]; then
             echo "     a DAAF update. Please help me resolve them.'"
             echo ""
             echo "  2. Or, to discard your uncommitted edits and keep the update"
-            echo "     (WARNING — this cannot be undone):"
+            echo "     (WARNING -- this cannot be undone):"
             echo "       bash run_daaf.sh bash"
             echo "       git checkout -- ."
             echo "       git stash drop"
@@ -1094,7 +1094,7 @@ if [ "${AHEAD}" -gt 0 ]; then
 fi
 
 # =====================================================================
-# On default branch, no local commits — uncommitted changes only
+# On default branch, no local commits -- uncommitted changes only
 # =====================================================================
 if [ -n "${DIRTY_FILES}" ]; then
     echo ""
@@ -1141,7 +1141,7 @@ if [ -n "${DIRTY_FILES}" ]; then
         echo ""
         echo "ERROR: Could not safely set aside your uncommitted changes."
         echo ""
-        echo "No changes were made — your files are exactly as they were."
+        echo "No changes were made -- your files are exactly as they were."
         echo ""
         echo "This can happen if there are new files that need to be committed first."
         echo "You can commit your changes, then re-run the updater:"
@@ -1179,7 +1179,7 @@ if [ -n "${DIRTY_FILES}" ]; then
         echo "The framework update was applied successfully!"
         echo ""
         echo "However, some of your uncommitted edits overlap with files that"
-        echo "changed in the update. Your edits are NOT lost — they are saved"
+        echo "changed in the update. Your edits are NOT lost -- they are saved"
         echo "in a temporary holding area."
         echo ""
         # Claude Code requires an interactive terminal. When non-interactive,
@@ -1221,7 +1221,7 @@ if [ -n "${DIRTY_FILES}" ]; then
                 echo "Some conflicts still remain in these files:"
                 echo "${remaining}" | sed 's/^/  /'
                 echo ""
-                echo "You can keep working on them — launch Claude Code:"
+                echo "You can keep working on them -- launch Claude Code:"
                 echo "  bash run_daaf.sh"
                 echo ""
                 echo "Or to undo the update:"
@@ -1239,7 +1239,7 @@ if [ -n "${DIRTY_FILES}" ]; then
             echo "  exit"
             echo ""
             echo "Or to discard your uncommitted edits and keep the update"
-            echo "(WARNING — this cannot be undone):"
+            echo "(WARNING -- this cannot be undone):"
             echo "  bash run_daaf.sh bash"
             echo "  git checkout -- ."
             echo "  git stash drop"

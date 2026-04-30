@@ -28,6 +28,32 @@ Set-StrictMode -Version 3.0
 
 ---
 
+## Character Encoding: ASCII Only
+
+All `.ps1` host scripts must contain only ASCII characters (code points 0-127). No em-dashes (`---`), curly quotes, or other non-ASCII content -- not even in comments.
+
+**Why:** Non-ASCII characters in a `.ps1` file require a UTF-8 BOM (byte order mark) for PowerShell 5.1 to interpret them correctly. The BOM is invisible but prepends three bytes (`EF BB BF`) to the file. When the script is executed via `irm URL | iex` (the standard `Invoke-Expression` one-liner pattern), PowerShell does not strip the BOM. The BOM character gets prepended to the first `#`, making the comment line look like a command:
+
+```
+The term '﻿#' is not recognized as the name of a cmdlet, function, script file,
+or operable program.
+```
+
+This `CommandNotFoundException` is caught by `trap` handlers and masks the real error, making the failure extremely difficult to diagnose.
+
+**Rule:** Replace all non-ASCII characters with ASCII equivalents:
+
+| Non-ASCII | ASCII Replacement |
+|-----------|-------------------|
+| `---` (em-dash, U+2014) | `--` |
+| `--` (en-dash, U+2013) | `--` |
+| `\u2018` `\u2019` (curly single quotes) | `'` |
+| `\u201C` `\u201D` (curly double quotes) | `"` |
+
+**Verification:** Save files without BOM. In VS Code, the status bar shows "UTF-8" (no BOM) or "UTF-8 with BOM" -- ensure it shows "UTF-8" only. From the command line: `file script.ps1` should report "ASCII text", not "UTF-8 Unicode (with BOM)".
+
+---
+
 ## The Dual Error System (Critical)
 
 PowerShell has two fundamentally different error mechanisms. Confusing them is the single most common source of PowerShell bugs in cross-tool scripts.
@@ -303,3 +329,4 @@ Write-Host "Done." -ForegroundColor Green
 | 11 | No `Invoke-Expression` | Grep for `Invoke-Expression` |
 | 12 | Full cmdlet names (no aliases like `ls`, `cat`) | PSScriptAnalyzer rule |
 | 13 | Progress steps use `[N/M]` format | Visual scan |
+| 14 | ASCII-only content (no em-dashes, curly quotes, no BOM) | `file script.ps1` should report "ASCII text" |

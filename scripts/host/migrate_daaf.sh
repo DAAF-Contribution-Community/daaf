@@ -22,7 +22,7 @@
 #   - Internet connection
 #   - An existing DAAF installation (Docker volume daaf_daaf-data exists)
 #
-# This script is idempotent — safe to run multiple times. If the migration
+# This script is idempotent -- safe to run multiple times. If the migration
 # has already been completed, it will detect that and skip ahead.
 #
 # Supports DAAF_TEST_MODE=1 for test framework sourcing (see tests/).
@@ -32,7 +32,7 @@
 set -euo pipefail
 
 # Interactivity detection: use /dev/tty instead of stdin (fd 0).
-# When users run `curl ... | bash`, stdin is the pipe — but the user's
+# When users run `curl ... | bash`, stdin is the pipe -- but the user's
 # terminal is still available at /dev/tty. CI runners either lack /dev/tty
 # or it is not a real terminal, so this naturally gives the right answer.
 #
@@ -108,7 +108,7 @@ cleanup_on_error() {
     echo "  Something went wrong unexpectedly" >&2
     echo "-------------------------------------------" >&2
     echo "" >&2
-    echo "Your research files and data are safe — the migration only changes" >&2
+    echo "Your research files and data are safe -- the migration only changes" >&2
     echo "framework git history, not your research/ folder." >&2
     echo "" >&2
     if [ "${BACKUP_COMPLETED}" = true ]; then
@@ -125,7 +125,7 @@ cleanup_on_error() {
     echo "To try again:" >&2
     echo "  1. Make sure Docker Desktop is running" >&2
     echo "  2. Re-run:  bash migrate_daaf.sh" >&2
-    echo "     (It is safe to re-run — it will pick up where it left off.)" >&2
+    echo "     (It is safe to re-run -- it will pick up where it left off.)" >&2
     echo "" >&2
 }
 trap cleanup_on_error ERR
@@ -141,7 +141,7 @@ prompt_choice() {
     # Non-interactive mode: auto-select first valid choice
     if [ "${IS_INTERACTIVE}" != "true" ]; then
         choice=$(echo "${valid_choices}" | awk '{print $1}')
-        echo "  (Non-interactive mode — auto-selecting: ${choice})" >&2
+        echo "  (Non-interactive mode -- auto-selecting: ${choice})" >&2
         echo "${choice}"
         return
     fi
@@ -503,7 +503,7 @@ fi
 echo ""
 
 # =====================================================================
-# 6a. ERA 1 PATH (v1.0.0 — remote exists)
+# 6a. ERA 1 PATH (v1.0.0 -- remote exists)
 # =====================================================================
 if [ "${DETECTED_ERA}" = "1" ]; then
     echo "-------------------------------------------"
@@ -577,7 +577,7 @@ if [ "${DETECTED_ERA}" = "1" ]; then
     echo ""
 
 # =====================================================================
-# 6b. ERA 2 PATH (v2.0.0+ — no remote, need graft)
+# 6b. ERA 2 PATH (v2.0.0+ -- no remote, need graft)
 # =====================================================================
 else
     echo "-------------------------------------------"
@@ -865,7 +865,7 @@ else
             echo "  git merge and git pull will work correctly."
         else
             echo ""
-            echo "  WARNING: Could not verify graft — no common ancestor found."
+            echo "  WARNING: Could not verify graft -- no common ancestor found."
             echo "  The graft was applied, but git merge may not work as expected."
             echo "  This is unusual. You can re-run:  bash migrate_daaf.sh"
             echo "  If the problem persists, report it at:"
@@ -934,8 +934,8 @@ echo ""
 if [ "${IS_INTERACTIVE}" = "true" ]; then
     CHOICE=$(prompt_choice "  Run update_daaf.sh now? [y/n]: " "y n")
 else
-    # Non-interactive — skip the update
-    echo "  (Non-interactive mode detected — skipping update. Run it manually.)"
+    # Non-interactive -- skip the update
+    echo "  (Non-interactive mode detected -- skipping update. Run it manually.)"
     CHOICE="n"
 fi
 
@@ -985,7 +985,7 @@ elif [ "${CHOICE}" = "n" ] && [ "${IS_INTERACTIVE}" = "true" ]; then
     # User chose not to update
     echo "To pull the latest updates when you're ready:"
 elif [ "${IS_INTERACTIVE}" != "true" ]; then
-    # Non-interactive mode — update was skipped automatically
+    # Non-interactive mode -- update was skipped automatically
     echo "IMPORTANT: The update step was skipped because the script was run"
     echo "non-interactively. To pull the latest updates, run:"
 else

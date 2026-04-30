@@ -1,4 +1,4 @@
-﻿# ============================================================================
+# ============================================================================
 # DAAF Update Script (Windows PowerShell)
 # ============================================================================
 # Usage:
@@ -35,7 +35,7 @@ function Wait-AndExit {
     # Release the concurrent-run mutex if we hold it
     if ($script:Mutex) {
         try { $script:Mutex.ReleaseMutex() } catch {
-            # Mutex may not be held (e.g., exit before acquisition) — safe to ignore
+            # Mutex may not be held (e.g., exit before acquisition) -- safe to ignore
             Write-Verbose "Silenced: $_"
         }
     }
@@ -141,11 +141,11 @@ trap {
     # Release the concurrent-run mutex if we hold it
     if ($Mutex) {
         try { $Mutex.ReleaseMutex() } catch {
-            # Mutex may not be held if trap fires before lock acquisition — safe to ignore
+            # Mutex may not be held if trap fires before lock acquisition -- safe to ignore
             Write-Verbose "Silenced: $_"
         }
     }
-    # Inline Wait-AndExit logic — do not call the function here because trap
+    # Inline Wait-AndExit logic -- do not call the function here because trap
     # blocks are scope-wide (active before function definitions execute), and
     # Invoke-Expression evaluation may lose function definitions during scope
     # unwinding, causing CommandNotFoundException.
@@ -512,7 +512,7 @@ try {
         Wait-AndExit 1
     }
 } catch [System.Threading.AbandonedMutexException] {
-    # Previous instance crashed without releasing — we now own the mutex, continue
+    # Previous instance crashed without releasing -- we now own the mutex, continue
     Write-Verbose "Silenced: $_"
 }
 

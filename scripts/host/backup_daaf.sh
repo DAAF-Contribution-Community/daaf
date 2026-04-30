@@ -87,7 +87,7 @@ fi
 BACKUP_NAME="${TODAY}_daaf_backup"
 
 if [ -e "${BACKUP_NAME}" ]; then
-    # First backup of the day already exists — find next available suffix
+    # First backup of the day already exists -- find next available suffix
     SUFFIX_NUM=0
     while true; do
         # Convert number to letter: 0=a, 1=b, 2=c, ...
