@@ -300,6 +300,96 @@ handle_conflict() {
     fi
 }
 
+handle_stash_conflict() {
+    echo ""
+    echo "The framework update was applied successfully!"
+    echo ""
+    echo "However, some of your uncommitted edits overlap with files that"
+    echo "changed in the update. Your edits are NOT lost -- they are saved"
+    echo "in a temporary holding area."
+    echo ""
+    # Claude Code requires an interactive terminal. When non-interactive,
+    # skip straight to manual resolution instructions.
+    local choice="2"
+    if [ "${IS_INTERACTIVE}" = "true" ]; then
+        echo "Options:"
+        echo "  1) Launch Claude Code to help resolve the conflicts"
+        echo "  2) Exit and resolve manually"
+        echo ""
+        choice=$(prompt_choice "  Choose [1/2]: " "1 2")
+    fi
+
+    if [ "${choice}" = "1" ]; then
+        echo ""
+        echo "Launching Claude Code inside the container..."
+        echo ""
+        echo "Copy and paste this prompt to get started:"
+        echo ""
+        echo "  User support mode. The DAAF updater applied the framework"
+        echo "  update successfully, but re-applying my uncommitted changes"
+        echo "  caused stash conflicts. Please help me resolve them:"
+        echo "  1. Run git status to find the conflicting files"
+        echo "  2. Read each one and explain both sides of the conflict"
+        echo "  3. Help me choose what to keep and edit the file to resolve it"
+        echo "  4. After all conflicts are resolved, run: git add ."
+        echo "     Then: git stash drop"
+        echo "     Then: git commit -m 'Resolved stash conflicts from DAAF update'"
+        echo "  When done, remind me to type /exit so the updater can"
+        echo "  finish its remaining steps."
+        echo ""
+        echo "IMPORTANT: When Claude Code is done, type /exit to return here."
+        echo "The updater still needs to finish a few steps after this."
+        echo ""
+        if [ -t 0 ]; then
+            docker compose exec -it daaf-docker claude || true
+        else
+            docker compose exec -it daaf-docker claude < /dev/tty || true
+        fi
+        echo ""
+
+        local remaining
+        remaining=$(docker compose exec -T daaf-docker \
+            git -C /daaf diff --name-only --diff-filter=U </dev/null 2>/dev/null \
+            | tr -d '\r' || true)
+
+        if [ -z "${remaining}" ]; then
+            echo "Conflicts resolved!"
+            return 0
+        else
+            echo "Some conflicts still remain in these files:"
+            echo "${remaining}" | sed 's/^/  /'
+            echo ""
+            echo "You can keep working on them -- launch Claude Code:"
+            echo "  bash run_daaf.sh"
+            echo ""
+            echo "Or to undo the update:"
+            echo "  docker compose exec daaf-docker git -C /daaf reset --hard ${BACKUP_BRANCH}"
+            echo "  docker compose exec daaf-docker git -C /daaf stash pop"
+            return 1
+        fi
+    else
+        echo ""
+        echo "To resolve, enter the container:"
+        echo "  bash run_daaf.sh bash"
+        echo "  (edit the conflicting files to remove the <<<<<<< markers)"
+        echo "  git add ."
+        echo "  git stash drop"
+        echo "  exit"
+        echo ""
+        echo "Or to discard your uncommitted edits and keep the update"
+        echo "(WARNING -- this cannot be undone):"
+        echo "  bash run_daaf.sh bash"
+        echo "  git checkout -- ."
+        echo "  git stash drop"
+        echo "  exit"
+        echo ""
+        echo "To undo the entire update:"
+        echo "  docker compose exec daaf-docker git -C /daaf reset --hard ${BACKUP_BRANCH}"
+        echo "  docker compose exec daaf-docker git -C /daaf stash pop"
+        return 1
+    fi
+}
+
 sync_host_scripts() {
     local old_head="$1"
 
@@ -924,37 +1014,12 @@ if [ "${CURRENT_BRANCH}" != "${REMOTE_BRANCH}" ]; then
         echo "Restoring your changes..."
         if ! docker compose exec -T daaf-docker \
             git -C /daaf stash pop </dev/null; then
-            echo ""
-            echo "The framework update was applied successfully!"
-            echo ""
-            echo "However, some of your uncommitted edits overlap with files that"
-            echo "changed in the update. Your edits are NOT lost -- they are saved"
-            echo "in a temporary holding area."
-            echo ""
-            echo "The easiest way to resolve this:"
-            echo "  1. Launch Claude Code:  bash run_daaf.sh"
-            echo "     Paste this prompt:"
-            echo ""
-            echo "     User support mode. The DAAF updater applied the framework"
-            echo "     update successfully, but re-applying my uncommitted changes"
-            echo "     caused stash conflicts. Please help me resolve them:"
-            echo "     1. Run git status to find the conflicting files"
-            echo "     2. Read each one and explain both sides of the conflict"
-            echo "     3. Help me choose what to keep and edit the file to resolve it"
-            echo "     4. After all conflicts are resolved, run: git add ."
-            echo "        Then: git stash drop"
-            echo "        Then: git commit -m 'Resolved stash conflicts from DAAF update'"
-            echo "     When done, remind me to type /exit."
-            echo ""
-            echo "  2. Or, to discard your uncommitted edits and keep the update"
-            echo "     (WARNING -- this cannot be undone):"
-            echo "       bash run_daaf.sh bash"
-            echo "       git checkout -- ."
-            echo "       git stash drop"
-            echo "       exit"
-            echo ""
-            finish_update "${OLD_HEAD}" \
-                "Note: Uncommitted changes still need to be restored from the stash."
+            if handle_stash_conflict; then
+                finish_update "${OLD_HEAD}"
+            else
+                finish_update "${OLD_HEAD}" \
+                    "Note: Uncommitted changes still need attention (see above)."
+            fi
             exit 0
         fi
     fi
@@ -1087,41 +1152,21 @@ if [ "${AHEAD}" -gt 0 ]; then
         echo "Restoring your changes..."
         if ! docker compose exec -T daaf-docker \
             git -C /daaf stash pop </dev/null; then
-            echo ""
-            echo "The framework update was applied successfully!"
-            echo ""
-            echo "However, some of your uncommitted edits overlap with files that"
-            echo "changed in the update. Your edits are NOT lost -- they are saved"
-            echo "in a temporary holding area."
-            echo ""
-            echo "The easiest way to resolve this:"
-            echo "  1. Launch Claude Code:  bash run_daaf.sh"
-            echo "     Paste this prompt:"
-            echo ""
-            echo "     User support mode. The DAAF updater applied the framework"
-            echo "     update successfully, but re-applying my uncommitted changes"
-            echo "     caused stash conflicts. Please help me resolve them:"
-            echo "     1. Run git status to find the conflicting files"
-            echo "     2. Read each one and explain both sides of the conflict"
-            echo "     3. Help me choose what to keep and edit the file to resolve it"
-            echo "     4. After all conflicts are resolved, run: git add ."
-            echo "        Then: git stash drop"
-            echo "        Then: git commit -m 'Resolved stash conflicts from DAAF update'"
-            echo "     When done, remind me to type /exit."
-            echo ""
-            echo "  2. Or, to discard your uncommitted edits and keep the update"
-            echo "     (WARNING -- this cannot be undone):"
-            echo "       bash run_daaf.sh bash"
-            echo "       git checkout -- ."
-            echo "       git stash drop"
-            echo "       exit"
-            echo ""
-            if [ "${CHOICE}" = "1" ]; then
-                finish_update "${OLD_HEAD}" \
-                    "Note: Uncommitted changes still need attention (see above)."
+            if handle_stash_conflict; then
+                if [ "${CHOICE}" = "1" ]; then
+                    finish_update "${OLD_HEAD}"
+                else
+                    finish_update "${OLD_HEAD}" \
+                        "Your local changes have been rebased on top of the update."
+                fi
             else
-                finish_update "${OLD_HEAD}" \
-                    "Your commits were rebased. Uncommitted changes still need attention (see above)."
+                if [ "${CHOICE}" = "1" ]; then
+                    finish_update "${OLD_HEAD}" \
+                        "Note: Uncommitted changes still need attention (see above)."
+                else
+                    finish_update "${OLD_HEAD}" \
+                        "Your commits were rebased. Uncommitted changes still need attention (see above)."
+                fi
             fi
             exit 0
         fi
@@ -1218,94 +1263,14 @@ if [ -n "${DIRTY_FILES}" ]; then
     echo "Re-applying your changes..."
     if ! docker compose exec -T daaf-docker \
         git -C /daaf stash pop </dev/null; then
-        echo ""
-        echo "The framework update was applied successfully!"
-        echo ""
-        echo "However, some of your uncommitted edits overlap with files that"
-        echo "changed in the update. Your edits are NOT lost -- they are saved"
-        echo "in a temporary holding area."
-        echo ""
-        # Claude Code requires an interactive terminal. When non-interactive,
-        # skip straight to manual resolution instructions.
-        CHOICE="2"
-        if [ "${IS_INTERACTIVE}" = "true" ]; then
-            echo "Options:"
-            echo "  1) Launch Claude Code to help resolve the conflicts"
-            echo "  2) Exit and resolve manually"
-            echo ""
-            CHOICE=$(prompt_choice "  Choose [1/2]: " "1 2")
-        fi
-
-        if [ "${CHOICE}" = "1" ]; then
-            echo ""
-            echo "Launching Claude Code inside the container..."
-            echo ""
-            echo "Copy and paste this prompt to get started:"
-            echo ""
-            echo "  User support mode. The DAAF updater applied the framework"
-            echo "  update successfully, but re-applying my uncommitted changes"
-            echo "  caused stash conflicts. Please help me resolve them:"
-            echo "  1. Run git status to find the conflicting files"
-            echo "  2. Read each one and explain both sides of the conflict"
-            echo "  3. Help me choose what to keep and edit the file to resolve it"
-            echo "  4. After all conflicts are resolved, run: git add ."
-            echo "     Then: git stash drop"
-            echo "     Then: git commit -m 'Resolved stash conflicts from DAAF update'"
-            echo "  When done, remind me to type /exit so the updater can"
-            echo "  finish its remaining steps."
-            echo ""
-            echo "IMPORTANT: When Claude Code is done, type /exit to return here."
-            echo "The updater still needs to finish a few steps after this."
-            echo ""
-            # See handle_conflict for rationale on TTY vs pipe handling
-            if [ -t 0 ]; then
-                docker compose exec -it daaf-docker claude || true
-            else
-                docker compose exec -it daaf-docker claude < /dev/tty || true
-            fi
-            echo ""
-
-            remaining=$(docker compose exec -T daaf-docker \
-                git -C /daaf diff --name-only --diff-filter=U </dev/null 2>/dev/null \
-                | tr -d '\r' || true)
-
-            if [ -z "${remaining}" ]; then
-                echo "Conflicts resolved!"
-                finish_update "${OLD_HEAD}" \
-                    "Your local changes have been re-applied on top of the update."
-                exit 0
-            else
-                echo "Some conflicts still remain in these files:"
-                echo "${remaining}" | sed 's/^/  /'
-                echo ""
-                echo "You can keep working on them -- launch Claude Code:"
-                echo "  bash run_daaf.sh"
-                echo ""
-                echo "Or to undo the update:"
-                echo "  docker compose exec daaf-docker git -C /daaf reset --hard ${BACKUP_BRANCH}"
-                echo "  docker compose exec daaf-docker git -C /daaf stash pop"
-                exit 1
-            fi
+        if handle_stash_conflict; then
+            finish_update "${OLD_HEAD}" \
+                "Your local changes have been re-applied on top of the update."
+            exit 0
         else
-            echo ""
-            echo "To resolve, enter the container:"
-            echo "  bash run_daaf.sh bash"
-            echo "  (edit the conflicting files to remove the <<<<<<< markers)"
-            echo "  git add ."
-            echo "  git stash drop"
-            echo "  exit"
-            echo ""
-            echo "Or to discard your uncommitted edits and keep the update"
-            echo "(WARNING -- this cannot be undone):"
-            echo "  bash run_daaf.sh bash"
-            echo "  git checkout -- ."
-            echo "  git stash drop"
-            echo "  exit"
-            echo ""
-            echo "To undo the entire update:"
-            echo "  docker compose exec daaf-docker git -C /daaf reset --hard ${BACKUP_BRANCH}"
-            echo "  docker compose exec daaf-docker git -C /daaf stash pop"
-            exit 1
+            finish_update "${OLD_HEAD}" \
+                "Note: Uncommitted changes still need attention (see above)."
+            exit 0
         fi
     fi
 

@@ -400,6 +400,98 @@ function Resolve-Conflict {
     }
 }
 
+function Resolve-StashConflict {
+    Write-Host ""
+    Write-Host "The framework update was applied successfully!"
+    Write-Host ""
+    Write-Host "However, some of your uncommitted edits overlap with files that"
+    Write-Host "changed in the update. Your edits are NOT lost - they are saved"
+    Write-Host "in a temporary holding area."
+    Write-Host ""
+    # Claude Code requires an interactive terminal. When non-interactive,
+    # skip straight to manual resolution instructions.
+    $canInteract = $false
+    try { $canInteract = [Environment]::UserInteractive -and (-not [Console]::IsInputRedirected) } catch { Write-Verbose "Silenced: $_" }
+    $choice = "2"
+    if ($canInteract) {
+        Write-Host "Options:"
+        Write-Host "  1) Launch Claude Code to help resolve the conflicts"
+        Write-Host "  2) Exit and resolve manually"
+        Write-Host ""
+        $choice = Read-UserChoice "  Choose [1/2]" @("1", "2")
+    }
+
+    if ($choice -eq "1") {
+        Write-Host ""
+        Write-Host "Launching Claude Code inside the container..."
+        Write-Host ""
+        Write-Host "Copy and paste this prompt to get started:"
+        Write-Host ""
+        Write-Host "  User support mode. The DAAF updater applied the framework"
+        Write-Host "  update successfully, but re-applying my uncommitted changes"
+        Write-Host "  caused stash conflicts. Please help me resolve them:"
+        Write-Host "  1. Run git status to find the conflicting files"
+        Write-Host "  2. Read each one and explain both sides of the conflict"
+        Write-Host "  3. Help me choose what to keep and edit the file to resolve it"
+        Write-Host "  4. After all conflicts are resolved, run: git add ."
+        Write-Host "     Then: git stash drop"
+        Write-Host "     Then: git commit -m 'Resolved stash conflicts from DAAF update'"
+        Write-Host "  When done, remind me to type /exit so the updater can"
+        Write-Host "  finish its remaining steps."
+        Write-Host ""
+        Write-Host "IMPORTANT: When Claude Code is done, type /exit to return here."
+        Write-Host "The updater still needs to finish a few steps after this."
+        Write-Host ""
+        # EAP = SilentlyContinue prevents PS 5.1 from promoting Docker's
+        # stderr to a terminating error under the script's global EAP = Stop.
+        $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
+        docker compose exec daaf-docker claude
+        $ErrorActionPreference = $savedEAP
+        Write-Host ""
+
+        $remaining = Invoke-ComposeGit diff --name-only --diff-filter=U
+
+        if ([string]::IsNullOrWhiteSpace($remaining)) {
+            Write-Host "Conflicts resolved!"
+            $script:StashConflictResolved = $true
+            return
+        } else {
+            Write-Host "Some conflicts still remain in these files:"
+            $remaining -split "`n" | ForEach-Object { if ($_.Trim()) { Write-Host "  $_" } }
+            Write-Host ""
+            Write-Host "You can keep working on them - launch Claude Code:"
+            Write-Host "  .\run_daaf.ps1"
+            Write-Host ""
+            Write-Host "Or to undo the update:"
+            Write-Host "  docker compose exec daaf-docker git -C /daaf reset --hard $BackupBranch"
+            Write-Host "  docker compose exec daaf-docker git -C /daaf stash pop"
+            $script:StashConflictResolved = $false
+            return
+        }
+    } else {
+        Write-Host ""
+        Write-Host "To resolve, enter the container:"
+        Write-Host "  .\run_daaf.ps1 bash"
+        Write-Host "  (edit the conflicting files to remove the <<<<<<< markers)"
+        Write-Host "  git add ."
+        Write-Host "  git stash drop"
+        Write-Host "  exit"
+        Write-Host ""
+        Write-Host "Or to discard your uncommitted edits and keep the update"
+        Write-Host "(WARNING - this cannot be undone):"
+        Write-Host "  .\run_daaf.ps1 bash"
+        Write-Host "  git checkout -- ."
+        Write-Host "  git stash drop"
+        Write-Host "  exit"
+        Write-Host ""
+        Write-Host "To undo the entire update:"
+        Write-Host "  docker compose exec daaf-docker git -C /daaf reset --hard $BackupBranch"
+        Write-Host "  docker compose exec daaf-docker git -C /daaf stash pop"
+        $script:StashConflictResolved = $false
+        return
+    }
+}
+
 function Sync-HostScript {
     param([string]$OldHead)
 
@@ -1028,36 +1120,12 @@ if ($CurrentBranch -ne $RemoteBranch) {
         Write-Host "Restoring your changes..."
         Invoke-ComposeGitNull stash pop
         if ($LASTEXITCODE -ne 0) {
-            Write-Host ""
-            Write-Host "The framework update was applied successfully!"
-            Write-Host ""
-            Write-Host "However, some of your uncommitted edits overlap with files that"
-            Write-Host "changed in the update. Your edits are NOT lost - they are saved"
-            Write-Host "in a temporary holding area."
-            Write-Host ""
-            Write-Host "The easiest way to resolve this:"
-            Write-Host "  1. Launch Claude Code:  .\run_daaf.ps1"
-            Write-Host "     Paste this prompt:"
-            Write-Host ""
-            Write-Host "     User support mode. The DAAF updater applied the framework"
-            Write-Host "     update successfully, but re-applying my uncommitted changes"
-            Write-Host "     caused stash conflicts. Please help me resolve them:"
-            Write-Host "     1. Run git status to find the conflicting files"
-            Write-Host "     2. Read each one and explain both sides of the conflict"
-            Write-Host "     3. Help me choose what to keep and edit the file to resolve it"
-            Write-Host "     4. After all conflicts are resolved, run: git add ."
-            Write-Host "        Then: git stash drop"
-            Write-Host "        Then: git commit -m 'Resolved stash conflicts from DAAF update'"
-            Write-Host "     When done, remind me to type /exit."
-            Write-Host ""
-            Write-Host "  2. Or, to discard your uncommitted edits and keep the update"
-            Write-Host "     (WARNING - this cannot be undone):"
-            Write-Host "       .\run_daaf.ps1 bash"
-            Write-Host "       git checkout -- ."
-            Write-Host "       git stash drop"
-            Write-Host "       exit"
-            Write-Host ""
-            Complete-Update $OldHead "Note: Uncommitted changes still need to be restored from the stash."
+            Resolve-StashConflict
+            if ($script:StashConflictResolved) {
+                Complete-Update $OldHead
+            } else {
+                Complete-Update $OldHead "Note: Uncommitted changes still need attention (see above)."
+            }
             Wait-AndExit 0
         }
     }
@@ -1221,39 +1289,19 @@ if ([int]$Ahead -gt 0) {
         Write-Host "Restoring your changes..."
         Invoke-ComposeGitNull stash pop
         if ($LASTEXITCODE -ne 0) {
-            Write-Host ""
-            Write-Host "The framework update was applied successfully!"
-            Write-Host ""
-            Write-Host "However, some of your uncommitted edits overlap with files that"
-            Write-Host "changed in the update. Your edits are NOT lost - they are saved"
-            Write-Host "in a temporary holding area."
-            Write-Host ""
-            Write-Host "The easiest way to resolve this:"
-            Write-Host "  1. Launch Claude Code:  .\run_daaf.ps1"
-            Write-Host "     Paste this prompt:"
-            Write-Host ""
-            Write-Host "     User support mode. The DAAF updater applied the framework"
-            Write-Host "     update successfully, but re-applying my uncommitted changes"
-            Write-Host "     caused stash conflicts. Please help me resolve them:"
-            Write-Host "     1. Run git status to find the conflicting files"
-            Write-Host "     2. Read each one and explain both sides of the conflict"
-            Write-Host "     3. Help me choose what to keep and edit the file to resolve it"
-            Write-Host "     4. After all conflicts are resolved, run: git add ."
-            Write-Host "        Then: git stash drop"
-            Write-Host "        Then: git commit -m 'Resolved stash conflicts from DAAF update'"
-            Write-Host "     When done, remind me to type /exit."
-            Write-Host ""
-            Write-Host "  2. Or, to discard your uncommitted edits and keep the update"
-            Write-Host "     (WARNING - this cannot be undone):"
-            Write-Host "       .\run_daaf.ps1 bash"
-            Write-Host "       git checkout -- ."
-            Write-Host "       git stash drop"
-            Write-Host "       exit"
-            Write-Host ""
-            if ($choice -eq "1") {
-                Complete-Update $OldHead "Note: Uncommitted changes still need attention (see above)."
+            Resolve-StashConflict
+            if ($script:StashConflictResolved) {
+                if ($choice -eq "1") {
+                    Complete-Update $OldHead
+                } else {
+                    Complete-Update $OldHead "Your local changes have been rebased on top of the update."
+                }
             } else {
-                Complete-Update $OldHead "Your commits were rebased. Uncommitted changes still need attention (see above)."
+                if ($choice -eq "1") {
+                    Complete-Update $OldHead "Note: Uncommitted changes still need attention (see above)."
+                } else {
+                    Complete-Update $OldHead "Your commits were rebased. Uncommitted changes still need attention (see above)."
+                }
             }
             Wait-AndExit 0
         }
@@ -1348,93 +1396,13 @@ if ($DirtyFiles) {
     Write-Host "Re-applying your changes..."
     Invoke-ComposeGitNull stash pop
     if ($LASTEXITCODE -ne 0) {
-        Write-Host ""
-        Write-Host "The framework update was applied successfully!"
-        Write-Host ""
-        Write-Host "However, some of your uncommitted edits overlap with files that"
-        Write-Host "changed in the update. Your edits are NOT lost - they are saved"
-        Write-Host "in a temporary holding area."
-        Write-Host ""
-        # Claude Code requires an interactive terminal. When non-interactive,
-        # skip straight to manual resolution instructions.
-        $canInteract = $false
-        try { $canInteract = [Environment]::UserInteractive -and (-not [Console]::IsInputRedirected) } catch { Write-Verbose "Silenced: $_" }
-        $choice = "2"
-        if ($canInteract) {
-            Write-Host "Options:"
-            Write-Host "  1) Launch Claude Code to help resolve the conflicts"
-            Write-Host "  2) Exit and resolve manually"
-            Write-Host ""
-            $choice = Read-UserChoice "  Choose [1/2]" @("1", "2")
-        }
-
-        if ($choice -eq "1") {
-            Write-Host ""
-            Write-Host "Launching Claude Code inside the container..."
-            Write-Host ""
-            Write-Host "Copy and paste this prompt to get started:"
-            Write-Host ""
-            Write-Host "  User support mode. The DAAF updater applied the framework"
-            Write-Host "  update successfully, but re-applying my uncommitted changes"
-            Write-Host "  caused stash conflicts. Please help me resolve them:"
-            Write-Host "  1. Run git status to find the conflicting files"
-            Write-Host "  2. Read each one and explain both sides of the conflict"
-            Write-Host "  3. Help me choose what to keep and edit the file to resolve it"
-            Write-Host "  4. After all conflicts are resolved, run: git add ."
-            Write-Host "     Then: git stash drop"
-            Write-Host "     Then: git commit -m 'Resolved stash conflicts from DAAF update'"
-            Write-Host "  When done, remind me to type /exit so the updater can"
-            Write-Host "  finish its remaining steps."
-            Write-Host ""
-            Write-Host "IMPORTANT: When Claude Code is done, type /exit to return here."
-            Write-Host "The updater still needs to finish a few steps after this."
-            Write-Host ""
-            # EAP = SilentlyContinue -- see Resolve-Conflict for rationale
-            $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
-            docker compose exec daaf-docker claude
-            $ErrorActionPreference = $savedEAP
-            Write-Host ""
-
-            $remaining = Invoke-ComposeGit diff --name-only --diff-filter=U
-
-            if ([string]::IsNullOrWhiteSpace($remaining)) {
-                Write-Host "Conflicts resolved!"
-                Complete-Update $OldHead "Your local changes have been re-applied on top of the update."
-                Wait-AndExit 0
-            } else {
-                Write-Host "Some conflicts still remain in these files:"
-                $remaining -split "`n" | ForEach-Object { if ($_.Trim()) { Write-Host "  $_" } }
-                Write-Host ""
-                Write-Host "You can keep working on them - launch Claude Code and pick up"
-                Write-Host "where you left off:"
-                Write-Host "  .\run_daaf.ps1"
-                Write-Host ""
-                Write-Host "Or to undo the update entirely (your research files are not affected):"
-                Write-Host "  docker compose exec daaf-docker git -C /daaf reset --hard $BackupBranch"
-                Write-Host "  docker compose exec daaf-docker git -C /daaf stash pop"
-                Wait-AndExit 1
-            }
+        Resolve-StashConflict
+        if ($script:StashConflictResolved) {
+            Complete-Update $OldHead "Your local changes have been re-applied on top of the update."
         } else {
-            Write-Host ""
-            Write-Host "To resolve, enter the container:"
-            Write-Host "  .\run_daaf.ps1 bash"
-            Write-Host "  (edit the conflicting files to remove the <<<<<<< markers)"
-            Write-Host "  git add ."
-            Write-Host "  git stash drop"
-            Write-Host "  exit"
-            Write-Host ""
-            Write-Host "Or to discard your uncommitted edits and keep the update"
-            Write-Host "(WARNING - this cannot be undone):"
-            Write-Host "  .\run_daaf.ps1 bash"
-            Write-Host "  git checkout -- ."
-            Write-Host "  git stash drop"
-            Write-Host "  exit"
-            Write-Host ""
-            Write-Host "To undo the entire update:"
-            Write-Host "  docker compose exec daaf-docker git -C /daaf reset --hard $BackupBranch"
-            Write-Host "  docker compose exec daaf-docker git -C /daaf stash pop"
-            Wait-AndExit 1
+            Complete-Update $OldHead "Note: Uncommitted changes still need attention (see above)."
         }
+        Wait-AndExit 0
     }
 
     Complete-Update $OldHead "Your local changes have been re-applied on top of the update."
