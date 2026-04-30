@@ -584,7 +584,7 @@ $running = ($runningCheck | Out-String) -match "daaf-docker"
 
 if (-not $running) {
     Write-Host "Starting DAAF container..."
-    Invoke-Compose up -d
+    Invoke-Compose up --detach
     if ($LASTEXITCODE -ne 0) {
         Write-Host ""
         Write-Host "ERROR: Failed to start the DAAF container." -ForegroundColor Red
