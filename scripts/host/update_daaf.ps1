@@ -323,11 +323,8 @@ function Resolve-Conflict {
         Write-Host "IMPORTANT: When Claude Code is done, type /exit to return here."
         Write-Host "The updater still needs to finish a few steps after this."
         Write-Host ""
-        # Match run_daaf.ps1 exactly: EAP = SilentlyContinue, no -it, no try block.
-        # EAP must be SilentlyContinue so PS 5.1 doesn't promote Docker's stderr
-        # to a terminating error (NativeCommandError) under the script's global
-        # EAP = Stop.  Do NOT use try {} -- it redirects stdin through a pipe.
-        # Do NOT use -it -- let Docker auto-detect TTY from the console handle.
+        # EAP = SilentlyContinue prevents PS 5.1 from promoting Docker's
+        # stderr to a terminating error under the script's global EAP = Stop.
         $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
         docker compose exec daaf-docker claude
         $ErrorActionPreference = $savedEAP
@@ -338,7 +335,8 @@ function Resolve-Conflict {
         if ([string]::IsNullOrWhiteSpace($remaining)) {
             Write-Host "Conflicts resolved!"
             Write-Host ""
-            return $true
+            $script:ConflictResolved = $true
+            return
         } else {
             Write-Host "Some conflicts still remain in these files:"
             $remaining -split "`n" | ForEach-Object { if ($_.Trim()) { Write-Host "  $_" } }
@@ -350,7 +348,8 @@ function Resolve-Conflict {
             Write-Host "Or to undo the update entirely (your research files are not affected):"
             Write-Host "  docker compose exec daaf-docker git -C /daaf $AbortCmd"
             Write-Host "  docker compose exec daaf-docker git -C /daaf reset --hard $BackupBranch"
-            return $false
+            $script:ConflictResolved = $false
+            return
         }
     } else {
         Write-Host ""
@@ -380,7 +379,8 @@ function Resolve-Conflict {
         Write-Host "To undo the update instead (run from PowerShell, not the container):"
         Write-Host "  docker compose exec daaf-docker git -C /daaf $AbortCmd"
         Write-Host "  docker compose exec daaf-docker git -C /daaf reset --hard $BackupBranch"
-        return $false
+        $script:ConflictResolved = $false
+        return
     }
 }
 
@@ -396,6 +396,7 @@ function Sync-HostScript {
     $changedScripts = Invoke-ComposeGit diff --name-only "$OldHead..$newHead" -- `
         scripts/host/run_daaf.ps1 `
         scripts/host/backup_daaf.ps1 `
+        scripts/host/restore_from_backup.ps1 `
         scripts/host/rebuild_daaf.ps1 `
         scripts/host/update_daaf.ps1 `
         scripts/host/view_logs.ps1 `
@@ -993,7 +994,10 @@ if ($CurrentBranch -ne $RemoteBranch) {
     Write-Host "Merging $RemoteBranch into '$CurrentBranch'..."
     Invoke-ComposeGitNull merge $RemoteBranch
     if ($LASTEXITCODE -ne 0) {
-        if (-not (Resolve-Conflict "merge" "merge --abort")) {
+        # Call as statement, not expression -- if (-not (Fn)) captures
+        # stdout through a pipe, breaking Docker's TTY detection.
+        Resolve-Conflict "merge" "merge --abort"
+        if (-not $script:ConflictResolved) {
             if ($Stashed) {
                 Write-Host ""
                 Write-Host "Your uncommitted changes are safely saved and will be"
@@ -1097,7 +1101,10 @@ if ([int]$Ahead -gt 0) {
         Invoke-ComposeGitNull merge "$UpstreamRemote/$RemoteBranch" `
             -m "Merge DAAF upstream updates"
         if ($LASTEXITCODE -ne 0) {
-            if (-not (Resolve-Conflict "merge" "merge --abort")) {
+            # Call as statement, not expression -- if (-not (Fn)) captures
+            # stdout through a pipe, breaking Docker's TTY detection.
+            Resolve-Conflict "merge" "merge --abort"
+            if (-not $script:ConflictResolved) {
                 if ($Stashed) {
                     Write-Host ""
                     Write-Host "Your uncommitted changes are safely saved and will be"
@@ -1169,7 +1176,9 @@ if ([int]$Ahead -gt 0) {
         Write-Host "Rebasing on top of the latest update..."
         Invoke-ComposeGitNull rebase "$UpstreamRemote/$RemoteBranch"
         if ($LASTEXITCODE -ne 0) {
-            if (-not (Resolve-Conflict "rebase" "rebase --abort")) {
+            # Call as statement -- see merge path comment above
+            Resolve-Conflict "rebase" "rebase --abort"
+            if (-not $script:ConflictResolved) {
                 if ($Stashed) {
                     Write-Host ""
                     Write-Host "Your uncommitted changes are safely saved and will be"
@@ -1335,7 +1344,7 @@ if ($DirtyFiles) {
             Write-Host "IMPORTANT: When Claude Code is done, type /exit to return here."
             Write-Host "The updater still needs to finish a few steps after this."
             Write-Host ""
-            # See Resolve-Conflict for rationale — EAP wrapping, no -it, no try
+            # EAP = SilentlyContinue -- see Resolve-Conflict for rationale
             $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
             docker compose exec daaf-docker claude
             $ErrorActionPreference = $savedEAP

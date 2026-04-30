@@ -304,6 +304,7 @@ sync_host_scripts() {
         git -C /daaf diff --name-only "${old_head}..${new_head}" -- \
         scripts/host/run_daaf.sh \
         scripts/host/backup_daaf.sh \
+        scripts/host/restore_from_backup.sh \
         scripts/host/rebuild_daaf.sh \
         scripts/host/update_daaf.sh \
         scripts/host/view_logs.sh \
