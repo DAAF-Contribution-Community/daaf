@@ -1,76 +1,89 @@
 # Changelog
 
-All notable changes to DAAF are documented here, in reverse chronological order.
+All notable changes to DAAF for each release version are documented here, in reverse chronological order.
 
 ## Table of Contents
 
-- [v2.1.0 — 2026-05-01](#v210--2026-05-01)
+- [v2.1.0 — 2026-05-02](#v210--2026-05-02)
 - [v2.0.1 — 2026-04-05](#v201--2026-04-05)
 - [v2.0.0 — 2026-03-31](#v200--2026-03-31)
 - [v1.0.0 — 2026-02-22](#v100--2026-02-22)
 
 ---
 
-## v2.1.0 — 2026-05-01
+## v2.1.0 -- 2026-05-02
+
+### Data Analyst Augmentation Framework -- Quality of Life Release
+
+If v2.0.0 was about building out the reliaibility, robustness, and extensibility of DAAF's core analytical engine, v2.1.0 is about making it actually easy to set up, run, and maintain for real-world workflows and collaboration. For example, the original installation process asked users to juggle Docker commands, download and unzip GitHub repos, and manage the Docker volume filesystem. That friction was one of the biggest barrier to adoption, and this release implements a huge number of quality-of-life improvements to fix that. A single command now handles the entire installation. Named helper scripts replace every Docker incantation you'd need to remember and handles all of the back-end container management for you. A one-line update system means you can stay current without losing your work, regardless of when you installed DAAF for the first time. And a new session log viewer gives you a window into what DAAF is actually doing every step of the way, which is crucial for diagnostics and intuition when using the system.
+
+Beyond the operations story, this release also sets up a number of smaller infrastructural improvements -- for example, specialist agents can return more detailed findings, and I've implemented a code-testing pipeline to help ensure every release of DAAF ships without unexpected issues or bugs. More details for the highlights of this release are listed out below!
 
 ### One-Line Installer
 
-DAAF can now be installed with a single command on both macOS/Linux and Windows. The previous multi-step manual process has been replaced by a one-line installer that handles everything automatically — downloading the necessary files, building the Docker image, and setting up your workspace. The installer script can be reviewed before running if you'd like to inspect it first. Getting started with DAAF and Claude Code in a secure, well-curated, and fully reproducible environment for research is easier than it ever has been!
+DAAF can now be installed with a single command on both macOS/Linux and Windows. The previous multi-step manual process has been replaced by a one-line installer that handles everything automatically -- downloading the necessary files, building the Docker image, and setting up your workspace.  Getting started with DAAF and Claude Code in a secure, well-curated, and fully reproducible environment for research has never been easier! This took a LOT of experimentation and testing, since these scripts are designed to be run on your computer, and I had to account for various versions of Windows, MacOSX, etc. etc. which is quite a headache.
 
 ### Helper Scripts for Everyday Operations
 
-A complete suite of helper scripts (available for both macOS/Linux and Windows) now covers the most common DAAF operations. Instead of remembering Docker commands, you can simply run a named script:
+A complete suite of "helper" convenience scripts (available for both macOS/Linux and Windows) now makes it painless and straightforward to handle the most common DAAF operations. Instead of remembering Docker commands, you can simply run a script:
 
-- **`run_daaf`** -- Start DAAF (automatically checks that everything is ready first)
+- **`run_daaf`** -- Start DAAF and Claude Code (automatically sets up the docker container and runs the main commands for you)
 - **`update_daaf`** -- Update to the latest DAAF version available (backs up your work automatically before making changes)
-- **`backup_daaf`** / **`restore_from_backup`** -- Save and restore snapshots of your entire DAAF workspace
-- **`rebuild_daaf`** -- Rebuild the Docker image when needed
-- **`view_logs`** -- Open the session log viewer in your browser
+- **`backup_daaf`** / **`restore_from_backup`** -- Save and restore snapshots of your entire DAAF workspace effortlessly. Also allows for painless sharing of entire repositories with colleagues!
+- **`rebuild_daaf`** -- Rebuild the Docker image when needed to update configurations, library installs, updates, etc.
+- **`view_logs`** -- Open the session log viewer in your browser to easily inspect and view what DAAF is doing at every step of its work (more on that below)
 - **`view_notebooks`** -- Open Marimo to browse your analysis notebooks
+
+Every script has both a Bash (.sh, for MacOSX and Linux) and PowerShell (.ps1, for Windows) variant, and all are covered by automated tests and quality checks. This was, by far, the most time-consuming part of this release -- making cross-platform shell scripts that work reliably across macOS, Linux, and Windows is genuinely hard, and the number of edge cases to navigate and problem-solve for was humbling. I suspect there will still be some issues that I couldn't identify on my own, so please do let me know what errors and problems you encounter!
 
 ### Update and Migration Pathway
 
-Existing DAAF users can now update to the latest version without losing their work using some intelligent filechange checking logic and leaning on Claude Code to help resolve conflicts that arise in your customizations and any new framework updates. The new `update_daaf` script automatically backs up your workspace before making any changes and handles merge conflicts gracefully. For anyone who's coming from an older version (anything pre-v2.1.0), I've also developed a dedicated `migrate_daaf` script that detects your installation type, connects you to the update process, and gets everything organized for updating in a guided walkthrough. If you want to update, check the [Installation and Quickstart guide](user_reference/01_installation_and_quickstart.md#migrating-from-an-older-installation) for a detailed guide on how to go through this (should just be one line of code to run in your terminal!).
+Existing DAAF users can now update to the latest version without losing their work or framework customizations in a very guided process. The `update_daaf` script automatically backs up your workspace before making any changes and uses intelligent file-change detection to handle file conflicts gracefully -- leaning on Claude Code itself to help resolve conflicts between your customizations and new framework updates. 
 
-### Environment Variable Support
-
-DAAF now supports secure environment variable configuration via an `environment_settings.txt` file that lives on your host machine (outside the container and inaccessible to Claude). You can set API keys for Claude Code authentication, data source access, and alternative providers — all in one place. The file is automatically loaded at container startup, and DAAF's safety system prevents Claude from ever reading or accessing it directly. An annotated example template (`environment_settings_example.txt` in your `daaf-docker/` folder) walks you through every option.
-
-### OpenRouter Support (Experimental)
-
-DAAF now supports running Claude Code through OpenRouter as an alternative to a direct Anthropic API key, opening the door for greater model and provider flexibility. Configuration is handled entirely through the `environment_settings.txt` file — no code changes needed. **Note:** This integration is experimental. It works, but you may encounter rough edges that require some troubleshooting and comfort with OpenRouter's platform. Direct Anthropic API access remains the recommended and most reliable option.
+For anyone coming from an older version that doesn't have this script built-in (so anything before this very release), a dedicated `migrate_daaf` script detects your installation type, connects you to the update process, and gets everything organized in a guided walkthrough. Check the [Installation and Quickstart guide](user_reference/01_installation_and_quickstart.md#migrating-from-an-older-installation) for details -- just one line of code to run in your terminal to get caught up.
 
 ### Session Log Viewer
 
-A new in-browser session transcript viewer makes it much easier to see what DAAF is doing under the hood and to diagnose issues when they arise. You can browse past sessions, search across transcripts, filter by session, and inspect individual tool calls — all from a clean web interface. Launch it with the `view_logs` helper script.
+A new in-browser session transcript viewer makes it much easier to see what DAAF is doing under the hood and to diagnose issues when they arise. You can browse past sessions, search across transcripts, filter by session, and inspect individual tool calls -- all from a clean web interface. Launch it with the `view_logs` helper script. This has been genuinely useful for development too -- being able to trace exactly what happened in a subagent's session has saved hours of debugging.
+
+### Environment Variable Support
+
+DAAF now supports secure environment variable configuration via an `environment_settings.txt` file that lives on your host machine (outside the container and inaccessible to Claude). You can set API keys for Claude Code authentication, data source access, and alternative providers -- all in one place. The file is automatically loaded at container startup, and DAAF's safety system prevents Claude from ever reading or accessing it directly. An annotated example template (`environment_settings_example.txt` in your `daaf-docker/` folder) walks you through every option.
+
+### OpenRouter Support (Experimental)
+
+DAAF now supports running Claude Code through OpenRouter as an alternative to a direct Anthropic API key, opening the door for greater model and provider flexibility. Configuration is handled entirely through the `environment_settings.txt` file -- no code changes needed. Context window detection was also updated to correctly query OpenRouter's API for the real context length of whatever model you're running. **Note:** This integration is experimental. It works, but you may encounter rough edges. Direct Anthropic API access remains the recommended and most reliable option.
+
+### Preliminary Phase Notes Persistence
+
+Specialist agent findings (source research, data profiling, synthesis) are now saved to disk as complete markdown files in `output/preliminary_notes/`. Previously, DAAF's coordinator held compressed summaries in its own working memory -- which meant later stages of analysis were working from shortened versions of earlier findings. Now the full findings are saved to a file and later agents read directly from that file, so nothing is lost to summarization. This is a quiet change, but it meaningfully improves analytical continuity across long sessions.
 
 ### Shell Scripting Skill
 
-A new `shell-scripting` skill teaches Claude the conventions and standards used across all of DAAF's helper scripts — covering Bash, PowerShell, error handling, testing, and cross-platform differences. This means that when DAAF needs to write or modify shell scripts (or when contributors submit new ones), they'll follow consistent, well-tested patterns.
+A new `shell-scripting` skill teaches Claude the conventions and standards used across all of DAAF's helper scripts -- covering Bash, PowerShell, error handling, testing, and cross-platform gotchas. Five reference files (~2,200 lines total) cover everything from script templates to testing patterns. This means that when DAAF needs to write or modify shell scripts (or when contributors submit new ones), they'll follow consistent, well-tested patterns.
 
-### CI and Testing Infrastructure
+### Automated Testing and Quality Checks
 
-New automated CI pipelines help ensure that DAAF's helper scripts remain reliable as the project evolves:
+New automated pipelines run on every proposed code change to help ensure that DAAF's helper scripts remain reliable as the project evolves:
 
-- **Automated linting** catches common scripting errors and enforces DAAF-specific conventions on every code change
-- **End-to-end integration tests** exercise the full lifecycle — install, run, backup, update, rebuild, and migrate — in a fresh Docker environment
-- **Unit test suites** cover both the Bash and PowerShell variants of every helper script
+- **Script quality scanning** catches common scripting errors and enforces DAAF-specific conventions automatically on every code change
+- **Unit test suites** verify that both the Bash and PowerShell variants of every helper script behave correctly in isolation
+- **Full lifecycle tests** exercise the complete workflow -- install, run, backup, update, rebuild, and migrate -- in a fresh Docker environment to catch problems that only appear when everything runs together
+- **Pre-commit checks** flag scripting issues before they're even committed, so problems are caught as early as possible
 
-### Minor Improvements and Changes
+### Under the Hood
 
-- All internal hooks updated for greater portability across different environments
-- Specialist subagents can now return substantially longer findings, reducing the chance of truncated or incomplete results
-- Discovery and profiling findings are now saved in full to disk, so later stages of analysis work from complete information rather than compressed summaries
-- Claude Code updated to version 2.1.112
-- Container initialization processes at install simplified and streamlined
-- Context window detection improved for third-party model providers via OpenRouter
+- **Specialist agent word limits raised:** Agents can now return substantially longer findings (general agents doubled from 1,000 to 2,000 words; data profiling agents from 2,500 to 3,500), reducing the chance of truncated or incomplete results
+- **Prompt caching enabled:** Repeated sessions now benefit from cached context via a new default Claude setting, improving token efficiency and reducing cost
+- **Session log collection fixed:** The log collector now correctly finds all agent transcripts from a session, even when sub-agents never directly mention the project directory
+- **System prompt trimmed:** Removed ~144 lines of illustrative examples from the always-loaded system prompt -- content that was consuming working memory on every single turn without adding operational value
+- **Container startup simplified:** Git identity configuration moved into the image build itself, eliminating an extra startup step and simplifying the boot process
+- **Claude Code updated** to version 2.1.112, from the latest pin of 2.1.87
 
 ### What's Coming Next
 
-Here's what we're working on next:
-
-- **R Support** -- Bringing first-class R language support to DAAF, as well as dual-language handling for Python and R in tandem
-- **Benchmarking tests** -- Automated testing of how well different Claude models follow DAAF's framework conventions (infrastructure already in place; test cases in development)
+- **R Support** -- Bringing first-class R language support to DAAF, as well as dual-language handling for Python and R in tandem. Long time coming, but will be worth it!
+- **Benchmarking tests** -- Creating an automated benchmarking process for DAAF with test cases for plan quality, code generation adherence, and quality checkpoint compliance: the beginning of systematic testing for how well different Claude models follow DAAF's conventions (and thus understanding what settings matter, and/or whether other models from other providers like open-source options are viable yet).
 - **More video tutorials and walkthroughs** -- Expanding the library of guided video content
 
 **Full Changelog**: [v2.0.1...v2.1.0](https://github.com/DAAF-Contribution-Community/daaf/compare/v2.0.1...v2.1.0)
@@ -78,6 +91,8 @@ Here's what we're working on next:
 ---
 
 ## v2.0.1 — 2026-04-05
+
+### Data Analyst Augmentation Framework — Minor Revisions
 
 Minor revisions: Adds an explicit "User Support Mode" as DAAF's 9th engagement mode (with better documentation reading/routing for a variety of issues/questions related to DAAF, Claude Code, Docker, and Git), hardens session archiving in the event of accidental crash or unintended closes/session termination, improves user documentation with diagrams and extended content, and archives complete session logs for both sample projects (college selectivity analysis) for better transparency and future educational materials.
 
