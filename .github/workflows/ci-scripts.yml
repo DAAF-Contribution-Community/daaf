@@ -378,7 +378,6 @@ jobs:
           }
 
           Invoke-SmokeTest "scripts/host/install.ps1" @(
-            "[DRY-RUN]",
             "DAAF Installer",
             "Installation complete!"
           )
@@ -400,7 +399,6 @@ jobs:
           )
 
           Invoke-SmokeTest "scripts/host/migrate_daaf.ps1" @(
-            "[DRY-RUN]",
             "DAAF Migration",
             "Migration complete!"
           )
@@ -426,7 +424,6 @@ jobs:
           )
 
           Invoke-SmokeTest "scripts/host/run_daaf.ps1" @(
-            "[DRY-RUN]",
             "DAAF container is already running.",
             "Launching Claude Code"
           )
@@ -485,7 +482,6 @@ jobs:
           }
 
           Invoke-SmokeTest "scripts/host/install.ps1" @(
-            "[DRY-RUN]",
             "DAAF Installer",
             "Installation complete!"
           )
@@ -507,7 +503,6 @@ jobs:
           )
 
           Invoke-SmokeTest "scripts/host/migrate_daaf.ps1" @(
-            "[DRY-RUN]",
             "DAAF Migration",
             "Migration complete!"
           )
@@ -533,7 +528,6 @@ jobs:
           )
 
           Invoke-SmokeTest "scripts/host/run_daaf.ps1" @(
-            "[DRY-RUN]",
             "DAAF container is already running.",
             "Launching Claude Code"
           )
