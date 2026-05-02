@@ -1,11 +1,11 @@
-﻿# ============================================================================
+# ============================================================================
 # Pester Test Helper -- shared setup for all DAAF PowerShell script tests
 # ============================================================================
 # Dot-source this from every .Tests.ps1 file in BeforeAll:
 #   . "$PSScriptRoot/TestHelper.ps1"
 #
 # Provides:
-#   - $RepoRoot  — absolute path to the repository root
+#   - $RepoRoot  -- absolute path to the repository root
 #   - Common test directory setup/teardown patterns (documented below)
 #   - Notes on Docker mock patterns for Pester
 # ============================================================================

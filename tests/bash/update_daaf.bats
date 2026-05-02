@@ -1,6 +1,6 @@
 #!/usr/bin/env bats
 # ============================================================================
-# Tests for update_daaf.sh — DAAF Update Script
+# Tests for update_daaf.sh -- DAAF Update Script
 # ============================================================================
 # update_daaf.sh is the most complex script: state machine with ahead/behind
 # detection, merge/rebase paths, stash handling, conflict resolution.
@@ -142,7 +142,7 @@ teardown() {
 }
 
 # ============================================================================
-# Behavioral tests — sourced functions
+# Behavioral tests -- sourced functions
 # ============================================================================
 # Source the script in test mode so all helper functions are available
 # without executing the main state-machine logic.
@@ -548,7 +548,7 @@ teardown() {
 @test "update: ERR trap is registered after sourcing" {
     run bash -c '
         DAAF_TEST_MODE=1 source "'"${REPO_ROOT}"'/scripts/host/update_daaf.sh"
-        # Do NOT clear the trap — we want to verify it exists
+        # Do NOT clear the trap -- we want to verify it exists
         set +eu
         trap -p ERR
     '

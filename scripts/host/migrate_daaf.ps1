@@ -39,11 +39,12 @@ $ErrorActionPreference = "Stop"
 # Enter -- including when invoked via irm ... | iex (which terminates the
 # PowerShell session, but the user has already read the output).
 function Wait-ForUser {
+    param([int]$ExitCode = 0)
     if (-not $env:DAAF_NESTED) {
         Write-Host ""
         Read-Host "Press Enter to close this window"
     }
-    exit
+    exit $ExitCode
 }
 
 # --- Configuration ---
@@ -213,7 +214,10 @@ function Invoke-ContainerGit {
     $savedEAP = $ErrorActionPreference
     try {
         $ErrorActionPreference = "SilentlyContinue"
-        $result = docker exec $script:ContainerName git -C /daaf @args 2>$null | Out-String
+        $raw = @(docker exec $script:ContainerName git -C /daaf @args 2>$null)
+        $exitCode = $LASTEXITCODE
+        $result = ($raw | Out-String)
+        $global:LASTEXITCODE = $exitCode
         return ($result -replace "`r","").Trim()
     } finally {
         $ErrorActionPreference = $savedEAP
@@ -228,7 +232,10 @@ function Invoke-ContainerGitVerbose {
     $savedEAP = $ErrorActionPreference
     try {
         $ErrorActionPreference = "SilentlyContinue"
-        $result = docker exec $script:ContainerName git -C /daaf @args | Out-String
+        $raw = @(docker exec $script:ContainerName git -C /daaf @args)
+        $exitCode = $LASTEXITCODE
+        $result = ($raw | Out-String)
+        $global:LASTEXITCODE = $exitCode
         return ($result -replace "`r","").Trim()
     } finally {
         $ErrorActionPreference = $savedEAP
@@ -258,7 +265,10 @@ function Invoke-ContainerShell {
     $savedEAP = $ErrorActionPreference
     try {
         $ErrorActionPreference = "SilentlyContinue"
-        $result = docker exec $script:ContainerName sh -c $ShellCommand 2>$null | Out-String
+        $raw = @(docker exec $script:ContainerName sh -c $ShellCommand 2>$null)
+        $exitCode = $LASTEXITCODE
+        $result = ($raw | Out-String)
+        $global:LASTEXITCODE = $exitCode
         return ($result -replace "`r","").Trim()
     } finally {
         $ErrorActionPreference = $savedEAP
@@ -274,7 +284,10 @@ function Invoke-ContainerShellVerbose {
     $savedEAP = $ErrorActionPreference
     try {
         $ErrorActionPreference = "SilentlyContinue"
-        $result = docker exec $script:ContainerName sh -c $ShellCommand 2>&1 | Out-String
+        $raw = @(docker exec $script:ContainerName sh -c $ShellCommand 2>&1)
+        $exitCode = $LASTEXITCODE
+        $result = ($raw | Out-String)
+        $global:LASTEXITCODE = $exitCode
         return ($result -replace "`r","").Trim()
     } finally {
         $ErrorActionPreference = $savedEAP
@@ -300,7 +313,7 @@ try {
     if (-not $Mutex.WaitOne(0)) {
         Write-Host "ERROR: Another instance of migrate_daaf is already running." -ForegroundColor Red
         Write-Host "       Wait for it to finish or restart Docker Desktop to clear the lock." -ForegroundColor Yellow
-        Wait-ForUser
+        Wait-ForUser -ExitCode 1
         return
     }
 } catch [System.Threading.AbandonedMutexException] {
@@ -333,7 +346,7 @@ Write-Host ""
 if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
     Write-Host "ERROR: Docker is either not installed or not configured properly in your system PATH to allow it to be used from PowerShell." -ForegroundColor Red
     Write-Host "Please install Docker Desktop: https://www.docker.com/products/docker-desktop/"
-    Wait-ForUser; return
+    Wait-ForUser -ExitCode 1; return
 }
 
 # --- Docker running ---
@@ -342,7 +355,7 @@ $null = docker info 2>&1
 $ErrorActionPreference = $savedEAP
 if ($LASTEXITCODE -ne 0) {
     Write-Host "ERROR: Docker Desktop does not seem to be running. Please start it and try again." -ForegroundColor Red
-    Wait-ForUser; return
+    Wait-ForUser -ExitCode 1; return
 }
 
 Write-Host "Docker is running."
@@ -358,7 +371,7 @@ if ($LASTEXITCODE -ne 0) {
     Write-Host "This script is for migrating an existing DAAF installation."
     Write-Host "If you haven't installed DAAF yet, use the installer instead:"
     Write-Host "  irm $RawBase/scripts/host/install.ps1 | iex"
-    Wait-ForUser; return
+    Wait-ForUser -ExitCode 1; return
 }
 
 Write-Host "Found DAAF volume: $VolumeName"
@@ -403,7 +416,7 @@ if ($DownloadFailed) {
     Write-Host ""
     Write-Host "ERROR: Failed to download one or more utility scripts." -ForegroundColor Red
     Write-Host "Please check your internet connection and try again."
-    Wait-ForUser; return
+    Wait-ForUser -ExitCode 1; return
 }
 
 # Download Dockerfile and docker-compose.yml if not already present
@@ -415,7 +428,7 @@ if (-not (Test-Path "$HostDir\Dockerfile")) {
         Write-Host ""
         Write-Host "ERROR: Failed to download Dockerfile." -ForegroundColor Red
         Write-Host "Please check your internet connection and try again."
-        Wait-ForUser; return
+        Wait-ForUser -ExitCode 1; return
     }
 }
 
@@ -427,7 +440,7 @@ if (-not (Test-Path "$HostDir\docker-compose.yml")) {
         Write-Host ""
         Write-Host "ERROR: Failed to download docker-compose.yml." -ForegroundColor Red
         Write-Host "Please check your internet connection and try again."
-        Wait-ForUser; return
+        Wait-ForUser -ExitCode 1; return
     }
 } else {
     # Even if docker-compose.yml exists, update it so it has name: daaf
@@ -474,7 +487,7 @@ if ($backupExit -ne 0) {
     Write-Host "ERROR: Backup failed (exit code $backupExit)."
     Write-Host "The migration will not proceed without a successful backup."
     Write-Host "Please resolve the backup issue and re-run: .\migrate_daaf.ps1"
-    Wait-ForUser; return
+    Wait-ForUser -ExitCode 1; return
 }
 $BackupCompleted = $true
 
@@ -535,7 +548,7 @@ if (-not [string]::IsNullOrWhiteSpace($ContainerName)) {
             Write-Host ""
             Write-Host "ERROR: Container did not become ready within 60 seconds." -ForegroundColor Red
             Write-Host "Try restarting Docker Desktop, then re-run:  .\migrate_daaf.ps1"
-            Wait-ForUser; return
+            Wait-ForUser -ExitCode 1; return
         }
         Write-Host "Container started."
     } else {
@@ -560,7 +573,7 @@ if (-not [string]::IsNullOrWhiteSpace($ContainerName)) {
         Write-Host ""
         Write-Host "Try restarting Docker Desktop, then re-run:  .\migrate_daaf.ps1"
         Set-Location $OriginalDirCompose
-        Wait-ForUser; return
+        Wait-ForUser -ExitCode 1; return
     }
 
     # After docker compose up, discover the container name
@@ -571,7 +584,7 @@ if (-not [string]::IsNullOrWhiteSpace($ContainerName)) {
         Write-Host "ERROR: Container started but could not be found." -ForegroundColor Red
         Write-Host "Try restarting Docker Desktop, then re-run:  .\migrate_daaf.ps1"
         Set-Location $OriginalDirCompose
-        Wait-ForUser; return
+        Wait-ForUser -ExitCode 1; return
     }
 
     Set-Location $OriginalDirCompose
@@ -589,7 +602,7 @@ if (-not [string]::IsNullOrWhiteSpace($ContainerName)) {
         Write-Host ""
         Write-Host "ERROR: Container started but is not responding after 60 seconds." -ForegroundColor Red
         Write-Host "Try restarting Docker Desktop, then re-run:  .\migrate_daaf.ps1"
-        Wait-ForUser; return
+        Wait-ForUser -ExitCode 1; return
     }
     Write-Host "Container started: $ContainerName"
 }
@@ -604,7 +617,7 @@ if ($LASTEXITCODE -ne 0) {
     Write-Host ""
     Write-Host "If this is a fresh installation, use the installer instead:"
     Write-Host "  irm $RawBase/scripts/host/install.ps1 | iex"
-    Wait-ForUser; return
+    Wait-ForUser -ExitCode 1; return
 }
 
 Write-Host "DAAF installation verified in container."
@@ -664,7 +677,7 @@ if ($DetectedEra -eq "1") {
         Write-Host "  - GitHub may be experiencing an outage"
         Write-Host ""
         Write-Host "Once the issue is resolved, re-run:  .\migrate_daaf.ps1"
-        Wait-ForUser; return
+        Wait-ForUser -ExitCode 1; return
     }
     Write-Host "Fetch complete."
 
@@ -754,7 +767,7 @@ if ($DetectedEra -eq "1") {
         Write-Host "  - GitHub may be experiencing an outage"
         Write-Host ""
         Write-Host "Once the issue is resolved, re-run:  .\migrate_daaf.ps1"
-        Wait-ForUser; return
+        Wait-ForUser -ExitCode 1; return
     }
     Write-Host "Fetch complete."
 
@@ -770,7 +783,7 @@ if ($DetectedEra -eq "1") {
         Write-Host ""
         Write-Host "If this is a fresh installation, use the installer instead:"
         Write-Host "  irm $RawBase/scripts/host/install.ps1 | iex"
-        Wait-ForUser; return
+        Wait-ForUser -ExitCode 1; return
     }
 
     # Parse commits into array (force @() to prevent single-element unwrapping --
@@ -815,7 +828,7 @@ if ($DetectedEra -eq "1") {
             Write-Host ""
             Write-Host "You can try a fresh install instead:"
             Write-Host "  irm $RawBase/scripts/host/install.ps1 | iex"
-            Wait-ForUser; return
+            Wait-ForUser -ExitCode 1; return
         }
 
         $MatchingCommit = ""
@@ -1026,7 +1039,7 @@ echo "BEST:$BEST_SHA:$BEST_OVERLAP:$LOCAL_COUNT"
             Write-Host "ERROR: Could not determine a graft point." -ForegroundColor Red
             Write-Host "This is unexpected. Please report this issue at:"
             Write-Host "  https://github.com/$Repo/issues"
-            Wait-ForUser; return
+            Wait-ForUser -ExitCode 1; return
         }
 
         # --- Graft local history onto upstream ---

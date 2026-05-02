@@ -609,13 +609,13 @@ function docker {
         "*info*" { return }
         "*compose ps*--format*" { Write-Output "daaf-docker" }
         "*compose exec*true*" { return }
+        "*compose exec*test -f*/daaf/.git/shallow*" { $global:LASTEXITCODE = 1; return }
         "*compose exec*test -f*" { return }
         "*compose exec*git -C /daaf remote get-url origin*" {
             Write-Output "https://github.com/DAAF-Contribution-Community/daaf.git"
         }
         "*compose exec*git -C /daaf fetch*" {
             $global:LASTEXITCODE = 1
-            Write-Error "fatal: unable to access"
             return
         }
         "*compose exec*git -C /daaf branch*" { return }

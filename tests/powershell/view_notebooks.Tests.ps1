@@ -11,7 +11,7 @@ Describe "view_notebooks.ps1" {
     }
 
     # =====================================================================
-    # Tier 1 — Syntax
+    # Tier 1 -- Syntax
     # =====================================================================
 
     Context "Syntax validation" {
@@ -22,7 +22,7 @@ Describe "view_notebooks.ps1" {
     }
 
     # =====================================================================
-    # Tier 3 — Script structure
+    # Tier 3 -- Script structure
     # =====================================================================
 
     Context "Script structure" {
@@ -85,7 +85,7 @@ Describe "view_notebooks.ps1" {
 }
 
 # ============================================================================
-# Tier 5 — Dry-run mode
+# Tier 5 -- Dry-run mode
 # ============================================================================
 
 Describe "view_notebooks.ps1 dry-run mode" {

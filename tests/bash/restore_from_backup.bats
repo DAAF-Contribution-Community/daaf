@@ -319,9 +319,9 @@ teardown() {
 
     # User answers 'y' to stop, then the script continues looking for backups
     # No backups exist so it exits with failure
-    run bash -c 'echo "y" | bash "'"${REPO_ROOT}"'/scripts/host/restore_from_backup.sh"'
+    run bash -c 'echo "y" | bash "'"${REPO_ROOT}"'/scripts/host/restore_from_backup.sh"' 2>&1
     assert_output --partial "container is currently running"
-    assert_output --partial "Stop the container now"
+    assert_output --partial "must be stopped before restoring"
     assert_output --partial "Stopping containers"
 }
 

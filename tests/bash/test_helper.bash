@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ============================================================================
-# BATS Test Helper — shared setup for all DAAF shell script tests
+# BATS Test Helper -- shared setup for all DAAF shell script tests
 # ============================================================================
 # Source this from every .bats file via:  load 'test_helper'
 #
@@ -94,7 +94,7 @@ common_teardown() {
 }
 
 # ============================================================================
-# Docker mock (Strategy 1 — function override)
+# Docker mock (Strategy 1 -- function override)
 # ============================================================================
 # After calling mock_docker, any `docker` invocation in the script under test
 # is intercepted. Control behavior via MOCK_DOCKER_* variables.

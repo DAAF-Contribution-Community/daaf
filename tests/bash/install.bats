@@ -1,6 +1,6 @@
 #!/usr/bin/env bats
 # ============================================================================
-# Tests for install.sh — DAAF One-Line Installer
+# Tests for install.sh -- DAAF One-Line Installer
 # ============================================================================
 
 load 'test_helper'
@@ -106,7 +106,7 @@ teardown() {
 # --- Fresh install proceeds when no compose file exists ---
 
 @test "install.sh proceeds with downloads when no prior installation exists" {
-    # No compose file in daaf-docker/ — fresh install path
+    # No compose file in daaf-docker/ -- fresh install path
     export DAAF_NESTED=1
     # Build will fail, but downloads should be attempted
     MOCK_DOCKER_COMPOSE_EXIT=1
@@ -120,7 +120,7 @@ teardown() {
 # --- Incomplete installation detection ---
 
 @test "install.sh proceeds when compose file exists but volume does not" {
-    # Compose file present but volume inspect fails — incomplete install
+    # Compose file present but volume inspect fails -- incomplete install
     mkdir -p "${TEST_DIR}/daaf-docker"
     create_fake_compose_file "${TEST_DIR}/daaf-docker"
     MOCK_DOCKER_VOLUME_EXIT=1
@@ -278,7 +278,7 @@ teardown() {
 
 @test "install.sh verifies CLAUDE.md exists in container" {
     export DAAF_NESTED=1
-    # exec mock returns success — test -f /daaf/CLAUDE.md passes
+    # exec mock returns success -- test -f /daaf/CLAUDE.md passes
     MOCK_DOCKER_EXEC_EXIT=0
     cd "${TEST_DIR}"
     run bash "${REPO_ROOT}/scripts/host/install.sh"
@@ -329,16 +329,10 @@ teardown() {
     # Custom docker mock: volume inspect fails (no existing install),
     # compose build returns non-zero
     docker() {
-        case "$1" in
-            info)   return 0 ;;
-            volume) return 1 ;;
-            compose)
-                shift
-                case "$1" in
-                    build) return 1 ;;
-                    *) return 0 ;;
-                esac
-                ;;
+        case "$*" in
+            info*)   return 0 ;;
+            *volume*) return 1 ;;
+            *compose*build*) return 1 ;;
             *) return 0 ;;
         esac
     }
@@ -355,17 +349,11 @@ teardown() {
     export DAAF_NESTED=1
     # Custom docker mock: build succeeds, up fails
     docker() {
-        case "$1" in
-            info)   return 0 ;;
-            volume) return 1 ;;
-            compose)
-                shift
-                case "$1" in
-                    build) return 0 ;;
-                    up) return 1 ;;
-                    *) return 0 ;;
-                esac
-                ;;
+        case "$*" in
+            info*)   return 0 ;;
+            *volume*) return 1 ;;
+            *compose*build*) return 0 ;;
+            *compose*up*) return 1 ;;
             *) return 0 ;;
         esac
     }
@@ -382,24 +370,18 @@ teardown() {
     export DAAF_NESTED=1
     # Custom docker mock: build and up succeed, exec always fails (readiness never achieved)
     docker() {
-        case "$1" in
-            info)   return 0 ;;
-            volume) return 1 ;;
-            compose)
-                shift
-                case "$1" in
-                    build) return 0 ;;
-                    up) return 0 ;;
-                    exec) return 1 ;;
-                    *) return 0 ;;
-                esac
-                ;;
+        case "$*" in
+            info*)   return 0 ;;
+            *volume*) return 1 ;;
+            *compose*build*) return 0 ;;
+            *compose*up*) return 0 ;;
+            *compose*exec*) return 1 ;;
             *) return 0 ;;
         esac
     }
     export -f docker
     mock_curl
-    # Override MAX_RETRIES via the script's sleep loop — we can't override
+    # Override MAX_RETRIES via the script's sleep loop -- we can't override
     # the variable directly since the script sets it. Instead, trust that
     # the loop will exit after MAX_RETRIES. To keep the test fast, override
     # sleep to be a no-op.
@@ -426,26 +408,13 @@ teardown() {
     export DAAF_NESTED=1
     # Custom docker mock: build/up/readiness succeed, but exec for git clone fails
     docker() {
-        case "$1" in
-            info)   return 0 ;;
-            volume) return 1 ;;
-            compose)
-                shift
-                case "$1" in
-                    build) return 0 ;;
-                    up) return 0 ;;
-                    exec)
-                        # Check if this is the git clone call
-                        local args_str="$*"
-                        if [[ "${args_str}" == *"git clone"* ]]; then
-                            return 1
-                        fi
-                        # Readiness check (exec ... true) succeeds
-                        return 0
-                        ;;
-                    *) return 0 ;;
-                esac
-                ;;
+        case "$*" in
+            info*)   return 0 ;;
+            *volume*) return 1 ;;
+            *compose*build*) return 0 ;;
+            *compose*up*) return 0 ;;
+            *compose*exec*git*clone*) return 1 ;;
+            *compose*exec*) return 0 ;;
             *) return 0 ;;
         esac
     }
@@ -462,25 +431,13 @@ teardown() {
     export DAAF_NESTED=1
     # Custom docker mock: everything succeeds except the final test -f check
     docker() {
-        case "$1" in
-            info)   return 0 ;;
-            volume) return 1 ;;
-            compose)
-                shift
-                case "$1" in
-                    build) return 0 ;;
-                    up) return 0 ;;
-                    exec)
-                        local args_str="$*"
-                        if [[ "${args_str}" == *"test -f"* ]]; then
-                            return 1
-                        fi
-                        # git clone, cp, readiness check all succeed
-                        return 0
-                        ;;
-                    *) return 0 ;;
-                esac
-                ;;
+        case "$*" in
+            info*)   return 0 ;;
+            *volume*) return 1 ;;
+            *compose*build*) return 0 ;;
+            *compose*up*) return 0 ;;
+            *compose*exec*test*-f*) return 1 ;;
+            *compose*exec*) return 0 ;;
             *) return 0 ;;
         esac
     }
@@ -526,25 +483,13 @@ teardown() {
     export DAAF_NESTED=1
     # Custom docker mock: git clone succeeds, but bash -c cp fails
     docker() {
-        case "$1" in
-            info)   return 0 ;;
-            volume) return 1 ;;
-            compose)
-                shift
-                case "$1" in
-                    build) return 0 ;;
-                    up) return 0 ;;
-                    exec)
-                        local args_str="$*"
-                        if [[ "${args_str}" == *"bash -c"* ]]; then
-                            return 1
-                        fi
-                        # Readiness and git clone succeed
-                        return 0
-                        ;;
-                    *) return 0 ;;
-                esac
-                ;;
+        case "$*" in
+            info*)   return 0 ;;
+            *volume*) return 1 ;;
+            *compose*build*) return 0 ;;
+            *compose*up*) return 0 ;;
+            *compose*exec*bash*-c*) return 1 ;;
+            *compose*exec*) return 0 ;;
             *) return 0 ;;
         esac
     }

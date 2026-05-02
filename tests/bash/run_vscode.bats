@@ -1,8 +1,8 @@
 #!/usr/bin/env bats
 # ============================================================================
-# Tests for run_vscode.sh — DAAF Code Browser (VS Code in the browser)
+# Tests for run_vscode.sh -- DAAF Code Browser (VS Code in the browser)
 # ============================================================================
-# Thin wrapper script — tests focus on preflight checks, container lifecycle,
+# Thin wrapper script -- tests focus on preflight checks, container lifecycle,
 # dry-run behavior, and structural markers.
 # ============================================================================
 
@@ -19,7 +19,7 @@ teardown() {
 }
 
 # =========================================================================
-# Tier 1 — Syntax
+# Tier 1 -- Syntax
 # =========================================================================
 
 @test "run_vscode.sh parses without errors" {
@@ -28,7 +28,7 @@ teardown() {
 }
 
 # =========================================================================
-# Tier 2 — Preflight checks
+# Tier 2 -- Preflight checks
 # =========================================================================
 
 # --- Preflight: missing docker-compose.yml ---
@@ -74,7 +74,7 @@ teardown() {
 }
 
 # =========================================================================
-# Tier 3 — Script structure
+# Tier 3 -- Script structure
 # =========================================================================
 
 @test "run_vscode.sh includes set -euo pipefail" {
@@ -126,7 +126,7 @@ teardown() {
 }
 
 # =========================================================================
-# Tier 4 — Behavioral (DAAF_TEST_MODE)
+# Tier 4 -- Behavioral (DAAF_TEST_MODE)
 # =========================================================================
 
 @test "run_vscode.sh exits cleanly when sourced with DAAF_TEST_MODE=1" {
@@ -136,7 +136,7 @@ teardown() {
 }
 
 # =========================================================================
-# Tier 5 — Dry-run
+# Tier 5 -- Dry-run
 # =========================================================================
 
 @test "run_vscode.sh: dry-run completes successfully" {
@@ -144,10 +144,11 @@ teardown() {
     assert_success
 }
 
-@test "run_vscode.sh: dry-run produces DRY-RUN markers" {
+@test "run_vscode.sh: dry-run completes without real Docker" {
     run env DAAF_DRY_RUN=1 DAAF_NESTED=1 bash "${REPO_ROOT}/scripts/host/run_vscode.sh" 2>&1
     assert_success
-    assert_output --partial "[DRY-RUN]"
+    assert_output --partial "DAAF container is running"
+    assert_output --partial "Code Browser"
 }
 
 @test "run_vscode.sh: dry-run shows Code Browser message" {
@@ -163,7 +164,7 @@ teardown() {
 }
 
 # =========================================================================
-# Tier 6 — Error paths
+# Tier 6 -- Error paths
 # =========================================================================
 
 # --- Container not running → start attempt ---

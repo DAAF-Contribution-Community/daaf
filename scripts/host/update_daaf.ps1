@@ -172,7 +172,10 @@ function Invoke-ComposeGit {
     $savedEAP = $ErrorActionPreference
     try {
         $ErrorActionPreference = "SilentlyContinue"
-        $result = docker compose exec -T daaf-docker git -C /daaf @args 2>$null | Out-String
+        $raw = @(docker compose exec -T daaf-docker git -C /daaf @args 2>$null)
+        $exitCode = $LASTEXITCODE
+        $result = ($raw | Out-String)
+        $global:LASTEXITCODE = $exitCode
         return ($result -replace "`r","").Trim()
     } finally {
         $ErrorActionPreference = $savedEAP
@@ -189,7 +192,10 @@ function Invoke-ComposeGitVerbose {
     $savedEAP = $ErrorActionPreference
     try {
         $ErrorActionPreference = "SilentlyContinue"
-        $result = docker compose exec -T daaf-docker git -C /daaf @args | Out-String
+        $raw = @(docker compose exec -T daaf-docker git -C /daaf @args)
+        $exitCode = $LASTEXITCODE
+        $result = ($raw | Out-String)
+        $global:LASTEXITCODE = $exitCode
         return ($result -replace "`r","").Trim()
     } finally {
         $ErrorActionPreference = $savedEAP
@@ -204,7 +210,7 @@ function Invoke-ComposeGitNull {
     $savedEAP = $ErrorActionPreference
     try {
         $ErrorActionPreference = "SilentlyContinue"
-        docker compose exec -T daaf-docker git -C /daaf @args 2>&1 | Out-Null
+        $null = docker compose exec -T daaf-docker git -C /daaf @args 2>&1
     } finally {
         $ErrorActionPreference = $savedEAP
     }

@@ -630,9 +630,10 @@ jobs:
       - name: Re-install without force flag (expect failure)
         run: |
           set +e
-          bash scripts/host/install.sh 2>&1 | tee /tmp/reinstall_noforce.txt
+          bash scripts/host/install.sh > /tmp/reinstall_noforce.txt 2>&1
           EXIT_CODE=$?
           set -e
+          cat /tmp/reinstall_noforce.txt
           if [ "$EXIT_CODE" -eq 0 ]; then
             echo "ERROR: install.sh should have failed for existing installation"
             exit 1
@@ -670,8 +671,9 @@ jobs:
           cp restore_from_backup.sh /tmp/empty_restore_dir/
           cp docker-compose.yml /tmp/empty_restore_dir/
           set +e
-          bash /tmp/empty_restore_dir/restore_from_backup.sh </dev/null 2>&1 | tee /tmp/restore_nobackup.txt
+          bash /tmp/empty_restore_dir/restore_from_backup.sh </dev/null > /tmp/restore_nobackup.txt 2>&1
           EXIT_CODE=$?
+          cat /tmp/restore_nobackup.txt
           set -e
           if [ "$EXIT_CODE" -eq 0 ]; then
             echo "ERROR: restore should have failed with no backups"
@@ -702,9 +704,10 @@ jobs:
         working-directory: daaf-docker
         run: |
           set +e
-          bash rebuild_daaf.sh 2>&1 | tee /tmp/rebuild_broken.txt
+          bash rebuild_daaf.sh > /tmp/rebuild_broken.txt 2>&1
           EXIT_CODE=$?
           set -e
+          cat /tmp/rebuild_broken.txt
           if [ "$EXIT_CODE" -eq 0 ]; then
             echo "ERROR: rebuild should have failed with broken Dockerfile"
             exit 1
@@ -757,8 +760,9 @@ jobs:
           # Poll for lock directory instead of fixed sleep to avoid race window
           for i in $(seq 1 20); do [ -d /tmp/daaf-update.lock.d ] && break; sleep 0.2; done
           set +e
-          bash update_daaf.sh 2>&1 | tee /tmp/update_concurrent.txt
+          bash update_daaf.sh > /tmp/update_concurrent.txt 2>&1
           SECOND_EXIT=$?
+          cat /tmp/update_concurrent.txt
           set -e
           wait $BG_PID || true
           if [ "$SECOND_EXIT" -eq 0 ]; then

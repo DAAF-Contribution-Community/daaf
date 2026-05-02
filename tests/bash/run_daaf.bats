@@ -1,6 +1,6 @@
 #!/usr/bin/env bats
 # ============================================================================
-# Tests for run_daaf.sh — DAAF Launcher
+# Tests for run_daaf.sh -- DAAF Launcher
 # ============================================================================
 
 load 'test_helper'

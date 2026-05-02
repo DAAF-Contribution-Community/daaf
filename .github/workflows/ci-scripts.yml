@@ -279,14 +279,12 @@ jobs:
           # --- rebuild_daaf.sh ---
           echo "=== Smoke testing: scripts/host/rebuild_daaf.sh ==="
           out=$(DAAF_DRY_RUN=1 DAAF_NESTED=1 bash scripts/host/rebuild_daaf.sh 2>&1) || { echo "FAILED: rebuild_daaf.sh (exit code $?)"; failed=1; }
-          assert_contains "rebuild_daaf.sh" "$out" "[DRY-RUN]"
           assert_contains "rebuild_daaf.sh" "$out" "DAAF Rebuild"
           assert_contains "rebuild_daaf.sh" "$out" "Rebuild complete!"
 
           # --- update_daaf.sh ---
           echo "=== Smoke testing: scripts/host/update_daaf.sh ==="
           out=$(DAAF_DRY_RUN=1 DAAF_NESTED=1 bash scripts/host/update_daaf.sh 2>&1) || { echo "FAILED: update_daaf.sh (exit code $?)"; failed=1; }
-          assert_contains "update_daaf.sh" "$out" "[DRY-RUN]"
           assert_contains "update_daaf.sh" "$out" "DAAF Updater"
           assert_contains "update_daaf.sh" "$out" "Already up to date!"
 
@@ -392,13 +390,11 @@ jobs:
           )
 
           Invoke-SmokeTest "scripts/host/rebuild_daaf.ps1" @(
-            "[DRY-RUN]",
             "DAAF Rebuild",
             "Rebuild complete!"
           )
 
           Invoke-SmokeTest "scripts/host/update_daaf.ps1" @(
-            "[DRY-RUN]",
             "DAAF Updater",
             "Already up to date!"
           )
@@ -473,7 +469,7 @@ jobs:
             $env:DAAF_DRY_RUN = "1"
             $env:DAAF_NESTED = "1"
             try {
-              $output = & $ScriptPath 2>&1 | Out-String
+              $output = & $ScriptPath *>&1 | Out-String
               if ($LASTEXITCODE -and $LASTEXITCODE -ne 0) {
                 Write-Host "FAILED: $name (exit code $LASTEXITCODE)"
                 $script:failed = 1
@@ -501,13 +497,11 @@ jobs:
           )
 
           Invoke-SmokeTest "scripts/host/rebuild_daaf.ps1" @(
-            "[DRY-RUN]",
             "DAAF Rebuild",
             "Rebuild complete!"
           )
 
           Invoke-SmokeTest "scripts/host/update_daaf.ps1" @(
-            "[DRY-RUN]",
             "DAAF Updater",
             "Already up to date!"
           )

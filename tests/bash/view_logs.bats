@@ -1,8 +1,8 @@
 #!/usr/bin/env bats
 # ============================================================================
-# Tests for view_logs.sh — DAAF Log Explorer
+# Tests for view_logs.sh -- DAAF Log Explorer
 # ============================================================================
-# Thin wrapper script — tests focus on preflight checks, argument parsing,
+# Thin wrapper script -- tests focus on preflight checks, argument parsing,
 # menu structure, and dry-run behavior.
 # ============================================================================
 

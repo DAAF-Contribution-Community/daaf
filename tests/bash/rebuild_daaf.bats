@@ -1,6 +1,6 @@
 #!/usr/bin/env bats
 # ============================================================================
-# Tests for rebuild_daaf.sh — DAAF Rebuild Utility
+# Tests for rebuild_daaf.sh -- DAAF Rebuild Utility
 # ============================================================================
 # Key testable logic: preflight checks, docker-compose.yml requirement,
 # container existence check, file hash comparison.

@@ -1,6 +1,6 @@
 #!/usr/bin/env bats
 # ============================================================================
-# Tests for migrate_daaf.sh — DAAF Migration Script
+# Tests for migrate_daaf.sh -- DAAF Migration Script
 # ============================================================================
 # Key testable logic: era detection (clone vs ZIP), preflight checks,
 # helper functions (container_git, prompt_choice), idempotency markers.
@@ -150,7 +150,7 @@ teardown() {
 }
 
 # ============================================================================
-# Behavioral tests — sourced functions
+# Behavioral tests -- sourced functions
 # ============================================================================
 # Source the script in test mode to access helper functions directly.
 # DAAF_TEST_MODE=1 causes the script to return after defining functions,
@@ -317,7 +317,7 @@ teardown() {
 # ============================================================================
 # Era detection pattern tests
 # ============================================================================
-# These test the patterns used by the inline era detection code — verifying
+# These test the patterns used by the inline era detection code -- verifying
 # that the git commands used for detection produce distinguishable output
 # for each era type.
 
@@ -417,7 +417,7 @@ Initial commit"
     [ "${output}" -ge 1 ]
 
     run grep -c 'flock' "${REPO_ROOT}/scripts/host/migrate_daaf.sh"
-    # grep returns exit 1 when no matches — that is the expected outcome
+    # grep returns exit 1 when no matches -- that is the expected outcome
     assert_failure
 }
 

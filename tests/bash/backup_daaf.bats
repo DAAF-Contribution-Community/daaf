@@ -1,6 +1,6 @@
 #!/usr/bin/env bats
 # ============================================================================
-# Tests for backup_daaf.sh — DAAF Backup Utility
+# Tests for backup_daaf.sh -- DAAF Backup Utility
 # ============================================================================
 # Key testable logic: date-suffix versioning (a/b/c), preflight checks,
 # volume existence validation.
@@ -134,7 +134,7 @@ teardown() {
 # --- Date-suffix versioning edge cases ---
 
 @test "backup: suffix picks first available letter sequentially" {
-    # Create base and 'a' — script should pick 'b' (next in sequence)
+    # Create base and 'a' -- script should pick 'b' (next in sequence)
     local today
     today=$(date +%Y-%m-%d)
     mkdir -p "${TEST_DIR}/${today}_daaf_backup"
@@ -205,7 +205,7 @@ teardown() {
     export -f df
 
     MOCK_DOCKER_VOLUME_EXIT=0
-    # Report volume size as 10000 KB (10 MB) — much larger than 10 bytes available
+    # Report volume size as 10000 KB (10 MB) -- much larger than 10 bytes available
     MOCK_DOCKER_RUN_OUTPUT=$'100\n10000\t/source\n10M\t/source\n9800'
     MOCK_DOCKER_RUN_EXIT=0
     export DAAF_NESTED=1
@@ -250,7 +250,7 @@ teardown() {
     export -f df
 
     MOCK_DOCKER_VOLUME_EXIT=0
-    # Small volume (512 KB) — plenty of space
+    # Small volume (512 KB) -- plenty of space
     MOCK_DOCKER_RUN_OUTPUT=$'100\n512\t/source\n500K\t/source\n500'
     MOCK_DOCKER_RUN_EXIT=0
     export DAAF_NESTED=1
@@ -267,7 +267,7 @@ teardown() {
 
     # Custom docker mock: scan reports 9800 logical KB source; copy creates a
     # small file in the backup dir so FILE_COUNT > 0 and size verification triggers.
-    # The backup file is ~1 KB vs 9800 KB source — well beyond 1% tolerance.
+    # The backup file is ~1 KB vs 9800 KB source -- well beyond 1% tolerance.
     docker() {
         case "$1" in
             info)   return 0 ;;
