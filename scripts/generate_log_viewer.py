@@ -528,6 +528,19 @@ def extract_activities_from_content(content, line_num):
                     "error": None,
                 })
 
+        elif btype == "thinking":
+            thinking_text = block.get("thinking", "").strip()
+            if thinking_text:
+                activities.append({
+                    "type": "thinking",
+                    "tool": None,
+                    "description": thinking_text,
+                    "target": None,
+                    "line": line_num,
+                    "resultLine": None,
+                    "error": None,
+                })
+
         elif btype == "tool_use":
             tname = block.get("name", "Unknown")
             tinput = block.get("input", {})
@@ -555,8 +568,6 @@ def extract_activities_from_content(content, line_num):
                 activity["subagentDescription"] = tinput.get("description", "")
 
             activities.append(activity)
-
-        # Skip thinking blocks from activity list
 
     return activities
 
@@ -783,8 +794,8 @@ def build_assistant_summary(activities):
         atype = act.get("type", "other")
         tool = act.get("tool")
 
-        if atype == "text":
-            continue  # Don't count text blocks in summary
+        if atype in ("text", "thinking"):
+            continue  # Don't count text/thinking blocks in summary
 
         if tool == "Read":
             counts["read"] = counts.get("read", 0) + 1

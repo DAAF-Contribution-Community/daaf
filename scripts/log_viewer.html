@@ -496,6 +496,7 @@ body {
 .activity-dot.type-track { background: #9ca3af; }
 .activity-dot.type-other { background: #d1d5db; }
 .activity-dot.type-text { background: transparent; }
+.activity-dot.type-thinking { background: #a78bfa; }
 
 .activity-desc { color: #334155; flex: 1; min-width: 0; }
 .activity-text-block {
@@ -507,6 +508,42 @@ body {
   max-height: 300px;
   overflow-y: auto;
 }
+.activity-thinking-block {
+  word-break: break-word;
+  color: #6b21a8;
+  line-height: 1.5;
+  font-size: 0.78rem;
+  padding: 6px 10px;
+  max-height: 200px;
+  overflow-y: auto;
+  background: #faf5ff;
+  border-radius: 4px;
+  border: 1px solid #e9d5ff;
+}
+.activity-thinking-block.collapsed {
+  max-height: 3.6em;
+  overflow: hidden;
+  position: relative;
+}
+.activity-thinking-block.collapsed::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 1.8em;
+  background: linear-gradient(transparent, #faf5ff);
+  pointer-events: none;
+}
+.thinking-toggle {
+  font-size: 0.7rem;
+  color: #7c3aed;
+  cursor: pointer;
+  font-weight: 600;
+  padding: 2px 0;
+  user-select: none;
+}
+.thinking-toggle:hover { text-decoration: underline; }
 .activity-target {
   color: #3b82f6;
   text-decoration: none;
@@ -598,6 +635,13 @@ body {
 .activity-group.group-text {
   background: #f8fafc;
   border-left: 3px solid #94a3b8;
+}
+.activity-group.group-thinking {
+  background: #faf5ff;
+  border-left: 3px solid #a78bfa;
+}
+.activity-group.group-thinking .activity-group-label {
+  color: #7c3aed;
 }
 .activity-group.group-tools {
   background: #fafbff;
@@ -1370,12 +1414,12 @@ function renderSubagentDetail(panel, sa, session) {
 // Rendering: Activities
 // =====================================================================
 function renderActivities(activities, defaultFile, blockTime) {
-  // Group consecutive activities by type: text vs tool calls
+  // Group consecutive activities by type: thinking, text, or tool calls
   var groups = [];
   var currentGroup = null;
   activities.forEach(function(act) {
-    var isText = (act.type || 'text') === 'text';
-    var groupType = isText ? 'text' : 'tools';
+    var aType = act.type || 'text';
+    var groupType = aType === 'thinking' ? 'thinking' : aType === 'text' ? 'text' : 'tools';
     if (!currentGroup || currentGroup.type !== groupType) {
       currentGroup = { type: groupType, items: [] };
       groups.push(currentGroup);
@@ -1387,7 +1431,9 @@ function renderActivities(activities, defaultFile, blockTime) {
   var html = '';
   groups.forEach(function(group) {
     html += '<div class="activity-group group-' + group.type + '">';
-    if (group.type === 'text') {
+    if (group.type === 'thinking') {
+      html += '<div class="activity-group-label">Thinking' + timeStr + '</div>';
+    } else if (group.type === 'text') {
       html += '<div class="activity-group-label">Message' + timeStr + '</div>';
     } else {
       html += '<div class="activity-group-label">Tool Calls' + timeStr + '</div>';
@@ -1406,6 +1452,21 @@ function renderSingleActivity(act, defaultFile) {
   var aType = act.type || 'text';
   var isError = act.error === true;
   var isSearch = act.tool === 'Glob' || act.tool === 'Grep';
+
+  // Thinking activities render as collapsible italic blocks with markdown
+  if (aType === 'thinking') {
+    var thinkText = act.description || '';
+    var charCount = thinkText.length;
+    var isLong = charCount > 300;
+    var collapsedCls = isLong ? ' collapsed' : '';
+    var html = '<li>';
+    html += '<div class="activity-thinking-block' + collapsedCls + '" data-thinking="true">' + renderMarkdown(thinkText) + '</div>';
+    if (isLong) {
+      html += '<div class="thinking-toggle" data-action="toggle-thinking">' + charCount.toLocaleString() + ' chars \u2014 click to expand</div>';
+    }
+    html += '</li>';
+    return html;
+  }
 
   // Text activities render as block-level pre-wrapped content
   if (aType === 'text') {
@@ -1499,6 +1560,23 @@ function attachDetailHandlers(panel) {
         container.innerHTML = '<div class="raw-jsonl-panel">' + escapeHtml(JSON.stringify(result.data, null, 2)) + '</div>';
       } else {
         container.innerHTML = '<div class="raw-jsonl-panel">' + escapeHtml(result.raw || '(empty)') + (result.parseError ? '\n\nParse error: ' + escapeHtml(result.parseError) : '') + '</div>';
+      }
+    });
+  });
+
+  // Toggle thinking block expand/collapse
+  panel.querySelectorAll('[data-action="toggle-thinking"]').forEach(function(el) {
+    el.addEventListener('click', function() {
+      var thinkingBlock = this.previousElementSibling;
+      if (!thinkingBlock) return;
+      var isCollapsed = thinkingBlock.classList.contains('collapsed');
+      if (isCollapsed) {
+        thinkingBlock.classList.remove('collapsed');
+        this.textContent = 'click to collapse';
+      } else {
+        thinkingBlock.classList.add('collapsed');
+        var charCount = (thinkingBlock.textContent || '').length;
+        this.textContent = charCount.toLocaleString() + ' chars \u2014 click to expand';
       }
     });
   });
