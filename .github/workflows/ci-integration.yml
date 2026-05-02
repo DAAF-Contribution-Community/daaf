@@ -664,6 +664,10 @@ jobs:
       # Create a temporary directory with no backup folders to test the error path.
       # restore_from_backup.sh searches for backup directories in the current
       # directory and exits with code 1 if none are found (before prompting).
+      - name: Stop container before no-backup restore test
+        working-directory: daaf-docker
+        run: docker compose down
+
       - name: Restore with no backups (expect failure)
         working-directory: daaf-docker
         run: |
@@ -685,6 +689,10 @@ jobs:
         run: grep -qi "No backup folders found" /tmp/restore_nobackup.txt
 
       # --- (e) Rebuild preserves user data after build failure recovery ---
+      - name: Restart container after no-backup restore test
+        working-directory: daaf-docker
+        run: docker compose up -d
+
       - name: Add test file to container
         working-directory: daaf-docker
         run: |
