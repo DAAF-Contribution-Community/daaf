@@ -21,7 +21,8 @@
 #     containers. Windows PowerShell logic is covered by the dry-run smoke
 #     tests in ci-scripts.yml.
 #
-# Triggers: weekly (Sunday 6 AM UTC), manual dispatch, release tags.
+# Triggers: weekly (Sunday 6 AM UTC), manual dispatch, release tags,
+#   push/PR when Dockerfile, docker-compose.yml, or host scripts change.
 # All jobs run on ubuntu-latest with a 30-minute timeout.
 
 name: CI - Integration
@@ -31,7 +32,18 @@ on:
     - cron: '0 6 * * 0'  # Weekly on Sunday at 6 AM UTC
   workflow_dispatch: {}
   push:
-    tags: ['v*']  # Run on release tags
+    tags: ['v*']
+    paths:
+      - 'Dockerfile'
+      - 'docker-compose.yml'
+      - 'scripts/host/**'
+      - '.github/workflows/ci-integration.yml'
+  pull_request:
+    paths:
+      - 'Dockerfile'
+      - 'docker-compose.yml'
+      - 'scripts/host/**'
+      - '.github/workflows/ci-integration.yml'
 
 permissions:
   contents: read
