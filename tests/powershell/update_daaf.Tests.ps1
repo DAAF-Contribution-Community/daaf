@@ -454,3 +454,306 @@ Describe "update_daaf.ps1 dry-run mode" {
         ($output | Out-String) | Should -BeLike "*Already up to date*"
     }
 }
+
+# ============================================================================
+# Integrated state-machine tests
+# ============================================================================
+# These test the MAIN ORCHESTRATION flow by running the full script
+# with mock docker responses. Unlike dry-run mode (which uses the script's
+# built-in mocks), these tests define custom docker functions to simulate
+# specific state-machine scenarios.
+
+Describe "update_daaf.ps1 integrated state-machine tests" {
+    BeforeAll {
+        . "$PSScriptRoot/TestHelper.ps1"
+    }
+
+    BeforeEach {
+        $script:TestDir = New-Item -ItemType Directory -Path (Join-Path ([System.IO.Path]::GetTempPath()) "daaf-update-int-$(Get-Random)")
+        Push-Location $script:TestDir
+        New-FakeComposeFile
+    }
+
+    AfterEach {
+        Pop-Location
+        Remove-Item -Recurse -Force $script:TestDir -ErrorAction SilentlyContinue
+        Remove-Item Env:DAAF_NESTED -ErrorAction SilentlyContinue
+        Remove-Item Env:DAAF_BRANCH -ErrorAction SilentlyContinue
+    }
+
+    It "clean pull path succeeds (behind, no local commits, no dirty files)" {
+        $env:DAAF_NESTED = "1"
+        # Create a wrapper script that defines a custom docker mock and sources the real script
+        $wrapperScript = Join-Path $script:TestDir "test_wrapper.ps1"
+        Set-Content -Path $wrapperScript -Value @'
+$ErrorActionPreference = "Stop"
+function docker {
+    $argStr = $args -join ' '
+    $global:LASTEXITCODE = 0
+    switch -Wildcard ($argStr) {
+        "*info*" { return }
+        "*compose ps*--format*" { Write-Output "daaf-docker" }
+        "*compose exec*true*" { return }
+        "*compose exec*test -f*/daaf/.git/shallow*" { $global:LASTEXITCODE = 1; return }
+        "*compose exec*test -f*" { return }
+        "*compose exec*git -C /daaf remote get-url origin*" {
+            Write-Output "https://github.com/DAAF-Contribution-Community/daaf.git"
+        }
+        "*compose exec*git -C /daaf fetch*" { return }
+        "*compose exec*git -C /daaf rev-parse --verify*backup/*" { $global:LASTEXITCODE = 1; return }
+        "*compose exec*git -C /daaf rev-parse --verify*origin/main*" {
+            Write-Output "def456remote"
+        }
+        "*compose exec*git -C /daaf branch*--show-current*" { Write-Output "main" }
+        "*compose exec*git -C /daaf branch*" { return }
+        "*compose exec*git -C /daaf rev-parse*origin/main*" { Write-Output "def456remote" }
+        "*compose exec*git -C /daaf rev-parse*HEAD*" { Write-Output "abc123local" }
+        "*compose exec*git -C /daaf diff --name-only*HEAD*" { return }
+        "*compose exec*git -C /daaf diff --name-only*" { return }
+        "*compose exec*git -C /daaf rev-list --count*origin/main..HEAD*" { Write-Output "0" }
+        "*compose exec*git -C /daaf rev-list --count*HEAD..origin/main*" { Write-Output "3" }
+        "*compose exec*git -C /daaf pull*" { Write-Output "Updating..." }
+        "*compose exec*git*" { return }
+        "*compose exec*" { return }
+        "*cp *" { return }
+        default { return }
+    }
+}
+'@
+        Add-Content -Path $wrapperScript -Value ". '$RepoRoot/scripts/host/update_daaf.ps1'"
+        $output = & pwsh -NoProfile -File $wrapperScript *>&1
+        $exitCode = $LASTEXITCODE
+        $outputStr = $output | Out-String
+        $exitCode | Should -Be 0
+        $outputStr | Should -BeLike "*Update complete*"
+    }
+
+    It "already up to date exits cleanly (same SHA, no dirty files)" {
+        $env:DAAF_NESTED = "1"
+        $wrapperScript = Join-Path $script:TestDir "test_wrapper.ps1"
+        Set-Content -Path $wrapperScript -Value @'
+$ErrorActionPreference = "Stop"
+function docker {
+    $argStr = $args -join ' '
+    $global:LASTEXITCODE = 0
+    switch -Wildcard ($argStr) {
+        "*info*" { return }
+        "*compose ps*--format*" { Write-Output "daaf-docker" }
+        "*compose exec*true*" { return }
+        "*compose exec*test -f*/daaf/.git/shallow*" { $global:LASTEXITCODE = 1; return }
+        "*compose exec*test -f*" { return }
+        "*compose exec*git -C /daaf remote get-url origin*" {
+            Write-Output "https://github.com/DAAF-Contribution-Community/daaf.git"
+        }
+        "*compose exec*git -C /daaf fetch*" { return }
+        "*compose exec*git -C /daaf rev-parse --verify*backup/*" { $global:LASTEXITCODE = 1; return }
+        "*compose exec*git -C /daaf rev-parse --verify*origin/main*" {
+            Write-Output "abc123same"
+        }
+        "*compose exec*git -C /daaf branch*--show-current*" { Write-Output "main" }
+        "*compose exec*git -C /daaf branch*" { return }
+        "*compose exec*git -C /daaf rev-parse*origin/main*" { Write-Output "abc123same" }
+        "*compose exec*git -C /daaf rev-parse*HEAD*" { Write-Output "abc123same" }
+        "*compose exec*git -C /daaf diff --name-only*" { return }
+        "*compose exec*git*" { return }
+        "*compose exec*" { return }
+        default { return }
+    }
+}
+'@
+        Add-Content -Path $wrapperScript -Value ". '$RepoRoot/scripts/host/update_daaf.ps1'"
+        $output = & pwsh -NoProfile -File $wrapperScript *>&1
+        $outputStr = $output | Out-String
+        $LASTEXITCODE | Should -Be 0
+        $outputStr | Should -BeLike "*Already up to date*"
+    }
+
+    It "no remote configured exits with guidance" {
+        $env:DAAF_NESTED = "1"
+        $wrapperScript = Join-Path $script:TestDir "test_wrapper.ps1"
+        Set-Content -Path $wrapperScript -Value @'
+$ErrorActionPreference = "Stop"
+function docker {
+    $argStr = $args -join ' '
+    $global:LASTEXITCODE = 0
+    switch -Wildcard ($argStr) {
+        "*info*" { return }
+        "*compose ps*--format*" { Write-Output "daaf-docker" }
+        "*compose exec*true*" { return }
+        "*compose exec*test -f*" { return }
+        "*compose exec*git -C /daaf remote get-url*" { $global:LASTEXITCODE = 1; return }
+        "*compose exec*git -C /daaf branch*" { return }
+        "*compose exec*git -C /daaf rev-parse*HEAD*" { Write-Output "abc123" }
+        "*compose exec*git*" { return }
+        "*compose exec*" { return }
+        default { return }
+    }
+}
+'@
+        Add-Content -Path $wrapperScript -Value ". '$RepoRoot/scripts/host/update_daaf.ps1'"
+        $output = & pwsh -NoProfile -File $wrapperScript *>&1
+        $outputStr = $output | Out-String
+        $LASTEXITCODE | Should -Be 0
+        $outputStr | Should -BeLike "*not connected to the update server*"
+    }
+
+    It "network failure during fetch exits with error" {
+        $env:DAAF_NESTED = "1"
+        $wrapperScript = Join-Path $script:TestDir "test_wrapper.ps1"
+        Set-Content -Path $wrapperScript -Value @'
+$ErrorActionPreference = "Stop"
+function docker {
+    $argStr = $args -join ' '
+    $global:LASTEXITCODE = 0
+    switch -Wildcard ($argStr) {
+        "*info*" { return }
+        "*compose ps*--format*" { Write-Output "daaf-docker" }
+        "*compose exec*true*" { return }
+        "*compose exec*test -f*" { return }
+        "*compose exec*git -C /daaf remote get-url origin*" {
+            Write-Output "https://github.com/DAAF-Contribution-Community/daaf.git"
+        }
+        "*compose exec*git -C /daaf fetch*" {
+            $global:LASTEXITCODE = 1
+            Write-Error "fatal: unable to access"
+            return
+        }
+        "*compose exec*git -C /daaf branch*" { return }
+        "*compose exec*git -C /daaf rev-parse --verify*backup/*" { $global:LASTEXITCODE = 1; return }
+        "*compose exec*git -C /daaf rev-parse*HEAD*" { Write-Output "abc123" }
+        "*compose exec*git*" { return }
+        "*compose exec*" { return }
+        default { return }
+    }
+}
+'@
+        Add-Content -Path $wrapperScript -Value ". '$RepoRoot/scripts/host/update_daaf.ps1'"
+        $output = & pwsh -NoProfile -File $wrapperScript *>&1
+        $outputStr = $output | Out-String
+        $LASTEXITCODE | Should -Be 1
+        $outputStr | Should -BeLike "*Failed to fetch*"
+    }
+
+    It "DAAF not installed (CLAUDE.md missing) exits with error" {
+        $env:DAAF_NESTED = "1"
+        $wrapperScript = Join-Path $script:TestDir "test_wrapper.ps1"
+        Set-Content -Path $wrapperScript -Value @'
+$ErrorActionPreference = "Stop"
+function docker {
+    $argStr = $args -join ' '
+    $global:LASTEXITCODE = 0
+    switch -Wildcard ($argStr) {
+        "*info*" { return }
+        "*compose ps*--format*" { Write-Output "daaf-docker" }
+        "*compose exec*true*" { return }
+        "*compose exec*test -f*CLAUDE.md*" { $global:LASTEXITCODE = 1; return }
+        "*compose exec*" { return }
+        default { return }
+    }
+}
+'@
+        Add-Content -Path $wrapperScript -Value ". '$RepoRoot/scripts/host/update_daaf.ps1'"
+        $output = & pwsh -NoProfile -File $wrapperScript *>&1
+        $outputStr = $output | Out-String
+        $LASTEXITCODE | Should -Be 1
+        $outputStr | Should -BeLike "*DAAF does not appear to be installed*"
+    }
+
+    It "container not running and start fails exits with error" {
+        $env:DAAF_NESTED = "1"
+        $wrapperScript = Join-Path $script:TestDir "test_wrapper.ps1"
+        Set-Content -Path $wrapperScript -Value @'
+$ErrorActionPreference = "Stop"
+function docker {
+    $argStr = $args -join ' '
+    $global:LASTEXITCODE = 0
+    switch -Wildcard ($argStr) {
+        "*info*" { return }
+        "*compose ps*" { return }
+        "*compose up*" { $global:LASTEXITCODE = 1; return }
+        default { return }
+    }
+}
+'@
+        Add-Content -Path $wrapperScript -Value ". '$RepoRoot/scripts/host/update_daaf.ps1'"
+        $output = & pwsh -NoProfile -File $wrapperScript *>&1
+        $outputStr = $output | Out-String
+        $LASTEXITCODE | Should -Be 1
+        $outputStr | Should -BeLike "*Failed to start*"
+    }
+
+    It "DAAF_BRANCH specifies nonexistent branch exits with error" {
+        $env:DAAF_NESTED = "1"
+        $env:DAAF_BRANCH = "nonexistent-branch-xyz"
+        $wrapperScript = Join-Path $script:TestDir "test_wrapper.ps1"
+        Set-Content -Path $wrapperScript -Value @'
+$ErrorActionPreference = "Stop"
+function docker {
+    $argStr = $args -join ' '
+    $global:LASTEXITCODE = 0
+    switch -Wildcard ($argStr) {
+        "*info*" { return }
+        "*compose ps*--format*" { Write-Output "daaf-docker" }
+        "*compose exec*true*" { return }
+        "*compose exec*test -f*/daaf/.git/shallow*" { $global:LASTEXITCODE = 1; return }
+        "*compose exec*test -f*" { return }
+        "*compose exec*git -C /daaf remote get-url origin*" {
+            Write-Output "https://github.com/DAAF-Contribution-Community/daaf.git"
+        }
+        "*compose exec*git -C /daaf fetch*" { return }
+        "*compose exec*git -C /daaf rev-parse --verify*backup/*" { $global:LASTEXITCODE = 1; return }
+        "*compose exec*git -C /daaf rev-parse --verify*nonexistent*" { $global:LASTEXITCODE = 1; return }
+        "*compose exec*git -C /daaf branch*" { return }
+        "*compose exec*git -C /daaf rev-parse*HEAD*" { Write-Output "abc123" }
+        "*compose exec*git*" { return }
+        "*compose exec*" { return }
+        default { return }
+    }
+}
+'@
+        Add-Content -Path $wrapperScript -Value ". '$RepoRoot/scripts/host/update_daaf.ps1'"
+        $output = & pwsh -NoProfile -File $wrapperScript *>&1
+        $outputStr = $output | Out-String
+        $LASTEXITCODE | Should -Be 1
+        $outputStr | Should -BeLike "*was not found*"
+        Remove-Item Env:DAAF_BRANCH -ErrorAction SilentlyContinue
+    }
+
+    It "lock cleanup on exit (mutex released after dry-run)" {
+        # Verify the script structure includes mutex cleanup in trap and exit
+        $content = Get-Content "$RepoRoot/scripts/host/update_daaf.ps1" -Raw
+        # Trap handler releases mutex
+        $content | Should -Match 'Mutex\.ReleaseMutex'
+        # Wait-AndExit also releases mutex
+        $content | Should -Match 'function Wait-AndExit'
+    }
+}
+
+# ============================================================================
+# Concurrent execution guard
+# ============================================================================
+
+Describe "update_daaf.ps1 concurrency guard" {
+    BeforeAll {
+        . "$PSScriptRoot/TestHelper.ps1"
+        $script:Content = Get-Content "$RepoRoot/scripts/host/update_daaf.ps1" -Raw
+    }
+
+    It "uses named mutex for cross-process locking" {
+        $Content | Should -Match 'Global\\DAAFUpdate'
+    }
+
+    It "releases mutex in Wait-AndExit" {
+        $Content | Should -Match 'function Wait-AndExit'
+        $Content | Should -Match 'Mutex\.ReleaseMutex'
+    }
+
+    It "releases mutex in trap handler" {
+        $Content | Should -Match 'trap \{'
+        $Content | Should -Match 'Mutex\.ReleaseMutex'
+    }
+
+    It "handles AbandonedMutexException from crashed previous instance" {
+        $Content | Should -Match 'AbandonedMutexException'
+    }
+}

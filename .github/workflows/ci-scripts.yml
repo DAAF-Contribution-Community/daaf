@@ -244,60 +244,310 @@ jobs:
         uses: actions/checkout@v4
 
       # Bash smoke tests (Linux/macOS only — Git Bash on Windows is unreliable
-      # for complex scripts with function overrides and subshells)
+      # for complex scripts with function overrides and subshells).
+      # Each script is run individually to capture output and verify both exit
+      # code and content (the [DRY-RUN] marker plus script-specific strings).
       - name: Smoke test .sh scripts (dry-run)
         if: matrix.os != 'windows-latest'
         run: |
-          for script in scripts/host/*.sh; do
-            echo "=== Smoke testing: $script ==="
-            DAAF_DRY_RUN=1 DAAF_NESTED=1 bash "$script" || {
-              echo "FAILED: $script"
-              exit 1
-            }
-          done
+          failed=0
 
-      # PowerShell 7 smoke tests (all platforms — pwsh is pre-installed)
+          assert_contains() {
+            local label="$1" output="$2" pattern="$3"
+            if echo "$output" | grep -qF "$pattern"; then
+              echo "  PASS: output contains '$pattern'"
+            else
+              echo "  FAIL: expected output to contain '$pattern'"
+              failed=1
+            fi
+          }
+
+          # --- install.sh ---
+          echo "=== Smoke testing: scripts/host/install.sh ==="
+          out=$(DAAF_DRY_RUN=1 DAAF_NESTED=1 bash scripts/host/install.sh 2>&1) || { echo "FAILED: install.sh (exit code $?)"; failed=1; }
+          assert_contains "install.sh" "$out" "[DRY-RUN]"
+          assert_contains "install.sh" "$out" "DAAF Installer"
+          assert_contains "install.sh" "$out" "Installation complete!"
+
+          # --- backup_daaf.sh ---
+          echo "=== Smoke testing: scripts/host/backup_daaf.sh ==="
+          out=$(DAAF_DRY_RUN=1 DAAF_NESTED=1 bash scripts/host/backup_daaf.sh 2>&1) || { echo "FAILED: backup_daaf.sh (exit code $?)"; failed=1; }
+          assert_contains "backup_daaf.sh" "$out" "[DRY-RUN]"
+          assert_contains "backup_daaf.sh" "$out" "DAAF Backup"
+          assert_contains "backup_daaf.sh" "$out" "[DRY-RUN] Would create backup at:"
+
+          # --- rebuild_daaf.sh ---
+          echo "=== Smoke testing: scripts/host/rebuild_daaf.sh ==="
+          out=$(DAAF_DRY_RUN=1 DAAF_NESTED=1 bash scripts/host/rebuild_daaf.sh 2>&1) || { echo "FAILED: rebuild_daaf.sh (exit code $?)"; failed=1; }
+          assert_contains "rebuild_daaf.sh" "$out" "[DRY-RUN]"
+          assert_contains "rebuild_daaf.sh" "$out" "DAAF Rebuild"
+          assert_contains "rebuild_daaf.sh" "$out" "Rebuild complete!"
+
+          # --- update_daaf.sh ---
+          echo "=== Smoke testing: scripts/host/update_daaf.sh ==="
+          out=$(DAAF_DRY_RUN=1 DAAF_NESTED=1 bash scripts/host/update_daaf.sh 2>&1) || { echo "FAILED: update_daaf.sh (exit code $?)"; failed=1; }
+          assert_contains "update_daaf.sh" "$out" "[DRY-RUN]"
+          assert_contains "update_daaf.sh" "$out" "DAAF Updater"
+          assert_contains "update_daaf.sh" "$out" "Already up to date!"
+
+          # --- migrate_daaf.sh ---
+          echo "=== Smoke testing: scripts/host/migrate_daaf.sh ==="
+          out=$(DAAF_DRY_RUN=1 DAAF_NESTED=1 bash scripts/host/migrate_daaf.sh 2>&1) || { echo "FAILED: migrate_daaf.sh (exit code $?)"; failed=1; }
+          assert_contains "migrate_daaf.sh" "$out" "[DRY-RUN]"
+          assert_contains "migrate_daaf.sh" "$out" "DAAF Migration"
+          assert_contains "migrate_daaf.sh" "$out" "Migration complete!"
+
+          # --- restore_from_backup.sh ---
+          echo "=== Smoke testing: scripts/host/restore_from_backup.sh ==="
+          out=$(DAAF_DRY_RUN=1 DAAF_NESTED=1 bash scripts/host/restore_from_backup.sh 2>&1) || { echo "FAILED: restore_from_backup.sh (exit code $?)"; failed=1; }
+          assert_contains "restore_from_backup.sh" "$out" "DAAF Restore from Backup"
+          assert_contains "restore_from_backup.sh" "$out" "Restore dry-run complete!"
+
+          # --- view_logs.sh ---
+          echo "=== Smoke testing: scripts/host/view_logs.sh ==="
+          out=$(DAAF_DRY_RUN=1 DAAF_NESTED=1 bash scripts/host/view_logs.sh 2>&1) || { echo "FAILED: view_logs.sh (exit code $?)"; failed=1; }
+          assert_contains "view_logs.sh" "$out" "DAAF container is running."
+          assert_contains "view_logs.sh" "$out" "Opening DAAF Log Explorer"
+
+          # --- view_notebooks.sh ---
+          echo "=== Smoke testing: scripts/host/view_notebooks.sh ==="
+          out=$(DAAF_DRY_RUN=1 DAAF_NESTED=1 bash scripts/host/view_notebooks.sh 2>&1) || { echo "FAILED: view_notebooks.sh (exit code $?)"; failed=1; }
+          assert_contains "view_notebooks.sh" "$out" "DAAF container is running."
+          assert_contains "view_notebooks.sh" "$out" "Opening DAAF Notebook Browser"
+
+          # --- run_vscode.sh ---
+          echo "=== Smoke testing: scripts/host/run_vscode.sh ==="
+          out=$(DAAF_DRY_RUN=1 DAAF_NESTED=1 bash scripts/host/run_vscode.sh 2>&1) || { echo "FAILED: run_vscode.sh (exit code $?)"; failed=1; }
+          assert_contains "run_vscode.sh" "$out" "DAAF container is running."
+          assert_contains "run_vscode.sh" "$out" "Opening DAAF Code Browser"
+
+          # --- run_daaf.sh ---
+          echo "=== Smoke testing: scripts/host/run_daaf.sh ==="
+          out=$(DAAF_DRY_RUN=1 DAAF_NESTED=1 bash scripts/host/run_daaf.sh 2>&1) || { echo "FAILED: run_daaf.sh (exit code $?)"; failed=1; }
+          assert_contains "run_daaf.sh" "$out" "[DRY-RUN]"
+          assert_contains "run_daaf.sh" "$out" "DAAF container is already running."
+          assert_contains "run_daaf.sh" "$out" "Launching Claude Code"
+
+          if [ "$failed" -ne 0 ]; then
+            echo ""
+            echo "One or more smoke tests failed."
+            exit 1
+          fi
+          echo ""
+          echo "All bash smoke tests passed."
+
+      # PowerShell 7 smoke tests (all platforms — pwsh is pre-installed).
+      # Each script is run individually to capture output and verify both exit
+      # code and content (the [DRY-RUN] marker plus script-specific strings).
       - name: Smoke test .ps1 scripts (dry-run, pwsh 7)
         shell: pwsh
         run: |
           $failed = 0
-          foreach ($script in Get-ChildItem scripts/host/*.ps1) {
-            Write-Host "=== Smoke testing: $($script.Name) ==="
+
+          function Assert-OutputContains {
+            param([string]$Label, [string]$Output, [string]$Pattern)
+            if ($Output -match [regex]::Escape($Pattern)) {
+              Write-Host "  PASS: output contains '$Pattern'"
+            } else {
+              Write-Host "  FAIL: expected output to contain '$Pattern'"
+              $script:failed = 1
+            }
+          }
+
+          function Invoke-SmokeTest {
+            param(
+              [string]$ScriptPath,
+              [string[]]$ExpectedStrings
+            )
+            $name = Split-Path $ScriptPath -Leaf
+            Write-Host "=== Smoke testing: $name ==="
             $env:DAAF_DRY_RUN = "1"
             $env:DAAF_NESTED = "1"
             try {
-              & $script.FullName
+              $output = & $ScriptPath 2>&1 | Out-String
               if ($LASTEXITCODE -and $LASTEXITCODE -ne 0) {
-                Write-Host "FAILED: $($script.Name)"
-                $failed = 1
+                Write-Host "FAILED: $name (exit code $LASTEXITCODE)"
+                $script:failed = 1
               }
             } catch {
-              Write-Host "FAILED: $($script.Name) - $_"
-              $failed = 1
+              Write-Host "FAILED: $name - $_"
+              $script:failed = 1
+              return
+            }
+            foreach ($pattern in $ExpectedStrings) {
+              Assert-OutputContains $name $output $pattern
             }
           }
-          if ($failed) { exit 1 }
+
+          Invoke-SmokeTest "scripts/host/install.ps1" @(
+            "[DRY-RUN]",
+            "DAAF Installer",
+            "Installation complete!"
+          )
+
+          Invoke-SmokeTest "scripts/host/backup_daaf.ps1" @(
+            "[DRY-RUN]",
+            "DAAF Backup",
+            "[DRY-RUN] Would copy"
+          )
+
+          Invoke-SmokeTest "scripts/host/rebuild_daaf.ps1" @(
+            "[DRY-RUN]",
+            "DAAF Rebuild",
+            "Rebuild complete!"
+          )
+
+          Invoke-SmokeTest "scripts/host/update_daaf.ps1" @(
+            "[DRY-RUN]",
+            "DAAF Updater",
+            "Already up to date!"
+          )
+
+          Invoke-SmokeTest "scripts/host/migrate_daaf.ps1" @(
+            "[DRY-RUN]",
+            "DAAF Migration",
+            "Migration complete!"
+          )
+
+          Invoke-SmokeTest "scripts/host/restore_from_backup.ps1" @(
+            "DAAF Restore from Backup",
+            "Restore dry-run complete!"
+          )
+
+          Invoke-SmokeTest "scripts/host/view_logs.ps1" @(
+            "DAAF container is running.",
+            "Opening DAAF Log Explorer"
+          )
+
+          Invoke-SmokeTest "scripts/host/view_notebooks.ps1" @(
+            "DAAF container is running.",
+            "Opening DAAF Notebook Browser"
+          )
+
+          Invoke-SmokeTest "scripts/host/run_vscode.ps1" @(
+            "DAAF container is running.",
+            "Opening DAAF Code Browser"
+          )
+
+          Invoke-SmokeTest "scripts/host/run_daaf.ps1" @(
+            "[DRY-RUN]",
+            "DAAF container is already running.",
+            "Launching Claude Code"
+          )
+
+          if ($failed) {
+            Write-Host ""
+            Write-Host "One or more smoke tests failed."
+            exit 1
+          }
+          Write-Host ""
+          Write-Host "All pwsh 7 smoke tests passed."
 
       # Windows PowerShell 5.1 smoke test (Windows only — catches PS 5.1
-      # $ErrorActionPreference quirks, alias differences, and path issues)
+      # $ErrorActionPreference quirks, alias differences, and path issues).
+      # Each script is run individually to capture output and verify both exit
+      # code and content (the [DRY-RUN] marker plus script-specific strings).
       - name: Smoke test .ps1 scripts (dry-run, Windows PS 5.1)
         if: matrix.os == 'windows-latest'
         shell: powershell
         run: |
           $failed = 0
-          foreach ($script in Get-ChildItem scripts/host/*.ps1) {
-            Write-Host "=== Smoke testing (PS 5.1): $($script.Name) ==="
+
+          function Assert-OutputContains {
+            param([string]$Label, [string]$Output, [string]$Pattern)
+            if ($Output -match [regex]::Escape($Pattern)) {
+              Write-Host "  PASS: output contains '$Pattern'"
+            } else {
+              Write-Host "  FAIL: expected output to contain '$Pattern'"
+              $script:failed = 1
+            }
+          }
+
+          function Invoke-SmokeTest {
+            param(
+              [string]$ScriptPath,
+              [string[]]$ExpectedStrings
+            )
+            $name = Split-Path $ScriptPath -Leaf
+            Write-Host "=== Smoke testing (PS 5.1): $name ==="
             $env:DAAF_DRY_RUN = "1"
             $env:DAAF_NESTED = "1"
             try {
-              & $script.FullName
+              $output = & $ScriptPath 2>&1 | Out-String
               if ($LASTEXITCODE -and $LASTEXITCODE -ne 0) {
-                Write-Host "FAILED: $($script.Name)"
-                $failed = 1
+                Write-Host "FAILED: $name (exit code $LASTEXITCODE)"
+                $script:failed = 1
               }
             } catch {
-              Write-Host "FAILED: $($script.Name) - $_"
-              $failed = 1
+              Write-Host "FAILED: $name - $_"
+              $script:failed = 1
+              return
+            }
+            foreach ($pattern in $ExpectedStrings) {
+              Assert-OutputContains $name $output $pattern
             }
           }
-          if ($failed) { exit 1 }
+
+          Invoke-SmokeTest "scripts/host/install.ps1" @(
+            "[DRY-RUN]",
+            "DAAF Installer",
+            "Installation complete!"
+          )
+
+          Invoke-SmokeTest "scripts/host/backup_daaf.ps1" @(
+            "[DRY-RUN]",
+            "DAAF Backup",
+            "[DRY-RUN] Would copy"
+          )
+
+          Invoke-SmokeTest "scripts/host/rebuild_daaf.ps1" @(
+            "[DRY-RUN]",
+            "DAAF Rebuild",
+            "Rebuild complete!"
+          )
+
+          Invoke-SmokeTest "scripts/host/update_daaf.ps1" @(
+            "[DRY-RUN]",
+            "DAAF Updater",
+            "Already up to date!"
+          )
+
+          Invoke-SmokeTest "scripts/host/migrate_daaf.ps1" @(
+            "[DRY-RUN]",
+            "DAAF Migration",
+            "Migration complete!"
+          )
+
+          Invoke-SmokeTest "scripts/host/restore_from_backup.ps1" @(
+            "DAAF Restore from Backup",
+            "Restore dry-run complete!"
+          )
+
+          Invoke-SmokeTest "scripts/host/view_logs.ps1" @(
+            "DAAF container is running.",
+            "Opening DAAF Log Explorer"
+          )
+
+          Invoke-SmokeTest "scripts/host/view_notebooks.ps1" @(
+            "DAAF container is running.",
+            "Opening DAAF Notebook Browser"
+          )
+
+          Invoke-SmokeTest "scripts/host/run_vscode.ps1" @(
+            "DAAF container is running.",
+            "Opening DAAF Code Browser"
+          )
+
+          Invoke-SmokeTest "scripts/host/run_daaf.ps1" @(
+            "[DRY-RUN]",
+            "DAAF container is already running.",
+            "Launching Claude Code"
+          )
+
+          if ($failed) {
+            Write-Host ""
+            Write-Host "One or more smoke tests failed."
+            exit 1
+          }
+          Write-Host ""
+          Write-Host "All PS 5.1 smoke tests passed."

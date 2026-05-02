@@ -392,3 +392,494 @@ Describe "migrate_daaf.ps1 dry-run mode" {
         ($output | Out-String) | Should -BeLike "*clone-based installation*"
     }
 }
+
+# ============================================================================
+# Integrated state-machine tests
+# ============================================================================
+# These test the MAIN ORCHESTRATION flow by running the full script with
+# custom docker mock functions to simulate specific scenarios.
+
+Describe "migrate_daaf.ps1 integrated state-machine tests" {
+    BeforeAll {
+        . "$PSScriptRoot/TestHelper.ps1"
+    }
+
+    BeforeEach {
+        $script:TestDir = New-Item -ItemType Directory -Path (Join-Path ([System.IO.Path]::GetTempPath()) "daaf-migrate-int-$(Get-Random)")
+        Push-Location $script:TestDir
+        New-FakeComposeFile
+        # Create stub backup_daaf.ps1 that exits cleanly
+        Set-Content -Path (Join-Path $script:TestDir "backup_daaf.ps1") -Value "exit 0"
+    }
+
+    AfterEach {
+        Pop-Location
+        Remove-Item -Recurse -Force $script:TestDir -ErrorAction SilentlyContinue
+        Remove-Item Env:DAAF_NESTED -ErrorAction SilentlyContinue
+    }
+
+    It "Era 1 path (clone-based) completes successfully" {
+        $env:DAAF_NESTED = "1"
+        $wrapperScript = Join-Path $script:TestDir "test_wrapper.ps1"
+        Set-Content -Path $wrapperScript -Value @'
+$ErrorActionPreference = "Stop"
+[Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
+function docker {
+    $argStr = $args -join ' '
+    $global:LASTEXITCODE = 0
+    switch -Wildcard ($argStr) {
+        "*info*" { return }
+        "*volume inspect*" { return }
+        "*ps -a*--filter*volume=*--format*" { Write-Output "daaf-test-1" }
+        "*inspect*--format*Status*" { Write-Output "running" }
+        "*exec*true*" { return }
+        "*exec*test -f*CLAUDE.md*" { return }
+        "*exec*git -C /daaf remote get-url*upstream*" { $global:LASTEXITCODE = 1; return }
+        "*exec*git -C /daaf remote get-url*origin*" {
+            Write-Output "https://github.com/DAAF-Contribution-Community/daaf.git"
+        }
+        "*exec*git -C /daaf fetch*" { return }
+        "*exec*git -C /daaf branch --set-upstream*" { return }
+        "*exec*git*" { return }
+        "*exec*" { return }
+        "*start*" { return }
+        default { return }
+    }
+}
+function Invoke-WebRequest {
+    param([switch]$UseBasicParsing, [string]$Uri, [string]$OutFile)
+    $null = $UseBasicParsing, $Uri
+    if ($OutFile) {
+        $parentDir = Split-Path $OutFile -Parent
+        if ($parentDir -and -not (Test-Path $parentDir)) {
+            New-Item -ItemType Directory -Path $parentDir -Force | Out-Null
+        }
+        Set-Content -Path $OutFile -Value "exit 0"
+    }
+}
+$NonInteractive = $true
+'@
+        Add-Content -Path $wrapperScript -Value ". '$RepoRoot/scripts/host/migrate_daaf.ps1'"
+        $output = & pwsh -NoProfile -File $wrapperScript *>&1
+        $outputStr = $output | Out-String
+        $LASTEXITCODE | Should -BeIn @(0, $null)
+        $outputStr | Should -BeLike "*clone-based installation*"
+        $outputStr | Should -BeLike "*Migration complete*"
+    }
+
+    It "Era 2 path (ZIP-based) detects and reports correctly" {
+        $env:DAAF_NESTED = "1"
+        $wrapperScript = Join-Path $script:TestDir "test_wrapper.ps1"
+        Set-Content -Path $wrapperScript -Value @'
+$ErrorActionPreference = "Stop"
+[Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
+function docker {
+    $argStr = $args -join ' '
+    $global:LASTEXITCODE = 0
+    switch -Wildcard ($argStr) {
+        "*info*" { return }
+        "*volume inspect*" { return }
+        "*ps -a*--filter*volume=*--format*" { Write-Output "daaf-test-1" }
+        "*inspect*--format*Status*" { Write-Output "running" }
+        "*exec*true*" { return }
+        "*exec*test -f*CLAUDE.md*" { return }
+        "*exec*git -C /daaf remote get-url*" { $global:LASTEXITCODE = 1; return }
+        "*exec*git -C /daaf fetch*" { return }
+        "*exec*git -C /daaf rev-list --max-parents=0*" { Write-Output "aaa111root" }
+        "*exec*git -C /daaf cat-file*" {
+            Write-Output "tree abc123"
+            Write-Output "parent def456"
+            Write-Output "author Test"
+        }
+        "*exec*git -C /daaf branch --set-upstream*" { return }
+        "*exec*git -C /daaf remote add*" { return }
+        "*exec*git*" { return }
+        "*exec*" { return }
+        "*start*" { return }
+        default { return }
+    }
+}
+function Invoke-WebRequest {
+    param([switch]$UseBasicParsing, [string]$Uri, [string]$OutFile)
+    $null = $UseBasicParsing, $Uri
+    if ($OutFile) {
+        $parentDir = Split-Path $OutFile -Parent
+        if ($parentDir -and -not (Test-Path $parentDir)) {
+            New-Item -ItemType Directory -Path $parentDir -Force | Out-Null
+        }
+        Set-Content -Path $OutFile -Value "exit 0"
+    }
+}
+$NonInteractive = $true
+'@
+        Add-Content -Path $wrapperScript -Value ". '$RepoRoot/scripts/host/migrate_daaf.ps1'"
+        $output = & pwsh -NoProfile -File $wrapperScript *>&1
+        $outputStr = $output | Out-String
+        $LASTEXITCODE | Should -BeIn @(0, $null)
+        $outputStr | Should -BeLike "*ZIP-based installation*"
+        $outputStr | Should -BeLike "*Migration complete*"
+    }
+
+    It "already migrated (idempotency) skips graft step" {
+        $env:DAAF_NESTED = "1"
+        $wrapperScript = Join-Path $script:TestDir "test_wrapper.ps1"
+        Set-Content -Path $wrapperScript -Value @'
+$ErrorActionPreference = "Stop"
+[Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
+function docker {
+    $argStr = $args -join ' '
+    $global:LASTEXITCODE = 0
+    switch -Wildcard ($argStr) {
+        "*info*" { return }
+        "*volume inspect*" { return }
+        "*ps -a*--filter*volume=*--format*" { Write-Output "daaf-test-1" }
+        "*inspect*--format*Status*" { Write-Output "running" }
+        "*exec*true*" { return }
+        "*exec*test -f*CLAUDE.md*" { return }
+        "*exec*git -C /daaf remote get-url*" { $global:LASTEXITCODE = 1; return }
+        "*exec*git -C /daaf fetch*" { return }
+        "*exec*git -C /daaf rev-list --max-parents=0*" { Write-Output "aaa111root" }
+        "*exec*git -C /daaf cat-file*" {
+            Write-Output "tree abc123"
+            Write-Output "parent def456"
+            Write-Output "author Test"
+        }
+        "*exec*git -C /daaf branch --set-upstream*" { return }
+        "*exec*git -C /daaf remote add*" { return }
+        "*exec*git*" { return }
+        "*exec*" { return }
+        "*start*" { return }
+        default { return }
+    }
+}
+function Invoke-WebRequest {
+    param([switch]$UseBasicParsing, [string]$Uri, [string]$OutFile)
+    $null = $UseBasicParsing, $Uri
+    if ($OutFile) {
+        $parentDir = Split-Path $OutFile -Parent
+        if ($parentDir -and -not (Test-Path $parentDir)) {
+            New-Item -ItemType Directory -Path $parentDir -Force | Out-Null
+        }
+        Set-Content -Path $OutFile -Value "exit 0"
+    }
+}
+$NonInteractive = $true
+'@
+        Add-Content -Path $wrapperScript -Value ". '$RepoRoot/scripts/host/migrate_daaf.ps1'"
+        $output = & pwsh -NoProfile -File $wrapperScript *>&1
+        $outputStr = $output | Out-String
+        $LASTEXITCODE | Should -BeIn @(0, $null)
+        $outputStr | Should -BeLike "*graft already in place*"
+    }
+}
+
+# ============================================================================
+# Error path tests
+# ============================================================================
+
+Describe "migrate_daaf.ps1 error paths" {
+    BeforeAll {
+        . "$PSScriptRoot/TestHelper.ps1"
+    }
+
+    BeforeEach {
+        $script:TestDir = New-Item -ItemType Directory -Path (Join-Path ([System.IO.Path]::GetTempPath()) "daaf-migrate-err-$(Get-Random)")
+        Push-Location $script:TestDir
+        New-FakeComposeFile
+        Set-Content -Path (Join-Path $script:TestDir "backup_daaf.ps1") -Value "exit 0"
+    }
+
+    AfterEach {
+        Pop-Location
+        Remove-Item -Recurse -Force $script:TestDir -ErrorAction SilentlyContinue
+        Remove-Item Env:DAAF_NESTED -ErrorAction SilentlyContinue
+    }
+
+    It "fetch from origin fails exits with error" {
+        $env:DAAF_NESTED = "1"
+        $wrapperScript = Join-Path $script:TestDir "test_wrapper.ps1"
+        Set-Content -Path $wrapperScript -Value @'
+$ErrorActionPreference = "Stop"
+[Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
+function docker {
+    $argStr = $args -join ' '
+    $global:LASTEXITCODE = 0
+    switch -Wildcard ($argStr) {
+        "*info*" { return }
+        "*volume inspect*" { return }
+        "*ps -a*--filter*volume=*--format*" { Write-Output "daaf-test-1" }
+        "*inspect*--format*Status*" { Write-Output "running" }
+        "*exec*true*" { return }
+        "*exec*test -f*CLAUDE.md*" { return }
+        "*exec*git -C /daaf remote get-url*upstream*" { $global:LASTEXITCODE = 1; return }
+        "*exec*git -C /daaf remote get-url*origin*" {
+            Write-Output "https://github.com/DAAF-Contribution-Community/daaf.git"
+        }
+        "*exec*git -C /daaf fetch*" { $global:LASTEXITCODE = 1; return }
+        "*exec*git*" { return }
+        "*exec*" { return }
+        "*start*" { return }
+        default { return }
+    }
+}
+function Invoke-WebRequest {
+    param([switch]$UseBasicParsing, [string]$Uri, [string]$OutFile)
+    $null = $UseBasicParsing, $Uri
+    if ($OutFile) {
+        $parentDir = Split-Path $OutFile -Parent
+        if ($parentDir -and -not (Test-Path $parentDir)) {
+            New-Item -ItemType Directory -Path $parentDir -Force | Out-Null
+        }
+        Set-Content -Path $OutFile -Value "exit 0"
+    }
+}
+$NonInteractive = $true
+'@
+        Add-Content -Path $wrapperScript -Value ". '$RepoRoot/scripts/host/migrate_daaf.ps1'"
+        $output = & pwsh -NoProfile -File $wrapperScript *>&1
+        $outputStr = $output | Out-String
+        $LASTEXITCODE | Should -Be 1
+        $outputStr | Should -BeLike "*Failed to fetch*"
+    }
+
+    It "DAAF not installed (CLAUDE.md missing) exits with error" {
+        $env:DAAF_NESTED = "1"
+        $wrapperScript = Join-Path $script:TestDir "test_wrapper.ps1"
+        Set-Content -Path $wrapperScript -Value @'
+$ErrorActionPreference = "Stop"
+[Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
+function docker {
+    $argStr = $args -join ' '
+    $global:LASTEXITCODE = 0
+    switch -Wildcard ($argStr) {
+        "*info*" { return }
+        "*volume inspect*" { return }
+        "*ps -a*--filter*volume=*--format*" { Write-Output "daaf-test-1" }
+        "*inspect*--format*Status*" { Write-Output "running" }
+        "*exec*true*" { return }
+        "*exec*test -f*CLAUDE.md*" { $global:LASTEXITCODE = 1; return }
+        "*exec*" { return }
+        "*start*" { return }
+        default { return }
+    }
+}
+function Invoke-WebRequest {
+    param([switch]$UseBasicParsing, [string]$Uri, [string]$OutFile)
+    $null = $UseBasicParsing, $Uri
+    if ($OutFile) {
+        $parentDir = Split-Path $OutFile -Parent
+        if ($parentDir -and -not (Test-Path $parentDir)) {
+            New-Item -ItemType Directory -Path $parentDir -Force | Out-Null
+        }
+        Set-Content -Path $OutFile -Value "exit 0"
+    }
+}
+$NonInteractive = $true
+'@
+        Add-Content -Path $wrapperScript -Value ". '$RepoRoot/scripts/host/migrate_daaf.ps1'"
+        $output = & pwsh -NoProfile -File $wrapperScript *>&1
+        $outputStr = $output | Out-String
+        $LASTEXITCODE | Should -Be 1
+        $outputStr | Should -BeLike "*DAAF does not appear to be installed*"
+    }
+
+    It "container not running and start fails exits with error" {
+        $env:DAAF_NESTED = "1"
+        $wrapperScript = Join-Path $script:TestDir "test_wrapper.ps1"
+        Set-Content -Path $wrapperScript -Value @'
+$ErrorActionPreference = "Stop"
+[Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
+function docker {
+    $argStr = $args -join ' '
+    $global:LASTEXITCODE = 0
+    switch -Wildcard ($argStr) {
+        "*info*" { return }
+        "*volume inspect*" { return }
+        "*ps -a*--filter*volume=*--format*" { return }
+        "*compose up*" { $global:LASTEXITCODE = 1; return }
+        "*start*" { $global:LASTEXITCODE = 1; return }
+        default { return }
+    }
+}
+function Invoke-WebRequest {
+    param([switch]$UseBasicParsing, [string]$Uri, [string]$OutFile)
+    $null = $UseBasicParsing, $Uri
+    if ($OutFile) {
+        $parentDir = Split-Path $OutFile -Parent
+        if ($parentDir -and -not (Test-Path $parentDir)) {
+            New-Item -ItemType Directory -Path $parentDir -Force | Out-Null
+        }
+        Set-Content -Path $OutFile -Value "exit 0"
+    }
+}
+$NonInteractive = $true
+'@
+        Add-Content -Path $wrapperScript -Value ". '$RepoRoot/scripts/host/migrate_daaf.ps1'"
+        $output = & pwsh -NoProfile -File $wrapperScript *>&1
+        $outputStr = $output | Out-String
+        $LASTEXITCODE | Should -Be 1
+        $outputStr | Should -BeLike "*Failed to start*"
+    }
+
+    It "volume not found exits with error" {
+        $env:DAAF_NESTED = "1"
+        $wrapperScript = Join-Path $script:TestDir "test_wrapper.ps1"
+        Set-Content -Path $wrapperScript -Value @'
+$ErrorActionPreference = "Stop"
+[Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
+function docker {
+    $argStr = $args -join ' '
+    $global:LASTEXITCODE = 0
+    switch -Wildcard ($argStr) {
+        "*info*" { return }
+        "*volume inspect*" { $global:LASTEXITCODE = 1; return }
+        default { return }
+    }
+}
+$NonInteractive = $true
+'@
+        Add-Content -Path $wrapperScript -Value ". '$RepoRoot/scripts/host/migrate_daaf.ps1'"
+        $output = & pwsh -NoProfile -File $wrapperScript *>&1
+        $outputStr = $output | Out-String
+        $LASTEXITCODE | Should -Be 1
+        $outputStr | Should -BeLike "*not found*"
+    }
+}
+
+# ============================================================================
+# Edge cases
+# ============================================================================
+
+Describe "migrate_daaf.ps1 edge cases" {
+    BeforeAll {
+        . "$PSScriptRoot/TestHelper.ps1"
+    }
+
+    BeforeEach {
+        $script:TestDir = New-Item -ItemType Directory -Path (Join-Path ([System.IO.Path]::GetTempPath()) "daaf-migrate-edge-$(Get-Random)")
+        Push-Location $script:TestDir
+        New-FakeComposeFile
+        Set-Content -Path (Join-Path $script:TestDir "backup_daaf.ps1") -Value "exit 0"
+    }
+
+    AfterEach {
+        Pop-Location
+        Remove-Item -Recurse -Force $script:TestDir -ErrorAction SilentlyContinue
+        Remove-Item Env:DAAF_NESTED -ErrorAction SilentlyContinue
+    }
+
+    It "fork detection adds upstream remote" {
+        $env:DAAF_NESTED = "1"
+        $wrapperScript = Join-Path $script:TestDir "test_wrapper.ps1"
+        Set-Content -Path $wrapperScript -Value @'
+$ErrorActionPreference = "Stop"
+[Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
+function docker {
+    $argStr = $args -join ' '
+    $global:LASTEXITCODE = 0
+    switch -Wildcard ($argStr) {
+        "*info*" { return }
+        "*volume inspect*" { return }
+        "*ps -a*--filter*volume=*--format*" { Write-Output "daaf-test-1" }
+        "*inspect*--format*Status*" { Write-Output "running" }
+        "*exec*true*" { return }
+        "*exec*test -f*CLAUDE.md*" { return }
+        "*exec*git -C /daaf remote get-url*upstream*" { $global:LASTEXITCODE = 1; return }
+        "*exec*git -C /daaf remote get-url*origin*" {
+            Write-Output "https://github.com/user/daaf-fork.git"
+        }
+        "*exec*git -C /daaf remote add*upstream*" { return }
+        "*exec*git -C /daaf fetch*" { return }
+        "*exec*git -C /daaf branch --set-upstream*" { return }
+        "*exec*git*" { return }
+        "*exec*" { return }
+        "*start*" { return }
+        default { return }
+    }
+}
+function Invoke-WebRequest {
+    param([switch]$UseBasicParsing, [string]$Uri, [string]$OutFile)
+    $null = $UseBasicParsing, $Uri
+    if ($OutFile) {
+        $parentDir = Split-Path $OutFile -Parent
+        if ($parentDir -and -not (Test-Path $parentDir)) {
+            New-Item -ItemType Directory -Path $parentDir -Force | Out-Null
+        }
+        Set-Content -Path $OutFile -Value "exit 0"
+    }
+}
+$NonInteractive = $true
+'@
+        Add-Content -Path $wrapperScript -Value ". '$RepoRoot/scripts/host/migrate_daaf.ps1'"
+        $output = & pwsh -NoProfile -File $wrapperScript *>&1
+        $outputStr = $output | Out-String
+        $LASTEXITCODE | Should -BeIn @(0, $null)
+        $outputStr | Should -BeLike "*clone-based installation*"
+        $outputStr | Should -BeLike "*fork*"
+        $outputStr | Should -BeLike "*Migration complete*"
+    }
+
+    It "multi-container on same volume shows warning" {
+        $env:DAAF_NESTED = "1"
+        $wrapperScript = Join-Path $script:TestDir "test_wrapper.ps1"
+        Set-Content -Path $wrapperScript -Value @'
+$ErrorActionPreference = "Stop"
+[Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
+function docker {
+    $argStr = $args -join ' '
+    $global:LASTEXITCODE = 0
+    switch -Wildcard ($argStr) {
+        "*info*" { return }
+        "*volume inspect*" { return }
+        "*ps -a*--filter*volume=*--format*" {
+            Write-Output "daaf-test-1"
+            Write-Output "daaf-test-2"
+        }
+        "*inspect*--format*Status*" { Write-Output "running" }
+        "*exec*true*" { return }
+        "*exec*test -f*CLAUDE.md*" { return }
+        "*exec*git -C /daaf remote get-url*upstream*" { $global:LASTEXITCODE = 1; return }
+        "*exec*git -C /daaf remote get-url*origin*" {
+            Write-Output "https://github.com/DAAF-Contribution-Community/daaf.git"
+        }
+        "*exec*git -C /daaf fetch*" { return }
+        "*exec*git -C /daaf branch --set-upstream*" { return }
+        "*exec*git*" { return }
+        "*exec*" { return }
+        "*start*" { return }
+        default { return }
+    }
+}
+function Invoke-WebRequest {
+    param([switch]$UseBasicParsing, [string]$Uri, [string]$OutFile)
+    $null = $UseBasicParsing, $Uri
+    if ($OutFile) {
+        $parentDir = Split-Path $OutFile -Parent
+        if ($parentDir -and -not (Test-Path $parentDir)) {
+            New-Item -ItemType Directory -Path $parentDir -Force | Out-Null
+        }
+        Set-Content -Path $OutFile -Value "exit 0"
+    }
+}
+$NonInteractive = $true
+'@
+        Add-Content -Path $wrapperScript -Value ". '$RepoRoot/scripts/host/migrate_daaf.ps1'"
+        $output = & pwsh -NoProfile -File $wrapperScript *>&1
+        $outputStr = $output | Out-String
+        $LASTEXITCODE | Should -BeIn @(0, $null)
+        $outputStr | Should -BeLike "*Multiple containers*"
+        $outputStr | Should -BeLike "*Migration complete*"
+    }
+
+    It "concurrent execution guard uses mutex" {
+        $content = Get-Content "$RepoRoot/scripts/host/migrate_daaf.ps1" -Raw
+        $content | Should -Match 'Global\\DAAFMigrate'
+        $content | Should -Match 'Mutex\.WaitOne'
+    }
+
+    It "mutex released in trap handler on failure" {
+        $content = Get-Content "$RepoRoot/scripts/host/migrate_daaf.ps1" -Raw
+        $content | Should -Match 'trap \{'
+        $content | Should -Match 'Mutex\.ReleaseMutex'
+    }
+}

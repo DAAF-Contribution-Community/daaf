@@ -18,6 +18,8 @@ setup() {
 
 teardown() {
     common_teardown
+    # Clean up lock directories that may be left by lock contention tests
+    rmdir /tmp/daaf-update.lock.d 2>/dev/null || true
 }
 
 # --- Syntax ---
@@ -608,4 +610,238 @@ teardown() {
     run env DAAF_DRY_RUN=1 DAAF_NESTED=1 bash "${REPO_ROOT}/scripts/host/update_daaf.sh" 2>&1
     assert_success
     assert_output --partial "Already up to date"
+}
+
+# ============================================================================
+# Integrated state-machine tests
+# ============================================================================
+# These test the MAIN ORCHESTRATION flow (not individual helper functions).
+# The script is run as a full process with carefully crafted docker mock
+# responses that dispatch on the git subcommand arguments.
+
+# --- Helper: create a dispatch-based docker mock ---
+# Sets up a docker function that dispatches on the full argument string.
+# Callers configure behavior via MOCK_* variables before running the script.
+setup_state_machine() {
+    create_fake_compose_file
+    export DAAF_NESTED=1
+}
+
+@test "update: clean pull path succeeds (behind, no local commits, no dirty files)" {
+    setup_state_machine
+    run bash -c '
+        docker() {
+            local all_args="$*"
+            case "$all_args" in
+                "info") return 0 ;;
+                *"compose ps"*"--format"*) echo "daaf-docker" ;;
+                *"compose exec"*"true"*) return 0 ;;
+                *"compose exec"*"test -f"*"/daaf/CLAUDE.md"*) return 0 ;;
+                *"compose exec"*"test -f"*"/daaf/.git/shallow"*) return 1 ;;
+                *"compose exec"*"remote get-url"*"origin"*) echo "https://github.com/DAAF-Contribution-Community/daaf.git" ;;
+                *"compose exec"*"fetch"*) return 0 ;;
+                *"compose exec"*"rev-parse --verify"*"backup/"*) return 1 ;;
+                *"compose exec"*"rev-parse --verify"*"origin/main"*) return 0 ;;
+                *"compose exec"*"branch --show-current"*) echo "main" ;;
+                *"compose exec"*"rev-parse"*"origin/main"*) echo "def456remote" ;;
+                *"compose exec"*"rev-parse"*"HEAD"*) echo "abc123local" ;;
+                *"compose exec"*"diff --name-only"*"HEAD"*) echo "" ;;
+                *"compose exec"*"rev-list --count"*"origin/main..HEAD"*) echo "0" ;;
+                *"compose exec"*"rev-list --count"*"HEAD..origin/main"*) echo "3" ;;
+                *"compose exec"*"pull"*) echo "Updating abc123..def456" ; return 0 ;;
+                *"compose exec"*"branch"*) return 0 ;;
+                *"compose exec"*"symbolic-ref"*) echo "main" ;;
+                "cp"*) return 0 ;;
+                *) return 0 ;;
+            esac
+        }
+        export -f docker
+        bash "'"${REPO_ROOT}"'/scripts/host/update_daaf.sh"
+    '
+    assert_success
+    assert_output --partial "Update complete!"
+    assert_output --partial "Pulling updates..."
+}
+
+@test "update: already up to date exits cleanly (same SHA, no dirty files)" {
+    setup_state_machine
+    run bash -c '
+        docker() {
+            local all_args="$*"
+            case "$all_args" in
+                "info") return 0 ;;
+                *"compose ps"*"--format"*) echo "daaf-docker" ;;
+                *"compose exec"*"true"*) return 0 ;;
+                *"compose exec"*"test -f"*"/daaf/CLAUDE.md"*) return 0 ;;
+                *"compose exec"*"test -f"*"/daaf/.git/shallow"*) return 1 ;;
+                *"compose exec"*"remote get-url"*"origin"*) echo "https://github.com/DAAF-Contribution-Community/daaf.git" ;;
+                *"compose exec"*"fetch"*) return 0 ;;
+                *"compose exec"*"rev-parse --verify"*"backup/"*) return 1 ;;
+                *"compose exec"*"rev-parse --verify"*"origin/main"*) return 0 ;;
+                *"compose exec"*"branch --show-current"*) echo "main" ;;
+                *"compose exec"*"rev-parse"*"origin/main"*) echo "abc123same" ;;
+                *"compose exec"*"rev-parse"*"HEAD"*) echo "abc123same" ;;
+                *"compose exec"*"diff --name-only"*"HEAD"*) echo "" ;;
+                *"compose exec"*"branch"*) return 0 ;;
+                *) return 0 ;;
+            esac
+        }
+        export -f docker
+        bash "'"${REPO_ROOT}"'/scripts/host/update_daaf.sh"
+    '
+    assert_success
+    assert_output --partial "Already up to date"
+}
+
+@test "update: no remote configured exits with guidance" {
+    setup_state_machine
+    run bash -c '
+        docker() {
+            local all_args="$*"
+            case "$all_args" in
+                "info") return 0 ;;
+                *"compose ps"*"--format"*) echo "daaf-docker" ;;
+                *"compose exec"*"true"*) return 0 ;;
+                *"compose exec"*"test -f"*) return 0 ;;
+                *"compose exec"*"remote get-url"*) echo "" ; return 1 ;;
+                *"compose exec"*"branch"*) return 0 ;;
+                *"compose exec"*"rev-parse"*"HEAD"*) echo "abc123" ;;
+                *) return 0 ;;
+            esac
+        }
+        export -f docker
+        bash "'"${REPO_ROOT}"'/scripts/host/update_daaf.sh"
+    '
+    # exit 0 with guidance message
+    assert_success
+    assert_output --partial "not connected to the update server"
+}
+
+@test "update: network failure during fetch exits with error" {
+    setup_state_machine
+    run bash -c '
+        docker() {
+            local all_args="$*"
+            case "$all_args" in
+                "info") return 0 ;;
+                *"compose ps"*"--format"*) echo "daaf-docker" ;;
+                *"compose exec"*"true"*) return 0 ;;
+                *"compose exec"*"test -f"*) return 0 ;;
+                *"compose exec"*"remote get-url"*"origin"*) echo "https://github.com/DAAF-Contribution-Community/daaf.git" ;;
+                *"compose exec"*"fetch"*) echo "fatal: unable to access" >&2 ; return 1 ;;
+                *"compose exec"*"branch"*) return 0 ;;
+                *"compose exec"*"rev-parse"*"HEAD"*) echo "abc123" ;;
+                *"compose exec"*"rev-parse --verify"*"backup/"*) return 1 ;;
+                *) return 0 ;;
+            esac
+        }
+        export -f docker
+        bash "'"${REPO_ROOT}"'/scripts/host/update_daaf.sh"
+    '
+    assert_failure
+    assert_output --partial "Failed to fetch"
+}
+
+@test "update: lock contention exits with already running message" {
+    setup_state_machine
+    # Create the lock directory before running the script
+    mkdir -p /tmp/daaf-update.lock.d
+    run bash -c '
+        docker() {
+            local all_args="$*"
+            case "$all_args" in
+                "info") return 0 ;;
+                *"compose ps"*"--format"*) echo "daaf-docker" ;;
+                *) return 0 ;;
+            esac
+        }
+        export -f docker
+        bash "'"${REPO_ROOT}"'/scripts/host/update_daaf.sh"
+    '
+    assert_failure
+    assert_output --partial "already running"
+    # Clean up the lock
+    rmdir /tmp/daaf-update.lock.d 2>/dev/null || true
+}
+
+@test "update: lock cleanup on exit (trap removes lock dir)" {
+    setup_state_machine
+    # Run the script in dry-run mode so it completes cleanly, then check that
+    # the lock directory no longer exists.
+    run env DAAF_DRY_RUN=1 DAAF_NESTED=1 bash "${REPO_ROOT}/scripts/host/update_daaf.sh"
+    assert_success
+    # Lock directory should be cleaned up by the EXIT trap
+    [ ! -d /tmp/daaf-update.lock.d ]
+}
+
+# ============================================================================
+# Error path tests
+# ============================================================================
+
+@test "update: container not running and start fails exits with error" {
+    setup_state_machine
+    run bash -c '
+        docker() {
+            local all_args="$*"
+            case "$all_args" in
+                "info") return 0 ;;
+                *"compose ps"*) echo "" ;;
+                *"compose up"*) echo "ERROR: Cannot start" >&2 ; return 1 ;;
+                *) return 0 ;;
+            esac
+        }
+        export -f docker
+        bash "'"${REPO_ROOT}"'/scripts/host/update_daaf.sh"
+    '
+    assert_failure
+    assert_output --partial "Failed to start"
+}
+
+@test "update: DAAF not installed (CLAUDE.md missing) exits with error" {
+    setup_state_machine
+    run bash -c '
+        docker() {
+            local all_args="$*"
+            case "$all_args" in
+                "info") return 0 ;;
+                *"compose ps"*"--format"*) echo "daaf-docker" ;;
+                *"compose exec"*"true"*) return 0 ;;
+                *"compose exec"*"test -f"*/daaf/CLAUDE.md*) return 1 ;;
+                *) return 0 ;;
+            esac
+        }
+        export -f docker
+        bash "'"${REPO_ROOT}"'/scripts/host/update_daaf.sh"
+    '
+    assert_failure
+    assert_output --partial "DAAF does not appear to be installed"
+}
+
+@test "update: DAAF_BRANCH specifies nonexistent branch exits with error" {
+    setup_state_machine
+    run bash -c '
+        export DAAF_BRANCH="nonexistent-branch-xyz"
+        docker() {
+            local all_args="$*"
+            case "$all_args" in
+                "info") return 0 ;;
+                *"compose ps"*"--format"*) echo "daaf-docker" ;;
+                *"compose exec"*"true"*) return 0 ;;
+                *"compose exec"*"test -f"*"/daaf/CLAUDE.md"*) return 0 ;;
+                *"compose exec"*"test -f"*"/daaf/.git/shallow"*) return 1 ;;
+                *"compose exec"*"remote get-url"*"origin"*) echo "https://github.com/DAAF-Contribution-Community/daaf.git" ;;
+                *"compose exec"*"fetch"*) return 0 ;;
+                *"compose exec"*"rev-parse --verify"*"backup/"*) return 1 ;;
+                *"compose exec"*"rev-parse --verify"*"origin/nonexistent-branch-xyz"*) return 1 ;;
+                *"compose exec"*"branch"*) return 0 ;;
+                *"compose exec"*"rev-parse"*"HEAD"*) echo "abc123" ;;
+                *) return 0 ;;
+            esac
+        }
+        export -f docker
+        bash "'"${REPO_ROOT}"'/scripts/host/update_daaf.sh"
+    '
+    assert_failure
+    assert_output --partial "nonexistent-branch-xyz"
+    assert_output --partial "was not found"
 }

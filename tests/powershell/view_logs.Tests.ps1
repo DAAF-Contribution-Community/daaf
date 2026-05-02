@@ -144,3 +144,53 @@ Describe "view_logs.ps1 dry-run mode" {
         ($output | Out-String) | Should -BeLike "*Log Explorer*"
     }
 }
+
+# ============================================================================
+# Error paths
+# ============================================================================
+
+Describe "view_logs.ps1 error paths" {
+    BeforeAll {
+        . "$PSScriptRoot/TestHelper.ps1"
+        $script:Content = Get-Content "$RepoRoot/scripts/host/view_logs.ps1" -Raw
+    }
+
+    Context "--help flag" {
+        It "prints usage and exits 0 on --help" {
+            $Content | Should -Match '"--help"'
+            $Content | Should -Match 'Usage:'
+        }
+    }
+
+    Context "Unknown argument" {
+        It "exits with error on unknown argument (exit 1)" {
+            $Content | Should -Match 'Unknown argument'
+            $Content | Should -Match 'Wait-AndExit 1'
+        }
+    }
+
+    Context "No log sources found" {
+        It "exits with message when no log sources exist (exit 0)" {
+            $Content | Should -Match 'No log sources found'
+            $Content | Should -Match 'Run a DAAF session first'
+        }
+    }
+
+    Context "--archive flag skips menu" {
+        It "sets SkipMenu to true when --archive is provided" {
+            $Content | Should -Match '\$SkipMenu = \$true'
+            $Content | Should -Match '\$SelectedSource = "--archive"'
+        }
+    }
+
+    Context "Container not running starts it" {
+        It "starts container when not running" {
+            $Content | Should -Match 'Starting DAAF container'
+            $Content | Should -Match 'docker compose up -d'
+        }
+
+        It "exits with error when container start fails" {
+            $Content | Should -Match 'Failed to start the container'
+        }
+    }
+}

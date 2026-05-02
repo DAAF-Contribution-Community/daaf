@@ -102,3 +102,117 @@ teardown() {
     assert_success
     assert_output --partial "[DRY-RUN]"
 }
+
+# =========================================================================
+# --- Error paths ---
+# =========================================================================
+
+@test "run_daaf: auto-starts container when not running" {
+    export DAAF_NESTED=1
+    create_fake_compose_file
+
+    docker() {
+        case "$1" in
+            info) return 0 ;;
+            compose)
+                shift
+                case "$1" in
+                    ps) echo "" ; return 0 ;;
+                    up) return 0 ;;
+                    exec) echo "" ; return 0 ;;
+                    *) return 0 ;;
+                esac ;;
+            *) return 0 ;;
+        esac
+    }
+    export -f docker
+
+    run bash "${REPO_ROOT}/scripts/host/run_daaf.sh"
+    assert_output --partial "Starting"
+}
+
+@test "run_daaf: auto-start fails exits with error" {
+    export DAAF_NESTED=1
+    create_fake_compose_file
+
+    docker() {
+        case "$1" in
+            info) return 0 ;;
+            compose)
+                shift
+                case "$1" in
+                    ps) echo "" ; return 0 ;;
+                    up) return 1 ;;
+                    *) return 0 ;;
+                esac ;;
+            *) return 0 ;;
+        esac
+    }
+    export -f docker
+
+    run bash "${REPO_ROOT}/scripts/host/run_daaf.sh"
+    assert_failure
+    assert_output --partial "ERROR"
+    assert_output --partial "Failed to start"
+}
+
+@test "run_daaf: compose file missing exits with error" {
+    export DAAF_NESTED=1
+    rm -f "${TEST_DIR}/docker-compose.yml"
+
+    run bash "${REPO_ROOT}/scripts/host/run_daaf.sh"
+    assert_failure
+    assert_output --partial "ERROR"
+    assert_output --partial "docker-compose.yml"
+}
+
+@test "run_daaf: DAAF not installed in container exits with error" {
+    export DAAF_NESTED=1
+    create_fake_compose_file
+
+    docker() {
+        case "$1" in
+            info) return 0 ;;
+            compose)
+                shift
+                case "$1" in
+                    ps) echo "daaf-docker" ; return 0 ;;
+                    exec)
+                        # Check if this is the CLAUDE.md test
+                        local args_str="$*"
+                        if [[ "${args_str}" == *"test -f"* ]]; then
+                            return 1
+                        fi
+                        return 0
+                        ;;
+                    *) return 0 ;;
+                esac ;;
+            *) return 0 ;;
+        esac
+    }
+    export -f docker
+
+    run bash "${REPO_ROOT}/scripts/host/run_daaf.sh"
+    assert_failure
+    assert_output --partial "DAAF does not appear to be installed"
+}
+
+@test "run_daaf: custom command passthrough runs correctly" {
+    export DAAF_NESTED=1
+    create_fake_compose_file
+    MOCK_DOCKER_PS_OUTPUT="daaf-docker"
+    MOCK_DOCKER_EXEC_EXIT=0
+
+    run bash "${REPO_ROOT}/scripts/host/run_daaf.sh" htop
+    assert_output --partial "Running: htop"
+}
+
+@test "run_daaf: default command when no args launches claude" {
+    export DAAF_NESTED=1
+    create_fake_compose_file
+    MOCK_DOCKER_PS_OUTPUT="daaf-docker"
+    MOCK_DOCKER_EXEC_EXIT=0
+
+    run bash "${REPO_ROOT}/scripts/host/run_daaf.sh"
+    assert_output --partial "Launching Claude Code"
+}

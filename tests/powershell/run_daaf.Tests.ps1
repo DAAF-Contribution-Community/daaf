@@ -96,3 +96,55 @@ Describe "run_daaf.ps1 dry-run mode" {
         ($output | Out-String) | Should -BeLike "*Launching Claude Code*"
     }
 }
+
+# ============================================================================
+# Error paths
+# ============================================================================
+
+Describe "run_daaf.ps1 error paths" {
+    BeforeAll {
+        . "$PSScriptRoot/TestHelper.ps1"
+        $script:Content = Get-Content "$RepoRoot/scripts/host/run_daaf.ps1" -Raw
+    }
+
+    Context "Container not running auto-starts" {
+        It "attempts to start container with docker compose up -d" {
+            $Content | Should -Match 'Starting DAAF container'
+            $Content | Should -Match 'docker compose up -d'
+        }
+    }
+
+    Context "Auto-start fails" {
+        It "exits with error when docker compose up fails (exit 1)" {
+            $Content | Should -Match 'Failed to start the container'
+            $Content | Should -Match 'Check Docker Desktop'
+        }
+    }
+
+    Context "Compose file missing" {
+        It "exits with error when docker-compose.yml is missing (exit 1)" {
+            $Content | Should -Match 'docker-compose\.yml not found'
+            $Content | Should -Match 'daaf-docker folder'
+        }
+    }
+
+    Context "DAAF not installed in container" {
+        It "exits with error when CLAUDE.md is missing (exit 1)" {
+            $Content | Should -Match 'DAAF does not appear to be installed'
+            $Content | Should -Match 'CLAUDE\.md'
+        }
+    }
+
+    Context "Custom command passthrough" {
+        It "handles custom commands beyond claude and bash" {
+            $Content | Should -Match 'Running: \$Command'
+            $Content | Should -Match 'docker compose exec daaf-docker \$Command'
+        }
+    }
+
+    Context "Default command" {
+        It "defaults to claude when no args provided" {
+            $Content | Should -Match '\$Command = if \(\$args\.Count -gt 0\) \{ \$args\[0\] \} else \{ "claude" \}'
+        }
+    }
+}

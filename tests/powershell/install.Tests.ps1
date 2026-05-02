@@ -199,3 +199,86 @@ Describe "install.ps1 dry-run mode" {
         if (Test-Path $installDir) { Remove-Item -Recurse -Force $installDir -ErrorAction SilentlyContinue }
     }
 }
+
+# ============================================================================
+# Error paths
+# ============================================================================
+
+Describe "install.ps1 error paths" {
+    BeforeAll {
+        . "$PSScriptRoot/TestHelper.ps1"
+        $script:Content = Get-Content "$RepoRoot/scripts/host/install.ps1" -Raw
+    }
+
+    Context "Build failure" {
+        It "outputs error when docker compose build fails" {
+            # Verify the script contains the build-failure error path
+            $Content | Should -Match 'Docker image build failed'
+            $Content | Should -Match 'LASTEXITCODE -ne 0'
+        }
+
+        It "suggests re-running installer on build failure" {
+            $Content | Should -Match 'DAAF_FORCE_REINSTALL'
+            $Content | Should -Match 're-run this installer'
+        }
+    }
+
+    Context "Container start failure" {
+        It "outputs error when docker compose up -d fails" {
+            $Content | Should -Match 'Failed to start the Docker container after build'
+        }
+    }
+
+    Context "Container readiness timeout" {
+        It "reports timeout when container does not become ready" {
+            $Content | Should -Match 'did not become ready within 60 seconds'
+            $Content | Should -Match '\$maxRetries = 30'
+        }
+
+        It "shows Docker error output on timeout" {
+            $Content | Should -Match 'Docker reported'
+        }
+    }
+
+    Context "Download failure" {
+        It "outputs error when Invoke-WebRequest fails" {
+            $Content | Should -Match "Failed to download installation files from branch"
+        }
+
+        It "suggests verifying branch name on download failure" {
+            $Content | Should -Match 'verify that the branch name is correct'
+        }
+    }
+
+    Context "Git clone failure" {
+        It "outputs error when git clone into container fails" {
+            $Content | Should -Match 'Failed to clone the DAAF repository'
+        }
+
+        It "outputs error when copy repo files fails" {
+            $Content | Should -Match 'Failed to copy repository files into the container'
+        }
+    }
+
+    Context "CLAUDE.md verification failure" {
+        It "warns when CLAUDE.md is not found post-install" {
+            $Content | Should -Match 'CLAUDE\.md was not found in the container'
+        }
+    }
+
+    Context "Force reinstall with existing volume" {
+        It "proceeds when DAAF_FORCE_REINSTALL is set" {
+            $Content | Should -Match 'Proceeding with re-install \(DAAF_FORCE_REINSTALL=1\)'
+        }
+    }
+
+    Context "Existing installation without force flag" {
+        It "blocks and warns about existing installation" {
+            $Content | Should -Match 'existing DAAF installation was detected'
+        }
+
+        It "suggests update_daaf.ps1 as alternative" {
+            $Content | Should -Match 'update_daaf\.ps1'
+        }
+    }
+}

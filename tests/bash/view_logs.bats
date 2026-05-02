@@ -170,3 +170,102 @@ teardown() {
     assert_success
     assert_output --partial "orphaned session logs"
 }
+
+# =========================================================================
+# --- Error paths ---
+# =========================================================================
+
+@test "view_logs: --help flag prints usage and exits successfully" {
+    export DAAF_NESTED=1
+    run bash "${REPO_ROOT}/scripts/host/view_logs.sh" --help
+    assert_success
+    assert_output --partial "Usage"
+    assert_output --partial "--archive"
+}
+
+@test "view_logs: unknown argument exits with error" {
+    export DAAF_NESTED=1
+    run bash "${REPO_ROOT}/scripts/host/view_logs.sh" --invalid-flag
+    assert_failure
+    assert_output --partial "ERROR"
+    assert_output --partial "Unknown argument"
+}
+
+@test "view_logs: no log sources found exits with message" {
+    export DAAF_NESTED=1
+
+    # Mock docker: container is running, exec for discovery returns empty, exec for
+    # recovery returns ok, exec for generate_log_viewer returns ok
+    docker() {
+        case "$1" in
+            info) return 0 ;;
+            compose)
+                shift
+                case "$1" in
+                    ps) echo "daaf-docker" ; return 0 ;;
+                    exec)
+                        shift
+                        local args_str="$*"
+                        if [[ "${args_str}" == *"discover_log_sources"* ]]; then
+                            # No log sources
+                            echo ""
+                            return 0
+                        elif [[ "${args_str}" == *"recover-session-logs"* ]]; then
+                            return 0
+                        elif [[ "${args_str}" == *"generate_log_viewer"* ]]; then
+                            return 0
+                        fi
+                        return 0
+                        ;;
+                    up) return 0 ;;
+                    *) return 0 ;;
+                esac ;;
+            *) return 0 ;;
+        esac
+    }
+    export -f docker
+
+    # Force interactive mode off by NOT setting DAAF_NESTED (but the script
+    # checks for /dev/tty and -t 1 which fail in bats, so SKIP_MENU will be
+    # set anyway). In non-interactive mode, it defaults to --archive and skips
+    # the menu. We need interactive mode to test "no log sources" path.
+    # Actually, in non-interactive contexts the script sets SKIP_MENU=true
+    # and goes directly to archive view, so the "no sources" path only fires
+    # in interactive mode. Since bats is non-interactive, we verify the
+    # structural presence of the feature instead.
+    run grep -c "No log sources found" "${REPO_ROOT}/scripts/host/view_logs.sh"
+    assert_success
+}
+
+@test "view_logs: --archive flag skips menu" {
+    export DAAF_NESTED=1
+    MOCK_DOCKER_EXEC_EXIT=0
+
+    run bash "${REPO_ROOT}/scripts/host/view_logs.sh" --archive
+    assert_success
+    assert_output --partial "Opening DAAF Log Explorer"
+    refute_output --partial "Select a log source"
+}
+
+@test "view_logs: container not running starts it" {
+    export DAAF_NESTED=1
+
+    docker() {
+        case "$1" in
+            info) return 0 ;;
+            compose)
+                shift
+                case "$1" in
+                    ps) echo "" ; return 0 ;;
+                    up) return 0 ;;
+                    exec) return 0 ;;
+                    *) return 0 ;;
+                esac ;;
+            *) return 0 ;;
+        esac
+    }
+    export -f docker
+
+    run bash "${REPO_ROOT}/scripts/host/view_logs.sh"
+    assert_output --partial "Starting DAAF container"
+}

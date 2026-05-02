@@ -422,3 +422,104 @@ teardown() {
     assert_success
     assert_output --partial "Would create backup at"
 }
+
+# =========================================================================
+# --- Error paths ---
+# =========================================================================
+
+@test "backup: copy failure with zero files exits with error" {
+    export DAAF_NESTED=1
+
+    # Custom docker mock: scan succeeds, copy fails (non-zero exit), no files created
+    docker() {
+        case "$1" in
+            info)   return 0 ;;
+            volume) return 0 ;;
+            run)
+                shift
+                local args_str="$*"
+                if [[ "${args_str}" == *"cp -a"* ]]; then
+                    # Copy fails, creates no files
+                    return 1
+                else
+                    # Scan output: file count, du -sk, du -sh, logical KB
+                    printf '50\n512\t/source\n500K\t/source\n500\n'
+                    return 0
+                fi
+                ;;
+            *)  return 0 ;;
+        esac
+    }
+    export -f docker
+
+    run bash "${REPO_ROOT}/scripts/host/backup_daaf.sh"
+    assert_failure
+    assert_output --partial "ERROR"
+}
+
+@test "backup: copy partially succeeds with non-zero exit but files copied shows warning" {
+    export DAAF_NESTED=1
+
+    # Custom docker mock: copy returns non-zero but creates files
+    docker() {
+        case "$1" in
+            info)   return 0 ;;
+            volume) return 0 ;;
+            run)
+                shift
+                local args_str="$*"
+                if [[ "${args_str}" == *"cp -a"* ]]; then
+                    # Extract the host-side bind-mount path before ":/dest"
+                    local dest_dir=""
+                    for arg in "$@"; do
+                        if [[ "${arg}" == *":/dest"* ]]; then
+                            dest_dir="${arg%%:/dest*}"
+                            break
+                        fi
+                    done
+                    if [ -n "${dest_dir}" ]; then
+                        mkdir -p "${dest_dir}"
+                        touch "${dest_dir}/file1" "${dest_dir}/file2" "${dest_dir}/file3"
+                    fi
+                    # Non-zero exit (partial failure)
+                    return 1
+                else
+                    # Scan output
+                    printf '5\n512\t/source\n500K\t/source\n500\n'
+                    return 0
+                fi
+                ;;
+            *)  return 0 ;;
+        esac
+    }
+    export -f docker
+
+    run bash "${REPO_ROOT}/scripts/host/backup_daaf.sh"
+    # Should succeed (files were copied) but note the warnings
+    assert_output --partial "warnings"
+    assert_output --partial "files were transferred"
+}
+
+@test "backup: volume scan outputs unexpected format triggers error" {
+    export DAAF_NESTED=1
+    MOCK_DOCKER_VOLUME_EXIT=0
+
+    # Custom docker mock: scan returns garbage output
+    docker() {
+        case "$1" in
+            info)   return 0 ;;
+            volume) return 0 ;;
+            run)
+                # Return unexpected format
+                printf 'unexpected_garbage_output\n'
+                return 1
+                ;;
+            *)  return 0 ;;
+        esac
+    }
+    export -f docker
+
+    run bash "${REPO_ROOT}/scripts/host/backup_daaf.sh"
+    assert_failure
+    assert_output --partial "ERROR"
+}

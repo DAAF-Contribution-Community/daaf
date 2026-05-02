@@ -319,3 +319,240 @@ teardown() {
     # Clean up the daaf-docker directory created by install.sh
     rm -r "${TEST_DIR}/daaf-docker" 2>/dev/null || true
 }
+
+# =========================================================================
+# Error paths
+# =========================================================================
+
+@test "install.sh: fails when docker compose build fails" {
+    export DAAF_NESTED=1
+    # Custom docker mock: volume inspect fails (no existing install),
+    # compose build returns non-zero
+    docker() {
+        case "$1" in
+            info)   return 0 ;;
+            volume) return 1 ;;
+            compose)
+                shift
+                case "$1" in
+                    build) return 1 ;;
+                    *) return 0 ;;
+                esac
+                ;;
+            *) return 0 ;;
+        esac
+    }
+    export -f docker
+    mock_curl
+    cd "${TEST_DIR}"
+    run bash "${REPO_ROOT}/scripts/host/install.sh"
+    assert_failure
+    assert_output --partial "ERROR"
+    assert_output --partial "build failed"
+}
+
+@test "install.sh: fails when docker compose up -d fails" {
+    export DAAF_NESTED=1
+    # Custom docker mock: build succeeds, up fails
+    docker() {
+        case "$1" in
+            info)   return 0 ;;
+            volume) return 1 ;;
+            compose)
+                shift
+                case "$1" in
+                    build) return 0 ;;
+                    up) return 1 ;;
+                    *) return 0 ;;
+                esac
+                ;;
+            *) return 0 ;;
+        esac
+    }
+    export -f docker
+    mock_curl
+    cd "${TEST_DIR}"
+    run bash "${REPO_ROOT}/scripts/host/install.sh"
+    assert_failure
+    assert_output --partial "ERROR"
+    assert_output --partial "Failed to start"
+}
+
+@test "install.sh: fails on container readiness timeout" {
+    export DAAF_NESTED=1
+    # Custom docker mock: build and up succeed, exec always fails (readiness never achieved)
+    docker() {
+        case "$1" in
+            info)   return 0 ;;
+            volume) return 1 ;;
+            compose)
+                shift
+                case "$1" in
+                    build) return 0 ;;
+                    up) return 0 ;;
+                    exec) return 1 ;;
+                    *) return 0 ;;
+                esac
+                ;;
+            *) return 0 ;;
+        esac
+    }
+    export -f docker
+    mock_curl
+    # Override MAX_RETRIES via the script's sleep loop — we can't override
+    # the variable directly since the script sets it. Instead, trust that
+    # the loop will exit after MAX_RETRIES. To keep the test fast, override
+    # sleep to be a no-op.
+    sleep() { true; }
+    export -f sleep
+    cd "${TEST_DIR}"
+    run bash "${REPO_ROOT}/scripts/host/install.sh"
+    assert_failure
+    assert_output --partial "ERROR"
+    assert_output --partial "did not become ready"
+}
+
+@test "install.sh: fails when curl download fails" {
+    export DAAF_NESTED=1
+    MOCK_CURL_EXIT=1
+    cd "${TEST_DIR}"
+    run bash "${REPO_ROOT}/scripts/host/install.sh"
+    assert_failure
+    assert_output --partial "ERROR"
+    assert_output --partial "Failed to download"
+}
+
+@test "install.sh: fails when git clone into container fails" {
+    export DAAF_NESTED=1
+    # Custom docker mock: build/up/readiness succeed, but exec for git clone fails
+    docker() {
+        case "$1" in
+            info)   return 0 ;;
+            volume) return 1 ;;
+            compose)
+                shift
+                case "$1" in
+                    build) return 0 ;;
+                    up) return 0 ;;
+                    exec)
+                        # Check if this is the git clone call
+                        local args_str="$*"
+                        if [[ "${args_str}" == *"git clone"* ]]; then
+                            return 1
+                        fi
+                        # Readiness check (exec ... true) succeeds
+                        return 0
+                        ;;
+                    *) return 0 ;;
+                esac
+                ;;
+            *) return 0 ;;
+        esac
+    }
+    export -f docker
+    mock_curl
+    cd "${TEST_DIR}"
+    run bash "${REPO_ROOT}/scripts/host/install.sh"
+    assert_failure
+    assert_output --partial "ERROR"
+    assert_output --partial "Failed to clone"
+}
+
+@test "install.sh: fails when CLAUDE.md verification fails post-install" {
+    export DAAF_NESTED=1
+    # Custom docker mock: everything succeeds except the final test -f check
+    docker() {
+        case "$1" in
+            info)   return 0 ;;
+            volume) return 1 ;;
+            compose)
+                shift
+                case "$1" in
+                    build) return 0 ;;
+                    up) return 0 ;;
+                    exec)
+                        local args_str="$*"
+                        if [[ "${args_str}" == *"test -f"* ]]; then
+                            return 1
+                        fi
+                        # git clone, cp, readiness check all succeed
+                        return 0
+                        ;;
+                    *) return 0 ;;
+                esac
+                ;;
+            *) return 0 ;;
+        esac
+    }
+    export -f docker
+    mock_curl
+    cd "${TEST_DIR}"
+    run bash "${REPO_ROOT}/scripts/host/install.sh"
+    assert_failure
+    assert_output --partial "CLAUDE.md was not found"
+}
+
+@test "install.sh: force reinstall proceeds with existing volume" {
+    mkdir -p "${TEST_DIR}/daaf-docker"
+    create_fake_compose_file "${TEST_DIR}/daaf-docker"
+    export DAAF_FORCE_REINSTALL=1
+    export DAAF_NESTED=1
+    # Let it proceed past existing check and then fail at build
+    # (to confirm it did NOT block on existing installation)
+    MOCK_DOCKER_VOLUME_EXIT=0
+    MOCK_DOCKER_COMPOSE_EXIT=1
+    cd "${TEST_DIR}"
+    run bash "${REPO_ROOT}/scripts/host/install.sh"
+    # Should have proceeded past the existing-installation check
+    assert_output --partial "DAAF_FORCE_REINSTALL"
+    assert_output --partial "Downloading"
+    # Should NOT contain the blocking message
+    refute_output --partial "To update DAAF instead"
+}
+
+@test "install.sh: existing installation detected without force flag exits 1" {
+    mkdir -p "${TEST_DIR}/daaf-docker"
+    create_fake_compose_file "${TEST_DIR}/daaf-docker"
+    MOCK_DOCKER_VOLUME_EXIT=0
+    export DAAF_NESTED=1
+    cd "${TEST_DIR}"
+    run bash "${REPO_ROOT}/scripts/host/install.sh"
+    assert_failure
+    assert_output --partial "WARNING"
+    assert_output --partial "existing DAAF installation"
+}
+
+@test "install.sh: fails when copy repo files into container fails" {
+    export DAAF_NESTED=1
+    # Custom docker mock: git clone succeeds, but bash -c cp fails
+    docker() {
+        case "$1" in
+            info)   return 0 ;;
+            volume) return 1 ;;
+            compose)
+                shift
+                case "$1" in
+                    build) return 0 ;;
+                    up) return 0 ;;
+                    exec)
+                        local args_str="$*"
+                        if [[ "${args_str}" == *"bash -c"* ]]; then
+                            return 1
+                        fi
+                        # Readiness and git clone succeed
+                        return 0
+                        ;;
+                    *) return 0 ;;
+                esac
+                ;;
+            *) return 0 ;;
+        esac
+    }
+    export -f docker
+    mock_curl
+    cd "${TEST_DIR}"
+    run bash "${REPO_ROOT}/scripts/host/install.sh"
+    assert_failure
+    assert_output --partial "ERROR"
+    assert_output --partial "Failed to copy repository files"
+}

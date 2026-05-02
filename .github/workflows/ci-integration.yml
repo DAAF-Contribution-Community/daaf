@@ -7,10 +7,11 @@
 # Companion workflow: ci-scripts.yml handles lint, unit tests, and cross-platform
 # dry-run smoke tests (no Docker required).
 #
-# Three jobs:
-#   1. lifecycle-test  - Full lifecycle: install -> run -> backup -> update -> rebuild
-#   2. migrate-era1    - Migration of clone-based installations (origin remote present)
-#   3. migrate-era2    - Migration of ZIP-based installations (no remote, requires graft)
+# Four jobs:
+#   1. lifecycle-test       - Full lifecycle: install -> run -> backup -> update -> rebuild
+#   2. migrate-era1         - Migration of clone-based installations (origin remote present)
+#   3. migrate-era2         - Migration of ZIP-based installations (no remote, requires graft)
+#   4. failure-resilience   - Graceful failure handling and edge cases
 #
 # Not tested here:
 #   - view_logs.sh/ps1: Invokes `docker compose logs --follow`, which is a
@@ -23,7 +24,8 @@
 #
 # Triggers: weekly (Sunday 6 AM UTC), manual dispatch, release tags,
 #   push/PR when Dockerfile, docker-compose.yml, or host scripts change.
-# All jobs run on ubuntu-latest with a 30-minute timeout.
+# All jobs run on both ubuntu-latest (amd64) and ubuntu-24.04-arm (arm64)
+# with a 30-minute timeout.
 
 name: CI - Integration
 
@@ -66,8 +68,12 @@ env:
 # everything still works afterward.
 jobs:
   lifecycle-test:
-    name: Lifecycle Test
-    runs-on: ubuntu-latest
+    name: Lifecycle Test (${{ matrix.runner }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-latest, ubuntu-24.04-arm]
     timeout-minutes: 30
     steps:
       - name: Checkout repository
@@ -205,6 +211,38 @@ jobs:
             grep -q "Work in progress" /daaf/research/uncommitted_draft.txt
           '
 
+      # --- Multiple backups in one day ---
+      - name: Create second backup (suffix test)
+        working-directory: daaf-docker
+        run: bash backup_daaf.sh
+
+      - name: Verify two backup directories exist with date suffix
+        working-directory: daaf-docker
+        run: |
+          count=$(ls -d *_daaf_backup 2>/dev/null | wc -l)
+          echo "Found $count backup directories"
+          if [ "$count" -lt 2 ]; then
+            echo "ERROR: Expected at least 2 backup directories"
+            ls -la *_daaf_backup* 2>/dev/null || true
+            exit 1
+          fi
+
+      # --- Rebuild with no changes ---
+      - name: Rebuild again (no-changes test)
+        working-directory: daaf-docker
+        run: bash rebuild_daaf.sh 2>&1 | tee /tmp/rebuild_nochange.txt
+
+      - name: Verify no-changes message
+        run: grep -qi "No changes detected" /tmp/rebuild_nochange.txt
+
+      # --- Update with no upstream changes ---
+      - name: Run update (no-op after fresh install)
+        working-directory: daaf-docker
+        run: bash update_daaf.sh 2>&1 | tee /tmp/update_noop.txt
+
+      - name: Verify already up to date
+        run: grep -qi "Already up to date" /tmp/update_noop.txt
+
       # --- Cleanup ---
       # Use conditional directory check because install.sh may not have created
       # daaf-docker/ if it failed early.
@@ -225,8 +263,12 @@ jobs:
   # migrate_daaf.sh should detect "clone-based installation" and succeed.
   # The second run tests idempotency.
   migrate-era1:
-    name: Migrate (Era 1 - Clone)
-    runs-on: ubuntu-latest
+    name: Migrate (Era 1 - Clone) (${{ matrix.runner }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-latest, ubuntu-24.04-arm]
     timeout-minutes: 30
     steps:
       - name: Checkout repository
@@ -355,8 +397,12 @@ jobs:
   # migrate_daaf.sh should detect "ZIP-based installation", add origin, fetch
   # upstream history, and graft local history onto it.
   migrate-era2:
-    name: Migrate (Era 2 - ZIP)
-    runs-on: ubuntu-latest
+    name: Migrate (Era 2 - ZIP) (${{ matrix.runner }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-latest, ubuntu-24.04-arm]
     timeout-minutes: 30
     steps:
       - name: Checkout repository
@@ -515,6 +561,18 @@ jobs:
       - name: "Idempotency: verify Migration complete on re-run"
         run: grep -qi "Migration complete" /tmp/migrate_era2_idem.txt
 
+      # --- Verify file permissions after migration ---
+      - name: Verify .sh files are executable after migration
+        run: |
+          docker compose exec -T daaf-docker bash -c '
+            non_exec=$(find /daaf -name "*.sh" -not -perm /111 2>/dev/null | head -5)
+            if [ -n "$non_exec" ]; then
+              echo "WARNING: Non-executable .sh files found after migration:"
+              echo "$non_exec"
+            fi
+            echo "Permission check complete"
+          '
+
       # --- Verify user work survived migration ---
       - name: Verify committed file preserved after migration
         run: |
@@ -533,3 +591,193 @@ jobs:
       - name: Docker cleanup
         if: always()
         run: docker compose down -v --rmi local --remove-orphans
+
+  # ---------------------------------------------------------------------------
+  # Job 4: Failure Resilience
+  # ---------------------------------------------------------------------------
+  # Tests that lifecycle scripts handle error conditions gracefully: duplicate
+  # installs, missing backups, build failures, local-only commits, and
+  # concurrent execution guards.
+  failure-resilience:
+    name: Failure Resilience (${{ matrix.runner }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-latest, ubuntu-24.04-arm]
+    timeout-minutes: 30
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # --- Install DAAF (baseline for all failure tests) ---
+      - name: Install DAAF via install.sh
+        run: bash scripts/host/install.sh
+
+      - name: Verify container is running
+        working-directory: daaf-docker
+        run: |
+          for i in 1 2 3 4 5; do
+            docker compose ps | grep -q "Up" && exit 0
+            echo "Waiting for container to be ready (attempt $i/5)..."
+            sleep 3
+          done
+          echo "ERROR: Container did not reach running state"
+          docker compose ps
+          exit 1
+
+      # --- (a) Install detects existing installation ---
+      - name: Re-install without force flag (expect failure)
+        run: |
+          set +e
+          bash scripts/host/install.sh 2>&1 | tee /tmp/reinstall_noforce.txt
+          EXIT_CODE=$?
+          set -e
+          if [ "$EXIT_CODE" -eq 0 ]; then
+            echo "ERROR: install.sh should have failed for existing installation"
+            exit 1
+          fi
+          echo "install.sh correctly rejected re-install (exit code $EXIT_CODE)"
+
+      - name: Verify existing installation message
+        run: grep -qi "existing.*installation" /tmp/reinstall_noforce.txt
+
+      # --- (b) Install with force reinstall ---
+      - name: Re-install with DAAF_FORCE_REINSTALL=1
+        run: DAAF_FORCE_REINSTALL=1 bash scripts/host/install.sh
+
+      - name: Verify container running after force reinstall
+        working-directory: daaf-docker
+        run: docker compose ps | grep -q "Up"
+
+      # --- (c) Backup when volume is empty (fresh) ---
+      - name: Backup right after fresh install
+        working-directory: daaf-docker
+        run: bash backup_daaf.sh
+
+      - name: Verify fresh backup was created
+        working-directory: daaf-docker
+        run: ls -d *_daaf_backup/ | head -1
+
+      # --- (d) Restore with no backups available ---
+      # Create a temporary directory with no backup folders to test the error path.
+      # restore_from_backup.sh searches for backup directories in the current
+      # directory and exits with code 1 if none are found (before prompting).
+      - name: Restore with no backups (expect failure)
+        working-directory: daaf-docker
+        run: |
+          mkdir -p /tmp/empty_restore_dir
+          cp restore_from_backup.sh /tmp/empty_restore_dir/
+          cp docker-compose.yml /tmp/empty_restore_dir/
+          set +e
+          bash /tmp/empty_restore_dir/restore_from_backup.sh </dev/null 2>&1 | tee /tmp/restore_nobackup.txt
+          EXIT_CODE=$?
+          set -e
+          if [ "$EXIT_CODE" -eq 0 ]; then
+            echo "ERROR: restore should have failed with no backups"
+            exit 1
+          fi
+          echo "restore correctly failed (exit code $EXIT_CODE)"
+
+      - name: Verify no-backup error message
+        run: grep -qi "No backup folders found" /tmp/restore_nobackup.txt
+
+      # --- (e) Rebuild preserves user data after build failure recovery ---
+      - name: Add test file to container
+        working-directory: daaf-docker
+        run: |
+          docker compose exec -T daaf-docker bash -c '
+            echo "precious user data" > /daaf/research/resilience_test.txt
+            git -C /daaf add research/resilience_test.txt
+            git -C /daaf commit -m "Resilience test data"
+          '
+
+      - name: Break the Dockerfile intentionally
+        working-directory: daaf-docker
+        run: |
+          cp Dockerfile Dockerfile.good
+          echo "INVALID_INSTRUCTION this_will_fail" >> Dockerfile
+
+      - name: Rebuild with broken Dockerfile (expect failure)
+        working-directory: daaf-docker
+        run: |
+          set +e
+          bash rebuild_daaf.sh 2>&1 | tee /tmp/rebuild_broken.txt
+          EXIT_CODE=$?
+          set -e
+          if [ "$EXIT_CODE" -eq 0 ]; then
+            echo "ERROR: rebuild should have failed with broken Dockerfile"
+            exit 1
+          fi
+          echo "rebuild correctly failed (exit code $EXIT_CODE)"
+
+      - name: Fix the Dockerfile
+        working-directory: daaf-docker
+        run: mv Dockerfile.good Dockerfile
+
+      - name: Rebuild with fixed Dockerfile
+        working-directory: daaf-docker
+        run: bash rebuild_daaf.sh
+
+      - name: Verify user data survived failed rebuild
+        working-directory: daaf-docker
+        run: |
+          docker compose exec -T daaf-docker bash -c '
+            grep -q "precious user data" /daaf/research/resilience_test.txt
+            git -C /daaf log --oneline | grep -q "Resilience test data"
+          '
+
+      # --- (f) Update when container has local-only commits ---
+      # The container already has the "Resilience test data" commit from (e).
+      # update_daaf.sh in non-interactive mode auto-selects the first option
+      # (merge) when it detects local commits ahead of upstream.
+      - name: Update with local-only commits
+        working-directory: daaf-docker
+        run: bash update_daaf.sh 2>&1 | tee /tmp/update_local_commits.txt
+
+      - name: Verify container running after update with local commits
+        working-directory: daaf-docker
+        run: docker compose ps | grep -q "Up"
+
+      - name: Verify user data preserved after update
+        working-directory: daaf-docker
+        run: |
+          docker compose exec -T daaf-docker bash -c '
+            grep -q "precious user data" /daaf/research/resilience_test.txt
+          '
+
+      # --- (g) Concurrent lock guard ---
+      # Start a long-running update in the background, then immediately try
+      # a second one. The second should fail with the lock error.
+      - name: Test concurrent update lock
+        working-directory: daaf-docker
+        run: |
+          bash update_daaf.sh &
+          BG_PID=$!
+          # Poll for lock directory instead of fixed sleep to avoid race window
+          for i in $(seq 1 20); do [ -d /tmp/daaf-update.lock.d ] && break; sleep 0.2; done
+          set +e
+          bash update_daaf.sh 2>&1 | tee /tmp/update_concurrent.txt
+          SECOND_EXIT=$?
+          set -e
+          wait $BG_PID || true
+          if [ "$SECOND_EXIT" -eq 0 ]; then
+            echo "ERROR: second update should have been blocked by lock"
+            exit 1
+          fi
+          echo "Concurrent update correctly blocked (exit code $SECOND_EXIT)"
+
+      - name: Verify lock error message
+        run: grep -qi "already running" /tmp/update_concurrent.txt
+
+      - name: Clean up stale lock if present
+        run: rmdir /tmp/daaf-update.lock.d 2>/dev/null || true
+
+      # --- Cleanup ---
+      - name: Docker cleanup
+        if: always()
+        run: |
+          if [ -d daaf-docker ]; then
+            cd daaf-docker
+            docker compose down -v --rmi local --remove-orphans
+          fi

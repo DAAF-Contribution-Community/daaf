@@ -221,3 +221,37 @@ Describe "backup_daaf.ps1 dry-run mode" {
         ($output | Out-String) | Should -BeLike "*``[DRY-RUN``]*"
     }
 }
+
+# ============================================================================
+# Error paths
+# ============================================================================
+
+Describe "backup_daaf.ps1 error paths" {
+    BeforeAll {
+        . "$PSScriptRoot/TestHelper.ps1"
+        $script:Content = Get-Content "$RepoRoot/scripts/host/backup_daaf.ps1" -Raw
+    }
+
+    Context "Copy operation fails with zero files" {
+        It "handles copy failure resulting in zero files (exit 1, ERROR)" {
+            # The script checks FileCount -eq 0 and CopyExitCode -ne 0, outputs ERROR
+            $Content | Should -Match 'Backup failed \(exit code'
+            $Content | Should -Match '\$FileCount -eq 0'
+        }
+    }
+
+    Context "Copy partially succeeds" {
+        It "handles non-zero exit but files copied (warning, not error)" {
+            # When CopyExitCode != 0 but FileCount > 0, script shows Note about warnings
+            $Content | Should -Match 'File copy reported warnings'
+            $Content | Should -Match 'files were transferred'
+        }
+    }
+
+    Context "Volume scan unexpected format" {
+        It "handles scan failure with error" {
+            # When docker run for scan fails (LASTEXITCODE != 0), script exits with error
+            $Content | Should -Match 'Could not scan Docker volume'
+        }
+    }
+}

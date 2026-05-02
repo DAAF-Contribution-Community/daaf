@@ -288,3 +288,177 @@ teardown() {
     assert_success
     assert_output --partial "No backup folders found"
 }
+
+# =========================================================================
+# --- Error paths ---
+# =========================================================================
+
+@test "restore: running container detected offers to stop" {
+    export DAAF_NESTED=1
+    MOCK_DOCKER_VOLUME_EXIT=0
+
+    docker() {
+        case "$1" in
+            info)   return 0 ;;
+            volume) return 0 ;;
+            ps)
+                echo "daaf-daaf-docker-1"
+                return 0
+                ;;
+            compose)
+                shift
+                case "$1" in
+                    down) return 0 ;;
+                    *)    return 0 ;;
+                esac
+                ;;
+            *)  return 0 ;;
+        esac
+    }
+    export -f docker
+
+    # User answers 'y' to stop, then the script continues looking for backups
+    # No backups exist so it exits with failure
+    run bash -c 'echo "y" | bash "'"${REPO_ROOT}"'/scripts/host/restore_from_backup.sh"'
+    assert_output --partial "container is currently running"
+    assert_output --partial "Stop the container now"
+    assert_output --partial "Stopping containers"
+}
+
+@test "restore: user declines to stop container exits cleanly" {
+    export DAAF_NESTED=1
+    MOCK_DOCKER_VOLUME_EXIT=0
+
+    docker() {
+        case "$1" in
+            info)   return 0 ;;
+            volume) return 0 ;;
+            ps)
+                echo "daaf-daaf-docker-1"
+                return 0
+                ;;
+            *)  return 0 ;;
+        esac
+    }
+    export -f docker
+
+    run bash -c 'echo "n" | bash "'"${REPO_ROOT}"'/scripts/host/restore_from_backup.sh"'
+    assert_success
+    assert_output --partial "Restore cancelled"
+}
+
+@test "restore: volume clear fails exits with error" {
+    mkdir -p "${TEST_DIR}/2026-01-01_daaf_backup"
+    touch "${TEST_DIR}/2026-01-01_daaf_backup/f1"
+
+    export DAAF_NESTED=1
+
+    docker() {
+        case "$1" in
+            info)   return 0 ;;
+            volume) return 0 ;;
+            ps)     return 0 ;;
+            run)
+                shift
+                local args_str="$*"
+                if [[ "${args_str}" == *"rm -rf"* ]]; then
+                    # Volume clear fails
+                    return 1
+                fi
+                return 0
+                ;;
+            *)  return 0 ;;
+        esac
+    }
+    export -f docker
+
+    # Select backup 1, confirm with RESTORE
+    run bash -c 'printf "1\nRESTORE\n" | bash "'"${REPO_ROOT}"'/scripts/host/restore_from_backup.sh"'
+    assert_failure
+    assert_output --partial "ERROR"
+    assert_output --partial "Failed to clear"
+}
+
+@test "restore: zero files after restore exits with error" {
+    mkdir -p "${TEST_DIR}/2026-01-01_daaf_backup"
+    touch "${TEST_DIR}/2026-01-01_daaf_backup/f1"
+
+    export DAAF_NESTED=1
+
+    docker() {
+        case "$1" in
+            info)   return 0 ;;
+            volume) return 0 ;;
+            ps)     return 0 ;;
+            run)
+                shift
+                local args_str="$*"
+                if [[ "${args_str}" == *"rm -rf"* ]]; then
+                    return 0
+                elif [[ "${args_str}" == *"cp -a"* ]]; then
+                    return 0
+                elif [[ "${args_str}" == *"find /dest"* ]]; then
+                    # Verification: 0 files restored
+                    echo "0"
+                    return 0
+                fi
+                return 0
+                ;;
+            *)  return 0 ;;
+        esac
+    }
+    export -f docker
+
+    run bash -c 'printf "1\nRESTORE\n" | bash "'"${REPO_ROOT}"'/scripts/host/restore_from_backup.sh"'
+    assert_failure
+    assert_output --partial "ERROR"
+    assert_output --partial "0 files found"
+}
+
+@test "restore: file count mismatch after restore shows warning" {
+    mkdir -p "${TEST_DIR}/2026-01-01_daaf_backup"
+    # Create enough files to make mismatch significant (beyond 1% tolerance)
+    for i in $(seq 1 50); do
+        touch "${TEST_DIR}/2026-01-01_daaf_backup/f${i}"
+    done
+
+    export DAAF_NESTED=1
+
+    docker() {
+        case "$1" in
+            info)   return 0 ;;
+            volume) return 0 ;;
+            ps)     return 0 ;;
+            run)
+                shift
+                local args_str="$*"
+                if [[ "${args_str}" == *"rm -rf"* ]]; then
+                    return 0
+                elif [[ "${args_str}" == *"cp -a"* ]]; then
+                    return 0
+                elif [[ "${args_str}" == *"find /dest"* ]]; then
+                    # Return much lower count than actual (50 files, report 10)
+                    echo "10"
+                    return 0
+                fi
+                return 0
+                ;;
+            *)  return 0 ;;
+        esac
+    }
+    export -f docker
+
+    run bash -c 'printf "1\nRESTORE\n" | bash "'"${REPO_ROOT}"'/scripts/host/restore_from_backup.sh"'
+    assert_output --partial "WARNING"
+    assert_output --partial "File count mismatch"
+}
+
+@test "restore: no backup folders found exits with error" {
+    # No backup directories created in TEST_DIR
+    MOCK_DOCKER_VOLUME_EXIT=0
+    export DAAF_NESTED=1
+
+    run bash "${REPO_ROOT}/scripts/host/restore_from_backup.sh"
+    assert_failure
+    assert_output --partial "No backup folders found"
+}

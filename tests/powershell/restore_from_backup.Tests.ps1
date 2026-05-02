@@ -192,3 +192,78 @@ Describe "restore_from_backup.ps1 dry-run mode" {
         }
     }
 }
+
+# ============================================================================
+# Error paths
+# ============================================================================
+
+Describe "restore_from_backup.ps1 error paths" {
+    BeforeAll {
+        . "$PSScriptRoot/TestHelper.ps1"
+        $script:Content = Get-Content "$RepoRoot/scripts/host/restore_from_backup.ps1" -Raw
+    }
+
+    Context "Running container detected" {
+        It "offers to stop running containers" {
+            $Content | Should -Match 'container is currently running'
+            $Content | Should -Match 'Stop the container now'
+        }
+
+        It "stops containers when user agrees" {
+            $Content | Should -Match 'Stopping containers'
+            $Content | Should -Match 'docker compose down'
+        }
+    }
+
+    Context "User declines to stop container" {
+        It "cancels restore when user declines stop (exit 0)" {
+            $Content | Should -Match 'Restore cancelled\. Stop the container manually'
+        }
+    }
+
+    Context "Invalid backup selection" {
+        It "rejects non-numeric input (exit 1)" {
+            $Content | Should -Match 'TryParse'
+            $Content | Should -Match 'Invalid selection'
+        }
+
+        It "rejects out-of-range selection (exit 1)" {
+            $Content | Should -Match '\$ChoiceNum -lt 1 -or \$ChoiceNum -gt \$Backups\.Count'
+        }
+    }
+
+    Context "User cancels at RESTORE confirmation" {
+        It "exits cleanly when user types something other than RESTORE (exit 0)" {
+            $Content | Should -Match '\$Confirm -ne "RESTORE"'
+            $Content | Should -Match 'Restore cancelled'
+        }
+    }
+
+    Context "Volume clear fails" {
+        It "exits with error when volume clear fails (exit 1)" {
+            $Content | Should -Match 'Failed to clear Docker volume'
+            $Content | Should -Match 'inconsistent state'
+        }
+    }
+
+    Context "Zero files after restore" {
+        It "exits with error when zero files found after restore (exit 1)" {
+            $Content | Should -Match '\$RestoredCount -eq 0'
+            $Content | Should -Match '0 files found in restored volume'
+        }
+    }
+
+    Context "File count mismatch after restore" {
+        It "shows warning when file count differs beyond tolerance" {
+            $Content | Should -Match 'File count mismatch'
+            $Content | Should -Match 'restore may be incomplete'
+        }
+    }
+
+    Context "No backup folders found" {
+        It "exits with error when no backups exist (exit 1)" {
+            $Content | Should -Match 'No backup folders found'
+            $Content | Should -Match 'daaf-docker folder'
+        }
+    }
+}

@@ -118,3 +118,98 @@ Describe "rebuild_daaf.ps1 dry-run mode" {
         ($output | Out-String) | Should -BeLike "*Rebuild complete*"
     }
 }
+
+# ============================================================================
+# Error paths
+# ============================================================================
+
+Describe "rebuild_daaf.ps1 error paths" {
+    BeforeAll {
+        . "$PSScriptRoot/TestHelper.ps1"
+        $script:Content = Get-Content "$RepoRoot/scripts/host/rebuild_daaf.ps1" -Raw
+    }
+
+    Context "Container not found" {
+        It "outputs error when container inspect fails" {
+            $Content | Should -Match "Container.*not found"
+        }
+
+        It "suggests running the installer first" {
+            $Content | Should -Match 'Have you run the DAAF installer'
+        }
+    }
+
+    Context "Dockerfile copy failure" {
+        It "outputs error when Dockerfile copy from container fails" {
+            $Content | Should -Match 'Failed to copy Dockerfile from container'
+        }
+
+        It "suggests running the installer on copy failure" {
+            $Content | Should -Match 'Make sure DAAF is installed in the container'
+        }
+    }
+
+    Context "docker-compose.yml copy failure" {
+        It "outputs error when docker-compose.yml copy fails" {
+            $Content | Should -Match 'Failed to copy docker-compose\.yml from container'
+        }
+    }
+
+    Context "Build failure" {
+        It "outputs error when docker compose build fails" {
+            $Content | Should -Match 'Rebuild failed'
+        }
+
+        It "preserves pre-rebuild backup on build failure" {
+            $Content | Should -Match 'Dockerfile\.pre-rebuild'
+        }
+    }
+
+    Context "Container start failure after build" {
+        It "outputs error when docker compose up -d fails after build" {
+            $Content | Should -Match 'Failed to start the container after rebuild'
+        }
+    }
+
+    Context "Container readiness timeout after rebuild" {
+        It "reports timeout when container does not become ready" {
+            $Content | Should -Match 'did not become ready within 60 seconds'
+        }
+
+        It "shows Docker error output on readiness timeout" {
+            $Content | Should -Match 'Docker reported'
+        }
+    }
+
+    Context "CLAUDE.md missing after rebuild" {
+        It "warns when DAAF files may not be intact" {
+            $Content | Should -Match 'DAAF files may not be intact'
+        }
+    }
+
+    Context "Hash comparison: Dockerfile changed" {
+        It "reports UPDATED when Dockerfile hash differs" {
+            $Content | Should -Match 'Dockerfile: UPDATED'
+        }
+
+        It "uses Get-FileHash for comparison" {
+            $Content | Should -Match 'Get-FileHash'
+        }
+    }
+
+    Context "Hash comparison: no changes" {
+        It "reports no changes when hashes match" {
+            $Content | Should -Match 'no changes detected'
+        }
+
+        It "rebuilds anyway when no changes detected" {
+            $Content | Should -Match 'Rebuilding anyway to make sure the image is up to date'
+        }
+    }
+
+    Context "Hash comparison: compose file changed" {
+        It "reports UPDATED when docker-compose.yml hash differs" {
+            $Content | Should -Match 'docker-compose\.yml: UPDATED'
+        }
+    }
+}
