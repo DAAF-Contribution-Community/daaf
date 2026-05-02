@@ -15,7 +15,7 @@ Practical wisdom for getting the most out of DAAF while maintaining research qua
 - [**When and How to Request Revisions**](#when-and-how-to-request-revisions)
 - [**Appropriate vs. Inappropriate Use Cases**](#appropriate-vs-inappropriate-use-cases)
 - [**Using Git Version Control**](#using-git-version-control)
-- [**Using VSCode and Similar Interfaces**](#using-vscode-and-similar-interfaces)
+- [**Using the Browser-Based Code Editor**](#using-the-browser-based-code-editor)
 - [**Safety with Claude Code**](#safety-with-claude-code)
 - [**Recommended Next Steps**](#recommended-next-steps)
 
@@ -453,42 +453,33 @@ You can run these commands in the Claude Code terminal inside the container, or 
 
 ---
 
-## Using VSCode and Similar Interfaces
+## Using the Browser-Based Code Editor
 
-In addition to using Git, and part and parcel with it: I currently use [VSCode](https://code.visualstudio.com) as my main driver for working with DAAF and Claude Code. VSCode is basically a nice interface that collects all of the following in an easy-to-use sort of format:
-- File management within the Docker volume
-- File editing for markdown files, and viewing markdown files in their rendered format
-- Tracking changes for files using Git in a super easy and intuitive interface
-- Doing intensive file searches, edits, and similar
+In addition to using Git, and part and parcel with it: having a good file editor is essential for working with DAAF and Claude Code. You'll want a way to:
+- Browse and manage files within the Docker volume
+- Edit and preview Markdown files (reports, plans) in their rendered format
+- Track changes using Git in an intuitive interface
+- Search across files, review scripts, and inspect data
 
-DAAF gives you **two ways** to get a VSCode-like experience:
-
-### Option A: Built-in Browser Editor (Zero Install)
-
-DAAF ships with [code-server](https://github.com/coder/code-server) -- a full VS Code editor that runs inside the Docker container and is accessible from any browser. No installation needed on your host machine.
-
-To launch it, run this command inside the DAAF container (in a separate terminal from Claude Code):
+DAAF ships with a **built-in browser-based code editor** ([code-server](https://github.com/coder/code-server) -- VS Code in the browser) that handles all of the above with zero installation on your host machine. I strongly recommend keeping it open in a browser tab alongside your Claude Code terminal session. To launch it, run this from your `daaf-docker` folder:
 
 ```bash
-bash /daaf/scripts/launch_code_server.sh
+bash run_vscode.sh              # macOS / Linux
+.\run_vscode.ps1                # Windows
 ```
 
-Then open **http://localhost:2720** in your browser. The password is displayed in the terminal output (default: `daaf`). You can also open a specific project directory:
+Then open **http://localhost:2720** in your browser. The password is displayed in the terminal output (default: `daaf`). The script handles starting the container if it isn't already running.
 
-```bash
-bash /daaf/scripts/launch_code_server.sh /daaf/research/2026-04-15_My_Analysis
-```
+The browser editor comes pre-loaded with extensions for Python syntax highlighting, Markdown preview, Git history visualization, and CSV viewing -- everything you need to comfortably browse and review DAAF's output. A few key features worth knowing:
 
-The browser editor comes pre-loaded with extensions for Python syntax highlighting, Markdown preview, Git history visualization, and CSV viewing -- everything you need to comfortably browse and review DAAF's output.
+- **Markdown preview:** Right-click any `.md` file and select **"Open Preview"**, or press `Shift+Ctrl+V`, to see the rendered report with proper formatting. This is by far the easiest way to read DAAF's reports and plans.
+- **File management:** Drag and drop files from your computer into the file explorer sidebar to import them into the Docker volume (e.g., a dataset you want to profile). Create, rename, move, and delete files directly.
+- **Git integration:** The Source Control panel (left sidebar) shows uncommitted changes, lets you view diffs, and browse commit history -- invaluable for reviewing what DAAF produced during a session.
+- **Search across files:** `Ctrl+Shift+F` (or `Cmd+Shift+F` on Mac) searches across all files in the project -- great for finding specific variables, scripts, or content.
 
-### Option B: Desktop VSCode with Dev Containers
+### Alternative: Desktop VSCode with Dev Containers
 
-If you already have VSCode installed on your computer, you can connect it directly to the DAAF container for a native desktop experience. Install the [Dev Containers extension](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-containers) and use the "Attach to Running Container" command to open the DAAF container's filesystem directly in VSCode. This gives you a full file browser, integrated terminal, and your own preferred extensions and settings.
-
-### Which Should I Use?
-
-- **Option A (browser editor)** is great if you don't have VSCode installed, are on a machine where you can't install software, or just want to quickly browse files without any setup. It works on any device with a browser.
-- **Option B (desktop VSCode)** is better if you already use VSCode daily and want your own customized extensions, keybindings, and themes.
+If you already have [VSCode](https://code.visualstudio.com) installed on your computer and prefer a native desktop experience, you can connect it directly to the DAAF container. Install the [Dev Containers extension](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-containers) and use the "Attach to Running Container" command to open the DAAF container's filesystem directly in VSCode. This gives you a full file browser, integrated terminal, and your own preferred extensions and settings.
 
 There are also similar alternatives that are designed to be a bit more teched-up with coding agents built in (e.g., Cursor), but I've found VSCode to work great! Your mileage may vary -- the recommendation here is really just, find an interface that works for you and your workflow to make this work easier and reduce the frictions involved.
 

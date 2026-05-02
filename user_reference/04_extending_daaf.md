@@ -105,7 +105,9 @@ The fetch mechanics (Stage 5) are mostly handled by the query skill and mirror c
 
 ### Preparing Your Data
 
-Place your data file anywhere accessible inside `/daaf/` — the ingest process will copy it into the research project's `data/raw/` folder during setup. A common convention is to place files in `/daaf/data/` or alongside the research folder (e.g., `/daaf/data/county-elections/election_returns_2024.csv`). If you have documentation files (codebooks, data dictionaries, etc.), put those alongside the data file. See [**01. Installation and Quickstart**](01_installation_and_quickstart.md) for reminders on managing files within the Docker volume if needed.
+Place your data file anywhere accessible inside `/daaf/` — the ingest process will copy it into the research project's `data/raw/` folder during setup. A common convention is to place files in `/daaf/data/` or alongside the research folder (e.g., `/daaf/data/county-elections/election_returns_2024.csv`). If you have documentation files (codebooks, data dictionaries, etc.), put those alongside the data file.
+
+**Getting files into the Docker volume:** The easiest way is with the browser-based code editor — run `bash run_vscode.sh` (or `.\run_vscode.ps1` on Windows) from your `daaf-docker` folder, then drag and drop files from your computer into the file explorer sidebar. You can also use Docker Desktop's GUI (Containers → Files tab → right-click → Import). See [**01. Installation and Quickstart — Viewing and Editing Files**](01_installation_and_quickstart.md#viewing-and-editing-files) for more details.
 
 A few practical considerations:
 

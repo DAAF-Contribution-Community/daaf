@@ -439,6 +439,8 @@ research/2026-01-24_School_Poverty_Analysis/
     └── preliminary_notes/
 ```
 
+**Tip:** The easiest way to browse a completed project is with the browser-based code editor. Run `bash run_vscode.sh` (or `.\run_vscode.ps1` on Windows) from your `daaf-docker` folder, then navigate the file tree in the sidebar. You can preview Markdown reports and plans with `Shift+Ctrl+V`, read Python scripts with syntax highlighting, and inspect the Git history to see what changed and when. See [**03. Best Practices — Using the Browser-Based Code Editor**](03_best_practices.md#using-the-browser-based-code-editor) for more.
+
 Let's go through each piece.
 
 ### The Plan Document (Plan.md)
@@ -511,7 +513,7 @@ You can also open the `.py` file in any text editor -- marimo notebooks are just
 
 **How it differs from the notebook:** The notebook is for thorough *methodological inspection* -- browsing every line of code and verifying what happened. The report is for *communication* -- telling the story of what was found and what it means. They're complementary artifacts serving different audiences.
 
-**How to view it:** The report is a Markdown (.md) file. You can open it in any text editor, but it'll look much nicer in a Markdown viewer. I recommend copying the contents into a free online viewer like [StackEdit](https://stackedit.io/app), or installing a Markdown viewer extension for your code editor.
+**How to view it:** The report is a Markdown (.md) file. The easiest way to read it with proper formatting is in the browser-based code editor — run `bash run_vscode.sh` (or `.\run_vscode.ps1` on Windows) from your computer's `daaf-docker` folder (i.e., don't run the terminal inside the container for this), navigate to the report file, then right-click and select **"Open Preview"** (or press `Shift+Ctrl+V`) to see the rendered Markdown with headers, tables, and formatting. 
 
 ### Data Files (Raw and Processed)
 

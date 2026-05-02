@@ -290,20 +290,27 @@ Your research files, data, and outputs live inside the **Docker volume** we crea
 
 This means:
 - **Your work persists** — stopping or restarting the container does NOT delete anything. The Docker volume retains all your research outputs, data, and notebooks across restarts, rebuilds, and even `docker compose down`.
-- **Files don't automatically appear on your computer** — unlike a traditional shared folder, files created inside the container are stored in the Docker volume, not directly on your desktop. To access them directly, you'll use Docker Desktop or simple copy commands (see below).
+- **Files don't automatically appear on your computer** — unlike a traditional shared folder, files created inside the container are stored in the Docker volume, not directly on your desktop. To access them directly, you can use the included file editor (VSCode -- see below).
 - **Only the Docker volume is accessible to Claude** — Claude can only see what's in the Docker volume. Your documents, photos, and everything else are completely isolated.
 
-### Viewing Files in Docker Desktop
+### Viewing and Editing Files
 
-The easiest way to browse your files is through Docker Desktop's graphical interface:
+The easiest way to browse, edit, and manage your files is with DAAF's built-in **browser-based code editor** (VS Code in the browser). Run this from your `daaf-docker` folder on your computer (no need to enter the container):
 
-1. Open **Docker Desktop**
-2. Click **Containers** in the left-side toolbar
-3. Click the "expand" arrow on the container named **`daaf`** and then click on the name **`daaf-docker-1`**
-4. Select the **Files** tab to see the file tree
-5. Navigate into `daaf` and then `research` to find your project folders
+```bash
+cd daaf-docker
+bash run_vscode.sh              # macOS / Linux
+.\run_vscode.ps1                # Windows
+```
 
-From here, you can download copies of individual folders or files to your computer by right-clicking on them. You can also Import files into the Docker volume from your computer by right-clicking, as well.
+This opens a full VS Code editor at the URL [http://localhost:2720](http://localhost:2720) running in your favorite browser where you can explore the entire DAAF file tree, edit files, preview Markdown reports, view/edit Python scripts, and track changes with the built-in Git tools. It comes pre-loaded with extensions for Python syntax highlighting, Markdown preview, Git history visualization, and CSV viewing. The password is displayed in the terminal when you launch the script (default: `daaf`). A few things worth highlighting:
+
+- **Markdown preview:** Right-click any `.md` file and select **"Open Preview"**, or press `Shift+Ctrl+V`, to see rendered Markdown with proper formatting — headers, tables, links, and all. This is the easiest way to read DAAF's reports and plans.
+- **File management:** Use the file explorer sidebar to browse, create, rename, move, and delete files. You can also drag and drop files from your computer into the sidebar to import them into the Docker volume.
+- **Git integration:** The Source Control panel (left sidebar) shows uncommitted changes, lets you view diffs, and browse commit history — useful for reviewing what DAAF produced during a session.
+- **Search:** Use `Ctrl+Shift+F` (or `Cmd+Shift+F` on Mac) to search across all files — helpful for finding specific variables, scripts, or content across a project.
+
+**Importing files into the Docker volume:** To bring files from your computer into the Docker volume for DAAF to use (e.g., a dataset you want to profile), you can drag and drop files into the code editor's file explorer sidebar, or use Docker Desktop's GUI: open Docker Desktop, click **Containers** → expand **`daaf`** → click **`daaf-docker-1`** → select the **Files** tab → right-click to Import. You can also download/export files from Docker Desktop the same way.
 
 ### Backing Up Your Work
 
@@ -348,10 +355,6 @@ cd daaf-docker
 **Important:** Restoring is a destructive operation -- the script completely erases the current Docker volume contents and replaces them with the backup. Make sure DAAF is not running when you restore (run `docker compose down` first if needed). The script checks for running containers and warns you if any are active.
 
 **A note on git and DAAF:** A full git repository is set up inside the Docker volume during installation (via the `git clone` in the installer). During research sessions, DAAF's agents will make **local git commits** inside the container to track every script version, data transformation, and plan update — this creates a detailed audit trail of your research that you can review with standard git tools (like `git log`). A remote is configured by default (pointing to the upstream DAAF repository for updates), but nothing is ever pushed there without your explicit instruction. Your research work lives safely in the Docker volume, and the local git history is there purely for traceability and reproducibility within your own projects. If you want a GitHub backup for your work, ask Claude how to make your own repository and save to it accordingly.
-
-### Viewing report Markdown (.md) files
-
-LLM assistants work best on text files, which means that proprietary document formats like Microsoft Word or Google Docs aren't great for this type of work. DAAF produces all its output report documents in Markdown (.md) format. You can open these in any basic text editor, but basic text editors tend not to display the formatting very nicely. I recommend installing a basic Markdown viewer, or you can copy the Markdown text into any free online viewer (e.g., [StackEdit](https://stackedit.io/app))
 
 ---
 
@@ -488,32 +491,6 @@ bash /daaf/scripts/generate_log_viewer.sh /daaf/research/YYYY-MM-DD_Your_Project
 
 Port 2719 is mapped in `docker-compose.yml` for this purpose, alongside port 2718 (Marimo notebooks).
 
----
-
-## Browsing and Editing Files in Your Browser
-
-DAAF includes a browser-based code editor ([code-server](https://github.com/coder/code-server) — VS Code in the browser) for browsing, reviewing, and editing files without installing anything on your host machine. It comes pre-loaded with extensions for Python syntax highlighting, Markdown preview, Git history visualization, and CSV viewing.
-
-**Quickest way — from your host machine (no container shell needed):**
-
-```bash
-cd daaf-docker
-bash run_vscode.sh              # macOS / Linux
-.\run_vscode.ps1                # Windows
-```
-
-This opens the browser editor at [http://localhost:2720](http://localhost:2720). The password is displayed in the terminal (default: `daaf`). The script handles starting the container if it isn't already running.
-
-**From inside the container:**
-
-```bash
-bash /daaf/scripts/launch_code_server.sh
-
-# Or open a specific project directory:
-bash /daaf/scripts/launch_code_server.sh /daaf/research/YYYY-MM-DD_Your_Project
-```
-
-Port 2720 is mapped in `docker-compose.yml` for this purpose, alongside port 2718 (Marimo notebooks) and port 2719 (session log viewer).
 
 ---
 
@@ -704,7 +681,7 @@ If you skip this step and later try to analyze election data, DAAF will inform y
 - **"I can't find my research files on my computer"** — With Docker volumes, your research files live inside Docker's managed storage, not in the project folder on your computer. See **How to Manage DAAF Project Files and Output** above for more information.
 - **"Port 2718 already in use" when trying to view Marimo notebooks** — Another process is using that port. Either stop it, or change the port mapping in `docker-compose.yml` (e.g., `"127.0.0.1:3000:2718"` to use port 3000 on your host).
 - **"Port 2719 already in use" when trying to view session logs** — Same fix: stop the conflicting process, or change the port mapping (e.g., `"127.0.0.1:3001:2719"`). Port 2719 is used by the DAAF Log Explorer (`generate_log_viewer.sh`).
-- **"Port 2720 already in use" when trying to open code-server** — Same fix: stop the conflicting process, or change the port mapping (e.g., `"127.0.0.1:3002:2720"`). Port 2720 is used by code-server (`launch_code_server.sh`).
+- **"Port 2720 already in use" when trying to open the browser-based code editor** — Same fix: stop the conflicting process, or change the port mapping (e.g., `"127.0.0.1:3002:2720"`). Port 2720 is used by the browser-based code editor (`run_vscode.sh` / `run_vscode.ps1`).
 - **Permission denied errors inside the container (especially on macOS)** — If you see errors like `Permission denied` when Claude tries to read or write files, the Docker volume likely has files owned by root or your host UID instead of the container's `appuser` (UID 1000). This is a known issue with Docker Desktop on macOS. The `docker-compose.yml` includes an init service (`daaf-init`) that automatically fixes file ownership on every startup. To resolve this: stop the container (`docker compose down`), then restart it (`docker compose up -d`) — the init service will repair permissions before the main container starts. If you still have issues, you can fix permissions manually:
   ```bash
   docker run --rm -v "daaf_daaf-data:/daaf" busybox chown -R 1000:1000 /daaf
