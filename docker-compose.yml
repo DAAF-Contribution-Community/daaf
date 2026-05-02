@@ -17,8 +17,8 @@ services:
       - path: environment_settings.txt
         required: false         # Container starts normally if environment_settings.txt doesn't exist
     ports:
-      - "2718:2718"   # Marimo notebook server
-      - "2719:2719"   # Session log viewer
+      - "127.0.0.1:2718:2718"   # Marimo notebook server (localhost only)
+      - "127.0.0.1:2719:2719"   # Session log viewer (localhost only)
     volumes:
       - daaf-data:/daaf        # Named volume instead of bind mount
     working_dir: /daaf

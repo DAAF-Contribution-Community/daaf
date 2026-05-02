@@ -101,6 +101,28 @@ Your data does pass through Anthropic's API when Claude Code processes it -- tha
 
 ---
 
+### Q: Why are the notebook and log viewer ports bound to localhost only?
+
+DAAF's `docker-compose.yml` binds ports 2718 (Marimo notebook) and 2719 (session log viewer) to `127.0.0.1` — meaning only your local machine can access them. This is a deliberate security measure: Marimo notebooks are **interactive**, so an unauthenticated Marimo server exposed to your local network would allow anyone on that network to execute arbitrary Python code inside your container.
+
+With localhost binding, the ports are only reachable from your own machine, not from other devices on your WiFi or LAN.
+
+**If you need to revert this** (e.g., WSL2 port forwarding issues, or you need to access from another device on a trusted network), edit the `ports:` section in `docker-compose.yml` to remove the `127.0.0.1:` prefix:
+
+```yaml
+# Localhost only (default, more secure):
+- "127.0.0.1:2718:2718"
+- "127.0.0.1:2719:2719"
+
+# All interfaces (less secure, use only if needed):
+- "2718:2718"
+- "2719:2719"
+```
+
+After changing, rebuild the container — see [Keeping DAAF Updated](01_installation_and_quickstart.md#keeping-daaf-updated) for the procedure.
+
+---
+
 ### Q: Is there a free way to use DAAF?
 
 Not in a practical sense for full-pipeline analyses, unfortunately. The free and Pro tiers of Claude simply don't provide enough usage for the volume of work DAAF demands. You might be able to do some lightweight Data Discovery Mode queries (asking what data is available, looking up variable definitions), but a full analysis pipeline will exhaust a lower-tier plan very quickly.
@@ -213,7 +235,7 @@ bash /daaf/scripts/collect_session_logs.sh /daaf/research/YYYY-MM-DD_Your_Projec
 bash /daaf/scripts/generate_log_viewer.sh /daaf/research/YYYY-MM-DD_Your_Project
 ```
 
-**Note:** The server requires port 2719 to be mapped in your `docker-compose.yml`. If you set up DAAF after this feature was added, it's already there. If not, add `- "2719:2719"` under the `ports:` section and restart your container with `docker compose down && docker compose up -d`.
+**Note:** The server requires port 2719 to be mapped in your `docker-compose.yml`. If you set up DAAF after this feature was added, it's already there. If not, add `- "127.0.0.1:2719:2719"` under the `ports:` section and restart your container with `docker compose down && docker compose up -d`.
 
 Alternatively, DAAF also processes every individual log transcript into a more intuitive markdown file showing the flow of the conversation alongside tool calling segments.
 
@@ -444,7 +466,7 @@ If you're using the manual `marimo run` command and can't see anything at `http:
    marimo run 'research/[your-project]/[notebook-name].py' --host 0.0.0.0 --port 2718 --headless
    ```
 
-3. **Is the port mapped correctly?** Check your `docker-compose.yml` -- the line `"2718:2718"` under `ports:` maps the container's port to your host machine. If you changed this, use the host-side port in your browser.
+3. **Is the port mapped correctly?** Check your `docker-compose.yml` -- the line `"127.0.0.1:2718:2718"` under `ports:` maps the container's port to your host machine. If you changed this, use the host-side port in your browser.
 
 4. **Is something else using port 2718?** See the port conflict question above. (The `view_notebooks` convenience script detects this automatically.)
 
