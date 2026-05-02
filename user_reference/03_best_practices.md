@@ -456,14 +456,41 @@ You can run these commands in the Claude Code terminal inside the container, or 
 ## Using VSCode and Similar Interfaces
 
 In addition to using Git, and part and parcel with it: I currently use [VSCode](https://code.visualstudio.com) as my main driver for working with DAAF and Claude Code. VSCode is basically a nice interface that collects all of the following in an easy-to-use sort of format:
-- File management within the Docker volume (using the "Dev containers" extension)
+- File management within the Docker volume
 - File editing for markdown files, and viewing markdown files in their rendered format
 - Tracking changes for files using Git in a super easy and intuitive interface
 - Doing intensive file searches, edits, and similar
 
-To connect VSCode to the DAAF Docker container, install the [Dev Containers extension](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-containers) and use the "Attach to Running Container" command to open the DAAF container's filesystem directly in VSCode. This gives you a full file browser, integrated terminal, and -- importantly -- syntax highlighting for `.py` files, which makes reviewing marimo notebooks and analysis scripts much more comfortable than reading them in a plain text editor.
+DAAF gives you **two ways** to get a VSCode-like experience:
 
-There are a bunch of similar alternatives that are also designed to be a bit more teched-up with coding agents built in (e.g., Cursor), but I've found VSCode to work great! Your mileage may vary -- the recommendation here is really just, find an interface that works for you and your workflow to make this work easier and reduce the frictions involved.
+### Option A: Built-in Browser Editor (Zero Install)
+
+DAAF ships with [code-server](https://github.com/coder/code-server) -- a full VS Code editor that runs inside the Docker container and is accessible from any browser. No installation needed on your host machine.
+
+To launch it, run this command inside the DAAF container (in a separate terminal from Claude Code):
+
+```bash
+bash /daaf/scripts/launch_code_server.sh
+```
+
+Then open **http://localhost:2720** in your browser. The password is displayed in the terminal output (default: `daaf`). You can also open a specific project directory:
+
+```bash
+bash /daaf/scripts/launch_code_server.sh /daaf/research/2026-04-15_My_Analysis
+```
+
+The browser editor comes pre-loaded with extensions for Python syntax highlighting, Markdown preview, Git history visualization, and CSV viewing -- everything you need to comfortably browse and review DAAF's output.
+
+### Option B: Desktop VSCode with Dev Containers
+
+If you already have VSCode installed on your computer, you can connect it directly to the DAAF container for a native desktop experience. Install the [Dev Containers extension](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-containers) and use the "Attach to Running Container" command to open the DAAF container's filesystem directly in VSCode. This gives you a full file browser, integrated terminal, and your own preferred extensions and settings.
+
+### Which Should I Use?
+
+- **Option A (browser editor)** is great if you don't have VSCode installed, are on a machine where you can't install software, or just want to quickly browse files without any setup. It works on any device with a browser.
+- **Option B (desktop VSCode)** is better if you already use VSCode daily and want your own customized extensions, keybindings, and themes.
+
+There are also similar alternatives that are designed to be a bit more teched-up with coding agents built in (e.g., Cursor), but I've found VSCode to work great! Your mileage may vary -- the recommendation here is really just, find an interface that works for you and your workflow to make this work easier and reduce the frictions involved.
 
 ---
 

@@ -105,7 +105,7 @@ The installer will show its progress as it works through four steps: creating a 
 
 ### What the installer does
 
-1. **Creates an installation directory** called `daaf-docker/` in whatever folder your terminal is currently in, containing the Dockerfile, docker-compose.yml, and convenience scripts (`run_daaf`, `view_logs`, `view_notebooks`, `backup_daaf`, `restore_from_backup`, `rebuild_daaf`, and `update_daaf`). For example, if you open your terminal and it starts in your home folder (`~` on Mac/Linux, `C:\Users\YourName` on Windows), that's where `daaf-docker/` will be created. You can `cd` to a different location first if you'd prefer to install elsewhere.
+1. **Creates an installation directory** called `daaf-docker/` in whatever folder your terminal is currently in, containing the Dockerfile, docker-compose.yml, and convenience scripts (`run_daaf`, `view_logs`, `view_notebooks`, `run_vscode`, `backup_daaf`, `restore_from_backup`, `rebuild_daaf`, and `update_daaf`). For example, if you open your terminal and it starts in your home folder (`~` on Mac/Linux, `C:\Users\YourName` on Windows), that's where `daaf-docker/` will be created. You can `cd` to a different location first if you'd prefer to install elsewhere.
 2. **Builds the Docker image** with Python 3.12, 50+ data science packages, geospatial libraries, and Claude Code pre-installed. The first build downloads everything and takes a few minutes; subsequent rebuilds use Docker's layer cache and are much faster.
 3. **Downloads the DAAF repository** directly into the Docker volume inside the container. This gives you a full git repository.
 4. **Prints post-install instructions** showing you how to enter the container, launch Claude Code, and configure it.
@@ -426,7 +426,7 @@ If you installed DAAF **v2.0.1 or earlier** — back when the installation proce
 
 **What the migration does:**
 
-- Downloads some utility scripts (`run_daaf`, `update_daaf`, `backup_daaf`, `restore_from_backup`, `rebuild_daaf`, `view_logs`, `view_notebooks`) to your host machine so you have all the same convenience tools as a fresh install
+- Downloads some utility scripts (`run_daaf`, `update_daaf`, `backup_daaf`, `restore_from_backup`, `rebuild_daaf`, `view_logs`, `view_notebooks`, `run_vscode`) to your host machine so you have all the same convenience tools as a fresh install
 - Creates a full backup of your Docker volume before making any changes
 - Connects your local git history to the official DAAF repository so that future updates can merge in cleanly
 - Preserves everything — your research files, any framework customizations you've made, and your full git audit trail are all kept intact
@@ -487,6 +487,33 @@ bash /daaf/scripts/generate_log_viewer.sh /daaf/research/YYYY-MM-DD_Your_Project
 ```
 
 Port 2719 is mapped in `docker-compose.yml` for this purpose, alongside port 2718 (Marimo notebooks).
+
+---
+
+## Browsing and Editing Files in Your Browser
+
+DAAF includes a browser-based code editor ([code-server](https://github.com/coder/code-server) — VS Code in the browser) for browsing, reviewing, and editing files without installing anything on your host machine. It comes pre-loaded with extensions for Python syntax highlighting, Markdown preview, Git history visualization, and CSV viewing.
+
+**Quickest way — from your host machine (no container shell needed):**
+
+```bash
+cd daaf-docker
+bash run_vscode.sh              # macOS / Linux
+.\run_vscode.ps1                # Windows
+```
+
+This opens the browser editor at [http://localhost:2720](http://localhost:2720). The password is displayed in the terminal (default: `daaf`). The script handles starting the container if it isn't already running.
+
+**From inside the container:**
+
+```bash
+bash /daaf/scripts/launch_code_server.sh
+
+# Or open a specific project directory:
+bash /daaf/scripts/launch_code_server.sh /daaf/research/YYYY-MM-DD_Your_Project
+```
+
+Port 2720 is mapped in `docker-compose.yml` for this purpose, alongside port 2718 (Marimo notebooks) and port 2719 (session log viewer).
 
 ---
 
@@ -677,6 +704,7 @@ If you skip this step and later try to analyze election data, DAAF will inform y
 - **"I can't find my research files on my computer"** — With Docker volumes, your research files live inside Docker's managed storage, not in the project folder on your computer. See **How to Manage DAAF Project Files and Output** above for more information.
 - **"Port 2718 already in use" when trying to view Marimo notebooks** — Another process is using that port. Either stop it, or change the port mapping in `docker-compose.yml` (e.g., `"127.0.0.1:3000:2718"` to use port 3000 on your host).
 - **"Port 2719 already in use" when trying to view session logs** — Same fix: stop the conflicting process, or change the port mapping (e.g., `"127.0.0.1:3001:2719"`). Port 2719 is used by the DAAF Log Explorer (`generate_log_viewer.sh`).
+- **"Port 2720 already in use" when trying to open code-server** — Same fix: stop the conflicting process, or change the port mapping (e.g., `"127.0.0.1:3002:2720"`). Port 2720 is used by code-server (`launch_code_server.sh`).
 - **Permission denied errors inside the container (especially on macOS)** — If you see errors like `Permission denied` when Claude tries to read or write files, the Docker volume likely has files owned by root or your host UID instead of the container's `appuser` (UID 1000). This is a known issue with Docker Desktop on macOS. The `docker-compose.yml` includes an init service (`daaf-init`) that automatically fixes file ownership on every startup. To resolve this: stop the container (`docker compose down`), then restart it (`docker compose up -d`) — the init service will repair permissions before the main container starts. If you still have issues, you can fix permissions manually:
   ```bash
   docker run --rm -v "daaf_daaf-data:/daaf" busybox chown -R 1000:1000 /daaf

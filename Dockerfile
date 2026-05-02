@@ -135,10 +135,24 @@ RUN uv pip install --system \
     lightgbm==4.6.0
 
 # ============================================
+# Install code-server (browser-based VS Code)
+# ============================================
+ARG CODE_SERVER_VERSION=4.117.0
+RUN curl -fOL https://github.com/coder/code-server/releases/download/v${CODE_SERVER_VERSION}/code-server_${CODE_SERVER_VERSION}_amd64.deb \
+    && dpkg -i code-server_${CODE_SERVER_VERSION}_amd64.deb \
+    && rm -f code-server_${CODE_SERVER_VERSION}_amd64.deb
+
+# ============================================
 # Create non-root user for security
 # ============================================
 RUN groupadd --gid 1000 appuser \
     && useradd --uid 1000 --gid 1000 --create-home appuser
+
+# Create code-server directories owned by appuser
+RUN mkdir -p /home/appuser/.local/share/code-server/User \
+             /home/appuser/.config/code-server \
+    && chown -R appuser:appuser /home/appuser/.local \
+                                /home/appuser/.config
 
 # ============================================
 # Set up working directory
@@ -146,6 +160,53 @@ RUN groupadd --gid 1000 appuser \
 WORKDIR /daaf
 RUN chown appuser:appuser /daaf
 USER appuser
+
+# Install code-server extensions from Open VSX (pinned via VSIX download)
+# The @version CLI syntax is broken (silently installs latest), so we download
+# each .vsix directly from Open VSX and install from file.
+# ms-python.python dependencies (debugpy, vscode-python-envs) must be installed
+# before the parent extension to avoid activation errors.
+ARG EXT_MS_PYTHON=2026.4.0
+ARG EXT_MS_DEBUGPY=2026.6.0
+ARG EXT_MS_PYTHON_ENVS=1.28.0
+ARG EXT_MARKDOWN_AIO=3.6.2
+ARG EXT_GIT_GRAPH=1.30.0
+ARG EXT_GITLENS=17.12.2
+ARG EXT_RAINBOW_CSV=3.24.1
+ARG EXT_YAML=1.22.0
+ARG EXT_GITHUB_THEME=6.3.5
+RUN curl -fsSL -o /tmp/debugpy.vsix \
+      "https://open-vsx.org/api/ms-python/debugpy/linux-x64/${EXT_MS_DEBUGPY}/file/ms-python.debugpy-${EXT_MS_DEBUGPY}@linux-x64.vsix" \
+    && curl -fsSL -o /tmp/python-envs.vsix \
+      "https://open-vsx.org/api/ms-python/vscode-python-envs/${EXT_MS_PYTHON_ENVS}/file/ms-python.vscode-python-envs-${EXT_MS_PYTHON_ENVS}.vsix" \
+    && curl -fsSL -o /tmp/python.vsix \
+      "https://open-vsx.org/api/ms-python/python/${EXT_MS_PYTHON}/file/ms-python.python-${EXT_MS_PYTHON}.vsix" \
+    && curl -fsSL -o /tmp/markdown-aio.vsix \
+      "https://open-vsx.org/api/yzhang/markdown-all-in-one/${EXT_MARKDOWN_AIO}/file/yzhang.markdown-all-in-one-${EXT_MARKDOWN_AIO}.vsix" \
+    && curl -fsSL -o /tmp/git-graph.vsix \
+      "https://open-vsx.org/api/mhutchie/git-graph/${EXT_GIT_GRAPH}/file/mhutchie.git-graph-${EXT_GIT_GRAPH}.vsix" \
+    && curl -fsSL -o /tmp/gitlens.vsix \
+      "https://open-vsx.org/api/eamodio/gitlens/${EXT_GITLENS}/file/eamodio.gitlens-${EXT_GITLENS}.vsix" \
+    && curl -fsSL -o /tmp/rainbow-csv.vsix \
+      "https://open-vsx.org/api/mechatroner/rainbow-csv/${EXT_RAINBOW_CSV}/file/mechatroner.rainbow-csv-${EXT_RAINBOW_CSV}.vsix" \
+    && curl -fsSL -o /tmp/yaml.vsix \
+      "https://open-vsx.org/api/redhat/vscode-yaml/${EXT_YAML}/file/redhat.vscode-yaml-${EXT_YAML}.vsix" \
+    && curl -fsSL -o /tmp/github-theme.vsix \
+      "https://open-vsx.org/api/GitHub/github-vscode-theme/${EXT_GITHUB_THEME}/file/GitHub.github-vscode-theme-${EXT_GITHUB_THEME}.vsix" \
+    && code-server --install-extension /tmp/debugpy.vsix \
+    && code-server --install-extension /tmp/python-envs.vsix \
+    && code-server --install-extension /tmp/python.vsix \
+    && code-server --install-extension /tmp/markdown-aio.vsix \
+    && code-server --install-extension /tmp/git-graph.vsix \
+    && code-server --install-extension /tmp/gitlens.vsix \
+    && code-server --install-extension /tmp/rainbow-csv.vsix \
+    && code-server --install-extension /tmp/yaml.vsix \
+    && code-server --install-extension /tmp/github-theme.vsix \
+    && rm /tmp/*.vsix
+
+# Set default code-server settings (GitHub theme, sensible defaults)
+RUN echo '{"workbench.colorTheme":"GitHub Dark Default","editor.fontSize":14,"editor.minimap.enabled":false,"telemetry.telemetryLevel":"off","extensions.autoUpdate":false,"security.workspace.trust.enabled":false}' \
+    > /home/appuser/.local/share/code-server/User/settings.json
 
 # Configure git identity for DAAF's internal version tracking.
 # Agents make local commits during research sessions to create an audit trail.

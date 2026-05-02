@@ -19,6 +19,7 @@ services:
     ports:
       - "127.0.0.1:2718:2718"   # Marimo notebook server (localhost only)
       - "127.0.0.1:2719:2719"   # Session log viewer (localhost only)
+      - "127.0.0.1:2720:2720"   # code-server / VS Code in browser (localhost only)
     volumes:
       - daaf-data:/daaf        # Named volume instead of bind mount
     working_dir: /daaf

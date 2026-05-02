@@ -159,6 +159,7 @@ if ! curl -fsSL "${RAW_BASE}/Dockerfile"                          -o "${INSTALL_
    ! curl -fsSL "${RAW_BASE}/scripts/host/update_daaf.sh"          -o "${INSTALL_DIR}/update_daaf.sh" ||
    ! curl -fsSL "${RAW_BASE}/scripts/host/view_logs.sh"            -o "${INSTALL_DIR}/view_logs.sh" ||
    ! curl -fsSL "${RAW_BASE}/scripts/host/view_notebooks.sh"      -o "${INSTALL_DIR}/view_notebooks.sh" ||
+   ! curl -fsSL "${RAW_BASE}/scripts/host/run_vscode.sh"           -o "${INSTALL_DIR}/run_vscode.sh" ||
    ! curl -fsSL "${RAW_BASE}/scripts/host/environment_settings_example.txt" -o "${INSTALL_DIR}/environment_settings_example.txt"; then
     echo ""
     echo "ERROR: Failed to download installation files from branch '${BRANCH}'."
@@ -166,7 +167,7 @@ if ! curl -fsSL "${RAW_BASE}/Dockerfile"                          -o "${INSTALL_
     echo "You can check available branches at: https://github.com/${REPO}/branches"
     exit 1
 fi
-chmod +x "${INSTALL_DIR}/run_daaf.sh" "${INSTALL_DIR}/backup_daaf.sh" "${INSTALL_DIR}/restore_from_backup.sh" "${INSTALL_DIR}/rebuild_daaf.sh" "${INSTALL_DIR}/update_daaf.sh" "${INSTALL_DIR}/view_logs.sh" "${INSTALL_DIR}/view_notebooks.sh"
+chmod +x "${INSTALL_DIR}/run_daaf.sh" "${INSTALL_DIR}/backup_daaf.sh" "${INSTALL_DIR}/restore_from_backup.sh" "${INSTALL_DIR}/rebuild_daaf.sh" "${INSTALL_DIR}/update_daaf.sh" "${INSTALL_DIR}/view_logs.sh" "${INSTALL_DIR}/view_notebooks.sh" "${INSTALL_DIR}/run_vscode.sh"
 
 # --- Build the Docker image ---
 echo "[3/4] Building Docker image (this may take a few minutes on first run since there are a lot of Python libraries to install)..."
@@ -285,6 +286,7 @@ echo "  bash update_daaf.sh            Check for and apply DAAF updates"
 echo "  bash rebuild_daaf.sh           Copy build files from container and rebuild image"
 echo "  bash view_logs.sh              Browse session logs in your browser"
 echo "  bash view_notebooks.sh         Browse and edit marimo notebooks in your browser"
+echo "  bash run_vscode.sh             Open VS Code in your browser (code-server)"
 echo ""
 echo "To set up data source API keys (optional):"
 echo "  cp environment_settings_example.txt environment_settings.txt   Copy the template"

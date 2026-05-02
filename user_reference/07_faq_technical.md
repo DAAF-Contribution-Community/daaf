@@ -103,9 +103,9 @@ Your data does pass through Anthropic's API when Claude Code processes it -- tha
 
 ### Q: Why are the notebook and log viewer ports bound to localhost only?
 
-DAAF's `docker-compose.yml` binds ports 2718 (Marimo notebook) and 2719 (session log viewer) to `127.0.0.1` — meaning only your local machine can access them. This is a deliberate security measure: Marimo notebooks are **interactive**, so an unauthenticated Marimo server exposed to your local network would allow anyone on that network to execute arbitrary Python code inside your container.
+DAAF's `docker-compose.yml` binds ports 2718 (Marimo notebook), 2719 (session log viewer), and 2720 (code-server browser editor) to `127.0.0.1` — meaning only your local machine can access them. This is a deliberate security measure: Marimo notebooks and code-server are **interactive**, so an unauthenticated server exposed to your local network would allow anyone on that network to execute arbitrary code inside your container.
 
-With localhost binding, the ports are only reachable from your own machine, not from other devices on your WiFi or LAN.
+With localhost binding, the ports are only reachable from your own machine, not from other devices on your WiFi or LAN. code-server additionally requires a password for defense-in-depth.
 
 **If you need to revert this** (e.g., WSL2 port forwarding issues, or you need to access from another device on a trusted network), edit the `ports:` section in `docker-compose.yml` to remove the `127.0.0.1:` prefix:
 
@@ -113,10 +113,12 @@ With localhost binding, the ports are only reachable from your own machine, not 
 # Localhost only (default, more secure):
 - "127.0.0.1:2718:2718"
 - "127.0.0.1:2719:2719"
+- "127.0.0.1:2720:2720"
 
 # All interfaces (less secure, use only if needed):
 - "2718:2718"
 - "2719:2719"
+- "2720:2720"
 ```
 
 After changing, rebuild the container — see [Keeping DAAF Updated](01_installation_and_quickstart.md#keeping-daaf-updated) for the procedure.

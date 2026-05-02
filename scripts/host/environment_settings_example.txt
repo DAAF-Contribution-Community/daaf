@@ -76,3 +76,10 @@
 # --- Add your own keys below ---
 # When you onboard new data sources via DAAF's Data Onboarding Mode,
 # it will tell you which environment variable to add here.
+
+# === CODE-SERVER (BROWSER-BASED VS CODE) ====================================
+# Set a custom password for code-server's browser login.
+# If not set, the default password is "daaf".
+# ============================================================================
+
+# PASSWORD=your_password_here
