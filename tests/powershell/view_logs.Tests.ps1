@@ -54,6 +54,28 @@ Describe "view_logs.ps1" {
         It "mentions the Log Explorer in output" {
             $Content | Should -Match 'Log Explorer'
         }
+
+        It "includes recovery step" {
+            $Content | Should -Match 'recover-session-logs'
+        }
+
+        It "includes menu selection prompt" {
+            $Content | Should -Match 'Select a log source'
+        }
+
+        It "handles --archive argument" {
+            $Content | Should -Match '"--archive"'
+        }
+
+        It "handles --help argument" {
+            $Content | Should -Match '"--help"'
+        }
+
+        It "skips menu in non-interactive contexts" {
+            $Content | Should -Match 'DAAF_DRY_RUN'
+            $Content | Should -Match 'DAAF_NESTED'
+            $Content | Should -Match '\$SkipMenu'
+        }
     }
 }
 
@@ -89,6 +111,36 @@ Describe "view_logs.ps1 dry-run mode" {
         $env:DAAF_DRY_RUN = "1"
         $env:DAAF_NESTED = "1"
         $output = & "$RepoRoot/scripts/host/view_logs.ps1" *>&1
+        ($output | Out-String) | Should -BeLike "*Log Explorer*"
+    }
+
+    It "skips menu in dry-run" {
+        $env:DAAF_DRY_RUN = "1"
+        $env:DAAF_NESTED = "1"
+        $output = & "$RepoRoot/scripts/host/view_logs.ps1" *>&1
+        ($output | Out-String) | Should -Not -BeLike "*Select a log source*"
+    }
+
+    It "includes recovery step in dry-run" {
+        $env:DAAF_DRY_RUN = "1"
+        $env:DAAF_NESTED = "1"
+        $output = & "$RepoRoot/scripts/host/view_logs.ps1" *>&1
+        ($output | Out-String) | Should -BeLike "*orphaned session logs*"
+    }
+
+    It "skips sleep in dry-run" {
+        $env:DAAF_DRY_RUN = "1"
+        $env:DAAF_NESTED = "1"
+        $sw = [System.Diagnostics.Stopwatch]::StartNew()
+        $null = & "$RepoRoot/scripts/host/view_logs.ps1" *>&1
+        $sw.Stop()
+        $sw.Elapsed.TotalSeconds | Should -BeLessThan 2
+    }
+
+    It "accepts --archive flag" {
+        $env:DAAF_DRY_RUN = "1"
+        $env:DAAF_NESTED = "1"
+        $output = & "$RepoRoot/scripts/host/view_logs.ps1" --archive *>&1
         ($output | Out-String) | Should -BeLike "*Log Explorer*"
     }
 }

@@ -2,7 +2,8 @@
 # ============================================================================
 # Tests for view_logs.sh — DAAF Log Explorer
 # ============================================================================
-# Thin wrapper script — tests focus on preflight checks and structure.
+# Thin wrapper script — tests focus on preflight checks, argument parsing,
+# menu structure, and dry-run behavior.
 # ============================================================================
 
 load 'test_helper'
@@ -85,6 +86,55 @@ teardown() {
     [ "${output}" -ge 1 ]
 }
 
+# --- Argument parsing ---
+
+@test "view_logs.sh --archive skips menu and opens log explorer" {
+    export DAAF_NESTED=1
+    MOCK_DOCKER_EXEC_EXIT=0
+    run bash "${REPO_ROOT}/scripts/host/view_logs.sh" --archive
+    assert_success
+    assert_output --partial "Opening DAAF Log Explorer"
+}
+
+@test "view_logs.sh --help shows usage" {
+    export DAAF_NESTED=1
+    run bash "${REPO_ROOT}/scripts/host/view_logs.sh" --help
+    assert_success
+    assert_output --partial "Usage"
+    assert_output --partial "--archive"
+}
+
+@test "view_logs.sh rejects unknown arguments" {
+    export DAAF_NESTED=1
+    run bash "${REPO_ROOT}/scripts/host/view_logs.sh" --bogus
+    assert_failure
+    assert_output --partial "ERROR"
+    assert_output --partial "Unknown argument"
+}
+
+# --- Script structure ---
+
+@test "view_logs.sh includes recovery step" {
+    run grep -c "recover-session-logs" "${REPO_ROOT}/scripts/host/view_logs.sh"
+    assert_success
+    [ "${output}" -ge 1 ]
+}
+
+@test "view_logs.sh includes menu selection prompt" {
+    run grep -c "Select a log source" "${REPO_ROOT}/scripts/host/view_logs.sh"
+    assert_success
+    [ "${output}" -ge 1 ]
+}
+
+@test "view_logs.sh skips menu when DAAF_NESTED=1" {
+    export DAAF_NESTED=1
+    MOCK_DOCKER_EXEC_EXIT=0
+    run bash "${REPO_ROOT}/scripts/host/view_logs.sh"
+    assert_success
+    refute_output --partial "Select a log source"
+    assert_output --partial "Opening DAAF Log Explorer"
+}
+
 # =========================================================================
 # Dry-run mode
 # =========================================================================
@@ -98,4 +148,25 @@ teardown() {
     run env DAAF_DRY_RUN=1 DAAF_NESTED=1 bash "${REPO_ROOT}/scripts/host/view_logs.sh" 2>&1
     assert_success
     assert_output --partial "Log Explorer"
+}
+
+@test "view_logs.sh: dry-run skips menu" {
+    run env DAAF_DRY_RUN=1 DAAF_NESTED=1 bash "${REPO_ROOT}/scripts/host/view_logs.sh" 2>&1
+    assert_success
+    refute_output --partial "Select a log source"
+}
+
+@test "view_logs.sh: dry-run skips sleep" {
+    # Dry-run should not sleep 2 seconds
+    start_time=$SECONDS
+    run env DAAF_DRY_RUN=1 DAAF_NESTED=1 bash "${REPO_ROOT}/scripts/host/view_logs.sh" 2>&1
+    elapsed=$((SECONDS - start_time))
+    assert_success
+    [ "$elapsed" -lt 2 ]
+}
+
+@test "view_logs.sh: dry-run includes recovery step" {
+    run env DAAF_DRY_RUN=1 DAAF_NESTED=1 bash "${REPO_ROOT}/scripts/host/view_logs.sh" 2>&1
+    assert_success
+    assert_output --partial "orphaned session logs"
 }

@@ -2,12 +2,13 @@
 # DAAF Log Explorer (Windows PowerShell)
 # ============================================================================
 # Opens the interactive session log viewer in your browser.
-# Starts the DAAF container if needed, generates the session manifest,
-# and starts an HTTP server.
+# Starts the DAAF container if needed, recovers any orphaned session logs,
+# presents available log sources, and starts an HTTP server.
 #
 # Usage:
 #   cd daaf-docker
-#   .\view_logs.ps1
+#   .\view_logs.ps1              # Interactive menu
+#   .\view_logs.ps1 --archive    # Skip menu, open full archive
 #
 # Prerequisites:
 #   - Docker Desktop installed and running
@@ -55,6 +56,35 @@ if ($env:DAAF_TEST_MODE -eq "1") {
     return
 }
 
+# --- Parse arguments ---
+$SkipMenu = $false
+$SelectedSource = ""
+
+foreach ($arg in $args) {
+    switch ($arg) {
+        "--archive" {
+            $SkipMenu = $true
+            $SelectedSource = "--archive"
+        }
+        { $_ -in "-h", "--help" } {
+            Write-Host "Usage: .\view_logs.ps1              # Interactive log source menu"
+            Write-Host "       .\view_logs.ps1 --archive    # Open full session archive directly"
+            exit 0
+        }
+        default {
+            Write-Host "ERROR: Unknown argument: $arg" -ForegroundColor Red
+            Write-Host "Usage: .\view_logs.ps1 [--archive]"
+            Wait-AndExit 1
+        }
+    }
+}
+
+# In non-interactive contexts, default to archive view
+if ($env:DAAF_DRY_RUN -eq "1" -or $env:CI -or $env:DAAF_NESTED) {
+    $SkipMenu = $true
+    if (-not $SelectedSource) { $SelectedSource = "--archive" }
+}
+
 # --- Preflight ---
 if (-not (Test-Path "docker-compose.yml")) {
     Write-Host "ERROR: docker-compose.yml not found in the current directory." -ForegroundColor Red
@@ -96,11 +126,99 @@ if ($Running -eq 0) {
     Write-Host "DAAF container is running."
 }
 
+# --- Recover orphaned session logs ---
+# The recovery hook archives transcripts from sessions that ended without
+# a clean SessionEnd (e.g., crashes). The hook's foreground portion returns
+# immediately, but actual recovery runs in a detached background subshell
+# inside the container (& disown). The sleep gives that subprocess time to
+# finish before we discover log sources.
+Write-Host "Checking for orphaned session logs..."
+$savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
+'{"session_id":"recovery","transcript_path":"/home/appuser/.claude/projects/-daaf/_.jsonl"}' | docker compose exec -T -e CLAUDE_PROJECT_DIR=/daaf daaf-docker bash /daaf/.claude/hooks/recover-session-logs.sh 2>$null
+$global:LASTEXITCODE = 0
+$ErrorActionPreference = $savedEAP
+if ($env:DAAF_DRY_RUN -ne "1") {
+    Start-Sleep -Seconds 2
+}
+
+# --- Select log source ---
+if (-not $SkipMenu) {
+    # Discover all log sources via helper script (avoids bash -c quoting issues)
+    $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
+    $SourcesRaw = docker compose exec -T daaf-docker bash /daaf/scripts/discover_log_sources.sh 2>$null
+    $ErrorActionPreference = $savedEAP
+
+    # Build menu from pipe-delimited output
+    $MenuPaths = @()
+    $MenuLabels = @()
+
+    if ($SourcesRaw) {
+        foreach ($line in @($SourcesRaw)) {
+            $cleanLine = "$line".Trim()
+            if (-not $cleanLine) { continue }
+            $parts = $cleanLine -split '\|', 2
+            if ($parts.Count -lt 2) { continue }
+            $sourceId = $parts[0].Trim()
+            $sessionCount = 0
+            $null = [int]::TryParse(($parts[1] -replace '\D', '').Trim(), [ref]$sessionCount)
+            if ($sessionCount -eq 0) { continue }
+
+            $countWord = "sessions"
+            if ($sessionCount -eq 1) { $countWord = "session" }
+
+            if ($sourceId -eq "ARCHIVE") {
+                $MenuPaths += "--archive"
+                $MenuLabels += "Full session archive ($sessionCount $countWord)"
+            } else {
+                $folderName = Split-Path $sourceId -Leaf
+                $underscoreIdx = $folderName.IndexOf('_')
+                if ($underscoreIdx -gt 0) {
+                    $displayDate = $folderName.Substring(0, $underscoreIdx)
+                    $displayTitle = $folderName.Substring($underscoreIdx + 1) -replace '_', ' '
+                } else {
+                    $displayDate = ""
+                    $displayTitle = $folderName
+                }
+                $MenuPaths += $sourceId
+                $MenuLabels += "$displayDate $displayTitle ($sessionCount $countWord)"
+            }
+        }
+    }
+
+    if ($MenuPaths.Count -eq 0) {
+        Write-Host ""
+        Write-Host "No log sources found. Run a DAAF session first to generate logs."
+        Wait-AndExit 0
+    }
+
+    Write-Host ""
+    Write-Host "DAAF Log Explorer -- Select a log source:"
+    Write-Host ""
+    for ($i = 0; $i -lt $MenuLabels.Count; $i++) {
+        Write-Host ("  {0}) {1}" -f ($i + 1), $MenuLabels[$i])
+    }
+    Write-Host ""
+    $selection = Read-Host "Enter selection"
+
+    $selNum = 0
+    if (-not [int]::TryParse($selection, [ref]$selNum) -or $selNum -lt 1 -or $selNum -gt $MenuPaths.Count) {
+        Write-Host "ERROR: Invalid selection: $selection" -ForegroundColor Red
+        Wait-AndExit 1
+    }
+
+    $SelectedSource = $MenuPaths[$selNum - 1]
+}
+
+# --- Launch log viewer ---
 Write-Host ""
 Write-Host "Opening DAAF Log Explorer..."
 Write-Host ""
 $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
-docker compose exec daaf-docker bash /daaf/scripts/generate_log_viewer.sh --archive
+if ($SelectedSource -eq "--archive") {
+    docker compose exec daaf-docker bash /daaf/scripts/generate_log_viewer.sh --archive
+} else {
+    docker compose exec daaf-docker bash /daaf/scripts/generate_log_viewer.sh "$SelectedSource"
+}
 $ErrorActionPreference = $savedEAP
 if ($LASTEXITCODE -ne 0) {
     Write-Host ""
