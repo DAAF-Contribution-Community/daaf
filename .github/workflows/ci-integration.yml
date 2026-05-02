@@ -32,6 +32,7 @@ on:
     - cron: '0 6 * * 0'  # Weekly on Sunday at 6 AM UTC
   workflow_dispatch: {}
   push:
+    branches: ['**']
     tags: ['v*']
     paths:
       - 'Dockerfile'
