@@ -234,6 +234,15 @@ Remove-Item $readyLog -ErrorAction SilentlyContinue
 
 # --- Clone the full repository into the Docker volume ---
 Write-Host "[4/4] Cloning DAAF repository files into the Docker container ..."
+
+# On reinstall, remove the existing .git directory first.  Git pack files are
+# mode 444 (read-only by design) which prevents cp -a from overwriting them.
+# The research/ folder is preserved -- only framework files are replaced.
+$savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
+docker compose -f "$InstallDir\docker-compose.yml" exec -T daaf-docker `
+    bash -c 'rm -rf /daaf/.git /daaf/.pre-commit-config.yaml /daaf/.gitignore /daaf/.claudeignore 2>/dev/null; true'
+$ErrorActionPreference = $savedEAP
+
 $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
 docker compose -f "$InstallDir\docker-compose.yml" exec -T daaf-docker `
     git clone --depth 1 -b "$Branch" "https://github.com/$Repo.git" /tmp/daaf-clone
