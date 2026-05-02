@@ -671,7 +671,7 @@ jobs:
           cp restore_from_backup.sh /tmp/empty_restore_dir/
           cp docker-compose.yml /tmp/empty_restore_dir/
           set +e
-          bash /tmp/empty_restore_dir/restore_from_backup.sh </dev/null > /tmp/restore_nobackup.txt 2>&1
+          cd /tmp/empty_restore_dir && bash restore_from_backup.sh </dev/null > /tmp/restore_nobackup.txt 2>&1
           EXIT_CODE=$?
           cat /tmp/restore_nobackup.txt
           set -e
