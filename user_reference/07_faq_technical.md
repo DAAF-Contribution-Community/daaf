@@ -513,6 +513,20 @@ DAAF has several mechanisms to handle this:
 
 If you notice Claude asking questions it already asked, or making decisions that contradict earlier ones, the best course of action is to prompt it to check its STATE.md and Plan.md, or to restart the session with `/clear` and the restart prompt.
 
+### Q: Claude seems to be making things up about data variables or endpoints
+
+This is one of the most common -- and most important -- symptoms to recognize. If DAAF confidently references variable names, API endpoints, coded value schemes, or data structures that don't match reality, the most likely cause is a **skill or reference file that didn't load properly**.
+
+DAAF has extensive curated knowledge about its supported data sources, stored in skill files. When these skills load correctly, agents have access to exact variable names, precise endpoint paths, correct coded values, and known caveats. When a skill *doesn't* load -- which can happen due to the non-deterministic nature of LLMs -- the agent falls back on its general training data and fills in the gaps with plausible-sounding but potentially incorrect details.
+
+**What to do:**
+1. Make sure **Verbose output** is set to **True** in `/config`. This is your primary tool for monitoring how agents are deciding to load or not to load certain reference files.
+2. Ask DAAF to verify: "Can you double-check that variable name against the actual skill documentation?" or "Did the agent load the CCD data source skill before writing that script?"
+3. If the issue persists, try restarting the session with `/clear` -- a fresh context often resolves loading issues. For Full Pipeline mode, DAAF's session recovery system will pick up where you left off.
+4. Report persistent loading failures by [opening an issue](https://github.com/DAAF-Contribution-Community/daaf/issues) -- patterns of failure help us improve DAAF's loading reliability.
+
+For more detail, see [Best Practices — Monitoring DAAF's Internal Reference Loading](03_best_practices.md#monitoring-daafs-internal-reference-loading).
+
 ---
 
 ## Recommended Next Steps

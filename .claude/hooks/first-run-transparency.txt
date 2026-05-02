@@ -31,6 +31,7 @@ DAAF generates transparent, auditable code and documentation so you CAN verify e
 5. WHAT THIS MEANS IN PRACTICE:
 - Always review core products from DAAF: early and often (e.g., preliminary scoping notes, research plan drafts)
 - Scrutinize results with your domain knowledge, especially anything that implies causation
+- Pay close attention to when DAAF loads reference files and Skills to inform and ground its work -- and make sure it's not taking shortcuts or going off of vibes
 - Treat DAAF's output as a high-quality first draft requiring expert review, not as a finished product
 - Know that DAAF's automated quality checks are strong but not infallible — they are one layer of defense, not the only one
 - Review the References section in reports: DAAF does its best to track and attribute citations for data sources, methods, and tools used, but citations can be wrong, incomplete, or missing entirely — you should verify that the right things are credited and that the citations themselves are accurate

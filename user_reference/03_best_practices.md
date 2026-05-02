@@ -340,6 +340,30 @@ But automated validation cannot assess everything. Here is what still requires a
 
 **Ethical considerations.** DAAF does not assess the ethical dimensions of your analysis. If you are working with data that involves vulnerable populations, politically sensitive topics, or potential for misuse of findings, those considerations are entirely your responsibility.
 
+### Monitoring DAAF's Internal Reference Loading
+
+There's one oversight responsibility that's easy to overlook because it's about DAAF's own internal mechanics rather than the substance of your analysis: **making sure DAAF actually loaded the reference files and skills it was supposed to load.**
+
+LLMs are non-deterministic, and DAAF's reference loading is orchestrated by an LLM. This means that occasionally -- not often, but not never -- an agent will proceed without loading a skill it was instructed to load, or the orchestrator will skip a reference file it was supposed to read. When this happens, the agent falls back on its general training, which produces output that looks correct but is built on plausible inference rather than curated knowledge.
+
+**Verbose output is your primary monitoring tool.** When you set Verbose output to True in `/config` (which you should -- it's a [required configuration setting](01_installation_and_quickstart.md#configure-claude-code-required)), you can see the internal thought process informing the file reads that DAAF's agents make. Here's what to watch for:
+
+**Signs that something may not have loaded:**
+- An agent explicitly mentions wanting to load something but then never doing it
+- An agent notes in its thinking block instructions to load a reference file, but deciding it doesn't need to for some ambiguous reason
+- An agent makes confident claims about variable names, API endpoints, or coded values that you can't find in the actual data or documentation
+- An agent writes code that uses variable names or data structures that don't match what the data source actually provides
+- You see an agent proceed directly to writing code without any visible skill or reference loading in the verbose output
+- Error messages about unexpected columns, missing variables, or failed API calls -- these often indicate the agent was working from hallucinated rather than loaded specifications
+
+**What to do when you suspect a loading failure:**
+1. **Ask DAAF to verify.** Simply say something like: "Can you check whether the agent actually loaded the CCD skill before writing that script?" or "That variable name doesn't look right -- can you verify it against the data source documentation?"
+2. **Request a re-run.** If a script was clearly written without the right context, ask DAAF to re-run that specific step with explicit instructions to load the relevant skill first.
+3. **Check the script execution logs.** Even if the agent hallucinated a variable name, the script's execution log will show whether the code actually worked. Failed scripts with `KeyError` or unexpected empty results often point back to a loading failure.
+4. **Check Session logs to verify reference loading sequences.** DAAF's built-in session log viewer was built in part to help users monitor exactly whether and when DAAF loads proper reference files to inform its work. Load up your session and explore how the orchestrator and subagents loaded reference files accordingly.
+
+The good news is that DAAF's dual-layer validation (CP checkpoints + QA code review) will catch many loading failures *downstream* -- a script that uses fabricated variable names will typically fail at execution or get flagged during QA review. But catching failures early, at the loading stage, saves time and prevents the cascading revisions that follow a fundamentally misinformed script.
+
 ---
 
 ## When and How to Request Revisions

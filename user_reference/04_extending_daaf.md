@@ -279,7 +279,7 @@ What data sources does DAAF know about? Can you tell me about
 [your new data source]?
 ```
 
-If the skill is properly placed, DAAF should be able to describe the data source, list key variables, and mention important caveats. If it can't find the skill or gives a generic response, verify that the skill's YAML frontmatter has a clear `description` field and that `SKILL.md` is in `.claude/skills/{skill-name}/`.
+If the skill is properly placed, DAAF should be able to describe the data source, list key variables, and mention important caveats. If it can't find the skill or gives a generic response, verify that the skill's YAML frontmatter has a clear `description` field and that `SKILL.md` is in `.claude/skills/{skill-name}/`. Note: if the skill file exists and the frontmatter looks correct, this may also be a non-deterministic loading issue rather than a content problem -- LLMs don't always load what they're told to load. Try the query again in a fresh session before assuming your skill content is wrong.
 
 ### Fetch Test
 
