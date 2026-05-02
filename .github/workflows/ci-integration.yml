@@ -736,7 +736,9 @@ jobs:
       # (merge) when it detects local commits ahead of upstream.
       - name: Update with local-only commits
         working-directory: daaf-docker
-        run: bash update_daaf.sh 2>&1 | tee /tmp/update_local_commits.txt
+        run: |
+          bash update_daaf.sh > /tmp/update_local_commits.txt 2>&1
+          cat /tmp/update_local_commits.txt
 
       - name: Verify container running after update with local commits
         working-directory: daaf-docker
