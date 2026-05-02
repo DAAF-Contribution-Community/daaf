@@ -138,9 +138,10 @@ RUN uv pip install --system \
 # Install code-server (browser-based VS Code)
 # ============================================
 ARG CODE_SERVER_VERSION=4.117.0
-RUN curl -fOL https://github.com/coder/code-server/releases/download/v${CODE_SERVER_VERSION}/code-server_${CODE_SERVER_VERSION}_amd64.deb \
-    && dpkg -i code-server_${CODE_SERVER_VERSION}_amd64.deb \
-    && rm -f code-server_${CODE_SERVER_VERSION}_amd64.deb
+RUN ARCH=$(dpkg --print-architecture) \
+    && curl -fOL https://github.com/coder/code-server/releases/download/v${CODE_SERVER_VERSION}/code-server_${CODE_SERVER_VERSION}_${ARCH}.deb \
+    && dpkg -i code-server_${CODE_SERVER_VERSION}_${ARCH}.deb \
+    && rm -f code-server_${CODE_SERVER_VERSION}_${ARCH}.deb
 
 # ============================================
 # Create non-root user for security
@@ -175,8 +176,9 @@ ARG EXT_GITLENS=17.12.2
 ARG EXT_RAINBOW_CSV=3.24.1
 ARG EXT_YAML=1.22.0
 ARG EXT_GITHUB_THEME=6.3.5
-RUN curl -fsSL -o /tmp/debugpy.vsix \
-      "https://open-vsx.org/api/ms-python/debugpy/linux-x64/${EXT_MS_DEBUGPY}/file/ms-python.debugpy-${EXT_MS_DEBUGPY}@linux-x64.vsix" \
+RUN VSCODE_ARCH=$(if [ "$(dpkg --print-architecture)" = "amd64" ]; then echo x64; else echo arm64; fi) \
+    && curl -fsSL -o /tmp/debugpy.vsix \
+      "https://open-vsx.org/api/ms-python/debugpy/linux-${VSCODE_ARCH}/${EXT_MS_DEBUGPY}/file/ms-python.debugpy-${EXT_MS_DEBUGPY}@linux-${VSCODE_ARCH}.vsix" \
     && curl -fsSL -o /tmp/python-envs.vsix \
       "https://open-vsx.org/api/ms-python/vscode-python-envs/${EXT_MS_PYTHON_ENVS}/file/ms-python.vscode-python-envs-${EXT_MS_PYTHON_ENVS}.vsix" \
     && curl -fsSL -o /tmp/python.vsix \
