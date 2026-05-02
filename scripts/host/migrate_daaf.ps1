@@ -44,6 +44,11 @@ function Wait-ForUser {
         Write-Host ""
         Read-Host "Press Enter to close this window"
     }
+    # For non-zero exits, use [Environment]::Exit() which terminates the CLR
+    # process unconditionally.  Plain `exit` fails to propagate when this
+    # script is dot-sourced for testing -- it only unwinds the dot-sourced
+    # scope instead of terminating the host process.
+    if ($ExitCode -ne 0) { [Environment]::Exit($ExitCode) }
     exit $ExitCode
 }
 
@@ -167,7 +172,7 @@ trap {
         Write-Host ""
         Read-Host "Press Enter to close this window"
     }
-    exit 1
+    [Environment]::Exit(1)
 }
 
 # =====================================================================

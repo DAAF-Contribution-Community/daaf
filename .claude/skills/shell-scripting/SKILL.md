@@ -195,6 +195,7 @@ Existing patterns in DAAF scripts that this skill codifies:
 | What to test and what to skip | `./references/testing.md` |
 | Bash exit code masking | `./references/gotchas.md` |
 | Bash set -e edge cases | `./references/gotchas.md` |
+| PowerShell `exit` in dot-sourced functions | `./references/gotchas.md` |
 | PowerShell $LASTEXITCODE vs $? | `./references/gotchas.md` |
 | PowerShell UTF-8 BOM breaks iex | `./references/gotchas.md` |
 | PowerShell implicit returns | `./references/gotchas.md` |

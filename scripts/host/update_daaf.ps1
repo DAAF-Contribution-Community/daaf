@@ -43,6 +43,11 @@ function Wait-AndExit {
         Write-Host ""
         Read-Host "Press Enter to continue"
     }
+    # For non-zero exits, use [Environment]::Exit() which terminates the CLR
+    # process unconditionally.  Plain `exit` fails to propagate when this
+    # script is dot-sourced for testing -- it only unwinds the dot-sourced
+    # scope instead of terminating the host process.
+    if ($Code -ne 0) { [Environment]::Exit($Code) }
     exit $Code
 }
 
@@ -153,7 +158,7 @@ trap {
         Write-Host ""
         Read-Host "Press Enter to continue"
     }
-    exit 1
+    [Environment]::Exit(1)
 }
 
 # =====================================================================

@@ -137,6 +137,56 @@ done
 
 ## PowerShell Gotchas
 
+### `exit` in Dot-Sourced Script Functions Does Not Terminate the Host
+
+**The problem:** When a script is loaded via `. script.ps1` (dot-sourcing), `exit N` inside a function defined in that script does not terminate the calling process. Instead, it unwinds the dot-sourced scope and returns control to the caller -- with exit code 0:
+
+```powershell
+# inner.ps1
+function Stop-WithError {
+    Write-Host "Error detected"
+    exit 1   # Caller expects this to terminate the process
+}
+Stop-WithError
+Write-Host "This should not print"  # Does not print (exit unwinds script scope)
+
+# caller.ps1
+. ./inner.ps1
+Write-Host "Back in caller -- exit 1 did NOT terminate"  # This DOES print!
+# Process exits with code 0
+```
+
+**When run directly** (`pwsh -File inner.ps1`), `exit 1` terminates the process with code 1 as expected. The bug is specific to dot-sourced invocation.
+
+**Why it happens:** Dot-sourcing (`. script.ps1`) runs the script in the caller's scope, not a child scope. The `exit` keyword unwinds to the scope boundary of the dot-sourced content, then returns to the caller rather than terminating the host process. This is a long-standing PowerShell behavior, not a bug in any specific version.
+
+**When this bites:** Pester test wrappers that define mock functions and then dot-source the script under test:
+```powershell
+# test_wrapper.ps1
+function docker { $global:LASTEXITCODE = 1; return }  # Mock
+. './real_script.ps1'                                    # Dot-source
+# real_script.ps1 detects error, calls exit 1
+# But exit 1 just returns here -- wrapper exits 0
+```
+
+**Fix:** Use `[Environment]::Exit(N)` for non-zero exit codes. This terminates the CLR process unconditionally, regardless of how the script was loaded:
+
+```powershell
+function Wait-ForUser {
+    param([int]$ExitCode = 0)
+    if (-not $env:DAAF_NESTED) { Read-Host "Press Enter to close" }
+    # [Environment]::Exit() bypasses scope unwinding -- always terminates
+    if ($ExitCode -ne 0) { [Environment]::Exit($ExitCode) }
+    exit $ExitCode  # For success (0), plain exit is safe and less disruptive
+}
+```
+
+**Why not `[Environment]::Exit()` for all exits?** It bypasses PowerShell cleanup (finally blocks, Dispose). More importantly, it kills the entire process -- including the Pester test host if the script is called via `&` (call operator) in non-subprocess tests. Using it only for non-zero exits keeps success-path tests (dry-run, smoke) safe while fixing error-path tests that run in subprocesses.
+
+**Severity:** High. The failure is completely silent -- the script appears to detect the error (prints error messages), but the process exit code is 0. Test assertions on `$LASTEXITCODE` fail with no indication of why.
+
+---
+
 ### `$?` Is Unreliable for Native Commands
 
 **The problem:** `$?` checks whether the last *PowerShell operation* succeeded, but stderr output from native commands can make `$?` return `$false` even when the command exited 0:
@@ -492,6 +542,7 @@ In Bash, `/` is always the separator. No cross-platform concern within Bash itse
 | `2>/dev/null` on probes | Bash | Medium | — |
 | `cd` without `\|\| exit` | Bash | Medium | SC2164 |
 | Backtick nesting | Bash | Low | SC2006 |
+| `exit` in dot-sourced functions | PowerShell | High | — |
 | `$?` for native commands | PowerShell | High | — |
 | Expression context breaks TTY | PowerShell | High | — |
 | `$ErrorActionPreference` scope | PowerShell | High | — |

@@ -362,7 +362,7 @@ jobs:
             $env:DAAF_DRY_RUN = "1"
             $env:DAAF_NESTED = "1"
             try {
-              $output = & $ScriptPath 2>&1 | Out-String
+              $output = & $ScriptPath *>&1 | Out-String
               if ($LASTEXITCODE -and $LASTEXITCODE -ne 0) {
                 Write-Host "FAILED: $name (exit code $LASTEXITCODE)"
                 $script:failed = 1
