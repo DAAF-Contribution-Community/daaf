@@ -206,7 +206,7 @@ RUN VSCODE_ARCH=$(if [ "$(dpkg --print-architecture)" = "amd64" ]; then echo x64
     && code-server --install-extension /tmp/github-theme.vsix \
     && rm /tmp/*.vsix
 
-# Set default code-server settings (GitHub theme, sensible defaults)
+# Set default code-server vscode settings (GitHub theme, sensible defaults)
 RUN echo '{"workbench.colorTheme":"GitHub Dark Default","editor.fontSize":14,"editor.minimap.enabled":false,"telemetry.telemetryLevel":"off","extensions.autoUpdate":false,"security.workspace.trust.enabled":false}' \
     > /home/appuser/.local/share/code-server/User/settings.json
 
