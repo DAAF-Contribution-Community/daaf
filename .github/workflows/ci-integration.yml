@@ -706,7 +706,7 @@ jobs:
         working-directory: daaf-docker
         run: |
           cp Dockerfile Dockerfile.good
-          echo "INVALID_INSTRUCTION this_will_fail" >> Dockerfile
+          docker compose exec -T daaf-docker bash -c 'echo "INVALID_INSTRUCTION this_will_fail" >> /daaf/Dockerfile'
 
       - name: Rebuild with broken Dockerfile (expect failure)
         working-directory: daaf-docker
@@ -724,7 +724,9 @@ jobs:
 
       - name: Fix the Dockerfile
         working-directory: daaf-docker
-        run: mv Dockerfile.good Dockerfile
+        run: |
+          mv Dockerfile.good Dockerfile
+          docker compose exec -T daaf-docker bash -c 'cat > /daaf/Dockerfile' < Dockerfile
 
       - name: Rebuild with fixed Dockerfile
         working-directory: daaf-docker
