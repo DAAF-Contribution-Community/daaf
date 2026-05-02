@@ -1,7 +1,7 @@
 ---
 name: education-data-context
 description: >-
-  Interpretation guidance for Urban Institute Portal datasets. Coded values (-1/-2/-3), year definitions, grade encoding, suppression, licensing, cross-source joins. Use when interpreting Portal data before analysis. Routes to source-specific skills.
+  Interpretation guidance for Urban Institute Education Data Portal datasets. The Portal is a curation layer over federal data: lowercase variable names, integer-encoded categoricals, standardized missing codes (-1 missing, -2 not applicable, -3 suppressed). Covers year definitions, grade encoding (grade=-1 is Pre-K, not missing), suppression rates, ODC-By licensing, and cross-source join identifiers. Load before analyzing any Portal data. Routes to source-specific deep-dive skills for individual datasets.
 metadata:
   audience: any-agent
   domain: data-documentation

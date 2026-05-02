@@ -1,7 +1,7 @@
 ---
 name: election-data-source-countypres
 description: >-
-  County Presidential Returns 2000-2024 (MIT MEDSL). Vote shares, party trends, turnout by county_fips (joins census/education data). Requires HARVARD_DATAVERSE_API_KEY. Critical: mode='TOTAL' drops ~1K counties post-2020 — use 3-pattern reconstruction
+  County Presidential Returns 2000-2024 (MIT MEDSL). Vote shares, party trends, turnout by county_fips (joins census/education data). Requires HARVARD_DATAVERSE_API_KEY set via environment_settings.txt. Critical: naive mode='TOTAL' filtering silently drops ~1,000 counties in post-2020 data where states report by vote mode (absentee, election-day, provisional) instead of totals — use 3-pattern reconstruction (TOTAL-present rows kept, breakdown-only counties summed across modes, empty-string mode rows reclassified). Categorical variables use uppercase strings, not Portal integer codes.
 metadata:
   audience: any-agent
   domain: data-source

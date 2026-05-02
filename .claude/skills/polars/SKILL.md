@@ -1,7 +1,7 @@
 ---
 name: polars
 description: >-
-  Polars DataFrame library for high-performance data manipulation. Lazy/eager execution, expressions, I/O (CSV, Parquet, JSON), aggregations, joins, string/datetime ops, pandas interop. Use for Polars DataFrames or reading/writing Parquet files.
+  High-performance data manipulation with lazy/eager execution, expressions, I/O (CSV, Parquet, JSON), aggregations, joins, string/datetime ops, and pandas interop. Covers performance optimization patterns and common anti-patterns. DAAF's default DataFrame library — all pipeline code uses Polars, not pandas. Use for any DataFrame operation, reading/writing Parquet files, or migrating existing pandas code to Polars.
 metadata:
   audience: research-coders
   domain: python-library

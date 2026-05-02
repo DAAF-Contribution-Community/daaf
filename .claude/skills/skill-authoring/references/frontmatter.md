@@ -254,10 +254,7 @@ Unknown frontmatter fields are ignored but may cause validation errors in strict
 ---
 name: polars
 description: >-
-  Polars DataFrame library for high-performance data manipulation. Lazy/eager
-  execution, expressions, I/O (CSV, Parquet, JSON), aggregations, joins,
-  string/datetime ops, pandas interop. Use for Polars DataFrames or
-  reading/writing Parquet files.
+  High-performance data manipulation with lazy/eager execution, expressions, I/O (CSV, Parquet, JSON), aggregations, joins, string/datetime ops, and pandas interop. Covers performance optimization patterns and common anti-patterns. DAAF's default DataFrame library — all pipeline code uses Polars, not pandas. Use for any DataFrame operation, reading/writing Parquet files, or migrating existing pandas code to Polars.
 metadata:
   audience: research-coders
   domain: python-library
@@ -275,7 +272,7 @@ from pandas, reading Parquet files, or optimizing data pipeline performance.
 [Rest of skill body...]
 ```
 
-Note how the frontmatter description (243 chars) captures the essentials, while the body paragraph preserves the full detail including database I/O, NumPy interop, and migration use cases that didn't fit.
+Note how the frontmatter description (418 chars) leads with DAAF-specific identity ("default DataFrame library — not pandas"), then covers capabilities and use triggers. The body paragraph preserves additional detail (database I/O, NumPy interop) that didn't fit even in the expanded description. Descriptions can be up to 1,536 characters; use the extra space strategically for framework context, critical caveats, and disambiguation — not for exhaustive feature lists.
 
 ## Description Writing Tips
 
