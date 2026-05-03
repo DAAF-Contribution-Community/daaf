@@ -201,7 +201,7 @@ if [ "$SERVE" = true ]; then
         LISTEN_CMD=""
         [ -n "$LISTEN_PID" ] && LISTEN_CMD=$(ps -p "$LISTEN_PID" -o args= 2>/dev/null || true)
 
-        if echo "$LISTEN_CMD" | grep -q "http.server"; then
+        if echo "$LISTEN_CMD" | grep -qE "http\.server|log_viewer_server"; then
             echo "Server already running on port $PORT (PID $LISTEN_PID)."
             echo ""
             echo "  Open in your browser:"
@@ -216,15 +216,11 @@ if [ "$SERVE" = true ]; then
             echo "  Open in your browser:"
             echo "  http://localhost:$PORT/$VIEWER_URL"
             echo ""
-            echo "  Press Ctrl+C to stop the server."
-            echo ""
-            cd "$REPO_ROOT"
-            python3 -c "
-import http.server, socketserver
-socketserver.TCPServer.allow_reuse_address = True
-with socketserver.TCPServer(('', $PORT), http.server.SimpleHTTPRequestHandler) as httpd:
-    httpd.serve_forever()
-"
+            if [ "$ARCHIVE" = true ]; then
+                python3 "$SCRIPT_DIR/log_viewer_server.py" --port "$PORT" --root "$REPO_ROOT" --archive --logs-dir "$LOGS_DIR"
+            else
+                python3 "$SCRIPT_DIR/log_viewer_server.py" --port "$PORT" --root "$REPO_ROOT" --project-path "$PROJECT_PATH"
+            fi
         else
             echo "ERROR: Port $PORT is in use but the owning process could not be identified."
             echo "Free the port manually or use --port to specify a different one."
@@ -236,15 +232,11 @@ with socketserver.TCPServer(('', $PORT), http.server.SimpleHTTPRequestHandler) a
         echo "  Open in your browser:"
         echo "  http://localhost:$PORT/$VIEWER_URL"
         echo ""
-        echo "  Press Ctrl+C to stop the server."
-        echo ""
-        cd "$REPO_ROOT"
-        python3 -c "
-import http.server, socketserver
-socketserver.TCPServer.allow_reuse_address = True
-with socketserver.TCPServer(('', $PORT), http.server.SimpleHTTPRequestHandler) as httpd:
-    httpd.serve_forever()
-"
+        if [ "$ARCHIVE" = true ]; then
+            python3 "$SCRIPT_DIR/log_viewer_server.py" --port "$PORT" --root "$REPO_ROOT" --archive --logs-dir "$LOGS_DIR"
+        else
+            python3 "$SCRIPT_DIR/log_viewer_server.py" --port "$PORT" --root "$REPO_ROOT" --project-path "$PROJECT_PATH"
+        fi
     fi
 else
     echo "Manifest generated. To view, re-run without --no-serve:"

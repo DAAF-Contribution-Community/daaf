@@ -52,6 +52,60 @@ body {
 }
 .header .session-select:hover { border-color: #3b82f6; }
 
+/* --- Refresh Controls --- */
+.header .refresh-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+.header .refresh-btn {
+  background: #2d2d4e;
+  color: #e2e8f0;
+  border: 1px solid #475569;
+  border-radius: 4px;
+  padding: 4px 10px;
+  font-size: 0.8rem;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: border-color 0.15s, opacity 0.15s;
+}
+.header .refresh-btn:hover { border-color: #3b82f6; }
+@keyframes refresh-pulse {
+  0%, 100% { opacity: 0.6; }
+  50% { opacity: 1; }
+}
+.header .refresh-btn.refreshing {
+  cursor: wait;
+  animation: refresh-pulse 1.2s ease-in-out infinite;
+}
+.header .auto-refresh-group {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.72rem;
+  color: #94a3b8;
+}
+.header .auto-refresh-group label {
+  cursor: pointer;
+  user-select: none;
+}
+.header .auto-refresh-group select {
+  background: #2d2d4e;
+  color: #e2e8f0;
+  border: 1px solid #475569;
+  border-radius: 3px;
+  padding: 2px 4px;
+  font-size: 0.72rem;
+  cursor: pointer;
+}
+.header .auto-refresh-group select:hover { border-color: #3b82f6; }
+.header .last-refreshed {
+  font-size: 0.68rem;
+  color: #64748b;
+  white-space: nowrap;
+}
+
 /* (session tabs replaced by header dropdown) */
 
 /* --- Stats Bar --- */
@@ -608,24 +662,6 @@ body {
   word-break: break-word;
 }
 
-/* --- Raw JSONL --- */
-.raw-jsonl-panel {
-  background: #1e293b;
-  color: #e2e8f0;
-  padding: 10px 12px;
-  border-radius: 4px;
-  font-size: 0.72rem;
-  font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
-  line-height: 1.5;
-  max-height: 300px;
-  overflow: auto;
-  margin: 6px 0;
-  white-space: pre-wrap;
-  word-break: break-all;
-}
-.raw-jsonl-panel .loading-msg { color: #94a3b8; font-style: italic; }
-.raw-jsonl-panel .error-msg { color: #fca5a5; }
-
 /* --- Activity Groups (visual delineation) --- */
 .activity-group {
   margin: 6px 0;
@@ -720,6 +756,19 @@ body {
   <h1>DAAF Log Explorer</h1>
   <div class="project-name" id="projectName">Loading...</div>
   <select class="session-select" id="sessionSelect" style="display:none"></select>
+  <div class="refresh-controls">
+    <button class="refresh-btn" id="refreshBtn" title="Refresh session manifest">Refresh</button>
+    <div class="auto-refresh-group">
+      <label for="autoRefreshToggle"><input type="checkbox" id="autoRefreshToggle"> Auto</label>
+      <select id="autoRefreshInterval">
+        <option value="60">1m</option>
+        <option value="300" selected>5m</option>
+        <option value="600">10m</option>
+        <option value="1800">30m</option>
+      </select>
+      <span class="last-refreshed" id="lastRefreshed"></span>
+    </div>
+  </div>
 </div>
 
 <div class="stats-bar" id="statsBar"></div>
@@ -1542,25 +1591,33 @@ function attachDetailHandlers(panel) {
       var line = parseInt(this.dataset.line);
       if (!file || isNaN(line)) return;
 
-      // Toggle: if panel already exists, remove it
-      var existing = this.nextElementSibling;
-      if (existing && existing.dataset.jsonlPanel === 'true') {
-        existing.remove();
-        return;
-      }
+      // Show raw JSONL in the file preview panel (right side)
+      var previewPanel = document.getElementById('filePreview');
+      var label = file.split('/').pop() + ':' + line;
+      previewPanel.innerHTML =
+        '<div class="preview-header">' +
+        '<span class="preview-path" title="' + escapeHtml(file) + ' line ' + line + '">Raw JSONL \u2014 ' + escapeHtml(label) + '</span>' +
+        '<button class="preview-close" id="previewCloseBtn">\u00d7</button>' +
+        '</div>' +
+        '<div class="preview-content"><div style="padding:20px;color:#94a3b8;font-style:italic">Loading line ' + line + '...</div></div>';
 
-      var container = document.createElement('div');
-      container.dataset.jsonlPanel = 'true';
-      this.parentNode.insertBefore(container, this.nextSibling);
-      container.innerHTML = '<div class="raw-jsonl-panel"><span class="loading-msg">Loading line ' + line + '...</span></div>';
+      document.getElementById('previewCloseBtn').addEventListener('click', closeFilePreview);
+
+      var contentEl = previewPanel.querySelector('.preview-content');
       var result = await fetchJsonlLine(file, line);
+      var text = '';
       if (result.error) {
-        container.innerHTML = '<div class="raw-jsonl-panel"><span class="error-msg">' + escapeHtml(result.error) + '</span></div>';
+        text = 'Error: ' + result.error;
       } else if (result.data) {
-        container.innerHTML = '<div class="raw-jsonl-panel">' + escapeHtml(JSON.stringify(result.data, null, 2)) + '</div>';
+        text = JSON.stringify(result.data, null, 2);
       } else {
-        container.innerHTML = '<div class="raw-jsonl-panel">' + escapeHtml(result.raw || '(empty)') + (result.parseError ? '\n\nParse error: ' + escapeHtml(result.parseError) : '') + '</div>';
+        text = (result.raw || '(empty)') + (result.parseError ? '\n\nParse error: ' + result.parseError : '');
       }
+      var lines = text.split('\n');
+      var lineHtml = lines.map(function(l, i) {
+        return '<span class="ln">' + String(i + 1).padStart(5) + '</span>' + escapeHtml(l);
+      }).join('\n');
+      contentEl.innerHTML = '<pre class="file-content"><code>' + lineHtml + '</code></pre>';
     });
   });
 
@@ -1766,9 +1823,15 @@ function render() {
 })();
 
 // =====================================================================
-// Load Manifest
+// Load Manifest (preserves session selection across refreshes)
 // =====================================================================
 async function loadManifest() {
+  // Save current session identity before reloading
+  var previousSessionId = null;
+  if (manifest && manifest.sessions && manifest.sessions[activeSessionIdx]) {
+    previousSessionId = manifest.sessions[activeSessionIdx].sessionId;
+  }
+
   try {
     var params = new URLSearchParams(window.location.search);
     var manifestUrl = params.get('manifest') || './session_manifest.json';
@@ -1800,8 +1863,114 @@ async function loadManifest() {
     return;
   }
 
+  // Restore session selection if the session still exists
+  if (previousSessionId) {
+    var found = -1;
+    for (var i = 0; i < manifest.sessions.length; i++) {
+      if (manifest.sessions[i].sessionId === previousSessionId) {
+        found = i;
+        break;
+      }
+    }
+    activeSessionIdx = found >= 0 ? found : 0;
+  } else {
+    activeSessionIdx = 0;
+  }
+
+  // Clear JSONL cache on refresh so updated log files are re-fetched
+  jsonlCache = {};
+
   render();
 }
+
+// =====================================================================
+// Refresh Controls
+// =====================================================================
+var refreshInProgress = false;
+var autoRefreshTimerId = null;
+
+async function doRefresh() {
+  if (refreshInProgress) return;
+  refreshInProgress = true;
+  var btn = document.getElementById('refreshBtn');
+  btn.textContent = 'Refreshing\u2026';
+  btn.classList.add('refreshing');
+
+  try {
+    try {
+      var resp = await fetch('/api/refresh-manifest');
+      if (!resp.ok) {
+        var errBody = await resp.text();
+        console.error('Refresh failed:', resp.status, errBody);
+      }
+    } catch (e) {
+      console.error('Refresh request error:', e);
+    }
+
+    // Reload the manifest regardless (the endpoint may have partially succeeded)
+    await loadManifest();
+
+    // Update last-refreshed timestamp
+    var now = new Date();
+    var hh = String(now.getHours()).padStart(2, '0');
+    var mm = String(now.getMinutes()).padStart(2, '0');
+    var ss = String(now.getSeconds()).padStart(2, '0');
+    document.getElementById('lastRefreshed').textContent = 'last: ' + hh + ':' + mm + ':' + ss;
+  } finally {
+    btn.textContent = 'Refresh';
+    btn.classList.remove('refreshing');
+    refreshInProgress = false;
+  }
+}
+
+function startAutoRefresh() {
+  stopAutoRefresh();
+  var intervalSec = parseInt(document.getElementById('autoRefreshInterval').value) || 60;
+  autoRefreshTimerId = setInterval(doRefresh, intervalSec * 1000);
+}
+
+function stopAutoRefresh() {
+  if (autoRefreshTimerId !== null) {
+    clearInterval(autoRefreshTimerId);
+    autoRefreshTimerId = null;
+  }
+}
+
+// Wire up refresh button
+document.getElementById('refreshBtn').addEventListener('click', doRefresh);
+
+// Wire up auto-refresh toggle and interval
+(function() {
+  var toggle = document.getElementById('autoRefreshToggle');
+  var intervalSelect = document.getElementById('autoRefreshInterval');
+
+  // Restore from localStorage
+  var savedEnabled = localStorage.getItem('daaf-auto-refresh-enabled');
+  var savedInterval = localStorage.getItem('daaf-auto-refresh-interval');
+  if (savedInterval && ['60','300','600','1800'].indexOf(savedInterval) >= 0) {
+    intervalSelect.value = savedInterval;
+  }
+  if (savedEnabled !== 'false') {
+    toggle.checked = true;
+    startAutoRefresh();
+  }
+
+  toggle.addEventListener('change', function() {
+    localStorage.setItem('daaf-auto-refresh-enabled', toggle.checked ? 'true' : 'false');
+    if (toggle.checked) {
+      startAutoRefresh();
+    } else {
+      stopAutoRefresh();
+    }
+  });
+
+  intervalSelect.addEventListener('change', function() {
+    localStorage.setItem('daaf-auto-refresh-interval', intervalSelect.value);
+    if (toggle.checked) {
+      startAutoRefresh();
+    }
+  });
+})();
 
 loadManifest();
 </script>
