@@ -28,10 +28,11 @@ DAAF can now be installed with a single command on both macOS/Linux and Windows.
 A complete suite of "helper" convenience scripts (available for both macOS/Linux and Windows) now makes it painless and straightforward to handle the most common DAAF operations. Instead of remembering Docker commands, you can simply run a script:
 
 - **`run_daaf`** -- Start DAAF and Claude Code (automatically sets up the docker container and runs the main commands for you)
-- **`update_daaf`** -- Update to the latest DAAF version available (backs up your work automatically before making changes)
+- **`update_daaf`** -- Update to the latest DAAF version available, backing up your work automatically before making changes, and helping you integrate framework changes and customizations together (more on that below)
 - **`backup_daaf`** / **`restore_from_backup`** -- Save and restore snapshots of your entire DAAF workspace effortlessly. Also allows for painless sharing of entire repositories with colleagues!
 - **`rebuild_daaf`** -- Rebuild the Docker image when needed to update configurations, library installs, updates, etc.
 - **`view_logs`** -- Open the session log viewer in your browser to easily inspect and view what DAAF is doing at every step of its work (more on that below)
+- **`run_vscode`** -- Open a full VS Code editor in your browser for browsing, editing, uploading, downloading, and reviewing files inside the container (more on that below)
 - **`view_notebooks`** -- Open Marimo to browse your analysis notebooks
 
 Every script has both a Bash (.sh, for MacOSX and Linux) and PowerShell (.ps1, for Windows) variant, and all are covered by automated tests and quality checks. This was, by far, the most time-consuming part of this release -- making cross-platform shell scripts that work reliably across macOS, Linux, and Windows is genuinely hard, and the number of edge cases to navigate and problem-solve for was humbling. I suspect there will still be some issues that I couldn't identify on my own, so please do let me know what errors and problems you encounter!
@@ -45,6 +46,14 @@ For anyone coming from an older version that doesn't have this script built-in (
 ### Session Log Viewer
 
 A new in-browser session transcript viewer makes it much easier to see what DAAF is doing under the hood and to diagnose issues when they arise. You can browse past sessions, search across transcripts, filter by session, and inspect individual tool calls -- all from a clean web interface. Launch it with the `view_logs` helper script. This has been genuinely useful for development too -- being able to trace exactly what happened in a subagent's session has saved hours of debugging.
+
+### In-Browser VS Code (code-server)
+
+DAAF now ships with a full VS Code editor (code-server) that runs inside the container and opens right in your browser. Before this, if you wanted to look at files DAAF produced -- scripts, data, reports, logs -- your options were scrolling through the terminal, digging through Docker Desktop's clunky file browser, or copying files out to your host machine. None of that is a great experience when you're trying to review an analysis or understand what happened during a session.
+
+Now you just run `run_vscode` from your installation folder and a complete file editor and browser environment opens in your browser -- file tree, syntax highlighting, search across files, Git history, upload and download files, all of it. It comes pre-loaded with nine extensions (Python, GitLens, Git Graph, Rainbow CSV, Markdown support, and more) and a clean dark theme, so it's ready to use immediately. Everything stays inside the container's security boundary, and you don't need to change anything on your own computer to manage it.
+
+This is one of those changes that sounds minor on paper but makes a huge difference in practice. DAAF produces a *lot* of artifacts over the course of a session, and being able to browse and inspect them in a real editor — instead of one file at a time in the terminal — makes reviewing work dramatically more natural. It's also a much friendlier way to explore the framework itself if you're learning how DAAF works or building new skills and agents.
 
 ### Environment Variable Support
 
