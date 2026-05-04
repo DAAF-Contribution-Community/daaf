@@ -187,6 +187,30 @@ States
 **Multi-file expansion (HIERARCHICAL only):** For HIERARCHICAL file structures, expand the table with per-file rows using the suffix convention. For example, with 2 files (schools + districts):
 - Row `01a` for `01a_load-and-format.py` (schools), row `01b` for `01b_load-and-format.py` (districts)
 - Similarly for scripts 02, 03, 04, 07, 09, 10
+
+---
+
+## Profiling Preliminary Notes
+
+> Orchestrator writes lossless agent findings to disk as preliminary notes files
+> immediately upon receiving each profiling agent's return. These files persist the
+> full agent output (zero compression) and are referenced by subsequent profiling
+> parts and the DI-7 skill authoring agent for full-fidelity access to prior
+> findings. Gate conditions prevent the next part from proceeding until the
+> current part's notes file exists on disk.
+
+| Part | Agent | File Path | Status |
+|------|-------|-----------|--------|
+| A | data-ingest | `output/preliminary_notes/{date}_partA_structural-discovery.md` | [PENDING/WRITTEN] |
+| B | data-ingest | `output/preliminary_notes/{date}_partB_statistical-deep-dive.md` | [PENDING/WRITTEN] |
+| C | data-ingest | `output/preliminary_notes/{date}_partC_relational-analysis.md` | [PENDING/WRITTEN] |
+| D | data-ingest | `output/preliminary_notes/{date}_partD_interpretation-reconciliation.md` | [PENDING/WRITTEN] |
+
+**Status Values:**
+- **PENDING** — Agent not yet dispatched or return not yet persisted
+- **WRITTEN** — File exists on disk with full lossless agent return
+
+**Note:** All four rows must show WRITTEN before DI-7 skill authoring can proceed.
 - Script `07b` appears once (cross-file, not per-file)
 - Conditional scripts (05, 06, 08) appear per-file only if applicable to that specific file
 - Script 11 appears once (cross-file documentation reconciliation)

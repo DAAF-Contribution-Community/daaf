@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # context-reporter.sh — Multi-event context utilization & timestamp hook
 #
 # Injects context window utilization and a current timestamp into Claude's
@@ -31,6 +31,10 @@
 #   0 = success (stdout/JSON processed by Claude Code)
 #   All error paths exit 0 to never block tool execution.
 
+# -u: catch unset variable typos. Deliberately omit -e: this hook must
+# never block tool execution — all error paths exit 0.
+set -u
+
 INPUT=$(cat)
 HOOK_EVENT=$(echo "$INPUT" | jq -r '.hook_event_name // empty' 2>/dev/null) || HOOK_EVENT=""
 SESSION_ID=$(echo "$INPUT" | jq -r '.session_id // "default"' 2>/dev/null) || SESSION_ID="default"
@@ -49,7 +53,7 @@ if [[ -f "$CTX_CACHE" ]]; then
     MAX_CONTEXT=$(cat "$CTX_CACHE" 2>/dev/null)
 else
     LATEST_CTX=$(ls -t /tmp/claude-ctx-window-* 2>/dev/null | head -1)
-    if [[ -n "$LATEST_CTX" ]]; then
+    if [[ -n "${LATEST_CTX:-}" ]]; then
         MAX_CONTEXT=$(cat "$LATEST_CTX" 2>/dev/null)
     fi
 fi
@@ -118,7 +122,7 @@ cache_model() {
         select(.message.model) | .message.model
     ' 2>/dev/null | head -1)
 
-    [[ -n "$model" ]] && echo "$model" > "$cache" 2>/dev/null
+    [[ -n "${model:-}" ]] && echo "$model" > "$cache" 2>/dev/null
 }
 
 # ---------------------------------------------------------------------------
@@ -137,7 +141,7 @@ fi
 
 # Interval elapsed — calculate and emit
 MSG=$(calculate "$TRANSCRIPT_PATH")
-[[ -z "$MSG" ]] && exit 0
+[[ -z "${MSG:-}" ]] && exit 0
 
 # Update the shared timestamp gate
 echo "$NOW" > "$LAST_INJECT_FILE" 2>/dev/null

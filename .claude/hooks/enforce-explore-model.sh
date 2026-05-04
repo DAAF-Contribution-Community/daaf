@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # enforce-explore-model.sh
 # Prevents Explore-type subagents from being launched with the haiku model.
 # Explore agents need frontier-tier reasoning for thorough codebase analysis.

@@ -1,7 +1,7 @@
 ---
 name: svy
 description: >-
-  Complex survey analysis: strata/PSU/weights, variance estimation (Taylor, BRR, jackknife, bootstrap), survey GLM, domain analysis, calibration. Polars-native. Use for NHANES, CPS, ACS PUMS, BRFSS, DHS. Non-survey regression: statsmodels/pyfixest.
+  Complex survey analysis: strata/PSU/weights, variance estimation (Taylor, BRR, jackknife, bootstrap), survey GLM, domain analysis, calibration, survey data I/O (SAS, SPSS, Stata formats). Polars-native. Use for any complex-sample survey: NHANES, CPS, ACS PUMS, BRFSS, DHS, ECLS-K, MEPS-HC. CRITICAL: statsmodels WLS and pyfixest clustered SEs are NOT substitutes for proper survey-weighted analysis — they ignore stratification and unequal probability sampling. Non-survey regression: statsmodels/pyfixest.
 metadata:
   audience: research-coders
   domain: python-library

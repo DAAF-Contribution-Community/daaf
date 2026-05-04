@@ -333,6 +333,8 @@ Based on this source research:
 - Source-specific coded values must be documented with handling actions
 - Any Truth Hierarchy discrepancies must be explicitly documented
 
+**Preliminary Notes Persistence:** The orchestrator writes the full, unmodified source-researcher return to `output/preliminary_notes/{date}_stage3_{source-name}_source-research.md` before extracting a summary for its own working memory. Downstream agents (research-synthesizer, data-planner, plan-checker, data-verifier) read these files directly for full-fidelity access to source research findings.
+
 </downstream_consumer>
 
 ---

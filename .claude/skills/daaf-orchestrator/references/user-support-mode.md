@@ -145,6 +145,104 @@ Users frequently have questions about the tools DAAF runs on, not just DAAF itse
 
 ---
 
+## Update Conflict Resolution Walkthrough
+
+When a user enters Claude Code with a prompt starting with "User support mode" and
+mentioning DAAF update conflicts, this is a structured handoff from the
+`update_daaf` script. The update script launched Claude Code via
+`docker compose exec -it` and is waiting for the user to type `/exit` so the
+script can complete its remaining post-update steps.
+
+### Conflict types
+
+The user's prompt will indicate one of three conflict types. The resolution
+walkthrough (steps 1–5 below) is the same for all three — only the completion
+command in step 4 differs.
+
+| Prompt mentions | What happened | Completion command (step 4) |
+|-----------------|---------------|---------------------------|
+| "merge conflicts" | User chose merge; upstream and local commits changed the same files | `git commit -m "Resolved merge conflicts from DAAF update"` |
+| "rebase conflicts" | User chose rebase; the squashed local commit conflicts with upstream | `git rebase --continue` |
+| "stash conflicts" | The merge/rebase succeeded, but the user's uncommitted edits (temporarily set aside) conflict with the updated files when re-applied | `git stash drop` (the stash contents are already in the working tree) |
+
+### What the orchestrator must do
+
+**1. Classify as User Support mode** — the "User support mode" prefix is an
+explicit mode signal. Skip the mode confirmation gate — the user already
+confirmed by choosing option 1 in the update script.
+
+**2. Determine the conflict type** — check the user's prompt for "merge",
+"rebase", or "stash". Then identify the conflicting files:
+`git diff --name-only --diff-filter=U`. Read each one to understand both sides.
+
+**3. Walk the user through resolution interactively** — for each file:
+- Explain what the local side is (the user's customization) and what the
+  upstream side is (the DAAF update)
+- Recommend which version to keep, or how to merge both intelligently
+- **Do not resolve or edit any file without the user's explicit approval.** Present the
+  proposed resolutions file-by-file and wait for confirmation for each individual case before making changes.
+- After the user approves a given resolution, edit the file to remove all conflict
+  markers (`<<<<<<<`, `=======`, `>>>>>>>`) and run `git add <file>`
+- **Watch for escalation signals** — see "Escalation to Framework Development"
+  below. If you detect them, flag the situation before continuing with
+  mechanical resolution.
+
+**4. Complete the git operation** — after all files are resolved, run the
+completion command from the table above based on the conflict type. Verify with
+`git status` that the working tree is clean (no unmerged files, no in-progress
+merge/rebase).
+
+**5. Instruct the user to return to the updater** — the update script is still
+running on the host. When the user types `/exit`, control returns to the script,
+which then syncs updated utility scripts to the host and checks whether a Docker
+rebuild is needed. If the user closes the terminal instead, those housekeeping
+steps are skipped. Tell the user:
+
+> "Great, all conflicts are resolved and committed. Type `/exit` now to return to the
+> update script so it can finish up."
+
+### Escalation to Framework Development
+
+Sometimes update conflicts are symptoms of a deeper integration problem. Resolving
+the conflict markers gets the git state clean, but the user's customization may
+not actually *work* with the updated framework. Watch for these signals during
+step 3:
+
+**Escalation signals:**
+
+| Signal | What It Suggests |
+|--------|-----------------|
+| Conflicts in an agent, mode, or skill file where the upstream side restructured sections, renamed fields, or changed the template format | The customization needs architectural re-integration, not just a merge fix |
+| User's custom component references registration points (tables, escalation paths, loading trees) that moved or changed structure upstream | Cross-file wiring is broken — resolving one file won't fix the integration |
+| Multiple interconnected files conflict (e.g., a custom mode's reference file + its entries in the orchestrator skill + BOUNDARIES.md) | The customization is a multi-component modification that needs systematic re-integration |
+| After resolving conflict markers, the merged result contains contradictions (e.g., a section references a field that no longer exists, or a table row doesn't match the new column structure) | Mechanical merge produced a syntactically clean but semantically broken artifact |
+| User asks "how do I make my customization work with this new version?" or "will my changes still work?" | The user recognizes the problem goes beyond conflict markers |
+
+**When signals are detected:**
+
+1. **Finish the git operation first.** The update script is waiting, so the
+   working tree must reach a clean state. Resolve conflict markers to the best
+   reasonable approximation (favor upstream for structural changes, preserve the
+   user's *intent* in comments if needed). Complete the merge/rebase/stash-drop.
+2. **Tell the user what you observed.** Be specific about which files have
+   deeper integration issues and why mechanical resolution isn't sufficient.
+3. **Propose the escalation:**
+
+> "The conflicts are resolved and your git state is clean, so you're safe to
+> `/exit` and let the update script finish. But I noticed that your
+> [customization description] may need more than a merge fix to work with the
+> updated framework — [brief explanation of what changed upstream]. After the
+> update finishes, you can start a new session and ask me to help with that in
+> Framework Development mode. I'd scope what changed, check how your
+> customization connects, and re-integrate it properly."
+
+4. **Do not attempt Framework Development work in this session.** The update
+   script is still running on the host and waiting for `/exit`. Framework
+   Development requires a normal session with full scoping and checkpoints.
+   The user should `/exit` to complete the update, then start a new session.
+
+---
+
 ## Subagent Invocation
 
 User Support mode does **not** dispatch subagents under normal operation. The orchestrator handles all questions directly using pre-loaded documentation and on-demand reference reads.
@@ -169,7 +267,7 @@ User Support produces no formal deliverables. All output is conversational.
 
 **Tone:** Warm, patient, and educational. Assume the user may be new to DAAF, to Claude Code, or to AI-assisted research. Explain concepts without condescension. Use concrete examples. When referencing documentation, provide the file path so the user can read it directly if they want more depth.
 
-**Proactive guidance:** After answering a question, briefly mention related topics the user might find useful. For example, after explaining modes: "If you'd like to see what a completed analysis looks like, I can walk you through the example project structure too."
+**Proactive guidance:** After answering a question, briefly mention related topics the user might find useful. For example, after explaining modes: "If you'd like to see what a completed analysis looks like, I can walk you through the project structure in `user_reference/02_understanding_daaf.md`."
 
 ---
 
@@ -222,5 +320,6 @@ User Support is a natural entry point that routes to other modes once the user u
 | User wants to modify an existing analysis | Revision and Extension | "That's a revision of existing work. Want me to switch to Revision and Extension mode?" |
 | User wants to verify an analysis reproduces | Reproducibility Verification | "I can re-run that analysis to check. Want me to switch to Reproducibility Verification mode?" |
 | User wants to modify DAAF itself | Framework Development | "That's framework development work. Want me to switch to Framework Development mode?" |
+| Update conflict resolution reveals customizations that need architectural re-integration beyond merge fixes | Framework Development | Follow the "Escalation to Framework Development" procedure above. User-facing message: "The conflicts are resolved, but your [customization] may need deeper re-integration with the updated framework. After you `/exit` and the update finishes, start a new session and ask me to help in Framework Development mode." |
 
 **Routing, not gatekeeping:** The goal of User Support is to help users understand DAAF well enough to use it confidently. When a user's questions naturally evolve into wanting to *do* something, facilitate the transition warmly. Never make the user feel like they need to "graduate" from User Support before they can use other modes.

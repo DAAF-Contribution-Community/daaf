@@ -34,11 +34,12 @@ Alright, before we begin ANYTHING else, we need to cover the first and most foun
 
 So with that in mind, DAAF can be thought of as a way for me to help other researchers by **automating and simplifying the prompt-engineering process** specifically for core aspects of the data analysis and research process. This is how we accomplish the core requirement of making DAAF scalable. Every single thing about how I've designed DAAF is really just fundamentally designed to tell Claude exactly **what** I think it needs to know, **when** I think it needs to know it, so it does what we want **more often and with higher quality** on average. Ignoring the fancy terms like agents, subagents, skills, orchestrators, etc. -- DAAF is just a series of pre-cooked "recipes" of context that we feed to Claude before it tries to do what you ask, with the hope that it'll be thus be more successful at doing it transparently and rigorously and reproducibly like a scientist would prefer. Anyone can put this together without DAAF in simpler ways or just ad-hoc (i.e., by writing a single very long, custom prompt to regular Claude Code) -- I'm just trying to make it easier for people with sensible defaults and opinionated standards of rigor.
 
-This then leads to three (hopefully very intuitive) of the core things to be aware of when using and working with DAAF:
+This then leads to four (hopefully very intuitive) of the core things to be aware of when using and working with DAAF:
 
 * In addition to the prompt engineering DAAF orchestrates behind the scenes, **what you ask Claude to do and how you ask it to do it** is an immensely important element of getting better quality output from DAAF/Claude. So a lot of what we'll talk about here is how to do this thoughtfully and well to maximize your chances of getting something useful from DAAF.
 * The system is **designed to intelligently select and inject the right context to Claude before your query/question/chat**, based on what you provide in your query/question/chat. But this is **NOT** foolproof, and simply cannot account for every possibility. Feel free to go off the beaten path at will, but just be aware that it's going to necessarily be less supported and structured from there; you may ultimately find it's not working very well for what you want, because I wasn't able to design for that style of work. Trying to write your query in a different way can help, or you can help us improve DAAF by [opening an issue](https://github.com/DAAF-Contribution-Community/daaf/issues) and telling us about it!
 * Because thoughtfully shaping the context is our way of shaping Claude's thinking from what I lovingly describe as an over-eager recent MBA graduate to a thoughtful, careful research colleague, DAAF really only works with the cutting-edge models like Opus 4.6, and it pushes them to their limit to take advantage of their full context windows where possible. **This is why it is SO expensive to use at this time**; settling for less, we sacrifice a lot of expertise and reliability and rigor. It's a careful balancing act of optimization that no one really has fully figured out!
+* While DAAF's reference files, skills, and workflow instructions are all carefully designed to be loaded at specific moments, Claude may occasionally fail to load them, skip a step, or deviate from its instructions in subtle ways. When this happens, you get an agent working without the specialized knowledge it was supposed to have, which means it falls back on its general training -- and that's when hallucinations, fabricated variable names, and plausible-sounding-but-wrong details creep in. This is why **Verbose output** in Claude Code's `/config` settings is particularly useful: it lets you see what DAAF's agents are actually thinking behind the scenes, including what motivates which files they're reading and which skills they're loading (or what shortcuts they're deciding on, if they are).
 
 So that's the gist for now. But before we move on to how DAAF actually works, there's one more mental model that I think is really helpful for understanding *why* people have such different experiences with AI right now -- and why something like DAAF matters in the first place.
 
@@ -143,7 +144,7 @@ Before doing anything else, DAAF will tell you which mode it's classifying your 
 - A stakeholder report synthesizing key findings, methodology, and limitations
 - A lessons-learned document with data and process insights
 
-**Expected time investment:** About 5-10 minutes of active engagement time spread across 4-5 "check-in" points where DAAF pauses for your review and approval, a few hours of DAAF working independently in the background, and then whatever time you (rightfully, importantly) dedicate to reviewing the final outputs. And, of course, whatever API fees you incur along the way. Full duration will depend heavily on how complex your query is: primarily how many scripts it needs to write, rewrite, and QA. Plan accordingly!
+**Expected time investment:** About 5-10 minutes of active engagement time spread across four "check-in" points where DAAF pauses for your review and approval, a few hours of DAAF working independently in the background, and then whatever time you (rightfully, importantly) dedicate to reviewing the final outputs. And, of course, whatever API fees you incur along the way. Full duration will depend heavily on how complex your query is: primarily how many scripts it needs to write, rewrite, and QA. Plan accordingly!
 
 **When to use it:** When you have a genuine research question you want to explore with data. It can be as simple as "How has enrollment in rural schools changed over the past decade?" or as complex as "What's the relationship between school-level poverty, access to advanced coursework, and disciplinary disparities, controlling for school size and urbanicity?" DAAF will scope accordingly.
 
@@ -246,49 +247,20 @@ Before doing anything else, DAAF will tell you which mode it's classifying your 
 
 ### Switching Between Modes
 
-DAAF supports clean transitions between modes when it makes sense:
+DAAF supports clean transitions between modes when your work naturally evolves. You don't need to memorize every possible transition -- DAAF will suggest the right mode at natural breakpoints and wait for your confirmation. It should never silently switch modes on you.
+
+Here are the most common transitions you'll encounter:
 
 | From | To | When it happens |
 |------|----|-----------------|
-| Data Discovery | Full Pipeline | Findings suggest a feasible and valuable analysis |
-| Data Lookup | Data Discovery | Your question reveals a broader data landscape worth exploring |
-| Data Lookup | Ad Hoc Collaboration | Your question evolves into a multi-turn discussion |
-| Data Lookup | Full Pipeline | A quick lookup reveals an actionable analysis opportunity |
-| Data Discovery | Data Onboarding | Do you have a raw data file you want to profile and make reusable? |
-| Data Onboarding | Full Pipeline | Skill created — would you like to analyze this data now? |
-| Full Pipeline | Data Onboarding | Analysis needs a dataset that has no existing skill yet |
-| Full Pipeline | Revision and Extension | You just completed an analysis and want to adjust or extend something |
-| Revision and Extension | Full Pipeline | The revision scope grows beyond what targeted modification can handle |
-| Data Onboarding | Revision and Extension | You want to modify or extend the skill that was just created |
-| Full Pipeline (complete) | Reproducibility Verification | User wants to verify their analysis reproduces |
-| Reproducibility Verification | Revision and Extension | Divergence found, user wants to fix original |
-| Reproducibility Verification | Full Pipeline | Original analysis is fundamentally broken |
-| Ad Hoc Collaboration | Full Pipeline | Your working session evolves into a formal analysis |
-| Ad Hoc Collaboration | Data Discovery | You want systematic data exploration across sources |
-| Ad Hoc Collaboration | Data Onboarding | You have raw data that needs profiling |
-| Ad Hoc Collaboration | Revision and Extension | Debugging reveals an existing analysis needs revision |
-| Data Discovery | Ad Hoc Collaboration | You want to discuss findings and iterate on approach |
-| Full Pipeline (early) | Ad Hoc Collaboration | You realize you just want to talk through the approach, not run the full pipeline |
-| Full Pipeline (complete) | Ad Hoc Collaboration | You want to discuss results or plan next steps informally |
-| Ad Hoc Collaboration | Framework Development | User wants to create or modify DAAF framework components |
-| Framework Development | Data Onboarding | User wants to onboard a dataset, not just create a skill template |
-| Framework Development | Full Pipeline | User wants to test a new skill with actual analysis |
-| Framework Development | Ad Hoc Collaboration | User needs analysis help, not framework changes |
-| Framework Development | Revision and Extension | User wants to review or revise an analysis that used the framework |
-| Framework Development | Data Discovery | Framework change requires testing with a specific data source |
-| Data Onboarding (complete) | Framework Development | User wants to refine the skill beyond what Onboarding produced |
-| Full Pipeline (complete) | Framework Development | User identifies framework improvements from analysis experience, or LEARNINGS.md has actionable items to incorporate |
-| Data Onboarding (complete) | Framework Development | LEARNINGS.md from profiling has actionable framework improvements (e.g., skill template gaps) |
-| User Support | Data Lookup | User's question is really about a specific data variable or definition |
-| User Support | Data Discovery | User wants to explore what data is available for a topic |
-| User Support | Full Pipeline | User is ready to run an analysis |
-| User Support | Ad Hoc Collaboration | User wants hands-on help with code, debugging, or a specific task |
-| User Support | Data Onboarding | User wants to add or profile a new dataset |
-| User Support | Revision and Extension | User wants to modify an existing analysis |
-| User Support | Reproducibility Verification | User wants to verify an analysis reproduces |
-| User Support | Framework Development | User wants to modify DAAF itself |
+| Data Discovery | Full Pipeline | Your exploration revealed a feasible, interesting analysis |
+| Full Pipeline | Revision and Extension | You completed an analysis and want to adjust or extend it |
+| Data Onboarding | Full Pipeline | You profiled a dataset and now want to analyze it |
+| Ad Hoc Collaboration | Full Pipeline | Your working session evolved into something worth formalizing |
+| Full Pipeline | Reproducibility Verification | You want to verify a completed analysis reproduces |
+| Any mode | User Support | You have questions about how DAAF or its tools work |
 
-DAAF will always propose these escalations explicitly and wait for your confirmation. It should never silently switch modes on you.
+Beyond these common paths, DAAF supports transitions between any pair of modes where the shift makes sense -- for example, a Data Lookup that reveals a broader question might escalate to Data Discovery, or a completed analysis might surface framework improvements worth addressing in Framework Development mode. The full transition matrix is handled internally; the important thing to know is that DAAF will always propose a transition explicitly and explain why before making it.
 
 ---
 
@@ -463,9 +435,12 @@ research/2026-01-24_School_Poverty_Analysis/
 └── output/
     ├── analysis/
     │   └── 2026-01-24_regression_results.parquet
-    └── figures/
-        └── 2026-01-24_poverty_distribution.png
+    ├── figures/
+    │   └── 2026-01-24_poverty_distribution.png
+    └── preliminary_notes/
 ```
+
+**Tip:** The easiest way to browse a completed project is with the browser-based code editor. Run `bash run_vscode.sh` (or `.\run_vscode.ps1` on Windows) from your `daaf-docker` folder, then navigate the file tree in the sidebar. You can preview Markdown reports and plans with `Shift+Ctrl+V`, read Python scripts with syntax highlighting, and inspect the Git history to see what changed and when. See [**03. Best Practices — Using the Browser-Based Code Editor**](03_best_practices.md#using-the-browser-based-code-editor) for more.
 
 Let's go through each piece.
 
@@ -519,11 +494,11 @@ A companion file, **Plan_Tasks.md**, contains the detailed machine-readable task
 
 **What you won't see:** New analysis code, interactive dashboards, filter widgets, or additional transformations. The notebook is a viewer, not an analysis tool. This is by design -- it ensures that what you see in the notebook is exactly what was executed and validated in the scripts, with nothing added or changed.
 
-**How to view it:** From inside your Docker container:
+**How to view it:** The easiest way is to run `bash view_notebooks.sh` (or `.\view_notebooks.ps1` on Windows) from your `daaf-docker` folder — this opens marimo's notebook browser at [http://localhost:2718](http://localhost:2718) where you can browse and open any notebook. Alternatively, from inside the container you can view a single notebook read-only with:
 ```bash
 marimo run 'research/YYYY-MM-DD_Title/YYYY-MM-DD_Notebook.py' --host 0.0.0.0 --port 2718 --headless
 ```
-Then open [http://localhost:2718](http://localhost:2718) in your normal web browser. You can also open the `.py` file in any text editor -- marimo notebooks are just Python.
+You can also open the `.py` file in any text editor -- marimo notebooks are just Python.
 
 ### The Report
 
@@ -539,7 +514,7 @@ Then open [http://localhost:2718](http://localhost:2718) in your normal web brow
 
 **How it differs from the notebook:** The notebook is for thorough *methodological inspection* -- browsing every line of code and verifying what happened. The report is for *communication* -- telling the story of what was found and what it means. They're complementary artifacts serving different audiences.
 
-**How to view it:** The report is a Markdown (.md) file. You can open it in any text editor, but it'll look much nicer in a Markdown viewer. I recommend copying the contents into a free online viewer like [StackEdit](https://stackedit.io/app), or installing a Markdown viewer extension for your code editor.
+**How to view it:** The report is a Markdown (.md) file. The easiest way to read it with proper formatting is in the browser-based code editor — run `bash run_vscode.sh` (or `.\run_vscode.ps1` on Windows) from your computer's `daaf-docker` folder (i.e., don't run the terminal inside the container for this), navigate to the report file, then right-click and select **"Open Preview"** (or press `Shift+Ctrl+V`) to see the rendered Markdown with headers, tables, and formatting. 
 
 ### Data Files (Raw and Processed)
 
@@ -555,11 +530,13 @@ Then open [http://localhost:2718](http://localhost:2718) in your normal web brow
 
 **`output/figures/`** -- Data visualizations saved as PNG images. These are the same figures referenced in the report. You can open them with any image viewer.
 
+**`output/preliminary_notes/`** -- Complete, uncompressed findings from discovery-phase specialists -- data exploration results, source-specific research, and the research synthesis. These files ensure that downstream analysis steps have access to the full detail from early research, not just summaries.
+
 ### STATE.md and LEARNINGS.md
 
 **STATE.md** -- A session state file that tracks DAAF's progress through the analysis. It records transformation progress, checkpoint statuses, runtime decisions, and any blockers encountered. It also accumulates the QA Findings Summary (aggregated quality review results across all stages), the Final Review Log (from the end-of-pipeline verification), any Runtime Risks discovered during execution, and Citations Accumulated (a running ledger of data source, methodological, software, and reporting standard citations extracted as each script executes). If a session is interrupted (context exhaustion, network issues, etc.), STATE.md allows DAAF to resume exactly where it left off. You generally don't need to read this unless debugging a session issue.
 
-**`logs/`** -- Session transcripts collected into the project folder at completion. When a project finishes, DAAF gathers all session transcripts that touched the project's files into this directory, making each project self-contained for audit purposes. If an analysis spanned multiple sessions, you'll find transcripts from each one here. These are copies of the global archives in `.claude/logs/sessions/` -- see the [Session Logs and Diagnostics FAQ](07_faq_technical.md#session-logs-and-diagnostics) for details on formats and storage.
+**`logs/`** -- Session transcripts collected into the project folder at completion. When a project finishes, DAAF gathers all session transcripts that touched the project's files into this directory, making each project self-contained for audit purposes. If an analysis spanned multiple sessions, you'll find transcripts from each one here. These are copies of the global archives in `.claude/logs/sessions/` -- see the [Session Logs and Diagnostics FAQ](07_faq_technical.md#session-logs-and-diagnostics) for details on formats and storage. You can browse these logs visually using the **DAAF Log Explorer**, an interactive timeline that shows orchestrator actions, subagent dispatches, and tool calls in your browser — run `bash view_logs.sh` (or `.\view_logs.ps1` on Windows) from your `daaf-docker` folder on the host. See the [Installation Guide — Viewing Session Logs](01_installation_and_quickstart.md#viewing-session-logs-in-your-browser) for details.
 
 **LEARNINGS.md** -- A lessons-learned document capturing insights about the data and the analysis process. This includes data idiosyncrasies discovered during the analysis, interpretation concerns, and suggested improvements to DAAF's documentation. This file is designed to be immediately actionable -- you can share it back with the community to help improve DAAF for future users.
 
@@ -758,6 +735,22 @@ DAAF will read STATE.md, understand where it stopped, and resume from that exact
 
 **Reproducibility Verification mode note:** RV mode uses `Reproduction_Report.md` as its session state document instead of STATE.md. If an RV session is interrupted, the Reproduction Report contains a "Session Continuity" section with a restart prompt. The recovery process works the same way — start a new session and paste the restart prompt, and DAAF will pick up where it left off.
 
+### How to Restart a Session
+
+When DAAF determines that context is running low, it will do three things:
+
+1. **Save progress** by updating STATE.md with everything completed so far
+2. **Provide a restart prompt** -- a pre-written message that captures exactly where the work left off, what has been done, and what needs to happen next
+3. **Tell you it's time to restart**
+
+To resume, the steps are simple:
+
+1. Type `/clear` in the Claude Code terminal to reset the session (this clears the context window but does not affect any files on disk)
+2. Paste the restart prompt that DAAF provided
+3. DAAF reads STATE.md, picks up where it left off, and continues working
+
+That's it. The restart prompt does the heavy lifting of re-establishing context so you don't have to re-explain anything. If you closed your terminal entirely (or the session crashed), just start a new Claude Code session and point DAAF to the project folder -- it will read STATE.md and figure out where to resume.
+
 ### Tips for Multi-Session Work
 
 - **Don't panic if a session ends mid-analysis.** This is undesired but not unexpected for complex analyses. The whole STATE.md system exists precisely for this reason.
@@ -776,10 +769,11 @@ Here's a quick reference for what each part of the DAAF repository contains and 
 |-----------|-------------|-------------|
 | `research/` | Your analysis projects -- notebooks, data, reports, scripts | **You** (this is where all your work lives) |
 | `user_reference/` | User documentation (you're reading one right now) | **You** (human-written guides and FAQs) |
-| `.claude/agents/` | Specialized agent protocols (12 behavioral definitions) | **DAAF** (and curious users who want to understand how agents work) |
+| `.claude/agents/` | Specialized agent protocols (14 behavioral definitions) | **DAAF** (and curious users who want to understand how agents work) |
 | `agent_reference/` | Detailed workflow documentation, templates, validation rules | **DAAF** (internal reference material for the orchestrator and agents) |
 | `.claude/skills/` | Skill definitions providing domain knowledge | **DAAF** (and users who want to create new skills) |
-| `scripts/` | Shared utility scripts (like `run_with_capture.sh`) | **DAAF** (used from the DAAF root directory; not copied into projects) |
+| `scripts/` | Shared utility scripts (`run_with_capture.sh`, `collect_session_logs.sh`, `generate_log_viewer.sh`, `launch_marimo.sh`, `launch_code_server.sh`) | **DAAF** (used from the DAAF root directory; not copied into projects) |
+| `scripts/host/` (copied to your `daaf-docker/` folder during installation) | Host-side convenience scripts (`run_daaf`, `view_logs`, `view_notebooks`, `run_vscode`, `backup_daaf`, `restore_from_backup`, `rebuild_daaf`, `update_daaf` -- `.sh` and `.ps1` variants) | **You** (run from your `daaf-docker` folder on the host, outside the container) |
 
 **Key insight for new users:** Everything you need to review, share, or reproduce is inside the project folder. You can copy the entire folder to a colleague and they'd have everything needed to understand and verify the analysis. That's the whole point of reproducibility.
 

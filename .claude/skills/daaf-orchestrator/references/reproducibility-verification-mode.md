@@ -126,8 +126,8 @@ User points to existing analysis folder
 1. User provides path to existing analysis folder
 2. Validate that the folder contains both a Report (`*_Report.md`) and a Notebook (`*.py` with `import marimo`)
 3. Create new project folder: `research/YYYY-MM-DD_[OriginalProjectName]_Reproduction/`
-4. Create subdirectories: `original_files/`, `original_files/scripts/`, `original_files/output/figures/`, `scripts/`, `scripts/repro/`, `output/figures/`
-5. Copy the Report and Notebook into `original_files/`. Copy `output/figures/` from the original project into `original_files/output/figures/` (these are the original figures needed for visual comparison during RV-2 and RV-3).
+4. Create subdirectories: `original_files/`, `original_files/scripts/`, `original_files/output/figures/`, `scripts/`, `scripts/repro/`, `output/figures/`, `output/preliminary_notes/`
+5. Copy the Report and Notebook into `original_files/`. Copy `output/figures/` from the original project into `original_files/output/figures/` (these are the original figures needed for visual comparison during RV-2 and RV-3). If `output/preliminary_notes/` exists in the original project, copy it into `original_files/output/preliminary_notes/` (these provide discovery-phase context for understanding analytical decisions).
 6. Run the decompiler: `python /daaf/scripts/decompile_notebook.py <notebook_path> <project>/original_files/scripts/`
 7. **Path normalization** — run the batch normalizer on all decompiled scripts:
    `python /daaf/scripts/normalize_project_dir.py <project>/original_files/scripts/ <project_absolute_path>`
@@ -199,6 +199,7 @@ All project-relative paths resolve from PROJECT_DIR. All repo-level paths resolv
 **ORIGINAL SCRIPT:** `{PROJECT_DIR}/original_files/scripts/{stage_dir}/{script_name}`
 **REPRODUCTION TARGET:** `{PROJECT_DIR}/scripts/repro/{stage_dir}/{script_name}`
 **ORIGINAL FIGURES:** `{PROJECT_DIR}/original_files/output/figures/` (copied from original project during RV-1)
+**ORIGINAL PRELIMINARY NOTES:** `{PROJECT_DIR}/original_files/output/preliminary_notes/` (if present — discovery-phase findings from original analysis)
 
 **INSTRUCTIONS:**
 1. Copy the original script to the reproduction target path
@@ -219,6 +220,10 @@ All project-relative paths resolve from PROJECT_DIR. All repo-level paths resolv
 5. Classify result: REPRODUCED / DIVERGED / FAILED. If a modified script also produces
    divergent output, classify as MODIFIED (document divergence in Deviations section).
 6. Methodological review depth: {LIGHT | FULL}
+   If original preliminary notes exist, consult them for discovery-phase context
+   (source caveats, coded value definitions, analytical rationale) when assessing
+   methodological concerns. These notes document why certain analytical decisions
+   were made in the original analysis.
 7. Update `{PROJECT_DIR}/Reproduction_Report.md`:
    - Script Inventory table: update Repro Status for script #{N}
    - Per-Script Reproduction Results: fill in section for Script #{N}
@@ -239,7 +244,7 @@ NOT substantive modifications — do NOT count them as modifications or deviatio
 - Re-execute the modified version
 - Mark status as MODIFIED, not REPRODUCED
 
-**OUTPUT FORMAT (1000-word hard cap):**
+**OUTPUT FORMAT (2000-word hard cap):**
 Return a concise summary:
 - Status: [REPRODUCED/DIVERGED/FAILED/MODIFIED]
 - Key comparison metrics (row counts, checkpoint results)
@@ -258,11 +263,13 @@ Return a concise summary:
 
 **Note:** The data-verifier agent is read-only (`permissionMode: plan`). It RETURNS its findings to the orchestrator, which then updates the Reproduction Report. This is consistent with how data-verifier operates at Stage 12 in Full Pipeline — it verifies and reports, never writes.
 
-**Orchestrator post-processing:** After receiving the data-verifier's return, the orchestrator updates:
-- Report Verification § Quantitative Claims table
-- Report Verification § Figure Verification table
-- Report Verification § Findings Verification table
-- Report Verification § Summary
+**Orchestrator post-processing:** After receiving the data-verifier's return, the orchestrator:
+1. **[PERSIST]** Writes the full, unmodified data-verifier return to `output/preliminary_notes/{date}_rv3_report-verification.md` with provenance header (per orchestrator SKILL.md § Subagent Return Processing). This preserves the raw verification findings as an audit record and allows the RV-4 report-writer to reference full-fidelity findings rather than depending solely on the orchestrator's transcription.
+2. Updates the Reproduction Report:
+   - Report Verification § Quantitative Claims table
+   - Report Verification § Figure Verification table
+   - Report Verification § Findings Verification table
+   - Report Verification § Summary
 
 **Invocation pattern:**
 
@@ -290,21 +297,27 @@ All project-relative paths resolve from PROJECT_DIR. All repo-level paths resolv
 **REPRODUCED SCRIPTS:** `{PROJECT_DIR}/scripts/repro/`
 **REPRODUCED FIGURES:** `{PROJECT_DIR}/output/figures/`
 **REPRODUCTION REPORT:** `{PROJECT_DIR}/Reproduction_Report.md`
+**ORIGINAL PRELIMINARY NOTES:** `{PROJECT_DIR}/original_files/output/preliminary_notes/` (if present — discovery-phase findings from original analysis)
 
 **INSTRUCTIONS:**
 1. Read the original Report in full
-2. Extract every quantitative claim (statistics, counts, percentages, coefficients)
-3. Extract every figure reference
-4. For each claim: locate the reproduced script that produced it, check the
+2. If original preliminary notes exist, read them for discovery-phase context —
+   source caveats, coded value definitions, data limitations, and analytical
+   rationale documented during the original analysis. These inform whether Report
+   claims properly reflect the constraints discovered during data exploration.
+3. Extract every quantitative claim (statistics, counts, percentages, coefficients)
+4. Extract every figure reference
+5. For each claim: locate the reproduced script that produced it, check the
    reproduced execution log for the matching value
-5. For each figure: verify the reproducing script generated the figure file.
+6. For each figure: verify the reproducing script generated the figure file.
    Use the **Read tool** to view both the original figure and the reproduced figure
    for visual comparison against Report claims. Minor rendering differences
    (anti-aliasing, font rendering) are expected and do not constitute divergence.
-6. For each key finding: assess whether the reproduced data supports the
-   same conclusion
+7. For each key finding: assess whether the reproduced data supports the
+   same conclusion. If preliminary notes documented caveats or limitations
+   relevant to a finding, verify the Report acknowledged them appropriately.
 
-**OUTPUT FORMAT (1000-word hard cap):**
+**OUTPUT FORMAT (2000-word hard cap):**
 Return structured findings for orchestrator to populate the Reproduction Report:
 - Claims verified: N of N (N% match)
 - Figures reproduced: N of N
@@ -349,28 +362,33 @@ All project-relative paths resolve from PROJECT_DIR. All repo-level paths resolv
 **MODE:** Reproducibility Verification — RV-4 (Synthesis)
 
 **REPRODUCTION REPORT:** `{PROJECT_DIR}/Reproduction_Report.md`
+**RV-3 VERIFICATION FINDINGS:** `{PROJECT_DIR}/output/preliminary_notes/{date}_rv3_report-verification.md` (full-fidelity data-verifier return)
 
 **INSTRUCTIONS:**
 1. Read the entire Reproduction Report (all per-script results, deviations,
    methodological concerns, report verification findings)
-2. Write the Executive Summary section:
+2. Read the RV-3 verification findings preliminary notes for the full-fidelity
+   data-verifier return — this contains the raw per-claim, per-figure, and
+   per-finding detail that may be more granular than the Reproduction Report's
+   transcribed tables
+3. Write the Executive Summary section:
    - Overall reproducibility assessment
    - Script counts and percentages
    - 3-5 sentence summary of findings
    - 2-3 sentence summary of methodological concerns
-3. Write the Methodological Concerns § Synthesis section:
+4. Write the Methodological Concerns § Synthesis section:
    - Group related concerns
    - Assess collective impact on conclusions
    - Provide overall methodological assessment
-4. Ensure the Report Verification Summary narrative is complete
-5. Determine overall assessment: FULLY REPRODUCED / PARTIALLY REPRODUCED / NOT REPRODUCED
+5. Ensure the Report Verification Summary narrative is complete
+6. Determine overall assessment: FULLY REPRODUCED / PARTIALLY REPRODUCED / NOT REPRODUCED
 
 **ASSESSMENT CRITERIA:**
 - FULLY REPRODUCED: All scripts reproduced or diverged only cosmetically; all Report claims verified; no modifications required
 - PARTIALLY REPRODUCED: Most scripts reproduced; some substantive deviations or modifications; most Report claims verified
 - NOT REPRODUCED: Multiple scripts failed or required modifications; key Report claims cannot be verified
 
-**OUTPUT FORMAT (1000-word hard cap):**
+**OUTPUT FORMAT (2000-word hard cap):**
 Return the overall assessment and a 3-sentence summary of the reproduction findings.
 ```
 
@@ -385,8 +403,9 @@ research/YYYY-MM-DD_[OriginalProject]_Reproduction/
 │   ├── [original_report].md            # Copied from original project
 │   ├── [original_notebook].py          # Copied from original project
 │   ├── output/                         # Copied from original project
-│   │   └── figures/                    # Original figures for visual comparison
-│   │       └── *.png
+│   │   ├── figures/                    # Original figures for visual comparison
+│   │   │   └── *.png
+│   │   └── preliminary_notes/          # Discovery-phase findings (if present)
 │   └── scripts/                        # Decompiled from notebook
 │       ├── MANIFEST.md                 # Decompiler output manifest
 │       ├── stage5_fetch/
@@ -395,9 +414,11 @@ research/YYYY-MM-DD_[OriginalProject]_Reproduction/
 │       ├── stage6_clean/
 │       ├── stage7_transform/
 │       └── stage8_analysis/
-├── output/                             # Reproduced output (generated during RV-2)
-│   └── figures/
-│       └── *.png
+├── output/                             # Reproduced output (generated during RV-2/RV-3)
+│   ├── figures/
+│   │   └── *.png
+│   └── preliminary_notes/              # Lossless agent returns persisted by orchestrator
+│       └── {date}_rv3_report-verification.md
 └── scripts/
     └── repro/                          # Re-executed scripts
         ├── stage5_fetch/
@@ -537,6 +558,10 @@ Present to the user after RV-4 completes:
 
 The full Reproduction Report is at: `[path]`
 Session logs collected in: `[project_dir]/logs/`
+
+**Explore Session Logs:**
+To browse the session timeline interactively in your browser, run in the Docker terminal:
+`bash /daaf/scripts/generate_log_viewer.sh [project_dir]`
 
 **What would you like to do?**
 - Review the Reproduction Report in detail

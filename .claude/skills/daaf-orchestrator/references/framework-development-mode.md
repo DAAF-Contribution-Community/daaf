@@ -163,7 +163,7 @@ Provide a structured report with:
 3. Potential impacts or dependencies discovered
 4. Recommended approach considerations
 
-Keep output under 800 words. Focus on findings, not descriptions of what you read.
+Keep output under 1500 words. Focus on findings, not descriptions of what you read.
 ```
 
 ### Phase 1 Exploration Prompt Template: Incorporate Learnings
@@ -197,7 +197,7 @@ Provide a structured report with:
 3. Duplicates identified (same target + same proposed change from multiple projects)
 4. Total counts: action items found, unique after dedup, by priority (P1/P2/P3)
 
-Keep output under 800 words. Focus on the consolidated backlog, not descriptions
+Keep output under 1500 words. Focus on the consolidated backlog, not descriptions
 of each file.
 ```
 
@@ -227,7 +227,7 @@ Provide a structured report with:
 2. Summary counts: already done, partial, still needed
 3. Any target files that no longer exist or have been restructured
 
-Keep output under 800 words.
+Keep output under 1500 words.
 ```
 
 **Subagent 3: Dependency and Ordering Analysis**
@@ -258,7 +258,7 @@ Provide a structured report with:
 4. Estimated complexity per item (Simple / Moderate / Complex) based on the
    number of files affected and nature of the change
 
-Keep output under 800 words.
+Keep output under 1500 words.
 ```
 
 **Note:** Subagents 2 and 3 depend on earlier results. The orchestrator may run Subagent 1 first, then Subagents 2 and 3 in sequence (or parallel if the orchestrator inlines findings). Alternatively, the orchestrator can run all three with standing instructions and let each subagent scan independently — trading some duplication for parallelism.
@@ -658,7 +658,7 @@ These boundaries supplement the universal safety boundaries in `CLAUDE.md`. See 
 - Changing the structure of existing templates (AGENT_TEMPLATE.md, MODE_TEMPLATE.md, etc.)
 - Deleting or renaming existing framework files
 - Making changes beyond the user's stated scope
-- Modifying Dockerfile or docker-compose.yml. **When the user approves the edit, you must also remind them about the container-host boundary** before they rebuild: the file you just edited lives in the volume copy, but `docker compose up -d --build` reads the host copy. After making the edit, instruct the user to (1) exit Claude Code (`/exit`) and the container (`exit`), (2) run `docker cp daaf-daaf-docker-1:/daaf/<filename> ./<filename>` from their host terminal in the DAAF project folder (substituting `Dockerfile` or `docker-compose.yml` for `<filename>`), and (3) then run `docker compose up -d --build`. Skipping the copy-back step causes the rebuild to silently use the unchanged host file. Point them to `user_reference/04_extending_daaf.md` § "The Recommended Path: Modify the Dockerfile" for the full procedure if they want more detail.
+- Modifying Dockerfile or docker-compose.yml. **When the user approves the edit, you must also remind them about the container-host boundary** before they rebuild: the file you just edited lives in the volume copy, but `docker compose up -d --build` reads the host copy. After making the edit, instruct the user to (1) exit Claude Code (`/exit`) and the container (`exit`), (2) run `bash rebuild_daaf.sh` (or `.\rebuild_daaf.ps1` on Windows) from their `daaf-docker` folder — this copies the updated files from the container to the host and rebuilds the image automatically. If they don't have the rebuild script, the manual alternative is `docker cp daaf-daaf-docker-1:/daaf/<filename> ./<filename>` followed by `docker compose up -d --build`. Point them to `user_reference/04_extending_daaf.md` § "The Recommended Path: Modify the Dockerfile" for the full procedure if they want more detail.
 
 ### Never Do
 
@@ -672,6 +672,29 @@ These boundaries supplement the universal safety boundaries in `CLAUDE.md`. See 
 
 ---
 
+## Session Wrap-Up
+
+When the user signals the session is ending, or after Checkpoint 2 approval with no further work:
+
+1. Update SESSION_NOTES.md with a final summary (all sections)
+2. If a research project workspace was created (i.e., the work involved subagent dispatches worth reviewing), collect session logs:
+   ```bash
+   bash {BASE_DIR}/scripts/collect_session_logs.sh {PROJECT_DIR}
+   ```
+3. Offer a brief summary to the user:
+
+> "Here's what we modified:
+> - [List of framework files created/modified]
+> - [Integration points updated]
+>
+> Session notes are saved in `SESSION_NOTES.md`.
+>
+> [If logs were collected:]
+> To browse the session timeline interactively, run in the Docker terminal:
+> `bash /daaf/scripts/generate_log_viewer.sh {PROJECT_DIR}`"
+
+---
+
 ## Escalation Triggers
 
 | Condition | Target Mode | Action |
@@ -681,5 +704,14 @@ These boundaries supplement the universal safety boundaries in `CLAUDE.md`. See 
 | User realizes they need to debug an existing analysis, not the framework | Ad Hoc Collaboration | "That sounds like analysis work rather than framework development. Want to switch to Ad Hoc?" |
 | User wants to review or revise an analysis that used the framework | Revision and Extension | "That's a revision of existing analysis work. Want me to switch to Revision and Extension mode?" |
 | Framework change requires testing with a specific data source | Data Discovery | "Let me explore what's available for that data source first." |
+
+**Inbound from User Support (update conflicts):** When User Support's update
+conflict resolution walkthrough reveals that a user's customizations need
+architectural re-integration (not just merge fixes), the user is directed to
+start a new Framework Development session after the update completes. In this
+scenario, Phase 1 scoping should pay special attention to what changed upstream
+and how the user's custom components (agents, skills, modes) need to be rewired
+to the updated framework. The "Modify Existing" work type is the typical
+classification, though "Multi-Component" may apply for extensive customizations.
 
 All escalations require explicit user confirmation.

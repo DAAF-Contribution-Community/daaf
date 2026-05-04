@@ -1,7 +1,7 @@
 ---
 name: election-data-source-countypres
 description: >-
-  County Presidential Returns 2000-2024 (MIT MEDSL). Vote shares, party trends, turnout by county_fips (joins census/education data). Requires HARVARD_DATAVERSE_API_KEY. Critical: mode='TOTAL' drops ~1K counties post-2020 — use 3-pattern reconstruction
+  County Presidential Returns 2000-2024 (MIT MEDSL). Vote shares, party trends, turnout by county_fips (joins census/education data). Requires HARVARD_DATAVERSE_API_KEY set via environment_settings.txt. Critical: naive mode='TOTAL' filtering silently drops ~1,000 counties in post-2020 data where states report by vote mode (absentee, election-day, provisional) instead of totals — use 3-pattern reconstruction (TOTAL-present rows kept, breakdown-only counties summed across modes, empty-string mode rows reclassified). Categorical variables use uppercase strings, not Portal integer codes.
 metadata:
   audience: any-agent
   domain: data-source
@@ -38,12 +38,13 @@ The authoritative source for county-level U.S. presidential election returns spa
 > 1. Create a free Harvard Dataverse account at https://dataverse.harvard.edu/
 > 2. Log in, navigate to your account name (top-right) → API Token
 > 3. Click "Create Token" and copy it
-> 4. Set the environment variable **before launching Claude Code**:
+> 4. Add it to the `environment_settings.txt` file in your `daaf-docker/` folder on the host machine:
 >    ```bash
->    export HARVARD_DATAVERSE_API_KEY="your_token_here"
+>    HARVARD_DATAVERSE_API_KEY=your_token_here
 >    ```
->    For Docker users: run this inside the container after `docker compose exec daaf-docker bash`
->    but before `claude`. To make it persistent across sessions, add it to `~/.bashrc`.
+>    If you don't have an `environment_settings.txt` file yet, copy the template: `cp environment_settings_example.txt environment_settings.txt`
+>    (or `Copy-Item environment_settings_example.txt environment_settings.txt` on Windows). Then recreate the container: `docker compose down` followed by `run_daaf`.
+>    Alternatively, set it manually inside the container: `export HARVARD_DATAVERSE_API_KEY="your_token_here"`
 >
 > **If the key is missing**, any fetch script will fail with a `KeyError: 'HARVARD_DATAVERSE_API_KEY'`.
 > The orchestrator should check for this variable's existence before dispatching Stage 5 fetch tasks

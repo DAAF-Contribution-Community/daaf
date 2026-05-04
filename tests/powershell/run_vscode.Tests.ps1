@@ -1,0 +1,137 @@
+# ============================================================================
+# Pester tests for run_vscode.ps1 -- DAAF Code Browser (Windows)
+# ============================================================================
+# Tests cover syntax validation, script structure, dry-run behavior, and
+# structural markers. Mirrors run_vscode.bats for cross-platform parity.
+# ============================================================================
+
+Describe "run_vscode.ps1" {
+    BeforeAll {
+        . "$PSScriptRoot/TestHelper.ps1"
+    }
+
+    # =====================================================================
+    # Tier 1 -- Syntax
+    # =====================================================================
+
+    Context "Syntax validation" {
+        It "parses without errors" {
+            $errors = Test-ScriptSyntax -Path "$RepoRoot/scripts/host/run_vscode.ps1"
+            $errors | Should -BeNullOrEmpty
+        }
+    }
+
+    # =====================================================================
+    # Tier 3 -- Script structure
+    # =====================================================================
+
+    Context "Script structure" {
+        BeforeAll {
+            $script:Content = Get-Content "$RepoRoot/scripts/host/run_vscode.ps1" -Raw
+        }
+
+        It "sets ErrorActionPreference to Stop" {
+            $Content | Should -Match '\$ErrorActionPreference\s*=\s*[''"]Stop[''"]'
+        }
+
+        It "defines Wait-AndExit function" {
+            $Content | Should -Match 'function Wait-AndExit'
+        }
+
+        It "checks DAAF_NESTED in Wait-AndExit" {
+            $Content | Should -Match 'DAAF_NESTED'
+        }
+
+        It "checks for docker-compose.yml" {
+            $Content | Should -Match 'docker-compose\.yml'
+        }
+
+        It "checks for Docker with Get-Command" {
+            $Content | Should -Match 'Get-Command docker'
+        }
+
+        It "checks Docker daemon with docker info" {
+            $Content | Should -Match 'docker info'
+        }
+
+        It "starts container if not running" {
+            $Content | Should -Match 'Starting DAAF container'
+        }
+
+        It "references launch_code_server.sh" {
+            $Content | Should -Match 'launch_code_server\.sh'
+        }
+
+        It "mentions the Code Browser in output" {
+            $Content | Should -Match 'Code Browser'
+        }
+
+        It "supports DAAF_TEST_MODE guard" {
+            $Content | Should -Match 'DAAF_TEST_MODE'
+        }
+
+        It "supports DAAF_DRY_RUN" {
+            $Content | Should -Match 'DAAF_DRY_RUN'
+        }
+
+        It "handles code-server launch failure" {
+            $Content | Should -Match 'Failed to start code-server'
+        }
+
+        It "reports container already running" {
+            $Content | Should -Match 'DAAF container is running'
+        }
+    }
+}
+
+# ============================================================================
+# Tier 5 -- Dry-run mode
+# ============================================================================
+
+Describe "run_vscode.ps1 dry-run mode" {
+    BeforeAll {
+        . "$PSScriptRoot/TestHelper.ps1"
+        $script:OrigDryRun = $env:DAAF_DRY_RUN
+        $script:OrigNested = $env:DAAF_NESTED
+        $script:TestDir = New-Item -ItemType Directory -Path (Join-Path ([System.IO.Path]::GetTempPath()) "daaf-test-$(Get-Random)")
+        Push-Location $script:TestDir
+        New-FakeComposeFile
+    }
+
+    AfterAll {
+        $env:DAAF_DRY_RUN = $script:OrigDryRun
+        $env:DAAF_NESTED = $script:OrigNested
+        Pop-Location
+        Remove-Item -Recurse -Force $script:TestDir -ErrorAction SilentlyContinue
+    }
+
+    It "completes successfully with DAAF_DRY_RUN=1" {
+        $env:DAAF_DRY_RUN = "1"
+        $env:DAAF_NESTED = "1"
+        $null = & "$RepoRoot/scripts/host/run_vscode.ps1" *>&1
+        $LASTEXITCODE | Should -BeIn @(0, $null)
+    }
+
+    It "shows Code Browser message in dry-run" {
+        $env:DAAF_DRY_RUN = "1"
+        $env:DAAF_NESTED = "1"
+        $output = & "$RepoRoot/scripts/host/run_vscode.ps1" *>&1
+        ($output | Out-String) | Should -BeLike "*Code Browser*"
+    }
+
+    It "reports container running in dry-run" {
+        $env:DAAF_DRY_RUN = "1"
+        $env:DAAF_NESTED = "1"
+        $output = & "$RepoRoot/scripts/host/run_vscode.ps1" *>&1
+        ($output | Out-String) | Should -BeLike "*DAAF container is running*"
+    }
+
+    It "completes quickly in dry-run (no blocking)" {
+        $env:DAAF_DRY_RUN = "1"
+        $env:DAAF_NESTED = "1"
+        $sw = [System.Diagnostics.Stopwatch]::StartNew()
+        $null = & "$RepoRoot/scripts/host/run_vscode.ps1" *>&1
+        $sw.Stop()
+        $sw.Elapsed.TotalSeconds | Should -BeLessThan 5
+    }
+}

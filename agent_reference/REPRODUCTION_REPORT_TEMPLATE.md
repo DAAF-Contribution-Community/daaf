@@ -77,8 +77,10 @@ Copy this template to `Reproduction_Report.md` in the reproduction project folde
 | Original Report | `original_files/[report_name]` | [Yes/No] |
 | Original Notebook | `original_files/[notebook_name]` | [Yes/No] |
 | Original Figures | `original_files/output/figures/` | [Yes/No] |
+| Original Preliminary Notes | `original_files/output/preliminary_notes/` | [Yes/No/N/A] |
 | Decompiled Scripts | `original_files/scripts/` | [Yes/No] |
 | Decompilation Manifest | `original_files/scripts/MANIFEST.md` | [Yes/No] |
+| RV-3 Verification Findings | `output/preliminary_notes/[date]_rv3_report-verification.md` | [Yes/No] |
 | Reproduction Session Logs | `logs/` | [Yes/No] |
 
 ### Script Inventory
@@ -250,9 +252,11 @@ Copy this template to `Reproduction_Report.md` in the reproduction project folde
 | `original_files/[report]` | Original Report (copied) | RV-1 |
 | `original_files/[notebook]` | Original Notebook (copied) | RV-1 |
 | `original_files/output/figures/` | Original figures (copied) | RV-1 |
+| `original_files/output/preliminary_notes/` | Original discovery findings (copied, if present) | RV-1 |
 | `original_files/scripts/[...]` | Decompiled scripts (from notebook) | RV-1 |
 | `scripts/repro/[...]` | Re-executed scripts (with new logs) | RV-2 |
 | `output/figures/[...]` | Reproduced figures (generated) | RV-2 |
+| `output/preliminary_notes/[date]_rv3_report-verification.md` | Lossless data-verifier return (persisted) | RV-3 |
 | `Reproduction_Report.md` | This document | RV-1 |
 
 ---

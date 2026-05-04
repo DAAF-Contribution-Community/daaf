@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # audit-log.sh — PostToolUse hook that logs every tool invocation
 #
 # Creates an append-only JSONL audit trail at .claude/logs/audit.jsonl.
@@ -19,6 +19,10 @@
 #
 # Hook event: PostToolUse (matcher: "")
 # Registered in: .claude/settings.json
+
+# -u: catch unset variable typos. Deliberately omit -e: this hook must
+# never block execution — all error paths exit 0.
+set -u
 
 INPUT=$(cat)
 

@@ -1,7 +1,7 @@
 ---
 name: marimo
 description: >-
-  Reactive Python notebook system. Cell reactivity, UI elements (sliders, dropdowns, tables), SQL cells, plotting, app deployment. Use when assembling Stage 9 notebooks, building data apps, or converting Jupyter to marimo .py format.
+  Reactive Python notebook system with cell reactivity, UI elements, SQL cells, plotting, and app deployment. DAAF's standard notebook format — stored as Git-friendly .py files, not .ipynb. For DAAF pipelines: Stage 9 notebooks compile existing executed scripts into cells verbatim as audit artifacts — no new analysis code or interactive widgets. Use when assembling Stage 9 research notebooks, building standalone interactive data apps, or converting Jupyter notebooks to marimo format.
 metadata:
   audience: research-coders
   domain: python-library

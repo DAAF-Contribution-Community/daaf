@@ -304,7 +304,16 @@ Record the decision in STATE.md Key Decisions Made.
 
 When the user needs to set up an API key and it's not currently available in the environment, present these options:
 
-**For the current session (temporary):**
+**Recommended: Use the environment_settings.txt file (persistent across restarts):**
+
+> Add your key to the `environment_settings.txt` file in your `daaf-docker/` folder on the host machine:
+> ```bash
+> YOUR_API_KEY_NAME=your_key_here
+> ```
+> If you don't have an `environment_settings.txt` file yet, copy the template: `cp environment_settings_example.txt environment_settings.txt`
+> (or `Copy-Item environment_settings_example.txt environment_settings.txt` on Windows). Then recreate the container: `docker compose down` followed by `run_daaf`.
+
+**Alternative: Set for the current session only (temporary):**
 
 > Before launching Claude Code, run this in your Docker container terminal:
 > ```bash
@@ -312,32 +321,16 @@ When the user needs to set up an API key and it's not currently available in the
 > ```
 > You can also type `! export YOUR_API_KEY_NAME="your_key_here"` directly in the Claude Code prompt to set it for this session.
 
-**For persistence across sessions:**
-
-> Add the export to your shell profile inside the container:
-> ```bash
-> echo 'export YOUR_API_KEY_NAME="your_key_here"' >> ~/.bashrc
-> ```
-
-**For Docker Compose (recommended for team or repeated use):**
-
-> Add to the `environment:` section in `docker-compose.yml`:
-> ```yaml
-> environment:
->   - YOUR_API_KEY_NAME=${YOUR_API_KEY_NAME}
-> ```
-> Then set the variable on your host machine before running `docker compose up`.
-
 **Security notes to convey to user:**
-- DAAF's safety guardrails prevent reading or writing `.env` files — this is by design
-- Credentials stay in temporary memory only and are never written to files
+- The `environment_settings.txt` file lives on the host machine (in `daaf-docker/`), is gitignored, and is never visible to Claude inside the container
+- DAAF's safety guardrails prevent Claude from reading or writing environment settings files by design
 - The acquisition script references `os.environ["KEY_NAME"]`, never hardcodes the key value
 - The script is archived in the project for reproducibility, but the key value is never in it
 
 **OAuth / complex authentication:** If the API requires OAuth 2.0 (token refresh, browser-based authorization code flow) or other multi-step authentication, DI-0 cannot handle this automatically. In this case, advise the user to:
 1. Complete the OAuth flow manually outside DAAF (e.g., using the API's web portal or a CLI tool)
 2. Obtain a bearer token or access token
-3. Set it as an environment variable (e.g., `export MY_API_TOKEN="bearer_token_here"`)
+3. Add it to their `environment_settings.txt` file (e.g., `MY_API_TOKEN=bearer_token_here`) or set it as an environment variable
 4. Proceed with DI-0 using the token as a simple API key
 
 Note in the skill's Data Access section that the token may expire and needs periodic renewal. Alternatively, the user can download the data manually and provide it as a local file.
@@ -397,7 +390,7 @@ user's requested dataset to the project's data/raw/ directory.
 
 ## Output Format
 
-Return findings in this structure (max 2500 words):
+Return findings in this structure (max 3500 words):
 
 ### DI-0 Summary
 **Status:** [SCRIPT_READY | BLOCKED]
@@ -474,6 +467,9 @@ For EACH profiling part (DI-3 through DI-6), follow this complete cycle. **Do NO
 │      │                                                                      │
 │      │   Capture from return: script paths, CPP status, part summary,      │
 │      │   conditional script decisions (Part A only), learning signals.     │
+│      │                                                                      │
+│      │   Write the full, unmodified agent return to markdown file on disk  │
+│      │   (see Preliminary Notes Persistence in WORKFLOW_PHASE docs)        │
 │      │                                                                      │
 │      └─ WAIT for data-ingest subagent to return before proceeding          │
 ├─────────────────────────────────────────────────────────────────────────────┤
@@ -759,7 +755,7 @@ Before dispatching a profiling subagent (Stages DI-3 through DI-6), verify:
 - [ ] Data file path(s) specified (absolute)
 - [ ] Source name and format inlined
 - [ ] Column batching boundaries specified (if >100 columns)
-- [ ] Prior part outputs inlined (for Parts B-D: structural findings from Part A)
+- [ ] Prior part findings provided (for Parts B-D: orientation summary + preliminary notes file paths)
 - [ ] Conditional script decisions documented with reasoning
 - [ ] Priority columns from intake highlighted (if any)
 - [ ] Documentation excerpts inlined (if provided and relevant to current part)
@@ -795,17 +791,30 @@ All data for a Data Onboarding project lives inside the research project folder,
 
 ```
 research/YYYY-MM-DD_{Source_Name}_Onboarding/
+├── STATE.md                                       # Session state (REQUIRED)
+├── LEARNINGS.md                                   # Session learnings (REQUIRED)
+├── logs/                                          # Session transcripts (collected at completion)
+├── scripts/
+│   ├── profile_structural/                        # Part A profiling scripts
+│   ├── profile_statistical/                       # Part B profiling scripts
+│   ├── profile_relational/                        # Part C profiling scripts
+│   ├── profile_interpretation/                    # Part D profiling scripts
+│   ├── stage5_fetch/                              # API fetch scripts (if API acquisition)
+│   └── cr/                                        # QA review scripts (phase-based)
 ├── data/
-│   └── raw/                    # Original data files (immutable after drop)
+│   └── raw/                                       # Original data files (immutable after drop)
 │       ├── {file1}.parquet
 │       └── {file2}.parquet
-├── ...
+└── output/
+    ├── skill_draft/                               # Draft skill before final placement
+    │   └── SKILL.md
+    └── preliminary_notes/                         # Lossless agent returns persisted by orchestrator
 ```
 
 #### Setup Protocol
 
 1. **Stage DI-2:** Create the research project folder under `research/`
-2. **Create `data/raw/`** subdirectory inside the research project
+2. **Create `data/raw/`** and **`output/preliminary_notes/`** subdirectories inside the research project
 3. **Copy** user-provided data files into `data/raw/`
 4. **Initialize STATE.md** from `{BASE_DIR}/agent_reference/STATE_TEMPLATE_ONBOARDING.md` — this template has onboarding-specific sections (DI-1 through DI-8 stages, Profiling Progress table, Interpretation Tracking, Skill Authoring Status) that differ from the Full Pipeline template. Populate the Data Source Info and User Request sections with intake information.
 5. **Instruct user** if files need manual placement (e.g., files too large to copy, or user prefers to place them directly)
@@ -843,6 +852,10 @@ The skill is automatically discoverable via its YAML frontmatter and ready for u
 - Location: [absolute path to research project folder]
 - Contains: [N] profiling scripts, [N] QA reviews, STATE.md, LEARNINGS.md
 - Session logs: `logs/` (collected via `collect_session_logs.sh`)
+
+**Explore Session Logs:**
+To browse the session timeline interactively in your browser, run in the Docker terminal:
+`bash /daaf/scripts/generate_log_viewer.sh {PROJECT_DIR}`
 
 **Confidence Assessment:**
 - Structural profile: [HIGH/MEDIUM/LOW] — [brief rationale]

@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # enforce-file-first.sh — PreToolUse hook that blocks direct python execution
 #
 # Enforces the file-first execution protocol: all Python scripts must be

@@ -999,7 +999,8 @@ research/YYYY-MM-DD_[Title]/
 │   ├── raw/
 │   └── processed/
 └── output/
-    └── figures/
+    ├── figures/
+    └── preliminary_notes/
 ```
 
 **Rationale:**

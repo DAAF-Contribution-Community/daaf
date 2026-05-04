@@ -13,8 +13,13 @@ services:
 
   daaf-docker:
     build: .
+    env_file:                      # Requires Docker Compose v2.17+ (Docker Desktop 4.15+)
+      - path: environment_settings.txt
+        required: false         # Container starts normally if environment_settings.txt doesn't exist
     ports:
-      - "2718:2718"   # Marimo notebook server
+      - "127.0.0.1:2718:2718"   # Marimo notebook server (localhost only)
+      - "127.0.0.1:2719:2719"   # Session log viewer (localhost only)
+      - "127.0.0.1:2720:2720"   # code-server / VS Code in browser (localhost only)
     volumes:
       - daaf-data:/daaf        # Named volume instead of bind mount
     working_dir: /daaf

@@ -67,7 +67,7 @@ from base knowledge. Flag reduced confidence due to the missing skill.
 {user's specific question}
 
 ## RESPONSE FORMAT
-**Hard cap: 500 words.** Answer directly and concisely.
+**Hard cap: 750 words.** Answer directly and concisely.
 
 Provide:
 - The specific values, definitions, or information requested
@@ -110,7 +110,7 @@ you do not need to produce a complete 5-section report if the question
 only touches one area (e.g., coded values only → focus on VARIABLES section).
 
 ## RESPONSE FORMAT
-**Hard cap: 500 words.** Return only the sections relevant to the question.
+**Hard cap: 750 words.** Return only the sections relevant to the question.
 
 - The specific answer to the question
 - Supporting detail from the relevant report section(s)

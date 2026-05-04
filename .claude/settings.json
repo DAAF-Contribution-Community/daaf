@@ -73,6 +73,9 @@
       "Write(.env.*)",
       "Edit(.env)",
       "Edit(.env.*)",
+      "Read(environment_settings*)",
+      "Write(environment_settings*)",
+      "Edit(environment_settings*)",
       "Edit(.claude/hooks/*)",
       "Write(.claude/hooks/*)",
       "Edit(.claude/logs/*)",
@@ -85,7 +88,8 @@
     "CLAUDE_CODE_DISABLE_AUTO_MEMORY": "1",
     "CLAUDE_CODE_DISABLE_BACKGROUND_TASKS": "1",
     "DISABLE_AUTOUPDATER": "1",
-    "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1"
+    "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
+    "ENABLE_PROMPT_CACHING_1H": "1"
   },
   "outputStyle": "Explanatory",
   "showThinkingSummaries": true,

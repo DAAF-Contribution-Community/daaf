@@ -22,15 +22,7 @@ Operational questions with concrete answers. If you're stuck, troubleshooting, o
 
 ### Q: Can I run DAAF without Docker?
 
-Technically yes, but I really don't recommend it, and it's not something I will support. Part of my installation process is, explicitly, me paternalistically enforcing some best practices and guardrails for the many people using DAAF likely to be new to AI assistants.
-
-Docker does three important things for DAAF beyond just convenience:
-
-1. **Isolation and safety.** The container runs as a non-root user with all Linux capabilities dropped (`cap_drop: ALL`) and privilege escalation explicitly blocked (`no-new-privileges`). This means even if Claude Code tried to do something destructive, the operating system itself would prevent it. Running natively on your machine without these protections in place means Claude Code has whatever permissions *you* have -- which is probably a lot more than you'd want an AI assistant to have when they suffer from context rot and act extremely erratically.
-
-2. **Reproducibility.** The Dockerfile pins every dependency -- Python 3.12, specific versions of Polars, plotnine, statsmodels, and everything else. When I say "this works," I mean it works with *that* exact stack. It also abstracts away issues with OS management (e.g., Windows versus Linux), and other extremely annoying variables that can affect how well or predictably software runs. Running natively means you're on your own for dependency management, and a surprising number of things can go wrong when library versions don't match. Python management has historically been a nightmare, and I am thoroughly shocked at how much Docker smooths over, which is time worth its weight in gold in my view.
-
-3. **Clean slate recovery.** If something goes badly wrong inside the container, you can blow it away and rebuild from scratch in minutes with basically zero consequences to your actual machine. That's a really nice safety net when you're letting an AI write and execute code.
+Technically yes, but I really don't recommend it, and it's not something I will support. Docker provides security isolation (non-root, dropped capabilities), full reproducibility (pinned dependencies), and clean-slate recovery -- all critical when an AI agent is writing and executing code on your behalf. For the full rationale, see [**01. Installation -- Prerequisites: Docker Desktop**](01_installation_and_quickstart.md#3-docker-desktop).
 
 If you want to go this route: be my guest, but you'll need to figure it out on your own. I would firmly posit that anyone who's ready and qualified to do this independently **already** knows how to do it without my help.
 
@@ -38,13 +30,7 @@ If you want to go this route: be my guest, but you'll need to figure it out on y
 
 ### Q: Should I use an API key or a Max subscription?
 
-I strongly recommend the **Max subscription** ($100/mo or $200/mo depending on tier). Here's why:
-
-DAAF is extremely usage-intensive by design. It's doing a *lot* of work: deep-diving into data documentation, writing code, having another instance of Claude review that code line by line, writing plans, writing reports, and so on. All of that consumes tokens. With an API key, you pay per token, and a single full-pipeline analysis can easily burn through $50-100+ in API costs depending on the complexity. With a Max subscription, that same analysis is covered by your flat monthly rate.
-
-From my own testing, I estimate I'd pay roughly **10x more** going with API billing versus my Max subscription. The Max plan is Anthropic explicitly subsidizing heavy usage like this -- take advantage of it.
-
-The tradeoffs:
+I strongly recommend the **Max subscription** ($100/mo or $200/mo). DAAF is extremely usage-intensive by design, and from my own testing I estimate I'd pay roughly **10x more** going with API billing versus my Max subscription. A single full-pipeline analysis can easily cost $50-100+ via the API; the Max plan covers that at a flat monthly rate.
 
 | Factor | API Key | Max Subscription |
 |--------|---------|------------------|
@@ -53,6 +39,10 @@ The tradeoffs:
 | **Usage limits** | Unlimited (as long as you pay) | Subject to usage limits within your plan tier |
 | **Rate limiting** | Minimal | May hit rate limits during very heavy sessions |
 | **Best for** | Light/occasional use, or organizational API budgets | Regular DAAF usage (recommended) |
+
+**Third option: OpenRouter.** Pay-per-token access to Claude via [OpenRouter](https://openrouter.ai/) with no monthly commitment (5.5% fee on credit purchases). Good for testing DAAF before committing to a subscription. See [**01. Installation -- Configure authentication via environment_settings.txt**](01_installation_and_quickstart.md#configure-authentication-via-environment_settingstxt) for setup.
+
+For the full comparison of all authentication options, see [**01. Installation -- Anthropic Account & Authentication**](01_installation_and_quickstart.md#1-anthropic-account--authentication).
 
 One thing to note: the Max plan does have usage limits per time window. If you're running several DAAF analyses in parallel (which you absolutely can do!), you may occasionally hit a rate limit and need to wait a bit. The API key doesn't have that issue, but your wallet will feel it instead.
 
@@ -74,9 +64,13 @@ You can also adjust the thinking level for Opus 4.6 by pressing the left and rig
 
 ### Q: Can I use DAAF with a different AI provider (OpenAI, Google, etc.)?
 
-Not out of the box, but it's more portable than you might think.
+Yes -- partially. There are two different things this question might mean, so let me address both.
 
-DAAF is built on Claude Code, which is Anthropic's CLI agent tool. The vast majority of what DAAF actually *is* -- the agent protocols, skill documents, workflow definitions, validation checkpoints -- is just structured text in Markdown files. None of that is Anthropic-specific. What *is* specific to Claude Code are the hooks system (the safety guardrails that block dangerous commands, scan outputs for secrets, etc.) and some of the tool invocation patterns.
+**Using different models through OpenRouter (supported):** [OpenRouter](https://openrouter.ai/) is a model gateway that lets you route Claude Code through a single API key with pay-per-token billing. It's already configured as an authentication option in DAAF's `environment_settings_example.txt` template (Option C). Through OpenRouter, you can access Anthropic's Claude models without a Max subscription -- and OpenRouter technically allows routing to non-Anthropic models as well. See [**01. Installation & Quick Start -- Configure authentication via environment_settings.txt**](01_installation_and_quickstart.md#configure-authentication-via-environment_settingstxt) for setup instructions (remember to run `/logout` first if you previously authenticated with Anthropic directly).
+
+**The practical reality for non-Anthropic models:** Claude Code is optimized for Anthropic models, and DAAF's complex multi-agent workflow (detailed protocols, nuanced judgment calls, multi-step tool chains) requires Opus-class reasoning to function reliably. OpenRouter's own documentation notes that Claude Code "is optimized for Anthropic models and may not work correctly with other providers." Some non-Claude models (e.g., GPT-4o) can handle basic operations, but they struggle with the tool-calling patterns and edit formatting that DAAF depends on heavily. Extended thinking -- which DAAF uses extensively -- works through OpenRouter when using Anthropic models, but does not work with non-Anthropic models at all. **Bottom line:** Use Anthropic's Opus models through OpenRouter for reliable DAAF results. Non-Anthropic models may technically load but will produce erratic, inconsistent output for DAAF's workflows.
+
+**Porting DAAF to a different CLI tool entirely:** This is also possible but requires more effort. DAAF is built on Claude Code, which is Anthropic's CLI agent tool. The vast majority of what DAAF actually *is* -- the agent protocols, skill documents, workflow definitions, validation checkpoints -- is just structured text in Markdown files. None of that is Anthropic-specific. What *is* specific to Claude Code are the hooks system (the safety guardrails that block dangerous commands, scan outputs for secrets, etc.) and some of the tool invocation patterns.
 
 If you wanted to port DAAF to another agent harness (Gemini CLI, Codex, OpenCode, etc.), here's what would transfer immediately:
 - All agent files (`.claude/agents/*.md`)
@@ -101,9 +95,33 @@ Your data does pass through Anthropic's API when Claude Code processes it -- tha
 
 3. **The container provides additional isolation.** Because DAAF runs inside Docker with dropped capabilities and no privilege escalation, the blast radius of any unexpected behavior is contained (i.e., files it can accidentally upload to the internet, or send via email, or etc. etc.).
 
-4. **DAAF enforces credential safety.** The framework actively prevents reading, writing, or committing files that look like credentials (`.env`, `*.pem`, `*.key`, etc.). It won't prevent everything, but it'll give you a good set of starting guardrails to help protect yourself.
+4. **DAAF enforces credential safety.** The framework actively prevents reading, writing, or committing files that look like credentials (`.env`, `*.pem`, `*.key`, `environment_settings*`, etc.). It won't prevent everything, but it'll give you a good set of starting guardrails to help protect yourself.
 
 **Bottom line:** If you're working with sensitive, proprietary, or regulated data, talk to your IT team and legal counsel before using DAAF or any AI tool with that data. DAAF provides strong *local* safety guarantees, but the data still transits through Anthropic's infrastructure for inference. Do not mess around here -- do your homework and be a good steward of your data.
+
+---
+
+### Q: Why are the notebook and log viewer ports bound to localhost only?
+
+DAAF's `docker-compose.yml` binds ports 2718 (Marimo notebook), 2719 (session log viewer), and 2720 (code-server browser editor) to `127.0.0.1` — meaning only your local machine can access them. This is a deliberate security measure: Marimo notebooks and code-server are **interactive**, so an unauthenticated server exposed to your local network would allow anyone on that network to execute arbitrary code inside your container.
+
+With localhost binding, the ports are only reachable from your own machine, not from other devices on your WiFi or LAN. code-server additionally requires a password for defense-in-depth.
+
+**If you need to revert this** (e.g., WSL2 port forwarding issues, or you need to access from another device on a trusted network), edit the `ports:` section in `docker-compose.yml` to remove the `127.0.0.1:` prefix:
+
+```yaml
+# Localhost only (default, more secure):
+- "127.0.0.1:2718:2718"
+- "127.0.0.1:2719:2719"
+- "127.0.0.1:2720:2720"
+
+# All interfaces (less secure, use only if needed):
+- "2718:2718"
+- "2719:2719"
+- "2720:2720"
+```
+
+After changing, rebuild the container — see [Keeping DAAF Updated](01_installation_and_quickstart.md#keeping-daaf-updated) for the procedure.
 
 ---
 
@@ -111,7 +129,28 @@ Your data does pass through Anthropic's API when Claude Code processes it -- tha
 
 Not in a practical sense for full-pipeline analyses, unfortunately. The free and Pro tiers of Claude simply don't provide enough usage for the volume of work DAAF demands. You might be able to do some lightweight Data Discovery Mode queries (asking what data is available, looking up variable definitions), but a full analysis pipeline will exhaust a lower-tier plan very quickly.
 
+**More flexible billing via OpenRouter:** While not free, [OpenRouter](https://openrouter.ai/) offers pay-per-token access to Claude's Opus models with no monthly subscription commitment. You only pay for what you use (with a 5.5% fee on credit purchases), which can be more accessible than a $100-200/mo Max subscription if you're doing occasional analyses rather than heavy daily use. See the [Installation Guide](01_installation_and_quickstart.md#configure-authentication-via-environment_settingstxt) for setup instructions.
+
 This is genuinely the biggest barrier to entry for DAAF, and I wish it were different. I hope that as model costs continue to decrease and open-source models become more capable, a more accessible option will emerge. If you have the capacity to test DAAF with open-source models or alternative providers, please reach out -- that's high on the list of things I'd love community help with.
+
+### Q: How much disk space does DAAF use?
+
+The Docker image is roughly **3-5 GB** after building. It includes a Debian Bookworm base image, Python 3.12, 57 pinned Python packages (data science, geospatial, econometrics, visualization, ML), geospatial system libraries (GDAL/GEOS/PROJ), and Claude Code. Docker also keeps build cache layers, so total Docker disk usage may be somewhat higher.
+
+Beyond the image, your Docker volume will grow as you create research projects. Each project accumulates scripts, parquet data files, session logs, and notebooks. A typical full-pipeline project might add 50-500 MB depending on how many datasets you fetch and how large they are.
+
+**To check your Docker disk usage:**
+- Open **Docker Desktop** and check the **Images** and **Volumes** sections for size information
+- Or from the terminal: `docker system df` shows a breakdown of images, containers, and volumes
+
+**To reclaim space:**
+- `docker system prune` removes stopped containers, unused networks, and dangling images
+- `docker builder prune` clears the build cache specifically
+- Be careful not to remove your `daaf_daaf-data` volume -- that's where your research files live
+
+### Q: Can I use DAAF offline?
+
+No. DAAF requires an active internet connection for two reasons: Claude Code communicates with Anthropic's API for all AI inference (nothing runs locally), and data fetching requires access to data portals like the Urban Institute Education Data Portal. If you lose connectivity mid-session, Claude Code will fail on the next API call, but your work-in-progress files and session state are preserved in the Docker volume -- just reconnect and resume.
 
 ### Q: How do I get help understanding or using DAAF itself?
 
@@ -179,12 +218,31 @@ You don't need to do anything -- just start a new session and recovery happens s
 
 Session logs are invaluable when something goes wrong. The Markdown logs show you exactly what the assistant did, in order -- every tool call, every file read/write, every subagent invocation, and the full output at each step.
 
-1. Find the relevant session log in `.claude/logs/sessions/` (sorted by timestamp)
-2. Open the `.md` file to review what happened in a readable format
-3. Look for the point where things went wrong -- you'll see the exact tool calls and their results
-4. When filing an issue, include relevant excerpts from the log (redact any sensitive data first)
+DAAF includes an interactive **DAAF Log Explorer** that renders your session transcripts as a visual timeline in your web browser. It shows the orchestrator's actions as a horizontal timeline bar, with subagent dispatches waterfalling downward. Click any block to see exactly what files were read, written, or executed -- with plain-language descriptions and clickable file references.
 
-The `.jsonl` file contains the complete raw transcript if deeper inspection is needed.
+The quickest way to access this is from your host machine (no container shell needed):
+
+```bash
+cd daaf-docker
+bash view_logs.sh            # macOS / Linux
+.\view_logs.ps1              # Windows
+```
+
+This starts the container if needed, generates an activity manifest from all sessions, and starts the server. Open the URL it prints in the terminal into your browser.
+
+For more specific per-project session log viewing and diagnostics, you can also run it from a terminal inside the container:
+
+```bash
+bash /daaf/scripts/collect_session_logs.sh /daaf/research/YYYY-MM-DD_Your_Project
+bash /daaf/scripts/generate_log_viewer.sh /daaf/research/YYYY-MM-DD_Your_Project
+```
+
+**Note:** The server requires port 2719 to be mapped in your `docker-compose.yml`. If you set up DAAF after this feature was added, it's already there. If not, add `- "127.0.0.1:2719:2719"` under the `ports:` section and restart your container with `docker compose down && docker compose up -d`.
+
+Alternatively, DAAF also processes every individual log transcript into a more intuitive markdown file showing the flow of the conversation alongside tool calling segments.
+
+You can read these by finding the relevant `.md` session log in `.claude/logs/sessions/` (sorted by timestamp). The raw `.jsonl` file contains the complete raw transcript if deeper inspection is needed.
+
 
 ### Q: Are session logs shared or uploaded anywhere?
 
@@ -194,7 +252,7 @@ No. Session logs are gitignored and stay entirely on your local machine (specifi
 
 They serve very different purposes:
 
-**Session logs** are a complete, raw transcript of everything that happened in a Claude Code session. They're automatically generated, stored in `.claude/logs/`, and are primarily useful for debugging after the fact. Think of these as a security camera recording -- comprehensive but not curated.
+**Session logs** are a complete, raw transcript of everything that happened in a Claude Code session. They're automatically generated, stored in `.claude/logs/`, and are primarily useful for debugging after the fact. Think of these as a security camera recording -- comprehensive but not curated. You can browse them visually using the DAAF Log Explorer (`bash view_logs.sh` from your `daaf-docker` folder) rather than reading the raw files.
 
 **STATE.md** is a structured progress tracker that DAAF creates during full-pipeline analyses. It lives inside your project folder (`research/[project]/STATE.md`) and tracks what stage the analysis is at, which checkpoints have passed, what decisions were made, and what needs to happen next. It also accumulates the QA Findings Summary (aggregated quality review results across all stages), the Final Review Log (from the data-verifier's end-of-pipeline check), and any Runtime Risks encountered during execution. Its primary purpose is enabling **session recovery** -- if your session runs out of context (the model's working memory fills up), you can start a fresh session and STATE.md tells the new session exactly where to pick up. Think of this as a bookmark with detailed notes.
 
@@ -344,18 +402,16 @@ Election data (county presidential returns) is hosted on Harvard Dataverse, whic
 
 1. Create a free account at [dataverse.harvard.edu](https://dataverse.harvard.edu/)
 2. Log in, click your account name (top-right) → **API Token** → **Create Token**
-3. Copy the token, then run this **inside the Docker container, before launching Claude Code**:
+3. Add the key to the `environment_settings.txt` file in your `daaf-docker/` folder on the host:
    ```bash
-   export HARVARD_DATAVERSE_API_KEY="your_token_here"
+   HARVARD_DATAVERSE_API_KEY=your_token_here
    ```
-4. Then start Claude Code with `claude` as usual
+   If you don't have an `environment_settings.txt` file yet, copy the template first: `cp environment_settings_example.txt environment_settings.txt` (macOS/Linux) or `Copy-Item environment_settings_example.txt environment_settings.txt` (Windows).
+4. Recreate the container: `docker compose down` then `bash run_daaf.sh` (or `.\run_daaf.ps1`)
 
-To make it persist across sessions, add the export line to `~/.bashrc` inside the container:
-```bash
-echo 'export HARVARD_DATAVERSE_API_KEY="your_token_here"' >> ~/.bashrc
-```
+Alternatively, you can set it manually inside the container before launching Claude Code: `export HARVARD_DATAVERSE_API_KEY="your_token_here"`
 
-See also: [Installation Guide — Data Source API Keys](01_installation_and_quickstart.md#step-8-optional-set-up-data-source-api-keys)
+See also: [Installation Guide — Data Source API Keys](01_installation_and_quickstart.md#set-up-data-source-api-keys)
 
 ### Q: How current is the education data?
 
@@ -401,7 +457,9 @@ When more than 50% of your data is suppressed, any statistical analysis on the r
 
 ### Q: The notebook won't render in my browser
 
-If you've run the `marimo run` command but can't see anything at `http://localhost:2718`, check these things in order:
+The easiest way to view notebooks is with the convenience script — run `bash view_notebooks.sh` (or `.\view_notebooks.ps1` on Windows) from your `daaf-docker` folder. This handles container startup, port binding, and flag configuration automatically, and includes built-in port conflict detection.
+
+If you're using the manual `marimo run` command and can't see anything at `http://localhost:2718`, check these things in order:
 
 1. **Is the container running?** Check Docker Desktop's Containers panel. The `daaf` container should show as running.
 
@@ -410,9 +468,9 @@ If you've run the `marimo run` command but can't see anything at `http://localho
    marimo run 'research/[your-project]/[notebook-name].py' --host 0.0.0.0 --port 2718 --headless
    ```
 
-3. **Is the port mapped correctly?** Check your `docker-compose.yml` -- the line `"2718:2718"` under `ports:` maps the container's port to your host machine. If you changed this, use the host-side port in your browser.
+3. **Is the port mapped correctly?** Check your `docker-compose.yml` -- the line `"127.0.0.1:2718:2718"` under `ports:` maps the container's port to your host machine. If you changed this, use the host-side port in your browser.
 
-4. **Is something else using port 2718?** See the port conflict question above.
+4. **Is something else using port 2718?** See the port conflict question above. (The `view_notebooks` convenience script detects this automatically.)
 
 5. **Try a different browser or incognito/private window.** Occasionally, browser extensions or cached state can interfere.
 
@@ -454,6 +512,20 @@ DAAF has several mechanisms to handle this:
 4. **Session restart** via Session Recovery gives Claude a completely fresh context window while preserving all progress.
 
 If you notice Claude asking questions it already asked, or making decisions that contradict earlier ones, the best course of action is to prompt it to check its STATE.md and Plan.md, or to restart the session with `/clear` and the restart prompt.
+
+### Q: Claude seems to be making things up about data variables or endpoints
+
+This is one of the most common -- and most important -- symptoms to recognize. If DAAF confidently references variable names, API endpoints, coded value schemes, or data structures that don't match reality, the most likely cause is a **skill or reference file that didn't load properly**.
+
+DAAF has extensive curated knowledge about its supported data sources, stored in skill files. When these skills load correctly, agents have access to exact variable names, precise endpoint paths, correct coded values, and known caveats. When a skill *doesn't* load -- which can happen due to the non-deterministic nature of LLMs -- the agent falls back on its general training data and fills in the gaps with plausible-sounding but potentially incorrect details.
+
+**What to do:**
+1. Make sure **Verbose output** is set to **True** in `/config`. This is your primary tool for monitoring how agents are deciding to load or not to load certain reference files.
+2. Ask DAAF to verify: "Can you double-check that variable name against the actual skill documentation?" or "Did the agent load the CCD data source skill before writing that script?"
+3. If the issue persists, try restarting the session with `/clear` -- a fresh context often resolves loading issues. For Full Pipeline mode, DAAF's session recovery system will pick up where you left off.
+4. Report persistent loading failures by [opening an issue](https://github.com/DAAF-Contribution-Community/daaf/issues) -- patterns of failure help us improve DAAF's loading reliability.
+
+For more detail, see [Best Practices — Monitoring DAAF's Internal Reference Loading](03_best_practices.md#monitoring-daafs-internal-reference-loading).
 
 ---
 

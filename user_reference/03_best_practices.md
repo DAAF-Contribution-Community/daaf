@@ -15,7 +15,7 @@ Practical wisdom for getting the most out of DAAF while maintaining research qua
 - [**When and How to Request Revisions**](#when-and-how-to-request-revisions)
 - [**Appropriate vs. Inappropriate Use Cases**](#appropriate-vs-inappropriate-use-cases)
 - [**Using Git Version Control**](#using-git-version-control)
-- [**Using VSCode and Similar Interfaces**](#using-vscode-and-similar-interfaces)
+- [**Using the Browser-Based Code Editor**](#using-the-browser-based-code-editor)
 - [**Safety with Claude Code**](#safety-with-claude-code)
 - [**Recommended Next Steps**](#recommended-next-steps)
 
@@ -236,6 +236,8 @@ I recommend this review order:
 
 You do *not* need to read everything in detail every time. The report is the synthesis; the notebook is the evidence; the scripts are the primary source. Go as deep as you need to based on how much you trust the results and how high-stakes the analysis is.
 
+**Tip:** Before diving into individual artifacts, consider browsing the session visually using the **DAAF Log Explorer**. Run `bash view_logs.sh` (or `.\view_logs.ps1` on Windows) from your `daaf-docker` folder to see an interactive timeline of every orchestrator action, subagent dispatch, and tool call. This gives you a high-level map of the entire session, making it easier to identify which stages or scripts deserve closer inspection.
+
 ### Reading the Report
 
 The report follows a standard structure (Executive Summary, Key Findings, Data & Methodology, Limitations, etc.). When reviewing it, focus on:
@@ -338,6 +340,30 @@ But automated validation cannot assess everything. Here is what still requires a
 
 **Ethical considerations.** DAAF does not assess the ethical dimensions of your analysis. If you are working with data that involves vulnerable populations, politically sensitive topics, or potential for misuse of findings, those considerations are entirely your responsibility.
 
+### Monitoring DAAF's Internal Reference Loading
+
+There's one oversight responsibility that's easy to overlook because it's about DAAF's own internal mechanics rather than the substance of your analysis: **making sure DAAF actually loaded the reference files and skills it was supposed to load.**
+
+LLMs are non-deterministic, and DAAF's reference loading is orchestrated by an LLM. This means that occasionally -- not often, but not never -- an agent will proceed without loading a skill it was instructed to load, or the orchestrator will skip a reference file it was supposed to read. When this happens, the agent falls back on its general training, which produces output that looks correct but is built on plausible inference rather than curated knowledge.
+
+**Verbose output is your primary monitoring tool.** When you set Verbose output to True in `/config` (which you should -- it's a [required configuration setting](01_installation_and_quickstart.md#configure-claude-code-required)), you can see the internal thought process informing the file reads that DAAF's agents make. Here's what to watch for:
+
+**Signs that something may not have loaded:**
+- An agent explicitly mentions wanting to load something but then never doing it
+- An agent notes in its thinking block instructions to load a reference file, but deciding it doesn't need to for some ambiguous reason
+- An agent makes confident claims about variable names, API endpoints, or coded values that you can't find in the actual data or documentation
+- An agent writes code that uses variable names or data structures that don't match what the data source actually provides
+- You see an agent proceed directly to writing code without any visible skill or reference loading in the verbose output
+- Error messages about unexpected columns, missing variables, or failed API calls -- these often indicate the agent was working from hallucinated rather than loaded specifications
+
+**What to do when you suspect a loading failure:**
+1. **Ask DAAF to verify.** Simply say something like: "Can you check whether the agent actually loaded the CCD skill before writing that script?" or "That variable name doesn't look right -- can you verify it against the data source documentation?"
+2. **Request a re-run.** If a script was clearly written without the right context, ask DAAF to re-run that specific step with explicit instructions to load the relevant skill first.
+3. **Check the script execution logs.** Even if the agent hallucinated a variable name, the script's execution log will show whether the code actually worked. Failed scripts with `KeyError` or unexpected empty results often point back to a loading failure.
+4. **Check Session logs to verify reference loading sequences.** DAAF's built-in session log viewer was built in part to help users monitor exactly whether and when DAAF loads proper reference files to inform its work. Load up your session and explore how the orchestrator and subagents loaded reference files accordingly.
+
+The good news is that DAAF's dual-layer validation (CP checkpoints + QA code review) will catch many loading failures *downstream* -- a script that uses fabricated variable names will typically fail at execution or get flagged during QA review. But catching failures early, at the loading stage, saves time and prevents the cascading revisions that follow a fundamentally misinformed script.
+
 ---
 
 ## When and How to Request Revisions
@@ -395,7 +421,7 @@ When you are on the fence, DAAF will offer its assessment. But a useful rule of 
 
 ## Appropriate vs. Inappropriate Use Cases
 
-DAAF is still very much in its nasceny, and there is only so much that one person and his friends can do to check guardrails, test robustness, and so on. With that in mind, it is important to be extremely transparent about what that means in practice.
+DAAF is still very much still in active development, and there is only so much that one person and his friends can do to check guardrails, test robustness, and so on. With that in mind, it is important to be extremely transparent about what that means in practice.
 
 ### Appropriate Uses
 
@@ -427,7 +453,7 @@ These should not be done with DAAF (or any LLM-based system) regardless of the g
 
 ## Using Git Version Control
 
-When you start using DAAF, you'll find that it produces a LOT of files, and it does a LOT of things at once. Once best practice I'd strongly encourage is to get comfortable with using Git for version control. This is part of why I treat it as a prerequisite for using DAAF in the installation process (spoilers: there were other ways to do it!): This type of work with LLMs just benefits so immensely from having a full audit log of file edits and changes at all times, with the ability to roll back changes and identify issues quickly.
+When you start using DAAF, you'll find that it produces a LOT of files, and it does a LOT of things at once. One best practice I'd strongly encourage is to get comfortable with using Git for version control. This is part of why I treat it as a prerequisite for using DAAF in the installation process (spoilers: there were other ways to do it!): This type of work with LLMs just benefits so immensely from having a full audit log of file edits and changes at all times, with the ability to roll back changes and identify issues quickly.
 
 I would strongly recommend making a private "fork" of the DAAF repository for you to work in and back up all of your research files to (though DAAF by default will NOT back up your parquet data files to avoid accidentally sharing data up to the cloud). Teaching Git is a bit beyond the scope of this project, but you absolutely can and should ask Claude to tell you more about:
 
@@ -439,17 +465,47 @@ I would strongly recommend making a private "fork" of the DAAF repository for yo
 
 There are also a ton of guides online and on YouTube, etc. Take some time to get oriented! It's an immensely useful skillset.
 
+### Useful Git Commands for DAAF Work
+
+Here are a few concrete commands that are especially handy when working with DAAF:
+
+- **`git diff HEAD~1`** -- See exactly what changed in the last session. This is great for reviewing what DAAF produced overnight or after a long run. It shows every file that was added, modified, or deleted, with the specific changes highlighted.
+- **`git log --oneline -10`** -- See the 10 most recent commits in a compact format. Since DAAF's sessions are typically committed at the end, this gives you a quick history of recent sessions and what they produced.
+- **`git stash` / `git stash pop`** -- Temporarily set aside all uncommitted changes and restore them later. This is useful if you want to experiment with something (like testing a different analysis approach) without committing to it. Run `git stash` to save your current changes, do your experiment, and then run `git stash pop` to bring your original changes back.
+
+You can run these commands in the Claude Code terminal inside the container, or in any terminal connected to the DAAF repository.
+
 ---
 
-## Using VSCode and Similar Interfaces
+## Using the Browser-Based Code Editor
 
-In addition to using Git, and part and parcel with it: I currently use [VSCode](https://code.visualstudio.com) as my main driver for working with DAAF and Claude Code. VSCode is basically a nice interface that collects all of the following in an easy-to-use sort of format:
-- File management within the Docker volume (using the "Dev containers" extension)
-- File editing for markdown files, and viewing markdown files in their rendered format
-- Tracking changes for files using Git in a super easy and intuitive interface
-- Doing intensive file searches, edits, and similar
+In addition to using Git, and part and parcel with it: having a good file editor is essential for working with DAAF and Claude Code. You'll want a way to:
+- Browse and manage files within the Docker volume
+- Edit and preview Markdown files (reports, plans) in their rendered format
+- Track changes using Git in an intuitive interface
+- Search across files, review scripts, and inspect data
 
-There are a bunch of similar alternatives that are also designed to be a bit more teched-up with coding agents built in (e.g., Cursor), but I've found VSCode to work great! Your mileage may vary -- the recommendation here is really just, find an interface that works for you and your workflow to make this work easier and reduce the frictions involved.
+DAAF ships with a **built-in browser-based code editor** ([code-server](https://github.com/coder/code-server) -- VS Code in the browser) that handles all of the above with zero installation on your host machine. I strongly recommend keeping it open in a browser tab alongside your Claude Code terminal session. To launch it, run this from your `daaf-docker` folder:
+
+```bash
+bash run_vscode.sh              # macOS / Linux
+.\run_vscode.ps1                # Windows
+```
+
+Then open **http://localhost:2720** in your browser. The password is displayed in the terminal output (default: `daaf`). The script handles starting the container if it isn't already running.
+
+The browser editor comes pre-loaded with extensions for Python syntax highlighting, Markdown preview, Git history visualization, and CSV viewing -- everything you need to comfortably browse and review DAAF's output. A few key features worth knowing:
+
+- **Markdown preview:** Right-click any `.md` file and select **"Open Preview"**, or press `Shift+Ctrl+V`, to see the rendered report with proper formatting. This is by far the easiest way to read DAAF's reports and plans.
+- **File management:** Drag and drop files from your computer into the file explorer sidebar to import them into the Docker volume (e.g., a dataset you want to profile). Create, rename, move, and delete files directly.
+- **Git integration:** The Source Control panel (left sidebar) shows uncommitted changes, lets you view diffs, and browse commit history -- invaluable for reviewing what DAAF produced during a session.
+- **Search across files:** `Ctrl+Shift+F` (or `Cmd+Shift+F` on Mac) searches across all files in the project -- great for finding specific variables, scripts, or content.
+
+### Alternative: Desktop VSCode with Dev Containers
+
+If you already have [VSCode](https://code.visualstudio.com) installed on your computer and prefer a native desktop experience, you can connect it directly to the DAAF container. Install the [Dev Containers extension](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-containers) and use the "Attach to Running Container" command to open the DAAF container's filesystem directly in VSCode. This gives you a full file browser, integrated terminal, and your own preferred extensions and settings.
+
+There are also similar alternatives that are designed to be a bit more teched-up with coding agents built in (e.g., Cursor), but I've found VSCode to work great! Your mileage may vary -- the recommendation here is really just, find an interface that works for you and your workflow to make this work easier and reduce the frictions involved.
 
 ---
 

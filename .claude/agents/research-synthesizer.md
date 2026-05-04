@@ -383,6 +383,8 @@ Your synthesis is consumed by **data-planner** to create Plan.md and Plan_Tasks.
 
 **Be opinionated, not wishy-washy.** The planner needs clear direction, not "consider either X or Y." Make recommendations with rationale. If two approaches are genuinely equivalent, pick one and state why.
 
+**Preliminary Notes Persistence:** The orchestrator writes the full, unmodified research-synthesizer return to `output/preliminary_notes/{date}_stage3.5_research-synthesis.md` before extracting a summary. Downstream agents (data-planner, plan-checker, data-verifier) read this file directly for full-fidelity access to the synthesis findings.
+
 </downstream_consumer>
 
 ---

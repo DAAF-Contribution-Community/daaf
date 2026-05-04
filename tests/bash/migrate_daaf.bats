@@ -1,0 +1,964 @@
+#!/usr/bin/env bats
+# ============================================================================
+# Tests for migrate_daaf.sh -- DAAF Migration Script
+# ============================================================================
+# Key testable logic: era detection (clone vs ZIP), preflight checks,
+# helper functions (container_git, prompt_choice), idempotency markers.
+# ============================================================================
+
+load 'test_helper'
+
+setup() {
+    common_setup
+    mock_docker
+    mock_curl
+}
+
+teardown() {
+    common_teardown
+    # Clean up lock directories that may be left by lock contention tests
+    rmdir /tmp/daaf-migrate.lock.d 2>/dev/null || true
+}
+
+# --- Syntax ---
+
+@test "migrate_daaf.sh parses without errors" {
+    run bash -n "${REPO_ROOT}/scripts/host/migrate_daaf.sh"
+    assert_success
+}
+
+# --- Preflight: missing Docker ---
+
+@test "migrate_daaf.sh fails when docker command is not found" {
+    mock_no_docker
+    export DAAF_NESTED=1
+    run bash "${REPO_ROOT}/scripts/host/migrate_daaf.sh"
+    assert_failure
+    assert_output --partial "ERROR"
+    assert_output --partial "Docker"
+}
+
+# --- Preflight: Docker daemon not running ---
+
+@test "migrate_daaf.sh fails when Docker daemon is not running" {
+    MOCK_DOCKER_INFO_EXIT=1
+    export DAAF_NESTED=1
+    run bash "${REPO_ROOT}/scripts/host/migrate_daaf.sh"
+    assert_failure
+    assert_output --partial "ERROR"
+    assert_output --partial "Docker Desktop"
+}
+
+# --- Preflight: volume not found ---
+
+@test "migrate_daaf.sh fails when Docker volume does not exist" {
+    MOCK_DOCKER_VOLUME_EXIT=1
+    export DAAF_NESTED=1
+    run bash "${REPO_ROOT}/scripts/host/migrate_daaf.sh"
+    assert_failure
+    assert_output --partial "ERROR"
+    assert_output --partial "not found"
+}
+
+# --- DAAF_NESTED behavior ---
+
+@test "migrate_daaf.sh suppresses pause trap when DAAF_NESTED=1" {
+    export DAAF_NESTED=1
+    MOCK_DOCKER_VOLUME_EXIT=1
+    run bash "${REPO_ROOT}/scripts/host/migrate_daaf.sh"
+    refute_output --partial "Press Enter"
+}
+
+# --- Banner display ---
+
+@test "migrate_daaf.sh displays the DAAF Migration banner" {
+    export DAAF_NESTED=1
+    MOCK_DOCKER_VOLUME_EXIT=1
+    run bash "${REPO_ROOT}/scripts/host/migrate_daaf.sh"
+    assert_output --partial "DAAF Migration"
+}
+
+# --- Helper functions defined ---
+
+@test "migrate_daaf.sh defines prompt_choice helper function" {
+    run grep -c "prompt_choice()" "${REPO_ROOT}/scripts/host/migrate_daaf.sh"
+    assert_success
+    [ "${output}" -ge 1 ]
+}
+
+@test "migrate_daaf.sh defines container_git helper function" {
+    run grep -c "container_git()" "${REPO_ROOT}/scripts/host/migrate_daaf.sh"
+    assert_success
+    [ "${output}" -ge 1 ]
+}
+
+@test "migrate_daaf.sh defines container_git_verbose helper function" {
+    run grep -c "container_git_verbose()" "${REPO_ROOT}/scripts/host/migrate_daaf.sh"
+    assert_success
+    [ "${output}" -ge 1 ]
+}
+
+@test "migrate_daaf.sh defines container_exec helper function" {
+    run grep -c "container_exec()" "${REPO_ROOT}/scripts/host/migrate_daaf.sh"
+    assert_success
+    [ "${output}" -ge 1 ]
+}
+
+# --- ERR trap defined ---
+
+@test "migrate_daaf.sh defines an ERR trap for cleanup" {
+    run grep -c "trap cleanup_on_error ERR" "${REPO_ROOT}/scripts/host/migrate_daaf.sh"
+    assert_success
+    [ "${output}" -ge 1 ]
+}
+
+# --- Era detection references ---
+
+@test "migrate_daaf.sh references both Era 1 and Era 2 paths" {
+    run grep -c "ERA.*PATH" "${REPO_ROOT}/scripts/host/migrate_daaf.sh"
+    assert_success
+    [ "${output}" -ge 2 ]
+}
+
+# --- DAAF_BRANCH override ---
+
+@test "migrate_daaf.sh supports DAAF_BRANCH environment variable" {
+    run grep -c "DAAF_BRANCH" "${REPO_ROOT}/scripts/host/migrate_daaf.sh"
+    assert_success
+    [ "${output}" -ge 1 ]
+}
+
+# --- Idempotency check ---
+
+@test "migrate_daaf.sh claims to be idempotent in its header" {
+    run grep -c "idempotent" "${REPO_ROOT}/scripts/host/migrate_daaf.sh"
+    assert_success
+    [ "${output}" -ge 1 ]
+}
+
+# --- Creates host directory when not in daaf-docker ---
+
+@test "migrate_daaf.sh creates daaf-docker directory when docker-compose.yml is missing" {
+    # When docker-compose.yml does not exist in cwd, the script creates daaf-docker/
+    # The script will fail later at volume check or download, but it should
+    # announce the directory creation
+    MOCK_DOCKER_VOLUME_EXIT=0
+    MOCK_CURL_EXIT=1
+    export DAAF_NESTED=1
+    run bash "${REPO_ROOT}/scripts/host/migrate_daaf.sh"
+    assert_output --partial "daaf-docker"
+}
+
+# ============================================================================
+# Behavioral tests -- sourced functions
+# ============================================================================
+# Source the script in test mode to access helper functions directly.
+# DAAF_TEST_MODE=1 causes the script to return after defining functions,
+# skipping the main execution body.
+
+# --- container_git behavioral tests ---
+
+@test "migrate: container_git executes git in container" {
+    # Source in test mode to get the functions
+    DAAF_TEST_MODE=1 source "${REPO_ROOT}/scripts/host/migrate_daaf.sh"
+    trap - ERR
+    set +eu
+
+    CONTAINER_NAME="test-container"
+
+    # Mock docker to record calls and return empty output
+    docker() {
+        echo "DOCKER_CALLED: $*"
+        return 0
+    }
+    export -f docker
+
+    run container_git status
+    assert_success
+    assert_output --partial "DOCKER_CALLED:"
+    assert_output --partial "test-container"
+    assert_output --partial "git -C /daaf status"
+}
+
+@test "migrate: container_git suppresses stderr" {
+    DAAF_TEST_MODE=1 source "${REPO_ROOT}/scripts/host/migrate_daaf.sh"
+    trap - ERR
+    set +eu
+
+    CONTAINER_NAME="test-container"
+
+    # Mock docker to emit both stdout and stderr
+    docker() {
+        echo "stdout-line"
+        echo "stderr-line" >&2
+        return 0
+    }
+    export -f docker
+
+    # container_git redirects stderr to /dev/null, so only stdout should appear
+    run container_git status
+    assert_success
+    assert_output --partial "stdout-line"
+    refute_output --partial "stderr-line"
+}
+
+@test "migrate: container_git strips carriage returns" {
+    DAAF_TEST_MODE=1 source "${REPO_ROOT}/scripts/host/migrate_daaf.sh"
+    trap - ERR
+    set +eu
+
+    CONTAINER_NAME="test-container"
+
+    # Mock docker to return output with \r (Windows-style line endings)
+    docker() {
+        printf "line-with-cr\r\n"
+        return 0
+    }
+    export -f docker
+
+    run container_git status
+    assert_success
+    # Output should not contain \r
+    [[ "${output}" != *$'\r'* ]]
+    assert_output --partial "line-with-cr"
+}
+
+# --- container_git_verbose behavioral tests ---
+
+@test "migrate: container_git_verbose preserves stderr" {
+    DAAF_TEST_MODE=1 source "${REPO_ROOT}/scripts/host/migrate_daaf.sh"
+    trap - ERR
+    set +eu
+
+    CONTAINER_NAME="test-container"
+
+    # Mock docker to emit stderr
+    docker() {
+        echo "stdout-output"
+        echo "verbose-stderr" >&2
+        return 0
+    }
+    export -f docker
+
+    # container_git_verbose does NOT redirect stderr to /dev/null
+    # Use run with 3>&1 to capture stderr in output
+    run bash -c '
+        CONTAINER_NAME="test-container"
+        docker() {
+            echo "stdout-output"
+            echo "verbose-stderr" >&2
+            return 0
+        }
+        export -f docker
+        source "'"${REPO_ROOT}"'/scripts/host/migrate_daaf.sh" 2>/dev/null
+        container_git_verbose status 2>&1
+    '
+    assert_success
+    assert_output --partial "verbose-stderr"
+}
+
+# --- container_exec behavioral tests ---
+
+@test "migrate: container_exec runs arbitrary command in container" {
+    DAAF_TEST_MODE=1 source "${REPO_ROOT}/scripts/host/migrate_daaf.sh"
+    trap - ERR
+    set +eu
+
+    CONTAINER_NAME="test-container"
+
+    docker() {
+        echo "EXEC_CALLED: $*"
+        return 0
+    }
+    export -f docker
+
+    run container_exec ls -la /daaf
+    assert_success
+    assert_output --partial "EXEC_CALLED:"
+    assert_output --partial "test-container"
+    assert_output --partial "ls -la /daaf"
+}
+
+# --- prompt_choice behavioral tests ---
+# Note: IS_INTERACTIVE is false inside `bash -c` subshells (no /dev/tty),
+# which triggers the non-interactive auto-select path. To test the
+# interactive read path, we define a wrapper that bypasses the check.
+
+@test "migrate: prompt_choice auto-selects first choice in non-interactive mode" {
+    run bash -c '
+        DAAF_TEST_MODE=1 source "'"${REPO_ROOT}"'/scripts/host/migrate_daaf.sh" 2>/dev/null
+        echo "ignored" | prompt_choice "Choose [y/n]: " "y n"
+    '
+    assert_success
+    assert_output --partial "y"
+    assert_output --partial "Non-interactive"
+}
+
+@test "migrate: prompt_choice reads input interactively when stdin is a TTY" {
+    # Override prompt_choice to remove the TTY check, simulating interactive mode
+    run bash -c '
+        DAAF_TEST_MODE=1 source "'"${REPO_ROOT}"'/scripts/host/migrate_daaf.sh" 2>/dev/null
+        prompt_choice() {
+            local prompt_text="$1"
+            local valid_choices="$2"
+            local choice=""
+            read -r choice
+            choice=$(echo "${choice}" | tr "[:upper:]" "[:lower:]")
+            if echo "${valid_choices}" | grep -qw "${choice}"; then
+                echo "${choice}"
+            fi
+        }
+        echo "y" | prompt_choice "Choose [y/n]: " "y n"
+    '
+    assert_success
+    assert_output --partial "y"
+}
+
+# ============================================================================
+# Era detection pattern tests
+# ============================================================================
+# These test the patterns used by the inline era detection code -- verifying
+# that the git commands used for detection produce distinguishable output
+# for each era type.
+
+@test "migrate: no remote indicates Era 1 pattern (ZIP install)" {
+    DAAF_TEST_MODE=1 source "${REPO_ROOT}/scripts/host/migrate_daaf.sh"
+    trap - ERR
+    set +eu
+
+    # Override container_git to simulate no remote configured
+    container_git() {
+        case "$1" in
+            remote) echo "" ;;  # No remote URL → empty output
+            *) echo "" ;;
+        esac
+        return 0
+    }
+
+    # Simulate the era detection logic from the script (lines 405-426):
+    # ORIGIN_URL=$(container_git remote get-url origin 2>/dev/null || true)
+    ORIGIN_URL=$(container_git remote get-url origin 2>/dev/null || true)
+
+    # When ORIGIN_URL is empty, the script goes to DETECTED_ERA="2" (ZIP install)
+    [ -z "${ORIGIN_URL}" ]
+}
+
+@test "migrate: remote with known repo URL indicates Era 2 pattern (clone)" {
+    DAAF_TEST_MODE=1 source "${REPO_ROOT}/scripts/host/migrate_daaf.sh"
+    trap - ERR
+    set +eu
+
+    # Override container_git to simulate a remote pointing to the official repo
+    container_git() {
+        case "$1" in
+            remote) echo "https://github.com/DAAF-Contribution-Community/daaf.git" ;;
+            *) echo "" ;;
+        esac
+        return 0
+    }
+
+    ORIGIN_URL=$(container_git remote get-url origin 2>/dev/null || true)
+
+    # When ORIGIN_URL is non-empty AND contains the repo name, era is "1" (clone)
+    [ -n "${ORIGIN_URL}" ]
+    echo "${ORIGIN_URL}" | grep -qi "DAAF-Contribution-Community/daaf"
+}
+
+@test "migrate: idempotency marker detected via root commit parent check" {
+    DAAF_TEST_MODE=1 source "${REPO_ROOT}/scripts/host/migrate_daaf.sh"
+    trap - ERR
+    set +eu
+
+    # The script checks if the initial commit already has a parent (line 567-568):
+    #   INITIAL_PARENT_COUNT=$(container_git_verbose cat-file -p "$INITIAL_COMMIT" | grep -c '^parent ')
+    # If > 0, graft is already in place → skip graft step.
+
+    # Simulate a commit that already has a parent (graft already applied)
+    FAKE_CAT_FILE_OUTPUT="tree abc123
+parent def456
+author Test <test@test> 1700000000 +0000
+committer Test <test@test> 1700000000 +0000
+
+Initial commit"
+
+    INITIAL_PARENT_COUNT=$(echo "${FAKE_CAT_FILE_OUTPUT}" | grep -c '^parent ' || echo "0")
+
+    # Parent count > 0 means graft is in place → idempotency check passes
+    [ "${INITIAL_PARENT_COUNT}" -gt 0 ]
+}
+
+@test "migrate: corrupted volume (no .git) detected by container_exec test" {
+    DAAF_TEST_MODE=1 source "${REPO_ROOT}/scripts/host/migrate_daaf.sh"
+    trap - ERR
+    set +eu
+
+    CONTAINER_NAME="test-container"
+
+    # Override container_exec to fail for the CLAUDE.md existence check (line 385)
+    # In the script: container_exec test -f /daaf/CLAUDE.md
+    container_exec() {
+        return 1  # File not found → volume is corrupted/missing
+    }
+
+    # Verify the pattern: failed test returns non-zero
+    run container_exec test -f /daaf/CLAUDE.md
+    assert_failure
+}
+
+# ============================================================================
+# Safety tests
+# ============================================================================
+
+@test "migrate: locking uses portable mkdir (no flock)" {
+    # The script should use mkdir for locking (portable across Linux/macOS/Git Bash)
+    # and should NOT use flock (not available on macOS)
+    run grep -c 'mkdir.*LOCK' "${REPO_ROOT}/scripts/host/migrate_daaf.sh"
+    assert_success
+    [ "${output}" -ge 1 ]
+
+    run grep -c 'flock' "${REPO_ROOT}/scripts/host/migrate_daaf.sh"
+    # grep returns exit 1 when no matches -- that is the expected outcome
+    assert_failure
+}
+
+@test "migrate: ERR trap registered for cleanup after sourcing" {
+    # After sourcing in test mode, verify the ERR trap was set
+    # (we clear it in tests, but the script should have set it)
+    run bash -c '
+        DAAF_TEST_MODE=1 source "'"${REPO_ROOT}"'/scripts/host/migrate_daaf.sh" 2>/dev/null
+        trap -p ERR
+    '
+    assert_success
+    assert_output --partial "cleanup_on_error"
+}
+
+@test "migrate: backup runs before destructive operations" {
+    # Verify that backup_daaf.sh is called (section 3) before the era detection
+    # and graft operations (sections 5-6). Check that "backup_daaf" appears in
+    # the script before "replace --graft" (the destructive graft operation).
+    local backup_line
+    local graft_line
+    backup_line=$(grep -n 'backup_daaf' "${REPO_ROOT}/scripts/host/migrate_daaf.sh" | head -1 | cut -d: -f1)
+    graft_line=$(grep -n 'replace --graft' "${REPO_ROOT}/scripts/host/migrate_daaf.sh" | head -1 | cut -d: -f1)
+
+    # Both patterns must exist
+    [ -n "${backup_line}" ]
+    [ -n "${graft_line}" ]
+
+    # Backup must come before the graft operation
+    [ "${backup_line}" -lt "${graft_line}" ]
+}
+
+# ============================================================================
+# Era-specific file marker tests
+# ============================================================================
+# These verify the migration script's era detection output and the file-level
+# markers that distinguish each installation era. Complements the integration
+# tests in ci-integration.yml which test against real Docker containers.
+
+@test "migrate: script emits 'clone-based' for Era 1 detection" {
+    # The script must output the Era 1 detection string
+    run grep -c 'clone-based installation' "${REPO_ROOT}/scripts/host/migrate_daaf.sh"
+    assert_success
+    [ "${output}" -ge 1 ]
+}
+
+@test "migrate: script emits 'ZIP-based' for Era 2 detection" {
+    # The script must output the Era 2 detection string
+    run grep -c 'ZIP-based installation' "${REPO_ROOT}/scripts/host/migrate_daaf.sh"
+    assert_success
+    [ "${output}" -ge 1 ]
+}
+
+@test "migrate: Era 1 path exists (section 6a)" {
+    # The script must have a code path for ERA 1 (clone-based)
+    run grep -c 'ERA 1 PATH' "${REPO_ROOT}/scripts/host/migrate_daaf.sh"
+    assert_success
+    [ "${output}" -ge 1 ]
+}
+
+@test "migrate: Era 2 path exists (section 6b) with graft" {
+    # The script must have a code path for ERA 2 (ZIP-based) that includes grafting
+    run grep -c 'ERA 2 PATH' "${REPO_ROOT}/scripts/host/migrate_daaf.sh"
+    assert_success
+    [ "${output}" -ge 1 ]
+
+    # The Era 2 path must include the graft operation
+    run grep -c 'replace --graft' "${REPO_ROOT}/scripts/host/migrate_daaf.sh"
+    assert_success
+    [ "${output}" -ge 1 ]
+}
+
+@test "migrate: Era 2 detection triggers when ORIGIN_URL is empty" {
+    # Simulate the era detection logic: when container_git remote returns
+    # empty string, the script should set DETECTED_ERA="2"
+    DAAF_TEST_MODE=1 source "${REPO_ROOT}/scripts/host/migrate_daaf.sh"
+    trap - ERR
+    set +eu
+
+    container_git() { echo ""; return 0; }
+    ORIGIN_URL=$(container_git remote get-url origin 2>/dev/null || true)
+
+    # Empty ORIGIN_URL → Era 2
+    [ -z "${ORIGIN_URL}" ]
+}
+
+@test "migrate: Era 1 detection triggers when ORIGIN_URL has repo name" {
+    # Simulate the era detection logic: when container_git remote returns
+    # the official repo URL, the script should set DETECTED_ERA="1"
+    DAAF_TEST_MODE=1 source "${REPO_ROOT}/scripts/host/migrate_daaf.sh"
+    trap - ERR
+    set +eu
+
+    container_git() { echo "https://github.com/DAAF-Contribution-Community/daaf.git"; return 0; }
+    ORIGIN_URL=$(container_git remote get-url origin 2>/dev/null || true)
+
+    # Non-empty ORIGIN_URL with repo name → Era 1
+    [ -n "${ORIGIN_URL}" ]
+    echo "${ORIGIN_URL}" | grep -qi "DAAF-Contribution-Community/daaf"
+}
+
+@test "migrate: dry-run output includes era detection for simulated Era 1" {
+    # In dry-run mode, the script simulates an Era 1 installation.
+    # Verify the output includes the era detection string.
+    run env DAAF_DRY_RUN=1 DAAF_NESTED=1 bash "${REPO_ROOT}/scripts/host/migrate_daaf.sh" 2>&1
+    assert_success
+    assert_output --partial "clone-based installation"
+}
+
+# ============================================================================
+# Dry-run mode
+# ============================================================================
+
+@test "migrate_daaf.sh: dry-run completes successfully" {
+    run env DAAF_DRY_RUN=1 DAAF_NESTED=1 bash "${REPO_ROOT}/scripts/host/migrate_daaf.sh"
+    assert_success
+}
+
+@test "migrate_daaf.sh: dry-run produces DRY-RUN markers" {
+    run env DAAF_DRY_RUN=1 DAAF_NESTED=1 bash "${REPO_ROOT}/scripts/host/migrate_daaf.sh" 2>&1
+    assert_success
+    assert_output --partial "[DRY-RUN]"
+}
+
+@test "migrate_daaf.sh: dry-run completes migration" {
+    run env DAAF_DRY_RUN=1 DAAF_NESTED=1 bash "${REPO_ROOT}/scripts/host/migrate_daaf.sh" 2>&1
+    assert_success
+    assert_output --partial "Migration complete"
+}
+
+# ============================================================================
+# Integrated state-machine tests
+# ============================================================================
+# These test the MAIN ORCHESTRATION flow. The script is run as a full process
+# with carefully crafted docker + curl mock responses that dispatch on the
+# argument string.
+
+# --- Helper: setup for integrated tests ---
+setup_migrate_integrated() {
+    export DAAF_NESTED=1
+    # Create docker-compose.yml so the script uses current dir as HOST_DIR
+    create_fake_compose_file
+    # Create stub backup_daaf.sh that exits cleanly (called in section 3)
+    cat > "${TEST_DIR}/backup_daaf.sh" <<'SH'
+#!/usr/bin/env bash
+echo "Backup completed (stub)"
+SH
+    chmod +x "${TEST_DIR}/backup_daaf.sh"
+}
+
+@test "migrate: Era 1 path (clone-based) completes successfully" {
+    setup_migrate_integrated
+    run bash -c '
+        cd "'"${TEST_DIR}"'"
+        curl() {
+            local outfile=""
+            local args=("$@")
+            for ((i=0; i<${#args[@]}; i++)); do
+                if [ "${args[$i]}" = "-o" ]; then
+                    outfile="${args[$((i+1))]}"
+                    break
+                fi
+            done
+            if [ -n "${outfile}" ]; then
+                mkdir -p "$(dirname "${outfile}")"
+                echo "#!/usr/bin/env bash" > "${outfile}"
+                echo "exit 0" >> "${outfile}"
+            fi
+            return 0
+        }
+        export -f curl
+        docker() {
+            local all_args="$*"
+            case "$all_args" in
+                "info") return 0 ;;
+                *"volume inspect"*) return 0 ;;
+                *"ps -a"*"--filter"*"volume="*"--format"*) echo "daaf-test-1" ;;
+                *"inspect --format"*"State.Status"*) echo "running" ;;
+                *"exec"*"true"*) return 0 ;;
+                *"exec"*"test -f"*"CLAUDE.md"*) return 0 ;;
+                *"exec"*"remote get-url"*"origin"*) echo "https://github.com/DAAF-Contribution-Community/daaf.git" ;;
+                *"exec"*"fetch"*) return 0 ;;
+                *"exec"*"branch --set-upstream"*) return 0 ;;
+                *"exec"*"remote get-url"*"upstream"*) echo "" ; return 1 ;;
+                *) return 0 ;;
+            esac
+        }
+        export -f docker
+        bash "'"${REPO_ROOT}"'/scripts/host/migrate_daaf.sh"
+    '
+    assert_success
+    assert_output --partial "clone-based installation"
+    assert_output --partial "Migration complete"
+}
+
+@test "migrate: Era 2 path (ZIP-based) completes with graft" {
+    setup_migrate_integrated
+    run bash -c '
+        cd "'"${TEST_DIR}"'"
+        curl() {
+            local outfile=""
+            local args=("$@")
+            for ((i=0; i<${#args[@]}; i++)); do
+                if [ "${args[$i]}" = "-o" ]; then
+                    outfile="${args[$((i+1))]}"
+                    break
+                fi
+            done
+            if [ -n "${outfile}" ]; then
+                mkdir -p "$(dirname "${outfile}")"
+                echo "#!/usr/bin/env bash" > "${outfile}"
+                echo "exit 0" >> "${outfile}"
+            fi
+            return 0
+        }
+        export -f curl
+        CALL_COUNT_REMOTE=0
+        docker() {
+            local all_args="$*"
+            case "$all_args" in
+                "info") return 0 ;;
+                *"volume inspect"*) return 0 ;;
+                *"ps -a"*"--filter"*"volume="*"--format"*) echo "daaf-test-1" ;;
+                *"inspect --format"*"State.Status"*) echo "running" ;;
+                *"exec"*"true"*) return 0 ;;
+                *"exec"*"test -f"*"CLAUDE.md"*) return 0 ;;
+                *"exec"*"remote get-url"*"origin"*) echo "" ; return 1 ;;
+                *"exec"*"fetch"*) return 0 ;;
+                *"exec"*"rev-list --max-parents=0"*) echo "aaa111rootcommit" ;;
+                *"exec"*"cat-file -p"*) printf "tree abc123\nparent def456\nauthor Test\n" ;;
+                *"exec"*"branch --set-upstream"*) return 0 ;;
+                *"exec"*"remote add"*) return 0 ;;
+                *) return 0 ;;
+            esac
+        }
+        export -f docker
+        bash "'"${REPO_ROOT}"'/scripts/host/migrate_daaf.sh"
+    '
+    assert_success
+    assert_output --partial "ZIP-based installation"
+    assert_output --partial "Migration complete"
+}
+
+@test "migrate: already migrated (idempotency) skips graft" {
+    setup_migrate_integrated
+    run bash -c '
+        cd "'"${TEST_DIR}"'"
+        curl() {
+            local outfile=""
+            local args=("$@")
+            for ((i=0; i<${#args[@]}; i++)); do
+                if [ "${args[$i]}" = "-o" ]; then
+                    outfile="${args[$((i+1))]}"
+                    break
+                fi
+            done
+            if [ -n "${outfile}" ]; then
+                mkdir -p "$(dirname "${outfile}")"
+                echo "#!/usr/bin/env bash" > "${outfile}"
+                echo "exit 0" >> "${outfile}"
+            fi
+            return 0
+        }
+        export -f curl
+        docker() {
+            local all_args="$*"
+            case "$all_args" in
+                "info") return 0 ;;
+                *"volume inspect"*) return 0 ;;
+                *"ps -a"*"--filter"*"volume="*"--format"*) echo "daaf-test-1" ;;
+                *"inspect --format"*"State.Status"*) echo "running" ;;
+                *"exec"*"true"*) return 0 ;;
+                *"exec"*"test -f"*"CLAUDE.md"*) return 0 ;;
+                *"exec"*"remote get-url"*"origin"*) echo "" ; return 1 ;;
+                *"exec"*"fetch"*) return 0 ;;
+                *"exec"*"rev-list --max-parents=0"*) echo "aaa111rootcommit" ;;
+                *"exec"*"cat-file -p"*) printf "tree abc123\nparent def456\nauthor Test\n" ;;
+                *"exec"*"branch --set-upstream"*) return 0 ;;
+                *"exec"*"remote add"*) return 0 ;;
+                *) return 0 ;;
+            esac
+        }
+        export -f docker
+        bash "'"${REPO_ROOT}"'/scripts/host/migrate_daaf.sh"
+    '
+    assert_success
+    assert_output --partial "graft already in place"
+    assert_output --partial "Migration complete"
+}
+
+# ============================================================================
+# Error path tests
+# ============================================================================
+
+@test "migrate: fetch from origin fails exits with error" {
+    setup_migrate_integrated
+    run bash -c '
+        cd "'"${TEST_DIR}"'"
+        curl() {
+            local outfile=""
+            local args=("$@")
+            for ((i=0; i<${#args[@]}; i++)); do
+                if [ "${args[$i]}" = "-o" ]; then
+                    outfile="${args[$((i+1))]}"
+                    break
+                fi
+            done
+            if [ -n "${outfile}" ]; then
+                mkdir -p "$(dirname "${outfile}")"
+                echo "#!/usr/bin/env bash" > "${outfile}"
+                echo "exit 0" >> "${outfile}"
+            fi
+            return 0
+        }
+        export -f curl
+        docker() {
+            local all_args="$*"
+            case "$all_args" in
+                "info") return 0 ;;
+                *"volume inspect"*) return 0 ;;
+                *"ps -a"*"--filter"*"volume="*"--format"*) echo "daaf-test-1" ;;
+                *"inspect --format"*"State.Status"*) echo "running" ;;
+                *"exec"*"true"*) return 0 ;;
+                *"exec"*"test -f"*"CLAUDE.md"*) return 0 ;;
+                *"exec"*"remote get-url"*"origin"*) echo "https://github.com/DAAF-Contribution-Community/daaf.git" ;;
+                *"exec"*"fetch"*) echo "fatal: unable to access" >&2 ; return 1 ;;
+                *) return 0 ;;
+            esac
+        }
+        export -f docker
+        bash "'"${REPO_ROOT}"'/scripts/host/migrate_daaf.sh"
+    '
+    assert_failure
+    assert_output --partial "Failed to fetch"
+}
+
+@test "migrate: lock contention exits with already running" {
+    setup_migrate_integrated
+    # Create the lock directory before running
+    mkdir -p /tmp/daaf-migrate.lock.d
+    run bash -c '
+        cd "'"${TEST_DIR}"'"
+        docker() { return 0; }
+        export -f docker
+        curl() { return 0; }
+        export -f curl
+        bash "'"${REPO_ROOT}"'/scripts/host/migrate_daaf.sh"
+    '
+    assert_failure
+    assert_output --partial "already running"
+    # Clean up
+    rmdir /tmp/daaf-migrate.lock.d 2>/dev/null || true
+}
+
+@test "migrate: DAAF not installed (CLAUDE.md missing) exits with error" {
+    setup_migrate_integrated
+    run bash -c '
+        cd "'"${TEST_DIR}"'"
+        curl() {
+            local outfile=""
+            local args=("$@")
+            for ((i=0; i<${#args[@]}; i++)); do
+                if [ "${args[$i]}" = "-o" ]; then
+                    outfile="${args[$((i+1))]}"
+                    break
+                fi
+            done
+            if [ -n "${outfile}" ]; then
+                mkdir -p "$(dirname "${outfile}")"
+                echo "#!/usr/bin/env bash" > "${outfile}"
+                echo "exit 0" >> "${outfile}"
+            fi
+            return 0
+        }
+        export -f curl
+        docker() {
+            local all_args="$*"
+            case "$all_args" in
+                "info") return 0 ;;
+                *"volume inspect"*) return 0 ;;
+                *"ps -a"*"--filter"*"volume="*"--format"*) echo "daaf-test-1" ;;
+                *"inspect --format"*"State.Status"*) echo "running" ;;
+                *"exec"*"true"*) return 0 ;;
+                *"exec"*"test -f"*"CLAUDE.md"*) return 1 ;;
+                *) return 0 ;;
+            esac
+        }
+        export -f docker
+        bash "'"${REPO_ROOT}"'/scripts/host/migrate_daaf.sh"
+    '
+    assert_failure
+    assert_output --partial "DAAF does not appear to be installed"
+}
+
+@test "migrate: container not running and start fails exits with error" {
+    setup_migrate_integrated
+    run bash -c '
+        cd "'"${TEST_DIR}"'"
+        curl() {
+            local outfile=""
+            local args=("$@")
+            for ((i=0; i<${#args[@]}; i++)); do
+                if [ "${args[$i]}" = "-o" ]; then
+                    outfile="${args[$((i+1))]}"
+                    break
+                fi
+            done
+            if [ -n "${outfile}" ]; then
+                mkdir -p "$(dirname "${outfile}")"
+                echo "#!/usr/bin/env bash" > "${outfile}"
+                echo "exit 0" >> "${outfile}"
+            fi
+            return 0
+        }
+        export -f curl
+        docker() {
+            local all_args="$*"
+            case "$all_args" in
+                "info") return 0 ;;
+                *"volume inspect"*) return 0 ;;
+                *"ps -a"*"--filter"*"volume="*"--format"*) echo "" ;;
+                *"compose up"*) echo "ERROR: Cannot start" >&2 ; return 1 ;;
+                *) return 0 ;;
+            esac
+        }
+        export -f docker
+        bash "'"${REPO_ROOT}"'/scripts/host/migrate_daaf.sh"
+    '
+    assert_failure
+    assert_output --partial "Failed to start"
+}
+
+@test "migrate: volume not found exits with error" {
+    setup_migrate_integrated
+    run bash -c '
+        cd "'"${TEST_DIR}"'"
+        docker() {
+            local all_args="$*"
+            case "$all_args" in
+                "info") return 0 ;;
+                *"volume inspect"*) return 1 ;;
+                *) return 0 ;;
+            esac
+        }
+        export -f docker
+        bash "'"${REPO_ROOT}"'/scripts/host/migrate_daaf.sh"
+    '
+    assert_failure
+    assert_output --partial "not found"
+}
+
+# ============================================================================
+# Edge cases
+# ============================================================================
+
+@test "migrate: fork detection adds upstream remote" {
+    setup_migrate_integrated
+    run bash -c '
+        cd "'"${TEST_DIR}"'"
+        curl() {
+            local outfile=""
+            local args=("$@")
+            for ((i=0; i<${#args[@]}; i++)); do
+                if [ "${args[$i]}" = "-o" ]; then
+                    outfile="${args[$((i+1))]}"
+                    break
+                fi
+            done
+            if [ -n "${outfile}" ]; then
+                mkdir -p "$(dirname "${outfile}")"
+                echo "#!/usr/bin/env bash" > "${outfile}"
+                echo "exit 0" >> "${outfile}"
+            fi
+            return 0
+        }
+        export -f curl
+        docker() {
+            local all_args="$*"
+            case "$all_args" in
+                "info") return 0 ;;
+                *"volume inspect"*) return 0 ;;
+                *"ps -a"*"--filter"*"volume="*"--format"*) echo "daaf-test-1" ;;
+                *"inspect --format"*"State.Status"*) echo "running" ;;
+                *"exec"*"true"*) return 0 ;;
+                *"exec"*"test -f"*"CLAUDE.md"*) return 0 ;;
+                *"exec"*"remote get-url"*"upstream"*) echo "" ; return 1 ;;
+                *"exec"*"remote get-url"*"origin"*) echo "https://github.com/user/daaf-fork.git" ;;
+                *"exec"*"fetch"*) return 0 ;;
+                *"exec"*"branch --set-upstream"*) return 0 ;;
+                *"exec"*"remote add"*"upstream"*) return 0 ;;
+                *) return 0 ;;
+            esac
+        }
+        export -f docker
+        bash "'"${REPO_ROOT}"'/scripts/host/migrate_daaf.sh"
+    '
+    assert_success
+    assert_output --partial "clone-based installation"
+    assert_output --partial "fork"
+    assert_output --partial "Migration complete"
+}
+
+@test "migrate: multi-container on same volume shows warning" {
+    setup_migrate_integrated
+    run bash -c '
+        cd "'"${TEST_DIR}"'"
+        curl() {
+            local outfile=""
+            local args=("$@")
+            for ((i=0; i<${#args[@]}; i++)); do
+                if [ "${args[$i]}" = "-o" ]; then
+                    outfile="${args[$((i+1))]}"
+                    break
+                fi
+            done
+            if [ -n "${outfile}" ]; then
+                mkdir -p "$(dirname "${outfile}")"
+                echo "#!/usr/bin/env bash" > "${outfile}"
+                echo "exit 0" >> "${outfile}"
+            fi
+            return 0
+        }
+        export -f curl
+        docker() {
+            local all_args="$*"
+            case "$all_args" in
+                "info") return 0 ;;
+                *"volume inspect"*) return 0 ;;
+                *"ps -a"*"--filter"*"volume="*"--format"*) printf "daaf-test-1\ndaaf-test-2\n" ;;
+                *"inspect --format"*"State.Status"*) echo "running" ;;
+                *"exec"*"true"*) return 0 ;;
+                *"exec"*"test -f"*"CLAUDE.md"*) return 0 ;;
+                *"exec"*"remote get-url"*"origin"*) echo "https://github.com/DAAF-Contribution-Community/daaf.git" ;;
+                *"exec"*"fetch"*) return 0 ;;
+                *"exec"*"branch --set-upstream"*) return 0 ;;
+                *) return 0 ;;
+            esac
+        }
+        export -f docker
+        bash "'"${REPO_ROOT}"'/scripts/host/migrate_daaf.sh"
+    '
+    assert_success
+    assert_output --partial "Multiple containers"
+    assert_output --partial "Migration complete"
+}

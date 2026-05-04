@@ -210,6 +210,7 @@ Context management is NEVER about reducing the quality or completeness of work. 
 - You MUST NEVER read, display, or commit files matching: `.env`, `.env.*`, `*.pem`, `*.key`, `credentials*`, or `secrets/`
 - You MUST NEVER output API keys, tokens, or private key material that appears in tool output — if detected, acknowledge the leak and stop
 - You MUST NEVER create `.env` files or write credentials to any file
+- Note: Users set data source API keys via an `environment_settings.txt` file on the **host** machine (in the `daaf-docker/` folder), which Docker Compose injects into the container as environment variables at startup. This file is outside the container filesystem and invisible to Claude. Scripts access these keys via `os.environ[]` as usual. If a user asks about setting API keys, direct them to the `environment_settings_example.txt` template in their `daaf-docker/` folder.
 
 ### Destructive Command Prevention
 
@@ -289,6 +290,7 @@ bash {BASE_DIR}/scripts/run_with_capture.sh {PROJECT_DIR}/scripts/stage5_fetch/0
 | Raw Data | `YYYY-MM-DD[suffix]_[source]_[description].parquet` | `2026-01-24a_ccd_schools.parquet` |
 | Processed Data | `YYYY-MM-DD[suffix]_[description].parquet` | `2026-01-24a_analysis_data.parquet` |
 | Figures | `YYYY-MM-DD[suffix]_[description].png` | `2026-01-24a_enrollment_trends.png` |
+| Preliminary Notes | `YYYY-MM-DD[suffix]_[stage]_[descriptor].md` | `2026-01-24a_stage3_ccd_source-research.md` |
 | Reproduction Report | `Reproduction_Report.md` | `Reproduction_Report.md` |
 
 > **Note:** The Reproduction Report uses a fixed name (not date-prefixed) because it serves as both the primary deliverable and the session state document for Reproducibility Verification mode.
@@ -325,150 +327,6 @@ All executed scripts are archived in the `scripts/` folder with stage-based orga
 **Step numbering:** Use the step number from the Transformation Sequence (e.g., Step 1.1 → `01`, Step 2.3 → `03`).
 
 See `agent_reference/SCRIPT_EXECUTION_REFERENCE.md` for complete script template and examples.
-
----
-
-## Example Project Structure
-
-```
-research/2026-01-24_School_Poverty_Analysis/
-├── 2026-01-24_School_Poverty_Analysis_Plan.md
-├── 2026-01-24_School_Poverty_Analysis_Plan_Tasks.md
-├── 2026-01-24_School_Poverty_Analysis.py
-├── 2026-01-24_School_Poverty_Analysis_Report.md
-├── LEARNINGS.md                                   # Session learnings (REQUIRED)
-├── logs/                                          # Session transcripts (collected at completion)
-│   ├── 2026-01-24_19-30-41_7226a42c.jsonl         # Raw JSONL transcript
-│   └── 2026-01-24_19-30-41_7226a42c.md            # Human-readable transcript
-├── scripts/                                       # All executed scripts (code archive)
-│   ├── stage5_fetch/
-│   │   ├── 01_fetch-ccd.py
-│   │   ├── 02_fetch-ipeds.py
-│   ├── stage6_clean/
-│   │   ├── 01_clean-ccd.py
-│   ├── stage7_transform/
-│   │   └── 01_join-data.py
-│   │   └── 02_process-data.py
-│   ├── stage8_analysis/
-│   │   ├── 01_regression-poverty.py
-│   │   └── 02_enrollment-plot.py
-│   ├── cr/                           # Code-review inspection scripts (iterative)
-│   │   ├── stage5_01_cr1.py          # CR for 01_fetch-ccd.py (standard + profiling)
-│   │   ├── stage5_02_cr1.py          # CR for 01_fetch-ipeds.py (standard + profiling)
-│   │   ├── stage6_01_cr1.py          # CR for 01_clean-ccd.py
-│   │   ├── stage7_01_cr1.py          # CR for 01_join-data.py
-│   │   ├── stage7_02_cr1.py          # CR for 02_process-data.py
-│   │   ├── stage7_02_cr2.py          # Additional checks for 02_process-data.py
-│   │   ├── stage8_01_cra1.py          # QA4a for 01_regression-poverty.py (analysis)
-│   │   ├── stage8_01_cra2.py          # Additional QA4a checks for 01_regression-poverty.py
-│   │   └── stage8_02_crb1.py          # QA4b for 02_enrollment-plot.py (visualization)
-│   └── debug/                                     # If debugging occurred
-│       └── 01_diag-key-mismatch.py
-├── data/
-│   ├── raw/
-│   │   ├── 2026-01-24_ccd_schools.parquet
-│   │   ├── 2026-01-24_meps_poverty.parquet
-│   └── processed/
-│       ├── 2026-01-24_ccd_clean.parquet
-│       ├── 2026-01-24_analysis.parquet
-├── output/
-│   ├── analysis/
-│   │   └── 2026-01-24_regression_results.parquet
-│   └── figures/
-│       └── 2026-01-24_poverty_distribution.png
-└── STATE.md                                       # Session state (REQUIRED for Full Pipeline)
-```
-
-### Data Onboarding Example Project Structure
-
-```
-research/2026-03-23_Onboarding_County_Elections/
-├── STATE.md                                       # Session state (REQUIRED)
-├── LEARNINGS.md                                   # Session learnings (REQUIRED)
-├── logs/                                          # Session transcripts (collected at completion)
-│   ├── 2026-03-23_22-15-08_b3f1c9d2.jsonl
-│   └── 2026-03-23_22-15-08_b3f1c9d2.md
-├── scripts/
-│   ├── profile_structural/
-│   │   ├── 01_load-and-format.py
-│   │   ├── 02_structural-profile.py
-│   │   └── 03_column-profile.py
-│   ├── profile_statistical/
-│   │   ├── 04_distribution-analysis.py
-│   │   ├── 05_temporal-coverage.py
-│   │   └── 06_entity-coverage.py
-│   ├── profile_relational/
-│   │   ├── 07_key-integrity.py
-│   │   ├── 08_correlation-dependency.py
-│   │   └── 09_quality-anomaly.py
-│   ├── profile_interpretation/
-│   │   ├── 10_semantic-interpretation.py
-│   │   └── 11_reconcile-docs.py
-│   └── cr/                                        # QA review scripts (phase-based)
-│       ├── profile_structural_cr1.py              # QAP1 review
-│       ├── profile_statistical_cr1.py             # QAP2 review
-│       ├── profile_relational_cr1.py              # QAP3 review
-│       └── profile_interpretation_cr1.py          # QAP4 review
-├── data/
-│   └── raw/
-│       └── 2026-03-23_countypres.parquet
-└── output/
-    └── skill_draft/
-        └── SKILL.md                               # Draft skill before final placement
-```
-
-**Variants for API and HIERARCHICAL onboarding:** The example above shows the single-file local-file case. For other configurations, the following additional artifacts appear:
-
-- **API acquisition (DI-0):** `scripts/stage5_fetch/00_api-fetch.py` added; `data/raw/` contains the API-downloaded file
-- **HIERARCHICAL (multi-file):** Scripts are suffixed per-file (`01_inventory.py`, `01a_load-and-format.py`, `01b_load-and-format.py`, etc.); `scripts/profile_relational/07b_cross-level-linkage.py` added; `data/raw/` contains one file per entity type
-- **API + HIERARCHICAL:** Both patterns combined; multiple `00{x}_api-fetch.py` scripts if multiple endpoints
-
-### Reproducibility Verification Example Project Structure
-
-```
-research/2026-03-24_College_Graduation_Analysis_Reproduction/
-├── Reproduction_Report.md                         # Central artifact + session state (REQUIRED)
-│   # Note: No STATE.md or LEARNINGS.md in RV projects — the Reproduction
-│   # Report serves as session state; methodological observations go within it.
-├── logs/                                          # Session transcripts (collected at completion)
-│   ├── 2026-03-24_18-45-12_c4e2a7f1.jsonl
-│   └── 2026-03-24_18-45-12_c4e2a7f1.md
-├── original_files/
-│   ├── 2026-02-15_College_Graduation_Report.md    # Original Report (copied, read-only)
-│   ├── 2026-02-15_College_Graduation_Analysis.py  # Original Notebook (copied, read-only)
-│   ├── output/                                    # Original output (copied, read-only)
-│   │   └── figures/
-│   │       ├── 2026-02-15_selectivity_scatter.png
-│   │       └── 2026-02-15_graduation_heatmap.png
-│   └── scripts/                                   # Decompiled from notebook
-│       ├── MANIFEST.md                            # Decompiler output manifest
-│       ├── stage5_fetch/
-│       │   ├── 01_fetch-directory_a.py
-│       │   └── 02_fetch-ipeds.py
-│       ├── stage6_clean/
-│       │   └── 01_clean-data.py
-│       ├── stage7_transform/
-│       │   └── 01_join-data.py
-│       └── stage8_analysis/
-│           ├── 01_regression.py
-│           └── 02_visualization.py
-├── output/                                        # Reproduced output (generated during RV-2)
-│   └── figures/
-│       ├── 2026-03-24_selectivity_scatter.png
-│       └── 2026-03-24_graduation_heatmap.png
-└── scripts/
-    └── repro/                                     # Re-executed scripts (with new logs)
-        ├── stage5_fetch/
-        │   ├── 01_fetch-directory_a.py
-        │   └── 02_fetch-ipeds.py
-        ├── stage6_clean/
-        │   └── 01_clean-data.py
-        ├── stage7_transform/
-        │   └── 01_join-data.py
-        └── stage8_analysis/
-            ├── 01_regression.py
-            └── 02_visualization.py
-```
 
 ---
 

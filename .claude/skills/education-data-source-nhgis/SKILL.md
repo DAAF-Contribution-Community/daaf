@@ -1,7 +1,7 @@
 ---
 name: education-data-source-nhgis
 description: >-
-  NHGIS — census geography crosswalks via Portal: links schools (ncessch) and colleges (unitid) to tracts, block groups, CBSAs (1990-2020). Census demographics NOT in Portal — access NHGIS directly. Use for linking education data to census geography.
+  NHGIS — census geography crosswalks via Portal: links schools (ncessch) and colleges (unitid) to census tracts, block groups, CBSAs, and regions (1990-2020). Portal provides geography linkage tables ONLY — census demographic variables (population, income, poverty, race, educational attainment) are NOT available through the Portal and must be accessed directly from NHGIS (free IPUMS registration required). Use for linking education or institutional data to census geography for contextual analysis.
 metadata:
   audience: any-agent
   domain: data-source

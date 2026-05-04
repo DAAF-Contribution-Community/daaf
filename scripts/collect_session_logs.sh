@@ -9,6 +9,12 @@
 #   bash /daaf/scripts/collect_session_logs.sh /daaf/research/YYYY-MM-DD_Title
 #
 # Design:
+#   - Session-grouped matching: greps only orchestrator (*_orchestrator.jsonl)
+#     archives for the project BASENAME, then collects ALL archives from each
+#     matching session (orchestrator + subagents) via session-short ID glob.
+#     This ensures subagent transcripts are collected even if they don't
+#     individually mention the project directory (e.g., search-agent exploring
+#     framework files, source-researcher that never touches project paths).
 #   - Uses the project folder BASENAME as the search term (not the full path),
 #     so results are stable even if the repo root path changes.
 #   - Idempotent: skips files already present in the destination.
@@ -62,20 +68,26 @@ echo ""
 
 # --- Search for matching sessions ---
 
-# grep -l returns filenames of JSONL files containing the project folder name
-# Use || true to prevent set -e from exiting if grep finds no matches
-MATCHING_JSONL=()
-while IFS= read -r filepath; do
-    MATCHING_JSONL+=("$filepath")
-done < <(grep -rl --include="*.jsonl" "$PROJECT_BASENAME" "$SESSIONS_DIR" 2>/dev/null || true)
+# Search ONLY orchestrator transcripts for the project basename, then collect
+# all archives (orchestrator + subagents) from each matching session by
+# session-short ID.  This mirrors the session-grouped approach used by
+# archive-session.sh and recover-session-logs.sh, ensuring subagent transcripts
+# are collected even if they don't individually contain the project basename
+# (e.g., search-agent exploring framework files, source-researcher that never
+# touches project directories).
+MATCHING_SESSIONS=()
+while IFS= read -r orch_path; do
+    short=$(basename "$orch_path" | sed 's/.*_\([a-f0-9]\{8\}\)_orchestrator\.jsonl/\1/')
+    [[ "$short" =~ ^[a-f0-9]{8}$ ]] && MATCHING_SESSIONS+=("$short")
+done < <(grep -rl --include="*_orchestrator.jsonl" "$PROJECT_BASENAME" "$SESSIONS_DIR" 2>/dev/null || true)
 
-if [ ${#MATCHING_JSONL[@]} -eq 0 ]; then
+if [ ${#MATCHING_SESSIONS[@]} -eq 0 ]; then
     echo "No sessions found referencing '$PROJECT_BASENAME'."
     echo "This is expected if the project had no file operations yet (e.g., Phase 1 only)."
     exit 0
 fi
 
-echo "Found ${#MATCHING_JSONL[@]} session(s) referencing this project."
+echo "Found ${#MATCHING_SESSIONS[@]} session(s) referencing this project."
 echo ""
 
 # --- Copy matching sessions ---
@@ -86,34 +98,21 @@ COPIED=0
 SKIPPED=0
 TOTAL_SIZE=0
 
-for jsonl_path in "${MATCHING_JSONL[@]}"; do
-    filename="$(basename "$jsonl_path")"
-    md_filename="${filename%.jsonl}.md"
-    md_path="$(dirname "$jsonl_path")/$md_filename"
+for session_short in "${MATCHING_SESSIONS[@]}"; do
+    # Glob all archives from this session (orchestrator + subagents, JSONL + MD)
+    for src in "$SESSIONS_DIR"/*_${session_short}_*.jsonl "$SESSIONS_DIR"/*_${session_short}_*.md; do
+        [ -f "$src" ] || continue
+        filename="$(basename "$src")"
 
-    # Copy JSONL
-    if [ -f "$DEST_DIR/$filename" ]; then
-        SKIPPED=$((SKIPPED + 1))
-    else
-        cp "$jsonl_path" "$DEST_DIR/$filename"
-        COPIED=$((COPIED + 1))
-        if [ -f "$jsonl_path" ]; then
-            size=$(stat -c%s "$jsonl_path" 2>/dev/null || stat -f%z "$jsonl_path" 2>/dev/null || echo 0)
-            TOTAL_SIZE=$((TOTAL_SIZE + size))
-        fi
-    fi
-
-    # Copy corresponding MD (if it exists)
-    if [ -f "$md_path" ]; then
-        if [ ! -f "$DEST_DIR/$md_filename" ]; then
-            cp "$md_path" "$DEST_DIR/$md_filename"
-            COPIED=$((COPIED + 1))
-            size=$(stat -c%s "$md_path" 2>/dev/null || stat -f%z "$md_path" 2>/dev/null || echo 0)
-            TOTAL_SIZE=$((TOTAL_SIZE + size))
-        else
+        if [ -f "$DEST_DIR/$filename" ]; then
             SKIPPED=$((SKIPPED + 1))
+        else
+            cp "$src" "$DEST_DIR/$filename"
+            COPIED=$((COPIED + 1))
+            size=$(stat -c%s "$src" 2>/dev/null || stat -f%z "$src" 2>/dev/null || echo 0)
+            TOTAL_SIZE=$((TOTAL_SIZE + size))
         fi
-    fi
+    done
 done
 
 # --- Summary ---
@@ -128,7 +127,7 @@ else
 fi
 
 echo "--- Summary ---"
-echo "Sessions matched:  ${#MATCHING_JSONL[@]}"
+echo "Sessions matched:  ${#MATCHING_SESSIONS[@]}"
 echo "Files copied:      $COPIED"
 echo "Files skipped:     $SKIPPED (already present)"
 echo "Total size copied: $SIZE_HR"

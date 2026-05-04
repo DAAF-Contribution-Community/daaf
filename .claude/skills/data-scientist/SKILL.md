@@ -1,7 +1,7 @@
 ---
 name: data-scientist
 description: >-
-  Data science methodology for Python research: EDA, validation, causal inference (IV, DiD, RD, synthetic control), clustering/PCA/UMAP, supervised ML, geospatial, visualization. Method selection guidance. For syntax, load tool-specific skills.
+  Data science methodology and method-selection routing for quantitative research. Covers EDA, data validation, descriptive analysis, causal inference (IV, DiD, RD, synthetic control), clustering/PCA/UMAP, supervised ML, geospatial analysis, and visualization design. Contains the canonical method-to-library routing tree: statsmodels (OLS/GLM/time series), pyfixest (FE/DiD), linearmodels (RE/GMM/SUR), svy (complex surveys), scikit-learn (clustering/prediction ML), geopandas (spatial). For implementation syntax, load the routed tool-specific skill.
 metadata:
   audience: any-agent
   domain: research-methodology

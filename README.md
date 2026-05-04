@@ -4,7 +4,7 @@
 
 ## Summary: What is DAAF?
 
-<img width="1258" height="433" alt="daaf_20_thumbnail3" src="https://github.com/user-attachments/assets/b9bfc613-170d-41e4-b35f-b871989dc428" />
+<img width="1258" height="433" alt="daaf_20_thumbnail4" src="https://github.com/user-attachments/assets/21b17b1d-a4d8-4558-a91d-a9ecb0d43f22" />
 
 <p align="center">
   <a href="https://github.com/DAAF-Contribution-Community/daaf/releases"><img src="https://img.shields.io/badge/version-v2.0.1-blue" alt="Version v2.0.1"></a>
@@ -33,9 +33,7 @@ Install and begin using it in as little as 10 minutes from a fresh install with 
 Watch the 4 minute v2.0.0 Showcase video below, or read on for more information!
   <p align="center">                                                                                                  
     <a href="https://youtu.be/747r7VT4a78">
-      <img width="607" height="339" alt="image" src="https://github.com/user-attachments/assets/ba265c65-ba25-4a98-9789-d4a1d5af6815" alt="Watch the DAAF v2.0.0 Showcase />
-      <img src="https://img.youtube.com/vi/747r7VT4a78/maxresdefault.jpg" "        
-  width="720" />                                                                                                      
+      <img width="720" alt="Watch the DAAF v2.0.0 Showcase" src="https://img.youtube.com/vi/747r7VT4a78/maxresdefault.jpg" />                                                                                                      
     </a>                                                                                                              
   </p>    
 
@@ -54,74 +52,31 @@ Watch the 4 minute v2.0.0 Showcase video below, or read on for more information!
 
 If you're already comfortable with the Terminal and Claude Code, you can get started almost immediately using the Quick Start instructions below. Otherwise, I recommend starting with the full [Installation Guide](user_reference/01_installation_and_quickstart.md) for beginner-friendly details, prerequisites, and troubleshooting.
 
-**Requirements:** [Docker Desktop](https://www.docker.com/products/docker-desktop/) (running) and an [Anthropic Max subscription](https://claude.com/pricing/max) ($100-200/mo) or [API key](https://console.anthropic.com/). 
+**Requirements:** [Docker Desktop](https://www.docker.com/products/docker-desktop/) (running) and an [Anthropic Max subscription](https://claude.com/pricing/max) ($100-200/mo), [API key](https://console.anthropic.com/), or [OpenRouter](https://openrouter.ai/) account (pay-per-token, no subscription). Open a terminal in your desired installation directory.
 
-<table>
-<tr>
-<td><strong>macOS / Linux (Terminal)</strong></td>
-<td><strong>Windows (PowerShell)</strong></td>
-</tr>
-<tr>
-<td>
+**macOS / Linux (Terminal):**
 
 ```bash
-# 1. Download the project files
-curl -L -o daaf.zip https://github.com/DAAF-Contribution-Community/daaf/archive/refs/heads/main.zip
+# Install DAAF (downloads Docker build files, builds image, clones repo into container)
+curl -fsSL https://raw.githubusercontent.com/DAAF-Contribution-Community/daaf/main/scripts/host/install.sh | bash
 
-# 2. Extract the ZIP file
-unzip daaf.zip
-
-# 3. Enter the project directory
-cd daaf-main
-
-# 4. Copy files into a secure Docker volume
-docker run --rm -v "${PWD}:/source:ro" \
-  -v "daaf_daaf-data:/dest" \
-  busybox sh -c 'cp -a /source/. /dest/'
-
-# 5. Build and start the container
-docker compose up -d --build
-
-# 6. Enter the container
-docker compose exec daaf-docker bash
-
-# 7. Launch Claude Code
-claude
+# Enter the installation folder and launch Claude Code with a helper script
+cd daaf-docker
+bash run_daaf.sh
 ```
 
-</td>
-<td>
+**Windows (PowerShell):**
 
 ```powershell
-# 1. Download the project files
-Invoke-WebRequest -Uri "https://github.com/DAAF-Contribution-Community/daaf/archive/refs/heads/main.zip" -OutFile daaf.zip
+# Install DAAF (downloads Docker build files, builds image, clones repo into container)
+irm https://raw.githubusercontent.com/DAAF-Contribution-Community/daaf/main/scripts/host/install.ps1 | iex
 
-# 2. Extract the ZIP file
-Expand-Archive -Path daaf.zip -DestinationPath .
-
-# 3. Enter the project directory
-cd daaf-main
-
-# 4. Copy files into a secure Docker volume
-docker run --rm -v "${PWD}:/source:ro" `
-  -v "daaf_daaf-data:/dest" `
-  busybox sh -c 'cp -a /source/. /dest/'
-
-# 5. Build and start the container
-docker compose up -d --build
-
-# 6. Enter the container
-docker compose exec daaf-docker bash
-
-# 7. Launch Claude Code
-claude
+# Enter the installation folder and launch Claude Code with a helper script
+cd daaf-docker
+.\run_daaf.ps1
 ```
 
-</td>
-</tr>
-</table>
-
-On first launch, Claude Code will prompt you to authenticate. Set your model to **Opus 4.6** via `/model`, and set **Auto-compact** to **False** and **Verbose output** to **True** via `/config`. You're ready to go; see [Understanding DAAF](user_reference/02_understanding_daaf.md) for some suggestions on how to get started with progressively more complex tasks with DAAF!
+On first launch, Claude Code will prompt you to authenticate. Set your model to **Opus 4.6** (or Opus 4.5) via `/model`, set the thinking level to **High** using the arrow keys while the model is selected, and set **Auto-compact** to **False** (to prevent conflicts with DAAF's built-in context window management) and **Verbose output** to **True** (to ensure that you can monitor how DAAF's thinking and working for accuracy) via `/config`. You're ready to go; see [Understanding DAAF](user_reference/02_understanding_daaf.md) for some suggestions on how to get started with progressively more complex tasks with DAAF!
 
 ---
 
@@ -212,7 +167,7 @@ polars &bull; pyfixest &bull; linearmodels &bull; statsmodels &bull; scikit-lear
 Need a package that isn't listed? You can add your own by editing the Dockerfile and rebuilding -- see [Customizing Your Python Environment](user_reference/04_extending_daaf.md#customizing-your-python-environment) for instructions.
 
 **Additional features:**
-Interactive dashboards (Plotly) &bull; Reactive analytic notebooks (marimo) &bull; R/tidyverse-Python code translation &bull; Stata-Python code translation &bull; Citation propagation & verification &bull; GUIDE-LLM AI use disclosure &bull; Git version control &bull; Session transcript archiving &bull; Docker-based safety sandboxing &bull; Destructive command prevention &bull; Secret/credential scanning &bull; File-first execution enforcement &bull; Science communication
+Interactive dashboards (Plotly) &bull; Reactive analytic notebooks (marimo) &bull; Browser-based code editor (code-server) &bull; R/tidyverse-Python code translation &bull; Stata-Python code translation &bull; Citation propagation & verification &bull; GUIDE-LLM AI use disclosure &bull; Git version control &bull; Session transcript archiving &bull; DAAF Log Explorer &bull; Docker-based safety sandboxing &bull; Destructive command prevention &bull; Secret/credential scanning &bull; File-first execution enforcement &bull; Science communication
 
 ---
 
@@ -258,7 +213,7 @@ See [**Contributing to DAAF**](CONTRIBUTING.md) for the full contribution guide 
 - [**02. Understanding and Working with DAAF**](user_reference/02_understanding_daaf.md) — Learn to work with DAAF for the first time: what to expect, how to use it, and how to test its strengths and limitations
 - [**03. Best Practices**](user_reference/03_best_practices.md) — Tips for working with Claude Code, writing effective prompts, ensuring quality and rigor with DAAF, reviewing outputs, and managing context
 - [**04. Extending DAAF**](user_reference/04_extending_daaf.md) — How to add new data source skills, analytical tools and methodologies, creating your own additional specialized agents, and customizing the Python environment
-- [**05. Contributing to DAAF**](CONTRIBUTING.md) — Get involved in developing DAAF! How to file issues via GitHub, support expanding the capabilities of the framework, contribute to educational tutorials and how-to's, and more!
+- [**05. Contributing to DAAF**](CONTRIBUTING.md) — Get involved in developing DAAF! How to file issues, contribute new skills and data sources, improve documentation and protocols, test your changes, and more!
 - [**06. FAQ: Philosophy**](user_reference/06_faq_philosophy.md) — **(Recommended Next Step)** Grapples with the broader implications of this work, AI automation in general, model advancement pace, approaching the "exponential", environmental ethics, what this means for the next generation of researchers, and more
 - [**07. FAQ: Technical Support**](user_reference/07_faq_technical.md) — Covers frequently asked questions about Docker, issues with Claude Code, usage limits, authentication errors, and other common errors
 
@@ -314,21 +269,26 @@ Hello! My name is Brian Heseung Kim ([@brhkim](https://github.com/brhkim)). I ha
 
 ## Acknowledgments
 
-### Urban Institute Education Data Portal
+### Open Source Software & Community Resources
 
-The current proof-of-concept iteration of this project would not be possible without the **[Urban Institute Education Data Portal](https://educationdata.urban.org/)** -- a remarkable public resource that harmonizes data from over a dozen federal education data sources into a single, well-documented API. We are deeply grateful to the Urban Institute for making high-quality education data freely accessible, providing excellent documentation and consistent data structures, harmonizing complex federal datasets, and supporting the research community with responsive maintenance and updates.
+- **[Urban Institute Education Data Portal](https://educationdata.urban.org/)** -- The proof-of-concept iteration of this project would not be possible without this remarkable public resource that harmonizes data from over a dozen federal education data sources into a single, well-documented API. We are deeply grateful to the Urban Institute for making high-quality education data freely accessible. If you use DAAF or the Education Data Portal in your work, please cite the Urban Institute appropriately -- see the [Education Data Portal documentation](https://educationdata.urban.org/documentation/) for citation guidelines.
+- **[GUIDE-LLM](https://llm-checklist.com/)** -- DAAF integrates this consensus-based reporting checklist (developed by Feuerriegel, Barrie, Crockett, Globig, McLoughlin, Mirea, Spirling, Yang, and over 80 additional experts) to help researchers transparently disclose how AI was used in their work.
+- **[Get Shit Done](https://github.com/glittercowboy/get-shit-done)** ([@glittercowboy](https://github.com/glittercowboy)) -- Several core workflow patterns in DAAF, particularly around agent specialization, shared working memory, and task decomposition, were improved thanks to excellent practices in this project.
+- **[Docker](https://www.docker.com/)** -- Containerization platform providing DAAF's sandboxed execution environment
+- **[code-server](https://github.com/coder/code-server)** ([Coder](https://coder.com/)) -- Browser-based VS Code editor, itself built on Microsoft's [VS Code](https://github.com/microsoft/vscode) and the [Open VSX](https://open-vsx.org/) extension registry
+- **[marimo](https://marimo.io/)** -- Reactive Python notebooks used for DAAF's reproducible research artifacts
+- **[Polars](https://pola.rs/)** -- High-performance DataFrame library and DAAF's default data engine
+- **[uv](https://github.com/astral-sh/uv)** ([Astral](https://astral.sh/)) -- Fast Python package manager powering DAAF's build
+- **[Git](https://git-scm.com/)** and **[pre-commit](https://pre-commit.com/)** -- Version control and commit-time safety checks
+- DAAF also relies on a broad ecosystem of specific Python libraries for statistical computing, visualization, and geospatial analysis -- see the [Dockerfile](Dockerfile) for the complete list with pinned versions.
 
-If you use DAAF or the Education Data Portal in your work, please cite the Urban Institute appropriately. See the [Education Data Portal documentation](https://educationdata.urban.org/documentation/) for citation guidelines.
+### Methodological Foundations
 
-### GUIDE-LLM Reporting Checklist
+DAAF's Skills encode curated methodological guidance drawn from the work of many researchers. The exact references are embedded in the Skill files themselves (see `.claude/skills/`), but we gratefully acknowledge the scholars whose textbooks, papers, and open educational resources most directly shaped the framework's embedded expertise:
 
-DAAF integrates the **[GUIDE-LLM](https://llm-checklist.com/)** reporting checklist into all output workflows to help researchers transparently and rigorously disclose how AI was used in their work. GUIDE-LLM is a consensus-based reporting standard developed by over 80 experts for studies using large language models in the behavioral and social sciences.
+> **Causal inference and econometrics:** Joshua Angrist & Jorn-Steffen Pischke, Scott Cunningham, Nick Huntington-Klein, Jeffrey Wooldridge, Guido Imbens, Judea Pearl, Paul Rosenbaum & Donald Rubin, Alberto Abadie, Matias Cattaneo, Edward Leamer, Charles Manski, Anton Korinek (causal inference, statistical modeling) &bull; **Modern difference-in-differences:** Brantly Callaway & Pedro Sant'Anna, Andrew Goodman-Bacon, Liyang Sun & Sarah Abraham, Clement de Chaisemartin & Xavier D'Haultfoeuille, Jonathan Roth, John Gardner, Kirill Borusyak, Ariel Dube (causal inference, pyfixest) &bull; **Statistical inference:** A. Colin Cameron & Douglas Miller, James MacKinnon, Morten Nielsen & Matthew Webb, Yosef Benjamini & Yoav Hochberg, Joseph Romano & Michael Wolf (statistical modeling, pyfixest, linearmodels) &bull; **Sensitivity and robustness:** Emily Oster, Carlos Cinelli & Chad Hazlett, Joseph Altonji (causal inference, statistical modeling) &bull; **Statistical learning and machine learning:** Trevor Hastie, Robert Tibshirani & Jerome Friedman, Gareth James & Daniela Witten, Leo Breiman, Susan Athey & Stefan Wager, Sendhil Mullainathan, Victor Chernozhukov, Cynthia Rudin, Christoph Molnar, Scott Lundberg, Galit Shmueli (supervised ML, exploratory/unsupervised) &bull; **Fairness:** Jon Kleinberg, Alexandra Chouldechova, Ziad Obermeyer (supervised ML) &bull; **Clustering and unsupervised methods:** Leonard Kaufman & Peter Rousseeuw, Christian Hennig, Brian Everitt, Chris Fraley & Adrian Raftery, Ian Jolliffe, Laurens van der Maaten, Leland McInnes (exploratory/unsupervised) &bull; **Decomposition methods:** Ronald Oaxaca & Alan Blinder, Jonah Gelbach, Nicole Fortin, Thomas Lemieux & Sergio Firpo, Frank Cowell (descriptive analysis) &bull; **Survey methodology:** Thomas Lumley, Steven Heeringa, Brady West & Patricia Berglund, Sharon Lohr, Leslie Kish, Kirk Wolter (survey analysis, svy) &bull; **Geospatial analysis:** Sergio Rey, Dani Arribas-Bel & Levi John Wolf, Luc Anselin, Waldo Tobler, Timothy Conley, A. Stewart Fotheringham (geospatial analysis, geopandas) &bull; **Panel data and IV:** Badi Baltagi, William Greene, Kevin Sheppard, Douglas Staiger & James Stock (linearmodels, pyfixest) &bull; **Time series:** James Hamilton, Rob Hyndman, Helmut Lutkepohl (statsmodels) &bull; **Visualization and science communication:** Edward Tufte, Cole Nussbaumer Knaflic, Jonathan Schwabish, Claus Wilke, Alberto Cairo, Barbara Minto, Brent Dykes, Catherine D'Ignazio & Lauren F. Klein (visualization design, science communication) &bull; **Software:** Alexander Fischer & S. Schar (pyfixest), Skipper Seabold & Josef Perktold (statsmodels), Mamadou S. Diallo (svy), Fabian Pedregosa et al. (scikit-learn), Sergio Rey et al. (PySAL), Laurent Berge, Kyle Butts & Grant McDermott (fixest), Kelsey Jordahl et al. (geopandas), Geoff Boeing (OSMnx), Guolin Ke et al. (LightGBM)
 
-> Feuerriegel, S., Barrie, C., Crockett, M. J., Globig, L. K., McLoughlin, K. L., Mirea, D.-M., Spirling, A., Yang, D., ..., Rathje, S., & Ribeiro, M. H. (2026). A consensus-based reporting checklist for large language models in behavioral and social science. Available at: https://llm-checklist.com/
-
-### Inspiration
-
-Several core workflow patterns -- particularly around agent specialization, shared working memory, and task decomposition -- were improved thanks to excellent practices in **[Get Shit Done](https://github.com/glittercowboy/get-shit-done)** by [@glittercowboy](https://github.com/glittercowboy). Early thinking on DAAF was also rapidly accelerated by Dr. Anton Korinek's working paper, [AI Agents for Economic Research](https://www.genaiforecon.org/JEL-2025-Aug-AIAgents.pdf).
+These researchers' contributions -- many freely available as open-access resources -- represent decades of accumulated methodological wisdom that DAAF aims to make more accessible to applied researchers.
 
 ---
 

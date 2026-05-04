@@ -1,0 +1,541 @@
+# CI: Shell & PowerShell Script Quality
+#
+# Validates all .sh and .ps1 scripts across the repository.
+# Companion workflow: ci-integration.yml runs Docker integration tests weekly.
+#
+# Eight jobs:
+#   1. lint-bash           - ShellCheck on all .sh files (ubuntu)
+#   2. lint-powershell     - PSScriptAnalyzer on all .ps1 files (ubuntu/pwsh 7)
+#   3. hygiene-checks      - Executable bits, LF endings, script pair parity
+#   4. validate-ps-windows - PSScriptAnalyzer on Windows PowerShell 5.1
+#   5. bats-tests          - BATS unit/smoke tests for .sh scripts (ubuntu)
+#   6. pester-tests        - Pester tests for .ps1 scripts (ubuntu + windows)
+#   7. daaf-conventions    - Custom DAAF-specific lint checks (ubuntu)
+#   8. smoke-tests         - Cross-platform dry-run smoke tests (ubuntu + macos + windows)
+#
+# Triggered only when shell-related files change (path filtering).
+
+name: CI - Scripts
+
+on:
+  push:
+    paths:
+      - '**.sh'
+      - '**.ps1'
+      - '**.bats'
+      - '**/*.Tests.ps1'
+      - '.github/workflows/ci-scripts.yml'
+      - '.github/linters/**'
+      - 'tests/lint/**'
+  pull_request:
+    paths:
+      - '**.sh'
+      - '**.ps1'
+      - '**.bats'
+      - '**/*.Tests.ps1'
+      - 'tests/lint/**'
+      - '.github/workflows/ci-scripts.yml'
+      - '.github/linters/**'
+
+permissions:
+  contents: read
+
+# ---------------------------------------------------------------------------
+# Job 1: Lint all Bash scripts with ShellCheck
+# ---------------------------------------------------------------------------
+jobs:
+  lint-bash:
+    name: ShellCheck (Bash)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # ShellCheck is pre-installed on ubuntu-latest runners.
+      # We invoke it directly to scan all .sh files across multiple
+      # directories (root, .claude/hooks/, .claude/scripts/, scripts/).
+      - name: Run ShellCheck on all .sh files
+        run: |
+          find . -name '*.sh' -not -path './.git/*' -print0 \
+            | xargs -0 shellcheck -x --severity=warning --shell=bash --format=gcc
+
+  # ---------------------------------------------------------------------------
+  # Job 2: Lint all PowerShell scripts with PSScriptAnalyzer (pwsh 7 on Linux)
+  # ---------------------------------------------------------------------------
+  lint-powershell:
+    name: PSScriptAnalyzer (pwsh 7)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # pwsh is pre-installed on ubuntu-latest runners.
+      # We install PSScriptAnalyzer and run it with the repo's config file.
+      - name: Run PSScriptAnalyzer
+        shell: pwsh
+        run: |
+          Install-Module -Name PSScriptAnalyzer -Force -Scope CurrentUser -SkipPublisherCheck
+          Invoke-ScriptAnalyzer -Path . -Recurse -Settings ./.github/linters/PSScriptAnalyzerSettings.psd1 | Format-Table -AutoSize
+          $failCount = (Invoke-ScriptAnalyzer -Path . -Recurse -Settings ./.github/linters/PSScriptAnalyzerSettings.psd1).Count
+          if ($failCount -gt 0) { exit 1 }
+
+  # ---------------------------------------------------------------------------
+  # Job 3: Hygiene checks (executable bits, line endings, script pair parity)
+  # ---------------------------------------------------------------------------
+  hygiene-checks:
+    name: Hygiene Checks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # Verify every tracked .sh file has Git executable mode (100755).
+      # Scripts without the executable bit will fail in Docker and on Linux.
+      - name: Verify executable bits on .sh files
+        run: |
+          echo "Checking that all tracked .sh files have mode 100755..."
+          bad_files=$(git ls-files -s '*.sh' | awk '$1 != "100755" { print $4 }')
+          if [ -n "$bad_files" ]; then
+            echo "ERROR: The following .sh files are NOT executable (mode 100644):"
+            echo "$bad_files"
+            echo ""
+            echo "Fix with: chmod +x <file> && git update-index --chmod=+x <file>"
+            exit 1
+          fi
+          echo "All .sh files have correct executable bits."
+
+      # Verify no CRLF line endings have crept into shell or PowerShell scripts.
+      # .gitattributes enforces LF globally, but this catches pre-existing files.
+      - name: Verify LF line endings
+        run: |
+          echo "Checking for CRLF line endings in .sh and .ps1 files..."
+          # -P enables Perl regex for \r; -l lists matching filenames
+          crlf_files=$(find . -name '*.sh' -o -name '*.ps1' | grep -v './.git/' | xargs grep -Pl '\r$' 2>/dev/null || true)
+          if [ -n "$crlf_files" ]; then
+            echo "ERROR: The following files contain CRLF line endings:"
+            echo "$crlf_files"
+            echo ""
+            echo "Fix with: git add --renormalize . && git commit"
+            exit 1
+          fi
+          echo "All script files have LF line endings."
+
+      # Verify that every host lifecycle .sh has a matching .ps1 (and vice versa).
+      # DAAF maintains matched pairs for cross-platform support.
+      - name: Verify script pair parity (sh/ps1)
+        run: |
+          echo "Checking scripts/host/ script pair parity..."
+          exit_code=0
+
+          # Check each host .sh has a matching .ps1
+          for sh_file in ./scripts/host/*.sh; do
+            [ -f "$sh_file" ] || continue
+            base=$(basename "$sh_file" .sh)
+            if [ ! -f "./scripts/host/${base}.ps1" ]; then
+              echo "ERROR: ${sh_file} has no matching ${base}.ps1"
+              exit_code=1
+            fi
+          done
+
+          # Check each host .ps1 has a matching .sh
+          for ps_file in ./scripts/host/*.ps1; do
+            [ -f "$ps_file" ] || continue
+            base=$(basename "$ps_file" .ps1)
+            if [ ! -f "./scripts/host/${base}.sh" ]; then
+              echo "ERROR: ${ps_file} has no matching ${base}.sh"
+              exit_code=1
+            fi
+          done
+
+          if [ "$exit_code" -eq 0 ]; then
+            echo "All scripts/host/ scripts have matching cross-platform pairs."
+          fi
+          exit $exit_code
+
+  # ---------------------------------------------------------------------------
+  # Job 4: Validate PowerShell scripts on Windows PowerShell 5.1
+  # ---------------------------------------------------------------------------
+  validate-ps-windows:
+    name: PSScriptAnalyzer (Windows PS 5.1)
+    runs-on: windows-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # Windows PowerShell 5.1 (not pwsh) is the default shell on Windows.
+      # This catches compatibility issues between PS 7 and PS 5.1.
+      - name: Run PSScriptAnalyzer (Windows PS 5.1)
+        shell: powershell
+        run: |
+          Install-Module -Name PSScriptAnalyzer -Force -Scope CurrentUser -SkipPublisherCheck
+          Invoke-ScriptAnalyzer -Path . -Recurse -Settings ./.github/linters/PSScriptAnalyzerSettings.psd1 | Format-Table -AutoSize
+          $failCount = (Invoke-ScriptAnalyzer -Path . -Recurse -Settings ./.github/linters/PSScriptAnalyzerSettings.psd1).Count
+          if ($failCount -gt 0) { exit 1 }
+
+  # ---------------------------------------------------------------------------
+  # Job 5: Run BATS tests for Bash scripts
+  # ---------------------------------------------------------------------------
+  bats-tests:
+    name: BATS Tests (Bash)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install BATS and helpers
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y bats
+
+      # Run all .bats test files. The test helper includes fallback
+      # assertions so tests work without bats-support/bats-assert submodules.
+      - name: Run BATS tests
+        run: bats tests/bash/
+
+  # ---------------------------------------------------------------------------
+  # Job 6: Run Pester tests for PowerShell scripts
+  # ---------------------------------------------------------------------------
+  pester-tests:
+    name: Pester Tests (PowerShell)
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # Pester 5.x is pre-installed on GitHub-hosted runners.
+      - name: Run Pester tests
+        shell: pwsh
+        run: |
+          Invoke-Pester -Path ./tests/powershell/ -CI -Output Detailed
+
+  # ---------------------------------------------------------------------------
+  # Job 7: DAAF-specific convention checks
+  # ---------------------------------------------------------------------------
+  daaf-conventions:
+    name: DAAF Conventions Lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Run DAAF convention checks
+        run: bash tests/lint/check-daaf-conventions.sh
+
+  # ---------------------------------------------------------------------------
+  # Job 8: Cross-platform dry-run smoke tests (no Docker needed)
+  # ---------------------------------------------------------------------------
+  # Verifies that all lifecycle scripts load and run their full logic paths
+  # on all three OS platforms using DAAF_DRY_RUN=1 (mocked Docker/curl).
+  # Catches bash 3.2 incompatibilities (macOS), PS 5.1 quirks (Windows),
+  # unresolved variable references, and control flow errors.
+  smoke-tests:
+    name: Smoke Tests (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # Bash smoke tests (Linux/macOS only — Git Bash on Windows is unreliable
+      # for complex scripts with function overrides and subshells).
+      # Each script is run individually to capture output and verify both exit
+      # code and content (the [DRY-RUN] marker plus script-specific strings).
+      - name: Smoke test .sh scripts (dry-run)
+        if: matrix.os != 'windows-latest'
+        run: |
+          failed=0
+
+          assert_contains() {
+            local label="$1" output="$2" pattern="$3"
+            if echo "$output" | grep -qF "$pattern"; then
+              echo "  PASS: output contains '$pattern'"
+            else
+              echo "  FAIL: expected output to contain '$pattern'"
+              failed=1
+            fi
+          }
+
+          # --- install.sh ---
+          echo "=== Smoke testing: scripts/host/install.sh ==="
+          out=$(DAAF_DRY_RUN=1 DAAF_NESTED=1 bash scripts/host/install.sh 2>&1) || { echo "FAILED: install.sh (exit code $?)"; failed=1; }
+          assert_contains "install.sh" "$out" "[DRY-RUN]"
+          assert_contains "install.sh" "$out" "DAAF Installer"
+          assert_contains "install.sh" "$out" "Installation complete!"
+
+          # --- backup_daaf.sh ---
+          echo "=== Smoke testing: scripts/host/backup_daaf.sh ==="
+          out=$(DAAF_DRY_RUN=1 DAAF_NESTED=1 bash scripts/host/backup_daaf.sh 2>&1) || { echo "FAILED: backup_daaf.sh (exit code $?)"; failed=1; }
+          assert_contains "backup_daaf.sh" "$out" "[DRY-RUN]"
+          assert_contains "backup_daaf.sh" "$out" "DAAF Backup"
+          assert_contains "backup_daaf.sh" "$out" "[DRY-RUN] Would create backup at:"
+
+          # --- rebuild_daaf.sh ---
+          echo "=== Smoke testing: scripts/host/rebuild_daaf.sh ==="
+          out=$(DAAF_DRY_RUN=1 DAAF_NESTED=1 bash scripts/host/rebuild_daaf.sh 2>&1) || { echo "FAILED: rebuild_daaf.sh (exit code $?)"; failed=1; }
+          assert_contains "rebuild_daaf.sh" "$out" "DAAF Rebuild"
+          assert_contains "rebuild_daaf.sh" "$out" "Rebuild complete!"
+
+          # --- update_daaf.sh ---
+          echo "=== Smoke testing: scripts/host/update_daaf.sh ==="
+          out=$(DAAF_DRY_RUN=1 DAAF_NESTED=1 bash scripts/host/update_daaf.sh 2>&1) || { echo "FAILED: update_daaf.sh (exit code $?)"; failed=1; }
+          assert_contains "update_daaf.sh" "$out" "DAAF Updater"
+          assert_contains "update_daaf.sh" "$out" "Already up to date!"
+
+          # --- migrate_daaf.sh ---
+          echo "=== Smoke testing: scripts/host/migrate_daaf.sh ==="
+          out=$(DAAF_DRY_RUN=1 DAAF_NESTED=1 bash scripts/host/migrate_daaf.sh 2>&1) || { echo "FAILED: migrate_daaf.sh (exit code $?)"; failed=1; }
+          assert_contains "migrate_daaf.sh" "$out" "[DRY-RUN]"
+          assert_contains "migrate_daaf.sh" "$out" "DAAF Migration"
+          assert_contains "migrate_daaf.sh" "$out" "Migration complete!"
+
+          # --- restore_from_backup.sh ---
+          echo "=== Smoke testing: scripts/host/restore_from_backup.sh ==="
+          out=$(DAAF_DRY_RUN=1 DAAF_NESTED=1 bash scripts/host/restore_from_backup.sh 2>&1) || { echo "FAILED: restore_from_backup.sh (exit code $?)"; failed=1; }
+          assert_contains "restore_from_backup.sh" "$out" "DAAF Restore from Backup"
+          assert_contains "restore_from_backup.sh" "$out" "Restore dry-run complete!"
+
+          # --- view_logs.sh ---
+          echo "=== Smoke testing: scripts/host/view_logs.sh ==="
+          out=$(DAAF_DRY_RUN=1 DAAF_NESTED=1 bash scripts/host/view_logs.sh 2>&1) || { echo "FAILED: view_logs.sh (exit code $?)"; failed=1; }
+          assert_contains "view_logs.sh" "$out" "DAAF container is running."
+          assert_contains "view_logs.sh" "$out" "Opening DAAF Log Explorer"
+
+          # --- view_notebooks.sh ---
+          echo "=== Smoke testing: scripts/host/view_notebooks.sh ==="
+          out=$(DAAF_DRY_RUN=1 DAAF_NESTED=1 bash scripts/host/view_notebooks.sh 2>&1) || { echo "FAILED: view_notebooks.sh (exit code $?)"; failed=1; }
+          assert_contains "view_notebooks.sh" "$out" "DAAF container is running."
+          assert_contains "view_notebooks.sh" "$out" "Opening DAAF Notebook Browser"
+
+          # --- run_vscode.sh ---
+          echo "=== Smoke testing: scripts/host/run_vscode.sh ==="
+          out=$(DAAF_DRY_RUN=1 DAAF_NESTED=1 bash scripts/host/run_vscode.sh 2>&1) || { echo "FAILED: run_vscode.sh (exit code $?)"; failed=1; }
+          assert_contains "run_vscode.sh" "$out" "DAAF container is running."
+          assert_contains "run_vscode.sh" "$out" "Opening DAAF Code Browser"
+
+          # --- run_daaf.sh ---
+          echo "=== Smoke testing: scripts/host/run_daaf.sh ==="
+          out=$(DAAF_DRY_RUN=1 DAAF_NESTED=1 bash scripts/host/run_daaf.sh 2>&1) || { echo "FAILED: run_daaf.sh (exit code $?)"; failed=1; }
+          assert_contains "run_daaf.sh" "$out" "[DRY-RUN]"
+          assert_contains "run_daaf.sh" "$out" "DAAF container is already running."
+          assert_contains "run_daaf.sh" "$out" "Launching Claude Code"
+
+          if [ "$failed" -ne 0 ]; then
+            echo ""
+            echo "One or more smoke tests failed."
+            exit 1
+          fi
+          echo ""
+          echo "All bash smoke tests passed."
+
+      # PowerShell 7 smoke tests (all platforms — pwsh is pre-installed).
+      # Each script is run individually to capture output and verify both exit
+      # code and content (the [DRY-RUN] marker plus script-specific strings).
+      - name: Smoke test .ps1 scripts (dry-run, pwsh 7)
+        shell: pwsh
+        run: |
+          $failed = 0
+
+          function Assert-OutputContains {
+            param([string]$Label, [string]$Output, [string]$Pattern)
+            if ($Output -match [regex]::Escape($Pattern)) {
+              Write-Host "  PASS: output contains '$Pattern'"
+            } else {
+              Write-Host "  FAIL: expected output to contain '$Pattern'"
+              $script:failed = 1
+            }
+          }
+
+          function Invoke-SmokeTest {
+            param(
+              [string]$ScriptPath,
+              [string[]]$ExpectedStrings
+            )
+            $name = Split-Path $ScriptPath -Leaf
+            Write-Host "=== Smoke testing: $name ==="
+            $env:DAAF_DRY_RUN = "1"
+            $env:DAAF_NESTED = "1"
+            try {
+              $output = & $ScriptPath *>&1 | Out-String
+              if ($LASTEXITCODE -and $LASTEXITCODE -ne 0) {
+                Write-Host "FAILED: $name (exit code $LASTEXITCODE)"
+                $script:failed = 1
+              }
+            } catch {
+              Write-Host "FAILED: $name - $_"
+              $script:failed = 1
+              return
+            }
+            foreach ($pattern in $ExpectedStrings) {
+              Assert-OutputContains $name $output $pattern
+            }
+          }
+
+          Invoke-SmokeTest "scripts/host/install.ps1" @(
+            "DAAF Installer",
+            "Installation complete!"
+          )
+
+          Invoke-SmokeTest "scripts/host/backup_daaf.ps1" @(
+            "[DRY-RUN]",
+            "DAAF Backup",
+            "[DRY-RUN] Would copy"
+          )
+
+          Invoke-SmokeTest "scripts/host/rebuild_daaf.ps1" @(
+            "DAAF Rebuild",
+            "Rebuild complete!"
+          )
+
+          Invoke-SmokeTest "scripts/host/update_daaf.ps1" @(
+            "DAAF Updater",
+            "Already up to date!"
+          )
+
+          Invoke-SmokeTest "scripts/host/migrate_daaf.ps1" @(
+            "DAAF Migration",
+            "Migration complete!"
+          )
+
+          Invoke-SmokeTest "scripts/host/restore_from_backup.ps1" @(
+            "DAAF Restore from Backup",
+            "Restore dry-run complete!"
+          )
+
+          Invoke-SmokeTest "scripts/host/view_logs.ps1" @(
+            "DAAF container is running.",
+            "Opening DAAF Log Explorer"
+          )
+
+          Invoke-SmokeTest "scripts/host/view_notebooks.ps1" @(
+            "DAAF container is running.",
+            "Opening DAAF Notebook Browser"
+          )
+
+          Invoke-SmokeTest "scripts/host/run_vscode.ps1" @(
+            "DAAF container is running.",
+            "Opening DAAF Code Browser"
+          )
+
+          Invoke-SmokeTest "scripts/host/run_daaf.ps1" @(
+            "DAAF container is already running.",
+            "Launching Claude Code"
+          )
+
+          if ($failed) {
+            Write-Host ""
+            Write-Host "One or more smoke tests failed."
+            exit 1
+          }
+          Write-Host ""
+          Write-Host "All pwsh 7 smoke tests passed."
+
+      # Windows PowerShell 5.1 smoke test (Windows only — catches PS 5.1
+      # $ErrorActionPreference quirks, alias differences, and path issues).
+      # Each script is run individually to capture output and verify both exit
+      # code and content (the [DRY-RUN] marker plus script-specific strings).
+      - name: Smoke test .ps1 scripts (dry-run, Windows PS 5.1)
+        if: matrix.os == 'windows-latest'
+        shell: powershell
+        run: |
+          $failed = 0
+
+          function Assert-OutputContains {
+            param([string]$Label, [string]$Output, [string]$Pattern)
+            if ($Output -match [regex]::Escape($Pattern)) {
+              Write-Host "  PASS: output contains '$Pattern'"
+            } else {
+              Write-Host "  FAIL: expected output to contain '$Pattern'"
+              $script:failed = 1
+            }
+          }
+
+          function Invoke-SmokeTest {
+            param(
+              [string]$ScriptPath,
+              [string[]]$ExpectedStrings
+            )
+            $name = Split-Path $ScriptPath -Leaf
+            Write-Host "=== Smoke testing (PS 5.1): $name ==="
+            $env:DAAF_DRY_RUN = "1"
+            $env:DAAF_NESTED = "1"
+            try {
+              $output = & $ScriptPath *>&1 | Out-String
+              if ($LASTEXITCODE -and $LASTEXITCODE -ne 0) {
+                Write-Host "FAILED: $name (exit code $LASTEXITCODE)"
+                $script:failed = 1
+              }
+            } catch {
+              Write-Host "FAILED: $name - $_"
+              $script:failed = 1
+              return
+            }
+            foreach ($pattern in $ExpectedStrings) {
+              Assert-OutputContains $name $output $pattern
+            }
+          }
+
+          Invoke-SmokeTest "scripts/host/install.ps1" @(
+            "DAAF Installer",
+            "Installation complete!"
+          )
+
+          Invoke-SmokeTest "scripts/host/backup_daaf.ps1" @(
+            "[DRY-RUN]",
+            "DAAF Backup",
+            "[DRY-RUN] Would copy"
+          )
+
+          Invoke-SmokeTest "scripts/host/rebuild_daaf.ps1" @(
+            "DAAF Rebuild",
+            "Rebuild complete!"
+          )
+
+          Invoke-SmokeTest "scripts/host/update_daaf.ps1" @(
+            "DAAF Updater",
+            "Already up to date!"
+          )
+
+          Invoke-SmokeTest "scripts/host/migrate_daaf.ps1" @(
+            "DAAF Migration",
+            "Migration complete!"
+          )
+
+          Invoke-SmokeTest "scripts/host/restore_from_backup.ps1" @(
+            "DAAF Restore from Backup",
+            "Restore dry-run complete!"
+          )
+
+          Invoke-SmokeTest "scripts/host/view_logs.ps1" @(
+            "DAAF container is running.",
+            "Opening DAAF Log Explorer"
+          )
+
+          Invoke-SmokeTest "scripts/host/view_notebooks.ps1" @(
+            "DAAF container is running.",
+            "Opening DAAF Notebook Browser"
+          )
+
+          Invoke-SmokeTest "scripts/host/run_vscode.ps1" @(
+            "DAAF container is running.",
+            "Opening DAAF Code Browser"
+          )
+
+          Invoke-SmokeTest "scripts/host/run_daaf.ps1" @(
+            "DAAF container is already running.",
+            "Launching Claude Code"
+          )
+
+          if ($failed) {
+            Write-Host ""
+            Write-Host "One or more smoke tests failed."
+            exit 1
+          }
+          Write-Host ""
+          Write-Host "All PS 5.1 smoke tests passed."

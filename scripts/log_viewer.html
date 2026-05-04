@@ -1,0 +1,1978 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DAAF Log Explorer</title>
+<style>
+/* --- Reset & Base --- */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { font-size: 14px; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  background: #f8f9fa;
+  color: #1a1a2e;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* --- Header --- */
+.header {
+  background: #1a1a2e;
+  color: #fff;
+  padding: 8px 20px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+.header h1 { font-size: 1.15rem; font-weight: 600; letter-spacing: 0.02em; white-space: nowrap; }
+.header .project-name {
+  font-size: 0.82rem;
+  color: #94a3b8;
+  font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  min-width: 0;
+}
+.header .session-select {
+  background: #2d2d4e;
+  color: #e2e8f0;
+  border: 1px solid #475569;
+  border-radius: 4px;
+  padding: 4px 8px;
+  font-size: 0.8rem;
+  cursor: pointer;
+  flex-shrink: 0;
+  max-width: 360px;
+}
+.header .session-select:hover { border-color: #3b82f6; }
+
+/* --- Refresh Controls --- */
+.header .refresh-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+.header .refresh-btn {
+  background: #2d2d4e;
+  color: #e2e8f0;
+  border: 1px solid #475569;
+  border-radius: 4px;
+  padding: 4px 10px;
+  font-size: 0.8rem;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: border-color 0.15s, opacity 0.15s;
+}
+.header .refresh-btn:hover { border-color: #3b82f6; }
+@keyframes refresh-pulse {
+  0%, 100% { opacity: 0.6; }
+  50% { opacity: 1; }
+}
+.header .refresh-btn.refreshing {
+  cursor: wait;
+  animation: refresh-pulse 1.2s ease-in-out infinite;
+}
+.header .auto-refresh-group {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.72rem;
+  color: #94a3b8;
+}
+.header .auto-refresh-group label {
+  cursor: pointer;
+  user-select: none;
+}
+.header .auto-refresh-group select {
+  background: #2d2d4e;
+  color: #e2e8f0;
+  border: 1px solid #475569;
+  border-radius: 3px;
+  padding: 2px 4px;
+  font-size: 0.72rem;
+  cursor: pointer;
+}
+.header .auto-refresh-group select:hover { border-color: #3b82f6; }
+.header .last-refreshed {
+  font-size: 0.68rem;
+  color: #64748b;
+  white-space: nowrap;
+}
+
+/* (session tabs replaced by header dropdown) */
+
+/* --- Stats Bar --- */
+.stats-bar {
+  display: flex;
+  gap: 24px;
+  padding: 8px 20px;
+  background: #fff;
+  border-bottom: 1px solid #e2e8f0;
+  font-size: 0.8rem;
+  color: #64748b;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+}
+.stats-bar .stat-label { color: #94a3b8; margin-right: 4px; }
+.stats-bar .stat-value { font-weight: 600; color: #334155; }
+
+/* --- Main Content Area --- */
+.main-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-height: 0;
+}
+
+/* --- Timeline Panel (top) --- */
+.timeline-panel {
+  flex: 3;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 16px 20px;
+  min-height: 40px;
+}
+.section-label {
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #94a3b8;
+  margin-bottom: 8px;
+}
+
+/* --- Unified Timeline --- */
+/* --- Scroll Proxy (top scrollbar for timeline) --- */
+.scroll-proxy {
+  overflow-x: auto;
+  overflow-y: hidden;
+  height: 12px;
+  min-height: 12px;
+  flex-shrink: 0;
+}
+.scroll-proxy-inner {
+  height: 1px;
+}
+.timeline-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 2px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+  min-height: 48px;
+  scrollbar-width: none;           /* Firefox: hide bottom scrollbar */
+}
+.timeline-row::-webkit-scrollbar {
+  display: none;                   /* Chrome/Safari/Edge: hide bottom scrollbar */
+}
+.timeline-column {
+  flex-shrink: 0;
+  min-width: 28px;
+  display: flex;
+  flex-direction: column;
+}
+.timeline-block {
+  height: 36px;
+  border-radius: 4px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: #fff;
+  position: relative;
+  transition: transform 0.1s, box-shadow 0.1s;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 0 6px;
+}
+.timeline-block:hover {
+  transform: scaleY(1.08);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.18);
+  z-index: 2;
+}
+.timeline-block.selected {
+  outline: 2px solid #1a1a2e;
+  outline-offset: 1px;
+  box-shadow: 0 0 0 4px rgba(59,130,246,0.25);
+  transform: scaleY(1.08);
+  z-index: 3;
+}
+.timeline-block.type-user { background: #3b82f6; }
+.timeline-block.type-assistant { background: #10b981; }
+.timeline-block.type-system { background: #6b7280; }
+
+/* --- Tooltip --- */
+.timeline-block .block-tooltip {
+  display: none;
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: #1e293b;
+  color: #f1f5f9;
+  padding: 6px 10px;
+  border-radius: 4px;
+  font-size: 0.72rem;
+  font-weight: 400;
+  white-space: nowrap;
+  max-width: 350px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  pointer-events: none;
+  z-index: 100;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+}
+.timeline-block .block-tooltip::after {
+  content: '';
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  border: 5px solid transparent;
+  border-top-color: #1e293b;
+}
+.timeline-block:hover .block-tooltip { display: block; }
+
+/* --- Subagent Area (nested below orchestrator block) --- */
+.subagent-area {
+  background: rgba(0, 0, 0, 0.03);
+  border-radius: 0 0 4px 4px;
+  padding: 4px 2px 2px 2px;
+  margin-top: 1px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.subagent-bar {
+  height: 24px;
+  border-radius: 3px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  padding: 0 6px;
+  font-size: 0.65rem;
+  font-weight: 600;
+  color: #fff;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  transition: transform 0.1s, box-shadow 0.1s;
+  border: 1px solid rgba(255,255,255,0.2);
+  min-width: 20px;
+}
+.subagent-bar:hover {
+  transform: scaleY(1.1);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+  z-index: 2;
+}
+.subagent-bar.selected {
+  outline: 2px solid #1a1a2e;
+  outline-offset: 1px;
+  box-shadow: 0 0 0 4px rgba(59,130,246,0.25);
+  z-index: 3;
+}
+/* Agent type colors */
+.subagent-bar.agent-search-agent { background: #f59e0b; }
+.subagent-bar.agent-source-researcher { background: #8b5cf6; }
+.subagent-bar.agent-research-executor { background: #ef4444; }
+.subagent-bar.agent-code-reviewer { background: #06b6d4; }
+.subagent-bar.agent-data-planner { background: #ec4899; }
+.subagent-bar.agent-research-synthesizer { background: #f97316; }
+.subagent-bar.agent-plan-checker { background: #84cc16; }
+.subagent-bar.agent-report-writer { background: #a855f7; }
+.subagent-bar.agent-data-verifier { background: #0ea5e9; }
+.subagent-bar.agent-notebook-assembler { background: #64748b; }
+.subagent-bar.agent-debugger { background: #dc2626; }
+.subagent-bar.agent-integration-checker { background: #059669; }
+.subagent-bar.agent-data-ingest { background: #d946ef; }
+.subagent-bar.agent-framework-engineer { background: #7c3aed; }
+.subagent-bar.agent-default { background: #6b7280; }
+
+/* --- Unlinked Subagents (fallback section) --- */
+.unlinked-section { margin-top: 12px; }
+.unlinked-lane {
+  position: relative;
+  height: 28px;
+  margin-bottom: 3px;
+}
+.unlinked-bar {
+  height: 24px;
+  border-radius: 3px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 8px;
+  font-size: 0.65rem;
+  font-weight: 600;
+  color: #fff;
+  margin-right: 4px;
+  border: 1px solid rgba(255,255,255,0.2);
+}
+
+/* --- Resize Handle (horizontal, between timeline and bottom) --- */
+.resize-handle {
+  height: 5px;
+  background: #e2e8f0;
+  cursor: row-resize;
+  flex-shrink: 0;
+  position: relative;
+  transition: background 0.15s;
+}
+.resize-handle:hover, .resize-handle.dragging { background: #3b82f6; }
+.resize-handle::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 40px;
+  height: 3px;
+  border-top: 1px solid #94a3b8;
+  border-bottom: 1px solid #94a3b8;
+}
+
+/* --- Bottom Panels (detail + file preview) --- */
+.bottom-panels {
+  flex: 7;
+  display: flex;
+  flex-direction: row;
+  min-height: 0;
+  border-top: 1px solid #e2e8f0;
+  box-shadow: 0 -2px 8px rgba(0,0,0,0.04);
+}
+
+/* --- Detail Panel (bottom-left) --- */
+.detail-panel {
+  flex: 1;
+  background: #fff;
+  overflow-y: auto;
+  padding: 16px 20px;
+  min-width: 0;
+  min-height: 0;
+}
+.detail-empty {
+  color: #94a3b8;
+  font-size: 0.9rem;
+  text-align: center;
+  margin-top: 40px;
+}
+.detail-header {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  margin-bottom: 10px;
+  flex-wrap: wrap;
+}
+.detail-title { font-size: 1rem; font-weight: 700; color: #1a1a2e; }
+.detail-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 3px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: #fff;
+}
+.detail-badge.type-user { background: #3b82f6; }
+.detail-badge.type-assistant { background: #10b981; }
+.detail-badge.type-system { background: #6b7280; }
+.detail-meta {
+  font-size: 0.78rem;
+  color: #64748b;
+  margin-bottom: 12px;
+  line-height: 1.6;
+}
+.detail-section-title {
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #94a3b8;
+  margin: 14px 0 6px 0;
+  padding-top: 10px;
+  border-top: 1px solid #f1f5f9;
+}
+
+/* --- Vertical Resize (between detail and preview) --- */
+.vertical-resize {
+  width: 5px;
+  background: #e2e8f0;
+  cursor: col-resize;
+  flex-shrink: 0;
+  position: relative;
+  transition: background 0.15s;
+}
+.vertical-resize:hover, .vertical-resize.dragging { background: #3b82f6; }
+.vertical-resize::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  height: 40px;
+  width: 3px;
+  border-left: 1px solid #94a3b8;
+  border-right: 1px solid #94a3b8;
+}
+
+/* --- File Preview Panel (bottom-right) --- */
+.file-preview {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-width: 0;
+  min-height: 0;
+  background: #fff;
+  border-left: 1px solid #e2e8f0;
+}
+.preview-empty {
+  color: #94a3b8;
+  font-size: 0.85rem;
+  text-align: center;
+  padding: 40px 20px;
+}
+.preview-notice {
+  background: #fffbeb;
+  border-bottom: 1px solid #fde68a;
+  padding: 5px 12px;
+  font-size: 0.72rem;
+  color: #92400e;
+  flex-shrink: 0;
+  line-height: 1.4;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.preview-notice-text { flex: 1; }
+.preview-notice-dismiss {
+  background: none;
+  border: none;
+  color: #b45309;
+  cursor: pointer;
+  font-size: 0.85rem;
+  padding: 0 2px;
+  line-height: 1;
+  flex-shrink: 0;
+  opacity: 0.6;
+}
+.preview-notice-dismiss:hover { opacity: 1; }
+.preview-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  background: #f1f5f9;
+  border-bottom: 1px solid #e2e8f0;
+  flex-shrink: 0;
+}
+.preview-path {
+  flex: 1;
+  font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+  font-size: 0.75rem;
+  color: #334155;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.preview-open-tab {
+  font-size: 0.7rem;
+  color: #3b82f6;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.preview-open-tab:hover { text-decoration: underline; }
+.preview-close {
+  background: none;
+  border: none;
+  color: #94a3b8;
+  cursor: pointer;
+  font-size: 1.1rem;
+  padding: 0 4px;
+  line-height: 1;
+}
+.preview-close:hover { color: #1a1a2e; }
+.preview-content {
+  flex: 1;
+  overflow: auto;
+}
+.file-content {
+  margin: 0;
+  padding: 8px 0;
+  font-size: 0.75rem;
+  line-height: 1.6;
+  font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+  white-space: pre;
+  tab-size: 4;
+}
+.file-content .ln {
+  display: inline-block;
+  width: 5em;
+  text-align: right;
+  color: #94a3b8;
+  padding-right: 1em;
+  user-select: none;
+}
+
+/* --- Activity List --- */
+.activity-list { list-style: none; }
+.activity-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 4px 0;
+  font-size: 0.8rem;
+  line-height: 1.4;
+}
+.activity-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  margin-top: 4px;
+}
+.activity-dot.type-read { background: #3b82f6; }
+.activity-dot.type-write { background: #f97316; }
+.activity-dot.type-execute { background: #ef4444; }
+.activity-dot.type-delegate { background: #8b5cf6; }
+.activity-dot.type-skill { background: #10b981; }
+.activity-dot.type-search { background: #14b8a6; }
+.activity-dot.type-track { background: #9ca3af; }
+.activity-dot.type-other { background: #d1d5db; }
+.activity-dot.type-text { background: transparent; }
+.activity-dot.type-thinking { background: #a78bfa; }
+
+.activity-desc { color: #334155; flex: 1; min-width: 0; }
+.activity-text-block {
+  word-break: break-word;
+  color: #475569;
+  line-height: 1.5;
+  font-size: 0.8rem;
+  padding: 4px 0;
+  max-height: 300px;
+  overflow-y: auto;
+}
+.activity-thinking-block {
+  word-break: break-word;
+  color: #6b21a8;
+  line-height: 1.5;
+  font-size: 0.78rem;
+  padding: 6px 10px;
+  max-height: 200px;
+  overflow-y: auto;
+  background: #faf5ff;
+  border-radius: 4px;
+  border: 1px solid #e9d5ff;
+}
+.activity-thinking-block.collapsed {
+  max-height: 3.6em;
+  overflow: hidden;
+  position: relative;
+}
+.activity-thinking-block.collapsed::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 1.8em;
+  background: linear-gradient(transparent, #faf5ff);
+  pointer-events: none;
+}
+.thinking-toggle {
+  font-size: 0.7rem;
+  color: #7c3aed;
+  cursor: pointer;
+  font-weight: 600;
+  padding: 2px 0;
+  user-select: none;
+}
+.thinking-toggle:hover { text-decoration: underline; }
+.activity-target {
+  color: #3b82f6;
+  text-decoration: none;
+  font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+.activity-target:hover { text-decoration: underline; }
+.activity-extra-targets {
+  display: inline;
+  font-size: 0.72rem;
+}
+.activity-line-ref {
+  color: #94a3b8;
+  font-size: 0.7rem;
+  font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+.activity-line-ref:hover { color: #3b82f6; }
+.activity-error-badge {
+  display: inline-block;
+  background: #fef2f2;
+  color: #dc2626;
+  font-size: 0.65rem;
+  font-weight: 600;
+  padding: 1px 5px;
+  border-radius: 3px;
+  border: 1px solid #fecaca;
+  margin-left: 6px;
+  vertical-align: middle;
+}
+.delegate-arrow {
+  display: inline-block;
+  width: 0; height: 0;
+  border-top: 4px solid transparent;
+  border-bottom: 4px solid transparent;
+  border-left: 6px solid #8b5cf6;
+  margin-right: 2px;
+}
+.view-full-link {
+  font-size: 0.72rem;
+  color: #3b82f6;
+  cursor: pointer;
+  text-decoration: none;
+  font-weight: 500;
+}
+.view-full-link:hover { text-decoration: underline; }
+
+/* --- Subagent Preview Boxes (scrollable, full content) --- */
+.subagent-preview {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 4px;
+  padding: 10px 12px;
+  font-size: 0.78rem;
+  color: #475569;
+  line-height: 1.5;
+  margin: 6px 0;
+  max-height: 400px;
+  overflow-y: auto;
+  word-break: break-word;
+}
+
+/* --- Activity Groups (visual delineation) --- */
+.activity-group {
+  margin: 6px 0;
+  border-radius: 5px;
+  padding: 6px 10px;
+}
+.activity-group.group-text {
+  background: #f8fafc;
+  border-left: 3px solid #94a3b8;
+}
+.activity-group.group-thinking {
+  background: #faf5ff;
+  border-left: 3px solid #a78bfa;
+}
+.activity-group.group-thinking .activity-group-label {
+  color: #7c3aed;
+}
+.activity-group.group-tools {
+  background: #fafbff;
+  border: 1px solid #e8ecf2;
+}
+.activity-group .activity-list { margin: 0; }
+.activity-group-label {
+  font-size: 0.65rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #94a3b8;
+  margin-bottom: 4px;
+}
+
+/* --- Timestamp --- */
+.detail-timestamp {
+  font-size: 0.72rem;
+  color: #94a3b8;
+  font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+}
+
+/* --- Scrollable Content Box (for summaries, search results) --- */
+.content-box {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 4px;
+  padding: 10px 12px;
+  font-size: 0.82rem;
+  color: #334155;
+  line-height: 1.5;
+  margin: 6px 0;
+  max-height: 300px;
+  overflow-y: auto;
+  word-break: break-word;
+}
+.content-box.search-results {
+  font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+  font-size: 0.75rem;
+  color: #475569;
+  max-height: 200px;
+}
+
+/* (legend removed) */
+
+/* --- Error / Loading States --- */
+.state-message {
+  text-align: center;
+  padding: 60px 20px;
+  color: #64748b;
+}
+.state-message h2 { font-size: 1.1rem; color: #334155; margin-bottom: 8px; }
+.state-message p {
+  font-size: 0.85rem;
+  line-height: 1.6;
+  max-width: 500px;
+  margin: 0 auto;
+}
+.state-message code {
+  background: #f1f5f9;
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-size: 0.8rem;
+}
+
+/* --- Scrollbar --- */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>DAAF Log Explorer</h1>
+  <div class="project-name" id="projectName">Loading...</div>
+  <select class="session-select" id="sessionSelect" style="display:none"></select>
+  <div class="refresh-controls">
+    <button class="refresh-btn" id="refreshBtn" title="Refresh session manifest">Refresh</button>
+    <div class="auto-refresh-group">
+      <label for="autoRefreshToggle"><input type="checkbox" id="autoRefreshToggle"> Auto</label>
+      <select id="autoRefreshInterval">
+        <option value="60">1m</option>
+        <option value="300" selected>5m</option>
+        <option value="600">10m</option>
+        <option value="1800">30m</option>
+      </select>
+      <span class="last-refreshed" id="lastRefreshed"></span>
+    </div>
+  </div>
+</div>
+
+<div class="stats-bar" id="statsBar"></div>
+
+<div class="main-content">
+  <div class="timeline-panel" id="timelinePanel">
+    <div class="state-message" id="loadingMsg">
+      <h2>Loading session data...</h2>
+      <p>Fetching <code>session_manifest.json</code></p>
+    </div>
+  </div>
+  <div class="resize-handle" id="resizeHandle"></div>
+  <div class="bottom-panels" id="bottomPanels">
+    <div class="detail-panel" id="detailPanel">
+      <div class="detail-empty">Click a block in the timeline to view details.</div>
+    </div>
+    <div class="vertical-resize" id="verticalResize"></div>
+    <div class="file-preview" id="filePreview">
+      <div class="preview-empty">Click a file reference to preview it here.</div>
+    </div>
+  </div>
+</div>
+
+
+<script>
+// =====================================================================
+// State
+// =====================================================================
+var manifest = null;
+var activeSessionIdx = 0;
+var selectedBlockId = null;
+var selectedSubagentId = null;
+var jsonlCache = {};
+var fileCache = {};
+var mergedBlockLookup = {};
+var previewNoticeDismissed = false;
+
+// =====================================================================
+// Helpers
+// =====================================================================
+function formatDuration(sec) {
+  if (sec == null) return '?';
+  if (sec < 60) return Math.round(sec) + 's';
+  if (sec < 3600) return Math.floor(sec / 60) + 'm ' + Math.round(sec % 60) + 's';
+  var h = Math.floor(sec / 3600);
+  var m = Math.floor((sec % 3600) / 60);
+  return h + 'h ' + m + 'm';
+}
+
+function formatTimestamp(iso) {
+  if (!iso) return '';
+  try {
+    var d = new Date(iso);
+    if (isNaN(d.getTime())) return '';
+    var hh = String(d.getUTCHours()).padStart(2, '0');
+    var mm = String(d.getUTCMinutes()).padStart(2, '0');
+    var ss = String(d.getUTCSeconds()).padStart(2, '0');
+    return hh + ':' + mm + ':' + ss + ' UTC';
+  } catch (e) { return ''; }
+}
+
+function formatDateTimestamp(iso) {
+  if (!iso) return '';
+  try {
+    var d = new Date(iso);
+    if (isNaN(d.getTime())) return '';
+    var year = d.getUTCFullYear();
+    var mon = String(d.getUTCMonth() + 1).padStart(2, '0');
+    var day = String(d.getUTCDate()).padStart(2, '0');
+    var hh = String(d.getUTCHours()).padStart(2, '0');
+    var mm = String(d.getUTCMinutes()).padStart(2, '0');
+    var ss = String(d.getUTCSeconds()).padStart(2, '0');
+    return year + '-' + mon + '-' + day + ' ' + hh + ':' + mm + ':' + ss + ' UTC';
+  } catch (e) { return ''; }
+}
+
+function escapeHtml(str) {
+  if (!str) return '';
+  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+function renderMarkdown(text) {
+  if (!text) return '';
+  var s = escapeHtml(text);
+
+  // Phase 1: Extract code blocks into placeholders (protect from later passes)
+  var codeBlocks = [];
+  s = s.replace(/```[^\n]*\n([\s\S]*?)```/g, function(m, code) {
+    var idx = codeBlocks.length;
+    codeBlocks.push('<pre style="background:#f1f5f9;padding:8px 10px;border-radius:4px;font-size:0.75rem;overflow-x:auto;margin:4px 0"><code>' + code.replace(/\n$/, '') + '</code></pre>');
+    return '\x00CODEBLOCK' + idx + '\x00';
+  });
+  s = s.replace(/`([^`\n]+)`/g, function(m, code) {
+    var idx = codeBlocks.length;
+    codeBlocks.push('<code style="background:#f1f5f9;padding:1px 4px;border-radius:2px;font-size:0.85em">' + code + '</code>');
+    return '\x00CODEBLOCK' + idx + '\x00';
+  });
+
+  // Phase 2: Formatting (safe — code blocks are placeholders)
+  s = s.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+  s = s.replace(/^(#{1,4})\s+(.+)$/gm, function(m, hashes, text) {
+    var sizes = {'1':'1.15em','2':'1.05em','3':'0.95em','4':'0.88em'};
+    return '<div style="font-weight:700;font-size:' + (sizes[hashes.length] || '0.88em') + ';margin:8px 0 4px 0;color:#1a1a2e">' + text + '</div>';
+  });
+  s = s.replace(/^---+$/gm, '<hr style="border:none;border-top:1px solid #e2e8f0;margin:8px 0">');
+  s = s.replace(/^[-*]\s+(.+)$/gm, '<div style="padding-left:12px">\u2022 $1</div>');
+  s = s.replace(/^\d+\.\s+(.+)$/gm, function(m, content) {
+    var num = m.match(/^(\d+)\./)[1];
+    return '<div style="padding-left:12px">' + num + '. ' + content + '</div>';
+  });
+
+  // Phase 3: Tables
+  s = s.replace(/(^\|.+\|$\n^\|[-| :]+\|$\n(?:^\|.+\|$\n?)+)/gm, function(tableBlock) {
+    var rows = tableBlock.trim().split('\n');
+    if (rows.length < 2) return tableBlock;
+    var html = '<table style="border-collapse:collapse;font-size:0.78rem;margin:6px 0;width:100%">';
+    rows.forEach(function(row, ri) {
+      if (ri === 1 && /^[-| :]+$/.test(row.replace(/\|/g, '').trim().replace(/[- :]/g, ''))) return;
+      var cells = row.split('|').filter(function(c, i, a) { return i > 0 && i < a.length - 1; });
+      var tag = ri === 0 ? 'th' : 'td';
+      var bgStyle = ri === 0 ? 'background:#f1f5f9;font-weight:600;' : (ri % 2 === 0 ? 'background:#fafbfc;' : '');
+      html += '<tr>';
+      cells.forEach(function(cell) {
+        html += '<' + tag + ' style="' + bgStyle + 'padding:4px 8px;border:1px solid #e2e8f0;text-align:left">' + cell.trim() + '</' + tag + '>';
+      });
+      html += '</tr>';
+    });
+    html += '</table>';
+    return html;
+  });
+
+  // Phase 4: Restore code blocks
+  s = s.replace(/\x00CODEBLOCK(\d+)\x00/g, function(m, idx) {
+    return codeBlocks[parseInt(idx)];
+  });
+
+  // Phase 5: Convert remaining newlines to <br>, skip inside <pre> and <table>
+  var parts = s.split(/(<pre[^>]*>[\s\S]*?<\/pre>|<table[^>]*>[\s\S]*?<\/table>)/g);
+  s = parts.map(function(part, i) {
+    if (i % 2 === 1) return part;
+    return part.replace(/\n/g, '<br>');
+  }).join('');
+  return s;
+}
+
+function truncateStr(str, max) {
+  if (!str || str.length <= max) return str || '';
+  return str.substring(0, max - 1) + '\u2026';
+}
+
+function agentColorClass(agentType) {
+  var map = {
+    'search-agent': 'agent-search-agent',
+    'source-researcher': 'agent-source-researcher',
+    'research-executor': 'agent-research-executor',
+    'code-reviewer': 'agent-code-reviewer',
+    'data-planner': 'agent-data-planner',
+    'research-synthesizer': 'agent-research-synthesizer',
+    'plan-checker': 'agent-plan-checker',
+    'report-writer': 'agent-report-writer',
+    'data-verifier': 'agent-data-verifier',
+    'notebook-assembler': 'agent-notebook-assembler',
+    'debugger': 'agent-debugger',
+    'integration-checker': 'agent-integration-checker',
+    'data-ingest': 'agent-data-ingest',
+    'framework-engineer': 'agent-framework-engineer'
+  };
+  return map[agentType] || 'agent-default';
+}
+
+function fileUrl(path) {
+  if (!path) return '#';
+  return '/' + path.replace(/^\//, '');
+}
+
+// =====================================================================
+// JSONL Fetching
+// =====================================================================
+async function fetchJsonlLine(filePath, lineNum) {
+  var url = fileUrl(filePath);
+  if (!jsonlCache[url]) {
+    try {
+      var resp = await fetch(url);
+      if (!resp.ok) throw new Error('HTTP ' + resp.status);
+      var text = await resp.text();
+      jsonlCache[url] = text.split('\n');
+    } catch (e) {
+      return { error: 'Failed to fetch ' + filePath + ': ' + e.message };
+    }
+  }
+  var lines = jsonlCache[url];
+  var idx = lineNum - 1;
+  if (idx < 0 || idx >= lines.length) {
+    return { error: 'Line ' + lineNum + ' out of range (file has ' + lines.length + ' lines)' };
+  }
+  try {
+    return { data: JSON.parse(lines[idx]) };
+  } catch (e) {
+    return { raw: lines[idx], parseError: e.message };
+  }
+}
+
+async function fetchJsonlRange(filePath, lineStart, lineEnd) {
+  var url = fileUrl(filePath);
+  if (!jsonlCache[url]) {
+    try {
+      var resp = await fetch(url);
+      if (!resp.ok) throw new Error('HTTP ' + resp.status);
+      var text = await resp.text();
+      jsonlCache[url] = text.split('\n');
+    } catch (e) {
+      return { error: 'Failed to fetch ' + filePath + ': ' + e.message };
+    }
+  }
+  var lines = jsonlCache[url];
+  var start = Math.max(0, lineStart - 1);
+  var end = Math.min(lines.length, lineEnd);
+  return { lines: lines.slice(start, end) };
+}
+
+// =====================================================================
+// File Content Fetching (for preview panel)
+// =====================================================================
+async function fetchFileContent(path) {
+  var url = fileUrl(path);
+  if (fileCache[url]) return { content: fileCache[url] };
+  try {
+    var resp = await fetch(url);
+    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+    var text = await resp.text();
+    fileCache[url] = text;
+    return { content: text };
+  } catch (e) {
+    return { error: e.message };
+  }
+}
+
+// =====================================================================
+// Session Helpers
+// =====================================================================
+function activeSession() {
+  if (!manifest || !manifest.sessions || !manifest.sessions[activeSessionIdx]) return null;
+  return manifest.sessions[activeSessionIdx];
+}
+
+function sessionStats(session) {
+  var totalInput = 0, totalOutput = 0, totalCacheRead = 0, totalCacheWrite = 0;
+  (session.blocks || []).forEach(function(b) {
+    if (b.tokenUsage) {
+      totalInput += b.tokenUsage.input || 0;
+      totalOutput += b.tokenUsage.output || 0;
+      totalCacheRead += b.tokenUsage.cacheRead || 0;
+      totalCacheWrite += b.tokenUsage.cacheWrite || 0;
+    }
+  });
+  var subagentTokens = 0;
+  (session.subagents || []).forEach(function(sa) { subagentTokens += sa.tokens || 0; });
+  return {
+    totalInput: totalInput, totalOutput: totalOutput,
+    totalCacheRead: totalCacheRead, totalCacheWrite: totalCacheWrite,
+    orchestratorTokens: totalInput + totalOutput + totalCacheRead + totalCacheWrite,
+    subagentTokens: subagentTokens,
+    totalTokens: totalInput + totalOutput + totalCacheRead + totalCacheWrite + subagentTokens,
+    subagentCount: (session.subagents || []).length,
+    blockCount: (session.blocks || []).length
+  };
+}
+
+function buildBlockSubagentMap(session) {
+  var map = {};
+  (session.subagents || []).forEach(function(sa) {
+    if (sa.parentBlockId) {
+      if (!map[sa.parentBlockId]) map[sa.parentBlockId] = [];
+      map[sa.parentBlockId].push(sa);
+    }
+  });
+  return map;
+}
+
+// =====================================================================
+// Rendering: Tabs
+// =====================================================================
+function renderSessionSelect() {
+  var el = document.getElementById('sessionSelect');
+  if (!manifest || !manifest.sessions || manifest.sessions.length === 0) {
+    el.style.display = 'none';
+    return;
+  }
+  el.style.display = '';
+  el.innerHTML = manifest.sessions.map(function(s, i) {
+    var sel = i === activeSessionIdx ? ' selected' : '';
+    var dateLabel = formatDateTimestamp(s.startTime);
+    var label = dateLabel ? dateLabel + ' \u2014 ' + escapeHtml(s.sessionId) : 'Session ' + (i + 1) + ' (' + escapeHtml(s.sessionId) + ')';
+    return '<option value="' + i + '"' + sel + '>' + label + '</option>';
+  }).join('');
+  el.onchange = function() {
+    activeSessionIdx = parseInt(this.value);
+    selectedBlockId = null;
+    selectedSubagentId = null;
+    render();
+  };
+}
+
+// =====================================================================
+// Rendering: Stats Bar
+// =====================================================================
+function renderStatsBar() {
+  var el = document.getElementById('statsBar');
+  var session = activeSession();
+  if (!session) { el.innerHTML = ''; return; }
+  var stats = sessionStats(session);
+  var parts = [];
+  parts.push('<span><span class="stat-label">Session Duration:</span><span class="stat-value">' + formatDuration(session.durationSec) + '</span></span>');
+  if (session.model) parts.push('<span><span class="stat-label">Model:</span><span class="stat-value">' + escapeHtml(session.model) + '</span></span>');
+  parts.push('<span><span class="stat-label">Interaction Turns:</span><span class="stat-value">' + stats.blockCount + '</span></span>');
+  parts.push('<span><span class="stat-label">Specialist Subagents:</span><span class="stat-value">' + stats.subagentCount + '</span></span>');
+  if (session.cliVersion) parts.push('<span><span class="stat-label">Claude Code Version:</span><span class="stat-value">' + escapeHtml(session.cliVersion) + '</span></span>');
+  if (session.daafVersion) parts.push('<span><span class="stat-label">DAAF Version:</span><span class="stat-value">' + escapeHtml(session.daafVersion) + '</span></span>');
+  el.innerHTML = parts.join('');
+}
+
+// =====================================================================
+// Rendering: Unified Timeline
+// =====================================================================
+function renderTimeline() {
+  var panel = document.getElementById('timelinePanel');
+  var session = activeSession();
+  if (!session) {
+    panel.innerHTML = '<div class="state-message"><h2>No sessions found</h2><p>The manifest contains no session data.</p></div>';
+    return;
+  }
+  var blocks = session.blocks || [];
+  if (blocks.length === 0) {
+    panel.innerHTML = '<div class="state-message"><h2>Empty session</h2><p>No recorded blocks.</p></div>';
+    return;
+  }
+
+  var saMap = buildBlockSubagentMap(session);
+  mergedBlockLookup = {};
+
+  // Preprocess: merge consecutive assistant blocks without subagents
+  var displayItems = [];
+  var mergeBuffer = [];
+  var mergeIdx = 0;
+  function flushMerge() {
+    if (mergeBuffer.length === 0) return;
+    if (mergeBuffer.length === 1) {
+      displayItems.push(mergeBuffer[0]);
+    } else {
+      var mid = 'merged_' + mergeIdx++;
+      var merged = { _merged: true, id: mid, blocks: mergeBuffer.slice(), type: 'assistant' };
+      displayItems.push(merged);
+      mergedBlockLookup[mid] = merged;
+    }
+    mergeBuffer = [];
+  }
+  blocks.forEach(function(block) {
+    var bType = block.type || 'system';
+    var hasSubs = (saMap[block.id] || []).length > 0;
+    if (bType === 'assistant' && !hasSubs) {
+      mergeBuffer.push(block);
+    } else {
+      flushMerge();
+      displayItems.push(block);
+    }
+  });
+  flushMerge();
+
+  // Compute effective durations
+  var effDurations = {};
+  displayItems.forEach(function(item) {
+    if (item._merged) {
+      var total = 0;
+      item.blocks.forEach(function(b) { total += b.durationSec || 0.5; });
+      effDurations[item.id] = total;
+    } else {
+      var eff = item.durationSec || 0.5;
+      (saMap[item.id] || []).forEach(function(sa) {
+        var saDur = (sa.durationMs || 0) / 1000;
+        if (saDur > eff) eff = saDur;
+      });
+      effDurations[item.id] = eff;
+    }
+  });
+  var totalEffDur = displayItems.reduce(function(s, item) { return s + effDurations[item.id]; }, 0) || 1;
+
+  var html = '<div class="scroll-proxy" id="scrollProxy"><div class="scroll-proxy-inner"></div></div>';
+  html += '<div class="timeline-row" id="timelineRow">';
+
+  var counters = { user: 0, assistant: 0, system: 0 };
+  displayItems.forEach(function(item) {
+    var effDur = effDurations[item.id];
+    var pct = Math.max(1.5, (effDur / totalEffDur) * 100);
+    var selCls = (selectedBlockId === item.id && !selectedSubagentId) ? ' selected' : '';
+
+    if (item._merged) {
+      var startNum = counters['assistant'] + 1;
+      counters['assistant'] += item.blocks.length;
+      var endNum = counters['assistant'];
+      var label = 'O' + startNum + '-' + endNum;
+      item._label = label;
+      var summaryParts = item.blocks.map(function(b) { return b.summary || ''; }).filter(Boolean);
+      var summary = summaryParts.length > 0 ? escapeHtml(truncateStr(summaryParts.join('; '), 120)) : '';
+
+      html += '<div class="timeline-column" style="flex-basis:' + pct.toFixed(2) + '%;min-width:28px">';
+      html += '<div class="timeline-block type-assistant' + selCls + '" data-block-id="' + escapeHtml(item.id) + '">';
+      html += label;
+      html += '<span class="block-tooltip">' + label + ' (' + item.blocks.length + ' steps, ' + formatDuration(effDur) + ')';
+      if (summary) html += ' \u2014 ' + summary;
+      html += '</span></div></div>';
+    } else {
+      var bType = item.type || 'system';
+      counters[bType] = (counters[bType] || 0) + 1;
+      var label = (bType === 'user' ? 'U' : bType === 'assistant' ? 'O' : 'S') + counters[bType];
+      var summary = item.summary ? escapeHtml(truncateStr(item.summary, 120)) : '';
+      var blockSas = saMap[item.id] || [];
+
+      html += '<div class="timeline-column" style="flex-basis:' + pct.toFixed(2) + '%;min-width:' + (blockSas.length > 0 ? '60' : '28') + 'px">';
+      html += '<div class="timeline-block type-' + bType + selCls + '" data-block-id="' + escapeHtml(item.id) + '">';
+      html += label;
+      html += '<span class="block-tooltip">' + label + ' (' + formatDuration(item.durationSec) + ')';
+      if (summary) html += ' \u2014 ' + summary;
+      html += '</span></div>';
+
+      if (blockSas.length > 0) {
+        html += '<div class="subagent-area">';
+        blockSas.forEach(function(sa) {
+          var saDurSec = (sa.durationMs || 0) / 1000;
+          var barPct = effDur > 0 ? Math.max(15, Math.min(100, (saDurSec / effDur) * 100)) : 100;
+          var colorCls = agentColorClass(sa.agentType);
+          var selSaCls = selectedSubagentId === sa.id ? ' selected' : '';
+          var displayLabel = (sa.agentType || 'agent') + ': ' + (sa.label || sa.id);
+          html += '<div class="subagent-bar ' + colorCls + selSaCls + '" data-subagent-id="' + escapeHtml(sa.id) + '" style="width:' + barPct.toFixed(1) + '%" title="' + escapeHtml(displayLabel) + ' (' + formatDuration(saDurSec) + ')">';
+          html += escapeHtml(truncateStr(displayLabel, 50));
+          html += '</div>';
+        });
+        html += '</div>';
+      }
+      html += '</div>';
+    }
+  });
+
+  html += '</div>';
+
+  var unlinked = (session.subagents || []).filter(function(sa) { return !sa.parentBlockId; });
+  if (unlinked.length > 0) {
+    html += '<div class="unlinked-section">';
+    html += '<div class="section-label">Unlinked Specialists (' + unlinked.length + ')</div>';
+    unlinked.forEach(function(sa) {
+      var colorCls = agentColorClass(sa.agentType);
+      var selCls = selectedSubagentId === sa.id ? ' selected' : '';
+      var displayLabel = (sa.agentType || 'agent') + ': ' + (sa.label || sa.id);
+      html += '<div class="unlinked-bar ' + colorCls + selCls + '" data-subagent-id="' + escapeHtml(sa.id) + '" title="' + escapeHtml(displayLabel) + '">' + escapeHtml(truncateStr(displayLabel, 50)) + '</div>';
+    });
+    html += '</div>';
+  }
+
+  panel.innerHTML = html;
+  attachTimelineHandlers();
+  initScrollProxy('scrollProxy', 'timelineRow');
+}
+
+// =====================================================================
+// Scroll Proxy Sync (top scrollbar for timeline)
+// =====================================================================
+function initScrollProxy(proxyId, contentId) {
+  var proxy = document.getElementById(proxyId);
+  var content = document.getElementById(contentId);
+  if (!proxy || !content) return;
+  var inner = proxy.firstElementChild;
+  if (inner) inner.style.width = content.scrollWidth + 'px';
+  var syncing = false;
+  proxy.addEventListener('scroll', function() {
+    if (syncing) { syncing = false; return; }
+    syncing = true;
+    content.scrollLeft = proxy.scrollLeft;
+  });
+  content.addEventListener('scroll', function() {
+    if (syncing) { syncing = false; return; }
+    syncing = true;
+    proxy.scrollLeft = content.scrollLeft;
+  });
+  // Re-sync proxy width on resize
+  if (typeof ResizeObserver !== 'undefined') {
+    new ResizeObserver(function() {
+      if (inner) inner.style.width = content.scrollWidth + 'px';
+    }).observe(content);
+  }
+}
+
+// =====================================================================
+// Timeline Click Handlers (attached once per render)
+// =====================================================================
+function attachTimelineHandlers() {
+  var panel = document.getElementById('timelinePanel');
+  panel.querySelectorAll('.timeline-block').forEach(function(el) {
+    el.addEventListener('click', function(e) {
+      e.stopPropagation();
+      var blockId = this.dataset.blockId;
+      if (selectedBlockId === blockId && !selectedSubagentId) {
+        selectedBlockId = null;
+      } else {
+        selectedBlockId = blockId;
+        selectedSubagentId = null;
+      }
+      updateTimelineSelection();
+      renderDetail();
+    });
+  });
+  panel.querySelectorAll('.subagent-bar, .unlinked-bar').forEach(function(el) {
+    el.addEventListener('click', function(e) {
+      e.stopPropagation();
+      var saId = this.dataset.subagentId;
+      if (selectedSubagentId === saId) {
+        selectedSubagentId = null;
+      } else {
+        selectedSubagentId = saId;
+        selectedBlockId = null;
+      }
+      updateTimelineSelection();
+      renderDetail();
+    });
+  });
+}
+
+// =====================================================================
+// Selection Management (CSS-only, no re-render)
+// =====================================================================
+function updateTimelineSelection() {
+  document.querySelectorAll('.timeline-block.selected, .subagent-bar.selected, .unlinked-bar.selected').forEach(function(el) {
+    el.classList.remove('selected');
+  });
+  if (selectedBlockId && !selectedSubagentId) {
+    var el = document.querySelector('.timeline-block[data-block-id="' + selectedBlockId + '"]');
+    if (el) el.classList.add('selected');
+  }
+  if (selectedSubagentId) {
+    var el = document.querySelector('[data-subagent-id="' + selectedSubagentId + '"]');
+    if (el) el.classList.add('selected');
+  }
+}
+
+// =====================================================================
+// Rendering: Detail Panel
+// =====================================================================
+function renderDetail() {
+  var panel = document.getElementById('detailPanel');
+  var session = activeSession();
+  if (!session) { panel.innerHTML = '<div class="detail-empty">No session data.</div>'; return; }
+
+  if (selectedSubagentId) {
+    var sa = (session.subagents || []).find(function(s) { return s.id === selectedSubagentId; });
+    if (sa) { renderSubagentDetail(panel, sa, session); return; }
+  }
+  if (selectedBlockId) {
+    if (mergedBlockLookup[selectedBlockId]) {
+      renderMergedBlockDetail(panel, mergedBlockLookup[selectedBlockId], session);
+      return;
+    }
+    var block = (session.blocks || []).find(function(b) { return b.id === selectedBlockId; });
+    if (block) { renderBlockDetail(panel, block, session); return; }
+  }
+  panel.innerHTML = '<div class="detail-empty">Click a block in the timeline to view details.</div>';
+}
+
+function renderBlockDetail(panel, block, session) {
+  var bType = block.type || 'system';
+  var typeLabel = bType === 'user' ? 'User Message' : bType === 'assistant' ? 'Orchestrator Step' : 'System Event';
+  var html = '';
+
+  html += '<div class="detail-header">';
+  html += '<span class="detail-title">' + typeLabel + '</span>';
+  html += '<span class="detail-badge type-' + bType + '">' + escapeHtml(block.id) + '</span>';
+  if (block.startTime) html += ' <span class="detail-timestamp">' + formatTimestamp(block.startTime) + '</span>';
+  html += '</div>';
+
+  html += '<div class="detail-meta">';
+  html += '<strong>Duration:</strong> ' + formatDuration(block.durationSec);
+  if (block.file) {
+    var lineRef = block.lineStart && block.lineEnd ? ':' + block.lineStart + '-' + block.lineEnd : '';
+    html += ' &nbsp;|&nbsp; <strong>Source:</strong> <a href="' + escapeHtml(fileUrl(block.file)) + '" class="activity-target" data-preview-path="' + escapeHtml(block.file) + '" title="' + escapeHtml(block.file) + '">' + escapeHtml(block.file + lineRef) + '</a>';
+  }
+  html += '</div>';
+
+  if (bType === 'user' && block.summary) {
+    html += '<div class="detail-section-title">Message</div>';
+    html += '<div class="content-box">' + renderMarkdown(block.summary) + '</div>';
+  }
+
+  if (block.activities && block.activities.length > 0) {
+    if (bType !== 'user') {
+      html += '<div class="detail-section-title">Activities (' + block.activities.length + ')</div>';
+    }
+    html += renderActivities(block.activities, block.file, block.startTime);
+  }
+
+  panel.innerHTML = html;
+  attachDetailHandlers(panel);
+}
+
+function renderMergedBlockDetail(panel, merged, session) {
+  var html = '';
+  var label = merged._label || 'Merged Steps';
+  var firstBlock = merged.blocks[0];
+  var lastBlock = merged.blocks[merged.blocks.length - 1];
+  var totalDur = merged.blocks.reduce(function(s, b) { return s + (b.durationSec || 0); }, 0);
+
+  html += '<div class="detail-header">';
+  html += '<span class="detail-title">Orchestrator Steps ' + label + '</span>';
+  html += '<span class="detail-badge type-assistant">' + merged.blocks.length + ' steps</span>';
+  if (firstBlock.startTime) html += ' <span class="detail-timestamp">' + formatTimestamp(firstBlock.startTime) + ' \u2013 ' + formatTimestamp(lastBlock.endTime || lastBlock.startTime) + '</span>';
+  html += '</div>';
+
+  html += '<div class="detail-meta">';
+  html += '<strong>Duration:</strong> ' + formatDuration(totalDur);
+  html += '</div>';
+
+  merged.blocks.forEach(function(block, idx) {
+    html += '<div class="detail-section-title" style="display:flex;justify-content:space-between;align-items:center">';
+    html += 'Step ' + (idx + 1);
+    if (block.startTime) html += ' <span class="detail-timestamp">' + formatTimestamp(block.startTime) + '</span>';
+    html += '</div>';
+
+    if (block.activities && block.activities.length > 0) {
+      html += renderActivities(block.activities, block.file, block.startTime);
+    }
+  });
+
+  panel.innerHTML = html;
+  attachDetailHandlers(panel);
+}
+
+function renderSubagentDetail(panel, sa, session) {
+  var html = '';
+  html += '<div class="detail-header">';
+  html += '<span class="detail-title">Subagent: ' + escapeHtml(sa.agentType || 'unknown') + ' [id: ' + escapeHtml(sa.id) + ']</span>';
+  html += '</div>';
+  if (sa.label) html += '<div style="font-size:0.85rem;color:#64748b;margin-bottom:6px">' + escapeHtml(sa.label) + '</div>';
+
+  html += '<div class="detail-meta">';
+  var durSec = sa.durationMs != null ? sa.durationMs / 1000 : null;
+  html += '<strong>Duration:</strong> ' + formatDuration(durSec);
+  if (sa.toolUseCount != null) html += ' &nbsp;|&nbsp; <strong>Tool calls:</strong> ' + sa.toolUseCount;
+  if (sa.startTime) html += ' &nbsp;|&nbsp; <span class="detail-timestamp">' + formatDateTimestamp(sa.startTime) + '</span>';
+  html += '<br>';
+  if (sa.file) html += '<strong>Log file:</strong> <a href="' + escapeHtml(fileUrl(sa.file)) + '" class="activity-target" data-preview-path="' + escapeHtml(sa.file) + '">' + escapeHtml(sa.file) + '</a>';
+  if (sa.parentBlockId) {
+    html += ' &nbsp;|&nbsp; <strong>Parent block:</strong> <span class="view-full-link" data-action="go-block" data-block-id="' + escapeHtml(sa.parentBlockId) + '">' + escapeHtml(sa.parentBlockId) + '</span>';
+  }
+  html += '</div>';
+
+  // Dispatch prompt (full, scrollable)
+  if (sa.invocation && sa.invocation.promptPreview) {
+    html += '<div class="detail-section-title">Dispatch Prompt</div>';
+    html += '<div class="subagent-preview">' + renderMarkdown(sa.invocation.promptPreview) + '</div>';
+  }
+
+  // Agent protocol
+  if (sa.agentType) {
+    var protocolPath = '.claude/agents/' + sa.agentType + '.md';
+    html += '<div class="detail-section-title">Agent Protocol</div>';
+    html += '<div style="padding:4px 0;font-size:0.8rem">';
+    html += '<a href="' + escapeHtml(fileUrl(protocolPath)) + '" class="activity-target" data-preview-path="' + escapeHtml(protocolPath) + '" title="' + escapeHtml(protocolPath) + '">' + escapeHtml(protocolPath) + '</a>';
+    html += '</div>';
+  }
+
+  // Frontmatter skills (auto-loaded from agent specification)
+  if (sa.frontmatterSkills && sa.frontmatterSkills.length > 0) {
+    html += '<div class="detail-section-title">Agent Skills <span style="text-transform:none;font-weight:400;letter-spacing:0">(from specification)</span></div>';
+    html += '<div style="padding:4px 0;font-size:0.8rem">';
+    sa.frontmatterSkills.forEach(function(skillName) {
+      var skillPath = '.claude/skills/' + skillName + '/SKILL.md';
+      html += '<div style="padding:2px 0">';
+      html += '<span class="activity-dot type-skill" style="display:inline-block;vertical-align:middle;margin-right:6px"></span>';
+      html += '<a href="' + escapeHtml(fileUrl(skillPath)) + '" class="activity-target" data-preview-path="' + escapeHtml(skillPath) + '" title="' + escapeHtml(skillPath) + '">' + escapeHtml(skillName) + '</a>';
+      html += '</div>';
+    });
+    html += '</div>';
+  }
+
+  // Activities
+  if (sa.activities && sa.activities.length > 0) {
+    html += '<div class="detail-section-title">Activities (' + sa.activities.length + ')</div>';
+    html += renderActivities(sa.activities, sa.file, sa.startTime);
+  }
+
+  panel.innerHTML = html;
+  attachDetailHandlers(panel);
+}
+
+// =====================================================================
+// Rendering: Activities
+// =====================================================================
+function renderActivities(activities, defaultFile, blockTime) {
+  // Group consecutive activities by type: thinking, text, or tool calls
+  var groups = [];
+  var currentGroup = null;
+  activities.forEach(function(act) {
+    var aType = act.type || 'text';
+    var groupType = aType === 'thinking' ? 'thinking' : aType === 'text' ? 'text' : 'tools';
+    if (!currentGroup || currentGroup.type !== groupType) {
+      currentGroup = { type: groupType, items: [] };
+      groups.push(currentGroup);
+    }
+    currentGroup.items.push(act);
+  });
+
+  var timeStr = blockTime ? ' <span class="detail-timestamp">' + formatTimestamp(blockTime) + '</span>' : '';
+  var html = '';
+  groups.forEach(function(group) {
+    html += '<div class="activity-group group-' + group.type + '">';
+    if (group.type === 'thinking') {
+      html += '<div class="activity-group-label">Thinking' + timeStr + '</div>';
+    } else if (group.type === 'text') {
+      html += '<div class="activity-group-label">Message' + timeStr + '</div>';
+    } else {
+      html += '<div class="activity-group-label">Tool Calls' + timeStr + '</div>';
+    }
+    html += '<ul class="activity-list">';
+    group.items.forEach(function(act) {
+      html += renderSingleActivity(act, defaultFile);
+    });
+    html += '</ul>';
+    html += '</div>';
+  });
+  return html;
+}
+
+function renderSingleActivity(act, defaultFile) {
+  var aType = act.type || 'text';
+  var isError = act.error === true;
+  var isSearch = act.tool === 'Glob' || act.tool === 'Grep';
+
+  // Thinking activities render as collapsible italic blocks with markdown
+  if (aType === 'thinking') {
+    var thinkText = act.description || '';
+    var charCount = thinkText.length;
+    var isLong = charCount > 300;
+    var collapsedCls = isLong ? ' collapsed' : '';
+    var html = '<li>';
+    html += '<div class="activity-thinking-block' + collapsedCls + '" data-thinking="true">' + renderMarkdown(thinkText) + '</div>';
+    if (isLong) {
+      html += '<div class="thinking-toggle" data-action="toggle-thinking">' + charCount.toLocaleString() + ' chars \u2014 click to expand</div>';
+    }
+    html += '</li>';
+    return html;
+  }
+
+  // Text activities render as block-level pre-wrapped content
+  if (aType === 'text') {
+    var descText = act.description || '';
+    return '<li><div class="activity-text-block">' + renderMarkdown(descText) + '</div></li>';
+  }
+
+  var html = '<li class="activity-item">';
+  html += '<span class="activity-dot type-' + aType + '"></span>';
+
+  var descHtml = '';
+  if (aType === 'delegate') descHtml += '<span class="delegate-arrow"></span>';
+
+  var descText = act.description || (act.tool ? act.tool : aType);
+  descHtml += '<span>' + escapeHtml(descText) + '</span>';
+  if (isError) descHtml += '<span class="activity-error-badge">error</span>';
+
+  // Primary target file link (skip for search tools — results shown in box below)
+  if (act.target && !isSearch) {
+    descHtml += ' <a href="' + escapeHtml(fileUrl(act.target)) + '" class="activity-target" data-preview-path="' + escapeHtml(act.target) + '" title="Preview: ' + escapeHtml(act.target) + '">' + escapeHtml(act.target.split('/').pop()) + '</a>';
+  }
+
+  // Extra targets (e.g., multiple files in Bash commands)
+  if (act.extraTargets && act.extraTargets.length > 0) {
+    descHtml += ' <span class="activity-extra-targets">';
+    act.extraTargets.forEach(function(t) {
+      descHtml += ' <a href="' + escapeHtml(fileUrl(t)) + '" class="activity-target" data-preview-path="' + escapeHtml(t) + '" title="Preview: ' + escapeHtml(t) + '">' + escapeHtml(t.split('/').pop()) + '</a>';
+    });
+    descHtml += '</span>';
+  }
+
+  // Subagent link
+  if (aType === 'delegate' && act.subagentId) {
+    descHtml += ' <span class="view-full-link" data-action="go-subagent" data-subagent-id="' + escapeHtml(act.subagentId) + '">[view]</span>';
+  }
+
+  html += '<span class="activity-desc' + (aType === 'text' ? ' type-text' : '') + '">' + descHtml + '</span>';
+
+  // Line reference badge: prefer resultLine (tool output) over line (tool dispatch)
+  var refLine = (act.tool && act.resultLine != null) ? act.resultLine : act.line;
+  if (refLine != null) {
+    var lineFile = defaultFile || '';
+    html += ' <span class="activity-line-ref" data-action="load-line" data-file="' + escapeHtml(lineFile) + '" data-line="' + refLine + '" title="Load raw JSONL line ' + refLine + '">[L' + refLine + ']</span>';
+  }
+
+  html += '</li>';
+
+  // Search results box (Glob/Grep)
+  if (isSearch && act.resultContent) {
+    html += '<li class="activity-item" style="padding-left:16px"><div class="content-box search-results">' + escapeHtml(act.resultContent) + '</div></li>';
+  }
+
+  return html;
+}
+
+// =====================================================================
+// Detail Panel Event Handlers (delegated)
+// =====================================================================
+function attachDetailHandlers(panel) {
+  // File preview links (click loads preview, ctrl/cmd+click opens new tab)
+  panel.querySelectorAll('[data-preview-path]').forEach(function(el) {
+    el.addEventListener('click', function(e) {
+      if (e.ctrlKey || e.metaKey) return;
+      e.preventDefault();
+      loadFilePreview(this.dataset.previewPath);
+    });
+  });
+
+  // Load single JSONL line (for [L] badges) — toggle on/off
+  panel.querySelectorAll('[data-action="load-line"]').forEach(function(el) {
+    el.addEventListener('click', async function() {
+      var file = this.dataset.file;
+      var line = parseInt(this.dataset.line);
+      if (!file || isNaN(line)) return;
+
+      // Show raw JSONL in the file preview panel (right side)
+      var previewPanel = document.getElementById('filePreview');
+      var label = file.split('/').pop() + ':' + line;
+      previewPanel.innerHTML =
+        '<div class="preview-header">' +
+        '<span class="preview-path" title="' + escapeHtml(file) + ' line ' + line + '">Raw JSONL \u2014 ' + escapeHtml(label) + '</span>' +
+        '<button class="preview-close" id="previewCloseBtn">\u00d7</button>' +
+        '</div>' +
+        '<div class="preview-content"><div style="padding:20px;color:#94a3b8;font-style:italic">Loading line ' + line + '...</div></div>';
+
+      document.getElementById('previewCloseBtn').addEventListener('click', closeFilePreview);
+
+      var contentEl = previewPanel.querySelector('.preview-content');
+      var result = await fetchJsonlLine(file, line);
+      var text = '';
+      if (result.error) {
+        text = 'Error: ' + result.error;
+      } else if (result.data) {
+        text = JSON.stringify(result.data, null, 2);
+      } else {
+        text = (result.raw || '(empty)') + (result.parseError ? '\n\nParse error: ' + result.parseError : '');
+      }
+      var lines = text.split('\n');
+      var lineHtml = lines.map(function(l, i) {
+        return '<span class="ln">' + String(i + 1).padStart(5) + '</span>' + escapeHtml(l);
+      }).join('\n');
+      contentEl.innerHTML = '<pre class="file-content"><code>' + lineHtml + '</code></pre>';
+    });
+  });
+
+  // Toggle thinking block expand/collapse
+  panel.querySelectorAll('[data-action="toggle-thinking"]').forEach(function(el) {
+    el.addEventListener('click', function() {
+      var thinkingBlock = this.previousElementSibling;
+      if (!thinkingBlock) return;
+      var isCollapsed = thinkingBlock.classList.contains('collapsed');
+      if (isCollapsed) {
+        thinkingBlock.classList.remove('collapsed');
+        this.textContent = 'click to collapse';
+      } else {
+        thinkingBlock.classList.add('collapsed');
+        var charCount = (thinkingBlock.textContent || '').length;
+        this.textContent = charCount.toLocaleString() + ' chars \u2014 click to expand';
+      }
+    });
+  });
+
+  // Navigate to subagent
+  panel.querySelectorAll('[data-action="go-subagent"]').forEach(function(el) {
+    el.addEventListener('click', function() {
+      selectedSubagentId = this.dataset.subagentId;
+      selectedBlockId = null;
+      updateTimelineSelection();
+      renderDetail();
+    });
+  });
+
+  // Navigate to block
+  panel.querySelectorAll('[data-action="go-block"]').forEach(function(el) {
+    el.addEventListener('click', function() {
+      selectedBlockId = this.dataset.blockId;
+      selectedSubagentId = null;
+      updateTimelineSelection();
+      renderDetail();
+    });
+  });
+}
+
+// =====================================================================
+// File Preview Panel
+// =====================================================================
+async function loadFilePreview(path) {
+  var panel = document.getElementById('filePreview');
+  var url = fileUrl(path);
+
+  panel.innerHTML =
+    '<div class="preview-header">' +
+    '<span class="preview-path" title="' + escapeHtml(path) + '">' + escapeHtml(path) + '</span>' +
+    '<a href="' + escapeHtml(url) + '" target="_blank" class="preview-open-tab">Open in new tab</a>' +
+    '<button class="preview-close" id="previewCloseBtn">\u00d7</button>' +
+    '</div>' +
+    (previewNoticeDismissed ? '' :
+    '<div class="preview-notice" id="previewNotice">' +
+    '<span class="preview-notice-text">Note: This file viewer shows the current version of this file on disk, which may differ from the version that existed when this session was recorded.</span>' +
+    '<button class="preview-notice-dismiss" id="previewNoticeDismiss" title="Dismiss">\u00d7</button>' +
+    '</div>') +
+    '<div class="preview-content"><div style="padding:20px;color:#94a3b8;font-style:italic">Loading...</div></div>';
+
+  document.getElementById('previewCloseBtn').addEventListener('click', closeFilePreview);
+  var noticeBtn = document.getElementById('previewNoticeDismiss');
+  if (noticeBtn) {
+    noticeBtn.addEventListener('click', function() {
+      previewNoticeDismissed = true;
+      var notice = document.getElementById('previewNotice');
+      if (notice) notice.remove();
+    });
+  }
+
+  // Detect binary/non-previewable files before fetching
+  var binaryExts = /\.(parquet|png|jpg|jpeg|gif|bmp|ico|pdf|zip|gz|tar|whl|pyc|pkl|pickle|sqlite|db|feather|arrow|xlsx|xls|doc|docx)$/i;
+  var contentEl = panel.querySelector('.preview-content');
+  if (binaryExts.test(path)) {
+    if (!contentEl) return;
+    var ext = path.match(/\.(\w+)$/)[1].toLowerCase();
+    var msg = '<div style="padding:30px 20px;text-align:center;color:#64748b">';
+    msg += '<div style="font-size:1.5rem;margin-bottom:8px">Binary file</div>';
+    msg += '<div style="font-size:0.85rem;margin-bottom:12px"><code style="background:#f1f5f9;padding:2px 6px;border-radius:3px">' + escapeHtml(path.split('/').pop()) + '</code></div>';
+    msg += '<div style="font-size:0.8rem;color:#94a3b8">.' + escapeHtml(ext) + ' files cannot be previewed in the browser.</div>';
+    msg += '</div>';
+    contentEl.innerHTML = msg;
+    return;
+  }
+
+  var result = await fetchFileContent(path);
+  if (!contentEl) return;
+
+  if (result.error) {
+    contentEl.innerHTML = '<div style="padding:20px;color:#ef4444">Failed to load: ' + escapeHtml(result.error) + '</div>';
+    return;
+  }
+
+  // Render .md files with markdown formatting
+  var isMd = /\.md$/i.test(path);
+  if (isMd) {
+    var text = result.content;
+    var maxChars = 200000;
+    if (text.length > maxChars) {
+      text = text.substring(0, maxChars) + '\n\n... (' + (text.length - maxChars) + ' more characters)';
+    }
+    contentEl.innerHTML = '<div style="padding:12px 16px;font-size:0.82rem;line-height:1.6;color:#334155;overflow:auto">' + renderMarkdown(text) + '</div>';
+    return;
+  }
+
+  var lines = result.content.split('\n');
+  var maxLines = 3000;
+  var display = lines.slice(0, maxLines);
+  var lineHtml = display.map(function(line, i) {
+    return '<span class="ln">' + String(i + 1).padStart(5) + '</span>' + escapeHtml(line);
+  }).join('\n');
+
+  if (lines.length > maxLines) {
+    lineHtml += '\n\n  ... (' + (lines.length - maxLines) + ' more lines)';
+  }
+
+  contentEl.innerHTML = '<pre class="file-content"><code>' + lineHtml + '</code></pre>';
+}
+
+function closeFilePreview() {
+  document.getElementById('filePreview').innerHTML = '<div class="preview-empty">Click a file reference to preview it here.</div>';
+}
+
+
+// =====================================================================
+// Render Entry Point
+// =====================================================================
+function render() {
+  renderSessionSelect();
+  renderStatsBar();
+  renderTimeline();
+  renderDetail();
+}
+
+// =====================================================================
+// Resize Handles
+// =====================================================================
+(function() {
+  // --- Horizontal resize (between timeline and bottom panels) ---
+  var hHandle = document.getElementById('resizeHandle');
+  var timelinePanel = document.getElementById('timelinePanel');
+  var bottomPanels = document.getElementById('bottomPanels');
+  var mainContent = document.querySelector('.main-content');
+  var hDragging = false;
+  var hStartY = 0, hStartTopFlex = 6, hStartBotFlex = 4;
+
+  hHandle.addEventListener('mousedown', function(e) {
+    hDragging = true;
+    hStartY = e.clientY;
+    var tRect = timelinePanel.getBoundingClientRect();
+    var bRect = bottomPanels.getBoundingClientRect();
+    var total = tRect.height + bRect.height;
+    hStartTopFlex = tRect.height / total * 10;
+    hStartBotFlex = bRect.height / total * 10;
+    hHandle.classList.add('dragging');
+    e.preventDefault();
+  });
+
+  document.addEventListener('mousemove', function(e) {
+    if (!hDragging && !vDragging) return;
+    if (hDragging) {
+      var dy = e.clientY - hStartY;
+      var mainRect = mainContent.getBoundingClientRect();
+      var totalH = mainRect.height - 5;
+      var deltaFlex = (dy / totalH) * 10;
+      timelinePanel.style.flex = Math.max(1, Math.min(8, hStartTopFlex + deltaFlex));
+      bottomPanels.style.flex = Math.max(2, Math.min(9, hStartBotFlex - deltaFlex));
+    }
+    if (vDragging) {
+      var dx = e.clientX - vStartX;
+      var containerRect = bottomPanels.getBoundingClientRect();
+      var totalW = containerRect.width - 5;
+      var deltaFlex = (dx / totalW) * 10;
+      detailPanelEl.style.flex = Math.max(1, Math.min(9, vStartLeftFlex + deltaFlex));
+      filePreviewEl.style.flex = Math.max(1, Math.min(9, vStartRightFlex - deltaFlex));
+    }
+  });
+
+  document.addEventListener('mouseup', function() {
+    if (hDragging) { hDragging = false; hHandle.classList.remove('dragging'); }
+    if (vDragging) { vDragging = false; vHandle.classList.remove('dragging'); }
+  });
+
+  // --- Vertical resize (between detail and file preview) ---
+  var vHandle = document.getElementById('verticalResize');
+  var detailPanelEl = document.getElementById('detailPanel');
+  var filePreviewEl = document.getElementById('filePreview');
+  var vDragging = false;
+  var vStartX = 0, vStartLeftFlex = 1, vStartRightFlex = 1;
+
+  vHandle.addEventListener('mousedown', function(e) {
+    vDragging = true;
+    vStartX = e.clientX;
+    var lRect = detailPanelEl.getBoundingClientRect();
+    var rRect = filePreviewEl.getBoundingClientRect();
+    var total = lRect.width + rRect.width;
+    vStartLeftFlex = lRect.width / total * 10;
+    vStartRightFlex = rRect.width / total * 10;
+    vHandle.classList.add('dragging');
+    e.preventDefault();
+  });
+})();
+
+// =====================================================================
+// Load Manifest (preserves session selection across refreshes)
+// =====================================================================
+async function loadManifest() {
+  // Save current session identity before reloading
+  var previousSessionId = null;
+  if (manifest && manifest.sessions && manifest.sessions[activeSessionIdx]) {
+    previousSessionId = manifest.sessions[activeSessionIdx].sessionId;
+  }
+
+  try {
+    var params = new URLSearchParams(window.location.search);
+    var manifestUrl = params.get('manifest') || './session_manifest.json';
+    // Prefix with / if it's a relative path without protocol (so it resolves from server root)
+    if (manifestUrl && !manifestUrl.startsWith('/') && !manifestUrl.startsWith('./') && !manifestUrl.startsWith('http')) {
+      manifestUrl = '/' + manifestUrl;
+    }
+    var resp = await fetch(manifestUrl + (manifestUrl.indexOf('?') >= 0 ? '&' : '?') + 't=' + Date.now());
+    if (!resp.ok) throw new Error('HTTP ' + resp.status + ' \u2014 could not load manifest from ' + manifestUrl);
+    manifest = await resp.json();
+  } catch (e) {
+    document.getElementById('timelinePanel').innerHTML =
+      '<div class="state-message">' +
+      '<h2>Failed to load session manifest</h2>' +
+      '<p>' + escapeHtml(e.message) + '</p>' +
+      '<p style="margin-top:12px">Make sure you are serving from the DAAF root directory:<br>' +
+      '<code>bash /daaf/scripts/generate_log_viewer.sh &lt;project_path&gt;</code><br>' +
+      'or <code>bash /daaf/scripts/generate_log_viewer.sh --archive</code></p></div>';
+    return;
+  }
+
+  if (manifest.project) {
+    document.getElementById('projectName').textContent = 'Project: ' + (manifest.project.name || manifest.project.path || 'Unknown');
+  }
+
+  if (!manifest.sessions || manifest.sessions.length === 0) {
+    document.getElementById('timelinePanel').innerHTML =
+      '<div class="state-message"><h2>No sessions found</h2><p>The manifest exists but contains no session data.</p></div>';
+    return;
+  }
+
+  // Restore session selection if the session still exists
+  if (previousSessionId) {
+    var found = -1;
+    for (var i = 0; i < manifest.sessions.length; i++) {
+      if (manifest.sessions[i].sessionId === previousSessionId) {
+        found = i;
+        break;
+      }
+    }
+    activeSessionIdx = found >= 0 ? found : 0;
+  } else {
+    activeSessionIdx = 0;
+  }
+
+  // Clear JSONL cache on refresh so updated log files are re-fetched
+  jsonlCache = {};
+
+  render();
+}
+
+// =====================================================================
+// Refresh Controls
+// =====================================================================
+var refreshInProgress = false;
+var autoRefreshTimerId = null;
+
+async function doRefresh() {
+  if (refreshInProgress) return;
+  refreshInProgress = true;
+  var btn = document.getElementById('refreshBtn');
+  btn.textContent = 'Refreshing\u2026';
+  btn.classList.add('refreshing');
+
+  try {
+    try {
+      var resp = await fetch('/api/refresh-manifest');
+      if (!resp.ok) {
+        var errBody = await resp.text();
+        console.error('Refresh failed:', resp.status, errBody);
+      }
+    } catch (e) {
+      console.error('Refresh request error:', e);
+    }
+
+    // Reload the manifest regardless (the endpoint may have partially succeeded)
+    await loadManifest();
+
+    // Update last-refreshed timestamp
+    var now = new Date();
+    var hh = String(now.getHours()).padStart(2, '0');
+    var mm = String(now.getMinutes()).padStart(2, '0');
+    var ss = String(now.getSeconds()).padStart(2, '0');
+    document.getElementById('lastRefreshed').textContent = 'last: ' + hh + ':' + mm + ':' + ss;
+  } finally {
+    btn.textContent = 'Refresh';
+    btn.classList.remove('refreshing');
+    refreshInProgress = false;
+  }
+}
+
+function startAutoRefresh() {
+  stopAutoRefresh();
+  var intervalSec = parseInt(document.getElementById('autoRefreshInterval').value) || 60;
+  autoRefreshTimerId = setInterval(doRefresh, intervalSec * 1000);
+}
+
+function stopAutoRefresh() {
+  if (autoRefreshTimerId !== null) {
+    clearInterval(autoRefreshTimerId);
+    autoRefreshTimerId = null;
+  }
+}
+
+// Wire up refresh button
+document.getElementById('refreshBtn').addEventListener('click', doRefresh);
+
+// Wire up auto-refresh toggle and interval
+(function() {
+  var toggle = document.getElementById('autoRefreshToggle');
+  var intervalSelect = document.getElementById('autoRefreshInterval');
+
+  // Restore from localStorage
+  var savedEnabled = localStorage.getItem('daaf-auto-refresh-enabled');
+  var savedInterval = localStorage.getItem('daaf-auto-refresh-interval');
+  if (savedInterval && ['60','300','600','1800'].indexOf(savedInterval) >= 0) {
+    intervalSelect.value = savedInterval;
+  }
+  if (savedEnabled !== 'false') {
+    toggle.checked = true;
+    startAutoRefresh();
+  }
+
+  toggle.addEventListener('change', function() {
+    localStorage.setItem('daaf-auto-refresh-enabled', toggle.checked ? 'true' : 'false');
+    if (toggle.checked) {
+      startAutoRefresh();
+    } else {
+      stopAutoRefresh();
+    }
+  });
+
+  intervalSelect.addEventListener('change', function() {
+    localStorage.setItem('daaf-auto-refresh-interval', intervalSelect.value);
+    if (toggle.checked) {
+      startAutoRefresh();
+    }
+  });
+})();
+
+loadManifest();
+</script>
+</body>
+</html>

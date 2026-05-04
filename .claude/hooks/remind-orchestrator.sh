@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # remind-orchestrator.sh — Remind main-session LLM to load daaf-orchestrator
 #
 # Hook: UserPromptSubmit (main session only — subagents never trigger this)

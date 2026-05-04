@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # recover-session-logs.sh -- SessionStart hook: activity logging + crash recovery
 #
 # Replaces the previous inline SessionStart command. Performs:
@@ -27,6 +27,11 @@
 #   - Background execution: recovery runs in a detached subprocess so session
 #     startup is never blocked (foreground work completes in <1s)
 #
+# Environment:
+#   DAAF_SYNC_RECOVERY=1  Run recovery synchronously (foreground) instead of
+#                         detached. Used by the Log Explorer refresh endpoint
+#                         to get deterministic completion instead of a sleep.
+#
 # Exit codes:
 #   0 = always (observability hook, must never block session start)
 #
@@ -42,13 +47,11 @@ INPUT=$(cat)
 mapfile -t _meta < <(
     printf '%s' "$INPUT" | jq -r '
         (.session_id // "unknown"),
-        (.transcript_path // ""),
-        (.cwd // "unknown")
+        (.transcript_path // "")
     ' 2>/dev/null
 )
 SESSION_ID="${_meta[0]:-unknown}"
 TRANSCRIPT_PATH="${_meta[1]:-}"
-CWD="${_meta[2]:-unknown}"
 
 PROJECT_DIR="${CLAUDE_PROJECT_DIR:-$(pwd)}"
 LOG_DIR="$PROJECT_DIR/.claude/logs"
@@ -60,16 +63,16 @@ mkdir -p "$ARCHIVE_DIR"
 DAAF_VERSION=$(git -C "$PROJECT_DIR" describe --always --dirty 2>/dev/null || echo "unknown")
 echo "Session started: $(date '+%Y-%m-%d %H:%M:%S') | DAAF: $DAAF_VERSION | Session: ${SESSION_ID:0:8}" >> "$LOG_DIR/activity.log"
 
-# --- Section 2: Background recovery ---
+# --- Section 2: Recovery ---
 # Only attempt recovery if we have a transcript_path to derive the source directory
 if [ -n "$TRANSCRIPT_PATH" ]; then
     CURRENT_SHORT="${SESSION_ID:0:8}"
 
-    (
+    _do_recovery() {
         TRANSCRIPT_DIR=$(dirname "$TRANSCRIPT_PATH")
 
         # Bail if transcript directory doesn't exist
-        [ -d "$TRANSCRIPT_DIR" ] || exit 0
+        [ -d "$TRANSCRIPT_DIR" ] || return 0
 
         # Build index of already-archived session shorts with their file sizes
         # This is a single directory read -- O(m) where m = archived sessions
@@ -109,8 +112,12 @@ if [ -n "$TRANSCRIPT_PATH" ]; then
 
             # Archive this session by piping synthesized JSON to archive-session.sh
             # archive-session.sh's own idempotency guard provides a second safety net
-            printf '{"session_id":"%s","transcript_path":"%s","cwd":"%s","reason":"recovered"}' \
-                "$uuid" "$raw" "$PROJECT_DIR" \
+            jq -n \
+                --arg session_id "$uuid" \
+                --arg transcript_path "$raw" \
+                --arg cwd "$PROJECT_DIR" \
+                --arg reason "recovered" \
+                '{"session_id": $session_id, "transcript_path": $transcript_path, "cwd": $cwd, "reason": $reason}' \
                 | "$PROJECT_DIR/.claude/hooks/archive-session.sh" 2>/dev/null
 
             RECOVERED=$((RECOVERED + 1))
@@ -154,9 +161,14 @@ if [ -n "$TRANSCRIPT_PATH" ]; then
                 rm -f "$PENDING_TMP" 2>/dev/null
             fi
         fi
+    }
 
-    ) </dev/null >/dev/null 2>&1 &
-    disown
+    if [ "${DAAF_SYNC_RECOVERY:-}" = "1" ]; then
+        _do_recovery
+    else
+        _do_recovery </dev/null >/dev/null 2>&1 &
+        disown
+    fi
 fi
 
 exit 0

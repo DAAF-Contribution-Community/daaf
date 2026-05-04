@@ -62,7 +62,7 @@ You'll need:
 If your data source is available via a REST API rather than as a downloadable file, DAAF can handle the acquisition for you during Data Onboarding. You'll need:
 
 1. **API documentation** — a URL to the API docs, or a description of how the API works (endpoints, authentication method, response format). DAAF will research the API on your behalf, but having documentation to point to dramatically improves the quality of the resulting fetch scripts.
-2. **An API key** — most APIs require authentication. Set up your key as an environment variable inside the Docker container before starting (see [Step 8 in the Installation Guide](01_installation_and_quickstart.md#step-8-optional-set-up-data-source-api-keys) for the pattern). DAAF will ask you which environment variable name holds your key.
+2. **An API key** — most APIs require authentication. Add your key to the `environment_settings.txt` file in your `daaf-docker` folder on the host machine (see [API Keys in the Installation Guide](01_installation_and_quickstart.md#set-up-data-source-api-keys) for the pattern). DAAF will ask you which environment variable name holds your key.
 3. **A sense of what you want to download** — which endpoint, what filters (date range, geography, etc.), and roughly how much data to expect.
 
 DAAF will research the API, write a fetch script for your approval, download the data, and then proceed with the standard profiling workflow. The fetch script is saved as a reproducible artifact — you (or DAAF) can re-run it any time to get fresh data.
@@ -105,7 +105,9 @@ The fetch mechanics (Stage 5) are mostly handled by the query skill and mirror c
 
 ### Preparing Your Data
 
-Place your data file anywhere accessible inside `/daaf/` — the ingest process will copy it into the research project's `data/raw/` folder during setup. A common convention is to place files in `/daaf/data/` or alongside the research folder (e.g., `/daaf/data/county-elections/election_returns_2024.csv`). If you have documentation files (codebooks, data dictionaries, etc.), put those alongside the data file. See [**01. Installation and Quickstart**](01_installation_and_quickstart.md) for reminders on managing files within the Docker volume if needed.
+Place your data file anywhere accessible inside `/daaf/` — the ingest process will copy it into the research project's `data/raw/` folder during setup. A common convention is to place files in `/daaf/data/` or alongside the research folder (e.g., `/daaf/data/county-elections/election_returns_2024.csv`). If you have documentation files (codebooks, data dictionaries, etc.), put those alongside the data file.
+
+**Getting files into the Docker volume:** The easiest way is with the browser-based code editor — run `bash run_vscode.sh` (or `.\run_vscode.ps1` on Windows) from your `daaf-docker` folder, then drag and drop files from your computer into the file explorer sidebar. You can also use Docker Desktop's GUI (Containers → Files tab → right-click → Import). See [**01. Installation and Quickstart — Viewing and Editing Files**](01_installation_and_quickstart.md#viewing-and-editing-files) for more details.
 
 A few practical considerations:
 
@@ -277,7 +279,7 @@ What data sources does DAAF know about? Can you tell me about
 [your new data source]?
 ```
 
-If the skill is properly placed, DAAF should be able to describe the data source, list key variables, and mention important caveats. If it can't find the skill or gives a generic response, verify that the skill's YAML frontmatter has a clear `description` field and that `SKILL.md` is in `.claude/skills/{skill-name}/`.
+If the skill is properly placed, DAAF should be able to describe the data source, list key variables, and mention important caveats. If it can't find the skill or gives a generic response, verify that the skill's YAML frontmatter has a clear `description` field and that `SKILL.md` is in `.claude/skills/{skill-name}/`. Note: if the skill file exists and the frontmatter looks correct, this may also be a non-deterministic loading issue rather than a content problem -- LLMs don't always load what they're told to load. Try the query again in a fresh session before assuming your skill content is wrong.
 
 ### Fetch Test
 
@@ -372,16 +374,16 @@ The best way to add packages is to ask DAAF to edit the `Dockerfile` and then re
 
 #### The Container-Host Boundary (Read This First)
 
-When you initially installed DAAF, the `docker run ... busybox cp` command copied your entire host project folder *into* the Docker volume -- including the Dockerfile. From that moment on, **there are two copies of the Dockerfile and docker-compose.yml**, and they live in different places:
+When DAAF is installed, the Docker image is built from files on your host computer, but the full DAAF codebase (including a copy of the Dockerfile) lives inside the Docker volume. This means **there are two copies of the Dockerfile and docker-compose.yml**, and they live in different places:
 
 | Copy | Location | Who edits it | Who reads it |
 |------|----------|--------------|--------------|
-| **Volume copy** (inside the container) | `/daaf/Dockerfile` as seen from inside the running container | DAAF/Claude Code, while you're running a session | Nothing -- it's just a working copy that traveled along when you installed DAAF |
-| **Host copy** (on your computer) | Your DAAF project folder on your host (e.g., `daaf-main/Dockerfile`) | You, via a "copy back" command after DAAF finishes | `docker compose up -d --build`, when run from the host |
+| **Volume copy** (inside the container) | `/daaf/Dockerfile` as seen from inside the running container | DAAF/Claude Code, while you're running a session | Nothing -- it's just a working copy inside the container |
+| **Host copy** (on your computer) | Your `daaf-docker/` build directory on your host (wherever you ran the installer, or `daaf-main/Dockerfile` if you installed manually) | You, via a "copy back" command after DAAF finishes | `docker compose up -d --build`, when run from the host |
 
-The two files start out identical, but they can drift apart as soon as either side is modified. Critically, **`docker compose up -d --build` only ever reads the host copy** -- it has no knowledge of the volume copy at all. But when you ask DAAF to add a package to the Dockerfile, DAAF edits the **volume copy** (the only one Claude can see and edit from inside the container). 
+The two files start out identical, but they can drift apart as soon as either side is modified. Critically, **`docker compose up -d --build` only ever reads the host copy** -- it has no knowledge of the volume copy at all. But when you ask DAAF to add a package to the Dockerfile, DAAF edits the **volume copy** (the only one Claude can see and edit from inside the container).
 
-**The fix is simple but easy to forget:** after DAAF edits the in-container Dockerfile (or docker-compose.yml), you need to copy that updated file back to the host project folder *before* running the container rebuild. The step-by-step process below walks through this carefully, and you should follow it exactly the first time.
+**The fix is simple but easy to forget:** after DAAF edits the in-container Dockerfile (or docker-compose.yml), you need to copy that updated file back to the host build directory *before* running the container rebuild. The step-by-step process below walks through this carefully, and you should follow it exactly the first time.
 
 #### Step-by-Step Process
 
@@ -412,7 +414,7 @@ A few things to note about the Dockerfile syntax (DAAF will handle these for you
 - Versions are pinned with `==` (e.g., `networkx==3.4.2`) for reproducibility -- DAAF can look up the latest version on [PyPI](https://pypi.org/) for you, or use a version you specify
 - If you're unsure which version to pin, you can ask DAAF to use the latest compatible version, but pinning a specific version is strongly recommended
 
-**2. Exit the container and copy the updated Dockerfile back to the host.** This is the critical step that bridges the container-host boundary. After DAAF finishes editing, exit Claude Code and the container itself:
+**2. Exit the container and rebuild.** After DAAF finishes editing the Dockerfile, exit Claude Code and the container, then run the rebuild script:
 
 ```bash
 # Inside Claude Code
@@ -421,39 +423,40 @@ A few things to note about the Dockerfile syntax (DAAF will handle these for you
 # Now you're back in the container shell (prompt looks like appuser@xxxx:/daaf$)
 # Exit the container too
 exit
+
+# From your host terminal, navigate to your daaf-docker folder and rebuild
+cd daaf-docker
+bash rebuild_daaf.sh         # macOS / Linux
+.\rebuild_daaf.ps1           # Windows
 ```
 
-You should now be back in your terminal on your host computer. Make sure you're in your DAAF project folder (e.g., `daaf-main/`) -- if you're not sure, type `pwd` to check, and `cd` into the right folder if needed. Then run this command to copy the updated Dockerfile out of the running container and into the host folder, replacing the host's stale copy:
+The rebuild script handles the tricky part automatically: it copies the updated Dockerfile and docker-compose.yml from inside the container back to your host build directory (where `docker compose` reads them), then rebuilds the Docker image. Docker uses **layer caching**, so only the changed layers are rebuilt -- you'll see the new package being downloaded and installed in the build output.
+
+**Why is this step needed?** The Dockerfile lives in two places -- inside the Docker volume (where DAAF just edited it) and in your `daaf-docker/` folder on your computer (where `docker compose` reads it for builds). The rebuild script bridges this gap so the two copies stay in sync.
+
+**3. Re-enter the container and verify.** After the rebuild completes, re-enter the container and confirm the package is available:
 
 ```bash
-docker cp daaf-daaf-docker-1:/daaf/Dockerfile ./Dockerfile
-```
-
-**Alternative (Docker Desktop GUI):** If you'd rather not use the command line, you can do the same thing through Docker Desktop's interface:
-1. Open Docker Desktop
-2. Click **Containers** in the left toolbar → expand **`daaf`** → click on **`daaf-daaf-docker-1`**
-3. Click the **Files** tab to browse the container's filesystem
-4. Navigate to `/daaf/` and find `Dockerfile`
-5. Right-click `Dockerfile` → **Save** (or **Download**), and save it directly into your host DAAF project folder, **overwriting** the existing `Dockerfile` there
-
-Either approach works -- use whichever feels more comfortable. If you want to confirm the copy worked before rebuilding, open the host `Dockerfile` in any text editor and look for your new package -- it should be there.
-
-**3. Rebuild the container.** Now that the host Dockerfile is up to date, you can rebuild. From your DAAF project folder on your host computer, run:
-
-```bash
-docker compose up -d --build
-```
-
-Docker uses **layer caching**, which means it only re-runs the layers that changed. Watch the build output to confirm that the `RUN uv pip install --system` block containing your new package actually runs (you'll see the packages being downloaded and installed). If you don't see your package in the build output at all, something went wrong with the copy step in #2 -- check that the host Dockerfile actually contains your changes before debugging anything else.
-
-**4. Re-enter the container and verify.** After the rebuild completes, re-enter the container and confirm the package is available:
-
-```bash
-docker compose exec daaf-docker bash
+bash run_daaf.sh bash        # macOS / Linux
+.\run_daaf.ps1 bash          # Windows
 pip list | grep networkx
 ```
 
 You should see your new package listed with the version you pinned. That's it -- your new package is now a permanent part of your DAAF environment, and it will survive future restarts and rebuilds (as long as you keep your host Dockerfile around, which you should be backing up periodically anyway).
+
+<details>
+<summary>Manual alternative (copy and rebuild by hand)</summary>
+
+If you'd rather run the individual commands instead of using the rebuild script:
+
+```bash
+cd daaf-docker
+docker cp daaf-daaf-docker-1:/daaf/Dockerfile ./Dockerfile
+docker compose up -d --build
+```
+
+The copy step must come **before** the rebuild. You can also copy via Docker Desktop's GUI: Containers → expand `daaf` → click `daaf-daaf-docker-1` → Files tab → navigate to `/daaf/Dockerfile` → right-click → Save, and overwrite the host copy.
+</details>
 
 ### Adding System-Level Dependencies
 
@@ -480,9 +483,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 **2. Add the Python package** to the appropriate `RUN uv pip install --system` block (as described above).
 
-Both changes go in the same Dockerfile, so a single copy-back step covers them both -- you don't need to copy the Dockerfile out twice. After DAAF finishes both edits, follow Steps 2-4 from "Step-by-Step Process" above: exit the container, run `docker cp daaf-daaf-docker-1:/daaf/Dockerfile ./Dockerfile` from your host project folder to bring the updated Dockerfile out of the volume, then rebuild with `docker compose up -d --build`. **Don't skip the copy-back step** -- the same container-host boundary issue applies here, and rebuilding without copying the Dockerfile back will silently produce a build that has neither the new system library nor the new Python package.
+Both changes go in the same Dockerfile, so a single rebuild covers them both. After DAAF finishes both edits, follow Steps 2-3 from "Step-by-Step Process" above: exit the container, then run `bash rebuild_daaf.sh` (or `.\rebuild_daaf.ps1` on Windows) from your `daaf-docker` folder. The rebuild script copies the updated Dockerfile and docker-compose.yml from the container to the host and rebuilds the image in one step.
 
-If you're unsure whether a Python package needs a system library, try adding just the Python package first -- the build will fail with a clear error message if a system dependency is missing, and you can ask DAAF to add the missing library then (and remember to copy the Dockerfile back to the host again before the second rebuild).
+If you're unsure whether a Python package needs a system library, try adding just the Python package first -- the build will fail with a clear error message if a system dependency is missing, and you can ask DAAF to add the missing library then (and run `rebuild_daaf` again after the second edit).
 
 ### Runtime Installation for Quick Testing
 
@@ -520,11 +523,11 @@ Before adding a package, you might want to check if it's already available. You 
 
 **"I need networkx for graph analysis"**
 
-Ask DAAF to add `networkx==3.4.2` (or your preferred version) to the core data science `RUN` block in the Dockerfile, then follow Steps 2-4 from "Step-by-Step Process" above (exit, `docker cp` the Dockerfile back to the host, rebuild). No system dependencies needed.
+Ask DAAF to add `networkx==3.4.2` (or your preferred version) to the core data science `RUN` block in the Dockerfile, then follow Steps 2-3 from "Step-by-Step Process" above (exit and run `rebuild_daaf`). No system dependencies needed.
 
 **"I need a specific version of a package that's already installed"**
 
-Ask DAAF to edit the version pin in the Dockerfile. For example, to change Polars from `1.38.1` to `1.39.0`, find `polars==1.38.1` and change it to `polars==1.39.0`. Then follow the same Steps 2-4 from "Step-by-Step Process" above (exit the container, `docker cp` the updated Dockerfile to the host, then `docker compose up -d --build`) -- the container-host boundary applies to version-pin edits exactly the same way it applies to new package additions. Be cautious with version changes -- other packages may depend on the currently pinned version, so test your analysis after upgrading. Ask DAAF/Claude Code to run a `uv pip compile` dry-run to test compatibility between all the package versions before committing to the rebuild.
+Ask DAAF to edit the version pin in the Dockerfile. For example, to change Polars from `1.38.1` to `1.39.0`, find `polars==1.38.1` and change it to `polars==1.39.0`. Then follow the same Steps 2-3 from "Step-by-Step Process" above (exit and run `rebuild_daaf`) -- the container-host boundary applies to version-pin edits exactly the same way it applies to new package additions. Be cautious with version changes -- other packages may depend on the currently pinned version, so test your analysis after upgrading. Ask DAAF/Claude Code to run a `uv pip compile` dry-run to test compatibility between all the package versions before committing to the rebuild.
 
 **"I need an R package or want to use R"**
 
@@ -532,7 +535,7 @@ DAAF is a Python-based environment and does not include R. However, DAAF include
 
 **"I need a package that requires compilation and it's failing"**
 
-Some packages need a C/C++ compiler or specific development headers. Ask DAAF to check the package's installation documentation for required system dependencies, add them to the `apt-get install` block in the Dockerfile, and (if not already present) add the Python package itself to the appropriate `RUN uv pip install --system` block. Then follow Steps 2-4 from "Step-by-Step Process" above to copy the updated Dockerfile back to the host and rebuild. Common examples include packages needing `build-essential`, `libhdf5-dev`, or database client libraries.
+Some packages need a C/C++ compiler or specific development headers. Ask DAAF to check the package's installation documentation for required system dependencies, add them to the `apt-get install` block in the Dockerfile, and (if not already present) add the Python package itself to the appropriate `RUN uv pip install --system` block. Then follow Steps 2-3 from "Step-by-Step Process" above (exit and run `rebuild_daaf`). Common examples include packages needing `build-essential`, `libhdf5-dev`, or database client libraries.
 
 **"Can I use `apt-get` or `sudo` inside the running container?"**
 

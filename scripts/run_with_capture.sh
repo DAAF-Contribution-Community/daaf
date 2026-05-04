@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # =============================================================================
 # run_with_capture.sh - Execute Python script with output capture and logging
 # =============================================================================
@@ -16,7 +16,10 @@
 #
 # =============================================================================
 
-set -o pipefail
+# -u: catch unset variables; -o pipefail: detect pipeline failures
+# Deliberately omit -e: this script must capture non-zero exit codes from
+# the Python script it executes, not die on them.
+set -uo pipefail
 
 SCRIPT_PATH="$1"
 
@@ -50,12 +53,12 @@ echo "Started: $TIMESTAMP"
 echo "============================================================"
 echo ""
 
-# Execute with timing
-START_TIME=$(date +%s.%N)
+# Execute with timing (integer seconds — avoids bc dependency and macOS date +%N incompatibility)
+START_TIME=$(date +%s)
 python3 "$SCRIPT_PATH" 2>&1 | tee "$TEMP_LOG"
 EXIT_CODE=${PIPESTATUS[0]}
-END_TIME=$(date +%s.%N)
-DURATION=$(echo "$END_TIME - $START_TIME" | bc)
+END_TIME=$(date +%s)
+DURATION=$((END_TIME - START_TIME))
 
 echo ""
 echo "============================================================"

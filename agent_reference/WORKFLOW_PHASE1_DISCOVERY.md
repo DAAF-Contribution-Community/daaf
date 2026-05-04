@@ -190,6 +190,15 @@ After completing the skill's Required Actions, return findings using the format 
 - [ ] Colleges level searched (if relevant)
 - [ ] Multiple sources considered
 ```
+### Preliminary Notes Persistence: Stage 2
+
+After the explorer agent returns for full pipeline mode only, the orchestrator persists the full return to disk:
+
+| Agent Return | Write To |
+|-------------|----------|
+| search-agent (Stage 2) | `{project_dir}/output/preliminary_notes/{date}_stage2_data-exploration.md` |
+
+Stage 2 preliminary notes must exist on disk before dispatching Stage 3 (source-researcher). The orchestrator confirms the file was written as specified.
 
 ### Gate Criteria (G2)
 
@@ -197,6 +206,7 @@ After completing the skill's Required Actions, return findings using the format 
 - [ ] Key variables identified
 - [ ] Variables for deep-dive flagged
 - [ ] Year coverage verified
+- [ ] Full search-agent return written to disk (full pipeline mode only)
 - [ ] **If no data found:** STOP, escalate to user
 
 ---
@@ -281,53 +291,31 @@ Variables to investigate: {variables}
 - Document population coverage (who is included/excluded)
 
 **OUTPUT FORMAT:**
-Return findings in this structure:
+Return findings using the Source Researcher Output Format
+(see your agent protocol, § Output Format).
 
-### Source: {source_name}
-
-### 1. Source-Specific Caveats
-| Caveat | Impact on Analysis | Mitigation Strategy |
-|--------|-------------------|---------------------|
-
-### 2. Coded Value Mappings
-| Variable | Code | Meaning | Recommended Action |
-|----------|------|---------|-------------------|
-| [var] | -1 | Missing/not reported | Filter before calculations |
-| [var] | -2 | Not applicable | Exclude from analysis |
-| [var] | -3 | Suppressed | Document; cannot recover |
-
-### 3. Suppression Patterns
-| Variable | Typical Rate | Threshold | Impact on Analysis |
-|----------|--------------|-----------|-------------------|
-
-### 4. Cross-State Comparability
-| Analysis Type | Valid Across States? | Notes |
-|---------------|---------------------|-------|
-
-### 5. Critical Warnings
-1. **[Warning Name]:** [Description]
-   - **Mitigation:** [How to handle]
-
-### 6. Limitations Encountered
-| Limitation | Impact | Resolution |
-|------------|--------|------------|
-
-### 7. Confidence Assessment
-| Finding | Confidence | Rationale |
-|---------|------------|-----------|
-| [key finding] | HIGH/MEDIUM/LOW | [why this confidence level] |
-
-**Overall Confidence:** [HIGH | MEDIUM | LOW]
-**LOW Confidence Items Requiring Resolution:** [list or "None"]
-
-After completing the skill's Required Actions, return findings using the format above.""",
+**Emphasis for this invocation:**
+- Coded value mappings for flagged variables
+- Suppression patterns and thresholds
+- Cross-state comparability issues
+- COVID-19 impact notes for 2020-2021 data""",
     subagent_type: "source-researcher"
 })
 ```
 
 ### Output Format
 
-**Output Format:** See `.claude/agents/source-researcher.md` > "Output Format" section for the authoritative output structure. The source-researcher agent returns a structured report with five deliverables (SOURCE_SUMMARY, VARIABLES, CAVEATS, PATTERNS, PITFALLS) plus confidence assessment and learning signal.
+**Output Format:** The source-researcher agent follows its own Output Format (defined in `.claude/agents/source-researcher.md`). The orchestrator writes the full return to `output/preliminary_notes/{date}_stage3_{source-name}_source-research.md` before extracting a summary for its own working memory.
+
+### Preliminary Notes Persistence: Stage 3
+
+After each deep-dive agent returns for full pipeline mode only, the orchestrator persists the full return to disk:
+
+| Agent Return | Write To |
+|-------------|----------|
+| source-researcher (Stage 3, per source) | `{project_dir}/output/preliminary_notes/{date}_stage3_{source-name}_source-research.md` |
+
+**Gate condition:** ALL Stage 3 preliminary notes must exist on disk before dispatching Stage 3.5 (research-synthesizer). The orchestrator confirms the file was written as specified.
 
 ### Gate Criteria (G3)
 
@@ -337,6 +325,7 @@ After completing the skill's Required Actions, return findings using the format 
 - [ ] Cross-state comparability assessed
 - [ ] Critical warnings have mitigations
 - [ ] All LOW confidence findings resolved
+- [ ] All source-researcher returns written to disk (full pipeline mode only)
 
 ---
 
@@ -390,10 +379,16 @@ Agent({
 All relative paths in referenced files resolve from BASE_DIR.
 
 **STAGE 2 FINDINGS:**
-[Insert Stage 2 output]
+Read the full preliminary notes at: {project_dir}/output/preliminary_notes/{date}_stage2_data-exploration.md
 
 **STAGE 3 FINDINGS (per source):**
-[Insert Stage 3 outputs for each source]
+Read the full preliminary notes at:
+- {project_dir}/output/preliminary_notes/{date}_stage3_{source1}_source-research.md
+- {project_dir}/output/preliminary_notes/{date}_stage3_{source2}_source-research.md
+[...one path per source-researcher dispatch]
+
+**ORCHESTRATOR SUMMARY (for quick orientation — read full preliminary notes above for detail):**
+[Brief 3-5 bullet summary of key findings across sources]
 
 **TASK:**
 Consolidate these parallel findings into a unified context for Plan creation.
@@ -409,6 +404,16 @@ Consolidate these parallel findings into a unified context for Plan creation.
 })
 ```
 
+#### Preliminary Notes Persistence: Stage 3.5
+
+After the research-synthesizer returns, the orchestrator persists the full return to disk:
+
+| Agent Return | Write To |
+|-------------|----------|
+| research-synthesizer (Stage 3.5) | `{project_dir}/output/preliminary_notes/{date}_stage3.5_research-synthesis.md` |
+
+**Gate condition:** Stage 3.5 preliminary notes must exist on disk before presenting PSU1 to the user and before dispatching Stage 4 (data-planner). The orchestrator confirms the file was written as specified.
+
 > **Full Pipeline Only:** Gate G3.5 applies only to Full Pipeline mode. In standalone Data Discovery mode, the orchestrator manages synthesis and presentation directly.
 
 ### Gate Criteria (G3.5)
@@ -416,6 +421,7 @@ Consolidate these parallel findings into a unified context for Plan creation.
 - [ ] All source findings integrated
 - [ ] Conflicts identified and resolved
 - [ ] Unified context ready for data-planner
+- [ ] Full research-synthesizer return written to disk (full pipeline mode only)
 - [ ] **PSU1 presented to user**
 - [ ] **User confirmed PSU1**
 
