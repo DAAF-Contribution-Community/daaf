@@ -300,6 +300,8 @@ jobs:
           echo "ERROR: Container not ready"; docker compose ps; exit 1
 
       - name: Populate /daaf via git clone (Era 1 method)
+        env:
+          DAAF_BRANCH: ${{ github.ref_type == 'tag' && 'main' || github.ref_name }}
         run: |
           docker compose exec -T daaf-docker \
             git clone -b "$DAAF_BRANCH" \
