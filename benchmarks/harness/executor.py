@@ -11,6 +11,7 @@ import time
 from pathlib import Path
 
 from benchmarks.harness.models import RunConfig, RunResult
+from benchmarks.harness.checkpoint_manager import prepare_sandbox, cleanup_sandbox
 
 
 # Timeout per cost tier (seconds)
@@ -30,6 +31,16 @@ def execute_run(config: RunConfig) -> RunResult:
     test_case = config.test_case
     model = config.model
 
+    # Handle golden checkpoint setup
+    checkpoint_session_id = None
+    if test_case.golden_checkpoint:
+        golden_path = Path("/daaf") / test_case.golden_checkpoint
+        sandbox_path = Path(config.sandbox_dir)
+        checkpoint_session_id = prepare_sandbox(
+            golden_path, sandbox_path,
+            project_path=test_case.golden_project_path,
+        )
+
     # Build the CLI command
     cmd = [
         "claude",
@@ -40,12 +51,22 @@ def execute_run(config: RunConfig) -> RunResult:
         "--permission-mode", config.permission_mode,
     ]
 
-    # Build environment with any model-specific overrides
+    if checkpoint_session_id:
+        cmd.extend(["--resume", checkpoint_session_id])
+
+    if model.effort_level:
+        cmd.extend(["--effort", model.effort_level])
+
+    # Build environment with any model-specific overrides.
+    # Explicitly set CLAUDE_CODE_EFFORT_LEVEL to match --effort flag so it
+    # overrides the settings.json env value (which defaults to "high").
     import os
     env = os.environ.copy()
+    if model.effort_level:
+        env["CLAUDE_CODE_EFFORT_LEVEL"] = model.effort_level
     env.update(model.env_overrides)
 
-    timeout = TIMEOUT_BY_TIER.get(test_case.cost_tier, 300)
+    timeout = config.timeout_override or TIMEOUT_BY_TIER.get(test_case.cost_tier, 300)
 
     result = RunResult(
         test_case_id=test_case.id,
@@ -144,6 +165,10 @@ def execute_run(config: RunConfig) -> RunResult:
     except Exception as e:
         result.duration_seconds = time.time() - start_time
         result.error = f"Execution error: {type(e).__name__}: {e}"
+
+    finally:
+        if checkpoint_session_id:
+            cleanup_sandbox(checkpoint_session_id)
 
     return result
 

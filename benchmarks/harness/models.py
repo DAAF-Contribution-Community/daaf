@@ -19,6 +19,8 @@ class TestCase:
     prompt: str
     expected: dict
     subcategory: str = ""
+    golden_checkpoint: Optional[str] = None
+    golden_project_path: Optional[str] = None
     auto_replies: list[dict] = field(default_factory=list)
     turn_limit: int = 5
     cost_tier: str = "low"
@@ -47,6 +49,7 @@ class ModelConfig:
     id: str
     name: str
     cost_tier: str = "medium"
+    effort_level: Optional[str] = None
     env_overrides: dict[str, str] = field(default_factory=dict)
 
     @classmethod
@@ -64,6 +67,7 @@ class RunConfig:
     permission_mode: str = "dontAsk"
     working_dir: str = "/daaf"
     sandbox_dir: str = "/daaf/benchmarks/_sandbox"
+    timeout_override: Optional[int] = None
 
 
 @dataclass

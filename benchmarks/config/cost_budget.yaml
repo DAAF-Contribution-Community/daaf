@@ -12,10 +12,12 @@ max_cost_per_suite: 500.00
 max_cost_per_session: 1000.00
 
 # Number of repetitions per test case per model (for pass@k)
+# Uniform across all models and cost tiers by default.
+# Override at the CLI with --reps N.
 default_repetitions: 3
 
-# Override repetitions for specific cost tiers
-repetitions_by_tier:
-  low: 3
-  medium: 3
-  high: 2
+# Override repetitions for specific cost tiers (disabled — uniform reps preferred)
+# repetitions_by_tier:
+#   low: 3
+#   medium: 3
+#   high: 3

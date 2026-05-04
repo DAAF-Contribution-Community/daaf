@@ -1,0 +1,212 @@
+"""Checkpoint adherence scorer: evaluates golden checkpoint test results.
+
+Parses session transcripts (JSONL) — NOT audit.jsonl — to extract tool calls
+made after the golden checkpoint boundary. Checks whether the model performed
+the expected protocol steps.
+
+Why transcripts over audit.jsonl:
+  The audit-log.sh hook captures an empty `target` field for Skill tool calls,
+  making it impossible to determine which skills were loaded. Session transcripts
+  contain the full tool_use blocks with complete input parameters.
+"""
+
+import json
+from pathlib import Path
+
+from benchmarks.harness.models import CriterionResult
+
+
+def extract_new_tool_calls(
+    transcript_path: Path,
+    checkpoint_line_count: int,
+) -> list[dict]:
+    """Extract tool calls from assistant messages added AFTER the golden checkpoint.
+
+    Cross-references tool_use blocks (in assistant records) with tool_result
+    blocks (in user records) to determine whether each call succeeded.
+
+    Args:
+        transcript_path: Path to the session transcript JSONL.
+        checkpoint_line_count: Number of lines in the golden checkpoint file.
+            Tool calls in lines after this are from the benchmark run.
+
+    Returns:
+        List of dicts with keys: name, skill, file_path, raw_input, tool_use_id, succeeded.
+    """
+    tool_calls = []
+    tool_results = {}
+
+    with open(transcript_path) as f:
+        lines = f.readlines()
+
+    for line in lines[checkpoint_line_count:]:
+        try:
+            record = json.loads(line.strip())
+        except json.JSONDecodeError:
+            continue
+
+        rtype = record.get("type")
+
+        if rtype == "assistant":
+            for block in record.get("message", {}).get("content", []):
+                if not isinstance(block, dict) or block.get("type") != "tool_use":
+                    continue
+
+                name = block.get("name", "")
+                inp = block.get("input", {})
+                tool_use_id = block.get("id", "")
+
+                tool_calls.append({
+                    "name": name,
+                    "skill": inp.get("skill", "") if name == "Skill" else "",
+                    "file_path": inp.get("file_path", "") if name == "Read" else "",
+                    "command": inp.get("command", "") if name == "Bash" else "",
+                    "raw_input": inp,
+                    "tool_use_id": tool_use_id,
+                    "succeeded": True,
+                })
+
+        elif rtype == "user":
+            for block in record.get("message", {}).get("content", []):
+                if not isinstance(block, dict) or block.get("type") != "tool_result":
+                    continue
+                tuid = block.get("tool_use_id", "")
+                is_error = block.get("is_error", False)
+                if tuid:
+                    tool_results[tuid] = not is_error
+
+    for tc in tool_calls:
+        tuid = tc.get("tool_use_id", "")
+        if tuid and tuid in tool_results:
+            tc["succeeded"] = tool_results[tuid]
+
+    return tool_calls
+
+
+def get_checkpoint_line_count(golden_file: Path) -> int:
+    """Count lines in a golden checkpoint file."""
+    with open(golden_file) as f:
+        return sum(1 for _ in f)
+
+
+def find_benchmark_transcript(
+    session_id: str,
+    sessions_dir: Path = Path("/daaf/.claude/logs/sessions"),
+) -> Path | None:
+    """Find the session transcript for a benchmark run."""
+    if not sessions_dir.exists():
+        return None
+
+    short = session_id[:8]
+    for p in sessions_dir.glob(f"*_{short}_orchestrator.jsonl"):
+        return p
+    return None
+
+
+def score_checkpoint(
+    tool_calls: list[dict],
+    expected: dict,
+) -> list[CriterionResult]:
+    """Score a golden checkpoint test case from extracted tool calls.
+
+    Args:
+        tool_calls: Tool calls extracted via extract_new_tool_calls().
+        expected: The test case's expected dict with scoring criteria.
+
+    Returns:
+        List of CriterionResult for each criterion checked.
+    """
+    results = []
+
+    # Check documents_read: expected file names that should appear in SUCCESSFUL Read calls
+    if "documents_read" in expected:
+        read_files = [
+            tc["file_path"].split("/")[-1]
+            for tc in tool_calls
+            if tc["name"] == "Read" and tc["file_path"] and tc.get("succeeded", True)
+        ]
+        for doc in expected["documents_read"]:
+            passed = doc in read_files
+            results.append(CriterionResult(
+                name=f"read_{doc.replace('.md', '').replace('-', '_')}",
+                passed=passed,
+                tier="tier1",
+                detail=f"{'Found' if passed else 'Missing'}: {doc}",
+            ))
+
+    # Check skills_loaded: expected skill names from SUCCESSFUL Skill tool calls
+    if "skills_loaded" in expected:
+        loaded_skills = [
+            tc["skill"]
+            for tc in tool_calls
+            if tc["name"] == "Skill" and tc["skill"] and tc.get("succeeded", True)
+        ]
+        for skill in expected["skills_loaded"]:
+            passed = skill in loaded_skills
+            results.append(CriterionResult(
+                name=f"skill_{skill.replace('-', '_')}",
+                passed=passed,
+                tier="tier1",
+                detail=f"{'Loaded' if passed else 'Missing'}: {skill}",
+            ))
+
+    # Check subagent_dispatched: expected Agent tool calls
+    if "subagent_dispatched" in expected:
+        spec = expected["subagent_dispatched"]
+        agent_calls = [tc for tc in tool_calls if tc["name"] == "Agent"]
+
+        if isinstance(spec, dict):
+            expected_type = spec.get("type", "")
+            prompt_contains = spec.get("prompt_contains", [])
+
+            type_match = any(
+                tc["raw_input"].get("subagent_type") == expected_type
+                for tc in agent_calls
+            )
+            results.append(CriterionResult(
+                name=f"agent_type_{expected_type}",
+                passed=type_match,
+                tier="tier1",
+                detail=f"{'Found' if type_match else 'Missing'}: Agent({expected_type})",
+            ))
+
+            for keyword in prompt_contains:
+                found = any(
+                    keyword in tc["raw_input"].get("prompt", "")
+                    for tc in agent_calls
+                )
+                results.append(CriterionResult(
+                    name=f"agent_prompt_contains_{keyword[:30]}",
+                    passed=found,
+                    tier="tier2",
+                    detail=f"{'Found' if found else 'Missing'} in agent prompt: {keyword}",
+                ))
+
+    # Check no_tool_calls_of_type: tools that should NOT appear (blocking gates)
+    if "no_tool_calls_of_type" in expected:
+        for forbidden_tool in expected["no_tool_calls_of_type"]:
+            found = any(tc["name"] == forbidden_tool for tc in tool_calls)
+            results.append(CriterionResult(
+                name=f"no_{forbidden_tool.lower()}",
+                passed=not found,
+                tier="tier1",
+                detail=f"{'VIOLATION: found' if found else 'Correctly absent'}: {forbidden_tool}",
+            ))
+
+    # Check response_contains: patterns in response text (not tool calls)
+    # This would need the response text passed separately — skip for now
+
+    # Check state_md_updated: whether STATE.md was written/edited
+    if expected.get("state_md_updated"):
+        state_writes = any(
+            tc["name"] in ("Write", "Edit") and "STATE.md" in tc.get("file_path", "")
+            for tc in tool_calls
+        )
+        results.append(CriterionResult(
+            name="state_md_updated",
+            passed=state_writes,
+            tier="tier1",
+            detail=f"STATE.md {'updated' if state_writes else 'not updated'}",
+        ))
+
+    return results
