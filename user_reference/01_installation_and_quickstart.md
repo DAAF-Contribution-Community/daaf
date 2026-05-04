@@ -12,13 +12,17 @@ This is the complete first-time installation and setup guide for DAAF. This docu
 - [**Recommended Next Steps**](#recommended-next-steps)
 - [**Day-to-Day Start/Stop Workflow**](#day-to-day-startstop-workflow)
 - [**How to Manage DAAF Project Files and Output**](#how-to-manage-daaf-project-files-and-output)
-- [**Keeping DAAF Updated**](#keeping-daaf-updated)
 - [**Viewing Marimo Notebooks in Your Browser**](#viewing-marimo-notebooks-in-your-browser)
 - [**Viewing Session Logs in Your Browser**](#viewing-session-logs-in-your-browser)
+- [**Keeping DAAF Updated**](#keeping-daaf-updated)
 - [**Advanced Installation & Configuration**](#advanced-installation--configuration)
 - [**Setup Troubleshooting**](#setup-troubleshooting)
 
 ---
+
+
+**Installing DAAF is extremely easy and straightforward.** That being said, I put a LOT of explanations and detail together here so you have a strong sense and intuition for what's going on under the hood -- which I think is extremely valuable so you have a better handle on why things operate the way they do, or how to manage things in case anything goes wrong. Besides the reading, this whole process really shouldn't take you more than 10 minutes start-to-finish!
+
 
 ## Prerequisites
 
@@ -26,24 +30,22 @@ Before installing DAAF, there are three (technically four) key prerequisites. Pl
 
 ### 0. A computer with internet access
 
-You'll need internet access to download the project files and interact with DAAF/Claude (which itself always requires internet). Datasets will also be downloaded from the Urban Institute Education Data Portal as you conduct research work, which will also require an internet connection. Note that all data analyses will be conducted using your actual computer hardware, so you should have a computer that's generally capable of running intermediate-level data analysis (same sort of requirements you'd face if you wanted to analyze these same datasets in R/Stata/Python regularly). Don't worry about actual R/Stata/Python packages/libraries/dependencies, that's all handled carefully for you behind the scenes!
+You'll need internet access to download the project files and interact with DAAF/Claude (which itself always requires internet). Note that all data analyses will be conducted using your actual computer hardware, so you should have a computer that's generally capable of running intermediate-level data analysis (same sort of requirements you'd face if you wanted to analyze these same datasets in R/Stata/Python regularly). Don't worry about actual Python packages/libraries/dependencies, that's all handled carefully for you behind the scenes!
 
 ### 1. Anthropic Account & Authentication
 
-Claude Code is the AI assistant that powers this project. It runs inside your terminal (not in a web browser) and needs to link in with an Anthropic account for billing/usage purposes. Because we're relying on cutting-edge frontier models and asking them to do a **LOT** of thorough work for us (deep-diving into data, writing a lot of code, checking a lot of code, rewriting code, writing intensive plans, etc., etc.), we need to have a **high-usage** Anthropic account. Unfortunately, the free and standard "Pro"-level plans will simply not be sufficient for the time being; given current pricing at $100-200/mo, this is the biggest barrier-to-entry for engaging in this work.
-
-You'll need an account that gives you access to Claude. Here are your options:
+Claude Code is the AI assistant platform that powers this project. It runs inside your terminal (not in a web browser) and needs to link in with an Anthropic account for billing/usage purposes. Because we're relying on cutting-edge frontier models and asking them to do a **LOT** of thorough work for us (deep-diving into data, writing a lot of code, checking a lot of code, rewriting code, writing intensive plans, etc., etc.), we need to have a **high-usage** Anthropic account. Unfortunately, the free and standard "Pro"-level plans will simply not be sufficient for the time being; given current pricing at $100-200/mo, this is the biggest barrier-to-entry for engaging in this work. Here are your main options:
 
 | Option | Cost | Setup | Key Tradeoff |
 |--------|------|-------|--------------|
 | **Anthropic Max subscription** (recommended) | $100-200/mo flat | Interactive login on first launch -- no config needed | Best value for heavy use; I rarely hit limits on the $200/mo plan. [Get one here](https://claude.com/pricing/max) or [upgrade an existing plan](https://claude.ai/upgrade). Team/Enterprise subscriptions also work, but mileage may vary based on organizational settings/limits. |
 | **Anthropic API key** | Pay-per-use (can get expensive fast) | Interactive login on first launch -- no config needed | Unlimited use, but a single straightforward analysis can cost $30-60 in API fees. I'd have paid roughly 10x more via API key than my Max subscription. [Get one here](https://console.anthropic.com/). |
-| **OpenRouter** | Pay-per-token + 5.5% fee on credit purchases | Configure via `environment_settings.txt` ([instructions below](#configure-authentication-via-environment_settingstxt)) | No Anthropic subscription required; solid alternative if you want to avoid a monthly commitment or already use OpenRouter. **Caveat:** DAAF requires Opus-class models -- stick with Anthropic's Opus through OpenRouter for now. GLM 5.1 and Kimi K2.6 are cheaper and fairly viable models from early scoping, but require more testing and caution. [Get a key here](https://openrouter.ai/). |
+| **OpenRouter** | Pay-per-token | Configure via `environment_settings.txt` ([instructions below](#configure-authentication-via-environment_settingstxt)) | No Anthropic subscription required; solid alternative if you want to avoid a monthly commitment or already use OpenRouter. **Caveat:** DAAF requires Opus-class models -- stick with Anthropic's Opus through OpenRouter for now. GLM 5.1 and Kimi K2.6 are cheaper and fairly viable models from early scoping, but require more testing and caution. [Get a key here](https://openrouter.ai/). |
 | **Cloud providers** (Bedrock, Vertex AI) | Per your organization's arrangement | Configure via `environment_settings.txt` ([instructions below](#configure-authentication-via-environment_settingstxt)) | Route through your org's existing cloud platform. See `environment_settings_example.txt` in `daaf-docker` for required variables. |
 
-**How authentication works:** For the **Max subscription** and **API key** options, Claude Code will prompt you to authenticate interactively the first time you run it -- you don't need to configure anything in advance. For **OpenRouter** and **cloud provider** setups, you'll configure credentials via the `environment_settings.txt` file instead (instructions below). You can always switch between methods later; type `/login` inside Claude Code to change your interactive authentication, or update your `environment_settings.txt` file and restart the container. Note that many terminal interfaces "hide" any password-entry you're asked to do, so if you don't see your typing "working," it's working but hiding it from view for your privacy.
+**How authentication works:** For the **Max subscription** and **API key** options, Claude Code will prompt you to authenticate interactively the first time you run it -- you don't need to configure anything in advance. For **OpenRouter** and **cloud provider** setups, you'll configure credentials via the `environment_settings.txt` file instead (instructions below). You can always switch between methods later (type `/login` inside Claude Code to change your interactive authentication, or update your `environment_settings.txt` file and restart the container). Note that many terminal interfaces "hide" any password-entry you're asked to do, so if you don't see your typing "working," it's working but hiding it from view for your privacy.
 
-**A note on privacy:** Nothing (including your credentials) ever leaves your computer in the course of this project's workflows, and I've enforced a LOT of safety checks to ensure Claude doesn't accidentally share it with anyone, either. This can be directly verified in the code.
+**A note on credentials security:** Your Claude and/or API credentials only ever sit locally on your computer or go directly to the service provider, and I've enforced a LOT of safety checks to ensure Claude doesn't accidentally share it with anyone, either. This can be directly verified in the code.
 
 ### 2. Terminal
 
@@ -59,7 +61,7 @@ It's probably going to feel a bit weird, but you'll interact with DAAF/Claude Co
 |---------------------|---------|---------|
 | See where you are | `pwd` | Shows `/Users/yourname/daaf` |
 | List files here | `ls` | Shows files and folders in current directory |
-| Move into a folder in the current directory | `cd foldername` | `cd daaf` |
+| Move into a folder in the current directory | `cd foldername` | `cd daaf-docker` |
 | Go up one folder level | `cd ..` | Goes to the parent directory |
 | Clear the screen | `clear` | Clears clutter (your history is still there) |
 | Cancel a running command | `Ctrl + C` | Stops whatever is currently running |
@@ -105,22 +107,14 @@ The installer will show its progress as it works through four steps: creating a 
 
 ### What the installer does
 
-1. **Creates an installation directory** called `daaf-docker/` in whatever folder your terminal is currently in, containing the Dockerfile, docker-compose.yml, and convenience scripts (`run_daaf`, `view_logs`, `view_notebooks`, `run_vscode`, `backup_daaf`, `restore_from_backup`, `rebuild_daaf`, and `update_daaf`). For example, if you open your terminal and it starts in your home folder (`~` on Mac/Linux, `C:\Users\YourName` on Windows), that's where `daaf-docker/` will be created. You can `cd` to a different location first if you'd prefer to install elsewhere.
+1. **Creates an installation directory** called `daaf-docker/` in whatever folder your terminal is currently in, containing all the files you'll need to run and manage DAAF from here on. For example, if you open your terminal and it starts in your home folder (`~` on Mac/Linux, `C:\Users\YourName` on Windows), that's where `daaf-docker/` will be created. You can `cd` to a different location first if you'd prefer to install elsewhere.
 2. **Builds the Docker image** with Python 3.12, 50+ data science packages, geospatial libraries, and Claude Code pre-installed. The first build downloads everything and takes a few minutes; subsequent rebuilds use Docker's layer cache and are much faster.
-3. **Downloads the DAAF repository** directly into the Docker volume inside the container. This gives you a full git repository.
-4. **Prints post-install instructions** showing you how to enter the container, launch Claude Code, and configure it.
-
-Behind the scenes, the Docker Compose setup also:
-
-- **Fixes file permissions.** An init service runs before the main container starts, ensuring all files in the Docker volume are owned by the correct user. This prevents "Permission denied" errors, especially on macOS where Docker volumes can end up with mismatched ownership.
-- **Pins Claude Code.** The Dockerfile installs a specific, tested version of Claude Code (with auto-updates disabled) to ensure consistent behavior across builds.
-- **Enforces security hardening.** The container runs as a non-root user with all Linux capabilities dropped (`cap_drop: ALL`) and privilege escalation explicitly blocked (`no-new-privileges`). Even if Claude Code somehow tried to do something it shouldn't, the operating system kernel would stop it.
-
-You can confirm the install worked by looking at Docker Desktop: in the **Images** panel you should see `daaf-daaf-docker`, and in the **Containers** panel you should see `daaf` with a sub-entry `daaf-docker-1`.
+3. **Downloads the DAAF repository** directly into the Docker volume inside the container. This gives you a full file edit and version history via Git.
+4. **Enforces security controls on Claude.** One of the big benefits of using Docker is that we can really keep Claude Code under control. The Docker container runs as a non-root user with all Linux capabilities dropped (`cap_drop: ALL`) and privilege escalation explicitly blocked (`no-new-privileges`). Even if Claude Code somehow tried to do something it shouldn't, the operating system kernel would stop it.
 
 ### Launch Claude Code with DAAF
 
-Now, you'll use your terminal to enter the DAAF installation directory. Once you're in there, you can run a helper script I created to make it easy to launch DAAF and Claude Code in the Docker container automatically.
+Now, you'll use your terminal to enter the DAAF installation directory it just created with all the main utility files, `daaf-docker/`. Once you're in there, you can run a helper script I created to make it easy to launch DAAF and Claude Code in the Docker container automatically.
 
 **macOS / Linux (Terminal):**
 
@@ -135,8 +129,6 @@ bash run_daaf.sh
 cd daaf-docker
 .\run_daaf.ps1
 ```
-
-The `run_daaf` script starts the container if needed and launches Claude Code directly. You can also use the manual commands if you prefer: `docker compose exec daaf-docker bash` to enter the container, then `claude` to launch.
 
 On first launch, Claude Code should prompt you to authenticate (API key or subscription login). Follow its instructions to complete the process as needed based on your method. Remember that CTRL+C actually exits the terminal, so use (Windows/Linux: CTRL+SHIFT+C and CTRL+V) and (macOS: Cmd+C and Cmd+V) if you want to copy/paste.
 
@@ -153,7 +145,7 @@ And then change the following settings by navigating down with your arrow keys, 
 - **"Auto-compact"** -- set to **False**. DAAF manages its own context carefully; auto-compaction can disrupt its orchestration and cause unexpected behavior.
 - **"Verbose output"** -- set to **True**. Verbose output lets you see what DAAF's agents are actually thinking behind the scenes, making it much easier to detect shortcuts in thinking, laziness in loading proper file references, and inconsistent logic/confusion. See [Understanding DAAF — The Non-Deterministic Side](02_understanding_daaf.md#the-non-deterministic-side-when-context-doesnt-load) for a deeper explanation of why this happens and what to watch for.
 
-Next, set your model. You can check which Claude model is being used by checking the indicator below the chat line (Opus, Sonnet, Haiku). You can change which Claude model is being used at any time by typing `/model`. All development and testing of this project was done using **Opus 4.5** and **Opus 4.6**. I unfortunately think that these models are absolutely required; other models (Sonnet, Haiku) are not nearly as capable and produce erratic, inconsistent results. The complexity of tasks embedded in the DAAF workflow (multi-agent orchestration) relies on the model's ability to follow complex, multi-step protocols reliably. This is also the reason why the Claude Max subscription is a likely prerequisite here: Opus models are very resource-intensive, and it's hard to complete the DAAF workflows under the "Pro" or "Free" tiers accordingly.
+Note that you can check which Claude model is being used by checking the indicator below the chat line (Opus, Sonnet, Haiku). DAAF defaults to using Opus 4.6. You can change which Claude model is being used at any time by typing `/model`. All development and testing of this project was done using **Opus 4.5** and **Opus 4.6**. I unfortunately think that these models are absolutely required; other models (Sonnet, Haiku) are cheaper but not nearly as capable and produce erratic, inconsistent results. The complexity of tasks embedded in the DAAF workflow (multi-agent orchestration) relies on the model's ability to follow complex, multi-step protocols reliably. This is also the reason why the Claude Max subscription is a likely prerequisite here: Opus models are very resource-intensive, and it's hard to complete the DAAF workflows under the "Pro" or "Free" tiers accordingly.
 
 Opus 4.6 (unlike Opus 4.5) also allows you to select its "thinking level" by tapping left-and-right arrow keys while Opus 4.6 is selected on the /model selector in Claude Code. All tests I've conducted to date are using the "High" setting -- as this is a case where quality is far more important than quantity, I strongly recommend doing the same. This will have usage and API limit ramifications, though, so it is a reasonable thing to test out the tradeoffs for yourself! Please do report back with any findings so we can incorporate that into our guidance here.
 
@@ -199,19 +191,19 @@ DAAF wraps Claude Code in a multi-agent pipeline with 12 stages across
 5 phases...
 ```
 
-I promise that's genuinely the first response I got back while testing this! Talking conversationally with Claude in this way is one easy way you could get oriented to using DAAF. Ask it questions, dig into features, talk about pros and cons, and so on. It will intelligently reference both the user documentation and the workflow documentation as relevant (but it never hurts to remind it, "Based on a thorough read of the DAAF project documentation, can you tell me...?").
+On first run, it should present you with a user acknowledgment statement telling you more about your responsibilities in using DAAF, and then it should jump right in. You should get something equally specific to the above after confirming. 
 
-From here, you can interact with Claude the same way you would with any AI assistant, but it'll "kick in" its DAAF-powered workflows and skillsets whenever relevant to supercharge anything related to data analysis work, data documentation spelunking, data exploration, and so on. If you want a gentle onboarding guide for actually using DAAF (fully written by a human for other humans!), head to [**02. Understanding and Working with DAAF**](02_understanding_daaf.md) next. I used to be a high school English teacher, so this is the fun part for me, honestly.
+Talking conversationally with Claude in this way is one easy way you could get oriented to using DAAF. Ask it questions, dig into features, talk about pros and cons, and so on. It will intelligently reference both the user documentation and the workflow documentation as relevant (but it never hurts to remind it, "Based on a thorough read of the DAAF project documentation, can you tell me...?").
 
-The rest of this guide covers day-to-day workflow, file management, keeping DAAF updated, and advanced configuration options — browse those at your own pace.
+From here, you can interact with Claude the same way you would with any AI assistant, but it'll "kick in" its DAAF-powered workflows and skillsets whenever relevant to supercharge anything related to data analysis work, data documentation spelunking, data exploration, and so on. If you want a gentle onboarding guide for actually using DAAF, head to [**02. Understanding and Working with DAAF**](02_understanding_daaf.md) next. 
+
+The rest of this guide covers basic day-to-day workflows, file management, keeping DAAF updated, and advanced configuration options — browse those at your own pace.
 
 > **Quick tip before you go any further**: Now that you have Claude Code up and running with DAAF, you can actually start asking Claude for help! If you have any questions, concerns, issues, or confusion about **anything** you read in this guide or other parts of the User Documentation: Ask Claude about it! DAAF has a dedicated **User Support** mode for exactly this -- just ask it what DAAF is, how something works, or what to do when you're stuck, and it will load its own documentation and walk you through it in plain language. This includes questions about the underlying tools too -- Docker, Git, Claude Code -- it can look up official documentation for those online when needed. Point it to any document, section, or sentence, and then ask it to help you understand it better. It has visibility into the whole project documentation at-will, so it should be able to help you out as you go. This kind of personalized assistance should be invaluable for anyone getting onboarded into using DAAF and Claude Code more generally!
 
 ---
 
 ## Day-to-Day Start/Stop Workflow
-
-Now that you've got DAAF installed and running for the first time, let's talk through simple commands you'll use to get in and out of this workflow day-to-day, as well as how to manage files produced by DAAF.
 
 ### Starting a New Session
 
@@ -254,42 +246,14 @@ docker compose exec daaf-docker bash
 claude
 ```
 
-### Ending a Session
-
-When you're ready to end a session, you have two options. The first option: Close the terminal window, and then use your Docker Desktop app window to "pause" your Docker container (click the Containers panel in the left-side toolbar, look for "daaf" in the list that appears, hit the "Stop" button). The other option is to do this fully through the terminal:
-
-```bash
-# Exit Claude Code first. You can also just press CTRL+C twice
-/exit
-# That gets you back into the terminal window, running *within* your Docker container.
-# You'll know you're still in the Docker container if your command line says something like, "appuser@5jhfdsn54:/daaf$" before whatever you type
-# So now let's exit the Docker container
-exit
-# And then we can turn off the Docker container (make sure you're in the daaf-docker folder)
-docker compose down
-
-# You can then just close your terminal. All the DAAF files and research outputs remain safe and persist in the Docker volume we created at installation time
-```
-
-### Reviewing a Completed Session
-
-After ending a session, you can review everything that happened using the **DAAF Log Explorer** — an interactive timeline that shows orchestrator actions, subagent dispatches, tool calls, and file references in your browser. Run it from your `daaf-docker` folder (no need to re-enter the container):
-
-```bash
-bash view_logs.sh            # macOS / Linux
-.\view_logs.ps1              # Windows
-```
-
-Open the URL it prints in your browser. Press Ctrl+C to stop the server. See [**Viewing Session Logs in Your Browser**](#viewing-session-logs-in-your-browser) for more details, including per-project viewing.
-
 ---
 
 ## How to Manage DAAF Project Files and Output
 
-Your research files, data, and outputs live inside the **Docker volume** we created during installation — a storage area managed by Docker. Think of the `daaf-docker/` folder on your computer as the "recipe" that was used to set everything up, while the Docker volume is the actual "kitchen" where all the work happens.
+Your research files, data, and outputs live inside the **Docker volume** we created during installation — a storage area managed by Docker. Think of the `daaf-docker/` folder on your computer as just the "recipe" that was used to set everything up, while the Docker volume is the actual "kitchen" where all the work happens.
 
 This means:
-- **Your work persists** — stopping or restarting the container does NOT delete anything. The Docker volume retains all your research outputs, data, and notebooks across restarts, rebuilds, and even `docker compose down`.
+- **Your work persists** — stopping or restarting the Docker container does NOT delete anything. The Docker volume retains all your research outputs, data, and notebooks across restarts, rebuilds, and even `docker compose down`.
 - **Files don't automatically appear on your computer** — unlike a traditional shared folder, files created inside the container are stored in the Docker volume, not directly on your desktop. To access them directly, you can use the included file editor (VSCode -- see below).
 - **Only the Docker volume is accessible to Claude** — Claude can only see what's in the Docker volume. Your documents, photos, and everything else are completely isolated.
 
@@ -305,12 +269,15 @@ bash run_vscode.sh              # macOS / Linux
 
 This opens a full VS Code editor at the URL [http://localhost:2720](http://localhost:2720) running in your favorite browser where you can explore the entire DAAF file tree, edit files, preview Markdown reports, view/edit Python scripts, and track changes with the built-in Git tools. It comes pre-loaded with extensions for Python syntax highlighting, Markdown preview, Git history visualization, and CSV viewing. The password is displayed in the terminal when you launch the script (default: `daaf`). A few things worth highlighting:
 
+- **The default access password is "daaf"** but the password can be customized at any time in your environment_settings.txt file. See the environment_settings_example.txt in your daaf-docker folder for instructions there.
 - **Markdown preview:** Right-click any `.md` file and select **"Open Preview"**, or press `Shift+Ctrl+V`, to see rendered Markdown with proper formatting — headers, tables, links, and all. This is the easiest way to read DAAF's reports and plans.
 - **File management:** Use the file explorer sidebar to browse, create, rename, move, and delete files. You can also drag and drop files from your computer into the sidebar to import them into the Docker volume.
 - **Git integration:** The Source Control panel (left sidebar) shows uncommitted changes, lets you view diffs, and browse commit history — useful for reviewing what DAAF produced during a session.
 - **Search:** Use `Ctrl+Shift+F` (or `Cmd+Shift+F` on Mac) to search across all files — helpful for finding specific variables, scripts, or content across a project.
 
-**Importing files into the Docker volume:** To bring files from your computer into the Docker volume for DAAF to use (e.g., a dataset you want to profile), you can drag and drop files into the code editor's file explorer sidebar, or use Docker Desktop's GUI: open Docker Desktop, click **Containers** → expand **`daaf`** → click **`daaf-docker-1`** → select the **Files** tab → right-click to Import. You can also download/export files from Docker Desktop the same way.
+**Importing files into the Docker volume:** To bring files from your computer into the Docker volume for DAAF to use (e.g., a dataset you want to profile), you can simply drag and drop files into the code editor's file explorer sidebar. You can also download files by right-clicking them and selecting Download.
+
+You can also use the Docker Desktop GUI to explore the DAAF docker volume by navigating to the Volumes panel, clicking the daaf_daaf-data volume, and interacting with the file navigator here.
 
 ### Backing Up Your Work
 
@@ -330,7 +297,7 @@ cd daaf-docker
 .\backup_daaf.ps1
 ```
 
-The backup script creates a date-versioned folder (e.g., `2026-04-21_daaf_backup/`) in your `daaf-docker` directory. Multiple backups on the same day are automatically suffixed (`2026-04-21a_daaf_backup/`, `2026-04-21b_daaf_backup/`, etc.). Feel free to move or copy these folders to another location on your computer (or an external drive) for safekeeping.
+The backup script creates a date-versioned folder (e.g., `2026-04-21_daaf_backup/`) in your `daaf-docker` directory. Multiple backups on the same day are automatically suffixed (`2026-04-21a_daaf_backup/`, `2026-04-21b_daaf_backup/`, etc.). Feel free to move or copy these folders to another location on your computer (or an external drive) for safekeeping, or share them with colleagues as needed for collaboration purposes.
 
 You can also back up manually using Docker Desktop's GUI: go into the Docker volume file viewer (see above) and download the whole `daaf` or `research` folder to somewhere else on your computer.
 
@@ -355,6 +322,46 @@ cd daaf-docker
 **Important:** Restoring is a destructive operation -- the script completely erases the current Docker volume contents and replaces them with the backup. Make sure DAAF is not running when you restore (run `docker compose down` first if needed). The script checks for running containers and warns you if any are active.
 
 **A note on git and DAAF:** A full git repository is set up inside the Docker volume during installation (via the `git clone` in the installer). During research sessions, DAAF's agents will make **local git commits** inside the container to track every script version, data transformation, and plan update — this creates a detailed audit trail of your research that you can review with standard git tools (like `git log`). A remote is configured by default (pointing to the upstream DAAF repository for updates), but nothing is ever pushed there without your explicit instruction. Your research work lives safely in the Docker volume, and the local git history is there purely for traceability and reproducibility within your own projects. If you want a GitHub backup for your work, ask Claude how to make your own repository and save to it accordingly.
+
+### Viewing Session Logs in Your Browser
+
+DAAF includes an interactive timeline viewer (the **DAAF Log Explorer**) that lets you visually explore what happened during any session -- every tool call, subagent dispatch, and file reference, organized chronologically.
+
+**Quickest way -- from your host machine (no container shell needed):**
+
+```bash
+cd daaf-docker
+bash view_logs.sh            # macOS / Linux
+.\view_logs.ps1              # Windows
+```
+
+This starts the container (if needed), generates the manifest from all sessions in the overarching session logs folder, and starts the server. Open the URL it prints in your browser. Press Ctrl+C to stop.
+
+**From inside the container** (for per-project viewing):
+
+```bash
+# 1. Copy and collect relevant logs into your project (if not already done)
+bash /daaf/scripts/collect_session_logs.sh /daaf/research/YYYY-MM-DD_Your_Project
+
+# 2. Generate the project-specific manifest and start the server
+bash /daaf/scripts/generate_log_viewer.sh /daaf/research/YYYY-MM-DD_Your_Project
+```
+
+Port 2719 is mapped in `docker-compose.yml` for this purpose, alongside port 2718 (Marimo notebooks).
+
+### Viewing Marimo Notebooks in Your Browser
+
+DAAF uses a python library called "marimo" to create streamlined python code "notebooks" as part of its analysis. It can also use this library to create nice, interactive dashboards for you of analyses it has completed.
+
+**Quickest way — from your host machine (no container shell needed):**
+
+```bash
+cd daaf-docker
+bash view_notebooks.sh       # macOS / Linux
+.\view_notebooks.ps1         # Windows
+```
+
+This opens marimo's built-in notebook browser at [http://localhost:2718](http://localhost:2718), where you can browse all your research projects and open any notebook for viewing or editing. The script handles starting the container if it isn't already running. The nice thing about these is that they're also written in regular Python code, so you can inspect its code very easily in any text editor as well.
 
 ---
 
@@ -446,51 +453,6 @@ The migration is a single command, just like the original installer. Make sure D
 The migration script is safe to re-run if it gets interrupted — it detects what's already been completed and picks up where it left off. Your research files are never modified; only git metadata (the connection to the upstream repository) is updated.
 
 **After migration:** You'll have all the same utility scripts as a fresh install. From this point forward, you can use `update_daaf.sh` / `update_daaf.ps1` for all future updates, exactly as described in the section above.
-
----
-
-## Viewing Marimo Notebooks in Your Browser
-
-The assistant uses a python library called "marimo" to create streamlined python code "notebooks" as part of its analysis. It can also use this library to create nice, interactive dashboards for you of analyses it has completed.
-
-**Quickest way — from your host machine (no container shell needed):**
-
-```bash
-cd daaf-docker
-bash view_notebooks.sh       # macOS / Linux
-.\view_notebooks.ps1         # Windows
-```
-
-This opens marimo's built-in notebook browser at [http://localhost:2718](http://localhost:2718), where you can browse all your research projects and open any notebook for viewing or editing. The script handles starting the container if it isn't already running. The nice thing about these is that they're also written in regular Python code, so you can inspect its code very easily in any text editor as well.
-
----
-
-## Viewing Session Logs in Your Browser
-
-DAAF includes an interactive timeline viewer (the **DAAF Log Explorer**) that lets you visually explore what happened during any session -- every tool call, subagent dispatch, and file reference, organized chronologically.
-
-**Quickest way -- from your host machine (no container shell needed):**
-
-```bash
-cd daaf-docker
-bash view_logs.sh            # macOS / Linux
-.\view_logs.ps1              # Windows
-```
-
-This starts the container (if needed), generates the manifest from all sessions in the overarching session logs folder, and starts the server. Open the URL it prints in your browser. Press Ctrl+C to stop.
-
-**From inside the container** (for per-project viewing):
-
-```bash
-# 1. Copy and collect relevant logs into your project (if not already done)
-bash /daaf/scripts/collect_session_logs.sh /daaf/research/YYYY-MM-DD_Your_Project
-
-# 2. Generate the project-specific manifest and start the server
-bash /daaf/scripts/generate_log_viewer.sh /daaf/research/YYYY-MM-DD_Your_Project
-```
-
-Port 2719 is mapped in `docker-compose.yml` for this purpose, alongside port 2718 (Marimo notebooks).
-
 
 ---
 
