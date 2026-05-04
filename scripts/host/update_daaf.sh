@@ -718,6 +718,25 @@ if ! echo "${ORIGIN_URL}" | grep -qi "${UPSTREAM_REPO}"; then
 fi
 
 # =====================================================================
+# Ensure fetch refspec covers all branches
+# =====================================================================
+# git clone --depth 1 -b <ref> implies --single-branch, which locks the
+# fetch refspec to only the cloned ref. This means git fetch will never
+# retrieve other branches (like main), breaking auto-detect. Widen to
+# the standard wildcard if it's currently narrow.
+CURRENT_REFSPEC=$(docker compose exec -T daaf-docker \
+    git -C /daaf config --get remote."${UPSTREAM_REMOTE}".fetch \
+    </dev/null 2>/dev/null | tr -d '\r' || true)
+
+if [ -n "${CURRENT_REFSPEC}" ] \
+    && [ "${CURRENT_REFSPEC}" != "+refs/heads/*:refs/remotes/${UPSTREAM_REMOTE}/*" ]; then
+    docker compose exec -T daaf-docker \
+        git -C /daaf config remote."${UPSTREAM_REMOTE}".fetch \
+        "+refs/heads/*:refs/remotes/${UPSTREAM_REMOTE}/*" </dev/null 2>/dev/null \
+        || true
+fi
+
+# =====================================================================
 # Fetch latest
 # =====================================================================
 echo "Fetching latest changes from ${UPSTREAM_REMOTE}..."

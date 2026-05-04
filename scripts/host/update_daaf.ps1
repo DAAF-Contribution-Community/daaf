@@ -830,6 +830,20 @@ if ($OriginUrl -notlike "*$UpstreamRepo*") {
 }
 
 # =====================================================================
+# Ensure fetch refspec covers all branches
+# =====================================================================
+# git clone --depth 1 -b <ref> implies --single-branch, which locks the
+# fetch refspec to only the cloned ref. This means git fetch will never
+# retrieve other branches (like main), breaking auto-detect. Widen to
+# the standard wildcard if it's currently narrow.
+$CurrentRefspec = Invoke-ComposeGit config --get "remote.$UpstreamRemote.fetch"
+if ($LASTEXITCODE -eq 0 -and $CurrentRefspec -and
+    $CurrentRefspec.Trim() -ne "+refs/heads/*:refs/remotes/$UpstreamRemote/*") {
+    Invoke-ComposeGitNull config "remote.$UpstreamRemote.fetch" `
+        "+refs/heads/*:refs/remotes/$UpstreamRemote/*"
+}
+
+# =====================================================================
 # Fetch latest
 # =====================================================================
 Write-Host "Fetching latest changes from $UpstreamRemote..."
