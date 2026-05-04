@@ -839,7 +839,7 @@ if ($OriginUrl -notlike "*$UpstreamRepo*") {
 $CurrentRefspec = Invoke-ComposeGit config --get "remote.$UpstreamRemote.fetch"
 if ($LASTEXITCODE -eq 0 -and $CurrentRefspec -and
     $CurrentRefspec.Trim() -ne "+refs/heads/*:refs/remotes/$UpstreamRemote/*") {
-    Invoke-ComposeGitNull config "remote.$UpstreamRemote.fetch" `
+    Invoke-ComposeGitNull config --replace-all "remote.$UpstreamRemote.fetch" `
         "+refs/heads/*:refs/remotes/$UpstreamRemote/*"
 }
 

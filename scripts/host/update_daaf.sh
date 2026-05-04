@@ -731,7 +731,7 @@ CURRENT_REFSPEC=$(docker compose exec -T daaf-docker \
 if [ -n "${CURRENT_REFSPEC}" ] \
     && [ "${CURRENT_REFSPEC}" != "+refs/heads/*:refs/remotes/${UPSTREAM_REMOTE}/*" ]; then
     docker compose exec -T daaf-docker \
-        git -C /daaf config remote."${UPSTREAM_REMOTE}".fetch \
+        git -C /daaf config --replace-all remote."${UPSTREAM_REMOTE}".fetch \
         "+refs/heads/*:refs/remotes/${UPSTREAM_REMOTE}/*" </dev/null 2>/dev/null \
         || true
 fi
