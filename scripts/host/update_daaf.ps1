@@ -878,6 +878,27 @@ if ($RemoteBranch) {
     # User specified a branch - verify it exists on the remote
     $null = Invoke-ComposeGit rev-parse --verify "$UpstreamRemote/$RemoteBranch"
     if ($LASTEXITCODE -ne 0) {
+
+        # Check if the value is a version tag rather than a branch.
+        # Tags live in refs/tags/, not refs/remotes/origin/, so the branch
+        # check above correctly fails for them.
+        $null = Invoke-ComposeGit rev-parse --verify "refs/tags/$RemoteBranch"
+        if ($LASTEXITCODE -eq 0) {
+            Write-Host ""
+            Write-Host "'$RemoteBranch' is a version tag, not a branch." -ForegroundColor Yellow
+            Write-Host ""
+            Write-Host "The updater needs a branch to pull changes from. Tags are fixed"
+            Write-Host "snapshots and cannot receive updates."
+            Write-Host ""
+            Write-Host "To update to the latest release on the main branch:"
+            Write-Host "  .\update_daaf.ps1"
+            Write-Host "  (without setting `$env:DAAF_BRANCH)"
+            Write-Host ""
+            Write-Host "To update from a specific branch:"
+            Write-Host "  `$env:DAAF_BRANCH = 'dev'; .\update_daaf.ps1"
+            Wait-AndExit 1
+        }
+
         Write-Host ""
         Write-Host "The branch '$RemoteBranch' (from DAAF_BRANCH) was not found on" -ForegroundColor Red
         Write-Host "$UpstreamRemote."

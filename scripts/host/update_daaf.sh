@@ -757,6 +757,28 @@ if [ -n "${REMOTE_BRANCH}" ]; then
     if ! docker compose exec -T daaf-docker \
         git -C /daaf rev-parse --verify "${UPSTREAM_REMOTE}/${REMOTE_BRANCH}" \
         </dev/null >/dev/null 2>&1; then
+
+        # Check if the value is a version tag rather than a branch.
+        # Tags live in refs/tags/, not refs/remotes/origin/, so the branch
+        # check above correctly fails for them.
+        if docker compose exec -T daaf-docker \
+            git -C /daaf rev-parse --verify "refs/tags/${REMOTE_BRANCH}" \
+            </dev/null >/dev/null 2>&1; then
+            echo ""
+            echo "'${REMOTE_BRANCH}' is a version tag, not a branch."
+            echo ""
+            echo "The updater needs a branch to pull changes from. Tags are fixed"
+            echo "snapshots and cannot receive updates."
+            echo ""
+            echo "To update to the latest release on the main branch:"
+            echo "  bash update_daaf.sh"
+            echo "  (without setting DAAF_BRANCH)"
+            echo ""
+            echo "To update from a specific branch:"
+            echo "  DAAF_BRANCH=dev bash update_daaf.sh"
+            exit 1
+        fi
+
         echo ""
         echo "The branch '${REMOTE_BRANCH}' (from DAAF_BRANCH) was not found on"
         echo "${UPSTREAM_REMOTE}."

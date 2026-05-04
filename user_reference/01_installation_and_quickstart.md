@@ -391,7 +391,7 @@ The update script handles everything for you:
 - **Syncs utility scripts** — automatically copies any updated host-side scripts (run, backup, rebuild, update) from the container
 - **Auto-rebuilds if needed** — if the Dockerfile or docker-compose.yml changed, it offers to run `rebuild_daaf` automatically
 
-By default, the update script auto-detects the remote's default branch (`main` or `master`). If you installed from a specific branch (e.g., `dev` or a release tag) and want to keep updating from that branch, set the `DAAF_BRANCH` environment variable — the same one used by the installer:
+By default, the update script auto-detects the remote's default branch (`main` or `master`). If you installed from a specific branch (e.g., `dev`) and want to keep updating from that branch, set the `DAAF_BRANCH` environment variable:
 
 ```bash
 # macOS / Linux
@@ -402,6 +402,8 @@ $env:DAAF_BRANCH = "dev"; .\update_daaf.ps1
 ```
 
 If `DAAF_BRANCH` is not set, the updater defaults to `main` (or `master` if `main` doesn't exist). The script validates that the specified branch exists on the remote before proceeding.
+
+> **Note:** `DAAF_BRANCH` must be a **branch name** for the updater — not a version tag like `v2.1.0`. Tags are fixed snapshots and cannot receive updates. If you installed from a tag, the updater will automatically pull from `main` when `DAAF_BRANCH` is not set. You can use tags with the installer (see "Installing a specific version or branch" below), but for ongoing updates, use the default or specify a branch.
 
 Your research files in `research/` are not tracked by git (they're local to your volume), so they are completely unaffected by updates.
 
@@ -486,7 +488,9 @@ $env:DAAF_BRANCH="v2.1.0"; irm "https://raw.githubusercontent.com/DAAF-Contribut
 $env:DAAF_BRANCH="dev"; irm "https://raw.githubusercontent.com/DAAF-Contribution-Community/daaf/$env:DAAF_BRANCH/scripts/host/install.ps1" | iex
 ```
 
-This fetches the installer itself from the specified branch, and also controls the Docker build files and repository clone, so everything comes from the specified branch or tag consistently. The `export` on macOS/Linux is required so that the variable is inherited by the `bash` process on the other side of the pipe. Check the [Releases page](https://github.com/DAAF-Contribution-Community/daaf/releases) to see available versions. If `DAAF_BRANCH` is not set, the installer defaults to `main`.
+This fetches the installer itself from the specified branch or tag, and also controls the Docker build files and repository clone, so everything comes from the specified ref consistently. The `export` on macOS/Linux is required so that the variable is inherited by the `bash` process on the other side of the pipe. Check the [Releases page](https://github.com/DAAF-Contribution-Community/daaf/releases) to see available versions. If `DAAF_BRANCH` is not set, the installer defaults to `main`.
+
+> **Note:** The installer accepts both branch names and version tags, but the **updater** (`update_daaf.sh` / `update_daaf.ps1`) only accepts branch names. If you install from a tag, you do not need to set `DAAF_BRANCH` when updating — the updater will automatically pull from `main`.
 
 ### Re-installing DAAF
 

@@ -833,6 +833,7 @@ setup_state_machine() {
                 *"compose exec"*"fetch"*) return 0 ;;
                 *"compose exec"*"rev-parse --verify"*"backup/"*) return 1 ;;
                 *"compose exec"*"rev-parse --verify"*"origin/nonexistent-branch-xyz"*) return 1 ;;
+                *"compose exec"*"rev-parse --verify"*"refs/tags/nonexistent-branch-xyz"*) return 1 ;;
                 *"compose exec"*"branch"*) return 0 ;;
                 *"compose exec"*"rev-parse"*"HEAD"*) echo "abc123" ;;
                 *) return 0 ;;
@@ -844,4 +845,66 @@ setup_state_machine() {
     assert_failure
     assert_output --partial "nonexistent-branch-xyz"
     assert_output --partial "was not found"
+    refute_output --partial "version tag"
+}
+
+@test "update: DAAF_BRANCH is a tag gives tag-specific error" {
+    setup_state_machine
+    run bash -c '
+        export DAAF_BRANCH="v2.1.0"
+        docker() {
+            local all_args="$*"
+            case "$all_args" in
+                "info") return 0 ;;
+                *"compose ps"*"--format"*) echo "daaf-docker" ;;
+                *"compose exec"*"true"*) return 0 ;;
+                *"compose exec"*"test -f"*"/daaf/CLAUDE.md"*) return 0 ;;
+                *"compose exec"*"test -f"*"/daaf/.git/shallow"*) return 1 ;;
+                *"compose exec"*"remote get-url"*"origin"*) echo "https://github.com/DAAF-Contribution-Community/daaf.git" ;;
+                *"compose exec"*"fetch"*) return 0 ;;
+                *"compose exec"*"rev-parse --verify"*"backup/"*) return 1 ;;
+                *"compose exec"*"rev-parse --verify"*"origin/v2.1.0"*) return 1 ;;
+                *"compose exec"*"rev-parse --verify"*"refs/tags/v2.1.0"*) return 0 ;;
+                *"compose exec"*"branch"*) return 0 ;;
+                *"compose exec"*"rev-parse"*"HEAD"*) echo "abc123" ;;
+                *) return 0 ;;
+            esac
+        }
+        export -f docker
+        bash "'"${REPO_ROOT}"'/scripts/host/update_daaf.sh"
+    '
+    assert_failure
+    assert_output --partial "version tag"
+    assert_output --partial "not a branch"
+}
+
+@test "update: DAAF_BRANCH is neither branch nor tag gives generic error" {
+    setup_state_machine
+    run bash -c '
+        export DAAF_BRANCH="totally-bogus-ref"
+        docker() {
+            local all_args="$*"
+            case "$all_args" in
+                "info") return 0 ;;
+                *"compose ps"*"--format"*) echo "daaf-docker" ;;
+                *"compose exec"*"true"*) return 0 ;;
+                *"compose exec"*"test -f"*"/daaf/CLAUDE.md"*) return 0 ;;
+                *"compose exec"*"test -f"*"/daaf/.git/shallow"*) return 1 ;;
+                *"compose exec"*"remote get-url"*"origin"*) echo "https://github.com/DAAF-Contribution-Community/daaf.git" ;;
+                *"compose exec"*"fetch"*) return 0 ;;
+                *"compose exec"*"rev-parse --verify"*"backup/"*) return 1 ;;
+                *"compose exec"*"rev-parse --verify"*"origin/totally-bogus-ref"*) return 1 ;;
+                *"compose exec"*"rev-parse --verify"*"refs/tags/totally-bogus-ref"*) return 1 ;;
+                *"compose exec"*"branch"*) return 0 ;;
+                *"compose exec"*"rev-parse"*"HEAD"*) echo "abc123" ;;
+                *) return 0 ;;
+            esac
+        }
+        export -f docker
+        bash "'"${REPO_ROOT}"'/scripts/host/update_daaf.sh"
+    '
+    assert_failure
+    assert_output --partial "totally-bogus-ref"
+    assert_output --partial "was not found"
+    refute_output --partial "version tag"
 }
