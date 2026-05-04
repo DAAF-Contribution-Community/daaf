@@ -716,6 +716,85 @@ function docker {
         $outputStr = $output | Out-String
         $LASTEXITCODE | Should -Be 1
         $outputStr | Should -BeLike "*was not found*"
+        $outputStr | Should -Not -BeLike "*version tag*"
+        Remove-Item Env:DAAF_BRANCH -ErrorAction SilentlyContinue
+    }
+
+    It "DAAF_BRANCH is a tag gives tag-specific error" {
+        $env:DAAF_NESTED = "1"
+        $env:DAAF_BRANCH = "v2.1.0"
+        $wrapperScript = Join-Path $script:TestDir "test_wrapper_tag.ps1"
+        Set-Content -Path $wrapperScript -Value @'
+$ErrorActionPreference = "Stop"
+function docker {
+    $argStr = $args -join ' '
+    $global:LASTEXITCODE = 0
+    switch -Wildcard ($argStr) {
+        "*info*" { return }
+        "*compose ps*--format*" { Write-Output "daaf-docker" }
+        "*compose exec*true*" { return }
+        "*compose exec*test -f*/daaf/.git/shallow*" { $global:LASTEXITCODE = 1; return }
+        "*compose exec*test -f*" { return }
+        "*compose exec*git -C /daaf remote get-url origin*" {
+            Write-Output "https://github.com/DAAF-Contribution-Community/daaf.git"
+        }
+        "*compose exec*git -C /daaf fetch*" { return }
+        "*compose exec*git -C /daaf rev-parse --verify*backup/*" { $global:LASTEXITCODE = 1; return }
+        "*compose exec*git -C /daaf rev-parse --verify*origin/v2.1.0*" { $global:LASTEXITCODE = 1; return }
+        "*compose exec*git -C /daaf rev-parse --verify*refs/tags/v2.1.0*" { $global:LASTEXITCODE = 0; return }
+        "*compose exec*git -C /daaf branch*" { return }
+        "*compose exec*git -C /daaf rev-parse*HEAD*" { Write-Output "abc123" }
+        "*compose exec*git*" { return }
+        "*compose exec*" { return }
+        default { return }
+    }
+}
+'@
+        Add-Content -Path $wrapperScript -Value ". '$RepoRoot/scripts/host/update_daaf.ps1'"
+        $output = & pwsh -NoProfile -File $wrapperScript *>&1
+        $outputStr = $output | Out-String
+        $LASTEXITCODE | Should -Be 1
+        $outputStr | Should -BeLike "*version tag*"
+        $outputStr | Should -BeLike "*not a branch*"
+        Remove-Item Env:DAAF_BRANCH -ErrorAction SilentlyContinue
+    }
+
+    It "DAAF_BRANCH is neither branch nor tag gives generic error" {
+        $env:DAAF_NESTED = "1"
+        $env:DAAF_BRANCH = "totally-bogus-ref"
+        $wrapperScript = Join-Path $script:TestDir "test_wrapper_bogus.ps1"
+        Set-Content -Path $wrapperScript -Value @'
+$ErrorActionPreference = "Stop"
+function docker {
+    $argStr = $args -join ' '
+    $global:LASTEXITCODE = 0
+    switch -Wildcard ($argStr) {
+        "*info*" { return }
+        "*compose ps*--format*" { Write-Output "daaf-docker" }
+        "*compose exec*true*" { return }
+        "*compose exec*test -f*/daaf/.git/shallow*" { $global:LASTEXITCODE = 1; return }
+        "*compose exec*test -f*" { return }
+        "*compose exec*git -C /daaf remote get-url origin*" {
+            Write-Output "https://github.com/DAAF-Contribution-Community/daaf.git"
+        }
+        "*compose exec*git -C /daaf fetch*" { return }
+        "*compose exec*git -C /daaf rev-parse --verify*backup/*" { $global:LASTEXITCODE = 1; return }
+        "*compose exec*git -C /daaf rev-parse --verify*origin/totally-bogus-ref*" { $global:LASTEXITCODE = 1; return }
+        "*compose exec*git -C /daaf rev-parse --verify*refs/tags/totally-bogus-ref*" { $global:LASTEXITCODE = 1; return }
+        "*compose exec*git -C /daaf branch*" { return }
+        "*compose exec*git -C /daaf rev-parse*HEAD*" { Write-Output "abc123" }
+        "*compose exec*git*" { return }
+        "*compose exec*" { return }
+        default { return }
+    }
+}
+'@
+        Add-Content -Path $wrapperScript -Value ". '$RepoRoot/scripts/host/update_daaf.ps1'"
+        $output = & pwsh -NoProfile -File $wrapperScript *>&1
+        $outputStr = $output | Out-String
+        $LASTEXITCODE | Should -Be 1
+        $outputStr | Should -BeLike "*was not found*"
+        $outputStr | Should -Not -BeLike "*version tag*"
         Remove-Item Env:DAAF_BRANCH -ErrorAction SilentlyContinue
     }
 

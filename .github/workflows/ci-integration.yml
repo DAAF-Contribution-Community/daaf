@@ -51,9 +51,14 @@ on:
 permissions:
   contents: read
 
-# DAAF_BRANCH tells all lifecycle scripts which branch to download from and
-# target. Resolves to the branch name for schedule/dispatch, or the tag name
-# for release-tag pushes (git treats tags as valid refs for --branch).
+# DAAF_BRANCH tells install/migrate/rebuild scripts which ref to clone from.
+# Resolves to the branch name for schedule/dispatch, or the tag name for
+# release-tag pushes (git clone -b accepts both).
+#
+# update_daaf.sh requires a BRANCH (not a tag) because it merges upstream
+# changes. Steps that invoke update_daaf.sh override DAAF_BRANCH to "" so
+# the script auto-detects main/master. See "env: DAAF_BRANCH" overrides below.
+#
 # DAAF_NESTED suppresses the interactive pause-before-exit in all scripts.
 env:
   DAAF_BRANCH: ${{ github.ref_name }}
@@ -153,6 +158,8 @@ jobs:
       # --- Update (no-op on fresh install) ---
       - name: Run update_daaf.sh (no-op on fresh install)
         working-directory: daaf-docker
+        env:
+          DAAF_BRANCH: ""
         run: bash update_daaf.sh
 
       - name: Verify container running after update
@@ -238,6 +245,8 @@ jobs:
       # --- Update with no upstream changes ---
       - name: Run update (no-op after fresh install)
         working-directory: daaf-docker
+        env:
+          DAAF_BRANCH: ""
         run: bash update_daaf.sh 2>&1 | tee /tmp/update_noop.txt
 
       - name: Verify already up to date
@@ -746,6 +755,8 @@ jobs:
       # (merge) when it detects local commits ahead of upstream.
       - name: Update with local-only commits
         working-directory: daaf-docker
+        env:
+          DAAF_BRANCH: ""
         run: |
           bash update_daaf.sh > /tmp/update_local_commits.txt 2>&1
           cat /tmp/update_local_commits.txt
@@ -766,6 +777,8 @@ jobs:
       # a second one. The second should fail with the lock error.
       - name: Test concurrent update lock
         working-directory: daaf-docker
+        env:
+          DAAF_BRANCH: ""
         run: |
           bash update_daaf.sh &
           BG_PID=$!

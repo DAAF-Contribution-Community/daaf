@@ -718,6 +718,25 @@ if ! echo "${ORIGIN_URL}" | grep -qi "${UPSTREAM_REPO}"; then
 fi
 
 # =====================================================================
+# Ensure fetch refspec covers all branches
+# =====================================================================
+# git clone --depth 1 -b <ref> implies --single-branch, which locks the
+# fetch refspec to only the cloned ref. This means git fetch will never
+# retrieve other branches (like main), breaking auto-detect. Widen to
+# the standard wildcard if it's currently narrow.
+CURRENT_REFSPEC=$(docker compose exec -T daaf-docker \
+    git -C /daaf config --get remote."${UPSTREAM_REMOTE}".fetch \
+    </dev/null 2>/dev/null | tr -d '\r' || true)
+
+if [ -n "${CURRENT_REFSPEC}" ] \
+    && [ "${CURRENT_REFSPEC}" != "+refs/heads/*:refs/remotes/${UPSTREAM_REMOTE}/*" ]; then
+    docker compose exec -T daaf-docker \
+        git -C /daaf config --replace-all remote."${UPSTREAM_REMOTE}".fetch \
+        "+refs/heads/*:refs/remotes/${UPSTREAM_REMOTE}/*" </dev/null 2>/dev/null \
+        || true
+fi
+
+# =====================================================================
 # Fetch latest
 # =====================================================================
 echo "Fetching latest changes from ${UPSTREAM_REMOTE}..."
@@ -757,6 +776,28 @@ if [ -n "${REMOTE_BRANCH}" ]; then
     if ! docker compose exec -T daaf-docker \
         git -C /daaf rev-parse --verify "${UPSTREAM_REMOTE}/${REMOTE_BRANCH}" \
         </dev/null >/dev/null 2>&1; then
+
+        # Check if the value is a version tag rather than a branch.
+        # Tags live in refs/tags/, not refs/remotes/origin/, so the branch
+        # check above correctly fails for them.
+        if docker compose exec -T daaf-docker \
+            git -C /daaf rev-parse --verify "refs/tags/${REMOTE_BRANCH}" \
+            </dev/null >/dev/null 2>&1; then
+            echo ""
+            echo "'${REMOTE_BRANCH}' is a version tag, not a branch."
+            echo ""
+            echo "The updater needs a branch to pull changes from. Tags are fixed"
+            echo "snapshots and cannot receive updates."
+            echo ""
+            echo "To update to the latest release on the main branch:"
+            echo "  bash update_daaf.sh"
+            echo "  (without setting DAAF_BRANCH)"
+            echo ""
+            echo "To update from a specific branch:"
+            echo "  DAAF_BRANCH=dev bash update_daaf.sh"
+            exit 1
+        fi
+
         echo ""
         echo "The branch '${REMOTE_BRANCH}' (from DAAF_BRANCH) was not found on"
         echo "${UPSTREAM_REMOTE}."
