@@ -7,7 +7,7 @@
 <img width="1258" height="433" alt="daaf_20_thumbnail4" src="https://github.com/user-attachments/assets/21b17b1d-a4d8-4558-a91d-a9ecb0d43f22" />
 
 <p align="center">
-  <a href="https://github.com/DAAF-Contribution-Community/daaf/releases"><img src="https://img.shields.io/badge/version-v2.0.1-blue" alt="Version v2.0.1"></a>
+  <a href="https://github.com/DAAF-Contribution-Community/daaf/releases"><img src="https://img.shields.io/badge/version-v2.1.0-blue" alt="Version v2.1.0"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-LGPL--3.0--or--later-green" alt="License: LGPL-3.0-or-later"></a>
   <a href="https://github.com/DAAF-Contribution-Community/daaf/stargazers"><img src="https://img.shields.io/github/stars/DAAF-Contribution-Community/daaf?style=flat" alt="GitHub Stars"></a>
   <a href="https://github.com/DAAF-Contribution-Community/daaf/commits/main"><img src="https://img.shields.io/github/last-commit/DAAF-Contribution-Community/daaf" alt="Last Commit"></a>
