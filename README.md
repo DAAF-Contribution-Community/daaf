@@ -1,5 +1,5 @@
 <!--
-  README v2.0.1 — Revised draft
+  README v2.1.0 — Revised draft
 -->
 
 ## Summary: What is DAAF?
@@ -225,7 +225,7 @@ If you use DAAF in your research, please cite it and all underlying data sources
 
 **Plain text (APA):**
 
-> Kim, B. H. (2026). *DAAF: Data Analyst Augmentation Framework* (Version 2.0.1) [Computer software]. [https://doi.org/10.5281/zenodo.19343886](https://doi.org/10.5281/zenodo.19343886)
+> Kim, B. H. (2026). *DAAF: Data Analyst Augmentation Framework* (Version 2.1.0) [Computer software]. [https://doi.org/10.5281/zenodo.19343886](https://doi.org/10.5281/zenodo.19343886)
 
 **BibTeX:**
 
@@ -236,7 +236,7 @@ If you use DAAF in your research, please cite it and all underlying data sources
   year = {2026},
   url = {https://github.com/DAAF-Contribution-Community/daaf},
   doi = {10.5281/zenodo.19343886},
-  version = {2.0.1},
+  version = {2.1.0},
   license = {LGPL-3.0-or-later}
 }
 ```
