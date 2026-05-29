@@ -38,6 +38,7 @@ Watch the 4 minute v2.0.0 Showcase video below, or read on for more information!
   </p>    
 
 <p align="center">
+  <a href="https://daaf.openaugments.org"><strong>Project Homepage</strong></a> &nbsp;|&nbsp;
   <a href="https://youtu.be/ZAM9OA0AlUs"><strong>Watch the v1.0.0 10-minute demo/walkthrough</strong></a> &nbsp;|&nbsp;
   <a href="user_reference/01_installation_and_quickstart.md"><strong>Installation Guide</strong></a> &nbsp;|&nbsp;
   <a href="#full-user-documentation-reference-and-recommended-next-steps"><strong>User Documentation Reference</strong></a> &nbsp;|&nbsp;
