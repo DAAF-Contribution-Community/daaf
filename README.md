@@ -18,7 +18,7 @@ LLM-based AI assistants are becoming **increasingly capable**, but they are alwa
 
 **Yes** -- but only with the right guidance, right guardrails, and in expert hands to direct all core decisions and verify all key outputs.
 
-Enter **DAAF, the Data Analyst Augmentation Framework.** DAAF is a free and open-source instructions framework for [Claude Code](https://docs.anthropic.com/en/docs/claude-code) that helps skilled researchers rapidly scale their expertise and accelerate data analysis across any domain with AI assistance -- without sacrificing the transparency, rigor, or reproducibility that good science demands. DAAF sits between you and Claude Code to automatically and consistently help Claude think more like a responsible and rigorous researcher by:
+Enter <a href="https://daaf.openaugments.org"><strong>**DAAF, the Data Analyst Augmentation Framework**</strong></a>. DAAF is a free and open-source instructions framework for [Claude Code](https://docs.anthropic.com/en/docs/claude-code) that helps skilled researchers rapidly scale their expertise and accelerate data analysis across any domain with AI assistance -- without sacrificing the transparency, rigor, or reproducibility that good science demands. DAAF sits between you and Claude Code to automatically and consistently help Claude think more like a responsible and rigorous researcher by:
 
 - Enforcing strict auditability and reproducibility standards for all work, thus allowing you to **verify everything** Claude does on your behalf
 - Preventing potentially dangerous unintended file access and editing, by sandboxing Claude with strict protections and logging traces
