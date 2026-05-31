@@ -1,5 +1,5 @@
 <!--
-  README v2.0.1 — Revised draft
+  README v2.1.0 — Revised draft
 -->
 
 ## Summary: What is DAAF?
@@ -7,7 +7,7 @@
 <img width="1258" height="433" alt="daaf_20_thumbnail4" src="https://github.com/user-attachments/assets/21b17b1d-a4d8-4558-a91d-a9ecb0d43f22" />
 
 <p align="center">
-  <a href="https://github.com/DAAF-Contribution-Community/daaf/releases"><img src="https://img.shields.io/badge/version-v2.0.1-blue" alt="Version v2.0.1"></a>
+  <a href="https://github.com/DAAF-Contribution-Community/daaf/releases"><img src="https://img.shields.io/badge/version-v2.1.0-blue" alt="Version v2.1.0"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-LGPL--3.0--or--later-green" alt="License: LGPL-3.0-or-later"></a>
   <a href="https://github.com/DAAF-Contribution-Community/daaf/stargazers"><img src="https://img.shields.io/github/stars/DAAF-Contribution-Community/daaf?style=flat" alt="GitHub Stars"></a>
   <a href="https://github.com/DAAF-Contribution-Community/daaf/commits/main"><img src="https://img.shields.io/github/last-commit/DAAF-Contribution-Community/daaf" alt="Last Commit"></a>
@@ -18,7 +18,7 @@ LLM-based AI assistants are becoming **increasingly capable**, but they are alwa
 
 **Yes** -- but only with the right guidance, right guardrails, and in expert hands to direct all core decisions and verify all key outputs.
 
-Enter **DAAF, the Data Analyst Augmentation Framework.** DAAF is a free and open-source instructions framework for [Claude Code](https://docs.anthropic.com/en/docs/claude-code) that helps skilled researchers rapidly scale their expertise and accelerate data analysis across any domain with AI assistance -- without sacrificing the transparency, rigor, or reproducibility that good science demands. DAAF sits between you and Claude Code to automatically and consistently help Claude think more like a responsible and rigorous researcher by:
+Enter <a href="https://daaf.openaugments.org"><strong>**DAAF, the Data Analyst Augmentation Framework**</strong></a>. DAAF is a free and open-source instructions framework for [Claude Code](https://docs.anthropic.com/en/docs/claude-code) that helps skilled researchers rapidly scale their expertise and accelerate data analysis across any domain with AI assistance -- without sacrificing the transparency, rigor, or reproducibility that good science demands. DAAF sits between you and Claude Code to automatically and consistently help Claude think more like a responsible and rigorous researcher by:
 
 - Enforcing strict auditability and reproducibility standards for all work, thus allowing you to **verify everything** Claude does on your behalf
 - Preventing potentially dangerous unintended file access and editing, by sandboxing Claude with strict protections and logging traces
@@ -38,6 +38,7 @@ Watch the 4 minute v2.0.0 Showcase video below, or read on for more information!
   </p>    
 
 <p align="center">
+  <a href="https://daaf.openaugments.org"><strong>Project Homepage</strong></a> &nbsp;|&nbsp;
   <a href="https://youtu.be/ZAM9OA0AlUs"><strong>Watch the v1.0.0 10-minute demo/walkthrough</strong></a> &nbsp;|&nbsp;
   <a href="user_reference/01_installation_and_quickstart.md"><strong>Installation Guide</strong></a> &nbsp;|&nbsp;
   <a href="#full-user-documentation-reference-and-recommended-next-steps"><strong>User Documentation Reference</strong></a> &nbsp;|&nbsp;
@@ -225,7 +226,7 @@ If you use DAAF in your research, please cite it and all underlying data sources
 
 **Plain text (APA):**
 
-> Kim, B. H. (2026). *DAAF: Data Analyst Augmentation Framework* (Version 2.0.1) [Computer software]. [https://doi.org/10.5281/zenodo.19343886](https://doi.org/10.5281/zenodo.19343886)
+> Kim, B. H. (2026). *DAAF: Data Analyst Augmentation Framework* (Version 2.1.0) [Computer software]. [https://doi.org/10.5281/zenodo.19343886](https://doi.org/10.5281/zenodo.19343886)
 
 **BibTeX:**
 
@@ -236,7 +237,7 @@ If you use DAAF in your research, please cite it and all underlying data sources
   year = {2026},
   url = {https://github.com/DAAF-Contribution-Community/daaf},
   doi = {10.5281/zenodo.19343886},
-  version = {2.0.1},
+  version = {2.1.0},
   license = {LGPL-3.0-or-later}
 }
 ```
