@@ -45,6 +45,10 @@ If you're new to some of the technical vocabulary, here's a quick reference:
 
 Docker Desktop isn't installed or isn't in your system PATH. Download it from [docker.com/products/docker-desktop](https://www.docker.com/products/docker-desktop/), install it, and make sure it's running (you should see the Docker whale icon in your system tray/menu bar). You may need to restart your terminal after installation.
 
+### Malformed authentication URL when trying to log in to Claude Code
+
+If you're trying to copy the URL authentication link, be careful to check it for erroneous line-breaks in the URL. Paste this into a simple notepad editor and remove any extra line-breaks, then try pasting the revised URL into your browser.
+
 ### "unable to get image" or build fails immediately
 
 Make sure Docker Desktop is **running** (not just installed). Open Docker Desktop and wait for it to fully start before running the installer. If you're on a corporate network, check whether a VPN or firewall is blocking Docker Hub access.
