@@ -92,14 +92,25 @@ def get_checkpoint_line_count(golden_file: Path) -> int:
 def find_benchmark_transcript(
     session_id: str,
     sessions_dir: Path = Path("/daaf/.claude/logs/sessions"),
+    projects_dir: Path = Path.home() / ".claude" / "projects" / "-daaf",
 ) -> Path | None:
-    """Find the session transcript for a benchmark run."""
-    if not sessions_dir.exists():
-        return None
+    """Find the session transcript for a benchmark run.
 
-    short = session_id[:8]
-    for p in sessions_dir.glob(f"*_{short}_orchestrator.jsonl"):
-        return p
+    Checks two locations:
+    1. Session archives (.claude/logs/sessions/) — written by archive hook on clean exit
+    2. Live session file (.claude/projects/-daaf/) — exists during and after runs,
+       including timed-out runs where the archive hook never fired
+    """
+    if sessions_dir.exists():
+        short = session_id[:8]
+        for p in sessions_dir.glob(f"*_{short}_orchestrator.jsonl"):
+            return p
+
+    # Fallback: live session file (survives timeouts)
+    live_file = projects_dir / f"{session_id}.jsonl"
+    if live_file.exists():
+        return live_file
+
     return None
 
 

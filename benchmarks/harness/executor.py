@@ -161,14 +161,20 @@ def execute_run(config: RunConfig) -> RunResult:
     except subprocess.TimeoutExpired:
         result.duration_seconds = time.time() - start_time
         result.error = f"Timed out after {timeout}s"
+        # Preserve the session_id so the runner can still find and score
+        # the live session file before cleanup
+        if checkpoint_session_id and not result.session_id:
+            result.session_id = checkpoint_session_id
 
     except Exception as e:
         result.duration_seconds = time.time() - start_time
         result.error = f"Execution error: {type(e).__name__}: {e}"
+        if checkpoint_session_id and not result.session_id:
+            result.session_id = checkpoint_session_id
 
-    finally:
-        if checkpoint_session_id:
-            cleanup_sandbox(checkpoint_session_id)
+    # NOTE: cleanup_sandbox is NOT called here. The runner is responsible
+    # for calling cleanup_sandbox() AFTER scoring and archiving the
+    # transcript. This ensures timed-out runs still produce scorable data.
 
     return result
 
