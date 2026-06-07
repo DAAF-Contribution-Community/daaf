@@ -9,6 +9,7 @@ This guide is designed to turn a new user into a confident user. It expands on t
 ---
 
 ## Table of Contents
+- [**What is DAAF?**](#what-is-daaf)
 - [**Core Concept: Context Windows and Prompt Engineering 101**](#core-concept-context-windows-and-prompt-engineering-101)
 - [**Three Dimensions of AI Capability**](#three-dimensions-of-ai-capability)
 - [**The Nine Engagement Modes**](#the-nine-engagement-modes)
@@ -19,6 +20,12 @@ This guide is designed to turn a new user into a confident user. It expands on t
 - [**Session Management: Multi-Session Work and Recovery**](#session-management-multi-session-work-and-recovery)
 - [**Where Things Live in the Repository**](#where-things-live-in-the-repository)
 - [**Recommended Next Steps**](#recommended-next-steps)
+
+---
+
+## What is DAAF?
+
+In a single sentence: DAAF is a toolkit for researchers that wraps around the Claude Code program that helps you go from a research question to a completed analysis -- including data acquisition, cleaning, statistical analysis, visualizations, and written reports. It runs within Claude Code on your computer, accepting plain English instructions while maintaining your control over all analytical decisions. Everything that follows in this guide explains *how* it achieves that, and what you need to know to work with it effectively.
 
 ---
 

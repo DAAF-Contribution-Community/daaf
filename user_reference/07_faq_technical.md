@@ -7,6 +7,9 @@ Operational questions with concrete answers. If you're stuck, troubleshooting, o
 ---
 
 ## Table of Contents
+- [**Key Concepts Explained**](#key-concepts-explained)
+- [**Installation Troubleshooting**](#installation-troubleshooting)
+- [**Working with DAAF**](#working-with-daaf)
 - [**Setup and Settings**](#setup-and-settings)
 - [**Packages and Environment**](#packages-and-environment)
 - [**Session Logs and Diagnostics**](#session-logs-and-diagnostics)
@@ -15,6 +18,116 @@ Operational questions with concrete answers. If you're stuck, troubleshooting, o
 - [**Data Access Issues**](#data-access-issues)
 - [**Common Error Messages**](#common-error-messages)
 - [**Recommended Next Steps**](#recommended-next-steps)
+- [**Community Resources**](#community-resources)
+
+---
+
+## Key Concepts Explained
+
+If you're new to some of the technical vocabulary, here's a quick reference:
+
+| Term | What it means |
+|------|---------------|
+| **Terminal** | A text-based interface for typing commands to your computer (also called Command Prompt on Windows or shell on Linux/Mac) |
+| **Docker / Docker Desktop** | Software that creates isolated, reproducible environments (containers) on your computer |
+| **Container** | A lightweight, isolated environment that runs programs without affecting the rest of your system |
+| **Volume** | A persistent storage area attached to a Docker container -- your files live here and survive container restarts |
+| **API Key** | A secret code that authenticates you with an external service (like Anthropic's Claude API) |
+| **Environment Variable** | A named value your system stores in memory that programs can read (used for configuration and API keys) |
+| **Port** | A numbered channel that allows programs to communicate over a network (DAAF uses ports 2718-2720) |
+| **Claude Code** | Anthropic's command-line interface for Claude that DAAF runs inside -- it's the "brain" that powers all analysis |
+
+---
+
+## Installation Troubleshooting
+
+### "docker: command not found" or "docker is not recognized"
+
+Docker Desktop isn't installed or isn't in your system PATH. Download it from [docker.com/products/docker-desktop](https://www.docker.com/products/docker-desktop/), install it, and make sure it's running (you should see the Docker whale icon in your system tray/menu bar). You may need to restart your terminal after installation.
+
+### "unable to get image" or build fails immediately
+
+Make sure Docker Desktop is **running** (not just installed). Open Docker Desktop and wait for it to fully start before running the installer. If you're on a corporate network, check whether a VPN or firewall is blocking Docker Hub access.
+
+### "service is not running" when trying to start DAAF
+
+Run `docker compose up -d` from your `daaf-docker` folder first, then try `bash run_daaf.sh` again. If that doesn't work, open Docker Desktop and check if the container shows as "running."
+
+### Port conflicts (2718, 2719, or 2720 already in use)
+
+Another application is using one of DAAF's ports. Close the conflicting application, or edit `docker-compose.yml` in your `daaf-docker` folder to map different host ports (change the left side of the colon, e.g., `3718:2718`).
+
+### Permission denied errors inside the container (macOS)
+
+This usually happens when Docker Desktop's file sharing permissions haven't been configured. Open Docker Desktop → Settings → Resources → File Sharing, and ensure the relevant directories are shared.
+
+### Claude Code asks for my API key every session
+
+Your authentication method may not be persisting between sessions. For Anthropic Max/Pro subscriptions, try running `/login` inside Claude Code to re-authenticate. For API keys, make sure your `environment_settings.txt` file in the `daaf-docker/` folder has the correct key set -- this file is read on every container start.
+
+### OpenRouter: "model not found" or authentication errors
+
+Check three things: (1) `ANTHROPIC_BASE_URL` must be exactly `https://openrouter.ai/api` with no `/v1` suffix, (2) your `ANTHROPIC_API_KEY` must be a valid OpenRouter API key (starts with `sk-or-`), and (3) the model you're requesting must be available on OpenRouter. Verify at [openrouter.ai/activity](https://openrouter.ai/activity).
+
+### Container seems really slow to build the first time
+
+The first build downloads and compiles 50+ Python packages including geospatial libraries (GDAL, GEOS, PROJ) that can take 5-15 minutes depending on your internet speed and hardware. This is normal and only happens once -- subsequent starts are fast because the image is cached.
+
+### I can't find my research files on my computer
+
+DAAF stores files inside a Docker volume, not directly on your filesystem. Three ways to access them:
+- **Browser file manager:** Run `bash run_vscode.sh` (or `.\run_vscode.ps1` on Windows) and open `localhost:2720` in your browser
+- **Backup script:** Run `bash backup_daaf.sh` (or `.\backup_daaf.ps1`) to copy everything to a folder on your computer
+- **Single file:** `docker compose cp daaf-docker:/daaf/research/your-project/file.md ./`
+
+### How do I update DAAF to the latest version?
+
+From your `daaf-docker` folder on your host computer, run `bash update_daaf.sh` (macOS/Linux) or `.\update_daaf.ps1` (Windows). The script checks for available updates, shows you what's new, and handles the update safely -- including detecting and helping resolve any local edits you've made.
+
+### How do I back up my research files?
+
+From your `daaf-docker` folder: `bash backup_daaf.sh` (macOS/Linux) or `.\backup_daaf.ps1` (Windows). This copies your entire research directory to a timestamped folder on your computer. You can also use the browser file manager (`bash run_vscode.sh`) to browse and download individual files.
+
+---
+
+## Working with DAAF
+
+### What are engagement modes and how do I choose one?
+
+DAAF has nine engagement modes, each designed for a different type of task. You don't need to memorize them -- just describe what you want to do and DAAF will suggest the right mode. But here's a quick overview:
+
+- **Full Pipeline** — Complete research analysis from question to report ("Analyze how X relates to Y")
+- **Data Onboarding** — Profile and register a new dataset ("I have this CSV I want to use")
+- **Data Discovery** — Explore what data exists ("Is it possible to study X?")
+- **Data Lookup** — Quick factual answers ("What are the coded values for variable X?")
+- **Ad Hoc Collaboration** — Flexible working session ("Help me debug this" / "Think through this with me")
+- **Revision and Extension** — Modify existing work ("Update the analysis to include 2024 data")
+- **Reproducibility Verification** — Verify an analysis reproduces ("Re-run this and check the results match")
+- **Framework Development** — Modify DAAF itself ("Create a new skill for survey methods")
+- **User Support** — Questions about DAAF ("How does the validation system work?")
+
+DAAF always confirms the mode with you before proceeding, so you can adjust if it picks wrong.
+
+### What are the /config and /model commands I keep seeing referenced?
+
+These are Claude Code slash commands you can type anytime during a session:
+
+- `/config` — Opens the Claude Code settings menu. Key settings to check:
+  - **Auto-compact:** Set to `false` (DAAF manages its own context)
+  - **Verbose output:** Set to `true` (lets you see what agents are thinking)
+- `/model` — Switch the active model (use arrow keys to select)
+- `/clear` — Clear conversation history and start fresh (used when resuming from STATE.md)
+- `/exit` — Exit Claude Code (first step in ending a session)
+- `/status` — Check connection status and current model
+
+### DAAF seems to be doing something I didn't ask for
+
+You're always in control. If DAAF is heading in a direction you didn't intend:
+- **Press ESC** to interrupt the current operation
+- **Say "stop"** or "that's not what I meant" -- DAAF will pause and ask for clarification
+- **Type `/clear`** to start completely fresh if things have gone off the rails
+
+Remember: DAAF always presents a mode confirmation and research plan for your approval before doing substantial work. If something is happening you didn't approve, it's likely a continuation of a previously-approved step.
 
 ---
 
@@ -87,17 +200,21 @@ I would honestly be thrilled if someone forked DAAF and adapted it for another p
 
 ### Q: Is my data sent to Anthropic? What about privacy?
 
-Your data does pass through Anthropic's API when Claude Code processes it -- that's how the AI works. However, a few important things to know:
+The answers are yes and no depending on exactly what we're talking about when we say, "data." Here's the complex picture:
 
-1. **Nothing leaves your computer via the DAAF workflow itself.** DAAF's hooks and safety rails are designed to prevent Claude from uploading, exfiltrating, or sharing your data files themselves. You can verify this by reading the hook scripts in `.claude/hooks/`.
+1. **All data analysis and computation happens directly on your machine,** inside the Docker container. DAAF's hooks and safety rails prevent Claude from bulk-uploading or exfiltrating your data files themselves. You can verify this by reading the hook scripts in `.claude/hooks/`.
 
-2. **Anthropic's data policies apply.** How Anthropic handles API data is governed by their privacy policy and terms of service. As of this writing, Anthropic states that API inputs and outputs are not used to train models, but you should verify their current policies yourself. This is a main reason why I focused on public datasets for DAAF out-of-the-box.
+2. **The analytical output and diagnostics in scripts do transit through Anthropic's servers.** In the process of conducting analysis, DAAF runs diagnostics (like examining sample rows), statistical tests, data visualizations, and report summaries. Because of the way Claude Code works, these analytical outputs are explicitly included in the chats with Claude Code (so it can see what's happening when it runs the code) and inevitably sent to Anthropic as part of the conversation. There is no mechanism by which Claude Code sends entire datasets outside of your machine -- it's really just exposure in these small "chunks" of analytical output.
 
-3. **The container provides additional isolation.** Because DAAF runs inside Docker with dropped capabilities and no privilege escalation, the blast radius of any unexpected behavior is contained (i.e., files it can accidentally upload to the internet, or send via email, or etc. etc.).
+3. **Whether this exposure is a concern depends on your specific setup.** How Anthropic handles API data is governed by their privacy policy and terms of service. As of this writing, Anthropic states that API inputs and outputs are not used to train models, but you should verify their [current policies](https://www.anthropic.com/policies) yourself. Certain Enterprise agreements with Anthropic have stronger, more FERPA/HIPAA-compliant data handling guarantees, and specific model access protocols (like via AWS Bedrock or Google Vertex AI) offer additional data governance controls that keep data within your organization's cloud infrastructure. The specifics depend entirely on your license and agreement type. This is a main reason why I focused on public datasets for DAAF out-of-the-box.
 
-4. **DAAF enforces credential safety.** The framework actively prevents reading, writing, or committing files that look like credentials (`.env`, `*.pem`, `*.key`, `environment_settings*`, etc.). It won't prevent everything, but it'll give you a good set of starting guardrails to help protect yourself.
+4. **The container provides additional isolation.** Because DAAF runs inside Docker with dropped capabilities and no privilege escalation, the blast radius of any unexpected behavior is contained (i.e., files it can accidentally upload to the internet, or send via email, or etc. etc.).
 
-**Bottom line:** If you're working with sensitive, proprietary, or regulated data, talk to your IT team and legal counsel before using DAAF or any AI tool with that data. DAAF provides strong *local* safety guarantees, but the data still transits through Anthropic's infrastructure for inference. Do not mess around here -- do your homework and be a good steward of your data.
+5. **DAAF enforces credential safety.** The framework actively prevents reading, writing, or committing files that look like credentials (`.env`, `*.pem`, `*.key`, `environment_settings*`, etc.). It won't prevent everything, but it'll give you a good set of starting guardrails to help protect yourself.
+
+6. **OpenRouter adds an additional hop.** If you use OpenRouter instead of a direct Anthropic connection, your analytical output transits through OpenRouter's servers *in addition to* the underlying model provider. Review [OpenRouter's privacy policy](https://openrouter.ai/privacy) alongside Anthropic's if you choose this route.
+
+**Bottom line:** If you're working with private, proprietary, or otherwise protected non-public data, you need to fully understand the nuances of your specific Anthropic license, agreement type, and access method before using DAAF with that data. Talk to your IT team and legal counsel. Do not mess around here -- do your homework and be a good steward of your data.
 
 ---
 
@@ -534,3 +651,14 @@ For more detail, see [Best Practices — Monitoring DAAF's Internal Reference Lo
 - [**00. README**](https://github.com/DAAF-Contribution-Community/daaf/tree/main?tab=readme-ov-file#summary-what-is-daaf) — Project overview, quick start, design philosophy, capabilities, and acknowledgments
 - [**01. Installation & Quick Start**](01_installation_and_quickstart.md) — Get started! Installation prerequisites, step-by-step setup, day-to-day usage, and troubleshooting
 - [**Back to main**](https://github.com/DAAF-Contribution-Community/daaf/tree/main)
+
+---
+
+## Community Resources
+
+- **GitHub Issues:** [Report bugs or request features](https://github.com/DAAF-Contribution-Community/daaf/issues)
+- **GitHub Discussions:** [Ask questions and share findings](https://github.com/DAAF-Contribution-Community/daaf/discussions)
+- **Email:** support@openaugments.org
+- **Discord:** [Join the DAAF community](https://discord.gg/daaf) (link TBD)
+- **YouTube:** [@brhkim](https://youtube.com/@brhkim) — Video tutorials and walkthroughs
+- **Substack:** [DAAF Field Guide](https://daafguide.substack.com) — Deep dives on AI-assisted research

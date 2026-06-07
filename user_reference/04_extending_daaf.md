@@ -15,7 +15,7 @@ This guide focuses on the primary extension path: bringing new datasets, data do
 - [**Step-by-Step: Authoring Other Types of New Skills**](#step-by-step-authoring-other-types-of-new-skills)
 - [**Adding a New Agent**](#adding-a-new-agent)
 - [**Testing Your New Extension End-to-End**](#testing-your-new-extension-end-to-end)
-- [**Submitting Your Extension for Inclusion**](#submitting-your-extension-for-inclusion)
+- [**Submitting Your Extension for Inclusion (Optional)**](#submitting-your-extension-for-inclusion-optional)
 - [**Customizing Your Python Environment**](#customizing-your-python-environment)
 - [**Recommended Next Steps**](#recommended-next-steps)
 
@@ -38,8 +38,8 @@ This separation is what makes DAAF extensible without being fragile. When you wa
 | Extension Type | What You're Adding | Tool to Use | Result |
 |----------------|-------------------|-------------|--------|
 | **Data source** | Knowledge about a specific dataset | Data Onboarding Mode | A new `data-source-skill` |
-| **Methodology** | Knowledge about a statistical or analytical method | `skill-authoring` skill | A new `methodology-skill` |
-| **Domain expertise** | Knowledge about a content area or field | `skill-authoring` skill | A new `context-skill` |
+| **Methodology** | Knowledge about a statistical or analytical method | Framework Development Mode | A new `methodology-skill` |
+| **Domain expertise** | Knowledge about a content area or field | Framework Development Mode | A new `context-skill` |
 
 The most common extension path by far -- and the one I'll spend the most time on in this guide -- is adding new data sources. DAAF has a dedicated engagement mode for this purpose: **Data Onboarding Mode**, which orchestrates a thorough profiling protocol and generates the skill documentation for you. You still need to review its output (this is *always* true with DAAF), but it should dramatically reduce the manual effort involved.
 
@@ -133,7 +133,7 @@ enrollment counts, and state identifiers.
 
 DAAF will classify this as a Data Onboarding request, set up a research project folder, and execute a systematic profiling protocol (up to 11 scripts, depending on your data's characteristics). The profiling runs across 4 sub-phases:
 
-**Phase 1 -- Structural Discovery:** Basic shape of the data (rows, columns, memory footprint, column types) and initial column-level profiling. This gives the agent a bird's-eye view of what it's working with, including null rates, unique value counts, and basic distributions.
+**Phase 1 -- Structural Discovery:** Basic shape of the data (rows, columns, memory footprint, column types) and initial column-level profiling. This gives the agent a bird's-eye view of what it's working with, including null rates, unique value counts, and basic distributions. It also identifies row-unique columns and columns suitable for linking to other datasets.
 
 **Phase 2 -- Statistical Deep Dive:** Detailed statistics for every column -- full distribution analysis for numeric columns, category enumeration for categorical columns, temporal pattern analysis, and outlier detection. If your data has date/year columns or geographic identifiers, this phase also analyzes temporal coverage gaps and entity coverage against known universes.
 
@@ -171,8 +171,9 @@ Ask DAAF something like:
 
 ```
 I'd like to create a new methodology skill for pyfixest
-(fixed-effects regression in Python). Please use the
-skill-authoring skill to guide the process, and research
+(fixed-effects regression in Python). Please use Framework
+Development Mode and the skill-authoring skill to guide the
+process, and research
 the pyfixest documentation online to build a comprehensive
 reference. You might refer to the `polars` skill as a model
 for some of what it could look like. Please run some initial
@@ -198,8 +199,9 @@ Same process as methodology skills, but the content focuses on domain knowledge 
 I'd like to create a context skill for understanding Community
 Eligibility Provision (CEP) and its impact on free/reduced-price
 lunch data. This is critical context for anyone analyzing school
-poverty measures after 2014. Please use the skill-authoring skill
-and launch a few web searching subagents to research this topic
+poverty measures after 2014. Please use Framework Development Mode
+and the skill-authoring skill, and launch a few web searching
+subagents to research this topic
 in depth before coming up with a plan for my approval.
 ```
 
@@ -225,9 +227,9 @@ Ask DAAF to use the `agent-authoring` skill:
 I need to create a new agent for [describe the behavioral role]. I'd
 like this to be an agent focused on [x, y, z], and likely should be 
 involved in doing [a, b, c] at [specific part of the research process].
-Please use the agent-authoring skill to guide me through the process,
-and let me know what more detail would be useful to make sure this is
-successful.
+Please use Framework Development Mode and the agent-authoring skill to
+guide me through the process, and let me know what more detail would be
+useful to make sure this is successful.
 ```
 
 The workflow has five phases:
@@ -329,7 +331,8 @@ Check that DAAF references your skill's guidance -- the correct function calls, 
 
 ---
 
-## Submitting Your Extension for Inclusion
+## Submitting Your Extension for Inclusion (Optional)
+Everything above works entirely locally -- extensions don't require sharing, and you never have to submit anything to use your own custom skills, agents, or data sources. That said, if you think your extension would help others:
 
 If you've created a useful skill or agent and want to share it with the broader DAAF community -- please do! The whole point of this being open-source is that the framework gets better as more people contribute their domain expertise. A skill you create for, say, health survey data or labor market statistics could save someone else weeks of profiling work.
 

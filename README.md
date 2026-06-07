@@ -182,9 +182,13 @@ Interactive dashboards (Plotly) &bull; Reactive analytic notebooks (marimo) &bul
 
 ---
 
-## Why Education Data?
+## Why does DAAF have education datasets bundled with it?
+DAAF is designed to be fully domain-extensible -- you can readily bring your own data sources into the ecosystem by engaging with the Data Onboarding mode (see this [10-minute tutorial](https://youtu.be/G5uKSlI6jls) for a demonstration). 
 
-DAAF is designed to be domain-extensible -- you can readily bring your own data sources into the ecosystem by engaging with the Data Onboarding mode (see this [10-minute tutorial](https://youtu.be/G5uKSlI6jls) for a demonstration). The [Urban Institute Education Data Portal](https://educationdata.urban.org/) serves as an excellent out-of-the-box demonstration domain because it offers:
+Note: If you plan to use DAAF with private, proprietary, or regulated data (FERPA, HIPAA, etc.), the implications depend entirely on your specific Anthropic license and access method. Enterprise agreements, AWS Bedrock, and Google Vertex AI each offer different data governance guarantees. **It is your responsibility to understand and evaluate these nuances for your use case before using DAAF with any non-public data.** Consult your IT team and legal counsel, and review [Anthropic's current data policies](https://www.anthropic.com/policies) for your specific agreement type. For more detail, see the [Data Privacy FAQ](user_reference/07_faq_technical.md#q-is-my-data-sent-to-anthropic-what-about-privacy).
+
+
+All that being said, the [Urban Institute Education Data Portal](https://educationdata.urban.org/) serves as an excellent out-of-the-box demonstration domain because it offers:
 
 - High-quality, well-documented public data
 - Real, immediate policy relevance (K-12 schools, districts, colleges, outcomes)
@@ -256,7 +260,7 @@ That being said, the citations generated are best-effort, not guaranteed -- alwa
 
 This project is licensed under the **GNU Lesser General Public License v3.0** (LGPL-3.0-or-later). Anyone can use DAAF for any reason, for free, forever -- this work is too important and high-stakes to treat as anything but a shared effort we can all benefit from and contribute to.
 
-**Internal use** -- personally or within your organization, no matter how extensively you modify the framework -- is completely unrestricted. More restrictions apply only if you **distribute a modified version**: core framework improvements must also be licensed open-source, but extensions built on top (skills for proprietary datasets, bespoke agents, etc.) can remain private under any license. This ensures DAAF stays open and community-driven while allowing use in contexts involving sensitive, proprietary, or classified data.
+**Internal use** -- personally or within your organization, no matter how extensively you modify the framework -- is completely unrestricted. More restrictions apply only if you **distribute a modified version**: core framework improvements must also be licensed open-source, but extensions built on top (skills for proprietary datasets, bespoke agents, etc.) can remain private under any license. This ensures DAAF stays open and community-driven while allowing proprietary extensions in any context, including institutional or enterprise environments.
 
 For the full philosophy behind this decision, see [FAQ: Philosophy](user_reference/06_faq_philosophy.md). See [LICENSE](LICENSE) and [COPYING.LESSER](COPYING.LESSER) for the full license text.
 
@@ -274,7 +278,7 @@ Hello! My name is Brian Heseung Kim ([@brhkim](https://github.com/brhkim)). I ha
 
 - **[Urban Institute Education Data Portal](https://educationdata.urban.org/)** -- The proof-of-concept iteration of this project would not be possible without this remarkable public resource that harmonizes data from over a dozen federal education data sources into a single, well-documented API. We are deeply grateful to the Urban Institute for making high-quality education data freely accessible. If you use DAAF or the Education Data Portal in your work, please cite the Urban Institute appropriately -- see the [Education Data Portal documentation](https://educationdata.urban.org/documentation/) for citation guidelines.
 - **[GUIDE-LLM](https://llm-checklist.com/)** -- DAAF integrates this consensus-based reporting checklist (developed by Feuerriegel, Barrie, Crockett, Globig, McLoughlin, Mirea, Spirling, Yang, and over 80 additional experts) to help researchers transparently disclose how AI was used in their work.
-- **[Get Shit Done](https://github.com/glittercowboy/get-shit-done)** ([@glittercowboy](https://github.com/glittercowboy)) -- Several core workflow patterns in DAAF, particularly around agent specialization, shared working memory, and task decomposition, were improved thanks to excellent practices in this project.
+- **[GSD Core](https://github.com/open-gsd/gsd-core)** ([Open GSD Community](https://github.com/open-gsd)) -- Several core workflow patterns in DAAF, particularly around agent specialization, shared working memory, and task decomposition, were improved thanks to excellent practices in this community-led project.
 - **[Docker](https://www.docker.com/)** -- Containerization platform providing DAAF's sandboxed execution environment
 - **[code-server](https://github.com/coder/code-server)** ([Coder](https://coder.com/)) -- Browser-based VS Code editor, itself built on Microsoft's [VS Code](https://github.com/microsoft/vscode) and the [Open VSX](https://open-vsx.org/) extension registry
 - **[marimo](https://marimo.io/)** -- Reactive Python notebooks used for DAAF's reproducible research artifacts

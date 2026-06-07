@@ -7,21 +7,28 @@ This document seeks to grapple with some of the bigger implications of DAAF and 
 ---
 
 ## Table of Contents
+
+**About DAAF**
 - [**Q: What are the goals behind DAAF?**](#q-what-are-the-goals-behind-daaf)
 - [**Q: What's the story behind DAAF? How did this project start?**](#q-whats-the-story-behind-daaf-how-did-this-project-start)
+
+**Trust & Responsibility**
 - [**Q: Won't this tool lead to misuse and misinformation? Couldn't this be an engine for slop and pseudoscience?**](#q-wont-this-tool-lead-to-misuse-and-misinformation-couldnt-this-be-an-engine-for-slop-and-pseudoscience)
 - [**Q: What's the appropriate level of trust for AI-generated analysis?**](#q-whats-the-appropriate-level-of-trust-for-ai-generated-analysis)
+- [**Q: What about the environmental and energy costs of this kind of intensive AI use?**](#q-what-about-the-environmental-and-energy-costs-of-this-kind-of-intensive-ai-use)
+
+**Future of Research**
 - [**Q: So what do you see as the main value-add for AI assistance in research workflows after all of this?**](#q-so-what-do-you-see-as-the-main-value-add-for-ai-assistance-in-research-workflows-after-all-of-this)
 - [**Q: Where does the world of research go from here? What does an AI-assisted research paradigm look like?**](#q-where-does-the-world-of-research-go-from-here-what-does-an-ai-assisted-research-paradigm-look-like)
 - [**Q: What are the implications of AI-empowered research tools for equity in academia? Won't the high costs of AI just make the haves-and-have-nots problem worse?**](#q-what-are-the-implications-of-ai-empowered-research-tools-for-equity-in-academia-wont-the-high-costs-of-ai-just-make-the-haves-and-have-nots-problem-worse)
 - [**Q: What does this all mean for the next generation of researchers?**](#q-what-does-this-all-mean-for-the-next-generation-of-researchers)
 - [**Q: How should I think about the pace of AI progress and what it means for tools like DAAF?**](#q-how-should-i-think-about-the-pace-of-ai-progress-and-what-it-means-for-tools-like-daaf)
-- [**Q: What about the environmental and energy costs of this kind of intensive AI use?**](#q-what-about-the-environmental-and-energy-costs-of-this-kind-of-intensive-ai-use)
+
 - [**Recommended Next Steps**](#recommended-next-steps)
 
 ---
 
-## Vision & Goals
+## About DAAF
 
 ### Q: What are the goals behind DAAF?
 
@@ -46,13 +53,13 @@ Brian's background as a traditionally-certified public high school English teach
 
 ---
 
-## AI in Research: Broader Questions
+## Trust & Responsibility
 
 ### Q: Won't this tool lead to misuse and misinformation? Couldn't this be an engine for slop and pseudoscience?
 
 Absolutely. I can put up all the philosophical guidance and warnings I want, but it is impossible to avoid the reality that this tool will be misused, misunderstood, and misapplied broadly. Arguably, this is true for literally any statistical/scientific method or tool that's ever existed, but the stakes here do feel different and meaningfully exacerbated by the involvement of AI more generally.
 
-I won't sugarcoat it: this is the danger of tools like DAAF writ large. My position in releasing DAAF is to accept the situation for what it is and shoulder as much responsibility as I can: People are doing this **already** even without DAAF. People will **continue** to do this without DAAF. By releasing DAAF, I am accepting that new reality and trying to instead hyper-accelerate us past the "everyone just tinkers in the shadows and plays with gasoline" phase and straight to the phase where we as a scientific community better understand what we're dealing with, have a lot of strong initial principles to work with, and can engage in genuinely informed discourse about the best ways forward from here. I want as many people to be critical, experienced consumers and contributors for these tools as possible -- because only with those pre-conditions can we produce the guardrails and guidance that we need to minimize the harms and collateral damage involved. Hence the enormous amount of writing and educational materials, the focus on building an open-source community, and sharing this broadly with as many people as possible.
+I won't sugarcoat it: this is the danger of tools like DAAF writ large. My position in releasing DAAF is to accept the situation for what it is and shoulder as much responsibility as I can: People are doing this **already** even without DAAF. People will **continue** to do this without DAAF. By releasing DAAF, I am accepting that new reality and trying to instead hyper-accelerate us past the "everyone just tinkers in the shadows and plays with gasoline" phase and straight to the phase where we as a scientific community better understand what we're dealing with, have a lot of strong initial principles to work with, and can engage in genuinely informed discourse about the best ways forward from here. I want as many people to be critical, experienced consumers and contributors for these tools as possible -- because only with those pre-conditions can we produce the guardrails and guidance that we need to minimize the harms and collateral damage involved. Hence the enormous amount of writing and educational materials, the focus on building an open-source community, and sharing this broadly with as many people as possible. Every analysis has a plan you can review, validation checkpoints you can inspect, and a complete audit trail.
 
 And then as much as this tool may end up being a vehicle for misinformation, a more optimistic view is that it can also become a critical tool for fighting it: With the right experts at the helm, producing GENUINELY transparent, rigorous, reproducible insights to fight misinformation directly is back within the realm of possibility, where before it was a lost game immediately. I think that's overly sanguine, but I think directionally important to recognize. Either way, I'm just trying to do my best to help as many people as I can, and there's only so much here that will be within any one person's control.
 
@@ -69,6 +76,22 @@ One framing I find useful: the goal of a tool like DAAF is not to make AI output
 (and note that identifying and evaluating output relative to the threshold of "Acceptable" **requires** an expert human in the loop!)
 
 That's my only real suggestion! Be overly cautious, get informed, make your own judgments, update them constantly.
+
+### Q: What about the environmental and energy costs of this kind of intensive AI use?
+
+Alas, the reality is: This tool will contribute to the boiling of our oceans and contaminate the aquifers of many a community, in addition to all the other well-documented environmental impacts along the way. It relies on frontier models and it works them EXTREMELY hard. A single full-pipeline analysis involves dozens of subagent calls, each consuming significant compute on Anthropic's servers. The iterative validation approach -- executing a script, then running an adversarial review, then potentially revising and reviewing again -- multiplies the compute cost compared to a single-pass approach. The multi-agent architecture means multiple fresh context windows, each requiring inference. And I am explicit about the value-add of researchers running multiple projects in parallel. The aggregate energy and compute footprint is substantial, even if difficult to estimate directly. What I can say with confidence is that it is not zero, it is not trivial, and it matters.
+
+We can't shy away from this fact. My hope, which may or may not be at all substantiated in the end, is that:
+1. By formalizing a strong framework for doing genuinely useful research with AI assistance, I hope to push a LOT of people immediately past the highly wasteful dead-ends of experimenting with AI assistance on their own and spinning their wheels or producing endless AI slop, which then...
+2. Hopefully helps us meaningfully advance on core issues facing our society in a much more concrete and tangible way than the broader AI-hype discourse seems to suggest where "AI will fix it!!! We just need more AI!!!" It would be ridiculous to suggest that DAAF or anything like it will be part of saving the world to try to justify any of the short-term costs here. We just can't know that. But I think it's a much worthier endeavor worth some degree of costs versus many of the extremely dangerous and completely wasteful applications of enormous AI compute power (e.g., meme videos, AI influencers, AI generated ads, terrifying deepfakes, etc. etc.)
+
+More broadly, I think the research community needs to develop norms and standards around the environmental costs of AI-assisted research, just as we have developed ethics and norms around other resource-intensive or potentially problematic research methods (large-scale surveys, randomized controlled trials, longitudinal data collection). The cost is real. It should be part of the calculus. But it should be weighed against the full picture.
+
+What I can commit to is that DAAF should be as efficient as possible for the quality level it produces. The framework is, as I have acknowledged, likely more resource-hungry than it strictly needs to be. Optimizing the number of subagent calls, reducing unnecessary validation passes, implementing intelligent caching, and potentially routing simpler tasks to lighter models are all legitimate paths to reducing the environmental cost without sacrificing rigor. I welcome contributions on this front specifically.
+
+---
+
+## Future of Research
 
 ### Q: So what do you see as the main value-add for AI assistance in research workflows after all of this?
 
@@ -106,7 +129,7 @@ That said, I think the full picture on pricing is more complicated and -- cautio
 
 But holding aside the price, and assuming that for some reason, this doesn't get any better. Even in that circumstance, I think the implications for equity in research is actually much more complex, because **research academia and academic publishing are already immensely unequal systems.** Researchers at prestigious institutions don't just have more resources by default -- they get better looks at publishing, grants, and fellowships because of the name on their letterhead, and they often have their pick of the litter for promising new RAs/postdocs/professors in the talent acquisition process. The prestige pipeline is self-reinforcing and stubbornly persistent. 
 
-What tools like DAAF *can* do is fundamentally change the ability for a scrappy research lab with deep domain expertise but limited staff and funding to produce an immense wealth of rigorous, reproducible research. A single researcher who really knows their domain can now orchestrate analyses that would have previously required a team of research assistants and months of pipeline work -- arguably, work that in the prior paradigm would've required several orders of magnitude more financial resources. That means really, REALLY good things for studying questions and populations that fall outside the established norms of what traditional publishing spheres and grant foundations consider "policy-relevant enough" or "impactful" to publish/fund. Smaller subpopulations. Understudied regions. Unfashionable but important questions. The long tail of research that the current incentive structure systematically underinvests in -- not because it isn't valuable, but because there simply aren't enough researcher-hours to go around, and we're all trying to maximize efficiency given that scarcity.
+What tools like DAAF *can* do is fundamentally change the ability for a scrappy research lab with deep domain expertise but limited staff and funding to produce an immense wealth of rigorous, reproducible research. A single researcher who really knows their domain can now orchestrate analyses that would have previously required a team of research assistants and months of pipeline work -- arguably, work that in the prior paradigm would've required several orders of magnitude more financial resources. That means really, REALLY good things for studying questions and populations that fall outside the established norms of what traditional publishing spheres and grant foundations consider "policy-relevant enough" or "impactful" to publish/fund. Smaller subpopulations. Understudied regions. Unfashionable but important questions. The long tail of research that the current incentive structure systematically underinvests in -- not because it isn't valuable, but because there simply aren't enough researcher-hours to go around, and we're all trying to maximize efficiency given that scarcity. Think of the researcher at a teaching-focused institution who has 10 hours a week for research, the doctoral student who can't afford research assistants, or the non-profit analyst who needs rapid turnaround without sacrificing rigor. These are the people DAAF is built for.
 
 Will this be a chaotic transition? Absolutely. Will the benefits be distributed unevenly, especially in the short term? Almost certainly. But when I weigh the costs of AI-empowered research tools against the deeply entrenched inequities of the system we already have, I think the directional potential here is actually *good* for equity in this space. Not automatically, not painlessly, and not without real work to ensure broad access -- but genuinely, meaningfully good. DAAF doesn't care what institution you're at. It cares whether you know your domain well enough to ask the right questions and catch the wrong answers. And that, I think, is a potentially more meritocratic foundation than what we've been working with.
 
@@ -141,18 +164,6 @@ I think there are three things that most informed people in this space broadly a
 Beyond that consensus, the honest answer is: no one knows exactly where this is going. But one thing I can say with some confidence is that the tools we have today -- DAAF included -- are the worst they will ever be. Models will get smarter, tooling will get more sophisticated, and community best practices will mature. The specific technical implementation of DAAF may not survive the next round of model improvements in its current form, and that's fine. The deeper contribution is helping establish principles and start informed conversations that will outlast any particular tool.
 
 What this means practically: engaging with these tools now, while they're still imperfect enough to clearly show their seams, is arguably the best time to develop the critical intuitions you'll need as they get better. Waiting for the tools to be "ready" means missing the window where the failure modes are most visible and most instructive.
-
-### Q: What about the environmental and energy costs of this kind of intensive AI use?
-
-Alas, the reality is: This tool will contribute to the boiling of our oceans and contaminate the aquifers of many a community, in addition to all the other well-documented environmental impacts along the way. It relies on frontier models and it works them EXTREMELY hard. A single full-pipeline analysis involves dozens of subagent calls, each consuming significant compute on Anthropic's servers. The iterative validation approach -- executing a script, then running an adversarial review, then potentially revising and reviewing again -- multiplies the compute cost compared to a single-pass approach. The multi-agent architecture means multiple fresh context windows, each requiring inference. And I am explicit about the value-add of researchers running multiple projects in parallel. The aggregate energy and compute footprint is substantial, even if difficult to estimate directly. What I can say with confidence is that it is not zero, it is not trivial, and it matters.
-
-We can't shy away from this fact. My hope, which may or may not be at all substantiated in the end, is that:
-1. By formalizing a strong framework for doing genuinely useful research with AI assistance, I hope to push a LOT of people immediately past the highly wasteful dead-ends of experimenting with AI assistance on their own and spinning their wheels or producing endless AI slop, which then...
-2. Hopefully helps us meaningfully advance on core issues facing our society in a much more concrete and tangible way than the broader AI-hype discourse seems to suggest where "AI will fix it!!! We just need more AI!!!" It would be ridiculous to suggest that DAAF or anything like it will be part of saving the world to try to justify any of the short-term costs here. We just can't know that. But I think it's a much worthier endeavor worth some degree of costs versus many of the extremely dangerous and completely wasteful applications of enormous AI compute power (e.g., meme videos, AI influencers, AI generated ads, terrifying deepfakes, etc. etc.)
-
-More broadly, I think the research community needs to develop norms and standards around the environmental costs of AI-assisted research, just as we have developed ethics and norms around other resource-intensive or potentially problematic research methods (large-scale surveys, randomized controlled trials, longitudinal data collection). The cost is real. It should be part of the calculus. But it should be weighed against the full picture.
-
-What I can commit to is that DAAF should be as efficient as possible for the quality level it produces. The framework is, as I have acknowledged, likely more resource-hungry than it strictly needs to be. Optimizing the number of subagent calls, reducing unnecessary validation passes, implementing intelligent caching, and potentially routing simpler tasks to lighter models are all legitimate paths to reducing the environmental cost without sacrificing rigor. I welcome contributions on this front specifically.
 
 ---
 

@@ -35,19 +35,11 @@ When it comes to DAAF, there are a few dimensions of specificity you can provide
 - **Time period**: Which years? Something specific like "2018-2022" is ideal, knowing that it may need to adjust based on specific data availability and trade-offs. "The past few years" works but is vague and encourages DAAF to make assumptions you might not agree with. Explicit is better.
 - **Data granularity**: Are you interested in individual schools, school districts, or colleges/universities? This determines which datasets DAAF reaches for, and what feels most important
 - **Analysis focus**: What relationship, trend, or comparison are you trying to understand? "The relationship between poverty and enrollment" is much more actionable than "general socioeconomics."
+- **Methodologies**: What types of analytical methodologies do you think will be most relevant and useful for this analysis? Geospatial? Supervised machine learning? Basic descriptive analyses? Being clear about this will help direct DAAF to the right resources internally for better consultation results.
 - **Priorities**: What matters most to you about this analysis? If it has to make trade-offs, what should go first? Every analysis involves complicated decision-making, so giving it more insight here can help it align with what you'd want it to do.
 - **Desired insights**: What are you really trying to say, or learn, or do with the data analysis? Giving it a sense of your goals will also help it make better decisions.
 
 You do *not* need to know the exact dataset names, variable codes, or statistical methods. If you know them, great, but if not, that's fine -- that is genuinely part of what DAAF is designed to handle rigorously on our behalf. What you *do* need to provide is a clear enough picture that DAAF can make intelligent decisions about those things as it works -- decisions you'll then review and approve before anything gets executed.
-
-With that in mind, there are actually some appreciable trade-offs in being too vague or too prescriptive:
-
-**Being too vague** triggers a round of clarifying questions. This is not a catastrophe -- DAAF is designed to ask before it assumes -- but it adds an extra back-and-forth that slows you down.
-
-**Being too prescriptive** can actually constrain useful exploration. If you say "Use CCD enrollment counts and MEPS poverty estimates for schools in Texas from 2019-2022, join on NCES school ID, and run an OLS regression with XYZ as the covariates," you may miss that DAAF would have recommended SAIPE district-level poverty estimates instead, or flagged that 2020 CCD data has significant COVID-related reporting gaps. If you know enough about your data context to be this confident, go for it, but you may benefit from engaging with DAAF on scoping and ideation.
-
-**The sweet spot** gives DAAF clear scope with room for expertise. You specify *what you want to learn* and *roughly where to look*, and let DAAF present its thoughts on *how* that you can further shape and revise. Then you review its proposal in the Plan document and push back before any data is touched.
-
 ---
 
 ## Reviewing the Plan Before Execution
@@ -105,7 +97,7 @@ These are signs that the Plan may need revision before you approve it:
 | Red Flag | What It Might Mean | What to Do |
 |----------|-------------------|------------|
 | Research Outcomes are vague, subjective, or confirmatory | Final verification will not be rigorous | Ask for more specific, measurable outcomes |
-| No risks identified | Plan may be overconfident | Ask about suppression rates, data gaps, and join complexity |
+| No risks identified | Plan may be overconfident | Ask about suppression rates (where data values are hidden to protect individual privacy -- common in education data), data gaps, and join complexity |
 | Placeholder file paths (`[TBD]`, `[filename]`) | Plan may not be fully specified | Ask DAAF to complete the paths before proceeding |
 | Very large scope (50 states, 20 years, 5+ data sources) | Analysis may run very long and incur high API costs | Consider narrowing scope first |
 | Missing join cardinality | Joins may produce unexpected row multiplication or loss | Ask DAAF to specify 1:1, 1:many, or many:1 for each join |
@@ -448,6 +440,7 @@ These should not be done with DAAF (or any LLM-based system) regardless of the g
 
 - **High-stakes decisions based solely on AI outputs.** Never use DAAF's results as the sole basis for decisions that significantly affect people -- resource allocation, program elimination, individual assessments, legal proceedings. Always have qualified humans independently verify any findings that will drive consequential decisions.
 - **Analysis presented as AI-generated without disclosure.** If you use DAAF to produce analysis, you should disclose the role of AI assistance in your work. Transparency is non-negotiable in my view. DAAF is designed to make this easy by documenting exactly what it did, but the responsibility to disclose is yours.
+- **Generating results to confirm a predetermined conclusion** -- DAAF is designed to follow the data. Using it to manufacture support for a conclusion you've already reached undermines the entire framework.
 
 ---
 
@@ -522,7 +515,11 @@ Secondly, one of the most common attack surfaces for Claude Code is what's known
 2. Similarly, you ask it to conduct deep research online, and the websites it searches through end up having malicious prompt-injection instructions.
 3. Lastly, someone hijacks the DAAF project and sneaks in hidden, malicious code/instructions into the fabric of the project documentation.
 
-The first two are your responsibility: Be thorough and thoughtful about what you have Claude read/do/search on your behalf. The last one is my responsibility: I will do everything I can to make sure all edits and changes from here are thoroughly vetted, reviewed, and sanitized for the benefit of all users. 
+The first two are your responsibility: Be thorough and thoughtful about what you have Claude read/do/search on your behalf. The last one is my responsibility: I will do everything I can to make sure all edits and changes from here are thoroughly vetted, reviewed, and sanitized for the benefit of all users.
+
+DAAF's permission rules and safety hooks are designed to block manipulation at the system level -- and the structured workflow and validation checkpoints help catch outputs that don't match the data, even if something slips past the initial guardrails.
+
+**A note on data privacy:** All computation happens locally on your machine, and DAAF prevents Claude from bulk-uploading your data files. However, analytical output (sample rows, summary statistics, diagnostic results) does transit through Anthropic's servers as part of the conversation -- that's how Claude Code works. If you're working with private, proprietary, or regulated data (FERPA, HIPAA, etc.), the implications depend on your specific Anthropic license and access method (Enterprise agreements, AWS Bedrock, and Google Vertex AI each offer different data governance guarantees). It's your responsibility to understand these nuances before using DAAF with non-public data. See the [Data Privacy FAQ](07_faq_technical.md#q-is-my-data-sent-to-anthropic-what-about-privacy) for the full picture.
 
 ---
 
@@ -540,6 +537,8 @@ Data Onboarding mode profiles raw data files and creates reusable data source sk
 - **The interpretation review is the most important checkpoint.** When DAAF presents its preliminary interpretations, take the time to carefully confirm, reject, or modify each one. These interpretations become the foundation of the skill that all future analyses will rely on.
 - **Don't worry about getting everything perfect.** The skill is a living artifact — you can refine it later using Framework Development mode as you discover more about the data through actual use.
 - **Flag priority columns** if you know which ones matter most for your research. DAAF will give them extra attention during profiling.
+
+For a detailed step-by-step guide to adding your own data, see [**04. Extending DAAF**](04_extending_daaf.md).
 
 ---
 

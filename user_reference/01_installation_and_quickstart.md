@@ -21,7 +21,7 @@ This is the complete first-time installation and setup guide for DAAF. This docu
 ---
 
 
-**Installing DAAF is extremely easy and straightforward.** That being said, I put a LOT of explanations and detail together here so you have a strong sense and intuition for what's going on under the hood -- which I think is extremely valuable so you have a better handle on why things operate the way they do, or how to manage things in case anything goes wrong. Besides the reading, this whole process really shouldn't take you more than 10 minutes start-to-finish!
+**Installing DAAF is extremely easy and straightforward.** No prior experience with terminal, Docker, or Claude Code required. That being said, I put a LOT of explanations and detail together here so you have a strong sense and intuition for what's going on under the hood -- which I think is extremely valuable so you have a better handle on why things operate the way they do, or how to manage things in case anything goes wrong. Besides the reading, this whole process really shouldn't take you more than 10 minutes start-to-finish!
 
 
 ## Prerequisites
@@ -38,14 +38,18 @@ Claude Code is the AI assistant platform that powers this project. It runs insid
 
 | Option | Cost | Setup | Key Tradeoff |
 |--------|------|-------|--------------|
-| **Anthropic Max subscription** (recommended) | $100-200/mo flat | Interactive login on first launch -- no config needed | Best value for heavy use; I rarely hit limits on the $200/mo plan. [Get one here](https://claude.com/pricing/max) or [upgrade an existing plan](https://claude.ai/upgrade). Team/Enterprise subscriptions also work, but mileage may vary based on organizational settings/limits. |
-| **Anthropic API key** | Pay-per-use (can get expensive fast) | Interactive login on first launch -- no config needed | Unlimited use, but a single straightforward analysis can cost $30-60 in API fees. I'd have paid roughly 10x more via API key than my Max subscription. [Get one here](https://console.anthropic.com/). |
-| **OpenRouter** | Pay-per-token | Configure via `environment_settings.txt` ([instructions below](#configure-authentication-via-environment_settingstxt)) | No Anthropic subscription required; solid alternative if you want to avoid a monthly commitment or already use OpenRouter. **Caveat:** DAAF requires Opus-class models -- stick with Anthropic's Opus through OpenRouter for now. GLM 5.1 and Kimi K2.6 are cheaper and fairly viable models from early scoping, but require more testing and caution. [Get a key here](https://openrouter.ai/). |
+| **Anthropic Max subscription** (recommended) | $100-200/mo flat | Interactive login on first launch -- no config needed | Best value for heavy use; I rarely hit limits even with very heavy use on the $200/mo plan. You can get by with much less if you're doing smaller, more discrete tasks with DAAF. [Get one here](https://claude.com/pricing/max) or [upgrade an existing plan](https://claude.ai/upgrade). Team/Enterprise subscriptions also work, but mileage may vary based on organizational settings/limits. |
+| **Anthropic API key** | Pay-per-use (can get expensive fast) | Interactive login on first launch -- no config needed | Unlimited use, but a full pipeline analysis can cost $50+ in API fees. I'd have paid roughly 10x more via API key than my Max subscription. [Get one here](https://console.anthropic.com/). |
+| **OpenRouter** | Pay-per-token via openrouter.ai with a 5.5% fee on credit purchases | Configure via `environment_settings.txt` ([instructions below](#configure-authentication-via-environment_settingstxt)) | No Anthropic subscription required; solid alternative if you want to avoid a monthly commitment or already use OpenRouter. **Caveat:** DAAF requires Opus-class models -- stick with Anthropic's Opus through OpenRouter for now. GLM 5.1 and Kimi K2.6 are cheaper and fairly viable models from early scoping, but require more testing and caution. [Get a key here](https://openrouter.ai/). |
 | **Cloud providers** (Bedrock, Vertex AI) | Per your organization's arrangement | Configure via `environment_settings.txt` ([instructions below](#configure-authentication-via-environment_settingstxt)) | Route through your org's existing cloud platform. See `environment_settings_example.txt` in `daaf-docker` for required variables. |
+
+**Not sure which to pick?** Start with the lower Max subscription ($100/mo plan) to test things out and get a sense of how you might want to use DAAF. Then adjust methods or subscription levels as need arises.
 
 **How authentication works:** For the **Max subscription** and **API key** options, Claude Code will prompt you to authenticate interactively the first time you run it -- you don't need to configure anything in advance. For **OpenRouter** and **cloud provider** setups, you'll configure credentials via the `environment_settings.txt` file instead (instructions below). You can always switch between methods later (type `/login` inside Claude Code to change your interactive authentication, or update your `environment_settings.txt` file and restart the container). Note that many terminal interfaces "hide" any password-entry you're asked to do, so if you don't see your typing "working," it's working but hiding it from view for your privacy.
 
 **A note on credentials security:** Your Claude and/or API credentials only ever sit locally on your computer or go directly to the service provider, and I've enforced a LOT of safety checks to ensure Claude doesn't accidentally share it with anyone, either. This can be directly verified in the code.
+
+**A note on data security and privacy:** I strongly recommend starting your practice with DAAF using publicly available, non-private data. DAAF can be extended for use with any datasets from any domains, but you'll need to do some additional homework to understand whether your current license with Anthropic/Claude Code offers the necessary data privacy and security protections for any proprietary or PII data. Please see the [Data Privacy FAQ](07_faq_technical.md#q-is-my-data-sent-to-anthropic-what-about-privacy) for more details.
 
 ### 2. Terminal
 
@@ -85,7 +89,7 @@ Docker is a program designed to help people create self-contained, isolated envi
 
 ## Installing DAAF
 
-With all the prerequisites out of the way, installation is a single command that takes about 5 minutes with a decent internet connection. The installer downloads some initial helper files, builds a Docker image with the full data science stack and Claude Code in a fully replicable way, and then downloads the complete DAAF repository into the container so that Claude Code runs using all of the added DAAF files.
+With all the prerequisites out of the way, installation is a single command that takes 5-15 minutes with a decent internet connection. The installer downloads some initial helper files, builds a Docker image with the full data science stack and Claude Code in a fully replicable way, and then downloads the complete DAAF repository into the container so that Claude Code runs using all of the added DAAF files.
 
 ### One-Line Install
 
@@ -105,12 +109,33 @@ irm https://raw.githubusercontent.com/DAAF-Contribution-Community/daaf/main/scri
 
 The installer will show its progress as it works through four steps: creating a build directory, downloading the Docker files, building the image, and cloning DAAF into the container. When it finishes, it prints instructions for entering the container and launching Claude Code.
 
+**What you should expect to see:**
+
+```
+╔══════════════════════════════════════════════════════╗
+║          DAAF Installer                              ║
+║          Data Analyst Augmentation Framework         ║
+╚══════════════════════════════════════════════════════╝
+
+[1/4] Creating build directory...
+[2/4] Downloading Docker files...
+[3/4] Building Docker image (this may take a few minutes)...
+....[lots of text scrolling by]
+[4/4] Cloning DAAF repository into container...
+
+✓ Installation complete!
+```
+
+The actual output will include more detail as each step progresses, but these are the key milestones to watch for.
+
 ### What the installer does
 
 1. **Creates an installation directory** called `daaf-docker/` in whatever folder your terminal is currently in, containing all the files you'll need to run and manage DAAF from here on. For example, if you open your terminal and it starts in your home folder (`~` on Mac/Linux, `C:\Users\YourName` on Windows), that's where `daaf-docker/` will be created. You can `cd` to a different location first if you'd prefer to install elsewhere.
 2. **Builds the Docker image** with Python 3.12, 50+ data science packages, geospatial libraries, and Claude Code pre-installed. The first build downloads everything and takes a few minutes; subsequent rebuilds use Docker's layer cache and are much faster.
 3. **Downloads the DAAF repository** directly into the Docker volume inside the container. This gives you a full file edit and version history via Git.
 4. **Enforces security controls on Claude.** One of the big benefits of using Docker is that we can really keep Claude Code under control. The Docker container runs as a non-root user with all Linux capabilities dropped (`cap_drop: ALL`) and privilege escalation explicitly blocked (`no-new-privileges`). Even if Claude Code somehow tried to do something it shouldn't, the operating system kernel would stop it.
+
+**If the build seems to hang** during `[3/4]`, give it a little extra time since installing the 50+ packages including geospatial libraries can take a minute here and there. As long as the output occasionally moves and updates every few minutes, let it finish. If anything goes wrong, you can close the terminal, delete the `daaf-docker` folder, and run the installer again; nothing is permanently changed on your computer.
 
 ### Launch Claude Code with DAAF
 
@@ -145,9 +170,9 @@ And then change the following settings by navigating down with your arrow keys, 
 - **"Auto-compact"** -- set to **False**. DAAF manages its own context carefully; auto-compaction can disrupt its orchestration and cause unexpected behavior.
 - **"Verbose output"** -- set to **True**. Verbose output lets you see what DAAF's agents are actually thinking behind the scenes, making it much easier to detect shortcuts in thinking, laziness in loading proper file references, and inconsistent logic/confusion. See [Understanding DAAF — The Non-Deterministic Side](02_understanding_daaf.md#the-non-deterministic-side-when-context-doesnt-load) for a deeper explanation of why this happens and what to watch for.
 
-Note that you can check which Claude model is being used by checking the indicator below the chat line (Opus, Sonnet, Haiku). DAAF defaults to using Opus 4.6. You can change which Claude model is being used at any time by typing `/model`. All development and testing of this project was done using **Opus 4.5** and **Opus 4.6**. I unfortunately think that these models are absolutely required; other models (Sonnet, Haiku) are cheaper but not nearly as capable and produce erratic, inconsistent results. The complexity of tasks embedded in the DAAF workflow (multi-agent orchestration) relies on the model's ability to follow complex, multi-step protocols reliably. This is also the reason why the Claude Max subscription is a likely prerequisite here: Opus models are very resource-intensive, and it's hard to complete the DAAF workflows under the "Pro" or "Free" tiers accordingly.
+Note that you can check which Claude model is being used by checking the indicator below the chat line (Opus, Sonnet, Haiku). DAAF defaults to using Opus 4.6 with 1 million token context -- no action needed on your part. You can change which Claude model is being used at any time by typing `/model`. All development and testing of this project was done using **Opus 4.5** and **Opus 4.6**. I unfortunately think that these models are absolutely required; other models (Sonnet, Haiku) are cheaper but not nearly as capable and produce erratic, inconsistent results. The complexity of tasks embedded in the DAAF workflow (multi-agent orchestration) relies on the model's ability to follow complex, multi-step protocols reliably. This is also the reason why the Claude Max subscription is a likely prerequisite here: Opus models are very resource-intensive, and it's hard to complete the DAAF workflows under the "Pro" or "Free" tiers accordingly.
 
-Opus 4.6 (unlike Opus 4.5) also allows you to select its "thinking level" by tapping left-and-right arrow keys while Opus 4.6 is selected on the /model selector in Claude Code. All tests I've conducted to date are using the "High" setting -- as this is a case where quality is far more important than quantity, I strongly recommend doing the same. This will have usage and API limit ramifications, though, so it is a reasonable thing to test out the tradeoffs for yourself! Please do report back with any findings so we can incorporate that into our guidance here.
+Opus 4.6 (unlike Opus 4.5) also allows you to select its "thinking level" by tapping left-and-right arrow keys while Opus 4.6 is selected on the /model selector in Claude Code. All tests I've conducted to date are using the "High" setting -- as this is a case where quality is far more important than quantity, I strongly recommend doing the same. This will have usage and API limit ramifications, though, so it is a reasonable thing to test out the tradeoffs for yourself (inclusive of Sonnet 4.6, which is also a viable experiment for the quality-cost frontier)! Please do report back with any findings so we can incorporate that into our guidance here.
 
 After these settings are done, you're ready to begin working!
 
@@ -245,6 +270,19 @@ docker compose exec daaf-docker bash
 # Launch Claude Code
 claude
 ```
+
+### Quick Reference
+
+| Operation | macOS / Linux | Windows |
+|-----------|---------------|---------|
+| Start session | `bash run_daaf.sh` | `.\run_daaf.ps1` |
+| End session | `/exit` → `exit` → `docker compose down` | Same |
+| Browse/edit files | `bash run_vscode.sh` | `.\run_vscode.ps1` |
+| View notebooks | `bash view_notebooks.sh` | `.\view_notebooks.ps1` |
+| View session logs | `bash view_logs.sh` | `.\view_logs.ps1` |
+| Back up research | `bash backup_daaf.sh` | `.\backup_daaf.ps1` |
+| Update DAAF | `bash update_daaf.sh` | `.\update_daaf.ps1` |
+
 
 ---
 
