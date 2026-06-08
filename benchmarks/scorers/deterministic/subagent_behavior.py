@@ -195,6 +195,56 @@ def _check_min_tool_calls(tool_calls: list[dict], min_count: int) -> tuple[bool,
     return False, f"Made {n} tool calls, expected at least {min_count}."
 
 
+def _check_writes_to_dir(tool_calls: list[dict], pattern: str) -> tuple[bool, str]:
+    """Check that at least one successful Write targets a path matching the pattern."""
+    write_calls = [
+        tc for tc in tool_calls
+        if tc["name"] == "Write" and tc.get("succeeded", True)
+    ]
+    for wc in write_calls:
+        file_path = wc["raw_input"].get("file_path", "")
+        if re.search(pattern, file_path):
+            return True, f"Wrote to path matching '{pattern}': {file_path}"
+    paths = [wc["raw_input"].get("file_path", "?") for wc in write_calls[:5]]
+    return False, f"No Write matched '{pattern}'. Written: {paths or 'none'}"
+
+
+def _check_reads_min_matching(tool_calls: list[dict], pattern: str, min_count: int) -> tuple[bool, str]:
+    """Check that at least N successful Read calls target paths matching the pattern."""
+    matching = [
+        tc for tc in tool_calls
+        if tc["name"] == "Read" and tc.get("succeeded", True)
+        and re.search(pattern, tc["raw_input"].get("file_path", ""))
+    ]
+    n = len(matching)
+    if n >= min_count:
+        paths = [m["raw_input"].get("file_path", "?").split("/")[-1] for m in matching[:5]]
+        return True, f"Read {n} files matching '{pattern}' (min {min_count}): {paths}"
+    paths = [m["raw_input"].get("file_path", "?").split("/")[-1] for m in matching]
+    return False, f"Read {n} files matching '{pattern}', expected {min_count}. Found: {paths or 'none'}"
+
+
+def _check_no_code_execution(tool_calls: list[dict]) -> tuple[bool, str]:
+    """Check that the subagent did NOT write scripts or execute code.
+
+    Read-only agents (source-researcher, search-agent) should never write .py
+    files or call run_with_capture.
+    """
+    violations = []
+    for tc in tool_calls:
+        if tc["name"] == "Write":
+            path = tc["raw_input"].get("file_path", "")
+            if path.endswith(".py"):
+                violations.append(f"Write({path.split('/')[-1]})")
+        if tc["name"] == "Bash":
+            cmd = tc["raw_input"].get("command", "")
+            if "run_with_capture" in cmd:
+                violations.append("Bash(run_with_capture)")
+    if not violations:
+        return True, "No code execution detected (read-only agent)."
+    return False, f"Code execution detected: {violations}"
+
+
 # --- Agent type behavior specifications ---
 
 BEHAVIOR_SPECS: dict[str, list[dict]] = {
@@ -203,6 +253,8 @@ BEHAVIOR_SPECS: dict[str, list[dict]] = {
          "check": "has_tool_calls"},
         {"name": "subagent_writes_script", "tier": "tier1",
          "check": "writes_file", "pattern": r"\.py$"},
+        {"name": "subagent_writes_to_adhoc", "tier": "tier2",
+         "check": "writes_to_dir", "pattern": r"scripts/adhoc/"},
         {"name": "subagent_uses_run_with_capture", "tier": "tier2",
          "check": "bash_contains", "pattern": r"run_with_capture"},
     ],
@@ -211,40 +263,50 @@ BEHAVIOR_SPECS: dict[str, list[dict]] = {
          "check": "has_tool_calls"},
         {"name": "subagent_loads_data_skill", "tier": "tier1",
          "check": "loads_skill", "pattern": r"education-data-source-"},
-        {"name": "subagent_reads_references", "tier": "tier2",
-         "check": "min_tool_calls", "min_count": 3},
+        {"name": "subagent_reads_skill_refs", "tier": "tier2",
+         "check": "reads_min_matching", "pattern": r"/references/", "min_count": 2},
+        {"name": "subagent_no_code_execution", "tier": "tier2",
+         "check": "no_code_execution"},
     ],
     "search-agent": [
         {"name": "subagent_active", "tier": "tier1",
          "check": "has_tool_calls"},
         {"name": "subagent_searches", "tier": "tier1",
          "check": "uses_tool_type", "tool_types": ["Grep", "Glob", "Read", "WebSearch"]},
-        {"name": "subagent_explores_broadly", "tier": "tier2",
-         "check": "min_tool_calls", "min_count": 3},
+        {"name": "subagent_reads_skill_files", "tier": "tier2",
+         "check": "reads_min_matching", "pattern": r"\.claude/skills/", "min_count": 3},
+        {"name": "subagent_no_code_execution", "tier": "tier2",
+         "check": "no_code_execution"},
     ],
     "debugger": [
         {"name": "subagent_active", "tier": "tier1",
          "check": "has_tool_calls"},
         {"name": "subagent_reads_problem_script", "tier": "tier1",
          "check": "reads_file", "pattern": r"test_fixtures/debugger/"},
-        {"name": "subagent_investigates", "tier": "tier2",
-         "check": "min_tool_calls", "min_count": 2},
+        {"name": "subagent_writes_diagnostic", "tier": "tier2",
+         "check": "writes_to_dir", "pattern": r"debug/|diag"},
+        {"name": "subagent_uses_run_with_capture", "tier": "tier2",
+         "check": "bash_contains", "pattern": r"run_with_capture"},
     ],
     "code-reviewer": [
         {"name": "subagent_active", "tier": "tier1",
          "check": "has_tool_calls"},
         {"name": "subagent_reads_target_script", "tier": "tier1",
          "check": "reads_file", "pattern": r"test_fixtures/code_reviewer/"},
-        {"name": "subagent_reviews_thoroughly", "tier": "tier2",
-         "check": "min_tool_calls", "min_count": 2},
+        {"name": "subagent_writes_cr_script", "tier": "tier2",
+         "check": "writes_to_dir", "pattern": r"scripts/cr/|_cr\d"},
+        {"name": "subagent_uses_run_with_capture", "tier": "tier2",
+         "check": "bash_contains", "pattern": r"run_with_capture"},
     ],
     "data-ingest": [
         {"name": "subagent_active", "tier": "tier1",
          "check": "has_tool_calls"},
         {"name": "subagent_reads_data_file", "tier": "tier1",
          "check": "references_file", "pattern": r"test_fixtures/data_ingest/"},
-        {"name": "subagent_profiles_data", "tier": "tier2",
-         "check": "min_tool_calls", "min_count": 2},
+        {"name": "subagent_writes_profiling_script", "tier": "tier2",
+         "check": "writes_file", "pattern": r"\.py$"},
+        {"name": "subagent_uses_run_with_capture", "tier": "tier2",
+         "check": "bash_contains", "pattern": r"run_with_capture"},
     ],
 }
 
@@ -263,12 +325,18 @@ def _run_check(spec: dict, tool_calls: list[dict]) -> tuple[bool, str]:
         return _check_references_file(tool_calls, spec["pattern"])
     elif check_type == "writes_file":
         return _check_writes_file(tool_calls, spec["pattern"])
+    elif check_type == "writes_to_dir":
+        return _check_writes_to_dir(tool_calls, spec["pattern"])
     elif check_type == "bash_contains":
         return _check_bash_contains(tool_calls, spec["pattern"])
     elif check_type == "loads_skill":
         return _check_loads_skill(tool_calls, spec["pattern"])
     elif check_type == "min_tool_calls":
         return _check_min_tool_calls(tool_calls, spec["min_count"])
+    elif check_type == "reads_min_matching":
+        return _check_reads_min_matching(tool_calls, spec["pattern"], spec["min_count"])
+    elif check_type == "no_code_execution":
+        return _check_no_code_execution(tool_calls)
     else:
         return False, f"Unknown check type: {check_type}"
 
