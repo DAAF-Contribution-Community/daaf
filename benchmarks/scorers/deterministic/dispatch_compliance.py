@@ -8,10 +8,14 @@ logs record an empty ``target`` field for Agent calls, losing the subagent_type
 and prompt content needed for scoring.
 
 Scoring criteria (all deterministic, no LLM involvement):
-  - agent_dispatched (tier1): At least one Agent tool call exists
+  - agent_dispatched (tier1): At least one Agent tool call exists and succeeds
   - correct_subagent_type (tier1): Agent call matches expected subagent_type
   - prompt_has_base_dir (tier2): Agent prompt contains "BASE_DIR"
   - prompt_has_mode_marker (tier2): Agent prompt contains "Ad Hoc" (case-insensitive)
+  - prompt_has_project_dir (tier2): Agent prompt contains "PROJECT_DIR"
+  - prompt_has_task_section (tier2): Agent prompt contains "## Task"
+  - prompt_has_context_section (tier2): Agent prompt contains "## Context"
+  - prompt_has_instructions (tier2): Agent prompt contains "## Instructions"
   - prompt_contains_required (tier2): All expected strings appear in Agent prompt
   - prompt_contains_any (tier2): At least one of the optional strings appears
 """
@@ -175,7 +179,60 @@ def score_dispatch_compliance(
         ),
     ))
 
-    # --- Criterion 5: prompt_contains_required (tier2) ---
+    # --- Criterion 5: prompt_has_project_dir (tier2) ---
+    # The Agent prompt must contain "PROJECT_DIR" (case-sensitive).
+    has_project_dir = any("PROJECT_DIR" in p for p in all_prompts)
+    results.append(CriterionResult(
+        name="prompt_has_project_dir",
+        passed=has_project_dir,
+        tier="tier2",
+        detail=(
+            "Found 'PROJECT_DIR' in agent prompt."
+            if has_project_dir
+            else "Missing 'PROJECT_DIR' in agent prompt."
+        ),
+    ))
+
+    # --- Criterion 6: prompt_has_task_section (tier2) ---
+    has_task = any("## Task" in p for p in all_prompts)
+    results.append(CriterionResult(
+        name="prompt_has_task_section",
+        passed=has_task,
+        tier="tier2",
+        detail=(
+            "Found '## Task' section in agent prompt."
+            if has_task
+            else "Missing '## Task' section in agent prompt."
+        ),
+    ))
+
+    # --- Criterion 7: prompt_has_context_section (tier2) ---
+    has_context = any("## Context" in p for p in all_prompts)
+    results.append(CriterionResult(
+        name="prompt_has_context_section",
+        passed=has_context,
+        tier="tier2",
+        detail=(
+            "Found '## Context' section in agent prompt."
+            if has_context
+            else "Missing '## Context' section in agent prompt."
+        ),
+    ))
+
+    # --- Criterion 8: prompt_has_instructions (tier2) ---
+    has_instructions = any("## Instructions" in p for p in all_prompts)
+    results.append(CriterionResult(
+        name="prompt_has_instructions",
+        passed=has_instructions,
+        tier="tier2",
+        detail=(
+            "Found '## Instructions' section in agent prompt."
+            if has_instructions
+            else "Missing '## Instructions' section in agent prompt."
+        ),
+    ))
+
+    # --- Criterion 9: prompt_contains_required (tier2) ---
     # Every string in expected["prompt_contains"] must appear in the prompt.
     missing = []
     for required_str in prompt_contains:
