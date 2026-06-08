@@ -147,6 +147,7 @@ def cleanup_sandbox(
         shutil.rmtree(sandbox_dir)
 
 
+
 def list_golden_checkpoints(mode: str | None = None) -> list[Path]:
     """List available golden checkpoint files, optionally filtered by mode."""
     if mode:

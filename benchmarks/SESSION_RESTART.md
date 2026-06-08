@@ -92,6 +92,12 @@ Initial estimator used Sonnet dollar-cost ratios to scale for other models — w
 #### 25. input_tokens from CLI is uncached
 The Claude CLI's usage block: `input_tokens` = uncached input count, `cache_read_input_tokens` = cached input count (additive). Total billed = input_tokens + cache_read_input_tokens. This differs from how some APIs report (where input_tokens includes cached).
 
+#### 26. modelUsage replaces usage for token extraction (subagent cost fix)
+**Discovery:** The CLI result message has two token fields: `usage` (main session only) and `modelUsage` (aggregated across main + all subagent sessions). The original code preferred `usage`, which systematically undercounted costs for any run that dispatched a subagent. Diagnostic run confirmed: Haiku dc-01 showed `usage.output_tokens=1,793` vs `modelUsage.outputTokens=6,939` (+5,146) and `usage.cache_read=128,562` vs `modelUsage.cacheReadInputTokens=733,748` (+605,186). **Fix:** `_extract_token_usage()` now prefers `modelUsage`, falls back to `usage`. All prior result.json files from runs that dispatched subagents have undercounted token costs. Calibration profiles in `cost_estimator.py` also need recalibration after the next batch run.
+
+#### 27. Pre-assigned session IDs via --session-id (contamination fix)
+**Discovery:** `_find_recent_session_id()` scanned `~/.claude/projects/-daaf/` for the most recently modified `.jsonl` file after a run timed out. With 290 orphaned session files from prior batches, it frequently picked up stale golden checkpoint sessions from Phase 3 runs, causing Phase 1 runs to be scored against the wrong transcript (14/45 Sonnet, 8/45 GLM). The root cause: mtime-based filesystem search in a shared directory during parallel execution. **Fix:** Cold-start runs now pre-generate a UUID and pass it via `--session-id`, making session ID deterministic. `_find_recent_session_id()` removed entirely.
+
 ---
 
 ## Key Behavioral Findings (Cumulative)
@@ -129,6 +135,22 @@ DeepSeek V4 Flash and Gemini 3.1 Flash Lite generate 65-70k input tokens for Pha
 
 #### OpenRouter models handle dispatch compliance reasonably well
 DeepSeek V4 Flash: 53% all-10-criteria pass rate on Phase 3 (vs Haiku 22%). Gemini 3.1 Flash Lite dispatches correctly every time (36/36) but has structural prompt gaps.
+
+#### CLI usage block excludes subagent tokens (cost undercount)
+The CLI's `usage` field reports ONLY main-session tokens. The `modelUsage` field aggregates across main + subagent sessions. Verified empirically: Haiku dc-01 `usage.output_tokens=1,793` vs `modelUsage.outputTokens=6,939`; `usage.cache_read=128,562` vs `modelUsage.cache_read=733,748`. This means all prior Phase 3 result.json cost figures for dispatched runs are undercounted. For Gemini (no caching), the undercount per dispatched run is estimated at ~$0.90 in missing input token costs.
+
+#### Harness sandbox contamination in Phase 1
+14/45 Sonnet and 8/45 GLM Phase 1 runs received wrong prompts — golden checkpoint content from dispatch compliance cases leaked into mode classification runs. These produce invalid scores. Root cause appears to be sandbox path reuse.
+
+#### Scorer blind spots
+- `confirmation_gate_present` misses tool-based gates (`AskUserQuestion` used by GLM) and phrasing variants ("shall we begin" used by Gemini)
+- `prompt_has_context_section` / `prompt_has_instructions` requires exact `## Context` / `## Instructions` headers; Sonnet uses task-appropriate alternatives (`## Specifications`, `## What to Search`)
+- `PROJECT_DIR` scored as required for read-only agents (search-agent, source-researcher) where it's semantically unnecessary
+
+#### Model-specific behavioral signatures from 3-model audit
+- **Sonnet 4.6:** Adapts prompt structure to task (semantically strong, structurally non-standard); 100% mode classification on clean prompts; perfect subagent type selection
+- **GLM 5.1:** 30-60s latency per tool call via OpenRouter dominates timing; sequential mkdir calls waste 200s; occasionally bypasses orchestrator entirely to answer directly
+- **Gemini 3.5 Flash:** "Do it myself" tendency instead of dispatching; ToolSearch hallucination wastes 2-5 calls per Phase 3 run; zero prompt caching drives extreme costs
 
 ---
 

@@ -7,8 +7,15 @@ models.yaml, to estimate costs before launching and compute actual costs after.
 Calibration data collected 2026-06-08 from Haiku 4.5, DeepSeek V4 Flash, and
 Gemini 3.1 Flash Lite (3 reps each, averaged across models).
 
-Token semantics: input_tokens from the Claude CLI is the UNCACHED count.
-cache_read_tokens is additive. Total billed input = input + cached.
+Token semantics: Token counts come from the CLI's modelUsage block (which
+aggregates across main session + subagent sessions). input_tokens is the
+UNCACHED count, cache_read_tokens is additive. Total billed input =
+input + cached.
+
+IMPORTANT: Calibration data below was collected BEFORE the modelUsage fix
+(2026-06-08) and reflects main-session-only tokens. These profiles will
+underestimate costs for cases that dispatch subagents. Recalibrate after
+the next batch run with the corrected token extraction.
 """
 
 from benchmarks.harness.models import ModelConfig, RunResult

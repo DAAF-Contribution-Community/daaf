@@ -9,6 +9,7 @@ import json
 import os
 import subprocess
 import time
+import uuid
 from pathlib import Path
 
 from benchmarks.harness.models import RunConfig, RunResult
@@ -42,6 +43,13 @@ def execute_run(config: RunConfig) -> RunResult:
             project_path=test_case.golden_project_path,
         )
 
+    # Pre-assign session ID for cold starts so we can always locate the
+    # transcript, even after timeout. Golden checkpoint runs already have
+    # a known session_id from prepare_sandbox; cold starts need one too.
+    cold_start_session_id = None
+    if not checkpoint_session_id:
+        cold_start_session_id = str(uuid.uuid4())
+
     # Build the CLI command
     cmd = [
         "claude",
@@ -59,13 +67,15 @@ def execute_run(config: RunConfig) -> RunResult:
     if checkpoint_session_id:
         cmd.extend(["--resume", checkpoint_session_id])
 
+    if cold_start_session_id:
+        cmd.extend(["--session-id", cold_start_session_id])
+
     if model.effort_level:
         cmd.extend(["--effort", model.effort_level])
 
     # Build environment with any model-specific overrides.
     # Explicitly set CLAUDE_CODE_EFFORT_LEVEL to match --effort flag so it
     # overrides the settings.json env value (which defaults to "high").
-    import os
     env = os.environ.copy()
     if model.effort_level:
         env["CLAUDE_CODE_EFFORT_LEVEL"] = model.effort_level
@@ -117,17 +127,16 @@ def execute_run(config: RunConfig) -> RunResult:
             stdout_text = e.stdout if isinstance(e.stdout, str) else e.stdout.decode("utf-8", errors="replace")
             _parse_json_output(stdout_text, result)
 
-        # Recover session_id: checkpoint first, then filesystem search
-        if not result.session_id and checkpoint_session_id:
-            result.session_id = checkpoint_session_id
+        # Use the known session_id — either from golden checkpoint or
+        # pre-assigned via --session-id for cold starts.
         if not result.session_id:
-            result.session_id = _find_recent_session_id(start_time)
+            result.session_id = checkpoint_session_id or cold_start_session_id or ""
 
     except Exception as e:
         result.duration_seconds = time.time() - start_time
         result.error = f"Execution error: {type(e).__name__}: {e}"
-        if checkpoint_session_id and not result.session_id:
-            result.session_id = checkpoint_session_id
+        if not result.session_id:
+            result.session_id = checkpoint_session_id or cold_start_session_id or ""
 
     # NOTE: cleanup_sandbox is NOT called here. The runner is responsible
     # for calling cleanup_sandbox() AFTER scoring and archiving the
@@ -201,20 +210,14 @@ def _extract_token_usage(msg: dict, result: "RunResult") -> None:
     """Extract token usage from a CLI result message.
 
     The CLI returns usage in two places:
-      - msg["usage"]: {input_tokens, output_tokens, cache_read_input_tokens,
-                        cache_creation_input_tokens, ...}
-      - msg["modelUsage"]: per-model breakdown with inputTokens, outputTokens, etc.
+      - msg["usage"]: main session only (excludes subagent token consumption)
+      - msg["modelUsage"]: per-model breakdown that aggregates across main
+        session AND all subagent sessions
 
-    We prefer "usage" (top-level aggregate). Falls back to modelUsage if needed.
+    We prefer "modelUsage" because it captures the true total cost including
+    subagents dispatched via the Agent tool. Falls back to "usage" when
+    modelUsage is absent (e.g., older CLI versions).
     """
-    usage = msg.get("usage")
-    if isinstance(usage, dict):
-        result.input_tokens = usage.get("input_tokens", 0)
-        result.output_tokens = usage.get("output_tokens", 0)
-        result.cache_read_tokens = usage.get("cache_read_input_tokens", 0)
-        result.cache_creation_tokens = usage.get("cache_creation_input_tokens", 0)
-        return
-
     model_usage = msg.get("modelUsage")
     if isinstance(model_usage, dict):
         for model_key, mu in model_usage.items():
@@ -223,6 +226,14 @@ def _extract_token_usage(msg: dict, result: "RunResult") -> None:
                 result.output_tokens += mu.get("outputTokens", 0)
                 result.cache_read_tokens += mu.get("cacheReadInputTokens", 0)
                 result.cache_creation_tokens += mu.get("cacheCreationInputTokens", 0)
+        return
+
+    usage = msg.get("usage")
+    if isinstance(usage, dict):
+        result.input_tokens = usage.get("input_tokens", 0)
+        result.output_tokens = usage.get("output_tokens", 0)
+        result.cache_read_tokens = usage.get("cache_read_input_tokens", 0)
+        result.cache_creation_tokens = usage.get("cache_creation_input_tokens", 0)
 
 
 def _extract_tool_content(content) -> str:
@@ -281,28 +292,6 @@ def _extract_tool_failures(result: RunResult) -> None:
             })
 
 
-def _find_recent_session_id(start_time: float) -> str:
-    """Find session_id for a cold-start run by looking for recently created session files.
-
-    Searches ~/.claude/projects/-daaf/ for .jsonl files created after start_time.
-    Returns the session_id (filename stem) of the most recent match, or empty string.
-    """
-    projects_dir = Path.home() / ".claude" / "projects" / "-daaf"
-    if not projects_dir.exists():
-        return ""
-
-    best_path = None
-    best_mtime = 0.0
-    for p in projects_dir.glob("*.jsonl"):
-        try:
-            stat = p.stat()
-            if stat.st_mtime >= start_time and stat.st_mtime > best_mtime:
-                best_mtime = stat.st_mtime
-                best_path = p
-        except OSError:
-            continue
-
-    return best_path.stem if best_path else ""
 
 
 def check_cli_available() -> bool:
