@@ -178,6 +178,15 @@ def prepare_fixtures(test_case: TestCase, sandbox_dir: str) -> TestCase:
 
     workspace_dir = Path(sandbox_dir) / "workspace"
     workspace_dir.mkdir(parents=True, exist_ok=True)
+
+    # Copy run_with_capture.sh so subagents find it at the expected relative path.
+    # Subagents treat the workspace as BASE_DIR and look for scripts/run_with_capture.sh there.
+    rwc_src = Path("/daaf/scripts/run_with_capture.sh")
+    if rwc_src.exists():
+        rwc_dest = workspace_dir / "scripts" / "run_with_capture.sh"
+        rwc_dest.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(rwc_src, rwc_dest)
+
     modified_prompt += f" Use {workspace_dir} as the project workspace for any scripts or output files."
 
     tc = copy.deepcopy(test_case)
