@@ -73,12 +73,21 @@ def extract_new_tool_calls(
                 tuid = block.get("tool_use_id", "")
                 is_error = block.get("is_error", False)
                 if tuid:
-                    tool_results[tuid] = not is_error
+                    error_content = ""
+                    if is_error:
+                        raw = block.get("content", "")
+                        if isinstance(raw, str):
+                            error_content = raw[:500]
+                        elif isinstance(raw, list):
+                            parts = [b.get("text", "") for b in raw if isinstance(b, dict)]
+                            error_content = " ".join(parts)[:500]
+                    tool_results[tuid] = {"succeeded": not is_error, "error_content": error_content}
 
     for tc in tool_calls:
         tuid = tc.get("tool_use_id", "")
         if tuid and tuid in tool_results:
-            tc["succeeded"] = tool_results[tuid]
+            tc["succeeded"] = tool_results[tuid]["succeeded"]
+            tc["error_content"] = tool_results[tuid]["error_content"]
 
     return tool_calls
 
@@ -161,10 +170,10 @@ def score_checkpoint(
                 detail=f"{'Loaded' if passed else 'Missing'}: {skill}",
             ))
 
-    # Check subagent_dispatched: expected Agent tool calls
+    # Check subagent_dispatched: expected SUCCESSFUL Agent tool calls
     if "subagent_dispatched" in expected:
         spec = expected["subagent_dispatched"]
-        agent_calls = [tc for tc in tool_calls if tc["name"] == "Agent"]
+        agent_calls = [tc for tc in tool_calls if tc["name"] == "Agent" and tc.get("succeeded", True)]
 
         if isinstance(spec, dict):
             expected_type = spec.get("type", "")

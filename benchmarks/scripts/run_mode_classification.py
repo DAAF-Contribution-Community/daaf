@@ -280,22 +280,21 @@ def run_one(test_case: TestCase, model: ModelConfig, rep: int, sandbox_suffix: s
     result = execute_run(config)
     elapsed = time.time() - start
 
-    # Score the run if it succeeded
-    if result.error or not result.session_id:
-        scored = {
-            "criteria": {
-                "orchestrator_skill_loaded": {"name": "orchestrator_skill_loaded", "passed": False, "detail": f"Run error: {result.error}"},
-                "mode_correct": {"name": "mode_correct", "passed": False, "detail": f"Run error: {result.error}"},
-                "confirmation_gate_present": {"name": "confirmation_gate_present", "passed": False, "detail": f"Run error: {result.error}"},
-                "no_premature_execution": {"name": "no_premature_execution", "passed": False, "detail": f"Run error: {result.error}"},
-            },
-            "transcript_path": None,
-        }
-    else:
-        # Brief pause for transcript to be written
+    # Always attempt scoring if we have a session_id — even for timed-out runs
+    if result.session_id:
         time.sleep(1)
         expected_mode = test_case.expected.get("mode", "")
         scored = score_run(result.session_id, expected_mode, CHECKPOINT_LINES)
+    else:
+        scored = {
+            "criteria": {
+                "orchestrator_skill_loaded": {"name": "orchestrator_skill_loaded", "passed": False, "detail": f"No session ID: {result.error}"},
+                "mode_correct": {"name": "mode_correct", "passed": False, "detail": f"No session ID: {result.error}"},
+                "confirmation_gate_present": {"name": "confirmation_gate_present", "passed": False, "detail": f"No session ID: {result.error}"},
+                "no_premature_execution": {"name": "no_premature_execution", "passed": False, "detail": f"No session ID: {result.error}"},
+            },
+            "transcript_path": None,
+        }
 
     return {
         "case_id": test_case.id,
@@ -311,6 +310,7 @@ def run_one(test_case: TestCase, model: ModelConfig, rep: int, sandbox_suffix: s
         "error": result.error,
         "criteria": scored["criteria"],
         "transcript_path": scored.get("transcript_path"),
+        "tool_failures": result.tool_failures,
     }
 
 
@@ -335,6 +335,7 @@ def _error_result(test_case: TestCase, model: ModelConfig, rep: int, error_msg: 
             "no_premature_execution": {"name": "no_premature_execution", "passed": False, "detail": f"Exception: {error_msg}"},
         },
         "transcript_path": None,
+        "tool_failures": [],
     }
 
 
@@ -421,6 +422,7 @@ def archive_results(all_results: list[dict], models: list[ModelConfig],
             "duration_s": r["duration_s"],
             "error": r["error"],
             "criteria": r["criteria"],
+            "tool_failures": r.get("tool_failures", []),
         }
         with open(run_dir / "result.json", "w") as f:
             json.dump(result_data, f, indent=2)
@@ -471,11 +473,25 @@ def archive_results(all_results: list[dict], models: list[ModelConfig],
             rates[crit] = {"passed": passed, "total": len(rows), "rate": passed / len(rows)}
         case_summaries[tc.id] = {"expected_mode": tc.expected.get("mode", ""), "criteria": rates}
 
+    # Tool failure summary
+    total_tool_failures = sum(len(r.get("tool_failures", [])) for r in all_results)
+    runs_with_failures = sum(1 for r in all_results if r.get("tool_failures"))
+    tool_failure_by_name = {}
+    for r in all_results:
+        for tf in r.get("tool_failures", []):
+            name = tf.get("tool_name", "unknown")
+            tool_failure_by_name[name] = tool_failure_by_name.get(name, 0) + 1
+
     summary = {
         "total_runs": len(all_results),
         "total_cost_usd": total_cost,
         "wall_time_s": round(wall_time, 1),
         "errored_runs": errored,
+        "tool_failures": {
+            "total": total_tool_failures,
+            "runs_affected": runs_with_failures,
+            "by_tool": tool_failure_by_name,
+        },
         "by_model": model_summaries,
         "by_case": case_summaries,
     }
@@ -508,6 +524,12 @@ def print_run_result(r: dict):
         crit = criteria.get(crit_name, {})
         if not crit.get("passed", False):
             print(f"  [{crit_name}] {crit.get('detail', 'no detail')}")
+
+    tool_failures = r.get("tool_failures", [])
+    if tool_failures:
+        print(f"  Tool failures ({len(tool_failures)}):")
+        for tf in tool_failures[:5]:
+            print(f"    {tf.get('tool_name', '?')}: {tf.get('content', '')[:120]}")
 
 
 def print_summary(all_results: list[dict], models: list[ModelConfig],
@@ -583,7 +605,9 @@ def print_summary(all_results: list[dict], models: list[ModelConfig],
     total_cost = sum(r["cost_usd"] for r in all_results)
     errored = sum(1 for r in all_results if r.get("error"))
     error_note = f" ({errored} errored/timed-out)" if errored else ""
-    print(f"\nTotal: {len(all_results)} runs{error_note} | ${total_cost:.2f} | {wall_time:.0f}s wall time")
+    total_tool_failures = sum(len(r.get("tool_failures", [])) for r in all_results)
+    tf_note = f" | {total_tool_failures} tool failures" if total_tool_failures else ""
+    print(f"\nTotal: {len(all_results)} runs{error_note} | ${total_cost:.2f} | {wall_time:.0f}s wall time{tf_note}")
 
 
 # --- Main ---

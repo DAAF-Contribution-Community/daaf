@@ -92,6 +92,7 @@ class RunResult:
     audit_entries: list[dict] = field(default_factory=list)
     transcript_path: str = ""
     files_created: list[str] = field(default_factory=list)
+    tool_failures: list[dict] = field(default_factory=list)
     error: Optional[str] = None
     exit_code: int = 0
 
@@ -109,6 +110,7 @@ class RunResult:
             "audit_entry_count": len(self.audit_entries),
             "transcript_path": self.transcript_path,
             "files_created": self.files_created,
+            "tool_failures": self.tool_failures,
             "error": self.error,
             "exit_code": self.exit_code,
         }

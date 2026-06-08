@@ -94,45 +94,57 @@ def score_dispatch_compliance(
     prompt_contains_any = expected.get("prompt_contains_any", [])
 
     # --- Criterion 1: agent_dispatched (tier1) ---
-    # At least one Agent tool call must exist in new assistant messages.
-    dispatched = len(agent_calls) > 0
+    # At least one Agent tool call must exist AND succeed.
+    # A failed dispatch (is_error=true) means the system rejected the launch.
+    succeeded_calls = [ac for ac in agent_calls if ac.get("succeeded", True)]
+    failed_calls = [ac for ac in agent_calls if not ac.get("succeeded", True)]
+    dispatched = len(succeeded_calls) > 0
+
+    detail_parts = []
+    if succeeded_calls:
+        detail_parts.append(f"{len(succeeded_calls)} successful Agent call(s)")
+    if failed_calls:
+        detail_parts.append(f"{len(failed_calls)} failed")
+    if not agent_calls:
+        detail_parts.append("No Agent tool calls found after checkpoint boundary")
+
     results.append(CriterionResult(
         name="agent_dispatched",
         passed=dispatched,
         tier="tier1",
-        detail=(
-            f"Found {len(agent_calls)} Agent call(s)."
-            if dispatched
-            else "No Agent tool calls found after checkpoint boundary."
-        ),
+        detail=". ".join(detail_parts) + ".",
     ))
 
     # --- Criterion 2: correct_subagent_type (tier1) ---
-    # At least one Agent call must have the expected subagent_type.
+    # At least one SUCCESSFUL Agent call must have the expected subagent_type.
     matching_calls = [
-        ac for ac in agent_calls
+        ac for ac in succeeded_calls
         if ac["subagent_type"] == expected_type
     ]
     type_correct = len(matching_calls) > 0
-    actual_types = [ac["subagent_type"] for ac in agent_calls] if agent_calls else []
+    actual_types = [ac["subagent_type"] for ac in succeeded_calls] if succeeded_calls else []
+
+    type_detail = (
+        f"Found Agent({expected_type})."
+        if type_correct
+        else f"Expected Agent({expected_type}), found: {actual_types or 'no successful Agent calls'}."
+    )
+    # Note failed attempts of the right type for diagnostics
+    failed_right_type = [ac for ac in failed_calls if ac["subagent_type"] == expected_type]
+    if failed_right_type and not type_correct:
+        type_detail += f" ({len(failed_right_type)} attempt(s) of correct type failed.)"
+
     results.append(CriterionResult(
         name="correct_subagent_type",
         passed=type_correct,
         tier="tier1",
-        detail=(
-            f"Found Agent({expected_type})."
-            if type_correct
-            else (
-                f"Expected Agent({expected_type}), "
-                f"found: {actual_types or 'no Agent calls'}."
-            )
-        ),
+        detail=type_detail,
     ))
 
-    # For prompt-level criteria, examine prompts from Agent calls that match
-    # the expected subagent_type. If none match, fall back to all Agent calls
-    # so we still report what was found.
-    prompt_source = matching_calls if matching_calls else agent_calls
+    # For prompt-level criteria, examine prompts from SUCCESSFUL Agent calls
+    # that match the expected subagent_type. If none match, fall back to all
+    # successful calls so we still report what was found.
+    prompt_source = matching_calls if matching_calls else succeeded_calls
     all_prompts = [ac["prompt"] for ac in prompt_source]
 
     # --- Criterion 3: prompt_has_base_dir (tier2) ---

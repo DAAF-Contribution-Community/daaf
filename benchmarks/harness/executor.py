@@ -6,6 +6,7 @@ the full framework is exercised.
 """
 
 import json
+import os
 import subprocess
 import time
 from pathlib import Path
@@ -98,63 +99,8 @@ def execute_run(config: RunConfig) -> RunResult:
             result.error = f"CLI exited with code {proc.returncode}: {proc.stderr[:500]}"
             return result
 
-        # Parse JSON output.
-        # claude -p --output-format json returns a JSON array of messages:
-        #   [{type: "system", subtype: "init", ...},
-        #    {type: "assistant", message: {content: [...]}},
-        #    ...,
-        #    {type: "result", subtype: "success", session_id, result, total_cost_usd, ...}]
-        stdout = proc.stdout.strip()
-        if stdout:
-            try:
-                output = json.loads(stdout)
-
-                # Handle list-of-messages format
-                if isinstance(output, list):
-                    result.raw_json = {"messages": output}
-
-                    # Find the result message (last item with type=result)
-                    result_msg = None
-                    for msg in reversed(output):
-                        if isinstance(msg, dict) and msg.get("type") == "result":
-                            result_msg = msg
-                            break
-
-                    if result_msg:
-                        result.session_id = result_msg.get("session_id", "")
-                        result.response_text = result_msg.get("result", "")
-                        result.total_cost_usd = result_msg.get("total_cost_usd", 0.0)
-                        result.total_turns = result_msg.get("num_turns", 0)
-                        duration_ms = result_msg.get("duration_ms", 0)
-                        if duration_ms:
-                            result.duration_seconds = duration_ms / 1000.0
-
-                    # Also extract the last assistant text as response if
-                    # result.response_text is empty
-                    if not result.response_text:
-                        for msg in reversed(output):
-                            if not isinstance(msg, dict):
-                                continue
-                            if msg.get("type") == "assistant":
-                                content = msg.get("message", {}).get("content", [])
-                                for block in content:
-                                    if isinstance(block, dict) and block.get("type") == "text":
-                                        result.response_text = block.get("text", "")
-                                        break
-                                if result.response_text:
-                                    break
-
-                elif isinstance(output, dict):
-                    # Fallback: single dict format (future-proofing)
-                    result.raw_json = output
-                    result.session_id = output.get("session_id", "")
-                    result.response_text = output.get("result", "")
-                    result.total_cost_usd = output.get("total_cost_usd", 0.0)
-                    result.total_turns = output.get("num_turns", 0)
-
-            except json.JSONDecodeError as e:
-                result.error = f"Failed to parse JSON output: {e}"
-                result.response_text = stdout[:2000]
+        _parse_json_output(proc.stdout, result)
+        _extract_tool_failures(result)
 
         # Capture stderr for diagnostics (but don't treat as error)
         if proc.stderr.strip():
@@ -162,13 +108,20 @@ def execute_run(config: RunConfig) -> RunResult:
             if result.error:
                 result.error += f"\nstderr: {stderr_summary}"
 
-    except subprocess.TimeoutExpired:
+    except subprocess.TimeoutExpired as e:
         result.duration_seconds = time.time() - start_time
         result.error = f"Timed out after {timeout}s"
-        # Preserve the session_id so the runner can still find and score
-        # the live session file before cleanup
-        if checkpoint_session_id and not result.session_id:
+
+        # Try parsing partial stdout captured before kill
+        if e.stdout:
+            stdout_text = e.stdout if isinstance(e.stdout, str) else e.stdout.decode("utf-8", errors="replace")
+            _parse_json_output(stdout_text, result)
+
+        # Recover session_id: checkpoint first, then filesystem search
+        if not result.session_id and checkpoint_session_id:
             result.session_id = checkpoint_session_id
+        if not result.session_id:
+            result.session_id = _find_recent_session_id(start_time)
 
     except Exception as e:
         result.duration_seconds = time.time() - start_time
@@ -181,6 +134,145 @@ def execute_run(config: RunConfig) -> RunResult:
     # transcript. This ensures timed-out runs still produce scorable data.
 
     return result
+
+
+def _parse_json_output(stdout_raw: str, result: RunResult) -> None:
+    """Parse claude -p JSON output into a RunResult.
+
+    claude -p --output-format json returns a JSON array of messages:
+      [{type: "system", subtype: "init", ...},
+       {type: "assistant", message: {content: [...]}},
+       ...,
+       {type: "result", subtype: "success", session_id, result, total_cost_usd, ...}]
+    """
+    stdout = stdout_raw.strip()
+    if not stdout:
+        return
+
+    try:
+        output = json.loads(stdout)
+    except json.JSONDecodeError as e:
+        result.error = f"Failed to parse JSON output: {e}"
+        result.response_text = stdout[:2000]
+        return
+
+    if isinstance(output, list):
+        result.raw_json = {"messages": output}
+
+        result_msg = None
+        for msg in reversed(output):
+            if isinstance(msg, dict) and msg.get("type") == "result":
+                result_msg = msg
+                break
+
+        if result_msg:
+            result.session_id = result_msg.get("session_id", "")
+            result.response_text = result_msg.get("result", "")
+            result.total_cost_usd = result_msg.get("total_cost_usd", 0.0)
+            result.total_turns = result_msg.get("num_turns", 0)
+            duration_ms = result_msg.get("duration_ms", 0)
+            if duration_ms:
+                result.duration_seconds = duration_ms / 1000.0
+
+        if not result.response_text:
+            for msg in reversed(output):
+                if not isinstance(msg, dict):
+                    continue
+                if msg.get("type") == "assistant":
+                    content = msg.get("message", {}).get("content", [])
+                    for block in content:
+                        if isinstance(block, dict) and block.get("type") == "text":
+                            result.response_text = block.get("text", "")
+                            break
+                    if result.response_text:
+                        break
+
+    elif isinstance(output, dict):
+        result.raw_json = output
+        result.session_id = output.get("session_id", "")
+        result.response_text = output.get("result", "")
+        result.total_cost_usd = output.get("total_cost_usd", 0.0)
+        result.total_turns = output.get("num_turns", 0)
+
+
+def _extract_tool_content(content) -> str:
+    """Extract text from a tool_result content field.
+
+    Content can be a plain string or a list of content blocks:
+      [{"type": "text", "text": "..."}, ...]
+    """
+    if isinstance(content, str):
+        return content[:500]
+    if isinstance(content, list):
+        parts = []
+        for block in content:
+            if isinstance(block, dict) and block.get("type") == "text":
+                parts.append(block.get("text", ""))
+            elif isinstance(block, str):
+                parts.append(block)
+        return " ".join(parts)[:500]
+    return str(content)[:500]
+
+
+def _extract_tool_failures(result: RunResult) -> None:
+    """Extract tool call failures from parsed JSON output.
+
+    Scans the messages array for tool_result blocks with is_error=True,
+    cross-references with tool_use blocks to get the tool name.
+    """
+    messages = result.raw_json.get("messages", [])
+    if not messages:
+        return
+
+    # Build tool_use_id -> tool_name map from assistant messages
+    tool_names = {}
+    for msg in messages:
+        if not isinstance(msg, dict) or msg.get("type") != "assistant":
+            continue
+        for block in msg.get("message", {}).get("content", []):
+            if isinstance(block, dict) and block.get("type") == "tool_use":
+                tool_names[block.get("id", "")] = block.get("name", "unknown")
+
+    # Find failed tool_results in user messages
+    for msg in messages:
+        if not isinstance(msg, dict) or msg.get("type") != "user":
+            continue
+        for block in msg.get("message", {}).get("content", []):
+            if not isinstance(block, dict) or block.get("type") != "tool_result":
+                continue
+            if not block.get("is_error", False):
+                continue
+
+            tool_use_id = block.get("tool_use_id", "")
+            result.tool_failures.append({
+                "tool_use_id": tool_use_id,
+                "tool_name": tool_names.get(tool_use_id, "unknown"),
+                "content": _extract_tool_content(block.get("content", "")),
+            })
+
+
+def _find_recent_session_id(start_time: float) -> str:
+    """Find session_id for a cold-start run by looking for recently created session files.
+
+    Searches ~/.claude/projects/-daaf/ for .jsonl files created after start_time.
+    Returns the session_id (filename stem) of the most recent match, or empty string.
+    """
+    projects_dir = Path.home() / ".claude" / "projects" / "-daaf"
+    if not projects_dir.exists():
+        return ""
+
+    best_path = None
+    best_mtime = 0.0
+    for p in projects_dir.glob("*.jsonl"):
+        try:
+            stat = p.stat()
+            if stat.st_mtime >= start_time and stat.st_mtime > best_mtime:
+                best_mtime = stat.st_mtime
+                best_path = p
+        except OSError:
+            continue
+
+    return best_path.stem if best_path else ""
 
 
 def check_cli_available() -> bool:

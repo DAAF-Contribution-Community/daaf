@@ -258,6 +258,7 @@ def run_one(test_case: TestCase, model: ModelConfig, rep: int,
         "subagent_criteria": scored.get("subagent_criteria", []),
         "transcript_path": archived_transcript or scored.get("transcript_path"),
         "tool_call_count": scored.get("tool_call_count", 0),
+        "tool_failures": result.tool_failures,
     }
 
 
@@ -286,6 +287,7 @@ def _error_result(test_case: TestCase, model: ModelConfig, rep: int, error_msg: 
         "subagent_criteria": [],
         "transcript_path": None,
         "tool_call_count": 0,
+        "tool_failures": [],
     }
 
 
@@ -375,6 +377,7 @@ def archive_results(all_results: list[dict], models: list[ModelConfig],
             "criteria": r["criteria"],
             "subagent_criteria": r.get("subagent_criteria", []),
             "tool_call_count": r["tool_call_count"],
+            "tool_failures": r.get("tool_failures", []),
         }
         with open(run_dir / "result.json", "w") as f:
             json.dump(result_data, f, indent=2)
@@ -492,11 +495,24 @@ def archive_results(all_results: list[dict], models: list[ModelConfig],
                 rates[crit_name] = {"passed": passed, "total": total, "rate": passed / total}
         subagent_by_model[model.name] = {"criteria": rates, "runs_with_subagent": len(rows)}
 
+    total_tool_failures = sum(len(r.get("tool_failures", [])) for r in all_results)
+    runs_with_failures = sum(1 for r in all_results if r.get("tool_failures"))
+    tool_failure_by_name = {}
+    for r in all_results:
+        for tf in r.get("tool_failures", []):
+            name = tf.get("tool_name", "unknown")
+            tool_failure_by_name[name] = tool_failure_by_name.get(name, 0) + 1
+
     summary = {
         "total_runs": len(all_results),
         "total_cost_usd": total_cost,
         "wall_time_s": round(wall_time, 1),
         "errored_runs": errored,
+        "tool_failures": {
+            "total": total_tool_failures,
+            "runs_affected": runs_with_failures,
+            "by_tool": tool_failure_by_name,
+        },
         "criterion_names": all_criterion_names,
         "by_model": model_summaries,
         "by_case": case_summaries,
@@ -531,6 +547,12 @@ def print_run_result(r: dict):
 
     if r.get("error"):
         print(f"  ERROR: {r['error']}")
+
+    tool_failures = r.get("tool_failures", [])
+    if tool_failures:
+        print(f"  Tool failures ({len(tool_failures)}):")
+        for tf in tool_failures[:5]:
+            print(f"    {tf.get('tool_name', '?')}: {tf.get('content', '')[:120]}")
 
     # Print detail for any failures
     for crit in criteria:
@@ -700,7 +722,9 @@ def print_summary(all_results: list[dict], models: list[ModelConfig],
     total_cost = sum(r["cost_usd"] for r in all_results)
     errored = sum(1 for r in all_results if r.get("error"))
     error_note = f" ({errored} errored/timed-out)" if errored else ""
-    print(f"\nTotal: {len(all_results)} runs{error_note} | ${total_cost:.2f} | {wall_time:.0f}s wall time")
+    total_tool_failures = sum(len(r.get("tool_failures", [])) for r in all_results)
+    tf_note = f" | {total_tool_failures} tool failures" if total_tool_failures else ""
+    print(f"\nTotal: {len(all_results)} runs{error_note} | ${total_cost:.2f} | {wall_time:.0f}s wall time{tf_note}")
 
 
 # --- Main ---
