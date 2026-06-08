@@ -199,33 +199,53 @@ The CLI's `usage` field reports ONLY main-session tokens. The `modelUsage` field
 - `config/models.yaml` — Model matrix (14 models: 3 Anthropic + 11 OpenRouter, with pricing)
 
 ### Results (gitignored, on disk)
-- Clean runs in progress: Sonnet 4.6, GLM 5.1, Gemini 3.5 Flash (3 reps × 3 phases = 324 runs)
-- All prior results cleared
+- Prior batch: Sonnet 4.6, GLM 5.1, Gemini 3.5 Flash (3 reps × 3 phases = 324 runs) — pre-fix, cost data unreliable
+- Current batch (post-fix): Haiku 4.5, DeepSeek V4 Flash, Gemma 4 26B, Qwen 3.6 27B (3 reps × 3 phases = 432 runs)
+  - Phase 1: `results/20260608_194338/` — 180 runs, $2.43, 1 timeout
+  - Phase 2: `results/20260608_195118/` — 108 runs, $2.14, 23 timeouts
+  - Phase 3: `results/20260608_201041/` — 144 runs, $6.19, 68 timeouts
+- Diagnostic script: `scripts/diag_token_accounting.py` — verified modelUsage vs usage gap
+
+### Scripts (new this session)
+- `scripts/diag_token_accounting.py` — One-shot diagnostic that runs a single case and compares `usage` vs `modelUsage` token fields
 
 ---
 
 ## Next Session: Planned Work
 
-### 1. HTML Results Viewer (PRIMARY)
+### 1. OpenRouter Cost Accuracy (UNRESOLVED)
+**Problem:** OpenRouter reasoning models (DeepSeek, Qwen, Gemma) bill for reasoning/thinking tokens that the Claude CLI does not report. Empirical gap: 2-2.5x between our computed costs and actual OpenRouter billing. Root cause confirmed: OpenRouter's chat completion response includes `completion_tokens_details.reasoning_tokens` and a `cost` field, but the Claude CLI discards these provider-specific fields when mapping to Anthropic's usage format. `costUSD` in modelUsage uses Anthropic pricing ($3/M input) — wrong for OpenRouter.
+
+**Verified facts:**
+- Qwen "2+2" prompt: 200 completion_tokens but 208 reasoning_tokens (reasoning EXCEEDS visible output)
+- Haiku via OpenRouter: 0 reasoning_tokens (same tokenizer, no thinking)
+- Actual billing vs computed: DeepSeek 2.03x, Gemma 2.22x, Qwen 2.44x
+
+**Options to explore:**
+- Query OpenRouter `/api/v1/generation?id={gen_id}` post-run (404'd in testing — may need different auth or endpoint format)
+- Store empirical reasoning multipliers per model in models.yaml
+- Accept ~2x undercount for OpenRouter reasoning models and document clearly
+
+### 2. HTML Results Viewer
 Browser-based viewer for `results/{timestamp}/summary.json` with:
 - Run selector: pick result sets by timestamp, see metadata (models, phases, reps)
 - Model comparison table: pass rates by criterion across models
 - Drill-down to individual runs: token counts, cost, duration, criterion pass/fail with detail text
 - Subagent behavior breakdown (Phase 3)
-- Cost summary: per-model, per-phase, total
-- The clean runs from this session (Sonnet 4.6, GLM 5.1, Gemini 3.5 Flash, 3 reps each) provide the data to build and test against
+- Cost summary: per-model, per-phase, total (with caveat for OpenRouter reasoning costs)
+- Multiple result sets on disk to build and test against
 
-### 2. Exam-Style Knowledge Tests
+### 3. Exam-Style Knowledge Tests
 Separate test category — framework knowledge questions without execution:
 - "What subagent type should be dispatched for Stage 5 data fetch?"
 - "What are the required sections in a research-executor dispatch prompt?"
 Deterministic scoring against known-correct answers. Very cheap (~$0.02/run).
 
-### 3. Validation Run: All Anthropic Models
-Run Opus, Sonnet, and Haiku with the complete updated system (computed costs, token capture, 10 dispatch criteria, 24 subagent behavior specs). First clean Anthropic-only baseline.
+### 4. Validation Run: All Anthropic Models
+Run Opus, Sonnet, and Haiku with the complete updated system (modelUsage tokens, deterministic session IDs, improved scorers). First clean Anthropic-only baseline with accurate cost data.
 
-### 4. Rescore Prior Runs
-The `rescore_subagent_behavior.py` script can rescore existing results post-hoc. Not applicable now (prior results cleared), but useful after accumulating new runs.
+### 5. Rescore Prior Runs
+The `rescore_subagent_behavior.py` script can rescore existing results post-hoc. Could rescore prior Sonnet/GLM/Gemini batch with updated scorers (flexible headers, AskUserQuestion detection) to see impact.
 
 ---
 
@@ -233,4 +253,4 @@ The `rescore_subagent_behavior.py` script can rescore existing results post-hoc.
 
 To resume this work, start a new session and paste:
 
-> Launch framework development mode. We're continuing work on the DAAF benchmark system at `/daaf/benchmarks`. Read `/daaf/benchmarks/SESSION_RESTART.md` for the complete state of what was built, architecture decisions, and next steps. The priority for this session is building the HTML results viewer (item 1 in "Next Session: Planned Work"). There should be clean benchmark results in `benchmarks/results/` from 3 models (Sonnet 4.6, GLM 5.1, Gemini 3.5 Flash) × 3 reps across all 3 phases — use those as the data source to build and test the viewer. Start by reading the restart file and examining the result directory structure, then come back to me with a plan before starting work.
+> Launch framework development mode. We're continuing work on the DAAF benchmark system at `/daaf/benchmarks`. Read `/daaf/benchmarks/SESSION_RESTART.md` for the complete state of what was built, architecture decisions, and next steps. This session made two major harness fixes (modelUsage for subagent cost tracking, deterministic session IDs to prevent transcript contamination), five scorer improvements (AskUserQuestion detection, phrasing variants, flexible headers, conditional PROJECT_DIR, timed_out field), and ran a 4-model validation batch (Haiku, DeepSeek V4 Flash, Gemma 4 26B, Qwen 3.6 27B × 3 reps × 3 phases). We also diagnosed that OpenRouter reasoning model costs are ~2-2.5x undercounted because the CLI discards reasoning token counts. The top priorities for the next session are: (1) resolving OpenRouter cost accuracy if possible, and (2) building the HTML results viewer. Start by reading the restart file, then come back with a plan.
