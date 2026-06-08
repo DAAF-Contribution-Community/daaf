@@ -27,12 +27,12 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-import yaml
-
 sys.path.insert(0, "/daaf")
 
 from benchmarks.harness.models import TestCase, ModelConfig, RunConfig
 from benchmarks.harness.executor import execute_run
+from benchmarks.harness.model_loader import load_models, filter_models, add_model_args
+from benchmarks.harness.cost_estimator import estimate_batch_cost, format_estimate, compute_cost
 from benchmarks.scorers.deterministic.checkpoint_adherence import (
     extract_new_tool_calls,
     find_benchmark_transcript,
@@ -69,19 +69,6 @@ CHECKPOINT_LINES = 0
 
 
 # --- Load config ---
-
-def load_models_from_yaml(path: Path) -> dict[str, ModelConfig]:
-    """Load model configurations from models.yaml."""
-    with open(path) as f:
-        data = yaml.safe_load(f)
-    models = {}
-    for m in data.get("models", []):
-        config = ModelConfig.from_dict(m)
-        # Create a short key from the name (lowercase, spaces to hyphens)
-        key = config.name.lower().replace(" ", "-").replace(".", "")
-        models[key] = config
-    return models
-
 
 def load_test_cases(path: Path) -> list[TestCase]:
     """Load test cases from cases.jsonl."""
@@ -296,16 +283,23 @@ def run_one(test_case: TestCase, model: ModelConfig, rep: int, sandbox_suffix: s
             "transcript_path": None,
         }
 
+    actual_cost = compute_cost(model, result)
+
     return {
         "case_id": test_case.id,
         "expected_mode": test_case.expected.get("mode", ""),
         "model": model.name,
         "model_id": model.id,
+        "provider": model.provider,
         "effort_level": model.effort_level or "default",
         "rep": rep,
         "session_id": result.session_id,
         "turns": result.total_turns,
-        "cost_usd": result.total_cost_usd,
+        "computed_cost_usd": actual_cost,
+        "input_tokens": result.input_tokens,
+        "output_tokens": result.output_tokens,
+        "cache_read_tokens": result.cache_read_tokens,
+        "cache_creation_tokens": result.cache_creation_tokens,
         "duration_s": round(elapsed, 1),
         "error": result.error,
         "criteria": scored["criteria"],
@@ -321,11 +315,16 @@ def _error_result(test_case: TestCase, model: ModelConfig, rep: int, error_msg: 
         "expected_mode": test_case.expected.get("mode", ""),
         "model": model.name,
         "model_id": model.id,
+        "provider": model.provider,
         "effort_level": model.effort_level or "default",
         "rep": rep,
         "session_id": "",
         "turns": 0,
-        "cost_usd": 0.0,
+        "computed_cost_usd": 0.0,
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_creation_tokens": 0,
         "duration_s": 0.0,
         "error": error_msg,
         "criteria": {
@@ -386,6 +385,7 @@ def archive_results(all_results: list[dict], models: list[ModelConfig],
             {
                 "name": m.name,
                 "id": m.id,
+                "provider": m.provider,
                 "effort_level": m.effort_level or "default",
             }
             for m in models
@@ -414,11 +414,16 @@ def archive_results(all_results: list[dict], models: list[ModelConfig],
             "expected_mode": r["expected_mode"],
             "model": r["model"],
             "model_id": r["model_id"],
+            "provider": r.get("provider", "anthropic"),
             "effort_level": r["effort_level"],
             "rep": r["rep"],
             "session_id": r["session_id"],
             "turns": r["turns"],
-            "cost_usd": r["cost_usd"],
+            "computed_cost_usd": r["computed_cost_usd"],
+            "input_tokens": r.get("input_tokens", 0),
+            "output_tokens": r.get("output_tokens", 0),
+            "cache_read_tokens": r.get("cache_read_tokens", 0),
+            "cache_creation_tokens": r.get("cache_creation_tokens", 0),
             "duration_s": r["duration_s"],
             "error": r["error"],
             "criteria": r["criteria"],
@@ -433,7 +438,7 @@ def archive_results(all_results: list[dict], models: list[ModelConfig],
             shutil.copy2(transcript_src, run_dir / "transcript.jsonl")
 
     # --- Write summary.json ---
-    total_cost = sum(r["cost_usd"] for r in all_results)
+    total_cost = sum(r["computed_cost_usd"] for r in all_results)
     errored = sum(1 for r in all_results if r.get("error"))
 
     criterion_names = [
@@ -458,7 +463,7 @@ def archive_results(all_results: list[dict], models: list[ModelConfig],
             if all(r["criteria"].get(c, {}).get("passed", False) for c in criterion_names)
         )
         rates["all_criteria"] = {"passed": all_pass, "total": len(rows), "rate": all_pass / len(rows)}
-        avg_cost = sum(r["cost_usd"] for r in rows) / len(rows)
+        avg_cost = sum(r["computed_cost_usd"] for r in rows) / len(rows)
         model_summaries[model.name] = {"criteria": rates, "avg_cost_usd": avg_cost}
 
     # Per-case pass rates
@@ -514,7 +519,7 @@ def print_run_result(r: dict):
     print(f"\n--- {r['case_id']} | {r['model']} rep {r['rep']} ---")
     print(f"  Mode: {r['expected_mode']}")
     print(f"  orchestrator_skill={c1} | mode_correct={c2} | confirm_gate={c3} | no_premature={c4}")
-    print(f"  Turns: {r['turns']} | Cost: ${r['cost_usd']:.3f} | Duration: {r['duration_s']}s")
+    print(f"  Turns: {r['turns']} | Cost: ${r['computed_cost_usd']:.3f} | Duration: {r['duration_s']}s")
 
     if r.get("error"):
         print(f"  ERROR: {r['error']}")
@@ -563,7 +568,7 @@ def print_summary(all_results: list[dict], models: list[ModelConfig],
             1 for r in rows
             if all(r["criteria"].get(c, {}).get("passed", False) for c in criterion_names)
         )
-        avg_cost = sum(r["cost_usd"] for r in rows) / n
+        avg_cost = sum(r["computed_cost_usd"] for r in rows) / n
         print(
             f"{model.name:<20} | "
             f"{counts[0]}/{n:<9} | "
@@ -602,7 +607,7 @@ def print_summary(all_results: list[dict], models: list[ModelConfig],
                 f"{counts[3]}/{n:<11}"
             )
 
-    total_cost = sum(r["cost_usd"] for r in all_results)
+    total_cost = sum(r["computed_cost_usd"] for r in all_results)
     errored = sum(1 for r in all_results if r.get("error"))
     error_note = f" ({errored} errored/timed-out)" if errored else ""
     total_tool_failures = sum(len(r.get("tool_failures", [])) for r in all_results)
@@ -616,8 +621,7 @@ def main():
     parser = argparse.ArgumentParser(description="Mode classification benchmark runner")
     parser.add_argument("--reps", type=int, default=3,
                         help="Number of repetitions per case x model (default: 3)")
-    parser.add_argument("--models", type=str, default=None,
-                        help="Comma-separated model keys from models.yaml (default: all)")
+    add_model_args(parser)
     parser.add_argument("--test-id", type=str, default=None,
                         help="Comma-separated test case IDs to run (default: all)")
     parser.add_argument("--sequential", action="store_true",
@@ -626,24 +630,17 @@ def main():
                         help="Seconds between parallel launches (default: 2)")
     parser.add_argument("--timeout", type=int, default=None,
                         help="Override per-run timeout in seconds (default: cost-tier based)")
+    parser.add_argument("--yes", "-y", action="store_true",
+                        help="Skip cost confirmation prompt")
     args = parser.parse_args()
 
-    # Load models from YAML
-    all_models = load_models_from_yaml(MODELS_FILE)
-
-    if args.models:
-        model_keys = [k.strip() for k in args.models.split(",")]
-        models = []
-        for k in model_keys:
-            if k in all_models:
-                models.append(all_models[k])
-            else:
-                print(f"WARNING: Unknown model key '{k}'. Available: {', '.join(all_models.keys())}")
-        if not models:
-            print("ERROR: No valid models selected.")
-            sys.exit(1)
-    else:
-        models = list(all_models.values())
+    # Load and filter models
+    all_models = load_models(MODELS_FILE)
+    model_keys = args.models.split(",") if args.models else None
+    models = filter_models(all_models, model_keys=model_keys, provider=args.provider)
+    if not models:
+        print("ERROR: No valid models selected.")
+        sys.exit(1)
 
     # Load test cases
     all_cases = load_test_cases(CASES_FILE)
@@ -670,6 +667,17 @@ def main():
     mode_str = "sequential" if args.sequential else f"parallel (delay={args.delay}s)"
     timeout_str = f" | timeout={args.timeout}s" if args.timeout else ""
     print(f"Mode: {mode_str}{timeout_str}")
+
+    case_ids = [tc.id for tc in test_cases] if args.test_id else None
+    est = estimate_batch_cost(models, "mode_classification", case_ids=case_ids, reps=args.reps)
+    print(f"\n{format_estimate(est)}\n")
+
+    if not args.yes and est["total"] > 0.50:
+        confirm = input("Proceed? [y/N] ").strip().lower()
+        if confirm not in ("y", "yes"):
+            print("Aborted.")
+            sys.exit(0)
+
     print(f"{'='*90}")
     sys.stdout.flush()
 

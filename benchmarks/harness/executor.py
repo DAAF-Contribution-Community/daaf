@@ -173,6 +173,7 @@ def _parse_json_output(stdout_raw: str, result: RunResult) -> None:
             duration_ms = result_msg.get("duration_ms", 0)
             if duration_ms:
                 result.duration_seconds = duration_ms / 1000.0
+            _extract_token_usage(result_msg, result)
 
         if not result.response_text:
             for msg in reversed(output):
@@ -193,6 +194,35 @@ def _parse_json_output(stdout_raw: str, result: RunResult) -> None:
         result.response_text = output.get("result", "")
         result.total_cost_usd = output.get("total_cost_usd", 0.0)
         result.total_turns = output.get("num_turns", 0)
+        _extract_token_usage(output, result)
+
+
+def _extract_token_usage(msg: dict, result: "RunResult") -> None:
+    """Extract token usage from a CLI result message.
+
+    The CLI returns usage in two places:
+      - msg["usage"]: {input_tokens, output_tokens, cache_read_input_tokens,
+                        cache_creation_input_tokens, ...}
+      - msg["modelUsage"]: per-model breakdown with inputTokens, outputTokens, etc.
+
+    We prefer "usage" (top-level aggregate). Falls back to modelUsage if needed.
+    """
+    usage = msg.get("usage")
+    if isinstance(usage, dict):
+        result.input_tokens = usage.get("input_tokens", 0)
+        result.output_tokens = usage.get("output_tokens", 0)
+        result.cache_read_tokens = usage.get("cache_read_input_tokens", 0)
+        result.cache_creation_tokens = usage.get("cache_creation_input_tokens", 0)
+        return
+
+    model_usage = msg.get("modelUsage")
+    if isinstance(model_usage, dict):
+        for model_key, mu in model_usage.items():
+            if isinstance(mu, dict):
+                result.input_tokens += mu.get("inputTokens", 0)
+                result.output_tokens += mu.get("outputTokens", 0)
+                result.cache_read_tokens += mu.get("cacheReadInputTokens", 0)
+                result.cache_creation_tokens += mu.get("cacheCreationInputTokens", 0)
 
 
 def _extract_tool_content(content) -> str:

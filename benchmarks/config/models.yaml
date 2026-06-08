@@ -1,34 +1,157 @@
 # Model matrix for DAAF Framework Adherence Benchmarks
 #
 # Each entry defines a model configuration to benchmark.
-# env_overrides are passed as environment variables to the claude CLI.
+# provider: "anthropic" (default) or "openrouter" — controls env var wiring.
+# env_overrides are passed as environment variables to the claude CLI;
+# provider-level overrides are injected automatically by model_loader.py.
+#
+# pricing: per-million-token rates for pre-run cost estimation.
+#   input:        $/M input tokens
+#   output:       $/M output tokens
+#   cached_input: $/M cached input tokens (omit if provider doesn't discount)
+#
+# OpenRouter pricing pulled from /api/v1/models on 2026-06-08.
 
 models:
+  # --- Anthropic (direct subscription) ---
+
   - id: "claude-haiku-4-5-20251001"
     name: "Haiku 4.5"
+    provider: anthropic
     cost_tier: "low"
-    env_overrides: {}
+    pricing:
+      input: 0.80
+      output: 4.00
+      cached_input: 0.08
 
   - id: "claude-sonnet-4-6"
     name: "Sonnet 4.6"
+    provider: anthropic
     cost_tier: "medium"
-    env_overrides: {}
+    pricing:
+      input: 3.00
+      output: 15.00
+      cached_input: 0.30
 
   - id: "claude-opus-4-6"
     name: "Opus 4.6"
+    provider: anthropic
     cost_tier: "high"
-    env_overrides: {}
+    pricing:
+      input: 15.00
+      output: 75.00
+      cached_input: 1.50
+
+  # --- OpenRouter models ---
+
+  - id: "z-ai/glm-5.1:atlas-cloud/fp8"
+    name: "GLM 5.1"
+    provider: openrouter
+    cost_tier: "medium"
+    pricing:
+      input: 0.98
+      output: 3.08
+
+  - id: "moonshotai/kimi-k2.6:siliconflow/fp8"
+    name: "Kimi K2.6"
+    provider: openrouter
+    cost_tier: "medium"
+    pricing:
+      input: 0.68
+      output: 3.41
+
+  - id: "qwen/qwen3.6-27b:venice/fp8"
+    name: "Qwen 3.6 27B"
+    provider: openrouter
+    cost_tier: "medium"
+    pricing:
+      input: 0.289
+      output: 2.40
+
+  - id: "google/gemma-4-31b-it:venice/bf16"
+    name: "Gemma 4 31B"
+    provider: openrouter
+    cost_tier: "low"
+    pricing:
+      input: 0.12
+      output: 0.36
+
+  - id: "google/gemma-4-26b-a4b-it:novita/bf16"
+    name: "Gemma 4 26B"
+    provider: openrouter
+    cost_tier: "low"
+    pricing:
+      input: 0.06
+      output: 0.33
+
+  - id: "deepseek/deepseek-v4-pro:atlas-cloud/fp8"
+    name: "DeepSeek V4 Pro"
+    provider: openrouter
+    cost_tier: "low"
+    pricing:
+      input: 0.435
+      output: 0.87
+
+  - id: "deepseek/deepseek-v4-flash:atlas-cloud/fp8"
+    name: "DeepSeek V4 Flash"
+    provider: openrouter
+    cost_tier: "low"
+    pricing:
+      input: 0.0983
+      output: 0.1966
+
+  - id: "google/gemini-3.1-pro-preview:google-vertex"
+    name: "Gemini 3.1 Pro"
+    provider: openrouter
+    cost_tier: "high"
+    pricing:
+      input: 2.00
+      output: 12.00
+
+  - id: "nvidia/nemotron-3-ultra-550b-a55b:deepinfra/bf16"
+    name: "Nemotron 3 Ultra"
+    provider: openrouter
+    cost_tier: "low"
+    pricing:
+      input: 0.50
+      output: 2.50
+
+  - id: "google/gemini-3.5-flash"
+    name: "Gemini 3.5 Flash"
+    provider: openrouter
+    cost_tier: "high"
+    pricing:
+      input: 1.50
+      output: 9.00
+
+  - id: "google/gemini-3.1-flash-lite"
+    name: "Gemini 3.1 Flash Lite"
+    provider: openrouter
+    cost_tier: "low"
+    pricing:
+      input: 0.25
+      output: 1.50
 
 # Thinking level variants (uncomment to include in benchmark runs)
 #
 #  - id: "claude-sonnet-4-6"
 #    name: "Sonnet 4.6 (low effort)"
+#    provider: anthropic
 #    cost_tier: "medium"
+#    pricing:
+#      input: 3.00
+#      output: 15.00
+#      cached_input: 0.30
 #    env_overrides:
 #      CLAUDE_CODE_EFFORT_LEVEL: "low"
 #
 #  - id: "claude-sonnet-4-6"
 #    name: "Sonnet 4.6 (max effort)"
+#    provider: anthropic
 #    cost_tier: "medium"
+#    pricing:
+#      input: 3.00
+#      output: 15.00
+#      cached_input: 0.30
 #    env_overrides:
 #      CLAUDE_CODE_EFFORT_LEVEL: "max"

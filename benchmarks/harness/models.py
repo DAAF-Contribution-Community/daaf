@@ -43,6 +43,34 @@ class TestCase:
 
 
 @dataclass
+class PricingConfig:
+    """Per-million-token pricing for cost estimation."""
+
+    input: float = 0.0
+    output: float = 0.0
+    cached_input: Optional[float] = None
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "PricingConfig":
+        return cls(**{k: v for k, v in data.items() if k in cls.__dataclass_fields__})
+
+    def estimate_cost(self, input_tokens: int, output_tokens: int,
+                      cached_input_tokens: int = 0) -> float:
+        """Estimate cost from token counts.
+
+        IMPORTANT: input_tokens from the CLI is already the UNCACHED count.
+        cached_input_tokens is a separate, additive count. Total input
+        tokens billed = input_tokens + cached_input_tokens.
+        """
+        cost = (input_tokens * self.input + output_tokens * self.output) / 1_000_000
+        if self.cached_input is not None and cached_input_tokens > 0:
+            cost += (cached_input_tokens * self.cached_input) / 1_000_000
+        else:
+            cost += (cached_input_tokens * self.input) / 1_000_000
+        return cost
+
+
+@dataclass
 class ModelConfig:
     """Configuration for a model to benchmark."""
 
@@ -50,11 +78,16 @@ class ModelConfig:
     name: str
     cost_tier: str = "medium"
     effort_level: Optional[str] = None
+    provider: str = "anthropic"
+    pricing: Optional[PricingConfig] = None
     env_overrides: dict[str, str] = field(default_factory=dict)
 
     @classmethod
     def from_dict(cls, data: dict) -> "ModelConfig":
-        return cls(**{k: v for k, v in data.items() if k in cls.__dataclass_fields__})
+        filtered = {k: v for k, v in data.items() if k in cls.__dataclass_fields__}
+        if "pricing" in filtered and isinstance(filtered["pricing"], dict):
+            filtered["pricing"] = PricingConfig.from_dict(filtered["pricing"])
+        return cls(**filtered)
 
 
 @dataclass
@@ -87,6 +120,10 @@ class RunResult:
     total_turns: int = 0
     total_cost_usd: float = 0.0
     duration_seconds: float = 0.0
+    input_tokens: int = 0
+    output_tokens: int = 0
+    cache_read_tokens: int = 0
+    cache_creation_tokens: int = 0
     response_text: str = ""
     raw_json: dict = field(default_factory=dict)
     audit_entries: list[dict] = field(default_factory=list)
@@ -106,6 +143,10 @@ class RunResult:
             "total_turns": self.total_turns,
             "total_cost_usd": self.total_cost_usd,
             "duration_seconds": self.duration_seconds,
+            "input_tokens": self.input_tokens,
+            "output_tokens": self.output_tokens,
+            "cache_read_tokens": self.cache_read_tokens,
+            "cache_creation_tokens": self.cache_creation_tokens,
             "response_text": self.response_text[:500],
             "audit_entry_count": len(self.audit_entries),
             "transcript_path": self.transcript_path,
