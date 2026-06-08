@@ -43,6 +43,9 @@ from benchmarks.scorers.deterministic.checkpoint_adherence import (
 from benchmarks.scorers.deterministic.dispatch_compliance import (
     score_dispatch_compliance,
 )
+from benchmarks.scorers.deterministic.subagent_behavior import (
+    score_subagent_behavior,
+)
 
 # --- Config ---
 
@@ -115,11 +118,71 @@ def score_run(session_id: str, test_case: TestCase) -> dict:
         for cr in criterion_results
     ]
 
+    # Score subagent behavior if dispatch was successful
+    expected_agent_type = test_case.expected.get("subagent_dispatched", "")
+    agent_dispatched = any(c["passed"] for c in criteria_dicts if c["name"] == "agent_dispatched")
+    subagent_criteria = []
+    if agent_dispatched and expected_agent_type:
+        behavior_results = score_subagent_behavior(session_id, expected_agent_type)
+        subagent_criteria = [
+            {
+                "name": cr.name,
+                "passed": cr.passed,
+                "tier": cr.tier,
+                "detail": cr.detail,
+            }
+            for cr in behavior_results
+        ]
+
     return {
         "criteria": criteria_dicts,
+        "subagent_criteria": subagent_criteria,
         "transcript_path": str(transcript_path),
         "tool_call_count": 0,
     }
+
+
+# --- Fixture isolation ---
+
+FIXTURE_PREFIX = "/daaf/benchmarks/datasets/test_fixtures/"
+
+
+def prepare_fixtures(test_case: TestCase, sandbox_dir: str) -> TestCase:
+    """Copy referenced test fixtures into the sandbox and rewrite the prompt.
+
+    Scans the prompt for paths under test_fixtures/, copies each file to
+    {sandbox_dir}/fixtures/{subdir}/{filename}, and returns a modified
+    TestCase with updated paths. Originals are never touched by subagents.
+    """
+    import re
+    import copy
+
+    pattern = re.escape(FIXTURE_PREFIX) + r"[^\s\"')]+"
+    matches = re.findall(pattern, test_case.prompt)
+
+    if not matches:
+        return test_case
+
+    fixtures_dir = Path(sandbox_dir) / "fixtures"
+    modified_prompt = test_case.prompt
+
+    for orig_path in matches:
+        src = Path(orig_path)
+        if not src.exists():
+            continue
+        rel = src.relative_to(Path(FIXTURE_PREFIX).parent)
+        dest = fixtures_dir / rel
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(src, dest)
+        modified_prompt = modified_prompt.replace(orig_path, str(dest))
+
+    workspace_dir = Path(sandbox_dir) / "workspace"
+    workspace_dir.mkdir(parents=True, exist_ok=True)
+    modified_prompt += f" Use {workspace_dir} as the project workspace for any scripts or output files."
+
+    tc = copy.deepcopy(test_case)
+    tc.prompt = modified_prompt
+    return tc
 
 
 # --- Run + diagnose ---
@@ -128,8 +191,11 @@ def run_one(test_case: TestCase, model: ModelConfig, rep: int,
             sandbox_suffix: str, timeout_override=None):
     """Execute a single benchmark run with checkpoint scoring."""
     sandbox_dir = f"/daaf/benchmarks/_sandbox/run_{sandbox_suffix}"
+
+    sandboxed_case = prepare_fixtures(test_case, sandbox_dir)
+
     config = RunConfig(
-        test_case=test_case,
+        test_case=sandboxed_case,
         model=model,
         run_index=rep,
         sandbox_dir=sandbox_dir,
@@ -189,6 +255,7 @@ def run_one(test_case: TestCase, model: ModelConfig, rep: int,
         "duration_s": round(elapsed, 1),
         "error": result.error,
         "criteria": scored["criteria"],
+        "subagent_criteria": scored.get("subagent_criteria", []),
         "transcript_path": archived_transcript or scored.get("transcript_path"),
         "tool_call_count": scored.get("tool_call_count", 0),
     }
@@ -216,6 +283,7 @@ def _error_result(test_case: TestCase, model: ModelConfig, rep: int, error_msg: 
                 "detail": f"Exception: {error_msg}",
             }
         ],
+        "subagent_criteria": [],
         "transcript_path": None,
         "tool_call_count": 0,
     }
@@ -305,10 +373,17 @@ def archive_results(all_results: list[dict], models: list[ModelConfig],
             "duration_s": r["duration_s"],
             "error": r["error"],
             "criteria": r["criteria"],
+            "subagent_criteria": r.get("subagent_criteria", []),
             "tool_call_count": r["tool_call_count"],
         }
         with open(run_dir / "result.json", "w") as f:
             json.dump(result_data, f, indent=2)
+
+        # Copy subagent transcripts if available
+        if r.get("session_id"):
+            sandbox_subagents = Path(f"/daaf/benchmarks/_sandbox/transcripts/{r['session_id']}/subagents")
+            if sandbox_subagents.exists():
+                shutil.copytree(sandbox_subagents, run_dir / "subagents", dirs_exist_ok=True)
 
         # Copy transcript if available
         transcript_src = r.get("transcript_path")
@@ -386,6 +461,37 @@ def archive_results(all_results: list[dict], models: list[ModelConfig],
             "criteria": rates,
         }
 
+    # --- Subagent behavior summary ---
+    all_sub_criterion_names = []
+    seen_sub = set()
+    for r in all_results:
+        for sc in r.get("subagent_criteria", []):
+            if sc["tier"] == "info":
+                continue
+            name = sc["name"]
+            if name not in seen_sub:
+                all_sub_criterion_names.append(name)
+                seen_sub.add(name)
+
+    subagent_by_model = {}
+    for model in models:
+        rows = [r for r in all_results if r["model"] == model.name and r.get("subagent_criteria")]
+        if not rows:
+            continue
+        rates = {}
+        for crit_name in all_sub_criterion_names:
+            passed = sum(
+                1 for r in rows
+                if any(c["name"] == crit_name and c["passed"] for c in r.get("subagent_criteria", []))
+            )
+            total = sum(
+                1 for r in rows
+                if any(c["name"] == crit_name for c in r.get("subagent_criteria", []))
+            )
+            if total > 0:
+                rates[crit_name] = {"passed": passed, "total": total, "rate": passed / total}
+        subagent_by_model[model.name] = {"criteria": rates, "runs_with_subagent": len(rows)}
+
     summary = {
         "total_runs": len(all_results),
         "total_cost_usd": total_cost,
@@ -394,6 +500,10 @@ def archive_results(all_results: list[dict], models: list[ModelConfig],
         "criterion_names": all_criterion_names,
         "by_model": model_summaries,
         "by_case": case_summaries,
+        "subagent_behavior": {
+            "criterion_names": all_sub_criterion_names,
+            "by_model": subagent_by_model,
+        },
     }
     with open(output_dir / "summary.json", "w") as f:
         json.dump(summary, f, indent=2)
@@ -426,6 +536,24 @@ def print_run_result(r: dict):
     for crit in criteria:
         if not crit.get("passed", False):
             print(f"  [{crit['name']}] {crit.get('detail', 'no detail')}")
+
+    # Print subagent behavior results if present
+    subagent_criteria = r.get("subagent_criteria", [])
+    if subagent_criteria:
+        sub_strs = []
+        for sc in subagent_criteria:
+            if sc["tier"] == "info":
+                continue
+            status = "PASS" if sc["passed"] else "FAIL"
+            sub_strs.append(f"{sc['name']}={status}")
+        if sub_strs:
+            print(f"  Subagent: {' | '.join(sub_strs)}")
+        for sc in subagent_criteria:
+            if not sc.get("passed", False) and sc["tier"] != "info":
+                print(f"  [sub:{sc['name']}] {sc.get('detail', 'no detail')}")
+        for sc in subagent_criteria:
+            if sc["tier"] == "info":
+                print(f"  [info] {sc.get('detail', '')}")
 
 
 def print_summary(all_results: list[dict], models: list[ModelConfig],
@@ -523,6 +651,50 @@ def print_summary(all_results: list[dict], models: list[ModelConfig],
                 and len(r.get("criteria", [])) > 0
             )
             line += f" | {all_pass}/{n:<6}"
+            print(line)
+
+    # --- Subagent behavior summary ---
+    runs_with_sub = [r for r in all_results if r.get("subagent_criteria")]
+    if runs_with_sub:
+        sub_crit_names = []
+        sub_seen = set()
+        for r in runs_with_sub:
+            for sc in r.get("subagent_criteria", []):
+                if sc["tier"] == "info":
+                    continue
+                if sc["name"] not in sub_seen:
+                    sub_crit_names.append(sc["name"])
+                    sub_seen.add(sc["name"])
+
+        print(f"\n{'='*100}")
+        print(f"SUBAGENT BEHAVIOR ({len(runs_with_sub)} runs with dispatch)")
+        print(f"{'='*100}")
+
+        sub_short = [n[:20] for n in sub_crit_names]
+        header = f"{'Model':<20}"
+        for sn in sub_short:
+            header += f" | {sn:<20}"
+        print(header)
+        print("-" * len(header))
+
+        for model in models:
+            rows = [r for r in runs_with_sub if r["model"] == model.name]
+            if not rows:
+                continue
+            line = f"{model.name:<20}"
+            for crit_name in sub_crit_names:
+                passed = sum(
+                    1 for r in rows
+                    if any(c["name"] == crit_name and c["passed"] for c in r.get("subagent_criteria", []))
+                )
+                applicable = sum(
+                    1 for r in rows
+                    if any(c["name"] == crit_name for c in r.get("subagent_criteria", []))
+                )
+                if applicable > 0:
+                    line += f" | {passed}/{applicable:<18}"
+                else:
+                    line += f" | {'n/a':<20}"
             print(line)
 
     total_cost = sum(r["cost_usd"] for r in all_results)

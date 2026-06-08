@@ -51,6 +51,10 @@ def execute_run(config: RunConfig) -> RunResult:
         "--permission-mode", config.permission_mode,
     ]
 
+    if config.disallowed_tools:
+        cmd.append("--disallowed-tools")
+        cmd.extend(config.disallowed_tools)
+
     if checkpoint_session_id:
         cmd.extend(["--resume", checkpoint_session_id])
 

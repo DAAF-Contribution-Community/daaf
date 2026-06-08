@@ -64,7 +64,12 @@ class RunConfig:
     test_case: TestCase
     model: ModelConfig
     run_index: int
-    permission_mode: str = "dontAsk"
+    permission_mode: str = "bypassPermissions"
+    disallowed_tools: list[str] = field(default_factory=lambda: [
+        "Bash(git commit *)",
+        "Bash(git add *)",
+        "Bash(git push *)",
+    ])
     working_dir: str = "/daaf"
     sandbox_dir: str = "/daaf/benchmarks/_sandbox"
     timeout_override: Optional[int] = None

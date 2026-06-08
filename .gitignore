@@ -67,3 +67,6 @@ environment_settings*.txt
 
 # Generated log viewer artifacts (regenerated on demand)
 **/logs/session_manifest.json
+
+# Benchmark-created research directories (subagents leak out of sandbox)
+research/*_AdHoc_*/

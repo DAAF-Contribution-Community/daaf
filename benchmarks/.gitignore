@@ -1,0 +1,14 @@
+# Benchmark run artifacts — ephemeral, large, regenerable
+_sandbox/
+results/
+
+# Research project directories created by subagents during benchmark runs
+research/
+
+# Subagent-created scripts in test fixture directories
+# (debuggers write diagnostic scripts, code-reviewers write QA scripts)
+datasets/test_fixtures/debugger/01_diag-*
+datasets/test_fixtures/debugger/02_diag-*
+datasets/test_fixtures/debugger/*_FIXED*
+datasets/test_fixtures/debugger/scripts/
+datasets/test_fixtures/code_reviewer/adhoc_*
