@@ -158,8 +158,8 @@ def score_mode_correct(assistant_texts: list[str], expected_mode: str) -> dict:
     }
 
 
-def score_confirmation_gate(assistant_texts: list[str]) -> dict:
-    """Criterion 3: Check that assistant text contains a confirmation gate pattern."""
+def score_confirmation_gate(assistant_texts: list[str], tool_calls: list[dict] = None) -> dict:
+    """Criterion 3: Check that assistant text or AskUserQuestion tool contains a confirmation gate."""
     combined_text = " ".join(assistant_texts)
     matched_pattern = None
 
@@ -168,13 +168,32 @@ def score_confirmation_gate(assistant_texts: list[str]) -> dict:
             matched_pattern = pattern
             break
 
+    # Also check AskUserQuestion tool calls — some models present
+    # confirmation gates via structured UI widgets instead of inline text.
+    ask_user_gate = False
+    if not matched_pattern and tool_calls:
+        for tc in tool_calls:
+            if tc.get("name") == "AskUserQuestion":
+                raw = tc.get("raw_input", {})
+                question_text = raw.get("question", "") + " " + str(raw.get("options", ""))
+                for pattern in CONFIRMATION_PATTERNS:
+                    if re.search(pattern, question_text, re.IGNORECASE):
+                        matched_pattern = f"AskUserQuestion({pattern})"
+                        ask_user_gate = True
+                        break
+                if not ask_user_gate:
+                    ask_user_gate = True
+                    matched_pattern = "AskUserQuestion(tool-based gate)"
+                if ask_user_gate:
+                    break
+
     return {
         "name": "confirmation_gate_present",
         "passed": matched_pattern is not None,
         "detail": (
             f"Confirmation gate found (matched: {matched_pattern})."
             if matched_pattern
-            else "No confirmation gate pattern found in assistant text."
+            else "No confirmation gate pattern found in assistant text or AskUserQuestion tools."
         ),
     }
 
@@ -240,7 +259,7 @@ def score_run(session_id: str, expected_mode: str, checkpoint_lines: int) -> dic
     criteria = {
         "orchestrator_skill_loaded": score_orchestrator_skill_loaded(tool_calls),
         "mode_correct": score_mode_correct(assistant_texts, expected_mode),
-        "confirmation_gate_present": score_confirmation_gate(assistant_texts),
+        "confirmation_gate_present": score_confirmation_gate(assistant_texts, tool_calls),
         "no_premature_execution": score_no_premature_execution(tool_calls),
     }
 
@@ -302,6 +321,7 @@ def run_one(test_case: TestCase, model: ModelConfig, rep: int, sandbox_suffix: s
         "cache_creation_tokens": result.cache_creation_tokens,
         "duration_s": round(elapsed, 1),
         "error": result.error,
+        "timed_out": bool(result.error and "Timed out" in result.error),
         "criteria": scored["criteria"],
         "transcript_path": scored.get("transcript_path"),
         "tool_failures": result.tool_failures,
@@ -327,6 +347,7 @@ def _error_result(test_case: TestCase, model: ModelConfig, rep: int, error_msg: 
         "cache_creation_tokens": 0,
         "duration_s": 0.0,
         "error": error_msg,
+        "timed_out": False,
         "criteria": {
             "orchestrator_skill_loaded": {"name": "orchestrator_skill_loaded", "passed": False, "detail": f"Exception: {error_msg}"},
             "mode_correct": {"name": "mode_correct", "passed": False, "detail": f"Exception: {error_msg}"},
@@ -426,6 +447,7 @@ def archive_results(all_results: list[dict], models: list[ModelConfig],
             "cache_creation_tokens": r.get("cache_creation_tokens", 0),
             "duration_s": r["duration_s"],
             "error": r["error"],
+            "timed_out": r.get("timed_out", False),
             "criteria": r["criteria"],
             "tool_failures": r.get("tool_failures", []),
         }

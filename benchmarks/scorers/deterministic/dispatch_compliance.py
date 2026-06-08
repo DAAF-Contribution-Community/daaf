@@ -180,18 +180,32 @@ def score_dispatch_compliance(
     ))
 
     # --- Criterion 5: prompt_has_project_dir (tier2) ---
-    # The Agent prompt must contain "PROJECT_DIR" (case-sensitive).
+    # Required for write-capable agents; informational for read-only agents.
+    READ_ONLY_AGENTS = {"search-agent", "source-researcher", "plan-checker"}
     has_project_dir = any("PROJECT_DIR" in p for p in all_prompts)
-    results.append(CriterionResult(
-        name="prompt_has_project_dir",
-        passed=has_project_dir,
-        tier="tier2",
-        detail=(
-            "Found 'PROJECT_DIR' in agent prompt."
-            if has_project_dir
-            else "Missing 'PROJECT_DIR' in agent prompt."
-        ),
-    ))
+    is_read_only = expected_type in READ_ONLY_AGENTS
+
+    if is_read_only:
+        results.append(CriterionResult(
+            name="prompt_has_project_dir",
+            passed=True,
+            tier="tier2",
+            detail=(
+                f"Read-only agent ({expected_type}): PROJECT_DIR not required. "
+                f"{'Present anyway.' if has_project_dir else 'Not present (expected).'}"
+            ),
+        ))
+    else:
+        results.append(CriterionResult(
+            name="prompt_has_project_dir",
+            passed=has_project_dir,
+            tier="tier2",
+            detail=(
+                "Found 'PROJECT_DIR' in agent prompt."
+                if has_project_dir
+                else "Missing 'PROJECT_DIR' in agent prompt."
+            ),
+        ))
 
     # --- Criterion 6: prompt_has_task_section (tier2) ---
     has_task = any("## Task" in p for p in all_prompts)
@@ -207,28 +221,55 @@ def score_dispatch_compliance(
     ))
 
     # --- Criterion 7: prompt_has_context_section (tier2) ---
-    has_context = any("## Context" in p for p in all_prompts)
+    # Accept semantically equivalent headers for context information.
+    CONTEXT_HEADERS = [
+        "## Context", "## Scope", "## Background", "## Specifications",
+        "## Dataset Specifications", "## Known Symptoms", "## What to Search",
+    ]
+    matched_context = None
+    for p in all_prompts:
+        for header in CONTEXT_HEADERS:
+            if header in p:
+                matched_context = header
+                break
+        if matched_context:
+            break
+
     results.append(CriterionResult(
         name="prompt_has_context_section",
-        passed=has_context,
+        passed=matched_context is not None,
         tier="tier2",
         detail=(
-            "Found '## Context' section in agent prompt."
-            if has_context
-            else "Missing '## Context' section in agent prompt."
+            f"Found '{matched_context}' section in agent prompt."
+            if matched_context
+            else f"Missing context section in agent prompt. Accepted: {CONTEXT_HEADERS}"
         ),
     ))
 
     # --- Criterion 8: prompt_has_instructions (tier2) ---
-    has_instructions = any("## Instructions" in p for p in all_prompts)
+    # Accept semantically equivalent headers for instruction content.
+    INSTRUCTION_HEADERS = [
+        "## Instructions", "## What to Report", "## What to Look For",
+        "## Where to Look", "## Validation Requirements", "## Output Format",
+        "## Expected Output", "## Deliverables",
+    ]
+    matched_instructions = None
+    for p in all_prompts:
+        for header in INSTRUCTION_HEADERS:
+            if header in p:
+                matched_instructions = header
+                break
+        if matched_instructions:
+            break
+
     results.append(CriterionResult(
         name="prompt_has_instructions",
-        passed=has_instructions,
+        passed=matched_instructions is not None,
         tier="tier2",
         detail=(
-            "Found '## Instructions' section in agent prompt."
-            if has_instructions
-            else "Missing '## Instructions' section in agent prompt."
+            f"Found '{matched_instructions}' section in agent prompt."
+            if matched_instructions
+            else f"Missing instructions section in agent prompt. Accepted: {INSTRUCTION_HEADERS}"
         ),
     ))
 

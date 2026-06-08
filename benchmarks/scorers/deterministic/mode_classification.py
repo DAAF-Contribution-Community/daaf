@@ -91,9 +91,12 @@ MODE_KEYWORDS: dict[str, list[str]] = {
 CONFIRMATION_PATTERNS = [
     r"shall I proceed",
     r"shall we proceed",
+    r"shall we (begin|start|get started)",
+    r"shall I (begin|start|get started)",
+    r"let'?s (begin|start|get started)",
     r"sound good",
     r"want me to",
-    r"ready to",
+    r"ready to (begin|start|proceed|get started)",
     r"go ahead\??",
     r"proceed\?",
     r"confirm",
