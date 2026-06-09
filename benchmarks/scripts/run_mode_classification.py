@@ -4,9 +4,10 @@ Tests whether models correctly: (1) load the orchestrator skill, (2) classify
 the correct engagement mode, (3) present a confirmation gate, and (4) do NOT
 proceed prematurely past the gate.
 
-Each test case resumes from a golden checkpoint (7-line bootstrap context with
-the user prompt baked into line 3), then scores the model's response by parsing
-the session transcript for tool_use blocks and assistant text.
+Each test case starts a fresh cold-start session (CHECKPOINT_LINES = 0 — no
+golden checkpoint; the case prompt is passed directly to `claude -p`), then
+scores the model's response by parsing the session transcript for tool_use
+blocks and assistant text.
 
 Results are archived to a self-contained results folder with per-run transcripts.
 
@@ -315,6 +316,7 @@ def run_one(test_case: TestCase, model: ModelConfig, rep: int, sandbox_suffix: s
         "session_id": result.session_id,
         "turns": result.total_turns,
         "computed_cost_usd": actual_cost,
+        "reasoning_cost_multiplier": model.reasoning_cost_multiplier,
         "input_tokens": result.input_tokens,
         "output_tokens": result.output_tokens,
         "cache_read_tokens": result.cache_read_tokens,
@@ -341,6 +343,7 @@ def _error_result(test_case: TestCase, model: ModelConfig, rep: int, error_msg: 
         "session_id": "",
         "turns": 0,
         "computed_cost_usd": 0.0,
+        "reasoning_cost_multiplier": model.reasoning_cost_multiplier,
         "input_tokens": 0,
         "output_tokens": 0,
         "cache_read_tokens": 0,

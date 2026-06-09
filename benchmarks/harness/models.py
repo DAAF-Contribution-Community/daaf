@@ -80,6 +80,7 @@ class ModelConfig:
     effort_level: Optional[str] = None
     provider: str = "anthropic"
     pricing: Optional[PricingConfig] = None
+    reasoning_cost_multiplier: float = 1.0
     env_overrides: dict[str, str] = field(default_factory=dict)
 
     @classmethod
@@ -99,9 +100,16 @@ class RunConfig:
     run_index: int
     permission_mode: str = "bypassPermissions"
     disallowed_tools: list[str] = field(default_factory=lambda: [
-        "Bash(git commit *)",
-        "Bash(git add *)",
-        "Bash(git push *)",
+        "Bash(*git commit*)",
+        "Bash(*git add *)",
+        "Bash(*git push*)",
+        "Bash(*git tag *)",
+        "Bash(*git reset*)",
+        "Bash(*git merge *)",
+        "Bash(*git rebase*)",
+        "Bash(*git branch -D*)",
+        "Bash(*git branch -d*)",
+        "Bash(*git config *)",
     ])
     working_dir: str = "/daaf"
     sandbox_dir: str = "/daaf/benchmarks/_sandbox"

@@ -10,6 +10,8 @@
 #   output:       $/M output tokens
 #   cached_input: $/M cached input tokens (omit if provider doesn't discount)
 #
+#
+# Anthropic pricing updated from platform.claude.com/docs on 2026-06-08.
 # OpenRouter pricing pulled from /api/v1/models on 2026-06-08.
 
 models:
@@ -20,9 +22,9 @@ models:
     provider: anthropic
     cost_tier: "low"
     pricing:
-      input: 0.80
-      output: 4.00
-      cached_input: 0.08
+      input: 1.00
+      output: 5.00
+      cached_input: 0.10
 
   - id: "claude-sonnet-4-6"
     name: "Sonnet 4.6"
@@ -33,14 +35,50 @@ models:
       output: 15.00
       cached_input: 0.30
 
+  - id: "claude-opus-4-5"
+    name: "Opus 4.5"
+    provider: anthropic
+    cost_tier: "high"
+    pricing:
+      input: 5.00
+      output: 25.00
+      cached_input: 0.50
+
   - id: "claude-opus-4-6"
     name: "Opus 4.6"
     provider: anthropic
     cost_tier: "high"
     pricing:
-      input: 15.00
-      output: 75.00
-      cached_input: 1.50
+      input: 5.00
+      output: 25.00
+      cached_input: 0.50
+
+  - id: "claude-opus-4-7"
+    name: "Opus 4.7"
+    provider: anthropic
+    cost_tier: "high"
+    pricing:
+      input: 5.00
+      output: 25.00
+      cached_input: 0.50
+
+  - id: "claude-opus-4-8"
+    name: "Opus 4.8"
+    provider: anthropic
+    cost_tier: "high"
+    pricing:
+      input: 5.00
+      output: 25.00
+      cached_input: 0.50
+
+  - id: "claude-fable-5"
+    name: "Fable 5"
+    provider: anthropic
+    cost_tier: "high"
+    pricing:
+      input: 10.00
+      output: 50.00
+      cached_input: 1.00
 
   # --- OpenRouter models ---
 
@@ -72,6 +110,7 @@ models:
     name: "Gemma 4 31B"
     provider: openrouter
     cost_tier: "low"
+
     pricing:
       input: 0.12
       output: 0.36
@@ -80,6 +119,7 @@ models:
     name: "Gemma 4 26B"
     provider: openrouter
     cost_tier: "low"
+
     pricing:
       input: 0.06
       output: 0.33
@@ -88,6 +128,7 @@ models:
     name: "DeepSeek V4 Pro"
     provider: openrouter
     cost_tier: "low"
+
     pricing:
       input: 0.435
       output: 0.87
@@ -96,6 +137,7 @@ models:
     name: "DeepSeek V4 Flash"
     provider: openrouter
     cost_tier: "low"
+
     pricing:
       input: 0.0983
       output: 0.1966
@@ -116,13 +158,13 @@ models:
       input: 0.50
       output: 2.50
 
-  - id: "google/gemini-3.5-flash"
-    name: "Gemini 3.5 Flash"
-    provider: openrouter
-    cost_tier: "high"
-    pricing:
-      input: 1.50
-      output: 9.00
+#  - id: "google/gemini-3.5-flash"
+#    name: "Gemini 3.5 Flash"
+#    provider: openrouter
+#    cost_tier: "high"
+#    pricing:
+#      input: 1.50
+#      output: 9.00
 
   - id: "google/gemini-3.1-flash-lite"
     name: "Gemini 3.1 Flash Lite"

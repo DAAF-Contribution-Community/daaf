@@ -76,10 +76,13 @@ CALIBRATION = {
 
 
 def compute_cost(model: ModelConfig, result: RunResult) -> float:
-    """Compute actual cost from a completed run's token counts and model pricing.
+    """Compute cost from a completed run's token counts and model pricing.
 
     Use this instead of result.total_cost_usd — the CLI reports cost using
     Anthropic-internal pricing which is wrong for OpenRouter models.
+
+    Note: For OpenRouter models, CLI token counts use Anthropic's tokenizer
+    (not the model's native tokenizer), so computed costs are approximate.
     """
     if model.pricing is None:
         return result.total_cost_usd

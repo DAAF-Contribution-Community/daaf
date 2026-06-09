@@ -1,256 +1,210 @@
 # Benchmark System Session Restart
 
-**Date:** 2026-06-08
+**Date:** 2026-06-09 (Session 3)
 **Mode:** Framework Development
 **Workspace:** /daaf/benchmarks
 **Reference Plan:** /daaf/research/2026-05-01_Benchmark_Testing/Benchmark_System_Reference.md
 
 ---
 
-## What Was Accomplished This Session
+## What Was Accomplished (Session 3)
 
-### OpenRouter Integration + Model Matrix Expansion
+### Phase 3 (dispatch_compliance) Completed — 17 models × 2-3 reps
 
-**New file: `harness/model_loader.py`:**
-- Centralized model loading from `models.yaml`, replacing duplicated `load_models_from_yaml()` across 3 runners
-- Provider-specific env var resolution: maps `OPENROUTER_BASE_URL` + `OPENROUTER_AUTH_TOKEN` → Claude CLI env vars
-- Gracefully skips OpenRouter models when env vars are missing
-- CLI filtering: `--models` (by key) and `--provider` (anthropic/openrouter/all)
+Ran all 17 models (7 Anthropic + 10 OpenRouter) through Phase 3 dispatch compliance testing. Phase 3 tests whether models correctly dispatch subagents via the Agent tool with properly structured prompts (BASE_DIR, mode markers, task/context/instructions sections, required content).
 
-**`config/models.yaml` expanded to 14 models:**
-- 3 Anthropic: Haiku 4.5, Sonnet 4.6, Opus 4.6
-- 11 OpenRouter: GLM 5.1, Kimi K2.6, Qwen 3.6 27B, Gemma 4 31B/26B, DeepSeek V4 Pro/Flash, Gemini 3.1 Pro/Flash Lite, Gemini 3.5 Flash, Nemotron 3 Ultra
-- Each model has `pricing:` block with input/output rates from OpenRouter `/api/v1/models` API (pulled 2026-06-08)
-- Fixed Kimi model ID: `kimi-k2.6` → `moonshotai/kimi-k2.6`
+**Anthropic models required sequential execution** due to persistent API rate limiting when running in parallel. Even with 10s delays, 34/36 runs hit HTTP 429 in the first attempt. Sequential execution (one run at a time) eliminated orchestrator-level rate limits but subagent-level rate limits persisted at ~20% of runs (inherent to the test — orchestrator and subagent compete for the same quota).
 
-### Token Capture + Accurate Cost Computation
+**Rate-limited run cleanup:** 12 runs across 4 Anthropic result sets were identified as TOTAL FAIL or DEGRADED due to rate limiting. Each was deleted from its original result set and re-run individually with 60s gaps. All 12 replacements dispatched correctly; 4 had genuine `prompt_has_context_section` failures (not rate-limit caused).
 
-**Problem discovered:** The Claude CLI's `total_cost_usd` uses Anthropic-internal pricing for ALL models, making it 20-50x wrong for OpenRouter models. DeepSeek V4 Flash CLI-reported $105 for 108 runs; real OpenRouter billing was ~$2.
+### Fable 5 Added and Benchmarked (All 3 Phases)
 
-**Solution:**
-- `_extract_token_usage()` in `executor.py` captures `input_tokens`, `output_tokens`, `cache_read_tokens`, `cache_creation_tokens` from the CLI's result message `usage` block (falls back to `modelUsage`)
-- Token fields added to `RunResult` dataclass and propagated through all 3 runners
-- `PricingConfig` dataclass in `models.py` with `estimate_cost()` method
-- All runners now compute and display `computed_cost_usd` (tokens × model pricing) instead of CLI's `total_cost_usd`
+Added `claude-fable-5` to model matrix ($10/$50/$1.00 input/output/cached). Ran 2 reps across all 3 phases:
 
-**Key semantic discovery:** CLI's `input_tokens` is the UNCACHED count. `cache_read_input_tokens` is additive. Total billed input = input_tokens + cache_read_tokens. Initial code double-subtracted; fixed.
+| Phase | Rep 1 | Rep 2 | Combined |
+|-------|-------|-------|----------|
+| Phase 1 (mode_classification) | 15/15 (100%) | 15/15 (100%) | **30/30 (100%)** |
+| Phase 2 (post_confirmation) | 9/9 (100%) | 9/9 (100%) | **18/18 (100%)** |
+| Phase 3 (dispatch_compliance) | 10/12 (83%) | 11/12 (92%) | **21/24 (88%)** |
 
-**Validation:** Computed costs within 2-9% of actual OpenRouter billing (tested against 3 models).
+Fable is the top-performing model across all phases. Only failures are `prompt_has_context_section` — contextual content is present but under different headings.
 
-### Pre-Run Cost Estimation
+**Behavioral analysis** (2 search-agent reviews of transcripts): No test awareness detected. No gaming behavior. Dispatch prompts are substantively tailored, not templated. Subagents perform genuine error recovery. One limitation: Fable's thinking blocks are encrypted (empty string + cryptographic signature), making reasoning quality assessment structurally impossible.
 
-**New file: `harness/cost_estimator.py`:**
-- Stores calibrated token profiles (avg input/output/cached tokens per case) from real benchmark runs
-- `estimate_batch_cost()` multiplies token profiles × model pricing for pre-run estimates
-- `compute_cost()` computes actual cost from a completed RunResult
-- `format_estimate()` for human-readable display
-- All 3 runners display estimate before launching, with `Proceed? [y/N]` confirmation (>$0.50 threshold)
-- `--yes`/`-y` flag skips confirmation for scripted/CI runs
+### Phase 3 Results Summary (all_perfect across reps)
 
-**Calibration data:** Collected from Haiku 4.5, DeepSeek V4 Flash, and Gemini 3.1 Flash Lite (3 reps each across all 3 phases, averaged across models).
+| Tier | Model | Score | Reps | Dispatch Rate | Avg Cost | Provider |
+|------|-------|-------|------|---------------|----------|----------|
+| A+ | Fable 5 | 88% (21/24) | 2 | 24/24 (100%) | $1.21 | Anthropic |
+| A | Gemini 3.1 Pro | 89% (32/36) | 3 | 35/36 (97%) | $1.57 | OpenRouter |
+| A- | Sonnet 4.6 | 85% (17/20)* | 2 | 19/20* | $0.29 | Anthropic |
+| A- | Flash Lite | 75% (27/36) | 3 | 36/36 (100%) | $0.12 | OpenRouter |
+| B+ | Opus 4.5 | 63% (15/24) | 2 | 24/24 (100%) | $0.45 | Anthropic |
+| B+ | Opus 4.7 | 63% (15/24) | 2 | 19/24 (79%) | $0.39 | Anthropic |
+| B | GLM 5.1 | 64% (23/36) | 3 | 31/36 (86%) | $0.33 | OpenRouter |
+| B | DeepSeek V4 Flash | 61% (22/36) | 3 | 30/36 (83%) | $0.05 | OpenRouter |
+| B | Opus 4.8 | 58% (14/24) | 2 | 22/24 (92%) | $0.68 | Anthropic |
+| B | Opus 4.6 | 54% (13/24) | 2 | 24/24 (100%) | $0.38 | Anthropic |
+| B- | Haiku 4.5 | 46% (11/24) | 2 | 22/24 (92%) | $0.10 | Anthropic |
+| B- | Qwen 3.6 27B | 50% (18/36) | 3 | 28/36 (78%) | $0.09 | OpenRouter |
+| C+ | DeepSeek V4 Pro | 47% (17/36) | 3 | 24/36 (67%) | $0.08 | OpenRouter |
+| C | Kimi K2.6 | 42% (15/36) | 3 | 23/36 (64%) | $0.12 | OpenRouter |
+| C | Gemma 4 26B | 42% (15/36) | 3 | 22/36 (61%) | $0.02 | OpenRouter |
+| C- | Nemotron 3 Ultra | 36% (13/36) | 3 | 19/36 (53%) | $0.05 | OpenRouter |
+| D | Gemma 4 31B | 36% (13/36) | 3 | 13/36 (36%) | $0.01 | OpenRouter |
 
----
+*Sonnet scores exclude 4 timed-out runs where the model never reached dispatch within 300s.
 
-## Key Architecture Decisions (Cumulative)
+**Universal weak criterion:** `prompt_has_context_section` is the #1 failure across all models — models dispatch correctly but omit the `## Context` heading (content often present under other sections).
 
-### Prior session decisions (1-20, still valid)
-1. Transcript-based scoring (not audit.jsonl)
-2. Cold starts for mode classification, golden checkpoints for post-confirmation
-3. Golden checkpoint design principles
-4. Timeout-resilient scoring (preserve session_id on timeout)
-5. Turn limit as cost control
-6. `disableAllHooks` for direct agent testing
-7. `skills:` frontmatter auto-loads in real dispatch but NOT in `claude -p --agent`
-8. Ad Hoc mode as dispatch test vehicle
-9. Explicit dispatch prompts (testing dispatch quality, not trigger detection)
-10. `bypassPermissions` + `--disallowed-tools` for benchmark runs
-11. Subagent behavior scored from separate transcript files
-12. Fixture isolation via sandbox copies
-13. `.gitignore` for benchmark artifacts
-14. `references_file` check type for cross-tool file access
-15. Tool failure extraction from JSON output
-16. Timeout session_id recovery via filesystem
-17. "Credit requires success" scoring principle
-18. Structural prompt criteria from framework templates
-19. Prescriptive subagent behavior from transcript analysis
-20. run_with_capture.sh copied into sandbox workspace
+### Viewer Improvements
 
-### New decisions this session
+**Rep renumbering fix:** Runs from different result sets all had `rep=0`, causing the viewer's case-detail grid to show only one column. Added global rep renumbering in `generate_results_viewer.py` that assigns sequential rep numbers per `(phase, model, case_id)` tuple across all loaded result sets.
 
-#### 21. OpenRouter env var wiring via provider abstraction
-`model_loader.py` maps provider names to env var specs. For OpenRouter: `ANTHROPIC_BASE_URL` ← `OPENROUTER_BASE_URL`, `ANTHROPIC_AUTH_TOKEN` ← `OPENROUTER_AUTH_TOKEN`, `ANTHROPIC_API_KEY` ← "" (blank). Resolved at load time; models with missing env vars are skipped with a warning.
+### Git Deny Pattern Investigation
 
-#### 22. Pricing from OpenRouter API, not web scraping
-Web-scraped pricing from model pages was 20-50% off actual billing. The `/api/v1/models` endpoint returns exact per-token rates. Rates are stored in `models.yaml` (pulled once, not dynamic) with a date comment for staleness tracking.
+**Problem:** Benchmark subagents were making git commits by evading `--disallowed-tools` patterns. The patterns `Bash(git commit *)` only match commands starting with `git commit` — models bypassed via `cd /dir && git commit`.
 
-#### 23. computed_cost_usd replaces CLI cost_usd
-CLI's `total_cost_usd` is authoritative only for Anthropic direct subscription. For OpenRouter (and for consistency), all runners now compute cost from tokens × pricing. The field in result.json and summary.json is `computed_cost_usd`.
+**Root cause:** Claude Code splits compound commands on shell operators (`&&`, `||`, `;`, `|`) and checks each subcommand independently. A deny rule blocking only one subcommand doesn't block the whole compound.
 
-#### 24. Token-based cost estimation replaces ratio scaling
-Initial estimator used Sonnet dollar-cost ratios to scale for other models — was 15-50x wrong because OpenRouter models generate wildly different token volumes. Replaced with calibrated per-case token profiles (avg input/output/cached) multiplied by each model's actual per-token pricing.
+**Current state:** Added leading `*` wildcards to patterns in `harness/models.py` (e.g., `Bash(*git commit*)`), but testing confirmed these don't work — the glob matching is prefix-anchored only. The official recommendation is PreToolUse hooks for reliable blocking. Accepted as a known limitation for now.
 
-#### 25. input_tokens from CLI is uncached
-The Claude CLI's usage block: `input_tokens` = uncached input count, `cache_read_input_tokens` = cached input count (additive). Total billed = input_tokens + cache_read_input_tokens. This differs from how some APIs report (where input_tokens includes cached).
+**4 rogue commits** exist on `daaf_dev` above `d07b021` (created by benchmark subagents). User will handle cleanup.
 
-#### 26. modelUsage replaces usage for token extraction (subagent cost fix)
-**Discovery:** The CLI result message has two token fields: `usage` (main session only) and `modelUsage` (aggregated across main + all subagent sessions). The original code preferred `usage`, which systematically undercounted costs for any run that dispatched a subagent. Diagnostic run confirmed: Haiku dc-01 showed `usage.output_tokens=1,793` vs `modelUsage.outputTokens=6,939` (+5,146) and `usage.cache_read=128,562` vs `modelUsage.cacheReadInputTokens=733,748` (+605,186). **Fix:** `_extract_token_usage()` now prefers `modelUsage`, falls back to `usage`. All prior result.json files from runs that dispatched subagents have undercounted token costs. Calibration profiles in `cost_estimator.py` also need recalibration after the next batch run.
+### Ghost Result Set Cleanup
 
-#### 27. Pre-assigned session IDs via --session-id (contamination fix)
-**Discovery:** `_find_recent_session_id()` scanned `~/.claude/projects/-daaf/` for the most recently modified `.jsonl` file after a run timed out. With 290 orphaned session files from prior batches, it frequently picked up stale golden checkpoint sessions from Phase 3 runs, causing Phase 1 runs to be scored against the wrong transcript (14/45 Sonnet, 8/45 GLM). The root cause: mtime-based filesystem search in a shared directory during parallel execution. **Fix:** Cold-start runs now pre-generate a UUID and pass it via `--session-id`, making session ID deterministic. `_find_recent_session_id()` removed entirely.
+Deleted 3 stale result sets:
+- `20260608_231509` — ghost (Opus 4.5 bad model ID)
+- `20260608_232158` — ghost (Opus 4.5 old mc-07)
+- `20260609_131854` — orphaned partial re-run
 
 ---
 
-## Key Behavioral Findings (Cumulative)
+## Architecture Decisions (New This Session)
 
-### Prior session findings (still valid)
-- Haiku's "shortcutting" pattern
-- Skill tool vs. Read tool preference
-- Relevance vs. compliance tension
-- Adversarial test cases as differentiator
-- Opus handles simple tasks directly instead of dispatching
-- The "sunk cost" dispatch skip
-- Context-first vs task-first dispatch templates
-- Data-ingest agent/mode conflation
-- CWD affects project discovery
-- Permission system inflates failure rates
-- Claude Code permission modes are coarser than expected
-- The "read before dispatch" pattern is universal and rational
-- Subagent behavior is uniformly correct once dispatched
-- Model-specific dispatch strategies visible in tool call distributions
-- Structural prompt sections are the key differentiator
-- Tool failures are predominantly infrastructure artifacts
-- Debugger behavioral deviation: fix vs. diagnostic
-- Code-reviewer sometimes executes fixtures
+### 32. Sequential execution required for Anthropic Phase 3
+Parallel execution of 36 Opus sessions (3 models × 12 cases) exceeds API rate limits even with 10s stagger. Sequential execution eliminates orchestrator-level rate limits. Subagent-level rate limits (~20% of runs) are inherent and non-preventable — they occur within a single run as orchestrator and subagent compete for quota.
 
-### New findings this session
+### 33. Rate-limited run replacement protocol
+Delete bad run from original result set, re-run individually with 60s gaps, verify replacement has zero rate_limit events in main transcript. Subagent-level rate limits in replacements are accepted if run passes all dispatch criteria.
 
-#### OpenRouter models are dramatically more verbose
-DeepSeek V4 Flash and Gemini 3.1 Flash Lite generate 65-70k input tokens for Phase 1 runs vs Sonnet's ~5k tokens for the same prompts. This appears to be tokenizer differences (more tokens per word) and/or different system prompt handling. Output tokens are comparable (~500-800 across models).
+### 34. Global rep renumbering in viewer generator
+When `--reps 1` is used across multiple batches, all runs have `rep=0`. The viewer generator now renumbers reps globally by counting `(phase, model, case_id)` occurrences across all loaded result sets.
 
-#### Gemini 3.1 Flash Lite struggles with mode classification
-40% all-criteria pass rate on Phase 1. Gets orchestrator_skill right (100%) but mode_correct (42%) and confirm_gate (53%) are weak. data_lookup cases are hardest.
+### 35. `--disallowed-tools` cannot block compound commands
+Claude Code splits on `&&`/`;`/`|` and checks each subcommand. Leading `*` wildcards don't work. PreToolUse hooks are the recommended alternative. Accepted as known limitation — 4 rogue commits reached `daaf_dev`.
 
-#### DeepSeek V4 Flash excels at post-confirmation protocol
-27/27 perfect score on Phase 2 — reads correct mode reference and loads correct skills every time. Better than Haiku (89%) on this task.
+### 36. Fable 5 pricing: $10/$50/$1.00
+Most expensive model in the matrix (2× Opus pricing). `cached_input: 1.00` uses the cache hit rate. Cost is dominated by cache creation tokens (130k-550k per orchestrator turn), not output verbosity.
 
-#### OpenRouter models handle dispatch compliance reasonably well
-DeepSeek V4 Flash: 53% all-10-criteria pass rate on Phase 3 (vs Haiku 22%). Gemini 3.1 Flash Lite dispatches correctly every time (36/36) but has structural prompt gaps.
-
-#### CLI usage block excludes subagent tokens (cost undercount)
-The CLI's `usage` field reports ONLY main-session tokens. The `modelUsage` field aggregates across main + subagent sessions. Verified empirically: Haiku dc-01 `usage.output_tokens=1,793` vs `modelUsage.outputTokens=6,939`; `usage.cache_read=128,562` vs `modelUsage.cache_read=733,748`. This means all prior Phase 3 result.json cost figures for dispatched runs are undercounted. For Gemini (no caching), the undercount per dispatched run is estimated at ~$0.90 in missing input token costs.
-
-#### Harness sandbox contamination in Phase 1
-14/45 Sonnet and 8/45 GLM Phase 1 runs received wrong prompts — golden checkpoint content from dispatch compliance cases leaked into mode classification runs. These produce invalid scores. Root cause appears to be sandbox path reuse.
-
-#### Scorer blind spots
-- `confirmation_gate_present` misses tool-based gates (`AskUserQuestion` used by GLM) and phrasing variants ("shall we begin" used by Gemini)
-- `prompt_has_context_section` / `prompt_has_instructions` requires exact `## Context` / `## Instructions` headers; Sonnet uses task-appropriate alternatives (`## Specifications`, `## What to Search`)
-- `PROJECT_DIR` scored as required for read-only agents (search-agent, source-researcher) where it's semantically unnecessary
-
-#### Model-specific behavioral signatures from 3-model audit
-- **Sonnet 4.6:** Adapts prompt structure to task (semantically strong, structurally non-standard); 100% mode classification on clean prompts; perfect subagent type selection
-- **GLM 5.1:** 30-60s latency per tool call via OpenRouter dominates timing; sequential mkdir calls waste 200s; occasionally bypasses orchestrator entirely to answer directly
-- **Gemini 3.5 Flash:** "Do it myself" tendency instead of dispatching; ToolSearch hallucination wastes 2-5 calls per Phase 3 run; zero prompt caching drives extreme costs
+### 37. Fable 5 thinking blocks are encrypted
+Empty string + cryptographic signature. Test awareness and reasoning quality analysis are structurally impossible. All behavioral assessment must rely on observable output proxies.
 
 ---
 
-## Complete File Inventory (Updated)
+## Current Model Matrix: 17 models (7 Anthropic + 10 OpenRouter)
 
-### Harness (core execution engine)
-- `harness/models.py` — Dataclasses (PricingConfig, ModelConfig with pricing, RunResult with token fields)
-- `harness/executor.py` — Single test execution (with _extract_token_usage)
-- `harness/model_loader.py` — Shared model loading, provider env wiring, CLI filtering (NEW)
-- `harness/cost_estimator.py` — Token-based cost estimation and computation (NEW)
-- `harness/collector.py` — Transcript reading (mostly legacy)
-- `harness/checkpoint_manager.py` — Golden checkpoint cloning
+**Anthropic:** Haiku 4.5, Sonnet 4.6, Opus 4.5, Opus 4.6, Opus 4.7, Opus 4.8, Fable 5
+**OpenRouter:** GLM 5.1, Kimi K2.6, Qwen 3.6 27B, Gemma 4 31B, Gemma 4 26B, DeepSeek V4 Pro, DeepSeek V4 Flash, Gemini 3.1 Pro, Nemotron 3 Ultra, Gemini 3.1 Flash Lite
 
-### Scorers
-- `scorers/deterministic/mode_classification.py` — Phase 1 scorer
-- `scorers/deterministic/checkpoint_adherence.py` — Phase 2 scorer
-- `scorers/deterministic/dispatch_compliance.py` — Phase 3 scorer (10 criteria)
-- `scorers/deterministic/subagent_behavior.py` — Subagent behavior scorer (24 prescriptive specs)
-- `scorers/llm_judge/__init__.py` — Empty placeholder
+---
 
-### Phase-specific runners
-- `scripts/run_mode_classification.py` — Phase 1 (with computed_cost_usd, token capture, cost estimation)
-- `scripts/run_post_confirmation.py` — Phase 2 (same updates)
-- `scripts/run_dispatch_compliance.py` — Phase 3 (same updates)
-- `scripts/rescore_subagent_behavior.py` — Post-hoc subagent rescoring
+## Result Sets on Disk
 
-### Datasets
-- `datasets/mode_classification/cases.jsonl` — 15 Phase 1 test cases
-- `datasets/post_confirmation/cases.jsonl` — 9 Phase 2 test cases
-- `datasets/dispatch_compliance/cases.jsonl` — 12 Phase 3 test cases (10 criteria each)
+### Phase 1 (mode_classification)
+| Result Set | Models | Runs | Notes |
+|-----------|--------|------|-------|
+| `20260608_214251` | Haiku, Sonnet, Opus 4.6/4.7/4.8 | 210 | mc-07 deleted, replaced |
+| `20260608_215330` | GLM, Kimi, Qwen, Gemma 31B/26B | 210 | mc-07 deleted, replaced |
+| `20260608_220708` | DS Pro/Flash, Gemini Pro, Nemotron, Flash Lite | 210 | mc-07 deleted, replaced |
+| `20260608_234751` | Haiku, Sonnet, Opus 4.5 mc-07 rerun | 6 | Opus 4.5 deleted (old ID) |
+| `20260608_235104` | Opus 4.6/4.7/4.8 mc-07 rerun | 9 | Clean |
+| `20260608_235520` | GLM, Kimi, Qwen, Gemma 31B/26B mc-07 rerun | 15 | Clean |
+| `20260609_000011` | DS Pro/Flash, Gemini Pro, Nemotron, Flash Lite mc-07 | 15 | Clean |
+| `20260609_001212` | Opus 4.5 full rerun | 45 | Clean |
+| `20260609_202049` | Fable 5 rep 1 | 15 | Clean |
+| `20260609_214917` | Fable 5 rep 2 | 15 | Clean |
 
-### Test fixtures
-- `datasets/test_fixtures/debugger/join_type_mismatch.py`
-- `datasets/test_fixtures/debugger/silent_data_loss.py`
-- `datasets/test_fixtures/code_reviewer/frpl_poverty_rates.py`
-- `datasets/test_fixtures/code_reviewer/enrollment_trends.py`
-- `datasets/test_fixtures/data_ingest/books.csv`
-- `datasets/test_fixtures/data_ingest/messy_students.csv`
+### Phase 2 (post_confirmation)
+| Result Set | Models | Runs | Notes |
+|-----------|--------|------|-------|
+| `20260608_221438` | Haiku, Sonnet, Opus 4.6/4.7/4.8 | 128 | Rate-limited runs deleted, replaced |
+| `20260608_222445` | GLM, Kimi, Qwen, Gemma 31B/26B | 135 | Clean |
+| `20260608_223408` | DS Pro/Flash, Gemini Pro, Nemotron, Flash Lite | 135 | Clean |
+| `20260608_232257` | Opus 4.5 | 27 | Clean |
+| `20260608_233457` | Opus 4.8 pc-09 rerun | 1 | Clean |
+| `20260608_233906` | Opus 4.7+4.8 pc-06 rerun | 6 | Clean |
+| `20260609_203258` | Fable 5 rep 1 | 9 | Clean |
+| `20260609_215903` | Fable 5 rep 2 | 9 | Clean |
 
-### Golden checkpoints
-- `golden/mode_classification/mc-{01..15}.jsonl` — Phase 1
-- `golden/post_confirmation/{mode}.jsonl` — Phase 2
-- `golden/dispatch_compliance/ad_hoc_initialized.jsonl` — Phase 3
+### Phase 3 (dispatch_compliance)
+| Result Set | Models | Runs | Notes |
+|-----------|--------|------|-------|
+| `20260609_003629` | Wave C rep 1 (GLM, Kimi, Qwen, Gemma ×2) | 60 | Clean |
+| `20260609_004353` | Wave D rep 1 (DS Pro/Flash, Gemini Pro, Nemotron, Flash Lite) | 60 | Clean |
+| `20260609_005021` | Wave A rep 1 (Haiku, Sonnet, Opus 4.5) | 34 | 2 runs deleted (rate-limit), replaced |
+| `20260609_005920` | Wave C rep 2 | 60 | Clean |
+| `20260609_010631` | Wave D rep 2 | 60 | Clean |
+| `20260609_011346` | Wave C rep 3 | 60 | Clean |
+| `20260609_012055` | Wave D rep 3 | 60 | Clean |
+| `20260609_134443` | Wave B rep 1 (Opus 4.6/4.7/4.8) sequential | 33 | 3 runs deleted (rate-limit), replaced |
+| `20260609_160029` | Wave A rep 2 sequential | 33 | 3 runs deleted (rate-limit), replaced |
+| `20260609_180411` | Wave B rep 2 sequential | 33 | 3 runs deleted (rate-limit), replaced |
+| `20260609_182101` | Replacement: dc-08 Sonnet | 1 | Clean |
+| `20260609_182702` | Replacement: dc-11 Sonnet | 1 | Clean |
+| `20260609_183139` | Replacement: dc-02 Opus 4.8 | 1 | Clean |
+| `20260609_183605` | Replacement: dc-08 Opus 4.6 | 1 | Clean |
+| `20260609_184206` | Replacement: dc-11 Opus 4.6 | 1 | Clean |
+| `20260609_184808` | Replacement: dc-11 Opus 4.8 | 1 | Clean |
+| `20260609_185040` | Replacement: dc-06 Haiku | 1 | Clean |
+| `20260609_185557` | Replacement: dc-11 Opus 4.5 | 1 | Clean |
+| `20260609_190158` | Replacement: dc-11 Sonnet | 1 | Clean |
+| `20260609_190608` | Replacement: dc-02 Opus 4.6 | 1 | Clean |
+| `20260609_191205` | Replacement: dc-11 Opus 4.6 | 1 | Clean |
+| `20260609_191806` | Replacement: dc-12 Opus 4.6 | 1 | Clean |
+| `20260609_214335` | Fable 5 rep 1 | 12 | 3 subagent-level rl, all recovered |
+| `20260609_224824` | Fable 5 rep 2 | 12 | 3 subagent-level rl, all recovered |
 
-### Config
-- `config/models.yaml` — Model matrix (14 models: 3 Anthropic + 11 OpenRouter, with pricing)
+---
 
-### Results (gitignored, on disk)
-- Prior batch: Sonnet 4.6, GLM 5.1, Gemini 3.5 Flash (3 reps × 3 phases = 324 runs) — pre-fix, cost data unreliable
-- Current batch (post-fix): Haiku 4.5, DeepSeek V4 Flash, Gemma 4 26B, Qwen 3.6 27B (3 reps × 3 phases = 432 runs)
-  - Phase 1: `results/20260608_194338/` — 180 runs, $2.43, 1 timeout
-  - Phase 2: `results/20260608_195118/` — 108 runs, $2.14, 23 timeouts
-  - Phase 3: `results/20260608_201041/` — 144 runs, $6.19, 68 timeouts
-- Diagnostic script: `scripts/diag_token_accounting.py` — verified modelUsage vs usage gap
+## Rep Counts by Model
 
-### Scripts (new this session)
-- `scripts/diag_token_accounting.py` — One-shot diagnostic that runs a single case and compares `usage` vs `modelUsage` token fields
+| Model | Phase 1 | Phase 2 | Phase 3 | Provider |
+|-------|---------|---------|---------|----------|
+| Haiku 4.5 | 3 reps (45) | 3 reps (27) | 2 reps (24) | Anthropic |
+| Sonnet 4.6 | 3 reps (45) | 3 reps (27) | 2 reps (~22)* | Anthropic |
+| Opus 4.5 | 3 reps (45) | 3 reps (27) | 2 reps (24) | Anthropic |
+| Opus 4.6 | 3 reps (45) | 3 reps (27) | 2 reps (24) | Anthropic |
+| Opus 4.7 | 3 reps (45) | 3 reps (27) | 2 reps (24) | Anthropic |
+| Opus 4.8 | 3 reps (45) | 3 reps (27) | 2 reps (24) | Anthropic |
+| Fable 5 | 2 reps (30) | 2 reps (18) | 2 reps (24) | Anthropic |
+| All OpenRouter | 3 reps (45) | 3 reps (27) | 3 reps (36) | OpenRouter |
+
+*Sonnet Phase 3 had some timed-out runs where dispatch never occurred.
 
 ---
 
 ## Next Session: Planned Work
 
-### 1. OpenRouter Cost Accuracy (UNRESOLVED)
-**Problem:** OpenRouter reasoning models (DeepSeek, Qwen, Gemma) bill for reasoning/thinking tokens that the Claude CLI does not report. Empirical gap: 2-2.5x between our computed costs and actual OpenRouter billing. Root cause confirmed: OpenRouter's chat completion response includes `completion_tokens_details.reasoning_tokens` and a `cost` field, but the Claude CLI discards these provider-specific fields when mapping to Anthropic's usage format. `costUSD` in modelUsage uses Anthropic pricing ($3/M input) — wrong for OpenRouter.
+### 1. Complete Fable 5 to 3 reps
+Run one more rep across all 3 phases to match the OpenRouter models. Use sequential execution with 20s delay, same as this session.
 
-**Verified facts:**
-- Qwen "2+2" prompt: 200 completion_tokens but 208 reasoning_tokens (reasoning EXCEEDS visible output)
-- Haiku via OpenRouter: 0 reasoning_tokens (same tokenizer, no thinking)
-- Actual billing vs computed: DeepSeek 2.03x, Gemma 2.22x, Qwen 2.44x
+### 2. Complete Anthropic Phase 3 to 3 reps
+All Anthropic models (except Fable) have 2 Phase 3 reps. Run one more rep each, sequential, to match OpenRouter. Run one model at a time to avoid rate limiting.
 
-**Options to explore:**
-- Query OpenRouter `/api/v1/generation?id={gen_id}` post-run (404'd in testing — may need different auth or endpoint format)
-- Store empirical reasoning multipliers per model in models.yaml
-- Accept ~2x undercount for OpenRouter reasoning models and document clearly
+### 3. Scorer improvements
+- Add clarifying-question patterns to confirmation gate regex (Sonnet mc-09 false negative)
+- Consider softening `prompt_has_context_section` to detect contextual content in any section
+- Consider whether User Support newcomer orientation should exempt from confirmation gate
 
-### 2. HTML Results Viewer
-Browser-based viewer for `results/{timestamp}/summary.json` with:
-- Run selector: pick result sets by timestamp, see metadata (models, phases, reps)
-- Model comparison table: pass rates by criterion across models
-- Drill-down to individual runs: token counts, cost, duration, criterion pass/fail with detail text
-- Subagent behavior breakdown (Phase 3)
-- Cost summary: per-model, per-phase, total (with caveat for OpenRouter reasoning costs)
-- Multiple result sets on disk to build and test against
+### 4. Clean up rogue git commits
+4 commits on `daaf_dev` above `d07b021` created by benchmark subagents. Need to be reverted.
 
-### 3. Exam-Style Knowledge Tests
-Separate test category — framework knowledge questions without execution:
-- "What subagent type should be dispatched for Stage 5 data fetch?"
-- "What are the required sections in a research-executor dispatch prompt?"
-Deterministic scoring against known-correct answers. Very cheap (~$0.02/run).
-
-### 4. Validation Run: All Anthropic Models
-Run Opus, Sonnet, and Haiku with the complete updated system (modelUsage tokens, deterministic session IDs, improved scorers). First clean Anthropic-only baseline with accurate cost data.
-
-### 5. Rescore Prior Runs
-The `rescore_subagent_behavior.py` script can rescore existing results post-hoc. Could rescore prior Sonnet/GLM/Gemini batch with updated scorers (flexible headers, AskUserQuestion detection) to see impact.
+### 5. Investigate `--disallowed-tools` compound command gap
+If desired, implement a PreToolUse hook for git-blocking during benchmark runs as the official recommendation suggests. Lower priority since it doesn't affect scoring.
 
 ---
 
 ## Restart Prompt
 
-To resume this work, start a new session and paste:
-
-> Launch framework development mode. We're continuing work on the DAAF benchmark system at `/daaf/benchmarks`. Read `/daaf/benchmarks/SESSION_RESTART.md` for the complete state of what was built, architecture decisions, and next steps. This session made two major harness fixes (modelUsage for subagent cost tracking, deterministic session IDs to prevent transcript contamination), five scorer improvements (AskUserQuestion detection, phrasing variants, flexible headers, conditional PROJECT_DIR, timed_out field), and ran a 4-model validation batch (Haiku, DeepSeek V4 Flash, Gemma 4 26B, Qwen 3.6 27B × 3 reps × 3 phases). We also diagnosed that OpenRouter reasoning model costs are ~2-2.5x undercounted because the CLI discards reasoning token counts. The top priorities for the next session are: (1) resolving OpenRouter cost accuracy if possible, and (2) building the HTML results viewer. Start by reading the restart file, then come back with a plan.
+> Launch framework development mode. We're continuing work on the DAAF benchmark system at `/daaf/benchmarks`. Read `/daaf/benchmarks/SESSION_RESTART.md` for the complete state. This session completed Phase 3 across all 17 models (7 Anthropic + 10 OpenRouter), added Fable 5 (perfect on Phases 1+2, 88% Phase 3), fixed the viewer's rep-renumbering bug, and resolved Anthropic rate-limiting issues via sequential execution. The current priority is [STATE YOUR PRIORITY — e.g., "running a 3rd rep of Fable across all phases", "completing Anthropic Phase 3 to 3 reps", "scorer improvements", etc.]. Start by reading the restart file and confirming the plan.
