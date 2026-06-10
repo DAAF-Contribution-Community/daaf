@@ -1,0 +1,2914 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DAAF Benchmark Results</title>
+<style>
+/* === Design Tokens (plan § 5) ===
+   Status palette + surface/border/text custom properties. All status color
+   in CSS and JS routes through these tokens (WP8 sweep); the only literal
+   hues left are the per-model identity palettes (MODEL_COLORS) and SVG
+   presentation attributes, which are intentional. */
+:root{
+  --c-pass:#34d399;
+  --c-pass-rgb:52,211,153; /* rgb of --c-pass, for the rgba() 5-step rate ramp */
+  --c-fail:#f87171;
+  --c-fail-rgb:248,113,113; /* rgb of --c-fail, for rgba() tints */
+  --c-fail-light:#fda4af;   /* light fail tint: small text on fail-tinted bgs */
+  --c-partial:#fbbf24;
+  --c-neutral:#64748b;
+  --surface-0:#0f172a;
+  --surface-1:#1e293b;
+  --border-1:#334155;
+  --text-1:#f8fafc;
+  --text-2:#94a3b8;
+  --text-3:#64748b;
+  --accent:#6366f1;
+  --accent-light:#818cf8;
+}
+
+/* === Reset & Base === */
+*{ margin:0; padding:0; box-sizing:border-box; }
+html{ scroll-behavior:smooth; scroll-padding-top:18px; }
+body{
+  background:var(--surface-0); color:var(--text-1);
+  font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;
+  line-height:1.5;
+}
+a{ color:var(--accent-light); text-decoration:none; }
+a:hover{ text-decoration:underline; }
+button{ cursor:pointer; font-family:inherit; }
+code{ font-family:'SF Mono',SFMono-Regular,Consolas,'Liberation Mono',Menlo,monospace; font-size:0.85em; }
+
+/* === Document Layout: fixed TOC rail + scrolling document === */
+.toc-rail{
+  position:fixed; top:0; left:0; bottom:0; width:190px;
+  background:var(--surface-1); border-right:1px solid var(--border-1);
+  padding:18px 0 14px; overflow-y:auto; z-index:100;
+}
+.toc-title{
+  font-size:13px; font-weight:700; color:var(--text-1);
+  padding:0 18px 10px; letter-spacing:.3px;
+}
+.toc-link{
+  display:block; padding:6px 18px; font-size:13px; color:var(--text-2);
+  border-left:3px solid transparent; transition:background .15s;
+}
+.toc-link:hover{ background:var(--border-1); color:var(--text-1); text-decoration:none; }
+.toc-link.active{
+  color:var(--text-1); border-left-color:var(--accent);
+  background:rgba(99,102,241,.08); font-weight:600;
+}
+.toc-top{
+  display:block; padding:10px 18px 0; font-size:12px; color:var(--text-3);
+  border-top:1px solid var(--border-1); margin-top:12px;
+}
+.doc{ margin-left:190px; max-width:1300px; padding:0 28px 80px; }
+.doc-section{ padding-top:30px; }
+.doc-section h2{ font-size:20px; font-weight:700; margin-bottom:6px; }
+.section-lead{ font-size:14px; color:var(--text-2); max-width:880px; margin-bottom:12px; }
+.sec-body:empty{ min-height:240px; }
+.sec-body:empty::after{ content:"Rendering\2026"; color:var(--text-3); font-size:12px; }
+
+/* Narrow viewports: rail collapses to a simple inline list at the top */
+@media (max-width:900px){
+  .toc-rail{
+    position:static; width:auto; bottom:auto;
+    display:flex; flex-wrap:wrap; align-items:center; gap:0 4px;
+    padding:8px 12px; border-right:none; border-bottom:1px solid var(--border-1);
+  }
+  .toc-title{ padding:0 10px 0 0; }
+  .toc-link{ padding:4px 8px; border-left:none; font-size:12px; }
+  .toc-link.active{ border-left:none; border-bottom:2px solid var(--accent); }
+  .toc-top{ border-top:none; margin-top:0; padding:4px 8px; }
+  .doc{ margin-left:0; padding:0 16px 60px; }
+}
+
+/* === Hero === */
+.hero h1{ font-size:26px; font-weight:700; }
+.hero .gen{ font-size:12px; color:var(--text-3); margin-top:2px; }
+.chip-row{ display:flex; gap:10px; flex-wrap:wrap; margin:16px 0; }
+.chip{
+  background:var(--surface-1); border:1px solid var(--border-1);
+  border-radius:8px; padding:8px 16px; min-width:96px; text-align:center;
+}
+.chip .chip-val{ font-size:20px; font-weight:700; }
+.chip .chip-label{ font-size:11px; color:var(--text-3); text-transform:uppercase; letter-spacing:.5px; }
+.verdict{
+  background:var(--surface-1); border:1px solid var(--border-1);
+  border-left:4px solid var(--accent); border-radius:8px;
+  padding:14px 18px; font-size:15px; max-width:980px; line-height:1.6;
+}
+.verdict b{ color:var(--text-1); }
+
+/* === About === */
+.about-intro{ font-size:14px; color:#e2e8f0; max-width:900px; margin-bottom:14px; line-height:1.65; }
+.about details{
+  background:var(--surface-1); border:1px solid var(--border-1);
+  border-radius:8px; margin-bottom:10px; max-width:980px;
+}
+.about summary{ cursor:pointer; padding:10px 16px; font-weight:600; font-size:14px; }
+.about summary:hover{ color:var(--accent-light); }
+.about details > div{ padding:2px 16px 14px; font-size:13.5px; color:#cbd5e1; line-height:1.6; }
+.about details p{ margin-bottom:8px; }
+.about ul{ margin:6px 0 8px 18px; }
+.about li{ margin-bottom:6px; }
+.about table{ border-collapse:collapse; font-size:12.5px; margin:8px 0 10px; }
+.about th{ text-align:left; padding:6px 10px; border-bottom:2px solid var(--border-1); color:var(--text-2); font-size:11px; text-transform:uppercase; letter-spacing:.3px; }
+.about td{ padding:6px 10px; border-bottom:1px solid var(--border-1); vertical-align:top; }
+
+/* === Provenance === */
+.prov-discrepancy td{ background:rgba(251,191,36,.08); }
+.prov-foot{ font-size:12px; color:var(--text-3); margin-top:10px; max-width:980px; line-height:1.6; }
+
+/* === Run Explorer local filters === */
+.rx-filters{
+  display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:12px;
+}
+.filter-group{ display:flex; align-items:center; gap:4px; }
+.filter-group label{ font-size:11px; color:var(--text-3); text-transform:uppercase; letter-spacing:.5px; }
+.filter-select{
+  background:var(--surface-0); color:#e2e8f0; border:1px solid var(--border-1); border-radius:4px;
+  padding:4px 8px; font-size:12px; min-width:100px;
+}
+.filter-select option{ background:var(--surface-1); }
+.filter-input{
+  background:var(--surface-0); color:#e2e8f0; border:1px solid var(--border-1); border-radius:4px;
+  padding:4px 8px; font-size:12px; width:180px;
+}
+.filter-checkbox{
+  display:flex; align-items:center; gap:4px; font-size:11px; color:var(--text-2);
+  cursor:pointer; user-select:none; white-space:nowrap;
+}
+.filter-checkbox input{ cursor:pointer; }
+.filter-btn{
+  background:#334155; color:#94a3b8; border:1px solid #475569; border-radius:4px;
+  padding:4px 10px; font-size:11px;
+}
+.filter-btn:hover{ background:#475569; color:#f8fafc; }
+/* Criterion deep-link filter chip (set by heatmap click-through; not a
+   select — criterion names vary per phase, so a dropdown would be huge) */
+.rx-chip{ display:inline-flex; align-items:center; gap:6px; background:rgba(99,102,241,.12); border:1px solid var(--accent); border-radius:12px; padding:2px 10px; font-size:11px; color:var(--text-1); }
+.rx-chip code{ font-size:10px; }
+.rx-chip .rx-chip-x{ cursor:pointer; color:var(--text-2); font-weight:700; }
+.rx-chip .rx-chip-x:hover{ color:var(--text-1); }
+
+/* === Cards & Panels === */
+.card{
+  background:#1e293b; border:1px solid #334155; border-radius:8px;
+  padding:16px 20px; margin-bottom:16px; overflow-x:auto;
+}
+.section-title{
+  font-size:13px; font-weight:600; color:#94a3b8; text-transform:uppercase;
+  letter-spacing:.5px; margin:20px 0 10px;
+}
+
+/* === Rate scale (shared 5-step discrete ramp; plan § 5) ===
+   Single hue (--c-pass-rgb) with lightness spread via rgba alpha — never a
+   red→green continuous ramp. Text flips dark at steps 3-4 to keep >=3:1
+   contrast on the lighter fills. Status is never color alone: renderers pair
+   these with glyphs (&#10003; step 4, &#10007; step 0, % text steps 1-3) and a
+   k/n tooltip. .rs-na marks no-data cells. WP5 phase heatmaps reuse these. */
+.rs-0{ background:rgba(var(--c-pass-rgb),.05); color:var(--text-2); }
+.rs-1{ background:rgba(var(--c-pass-rgb),.16); color:var(--text-1); }
+.rs-2{ background:rgba(var(--c-pass-rgb),.34); color:var(--text-1); }
+/* .rs-3 alpha .65 (was .55): dark text on the .55 fill measured ~4.1:1,
+   below the 4.5:1 small-text floor (WP8 contrast audit); .65 reaches ~5:1
+   while staying visually distinct from .rs-2 (.34) and .rs-4 (.85). */
+.rs-3{ background:rgba(var(--c-pass-rgb),.65); color:var(--surface-0); }
+.rs-4{ background:rgba(var(--c-pass-rgb),.85); color:var(--surface-0); }
+/* .rs-na text uses --text-2 (not --text-3): --text-3 on the tinted cell
+   measured ~2.7:1, under the 3:1 non-text floor (WP8 contrast audit). */
+.rs-na{ background:rgba(100,116,139,.12); color:var(--text-2); }
+
+/* === Leaderboard (plan § 4.3) === */
+.lb-finding,.cp-finding,.pd-finding{ font-size:15px; max-width:980px; margin:4px 0 12px; line-height:1.55; }
+.lb-controls{ display:flex; align-items:center; gap:6px; flex-wrap:wrap; margin-bottom:12px; }
+.lb-sort-label{ font-size:11px; color:var(--text-3); text-transform:uppercase; letter-spacing:.5px; margin-right:2px; }
+.lb-sort-btn{
+  background:var(--surface-1); color:var(--text-2); border:1px solid var(--border-1);
+  border-radius:4px; padding:4px 10px; font-size:11px;
+}
+.lb-sort-btn:hover{ color:var(--text-1); border-color:var(--text-3); }
+.lb-sort-btn.active{ background:rgba(99,102,241,.18); color:var(--text-1); border-color:var(--accent); font-weight:600; }
+.lb-table th{ cursor:default; }
+.lb-table td{ vertical-align:middle; }
+.lb-table .hm-cell{ cursor:default; }
+.lb-table .hm-cell.clickable{ cursor:pointer; }
+.lb-band-start td{ border-top:2px solid var(--border-1); }
+.lb-tier-cell{
+  font-weight:700; font-size:12px; text-align:center; color:var(--text-2);
+  background:rgba(99,102,241,.06); border-right:2px solid var(--border-1);
+}
+.lb-rank{ color:var(--text-3); font-size:11px; text-align:right; width:26px; }
+.lb-model-name{ font-weight:600; color:var(--text-1); white-space:nowrap; }
+.lb-provider{
+  display:inline-block; margin-left:6px; padding:0 6px; border-radius:8px;
+  background:var(--surface-0); border:1px solid var(--border-1);
+  font-size:10px; color:var(--text-3); vertical-align:middle;
+}
+.lb-partial{ background:rgba(251,191,36,.18); color:var(--c-partial); cursor:help; }
+.lb-comp{ min-width:176px; white-space:nowrap; cursor:help; }
+.lb-comp-score{ display:inline-block; width:52px; font-weight:700; font-size:13px; }
+.lb-bar{
+  position:relative; display:inline-block; vertical-align:middle;
+  width:110px; height:10px; border-radius:3px; background:var(--surface-0);
+  border:1px solid var(--border-1); overflow:hidden;
+}
+.lb-bar-fill{ position:absolute; left:0; top:0; bottom:0; background:rgba(var(--c-pass-rgb),.75); }
+.lb-bar-tick{ position:absolute; top:0; bottom:0; width:1px; background:var(--text-1); opacity:.7; }
+.lb-cell{ text-align:center; }
+.lb-cell .hm-cell{ min-width:64px; }
+.lb-n{ display:block; font-size:9px; font-weight:400; opacity:.85; }
+.lb-cost{ text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap; }
+.lb-foot,.cp-foot,.pd-foot,.cost-foot{ font-size:12px; color:var(--text-3); margin-top:10px; max-width:980px; line-height:1.6; }
+
+/* === Cost vs. Performance (plan § 4.4) === */
+.cp-legend{
+  display:flex; align-items:center; gap:16px; flex-wrap:wrap;
+  font-size:11px; color:var(--text-2); margin:2px 0 6px;
+}
+.cp-legend svg{ vertical-align:-3px; margin-right:5px; }
+
+/* === Phase Deep-Dives (plan § 4.5) === */
+.pd-legend{
+  display:flex; align-items:center; gap:8px; flex-wrap:wrap;
+  font-size:11px; color:var(--text-2); margin:2px 0 16px;
+}
+.pd-legend .hm-cell{ cursor:default; min-width:52px; }
+.pd-pair{ display:flex; gap:28px; flex-wrap:wrap; align-items:flex-start; }
+.pd-group{ margin-bottom:30px; min-width:0; }
+.pd-group h3{ font-size:15px; font-weight:700; margin-bottom:4px; }
+.pd-explainer{ font-size:12.5px; color:var(--text-2); max-width:760px; margin-bottom:8px; line-height:1.55; }
+.pd-callout{
+  font-size:12px; color:#cbd5e1; background:var(--surface-1);
+  border:1px solid var(--border-1); border-left:3px solid var(--accent);
+  border-radius:6px; padding:7px 12px; margin:0 0 10px; max-width:760px; line-height:1.55;
+}
+.pd-table{ border-collapse:collapse; font-size:11px; }
+.pd-table thead th{
+  color:var(--text-2); font-weight:600; font-size:10px; padding:4px 3px;
+  border-bottom:2px solid var(--border-1); white-space:nowrap;
+}
+.pd-tier-label{ text-transform:uppercase; letter-spacing:.5px; text-align:center; color:var(--text-3); }
+.pd-crit-th{ vertical-align:bottom; }
+.pd-crit-rot{
+  display:inline-block; writing-mode:vertical-rl; transform:rotate(180deg);
+  font-family:'SF Mono',SFMono-Regular,Consolas,'Liberation Mono',Menlo,monospace;
+  font-size:9.5px; font-weight:500; line-height:1.3; white-space:nowrap;
+}
+.pd-model{
+  font-weight:600; color:var(--text-1); white-space:nowrap;
+  padding:3px 10px 3px 0; border-bottom:1px solid var(--surface-1);
+}
+.pd-row-rate{ font-weight:400; font-size:10px; color:var(--text-3); margin-left:6px; }
+.pd-cell{
+  text-align:center; font-weight:600; font-size:10.5px; padding:4px 6px;
+  min-width:42px; border:1px solid var(--surface-0); cursor:pointer;
+}
+.pd-cell.rs-na{ cursor:default; }
+/* Tier separator: first soft column carries a colored left border */
+.pd-soft-start{ border-left:2px solid var(--c-partial); }
+
+/* === Tables === */
+.data-table{
+  width:100%; border-collapse:collapse; font-size:12px;
+}
+.data-table th{
+  text-align:left; padding:8px 10px; border-bottom:2px solid #334155;
+  color:#94a3b8; font-weight:600; font-size:11px; text-transform:uppercase;
+  letter-spacing:.3px; cursor:pointer; user-select:none; white-space:nowrap;
+}
+.data-table th:hover{ color:#f8fafc; }
+.data-table td{
+  padding:6px 10px; border-bottom:1px solid #1e293b;
+}
+.data-table tr:hover td{ background:rgba(99,102,241,.04); }
+
+/* === Heatmap cells === */
+.hm-cell{
+  display:inline-block; padding:3px 8px; border-radius:4px; font-size:11px;
+  font-weight:600; text-align:center; min-width:48px; cursor:pointer;
+}
+
+/* === Costs Detail (plan § 4.7) ===
+   Token-composition stacked bar: input / output / cache-read shares of a
+   model's billed tokens. Segments are separated by a 1px dark gap and
+   always paired with the exact percentages as text (in-cell + tooltip),
+   so composition never reads through hue alone. */
+.tok-bar{
+  display:inline-flex; vertical-align:middle; width:140px; height:10px;
+  border-radius:3px; background:var(--surface-0);
+  border:1px solid var(--border-1); overflow:hidden;
+}
+.tok-seg{ height:100%; }
+.tok-seg+.tok-seg{ margin-left:1px; }
+.tok-in{ background:var(--accent-light); }
+.tok-out{ background:var(--c-partial); }
+.tok-cache{ background:var(--c-neutral); }
+.tok-text{ font-size:10px; color:var(--text-2); margin-left:6px; white-space:nowrap; }
+.cost-legend{
+  display:flex; align-items:center; gap:14px; flex-wrap:wrap;
+  font-size:11px; color:var(--text-2); margin:2px 0 8px;
+}
+.cost-legend .tok-swatch{
+  display:inline-block; width:10px; height:10px; border-radius:2px;
+  margin-right:4px; vertical-align:-1px;
+}
+
+/* === Cases View (case browser per-rep marks) === */
+.case-prompt{ background:#1e293b; padding:10px; border-radius:4px; margin:8px 0; white-space:pre-wrap; font-size:12px; color:#cbd5e1; }
+.req-list{ margin:6px 0 6px 16px; }
+.req-list li{ color:#94a3b8; margin-bottom:3px; }
+.crit-pass{ color:var(--c-pass); font-weight:700; }
+.crit-fail{ color:var(--c-fail); font-weight:700; }
+.rep-label{ color:#64748b; font-size:11px; font-weight:600; white-space:nowrap; }
+
+/* === Cases & Consistency (plan § 4.6) === */
+.cs-chip{
+  display:inline-block; margin-left:6px; padding:0 6px; border-radius:8px;
+  background:var(--surface-0); border:1px solid var(--border-1);
+  font-size:10px; font-weight:400; color:var(--text-3); vertical-align:middle;
+}
+/* Row-margin difficulty column: visually separated from the model cells */
+.cs-margin{ border-right:2px solid var(--border-1) !important; cursor:default; }
+.case-browser details{
+  background:var(--surface-1); border:1px solid var(--border-1);
+  border-radius:8px; margin-bottom:8px;
+}
+.case-browser summary{ cursor:pointer; padding:9px 14px; font-size:13px; }
+.case-browser summary:hover{ color:var(--accent-light); }
+.case-browser .cb-rate{ float:right; color:var(--text-2); font-size:11px; }
+.case-browser details > div{ padding:2px 14px 14px; }
+
+/* === Run Explorer (relocated Logs view) === */
+.logs-layout{ display:flex; gap:16px; height:72vh; }
+.run-list-panel{
+  width:380px; min-width:300px; overflow-y:auto; border:1px solid #334155;
+  border-radius:8px; background:#1e293b;
+}
+.run-list-item{
+  padding:8px 12px; cursor:pointer; border-bottom:1px solid #0f172a;
+  font-size:12px; display:flex; flex-wrap:wrap; gap:4px 12px;
+}
+.run-list-item:hover{ background:rgba(99,102,241,.06); }
+.run-list-item.selected{ background:rgba(99,102,241,.12); border-left:3px solid #6366f1; }
+.run-list-item .case-label{ font-weight:600; color:#f8fafc; }
+.run-list-item .model-label{ color:#94a3b8; }
+/* Grade status glyphs (WP7 taxonomy): color + glyph + tooltip, never
+   color alone. Timeout is a separate clock marker (.to-mark), not a
+   status of its own — timed-out runs are usually still graded. */
+.st-glyph{ display:inline-block; width:12px; text-align:center; font-weight:700; cursor:help; }
+.st-perfect{ color:var(--c-pass); }
+.st-partial{ color:var(--c-partial); }
+.st-failed{ color:var(--c-fail); }
+.st-ungraded{ color:var(--c-neutral); }
+.to-mark{ color:var(--text-2); font-size:11px; cursor:help; }
+.run-detail-panel{
+  flex:1; overflow-y:auto; border:1px solid #334155; border-radius:8px;
+  background:#1e293b; padding:16px 20px;
+}
+.run-detail-panel .empty-state{ color:#64748b; text-align:center; padding:60px 20px; font-size:13px; }
+.show-all-row{ padding:10px 12px; text-align:center; }
+
+/* Transcript */
+.transcript{ margin-top:16px; }
+.tx-msg{ padding:6px 10px; margin-bottom:4px; border-radius:4px; font-size:12px; }
+.tx-user{ background:rgba(99,102,241,.1); border-left:3px solid #6366f1; }
+.tx-assistant{ background:rgba(var(--c-pass-rgb),.06); border-left:3px solid var(--c-pass); }
+.tx-tool-call{ background:rgba(245,158,11,.08); border-left:3px solid #f59e0b; font-size:11px; }
+.tx-tool-result{ background:rgba(100,116,139,.08); border-left:3px solid #64748b; font-size:11px; }
+.tx-system{ background:rgba(100,116,139,.05); border-left:3px solid #475569; font-size:11px; color:#64748b; }
+.tx-role{ font-weight:700; font-size:10px; text-transform:uppercase; letter-spacing:.5px; margin-right:6px; }
+.tx-content{ white-space:pre-wrap; word-break:break-word; }
+.tx-toggle{ color:#818cf8; cursor:pointer; font-size:11px; }
+.tx-toggle:hover{ text-decoration:underline; }
+.tx-collapsed{ max-height:40px; overflow:hidden; position:relative; }
+.tx-collapsed::after{
+  content:''; position:absolute; bottom:0; left:0; right:0; height:20px;
+  background:linear-gradient(transparent,#1e293b);
+}
+
+/* Criteria checklist */
+.crit-check{ display:flex; align-items:flex-start; gap:6px; margin-bottom:6px; font-size:12px; }
+.crit-icon{ font-weight:700; flex-shrink:0; width:16px; text-align:center; }
+.crit-name{ font-weight:600; color:#e2e8f0; }
+.crit-detail{ color:#94a3b8; font-size:11px; margin-left:22px; }
+
+/* === Charts (SVG) === */
+.chart-container{ margin:16px 0; overflow-x:auto; }
+.chart-container svg{ display:block; }
+.chart-container svg text{ font-family:inherit; }
+
+/* === Tooltip === */
+.tooltip{
+  position:fixed; background:#1e293b; border:1px solid #475569; border-radius:6px;
+  padding:8px 12px; font-size:11px; color:#e2e8f0; z-index:9999;
+  pointer-events:none; max-width:300px; box-shadow:0 4px 12px rgba(0,0,0,.4);
+  display:none;
+}
+
+/* === Utilities === */
+.text-muted{ color:#64748b; }
+.text-secondary{ color:#94a3b8; }
+.text-xs{ font-size:11px; }
+.mt-4{ margin-top:16px; }
+.mb-2{ margin-bottom:8px; }
+.mb-4{ margin-bottom:16px; }
+.badge{
+  display:inline-block; background:#334155; color:#e2e8f0;
+  padding:1px 8px; border-radius:10px; font-size:11px; white-space:nowrap;
+}
+.badge-pass{ background:rgba(var(--c-pass-rgb),.2); color:var(--c-pass); }
+.badge-fail{ background:rgba(var(--c-fail-rgb),.2); color:var(--c-fail-light); }
+.badge-partial{ background:rgba(251,191,36,.2); color:#fde68a; }
+.badge-neutral{ background:rgba(100,116,139,.2); color:#94a3b8; }
+.badge-timeout{ background:transparent; border:1px dashed var(--text-2); color:var(--text-2); }
+.empty-msg{ color:#64748b; text-align:center; padding:40px; font-size:13px; }
+.clickable{ cursor:pointer; }
+.clickable:hover{ opacity:.85; }
+</style>
+</head>
+<body>
+
+<!-- ============================================================== -->
+<!-- TOC rail (scrollspy active-state managed by JS)                -->
+<!-- ============================================================== -->
+<nav class="toc-rail" id="toc-rail">
+  <div class="toc-title">DAAF Benchmarks</div>
+  <a class="toc-link" href="#hero" data-target="hero">Verdict</a>
+  <a class="toc-link" href="#about" data-target="about">About This Benchmark</a>
+  <a class="toc-link" href="#leaderboard" data-target="leaderboard">Leaderboard</a>
+  <a class="toc-link" href="#cost-performance" data-target="cost-performance">Cost vs. Performance</a>
+  <a class="toc-link" href="#phases" data-target="phases">Phase Deep-Dives</a>
+  <a class="toc-link" href="#cases" data-target="cases">Cases &amp; Consistency</a>
+  <a class="toc-link" href="#costs" data-target="costs">Costs Detail</a>
+  <a class="toc-link" href="#run-explorer" data-target="run-explorer">Run Explorer</a>
+  <a class="toc-link" href="#provenance" data-target="provenance">Provenance</a>
+  <a class="toc-top" href="#hero">&#8593; top</a>
+</nav>
+
+<main class="doc">
+
+<!-- 1. Hero / Verdict -->
+<section class="doc-section hero" id="hero">
+  <h1>DAAF Framework Adherence Benchmarks</h1>
+  <div class="gen">Generated __GENERATED_DISPLAY__ UTC</div>
+  <div class="chip-row" id="hero-chips"></div>
+  <div class="verdict" id="hero-verdict"></div>
+</section>
+
+<!-- 2. About This Benchmark -->
+<section class="doc-section about" id="about">
+  <h2>About This Benchmark</h2>
+  <p class="about-intro">
+    This page reports how well <span id="ab-models">17</span> language models follow the
+    DAAF (Data Analyst Augmentation Framework) orchestrator protocols when placed inside
+    the real framework container. Each of the <span id="ab-runs">1,700+</span> runs drops
+    a model into a live DAAF session &mdash; hooks firing, skills discoverable, agents
+    dispatchable &mdash; and scores its observable behavior: did it classify the request
+    into the correct engagement mode and stop at the confirmation gate, did it load the
+    reference files and skills the mode requires, did it dispatch the right subagent with
+    a properly structured prompt. It measures <b>behavioral conformance only</b>. It does
+    not measure answer quality, analytical capability, or general intelligence &mdash; a
+    brilliant analyst model that skips confirmation gates scores poorly here, and a modest
+    model that faithfully follows protocol scores well.
+  </p>
+
+  <details>
+    <summary>The benchmark phases</summary>
+    <div>
+      <p>Each phase isolates one slice of orchestrator behavior. Later phases resume from
+      <i>golden checkpoints</i> &mdash; truncated transcripts of known-good sessions &mdash;
+      so every model starts from an identical mid-conversation state.</p>
+      <table>
+        <thead><tr><th>Phase</th><th>Starts from</th><th>What it tests</th></tr></thead>
+        <tbody>
+          <tr>
+            <td><b>1 &mdash; Mode Classification</b><br><span id="ab-p1-cases">&mdash;</span> cases</td>
+            <td>A cold start: the model sees only the user's first request</td>
+            <td>Does it pick the correct engagement mode, present a confirmation gate,
+                and avoid executing anything prematurely?</td>
+          </tr>
+          <tr>
+            <td><b>2 &mdash; Post-Confirmation</b><br><span id="ab-p2-cases">&mdash;</span> cases, one per engagement mode</td>
+            <td>A checkpoint ending at the confirmation gate; the user says
+                &ldquo;Sounds good, let's proceed.&rdquo;</td>
+            <td>Does it load the mode reference files and skills it just committed to loading?</td>
+          </tr>
+          <tr>
+            <td><b>3a &mdash; Dispatch Compliance</b><br><span id="ab-p3a-cases">&mdash;</span> cases, 2 per agent type</td>
+            <td>A checkpoint with Ad Hoc Collaboration mode fully initialized</td>
+            <td>Does it dispatch the correct subagent type with a properly structured prompt
+                (BASE_DIR, mode marker, task / context / instructions sections)?</td>
+          </tr>
+          <tr>
+            <td><b>3b &mdash; Subagent Behavior</b></td>
+            <td>The subagent's own transcript, whenever a Phase 3 dispatch succeeds</td>
+            <td>Did the dispatched agent behave according to its type &mdash; e.g., did a
+                coding agent write a script and execute it through the audit-trail wrapper?</td>
+          </tr>
+          <tr>
+            <td><b>4 &mdash; Skill Routing</b><br><span id="ab-p4-cases">&mdash;</span> cases</td>
+            <td>The same initialized Ad Hoc checkpoint as Phase 3; the user asks a
+                brainstorming question</td>
+            <td>Does it follow the skills' own routing directives &mdash; FIRST reading the
+                data-scientist hub's method-selection guidance, THEN loading the specific
+                library skills the task calls for (e.g., pyfixest for fixed effects,
+                geopandas for spatial work)?</td>
+          </tr>
+        </tbody>
+      </table>
+      <p>Phase 3b is a <b>sub-scoring of Phase 3 runs</b>, not a separate batch: its
+      criteria are derived from the agent type, and which criteria apply varies with the
+      case, so its denominators differ from 3a's.</p>
+      <p>Phase 4 is reported as <b>its own group</b> throughout this page and does
+      <b>not</b> enter the leaderboard composite or tier bands, which are pinned to the
+      four core components (P1, P2, P3a, P3b).</p>
+    </div>
+  </details>
+
+  <details>
+    <summary>How scoring works</summary>
+    <div>
+      <p>Every run is graded against named criteria by <b>deterministic scorers</b> &mdash;
+      transcript parsing with string and structural checks; no LLM judges anywhere in the
+      loop. Each criterion is either <b>hard</b> (a structural must-pass, like
+      <code>agent_dispatched</code>) or <b>soft</b> (a protocol detail, like whether the
+      dispatch prompt carries a context section).</p>
+      <p>Three rates appear throughout this page, and they answer different questions:</p>
+      <ul>
+        <li><b>Perfect</b> (per run) &mdash; did <i>all</i> criteria pass on this run?
+            This is the headline metric and the basis of the leaderboard composite.</li>
+        <li><b>Hard rate</b> (per criterion) &mdash; across all of a model's runs, what
+            fraction of its hard criteria passed?</li>
+        <li><b>Soft rate</b> (per criterion) &mdash; the same, for soft criteria.</li>
+      </ul>
+      <p>They diverge by design. Worked example: in a 12-run batch where 4 runs each fail
+      exactly one soft criterion, Perfect drops to 67% (8/12 runs) while the hard rate
+      stays at 100% and the soft rate stays around 96% &mdash; a model can look strong on
+      criterion-level rates yet rarely deliver a fully clean run.</p>
+    </div>
+  </details>
+
+  <details>
+    <summary>How runs were executed</summary>
+    <div>
+      <p>Runs execute inside the real DAAF Docker container through the
+      <code>claude -p</code> command line, with all framework hooks, permission rules, and
+      skill discovery live &mdash; nothing is mocked. Phases 2&ndash;4 resume from golden
+      checkpoints so every model starts at an identical protocol point, and each
+      (phase, model, case) cell is repeated up to three times. Every batch archives to a
+      timestamped, self-contained result set from which this page is generated.</p>
+    </div>
+  </details>
+
+  <details>
+    <summary>Reading caveats</summary>
+    <div>
+      <ul>
+        <li><b>Timeouts are still graded.</b> Runs that hit the wall-clock limit
+            (<span id="ab-timeouts">some</span> runs in this corpus) have zeroed cost,
+            token, and turn counts, but their criteria are fully scored from the
+            transcript produced before the cutoff &mdash; a timed-out run can be a perfect
+            run. Cost and duration averages exclude these zeroed runs.</li>
+        <li><b>Denominators are uneven.</b> Some (model, phase) cells have 2 reps instead
+            of 3, so read every rate together with its n.</li>
+        <li><b>OpenRouter token counts are approximate.</b> The Anthropic-compatible
+            endpoint reports counts from Anthropic's tokenizer rather than each model's
+            own, so computed costs for OpenRouter models are best-effort estimates.</li>
+        <li><b>Deterministic scorers have known false negatives.</b>
+            <code>prompt_has_context_section</code> is the canonical case: the scorer
+            accepts seven heading variants, yet models often place genuine contextual
+            content under headings outside that list and are marked down for it.</li>
+        <li><b>Fable 5's thinking blocks are encrypted</b>, so reasoning-quality
+            assessment for that model relies entirely on observable output.</li>
+      </ul>
+    </div>
+  </details>
+</section>
+
+<!-- 3. Leaderboard (rank-ordered table-chart; plan § 4.3) -->
+<section class="doc-section" id="leaderboard">
+  <h2>Leaderboard</h2>
+  <p class="section-lead">
+    One row per model, ranked by <b>composite</b> &mdash; the unweighted mean of its
+    Perfect-run rates across the phase components (P1, P2, P3a, P3b). Every rate carries
+    its denominator, and tier bands group models whose composites cluster together &mdash;
+    gaps between tiers are meaningful, ordering within a tier may not be. Click a phase
+    cell to open that phase's deep-dive; use the buttons to re-sort.
+  </p>
+  <div class="sec-body" id="sec-leaderboard"></div>
+</section>
+
+<!-- 4. Cost vs. Performance (log-x frontier scatter; plan § 4.4) -->
+<section class="doc-section" id="cost-performance">
+  <h2>Cost vs. Performance</h2>
+  <p class="section-lead">
+    Each point is one model: its average computed cost per run (log scale) against its
+    composite Perfect rate &mdash; up and to the left is better. The stepped line traces
+    the <b>efficiency frontier</b>: the models no other model beats on both cost and
+    conformance at once. Shape and color mark the serving provider; hover any point for
+    its exact figures.
+  </p>
+  <div class="sec-body" id="sec-cost-performance"></div>
+</section>
+
+<!-- 5. Phase Deep-Dives (per-phase model × criterion heatmaps; plan § 4.5) -->
+<section class="doc-section" id="phases">
+  <h2>Phase Deep-Dives</h2>
+  <p class="section-lead">
+    One heatmap per phase: rows are models ranked by that phase's Perfect rate, columns
+    are the individual criteria &mdash; hard (must-pass) before soft, split by the yellow
+    border. Use this to find which specific protocol requirement a model misses: a model
+    can rank well overall while reliably failing one criterion. Hover any cell for its
+    exact k/n; click a cell to open those runs in the Run Explorer.
+  </p>
+  <div class="sec-body" id="sec-phases"></div>
+</section>
+
+<!-- 6. Cases & Consistency (agreement heatmaps + case browser; plan § 4.6) -->
+<section class="doc-section" id="cases">
+  <h2>Cases &amp; Consistency</h2>
+  <p class="section-lead">
+    Two layers on the same repetition data. The agreement heatmaps show, for every case and
+    model, how many repetitions of the identical prompt were perfect runs (k/n in every
+    cell) &mdash; split cells expose flaky cases and flaky models at a glance, and the
+    <b>All models</b> margin gives each case's cross-model difficulty, hardest cases first.
+    The case browser below holds every case's full prompt, expected behavior, and
+    requirement lists, with the per-rep criterion marks. Click any cell or mark to open the
+    matching runs.
+  </p>
+  <div class="sec-body" id="sec-cases"></div>
+</section>
+
+<!-- 7. Costs Detail (observed per-model spend + pricing table; plan § 4.7) -->
+<section class="doc-section" id="costs">
+  <h2>Costs Detail</h2>
+  <p class="section-lead">
+    What each model actually cost to benchmark. The observed-spend table aggregates every
+    loaded run: average and total computed cost, average duration, and the token
+    composition behind the bill (uncached input / output / cache reads). Timed-out runs
+    have zeroed cost and are excluded from the averages, with the excluded counts
+    disclosed. Below it sits the published per-token pricing every cost on this page is
+    recomputed from &mdash; CLI-reported totals are wrong for OpenRouter models. Click any
+    column header to sort either table.
+  </p>
+  <div class="sec-body" id="sec-costs"></div>
+</section>
+
+<!-- 8. Run Explorer (run list + detail panel with section-local filters) -->
+<section class="doc-section" id="run-explorer">
+  <h2>Run Explorer</h2>
+  <p class="section-lead">
+    Every individual run with its grade, per-criterion verdicts and diagnostic details, and
+    condensed transcript &mdash; including subagent transcripts where they exist. The
+    filters below apply to this section only; clicks from the heatmaps and case views above
+    land here with the matching filters pre-applied. Status reflects grading (perfect /
+    partial / failed / ungraded); a clock marker flags timed-out runs, which are still
+    fully graded from the transcript produced before the cutoff.
+  </p>
+  <div class="rx-filters" id="rx-filters">
+    <div class="filter-group">
+      <label>Phase</label>
+      <select class="filter-select" id="rx-phase"></select>
+    </div>
+    <div class="filter-group">
+      <label>Model</label>
+      <select class="filter-select" id="rx-model"></select>
+    </div>
+    <div class="filter-group">
+      <label>Case</label>
+      <select class="filter-select" id="rx-case"></select>
+    </div>
+    <div class="filter-group">
+      <label>Status</label>
+      <select class="filter-select" id="rx-status">
+        <option value="">All</option>
+        <option value="perfect">Perfect</option>
+        <option value="partial">Partial</option>
+        <option value="failed">Failed</option>
+        <option value="ungraded">Ungraded</option>
+      </select>
+    </div>
+    <div class="filter-group">
+      <input type="text" class="filter-input" id="rx-search" placeholder="Search cases...">
+    </div>
+    <label class="filter-checkbox"><input type="checkbox" id="rx-hide-timeouts"> Hide timeouts</label>
+    <span class="rx-chip" id="rx-crit-chip" style="display:none"></span>
+    <button class="filter-btn" id="rx-reset">Reset</button>
+  </div>
+  <div class="sec-body" id="sec-run-explorer"></div>
+</section>
+
+<!-- 9. Provenance footer -->
+<section class="doc-section" id="provenance">
+  <h2>Provenance</h2>
+  <p class="section-lead">
+    Where the numbers come from: one row per archived result set, with the DAAF git SHA
+    and run configuration it was produced under. Run-level data on disk is the source of
+    truth; summary counts are shown for disclosure.
+  </p>
+  <div class="sec-body" id="sec-provenance"></div>
+  <p class="prov-foot">
+    Generator v<span id="prov-generator-version"></span> &middot; generated
+    __GENERATED_DISPLAY__ UTC.<br>
+    This document and the benchmark system that produced it were built with DAAF
+    (Data Analyst Augmentation Framework) tooling.
+  </p>
+</section>
+
+</main>
+
+<!-- Tooltip -->
+<div class="tooltip" id="tooltip"></div>
+
+<!-- Data -->
+<script>
+const DATA = __DATA_JSON__;
+const PRECOMPUTED = __PRECOMPUTED_JSON__;
+</script>
+
+<script>
+(function(){
+"use strict";
+
+/* =================================================================
+   STATE MANAGEMENT
+   Single scrolling document (WP3): no global view/tab state. Filters
+   are scoped to the Run Explorer section; other sections render from
+   ALL runs. runListLimit caps the initial Run Explorer list render
+   (performance guard for the full 1,700+ run corpus).
+   ================================================================= */
+
+var state = {
+  /* criterion has no DOM control — it is set only by heatmap deep links
+     and shown as a removable chip (see updateCritChip) */
+  filters: { phase:"", model:"", caseId:"", status:"", search:"", criterion:"", hideTimeouts:false },
+  selectedRunIdx: -1,
+  costSortCol: null,
+  costSortDir: 1,
+  /* Observed-spend table sort (Costs Detail): default total cost, descending */
+  spendSortCol: "total",
+  spendSortDir: -1,
+  lbSort: "composite",
+  runListLimit: 200
+};
+
+/* =================================================================
+   HELPERS
+   ================================================================= */
+
+/* 17 entries for the 17-model corpus (plan § 5: distinguishable identity hues;
+   wraps via modulo only beyond 17). First 8 unchanged to preserve historical
+   assignments. New values avoid the exact status-token hexes (#34d399 pass,
+   #fb7185/#f87171 fail, #fbbf24 partial, #64748b neutral); identity is never
+   conveyed by hue alone — points and rows are always labeled. */
+var MODEL_COLORS = ["#6366f1","#f59e0b","#06b6d4","#ec4899","#22c55e","#ef4444","#8b5cf6","#14b8a6",
+                    "#84cc16","#f97316","#38bdf8","#d946ef","#3b82f6","#eab308","#059669","#e11d48","#a8a29e"];
+var MODEL_COLORS_LIGHT = ["#a5b4fc","#fcd34d","#67e8f9","#f9a8d4","#86efac","#fca5a5","#c4b5fd","#5eead4",
+                          "#bef264","#fdba74","#7dd3fc","#f0abfc","#93c5fd","#fde047","#6ee7b7","#fecdd3","#d6d3d1"];
+
+function uniqueModels(){
+  var s=new Set(); DATA.runs.forEach(function(r){ s.add(r.model); }); return Array.from(s).sort();
+}
+function modelColor(m){
+  var models=uniqueModels(); var i=models.indexOf(m);
+  return MODEL_COLORS[i % MODEL_COLORS.length];
+}
+function modelColorLight(m){
+  var models=uniqueModels(); var i=models.indexOf(m);
+  return MODEL_COLORS_LIGHT[i % MODEL_COLORS_LIGHT.length];
+}
+function modelProvider(m){
+  for(var i=0;i<DATA.runs.length;i++){
+    if(DATA.runs[i].model===m) return DATA.runs[i].provider||"";
+  }
+  return "";
+}
+
+/* Discrete 5-step rate scale (plan § 5): maps a rate onto the shared
+   .rs-0 ... .rs-4 CSS classes. Steps: 100% / 90-99 / 50-89 / 1-49 / 0.
+   Glyph redundancy so status is never color alone: check at step 4,
+   cross at step 0, the % text itself carries steps 1-3. Used by the
+   leaderboard (WP4a) and the phase heatmaps (WP5). */
+function rateStep(rate){
+  if(rate>=1) return 4;
+  if(rate>=0.9) return 3;
+  if(rate>=0.5) return 2;
+  if(rate>0) return 1;
+  return 0;
+}
+function rateGlyph(step){
+  if(step===4) return "&#10003; ";
+  if(step===0) return "&#10007; ";
+  return "";
+}
+
+function pct(v){ return (v*100).toFixed(0)+"%"; }
+function esc(s){ if(!s) return ""; var d=document.createElement("div"); d.textContent=s; return d.innerHTML; }
+function truncate(s,n){ if(!s) return ""; return s.length>n ? s.substring(0,n)+"..." : s; }
+function el(id){ return document.getElementById(id); }
+function fmt(n){ return n.toLocaleString(); }
+/* Per-run cost display: 3 decimals under $1 (sub-cent spreads matter at
+   the cheap end), 2 above. */
+function fmtCost(v){
+  if(v==null) return "&mdash;";
+  return "$"+(v>=1 ? v.toFixed(2) : v.toFixed(3));
+}
+function reasoningBadge(mult){ if(!mult||mult<=1.0) return ""; return ' <span class="badge" style="background:rgba(249,115,22,.15);color:#f59e0b;font-size:10px;padding:1px 5px" title="Cost includes '+mult.toFixed(2)+'x reasoning token multiplier (empirical — see models.yaml)">'+mult.toFixed(2)+'x reasoning</span>'; }
+function modelMultiplier(model,runs){ var r=runs.find(function(x){ return x.model===model; }); return r ? (r.reasoning_cost_multiplier||1.0) : 1.0; }
+
+/* Run status = the precomputed grade (perfect / partial / failed /
+   ungraded), orthogonal to the timed_out flag (plan § 6 item 4). A
+   timed-out run is usually still fully graded, so timeout renders as
+   a separate clock marker (.to-mark / TIMED OUT badge) wherever the
+   grade appears — never as a status of its own, and never inferred by
+   string-matching the error field. */
+function runStatus(run){
+  return run.grade||"ungraded";
+}
+var GRADE_GLYPH={perfect:"&#10003;",partial:"&#9684;",failed:"&#10007;",ungraded:"&mdash;"};
+var GRADE_TIP={
+  perfect:"all criteria passed",
+  partial:"some, but not all, criteria passed",
+  failed:"no criteria passed",
+  ungraded:"no criteria were scored for this run"
+};
+
+/* Natural numeric sort for case IDs (mc-01, mc-02 ... mc-10, mc-11);
+   shared by the Run Explorer case filter and the Cases section */
+function caseSort(a,b){
+  var na=parseInt(a.replace(/[^0-9]/g,""),10)||0;
+  var nb=parseInt(b.replace(/[^0-9]/g,""),10)||0;
+  if(a.substring(0,3)!==b.substring(0,3)) return a.localeCompare(b);
+  return na-nb;
+}
+/* Phase for a run */
+function runPhase(run){
+  for(var i=0;i<DATA.result_sets.length;i++){
+    if(DATA.result_sets[i].timestamp===run.result_set) return DATA.result_sets[i].phase;
+  }
+  return "unknown";
+}
+
+/* =================================================================
+   EVALUATION GROUPS
+   Splits Phase 3 into 3a (dispatch) and 3b (subagent) while keeping
+   Phase 1 and Phase 2 as single groups. Must stay in lockstep with
+   build_eval_groups() in the generator.
+   ================================================================= */
+
+var evalGroups = [];
+(function buildEvalGroups(){
+  var gmap={};
+  DATA.result_sets.forEach(function(rs){
+    if(rs.phase === "dispatch_compliance" && rs.subagent_criterion_names && rs.subagent_criterion_names.length > 0){
+      var idD=rs.phase+"_dispatch";
+      if(!gmap[idD]) gmap[idD]={id:idD,phase:rs.phase,label:"Phase 3a — Dispatch Compliance",timestamps:[],criterion_names:rs.criterion_names.slice(),is_subagent:false};
+      gmap[idD].timestamps.push(rs.timestamp);
+      var idS=rs.phase+"_subagent";
+      if(!gmap[idS]) gmap[idS]={id:idS,phase:rs.phase,label:"Phase 3b — Subagent Behavior",timestamps:[],criterion_names:rs.subagent_criterion_names.slice(),is_subagent:true};
+      gmap[idS].timestamps.push(rs.timestamp);
+    } else {
+      var id=rs.phase;
+      if(!gmap[id]) gmap[id]={id:id,phase:rs.phase,label:rs.phase_label,timestamps:[],criterion_names:rs.criterion_names.slice(),is_subagent:false};
+      gmap[id].timestamps.push(rs.timestamp);
+    }
+  });
+  var order=["mode_classification","post_confirmation","dispatch_compliance_dispatch","dispatch_compliance_subagent"];
+  order.forEach(function(id){ if(gmap[id]) evalGroups.push(gmap[id]); });
+  Object.keys(gmap).forEach(function(id){ if(order.indexOf(id)<0) evalGroups.push(gmap[id]); });
+})();
+
+function getEvalGroups(){
+  return evalGroups;
+}
+
+/* Short display labels for eval group IDs (hero verdict, chips) */
+var GROUP_SHORT={
+  mode_classification:"P1",
+  post_confirmation:"P2",
+  dispatch_compliance_dispatch:"P3a",
+  dispatch_compliance_subagent:"P3b",
+  skill_routing:"P4"
+};
+function groupShort(gid){ return GROUP_SHORT[gid]||gid; }
+
+/* Criteria whose deterministic scorers have documented accuracy caveats.
+   Keyed by criterion name; value is a short reason string. Render sites that
+   surface a single "weakest criterion" should check this map and append a
+   pointer to the About-layer caveats so one criterion's scorer noise is not
+   read as a real capability gap. Generic: add entries as new caveats arise. */
+var KNOWN_SCORER_CAVEATS={
+  prompt_has_context_section:"deterministic scorer has known false negatives"
+};
+
+/* Get the relevant criteria dict from a run for a given eval group */
+function getRunCriteria(run, group){
+  if(group.is_subagent){
+    return run.subagent_criteria || {};
+  }
+  return run.criteria || {};
+}
+
+/* Whether all criteria passed for a run within a specific eval group */
+function groupAllPassed(run, group){
+  var crit = getRunCriteria(run, group);
+  var keys = Object.keys(crit);
+  if(keys.length === 0) return false;
+  return keys.every(function(k){ return crit[k] && crit[k].passed; });
+}
+
+/* Check if a run belongs to an eval group (by matching result_set timestamp and phase) */
+function runInGroup(run, group){
+  return group.timestamps.indexOf(run.result_set) >= 0 && runPhase(run) === group.phase;
+}
+
+/* =================================================================
+   RUN EXPLORER FILTERS (section-local — the global filter bar is gone;
+   sections 3-7 always render from DATA.runs)
+   ================================================================= */
+
+function filteredRuns(){
+  var f=state.filters;
+  /* Resolve the eval group once (not per run): the phase filter and the
+     criterion filter both need it */
+  var matchedGroup=null;
+  if(f.phase){
+    for(var gi=0;gi<evalGroups.length;gi++){
+      if(evalGroups[gi].id===f.phase){ matchedGroup=evalGroups[gi]; break; }
+    }
+  }
+  return DATA.runs.filter(function(r){
+    if(f.phase){
+      if(matchedGroup){
+        if(!runInGroup(r, matchedGroup)) return false;
+      } else {
+        if(runPhase(r)!==f.phase) return false;
+      }
+    }
+    if(f.model && r.model!==f.model) return false;
+    if(f.caseId && r.case_id!==f.caseId) return false;
+    if(f.status && runStatus(r)!==f.status) return false;
+    /* Criterion filter (deep-linked from heatmap cells): keep runs on
+       which the named criterion was scored — the same set a heatmap
+       cell's denominator counts. With a group selected, look only at
+       that group's criteria dict; otherwise either dict matches. */
+    if(f.criterion){
+      if(matchedGroup){
+        if(!getRunCriteria(r, matchedGroup)[f.criterion]) return false;
+      } else {
+        if(!((r.criteria||{})[f.criterion]||(r.subagent_criteria||{})[f.criterion])) return false;
+      }
+    }
+    if(f.search){
+      var q=f.search.toLowerCase();
+      var c2=DATA.cases[r.case_id];
+      var haystack=(r.case_id+" "+(c2?c2.prompt:"")).toLowerCase();
+      if(haystack.indexOf(q)<0) return false;
+    }
+    /* timed_out is the explicit harness flag — never string-match error */
+    if(f.hideTimeouts && r.timed_out) return false;
+    return true;
+  });
+}
+
+function initFilters(){
+  var phSel=el("rx-phase");
+  phSel.innerHTML='<option value="">All Phases</option>';
+  getEvalGroups().forEach(function(g){
+    phSel.innerHTML+='<option value="'+g.id+'">'+esc(g.label)+'</option>';
+  });
+  var mSel=el("rx-model");
+  mSel.innerHTML='<option value="">All Models</option>';
+  uniqueModels().forEach(function(m){
+    mSel.innerHTML+='<option value="'+esc(m)+'">'+esc(m)+'</option>';
+  });
+  var cSel=el("rx-case");
+  cSel.innerHTML='<option value="">All Cases</option>';
+  var cset={};
+  DATA.runs.forEach(function(r){ cset[r.case_id]=true; });
+  Object.keys(cset).sort(caseSort).forEach(function(cid){
+    cSel.innerHTML+='<option value="'+esc(cid)+'">'+esc(cid)+'</option>';
+  });
+}
+
+function readFilters(){
+  state.filters.phase=el("rx-phase").value;
+  state.filters.model=el("rx-model").value;
+  state.filters.caseId=el("rx-case").value;
+  state.filters.status=el("rx-status").value;
+  state.filters.search=el("rx-search").value;
+  state.filters.hideTimeouts=el("rx-hide-timeouts").checked;
+  /* state.filters.criterion is deliberately NOT read from the DOM — it
+     has no control; it is set by deep links and cleared via its chip */
+}
+
+/* The criterion filter renders as a removable chip in the filter row */
+function updateCritChip(){
+  var chip=el("rx-crit-chip");
+  if(!chip) return;
+  if(state.filters.criterion){
+    chip.style.display="";
+    chip.innerHTML='criterion: <code>'+esc(state.filters.criterion)+
+      '</code><span class="rx-chip-x" title="Clear the criterion filter" onclick="clearCritFilter()">&#10005;</span>';
+  } else {
+    chip.style.display="none";
+    chip.innerHTML="";
+  }
+}
+
+/* Reset every section-local control AND the chip-only criterion filter
+   (shared by the Reset button and jumpToRun's filtered-out fallback) */
+function clearFilterControls(){
+  el("rx-phase").value="";
+  el("rx-model").value="";
+  el("rx-case").value="";
+  el("rx-status").value="";
+  el("rx-search").value="";
+  el("rx-hide-timeouts").checked=false;
+  state.filters.criterion="";
+  readFilters();
+  updateCritChip();
+}
+
+function applyFilters(){
+  readFilters();
+  state.selectedRunIdx=-1;
+  state.runListLimit=200;
+  renderRunExplorer(el("sec-run-explorer"));
+  /* No setHash here: on file:// a plain "#run-explorer" assignment would
+     scroll-jump while the user is mid-interaction with the filter row.
+     The hash updates on explicit navigation (TOC, deep links, selectRun). */
+}
+
+function resetFilters(){
+  clearFilterControls();
+  applyFilters();
+}
+
+/* =================================================================
+   HASH & NAVIGATION — file:// safe (Chrome blocks replaceState on
+   file:// origins, so explicit navigation assigns location.hash
+   directly; scrollspy never writes the hash on file://).
+   Hash grammar: "#<section-id>" optionally "&run=<run_dir>" for the
+   Run Explorer selection. "#run-explorer&run=x" matches no element id,
+   so assigning it never scroll-jumps; plain "#<section>" assignments
+   happen only on explicit navigation, where scrolling is wanted.
+   ================================================================= */
+
+var isFileProto=(location.protocol==="file:");
+
+function setHash(sectionId){
+  var h=sectionId;
+  if(sectionId==="run-explorer" && state.selectedRunIdx>=0){
+    var runs=filteredRuns();
+    if(state.selectedRunIdx<runs.length){
+      h+="&run="+encodeURIComponent(runs[state.selectedRunIdx].run_dir);
+    }
+  }
+  if(isFileProto){ location.hash=h; }
+  else{ try{ history.replaceState(null,"","#"+h); }catch(e){ location.hash=h; } }
+}
+
+function parseHash(){
+  var h=location.hash.replace(/^#/,"");
+  if(!h) return null;
+  var parts=h.split("&");
+  var out={section:parts[0]||null,run:null};
+  for(var i=1;i<parts.length;i++){
+    var kv=parts[i].split("=");
+    if(kv.length===2 && kv[0]==="run") out.run=decodeURIComponent(kv[1]);
+  }
+  return out;
+}
+
+function scrollToSection(id){
+  var sec=el(id);
+  if(sec) sec.scrollIntoView({behavior:"smooth",block:"start"});
+}
+
+/* =================================================================
+   TOOLTIP
+   ================================================================= */
+
+var tip=null;
+function showTip(evt,html){
+  if(!tip) tip=el("tooltip");
+  tip.innerHTML=html; tip.style.display="block";
+  var x=evt.clientX+12, y=evt.clientY+12;
+  if(x+300>window.innerWidth) x=evt.clientX-310;
+  if(y+100>window.innerHeight) y=evt.clientY-110;
+  tip.style.left=x+"px"; tip.style.top=y+"px";
+}
+function hideTip(){
+  if(!tip) tip=el("tooltip");
+  tip.style.display="none";
+}
+
+/* =================================================================
+   SECTION 1: HERO / VERDICT
+   Computed entirely from PRECOMPUTED at render time — no hand-written
+   numbers (plan § 4.1).
+   ================================================================= */
+
+function renderHero(){
+  var T=PRECOMPUTED.totals||{};
+  var phases=new Set();
+  (PRECOMPUTED.eval_groups||[]).forEach(function(g){ phases.add(g.phase); });
+
+  /* Stat chips */
+  var chips=[
+    {val:fmt(T.n_models||0), label:"Models"},
+    {val:fmt(T.total_runs||0), label:"Runs"},
+    {val:fmt(T.n_cases||0), label:"Cases"},
+    {val:fmt(phases.size), label:"Phases"},
+    {val:"$"+(T.total_spend_usd!=null?T.total_spend_usd.toFixed(2):"0.00"), label:"Total Spend"}
+  ];
+  var ch="";
+  chips.forEach(function(c){
+    ch+='<div class="chip"><div class="chip-val">'+c.val+'</div><div class="chip-label">'+c.label+'</div></div>';
+  });
+  el("hero-chips").innerHTML=ch;
+
+  /* Verdict: top composite model, runner-up, global weakest criterion */
+  var comp=PRECOMPUTED.composite||{};
+  var ranked=Object.keys(comp).map(function(m){ return {model:m,e:comp[m]}; });
+  ranked.sort(function(a,b){
+    if(b.e.score!==a.e.score) return b.e.score-a.e.score;
+    return a.model<b.model?-1:1;
+  });
+  var v="";
+  if(ranked.length>0){
+    var top=ranked[0];
+    var compsStr=(top.e.components_present||[]).map(function(gid){
+      return groupShort(gid)+" "+pct(top.e.components[gid]);
+    }).join(" · ");
+    v+='<b>'+esc(top.model)+'</b> leads with a composite Perfect rate of <b>'+
+       pct(top.e.score)+'</b> ('+esc(compsStr)+
+       (top.e.partial_data?'; partial phase coverage':'')+
+       ', n='+fmt(top.e.n_total)+').';
+    if(ranked.length>1){
+      var ru=ranked[1];
+      v+=' <b>'+esc(ru.model)+'</b> is the runner-up at <b>'+pct(ru.e.score)+'</b>'+
+         (ru.e.partial_data?' (partial phase coverage)':'')+'.';
+    }
+  } else {
+    v+='No composite scores available for this corpus.';
+  }
+  /* global_weakest is computed over the composite (core) groups only, so an
+     experimental phase can never hijack the headline — say so in the prose */
+  var gw=(PRECOMPUTED.callouts||{}).global_weakest;
+  if(gw){
+    v+=' The weakest criterion across all models in the core phases (P1&ndash;P3b) is <code>'+esc(gw.name)+'</code> at <b>'+
+       pct(gw.rate)+'</b> ('+fmt(gw.passed)+'/'+fmt(gw.total)+', '+esc(gw.group_label)+').';
+    if(KNOWN_SCORER_CAVEATS[gw.name]){
+      v+=' ('+esc(KNOWN_SCORER_CAVEATS[gw.name])+' \u2014 see <a href="#about">caveats</a>)';
+    }
+  }
+  el("hero-verdict").innerHTML=v;
+}
+
+/* =================================================================
+   SECTION 2: ABOUT — fill dynamic counts into the static prose
+   ================================================================= */
+
+function fillAboutCounts(){
+  var T=PRECOMPUTED.totals||{};
+  if(T.n_models) el("ab-models").textContent=fmt(T.n_models);
+  if(T.total_runs) el("ab-runs").textContent=fmt(T.total_runs);
+  if(T.n_timed_out!=null) el("ab-timeouts").textContent=fmt(T.n_timed_out);
+  /* Per-phase case counts derived from per_case so the About table never
+     drifts from the data. per_case phases are raw names; 3a/3b share
+     dispatch_compliance — the count renders on the 3a row, 3b stays
+     prose-only. Spans default to an em dash, so a phase absent from the
+     corpus keeps the dash fallback. */
+  var pc=PRECOMPUTED.per_case||{};
+  var caseCounts={};
+  for(var cid in pc){
+    if(!pc.hasOwnProperty(cid)) continue;
+    var ph=pc[cid].phase;
+    caseCounts[ph]=(caseCounts[ph]||0)+1;
+  }
+  var phaseSpan={
+    mode_classification:"ab-p1-cases",
+    post_confirmation:"ab-p2-cases",
+    dispatch_compliance:"ab-p3a-cases",
+    skill_routing:"ab-p4-cases"
+  };
+  for(var phk in phaseSpan){
+    if(!phaseSpan.hasOwnProperty(phk)) continue;
+    if(caseCounts[phk]) el(phaseSpan[phk]).textContent=fmt(caseCounts[phk]);
+  }
+}
+
+/* =================================================================
+   SECTION 3: LEADERBOARD (plan § 4.3)
+   Rank-ordered table-chart computed entirely from PRECOMPUTED:
+   composite bar with component ticks, per-phase Perfect cells
+   (rate + visible n, deep-linking to the phase deep-dives),
+   dispatch reliability, k-of-n consistency, and avg cost/run with
+   a timeout-exclusion footnote. The tier gutter (rowspan bands)
+   appears only under the default composite sort — the bands are
+   defined on the composite ranking, so they would be meaningless
+   interleaved into any other ordering.
+   ================================================================= */
+
+/* Dynamic tier-rule disclosure: rendered generically over whichever
+   banding method the generator applied (gap rule, or its
+   range-quartile fallback on near-continuum corpora). */
+function lbTierRuleText(){
+  var rule=PRECOMPUTED.tier_rule||{};
+  var tiers=PRECOMPUTED.tiers||[];
+  var thresholdPts=((rule.gap_threshold||0)*100).toFixed(0);
+  var head='Tier bands are derived mechanically from the composite ranking ('+
+    tiers.length+' tier'+(tiers.length===1?'':'s')+' in this corpus; shown under the composite sort). ';
+  if(rule.method==="gap"){
+    return head+'Banding rule applied: <b>gap</b> &mdash; a new tier starts wherever the drop to the '+
+      'next model\'s composite is at least '+thresholdPts+' points. Gaps between tiers are '+
+      'meaningful; ordering within a tier may not be.';
+  }
+  if(rule.method==="range_quartiles"){
+    return head+'Banding rule applied: <b>range quartiles</b> &mdash; no composite gap reached the '+
+      thresholdPts+'-point threshold, so models are banded by which quarter of the observed '+
+      'composite range their score falls in. Treat tier boundaries as soft.';
+  }
+  return head+'Banding rule applied: <code>'+esc(rule.method||"unknown")+'</code>.';
+}
+
+function renderLeaderboard(container){
+  var comp=PRECOMPUTED.composite||{};
+  var pmp=PRECOMPUTED.per_model_phase||{};
+  var consistency=PRECOMPUTED.consistency||{};
+  var costPM=(PRECOMPUTED.cost||{}).per_model||{};
+  var tiers=PRECOMPUTED.tiers||[];
+  var groups=getEvalGroups();
+  var hasDispatch=groups.some(function(g){ return g.id==="dispatch_compliance_dispatch"; });
+
+  /* Composite ranking — mirrors the generator's ordering (score desc, name asc) */
+  var ranked=Object.keys(comp).map(function(m){ return {model:m,e:comp[m]}; });
+  ranked.sort(function(a,b){
+    if(b.e.score!==a.e.score) return b.e.score-a.e.score;
+    return a.model<b.model?-1:1;
+  });
+  if(ranked.length===0){
+    container.innerHTML='<div class="empty-msg">No composite scores available for this corpus.</div>';
+    return;
+  }
+  var rankOf={};
+  ranked.forEach(function(r,i){ rankOf[r.model]=i+1; });
+
+  /* Finding-as-title (computed, mirroring the hero verdict logic) */
+  var top=ranked[0];
+  var finding='<b>'+esc(top.model)+'</b> leads at <b>'+pct(top.e.score)+'</b> composite';
+  if(ranked.length>1){
+    var ru=ranked[1];
+    var gapPts=Math.round((top.e.score-ru.e.score)*100);
+    if(gapPts>=1){
+      finding+=' &mdash; '+gapPts+' point'+(gapPts===1?'':'s')+' clear of <b>'+esc(ru.model)+'</b> at <b>'+pct(ru.e.score)+'</b>';
+    } else {
+      finding+=' &mdash; effectively tied with <b>'+esc(ru.model)+'</b> at <b>'+pct(ru.e.score)+'</b>';
+    }
+  }
+  if(tiers.length>1){
+    var t1=tiers[0]||{}; var t1m=t1.models||[];
+    finding+='. The '+ranked.length+' models band into '+tiers.length+' tiers; '+
+      (t1m.length===1
+        ? '<b>'+esc(t1m[0])+'</b> holds '+esc(t1.label||'T1')+' alone.'
+        : esc(t1.label||'T1')+' holds '+t1m.length+' models.');
+  } else {
+    finding+='.';
+  }
+
+  /* Sort control */
+  var sortKey=state.lbSort||"composite";
+  var sortKeys=[{key:"composite",label:"Composite"}];
+  groups.forEach(function(g){ sortKeys.push({key:g.id,label:groupShort(g.id)}); });
+  sortKeys.push({key:"consistency",label:"Consistency"});
+  sortKeys.push({key:"cost",label:"Cost/run"});
+
+  /* Row order. Missing values always sort last; composite rank breaks ties. */
+  var rows=ranked.slice();
+  if(sortKey!=="composite"){
+    var sortVal=function(m){
+      if(sortKey==="cost"){
+        var c=costPM[m];
+        return (c&&c.avg_cost_usd!=null)?c.avg_cost_usd:Infinity;
+      }
+      if(sortKey==="consistency"){
+        var k=consistency[m];
+        return (k&&k.rate!=null)?-k.rate:Infinity;
+      }
+      var cell=(pmp[m]||{})[sortKey];
+      return (cell&&cell.perfect_rate!=null)?-cell.perfect_rate:Infinity;
+    };
+    rows.sort(function(a,b){
+      var va=sortVal(a.model), vb=sortVal(b.model);
+      if(va!==vb) return va-vb;
+      return rankOf[a.model]-rankOf[b.model];
+    });
+  }
+
+  /* Tier gutter (composite sort only): rowspan on each band's first row.
+     PRECOMPUTED.tiers partitions the composite ranking in order, so bands
+     are guaranteed contiguous under this sort. */
+  var showTier=(sortKey==="composite" && tiers.length>0);
+  var tierFirst={}, tierSize={};
+  if(showTier){
+    tiers.forEach(function(t){
+      (t.models||[]).forEach(function(m,i){
+        if(i===0){ tierFirst[m]=t.label; tierSize[m]=(t.models||[]).length; }
+      });
+    });
+  }
+
+  var html='<div class="lb-finding">'+finding+'</div>';
+  html+='<div class="lb-controls"><span class="lb-sort-label">Sort by</span>';
+  sortKeys.forEach(function(s){
+    html+='<button class="lb-sort-btn'+(sortKey===s.key?' active':'')+'" onclick="sortLeaderboard(&#39;'+esc(s.key)+'&#39;)">'+esc(s.label)+'</button>';
+  });
+  html+='</div>';
+
+  html+='<div class="card"><table class="data-table lb-table"><thead><tr>';
+  if(showTier) html+='<th title="Composite tier band (banding rule below)">Tier</th>';
+  html+='<th title="Composite rank (fixed across re-sorts)">#</th><th>Model</th><th>Composite</th>';
+  groups.forEach(function(g){
+    html+='<th title="'+esc(g.label)+' — share of runs with every criterion passed">'+esc(groupShort(g.id))+' Perfect</th>';
+  });
+  if(hasDispatch) html+='<th title="Phase 3a agent_dispatched pass rate">Dispatch</th>';
+  html+='<th title="Share of repeated (phase, case) cells (2+ reps) where every rep was perfect">Consistency</th>';
+  html+='<th>Avg cost/run</th>';
+  html+='</tr></thead><tbody>';
+
+  var excludedRuns=0, excludedModels=0, anyPartial=false;
+
+  rows.forEach(function(rw){
+    var m=rw.model, e=rw.e;
+    var bandStart=showTier&&tierFirst[m];
+    html+='<tr'+(bandStart?' class="lb-band-start"':'')+'>';
+    if(bandStart){
+      html+='<td class="lb-tier-cell" rowspan="'+tierSize[m]+'">'+esc(tierFirst[m])+'</td>';
+    }
+    html+='<td class="lb-rank">'+rankOf[m]+'</td>';
+
+    /* Model + provider chip (+ partial-data chip) */
+    html+='<td><span class="lb-model-name">'+esc(m)+'</span>'+
+      '<span class="lb-provider">'+esc(modelProvider(m))+'</span>';
+    if(e.partial_data){
+      anyPartial=true;
+      var missing=(e.components_missing||[]).map(groupShort).join(", ");
+      html+=' <span class="badge lb-partial" title="No runs for: '+esc(missing)+'. Composite is the mean of the components present only.">partial</span>';
+    }
+    html+='</td>';
+
+    /* Composite: score + bar; ticks mark the per-phase components */
+    var compsStr=(e.components_present||[]).map(function(gid){
+      return groupShort(gid)+" "+pct(e.components[gid]);
+    }).join(" · ");
+    var ticks='';
+    (e.components_present||[]).forEach(function(gid){
+      /* cap inside the bar so a 100% tick isn't clipped by overflow:hidden */
+      var left=Math.min(e.components[gid]*100,99.0).toFixed(1);
+      ticks+='<span class="lb-bar-tick" style="left:'+left+'%"></span>';
+    });
+    html+='<td class="lb-comp" title="Mean of '+esc(compsStr)+' (ticks mark components; n='+fmt(e.n_total)+' runs)">'+
+      '<span class="lb-comp-score">'+(e.score*100).toFixed(1)+'%</span>'+
+      '<span class="lb-bar"><span class="lb-bar-fill" style="width:'+(e.score*100).toFixed(1)+'%"></span>'+ticks+'</span>'+
+      '</td>';
+
+    /* Per-phase Perfect mini-cells (rate + n; deep-link to the deep-dive) */
+    groups.forEach(function(g){
+      var cell=(pmp[m]||{})[g.id];
+      if(!cell){
+        html+='<td class="lb-cell"><span class="hm-cell rs-na" title="No '+esc(groupShort(g.id))+' runs for this model">&mdash;</span></td>';
+        return;
+      }
+      var rate=cell.perfect_rate||0;
+      var step=rateStep(rate);
+      /* P3b denominator counts every successful dispatch, even when the
+         subagent produced no scorable transcript (mirrors generator) */
+      html+='<td class="lb-cell"><span class="hm-cell rs-'+step+' clickable" '+
+        'title="'+esc(g.label)+': '+cell.perfect_count+'/'+cell.n_runs+' perfect runs'+
+        (g.id==='dispatch_compliance_subagent'?' (includes runs with no scorable subagent transcript in the denominator)':'')+
+        ' — click for the phase deep-dive" '+
+        'onclick="lbJumpPhase(&#39;'+esc(g.id)+'&#39;)">'+
+        rateGlyph(step)+pct(rate)+'<span class="lb-n">'+cell.perfect_count+'/'+cell.n_runs+'</span></span></td>';
+    });
+
+    /* Dispatch reliability (P3a agent_dispatched) */
+    if(hasDispatch){
+      var d=(pmp[m]||{})["dispatch_compliance_dispatch"];
+      if(d&&d.dispatch_total){
+        var dr=d.dispatch_rate||0, ds=rateStep(dr);
+        html+='<td class="lb-cell"><span class="hm-cell rs-'+ds+'" title="agent_dispatched: '+d.dispatch_passed+'/'+d.dispatch_total+'">'+
+          rateGlyph(ds)+pct(dr)+'<span class="lb-n">'+d.dispatch_passed+'/'+d.dispatch_total+'</span></span></td>';
+      } else {
+        html+='<td class="lb-cell"><span class="hm-cell rs-na" title="No Phase 3a runs for this model">&mdash;</span></td>';
+      }
+    }
+
+    /* Consistency: k-of-n repeated cells all-perfect */
+    var k=consistency[m];
+    if(k&&k.rate!=null){
+      var ks=rateStep(k.rate);
+      html+='<td class="lb-cell"><span class="hm-cell rs-'+ks+'" title="'+k.cells_all_perfect+' of '+k.cells_total+' repeated (phase, case) cells had every rep perfect">'+
+        rateGlyph(ks)+pct(k.rate)+'<span class="lb-n">'+k.cells_all_perfect+'/'+k.cells_total+'</span></span></td>';
+    } else {
+      html+='<td class="lb-cell"><span class="hm-cell rs-na" title="No (phase, case) cells with 2+ reps">&mdash;</span></td>';
+    }
+
+    /* Avg cost/run (timeout-zeroed runs excluded upstream; disclosed) */
+    var c=costPM[m];
+    if(c&&c.avg_cost_usd!=null){
+      var dag=c.excluded_count>0;
+      if(dag){ excludedRuns+=c.excluded_count; excludedModels++; }
+      html+='<td class="lb-cost" title="Mean computed cost over '+c.n_included+' of '+c.n_runs+' runs'+
+        (dag?' ('+c.excluded_count+' zero-cost timeout run'+(c.excluded_count===1?'':'s')+' excluded)':'')+'">'+
+        fmtCost(c.avg_cost_usd)+(dag?'<sup>&dagger;</sup>':'')+'</td>';
+    } else {
+      html+='<td class="lb-cost text-muted">&mdash;</td>';
+    }
+
+    html+='</tr>';
+  });
+  html+='</tbody></table></div>';
+
+  /* Dynamic tier-rule disclosure + footnotes */
+  html+='<p class="lb-foot">'+lbTierRuleText()+'</p>';
+  if(excludedRuns>0){
+    html+='<p class="lb-foot">&dagger; Cost averages exclude '+fmt(excludedRuns)+' timed-out run'+
+      (excludedRuns===1?'':'s')+' with zeroed cost (across '+excludedModels+' model'+
+      (excludedModels===1?'':'s')+'); hover a cost for the per-model count.</p>';
+  }
+  if(anyPartial){
+    html+='<p class="lb-foot">Models marked <i>partial</i> are missing one or more phase components; '+
+      'their composite is the mean of the components present, not a comparable full-coverage score.</p>';
+  }
+
+  container.innerHTML=html;
+}
+
+/* =================================================================
+   SECTION 4: COST VS. PERFORMANCE (plan § 4.4)
+   Log-x scatter of average computed cost per run vs. composite
+   Perfect rate, with the precomputed efficiency frontier rendered as
+   a step polyline. Points, costs, and the frontier all come from
+   PRECOMPUTED (composite, cost.per_model, cost.frontier) so the
+   chart, the finding prose, and the generator's sanity report cannot
+   drift apart. Provider is encoded as color + shape (never color
+   alone); every point is labeled.
+   ================================================================= */
+
+function renderCostPerf(container){
+  var comp=PRECOMPUTED.composite||{};
+  var costPM=(PRECOMPUTED.cost||{}).per_model||{};
+  var frontier=(PRECOMPUTED.cost||{}).frontier||[];
+
+  /* Points: models with a composite score AND a non-null avg cost */
+  var pts=[];
+  Object.keys(comp).forEach(function(m){
+    var c=costPM[m];
+    if(!c||c.avg_cost_usd==null) return;
+    pts.push({model:m,cost:c.avg_cost_usd,score:comp[m].score,
+              provider:modelProvider(m),cm:c});
+  });
+  if(pts.length===0){
+    container.innerHTML='<div class="empty-msg">No models with both a composite score and cost data in this corpus.</div>';
+    return;
+  }
+
+  /* Zero-cost floor: a log axis cannot show $0, so zero-cost points
+     sit at half the minimum nonzero cost (disclosed in a footnote) */
+  var minNZ=null;
+  pts.forEach(function(p){ if(p.cost>0&&(minNZ===null||p.cost<minNZ)) minNZ=p.cost; });
+  var floored=0;
+  pts.forEach(function(p){
+    if(p.cost<=0){ p.plotCost=(minNZ!==null?minNZ:0.002)/2; p.floored=true; floored++; }
+    else{ p.plotCost=p.cost; }
+  });
+
+  /* Finding-as-title: name the frontier, then the value knee */
+  var finding='';
+  if(frontier.length>0){
+    var fbits=frontier.map(function(f){
+      return '<b>'+esc(f.model)+'</b> ('+fmtCost(f.avg_cost_usd)+', '+pct(f.composite)+')';
+    });
+    finding=frontier.length+' of '+pts.length+' models sit on the efficiency frontier &mdash; '+
+      fbits.join(' &rarr; ')+' &mdash; every other model is beaten on both cost and composite by one of them.';
+    if(frontier.length>1){
+      var topF=frontier[frontier.length-1], knee=frontier[frontier.length-2];
+      if(knee.avg_cost_usd>0&&topF.composite>0){
+        var ratio=topF.avg_cost_usd/knee.avg_cost_usd;
+        var share=Math.round(knee.composite/topF.composite*100);
+        if(ratio>=1.5){
+          finding+=' <b>'+esc(knee.model)+'</b> reaches '+share+'% of <b>'+esc(topF.model)+
+            '</b>\u2019s composite at roughly 1/'+ratio.toFixed(1)+' of the per-run cost.';
+        }
+      }
+    }
+  } else {
+    finding='No efficiency frontier could be computed for this corpus.';
+  }
+
+  /* Provider legend (color + shape redundancy, plan § 5) */
+  var provSeen={};
+  pts.forEach(function(p){ provSeen[p.provider||"unknown"]=true; });
+  var legend='<div class="cp-legend">';
+  if(provSeen.anthropic) legend+='<span><svg width="14" height="14"><circle cx="7" cy="7" r="5" style="fill:var(--accent-light)"/></svg>Anthropic API</span>';
+  if(provSeen.openrouter) legend+='<span><svg width="14" height="14"><path d="M7 1.5 L12.5 7 L7 12.5 L1.5 7 Z" style="fill:var(--c-partial)"/></svg>OpenRouter</span>';
+  if(provSeen.unknown) legend+='<span><svg width="14" height="14"><rect x="2.5" y="2.5" width="9" height="9" style="fill:var(--c-neutral)"/></svg>other provider</span>';
+  legend+='<span><svg width="26" height="14"><line x1="1" y1="7" x2="25" y2="7" stroke="rgba(52,211,153,.8)" stroke-width="1.5" stroke-dasharray="4 3"/></svg>efficiency frontier (outlined points)</span>';
+  legend+='</div>';
+
+  /* Footnotes: timeout exclusion (computed counts) + OpenRouter
+     token-count approximation + zero-cost floor disclosure */
+  var exRuns=0, exModels=0;
+  pts.forEach(function(p){
+    if(p.cm.excluded_count>0){ exRuns+=p.cm.excluded_count; exModels++; }
+  });
+  var foot='';
+  if(exRuns>0){
+    foot+='<p class="cp-foot">Cost averages exclude '+fmt(exRuns)+' timed-out run'+(exRuns===1?'':'s')+
+      ' with zeroed cost (across '+exModels+' model'+(exModels===1?'':'s')+'); hover a point for the per-model count.</p>';
+  }
+  foot+='<p class="cp-foot">OpenRouter costs are computed from token counts reported by the '+
+    'Anthropic-compatible endpoint &mdash; Anthropic\u2019s tokenizer, not each model\u2019s own &mdash; '+
+    'so points for OpenRouter models are best-effort estimates.</p>';
+  if(floored>0){
+    foot+='<p class="cp-foot">'+floored+' zero-cost model'+(floored===1?' is':'s are')+
+      ' plotted at half the minimum nonzero cost &mdash; a log axis cannot show $0.</p>';
+  }
+
+  container.innerHTML='<div class="cp-finding">'+finding+'</div>'+legend+
+    '<div class="card"><div class="chart-container">'+svgCostFrontier(pts,frontier)+'</div></div>'+foot;
+}
+
+/* =================================================================
+   SECTION 5: PHASE DEEP-DIVES (plan § 4.5)
+   One discrete model × criterion heatmap per eval group, on the
+   shared .rs-* 5-step ramp. Rows are models ranked by the group's
+   Perfect rate (PRECOMPUTED.per_model_phase); columns are criteria,
+   hard before soft (alphabetical within each tier), with a colored
+   left border marking the hard/soft boundary. P3a and P3b render
+   side by side in a flex-wrap pair; "—" (.rs-na) marks criteria
+   that never applied to a model's runs — P3b's varying denominators
+   made explicit. Callouts come from PRECOMPUTED.callouts.
+   ================================================================= */
+
+/* Cell aggregation — built once on first render, cached module-level:
+   cellAgg[gid][model][crit] = {passed, total} and critTiers[gid][crit]
+   via a single pass over DATA.runs × evalGroups. */
+var phaseAgg=null;
+function buildPhaseAgg(){
+  if(phaseAgg) return phaseAgg;
+  var cellAgg={}, critTiers={};
+  var groups=getEvalGroups();
+  groups.forEach(function(g){ cellAgg[g.id]={}; critTiers[g.id]={}; });
+  DATA.runs.forEach(function(r){
+    groups.forEach(function(g){
+      if(!runInGroup(r,g)) return;
+      var crit=getRunCriteria(r,g);
+      var names=Object.keys(crit);
+      if(names.length===0) return;
+      var byModel=cellAgg[g.id][r.model];
+      if(!byModel){ byModel=cellAgg[g.id][r.model]={}; }
+      names.forEach(function(k){
+        var e=crit[k];
+        if(!e||typeof e!=="object") return;
+        var cell=byModel[k];
+        if(!cell){ cell=byModel[k]={passed:0,total:0}; }
+        cell.total++;
+        if(e.passed) cell.passed++;
+        if(e.tier&&!critTiers[g.id][k]) critTiers[g.id][k]=e.tier;
+      });
+    });
+  });
+  phaseAgg={cellAgg:cellAgg,critTiers:critTiers};
+  return phaseAgg;
+}
+
+/* Two-sentence explainers per eval group (plan § 4.5) */
+var PD_EXPLAINERS={
+  mode_classification:"Each run starts cold: the model sees only the user\u2019s opening request and must classify it into the correct engagement mode. Criteria check the mode it picks, that it presents a confirmation gate, and that nothing executes before the user confirms.",
+  post_confirmation:"The model resumes from a checkpoint that ends at the confirmation gate, and the user says to proceed. Criteria check that it actually loads the mode reference files and skills it just committed to loading.",
+  dispatch_compliance_dispatch:"The model resumes from a fully initialized Ad Hoc Collaboration session and must hand work to a subagent. Criteria check that it dispatches the correct agent type with a properly structured prompt \u2014 BASE_DIR, mode marker, and task / context / instructions sections.",
+  dispatch_compliance_subagent:"Whenever a Phase 3 dispatch succeeds, the dispatched subagent\u2019s own transcript is scored against criteria derived from its agent type. Which criteria apply varies by case, so denominators vary across this heatmap \u2014 \u201c\u2014\u201d marks criteria that never applied to a model\u2019s runs.",
+  skill_routing:"The model resumes from the same fully initialized Ad Hoc Collaboration checkpoint as Phase 3 and receives a task that requires a specific analysis library. Criteria check that it FIRST consults the data-scientist hub\u2019s routing directives and THEN loads the specific library skills \u2014 scored on the main transcript only, and not part of the leaderboard composite."
+};
+
+/* One heatmap block for one eval group. Emits id="phase-<gid>" so
+   leaderboard deep-links (window.lbJumpPhase) land precisely. */
+function pdGroupHtml(g,agg){
+  var gid=g.id;
+  var byModel=agg.cellAgg[gid]||{};
+  var tiers=agg.critTiers[gid]||{};
+  var pmp=PRECOMPUTED.per_model_phase||{};
+  var models=Object.keys(byModel);
+  if(models.length===0) return '';
+
+  /* Columns: hard then soft, alphabetical within each tier (criteria
+     without an observed tier sort with soft) */
+  var critSet={};
+  models.forEach(function(m){
+    Object.keys(byModel[m]).forEach(function(k){ critSet[k]=true; });
+  });
+  var hard=[], soft=[];
+  Object.keys(critSet).sort().forEach(function(k){
+    if(tiers[k]==="hard") hard.push(k); else soft.push(k);
+  });
+  var cols=hard.concat(soft);
+
+  /* Rows: by this group's Perfect rate, descending (then n, then name) */
+  models.sort(function(a,b){
+    var ca=(pmp[a]||{})[gid], cb=(pmp[b]||{})[gid];
+    var ra=ca&&ca.perfect_rate!=null?ca.perfect_rate:-1;
+    var rb=cb&&cb.perfect_rate!=null?cb.perfect_rate:-1;
+    if(rb!==ra) return rb-ra;
+    var na=ca?ca.n_runs:0, nb=cb?cb.n_runs:0;
+    if(nb!==na) return nb-na;
+    return a<b?-1:1;
+  });
+
+  var html='<div class="pd-group" id="phase-'+esc(gid)+'">';
+  html+='<h3>'+esc(g.label)+'</h3>';
+  if(PD_EXPLAINERS[gid]) html+='<p class="pd-explainer">'+PD_EXPLAINERS[gid]+'</p>';
+
+  /* Computed callout: weakest criterion + top model for this group */
+  var co=((PRECOMPUTED.callouts||{}).groups||{})[gid];
+  if(co&&(co.weakest_criterion||co.top_model)){
+    var cbits=[];
+    if(co.weakest_criterion){
+      var wc=co.weakest_criterion;
+      cbits.push('Weakest criterion: <code>'+esc(wc.name)+'</code> at <b>'+pct(wc.rate)+
+        '</b> ('+fmt(wc.passed)+'/'+fmt(wc.total)+' across all models)');
+    }
+    if(co.top_model){
+      var tm=co.top_model;
+      cbits.push('top model: <b>'+esc(tm.model)+'</b> at <b>'+pct(tm.perfect_rate)+
+        '</b> perfect ('+fmt(tm.n_runs)+' runs)');
+    }
+    html+='<div class="pd-callout">'+cbits.join('; ')+'.</div>';
+  }
+
+  /* Heatmap table: tier group header row + rotated criterion headers */
+  html+='<div class="card" style="display:inline-block;max-width:100%"><table class="pd-table"><thead>';
+  if(hard.length>0&&soft.length>0){
+    html+='<tr><th></th><th colspan="'+hard.length+'" class="pd-tier-label">Hard</th>'+
+      '<th colspan="'+soft.length+'" class="pd-tier-label pd-soft-start">Soft</th></tr>';
+  }
+  html+='<tr><th style="text-align:left">Model</th>';
+  cols.forEach(function(k,i){
+    var sep=(hard.length>0&&soft.length>0&&i===hard.length)?' pd-soft-start':'';
+    html+='<th class="pd-crit-th'+sep+'" title="'+esc(k)+' ('+esc(tiers[k]||'soft')+' criterion)">'+
+      '<span class="pd-crit-rot">'+esc(k)+'</span></th>';
+  });
+  html+='</tr></thead><tbody>';
+
+  models.forEach(function(m){
+    var cellPM=(pmp[m]||{})[gid];
+    html+='<tr><td class="pd-model">'+esc(m)+
+      (cellPM?'<span class="pd-row-rate">'+pct(cellPM.perfect_rate)+' perfect, '+
+        cellPM.perfect_count+'/'+cellPM.n_runs+'</span>':'')+'</td>';
+    cols.forEach(function(k,i){
+      var sep=(hard.length>0&&soft.length>0&&i===hard.length)?' pd-soft-start':'';
+      var cell=(byModel[m]||{})[k];
+      if(!cell||cell.total===0){
+        html+='<td class="pd-cell rs-na'+sep+'" title="'+esc(k)+' \u2014 not applicable: never scored on '+
+          esc(m)+'\u2019s runs in this group">&mdash;</td>';
+        return;
+      }
+      var rate=cell.passed/cell.total;
+      var step=rateStep(rate);
+      /* Criterion-level deep link: lands on the Run Explorer with the
+         (model, group, criterion) filters pre-applied — the criterion
+         filter keeps exactly the runs this cell's denominator counts. */
+      html+='<td class="pd-cell rs-'+step+sep+'" title="'+esc(k)+' \u2014 '+esc(m)+': '+
+        cell.passed+'/'+cell.total+' passed ('+pct(rate)+') \u2014 click to open these runs" '+
+        'onclick="exploreRuns(&#39;'+esc(m)+'&#39;,&#39;'+esc(gid)+'&#39;,null,&#39;'+esc(k)+'&#39;)">'+
+        rateGlyph(step)+pct(rate)+'</td>';
+    });
+    html+='</tr>';
+  });
+  html+='</tbody></table></div></div>';
+  return html;
+}
+
+function renderPhaseDives(container){
+  var agg=buildPhaseAgg();
+  var groups=getEvalGroups();
+
+  /* Group blocks: P1 and P2 stand alone; P3a + P3b pair up side by
+     side (flex-wrap) so dispatch and subagent scoring read together */
+  var blocks='', pair='';
+  groups.forEach(function(g){
+    var block=pdGroupHtml(g,agg);
+    if(!block) return;
+    if(g.id==="dispatch_compliance_dispatch"||g.id==="dispatch_compliance_subagent"){
+      pair+=block;
+    } else {
+      blocks+=block;
+    }
+  });
+  if(blocks===''&&pair===''){
+    container.innerHTML='<div class="empty-msg">No graded runs in the loaded corpus.</div>';
+    return;
+  }
+
+  var html='';
+  /* Section finding: the weakest criterion across the composite (core)
+     groups — non-composite phases have their own per-group callouts */
+  var gw=(PRECOMPUTED.callouts||{}).global_weakest;
+  if(gw){
+    html+='<div class="pd-finding">The weakest criterion among the core phases (P1&ndash;P3b) is <code>'+esc(gw.name)+
+      '</code> at <b>'+pct(gw.rate)+'</b> ('+fmt(gw.passed)+'/'+fmt(gw.total)+', '+esc(gw.group_label)+
+      ') \u2014 read down its column below to see whether the weakness is universal or concentrated in a few models.'+
+      (KNOWN_SCORER_CAVEATS[gw.name]?' ('+esc(KNOWN_SCORER_CAVEATS[gw.name])+' \u2014 see <a href="#about">caveats</a>)':'')+
+      '</div>';
+  }
+  /* One step-scale legend for the whole section */
+  html+='<div class="pd-legend"><span>Cell scale (share of a model\u2019s scored runs passing that criterion):</span>'+
+    '<span class="hm-cell rs-0">&#10007; 0%</span>'+
+    '<span class="hm-cell rs-1">1\u201349%</span>'+
+    '<span class="hm-cell rs-2">50\u201389%</span>'+
+    '<span class="hm-cell rs-3">90\u201399%</span>'+
+    '<span class="hm-cell rs-4">&#10003; 100%</span>'+
+    '<span class="hm-cell rs-na">&mdash; n/a</span>'+
+    '<span>hover any cell for its exact k/n</span></div>';
+
+  html+=blocks;
+  if(pair!=='') html+='<div class="pd-pair">'+pair+'</div>';
+  container.innerHTML=html;
+}
+
+/* =================================================================
+   SECTION 6: CASES & CONSISTENCY (plan § 4.6)
+   Layer 1 — agreement heatmaps: one case × model grid per eval group
+   (criteria sets differ across groups, so a single all-phase wall
+   would conflate them — consistent with the per-group deep-dives).
+   Cell = reps-perfect out of reps-run for that (case, model), on a
+   discrete k-of-n step of the shared .rs-* ramp; ".rs-na"/"—" where
+   a model never ran the case. The "All models" row margin is the
+   case's cross-model difficulty, computed from the same aggregation
+   as the cells. Layer 2 — case browser: one <details> panel per case
+   with the full prompt, expected behavior from case metadata,
+   hard/soft requirement lists, and the per-rep criterion matrix
+   (v1 mechanics, scoped to one case).
+   ================================================================= */
+
+/* k-of-n agreement step: maps a discrete reps-perfect count onto the
+   shared .rs-* classes. All-perfect and none-perfect get the extreme
+   steps (rateGlyph adds the check/cross); split cells land mid-ramp
+   so partial agreement reads as visually distinct from both extremes
+   even at uneven denominators (n = 1, 2, or 3 in this corpus). */
+function konStep(k,n){
+  if(k>=n) return 4;
+  if(k<=0) return 0;
+  return (k/n>=0.5)?2:1;
+}
+
+/* Agreement aggregation — built once on first render, cached:
+   agreeAgg[gid][case_id][model] = {k: reps perfect in group, n: reps
+   run}. "Perfect in group" = groupAllPassed (every criterion in the
+   group's dict passed), matching per_model_phase perfect semantics. */
+var agreeAgg=null;
+function buildAgreeAgg(){
+  if(agreeAgg) return agreeAgg;
+  var groups=getEvalGroups();
+  var agg={};
+  groups.forEach(function(g){ agg[g.id]={}; });
+  DATA.runs.forEach(function(r){
+    groups.forEach(function(g){
+      if(!runInGroup(r,g)) return;
+      var byCase=agg[g.id][r.case_id];
+      if(!byCase){ byCase=agg[g.id][r.case_id]={}; }
+      var cell=byCase[r.model];
+      if(!cell){ cell=byCase[r.model]={k:0,n:0}; }
+      cell.n++;
+      if(groupAllPassed(r,g)) cell.k++;
+    });
+  });
+  agreeAgg=agg;
+  return agg;
+}
+
+function caseSubcategory(cid){
+  var c=DATA.cases[cid];
+  if(c&&c.subcategory) return c.subcategory;
+  var pc=(PRECOMPUTED.per_case||{})[cid];
+  return (pc&&pc.subcategory)||"";
+}
+
+/* One agreement grid for one eval group */
+function agreementGroupHtml(g){
+  var agg=buildAgreeAgg();
+  var gid=g.id;
+  var byCase=agg[gid]||{};
+  var caseIds=Object.keys(byCase);
+  if(caseIds.length===0) return '';
+  var pmp=PRECOMPUTED.per_model_phase||{};
+
+  /* Columns: models with runs in this group, ranked by the group's
+     Perfect rate (same ordering as the phase deep-dives) */
+  var mset={};
+  caseIds.forEach(function(cid){
+    Object.keys(byCase[cid]).forEach(function(m){ mset[m]=true; });
+  });
+  var models=Object.keys(mset);
+  models.sort(function(a,b){
+    var ca=(pmp[a]||{})[gid], cb=(pmp[b]||{})[gid];
+    var ra=ca&&ca.perfect_rate!=null?ca.perfect_rate:-1;
+    var rb=cb&&cb.perfect_rate!=null?cb.perfect_rate:-1;
+    if(rb!==ra) return rb-ra;
+    return a<b?-1:1;
+  });
+
+  /* Row margins (cross-model difficulty) + split-cell count, computed
+     from the same aggregation as the cells so the grid is
+     self-consistent */
+  var diff={};
+  var mixedCells=0, popCells=0;
+  caseIds.forEach(function(cid){
+    var K=0,N=0;
+    models.forEach(function(m){
+      var c=byCase[cid][m];
+      if(!c||c.n===0) return;
+      K+=c.k; N+=c.n; popCells++;
+      if(c.k>0&&c.k<c.n) mixedCells++;
+    });
+    diff[cid]={k:K,n:N,rate:N>0?K/N:0};
+  });
+  /* Rows: hardest cases first (difficulty ascending, then natural id) */
+  caseIds.sort(function(a,b){
+    if(diff[a].rate!==diff[b].rate) return diff[a].rate-diff[b].rate;
+    return caseSort(a,b);
+  });
+
+  var html='<div class="pd-group" id="agree-'+esc(gid)+'">';
+  html+='<h3>'+esc(g.label)+' &mdash; rep agreement</h3>';
+  /* Computed mini-finding: hardest case + how much flakiness exists */
+  var hardest=caseIds[0], hd=diff[hardest];
+  html+='<p class="pd-explainer">Hardest case: <code>'+esc(hardest)+'</code> at <b>'+pct(hd.rate)+
+    '</b> perfect across all models ('+hd.k+'/'+hd.n+' reps). '+
+    mixedCells+' of '+popCells+' populated (case, model) cells have split reps &mdash; the identical prompt sometimes perfect, sometimes not.</p>';
+
+  html+='<div class="card" style="display:inline-block;max-width:100%"><table class="pd-table"><thead><tr>';
+  html+='<th style="text-align:left">Case</th>';
+  html+='<th class="pd-crit-th" title="Cross-model difficulty: perfect reps over all reps of this case in this group"><span class="pd-crit-rot">All models</span></th>';
+  models.forEach(function(m){
+    var cell=(pmp[m]||{})[gid];
+    html+='<th class="pd-crit-th" title="'+esc(m)+(cell?' \u2014 '+pct(cell.perfect_rate)+' perfect in this group':'')+'"><span class="pd-crit-rot">'+esc(m)+'</span></th>';
+  });
+  html+='</tr></thead><tbody>';
+
+  caseIds.forEach(function(cid){
+    var sub=caseSubcategory(cid);
+    html+='<tr><td class="pd-model">'+esc(cid)+(sub?'<span class="cs-chip">'+esc(sub)+'</span>':'')+'</td>';
+    var d=diff[cid];
+    var ds=rateStep(d.rate);
+    html+='<td class="pd-cell rs-'+ds+' cs-margin" title="'+esc(cid)+' across all models: '+d.k+'/'+d.n+' reps perfect ('+pct(d.rate)+')">'+
+      rateGlyph(ds)+pct(d.rate)+'</td>';
+    models.forEach(function(m){
+      var c=byCase[cid][m];
+      if(!c||c.n===0){
+        html+='<td class="pd-cell rs-na" title="'+esc(m)+' never ran '+esc(cid)+' in this group">&mdash;</td>';
+        return;
+      }
+      var step=konStep(c.k,c.n);
+      html+='<td class="pd-cell rs-'+step+'" title="'+esc(m)+' on '+esc(cid)+': '+c.k+' of '+c.n+' reps perfect'+
+        (c.k>0&&c.k<c.n?' \u2014 split reps (flaky)':'')+' \u2014 click to open these runs" '+
+        'onclick="exploreRuns(&#39;'+esc(m)+'&#39;,&#39;'+esc(gid)+'&#39;,&#39;'+esc(cid)+'&#39;)">'+
+        rateGlyph(step)+c.k+'/'+c.n+'</td>';
+    });
+    html+='</tr>';
+  });
+  html+='</tbody></table></div></div>';
+  return html;
+}
+
+/* Generic rendering of a case's expected.* metadata (shape varies by
+   phase — modes, document lists, dispatch targets, skill routing —
+   so render keys generically rather than hardcoding per phase) */
+function expectedHtml(exp){
+  if(!exp) return "";
+  var keys=Object.keys(exp);
+  if(keys.length===0) return "";
+  var h='<div class="section-title" style="margin:10px 0 6px">Expected Behavior</div>';
+  h+='<table class="data-table" style="width:auto"><tbody>';
+  keys.forEach(function(k){
+    var v=exp[k], vs;
+    if(Object.prototype.toString.call(v)==="[object Array]"){
+      if(v.length===0){ vs='<span class="text-muted">(none)</span>'; }
+      else{
+        vs=v.map(function(it){
+          return '<code>'+esc(typeof it==="string"?it:JSON.stringify(it))+'</code>';
+        }).join(", ");
+      }
+    } else if(typeof v==="boolean"){ vs=v?"yes":"no"; }
+    else if(v==null){ vs='<span class="text-muted">&mdash;</span>'; }
+    else if(typeof v==="object"){ vs='<code>'+esc(JSON.stringify(v))+'</code>'; }
+    else { vs='<code>'+esc(String(v))+'</code>'; }
+    h+='<tr><td class="text-secondary">'+esc(k)+'</td><td>'+vs+'</td></tr>';
+  });
+  return h+'</tbody></table>';
+}
+
+function reqListHtml(label,arr){
+  if(!arr||arr.length===0) return "";
+  var h='<div class="section-title" style="margin:10px 0 4px">'+label+'</div><ul class="req-list">';
+  arr.forEach(function(x){ h+='<li><code>'+esc(x)+'</code></li>'; });
+  return h+'</ul>';
+}
+
+/* Per-rep checkmark matrix for ONE case within ONE eval group (the v1
+   Cases-view mechanics, scoped down). Columns are restricted to the
+   models that actually ran the case. */
+function caseMatrixHtml(group,cid){
+  var caseRuns=DATA.runs.filter(function(r){ return r.case_id===cid && runInGroup(r,group); });
+  if(caseRuns.length===0) return '';
+  var mset={};
+  caseRuns.forEach(function(r){ mset[r.model]=true; });
+  var models=Object.keys(mset).sort();
+  var maxRep=0;
+  caseRuns.forEach(function(r){ if(r.rep>maxRep) maxRep=r.rep; });
+  var criteria=group.criterion_names.slice().sort();
+
+  var html='<div class="section-title" style="margin:14px 0 6px">'+esc(group.label)+' &mdash; per-rep marks</div>';
+  html+='<div style="overflow-x:auto"><table class="data-table"><thead><tr>';
+  html+='<th style="width:60px"></th><th>Criterion</th><th style="width:36px">Tier</th>';
+  models.forEach(function(m){ html+='<th style="text-align:center;color:'+modelColorLight(m)+'">'+esc(m)+'</th>'; });
+  html+='</tr></thead><tbody>';
+
+  for(var rep=0;rep<=maxRep;rep++){
+    for(var ci=0;ci<criteria.length;ci++){
+      var criterion=criteria[ci];
+
+      var tier="";
+      for(var ti=0;ti<caseRuns.length;ti++){
+        var tCrit=getRunCriteria(caseRuns[ti], group);
+        if(tCrit[criterion] && tCrit[criterion].tier){
+          tier=tCrit[criterion].tier==="hard"?"H":"S";
+          break;
+        }
+      }
+
+      html+='<tr>';
+      if(ci===0){
+        html+='<td class="rep-label" rowspan="'+criteria.length+'">Rep '+rep+'</td>';
+      }
+      html+='<td><code style="font-size:11px;color:#cbd5e1">'+esc(criterion)+'</code></td>';
+      html+='<td style="text-align:center;color:'+(tier==="H"?"#f59e0b":"#64748b")+';font-size:11px;font-weight:600">'+esc(tier)+'</td>';
+
+      models.forEach(function(m){
+        var run=null;
+        for(var ri=0;ri<caseRuns.length;ri++){
+          if(caseRuns[ri].model===m && caseRuns[ri].rep===rep){ run=caseRuns[ri]; break; }
+        }
+        if(!run){
+          html+='<td style="text-align:center;color:#475569">&mdash;</td>';
+          return;
+        }
+        var critData=getRunCriteria(run, group)[criterion];
+        if(!critData){
+          html+='<td style="text-align:center;color:#475569">&mdash;</td>';
+        } else {
+          var passed=critData.passed;
+          html+='<td style="text-align:center;cursor:pointer" onclick="event.stopPropagation();jumpToRun(&#39;'+esc(run.run_dir)+'&#39;)">';
+          html+='<span class="'+(passed?"crit-pass":"crit-fail")+'">'+(passed?"&#10003;":"&#10007;")+'</span></td>';
+        }
+      });
+
+      html+='</tr>';
+    }
+  }
+  html+='</tbody></table></div>';
+  return html;
+}
+
+/* Case browser: collapsible per-case panels, grouped by phase (cases
+   are phase entities; dispatch cases get both a 3a and a 3b matrix
+   inside one panel rather than appearing twice) */
+function caseBrowserHtml(){
+  var perCase=PRECOMPUTED.per_case||{};
+  var groups=getEvalGroups();
+  var groupsByPhase={}, phaseOrder=[];
+  groups.forEach(function(g){
+    if(!groupsByPhase[g.phase]){ groupsByPhase[g.phase]=[]; phaseOrder.push(g.phase); }
+    groupsByPhase[g.phase].push(g);
+  });
+  var phaseLabels={};
+  DATA.result_sets.forEach(function(rs){
+    if(!phaseLabels[rs.phase]) phaseLabels[rs.phase]=rs.phase_label;
+  });
+  /* Cases per phase, from runs — only cases that actually ran appear */
+  var phaseCases={};
+  DATA.runs.forEach(function(r){
+    var ph=runPhase(r);
+    if(!phaseCases[ph]) phaseCases[ph]={};
+    phaseCases[ph][r.case_id]=true;
+  });
+
+  var html='<div class="section-title" style="margin-top:28px">Case Browser</div>';
+  html+='<div class="case-browser">';
+  phaseOrder.forEach(function(ph){
+    var cids=Object.keys(phaseCases[ph]||{}).sort(caseSort);
+    if(cids.length===0) return;
+    html+='<h3 style="font-size:14px;font-weight:700;margin:14px 0 8px">'+esc(phaseLabels[ph]||ph)+'</h3>';
+    cids.forEach(function(cid){
+      var c=DATA.cases[cid]||{};
+      var pc=perCase[cid];
+      html+='<details><summary><b>'+esc(cid)+'</b>';
+      var sub=caseSubcategory(cid);
+      if(sub) html+='<span class="cs-chip">'+esc(sub)+'</span>';
+      html+=' <span class="text-muted text-xs">'+esc(truncate(c.prompt||"",90))+'</span>';
+      if(pc&&pc.n_runs){
+        html+='<span class="cb-rate" title="Perfect runs over all of this case\u2019s runs (main criteria), all models pooled">'+
+          pct(pc.perfect_rate||0)+' perfect &middot; '+pc.perfect_count+'/'+pc.n_runs+' runs</span>';
+      }
+      html+='</summary><div>';
+      if(c.prompt){
+        html+='<div class="section-title" style="margin:8px 0 4px">Prompt</div>';
+        html+='<div class="case-prompt">'+esc(c.prompt)+'</div>';
+      }
+      html+=expectedHtml(c.expected);
+      html+=reqListHtml("Hard Requirements (must-pass)",c.hard_requirements);
+      html+=reqListHtml("Soft Requirements",c.soft_requirements);
+      (groupsByPhase[ph]||[]).forEach(function(g){
+        html+=caseMatrixHtml(g,cid);
+      });
+      html+='</div></details>';
+    });
+  });
+  html+='</div>';
+  return html;
+}
+
+function renderCasesSection(container){
+  var groups=getEvalGroups();
+  var html='';
+  /* One k-of-n legend for all agreement grids in the section */
+  html+='<div class="pd-legend"><span>Cell = repetitions of the identical prompt where the run was perfect, out of repetitions run:</span>'+
+    '<span class="hm-cell rs-0">&#10007; none</span>'+
+    '<span class="hm-cell rs-1">some</span>'+
+    '<span class="hm-cell rs-2">most</span>'+
+    '<span class="hm-cell rs-4">&#10003; all</span>'+
+    '<span class="hm-cell rs-na">&mdash; never ran</span>'+
+    '<span>exact k/n in every cell; hover for detail</span></div>';
+  var any=false;
+  groups.forEach(function(g){
+    var block=agreementGroupHtml(g);
+    if(block){ any=true; html+=block; }
+  });
+  if(!any){
+    container.innerHTML='<div class="empty-msg">No cases in the loaded corpus.</div>';
+    return;
+  }
+  html+=caseBrowserHtml();
+  container.innerHTML=html;
+}
+
+/* =================================================================
+   SECTION 7: COSTS DETAIL (plan § 4.7)
+   Two sortable tables. (1) Observed spend per model, computed
+   upstream into PRECOMPUTED.cost.per_model: avg/total computed cost,
+   avg duration, and the token composition behind the bill (uncached
+   input / output / cache-read shares of billed tokens) — with
+   timeout-zeroed runs excluded from the averages and the exclusion
+   disclosed. (2) The published per-token pricing every cost on this
+   page is recomputed from (DATA.model_pricing), with each model's
+   overall Perfect rate for context.
+   ================================================================= */
+
+function renderCostsDetail(container){
+  var models=uniqueModels();
+  var pricing=DATA.model_pricing||{};
+  var costPM=(PRECOMPUTED.cost||{}).per_model||{};
+  var totalSpend=(PRECOMPUTED.cost||{}).total_spend_usd;
+
+  /* ---- Observed spend (PRECOMPUTED.cost.per_model) ---- */
+  var spendRows=models.map(function(m){
+    var c=costPM[m]||{};
+    var tk=c.tokens||{};
+    var inT=tk.input_tokens||0, outT=tk.output_tokens||0, crT=tk.cache_read_tokens||0;
+    /* "Billed" composition = input + output + cache reads. Cache-WRITE
+       tokens are captured in results but excluded from compute_cost(),
+       so they are deliberately not part of this bar. */
+    var billed=inT+outT+crT;
+    return {
+      model:m,
+      avg:(c.avg_cost_usd!=null?c.avg_cost_usd:null),
+      total:(c.total_cost_usd!=null?c.total_cost_usd:0),
+      dur:(c.avg_duration_s!=null?c.avg_duration_s:null),
+      nRuns:c.n_runs||0, nIncl:c.n_included||0, excl:c.excluded_count||0,
+      inT:inT, outT:outT, crT:crT, billed:billed,
+      inShare:billed>0?inT/billed:0,
+      outShare:billed>0?outT/billed:0,
+      crShare:billed>0?crT/billed:0
+    };
+  });
+  var sKey=state.spendSortCol||"total";
+  var sDir=state.spendSortDir||-1;
+  spendRows.sort(function(a,b){
+    var va=a[sKey], vb=b[sKey];
+    if(typeof va==="string") return sDir*va.localeCompare(vb);
+    /* null metrics (model with no includable runs) always sort last */
+    if(va==null&&vb==null) return 0;
+    if(va==null) return 1;
+    if(vb==null) return -1;
+    return sDir*(va-vb);
+  });
+  function spendTh(label,key,tip){
+    var arrow="";
+    if(sKey===key) arrow=sDir===1?" ▲":" ▼";
+    return '<th onclick="sortSpend(&#39;'+key+'&#39;)"'+(tip?' title="'+esc(tip)+'"':'')+'>'+label+arrow+'</th>';
+  }
+
+  var html='<div class="section-title">Observed Spend'+
+    (totalSpend!=null?' ($'+totalSpend.toFixed(2)+' total across all loaded runs)':'')+'</div>';
+  html+='<div class="cost-legend"><span>Token mix (share of billed tokens):</span>'+
+    '<span><span class="tok-swatch tok-in"></span>uncached input</span>'+
+    '<span><span class="tok-swatch tok-out"></span>output</span>'+
+    '<span><span class="tok-swatch tok-cache"></span>cache read</span>'+
+    '<span>exact shares as text in every row; hover a bar for raw token counts</span></div>';
+  html+='<div class="card"><table class="data-table"><thead><tr>';
+  html+=spendTh("Model","model");
+  html+=spendTh("Runs","nRuns","Runs included in averages / total runs (timeout-zeroed runs excluded from averages)");
+  html+=spendTh("Avg cost/run","avg","Mean computed cost over included runs");
+  html+=spendTh("Total cost","total","Sum of computed cost over ALL runs (timed-out runs contribute $0)");
+  html+=spendTh("Avg duration","dur","Mean wall-clock duration over included runs");
+  html+=spendTh("Token mix (in / out / cache)","inShare","Uncached-input / output / cache-read shares of billed tokens; sorts by input share");
+  html+='</tr></thead><tbody>';
+
+  var exRuns=0, exModels=0;
+  spendRows.forEach(function(row){
+    var m=row.model;
+    if(row.excl>0){ exRuns+=row.excl; exModels++; }
+    html+='<tr>';
+    html+='<td style="font-weight:600;color:'+modelColorLight(m)+'">'+esc(m)+
+      reasoningBadge(modelMultiplier(m,DATA.runs))+'</td>';
+    html+='<td title="'+row.nIncl+' of '+row.nRuns+' runs included in averages'+
+      (row.excl>0?' ('+row.excl+' zero-cost timeout run'+(row.excl===1?'':'s')+' excluded)':'')+'">'+
+      row.nIncl+'/'+row.nRuns+(row.excl>0?'<sup>&dagger;</sup>':'')+'</td>';
+    html+='<td>'+fmtCost(row.avg)+'</td>';
+    html+='<td>'+fmtCost(row.total)+'</td>';
+    html+='<td>'+(row.dur!=null?row.dur.toFixed(0)+'s':'&mdash;')+'</td>';
+    if(row.billed>0){
+      var tipTok='in '+fmt(row.inT)+' \u00b7 out '+fmt(row.outT)+' \u00b7 cache read '+fmt(row.crT)+
+        ' (billed total '+fmt(row.billed)+')';
+      html+='<td title="'+tipTok+'"><span class="tok-bar">'+
+        '<span class="tok-seg tok-in" style="width:'+(row.inShare*100).toFixed(1)+'%"></span>'+
+        '<span class="tok-seg tok-out" style="width:'+(row.outShare*100).toFixed(1)+'%"></span>'+
+        '<span class="tok-seg tok-cache" style="width:'+(row.crShare*100).toFixed(1)+'%"></span>'+
+        '</span><span class="tok-text">'+pct(row.inShare)+' / '+pct(row.outShare)+' / '+pct(row.crShare)+'</span></td>';
+    } else {
+      html+='<td class="text-muted">&mdash;</td>';
+    }
+    html+='</tr>';
+  });
+  html+='</tbody></table></div>';
+  if(exRuns>0){
+    html+='<p class="cost-foot">&dagger; Cost and duration averages exclude '+fmt(exRuns)+
+      ' timed-out run'+(exRuns===1?'':'s')+' with zeroed cost (across '+exModels+' model'+
+      (exModels===1?'':'s')+'); total cost still counts them, at $0.</p>';
+  }
+  html+='<p class="cost-foot">OpenRouter token counts come from the Anthropic-compatible '+
+    'endpoint\u2019s tokenizer, not each model\u2019s own, so OpenRouter spend is a best-effort '+
+    'estimate. Cache-write tokens are recorded in results but not priced, so they appear in '+
+    'neither the costs nor the token-mix bar.</p>';
+
+  /* ---- Published pricing (kept from v1, sortable) ---- */
+  var perfectByModel={};
+  models.forEach(function(m){
+    var n=0,k=0;
+    DATA.runs.forEach(function(r){ if(r.model===m){ n++; if(r.grade==="perfect") k++; } });
+    perfectByModel[m]={rate:n>0?k/n:0,k:k,n:n};
+  });
+
+  var costRows=models.map(function(m){
+    var p=pricing[m];
+    return {
+      model:m,
+      perfect:perfectByModel[m].rate,
+      input:p?p.input_per_million:Infinity,
+      output:p?p.output_per_million:Infinity,
+      cache:p?p.cached_input_per_million:Infinity
+    };
+  });
+
+  var sortKey=state.costSortCol||"input";
+  var sortDir=state.costSortDir||1;
+  costRows.sort(function(a,b){
+    var va=a[sortKey], vb=b[sortKey];
+    if(typeof va==="string") return sortDir*va.localeCompare(vb);
+    return sortDir*(va-vb);
+  });
+
+  function costTh(label,key){
+    var arrow="";
+    if(state.costSortCol===key) arrow=state.costSortDir===1?" ▲":" ▼";
+    else if(!state.costSortCol && key==="input") arrow=" ▲";
+    return '<th onclick="sortCosts(&#39;'+key+'&#39;)" style="cursor:pointer">'+label+arrow+'</th>';
+  }
+
+  html+='<div class="section-title" style="margin-top:24px">Model Pricing (per 1M tokens)</div>';
+  html+='<div class="card"><table class="data-table"><thead><tr>';
+  html+=costTh("Model","model");
+  html+=costTh("Perfect Rate","perfect");
+  html+=costTh("Input / 1M","input");
+  html+=costTh("Output / 1M","output");
+  html+=costTh("Cache Read / 1M","cache");
+  html+='</tr></thead><tbody>';
+
+  costRows.forEach(function(row){
+    var m=row.model;
+    var p=pricing[m];
+    html+='<tr>';
+    html+='<td style="font-weight:600;color:'+modelColorLight(m)+'">'+esc(m)+'</td>';
+    var pr=perfectByModel[m];
+    var step=rateStep(pr.rate);
+    html+='<td><span class="hm-cell rs-'+step+'" style="cursor:default" title="'+pr.k+'/'+pr.n+
+      ' perfect runs pooled across all loaded phases (main criteria)">'+rateGlyph(step)+pct(pr.rate)+'</span></td>';
+    if(p){
+      html+='<td>$'+p.input_per_million.toFixed(2)+'</td>';
+      html+='<td>$'+p.output_per_million.toFixed(2)+'</td>';
+      html+='<td>'+(p.cached_input_per_million>0?'$'+p.cached_input_per_million.toFixed(2):'N/A')+'</td>';
+    } else {
+      html+='<td class="text-muted">N/A</td><td class="text-muted">N/A</td><td class="text-muted">N/A</td>';
+    }
+    html+='</tr>';
+  });
+  html+='</tbody></table></div>';
+
+  container.innerHTML=html;
+}
+
+/* =================================================================
+   SECTION 8: RUN EXPLORER (plan § 4.8)
+   Run list + detail panel. Status everywhere in this section is the
+   grade taxonomy (perfect / partial / failed / ungraded) with the
+   timed_out flag rendered as a separate clock marker; deep links from
+   the leaderboard, phase heatmaps, and agreement grids land here via
+   exploreRuns with filters pre-applied (incl. the chip-only criterion
+   filter). Performance guard: the list renders at most
+   state.runListLimit rows initially, with a "show all" button.
+   ================================================================= */
+
+function renderRunExplorer(container){
+  var runs=filteredRuns();
+  var limit=state.runListLimit;
+  var shown=Math.min(runs.length,limit);
+
+  var html='<div class="text-xs text-muted mb-2">Showing '+fmt(shown)+' of '+fmt(runs.length)+
+    ' matching runs ('+fmt(DATA.runs.length)+' total in corpus)</div>';
+  html+='<div class="logs-layout">';
+  /* Left: run list */
+  html+='<div class="run-list-panel" id="run-list">';
+  if(runs.length===0){
+    html+='<div class="empty-msg">No runs match filters</div>';
+  } else {
+    for(var i=0;i<shown;i++){
+      var r=runs[i];
+      var st=runStatus(r);
+      html+='<div class="run-list-item'+(state.selectedRunIdx===i?" selected":"")+'" data-ridx="'+i+'" onclick="selectRun('+i+')">';
+      html+='<span class="st-glyph st-'+st+'" title="'+st+' \u2014 '+(GRADE_TIP[st]||"")+'">'+(GRADE_GLYPH[st]||"&mdash;")+'</span>';
+      if(r.timed_out){
+        html+='<span class="to-mark" title="Timed out \u2014 criteria were still scored from the transcript produced before the cutoff">&#9201;</span>';
+      }
+      html+='<span class="case-label">'+esc(r.case_id)+'</span>';
+      html+='<span class="model-label">'+esc(r.model)+'</span>';
+      html+='<span class="text-xs text-muted">rep'+r.rep+'</span>';
+      /* Timeouts have no meaningful duration — "0s" would misread as instant */
+      html+='<span class="text-xs text-muted">'+(r.timed_out?'&mdash;':(r.duration_s||0).toFixed(0)+'s')+'</span>';
+      html+='</div>';
+    }
+    if(runs.length>shown){
+      html+='<div class="show-all-row"><button class="filter-btn" onclick="showAllRuns()">Show all '+fmt(runs.length)+' runs</button></div>';
+    }
+  }
+  html+='</div>';
+  /* Right: detail */
+  html+='<div class="run-detail-panel" id="run-detail">';
+  if(state.selectedRunIdx>=0 && state.selectedRunIdx<runs.length){
+    html+=renderRunDetail(runs[state.selectedRunIdx]);
+  } else {
+    html+='<div class="empty-state">Select a run from the list to view details</div>';
+  }
+  html+='</div>';
+  html+='</div>';
+
+  container.innerHTML=html;
+}
+
+function renderRunDetail(r){
+  var st=runStatus(r);
+  var html='';
+  /* Header: grade badge (+ glyph) with the timeout flag as a separate
+     outlined marker; subcategory and expected mode surfaced as chips */
+  var gradeBadge={perfect:"badge-pass",partial:"badge-partial",failed:"badge-fail",ungraded:"badge-neutral"};
+  html+='<div style="display:flex;flex-wrap:wrap;gap:12px;align-items:center;margin-bottom:12px">';
+  html+='<span style="font-size:16px;font-weight:700">'+esc(r.case_id)+'</span>';
+  html+='<span class="badge" style="background:'+modelColor(r.model)+';color:#fff">'+esc(r.model)+'</span>';
+  html+='<span class="badge">Rep '+r.rep+'</span>';
+  html+='<span class="badge '+(gradeBadge[st]||"badge-neutral")+'" title="Grade: '+(GRADE_TIP[st]||"")+'">'+(GRADE_GLYPH[st]||"")+' '+st.toUpperCase()+'</span>';
+  if(r.timed_out){
+    html+='<span class="badge badge-timeout" title="'+esc(r.error||"Hit the wall-clock limit")+' \u2014 criteria were still scored from the transcript produced before the cutoff">&#9201; TIMED OUT</span>';
+  }
+  if(r.subcategory) html+='<span class="badge" title="Case subcategory">'+esc(r.subcategory)+'</span>';
+  if(r.expected_mode) html+='<span class="badge" title="Expected engagement mode for this Phase 1 case">expects: '+esc(r.expected_mode)+'</span>';
+  html+='</div>';
+  html+='<div class="text-xs text-muted mb-2">Session: '+esc(r.session_id||"N/A")+' | Duration: '+(r.duration_s||0).toFixed(1)+'s | Computed cost: '+fmtCost(r.computed_cost_usd)+'</div>';
+  html+='<div class="text-xs text-muted mb-4">Tokens: in='+fmt(r.input_tokens||0)+' out='+fmt(r.output_tokens||0)+' cache_read='+fmt(r.cache_read_tokens||0)+' cache_create='+fmt(r.cache_creation_tokens||0)+' | Turns: '+r.turns+
+    (r.tool_call_count!=null?' | Tool calls: '+fmt(r.tool_call_count):'')+'</div>';
+  /* Non-timeout errors only — the timeout badge above already carries
+     the error string for timed-out runs (currently every on-disk error
+     is a timeout, but render genuine errors if they ever appear) */
+  if(r.error && !r.timed_out){
+    html+='<div class="card" style="border-color:var(--c-fail);margin-bottom:12px"><strong style="color:var(--c-fail)">Error:</strong> '+esc(r.error)+'</div>';
+  }
+
+  /* Criteria checklist */
+  html+='<div class="section-title">Criteria</div>';
+  var critKeys=Object.keys(r.criteria||{}).sort();
+  critKeys.forEach(function(k){
+    var cr=r.criteria[k];
+    var passed=cr&&cr.passed;
+    html+='<div class="crit-check">';
+    html+='<span class="crit-icon" style="color:'+(passed?"var(--c-pass)":"var(--c-fail)")+'">'+(passed?"&#10003;":"&#10007;")+'</span>';
+    html+='<span class="crit-name">'+esc(k)+'</span>';
+    html+='</div>';
+    if(cr&&cr.detail) html+='<div class="crit-detail">'+esc(cr.detail)+'</div>';
+  });
+
+  /* Subagent criteria */
+  if(r.subagent_criteria){
+    var scKeys=Object.keys(r.subagent_criteria).sort();
+    if(scKeys.length>0){
+      html+='<div class="section-title" style="margin-top:16px">Subagent Criteria</div>';
+      scKeys.forEach(function(k){
+        var cr=r.subagent_criteria[k];
+        var passed=cr&&cr.passed;
+        html+='<div class="crit-check">';
+        html+='<span class="crit-icon" style="color:'+(passed?"var(--c-pass)":"var(--c-fail)")+'">'+(passed?"&#10003;":"&#10007;")+'</span>';
+        html+='<span class="crit-name">'+esc(k)+'</span>';
+        html+='</div>';
+        if(cr&&cr.detail) html+='<div class="crit-detail">'+esc(cr.detail)+'</div>';
+      });
+    }
+  }
+
+  /* Tool failures: every failed tool call the harness recorded, with
+     its full output content (collapsed by default — outputs can be
+     long; same expand mechanics as transcript tool results) */
+  var tf=r.tool_failures||[];
+  if(tf.length>0){
+    html+='<div class="section-title" style="margin-top:16px">Tool Failures ('+tf.length+')</div>';
+    tf.forEach(function(t,ti){
+      html+='<div class="tx-msg tx-tool-result" style="font-size:11px">';
+      html+='<span class="tx-role" style="color:var(--c-fail)">FAIL</span>';
+      html+='<span style="color:#fcd34d">'+esc(t.tool_name||"tool")+'</span>';
+      if(t.content){
+        var tfId="tf-out-"+r.run_dir.replace(/[^a-zA-Z0-9]/g,"_")+"-"+ti;
+        html+='<div id="'+tfId+'" class="tx-collapsed" style="margin-top:4px;color:#94a3b8;white-space:pre-wrap;word-break:break-word">'+esc(t.content)+'</div>';
+        html+='<span class="tx-toggle" onclick="event.stopPropagation();var e=document.getElementById(&#39;'+tfId+'&#39;);e.classList.toggle(&#39;tx-collapsed&#39;);this.textContent=e.classList.contains(&#39;tx-collapsed&#39;)?&#39;expand&#39;:&#39;collapse&#39;;">expand</span>';
+      }
+      html+='</div>';
+    });
+  }
+
+  /* Transcript */
+  var tx=DATA.transcripts[r.run_dir];
+  if(tx && tx.length>0){
+    html+='<div class="section-title" style="margin-top:16px">Condensed Transcript ('+tx.length+' messages)</div>';
+    html+='<div class="transcript">';
+    tx.forEach(function(msg,mi){
+      var cls="tx-"+msg.role.replace("_","-");
+      if(msg.role==="tool_call") cls="tx-tool-call";
+      if(msg.role==="tool_result") cls="tx-tool-result";
+      html+='<div class="tx-msg '+cls+'">';
+      if(msg.role==="user"){
+        html+='<span class="tx-role" style="color:#818cf8">USER</span>';
+        html+='<span class="tx-content">'+esc(truncate(msg.content,500))+'</span>';
+      } else if(msg.role==="assistant"){
+        html+='<span class="tx-role" style="color:var(--c-pass)">ASSISTANT</span>';
+        html+='<span class="tx-content">'+esc(truncate(msg.content,500))+'</span>';
+      } else if(msg.role==="tool_call"){
+        html+='<span class="tx-role" style="color:#f59e0b">TOOL</span>';
+        html+='<span style="color:#fcd34d">'+esc(msg.tool||"")+'</span>';
+        if(msg.args) html+=' <span class="text-muted">'+esc(truncate(msg.args,120))+'</span>';
+      } else if(msg.role==="tool_result"){
+        html+='<span class="tx-role" style="color:#64748b">RESULT</span>';
+        html+='<span style="color:'+(msg.status==="error"?"var(--c-fail)":"#94a3b8")+'">'+esc(msg.tool||"")+'</span>';
+        html+=' <span class="badge badge-'+(msg.status==="error"?"fail":"pass")+'">'+esc(msg.status||"ok")+'</span>';
+        if(msg.output){
+          var outId="tx-out-"+r.run_dir.replace(/[^a-zA-Z0-9]/g,"_")+"-"+mi;
+          html+='<div id="'+outId+'" class="tx-collapsed" style="margin-top:4px;font-size:11px;color:#94a3b8">'+esc(msg.output)+'</div>';
+          html+='<span class="tx-toggle" onclick="event.stopPropagation();var e=document.getElementById(&#39;'+outId+'&#39;);e.classList.toggle(&#39;tx-collapsed&#39;);this.textContent=e.classList.contains(&#39;tx-collapsed&#39;)?&#39;expand&#39;:&#39;collapse&#39;;">expand</span>';
+        }
+      } else if(msg.role==="system"){
+        html+='<span class="tx-role" style="color:#475569">SYSTEM</span>';
+        html+='<span class="tx-content">'+esc(truncate(msg.content,200))+'</span>';
+      }
+      html+='</div>';
+    });
+    html+='</div>';
+  }
+
+  /* Subagent transcripts */
+  var stx=DATA.subagent_transcripts[r.run_dir];
+  if(stx){
+    var saKeys=Object.keys(stx);
+    if(saKeys.length>0){
+      html+='<div class="section-title" style="margin-top:16px">Subagent Transcripts ('+saKeys.length+')</div>';
+      saKeys.forEach(function(saId){
+        var saMsgs=stx[saId];
+        html+='<div class="card" style="margin-bottom:8px;padding:10px 14px">';
+        html+='<div class="text-xs text-muted mb-2"><strong>Agent:</strong> '+esc(saId)+' ('+saMsgs.length+' messages)</div>';
+        saMsgs.slice(0,30).forEach(function(msg,mi){
+          var cls="tx-"+msg.role.replace("_","-");
+          if(msg.role==="tool_call") cls="tx-tool-call";
+          if(msg.role==="tool_result") cls="tx-tool-result";
+          html+='<div class="tx-msg '+cls+'" style="font-size:11px">';
+          if(msg.role==="user"){
+            html+='<span class="tx-role" style="color:#818cf8">USER</span>'+esc(truncate(msg.content,300));
+          } else if(msg.role==="assistant"){
+            html+='<span class="tx-role" style="color:var(--c-pass)">ASST</span>'+esc(truncate(msg.content,300));
+          } else if(msg.role==="tool_call"){
+            html+='<span class="tx-role" style="color:#f59e0b">TOOL</span><span style="color:#fcd34d">'+esc(msg.tool||"")+'</span> '+esc(truncate(msg.args,100));
+          } else if(msg.role==="tool_result"){
+            html+='<span class="tx-role" style="color:#64748b">RES</span>'+esc(msg.tool||"")+" "+esc(msg.status||"");
+          } else {
+            html+='<span class="tx-role" style="color:#475569">SYS</span>'+esc(truncate(msg.content,150));
+          }
+          html+='</div>';
+        });
+        if(saMsgs.length>30) html+='<div class="text-muted text-xs" style="padding:4px 10px">... '+(saMsgs.length-30)+' more messages</div>';
+        html+='</div>';
+      });
+    }
+  }
+
+  html+='<div class="text-xs text-muted mt-4">Run dir: '+esc(r.run_dir)+'</div>';
+
+  return html;
+}
+
+/* =================================================================
+   SECTION 9: PROVENANCE FOOTER (plan § 4.9)
+   One row per result set from PRECOMPUTED.provenance; rows where the
+   on-disk run count disagrees with summary.json are highlighted.
+   ================================================================= */
+
+function renderProvenance(container){
+  var prov=PRECOMPUTED.provenance||[];
+  var anyDisc=false;
+
+  var html='<div class="card"><table class="data-table"><thead><tr>'+
+    '<th>Result Set</th><th>Phase</th><th>DAAF Git SHA</th><th>Config</th>'+
+    '<th>Runs (disk / summary)</th></tr></thead><tbody>';
+  prov.forEach(function(p){
+    var cfg=p.config||null;
+    var cfgStr="—";
+    if(cfg){
+      var bits=[];
+      if(cfg.reps!=null) bits.push("reps="+cfg.reps);
+      if(cfg.parallel!=null) bits.push(cfg.parallel?"parallel":"sequential");
+      if(cfg.launch_delay_s!=null) bits.push("delay="+cfg.launch_delay_s+"s");
+      bits.push("timeout="+(cfg.timeout_override!=null?cfg.timeout_override+"s":"tier default"));
+      cfgStr=bits.join(", ");
+    }
+    var disc=!!p.run_count_discrepancy;
+    if(disc) anyDisc=true;
+    html+='<tr'+(disc?' class="prov-discrepancy"':'')+'>';
+    html+='<td><code>'+esc(p.timestamp)+'</code></td>';
+    html+='<td>'+esc(p.phase_label||p.phase)+'</td>';
+    html+='<td><code>'+esc(p.daaf_git_sha||"—")+'</code></td>';
+    html+='<td class="text-xs">'+esc(cfgStr)+'</td>';
+    html+='<td>'+fmt(p.disk_run_count||0)+' / '+fmt(p.summary_total_runs||0)+
+      (disc?' <span class="badge" style="background:rgba(251,191,36,.2);color:var(--c-partial)">mismatch</span>':'')+'</td>';
+    html+='</tr>';
+  });
+  html+='</tbody></table></div>';
+  if(anyDisc){
+    html+='<p class="prov-foot">Highlighted rows: summary.json reports a different run count '+
+      'than the run directories actually on disk. Run-level data on disk is the source of '+
+      'truth; every aggregate on this page is computed from it.</p>';
+  }
+
+  container.innerHTML=html;
+  el("prov-generator-version").textContent=DATA.generator_version||"?";
+}
+
+/* =================================================================
+   CHART HELPERS
+   svgCostFrontier: the log-x cost-vs-composite scatter with the
+   precomputed efficiency-frontier staircase (used by renderCostPerf).
+   Frontier points carry a light outline; labels use a greedy
+   vertical nudge to avoid overlap and flip anchor at the right edge.
+   ================================================================= */
+
+function svgCostFrontier(pts,frontier){
+  var W=860, H=480;
+  var pad={t:34,r:34,b:56,l:64};
+  var cw=W-pad.l-pad.r, ch=H-pad.t-pad.b;
+
+  function log10(v){ return Math.log(v)/Math.LN10; }
+  function fmtAxisCost(v){
+    if(v>=1) return "$"+(v%1===0?v.toFixed(0):v.toFixed(2));
+    if(v>=0.1) return "$"+v.toFixed(1);
+    if(v>=0.01) return "$"+v.toFixed(2);
+    return "$"+v.toFixed(3);
+  }
+
+  /* Domains: log-x over plotted costs (padded, extra room on the right
+     for labels); y from just below the lowest composite up to 100% */
+  var lo=null, hi=null, sMin=null;
+  pts.forEach(function(p){
+    var l=log10(p.plotCost);
+    if(lo===null||l<lo) lo=l;
+    if(hi===null||l>hi) hi=l;
+    if(sMin===null||p.score<sMin) sMin=p.score;
+  });
+  if(hi-lo<0.3){ var mid=(hi+lo)/2; lo=mid-0.15; hi=mid+0.15; }
+  var span=hi-lo;
+  lo-=span*0.06; hi+=span*0.10;
+  span=hi-lo;
+  var yMin=Math.max(0,Math.floor((sMin-0.05)*10)/10), yMax=1.0;
+
+  function xPos(c){ return pad.l+cw*((log10(c)-lo)/span); }
+  function yPos(s){ return pad.t+ch*(1-(s-yMin)/(yMax-yMin)); }
+
+  var svg='<svg width="'+W+'" height="'+H+'" viewBox="0 0 '+W+' '+H+'">';
+
+  /* y grid: every 10 points */
+  for(var si=Math.round(yMin*10); si<=10; si++){
+    var s=si/10;
+    var yy=yPos(s);
+    svg+='<line x1="'+pad.l+'" y1="'+yy.toFixed(1)+'" x2="'+(pad.l+cw)+'" y2="'+yy.toFixed(1)+'" stroke="#1e293b" stroke-width="1"/>';
+    svg+='<text x="'+(pad.l-8)+'" y="'+(yy+3.5).toFixed(1)+'" fill="#94a3b8" font-size="9" text-anchor="end">'+(si*10)+'%</text>';
+  }
+  /* x grid: log ticks at 1/2/5 per decade */
+  var d0=Math.floor(lo)-1, d1=Math.ceil(hi)+1;
+  for(var d=d0; d<=d1; d++){
+    [1,2,5].forEach(function(mant){
+      var v=mant*Math.pow(10,d);
+      var lv=log10(v);
+      if(lv<lo||lv>hi) return;
+      var xx=xPos(v);
+      var major=(mant===1);
+      svg+='<line x1="'+xx.toFixed(1)+'" y1="'+pad.t+'" x2="'+xx.toFixed(1)+'" y2="'+(pad.t+ch)+'" stroke="'+(major?'#334155':'#1e293b')+'" stroke-width="'+(major?1:0.5)+'"/>';
+      svg+='<text x="'+xx.toFixed(1)+'" y="'+(pad.t+ch+14)+'" fill="#94a3b8" font-size="9" text-anchor="middle">'+fmtAxisCost(v)+'</text>';
+    });
+  }
+  /* Axis captions */
+  svg+='<text x="'+(pad.l+cw/2)+'" y="'+(H-10)+'" fill="#94a3b8" font-size="10" text-anchor="middle">Average computed cost per run (USD, log scale)</text>';
+  svg+='<text x="14" y="'+(pad.t+ch/2)+'" fill="#94a3b8" font-size="10" text-anchor="middle" transform="rotate(-90,14,'+(pad.t+ch/2)+')">Composite Perfect rate</text>';
+
+  /* "best value" annotation: up and to the left is the value region */
+  svg+='<text x="'+(pad.l+10)+'" y="'+(pad.t+16)+'" fill="rgba(52,211,153,.75)" font-size="11" font-weight="600">&#8598; best value</text>';
+
+  /* Efficiency frontier staircase: "best composite at cost &le; x" —
+     flat between frontier points, stepping up AT each one; extended
+     right to the plot edge from the last point */
+  if(frontier.length>0){
+    var dPath='';
+    for(var fi=0; fi<frontier.length; fi++){
+      var fc=frontier[fi].avg_cost_usd;
+      if(fc<=0) fc=Math.pow(10,lo);
+      var fx=xPos(fc), fy=yPos(frontier[fi].composite);
+      if(fi===0){ dPath+='M'+fx.toFixed(1)+' '+fy.toFixed(1); }
+      else{
+        dPath+=' L'+fx.toFixed(1)+' '+yPos(frontier[fi-1].composite).toFixed(1)+
+               ' L'+fx.toFixed(1)+' '+fy.toFixed(1);
+      }
+    }
+    dPath+=' L'+(pad.l+cw)+' '+yPos(frontier[frontier.length-1].composite).toFixed(1);
+    svg+='<path d="'+dPath+'" fill="none" stroke="rgba(52,211,153,.8)" stroke-width="1.5" stroke-dasharray="4 3"/>';
+  }
+  var onFrontier={};
+  frontier.forEach(function(f){ onFrontier[f.model]=true; });
+
+  /* Points: provider encoded as color + shape; frontier points outlined */
+  var labels=[];
+  pts.forEach(function(p){
+    var px=xPos(p.plotCost), py=yPos(p.score);
+    var prov=p.provider||"unknown";
+    var fillVar=prov==="anthropic"?"var(--accent-light)":(prov==="openrouter"?"var(--c-partial)":"var(--c-neutral)");
+    var ring=onFrontier[p.model]?' stroke="#f8fafc" stroke-width="1.2"':'';
+    var tipHtml=esc(p.model)+'<br>Composite: <b>'+pct(p.score)+'</b><br>Avg cost/run: <b>'+fmtCost(p.cost)+'</b>'+
+      (p.floored?' (plotted at the zero-cost floor)':'')+'<br>Averaged over <b>'+p.cm.n_included+'</b> of '+p.cm.n_runs+' runs'+
+      (p.cm.excluded_count>0?' ('+p.cm.excluded_count+' timeout-zeroed excluded)':'')+
+      (onFrontier[p.model]?'<br><b>On the efficiency frontier</b>':'');
+    var titleTxt=p.model+': '+pct(p.score)+' composite, '+fmtCost(p.cost)+'/run avg';
+    var common=' style="fill:'+fillVar+';cursor:pointer"'+ring+
+      ' onmouseover="showTip(event,&#39;'+tipHtml.replace(/'/g,"&#39;")+'&#39;)" onmouseout="hideTip()"';
+    if(prov==="openrouter"){
+      svg+='<path d="M'+px.toFixed(1)+' '+(py-6).toFixed(1)+' L'+(px+6).toFixed(1)+' '+py.toFixed(1)+
+        ' L'+px.toFixed(1)+' '+(py+6).toFixed(1)+' L'+(px-6).toFixed(1)+' '+py.toFixed(1)+' Z"'+common+'>'+
+        '<title>'+esc(titleTxt)+'</title></path>';
+    } else if(prov==="anthropic"){
+      svg+='<circle cx="'+px.toFixed(1)+'" cy="'+py.toFixed(1)+'" r="5"'+common+'>'+
+        '<title>'+esc(titleTxt)+'</title></circle>';
+    } else {
+      svg+='<rect x="'+(px-4.5).toFixed(1)+'" y="'+(py-4.5).toFixed(1)+'" width="9" height="9"'+common+'>'+
+        '<title>'+esc(titleTxt)+'</title></rect>';
+    }
+    labels.push({model:p.model,px:px,py:py});
+  });
+
+  /* All points labeled: greedy vertical nudge (11px steps while a
+     placed label is within 10px vertically and overlaps horizontally);
+     anchor flips to the left of the point at the right edge */
+  labels.sort(function(a,b){ return a.py-b.py; });
+  var placed=[];
+  labels.forEach(function(lb){
+    var wEst=lb.model.length*6.0;
+    var anchor="start", lx=lb.px+9;
+    if(lx+wEst>pad.l+cw){ anchor="end"; lx=lb.px-9; }
+    var x0=(anchor==="start")?lx:lx-wEst;
+    var x1=x0+wEst;
+    var ly=lb.py+3.5;
+    function collides(){
+      for(var i=0;i<placed.length;i++){
+        var o=placed[i];
+        if(Math.abs(o.ly-ly)<10 && x0<o.x1+4 && x1>o.x0-4) return true;
+      }
+      return false;
+    }
+    var guard=0;
+    while(collides()&&guard<20){ ly+=11; guard++; }
+    if(ly>pad.t+ch-2) ly=pad.t+ch-2;
+    placed.push({ly:ly,x0:x0,x1:x1});
+    svg+='<text x="'+lx.toFixed(1)+'" y="'+ly.toFixed(1)+'" fill="#cbd5e1" font-size="9.5" text-anchor="'+anchor+'" pointer-events="none">'+esc(lb.model)+'</text>';
+  });
+
+  svg+='</svg>';
+  return svg;
+}
+
+/* =================================================================
+   LAZY SECTION RENDERING (performance guard)
+   With 1,700+ runs everything-at-once rendering would freeze the
+   initial paint. Sections render on first viewport intersection; an
+   idle-time queue (requestIdleCallback, setTimeout fallback) fills in
+   the rest shortly after load so anchors and deep links stay accurate.
+   ================================================================= */
+
+var sectionRenderers={
+  "leaderboard": renderLeaderboard,
+  "cost-performance": renderCostPerf,
+  "phases": renderPhaseDives,
+  "cases": renderCasesSection,
+  "costs": renderCostsDetail,
+  "run-explorer": renderRunExplorer,
+  "provenance": renderProvenance
+};
+var renderedSections={};
+
+function ensureRendered(id){
+  if(renderedSections[id]) return;
+  renderedSections[id]=true;
+  var fn=sectionRenderers[id];
+  if(fn) fn(el("sec-"+id));
+}
+
+function idlePrerender(queue){
+  if(queue.length===0) return;
+  var id=queue.shift();
+  var go=function(){ ensureRendered(id); idlePrerender(queue); };
+  if(window.requestIdleCallback) window.requestIdleCallback(go,{timeout:2000});
+  else setTimeout(go,250);
+}
+
+/* =================================================================
+   SCROLLSPY (TOC active state)
+   A scroll listener (rAF-throttled) picks the last section whose top
+   has passed a fixed offset; an IntersectionObserver triggers lazy
+   rendering as sections approach the viewport. The scrollspy writes
+   the hash only via history.replaceState and never on file:// —
+   assigning location.hash during scroll would scroll-jump.
+   ================================================================= */
+
+var SECTION_IDS=["hero","about","leaderboard","cost-performance","phases","cases","costs","run-explorer","provenance"];
+
+function updateActiveLink(){
+  var activeId=SECTION_IDS[0];
+  for(var i=0;i<SECTION_IDS.length;i++){
+    var sec=el(SECTION_IDS[i]);
+    if(!sec) continue;
+    if(sec.getBoundingClientRect().top<=120) activeId=SECTION_IDS[i];
+  }
+  document.querySelectorAll(".toc-link").forEach(function(lnk){
+    lnk.classList.toggle("active", lnk.getAttribute("data-target")===activeId);
+  });
+  if(!isFileProto){
+    try{ history.replaceState(null,"","#"+activeId); }catch(e){}
+  }
+}
+
+var spyTicking=false;
+function onScroll(){
+  if(spyTicking) return;
+  spyTicking=true;
+  window.requestAnimationFrame(function(){
+    updateActiveLink();
+    spyTicking=false;
+  });
+}
+
+/* =================================================================
+   EVENT HANDLERS (global, referenced from rendered HTML)
+   ================================================================= */
+
+/* Deep-link from the phase heatmaps (model, group, criterion) and the
+   agreement grids (model, group, case) into the Run Explorer. Every
+   control is set — including the ones a given source leaves empty —
+   so the landing state reflects exactly the clicked cell rather than
+   inheriting stale manual filters. caseId/criterion are optional. */
+window.exploreRuns=function(model,groupId,caseId,criterion){
+  el("rx-model").value=model||"";
+  el("rx-phase").value=groupId||"";
+  el("rx-case").value=caseId||"";
+  el("rx-status").value="";
+  el("rx-search").value="";
+  el("rx-hide-timeouts").checked=false;
+  state.filters.criterion=criterion||"";
+  readFilters();
+  updateCritChip();
+  state.selectedRunIdx=-1;
+  state.runListLimit=200;
+  ensureRendered("run-explorer");
+  renderRunExplorer(el("sec-run-explorer"));
+  scrollToSection("run-explorer");
+  setHash("run-explorer");
+};
+
+/* Clear-button on the criterion filter chip */
+window.clearCritFilter=function(){
+  state.filters.criterion="";
+  updateCritChip();
+  applyFilters();
+};
+
+window.selectRun=function(idx){
+  state.selectedRunIdx=idx;
+  var runs=filteredRuns();
+  var detail=el("run-detail");
+  if(detail && idx>=0 && idx<runs.length){
+    detail.innerHTML=renderRunDetail(runs[idx]);
+  }
+  document.querySelectorAll(".run-list-item").forEach(function(item){
+    item.classList.toggle("selected", parseInt(item.getAttribute("data-ridx"),10)===idx);
+  });
+  setHash("run-explorer");
+};
+
+window.jumpToRun=function(runDir){
+  ensureRendered("run-explorer");
+  var runs=filteredRuns();
+  var idx=-1;
+  for(var i=0;i<runs.length;i++){
+    if(runs[i].run_dir===runDir){ idx=i; break; }
+  }
+  if(idx<0){
+    /* Target run is filtered out — clear the section-local filters
+       (incl. the case select and the chip-only criterion filter) */
+    clearFilterControls();
+    runs=filteredRuns();
+    for(var j=0;j<runs.length;j++){
+      if(runs[j].run_dir===runDir){ idx=j; break; }
+    }
+  }
+  state.selectedRunIdx=idx;
+  /* 2^53-1 literal: Number.MAX_SAFE_INTEGER is ES6; this file is ES5-only */
+  if(idx>=state.runListLimit) state.runListLimit=9007199254740991;
+  renderRunExplorer(el("sec-run-explorer"));
+  scrollToSection("run-explorer");
+  setHash("run-explorer");
+};
+
+window.showAllRuns=function(){
+  /* 2^53-1 literal: Number.MAX_SAFE_INTEGER is ES6; this file is ES5-only */
+  state.runListLimit=9007199254740991;
+  renderRunExplorer(el("sec-run-explorer"));
+};
+
+/* Leaderboard sort control: composite | per-phase gid | consistency | cost */
+window.sortLeaderboard=function(key){
+  state.lbSort=key;
+  renderLeaderboard(el("sec-leaderboard"));
+};
+
+/* Deep-link from a leaderboard phase cell into the Phase Deep-Dives.
+   Prefers the per-group anchor ("phase-<gid>", emitted on each WP5
+   deep-dive block) and falls back to the section itself. */
+window.lbJumpPhase=function(gid){
+  ensureRendered("phases");
+  var target=el("phase-"+gid)||el("phases");
+  if(target) target.scrollIntoView({behavior:"smooth",block:"start"});
+  setHash("phases");
+};
+
+window.sortCosts=function(key){
+  if(state.costSortCol===key){
+    state.costSortDir=state.costSortDir*-1;
+  } else {
+    state.costSortCol=key;
+    state.costSortDir=1;
+  }
+  renderCostsDetail(el("sec-costs"));
+};
+
+/* Observed-spend table sort (Costs Detail). New keys default ascending,
+   except cost/duration metrics, where descending ("most expensive
+   first") is the natural reading. */
+window.sortSpend=function(key){
+  if(state.spendSortCol===key){
+    state.spendSortDir=state.spendSortDir*-1;
+  } else {
+    state.spendSortCol=key;
+    state.spendSortDir=(key==="model")?1:-1;
+  }
+  renderCostsDetail(el("sec-costs"));
+};
+
+window.showTip=showTip;
+window.hideTip=hideTip;
+
+/* =================================================================
+   INITIALIZATION
+   ================================================================= */
+
+function init(){
+  /* Cheap, always-immediate content */
+  renderHero();
+  fillAboutCounts();
+
+  /* Run Explorer local filters */
+  initFilters();
+  ["rx-phase","rx-model","rx-case","rx-status"].forEach(function(id){
+    el(id).addEventListener("change",applyFilters);
+  });
+  el("rx-search").addEventListener("input",applyFilters);
+  el("rx-hide-timeouts").addEventListener("change",applyFilters);
+  el("rx-reset").addEventListener("click",resetFilters);
+
+  /* TOC: render the target section before the anchor jump so the
+     scroll position is correct, and record the section in the hash */
+  document.querySelectorAll(".toc-link").forEach(function(lnk){
+    lnk.addEventListener("click",function(){
+      var target=this.getAttribute("data-target");
+      if(target) ensureRendered(target);
+      /* default anchor behavior performs the (smooth) scroll */
+    });
+  });
+
+  /* Lazy render on approach */
+  if(window.IntersectionObserver){
+    var io=new IntersectionObserver(function(entries){
+      entries.forEach(function(en){
+        if(en.isIntersecting) ensureRendered(en.target.id);
+      });
+    },{rootMargin:"300px 0px 300px 0px",threshold:0});
+    SECTION_IDS.forEach(function(id){ var sec=el(id); if(sec) io.observe(sec); });
+  } else {
+    /* No IO support: render everything via the idle queue below */
+  }
+
+  /* Scrollspy */
+  window.addEventListener("scroll",onScroll,{passive:true});
+  updateActiveLink();
+
+  /* Deep links: #<section-id>[&run=<run_dir>] */
+  var h=parseHash();
+  if(h && h.section && SECTION_IDS.indexOf(h.section)>=0){
+    ensureRendered(h.section);
+    if(h.run){
+      ensureRendered("run-explorer");
+      window.jumpToRun(h.run);
+    }
+    if(!(h.run && h.section==="run-explorer")){
+      scrollToSection(h.section);
+    }
+  }
+
+  /* Fill in remaining sections during idle time */
+  var remaining=SECTION_IDS.filter(function(id){
+    return sectionRenderers[id] && !renderedSections[id];
+  });
+  idlePrerender(remaining);
+
+  console.log("DAAF Benchmark Results Viewer (v2 document layout) initialized");
+  console.log("  Result sets:",DATA.result_sets.length);
+  console.log("  Cases:",Object.keys(DATA.cases).length);
+  console.log("  Runs:",DATA.runs.length);
+  console.log("  Transcripts:",Object.keys(DATA.transcripts).length);
+}
+
+init();
+
+})();
+</script>
+
+</body>
+</html>

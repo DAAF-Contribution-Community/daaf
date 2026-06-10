@@ -15,3 +15,5 @@ datasets/test_fixtures/code_reviewer/adhoc_*
 
 # Generated viewer (contains embedded result data)
 viewer_*.html
+# ...but the viewer HTML/CSS/JS template is source, not generated output
+!scripts/viewer_template.html
