@@ -135,7 +135,7 @@ context prevents misinterpretation of the target section.
 
 ## Context & Session Health
 
-Session context utilization must always be monitored to ensure high performance quality. The `context-reporter` hook provides objective, continuous utilization measurements on every turn. It fires for **both the orchestrator and all subagents** via the `PreToolUse` registration in `settings.json` — every agent in the system receives periodic utilization data as `<system-reminder>` injections. Use the reported severity level directly for gating decisions — the hook applies dual thresholds (percentage OR absolute token count, whichever fires first) to cap effective session length on large context windows. Utilization helps agents manage their workloads and report back before issues arise.
+Session context utilization must always be monitored to ensure high performance quality. The `context-reporter` hook provides objective, continuous utilization measurements on every turn. It fires for **both the orchestrator and all subagents** via the `PreToolUse` registration in `settings.json` — every agent in the system receives periodic utilization data as `<system-reminder>` injections, and each agent's measurement reflects its **own** context window: the hook detects subagent calls via the `agent_id` field and measures the subagent's own transcript, never the orchestrator's (if a subagent's transcript cannot be located, the hook stays silent rather than reporting another agent's numbers). Use the reported severity level directly for gating decisions — the hook applies dual thresholds (percentage OR absolute token count, whichever fires first) to cap effective session length on large context windows. Utilization helps agents manage their workloads and report back before issues arise.
 
 ### Context Quality Curve
 
@@ -150,7 +150,7 @@ These thresholds apply to **all agents** — orchestrator and subagents alike. T
 
 ### Subagent Context Monitoring
 
-Subagents receive the same `context-reporter` utilization injections as the orchestrator. **Every subagent must act on these signals.** Subagents that exhaust their context without reporting back waste the orchestrator's context budget (which must re-dispatch the work) and risk losing completed work.
+Subagents receive their own `context-reporter` utilization injections, measured from each subagent's own transcript — never the orchestrator's numbers. If the hook cannot measure a subagent's transcript it stays silent, so the absence of utilization reports is not a guarantee of NOMINAL status. **Every subagent must act on these signals.** Subagents that exhaust their context without reporting back waste the orchestrator's context budget (which must re-dispatch the work) and risk losing completed work.
 
 **Subagent-specific actions by threshold:**
 
