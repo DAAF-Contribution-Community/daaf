@@ -80,6 +80,7 @@ Copy this template to `Reproduction_Report.md` in the reproduction project folde
 | Original Preliminary Notes | `original_files/output/preliminary_notes/` | [Yes/No/N/A] |
 | Decompiled Scripts | `original_files/scripts/` | [Yes/No] |
 | Decompilation Manifest | `original_files/scripts/MANIFEST.md` | [Yes/No] |
+| Original Dockerfile | `original_files/Dockerfile.original` | [Yes/No/Unavailable] |
 | RV-3 Verification Findings | `output/preliminary_notes/[date]_rv3_report-verification.md` | [Yes/No] |
 | Reproduction Session Logs | `logs/` | [Yes/No] |
 
@@ -227,6 +228,39 @@ Copy this template to `Reproduction_Report.md` in the reproduction project folde
 | **Python Version** | [e.g., 3.12] |
 | **Key Packages** | [polars version, plotnine version, etc.] |
 
+### Environment Compatibility Assessment
+
+> **Populated during RV-1** by comparing the reproduction environment against the original analysis environment. The original environment is reconstructed from the Dockerfile at the original DAAF version (identified via the Report's AI Disclosure commit hash or version citation) by fetching it from the public DAAF repository.
+
+**Original DAAF Version:** [commit hash from Report's AI Disclosure, e.g., `abc1234`]
+**Original DAAF Release:** [semver if identifiable, e.g., `v2.1.0`, or `—` if not mapped to a release]
+**Current DAAF Version:** [current commit hash]
+**Current DAAF Release:** [current semver if identifiable]
+**Original Dockerfile Source:** [URL used to fetch, e.g., `https://raw.githubusercontent.com/DAAF-Contribution-Community/daaf/{hash}/Dockerfile`, or `unavailable — see notes`]
+
+**Overall Compatibility:** [COMPATIBLE / MINOR DIFFERENCES / SIGNIFICANT DIFFERENCES / UNKNOWN]
+
+| Package | Original Version | Current Version | Status | Risk |
+|---------|-----------------|-----------------|--------|------|
+| [package_name] | [version] | [version] | [MATCH/PATCH/MINOR/MAJOR/ADDED/REMOVED] | [—/description] |
+
+**Status Definitions:**
+- **MATCH**: Identical version — no risk
+- **PATCH**: Patch version differs (x.y.Z) — minimal risk, bug fixes only
+- **MINOR**: Minor version differs (x.Y.z) — low-moderate risk, new features may change defaults
+- **MAJOR**: Major version differs (X.y.z) — high risk, breaking changes likely
+- **ADDED**: Package present in current environment but absent in original — no direct risk unless it shadows behavior
+- **REMOVED**: Package present in original environment but absent in current — high risk, scripts may fail
+
+**Compatibility Summary:**
+- Packages compared: [N]
+- MATCH: [N] | PATCH: [N] | MINOR: [N] | MAJOR: [N] | ADDED: [N] | REMOVED: [N]
+
+**User Decision:** [Proceed with current environment / Rebuilt to match original / N/A — environments compatible]
+
+**Impact on Reproduction Assessment:**
+[Statement about how environment differences should be factored into interpretation of deviations. E.g., "Environment differences are minimal and unlikely to cause deviations" or "Significant version differences in polars and statsmodels may explain observed deviations in transform and analysis scripts — deviations in scripts using these packages should be interpreted with this context."]
+
 ---
 
 ## Deviation Log
@@ -254,6 +288,7 @@ Copy this template to `Reproduction_Report.md` in the reproduction project folde
 | `original_files/output/figures/` | Original figures (copied) | RV-1 |
 | `original_files/output/preliminary_notes/` | Original discovery findings (copied, if present) | RV-1 |
 | `original_files/scripts/[...]` | Decompiled scripts (from notebook) | RV-1 |
+| `original_files/Dockerfile.original` | Original Dockerfile (fetched from public repo at original commit) | RV-1 |
 | `scripts/repro/[...]` | Re-executed scripts (with new logs) | RV-2 |
 | `output/figures/[...]` | Reproduced figures (generated) | RV-2 |
 | `output/preliminary_notes/[date]_rv3_report-verification.md` | Lossless data-verifier return (persisted) | RV-3 |

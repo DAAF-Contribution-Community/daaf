@@ -143,8 +143,30 @@ User points to existing analysis folder
    - `Repro Status` — initialize all rows to `PENDING`
 10. **Check for dangling references** — inspect the decompiler's `MANIFEST.md` for a "Dangling Reference Warnings" section. If present, these scripts reference variables that were defined in other marimo notebook cells and may fail during RV-2 re-execution. Record the warnings in the Reproduction Report's **Runtime Notes** and flag affected scripts in the PSU-RV1 checkpoint so the user is aware before re-execution begins.
 11. Populate Source Artifacts table and Reproduction Environment section
+12. **Environment Compatibility Check** — Extract the DAAF version from the original Report's AI Use Disclosure section (git commit hash and/or semver citation). Then:
+    a. **Fetch original environment:** Using the commit hash, fetch the Dockerfile from the public DAAF repo: `https://raw.githubusercontent.com/DAAF-Contribution-Community/daaf/{commit_hash}/Dockerfile`. If the commit hash is unavailable or the fetch fails, attempt lookup by semver tag (e.g., `v2.1.0`). If both fail, record "Original environment: UNKNOWN — manual comparison recommended" and proceed.
+    b. **Inspect current environment:** Read `/daaf/Dockerfile` for the build-time specification. Optionally run `uv pip list --format=json` to capture ground-truth installed versions (verifying the Dockerfile was faithfully applied).
+    c. **Compare:** Parse `package==version` lines from both Dockerfiles. For each package, classify the version relationship:
+       - **MATCH**: Identical version
+       - **PATCH**: Patch version differs (x.y.Z) — minimal risk, bug fixes only
+       - **MINOR**: Minor version differs (x.Y.z) — low-moderate risk, new features may change defaults or output formatting
+       - **MAJOR**: Major version differs (X.y.z) — high risk, breaking changes likely
+       - **ADDED**: Package in current environment but not in original
+       - **REMOVED**: Package in original environment but not in current — high risk, scripts may fail
+    d. **Classify overall compatibility:**
+       - **COMPATIBLE**: All packages MATCH or PATCH only
+       - **MINOR DIFFERENCES**: At least one MINOR difference, no MAJOR or REMOVED
+       - **SIGNIFICANT DIFFERENCES**: At least one MAJOR difference or REMOVED package
+       - **UNKNOWN**: Original environment could not be determined
+    e. **Populate** the Reproduction Report's Environment Compatibility Assessment section with the comparison table and overall compatibility rating.
+13. **Environment Compatibility Decision** — If SIGNIFICANT DIFFERENCES or UNKNOWN:
+    - Present findings to user at PSU-RV1 with two options:
+      (a) **Proceed as-is** — Document mismatches as a known factor in the Reproduction Report. Any deviations may be attributable to version differences. Environment mismatch becomes a standing explanation considered for all deviations in RV-2.
+      (b) **Rebuild to match** — Modify the Dockerfile to match the original versions, then rebuild the container. The user must exit Claude Code (`/exit`) and the container (`exit`), run `bash rebuild_daaf.sh` (or `.\rebuild_daaf.ps1` on Windows) from their `daaf-docker` folder, then resume the reproduction session using the Restart Prompt from the Reproduction Report's Session Continuity section.
+    - Record the user's decision in the Reproduction Report's Scope Decisions table and in the Environment Compatibility Assessment's User Decision field.
+    - If user chooses to rebuild: update Session Continuity with a restart prompt that notes "Resume after environment rebuild — environment now matches original." Stop and wait for the user to rebuild and resume.
 
-**Gate RV-1:** All source artifacts present, decompiler succeeded, script inventory populated, user reconfirms scope decisions.
+**Gate RV-1:** All source artifacts present, decompiler succeeded, script inventory populated, environment compatibility check completed, user reconfirms scope decisions.
 
 ### RV-2: Sequential Re-execution & Comparison
 
@@ -237,6 +259,22 @@ Path differences between original and reproduction scripts are infrastructure no
 NOT substantive modifications — do NOT count them as modifications or deviations.
 
 **COMPARISON TOLERANCES:** See Reproduction Report § Comparison Standards
+
+**ENVIRONMENT COMPATIBILITY:**
+[If environment compatibility is COMPATIBLE, omit this block entirely.]
+[If MINOR DIFFERENCES or SIGNIFICANT DIFFERENCES:]
+The reproduction environment differs from the original analysis environment.
+Overall compatibility: {COMPATIBLE/MINOR DIFFERENCES/SIGNIFICANT DIFFERENCES/UNKNOWN}.
+Key mismatches: {list packages with MAJOR, MINOR, or REMOVED status}.
+When classifying deviation causes, consider whether the deviation could be
+attributable to library version differences. If a deviation occurs in a script
+that uses a package with a MAJOR or MINOR version mismatch, note this as a
+likely contributing factor. See the Reproduction Report § Environment
+Compatibility Assessment for full details.
+[If UNKNOWN:]
+The original analysis environment could not be determined. Exercise additional
+caution when classifying deviation causes — version differences are a plausible
+factor for any divergence.
 
 **IF SCRIPT FAILS:**
 - Create `{script_name%.py}_repro_a.py` with necessary fixes (max 2 versions: _repro_a.py, _repro_b.py)
@@ -402,6 +440,7 @@ research/YYYY-MM-DD_[OriginalProject]_Reproduction/
 ├── original_files/
 │   ├── [original_report].md            # Copied from original project
 │   ├── [original_notebook].py          # Copied from original project
+│   ├── Dockerfile.original             # Fetched from public repo at original commit (RV-1)
 │   ├── output/                         # Copied from original project
 │   │   ├── figures/                    # Original figures for visual comparison
 │   │   │   └── *.png
@@ -441,7 +480,7 @@ Not all script modifications are equal. The distinction between infrastructure a
 
 - **Substantive modifications:** Changes to data transformations, filters, joins, aggregations, statistical methods, analytical logic, or any code that affects output values. These indicate the original script could not reproduce as-is and **must** be classified as **MODIFIED**. Every substantive modification must be documented in the Per-Script Reproduction Results with full justification.
 
-The path normalization performed during RV-1 (step 8) is the canonical example of an infrastructure modification. It is applied deterministically to all scripts and documented in the Reproduction Report's Infrastructure Normalizations section.
+The path normalization performed during RV-1 (step 7) is the canonical example of an infrastructure modification. It is applied deterministically to all scripts and documented in the Reproduction Report's Infrastructure Normalizations section.
 
 ### Always Do
 - Process ALL scripts in the notebook, even if some fail
@@ -497,7 +536,7 @@ See `agent_reference/AI_DISCLOSURE_REFERENCE.md` § Reproducibility Verification
 
 | Gate | After Stage | Criteria | STOP If |
 |------|-------------|----------|---------|
-| **Gate RV-1** | RV-1 | All source artifacts present; decompiler succeeded; Script Inventory populated; user reconfirms scope decisions | Decompiler fails; Report or Notebook missing |
+| **Gate RV-1** | RV-1 | All source artifacts present; decompiler succeeded; Script Inventory populated; environment compatibility check completed; user reconfirms scope decisions | Decompiler fails; Report or Notebook missing |
 | **Gate RV-2** | RV-2 | All scripts processed (each has status REPRODUCED, DIVERGED, FAILED, or MODIFIED); Reproduction Report updated for every script | User requests stop |
 | **Gate RV-3** | RV-3 | All quantitative claims, figures, and findings verified; Report Verification section populated | N/A (always proceed to synthesis) |
 | **Gate RV-4** | RV-4 | Executive Summary written; overall assessment determined; Reproduction Report complete | N/A (final stage) |
@@ -525,9 +564,33 @@ Present to the user after RV-1 completes, before proceeding to RV-2:
 | Transform (7) | [N] | [brief] |
 | Analysis (8) | [N] | [brief] |
 
+**Environment Compatibility:**
+- **Original DAAF Version:** [commit hash / semver from Report]
+- **Current DAAF Version:** [current commit hash / semver]
+- **Overall Compatibility:** [COMPATIBLE / MINOR DIFFERENCES / SIGNIFICANT DIFFERENCES / UNKNOWN]
+
+[If COMPATIBLE:]
+Environment matches the original — no version-related divergence expected.
+
+[If MINOR DIFFERENCES:]
+[N] packages have minor version differences (details in the Reproduction Report). These are unlikely to cause failures but may explain small numerical differences if any appear.
+
+[If SIGNIFICANT DIFFERENCES:]
+**Attention needed:** [N] packages have major version differences or are missing from the current environment. This may cause script failures or significant output divergence. Key mismatches:
+- [package]: [original_version] → [current_version] ([MAJOR/REMOVED])
+- ...
+
+You have two options:
+1. **Proceed as-is** — I'll document the environment mismatch and factor it into the reproduction assessment. Any deviations may be attributable to version differences.
+2. **Rebuild to match** — I can modify the Dockerfile to match the original versions. You'd exit, rebuild the container, and resume. This gives the cleanest reproduction.
+
+[If UNKNOWN:]
+**Note:** I couldn't determine the original environment (commit hash not found on the public repo). I'll proceed with the current environment and flag this limitation in the Reproduction Report.
+
 **Your Scope Decisions (please reconfirm):**
 - **Re-fetch data from mirrors?** Currently: [Yes/No]. [If Yes: data may differ from original. If No: uses existing data files.]
 - **Methodological review depth?** Currently: [Light/Full]. [Light flags only notable concerns; Full applies the Five Lenses to every script.]
+[If SIGNIFICANT DIFFERENCES:] - **Environment mismatch action?** [Proceed as-is / Rebuild to match]
 
 **What happens next:** I'll re-execute each script in notebook order, compare outputs against the originals, and update the Reproduction Report after each one. This runs through all [N] scripts without stopping unless you ask me to.
 
