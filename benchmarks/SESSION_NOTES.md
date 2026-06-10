@@ -33,19 +33,34 @@
 - One-off scripts deleted outright; unused-but-coherent legacy code archived with README
 - `rm -r` operations left to user by preference: `__pycache__` dirs (5) and `_sandbox/` purge
 
-## In Progress
+## Phase 4 Review Outcomes (all resolved)
 
-- Phase 4: 3-angle review pass (Consistency / Quality / Completeness) of README + cleanup
-- Then Checkpoint 2 presentation to user
+- Consistency: `run_benchmark.sh` still invoked archived `harness.runner` → moved to
+  `archive/` with README row. All README paths/CLI/counts verified against code.
+- Quality: README overstated `prompt_has_context_section` strictness — scorer already
+  accepts 7 heading variants (`dispatch_compliance.py:223-247`) yet it remains the #1
+  failure. Corrected §6/§10/§12; added Fable-vs-Gemini tiering rationale and
+  cache-write-cost caveat in §7.
+- Completeness: README initially uncommitted → committed. Fixtures verified pristine
+  (their `EXECUTION OUTPUT` blocks are canonical content, present in d07b021).
 
-## Open Items for User
+## Post-Review Cleanup (user-executed, verified)
 
-- Purge `_sandbox/` contents manually (263MB, regenerable)
-- Delete 5 `__pycache__` dirs (regenerable)
-- ~75 untracked benchmark-leaked project folders in `/daaf/research/` (dated 2026-06-08/09:
-  AdHoc_*, College_Selectivity reproductions, `title1-did-analysis`) — NOT yet addressed;
-  outside approved benchmarks scope. Genuine projects to PRESERVE: 2026-03-29, 2026-03-30,
-  2026-05-01 (×2), 2026-05-10 (×2), 2026-05-13, 2026-05-14 folders.
+- 77 benchmark-leaked folders deleted from `/daaf/research/` (all 2026-06-dated +
+  `title1-did-analysis`); 8 genuine projects remain (2026-03-29, 2026-03-30,
+  2026-05-01 ×2, 2026-05-10 ×2, 2026-05-13, 2026-05-14)
+- All `__pycache__` dirs deleted
+
+## Open Items
+
+- `_sandbox/` purge deferred by user. Analysis: 253MB of 263MB is `_sandbox/transcripts/`
+  (Phase 3 archive-before-cleanup staging). Viewer reads ONLY `results/`; every kept run's
+  transcripts are duplicated in `results/.../runs/{run}/`. Unique content lost on purge:
+  transcripts of already-deleted result sets + workspace file artifacts (9.7MB). Safe to
+  purge whenever; user may keep until after PR squash-merge.
+- Note: future Phase 2/3 runs will re-leak `research/` folders (e.g., the ad_hoc golden
+  checkpoint references workspace `title1-did-analysis`) until sandbox redirection or
+  pre/post-run cleanup is implemented — related to the fixture-cleanup bookmark below.
 
 ## Bookmark (user-requested)
 
