@@ -20,20 +20,73 @@ Matching rules (see plan sections 2.3 and 3.2):
   matching tool_result, so a trailing call in a timeout-truncated transcript
   counts as successful.
 
-Reuses extract_new_tool_calls() from checkpoint_adherence for post-checkpoint
-slicing and tool_result success cross-referencing.
+Name-mention matching rules for required_skills_engaged (tier2):
+- A required skill is "engaged" when it was EITHER successfully loaded via the
+  Skill tool post-checkpoint OR name-mentioned in user-visible assistant text
+  post-checkpoint (text blocks only — thinking and tool_use blocks excluded).
+  Engagement is a strict superset of loading: engaged = loaded OR mentioned,
+  so passing required_skills_loaded always implies passing this criterion.
+  The engaged-vs-loaded gap quantifies "acknowledged the right skill but
+  deferred the load" behavior.
+- Matching is case-insensitive ("Plotly", "GeoPandas" count).
+- Per-skill pattern: word-boundary match on the skill name with hyphens
+  generalized to hyphen-or-whitespace, so "science-communication" matches
+  "science communication" and "scikit-learn" matches "scikit learn".
+- Alias map: "scikit-learn" additionally matches "sklearn" (the overwhelmingly
+  common informal name; without it the criterion would under-count).
+- Mentions inside backtick code spans and file paths COUNT as engagement
+  (deliberate: regex \b treats "`" and "/" as non-word, so "`pyfixest`" and
+  ".claude/skills/pyfixest/references/..." both match — a model narrating
+  which skill's references to consult IS engaging with the skill).
+- Known mild false positive: "science communication" is ordinary English, so
+  sr-14 (exec-summary prompts) can register incidental generic mentions as
+  engagement. Accepted for a soft tier2 criterion.
+- Known mild limitation: assistant text blocks are joined with a newline
+  separator before matching, and the hyphen-or-whitespace class in the
+  mention pattern can match across it, so a skill name split across two
+  adjacent text blocks (e.g., one block ending "scikit" and the next
+  beginning "learn") could theoretically register as a mention. Exotic in
+  practice; accepted for a soft tier2 criterion.
+
+Reuses extract_new_tool_calls() and extract_new_assistant_text() from
+checkpoint_adherence for post-checkpoint slicing, tool_result success
+cross-referencing, and user-visible text extraction.
 """
 
+import re
 from pathlib import Path
 
 from benchmarks.harness.models import CriterionResult
 from benchmarks.scorers.deterministic.checkpoint_adherence import (
+    extract_new_assistant_text,
     extract_new_tool_calls,
 )
+
+# Informal alternate names that count as a mention of the canonical skill name
+# (see module docstring, name-mention matching rules).
+SKILL_MENTION_ALIASES = {
+    "scikit-learn": ["sklearn"],
+}
 
 def _basename(file_path: str) -> str:
     """Return the basename of a Read file_path (basename-only matching rule)."""
     return file_path.split("/")[-1]
+
+
+def _skill_mention_pattern(skill_name: str) -> re.Pattern:
+    """Compile the case-insensitive mention pattern for one skill name.
+
+    Hyphens in the name (and its aliases) match hyphen-or-whitespace, per the
+    module docstring's name-mention matching rules. Escaping is done per
+    hyphen-separated part so behavior is independent of re.escape's treatment
+    of "-" across Python versions.
+    """
+    variants = [skill_name] + SKILL_MENTION_ALIASES.get(skill_name, [])
+    alternatives = [
+        r"[-\s]".join(re.escape(part) for part in variant.split("-"))
+        for variant in variants
+    ]
+    return re.compile(r"\b(?:" + "|".join(alternatives) + r")\b", re.IGNORECASE)
 
 
 def score_skill_routing(
@@ -52,9 +105,13 @@ def score_skill_routing(
             order (omitted when no directive prescribes a sequence).
 
     Returns:
-        List of CriterionResult — one per criterion in section 3.1 of the plan:
-        required_skills_loaded (tier1), required_refs_read (tier1),
+        List of CriterionResult — one per criterion in section 3.1 of the
+        plan, in emission order: required_skills_loaded (tier1),
+        required_skills_engaged (tier2), required_refs_read (tier1),
         expected_refs_read, routing_order, no_forbidden_skills (all tier2).
+        required_skills_engaged (loaded OR name-mentioned in user-visible
+        text) is recorded in the plan (section 3.1 criteria table; section 9,
+        decision 7); see the module docstring for its matching rules.
     """
     tool_calls = extract_new_tool_calls(Path(transcript_path), checkpoint_line_count)
 
@@ -83,6 +140,38 @@ def score_skill_routing(
             if not missing_skills
             else f"Missing required skill(s): {missing_skills} "
                  f"(loaded: {loaded_skills or 'none'})"
+        ),
+    ))
+
+    # --- required_skills_engaged (tier2) ---
+    # Soft superset of required_skills_loaded: a required skill counts as
+    # engaged when it was successfully loaded OR name-mentioned in
+    # user-visible assistant text (see module docstring for matching rules).
+    # The engaged-vs-loaded gap is the headline diagnostic for "acknowledged
+    # the right skill but deferred the load" behavior.
+    assistant_text = "\n".join(
+        extract_new_assistant_text(Path(transcript_path), checkpoint_line_count)
+    )
+    mentioned_skills = [
+        s for s in required_skills
+        if _skill_mention_pattern(s).search(assistant_text)
+    ]
+    missing_engaged = [
+        s for s in required_skills
+        if s not in loaded_skills and s not in mentioned_skills
+    ]
+    results.append(CriterionResult(
+        name="required_skills_engaged",
+        passed=not missing_engaged,
+        tier="tier2",
+        detail=(
+            f"All required skills engaged: {required_skills} "
+            f"(loaded: {loaded_skills or 'none'}, "
+            f"mentioned: {mentioned_skills or 'none'})"
+            if not missing_engaged
+            else f"Skill(s) neither loaded nor mentioned: {missing_engaged} "
+                 f"(loaded: {loaded_skills or 'none'}, "
+                 f"mentioned: {mentioned_skills or 'none'})"
         ),
     ))
 

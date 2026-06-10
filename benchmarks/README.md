@@ -149,7 +149,7 @@ Directory map (paths relative to `benchmarks/`):
 | `datasets/` | `{phase}/cases.jsonl` plus `test_fixtures/` (buggy scripts and data for debugger/code-reviewer cases) |
 | `golden/` | Golden checkpoint JSONLs (see § 5) |
 | `config/` | `models.yaml` — model matrix with pricing |
-| `scripts/` | Phase runners, `generate_goldens.py`, `generate_results_viewer.py`, utilities |
+| `scripts/` | Phase runners, `generate_goldens.py`, `generate_results_viewer.py`, `rescore_skill_routing.py`, utilities |
 | `results/` | Timestamped, self-contained result sets |
 | `_sandbox/` | Per-run scratch directories and archived transcripts (transient) |
 | `archive/` | Legacy components (`runner.py`, `cost_budget.yaml`, per-case Phase 1 goldens) — see `archive/README.md` |
@@ -229,7 +229,8 @@ timed-out runs still produce scorable data.
 | File | Lines | Used By |
 |------|-------|---------|
 | `post_confirmation/{mode}.jsonl` (9 files) | 18 | Phase 2 — one per engagement mode, ending at the confirmation gate |
-| `dispatch_compliance/ad_hoc_initialized.jsonl` | 47 | All 12 Phase 3 cases and all 15 Phase 4 cases — Ad Hoc mode fully initialized (topic-free final exchange, so any task can follow) |
+| `dispatch_compliance/ad_hoc_initialized.jsonl` | 47 | All 12 Phase 3 cases — Ad Hoc mode fully initialized (topic-free final exchange, so any task can follow). Phase 4 used this file too until 2026-06-10 (result sets through `20260610_144524`) |
+| `skill_routing/ad_hoc_initialized.jsonl` | 47 | All 15 Phase 4 cases — content-refreshed copy of the Phase 3 golden (see Regeneration below) reflecting the 2026-06-10 routing-norm fix |
 | `ad_hoc/after_confirmation.jsonl` | 19 | `run_checkpoint_comparison.py` (legacy comparison utility) |
 | `bootstrap_template.jsonl` | 7 | Input to `scripts/generate_goldens.py` |
 
@@ -246,6 +247,25 @@ timed-out runs still produce scorable data.
   truncating it, not running the script. Scorers depend on each golden's exact
   line count (§ 6), so any change to a golden invalidates comparison with prior
   result sets.
+- `scripts/refresh_golden_checkpoint.py` performs a **deterministic content
+  refresh** of a captured transcript: it re-reads the files behind each
+  Skill/Read tool result and splices current contents into the payloads,
+  preserving everything else byte-for-byte (record count, assistant text,
+  tool_use_id pairings). Caution: Read results are stored TWICE per record
+  (numbered `message.content` payload AND raw `toolUseResult.file.content`) —
+  both must be refreshed or stale text silently survives in replay context.
+
+**Golden staleness caveat (important for before/after experiments).** A captured
+checkpoint freezes every tool-result payload — skill bodies, reference files —
+at recording time. Models resuming from it see that frozen content in-context,
+and in-context text dominates behavior: framework edits on disk are largely
+invisible until the golden is refreshed. Discovered empirically 2026-06-10: a
+routing-norm fix to the data-scientist skill produced zero behavioral change in
+a 60-run spot-check replayed against the pre-fix golden (sets
+`20260610_144245`/`_144524`, retained as a control condition), because the old
+skill text was embedded in the checkpoint. Any benchmark measuring a framework
+change MUST refresh (or re-record) its goldens first, and result sets spanning
+a golden change are not directly comparable.
 
 ## 6. Scoring
 
@@ -273,7 +293,17 @@ accept semantically equivalent variants, not just one literal string — e.g.,
 
 **Phase 4 skill-routing criteria** (from `scorers/deterministic/skill_routing.py`):
 `required_skills_loaded` and `required_refs_read` (tier1, hard in all cases);
-`expected_refs_read`, `routing_order`, and `no_forbidden_skills` (tier2, soft).
+`required_skills_engaged`, `expected_refs_read`, `routing_order`, and
+`no_forbidden_skills` (tier2, soft). `required_skills_engaged` (added
+2026-06-10) passes when every required skill was loaded OR name-mentioned in
+user-visible assistant text post-checkpoint (case-insensitive, hyphens match
+hyphen-or-whitespace, `sklearn` counts for scikit-learn; thinking blocks
+excluded). It is a strict superset of `required_skills_loaded`, so the
+engaged-vs-loaded gap directly quantifies "named the right skill but deferred
+the load" behavior — the dominant Phase 4 failure mode. Historical Phase 4
+result sets were rescored in place via `scripts/rescore_skill_routing.py`
+(merge semantics: legacy criteria such as dry-run 2's `no_spurious_skill_reload`
+are retained).
 `routing_order` checks the expected load/read sequence as a subsequence of the
 post-checkpoint tool-call stream (tests the hub's "FIRST read X THEN load Y"
 directives). Read matching is by **basename only** — sandbox checkpoint replay
@@ -287,9 +317,11 @@ over-reading is a quality issue, not a routing error.
 trivially when a model makes no Skill calls at all. In the 2026-06-10 dry run,
 models that ignored routing entirely (answering from parametric memory) still
 passed it 75/75 — interpret Phase 4 soft rates jointly with the tier-1
-load/read criteria, never in isolation. (A sixth criterion,
+load/read criteria, never in isolation. (A former criterion,
 `no_spurious_skill_reload`, was removed for exactly this vacuousness — see
-`PHASE4_SKILL_ROUTING_PLAN.md` § 9.)
+`PHASE4_SKILL_ROUTING_PLAN.md` § 9.) `required_skills_engaged`, by contrast,
+is not vacuously passable: a zero-tool run must still name the required skill
+in user-visible text, and observed per-model rates span 3/15 to 14/15.
 
 **Perfect vs. Hard/Soft rates — intentionally different metrics:**
 

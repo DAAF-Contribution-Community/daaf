@@ -92,6 +92,51 @@ def extract_new_tool_calls(
     return tool_calls
 
 
+def extract_new_assistant_text(
+    transcript_path: Path,
+    checkpoint_line_count: int,
+) -> list[str]:
+    """Extract user-visible assistant text added AFTER the golden checkpoint.
+
+    Collects the `text` field of content blocks with type=="text" from
+    assistant records past the checkpoint boundary. This inherently excludes
+    thinking blocks (type=="thinking") and tool_use blocks — only prose the
+    user actually sees is returned. Used by soft criteria that check whether
+    the model *talked about* something (e.g., skill_routing's
+    required_skills_engaged name-mention check).
+
+    Args:
+        transcript_path: Path to the session transcript JSONL.
+        checkpoint_line_count: Number of lines in the golden checkpoint file.
+            Text in lines after this is from the benchmark run.
+
+    Returns:
+        List of text-block strings in transcript order (one entry per block).
+    """
+    texts = []
+
+    with open(transcript_path) as f:
+        lines = f.readlines()
+
+    for line in lines[checkpoint_line_count:]:
+        try:
+            record = json.loads(line.strip())
+        except json.JSONDecodeError:
+            continue
+
+        if record.get("type") != "assistant":
+            continue
+
+        for block in record.get("message", {}).get("content", []):
+            if not isinstance(block, dict) or block.get("type") != "text":
+                continue
+            text = block.get("text", "")
+            if text:
+                texts.append(text)
+
+    return texts
+
+
 def get_checkpoint_line_count(golden_file: Path) -> int:
     """Count lines in a golden checkpoint file."""
     with open(golden_file) as f:

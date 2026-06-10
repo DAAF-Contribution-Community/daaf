@@ -1,6 +1,6 @@
 # Phase 4 Plan — Skill Loading & Reference Routing (`skill_routing`)
 
-**Status:** APPROVED — design confirmed by user 2026-06-10 (§ 9 decisions recorded; Agent tool disallowed per user direction). Amended 2026-06-10 post-dry-run-2: `no_spurious_skill_reload` criterion removed (§ 9 decision 6).
+**Status:** APPROVED — design confirmed by user 2026-06-10 (§ 9 decisions recorded; Agent tool disallowed per user direction). Amended 2026-06-10 post-dry-run-2: `no_spurious_skill_reload` criterion removed (§ 9 decision 6). Amended 2026-06-10 (Session 4): `required_skills_engaged` tier-2 criterion added (§ 3.1, § 9 decision 7) and historical sets rescored; companion framework-side routing fix applied (data-scientist hub + ad-hoc mode — see `PHASE4_ROUTING_FIX_SCOPING_20260610.md`), so results before/after 2026-06-10 ~13:30 UTC test different framework states.
 **Date:** 2026-06-10
 **Origin:** Design Backlog "Skill Loading test category" (README § 12; Reference § 7.3),
 re-scoped per user direction: 15 brainstorming prompts scored on whether the model
@@ -49,6 +49,20 @@ The final exchange is generic ("I'm ready to go. What's the first task?"), with 
 workspace and no topic context** — any brainstorming topic can follow naturally.
 Cases reference this golden by its existing path (no copy): duplicating it would
 create a second line-count dependency for zero benefit.
+
+> **Superseded 2026-06-10 (Session 4):** cases now point to
+> `benchmarks/golden/skill_routing/ad_hoc_initialized.jsonl` — a deterministic
+> content-refresh of the Phase 3 golden (via
+> `scripts/refresh_golden_checkpoint.py`) whose Skill/Read tool-result payloads
+> reflect the post-routing-fix framework text. Rationale: captured checkpoints
+> freeze tool-result payloads at recording time, so the routing-norm fix was
+> invisible to models replaying the pre-fix golden (verified empirically — zero
+> movement in a 60-run spot-check, sets `20260610_144245`/`_144524`, retained as
+> the stale-checkpoint control). The Phase 3 golden itself is untouched;
+> historical Phase 4 rescores resolve goldens via per-set manifests and remain
+> valid. Result sets before/after the golden swap are not directly comparable
+> (framework state AND checkpoint content both changed). See README § 5
+> "Golden staleness caveat."
 
 **In-context state cases may assume:** daaf-orchestrator skill, ad-hoc mode reference,
 data-scientist skill (the routing hub). Therefore:
@@ -123,14 +137,15 @@ disallowed, § 2.2 — no subagent transcripts exist).
 | Criterion | Tier | Definition |
 |-----------|------|------------|
 | `required_skills_loaded` | tier1 | Every skill in `expected.required_skills` has ≥1 successful Skill call |
+| `required_skills_engaged` | tier2 | Every skill in `expected.required_skills` loaded OR name-mentioned in user-visible assistant text (case-insensitive; hyphens match hyphen-or-whitespace; `sklearn` aliases scikit-learn; thinking blocks excluded). Strict superset of `required_skills_loaded` — the engaged-vs-loaded gap quantifies acknowledged-but-deferred routing (added 2026-06-10, § 9 decision 7) |
 | `required_refs_read` | tier1 | Every basename in `expected.required_refs` has ≥1 successful Read |
 | `expected_refs_read` | tier2 | Every basename in `expected.expected_refs` (secondary set) read |
 | `routing_order` | tier2 | `expected.order` is an ordered list of `["read", basename]` / `["skill", name]` items; passes if it appears as a subsequence of the post-checkpoint tool-call stream. Tests "FIRST read X THEN load Y" |
 | `no_forbidden_skills` | tier2 | No successful Skill call for any name in `expected.forbidden_skills` (the skills the routing text explicitly rules out) |
 
 Per-case: `hard_requirements = ["required_skills_loaded", "required_refs_read"]`,
-`soft_requirements = ["expected_refs_read", "routing_order",
-"no_forbidden_skills"]` — uniform across all 15 cases.
+`soft_requirements = ["required_skills_engaged", "expected_refs_read",
+"routing_order", "no_forbidden_skills"]` — uniform across all 15 cases.
 
 ### 3.2 Global scoring policies
 
@@ -167,8 +182,8 @@ Per-case: `hard_requirements = ["required_skills_loaded", "required_refs_read"]`
  "golden_checkpoint": "benchmarks/golden/dispatch_compliance/ad_hoc_initialized.jsonl",
  "turn_limit": 12, "cost_tier": "medium",
  "hard_requirements": ["required_skills_loaded", "required_refs_read"],
- "soft_requirements": ["expected_refs_read", "routing_order",
-                       "no_forbidden_skills"]}
+ "soft_requirements": ["required_skills_engaged", "expected_refs_read",
+                       "routing_order", "no_forbidden_skills"]}
 ```
 
 **No `golden_project_path` (amended 2026-06-10):** Phase 4 cases deliberately
@@ -182,7 +197,10 @@ that routing depends on — which poisons the test (discovered in dry-run 1).
 
 Path shorthand: `DS/` = `data-scientist/references/`; library refs belong to the
 required skill unless prefixed. All ground-truth quotes are verbatim from current
-SKILL.md files (verified 2026-06-10).
+SKILL.md files (verified 2026-06-10, **pre-routing-fix wording** — the Session 4
+fix later removed "for implementation syntax"-style qualifiers from some quoted
+directives, e.g., sr-04's "THEN load `svy` skill" line, without changing any
+routing targets; quotes below are preserved as the baseline-era ground truth).
 
 ---
 
@@ -612,3 +630,18 @@ geospatial-analysis (+geospatial-operations soft).
    models that fail routing mostly make zero Skill calls. Removed from scorer,
    cases, and schema. Historical dry-run results retain the criterion in their
    result.json files.
+7. **`required_skills_engaged` ADDED as tier-2 SOFT** (2026-06-10, Session 4,
+   user decision "Option 2"): transcript review showed the dominant failure is
+   acknowledged-but-deferred loading (models name the correct skill in
+   user-visible text while reframing loads as implementation-stage work). The
+   criterion passes when each required skill is loaded OR name-mentioned in
+   post-checkpoint user-visible assistant text (superset of
+   `required_skills_loaded`; loading implies engagement). Explicitly NOT folded
+   into the hard criterion: that would grade the targeted failure mode as a
+   pass, blind the post-fix delta, and mix prose-matching into a tier-1
+   tool-call criterion. The engaged-vs-loaded gap is the headline diagnostic
+   (pre-fix rescore: engaged 136/225 = 60.4% vs loaded 18/225 = 8.0%).
+   Historical Phase 4 sets rescored in place via
+   `scripts/rescore_skill_routing.py` (merge semantics preserve legacy
+   criteria; determinism verified — all pre-existing criteria reproduced
+   identically across 225 runs).
