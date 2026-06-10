@@ -83,6 +83,7 @@ PHASE_MAP = {
     "orchestrator_skill_loaded": ("mode_classification", "Phase 1 \u2014 Mode Classification"),
     "read_data_onboarding_mode": ("post_confirmation", "Phase 2 \u2014 Post-Confirmation"),
     "agent_dispatched": ("dispatch_compliance", "Phase 3 \u2014 Dispatch Compliance"),
+    "required_skills_loaded": ("skill_routing", "Phase 4 \u2014 Skill Routing"),
 }
 
 
@@ -621,7 +622,7 @@ def load_model_pricing(base_dir):
 # Data bundle assembly
 # ---------------------------------------------------------------------------
 
-PHASE_ORDER = {"mode_classification": 1, "post_confirmation": 2, "dispatch_compliance": 3}
+PHASE_ORDER = {"mode_classification": 1, "post_confirmation": 2, "dispatch_compliance": 3, "skill_routing": 4}
 
 
 def build_data_bundle(result_sets, cases, runs, transcripts, subagent_transcripts,

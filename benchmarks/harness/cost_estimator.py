@@ -4,18 +4,21 @@ Uses calibration token profiles (average input/output/cached tokens per case)
 collected from real benchmark runs, combined with per-model pricing from
 models.yaml, to estimate costs before launching and compute actual costs after.
 
-Calibration data collected 2026-06-08 from Haiku 4.5, DeepSeek V4 Flash, and
-Gemini 3.1 Flash Lite (3 reps each, averaged across models).
+Phase 1-3 calibration data collected 2026-06-08 from Haiku 4.5, DeepSeek V4
+Flash, and Gemini 3.1 Flash Lite (3 reps each, averaged across models).
+Phase 4 calibration is newer — see the PHASE4_TOKENS block comment.
 
 Token semantics: Token counts come from the CLI's modelUsage block (which
 aggregates across main session + subagent sessions). input_tokens is the
 UNCACHED count, cache_read_tokens is additive. Total billed input =
 input + cached.
 
-IMPORTANT: Calibration data below was collected BEFORE the modelUsage fix
-(2026-06-08) and reflects main-session-only tokens. These profiles will
-underestimate costs for cases that dispatch subagents. Recalibrate after
-the next batch run with the corrected token extraction.
+IMPORTANT (Phases 1-3 only): the PHASE1/2/3_TOKENS data below was collected
+BEFORE the modelUsage fix (2026-06-08) and reflects main-session-only tokens.
+Those profiles will underestimate costs for cases that dispatch subagents.
+Recalibrate after the next batch run with the corrected token extraction.
+PHASE4_TOKENS is post-fix (2026-06-10) and unaffected — its caveat (weak-model
+underuse of tools) is documented at the block.
 """
 
 from benchmarks.harness.models import ModelConfig, RunResult
@@ -68,10 +71,33 @@ PHASE3_TOKENS = {
     "dc-12": (113907, 1101, 37013),
 }
 
+# Calibrated 2026-06-10 from results/20260610_022333 (5 cheap OpenRouter models
+# x 15 cases x 1 rep; per-case means). Known caveat: these models mostly answered
+# without tool use, so stronger models doing full multi-reference routing will
+# run heavier — recalibrate after the first Anthropic baseline batch.
+PHASE4_TOKENS = {
+    "sr-01": (123418, 1939, 0),
+    "sr-02": (50347, 1163, 2762),
+    "sr-03": (135070, 1766, 0),
+    "sr-04": (89009, 1122, 11939),
+    "sr-05": (50042, 1119, 3059),
+    "sr-06": (64138, 1239, 0),
+    "sr-07": (53064, 1826, 0),
+    "sr-08": (53107, 1200, 0),
+    "sr-09": (86298, 1390, 3059),
+    "sr-10": (72562, 1076, 2762),
+    "sr-11": (88018, 1276, 6118),
+    "sr-12": (110481, 1700, 0),
+    "sr-13": (164990, 1692, 26045),
+    "sr-14": (153694, 1429, 11594),
+    "sr-15": (119741, 1888, 3059),
+}
+
 CALIBRATION = {
     "mode_classification": PHASE1_TOKENS,
     "post_confirmation": PHASE2_TOKENS,
     "dispatch_compliance": PHASE3_TOKENS,
+    "skill_routing": PHASE4_TOKENS,
 }
 
 

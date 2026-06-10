@@ -21,6 +21,8 @@ The benchmark measures whether models acting as the DAAF orchestrator:
 - Load the correct mode reference files and skills after the user confirms
 - Dispatch the correct subagent type via the Agent tool with a properly
   structured prompt (BASE_DIR, mode marker, task/context/instructions sections)
+- Load exactly the skills and read exactly the reference files that the DAAF
+  skills' own routing directives prescribe for a given task
 
 **What it does NOT test:** answer quality, analytical capability, code
 correctness, or general intelligence. A model can be brilliant at data analysis
@@ -38,19 +40,20 @@ Anthropic-compatible endpoint. The matrix is defined in `config/models.yaml`.
 `/daaf/research/2026-05-01_Benchmark_Testing/Benchmark_System_Reference.md`,
 which specified six test categories (mode classification, skill loading,
 protocol adherence, script quality, safety boundaries, golden checkpoint
-protocol tests). Three phases are implemented; where this README and the design
+protocol tests). Four phases are implemented; where this README and the design
 document differ, the code (and this README) reflect current reality.
 Designed-but-never-built components that remain valuable are catalogued in the
 Design Backlog (§ 12) — the reference document does not need to be consulted
 for "what's next" beyond the sections cited there.
 
-## 2. The Three Phases
+## 2. The Four Phases
 
 | Phase | Dataset | Cases | Start State | What It Tests |
 |-------|---------|-------|-------------|---------------|
 | 1 — `mode_classification` | `datasets/mode_classification/cases.jsonl` | 15 (mc-01..mc-15) | Cold start (no checkpoint; `CHECKPOINT_LINES = 0`) | Mode classification, confirmation gate present, no premature execution, reasoning quality |
 | 2 — `post_confirmation` | `datasets/post_confirmation/cases.jsonl` | 9 (pc-01..pc-09), one per engagement mode | Resumes from a golden checkpoint ending at the confirmation gate; prompt is "Sounds good, let's proceed." | Whether the model loads the expected mode reference files and skills after confirmation |
 | 3 — `dispatch_compliance` | `datasets/dispatch_compliance/cases.jsonl` | 12 (dc-01..dc-12), 2 per agent type | Resumes from an Ad Hoc Collaboration initialized checkpoint (orchestrator + mode reference + data-scientist skill loaded) | Whether the model dispatches the correct subagent with a properly structured prompt |
+| 4 — `skill_routing` | `datasets/skill_routing/cases.jsonl` | 15 (sr-01..sr-15) | Resumes from the same Ad Hoc initialized checkpoint as Phase 3; prompt is a brainstorming question | Whether the model loads exactly the skills and reads exactly the reference files that the skills' own routing directives prescribe |
 
 Phase 3 covers six agent types: research-executor, source-researcher,
 search-agent, debugger, code-reviewer, and data-ingest (2 cases each).
@@ -63,6 +66,14 @@ script and execute it via `run_with_capture.sh`), with no per-case configuration
 Results appear as `subagent_criteria` alongside the dispatch criteria and are
 shown as "Phase 3b" in the viewer.
 
+**Phase 4 disallows the Agent tool** (`RunConfig.disallowed_tools = ["Agent"]`),
+so subagent dispatch is impossible and all scoring is main-transcript-only —
+brainstorming questions are direct-answer territory per the Ad Hoc mode doc, and
+blocking dispatch eliminates subagent cost and transcript-union scoring
+complexity. Each case's required loads/reads are grounded in verbatim routing
+text quoted from the skills themselves; the full design spec with per-case
+ground-truth quotes is `PHASE4_SKILL_ROUTING_PLAN.md`.
+
 **Test case format** (`cases.jsonl`, one JSON object per line):
 
 ```json
@@ -73,8 +84,12 @@ shown as "Phase 3b" in the viewer.
  "soft_requirements": ["reasoning_present"]}
 ```
 
-Phase 2/3 cases additionally carry `golden_checkpoint` (and, for Phase 3,
-`golden_project_path`) fields.
+Phase 2/3/4 cases additionally carry a `golden_checkpoint` field; Phase 3 cases
+also carry `golden_project_path`. Phase 4 deliberately omits
+`golden_project_path`: setting it makes `prepare_sandbox()` rewrite every
+`/daaf` literal in the replayed history — including the in-history skill file
+paths that routing depends on — which poisons the test (discovered in the
+first Phase 4 dry run).
 
 ## 3. Architecture
 
@@ -93,7 +108,7 @@ cases.jsonl ──> phase runner (scripts/run_{phase}.py)
                   │      --output-format json --max-turns N
                   │      --permission-mode bypassPermissions
                   │      [--resume <uuid> | --session-id <uuid>]
-                  │      [--disallowed-tools <git patterns>] [--effort <level>]
+                  │      [--disallowed-tools <list>] [--effort <level>]
                   │    runs INSIDE the DAAF container so all hooks fire
                   │
                   ├─ token capture: prefers result message "modelUsage"
@@ -128,8 +143,8 @@ Directory map (paths relative to `benchmarks/`):
 
 | Directory | Contents |
 |-----------|----------|
-| `harness/` | Core machinery: `executor.py` (CLI invocation), `checkpoint_manager.py` (golden cloning + sandbox lifecycle), `cost_estimator.py` (estimation + cost recomputation), `models.py` (dataclasses: TestCase, RunConfig, RunResult, etc.), `model_loader.py` (models.yaml loading + provider env wiring), `collector.py` |
-| `scorers/deterministic/` | `mode_classification.py`, `checkpoint_adherence.py`, `dispatch_compliance.py`, `subagent_behavior.py` |
+| `harness/` | Core machinery: `executor.py` (CLI invocation), `checkpoint_manager.py` (golden cloning + sandbox lifecycle), `cost_estimator.py` (estimation + cost recomputation), `models.py` (dataclasses: TestCase, RunConfig, RunResult, etc.), `model_loader.py` (models.yaml loading + provider env wiring), `collector.py`, `hooks/` (benchmark-scoped hook scripts, e.g., `block-git-writes.sh` — see § 9) |
+| `scorers/deterministic/` | `mode_classification.py`, `checkpoint_adherence.py`, `dispatch_compliance.py`, `subagent_behavior.py`, `skill_routing.py` |
 | `scorers/llm_judge/` | Unimplemented stub (see § 6) |
 | `datasets/` | `{phase}/cases.jsonl` plus `test_fixtures/` (buggy scripts and data for debugger/code-reviewer cases) |
 | `golden/` | Golden checkpoint JSONLs (see § 5) |
@@ -153,9 +168,10 @@ the `daaf-docker/` folder (injected at container startup). If these are missing,
 python3 benchmarks/scripts/run_mode_classification.py --reps 3
 python3 benchmarks/scripts/run_post_confirmation.py --reps 3
 python3 benchmarks/scripts/run_dispatch_compliance.py --reps 3
+python3 benchmarks/scripts/run_skill_routing.py --reps 3
 ```
 
-All three runners share an identical CLI:
+All four runners share an identical CLI:
 
 | Flag | Default | Meaning |
 |------|---------|---------|
@@ -167,6 +183,9 @@ All three runners share an identical CLI:
 | `--delay S` | 2 | Seconds between parallel launches (ThreadPoolExecutor stagger) |
 | `--timeout S` | tier-based | Override per-run timeout (defaults: low 120s, medium 300s, high 600s by case `cost_tier`) |
 | `--yes` / `-y` | off | Skip the cost confirmation prompt |
+
+`run_dispatch_compliance.py` additionally accepts `--no-fixture-restore`,
+which skips the pre-batch fixture restore (§ 9).
 
 Before launching, the runner prints a per-model cost estimate and asks for
 interactive confirmation when the estimate exceeds $0.50 (suppressed by `--yes`).
@@ -188,8 +207,10 @@ protocol point, so every run starts from an identical, controlled state.
 
 **Session-ID cloning.** For each run, `checkpoint_manager.prepare_sandbox()`:
 
-1. Cleans and recreates the run's sandbox directory, seeding it from a
-   `{checkpoint}_seed/` directory if one exists
+1. Cleans and recreates the run's sandbox directory (skipped via
+   `wipe_sandbox=False` for the dispatch runner, which wipes before staging
+   fixtures — see § 9), seeding it from a `{checkpoint}_seed/` directory if
+   one exists
 2. Rewrites the golden's session ID to a fresh UUID (enabling parallel runs)
    and rewrites the golden's project path to the sandbox path when
    `golden_project_path` is set
@@ -208,7 +229,7 @@ timed-out runs still produce scorable data.
 | File | Lines | Used By |
 |------|-------|---------|
 | `post_confirmation/{mode}.jsonl` (9 files) | 18 | Phase 2 — one per engagement mode, ending at the confirmation gate |
-| `dispatch_compliance/ad_hoc_initialized.jsonl` | 47 | All 12 Phase 3 cases — Ad Hoc mode fully initialized |
+| `dispatch_compliance/ad_hoc_initialized.jsonl` | 47 | All 12 Phase 3 cases and all 15 Phase 4 cases — Ad Hoc mode fully initialized (topic-free final exchange, so any task can follow) |
 | `ad_hoc/after_confirmation.jsonl` | 19 | `run_checkpoint_comparison.py` (legacy comparison utility) |
 | `bootstrap_template.jsonl` | 7 | Input to `scripts/generate_goldens.py` |
 
@@ -250,6 +271,26 @@ accept semantically equivalent variants, not just one literal string — e.g.,
 `## Output Format`, `## Deliverables`, and similar (see `CONTEXT_HEADERS` /
 `INSTRUCTION_HEADERS` in the scorer).
 
+**Phase 4 skill-routing criteria** (from `scorers/deterministic/skill_routing.py`):
+`required_skills_loaded` and `required_refs_read` (tier1, hard in all cases);
+`expected_refs_read`, `routing_order`, and `no_forbidden_skills` (tier2, soft).
+`routing_order` checks the expected load/read sequence as a subsequence of the
+post-checkpoint tool-call stream (tests the hub's "FIRST read X THEN load Y"
+directives). Read matching is by **basename only** — sandbox checkpoint replay
+rewrites `/daaf` inside replayed `file_path` values, so full paths are
+unreliable; basenames are unique within each case's required skill. Only
+successful tool calls satisfy requirements. `quickstart.md`/`gotchas.md` and
+other extra reads under a correctly loaded skill are never penalized —
+over-reading is a quality issue, not a routing error.
+
+**Vacuous tier-2 passes (Phase 4 caveat):** `no_forbidden_skills` passes
+trivially when a model makes no Skill calls at all. In the 2026-06-10 dry run,
+models that ignored routing entirely (answering from parametric memory) still
+passed it 75/75 — interpret Phase 4 soft rates jointly with the tier-1
+load/read criteria, never in isolation. (A sixth criterion,
+`no_spurious_skill_reload`, was removed for exactly this vacuousness — see
+`PHASE4_SKILL_ROUTING_PLAN.md` § 9.)
+
 **Perfect vs. Hard/Soft rates — intentionally different metrics:**
 
 | Metric | Unit | Definition |
@@ -284,12 +325,15 @@ additive — total billed input = input + cached. Models without a
 `compute_cost()`, so cache-write costs are not reflected in computed totals.
 
 **Pre-run estimation.** `cost_estimator.py` holds per-case calibration token
-profiles (average input/output/cached per case, collected 2026-06-08 from
-Haiku 4.5, DeepSeek V4 Flash, and Gemini 3.1 Flash Lite). These drive the
-pre-launch estimate and confirmation prompt. **The profiles are stale:** they
-were collected before the `modelUsage` fix and reflect main-session-only
-tokens, so they underestimate costs for subagent-dispatching cases (all of
-Phase 3). Treat pre-run estimates as lower bounds until recalibrated (§ 12).
+profiles (average input/output/cached per case) that drive the pre-launch
+estimate and confirmation prompt. **The Phase 1–3 profiles are stale:** they
+were collected 2026-06-08 (Haiku 4.5, DeepSeek V4 Flash, Gemini 3.1 Flash
+Lite) before the `modelUsage` fix and reflect main-session-only tokens, so
+they underestimate costs for subagent-dispatching cases (all of Phase 3).
+Treat those pre-run estimates as lower bounds until recalibrated (§ 12). The
+Phase 4 profile is post-fix (recalibrated 2026-06-10 from the dry-run batch)
+but likely underestimates stronger models: the calibration models mostly
+answered without tool use, while full multi-reference routing runs heavier.
 
 ## 8. Results & Viewer
 
