@@ -67,6 +67,17 @@
 Add pre-run fixture cleanup/restore to `run_dispatch_compliance.py` so debugger/code-reviewer
 fixtures reset before each launch. Recorded in README § Future Work.
 
+## Restart Prompt (Session 5)
+
+> Launch framework development mode. We're continuing work on the DAAF benchmark system
+> at `/daaf/benchmarks`. Read `/daaf/benchmarks/README.md` for system documentation and
+> `/daaf/benchmarks/SESSION_NOTES.md` for Session 4 state (cleanup + README authoring,
+> complete). Candidate priorities from README § 12 Future Work: (1) pre-run fixture
+> cleanup in run_dispatch_compliance.py, (2) scorer improvements (confirmation-gate
+> clarifying-question patterns; content-based context detection), (3) complete Fable 5 +
+> Anthropic Phase 3 to 3 reps (sequential), (4) recalibrate cost estimation profiles,
+> (5) PreToolUse git-blocking hook. The priority for this session is [STATE YOUR PRIORITY].
+
 ## AI Disclosure
 
 This session used DAAF (Data Analyst Augmentation Framework) in Framework Development mode.
