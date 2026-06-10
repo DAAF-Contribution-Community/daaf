@@ -153,6 +153,7 @@ Content here.
 |-------|----------|-------------|
 | `name` | Yes | Lowercase alphanumeric + hyphens, 1-64 chars, no leading/trailing/consecutive hyphens |
 | `description` | Yes | 1-1024 chars, no angle brackets (`<` `>`), include what + when |
+| `when_to_use` | No | Optional; appended to `description` in the skill listing and counts toward the 1,536-char combined display cap. Not a DAAF default — see `./references/frontmatter.md` |
 | `metadata` | No | Key-value pairs (strings) |
 
 ### Name Validation Regex
@@ -166,11 +167,13 @@ Content here.
 | Component | Limit | Notes |
 |-----------|-------|-------|
 | Name | 64 chars | Lowercase hyphen-case |
-| Description (frontmatter) | 250 chars | **Hard limit** — truncated at 250 chars in system prompt; all agents see this |
-| Description (body) | ~500 chars | Full description as plain paragraph after `# Title`; loaded with skill |
+| Description (frontmatter) | 1,024 chars | Validation limit (Agent Skills spec). Display: combined `description` + `when_to_use` is truncated at 1,536 chars in the skill listing, with a startup warning on truncation |
+| Description (body) | 2-5 sentences (~400-1,000 chars) | Expanded description as plain paragraph after `# Title`; at least as informative as the frontmatter description, adding detail omitted from the listing for budget economy |
 | SKILL.md body | <500 lines | Guideline, not enforced |
 | SKILL.md body | <5000 words | Keep concise |
 | Metadata per skill | ~100 words | Always in context |
+
+> **Version note:** Display caps reflect Claude Code behavior as of v2.1.105 / June 2026 (the listing cap was raised from 250 to 1,536 chars in that release) and are configurable via the `maxSkillDescriptionChars` setting. If observed truncation behavior differs, verify against current Claude Code docs rather than assuming this table is correct. See `./references/frontmatter.md` for the full length model, including the aggregate listing budget shared across all skills.
 
 ### Core Principles
 
@@ -188,12 +191,13 @@ Content here.
 
 - Before creating a new skill, read 1-2 existing skills of the same type as structural exemplars (e.g., for data source skills, read an existing data source SKILL.md; for tool skills, read `polars` or `plotnine`)
 - Include "what it does" AND "when to use it" in description
-- Keep frontmatter description ≤250 chars — this is the ONLY text agents see when deciding whether to load a skill; it gets truncated at 250 chars in the system prompt
-- Preserve the full description as a plain paragraph immediately after the `# Title` heading in the body — this provides complete context once the skill is loaded
-- Prioritize in the 250-char budget: (1) what it is, (2) key triggers/use cases, (3) disambiguation from similar skills (e.g., "For FE use pyfixest; for GLM use statsmodels")
+- Write a complete, information-rich frontmatter description (up to the 1,024-char validation limit) — this is the ONLY text agents see when deciding whether to load a skill, so it should carry the full triggering context, not a compressed teaser
+- Practice budget-aware economy: 40+ DAAF skills share an aggregate skill-listing budget (~1% of the context window). When the listing overflows, descriptions for the least-invoked skills are dropped first — so spend characters where they earn triggering accuracy, not on exhaustive feature lists
+- Write an expanded body description as a plain paragraph immediately after the `# Title` heading — it should elaborate beyond the frontmatter (detailed scope, additional triggers, fine-grained disambiguation), guaranteeing complete context once the skill is loaded
+- Prioritize in the description, in order: (1) what it is, (2) key triggers/use cases, (3) disambiguation from similar skills (e.g., "For FE use pyfixest; for GLM use statsmodels")
 - Write descriptions in third person ("Processes files" not "I help you process files")
 - Make descriptions slightly "pushy" to combat undertriggering
-- Front-load important words in description (may be truncated in UI)
+- Front-load identity and triggers in the description — the skill listing caps the combined description + when_to_use text at 1,536 chars, and readers (agent and human alike) weight the opening words most heavily
 - Explain *why* behind instructions, not just *what*
 - Use decision trees for navigation
 - Keep SKILL.md under 500 lines

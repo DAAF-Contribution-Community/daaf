@@ -57,7 +57,7 @@ Everything below this line is the template. Annotations appear in `<!-- HTML com
 name: *-data-source-[acronym]
 description: >-
   [ACRONYM] — [what it is] ([coverage], [year range]). [Key content areas].
-  Use for [triggers]. [Critical constraint or disambiguation]. (≤250 chars)
+  Use for [triggers]. [Critical constraint or disambiguation].
 metadata:
   audience: any-agent
   domain: data-source
@@ -75,19 +75,29 @@ metadata:
     - Examples: education-data-source-ccd, election-data-source-countypres
     - When a source has multiple tables, append a table identifier
       (e.g., education-data-source-ccd-schools)
-  - description: **≤250 chars** (HARD LIMIT — truncated in system prompt beyond this)
+  - description: ≤1,024 chars (validation limit). Write a complete, information-rich
+    description — this is the only text agents see when deciding whether to load the
+    skill. Longer is allowed but not always better: 40+ DAAF skills share an aggregate
+    skill-listing budget (~1% of the context window), and when it overflows, descriptions
+    for the least-invoked skills are dropped first. Spend characters on triggering
+    accuracy and critical caveats, not exhaustive content inventories.
+    (Display: the listing truncates the combined description + when_to_use at 1,536
+    chars — raised from 250 in Claude Code v2.1.105; configurable via
+    maxSkillDescriptionChars, so verify if truncation behavior seems off.)
   - description: no angle brackets (< >)
-  - description: MUST include both "what it does" AND "when to use it" within 250 chars
+  - description: MUST include both "what it does" AND "when to use it"
   - description: MUST include approximate year coverage for the source (e.g., "2009-2022")
   - description: Front-load the source identity (acronym + what it is), NOT skill-document
     framing — write "CCD — federal universe of all U.S. public K-12 schools..."
     not "Deep reference for the Common Core of Data (CCD)..."
   - description: Include Portal-specific data scope when it differs from the full source
-    (e.g., "Portal: 7 columns only") — abbreviate to fit 250-char budget
-  - description: Include key disambiguation (what NOT to use this for) if space permits
-  - FULL DESCRIPTION: The complete description (with all detail that couldn't fit in
-    250 chars) goes as a plain paragraph after the # Title heading in the body.
-    This is visible once the skill is loaded but does NOT influence triggering.
+    (e.g., "Portal: 7 columns only")
+  - description: Include key disambiguation (what NOT to use this for)
+  - FULL DESCRIPTION: Write an expanded body description as a plain paragraph after
+    the # Title heading — it elaborates beyond the frontmatter (expanded scope,
+    additional triggers, detailed disambiguation) rather than duplicating it, and is
+    the natural home for detail that doesn't earn its place in the shared listing
+    budget. It is visible once the skill is loaded but does NOT influence triggering.
   - domain: ALWAYS use "data-source" for all data source skills
   - audience: ALWAYS use "any-agent" for data source skills
   - PROVENANCE (REQUIRED for all data source skills — stored as metadata keys):
@@ -118,8 +128,8 @@ metadata:
 ### Section 3: Full Description + Summary
 
 ```markdown
-[Full description paragraph — the complete, detailed description that was condensed
-to ≤250 chars for frontmatter. Includes all capabilities, specific triggers, scope
+[Full description paragraph — the complete, detailed description, expanded from
+the frontmatter description. Includes all capabilities, specific triggers, scope
 limitations, and disambiguation. This is what agents see once the skill is loaded.]
 
 [Optional: One additional sentence describing the source's unique value proposition
@@ -128,13 +138,13 @@ above doesn't already convey this.]
 ```
 
 <!-- RULES:
-  - FIRST PARAGRAPH (required): The full description preserved from frontmatter condensation.
-    Contains everything that couldn't fit in 250 chars: expanded scope, additional triggers,
-    detailed disambiguation, year coverage details, key caveats.
+  - FIRST PARAGRAPH (required): The full description, expanded beyond the frontmatter.
+    Contains detail deliberately left out of the shared listing budget: expanded scope,
+    additional triggers, detailed disambiguation, year coverage details, key caveats.
     Written as a plain paragraph (no heading, no blockquote) immediately after # Title.
   - SECOND PARAGRAPH (optional): Additional unique value proposition if needed.
   - Do NOT simply duplicate the frontmatter description — expand and elaborate.
-  - Total: aim for 2-4 sentences across both paragraphs.
+  - Total: aim for 2-5 sentences (~400-1,000 chars) across both paragraphs.
 -->
 
 ---
@@ -634,8 +644,8 @@ print(f"Join coverage: {len(schools_with_district) - unmatched} / {len(schools_w
 | Metric | Target | Hard Limit |
 |--------|--------|------------|
 | Total SKILL.md lines | 250-400 | 500 |
-| Frontmatter description | 200-250 chars | **250 chars** (hard limit — truncated in system prompt) |
-| Body full description | 2-4 sentences | ~500 chars |
+| Frontmatter description | 300-700 chars | **1,024 chars** (validation limit; the listing displays description + when_to_use combined up to 1,536 chars) |
+| Body full description | 2-5 sentences (~400-1,000 chars) | No hard limit — should be at least as informative as the frontmatter description, adding detail omitted from the listing for budget economy |
 | Decision trees | 2-4 trees | 6 trees |
 | Quick Reference subsections | 3-6 | 10 |
 | Common Pitfalls rows | 3-8 | 12 |
@@ -723,12 +733,12 @@ that are purely factual data dumps — these are less useful than the raw data i
 Use this checklist when reviewing a skill for template compliance:
 
 - [ ] Frontmatter: `domain: data-source` (all data source skills use this functional category)
-- [ ] Frontmatter: description ≤250 chars and includes "what" AND "when to use" AND year coverage
+- [ ] Frontmatter: description is complete and information-rich (≤1,024 chars, budget-aware) and includes "what" AND "when to use" AND year coverage
 - [ ] Frontmatter: description front-loads source identity (not "Deep reference for...")
 - [ ] Body: full description paragraph after `# Title` heading (expanded from frontmatter)
 - [ ] Frontmatter: `skill-authored` and `skill-last-updated` present as metadata keys with ISO-8601 dates
 - [ ] Title: `# [ACRONYM] Data Source Reference` format
-- [ ] Summary: 1-2 sentences after title
+- [ ] Summary: optional value-proposition sentence after the description paragraph (Section 3 allows 2-5 sentences total across both paragraphs)
 - [ ] Value Encodings Warnings: blockquote in position 4 with comparison table
 - [ ] "What is" section: bullet list with bold keys
 - [ ] Reference File Structure: 3-column table present

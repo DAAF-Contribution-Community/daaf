@@ -134,6 +134,7 @@ description: Use the command to do X.
 **Allowed fields only:**
 - `name`
 - `description`
+- `when_to_use`
 - `metadata`
 
 **Invalid fields (examples):**
@@ -222,18 +223,18 @@ description: Processes PDF legal documents for contract review. Do NOT use for g
 
 ### Overly Verbose Descriptions
 
-**Problem:** Long descriptions waste metadata budget.
+**Problem:** Rambling, low-information-density prose. The issue is not length per se — a complete 300-700 char description is good, and descriptions may run up to the 1,024-char validation limit. The issue is padding: filler phrasing that consumes the aggregate skill-listing budget (shared across 40+ DAAF skills) without improving triggering accuracy.
 
 ```yaml
-# Bad: 200+ words
+# Bad: padded — many words, few triggers, no disambiguation
 description: This skill is a comprehensive solution for managing and processing various types of document files including but not limited to PDF, Word, and Excel formats. It provides functionality for...
 ```
 
-**Fix:** Be concise, focus on triggers:
+**Fix:** Spend characters where they earn triggering accuracy — identity, key triggers, disambiguation, critical caveats:
 
 ```yaml
-# Good: ~30 words
-description: Process document files (PDF, Word, Excel). Use when converting formats, extracting text, or manipulating document content.
+# Good: information-dense — every clause earns its place
+description: Process document files (PDF, Word, Excel) — converting formats, extracting text and tables, merging/splitting, and manipulating document content. Use when working with .pdf, .docx, or .xlsx files, or when asked to pull structured data out of documents. For plain-text or Markdown editing, use standard file tools instead; for scanned documents requiring OCR, use the ocr skill.
 ```
 
 ### Duplicated Content

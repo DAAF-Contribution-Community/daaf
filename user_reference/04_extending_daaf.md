@@ -183,7 +183,7 @@ approval.
 
 DAAF will use the `skill-authoring` skill to guide the process. The skill-authoring skill provides detailed guidance on:
 
-- **Frontmatter requirements:** The YAML header that every skill needs, including naming conventions (lowercase-hyphenated, 1-64 chars) and description best practices
+- **Frontmatter requirements:** The YAML header that every skill needs, including naming conventions (lowercase-hyphenated, 1-64 chars) and description best practices (up to 1,024 characters)
 - **Body structure patterns:** Different organizing patterns depending on whether the skill is workflow-based (sequential steps), task-based (tool collection), reference-based (standards/specs), or capabilities-based (features)
 - **Progressive disclosure:** How to keep the main SKILL.md under 500 lines by splitting detailed content into `references/` files
 - **Decision trees:** How to write effective navigation trees that help agents find what they need quickly
