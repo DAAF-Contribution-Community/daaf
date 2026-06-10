@@ -1,6 +1,6 @@
 # Visualization Execution Standards
 
-Practical standards for producing clean, accessible, publication-ready figures. This guide is tool-agnostic — load `plotnine` or `plotly` skills for implementation syntax.
+Practical standards for producing clean, accessible, publication-ready figures. This guide is tool-agnostic. Whenever plotting tools enter the discussion — in advice or in code — load the `plotnine` (static) or `plotly` (interactive) skill: it carries the syntax plus environment constraints and curated caveats that general knowledge lacks.
 
 ## Color Palette Selection
 

@@ -429,7 +429,7 @@ Skills provide **domain knowledge** ("What do I need to know?"). Agents define *
 
 ### Skill Loading Mechanics
 
-Skills are loaded **by subagents**, not by the orchestrator:
+Skills are loaded **by subagents**, not by the orchestrator (exceptions: Ad Hoc Collaboration and Framework Development modes, where the orchestrator loads designated skills directly — see the Documentation Loading Decision Tree above and those mode reference files):
 
 1. **Orchestrator creates Agent call** with agent protocol and skill name in the prompt
 2. **Subagent receives prompt** and reads its agent protocol file

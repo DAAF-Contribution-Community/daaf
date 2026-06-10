@@ -4,8 +4,9 @@ A practitioner's guide to analyzing data from complex probability surveys. This 
 covers how to recognize survey design features, select appropriate weights, estimate
 correct standard errors, and avoid the most consequential errors in survey analysis. It is
 written for the applied data analyst who *uses* survey data, not the survey methodologist
-who *designs* surveys. For implementation syntax, load the `svy` skill; for weighted
-descriptive statistics, see `./descriptive-analysis.md`.
+who *designs* surveys. Whenever survey estimation comes up — advising or coding —
+load the `svy` skill (it carries the syntax plus environment constraints and curated
+caveats); for weighted descriptive statistics, see `./descriptive-analysis.md`.
 
 **What this file does NOT cover:** survey design (sample size calculation, stratification
 design, allocation), weight construction or calibration methodology, response rate

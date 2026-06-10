@@ -2,8 +2,10 @@
 
 A practitioner's guide to causal reasoning in empirical research. This reference covers
 when and why to use causal methods, the assumptions behind each design, and how to
-evaluate the credibility of causal claims. For implementation syntax, load the
-appropriate library skill (e.g., `pyfixest`, `statsmodels`).
+evaluate the credibility of causal claims. Whenever a specific library enters the
+discussion — in advice or in code — load the appropriate library skill (e.g.,
+`pyfixest`, `statsmodels`): it carries the syntax plus environment constraints and
+curated caveats that general knowledge lacks.
 
 ## Contents
 

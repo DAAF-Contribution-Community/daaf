@@ -1,6 +1,6 @@
 # Visualization Design Principles
 
-How to *think* about data visualization — choosing the right chart, encoding data effectively, and directing attention. This guide is tool-agnostic; load `plotnine` or `plotly` skills for implementation syntax.
+How to *think* about data visualization — choosing the right chart, encoding data effectively, and directing attention. This guide is tool-agnostic. Whenever plotting tools enter the discussion — in advice or in code — load the `plotnine` (static) or `plotly` (interactive) skill: it carries the syntax plus environment constraints and curated caveats that general knowledge lacks.
 
 ## Exploratory vs. Explanatory
 

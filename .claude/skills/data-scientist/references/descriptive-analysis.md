@@ -1,6 +1,6 @@
 # Rigorous Descriptive Analysis
 
-Methodological guidance for descriptive analysis — the systematic characterization of data patterns, distributions, and associations. This reference covers the *why* and *when* of descriptive methods. For implementation syntax, load the appropriate library skill (`polars`, `pyfixest`, `statsmodels`).
+Methodological guidance for descriptive analysis — the systematic characterization of data patterns, distributions, and associations. This reference covers the *why* and *when* of descriptive methods. Whenever a specific library enters the discussion — in advice or in code — load the appropriate library skill (`polars`, `pyfixest`, `statsmodels`): it carries the syntax plus environment constraints and curated caveats that general knowledge lacks.
 
 **Relationship to EDA:** The `eda-checklist.md` reference covers initial data profiling — understanding what is in the data before transforming it. This file covers the analysis phase — systematically characterizing patterns, distributions, and associations to answer research questions. EDA asks "what does this data look like?" This file asks "what does this data tell us?"
 
@@ -568,7 +568,7 @@ Computing weighted percentiles is less straightforward than weighted means. The 
 
 ### Further Reading
 
-For comprehensive guidance on complex survey analysis methodology — including survey design anatomy, weight selection, variance estimation methods, plausible values, and a pitfalls checklist — see `./survey-analysis.md`. For implementation syntax, load the `svy` skill.
+For comprehensive guidance on complex survey analysis methodology — including survey design anatomy, weight selection, variance estimation methods, plausible values, and a pitfalls checklist — see `./survey-analysis.md`. Whenever survey-weighted estimation comes up — advising or coding — load the `svy` skill.
 
 ## Inequality Measurement
 

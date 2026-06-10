@@ -2,7 +2,7 @@
 
 Detailed operational guidance for spatial analysis methods — more specific than the conceptual overview in `geospatial-analysis.md` but still methodology-focused (not library syntax). Covers the practical decisions, pitfalls, and interpretation patterns you encounter when actually executing spatial operations.
 
-For implementation syntax, load the `geopandas` skill. For conceptual foundations (when/why to use each method), see `geospatial-analysis.md`.
+Whenever geopandas operations enter the discussion — in advice or in code — load the `geopandas` skill: it carries the syntax plus environment constraints and curated caveats that general knowledge lacks. For conceptual foundations (when/why to use each method), see `geospatial-analysis.md`.
 
 ---
 

@@ -1,6 +1,6 @@
 # Exploratory Unsupervised Analysis
 
-Methodological guidance for exploratory unsupervised analysis — discovering structure, groupings, and patterns in data without pre-specified outcome variables. This reference covers the *why* and *when* of unsupervised methods. For implementation syntax, load the `scikit-learn` skill.
+Methodological guidance for exploratory unsupervised analysis — discovering structure, groupings, and patterns in data without pre-specified outcome variables. This reference covers the *why* and *when* of unsupervised methods. Whenever scikit-learn methods enter the discussion — in advice or in code — load the `scikit-learn` skill: it carries the syntax plus environment constraints and curated caveats that general knowledge lacks.
 
 **When to read this file:** Stage 8 analysis tasks involving clustering, typology construction, dimension reduction, mixture models, or any task where the goal is discovering structure rather than testing hypotheses about known relationships.
 
@@ -258,7 +258,7 @@ These limitations mean t-SNE and UMAP plots should be treated as **hypothesis-ge
 - Always label plots with the exact parameter values and random seed used
 - Prefer UMAP over t-SNE for large datasets or when global structure preservation matters
 
-For implementation syntax, load the `scikit-learn` skill (t-SNE) or see the `umap-learn` companion library documentation.
+Whenever these embeddings come up — advising or coding — load the `scikit-learn` skill (t-SNE) or see the `umap-learn` companion library documentation.
 
 ## Gaussian Mixture Models
 

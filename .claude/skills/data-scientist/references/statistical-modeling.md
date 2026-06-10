@@ -1,6 +1,6 @@
 # Statistical Modeling Methodology
 
-Guidance for model selection, assumption checking, robust inference, and interpretation. This reference covers the *why* and *when* of statistical modeling decisions. For implementation syntax, load the `pyfixest` or `statsmodels` skills.
+Guidance for model selection, assumption checking, robust inference, and interpretation. This reference covers the *why* and *when* of statistical modeling decisions. Whenever a specific library enters the discussion — in advice or in code — load the `pyfixest` or `statsmodels` skill: it carries the syntax plus environment constraints and curated caveats that general knowledge lacks.
 
 **When to read this file:** Stage 8.1 analysis tasks involving regression, modeling, hypothesis testing, or robustness checks.
 

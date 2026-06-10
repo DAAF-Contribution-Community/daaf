@@ -94,7 +94,7 @@ mkdir -p {PROJECT_DIR}/output/figures
 
 **Rationale:** In this mode, the orchestrator frequently responds directly to the user -- advising on methodology, discussing approaches, explaining concepts -- and needs the `data-scientist` skill's methodology knowledge to provide rigorous advice without dispatching a subagent for every question.
 
-Additional domain skills (e.g., `education-data-source-ccd`, `polars`, `plotnine`, `statsmodels`, `pyfixest`, `linearmodels`, `geopandas`, `scikit-learn`) are loaded by subagents when dispatched, following the standard pattern. However, if the user asks a question about a specific tool or package and the orchestrator can answer it directly by loading the relevant skill, this is permitted.
+Additional domain skills (e.g., `education-data-source-ccd`, `polars`, `plotnine`, `statsmodels`, `pyfixest`, `linearmodels`, `geopandas`, `scikit-learn`) are loaded by subagents when dispatched, following the standard pattern. When the user asks about a specific tool or package and the orchestrator answers directly, loading the relevant skill first is the expected precondition for that answer — library skills encode environment-specific constraints and curated caveats that general knowledge lacks, so answering without the skill risks recommending approaches this environment cannot run or that the skill explicitly warns against. If a skill fails to load, answer from base knowledge and flag reduced confidence due to the missing skill.
 
 ---
 
@@ -129,10 +129,10 @@ The orchestrator identifies what the user needs and responds accordingly. This i
 The orchestrator responds directly (without dispatching a subagent) when:
 
 - The user asks about methodology, statistical approaches, or research design
-- The user asks about a package or tool that the orchestrator can answer from a loaded skill (e.g., `polars`, `plotnine`, `marimo`, `statsmodels`, `pyfixest`, `linearmodels`, `geopandas`, `scikit-learn`, `science-communication`)
+- The user asks about a package or tool that the orchestrator can answer by first loading the relevant skill via the Skill tool, then answering from it (e.g., `polars`, `plotnine`, `marimo`, `statsmodels`, `pyfixest`, `linearmodels`, `geopandas`, `scikit-learn`, `science-communication`)
 - The user asks a conceptual question about data or analysis
 - The user wants to brainstorm or think through an approach
-- The question can be answered adequately from the orchestrator's loaded skills and general knowledge
+- The question can be answered adequately from the orchestrator's loaded skills — general knowledge may supplement a loaded skill, but where a relevant skill exists it should be loaded rather than answered from memory, and anything inferred beyond skill content must be flagged as inference (per the loaded-vs-inferred distinction above)
 
 ### When to Dispatch to an Agent
 
@@ -157,7 +157,7 @@ The orchestrator dispatches to a specialized agent when:
 | Critique or review a plan | `plan-checker` | Orchestrator must format the user's plan into a structured document in the prompt; plan-checker requires structured input |
 | Quick data fetch or query | `research-executor` | With appropriate domain query skill |
 
-**When uncertain:** Err toward responding directly first. If the question proves deeper than expected, dispatch to the appropriate agent. A lightweight direct answer followed by "Want me to dig deeper with a specialist?" is better than over-dispatching.
+**When uncertain:** Err toward responding directly first — where "responding directly" includes loading the routed skill before answering, not skipping it. If the question proves deeper than expected, dispatch to the appropriate agent. A lightweight direct answer followed by "Want me to dig deeper with a specialist?" is better than over-dispatching.
 
 **R/Stata-background user detection:** If the user mentions an R / RStudio or Stata background, requests R/Stata-equivalent comments, or asks to understand Python code from an R or Stata perspective, the orchestrator should:
 - For **conceptual questions** (the orchestrator answers directly): Load the appropriate translation skill (`r-python-translation` or `stata-python-translation`) via the Skill tool and use it to bridge R/Stata and Python concepts in the response.
@@ -321,7 +321,7 @@ When a user resumes an ad hoc session ("let's pick up where we left off on X"), 
 ## Dispatch and Context Management
 
 - **Dispatch generously to subagents.** Each subagent gets a fresh context window. For tasks that involve code execution, deep research, or formal review, dispatching preserves orchestrator context for the ongoing conversation.
-- **Limit orchestrator skill loading.** The orchestrator loads `data-scientist` at session start. Additional skills should generally be loaded by subagents. If the orchestrator has loaded more than 2-3 skills directly, prefer dispatching to subagents for subsequent tasks to avoid context pressure.
+- **Limit orchestrator skill loading.** The orchestrator loads `data-scientist` at session start. Additional skills should generally be loaded by subagents. If the orchestrator has loaded more than 2-3 skills directly, prefer dispatching to subagents for subsequent tasks to avoid context pressure. This budget does not waive the load-before-advising norm: once the budget is exhausted, dispatch a subagent (which loads the routed skill in its own fresh context) rather than answering tool-specific questions from memory.
 
 ---
 

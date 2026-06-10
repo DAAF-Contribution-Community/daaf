@@ -1,7 +1,7 @@
 ---
 name: data-scientist
 description: >-
-  Data science methodology and method-selection routing for quantitative research. Covers EDA, data validation, descriptive analysis, causal inference (IV, DiD, RD, synthetic control), clustering/PCA/UMAP, supervised ML, geospatial analysis, and visualization design. Contains the canonical method-to-library routing tree: statsmodels (OLS/GLM/time series), pyfixest (FE/DiD), linearmodels (RE/GMM/SUR), svy (complex surveys), scikit-learn (clustering/prediction ML), geopandas (spatial). For implementation syntax, load the routed tool-specific skill.
+  Data science methodology and method-selection routing for quantitative research. Covers EDA, data validation, descriptive analysis, causal inference (IV, DiD, RD, synthetic control), clustering/PCA/UMAP, supervised ML, geospatial analysis, and visualization design. Contains the canonical method-to-library routing tree: statsmodels (OLS/GLM/time series), pyfixest (FE/DiD), linearmodels (RE/GMM/SUR), svy (complex surveys), scikit-learn (clustering/prediction ML), geopandas (spatial). Load the routed tool-specific skill before giving tool-specific advice or writing code — library skills encode environment constraints and curated caveats absent from general knowledge.
 metadata:
   audience: any-agent
   domain: research-methodology
@@ -9,9 +9,9 @@ metadata:
 
 # Data Scientist Skill
 
-Rigorous data science methodology and mindset for Python research. Covers EDA, data validation, transformation verification, documentation standards, visualization design, descriptive analysis, statistical modeling, causal inference method selection (IV, DiD, RD, synthetic control), unsupervised analysis (clustering, PCA, UMAP), supervised ML methodology (prediction vs. inference, cross-validation, model interpretation, fairness), and geospatial analysis. Provides methodology decisions and analytical approach guidance. For implementation syntax, load the tool-specific skill (polars, statsmodels, plotnine, pyfixest, scikit-learn, geopandas, etc.). Use for any data analysis, exploration, transformation, or modeling task — especially when choosing methods, checking assumptions, or structuring an analysis.
+Rigorous data science methodology and mindset for Python research. Covers EDA, data validation, transformation verification, documentation standards, visualization design, descriptive analysis, statistical modeling, causal inference method selection (IV, DiD, RD, synthetic control), unsupervised analysis (clustering, PCA, UMAP), supervised ML methodology (prediction vs. inference, cross-validation, model interpretation, fairness), and geospatial analysis. Provides methodology decisions and analytical approach guidance. Load the routed tool-specific skill (polars, statsmodels, plotnine, pyfixest, scikit-learn, geopandas, etc.) before giving tool-specific advice or writing code — library skills encode environment-specific constraints and curated caveats that general knowledge lacks or gets wrong. Use for any data analysis, exploration, transformation, or modeling task — especially when choosing methods, checking assumptions, or structuring an analysis.
 
-Establishes a rigorous, methodical approach to data science work. This skill is about *how* to think and work, not specific tools. Load specialized skills (polars, plotnine, plotly, marimo, etc.) for tool-specific guidance.
+Establishes a rigorous, methodical approach to data science work. This skill is about *how* to think and work, not specific tools. The moment a specific tool enters the conversation — in advice and brainstorming as much as in code — load its specialized skill (polars, plotnine, plotly, marimo, etc.): those skills know this environment's tooling in ways general knowledge does not.
 
 ## Core Principles - NON-NEGOTIABLE
 
@@ -136,7 +136,7 @@ What task are you performing?
 │       └─ Interactive plots → Load `plotly` skill for interactive charts
 ├─ Descriptive analysis (subgroups, distributions, decompositions, trends)
 │   └─ Stage 8.1 — FIRST read ./references/descriptive-analysis.md
-│       THEN use polars for implementation (some methods may also need
+│       THEN load the `polars` skill (some methods may also need
 │       `statsmodels` for weighted SEs/formal tests or `pyfixest` for descriptive FE regressions)
 ├─ Statistical modeling (regression, robustness checks)
 │   └─ Stage 8.1 — FIRST read ./references/statistical-modeling.md
@@ -154,17 +154,15 @@ What task are you performing?
 │       └─ Spatial regression (spatial lag, spatial error, GWR) → Load `geopandas` skill
 │           (spatial regression uses PySAL/spreg via geopandas; also read geospatial refs)
 ├─ Supervised ML (prediction, classification, risk scoring)
-│   ├─ Methodology (when to use ML, how to validate, interpret, report)
-│   │   → Read supervised-ml.md
-│   ├─ Implementation (algorithms, syntax, evaluation)
-│   │   → Load `scikit-learn` skill
-│   ├─ Model interpretation (SHAP, feature importance)
-│   │   → Read supervised-ml.md "Interpreting ML Models" + scikit-learn interpretation.md
-│   └─ Fairness assessment
-│       → Read supervised-ml.md "Fairness" + scikit-learn fairness.md
+│   └─ FIRST read ./references/supervised-ml.md (when to use ML, how to validate, interpret, report)
+│       THEN load `scikit-learn` skill (algorithms, syntax, evaluation)
+│       ├─ Model interpretation (SHAP, feature importance)
+│       │   → Read supervised-ml.md "Interpreting ML Models" + scikit-learn interpretation.md
+│       └─ Fairness assessment
+│           → Read supervised-ml.md "Fairness" + scikit-learn fairness.md
 ├─ Unsupervised analysis (clustering, dimensionality reduction, pattern discovery)
 │   └─ Stage 8.1 — FIRST read ./references/exploratory-unsupervised.md
-│       THEN load `scikit-learn` skill for implementation
+│       THEN load `scikit-learn` skill
 │       ├─ Clustering → clustering.md, evaluation-unsupervised.md
 │       ├─ Dimensionality reduction → decomposition.md, manifold.md
 │       └─ Index construction via PCA → also read ./references/descriptive-analysis.md
@@ -173,7 +171,7 @@ What task are you performing?
 │       THEN load appropriate library skill (pyfixest for DiD/IV/FE, linearmodels for panel RE/IV-GMM, statsmodels for RD/matching)
 ├─ Complex survey data analysis (NHANES, ACS PUMS, CPS, ECLS-K, MEPS, etc.)
 │   └─ FIRST read ./references/survey-analysis.md (methodology, pitfalls, weight selection)
-│       THEN load `svy` skill for implementation syntax
+│       THEN load `svy` skill
 │       ├─ Survey-weighted descriptive statistics → svy estimation.md
 │       ├─ Survey-weighted regression (OLS, logistic, Poisson) → svy regression.md
 │       ├─ Survey design setup / replicate weights → svy design-weights.md
@@ -185,12 +183,14 @@ What task are you performing?
 │   └─ FIRST read methodology reference files:
 │       ├─ ./references/geospatial-analysis.md (spatial thinking, methods, interpretation)
 │       └─ ./references/geospatial-operations.md (joins, weights, interpolation, operations)
-│       THEN load `geopandas` skill for implementation syntax
+│       THEN load `geopandas` skill
 └─ Not currently covered by DAAF skills:
     ├─ Bayesian modeling (PyMC, bambi) → escalate to orchestrator
     ├─ Survival / time-to-event analysis → escalate to orchestrator
     └─ Deep learning (PyTorch, TensorFlow) → escalate to orchestrator
 ```
+
+**The THEN-load steps apply to advisory and brainstorming turns as much as implementation.** Recommending a method, reviewing a plan, or talking through an approach that names a tool needs the routed library skill loaded just as much as writing code does. The library skills encode environment-specific constraints (which estimators and export backends are actually installed and working here) and curated caveats that general knowledge lacks or gets wrong — for example, when a familiar tool is statistically inappropriate for the data at hand. Naming a tool in advice without loading its skill risks recommending an approach this environment cannot run, or one the skill's curated caveats explicitly warn against.
 
 **Visualization loading order matters:** The reference files provide *design principles* (what chart to use, how to direct attention, how to handle color accessibly). The tool skills provide *syntax* (how to code it). Read the design guidance first so implementation choices are principled, not ad-hoc.
 
@@ -204,7 +204,7 @@ This skill assumes familiarity with:
 - DataFrame concepts (rows, columns, filtering)
 - Basic statistical concepts (mean, distribution, correlation)
 
-**Important:** This skill provides the METHODOLOGY. The specialized skills provide TOOL KNOWLEDGE. Use both together.
+**Important:** This skill provides the METHODOLOGY. The specialized skills provide TOOL KNOWLEDGE. Use both together — on advisory and brainstorming turns as much as when writing code. A methodology answer that names a tool without its skill loaded rests on general knowledge, which misses the environment constraints and curated caveats the tool skills encode.
 
 ## Reference File Structure
 
@@ -349,7 +349,7 @@ What kind of visualization task?
 ├─ Mapping geographic data (choropleth, dot density, proportional symbols)
 │   └─ → ./references/geospatial-analysis.md (map design, classification)
 │       THEN → ./references/visualization-execution.md (color, accessibility)
-│       THEN load `geopandas` skill for implementation
+│       THEN load `geopandas` skill
 └─ Tool-specific syntax (geoms, traces, themes)
     ├─ Static plots → Load `plotnine` skill
     └─ Interactive plots → Load `plotly` skill
@@ -433,7 +433,7 @@ Geospatial analysis task?
 │   └─ → ./references/geospatial-analysis.md (decision guide)
 ├─ Performing spatial joins, overlays, or weights construction
 │   └─ → ./references/geospatial-operations.md
-│       THEN load `geopandas` skill for syntax
+│       THEN load `geopandas` skill
 ├─ Interpreting Moran's I, LISA, or spatial regression results
 │   └─ → ./references/geospatial-operations.md (interpretation sections)
 ├─ Interpolation or areal interpolation
@@ -457,7 +457,7 @@ Am I predicting or explaining?
 │   └─ Use pyfixest or statsmodels — see statistical-modeling.md
 ├─ Predicting (minimizing prediction error on new data)
 │   ├─ Read supervised-ml.md for methodology
-│   ├─ Load scikit-learn skill for implementation
+│   ├─ Load scikit-learn skill
 │   ├─ Tabular data → Start with logistic regression baseline,
 │   │   then try HistGradientBoosting or LightGBM
 │   ├─ Text data → See supervised-ml.md "When Deep Learning Methods Are Appropriate"
