@@ -1,10 +1,10 @@
 # Sample Project: College Graduation Rate & Selectivity Analysis
 
-This is a **sample Full Pipeline project** included with DAAF to show what a complete, end-to-end research analysis looks like when produced with the framework. It was conducted using DAAF's [Full Pipeline mode](../../user_reference/02_understanding_daaf.md#full-pipeline-analysis-the-main-event) -- the most comprehensive engagement mode, which takes a research question through data discovery, planning, acquisition, cleaning, transformation, analysis, visualization, and reporting with human oversight at every key decision point.
+This is a **sample Full Pipeline project** included with DAAF to show what a complete, end-to-end research analysis looks like when produced with the framework. It was conducted using DAAF's [Full Pipeline mode](../../user_reference/02_understanding_daaf.md#full-pipeline-mode) -- the most comprehensive engagement mode, which takes a research question through data discovery, planning, acquisition, cleaning, transformation, analysis, visualization, and reporting with human oversight at every key decision point.
 
 This project is presented in its entirety **without editing** -- warts and all. The goal is not to showcase a flawless analysis, but to give you a realistic and transparent look at what DAAF actually produces so you can judge for yourself what's impressive, what needs work, and how the human review process fits in. Some of the interpretation is arguably overblown in its conclusions, and some analytical choices could be questioned. That's the point: DAAF produces work that is **worth reviewing**, not work that can be trusted blindly.
 
-A few quick visualization fixes were applied afterward via [Revision and Extension mode](../../user_reference/02_understanding_daaf.md#revision-and-extension-updating-prior-work), but all substantive outputs are exactly as Claude produced them.
+A few quick visualization fixes were applied afterward via [Revision and Extension mode](../../user_reference/02_understanding_daaf.md#revision-and-extension-mode), but all substantive outputs are exactly as Claude produced them.
 
 > **See also:** This project was subsequently [reproduced and verified](../2026-03-30_College_Graduation_Rate_Selectivity_Analysis_Reproduction/) using DAAF's Reproducibility Verification mode. That project has its own README with a walkthrough.
 
