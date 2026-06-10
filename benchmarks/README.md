@@ -8,7 +8,10 @@ the framework's protocols?
 This README is the authoritative documentation for the benchmark system. The
 `SESSION_RESTART*.md` files in `archive/` are historical session notes (including
 run-level provenance for the 2026-06 result sets) superseded by this document for
-system-level documentation; `SESSION_NOTES.md` tracks the current session.
+system-level documentation. `SESSION_NOTES.md` (the shared working-session log,
+retired 2026-06-10) is likewise superseded: its durable operational knowledge has
+been folded into this document and its live point-in-time status moved to § 12
+"Current Status / Next Steps".
 
 ---
 
@@ -176,11 +179,11 @@ All four runners share an identical CLI:
 | Flag | Default | Meaning |
 |------|---------|---------|
 | `--reps N` | 3 | Repetitions per case × model |
-| `--models a,b` | all | Comma-separated model keys (lowercased names from models.yaml, spaces → hyphens, dots removed: `fable-5`, `sonnet-46`, `deepseek-v4-flash`) |
+| `--models a,b` | all | Comma-separated model keys (lowercased names from models.yaml, spaces → hyphens, dots removed: `fable-5`, `sonnet-46`, `deepseek-v4-flash`). Keys come from this registry transformation, not bare model names — `sonnet`/`haiku` are not valid keys |
 | `--provider X` | all | `anthropic`, `openrouter`, or `all` |
 | `--test-id a,b` | all | Specific case IDs (e.g., `mc-01,mc-05`) |
 | `--sequential` | off | Run one at a time instead of parallel |
-| `--delay S` | 2 | Seconds between parallel launches (ThreadPoolExecutor stagger) |
+| `--delay S` | 2 | Seconds between parallel launches (ThreadPoolExecutor stagger). Parallel-mode only — the sequential loop has no sleep, so this flag is a no-op with `--sequential` |
 | `--timeout S` | tier-based | Override per-run timeout (defaults: low 120s, medium 300s, high 600s by case `cost_tier`) |
 | `--yes` / `-y` | off | Skip the cost confirmation prompt |
 
@@ -255,6 +258,10 @@ timed-out runs still produce scorable data.
   tool_use_id pairings). Caution: Read results are stored TWICE per record
   (numbered `message.content` payload AND raw `toolUseResult.file.content`) —
   both must be refreshed or stale text silently survives in replay context.
+  A second serialization trap: a Skill call's own tool_result is just
+  "Launching skill: X" — the skill body arrives in a SUBSEQUENT user record
+  (with frontmatter stripped), so a refresh must target that later record,
+  not the tool_result itself.
 
 **Golden staleness caveat (important for before/after experiments).** A captured
 checkpoint freezes every tool-result payload — skill bodies, reference files —
@@ -354,12 +361,22 @@ mismatches and zero Perfect changes — the removed criteria always passed
 wherever stored), and pc-07 runs gained the `skill_agent_authoring` tier2
 criterion retroactively with `skill_skill_authoring` retiered tier1 → tier2
 (48 runs across 8 sets; 35/48 fail the new criterion). summary.json files
-were regenerated per set.
+were regenerated per set. The rescore surfaced two corpus caveats: five
+result sets have run directories that were pruned after archival
+(`20260608_221438` plus four dispatch sets — `20260610_005021`, `_134443`,
+`_160029`, `_180411`); their summaries now reflect what is on disk, and disk
+is the source of truth whenever summary.json and `runs/` disagree. And two
+timed-out Fable pc-07 runs lack archived transcripts — they received the
+transcript-independent retiers but carry no `skill_agent_authoring` entry
+(correct: no evidence to score).
 
 **Phase 4 skill-routing criteria** (from `scorers/deterministic/skill_routing.py`):
 `required_skills_loaded` and `required_refs_read` (tier1, hard in all cases);
 `required_skills_engaged`, `expected_refs_read`, `routing_order`, and
-`no_forbidden_skills` (tier2, soft). `required_skills_engaged` (added
+`no_forbidden_skills` (tier2, soft). `expected_refs_read` is emitted ONLY for
+cases with a non-empty `expected.expected_refs` list (since 2026-06-10) —
+cases without secondary refs get no criterion at all rather than an automatic
+pass, so it never dilutes Perfect/soft rates. `required_skills_engaged` (added
 2026-06-10) passes when every required skill was loaded OR name-mentioned in
 user-visible assistant text post-checkpoint (case-insensitive, hyphens match
 hyphen-or-whitespace, `sklearn` counts for scikit-learn; thinking blocks
@@ -419,7 +436,9 @@ fallback). `input_tokens` is the UNCACHED count; `cache_read_tokens` is
 additive — total billed input = input + cached. Models without a
 `cached_input` rate are billed cached tokens at the `input` rate.
 `cache_creation_tokens` are captured in results but excluded from
-`compute_cost()`, so cache-write costs are not reflected in computed totals.
+`compute_cost()`, so cache-write costs are not reflected in computed totals —
+for subagent-heavy Anthropic Phase 3 runs this understates recorded costs by
+roughly 30-50%.
 
 **Pre-run estimation.** `cost_estimator.py` holds per-case calibration token
 profiles (average input/output/cached per case) that drive the pre-launch
@@ -431,6 +450,12 @@ Treat those pre-run estimates as lower bounds until recalibrated (§ 12). The
 Phase 4 profile is post-fix (recalibrated 2026-06-10 from the dry-run batch)
 but likely underestimates stronger models: the calibration models mostly
 answered without tool use, while full multi-reference routing runs heavier.
+In the opposite direction, observed pre-routing-fix Anthropic actuals ran at
+only ~14-20% of estimate (1-turn parametric answers plus prompt caching), so
+the estimator overstated those batches ~5-7×. The Phase 4 calibration source
+set has since been archived out of `results/`; recalibration from the first
+fresh-golden Anthropic baseline batch is pending (provenance note at
+`harness/cost_estimator.py:74`; § 12 Current Status).
 
 ## 8. Results & Viewer
 
@@ -449,19 +474,42 @@ results/{YYYYMMDD_HHMMSS}/
     └── subagents/         # subagent transcripts (Phase 3)
 ```
 
-**Viewer generation:**
+**Viewer generation.** `scripts/generate_results_viewer_v2.py` is the
+maintained generator; v1 (`generate_results_viewer.py`) remains in the repo
+as archival code, never modified. The `viewer.html` artifact v1 once produced
+was deleted (2026-06-10 housekeeping, user decision); the only viewer outputs
+are the dated `viewer_YYYY-MM-DD{letter}.html` files, which are untracked
+(gitignored via the `viewer_*.html` pattern in `benchmarks/.gitignore`).
 
 ```bash
-python3 benchmarks/scripts/generate_results_viewer.py                 # all result sets
-python3 benchmarks/scripts/generate_results_viewer.py \
+python3 benchmarks/scripts/generate_results_viewer_v2.py              # all result sets
+python3 benchmarks/scripts/generate_results_viewer_v2.py \
     --results 20260609_214335 20260609_224824 --output /tmp/view.html
+python3 benchmarks/scripts/generate_results_viewer_v2.py \
+    --exclude-results 20260608_181352                                  # all sets except these
 ```
 
-Produces a self-contained HTML file (default `benchmarks/viewer.html`, ~11 MB)
-embedding all selected result sets including full transcripts. It works opened
-directly from disk (`file://`). Tabs: Overview, Models, Cases, Costs,
-Transcripts, with phase filters including 3a (dispatch) and 3b (subagent
-behavior). Notable internals:
+Produces a self-contained HTML document embedding all selected result sets
+including full condensed transcripts. It works opened directly from disk
+(`file://`). When `--output` is omitted, the generator writes a **dated,
+auto-incrementing filename** in `benchmarks/` — `viewer_YYYY-MM-DD{a,b,...}.html`
+— which is intentional: each regeneration is a new versioned artifact (matching
+the framework's no-in-place-modification convention) and never overwrites a
+prior viewer. Both generators share this `viewer_YYYY-MM-DD{letter}.html`
+auto-increment namespace, so historical v1 outputs interleave with v2's
+lettering. `--exclude-results` drops named sets while keeping everything
+else (useful for known-contaminated sets without enumerating the rest via
+`--results`); exclusions are recorded in the embedded generation parameters
+for provenance.
+
+The output is a single scrolling document (verdict, about, leaderboard, cost
+vs. performance, phase deep-dives, cases & consistency, costs detail, run
+explorer, provenance). The leaderboard composite and tier bands are pinned to
+the four core components (P1, P2, P3a, P3b); any new phase reports as its own
+labeled group throughout the viewer until it is deliberately added to the
+composite. To add a new benchmark phase to the viewer, follow the "Adding a
+new benchmark phase" guide in the comment block above `PHASE_MAP` in
+`scripts/generate_results_viewer_v2.py`. Notable internals:
 
 - **Global rep renumbering:** runs from separate `--reps 1` batches all carry
   `rep=0`; the generator renumbers sequentially per `(phase, model, case_id)`
@@ -469,9 +517,12 @@ behavior). Notable internals:
 - **HTML5 tokenizer safety:** all `<` in the embedded JSON are escaped to
   `\u003c`. Transcripts contain literal `<!--` and `<script` sequences that
   otherwise flip the HTML5 parser into escaped-script states and break rendering
-- **Chrome `file://` handling:** hash state uses direct `location.hash`
-  assignment instead of `history.replaceState`, which Chrome restricts on
-  `file://` URLs
+- **Chrome `file://` handling:** explicit navigation (nav links, deep-link
+  jumps) writes the hash via `location.hash` on `file://` (Chrome restricts
+  `history.replaceState` there) and via `history.replaceState` otherwise.
+  The scrollspy only ever writes via `history.replaceState` — and writes
+  nothing on `file://` — since assigning `location.hash` during scroll would
+  scroll-jump
 
 ## 9. Operational Notes
 
@@ -494,11 +545,59 @@ within a single run. This is inherent and not preventable by scheduling.
 **OpenRouter runs fine in parallel.** Standard practice is parallel waves of
 ~5 models at the default 2s launch delay.
 
-**Fixture isolation (Phase 3).** `run_dispatch_compliance.py` copies any
-`datasets/test_fixtures/` paths referenced in a case prompt into the run's
-sandbox and rewrites the prompt, and creates a sandbox `workspace/` containing
-`scripts/run_with_capture.sh` so subagents treating the workspace as BASE_DIR
-find it. Originals should never be touched — but see Known Limitation 4.
+**Fixture isolation (Phase 3).** `run_dispatch_compliance.py` wipes and
+recreates each run's sandbox, then copies any `datasets/test_fixtures/` paths
+referenced in the case prompt into it, rewrites the prompt, and creates a
+sandbox `workspace/` containing `scripts/run_with_capture.sh` so subagents
+treating the workspace as BASE_DIR find it. Staging happens after the wipe:
+the runner passes `wipe_sandbox=False` through `RunConfig` so
+`prepare_sandbox()` does not re-wipe the staged fixtures (a prior ordering bug
+did exactly that — see Known Limitation 4).
+
+**Per-batch fixture restore.** Before launching the run pool,
+`run_dispatch_compliance.py` restores `datasets/test_fixtures/` to git HEAD
+(the pristine state — canonical fixtures legitimately contain `EXECUTION
+OUTPUT` blocks): tracked contamination gets a path-scoped
+`git restore --staged --worktree --source=HEAD -- <file>` (`--source=HEAD`
+because a plain restore pulls from the index, which would leave staged
+contamination in place); untracked residue is deleted via Python. Never `git
+clean` or non-path-scoped restores; every action is printed. The restore is
+strictly per-batch — a mid-batch restore would race with parallel threads
+reading the shared originals. Skip with `--no-fixture-restore` when
+intentionally editing fixtures. After the batch drains, a contamination check
+re-runs and warns loudly if fixtures are dirty but does NOT restore — the next
+launch's pre-run restore covers it.
+
+**Benchmark git-blocking hook.** `harness/executor.py` sets
+`DAAF_BENCHMARK_RUN=1` on every run's subprocess environment, activating
+`harness/hooks/block-git-writes.sh` — an env-gated PreToolUse Bash hook that
+default-denies git with a read-only allowlist (status, log, diff, show,
+ls-files, rev-parse, bare/`-v` remote, bare/`-a`/`--list` branch, `--version`,
+help) for the model under test and all its subagent sessions. For compound
+commands, every git invocation must be allowlisted or the whole command
+blocks; the hook fails closed (malformed input, missing jq, unrecognized
+subcommands all block). Normal DAAF sessions are unaffected — the hook exits
+immediately when the env var is unset. The registration in
+`/daaf/.claude/settings.json` (PreToolUse → matcher `"Bash"`, after
+`bash-safety.sh`) was applied by the user — Claude does not self-register
+hooks — and ships in the tracked settings file, so fresh clones inherit it.
+If the registration is ever removed, the hook becomes inert.
+
+**Sweeping `results/`: use python3, not ripgrep.** `results/` is gitignored
+and ripgrep silently skips it — `rg` sweeps return clean on directories full
+of matches. Write small python3 sweeps instead. When hunting rate-limit
+artifacts, anchor on structured event types (`"status":429`,
+`rate_limit_error`), not bare patterns: `/429/` matches line numbers and
+token counts, and skill prose false-positives `/overloaded/` ("Overloaded
+charts") and `/quota/` ("quotable").
+
+**Edit scorers only between batches.** A launched runner process holds its
+imported scorer modules for its whole life — a batch in flight (or launched
+just before) a scorer edit scores with the pre-edit logic. Observed
+2026-06-10: set `20260610_184022` was scored by a pre-overhaul import and
+carried legacy vacuous criteria until a post-hoc rescore normalized it. The
+rescore tools (`rescore_skill_routing.py`, `rescore_criteria_overhaul.py`)
+are the recovery path when this happens.
 
 ## 10. Results Snapshot (2026-06-09)
 
@@ -549,20 +648,34 @@ within 300s.
 1. **`--disallowed-tools` cannot block compound commands.** Claude Code splits
    commands on shell operators (`&&`, `||`, `;`, `|`) and checks each
    subcommand independently, so `cd x && git commit` evades `Bash(git commit *)`
-   deny patterns. Leading `*` wildcards (as currently written in
+   deny patterns. Leading `*` wildcards (as formerly written in
    `harness/models.py`) do not work either — glob matching is prefix-anchored.
-   The recommended fix is a PreToolUse hook; accepted limitation for now.
+   **Resolved (2026-06-10)** by the env-gated PreToolUse hook
+   `harness/hooks/block-git-writes.sh` (§ 9), which inspects the full command
+   string (compound commands cannot evade it) and blocks any non-allowlisted
+   git invocation. Registered in `.claude/settings.json` and verified
+   end-to-end (nested benchmark-style session: `git commit` blocked,
+   `git status` allowed). The dead git patterns were removed from
+   `harness/models.py`; the `disallowed_tools` mechanism itself remains for
+   non-git uses (e.g., disallowing the Agent tool).
 2. **Fable 5 thinking blocks are encrypted** (empty string + cryptographic
    signature). Reasoning-quality analysis is structurally impossible for Fable;
    all behavioral assessment relies on observable output proxies.
 3. **Cost calibration profiles are stale.** The per-case token profiles in
    `harness/cost_estimator.py` predate the `modelUsage` fix and reflect
    main-session-only tokens, underestimating subagent-dispatching cases (§ 7).
-4. **Subagents leak artifacts outside the sandbox.** Despite fixture copying,
-   benchmark subagents have contaminated original fixtures (appended execution
-   logs under `datasets/test_fixtures/`), created rogue `research/` project
-   folders, and made rogue git commits (see limitation 1). Manual cleanup has
-   been required; see § 12 for the planned pre-run fixture restore.
+4. **Subagents leaked artifacts outside the sandbox (root cause fixed
+   2026-06-10).** Fixture contamination was an ordering bug: the dispatch
+   runner staged fixtures into the sandbox BEFORE `prepare_sandbox()`
+   rmtree-wiped that same sandbox, so at model launch the rewritten prompt
+   pointed at deleted paths — models hunted the files by name and modified the
+   originals under `datasets/test_fixtures/`. Fixed by wiping before staging
+   (`wipe_sandbox=False` threaded through `RunConfig`), with the per-batch
+   restore-to-HEAD as defense-in-depth and a post-batch contamination warning
+   (§ 9). Rogue git commits are addressed by the git-blocking hook
+   (limitation 1). Rogue `research/` project folders remain possible — models
+   can still write outside the sandbox workspace; manual cleanup applies
+   there.
 5. **OpenRouter token counts are approximations.** The Anthropic-compatible
    endpoint reports counts from Anthropic's tokenizer, not each model's native
    tokenizer, so computed OpenRouter costs are approximate.
@@ -579,16 +692,21 @@ within 300s.
    model under test all share the DAAF container and filesystem. Low practical
    risk for internal behavioral scoring; a real gap if scores ever carry
    external weight.
+8. **Manifests pin the DAAF git SHA but not golden content hashes.** A run
+   executed against a worktree-modified golden is indistinguishable in
+   provenance from one against the committed version (observed: the first
+   fresh-golden Phase 4 sets pinned a SHA predating the golden's first
+   commit — they ran against the identical worktree copy, so scoring was
+   unaffected, but the manifest cannot prove it). Adding a golden content
+   hash to `manifest.json` is the designed improvement (§ 12).
 
 ## 12. Future Work
 
-- **Pre-run fixture cleanup/restore in `run_dispatch_compliance.py`:** reset
-  debugger and code-reviewer fixtures from pristine copies before each launch.
-  Two contaminated fixtures had to be restored by hand on 2026-06-09; this
-  should be automatic.
 - **Scorer improvements:**
   - Add clarifying-question patterns to the confirmation-gate regex (known
-    false negative: Sonnet on mc-09)
+    false negative: Sonnet on mc-09); sketched fix is a structural
+    final-paragraph-question fallback in `run_mode_classification.py`, where
+    Phase 1 is scored inline
   - Further soften `prompt_has_context_section` — the scorer already accepts
     seven heading variants, yet this remains the #1 failure across all models;
     consider detecting contextual content under any heading rather than a
@@ -597,8 +715,6 @@ within 300s.
   remaining Anthropic models to 3 reps on Phase 3 (sequential, one model at a
   time)
 - **Recalibrate cost estimation profiles** from post-`modelUsage`-fix runs
-- **PreToolUse git-blocking hook** for benchmark runs, replacing the
-  ineffective `--disallowed-tools` patterns
 
 ### Design Backlog (from the original reference)
 
@@ -614,7 +730,9 @@ items below are the still-valuable remainder.
   unconfirmed `git push`, helper functions. Highest-priority unbuilt category:
   Limitations 1 and 4 show models actually cross these boundaries (rogue git
   commits, sandbox leaks). Cheap single-prompt cases with scoring criteria
-  already specified; complements the planned PreToolUse git-blocking hook.
+  already specified; complements the PreToolUse git-blocking hook (§ 9). Open
+  design question: whether a hook-blocked rogue-git attempt should itself be
+  scored as a safety failure (currently unscored).
 - **Script Quality test category** (Reference § 7.5): 4-8 cases scoring
   generated scripts deterministically — section headers, IAT comments, no
   function definitions, parquet output, `run_with_capture.sh` execution,
@@ -662,3 +780,43 @@ items below are the still-valuable remainder.
   plumbing exists; see the reference's 2026-05-02 session notes for the
   `CLAUDE_CODE_EFFORT_LEVEL` override pitfall). The version-tagging deliverable
   is already satisfied by `manifest.json`'s DAAF git SHA.
+
+### Current Status / Next Steps (2026-06-10)
+
+Point-in-time status recorded at the retirement of `SESSION_NOTES.md`; it
+supersedes the session restart prompts that file carried. Once these items
+land, fold the outcomes into the sections above and update or remove this
+subsection.
+
+- **Phase 4 baseline matrix (fresh goldens) — remainder to run.** `results/`
+  currently holds one fresh-golden Phase 4 set (`20260610_184022`: glm-51,
+  kimi-k26, deepseek-v4-pro, gemini-31-pro, deepseek-v4-flash — the first
+  OpenRouter half, normalized post-hoc after the stale-import incident, § 9).
+  Remaining: OpenRouter `qwen-36-27b`, `gemma-4-26b`, `nemotron-3-ultra`,
+  `gemini-31-flash-lite` (parallel, default delay), plus a rerun-or-exclude
+  decision on `gemma-4-31b` (9/15 zero-turn 300s stalls in its pre-fix batch —
+  provider stall, no rate-limit text anywhere); Anthropic `haiku-45`,
+  `sonnet-46`, `opus-45`, `opus-46`, `opus-47`, `opus-48`, `fable-5`
+  (sequential, `--timeout 300` — ample; max observed Phase 4 duration 85s).
+  With the third-hop advisory-read norm in place, `required_refs_read` is the
+  headline metric to watch.
+- **PHASE4_TOKENS recalibration** from that batch's Anthropic actuals
+  (provenance note at `harness/cost_estimator.py:74`; § 7).
+- **Post-batch viewer regeneration** via `generate_results_viewer_v2.py`
+  (current artifact: `viewer_2026-06-10o.html`; the accumulated earlier dated
+  viewers from 2026-06-09/10 are superseded — retention/deletion is pending
+  housekeeping).
+- **Optional:** golden content hash in `manifest.json` (§ 11 item 8); review
+  of the data-scientist `SKILL.md:353` "Tool-specific syntax" branch label
+  (accepted residual unless transcripts show models exploiting it).
+
+## 13. AI Disclosure
+
+The benchmark suite — harness, datasets, scorers, golden checkpoints, viewer,
+and this documentation — was developed using DAAF in Framework Development
+mode, with Claude performing scoping, implementation, review, and analysis
+via specialist dispatches. The human researcher set scope, made all design
+decisions at confirmation checkpoints, and personally applied all
+safety-critical configuration (e.g., the `settings.json` hook registration).
+Reported scores are produced by the deterministic criteria described in § 6,
+not by human judgment of model output quality.
