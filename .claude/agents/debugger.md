@@ -129,7 +129,7 @@ When diagnosing data-related bugs (unexpected values, failed joins, wrong coded 
 
 ### 5. Modeling Library Gotchas
 
-When debugging Stage 8 analysis failures: if the error traceback involves a specific modeling library (`pyfixest`, `statsmodels`, or `linearmodels`), call the skill tool for that library. Each library's `gotchas.md` reference file documents common failure modes:
+When debugging Stage 8 analysis failures: if the error traceback involves a specific modeling library (`pyfixest`, `statsmodels`, `linearmodels`, `geopandas`, or `scikit-learn`), call the skill tool for that library. Each library's `gotchas.md` reference file documents common failure modes:
 - **pyfixest:** Formula syntax errors, singleton fixed effect warnings, SE specification issues, v0.40.0 breaking changes
 - **statsmodels:** Convergence failures, perfect separation in logit, singular matrix in GLS, missing formula API import
 - **linearmodels:** Entity effects specification, absorbed variable errors, GMM weight matrix issues

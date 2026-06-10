@@ -116,7 +116,7 @@ Before sending your pre-flight response, verify:
 | 5 | 3 | Data Retrieval | Domain query skill (e.g., `education-data-query`) | general-purpose |
 | 6 | 3 | Context Application | Domain context skill (e.g., `education-data-context`) | general-purpose |
 | 7 | 4 | EDA & Transformation | `data-scientist`, `polars` | general-purpose |
-| 8 | 4 | Analysis & Visualization | `data-scientist`, `polars`, modeling library (`statsmodels`/`pyfixest`/`linearmodels`/`svy` per Plan), `plotnine`/`plotly`, `geopandas` (if spatial) | general-purpose |
+| 8 | 4 | Analysis & Visualization | `data-scientist`, `polars`, modeling library (`statsmodels`/`pyfixest`/`linearmodels`/`svy`/`scikit-learn` per Plan), `plotnine`/`plotly`, `geopandas` (if spatial) | general-purpose |
 | 9 | 4 | Notebook Assembly | `marimo` | general-purpose |
 | 10 | 4 | QA Aggregation | — (orchestrator) | — |
 | 11 | 5 | Report Generation | `report-writer` agent | general-purpose |
@@ -250,7 +250,7 @@ The Full Pipeline workflow consists of **5 Phases** and **12 Stages**.
 │                          ↓                                                  │
 │  Stage 8: Analysis & Visualization ←── modeling + viz skills                │
 │      ├─ 8.1: Run statistical analyses (save to output/analysis/)            │
-│      │   ├─ Load modeling skill per Plan: statsmodels/pyfixest/linearmodels/svy │
+│      │   ├─ Load modeling skill per Plan (see Modeling library selection)   │
 │      │   └─ [Per-script QA loop (QA4a) — see Composite Execution Pattern]   │
 │      ├─ 8.2: Generate exploratory and final plots (save to output/figures/) │
 │      │   ├─ Load viz skill: plotnine/plotly, or geopandas for maps          │
@@ -510,6 +510,7 @@ These operations may be executed without preview:
 
 **Modeling library selection for Stage 8.1:** The Plan_Tasks.md `<skill>` element specifies which modeling library to load. The orchestrator passes this to the research-executor. The `data-scientist` skill's routing tree provides the canonical decision logic:
 - Standard regression (OLS, GLM, logit/probit) → `statsmodels`
+- Time series modeling (ARIMA/SARIMAX, VAR, forecasting, stationarity tests) → `statsmodels`
 - Fixed effects, IV with FE, or DiD → `pyfixest`
 - Random effects, between estimation, Fama-MacBeth, IV-GMM, SUR/3SLS → `linearmodels`
 - Survey-weighted analysis (complex survey design) → `svy`

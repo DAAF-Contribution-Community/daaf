@@ -44,6 +44,7 @@ After completing each item, note the status: Done, Skipped (with reason), or N/A
 | SM3 | If adding references, verify `references/` stays flat (no nested dirs) | [C] | Target skill | Directory structure |
 | SM4 | If changing the name, rename the directory to match | [M] | Target skill | Directory name = frontmatter `name` |
 | SM5 | Check if any agents preload this skill (search for skill name in `skills:` fields) | [C] | `.claude/agents/*.md` | Grep for skill name in agent frontmatter |
+| SM6 | If changing routing or decision-tree content, find and synchronize files that restate the routing | [C] | `.claude/agents/*.md`, `.claude/skills/daaf-orchestrator/references/*.md` | Grep for library/skill names enumerated in the changed routing (duplicated summaries drift silently) |
 
 ---
 

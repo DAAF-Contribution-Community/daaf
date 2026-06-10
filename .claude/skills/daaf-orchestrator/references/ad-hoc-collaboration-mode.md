@@ -148,7 +148,7 @@ The orchestrator dispatches to a specialized agent when:
 
 | User Need | `subagent_type` | Notes |
 |-----------|----------------|-------|
-| Write or run analysis code | `research-executor` | Orchestrator frames the user's request as a `<task>` block. When the task involves statistical modeling, use the `data-scientist` skill's routing tree (Related Skills > Statistical modeling section) to select the library: `statsmodels` for standard regression/GLM/diagnostics, `pyfixest` for fixed effects/DiD/IV, `linearmodels` for random effects/IV-GMM/SUR, `geopandas` for spatial regression. Include the selected library in the task block. |
+| Write or run analysis code | `research-executor` | Orchestrator frames the user's request as a `<task>` block. When the task involves statistical modeling, use the `data-scientist` skill's routing tree (Related Skills > Statistical modeling section) to select the library: `statsmodels` for standard regression/GLM/diagnostics/time series, `pyfixest` for fixed effects/DiD/IV, `linearmodels` for random effects/IV-GMM/SUR, `svy` for complex survey analysis, `geopandas` for spatial regression, `scikit-learn` for clustering/prediction ML. Include the selected library in the task block. |
 | Debug a script or diagnose an error | `debugger` | User provides script path + error description |
 | Review code for correctness and methodology | `code-reviewer` | User provides script; orchestrator provides methodology context |
 | Deep investigation of a data source | `source-researcher` | Standard multi-mode agent; already works in Data Lookup and Data Discovery |

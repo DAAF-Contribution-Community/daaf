@@ -147,6 +147,10 @@ What task are you performing?
 │       ├─ Random effects, between, first difference, Fama-MacBeth → Load `linearmodels` skill
 │       ├─ IV without FE (LIML, GMM) → Load `linearmodels` skill
 │       ├─ System estimation (SUR, 3SLS) → Load `linearmodels` skill
+│       ├─ Time series modeling (ARIMA/SARIMAX, VAR, forecasting, stationarity
+│       │   tests, exponential smoothing) → Load `statsmodels` skill
+│       │   (to *describe* trends or seasonality without formal modeling, read
+│       │   ./references/descriptive-analysis.md "Trend Analysis" section instead)
 │       └─ Spatial regression (spatial lag, spatial error, GWR) → Load `geopandas` skill
 │           (spatial regression uses PySAL/spreg via geopandas; also read geospatial refs)
 ├─ Supervised ML (prediction, classification, risk scoring)
@@ -182,10 +186,10 @@ What task are you performing?
 │       ├─ ./references/geospatial-analysis.md (spatial thinking, methods, interpretation)
 │       └─ ./references/geospatial-operations.md (joins, weights, interpolation, operations)
 │       THEN load `geopandas` skill for implementation syntax
-├─ Not currently covered by DAAF skills:
-│   ├─ Bayesian modeling (PyMC, bambi) → escalate to orchestrator
-│   ├─ Survival / time-to-event analysis → escalate to orchestrator
-│   └─ Deep learning (PyTorch, TensorFlow) → escalate to orchestrator
+└─ Not currently covered by DAAF skills:
+    ├─ Bayesian modeling (PyMC, bambi) → escalate to orchestrator
+    ├─ Survival / time-to-event analysis → escalate to orchestrator
+    └─ Deep learning (PyTorch, TensorFlow) → escalate to orchestrator
 ```
 
 **Visualization loading order matters:** The reference files provide *design principles* (what chart to use, how to direct attention, how to handle color accessibly). The tool skills provide *syntax* (how to code it). Read the design guidance first so implementation choices are principled, not ad-hoc.
@@ -214,7 +218,7 @@ This skill assumes familiarity with:
 | `visualization-design.md` | Chart selection, visual encoding, emphasis, integrity | **Before creating any visualization** |
 | `visualization-execution.md` | Color palettes, accessibility, labeling, typography, export | **When producing figures** |
 | `descriptive-analysis.md` | Summary statistics, subgroups, distributions, decompositions, weighting, inequality, correlation, missing data | Stage 8 analysis when the research contribution is descriptive |
-| `statistical-modeling.md` | Model selection, assumption checking, robust inference, coefficient interpretation, robustness checks | Stage 8.1 analysis involving regression, modeling, or hypothesis testing |
+| `statistical-modeling.md` | Model selection, assumption checking, robust inference, coefficient interpretation, robustness checks | Stage 8.1 analysis involving regression, modeling, or hypothesis testing. For formal time-series estimation (ARIMA/SARIMAX, VAR, forecasting), load the `statsmodels` skill directly |
 | `causal-inference.md` | Causal identification, DAGs, RCTs, IV, RD, DiD, synthetic control, matching | Stage 8.1 analysis requiring causal claims |
 | `survey-analysis.md` | Complex survey methodology: design anatomy, weight selection, variance estimation, domain estimation, plausible values, survey-weighted regression, federal survey reference table, pitfalls checklist | **Any task involving data from a complex probability survey** (NHANES, ACS PUMS, CPS, ECLS-K, HSLS, MEPS, NAEP, etc.) |
 | `geospatial-analysis.md` | Spatial thinking, MAUP, CRS, methods decision guide, autocorrelation, regression | **Any task involving geographic/spatial data** |
@@ -273,6 +277,9 @@ Unfamiliar data?
 │      → ./references/eda-checklist.md
 │      IF data contains geometry column, lat/lon, GEOID, or FIPS codes:
 │      → also read ./references/geospatial-analysis.md
+│      IF data has a temporal index (dates, repeated periods, panel structure):
+│      → also read ./references/descriptive-analysis.md "Trend Analysis" section
+│        (for forecasting or formal time-series modeling, load `statsmodels` skill)
 ├─ Step 2: Understand granularity
 │   └─ What does each row represent?
 │   └─ What columns uniquely identify a row?
@@ -356,7 +363,7 @@ Am I trying to describe or explain?
 │   └─ → ./references/descriptive-analysis.md
 │       ├─ Subgroup comparisons → Stratification section
 │       ├─ Distribution shape → Distributional analysis section
-│       ├─ Trends over time → Trend analysis section
+│       ├─ Trends over time (characterize, smooth, decompose) → Trend analysis section
 │       ├─ Gaps between groups → Decomposition methods section
 │       ├─ Composite measure → Index construction section
 │       ├─ Inequality → Inequality measurement section
@@ -366,7 +373,10 @@ Am I trying to describe or explain?
 │       ├─ Choose model by outcome type → Model selection framework
 │       ├─ Check assumptions → Assumption checking protocol
 │       ├─ Choose standard errors → SE type decision table
-│       └─ Interpret coefficients → Interpretation guide
+│       ├─ Interpret coefficients → Interpretation guide
+│       └─ Forecast or formally model temporal dynamics (ARIMA/SARIMAX, VAR,
+│           stationarity tests) → Load `statsmodels` skill (see its
+│           "I need to analyze time series" decision tree)
 └─ Explain causally
     └─ → ./references/causal-inference.md
         └─ Select method per Method Selection Guide

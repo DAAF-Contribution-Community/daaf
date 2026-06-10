@@ -140,7 +140,7 @@ Call the skill tool only for **additional** stage-specific skills:
 | 5 (Fetch) | Domain query skill (from Agent prompt) |
 | 6 (Clean) | Domain context skill (from Agent prompt, if applicable) |
 | 7 (Transform) | `polars`, `geopandas` (if spatial data) |
-| 8 (Analyze & Viz) | `polars`, `plotnine` or `plotly` or `geopandas` (for maps), `pyfixest` or `statsmodels` or `linearmodels` or `svy` or `scikit-learn` (per methodology in Plan) |
+| 8 (Analyze & Viz) | `polars`, `plotnine` or `plotly` or `geopandas` (for maps or spatial modeling), `pyfixest` or `statsmodels` or `linearmodels` or `svy` or `scikit-learn` (per methodology in Plan) |
 
 **Note:** Stages 5-6 use domain-specific skills specified by the orchestrator in the Agent prompt. Stages 7-8 use domain-agnostic analysis tools. For Stage 8 regression/modeling, the orchestrator specifies which library skill to load based on the Plan's methodology.
 

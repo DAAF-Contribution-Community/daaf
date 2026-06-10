@@ -345,7 +345,7 @@ Time series data typically exhibit some combination of:
 - **Cyclicality**: Longer-run fluctuations not tied to a fixed period (business cycles)
 - **Noise**: Irregular, unpredictable variation
 
-Descriptive time series analysis aims to characterize these components, not forecast or model them causally.
+Descriptive time series analysis aims to characterize these components, not forecast or model them causally. For forecasting or formal time-series modeling (ARIMA/SARIMAX, VAR, stationarity testing, exponential smoothing), load the `statsmodels` skill — its time-series references cover estimation, diagnostics, and forecasting workflows.
 
 ### Moving Averages for Trend Extraction
 
