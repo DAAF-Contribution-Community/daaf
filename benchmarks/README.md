@@ -781,31 +781,62 @@ items below are the still-valuable remainder.
   `CLAUDE_CODE_EFFORT_LEVEL` override pitfall). The version-tagging deliverable
   is already satisfied by `manifest.json`'s DAAF git SHA.
 
-### Current Status / Next Steps (2026-06-10)
+### Current Status / Next Steps (2026-06-10, updated ~21:50 UTC)
 
-Point-in-time status recorded at the retirement of `SESSION_NOTES.md`; it
-supersedes the session restart prompts that file carried. Once these items
-land, fold the outcomes into the sections above and update or remove this
-subsection.
+Point-in-time status; supersedes the retired `SESSION_NOTES.md` restart
+prompts. Once these items land, fold the outcomes into the sections above
+and update or remove this subsection.
 
-- **Phase 4 baseline matrix (fresh goldens) — remainder to run.** `results/`
-  currently holds one fresh-golden Phase 4 set (`20260610_184022`: glm-51,
-  kimi-k26, deepseek-v4-pro, gemini-31-pro, deepseek-v4-flash — the first
-  OpenRouter half, normalized post-hoc after the stale-import incident, § 9).
-  Remaining: OpenRouter `qwen-36-27b`, `gemma-4-26b`, `nemotron-3-ultra`,
-  `gemini-31-flash-lite` (parallel, default delay), plus a rerun-or-exclude
-  decision on `gemma-4-31b` (9/15 zero-turn 300s stalls in its pre-fix batch —
-  provider stall, no rate-limit text anywhere); Anthropic `haiku-45`,
-  `sonnet-46`, `opus-45`, `opus-46`, `opus-47`, `opus-48`, `fable-5`
-  (sequential, `--timeout 300` — ample; max observed Phase 4 duration 85s).
-  With the third-hop advisory-read norm in place, `required_refs_read` is the
-  headline metric to watch.
-- **PHASE4_TOKENS recalibration** from that batch's Anthropic actuals
-  (provenance note at `harness/cost_estimator.py:74`; § 7).
-- **Post-batch viewer regeneration** via `generate_results_viewer_v2.py`
-  (current artifact: `viewer_2026-06-10o.html`; the accumulated earlier dated
-  viewers from 2026-06-09/10 are superseded — retention/deletion is pending
-  housekeeping).
+- **Phase 4 baseline matrix (fresh goldens) — COMPLETE.** 10 OpenRouter
+  models × 3 reps + 7 Anthropic models × 1 rep, all on the post-third-hop
+  framework and fresh goldens. Fresh-golden sets in `results/` (all swept
+  clean: 0 rate-limit events anywhere; python3-verified): `20260610_184022`
+  (OR strong-five rep 1: glm-51, kimi-k26, deepseek-v4-pro, gemini-31-pro,
+  deepseek-v4-flash — normalized post-hoc, § 9), `_194256` (Anthropic:
+  haiku-45, sonnet-46, opus-46, fable-5; **Fable 5 near-ceiling: 15/15
+  loaded, 14/15 refs_read, 13/15 all-criteria; Haiku pure third-hop failure:
+  8/15 loaded, 0/15 refs_read**), `_201039` (OR second-five rep 1:
+  qwen-36-27b, gemma-4-26b, nemotron-3-ultra, gemini-31-flash-lite,
+  gemma-4-31b), `_203038` + `_203935` (strong-five reps 2-3), `_205051` +
+  `_210215` (second-five reps 2-3; Gemma 31B stalled 10/15 and 14/15),
+  `_214502` (Anthropic Opus 4.8/4.5/4.7 sequential, 0 errors: **Opus 4.8
+  12/15 loaded, 8/15 refs_read, 6/15 all — clear top-end gradient 4.5 → 4.8
+  → Fable**). Top open-weight routers across reps: DeepSeek V4 Pro and
+  Qwen 3.6 27B (5-6/15 all-criteria); Kimi most rep-volatile (5-9/15
+  loaded).
+- **Viewer gap (bookmarked, viewer-session territory):** the v2 viewer's
+  cost plot has no phase filter — cannot display costs for Phase 4 alone.
+- **Harness gap (bookmarked): transcript-less timeout runs.** 4 runs
+  (`pc-03`/`pc-07` × Fable 5 in `20260609_203258` and `20260609_215903` —
+  the two sets with the short 120s pc-timeout) are flagged timed-out with NO
+  transcript.jsonl archived. Working hypothesis: timeout-kill lands before
+  the CLI emits session metadata, so the collector has no session ID to
+  resolve (slowest model × tightest ceiling × heaviest cases). Confirmation
+  pass = read `harness/executor.py`/`collector.py` transcript-resolution
+  logic against one of those run dirs. Related fix candidates: write
+  transcript on timeout; first-activity stall detector (below).
+- **Gemma 4 31B kept IN by user decision:** silent stalls are documented
+  model-attributable failures, not artifacts to exclude — forensic sweep of
+  Phases 1-3 (full corpus, transcript-level) found 18.5% silent-stall rate
+  for 31B and 9.3% for 26B across *different* provider pins, vs ≤1% for
+  Gemini models and ~1-3% ambient elsewhere: a Gemma-subfamily defect, not
+  Google-family or single-endpoint. 31B reproduced 10/15 zero-turn 300s
+  stalls in each fresh batch. Stalls score as failed runs.
+- **Timeout stays 300s for mixed/OpenRouter batches** (runtime analysis of
+  199 completed fresh runs: p99=252s, max=271s; the slow tail is OpenRouter
+  per-turn latency ~2x Anthropic, not work volume). Anthropic-only batches
+  are safe at 150s (max observed 129s). Better stall remedy than tighter
+  ceilings: harness first-activity detector (no event by ~90s → kill) —
+  candidate § 12 backlog item. Harness artifact to know: timeouts zero
+  `turns`/`output_tokens` in result.json, so stall analysis requires
+  transcript-level reconstruction.
+- **PHASE4_TOKENS recalibration** from `_194256` Anthropic actuals (avg$/run:
+  Haiku $0.020, Sonnet $0.087, Opus 4.6 $0.107, Fable $0.425; provenance
+  note at `harness/cost_estimator.py:74`; § 7). Estimator currently
+  UNDERSTATES post-fix OpenRouter runs (~1.6x) — inverse of the old caveat.
+- **Viewer current:** `viewer_2026-06-10q.html` (v2; includes all eight
+  fresh Phase 4 sets). Earlier dated viewers superseded — retention/deletion
+  is pending housekeeping.
 - **Optional:** golden content hash in `manifest.json` (§ 11 item 8); review
   of the data-scientist `SKILL.md:353` "Tool-specific syntax" branch label
   (accepted residual unless transcripts show models exploiting it).
