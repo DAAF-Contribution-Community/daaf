@@ -4,9 +4,11 @@ Generate a self-contained HTML viewer for DAAF benchmark results (v2).
 
 Reads benchmark result sets from benchmarks/results/, loads case definitions
 and per-set manifests, condenses transcripts, computes derived metrics
-(per-model per-phase aggregates, composite scores, tier bands, consistency,
-per-case difficulty, callouts, cost summaries, provenance), and produces a
-single HTML file with all data embedded.
+(per-model per-phase aggregates, composite scores and tier bands under both
+the Perfect and Hard-only metrics, consistency, per-case difficulty,
+callouts, published-pricing formulations with per-basis/per-metric
+efficiency frontiers, provenance), and produces a single HTML file with all
+data embedded.
 
 The HTML/CSS/JS lives in the sibling template file viewer_template.html;
 this script is data preparation + placeholder substitution. v1
@@ -464,16 +466,13 @@ def load_runs(results_dir, result_sets, cases):
                 "rep": result.get("rep", 0),
                 "session_id": result.get("session_id", ""),
                 "turns": result.get("turns", 0),
-                "computed_cost_usd": result.get("computed_cost_usd", 0),
-                # Defensive read: this field is absent from all current
-                # result.json files; the 1.0 default is kept deliberately so
-                # the reasoning-multiplier badge logic keeps working if the
-                # harness ever emits it again.
-                "reasoning_cost_multiplier": result.get("reasoning_cost_multiplier", 1.0),
-                "input_tokens": result.get("input_tokens", 0),
-                "output_tokens": result.get("output_tokens", 0),
-                "cache_read_tokens": result.get("cache_read_tokens", 0),
-                "cache_creation_tokens": result.get("cache_creation_tokens", 0),
+                # Per-run computed cost and token counts are deliberately NOT
+                # embedded: OpenRouter token accounting does not align with the
+                # harness's usage logging (the Anthropic-compatible endpoint
+                # reports Anthropic-tokenizer counts, not each model's own
+                # billing meter), so token-derived dollar figures were
+                # unreliable and all spend tracking was removed from the
+                # viewer. Only published $/Mtok pricing is displayed.
                 "duration_s": result.get("duration_s", 0),
                 "error": result.get("error", None),
                 # Explicit flag from the harness — never string-match `error`
@@ -781,7 +780,7 @@ def build_data_bundle(result_sets, cases, runs, transcripts, subagent_transcript
     )
     return {
         "generated_at": datetime.now(timezone.utc).isoformat(),
-        "generator_version": "2.1.0",
+        "generator_version": "2.3.0",
         "result_sets": sorted_result_sets,
         "cases": cases,
         "runs": runs,
@@ -901,7 +900,8 @@ def run_group_criteria(run, group):
     return run.get("criteria") or {}
 
 
-def build_precomputed(result_sets, cases, runs, generation_params):
+def build_precomputed(result_sets, cases, runs, generation_params,
+                      model_pricing=None):
     """Compute the derived-metrics bundle embedded as PRECOMPUTED."""
     groups = build_eval_groups(result_sets)
     group_ts = {g["id"]: set(g["timestamps"]) for g in groups}
@@ -924,6 +924,7 @@ def build_precomputed(result_sets, cases, runs, generation_params):
             n_runs = len(gruns)
             n_graded = 0
             perfect_count = 0
+            hard_pass_count = 0
             hard_passed = hard_total = soft_passed = soft_total = 0
             dispatch_passed = dispatch_total = 0
             for r in gruns:
@@ -937,6 +938,13 @@ def build_precomputed(result_sets, cases, runs, generation_params):
                 # no subagent criteria)
                 if compute_grade(crit) == "perfect":
                     perfect_count += 1
+                # Hard-pass (leaderboard "Hard-only" metric) mirrors Perfect
+                # but over hard-tier criteria only: at least one criterion
+                # present AND every hard-tier criterion passed. A graded run
+                # whose group has no hard-tier criteria passes vacuously, so
+                # the hard-pass set always contains the perfect set
+                # (hard_rate >= perfect_rate by construction).
+                hard_run_ok = bool(crit)
                 for name, entry in crit.items():
                     if not isinstance(entry, dict):
                         continue
@@ -945,6 +953,8 @@ def build_precomputed(result_sets, cases, runs, generation_params):
                         hard_total += 1
                         if entry.get("passed"):
                             hard_passed += 1
+                        else:
+                            hard_run_ok = False
                     elif tier == "soft":
                         soft_total += 1
                         if entry.get("passed"):
@@ -953,11 +963,15 @@ def build_precomputed(result_sets, cases, runs, generation_params):
                         dispatch_total += 1
                         if entry.get("passed"):
                             dispatch_passed += 1
+                if hard_run_ok:
+                    hard_pass_count += 1
             cell = {
                 "n_runs": n_runs,
                 "n_graded": n_graded,
                 "perfect_count": perfect_count,
                 "perfect_rate": rnd(perfect_count / n_runs),
+                "hard_pass_count": hard_pass_count,
+                "hard_rate": rnd(hard_pass_count / n_runs),
                 "hard_passed": hard_passed,
                 "hard_total": hard_total,
                 "soft_passed": soft_passed,
@@ -979,66 +993,89 @@ def build_precomputed(result_sets, cases, runs, generation_params):
     # corpus (components_missing likewise refers only to composite gids).
     corpus_components = [gid for gid in COMPOSITE_GIDS
                          if any(g["id"] == gid for g in groups)]
-    composite = {}
-    for model in models:
-        comps = {}
-        n_total = 0
-        for gid in corpus_components:
-            cell = per_model_phase.get(model, {}).get(gid)
-            if cell is None:
+
+    def build_composite_from(rate_field):
+        # Single code path shared by the Perfect metric
+        # (rate_field="perfect_rate") and the Hard-only metric
+        # (rate_field="hard_rate") so the composite construction cannot
+        # drift between the two leaderboard metrics. Output shape is
+        # identical for both.
+        out = {}
+        for model in models:
+            comps = {}
+            n_total = 0
+            for gid in corpus_components:
+                cell = per_model_phase.get(model, {}).get(gid)
+                if cell is None:
+                    continue
+                comps[gid] = cell[rate_field]
+                n_total += cell["n_runs"]
+            if not comps:
                 continue
-            comps[gid] = cell["perfect_rate"]
-            n_total += cell["n_runs"]
-        if not comps:
-            continue
-        score = sum(comps.values()) / len(comps)
-        composite[model] = {
-            "score": rnd(score),
-            "components": comps,
-            "components_present": list(comps.keys()),
-            "components_missing": [gid for gid in corpus_components
-                                   if gid not in comps],
-            "n_total": n_total,
-            "partial_data": len(comps) < len(corpus_components),
-        }
+            score = sum(comps.values()) / len(comps)
+            out[model] = {
+                "score": rnd(score),
+                "components": comps,
+                "components_present": list(comps.keys()),
+                "components_missing": [gid for gid in corpus_components
+                                       if gid not in comps],
+                "n_total": n_total,
+                "partial_data": len(comps) < len(corpus_components),
+            }
+        return out
+
+    composite = build_composite_from("perfect_rate")
+    composite_hard = build_composite_from("hard_rate")
 
     # --- tiers: mechanical banding on composite (gap rule + quartile fallback) ---
-    # Stage 1 (gap rule): sort by composite descending; start a new tier where
-    # the gap to the previous model's composite is >= TIER_GAP_THRESHOLD.
-    ranked = sorted(composite.items(), key=lambda kv: (-kv[1]["score"], kv[0]))
-    tiers = []
-    prev_score = None
-    for model, entry in ranked:
-        if prev_score is None or (prev_score - entry["score"]) >= TIER_GAP_THRESHOLD:
-            tiers.append({"label": "T" + str(len(tiers) + 1), "models": []})
-        tiers[-1]["models"].append(model)
-        entry["tier"] = tiers[-1]["label"]
-        prev_score = entry["score"]
-    tier_rule = {"method": "gap", "gap_threshold": TIER_GAP_THRESHOLD}
-    # Stage 2 (fallback): on a large corpus whose composites form a
-    # near-continuum, the gap rule degenerates to a single band. If it
-    # produced fewer than TIER_MIN_TIERS tiers across >=
-    # TIER_FALLBACK_MIN_MODELS models, band instead by which quarter of the
-    # composite range [min, max] each score falls in. Walking the descending
-    # ranking, band indices are non-decreasing, so a band change starts a new
-    # tier; empty bands are skipped and labels stay contiguous.
-    if len(ranked) >= TIER_FALLBACK_MIN_MODELS and len(tiers) < TIER_MIN_TIERS:
-        hi = ranked[0][1]["score"]
-        lo = ranked[-1][1]["score"]
-        span = hi - lo
-        if span > 0:
-            tiers = []
-            prev_band = None
-            for model, entry in ranked:
-                # band 0 = top quarter of the range ... band 3 = bottom quarter
-                band = min(3, int((hi - entry["score"]) / span * 4))
-                if prev_band is None or band != prev_band:
-                    tiers.append({"label": "T" + str(len(tiers) + 1), "models": []})
-                    prev_band = band
-                tiers[-1]["models"].append(model)
-                entry["tier"] = tiers[-1]["label"]
-            tier_rule = {"method": "range_quartiles",
-                         "gap_threshold": TIER_GAP_THRESHOLD}
+    # Factored into one helper so the IDENTICAL rule produces both the
+    # Perfect-metric tiers and the Hard-only-metric tiers — the banding
+    # logic cannot drift between the two leaderboard metrics.
+    def compute_tiers_for(composite_dict):
+        # Stage 1 (gap rule): sort by composite descending; start a new tier
+        # where the gap to the previous model's composite is >=
+        # TIER_GAP_THRESHOLD. Annotates entry["tier"] in place.
+        ranked = sorted(composite_dict.items(),
+                        key=lambda kv: (-kv[1]["score"], kv[0]))
+        tiers = []
+        prev_score = None
+        for model, entry in ranked:
+            if prev_score is None or (prev_score - entry["score"]) >= TIER_GAP_THRESHOLD:
+                tiers.append({"label": "T" + str(len(tiers) + 1), "models": []})
+            tiers[-1]["models"].append(model)
+            entry["tier"] = tiers[-1]["label"]
+            prev_score = entry["score"]
+        tier_rule = {"method": "gap", "gap_threshold": TIER_GAP_THRESHOLD}
+        # Stage 2 (fallback): on a large corpus whose composites form a
+        # near-continuum, the gap rule degenerates to a single band. If it
+        # produced fewer than TIER_MIN_TIERS tiers across >=
+        # TIER_FALLBACK_MIN_MODELS models, band instead by which quarter of
+        # the composite range [min, max] each score falls in. Walking the
+        # descending ranking, band indices are non-decreasing, so a band
+        # change starts a new tier; empty bands are skipped and labels stay
+        # contiguous.
+        if len(ranked) >= TIER_FALLBACK_MIN_MODELS and len(tiers) < TIER_MIN_TIERS:
+            hi = ranked[0][1]["score"]
+            lo = ranked[-1][1]["score"]
+            span = hi - lo
+            if span > 0:
+                tiers = []
+                prev_band = None
+                for model, entry in ranked:
+                    # band 0 = top quarter of the range ... band 3 = bottom
+                    band = min(3, int((hi - entry["score"]) / span * 4))
+                    if prev_band is None or band != prev_band:
+                        tiers.append({"label": "T" + str(len(tiers) + 1),
+                                      "models": []})
+                        prev_band = band
+                    tiers[-1]["models"].append(model)
+                    entry["tier"] = tiers[-1]["label"]
+                tier_rule = {"method": "range_quartiles",
+                             "gap_threshold": TIER_GAP_THRESHOLD}
+        return tiers, tier_rule
+
+    tiers, tier_rule = compute_tiers_for(composite)
+    tiers_hard, tier_rule_hard = compute_tiers_for(composite_hard)
 
     # --- consistency: pass^k over (phase, case) cells with >= 2 reps ---
     # A cell is all-perfect when every rep of that (model, phase, case) has
@@ -1142,67 +1179,102 @@ def build_precomputed(result_sets, cases, runs, generation_params):
     if global_weakest is not None:
         callouts["global_weakest"] = global_weakest[1]
 
-    # --- cost: per-model spend/duration, excluding zeroed timeout runs ---
-    # Timed-out runs have zeroed cost/tokens, which pollutes averages; they
-    # are excluded from avg cost and avg duration (excluded_count disclosed
-    # for footnotes). Totals still include them — they contribute zero.
-    cost = {"per_model": {}, "total_spend_usd": 0.0}
-    total_spend = 0.0
+    # --- cost: published $/Mtok pricing formulations (NO observed spend) ---
+    # Observed token-derived spend was removed entirely: OpenRouter token
+    # accounting does not align with the harness's usage logging (the
+    # Anthropic-compatible endpoint reports Anthropic-tokenizer counts, not
+    # each model's own billing meter), so computed dollar figures were
+    # unreliable. Instead, three published-pricing formulations are
+    # precomputed per model from config/models.yaml rates:
+    #   blend31 -- (3 x input + output) / 4 (Artificial Analysis convention)
+    #   input   -- input $/Mtok
+    #   output  -- output $/Mtok
+    pricing = model_pricing or {}
+    cost = {"models": [], "frontiers": {}}
+    price_by_model = {}
     for model in models:
-        mruns = [r for r in runs if r["model"] == model]
-        excluded = [r for r in mruns
-                    if r["timed_out"] and r["computed_cost_usd"] == 0]
-        included = [r for r in mruns
-                    if not (r["timed_out"] and r["computed_cost_usd"] == 0)]
-        model_total = sum(r["computed_cost_usd"] for r in mruns)
-        total_spend += model_total
-        cost["per_model"][model] = {
-            "n_runs": len(mruns),
-            "n_included": len(included),
-            "excluded_count": len(excluded),
-            "avg_cost_usd": rnd(
-                sum(r["computed_cost_usd"] for r in included) / len(included)
-            ) if included else None,
-            "avg_duration_s": rnd(
-                sum(r["duration_s"] for r in included) / len(included), 1
-            ) if included else None,
-            "total_cost_usd": rnd(model_total, 2),
-            "tokens": {
-                "input_tokens": sum(r["input_tokens"] for r in mruns),
-                "output_tokens": sum(r["output_tokens"] for r in mruns),
-                "cache_read_tokens": sum(r["cache_read_tokens"] for r in mruns),
-                "cache_creation_tokens": sum(r["cache_creation_tokens"] for r in mruns),
-            },
-        }
-    cost["total_spend_usd"] = rnd(total_spend, 2)
-
-    # --- efficiency frontier: Pareto set on (avg cost asc, composite desc) ---
-    # Computed over models that have both an avg cost and a composite score.
-    # Walking points sorted by (cost asc, composite desc, name asc) and
-    # keeping strict composite improvements yields the frontier staircase
-    # deterministically: a model is kept iff no cheaper-or-equal model has an
-    # equal-or-higher composite. Precomputed here (not in JS) so the scatter
-    # annotation, the leaderboard prose, and the sanity report cannot drift.
-    frontier_pts = []
-    for model in models:
-        cm = cost["per_model"][model]
-        comp_entry = composite.get(model)
-        if cm["avg_cost_usd"] is None or comp_entry is None:
+        p = pricing.get(model)
+        if not p:
             continue
-        frontier_pts.append((cm["avg_cost_usd"], -comp_entry["score"], model))
-    frontier_pts.sort()
-    frontier = []
-    best_score = None
-    for avg_cost, neg_score, model in frontier_pts:
-        score = -neg_score
-        if best_score is None or score > best_score:
-            frontier.append({
-                "model": model,
-                "avg_cost_usd": avg_cost,
-                "composite": score,
-            })
-            best_score = score
-    cost["frontier"] = frontier
+        inp = p.get("input_per_million")
+        outp = p.get("output_per_million")
+        if inp is None or outp is None:
+            continue
+        entry = {
+            "key": model,
+            "input": rnd(inp),
+            "output": rnd(outp),
+            "blend31": rnd((3 * inp + outp) / 4),
+        }
+        cost["models"].append(entry)
+        price_by_model[model] = entry
+
+    # --- cost-perf y-value matrix: perf_values[basis][metric][model] ---
+    # Performance bases for the Cost vs. Performance scatter: "composite"
+    # plus each composite component gid (P1, P2, P3a, P3b). skill_routing
+    # (P4) is deliberately NOT a basis — partial model coverage mid-baseline
+    # would make its frontier misleading. Metrics: "perfect" (all criteria
+    # pass) and "hard" (all hard-tier criteria pass). Models lacking data
+    # for a basis are simply absent from that basis's dict (the template
+    # omits them from that view and footnotes the count).
+    perf_bases = ["composite"] + corpus_components
+    comp_by_metric = {"perfect": composite, "hard": composite_hard}
+    rate_field_by_metric = {"perfect": "perfect_rate", "hard": "hard_rate"}
+    perf_values = {}
+    for basis in perf_bases:
+        perf_values[basis] = {}
+        for metric in ("perfect", "hard"):
+            vals = {}
+            for model in models:
+                if basis == "composite":
+                    comp_entry = comp_by_metric[metric].get(model)
+                    if comp_entry is None:
+                        continue
+                    vals[model] = comp_entry["score"]
+                else:
+                    cell = per_model_phase.get(model, {}).get(basis)
+                    if cell is None:
+                        continue
+                    vals[model] = cell[rate_field_by_metric[metric]]
+            perf_values[basis][metric] = vals
+    cost["perf_values"] = perf_values
+
+    # --- efficiency frontiers: Pareto set on (price asc, score desc) ---
+    # One frontier per (price formulation x perf basis x metric) combination,
+    # keyed frontiers[price_form][perf_basis][metric], over models that have
+    # both a published price and a score under that basis/metric. Walking
+    # points sorted by (price asc, score desc, name asc) and keeping strict
+    # score improvements yields the frontier staircase deterministically: a
+    # model is kept iff no cheaper-or-equal model has an equal-or-higher
+    # score. Precomputed here (not in JS) so the scatter annotation, the
+    # section prose, and the sanity report cannot drift.
+    for form in ("blend31", "input", "output"):
+        cost["frontiers"][form] = {}
+        for basis in perf_bases:
+            cost["frontiers"][form][basis] = {}
+            for metric in ("perfect", "hard"):
+                frontier_pts = []
+                for model, score_val in perf_values[basis][metric].items():
+                    pm = price_by_model.get(model)
+                    if pm is None:
+                        continue
+                    price = pm[form]
+                    if price is None or price <= 0:
+                        continue
+                    frontier_pts.append((price, -score_val, model))
+                frontier_pts.sort()
+                frontier = []
+                best_score = None
+                for price, neg_score, model in frontier_pts:
+                    score = -neg_score
+                    if best_score is None or score > best_score:
+                        frontier.append({
+                            "model": model,
+                            "price": price,
+                            "score": score,
+                        })
+                        best_score = score
+                cost["frontiers"][form][basis][metric] = frontier
 
     # --- provenance: per result set, manifest + disk-vs-summary disclosure ---
     provenance = []
@@ -1227,7 +1299,6 @@ def build_precomputed(result_sets, cases, runs, generation_params):
         "n_cases": len(case_runs),
         "n_result_sets": len(result_sets),
         "n_timed_out": sum(1 for r in runs if r["timed_out"]),
-        "total_spend_usd": rnd(total_spend, 2),
         "generation_params": generation_params,
     }
 
@@ -1239,8 +1310,11 @@ def build_precomputed(result_sets, cases, runs, generation_params):
         ],
         "per_model_phase": per_model_phase,
         "composite": composite,
+        "composite_hard": composite_hard,
         "tiers": tiers,
+        "tiers_hard": tiers_hard,
         "tier_rule": tier_rule,
+        "tier_rule_hard": tier_rule_hard,
         "consistency": consistency,
         "per_case": per_case,
         "callouts": callouts,
@@ -1360,6 +1434,10 @@ def print_precomputed_report(precomputed):
     print(f"  Tier rule applied: {rule.get('method', '?')} "
           f"(gap threshold {rule.get('gap_threshold', '?')}) -> "
           f"{len(precomputed['tiers'])} tiers")
+    rule_h = precomputed.get("tier_rule_hard", {})
+    print(f"  Hard-metric tier rule: {rule_h.get('method', '?')} -> "
+          f"{len(precomputed.get('tiers_hard', []))} tiers over "
+          f"{len(precomputed.get('composite_hard', {}))} models")
     print("  Composite leaderboard (tier | model | composite | components | n):")
     comp = precomputed["composite"]
     ranked = sorted(comp.items(), key=lambda kv: (-kv[1]["score"], kv[0]))
@@ -1373,13 +1451,14 @@ def print_precomputed_report(precomputed):
               f"{comps} | n={entry['n_total']}{partial}")
     print()
 
-    print("  Efficiency frontier (cost asc | model | avg $/run | composite):")
-    for pt in precomputed["cost"].get("frontier", []):
-        print(f"    {pt['model']:<22} | ${pt['avg_cost_usd']:.4f} | "
-              f"{pt['composite']:.3f}")
+    print("  Efficiency frontier, blended 3:1 pricing, composite/perfect "
+          "(price asc | model | $/Mtok | score):")
+    blend_frontiers = precomputed["cost"].get("frontiers", {}).get("blend31", {})
+    for pt in blend_frontiers.get("composite", {}).get("perfect", []):
+        print(f"    {pt['model']:<22} | ${pt['price']:.2f}/Mtok | "
+              f"{pt['score']:.3f}")
     print()
 
-    cost = precomputed["cost"]
     totals = precomputed["totals"]
     n_disc = sum(1 for p in precomputed["provenance"] if p["run_count_discrepancy"])
     gw = precomputed["callouts"]["global_weakest"]
@@ -1387,7 +1466,8 @@ def print_precomputed_report(precomputed):
           f"({totals['n_timed_out']} timed out) | "
           f"models: {totals['n_models']} | cases: {totals['n_cases']} | "
           f"sets: {totals['n_result_sets']} ({n_disc} with run-count discrepancy)")
-    print(f"  Total spend: ${cost['total_spend_usd']:.2f}")
+    print(f"  Pricing loaded for {len(precomputed['cost'].get('models', []))} models "
+          f"(published $/Mtok; observed spend tracking removed)")
     excluded = (totals.get("generation_params") or {}).get("results_excluded") or []
     if excluded:
         print(f"  Excluded result sets (--exclude-results): {', '.join(excluded)}")
@@ -1447,7 +1527,8 @@ def main():
         "generated_at": data_bundle["generated_at"],
         "generator_version": data_bundle["generator_version"],
     }
-    precomputed = build_precomputed(result_sets, cases, runs, generation_params)
+    precomputed = build_precomputed(result_sets, cases, runs, generation_params,
+                                    model_pricing=model_pricing)
 
     # Print summaries
     print_summary(data_bundle)

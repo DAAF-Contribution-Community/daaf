@@ -66,6 +66,23 @@ code{ font-family:'SF Mono',SFMono-Regular,Consolas,'Liberation Mono',Menlo,mono
 }
 .doc{ margin-left:190px; max-width:1300px; padding:0 28px 80px; }
 .doc-section{ padding-top:30px; }
+/* Below-fold sections skip layout/paint while off-screen: toggling an About
+   <details> otherwise reflows the WHOLE document (every section below it
+   shifts), which made the toggles janky. content-visibility is the CSS-level
+   complement to the JS lazy renderer (ensureRendered/IntersectionObserver) —
+   it does not replace it. Hero and About are deliberately excluded: they sit
+   at the top and host the <details> toggles themselves. contain-intrinsic-size
+   keeps scrollbar geometry plausible before first render ("auto" then reuses
+   the last rendered size); hash deep-links still work — the engine renders
+   the navigation target on jump (Chrome / Firefox 125+). */
+#leaderboard,#cost-performance,#costs,#run-explorer,#provenance{
+  content-visibility:auto;
+  contain-intrinsic-size:auto 900px;
+}
+#phases,#cases{
+  content-visibility:auto;
+  contain-intrinsic-size:auto 2600px;
+}
 .doc-section h2{ font-size:20px; font-weight:700; margin-bottom:6px; }
 .section-lead{ font-size:14px; color:var(--text-2); max-width:880px; margin-bottom:12px; }
 .sec-body:empty{ min-height:240px; }
@@ -192,7 +209,13 @@ code{ font-family:'SF Mono',SFMono-Regular,Consolas,'Liberation Mono',Menlo,mono
 }
 .lb-sort-btn:hover{ color:var(--text-1); border-color:var(--text-3); }
 .lb-sort-btn.active{ background:rgba(99,102,241,.18); color:var(--text-1); border-color:var(--accent); font-weight:600; }
+.lb-metric-note{ font-size:11px; color:var(--text-3); margin-left:8px; }
 .lb-table th{ cursor:default; }
+/* Sortable column headers: visible affordance (pointer + hover tint),
+   active column highlighted; the ▲/▼ indicator is appended in JS */
+.lb-table th.lb-th-sort{ cursor:pointer; user-select:none; white-space:nowrap; }
+.lb-table th.lb-th-sort:hover{ color:var(--text-1); background:rgba(99,102,241,.12); }
+.lb-table th.lb-th-active{ color:var(--text-1); background:rgba(99,102,241,.18); }
 .lb-table td{ vertical-align:middle; }
 .lb-table .hm-cell{ cursor:default; }
 .lb-table .hm-cell.clickable{ cursor:pointer; }
@@ -290,31 +313,6 @@ code{ font-family:'SF Mono',SFMono-Regular,Consolas,'Liberation Mono',Menlo,mono
 .hm-cell{
   display:inline-block; padding:3px 8px; border-radius:4px; font-size:11px;
   font-weight:600; text-align:center; min-width:48px; cursor:pointer;
-}
-
-/* === Costs Detail (plan § 4.7) ===
-   Token-composition stacked bar: input / output / cache-read shares of a
-   model's billed tokens. Segments are separated by a 1px dark gap and
-   always paired with the exact percentages as text (in-cell + tooltip),
-   so composition never reads through hue alone. */
-.tok-bar{
-  display:inline-flex; vertical-align:middle; width:140px; height:10px;
-  border-radius:3px; background:var(--surface-0);
-  border:1px solid var(--border-1); overflow:hidden;
-}
-.tok-seg{ height:100%; }
-.tok-seg+.tok-seg{ margin-left:1px; }
-.tok-in{ background:var(--accent-light); }
-.tok-out{ background:var(--c-partial); }
-.tok-cache{ background:var(--c-neutral); }
-.tok-text{ font-size:10px; color:var(--text-2); margin-left:6px; white-space:nowrap; }
-.cost-legend{
-  display:flex; align-items:center; gap:14px; flex-wrap:wrap;
-  font-size:11px; color:var(--text-2); margin:2px 0 8px;
-}
-.cost-legend .tok-swatch{
-  display:inline-block; width:10px; height:10px; border-radius:2px;
-  margin-right:4px; vertical-align:-1px;
 }
 
 /* === Cases View (case browser per-rep marks) === */
@@ -473,7 +471,10 @@ code{ font-family:'SF Mono',SFMono-Regular,Consolas,'Liberation Mono',Menlo,mono
     a properly structured prompt. It measures <b>behavioral conformance only</b>. It does
     not measure answer quality, analytical capability, or general intelligence &mdash; a
     brilliant analyst model that skips confirmation gates scores poorly here, and a modest
-    model that faithfully follows protocol scores well.
+    model that faithfully follows protocol scores well. DAAF&rsquo;s framework instructions
+    were authored and tuned with Claude Opus 4.5/4.6 in mind, so these results reflect
+    conformance under that specific orchestration style &mdash; prompting-style fit is a
+    confound in any cross-model comparison.
   </p>
 
   <details>
@@ -568,16 +569,25 @@ code{ font-family:'SF Mono',SFMono-Regular,Consolas,'Liberation Mono',Menlo,mono
     <summary>Reading caveats</summary>
     <div>
       <ul>
+        <li><b>This is one view under one orchestration system, not a model exam.</b>
+            DAAF's framework instructions were written and tuned with Claude Opus 4.5/4.6
+            as the working model, so part of any score difference between models is
+            prompting-style fit rather than capability. Read these results as one
+            particular view of how models behave under a very specific AI orchestration
+            system &mdash; not as an absolute indicator of model quality.</li>
         <li><b>Timeouts are still graded.</b> Runs that hit the wall-clock limit
-            (<span id="ab-timeouts">some</span> runs in this corpus) have zeroed cost,
-            token, and turn counts, but their criteria are fully scored from the
-            transcript produced before the cutoff &mdash; a timed-out run can be a perfect
-            run. Cost and duration averages exclude these zeroed runs.</li>
+            (<span id="ab-timeouts">some</span> runs in this corpus) have zeroed turn counts
+            and a duration recorded at the cutoff limit, but their criteria are fully
+            scored from the transcript
+            produced before the cutoff &mdash; a timed-out run can be a perfect run.</li>
         <li><b>Denominators are uneven.</b> Some (model, phase) cells have 2 reps instead
             of 3, so read every rate together with its n.</li>
-        <li><b>OpenRouter token counts are approximate.</b> The Anthropic-compatible
-            endpoint reports counts from Anthropic's tokenizer rather than each model's
-            own, so computed costs for OpenRouter models are best-effort estimates.</li>
+        <li><b>No observed spend is reported &mdash; only published pricing.</b> The
+            harness logs token usage via the Anthropic-compatible endpoint, whose counts
+            come from Anthropic's tokenizer rather than each OpenRouter model's own
+            billing meter, so dollar costs derived from those counts were unreliable and
+            all token-derived spend tracking was removed. Cost figures on this page are
+            published list prices per million tokens, not measured benchmark spend.</li>
         <li><b>Deterministic scorers have known false negatives.</b>
             <code>prompt_has_context_section</code> is the canonical case: the scorer
             accepts seven heading variants, yet models often place genuine contextual
@@ -596,21 +606,29 @@ code{ font-family:'SF Mono',SFMono-Regular,Consolas,'Liberation Mono',Menlo,mono
     One row per model, ranked by <b>composite</b> &mdash; the unweighted mean of its
     Perfect-run rates across the phase components (P1, P2, P3a, P3b). Every rate carries
     its denominator, and tier bands group models whose composites cluster together &mdash;
-    gaps between tiers are meaningful, ordering within a tier may not be. Click a phase
-    cell to open that phase's deep-dive; use the buttons to re-sort.
+    gaps between tiers are meaningful, ordering within a tier may not be. The metric
+    toggle switches every rate, rank, and tier band between <b>Perfect</b> (all criteria
+    pass) and <b>Hard-only</b> (all must-pass criteria pass). Click a phase cell to open
+    that phase's deep-dive; click any numeric column header to re-sort, and click it
+    again to reverse the direction.
   </p>
   <div class="sec-body" id="sec-leaderboard"></div>
 </section>
 
-<!-- 4. Cost vs. Performance (log-x frontier scatter; plan § 4.4) -->
+<!-- 4. Cost vs. Performance (log-x frontier scatter over published $/Mtok; plan § 4.4) -->
 <section class="doc-section" id="cost-performance">
   <h2>Cost vs. Performance</h2>
   <p class="section-lead">
-    Each point is one model: its average computed cost per run (log scale) against its
-    composite Perfect rate &mdash; up and to the left is better. The stepped line traces
-    the <b>efficiency frontier</b>: the models no other model beats on both cost and
-    conformance at once. Shape and color mark the serving provider; hover any point for
-    its exact figures.
+    Each point is one model: its <b>published price</b> per million tokens (log scale,
+    under the selected price basis) against the selected <b>performance basis</b>
+    (composite or a single phase, P1&ndash;P3b) under the selected <b>metric</b>
+    (Perfect or Hard-only) &mdash; up and to the left is better. The stepped line traces
+    the <b>efficiency frontier</b>: the models
+    no other model beats on both price and conformance at once. Prices are list rates, not
+    measured benchmark spend &mdash; observed-spend tracking was removed because the
+    harness&rsquo;s token logging does not align with OpenRouter billing (see Costs
+    Detail). Shape and color mark the serving provider; hover any point for its exact
+    figures.
   </p>
   <div class="sec-body" id="sec-cost-performance"></div>
 </section>
@@ -643,17 +661,18 @@ code{ font-family:'SF Mono',SFMono-Regular,Consolas,'Liberation Mono',Menlo,mono
   <div class="sec-body" id="sec-cases"></div>
 </section>
 
-<!-- 7. Costs Detail (observed per-model spend + pricing table; plan § 4.7) -->
+<!-- 7. Costs Detail (published per-Mtok pricing table; plan § 4.7) -->
 <section class="doc-section" id="costs">
   <h2>Costs Detail</h2>
   <p class="section-lead">
-    What each model actually cost to benchmark. The observed-spend table aggregates every
-    loaded run: average and total computed cost, average duration, and the token
-    composition behind the bill (uncached input / output / cache reads). Timed-out runs
-    have zeroed cost and are excluded from the averages, with the excluded counts
-    disclosed. Below it sits the published per-token pricing every cost on this page is
-    recomputed from &mdash; CLI-reported totals are wrong for OpenRouter models. Click any
-    column header to sort either table.
+    Published list prices for every benchmarked model, per million tokens. Earlier
+    versions of this page also reported observed dollar spend computed from per-run token
+    counts; that tracking has been removed because OpenRouter&rsquo;s token accounting
+    does not align with the harness&rsquo;s usage logging &mdash; the Anthropic-compatible
+    endpoint reports counts from Anthropic&rsquo;s tokenizer rather than each
+    model&rsquo;s own billing meter &mdash; so the token-derived dollar figures were
+    unreliable. Every cost figure on this page is a published rate, not measured spend.
+    Click any column header to sort.
   </p>
   <div class="sec-body" id="sec-costs"></div>
 </section>
@@ -749,10 +768,18 @@ var state = {
   selectedRunIdx: -1,
   costSortCol: null,
   costSortDir: 1,
-  /* Observed-spend table sort (Costs Detail): default total cost, descending */
-  spendSortCol: "total",
-  spendSortDir: -1,
+  /* Cost vs. Performance price basis: blend31 (default) | input | output */
+  costForm: "blend31",
+  /* Cost vs. Performance y-axis: perf basis (composite | composite gid)
+     and metric (perfect | hard) — fully decoupled from the leaderboard's
+     metric toggle */
+  cpPerf: "composite",
+  cpMetric: "perfect",
+  /* Leaderboard: sort column key, direction (-1 desc / 1 asc), and the
+     active metric (perfect | hard). Default: composite descending. */
   lbSort: "composite",
+  lbSortDir: -1,
+  lbMetric: "perfect",
   runListLimit: 200
 };
 
@@ -811,14 +838,29 @@ function esc(s){ if(!s) return ""; var d=document.createElement("div"); d.textCo
 function truncate(s,n){ if(!s) return ""; return s.length>n ? s.substring(0,n)+"..." : s; }
 function el(id){ return document.getElementById(id); }
 function fmt(n){ return n.toLocaleString(); }
-/* Per-run cost display: 3 decimals under $1 (sub-cent spreads matter at
+/* Price display ($/Mtok): 3 decimals under $1 (sub-cent spreads matter at
    the cheap end), 2 above. */
 function fmtCost(v){
   if(v==null) return "&mdash;";
   return "$"+(v>=1 ? v.toFixed(2) : v.toFixed(3));
 }
-function reasoningBadge(mult){ if(!mult||mult<=1.0) return ""; return ' <span class="badge" style="background:rgba(249,115,22,.15);color:#f59e0b;font-size:10px;padding:1px 5px" title="Cost includes '+mult.toFixed(2)+'x reasoning token multiplier (empirical — see models.yaml)">'+mult.toFixed(2)+'x reasoning</span>'; }
-function modelMultiplier(model,runs){ var r=runs.find(function(x){ return x.model===model; }); return r ? (r.reasoning_cost_multiplier||1.0) : 1.0; }
+
+/* Published-pricing formulations (PRECOMPUTED.cost.models). blend31 is the
+   Artificial Analysis convention: (3 x input + output) / 4 per 1M tokens.
+   All dollar figures on this page are published list rates — observed
+   token-derived spend was removed (OpenRouter token accounting does not
+   align with the harness's usage logging). */
+var COST_FORMS=[
+  {key:"blend31",label:"Blended 3:1",
+   formula:"Blended price = (3 \u00d7 input + output) / 4, per million tokens"},
+  {key:"input",label:"Input",formula:"Published input price, per million tokens"},
+  {key:"output",label:"Output",formula:"Published output price, per million tokens"}
+];
+function priceMap(){
+  var map={};
+  ((PRECOMPUTED.cost||{}).models||[]).forEach(function(c){ map[c.key]=c; });
+  return map;
+}
 
 /* Run status = the precomputed grade (perfect / partial / failed /
    ungraded), orthogonal to the timed_out flag (plan § 6 item 4). A
@@ -1124,8 +1166,7 @@ function renderHero(){
     {val:fmt(T.n_models||0), label:"Models"},
     {val:fmt(T.total_runs||0), label:"Runs"},
     {val:fmt(T.n_cases||0), label:"Cases"},
-    {val:fmt(phases.size), label:"Phases"},
-    {val:"$"+(T.total_spend_usd!=null?T.total_spend_usd.toFixed(2):"0.00"), label:"Total Spend"}
+    {val:fmt(phases.size), label:"Phases"}
   ];
   var ch="";
   chips.forEach(function(c){
@@ -1207,24 +1248,32 @@ function fillAboutCounts(){
 /* =================================================================
    SECTION 3: LEADERBOARD (plan § 4.3)
    Rank-ordered table-chart computed entirely from PRECOMPUTED:
-   composite bar with component ticks, per-phase Perfect cells
+   composite bar with component ticks, per-phase rate cells
    (rate + visible n, deep-linking to the phase deep-dives),
-   dispatch reliability, k-of-n consistency, and avg cost/run with
-   a timeout-exclusion footnote. The tier gutter (rowspan bands)
-   appears only under the default composite sort — the bands are
-   defined on the composite ranking, so they would be meaningless
+   dispatch reliability, k-of-n consistency, and the published
+   blended list price (3:1 in/out, $/Mtok — never observed spend,
+   which was removed). A metric toggle switches composite, phase
+   cells, ranks, and tier bands between the Perfect metric
+   (composite/tiers) and the Hard-only metric (composite_hard/
+   tiers_hard); Consistency stays Perfect-based. Sorting is via
+   clickable column headers (every numeric column; click again to
+   reverse). The tier gutter (rowspan bands) appears only under the
+   composite sort, best first — the bands are defined on the active
+   metric's composite ranking, so they would be meaningless
    interleaved into any other ordering.
    ================================================================= */
 
 /* Dynamic tier-rule disclosure: rendered generically over whichever
    banding method the generator applied (gap rule, or its
-   range-quartile fallback on near-continuum corpora). */
-function lbTierRuleText(){
-  var rule=PRECOMPUTED.tier_rule||{};
-  var tiers=PRECOMPUTED.tiers||[];
+   range-quartile fallback on near-continuum corpora). Takes the
+   active metric's rule + tiers so the disclosure tracks the
+   leaderboard's Perfect / Hard-only toggle. */
+function lbTierRuleText(rule,tiers,metricLabel){
+  rule=rule||{};
+  tiers=tiers||[];
   var thresholdPts=((rule.gap_threshold||0)*100).toFixed(0);
-  var head='Tier bands are derived mechanically from the composite ranking ('+
-    tiers.length+' tier'+(tiers.length===1?'':'s')+' in this corpus; shown under the composite sort). ';
+  var head='Tier bands are derived mechanically from the '+metricLabel+' composite ranking ('+
+    tiers.length+' tier'+(tiers.length===1?'':'s')+' in this corpus; shown under the composite sort, best first). ';
   if(rule.method==="gap"){
     return head+'Banding rule applied: <b>gap</b> &mdash; a new tier starts wherever the drop to the '+
       'next model\'s composite is at least '+thresholdPts+' points. Gaps between tiers are '+
@@ -1239,11 +1288,21 @@ function lbTierRuleText(){
 }
 
 function renderLeaderboard(container){
-  var comp=PRECOMPUTED.composite||{};
+  /* Active metric: Perfect (all criteria pass) | Hard-only (all hard-tier
+     criteria pass). Composite, per-phase cells, AND tier bands all switch
+     to the precomputed hard variants together; Consistency stays
+     Perfect-based regardless (disclosed in its header tooltip). */
+  var metric=state.lbMetric||"perfect";
+  var isHard=(metric==="hard");
+  var metricLabel=isHard?"Hard-only":"Perfect";
+  var rateField=isHard?"hard_rate":"perfect_rate";
+  var countField=isHard?"hard_pass_count":"perfect_count";
+  var comp=(isHard?PRECOMPUTED.composite_hard:PRECOMPUTED.composite)||{};
+  var tiers=(isHard?PRECOMPUTED.tiers_hard:PRECOMPUTED.tiers)||[];
+  var tierRule=(isHard?PRECOMPUTED.tier_rule_hard:PRECOMPUTED.tier_rule)||{};
   var pmp=PRECOMPUTED.per_model_phase||{};
   var consistency=PRECOMPUTED.consistency||{};
-  var costPM=(PRECOMPUTED.cost||{}).per_model||{};
-  var tiers=PRECOMPUTED.tiers||[];
+  var prices=priceMap();
   var groups=getEvalGroups();
   var hasDispatch=groups.some(function(g){ return g.id==="dispatch_compliance_dispatch"; });
 
@@ -1262,7 +1321,7 @@ function renderLeaderboard(container){
 
   /* Finding-as-title (computed, mirroring the hero verdict logic) */
   var top=ranked[0];
-  var finding='<b>'+esc(top.model)+'</b> leads at <b>'+pct(top.e.score)+'</b> composite';
+  var finding='<b>'+esc(top.model)+'</b> leads at <b>'+pct(top.e.score)+'</b> '+metricLabel+' composite';
   if(ranked.length>1){
     var ru=ranked[1];
     var gapPts=Math.round((top.e.score-ru.e.score)*100);
@@ -1282,39 +1341,48 @@ function renderLeaderboard(container){
     finding+='.';
   }
 
-  /* Sort control */
+  /* Sort state: clickable column headers (every numeric column). Clicking
+     the active column flips direction. sortDir: -1 descending, 1 ascending.
+     Missing values always sort last; composite rank breaks ties. Sorting
+     reads the ACTIVE metric's rates, so it works under both Perfect and
+     Hard-only. */
   var sortKey=state.lbSort||"composite";
-  var sortKeys=[{key:"composite",label:"Composite"}];
-  groups.forEach(function(g){ sortKeys.push({key:g.id,label:groupShort(g.id)}); });
-  sortKeys.push({key:"consistency",label:"Consistency"});
-  sortKeys.push({key:"cost",label:"Cost/run"});
-
-  /* Row order. Missing values always sort last; composite rank breaks ties. */
+  var sortDir=state.lbSortDir||-1;
+  var sortVal=function(m){
+    if(sortKey==="cost"){
+      var c=prices[m];
+      return (c&&c.blend31!=null)?c.blend31:null;
+    }
+    if(sortKey==="consistency"){
+      var k=consistency[m];
+      return (k&&k.rate!=null)?k.rate:null;
+    }
+    if(sortKey==="dispatch"){
+      var d=(pmp[m]||{})["dispatch_compliance_dispatch"];
+      return (d&&d.dispatch_rate!=null)?d.dispatch_rate:null;
+    }
+    if(sortKey==="composite"){
+      var e=comp[m];
+      return e?e.score:null;
+    }
+    var cell=(pmp[m]||{})[sortKey];
+    return (cell&&cell[rateField]!=null)?cell[rateField]:null;
+  };
   var rows=ranked.slice();
-  if(sortKey!=="composite"){
-    var sortVal=function(m){
-      if(sortKey==="cost"){
-        var c=costPM[m];
-        return (c&&c.avg_cost_usd!=null)?c.avg_cost_usd:Infinity;
-      }
-      if(sortKey==="consistency"){
-        var k=consistency[m];
-        return (k&&k.rate!=null)?-k.rate:Infinity;
-      }
-      var cell=(pmp[m]||{})[sortKey];
-      return (cell&&cell.perfect_rate!=null)?-cell.perfect_rate:Infinity;
-    };
-    rows.sort(function(a,b){
-      var va=sortVal(a.model), vb=sortVal(b.model);
-      if(va!==vb) return va-vb;
-      return rankOf[a.model]-rankOf[b.model];
-    });
-  }
+  rows.sort(function(a,b){
+    var va=sortVal(a.model), vb=sortVal(b.model);
+    if(va==null&&vb==null) return rankOf[a.model]-rankOf[b.model];
+    if(va==null) return 1;
+    if(vb==null) return -1;
+    if(va!==vb) return sortDir*(va-vb);
+    return rankOf[a.model]-rankOf[b.model];
+  });
 
-  /* Tier gutter (composite sort only): rowspan on each band's first row.
-     PRECOMPUTED.tiers partitions the composite ranking in order, so bands
-     are guaranteed contiguous under this sort. */
-  var showTier=(sortKey==="composite" && tiers.length>0);
+  /* Tier gutter (composite sort, best first, only): rowspan on each band's
+     first row. The active metric's tiers partition that metric's composite
+     ranking in order, so bands are guaranteed contiguous under this sort
+     and direction only. */
+  var showTier=(sortKey==="composite" && sortDir===-1 && tiers.length>0);
   var tierFirst={}, tierSize={};
   if(showTier){
     tiers.forEach(function(t){
@@ -1324,25 +1392,48 @@ function renderLeaderboard(container){
     });
   }
 
-  var html='<div class="lb-finding">'+finding+'</div>';
-  html+='<div class="lb-controls"><span class="lb-sort-label">Sort by</span>';
-  sortKeys.forEach(function(s){
-    html+='<button class="lb-sort-btn'+(sortKey===s.key?' active':'')+'" onclick="sortLeaderboard(&#39;'+esc(s.key)+'&#39;)">'+esc(s.label)+'</button>';
+  /* Metric toggle + disclosure line — controls sit immediately above the
+     table; the computed finding renders BELOW it (section layout rule) */
+  var html='<div class="lb-controls"><span class="lb-sort-label">Metric</span>';
+  [{key:"perfect",label:"Perfect",tip:"A run counts when every criterion (hard + soft) passed"},
+   {key:"hard",label:"Hard-only",tip:"A run counts when every hard (must-pass) criterion passed; soft criteria are ignored"}
+  ].forEach(function(o){
+    html+='<button class="lb-sort-btn'+(metric===o.key?' active':'')+'" title="'+esc(o.tip)+
+      '" onclick="setLbMetric(&#39;'+esc(o.key)+'&#39;)">'+esc(o.label)+'</button>';
   });
+  html+='<span class="lb-metric-note">'+(isHard
+    ?'Showing <b>Hard-only</b> rates: a run counts when every hard (must-pass) criterion passed. Composite, phase cells, ranks, and tier bands recompute; Consistency stays Perfect-based.'
+    :'Showing <b>Perfect</b> rates: a run counts when every criterion (hard + soft) passed.')+'</span>';
   html+='</div>';
 
+  /* Sortable column headers: \u25B2/\u25BC on the active column, pointer +
+     hover affordance via .lb-th-sort, aria-sort as the accessible hint */
+  function thSort(key,label,tip,defDir){
+    var active=(sortKey===key);
+    var arrow=active?(sortDir===1?' \u25B2':' \u25BC'):'';
+    var aria=active?(sortDir===1?'ascending':'descending'):'none';
+    return '<th class="lb-th-sort'+(active?' lb-th-active':'')+'" aria-sort="'+aria+
+      '" title="'+esc(tip)+' \u2014 click to sort'+(active?'; click again to reverse':'')+
+      '" onclick="lbSortBy(&#39;'+esc(key)+'&#39;,'+defDir+')">'+label+arrow+'</th>';
+  }
+
   html+='<div class="card"><table class="data-table lb-table"><thead><tr>';
-  if(showTier) html+='<th title="Composite tier band (banding rule below)">Tier</th>';
-  html+='<th title="Composite rank (fixed across re-sorts)">#</th><th>Model</th><th>Composite</th>';
+  if(showTier) html+='<th title="'+metricLabel+' composite tier band (banding rule below)">Tier</th>';
+  html+='<th title="'+metricLabel+' composite rank (fixed across re-sorts)">#</th><th>Model</th>';
+  html+=thSort("composite","Composite",
+    metricLabel+' composite \u2014 unweighted mean of the per-phase '+metricLabel+' rates',-1);
   groups.forEach(function(g){
-    html+='<th title="'+esc(g.label)+' — share of runs with every criterion passed">'+esc(groupShort(g.id))+' Perfect</th>';
+    html+=thSort(g.id,esc(groupShort(g.id))+' '+metricLabel,
+      g.label+' \u2014 share of runs with every '+(isHard?'hard (must-pass)':'')+' criterion passed',-1);
   });
-  if(hasDispatch) html+='<th title="Phase 3a agent_dispatched pass rate">Dispatch</th>';
-  html+='<th title="Share of repeated (phase, case) cells (2+ reps) where every rep was perfect">Consistency</th>';
-  html+='<th>Avg cost/run</th>';
+  if(hasDispatch) html+=thSort("dispatch","Dispatch","Phase 3a agent_dispatched pass rate",-1);
+  html+=thSort("consistency","Consistency",
+    "Share of repeated (phase, case) cells (2+ reps) where every rep was perfect. Always Perfect-based (all criteria), regardless of the metric toggle.",-1);
+  html+=thSort("cost","Blended $/Mtok",
+    "Published blended list price, (3 \u00d7 input + output) / 4 per million tokens. Always the 3:1 blend here, regardless of the price-basis toggle in Cost vs. Performance. Not measured benchmark spend.",1);
   html+='</tr></thead><tbody>';
 
-  var excludedRuns=0, excludedModels=0, anyPartial=false;
+  var anyPartial=false;
 
   rows.forEach(function(rw){
     var m=rw.model, e=rw.e;
@@ -1385,16 +1476,17 @@ function renderLeaderboard(container){
         html+='<td class="lb-cell"><span class="hm-cell rs-na" title="No '+esc(groupShort(g.id))+' runs for this model">&mdash;</span></td>';
         return;
       }
-      var rate=cell.perfect_rate||0;
+      var rate=cell[rateField]||0;
       var step=rateStep(rate);
+      var kn=cell[countField]+'/'+cell.n_runs;
       /* P3b denominator counts every successful dispatch, even when the
          subagent produced no scorable transcript (mirrors generator) */
       html+='<td class="lb-cell"><span class="hm-cell rs-'+step+' clickable" '+
-        'title="'+esc(g.label)+': '+cell.perfect_count+'/'+cell.n_runs+' perfect runs'+
+        'title="'+esc(g.label)+': '+kn+' '+(isHard?'hard-pass':'perfect')+' runs'+
         (g.id==='dispatch_compliance_subagent'?' (includes runs with no scorable subagent transcript in the denominator)':'')+
         ' — click for the phase deep-dive" '+
         'onclick="lbJumpPhase(&#39;'+esc(g.id)+'&#39;)">'+
-        rateGlyph(step)+pct(rate)+'<span class="lb-n">'+cell.perfect_count+'/'+cell.n_runs+'</span></span></td>';
+        rateGlyph(step)+pct(rate)+'<span class="lb-n">'+kn+'</span></span></td>';
     });
 
     /* Dispatch reliability (P3a agent_dispatched) */
@@ -1419,14 +1511,13 @@ function renderLeaderboard(container){
       html+='<td class="lb-cell"><span class="hm-cell rs-na" title="No (phase, case) cells with 2+ reps">&mdash;</span></td>';
     }
 
-    /* Avg cost/run (timeout-zeroed runs excluded upstream; disclosed) */
-    var c=costPM[m];
-    if(c&&c.avg_cost_usd!=null){
-      var dag=c.excluded_count>0;
-      if(dag){ excludedRuns+=c.excluded_count; excludedModels++; }
-      html+='<td class="lb-cost" title="Mean computed cost over '+c.n_included+' of '+c.n_runs+' runs'+
-        (dag?' ('+c.excluded_count+' zero-cost timeout run'+(c.excluded_count===1?'':'s')+' excluded)':'')+'">'+
-        fmtCost(c.avg_cost_usd)+(dag?'<sup>&dagger;</sup>':'')+'</td>';
+    /* Published blended price — pinned to the 3:1 blend regardless of the
+       Cost vs. Performance price-basis toggle (disclosed in the header tip) */
+    var c=prices[m];
+    if(c&&c.blend31!=null){
+      html+='<td class="lb-cost" title="(3 \u00d7 $'+c.input.toFixed(2)+' input + $'+c.output.toFixed(2)+
+        ' output) / 4 = '+fmtCost(c.blend31)+' per 1M tokens (published list price)">'+
+        fmtCost(c.blend31)+'</td>';
     } else {
       html+='<td class="lb-cost text-muted">&mdash;</td>';
     }
@@ -1435,13 +1526,13 @@ function renderLeaderboard(container){
   });
   html+='</tbody></table></div>';
 
-  /* Dynamic tier-rule disclosure + footnotes */
-  html+='<p class="lb-foot">'+lbTierRuleText()+'</p>';
-  if(excludedRuns>0){
-    html+='<p class="lb-foot">&dagger; Cost averages exclude '+fmt(excludedRuns)+' timed-out run'+
-      (excludedRuns===1?'':'s')+' with zeroed cost (across '+excludedModels+' model'+
-      (excludedModels===1?'':'s')+'); hover a cost for the per-model count.</p>';
-  }
+  /* Computed finding + tier-rule disclosure + footnotes — all BELOW the
+     table per the section layout rule (controls adjacent to the plot,
+     computed findings after it) */
+  html+='<div class="lb-finding">'+finding+'</div>';
+  html+='<p class="lb-foot">'+lbTierRuleText(tierRule,tiers,metricLabel)+'</p>';
+  html+='<p class="lb-foot">Blended $/Mtok is the published list price &mdash; (3 \u00d7 input + output) / 4 '+
+    'per million tokens &mdash; not measured benchmark spend (see Costs Detail for why spend tracking was removed).</p>';
   if(anyPartial){
     html+='<p class="lb-foot">Models marked <i>partial</i> are missing one or more phase components; '+
       'their composite is the mean of the components present, not a comparable full-coverage score.</p>';
@@ -1452,64 +1543,122 @@ function renderLeaderboard(container){
 
 /* =================================================================
    SECTION 4: COST VS. PERFORMANCE (plan § 4.4)
-   Log-x scatter of average computed cost per run vs. composite
-   Perfect rate, with the precomputed efficiency frontier rendered as
-   a step polyline. Points, costs, and the frontier all come from
-   PRECOMPUTED (composite, cost.per_model, cost.frontier) so the
-   chart, the finding prose, and the generator's sanity report cannot
-   drift apart. Provider is encoded as color + shape (never color
-   alone); every point is labeled.
+   Log-x scatter of PUBLISHED price per million tokens (under the
+   selected formulation: blended 3:1 / input / output) vs. the
+   selected performance basis (composite | P1 | P2 | P3a | P3b) under
+   the selected metric (perfect | hard), with the precomputed
+   efficiency frontier rendered as a step polyline. Points, prices,
+   and the per-combination frontiers all come from PRECOMPUTED
+   (cost.perf_values, cost.models, cost.frontiers[form][basis][metric])
+   so the chart, the finding prose, and the generator's sanity report
+   cannot drift apart. Observed spend is deliberately absent (token
+   accounting misalignment — see Costs Detail). Provider is encoded
+   as color + shape (never color alone); every point is labeled.
    ================================================================= */
 
-function renderCostPerf(container){
-  var comp=PRECOMPUTED.composite||{};
-  var costPM=(PRECOMPUTED.cost||{}).per_model||{};
-  var frontier=(PRECOMPUTED.cost||{}).frontier||[];
+/* Y-axis selectors for the scatter: performance basis (composite or one
+   composite component) and metric (perfect | hard). Fully decoupled from
+   the leaderboard's metric toggle. P4 (skill_routing) is deliberately NOT
+   a y-axis option — partial model coverage mid-baseline would make its
+   frontier misleading. */
+var CP_PERF_BASES=[
+  {key:"composite",label:"Composite"},
+  {key:"mode_classification",label:"P1"},
+  {key:"post_confirmation",label:"P2"},
+  {key:"dispatch_compliance_dispatch",label:"P3a"},
+  {key:"dispatch_compliance_subagent",label:"P3b"}
+];
+var CP_METRICS=[
+  {key:"perfect",label:"Perfect",tip:"A run counts when every criterion (hard + soft) passed"},
+  {key:"hard",label:"Hard-only",tip:"A run counts when every hard (must-pass) criterion passed; soft criteria are ignored"}
+];
 
-  /* Points: models with a composite score AND a non-null avg cost */
+function renderCostPerf(container){
+  var prices=priceMap();
+  var form=state.costForm||"blend31";
+  var formDef=COST_FORMS[0];
+  COST_FORMS.forEach(function(f){ if(f.key===form) formDef=f; });
+  var basis=state.cpPerf||"composite";
+  var metric=state.cpMetric||"perfect";
+  var basisDef=CP_PERF_BASES[0];
+  CP_PERF_BASES.forEach(function(b){ if(b.key===basis) basisDef=b; });
+  var metricDef=CP_METRICS[0];
+  CP_METRICS.forEach(function(o){ if(o.key===metric) metricDef=o; });
+  var yShort=basisDef.label+' '+metricDef.label+' rate';
+
+  var pvAll=(PRECOMPUTED.cost||{}).perf_values||{};
+  var pv=(pvAll[basis]||{})[metric]||{};
+  var frontier=((((PRECOMPUTED.cost||{}).frontiers||{})[form]||{})[basis]||{})[metric]||[];
+
+  /* Points: models with a y-value under the active basis/metric AND a
+     positive published price under the active formulation (log axis
+     cannot place zero/unknown). Models lacking data for the selected
+     phase are omitted from this view and counted for the footnote
+     (omitted = priced models present in the baseline composite view
+     but absent under the active basis/metric). */
   var pts=[];
-  Object.keys(comp).forEach(function(m){
-    var c=costPM[m];
-    if(!c||c.avg_cost_usd==null) return;
-    pts.push({model:m,cost:c.avg_cost_usd,score:comp[m].score,
-              provider:modelProvider(m),cm:c});
+  Object.keys(pv).forEach(function(m){
+    var c=prices[m];
+    if(!c||c[form]==null||c[form]<=0) return;
+    pts.push({model:m,price:c[form],score:pv[m],
+              provider:modelProvider(m),pm:c});
+  });
+  var omitted=0;
+  Object.keys((pvAll.composite||{}).perfect||{}).forEach(function(m){
+    var c=prices[m];
+    if(!c||c[form]==null||c[form]<=0) return;
+    if(pv[m]==null) omitted++;
   });
   if(pts.length===0){
-    container.innerHTML='<div class="empty-msg">No models with both a composite score and cost data in this corpus.</div>';
+    container.innerHTML='<div class="empty-msg">No models with both a '+esc(yShort)+' and published pricing in this corpus.</div>';
     return;
   }
 
-  /* Zero-cost floor: a log axis cannot show $0, so zero-cost points
-     sit at half the minimum nonzero cost (disclosed in a footnote) */
-  var minNZ=null;
-  pts.forEach(function(p){ if(p.cost>0&&(minNZ===null||p.cost<minNZ)) minNZ=p.cost; });
-  var floored=0;
-  pts.forEach(function(p){
-    if(p.cost<=0){ p.plotCost=(minNZ!==null?minNZ:0.002)/2; p.floored=true; floored++; }
-    else{ p.plotCost=p.cost; }
+  /* Selector rows (radio-style, reusing the leaderboard toggle styling):
+     price basis (x-axis), performance basis (y-axis), metric (y-axis).
+     The leaderboard's Blended $/Mtok column stays pinned to blend31. */
+  var toggle='<div class="lb-controls"><span class="lb-sort-label">Price basis</span>';
+  COST_FORMS.forEach(function(f){
+    toggle+='<button class="lb-sort-btn'+(form===f.key?' active':'')+'" title="'+esc(f.formula)+
+      '" onclick="setCostForm(&#39;'+esc(f.key)+'&#39;)">'+esc(f.label)+'</button>';
   });
+  toggle+='</div>';
+  toggle+='<div class="lb-controls"><span class="lb-sort-label">Performance basis</span>';
+  CP_PERF_BASES.forEach(function(b){
+    toggle+='<button class="lb-sort-btn'+(basis===b.key?' active':'')+'" title="Y-axis: '+esc(b.label)+' '+esc(metricDef.label)+
+      ' rate" onclick="setCostPerf(&#39;'+esc(b.key)+'&#39;)">'+esc(b.label)+'</button>';
+  });
+  toggle+='</div>';
+  toggle+='<div class="lb-controls"><span class="lb-sort-label">Metric</span>';
+  CP_METRICS.forEach(function(o){
+    toggle+='<button class="lb-sort-btn'+(metric===o.key?' active':'')+'" title="'+esc(o.tip)+
+      '" onclick="setCostMetric(&#39;'+esc(o.key)+'&#39;)">'+esc(o.label)+'</button>';
+  });
+  toggle+='</div>';
 
-  /* Finding-as-title: name the frontier, then the value knee */
+  /* Computed finding: name the frontier, then the value knee. Rendered
+     BELOW the chart (section layout rule); reflects the active basis +
+     metric selections. */
   var finding='';
   if(frontier.length>0){
     var fbits=frontier.map(function(f){
-      return '<b>'+esc(f.model)+'</b> ('+fmtCost(f.avg_cost_usd)+', '+pct(f.composite)+')';
+      return '<b>'+esc(f.model)+'</b> ('+fmtCost(f.price)+'/Mtok, '+pct(f.score)+')';
     });
     finding=frontier.length+' of '+pts.length+' models sit on the efficiency frontier &mdash; '+
-      fbits.join(' &rarr; ')+' &mdash; every other model is beaten on both cost and composite by one of them.';
+      fbits.join(' &rarr; ')+' &mdash; every other model is beaten on both price and '+esc(yShort)+' by one of them.';
     if(frontier.length>1){
       var topF=frontier[frontier.length-1], knee=frontier[frontier.length-2];
-      if(knee.avg_cost_usd>0&&topF.composite>0){
-        var ratio=topF.avg_cost_usd/knee.avg_cost_usd;
-        var share=Math.round(knee.composite/topF.composite*100);
+      if(knee.price>0&&topF.score>0){
+        var ratio=topF.price/knee.price;
+        var share=Math.round(knee.score/topF.score*100);
         if(ratio>=1.5){
           finding+=' <b>'+esc(knee.model)+'</b> reaches '+share+'% of <b>'+esc(topF.model)+
-            '</b>\u2019s composite at roughly 1/'+ratio.toFixed(1)+' of the per-run cost.';
+            '</b>\u2019s '+esc(yShort)+' at roughly 1/'+ratio.toFixed(1)+' of the '+esc(formDef.label)+' price.';
         }
       }
     }
   } else {
-    finding='No efficiency frontier could be computed for this corpus.';
+    finding='No efficiency frontier could be computed for this corpus under '+esc(yShort)+'.';
   }
 
   /* Provider legend (color + shape redundancy, plan § 5) */
@@ -1522,27 +1671,28 @@ function renderCostPerf(container){
   legend+='<span><svg width="26" height="14"><line x1="1" y1="7" x2="25" y2="7" stroke="rgba(52,211,153,.8)" stroke-width="1.5" stroke-dasharray="4 3"/></svg>efficiency frontier (outlined points)</span>';
   legend+='</div>';
 
-  /* Footnotes: timeout exclusion (computed counts) + OpenRouter
-     token-count approximation + zero-cost floor disclosure */
-  var exRuns=0, exModels=0;
-  pts.forEach(function(p){
-    if(p.cm.excluded_count>0){ exRuns+=p.cm.excluded_count; exModels++; }
-  });
-  var foot='';
-  if(exRuns>0){
-    foot+='<p class="cp-foot">Cost averages exclude '+fmt(exRuns)+' timed-out run'+(exRuns===1?'':'s')+
-      ' with zeroed cost (across '+exModels+' model'+(exModels===1?'':'s')+'); hover a point for the per-model count.</p>';
-  }
-  foot+='<p class="cp-foot">OpenRouter costs are computed from token counts reported by the '+
-    'Anthropic-compatible endpoint &mdash; Anthropic\u2019s tokenizer, not each model\u2019s own &mdash; '+
-    'so points for OpenRouter models are best-effort estimates.</p>';
-  if(floored>0){
-    foot+='<p class="cp-foot">'+floored+' zero-cost model'+(floored===1?' is':'s are')+
-      ' plotted at half the minimum nonzero cost &mdash; a log axis cannot show $0.</p>';
-  }
+  /* Footnotes: active selections + omitted-model count (if any) +
+     published-pricing-only disclosure */
+  var foot='<p class="cp-foot">Y-axis: '+esc(yShort)+' &mdash; '+
+    (metric==="hard"
+      ?'a run counts when every hard (must-pass) criterion passed.'
+      :'a run counts when every criterion (hard + soft) passed.')+
+    (omitted>0
+      ?' '+omitted+' priced model'+(omitted===1?'':'s')+' lack'+(omitted===1?'s':'')+
+       ' data for this selection and '+(omitted===1?'is':'are')+' omitted from this view.'
+      :'')+'</p>';
+  foot+='<p class="cp-foot">'+esc(formDef.formula)+'. Prices are published list rates from '+
+    'models.yaml, not measured benchmark spend &mdash; token-derived spend tracking was removed '+
+    'because OpenRouter token accounting does not align with the harness\u2019s usage logging.</p>';
 
-  container.innerHTML='<div class="cp-finding">'+finding+'</div>'+legend+
-    '<div class="card"><div class="chart-container">'+svgCostFrontier(pts,frontier)+'</div></div>'+foot;
+  /* Layout: controls + legend immediately adjacent to the chart; the
+     computed finding and footnotes BELOW it */
+  container.innerHTML=toggle+legend+
+    '<div class="card"><div class="chart-container">'+
+    svgCostFrontier(pts,frontier,
+      formDef.label+' price (USD per 1M tokens, log scale)',yShort)+
+    '</div></div>'+
+    '<div class="cp-finding">'+finding+'</div>'+foot;
 }
 
 /* =================================================================
@@ -1635,7 +1785,10 @@ function pdGroupHtml(g,agg){
   html+='<h3>'+esc(g.label)+'</h3>';
   if(PD_EXPLAINERS[gid]) html+='<p class="pd-explainer">'+PD_EXPLAINERS[gid]+'</p>';
 
-  /* Computed callout: weakest criterion + top model for this group */
+  /* Computed callout: weakest criterion + top model for this group —
+     built here, appended BELOW the heatmap (section layout rule:
+     explainer above, computed callouts after the chart) */
+  var calloutHtml='';
   var co=((PRECOMPUTED.callouts||{}).groups||{})[gid];
   if(co&&(co.weakest_criterion||co.top_model)){
     var cbits=[];
@@ -1649,7 +1802,7 @@ function pdGroupHtml(g,agg){
       cbits.push('top model: <b>'+esc(tm.model)+'</b> at <b>'+pct(tm.perfect_rate)+
         '</b> perfect ('+fmt(tm.n_runs)+' runs)');
     }
-    html+='<div class="pd-callout">'+cbits.join('; ')+'.</div>';
+    calloutHtml='<div class="pd-callout">'+cbits.join('; ')+'.</div>';
   }
 
   /* Heatmap table: tier group header row + rotated criterion headers */
@@ -1691,7 +1844,7 @@ function pdGroupHtml(g,agg){
     });
     html+='</tr>';
   });
-  html+='</tbody></table></div></div>';
+  html+='</tbody></table></div>'+calloutHtml+'</div>';
   return html;
 }
 
@@ -1700,34 +1853,30 @@ function renderPhaseDives(container){
   var groups=getEvalGroups();
 
   /* Group blocks: P1 and P2 stand alone; P3a + P3b pair up side by
-     side (flex-wrap) so dispatch and subagent scoring read together */
-  var blocks='', pair='';
+     side (flex-wrap) so dispatch and subagent scoring read together.
+     The pair div is emitted at the canonical position of its FIRST
+     member so later groups (e.g., P4 skill_routing) render after it —
+     appending the pair at the end put P4 before P3a/P3b. */
+  var parts=[], pair='', pairIdx=-1;
   groups.forEach(function(g){
     var block=pdGroupHtml(g,agg);
     if(!block) return;
     if(g.id==="dispatch_compliance_dispatch"||g.id==="dispatch_compliance_subagent"){
+      if(pairIdx<0){ pairIdx=parts.length; parts.push(''); }
       pair+=block;
     } else {
-      blocks+=block;
+      parts.push(block);
     }
   });
-  if(blocks===''&&pair===''){
+  if(pairIdx>=0) parts[pairIdx]='<div class="pd-pair">'+pair+'</div>';
+  if(parts.length===0){
     container.innerHTML='<div class="empty-msg">No graded runs in the loaded corpus.</div>';
     return;
   }
 
   var html='';
-  /* Section finding: the weakest criterion across the composite (core)
-     groups — non-composite phases have their own per-group callouts */
-  var gw=(PRECOMPUTED.callouts||{}).global_weakest;
-  if(gw){
-    html+='<div class="pd-finding">The weakest criterion among the core phases (P1&ndash;P3b) is <code>'+esc(gw.name)+
-      '</code> at <b>'+pct(gw.rate)+'</b> ('+fmt(gw.passed)+'/'+fmt(gw.total)+', '+esc(gw.group_label)+
-      ') \u2014 read down its column below to see whether the weakness is universal or concentrated in a few models.'+
-      (KNOWN_SCORER_CAVEATS[gw.name]?' ('+esc(KNOWN_SCORER_CAVEATS[gw.name])+' \u2014 see <a href="#about">caveats</a>)':'')+
-      '</div>';
-  }
-  /* One step-scale legend for the whole section */
+  /* One step-scale legend for the whole section (legend adjacent to the
+     heatmaps; the computed section finding renders BELOW them) */
   html+='<div class="pd-legend"><span>Cell scale (share of a model\u2019s scored runs passing that criterion):</span>'+
     '<span class="hm-cell rs-0">&#10007; 0%</span>'+
     '<span class="hm-cell rs-1">1\u201349%</span>'+
@@ -1737,8 +1886,19 @@ function renderPhaseDives(container){
     '<span class="hm-cell rs-na">&mdash; n/a</span>'+
     '<span>hover any cell for its exact k/n</span></div>';
 
-  html+=blocks;
-  if(pair!=='') html+='<div class="pd-pair">'+pair+'</div>';
+  html+=parts.join('');
+
+  /* Section finding (computed): the weakest criterion across the composite
+     (core) groups — non-composite phases have their own per-group callouts.
+     Placed BELOW the heatmaps per the section layout rule. */
+  var gw=(PRECOMPUTED.callouts||{}).global_weakest;
+  if(gw){
+    html+='<div class="pd-finding">The weakest criterion among the core phases (P1&ndash;P3b) is <code>'+esc(gw.name)+
+      '</code> at <b>'+pct(gw.rate)+'</b> ('+fmt(gw.passed)+'/'+fmt(gw.total)+', '+esc(gw.group_label)+
+      ') \u2014 read down its column above to see whether the weakness is universal or concentrated in a few models.'+
+      (KNOWN_SCORER_CAVEATS[gw.name]?' ('+esc(KNOWN_SCORER_CAVEATS[gw.name])+' \u2014 see <a href="#about">caveats</a>)':'')+
+      '</div>';
+  }
   container.innerHTML=html;
 }
 
@@ -1847,9 +2007,11 @@ function agreementGroupHtml(g){
 
   var html='<div class="pd-group" id="agree-'+esc(gid)+'">';
   html+='<h3>'+esc(g.label)+' &mdash; rep agreement</h3>';
-  /* Computed mini-finding: hardest case + how much flakiness exists */
+  /* Computed mini-finding: hardest case + how much flakiness exists —
+     built here, appended BELOW the grid (section layout rule: computed
+     findings render after the chart, never between heading and chart) */
   var hardest=caseIds[0], hd=diff[hardest];
-  html+='<p class="pd-explainer">Hardest case: <code>'+esc(hardest)+'</code> at <b>'+pct(hd.rate)+
+  var miniFinding='<p class="pd-explainer">Hardest case: <code>'+esc(hardest)+'</code> at <b>'+pct(hd.rate)+
     '</b> perfect across all models ('+hd.k+'/'+hd.n+' reps). '+
     mixedCells+' of '+popCells+' populated (case, model) cells have split reps &mdash; the identical prompt sometimes perfect, sometimes not.</p>';
 
@@ -1883,7 +2045,7 @@ function agreementGroupHtml(g){
     });
     html+='</tr>';
   });
-  html+='</tbody></table></div></div>';
+  html+='</tbody></table></div>'+miniFinding+'</div>';
   return html;
 }
 
@@ -2070,112 +2232,19 @@ function renderCasesSection(container){
 
 /* =================================================================
    SECTION 7: COSTS DETAIL (plan § 4.7)
-   Two sortable tables. (1) Observed spend per model, computed
-   upstream into PRECOMPUTED.cost.per_model: avg/total computed cost,
-   avg duration, and the token composition behind the bill (uncached
-   input / output / cache-read shares of billed tokens) — with
-   timeout-zeroed runs excluded from the averages and the exclusion
-   disclosed. (2) The published per-token pricing every cost on this
-   page is recomputed from (DATA.model_pricing), with each model's
-   overall Perfect rate for context.
+   One sortable table: the published per-Mtok pricing for every model
+   (DATA.model_pricing), with each model's overall Perfect rate for
+   context. The Observed Spend table, token-mix bars, and all
+   token-derived dollar aggregates were removed — OpenRouter token
+   accounting does not align with the harness's usage logging, so
+   computed spend figures were unreliable (disclosed in the section
+   lead and the About caveats).
    ================================================================= */
 
 function renderCostsDetail(container){
   var models=uniqueModels();
   var pricing=DATA.model_pricing||{};
-  var costPM=(PRECOMPUTED.cost||{}).per_model||{};
-  var totalSpend=(PRECOMPUTED.cost||{}).total_spend_usd;
-
-  /* ---- Observed spend (PRECOMPUTED.cost.per_model) ---- */
-  var spendRows=models.map(function(m){
-    var c=costPM[m]||{};
-    var tk=c.tokens||{};
-    var inT=tk.input_tokens||0, outT=tk.output_tokens||0, crT=tk.cache_read_tokens||0;
-    /* "Billed" composition = input + output + cache reads. Cache-WRITE
-       tokens are captured in results but excluded from compute_cost(),
-       so they are deliberately not part of this bar. */
-    var billed=inT+outT+crT;
-    return {
-      model:m,
-      avg:(c.avg_cost_usd!=null?c.avg_cost_usd:null),
-      total:(c.total_cost_usd!=null?c.total_cost_usd:0),
-      dur:(c.avg_duration_s!=null?c.avg_duration_s:null),
-      nRuns:c.n_runs||0, nIncl:c.n_included||0, excl:c.excluded_count||0,
-      inT:inT, outT:outT, crT:crT, billed:billed,
-      inShare:billed>0?inT/billed:0,
-      outShare:billed>0?outT/billed:0,
-      crShare:billed>0?crT/billed:0
-    };
-  });
-  var sKey=state.spendSortCol||"total";
-  var sDir=state.spendSortDir||-1;
-  spendRows.sort(function(a,b){
-    var va=a[sKey], vb=b[sKey];
-    if(typeof va==="string") return sDir*va.localeCompare(vb);
-    /* null metrics (model with no includable runs) always sort last */
-    if(va==null&&vb==null) return 0;
-    if(va==null) return 1;
-    if(vb==null) return -1;
-    return sDir*(va-vb);
-  });
-  function spendTh(label,key,tip){
-    var arrow="";
-    if(sKey===key) arrow=sDir===1?" ▲":" ▼";
-    return '<th onclick="sortSpend(&#39;'+key+'&#39;)"'+(tip?' title="'+esc(tip)+'"':'')+'>'+label+arrow+'</th>';
-  }
-
-  var html='<div class="section-title">Observed Spend'+
-    (totalSpend!=null?' ($'+totalSpend.toFixed(2)+' total across all loaded runs)':'')+'</div>';
-  html+='<div class="cost-legend"><span>Token mix (share of billed tokens):</span>'+
-    '<span><span class="tok-swatch tok-in"></span>uncached input</span>'+
-    '<span><span class="tok-swatch tok-out"></span>output</span>'+
-    '<span><span class="tok-swatch tok-cache"></span>cache read</span>'+
-    '<span>exact shares as text in every row; hover a bar for raw token counts</span></div>';
-  html+='<div class="card"><table class="data-table"><thead><tr>';
-  html+=spendTh("Model","model");
-  html+=spendTh("Runs","nRuns","Runs included in averages / total runs (timeout-zeroed runs excluded from averages)");
-  html+=spendTh("Avg cost/run","avg","Mean computed cost over included runs");
-  html+=spendTh("Total cost","total","Sum of computed cost over ALL runs (timed-out runs contribute $0)");
-  html+=spendTh("Avg duration","dur","Mean wall-clock duration over included runs");
-  html+=spendTh("Token mix (in / out / cache)","inShare","Uncached-input / output / cache-read shares of billed tokens; sorts by input share");
-  html+='</tr></thead><tbody>';
-
-  var exRuns=0, exModels=0;
-  spendRows.forEach(function(row){
-    var m=row.model;
-    if(row.excl>0){ exRuns+=row.excl; exModels++; }
-    html+='<tr>';
-    html+='<td style="font-weight:600;color:'+modelColorLight(m)+'">'+esc(m)+
-      reasoningBadge(modelMultiplier(m,DATA.runs))+'</td>';
-    html+='<td title="'+row.nIncl+' of '+row.nRuns+' runs included in averages'+
-      (row.excl>0?' ('+row.excl+' zero-cost timeout run'+(row.excl===1?'':'s')+' excluded)':'')+'">'+
-      row.nIncl+'/'+row.nRuns+(row.excl>0?'<sup>&dagger;</sup>':'')+'</td>';
-    html+='<td>'+fmtCost(row.avg)+'</td>';
-    html+='<td>'+fmtCost(row.total)+'</td>';
-    html+='<td>'+(row.dur!=null?row.dur.toFixed(0)+'s':'&mdash;')+'</td>';
-    if(row.billed>0){
-      var tipTok='in '+fmt(row.inT)+' \u00b7 out '+fmt(row.outT)+' \u00b7 cache read '+fmt(row.crT)+
-        ' (billed total '+fmt(row.billed)+')';
-      html+='<td title="'+tipTok+'"><span class="tok-bar">'+
-        '<span class="tok-seg tok-in" style="width:'+(row.inShare*100).toFixed(1)+'%"></span>'+
-        '<span class="tok-seg tok-out" style="width:'+(row.outShare*100).toFixed(1)+'%"></span>'+
-        '<span class="tok-seg tok-cache" style="width:'+(row.crShare*100).toFixed(1)+'%"></span>'+
-        '</span><span class="tok-text">'+pct(row.inShare)+' / '+pct(row.outShare)+' / '+pct(row.crShare)+'</span></td>';
-    } else {
-      html+='<td class="text-muted">&mdash;</td>';
-    }
-    html+='</tr>';
-  });
-  html+='</tbody></table></div>';
-  if(exRuns>0){
-    html+='<p class="cost-foot">&dagger; Cost and duration averages exclude '+fmt(exRuns)+
-      ' timed-out run'+(exRuns===1?'':'s')+' with zeroed cost (across '+exModels+' model'+
-      (exModels===1?'':'s')+'); total cost still counts them, at $0.</p>';
-  }
-  html+='<p class="cost-foot">OpenRouter token counts come from the Anthropic-compatible '+
-    'endpoint\u2019s tokenizer, not each model\u2019s own, so OpenRouter spend is a best-effort '+
-    'estimate. Cache-write tokens are recorded in results but not priced, so they appear in '+
-    'neither the costs nor the token-mix bar.</p>';
+  var html='';
 
   /* ---- Published pricing (kept from v1, sortable) ---- */
   var perfectByModel={};
@@ -2211,7 +2280,7 @@ function renderCostsDetail(container){
     return '<th onclick="sortCosts(&#39;'+key+'&#39;)" style="cursor:pointer">'+label+arrow+'</th>';
   }
 
-  html+='<div class="section-title" style="margin-top:24px">Model Pricing (per 1M tokens)</div>';
+  html+='<div class="section-title">Model Pricing (per 1M tokens)</div>';
   html+='<div class="card"><table class="data-table"><thead><tr>';
   html+=costTh("Model","model");
   html+=costTh("Perfect Rate","perfect");
@@ -2317,8 +2386,11 @@ function renderRunDetail(r){
   if(r.subcategory) html+='<span class="badge" title="Case subcategory">'+esc(r.subcategory)+'</span>';
   if(r.expected_mode) html+='<span class="badge" title="Expected engagement mode for this Phase 1 case">expects: '+esc(r.expected_mode)+'</span>';
   html+='</div>';
-  html+='<div class="text-xs text-muted mb-2">Session: '+esc(r.session_id||"N/A")+' | Duration: '+(r.duration_s||0).toFixed(1)+'s | Computed cost: '+fmtCost(r.computed_cost_usd)+'</div>';
-  html+='<div class="text-xs text-muted mb-4">Tokens: in='+fmt(r.input_tokens||0)+' out='+fmt(r.output_tokens||0)+' cache_read='+fmt(r.cache_read_tokens||0)+' cache_create='+fmt(r.cache_creation_tokens||0)+' | Turns: '+r.turns+
+  /* Per-run cost and token counts are deliberately not shown (or embedded):
+     the harness's token logging does not align with OpenRouter billing, so
+     token-derived per-run figures were unreliable and were removed. */
+  html+='<div class="text-xs text-muted mb-2">Session: '+esc(r.session_id||"N/A")+' | Duration: '+(r.duration_s||0).toFixed(1)+'s</div>';
+  html+='<div class="text-xs text-muted mb-4">Turns: '+r.turns+
     (r.tool_call_count!=null?' | Tool calls: '+fmt(r.tool_call_count):'')+'</div>';
   /* Non-timeout errors only — the timeout badge above already carries
      the error string for timed-out runs (currently every on-disk error
@@ -2501,13 +2573,15 @@ function renderProvenance(container){
 
 /* =================================================================
    CHART HELPERS
-   svgCostFrontier: the log-x cost-vs-composite scatter with the
-   precomputed efficiency-frontier staircase (used by renderCostPerf).
+   svgCostFrontier: the log-x published-price-vs-composite scatter
+   with the precomputed efficiency-frontier staircase (used by
+   renderCostPerf; axisLabel names the active price formulation).
    Frontier points carry a light outline; labels use a greedy
    vertical nudge to avoid overlap and flip anchor at the right edge.
    ================================================================= */
 
-function svgCostFrontier(pts,frontier){
+function svgCostFrontier(pts,frontier,axisLabel,yLabel){
+  yLabel=yLabel||"Composite Perfect rate";
   var W=860, H=480;
   var pad={t:34,r:34,b:56,l:64};
   var cw=W-pad.l-pad.r, ch=H-pad.t-pad.b;
@@ -2520,11 +2594,11 @@ function svgCostFrontier(pts,frontier){
     return "$"+v.toFixed(3);
   }
 
-  /* Domains: log-x over plotted costs (padded, extra room on the right
+  /* Domains: log-x over published prices (padded, extra room on the right
      for labels); y from just below the lowest composite up to 100% */
   var lo=null, hi=null, sMin=null;
   pts.forEach(function(p){
-    var l=log10(p.plotCost);
+    var l=log10(p.price);
     if(lo===null||l<lo) lo=l;
     if(hi===null||l>hi) hi=l;
     if(sMin===null||p.score<sMin) sMin=p.score;
@@ -2561,28 +2635,28 @@ function svgCostFrontier(pts,frontier){
     });
   }
   /* Axis captions */
-  svg+='<text x="'+(pad.l+cw/2)+'" y="'+(H-10)+'" fill="#94a3b8" font-size="10" text-anchor="middle">Average computed cost per run (USD, log scale)</text>';
-  svg+='<text x="14" y="'+(pad.t+ch/2)+'" fill="#94a3b8" font-size="10" text-anchor="middle" transform="rotate(-90,14,'+(pad.t+ch/2)+')">Composite Perfect rate</text>';
+  svg+='<text x="'+(pad.l+cw/2)+'" y="'+(H-10)+'" fill="#94a3b8" font-size="10" text-anchor="middle">'+esc(axisLabel||"Published price (USD per 1M tokens, log scale)")+'</text>';
+  svg+='<text x="14" y="'+(pad.t+ch/2)+'" fill="#94a3b8" font-size="10" text-anchor="middle" transform="rotate(-90,14,'+(pad.t+ch/2)+')">'+esc(yLabel)+'</text>';
 
   /* "best value" annotation: up and to the left is the value region */
   svg+='<text x="'+(pad.l+10)+'" y="'+(pad.t+16)+'" fill="rgba(52,211,153,.75)" font-size="11" font-weight="600">&#8598; best value</text>';
 
-  /* Efficiency frontier staircase: "best composite at cost &le; x" —
+  /* Efficiency frontier staircase: "best composite at price &le; x" —
      flat between frontier points, stepping up AT each one; extended
      right to the plot edge from the last point */
   if(frontier.length>0){
     var dPath='';
     for(var fi=0; fi<frontier.length; fi++){
-      var fc=frontier[fi].avg_cost_usd;
+      var fc=frontier[fi].price;
       if(fc<=0) fc=Math.pow(10,lo);
-      var fx=xPos(fc), fy=yPos(frontier[fi].composite);
+      var fx=xPos(fc), fy=yPos(frontier[fi].score);
       if(fi===0){ dPath+='M'+fx.toFixed(1)+' '+fy.toFixed(1); }
       else{
-        dPath+=' L'+fx.toFixed(1)+' '+yPos(frontier[fi-1].composite).toFixed(1)+
+        dPath+=' L'+fx.toFixed(1)+' '+yPos(frontier[fi-1].score).toFixed(1)+
                ' L'+fx.toFixed(1)+' '+fy.toFixed(1);
       }
     }
-    dPath+=' L'+(pad.l+cw)+' '+yPos(frontier[frontier.length-1].composite).toFixed(1);
+    dPath+=' L'+(pad.l+cw)+' '+yPos(frontier[frontier.length-1].score).toFixed(1);
     svg+='<path d="'+dPath+'" fill="none" stroke="rgba(52,211,153,.8)" stroke-width="1.5" stroke-dasharray="4 3"/>';
   }
   var onFrontier={};
@@ -2591,15 +2665,14 @@ function svgCostFrontier(pts,frontier){
   /* Points: provider encoded as color + shape; frontier points outlined */
   var labels=[];
   pts.forEach(function(p){
-    var px=xPos(p.plotCost), py=yPos(p.score);
+    var px=xPos(p.price), py=yPos(p.score);
     var prov=p.provider||"unknown";
     var fillVar=prov==="anthropic"?"var(--accent-light)":(prov==="openrouter"?"var(--c-partial)":"var(--c-neutral)");
     var ring=onFrontier[p.model]?' stroke="#f8fafc" stroke-width="1.2"':'';
-    var tipHtml=esc(p.model)+'<br>Composite: <b>'+pct(p.score)+'</b><br>Avg cost/run: <b>'+fmtCost(p.cost)+'</b>'+
-      (p.floored?' (plotted at the zero-cost floor)':'')+'<br>Averaged over <b>'+p.cm.n_included+'</b> of '+p.cm.n_runs+' runs'+
-      (p.cm.excluded_count>0?' ('+p.cm.excluded_count+' timeout-zeroed excluded)':'')+
+    var tipHtml=esc(p.model)+'<br>'+esc(yLabel)+': <b>'+pct(p.score)+'</b><br>Published price: <b>'+fmtCost(p.price)+'/Mtok</b>'+
+      '<br>List rates: $'+p.pm.input.toFixed(2)+' in / $'+p.pm.output.toFixed(2)+' out per 1M tokens'+
       (onFrontier[p.model]?'<br><b>On the efficiency frontier</b>':'');
-    var titleTxt=p.model+': '+pct(p.score)+' composite, '+fmtCost(p.cost)+'/run avg';
+    var titleTxt=p.model+': '+pct(p.score)+' '+yLabel+', '+fmtCost(p.price)+'/Mtok published';
     var common=' style="fill:'+fillVar+';cursor:pointer"'+ring+
       ' onmouseover="showTip(event,&#39;'+tipHtml.replace(/'/g,"&#39;")+'&#39;)" onmouseout="hideTip()"';
     if(prov==="openrouter"){
@@ -2793,9 +2866,25 @@ window.showAllRuns=function(){
   renderRunExplorer(el("sec-run-explorer"));
 };
 
-/* Leaderboard sort control: composite | per-phase gid | consistency | cost */
-window.sortLeaderboard=function(key){
-  state.lbSort=key;
+/* Leaderboard column-header sort: composite | per-phase gid | dispatch |
+   consistency | cost. Clicking the active column flips direction;
+   clicking a new column applies that column's default direction
+   (best-first: descending for rates, ascending for price). */
+window.lbSortBy=function(key,defDir){
+  if(state.lbSort===key){
+    state.lbSortDir=-state.lbSortDir;
+  } else {
+    state.lbSort=key;
+    state.lbSortDir=defDir||-1;
+  }
+  renderLeaderboard(el("sec-leaderboard"));
+};
+
+/* Leaderboard metric toggle: perfect (all criteria) | hard (hard-tier
+   criteria only). Re-renders composite, phase cells, ranks, and tier
+   bands from the precomputed hard variants; sort state carries over. */
+window.setLbMetric=function(key){
+  state.lbMetric=key;
   renderLeaderboard(el("sec-leaderboard"));
 };
 
@@ -2819,17 +2908,25 @@ window.sortCosts=function(key){
   renderCostsDetail(el("sec-costs"));
 };
 
-/* Observed-spend table sort (Costs Detail). New keys default ascending,
-   except cost/duration metrics, where descending ("most expensive
-   first") is the natural reading. */
-window.sortSpend=function(key){
-  if(state.spendSortCol===key){
-    state.spendSortDir=state.spendSortDir*-1;
-  } else {
-    state.spendSortCol=key;
-    state.spendSortDir=(key==="model")?1:-1;
-  }
-  renderCostsDetail(el("sec-costs"));
+/* Cost vs. Performance price-basis toggle: re-render the scatter (points
+   and frontier both come precomputed per formulation). The leaderboard's
+   Blended $/Mtok column is pinned to blend31 and does not re-render. */
+window.setCostForm=function(key){
+  state.costForm=key;
+  renderCostPerf(el("sec-cost-performance"));
+};
+
+/* Cost vs. Performance y-axis selectors: performance basis (composite |
+   composite gid) and metric (perfect | hard). Points, axis label,
+   caption, and frontier all come precomputed per combination; fully
+   decoupled from the leaderboard's metric toggle. */
+window.setCostPerf=function(key){
+  state.cpPerf=key;
+  renderCostPerf(el("sec-cost-performance"));
+};
+window.setCostMetric=function(key){
+  state.cpMetric=key;
+  renderCostPerf(el("sec-cost-performance"));
 };
 
 window.showTip=showTip;
