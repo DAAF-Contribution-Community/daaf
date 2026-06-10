@@ -40,6 +40,9 @@ which specified six test categories (mode classification, skill loading,
 protocol adherence, script quality, safety boundaries, golden checkpoint
 protocol tests). Three phases are implemented; where this README and the design
 document differ, the code (and this README) reflect current reality.
+Designed-but-never-built components that remain valuable are catalogued in the
+Design Backlog (§ 12) — the reference document does not need to be consulted
+for "what's next" beyond the sections cited there.
 
 ## 2. The Three Phases
 
@@ -420,6 +423,19 @@ within 300s.
 5. **OpenRouter token counts are approximations.** The Anthropic-compatible
    endpoint reports counts from Anthropic's tokenizer, not each model's native
    tokenizer, so computed OpenRouter costs are approximate.
+6. **Golden checkpoints embed recording-time framework content.** Golden JSONLs
+   contain `attachment` records with CLAUDE.md and hook-injection content from
+   when the session was recorded. Material framework changes can leave a
+   resumed model facing conflicting instructions (old history vs. current
+   system prompt). Carried from Reference § 11; the only mitigation is
+   re-recording, which invalidates prior comparisons (§ 5).
+7. **Scoring is not isolated from execution.** The original design (Reference
+   § 2.1, § 6.3) required scorers to run outside the agent's environment, after
+   UC Berkeley showed major agent benchmarks are exploitable wherever the agent
+   can write state the evaluator reads. Currently the runners, scorers, and the
+   model under test all share the DAAF container and filesystem. Low practical
+   risk for internal behavioral scoring; a real gap if scores ever carry
+   external weight.
 
 ## 12. Future Work
 
@@ -440,3 +456,66 @@ within 300s.
 - **Recalibrate cost estimation profiles** from post-`modelUsage`-fix runs
 - **PreToolUse git-blocking hook** for benchmark runs, replacing the
   ineffective `--disallowed-tools` patterns
+
+### Design Backlog (from the original reference)
+
+The original design document —
+`/daaf/research/2026-05-01_Benchmark_Testing/Benchmark_System_Reference.md` —
+specifies components that were designed but never implemented. Its research,
+architecture, and session-history sections are superseded by this README; the
+items below are the still-valuable remainder.
+
+- **Safety Boundaries test category** (Reference § 7.6): 8 single-prompt cases
+  (sb-01..08) testing refusal of protocol violations — direct `python3`, CSV
+  output, skipping QA, deleting failed scripts, `.env` reads, `rm -rf`,
+  unconfirmed `git push`, helper functions. Highest-priority unbuilt category:
+  Limitations 1 and 4 show models actually cross these boundaries (rogue git
+  commits, sandbox leaks). Cheap single-prompt cases with scoring criteria
+  already specified; complements the planned PreToolUse git-blocking hook.
+- **Script Quality test category** (Reference § 7.5): 4-8 cases scoring
+  generated scripts deterministically — section headers, IAT comments, no
+  function definitions, parquet output, `run_with_capture.sh` execution,
+  date-prefixed naming. Phase 3b's `subagent_behavior` scorer covers a subset
+  (script written + wrapper used); § 7.5's eight per-script criteria would
+  deepen it into convention-level scoring.
+- **Skill Loading test category** (Reference § 7.3): 8-12 cases testing
+  task-specific skill selection — the right data source skill (e.g., SAIPE vs.
+  MEPS), discovery before query, skill loaded by the right tier (subagent vs.
+  orchestrator). Phase 2 tests per-mode post-confirmation loading; this adds
+  the selection dimension. The required mechanism (golden checkpoints +
+  transcript scoring) already exists.
+- **Protocol Adherence test category** (Reference § 7.4): multi-step ordering
+  checks — the Turn Boundary Rule (confirmation turn contains zero tool
+  calls), document loading order, stage progression, STATE.md creation timing.
+  Phases 1-2 cover gates and reference loading; turn-boundary and
+  phase-progression behavior is currently untested.
+- **Deep golden-checkpoint catalog** (Reference § 7.7): 24 designed cases
+  resuming mid-pipeline — PSU blocking gates, code-reviewer-before-next-script,
+  STATE.md pre-flight verification, Data Onboarding interpretation gates, and
+  six cross-mode boundary/escalation tests. The checkpoint mechanism (§ 5) is
+  this design's infrastructure, but current phases exercise only two checkpoint
+  types (post-confirmation, Ad-Hoc-initialized). The catalog and seed-directory
+  design (Reference § 6.5) are the expansion path.
+- **Tier 3 LLM-as-judge** (Reference § 8.3; rubric principles § 4.1, hybrid
+  stack § 4.4, intermediate-artifact gap § 4.5): binary analytic rubrics, one
+  criterion per judge call, mandatory negative criteria, conservative
+  resolution when judge and deterministic scores diverge, Batches API for 50%
+  scoring cost, and sanitization of agent content before judge prompts
+  (prompt-injection warning, Reference § 2.1). This is the deeper fix for
+  `prompt_has_context_section` (judge whether contextual content is present
+  rather than matching a heading list) and the only designed path to
+  IAT-quality and other intermediate-artifact evaluation. `scorers/llm_judge/`
+  is the empty stub awaiting `judge.py` + `rubrics.yaml`.
+- **Statistical aggregation — `aggregator.py`** (Reference § 9): Beta-Binomial
+  posteriors with 90% credible intervals (non-overlapping intervals as the
+  decision rule for model differences), pass^k consistency alongside pass@1
+  capability, a safety-weighted composite adherence score (§ 9.4), and a
+  report format (§ 9.5). Never built — the § 10 ranking above is
+  hand-aggregated. With 2-3 reps × 17 models already in `results/`, credible
+  intervals are immediately computable from existing data.
+- **Hardening items** (Reference § 10, Phase 5): CI integration (cheap subset —
+  Phase 1, one cheap model, 1 rep — on PRs touching framework files), a test
+  case contribution guide, and effort-level comparison runs (`--effort`
+  plumbing exists; see the reference's 2026-05-02 session notes for the
+  `CLAUDE_CODE_EFFORT_LEVEL` override pitfall). The version-tagging deliverable
+  is already satisfied by `manifest.json`'s DAAF git SHA.
