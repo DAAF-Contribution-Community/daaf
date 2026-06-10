@@ -50,7 +50,7 @@ for "what's next" beyond the sections cited there.
 
 | Phase | Dataset | Cases | Start State | What It Tests |
 |-------|---------|-------|-------------|---------------|
-| 1 — `mode_classification` | `datasets/mode_classification/cases.jsonl` | 15 (mc-01..mc-15) | Cold start (no checkpoint; `CHECKPOINT_LINES = 0`) | Mode classification, confirmation gate present, no premature execution, reasoning quality |
+| 1 — `mode_classification` | `datasets/mode_classification/cases.jsonl` | 15 (mc-01..mc-15) | Cold start (no checkpoint; `CHECKPOINT_LINES = 0`) | Orchestrator skill loaded, mode classification, no premature execution (hard); confirmation gate present (soft) |
 | 2 — `post_confirmation` | `datasets/post_confirmation/cases.jsonl` | 9 (pc-01..pc-09), one per engagement mode | Resumes from a golden checkpoint ending at the confirmation gate; prompt is "Sounds good, let's proceed." | Whether the model loads the expected mode reference files and skills after confirmation |
 | 3 — `dispatch_compliance` | `datasets/dispatch_compliance/cases.jsonl` | 12 (dc-01..dc-12), 2 per agent type | Resumes from an Ad Hoc Collaboration initialized checkpoint (orchestrator + mode reference + data-scientist skill loaded) | Whether the model dispatches the correct subagent with a properly structured prompt |
 | 4 — `skill_routing` | `datasets/skill_routing/cases.jsonl` | 15 (sr-01..sr-15) | Resumes from the same Ad Hoc initialized checkpoint as Phase 3; prompt is a brainstorming question | Whether the model loads exactly the skills and reads exactly the reference files that the skills' own routing directives prescribe |
@@ -80,8 +80,8 @@ ground-truth quotes is `PHASE4_SKILL_ROUTING_PLAN.md`.
 {"id": "mc-01", "category": "mode_classification", "subcategory": "unambiguous",
  "prompt": "...", "expected": {"mode": "data_onboarding", "confirmation_gate": true},
  "turn_limit": 5, "cost_tier": "low",
- "hard_requirements": ["mode_correct", "confirmation_gate_present", "no_premature_execution"],
- "soft_requirements": ["reasoning_present"]}
+ "hard_requirements": ["orchestrator_skill_loaded", "mode_correct", "no_premature_execution"],
+ "soft_requirements": ["confirmation_gate_present"]}
 ```
 
 Phase 2/3/4 cases additionally carry a `golden_checkpoint` field; Phase 3 cases
@@ -144,12 +144,12 @@ Directory map (paths relative to `benchmarks/`):
 | Directory | Contents |
 |-----------|----------|
 | `harness/` | Core machinery: `executor.py` (CLI invocation), `checkpoint_manager.py` (golden cloning + sandbox lifecycle), `cost_estimator.py` (estimation + cost recomputation), `models.py` (dataclasses: TestCase, RunConfig, RunResult, etc.), `model_loader.py` (models.yaml loading + provider env wiring), `collector.py`, `hooks/` (benchmark-scoped hook scripts, e.g., `block-git-writes.sh` — see § 9) |
-| `scorers/deterministic/` | `mode_classification.py`, `checkpoint_adherence.py`, `dispatch_compliance.py`, `subagent_behavior.py`, `skill_routing.py` |
+| `scorers/deterministic/` | `checkpoint_adherence.py`, `dispatch_compliance.py`, `subagent_behavior.py`, `skill_routing.py` (Phase 1 is scored inline by `scripts/run_mode_classification.py` — see § 6) |
 | `scorers/llm_judge/` | Unimplemented stub (see § 6) |
 | `datasets/` | `{phase}/cases.jsonl` plus `test_fixtures/` (buggy scripts and data for debugger/code-reviewer cases) |
 | `golden/` | Golden checkpoint JSONLs (see § 5) |
 | `config/` | `models.yaml` — model matrix with pricing |
-| `scripts/` | Phase runners, `generate_goldens.py`, `generate_results_viewer.py`, `rescore_skill_routing.py`, `refresh_golden_checkpoint.py`, utilities |
+| `scripts/` | Phase runners, `generate_goldens.py`, `generate_results_viewer.py`, `rescore_skill_routing.py`, `rescore_criteria_overhaul.py`, `refresh_golden_checkpoint.py`, utilities |
 | `results/` | Timestamped, self-contained result sets |
 | `_sandbox/` | Per-run scratch directories and archived transcripts (transient) |
 | `archive/` | Legacy components (`runner.py`, `cost_budget.yaml`, per-case Phase 1 goldens) — see `archive/README.md` |
@@ -286,11 +286,37 @@ structural checks, no LLM involvement. Scorers read the session transcript
 JSONL and consider only lines **after** the golden checkpoint's line count, so
 pre-recorded history is never re-scored.
 
-**Criterion tiers.** Each criterion carries a tier (`tier1` = structural
-must-pass, e.g., `agent_dispatched`, `correct_subagent_type`; `tier2` =
-protocol detail, e.g., `prompt_has_base_dir`, `prompt_has_context_section`).
-Independently, each test case declares `hard_requirements` and
-`soft_requirements` listing which criteria are hard vs. soft for that case.
+**Criterion tiers — cases.jsonl is the source of truth.** Each test case
+declares `hard_requirements` and `soft_requirements` listing which criteria
+are hard vs. soft for that case; the human-edited case lists (and `expected`
+fields) are the authority, and scorers derive the tiers they stamp on emitted
+criteria from them (`tier1` = structural must-pass, e.g., `agent_dispatched`;
+`tier2` = protocol detail, e.g., `prompt_has_base_dir`; `info` = diagnostic
+only). Phase 1 criteria carry no stamped tier at all — the viewer classifies
+them by membership in the case's `hard_requirements` list (in
+`hard_requirements` → hard, otherwise soft).
+
+**Phase 1 criteria** (scored inline by `scripts/run_mode_classification.py`;
+the separate `scorers/deterministic/mode_classification.py` module was dead
+code — never invoked by the runner — and was deleted 2026-06-10, with its
+keyword/pattern tables relocated into the runner):
+`orchestrator_skill_loaded`, `mode_correct`, `no_premature_execution` (hard in
+all cases) and `confirmation_gate_present` (soft — gate phrasing varies enough
+across models that it is a protocol-detail signal, not a structural one). A
+former `reasoning_present` criterion existed only in the dead scorer module
+and was never scored by the live runner; it has been removed from the case
+lists.
+
+**Phase 2 criteria** (from `scorers/deterministic/checkpoint_adherence.py`):
+dynamically named `read_{doc}` criteria from `expected.documents_read` (tier1)
+and `skill_{name}` criteria from `expected.skills_loaded` (tier1) or
+`expected.skills_loaded_soft` (tier2 — same criterion names, softer tier; a
+skill appears in one list or the other, never both). pc-07
+(framework_development) uses the soft list for both authoring skills
+(`skill-authoring`, `agent-authoring` — the mode doc directs loading both at
+mode start, but deferring a load is a protocol detail, not a structural
+failure); pc-04 (ad_hoc_collaboration) deliberately keeps `data-scientist`
+hard.
 
 **Phase 3 dispatch criteria** (from `scorers/deterministic/dispatch_compliance.py`):
 `agent_dispatched`, `correct_subagent_type`, `prompt_has_base_dir`,
@@ -302,6 +328,33 @@ accept semantically equivalent variants, not just one literal string — e.g.,
 (`## Scope`, `## Background`, etc.), and `prompt_has_instructions` accepts
 `## Output Format`, `## Deliverables`, and similar (see `CONTEXT_HEADERS` /
 `INSTRUCTION_HEADERS` in the scorer).
+
+**Phase 3b criteria pruning (2026-06-10).** Four structural criteria were
+REMOVED from `scorers/deterministic/subagent_behavior.py` because they passed
+in essentially every run with a transcript, noising Perfect and soft rates
+(the viewer's Perfect metric counts every non-info criterion, and info-tier
+entries also counted toward Perfect in the v1 viewer):
+`subagent_transcript_found` (when no subagent transcript exists the scorer now
+emits NO subagent criteria — dispatch failure is already captured by
+`agent_dispatched`), `subagent_active` (every dispatched subagent makes tool
+calls), `subagent_no_code_execution` (never observed failing for the read-only
+agents), and `subagent_tool_summary` (an info-tier tool-call distribution
+diagnostic, not a behavioral check; its detail string was only ever console
+output). The discriminating per-agent-type criteria
+(`subagent_writes_script`, `subagent_uses_run_with_capture`,
+`subagent_loads_data_skill`, `subagent_reads_target_script`, etc.) are
+unchanged. Result sets scored before this pruning initially retained the
+removed criteria in their archived `result.json` files; on 2026-06-10 all live
+Phase 2 and Phase 3 result sets were rescored in place via
+`scripts/rescore_criteria_overhaul.py`, which normalized the historical corpus
+to the current criteria scale: the four removed Phase 3b criteria were
+stripped from stored `subagent_criteria` (417 runs across 24 sets; retained
+entries cross-checked against archived subagent transcripts with zero
+mismatches and zero Perfect changes — the removed criteria always passed
+wherever stored), and pc-07 runs gained the `skill_agent_authoring` tier2
+criterion retroactively with `skill_skill_authoring` retiered tier1 → tier2
+(48 runs across 8 sets; 35/48 fail the new criterion). summary.json files
+were regenerated per set.
 
 **Phase 4 skill-routing criteria** (from `scorers/deterministic/skill_routing.py`):
 `required_skills_loaded` and `required_refs_read` (tier1, hard in all cases);
@@ -451,7 +504,9 @@ find it. Originals should never be touched — but see Known Limitation 4.
 
 Point-in-time results as of 2026-06-09. Rep counts: Phases 1 and 2 — 3 reps
 for most models, Fable 5 at 2 reps; Phase 3 — Anthropic models at 2 reps,
-OpenRouter at 3.
+OpenRouter at 3. Note: this snapshot predates the 2026-06-10 criteria rescore
+(`rescore_criteria_overhaul.py`), which retroactively changed pc-07 rates in
+the archived result sets.
 
 **Topline:** Fable 5 is the strongest model overall — Phase 1: 30/30 (100%),
 Phase 2: 18/18 (100%), Phase 3: 21/24 (88%) with a 100% dispatch rate at

@@ -10,6 +10,15 @@ Merge semantics for result.json criteria:
 - Old criteria entries whose names the current scorer no longer emits are
   RETAINED in place (preserves historical criteria such as dry-run-2's
   no_spurious_skill_reload — see PHASE4 plan section 9, decision 6).
+- ONE explicit, single-name exception (2026-06-10, mirroring the denylist
+  spirit of rescore_criteria_overhaul.py — never a blanket drop): a legacy
+  expected_refs_read entry is STRIPPED when the case's CURRENT
+  datasets/skill_routing/cases.jsonl expected_refs is empty/absent AND the
+  new scorer output omitted the criterion. Such entries are vacuous
+  always-pass artifacts ("No secondary expected refs for this case.") from
+  runners that imported the pre-2026-06-10 scorer, and they dilute the soft
+  rates the criterion overhaul cleaned up. All other unre-emitted legacy
+  criteria are still retained in place.
 - Genuinely new criteria slot in at the scorer's emission position.
 - All other result.json fields (costs, tokens, turns, tool_call_count, etc.)
   are run-time facts and are left untouched.
@@ -64,6 +73,25 @@ from benchmarks.scorers.deterministic.skill_routing import score_skill_routing
 
 BASE_DIR = Path("/daaf")
 RESULTS_DIR = BASE_DIR / "benchmarks" / "results"
+SR_CASES_FILE = BASE_DIR / "benchmarks" / "datasets" / "skill_routing" / "cases.jsonl"
+
+
+def load_current_expected_refs() -> dict[str, list]:
+    """Map case id -> CURRENT expected.expected_refs from the live cases.jsonl.
+
+    Used only by the targeted expected_refs_read legacy strip (see module
+    docstring). Scoring itself stays manifest-pinned: the manifest's archived
+    expected dict is what gets passed to the scorer, as before.
+    """
+    refs = {}
+    with open(SR_CASES_FILE) as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            case = json.loads(line)
+            refs[case["id"]] = case["expected"].get("expected_refs", [])
+    return refs
 
 
 def parse_args():
@@ -236,7 +264,7 @@ def print_before_after(
     crit_names = list(new_summary["criterion_names"])
     for name in old_summary.get("criterion_names", []):
         if name not in crit_names:
-            crit_names.append(name)  # criteria dropped by rescore (shouldn't happen)
+            crit_names.append(name)  # criteria absent from new summary (possible here only via the targeted expected_refs_read strip when NO run keeps the criterion; all other legacy criteria are retained, unlike rescore_criteria_overhaul.py's broader intentional drops)
     crit_names.append("all_criteria")
 
     width = max(len(n) for n in crit_names) + 2
@@ -274,6 +302,7 @@ def rescore_set(set_dir: Path, dry_run: bool) -> bool:
 
     cases_by_id = {c["id"]: c for c in manifest["cases"]}
     line_count_cache = {}
+    current_expected_refs = load_current_expected_refs()
 
     run_dirs = sorted(d for d in (set_dir / "runs").iterdir() if d.is_dir())
     all_results = []
@@ -281,6 +310,7 @@ def rescore_set(set_dir: Path, dry_run: bool) -> bool:
     determinism_diffs = []
     new_criterion_names = set()  # scorer-emitted criteria absent from the archive
     new_criterion_counts = {}  # name -> [passed, total] across rescored runs
+    stripped_runs = []  # runs whose vacuous legacy expected_refs_read was dropped
 
     for run_dir in run_dirs:
         result_path = run_dir / "result.json"
@@ -338,6 +368,23 @@ def rescore_set(set_dir: Path, dry_run: bool) -> bool:
                 if nc["passed"]:
                     counts[0] += 1
 
+        # Targeted legacy strip (2026-06-10): drop a stale expected_refs_read
+        # entry IFF (a) the CURRENT cases.jsonl defines no expected_refs for
+        # this case AND (b) the new scorer output omitted the criterion.
+        # Explicit single-name scope — mirrors rescore_criteria_overhaul.py's
+        # denylist spirit; every OTHER legacy criterion the scorer no longer
+        # emits (e.g., dry-run-2's no_spurious_skill_reload) is still retained
+        # in place by merge_criteria below. See module docstring.
+        if (
+            not current_expected_refs.get(result["case_id"])
+            and "expected_refs_read" not in {nc["name"] for nc in new_criteria}
+            and any(c["name"] == "expected_refs_read" for c in result["criteria"])
+        ):
+            result["criteria"] = [
+                c for c in result["criteria"] if c["name"] != "expected_refs_read"
+            ]
+            stripped_runs.append(run_dir.name)
+
         result["criteria"] = merge_criteria(result["criteria"], new_criteria)
         all_results.append(result)
 
@@ -361,6 +408,7 @@ def rescore_set(set_dir: Path, dry_run: bool) -> bool:
     if skipped:
         for name in skipped:
             print(f"    skipped: {name}")
+    print(f"  Vacuous legacy expected_refs_read entries stripped: {len(stripped_runs)} run(s)")
     if new_criterion_counts:
         for name in sorted(new_criterion_counts):
             passed, total = new_criterion_counts[name]

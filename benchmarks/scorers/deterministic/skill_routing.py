@@ -105,10 +105,11 @@ def score_skill_routing(
             order (omitted when no directive prescribes a sequence).
 
     Returns:
-        List of CriterionResult — one per criterion in section 3.1 of the
-        plan, in emission order: required_skills_loaded (tier1),
-        required_skills_engaged (tier2), required_refs_read (tier1),
-        expected_refs_read, routing_order, no_forbidden_skills (all tier2).
+        List of CriterionResult — per section 3.1 of the plan, in emission
+        order: required_skills_loaded (tier1), required_skills_engaged
+        (tier2), required_refs_read (tier1), expected_refs_read (tier2,
+        OMITTED when the case has no expected_refs — see inline comment),
+        routing_order, no_forbidden_skills (both tier2).
         required_skills_engaged (loaded OR name-mentioned in user-visible
         text) is recorded in the plan (section 3.1 criteria table; section 9,
         decision 7); see the module docstring for its matching rules.
@@ -190,21 +191,28 @@ def score_skill_routing(
         ),
     ))
 
-    # --- expected_refs_read (tier2) ---
+    # --- expected_refs_read (tier2, conditional) ---
+    # Emitted ONLY when the case defines a non-empty expected_refs list. Cases
+    # without secondary refs get NO criterion — omission, not an automatic
+    # pass — because a criterion that can only ever pass for a case dilutes
+    # Perfect/soft rates (2026-06-10; cf. the removed no_spurious_skill_reload,
+    # plan section 9 decision 6). Aggregations (runner summary, rescore tool,
+    # viewer) all key off per-run criteria sets, and rescore_skill_routing.py's
+    # merge/determinism logic tolerates per-run omission, so no consumer
+    # assumes this criterion exists.
     expected_refs = expected.get("expected_refs", [])
-    missing_expected = [r for r in expected_refs if r not in read_basenames]
-    if not expected_refs:
-        detail = "No secondary expected refs for this case."
-    elif not missing_expected:
-        detail = f"All expected refs read: {expected_refs}"
-    else:
-        detail = f"Missing expected ref(s): {missing_expected}"
-    results.append(CriterionResult(
-        name="expected_refs_read",
-        passed=not missing_expected,
-        tier="tier2",
-        detail=detail,
-    ))
+    if expected_refs:
+        missing_expected = [r for r in expected_refs if r not in read_basenames]
+        results.append(CriterionResult(
+            name="expected_refs_read",
+            passed=not missing_expected,
+            tier="tier2",
+            detail=(
+                f"All expected refs read: {expected_refs}"
+                if not missing_expected
+                else f"Missing expected ref(s): {missing_expected}"
+            ),
+        ))
 
     # --- routing_order (tier2) ---
     # Ordered-subsequence check over the post-checkpoint stream of SUCCESSFUL

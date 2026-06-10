@@ -39,10 +39,6 @@ from benchmarks.scorers.deterministic.checkpoint_adherence import (
     find_benchmark_transcript,
     get_checkpoint_line_count,
 )
-from benchmarks.scorers.deterministic.mode_classification import (
-    MODE_KEYWORDS,
-    CONFIRMATION_PATTERNS,
-)
 
 # --- Config ---
 
@@ -67,6 +63,113 @@ MODE_REF_FILES = [
 
 # Cold start: no golden checkpoint prefix to skip
 CHECKPOINT_LINES = 0
+
+# Keyword/pattern tables for the inline scoring below. Relocated here
+# 2026-06-10 from scorers/deterministic/mode_classification.py when that
+# module was deleted: its score_mode_classification() was dead code (this
+# runner has always scored inline), and this runner was the only live
+# consumer of these two tables.
+
+# Keywords that indicate a specific mode classification.
+# Multiple variants per mode to handle natural language variation.
+MODE_KEYWORDS: dict[str, list[str]] = {
+    "data_onboarding": [
+        "data onboarding",
+        "onboarding mode",
+        "profile your data",
+        "profile the data",
+        "profiling phases",
+        "onboard",
+    ],
+    "data_lookup": [
+        "data lookup",
+        "lookup mode",
+        "look that up",
+        "focused answer",
+        "direct answer",
+    ],
+    "data_discovery": [
+        "data discovery",
+        "discovery mode",
+        "read-only exploration",
+        "no code, no downloads",
+        "explore what",
+    ],
+    "ad_hoc_collaboration": [
+        "ad hoc",
+        "ad-hoc",
+        "collaboration mode",
+        "thought partner",
+        "flexible",
+        "working session",
+    ],
+    "full_pipeline": [
+        "full pipeline",
+        "complete pipeline",
+        "comprehensive mode",
+        "most comprehensive",
+        "5 phases",
+        "five phases",
+        "4 checkpoints",
+        "four checkpoints",
+        "research pipeline",
+    ],
+    "revision_and_extension": [
+        "revision",
+        "extension mode",
+        "revise",
+        "existing analysis",
+        "new version",
+        "original untouched",
+    ],
+    "reproducibility_verification": [
+        "reproducibility",
+        "verification mode",
+        "reproduce",
+        "re-run",
+        "rerun",
+        "reproduction report",
+    ],
+    "framework_development": [
+        "framework development",
+        "framework mode",
+        "modify daaf",
+        "framework components",
+        "skills, agents",
+        "create a skill",
+    ],
+    "user_support": [
+        "user support",
+        "support mode",
+        "answer your questions",
+        "how it works",
+        "troubleshooting",
+    ],
+}
+
+# Patterns indicating a confirmation gate (must end with a question)
+CONFIRMATION_PATTERNS = [
+    r"shall I proceed",
+    r"shall we proceed",
+    r"shall we (begin|start|get started)",
+    r"shall I (begin|start|get started)",
+    r"let'?s (begin|start|get started)",
+    r"sound good",
+    r"want me to",
+    r"ready to (begin|start|proceed|get started)",
+    r"go ahead\??",
+    r"proceed\?",
+    r"confirm",
+    r"does this .* look right",
+    r"any adjustments",
+    r"approach .* differently",
+    r"shall I",
+    r"want to (try|proceed|start|begin)",
+    r"proceed with",
+    r"do you want",
+    r"would you like",
+    r"should I",
+]
 
 
 # --- Load config ---

@@ -45,6 +45,7 @@ from benchmarks.scorers.deterministic.dispatch_compliance import (
     score_dispatch_compliance,
 )
 from benchmarks.scorers.deterministic.subagent_behavior import (
+    find_subagent_transcripts,
     score_subagent_behavior,
 )
 
@@ -111,7 +112,19 @@ def score_run(session_id: str, test_case: TestCase) -> dict:
     expected_agent_type = test_case.expected.get("subagent_dispatched", "")
     agent_dispatched = any(c["passed"] for c in criteria_dicts if c["name"] == "agent_dispatched")
     subagent_criteria = []
+    subagent_transcript_missing = False
     if agent_dispatched and expected_agent_type:
+        # Diagnostic only: when dispatch succeeded but no subagent transcript
+        # can be located, Phase 3b behavior is silently unscorable — the scorer
+        # deliberately returns [] (its contract; see score_subagent_behavior).
+        # Surface the gap on the console and persist a plain result.json flag.
+        # NOT a criterion: it must never enter scoring or viewer Perfect.
+        if not find_subagent_transcripts(session_id):
+            subagent_transcript_missing = True
+            print(f"WARNING: [{test_case.id}] agent_dispatched passed but "
+                  f"find_subagent_transcripts() found no subagent transcript for "
+                  f"session {session_id} — Phase 3b behavior unscored "
+                  f"(subagent_transcript_missing=true persisted).")
         behavior_results = score_subagent_behavior(session_id, expected_agent_type)
         subagent_criteria = [
             {
@@ -126,6 +139,7 @@ def score_run(session_id: str, test_case: TestCase) -> dict:
     return {
         "criteria": criteria_dicts,
         "subagent_criteria": subagent_criteria,
+        "subagent_transcript_missing": subagent_transcript_missing,
         "transcript_path": str(transcript_path),
         "tool_call_count": 0,
     }
@@ -415,6 +429,7 @@ def run_one(test_case: TestCase, model: ModelConfig, rep: int,
         "timed_out": bool(result.error and "Timed out" in result.error),
         "criteria": scored["criteria"],
         "subagent_criteria": scored.get("subagent_criteria", []),
+        "subagent_transcript_missing": scored.get("subagent_transcript_missing", False),
         "transcript_path": archived_transcript or scored.get("transcript_path"),
         "tool_call_count": scored.get("tool_call_count", 0),
         "tool_failures": result.tool_failures,
@@ -552,6 +567,10 @@ def archive_results(all_results: list[dict], models: list[ModelConfig],
             "tool_call_count": r["tool_call_count"],
             "tool_failures": r.get("tool_failures", []),
         }
+        # Plain diagnostic flag (NOT a criterion): persisted only when true,
+        # so historical result.json schemas are otherwise unchanged.
+        if r.get("subagent_transcript_missing"):
+            result_data["subagent_transcript_missing"] = True
         with open(run_dir / "result.json", "w") as f:
             json.dump(result_data, f, indent=2)
 

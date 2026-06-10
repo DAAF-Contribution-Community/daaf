@@ -206,6 +206,23 @@ def score_checkpoint(
                 detail=f"{'Found' if passed else 'Missing'}: {doc}",
             ))
 
+    # Collision guard: a skill must appear in skills_loaded OR skills_loaded_soft,
+    # never both. Both blocks emit the same dynamically named skill_{name}
+    # criterion (only the stamped tier differs), so a collision would produce
+    # duplicate same-named criteria entries that corrupt downstream dict-keyed
+    # merging (rescore tools and summary rollups key criteria by name). Fail
+    # loudly rather than emit corrupt output.
+    skill_overlap = set(expected.get("skills_loaded", [])) & set(
+        expected.get("skills_loaded_soft", [])
+    )
+    if skill_overlap:
+        raise ValueError(
+            f"skills_loaded and skills_loaded_soft overlap: {sorted(skill_overlap)}. "
+            f"A skill must be listed in exactly one of the two — both emit the same "
+            f"skill_{{name}} criterion name, so duplicates would corrupt dict-keyed "
+            f"criteria merging downstream. Fix the case's expected dict."
+        )
+
     # Check skills_loaded: expected skill names from SUCCESSFUL Skill tool calls
     if "skills_loaded" in expected:
         loaded_skills = [
@@ -220,6 +237,28 @@ def score_checkpoint(
                 passed=passed,
                 tier="tier1",
                 detail=f"{'Loaded' if passed else 'Missing'}: {skill}",
+            ))
+
+    # Check skills_loaded_soft: same dynamically named skill_{name} criteria as
+    # skills_loaded, but emitted at tier2. For mode-doc-directed loads where
+    # deferral is a protocol detail rather than a structural failure (e.g.,
+    # pc-07's two authoring skills, which framework-development-mode.md directs
+    # loading at mode start). A given skill belongs in skills_loaded OR
+    # skills_loaded_soft, never both — the criterion name is identical either
+    # way, only the stamped tier differs.
+    if "skills_loaded_soft" in expected:
+        loaded_skills = [
+            tc["skill"]
+            for tc in tool_calls
+            if tc["name"] == "Skill" and tc["skill"] and tc.get("succeeded", True)
+        ]
+        for skill in expected["skills_loaded_soft"]:
+            passed = skill in loaded_skills
+            results.append(CriterionResult(
+                name=f"skill_{skill.replace('-', '_')}",
+                passed=passed,
+                tier="tier2",
+                detail=f"{'Loaded' if passed else 'Missing'} (soft): {skill}",
             ))
 
     # Check subagent_dispatched: expected SUCCESSFUL Agent tool calls

@@ -9,9 +9,18 @@ Data sources:
   - Subagent transcripts: ~/.claude/projects/-daaf/{session_id}/subagents/agent-{id}.jsonl
   - Archived copies: _sandbox/transcripts/{session_id}/subagents/agent-{id}.jsonl
 
-Scoring criteria per agent type (all deterministic):
-  - subagent_active (tier1): Subagent made at least one tool call
-  - Agent-specific criteria (tier1/tier2): Vary by subagent_type
+Scoring criteria per agent type (all deterministic): agent-specific criteria
+(tier1/tier2) varying by subagent_type — see BEHAVIOR_SPECS.
+
+Criteria hygiene (2026-06-10): structural always-pass criteria were removed
+because they diluted Perfect and soft rates without discriminating behavior
+(the viewer counts every non-info criterion toward Perfect):
+  - subagent_transcript_found — when no subagent transcript exists, the scorer
+    now emits NO subagent criteria (dispatch-level criteria such as
+    agent_dispatched already capture dispatch failure)
+  - subagent_active — every dispatched subagent makes tool calls
+  - subagent_no_code_execution — never observed failing for read-only agents
+  - subagent_tool_summary (info) — diagnostic distribution, not a criterion
 """
 
 import json
@@ -101,13 +110,6 @@ def extract_subagent_tool_calls(transcript_path: Path) -> list[dict]:
 
 
 # --- Per-agent-type behavioral checks ---
-
-def _check_has_tool_calls(tool_calls: list[dict]) -> tuple[bool, str]:
-    n = len(tool_calls)
-    if n > 0:
-        return True, f"Subagent made {n} tool call(s)."
-    return False, "Subagent made no tool calls (empty transcript or not started)."
-
 
 def _check_uses_tool_type(tool_calls: list[dict], tool_types: list[str]) -> tuple[bool, str]:
     used = {tc["name"] for tc in tool_calls}
@@ -224,33 +226,10 @@ def _check_reads_min_matching(tool_calls: list[dict], pattern: str, min_count: i
     return False, f"Read {n} files matching '{pattern}', expected {min_count}. Found: {paths or 'none'}"
 
 
-def _check_no_code_execution(tool_calls: list[dict]) -> tuple[bool, str]:
-    """Check that the subagent did NOT write scripts or execute code.
-
-    Read-only agents (source-researcher, search-agent) should never write .py
-    files or call run_with_capture.
-    """
-    violations = []
-    for tc in tool_calls:
-        if tc["name"] == "Write":
-            path = tc["raw_input"].get("file_path", "")
-            if path.endswith(".py"):
-                violations.append(f"Write({path.split('/')[-1]})")
-        if tc["name"] == "Bash":
-            cmd = tc["raw_input"].get("command", "")
-            if "run_with_capture" in cmd:
-                violations.append("Bash(run_with_capture)")
-    if not violations:
-        return True, "No code execution detected (read-only agent)."
-    return False, f"Code execution detected: {violations}"
-
-
 # --- Agent type behavior specifications ---
 
 BEHAVIOR_SPECS: dict[str, list[dict]] = {
     "research-executor": [
-        {"name": "subagent_active", "tier": "tier1",
-         "check": "has_tool_calls"},
         {"name": "subagent_writes_script", "tier": "tier1",
          "check": "writes_file", "pattern": r"\.py$"},
         {"name": "subagent_writes_to_adhoc", "tier": "tier2",
@@ -259,28 +238,18 @@ BEHAVIOR_SPECS: dict[str, list[dict]] = {
          "check": "bash_contains", "pattern": r"run_with_capture"},
     ],
     "source-researcher": [
-        {"name": "subagent_active", "tier": "tier1",
-         "check": "has_tool_calls"},
         {"name": "subagent_loads_data_skill", "tier": "tier1",
          "check": "loads_skill", "pattern": r"education-data-source-"},
         {"name": "subagent_reads_skill_refs", "tier": "tier2",
          "check": "reads_min_matching", "pattern": r"/references/", "min_count": 2},
-        {"name": "subagent_no_code_execution", "tier": "tier2",
-         "check": "no_code_execution"},
     ],
     "search-agent": [
-        {"name": "subagent_active", "tier": "tier1",
-         "check": "has_tool_calls"},
         {"name": "subagent_searches", "tier": "tier1",
          "check": "uses_tool_type", "tool_types": ["Grep", "Glob", "Read", "WebSearch"]},
         {"name": "subagent_reads_skill_files", "tier": "tier2",
          "check": "reads_min_matching", "pattern": r"\.claude/skills/", "min_count": 3},
-        {"name": "subagent_no_code_execution", "tier": "tier2",
-         "check": "no_code_execution"},
     ],
     "debugger": [
-        {"name": "subagent_active", "tier": "tier1",
-         "check": "has_tool_calls"},
         {"name": "subagent_reads_problem_script", "tier": "tier1",
          "check": "reads_file", "pattern": r"test_fixtures/debugger/"},
         {"name": "subagent_writes_diagnostic", "tier": "tier2",
@@ -289,8 +258,6 @@ BEHAVIOR_SPECS: dict[str, list[dict]] = {
          "check": "bash_contains", "pattern": r"run_with_capture"},
     ],
     "code-reviewer": [
-        {"name": "subagent_active", "tier": "tier1",
-         "check": "has_tool_calls"},
         {"name": "subagent_reads_target_script", "tier": "tier1",
          "check": "reads_file", "pattern": r"test_fixtures/code_reviewer/"},
         {"name": "subagent_writes_cr_script", "tier": "tier2",
@@ -299,8 +266,6 @@ BEHAVIOR_SPECS: dict[str, list[dict]] = {
          "check": "bash_contains", "pattern": r"run_with_capture"},
     ],
     "data-ingest": [
-        {"name": "subagent_active", "tier": "tier1",
-         "check": "has_tool_calls"},
         {"name": "subagent_reads_data_file", "tier": "tier1",
          "check": "references_file", "pattern": r"test_fixtures/data_ingest/"},
         {"name": "subagent_writes_profiling_script", "tier": "tier2",
@@ -315,9 +280,7 @@ def _run_check(spec: dict, tool_calls: list[dict]) -> tuple[bool, str]:
     """Dispatch a behavioral check based on its spec."""
     check_type = spec["check"]
 
-    if check_type == "has_tool_calls":
-        return _check_has_tool_calls(tool_calls)
-    elif check_type == "uses_tool_type":
+    if check_type == "uses_tool_type":
         return _check_uses_tool_type(tool_calls, spec["tool_types"])
     elif check_type == "reads_file":
         return _check_reads_file(tool_calls, spec["pattern"])
@@ -335,8 +298,6 @@ def _run_check(spec: dict, tool_calls: list[dict]) -> tuple[bool, str]:
         return _check_min_tool_calls(tool_calls, spec["min_count"])
     elif check_type == "reads_min_matching":
         return _check_reads_min_matching(tool_calls, spec["pattern"], spec["min_count"])
-    elif check_type == "no_code_execution":
-        return _check_no_code_execution(tool_calls)
     else:
         return False, f"Unknown check type: {check_type}"
 
@@ -356,32 +317,26 @@ def score_subagent_behavior(
 
     Returns:
         List of CriterionResult objects for subagent behavior criteria.
-        Returns a single "no_transcript" failure if no subagent transcript is found.
+        Returns an EMPTY list when no subagent transcript is found: dispatch
+        failure is already captured by the dispatch-level criteria
+        (agent_dispatched etc.), and emitting a structural transcript-found
+        criterion here only noised Perfect/soft rates (removed 2026-06-10).
     """
     results = []
 
     transcripts = find_subagent_transcripts(session_id)
 
     if not transcripts:
-        results.append(CriterionResult(
-            name="subagent_transcript_found",
-            passed=False,
-            tier="tier1",
-            detail=f"No subagent transcripts found for session {session_id[:12]}...",
-        ))
         return results
-
-    results.append(CriterionResult(
-        name="subagent_transcript_found",
-        passed=True,
-        tier="tier1",
-        detail=f"Found {len(transcripts)} subagent transcript(s).",
-    ))
 
     all_tool_calls = []
     for t in transcripts:
         all_tool_calls.extend(extract_subagent_tool_calls(t))
 
+    # subagent_behavior_defined is a deliberate tripwire, NOT always-pass noise:
+    # it fires (always as a FAILURE) only when a case expects an agent type
+    # that BEHAVIOR_SPECS does not cover — i.e., a scoring gap that would
+    # otherwise silently produce zero subagent criteria for a real dispatch.
     specs = BEHAVIOR_SPECS.get(expected_agent_type, [])
     if not specs:
         results.append(CriterionResult(
@@ -400,16 +355,5 @@ def score_subagent_behavior(
             tier=spec["tier"],
             detail=detail,
         ))
-
-    tool_names = [tc["name"] for tc in all_tool_calls]
-    tool_summary = {}
-    for name in tool_names:
-        tool_summary[name] = tool_summary.get(name, 0) + 1
-    results.append(CriterionResult(
-        name="subagent_tool_summary",
-        passed=True,
-        tier="info",
-        detail=f"Tool call distribution: {dict(sorted(tool_summary.items()))}",
-    ))
 
     return results

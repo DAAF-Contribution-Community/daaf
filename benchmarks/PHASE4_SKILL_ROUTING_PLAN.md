@@ -150,6 +150,16 @@ Per-case: `hard_requirements = ["required_skills_loaded", "required_refs_read"]`
 `soft_requirements = ["required_skills_engaged", "expected_refs_read",
 "routing_order", "no_forbidden_skills"]` — uniform across all 15 cases.
 
+> **Amendment (2026-06-10):** `expected_refs_read` is now **omitted** from
+> scorer output for cases whose `expected_refs` list is empty or absent
+> (previously it auto-passed with a "No secondary expected refs" detail). A
+> criterion that can only ever pass for a case is rate noise, not signal —
+> the same reasoning that removed `no_spurious_skill_reload` (§ 9, decision
+> 6). `routing_order`'s auto-pass when `order` is omitted is intentionally
+> unchanged (sr-15's two independent branches are a documented design case).
+> All aggregation paths (runner summary, `rescore_skill_routing.py`, viewer)
+> compute over per-run criteria sets and tolerate the omission.
+
 ### 3.2 Global scoring policies
 
 1. **quickstart.md / gotchas.md always allowed, never required.** Library skills'
@@ -188,6 +198,8 @@ Per-case: `hard_requirements = ["required_skills_loaded", "required_refs_read"]`
  "soft_requirements": ["required_skills_engaged", "expected_refs_read",
                        "routing_order", "no_forbidden_skills"]}
 ```
+
+**`expected_refs` hygiene (2026-06-10):** cases whose `expected_refs` was empty no longer carry the field at all, and their `soft_requirements` no longer name `expected_refs_read` — the scorer omits that criterion entirely for such cases (no auto-pass), so under case-lists-as-authority the lists must not name an unproducible criterion.
 
 **No `golden_project_path` (amended 2026-06-10):** Phase 4 cases deliberately
 omit this field. Setting it makes `prepare_sandbox()` rewrite every `/daaf`

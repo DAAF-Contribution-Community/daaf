@@ -7,8 +7,8 @@ run where the model correctly classified and presented a confirmation message),
 then scores whether the model loads the expected mode reference files and skills.
 
 Scoring uses score_checkpoint() from checkpoint_adherence.py, which handles
-documents_read, skills_loaded, subagent_dispatched, and no_tool_calls_of_type
-criteria from the test case's expected dict.
+documents_read, skills_loaded, skills_loaded_soft, subagent_dispatched, and
+no_tool_calls_of_type criteria from the test case's expected dict.
 
 Results are archived to a self-contained results folder with per-run transcripts.
 
@@ -622,8 +622,10 @@ def main():
         line_count = get_checkpoint_line_count(golden_path)
         expected_docs = tc.expected.get("documents_read", [])
         expected_skills = tc.expected.get("skills_loaded", [])
+        expected_skills_soft = tc.expected.get("skills_loaded_soft", [])
+        soft_str = f" soft_skills={expected_skills_soft}" if expected_skills_soft else ""
         print(f"  {tc.id} ({tc.subcategory}): {line_count} lines | "
-              f"expect docs={expected_docs} skills={expected_skills}")
+              f"expect docs={expected_docs} skills={expected_skills}{soft_str}")
 
     case_ids = [tc.id for tc in test_cases] if args.test_id else None
     est = estimate_batch_cost(models, "post_confirmation", case_ids=case_ids, reps=args.reps)
