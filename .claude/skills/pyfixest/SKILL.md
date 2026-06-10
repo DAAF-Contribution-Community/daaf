@@ -57,6 +57,8 @@ Each topic in `./references/` contains focused documentation:
 4. **Making tables?** Check `tables-and-plots.md`
 5. **Coming from R fixest?** Read `quickstart.md` then `gotchas.md`
 
+**The reference-file routing in this skill applies to advisory and brainstorming turns as much as implementation.** Recommending an approach, reviewing a plan, or answering a question that touches a routed topic calls for reading the routed reference file just as much as writing code does — the reference files carry curated caveats and environment-specific constraints that this overview and general knowledge lack.
+
 ## Related Skills
 
 | Skill | Relationship |

@@ -55,6 +55,8 @@ GeoPandas extends pandas with spatial data types and operations:
 3. **Spatial statistics?** Read `pysal-spatial-stats.md` (for methodology context, also load `data-scientist` skill's `geospatial-analysis.md`)
 4. **Having issues?** Check `gotchas.md` first
 
+**The reference-file routing in this skill applies to advisory and brainstorming turns as much as implementation.** Recommending an approach, reviewing a plan, or answering a question that touches a routed topic calls for reading the routed reference file just as much as writing code does — the reference files carry curated caveats and environment-specific constraints that this overview and general knowledge lack.
+
 ## Related Skills
 
 - **data-scientist** (`geospatial-analysis.md`, `geospatial-operations.md`): Spatial methodology — when/why to use spatial methods, interpretation guidance, MAUP, ecological fallacy. Load alongside this skill for research workflows.

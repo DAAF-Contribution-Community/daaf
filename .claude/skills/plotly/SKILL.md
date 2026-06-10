@@ -36,6 +36,8 @@ Plotly is an interactive visualization library for Python:
 | `export.md` | HTML, images, JSON | Saving and sharing |
 | `gotchas.md` | Common errors, best practices | Debugging |
 
+**The reference-file routing in this skill applies to advisory and brainstorming turns as much as implementation.** Recommending an approach, reviewing a plan, or answering a question that touches a routed topic calls for reading the routed reference file just as much as writing code does — the reference files carry curated caveats and environment-specific constraints that this overview and general knowledge lack.
+
 ## Quick Decision Trees
 
 ### "I need to create a chart"

@@ -46,6 +46,8 @@ statsmodels is the general-purpose **statistical modeling** library for Python:
 4. **Checking model assumptions?** Read `diagnostics.md`
 5. **Coming from R?** Read `quickstart.md` (formula API mirrors R syntax)
 
+**The reference-file routing in this skill applies to advisory and brainstorming turns as much as implementation.** Recommending an approach, reviewing a plan, or answering a question that touches a routed topic calls for reading the routed reference file just as much as writing code does — the reference files carry curated caveats and environment-specific constraints that this overview and general knowledge lack.
+
 ## Related Skills
 
 - **pyfixest**: Use instead of statsmodels when your model needs absorbed fixed effects, IV with FE, or difference-in-differences. pyfixest is faster for FE models; statsmodels is broader for everything else

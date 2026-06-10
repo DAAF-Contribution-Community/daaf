@@ -59,7 +59,14 @@ def extract_new_tool_calls(
                 tool_calls.append({
                     "name": name,
                     "skill": inp.get("skill", "") if name == "Skill" else "",
-                    "file_path": inp.get("file_path", "") if name == "Read" else "",
+                    # file_path must be populated for Write/Edit too — the
+                    # state_md_updated criterion checks Write/Edit file_path
+                    # and could never pass when this was Read-only.
+                    # documents_read is unaffected: it filters name == "Read".
+                    # NotebookEdit's parameter is notebook_path, not file_path.
+                    "file_path": (inp.get("file_path") or inp.get("notebook_path", ""))
+                    if name in ("Read", "Write", "Edit", "NotebookEdit")
+                    else "",
                     "command": inp.get("command", "") if name == "Bash" else "",
                     "raw_input": inp,
                     "tool_use_id": tool_use_id,

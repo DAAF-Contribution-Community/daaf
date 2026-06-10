@@ -149,7 +149,7 @@ Directory map (paths relative to `benchmarks/`):
 | `datasets/` | `{phase}/cases.jsonl` plus `test_fixtures/` (buggy scripts and data for debugger/code-reviewer cases) |
 | `golden/` | Golden checkpoint JSONLs (see § 5) |
 | `config/` | `models.yaml` — model matrix with pricing |
-| `scripts/` | Phase runners, `generate_goldens.py`, `generate_results_viewer.py`, `rescore_skill_routing.py`, utilities |
+| `scripts/` | Phase runners, `generate_goldens.py`, `generate_results_viewer.py`, `rescore_skill_routing.py`, `refresh_golden_checkpoint.py`, utilities |
 | `results/` | Timestamped, self-contained result sets |
 | `_sandbox/` | Per-run scratch directories and archived transcripts (transient) |
 | `archive/` | Legacy components (`runner.py`, `cost_budget.yaml`, per-case Phase 1 goldens) — see `archive/README.md` |
@@ -229,7 +229,7 @@ timed-out runs still produce scorable data.
 | File | Lines | Used By |
 |------|-------|---------|
 | `post_confirmation/{mode}.jsonl` (9 files) | 18 | Phase 2 — one per engagement mode, ending at the confirmation gate |
-| `dispatch_compliance/ad_hoc_initialized.jsonl` | 47 | All 12 Phase 3 cases — Ad Hoc mode fully initialized (topic-free final exchange, so any task can follow). Phase 4 used this file too until 2026-06-10 (result sets through `20260610_144524`) |
+| `dispatch_compliance/ad_hoc_initialized.jsonl` | 47 | All 12 Phase 3 cases — Ad Hoc mode fully initialized (topic-free final exchange, so any task can follow). Phase 4 used this file too until 2026-06-10 (result sets through `20260610_144524`, since archived out of `results/`) |
 | `skill_routing/ad_hoc_initialized.jsonl` | 47 | All 15 Phase 4 cases — content-refreshed copy of the Phase 3 golden (see Regeneration below) reflecting the 2026-06-10 routing-norm fix |
 | `ad_hoc/after_confirmation.jsonl` | 19 | `run_checkpoint_comparison.py` (legacy comparison utility) |
 | `bootstrap_template.jsonl` | 7 | Input to `scripts/generate_goldens.py` |
@@ -249,7 +249,8 @@ timed-out runs still produce scorable data.
   result sets.
 - `scripts/refresh_golden_checkpoint.py` performs a **deterministic content
   refresh** of a captured transcript: it re-reads the files behind each
-  Skill/Read tool result and splices current contents into the payloads,
+  Skill/Read tool result (and rebuilds skill-listing attachment descriptions
+  from current frontmatter) and splices current contents into the payloads,
   preserving everything else byte-for-byte (record count, assistant text,
   tool_use_id pairings). Caution: Read results are stored TWICE per record
   (numbered `message.content` payload AND raw `toolUseResult.file.content`) —
@@ -262,10 +263,21 @@ and in-context text dominates behavior: framework edits on disk are largely
 invisible until the golden is refreshed. Discovered empirically 2026-06-10: a
 routing-norm fix to the data-scientist skill produced zero behavioral change in
 a 60-run spot-check replayed against the pre-fix golden (sets
-`20260610_144245`/`_144524`, retained as a control condition), because the old
+`20260610_144245`/`_144524`, retained as a control condition until Session 5
+archived them out of `results/` with the other pre-fresh-golden Phase 4 sets;
+the finding stands as recorded), because the old
 skill text was embedded in the checkpoint. Any benchmark measuring a framework
 change MUST refresh (or re-record) its goldens first, and result sets spanning
-a golden change are not directly comparable.
+a golden change are not directly comparable. On 2026-06-10 (Session 5) ALL
+replayed goldens — both `ad_hoc_initialized` files, the 9 `post_confirmation`
+goldens, and `ad_hoc/after_confirmation.jsonl` — plus `bootstrap_template.jsonl`
+were refreshed to current framework text via `refresh_golden_checkpoint.py`
+(extended that day to also rebuild skill-listing attachment descriptions, which
+every golden embeds at line 5). Consequently, Phase 2 and Phase 3 result sets
+recorded before this refresh are not directly comparable to later sets: the
+checkpoint content changed, including embedded skill bodies and listings (the
+older recordings carried listing descriptions truncated under a previous
+display cap, so the refreshed checkpoints are also several KB larger).
 
 ## 6. Scoring
 

@@ -550,7 +550,7 @@ real research conclusions.
 
 | If you need to... | Go to |
 |-------------------|-------|
-| Write Python code for survey-weighted estimation | Load the `svy` skill for implementation syntax, design specification patterns, and worked examples |
+| Write or advise on survey-weighted estimation in Python | Load the `svy` skill for design specification patterns, worked examples, and syntax |
 | Compute weighted descriptive statistics (means, medians, proportions) | `./descriptive-analysis.md` > "Weighted Analysis" section, plus the `svy` skill for code |
 | Run survey-weighted regression with covariates | Load the `svy` skill for design specification, plus `statsmodels` skill for model diagnostics |
 | Apply causal inference methods to survey data | `./causal-inference.md` for methodology (DiD, IV, RD), plus the `svy` skill for survey-aware implementation |

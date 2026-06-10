@@ -65,6 +65,8 @@ Each topic in `./references/` contains focused documentation:
 6. **Interpretation task?** Read `interpretation.md`, then check `supervised-ml.md` in data-scientist skill for methodology
 7. **Fairness assessment?** Read `fairness.md`, then check `supervised-ml.md` in data-scientist skill for conceptual framework
 
+**The reference-file routing in this skill applies to advisory and brainstorming turns as much as implementation.** Recommending an approach, reviewing a plan, or answering a question that touches a routed topic calls for reading the routed reference file just as much as writing code does — the reference files carry curated caveats and environment-specific constraints that this overview and general knowledge lack.
+
 ## Related Skills
 
 | Skill | Relationship |

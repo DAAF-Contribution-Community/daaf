@@ -72,9 +72,11 @@ PHASE3_TOKENS = {
 }
 
 # Calibrated 2026-06-10 from results/20260610_022333 (5 cheap OpenRouter models
-# x 15 cases x 1 rep; per-case means). Known caveat: these models mostly answered
-# without tool use, so stronger models doing full multi-reference routing will
-# run heavier — recalibrate after the first Anthropic baseline batch.
+# x 15 cases x 1 rep; per-case means). That set was since archived out of
+# results/ (Session 5 — pre-fresh-golden sets superseded by the golden swap).
+# Known caveat: these models mostly answered without tool use, so stronger
+# models doing full multi-reference routing will run heavier — recalibrate
+# from the first fresh-golden Anthropic baseline batch (still pending).
 PHASE4_TOKENS = {
     "sr-01": (123418, 1939, 0),
     "sr-02": (50347, 1163, 2762),

@@ -44,10 +44,10 @@ changed since the original run, historical slicing breaks (the manifest's
 daaf_git_sha allows verification).
 
 Usage:
-    python3 benchmarks/scripts/rescore_skill_routing.py 20260610_022333
+    python3 benchmarks/scripts/rescore_skill_routing.py 20260610_153005
     python3 benchmarks/scripts/rescore_skill_routing.py --all --dry-run
     python3 benchmarks/scripts/rescore_skill_routing.py \
-        benchmarks/results/20260610_022333 20260610_031234
+        benchmarks/results/20260610_153005 20260610_153417
 """
 
 import argparse
@@ -73,7 +73,7 @@ def parse_args():
     parser.add_argument(
         "set_dirs",
         nargs="*",
-        help="Result-set dirs (timestamps like 20260610_022333, or full paths)",
+        help="Result-set dirs (timestamps like 20260610_153005, or full paths)",
     )
     parser.add_argument(
         "--all",

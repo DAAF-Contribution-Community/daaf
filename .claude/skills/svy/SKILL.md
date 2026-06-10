@@ -53,6 +53,8 @@ This skill targets **svy 0.13.0** (released 2026-03-25). svy supersedes **sampli
 4. **Setting up a federal survey (NHANES, CPS, etc.)?** Read `design-weights.md` (federal survey patterns table)
 5. **Coming from samplics?** Read `design-weights.md` for the new API; the `Sample` object replaces `TaylorEstimator`/`ReplicateEstimator`
 
+**The reference-file routing in this skill applies to advisory and brainstorming turns as much as implementation.** Recommending an approach, reviewing a plan, or answering a question that touches a routed topic calls for reading the routed reference file just as much as writing code does — the reference files carry curated caveats and environment-specific constraints that this overview and general knowledge lack.
+
 ## Related Skills
 
 | Skill | Relationship |

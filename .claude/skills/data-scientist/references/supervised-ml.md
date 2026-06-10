@@ -10,7 +10,7 @@ Methodological guidance for supervised machine learning in applied social scienc
 - For unsupervised/exploratory analysis (clustering, dimension reduction), see `./exploratory-unsupervised.md`
 - For descriptive analysis and association measurement, see `./descriptive-analysis.md`
 - For chart selection when presenting ML results, see `./visualization-design.md`
-- **Scope boundary:** This file covers supervised ML methodology only. Implementation syntax (scikit-learn API, SHAP API, fairlearn API) belongs in the `scikit-learn` skill's reference files.
+- **Scope boundary:** This file covers supervised ML methodology only. Tool-level content (scikit-learn API, SHAP API, fairlearn API) lives in the `scikit-learn` skill's reference files — load that skill whenever those tools enter the discussion, in advice as much as in code.
 
 ## Acknowledgments
 
@@ -199,7 +199,7 @@ Social science data is riddled with missing values — administrative records ha
 
 **Never impute the outcome variable.** Observations with missing outcomes should be excluded from the modeling sample. Imputing outcomes introduces fabricated signal that corrupts both training and evaluation.
 
-> **Cross-reference:** For missing data characterization methodology (MCAR, MAR, MNAR testing and interpretation), see `descriptive-analysis.md`. For Pipeline and imputer implementation syntax, load the `scikit-learn` skill.
+> **Cross-reference:** For missing data characterization methodology (MCAR, MAR, MNAR testing and interpretation), see `descriptive-analysis.md`. For the tool-level details of Pipeline and imputers — whether you're advising or writing code — load the `scikit-learn` skill.
 
 ## Model Selection for Supervised Tasks
 
@@ -299,7 +299,7 @@ Calibration measures whether a model's predicted probabilities match observed fr
 
 **Key insight:** Tree-based models (random forests, gradient boosting) are often poorly calibrated out of the box despite strong discriminative performance. Random forests tend to push probabilities toward 0.5; gradient boosting tends toward extreme probabilities. Always check calibration when using ensemble methods for probability-sensitive decisions.
 
-> **Cross-reference:** For CalibratedClassifierCV implementation syntax and the sklearn.calibration module, load the `scikit-learn` skill.
+> **Cross-reference:** For the tool-level details of CalibratedClassifierCV and the sklearn.calibration module — whether you're advising or writing code — load the `scikit-learn` skill.
 
 ## ML Regression Methodology
 
@@ -396,7 +396,7 @@ Rudin (2019) argues that post-hoc explanations (SHAP, LIME) are approximations o
 - When SHAP is used, always include the caveat that SHAP explains the model's behavior, not causal relationships in the data
 - Never present SHAP values or feature importances as evidence for policy recommendations without independent causal evidence
 
-> **Cross-reference:** For SHAP implementation syntax, load the `scikit-learn` skill, specifically `interpretation.md`. For econometric approaches to understanding variable contributions (Gelbach decomposition, Oster sensitivity analysis), see `statistical-modeling.md`.
+> **Cross-reference:** For the tool-level details of SHAP — whether you're advising or writing code — load the `scikit-learn` skill, specifically `interpretation.md`. For econometric approaches to understanding variable contributions (Gelbach decomposition, Oster sensitivity analysis), see `statistical-modeling.md`.
 
 ## Fairness, Bias, and Equity
 
@@ -451,7 +451,7 @@ These are not abstract legal concerns. A dropout early warning system that flags
 6. **Consider mitigation** if disparities are found — threshold adjustment by group, constrained optimization, or alternative model formulations. Note that mitigation may reduce overall predictive performance; document this tradeoff.
 7. **Report fairness assessment results alongside predictive performance** — fairness metrics are not optional supplementary material; they are core results
 
-> **Cross-reference:** For fairlearn implementation syntax (MetricFrame, ThresholdOptimizer, ExponentiatedGradient), load the `scikit-learn` skill, specifically `fairness.md`.
+> **Cross-reference:** For the tool-level details of fairlearn (MetricFrame, ThresholdOptimizer, ExponentiatedGradient) — whether you're advising or writing code — load the `scikit-learn` skill, specifically `fairness.md`.
 
 ## When Deep Learning Methods Are Appropriate
 

@@ -41,6 +41,27 @@ reconstructing payloads from the pre-fix git versions of the source files):
    json.dumps(rec, separators=(",", ":"), ensure_ascii=False).
    Unmodified lines are emitted verbatim from the source bytes regardless.
 
+4. Skill-listing attachment records (validated against
+   benchmarks/golden/bootstrap_template.jsonl line 5, where 36 of 37
+   DAAF-skill descriptions matched the current on-disk frontmatter
+   byte-for-byte; the 37th was the skill whose description had changed):
+   a top-level record with "type":"attachment" whose "attachment" object is
+       {"type": "skill_listing", "content": <listing>, "skillCount": N,
+        "isInitial": ...}
+   The listing string is "\n".join of one entry per skill:
+       "- {name}: {description}"
+   where {description} is the skill's frontmatter `description` field
+   VERBATIM (yaml.safe_load semantics). Descriptions may contain literal
+   newlines (e.g., the built-in claude-api skill); continuation lines do
+   not start with "- {name}: " and belong to the preceding entry. Entries
+   whose name has no SKILL.md under /daaf/.claude/skills (built-in or
+   user-level skills, e.g. init, review, update-config) have no source to
+   rebuild from and are preserved verbatim. Entry order, the entry name
+   set, and skillCount are never changed — only description text is
+   rebuilt. A frontmatter `when_to_use` field would be appended to the
+   displayed listing in a serialization this tool has not validated, so
+   encountering one raises an error rather than guessing.
+
 Usage:
     python3 benchmarks/scripts/refresh_golden_checkpoint.py \
         --source benchmarks/golden/dispatch_compliance/ad_hoc_initialized.jsonl \
@@ -55,8 +76,14 @@ import json
 import re
 from pathlib import Path
 
+import yaml
+
 SKILLS_DIR = Path("/daaf/.claude/skills")
 BASE_DIR_PREFIX = "Base directory for this skill: "
+# A skill-listing entry line: "- {name}: {description...}". Name charset per
+# the Agent Skills spec (^[a-z0-9]+(-[a-z0-9]+)*$). Lines not matching are
+# continuation lines of the previous entry's multi-line description.
+LISTING_ENTRY_RE = re.compile(r"^- ([a-z0-9]+(?:-[a-z0-9]+)*): (.*)$")
 
 
 def load_lines(source_path):
@@ -144,6 +171,95 @@ def rebuild_skill_payload(old_payload, skill_name):
 
     preamble = old_rest[: old_h1.start()]
     return header + "\n" + preamble + current_body[new_h1.start():], str(skill_md)
+
+
+def load_frontmatter_description(skill_name):
+    """Return the current frontmatter `description` for a DAAF skill, or
+    None if the skill has no SKILL.md under SKILLS_DIR (built-in skill).
+
+    Uses yaml.safe_load on the frontmatter block — the same parse that was
+    validated to reproduce recorded listing entries byte-for-byte (see
+    module docstring, serialization 4).
+    """
+    skill_md = SKILLS_DIR / skill_name / "SKILL.md"
+    if not skill_md.exists():
+        return None
+    text = skill_md.read_text(encoding="utf-8")
+    if not text.startswith("---\n"):
+        raise ValueError(f"{skill_md} does not start with YAML frontmatter")
+    frontmatter = yaml.safe_load(text[4:text.index("\n---\n", 4)])
+    if not isinstance(frontmatter, dict):
+        raise ValueError(f"{skill_md} frontmatter did not parse to a mapping")
+    if "when_to_use" in frontmatter:
+        raise ValueError(
+            f"{skill_md} has a when_to_use field; its listing serialization "
+            "is unvalidated — extend serialization 4 before refreshing"
+        )
+    description = frontmatter.get("description")
+    if not isinstance(description, str) or not description.strip():
+        raise ValueError(f"{skill_md} has no usable frontmatter description")
+    return description
+
+
+def parse_skill_listing(content):
+    """Parse a skill_listing content string into [[name, description], ...].
+
+    Continuation-aware: lines that do not match the entry pattern are
+    appended (with their newline) to the previous entry's description.
+    """
+    entries = []
+    for line in content.split("\n"):
+        match = LISTING_ENTRY_RE.match(line)
+        if match:
+            entries.append([match.group(1), match.group(2)])
+        elif entries:
+            entries[-1][1] += "\n" + line
+        else:
+            raise ValueError(
+                f"skill_listing content does not start with an entry line: "
+                f"{line!r}"
+            )
+    return entries
+
+
+def rebuild_skill_listing(attachment):
+    """Rebuild a skill_listing attachment's content from current frontmatter.
+
+    Entry order, the entry name set, and skillCount are preserved; only
+    description text is swapped. Entries without a DAAF SKILL.md source are
+    kept verbatim. Returns (new_content, stats_dict).
+    """
+    old_content = attachment.get("content", "")
+    entries = parse_skill_listing(old_content)
+    skill_count = attachment.get("skillCount")
+    if len(entries) != skill_count:
+        raise ValueError(
+            f"Parsed {len(entries)} listing entries but skillCount is "
+            f"{skill_count}; a description may contain an entry-like line"
+        )
+    stats = {"rebuilt": 0, "changed": 0, "external": 0}
+    new_entries = []
+    for name, old_description in entries:
+        current = load_frontmatter_description(name)
+        if current is None:
+            new_entries.append((name, old_description))
+            stats["external"] += 1
+        else:
+            new_entries.append((name, current))
+            stats["rebuilt"] += 1
+            if current != old_description:
+                stats["changed"] += 1
+    new_content = "\n".join(f"- {name}: {desc}" for name, desc in new_entries)
+    # Reparse guard: a current frontmatter description containing an
+    # entry-like line ("\n- name: ...") would corrupt the listing in a way
+    # only the NEXT refresh's pre-rebuild check would catch — fail now.
+    if len(parse_skill_listing(new_content)) != skill_count:
+        raise ValueError(
+            "Rebuilt skill listing no longer parses back to skillCount "
+            f"({skill_count}) entries; a current frontmatter description "
+            "likely contains an entry-like line"
+        )
+    return new_content, stats
 
 
 def rebuild_read_payload(tool_input):
@@ -237,6 +353,11 @@ def null_payload_copy(record):
             file_info["content"] = None
             file_info["numLines"] = None
             file_info["totalLines"] = None
+    # skill_listing attachment content is the payload; skillCount is NOT
+    # nulled — the refresh never adds or removes entries, so it must match
+    attachment = clone.get("attachment")
+    if isinstance(attachment, dict) and attachment.get("type") == "skill_listing":
+        attachment["content"] = None
     return clone
 
 
@@ -247,6 +368,26 @@ def plan_replacements(records):
     """
     report = []
     for idx, record in enumerate(records):
+        attachment = record.get("attachment")
+        if (
+            record.get("type") == "attachment"
+            and isinstance(attachment, dict)
+            and attachment.get("type") == "skill_listing"
+        ):
+            old_payload = attachment.get("content", "")
+            new_payload, stats = rebuild_skill_listing(attachment)
+            attachment["content"] = new_payload
+            report.append(
+                {
+                    "tool": "SkillListing",
+                    "target": f"{SKILLS_DIR}/*/SKILL.md frontmatter",
+                    "record_line": idx + 1,
+                    "old_len": len(old_payload),
+                    "new_len": len(new_payload),
+                    "entries": stats,
+                }
+            )
+            continue
         message = record.get("message")
         if not isinstance(message, dict):
             continue
@@ -355,6 +496,13 @@ def main():
             print(
                 f"      toolUseResult.file duplicate {duplicate[0]} -> "
                 f"{duplicate[1]} chars ({dup_delta:+d})"
+            )
+        entries = item.get("entries")
+        if entries:
+            print(
+                f"      entries: {entries['rebuilt']} rebuilt from current "
+                f"frontmatter ({entries['changed']} changed), "
+                f"{entries['external']} non-DAAF preserved verbatim"
             )
 
     # Structural assertion: non-payload JSON unchanged for every record

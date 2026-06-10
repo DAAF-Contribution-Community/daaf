@@ -560,7 +560,7 @@ This rule applies to all survey-weighted analyses: descriptive statistics, cross
 
 Many federal surveys provide **replicate weight columns** alongside the main analysis weight (e.g., ACS PUMS provides 80, CPS ASEC provides 160, MEPS provides 128). Replicate weights are constructed from the true (internal) survey design before disclosure avoidance masking, so they produce more accurate variance estimates than Taylor linearization with the (possibly perturbed) public-use design variables.
 
-**Practical rule:** If the data file provides replicate weights, prefer them over Taylor linearization. Load the `svy` skill for implementation syntax. For the full conceptual treatment of variance estimation methods, see `./survey-analysis.md`.
+**Practical rule:** If the data file provides replicate weights, prefer them over Taylor linearization. Whenever replicate-weight estimation comes up — advising or coding — load the `svy` skill. For the full conceptual treatment of variance estimation methods, see `./survey-analysis.md`.
 
 ### Weighted Percentiles
 

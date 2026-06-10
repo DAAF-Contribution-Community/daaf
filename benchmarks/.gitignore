@@ -1,6 +1,7 @@
 # Benchmark run artifacts — ephemeral, large, regenerable
 _sandbox/
 results/
+results_archive/
 
 # Research project directories created by subagents during benchmark runs
 research/

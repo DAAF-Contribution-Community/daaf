@@ -190,7 +190,7 @@ What task are you performing?
     └─ Deep learning (PyTorch, TensorFlow) → escalate to orchestrator
 ```
 
-**The THEN-load steps apply to advisory and brainstorming turns as much as implementation.** Recommending a method, reviewing a plan, or talking through an approach that names a tool needs the routed library skill loaded just as much as writing code does. The library skills encode environment-specific constraints (which estimators and export backends are actually installed and working here) and curated caveats that general knowledge lacks or gets wrong — for example, when a familiar tool is statistically inappropriate for the data at hand. Naming a tool in advice without loading its skill risks recommending an approach this environment cannot run, or one the skill's curated caveats explicitly warn against.
+**The THEN-load steps apply to advisory and brainstorming turns as much as implementation.** Recommending a method, reviewing a plan, or talking through an approach that names a tool needs the routed library skill loaded just as much as writing code does. The library skills encode environment-specific constraints (which estimators and export backends are actually installed and working here) and curated caveats that general knowledge lacks or gets wrong — for example, when a familiar tool is statistically inappropriate for the data at hand. Naming a tool in advice without loading its skill risks recommending an approach this environment cannot run, or one the skill's curated caveats explicitly warn against. The norm extends one hop further: once the routed library skill is loaded, its own reference-file routing carries the same advisory-inclusive expectation — answer from its routed reference files, not just its SKILL.md overview.
 
 **Visualization loading order matters:** The reference files provide *design principles* (what chart to use, how to direct attention, how to handle color accessibly). The tool skills provide *syntax* (how to code it). Read the design guidance first so implementation choices are principled, not ad-hoc.
 
@@ -445,7 +445,7 @@ Geospatial analysis task?
 ├─ Making maps or choosing classification schemes
 │   └─ → ./references/geospatial-analysis.md (map design)
 │       THEN → ./references/visualization-execution.md (color, accessibility)
-└─ Implementation syntax (geopandas, PySAL, rasterio)
+└─ Working with or advising on geopandas, PySAL, or rasterio
     └─ Load `geopandas` skill
 ```
 

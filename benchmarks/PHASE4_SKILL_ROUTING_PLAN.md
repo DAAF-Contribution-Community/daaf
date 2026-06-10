@@ -58,7 +58,10 @@ create a second line-count dependency for zero benefit.
 > freeze tool-result payloads at recording time, so the routing-norm fix was
 > invisible to models replaying the pre-fix golden (verified empirically — zero
 > movement in a 60-run spot-check, sets `20260610_144245`/`_144524`, retained as
-> the stale-checkpoint control). The Phase 3 golden itself is untouched;
+> the stale-checkpoint control — later archived off with all other pre-fresh-golden
+> sets, 2026-06-10 Session 5; the finding stands as recorded). The Phase 3 golden
+> was subsequently ALSO refreshed in place (Session 5, user-approved) along with
+> all other replayed goldens — see README § 5;
 > historical Phase 4 rescores resolve goldens via per-set manifests and remain
 > valid. Result sets before/after the golden swap are not directly comparable
 > (framework state AND checkpoint content both changed). See README § 5
@@ -644,4 +647,7 @@ geospatial-analysis (+geospatial-operations soft).
    Historical Phase 4 sets rescored in place via
    `scripts/rescore_skill_routing.py` (merge semantics preserve legacy
    criteria; determinism verified — all pre-existing criteria reproduced
-   identically across 225 runs).
+   identically across 225 runs). Note (2026-06-10, Session 5): the underlying
+   pre-fresh-golden sets were archived out of `results/` (user decision —
+   superseded by the golden swap); the rescore numbers above are preserved
+   here as the historical record.

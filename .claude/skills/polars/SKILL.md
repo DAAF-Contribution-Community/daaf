@@ -58,6 +58,8 @@ Each topic in `./references/` contains focused documentation:
 2. **Coming from Pandas?** Read `quickstart.md`, `expressions.md`, then `interop.md`
 3. **Performance issues?** Check `performance.md` first
 
+**The reference-file routing in this skill applies to advisory and brainstorming turns as much as implementation.** Recommending an approach, reviewing a plan, or answering a question that touches a routed topic calls for reading the routed reference file just as much as writing code does — the reference files carry curated caveats and environment-specific constraints that this overview and general knowledge lack.
+
 ## Quick Decision Trees
 
 ### "I need to get started"
