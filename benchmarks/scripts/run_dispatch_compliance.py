@@ -22,6 +22,7 @@ Usage:
 import argparse
 import concurrent.futures
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -135,6 +136,141 @@ def score_run(session_id: str, test_case: TestCase) -> dict:
 FIXTURE_PREFIX = "/daaf/benchmarks/datasets/test_fixtures/"
 
 
+def _fixture_status_entries() -> list[str] | None:
+    """Return `git status --porcelain` entries for test_fixtures/, or None on
+    git failure (a warning is printed; callers treat None as 'cannot check').
+
+    Mirrors the subprocess pattern of get_git_sha().
+    """
+    try:
+        proc = subprocess.run(
+            ["git", "status", "--porcelain", "--", FIXTURE_PREFIX],
+            capture_output=True,
+            text=True,
+            timeout=30,
+            cwd="/daaf",
+        )
+    except (subprocess.TimeoutExpired, FileNotFoundError) as e:
+        print(f"WARNING: could not check fixture status ({e}); skipping fixture check.")
+        return None
+    if proc.returncode != 0:
+        print(f"WARNING: git status failed for fixtures (exit {proc.returncode}): "
+              f"{proc.stderr.strip()}")
+        return None
+    return [line for line in proc.stdout.splitlines() if line.strip()]
+
+
+def restore_fixtures() -> None:
+    """Restore datasets/test_fixtures/ to pristine git HEAD state.
+
+    Pristine fixture state is defined as git HEAD: the canonical fixtures
+    legitimately CONTAIN appended EXECUTION OUTPUT blocks, so restore-to-HEAD
+    (not log-stripping) is the correct semantic. Tracked contamination gets a
+    path-scoped `git restore --staged --worktree --source=HEAD -- <file>` —
+    --source=HEAD because plain `git restore` restores the worktree from the
+    INDEX, so staged contamination (rogue `git add`) would survive and the
+    worktree would be "restored" to the contaminated index copy. Untracked
+    residue is deleted via Python. This function NEVER invokes `git clean`,
+    `git checkout .`, or any non-path-scoped restore. Every action taken is
+    printed (audit trail).
+
+    Must be called per-batch, BEFORE the run pool launches: all parallel run
+    threads read the shared originals at launch, so a mid-batch restore would
+    race with their shutil.copy2 reads.
+    """
+    entries = _fixture_status_entries()
+    if entries is None:
+        return
+    if not entries:
+        print(f"Fixtures clean: {FIXTURE_PREFIX} matches git HEAD — no restore needed.")
+        return
+
+    print(f"Restoring {len(entries)} contaminated fixture path(s) to git HEAD:")
+    for entry in entries:
+        status = entry[:2]
+        # No .strip(): splitlines() already removed newlines, and stripping a
+        # path with genuine trailing whitespace could redirect the deletion
+        # below onto a different (clean) file.
+        rel_path = entry[3:]
+        # Porcelain quotes paths containing special characters
+        if rel_path.startswith('"') and rel_path.endswith('"'):
+            rel_path = rel_path[1:-1]
+        if status == "??":
+            abs_path = Path("/daaf") / rel_path
+            # Untracked residue from a contaminated run — delete via Python
+            # (never `git clean`). Porcelain reports untracked dirs with a
+            # trailing slash.
+            if rel_path.endswith("/") or abs_path.is_dir():
+                shutil.rmtree(abs_path, ignore_errors=True)
+                print(f"  [deleted untracked dir]  {abs_path}")
+            elif abs_path.exists():
+                try:
+                    os.remove(abs_path)
+                    print(f"  [deleted untracked file] {abs_path}")
+                except OSError as e:
+                    print(f"  WARNING: could not delete {abs_path} ({e}); "
+                          f"remove manually.")
+            elif "\\" in rel_path:
+                # Porcelain C-escapes special characters inside quoted paths;
+                # we don't unescape, so existence checks are unreliable here.
+                print(f"  WARNING: escaped path reported by git — restore "
+                      f"manually: {entry!r}")
+            else:
+                print(f"  [already gone]           {abs_path}")
+        else:
+            # Tracked contamination — path-scoped restore only. Rename/copy
+            # entries ('R '/'C ') report 'old -> new'; restore both sides.
+            paths = rel_path.split(" -> ") if status[0] in "RC" else [rel_path]
+            for p in paths:
+                if p.startswith('"') and p.endswith('"'):
+                    p = p[1:-1]
+                # --source=HEAD --staged --worktree: plain `git restore`
+                # restores worktree from the INDEX, which would leave staged
+                # contamination in place (and print a false success).
+                try:
+                    proc = subprocess.run(
+                        ["git", "restore", "--staged", "--worktree",
+                         "--source=HEAD", "--", p],
+                        capture_output=True,
+                        text=True,
+                        timeout=30,
+                        cwd="/daaf",
+                    )
+                except (subprocess.TimeoutExpired, FileNotFoundError) as e:
+                    print(f"  WARNING: git restore errored for {p} ({e}); "
+                          f"restore manually.")
+                    continue
+                if proc.returncode == 0:
+                    print(f"  [restored to HEAD]       /daaf/{p}  (was: {status!r})")
+                else:
+                    print(f"  WARNING: git restore failed for {p}: "
+                          f"{proc.stderr.strip()}")
+
+
+def check_fixture_contamination() -> None:
+    """Post-batch contamination check: detect and warn loudly, never restore.
+
+    Restoration is deliberately deferred to the NEXT launch's pre-batch
+    restore_fixtures() — post-batch auto-restore was rejected as needlessly
+    destructive (it could erase evidence useful for debugging a leaky run).
+    """
+    entries = _fixture_status_entries()
+    if not entries:  # None (git failure, already warned) or clean
+        return
+    bar = "!" * 100
+    print(f"\n{bar}")
+    print("WARNING: FIXTURE CONTAMINATION DETECTED AFTER THIS BATCH")
+    print(f"The following paths under {FIXTURE_PREFIX} no longer match git HEAD:")
+    for entry in entries:
+        print(f"  {entry}")
+    print("No automatic restore is performed post-batch (detect + warn only).")
+    print("These paths will be auto-restored to git HEAD at the next benchmark "
+          "launch, or restore manually now with a path-scoped "
+          "'git restore --staged --worktree --source=HEAD -- <path>' (tracked) "
+          "/ delete (untracked).")
+    print(bar)
+
+
 def prepare_fixtures(test_case: TestCase, sandbox_dir: str) -> TestCase:
     """Copy referenced test fixtures into the sandbox and rewrite the prompt.
 
@@ -175,7 +311,12 @@ def prepare_fixtures(test_case: TestCase, sandbox_dir: str) -> TestCase:
         rwc_dest.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(rwc_src, rwc_dest)
 
-    modified_prompt += f" Use {workspace_dir} as the project workspace for any scripts or output files."
+    modified_prompt += (
+        f" Use {workspace_dir} as the project workspace: every file or folder you"
+        f" or your subagents create must live under {sandbox_dir} — do not create"
+        f" scripts, outputs, or research project folders anywhere else in the"
+        f" repository."
+    )
 
     tc = copy.deepcopy(test_case)
     tc.prompt = modified_prompt
@@ -189,6 +330,17 @@ def run_one(test_case: TestCase, model: ModelConfig, rep: int,
     """Execute a single benchmark run with checkpoint scoring."""
     sandbox_dir = f"/daaf/benchmarks/_sandbox/run_{sandbox_suffix}"
 
+    # Wipe and recreate the sandbox BEFORE staging fixtures, and tell
+    # execute_run() -> prepare_sandbox() not to wipe it again
+    # (wipe_sandbox=False). Previously fixtures were staged first and
+    # prepare_sandbox()'s rmtree deleted them — at model launch the rewritten
+    # prompt pointed at nonexistent sandbox paths, so models hunted the files
+    # by name and contaminated the originals under datasets/test_fixtures/.
+    sandbox_path = Path(sandbox_dir)
+    if sandbox_path.exists():
+        shutil.rmtree(sandbox_path)
+    sandbox_path.mkdir(parents=True, exist_ok=True)
+
     sandboxed_case = prepare_fixtures(test_case, sandbox_dir)
 
     config = RunConfig(
@@ -196,6 +348,7 @@ def run_one(test_case: TestCase, model: ModelConfig, rep: int,
         model=model,
         run_index=rep,
         sandbox_dir=sandbox_dir,
+        wipe_sandbox=False,
         timeout_override=timeout_override,
     )
 
@@ -764,6 +917,10 @@ def main():
                         help="Override per-run timeout in seconds (default: cost-tier based)")
     parser.add_argument("--yes", "-y", action="store_true",
                         help="Skip cost confirmation prompt")
+    parser.add_argument("--no-fixture-restore", action="store_true",
+                        help="Skip the pre-batch restore of datasets/test_fixtures/ "
+                             "to git HEAD (escape hatch for intentional in-progress "
+                             "fixture edits)")
     args = parser.parse_args()
 
     # Load and filter models
@@ -830,6 +987,14 @@ def main():
             print("Aborted.")
             sys.exit(0)
 
+    # Per-batch fixture restore: contamination from prior batches is reset to
+    # git HEAD before any run thread copies the shared originals (see
+    # restore_fixtures docstring for why this must never run mid-batch).
+    if args.no_fixture_restore:
+        print("Skipping fixture restore (--no-fixture-restore).")
+    else:
+        restore_fixtures()
+
     print(f"{'='*100}")
     sys.stdout.flush()
 
@@ -885,6 +1050,10 @@ def main():
     # Archive results
     output_dir = archive_results(all_results, models, test_cases, args, wall_time)
     print(f"\nResults archived to: {output_dir}")
+
+    # Post-batch contamination check (detect + warn only — never restores).
+    # Printed last so the warning is the final, most visible console output.
+    check_fixture_contamination()
 
 
 if __name__ == "__main__":

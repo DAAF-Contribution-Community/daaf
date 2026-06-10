@@ -58,10 +58,11 @@ def prepare_sandbox(
     golden_file: Path,
     sandbox_dir: Path,
     project_path: str | None = None,
+    wipe_sandbox: bool = True,
 ) -> str:
     """Prepare a benchmark sandbox from a golden checkpoint.
 
-    1. Cleans the sandbox directory
+    1. Cleans the sandbox directory (unless wipe_sandbox=False)
     2. Seeds it with files from the checkpoint's _seed/ directory (if exists)
     3. Clones the session JSONL with a fresh session ID and rewritten paths
     4. Places the cloned session in Claude Code's projects directory
@@ -76,6 +77,12 @@ def prepare_sandbox(
             research/ and never collide with framework paths (.claude/skills/,
             agent_reference/). When None, no path replacement is performed —
             appropriate for golden sessions that don't reference project files.
+        wipe_sandbox: When True (default), rmtree + recreate the sandbox
+            directory. Runners that stage files into the sandbox BEFORE
+            execution (e.g., run_dispatch_compliance fixture isolation) must
+            pass False and perform the wipe themselves prior to staging —
+            otherwise the wipe here deletes the staged files and the rewritten
+            prompt points at paths that no longer exist at model launch.
 
     Returns the new session ID for use with --resume.
     """
@@ -83,7 +90,7 @@ def prepare_sandbox(
     new_id = str(uuid.uuid4())
 
     # Clean and create sandbox
-    if sandbox_dir.exists():
+    if wipe_sandbox and sandbox_dir.exists():
         shutil.rmtree(sandbox_dir)
     sandbox_dir.mkdir(parents=True, exist_ok=True)
 

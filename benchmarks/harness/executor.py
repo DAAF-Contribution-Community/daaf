@@ -41,6 +41,7 @@ def execute_run(config: RunConfig) -> RunResult:
         checkpoint_session_id = prepare_sandbox(
             golden_path, sandbox_path,
             project_path=test_case.golden_project_path,
+            wipe_sandbox=config.wipe_sandbox,
         )
 
     # Pre-assign session ID for cold starts so we can always locate the
@@ -77,6 +78,9 @@ def execute_run(config: RunConfig) -> RunResult:
     # Explicitly set CLAUDE_CODE_EFFORT_LEVEL to match --effort flag so it
     # overrides the settings.json env value (which defaults to "high").
     env = os.environ.copy()
+    # Activates the benchmark-scoped git-blocking hook (block-git-writes.sh)
+    # for this run and all subagent sessions it spawns; inert in normal sessions.
+    env["DAAF_BENCHMARK_RUN"] = "1"
     if model.effort_level:
         env["CLAUDE_CODE_EFFORT_LEVEL"] = model.effort_level
     env.update(model.env_overrides)

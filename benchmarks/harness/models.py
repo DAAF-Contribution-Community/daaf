@@ -99,20 +99,19 @@ class RunConfig:
     model: ModelConfig
     run_index: int
     permission_mode: str = "bypassPermissions"
-    disallowed_tools: list[str] = field(default_factory=lambda: [
-        "Bash(*git commit*)",
-        "Bash(*git add *)",
-        "Bash(*git push*)",
-        "Bash(*git tag *)",
-        "Bash(*git reset*)",
-        "Bash(*git merge *)",
-        "Bash(*git rebase*)",
-        "Bash(*git branch -D*)",
-        "Bash(*git branch -d*)",
-        "Bash(*git config *)",
-    ])
+    # Git-write prevention is handled by the env-gated PreToolUse hook
+    # (harness/hooks/block-git-writes.sh, activated via DAAF_BENCHMARK_RUN=1
+    # in executor.py). The --disallowed-tools git patterns formerly listed
+    # here were ineffective: Claude Code splits compound commands on shell
+    # operators and leading-* globs are prefix-anchored (README § 11).
+    disallowed_tools: list[str] = field(default_factory=list)
     working_dir: str = "/daaf"
     sandbox_dir: str = "/daaf/benchmarks/_sandbox"
+    # When False, prepare_sandbox() skips its rmtree+recreate of sandbox_dir.
+    # Used by runners that stage fixtures into the sandbox before execute_run()
+    # (run_dispatch_compliance.py wipes the sandbox itself, then stages).
+    # Default True preserves the original behavior for all other runners.
+    wipe_sandbox: bool = True
     timeout_override: Optional[int] = None
 
 
