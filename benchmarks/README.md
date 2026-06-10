@@ -6,8 +6,9 @@ container — hooks firing, skills discoverable, agents dispatchable — does it
 the framework's protocols?
 
 This README is the authoritative documentation for the benchmark system. The
-`SESSION_RESTART*.md` files in this directory are historical session notes and are
-superseded by this document for system-level documentation.
+`SESSION_RESTART*.md` files in `archive/` are historical session notes (including
+run-level provenance for the 2026-06 result sets) superseded by this document for
+system-level documentation; `SESSION_NOTES.md` tracks the current session.
 
 ---
 
