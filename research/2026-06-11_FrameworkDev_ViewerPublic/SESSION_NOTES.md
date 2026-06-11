@@ -196,6 +196,96 @@ og:image, and the http(s) hash-navigation retest (README § 8)."
   placeholder; og:image; http(s) retest (explicit-nav hash writes, scrollspy
   replaceState, content-visibility anchor rendering)
 
+## Session 2 (2026-06-11, post-commit): Cost Estimation Work
+
+**New scope (user-directed, precedes text/layout fine-tuning):** improve cost
+guidance — listed blended $/Mtok is misleading without token-appetite context.
+
+- Phase A reconciliation COMPLETE (framework-engineer): OpenRouter billing CSV
+  (`benchmarks/openrouter_activity_2026-06-11.csv`) attributed to corpus runs
+  via transcript time windows (UTC confirmed; ±120s; 86-98% of $ attributed,
+  9/10 models; Nemotron 68%). Full findings:
+  `preliminary_notes/2026-06-11_phaseA_openrouter-cost-reconciliation.md`.
+  Artifacts: `benchmarks/scripts/reconcile_openrouter_costs.py` +
+  `benchmarks/derived/openrouter_reconciliation_2026-06-11.json` (uncommitted)
+- Key findings: token hunger only 0.67-1.26x vs Opus 4.8 (NOT the main
+  distortion); models.yaml listed rates WRONG for Gemma 26B (~2.1x), DS Flash
+  (~1.34x), Gemma 31B (~1.26x) vs billing; harness cost formula ignores
+  cache_creation → Anthropic logged costs ~3x understated; Fable concealed
+  thinking IS in the usage meter (not hidden from billing); OpenRouter
+  caching effectively never materialized (parallel requests)
+- **DECIDED (user, 2026-06-11):** new headline cost metric = estimated cost
+  per benchmark battery (47 probes = 141 runs/3 reps, assumption to verify):
+  list prices × each model's observed token mix, UNCACHED basis; Anthropic
+  shown uncached-only for direct comparability (validated within ~3% of
+  actual billing for 7/10 OpenRouter models). Published $/Mtok stays as
+  secondary detail. Headline figures: Fable $174/battery, Opus 4.8 $75,
+  Sonnet 4.6 $31, GLM $18 (≈1/4 Opus, not 1/7), DS Flash $1.80 (≈1/10 GLM,
+  ~1/40 Opus, pre rate-fix). Caching disclosure sentence required (real
+  Anthropic usage caches; ~$32/battery for Opus 4.8 under full convention)
+- Takeaway cost ratios (T3 "1/7", T5 "1/12 GLM ~1/100 Opus") CONTRADICTED by
+  observed billing — rework on new basis pending alongside corpus delta check
+- Viewers _11h/_11i discovered (concurrent bugfix session regens); even _11i
+  predates Fable replacement set → fresh regen still needed
+- Phase C COMPLETE (two framework-engineer dispatches + one search-agent
+  adjudication; full returns in preliminary_notes/):
+  - `2026-06-11_phaseC_battery-metric-implementation.md`: models.yaml rate
+    fixes (Gemma 26B ×2.12, DS Flash ×1.34, Gemma 31B ×1.26); harness
+    cache_creation billing fix (future runs only); generator v2.8.0
+    cost.battery block + staleness guard; template battery surfaces;
+    README §§ 7/8/12. battery_size = 51 distinct probes (NOT 47 — uneven
+    reps: Anthropic dc cases ran 2 reps; 141 = 15×3+9×3+12×2+15×3)
+  - `2026-06-11_takeaway-readjudication-11j-battery.md`: vs viewer_2026-
+    06-11j.html (53 sets/2,493 runs; tier structure back to 5 tiers,
+    Sonnet 0.829 + Opus 4.8 0.796 alone in T2): T1 HOLD, T2/T3/T4/T5/T6
+    REWORD; kt-foot "single repetition on P4" claim found false (45 P4
+    runs/model now)
+  - **USER DECISION:** display battery cost as rough relative MULTIPLIER
+    vs Opus 4.8 (=1.0×), never dollars (false precision); "cached cheaper"
+    caveat dropped; NEW drift caveat (repricing + provider caching
+    mechanics × model behaviors affect relative figures)
+  - **USER DECISION (T4/DS Pro clause RESOLVED):** open-weight case
+    reframed control-not-price; timeout reliability asterisk (26.8%) kept
+  - `2026-06-11_final-application_multiplier-takeaways.md`: all rewrites
+    applied (29 kt-spans, was 31); generator v2.8.1; official artifact
+    **viewer_2026-06-11k.html** (24.68 MB, 53 sets / 2,493 runs); all
+    verification checks PASS
+- Artifact size note: ~25 MB (was ~14 MB) — jump came from the concurrent
+  session's transcript-keying corpus changes (_11h→_11i), not this work;
+  flag for deploy compression
+- NOTHING COMMITTED. Working tree: models.yaml, harness/models.py,
+  harness/cost_estimator.py, generator, template, benchmarks/README.md,
+  NEW scripts/reconcile_openrouter_costs.py + derived/openrouter_
+  reconciliation_2026-06-11.json, this workspace. CAUTION: raw
+  `benchmarks/openrouter_activity_2026-06-11.csv` contains a user hash —
+  user decision whether to commit raw CSV (derived JSON is the committable
+  artifact). Superseded viewers _11a–_11j = user-deletion housekeeping
+- PENDING NEXT SESSION: (1) Phase 4 three-angle review of this session's
+  changes (consistency/quality/completeness; files above) — NOT yet run;
+  (2) user visual check of _11k (battery table multipliers, scatter
+  battery toggle, takeaways, kt-foot); (3) commit when user directs;
+  (4) THEN the original goal: text/layout fine-tuning per user direction
+
+**Restart prompt (Session 3 — paste into a fresh session after /clear):**
+"Launch Framework Development mode. Resume from
+/daaf/research/2026-06-11_FrameworkDev_ViewerPublic/SESSION_NOTES.md —
+read it fully. Session 2 added the battery-cost work: OpenRouter billing
+reconciliation (scripts/reconcile_openrouter_costs.py + derived JSON),
+models.yaml rate fixes, harness cache-write fix, generator v2.8.1
+battery-MULTIPLIER cost display (vs Opus 4.8, never dollars), takeaways
+re-adjudicated + rewritten (29 kt-spans), official artifact
+viewer_2026-06-11k.html. NOTHING is committed. This session: (1) run the
+mandatory 3-angle review (consistency/quality/completeness) over the
+Session 2 changed files listed in SESSION_NOTES; (2) collect user visual
+check verdict on _11k; (3) fix any findings, regenerate if needed, commit
+when user directs (CAUTION: raw openrouter_activity CSV has a user hash —
+ask before committing it; superseded viewers _11a–_11j are user-deletion
+housekeeping); (4) then collect the user's text/layout fine-tuning
+directions (the original deferred goal). Conventions: benchmarks/
+README.md § 12 is source of truth; regen only via the generator; python3
+(not rg) for results/ and viewer_*.html; at deploy: og:url placeholder,
+og:image, http(s) hash-navigation retest, and ~25 MB artifact compression."
+
 ## Open Questions
 
 - None pending — all design decisions resolved at Checkpoint 1 + design
