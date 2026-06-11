@@ -111,18 +111,28 @@ models:
     provider: openrouter
     cost_tier: "low"
 
+    # Corrected 2026-06-11: effective billed rates derived from the OpenRouter
+    # billing reconciliation of 2026-06-11 (obs/pred 1.26 — observed billing vs
+    # published rates applied to the billed token mix; see
+    # scripts/reconcile_openrouter_costs.py and derived/
+    # openrouter_reconciliation_2026-06-11.json). Previous rates: 0.12/0.36.
     pricing:
-      input: 0.12
-      output: 0.36
+      input: 0.151
+      output: 0.454
 
   - id: "google/gemma-4-26b-a4b-it:novita/bf16"
     name: "Gemma 4 26B"
     provider: openrouter
     cost_tier: "low"
 
+    # Corrected 2026-06-11: effective billed rates derived from the OpenRouter
+    # billing reconciliation of 2026-06-11 (obs/pred 2.12 — observed billing vs
+    # published rates applied to the billed token mix; see
+    # scripts/reconcile_openrouter_costs.py and derived/
+    # openrouter_reconciliation_2026-06-11.json). Previous rates: 0.06/0.33.
     pricing:
-      input: 0.06
-      output: 0.33
+      input: 0.127
+      output: 0.700
 
   - id: "deepseek/deepseek-v4-pro:atlas-cloud/fp8"
     name: "DeepSeek V4 Pro"
@@ -144,9 +154,15 @@ models:
     provider: openrouter
     cost_tier: "low"
 
+    # Corrected 2026-06-11: effective billed rates derived from the OpenRouter
+    # billing reconciliation of 2026-06-11 (obs/pred 1.34 — observed billing vs
+    # published rates applied to the billed token mix; see
+    # scripts/reconcile_openrouter_costs.py and derived/
+    # openrouter_reconciliation_2026-06-11.json). Previous rates:
+    # 0.0983/0.1966.
     pricing:
-      input: 0.0983
-      output: 0.1966
+      input: 0.132
+      output: 0.263
 
   - id: "google/gemini-3.1-pro-preview:google-vertex"
     name: "Gemini 3.1 Pro"

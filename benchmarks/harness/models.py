@@ -55,18 +55,30 @@ class PricingConfig:
         return cls(**{k: v for k, v in data.items() if k in cls.__dataclass_fields__})
 
     def estimate_cost(self, input_tokens: int, output_tokens: int,
-                      cached_input_tokens: int = 0) -> float:
+                      cached_input_tokens: int = 0,
+                      cache_creation_tokens: int = 0) -> float:
         """Estimate cost from token counts.
 
         IMPORTANT: input_tokens from the CLI is already the UNCACHED count.
         cached_input_tokens is a separate, additive count. Total input
-        tokens billed = input_tokens + cached_input_tokens.
+        tokens billed = input_tokens + cached_input_tokens +
+        cache_creation_tokens.
+
+        Cache-write billing added 2026-06-11: cache_creation_tokens are billed
+        at 1.25x the input rate (Anthropic's cache-write convention). The
+        OpenRouter billing reconciliation of 2026-06-11 showed that omitting
+        cache writes understated Anthropic-side costs ~3x against Anthropic's
+        own billing convention (cache-write spend dominates subagent-heavy
+        runs). No separate config rate is introduced — 1.25 x input is derived
+        in-formula. Affects newly computed costs only; archived result.json
+        values are immutable and not recomputed.
         """
         cost = (input_tokens * self.input + output_tokens * self.output) / 1_000_000
         if self.cached_input is not None and cached_input_tokens > 0:
             cost += (cached_input_tokens * self.cached_input) / 1_000_000
         else:
             cost += (cached_input_tokens * self.input) / 1_000_000
+        cost += (cache_creation_tokens * self.input * 1.25) / 1_000_000
         return cost
 
 

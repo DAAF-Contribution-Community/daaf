@@ -11,7 +11,9 @@ Phase 4 calibration is newer — see the PHASE4_TOKENS_* block comment.
 Token semantics: Token counts come from the CLI's modelUsage block (which
 aggregates across main session + subagent sessions). input_tokens is the
 UNCACHED count, cache_read_tokens is additive. Total billed input =
-input + cached.
+input + cached + cache_creation (cache writes billed at 1.25x input since
+2026-06-11; calibration profiles below predate that and carry no
+cache-creation column, so pre-run estimates remain cache-write-free).
 
 IMPORTANT (Phases 1-3 only): the PHASE1/2/3_TOKENS data below was collected
 BEFORE the modelUsage fix (2026-06-08) and reflects main-session-only tokens.
@@ -152,11 +154,17 @@ def compute_cost(model: ModelConfig, result: RunResult) -> float:
 
     Note: For OpenRouter models, CLI token counts use Anthropic's tokenizer
     (not the model's native tokenizer), so computed costs are approximate.
+
+    2026-06-11: cache_creation_tokens now included (billed at 1.25x input —
+    Anthropic's cache-write convention; see PricingConfig.estimate_cost).
+    Previously omitted, which understated Anthropic-side costs ~3x. Applies
+    to future runs only; archived result.json values are not recomputed.
     """
     if model.pricing is None:
         return result.total_cost_usd
     return model.pricing.estimate_cost(
-        result.input_tokens, result.output_tokens, result.cache_read_tokens
+        result.input_tokens, result.output_tokens, result.cache_read_tokens,
+        result.cache_creation_tokens,
     )
 
 

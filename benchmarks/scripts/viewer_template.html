@@ -281,6 +281,9 @@ code{ font-family:'SF Mono',SFMono-Regular,Consolas,'Liberation Mono',Menlo,mono
 }
 .lb-bar-fill{ position:absolute; left:0; top:0; bottom:0; background:rgba(var(--c-pass-rgb),.75); }
 .lb-bar-tick{ position:absolute; top:0; bottom:0; width:1px; background:var(--text-1); opacity:.7; }
+/* Battery-cost headline list (Costs Detail): wider bars than the
+   leaderboard's composite bars; fill width is linear in dollars */
+.bat-bar{ width:240px; max-width:38vw; }
 .lb-cell{ text-align:center; }
 .lb-cell .hm-cell{ min-width:64px; }
 .lb-n{ display:block; font-size:9px; font-weight:400; opacity:.85; }
@@ -554,63 +557,65 @@ code{ font-family:'SF Mono',SFMono-Regular,Consolas,'Liberation Mono',Menlo,mono
     <span id="kt-t2-o45">&mdash;</span> (4.5) &rarr;
     <span id="kt-t2-o46">&mdash;</span> (4.6) &rarr;
     <b><span id="kt-t2-o47">&mdash;</span></b> (4.7) &rarr;
-    <span id="kt-t2-o48">&mdash;</span> (4.8). The 4.7 dip is concentrated in
-    subagent behavior (P3b): <b><span id="kt-t2-o47p3b">&mdash;</span></b> versus
+    <span id="kt-t2-o48">&mdash;</span> (4.8). The slide spans two releases,
+    but 4.7&rsquo;s distinctive failure is concentrated in subagent behavior
+    (P3b): <b><span id="kt-t2-o47p3b">&mdash;</span></b> versus
     <span id="kt-t2-o46p3b">&mdash;</span> for 4.6 &mdash; the specialists it
-    dispatched stopped following their own working rules. 4.8 puts the line back
-    at its best showing yet &mdash; and in the rescored corpus, 4.7&rsquo;s
-    stumble no longer costs it a tier band, only a few points of composite. See
-    the <a href="#phases">Phase Deep-Dives</a>.</p>
+    dispatched stopped following their own working rules. 4.8 doesn&rsquo;t
+    just recover: it posts the line&rsquo;s best showing yet and is the only
+    Opus to reach the second tier &mdash; the rest of the line shares the band
+    below it. See the <a href="#phases">Phase Deep-Dives</a>.</p>
   </div>
 
   <div class="kt-item">
     <div class="kt-claim">3. Sonnet 4.6 is the quiet bargain at the frontier.</div>
-    <p>Sonnet 4.6 posts <b><span id="kt-t3-comp">&mdash;</span></b> &mdash; equal
-    to or better than every Opus model in this corpus (best Opus:
-    <span id="kt-t3-bestopus">&mdash;</span>) &mdash; at a blended list price of
-    <span id="kt-t3-sprice">&mdash;</span>/Mtok against
-    <span id="kt-t3-oprice">&mdash;</span>/Mtok for Opus, roughly
-    <b><span id="kt-t3-save">&mdash;</span></b> cheaper. Frontier-grade protocol
-    adherence without frontier pricing. See
+    <p>Sonnet 4.6 posts <b><span id="kt-t3-comp">&mdash;</span></b> &mdash;
+    #2 overall, ahead of every Opus model in this corpus (best Opus:
+    <span id="kt-t3-bestopus">&mdash;</span>) &mdash; and gets there cheaply:
+    running this benchmark&rsquo;s full battery on Sonnet costs roughly
+    <b><span id="kt-t3-batpct">&mdash;</span>%</b> of what it costs on
+    Opus 4.8. Frontier-grade protocol adherence without frontier spend. See
     <a href="#cost-performance">Cost vs. Performance</a>.</p>
   </div>
 
   <div class="kt-item">
-    <div class="kt-claim">4. Open-weight models are credible &mdash; and now crowd the frontier tier.</div>
-    <p>DeepSeek V4 Pro now leads the open-weight pack at
+    <div class="kt-claim">4. Open-weight models are credible &mdash; and the case for them is control, not price.</div>
+    <p>DeepSeek V4 Pro leads the open-weight pack at
     <b><span id="kt-t4-dspro">&mdash;</span></b>, edging GLM 5.1
-    (<span id="kt-t4-glm">&mdash;</span>) &mdash; and the pair lands in the same
-    headline tier as Sonnet and Opus, outscoring both Opus 4.7 and Haiku 4.5.
-    Only Fable 5, Sonnet 4.6, and Opus 4.8 sit clearly above them. The price gap
-    still runs the other way: DS Pro&rsquo;s blended list price is
-    <span id="kt-t4-dsblend">&mdash;</span>/Mtok against
-    <span id="kt-t4-opusblend">&mdash;</span>/Mtok for Opus &mdash; roughly
-    1/<span id="kt-t4-ratio">&mdash;</span> the cost. One honest caveat: DS Pro
+    (<span id="kt-t4-glm">&mdash;</span>) &mdash; and landing in the same tier
+    as most of the Opus line. The argument is no longer about price: running
+    the battery on DS Pro costs about
+    <span id="kt-t4-sonratio">&mdash;</span> as much as on Sonnet 4.6. What
+    open weights buy instead is control &mdash; you can self-host them,
+    inspect them, and keep the exact version your workflow was validated on.
+    One honest caveat: DS Pro
     carries the corpus&rsquo;s second-highest timeout rate
     (<span id="kt-t4-dsto">&mdash;</span> of runs), so its scores come with a
     reliability asterisk. See the <a href="#leaderboard">Leaderboard</a>.</p>
   </div>
 
   <div class="kt-item">
-    <div class="kt-claim">5. DeepSeek V4 Flash is astonishingly cheap &mdash; and weaker where it counts.</div>
+    <div class="kt-claim">5. DeepSeek V4 Flash is strikingly cheap &mdash; and weaker where it counts.</div>
     <p>On the headline composite, Flash is a near-tie with GLM 5.1
     (<span id="kt-t5-dscomp">&mdash;</span> vs
     <span id="kt-t5-glmcomp">&mdash;</span>). But on the lower bar that asks
     &ldquo;will it generally work through the system as intended?&rdquo; &mdash;
     Critical-only, counting just the must-pass criteria &mdash; Flash falls
     meaningfully behind: <b><span id="kt-t5-dshard">&mdash;</span></b> vs
-    <b><span id="kt-t5-glmhard">&mdash;</span></b>. The price is the story:
-    roughly 1/<span id="kt-t5-glmx">&mdash;</span> of GLM&rsquo;s blended list
-    price, and about 1/<span id="kt-t5-opusx">&mdash;</span> of Opus&rsquo;s
-    &mdash; on the order of 1/100 of frontier cost. See the
+    <b><span id="kt-t5-glmhard">&mdash;</span></b>. The price is still the
+    story: roughly 1/<span id="kt-t5-glmx">&mdash;</span> of GLM&rsquo;s cost
+    to run the entire battery, and 1/<span id="kt-t5-opusx">&mdash;</span> of
+    Opus 4.8&rsquo;s. See the
     <a href="#leaderboard">Leaderboard</a> metric toggle.</p>
   </div>
 
   <div class="kt-item">
     <div class="kt-claim">6. Local-class models aren&rsquo;t there yet &mdash; and Gemma 4 31B often fails to finish at all.</div>
     <p>Qwen 3.6 27B, the best of the small open models here, manages
-    <span id="kt-t6-qwen">&mdash;</span>, with mode classification its clearest
-    weak point (<span id="kt-t6-qwenp1">&mdash;</span> on P1). Gemma 4 31B timed
+    <span id="kt-t6-qwen">&mdash;</span>, and its weakest points sit exactly
+    where an orchestration framework hurts most: skill routing
+    (<span id="kt-t6-qwenp4">&mdash;</span> perfect on P4) and mode
+    classification (<span id="kt-t6-qwenp1">&mdash;</span> on P1). Gemma 4 31B timed
     out on <b><span id="kt-t6-g31to">&mdash;</span></b> of its runs by the
     harness&rsquo;s timed-out flag &mdash; a measure that counts both wall-clock
     timeouts and silent stalls that ran out the clock &mdash; by far the worst
@@ -620,13 +625,17 @@ code{ font-family:'SF Mono',SFMono-Regular,Consolas,'Liberation Mono',Menlo,mono
 
   <p class="kt-foot">
     Read these with the corpus&rsquo;s caveats in hand: repetition counts are
-    uneven across providers (Anthropic-API models ran a single repetition on
-    Phase 4, so P4 differences among them rest on one run per case); all dollar
-    figures are blended published list prices (3 parts input to 1 part output),
-    not measured benchmark spend; and tier bands are derived from gaps in the
-    composite ranking, not fixed thresholds &mdash; small score shifts can
-    re-tier a model. Full caveat list in
-    <a href="#about">About This Benchmark</a>.
+    uneven across providers and models, so some per-phase differences rest on
+    small run counts; cost comparisons are rough relative multipliers &mdash;
+    the estimated cost to run the full
+    <span id="kt-foot-bat">&mdash;</span>-probe battery once, from uncached
+    published list prices applied to each model&rsquo;s observed token mix
+    &mdash; and these relative figures can shift as providers reprice tokens
+    and as provider caching mechanics interact with each model&rsquo;s
+    behavior (definition and caveats in <a href="#costs">Costs Detail</a>);
+    and tier bands are derived from gaps in the composite ranking, not fixed
+    thresholds &mdash; small score shifts can re-tier a model. Full caveat
+    list in <a href="#about">About This Benchmark</a>.
   </p>
 </section>
 
@@ -838,12 +847,15 @@ code{ font-family:'SF Mono',SFMono-Regular,Consolas,'Liberation Mono',Menlo,mono
             produced before the cutoff &mdash; a timed-out run can be a perfect run.</li>
         <li><b>Denominators are uneven.</b> Some (model, phase) cells have 2 reps instead
             of 3, so read every rate together with its n.</li>
-        <li><b>No observed spend is reported &mdash; only published pricing.</b> The
-            harness logs token usage via the Anthropic-compatible endpoint, whose counts
-            come from Anthropic's tokenizer rather than each OpenRouter model's own
-            billing meter, so dollar costs derived from those counts were unreliable and
-            all token-derived spend tracking was removed. Cost figures on this page are
-            published list prices per million tokens, not measured benchmark spend.</li>
+        <li><b>Dollar figures are estimates at published list prices, not invoices.</b>
+            The harness logs token usage via the Anthropic-compatible endpoint, whose
+            counts come from Anthropic's tokenizer rather than each OpenRouter model's
+            own billing meter, so dollar costs derived from those counts were unreliable
+            and were removed. Per-Mtok figures on this page are published list prices;
+            the battery-cost comparisons in Costs Detail are relative multipliers
+            (vs Opus 4.8) built from those list prices and each model's observed
+            token mix &mdash; taken from provider billing data, not the harness's
+            counts &mdash; on an everything-uncached basis (defined there).</li>
         <li><b>Deterministic scorers have known false negatives.</b>
             <code>prompt_has_context_section</code> is the canonical case: the scorer
             accepts seven heading variants, yet models often place genuine contextual
@@ -885,10 +897,12 @@ code{ font-family:'SF Mono',SFMono-Regular,Consolas,'Liberation Mono',Menlo,mono
     more than a hundredfold onto one chart. The stepped line traces the
     <b>efficiency frontier</b> &mdash; the models no other model beats on both price and
     conformance at once; anything off the line is outperformed somewhere cheaper.
-    Prices are list rates, not measured benchmark spend &mdash; observed-spend tracking
-    was removed because the harness&rsquo;s token logging does not align with
-    OpenRouter billing (see Costs Detail). Shape and color mark the serving provider;
-    hover any point for its exact figures.
+    The price-basis toggle also offers <b>battery cost (&times; Opus 4.8)</b> &mdash;
+    the estimated relative cost to run the full benchmark battery once, expressed
+    as a multiple of Opus 4.8, which folds each model&rsquo;s observed token
+    appetite into the price axis (defined, with its caveats, in
+    Costs Detail). The per-Mtok bases are list rates, not measured benchmark spend.
+    Shape and color mark the serving provider; hover any point for its exact figures.
   </p>
   <div class="sec-body" id="sec-cost-performance"></div>
 </section>
@@ -924,24 +938,33 @@ code{ font-family:'SF Mono',SFMono-Regular,Consolas,'Liberation Mono',Menlo,mono
   <div class="sec-body" id="sec-cases"></div>
 </section>
 
-<!-- 8. Costs Detail (published per-Mtok pricing table) -->
+<!-- 8. Costs Detail (battery-cost headline + published per-Mtok pricing table) -->
 <section class="doc-section" id="costs">
   <h2>Costs Detail</h2>
   <p class="section-lead">
-    Published list prices for every benchmarked model, per million tokens &mdash; input,
-    output, and cached-input rates side by side. Click any column header to sort. The
-    Perfect Rate context column can be scoped to a single phase group via the toggle
-    above the table; the pricing columns are phase-independent list rates and never
-    change with the scope.
+    The headline figure here is the <b>estimated relative cost to run the full
+    benchmark battery once</b> &mdash; every probe in the suite, one repetition
+    &mdash; computed for each model from its <b>own observed token appetite</b> at
+    published list prices and expressed as a rough multiple of Opus 4.8
+    (= 1.0&times;). Two models at the same list price can differ in what a task
+    actually costs, because one chews through more tokens to do the same work;
+    these multipliers capture both the price tag and the appetite. The published per-million-token
+    list prices follow as a secondary table below it (click any column header to
+    sort; the Perfect Rate context column can be scoped to a single phase group via
+    the toggle, the pricing columns never change with the scope).
   </p>
   <div class="sec-body" id="sec-costs"></div>
   <p class="cost-foot">
-    Earlier versions of this page also reported observed dollar spend computed from
-    per-run token counts. That tracking was removed: the harness logs token usage
-    through an Anthropic-compatible endpoint whose counts come from Anthropic&rsquo;s
-    tokenizer rather than each model&rsquo;s own billing meter, so token-derived dollar
-    figures were unreliable. Every cost figure on this page is a published rate, not
-    measured benchmark spend.
+    Earlier versions of this page reported observed dollar spend computed from the
+    harness&rsquo;s per-run token counts. That tracking was removed: the harness logs
+    token usage through an Anthropic-compatible endpoint whose counts come from
+    Anthropic&rsquo;s tokenizer rather than each model&rsquo;s own billing meter, so
+    token-derived dollar figures were unreliable. The battery estimates above avoid
+    that trap by taking each OpenRouter model&rsquo;s token mix from the provider&rsquo;s
+    own billing meter (via the billing-export reconciliation described above) and each
+    Anthropic model&rsquo;s from Anthropic&rsquo;s usage logs &mdash; then pricing every
+    token at published list rates. They are estimates built from list prices and
+    observed token mixes, not a reading of an invoice for these exact runs.
   </p>
 </section>
 
@@ -1120,17 +1143,38 @@ function fmtCost(v){
   if(v==null) return "&mdash;";
   return "$"+(v>=1 ? v.toFixed(2) : v.toFixed(3));
 }
+/* Relative-cost display (battery multipliers vs the reference model,
+   v2.8.1): deliberately coarse — one decimal at >=1x ("2.3x", "1.0x"),
+   two below ("0.41x", "0.03x") — because these are rough estimates;
+   finer precision would imply accuracy the basis does not have. */
+function fmtMult(v){
+  if(v==null) return "&mdash;";
+  return (v>=1 ? v.toFixed(1) : v.toFixed(2))+"\u00d7";
+}
 
-/* Published-pricing formulations (PRECOMPUTED.cost.models). blend31 is the
+/* Price formulations (PRECOMPUTED.cost.models). blend31 is the
    Artificial Analysis convention: (3 x input + output) / 4 per 1M tokens.
-   All dollar figures on this page are published list rates — observed
-   token-derived spend was removed (OpenRouter token accounting does not
-   align with the harness's usage logging). */
+   The per-Mtok forms are published list rates; "battery" (v2.8.0) is the
+   estimated cost to run the full benchmark battery once — list rates x
+   each model's observed token mix on an everything-uncached basis
+   (PRECOMPUTED.cost.battery; definition + caveats in Costs Detail).
+   Since v2.8.1 the battery form DISPLAYS as a relative multiplier
+   (reference model Opus 4.8 = 1.0x), never dollars — exact dollar
+   figures would imply false precision; renderCostPerf normalizes the
+   plotted values by the reference battery cost (pure positive scaling,
+   frontier membership unchanged). axis names the x-axis label used by
+   the Cost vs. Performance scatter. */
 var COST_FORMS=[
   {key:"blend31",label:"Blended 3:1",
-   formula:"Blended price = (3 \u00d7 input + output) / 4, per million tokens"},
-  {key:"input",label:"Input",formula:"Published input price, per million tokens"},
-  {key:"output",label:"Output",formula:"Published output price, per million tokens"}
+   formula:"Blended price = (3 \u00d7 input + output) / 4, per million tokens",
+   axis:"Blended 3:1 price (USD per 1M tokens, log scale)"},
+  {key:"input",label:"Input",formula:"Published input price, per million tokens",
+   axis:"Input price (USD per 1M tokens, log scale)"},
+  {key:"output",label:"Output",formula:"Published output price, per million tokens",
+   axis:"Output price (USD per 1M tokens, log scale)"},
+  {key:"battery",label:"Battery cost (\u00d7 Opus 4.8)",
+   formula:"Estimated relative cost to run the full benchmark battery once, as a multiple of Opus 4.8 (= 1.0\u00d7) \u2014 every token at published list input/output rates with no cache discounts, using each model\u2019s observed token mix (see Costs Detail)",
+   axis:"Est. relative cost vs Opus 4.8 to run the full battery once (\u00d7, log scale)"}
 ];
 function priceMap(){
   var map={};
@@ -1588,15 +1632,22 @@ function fillTakeaways(){
   var cons=PRECOMPUTED.consistency||{};
   var rule=PRECOMPUTED.tier_rule||{};
   var tom=PRECOMPUTED.timeout_by_model||{};
-  var prices=priceMap();
+  /* Cost claims run on the battery metric (PRECOMPUTED.cost.battery) and
+     render as RELATIVE figures only — ratios and multipliers, never
+     dollars (v2.8.1 user decision: exact dollars imply false precision) */
+  var bat=(PRECOMPUTED.cost||{}).battery||{};
+  var batModels=bat.models||{};
   function score(m){ return (comp[m]&&comp[m].score!=null)?comp[m].score:null; }
   function hardScore(m){ return (hardComp[m]&&hardComp[m].score!=null)?hardComp[m].score:null; }
-  function blend(m){ var c=prices[m]; return (c&&c.blend31!=null&&c.blend31>0)?c.blend31:null; }
+  function batCost(m){
+    var b=batModels[m];
+    return (b&&b.est_battery_cost!=null&&b.est_battery_cost>0)?b.est_battery_cost:null;
+  }
   function p3b(m){
     var c=(pmp[m]||{})["dispatch_compliance_subagent"];
     return (c&&c.perfect_rate!=null)?c.perfect_rate:null;
   }
-  /* All Opus variants share list pricing; 4.8 is the price anchor */
+  /* All Opus variants share list pricing; 4.8 is the battery-cost anchor */
   var OPUS_ANCHOR="Opus 4.8";
 
   /* T1 — Fable's margin over the best non-Fable composite */
@@ -1626,7 +1677,8 @@ function fillTakeaways(){
   if(o47b!=null) set("kt-t2-o47p3b",pct1(o47b));
   if(o46b!=null) set("kt-t2-o46p3b",pct1(o46b));
 
-  /* T3 — Sonnet 4.6 vs the best Opus, and the price spread */
+  /* T3 — Sonnet 4.6 vs the best Opus, and the battery-cost percentage
+     (Sonnet's est. battery cost as a share of Opus 4.8's) */
   var sonnet=score("Sonnet 4.6");
   var bestOpus=null;
   ["Opus 4.5","Opus 4.6","Opus 4.7","Opus 4.8"].forEach(function(m){
@@ -1635,46 +1687,50 @@ function fillTakeaways(){
   });
   if(sonnet!=null) set("kt-t3-comp",pct1(sonnet));
   if(bestOpus!=null) set("kt-t3-bestopus",pct1(bestOpus));
-  var sPrice=blend("Sonnet 4.6"), oPrice=blend(OPUS_ANCHOR);
-  if(sPrice!=null) set("kt-t3-sprice","$"+(sPrice>=1?sPrice.toFixed(2):sPrice.toFixed(3)));
-  if(oPrice!=null) set("kt-t3-oprice","$"+(oPrice>=1?oPrice.toFixed(2):oPrice.toFixed(3)));
-  if(sPrice!=null&&oPrice!=null&&oPrice>0) set("kt-t3-save",Math.round((1-sPrice/oPrice)*100)+"%");
+  var sBat=batCost("Sonnet 4.6"), oBat=batCost(OPUS_ANCHOR);
+  if(sBat!=null&&oBat!=null) set("kt-t3-batpct",String(Math.round(sBat/oBat*100)));
 
-  /* T4 — DS Pro leads the open-weight pack on score; price gap vs Opus;
-     timeout-rate reliability caveat. gPrice/glm stay declared here because
-     the T5 block below reuses them. */
+  /* T4 — DS Pro leads the open-weight pack on score; battery cost vs
+     Sonnet rendered as a coarse one-decimal multiplier (e.g. "0.8x");
+     timeout-rate reliability caveat. glm stays declared here because
+     the T5 block below reuses it. */
   var dspro=score("DeepSeek V4 Pro");
   if(dspro!=null) set("kt-t4-dspro",pct1(dspro));
   var glm=score("GLM 5.1");
   if(glm!=null) set("kt-t4-glm",pct1(glm));
-  var dpPrice=blend("DeepSeek V4 Pro"), gPrice=blend("GLM 5.1");
-  if(dpPrice!=null) set("kt-t4-dsblend","$"+(dpPrice>=1?dpPrice.toFixed(2):dpPrice.toFixed(3)));
-  if(oPrice!=null) set("kt-t4-opusblend","$"+(oPrice>=1?oPrice.toFixed(2):oPrice.toFixed(3)));
-  if(dpPrice!=null&&oPrice!=null&&dpPrice>0) set("kt-t4-ratio",String(Math.round(oPrice/dpPrice)));
+  var dpBat=batCost("DeepSeek V4 Pro");
+  if(dpBat!=null&&sBat!=null) set("kt-t4-sonratio",(dpBat/sBat).toFixed(1)+"\u00d7");
   var dpTo=tom["DeepSeek V4 Pro"];
   if(dpTo&&dpTo.rate!=null) set("kt-t4-dsto",(dpTo.rate*100).toFixed(1)+"%");
 
-  /* T5 — DS Flash vs GLM: composite near-tie, Critical-only gap, price ratios */
+  /* T5 — DS Flash vs GLM: composite near-tie, Critical-only gap,
+     battery-cost ratios (GLM/Opus 4.8 batteries over Flash's) */
   var ds=score("DeepSeek V4 Flash");
   if(ds!=null) set("kt-t5-dscomp",pct1(ds));
   if(glm!=null) set("kt-t5-glmcomp",pct1(glm));
   var dsHard=hardScore("DeepSeek V4 Flash"), glmHard=hardScore("GLM 5.1");
   if(dsHard!=null) set("kt-t5-dshard",pct1(dsHard));
   if(glmHard!=null) set("kt-t5-glmhard",pct1(glmHard));
-  var dPrice=blend("DeepSeek V4 Flash");
-  if(dPrice!=null&&gPrice!=null&&dPrice>0) set("kt-t5-glmx",String(Math.round(gPrice/dPrice)));
-  if(dPrice!=null&&oPrice!=null&&dPrice>0) set("kt-t5-opusx",String(Math.round(oPrice/dPrice)));
+  var dBat=batCost("DeepSeek V4 Flash"), gBat=batCost("GLM 5.1");
+  if(dBat!=null&&gBat!=null) set("kt-t5-glmx",String(Math.round(gBat/dBat)));
+  if(dBat!=null&&oBat!=null) set("kt-t5-opusx",String(Math.round(oBat/dBat)));
 
-  /* T6 — Qwen's local-class ceiling; Gemma 4 31B timed-out rate (the
+  /* T6 — Qwen's local-class ceiling (P4 skill routing + P1 mode
+     classification as the weak points); Gemma 4 31B timed-out rate (the
      harness's timed_out flag, NOT transcript-level stall forensics) */
   var qwen=score("Qwen 3.6 27B");
   if(qwen!=null) set("kt-t6-qwen",pct1(qwen));
+  var qp4=(pmp["Qwen 3.6 27B"]||{})["skill_routing"];
+  if(qp4&&qp4.perfect_rate!=null) set("kt-t6-qwenp4",pct1(qp4.perfect_rate));
   var qp1=(pmp["Qwen 3.6 27B"]||{})["mode_classification"];
   if(qp1&&qp1.perfect_rate!=null) set("kt-t6-qwenp1",pct1(qp1.perfect_rate));
   var g31=tom["Gemma 4 31B"];
   if(g31&&g31.rate!=null){
     set("kt-t6-g31to",fmt(g31.n_timed_out)+" of "+fmt(g31.n_runs)+" ("+(g31.rate*100).toFixed(1)+"%)");
   }
+
+  /* kt-foot — battery size for the relative-multiplier caveat */
+  if(bat.battery_size) set("kt-foot-bat",fmt(bat.battery_size));
 }
 
 /* =================================================================
@@ -2059,6 +2115,22 @@ function renderCostPerf(container){
   var pv=(pvAll[basis]||{})[metric]||{};
   var frontier=((((PRECOMPUTED.cost||{}).frontiers||{})[form]||{})[basis]||{})[metric]||[];
 
+  /* Battery formulation renders as a RELATIVE multiplier (v2.8.1): all
+     plotted values are divided by the reference model's (Opus 4.8)
+     battery cost — a pure positive scaling, so frontier membership and
+     shape are unchanged; only the axis numbers move. Dollar battery
+     figures are deliberately never displayed (false precision). */
+  var isBat=form==="battery";
+  var batScale=1;
+  if(isBat){
+    var batRoot=(PRECOMPUTED.cost||{}).battery||{};
+    var refB=((batRoot.models||{})[batRoot.reference_model||"Opus 4.8"]||{}).est_battery_cost;
+    if(refB>0) batScale=refB;
+  }
+  frontier=frontier.map(function(f){
+    return {model:f.model,price:f.price/batScale,score:f.score};
+  });
+
   /* Points: models with a y-value under the active basis/metric AND a
      positive published price under the active formulation (log axis
      cannot place zero/unknown). Models lacking data for the selected
@@ -2069,7 +2141,7 @@ function renderCostPerf(container){
   Object.keys(pv).forEach(function(m){
     var c=prices[m];
     if(!c||c[form]==null||c[form]<=0) return;
-    pts.push({model:m,price:c[form],score:pv[m],
+    pts.push({model:m,price:c[form]/batScale,score:pv[m],
               provider:modelProvider(m),pm:c});
   });
   var omitted=0;
@@ -2109,9 +2181,10 @@ function renderCostPerf(container){
      BELOW the chart (section layout rule); reflects the active basis +
      metric selections. */
   var finding='';
+  var priceUnit=isBat?" vs Opus 4.8":"/Mtok";
   if(frontier.length>0){
     var fbits=frontier.map(function(f){
-      return '<b>'+esc(f.model)+'</b> ('+fmtCost(f.price)+'/Mtok, '+pct(f.score)+')';
+      return '<b>'+esc(f.model)+'</b> ('+(isBat?fmtMult(f.price):fmtCost(f.price)+priceUnit)+', '+pct(f.score)+')';
     });
     finding=frontier.length+' of '+pts.length+' models sit on the efficiency frontier &mdash; '+
       fbits.join(' &rarr; ')+' &mdash; every other model is beaten on both price and '+esc(yShort)+' by one of them.';
@@ -2122,7 +2195,8 @@ function renderCostPerf(container){
         var share=Math.round(knee.score/topF.score*100);
         if(ratio>=1.5){
           finding+=' <b>'+esc(knee.model)+'</b> reaches '+share+'% of <b>'+esc(topF.model)+
-            '</b>\u2019s '+esc(yShort)+' at roughly 1/'+ratio.toFixed(1)+' of the '+esc(formDef.label)+' price.';
+            '</b>\u2019s '+esc(yShort)+' at roughly 1/'+ratio.toFixed(1)+' of the '+
+            (isBat?'estimated battery cost':esc(formDef.label)+' price')+'.';
         }
       }
     }
@@ -2150,16 +2224,25 @@ function renderCostPerf(container){
       ?' '+omitted+' priced model'+(omitted===1?'':'s')+' lack'+(omitted===1?'s':'')+
        ' data for this selection and '+(omitted===1?'is':'are')+' omitted from this view.'
       :'')+'</p>';
-  foot+='<p class="cp-foot">'+esc(formDef.formula)+'. Prices are published list rates from '+
-    'models.yaml, not measured benchmark spend &mdash; token-derived spend tracking was removed '+
-    'because OpenRouter token accounting does not align with the harness\u2019s usage logging.</p>';
+  foot+='<p class="cp-foot">'+esc(formDef.formula)+'. '+
+    (isBat
+      ?'A rough relative multiplier from list prices and observed token mixes (uncached '+
+       'basis; OpenRouter mixes from a dated billing snapshot), normalized so Opus 4.8 = '+
+       '1.0\u00d7 &mdash; not a reading of an invoice. These relative figures can shift as '+
+       'providers reprice tokens and as provider caching mechanics interact with each '+
+       'model\u2019s behavior. Full definition and caveats in Costs Detail. Models without '+
+       'battery data are omitted under this basis.'
+      :'Prices are published list rates from models.yaml, not measured benchmark spend '+
+       '&mdash; token-derived spend tracking was removed because OpenRouter token '+
+       'accounting does not align with the harness\u2019s usage logging.')+'</p>';
 
   /* Layout: controls + legend immediately adjacent to the chart; the
      computed finding and footnotes BELOW it */
   container.innerHTML=toggle+legend+
     '<div class="card"><div class="chart-container">'+
     svgCostFrontier(pts,frontier,
-      formDef.label+' price (USD per 1M tokens, log scale)',yShort)+
+      formDef.axis||(formDef.label+' price (USD per 1M tokens, log scale)'),yShort,
+      isBat?"Est. relative cost":"Published price",priceUnit,isBat)+
     '</div></div>'+
     '<div class="cp-finding">'+finding+'</div>'+foot;
 }
@@ -2709,19 +2792,111 @@ function renderCasesSection(container){
 
 /* =================================================================
    SECTION 8: COSTS DETAIL
-   One sortable table: the published per-Mtok pricing for every model
-   (DATA.model_pricing), with each model's overall Perfect rate for
-   context. The Observed Spend table, token-mix bars, and all
-   token-derived dollar aggregates were removed — OpenRouter token
-   accounting does not align with the harness's usage logging, so
-   computed spend figures were unreliable (disclosed in the section
-   lead and the About caveats).
+   Headline (v2.8.0; displayed as relative multipliers since v2.8.1):
+   estimated relative cost to run the full battery once, shown as
+   x-Opus-4.8 multipliers — never dollars, which would imply false
+   precision (PRECOMPUTED.cost.battery stays in dollars; presentation
+   normalizes at render time; see the generator's "Battery-cost
+   metric" dev guide), followed by the sortable published per-Mtok pricing table
+   (DATA.model_pricing) with each model's overall Perfect rate for
+   context. The old Observed Spend table (computed from the harness's
+   per-run token counts) stays removed — OpenRouter token accounting
+   does not align with the harness's usage logging, so those spend
+   figures were unreliable (disclosed in the section lead and the
+   About caveats); battery estimates instead use billing-meter token
+   mixes for OpenRouter models.
    ================================================================= */
 
 function renderCostsDetail(container){
   var models=uniqueModels();
   var pricing=DATA.model_pricing||{};
   var html='';
+
+  /* ---- Battery-cost headline (v2.8.0; relative multipliers since
+     v2.8.1): est. relative cost to run the full battery once, from
+     PRECOMPUTED.cost.battery — list rates x each model's own observed
+     token mix, uncached basis — displayed as a multiple of the
+     reference model (Opus 4.8 = 1.0x), never dollars (false
+     precision). Sorted most-expensive first; bar width is linear in
+     the multiplier. Timed-out shares come from
+     PRECOMPUTED.timeout_by_model (referenced, not duplicated). ---- */
+  var bat=(PRECOMPUTED.cost||{}).battery||{};
+  var batModels=bat.models||{};
+  var batNames=Object.keys(batModels);
+  if(batNames.length>0){
+    var refModel=bat.reference_model||"Opus 4.8";
+    batNames.sort(function(a,b){
+      return (batModels[b].est_battery_cost||0)-(batModels[a].est_battery_cost||0);
+    });
+    var toByModel=PRECOMPUTED.timeout_by_model||{};
+    var anyStale=false, anySnapshot=false;
+    /* Multipliers: embedded cost_multiplier_vs_ref when present, else
+       derived from the embedded dollar costs (same ratio) */
+    var refCost=(batModels[refModel]||{}).est_battery_cost||null;
+    var multOf={}, multMax=null;
+    batNames.forEach(function(m){
+      var b=batModels[m];
+      var mu=b.cost_multiplier_vs_ref!=null?b.cost_multiplier_vs_ref
+        :((refCost&&refCost>0&&b.est_battery_cost!=null)?b.est_battery_cost/refCost:null);
+      multOf[m]=mu;
+      if(mu!=null&&(multMax==null||mu>multMax)) multMax=mu;
+    });
+    html+='<div class="section-title">Estimated relative cost to run the full benchmark battery once ('+
+      (bat.battery_size||"?")+' probes) \u2014 '+esc(refModel)+' = 1.0\u00d7</div>';
+    html+='<div class="card"><table class="data-table"><thead><tr>'+
+      '<th>Model</th><th>Est. cost (\u00d7 '+esc(refModel)+')</th>'+
+      '<th>Timed-out share</th><th>Token-mix source</th></tr></thead><tbody>';
+    batNames.forEach(function(m){
+      var b=batModels[m];
+      if(b.basis&&b.basis.indexOf("billing-snapshot")===0) anySnapshot=true;
+      if(b.stale) anyStale=true;
+      var mult=multOf[m];
+      var w=(mult!=null&&multMax>0)?Math.max(0.6,(mult/multMax)*100):0;
+      var to=toByModel[m];
+      var src=b.basis==="corpus-live"
+        ?'Anthropic usage logs (live corpus)'
+        :'OpenRouter billing export ('+esc((b.basis||"").replace("billing-snapshot-",""))+')'+
+         (b.stale?' \u26a0':'');
+      html+='<tr>';
+      html+='<td style="font-weight:600;color:'+modelColorLight(m)+'">'+esc(m)+'</td>';
+      html+='<td title="~'+fmt(b.tokens_per_run||0)+' tokens per run across '+(bat.battery_size||"?")+
+        ' probes'+
+        (b.token_multiplier_vs_ref!=null?' ('+b.token_multiplier_vs_ref.toFixed(2)+'\u00d7 '+esc(refModel)+'\u2019s appetite)':'')+
+        '; multiplier = this model\u2019s estimated uncached battery cost \u00f7 '+esc(refModel)+'\u2019s'+
+        '"><span class="lb-comp-score" style="width:74px">'+(mult!=null?fmtMult(mult):'&mdash;')+'</span>'+
+        '<span class="lb-bar bat-bar"><span class="lb-bar-fill" style="width:'+w.toFixed(1)+'%"></span></span></td>';
+      html+='<td title="Share of this model\u2019s runs cut off at the wall clock (see the leaderboard and Key Takeaways) \u2014 truncated runs consumed fewer tokens, so high shares depress this estimate">'+
+        (to&&to.rate!=null?((to.rate*100).toFixed(1)+'%'+(to.rate>=0.1?' \u2193':'')):'&mdash;')+'</td>';
+      html+='<td>'+src+'</td>';
+      html+='</tr>';
+    });
+    html+='</tbody></table></div>';
+    /* Required disclosures: uncached relative basis, billing-snapshot
+       provenance, timeout depression. Public register; figures that
+       change with the data stay in the table, not the prose. */
+    html+='<p class="cp-foot"><b>What these multipliers estimate &mdash; and what they deliberately ignore.</b> '+
+      'Each figure estimates the <b>relative</b> cost of running this benchmark\u2019s full '+
+      (bat.battery_size||"?")+'-probe battery once on a model, expressed as a multiple of '+
+      esc(refModel)+' (= 1.0\u00d7): every token the model consumed is priced at its uncached '+
+      'published list input and output rates &mdash; <b>no cache discounts</b>, as if nothing were '+
+      'ever cached &mdash; applied to the model\u2019s own observed token mix. That makes the figures '+
+      'directly comparable across providers, whose caching schemes differ wildly; exact dollar '+
+      'figures are deliberately not shown, because they would imply a precision these estimates '+
+      'do not have. Note that these relative costs will change both if model token pricing '+
+      'changes, and also based on specific provider caching mechanics interacting with specific '+
+      'model behaviors.</p>';
+    html+='<p class="cp-foot"><b>Where the token mixes come from.</b> Anthropic models\u2019 '+
+      'per-run token appetites are computed live from this corpus\u2019s archived run records '+
+      '(Anthropic\u2019s own usage meter). OpenRouter models\u2019 come from an OpenRouter billing '+
+      'export dated '+esc(bat.snapshot_date||"2026-06-11")+' &mdash; the provider\u2019s billing '+
+      'meter, not the harness\u2019s approximate counts \u2014 validated to within about 3% of '+
+      'actual billed spend for most models.'+
+      (anyStale?' Rows marked \u26a0 have corpus runs newer than that snapshot; their token mixes predate the newest runs.':'')+'</p>';
+    html+='<p class="cp-foot"><b>Read high-timeout models low.</b> A run cut off at the wall '+
+      'clock stops consuming tokens, so models with high timed-out shares (flagged \u2193 above; '+
+      'the same rates appear in the leaderboard and Key Takeaways) show lower multipliers than '+
+      'they would if they finished their work.</p>';
+  }
 
   /* Phase scope for the Perfect Rate context column: "" pools every
      loaded run (precomputed run grade); a group id restricts to that
@@ -2790,7 +2965,7 @@ function renderCostsDetail(container){
     return '<th onclick="sortCosts(&#39;'+key+'&#39;)" style="cursor:pointer">'+label+arrow+'</th>';
   }
 
-  html+='<div class="section-title">Model Pricing (per 1M tokens)</div>';
+  html+='<div class="section-title">Published list prices (per 1M tokens)</div>';
   html+='<div class="card"><table class="data-table"><thead><tr>';
   html+=costTh("Model","model");
   html+=costTh("Perfect Rate","perfect");
@@ -3100,19 +3275,31 @@ function renderProvenance(container){
    vertical nudge to avoid overlap and flip anchor at the right edge.
    ================================================================= */
 
-function svgCostFrontier(pts,frontier,axisLabel,yLabel){
+function svgCostFrontier(pts,frontier,axisLabel,yLabel,priceName,priceUnit,relative){
   yLabel=yLabel||"Composite Perfect rate";
+  /* Tooltip price wording is formulation-aware: per-Mtok forms read
+     "Published price: $X/Mtok"; the battery form reads
+     "Est. relative cost: X.X× vs Opus 4.8" (relative=true; multipliers
+     since v2.8.1 — no dollar battery figures are displayed) */
+  priceName=priceName||"Published price";
+  priceUnit=priceUnit||"/Mtok";
   var W=860, H=480;
   var pad={t:34,r:34,b:56,l:64};
   var cw=W-pad.l-pad.r, ch=H-pad.t-pad.b;
 
   function log10(v){ return Math.log(v)/Math.LN10; }
   function fmtAxisCost(v){
+    if(relative){
+      if(v>=1) return (v%1===0?v.toFixed(0):v.toFixed(1))+"\u00d7";
+      if(v>=0.1) return v.toFixed(1)+"\u00d7";
+      return v.toFixed(2)+"\u00d7";
+    }
     if(v>=1) return "$"+(v%1===0?v.toFixed(0):v.toFixed(2));
     if(v>=0.1) return "$"+v.toFixed(1);
     if(v>=0.01) return "$"+v.toFixed(2);
     return "$"+v.toFixed(3);
   }
+  function fmtPoint(v){ return relative?fmtMult(v):fmtCost(v); }
 
   /* Domains: log-x over published prices (padded, extra room on the right
      for labels); y from just below the lowest composite up to 100% */
@@ -3189,10 +3376,10 @@ function svgCostFrontier(pts,frontier,axisLabel,yLabel){
     var prov=p.provider||"unknown";
     var fillVar=prov==="anthropic"?"var(--accent-light)":(prov==="openrouter"?"var(--c-partial)":"var(--c-neutral)");
     var ring=onFrontier[p.model]?' stroke="#f8fafc" stroke-width="1.2"':'';
-    var tipHtml=esc(p.model)+'<br>'+esc(yLabel)+': <b>'+pct(p.score)+'</b><br>Published price: <b>'+fmtCost(p.price)+'/Mtok</b>'+
+    var tipHtml=esc(p.model)+'<br>'+esc(yLabel)+': <b>'+pct(p.score)+'</b><br>'+esc(priceName)+': <b>'+fmtPoint(p.price)+esc(priceUnit)+'</b>'+
       '<br>List rates: $'+p.pm.input.toFixed(2)+' in / $'+p.pm.output.toFixed(2)+' out per 1M tokens'+
       (onFrontier[p.model]?'<br><b>On the efficiency frontier</b>':'');
-    var titleTxt=p.model+': '+pct(p.score)+' '+yLabel+', '+fmtCost(p.price)+'/Mtok published';
+    var titleTxt=p.model+': '+pct(p.score)+' '+yLabel+', '+fmtPoint(p.price)+priceUnit;
     var common=' style="fill:'+fillVar+';cursor:pointer"'+ring+
       ' onmouseover="showTip(event,&#39;'+tipHtml.replace(/'/g,"&#39;")+'&#39;)" onmouseout="hideTip()"';
     if(prov==="openrouter"){

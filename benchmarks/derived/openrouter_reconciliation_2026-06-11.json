@@ -1,0 +1,970 @@
+{
+  "generated": "2026-06-11T17:13:41.359271+00:00",
+  "csv": "/daaf/benchmarks/openrouter_activity_2026-06-11.csv",
+  "tolerance_s": 120,
+  "corpus": {
+    "included_sets": 53,
+    "excluded_dirs_no_summary": [],
+    "total_runs": 2493,
+    "openrouter_runs": 1530,
+    "anthropic_runs": 963,
+    "window_sources": {
+      "transcript": 2493,
+      "mtime_fallback": 0,
+      "none": 0
+    }
+  },
+  "csv_span_utc": [
+    "2026-06-08T16:26:52.731000+00:00",
+    "2026-06-10T20:58:57.397000+00:00"
+  ],
+  "tz_offset_scan_best_h": 0,
+  "static_exclusions": {
+    "rows": 764,
+    "cost": 59.664176
+  },
+  "pre_campaign_exclusions": {
+    "campaign_start_utc": "2026-06-08T21:44:52.228000+00:00",
+    "rows": 4384,
+    "cost": 66.615897,
+    "by_model": {
+      "qwen3.6-27b": {
+        "rows": 684,
+        "cost": 9.94
+      },
+      "deepseek-v4-flash": {
+        "rows": 1785,
+        "cost": 12.61
+      },
+      "gemma-4-26b-a4b-it": {
+        "rows": 579,
+        "cost": 3.06
+      },
+      "glm-5.1": {
+        "rows": 649,
+        "cost": 33.86
+      },
+      "nemotron-3-ultra-550b-a55b": {
+        "rows": 7,
+        "cost": 0.15
+      },
+      "kimi-k2.6": {
+        "rows": 2,
+        "cost": 0.05
+      },
+      "gemini-3.1-flash-lite": {
+        "rows": 678,
+        "cost": 6.96
+      }
+    }
+  },
+  "orphans": {
+    "rows": 858,
+    "cost": 27.105001,
+    "clusters": [
+      {
+        "start": "2026-06-09T00:29:37.369000+00:00",
+        "end": "2026-06-09T00:43:26.143000+00:00",
+        "rows": 39,
+        "cost": 0.96,
+        "models": [
+          "gemma-4-31b-it",
+          "nemotron-3-ultra-550b-a55b"
+        ]
+      },
+      {
+        "start": "2026-06-09T00:58:53.629000+00:00",
+        "end": "2026-06-09T01:20:34.241000+00:00",
+        "rows": 285,
+        "cost": 7.31,
+        "models": [
+          "glm-5.1",
+          "nemotron-3-ultra-550b-a55b"
+        ]
+      },
+      {
+        "start": "2026-06-10T01:47:58.110000+00:00",
+        "end": "2026-06-10T02:21:43.815000+00:00",
+        "rows": 312,
+        "cost": 8.98,
+        "models": [
+          "deepseek-v4-flash",
+          "gemini-3.1-flash-lite",
+          "glm-5.1",
+          "kimi-k2.6",
+          "qwen3.6-27b"
+        ]
+      },
+      {
+        "start": "2026-06-10T04:07:32.693000+00:00",
+        "end": "2026-06-10T04:10:40.679000+00:00",
+        "rows": 116,
+        "cost": 8.74,
+        "models": [
+          "deepseek-v4-pro",
+          "gemini-3.1-pro-preview",
+          "gemma-4-26b-a4b-it",
+          "gemma-4-31b-it",
+          "nemotron-3-ultra-550b-a55b"
+        ]
+      },
+      {
+        "start": "2026-06-10T14:43:07.317000+00:00",
+        "end": "2026-06-10T14:44:25.270000+00:00",
+        "rows": 45,
+        "cost": 0.48,
+        "models": [
+          "deepseek-v4-flash",
+          "gemini-3.1-flash-lite"
+        ]
+      },
+      {
+        "start": "2026-06-10T15:30:29.563000+00:00",
+        "end": "2026-06-10T15:33:20.912000+00:00",
+        "rows": 60,
+        "cost": 0.63,
+        "models": [
+          "deepseek-v4-flash",
+          "gemini-3.1-flash-lite"
+        ]
+      },
+      {
+        "start": "2026-06-10T20:57:14.882000+00:00",
+        "end": "2026-06-10T20:57:14.882000+00:00",
+        "rows": 1,
+        "cost": 0.02,
+        "models": [
+          "gemma-4-31b-it"
+        ]
+      }
+    ]
+  },
+  "openrouter_models": {
+    "DeepSeek V4 Flash": {
+      "base_slug": "deepseek/deepseek-v4-flash",
+      "csv_rows": 1137,
+      "rows_attributed": 994,
+      "rows_attributed_pct": 0.8742304309586632,
+      "csv_cost_total": 8.148148,
+      "billed_cost_attributed": 7.000745,
+      "billed_cost_attributed_pct": 0.8591823565305883,
+      "harness_cost_covered_runs": 4.544035831574,
+      "harness_cost_all_runs": 4.544035831574,
+      "billed_over_harness_ratio": 1.5406447615037897,
+      "billed_tokens": {
+        "prompt": 51813486,
+        "completion": 669958,
+        "reasoning": 176860,
+        "cached": 1123968,
+        "total": 52483444
+      },
+      "harness_tokens": {
+        "input": 33740090,
+        "output": 459344,
+        "cache_read": 947584,
+        "cache_creation": 0,
+        "total": 35147018
+      },
+      "realized_usd_per_mtok": 0.13338958853386224,
+      "published_blend_predicted_cost": 5.2249794166,
+      "n_runs": 153,
+      "n_covered_runs": 138,
+      "n_timed_out": 15,
+      "billed_cost_per_covered_run": 0.05073003623188406,
+      "billed_cost_per_run_all": 0.045756503267973855,
+      "billed_tokens_per_covered_run": 380314.8115942029,
+      "unambiguous_rows": 37,
+      "unambiguous_rows_pct": 0.03722334004024145,
+      "billed_cost_per_run_nontimeout_unambiguous": 0.09449625000000002,
+      "n_unambiguous_nontimeout_runs": 4,
+      "harness_cost_per_run_all": 0.029699580598522877,
+      "harness_cost_per_run_nontimeout": 0.032927795880971014
+    },
+    "DeepSeek V4 Pro": {
+      "base_slug": "deepseek/deepseek-v4-pro",
+      "csv_rows": 803,
+      "rows_attributed": 770,
+      "rows_attributed_pct": 0.958904109589041,
+      "csv_cost_total": 68.120314,
+      "billed_cost_attributed": 64.885802,
+      "billed_cost_attributed_pct": 0.9525176586825481,
+      "harness_cost_covered_runs": 11.6930056245,
+      "harness_cost_all_runs": 11.6930056245,
+      "billed_over_harness_ratio": 5.549112356881685,
+      "billed_tokens": {
+        "prompt": 39487745,
+        "completion": 532163,
+        "reasoning": 146872,
+        "cached": 204672,
+        "total": 40019908
+      },
+      "harness_tokens": {
+        "input": 20244640,
+        "output": 272167,
+        "cache_read": 204544,
+        "cache_creation": 0,
+        "total": 20721351
+      },
+      "realized_usd_per_mtok": 1.6213381100226416,
+      "published_blend_predicted_cost": 58.39498224,
+      "n_runs": 153,
+      "n_covered_runs": 112,
+      "n_timed_out": 41,
+      "billed_cost_per_covered_run": 0.5793375178571428,
+      "billed_cost_per_run_all": 0.4240902091503268,
+      "billed_tokens_per_covered_run": 357320.60714285716,
+      "unambiguous_rows": 0,
+      "unambiguous_rows_pct": 0.0,
+      "billed_cost_per_run_nontimeout_unambiguous": null,
+      "n_unambiguous_nontimeout_runs": 0,
+      "harness_cost_per_run_all": 0.0764248733627451,
+      "harness_cost_per_run_nontimeout": 0.10440183593303572
+    },
+    "GLM 5.1": {
+      "base_slug": "z-ai/glm-5.1",
+      "csv_rows": 1019,
+      "rows_attributed": 952,
+      "rows_attributed_pct": 0.9342492639842983,
+      "csv_cost_total": 55.766761,
+      "billed_cost_attributed": 51.677702,
+      "billed_cost_attributed_pct": 0.9266756948641861,
+      "harness_cost_covered_runs": 29.005720099999998,
+      "harness_cost_all_runs": 29.005720099999998,
+      "billed_over_harness_ratio": 1.7816383051976015,
+      "billed_tokens": {
+        "prompt": 48554284,
+        "completion": 572281,
+        "reasoning": 332044,
+        "cached": 8518400,
+        "total": 49126565
+      },
+      "harness_tokens": {
+        "input": 22324035,
+        "output": 323061,
+        "cache_read": 6258304,
+        "cache_creation": 0,
+        "total": 28905400
+      },
+      "realized_usd_per_mtok": 1.0519298876280072,
+      "published_blend_predicted_cost": 49.3458238,
+      "n_runs": 153,
+      "n_covered_runs": 132,
+      "n_timed_out": 21,
+      "billed_cost_per_covered_run": 0.3914977424242424,
+      "billed_cost_per_run_all": 0.3377627581699346,
+      "billed_tokens_per_covered_run": 372170.94696969696,
+      "unambiguous_rows": 10,
+      "unambiguous_rows_pct": 0.01050420168067227,
+      "billed_cost_per_run_nontimeout_unambiguous": 0.705612,
+      "n_unambiguous_nontimeout_runs": 1,
+      "harness_cost_per_run_all": 0.18957986993464052,
+      "harness_cost_per_run_nontimeout": 0.21974030378787876
+    },
+    "Gemini 3.1 Flash Lite": {
+      "base_slug": "google/gemini-3.1-flash-lite",
+      "csv_rows": 845,
+      "rows_attributed": 756,
+      "rows_attributed_pct": 0.8946745562130177,
+      "csv_cost_total": 9.227219,
+      "billed_cost_attributed": 7.971913,
+      "billed_cost_attributed_pct": 0.8639561930848287,
+      "harness_cost_covered_runs": 8.0788355,
+      "harness_cost_all_runs": 8.0788355,
+      "billed_over_harness_ratio": 0.986765109897336,
+      "billed_tokens": {
+        "prompt": 32255873,
+        "completion": 140431,
+        "reasoning": 0,
+        "cached": 1655207,
+        "total": 32396304
+      },
+      "harness_tokens": {
+        "input": 29878916,
+        "output": 136787,
+        "cache_read": 1615704,
+        "cache_creation": 0,
+        "total": 31631407
+      },
+      "realized_usd_per_mtok": 0.246074768282209,
+      "published_blend_predicted_cost": 8.27461475,
+      "n_runs": 153,
+      "n_covered_runs": 153,
+      "n_timed_out": 0,
+      "billed_cost_per_covered_run": 0.05210400653594771,
+      "billed_cost_per_run_all": 0.05210400653594771,
+      "billed_tokens_per_covered_run": 211740.54901960783,
+      "unambiguous_rows": 0,
+      "unambiguous_rows_pct": 0.0,
+      "billed_cost_per_run_nontimeout_unambiguous": null,
+      "n_unambiguous_nontimeout_runs": 0,
+      "harness_cost_per_run_all": 0.05280284640522876,
+      "harness_cost_per_run_nontimeout": 0.05280284640522876
+    },
+    "Gemini 3.1 Pro": {
+      "base_slug": "google/gemini-3.1-pro-preview",
+      "csv_rows": 1076,
+      "rows_attributed": 1041,
+      "rows_attributed_pct": 0.9674721189591078,
+      "csv_cost_total": 112.667954,
+      "billed_cost_attributed": 108.053188,
+      "billed_cost_attributed_pct": 0.9590410064604529,
+      "harness_cost_covered_runs": 96.366452,
+      "harness_cost_all_runs": 96.366452,
+      "billed_over_harness_ratio": 1.1212739055703744,
+      "billed_tokens": {
+        "prompt": 51613622,
+        "completion": 488872,
+        "reasoning": 222564,
+        "cached": 578056,
+        "total": 52102494
+      },
+      "harness_tokens": {
+        "input": 44842578,
+        "output": 460432,
+        "cache_read": 578056,
+        "cache_creation": 0,
+        "total": 45881066
+      },
+      "realized_usd_per_mtok": 2.0738582686656035,
+      "published_blend_predicted_cost": 109.093708,
+      "n_runs": 153,
+      "n_covered_runs": 151,
+      "n_timed_out": 2,
+      "billed_cost_per_covered_run": 0.7155840264900662,
+      "billed_cost_per_run_all": 0.7062299869281046,
+      "billed_tokens_per_covered_run": 345049.62913907284,
+      "unambiguous_rows": 4,
+      "unambiguous_rows_pct": 0.0038424591738712775,
+      "billed_cost_per_run_nontimeout_unambiguous": 0.9457819999999999,
+      "n_unambiguous_nontimeout_runs": 1,
+      "harness_cost_per_run_all": 0.629846091503268,
+      "harness_cost_per_run_nontimeout": 0.6381884238410596
+    },
+    "Gemma 4 26B": {
+      "base_slug": "google/gemma-4-26b-a4b-it",
+      "csv_rows": 923,
+      "rows_attributed": 904,
+      "rows_attributed_pct": 0.9794149512459371,
+      "csv_cost_total": 5.192636,
+      "billed_cost_attributed": 5.04564,
+      "billed_cost_attributed_pct": 0.9716914491984416,
+      "harness_cost_covered_runs": 2.1939899622,
+      "harness_cost_all_runs": 2.1939899622,
+      "billed_over_harness_ratio": 2.299755280074544,
+      "billed_tokens": {
+        "prompt": 37757594,
+        "completion": 333100,
+        "reasoning": 143019,
+        "cached": 96608,
+        "total": 38090694
+      },
+      "harness_tokens": {
+        "input": 23767294,
+        "output": 230461,
+        "cache_read": 89920,
+        "cache_creation": 0,
+        "total": 24087675
+      },
+      "realized_usd_per_mtok": 0.13246385061926147,
+      "published_blend_predicted_cost": 2.37537864,
+      "n_runs": 153,
+      "n_covered_runs": 132,
+      "n_timed_out": 21,
+      "billed_cost_per_covered_run": 0.038224545454545455,
+      "billed_cost_per_run_all": 0.032978039215686275,
+      "billed_tokens_per_covered_run": 288565.86363636365,
+      "unambiguous_rows": 8,
+      "unambiguous_rows_pct": 0.008849557522123894,
+      "billed_cost_per_run_nontimeout_unambiguous": 0.048083,
+      "n_unambiguous_nontimeout_runs": 1,
+      "harness_cost_per_run_all": 0.014339803674509804,
+      "harness_cost_per_run_nontimeout": 0.016621136077272725
+    },
+    "Gemma 4 31B": {
+      "base_slug": "google/gemma-4-31b-it",
+      "csv_rows": 446,
+      "rows_attributed": 423,
+      "rows_attributed_pct": 0.9484304932735426,
+      "csv_cost_total": 2.756015,
+      "billed_cost_attributed": 2.578185,
+      "billed_cost_attributed_pct": 0.9354756777448598,
+      "harness_cost_covered_runs": 2.1185545224,
+      "harness_cost_all_runs": 2.1185545224,
+      "billed_over_harness_ratio": 1.2169547551126079,
+      "billed_tokens": {
+        "prompt": 16473233,
+        "completion": 174829,
+        "reasoning": 82030,
+        "cached": 7263,
+        "total": 16648062
+      },
+      "harness_tokens": {
+        "input": 9304603,
+        "output": 107006,
+        "cache_read": 3668,
+        "cache_creation": 0,
+        "total": 9415277
+      },
+      "realized_usd_per_mtok": 0.15486397155416648,
+      "published_blend_predicted_cost": 2.0397263999999997,
+      "n_runs": 153,
+      "n_covered_runs": 83,
+      "n_timed_out": 70,
+      "billed_cost_per_covered_run": 0.031062469879518072,
+      "billed_cost_per_run_all": 0.016850882352941177,
+      "billed_tokens_per_covered_run": 200579.06024096385,
+      "unambiguous_rows": 6,
+      "unambiguous_rows_pct": 0.014184397163120567,
+      "billed_cost_per_run_nontimeout_unambiguous": 0.013316000000000001,
+      "n_unambiguous_nontimeout_runs": 3,
+      "harness_cost_per_run_all": 0.013846761584313727,
+      "harness_cost_per_run_nontimeout": 0.025524753281927715
+    },
+    "Kimi K2.6": {
+      "base_slug": "moonshotai/kimi-k2.6",
+      "csv_rows": 752,
+      "rows_attributed": 687,
+      "rows_attributed_pct": 0.913563829787234,
+      "csv_cost_total": 24.558073,
+      "billed_cost_attributed": 21.961414,
+      "billed_cost_attributed_pct": 0.8942645459193806,
+      "harness_cost_covered_runs": 14.091971420000002,
+      "harness_cost_all_runs": 14.091971420000002,
+      "billed_over_harness_ratio": 1.5584344692064382,
+      "billed_tokens": {
+        "prompt": 30868041,
+        "completion": 455873,
+        "reasoning": 207485,
+        "cached": 4853792,
+        "total": 31323914
+      },
+      "harness_tokens": {
+        "input": 16054188,
+        "output": 279438,
+        "cache_read": 3268000,
+        "cache_creation": 0,
+        "total": 19601626
+      },
+      "realized_usd_per_mtok": 0.7011069561741231,
+      "published_blend_predicted_cost": 22.544794810000003,
+      "n_runs": 153,
+      "n_covered_runs": 122,
+      "n_timed_out": 31,
+      "billed_cost_per_covered_run": 0.18001159016393445,
+      "billed_cost_per_run_all": 0.14353865359477125,
+      "billed_tokens_per_covered_run": 256753.39344262294,
+      "unambiguous_rows": 87,
+      "unambiguous_rows_pct": 0.12663755458515283,
+      "billed_cost_per_run_nontimeout_unambiguous": 2.7949319999999993,
+      "n_unambiguous_nontimeout_runs": 1,
+      "harness_cost_per_run_all": 0.09210438836601309,
+      "harness_cost_per_run_nontimeout": 0.11550796245901641
+    },
+    "Nemotron 3 Ultra": {
+      "base_slug": "nvidia/nemotron-3-ultra-550b-a55b",
+      "csv_rows": 1016,
+      "rows_attributed": 686,
+      "rows_attributed_pct": 0.6751968503937008,
+      "csv_cost_total": 27.371444,
+      "billed_cost_attributed": 18.608353,
+      "billed_cost_attributed_pct": 0.6798454988344788,
+      "harness_cost_covered_runs": 10.93179,
+      "harness_cost_all_runs": 10.93179,
+      "billed_over_harness_ratio": 1.7022237895166301,
+      "billed_tokens": {
+        "prompt": 35230804,
+        "completion": 403422,
+        "reasoning": 74514,
+        "cached": 43904,
+        "total": 35634226
+      },
+      "harness_tokens": {
+        "input": 20899334,
+        "output": 187678,
+        "cache_read": 25856,
+        "cache_creation": 0,
+        "total": 21112868
+      },
+      "realized_usd_per_mtok": 0.5222044951951532,
+      "published_blend_predicted_cost": 18.623957,
+      "n_runs": 153,
+      "n_covered_runs": 116,
+      "n_timed_out": 37,
+      "billed_cost_per_covered_run": 0.16041683620689656,
+      "billed_cost_per_run_all": 0.12162322222222223,
+      "billed_tokens_per_covered_run": 307191.6034482759,
+      "unambiguous_rows": 0,
+      "unambiguous_rows_pct": 0.0,
+      "billed_cost_per_run_nontimeout_unambiguous": null,
+      "n_unambiguous_nontimeout_runs": 0,
+      "harness_cost_per_run_all": 0.07144960784313725,
+      "harness_cost_per_run_nontimeout": 0.09423956896551723
+    },
+    "Qwen 3.6 27B": {
+      "base_slug": "qwen/qwen3.6-27b",
+      "csv_rows": 998,
+      "rows_attributed": 944,
+      "rows_attributed_pct": 0.9458917835671342,
+      "csv_cost_total": 16.623104,
+      "billed_cost_attributed": 15.543725,
+      "billed_cost_attributed_pct": 0.935067542138941,
+      "harness_cost_covered_runs": 13.725479858759998,
+      "harness_cost_all_runs": 13.725479858759998,
+      "billed_over_harness_ratio": 1.1324722457757677,
+      "billed_tokens": {
+        "prompt": 48688640,
+        "completion": 515631,
+        "reasoning": 113821,
+        "cached": 5607552,
+        "total": 49204271
+      },
+      "harness_tokens": {
+        "input": 27208045,
+        "output": 274005,
+        "cache_read": 3756032,
+        "cache_creation": 0,
+        "total": 31238082
+      },
+      "realized_usd_per_mtok": 0.3159019468045772,
+      "published_blend_predicted_cost": 15.30853136,
+      "n_runs": 153,
+      "n_covered_runs": 130,
+      "n_timed_out": 23,
+      "billed_cost_per_covered_run": 0.11956711538461538,
+      "billed_cost_per_run_all": 0.10159297385620915,
+      "billed_tokens_per_covered_run": 378494.3923076923,
+      "unambiguous_rows": 1,
+      "unambiguous_rows_pct": 0.001059322033898305,
+      "billed_cost_per_run_nontimeout_unambiguous": 0.017163,
+      "n_unambiguous_nontimeout_runs": 1,
+      "harness_cost_per_run_all": 0.08970901868470588,
+      "harness_cost_per_run_nontimeout": 0.10558061429815384
+    }
+  },
+  "anthropic_models": {
+    "Fable 5": {
+      "n_runs": 117,
+      "n_timed_out": 7,
+      "cost_per_run": 0.5183357777777777,
+      "cost_per_run_nontimeout": 0.5513207818181818,
+      "tokens_per_run": {
+        "input": 2433.769230769231,
+        "output": 4562.461538461538,
+        "cache_read": 265875.00854700856,
+        "cache_creation": 79486.45299145298,
+        "total": 352357.6923076923
+      },
+      "output_tokens_per_second": 48.35699209160333,
+      "duration_per_run_s": 94.34957264957265,
+      "visible_chars_per_output_token": 3.184736834217546
+    },
+    "Haiku 4.5": {
+      "n_runs": 141,
+      "n_timed_out": 2,
+      "cost_per_run": 0.03385818085106383,
+      "cost_per_run_nontimeout": 0.03434534892086331,
+      "tokens_per_run": {
+        "input": 1061.0851063829787,
+        "output": 3051.31914893617,
+        "cache_read": 175405.0,
+        "cache_creation": 47383.602836879436,
+        "total": 226901.0070921986
+      },
+      "output_tokens_per_second": 76.87865196647785,
+      "duration_per_run_s": 39.690070921985814,
+      "visible_chars_per_output_token": 5.0012179362024565
+    },
+    "Opus 4.5": {
+      "n_runs": 141,
+      "n_timed_out": 0,
+      "cost_per_run": 0.1399112978723404,
+      "cost_per_run_nontimeout": 0.1399112978723404,
+      "tokens_per_run": {
+        "input": 2053.205673758865,
+        "output": 2484.468085106383,
+        "cache_read": 135067.13475177306,
+        "cache_creation": 49687.765957446805,
+        "total": 189292.5744680851
+      },
+      "output_tokens_per_second": 45.684067761244634,
+      "duration_per_run_s": 54.383687943262416,
+      "visible_chars_per_output_token": 5.357860180982558
+    },
+    "Opus 4.6": {
+      "n_runs": 141,
+      "n_timed_out": 6,
+      "cost_per_run": 0.14386830141843973,
+      "cost_per_run_nontimeout": 0.15026244814814815,
+      "tokens_per_run": {
+        "input": 1522.8085106382978,
+        "output": 2726.553191489362,
+        "cache_read": 136180.85815602838,
+        "cache_creation": 50588.55319148936,
+        "total": 191018.7730496454
+      },
+      "output_tokens_per_second": 35.78553476682491,
+      "duration_per_run_s": 76.19148936170212,
+      "visible_chars_per_output_token": 5.030540208717004
+    },
+    "Opus 4.7": {
+      "n_runs": 141,
+      "n_timed_out": 9,
+      "cost_per_run": 0.1742270035460993,
+      "cost_per_run_nontimeout": 0.18610611742424243,
+      "tokens_per_run": {
+        "input": 648.1276595744681,
+        "output": 3422.5106382978724,
+        "cache_read": 170847.19858156028,
+        "cache_creation": 59871.21276595745,
+        "total": 234789.04964539007
+      },
+      "output_tokens_per_second": 46.40848592091091,
+      "duration_per_run_s": 73.74751773049645,
+      "visible_chars_per_output_token": 4.195485044780697
+    },
+    "Opus 4.8": {
+      "n_runs": 141,
+      "n_timed_out": 6,
+      "cost_per_run": 0.2289872304964539,
+      "cost_per_run_nontimeout": 0.23916444074074075,
+      "tokens_per_run": {
+        "input": 1681.5390070921985,
+        "output": 4274.09219858156,
+        "cache_read": 227454.4609929078,
+        "cache_creation": 68060.7304964539,
+        "total": 301470.8226950355
+      },
+      "output_tokens_per_second": 56.685572925484884,
+      "duration_per_run_s": 75.39999999999999,
+      "visible_chars_per_output_token": 3.702452679595186
+    },
+    "Sonnet 4.6": {
+      "n_runs": 141,
+      "n_timed_out": 13,
+      "cost_per_run": 0.0950848914893617,
+      "cost_per_run_nontimeout": 0.10474195078125,
+      "tokens_per_run": {
+        "input": 1015.4255319148937,
+        "output": 2994.8297872340427,
+        "cache_read": 157053.89361702127,
+        "cache_creation": 47223.27659574468,
+        "total": 208287.4255319149
+      },
+      "output_tokens_per_second": 34.020915074806034,
+      "duration_per_run_s": 88.0290780141844,
+      "visible_chars_per_output_token": 5.920172116958067
+    }
+  },
+  "fable_cost_recompute_check": {
+    "Fable 5": {
+      "logged": 60.645286,
+      "harness_formula_recompute": 60.645286,
+      "logged_over_harness_formula": 1.0,
+      "full_convention_recompute": 176.8942235,
+      "logged_over_full_convention": 0.3428336143491989
+    },
+    "Haiku 4.5": {
+      "logged": 4.7740035,
+      "harness_formula_recompute": 4.7740035,
+      "logged_over_harness_formula": 1.0,
+      "full_convention_recompute": 13.125363499999999,
+      "logged_over_full_convention": 0.3637235265903303
+    },
+    "Opus 4.5": {
+      "logged": 19.727493,
+      "harness_formula_recompute": 19.727493,
+      "logged_over_harness_formula": 1.0,
+      "full_convention_recompute": 63.51483675,
+      "logged_over_full_convention": 0.3105966103266415
+    },
+    "Opus 4.6": {
+      "logged": 20.2854305,
+      "harness_formula_recompute": 20.2854305,
+      "logged_over_harness_formula": 1.0,
+      "full_convention_recompute": 64.866593,
+      "logged_over_full_convention": 0.3127253885524711
+    },
+    "Opus 4.7": {
+      "logged": 24.5660075,
+      "harness_formula_recompute": 24.5660075,
+      "logged_over_harness_formula": 1.0,
+      "full_convention_recompute": 77.32751375000001,
+      "logged_over_full_convention": 0.3176877971199481
+    },
+    "Opus 4.8": {
+      "logged": 32.2871995,
+      "harness_formula_recompute": 32.2871995,
+      "logged_over_harness_formula": 1.0,
+      "full_convention_recompute": 92.26571824999999,
+      "logged_over_full_convention": 0.34993711762494195
+    },
+    "Sonnet 4.6": {
+      "logged": 13.4069697,
+      "harness_formula_recompute": 13.4069697,
+      "logged_over_harness_formula": 1.0,
+      "full_convention_recompute": 38.3762772,
+      "logged_over_full_convention": 0.3493556613146416
+    }
+  },
+  "token_hunger": {
+    "Fable 5": {
+      "tokens_per_run": 352357.6923076923,
+      "vs_opus48_tokens": 1.1687953386591359,
+      "vs_corpus_median_tokens": 1.221065055538641,
+      "cost_per_run": 0.5183357777777777,
+      "vs_opus48_cost": 2.263601235116928,
+      "published_blend_predicted_cost_per_run": null,
+      "observed_over_predicted": null,
+      "timed_out_share": 0.05982905982905983
+    },
+    "Haiku 4.5": {
+      "tokens_per_run": 226901.0070921986,
+      "vs_opus48_tokens": 0.7526466576890896,
+      "vs_corpus_median_tokens": 0.7863057820939207,
+      "cost_per_run": 0.03385818085106383,
+      "vs_opus48_cost": 0.14786056313121862,
+      "published_blend_predicted_cost_per_run": null,
+      "observed_over_predicted": null,
+      "timed_out_share": 0.014184397163120567
+    },
+    "Opus 4.5": {
+      "tokens_per_run": 189292.5744680851,
+      "vs_opus48_tokens": 0.627896831858821,
+      "vs_corpus_median_tokens": 0.6559770171104583,
+      "cost_per_run": 0.1399112978723404,
+      "vs_opus48_cost": 0.6110004368759204,
+      "published_blend_predicted_cost_per_run": null,
+      "observed_over_predicted": null,
+      "timed_out_share": 0.0
+    },
+    "Opus 4.6": {
+      "tokens_per_run": 191018.7730496454,
+      "vs_opus48_tokens": 0.6336227544079045,
+      "vs_corpus_median_tokens": 0.6619590087424816,
+      "cost_per_run": 0.14386830141843973,
+      "vs_opus48_cost": 0.6282808919367566,
+      "published_blend_predicted_cost_per_run": null,
+      "observed_over_predicted": null,
+      "timed_out_share": 0.0425531914893617
+    },
+    "Opus 4.7": {
+      "tokens_per_run": 234789.04964539007,
+      "vs_opus48_tokens": 0.7788118516626733,
+      "vs_corpus_median_tokens": 0.813641110167,
+      "cost_per_run": 0.1742270035460993,
+      "vs_opus48_cost": 0.7608590364116281,
+      "published_blend_predicted_cost_per_run": null,
+      "observed_over_predicted": null,
+      "timed_out_share": 0.06382978723404255
+    },
+    "Opus 4.8": {
+      "tokens_per_run": 301470.8226950355,
+      "vs_opus48_tokens": 1.0,
+      "vs_corpus_median_tokens": 1.0447210175730766,
+      "cost_per_run": 0.2289872304964539,
+      "vs_opus48_cost": 1.0,
+      "published_blend_predicted_cost_per_run": null,
+      "observed_over_predicted": null,
+      "timed_out_share": 0.0425531914893617
+    },
+    "Sonnet 4.6": {
+      "tokens_per_run": 208287.4255319149,
+      "vs_opus48_tokens": 0.6909040937026802,
+      "vs_corpus_median_tokens": 0.7218020278184684,
+      "cost_per_run": 0.0950848914893617,
+      "vs_opus48_cost": 0.4152410214456661,
+      "published_blend_predicted_cost_per_run": null,
+      "observed_over_predicted": null,
+      "timed_out_share": 0.09219858156028368
+    },
+    "DeepSeek V4 Flash": {
+      "tokens_per_run": 380314.8115942029,
+      "vs_opus48_tokens": 1.2615310768529169,
+      "vs_corpus_median_tokens": 1.3179480303098383,
+      "cost_per_run": 0.05073003623188406,
+      "vs_opus48_cost": 0.2215408960661222,
+      "published_blend_predicted_cost_per_run": 0.03786216968550725,
+      "observed_over_predicted": 1.339860780648879,
+      "timed_out_share": 0.09803921568627451
+    },
+    "DeepSeek V4 Pro": {
+      "tokens_per_run": 357320.60714285716,
+      "vs_opus48_tokens": 1.1852576775043955,
+      "vs_corpus_median_tokens": 1.2382636069286934,
+      "cost_per_run": 0.5793375178571428,
+      "vs_opus48_cost": 2.529999234459995,
+      "published_blend_predicted_cost_per_run": 0.52138377,
+      "observed_over_predicted": 1.111153724361506,
+      "timed_out_share": 0.2679738562091503
+    },
+    "GLM 5.1": {
+      "tokens_per_run": 372170.94696969696,
+      "vs_opus48_tokens": 1.2345173030100525,
+      "vs_corpus_median_tokens": 1.2897261730122322,
+      "cost_per_run": 0.3914977424242424,
+      "vs_opus48_cost": 1.7096924644027482,
+      "published_blend_predicted_cost_per_run": 0.3738319984848485,
+      "observed_over_predicted": 1.047255836875906,
+      "timed_out_share": 0.13725490196078433
+    },
+    "Gemini 3.1 Flash Lite": {
+      "tokens_per_run": 211740.54901960783,
+      "vs_opus48_tokens": 0.702358348070726,
+      "vs_corpus_median_tokens": 0.7337685280973939,
+      "cost_per_run": 0.05210400653594771,
+      "vs_opus48_cost": 0.2275411009731156,
+      "published_blend_predicted_cost_per_run": 0.05408244934640523,
+      "observed_over_predicted": 0.9634180249902269,
+      "timed_out_share": 0.0
+    },
+    "Gemini 3.1 Pro": {
+      "tokens_per_run": 345049.62913907284,
+      "vs_opus48_tokens": 1.1445539772454902,
+      "vs_corpus_median_tokens": 1.1957395957752204,
+      "cost_per_run": 0.7155840264900662,
+      "vs_opus48_cost": 3.1249953324412463,
+      "published_blend_predicted_cost_per_run": 0.7224748874172185,
+      "observed_over_predicted": 0.9904621447095739,
+      "timed_out_share": 0.013071895424836602
+    },
+    "Gemma 4 26B": {
+      "tokens_per_run": 288565.86363636365,
+      "vs_opus48_tokens": 0.9571933398286894,
+      "vs_corpus_median_tokens": 1.0,
+      "cost_per_run": 0.038224545454545455,
+      "vs_opus48_cost": 0.16692872074863319,
+      "published_blend_predicted_cost_per_run": 0.017995292727272728,
+      "observed_over_predicted": 2.12414135373382,
+      "timed_out_share": 0.13725490196078433
+    },
+    "Gemma 4 31B": {
+      "tokens_per_run": 200579.06024096385,
+      "vs_opus48_tokens": 0.6653349018915419,
+      "vs_corpus_median_tokens": 0.6950893557310147,
+      "cost_per_run": 0.031062469879518072,
+      "vs_opus48_cost": 0.1356515374773228,
+      "published_blend_predicted_cost_per_run": 0.024575016867469875,
+      "observed_over_predicted": 1.263985699258489,
+      "timed_out_share": 0.45751633986928103
+    },
+    "Kimi K2.6": {
+      "tokens_per_run": 256753.39344262294,
+      "vs_opus48_tokens": 0.8516691305226304,
+      "vs_corpus_median_tokens": 0.8897566406751798,
+      "cost_per_run": 0.18001159016393445,
+      "vs_opus48_cost": 0.7861206486215926,
+      "published_blend_predicted_cost_per_run": 0.18479340008196724,
+      "observed_over_predicted": 0.9741234810555368,
+      "timed_out_share": 0.20261437908496732
+    },
+    "Nemotron 3 Ultra": {
+      "tokens_per_run": 307191.6034482759,
+      "vs_opus48_tokens": 1.0189762335940133,
+      "vs_corpus_median_tokens": 1.0645458876431186,
+      "cost_per_run": 0.16041683620689656,
+      "vs_opus48_cost": 0.7005492658219681,
+      "published_blend_predicted_cost_per_run": 0.16055135344827587,
+      "observed_over_predicted": 0.9991621544229295,
+      "timed_out_share": 0.24183006535947713
+    },
+    "Qwen 3.6 27B": {
+      "tokens_per_run": 378494.3923076923,
+      "vs_opus48_tokens": 1.2554926175743815,
+      "vs_corpus_median_tokens": 1.3116395249877932,
+      "cost_per_run": 0.11956711538461538,
+      "vs_opus48_cost": 0.5221562579074338,
+      "published_blend_predicted_cost_per_run": 0.11775793353846153,
+      "observed_over_predicted": 1.0153635665283047,
+      "timed_out_share": 0.1503267973856209
+    }
+  },
+  "cost_per_run_timeout_split": {
+    "Fable 5": {
+      "all": 0.5183357777777777,
+      "non_timeout": 0.5513207818181818,
+      "basis": "harness computed (= published rates)"
+    },
+    "Haiku 4.5": {
+      "all": 0.03385818085106383,
+      "non_timeout": 0.03434534892086331,
+      "basis": "harness computed (= published rates)"
+    },
+    "Opus 4.5": {
+      "all": 0.1399112978723404,
+      "non_timeout": 0.1399112978723404,
+      "basis": "harness computed (= published rates)"
+    },
+    "Opus 4.6": {
+      "all": 0.14386830141843973,
+      "non_timeout": 0.15026244814814815,
+      "basis": "harness computed (= published rates)"
+    },
+    "Opus 4.7": {
+      "all": 0.1742270035460993,
+      "non_timeout": 0.18610611742424243,
+      "basis": "harness computed (= published rates)"
+    },
+    "Opus 4.8": {
+      "all": 0.2289872304964539,
+      "non_timeout": 0.23916444074074075,
+      "basis": "harness computed (= published rates)"
+    },
+    "Sonnet 4.6": {
+      "all": 0.0950848914893617,
+      "non_timeout": 0.10474195078125,
+      "basis": "harness computed (= published rates)"
+    },
+    "DeepSeek V4 Flash": {
+      "all": 0.045756503267973855,
+      "non_timeout": 0.05073003623188406,
+      "basis": "harness x billed/harness calibration ratio"
+    },
+    "DeepSeek V4 Pro": {
+      "all": 0.4240902091503268,
+      "non_timeout": 0.5793375178571428,
+      "basis": "harness x billed/harness calibration ratio"
+    },
+    "GLM 5.1": {
+      "all": 0.3377627581699347,
+      "non_timeout": 0.3914977424242424,
+      "basis": "harness x billed/harness calibration ratio"
+    },
+    "Gemini 3.1 Flash Lite": {
+      "all": 0.05210400653594771,
+      "non_timeout": 0.05210400653594771,
+      "basis": "harness x billed/harness calibration ratio"
+    },
+    "Gemini 3.1 Pro": {
+      "all": 0.7062299869281047,
+      "non_timeout": 0.7155840264900664,
+      "basis": "harness x billed/harness calibration ratio"
+    },
+    "Gemma 4 26B": {
+      "all": 0.032978039215686275,
+      "non_timeout": 0.03822454545454545,
+      "basis": "harness x billed/harness calibration ratio"
+    },
+    "Gemma 4 31B": {
+      "all": 0.016850882352941177,
+      "non_timeout": 0.031062469879518075,
+      "basis": "harness x billed/harness calibration ratio"
+    },
+    "Kimi K2.6": {
+      "all": 0.14353865359477125,
+      "non_timeout": 0.18001159016393445,
+      "basis": "harness x billed/harness calibration ratio"
+    },
+    "Nemotron 3 Ultra": {
+      "all": 0.12162322222222223,
+      "non_timeout": 0.16041683620689656,
+      "basis": "harness x billed/harness calibration ratio"
+    },
+    "Qwen 3.6 27B": {
+      "all": 0.10159297385620916,
+      "non_timeout": 0.1195671153846154,
+      "basis": "harness x billed/harness calibration ratio"
+    }
+  },
+  "reference_model": "Opus 4.8",
+  "corpus_median_tokens_per_run": 288565.86363636365
+}

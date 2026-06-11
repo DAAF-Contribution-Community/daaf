@@ -7,8 +7,10 @@ and per-set manifests, condenses transcripts, computes derived metrics
 (per-model per-phase aggregates, composite scores and tier bands under both
 the Perfect and Critical-only metrics, consistency, per-case difficulty,
 callouts, published-pricing formulations with per-basis/per-metric
-efficiency frontiers, per-model timeout rates, provenance), and produces a
-single HTML file with all data embedded.
+efficiency frontiers, estimated battery costs from observed token mixes
+(see the "Battery-cost metric" dev guide above PHASE_MAP), per-model
+timeout rates, provenance), and produces a single HTML file with all data
+embedded.
 
 The HTML/CSS/JS lives in the sibling template file viewer_template.html;
 this script is data preparation + placeholder substitution. v1
@@ -149,7 +151,8 @@ def resolve_paths(args):
 #   - Key Takeaways (#takeaways section in the template): DATED hand-written
 #     editorial prose whose figures are injected into kt-* spans by
 #     fillTakeaways() at init from PRECOMPUTED (composite, composite_hard,
-#     per_model_phase, consistency, cost.models, tier_rule, and
+#     per_model_phase, consistency, cost.battery — relative ratios only
+#     since v2.8.1 — tier_rule, and
 #     timeout_by_model built below). Injected numbers track the data
 #     automatically; the qualitative claims do NOT — when the corpus changes
 #     materially, rewrite the prose and update the date badge. Spans default
@@ -163,6 +166,52 @@ def resolve_paths(args):
 #   - Substitution order in generate_html() is load-bearing: the small
 #     controlled placeholders are filled first, __DATA_JSON__ last, so
 #     transcript content can never be treated as a placeholder.
+#
+# Battery-cost metric (added v2.8.0, dev guide):
+#   - New data dependency: benchmarks/derived/openrouter_reconciliation_*.json
+#     (latest by filename), produced by scripts/reconcile_openrouter_costs.py
+#     from an OpenRouter billing export. It supplies each OpenRouter model's
+#     BILLED token mix (prompt/completion per covered run) — the harness's own
+#     token counts are Anthropic-tokenizer approximations, not the billing
+#     meter, and must not be used for OpenRouter dollar figures. If the file
+#     is absent the generator warns and omits OpenRouter battery costs
+#     (Anthropic battery costs still compute — fail soft, never fail build).
+#   - Metric definition (uncached basis, user-approved 2026-06-11):
+#     est_cost_per_run = (input_side x price_input + output_side x
+#     price_output) / 1e6 at current models.yaml list rates with NO cache
+#     discounts, using each model's own observed per-run token mix.
+#     Anthropic input_side = input + cache_read + cache_creation tokens, all
+#     at full input rate (uncached counterfactual), aggregated LIVE from
+#     corpus result.json in load_runs(); OpenRouter input_side/output_side =
+#     billed prompt/completion tokens per covered run from the reconciliation
+#     JSON (reasoning tokens are included in completion). battery cost =
+#     est_cost_per_run x battery_size, where battery_size = number of
+#     distinct case_ids across the loaded corpus (51 on the 2026-06-11
+#     corpus: 15 mc + 9 pc + 12 dc + 15 sr — NOT runs/reps, which are uneven
+#     across providers).
+#   - Staleness guard: the reconciliation JSON is a dated billing snapshot.
+#     At generation time each OpenRouter model's current corpus run count is
+#     compared against the JSON's recorded n_runs; mismatches print a console
+#     WARNING (and set stale=true on the embedded entry) but never fail the
+#     build. When OpenRouter runs are added to the corpus, re-run
+#     reconcile_openrouter_costs.py with a fresh billing export.
+#   - Embedding: PRECOMPUTED.cost.battery (per-model est_cost_per_run,
+#     est_battery_cost, tokens_per_run, token/cost multipliers vs the
+#     reference model, basis tag, staleness fields). "battery" is also a
+#     price formulation on cost.models entries + cost.frontiers, so the Cost
+#     vs. Performance scatter can use the relative battery cost as its x-axis
+#     (template: COST_FORMS registry + renderCostsDetail battery table).
+#     Per-model timed-out shares are NOT duplicated here — the template reads
+#     them from PRECOMPUTED.timeout_by_model.
+#   - Presentation (v2.8.1, user decision): all user-facing battery surfaces
+#     (Costs Detail table, the Cost vs. Performance battery axis, the Key
+#     Takeaways cost claims) display RELATIVE multipliers vs the reference
+#     model (Opus 4.8 = 1.0x), never dollar amounts — exact dollars would
+#     imply false precision. The embedded PRECOMPUTED values stay in dollars
+#     (est_cost_per_run, est_battery_cost); the template normalizes at render
+#     time (fmtMult, renderCostPerf batScale, renderCostsDetail multiplier
+#     column, fillTakeaways battery ratios). The console battery table below
+#     keeps dollars — it is a maintainer sanity surface, not user-facing.
 # ---------------------------------------------------------------------------
 
 PHASE_MAP = {
@@ -453,8 +502,22 @@ def compute_grade(criteria):
 
 
 def load_runs(results_dir, result_sets, cases):
-    """Load all result.json files for each result set."""
+    """Load all result.json files for each result set.
+
+    Returns (runs, anth_token_totals). anth_token_totals aggregates raw
+    token counts per Anthropic-provider model — {model: {n, input, output,
+    cache_read, cache_creation}} — for the battery-cost metric (see the
+    "Battery-cost metric" dev guide above PHASE_MAP). Aggregated here, in
+    the same pass that reads every result.json, so per-run token counts
+    still are NOT embedded in the data bundle (see the comment on the run
+    dict below); only per-model means reach the viewer. Anthropic counts
+    come from the provider's own usage meter, so they are billing-grade;
+    OpenRouter counts are Anthropic-tokenizer approximations and are
+    deliberately NOT aggregated here — OpenRouter battery costs come from
+    the billing reconciliation JSON instead.
+    """
     runs = []
+    anth_token_totals = {}
 
     for rs in result_sets:
         ts = rs["timestamp"]
@@ -534,7 +597,23 @@ def load_runs(results_dir, result_sets, cases):
             }
             runs.append(run)
 
-    return runs
+            # Battery-cost token aggregation (Anthropic provider only; see
+            # docstring). Timed-out runs zero their token fields, so they
+            # are included in n and depress the mean — disclosed in the
+            # viewer via timeout_by_model.
+            if run["provider"] == "anthropic":
+                agg = anth_token_totals.setdefault(run["model"], {
+                    "n": 0, "input": 0, "output": 0,
+                    "cache_read": 0, "cache_creation": 0,
+                })
+                agg["n"] += 1
+                agg["input"] += result.get("input_tokens", 0) or 0
+                agg["output"] += result.get("output_tokens", 0) or 0
+                agg["cache_read"] += result.get("cache_read_tokens", 0) or 0
+                agg["cache_creation"] += (
+                    result.get("cache_creation_tokens", 0) or 0)
+
+    return runs, anth_token_totals
 
 
 # ---------------------------------------------------------------------------
@@ -817,6 +896,49 @@ def load_model_pricing(base_dir):
 
 
 # ---------------------------------------------------------------------------
+# OpenRouter billing reconciliation loading (battery-cost metric)
+# ---------------------------------------------------------------------------
+
+def load_reconciliation(base_dir):
+    """Load the latest OpenRouter billing reconciliation JSON, if present.
+
+    Discovers benchmarks/derived/openrouter_reconciliation_*.json and takes
+    the latest by filename (dated names sort chronologically). Supplies the
+    BILLED per-run token mix for OpenRouter models — see the "Battery-cost
+    metric" dev guide above PHASE_MAP. Fail-soft by design: a missing or
+    unreadable file prints a WARNING and returns None, and the generator
+    then omits OpenRouter battery costs rather than failing the build.
+
+    Returns the parsed dict with two derived fields attached:
+    "_snapshot_date" (parsed from the filename) and "_path".
+    """
+    import glob as _glob
+    pattern = os.path.join(base_dir, "derived", "openrouter_reconciliation_*.json")
+    candidates = sorted(_glob.glob(pattern))
+    if not candidates:
+        print("WARNING: no derived/openrouter_reconciliation_*.json found; "
+              "OpenRouter battery costs will be omitted "
+              "(run scripts/reconcile_openrouter_costs.py to produce one)",
+              file=sys.stderr)
+        return None
+    path = candidates[-1]
+    try:
+        with open(path, "r") as f:
+            recon = json.load(f)
+    except (json.JSONDecodeError, OSError) as exc:
+        print(f"WARNING: could not read reconciliation JSON {path}: {exc}; "
+              "OpenRouter battery costs will be omitted", file=sys.stderr)
+        return None
+    fname = os.path.basename(path)
+    recon["_snapshot_date"] = (
+        fname.replace("openrouter_reconciliation_", "").replace(".json", ""))
+    recon["_path"] = path
+    print(f"Reconciliation snapshot: {path} "
+          f"(billing snapshot dated {recon['_snapshot_date']})")
+    return recon
+
+
+# ---------------------------------------------------------------------------
 # Data bundle assembly
 # ---------------------------------------------------------------------------
 
@@ -833,7 +955,7 @@ def build_data_bundle(result_sets, cases, runs, transcripts, subagent_transcript
     )
     return {
         "generated_at": datetime.now(timezone.utc).isoformat(),
-        "generator_version": "2.7.0",
+        "generator_version": "2.8.1",
         "result_sets": sorted_result_sets,
         "cases": cases,
         "runs": runs,
@@ -960,7 +1082,8 @@ def run_group_criteria(run, group):
 
 
 def build_precomputed(result_sets, cases, runs, generation_params,
-                      model_pricing=None):
+                      model_pricing=None, anth_token_totals=None,
+                      reconciliation=None):
     """Compute the derived-metrics bundle embedded as PRECOMPUTED."""
     groups = build_eval_groups(result_sets)
     group_ts = {g["id"]: set(g["timestamps"]) for g in groups}
@@ -1265,9 +1388,109 @@ def build_precomputed(result_sets, cases, runs, generation_params,
             "input": rnd(inp),
             "output": rnd(outp),
             "blend31": rnd((3 * inp + outp) / 4),
+            # Filled by the battery block below (est. $ to run the full
+            # battery once); None for models lacking battery data — the
+            # frontier walk and the scatter both skip None prices.
+            "battery": None,
         }
         cost["models"].append(entry)
         price_by_model[model] = entry
+
+    # --- cost.battery: estimated cost per benchmark battery (v2.8.0) ---
+    # Uncached basis (user-approved 2026-06-11): every token priced at the
+    # current models.yaml list input/output rates with NO cache discounts,
+    # using each model's own observed per-run token mix — directly comparable
+    # across providers regardless of caching regime. Anthropic token mixes
+    # are aggregated live from corpus result.json (anth_token_totals, billing-
+    # grade usage meter; input side = input + cache_read + cache_creation,
+    # ALL at full input rate — the uncached counterfactual). OpenRouter token
+    # mixes come from the billing reconciliation snapshot (billed prompt /
+    # completion per covered run; the harness's OpenRouter token counts are
+    # tokenizer approximations and are never used for dollars). Full metric
+    # definition + staleness-guard rationale: "Battery-cost metric" dev guide
+    # above PHASE_MAP. Per-model timed-out shares live in timeout_by_model —
+    # referenced by the template, not duplicated here.
+    BATTERY_REFERENCE_MODEL = "Opus 4.8"
+    battery_size = len(case_runs)  # distinct case_ids in the loaded corpus
+    snapshot_date = (reconciliation or {}).get("_snapshot_date")
+    battery_models = {}
+
+    for model, agg in (anth_token_totals or {}).items():
+        pm = price_by_model.get(model)
+        n = agg.get("n", 0)
+        if pm is None or n == 0:
+            continue
+        input_side = (agg["input"] + agg["cache_read"]
+                      + agg["cache_creation"]) / n
+        output_side = agg["output"] / n
+        per_run = (input_side * pm["input"] + output_side * pm["output"]) / 1e6
+        battery_models[model] = {
+            "est_cost_per_run": rnd(per_run),
+            "est_battery_cost": rnd(per_run * battery_size, 2),
+            "tokens_per_run": round(input_side + output_side),
+            "n_runs": n,
+            "basis": "corpus-live",
+        }
+
+    if reconciliation:
+        corpus_runs_by_model = {}
+        for r in runs:
+            corpus_runs_by_model[r["model"]] = \
+                corpus_runs_by_model.get(r["model"], 0) + 1
+        for model, rec in reconciliation.get("openrouter_models", {}).items():
+            pm = price_by_model.get(model)
+            n_cov = rec.get("n_covered_runs") or 0
+            bt = rec.get("billed_tokens") or {}
+            if pm is None or n_cov == 0:
+                continue
+            input_side = bt.get("prompt", 0) / n_cov
+            output_side = bt.get("completion", 0) / n_cov
+            per_run = (input_side * pm["input"]
+                       + output_side * pm["output"]) / 1e6
+            # Staleness guard: the snapshot's run universe vs the corpus
+            # being embedded right now. WARN, never fail (dev guide).
+            snapshot_n = rec.get("n_runs")
+            corpus_n = corpus_runs_by_model.get(model, 0)
+            stale = snapshot_n is not None and snapshot_n != corpus_n
+            if stale:
+                print(f"WARNING: battery-cost staleness — {model}: corpus has "
+                      f"{corpus_n} runs but the billing snapshot "
+                      f"({snapshot_date}) recorded {snapshot_n}; its token "
+                      f"mix predates the newer runs. Re-run "
+                      f"reconcile_openrouter_costs.py with a fresh billing "
+                      f"export.", file=sys.stderr)
+            battery_models[model] = {
+                "est_cost_per_run": rnd(per_run),
+                "est_battery_cost": rnd(per_run * battery_size, 2),
+                "tokens_per_run": round(input_side + output_side),
+                "n_runs": corpus_n,
+                "basis": "billing-snapshot-" + (snapshot_date or "unknown"),
+                "snapshot_n_runs": snapshot_n,
+                "stale": stale,
+            }
+
+    ref_entry = battery_models.get(BATTERY_REFERENCE_MODEL)
+    for model, b in battery_models.items():
+        if ref_entry and ref_entry["tokens_per_run"]:
+            b["token_multiplier_vs_ref"] = rnd(
+                b["tokens_per_run"] / ref_entry["tokens_per_run"], 3)
+        else:
+            b["token_multiplier_vs_ref"] = None
+        if ref_entry and ref_entry["est_cost_per_run"]:
+            b["cost_multiplier_vs_ref"] = rnd(
+                b["est_cost_per_run"] / ref_entry["est_cost_per_run"], 3)
+        else:
+            b["cost_multiplier_vs_ref"] = None
+        pm = price_by_model.get(model)
+        if pm is not None:
+            pm["battery"] = b["est_battery_cost"]
+
+    cost["battery"] = {
+        "battery_size": battery_size,
+        "reference_model": BATTERY_REFERENCE_MODEL,
+        "snapshot_date": snapshot_date,
+        "models": battery_models,
+    }
 
     # --- cost-perf y-value matrix: perf_values[basis][metric][model] ---
     # Performance bases for the Cost vs. Performance scatter: "composite"
@@ -1310,7 +1533,10 @@ def build_precomputed(result_sets, cases, runs, generation_params,
     # model is kept iff no cheaper-or-equal model has an equal-or-higher
     # score. Precomputed here (not in JS) so the scatter annotation, the
     # section prose, and the sanity report cannot drift.
-    for form in ("blend31", "input", "output"):
+    # "battery" joined as a fourth price formulation (v2.8.0) so the Cost vs.
+    # Performance scatter can plot est. $ per battery; models without battery
+    # data carry battery=None and are skipped by the None/<=0 guard below.
+    for form in ("blend31", "input", "output", "battery"):
         cost["frontiers"][form] = {}
         for basis in perf_bases:
             cost["frontiers"][form][basis] = {}
@@ -1540,6 +1766,22 @@ def print_precomputed_report(precomputed):
               f"{pt['score']:.3f}")
     print()
 
+    battery = precomputed["cost"].get("battery") or {}
+    bat_models = battery.get("models") or {}
+    if bat_models:
+        print(f"  Estimated cost per benchmark battery "
+              f"({battery.get('battery_size')} probes; uncached basis, "
+              f"current list rates; x vs {battery.get('reference_model')}):")
+        ranked_bat = sorted(bat_models.items(),
+                            key=lambda kv: -(kv[1]["est_battery_cost"] or 0))
+        for model, b in ranked_bat:
+            mult = b.get("cost_multiplier_vs_ref")
+            mult_s = f"{mult:5.2f}x" if mult is not None else "    -"
+            stale_s = " [STALE snapshot]" if b.get("stale") else ""
+            print(f"    {model:<22} | ${b['est_battery_cost']:8.2f} | "
+                  f"{mult_s} | {b['basis']}{stale_s}")
+        print()
+
     totals = precomputed["totals"]
     n_disc = sum(1 for p in precomputed["provenance"] if p["run_count_discrepancy"])
     gw = precomputed["callouts"]["global_weakest"]
@@ -1578,7 +1820,7 @@ def main():
         sys.exit(1)
 
     cases = load_cases(datasets_dir)
-    runs = load_runs(results_dir, result_sets, cases)
+    runs, anth_token_totals = load_runs(results_dir, result_sets, cases)
 
     # Renumber reps globally: runs from different result sets for the same
     # (phase, model, case_id) all have rep=0. Assign sequential rep numbers
@@ -1594,6 +1836,7 @@ def main():
 
     transcripts, subagent_transcripts = load_transcripts(results_dir, runs)
     model_pricing = load_model_pricing(base_dir)
+    reconciliation = load_reconciliation(base_dir)
 
     # Build bundle
     data_bundle = build_data_bundle(
@@ -1609,7 +1852,9 @@ def main():
         "generator_version": data_bundle["generator_version"],
     }
     precomputed = build_precomputed(result_sets, cases, runs, generation_params,
-                                    model_pricing=model_pricing)
+                                    model_pricing=model_pricing,
+                                    anth_token_totals=anth_token_totals,
+                                    reconciliation=reconciliation)
 
     # Print summaries
     print_summary(data_bundle)

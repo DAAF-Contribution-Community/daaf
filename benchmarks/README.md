@@ -545,10 +545,13 @@ sessions (the plain `usage` block excludes subagents and is used only as a
 fallback). `input_tokens` is the UNCACHED count; `cache_read_tokens` is
 additive — total billed input = input + cached. Models without a
 `cached_input` rate are billed cached tokens at the `input` rate.
-`cache_creation_tokens` are captured in results but excluded from
-`compute_cost()`, so cache-write costs are not reflected in computed totals —
-for subagent-heavy Anthropic Phase 3 runs this understates recorded costs by
-roughly 30-50%.
+`cache_creation_tokens` were historically captured in results but excluded
+from `compute_cost()`; as of 2026-06-11 they are billed at 1.25× the `input`
+rate (Anthropic's cache-write convention — § 8 cost methodology addendum).
+The omission understated Anthropic-side computed costs ~3× against the full
+convention (cache-write spend dominates subagent-heavy runs). The fix applies
+to future runs only — archived `result.json` values are immutable and not
+recomputed.
 
 **Pre-run estimation.** `cost_estimator.py` holds per-case calibration token
 profiles (average input/output/cached per case) that drive the pre-launch
@@ -581,6 +584,14 @@ from billed totals). Result sets archived before the fix (2026-06-10 and
 earlier) understate DS Pro `computed_cost_usd` — and therefore its viewer
 cost displays and cost-efficiency standing — by ~3.3x; stored values are not
 retroactively recomputed (archived results are immutable).
+
+**Pricing corrections (2026-06-11).** The fuller billing reconciliation of
+2026-06-11 (§ 8 cost methodology addendum) exposed the same error class in
+three more models; `config/models.yaml` rates were multiplied by the observed
+obs/pred billing factors: Gemma 4 26B ×2.12 ($0.06/$0.33 → $0.127/$0.700),
+DeepSeek V4 Flash ×1.34 ($0.0983/$0.1966 → $0.132/$0.263), Gemma 4 31B ×1.26
+($0.12/$0.36 → $0.151/$0.454). As with DS Pro, archived result sets
+understate those models' computed costs by the same factors.
 
 ## 8. Results & Viewer
 
@@ -741,7 +752,8 @@ single existing viewer rather than forking a public variant.
 2. *Key Takeaways section* (new; sits between Verdict and About) — a dated
    editorial ("Editorial takeaways — June 2026 corpus") with six
    maintainer-interpretation claims whose figures are span-injected from
-   PRECOMPUTED at render time (31 `kt-*` spans filled by `fillTakeaways()`;
+   PRECOMPUTED at render time (`kt-*` spans filled by `fillTakeaways()` —
+   31 originally, 29 after the battery re-adjudication below;
    a new `timeout_by_model` precompute feeds the timeout claims), so
    regeneration cannot orphan the numbers. The qualitative claims do NOT
    track the data — when the corpus changes materially, rewrite the prose
@@ -750,7 +762,24 @@ single existing viewer rather than forking a public variant.
    delta re-adjudication of all six claims reframed T4 around DeepSeek V4
    Pro leading an open-weight pack that now crowds the frontier tier (with
    a DS Pro timeout-rate caveat), retired T2's "4.7 drops a tier" sentence,
-   and confirmed T1/T3/T5/T6 unchanged.
+   and confirmed T1/T3/T5/T6 unchanged. *Second re-adjudication
+   (2026-06-11, vs the `_11j` corpus + battery metric, generator v2.8.1):*
+   all takeaway cost claims moved from blended $/Mtok to the battery
+   basis, displayed as **relative multipliers/ratios vs Opus 4.8 — never
+   dollars** (user decision: exact dollar figures imply false precision).
+   T1 held; T2 got a light body rewrite (the dip is now a two-release
+   slide; 4.8 is the only Opus in the second tier); T3 recast as a
+   battery-percentage claim (Sonnet ≈ 41% of Opus 4.8's battery); T4
+   reframed control-not-price (its "crowd the frontier tier" claim
+   tier-broke and the battery basis erased the price story — DS Pro ≈
+   0.8× Sonnet's battery); T5's "on the order of 1/100 of frontier cost"
+   clause retired and "astonishingly" softened to "strikingly" (battery
+   ratios: 1/7 of GLM, 1/31 of Opus 4.8); T6's weakest-point claim
+   corrected from mode classification to P4 skill routing (new
+   `kt-t6-qwenp4` span); and the kt-foot retired the stale "single
+   repetition on Phase 4" caveat (every model now has 45 P4 runs) and
+   gained the relative-multiplier basis + drift caveat with an injected
+   battery size (`kt-foot-bat`). Net span wiring: 31 → 29 `kt-*` spans.
 3. *"Two bars" concept* — Perfect ("everything exactly right") vs.
    Critical-only ("will it generally work") promoted to an always-visible
    About block, with all echo sites aligned to that vocabulary.
@@ -777,6 +806,60 @@ fix planned:** (1) the "expects:" badge in the Run Explorer still shows raw
 engagement-mode ids — no display-name mapping for modes exists in the
 template. (2) JS syntax was structurally verified via python; no node syntax
 check was run — the user's browser visual check covers it.
+
+**Cost methodology evolution (2026-06-11, generator v2.8.0):** a full
+reconciliation of OpenRouter billing against the results corpus
+(`scripts/reconcile_openrouter_costs.py`; machine-readable summary in
+`derived/openrouter_reconciliation_2026-06-11.json`; findings in
+`research/2026-06-11_FrameworkDev_ViewerPublic/preliminary_notes/`)
+established that token appetite varies only ~0.67–1.26× vs Opus 4.8 — the
+huge cost-per-run divergence across the corpus is overwhelmingly price, not
+volume — and that list price × the *billed* token mix predicts actual
+OpenRouter billing within ~3% for 7 of 10 models, while the harness's own
+token counts (Anthropic-tokenizer approximations) do not. Changes that
+followed, all user-approved:
+
+1. *Battery-cost metric* — the Costs Detail headline is now the **estimated
+   cost to run the full benchmark battery once** (51 distinct probes on this
+   corpus: 15 mc + 9 pc + 12 dc + 15 sr; derived from the corpus at
+   generation time, never hardcoded — note the Anthropic models' 141 runs
+   are uneven reps over those 51 cases, not 47×3). Per model:
+   est_cost_per_run = (input-side tokens × list input rate + output-side
+   tokens × list output rate) / 1e6, on an **uncached basis** — every token
+   at full list input/output rates, no cache discounts. Rationale: caching
+   schemes differ wildly across providers (Anthropic runs are ~95% cache
+   reads/writes; OpenRouter prompt caching effectively never materialized in
+   billing), so the uncached counterfactual is the only basis that compares
+   providers like-for-like (for the record: real cached usage runs far
+   cheaper — Opus 4.8's battery ≈ $32 under Anthropic's caching convention
+   vs ≈ $81 uncached). *Presentation (generator v2.8.1, user decision):*
+   the takeaways and all user-facing cost surfaces display the battery
+   metric as **relative multipliers** (Opus 4.8 = 1.0×), not dollar
+   estimates — exact dollar figures would imply false precision; the
+   dollar values stay embedded in PRECOMPUTED, only presentation changed,
+   and the cached-vs-uncached dollar disclosure was retired from the
+   viewer with it (superseded by a relative-drift caveat: multipliers
+   shift as providers reprice tokens and as caching mechanics interact
+   with model behavior). Token mixes: Anthropic models
+   live from corpus `result.json` (input + cache_read + cache_creation on
+   the input side); OpenRouter models from the reconciliation snapshot's
+   billed prompt/completion per covered run. A generation-time **staleness
+   guard** compares each OpenRouter model's corpus run count to the
+   snapshot's recorded `n_runs` and warns (never fails) on drift. "Battery"
+   is also a fourth price formulation in Cost vs. Performance. Caveat
+   (disclosed in the viewer): high-timeout models' figures are
+   truncation-depressed.
+2. *Rate corrections* — Gemma 4 26B / DeepSeek V4 Flash / Gemma 4 31B
+   published rates understated actual billing (obs/pred 2.12 / 1.34 / 1.26);
+   corrected in `models.yaml` (§ 7 Pricing corrections).
+3. *Harness cache-write fix* — `compute_cost()` now bills
+   `cache_creation_tokens` at 1.25× input (§ 7 Token semantics); future runs
+   only.
+4. *New data dependency* — the generator discovers the latest
+   `derived/openrouter_reconciliation_*.json` (fail-soft: warns and omits
+   OpenRouter battery costs if absent). Maintenance guide: the
+   "Battery-cost metric" dev-guide comment above `PHASE_MAP` in the
+   generator.
 
 ## 9. Operational Notes
 
@@ -1234,17 +1317,46 @@ and update or remove this subsection.
   "Public-audience evolution" addendum. Deployment (stable filename,
   compression, upload, og:image) stays in the user's website infrastructure;
   an http(s) retest is needed post-deploy.
-- **Viewer current:** `viewer_2026-06-11i.html` (generator v2.6.0 → v2.7.0;
+- **Battery-cost metric + pricing foundation fixes — RESOLVED (2026-06-11,
+  generator v2.7.0 → v2.8.0 → v2.8.1).** Full record:
+  § 8 "Cost methodology evolution" addendum. New data dependency: the
+  generator now reads the latest `derived/openrouter_reconciliation_*.json`
+  (fail-soft if absent; staleness guard warns when OpenRouter corpus run
+  counts drift from the snapshot — currently 153 = 153 for all 10, no
+  warnings). `models.yaml` rates corrected for Gemma 4 26B (×2.12),
+  DeepSeek V4 Flash (×1.34), Gemma 4 31B (×1.26); harness `compute_cost()`
+  now bills cache writes at 1.25× input (future runs only). Verified by
+  sanity regeneration first; the official regeneration landed as
+  `viewer_2026-06-11j.html` — the first dated viewer carrying battery costs
+  and the corrected rates. The Key Takeaways **cost-ratio re-adjudication**
+  the rate corrections forced (corrected DS Flash rates shifted
+  `kt-t5-glmx` 1/12 → 1/9 and `kt-t5-opusx` 1/81 → 1/61 on the blended
+  basis, breaking T5's hand-written "on the order of 1/100 of frontier
+  cost" sentence; the original prediction that kt-t4-ratio and the T3
+  spans were unaffected was overtaken — those claims moved to the battery
+  basis too) was resolved the same day by moving all takeaway cost claims
+  to the battery metric, displayed as relative multipliers vs Opus 4.8
+  rather than dollars (generator **v2.8.1**, presentation-only bump; § 8
+  addenda: design record item 2 second re-adjudication + cost-methodology
+  presentation note), regenerated as `viewer_2026-06-11k.html`.
+- **Viewer current:** `viewer_2026-06-11k.html` (generator v2.8.1; 53 sets /
+  2,493 runs; battery-cost surfaces converted to relative multipliers vs
+  Opus 4.8 — Costs Detail table, Cost vs. Performance battery axis
+  normalized so Opus 4.8 = 1.0×, disclosure rewrites — plus the second Key
+  Takeaways re-adjudication, 29 `kt-*` spans; § 8 addenda) — needs user
+  visual check. Supersedes `_11j` (v2.8.0; 53 sets / 2,493 runs; first
+  dated viewer with battery costs and the corrected rates, but its takeaway
+  prose and dollar-based battery display predated the re-adjudication and
+  the multiplier decision), which superseded
+  `_11i` (v2.6.0 → v2.7.0;
   same 52-set / 2,493-run corpus as `_11h`; transcript-keying collision fix —
   § 8 notable internals: composite `{result_set}/{run_dir}` transcript keys
   recovered 857 previously-overwritten main transcripts, 2,489 now embedded
   vs `_11h`'s 1,632, and ended cross-set subagent-transcript misattribution,
   500 subagent entries vs 201; leaderboard/composite figures unchanged from
-  `_11h`) — needs user visual check, AND the dated Key Takeaways editorial
-  prose still needs re-adjudication against the enlarged corpus (composite
-  shifts in the rep-completion bullet above; figures are span-injected and
-  current, but the takeaway sentences were adjudicated on the 50-set corpus).
-  Supersedes `_11h` (v2.6.0; 52 sets / 2,493 runs; added the two Anthropic
+  `_11h`; its takeaway sentences were still those adjudicated on the 50-set
+  corpus — resolved by the second re-adjudication above), which superseded
+  `_11h` (v2.6.0; 52 sets / 2,493 runs; added the two Anthropic
   Phase 4 rep-completion sets `20260611_050913`/`_065633`; bare run-dir
   transcript keys), which superseded
   `_11g` (v2.6.0; 50 sets / 2,283 runs; five-component
