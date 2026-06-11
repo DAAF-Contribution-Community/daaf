@@ -5,7 +5,7 @@ Generate a self-contained HTML viewer for DAAF benchmark results (v2).
 Reads benchmark result sets from benchmarks/results/, loads case definitions
 and per-set manifests, condenses transcripts, computes derived metrics
 (per-model per-phase aggregates, composite scores and tier bands under both
-the Perfect and Hard-only metrics, consistency, per-case difficulty,
+the Perfect and Critical-only metrics, consistency, per-case difficulty,
 callouts, published-pricing formulations with per-basis/per-metric
 efficiency frontiers, provenance), and produces a single HTML file with all
 data embedded.
@@ -109,18 +109,28 @@ def resolve_paths(args):
 #      The label set here flows automatically to the eval group, deep-dive
 #      heatmap, per-group callouts, run explorer, and provenance.
 #   3. Composite membership: DECIDE whether the new phase joins COMPOSITE_GIDS
-#      (defined next to EVAL_GROUP_ORDER). The leaderboard composite is pinned
-#      to the four approved components (P1, P2, P3a, P3b — plan § 11.1);
-#      adding a component changes leaderboard/tier semantics and requires
-#      updating the About-layer scoring prose in viewer_template.html and
-#      README.md § 6. By default a new phase stays OUT of the composite.
+#      (defined next to EVAL_GROUP_ORDER). The composite currently has five
+#      approved components (P1, P2, P3a, P3b, P4 — user decision 2026-06-10,
+#      superseding the original four-component pin; design record: README § 8);
+#      adding a component changes leaderboard/tier semantics and requires explicit
+#      user approval plus updates to the About-layer scoring prose in
+#      viewer_template.html and README.md §§ 6/8. By default a new phase
+#      stays OUT of the composite until that approval happens.
 #   4. Template prose + JS registries: the About layer's "The benchmark
 #      phases" collapsible in viewer_template.html enumerates phases in
 #      hand-written prose — add an entry for the new phase. ALSO register the
-#      phase in the template's JS lookup maps: GROUP_SHORT (~L890, short
-#      labels) and PD_EXPLAINERS (~L1555, deep-dive explainer prose).
+#      phase in the template's JS lookup maps: GROUP_SHORT (~L939, short
+#      labels), PD_EXPLAINERS (~L1762, deep-dive explainer prose), the
+#      eval-group `order` array inside buildEvalGroups() (~L929) so the new
+#      group sorts canonically instead of falling to the unordered tail, AND
+#      the About-table case-count wiring: a `phaseSpan` entry (~L1252)
+#      mapping the phase_id to an `ab-pX-cases` span id, plus the matching
+#      table row in the "The benchmark phases" collapsible (~L514).
 #      Omitting these caused the missing Phase 4 (skill_routing) explainer.
-#      (Template edits, not handled in this script.)
+#      (Template edits, not handled in this script; line anchors drift as
+#      the template evolves — grep for the identifier names.) Cost vs.
+#      Performance bases and the Costs Detail phase scope are built
+#      dynamically from the eval groups — no registration needed there.
 #   5. Dataset dir: name datasets/<phase_id>/ to match the phase_id so
 #      load_cases() attaches case definitions (it falls back to the dirname).
 #   6. Regenerate and spot-check the new eval group's k/n in the sanity
@@ -780,7 +790,7 @@ def build_data_bundle(result_sets, cases, runs, transcripts, subagent_transcript
     )
     return {
         "generated_at": datetime.now(timezone.utc).isoformat(),
-        "generator_version": "2.3.0",
+        "generator_version": "2.5.0",
         "result_sets": sorted_result_sets,
         "cases": cases,
         "runs": runs,
@@ -809,23 +819,29 @@ EVAL_GROUP_ORDER = [
     "skill_routing",
 ]
 
-# Composite scoring is PINNED to the four approved components (P1, P2, P3a,
-# P3b — unweighted mean of Perfect rates; plan § 11.1, resolved decision 1).
-# Other phases (e.g., skill_routing) get their own labeled eval group,
-# per_model_phase cells, and per-group callouts, but never enter the
-# composite, tiers, or the global weakest-criterion callout unless they are
-# deliberately added here (see "Adding a new benchmark phase" above PHASE_MAP
-# — joining the composite changes leaderboard semantics and requires prose
-# updates in viewer_template.html and README.md § 6).
+# Composite scoring is PINNED to the five approved components (P1, P2, P3a,
+# P3b, P4 — unweighted mean of Perfect rates). The original four-component
+# pin (design record: README § 8, decision 1) was superseded by user decision
+# 2026-06-10 adding skill_routing (P4); see README §§ 8/12.
+# Future phases get their own labeled eval group, per_model_phase cells, and
+# per-group callouts, but never enter the composite, tiers, or the global
+# weakest-criterion callout unless they are deliberately added here (see
+# "Adding a new benchmark phase" above PHASE_MAP — joining the composite
+# changes leaderboard semantics and requires prose updates in
+# viewer_template.html and README.md §§ 6/8). Models lacking runs for a
+# component score the mean over their available components and carry a
+# partial_data flag (disclosed in the leaderboard and hero verdict) —
+# mirroring the cost-perf omitted-model disclosure pattern.
 COMPOSITE_GIDS = [
     "mode_classification",
     "post_confirmation",
     "dispatch_compliance_dispatch",
     "dispatch_compliance_subagent",
+    "skill_routing",
 ]
 
 # Tier banding rule (mechanical and reproducible by design — see
-# VIEWER_REDESIGN_PLAN.md § 11 decision 2). Two deterministic stages:
+# design record: README § 8, decision 2). Two deterministic stages:
 #
 #   Primary (gap rule): walking the composite ranking in descending order, a
 #   new tier starts wherever the gap to the previous model's composite is
@@ -938,7 +954,7 @@ def build_precomputed(result_sets, cases, runs, generation_params,
                 # no subagent criteria)
                 if compute_grade(crit) == "perfect":
                     perfect_count += 1
-                # Hard-pass (leaderboard "Hard-only" metric) mirrors Perfect
+                # Hard-pass (leaderboard "Critical-only" metric) mirrors Perfect
                 # but over hard-tier criteria only: at least one criterion
                 # present AND every hard-tier criterion passed. A graded run
                 # whose group has no hard-tier criteria passes vacuously, so
@@ -985,9 +1001,10 @@ def build_precomputed(result_sets, cases, runs, generation_params,
             per_model_phase[model][gid] = cell
 
     # --- composite: unweighted mean of available per-group perfect rates ---
-    # P1, P2, P3a, P3b are four equal components (resolved decision 1) —
-    # pinned via COMPOSITE_GIDS so non-composite eval groups (e.g.,
-    # skill_routing) never enter scores, components, or partial-data flags.
+    # P1, P2, P3a, P3b, P4 are five equal components (user decision
+    # 2026-06-10, superseding resolved decision 1's four-component pin) —
+    # pinned via COMPOSITE_GIDS so non-composite eval groups never enter
+    # scores, components, or partial-data flags.
     # Models missing a component get the mean over available components and a
     # partial_data flag, relative to the composite components present in this
     # corpus (components_missing likewise refers only to composite gids).
@@ -996,7 +1013,7 @@ def build_precomputed(result_sets, cases, runs, generation_params,
 
     def build_composite_from(rate_field):
         # Single code path shared by the Perfect metric
-        # (rate_field="perfect_rate") and the Hard-only metric
+        # (rate_field="perfect_rate") and the Critical-only metric
         # (rate_field="hard_rate") so the composite construction cannot
         # drift between the two leaderboard metrics. Output shape is
         # identical for both.
@@ -1029,7 +1046,7 @@ def build_precomputed(result_sets, cases, runs, generation_params,
 
     # --- tiers: mechanical banding on composite (gap rule + quartile fallback) ---
     # Factored into one helper so the IDENTICAL rule produces both the
-    # Perfect-metric tiers and the Hard-only-metric tiers — the banding
+    # Perfect-metric tiers and the Critical-only-metric tiers — the banding
     # logic cannot drift between the two leaderboard metrics.
     def compute_tiers_for(composite_dict):
         # Stage 1 (gap rule): sort by composite descending; start a new tier
@@ -1211,13 +1228,15 @@ def build_precomputed(result_sets, cases, runs, generation_params,
 
     # --- cost-perf y-value matrix: perf_values[basis][metric][model] ---
     # Performance bases for the Cost vs. Performance scatter: "composite"
-    # plus each composite component gid (P1, P2, P3a, P3b). skill_routing
-    # (P4) is deliberately NOT a basis — partial model coverage mid-baseline
-    # would make its frontier misleading. Metrics: "perfect" (all criteria
-    # pass) and "hard" (all hard-tier criteria pass). Models lacking data
-    # for a basis are simply absent from that basis's dict (the template
-    # omits them from that view and footnotes the count).
-    perf_bases = ["composite"] + corpus_components
+    # plus EVERY eval group gid — composite components (P1, P2, P3a, P3b)
+    # AND non-composite groups (e.g., skill_routing/P4), so the scatter can
+    # be filtered to any single phase group. Non-composite phases may have
+    # partial model coverage mid-baseline; models lacking data for a basis
+    # are simply absent from that basis's dict, and the template omits them
+    # from that view and footnotes the count — partial-coverage frontiers
+    # are disclosed, never silent. Metrics: "perfect" (all criteria pass)
+    # and "hard" (all hard-tier criteria pass).
+    perf_bases = ["composite"] + [g["id"] for g in groups]
     comp_by_metric = {"perfect": composite, "hard": composite_hard}
     rate_field_by_metric = {"perfect": "perfect_rate", "hard": "hard_rate"}
     perf_values = {}
@@ -1435,7 +1454,7 @@ def print_precomputed_report(precomputed):
           f"(gap threshold {rule.get('gap_threshold', '?')}) -> "
           f"{len(precomputed['tiers'])} tiers")
     rule_h = precomputed.get("tier_rule_hard", {})
-    print(f"  Hard-metric tier rule: {rule_h.get('method', '?')} -> "
+    print(f"  Critical-metric tier rule: {rule_h.get('method', '?')} -> "
           f"{len(precomputed.get('tiers_hard', []))} tiers over "
           f"{len(precomputed.get('composite_hard', {}))} models")
     print("  Composite leaderboard (tier | model | composite | components | n):")

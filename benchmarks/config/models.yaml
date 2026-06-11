@@ -127,11 +127,17 @@ models:
   - id: "deepseek/deepseek-v4-pro:atlas-cloud/fp8"
     name: "DeepSeek V4 Pro"
     provider: openrouter
-    cost_tier: "low"
+    cost_tier: "medium"
 
+    # Corrected 2026-06-10: billing reconciliation against the OpenRouter
+    # activity export (openrouter_activity_2026-06-10.csv, analyzed in
+    # _sandbox/analyze_openrouter_activity.py) showed actual billing ~3.3x the
+    # previous rates (0.435/0.87). Rates below are implied from billed totals
+    # (input-dominated; output rate assumes the same 1:2 ratio). Result sets
+    # archived before this fix understate DS Pro computed costs ~3.3x (README § 7).
     pricing:
-      input: 0.435
-      output: 0.87
+      input: 1.44
+      output: 2.88
 
   - id: "deepseek/deepseek-v4-flash:atlas-cloud/fp8"
     name: "DeepSeek V4 Flash"

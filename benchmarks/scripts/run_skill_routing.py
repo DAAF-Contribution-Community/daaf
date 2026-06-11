@@ -10,7 +10,7 @@ reference Reads objectively correct.
 
 The Agent tool is DISALLOWED for all Phase 4 runs (disallowed_tools=["Agent"]),
 so no subagent transcripts exist and all scoring is main-transcript-only. See
-benchmarks/PHASE4_SKILL_ROUTING_PLAN.md sections 2.2 and 3.
+benchmarks/README.md § 2 (Phase 4) and § 6.
 
 Scoring uses score_skill_routing() from skill_routing.py, which checks
 required_skills_loaded, required_refs_read, expected_refs_read, routing_order,

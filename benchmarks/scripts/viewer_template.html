@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>DAAF Benchmark Results</title>
 <style>
-/* === Design Tokens (plan § 5) ===
+/* === Design Tokens (design record: README § 8 — design system) ===
    Status palette + surface/border/text custom properties. All status color
    in CSS and JS routes through these tokens (WP8 sweep); the only literal
    hues left are the per-model identity palettes (MODEL_COLORS) and SVG
@@ -181,7 +181,7 @@ code{ font-family:'SF Mono',SFMono-Regular,Consolas,'Liberation Mono',Menlo,mono
   letter-spacing:.5px; margin:20px 0 10px;
 }
 
-/* === Rate scale (shared 5-step discrete ramp; plan § 5) ===
+/* === Rate scale (shared 5-step discrete ramp; design record: README § 8 — design system) ===
    Single hue (--c-pass-rgb) with lightness spread via rgba alpha — never a
    red→green continuous ramp. Text flips dark at steps 3-4 to keep >=3:1
    contrast on the lighter fills. Status is never color alone: renderers pair
@@ -199,7 +199,7 @@ code{ font-family:'SF Mono',SFMono-Regular,Consolas,'Liberation Mono',Menlo,mono
    measured ~2.7:1, under the 3:1 non-text floor (WP8 contrast audit). */
 .rs-na{ background:rgba(100,116,139,.12); color:var(--text-2); }
 
-/* === Leaderboard (plan § 4.3) === */
+/* === Leaderboard === */
 .lb-finding,.cp-finding,.pd-finding{ font-size:15px; max-width:980px; margin:4px 0 12px; line-height:1.55; }
 .lb-controls{ display:flex; align-items:center; gap:6px; flex-wrap:wrap; margin-bottom:12px; }
 .lb-sort-label{ font-size:11px; color:var(--text-3); text-transform:uppercase; letter-spacing:.5px; margin-right:2px; }
@@ -247,14 +247,14 @@ code{ font-family:'SF Mono',SFMono-Regular,Consolas,'Liberation Mono',Menlo,mono
 .lb-cost{ text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap; }
 .lb-foot,.cp-foot,.pd-foot,.cost-foot{ font-size:12px; color:var(--text-3); margin-top:10px; max-width:980px; line-height:1.6; }
 
-/* === Cost vs. Performance (plan § 4.4) === */
+/* === Cost vs. Performance === */
 .cp-legend{
   display:flex; align-items:center; gap:16px; flex-wrap:wrap;
   font-size:11px; color:var(--text-2); margin:2px 0 6px;
 }
 .cp-legend svg{ vertical-align:-3px; margin-right:5px; }
 
-/* === Phase Deep-Dives (plan § 4.5) === */
+/* === Phase Deep-Dives === */
 .pd-legend{
   display:flex; align-items:center; gap:8px; flex-wrap:wrap;
   font-size:11px; color:var(--text-2); margin:2px 0 16px;
@@ -323,7 +323,7 @@ code{ font-family:'SF Mono',SFMono-Regular,Consolas,'Liberation Mono',Menlo,mono
 .crit-fail{ color:var(--c-fail); font-weight:700; }
 .rep-label{ color:#64748b; font-size:11px; font-weight:600; white-space:nowrap; }
 
-/* === Cases & Consistency (plan § 4.6) === */
+/* === Cases & Consistency === */
 .cs-chip{
   display:inline-block; margin-left:6px; padding:0 6px; border-radius:8px;
   background:var(--surface-0); border:1px solid var(--border-1);
@@ -524,9 +524,12 @@ code{ font-family:'SF Mono',SFMono-Regular,Consolas,'Liberation Mono',Menlo,mono
       <p>Phase 3b is a <b>sub-scoring of Phase 3 runs</b>, not a separate batch: its
       criteria are derived from the agent type, and which criteria apply varies with the
       case, so its denominators differ from 3a's.</p>
-      <p>Phase 4 is reported as <b>its own group</b> throughout this page and does
-      <b>not</b> enter the leaderboard composite or tier bands, which are pinned to the
-      four core components (P1, P2, P3a, P3b).</p>
+      <p>All five components (P1, P2, P3a, P3b, P4) enter the <b>leaderboard composite
+      and tier bands</b> with equal weight. (Phase 4 joined the composite by a
+      2026-06-10 decision; earlier versions of this page pinned the composite to
+      the first four.) A model lacking runs for a component is scored on the mean of the
+      components it has, and carries a visible &ldquo;partial&rdquo; marker on the
+      leaderboard naming what is missing.</p>
     </div>
   </details>
 
@@ -535,20 +538,21 @@ code{ font-family:'SF Mono',SFMono-Regular,Consolas,'Liberation Mono',Menlo,mono
     <div>
       <p>Every run is graded against named criteria by <b>deterministic scorers</b> &mdash;
       transcript parsing with string and structural checks; no LLM judges anywhere in the
-      loop. Each criterion is either <b>hard</b> (a structural must-pass, like
-      <code>agent_dispatched</code>) or <b>soft</b> (a protocol detail, like whether the
-      dispatch prompt carries a context section).</p>
+      loop. Each criterion is either <b>critical</b> (a structural must-pass, like
+      <code>agent_dispatched</code>) or <b>normal</b> (a protocol detail, like whether the
+      dispatch prompt carries a context section). (Earlier versions of this page and the
+      benchmark docs called these tiers &ldquo;hard&rdquo; and &ldquo;soft&rdquo;.)</p>
       <p>Three rates appear throughout this page, and they answer different questions:</p>
       <ul>
         <li><b>Perfect</b> (per run) &mdash; did <i>all</i> criteria pass on this run?
             This is the headline metric and the basis of the leaderboard composite.</li>
-        <li><b>Hard rate</b> (per criterion) &mdash; across all of a model's runs, what
-            fraction of its hard criteria passed?</li>
-        <li><b>Soft rate</b> (per criterion) &mdash; the same, for soft criteria.</li>
+        <li><b>Critical rate</b> (per criterion) &mdash; across all of a model's runs, what
+            fraction of its critical criteria passed?</li>
+        <li><b>Normal rate</b> (per criterion) &mdash; the same, for normal criteria.</li>
       </ul>
       <p>They diverge by design. Worked example: in a 12-run batch where 4 runs each fail
-      exactly one soft criterion, Perfect drops to 67% (8/12 runs) while the hard rate
-      stays at 100% and the soft rate stays around 96% &mdash; a model can look strong on
+      exactly one normal criterion, Perfect drops to 67% (8/12 runs) while the critical rate
+      stays at 100% and the normal rate stays around 96% &mdash; a model can look strong on
       criterion-level rates yet rarely deliver a fully clean run.</p>
     </div>
   </details>
@@ -599,30 +603,30 @@ code{ font-family:'SF Mono',SFMono-Regular,Consolas,'Liberation Mono',Menlo,mono
   </details>
 </section>
 
-<!-- 3. Leaderboard (rank-ordered table-chart; plan § 4.3) -->
+<!-- 3. Leaderboard (rank-ordered table-chart) -->
 <section class="doc-section" id="leaderboard">
   <h2>Leaderboard</h2>
   <p class="section-lead">
     One row per model, ranked by <b>composite</b> &mdash; the unweighted mean of its
-    Perfect-run rates across the phase components (P1, P2, P3a, P3b). Every rate carries
+    Perfect-run rates across the phase components (P1, P2, P3a, P3b, P4). Every rate carries
     its denominator, and tier bands group models whose composites cluster together &mdash;
     gaps between tiers are meaningful, ordering within a tier may not be. The metric
     toggle switches every rate, rank, and tier band between <b>Perfect</b> (all criteria
-    pass) and <b>Hard-only</b> (all must-pass criteria pass). Click a phase cell to open
+    pass) and <b>Critical-only</b> (all must-pass criteria pass). Click a phase cell to open
     that phase's deep-dive; click any numeric column header to re-sort, and click it
     again to reverse the direction.
   </p>
   <div class="sec-body" id="sec-leaderboard"></div>
 </section>
 
-<!-- 4. Cost vs. Performance (log-x frontier scatter over published $/Mtok; plan § 4.4) -->
+<!-- 4. Cost vs. Performance (log-x frontier scatter over published $/Mtok) -->
 <section class="doc-section" id="cost-performance">
   <h2>Cost vs. Performance</h2>
   <p class="section-lead">
     Each point is one model: its <b>published price</b> per million tokens (log scale,
     under the selected price basis) against the selected <b>performance basis</b>
-    (composite or a single phase, P1&ndash;P3b) under the selected <b>metric</b>
-    (Perfect or Hard-only) &mdash; up and to the left is better. The stepped line traces
+    (composite, or filtered to any single phase group, P1&ndash;P4) under the selected
+    <b>metric</b> (Perfect or Critical-only) &mdash; up and to the left is better. The stepped line traces
     the <b>efficiency frontier</b>: the models
     no other model beats on both price and conformance at once. Prices are list rates, not
     measured benchmark spend &mdash; observed-spend tracking was removed because the
@@ -633,12 +637,12 @@ code{ font-family:'SF Mono',SFMono-Regular,Consolas,'Liberation Mono',Menlo,mono
   <div class="sec-body" id="sec-cost-performance"></div>
 </section>
 
-<!-- 5. Phase Deep-Dives (per-phase model × criterion heatmaps; plan § 4.5) -->
+<!-- 5. Phase Deep-Dives (per-phase model × criterion heatmaps) -->
 <section class="doc-section" id="phases">
   <h2>Phase Deep-Dives</h2>
   <p class="section-lead">
     One heatmap per phase: rows are models ranked by that phase's Perfect rate, columns
-    are the individual criteria &mdash; hard (must-pass) before soft, split by the yellow
+    are the individual criteria &mdash; critical (must-pass) before normal, split by the yellow
     border. Use this to find which specific protocol requirement a model misses: a model
     can rank well overall while reliably failing one criterion. Hover any cell for its
     exact k/n; click a cell to open those runs in the Run Explorer.
@@ -646,7 +650,7 @@ code{ font-family:'SF Mono',SFMono-Regular,Consolas,'Liberation Mono',Menlo,mono
   <div class="sec-body" id="sec-phases"></div>
 </section>
 
-<!-- 6. Cases & Consistency (agreement heatmaps + case browser; plan § 4.6) -->
+<!-- 6. Cases & Consistency (agreement heatmaps + case browser) -->
 <section class="doc-section" id="cases">
   <h2>Cases &amp; Consistency</h2>
   <p class="section-lead">
@@ -661,7 +665,7 @@ code{ font-family:'SF Mono',SFMono-Regular,Consolas,'Liberation Mono',Menlo,mono
   <div class="sec-body" id="sec-cases"></div>
 </section>
 
-<!-- 7. Costs Detail (published per-Mtok pricing table; plan § 4.7) -->
+<!-- 7. Costs Detail (published per-Mtok pricing table) -->
 <section class="doc-section" id="costs">
   <h2>Costs Detail</h2>
   <p class="section-lead">
@@ -672,7 +676,9 @@ code{ font-family:'SF Mono',SFMono-Regular,Consolas,'Liberation Mono',Menlo,mono
     endpoint reports counts from Anthropic&rsquo;s tokenizer rather than each
     model&rsquo;s own billing meter &mdash; so the token-derived dollar figures were
     unreliable. Every cost figure on this page is a published rate, not measured spend.
-    Click any column header to sort.
+    Click any column header to sort. The Perfect Rate context column can be scoped to a
+    single phase group via the toggle above the table; the pricing columns are
+    phase-independent list rates and never change with the scope.
   </p>
   <div class="sec-body" id="sec-costs"></div>
 </section>
@@ -768,6 +774,10 @@ var state = {
   selectedRunIdx: -1,
   costSortCol: null,
   costSortDir: 1,
+  /* Costs Detail Perfect-rate scope: "" = all phases pooled | an eval
+     group id (the section's phase filter; pricing columns are
+     phase-independent and unaffected) */
+  costsPhase: "",
   /* Cost vs. Performance price basis: blend31 (default) | input | output */
   costForm: "blend31",
   /* Cost vs. Performance y-axis: perf basis (composite | composite gid)
@@ -787,7 +797,8 @@ var state = {
    HELPERS
    ================================================================= */
 
-/* 17 entries for the 17-model corpus (plan § 5: distinguishable identity hues;
+/* 17 entries for the 17-model corpus (design record: README § 8 — design
+   system: distinguishable identity hues;
    wraps via modulo only beyond 17). First 8 unchanged to preserve historical
    assignments. New values avoid the exact status-token hexes (#34d399 pass,
    #fb7185/#f87171 fail, #fbbf24 partial, #64748b neutral); identity is never
@@ -815,7 +826,8 @@ function modelProvider(m){
   return "";
 }
 
-/* Discrete 5-step rate scale (plan § 5): maps a rate onto the shared
+/* Discrete 5-step rate scale (design record: README § 8 — design system):
+   maps a rate onto the shared
    .rs-0 ... .rs-4 CSS classes. Steps: 100% / 90-99 / 50-89 / 1-49 / 0.
    Glyph redundancy so status is never color alone: check at step 4,
    cross at step 0, the % text itself carries steps 1-3. Used by the
@@ -863,7 +875,8 @@ function priceMap(){
 }
 
 /* Run status = the precomputed grade (perfect / partial / failed /
-   ungraded), orthogonal to the timed_out flag (plan § 6 item 4). A
+   ungraded), orthogonal to the timed_out flag (design record: README § 8 —
+   data realities). A
    timed-out run is usually still fully graded, so timeout renders as
    a separate clock marker (.to-mark / TIMED OUT badge) wherever the
    grade appears — never as a status of its own, and never inferred by
@@ -919,7 +932,7 @@ var evalGroups = [];
       gmap[id].timestamps.push(rs.timestamp);
     }
   });
-  var order=["mode_classification","post_confirmation","dispatch_compliance_dispatch","dispatch_compliance_subagent"];
+  var order=["mode_classification","post_confirmation","dispatch_compliance_dispatch","dispatch_compliance_subagent","skill_routing"];
   order.forEach(function(id){ if(gmap[id]) evalGroups.push(gmap[id]); });
   Object.keys(gmap).forEach(function(id){ if(order.indexOf(id)<0) evalGroups.push(gmap[id]); });
 })();
@@ -937,6 +950,15 @@ var GROUP_SHORT={
   skill_routing:"P4"
 };
 function groupShort(gid){ return GROUP_SHORT[gid]||gid; }
+
+/* Display names for the internal criterion-tier keys. Data keys and CSS
+   classes keep "hard"/"soft" (historical result.json compatibility); only
+   user-facing text uses the renamed labels (Critical / Normal). */
+function tierDisplay(t){
+  if(t==="hard") return "critical";
+  if(t==="info") return "info";
+  return "normal";
+}
 
 /* Criteria whose deterministic scorers have documented accuracy caveats.
    Keyed by criterion name; value is a short reason string. Render sites that
@@ -1153,7 +1175,7 @@ function hideTip(){
 /* =================================================================
    SECTION 1: HERO / VERDICT
    Computed entirely from PRECOMPUTED at render time — no hand-written
-   numbers (plan § 4.1).
+   numbers.
    ================================================================= */
 
 function renderHero(){
@@ -1199,11 +1221,12 @@ function renderHero(){
   } else {
     v+='No composite scores available for this corpus.';
   }
-  /* global_weakest is computed over the composite (core) groups only, so an
-     experimental phase can never hijack the headline — say so in the prose */
+  /* global_weakest is computed over the composite groups only (all five,
+     P1-P4, since 2026-06-10), so a non-composite experimental phase can
+     never hijack the headline — say so in the prose */
   var gw=(PRECOMPUTED.callouts||{}).global_weakest;
   if(gw){
-    v+=' The weakest criterion across all models in the core phases (P1&ndash;P3b) is <code>'+esc(gw.name)+'</code> at <b>'+
+    v+=' The weakest criterion across all models in the composite phases (P1&ndash;P4) is <code>'+esc(gw.name)+'</code> at <b>'+
        pct(gw.rate)+'</b> ('+fmt(gw.passed)+'/'+fmt(gw.total)+', '+esc(gw.group_label)+').';
     if(KNOWN_SCORER_CAVEATS[gw.name]){
       v+=' ('+esc(KNOWN_SCORER_CAVEATS[gw.name])+' \u2014 see <a href="#about">caveats</a>)';
@@ -1246,7 +1269,7 @@ function fillAboutCounts(){
 }
 
 /* =================================================================
-   SECTION 3: LEADERBOARD (plan § 4.3)
+   SECTION 3: LEADERBOARD
    Rank-ordered table-chart computed entirely from PRECOMPUTED:
    composite bar with component ticks, per-phase rate cells
    (rate + visible n, deep-linking to the phase deep-dives),
@@ -1254,8 +1277,9 @@ function fillAboutCounts(){
    blended list price (3:1 in/out, $/Mtok — never observed spend,
    which was removed). A metric toggle switches composite, phase
    cells, ranks, and tier bands between the Perfect metric
-   (composite/tiers) and the Hard-only metric (composite_hard/
-   tiers_hard); Consistency stays Perfect-based. Sorting is via
+   (composite/tiers) and the Critical-only metric (internal key
+   "hard"; composite_hard/tiers_hard); Consistency stays
+   Perfect-based. Sorting is via
    clickable column headers (every numeric column; click again to
    reverse). The tier gutter (rowspan bands) appears only under the
    composite sort, best first — the bands are defined on the active
@@ -1267,7 +1291,7 @@ function fillAboutCounts(){
    banding method the generator applied (gap rule, or its
    range-quartile fallback on near-continuum corpora). Takes the
    active metric's rule + tiers so the disclosure tracks the
-   leaderboard's Perfect / Hard-only toggle. */
+   leaderboard's Perfect / Critical-only toggle. */
 function lbTierRuleText(rule,tiers,metricLabel){
   rule=rule||{};
   tiers=tiers||[];
@@ -1282,19 +1306,20 @@ function lbTierRuleText(rule,tiers,metricLabel){
   if(rule.method==="range_quartiles"){
     return head+'Banding rule applied: <b>range quartiles</b> &mdash; no composite gap reached the '+
       thresholdPts+'-point threshold, so models are banded by which quarter of the observed '+
-      'composite range their score falls in. Treat tier boundaries as soft.';
+      'composite range their score falls in. Treat tier boundaries as approximate.';
   }
   return head+'Banding rule applied: <code>'+esc(rule.method||"unknown")+'</code>.';
 }
 
 function renderLeaderboard(container){
-  /* Active metric: Perfect (all criteria pass) | Hard-only (all hard-tier
-     criteria pass). Composite, per-phase cells, AND tier bands all switch
+  /* Active metric: Perfect (all criteria pass) | Critical-only (all
+     hard-tier criteria pass; internal key "hard"). Composite,
+     per-phase cells, AND tier bands all switch
      to the precomputed hard variants together; Consistency stays
      Perfect-based regardless (disclosed in its header tooltip). */
   var metric=state.lbMetric||"perfect";
   var isHard=(metric==="hard");
-  var metricLabel=isHard?"Hard-only":"Perfect";
+  var metricLabel=isHard?"Critical-only":"Perfect";
   var rateField=isHard?"hard_rate":"perfect_rate";
   var countField=isHard?"hard_pass_count":"perfect_count";
   var comp=(isHard?PRECOMPUTED.composite_hard:PRECOMPUTED.composite)||{};
@@ -1345,7 +1370,7 @@ function renderLeaderboard(container){
      the active column flips direction. sortDir: -1 descending, 1 ascending.
      Missing values always sort last; composite rank breaks ties. Sorting
      reads the ACTIVE metric's rates, so it works under both Perfect and
-     Hard-only. */
+     Critical-only. */
   var sortKey=state.lbSort||"composite";
   var sortDir=state.lbSortDir||-1;
   var sortVal=function(m){
@@ -1395,15 +1420,15 @@ function renderLeaderboard(container){
   /* Metric toggle + disclosure line — controls sit immediately above the
      table; the computed finding renders BELOW it (section layout rule) */
   var html='<div class="lb-controls"><span class="lb-sort-label">Metric</span>';
-  [{key:"perfect",label:"Perfect",tip:"A run counts when every criterion (hard + soft) passed"},
-   {key:"hard",label:"Hard-only",tip:"A run counts when every hard (must-pass) criterion passed; soft criteria are ignored"}
+  [{key:"perfect",label:"Perfect",tip:"A run counts when every criterion (critical + normal) passed"},
+   {key:"hard",label:"Critical-only",tip:"A run counts when every critical (must-pass) criterion passed; normal criteria are ignored"}
   ].forEach(function(o){
     html+='<button class="lb-sort-btn'+(metric===o.key?' active':'')+'" title="'+esc(o.tip)+
       '" onclick="setLbMetric(&#39;'+esc(o.key)+'&#39;)">'+esc(o.label)+'</button>';
   });
   html+='<span class="lb-metric-note">'+(isHard
-    ?'Showing <b>Hard-only</b> rates: a run counts when every hard (must-pass) criterion passed. Composite, phase cells, ranks, and tier bands recompute; Consistency stays Perfect-based.'
-    :'Showing <b>Perfect</b> rates: a run counts when every criterion (hard + soft) passed.')+'</span>';
+    ?'Showing <b>Critical-only</b> rates: a run counts when every critical (must-pass) criterion passed. Composite, phase cells, ranks, and tier bands recompute; Consistency stays Perfect-based.'
+    :'Showing <b>Perfect</b> rates: a run counts when every criterion (critical + normal) passed.')+'</span>';
   html+='</div>';
 
   /* Sortable column headers: \u25B2/\u25BC on the active column, pointer +
@@ -1424,7 +1449,7 @@ function renderLeaderboard(container){
     metricLabel+' composite \u2014 unweighted mean of the per-phase '+metricLabel+' rates',-1);
   groups.forEach(function(g){
     html+=thSort(g.id,esc(groupShort(g.id))+' '+metricLabel,
-      g.label+' \u2014 share of runs with every '+(isHard?'hard (must-pass)':'')+' criterion passed',-1);
+      g.label+' \u2014 share of runs with every '+(isHard?'critical (must-pass)':'')+' criterion passed',-1);
   });
   if(hasDispatch) html+=thSort("dispatch","Dispatch","Phase 3a agent_dispatched pass rate",-1);
   html+=thSort("consistency","Consistency",
@@ -1482,7 +1507,7 @@ function renderLeaderboard(container){
       /* P3b denominator counts every successful dispatch, even when the
          subagent produced no scorable transcript (mirrors generator) */
       html+='<td class="lb-cell"><span class="hm-cell rs-'+step+' clickable" '+
-        'title="'+esc(g.label)+': '+kn+' '+(isHard?'hard-pass':'perfect')+' runs'+
+        'title="'+esc(g.label)+': '+kn+' '+(isHard?'critical-pass':'perfect')+' runs'+
         (g.id==='dispatch_compliance_subagent'?' (includes runs with no scorable subagent transcript in the denominator)':'')+
         ' — click for the phase deep-dive" '+
         'onclick="lbJumpPhase(&#39;'+esc(g.id)+'&#39;)">'+
@@ -1542,11 +1567,11 @@ function renderLeaderboard(container){
 }
 
 /* =================================================================
-   SECTION 4: COST VS. PERFORMANCE (plan § 4.4)
+   SECTION 4: COST VS. PERFORMANCE
    Log-x scatter of PUBLISHED price per million tokens (under the
    selected formulation: blended 3:1 / input / output) vs. the
-   selected performance basis (composite | P1 | P2 | P3a | P3b) under
-   the selected metric (perfect | hard), with the precomputed
+   selected performance basis (composite | any eval group, incl. P4)
+   under the selected metric (perfect | hard), with the precomputed
    efficiency frontier rendered as a step polyline. Points, prices,
    and the per-combination frontiers all come from PRECOMPUTED
    (cost.perf_values, cost.models, cost.frontiers[form][basis][metric])
@@ -1556,21 +1581,22 @@ function renderLeaderboard(container){
    as color + shape (never color alone); every point is labeled.
    ================================================================= */
 
-/* Y-axis selectors for the scatter: performance basis (composite or one
-   composite component) and metric (perfect | hard). Fully decoupled from
-   the leaderboard's metric toggle. P4 (skill_routing) is deliberately NOT
-   a y-axis option — partial model coverage mid-baseline would make its
-   frontier misleading. */
-var CP_PERF_BASES=[
-  {key:"composite",label:"Composite"},
-  {key:"mode_classification",label:"P1"},
-  {key:"post_confirmation",label:"P2"},
-  {key:"dispatch_compliance_dispatch",label:"P3a"},
-  {key:"dispatch_compliance_subagent",label:"P3b"}
-];
+/* Y-axis selectors for the scatter: performance basis (composite or ANY
+   single eval group — the section's phase filter) and metric
+   (perfect | hard). Built dynamically from evalGroups so new phases
+   (e.g., P4 skill_routing) appear automatically; the generator embeds
+   perf_values/frontiers for every group. Non-composite phases may have
+   partial model coverage — models lacking data under a basis are omitted
+   from that view and counted in the footnote, so a partial-coverage
+   frontier is disclosed, never silent. Fully decoupled from the
+   leaderboard's metric toggle. */
+var CP_PERF_BASES=[{key:"composite",label:"Composite"}];
+evalGroups.forEach(function(g){
+  CP_PERF_BASES.push({key:g.id,label:groupShort(g.id)});
+});
 var CP_METRICS=[
-  {key:"perfect",label:"Perfect",tip:"A run counts when every criterion (hard + soft) passed"},
-  {key:"hard",label:"Hard-only",tip:"A run counts when every hard (must-pass) criterion passed; soft criteria are ignored"}
+  {key:"perfect",label:"Perfect",tip:"A run counts when every criterion (critical + normal) passed"},
+  {key:"hard",label:"Critical-only",tip:"A run counts when every critical (must-pass) criterion passed; normal criteria are ignored"}
 ];
 
 function renderCostPerf(container){
@@ -1661,7 +1687,7 @@ function renderCostPerf(container){
     finding='No efficiency frontier could be computed for this corpus under '+esc(yShort)+'.';
   }
 
-  /* Provider legend (color + shape redundancy, plan § 5) */
+  /* Provider legend (color + shape redundancy; design record: README § 8 — design system) */
   var provSeen={};
   pts.forEach(function(p){ provSeen[p.provider||"unknown"]=true; });
   var legend='<div class="cp-legend">';
@@ -1675,8 +1701,8 @@ function renderCostPerf(container){
      published-pricing-only disclosure */
   var foot='<p class="cp-foot">Y-axis: '+esc(yShort)+' &mdash; '+
     (metric==="hard"
-      ?'a run counts when every hard (must-pass) criterion passed.'
-      :'a run counts when every criterion (hard + soft) passed.')+
+      ?'a run counts when every critical (must-pass) criterion passed.'
+      :'a run counts when every criterion (critical + normal) passed.')+
     (omitted>0
       ?' '+omitted+' priced model'+(omitted===1?'':'s')+' lack'+(omitted===1?'s':'')+
        ' data for this selection and '+(omitted===1?'is':'are')+' omitted from this view.'
@@ -1696,7 +1722,7 @@ function renderCostPerf(container){
 }
 
 /* =================================================================
-   SECTION 5: PHASE DEEP-DIVES (plan § 4.5)
+   SECTION 5: PHASE DEEP-DIVES
    One discrete model × criterion heatmap per eval group, on the
    shared .rs-* 5-step ramp. Rows are models ranked by the group's
    Perfect rate (PRECOMPUTED.per_model_phase); columns are criteria,
@@ -1739,13 +1765,13 @@ function buildPhaseAgg(){
   return phaseAgg;
 }
 
-/* Two-sentence explainers per eval group (plan § 4.5) */
+/* Two-sentence explainers per eval group */
 var PD_EXPLAINERS={
   mode_classification:"Each run starts cold: the model sees only the user\u2019s opening request and must classify it into the correct engagement mode. Criteria check the mode it picks, that it presents a confirmation gate, and that nothing executes before the user confirms.",
   post_confirmation:"The model resumes from a checkpoint that ends at the confirmation gate, and the user says to proceed. Criteria check that it actually loads the mode reference files and skills it just committed to loading.",
   dispatch_compliance_dispatch:"The model resumes from a fully initialized Ad Hoc Collaboration session and must hand work to a subagent. Criteria check that it dispatches the correct agent type with a properly structured prompt \u2014 BASE_DIR, mode marker, and task / context / instructions sections.",
   dispatch_compliance_subagent:"Whenever a Phase 3 dispatch succeeds, the dispatched subagent\u2019s own transcript is scored against criteria derived from its agent type. Which criteria apply varies by case, so denominators vary across this heatmap \u2014 \u201c\u2014\u201d marks criteria that never applied to a model\u2019s runs.",
-  skill_routing:"The model resumes from the same fully initialized Ad Hoc Collaboration checkpoint as Phase 3 and receives a task that requires a specific analysis library. Criteria check that it FIRST consults the data-scientist hub\u2019s routing directives and THEN loads the specific library skills \u2014 scored on the main transcript only, and not part of the leaderboard composite."
+  skill_routing:"The model resumes from the same fully initialized Ad Hoc Collaboration checkpoint as Phase 3 and receives a task that requires a specific analysis library. Criteria check that it FIRST consults the data-scientist hub\u2019s routing directives and THEN loads the specific library skills \u2014 scored on the main transcript only; one of the five leaderboard composite components (since 2026-06-10)."
 };
 
 /* One heatmap block for one eval group. Emits id="phase-<gid>" so
@@ -1808,13 +1834,13 @@ function pdGroupHtml(g,agg){
   /* Heatmap table: tier group header row + rotated criterion headers */
   html+='<div class="card" style="display:inline-block;max-width:100%"><table class="pd-table"><thead>';
   if(hard.length>0&&soft.length>0){
-    html+='<tr><th></th><th colspan="'+hard.length+'" class="pd-tier-label">Hard</th>'+
-      '<th colspan="'+soft.length+'" class="pd-tier-label pd-soft-start">Soft</th></tr>';
+    html+='<tr><th></th><th colspan="'+hard.length+'" class="pd-tier-label">Critical</th>'+
+      '<th colspan="'+soft.length+'" class="pd-tier-label pd-soft-start">Normal</th></tr>';
   }
   html+='<tr><th style="text-align:left">Model</th>';
   cols.forEach(function(k,i){
     var sep=(hard.length>0&&soft.length>0&&i===hard.length)?' pd-soft-start':'';
-    html+='<th class="pd-crit-th'+sep+'" title="'+esc(k)+' ('+esc(tiers[k]||'soft')+' criterion)">'+
+    html+='<th class="pd-crit-th'+sep+'" title="'+esc(k)+' ('+esc(tierDisplay(tiers[k]))+' criterion)">'+
       '<span class="pd-crit-rot">'+esc(k)+'</span></th>';
   });
   html+='</tr></thead><tbody>';
@@ -1893,7 +1919,7 @@ function renderPhaseDives(container){
      Placed BELOW the heatmaps per the section layout rule. */
   var gw=(PRECOMPUTED.callouts||{}).global_weakest;
   if(gw){
-    html+='<div class="pd-finding">The weakest criterion among the core phases (P1&ndash;P3b) is <code>'+esc(gw.name)+
+    html+='<div class="pd-finding">The weakest criterion among the composite phases (P1&ndash;P4) is <code>'+esc(gw.name)+
       '</code> at <b>'+pct(gw.rate)+'</b> ('+fmt(gw.passed)+'/'+fmt(gw.total)+', '+esc(gw.group_label)+
       ') \u2014 read down its column above to see whether the weakness is universal or concentrated in a few models.'+
       (KNOWN_SCORER_CAVEATS[gw.name]?' ('+esc(KNOWN_SCORER_CAVEATS[gw.name])+' \u2014 see <a href="#about">caveats</a>)':'')+
@@ -1903,7 +1929,7 @@ function renderPhaseDives(container){
 }
 
 /* =================================================================
-   SECTION 6: CASES & CONSISTENCY (plan § 4.6)
+   SECTION 6: CASES & CONSISTENCY
    Layer 1 — agreement heatmaps: one case × model grid per eval group
    (criteria sets differ across groups, so a single all-phase wall
    would conflate them — consistent with the per-group deep-dives).
@@ -2106,11 +2132,13 @@ function caseMatrixHtml(group,cid){
     for(var ci=0;ci<criteria.length;ci++){
       var criterion=criteria[ci];
 
+      /* Display letters for the internal tier keys: C = critical (was
+         "hard"/H), N = normal (was "soft"/S) */
       var tier="";
       for(var ti=0;ti<caseRuns.length;ti++){
         var tCrit=getRunCriteria(caseRuns[ti], group);
         if(tCrit[criterion] && tCrit[criterion].tier){
-          tier=tCrit[criterion].tier==="hard"?"H":"S";
+          tier=tCrit[criterion].tier==="hard"?"C":"N";
           break;
         }
       }
@@ -2120,7 +2148,7 @@ function caseMatrixHtml(group,cid){
         html+='<td class="rep-label" rowspan="'+criteria.length+'">Rep '+rep+'</td>';
       }
       html+='<td><code style="font-size:11px;color:#cbd5e1">'+esc(criterion)+'</code></td>';
-      html+='<td style="text-align:center;color:'+(tier==="H"?"#f59e0b":"#64748b")+';font-size:11px;font-weight:600">'+esc(tier)+'</td>';
+      html+='<td style="text-align:center;color:'+(tier==="C"?"#f59e0b":"#64748b")+';font-size:11px;font-weight:600" title="'+(tier==="C"?"critical (must-pass)":"normal")+' criterion">'+esc(tier)+'</td>';
 
       models.forEach(function(m){
         var run=null;
@@ -2194,8 +2222,8 @@ function caseBrowserHtml(){
         html+='<div class="case-prompt">'+esc(c.prompt)+'</div>';
       }
       html+=expectedHtml(c.expected);
-      html+=reqListHtml("Hard Requirements (must-pass)",c.hard_requirements);
-      html+=reqListHtml("Soft Requirements",c.soft_requirements);
+      html+=reqListHtml("Critical Requirements (must-pass)",c.hard_requirements);
+      html+=reqListHtml("Normal Requirements",c.soft_requirements);
       (groupsByPhase[ph]||[]).forEach(function(g){
         html+=caseMatrixHtml(g,cid);
       });
@@ -2231,7 +2259,7 @@ function renderCasesSection(container){
 }
 
 /* =================================================================
-   SECTION 7: COSTS DETAIL (plan § 4.7)
+   SECTION 7: COSTS DETAIL
    One sortable table: the published per-Mtok pricing for every model
    (DATA.model_pricing), with each model's overall Perfect rate for
    context. The Observed Spend table, token-mix bars, and all
@@ -2246,13 +2274,46 @@ function renderCostsDetail(container){
   var pricing=DATA.model_pricing||{};
   var html='';
 
+  /* Phase scope for the Perfect Rate context column: "" pools every
+     loaded run (precomputed run grade); a group id restricts to that
+     eval group, scoring perfect via groupAllPassed so 3b uses subagent
+     criteria (same semantics as the leaderboard's per-phase cells).
+     Pricing columns are phase-independent list rates. */
+  var groups=getEvalGroups();
+  var scope=state.costsPhase||"";
+  var scopeGroup=null;
+  groups.forEach(function(g){ if(g.id===scope) scopeGroup=g; });
+
   /* ---- Published pricing (kept from v1, sortable) ---- */
   var perfectByModel={};
   models.forEach(function(m){
     var n=0,k=0;
-    DATA.runs.forEach(function(r){ if(r.model===m){ n++; if(r.grade==="perfect") k++; } });
+    DATA.runs.forEach(function(r){
+      if(r.model!==m) return;
+      if(scopeGroup){
+        if(!runInGroup(r,scopeGroup)) return;
+        n++;
+        if(groupAllPassed(r,scopeGroup)) k++;
+      } else {
+        n++;
+        if(r.grade==="perfect") k++;
+      }
+    });
     perfectByModel[m]={rate:n>0?k/n:0,k:k,n:n};
   });
+
+  /* Phase filter toggle (same control idiom as the other sections) */
+  html+='<div class="lb-controls"><span class="lb-sort-label">Perfect-rate scope</span>';
+  html+='<button class="lb-sort-btn'+(scope===""?' active':'')+'" title="Perfect rate pooled across every loaded phase group" '+
+    'onclick="setCostsPhase(&#39;&#39;)">All phases</button>';
+  groups.forEach(function(g){
+    html+='<button class="lb-sort-btn'+(scope===g.id?' active':'')+'" title="Perfect rate over '+esc(g.label)+
+      ' runs only" onclick="setCostsPhase(&#39;'+esc(g.id)+'&#39;)">'+esc(groupShort(g.id))+'</button>';
+  });
+  html+='<span class="lb-metric-note">'+(scopeGroup
+    ?'Perfect Rate scoped to <b>'+esc(scopeGroup.label)+'</b>; pricing columns are list rates and do not vary by phase.'
+    :'Perfect Rate pooled across all loaded phases; pick a phase group to scope it.')+'</span>';
+  html+='</div>';
 
   var costRows=models.map(function(m){
     var p=pricing[m];
@@ -2295,9 +2356,15 @@ function renderCostsDetail(container){
     html+='<tr>';
     html+='<td style="font-weight:600;color:'+modelColorLight(m)+'">'+esc(m)+'</td>';
     var pr=perfectByModel[m];
-    var step=rateStep(pr.rate);
-    html+='<td><span class="hm-cell rs-'+step+'" style="cursor:default" title="'+pr.k+'/'+pr.n+
-      ' perfect runs pooled across all loaded phases (main criteria)">'+rateGlyph(step)+pct(pr.rate)+'</span></td>';
+    if(pr.n===0){
+      html+='<td><span class="hm-cell rs-na" style="cursor:default" title="No '+
+        esc(scopeGroup?scopeGroup.label:'loaded')+' runs for this model">&mdash;</span></td>';
+    } else {
+      var step=rateStep(pr.rate);
+      html+='<td><span class="hm-cell rs-'+step+'" style="cursor:default" title="'+pr.k+'/'+pr.n+
+        ' perfect runs '+(scopeGroup?'in '+esc(scopeGroup.label)+' (group criteria)':'pooled across all loaded phases (main criteria)')+
+        '">'+rateGlyph(step)+pct(pr.rate)+'</span></td>';
+    }
     if(p){
       html+='<td>$'+p.input_per_million.toFixed(2)+'</td>';
       html+='<td>$'+p.output_per_million.toFixed(2)+'</td>';
@@ -2313,7 +2380,7 @@ function renderCostsDetail(container){
 }
 
 /* =================================================================
-   SECTION 8: RUN EXPLORER (plan § 4.8)
+   SECTION 8: RUN EXPLORER
    Run list + detail panel. Status everywhere in this section is the
    grade taxonomy (perfect / partial / failed / ungraded) with the
    timed_out flag rendered as a separate clock marker; deep links from
@@ -2526,7 +2593,7 @@ function renderRunDetail(r){
 }
 
 /* =================================================================
-   SECTION 9: PROVENANCE FOOTER (plan § 4.9)
+   SECTION 9: PROVENANCE FOOTER
    One row per result set from PRECOMPUTED.provenance; rows where the
    on-disk run count disagrees with summary.json are highlighted.
    ================================================================= */
@@ -2896,6 +2963,13 @@ window.lbJumpPhase=function(gid){
   var target=el("phase-"+gid)||el("phases");
   if(target) target.scrollIntoView({behavior:"smooth",block:"start"});
   setHash("phases");
+};
+
+/* Costs Detail Perfect-rate phase scope toggle: "" = all phases pooled,
+   or an eval group id. Re-renders the section; sort state carries over. */
+window.setCostsPhase=function(key){
+  state.costsPhase=key;
+  renderCostsDetail(el("sec-costs"));
 };
 
 window.sortCosts=function(key){

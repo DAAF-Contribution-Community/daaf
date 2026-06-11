@@ -6,7 +6,7 @@ models.yaml, to estimate costs before launching and compute actual costs after.
 
 Phase 1-3 calibration data collected 2026-06-08 from Haiku 4.5, DeepSeek V4
 Flash, and Gemini 3.1 Flash Lite (3 reps each, averaged across models).
-Phase 4 calibration is newer — see the PHASE4_TOKENS block comment.
+Phase 4 calibration is newer — see the PHASE4_TOKENS_* block comment.
 
 Token semantics: Token counts come from the CLI's modelUsage block (which
 aggregates across main session + subagent sessions). input_tokens is the
@@ -17,8 +17,8 @@ IMPORTANT (Phases 1-3 only): the PHASE1/2/3_TOKENS data below was collected
 BEFORE the modelUsage fix (2026-06-08) and reflects main-session-only tokens.
 Those profiles will underestimate costs for cases that dispatch subagents.
 Recalibrate after the next batch run with the corrected token extraction.
-PHASE4_TOKENS is post-fix (2026-06-10) and unaffected — its caveat (weak-model
-underuse of tools) is documented at the block.
+Phase 4 is post-fix and recalibrated per provider from the fresh-golden
+baseline matrix (2026-06-10) — see the PHASE4_TOKENS_* block comment.
 """
 
 from benchmarks.harness.models import ModelConfig, RunResult
@@ -71,36 +71,77 @@ PHASE3_TOKENS = {
     "dc-12": (113907, 1101, 37013),
 }
 
-# Calibrated 2026-06-10 from results/20260610_022333 (5 cheap OpenRouter models
-# x 15 cases x 1 rep; per-case means). That set was since archived out of
-# results/ (Session 5 — pre-fresh-golden sets superseded by the golden swap).
-# Known caveat: these models mostly answered without tool use, so stronger
-# models doing full multi-reference routing will run heavier — recalibrate
-# from the first fresh-golden Anthropic baseline batch (still pending).
-PHASE4_TOKENS = {
-    "sr-01": (123418, 1939, 0),
-    "sr-02": (50347, 1163, 2762),
-    "sr-03": (135070, 1766, 0),
-    "sr-04": (89009, 1122, 11939),
-    "sr-05": (50042, 1119, 3059),
-    "sr-06": (64138, 1239, 0),
-    "sr-07": (53064, 1826, 0),
-    "sr-08": (53107, 1200, 0),
-    "sr-09": (86298, 1390, 3059),
-    "sr-10": (72562, 1076, 2762),
-    "sr-11": (88018, 1276, 6118),
-    "sr-12": (110481, 1700, 0),
-    "sr-13": (164990, 1692, 26045),
-    "sr-14": (153694, 1429, 11594),
-    "sr-15": (119741, 1888, 3059),
+# Recalibrated 2026-06-10 from the eight fresh-golden baseline sets
+# (results/20260610_{184022,194256,201039,203038,203935,205051,210215,214502}:
+# 10 OpenRouter models x 3 reps + 7 Anthropic models x 1 rep). Per-case means
+# over 520 usable runs; 35 excluded (error/timed_out/zero-output — 34 Gemma 4
+# 31B silent stalls, 1 DeepSeek V4 Pro). Computation:
+# _sandbox/calibrate_phase4_c.py (execution log appended there).
+#
+# Phase 4 is calibrated PER PROVIDER because the two billing regimes do not
+# mix: Anthropic runs carry ~0 uncached input and 90-190k cache_read tokens
+# (billed ~10% of input price), while OpenRouter runs re-send uncached context
+# every turn (CLI prompt caching does not apply). A single blended profile
+# over-estimated Anthropic models 3.3-8.4x (validated against actuals in
+# _sandbox/validate_phase4_estimator.py). Estimation selects the profile via
+# model.provider; an unknown provider falls back to the OpenRouter profile
+# (conservative: estimates high).
+PHASE4_TOKENS_OPENROUTER = {
+    "sr-01": (187569, 1828, 12603),
+    "sr-02": (147919, 1645, 10989),
+    "sr-03": (164965, 1942, 12968),
+    "sr-04": (201967, 1826, 5489),
+    "sr-05": (121071, 1361, 8240),
+    "sr-06": (149310, 1554, 12410),
+    "sr-07": (112737, 2086, 10647),
+    "sr-08": (135098, 1782, 4832),
+    "sr-09": (133282, 1940, 6280),
+    "sr-10": (161858, 1827, 9632),
+    "sr-11": (128361, 1659, 9374),
+    "sr-12": (149213, 1677, 5066),
+    "sr-13": (158344, 1691, 9972),
+    "sr-14": (200071, 1429, 9555),
+    "sr-15": (248931, 2433, 7462),
+}
+
+PHASE4_TOKENS_ANTHROPIC = {
+    "sr-01": (12, 3035, 164352),
+    "sr-02": (12, 3253, 139511),
+    "sr-03": (11, 3728, 135421),
+    "sr-04": (5254, 2734, 120691),
+    "sr-05": (13, 2592, 153501),
+    "sr-06": (10, 2407, 114003),
+    "sr-07": (865, 3853, 132097),
+    "sr-08": (635, 2498, 101479),
+    "sr-09": (3058, 2862, 122605),
+    "sr-10": (11, 1883, 89653),
+    "sr-11": (1989, 3042, 122223),
+    "sr-12": (2242, 2663, 112201),
+    "sr-13": (12, 2711, 124155),
+    "sr-14": (3667, 2007, 157398),
+    "sr-15": (8808, 3840, 187044),
 }
 
 CALIBRATION = {
     "mode_classification": PHASE1_TOKENS,
     "post_confirmation": PHASE2_TOKENS,
     "dispatch_compliance": PHASE3_TOKENS,
-    "skill_routing": PHASE4_TOKENS,
+    "skill_routing": PHASE4_TOKENS_OPENROUTER,
 }
+
+# Provider-specific overrides applied on top of CALIBRATION (see Phase 4
+# block comment). Phases 1-3 have no split yet — their profiles predate the
+# modelUsage fix and are pending recalibration regardless.
+ANTHROPIC_CALIBRATION = {
+    "skill_routing": PHASE4_TOKENS_ANTHROPIC,
+}
+
+
+def _calibration_for(model: ModelConfig, phase: str) -> dict:
+    """Select the calibration table for a model+phase, honoring provider overrides."""
+    if model.provider == "anthropic" and phase in ANTHROPIC_CALIBRATION:
+        return ANTHROPIC_CALIBRATION[phase]
+    return CALIBRATION.get(phase, {})
 
 
 def compute_cost(model: ModelConfig, result: RunResult) -> float:
@@ -130,7 +171,7 @@ def _estimate_case_cost(model: ModelConfig, tokens: tuple[int, int, int]) -> flo
 def estimate_run_cost(model: ModelConfig, phase: str,
                       case_ids: list[str] | None = None) -> float:
     """Estimate cost for one rep of the given cases on the given model."""
-    cal = CALIBRATION.get(phase, {})
+    cal = _calibration_for(model, phase)
     if not cal:
         return 0.0
 
@@ -142,6 +183,9 @@ def estimate_batch_cost(models: list[ModelConfig], phase: str,
                         case_ids: list[str] | None = None,
                         reps: int = 1) -> dict:
     """Estimate total batch cost with per-model breakdown."""
+    # Case enumeration uses the default (OpenRouter) table; provider override
+    # tables must keep identical case-id keysets (asserted by the calibration
+    # scripts) or provider-specific cases would be silently dropped here.
     cal = CALIBRATION.get(phase, {})
     cases = [c for c in (case_ids or list(cal.keys())) if c in cal]
     num_cases = len(cases)

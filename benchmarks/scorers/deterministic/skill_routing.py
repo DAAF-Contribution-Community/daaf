@@ -6,9 +6,9 @@ loads exactly the skills (Skill tool calls) and reads exactly the skill referenc
 files (Read tool calls) that the DAAF skills' own routing directives prescribe.
 
 All scoring is MAIN-TRANSCRIPT-ONLY: Phase 4 runs disallow the Agent tool, so no
-subagent transcripts exist (see PHASE4_SKILL_ROUTING_PLAN.md section 2.2).
+subagent transcripts exist (see benchmarks/README.md § 2, Phase 4).
 
-Matching rules (see plan sections 2.3 and 3.2):
+Matching rules (see benchmarks/README.md § 6, Phase 4 scoring):
 - Read matching is by BASENAME only: sandbox checkpoint replay string-rewrites
   /daaf inside replayed file_path values, so full-path matching is unreliable.
   Basenames in the case set are unique within their skill, and skill membership

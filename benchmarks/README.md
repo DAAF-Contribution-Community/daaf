@@ -53,7 +53,7 @@ for "what's next" beyond the sections cited there.
 
 | Phase | Dataset | Cases | Start State | What It Tests |
 |-------|---------|-------|-------------|---------------|
-| 1 — `mode_classification` | `datasets/mode_classification/cases.jsonl` | 15 (mc-01..mc-15) | Cold start (no checkpoint; `CHECKPOINT_LINES = 0`) | Orchestrator skill loaded, mode classification, no premature execution (hard); confirmation gate present (soft) |
+| 1 — `mode_classification` | `datasets/mode_classification/cases.jsonl` | 15 (mc-01..mc-15) | Cold start (no checkpoint; `CHECKPOINT_LINES = 0`) | Orchestrator skill loaded, mode classification, no premature execution (critical); confirmation gate present (normal) |
 | 2 — `post_confirmation` | `datasets/post_confirmation/cases.jsonl` | 9 (pc-01..pc-09), one per engagement mode | Resumes from a golden checkpoint ending at the confirmation gate; prompt is "Sounds good, let's proceed." | Whether the model loads the expected mode reference files and skills after confirmation |
 | 3 — `dispatch_compliance` | `datasets/dispatch_compliance/cases.jsonl` | 12 (dc-01..dc-12), 2 per agent type | Resumes from an Ad Hoc Collaboration initialized checkpoint (orchestrator + mode reference + data-scientist skill loaded) | Whether the model dispatches the correct subagent with a properly structured prompt |
 | 4 — `skill_routing` | `datasets/skill_routing/cases.jsonl` | 15 (sr-01..sr-15) | Resumes from the same Ad Hoc initialized checkpoint as Phase 3; prompt is a brainstorming question | Whether the model loads exactly the skills and reads exactly the reference files that the skills' own routing directives prescribe |
@@ -73,9 +73,41 @@ shown as "Phase 3b" in the viewer.
 so subagent dispatch is impossible and all scoring is main-transcript-only —
 brainstorming questions are direct-answer territory per the Ad Hoc mode doc, and
 blocking dispatch eliminates subagent cost and transcript-union scoring
-complexity. Each case's required loads/reads are grounded in verbatim routing
-text quoted from the skills themselves; the full design spec with per-case
-ground-truth quotes is `PHASE4_SKILL_ROUTING_PLAN.md`.
+complexity. Accepted tradeoff: the Agent-tool deny feedback may lightly redirect
+a dispatch-inclined model toward direct answering — a mild artificial assist.
+Unlike Bash sub-pattern deny rules (§ 11), disallowing an entire tool by name
+works reliably.
+
+Each case's required loads/reads are grounded in verbatim routing text in the
+skills themselves: a case is valid only if every required load/read is
+*explicitly necessitated by a verbatim directive* in a SKILL.md (the
+data-scientist hub tree, a library skill's decision tree, or frontmatter
+disambiguation like "For static figures use plotnine"). Directives were
+verified against skill text 2026-06-10 (pre-routing-fix wording; the
+routing-norm fix — defined in § 5 — removed "for implementation
+syntax"-style qualifiers without changing any routing target). A case that
+provokes a clarifying question fails its design goal and must be reworded.
+`cases.jsonl` is the operative encoding; the governing directives per case
+are condensed below (the verbatim validated quotes live in the retired
+design doc, recoverable via git history):
+
+| Case | Skill(s) | Required refs | Governing directive (condensed) | Forbidden |
+|------|----------|---------------|--------------------------------|-----------|
+| sr-01 staggered DiD | pyfixest | DS/causal-inference, difference-in-differences | hub "FIRST read causal-inference THEN load… pyfixest for DiD"; pyfixest "Staggered timing → DiD ref" | linearmodels ("no DiD"), statsmodels |
+| sr-02 RE vs FE | linearmodels | DS/statistical-modeling, panel-models | hub "Random effects… → linearmodels"; deliberately associational wording keeps hub branch non-causal | pyfixest ("RE/between use linearmodels") |
+| sr-03 LIML/GMM IV | linearmodels | DS/causal-inference, iv-models | "IV without FE (LIML, GMM) → linearmodels"; LIML/GMM named because plain 2SLS is dual-routed | pyfixest (no FE) |
+| sr-04 NHANES | svy | DS/survey-analysis, design-weights, regression (soft: estimation) | hub "FIRST read survey-analysis THEN load svy" | statsmodels (svy CRITICAL warning) |
+| sr-05 SUR | linearmodels | DS/statistical-modeling, system-models | "System estimation (SUR, 3SLS) → linearmodels"; lowest-ambiguity case | statsmodels, pyfixest |
+| sr-06 logit SRS | statsmodels | DS/statistical-modeling, glm-discrete | "Standard regression… → statsmodels"; sharpest distractor: explicit SRS/self-weighting makes svy a routing error | svy, pyfixest |
+| sr-07 FE Poisson | pyfixest | DS/statistical-modeling, integration | "Poisson (count) → integration.md"; avoids "negative binomial" (would dual-route to statsmodels) | statsmodels |
+| sr-08 clustering | scikit-learn | DS/exploratory-unsupervised, clustering, evaluation-unsupervised | hub unsupervised FIRST-read; "hard assignments" forecloses mixture-models | — |
+| sr-09 static figure | plotnine | DS/visualization-design + -execution, facets-themes (soft: scales-coords) | hub viz FIRST-read pair; plotly excluded twice (frontmatter + kaleido prohibition) | plotly |
+| sr-10 interactive HTML | plotly | viz-design + -execution, charts, export | "Interactive plots → plotly"; single-HTML delivery makes export.md required | plotnine, marimo ("no hosted app") |
+| sr-11 choropleth | geopandas | DS/geospatial-analysis, visualization, crs-projections (soft: geospatial-operations) | explicit projection question upgrades crs-projections to required | plotly, plotnine ("for maps use geopandas") |
+| sr-12 spatial autocorr | geopandas | DS/geospatial-analysis, pysal-spatial-stats (soft: geospatial-operations) | "Moran's I / LISA → pysal-spatial-stats" | scikit-learn ("For spatial analysis use geopandas") |
+| sr-13 ML fairness | scikit-learn | DS/supervised-ml, fairness | "Fairness assessment? Read fairness.md"; forecloses interpretation.md (SHAP distractor) | — |
+| sr-14 exec summary | science-communication | audience-analysis, narrative-frameworks, deliverable-templates | skill's own explicit 3-read order; only one-hop topic-is-the-skill case; no hub FIRST-read | — |
+| sr-15 cross-skill (hard tier) | geopandas + plotnine | pysal-spatial-stats, DS/visualization-design (soft: geospatial-analysis, viz-execution, geoms) | geopandas cross-skill handoff "plotnine/plotly: for non-map visualizations" + kaleido prohibition; only two-skill case; `order` omitted — no directive sequences the branches | plotly |
 
 **Test case format** (`cases.jsonl`, one JSON object per line):
 
@@ -233,7 +265,7 @@ timed-out runs still produce scorable data.
 |------|-------|---------|
 | `post_confirmation/{mode}.jsonl` (9 files) | 18 | Phase 2 — one per engagement mode, ending at the confirmation gate |
 | `dispatch_compliance/ad_hoc_initialized.jsonl` | 47 | All 12 Phase 3 cases — Ad Hoc mode fully initialized (topic-free final exchange, so any task can follow). Phase 4 used this file too until 2026-06-10 (result sets through `20260610_144524`, since archived out of `results/`) |
-| `skill_routing/ad_hoc_initialized.jsonl` | 47 | All 15 Phase 4 cases — content-refreshed copy of the Phase 3 golden (see Regeneration below) reflecting the 2026-06-10 routing-norm fix |
+| `skill_routing/ad_hoc_initialized.jsonl` | 47 | All 15 Phase 4 cases — content-refreshed copy of the Phase 3 golden (see Regeneration below) reflecting the 2026-06-10 routing-norm fix (the fix: reworded the data-scientist hub + ad-hoc mode doc to require loading the routed library skill whenever advice names tools — skills encode environment-specific constraints absent from memory — replacing the "for implementation syntax" framing) |
 | `ad_hoc/after_confirmation.jsonl` | 19 | `run_checkpoint_comparison.py` (legacy comparison utility) |
 | `bootstrap_template.jsonl` | 7 | Input to `scripts/generate_goldens.py` |
 
@@ -295,20 +327,23 @@ pre-recorded history is never re-scored.
 
 **Criterion tiers — cases.jsonl is the source of truth.** Each test case
 declares `hard_requirements` and `soft_requirements` listing which criteria
-are hard vs. soft for that case; the human-edited case lists (and `expected`
+are critical vs. normal for that case; the human-edited case lists (and `expected`
 fields) are the authority, and scorers derive the tiers they stamp on emitted
 criteria from them (`tier1` = structural must-pass, e.g., `agent_dispatched`;
 `tier2` = protocol detail, e.g., `prompt_has_base_dir`; `info` = diagnostic
 only). Phase 1 criteria carry no stamped tier at all — the viewer classifies
 them by membership in the case's `hard_requirements` list (in
-`hard_requirements` → hard, otherwise soft).
+`hard_requirements` → critical, otherwise normal). Vocabulary note: the
+display terms "critical"/"normal" replaced the former "hard"/"soft"
+(2026-06-10, docs and viewer); the underlying data keys —
+`hard_requirements`, `soft_requirements`, `tier1`, `tier2` — are unchanged.
 
 **Phase 1 criteria** (scored inline by `scripts/run_mode_classification.py`;
 the separate `scorers/deterministic/mode_classification.py` module was dead
 code — never invoked by the runner — and was deleted 2026-06-10, with its
 keyword/pattern tables relocated into the runner):
-`orchestrator_skill_loaded`, `mode_correct`, `no_premature_execution` (hard in
-all cases) and `confirmation_gate_present` (soft — gate phrasing varies enough
+`orchestrator_skill_loaded`, `mode_correct`, `no_premature_execution` (critical
+in all cases) and `confirmation_gate_present` (normal — gate phrasing varies enough
 across models that it is a protocol-detail signal, not a structural one). A
 former `reasoning_present` criterion existed only in the dead scorer module
 and was never scored by the live runner; it has been removed from the case
@@ -317,13 +352,13 @@ lists.
 **Phase 2 criteria** (from `scorers/deterministic/checkpoint_adherence.py`):
 dynamically named `read_{doc}` criteria from `expected.documents_read` (tier1)
 and `skill_{name}` criteria from `expected.skills_loaded` (tier1) or
-`expected.skills_loaded_soft` (tier2 — same criterion names, softer tier; a
+`expected.skills_loaded_soft` (tier2 — same criterion names, lower tier; a
 skill appears in one list or the other, never both). pc-07
-(framework_development) uses the soft list for both authoring skills
+(framework_development) uses the normal-tier list for both authoring skills
 (`skill-authoring`, `agent-authoring` — the mode doc directs loading both at
 mode start, but deferring a load is a protocol detail, not a structural
 failure); pc-04 (ad_hoc_collaboration) deliberately keeps `data-scientist`
-hard.
+critical.
 
 **Phase 3 dispatch criteria** (from `scorers/deterministic/dispatch_compliance.py`):
 `agent_dispatched`, `correct_subagent_type`, `prompt_has_base_dir`,
@@ -338,7 +373,7 @@ accept semantically equivalent variants, not just one literal string — e.g.,
 
 **Phase 3b criteria pruning (2026-06-10).** Four structural criteria were
 REMOVED from `scorers/deterministic/subagent_behavior.py` because they passed
-in essentially every run with a transcript, noising Perfect and soft rates
+in essentially every run with a transcript, noising Perfect and normal rates
 (the viewer's Perfect metric counts every non-info criterion, and info-tier
 entries also counted toward Perfect in the v1 viewer):
 `subagent_transcript_found` (when no subagent transcript exists the scorer now
@@ -371,12 +406,12 @@ transcript-independent retiers but carry no `skill_agent_authoring` entry
 (correct: no evidence to score).
 
 **Phase 4 skill-routing criteria** (from `scorers/deterministic/skill_routing.py`):
-`required_skills_loaded` and `required_refs_read` (tier1, hard in all cases);
+`required_skills_loaded` and `required_refs_read` (tier1, critical in all cases);
 `required_skills_engaged`, `expected_refs_read`, `routing_order`, and
-`no_forbidden_skills` (tier2, soft). `expected_refs_read` is emitted ONLY for
+`no_forbidden_skills` (tier2, normal). `expected_refs_read` is emitted ONLY for
 cases with a non-empty `expected.expected_refs` list (since 2026-06-10) —
 cases without secondary refs get no criterion at all rather than an automatic
-pass, so it never dilutes Perfect/soft rates. `required_skills_engaged` (added
+pass, so it never dilutes Perfect/normal rates. `required_skills_engaged` (added
 2026-06-10) passes when every required skill was loaded OR name-mentioned in
 user-visible assistant text post-checkpoint (case-insensitive, hyphens match
 hyphen-or-whitespace, `sklearn` counts for scikit-learn; thinking blocks
@@ -395,26 +430,55 @@ successful tool calls satisfy requirements. `quickstart.md`/`gotchas.md` and
 other extra reads under a correctly loaded skill are never penalized —
 over-reading is a quality issue, not a routing error.
 
+Baseline transcript review (2026-06-10; Fable 5 + Sonnet 4.6, 30 runs)
+established the dominant failure behind `required_skills_engaged` as **two-hop
+decay**: hub-reference selection was near-100% correct, but models
+reinterpreted "THEN load the library skill" as an implementation-time
+protocol — naming the correct skill in prose while answering from parametric
+memory. Reference reads were accuracy-anxiety-driven, not directive-driven;
+zero-tool runs were substantive, not lazy. This motivated both
+`required_skills_engaged` and the framework-side routing-norm fix (defined in
+§ 5; the pre-fix data-scientist description "For implementation syntax, load
+the routed tool-specific skill" itself licensed the deferral). Informal mention-counts in
+the review (~13/15) overstate vs the deterministic matcher (9/15).
+
 **Vacuous tier-2 passes (Phase 4 caveat):** `no_forbidden_skills` passes
 trivially when a model makes no Skill calls at all. In the 2026-06-10 dry run,
 models that ignored routing entirely (answering from parametric memory) still
-passed it 75/75 — interpret Phase 4 soft rates jointly with the tier-1
+passed it 75/75 — interpret Phase 4 normal rates jointly with the tier-1
 load/read criteria, never in isolation. (A former criterion,
-`no_spurious_skill_reload`, was removed for exactly this vacuousness — see
-`PHASE4_SKILL_ROUTING_PLAN.md` § 9.) `required_skills_engaged`, by contrast,
+`no_spurious_skill_reload`, was removed 2026-06-10 for exactly this
+vacuousness: it passed 75/75 in dry runs with zero discrimination — models
+that fail routing mostly make zero Skill calls. Removed from scorer, cases,
+and schema; dry-run result.json files retain it.)
+`required_skills_engaged`, by contrast,
 is not vacuously passable: a zero-tool run must still name the required skill
 in user-visible text, and observed per-model rates span 3/15 to 14/15.
 
-**Perfect vs. Hard/Soft rates — intentionally different metrics:**
+**Phase 4 scoring rationale:** `no_forbidden_skills` is deliberately
+normal-tier: loading a wrong skill is only harmful if acted upon, and the
+excluding directive in the wrong skill is itself informative.
+`required_skills_engaged` is deliberately NOT folded into the critical loading
+criterion — that would grade the targeted failure mode as a pass, blind the
+post-fix delta, and mix prose-matching into a tool-call criterion. (Pre-fix
+rescore, since-archived sets: engaged 136/225 = 60.4% vs loaded 18/225 = 8.0%
+— numbers survive only in this record.) `routing_order` auto-passes when a
+case omits `expected.order` (intentional; sr-15 omits it — no directive
+sequences its two branches). "Allowed ≠ expected": per-case `allowed_refs`
+audit lists are ignored by the scorer — by design there is no over-reading
+penalty. `forbidden_skills` membership requires a verbatim excluding
+directive; merely-unnecessary skills are never forbidden.
+
+**Perfect vs. Critical/Normal rates — intentionally different metrics:**
 
 | Metric | Unit | Definition |
 |--------|------|------------|
 | Perfect | per-run | Did ALL criteria pass for this run? |
-| Hard rate | per-criterion | Across all runs, what fraction of hard criteria passed? |
-| Soft rate | per-criterion | Across all runs, what fraction of soft criteria passed? |
+| Critical rate | per-criterion | Across all runs, what fraction of critical criteria passed? |
+| Normal rate | per-criterion | Across all runs, what fraction of normal criteria passed? |
 
-These can diverge sharply: 4 runs each failing one soft criterion yields 67%
-Perfect with 100% Hard and 96% Soft. Both views are reported.
+These can diverge sharply: 4 runs each failing one normal criterion yields 67%
+Perfect with 100% Critical and 96% Normal. Both views are reported.
 
 **LLM judge status:** `scorers/llm_judge/` is an **unimplemented stub**
 (contains only `__init__.py`). The three-tier hybrid design from the original
@@ -447,15 +511,30 @@ were collected 2026-06-08 (Haiku 4.5, DeepSeek V4 Flash, Gemini 3.1 Flash
 Lite) before the `modelUsage` fix and reflect main-session-only tokens, so
 they underestimate costs for subagent-dispatching cases (all of Phase 3).
 Treat those pre-run estimates as lower bounds until recalibrated (§ 12). The
-Phase 4 profile is post-fix (recalibrated 2026-06-10 from the dry-run batch)
-but likely underestimates stronger models: the calibration models mostly
-answered without tool use, while full multi-reference routing runs heavier.
-In the opposite direction, observed pre-routing-fix Anthropic actuals ran at
-only ~14-20% of estimate (1-turn parametric answers plus prompt caching), so
-the estimator overstated those batches ~5-7×. The Phase 4 calibration source
-set has since been archived out of `results/`; recalibration from the first
-fresh-golden Anthropic baseline batch is pending (provenance note at
-`harness/cost_estimator.py:74`; § 12 Current Status).
+Phase 4 profiles were recalibrated 2026-06-10 from all eight fresh-golden
+baseline sets (520 usable runs; 35 error/timeout/stall runs excluded) and are
+**split by provider** (`PHASE4_TOKENS_OPENROUTER` / `PHASE4_TOKENS_ANTHROPIC`,
+selected via `model.provider`; unknown providers fall back to the OpenRouter
+profile, which estimates high). The split is necessary because the billing
+regimes do not mix: Anthropic runs are nearly all cache reads (billed ~10% of
+input price) with ~0 uncached input, while OpenRouter runs re-send uncached
+context every turn — a single blended profile over-estimated Anthropic models
+3.3-8.4x. Validated against the same actuals at 0.90x aggregate, 0.90-0.91x
+per provider (`_sandbox/validate_phase4_estimator_a.py`); residual per-model
+scatter (~0.7-1.7x) is inherent to per-case calibration — heavy models run
+above the profile, light ones below.
+
+**Pricing correction (2026-06-10).** Reconciling computed costs against the
+OpenRouter billing export (`openrouter_activity_2026-06-10.csv`, which covers
+the strong-five rep-1 batch 18:12-18:35; analysis in
+`_sandbox/analyze_openrouter_activity.py`) confirmed computed costs within
+~2-6% of billed for Gemini 3.1 Pro, GLM 5.1, Kimi K2.6, and DeepSeek V4
+Flash — but exposed **DeepSeek V4 Pro billing at ~3.3x the configured rates**.
+`config/models.yaml` was corrected ($0.435/$0.87 → $1.44/$2.88 per M, implied
+from billed totals). Result sets archived before the fix (2026-06-10 and
+earlier) understate DS Pro `computed_cost_usd` — and therefore its viewer
+cost displays and cost-efficiency standing — by ~3.3x; stored values are not
+retroactively recomputed (archived results are immutable).
 
 ## 8. Results & Viewer
 
@@ -504,10 +583,17 @@ for provenance.
 
 The output is a single scrolling document (verdict, about, leaderboard, cost
 vs. performance, phase deep-dives, cases & consistency, costs detail, run
-explorer, provenance). The leaderboard composite and tier bands are pinned to
-the four core components (P1, P2, P3a, P3b); any new phase reports as its own
-labeled group throughout the viewer until it is deliberately added to the
-composite. To add a new benchmark phase to the viewer, follow the "Adding a
+explorer, provenance). The leaderboard composite and tier bands span all five
+approved components with equal weight (P1, P2, P3a, P3b, P4 — P4
+user-approved 2026-06-10, joined the composite 2026-06-11, superseding the
+original four-component pin); a
+model lacking runs for a component is scored on its available components and
+carries a visible "partial" marker naming what's missing. Any new phase
+reports as its own labeled group throughout the viewer until it is
+deliberately added to the composite. Cost vs. Performance has a phase-basis
+selector (Composite + each phase group) and Costs Detail a perfect-rate
+phase-scope toggle, so per-phase value comparisons don't require regeneration.
+To add a new benchmark phase to the viewer, follow the "Adding a
 new benchmark phase" guide in the comment block above `PHASE_MAP` in
 `scripts/generate_results_viewer_v2.py`. Notable internals:
 
@@ -523,6 +609,69 @@ new benchmark phase" guide in the comment block above `PHASE_MAP` in
   The scrollspy only ever writes via `history.replaceState` — and writes
   nothing on `file://` — since assigning `location.hash` during scroll would
   scroll-jump
+
+### Viewer design record
+
+Durable record of the 2026-06-10 viewer redesign (absorbed from the retired
+redesign plan document); code comments in the generator and template cite
+this subsection as "design record: README § 8".
+
+**Design decisions (viewer redesign Checkpoint 1, 2026-06-10):** (1) Composite
+= unweighted mean of per-phase Perfect rates, originally four equal components
+(P1, P2, P3a, P3b) — superseded 2026-06-11 when P4 joined as a fifth equal
+component (see above / § 12). (2) Tier bands derived mechanically from gaps in
+composite score (reproducible rule, documented in the generator's tier-banding
+comment block). (3) All result sets embedded by default. (4) Dated
+auto-incrementing output filenames are intentional (above). (5) About layer:
+plain-language, DAAF-aware tone, ~600–900 words across collapsibles.
+(6) Archival approach for the v1 generator (user decision; details at the
+top of this section).
+
+**Accepted residuals (viewer redesign Checkpoint 2, 2026-06-10) — reviewed,
+no fix planned:** (1) `konStep` labels 1-of-2 reps as "most" in the case ×
+model agreement heatmaps — a smallest-denominator labeling quirk; exact k/n
+stays visible in the cell. (2) The leaderboard keeps a fixed "#" rank column
+despite the tier-bands-over-false-precision principle; adjacent prose
+disclaims strict-ordering precision. (3) P3b heatmap cells carry varying
+denominators (subagent-criterion applicability varies by case subcategory);
+tooltip k/n mitigates misreading. (4) The generator's `print_summary` echoes
+`summary.json` totals without the disk-vs-summary discrepancy caveat the
+rendered provenance footer carries. (5) Provenance git SHA is per-set display
+only — no cross-set SHA grouping or comparison.
+
+**Data realities the viewer encodes (2026-06-10 inventory):** run-level
+`result.json` is ground truth — `summary.json` run counts disagreed with
+on-disk run dirs in 9 of 42 sets at redesign time (67 phantom runs); all
+viewer aggregates come from loaded runs, summary totals are provenance-only,
+and disk-vs-summary discrepancies are displayed (not hidden) in the provenance
+footer. Timed-out runs are **graded**: every on-disk `error` is a timeout
+string; such runs have zeroed turns/cost/tokens but fully scored criteria. The
+viewer status taxonomy is therefore grade (perfect/partial/failed/ungraded)
+orthogonal to the `timed_out` flag — no string-matching on `error` — and
+cost/duration averages exclude timeout-zeroed runs, with excluded counts
+disclosed in footnotes. `reasoning_cost_multiplier` appears in no
+`result.json`; the badge logic reads it defensively.
+
+**Template architecture:** v2 is data-prep Python + placeholder substitution
+into `scripts/viewer_template.html` (`/*__DATA_JSON__*/`,
+`/*__PRECOMPUTED_JSON__*/`, plus small prose slots). Extracted from v1's
+single f-string because `{{ }}` escaping across ~1,400 lines of CSS/JS bred
+subtle bugs, blocked editor syntax support, and made diffs noisy. Output
+remains single-file and self-contained; the generator is the single entry
+point, no build step. JS is vanilla, IIFE-wrapped, ES5-style; headline numbers
+are precomputed in Python and embedded so prose and charts cannot drift apart.
+
+**Design system:** dark theme. Colorblind-safe status palette with mandatory
+glyph redundancy (✓ ✗ ◐ —) and ≥3:1 non-text contrast: pass `#34d399`, fail
+`#fb7185`/`#f87171`, partial `#fbbf24`, ungraded slate `#64748b`; timeout is a
+distinct glyph marker, never a color of its own. Heatmap rates render as 5
+discrete steps on a single hue ramp (never a continuous red→green ramp). 17
+distinguishable model-identity hues, never hue alone (always label
+points/rows). Inline SVG, zero chart libraries. Governing principles:
+overview-first/details-on-demand single scrolling document (no global filter
+bar — each section owns its controls); every chart titles its *finding*,
+computed at render time; 1–3 sentences of "how to read this" per section;
+visible denominators everywhere (`21/24`, not just 88%).
 
 ## 9. Operational Notes
 
@@ -605,7 +754,9 @@ Point-in-time results as of 2026-06-09. Rep counts: Phases 1 and 2 — 3 reps
 for most models, Fable 5 at 2 reps; Phase 3 — Anthropic models at 2 reps,
 OpenRouter at 3. Note: this snapshot predates the 2026-06-10 criteria rescore
 (`rescore_criteria_overhaul.py`), which retroactively changed pc-07 rates in
-the archived result sets.
+the archived result sets. It also predates Phase 4 and the five-component
+composite (§ 8) — its tiering and weakest-criterion claims describe the
+P1-P3 corpus only; see § 12 for current composite results.
 
 **Topline:** Fable 5 is the strongest model overall — Phase 1: 30/30 (100%),
 Phase 2: 18/18 (100%), Phase 3: 21/24 (88%) with a 100% dispatch rate at
@@ -661,9 +812,10 @@ within 300s.
 2. **Fable 5 thinking blocks are encrypted** (empty string + cryptographic
    signature). Reasoning-quality analysis is structurally impossible for Fable;
    all behavioral assessment relies on observable output proxies.
-3. **Cost calibration profiles are stale.** The per-case token profiles in
-   `harness/cost_estimator.py` predate the `modelUsage` fix and reflect
-   main-session-only tokens, underestimating subagent-dispatching cases (§ 7).
+3. **Phase 1-3 cost calibration profiles are stale.** Those per-case token
+   profiles in `harness/cost_estimator.py` predate the `modelUsage` fix and
+   reflect main-session-only tokens, underestimating subagent-dispatching
+   cases. Phase 4 profiles were recalibrated per provider 2026-06-10 (§ 7).
 4. **Subagents leaked artifacts outside the sandbox (root cause fixed
    2026-06-10).** Fixture contamination was an ordering bug: the dispatch
    runner staged fixtures into the sandbox BEFORE `prepare_sandbox()`
@@ -678,7 +830,11 @@ within 300s.
    there.
 5. **OpenRouter token counts are approximations.** The Anthropic-compatible
    endpoint reports counts from Anthropic's tokenizer, not each model's native
-   tokenizer, so computed OpenRouter costs are approximate.
+   tokenizer, so computed OpenRouter costs are approximate. Billing
+   reconciliation (2026-06-10, § 7) bounded the tokenizer-driven error at
+   ~2-6% for the strong-five models; the larger DeepSeek V4 Pro discrepancy
+   was a pricing-config error (fixed in `models.yaml`; archived sets retain
+   ~3.3x-understated DS Pro costs).
 6. **Golden checkpoints embed recording-time framework content.** Golden JSONLs
    contain `attachment` records with CLAUDE.md and hook-injection content from
    when the session was recorded. Material framework changes can leave a
@@ -715,6 +871,7 @@ within 300s.
   remaining Anthropic models to 3 reps on Phase 3 (sequential, one model at a
   time)
 - **Recalibrate cost estimation profiles** from post-`modelUsage`-fix runs
+  (Phases 1-3 remaining; Phase 4 recalibrated per provider 2026-06-10, § 7)
 
 ### Design Backlog (from the original reference)
 
@@ -780,8 +937,18 @@ items below are the still-valuable remainder.
   plumbing exists; see the reference's 2026-05-02 session notes for the
   `CLAUDE_CODE_EFFORT_LEVEL` override pitfall). The version-tagging deliverable
   is already satisfied by `manifest.json`'s DAAF git SHA.
+- **Viewer fast-follows:** light theme / print stylesheet — deferred from the
+  2026-06-10 viewer redesign as possible fast-follows (§ 8 design record).
+- **Phase 4 expansion reserve:** few-clusters wild bootstrap (pyfixest
+  `advanced-inference.md`) is the first candidate if the suite grows — cut
+  only for slot economics. Excluded as unroutable: time series (no hub branch;
+  statsmodels-frontmatter-only), plain 2SLS without FE (dual-routed), polars
+  larger-than-memory (implementation, not brainstorming), marimo app ("Always
+  Load Together" ambiguity). Bayesian/survival route to "escalate to
+  orchestrator" — a refusal test, candidate for a future Safety/Protocol
+  category.
 
-### Current Status / Next Steps (2026-06-10, updated ~21:50 UTC)
+### Current Status / Next Steps (2026-06-11, updated ~01:30 UTC)
 
 Point-in-time status; supersedes the retired `SESSION_NOTES.md` restart
 prompts. Once these items land, fold the outcomes into the sections above
@@ -804,8 +971,15 @@ and update or remove this subsection.
   → Fable**). Top open-weight routers across reps: DeepSeek V4 Pro and
   Qwen 3.6 27B (5-6/15 all-criteria); Kimi most rep-volatile (5-9/15
   loaded).
-- **Viewer gap (bookmarked, viewer-session territory):** the v2 viewer's
-  cost plot has no phase filter — cannot display costs for Phase 4 alone.
+- **Viewer cost-plot phase filter — RESOLVED (2026-06-10 viewer session).**
+  Cost vs. Performance now has a phase basis selector (Composite + P1-P4;
+  perf values/frontiers precomputed per group, dynamic for future phases) and
+  Costs Detail gained a "Perfect-rate scope" phase toggle. Same session:
+  template group-order array gained `skill_routing` (the one real Phase 4
+  wiring gap — P4 had rendered via unordered-tail fallback), and all
+  user-visible severity labels renamed Hard→**Critical** / Soft→**Normal**
+  (viewer + README §§ 2/6; data keys `hard_requirements`/`tier1`/etc.
+  unchanged). Generator v2.4.0.
 - **Harness gap (bookmarked): transcript-less timeout runs.** 4 runs
   (`pc-03`/`pc-07` × Fable 5 in `20260609_203258` and `20260609_215903` —
   the two sets with the short 120s pc-timeout) are flagged timed-out with NO
@@ -830,13 +1004,67 @@ and update or remove this subsection.
   candidate § 12 backlog item. Harness artifact to know: timeouts zero
   `turns`/`output_tokens` in result.json, so stall analysis requires
   transcript-level reconstruction.
-- **PHASE4_TOKENS recalibration** from `_194256` Anthropic actuals (avg$/run:
-  Haiku $0.020, Sonnet $0.087, Opus 4.6 $0.107, Fable $0.425; provenance
-  note at `harness/cost_estimator.py:74`; § 7). Estimator currently
-  UNDERSTATES post-fix OpenRouter runs (~1.6x) — inverse of the old caveat.
-- **Viewer current:** `viewer_2026-06-10q.html` (v2; includes all eight
-  fresh Phase 4 sets). Earlier dated viewers superseded — retention/deletion
-  is pending housekeeping.
+- **PHASE4_TOKENS recalibration — RESOLVED (2026-06-10), provider-split.**
+  Calibrated from all eight fresh sets (520 usable runs); split into
+  `PHASE4_TOKENS_OPENROUTER`/`_ANTHROPIC` after a blended profile
+  over-estimated Anthropic 3.3-8.4x (caching-regime mismatch). Validated
+  0.90x aggregate, 0.90-0.91x per provider (§ 7; scripts in `_sandbox/`).
+  Same session: **DeepSeek V4 Pro pricing corrected** in `models.yaml`
+  ($0.435/$0.87 → $1.44/$2.88) via billing-export reconciliation — archived
+  sets understate DS Pro costs ~3.3x (§ 7 Pricing correction).
+- **Viewer current:** `viewer_2026-06-11d.html` (v2.5.0; all 50 sets;
+  `_11c` superseded by the doc-consolidation comment repoints, rendered
+  output identical;
+  five-component composite — needs user visual check; supersedes
+  `_10s.html`/v2.4.0; intermediates `_11a`/`_11b` superseded — review pass
+  caught stale four-component prose in the leaderboard lead, hero verdict,
+  and P4 deep-dive explainer that shipped into them). Earlier dated viewers
+  superseded — retention/deletion is pending housekeeping (user decision;
+  user deletes).
+- **P4 joined the leaderboard composite + tier bands — RESOLVED (2026-06-11
+  session; user-approved 2026-06-10).** `skill_routing` added to
+  `COMPOSITE_GIDS` (generator v2.5.0); composite is now the unweighted mean
+  of five components. Models lacking a component score on their available
+  components with the leaderboard "partial" disclosure chip (existing
+  mechanism; on the current corpus all 17 models have all five components,
+  so no partial markers appear). Effects: the tier **gap rule** now yields
+  5 tiers natively (quartile fallback no longer triggers); Fable 5 is sole
+  T1 (0.948); Haiku 4.5 drops to T3 (P4 perfect rate 0.00); global weakest
+  criterion is now `expected_refs_read` (25%, P4). Same dispatch: § 8 pin
+  sentence rewritten (+ phase-filter mention), redesign-plan decision 1
+  superseded + its addendum rewritten + header version note (that plan doc
+  was later absorbed and deleted — see the consolidation bullet below),
+  generator
+  docstring/console "Hard"→"Critical" labels, dev-guide anchors fixed +
+  `phaseSpan`/`ab-pX-cases` registration step added, template tooltip
+  double-space fixed.
+- **Transient docs consolidated — RESOLVED (2026-06-11 session).** This
+  README is now the single source of truth: `VIEWER_REDESIGN_PLAN.md`,
+  `PHASE4_SKILL_ROUTING_PLAN.md`, `PHASE4_ROUTING_FIX_SCOPING_20260610.md`,
+  and `PHASE4_TRANSCRIPT_REVIEW_20260610.md` were absorbed (durable content
+  → § 2 per-case ground-truth table + agent-disallow tradeoff, § 5
+  routing-fix gloss, § 6 Phase 4 scoring rationale + two-hop-decay record,
+  § 8 "Viewer design record" subsection, § 12 expansion-reserve/fast-follow/
+  open-follow-up bullets) and deleted (user decision, absorb-then-delete).
+  All code/doc citations repointed to README sections (generator, template,
+  `run_skill_routing.py`, `scorers/deterministic/skill_routing.py`);
+  `archive/` and `research/2026-05-01_Benchmark_Testing/
+  Benchmark_System_Reference.md` deliberately untouched.
+- **Open follow-ups from the Phase 4 routing-fix scoping (2026-06-10):**
+  (1) frontmatter description budget — svy (506 ch), polars (416), marimo
+  (486) exceed the 250-char limit documented in skill-authoring, yet the live
+  environment shows full descriptions; verify which claim is stale before
+  fixing. (2) "For implementation syntax" framing persists in ~12
+  data-scientist reference-file headers (descriptive-analysis.md:3,571;
+  statistical-modeling.md:3; causal-inference.md:5-6; survey-analysis.md:7;
+  exploratory-unsupervised.md:3,261; supervised-ml.md:3,188,230,354;
+  geospatial-operations.md:5) — the Session 4 fix targeted SKILL.md + the
+  mode doc; this sweep was recommended but not executed. Pairs with the
+  data-scientist SKILL.md:353 residual in the "Optional" bullet below.
+  (3) Maintainer note: Phase 4 criterion
+  *emission* is hardcoded in the scorer; the cases' `hard_/soft_requirements`
+  lists drive viewer display only and must stay synchronized but do not drive
+  scoring.
 - **Optional:** golden content hash in `manifest.json` (§ 11 item 8); review
   of the data-scientist `SKILL.md:353` "Tool-specific syntax" branch label
   (accepted residual unless transcripts show models exploiting it).
