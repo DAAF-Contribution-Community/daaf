@@ -23,6 +23,13 @@ TIMEOUT_BY_TIER = {
     "high": 600,     # 10 minutes for code generation tests
 }
 
+# Grace window between SIGTERM and SIGKILL for timed-out runs (seconds).
+# Claude Code's main-session transcript writes are async/buffered; a hard
+# SIGKILL races the writer and can truncate the transcript tail (lost Agent
+# tool_use records — see README § 11 item 9). SIGTERM first gives the CLI a
+# chance to flush before the hard kill lands.
+KILL_GRACE_SECONDS = 15
+
 
 def execute_run(config: RunConfig) -> RunResult:
     """Execute a single benchmark run via claude -p.
@@ -96,47 +103,67 @@ def execute_run(config: RunConfig) -> RunResult:
 
     start_time = time.time()
 
+    proc = None
     try:
-        proc = subprocess.run(
+        proc = subprocess.Popen(
             cmd,
-            capture_output=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
             text=True,
-            timeout=timeout,
             cwd=config.working_dir,
             env=env,
         )
 
-        result.exit_code = proc.returncode
+        timed_out = False
+        try:
+            stdout, stderr = proc.communicate(timeout=timeout)
+        except subprocess.TimeoutExpired:
+            # Graceful shutdown ladder: SIGTERM -> grace window -> SIGKILL.
+            stdout, stderr = _graceful_kill(proc)
+            timed_out = True
+
         result.duration_seconds = time.time() - start_time
 
-        if proc.returncode != 0 and not proc.stdout.strip():
-            result.error = f"CLI exited with code {proc.returncode}: {proc.stderr[:500]}"
+        if timed_out:
+            # Try parsing partial stdout captured through the kill sequence
+            # (everything the CLI emitted before SIGTERM plus anything it
+            # flushed during the grace window).
+            if stdout:
+                _parse_json_output(stdout, result)
+
+            # Set the timeout error AFTER parsing: _parse_json_output writes
+            # a parse-failure message into result.error on broken partial
+            # JSON, and downstream timed_out detection keys on this exact
+            # string ("Timed out" substring — see runner result dicts).
+            result.error = f"Timed out after {timeout}s"
+
+            # Use the known session_id — either from golden checkpoint or
+            # pre-assigned via --session-id for cold starts.
+            if not result.session_id:
+                result.session_id = checkpoint_session_id or cold_start_session_id or ""
             return result
 
-        _parse_json_output(proc.stdout, result)
+        result.exit_code = proc.returncode
+
+        if proc.returncode != 0 and not stdout.strip():
+            result.error = f"CLI exited with code {proc.returncode}: {stderr[:500]}"
+            return result
+
+        _parse_json_output(stdout, result)
         _extract_tool_failures(result)
 
         # Capture stderr for diagnostics (but don't treat as error)
-        if proc.stderr.strip():
-            stderr_summary = proc.stderr.strip()[:500]
+        if stderr.strip():
+            stderr_summary = stderr.strip()[:500]
             if result.error:
                 result.error += f"\nstderr: {stderr_summary}"
 
-    except subprocess.TimeoutExpired as e:
-        result.duration_seconds = time.time() - start_time
-        result.error = f"Timed out after {timeout}s"
-
-        # Try parsing partial stdout captured before kill
-        if e.stdout:
-            stdout_text = e.stdout if isinstance(e.stdout, str) else e.stdout.decode("utf-8", errors="replace")
-            _parse_json_output(stdout_text, result)
-
-        # Use the known session_id — either from golden checkpoint or
-        # pre-assigned via --session-id for cold starts.
-        if not result.session_id:
-            result.session_id = checkpoint_session_id or cold_start_session_id or ""
-
     except Exception as e:
+        # Defensive cleanup: subprocess.run() reaped the child internally;
+        # with Popen we must not leak a live CLI process on unexpected errors.
+        if proc is not None and proc.poll() is None:
+            proc.kill()
+            proc.communicate()
         result.duration_seconds = time.time() - start_time
         result.error = f"Execution error: {type(e).__name__}: {e}"
         if not result.session_id:
@@ -147,6 +174,31 @@ def execute_run(config: RunConfig) -> RunResult:
     # transcript. This ensures timed-out runs still produce scorable data.
 
     return result
+
+
+def _graceful_kill(proc: subprocess.Popen) -> tuple[str, str]:
+    """Terminate a timed-out CLI process via a graceful shutdown ladder.
+
+    SIGTERM -> wait up to KILL_GRACE_SECONDS -> SIGKILL. The grace window
+    lets Claude Code flush its async/buffered main-session transcript writes
+    before dying (README § 11 item 9 — a hard SIGKILL truncates the
+    transcript tail, losing records like the Agent tool_use block).
+
+    Uses communicate() rather than wait() for the grace wait: the CLI may
+    keep writing to stdout/stderr while flushing, and wait() with full pipes
+    deadlocks. communicate() keeps draining the pipes, and per the subprocess
+    docs a retried communicate() after TimeoutExpired loses no output.
+
+    Returns (stdout, stderr) accumulated across the entire process lifetime,
+    including anything emitted during the grace window.
+    """
+    proc.terminate()  # SIGTERM — request shutdown, allow transcript flush
+    try:
+        stdout, stderr = proc.communicate(timeout=KILL_GRACE_SECONDS)
+    except subprocess.TimeoutExpired:
+        proc.kill()  # SIGKILL — grace window expired, hard stop
+        stdout, stderr = proc.communicate()
+    return stdout or "", stderr or ""
 
 
 def _parse_json_output(stdout_raw: str, result: RunResult) -> None:

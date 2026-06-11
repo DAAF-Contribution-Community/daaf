@@ -18,7 +18,31 @@ Scoring criteria (all deterministic, no LLM involvement):
   - prompt_has_instructions (tier2): Agent prompt contains "## Instructions"
   - prompt_contains_required (tier2): All expected strings appear in Agent prompt
   - prompt_contains_any (tier2): At least one of the optional strings appears
+
+Dispatch-recovery fallback (2026-06-11): the harness runs ``claude -p`` under
+``subprocess.run(timeout=...)``, which SIGKILLs on timeout. Claude Code's
+main-session transcript writes are async/buffered, so a timed-out run can lose
+an unflushed tail — sometimes including the assistant record carrying the
+``Agent`` tool_use. The dispatched subagent's own transcript
+(``subagents/agent-{id}.jsonl`` + ``agent-{id}.meta.json``) survives because it
+is a separate file, and its presence proves the dispatch happened (subagent
+dirs are keyed by per-run fresh session UUIDs). When the main transcript yields
+NO Agent tool_use record at all post-checkpoint (not even a failed one) AND
+the caller supplies subagent transcript paths, the scorer recovers the
+dispatch from that evidence: the subagent_type comes from meta.json
+``agentType`` and the full dispatched prompt from the first user record of the
+subagent transcript. A RECORDED failed Agent call (``is_error=true``)
+suppresses recovery — it is evidence the system processed and
+rejected/aborted the dispatch, which must keep failing per the original
+criterion semantics; the fallback exists only to reconstruct records LOST to
+the timeout-kill race. The fallback is evidence-gated, NOT timeout-gated. Every criterion emitted from a recovered
+scoring pass carries a " (recovered from subagent transcript)" provenance
+suffix in its detail. With no evidence supplied (or none parseable), behavior
+is identical to the pre-fallback scorer.
 """
+
+import json
+from pathlib import Path
 
 from benchmarks.harness.models import CriterionResult
 from benchmarks.scorers.deterministic.checkpoint_adherence import (
@@ -61,10 +85,109 @@ def extract_agent_calls(tool_calls: list[dict]) -> list[dict]:
     return agent_calls
 
 
+def recover_agent_calls_from_subagent_transcripts(
+    subagent_transcripts: list,
+) -> list[dict]:
+    """Synthesize Agent-call entries from archived subagent transcript evidence.
+
+    Used by the dispatch-recovery fallback (module docstring) when the main
+    transcript lost its Agent tool_use record to a timeout SIGKILL. For each
+    subagent transcript ``agent-{id}.jsonl``:
+      - subagent_type comes from the sibling ``agent-{id}.meta.json``
+        (``{"agentType": ..., "description": ...}``)
+      - the dispatched prompt comes from the transcript's FIRST record, which
+        is type "user" with ``message.content`` as a plain string containing
+        the complete prompt the orchestrator dispatched
+
+    Args:
+        subagent_transcripts: Paths (str or Path) to subagent .jsonl files.
+            Works for both live locations (~/.claude/projects/-daaf/{sid}/
+            subagents/) and archived run dirs (results/*/runs/*/subagents/).
+
+    Returns:
+        List of dicts shaped like extract_agent_calls() entries, each with
+        ``succeeded: True`` and an extra ``recovered: True`` flag. Transcripts
+        whose first record cannot be parsed — or whose record, ``message``, or
+        ``content`` is not the expected shape (dict / dict / plain string) —
+        are skipped: an unparseable or malformed file is not dispatch
+        evidence. Fail-soft is deliberate: this runs inside the live scorer,
+        where a crash would convert a completed, paid run into a zeroed error
+        result.
+    """
+    recovered = []
+    for t in subagent_transcripts:
+        t = Path(t)
+
+        # --- Prompt: first record of the subagent transcript ---
+        prompt = ""
+        first_record = None
+        try:
+            with open(t) as f:
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    first_record = json.loads(line)
+                    break
+        except (OSError, json.JSONDecodeError):
+            continue
+        # Malformed-evidence guards: treat unexpected shapes as not-evidence
+        # (skip the transcript) rather than crashing — an AttributeError here
+        # in the live runner would zero out a completed, paid run.
+        if not isinstance(first_record, dict):
+            # Empty file (None) or non-dict JSON (bare list/string/number).
+            continue
+        if first_record.get("type") == "user":
+            message = first_record.get("message")
+            if not isinstance(message, dict):
+                continue
+            content = message.get("content", "")
+            if not isinstance(content, str):
+                # The dispatched prompt is written as the first user record's
+                # content as a PLAIN STRING; a list-of-blocks or other shape
+                # is not the dispatch-evidence format -> skip.
+                continue
+            prompt = content
+        else:
+            # A dict first record that is not a user record (e.g., a summary
+            # or queue-operation line) is not the dispatch-evidence format
+            # either — skip, consistent with the transcript-shape contract
+            # above (transcript problems skip; only meta problems degrade).
+            continue
+
+        # --- Type + description: sibling meta.json ---
+        agent_type = ""
+        description = ""
+        meta_path = t.with_suffix(".meta.json")
+        if meta_path.exists():
+            try:
+                with open(meta_path) as f:
+                    meta = json.load(f)
+                # Guard non-dict meta JSON the same way as unparseable meta
+                # (adjacent except): degrade to empty fields, don't crash.
+                if isinstance(meta, dict):
+                    agent_type = meta.get("agentType", "")
+                    description = meta.get("description", "")
+            except (OSError, json.JSONDecodeError):
+                pass
+
+        recovered.append({
+            "subagent_type": agent_type,
+            "prompt": prompt,
+            "description": description,
+            "model": "",
+            "raw_input": {},
+            "succeeded": True,
+            "recovered": True,
+        })
+    return recovered
+
+
 def score_dispatch_compliance(
     transcript_path: str,
     checkpoint_line_count: int,
     expected: dict,
+    subagent_transcripts: list | None = None,
 ) -> list[CriterionResult]:
     """Score dispatch compliance from a session transcript.
 
@@ -83,9 +206,18 @@ def score_dispatch_compliance(
               in the Agent prompt
             - prompt_contains_any (list[str], optional): at least one
               must appear in the Agent prompt
+        subagent_transcripts: Optional list of subagent .jsonl paths used as
+            dispatch-recovery evidence (module docstring). Consulted ONLY when
+            the main transcript yields no Agent tool_use record at all — a
+            recorded failed call suppresses recovery. Callers:
+            the live runner passes find_subagent_transcripts(session_id); the
+            archived rescore passes the run dir's subagents/ globs. When None
+            or empty, behavior is identical to the pre-fallback scorer.
 
     Returns:
-        List of CriterionResult objects, one per criterion.
+        List of CriterionResult objects, one per criterion. When recovery
+        fired, every detail carries the "(recovered from subagent transcript)"
+        provenance suffix.
     """
     results = []
 
@@ -102,14 +234,41 @@ def score_dispatch_compliance(
     # A failed dispatch (is_error=true) means the system rejected the launch.
     succeeded_calls = [ac for ac in agent_calls if ac.get("succeeded", True)]
     failed_calls = [ac for ac in agent_calls if not ac.get("succeeded", True)]
+
+    # --- Dispatch-recovery fallback (evidence-gated, NOT timeout-gated) ---
+    # NO Agent tool_use record at all in the main transcript + subagent
+    # transcript evidence supplied by the caller -> the dispatch demonstrably
+    # happened (subagent dirs are keyed by per-run fresh session UUIDs) but
+    # its tool_use record was lost to the timeout SIGKILL before the async
+    # transcript writer flushed it. Synthesize the calls from the evidence.
+    # The gate is `not agent_calls`, deliberately NOT `not succeeded_calls`:
+    # the fallback exists only to reconstruct records LOST to the
+    # timeout-kill race. A RECORDED failed call (is_error=true) is evidence
+    # the system processed and rejected/aborted the dispatch, and must keep
+    # failing per the original criterion semantics above — recovery never
+    # overturns a recorded failure.
+    recovered_calls = []
+    if not agent_calls and subagent_transcripts:
+        recovered_calls = recover_agent_calls_from_subagent_transcripts(
+            subagent_transcripts
+        )
+        if recovered_calls:
+            succeeded_calls = recovered_calls
+
     dispatched = len(succeeded_calls) > 0
 
     detail_parts = []
-    if succeeded_calls:
+    if recovered_calls:
+        detail_parts.append(
+            f"No successful Agent calls in main transcript; "
+            f"{len(recovered_calls)} dispatch(es) evidenced by archived "
+            f"subagent transcript(s)"
+        )
+    elif succeeded_calls:
         detail_parts.append(f"{len(succeeded_calls)} successful Agent call(s)")
     if failed_calls:
         detail_parts.append(f"{len(failed_calls)} failed")
-    if not agent_calls:
+    if not agent_calls and not recovered_calls:
         detail_parts.append("No Agent tool calls found after checkpoint boundary")
 
     results.append(CriterionResult(
@@ -293,7 +452,7 @@ def score_dispatch_compliance(
         ),
     ))
 
-    # --- Criterion 6: prompt_contains_any (tier2) ---
+    # --- Criterion 10: prompt_contains_any (tier2) ---
     # If expected["prompt_contains_any"] is provided, at least one string
     # must appear. If not provided, this criterion auto-passes.
     if prompt_contains_any:
@@ -319,5 +478,15 @@ def score_dispatch_compliance(
             tier="tier2",
             detail="No prompt_contains_any specified; auto-pass.",
         ))
+
+    # --- Provenance stamp for recovered scoring passes ---
+    # When recovery fired, EVERY criterion above was computed from the
+    # synthesized evidence (type from meta.json, prompt from the subagent
+    # transcript's first user record), so all details are stamped uniformly —
+    # downstream consumers and greps can identify recovered runs from any
+    # single criterion.
+    if recovered_calls:
+        for cr in results:
+            cr.detail += " (recovered from subagent transcript)"
 
     return results

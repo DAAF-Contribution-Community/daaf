@@ -184,7 +184,7 @@ Directory map (paths relative to `benchmarks/`):
 | `datasets/` | `{phase}/cases.jsonl` plus `test_fixtures/` (buggy scripts and data for debugger/code-reviewer cases) |
 | `golden/` | Golden checkpoint JSONLs (see § 5) |
 | `config/` | `models.yaml` — model matrix with pricing |
-| `scripts/` | Phase runners, `generate_goldens.py`, `generate_results_viewer.py`, `rescore_skill_routing.py`, `rescore_criteria_overhaul.py`, `refresh_golden_checkpoint.py`, utilities |
+| `scripts/` | Phase runners, `generate_goldens.py`, `generate_results_viewer.py`, `rescore_skill_routing.py`, `rescore_criteria_overhaul.py`, `rescore_dispatch_timeout_rescue.py`, `refresh_golden_checkpoint.py`, utilities |
 | `results/` | Timestamped, self-contained result sets |
 | `_sandbox/` | Per-run scratch directories and archived transcripts (transient) |
 | `archive/` | Legacy components (`runner.py`, `cost_budget.yaml`, per-case Phase 1 goldens) — see `archive/README.md` |
@@ -371,6 +371,51 @@ accept semantically equivalent variants, not just one literal string — e.g.,
 `## Output Format`, `## Deliverables`, and similar (see `CONTEXT_HEADERS` /
 `INSTRUCTION_HEADERS` in the scorer).
 
+**Phase 3 dispatch-recovery fallback (2026-06-11).** The harness historically
+SIGKILLed timed-out runs (`subprocess.run(timeout=...)`; replaced 2026-06-11
+by the graceful-kill ladder, § 9), and Claude Code's main-session
+transcript writes are async/buffered — so a timed-out run could lose an
+unflushed transcript tail, sometimes including the very assistant record
+carrying the `Agent` tool_use (worst case observed: a main transcript frozen
+at exactly the 47-line golden checkpoint beside a 71KB subagent transcript,
+`20260609_005920/runs/dc-07_Gemma_4_31B_0`). The scorer now recovers these:
+when the main transcript contains no Agent tool_use record at all
+post-checkpoint (a recorded FAILED call — `is_error=true` — suppresses
+recovery: the system demonstrably processed and rejected that dispatch, and
+it keeps failing; the fallback only reconstructs records lost to the kill
+race) AND subagent transcripts exist for the run (`subagents/agent-{id}.jsonl` —
+keyed by per-run fresh session UUIDs, so presence proves that run dispatched),
+`score_dispatch_compliance()` synthesizes the dispatch from that evidence —
+subagent_type from `agent-{id}.meta.json`'s `agentType`, the full dispatched
+prompt from the subagent transcript's first user record — and scores ALL ten
+criteria from it. The fallback is evidence-gated, not timeout-gated (it never
+consults the `timed_out` flag). Every criterion scored from recovered evidence
+carries a "(recovered from subagent transcript)" provenance suffix in its
+detail. Phase 3b subagent behavior IS scored for recovered dispatches (the
+subagent transcript is by definition present). With no evidence supplied, the
+scorer's behavior is byte-identical to the pre-fallback version. The same
+change replaced the dispatch runner's vestigial hardcoded `tool_call_count: 0`
+with a real post-checkpoint count.
+
+**Rescue rescore (2026-06-11).** `scripts/rescore_dispatch_timeout_rescue.py`
+applied the fallback retroactively across all 24 archived dispatch_compliance
+sets: 83 timed-out runs whose dispatch record was lost (concentrated in the
+2026-06-09 baseline sets; every one carried archived subagent evidence) were
+rescued — `agent_dispatched` +83, `correct_subagent_type` +82, 68 runs flipped
+to viewer-Perfect on main criteria, 240 Phase 3b criteria entries added — and
+10 further failed-dispatch runs (genuine non-dispatches) received
+`tool_call_count` fixes only. 93 result.json files were rewritten in place;
+summary.json was rewritten only where its content changed — 7 of the 9
+touched sets. The other 2 sets received only `tool_call_count` fixes, which
+don't enter summary aggregation, so their prior summaries were kept verbatim.
+Note the field's resulting mixed semantics across the archive: historical
+PASSED-dispatch runs retain the vestigial `tool_call_count: 0` (the rescore
+recomputed it only for failed-dispatch candidates; runs after 2026-06-11 get
+real counts). No-evidence recomputes were
+determinism-gated and all reproduced their archives exactly. Pre-rescue
+snapshots (§ 10) understate dispatch rates for slow models, and viewers
+generated before the rescue embed pre-rescue data — regeneration required.
+
 **Phase 3b criteria pruning (2026-06-10).** Four structural criteria were
 REMOVED from `scorers/deterministic/subagent_behavior.py` because they passed
 in essentially every run with a transcript, noising Perfect and normal rates
@@ -398,8 +443,9 @@ criterion retroactively with `skill_skill_authoring` retiered tier1 → tier2
 (48 runs across 8 sets; 35/48 fail the new criterion). summary.json files
 were regenerated per set. The rescore surfaced two corpus caveats: five
 result sets have run directories that were pruned after archival
-(`20260608_221438` plus four dispatch sets — `20260610_005021`, `_134443`,
-`_160029`, `_180411`); their summaries now reflect what is on disk, and disk
+(`20260608_221438` plus four dispatch sets — `20260609_005021`, `_134443`,
+`_160029`, `_180411`; dates corrected 2026-06-11 against disk — previously
+misrecorded here as `20260610_*`); their summaries now reflect what is on disk, and disk
 is the source of truth whenever summary.json and `runs/` disagree. And two
 timed-out Fable pc-07 runs lack archived transcripts — they received the
 transcript-independent retiers but carry no `skill_agent_authoring` entry
@@ -581,9 +627,9 @@ else (useful for known-contaminated sets without enumerating the rest via
 `--results`); exclusions are recorded in the embedded generation parameters
 for provenance.
 
-The output is a single scrolling document (verdict, about, leaderboard, cost
-vs. performance, phase deep-dives, cases & consistency, costs detail, run
-explorer, provenance). The leaderboard composite and tier bands span all five
+The output is a single scrolling document (verdict, key takeaways, about,
+leaderboard, cost vs. performance, phase deep-dives, cases & consistency,
+costs detail, run explorer, provenance). The leaderboard composite and tier bands span all five
 approved components with equal weight (P1, P2, P3a, P3b, P4 — P4
 user-approved 2026-06-10, joined the composite 2026-06-11, superseding the
 original four-component pin); a
@@ -600,6 +646,14 @@ new benchmark phase" guide in the comment block above `PHASE_MAP` in
 - **Global rep renumbering:** runs from separate `--reps 1` batches all carry
   `rep=0`; the generator renumbers sequentially per `(phase, model, case_id)`
   across all loaded result sets
+- **Transcript keying (generator v2.7.0 fix, 2026-06-11):** the embedded
+  `transcripts` and `subagent_transcripts` dicts are keyed
+  `{result_set}/{run_dir}`, mirrored exactly by the template's run-detail
+  lookups. Run-dir names (e.g. `dc-08_Gemma_4_26B_0`) are only unique within
+  a result set — bare-name keys silently overwrote 857 main transcripts
+  (482 colliding names across 1,339 transcript-bearing run instances on the
+  52-set corpus) and displayed another set's subagent transcript on
+  same-named runs
 - **HTML5 tokenizer safety:** all `<` in the embedded JSON are escaped to
   `\u003c`. Transcripts contain literal `<!--` and `<script` sequences that
   otherwise flip the HTML5 parser into escaped-script states and break rendering
@@ -653,8 +707,11 @@ disclosed in footnotes. `reasoning_cost_multiplier` appears in no
 `result.json`; the badge logic reads it defensively.
 
 **Template architecture:** v2 is data-prep Python + placeholder substitution
-into `scripts/viewer_template.html` (`/*__DATA_JSON__*/`,
-`/*__PRECOMPUTED_JSON__*/`, plus small prose slots). Extracted from v1's
+into `scripts/viewer_template.html` (bare `__DATA_JSON__` and
+`__PRECOMPUTED_JSON__` tokens — as in `const DATA = __DATA_JSON__;` — plus
+small prose slots; substitution order is load-bearing, with the small
+controlled placeholders filled first and `__DATA_JSON__` last so transcript
+content can never be treated as a placeholder). Extracted from v1's
 single f-string because `{{ }}` escaping across ~1,400 lines of CSS/JS bred
 subtle bugs, blocked editor syntax support, and made diffs noisy. Output
 remains single-file and self-contained; the generator is the single entry
@@ -672,6 +729,54 @@ overview-first/details-on-demand single scrolling document (no global filter
 bar — each section owns its controls); every chart titles its *finding*,
 computed at render time; 1–3 sentences of "how to read this" per section;
 visible denominators everywhere (`21/24`, not just 88%).
+
+**Public-audience evolution (2026-06-11, generator v2.6.0):** the viewer was
+reworked for public consumption (project-website hosting), evolving the
+single existing viewer rather than forking a public variant.
+
+1. *Audience inversion* — all prose rewritten for readers unfamiliar with
+   DAAF; generalist hero framing ("How well do different AI models handle
+   the complexities of rigorous research workflows?"). The user explicitly
+   rejected a Mind/Body/Instructions conceptual device as overcomplicating.
+2. *Key Takeaways section* (new; sits between Verdict and About) — a dated
+   editorial ("Editorial takeaways — June 2026 corpus") with six
+   maintainer-interpretation claims whose figures are span-injected from
+   PRECOMPUTED at render time (31 `kt-*` spans filled by `fillTakeaways()`;
+   a new `timeout_by_model` precompute feeds the timeout claims), so
+   regeneration cannot orphan the numbers. The qualitative claims do NOT
+   track the data — when the corpus changes materially, rewrite the prose
+   and update the date badge. That rewrite rule fired the same day: after
+   the 2026-06-11 dispatch-recovery rescue rescore shifted the corpus, a
+   delta re-adjudication of all six claims reframed T4 around DeepSeek V4
+   Pro leading an open-weight pack that now crowds the frontier tier (with
+   a DS Pro timeout-rate caveat), retired T2's "4.7 drops a tier" sentence,
+   and confirmed T1/T3/T5/T6 unchanged.
+3. *"Two bars" concept* — Perfect ("everything exactly right") vs.
+   Critical-only ("will it generally work") promoted to an always-visible
+   About block, with all echo sites aligned to that vocabulary.
+4. *CRIT_LABELS* — a 45-entry plain-language criterion label map in the
+   template; the raw snake_case ids are always shown alongside the label for
+   traceability (the Run Explorer stays raw).
+5. *Head metadata for web hosting* — title, meta description,
+   OpenGraph/Twitter tags with a `REPLACE-WITH-FINAL-URL` og:url placeholder
+   for the deploy step, inline SVG favicon, and a noscript notice. og:image
+   is deliberately deferred to the user's external deploy infrastructure (it
+   must be an absolute URL on the host).
+6. `#takeaways` is deliberately excluded from the `content-visibility:auto`
+   rule — it is a static above-the-fold prose section with no JS renderer;
+   the CSS comment at the top of the template documents the exclusion.
+7. *Hosting/deployment boundary* — stable public filename, compression, and
+   upload are handled by the user's separate website deploy infrastructure,
+   out of framework scope. An http(s) retest is needed post-deploy because
+   three code paths differ between `file://` and http(s): explicit-nav hash
+   writes, scrollspy `replaceState` writes, and `content-visibility` anchor
+   rendering.
+
+**Accepted residuals (public-audience evolution, 2026-06-11) — reviewed, no
+fix planned:** (1) the "expects:" badge in the Run Explorer still shows raw
+engagement-mode ids — no display-name mapping for modes exists in the
+template. (2) JS syntax was structurally verified via python; no node syntax
+check was run — the user's browser visual check covers it.
 
 ## 9. Operational Notes
 
@@ -745,8 +850,26 @@ imported scorer modules for its whole life — a batch in flight (or launched
 just before) a scorer edit scores with the pre-edit logic. Observed
 2026-06-10: set `20260610_184022` was scored by a pre-overhaul import and
 carried legacy vacuous criteria until a post-hoc rescore normalized it. The
-rescore tools (`rescore_skill_routing.py`, `rescore_criteria_overhaul.py`)
-are the recovery path when this happens.
+rescore tools (`rescore_skill_routing.py`, `rescore_criteria_overhaul.py`,
+`rescore_dispatch_timeout_rescue.py`) are the recovery path when this happens.
+
+**Timed-out runs are killed gracefully (SIGTERM → 15s grace → SIGKILL).**
+Until 2026-06-11 the executor's `subprocess.run(timeout=...)` killed timed-out
+runs with SIGKILL, and the CLI's main-session transcript writes are
+async/buffered — the final records (including Agent tool_use blocks) could be
+lost even though everything earlier persisted. `harness/executor.py` now sends
+SIGTERM first, drains stdout/stderr through a `KILL_GRACE_SECONDS = 15` grace
+window (via `communicate(timeout=...)`, not `wait()` — `wait()` with full
+pipes can deadlock while the CLI writes during its flush), and escalates to
+SIGKILL only if the CLI outlives the grace. Observed in the 2026-06-11
+validation run: the CLI exits ~0.1s after SIGTERM, well inside the window.
+Timeout semantics are unchanged (`error = "Timed out after {N}s"`, the
+`timed_out` flag, partial-stdout parsing). See § 11 item 9 for the validation
+evidence and the honest limits of what one run proves. The dispatched
+subagent's transcript is a separate file and survives the kill either way, so
+a run dir's `subagents/` folder remains the forensic fallback for
+reconstructing what a killed run actually did; the § 6 dispatch-recovery
+fallback automates this for scoring.
 
 ## 10. Results Snapshot (2026-06-09)
 
@@ -756,7 +879,14 @@ OpenRouter at 3. Note: this snapshot predates the 2026-06-10 criteria rescore
 (`rescore_criteria_overhaul.py`), which retroactively changed pc-07 rates in
 the archived result sets. It also predates Phase 4 and the five-component
 composite (§ 8) — its tiering and weakest-criterion claims describe the
-P1-P3 corpus only; see § 12 for current composite results.
+P1-P3 corpus only; see § 12 for current composite results. A further caveat
+(2026-06-11): the snapshot also predates the dispatch-recovery rescue rescore
+(§ 6), which retroactively rescued 83 timed-out Phase 3 runs whose Agent
+dispatch record was lost to the timeout SIGKILL — the dispatch rates and
+Phase 3 scores below substantially understate the slow models that timed out
+most often (Nemotron 3 Ultra, DeepSeek V4 Pro, Kimi K2.6, and both Gemmas
+were most affected). The archived result sets now carry the corrected scores;
+this table is preserved as recorded.
 
 **Topline:** Fable 5 is the strongest model overall — Phase 1: 30/30 (100%),
 Phase 2: 18/18 (100%), Phase 3: 21/24 (88%) with a 100% dispatch rate at
@@ -855,6 +985,34 @@ within 300s.
    commit — they ran against the identical worktree copy, so scoring was
    unaffected, but the manifest cannot prove it). Adding a golden content
    hash to `manifest.json` is the designed improvement (§ 12).
+9. **Timeout SIGKILL races the async transcript writer (mitigated on both
+   sides 2026-06-11).** The original `subprocess.run(timeout=...)` SIGKILLed
+   timed-out runs while Claude Code's main-session transcript writes are
+   async/buffered, so a killed run could lose an unflushed transcript tail —
+   up to and including the assistant record carrying the `Agent` tool_use
+   (observed: a main transcript frozen at exactly the 47-line golden
+   checkpoint beside a 71KB subagent transcript). Two mitigations now stack.
+   Scoring side (2026-06-11): the evidence-gated dispatch-recovery fallback
+   and rescue rescore (§ 6) reconstruct lost dispatches from the surviving
+   subagent transcripts. Executor side (2026-06-11): a graceful-kill ladder —
+   SIGTERM → 15s grace window → SIGKILL (`KILL_GRACE_SECONDS` in
+   `harness/executor.py`, § 9) — gives the CLI a flush opportunity before the
+   hard kill. Validation evidence (one deliberate 10s-timeout run, mc-01 ×
+   Haiku 4.5, throwaway set `20260611_031913`, since deleted — user decision;
+   findings survive only in this record): the CLI exited ~0.1s after
+   SIGTERM (never reaching SIGKILL), and the archived 15-line main transcript
+   extended well past the injected prompt — assistant thinking, the `Skill`
+   tool_use, and its tool_result, with a cleanly parseable final line — vs.
+   the SIGKILL-loss signature of a transcript frozen at the prompt/checkpoint.
+   Honest caveat: that run's last timestamped record predated the kill by
+   ~6.4s (the model was mid-generation of its next turn, which no kill
+   strategy can preserve — incomplete turns are never written), so the single
+   run proves the ladder works mechanically but cannot positively demonstrate
+   improved tail-flushing over SIGKILL; SIGKILL-era timed-out transcripts also
+   end on complete lines, so the historical loss was a race, not a constant.
+   Whether the ladder eliminates the race will only be confirmed by future
+   organically timed-out runs. The scoring-side recovery (§ 6) remains the
+   backstop for lost dispatch records either way.
 
 ## 12. Future Work
 
@@ -867,9 +1025,10 @@ within 300s.
     seven heading variants, yet this remains the #1 failure across all models;
     consider detecting contextual content under any heading rather than a
     fixed list
-- **Complete rep counts:** run Fable 5 to 3 reps on all phases and the
+- **Complete rep counts:** run Fable 5 to 3 reps on Phases 1-2 and the
   remaining Anthropic models to 3 reps on Phase 3 (sequential, one model at a
-  time)
+  time). Phase 4 rep counts are complete — all 17 models at 3 reps as of
+  2026-06-11 (§ 12 Current Status)
 - **Recalibrate cost estimation profiles** from post-`modelUsage`-fix runs
   (Phases 1-3 remaining; Phase 4 recalibrated per provider 2026-06-10, § 7)
 
@@ -938,7 +1097,12 @@ items below are the still-valuable remainder.
   `CLAUDE_CODE_EFFORT_LEVEL` override pitfall). The version-tagging deliverable
   is already satisfied by `manifest.json`'s DAAF git SHA.
 - **Viewer fast-follows:** light theme / print stylesheet — deferred from the
-  2026-06-10 viewer redesign as possible fast-follows (§ 8 design record).
+  2026-06-10 viewer redesign as possible fast-follows, deferral reconfirmed
+  2026-06-11 (§ 8 design record); og:image (requires an absolute URL, so it
+  is a deploy-time addition) — deferred from the 2026-06-11 public-audience
+  evolution, as were a touch/aria accessibility audit and responsive rework
+  (trivial-only mobile fixes were applied) and a benchmarks link from the
+  main `/daaf/README.md` (out of scope for now, user decision).
 - **Phase 4 expansion reserve:** few-clusters wild bootstrap (pyfixest
   `advanced-inference.md`) is the first candidate if the suite grows — cut
   only for slot economics. Excluded as unroutable: time series (no hub branch;
@@ -948,15 +1112,16 @@ items below are the still-valuable remainder.
   orchestrator" — a refusal test, candidate for a future Safety/Protocol
   category.
 
-### Current Status / Next Steps (2026-06-11, updated ~01:30 UTC)
+### Current Status / Next Steps (2026-06-11, updated ~07:00 UTC)
 
 Point-in-time status; supersedes the retired `SESSION_NOTES.md` restart
 prompts. Once these items land, fold the outcomes into the sections above
 and update or remove this subsection.
 
-- **Phase 4 baseline matrix (fresh goldens) — COMPLETE.** 10 OpenRouter
-  models × 3 reps + 7 Anthropic models × 1 rep, all on the post-third-hop
-  framework and fresh goldens. Fresh-golden sets in `results/` (all swept
+- **Phase 4 baseline matrix (fresh goldens) — COMPLETE, now at 3 reps for
+  ALL 17 models.** Originally 10 OpenRouter models × 3 reps + 7 Anthropic
+  models × 1 rep, all on the post-third-hop framework and fresh goldens;
+  Anthropic rep completion landed 2026-06-11 (next bullet). Fresh-golden sets in `results/` (all swept
   clean: 0 rate-limit events anywhere; python3-verified): `20260610_184022`
   (OR strong-five rep 1: glm-51, kimi-k26, deepseek-v4-pro, gemini-31-pro,
   deepseek-v4-flash — normalized post-hoc, § 9), `_194256` (Anthropic:
@@ -971,6 +1136,25 @@ and update or remove this subsection.
   → Fable**). Top open-weight routers across reps: DeepSeek V4 Pro and
   Qwen 3.6 27B (5-6/15 all-criteria); Kimi most rep-volatile (5-9/15
   loaded).
+- **Phase 4 Anthropic rep completion — COMPLETE (2026-06-11, ~05:09 and
+  ~06:56 UTC).** Two additional sequential 1-rep rounds, all 7 Anthropic
+  models × 15 cases each, 300s timeout, same worktree scorer and goldens as
+  the rep-1 baseline: `20260611_050913` (105 runs, $16.27, 6181s) and
+  `20260611_065633` (105 runs, $16.91, 6404s). Both swept clean
+  (python3-verified): 0 rate-limit events, 0 missing transcripts, 0
+  timeouts. All Anthropic models now at 3 Phase 4 reps. Findings replicate
+  the rep-1 gradient: Fable 5 12/15 all-criteria in both rounds (13-15/15
+  loaded); Opus 4.8 7-8/15 all; Opus 4.7 names skills near-perfectly
+  (14-15/15 engaged) but loads only 9-11/15 — two-hop decay persists
+  post-routing-fix; Haiku 4.5 floor confirmed (0-1/15 all, 0-1/15
+  refs_read). Hardest cases across all 7 models: sr-10 (0/7 refs both
+  rounds), sr-11 (0/7 all both rounds), sr-08 (1/7 all both rounds);
+  sr-14 remains the easy one-hop case (6-7/7). Composite effects on the
+  full 52-set corpus (supersedes the smaller-corpus effects noted in the
+  P4-joins-composite bullet below): Sonnet 4.6 rises to T2 (0.829), Opus
+  4.8 T2 (0.796), Haiku 4.5 sits T4 (P4 perfect 0.02), Fable 5 sole T1
+  (0.939); global weakest criterion is now `skill_agent_authoring`
+  (13/48 = 27%, P2), displacing `expected_refs_read`.
 - **Viewer cost-plot phase filter — RESOLVED (2026-06-10 viewer session).**
   Cost vs. Performance now has a phase basis selector (Composite + P1-P4;
   perf values/frontiers precomputed per group, dynamic for future phases) and
@@ -982,13 +1166,40 @@ and update or remove this subsection.
   unchanged). Generator v2.4.0.
 - **Harness gap (bookmarked): transcript-less timeout runs.** 4 runs
   (`pc-03`/`pc-07` × Fable 5 in `20260609_203258` and `20260609_215903` —
-  the two sets with the short 120s pc-timeout) are flagged timed-out with NO
-  transcript.jsonl archived. Working hypothesis: timeout-kill lands before
+  the two sets with the short 120s pc-timeout) were flagged timed-out with NO
+  transcript.jsonl archived. Update 2026-06-11 (~12:48 UTC, user decision):
+  those 4 runs were moved out of scoring into each set's `removed_runs/`
+  (provenance README.txt alongside; the viewer loads `runs/` only) and
+  replaced by fresh fable-5 pc-03/pc-07 runs at the corpus-standard 300s
+  timeout in set `20260611_124829` — all 4 replacements pass all criteria
+  (4/4). One replacement (pc-07 rep 0) organically timed out at 300s under
+  the new graceful-kill ladder and still archived a fully scored transcript
+  (3/3 criteria PASS, 6 tool calls visible) — the first organic post-ladder
+  timeout, supportive evidence the flush race is closed, though confounded
+  with the ceiling change (120s → 300s gives the CLI more time to write
+  early records regardless of kill signal). Original working hypothesis: timeout-kill lands before
   the CLI emits session metadata, so the collector has no session ID to
   resolve (slowest model × tightest ceiling × heaviest cases). Confirmation
   pass = read `harness/executor.py`/`collector.py` transcript-resolution
   logic against one of those run dirs. Related fix candidates: write
-  transcript on timeout; first-activity stall detector (below).
+  transcript on timeout; first-activity stall detector (below). Update
+  2026-06-11: the related Phase 3 manifestation — transcripts PRESENT but
+  truncated mid-flush by the timeout SIGKILL, losing the Agent tool_use
+  record — is now resolved on the scoring side (§ 6 dispatch-recovery
+  fallback + `rescore_dispatch_timeout_rescue.py`; 83 runs rescued, § 11
+  item 9). Update 2026-06-11 (~03:25 UTC): the executor graceful-kill ladder
+  has landed (SIGTERM → 15s grace → SIGKILL; § 9, § 11 item 9), validated
+  mechanically with one deliberate 10s-timeout run — the throwaway validation
+  sets `20260611_031838` (completed under its 20s timeout, no kill) and
+  `20260611_031913` (timed out; transcript archived past the prompt) were
+  deleted at user direction 2026-06-11 (findings recorded in § 11 item 9).
+  The ladder may also help the
+  transcript-less manifestation (a SIGTERM'd CLI gets a chance to create/
+  flush the transcript before dying), but that is unverified — the
+  confirmation pass against `executor.py`/`collector.py`
+  transcript-resolution logic remains open. The post-rescue viewer
+  regeneration has landed (`viewer_2026-06-11g.html` — see the
+  viewer-current bullet below).
 - **Gemma 4 31B kept IN by user decision:** silent stalls are documented
   model-attributable failures, not artifacts to exclude — forensic sweep of
   Phases 1-3 (full corpus, transcript-level) found 18.5% silent-stall rate
@@ -1012,22 +1223,56 @@ and update or remove this subsection.
   Same session: **DeepSeek V4 Pro pricing corrected** in `models.yaml`
   ($0.435/$0.87 → $1.44/$2.88) via billing-export reconciliation — archived
   sets understate DS Pro costs ~3.3x (§ 7 Pricing correction).
-- **Viewer current:** `viewer_2026-06-11d.html` (v2.5.0; all 50 sets;
-  `_11c` superseded by the doc-consolidation comment repoints, rendered
-  output identical;
-  five-component composite — needs user visual check; supersedes
-  `_10s.html`/v2.4.0; intermediates `_11a`/`_11b` superseded — review pass
-  caught stale four-component prose in the leaderboard lead, hero verdict,
-  and P4 deep-dive explainer that shipped into them). Earlier dated viewers
-  superseded — retention/deletion is pending housekeeping (user decision;
-  user deletes).
+- **Public-audience viewer evolution — RESOLVED (2026-06-11 session,
+  generator v2.5.0 → v2.6.0).** The viewer was reworked for public
+  consumption on the project website: full audience inversion of the prose,
+  a new dated Key Takeaways editorial section (figures span-injected from a
+  new `timeout_by_model`-extended PRECOMPUTED), an always-visible
+  Perfect-vs-Critical "two bars" About block, a 45-entry plain-language
+  criterion label map (CRIT_LABELS), and head metadata for web hosting
+  (og:url placeholder pending deploy). Full record: § 8 design record,
+  "Public-audience evolution" addendum. Deployment (stable filename,
+  compression, upload, og:image) stays in the user's website infrastructure;
+  an http(s) retest is needed post-deploy.
+- **Viewer current:** `viewer_2026-06-11i.html` (generator v2.6.0 → v2.7.0;
+  same 52-set / 2,493-run corpus as `_11h`; transcript-keying collision fix —
+  § 8 notable internals: composite `{result_set}/{run_dir}` transcript keys
+  recovered 857 previously-overwritten main transcripts, 2,489 now embedded
+  vs `_11h`'s 1,632, and ended cross-set subagent-transcript misattribution,
+  500 subagent entries vs 201; leaderboard/composite figures unchanged from
+  `_11h`) — needs user visual check, AND the dated Key Takeaways editorial
+  prose still needs re-adjudication against the enlarged corpus (composite
+  shifts in the rep-completion bullet above; figures are span-injected and
+  current, but the takeaway sentences were adjudicated on the 50-set corpus).
+  Supersedes `_11h` (v2.6.0; 52 sets / 2,493 runs; added the two Anthropic
+  Phase 4 rep-completion sets `20260611_050913`/`_065633`; bare run-dir
+  transcript keys), which superseded
+  `_11g` (v2.6.0; 50 sets / 2,283 runs; five-component
+  composite; embedded the post-rescue corpus
+  (dispatch-recovery rescue rescore, § 6) AND the post-rescue
+  re-adjudicated Key Takeaways (T4 reframed around DeepSeek V4 Pro
+  leading the open-weight pack into the frontier tier, with a DS Pro
+  timeout-rate caveat; T2's tier-drop sentence retired; T1/T3/T5/T6
+  unchanged — § 8 addendum item 2)), which had superseded
+  `_11e` (pre-rescue scores) and `_11f` (post-rescue scores
+  but pre-re-adjudication takeaway prose, generated before the two
+  throwaway graceful-kill validation sets were deleted), which had
+  superseded `_11d.html`/v2.5.0, `_10s.html`/v2.4.0, and intermediates
+  `_11a`-`_11c` (`_11c` differed only in doc-consolidation comment
+  repoints, rendered output identical, while a review pass caught stale
+  four-component prose in the leaderboard lead, hero verdict, and P4
+  deep-dive explainer that shipped into `_11a`/`_11b`). Earlier dated
+  viewers superseded — retention/deletion is pending housekeeping (user
+  decision; user deletes).
 - **P4 joined the leaderboard composite + tier bands — RESOLVED (2026-06-11
   session; user-approved 2026-06-10).** `skill_routing` added to
   `COMPOSITE_GIDS` (generator v2.5.0); composite is now the unweighted mean
   of five components. Models lacking a component score on their available
   components with the leaderboard "partial" disclosure chip (existing
   mechanism; on the current corpus all 17 models have all five components,
-  so no partial markers appear). Effects: the tier **gap rule** now yields
+  so no partial markers appear). Effects (point-in-time on the 2026-06-11
+  pre-rep-completion corpus — composite figures superseded by the Phase 4
+  Anthropic rep-completion bullet above): the tier **gap rule** now yields
   5 tiers natively (quartile fallback no longer triggers); Fable 5 is sole
   T1 (0.948); Haiku 4.5 drops to T3 (P4 perfect rate 0.00); global weakest
   criterion is now `expected_refs_read` (25%, P4). Same dispatch: § 8 pin

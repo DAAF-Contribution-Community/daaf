@@ -7,8 +7,8 @@ and per-set manifests, condenses transcripts, computes derived metrics
 (per-model per-phase aggregates, composite scores and tier bands under both
 the Perfect and Critical-only metrics, consistency, per-case difficulty,
 callouts, published-pricing formulations with per-basis/per-metric
-efficiency frontiers, provenance), and produces a single HTML file with all
-data embedded.
+efficiency frontiers, per-model timeout rates, provenance), and produces a
+single HTML file with all data embedded.
 
 The HTML/CSS/JS lives in the sibling template file viewer_template.html;
 this script is data preparation + placeholder substitution. v1
@@ -135,6 +135,34 @@ def resolve_paths(args):
 #      load_cases() attaches case definitions (it falls back to the dirname).
 #   6. Regenerate and spot-check the new eval group's k/n in the sanity
 #      report and the deep-dive heatmap before publishing.
+#
+# Public-prose registries in the template (maintenance guide, added v2.6.0
+# with the public-audience evolution of the viewer):
+#   - CRIT_LABELS (viewer_template.html JS, next to KNOWN_SCORER_CAVEATS):
+#     maps snake_case criterion ids to plain-language labels used in headline
+#     prose (hero verdict, deep-dive callouts and the global finding, the
+#     leaderboard Dispatch tooltip). Forensic surfaces (run explorer, rotated
+#     heatmap column headers) keep raw names; heatmap header tooltips append
+#     the label. When a new criterion enters the corpus, add a label entry —
+#     unlabeled criteria fall back to the snake_case name with underscores
+#     replaced by spaces (critLabel()).
+#   - Key Takeaways (#takeaways section in the template): DATED hand-written
+#     editorial prose whose figures are injected into kt-* spans by
+#     fillTakeaways() at init from PRECOMPUTED (composite, composite_hard,
+#     per_model_phase, consistency, cost.models, tier_rule, and
+#     timeout_by_model built below). Injected numbers track the data
+#     automatically; the qualitative claims do NOT — when the corpus changes
+#     materially, rewrite the prose and update the date badge. Spans default
+#     to an em dash, and a model absent from the corpus leaves its spans
+#     dashed rather than erroring.
+#   - Adding a new top-level prose section (the #takeaways recipe): section
+#     scaffold in <main>, TOC link in nav#toc-rail, id in SECTION_IDS, and a
+#     deliberate decision on the content-visibility CSS rule (above-the-fold
+#     static sections stay out — see the CSS comment at the top of the
+#     template); register in sectionRenderers only if JS-rendered.
+#   - Substitution order in generate_html() is load-bearing: the small
+#     controlled placeholders are filled first, __DATA_JSON__ last, so
+#     transcript content can never be treated as a placeholder.
 # ---------------------------------------------------------------------------
 
 PHASE_MAP = {
@@ -701,8 +729,20 @@ def load_transcripts(results_dir, runs):
     """Condense transcripts for all runs.
 
     Returns:
-        transcripts: dict keyed by run_dir -> condensed message list
-        subagent_transcripts: dict keyed by run_dir -> dict of agent_id -> messages
+        transcripts: dict keyed by "{result_set}/{run_dir}" -> condensed message list
+        subagent_transcripts: dict keyed by "{result_set}/{run_dir}" -> dict of
+            agent_id -> messages
+
+    Keying (v2.7.0 fix): both dicts are namespaced by result set because run
+    directory names (e.g. "dc-08_Gemma_4_26B_0") are only unique WITHIN a
+    result set. Bare run_dir keys silently overwrote main transcripts across
+    sets (last-loaded set won) and displayed another set's subagent transcript
+    on same-named runs (482 colliding names / 1,339 transcript-bearing run
+    instances on the 2026-06-11 52-set corpus; the composite keying recovered
+    857 main transcripts that bare keys had been dropping). The template's
+    lookups in renderRunDetail()
+    mirror this composite key exactly (DATA.transcripts[r.result_set+"/"+
+    r.run_dir]); the two sides must stay in lockstep.
     """
     transcripts = {}
     subagent_transcripts = {}
@@ -711,12 +751,15 @@ def load_transcripts(results_dir, runs):
         ts = run["result_set"]
         run_dir = run["run_dir"]
         run_path = os.path.join(results_dir, ts, "runs", run_dir)
+        # Composite key: run_dir alone collides across result sets (see
+        # docstring) — must match the template's lookup key construction
+        key = f"{ts}/{run_dir}"
 
         # Main transcript
         transcript_path = os.path.join(run_path, "transcript.jsonl")
         condensed = condense_transcript(transcript_path)
         if condensed:
-            transcripts[run_dir] = condensed
+            transcripts[key] = condensed
 
         # Subagent transcripts (Phase 3)
         # Cap string values at 200 chars — subagent transcripts can contain
@@ -734,7 +777,7 @@ def load_transcripts(results_dir, runs):
                         agent_transcripts[agent_id] = agent_condensed
 
             if agent_transcripts:
-                subagent_transcripts[run_dir] = agent_transcripts
+                subagent_transcripts[key] = agent_transcripts
 
     return transcripts, subagent_transcripts
 
@@ -790,7 +833,7 @@ def build_data_bundle(result_sets, cases, runs, transcripts, subagent_transcript
     )
     return {
         "generated_at": datetime.now(timezone.utc).isoformat(),
-        "generator_version": "2.5.0",
+        "generator_version": "2.7.0",
         "result_sets": sorted_result_sets,
         "cases": cases,
         "runs": runs,
@@ -1311,6 +1354,24 @@ def build_precomputed(result_sets, cases, runs, generation_params,
                 rs.get("disk_run_count", 0) != rs.get("summary_total_runs", 0),
         })
 
+    # --- timeout_by_model: per-model timed-out run rates ---
+    # Basis: the harness's explicit timed_out flag over ALL of a model's
+    # loaded runs (all phases pooled). This flag covers genuine wall-clock
+    # timeouts AND silent stalls that ran out the clock — a broader measure
+    # than any transcript-level stall forensics (e.g., README's silent-stall
+    # figures); prose citing these rates must name this basis. Precomputed
+    # here (not hand-copied) so the Key Takeaways section's reliability
+    # claims cannot drift from the data.
+    timeout_by_model = {}
+    for model in models:
+        mruns = [r for r in runs if r["model"] == model]
+        n_to = sum(1 for r in mruns if r["timed_out"])
+        timeout_by_model[model] = {
+            "n_runs": len(mruns),
+            "n_timed_out": n_to,
+            "rate": rnd(n_to / len(mruns)) if mruns else None,
+        }
+
     # --- totals ---
     totals = {
         "total_runs": len(runs),
@@ -1338,6 +1399,7 @@ def build_precomputed(result_sets, cases, runs, generation_params,
         "per_case": per_case,
         "callouts": callouts,
         "cost": cost,
+        "timeout_by_model": timeout_by_model,
         "provenance": provenance,
         "totals": totals,
     }

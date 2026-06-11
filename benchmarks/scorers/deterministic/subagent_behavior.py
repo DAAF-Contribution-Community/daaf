@@ -8,6 +8,9 @@ needed.
 Data sources:
   - Subagent transcripts: ~/.claude/projects/-daaf/{session_id}/subagents/agent-{id}.jsonl
   - Archived copies: _sandbox/transcripts/{session_id}/subagents/agent-{id}.jsonl
+  - Result-set archives: results/*/runs/*/subagents/agent-{id}.jsonl — not
+    resolvable by session_id; pass these paths directly to
+    score_subagent_behavior_from_transcripts()
 
 Scoring criteria per agent type (all deterministic): agent-specific criteria
 (tier1/tier2) varying by subagent_type — see BEHAVIOR_SPECS.
@@ -306,25 +309,50 @@ def score_subagent_behavior(
     session_id: str,
     expected_agent_type: str,
 ) -> list[CriterionResult]:
-    """Score subagent behavior from its transcript.
+    """Score subagent behavior from its transcript (live-session lookup).
 
     Finds the subagent transcript for the given session, extracts tool calls,
-    and evaluates agent-type-specific behavioral criteria.
+    and evaluates agent-type-specific behavioral criteria. Thin wrapper over
+    score_subagent_behavior_from_transcripts() — callers that already hold
+    explicit transcript paths (e.g., rescore tools reading a result set's
+    archived runs/*/subagents/) should call that function directly, since
+    find_subagent_transcripts() only resolves live/_sandbox locations that no
+    longer exist for historical runs.
 
     Args:
         session_id: The parent session ID (subagent transcripts are nested under it).
         expected_agent_type: The expected subagent_type (e.g., "research-executor").
 
     Returns:
+        See score_subagent_behavior_from_transcripts().
+    """
+    transcripts = find_subagent_transcripts(session_id)
+    return score_subagent_behavior_from_transcripts(transcripts, expected_agent_type)
+
+
+def score_subagent_behavior_from_transcripts(
+    transcripts: list,
+    expected_agent_type: str,
+) -> list[CriterionResult]:
+    """Score subagent behavior from explicit transcript paths.
+
+    Parameterized core of score_subagent_behavior(): accepts the subagent
+    .jsonl paths directly, so it works for both live sessions (paths from
+    find_subagent_transcripts) and archived result sets (paths from a run
+    dir's subagents/ folder — used by rescore_dispatch_timeout_rescue.py).
+
+    Args:
+        transcripts: Paths to subagent .jsonl transcript files.
+        expected_agent_type: The expected subagent_type (e.g., "research-executor").
+
+    Returns:
         List of CriterionResult objects for subagent behavior criteria.
-        Returns an EMPTY list when no subagent transcript is found: dispatch
+        Returns an EMPTY list when no subagent transcript is provided: dispatch
         failure is already captured by the dispatch-level criteria
         (agent_dispatched etc.), and emitting a structural transcript-found
         criterion here only noised Perfect/soft rates (removed 2026-06-10).
     """
     results = []
-
-    transcripts = find_subagent_transcripts(session_id)
 
     if not transcripts:
         return results

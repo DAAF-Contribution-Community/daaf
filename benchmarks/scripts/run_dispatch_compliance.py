@@ -8,8 +8,10 @@ scores whether the model dispatches the correct subagent_type with a properly
 structured prompt containing BASE_DIR, mode markers, and task-relevant content.
 
 Scoring uses score_dispatch_compliance() from dispatch_compliance.py, which checks
-agent_dispatched, correct_subagent_type, prompt_has_base_dir, prompt_has_mode_marker,
-prompt_contains_required, and prompt_contains_any criteria.
+all ten dispatch criteria: agent_dispatched, correct_subagent_type,
+prompt_has_base_dir, prompt_has_mode_marker, prompt_has_project_dir,
+prompt_has_task_section, prompt_has_context_section, prompt_has_instructions,
+prompt_contains_required, and prompt_contains_any.
 
 Results are archived to a self-contained results folder with per-run transcripts.
 
@@ -38,6 +40,7 @@ from benchmarks.harness.checkpoint_manager import cleanup_sandbox
 from benchmarks.harness.model_loader import load_models, filter_models, add_model_args
 from benchmarks.harness.cost_estimator import estimate_batch_cost, format_estimate, compute_cost
 from benchmarks.scorers.deterministic.checkpoint_adherence import (
+    extract_new_tool_calls,
     find_benchmark_transcript,
     get_checkpoint_line_count,
 )
@@ -69,10 +72,11 @@ def load_test_cases(path: Path) -> list[TestCase]:
 
 def score_run(session_id: str, test_case: TestCase) -> dict:
     """Score a single run by extracting tool calls from the transcript and
-    delegating to score_checkpoint().
+    delegating to score_dispatch_compliance().
 
-    Returns dict with 'criteria' (list of CriterionResult dicts) and
-    'transcript_path'.
+    Returns dict with 'criteria' (list of CriterionResult dicts),
+    'subagent_criteria', 'subagent_transcript_missing', 'transcript_path',
+    and 'tool_call_count'.
     """
     transcript_path = find_benchmark_transcript(session_id)
     if not transcript_path:
@@ -92,9 +96,20 @@ def score_run(session_id: str, test_case: TestCase) -> dict:
     golden_path = BASE_DIR / test_case.golden_checkpoint
     checkpoint_lines = get_checkpoint_line_count(golden_path)
 
-    # Score using the dispatch compliance scorer
+    # Locate subagent transcripts ONCE: they serve double duty as (a) recovery
+    # evidence for the dispatch scorer — a timeout SIGKILL can lose the main
+    # transcript's unflushed tail, including the Agent tool_use record, while
+    # the subagent's own transcript survives — and (b) the Phase 3b
+    # missing-transcript diagnostic below.
+    subagent_transcripts = find_subagent_transcripts(session_id)
+
+    # Post-checkpoint tool calls, for the run-level tool_call_count
+    tool_calls = extract_new_tool_calls(transcript_path, checkpoint_lines)
+
+    # Score using the dispatch compliance scorer (with recovery evidence)
     criterion_results = score_dispatch_compliance(
-        str(transcript_path), checkpoint_lines, test_case.expected
+        str(transcript_path), checkpoint_lines, test_case.expected,
+        subagent_transcripts=subagent_transcripts,
     )
 
     # Convert CriterionResult objects to dicts for JSON serialization
@@ -119,7 +134,9 @@ def score_run(session_id: str, test_case: TestCase) -> dict:
         # deliberately returns [] (its contract; see score_subagent_behavior).
         # Surface the gap on the console and persist a plain result.json flag.
         # NOT a criterion: it must never enter scoring or viewer Perfect.
-        if not find_subagent_transcripts(session_id):
+        # Coherent with recovery by construction: a recovered dispatch implies
+        # subagent_transcripts is non-empty, so the flag stays False.
+        if not subagent_transcripts:
             subagent_transcript_missing = True
             print(f"WARNING: [{test_case.id}] agent_dispatched passed but "
                   f"find_subagent_transcripts() found no subagent transcript for "
@@ -141,7 +158,7 @@ def score_run(session_id: str, test_case: TestCase) -> dict:
         "subagent_criteria": subagent_criteria,
         "subagent_transcript_missing": subagent_transcript_missing,
         "transcript_path": str(transcript_path),
-        "tool_call_count": 0,
+        "tool_call_count": len(tool_calls),
     }
 
 
