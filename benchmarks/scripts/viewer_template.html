@@ -3,26 +3,47 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>DAAFBench: How Well Do AI Models Follow a Rigorous Research Framework?</title>
-<meta name="description" content="Benchmarking language models on whether they can operate DAAF, a structured open-source research framework, as designed: routing requests, following protocol, delegating to subagents, and grounding methodological advice. Every score traces to an individual archived run.">
+<title>DAAFBench: Orchestration &mdash; How Well Do AI Models Follow a Rigorous Research Framework?</title>
+<meta name="description" content="DAAFBench: Orchestration benchmarks language models on whether they can operate DAAF, a structured open-source research framework, as designed: routing requests, following protocol, delegating to subagents, and grounding methodological advice. Every score traces to an individual archived run.">
 <!-- OpenGraph / Twitter cards. og:image is deliberately omitted (deferred to
      the deploy infrastructure — it must be an absolute URL on the host).
      DEPLOY STEP: replace the og:url placeholder below with the final public
      URL before publishing. -->
-<meta property="og:title" content="DAAFBench: How Well Do AI Models Follow a Rigorous Research Orchestration Framework?">
+<meta property="og:title" content="DAAFBench: Orchestration &mdash; How Well Do AI Models Follow a Rigorous Research Framework?">
 <meta property="og:description" content="Language models dropped into a live research-orchestration framework and scored on whether they follow its protocols, with every number traceable to an individual archived run.">
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://daaf.openaugments.org/REPLACE-WITH-FINAL-URL.html">
+<!-- The og:url placeholder above is owned by the website deploy script (exact-string
+     substitution of REPLACE-WITH-FINAL-URL.html) — do not alter the token. The
+     canonical URL below is fixed per the site convention (every DAAF page declares one). -->
+<link rel="canonical" href="https://daaf.openaugments.org/bench/">
 <meta name="twitter:card" content="summary">
-<meta name="twitter:title" content="DAAFBench: How Well Do AI Models Follow a Rigorous Research Orchestration Framework?">
+<meta name="twitter:title" content="DAAFBench: Orchestration &mdash; How Well Do AI Models Follow a Rigorous Research Framework?">
 <meta name="twitter:description" content="Language models dropped into a live research-orchestration framework and scored on whether they follow its protocols.">
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='3' fill='%236366f1'/%3E%3Ctext x='8' y='12.5' font-size='11' font-weight='700' text-anchor='middle' fill='%23f8fafc' font-family='Arial,sans-serif'%3ED%3C/text%3E%3C/svg%3E">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='3' fill='%236366f1'/%3E%3Ctext x='8' y='12.5' font-size='11' font-weight='700' text-anchor='middle' fill='%23f0f4f8' font-family='Arial,sans-serif'%3ED%3C/text%3E%3C/svg%3E">
+<!-- Fonts — mirrored EXACTLY from the DAAF product site (preconnect pair +
+     one css2 stylesheet, display=swap): Space Grotesk (display), DM Sans
+     (body), JetBrains Mono (mono). Offline / single-file use: when Google
+     Fonts is unreachable, the font stacks in :root fall back gracefully to
+     the system fonts the viewer used before the 2026-06-12 site-cohesion
+     pass (display=swap means text renders immediately in the fallback). -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,400;0,500;0,600;1,400&family=JetBrains+Mono:wght@300;400;500&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
 /* === Design Tokens (design record: README § 8 — design system) ===
    Status palette + surface/border/text custom properties. All status color
    in CSS and JS routes through these tokens (WP8 sweep); the only literal
-   hues left are the per-model identity palettes (MODEL_COLORS) and SVG
-   presentation attributes, which are intentional. */
+   hues left are the per-model identity palettes (MODEL_COLORS), the kept
+   amber warning tints (#f59e0b/#fcd34d), and SVG presentation attributes,
+   which are intentional.
+   Site-cohesion remap (2026-06-12): surfaces / text / borders / fonts /
+   nav-height / easing mirror the DAAF product site :root verbatim. The
+   audited STATUS PALETTE HUES are untouched. Accent split (user decision):
+   teal #22d3a8 is CHROME ONLY (gradient strip, topbar, prose links,
+   TOC/nav active states, eyebrows, decorative gradients) so accent never
+   reads as pass-green #34d399; indigo --accent stays the in-content
+   interactive accent (buttons, selected runs, heatmap hover tints). */
 :root{
   --c-pass:#34d399;
   --c-pass-rgb:52,211,153; /* rgb of --c-pass, for the rgba() 5-step rate ramp */
@@ -31,37 +52,74 @@
   --c-fail-light:#fda4af;   /* light fail tint: small text on fail-tinted bgs */
   --c-partial:#fbbf24;
   --c-neutral:#64748b;
-  --surface-0:#0f172a;
-  --surface-1:#1e293b;
-  --border-1:#334155;
-  --text-1:#f8fafc;
-  --text-2:#94a3b8;
-  --text-3:#64748b;
+  --surface-0:#0a0f1c;       /* site --bg */
+  --surface-sec:#111827;     /* site --bg-secondary (dropdowns, tooltip) */
+  --surface-1:#151d2e;       /* site --bg-card */
+  --surface-hover:#1a2438;   /* site --bg-card-hover */
+  --surface-active:#1b2640;  /* site --bg-card-active */
+  --border-1:rgba(255,255,255,.08);  /* site --border */
+  --border-2:rgba(255,255,255,.15);  /* site --border-hover */
+  --text-1:#f0f4f8;
+  --text-2:#b0bcc8;
+  --text-3:#7b8da0;
   --accent:#6366f1;
   --accent-light:#818cf8;
+  --accent-teal:#22d3a8;
+  --accent-mint:#6ee7b7;
+  --font-display:'Space Grotesk',system-ui,sans-serif;
+  --font-body:'DM Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;
+  --font-mono:'JetBrains Mono','SF Mono',SFMono-Regular,Consolas,'Liberation Mono',Menlo,monospace;
+  --nav-height:88px;
+  --ease-out-expo:cubic-bezier(0.16,1,0.3,1);
 }
 
 /* === Reset & Base === */
 *{ margin:0; padding:0; box-sizing:border-box; }
-html{ scroll-behavior:smooth; scroll-padding-top:18px; }
+/* scroll-padding is nav-height-aware (geometry rework, 2026-06-12): hash
+   jumps must land below the 3px gradient strip + sticky 88px topbar */
+html{ scroll-behavior:smooth; scroll-padding-top:calc(var(--nav-height) + 3px + 14px); }
 body{
   background:var(--surface-0); color:var(--text-1);
-  font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;
+  font-family:var(--font-body);
   line-height:1.5;
 }
-a{ color:var(--accent-light); text-decoration:none; }
+/* Brand gradient strip (site body::before, mirrored verbatim) */
+body::before{
+  content:''; position:fixed; top:0; left:0; right:0; height:3px;
+  background:linear-gradient(90deg,var(--accent-teal),var(--accent-mint),var(--accent));
+  z-index:1200;
+}
+/* Prose links use the site's teal (chrome accent — user decision) */
+a{ color:var(--accent-teal); text-decoration:none; }
 a:hover{ text-decoration:underline; }
 button{ cursor:pointer; font-family:inherit; }
-code{ font-family:'SF Mono',SFMono-Regular,Consolas,'Liberation Mono',Menlo,monospace; font-size:0.85em; }
+code{ font-family:var(--font-mono); font-size:0.85em; }
+h1,h2,h3{ font-family:var(--font-display); letter-spacing:-0.02em; }
+/* Site gradient-text idiom (h1 keyword treatment) */
+.gradient-text{
+  background:linear-gradient(135deg,#22d3a8 0%,#6ee7b7 50%,#6366f1 100%);
+  -webkit-background-clip:text; -webkit-text-fill-color:transparent;
+  background-clip:text;
+}
+/* Eyebrow section label (site .section-label idiom, teal chrome accent) */
+.sec-eyebrow{
+  font-family:var(--font-display); font-size:11px; font-weight:600;
+  text-transform:uppercase; letter-spacing:.12em; color:var(--accent-teal);
+  margin-bottom:4px;
+}
 
-/* === Document Layout: fixed TOC rail + scrolling document === */
+/* === Document Layout: fixed TOC rail + scrolling document ===
+   Rail top is nav-height-aware (geometry rework, 2026-06-12): it starts
+   below the gradient strip + sticky topbar instead of top:0, so the two
+   never collide. The viewer's scrollspy stays authoritative for this rail;
+   the ported site nav JS never touches it. */
 .toc-rail{
-  position:fixed; top:0; left:0; bottom:0; width:190px;
+  position:fixed; top:calc(var(--nav-height) + 3px); left:0; bottom:0; width:190px;
   background:var(--surface-1); border-right:1px solid var(--border-1);
   padding:18px 0 14px; overflow-y:auto; z-index:100;
 }
 .toc-title{
-  font-size:13px; font-weight:700; color:var(--text-1);
+  font-family:var(--font-display); font-size:13px; font-weight:600; color:var(--text-1);
   padding:0 18px 10px; letter-spacing:.3px;
 }
 .toc-link{
@@ -69,9 +127,10 @@ code{ font-family:'SF Mono',SFMono-Regular,Consolas,'Liberation Mono',Menlo,mono
   border-left:3px solid transparent; transition:background .15s;
 }
 .toc-link:hover{ background:var(--border-1); color:var(--text-1); text-decoration:none; }
+/* Active nav state uses the site's teal (chrome accent — user decision) */
 .toc-link.active{
-  color:var(--text-1); border-left-color:var(--accent);
-  background:rgba(99,102,241,.08); font-weight:600;
+  color:var(--text-1); border-left-color:var(--accent-teal);
+  background:rgba(34,211,168,.08); font-weight:600;
 }
 .toc-top{
   display:block; padding:10px 18px 0; font-size:12px; color:var(--text-3);
@@ -90,13 +149,28 @@ code{ font-family:'SF Mono',SFMono-Regular,Consolas,'Liberation Mono',Menlo,mono
    keeps scrollbar geometry plausible before first render ("auto" then reuses
    the last rendered size); hash deep-links still work — the engine renders
    the navigation target on jump (Chrome / Firefox 125+). */
-#leaderboard,#cost-performance,#costs,#run-explorer,#provenance{
+#leaderboard,#cost-performance,#run-explorer,#provenance{
   content-visibility:auto;
   contain-intrinsic-size:auto 900px;
 }
 #phases,#cases{
   content-visibility:auto;
   contain-intrinsic-size:auto 2600px;
+}
+/* Explicit-nav geometry fix (2026-06-12, user fine-tuning round): while
+   sections are skipped, their layout height is the contain-intrinsic-size
+   ESTIMATE, so a first TOC click scrolled toward an estimated position and
+   the target shifted as intervening sections rendered at true heights. On
+   the first explicit nav the JS renders every section's content
+   (ensureAllRendered) and adds this class, which un-skips them all so the
+   whole document lays out at true geometry once — every subsequent anchor
+   jump then lands exactly. The initial-load perf benefit of
+   content-visibility is already banked by that point. (http(s) retest
+   item: re-verify the first-click landing post-deploy.) */
+body.nav-rendered #leaderboard,body.nav-rendered #cost-performance,
+body.nav-rendered #run-explorer,body.nav-rendered #provenance,
+body.nav-rendered #phases,body.nav-rendered #cases{
+  content-visibility:visible;
 }
 .doc-section h2{ font-size:20px; font-weight:700; margin-bottom:6px; }
 .section-lead{ font-size:14px; color:var(--text-2); max-width:880px; margin-bottom:12px; }
@@ -118,56 +192,72 @@ code{ font-family:'SF Mono',SFMono-Regular,Consolas,'Liberation Mono',Menlo,mono
 }
 
 /* === Hero === */
-.hero h1{ font-size:26px; font-weight:700; }
+.hero h1{ font-size:26px; font-weight:600; }
 .hero .gen{ font-size:12px; color:var(--text-3); margin-top:2px; }
-.chip-row{ display:flex; gap:10px; flex-wrap:wrap; margin:16px 0; }
+/* Hero stat chips: site .summary-badge idiom (anatomy css L766-815) — mono
+   value in the teal chrome accent, uppercase display label, teal→indigo
+   gradient top border, hover lift. The teal tint is decorative (these are
+   corpus counts, not pass/fail semantics); HTML emits value-then-label, so
+   column-reverse shows the site's label-over-value order without JS churn. */
+.chip-row{ display:flex; gap:10px; flex-wrap:wrap; margin:16px 0; max-width:1000px; }
 .chip{
-  background:var(--surface-1); border:1px solid var(--border-1);
-  border-radius:8px; padding:8px 16px; min-width:96px; text-align:center;
+  display:flex; flex-direction:column-reverse; gap:4px;
+  background:rgba(34,211,168,.04); border:1px solid rgba(34,211,168,.15);
+  border-radius:10px; padding:12px 16px; min-width:132px; flex:1;
+  text-align:left; position:relative; overflow:hidden;
+  transition:border-color .3s var(--ease-out-expo),
+             background .3s var(--ease-out-expo),
+             transform .3s var(--ease-out-expo);
 }
-.chip .chip-val{ font-size:20px; font-weight:700; }
-.chip .chip-label{ font-size:11px; color:var(--text-3); text-transform:uppercase; letter-spacing:.5px; }
-.verdict{
-  background:var(--surface-1); border:1px solid var(--border-1);
-  border-left:4px solid var(--accent); border-radius:8px;
-  padding:14px 18px; font-size:15px; max-width:980px; line-height:1.6;
+.chip::before{
+  content:''; position:absolute; top:0; left:0; right:0; height:2px;
+  background:linear-gradient(90deg,var(--accent-teal),var(--accent));
+  opacity:.5; transition:opacity .3s;
 }
-.verdict b{ color:var(--text-1); }
+.chip:hover{
+  border-color:rgba(34,211,168,.3); background:rgba(34,211,168,.07);
+  transform:translateY(-1px);
+}
+.chip:hover::before{ opacity:1; }
+.chip .chip-val{
+  font-family:var(--font-mono); font-size:20px; font-weight:500;
+  color:var(--accent-teal); letter-spacing:-.02em;
+}
+.chip .chip-label{
+  font-family:var(--font-display); font-size:10.5px; font-weight:500;
+  color:var(--text-3); text-transform:uppercase; letter-spacing:.09em;
+}
+/* (The .verdict gradient callout CSS was removed with the hero verdict
+   block, 2026-06-12 user fine-tuning round; .pd-callout carries its own
+   copy of the gradient-border callout idiom.) */
 .hero-sub{ font-size:14px; color:var(--text-2); max-width:900px; margin:8px 0 4px; line-height:1.65; }
 
 /* === Key Takeaways (editorial section; About-card styling idiom) === */
-.kt-badge{
-  display:inline-block; background:rgba(99,102,241,.15); border:1px solid var(--accent);
-  border-radius:12px; padding:2px 12px; font-size:11px; font-weight:600;
-  letter-spacing:.4px; color:var(--text-1); margin-bottom:8px;
-}
-.kt-disclaimer{ font-size:12.5px; color:var(--text-2); max-width:980px; margin-bottom:14px; line-height:1.6; }
 .kt-item{
   background:var(--surface-1); border:1px solid var(--border-1);
-  border-radius:8px; max-width:980px; padding:12px 16px; margin-bottom:10px;
+  border-radius:14px; max-width:980px; padding:12px 16px; margin-bottom:10px;
 }
 .kt-claim{ font-size:14.5px; font-weight:700; color:var(--text-1); margin-bottom:4px; }
-.kt-item p{ font-size:13.5px; color:#cbd5e1; line-height:1.6; margin:0; }
-.kt-foot{ font-size:12px; color:var(--text-3); margin-top:10px; max-width:980px; line-height:1.6; }
+.kt-item p{ font-size:13.5px; color:var(--text-2); line-height:1.6; margin:0; }
 
 /* === Two bars (About: always-visible metric primer) === */
 .two-bars{
   background:var(--surface-1); border:1px solid var(--border-1);
-  border-left:4px solid var(--accent); border-radius:8px;
+  border-left:4px solid var(--accent); border-radius:10px;
   padding:12px 16px; margin-bottom:12px; max-width:980px;
 }
-.two-bars p{ font-size:13.5px; color:#cbd5e1; line-height:1.6; margin:0 0 6px; }
+.two-bars p{ font-size:13.5px; color:var(--text-2); line-height:1.6; margin:0 0 6px; }
 .two-bars p:last-child{ margin-bottom:0; }
 
 /* === About === */
-.about-intro{ font-size:14px; color:#e2e8f0; max-width:900px; margin-bottom:14px; line-height:1.65; }
+.about-intro{ font-size:14px; color:var(--text-1); max-width:900px; margin-bottom:14px; line-height:1.65; }
 .about details{
   background:var(--surface-1); border:1px solid var(--border-1);
-  border-radius:8px; margin-bottom:10px; max-width:980px;
+  border-radius:10px; margin-bottom:10px; max-width:980px;
 }
 .about summary{ cursor:pointer; padding:10px 16px; font-weight:600; font-size:14px; }
 .about summary:hover{ color:var(--accent-light); }
-.about details > div{ padding:2px 16px 14px; font-size:13.5px; color:#cbd5e1; line-height:1.6; }
+.about details > div{ padding:2px 16px 14px; font-size:13.5px; color:var(--text-2); line-height:1.6; }
 .about details p{ margin-bottom:8px; }
 .about ul{ margin:6px 0 8px 18px; }
 .about li{ margin-bottom:6px; }
@@ -186,12 +276,12 @@ code{ font-family:'SF Mono',SFMono-Regular,Consolas,'Liberation Mono',Menlo,mono
 .filter-group{ display:flex; align-items:center; gap:4px; }
 .filter-group label{ font-size:11px; color:var(--text-3); text-transform:uppercase; letter-spacing:.5px; }
 .filter-select{
-  background:var(--surface-0); color:#e2e8f0; border:1px solid var(--border-1); border-radius:4px;
+  background:var(--surface-0); color:var(--text-1); border:1px solid var(--border-1); border-radius:8px;
   padding:4px 8px; font-size:12px; min-width:100px;
 }
 .filter-select option{ background:var(--surface-1); }
 .filter-input{
-  background:var(--surface-0); color:#e2e8f0; border:1px solid var(--border-1); border-radius:4px;
+  background:var(--surface-0); color:var(--text-1); border:1px solid var(--border-1); border-radius:8px;
   padding:4px 8px; font-size:12px; width:180px;
 }
 .filter-checkbox{
@@ -200,24 +290,27 @@ code{ font-family:'SF Mono',SFMono-Regular,Consolas,'Liberation Mono',Menlo,mono
 }
 .filter-checkbox input{ cursor:pointer; }
 .filter-btn{
-  background:#334155; color:#94a3b8; border:1px solid #475569; border-radius:4px;
+  background:var(--surface-hover); color:var(--text-2); border:1px solid var(--border-2); border-radius:10px;
   padding:4px 10px; font-size:11px;
 }
-.filter-btn:hover{ background:#475569; color:#f8fafc; }
+.filter-btn:hover{ background:var(--surface-active); color:var(--text-1); }
 /* Criterion deep-link filter chip (set by heatmap click-through; not a
-   select — criterion names vary per phase, so a dropdown would be huge) */
-.rx-chip{ display:inline-flex; align-items:center; gap:6px; background:rgba(99,102,241,.12); border:1px solid var(--accent); border-radius:12px; padding:2px 10px; font-size:11px; color:var(--text-1); }
+   select — criterion names vary per phase, so a dropdown would be huge).
+   999px pill (site idiom); indigo = in-content interactive accent. */
+.rx-chip{ display:inline-flex; align-items:center; gap:6px; background:rgba(99,102,241,.1); border:1px solid rgba(99,102,241,.45); border-radius:999px; padding:2px 10px; font-size:11px; color:var(--text-1); }
 .rx-chip code{ font-size:10px; }
 .rx-chip .rx-chip-x{ cursor:pointer; color:var(--text-2); font-weight:700; }
 .rx-chip .rx-chip-x:hover{ color:var(--text-1); }
 
 /* === Cards & Panels === */
+/* Site card idiom: --bg-card surface, 14px radius (anatomy .step-card) */
 .card{
-  background:#1e293b; border:1px solid #334155; border-radius:8px;
+  background:var(--surface-1); border:1px solid var(--border-1); border-radius:14px;
   padding:16px 20px; margin-bottom:16px; overflow-x:auto;
 }
 .section-title{
-  font-size:13px; font-weight:600; color:#94a3b8; text-transform:uppercase;
+  font-family:var(--font-display); font-size:13px; font-weight:600;
+  color:var(--text-2); text-transform:uppercase;
   letter-spacing:.5px; margin:20px 0 10px;
 }
 
@@ -238,6 +331,17 @@ code{ font-family:'SF Mono',SFMono-Regular,Consolas,'Liberation Mono',Menlo,mono
 /* .rs-na text uses --text-2 (not --text-3): --text-3 on the tinted cell
    measured ~2.7:1, under the 3:1 non-text floor (WP8 contrast audit). */
 .rs-na{ background:rgba(100,116,139,.12); color:var(--text-2); }
+/* WP8 re-audit (2026-06-12 site-token surface remap): the WP8 alphas were
+   tuned against the old #0f172a/#1e293b surfaces; the remap to the site's
+   #0a0f1c/#151d2e required re-measuring every ramp step against BOTH new
+   surfaces (cells render in cards and table rows). All pass their floors —
+   the darker surfaces raise most ratios — so all alphas are UNCHANGED.
+   Measured (worse of the two surfaces): rs-0 7.99:1, rs-1 11.04:1,
+   rs-2 7.09:1, rs-3 4.71:1 (floor 4.5; was ~5.0 pre-remap), rs-4 7.42:1,
+   rs-na 7.74:1 (floor 3.0; was ~5.0). Remapped text-on-surface pairs:
+   text-2 8.72:1, text-3 4.94:1 (UI labels, 3:1 floor; also clears 4.5),
+   teal links 8.78:1, accent-light 5.65:1, chip-val teal 9.44:1,
+   code-chip indigo-light 5.19:1, SVG axis text 8.72:1 — all PASS. */
 
 /* === Leaderboard === */
 .lb-finding,.cp-finding,.pd-finding{ font-size:15px; max-width:980px; margin:4px 0 12px; line-height:1.55; }
@@ -245,7 +349,7 @@ code{ font-family:'SF Mono',SFMono-Regular,Consolas,'Liberation Mono',Menlo,mono
 .lb-sort-label{ font-size:11px; color:var(--text-3); text-transform:uppercase; letter-spacing:.5px; margin-right:2px; }
 .lb-sort-btn{
   background:var(--surface-1); color:var(--text-2); border:1px solid var(--border-1);
-  border-radius:4px; padding:4px 10px; font-size:11px;
+  border-radius:10px; padding:4px 10px; font-size:11px;
 }
 .lb-sort-btn:hover{ color:var(--text-1); border-color:var(--text-3); }
 .lb-sort-btn.active{ background:rgba(99,102,241,.18); color:var(--text-1); border-color:var(--accent); font-weight:600; }
@@ -266,9 +370,11 @@ code{ font-family:'SF Mono',SFMono-Regular,Consolas,'Liberation Mono',Menlo,mono
 }
 .lb-rank{ color:var(--text-3); font-size:11px; text-align:right; width:26px; }
 .lb-model-name{ font-weight:600; color:var(--text-1); white-space:nowrap; }
+/* Provider chip: site 999px pill idiom, rgba(color,.1) bg + .25 border
+   (anatomy .phase-tag), on the neutral text-3 hue */
 .lb-provider{
-  display:inline-block; margin-left:6px; padding:0 6px; border-radius:8px;
-  background:var(--surface-0); border:1px solid var(--border-1);
+  display:inline-block; margin-left:6px; padding:0 7px; border-radius:999px;
+  background:rgba(123,141,160,.1); border:1px solid rgba(123,141,160,.25);
   font-size:10px; color:var(--text-3); vertical-align:middle;
 }
 .lb-partial{ background:rgba(251,191,36,.18); color:var(--c-partial); cursor:help; }
@@ -281,16 +387,40 @@ code{ font-family:'SF Mono',SFMono-Regular,Consolas,'Liberation Mono',Menlo,mono
 }
 .lb-bar-fill{ position:absolute; left:0; top:0; bottom:0; background:rgba(var(--c-pass-rgb),.75); }
 .lb-bar-tick{ position:absolute; top:0; bottom:0; width:1px; background:var(--text-1); opacity:.7; }
-/* Battery-cost headline list (Costs Detail): wider bars than the
-   leaderboard's composite bars; fill width is linear in dollars */
-.bat-bar{ width:240px; max-width:38vw; }
 .lb-cell{ text-align:center; }
 .lb-cell .hm-cell{ min-width:64px; }
 .lb-n{ display:block; font-size:9px; font-weight:400; opacity:.85; }
 .lb-cost{ text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap; }
-.lb-foot,.cp-foot,.pd-foot,.cost-foot{ font-size:12px; color:var(--text-3); margin-top:10px; max-width:980px; line-height:1.6; }
+.lb-foot,.cp-foot,.pd-foot{ font-size:12px; color:var(--text-3); margin-top:10px; max-width:980px; line-height:1.6; }
+/* "Details" footnote expanders (2026-06-12, user fine-tuning round 2):
+   the methodology footnotes under the Leaderboard table and the Cost vs.
+   Performance chart collapse into a <details> panel (the About /
+   .cp-pricing idiom) whose body reads at REGULAR body size in --text-2 —
+   not the tiny --text-3 footnote treatment. Scoped to .foot-details
+   descendants only: .prov-foot and the .cp-foot inside .cp-pricing keep
+   the small footnote idiom unchanged. */
+.foot-details{
+  background:var(--surface-1); border:1px solid var(--border-1);
+  border-radius:10px; margin:12px 0 0; max-width:980px;
+}
+.foot-details summary{ cursor:pointer; padding:10px 16px; font-weight:600; font-size:14px; }
+.foot-details summary:hover{ color:var(--accent-light); }
+.foot-details > div{ padding:2px 16px 14px; }
+.foot-details .lb-foot,.foot-details .cp-foot{
+  font-size:13.5px; color:var(--text-2); margin-top:8px;
+}
 
 /* === Cost vs. Performance === */
+/* Published list-price table, relocated here as a compact collapsible when
+   the Costs Detail section was removed (2026-06-12 user fine-tuning round);
+   mirrors the About-details panel idiom. */
+.cp-pricing{
+  background:var(--surface-1); border:1px solid var(--border-1);
+  border-radius:10px; margin:12px 0 0; max-width:980px;
+}
+.cp-pricing summary{ cursor:pointer; padding:10px 16px; font-weight:600; font-size:14px; }
+.cp-pricing summary:hover{ color:var(--accent-light); }
+.cp-pricing > div{ padding:2px 16px 14px; }
 .cp-legend{
   display:flex; align-items:center; gap:16px; flex-wrap:wrap;
   font-size:11px; color:var(--text-2); margin:2px 0 6px;
@@ -307,10 +437,17 @@ code{ font-family:'SF Mono',SFMono-Regular,Consolas,'Liberation Mono',Menlo,mono
 .pd-group{ margin-bottom:30px; min-width:0; }
 .pd-group h3{ font-size:15px; font-weight:700; margin-bottom:4px; }
 .pd-explainer{ font-size:12.5px; color:var(--text-2); max-width:760px; margin-bottom:8px; line-height:1.55; }
+/* Computed callout: site gradient-border callout idiom */
 .pd-callout{
-  font-size:12px; color:#cbd5e1; background:var(--surface-1);
-  border:1px solid var(--border-1); border-left:3px solid var(--accent);
-  border-radius:6px; padding:7px 12px; margin:0 0 10px; max-width:760px; line-height:1.55;
+  font-size:12px; color:var(--text-2); position:relative; overflow:hidden;
+  background:linear-gradient(135deg,rgba(34,211,168,.06) 0%,rgba(99,102,241,.06) 100%);
+  border:1px solid rgba(34,211,168,.15);
+  border-radius:10px; padding:7px 12px 7px 16px; margin:0 0 10px; max-width:760px; line-height:1.55;
+}
+.pd-callout::before{
+  content:''; position:absolute; left:0; top:0; bottom:0; width:3px;
+  background:linear-gradient(to bottom,var(--accent-teal) 0%,var(--accent) 100%);
+  border-radius:3px 0 0 3px;
 }
 .pd-table{ border-collapse:collapse; font-size:11px; }
 .pd-table thead th{
@@ -321,7 +458,7 @@ code{ font-family:'SF Mono',SFMono-Regular,Consolas,'Liberation Mono',Menlo,mono
 .pd-crit-th{ vertical-align:bottom; }
 .pd-crit-rot{
   display:inline-block; writing-mode:vertical-rl; transform:rotate(180deg);
-  font-family:'SF Mono',SFMono-Regular,Consolas,'Liberation Mono',Menlo,monospace;
+  font-family:var(--font-mono);
   font-size:9.5px; font-weight:500; line-height:1.3; white-space:nowrap;
 }
 .pd-model{
@@ -342,13 +479,23 @@ code{ font-family:'SF Mono',SFMono-Regular,Consolas,'Liberation Mono',Menlo,mono
   width:100%; border-collapse:collapse; font-size:12px;
 }
 .data-table th{
-  text-align:left; padding:8px 10px; border-bottom:2px solid #334155;
-  color:#94a3b8; font-weight:600; font-size:11px; text-transform:uppercase;
+  text-align:left; padding:8px 10px; border-bottom:2px solid var(--border-2);
+  color:var(--text-2); font-weight:600; font-size:11px; text-transform:uppercase;
   letter-spacing:.3px; cursor:pointer; user-select:none; white-space:nowrap;
 }
-.data-table th:hover{ color:#f8fafc; }
+.data-table th:hover{ color:var(--text-1); }
 .data-table td{
-  padding:6px 10px; border-bottom:1px solid #1e293b;
+  padding:6px 10px; border-bottom:1px solid var(--border-1);
+}
+/* Mono code chips (site .file-ref idiom) for criterion ids / run dirs /
+   timestamps / SHAs in prose findings, requirement lists, and data tables.
+   Indigo-tinted, NOT teal: these sit in content next to pass/fail rates,
+   and indigo is the in-content accent (user decision). */
+.lb-finding code,.cp-finding code,.pd-finding code,.pd-callout code,
+.req-list code,.rx-chip code,.prov-foot code,.data-table code{
+  display:inline-block; font-family:var(--font-mono); font-size:11px;
+  color:var(--accent-light); background:rgba(99,102,241,.08);
+  border:1px solid rgba(99,102,241,.18); padding:0 5px; border-radius:4px;
 }
 .data-table tr:hover td{ background:rgba(99,102,241,.04); }
 
@@ -359,24 +506,26 @@ code{ font-family:'SF Mono',SFMono-Regular,Consolas,'Liberation Mono',Menlo,mono
 }
 
 /* === Cases View (case browser per-rep marks) === */
-.case-prompt{ background:#1e293b; padding:10px; border-radius:4px; margin:8px 0; white-space:pre-wrap; font-size:12px; color:#cbd5e1; }
+/* Case prompt: site panel-content pre treatment (mono, page bg, 8px) */
+.case-prompt{ background:var(--surface-0); border:1px solid var(--border-1); padding:10px; border-radius:8px; margin:8px 0; white-space:pre-wrap; font-family:var(--font-mono); font-size:11.5px; line-height:1.6; color:var(--text-2); }
 .req-list{ margin:6px 0 6px 16px; }
-.req-list li{ color:#94a3b8; margin-bottom:3px; }
+.req-list li{ color:var(--text-2); margin-bottom:3px; }
 .crit-pass{ color:var(--c-pass); font-weight:700; }
 .crit-fail{ color:var(--c-fail); font-weight:700; }
-.rep-label{ color:#64748b; font-size:11px; font-weight:600; white-space:nowrap; }
+.rep-label{ color:var(--text-3); font-size:11px; font-weight:600; white-space:nowrap; }
 
 /* === Cases & Consistency === */
+/* Subcategory chip: same 999px neutral pill idiom as .lb-provider */
 .cs-chip{
-  display:inline-block; margin-left:6px; padding:0 6px; border-radius:8px;
-  background:var(--surface-0); border:1px solid var(--border-1);
+  display:inline-block; margin-left:6px; padding:0 7px; border-radius:999px;
+  background:rgba(123,141,160,.1); border:1px solid rgba(123,141,160,.25);
   font-size:10px; font-weight:400; color:var(--text-3); vertical-align:middle;
 }
 /* Row-margin difficulty column: visually separated from the model cells */
 .cs-margin{ border-right:2px solid var(--border-1) !important; cursor:default; }
 .case-browser details{
   background:var(--surface-1); border:1px solid var(--border-1);
-  border-radius:8px; margin-bottom:8px;
+  border-radius:10px; margin-bottom:8px;
 }
 .case-browser summary{ cursor:pointer; padding:9px 14px; font-size:13px; }
 .case-browser summary:hover{ color:var(--accent-light); }
@@ -386,17 +535,22 @@ code{ font-family:'SF Mono',SFMono-Regular,Consolas,'Liberation Mono',Menlo,mono
 /* === Run Explorer (relocated Logs view) === */
 .logs-layout{ display:flex; gap:16px; height:72vh; }
 .run-list-panel{
-  width:380px; min-width:300px; overflow-y:auto; border:1px solid #334155;
-  border-radius:8px; background:#1e293b;
+  width:380px; min-width:300px; overflow-y:auto; border:1px solid var(--border-1);
+  border-radius:14px; background:var(--surface-1);
 }
 .run-list-item{
-  padding:8px 12px; cursor:pointer; border-bottom:1px solid #0f172a;
+  padding:8px 12px; cursor:pointer; border-bottom:1px solid var(--surface-0);
   font-size:12px; display:flex; flex-wrap:wrap; gap:4px 12px;
 }
 .run-list-item:hover{ background:rgba(99,102,241,.06); }
-.run-list-item.selected{ background:rgba(99,102,241,.12); border-left:3px solid #6366f1; }
-.run-list-item .case-label{ font-weight:600; color:#f8fafc; }
-.run-list-item .model-label{ color:#94a3b8; }
+/* Active run: site glowing left-accent card state (anatomy .step-card
+   [aria-current]) on the in-content indigo accent */
+.run-list-item.selected{
+  background:var(--surface-active); border-left:3px solid var(--accent);
+  box-shadow:0 0 16px rgba(99,102,241,.12);
+}
+.run-list-item .case-label{ font-weight:600; color:var(--text-1); }
+.run-list-item .model-label{ color:var(--text-2); }
 /* Grade status glyphs (WP7 taxonomy): color + glyph + tooltip, never
    color alone. Timeout is a separate clock marker (.to-mark), not a
    status of its own — timed-out runs are usually still graded. */
@@ -407,35 +561,38 @@ code{ font-family:'SF Mono',SFMono-Regular,Consolas,'Liberation Mono',Menlo,mono
 .st-ungraded{ color:var(--c-neutral); }
 .to-mark{ color:var(--text-2); font-size:11px; cursor:help; }
 .run-detail-panel{
-  flex:1; overflow-y:auto; border:1px solid #334155; border-radius:8px;
-  background:#1e293b; padding:16px 20px;
+  flex:1; overflow-y:auto; border:1px solid var(--border-1); border-radius:14px;
+  background:var(--surface-1); padding:16px 20px;
 }
-.run-detail-panel .empty-state{ color:#64748b; text-align:center; padding:60px 20px; font-size:13px; }
+.run-detail-panel .empty-state{ color:var(--text-3); text-align:center; padding:60px 20px; font-size:13px; }
 .show-all-row{ padding:10px 12px; text-align:center; }
 
 /* Transcript */
 .transcript{ margin-top:16px; }
 .tx-msg{ padding:6px 10px; margin-bottom:4px; border-radius:4px; font-size:12px; }
-.tx-user{ background:rgba(99,102,241,.1); border-left:3px solid #6366f1; }
+.tx-user{ background:rgba(99,102,241,.1); border-left:3px solid var(--accent); }
 .tx-assistant{ background:rgba(var(--c-pass-rgb),.06); border-left:3px solid var(--c-pass); }
 .tx-tool-call{ background:rgba(245,158,11,.08); border-left:3px solid #f59e0b; font-size:11px; }
-.tx-tool-result{ background:rgba(100,116,139,.08); border-left:3px solid #64748b; font-size:11px; }
-.tx-system{ background:rgba(100,116,139,.05); border-left:3px solid #475569; font-size:11px; color:#64748b; }
+.tx-tool-result{ background:rgba(100,116,139,.08); border-left:3px solid var(--c-neutral); font-size:11px; }
+.tx-system{ background:rgba(100,116,139,.05); border-left:3px solid var(--text-3); font-size:11px; color:var(--text-3); }
 .tx-role{ font-weight:700; font-size:10px; text-transform:uppercase; letter-spacing:.5px; margin-right:6px; }
 .tx-content{ white-space:pre-wrap; word-break:break-word; }
-.tx-toggle{ color:#818cf8; cursor:pointer; font-size:11px; }
+/* Tool/diagnostic output blocks: site panel-content code treatment (mono).
+   Class-based (tx-out) because .tx-collapsed is removed on expand. */
+.tx-out{ font-family:var(--font-mono); line-height:1.55; }
+.tx-toggle{ color:var(--accent-light); cursor:pointer; font-size:11px; }
 .tx-toggle:hover{ text-decoration:underline; }
 .tx-collapsed{ max-height:40px; overflow:hidden; position:relative; }
 .tx-collapsed::after{
   content:''; position:absolute; bottom:0; left:0; right:0; height:20px;
-  background:linear-gradient(transparent,#1e293b);
+  background:linear-gradient(transparent,var(--surface-1));
 }
 
 /* Criteria checklist */
 .crit-check{ display:flex; align-items:flex-start; gap:6px; margin-bottom:6px; font-size:12px; }
 .crit-icon{ font-weight:700; flex-shrink:0; width:16px; text-align:center; }
-.crit-name{ font-weight:600; color:#e2e8f0; }
-.crit-detail{ color:#94a3b8; font-size:11px; margin-left:22px; }
+.crit-name{ font-weight:600; color:var(--text-1); }
+.crit-detail{ color:var(--text-2); font-size:11px; margin-left:22px; }
 
 /* === Charts (SVG) === */
 .chart-container{ margin:16px 0; overflow-x:auto; }
@@ -444,42 +601,291 @@ code{ font-family:'SF Mono',SFMono-Regular,Consolas,'Liberation Mono',Menlo,mono
 
 /* === Tooltip === */
 .tooltip{
-  position:fixed; background:#1e293b; border:1px solid #475569; border-radius:6px;
-  padding:8px 12px; font-size:11px; color:#e2e8f0; z-index:9999;
-  pointer-events:none; max-width:300px; box-shadow:0 4px 12px rgba(0,0,0,.4);
+  position:fixed; background:var(--surface-sec); border:1px solid var(--border-2); border-radius:10px;
+  padding:8px 12px; font-size:11px; color:var(--text-1); z-index:9999;
+  pointer-events:none; max-width:300px; box-shadow:0 8px 32px rgba(0,0,0,.3);
   display:none;
 }
 
 /* === Utilities === */
-.text-muted{ color:#64748b; }
-.text-secondary{ color:#94a3b8; }
+.text-muted{ color:var(--text-3); }
+.text-secondary{ color:var(--text-2); }
 .text-xs{ font-size:11px; }
 .mt-4{ margin-top:16px; }
 .mb-2{ margin-bottom:8px; }
 .mb-4{ margin-bottom:16px; }
+/* Badges: site 999px pill radius; status tints (audited hues) unchanged */
 .badge{
-  display:inline-block; background:#334155; color:#e2e8f0;
-  padding:1px 8px; border-radius:10px; font-size:11px; white-space:nowrap;
+  display:inline-block; background:rgba(255,255,255,.08); color:var(--text-1);
+  padding:1px 8px; border-radius:999px; font-size:11px; white-space:nowrap;
 }
 .badge-pass{ background:rgba(var(--c-pass-rgb),.2); color:var(--c-pass); }
 .badge-fail{ background:rgba(var(--c-fail-rgb),.2); color:var(--c-fail-light); }
 .badge-partial{ background:rgba(251,191,36,.2); color:#fde68a; }
-.badge-neutral{ background:rgba(100,116,139,.2); color:#94a3b8; }
+.badge-neutral{ background:rgba(100,116,139,.2); color:var(--text-2); }
 .badge-timeout{ background:transparent; border:1px dashed var(--text-2); color:var(--text-2); }
-.empty-msg{ color:#64748b; text-align:center; padding:40px; font-size:13px; }
+.empty-msg{ color:var(--text-3); text-align:center; padding:40px; font-size:13px; }
 .clickable{ cursor:pointer; }
 .clickable:hover{ opacity:.85; }
+
+/* === Site topbar + footer chrome (2026-06-12 site-cohesion pass) ===
+   Mirrored from the DAAF product site (index.html §§ NAV / NAV_DROPDOWN /
+   NAV_CTA_BUTTON / FOOTER and the max-width:1080px responsive block), with
+   only these adaptations: (1) all element-level `nav` selectors are scoped
+   to nav.site-nav so they can never touch the viewer's own <nav
+   class="toc-rail">; (2) site token names remapped to the viewer's
+   (--bg→--surface-0, --text→--text-1, --text-secondary→--text-2,
+   --text-muted→--text-3, --accent→--accent-teal, --border→--border-1,
+   --border-hover→--border-2); (3) z-index 1100 sits above the TOC rail
+   (100) and below the gradient strip (1200); tooltip (9999) stays on top.
+   Hrefs in the markup follow the anatomy page's relative-path model
+   (../daaf-product/…); the deploy script rewrites them for production. */
+nav.site-nav{
+  position:sticky; top:3px; z-index:1100; isolation:isolate;
+  height:var(--nav-height); padding:0 clamp(1.5rem,5vw,3rem);
+  display:flex; align-items:center; justify-content:space-between;
+  background:rgba(10,15,28,.97);
+  backdrop-filter:blur(12px); -webkit-backdrop-filter:blur(12px);
+  border-bottom:1px solid var(--border-1);
+}
+.nav-brand-group{ display:flex; align-items:center; gap:.75rem; flex-shrink:0; }
+.nav-brand{ display:inline-flex; align-items:center; flex-shrink:0; }
+.nav-brand:hover{ opacity:1; text-decoration:none; }
+.nav-logo{ height:clamp(32px,4vw,42px); width:auto; }
+.nav-brand-text{
+  font-family:var(--font-body); font-size:clamp(.56rem,.75vw,.65rem);
+  font-weight:500; color:var(--text-3); letter-spacing:.1em;
+  text-transform:uppercase; line-height:1.3; word-spacing:100vw; width:min-content;
+}
+.nav-brand-meta{ display:flex; flex-direction:column; gap:0; }
+.nav-brand-meta:hover{ text-decoration:none; }
+.nav-links{ display:flex; gap:clamp(1rem,3vw,2.5rem); list-style:none; align-items:center; }
+.nav-links a{
+  position:relative; font-family:var(--font-display);
+  font-size:clamp(.85rem,1.1vw,.95rem); font-weight:500; color:var(--text-3);
+  transition:color .2s; padding:.25rem 0; padding-bottom:4px; white-space:nowrap;
+}
+.nav-links a:hover{ color:var(--text-1); opacity:1; text-decoration:none; }
+.nav-links a.active{ color:var(--accent-teal); }
+.nav-links a.active::after{
+  content:''; position:absolute; bottom:-2px; left:0; right:0; height:2px;
+  background:var(--accent-teal); border-radius:1px;
+}
+.nav-dropdown{ position:relative; }
+.nav-dropdown > a,
+.nav-dropdown > .nav-dropdown-toggle{ padding-right:1rem; }
+.nav-dropdown-toggle{
+  background:none; border:none; cursor:default;
+  font-family:var(--font-display); font-size:clamp(.85rem,1.1vw,.95rem);
+  font-weight:500; color:var(--text-3); transition:color .2s; position:relative;
+  padding:.25rem 0; padding-bottom:4px; white-space:nowrap;
+}
+.nav-dropdown-toggle:hover{ color:var(--text-1); opacity:1; }
+.nav-dropdown-toggle.active{ color:var(--accent-teal); }
+.nav-dropdown-toggle.active::after{
+  content:''; position:absolute; bottom:-2px; left:0; right:0; height:2px;
+  background:var(--accent-teal); border-radius:1px;
+}
+.nav-dropdown > a::before,
+.nav-dropdown > .nav-dropdown-toggle::before{
+  content:''; position:absolute; right:0; top:50%;
+  transform:translateY(-75%) rotate(45deg); width:5px; height:5px;
+  border-right:1.5px solid currentColor; border-bottom:1.5px solid currentColor;
+  opacity:.6; pointer-events:none;
+}
+.nav-dropdown-menu{
+  position:absolute; top:calc(100% + 8px); left:50%;
+  transform:translateX(-50%) translateY(4px); min-width:200px;
+  background:rgba(17,24,39,.97);
+  backdrop-filter:blur(12px); -webkit-backdrop-filter:blur(12px);
+  border:1px solid var(--border-2); border-radius:10px; padding:.5rem;
+  list-style:none; opacity:0; visibility:hidden;
+  transition:opacity .2s,visibility .2s,transform .2s var(--ease-out-expo);
+  box-shadow:0 8px 32px rgba(0,0,0,.3); z-index:200;
+}
+.nav-dropdown-menu::before{
+  content:''; position:absolute; top:-8px; left:0; right:0; height:8px;
+}
+.nav-dropdown:hover .nav-dropdown-menu,
+.nav-dropdown:focus-within .nav-dropdown-menu{
+  opacity:1; visibility:visible; transform:translateX(-50%) translateY(0);
+}
+.nav-dropdown-menu li{ list-style:none; }
+.nav-dropdown-menu a{
+  display:flex; align-items:center; gap:.6rem; padding:.45rem .85rem;
+  border-radius:6px; font-size:clamp(.78rem,1vw,.88rem); white-space:nowrap;
+  transition:background .15s,color .15s;
+}
+.nav-dropdown-menu a:hover{ background:rgba(255,255,255,.06); color:var(--text-1); }
+.nav-dropdown-menu a.active{ color:var(--accent-teal); background:rgba(34,211,168,.08); }
+.nav-dropdown-menu a::after{ display:none; }
+.nav-cta-item{ margin-left:.5rem; }
+.nav-cta-item .btn-nav-install{
+  font-family:var(--font-display); font-size:.92rem; font-weight:600;
+  padding:.75rem 2rem; border-radius:10px;
+  background:var(--accent-teal); color:var(--surface-0);
+  transition:transform .2s var(--ease-out-expo),box-shadow .2s;
+  line-height:1; white-space:nowrap; letter-spacing:-.01em;
+}
+.btn-nav-install:hover{
+  transform:translateY(-1px); box-shadow:0 3px 16px rgba(34,211,168,.25);
+  opacity:1 !important; color:var(--surface-0) !important; text-decoration:none;
+}
+.nav-links .btn-nav-install{ color:var(--surface-0); }
+.nav-icon-item{ margin-left:.5rem; display:flex; align-items:center; }
+.nav-links .nav-icon-link{ color:var(--text-2); opacity:.85; transition:opacity .2s,color .2s; display:flex; align-items:center; text-decoration:none; }
+.nav-links .nav-icon-link:hover{ opacity:1; color:var(--text-1); }
+.nav-links .nav-icon-link svg{ width:24px; height:24px; }
+.nav-toggle{ display:none; background:none; border:none; cursor:pointer; padding:.5rem; }
+.nav-toggle span{
+  display:block; width:22px; height:2px; background:var(--text-1);
+  margin:5px 0; transition:transform .3s,opacity .3s;
+}
+@media (max-width:1080px){
+  .nav-links{
+    display:none; position:absolute; top:var(--nav-height); left:0; right:0;
+    background:rgba(10,15,28,.95); backdrop-filter:blur(12px);
+    flex-direction:column; padding:1.25rem 2rem 1.75rem;
+    border-bottom:1px solid var(--border-1); gap:.15rem;
+  }
+  .nav-links.open{ display:flex; align-items:flex-start; }
+  .nav-links a{ padding:.65rem 0; white-space:normal; }
+  .nav-links a.active::after{ display:none; }
+  .nav-cta-item{ margin-left:0; margin-top:.5rem; }
+  .nav-cta-item .btn-nav-install{ padding:.55rem 1.5rem; font-size:.88rem; display:inline-block; }
+  .nav-toggle{ display:block; }
+  .nav-dropdown{ width:100%; }
+  .nav-dropdown-menu{ display:none; }
+  .nav-dropdown.mobile-open .nav-dropdown-menu{
+    display:block; position:static; opacity:1; visibility:visible;
+    transform:none; background:transparent; border:none; box-shadow:none;
+    backdrop-filter:none; -webkit-backdrop-filter:none;
+    padding:.35rem 0 .25rem 1rem; min-width:0;
+  }
+  .nav-dropdown > a::before{ display:none; }
+  .nav-dropdown > .nav-dropdown-toggle{
+    padding:.65rem 1.2rem .65rem 0; cursor:pointer; text-align:left; width:100%;
+  }
+  .nav-dropdown > .nav-dropdown-toggle::before{ display:block; transition:transform .2s ease; }
+  .nav-dropdown.mobile-open > .nav-dropdown-toggle::before{ transform:translateY(-75%) rotate(-135deg); }
+  .nav-dropdown-toggle.active::after{ display:none; }
+  .nav-dropdown-menu a{ padding:.4rem .85rem; font-size:.88rem; color:var(--text-3); justify-content:flex-start; }
+  .nav-dropdown-menu a:hover,
+  .nav-dropdown-menu a.active{ color:var(--accent-teal); }
+  .nav-icon-item{ margin-left:0; margin-top:.5rem; }
+  .nav-links .nav-icon-link svg{ width:28px; height:28px; }
+}
+.site-footer{
+  padding:2.5rem clamp(1.5rem,5vw,3rem); border-top:1px solid var(--border-1);
+  text-align:center;
+}
+.footer-inner{
+  max-width:1100px; margin:0 auto; display:flex; flex-direction:column;
+  align-items:center; gap:1.25rem;
+}
+.footer-brand-block{ display:flex; flex-direction:column; align-items:center; gap:.75rem; }
+.footer-oa-logo{ height:clamp(48px,7vw,64px); width:auto; }
+.footer-tagline{
+  font-family:var(--font-body); font-size:1rem; color:var(--text-2);
+  text-align:center; max-width:500px;
+}
+.footer-tagline a{ color:var(--accent-teal); white-space:nowrap; }
+.footer-social-links{ display:flex; gap:1.75rem; flex-wrap:wrap; justify-content:center; }
+.footer-social-links a{
+  display:inline-flex; align-items:center; gap:.4rem;
+  font-family:var(--font-display); font-size:.88rem; font-weight:500;
+  color:var(--text-3); transition:color .2s;
+}
+.footer-social-links a:hover{ color:var(--accent-teal); opacity:1; text-decoration:none; }
+.footer-social-icon{ width:16px; height:16px; flex-shrink:0; }
+.footer-license{ font-size:.85rem; color:var(--text-3); opacity:.7; }
+.footer-copy{ font-size:clamp(.75rem,1vw,.85rem); color:var(--text-3); opacity:.5; margin-top:.25rem; }
 </style>
 </head>
 <body>
 
+<!-- ============================================================== -->
+<!-- Site topbar (2026-06-12 site-cohesion pass): markup mirrored    -->
+<!-- from the DAAF product site nav, hrefs on the anatomy page's     -->
+<!-- relative-path model (../daaf-product/…) — this page ships as a  -->
+<!-- non-root bundle alongside the site; the deploy script rewrites  -->
+<!-- relative links for production. The Learn dropdown carries this  -->
+<!-- page's own "Choosing Your Model (DAAFBench)" entry, marked      -->
+<!-- active. class="site-nav" scopes the ported nav CSS away from    -->
+<!-- the viewer's own <nav class="toc-rail">.                        -->
+<!-- ============================================================== -->
+<nav class="site-nav" role="navigation" aria-label="Main navigation">
+  <div class="nav-brand-group">
+    <a class="nav-brand" href="../daaf-product/index.html" aria-label="DAAF -- Data Analyst Augmentation Framework">
+      <svg class="nav-logo" viewBox="10 22 380 74" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+        <defs><linearGradient id="nav-gr" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stop-color="#22d3a8"/><stop offset="48%" stop-color="#6ce7b7"/><stop offset="100%" stop-color="#6366f1"/></linearGradient></defs>
+        <text x="52" y="90" font-family="'Space Grotesk',system-ui" font-size="90" font-weight="600" fill="#fff" text-anchor="middle">D</text>
+        <text x="154" y="90" font-family="'Space Grotesk',system-ui" font-size="90" font-weight="600" fill="#fff" text-anchor="middle">A</text>
+        <text x="256" y="90" font-family="'Space Grotesk',system-ui" font-size="90" font-weight="600" fill="#fff" text-anchor="middle">A</text>
+        <text x="349" y="90" font-family="'Space Grotesk',system-ui" font-size="90" font-weight="600" fill="#fff" text-anchor="middle">F</text>
+        <line x1="20" y1="64" x2="376" y2="64" stroke="url(#nav-gr)" stroke-width="2.2"/>
+        <line x1="20" y1="56" x2="20" y2="72" stroke="#22d3a8" stroke-width="2.2"/>
+        <line x1="376" y1="56" x2="376" y2="72" stroke="#6366f1" stroke-width="2.2"/>
+        <line x1="88" y1="56" x2="88" y2="72" stroke="#24d4aa" stroke-width="1.8"/>
+        <line x1="88" y1="64" x2="120" y2="64" stroke="#28d9b0" stroke-width="2.5"/>
+        <line x1="120" y1="56" x2="120" y2="72" stroke="#2cddb3" stroke-width="1.8" transform="rotate(15,120,64)"/>
+        <circle cx="104" cy="64" r="3.5" fill="#28d9b0"/>
+        <line x1="188" y1="56" x2="188" y2="72" stroke="#50e2c4" stroke-width="1.8" transform="rotate(-15,188,64)"/>
+        <line x1="188" y1="64" x2="222" y2="64" stroke="#5ee0cc" stroke-width="2.5"/>
+        <line x1="222" y1="56" x2="222" y2="72" stroke="#6ec0e6" stroke-width="1.8" transform="rotate(15,222,64)"/>
+        <circle cx="205" cy="64" r="3.5" fill="#6cddd0"/>
+        <line x1="290" y1="56" x2="290" y2="72" stroke="#7aa8ee" stroke-width="1.8" transform="rotate(-15,290,64)"/>
+        <line x1="290" y1="64" x2="318" y2="64" stroke="#7a9cf0" stroke-width="2.5"/>
+        <line x1="318" y1="56" x2="318" y2="72" stroke="#7a8ef1" stroke-width="1.8"/>
+        <circle cx="304" cy="64" r="3.5" fill="#7c9af0"/>
+      </svg>
+    </a>
+    <a class="nav-brand-meta" href="../daaf-product/index.html">
+      <span class="nav-brand-text">Data Analyst Augmentation Framework</span>
+    </a>
+  </div>
+  <button class="nav-toggle" aria-label="Toggle navigation" aria-expanded="false" id="nav-toggle">
+    <span></span><span></span><span></span>
+  </button>
+  <ul class="nav-links" id="nav-links">
+    <li><a href="../daaf-product/index.html">Home</a></li>
+    <li class="nav-dropdown">
+      <button class="nav-dropdown-toggle" aria-expanded="false" aria-haspopup="true">See How It Works</button>
+      <ul class="nav-dropdown-menu">
+        <li><a href="../daaf-anatomy/index.html#intro">Overview</a></li>
+        <li><a href="../daaf-anatomy/index.html#phase-1">Discovery</a></li>
+        <li><a href="../daaf-anatomy/index.html#phase-2">Planning</a></li>
+        <li><a href="../daaf-anatomy/index.html#phase-3">Data Acquisition</a></li>
+        <li><a href="../daaf-anatomy/index.html#phase-4">Analysis</a></li>
+        <li><a href="../daaf-anatomy/index.html#phase-5">Synthesis</a></li>
+        <li><a href="../daaf-anatomy/index.html#next-steps">Next Steps</a></li>
+      </ul>
+    </li>
+    <li class="nav-dropdown">
+      <button class="nav-dropdown-toggle active" aria-expanded="false" aria-haspopup="true">Learn</button>
+      <ul class="nav-dropdown-menu">
+        <li><a href="../daaf-product/learn.html">Overview</a></li>
+        <li><a href="../daaf-product/learn-understanding.html">Understanding DAAF</a></li>
+        <li><a href="../daaf-product/learn-best-practices.html">Best Practices</a></li>
+        <li><a href="../daaf-product/learn-extending.html">Extending DAAF</a></li>
+        <li><a href="../daaf-product/learn-philosophy.html">Philosophy &amp; Vision</a></li>
+        <li><a href="index.html" class="active" aria-current="page">Choosing Your Model</a></li>
+        <li><a href="https://daafguide.substack.com/" target="_blank" rel="noopener">Blog &#8599;</a></li>
+      </ul>
+    </li>
+    <li><a href="../daaf-product/support.html">Support</a></li>
+    <li class="nav-cta-item"><a href="../daaf-product/get-started.html" class="btn-nav-install">Get Started with DAAF</a></li>
+    <li class="nav-icon-item"><a href="https://github.com/DAAF-Contribution-Community/daaf" target="_blank" rel="noopener" class="nav-icon-link" aria-label="GitHub repository"><svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M12 2C6.477 2 2 6.477 2 12c0 4.42 2.87 8.17 6.84 9.5.5.08.66-.23.66-.5v-1.69c-2.77.6-3.36-1.34-3.36-1.34-.46-1.16-1.11-1.47-1.11-1.47-.91-.62.07-.6.07-.6 1 .07 1.53 1.03 1.53 1.03.87 1.52 2.34 1.07 2.91.83.09-.65.35-1.09.63-1.34-2.22-.25-4.55-1.11-4.55-4.92 0-1.11.38-2 1.03-2.71-.1-.25-.45-1.29.1-2.64 0 0 .84-.27 2.75 1.02.79-.22 1.65-.33 2.5-.33.85 0 1.71.11 2.5.33 1.91-1.29 2.75-1.02 2.75-1.02.55 1.35.2 2.39.1 2.64.65.71 1.03 1.6 1.03 2.71 0 3.82-2.34 4.66-4.57 4.91.36.31.69.92.69 1.85V21c0 .27.16.59.67.5C19.14 20.16 22 16.42 22 12A10 10 0 0 0 12 2z"/></svg></a></li>
+  </ul>
+</nav>
+
 <noscript>
-  <p style="max-width:900px;margin:18px auto;padding:12px 16px;background:#1e293b;border:1px solid #f59e0b;border-radius:8px;font-size:14px;line-height:1.6;color:#f8fafc">
-    This page is an interactive report rendered by JavaScript from data embedded
-    directly in this single file: nothing is fetched from a network, and no
-    data leaves your machine. With JavaScript disabled you will see only section
-    headings and static prose; every table, chart, and run transcript needs
-    JavaScript enabled to render.
+  <p style="max-width:900px;margin:18px auto;padding:12px 16px;background:var(--surface-1);border:1px solid #f59e0b;border-radius:10px;font-size:14px;line-height:1.6;color:var(--text-1)">
+    This page is an interactive report rendered by JavaScript from embedded
+    data; run transcripts may be loaded on demand from this report&rsquo;s own
+    bundled data files. No data leaves your machine. With JavaScript disabled
+    you will see only section headings and static prose; every table, chart,
+    and run transcript needs JavaScript enabled to render.
   </p>
 </noscript>
 
@@ -487,15 +893,14 @@ code{ font-family:'SF Mono',SFMono-Regular,Consolas,'Liberation Mono',Menlo,mono
 <!-- TOC rail (scrollspy active-state managed by JS)                -->
 <!-- ============================================================== -->
 <nav class="toc-rail" id="toc-rail">
-  <div class="toc-title">DAAFBench Explorer</div>
-  <a class="toc-link" href="#hero" data-target="hero">Verdict</a>
+  <div class="toc-title">DAAFBench: Orchestration</div>
+  <a class="toc-link" href="#hero" data-target="hero">Intro</a>
   <a class="toc-link" href="#takeaways" data-target="takeaways">Key Takeaways</a>
-  <a class="toc-link" href="#about" data-target="about">About This Benchmark</a>
+  <a class="toc-link" href="#about" data-target="about">About DAAFBench</a>
   <a class="toc-link" href="#leaderboard" data-target="leaderboard">Leaderboard</a>
   <a class="toc-link" href="#cost-performance" data-target="cost-performance">Cost vs. Performance</a>
   <a class="toc-link" href="#phases" data-target="phases">Phase Deep-Dives</a>
   <a class="toc-link" href="#cases" data-target="cases">Cases &amp; Consistency</a>
-  <a class="toc-link" href="#costs" data-target="costs">Costs Detail</a>
   <a class="toc-link" href="#run-explorer" data-target="run-explorer">Run Explorer</a>
   <a class="toc-link" href="#provenance" data-target="provenance">Provenance</a>
   <a class="toc-top" href="#hero">&#8593; top</a>
@@ -503,31 +908,49 @@ code{ font-family:'SF Mono',SFMono-Regular,Consolas,'Liberation Mono',Menlo,mono
 
 <main class="doc">
 
-<!-- 1. Hero / Verdict -->
+<!-- 1. Hero / Intro (restructured 2026-06-12, user fine-tuning rounds 1+2):
+     h1 + date + stat chips + ONE "TLDR:" paragraph — the first sentence of
+     the user's former hero ¶1 (links intact) plus a user-supplied DAAFBench
+     framing sentence, both VERBATIM (voice anchors — never reword). The
+     "layers together" remainder of the former ¶1 and the three deeper hero
+     paragraphs (agentic-orchestration explainer, the DAAFBench suite
+     framing, and the why-it-matters paragraph) all moved VERBATIM to the
+     top of #about; the computed verdict callout was removed entirely (the
+     cost-performance preview below + the Key Takeaways now carry the
+     headline answer). Orientation-first (anatomy-page pattern): the stat
+     chips render ABOVE the prose, filled by renderHero() from
+     PRECOMPUTED. -->
 <section class="doc-section hero" id="hero">
-  <h1>How well do different AI models handle the complexities of rigorous research orchestration workflows?</h1>
+  <h1>How well do different AI models handle the complexities of <span class="gradient-text">rigorous research orchestration workflows</span>?</h1>
   <div class="gen">Report Updated __GENERATED_DISPLAY__ UTC</div>
-  <p class="hero-sub">
-    <a href="https://daaf.openaugments.org">DAAF (the Data Analyst Augmentation
-    Framework)</a> is a free,
-    <a href="https://github.com/DAAF-Contribution-Community/daaf">open-source</a>
-    toolkit and instructions framework that turns Claude Code into a rigorous quantitative research engine with the human researcher at the helm: every step auditable, every output verifiable, every decision theirs to make. DAAF layers together a suite of architectural defenses and strategies from the current frontier of AI best practices to maximize AI output quality and force Claude Code to operate more like a careful and thoughtful researcher at every opportunity. 
-  </p>
-  <p class="hero-sub">
-    One of the core features of this system is something called "agentic orchestration," or the complex process of weaving together multiple AI assistants in concert to tackle increasingly complex research workflows: anything from iterating continuously on a data visualization script to developing entire data analytic pipelines from a given research question. DAAF (and other orchestration frameworks) does this by giving a series of intensive instructions, guidelines, and workflows to the AI assistants as they work, breaking tasks down into more concrete and tractable sub-tasks, facilitating better coordination, managing work tracking and documentation, and enforcing adherence to a set of unifying work principles (e.g., auditability, human-in-the-loop, rigorous self-verification processes, etc.).
-  </p>
-  <p class="hero-sub">
-    But a framework like this only works if the AI assistants are sophisticated enough to actually understand, apply, and remember these instructions thoughtfully and consistently. This page walks through the initial results of DAAFBench, a series of bespoke benchmark tests explicitly designed to test adherence to the research protocols and process guidelines of DAAF and assess a given model's suitability for operating along guidelines that make rigorous, reproducible, and responsible social science at scale possible with AI assistants. The results below summarize multi-dimensional performance assessments for 17 models (both official Anthropic models, as well as open-weights models accessible via OpenRouter, which is immediately compatible with Claude Code and DAAF) across over 1,700 different test repetitions designed to simulate key moments of orchestration decision-making and protocol adherence. Importantly, it measures <b>behavioral conformance only</b>:
-    not answer quality, not analytical capability, not general intelligence. A
-    brilliant analyst model that skips confirmation gates scores poorly here,
-    and a modest model that faithfully follows protocol scores well. 
-      </p>
-  <p class="hero-sub">
-    But these results are a crucial step in understanding how models actually perform under these conditions and allow for far greater nuance in thinking about the exact use of specific models (especially more expensive versus cheaper, and proprietary versus open-source) across these types of workflows. Most importantly, it allows us to more directly track whether and when locally-hosted models (e.g., on a home computer with consumer hardware) can start to tackle these sorts of tasks, opening the door for unprecedented access to analytic capacity going forward.
-  </p>
 
   <div class="chip-row" id="hero-chips"></div>
-  <div class="verdict" id="hero-verdict"></div>
+
+  <p class="hero-sub">
+    TLDR: <a href="https://daaf.openaugments.org">DAAF (the Data Analyst Augmentation
+    Framework)</a> is a free,
+    <a href="https://github.com/DAAF-Contribution-Community/daaf">open-source</a>
+    toolkit and instructions framework that turns Claude Code into a rigorous quantitative research engine with the human researcher at the helm: every step auditable, every output verifiable, every decision theirs to make. DAAFBench: Orchestration is testing suite designed to assess different models&rsquo; abilities to adhere to the workflows, guidance, guardrails, and processes needed to facilitate responsible, rigorous, and reproducible data analysis for good research. Lots of neat insights on model performance, task consistency, costs, and open-weight trade-offs below!
+  </p>
+</section>
+
+<!-- 1b. Cost-performance preview (2026-06-12 user fine-tuning rounds;
+     moved ABOVE #takeaways in round 2): a compact second render of the
+     Cost vs. Performance scatter — default battery basis, composite
+     Perfect rate, no toggles, reduced height — directly under the hero so
+     the headline value-for-money picture lands before the takeaways and
+     the methodology. Deliberately NOT in the TOC or SECTION_IDS
+     (it scrollspy-reads as part of #hero) and NOT in the
+     content-visibility rule (it must render on load with the other
+     above-the-fold sections); rendered at init by renderCostPerfPreview()
+     through the same svgCostFrontier path as the full chart. -->
+<section class="doc-section" id="cvp-preview">
+  <p class="section-lead">
+    The headline picture: model performance across the benchmark suite plotted against estimated cost to run
+    the full battery, relative to Opus 4.8. 
+    <a href="#cost-performance">See the full chart</a> below for much more information, customization, and caveats.
+  </p>
+  <div class="card"><div class="chart-container" id="cvp-preview-chart"></div></div>
 </section>
 
 <!-- 2. Key Takeaways (editorial; figures injected by fillTakeaways from
@@ -535,11 +958,12 @@ code{ font-family:'SF Mono',SFMono-Regular,Consolas,'Liberation Mono',Menlo,mono
      to a visible dash, never a stale number. Maintenance rules in the
      generator's dev-guide comment block.) -->
 <section class="doc-section" id="takeaways">
+  <div class="sec-eyebrow">The Headlines</div>
   <h2>Key Takeaways (June 2026)</h2>
 
   <div class="kt-item">
-    <div class="kt-claim">1. Fable 5 is genuinely in a class of its own.</div>
-    <p>Fable 5 leads the scoreboard at <b><span id="kt-t1-comp">&mdash;</span></b>
+    <div class="kt-claim">1. Fable 5 is actually in a class of its own.</div>
+    <p>Fable 5 leads the scoreboard at a Perfect average score of <b><span id="kt-t1-comp">&mdash;</span></b>
     &mdash; <b><span id="kt-t1-margin">&mdash;</span></b> points clear of the next
     model. It is also by far the most consistent model tested:
     <b><span id="kt-t1-cons">&mdash;</span></b> of its repeated cases scored perfectly across every criterion
@@ -548,10 +972,10 @@ code{ font-family:'SF Mono',SFMono-Regular,Consolas,'Liberation Mono',Menlo,mono
 
   <div class="kt-item">
     <div class="kt-claim">2. Opus 4.7 was genuinely worse than Opus 4.5/4.6, but Opus 4.8 was a strong return to form.</div>
-    <p>Claude Opus 4.7 was widely criticized for being far too stingy in its effort, perceived as an strategy by Anthropic to manage intense compute constraints at launch time. The testing bears this out empirically: Opus 4.5 and 4.6 scored at
+    <p>Claude Opus 4.7 was widely criticized for being far too stingy in its effort, perceived as a strategy by Anthropic to manage intense compute constraints at launch time. The testing bears this out empirically: Opus 4.5 and 4.6 scored at
     <span id="kt-t2-o45">&mdash;</span> and 
     <span id="kt-t2-o46">&mdash;</span>, respectively, while Opus 4.7 came in at 
-    <b><span id="kt-t2-o47">&mdash;</span></b>. Trends are even more pronounced when focusing only on critical criteria completion ("Critical-only"): scores excluding the valuable but less mission-critical criteria otherwise. That being said, 4.8 was the best of the Opus line so far by a wide margin at
+    <b><span id="kt-t2-o47">&mdash;</span></b>. The 4.7 dip is even more pronounced when focusing only on critical criteria completion (&ldquo;Critical-only&rdquo;: scores counting just the must-pass criteria): <span id="kt-t2-o45h">&mdash;</span>/<span id="kt-t2-o46h">&mdash;</span>/<b><span id="kt-t2-o47h">&mdash;</span></b>/<span id="kt-t2-o48h">&mdash;</span> across the four Opus releases. That being said, 4.8 was the best of the Opus line so far by a wide margin at
     <span id="kt-t2-o48">&mdash;</span>.</p>
   </div>
 
@@ -566,12 +990,12 @@ code{ font-family:'SF Mono',SFMono-Regular,Consolas,'Liberation Mono',Menlo,mono
   </div>
 
   <div class="kt-item">
-    <div class="kt-claim">4. Open-weight models are highly capable as a win for self-hosting opportunities, but with a meaningful and crucial decline in consistency.</div>
+    <div class="kt-claim">4. Open-weight models are highly capable &mdash; a real win for self-hosting &mdash; but with a crucial decline in consistency.</div>
     <p>DeepSeek V4 Pro 
     (<span id="kt-t4-dspro">&mdash;</span>) and GLM 5.1
-    (<span id="kt-t4-glm">&mdash;</span>) lead the open-weight pack, with the considerably cheaper DeepSeek V4 Flash a close follower (<span id="kt-t4-dsflash">&mdash;</span>) -- all landing in the same neighborhood
-    as most of the Opus line. That being said, while much cheaper in terms of price-per-token, differences in token consumption patterns still place them in roughly the same cost bracket as Sonnet (with the exception of DeepSeek V4 Flash). The empirical trade-off then is less about price versus raw performance, and more about the value of control and performance consistency. Open-weight models allow for self-hosting, modification/fine-tuning, and long-term support guarantees (i.e., not worrying about Opus 4.5 getting sun-setted in a few months when multiple analyses and products rely explicitly on it). But the testing battery also reveals a marked drop in performance consistency -- the Anthropic models perform predictably for the same tasks (for better and for worse), while the open-weight models perform more erratically on repeated runs. Moreover, DeepSeek Pro
-    carries the &rsquo;s second-highest timeout rate
+    (<span id="kt-t4-glm">&mdash;</span>) lead the open-weight pack, with the considerably cheaper DeepSeek V4 Flash a close follower (<span id="kt-t4-dsflash">&mdash;</span>) &mdash; all landing in the same neighborhood
+    as most of the Opus line. That being said, while much cheaper in terms of price-per-token, differences in token consumption patterns still place them in roughly the same cost bracket as Sonnet (with the exception of DeepSeek V4 Flash). The empirical trade-off then is less about price versus raw performance, and more about the value of control and performance consistency. Open-weight models allow for self-hosting, modification/fine-tuning, and long-term support guarantees (i.e., not worrying about Opus 4.5 getting sun-setted in a few months when multiple analyses and products rely explicitly on it). But the testing battery also reveals a marked drop in performance consistency: the Anthropic models perform predictably for the same tasks (for better and for worse), while the open-weight models perform more erratically on repeated runs. Moreover, DeepSeek Pro
+    carries the corpus&rsquo;s second-highest timeout rate
     (<span id="kt-t4-dsto">&mdash;</span> of runs) across all models tested, so its scores come with a broader
     reliability asterisk as well.</p>
   </div>
@@ -579,32 +1003,65 @@ code{ font-family:'SF Mono',SFMono-Regular,Consolas,'Liberation Mono',Menlo,mono
   <div class="kt-item">
     <div class="kt-claim">5. Local-class open-weight models just aren&rsquo;t there yet.</div>
     <p>Qwen 3.6 27B, the best of the small open models here, manages
-    <span id="kt-t6-qwen">&mdash;</span>, and its weakest points sit exactly
+    <span id="kt-t5-qwen">&mdash;</span>, and its weakest points sit exactly
     where an orchestration framework hurts most: careful skill routing
-    (basically: How often does it load the necessary grounding references before it responds to questions? <span id="kt-t6-qwenp4">&mdash;</span>) and mode
-    classification (basically: How often does it correctly assign a natural language query to the right workflow process? <span id="kt-t6-qwenp1">&mdash;</span>). Gemma 4 31B timed
-    out on <b><span id="kt-t6-g31to">&mdash;</span></b> of its runs, often not actually doing any work at all when queried: by far the worst
-    reliability in the corpus. Some of these results may be simple harness incompatibility (Claude Code is not optimized for communicating with Gemma or Qwen, to be clear), but nonetheless point to more necessary improvements/development to be viable for rigorous research orchestration workflows. That being said, they <em>will</em> get there someday, and with DAAFBench, we'll now be able to know when they do!</p>
+    (basically: How often does it load the necessary grounding references before it responds to questions? <span id="kt-t5-qwenp4">&mdash;</span>) and mode
+    classification (basically: How often does it correctly assign a natural language query to the right workflow process? <span id="kt-t5-qwenp1">&mdash;</span>). Gemma 4 31B timed
+    out on <b><span id="kt-t5-g31to">&mdash;</span></b> of its runs, often &mdash; per transcript forensics &mdash; not actually doing any work at all when queried: by far the worst
+    reliability in the corpus. Some of these results may be simple harness incompatibility (Claude Code is not optimized for communicating with Gemma or Qwen, to be clear), but nonetheless point to more necessary improvements/development to be viable for rigorous research orchestration workflows. That being said, they <em>will</em> get there someday, and with DAAFBench, we&rsquo;ll now be able to know when they do!</p>
   </div>
 
-  <p class="kt-foot">
-    Some key caveats to keep in mind while reviewing the results: repetition counts are relatively small and can be 
-    uneven across providers and models due to cost limitations, so recognize the results are necessarily imprecise; cost comparisons are based on rough relative multipliers (the estimated cost to run the full
-    <span id="kt-foot-bat">&mdash;</span>-probe battery once, from uncached
-    published list prices applied to each model&rsquo;s observed token mix) and these relative figures can shift as providers reprice tokens
-    and as provider caching mechanics interact with each model&rsquo;s
-    behavior. See more detail in the Key Caveats section below.
-  </p>
+  <!-- kt-foot removed (2026-06-12 user fine-tuning round): its
+       non-duplicative content was folded into the About Key Caveats
+       <details> — the small/uneven-repetition imprecision point into the
+       denominators caveat, and the battery-multiplier definition + drift
+       sentence (with the kt-foot-bat battery-size span) into the cost
+       caveat. -->
 </section>
 
-<!-- 3. About This Benchmark -->
+<!-- 3. About DAAFBench -->
 <section class="doc-section about" id="about">
-  <h2>About This Benchmark</h2>
+  <div class="sec-eyebrow">Methodology &amp; Caveats</div>
+  <h2>About DAAFBench</h2>
+
+  <!-- The first four paragraphs below are the user's hero prose, moved
+       here VERBATIM (2026-06-12 user fine-tuning rounds / intro
+       restructure) — do not reword: ¶1 is the "layers together" remainder
+       of the user's former hero ¶1 (moved in round 2, when the hero became
+       the single TLDR paragraph), and ¶¶2-4 are the user's hero ¶¶2-4
+       (moved in round 1). The hero-models / hero-runs live-count
+       spans (build-time __HERO_MODELS__/__HERO_RUNS__ substitution +
+       renderHero() refill) travel with them. The old Wave-3 About intro ¶1
+       was trimmed to its one non-duplicative sentence (mechanical scoring)
+       — its companion-suite framing now lives, stated once with full
+       fidelity, in the third moved paragraph. -->
+  <p class="about-intro">
+    DAAF layers together a suite of architectural defenses and strategies from the current frontier of AI best practices to maximize AI output quality and force Claude Code to operate more like a careful and thoughtful researcher at every opportunity. One of the core features of this system is something called &ldquo;agentic orchestration,&rdquo; or the complex process of weaving together multiple AI assistants in concert to tackle increasingly complex research workflows: anything from iterating continuously on a data visualization script to developing entire data analytic pipelines from a given research question. DAAF (and other orchestration frameworks) does this by giving a series of intensive instructions, guidelines, and workflows to the AI assistants as they work, breaking tasks down into more concrete and tractable sub-tasks, facilitating better coordination, managing work tracking and documentation, and enforcing adherence to a set of unifying work principles (e.g., auditability, human-in-the-loop, rigorous self-verification processes, etc.).
+  </p>
+  <p class="about-intro">
+    But a framework like this only works if the AI assistants are sophisticated enough to actually understand, apply, and remember these instructions thoughtfully and consistently. This page walks through the initial results of DAAFBench, a series of bespoke benchmark tests explicitly designed to test adherence to the research protocols and process guidelines of DAAF and assess a given model&rsquo;s suitability for operating along guidelines that make rigorous, reproducible, and responsible social science at scale possible with AI assistants. The results below summarize multi-dimensional performance assessments for <span id="hero-models">__HERO_MODELS__</span> models (both official Anthropic models, as well as open-weights models accessible via OpenRouter, which is immediately compatible with Claude Code and DAAF) across <span id="hero-runs">__HERO_RUNS__</span> different test repetitions designed to simulate key moments of orchestration decision-making and protocol adherence. 
+      </p>
+  <p class="about-intro">
+    Importantly, DAAFBench: Orchestration measures <b>behavioral conformance only</b>:
+    not answer quality, not analytical capability, not general intelligence. A
+    brilliant analyst model that skips confirmation gates scores poorly here,
+    and a modest model that faithfully follows protocol scores well. It is deliberately only half of the picture: a companion suite still in development (predictably, DAAFBench: Analytics) will test analytic competency directly, or whether models make the right calls <em>inside</em> the analysis itself (i.e., explicit decision-making in analytic code and data-cleaning steps, tested via adversarial examples, known-good code, and deterministically verifiable outputs). Orchestration discipline and analytic judgment are complementary halves of trustworthy AI-assisted research, and each deserves its own dedicated measurement. More to come there!
+  </p>
+  <p class="about-intro">
+    Regardless, DAAFBench: Orchestration results are a crucial step in understanding how models actually perform under these conditions and allow for far greater nuance in thinking about the exact use of specific models (especially more expensive versus cheaper, and proprietary versus open-source) across these types of workflows. Most importantly, it allows us to more directly track whether and when locally-hosted models (e.g., on a home computer with consumer hardware) can start to tackle these sorts of tasks, opening the door for unprecedented access to analytic capacity going forward.
+    Both the framework being tested and the benchmark harness that produced
+    these numbers are free and open-source in the
+    <a href="https://github.com/DAAF-Contribution-Community/daaf">DAAF
+    GitHub repository</a>; this page is generated directly from the archived
+    run records, and the Run Explorer below lets you trace any score down to
+    the individual runs behind it. If you catch any issues or have suggestions for improvements, please do get in touch!
+  </p>
 
   <div class="two-bars">
-    <p><b>Two bars run through every number on this page.</b>
+    <p><b>Two quality indicators run through every number on this page.</b>
     <b>Perfect</b> is the high bar: did the model do everything exactly right on
-    a run &mdash; every criterion passed, the protocol details included? It tells
+    a run &mdash; every criterion (a single named requirement a run either meets
+    or misses) passed, right down to the protocol details? It tells
     you how well, and how often, a model delivers a fully clean run, and it is
     the basis of the headline composite.</p>
     <p><b>Critical-only</b> is the lower but still valuable bar: if you are
@@ -619,14 +1076,15 @@ code{ font-family:'SF Mono',SFMono-Regular,Consolas,'Liberation Mono',Menlo,mono
     <div>
       <ul>
         <li><b>Orchestrator</b> &mdash; the main assistant in a DAAF session: it talks
-            to the user, classifies requests, and coordinates everything else.</li>
+            to the user, classifies requests, and coordinates everything else.
+            Think of it as a lab manager.</li>
         <li><b>Subagent</b> &mdash; a specialist assistant the orchestrator delegates
             work to (a data analyst, a code reviewer, a debugger), each with its own
             working rules.</li>
         <li><b>Skill</b> &mdash; a curated reference document the assistant can load on
-            demand, injecting domain expertise (a statistics library's quirks, a data
-            source's structure) at the right moment.</li>
-        <li><b>Engagement mode</b> &mdash; one of DAAF's nine workflow types (a full
+            demand, injecting domain expertise (a statistics library&rsquo;s quirks, a data
+            source&rsquo;s structure) at the right moment.</li>
+        <li><b>Engagement mode</b> &mdash; one of DAAF&rsquo;s nine workflow types (a full
             analysis pipeline, onboarding a new dataset, a quick lookup, and so on);
             every user request must be routed into one.</li>
         <li><b>Confirmation gate</b> &mdash; the required pause where the assistant
@@ -639,7 +1097,7 @@ code{ font-family:'SF Mono',SFMono-Regular,Consolas,'Liberation Mono',Menlo,mono
             expected behavior and scoring criteria.</li>
         <li><b>Rep</b> &mdash; one repetition of a case: the identical prompt run again,
             because a model can succeed on one attempt and fail on the next.</li>
-        <li><b>Composite</b> &mdash; a model's headline score: the unweighted mean of
+        <li><b>Composite</b> &mdash; a model&rsquo;s headline score: the unweighted mean of
             its rates across the five phase components (P1, P2, P3a, P3b, P4).</li>
         <li><b>Tier band</b> &mdash; a grouping of models whose composites cluster
             together; a new tier starts wherever the ranking shows a sufficiently
@@ -651,17 +1109,20 @@ code{ font-family:'SF Mono',SFMono-Regular,Consolas,'Liberation Mono',Menlo,mono
   <details>
     <summary>The benchmark phases</summary>
     <div>
-      <p>Each phase isolates one slice of orchestrator behavior. Later phases resume from
-      <i>golden checkpoints</i> &mdash; truncated transcripts of known-good sessions &mdash;
-      so every model starts from an identical mid-conversation state.</p>
+      <p>Each phase isolates one slice of orchestrator behavior, and each asks the
+      model one plain question: Does it route requests correctly? Does it do its
+      homework before acting? Can it delegate cleanly? Does the specialist it
+      delegates to follow its own rules? Does it ground its advice? Later phases
+      resume from <i>golden checkpoints</i> (truncated transcripts of known-good
+      sessions), so every model starts from an identical mid-conversation state.</p>
       <table>
         <thead><tr><th>Phase</th><th>Starts from</th><th>What it tests</th></tr></thead>
         <tbody>
           <tr>
             <td><b>1 &mdash; Mode Classification</b><br><span id="ab-p1-cases">&mdash;</span> cases</td>
-            <td>A cold start: the model sees only the user's first request</td>
+            <td>A cold start: the model sees only the user&rsquo;s first request</td>
             <td>Can it interpret a natural-language request and route it to the right
-                one of DAAF's workflow modes &mdash; a fairly easy task, but the one
+                one of DAAF&rsquo;s workflow modes &mdash; a fairly easy task, but the one
                 everything downstream depends on &mdash; while presenting a confirmation
                 gate and executing nothing prematurely?
                 <i>Failure mode: the assistant starts the wrong kind of work.</i></td>
@@ -669,7 +1130,7 @@ code{ font-family:'SF Mono',SFMono-Regular,Consolas,'Liberation Mono',Menlo,mono
           <tr>
             <td><b>2 &mdash; Post-Confirmation</b><br><span id="ab-p2-cases">&mdash;</span> cases, one per engagement mode</td>
             <td>A checkpoint ending at the confirmation gate; the user says
-                &ldquo;Sounds good, let's proceed.&rdquo;</td>
+                &ldquo;Sounds good, let&rsquo;s proceed.&rdquo;</td>
             <td>Strict protocol adherence: does it load the governing reference
                 documents and skills it just committed to &mdash; the references that
                 define how the work is supposed to be done &mdash; before doing any of it?
@@ -687,21 +1148,22 @@ code{ font-family:'SF Mono',SFMono-Regular,Consolas,'Liberation Mono',Menlo,mono
           </tr>
           <tr>
             <td><b>3b &mdash; Subagent Behavior</b></td>
-            <td>The subagent's own transcript, whenever a Phase 3 dispatch succeeds</td>
+            <td>The subagent&rsquo;s own transcript, whenever a Phase 3 dispatch succeeds</td>
             <td>Does the dispatched agent operate correctly <i>as</i> the specialist
                 &mdash; following the work protocols its agent specification demands,
                 e.g., a coding agent writing a script and executing it through the
                 audit-trail wrapper?
-                <i>Failure mode: a specialist that ignores its role's rules.</i></td>
+                <i>Failure mode: a specialist that ignores its role&rsquo;s rules.</i></td>
           </tr>
           <tr>
             <td><b>4 &mdash; Skill Routing</b><br><span id="ab-p4-cases">&mdash;</span> cases</td>
             <td>The same initialized Ad Hoc checkpoint as Phase 3; the user asks a
                 brainstorming question</td>
             <td>The research-brainstorming dimension: models cannot be relied on to
-                draw research methodology from training data, so a genuine research
-                assistant must judiciously load domain expertise through skill
-                reference files &mdash; FIRST the data-scientist hub's method-selection
+                draw research methodology from their fuzzy general knowledge (the
+                baked-in impressions left over from training), so a genuine research
+                assistant must judiciously load curated domain expertise through skill
+                reference files &mdash; FIRST the data-scientist hub&rsquo;s method-selection
                 guidance, THEN the specific library skills the task calls for (e.g.,
                 pyfixest for fixed effects, geopandas for spatial work) &mdash; to ground
                 what it does, says, and recommends in real research methodology.
@@ -711,11 +1173,11 @@ code{ font-family:'SF Mono',SFMono-Regular,Consolas,'Liberation Mono',Menlo,mono
       </table>
       <p>Phase 3b is a <b>sub-scoring of Phase 3 runs</b>, not a separate batch: its
       criteria are derived from the agent type, and which criteria apply varies with the
-      case, so its denominators differ from 3a's.</p>
+      case, so its denominators differ from 3a&rsquo;s.</p>
       <p>All five components (P1, P2, P3a, P3b, P4) enter the <b>leaderboard composite
-      and tier bands</b> with equal weight. (Phase 4 joined the composite by a
-      2026-06-10 decision; earlier versions of this page pinned the composite to
-      the first four.) A model lacking runs for a component is scored on the mean of the
+      and tier bands</b> with equal weight. (Phase 4 is the newest component, added in
+      June 2026; earlier versions of this page averaged only the first four.) A model
+      lacking runs for a component is scored on the mean of the
       components it has, and carries a visible &ldquo;partial&rdquo; marker on the
       leaderboard naming what is missing.</p>
     </div>
@@ -724,9 +1186,10 @@ code{ font-family:'SF Mono',SFMono-Regular,Consolas,'Liberation Mono',Menlo,mono
   <details>
     <summary>How scoring works</summary>
     <div>
-      <p>Every run is graded against named criteria by <b>deterministic scorers</b> &mdash;
-      transcript parsing with string and structural checks; no LLM judges anywhere in the
-      loop. Each criterion is either <b>critical</b> (a structural must-pass, like
+      <p>Every run is graded against named criteria by <b>deterministic scorers</b>
+      (basically: simple, repeatable text-and-structure checks on the archived
+      transcript &mdash; no AI judging AI anywhere in the loop, so the same run always
+      gets the same grade). Each criterion is either <b>critical</b> (a structural must-pass, like
       whether a subagent was dispatched at all &mdash; <code>agent_dispatched</code>) or
       <b>normal</b> (a protocol detail, like whether the
       dispatch prompt carries a context section). The two bars described above come
@@ -739,7 +1202,7 @@ code{ font-family:'SF Mono',SFMono-Regular,Consolas,'Liberation Mono',Menlo,mono
         <li><b>Perfect</b> (per run) &mdash; did <i>all</i> criteria pass on this run?
             This is the high bar, the headline metric, and the basis of the leaderboard
             composite.</li>
-        <li><b>Critical rate</b> (per criterion) &mdash; across all of a model's runs, what
+        <li><b>Critical rate</b> (per criterion) &mdash; across all of a model&rsquo;s runs, what
             fraction of its critical criteria passed?</li>
         <li><b>Normal rate</b> (per criterion) &mdash; the same, for normal criteria.</li>
       </ul>
@@ -762,12 +1225,16 @@ code{ font-family:'SF Mono',SFMono-Regular,Consolas,'Liberation Mono',Menlo,mono
     </div>
   </details>
 
-  <details>
+  <!-- id="caveats" exists for future direct deep-links; in-page references
+       link #about instead (simplest correct behavior): About is excluded
+       from the content-visibility rule so a plain anchor jump always lands,
+       whereas targeting the closed <details> would need JS to open it. -->
+  <details id="caveats">
     <summary>Key caveats</summary>
     <div>
       <ul>
         <li><b>This is one view under one orchestration system, not a model exam.</b>
-            DAAF's framework instructions were written and tuned with Claude Opus 4.5/4.6
+            DAAF&rsquo;s framework instructions were written and tuned with Claude Opus 4.5/4.6
             as the working model, so part of any score difference between models is
             prompting-style fit rather than capability. Read these results as one
             particular view of how models behave under a very specific AI orchestration
@@ -777,22 +1244,33 @@ code{ font-family:'SF Mono',SFMono-Regular,Consolas,'Liberation Mono',Menlo,mono
             and a duration recorded at the cutoff limit, but their criteria are fully
             scored from the transcript
             produced before the cutoff &mdash; a timed-out run can be a perfect run.</li>
-        <li><b>Denominators are uneven.</b> Some (model, phase) cells have 2 reps instead
-            of 3, so read every rate together with its n.</li>
-        <li><b>Dollar figures are estimates at published list prices, not invoices.</b>
-            The harness logs token usage via the Anthropic-compatible endpoint, whose
-            counts come from Anthropic's tokenizer rather than each OpenRouter model's
-            own billing meter, so dollar costs derived from those counts were unreliable
-            and were removed. Per-Mtok figures on this page are published list prices;
-            the battery-cost comparisons in Costs Detail are relative multipliers
-            (vs Opus 4.8) built from those list prices and each model's observed
-            token mix &mdash; taken from provider billing data, not the harness's
-            counts &mdash; on an everything-uncached basis (defined there).</li>
+        <li><b>Denominators are small and uneven.</b> Repetition counts are
+            relatively small and can be uneven across providers and models due
+            to cost limitations &mdash; some (model, phase) cells have 2 reps
+            instead of 3 &mdash; so the results are necessarily imprecise: read
+            every rate together with its n.</li>
+        <li><b>Cost figures are estimates at published list prices, not invoices.</b>
+            The headline cost lens throughout this page is the <b>battery-cost
+            multiplier</b>: each model&rsquo;s estimated cost to run the full
+            <span id="kt-foot-bat">&mdash;</span>-probe benchmark
+            battery once, expressed relative to Opus 4.8 (= 1.0&times;), built from
+            published list prices and each model&rsquo;s observed token mix &mdash; taken
+            from provider billing data, not the harness&rsquo;s counts &mdash; on an
+            everything-uncached basis (defined under
+            <a href="#cost-performance">Cost vs. Performance</a>). These relative
+            figures can shift as providers reprice tokens and as provider caching
+            mechanics interact with each model&rsquo;s behavior. The per-Mtok
+            figures that remain on the page are secondary detail: raw published
+            list rates, not measured spend. The harness&rsquo;s own token logging runs
+            through an Anthropic-compatible endpoint whose counts come from
+            Anthropic&rsquo;s tokenizer rather than each OpenRouter model&rsquo;s billing
+            meter, so dollar costs derived from those counts were unreliable and
+            were removed.</li>
         <li><b>Deterministic scorers have known false negatives.</b>
             <code>prompt_has_context_section</code> is the canonical case: the scorer
             accepts seven heading variants, yet models often place genuine contextual
             content under headings outside that list and are marked down for it.</li>
-        <li><b>Fable 5's thinking blocks are encrypted</b>, so reasoning-quality
+        <li><b>Fable 5&rsquo;s thinking blocks are encrypted</b>, so reasoning-quality
             assessment for that model relies entirely on observable output.</li>
       </ul>
     </div>
@@ -801,39 +1279,50 @@ code{ font-family:'SF Mono',SFMono-Regular,Consolas,'Liberation Mono',Menlo,mono
 
 <!-- 4. Leaderboard (rank-ordered table-chart) -->
 <section class="doc-section" id="leaderboard">
+  <div class="sec-eyebrow">The Scoreboard</div>
   <h2>Leaderboard</h2>
   <p class="section-lead">
-    One row per model, ranked by <b>composite</b> &mdash; the plain average of its
-    Perfect-run rates across the five phase components (P1, P2, P3a, P3b, P4). Every rate
-    carries its denominator, and tier bands group models whose composites cluster together
-    &mdash; gaps between tiers are meaningful, ordering within a tier may not be. The metric
-    toggle switches every rate, rank, and tier band between the two bars: <b>Perfect</b>
+    One row per model, best score first. The ranking runs on each model&rsquo;s
+    <b>composite</b> (basically: a report-card average &mdash; take the model&rsquo;s
+    share of fully clean runs in each of the five phase components (P1, P2, P3a,
+    P3b, P4), and average those five numbers with equal weight). Every rate carries its
+    denominator underneath, because a percentage over a handful of runs deserves
+    less confidence than the percentage alone implies. <b>Tier bands</b> group
+    models whose composites cluster together: gaps between tiers are meaningful,
+    ordering within a tier may not be. The metric toggle switches every rate,
+    rank, and tier band between the two bars defined above: <b>Perfect</b>
     (everything exactly right &mdash; every criterion passed) and <b>Critical-only</b>
     (will it generally work &mdash; every must-pass criterion passed). Click a phase cell
-    to open that phase's deep-dive; click any numeric column header to re-sort, and click
+    to open that phase&rsquo;s deep-dive; click any numeric column header to re-sort, and click
     it again to reverse the direction.
   </p>
   <div class="sec-body" id="sec-leaderboard"></div>
 </section>
 
-<!-- 5. Cost vs. Performance (log-x frontier scatter over published $/Mtok) -->
+<!-- 5. Cost vs. Performance (log-x frontier scatter; battery-cost multiplier is the default price basis) -->
 <section class="doc-section" id="cost-performance">
+  <div class="sec-eyebrow">Value for Money</div>
   <h2>Cost vs. Performance</h2>
   <p class="section-lead">
-    Each point is one model: its <b>published price</b> in dollars per million tokens
-    of text ($/Mtok &mdash; a million tokens is roughly 750,000 words) against the
-    selected <b>performance basis</b> (composite, or any single phase group,
-    P1&ndash;P4) under the selected <b>metric</b> (Perfect or Critical-only) &mdash; up
-    and to the left is better. The price axis is logarithmic: each major gridline is
-    10&times; the previous one, which is the only way to fit models whose prices span
-    more than a hundredfold onto one chart. The stepped line traces the
-    <b>efficiency frontier</b> &mdash; the models no other model beats on both price and
-    conformance at once; anything off the line is outperformed somewhere cheaper.
-    The price-basis toggle also offers <b>battery cost (&times; Opus 4.8)</b> &mdash;
-    the estimated relative cost to run the full benchmark battery once, expressed
-    as a multiple of Opus 4.8, which folds each model&rsquo;s observed token
-    appetite into the price axis (defined, with its caveats, in
-    Costs Detail). The per-Mtok bases are list rates, not measured benchmark spend.
+    This is the value-for-money view: each point is one model, placed by what it
+    costs against how well it conforms, so up and to the left is better. The cost
+    axis uses the headline cost figure from throughout this page: each
+    model&rsquo;s <b>estimated cost to run the full DAAFBench battery once</b>,
+    expressed as a multiple of Opus 4.8 (= 1.0&times;). The multiplier folds each
+    model&rsquo;s observed token appetite into its price (basically: two models
+    with identical list rates can differ in what the same work actually costs,
+    because one chews through more tokens to do it &mdash; defined, with its
+    caveats, in the notes below the chart). The cost axis is also logarithmic: each major
+    gridline is 10&times; the previous one, which is the only way to fit models
+    whose costs span more than a hundredfold onto one chart. The stepped line
+    traces the <b>efficiency frontier</b>, or the models no other model beats on
+    both cost and conformance at once: anything off the line is outperformed
+    somewhere cheaper. The selectors switch the vertical axis between the
+    composite and any single phase group (P1&ndash;P4) under either bar (Perfect
+    or Critical-only), and the price-basis toggle offers two secondary views: the
+    raw published <b>input</b> and <b>output</b> list rates in dollars per
+    million tokens of text ($/Mtok &mdash; a million tokens is roughly 750,000
+    words). Those are list prices, not measured benchmark spend.
     Shape and color mark the serving provider; hover any point for its exact figures.
   </p>
   <div class="sec-body" id="sec-cost-performance"></div>
@@ -841,13 +1330,15 @@ code{ font-family:'SF Mono',SFMono-Regular,Consolas,'Liberation Mono',Menlo,mono
 
 <!-- 6. Phase Deep-Dives (per-phase model × criterion heatmaps) -->
 <section class="doc-section" id="phases">
+  <div class="sec-eyebrow">The Diagnosis</div>
   <h2>Phase Deep-Dives</h2>
   <p class="section-lead">
-    One heatmap per phase: rows are models ranked by that phase's Perfect rate, and each
-    column is one scored criterion &mdash; a single named requirement a run either meets
-    or misses &mdash; with critical (must-pass) criteria before normal ones, split by the
-    yellow border. Use this to find which specific protocol requirement a model misses:
-    a model can rank well overall while reliably failing one criterion. Hover any cell
+    This is where the scoreboard turns into a diagnosis: one heatmap per phase, where
+    rows are models ranked by that phase&rsquo;s Perfect rate, and each column is one
+    scored criterion (a single named requirement a run either meets or misses), with
+    critical (must-pass) criteria before normal ones, split by the yellow border. Use
+    this to find <em>which specific protocol requirement</em> a model misses: a model
+    can rank well overall while reliably failing one criterion. Hover any cell
     for its exact pass count; click a cell to open those runs in the Run Explorer.
   </p>
   <div class="sec-body" id="sec-phases"></div>
@@ -855,53 +1346,33 @@ code{ font-family:'SF Mono',SFMono-Regular,Consolas,'Liberation Mono',Menlo,mono
 
 <!-- 7. Cases & Consistency (agreement heatmaps + case browser) -->
 <section class="doc-section" id="cases">
+  <div class="sec-eyebrow">Repetition &amp; Flakiness</div>
   <h2>Cases &amp; Consistency</h2>
   <p class="section-lead">
-    Two layers on the same repetition data. Because these models are probabilistic, each
-    case is run multiple times &mdash; each <b>rep</b> is the identical prompt run again
+    Two layers on the same repetition data. These models are probabilistic (basically:
+    ask the identical question twice and you can get two different answers), so each
+    case is run multiple times: each <b>rep</b> is the identical prompt run again
     from the identical starting point. The agreement heatmaps show, for every case and
-    model, how many of those reps were perfect runs (k/n in every cell) &mdash; split
+    model, how many of those reps were perfect runs (k/n in every cell): split
     cells expose flaky cases and flaky models at a glance, and the <b>All models</b>
-    margin gives each case's cross-model difficulty, hardest cases first. The case
-    browser below holds every case's full prompt, expected behavior, and requirement
+    margin gives each case&rsquo;s cross-model difficulty, hardest cases first. The case
+    browser below holds every case&rsquo;s full prompt, expected behavior, and requirement
     lists, with the per-rep criterion marks. Click any cell or mark to open the matching
     runs.
   </p>
   <div class="sec-body" id="sec-cases"></div>
 </section>
 
-<!-- 8. Costs Detail (battery-cost headline + published per-Mtok pricing table) -->
-<section class="doc-section" id="costs">
-  <h2>Costs Detail</h2>
-  <p class="section-lead">
-    The headline figure here is the <b>estimated relative cost to run the full
-    benchmark battery once</b> &mdash; every probe in the suite, one repetition
-    &mdash; computed for each model from its <b>own observed token appetite</b> at
-    published list prices and expressed as a rough multiple of Opus 4.8
-    (= 1.0&times;). Two models at the same list price can differ in what a task
-    actually costs, because one chews through more tokens to do the same work;
-    these multipliers capture both the price tag and the appetite. The published per-million-token
-    list prices follow as a secondary table below it (click any column header to
-    sort; the Perfect Rate context column can be scoped to a single phase group via
-    the toggle, the pricing columns never change with the scope).
-  </p>
-  <div class="sec-body" id="sec-costs"></div>
-  <p class="cost-foot">
-    Earlier versions of this page reported observed dollar spend computed from the
-    harness&rsquo;s per-run token counts. That tracking was removed: the harness logs
-    token usage through an Anthropic-compatible endpoint whose counts come from
-    Anthropic&rsquo;s tokenizer rather than each model&rsquo;s own billing meter, so
-    token-derived dollar figures were unreliable. The battery estimates above avoid
-    that trap by taking each OpenRouter model&rsquo;s token mix from the provider&rsquo;s
-    own billing meter (via the billing-export reconciliation described above) and each
-    Anthropic model&rsquo;s from Anthropic&rsquo;s usage logs &mdash; then pricing every
-    token at published list rates. They are estimates built from list prices and
-    observed token mixes, not a reading of an invoice for these exact runs.
-  </p>
-</section>
+<!-- The Costs Detail section was removed 2026-06-12 (user fine-tuning
+     round): it had become fully duplicative of the Cost vs. Performance
+     scatter + the leaderboard's battery-cost column. The battery-multiplier
+     canonical definition + disclosures now live (condensed) in the Cost vs.
+     Performance footnotes, and the published list-price table survives as a
+     compact collapsible beneath that chart (renderCostPerf). -->
 
-<!-- 9. Run Explorer (run list + detail panel with section-local filters) -->
+<!-- 8. Run Explorer (run list + detail panel with section-local filters) -->
 <section class="doc-section" id="run-explorer">
+  <div class="sec-eyebrow">The Audit Layer</div>
   <h2>Run Explorer</h2>
   <p class="section-lead">
     This is the audit layer of the page: every aggregate above can be traced down to the
@@ -946,8 +1417,9 @@ code{ font-family:'SF Mono',SFMono-Regular,Consolas,'Liberation Mono',Menlo,mono
   <div class="sec-body" id="sec-run-explorer"></div>
 </section>
 
-<!-- 10. Provenance footer -->
+<!-- 9. Provenance footer -->
 <section class="doc-section" id="provenance">
+  <div class="sec-eyebrow">The Audit Trail</div>
   <h2>Provenance</h2>
   <p class="section-lead">
     The audit trail for where the numbers come from: one row per archived result set,
@@ -963,7 +1435,37 @@ code{ font-family:'SF Mono',SFMono-Regular,Consolas,'Liberation Mono',Menlo,mono
   </p>
 </section>
 
+<!-- The #next-steps closing CTA section was removed 2026-06-12 (user
+     fine-tuning round); its CTA links live on in the hero ¶1 and the About
+     intro, and the Open Augments attribution lives in the site footer. -->
+
 </main>
+
+<!-- ============================================================== -->
+<!-- Site footer (2026-06-12 site-cohesion pass): markup mirrored    -->
+<!-- from the anatomy page's site-footer, hrefs/asset path on the    -->
+<!-- same ../daaf-product relative model (deploy script rewrites).   -->
+<!-- Closes the document after Provenance (the #next-steps CTA that  -->
+<!-- once sat between them was removed 2026-06-12).                  -->
+<!-- ============================================================== -->
+<footer class="site-footer">
+  <div class="footer-inner">
+    <div class="footer-brand-block">
+      <a href="https://openaugments.org" target="_blank" rel="noopener">
+        <img src="../daaf-product/assets/Open Augments Logo PNG Teal.png" alt="Open Augments" class="footer-oa-logo">
+      </a>
+      <p class="footer-tagline">DAAF is free and always will be, as the flagship project of <a href="https://openaugments.org">Open Augments</a>.</p>
+    </div>
+    <div class="footer-social-links">
+      <a href="https://github.com/DAAF-Contribution-Community/daaf" target="_blank" rel="noopener"><svg class="footer-social-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.477 2 2 6.477 2 12c0 4.42 2.865 8.17 6.839 9.49.5.092.682-.217.682-.482 0-.237-.008-.866-.013-1.7-2.782.604-3.369-1.34-3.369-1.34-.454-1.156-1.11-1.464-1.11-1.464-.908-.62.069-.608.069-.608 1.003.07 1.531 1.03 1.531 1.03.892 1.529 2.341 1.087 2.91.831.092-.646.35-1.086.636-1.336-2.22-.253-4.555-1.11-4.555-4.943 0-1.091.39-1.984 1.029-2.683-.103-.253-.446-1.27.098-2.647 0 0 .84-.269 2.75 1.025A9.578 9.578 0 0112 6.836c.85.004 1.705.114 2.504.336 1.909-1.294 2.747-1.025 2.747-1.025.546 1.377.203 2.394.1 2.647.64.699 1.028 1.592 1.028 2.683 0 3.842-2.339 4.687-4.566 4.935.359.309.678.919.678 1.852 0 1.336-.012 2.415-.012 2.743 0 .267.18.578.688.48C19.138 20.167 22 16.418 22 12c0-5.523-4.477-10-10-10z"/></svg> GitHub</a>
+      <a href="https://discord.com/invite/7FWTnZJDqy" target="_blank" rel="noopener"><svg class="footer-social-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M20.317 4.37a19.791 19.791 0 00-4.885-1.515.074.074 0 00-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 00-5.487 0 12.64 12.64 0 00-.617-1.25.077.077 0 00-.079-.037A19.736 19.736 0 003.677 4.37a.07.07 0 00-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 00.031.057 19.9 19.9 0 005.993 3.03.078.078 0 00.084-.028c.462-.63.874-1.295 1.226-1.994a.076.076 0 00-.041-.106 13.107 13.107 0 01-1.872-.892.077.077 0 01-.008-.128 10.2 10.2 0 00.372-.292.074.074 0 01.077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 01.078.01c.12.098.246.198.373.292a.077.077 0 01-.006.127 12.299 12.299 0 01-1.873.892.077.077 0 00-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 00.084.028 19.839 19.839 0 006.002-3.03.077.077 0 00.032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 00-.031-.03z"/></svg> Discord</a>
+      <a href="https://www.youtube.com/@brhkim" target="_blank" rel="noopener"><svg class="footer-social-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M23.498 6.186a3.016 3.016 0 00-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 00.502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 002.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 002.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/></svg> YouTube</a>
+      <a href="https://daafguide.substack.com/" target="_blank" rel="noopener"><svg class="footer-social-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M22.539 8.242H1.46V5.406h21.08v2.836zM1.46 10.812V24L12 18.11 22.54 24V10.812H1.46zM22.54 0H1.46v2.836h21.08V0z"/></svg> Substack</a>
+    </div>
+    <p class="footer-license">LGPL-3.0 -- Free and open source, forever.</p>
+    <p class="footer-copy">&copy; 2026 Open Augments LLC. All rights reserved.</p>
+  </div>
+</footer>
 
 <!-- Tooltip -->
 <div class="tooltip" id="tooltip"></div>
@@ -983,7 +1485,7 @@ const PRECOMPUTED = __PRECOMPUTED_JSON__;
    Single scrolling document (WP3): no global view/tab state. Filters
    are scoped to the Run Explorer section; other sections render from
    ALL runs. runListLimit caps the initial Run Explorer list render
-   (performance guard for the full 1,700+ run corpus).
+   (performance guard: the full corpus runs to thousands of runs).
    ================================================================= */
 
 var state = {
@@ -991,14 +1493,9 @@ var state = {
      and shown as a removable chip (see updateCritChip) */
   filters: { phase:"", model:"", caseId:"", status:"", search:"", criterion:"", hideTimeouts:false },
   selectedRunIdx: -1,
-  costSortCol: null,
-  costSortDir: 1,
-  /* Costs Detail Perfect-rate scope: "" = all phases pooled | an eval
-     group id (the section's phase filter; pricing columns are
-     phase-independent and unaffected) */
-  costsPhase: "",
-  /* Cost vs. Performance price basis: blend31 (default) | input | output */
-  costForm: "blend31",
+  /* Cost vs. Performance price basis: battery (default — the page-wide
+     headline cost figure) | input | output */
+  costForm: "battery",
   /* Cost vs. Performance y-axis: perf basis (composite | composite gid)
      and metric (perfect | hard) — fully decoupled from the leaderboard's
      metric toggle */
@@ -1084,34 +1581,57 @@ function fmtMult(v){
   return (v>=1 ? v.toFixed(1) : v.toFixed(2))+"\u00d7";
 }
 
-/* Price formulations (PRECOMPUTED.cost.models). blend31 is the
-   Artificial Analysis convention: (3 x input + output) / 4 per 1M tokens.
-   The per-Mtok forms are published list rates; "battery" (v2.8.0) is the
-   estimated cost to run the full benchmark battery once — list rates x
-   each model's observed token mix on an everything-uncached basis
-   (PRECOMPUTED.cost.battery; definition + caveats in Costs Detail).
+/* Price formulations (PRECOMPUTED.cost.models). "battery" (v2.8.0) is
+   THE headline cost figure page-wide (v3.1.0) and the scatter's default
+   and first-listed basis (COST_FORMS[0] is also the fallback when
+   state.costForm is unset — the two must agree): the estimated cost to
+   run the full benchmark battery once — list rates x each model's
+   observed token mix on an everything-uncached basis
+   (PRECOMPUTED.cost.battery; the canonical definition + caveats render
+   as the CvP battery-disclosure footnote since the Costs Detail section
+   was removed, 2026-06-12).
    Since v2.8.1 the battery form DISPLAYS as a relative multiplier
    (reference model Opus 4.8 = 1.0x), never dollars — exact dollar
    figures would imply false precision; renderCostPerf normalizes the
    plotted values by the reference battery cost (pure positive scaling,
-   frontier membership unchanged). axis names the x-axis label used by
-   the Cost vs. Performance scatter. */
+   frontier membership unchanged). The per-Mtok forms (input/output)
+   are secondary detail: published list rates. The blended 3:1 form
+   (Artificial Analysis convention) was retired in v3.1.0 — benchmark
+   cost is dominated by input tokens, so a 3:1 in/out blend misled
+   (key removal recorded in the generator's cost block + README § 8).
+   axis names the x-axis label used by the Cost vs. Performance
+   scatter. */
 var COST_FORMS=[
-  {key:"blend31",label:"Blended 3:1",
-   formula:"Blended price = (3 \u00d7 input + output) / 4, per million tokens",
-   axis:"Blended 3:1 price (USD per 1M tokens, log scale)"},
+  {key:"battery",label:"Battery cost (\u00d7 Opus 4.8)",
+   formula:"Estimated relative cost to run the full benchmark battery once, as a multiple of Opus 4.8 (= 1.0\u00d7) \u2014 every token at published list input/output rates with no cache discounts, using each model\u2019s observed token mix (definition + caveats in the notes below the chart)",
+   axis:"Est. relative cost vs Opus 4.8 to run the full battery once (\u00d7, log scale)"},
   {key:"input",label:"Input",formula:"Published input price, per million tokens",
    axis:"Input price (USD per 1M tokens, log scale)"},
   {key:"output",label:"Output",formula:"Published output price, per million tokens",
-   axis:"Output price (USD per 1M tokens, log scale)"},
-  {key:"battery",label:"Battery cost (\u00d7 Opus 4.8)",
-   formula:"Estimated relative cost to run the full benchmark battery once, as a multiple of Opus 4.8 (= 1.0\u00d7) \u2014 every token at published list input/output rates with no cache discounts, using each model\u2019s observed token mix (see Costs Detail)",
-   axis:"Est. relative cost vs Opus 4.8 to run the full battery once (\u00d7, log scale)"}
+   axis:"Output price (USD per 1M tokens, log scale)"}
 ];
 function priceMap(){
   var map={};
   ((PRECOMPUTED.cost||{}).models||[]).forEach(function(c){ map[c.key]=c; });
   return map;
+}
+
+/* Battery-cost multiplier lookup (the headline cost figure, v3.1.0):
+   a model's estimated full-battery cost as a multiple of the reference
+   model (Opus 4.8 = 1.0x), from PRECOMPUTED.cost.battery. Prefers the
+   embedded cost_multiplier_vs_ref; otherwise derives the same ratio
+   from the embedded dollar costs.
+   Returns {mult, stale} or null for models without battery data —
+   callers render the rs-na/em-dash idiom for null. */
+function batteryMult(m){
+  var bat=(PRECOMPUTED.cost||{}).battery||{};
+  var bm=(bat.models||{})[m];
+  if(!bm) return null;
+  var refCost=((bat.models||{})[bat.reference_model||"Opus 4.8"]||{}).est_battery_cost;
+  var mu=bm.cost_multiplier_vs_ref!=null?bm.cost_multiplier_vs_ref
+    :((refCost&&refCost>0&&bm.est_battery_cost!=null)?bm.est_battery_cost/refCost:null);
+  if(mu==null) return null;
+  return {mult:mu,stale:!!bm.stale};
 }
 
 /* Run status = the precomputed grade (perfect / partial / failed /
@@ -1181,7 +1701,7 @@ function getEvalGroups(){
   return evalGroups;
 }
 
-/* Short display labels for eval group IDs (hero verdict, chips) */
+/* Short display labels for eval group IDs (leaderboard, chips, prose) */
 var GROUP_SHORT={
   mode_classification:"P1",
   post_confirmation:"P2",
@@ -1210,7 +1730,7 @@ var KNOWN_SCORER_CAVEATS={
 };
 
 /* Plain-language labels for criterion ids, used in headline prose only
-   (hero verdict, deep-dive callouts and the global finding, the
+   (deep-dive callouts and the global finding, the
    leaderboard Dispatch column tooltip). Forensic surfaces (Run Explorer,
    rotated heatmap column headers) keep the raw ids; heatmap header
    tooltips append the label. Headline prose always keeps the raw id
@@ -1478,70 +1998,41 @@ function hideTip(){
 }
 
 /* =================================================================
-   SECTION 1: HERO / VERDICT
-   Computed entirely from PRECOMPUTED at render time — no hand-written
-   numbers.
+   SECTION 1: HERO / INTRO
+   Stat chips + live counts, computed from PRECOMPUTED at render time —
+   no hand-written numbers. (The computed verdict callout was removed
+   2026-06-12, user fine-tuning round; the Key Takeaways and the
+   cost-performance preview carry the headline answer now.)
    ================================================================= */
 
 function renderHero(){
   var T=PRECOMPUTED.totals||{};
-  var phases=new Set();
-  (PRECOMPUTED.eval_groups||[]).forEach(function(g){ phases.add(g.phase); });
 
-  /* Model count in the hero-sub intro (span defaults to an em dash) */
+  /* Live counts in the moved intro paragraphs (now at the top of #about
+     since the 2026-06-12 intro restructure). Their static text is
+     build-time substituted by the generator (the hero-models / hero-runs
+     placeholder tokens, filled alongside the generated-display stamp), so
+     the no-JS fallback always matches the embedded corpus; this refill
+     from PRECOMPUTED.totals is a belt-and-braces no-op re-writing the
+     same values. */
   if(T.n_models) el("hero-models").textContent=fmt(T.n_models);
+  if(T.total_runs) el("hero-runs").textContent=fmt(T.total_runs);
 
-  /* Stat chips */
+  /* Stat chips (orientation-first, above the hero prose): each chip must
+     be intuitively meaningful to a reader with ZERO context — counts and
+     concrete facts, never metric jargon. The traceability chip is the
+     page's transparency pledge in chip form (cf. the Run Explorer). */
   var chips=[
-    {val:fmt(T.n_models||0), label:"Models"},
-    {val:fmt(T.total_runs||0), label:"Runs"},
-    {val:fmt(T.n_cases||0), label:"Cases"},
-    {val:fmt(phases.size), label:"Phases"}
+    {val:fmt(T.n_models||0), label:"AI models tested"},
+    {val:fmt(T.total_runs||0), label:"Archived test runs"},
+    {val:fmt(T.n_cases||0), label:"Distinct test scenarios"},
+    {val:"100%", label:"Scores traceable to a transcript"}
   ];
   var ch="";
   chips.forEach(function(c){
     ch+='<div class="chip"><div class="chip-val">'+c.val+'</div><div class="chip-label">'+c.label+'</div></div>';
   });
   el("hero-chips").innerHTML=ch;
-
-  /* Verdict: top composite model, runner-up, global weakest criterion */
-  var comp=PRECOMPUTED.composite||{};
-  var ranked=Object.keys(comp).map(function(m){ return {model:m,e:comp[m]}; });
-  ranked.sort(function(a,b){
-    if(b.e.score!==a.e.score) return b.e.score-a.e.score;
-    return a.model<b.model?-1:1;
-  });
-  var v="";
-  if(ranked.length>0){
-    var top=ranked[0];
-    var compsStr=(top.e.components_present||[]).map(function(gid){
-      return groupShort(gid)+" "+pct(top.e.components[gid]);
-    }).join(" · ");
-    v+='<b>'+esc(top.model)+'</b> leads with a composite Perfect rate of <b>'+
-       pct(top.e.score)+'</b> ('+esc(compsStr)+
-       (top.e.partial_data?'; partial phase coverage':'')+
-       ', n='+fmt(top.e.n_total)+').';
-    if(ranked.length>1){
-      var ru=ranked[1];
-      v+=' <b>'+esc(ru.model)+'</b> is the runner-up at <b>'+pct(ru.e.score)+'</b>'+
-         (ru.e.partial_data?' (partial phase coverage)':'')+'.';
-    }
-  } else {
-    v+='No composite scores available for this corpus.';
-  }
-  /* global_weakest is computed over the composite groups only (all five,
-     P1-P4, since 2026-06-10), so a non-composite experimental phase can
-     never hijack the headline — say so in the prose */
-  var gw=(PRECOMPUTED.callouts||{}).global_weakest;
-  if(gw){
-    v+=' The weakest criterion across all models in the composite phases (P1&ndash;P4) is &ldquo;'+
-       esc(critLabel(gw.name))+'&rdquo; (<code>'+esc(gw.name)+'</code>) at <b>'+
-       pct(gw.rate)+'</b> ('+fmt(gw.passed)+'/'+fmt(gw.total)+', '+esc(gw.group_label)+').';
-    if(KNOWN_SCORER_CAVEATS[gw.name]){
-      v+=' ('+esc(KNOWN_SCORER_CAVEATS[gw.name])+' \u2014 see <a href="#about">caveats</a>)';
-    }
-  }
-  el("hero-verdict").innerHTML=v;
 }
 
 /* =================================================================
@@ -1551,8 +2042,8 @@ function renderHero(){
    visible dash, never a stale or wrong number. 1-decimal percents
    throughout (the shared pct() rounds to whole points). The
    qualitative claims do NOT track the data — when the corpus changes
-   materially, rewrite the prose and the date badge (see the
-   generator's dev-guide comment block).
+   materially, rewrite the prose and update the date in the takeaways
+   h2 (see the generator's dev-guide comment block).
    ================================================================= */
 
 function fillTakeaways(){
@@ -1562,7 +2053,6 @@ function fillTakeaways(){
   var hardComp=PRECOMPUTED.composite_hard||{};
   var pmp=PRECOMPUTED.per_model_phase||{};
   var cons=PRECOMPUTED.consistency||{};
-  var rule=PRECOMPUTED.tier_rule||{};
   var tom=PRECOMPUTED.timeout_by_model||{};
   /* Cost claims run on the battery metric (PRECOMPUTED.cost.battery) and
      render as RELATIVE figures only — ratios and multipliers, never
@@ -1574,10 +2064,6 @@ function fillTakeaways(){
   function batCost(m){
     var b=batModels[m];
     return (b&&b.est_battery_cost!=null&&b.est_battery_cost>0)?b.est_battery_cost:null;
-  }
-  function p3b(m){
-    var c=(pmp[m]||{})["dispatch_compliance_subagent"];
-    return (c&&c.perfect_rate!=null)?c.perfect_rate:null;
   }
   /* All Opus variants share list pricing; 4.8 is the battery-cost anchor */
   var OPUS_ANCHOR="Opus 4.8";
@@ -1594,20 +2080,22 @@ function fillTakeaways(){
   if(fable!=null&&bestOther!=null){
     var margin=(fable-bestOther)*100;
     set("kt-t1-margin",margin.toFixed(1));
-    if(rule.gap_threshold) set("kt-t1-gapx",(margin/(rule.gap_threshold*100)).toFixed(1));
   }
-  if(rule.gap_threshold) set("kt-t1-thresh",(rule.gap_threshold*100).toFixed(0));
   if(cons["Fable 5"]&&cons["Fable 5"].rate!=null) set("kt-t1-cons",pct1(cons["Fable 5"].rate));
 
-  /* T2 — the Opus line and the 4.7 P3b dip */
+  /* T2 — the Opus line on both bars: the Perfect composite (kt-t2-o4X)
+     and the Critical-only composite (kt-t2-o4Xh, from composite_hard —
+     the same source as the leaderboard's Critical-only toggle) */
   [["kt-t2-o45","Opus 4.5"],["kt-t2-o46","Opus 4.6"],
    ["kt-t2-o47","Opus 4.7"],["kt-t2-o48","Opus 4.8"]].forEach(function(pair){
     var s=score(pair[1]);
     if(s!=null) set(pair[0],pct1(s));
   });
-  var o47b=p3b("Opus 4.7"), o46b=p3b("Opus 4.6");
-  if(o47b!=null) set("kt-t2-o47p3b",pct1(o47b));
-  if(o46b!=null) set("kt-t2-o46p3b",pct1(o46b));
+  [["kt-t2-o45h","Opus 4.5"],["kt-t2-o46h","Opus 4.6"],
+   ["kt-t2-o47h","Opus 4.7"],["kt-t2-o48h","Opus 4.8"]].forEach(function(pair){
+    var s=hardScore(pair[1]);
+    if(s!=null) set(pair[0],pct1(s));
+  });
 
   /* T3 — Sonnet 4.6 vs the best Opus, and the battery-cost percentage
      (Sonnet's est. battery cost as a share of Opus 4.8's) */
@@ -1622,46 +2110,34 @@ function fillTakeaways(){
   var sBat=batCost("Sonnet 4.6"), oBat=batCost(OPUS_ANCHOR);
   if(sBat!=null&&oBat!=null) set("kt-t3-batpct",String(Math.round(sBat/oBat*100)));
 
-  /* T4 — DS Pro leads the open-weight pack on score; battery cost vs
-     Sonnet rendered as a coarse one-decimal multiplier (e.g. "0.8x");
-     timeout-rate reliability caveat. glm stays declared here because
-     the T5 block below reuses it. */
+  /* T4 — the open-weight pack: DS Pro and GLM lead on score with DS
+     Flash a close follower; DS Pro timeout-rate reliability caveat */
   var dspro=score("DeepSeek V4 Pro");
   if(dspro!=null) set("kt-t4-dspro",pct1(dspro));
   var glm=score("GLM 5.1");
   if(glm!=null) set("kt-t4-glm",pct1(glm));
-  var dpBat=batCost("DeepSeek V4 Pro");
-  if(dpBat!=null&&sBat!=null) set("kt-t4-sonratio",(dpBat/sBat).toFixed(1)+"\u00d7");
+  var dsflash=score("DeepSeek V4 Flash");
+  if(dsflash!=null) set("kt-t4-dsflash",pct1(dsflash));
   var dpTo=tom["DeepSeek V4 Pro"];
   if(dpTo&&dpTo.rate!=null) set("kt-t4-dsto",(dpTo.rate*100).toFixed(1)+"%");
 
-  /* T5 — DS Flash vs GLM: composite near-tie, Critical-only gap,
-     battery-cost ratios (GLM/Opus 4.8 batteries over Flash's) */
-  var ds=score("DeepSeek V4 Flash");
-  if(ds!=null) set("kt-t5-dscomp",pct1(ds));
-  if(glm!=null) set("kt-t5-glmcomp",pct1(glm));
-  var dsHard=hardScore("DeepSeek V4 Flash"), glmHard=hardScore("GLM 5.1");
-  if(dsHard!=null) set("kt-t5-dshard",pct1(dsHard));
-  if(glmHard!=null) set("kt-t5-glmhard",pct1(glmHard));
-  var dBat=batCost("DeepSeek V4 Flash"), gBat=batCost("GLM 5.1");
-  if(dBat!=null&&gBat!=null) set("kt-t5-glmx",String(Math.round(gBat/dBat)));
-  if(dBat!=null&&oBat!=null) set("kt-t5-opusx",String(Math.round(oBat/dBat)));
-
-  /* T6 — Qwen's local-class ceiling (P4 skill routing + P1 mode
+  /* T5 — Qwen's local-class ceiling (P4 skill routing + P1 mode
      classification as the weak points); Gemma 4 31B timed-out rate (the
      harness's timed_out flag, NOT transcript-level stall forensics) */
   var qwen=score("Qwen 3.6 27B");
-  if(qwen!=null) set("kt-t6-qwen",pct1(qwen));
+  if(qwen!=null) set("kt-t5-qwen",pct1(qwen));
   var qp4=(pmp["Qwen 3.6 27B"]||{})["skill_routing"];
-  if(qp4&&qp4.perfect_rate!=null) set("kt-t6-qwenp4",pct1(qp4.perfect_rate));
+  if(qp4&&qp4.perfect_rate!=null) set("kt-t5-qwenp4",pct1(qp4.perfect_rate));
   var qp1=(pmp["Qwen 3.6 27B"]||{})["mode_classification"];
-  if(qp1&&qp1.perfect_rate!=null) set("kt-t6-qwenp1",pct1(qp1.perfect_rate));
+  if(qp1&&qp1.perfect_rate!=null) set("kt-t5-qwenp1",pct1(qp1.perfect_rate));
   var g31=tom["Gemma 4 31B"];
   if(g31&&g31.rate!=null){
-    set("kt-t6-g31to",fmt(g31.n_timed_out)+" of "+fmt(g31.n_runs)+" ("+(g31.rate*100).toFixed(1)+"%)");
+    set("kt-t5-g31to",fmt(g31.n_timed_out)+" of "+fmt(g31.n_runs)+" ("+(g31.rate*100).toFixed(1)+"%)");
   }
 
-  /* kt-foot — battery size for the relative-multiplier caveat */
+  /* kt-foot-bat — battery size for the relative-multiplier caveat. The
+     span moved from the (removed) kt-foot into the About Key Caveats cost
+     caveat (2026-06-12 user fine-tuning round); the setter is unchanged. */
   if(bat.battery_size) set("kt-foot-bat",fmt(bat.battery_size));
 }
 
@@ -1671,8 +2147,6 @@ function fillTakeaways(){
 
 function fillAboutCounts(){
   var T=PRECOMPUTED.totals||{};
-  if(T.n_models) el("ab-models").textContent=fmt(T.n_models);
-  if(T.total_runs) el("ab-runs").textContent=fmt(T.total_runs);
   if(T.n_timed_out!=null) el("ab-timeouts").textContent=fmt(T.n_timed_out);
   /* Per-phase case counts derived from per_case so the About table never
      drifts from the data. per_case phases are raw names; 3a/3b share
@@ -1703,9 +2177,11 @@ function fillAboutCounts(){
    Rank-ordered table-chart computed entirely from PRECOMPUTED:
    composite bar with component ticks, per-phase rate cells
    (rate + visible n, deep-linking to the phase deep-dives),
-   dispatch reliability, k-of-n consistency, and the published
-   blended list price (3:1 in/out, $/Mtok — never observed spend,
-   which was removed). A metric toggle switches composite, phase
+   dispatch reliability, k-of-n consistency, the per-model timed-out
+   share (PRECOMPUTED.timeout_by_model; added 2026-06-12), and the
+   battery-cost multiplier (est. cost to run the full battery once, x Opus 4.8 —
+   the page-wide headline cost figure; never observed spend, which
+   was removed — see the CvP battery disclosure). A metric toggle switches composite, phase
    cells, ranks, and tier bands between the Perfect metric
    (composite/tiers) and the Critical-only metric (internal key
    "hard"; composite_hard/tiers_hard); Consistency stays
@@ -1726,7 +2202,7 @@ function lbTierRuleText(rule,tiers,metricLabel){
   rule=rule||{};
   tiers=tiers||[];
   var thresholdPts=((rule.gap_threshold||0)*100).toFixed(0);
-  var head='Tier bands are derived mechanically from the '+metricLabel+' composite ranking ('+
+  var head='Tier bands are read mechanically off the '+metricLabel+' composite ranking \u2014 a fixed rule, no judgment calls ('+
     tiers.length+' tier'+(tiers.length===1?'':'s')+' in this corpus; shown under the composite sort, best first). ';
   if(rule.method==="gap"){
     return head+'Banding rule applied: <b>gap</b> &mdash; a new tier starts wherever the drop to the '+
@@ -1757,7 +2233,7 @@ function renderLeaderboard(container){
   var tierRule=(isHard?PRECOMPUTED.tier_rule_hard:PRECOMPUTED.tier_rule)||{};
   var pmp=PRECOMPUTED.per_model_phase||{};
   var consistency=PRECOMPUTED.consistency||{};
-  var prices=priceMap();
+  var toByModel=PRECOMPUTED.timeout_by_model||{};
   var groups=getEvalGroups();
   var hasDispatch=groups.some(function(g){ return g.id==="dispatch_compliance_dispatch"; });
 
@@ -1774,7 +2250,7 @@ function renderLeaderboard(container){
   var rankOf={};
   ranked.forEach(function(r,i){ rankOf[r.model]=i+1; });
 
-  /* Finding-as-title (computed, mirroring the hero verdict logic) */
+  /* Finding-as-title (computed): top model, runner-up gap, tier count */
   var top=ranked[0];
   var finding='<b>'+esc(top.model)+'</b> leads at <b>'+pct(top.e.score)+'</b> '+metricLabel+' composite';
   if(ranked.length>1){
@@ -1805,12 +2281,16 @@ function renderLeaderboard(container){
   var sortDir=state.lbSortDir||-1;
   var sortVal=function(m){
     if(sortKey==="cost"){
-      var c=prices[m];
-      return (c&&c.blend31!=null)?c.blend31:null;
+      var b=batteryMult(m);
+      return b?b.mult:null;
     }
     if(sortKey==="consistency"){
       var k=consistency[m];
       return (k&&k.rate!=null)?k.rate:null;
+    }
+    if(sortKey==="timeout"){
+      var t=toByModel[m];
+      return (t&&t.rate!=null)?t.rate:null;
     }
     if(sortKey==="dispatch"){
       var d=(pmp[m]||{})["dispatch_compliance_dispatch"];
@@ -1885,8 +2365,17 @@ function renderLeaderboard(container){
     "Phase 3a \u201c"+critLabel("agent_dispatched")+"\u201d (agent_dispatched) pass rate",-1);
   html+=thSort("consistency","Consistency",
     "Share of repeated (phase, case) cells (2+ reps) where every rep was perfect. Always Perfect-based (all criteria), regardless of the metric toggle.",-1);
-  html+=thSort("cost","Blended $/Mtok",
-    "Published blended list price, (3 \u00d7 input + output) / 4 per million tokens. Always the 3:1 blend here, regardless of the price-basis toggle in Cost vs. Performance. Not measured benchmark spend.",1);
+  /* Timed-out column (2026-06-12, user fine-tuning round): per-model
+     timed-out share over all of the model's loaded runs, from
+     PRECOMPUTED.timeout_by_model — the same precompute that feeds the Key
+     Takeaways timeout claims. Default sort direction is DESCENDING
+     (worst-first): for a reliability column the interesting reading is
+     "who times out most", mirroring the worst-first instinct of the other
+     columns' best-first defaults. */
+  html+=thSort("timeout","Timed out",
+    "Share of this model\u2019s runs cut off at the wall clock \u2014 the harness\u2019s timed_out flag counts genuine wall-clock timeouts AND silent stalls that simply ran out the clock. Timed-out runs are still graded from the transcript produced before the cutoff.",-1);
+  html+=thSort("cost","Battery cost (\u00d7 Opus 4.8)",
+    "Estimated relative cost to run the full benchmark battery once, as a multiple of Opus 4.8 (= 1.0\u00d7) \u2014 published list rates \u00d7 each model\u2019s observed token mix, uncached basis (defined under Cost vs. Performance). Always the battery multiplier here, regardless of the price-basis toggle in Cost vs. Performance. Not measured benchmark spend.",1);
   html+='</tr></thead><tbody>';
 
   var anyPartial=false;
@@ -1967,13 +2456,30 @@ function renderLeaderboard(container){
       html+='<td class="lb-cell"><span class="hm-cell rs-na" title="No (phase, case) cells with 2+ reps">&mdash;</span></td>';
     }
 
-    /* Published blended price — pinned to the 3:1 blend regardless of the
-       Cost vs. Performance price-basis toggle (disclosed in the header tip) */
-    var c=prices[m];
-    if(c&&c.blend31!=null){
-      html+='<td class="lb-cost" title="(3 \u00d7 $'+c.input.toFixed(2)+' input + $'+c.output.toFixed(2)+
-        ' output) / 4 = '+fmtCost(c.blend31)+' per 1M tokens (published list price)">'+
-        fmtCost(c.blend31)+'</td>';
+    /* Timed-out share: plain numeric cell (deliberately NOT on the .rs-*
+       pass ramp — that ramp reads high-is-good, the inverse of a timeout
+       rate), 1-decimal percent with the k/n underneath like the rate
+       cells; em-dash idiom if the precompute lacks the model. */
+    var to=toByModel[m];
+    if(to&&to.rate!=null){
+      html+='<td class="lb-cell" title="'+fmt(to.n_timed_out)+' of '+fmt(to.n_runs)+
+        ' runs hit the wall clock (harness timed_out flag: wall-clock timeouts + silent stalls that ran out the clock); still graded from the transcript produced before the cutoff">'+
+        (to.rate*100).toFixed(1)+'%<span class="lb-n">'+fmt(to.n_timed_out)+'/'+fmt(to.n_runs)+'</span></td>';
+    } else {
+      html+='<td class="lb-cell text-muted">&mdash;</td>';
+    }
+
+    /* Battery-cost multiplier (the headline cost figure) — pinned to the
+       battery form regardless of the Cost vs. Performance price-basis
+       toggle (disclosed in the header tip). Models without battery data
+       get the em-dash idiom; stale token-mix snapshots carry the \u26a0
+       convention in the tooltip (mirrors the CvP battery disclosure). */
+    var b=batteryMult(m);
+    if(b){
+      html+='<td class="lb-cost" title="Est. cost to run the full battery once \u2248 '+
+        fmtMult(b.mult)+' Opus 4.8\u2019s (= 1.0\u00d7); uncached list rates \u00d7 observed token mix \u2014 defined under Cost vs. Performance'+
+        (b.stale?' \u26a0 token mix from a billing snapshot that predates this model\u2019s newest corpus runs':'')+
+        '">'+fmtMult(b.mult)+'</td>';
     } else {
       html+='<td class="lb-cost text-muted">&mdash;</td>';
     }
@@ -1984,23 +2490,34 @@ function renderLeaderboard(container){
 
   /* Computed finding + tier-rule disclosure + footnotes — all BELOW the
      table per the section layout rule (controls adjacent to the plot,
-     computed findings after it) */
+     computed findings after it). The footnotes collapse into a "Details"
+     expander (.foot-details, 2026-06-12 user fine-tuning round 2): closed
+     by default so the fine print does not crowd the table, regular-size
+     --text-2 body when opened. Content unchanged. */
   html+='<div class="lb-finding">'+finding+'</div>';
+  html+='<details class="foot-details"><summary>Details</summary><div>';
   html+='<p class="lb-foot">'+lbTierRuleText(tierRule,tiers,metricLabel)+'</p>';
-  html+='<p class="lb-foot">Blended $/Mtok is the published list price &mdash; (3 \u00d7 input + output) / 4 '+
-    'per million tokens &mdash; not measured benchmark spend (see Costs Detail for why spend tracking was removed).</p>';
+  html+='<p class="lb-foot">Battery cost is the estimated relative cost to run the full benchmark battery once '+
+    '&mdash; every token priced at uncached published list rates, applied to each model\u2019s own observed token mix &mdash; '+
+    'expressed as a multiple of Opus 4.8 (= 1.0\u00d7), never dollars; not measured benchmark spend. '+
+    'Where a model\u2019s token-mix snapshot predates its newest runs, the cell tooltip carries a \u26a0 marker. '+
+    'Full definition, sources, and caveats under <a href="#cost-performance">Cost vs. Performance</a>. '+
+    'Timed out is the share of a model\u2019s runs cut off at the wall clock (the harness\u2019s timed_out flag, '+
+    'which counts genuine wall-clock timeouts and silent stalls that ran out the clock alike); timed-out runs are still graded.</p>';
   if(anyPartial){
     html+='<p class="lb-foot">Models marked <i>partial</i> are missing one or more phase components; '+
       'their composite is the mean of the components present, not a comparable full-coverage score.</p>';
   }
+  html+='</div></details>';
 
   container.innerHTML=html;
 }
 
 /* =================================================================
    SECTION 5: COST VS. PERFORMANCE
-   Log-x scatter of PUBLISHED price per million tokens (under the
-   selected formulation: blended 3:1 / input / output) vs. the
+   Log-x scatter of the selected price basis — the battery-cost
+   multiplier (default; the page-wide headline cost figure) or a
+   published per-Mtok list rate (input / output, secondary) — vs. the
    selected performance basis (composite | any eval group, incl. P4)
    under the selected metric (perfect | hard), with the precomputed
    efficiency frontier rendered as a step polyline. Points, prices,
@@ -2008,7 +2525,7 @@ function renderLeaderboard(container){
    (cost.perf_values, cost.models, cost.frontiers[form][basis][metric])
    so the chart, the finding prose, and the generator's sanity report
    cannot drift apart. Observed spend is deliberately absent (token
-   accounting misalignment — see Costs Detail). Provider is encoded
+   accounting misalignment — see the battery disclosure below). Provider is encoded
    as color + shape (never color alone); every point is labeled.
    ================================================================= */
 
@@ -2030,19 +2547,12 @@ var CP_METRICS=[
   {key:"hard",label:"Critical-only",tip:"The lower bar \u2014 will it generally work: a run counts when every critical (must-pass) criterion passed; normal criteria are ignored"}
 ];
 
-function renderCostPerf(container){
+/* Shared point/frontier builder for the full Cost vs. Performance scatter
+   AND its compact hero-flow preview (#cvp-preview) — one data path, two
+   render targets, so the two charts cannot drift (2026-06-12 user
+   fine-tuning round). Returns {pts, frontier, isBat, prices, pv}. */
+function costPerfData(form,basis,metric){
   var prices=priceMap();
-  var form=state.costForm||"blend31";
-  var formDef=COST_FORMS[0];
-  COST_FORMS.forEach(function(f){ if(f.key===form) formDef=f; });
-  var basis=state.cpPerf||"composite";
-  var metric=state.cpMetric||"perfect";
-  var basisDef=CP_PERF_BASES[0];
-  CP_PERF_BASES.forEach(function(b){ if(b.key===basis) basisDef=b; });
-  var metricDef=CP_METRICS[0];
-  CP_METRICS.forEach(function(o){ if(o.key===metric) metricDef=o; });
-  var yShort=basisDef.label+' '+metricDef.label+' rate';
-
   var pvAll=(PRECOMPUTED.cost||{}).perf_values||{};
   var pv=(pvAll[basis]||{})[metric]||{};
   var frontier=((((PRECOMPUTED.cost||{}).frontiers||{})[form]||{})[basis]||{})[metric]||[];
@@ -2065,10 +2575,7 @@ function renderCostPerf(container){
 
   /* Points: models with a y-value under the active basis/metric AND a
      positive published price under the active formulation (log axis
-     cannot place zero/unknown). Models lacking data for the selected
-     phase are omitted from this view and counted for the footnote
-     (omitted = priced models present in the baseline composite view
-     but absent under the active basis/metric). */
+     cannot place zero/unknown). */
   var pts=[];
   Object.keys(pv).forEach(function(m){
     var c=prices[m];
@@ -2076,11 +2583,86 @@ function renderCostPerf(container){
     pts.push({model:m,price:c[form]/batScale,score:pv[m],
               provider:modelProvider(m),pm:c});
   });
+  return {pts:pts,frontier:frontier,isBat:isBat,prices:prices,pv:pv};
+}
+
+/* Battery-multiplier canonical definition + disclosures (condensed from
+   the removed Costs Detail section, 2026-06-12 user fine-tuning round —
+   the full prose record lives in README § 8). Renders UNCONDITIONALLY in
+   the CvP footnote area (the multiplier is the page-wide headline cost
+   figure even when the scatter is toggled to a per-Mtok basis) — since
+   the 2026-06-12 fine-tuning round 2 that area lives inside the
+   collapsed-by-default "Details" expander under the chart; the
+   leaderboard cost column, the About cost caveat, and the COST_FORMS
+   tooltip all point here. Battery size / snapshot date / staleness inject
+   live from PRECOMPUTED.cost.battery. */
+function batteryDisclosureHtml(){
+  var bat=(PRECOMPUTED.cost||{}).battery||{};
+  var batModels=bat.models||{};
+  var anyStale=false;
+  Object.keys(batModels).forEach(function(m){ if(batModels[m].stale) anyStale=true; });
+  return '<p class="cp-foot"><b>The battery multiplier, precisely.</b> '+
+    'Each model\u2019s figure is its estimated cost to run the full '+
+    (bat.battery_size||"?")+'-probe DAAFBench battery once, expressed as a multiple of '+
+    esc(bat.reference_model||"Opus 4.8")+' (= 1.0\u00d7): every token the model consumed is priced at its '+
+    'uncached published list input and output rates (no cache discounts \u2014 the only basis that compares '+
+    'providers with wildly different caching schemes like-for-like), applied to the model\u2019s own observed '+
+    'token mix. Token mixes come from provider billing data, not the harness\u2019s approximate counts: '+
+    'Anthropic models live from this corpus\u2019s archived run records (Anthropic\u2019s own usage meter), '+
+    'OpenRouter models from an OpenRouter billing export dated '+esc(bat.snapshot_date||"2026-06-11")+'. '+
+    'Multipliers only, never dollars \u2014 exact dollar figures would imply a precision these estimates do '+
+    'not have \u2014 and the relative figures can shift as providers reprice tokens and as caching mechanics '+
+    'interact with each model\u2019s behavior.'+
+    (anyStale?' A \u26a0 marker (here and on the leaderboard) means that model\u2019s token-mix snapshot predates its newest corpus runs.':'')+
+    ' And read high-timeout models low: a run cut off at the wall clock stopped consuming tokens, so high '+
+    'timed-out shares (see the leaderboard) depress these estimates.</p>';
+}
+
+/* Published list-price table (relocated from the removed Costs Detail
+   section as a compact collapsible): raw per-Mtok list rates from
+   DATA.model_pricing, input-ascending, secondary detail only. */
+function pricingDetailsHtml(){
+  var pricing=DATA.model_pricing||{};
+  var rows=uniqueModels().filter(function(m){ return pricing[m]; });
+  if(rows.length===0) return '';
+  rows.sort(function(a,b){ return pricing[a].input_per_million-pricing[b].input_per_million; });
+  var h='<details class="cp-pricing"><summary>Published list prices (per 1M tokens) \u2014 secondary detail</summary><div>';
+  h+='<p class="cp-foot" style="margin:6px 0 8px">Raw published list rates \u2014 the price tag alone, before token appetite \u2014 not measured benchmark spend. The battery multiplier above is the headline cost figure.</p>';
+  h+='<table class="data-table" style="width:auto"><thead><tr><th style="cursor:default">Model</th><th style="cursor:default">Input / 1M</th><th style="cursor:default">Output / 1M</th><th style="cursor:default">Cache Read / 1M</th></tr></thead><tbody>';
+  rows.forEach(function(m){
+    var p=pricing[m];
+    h+='<tr><td style="font-weight:600;color:'+modelColorLight(m)+'">'+esc(m)+'</td>'+
+      '<td>$'+p.input_per_million.toFixed(2)+'</td>'+
+      '<td>$'+p.output_per_million.toFixed(2)+'</td>'+
+      '<td>'+(p.cached_input_per_million>0?'$'+p.cached_input_per_million.toFixed(2):'N/A')+'</td></tr>';
+  });
+  h+='</tbody></table></div></details>';
+  return h;
+}
+
+function renderCostPerf(container){
+  var form=state.costForm||"battery";
+  var formDef=COST_FORMS[0];
+  COST_FORMS.forEach(function(f){ if(f.key===form) formDef=f; });
+  var basis=state.cpPerf||"composite";
+  var metric=state.cpMetric||"perfect";
+  var basisDef=CP_PERF_BASES[0];
+  CP_PERF_BASES.forEach(function(b){ if(b.key===basis) basisDef=b; });
+  var metricDef=CP_METRICS[0];
+  CP_METRICS.forEach(function(o){ if(o.key===metric) metricDef=o; });
+  var yShort=basisDef.label+' '+metricDef.label+' rate';
+
+  var d=costPerfData(form,basis,metric);
+  var pts=d.pts, frontier=d.frontier, isBat=d.isBat;
+
+  /* Omitted-model disclosure: priced models present in the baseline
+     composite view but absent under the active basis/metric. */
+  var pvAll=(PRECOMPUTED.cost||{}).perf_values||{};
   var omitted=0;
   Object.keys((pvAll.composite||{}).perfect||{}).forEach(function(m){
-    var c=prices[m];
+    var c=d.prices[m];
     if(!c||c[form]==null||c[form]<=0) return;
-    if(pv[m]==null) omitted++;
+    if(d.pv[m]==null) omitted++;
   });
   if(pts.length===0){
     container.innerHTML='<div class="empty-msg">No models with both a '+esc(yShort)+' and published pricing in this corpus.</div>';
@@ -2089,7 +2671,8 @@ function renderCostPerf(container){
 
   /* Selector rows (radio-style, reusing the leaderboard toggle styling):
      price basis (x-axis), performance basis (y-axis), metric (y-axis).
-     The leaderboard's Blended $/Mtok column stays pinned to blend31. */
+     The leaderboard's Battery cost column stays pinned to the battery
+     multiplier. */
   var toggle='<div class="lb-controls"><span class="lb-sort-label">Price basis</span>';
   COST_FORMS.forEach(function(f){
     toggle+='<button class="lb-sort-btn'+(form===f.key?' active':'')+'" title="'+esc(f.formula)+
@@ -2147,8 +2730,13 @@ function renderCostPerf(container){
   legend+='</div>';
 
   /* Footnotes: active selections + omitted-model count (if any) +
-     published-pricing-only disclosure */
-  var foot='<p class="cp-foot">Y-axis: '+esc(yShort)+' &mdash; '+
+     published-pricing-only disclosure + the battery disclosure block —
+     all collapsed into a "Details" expander (.foot-details, 2026-06-12
+     user fine-tuning round 2; regular-size --text-2 body when opened,
+     content unchanged). The relocated list-price collapsible
+     (.cp-pricing) stays its own SIBLING expander beneath this one. */
+  var foot='<details class="foot-details"><summary>Details</summary><div>';
+  foot+='<p class="cp-foot">Y-axis: '+esc(yShort)+' &mdash; '+
     (metric==="hard"
       ?'the &ldquo;will it generally work&rdquo; bar: a run counts when every critical (must-pass) criterion passed.'
       :'the &ldquo;everything exactly right&rdquo; bar: a run counts when every criterion (critical + normal) passed.')+
@@ -2158,25 +2746,53 @@ function renderCostPerf(container){
       :'')+'</p>';
   foot+='<p class="cp-foot">'+esc(formDef.formula)+'. '+
     (isBat
-      ?'A rough relative multiplier from list prices and observed token mixes (uncached '+
-       'basis; OpenRouter mixes from a dated billing snapshot), normalized so Opus 4.8 = '+
-       '1.0\u00d7 &mdash; not a reading of an invoice. These relative figures can shift as '+
-       'providers reprice tokens and as provider caching mechanics interact with each '+
-       'model\u2019s behavior. Full definition and caveats in Costs Detail. Models without '+
-       'battery data are omitted under this basis.'
-      :'Prices are published list rates from models.yaml, not measured benchmark spend '+
-       '&mdash; token-derived spend tracking was removed because OpenRouter token '+
-       'accounting does not align with the harness\u2019s usage logging.')+'</p>';
+      ?'A rough relative multiplier &mdash; not a reading of an invoice; full definition '+
+       'and disclosures below. Models without battery data are omitted under this basis.'
+      :'Prices under this secondary basis are raw published list rates, '+
+       'not measured benchmark spend &mdash; token-derived spend tracking was removed '+
+       'because OpenRouter token accounting does not align with the harness\u2019s usage '+
+       'logging. The default battery basis folds observed token appetite in; this view '+
+       'shows the price tag alone.')+'</p>';
+  /* The canonical battery-multiplier definition + disclosures render
+     unconditionally (page-wide headline figure; other surfaces link here)
+     — inside the Details expander since the 2026-06-12 fine-tuning
+     round 2, but on every render regardless of the price-basis toggle */
+  foot+=batteryDisclosureHtml();
+  foot+='</div></details>';
 
   /* Layout: controls + legend immediately adjacent to the chart; the
-     computed finding and footnotes BELOW it */
+     computed finding, the footnote Details expander, and the relocated
+     list-price collapsible BELOW it */
   container.innerHTML=toggle+legend+
     '<div class="card"><div class="chart-container">'+
     svgCostFrontier(pts,frontier,
       formDef.axis||(formDef.label+' price (USD per 1M tokens, log scale)'),yShort,
       isBat?"Est. relative cost":"Published price",priceUnit,isBat)+
     '</div></div>'+
-    '<div class="cp-finding">'+finding+'</div>'+foot;
+    '<div class="cp-finding">'+finding+'</div>'+foot+
+    pricingDetailsHtml();
+}
+
+/* Compact cost-performance preview (#cvp-preview, 2026-06-12 user
+   fine-tuning rounds; above #takeaways since round 2): a second, smaller
+   render of the scatter in the intro flow, directly under the hero —
+   pinned to the page defaults (battery basis, composite
+   Perfect rate), no toggles, reduced height, hover tooltips kept (lightly
+   interactive). Same costPerfData + svgCostFrontier path as the full
+   chart, so the two can never disagree. Rendered once at init (the block
+   is excluded from lazy rendering with the other above-the-fold
+   sections). */
+function renderCostPerfPreview(){
+  var slot=el("cvp-preview-chart");
+  if(!slot) return;
+  var d=costPerfData("battery","composite","perfect");
+  if(d.pts.length===0){
+    slot.innerHTML='<div class="empty-msg">No models with both a composite score and battery-cost data in this corpus.</div>';
+    return;
+  }
+  slot.innerHTML=svgCostFrontier(d.pts,d.frontier,
+    COST_FORMS[0].axis,"Composite Perfect rate",
+    "Est. relative cost"," vs Opus 4.8",true,{H:330});
 }
 
 /* =================================================================
@@ -2226,11 +2842,11 @@ function buildPhaseAgg(){
 /* Per-group explainers, two registers each: the lay failure-mode
    intuition first, then the technical criteria sentence */
 var PD_EXPLAINERS={
-  mode_classification:"The failure this phase catches: <i>the assistant starts the wrong kind of work.</i> Each run starts cold \u2014 the model sees only the user\u2019s opening request and must interpret it and route it among DAAF\u2019s workflow modes: a fairly easy task, but the one everything downstream depends on. Criteria check the mode it picks, that it presents a confirmation gate, and that nothing executes before the user confirms.",
-  post_confirmation:"The failure this phase catches: <i>improvising instead of following the established process.</i> The model resumes from a checkpoint that ends at the confirmation gate, and the user says to proceed; strict protocol adherence means loading the governing reference documents \u2014 the ones that define how the work is supposed to be done \u2014 before conducting any of it. Criteria check that it actually loads the mode reference files and skills it just committed to loading.",
-  dispatch_compliance_dispatch:"The failure this phase catches: <i>garbled delegation that degrades everything downstream.</i> The model resumes from a fully initialized Ad Hoc Collaboration session and must hand work to a subagent concisely, coherently, and instructively. Criteria check that it dispatches the correct agent type with a properly structured prompt \u2014 BASE_DIR, mode marker, and task / context / instructions sections.",
-  dispatch_compliance_subagent:"The failure this phase catches: <i>a specialist that ignores its role\u2019s rules.</i> Whenever a Phase 3 dispatch succeeds, the dispatched subagent\u2019s own transcript is scored on whether it operated correctly <i>as</i> that specialist \u2014 against criteria derived from its agent type\u2019s work protocols. Which criteria apply varies by case, so denominators vary across this heatmap \u2014 \u201c\u2014\u201d marks criteria that never applied to a model\u2019s runs.",
-  skill_routing:"The failure this phase catches: <i>confident, ungrounded methodological advice.</i> Models cannot be relied on to draw research methodology from training data, so a genuine research assistant must judiciously load domain expertise through skill reference files to ground what it does, says, and recommends. The model resumes from the same fully initialized checkpoint as Phase 3, receives a brainstorming task that calls for a specific analysis library, and the criteria check that it FIRST consults the data-scientist hub\u2019s routing directives and THEN loads the specific library skills \u2014 scored on the main transcript only; one of the five leaderboard composite components (since 2026-06-10)."
+  mode_classification:"The failure this phase catches: <i>the assistant starts the wrong kind of work.</i> Each run starts cold: the model sees only the user\u2019s opening request and must route it to the right one of DAAF\u2019s workflow modes (basically: Did it recognize what kind of work is actually being asked for?). It is a fairly easy task, but the one everything downstream depends on. Criteria check the mode it picks, that it pauses at a confirmation gate for the user\u2019s sign-off, and that it executes nothing before that approval arrives.",
+  post_confirmation:"The failure this phase catches: <i>improvising instead of following the established process.</i> The model resumes from a checkpoint that ends at the confirmation gate, and the user says to proceed. Strict protocol adherence means doing the homework first: loading the governing reference documents (the ones that define how the work is supposed to be done) before conducting any of it. Criteria check that it actually loads the mode reference files and skills it just committed to loading \u2014 not merely that it claims to.",
+  dispatch_compliance_dispatch:"The failure this phase catches: <i>garbled delegation that degrades everything downstream.</i> The model resumes from a fully initialized Ad Hoc Collaboration session and must hand work to a specialist subagent the way a good manager would: concisely, coherently, and instructively. Criteria check that it dispatches the correct agent type with a properly structured handoff prompt \u2014 BASE_DIR, mode marker, and task / context / instructions sections.",
+  dispatch_compliance_subagent:"The failure this phase catches: <i>a specialist that ignores its own role\u2019s rules.</i> Whenever a Phase 3 dispatch succeeds, the dispatched subagent\u2019s own transcript gets scored too: did it operate correctly <i>as</i> that specialist (e.g., a coding agent actually writing a script and executing it through the audit-trail wrapper)? Criteria are derived from the agent type\u2019s work protocols, and which ones apply varies by case \u2014 so denominators vary across this heatmap, and \u201c\u2014\u201d marks criteria that never applied to a model\u2019s runs.",
+  skill_routing:"The failure this phase catches: <i>confident, ungrounded methodological advice.</i> Models cannot be relied on to draw research methodology from their fuzzy general knowledge (basically: the baked-in impressions left over from training), so a genuine research assistant must load curated domain references into its working context to ground what it does, says, and recommends. The model resumes from the same fully initialized checkpoint as Phase 3 and receives a brainstorming task that calls for a specific analysis library; criteria check that it FIRST consults the data-scientist hub\u2019s routing guidance and THEN loads the specific library skills \u2014 scored on the main transcript only, and one of the five leaderboard composite components."
 };
 
 /* One heatmap block for one eval group. Emits id="phase-<gid>" so
@@ -2611,8 +3227,9 @@ function caseMatrixHtml(group,cid){
       if(ci===0){
         html+='<td class="rep-label" rowspan="'+criteria.length+'">Rep '+rep+'</td>';
       }
-      html+='<td><code style="font-size:11px;color:#cbd5e1">'+esc(criterion)+'</code></td>';
-      html+='<td style="text-align:center;color:'+(tier==="C"?"#f59e0b":"#64748b")+';font-size:11px;font-weight:600" title="'+(tier==="C"?"critical (must-pass)":"normal")+' criterion">'+esc(tier)+'</td>';
+      /* color/idiom via the shared .data-table code chip rule (WP hex sweep) */
+      html+='<td><code>'+esc(criterion)+'</code></td>';
+      html+='<td style="text-align:center;color:'+(tier==="C"?"#f59e0b":"var(--text-3)")+';font-size:11px;font-weight:600" title="'+(tier==="C"?"critical (must-pass)":"normal")+' criterion">'+esc(tier)+'</td>';
 
       models.forEach(function(m){
         var run=null;
@@ -2620,12 +3237,12 @@ function caseMatrixHtml(group,cid){
           if(caseRuns[ri].model===m && caseRuns[ri].rep===rep){ run=caseRuns[ri]; break; }
         }
         if(!run){
-          html+='<td style="text-align:center;color:#475569">&mdash;</td>';
+          html+='<td style="text-align:center;color:var(--text-3)">&mdash;</td>';
           return;
         }
         var critData=getRunCriteria(run, group)[criterion];
         if(!critData){
-          html+='<td style="text-align:center;color:#475569">&mdash;</td>';
+          html+='<td style="text-align:center;color:var(--text-3)">&mdash;</td>';
         } else {
           var passed=critData.passed;
           html+='<td style="text-align:center;cursor:pointer" onclick="event.stopPropagation();jumpToRun(&#39;'+esc(run.run_dir)+'&#39;)">';
@@ -2723,220 +3340,7 @@ function renderCasesSection(container){
 }
 
 /* =================================================================
-   SECTION 8: COSTS DETAIL
-   Headline (v2.8.0; displayed as relative multipliers since v2.8.1):
-   estimated relative cost to run the full battery once, shown as
-   x-Opus-4.8 multipliers — never dollars, which would imply false
-   precision (PRECOMPUTED.cost.battery stays in dollars; presentation
-   normalizes at render time; see the generator's "Battery-cost
-   metric" dev guide), followed by the sortable published per-Mtok pricing table
-   (DATA.model_pricing) with each model's overall Perfect rate for
-   context. The old Observed Spend table (computed from the harness's
-   per-run token counts) stays removed — OpenRouter token accounting
-   does not align with the harness's usage logging, so those spend
-   figures were unreliable (disclosed in the section lead and the
-   About caveats); battery estimates instead use billing-meter token
-   mixes for OpenRouter models.
-   ================================================================= */
-
-function renderCostsDetail(container){
-  var models=uniqueModels();
-  var pricing=DATA.model_pricing||{};
-  var html='';
-
-  /* ---- Battery-cost headline (v2.8.0; relative multipliers since
-     v2.8.1): est. relative cost to run the full battery once, from
-     PRECOMPUTED.cost.battery — list rates x each model's own observed
-     token mix, uncached basis — displayed as a multiple of the
-     reference model (Opus 4.8 = 1.0x), never dollars (false
-     precision). Sorted most-expensive first; bar width is linear in
-     the multiplier. Timed-out shares come from
-     PRECOMPUTED.timeout_by_model (referenced, not duplicated). ---- */
-  var bat=(PRECOMPUTED.cost||{}).battery||{};
-  var batModels=bat.models||{};
-  var batNames=Object.keys(batModels);
-  if(batNames.length>0){
-    var refModel=bat.reference_model||"Opus 4.8";
-    batNames.sort(function(a,b){
-      return (batModels[b].est_battery_cost||0)-(batModels[a].est_battery_cost||0);
-    });
-    var toByModel=PRECOMPUTED.timeout_by_model||{};
-    var anyStale=false, anySnapshot=false;
-    /* Multipliers: embedded cost_multiplier_vs_ref when present, else
-       derived from the embedded dollar costs (same ratio) */
-    var refCost=(batModels[refModel]||{}).est_battery_cost||null;
-    var multOf={}, multMax=null;
-    batNames.forEach(function(m){
-      var b=batModels[m];
-      var mu=b.cost_multiplier_vs_ref!=null?b.cost_multiplier_vs_ref
-        :((refCost&&refCost>0&&b.est_battery_cost!=null)?b.est_battery_cost/refCost:null);
-      multOf[m]=mu;
-      if(mu!=null&&(multMax==null||mu>multMax)) multMax=mu;
-    });
-    html+='<div class="section-title">Estimated relative cost to run the full benchmark battery once ('+
-      (bat.battery_size||"?")+' probes) \u2014 '+esc(refModel)+' = 1.0\u00d7</div>';
-    html+='<div class="card"><table class="data-table"><thead><tr>'+
-      '<th>Model</th><th>Est. cost (\u00d7 '+esc(refModel)+')</th>'+
-      '<th>Timed-out share</th><th>Token-mix source</th></tr></thead><tbody>';
-    batNames.forEach(function(m){
-      var b=batModels[m];
-      if(b.basis&&b.basis.indexOf("billing-snapshot")===0) anySnapshot=true;
-      if(b.stale) anyStale=true;
-      var mult=multOf[m];
-      var w=(mult!=null&&multMax>0)?Math.max(0.6,(mult/multMax)*100):0;
-      var to=toByModel[m];
-      var src=b.basis==="corpus-live"
-        ?'Anthropic usage logs (live corpus)'
-        :'OpenRouter billing export ('+esc((b.basis||"").replace("billing-snapshot-",""))+')'+
-         (b.stale?' \u26a0':'');
-      html+='<tr>';
-      html+='<td style="font-weight:600;color:'+modelColorLight(m)+'">'+esc(m)+'</td>';
-      html+='<td title="~'+fmt(b.tokens_per_run||0)+' tokens per run across '+(bat.battery_size||"?")+
-        ' probes'+
-        (b.token_multiplier_vs_ref!=null?' ('+b.token_multiplier_vs_ref.toFixed(2)+'\u00d7 '+esc(refModel)+'\u2019s appetite)':'')+
-        '; multiplier = this model\u2019s estimated uncached battery cost \u00f7 '+esc(refModel)+'\u2019s'+
-        '"><span class="lb-comp-score" style="width:74px">'+(mult!=null?fmtMult(mult):'&mdash;')+'</span>'+
-        '<span class="lb-bar bat-bar"><span class="lb-bar-fill" style="width:'+w.toFixed(1)+'%"></span></span></td>';
-      html+='<td title="Share of this model\u2019s runs cut off at the wall clock (see the leaderboard and Key Takeaways) \u2014 truncated runs consumed fewer tokens, so high shares depress this estimate">'+
-        (to&&to.rate!=null?((to.rate*100).toFixed(1)+'%'+(to.rate>=0.1?' \u2193':'')):'&mdash;')+'</td>';
-      html+='<td>'+src+'</td>';
-      html+='</tr>';
-    });
-    html+='</tbody></table></div>';
-    /* Required disclosures: uncached relative basis, billing-snapshot
-       provenance, timeout depression. Public register; figures that
-       change with the data stay in the table, not the prose. */
-    html+='<p class="cp-foot"><b>What these multipliers estimate &mdash; and what they deliberately ignore.</b> '+
-      'Each figure estimates the <b>relative</b> cost of running this benchmark\u2019s full '+
-      (bat.battery_size||"?")+'-probe battery once on a model, expressed as a multiple of '+
-      esc(refModel)+' (= 1.0\u00d7): every token the model consumed is priced at its uncached '+
-      'published list input and output rates &mdash; <b>no cache discounts</b>, as if nothing were '+
-      'ever cached &mdash; applied to the model\u2019s own observed token mix. That makes the figures '+
-      'directly comparable across providers, whose caching schemes differ wildly; exact dollar '+
-      'figures are deliberately not shown, because they would imply a precision these estimates '+
-      'do not have. Note that these relative costs will change both if model token pricing '+
-      'changes, and also based on specific provider caching mechanics interacting with specific '+
-      'model behaviors.</p>';
-    html+='<p class="cp-foot"><b>Where the token mixes come from.</b> Anthropic models\u2019 '+
-      'per-run token appetites are computed live from this corpus\u2019s archived run records '+
-      '(Anthropic\u2019s own usage meter). OpenRouter models\u2019 come from an OpenRouter billing '+
-      'export dated '+esc(bat.snapshot_date||"2026-06-11")+' &mdash; the provider\u2019s billing '+
-      'meter, not the harness\u2019s approximate counts \u2014 validated to within about 3% of '+
-      'actual billed spend for most models.'+
-      (anyStale?' Rows marked \u26a0 have corpus runs newer than that snapshot; their token mixes predate the newest runs.':'')+'</p>';
-    html+='<p class="cp-foot"><b>Read high-timeout models low.</b> A run cut off at the wall '+
-      'clock stops consuming tokens, so models with high timed-out shares (flagged \u2193 above; '+
-      'the same rates appear in the leaderboard and Key Takeaways) show lower multipliers than '+
-      'they would if they finished their work.</p>';
-  }
-
-  /* Phase scope for the Perfect Rate context column: "" pools every
-     loaded run (precomputed run grade); a group id restricts to that
-     eval group, scoring perfect via groupAllPassed so 3b uses subagent
-     criteria (same semantics as the leaderboard's per-phase cells).
-     Pricing columns are phase-independent list rates. */
-  var groups=getEvalGroups();
-  var scope=state.costsPhase||"";
-  var scopeGroup=null;
-  groups.forEach(function(g){ if(g.id===scope) scopeGroup=g; });
-
-  /* ---- Published pricing (kept from v1, sortable) ---- */
-  var perfectByModel={};
-  models.forEach(function(m){
-    var n=0,k=0;
-    DATA.runs.forEach(function(r){
-      if(r.model!==m) return;
-      if(scopeGroup){
-        if(!runInGroup(r,scopeGroup)) return;
-        n++;
-        if(groupAllPassed(r,scopeGroup)) k++;
-      } else {
-        n++;
-        if(r.grade==="perfect") k++;
-      }
-    });
-    perfectByModel[m]={rate:n>0?k/n:0,k:k,n:n};
-  });
-
-  /* Phase filter toggle (same control idiom as the other sections) */
-  html+='<div class="lb-controls"><span class="lb-sort-label">Perfect-rate scope</span>';
-  html+='<button class="lb-sort-btn'+(scope===""?' active':'')+'" title="Perfect rate pooled across every loaded phase group" '+
-    'onclick="setCostsPhase(&#39;&#39;)">All phases</button>';
-  groups.forEach(function(g){
-    html+='<button class="lb-sort-btn'+(scope===g.id?' active':'')+'" title="Perfect rate over '+esc(g.label)+
-      ' runs only" onclick="setCostsPhase(&#39;'+esc(g.id)+'&#39;)">'+esc(groupShort(g.id))+'</button>';
-  });
-  html+='<span class="lb-metric-note">'+(scopeGroup
-    ?'Perfect Rate scoped to <b>'+esc(scopeGroup.label)+'</b>; pricing columns are list rates and do not vary by phase.'
-    :'Perfect Rate pooled across all loaded phases; pick a phase group to scope it.')+'</span>';
-  html+='</div>';
-
-  var costRows=models.map(function(m){
-    var p=pricing[m];
-    return {
-      model:m,
-      perfect:perfectByModel[m].rate,
-      input:p?p.input_per_million:Infinity,
-      output:p?p.output_per_million:Infinity,
-      cache:p?p.cached_input_per_million:Infinity
-    };
-  });
-
-  var sortKey=state.costSortCol||"input";
-  var sortDir=state.costSortDir||1;
-  costRows.sort(function(a,b){
-    var va=a[sortKey], vb=b[sortKey];
-    if(typeof va==="string") return sortDir*va.localeCompare(vb);
-    return sortDir*(va-vb);
-  });
-
-  function costTh(label,key){
-    var arrow="";
-    if(state.costSortCol===key) arrow=state.costSortDir===1?" ▲":" ▼";
-    else if(!state.costSortCol && key==="input") arrow=" ▲";
-    return '<th onclick="sortCosts(&#39;'+key+'&#39;)" style="cursor:pointer">'+label+arrow+'</th>';
-  }
-
-  html+='<div class="section-title">Published list prices (per 1M tokens)</div>';
-  html+='<div class="card"><table class="data-table"><thead><tr>';
-  html+=costTh("Model","model");
-  html+=costTh("Perfect Rate","perfect");
-  html+=costTh("Input / 1M","input");
-  html+=costTh("Output / 1M","output");
-  html+=costTh("Cache Read / 1M","cache");
-  html+='</tr></thead><tbody>';
-
-  costRows.forEach(function(row){
-    var m=row.model;
-    var p=pricing[m];
-    html+='<tr>';
-    html+='<td style="font-weight:600;color:'+modelColorLight(m)+'">'+esc(m)+'</td>';
-    var pr=perfectByModel[m];
-    if(pr.n===0){
-      html+='<td><span class="hm-cell rs-na" style="cursor:default" title="No '+
-        esc(scopeGroup?scopeGroup.label:'loaded')+' runs for this model">&mdash;</span></td>';
-    } else {
-      var step=rateStep(pr.rate);
-      html+='<td><span class="hm-cell rs-'+step+'" style="cursor:default" title="'+pr.k+'/'+pr.n+
-        ' perfect runs '+(scopeGroup?'in '+esc(scopeGroup.label)+' (group criteria)':'pooled across all loaded phases (main criteria)')+
-        '">'+rateGlyph(step)+pct(pr.rate)+'</span></td>';
-    }
-    if(p){
-      html+='<td>$'+p.input_per_million.toFixed(2)+'</td>';
-      html+='<td>$'+p.output_per_million.toFixed(2)+'</td>';
-      html+='<td>'+(p.cached_input_per_million>0?'$'+p.cached_input_per_million.toFixed(2):'N/A')+'</td>';
-    } else {
-      html+='<td class="text-muted">N/A</td><td class="text-muted">N/A</td><td class="text-muted">N/A</td>';
-    }
-    html+='</tr>';
-  });
-  html+='</tbody></table></div>';
-
-  container.innerHTML=html;
-}
-
-/* =================================================================
-   SECTION 9: RUN EXPLORER
+   SECTION 8: RUN EXPLORER
    Run list + detail panel. Status everywhere in this section is the
    grade taxonomy (perfect / partial / failed / ungraded) with the
    timed_out flag rendered as a separate clock marker; deep links from
@@ -2990,6 +3394,92 @@ function renderRunExplorer(container){
   html+='</div>';
 
   container.innerHTML=html;
+}
+
+/* =================================================================
+   TRANSCRIPT SHARD LOADING (bundle mode, generator v3.0.0)
+   Bundle artifacts drop DATA.transcripts / DATA.subagent_transcripts
+   from the inline payload (they were ~85% of the old monolith's
+   bytes) and ship them as per-result-set shards —
+   data/tx_{result_set}.json, each {"transcripts":{...},
+   "subagent_transcripts":{...}} keyed by the SAME composite
+   "{result_set}/{run_dir}" keys as the inline dicts, so lookup code
+   is identical in both modes. DATA carries transcripts_index
+   ({result_set:{file,n_main,n_subagent}}) so the JS knows what
+   exists without a manifest round-trip. Single-file artifacts keep
+   the inline dicts and never touch this machinery (feature detect:
+   DATA.transcripts presence, in renderRunDetail).
+   file:// note: fetch() of sibling files is CORS-blocked on file://
+   origins, so bundle transcripts REQUIRE http(s) serving; the
+   failure fallback below says so with a `python3 -m http.server`
+   hint. The --single-file artifact remains the offline/file://
+   audit path.
+   ================================================================= */
+
+/* Shard cache: result_set -> Promise of the parsed shard. Shards are
+   small (median ~275 KB, max ~1.2 MB) — no eviction needed. Failed
+   fetches ARE evicted so re-selecting a run retries after a
+   transient failure. */
+var txShardCache={};
+/* Stale-click guard: each detail-panel render takes a fresh token; a
+   shard arriving after another run was selected must never render
+   into the newer run's panel. */
+var txReqToken=0;
+
+function fetchTxShard(resultSet){
+  if(txShardCache[resultSet]) return txShardCache[resultSet];
+  var idx=(DATA.transcripts_index||{})[resultSet];
+  /* No index entry: the set archived no transcripts — nothing to fetch */
+  if(!idx||!idx.file) return Promise.resolve(null);
+  var p=fetch(idx.file).then(function(resp){
+    if(!resp.ok) throw new Error("HTTP "+resp.status+" fetching "+idx.file);
+    return resp.json();
+  });
+  txShardCache[resultSet]=p;
+  p.then(null,function(){ delete txShardCache[resultSet]; });
+  return p;
+}
+
+/* Bundle-mode transcript slot: returns the placeholder HTML and starts
+   the shard fetch. The #run-tx-slot div is inserted by the caller's
+   innerHTML assignment in the SAME synchronous task that builds this
+   string; promise callbacks run as microtasks after it, so the slot
+   always exists by fill time (or was replaced — guarded). */
+function transcriptPlaceholder(r){
+  var token=++txReqToken;
+  var key=r.result_set+"/"+r.run_dir;
+  fetchTxShard(r.result_set).then(function(shard){
+    if(token!==txReqToken) return;   /* stale click — a newer run owns the panel */
+    var slot=el("run-tx-slot");
+    if(!slot) return;                /* panel was re-rendered/removed */
+    /* Shard loaded but this run has no entry: render nothing, matching
+       the single-file behavior for transcript-less runs */
+    slot.innerHTML=shard?renderTranscriptBlocks(r,
+      (shard.transcripts||{})[key],
+      (shard.subagent_transcripts||{})[key]):"";
+  },function(){
+    if(token!==txReqToken) return;
+    var slot=el("run-tx-slot");
+    if(!slot) return;
+    /* Failure fallback — never a silent empty block */
+    var msg='Transcript could not be loaded.';
+    if(isFileProto){
+      msg+=' This page was opened directly from disk (<code>file://</code>); '+
+        'transcripts are fetched on demand and need the report served over '+
+        'http(s) \u2014 from the bundle directory run '+
+        '<code>python3 -m http.server</code>, then open '+
+        '<code>http://localhost:8000/</code>.';
+    } else {
+      var idx=(DATA.transcripts_index||{})[r.result_set]||{};
+      msg+=' The transcript data file ('+esc(idx.file||"")+') was not reachable.';
+    }
+    msg+=' The archived run directory is named at the bottom of this panel; '+
+      'the Provenance section lists its result set.';
+    slot.innerHTML='<div class="section-title" style="margin-top:16px">Condensed Transcript</div>'+
+      '<div class="card" style="border-color:var(--c-partial);font-size:12px;line-height:1.6">'+msg+'</div>';
+  });
+  return '<div id="run-tx-slot"><div class="section-title" style="margin-top:16px">Condensed Transcript</div>'+
+    '<div class="text-muted text-xs">Loading transcript\u2026</div></div>';
 }
 
 function renderRunDetail(r){
@@ -3064,18 +3554,42 @@ function renderRunDetail(r){
       html+='<span style="color:#fcd34d">'+esc(t.tool_name||"tool")+'</span>';
       if(t.content){
         var tfId="tf-out-"+r.run_dir.replace(/[^a-zA-Z0-9]/g,"_")+"-"+ti;
-        html+='<div id="'+tfId+'" class="tx-collapsed" style="margin-top:4px;color:#94a3b8;white-space:pre-wrap;word-break:break-word">'+esc(t.content)+'</div>';
+        html+='<div id="'+tfId+'" class="tx-out tx-collapsed" style="margin-top:4px;color:var(--text-2);white-space:pre-wrap;word-break:break-word">'+esc(t.content)+'</div>';
         html+='<span class="tx-toggle" onclick="event.stopPropagation();var e=document.getElementById(&#39;'+tfId+'&#39;);e.classList.toggle(&#39;tx-collapsed&#39;);this.textContent=e.classList.contains(&#39;tx-collapsed&#39;)?&#39;expand&#39;:&#39;collapse&#39;;">expand</span>';
       }
       html+='</div>';
     });
   }
 
-  /* Transcript — keyed "result_set/run_dir": run-dir names collide
-     across result sets, so the generator namespaces both transcript
-     dicts by result set (load_transcripts(), generator v2.7.0 fix);
-     the key construction here must mirror it exactly */
-  var tx=DATA.transcripts[r.result_set+"/"+r.run_dir];
+  /* Transcript block — two artifact shapes (generator v3.0.0):
+     single-file artifacts embed DATA.transcripts inline (render
+     synchronously, exactly the pre-3.0 behavior); bundle artifacts
+     ship transcripts in per-result-set shards listed in
+     DATA.transcripts_index (render a loading placeholder now, fill
+     when the shard arrives — cache, stale-click token, and file://
+     failure fallback all live in the shard-loading block above). */
+  if(DATA.transcripts){
+    html+=renderTranscriptBlocks(r,
+      DATA.transcripts[r.result_set+"/"+r.run_dir],
+      (DATA.subagent_transcripts||{})[r.result_set+"/"+r.run_dir]);
+  } else {
+    html+=transcriptPlaceholder(r);
+  }
+
+  html+='<div class="text-xs text-muted mt-4">Run dir: '+esc(r.run_dir)+'</div>';
+
+  return html;
+}
+
+/* Renders the main + subagent transcript sections for a run from the
+   given dicts' entries (already looked up by the composite
+   "{result_set}/{run_dir}" key — run-dir names collide across result
+   sets, so the generator namespaces both transcript dicts by result
+   set (load_transcripts(), generator v2.7.0 fix); the key
+   construction in both callers must mirror it exactly). Shared by
+   the synchronous single-file path and the async shard fill. */
+function renderTranscriptBlocks(r,tx,stx){
+  var html='';
   if(tx && tx.length>0){
     html+='<div class="section-title" style="margin-top:16px">Condensed Transcript ('+tx.length+' messages)</div>';
     html+='<div class="transcript">';
@@ -3085,7 +3599,7 @@ function renderRunDetail(r){
       if(msg.role==="tool_result") cls="tx-tool-result";
       html+='<div class="tx-msg '+cls+'">';
       if(msg.role==="user"){
-        html+='<span class="tx-role" style="color:#818cf8">USER</span>';
+        html+='<span class="tx-role" style="color:var(--accent-light)">USER</span>';
         html+='<span class="tx-content">'+esc(truncate(msg.content,500))+'</span>';
       } else if(msg.role==="assistant"){
         html+='<span class="tx-role" style="color:var(--c-pass)">ASSISTANT</span>';
@@ -3095,16 +3609,16 @@ function renderRunDetail(r){
         html+='<span style="color:#fcd34d">'+esc(msg.tool||"")+'</span>';
         if(msg.args) html+=' <span class="text-muted">'+esc(truncate(msg.args,120))+'</span>';
       } else if(msg.role==="tool_result"){
-        html+='<span class="tx-role" style="color:#64748b">RESULT</span>';
-        html+='<span style="color:'+(msg.status==="error"?"var(--c-fail)":"#94a3b8")+'">'+esc(msg.tool||"")+'</span>';
+        html+='<span class="tx-role" style="color:var(--c-neutral)">RESULT</span>';
+        html+='<span style="color:'+(msg.status==="error"?"var(--c-fail)":"var(--text-2)")+'">'+esc(msg.tool||"")+'</span>';
         html+=' <span class="badge badge-'+(msg.status==="error"?"fail":"pass")+'">'+esc(msg.status||"ok")+'</span>';
         if(msg.output){
           var outId="tx-out-"+r.run_dir.replace(/[^a-zA-Z0-9]/g,"_")+"-"+mi;
-          html+='<div id="'+outId+'" class="tx-collapsed" style="margin-top:4px;font-size:11px;color:#94a3b8">'+esc(msg.output)+'</div>';
+          html+='<div id="'+outId+'" class="tx-out tx-collapsed" style="margin-top:4px;font-size:11px;color:var(--text-2)">'+esc(msg.output)+'</div>';
           html+='<span class="tx-toggle" onclick="event.stopPropagation();var e=document.getElementById(&#39;'+outId+'&#39;);e.classList.toggle(&#39;tx-collapsed&#39;);this.textContent=e.classList.contains(&#39;tx-collapsed&#39;)?&#39;expand&#39;:&#39;collapse&#39;;">expand</span>';
         }
       } else if(msg.role==="system"){
-        html+='<span class="tx-role" style="color:#475569">SYSTEM</span>';
+        html+='<span class="tx-role" style="color:var(--text-3)">SYSTEM</span>';
         html+='<span class="tx-content">'+esc(truncate(msg.content,200))+'</span>';
       }
       html+='</div>';
@@ -3112,9 +3626,7 @@ function renderRunDetail(r){
     html+='</div>';
   }
 
-  /* Subagent transcripts — same composite "result_set/run_dir" key
-     as the main transcript lookup above */
-  var stx=DATA.subagent_transcripts[r.result_set+"/"+r.run_dir];
+  /* Subagent transcripts — same composite key, looked up by the caller */
   if(stx){
     var saKeys=Object.keys(stx);
     if(saKeys.length>0){
@@ -3129,15 +3641,15 @@ function renderRunDetail(r){
           if(msg.role==="tool_result") cls="tx-tool-result";
           html+='<div class="tx-msg '+cls+'" style="font-size:11px">';
           if(msg.role==="user"){
-            html+='<span class="tx-role" style="color:#818cf8">USER</span>'+esc(truncate(msg.content,300));
+            html+='<span class="tx-role" style="color:var(--accent-light)">USER</span>'+esc(truncate(msg.content,300));
           } else if(msg.role==="assistant"){
             html+='<span class="tx-role" style="color:var(--c-pass)">ASST</span>'+esc(truncate(msg.content,300));
           } else if(msg.role==="tool_call"){
             html+='<span class="tx-role" style="color:#f59e0b">TOOL</span><span style="color:#fcd34d">'+esc(msg.tool||"")+'</span> '+esc(truncate(msg.args,100));
           } else if(msg.role==="tool_result"){
-            html+='<span class="tx-role" style="color:#64748b">RES</span>'+esc(msg.tool||"")+" "+esc(msg.status||"");
+            html+='<span class="tx-role" style="color:var(--c-neutral)">RES</span>'+esc(msg.tool||"")+" "+esc(msg.status||"");
           } else {
-            html+='<span class="tx-role" style="color:#475569">SYS</span>'+esc(truncate(msg.content,150));
+            html+='<span class="tx-role" style="color:var(--text-3)">SYS</span>'+esc(truncate(msg.content,150));
           }
           html+='</div>';
         });
@@ -3147,13 +3659,11 @@ function renderRunDetail(r){
     }
   }
 
-  html+='<div class="text-xs text-muted mt-4">Run dir: '+esc(r.run_dir)+'</div>';
-
   return html;
 }
 
 /* =================================================================
-   SECTION 10: PROVENANCE FOOTER
+   SECTION 9: PROVENANCE FOOTER
    One row per result set from PRECOMPUTED.provenance; rows where the
    on-disk run count disagrees with summary.json are highlighted.
    ================================================================= */
@@ -3207,7 +3717,7 @@ function renderProvenance(container){
    vertical nudge to avoid overlap and flip anchor at the right edge.
    ================================================================= */
 
-function svgCostFrontier(pts,frontier,axisLabel,yLabel,priceName,priceUnit,relative){
+function svgCostFrontier(pts,frontier,axisLabel,yLabel,priceName,priceUnit,relative,opts){
   yLabel=yLabel||"Composite Perfect rate";
   /* Tooltip price wording is formulation-aware: per-Mtok forms read
      "Published price: $X/Mtok"; the battery form reads
@@ -3215,7 +3725,11 @@ function svgCostFrontier(pts,frontier,axisLabel,yLabel,priceName,priceUnit,relat
      since v2.8.1 — no dollar battery figures are displayed) */
   priceName=priceName||"Published price";
   priceUnit=priceUnit||"/Mtok";
-  var W=860, H=480;
+  /* opts (2026-06-12, user fine-tuning round): {W, H} override the
+     canvas for the compact #cvp-preview render; defaults are the full
+     chart's historical dimensions. */
+  opts=opts||{};
+  var W=opts.W||860, H=opts.H||480;
   var pad={t:34,r:34,b:56,l:64};
   var cw=W-pad.l-pad.r, ch=H-pad.t-pad.b;
 
@@ -3251,14 +3765,28 @@ function svgCostFrontier(pts,frontier,axisLabel,yLabel,priceName,priceUnit,relat
   function xPos(c){ return pad.l+cw*((log10(c)-lo)/span); }
   function yPos(s){ return pad.t+ch*(1-(s-yMin)/(yMax-yMin)); }
 
-  var svg='<svg width="'+W+'" height="'+H+'" viewBox="0 0 '+W+' '+H+'">';
+  /* Responsive scaling (2026-06-12, user fine-tuning round): the svg
+     scales to its container via viewBox + width:100% (height:auto keeps
+     the aspect ratio; max-width caps it at the designed size so text
+     never balloons on wide screens). No resize re-render is needed:
+     every position below is computed in viewBox coordinates (the fixed
+     W×H above), so CSS scaling is purely proportional — geometry,
+     labels, and the frontier all scale together. */
+  var svg='<svg viewBox="0 0 '+W+' '+H+'" preserveAspectRatio="xMidYMid meet" '+
+    'style="width:100%;max-width:'+W+'px;height:auto">';
 
+  /* SVG presentation colors (2026-06-12 hex sweep): gridlines moved to the
+     site's white-alpha borders (the old #1e293b lines vanished against the
+     new #151d2e card bg); text fills use the new text-2 literal #b0bcc8 —
+     fill="" attributes cannot carry var(), so matching literals are used.
+     The frontier/"best value" greens are the audited pass hue (data color)
+     and stay untouched. */
   /* y grid: every 10 points */
   for(var si=Math.round(yMin*10); si<=10; si++){
     var s=si/10;
     var yy=yPos(s);
-    svg+='<line x1="'+pad.l+'" y1="'+yy.toFixed(1)+'" x2="'+(pad.l+cw)+'" y2="'+yy.toFixed(1)+'" stroke="#1e293b" stroke-width="1"/>';
-    svg+='<text x="'+(pad.l-8)+'" y="'+(yy+3.5).toFixed(1)+'" fill="#94a3b8" font-size="9" text-anchor="end">'+(si*10)+'%</text>';
+    svg+='<line x1="'+pad.l+'" y1="'+yy.toFixed(1)+'" x2="'+(pad.l+cw)+'" y2="'+yy.toFixed(1)+'" stroke="rgba(255,255,255,.08)" stroke-width="1"/>';
+    svg+='<text x="'+(pad.l-8)+'" y="'+(yy+3.5).toFixed(1)+'" fill="#b0bcc8" font-size="9" text-anchor="end">'+(si*10)+'%</text>';
   }
   /* x grid: log ticks at 1/2/5 per decade */
   var d0=Math.floor(lo)-1, d1=Math.ceil(hi)+1;
@@ -3269,13 +3797,13 @@ function svgCostFrontier(pts,frontier,axisLabel,yLabel,priceName,priceUnit,relat
       if(lv<lo||lv>hi) return;
       var xx=xPos(v);
       var major=(mant===1);
-      svg+='<line x1="'+xx.toFixed(1)+'" y1="'+pad.t+'" x2="'+xx.toFixed(1)+'" y2="'+(pad.t+ch)+'" stroke="'+(major?'#334155':'#1e293b')+'" stroke-width="'+(major?1:0.5)+'"/>';
-      svg+='<text x="'+xx.toFixed(1)+'" y="'+(pad.t+ch+14)+'" fill="#94a3b8" font-size="9" text-anchor="middle">'+fmtAxisCost(v)+'</text>';
+      svg+='<line x1="'+xx.toFixed(1)+'" y1="'+pad.t+'" x2="'+xx.toFixed(1)+'" y2="'+(pad.t+ch)+'" stroke="'+(major?'rgba(255,255,255,.15)':'rgba(255,255,255,.08)')+'" stroke-width="'+(major?1:0.5)+'"/>';
+      svg+='<text x="'+xx.toFixed(1)+'" y="'+(pad.t+ch+14)+'" fill="#b0bcc8" font-size="9" text-anchor="middle">'+fmtAxisCost(v)+'</text>';
     });
   }
   /* Axis captions */
-  svg+='<text x="'+(pad.l+cw/2)+'" y="'+(H-10)+'" fill="#94a3b8" font-size="10" text-anchor="middle">'+esc(axisLabel||"Published price (USD per 1M tokens, log scale)")+'</text>';
-  svg+='<text x="14" y="'+(pad.t+ch/2)+'" fill="#94a3b8" font-size="10" text-anchor="middle" transform="rotate(-90,14,'+(pad.t+ch/2)+')">'+esc(yLabel)+'</text>';
+  svg+='<text x="'+(pad.l+cw/2)+'" y="'+(H-10)+'" fill="#b0bcc8" font-size="10" text-anchor="middle">'+esc(axisLabel||"Published price (USD per 1M tokens, log scale)")+'</text>';
+  svg+='<text x="14" y="'+(pad.t+ch/2)+'" fill="#b0bcc8" font-size="10" text-anchor="middle" transform="rotate(-90,14,'+(pad.t+ch/2)+')">'+esc(yLabel)+'</text>';
 
   /* "best value" annotation: up and to the left is the value region */
   svg+='<text x="'+(pad.l+10)+'" y="'+(pad.t+16)+'" fill="rgba(52,211,153,.75)" font-size="11" font-weight="600">&#8598; best value</text>';
@@ -3307,23 +3835,22 @@ function svgCostFrontier(pts,frontier,axisLabel,yLabel,priceName,priceUnit,relat
     var px=xPos(p.price), py=yPos(p.score);
     var prov=p.provider||"unknown";
     var fillVar=prov==="anthropic"?"var(--accent-light)":(prov==="openrouter"?"var(--c-partial)":"var(--c-neutral)");
-    var ring=onFrontier[p.model]?' stroke="#f8fafc" stroke-width="1.2"':'';
+    var ring=onFrontier[p.model]?' stroke="#f0f4f8" stroke-width="1.2"':'';
     var tipHtml=esc(p.model)+'<br>'+esc(yLabel)+': <b>'+pct(p.score)+'</b><br>'+esc(priceName)+': <b>'+fmtPoint(p.price)+esc(priceUnit)+'</b>'+
       '<br>List rates: $'+p.pm.input.toFixed(2)+' in / $'+p.pm.output.toFixed(2)+' out per 1M tokens'+
       (onFrontier[p.model]?'<br><b>On the efficiency frontier</b>':'');
-    var titleTxt=p.model+': '+pct(p.score)+' '+yLabel+', '+fmtPoint(p.price)+priceUnit;
+    /* No <title> children on the points (removed 2026-06-12, user
+       fine-tuning round): the native browser tooltip overlapped the
+       page's custom tooltip — the custom one is authoritative. */
     var common=' style="fill:'+fillVar+';cursor:pointer"'+ring+
       ' onmouseover="showTip(event,&#39;'+tipHtml.replace(/'/g,"&#39;")+'&#39;)" onmouseout="hideTip()"';
     if(prov==="openrouter"){
       svg+='<path d="M'+px.toFixed(1)+' '+(py-6).toFixed(1)+' L'+(px+6).toFixed(1)+' '+py.toFixed(1)+
-        ' L'+px.toFixed(1)+' '+(py+6).toFixed(1)+' L'+(px-6).toFixed(1)+' '+py.toFixed(1)+' Z"'+common+'>'+
-        '<title>'+esc(titleTxt)+'</title></path>';
+        ' L'+px.toFixed(1)+' '+(py+6).toFixed(1)+' L'+(px-6).toFixed(1)+' '+py.toFixed(1)+' Z"'+common+'/>';
     } else if(prov==="anthropic"){
-      svg+='<circle cx="'+px.toFixed(1)+'" cy="'+py.toFixed(1)+'" r="5"'+common+'>'+
-        '<title>'+esc(titleTxt)+'</title></circle>';
+      svg+='<circle cx="'+px.toFixed(1)+'" cy="'+py.toFixed(1)+'" r="5"'+common+'/>';
     } else {
-      svg+='<rect x="'+(px-4.5).toFixed(1)+'" y="'+(py-4.5).toFixed(1)+'" width="9" height="9"'+common+'>'+
-        '<title>'+esc(titleTxt)+'</title></rect>';
+      svg+='<rect x="'+(px-4.5).toFixed(1)+'" y="'+(py-4.5).toFixed(1)+'" width="9" height="9"'+common+'/>';
     }
     labels.push({model:p.model,px:px,py:py});
   });
@@ -3351,7 +3878,7 @@ function svgCostFrontier(pts,frontier,axisLabel,yLabel,priceName,priceUnit,relat
     while(collides()&&guard<20){ ly+=11; guard++; }
     if(ly>pad.t+ch-2) ly=pad.t+ch-2;
     placed.push({ly:ly,x0:x0,x1:x1});
-    svg+='<text x="'+lx.toFixed(1)+'" y="'+ly.toFixed(1)+'" fill="#cbd5e1" font-size="9.5" text-anchor="'+anchor+'" pointer-events="none">'+esc(lb.model)+'</text>';
+    svg+='<text x="'+lx.toFixed(1)+'" y="'+ly.toFixed(1)+'" fill="#b0bcc8" font-size="9.5" text-anchor="'+anchor+'" pointer-events="none">'+esc(lb.model)+'</text>';
   });
 
   svg+='</svg>';
@@ -3360,8 +3887,8 @@ function svgCostFrontier(pts,frontier,axisLabel,yLabel,priceName,priceUnit,relat
 
 /* =================================================================
    LAZY SECTION RENDERING (performance guard)
-   With 1,700+ runs everything-at-once rendering would freeze the
-   initial paint. Sections render on first viewport intersection; an
+   With thousands of runs in the corpus, everything-at-once rendering
+   would freeze the initial paint. Sections render on first viewport intersection; an
    idle-time queue (requestIdleCallback, setTimeout fallback) fills in
    the rest shortly after load so anchors and deep links stay accurate.
    ================================================================= */
@@ -3371,7 +3898,6 @@ var sectionRenderers={
   "cost-performance": renderCostPerf,
   "phases": renderPhaseDives,
   "cases": renderCasesSection,
-  "costs": renderCostsDetail,
   "run-explorer": renderRunExplorer,
   "provenance": renderProvenance
 };
@@ -3382,6 +3908,28 @@ function ensureRendered(id){
   renderedSections[id]=true;
   var fn=sectionRenderers[id];
   if(fn) fn(el("sec-"+id));
+}
+
+/* Explicit-nav geometry fix (2026-06-12, user fine-tuning round; see the
+   CSS comment at the body.nav-rendered rule). Approach chosen: on the
+   FIRST explicit navigation (TOC click or load-time deep link), render
+   every JS section's content AND un-skip content-visibility document-wide
+   (body.nav-rendered), so the whole document lays out at true heights
+   once; the caller then scrolls after a double-rAF so the scroll target
+   is measured against final geometry. Alternatives considered: rendering
+   only the sections between current scroll and target (fragile — smooth
+   scrolling can overshoot past sections whose heights are still
+   estimates), or scroll-then-correct (needs scroll-settle detection under
+   smooth behavior). One full layout on first explicit nav is the simple,
+   deterministic fix; every subsequent anchor jump is exact for free.
+   NOTE: stays on the http(s) post-deploy retest list — content-visibility
+   anchor behavior differs subtly across engines. */
+var navGeomReady=false;
+function ensureAllRendered(){
+  if(navGeomReady) return;
+  navGeomReady=true;
+  SECTION_IDS.forEach(function(id){ if(sectionRenderers[id]) ensureRendered(id); });
+  document.body.classList.add("nav-rendered");
 }
 
 function idlePrerender(queue){
@@ -3401,14 +3949,24 @@ function idlePrerender(queue){
    assigning location.hash during scroll would scroll-jump.
    ================================================================= */
 
-var SECTION_IDS=["hero","takeaways","about","leaderboard","cost-performance","phases","cases","costs","run-explorer","provenance"];
+var SECTION_IDS=["hero","takeaways","about","leaderboard","cost-performance","phases","cases","run-explorer","provenance"];
+
+/* Scrollspy detection offset is nav-height-aware (geometry rework,
+   2026-06-12): the sticky topbar occupies --nav-height + the 3px strip, so
+   the old hardcoded 120px threshold would mis-detect under it. Reads the
+   CSS var once (it is static) + 3px strip + ~30px detection margin —
+   ≈121px at the 88px site nav, matching the old feel. */
+var NAV_SPY_OFFSET=(function(){
+  var v=parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--nav-height"));
+  return (isNaN(v)?88:v)+3+30;
+})();
 
 function updateActiveLink(){
   var activeId=SECTION_IDS[0];
   for(var i=0;i<SECTION_IDS.length;i++){
     var sec=el(SECTION_IDS[i]);
     if(!sec) continue;
-    if(sec.getBoundingClientRect().top<=120) activeId=SECTION_IDS[i];
+    if(sec.getBoundingClientRect().top<=NAV_SPY_OFFSET) activeId=SECTION_IDS[i];
   }
   document.querySelectorAll(".toc-link").forEach(function(lnk){
     lnk.classList.toggle("active", lnk.getAttribute("data-target")===activeId);
@@ -3537,26 +4095,10 @@ window.lbJumpPhase=function(gid){
   setHash("phases");
 };
 
-/* Costs Detail Perfect-rate phase scope toggle: "" = all phases pooled,
-   or an eval group id. Re-renders the section; sort state carries over. */
-window.setCostsPhase=function(key){
-  state.costsPhase=key;
-  renderCostsDetail(el("sec-costs"));
-};
-
-window.sortCosts=function(key){
-  if(state.costSortCol===key){
-    state.costSortDir=state.costSortDir*-1;
-  } else {
-    state.costSortCol=key;
-    state.costSortDir=1;
-  }
-  renderCostsDetail(el("sec-costs"));
-};
-
 /* Cost vs. Performance price-basis toggle: re-render the scatter (points
    and frontier both come precomputed per formulation). The leaderboard's
-   Blended $/Mtok column is pinned to blend31 and does not re-render. */
+   Battery cost column is pinned to the battery multiplier and does not
+   re-render. */
 window.setCostForm=function(key){
   state.costForm=key;
   renderCostPerf(el("sec-cost-performance"));
@@ -3583,9 +4125,12 @@ window.hideTip=hideTip;
    ================================================================= */
 
 function init(){
-  /* Cheap, always-immediate content */
+  /* Cheap, always-immediate content (the cost-performance preview is in
+     the above-the-fold flow and excluded from lazy rendering, so it
+     renders here too) */
   renderHero();
   fillTakeaways();
+  renderCostPerfPreview();
   fillAboutCounts();
 
   /* Run Explorer local filters */
@@ -3597,13 +4142,27 @@ function init(){
   el("rx-hide-timeouts").addEventListener("change",applyFilters);
   el("rx-reset").addEventListener("click",resetFilters);
 
-  /* TOC: render the target section before the anchor jump so the
-     scroll position is correct, and record the section in the hash */
+  /* TOC: first-click landing fix (2026-06-12, user fine-tuning round).
+     The old handler rendered only the target and let default anchor
+     behavior scroll — but intervening sections still sat at their
+     contain-intrinsic-size ESTIMATES, so the first click landed short and
+     the target drifted as true heights rendered in. Now: take over the
+     navigation, force the whole document to true geometry once
+     (ensureAllRendered + body.nav-rendered), wait a double-rAF for that
+     layout to commit, THEN smooth-scroll and record the hash. */
   document.querySelectorAll(".toc-link").forEach(function(lnk){
-    lnk.addEventListener("click",function(){
+    lnk.addEventListener("click",function(ev){
       var target=this.getAttribute("data-target");
-      if(target) ensureRendered(target);
-      /* default anchor behavior performs the (smooth) scroll */
+      if(!target) return;
+      ev.preventDefault();
+      ensureRendered(target);
+      ensureAllRendered();
+      window.requestAnimationFrame(function(){
+        window.requestAnimationFrame(function(){
+          scrollToSection(target);
+          setHash(target);
+        });
+      });
     });
   });
 
@@ -3623,16 +4182,20 @@ function init(){
   window.addEventListener("scroll",onScroll,{passive:true});
   updateActiveLink();
 
-  /* Deep links: #<section-id>[&run=<run_dir>] */
+  /* Deep links: #<section-id>[&run=<run_dir>] — same first-nav geometry
+     fix as TOC clicks: force true layout, then scroll after a double-rAF */
   var h=parseHash();
   if(h && h.section && SECTION_IDS.indexOf(h.section)>=0){
     ensureRendered(h.section);
+    ensureAllRendered();
     if(h.run){
       ensureRendered("run-explorer");
       window.jumpToRun(h.run);
     }
     if(!(h.run && h.section==="run-explorer")){
-      scrollToSection(h.section);
+      window.requestAnimationFrame(function(){
+        window.requestAnimationFrame(function(){ scrollToSection(h.section); });
+      });
     }
   }
 
@@ -3646,11 +4209,75 @@ function init(){
   console.log("  Result sets:",DATA.result_sets.length);
   console.log("  Cases:",Object.keys(DATA.cases).length);
   console.log("  Runs:",DATA.runs.length);
-  console.log("  Transcripts:",Object.keys(DATA.transcripts).length);
+  /* Artifact-shape aware (v3.0.0): single-file embeds DATA.transcripts;
+     bundles carry only transcripts_index (counts, lazy shard fetch) */
+  if(DATA.transcripts){
+    console.log("  Transcripts:",Object.keys(DATA.transcripts).length,"(inline, single-file artifact)");
+  } else {
+    var txIdx=DATA.transcripts_index||{};
+    var txMain=0;
+    Object.keys(txIdx).forEach(function(k){ txMain+=txIdx[k].n_main||0; });
+    console.log("  Transcripts:",txMain,"(lazy, "+Object.keys(txIdx).length+" shards)");
+  }
 }
 
 init();
 
+})();
+</script>
+
+<!-- ============================================================== -->
+<!-- Site nav JS (2026-06-12 site-cohesion pass): the minimal        -->
+<!-- dropdown/mobile-toggle handlers ported from the DAAF product    -->
+<!-- site (§§ NAV_TOGGLE, DROPDOWN_BLUR_FIX, DROPDOWN_FOCUS_LOCK_FIX,-->
+<!-- MOBILE_DROPDOWN_TOGGLE), wrapped in one IIFE. Self-contained:   -->
+<!-- introduces NO globals and touches only .site-nav elements       -->
+<!-- (#nav-toggle / #nav-links / .nav-dropdown*); the viewer's own   -->
+<!-- scrollspy stays authoritative for the TOC rail.                 -->
+<!-- ============================================================== -->
+<script>
+(function(){
+"use strict";
+var toggle=document.getElementById("nav-toggle");
+var links=document.getElementById("nav-links");
+if(!toggle||!links) return;
+function closeDropdowns(){
+  document.querySelectorAll(".nav-dropdown.mobile-open").forEach(function(dd){
+    dd.classList.remove("mobile-open");
+    var btn=dd.querySelector(".nav-dropdown-toggle");
+    if(btn) btn.setAttribute("aria-expanded","false");
+  });
+}
+/* Mobile hamburger open/close */
+toggle.addEventListener("click",function(){
+  var open=links.classList.toggle("open");
+  toggle.setAttribute("aria-expanded",open);
+  if(!open) closeDropdowns();
+});
+/* Any nav link click closes the mobile menu + open dropdowns */
+links.querySelectorAll("a").forEach(function(a){
+  a.addEventListener("click",function(){
+    links.classList.remove("open");
+    toggle.setAttribute("aria-expanded","false");
+    closeDropdowns();
+  });
+});
+/* Close dropdown after clicking external links (blur fix) */
+document.querySelectorAll(".nav-dropdown-menu a[target=\"_blank\"]").forEach(function(a){
+  a.addEventListener("click",function(){ setTimeout(function(){ a.blur(); },100); });
+});
+/* Prevent focus-lock on button click while preserving keyboard focus */
+document.querySelectorAll(".nav-dropdown-toggle").forEach(function(btn){
+  btn.addEventListener("mousedown",function(e){ e.preventDefault(); });
+});
+/* Tap to expand/collapse dropdown menus on mobile */
+document.querySelectorAll(".nav-dropdown-toggle").forEach(function(btn){
+  btn.addEventListener("click",function(){
+    var dropdown=btn.closest(".nav-dropdown");
+    dropdown.classList.toggle("mobile-open");
+    btn.setAttribute("aria-expanded",dropdown.classList.contains("mobile-open"));
+  });
+});
 })();
 </script>
 

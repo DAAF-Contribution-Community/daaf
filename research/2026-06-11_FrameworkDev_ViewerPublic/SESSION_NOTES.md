@@ -274,17 +274,249 @@ reconciliation (scripts/reconcile_openrouter_costs.py + derived JSON),
 models.yaml rate fixes, harness cache-write fix, generator v2.8.1
 battery-MULTIPLIER cost display (vs Opus 4.8, never dollars), takeaways
 re-adjudicated + rewritten (29 kt-spans), official artifact
-viewer_2026-06-11k.html. NOTHING is committed. This session: (1) run the
-mandatory 3-angle review (consistency/quality/completeness) over the
-Session 2 changed files listed in SESSION_NOTES; (2) collect user visual
-check verdict on _11k; (3) fix any findings, regenerate if needed, commit
-when user directs (CAUTION: raw openrouter_activity CSV has a user hash —
-ask before committing it; superseded viewers _11a–_11j are user-deletion
-housekeeping); (4) then collect the user's text/layout fine-tuning
-directions (the original deferred goal). Conventions: benchmarks/
+viewer_2026-06-11k.html. Conventions: benchmarks/
 README.md § 12 is source of truth; regen only via the generator; python3
 (not rg) for results/ and viewer_*.html; at deploy: og:url placeholder,
-og:image, http(s) hash-navigation retest, and ~25 MB artifact compression."
+og:image, http(s) hash-navigation retest, and ~25 MB artifact compression.
+
+This session: 
+
+## Session 3 (2026-06-12): Website Integration — Tone, Cost Centralization, Multi-File + Styling
+
+**Scope (user-directed, confirmed at session start):** (1) percolate the user's
+e099982 frontmatter voice + website framing through all viewer prose; (2) make
+the battery cost multiplier the headline cost figure everywhere (leaderboard,
+scatter default, cost table) and remove blended $/Mtok entirely (input/output
+rates stay secondary); (3) multi-file architecture (fully committed — lazy-load
+transcripts) + adopt daaf-product topbar and site styling (daaf-anatomy as
+deep-dive analogue; bundle to live in the daaf-product site folder; user's
+deploy script handles relative links). Session-wide context override: 300k
+critical for orchestrator and all subagents. User has visually approved _11k.
+Session 2's deferred 3-angle review folds into this session's Phase 4.
+
+**Phase 1 scoping COMPLETE** — 3 parallel search-agents, full returns persisted:
+- `preliminary_notes/2026-06-12_scoping_voice-percolation.md` — voice guide
+  (colon-first, decoder pattern, honest hedging, website phrases); 35-surface
+  percolation map; 12-item user-edit cleanup list incl. TWO RUNTIME CRASHES
+  introduced by e099982 (renderHero L1492 hero-models; fillAboutCounts
+  L1674-5 ab-models/ab-runs — both spans deleted, el() null → TypeError →
+  hero chips/verdict and About counts never render); kt-t4-dsflash unfilled;
+  12 orphaned setters; T2 garbled sentence with figure-less claim
+- `preliminary_notes/2026-06-12_scoping_cost-surfaces.md` — 31 cost surfaces
+  (G1-G8, T1-T21, R1-R5); blend31 lives ONLY in generator+template (no
+  harness/config/golden exposure); data-flow map; multiplier range
+  0.019×-2.327× (log axis already in place); 12-item removal risk list;
+  generator → v2.9.0
+- `preliminary_notes/2026-06-12_scoping_architecture-styling.md` — size
+  anatomy (transcripts 84.6% of 25 MB; ~3.9 MB initial payload after split);
+  per-result_set shards (53 files, median 275 KB) via the single
+  renderRunDetail seam (T:3078/3117); site is DARK-themed, token-adjacent
+  (indigo #6366f1 shared); token swap + fonts (Space Grotesk/DM Sans/
+  JetBrains Mono) + topbar/footer, NOT full restyle; teal-vs-status-green
+  collision caution; split-first sequencing; scrollspy/contrast/
+  content-visibility fragility list
+
+**Checkpoint 1 PASSED (2026-06-12).** User decisions: --single-file flag KEEP;
+shards per-result-set (orchestrator's call); teal-as-chrome/indigo-in-content
+accent split confirmed; T2 minimal repair + critical-only spans approved;
+hero counts re-injected as spans; hero chips hoisted above prose WITH content
+redesign (intuitive-without-context challenge — orchestrator latitude).
+**NEW SCOPE STRAND:** this page is "DAAFBench: Orchestration" (part A); a
+future separate DAAFBench will test analytic competency (adversarial
+examples, known-good code, deterministically verifiable outputs). Make the
+separate-and-complementary relationship clear in naming, hero/frontmatter,
+and About (lands in Wave 3).
+
+**Wave 0 COMPLETE (framework-engineer):** both e099982 crashes fixed
+(hero-models/hero-runs re-injected + renderHero fills; dead ab-models/ab-runs
+writes removed); kt-t4-dsflash filled; 11 orphaned setters pruned;
+kt-t6-*→kt-t5-* renumbered; T2 repaired w/ kt-t2-o45h/o46h/o47h/o48h spans
+from composite_hard (claim VERIFIED TRUE: 4.7 dip 8.5pts critical-only vs
+4.9pts composite); typos/entities fixed; #caveats id added (kt-foot links
+#about); .kt-badge/.kt-disclaimer CSS removed; generator dev-guide span
+contract 29→23 (no version bump); README §8/§12 synced. Bidirectional span
+check 32↔32 zero orphans; sanity /tmp/viewer_wave0_sanity.html 30+ checks
+pass. Residual: two stale "1,700+" internal JS comments (later wave).
+
+**Wave 1 COMPLETE (framework-engineer):** generator v3.0.0 — default output
+now bundle dir `benchmarks/daafbench_YYYY-MM-DD[suffix]/` (index.html 3.72 MB
++ data/tx_{result_set}.json × 53, 20.97 MB, largest 1.14 MB); DATA swaps
+transcripts/subagent_transcripts for transcripts_index (mutually exclusive
+keys mark the mode); --single-file [PATH] emits pre-3.0 monolith
+(viewer_YYYY-MM-DD*.html naming); template renderRunDetail two-stage w/
+feature-detect, memoized shard cache, stale-click token, visible error
+fallback (file:// → http.server hint), deep-links unchanged; noscript prose
+fixed; .gitignore daafbench_*/; README §8 bundle-first rewrite + retest list
+3→4 + design addendum, §12 dated entry. 24/24 structural checks PASS incl.
+exact shard-vs-monolith key-set equality both namespaces; PRECOMPUTED
+byte-identical across modes. Sanity: /tmp/daafbench_wave1_sanity/ +
+/tmp/viewer_wave1_sanity.html. Browser check of fetch paths = http(s)
+retest at deploy (4 items). viewer_2026-06-11k.html stays official until
+Wave 5 regen.
+
+**Wave 2 COMPLETE (framework-engineer):** generator v3.1.0 — blend31 removed
+from cost.models[] + frontiers (battery/input/output, battery first); sanity
+report prints battery frontier; template leaderboard cost column → battery
+multiplier (new shared batteryMult() helper; header "Battery cost (× Opus
+4.8)"; fmtMult + na-idiom + ⚠ stale tooltip — no current model stale);
+scatter default costForm "battery", COST_FORMS[0] battery, blend31 entry
+deleted; CvP lead rewritten multiplier-first (functional; voice polish in
+W3); About caveat flipped multiplier-first; README §8 addendum (input-token-
+dominance rationale) + §12 entry. Verified: zero blend31 in generated output;
+17/17 multiplier ladder (Fable 2.3× → Gemma 31B 0.02×); frontier 6 models.
+
+**Wave 3 COMPLETE (framework-engineer):** suite naming "DAAFBench:
+Orchestration" (title/og/meta/TOC/About h2); TWO sanctioned voice-anchor
+edits, both flagged for user review at Checkpoint 2: (1) hero ¶3 insertion
+naming the suite + companion analytic-competency suite (adversarial
+examples/known-good code/deterministic outputs, complementary halves);
+(2) takeaway-1 "at a Perfect average score of" clarifier. Full rewrites:
+leaderboard lead, PD_EXPLAINERS ×5 (P4 uses site "fuzzy general knowledge"
+vocabulary), CvP voice polish. Moderate passes: two-bars, phases table,
+scoring, PD/Cases/Costs leads, lbTierRuleText, hero verdict decoder. NEW
+#next-steps closing CTA (anatomy model; openaugments.org +
+daaf.openaugments.org/anatomy links verified from subset; Open Augments
+attribution); glossary lab-manager gloss; hero chips HOISTED above prose +
+content redesign (17 AI MODELS TESTED / 2,493 ARCHIVED TEST RUNS / 51
+DISTINCT TEST SCENARIOS / 100% OF SCORES TRACE TO A REAL RUN); stale JS
+comments fixed; dev-guide anchors + recipes synced; README §8 (a)-(g)
+addendum + §12. Voice-anchor diff: only the 2 sanctioned deltas; span
+contract 23 intact; 24/24 simulated fills non-null. No version bump.
+
+**Wave 4 COMPLETE (framework-engineer):** template-only restyle — site tokens
+(#0a0f1c surfaces, white-alpha borders, --accent-teal/mint, --nav-height,
+radii scale), site font loading mirrored (Space Grotesk/DM Sans/JetBrains
+Mono, swap, offline fallback documented); 3px gradient strip + sticky 88px
+nav.site-nav (class-scoped to avoid toc-rail collision; anatomy relative
+href model ../daaf-product/…; Learn dropdown carries active "Choosing Your
+Model (DAAFBench)" entry; nav JS ported as zero-global IIFE); anatomy
+site-footer after #next-steps; idioms: summary-badge chips, gradient
+callouts (verdict/pd-callout), teal eyebrows ×9, 999px pills, indigo mono
+chips (deliberately not teal beside pass/fail), gradient-text h1; JS hex
+sweep complete (SVG gridlines → white-alpha; inline styles → vars; status
+ramp/MODEL_COLORS/ambers untouched); geometry nav-height-aware (scroll-
+padding, toc-rail top, scrollspy NAV_SPY_OFFSET ≈121px); WCAG re-audit all
+PASS alphas unchanged (rs-3 4.71 vs 4.5 floor; recorded in WP8 comment);
+contain-intrinsic-size kept (line-height stays 1.5 by design); index.html
+3.75 MB (+0.03). Deliberate skips: phase-cascade coloring, two-bars indigo
+bar, print stylesheet. README §8 addendum + §12 (deploy visual check now
+incl. dropdowns/hamburger/chips/footer/fonts).
+
+**Wave 5 COMPLETE:** official bundle daafbench_2026-06-12/ generated
+(v3.1.0); then 3-angle review (3 parallel search-agents), ALL PROCEED YES,
+zero blockers; covers Session 2's deferred review (Session-2 cost triangle
+verified clean: models.yaml ↔ recon JSON ↔ README §7 agree; cache_creation
+fix consistent). Findings: 3 consistency WARNINGs (README §12 pointer,
+"six claims"→five, §8 section list missing next-steps), quality findings
+1-7 mechanical + 8-10 user-voice/judgment, completeness 2 WARNINGs (pointer
++ two-bars skip record) + INFO ledger. Claim audit vs live artifact: ALL
+TRUE (chips, T1-T5 figures, site quotes verbatim; "100% trace" defensible).
+
+**Post-review fix pass (cycle 1) COMPLETE (framework-engineer):** T2
+sentence re-fixed ("The 4.7 dip is even more pronounced… across the four
+Opus releases"); leaderboard lead names (P1, P2, P3a, P3b, P4); entity
+sweep L894-1220 (21 apostrophes → &rsquo;); "chews" dedupe (Costs lead →
+"burns far more tokens getting there"); cost-foot "billing-export token
+mixes"; two-bars "right down to the protocol details"; generator v3.1.1
+__HERO_MODELS__/__HERO_RUNS__ build-time substitution (noscript counts now
+live; substitution order enumerated in dev-guide); anchors re-derived;
+README §8 five-claims amendment + next-steps in section list + two-bars
+skip record; §12 Viewer current → **daafbench_2026-06-12a/** (_11k = last
+monolith-only official). Regen verified: 17/2,493 substituted, zero
+unsubstituted tokens, 23-span bidirectional clean, 53 shards.
+
+**RESERVED for user at Checkpoint 2 (untouched, user voice/judgment):**
+(1) hero ¶3 insertion approval (DAAFBench: Orchestration + companion
+suite); (2) takeaway-1 "a Perfect average score of" clarifier approval;
+(3) T4 claim-line tangle ("highly capable as a win for self-hosting
+opportunities… meaningful and crucial") + "same cost bracket as Sonnet"
+stretch (GLM 0.235× vs Sonnet 0.415×); (4) T5 "often not actually doing
+any work at all" forensic-basis citation; (5) optional kt-foot editorial-
+boundary clause (user removed kt-disclaimer deliberately); (6) footer
+ASCII "LGPL-3.0 --" (verbatim site mirror — confirm intentional).
+
+**Deferred-item ledger (deploy/housekeeping):** og:url placeholder;
+og:image; http(s) 4-item retest (hash writes, scrollspy replaceState,
+content-visibility anchors, transcript fetch + &run= deep link); visual
+check (topbar dropdowns hover+mobile, hamburger, hero chip badges, footer,
+font loading/fallback); ~21 MB shard compression; deploy-script
+relative-link compatibility w/ data/ fetches (unconfirmed assumption);
+superseded viewers _09e–_11k + daafbench_2026-06-12/ (pre-fix bundle) =
+user-deletion housekeeping; raw openrouter_activity CSVs (user hash —
+commit decision); future: print stylesheet, light theme, touch/aria,
+main README link.
+
+**Checkpoint 2 round 1 (2026-06-12):** user approved both sanctioned edits;
+T4 self-hosting fix applied ("highly capable — a real win for self-hosting —
+but with a crucial decline in consistency"; "same cost bracket" kept); T5
+"— per transcript forensics —" added; no kt-foot editorial clause; footer
+ASCII confirmed fine. Single-file viewer_2026-06-12a.html generated.
+
+**Fine-tuning round COMPLETE (framework-engineer, 11 user items):**
+(1) #hero-verdict + renderHero verdict prose removed; (2) TOC "Verdict"→
+"Intro"; (3) T1 "genuinely"→"simply" (de-dupe vs T2); (4) leaderboard
+"Timed out" column (PRECOMPUTED.timeout_by_model, worst-first defDir −1,
+not on rs-* ramp, tooltip + lb-foot clause); (5) CvP chart responsive
+(viewBox + width:100%, no resize listener needed); (6) native <title>
+tooltips removed from CvP points; (7) TOC first-click fix: first explicit
+nav → ensureAllRendered() + body.nav-rendered un-skips content-visibility
++ double-rAF scroll (stays on http(s) retest list); (8) #next-steps section
+removed (links live on in hero/About); (9) Costs Detail section REMOVED —
+condensed battery disclosures now unconditional in CvP footnotes
+(batteryDisclosureHtml: uncached/bases/⚠/drift/never-dollars), list-price
+table relocated as <details class="cp-pricing"> under the chart, all
+#costs refs re-pointed; (10) intro restructure: hero = h1+date+chips+¶1;
+takeaways; NEW #cvp-preview (same svgCostFrontier path, H=330, no toggles,
+renders on load); About opens with hero ¶¶2-4 moved VERBATIM, Wave-3
+About-intro ¶1 trimmed to one non-duplicative sentence (companion-suite
+framing stated once, in user's ¶3); (11) kt-foot removed, content merged
+into About Key Caveats ("Denominators are small and uneven" + drift/
+kt-foot-bat). Span contract still 23 (22 in #takeaways + kt-foot-bat in
+About). Sections 11→9. No generator version bump (comments only). README
+§8 fine-tuning addendum + §12. Artifact viewer_2026-06-12b.html.
+
+**Website-deploy compat notes (from user's website assistant, applied):**
+canonical tag added (https://daaf.openaugments.org/bench/; og:url
+placeholder frozen for deploy.sh substitution, comment added); nav Learn
+entry shortened to "Choosing Your Model" (on-page DAAFBench branding
+kept); confirmed: bundle deploys as root-level sibling dir (../daaf-
+product/ links anatomy-style — no edits needed), data/ is flat tx_*.json
+only (verified 0 strays), Learn self-link stays index.html. og:image:
+recommend deploy-time injection (pending user confirm). Review artifact
+regenerated: **viewer_2026-06-12c.html** (24.71 MB; _12a/_12b superseded).
+
+**og:image RESOLVED:** deploy-time injection confirmed (deploy.sh injects
+sitewide daaf_ogimage.png after og:url, asserts exactly one tag). Nothing
+needed framework-side. Website's on-disk bundle copy has the old long nav
+label — resolves at next copy-over.
+
+**Fine-tuning round 2 COMPLETE (framework-engineer):** (1) hero prose →
+single "TLDR:" paragraph (user's first sentence verbatim w/ both links +
+user-supplied DAAFBench: Orchestration sentence verbatim); "DAAF layers
+together…" sentence moved verbatim to About as its opening paragraph
+(About order: layers → orchestration explainer → "But a framework…" w/
+hero spans → "But these results…" → mechanical-scoring sentence →
+open-source ¶); #cvp-preview moved between hero and #takeaways (init-
+render + exclusion verified); (2) leaderboard + CvP footnotes wrapped in
+collapsed <details class="foot-details"><summary>Details</summary> at
+regular 13.5px --text-2 size (authored in renderLeaderboard/renderCostPerf
+innerHTML; prov-foot + cp-pricing-internal footnotes deliberately
+unchanged; cp-pricing stays sibling expander). Dev-guide page-top-order
+notes synced; README §8 round-2 paragraph + §12 bullet. 11/11 artifact
+checks PASS; 23-span contract clean; sections 9. Artifact:
+**viewer_2026-06-12d.html** (supersedes _12a-_12c).
+
+**Session close (2026-06-12):** user approved _12d + made final manual
+prose touches directly; official bundle **daafbench_2026-06-12b/**
+generated (3.75 MB index + 53 shards; span wiring verified clean post-
+user-edits, 31 spans zero orphans, zero unsubstituted tokens); README §12
+Viewer current → _12b (user-approved for deploy; _12a marked superseded
+before deploy). All session work committed (template, generator, README,
+.gitignore, this workspace incl. website subset reference). Deploy ledger
+stands (og:url/og:image owned by deploy.sh; http(s) 4-item retest; shard
+compression; superseded single-file viewers _09e–_12d = user-deletion
+housekeeping). Next session: post-deploy retest findings or DAAFBench
+part B (analytic-competency suite) scoping.
 
 ## Open Questions
 
@@ -294,8 +526,14 @@ og:image, http(s) hash-navigation retest, and ~25 MB artifact compression."
 
 ## AI Disclosure
 
-This session used DAAF (Data Analyst Augmentation Framework) in Framework
-Development mode. DAAF contributed to: scoping exploration (prose inventory,
-data verification of takeaway claims, architecture/hosting audit) and scope
-synthesis. The researcher directs all design decisions and approves all
-changes at checkpoints.
+Sessions 1-3 used DAAF (Data Analyst Augmentation Framework) in Framework
+Development mode. DAAF contributed to: scoping exploration (prose
+inventories, data verification of takeaway claims, architecture/hosting/
+styling audits, cost-surface audits); OpenRouter billing reconciliation
+analysis; implementation of the viewer template/generator across the
+public-audience evolution, battery-cost metric, bundle architecture, tone
+percolation, and site-cohesion styling; three-angle reviews (consistency/
+quality/completeness) with claim-truthfulness verification against
+generated artifacts; and documentation sync. The researcher directed all
+design decisions, authored the voice-anchor prose (hero, Key Takeaways),
+and approves all changes at checkpoints.

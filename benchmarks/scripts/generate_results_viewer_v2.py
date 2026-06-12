@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Generate a self-contained HTML viewer for DAAF benchmark results (v2).
+Generate the HTML viewer for DAAF benchmark results (v2 generator line).
 
 Reads benchmark result sets from benchmarks/results/, loads case definitions
 and per-set manifests, condenses transcripts, computes derived metrics
@@ -9,25 +9,44 @@ the Perfect and Critical-only metrics, consistency, per-case difficulty,
 callouts, published-pricing formulations with per-basis/per-metric
 efficiency frontiers, estimated battery costs from observed token mixes
 (see the "Battery-cost metric" dev guide above PHASE_MAP), per-model
-timeout rates, provenance), and produces a single HTML file with all data
-embedded.
+timeout rates, provenance), and produces the viewer artifact.
+
+Two output modes (v3.0.0 — see the "Bundle architecture" dev guide above
+PHASE_MAP):
+
+  Bundle (DEFAULT) — a multi-file directory, benchmarks/
+  daafbench_YYYY-MM-DD[suffix]/, containing index.html (the full report
+  with all run-level data + precomputed metrics inline, ~4 MB on the
+  2026-06 corpus) plus data/tx_{result_set}.json transcript shards fetched
+  on demand by the Run Explorer. This is the official artifact for website
+  hosting. Bundles REQUIRE http(s) serving — fetch() of sibling files is
+  CORS-blocked on file:// (the viewer shows a fallback message with a
+  `python3 -m http.server` hint).
+
+  Single-file (--single-file) — the pre-3.0 self-contained monolith with
+  full inline transcripts (~25 MB on the 2026-06 corpus), named
+  viewer_YYYY-MM-DD{letter}.html. Works opened directly from disk
+  (file://); kept for offline auditing.
 
 The HTML/CSS/JS lives in the sibling template file viewer_template.html;
 this script is data preparation + placeholder substitution. v1
 (generate_results_viewer.py) is preserved untouched as a historical artifact.
 
 Usage:
-    python3 benchmarks/scripts/generate_results_viewer_v2.py [--results TIMESTAMP...] [--exclude-results TIMESTAMP...] [--output PATH]
+    python3 benchmarks/scripts/generate_results_viewer_v2.py [--results TIMESTAMP...] [--exclude-results TIMESTAMP...] [--output PATH] [--single-file [PATH]]
 
 Examples:
-    # Generate viewer for all result sets
+    # Generate the bundle for all result sets (benchmarks/daafbench_YYYY-MM-DD[suffix]/)
     python3 benchmarks/scripts/generate_results_viewer_v2.py
 
-    # Generate for specific result sets
-    python3 benchmarks/scripts/generate_results_viewer_v2.py --results 20260608_181352 20260608_181751
+    # Generate for specific result sets, bundle at an explicit directory
+    python3 benchmarks/scripts/generate_results_viewer_v2.py --results 20260608_181352 20260608_181751 --output /tmp/daafbench_view/
 
-    # Custom output path
-    python3 benchmarks/scripts/generate_results_viewer_v2.py --output benchmarks/my_viewer.html
+    # Single-file monolith for offline auditing (auto-named viewer_YYYY-MM-DD{letter}.html)
+    python3 benchmarks/scripts/generate_results_viewer_v2.py --single-file
+
+    # Single-file monolith at an explicit path
+    python3 benchmarks/scripts/generate_results_viewer_v2.py --single-file /tmp/my_viewer.html
 """
 
 import argparse
@@ -64,10 +83,25 @@ def parse_args():
     parser.add_argument(
         "--output",
         default=None,
-        help="Output HTML file path (default: auto-named dated file in "
-             "benchmarks/, e.g. viewer_YYYY-MM-DDa.html, with the letter "
-             "suffix auto-incrementing to avoid overwriting earlier "
-             "same-day outputs)",
+        help="Output path. Bundle mode (default): a DIRECTORY for the "
+             "multi-file bundle (default: auto-named dated dir in "
+             "benchmarks/, e.g. daafbench_YYYY-MM-DD, with a letter suffix "
+             "auto-incrementing to avoid overwriting earlier same-day "
+             "outputs). Single-file mode (--single-file): an HTML FILE path "
+             "(default: auto-named viewer_YYYY-MM-DDa.html in benchmarks/, "
+             "same auto-increment convention).",
+    )
+    parser.add_argument(
+        "--single-file",
+        nargs="?",
+        const=True,
+        default=None,
+        metavar="PATH",
+        help="Emit the pre-3.0 self-contained monolith (full inline "
+             "transcripts, ~25 MB) instead of the multi-file bundle — the "
+             "offline/file:// audit path. Optional PATH names the output "
+             "HTML file (equivalent to --output in this mode; PATH given "
+             "here wins if both are supplied).",
     )
     return parser.parse_args()
 
@@ -77,22 +111,58 @@ def parse_args():
 # ---------------------------------------------------------------------------
 
 def resolve_paths(args):
-    """Return (base_dir, results_dir, datasets_dir, output_path)."""
+    """Return (base_dir, results_dir, datasets_dir, output_path).
+
+    output_path semantics depend on the output mode:
+      - Bundle mode (default): output_path is a DIRECTORY. Auto-naming is
+        benchmarks/daafbench_YYYY-MM-DD/ (generation date), with a letter
+        suffix appended (daafbench_YYYY-MM-DDa, b, ...) whenever the
+        candidate already exists — preserving the no-overwrite versioning
+        convention the dated viewer_*.html files established.
+      - Single-file mode (--single-file): output_path is an HTML FILE.
+        Auto-naming keeps the historical viewer_YYYY-MM-DD{letter}.html
+        convention (letter starts at 'a' and increments past existing
+        same-day files). An optional PATH on --single-file names the file
+        directly and wins over --output if both are given.
+    Explicit paths (either flag) are used as-is — auto-increment applies
+    only to auto-generated names, matching pre-3.0 behavior.
+    """
     # The script lives at benchmarks/scripts/generate_results_viewer_v2.py
     script_dir = os.path.dirname(os.path.abspath(__file__))
     base_dir = os.path.dirname(script_dir)  # benchmarks/
     results_dir = os.path.join(base_dir, "results")
     datasets_dir = os.path.join(base_dir, "datasets")
 
-    if args.output:
-        output_path = args.output
-    else:
-        # Auto-generate dated filename with incrementing suffix
+    single_file = args.single_file is not None
+    explicit = None
+    if single_file and isinstance(args.single_file, str):
+        explicit = args.single_file
+        if args.output:
+            print("NOTE: both --single-file PATH and --output were given; "
+                  "using the --single-file PATH", file=sys.stderr)
+    elif args.output:
+        explicit = args.output
+
+    if explicit:
+        output_path = explicit
+    elif single_file:
+        # Auto-generate dated filename with incrementing letter suffix
         date_str = datetime.now().strftime("%Y-%m-%d")
         suffix = 'a'
         while os.path.exists(os.path.join(base_dir, f"viewer_{date_str}{suffix}.html")):
             suffix = chr(ord(suffix) + 1)
         output_path = os.path.join(base_dir, f"viewer_{date_str}{suffix}.html")
+    else:
+        # Auto-generate dated bundle directory; bare name first, then
+        # letter suffixes (a, b, ...) if earlier same-day bundles exist
+        date_str = datetime.now().strftime("%Y-%m-%d")
+        candidate = os.path.join(base_dir, f"daafbench_{date_str}")
+        if os.path.exists(candidate):
+            suffix = 'a'
+            while os.path.exists(f"{candidate}{suffix}"):
+                suffix = chr(ord(suffix) + 1)
+            candidate = f"{candidate}{suffix}"
+        output_path = candidate
 
     return base_dir, results_dir, datasets_dir, output_path
 
@@ -121,18 +191,19 @@ def resolve_paths(args):
 #   4. Template prose + JS registries: the About layer's "The benchmark
 #      phases" collapsible in viewer_template.html enumerates phases in
 #      hand-written prose — add an entry for the new phase. ALSO register the
-#      phase in the template's JS lookup maps: GROUP_SHORT (~L939, short
-#      labels), PD_EXPLAINERS (~L1762, deep-dive explainer prose), the
-#      eval-group `order` array inside buildEvalGroups() (~L929) so the new
+#      phase in the template's JS lookup maps: GROUP_SHORT (~L1695, short
+#      labels), PD_EXPLAINERS (~L2740, deep-dive explainer prose), the
+#      eval-group `order` array inside buildEvalGroups() (~L1669) so the new
 #      group sorts canonically instead of falling to the unordered tail, AND
-#      the About-table case-count wiring: a `phaseSpan` entry (~L1252)
+#      the About-table case-count wiring: a `phaseSpan` entry (~L2190)
 #      mapping the phase_id to an `ab-pX-cases` span id, plus the matching
-#      table row in the "The benchmark phases" collapsible (~L514).
+#      table row in the "The benchmark phases" collapsible (~L1068).
 #      Omitting these caused the missing Phase 4 (skill_routing) explainer.
 #      (Template edits, not handled in this script; line anchors drift as
 #      the template evolves — grep for the identifier names.) Cost vs.
-#      Performance bases and the Costs Detail phase scope are built
-#      dynamically from the eval groups — no registration needed there.
+#      Performance bases are built dynamically from the eval groups — no
+#      registration needed there. (The Costs Detail section and its phase
+#      scope were removed 2026-06-12, user fine-tuning round.)
 #   5. Dataset dir: name datasets/<phase_id>/ to match the phase_id so
 #      load_cases() attaches case definitions (it falls back to the dirname).
 #   6. Regenerate and spot-check the new eval group's k/n in the sanity
@@ -152,20 +223,67 @@ def resolve_paths(args):
 #     editorial prose whose figures are injected into kt-* spans by
 #     fillTakeaways() at init from PRECOMPUTED (composite, composite_hard,
 #     per_model_phase, consistency, cost.battery — relative ratios only
-#     since v2.8.1 — tier_rule, and
-#     timeout_by_model built below). Injected numbers track the data
+#     since v2.8.1, and the page-wide headline cost figure since v3.1.0 —
+#     and timeout_by_model built below). Span contract:
+#     23 kt-* spans — 22 in the #takeaways section + kt-foot-bat, which
+#     since the 2026-06-12 user fine-tuning round lives in the About Key
+#     Caveats cost caveat (the kt-foot paragraph itself was removed; its
+#     content was folded into the About caveats). History: 29 before the
+#     2026-06-12 e099982 repair pass, 31 originally. Every kt-* span must
+#     have a fillTakeaways() setter and every setter a live span; verify
+#     both directions when editing either side. Injected numbers track the data
 #     automatically; the qualitative claims do NOT — when the corpus changes
-#     materially, rewrite the prose and update the date badge. Spans default
+#     materially, rewrite the prose and update the date, which lives in the
+#     takeaways h2 ("Key Takeaways (Month YYYY)" — the standalone date badge
+#     was removed with the kt-disclaimer). Spans default
 #     to an em dash, and a model absent from the corpus leaves its spans
-#     dashed rather than erroring.
+#     dashed rather than erroring. Two analogous live-count spans
+#     (hero-models, hero-runs) sit in the moved intro paragraphs at the TOP
+#     OF #about (hero paragraphs 2-4 moved there verbatim in the 2026-06-12
+#     user fine-tuning round; round 2 added the "layers together" remainder
+#     of the former hero ¶1 above them): since v3.1.1 their static text is
+#     build-time
+#     substituted in generate_html() (__HERO_MODELS__ / __HERO_RUNS__
+#     tokens), so the no-JS fallback always matches the embedded corpus,
+#     and the renderHero() refill from PRECOMPUTED.totals is a
+#     belt-and-braces no-op re-writing the same values (previously the
+#     static text shipped the prior generation's figures).
 #   - Adding a new top-level prose section (the #takeaways recipe): section
 #     scaffold in <main>, TOC link in nav#toc-rail, id in SECTION_IDS, and a
 #     deliberate decision on the content-visibility CSS rule (above-the-fold
 #     static sections stay out — see the CSS comment at the top of the
 #     template); register in sectionRenderers only if JS-rendered.
+#     (#next-steps, the static closing CTA added 2026-06-12, followed this
+#     recipe — and was removed the same day in the user fine-tuning round,
+#     exercising the recipe in reverse; its CTA links live on in the hero
+#     and About. The #cvp-preview block deliberately does NOT follow the
+#     recipe: no TOC link, no SECTION_IDS entry — it sits between the hero
+#     and #takeaways (moved above the takeaways in the 2026-06-12
+#     fine-tuning round 2; it scrollspy-reads as part of #hero) and renders
+#     at init via renderCostPerfPreview().)
+#   - Suite naming + hero orientation (2026-06-12 tone percolation; intro
+#     restructured later the same day, user fine-tuning round): the page
+#     presents this suite as "DAAFBench: Orchestration" — title/og/twitter
+#     meta, TOC rail title, and the moved intro paragraphs at the top of
+#     #about all carry it, alongside the planned analytic-competency
+#     companion suite framing. Keep that naming consistent when editing
+#     prose. Page-top order is now (fine-tuning round 2, 2026-06-12): hero
+#     (h1 + date + stat chips + ONE user "TLDR:" paragraph — the first
+#     sentence of the user's former hero ¶1, links intact, plus a
+#     user-supplied DAAFBench framing sentence; TOC label "Intro"; the
+#     computed verdict callout was REMOVED) -> #cvp-preview (compact
+#     cost-performance scatter, battery basis, rendered at init) ->
+#     #takeaways -> #about, which opens with the "layers together"
+#     remainder of the user's former hero ¶1 as its own paragraph, then the
+#     user's hero paragraphs 2-4 — all moved VERBATIM (voice anchors —
+#     never reword). Chip content must stay intuitively
+#     meaningful to a zero-context reader (counts and concrete facts,
+#     never metric jargon — see renderHero).
 #   - Substitution order in generate_html() is load-bearing: the small
-#     controlled placeholders are filled first, __DATA_JSON__ last, so
-#     transcript content can never be treated as a placeholder.
+#     controlled placeholders (__GENERATED_DISPLAY__, __HERO_MODELS__,
+#     __HERO_RUNS__) are filled first, then __PRECOMPUTED_JSON__, with
+#     __DATA_JSON__ last, so transcript content can never be treated as
+#     a placeholder.
 #
 # Battery-cost metric (added v2.8.0, dev guide):
 #   - New data dependency: benchmarks/derived/openrouter_reconciliation_*.json
@@ -200,9 +318,25 @@ def resolve_paths(args):
 #     reference model, basis tag, staleness fields). "battery" is also a
 #     price formulation on cost.models entries + cost.frontiers, so the Cost
 #     vs. Performance scatter can use the relative battery cost as its x-axis
-#     (template: COST_FORMS registry + renderCostsDetail battery table).
-#     Per-model timed-out shares are NOT duplicated here — the template reads
-#     them from PRECOMPUTED.timeout_by_model.
+#     (template: COST_FORMS registry; the Costs Detail battery table was
+#     removed 2026-06-12 — the canonical definition + disclosures now render
+#     as the CvP battery-disclosure footnote, batteryDisclosureHtml(), and
+#     the published list-price table survives as a collapsible under the
+#     same chart, pricingDetailsHtml()). Per-model timed-out shares are NOT
+#     duplicated here — the template reads them from
+#     PRECOMPUTED.timeout_by_model (which since 2026-06-12 also feeds the
+#     leaderboard's Timed-out column).
+#   - Headline promotion (v3.1.0, user decision): the battery multiplier is
+#     THE headline cost figure page-wide — the leaderboard cost column, the
+#     Cost vs. Performance default axis, the Costs Detail headline table
+#     (section since removed, 2026-06-12), and
+#     the Key Takeaways cost claims all run on it. Raw input/output $/Mtok
+#     list rates remain as secondary detail only (scatter toggles + the Costs
+#     Detail published-price table). The blended 3:1 form (blend31, the
+#     Artificial Analysis convention) was retired in the same change — the
+#     corpus's benchmark cost is dominated by input tokens, so a 3:1 in/out
+#     blend misled. Schema note: blend31 no longer exists on cost.models
+#     entries or in cost.frontiers; battery is ordered first in both.
 #   - Presentation (v2.8.1, user decision): all user-facing battery surfaces
 #     (Costs Detail table, the Cost vs. Performance battery axis, the Key
 #     Takeaways cost claims) display RELATIVE multipliers vs the reference
@@ -212,6 +346,54 @@ def resolve_paths(args):
 #     time (fmtMult, renderCostPerf batScale, renderCostsDetail multiplier
 #     column, fillTakeaways battery ratios). The console battery table below
 #     keeps dollars — it is a maintainer sanity surface, not user-facing.
+#
+# Bundle architecture (added v3.0.0, dev guide):
+#   - The OFFICIAL artifact is a multi-file bundle directory
+#     (daafbench_YYYY-MM-DD[suffix]/, auto-incrementing — resolve_paths):
+#       index.html              shell + inline DATA (sans transcripts) +
+#                               PRECOMPUTED (~4 MB on the 2026-06 corpus)
+#       data/tx_{result_set}.json   one transcript shard per result set:
+#                               {"transcripts":{...},
+#                                "subagent_transcripts":{...}} holding only
+#                               that set's entries
+#     Rationale: transcripts + subagent_transcripts were 84.6% of the 25 MB
+#     monolith and are read ONLY by the template's renderRunDetail; sharding
+#     per result set matches the composite "{result_set}/{run_dir}" lookup
+#     key (the shard name falls out of the key prefix), gives good fetch
+#     sizes (median ~275 KB / max ~1.2 MB per set), and sets are append-only
+#     archival units so shards are stable across regenerations. DATA.runs
+#     (~3.5 MB) stays inline — every viewer section computes from it.
+#   - Shard keys are UNCHANGED — full "{result_set}/{run_dir}" composite
+#     form — so the template's lookup code is byte-identical in both modes
+#     (no key surgery on either side; see load_transcripts docstring).
+#   - In bundle mode DATA drops "transcripts"/"subagent_transcripts" and
+#     instead carries "transcripts_index": {result_set: {file: "data/
+#     tx_{set}.json", n_main, n_subagent}}. The template feature-detects the
+#     artifact shape on DATA.transcripts presence (inline -> synchronous
+#     render exactly as pre-3.0; absent -> placeholder + fetch with a
+#     memoized shard cache, a stale-click token, and a visible failure
+#     fallback). The two keys are mutually exclusive by design so an
+#     artifact's mode is unambiguous.
+#   - file:// support is DROPPED for bundles (user decision 2026-06-12):
+#     fetch() of sibling files is CORS-blocked on file:// origins, so the
+#     Run Explorer renders a fallback message with a `python3 -m http.server`
+#     hint instead of a transcript. --single-file emits the pre-3.0 monolith
+#     (full inline transcripts, viewer_YYYY-MM-DD{letter}.html naming) as
+#     the offline/file:// audit path; data prep is fully shared, the modes
+#     diverge only at bundle assembly/serialization/write time.
+#   - Shard serialization reuses escape_embedded_json: shards are fetched
+#     and JSON.parse'd, never seen by the HTML tokenizer, so the \\u003c
+#     escaping is not strictly required there — but it is a valid JSON
+#     escape, and one serializer everywhere keeps the C1-control-character
+#     hygiene without a second code path.
+#   - How to regenerate: `python3 benchmarks/scripts/
+#     generate_results_viewer_v2.py` writes a fresh bundle dir; add
+#     `--single-file` for the monolith. Spot-check the printed bundle
+#     report: index.html should sit in the low-single-digit-MB band
+#     (~4 MB), shard count should equal the number of loaded result sets
+#     (53 on the 2026-06 corpus), and total shard bytes ≈ the old monolith
+#     minus index.html (~21 MB). A ballooning index.html means transcript
+#     data leaked back inline.
 # ---------------------------------------------------------------------------
 
 PHASE_MAP = {
@@ -573,7 +755,9 @@ def load_runs(results_dir, result_sets, cases):
                 # reports Anthropic-tokenizer counts, not each model's own
                 # billing meter), so token-derived dollar figures were
                 # unreliable and all spend tracking was removed from the
-                # viewer. Only published $/Mtok pricing is displayed.
+                # viewer. Cost surfaces use published list rates only (plus,
+                # for the battery estimate, billing-grade token mixes —
+                # never the per-run counts omitted here).
                 "duration_s": result.get("duration_s", 0),
                 "error": result.get("error", None),
                 # Explicit flag from the harness — never string-match `error`
@@ -821,7 +1005,10 @@ def load_transcripts(results_dir, runs):
     857 main transcripts that bare keys had been dropping). The template's
     lookups in renderRunDetail()
     mirror this composite key exactly (DATA.transcripts[r.result_set+"/"+
-    r.run_dir]); the two sides must stay in lockstep.
+    r.run_dir]); the two sides must stay in lockstep. Bundle artifacts
+    (v3.0.0) ship these dicts split into per-result-set shards with the SAME
+    full composite keys, so the template lookup is identical in both modes —
+    see the "Bundle architecture" dev guide above PHASE_MAP.
     """
     transcripts = {}
     subagent_transcripts = {}
@@ -946,23 +1133,81 @@ PHASE_ORDER = {"mode_classification": 1, "post_confirmation": 2,
                "dispatch_compliance": 3, "skill_routing": 4}
 
 
+def shard_filename(result_set_ts):
+    """Canonical shard filename for a result set (used by index + writer)."""
+    return f"tx_{result_set_ts}.json"
+
+
+def build_transcripts_index(result_sets, transcripts, subagent_transcripts):
+    """Build the bundle-mode transcripts_index embedded in DATA.
+
+    {result_set: {file: "data/tx_{set}.json", n_main, n_subagent}} — the
+    template fetches index entries' relative `file` paths on demand (plain
+    relative URLs; the website deploy step handles any production
+    rewriting). n_main counts main-transcript run keys, n_subagent counts
+    run keys carrying subagent transcripts. Result sets with no transcripts
+    at all get no index entry and no shard file — the template renders no
+    transcript block for their runs, matching single-file behavior.
+    """
+    main_counts = {}
+    for key in transcripts:
+        ts = key.split("/", 1)[0]
+        main_counts[ts] = main_counts.get(ts, 0) + 1
+    sub_counts = {}
+    for key in subagent_transcripts:
+        ts = key.split("/", 1)[0]
+        sub_counts[ts] = sub_counts.get(ts, 0) + 1
+
+    index = {}
+    for rs in result_sets:
+        ts = rs["timestamp"]
+        n_main = main_counts.get(ts, 0)
+        n_sub = sub_counts.get(ts, 0)
+        if n_main == 0 and n_sub == 0:
+            continue
+        index[ts] = {
+            "file": "data/" + shard_filename(ts),
+            "n_main": n_main,
+            "n_subagent": n_sub,
+        }
+    return index
+
+
 def build_data_bundle(result_sets, cases, runs, transcripts, subagent_transcripts,
-                      model_pricing=None):
-    """Assemble the complete data bundle for embedding in HTML."""
+                      model_pricing=None, inline_transcripts=True):
+    """Assemble the DATA bundle for embedding in HTML.
+
+    Two artifact shapes (v3.0.0 — "Bundle architecture" dev guide above
+    PHASE_MAP):
+      inline_transcripts=True  (single-file monolith): transcripts and
+        subagent_transcripts embedded in full — the pre-3.0 shape.
+      inline_transcripts=False (bundle index.html): both transcript dicts
+        are DROPPED and replaced by transcripts_index pointing at the
+        per-result-set shard files written next to index.html.
+    The transcripts/subagent_transcripts and transcripts_index keys are
+    mutually exclusive BY DESIGN: the template feature-detects the artifact
+    shape on DATA.transcripts presence, and a single-file artifact carrying
+    an index (or vice versa) would make the mode ambiguous.
+    """
     # Sort result_sets by phase order so they always appear Phase 1, 2, 3, 4
     sorted_result_sets = sorted(
         result_sets, key=lambda rs: PHASE_ORDER.get(rs["phase"], 99)
     )
-    return {
+    bundle = {
         "generated_at": datetime.now(timezone.utc).isoformat(),
-        "generator_version": "2.8.1",
+        "generator_version": "3.1.1",
         "result_sets": sorted_result_sets,
         "cases": cases,
         "runs": runs,
-        "transcripts": transcripts,
-        "subagent_transcripts": subagent_transcripts,
         "model_pricing": model_pricing or {},
     }
+    if inline_transcripts:
+        bundle["transcripts"] = transcripts
+        bundle["subagent_transcripts"] = subagent_transcripts
+    else:
+        bundle["transcripts_index"] = build_transcripts_index(
+            sorted_result_sets, transcripts, subagent_transcripts)
+    return bundle
 
 
 # ---------------------------------------------------------------------------
@@ -1362,16 +1607,21 @@ def build_precomputed(result_sets, cases, runs, generation_params,
     if global_weakest is not None:
         callouts["global_weakest"] = global_weakest[1]
 
-    # --- cost: published $/Mtok pricing formulations (NO observed spend) ---
+    # --- cost: price formulations (NO observed spend) ---
     # Observed token-derived spend was removed entirely: OpenRouter token
     # accounting does not align with the harness's usage logging (the
     # Anthropic-compatible endpoint reports Anthropic-tokenizer counts, not
     # each model's own billing meter), so computed dollar figures were
-    # unreliable. Instead, three published-pricing formulations are
-    # precomputed per model from config/models.yaml rates:
-    #   blend31 -- (3 x input + output) / 4 (Artificial Analysis convention)
+    # unreliable. The HEADLINE cost figure page-wide is "battery" — the
+    # estimated cost to run the full benchmark battery once (filled by the
+    # battery block below; displayed as a multiplier vs the reference model).
+    # Two secondary per-Mtok forms are precomputed per model from
+    # config/models.yaml list rates:
     #   input   -- input $/Mtok
     #   output  -- output $/Mtok
+    # The blended 3:1 form (blend31, Artificial Analysis convention) was
+    # retired in v3.1.0: benchmark cost is dominated by input tokens, so a
+    # 3:1 in/out blend misled.
     pricing = model_pricing or {}
     cost = {"models": [], "frontiers": {}}
     price_by_model = {}
@@ -1387,7 +1637,6 @@ def build_precomputed(result_sets, cases, runs, generation_params,
             "key": model,
             "input": rnd(inp),
             "output": rnd(outp),
-            "blend31": rnd((3 * inp + outp) / 4),
             # Filled by the battery block below (est. $ to run the full
             # battery once); None for models lacking battery data — the
             # frontier walk and the scatter both skip None prices.
@@ -1533,10 +1782,11 @@ def build_precomputed(result_sets, cases, runs, generation_params,
     # model is kept iff no cheaper-or-equal model has an equal-or-higher
     # score. Precomputed here (not in JS) so the scatter annotation, the
     # section prose, and the sanity report cannot drift.
-    # "battery" joined as a fourth price formulation (v2.8.0) so the Cost vs.
-    # Performance scatter can plot est. $ per battery; models without battery
-    # data carry battery=None and are skipped by the None/<=0 guard below.
-    for form in ("blend31", "input", "output", "battery"):
+    # "battery" (a price formulation since v2.8.0) is the headline form and
+    # ordered first (v3.1.0, when blend31 was retired); models without
+    # battery data carry battery=None and are skipped by the None/<=0 guard
+    # below.
+    for form in ("battery", "input", "output"):
         cost["frontiers"][form] = {}
         for basis in perf_bases:
             cost["frontiers"][form][basis] = {}
@@ -1656,7 +1906,11 @@ def escape_embedded_json(obj):
 
 
 def generate_html(data_bundle, precomputed):
-    """Generate a self-contained HTML file by filling the sibling template.
+    """Generate the report HTML by filling the sibling template.
+
+    Mode-agnostic: receives whichever DATA shape build_data_bundle produced
+    (inline transcripts for --single-file; transcripts_index for bundles)
+    and substitutes it unchanged — the template feature-detects the shape.
 
     The HTML/CSS/JS lives in viewer_template.html next to this script.
     Dynamic content is substituted via str.replace() on unique placeholder
@@ -1677,19 +1931,77 @@ def generate_html(data_bundle, precomputed):
     data_json = escape_embedded_json(data_bundle)
     precomputed_json = escape_embedded_json(precomputed)
 
+    # Hero static-fallback counts (v3.1.1): the hero-models / hero-runs span
+    # text is substituted at build time from the same embedded totals that
+    # renderHero() reads, so the no-JS fallback can never go stale — the JS
+    # refill becomes a belt-and-braces no-op writing identical values.
+    totals = precomputed.get("totals", {})
+    hero_models = str(totals.get("n_models", 0))
+    hero_runs = f"{totals.get('total_runs', 0):,}"
+
     html = html.replace("__GENERATED_DISPLAY__", generated_display)
+    html = html.replace("__HERO_MODELS__", hero_models)
+    html = html.replace("__HERO_RUNS__", hero_runs)
     html = html.replace("__PRECOMPUTED_JSON__", precomputed_json)
     html = html.replace("__DATA_JSON__", data_json)
 
     return html
 
 
+def write_transcript_shards(bundle_dir, index, transcripts, subagent_transcripts):
+    """Write per-result-set transcript shards under {bundle_dir}/data/.
+
+    Each shard holds ONLY its set's entries, keys unchanged in the full
+    "{result_set}/{run_dir}" composite form, so the template's lookup
+    (shard.transcripts[r.result_set+"/"+r.run_dir]) is byte-identical to
+    the single-file inline lookup — no key surgery on either side.
+
+    Serialization reuses escape_embedded_json deliberately: shards are
+    fetched and JSON.parse'd, never seen by the HTML tokenizer, so the
+    \\u003c escaping is not strictly required — but it is a valid JSON
+    escape, and one serializer everywhere keeps the C1-control-character
+    hygiene without maintaining a second code path.
+
+    Returns (n_shards, total_bytes, (largest_set_ts, largest_bytes)) for
+    the bundle report in main().
+    """
+    data_dir = os.path.join(bundle_dir, "data")
+    os.makedirs(data_dir, exist_ok=True)
+
+    by_set_main = {}
+    for key, val in transcripts.items():
+        by_set_main.setdefault(key.split("/", 1)[0], {})[key] = val
+    by_set_sub = {}
+    for key, val in subagent_transcripts.items():
+        by_set_sub.setdefault(key.split("/", 1)[0], {})[key] = val
+
+    stats = []
+    for ts in index:
+        shard = {
+            "transcripts": by_set_main.get(ts, {}),
+            "subagent_transcripts": by_set_sub.get(ts, {}),
+        }
+        path = os.path.join(data_dir, shard_filename(ts))
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(escape_embedded_json(shard))
+        stats.append((ts, os.path.getsize(path)))
+
+    total = sum(size for _, size in stats)
+    largest = max(stats, key=lambda x: x[1]) if stats else (None, 0)
+    return len(stats), total, largest
+
+
 # ---------------------------------------------------------------------------
 # Print summary
 # ---------------------------------------------------------------------------
 
-def print_summary(data_bundle):
-    """Print a summary of what was loaded."""
+def print_summary(data_bundle, transcripts, subagent_transcripts):
+    """Print a summary of what was loaded.
+
+    Takes the loaded transcript dicts directly (not from data_bundle):
+    bundle-mode DATA carries only transcripts_index, so the bundle keys
+    are mode-dependent while these counts are not.
+    """
     print("\n=== DAAF Benchmark Results Viewer Generator ===\n")
 
     for rs in data_bundle["result_sets"]:
@@ -1708,8 +2020,8 @@ def print_summary(data_bundle):
         print()
 
     total_runs = len(data_bundle["runs"])
-    total_transcripts = len(data_bundle["transcripts"])
-    total_subagent = sum(len(v) for v in data_bundle["subagent_transcripts"].values())
+    total_transcripts = len(transcripts)
+    total_subagent = sum(len(v) for v in subagent_transcripts.values())
     total_cases = len(data_bundle["cases"])
     total_cost = sum(rs["total_cost_usd"] for rs in data_bundle["result_sets"])
 
@@ -1758,11 +2070,12 @@ def print_precomputed_report(precomputed):
               f"{comps} | n={entry['n_total']}{partial}")
     print()
 
-    print("  Efficiency frontier, blended 3:1 pricing, composite/perfect "
-          "(price asc | model | $/Mtok | score):")
-    blend_frontiers = precomputed["cost"].get("frontiers", {}).get("blend31", {})
-    for pt in blend_frontiers.get("composite", {}).get("perfect", []):
-        print(f"    {pt['model']:<22} | ${pt['price']:.2f}/Mtok | "
+    print("  Efficiency frontier, battery-cost formulation, composite/perfect "
+          "(cost asc | model | est. battery $ | score; dollars are "
+          "maintainer-only — the viewer shows multipliers):")
+    bat_frontiers = precomputed["cost"].get("frontiers", {}).get("battery", {})
+    for pt in bat_frontiers.get("composite", {}).get("perfect", []):
+        print(f"    {pt['model']:<22} | ${pt['price']:8.2f} | "
               f"{pt['score']:.3f}")
     print()
 
@@ -1790,7 +2103,7 @@ def print_precomputed_report(precomputed):
           f"models: {totals['n_models']} | cases: {totals['n_cases']} | "
           f"sets: {totals['n_result_sets']} ({n_disc} with run-count discrepancy)")
     print(f"  Pricing loaded for {len(precomputed['cost'].get('models', []))} models "
-          f"(published $/Mtok; observed spend tracking removed)")
+          f"(published list rates; observed spend tracking removed)")
     excluded = (totals.get("generation_params") or {}).get("results_excluded") or []
     if excluded:
         print(f"  Excluded result sets (--exclude-results): {', '.join(excluded)}")
@@ -1808,10 +2121,11 @@ def print_precomputed_report(precomputed):
 def main():
     args = parse_args()
     base_dir, results_dir, datasets_dir, output_path = resolve_paths(args)
+    single_file = args.single_file is not None
 
     print(f"Results dir: {results_dir}")
     print(f"Datasets dir: {datasets_dir}")
-    print(f"Output: {output_path}")
+    print(f"Output ({'single-file' if single_file else 'bundle'}): {output_path}")
 
     # Load data
     result_sets = load_result_sets(results_dir, args.results, args.exclude_results)
@@ -1838,16 +2152,19 @@ def main():
     model_pricing = load_model_pricing(base_dir)
     reconciliation = load_reconciliation(base_dir)
 
-    # Build bundle
+    # Build bundle (data prep is fully shared between modes; the shapes
+    # diverge only here and at write time — see build_data_bundle)
     data_bundle = build_data_bundle(
         result_sets, cases, runs, transcripts, subagent_transcripts,
         model_pricing=model_pricing,
+        inline_transcripts=single_file,
     )
 
     # Precomputed metrics (embedded as PRECOMPUTED alongside DATA)
     generation_params = {
         "results_filter": args.results if args.results else "all",
         "results_excluded": args.exclude_results if args.exclude_results else [],
+        "output_mode": "single-file" if single_file else "bundle",
         "generated_at": data_bundle["generated_at"],
         "generator_version": data_bundle["generator_version"],
     }
@@ -1857,20 +2174,39 @@ def main():
                                     reconciliation=reconciliation)
 
     # Print summaries
-    print_summary(data_bundle)
+    print_summary(data_bundle, transcripts, subagent_transcripts)
     print_precomputed_report(precomputed)
 
     # Generate HTML
     html = generate_html(data_bundle, precomputed)
 
     # Write output
-    os.makedirs(os.path.dirname(os.path.abspath(output_path)), exist_ok=True)
-    with open(output_path, "w", encoding="utf-8") as f:
-        f.write(html)
-
-    file_size_mb = os.path.getsize(output_path) / (1024 * 1024)
-    print(f"  Output written: {output_path}")
-    print(f"  File size: {file_size_mb:.2f} MB")
+    if single_file:
+        os.makedirs(os.path.dirname(os.path.abspath(output_path)), exist_ok=True)
+        with open(output_path, "w", encoding="utf-8") as f:
+            f.write(html)
+        file_size_mb = os.path.getsize(output_path) / (1024 * 1024)
+        print(f"  Single-file artifact written: {output_path}")
+        print(f"  File size: {file_size_mb:.2f} MB")
+    else:
+        os.makedirs(output_path, exist_ok=True)
+        index_path = os.path.join(output_path, "index.html")
+        with open(index_path, "w", encoding="utf-8") as f:
+            f.write(html)
+        n_shards, shard_bytes, largest = write_transcript_shards(
+            output_path, data_bundle["transcripts_index"],
+            transcripts, subagent_transcripts)
+        index_mb = os.path.getsize(index_path) / (1024 * 1024)
+        print(f"  Bundle written: {output_path}/")
+        print(f"    index.html:  {index_mb:.2f} MB")
+        print(f"    Shards:      {n_shards} files, "
+              f"{shard_bytes / (1024 * 1024):.2f} MB total in data/")
+        if largest[0]:
+            print(f"    Largest:     {shard_filename(largest[0])} "
+                  f"({largest[1] / (1024 * 1024):.2f} MB)")
+        print(f"  Serve over http(s) — transcripts are fetched on demand "
+              f"(e.g. `python3 -m http.server` from the bundle dir); on "
+              f"file:// the Run Explorer shows a fetch-fallback message.")
     print(f"  Done.\n")
 
 

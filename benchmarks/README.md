@@ -613,34 +613,53 @@ results/{YYYYMMDD_HHMMSS}/
 **Viewer generation.** `scripts/generate_results_viewer_v2.py` is the
 maintained generator; v1 (`generate_results_viewer.py`) remains in the repo
 as archival code, never modified. The `viewer.html` artifact v1 once produced
-was deleted (2026-06-10 housekeeping, user decision); the only viewer outputs
-are the dated `viewer_YYYY-MM-DD{letter}.html` files, which are untracked
-(gitignored via the `viewer_*.html` pattern in `benchmarks/.gitignore`).
+was deleted (2026-06-10 housekeeping, user decision). Since generator v3.0.0
+the **official artifact is a multi-file bundle directory**
+`daafbench_YYYY-MM-DD[suffix]/`; `--single-file` still emits the dated
+`viewer_YYYY-MM-DD{letter}.html` monolith for offline auditing. Both are
+untracked (gitignored via the `daafbench_*/` and `viewer_*.html` patterns
+in `benchmarks/.gitignore`).
 
 ```bash
-python3 benchmarks/scripts/generate_results_viewer_v2.py              # all result sets
+python3 benchmarks/scripts/generate_results_viewer_v2.py              # bundle, all result sets
 python3 benchmarks/scripts/generate_results_viewer_v2.py \
-    --results 20260609_214335 20260609_224824 --output /tmp/view.html
+    --results 20260609_214335 20260609_224824 --output /tmp/daafbench_view/
 python3 benchmarks/scripts/generate_results_viewer_v2.py \
     --exclude-results 20260608_181352                                  # all sets except these
+python3 benchmarks/scripts/generate_results_viewer_v2.py --single-file # offline monolith
 ```
 
-Produces a self-contained HTML document embedding all selected result sets
-including full condensed transcripts. It works opened directly from disk
-(`file://`). When `--output` is omitted, the generator writes a **dated,
-auto-incrementing filename** in `benchmarks/` — `viewer_YYYY-MM-DD{a,b,...}.html`
-— which is intentional: each regeneration is a new versioned artifact (matching
-the framework's no-in-place-modification convention) and never overwrites a
-prior viewer. Both generators share this `viewer_YYYY-MM-DD{letter}.html`
-auto-increment namespace, so historical v1 outputs interleave with v2's
-lettering. `--exclude-results` drops named sets while keeping everything
-else (useful for known-contaminated sets without enumerating the rest via
-`--results`); exclusions are recorded in the embedded generation parameters
-for provenance.
+By default (generator v3.0.0) this produces a **multi-file bundle
+directory**: `index.html` — the full report shell with all run-level data
+and precomputed metrics inline (~4 MB on the 2026-06 corpus) — plus
+`data/tx_{result_set}.json`, one transcript shard per result set, fetched
+on demand when a run is opened in the Run Explorer (condensed transcripts
+were ~85% of the monolith's bytes; lazy-loading them cut the initial
+payload from ~25 MB to ~4 MB). The bundle **requires http(s) serving** —
+`fetch()` of sibling files is CORS-blocked on `file://` origins, so a
+bundle opened from disk shows a visible fallback message in the transcript
+panel (with a `python3 -m http.server` hint) rather than failing silently.
+For offline / `file://` auditing, `--single-file` emits the pre-3.0
+self-contained monolith embedding full inline transcripts; it works opened
+directly from disk. When `--output` is omitted, both modes write **dated,
+auto-incrementing names** in `benchmarks/` —
+`daafbench_YYYY-MM-DD{,a,b,...}/` for bundles,
+`viewer_YYYY-MM-DD{a,b,...}.html` for single-file — which is intentional:
+each regeneration is a new versioned artifact (matching the framework's
+no-in-place-modification convention) and never overwrites a prior one.
+Historical v1 outputs interleave with v2's single-file lettering in the
+shared `viewer_YYYY-MM-DD{letter}.html` namespace. `--exclude-results`
+drops named sets while keeping everything else (useful for
+known-contaminated sets without enumerating the rest via `--results`);
+exclusions are recorded in the embedded generation parameters for
+provenance (which also record the output mode since v3.0.0).
 
-The output is a single scrolling document (verdict, key takeaways, about,
-leaderboard, cost vs. performance, phase deep-dives, cases & consistency,
-costs detail, run explorer, provenance). The leaderboard composite and tier bands span all five
+The output is a single scrolling document of nine TOC sections (intro/hero,
+key takeaways — with a compact cost-performance preview in their flow —
+about, leaderboard, cost vs. performance, phase deep-dives, cases &
+consistency, run explorer, provenance; the verdict callout, costs-detail,
+and next-steps sections were removed in the 2026-06-12 user fine-tuning
+round, below). The leaderboard composite and tier bands span all five
 approved components with equal weight (P1, P2, P3a, P3b, P4 — P4
 user-approved 2026-06-10, joined the composite 2026-06-11, superseding the
 original four-component pin); a
@@ -664,7 +683,9 @@ new benchmark phase" guide in the comment block above `PHASE_MAP` in
   a result set — bare-name keys silently overwrote 857 main transcripts
   (482 colliding names across 1,339 transcript-bearing run instances on the
   52-set corpus) and displayed another set's subagent transcript on
-  same-named runs
+  same-named runs. Bundle artifacts (v3.0.0) ship the same dicts split into
+  per-set shards with the keys unchanged in full composite form, so the
+  template's lookup code is identical in both modes
 - **HTML5 tokenizer safety:** all `<` in the embedded JSON are escaped to
   `\u003c`. Transcripts contain literal `<!--` and `<script` sequences that
   otherwise flip the HTML5 parser into escaped-script states and break rendering
@@ -724,8 +745,10 @@ small prose slots; substitution order is load-bearing, with the small
 controlled placeholders filled first and `__DATA_JSON__` last so transcript
 content can never be treated as a placeholder). Extracted from v1's
 single f-string because `{{ }}` escaping across ~1,400 lines of CSS/JS bred
-subtle bugs, blocked editor syntax support, and made diffs noisy. Output
-remains single-file and self-contained; the generator is the single entry
+subtle bugs, blocked editor syntax support, and made diffs noisy. The default
+output is the multi-file bundle since v3.0.0 (index.html + per-set transcript
+shards; `--single-file` keeps a fully self-contained monolith for offline
+audit); either way the generator is the single entry
 point, no build step. JS is vanilla, IIFE-wrapped, ES5-style; headline numbers
 are precomputed in Python and embedded so prose and charts cannot drift apart.
 
@@ -751,9 +774,11 @@ single existing viewer rather than forking a public variant.
    rejected a Mind/Body/Instructions conceptual device as overcomplicating.
 2. *Key Takeaways section* (new; sits between Verdict and About) — a dated
    editorial ("Editorial takeaways — June 2026 corpus") with six
-   maintainer-interpretation claims whose figures are span-injected from
+   maintainer-interpretation claims (five after the user's 2026-06-12
+   frontmatter consolidation) whose figures are span-injected from
    PRECOMPUTED at render time (`kt-*` spans filled by `fillTakeaways()` —
-   31 originally, 29 after the battery re-adjudication below;
+   31 originally, 29 after the battery re-adjudication below, 23 after the
+   2026-06-12 e099982 repair pass (§ 12);
    a new `timeout_by_model` precompute feeds the timeout claims), so
    regeneration cannot orphan the numbers. The qualitative claims do NOT
    track the data — when the corpus changes materially, rewrite the prose
@@ -797,9 +822,12 @@ single existing viewer rather than forking a public variant.
 7. *Hosting/deployment boundary* — stable public filename, compression, and
    upload are handled by the user's separate website deploy infrastructure,
    out of framework scope. An http(s) retest is needed post-deploy because
-   three code paths differ between `file://` and http(s): explicit-nav hash
-   writes, scrollspy `replaceState` writes, and `content-visibility` anchor
-   rendering.
+   four code paths differ between `file://` and http(s): explicit-nav hash
+   writes, scrollspy `replaceState` writes, `content-visibility` anchor
+   rendering, and (since v3.0.0) transcript fetch-on-demand — including the
+   fetch-failure fallback message and the `&run=` deep-link path, where the
+   transcript pops into the already-scrolled-to run panel when its shard
+   arrives.
 
 **Accepted residuals (public-audience evolution, 2026-06-11) — reviewed, no
 fix planned:** (1) the "expects:" badge in the Run Explorer still shows raw
@@ -846,7 +874,10 @@ followed, all user-approved:
    billed prompt/completion per covered run. A generation-time **staleness
    guard** compares each OpenRouter model's corpus run count to the
    snapshot's recorded `n_runs` and warns (never fails) on drift. "Battery"
-   is also a fourth price formulation in Cost vs. Performance. Caveat
+   is also a fourth price formulation in Cost vs. Performance (since
+   v3.1.0 the *first* of three — the blended 3:1 form was retired and
+   battery became the headline cost figure page-wide; see the dated
+   "Battery multiplier promoted" addendum below). Caveat
    (disclosed in the viewer): high-timeout models' figures are
    truncation-depressed.
 2. *Rate corrections* — Gemma 4 26B / DeepSeek V4 Flash / Gemma 4 31B
@@ -860,6 +891,273 @@ followed, all user-approved:
    OpenRouter battery costs if absent). Maintenance guide: the
    "Battery-cost metric" dev-guide comment above `PHASE_MAP` in the
    generator.
+
+**Multi-file bundle architecture (2026-06-12, generator v3.0.0):** the
+official artifact became a bundle directory for website hosting (user
+decision; transcripts + subagent transcripts were 84.6% of the 25 MB
+monolith and are read only by the Run Explorer's `renderRunDetail`).
+`index.html` keeps `DATA.runs` and everything else inline (every section
+computes from runs) and replaces the two transcript dicts with a
+`transcripts_index` (`{result_set: {file, n_main, n_subagent}}`); per-set
+shards `data/tx_{result_set}.json` carry only that set's entries under the
+unchanged composite keys (median ~275 KB / max ~1.2 MB per shard). The
+template feature-detects the artifact shape on `DATA.transcripts` presence:
+single-file renders transcripts synchronously exactly as before; bundles
+render a loading placeholder and fill it when the shard arrives, with a
+memoized per-set shard cache, a stale-click token so a late shard never
+renders into another run's panel, and a visible fetch-failure fallback
+(with the `python3 -m http.server` hint on `file://`). `file://` support is
+deliberately dropped for bundles; `--single-file` is the offline audit
+path. Maintenance guide: the "Bundle architecture" dev-guide comment above
+`PHASE_MAP` in the generator.
+
+**Battery multiplier promoted to the headline cost figure; blended $/Mtok
+retired (2026-06-12, generator v3.1.0):** the battery-cost multiplier
+(estimated cost to run the full battery once, × Opus 4.8 = 1.0×, never
+dollars) is now the headline cost figure on *every* surface, and the
+blended 3:1 price formulation (`blend31`, the Artificial Analysis
+convention) was removed entirely. Rationale (user decision): the vast
+majority of benchmark cost came from input tokens, so a 3:1 in/out blend
+was misleading; raw input/output $/Mtok stay as secondary detail only.
+Changes: the leaderboard cost column re-pointed from `blend31` to the
+battery multiplier (header "Battery cost (× Opus 4.8)"; em-dash idiom for
+models without battery data; the staleness guard's ⚠ now propagates to the
+leaderboard cell tooltip — previously it surfaced only in Costs Detail);
+the Cost vs. Performance scatter defaults to the battery basis (battery
+ordered first in `COST_FORMS` so the array-index-0 fallback agrees), with
+input/output as secondary toggles and the section lead rewritten
+multiplier-first; the About cost caveat reordered multiplier-first. Schema
+change (hence the minor version bump): `blend31` removed from
+`PRECOMPUTED.cost.models[]` entries and from `cost.frontiers` (battery now
+first of three forms); the sanity report prints the battery frontier
+instead of the blended one. Costs Detail and Key Takeaways needed no
+changes — already multiplier-led since v2.8.1.
+
+**Tone percolation, "DAAFBench: Orchestration" suite naming, and hero chips
+redesign (2026-06-12; template prose + generator dev-guide comments only —
+no generator code change, no version bump):** the maintainer's voice (colon-
+first elaboration, the "basically: …" decoder pattern, honest hedging,
+plain-label-first jargon policy) and the DAAF website's framing language were
+percolated through all remaining viewer prose, per the voice guide and
+35-surface percolation map in
+`research/2026-06-11_FrameworkDev_ViewerPublic/preliminary_notes/2026-06-12_scoping_voice-percolation.md`.
+
+(a) *Suite naming* — the page now presents itself as **"DAAFBench:
+Orchestration"**, part A of a planned pair whose companion suite will test
+analytic competency (explicit decision-making inside analytic code and
+data-cleaning steps, via adversarial examples, known-good code, and
+deterministically verifiable outputs). Carried in the title/og/twitter meta
+(also resolving the pre-existing title-vs-og wording mismatch by unifying on
+one title), the TOC rail title, one sanctioned two-sentence hero insertion,
+a new About intro, and the closing CTA. About h2 and TOC label renamed
+"About This Benchmark" → "About DAAFBench".
+(b) *Full rewrites* — leaderboard section lead (intuition-first decoders for
+composite / tier bands / denominators); Cost-vs-Performance lead (voice
+restructure only; factual content unchanged from the v3.1.0 multiplier-first
+rewrite); all five `PD_EXPLAINERS` entries (two-register failure-mode-first
+structure kept; the skill-routing entry adopts the website's "fuzzy general
+knowledge" vs curated-context vocabulary).
+(c) *Moderate passes* — two-bars primer (criterion decoder), benchmark-phases
+table framing (anatomy-style plain-question intro; composite-governance note
+de-internalized to "newest component, added in June 2026"), how-scoring-works
+(deterministic-scorer decoder), Phase Deep-Dives / Cases & Consistency
+("probabilistic" decoder) / Costs Detail leads, `lbTierRuleText` ("no
+judgment calls"), hero verdict (decoder voice). Light touches: `models.yaml`
+dropped from the CvP secondary-basis footnote; DAAFBench naming at first
+reference per section. Forensic surfaces (Run Explorer detail, Provenance,
+GRADE_TIP, heatmap headers) deliberately untouched.
+(d) *Hero chips redesign* — the chip row and verdict hoisted ABOVE the four
+hero paragraphs (anatomy-page orientation-first pattern), and chip content
+redesigned for zero-context readers: "N AI models tested / N archived test
+runs / N distinct test scenarios / 100% of scores trace to a real run"
+(replacing the jargon chips Models / Runs / Cases / Phases).
+(e) *Outbound links + attribution* — DAAF site + GitHub repo links restored
+in the new About intro; a new lean closing CTA section `#next-steps` (TOC +
+`SECTION_IDS` registered, static prose, no renderer, deliberately outside the
+content-visibility rule) links daaf.openaugments.org, the anatomy deep-dive
+("See how a DAAF analysis actually works"), and the GitHub repo, with the
+Open Augments attribution in the site's own register ("built by researchers,
+for researchers"; public-good framing). All URLs verified against the website
+subset. The glossary's orchestrator entry gained the site's "lab manager"
+gloss.
+(f) *Sanctioned voice-anchor edits (the only two)* — the hero pair-naming
+insertion (item a) and takeaway 1's metric clarifier ("leads the scoreboard
+at **a Perfect average score of**", matching takeaway 3's vocabulary — it
+previously named no metric). All other hero/takeaway prose is byte-identical;
+the 23-span contract is unchanged.
+(g) *Housekeeping* — the two stale "1,700+ run corpus" internal JS comments
+made corpus-neutral; generator dev-guide anchors refreshed (GROUP_SHORT
+~L1279, PD_EXPLAINERS ~L2322, buildEvalGroups order ~L1269, phaseSpan ~L1772,
+phases table ~L689) and a suite-naming/hero-orientation maintenance note
+added to the public-prose registries guide.
+
+**Site-cohesion styling (2026-06-12; template-only — no generator code
+change, no version bump):** the viewer was restyled to be visually cohesive
+with the DAAF product website (it ships alongside the site as the Learn >
+"Choosing Your Model (DAAFBench)" page) — a token swap + fonts + chrome +
+selected component idioms, deliberately NOT a full restyle.
+
+1. *Tokens + fonts* — the template `:root` surfaces/text/borders were
+   remapped to the site's values (`#0a0f1c`/`#111827`/`#151d2e` + hover/
+   active surfaces; `#f0f4f8`/`#b0bcc8`/`#7b8da0` text; white-alpha
+   borders), with `--accent-teal`/`--accent-mint`, `--nav-height`, and
+   `--ease-out-expo` added and the site's radii scale (14px cards / 10px
+   buttons & callouts / 999px pills / 8px pre) applied through the existing
+   var-routed rules. Fonts mirror the site's Google Fonts loading exactly
+   (preconnect pair + one css2 link, `display=swap`): Space Grotesk for
+   h1/h2/h3, section labels, eyebrows, and nav; DM Sans for body/UI;
+   JetBrains Mono for code/mono surfaces with the old SF Mono stack kept as
+   fallback — single-file/offline use falls back gracefully to system fonts
+   when Google Fonts is unreachable. **Accent split (user decision):** teal
+   `#22d3a8` is chrome only (gradient strip, topbar, prose links, TOC/nav
+   active states, eyebrows, decorative callout gradients) so accent never
+   reads as pass-green `#34d399`; indigo `#6366f1` remains the in-content
+   interactive accent (buttons, selected runs, hover tints, code chips).
+   The audited status palette hues are untouched.
+2. *Topbar + footer chrome* — the site's 3px fixed gradient strip, sticky
+   88px nav (brand wordmark SVG, See How It Works + Learn dropdowns —
+   Learn carrying this page's own active "Choosing Your Model (DAAFBench)"
+   entry — Get Started CTA, GitHub icon), and the Open Augments site footer
+   were ported verbatim, with nav element selectors scoped to
+   `nav.site-nav` so they can never touch the viewer's `<nav
+   class="toc-rail">`. Hrefs follow the anatomy page's relative-path model
+   (`../daaf-product/…`; the deploy script rewrites for production). The
+   site's minimal nav JS (mobile toggle, dropdown blur/focus fixes, mobile
+   dropdown expand) is ported in a self-contained IIFE introducing zero
+   globals; the viewer's scrollspy stays authoritative for the TOC rail.
+3. *Geometry rework* — the scrollspy's hardcoded 120px offset is now
+   nav-height-aware (`NAV_SPY_OFFSET`, read once from `--nav-height` + 3px
+   strip + 30px margin), `scroll-padding-top` became
+   `calc(var(--nav-height) + 3px + 14px)`, and the TOC rail tops at
+   `calc(var(--nav-height) + 3px)` so hash jumps and active-state detection
+   work under the sticky bar.
+4. *Component idioms (from the anatomy page)* — hero chips →
+   `.summary-badge` treatment (mono teal value, uppercase display label,
+   teal→indigo gradient top border, hover lift; the teal is decorative —
+   chips are corpus counts, not pass/fail); `.verdict`/`.pd-callout` →
+   gradient-border callout (teal→indigo left bar, gradient-tinted bg, 10px
+   radius); uppercase teal eyebrow labels above nine section h2s;
+   provider/subcategory chips and badges → 999px pills; criterion/run-dir
+   `<code>` → mono chips on the indigo idiom (deliberately not teal — they
+   sit next to pass/fail rates); selected run-list item → glowing
+   left-accent card state (indigo); cards → `#151d2e` at 14px; h1 keyword →
+   `gradient-text`; case prompts/tool outputs → mono panel treatment
+   (tool-output divs gained a stable `tx-out` class because `.tx-collapsed`
+   is removed on expand). P1–P4 phase-cascade coloring was evaluated and
+   skipped (would require data-phase plumbing through the JS renderers —
+   not cheap). Also a deliberate skip: the `.two-bars` block keeps its
+   indigo left bar — it was not in the scoped gradient-border callout list.
+5. *JS hex sweep + WP8 contrast re-audit* — all hardcoded old-token hexes
+   in JS-generated markup were routed through the new tokens
+   (`var(--…)` in inline styles; matching literals where SVG `fill`
+   attributes require: axis/label text `#b0bcc8`, frontier ring `#f0f4f8`,
+   gridlines moved to white-alpha borders since the old `#1e293b` lines
+   vanished against the new card bg). Deliberate survivors: the audited
+   status ramp and its `rgba(52,211,153,…)` frontier/annotation greens, the
+   amber warning tints `#f59e0b`/`#fcd34d`, `MODEL_COLORS`/
+   `MODEL_COLORS_LIGHT` (data colors — re-checked as distinguishable on the
+   darker surfaces), the model-badge `#fff`, and the site's own literal
+   gradients/logo SVG. The WP8 contrast audit was re-run against the new
+   surfaces (floors 4.5:1 text / 3:1 UI): every pair passes with alphas
+   unchanged — the darker surfaces raise most ratios (worst case `.rs-3`
+   4.71:1 vs ~5.0 pre-remap; `.rs-na` 7.74:1; full measurements recorded in
+   the template's WP8 re-audit comment at the `.rs-*` rules).
+   `contain-intrinsic-size` values were sanity-checked and left unchanged —
+   the global 1.5 line-height and font sizes were deliberately NOT moved to
+   the site's 1.7, so type metrics are near-identical (live re-verify stays
+   on the post-deploy retest list). Verified by sanity bundle regeneration:
+   index.html 3.75 MB (+0.03 MB for the chrome), zero-orphan span check,
+   nav/footer present exactly once, all `var()` references defined.
+
+
+**User fine-tuning round (2026-06-12; template prose/JS + generator dev-guide
+comments only — no generator code change, no version bump):** eleven
+user-approved items from the visual review of `viewer_2026-06-12a.html`.
+
+1. *Intro restructure* — the hero is now h1 + date + stat chips + the user's
+   hero ¶1 only (TOC label "Verdict" → "Intro"); hero ¶¶2–4 moved **verbatim**
+   to the top of About (the `hero-models`/`hero-runs` live-count spans and
+   their build-time `__HERO_MODELS__`/`__HERO_RUNS__` substitution travel
+   with them), ahead of the existing About intro, whose Wave-3 ¶1 was trimmed
+   to its one non-duplicative sentence (mechanical scoring) so the
+   companion-suite framing is stated exactly once, in the user's own words.
+   The computed verdict callout (`#hero-verdict` + its renderHero prose and
+   `.verdict` CSS) was removed entirely; a new compact **cost-performance
+   preview** (`#cvp-preview`, battery basis / composite Perfect, reduced
+   height, hover-only interactivity, one-line caption linking the full
+   chart) sits after the takeaways — same `costPerfData`/`svgCostFrontier`
+   code path as the full chart, rendered at init, deliberately absent from
+   the TOC/`SECTION_IDS`/content-visibility machinery.
+2. *Takeaway headline de-dup* — T1 "genuinely in a class of its own" →
+   "simply in a class of its own" (T2 keeps "genuinely worse"); no other
+   takeaway text changed.
+3. *Leaderboard Timed-out column* — per-model timed-out share from
+   `PRECOMPUTED.timeout_by_model` (runs basis, 1-decimal percent + k/n,
+   em-dash idiom, sortable with worst-first default direction, deliberately
+   NOT on the pass-green `.rs-*` ramp), with a tooltip + lb-foot clause
+   naming the `timed_out`-flag basis (wall-clock timeouts AND silent stalls
+   that ran out the clock; timed-out runs are still graded).
+4. *Costs Detail section removed* (fully duplicative of CvP + leaderboard):
+   the battery-multiplier canonical definition + disclosures survive
+   condensed as an unconditional CvP footnote (`batteryDisclosureHtml()` —
+   uncached basis, billing-export vs corpus-live token-mix sources, ⚠
+   staleness meaning, reprice/caching drift, never-dollars, timeout
+   depression); the published list-price table survives as a compact
+   `<details>` collapsible beneath the CvP chart (`pricingDetailsHtml()`,
+   input-ascending, non-sorting); every `#costs`/"Costs Detail" reference
+   re-pointed to Cost vs. Performance; `renderCostsDetail` + its phase-scope
+   and sort handlers + state deleted. The generator's `cost.battery`/
+   `cost.models` precompute is untouched.
+5. *#next-steps removed* — its CTA links live on in the hero ¶1 / About
+   intro and the site footer carries the Open Augments attribution (the W3
+   tone-percolation record above stands as history).
+6. *kt-foot removed* — its small/uneven-reps imprecision point merged into
+   the About "Denominators are small and uneven" caveat and its battery
+   definition + drift sentence into the About cost caveat, which now hosts
+   the `kt-foot-bat` battery-size span. **Span contract: still 23 `kt-*`
+   setters — 22 spans in `#takeaways` + `kt-foot-bat` in the About Key
+   Caveats.**
+7. *CvP responsiveness* — the scatter (and the preview) now scales to its
+   container (`viewBox` + `width:100%`/`height:auto`, `max-width` capped at
+   the designed size); no resize re-render is needed because all positions
+   are computed in viewBox coordinates. Leaderboard/heatmaps are tables and
+   were confirmed out of scope.
+8. *CvP double-tooltip fix* — the native `<title>` children on plot points
+   (which overlapped the custom tooltip) were removed; the custom tooltip is
+   authoritative. No other chart code emitted native tooltips.
+9. *TOC first-click landing fix* — on the first explicit nav (TOC click or
+   load-time deep link) the JS now renders every section and adds
+   `body.nav-rendered`, which un-skips `content-visibility` document-wide so
+   the document lays out at true heights once; the scroll then runs after a
+   double-rAF against final geometry (previously the first click scrolled
+   toward `contain-intrinsic-size` estimates and landed short). **Stays on
+   the http(s) post-deploy retest list.**
+
+Verified by single-file regeneration (`viewer_2026-06-12b.html`, for the
+user's next `file://` review; official bundle regeneration deferred until
+his approval): zero unsubstituted tokens, bidirectional 23-span check, 9
+sections = TOC = `SECTION_IDS`, zero live `#costs`/"Costs Detail"/
+next-steps stragglers, timed-out rates present for all 17 models, preview
+block before `#about`, no native `<title>` tooltips on CvP points.
+
+*Fine-tuning round 2 (2026-06-12; template prose/JS + generator dev-guide
+comments only — no version bump):* the hero prose became a single user
+"TLDR:" paragraph (the former hero ¶1's first sentence verbatim, links
+intact, plus a new user-supplied DAAFBench: Orchestration framing
+sentence), with the "layers together" remainder of the former ¶1 moved
+verbatim to the top of About ahead of the orchestration explainer (About
+now opens with four moved user paragraphs); `#cvp-preview` moved from
+after `#takeaways` to between the hero and `#takeaways` (still
+init-rendered, still outside the TOC/`SECTION_IDS`/content-visibility
+machinery — it now scrollspy-reads as part of `#hero`); and the
+leaderboard and CvP footnote prose (the `lb-foot` paragraphs and the
+`cp-foot` paragraphs incl. `batteryDisclosureHtml()`) collapsed into
+closed-by-default `<details class="foot-details">` "Details" expanders
+whose bodies read at regular body size in `--text-2` rather than the tiny
+`--text-3` footnote treatment (content unchanged; the `cp-pricing`
+list-price collapsible stays its own sibling expander beneath the CvP
+Details block; `prov-foot` and the `cp-foot` inside `cp-pricing` keep the
+small idiom). Verified on `viewer_2026-06-12d.html`.
 
 ## 9. Operational Notes
 
@@ -1339,12 +1637,151 @@ and update or remove this subsection.
   rather than dollars (generator **v2.8.1**, presentation-only bump; § 8
   addenda: design record item 2 second re-adjudication + cost-methodology
   presentation note), regenerated as `viewer_2026-06-11k.html`.
-- **Viewer current:** `viewer_2026-06-11k.html` (generator v2.8.1; 53 sets /
+- **Viewer e099982 repair pass — RESOLVED (2026-06-12; template + dev-guide
+  comments only, no generator code change, no version bump).** The user's
+  hand edit of the hero and Key Takeaways (commit e099982) deleted spans
+  that `renderHero` and `fillAboutCounts` still wrote to, crashing both at
+  init (hero chips/verdict never rendered; the surviving `ab-*` counts froze
+  as em dashes). Repairs: hero "17 models" / "1,700 repetitions" re-injected
+  as live `hero-models`/`hero-runs` spans filled by `renderHero` from
+  `PRECOMPUTED.totals` (static text = previous generation's figures, not an
+  em dash); dead `ab-models`/`ab-runs` writes deleted; `kt-t4-dsflash` fill
+  added; the 11 orphaned `fillTakeaways` writes pruned; takeaway 2's garbled
+  Critical-only sentence repaired with four injected `kt-t2-o4Xh` spans from
+  `composite_hard` (claim direction verified: Opus 4.7's Critical-only dip,
+  8.5 pts vs the best of 4.5/4.6, exceeds its Perfect-composite dip of
+  4.9 pts); takeaway 5's stale `kt-t6-*` ids renumbered `kt-t5-*` in
+  lockstep with their setters; orphaned `.kt-badge`/`.kt-disclaimer` CSS
+  removed; typo/entity fixes in the user-voice prose; Key Caveats `<details>`
+  gained `id="caveats"` and the kt-foot reference now links `#about`.
+  **Span contract now 23 `kt-*` spans** (was 29); generator dev-guide
+  comment block refreshed (span contract count, date-lives-in-the-h2 rule,
+  template anchor re-points incl. PD_EXPLAINERS ~L1762 → ~L2211). Verified
+  by sanity regeneration: bidirectional span check zero orphans both
+  directions; all 32 kt/hero/ab injection values non-null on the 53-set
+  corpus.
+- **Viewer multi-file bundle architecture — RESOLVED (2026-06-12, generator
+  v3.0.0).** The official viewer artifact is now a bundle directory with a
+  new naming convention, `daafbench_YYYY-MM-DD[suffix]/` (letter suffix
+  auto-increments when the candidate exists — the no-overwrite convention
+  carried over from the dated single files): `index.html` (~4 MB; DATA
+  minus transcripts, plus a `transcripts_index`) and per-result-set
+  transcript shards `data/tx_{result_set}.json` fetched on demand by the
+  Run Explorer (memoized shard cache, stale-click guard, visible
+  fetch-failure fallback). `--single-file [PATH]` retains the ~25 MB
+  monolith under the `viewer_YYYY-MM-DD{letter}.html` naming as the
+  offline/`file://` audit path; `file://` support is explicitly dropped for
+  bundles (sibling-file `fetch()` is CORS-blocked on `file://` — the
+  fallback message carries a `python3 -m http.server` hint).
+  `benchmarks/.gitignore` gained the `daafbench_*/` companion pattern.
+  Full record: § 8 "Multi-file bundle architecture" addendum; the http(s)
+  post-deploy retest list grew from three to four items (§ 8
+  public-audience evolution item 7). The first bundle artifact is
+  `daafbench_2026-06-12a/` (2026-06-12 official regeneration, generator
+  v3.1.1 — see "Viewer current" below); `viewer_2026-06-11k.html` remains
+  the last monolith-only official artifact.
+- **Battery multiplier promoted to headline cost figure / blend31 removed —
+  RESOLVED (2026-06-12, generator v3.1.0).** The blended 3:1 $/Mtok
+  formulation was retired everywhere (user rationale: benchmark cost was
+  dominated by input tokens, making a 3:1 in/out blend misleading) and the
+  battery-cost multiplier (× Opus 4.8 = 1.0×) became the headline cost
+  figure page-wide: leaderboard cost column re-pointed (with ⚠ staleness
+  propagation to its tooltip), scatter default price basis now battery
+  (input/output remain as secondary toggles), About caveat and section
+  leads reordered multiplier-first. Schema change: `blend31` removed from
+  `PRECOMPUTED.cost.models[]` and `cost.frontiers` (battery first); sanity
+  report prints the battery frontier. Full record: § 8 "Battery multiplier
+  promoted" addendum. Verified by sanity regeneration (bundle +
+  `--single-file`); lands in the next official artifact.
+- **Tone percolation + "DAAFBench: Orchestration" naming + hero chips
+  redesign — RESOLVED (2026-06-12; template prose + generator dev-guide
+  comments only, no version bump).** The maintainer's voice and website
+  framing percolated through all remaining viewer prose: suite named
+  "DAAFBench: Orchestration" (title/meta/TOC/hero/About/CTA, with the
+  planned analytic-competency companion suite framed as the complementary
+  half); full rewrites of the leaderboard lead, CvP lead (voice-only), and
+  all five PD_EXPLAINERS; moderate passes per the percolation map; hero
+  chips hoisted above the prose and redesigned to zero-context facts; About
+  intro restored DAAF/GitHub links; new static `#next-steps` closing CTA
+  (TOC + SECTION_IDS registered) with Open Augments attribution; glossary
+  lab-manager gloss; exactly two sanctioned voice-anchor edits (hero
+  pair-naming insertion; takeaway 1 "a Perfect average score of"
+  clarifier); stale "1,700+" JS comments neutralized; dev-guide anchors
+  refreshed. Full record: § 8 "Tone percolation" addendum. Verified by
+  sanity bundle regeneration + bidirectional span check (zero orphans;
+  23-span contract unchanged); lands in the next official artifact.
+- **Site-cohesion styling — RESOLVED (2026-06-12; template-only, no
+  generator change, no version bump).** The viewer adopted the DAAF product
+  site's design tokens, Google Fonts (Space Grotesk / DM Sans / JetBrains
+  Mono), 3px gradient strip + sticky topbar (with the Learn dropdown's
+  active "Choosing Your Model (DAAFBench)" entry), Open Augments footer,
+  and selected anatomy-page component idioms; teal is chrome-only and the
+  audited status palette hues are untouched (WP8 contrast re-audit against
+  the new surfaces: all floors pass, alphas unchanged). Scrollspy offset /
+  scroll-padding / TOC-rail top are now `--nav-height`-aware. Full record:
+  § 8 "Site-cohesion styling" addendum. Verified by sanity bundle
+  regeneration (index.html 3.75 MB, +0.03 MB); lands in the next official
+  artifact. **The post-deploy visual check now additionally covers: topbar
+  dropdown open/close (desktop hover + mobile tap), the mobile hamburger
+  toggle, the hoisted hero chips' badge treatment, the site footer, and
+  Google Fonts loading (plus the graceful system-font fallback when
+  offline).**
+- **Viewer user fine-tuning round — IMPLEMENTED, pending user review
+  (2026-06-12; template + generator dev-guide comments + this README, no
+  generator code change, no version bump).** Eleven user-approved items
+  from his visual review of the `2026-06-12a` artifact: verdict callout
+  removed and the intro restructured (hero = h1 + chips + ¶1; hero ¶¶2–4
+  moved verbatim to the top of About; TOC label "Intro"); a compact
+  cost-performance preview after the takeaways (same chart code path);
+  T1 headline de-dup ("simply"); a sortable leaderboard Timed-out column
+  from `timeout_by_model`; the Costs Detail section removed (battery
+  definition condensed into an unconditional CvP footnote; list-price
+  table relocated as a CvP collapsible; all references re-pointed);
+  `#next-steps` removed; kt-foot folded into the About caveats
+  (`kt-foot-bat` moved there; span contract still 23 setters = 22 in
+  #takeaways + 1 in About); CvP scatter + preview made responsive
+  (viewBox scaling, no re-render needed); native `<title>` point tooltips
+  removed; TOC first-click landing fixed via first-nav full render +
+  `body.nav-rendered` content-visibility un-skip (http(s) retest item).
+  Full record: § 8 "User fine-tuning round" addendum. Review artifact:
+  `viewer_2026-06-12b.html` (single-file, for the user's next `file://`
+  pass); the official **bundle regeneration is deferred** until his
+  approval.
+- **Viewer fine-tuning round 2 (2026-06-12; template prose/JS + generator
+  dev-guide comments only — no version bump):** hero reduced to a single
+  user "TLDR:" paragraph (former ¶1 first sentence + new user DAAFBench
+  framing sentence, verbatim); the "layers together" remainder moved
+  verbatim to the top of About; `#cvp-preview` moved above `#takeaways`
+  (scrollspy-reads as part of `#hero`); leaderboard + CvP footnotes
+  collapsed into closed-by-default "Details" expanders at regular body
+  size (`cp-pricing` stays a sibling expander; other footnote surfaces
+  unchanged). Full record: § 8 fine-tuning addendum, round-2 paragraph.
+  Review artifact: `viewer_2026-06-12d.html` (single-file).
+- **Viewer current:** `daafbench_2026-06-12b/` (generator v3.1.1; 53 sets /
+  2,493 runs; 2026-06-12, user-approved for deploy) — adds the fine-tuning
+  rounds 1-2 (Verdict removal, Intro TOC label, timed-out leaderboard
+  column, responsive CvP chart + native-tooltip removal, TOC first-click
+  render fix, next-steps + Costs Detail section removals w/ disclosure
+  relocation, TLDR hero + preview-above-takeaways restructure, footnote
+  Details expanders), the website-deploy compat edits (canonical
+  `daaf.openaugments.org/bench/`, short "Choosing Your Model" nav label),
+  and the user's final manual prose touches. Supersedes
+  `daafbench_2026-06-12a/` (first official bundle
+  artifact; generator v3.1.1; 53 sets / 2,493 runs; 2026-06-12) — carried
+  everything since `_11k`: the v3.0.0 bundle architecture, the v3.1.0
+  battery-multiplier headline promotion, the 2026-06-12 user hero/takeaways
+  edit + e099982 repair pass (23-span contract), the tone-percolation and
+  site-cohesion template passes, and the 2026-06-12 post-review fix pass
+  cycle 1 (T2 dip sentence, leaderboard component naming, entity sweep,
+  phrasing dedupes, plus v3.1.1's build-time `__HERO_MODELS__`/
+  `__HERO_RUNS__` substitution so the hero's static fallback counts can no
+  longer go stale) — superseded before deploy. That bundle superseded
+  `viewer_2026-06-11k.html` (generator v2.8.1; 53 sets /
   2,493 runs; battery-cost surfaces converted to relative multipliers vs
   Opus 4.8 — Costs Detail table, Cost vs. Performance battery axis
   normalized so Opus 4.8 = 1.0×, disclosure rewrites — plus the second Key
-  Takeaways re-adjudication, 29 `kt-*` spans; § 8 addenda) — needs user
-  visual check. Supersedes `_11j` (v2.8.0; 53 sets / 2,493 runs; first
+  Takeaways re-adjudication, 29 `kt-*` spans; § 8 addenda; the last
+  monolith-only official artifact), which superseded `_11j` (v2.8.0; 53 sets / 2,493 runs; first
   dated viewer with battery costs and the corrected rates, but its takeaway
   prose and dollar-based battery display predated the re-adjudication and
   the multiplier decision), which superseded

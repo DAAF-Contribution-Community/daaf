@@ -1,0 +1,1430 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <!-- Google tag (gtag.js) -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-42EEHG8CJE"></script>
+    <script>
+      window.dataLayer = window.dataLayer || [];
+      function gtag(){dataLayer.push(arguments);}
+      gtag('js', new Date());
+      gtag('config', 'G-42EEHG8CJE');
+    </script>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Workshops &amp; Consulting - Open Augments</title>
+    <meta name="description" content="Hands-on AI workshops, strategic consulting, and personalized coaching for teams and organizations ready to harness AI responsibly.">
+    <link rel="canonical" href="https://openaugments.org/workshops">
+    <meta name="theme-color" content="#0a0f1c">
+    <meta property="og:title" content="Workshops &amp; Consulting - Open Augments">
+    <meta property="og:description" content="Hands-on AI workshops, strategic consulting, and personalized coaching for teams and organizations ready to harness AI responsibly.">
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="Open Augments">
+    <meta property="og:url" content="https://openaugments.org/workshops">
+    <meta property="og:image" content="https://openaugments.org/assets/og-image.png">
+    <meta property="og:image:width" content="1200">
+    <meta property="og:image:height" content="630">
+    <meta property="og:image:alt" content="Workshops &amp; Consulting - Open Augments">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:image" content="https://openaugments.org/assets/og-image.png">
+    <link rel="icon" type="image/png" sizes="32x32" href="assets/favicon-32.png">
+    <link rel="apple-touch-icon" sizes="180x180" href="assets/apple-touch-icon.png">
+
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=DM+Sans:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
+
+    <style>
+        /* §§ RESET */
+        *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+        /* §§ TOKENS */
+        :root {
+            --bg-primary: #0a0f1c;
+            --bg-secondary: #111827;
+            --bg-card: #151d2e;
+            --text-primary: #f0f4f8;
+            --text-secondary: #b0bcc8;
+            --text-muted: #7b8da0;
+            --accent: #22d3a8;
+            --accent-glow: rgba(34, 211, 168, 0.2);
+            --accent-secondary: #6366f1;
+            --accent-secondary-glow: rgba(99, 102, 241, 0.15);
+            --border: rgba(255, 255, 255, 0.08);
+            --border-hover: rgba(255, 255, 255, 0.15);
+            --font-display: 'Space Grotesk', system-ui, sans-serif;
+            --font-body: 'DM Sans', system-ui, sans-serif;
+            --title-size: clamp(2.5rem, 6vw, 4.5rem);
+            --h2-size: clamp(1.75rem, 4vw, 3rem);
+            --h3-size: clamp(1.1rem, 2vw, 1.4rem);
+            --body-size: clamp(0.95rem, 1.2vw, 1.125rem);
+            --small-size: clamp(0.875rem, 1.1vw, 1rem);
+            --section-padding: clamp(4rem, 6rem, 8rem) clamp(1.5rem, 5vw, 4rem);
+            --content-max: 1100px;
+            --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+            --nav-height: 88px;
+        }
+
+        /* §§ BASE */
+        html {
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            scroll-padding-top: calc(var(--nav-height) + 3px + 0.5rem);
+        }
+
+        body {
+            font-family: var(--font-body);
+            font-size: var(--body-size);
+            line-height: 1.7;
+            background:
+                radial-gradient(ellipse at 15% 0%, rgba(34, 211, 168, 0.06) 0%, transparent 50%),
+                radial-gradient(ellipse at 85% 100%, rgba(99, 102, 241, 0.04) 0%, transparent 50%),
+                var(--bg-primary);
+            -webkit-font-smoothing: antialiased;
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 3px;
+            background: linear-gradient(90deg, #22d3a8, #6ee7b7, #6366f1);
+            z-index: 200;
+        }
+
+        a { color: var(--accent); text-decoration: none; transition: opacity 0.2s; }
+        a:hover { opacity: 0.8; }
+
+        /* §§ TYPOGRAPHY */
+        h1, h2, h3 { font-family: var(--font-display); line-height: 1.15; font-weight: 600; }
+        h2 { font-size: var(--h2-size); letter-spacing: -0.02em; }
+        h3 { font-size: var(--h3-size); }
+
+        .section-label {
+            font-family: var(--font-display);
+            font-size: var(--small-size);
+            font-weight: 500;
+            text-transform: uppercase;
+            letter-spacing: 0.12em;
+            color: var(--accent);
+            margin-bottom: 1rem;
+        }
+
+        .gradient-text {
+            background: linear-gradient(135deg, var(--accent) 0%, #6ee7b7 50%, var(--accent-secondary) 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        /* §§ LAYOUT */
+        section {
+            padding: var(--section-padding);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .container {
+            width: 100%;
+            max-width: var(--content-max);
+        }
+
+        /* §§ NAV */
+        nav {
+            position: sticky;
+            top: 3px;
+            z-index: 1000;
+            isolation: isolate;
+            height: var(--nav-height);
+            padding: 0 clamp(1.5rem, 5vw, 3rem);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            background: rgba(10, 15, 28, 0.97);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border-bottom: 1px solid var(--border);
+            transition: background 0.3s;
+        }
+
+        /* Ensure page content stays below the nav stacking context */
+        .hero, .engagements, .approach, #services, .testimonials-section, #topics, .workshops-bg, .cta-section, footer {
+            position: relative;
+            z-index: 1;
+        }
+
+        .logo-icon {
+            display: inline-block;
+            width: clamp(32px, 4vw, 42px);
+            height: clamp(32px, 4vw, 42px);
+            background-color: var(--accent);
+            -webkit-mask-image: url('assets/Open Augments Logo PNG Teal.png');
+            mask-image: url('assets/Open Augments Logo PNG Teal.png');
+            -webkit-mask-size: contain;
+            mask-size: contain;
+            -webkit-mask-repeat: no-repeat;
+            mask-repeat: no-repeat;
+            -webkit-mask-position: center;
+            mask-position: center;
+        }
+
+        .nav-brand {
+            font-family: var(--font-display);
+            font-weight: 400;
+            font-size: 1.1rem;
+            color: var(--accent);
+            letter-spacing: -0.03em;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        .nav-links {
+            display: flex;
+            gap: clamp(1rem, 3vw, 2.5rem);
+            align-items: center;
+            list-style: none;
+        }
+
+        .nav-links a {
+            font-family: var(--font-display);
+            font-size: clamp(0.85rem, 1.1vw, 0.95rem);
+            font-weight: 500;
+            color: var(--text-muted);
+            transition: color 0.2s;
+            position: relative;
+            padding: 0.25rem 0;
+            padding-bottom: 4px;
+        }
+
+        .nav-links a:hover { color: var(--text-primary); opacity: 1; }
+        .nav-links a.active { color: var(--accent); }
+        .nav-links a.active::after {
+            content: '';
+            position: absolute;
+            bottom: -2px;
+            left: 0;
+            right: 0;
+            height: 2px;
+            background: var(--accent);
+            border-radius: 1px;
+        }
+
+        /* ── Dropdown ────────────────────────────────── */
+        .nav-dropdown {
+            position: relative;
+        }
+
+        .nav-dropdown > a,
+        .nav-dropdown > .nav-dropdown-toggle {
+            padding-right: 1rem;
+        }
+
+        /* §§ NAV_DROPDOWN_TOGGLE */
+        .nav-dropdown-toggle {
+            background: none;
+            border: none;
+            cursor: default;
+            font-family: var(--font-display);
+            font-size: clamp(0.85rem, 1.1vw, 0.95rem);
+            font-weight: 500;
+            color: var(--text-muted);
+            transition: color 0.2s;
+            position: relative;
+            padding: 0.25rem 0;
+            padding-bottom: 4px;
+        }
+
+        .nav-dropdown-toggle:hover { color: var(--text-primary); opacity: 1; }
+        .nav-dropdown-toggle.active { color: var(--accent); }
+        .nav-dropdown-toggle.active::after {
+            content: '';
+            position: absolute;
+            bottom: -2px;
+            left: 0;
+            right: 0;
+            height: 2px;
+            background: var(--accent);
+            border-radius: 1px;
+        }
+
+        .nav-dropdown > a::before,
+        .nav-dropdown > .nav-dropdown-toggle::before {
+            content: '';
+            position: absolute;
+            right: 0;
+            top: 50%;
+            transform: translateY(-75%) rotate(45deg);
+            width: 5px;
+            height: 5px;
+            border-right: 1.5px solid currentColor;
+            border-bottom: 1.5px solid currentColor;
+            opacity: 0.6;
+            pointer-events: none;
+        }
+
+        .nav-dropdown-menu {
+            position: absolute;
+            top: calc(100% + 8px);
+            left: 50%;
+            transform: translateX(-50%);
+            min-width: 200px;
+            background: rgba(17, 24, 39, 0.97);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid var(--border-hover);
+            border-radius: 10px;
+            padding: 0.5rem;
+            list-style: none;
+            opacity: 0;
+            visibility: hidden;
+            transition: opacity 0.2s, visibility 0.2s, transform 0.2s var(--ease-out-expo);
+            transform: translateX(-50%) translateY(4px);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+            z-index: 200;
+        }
+
+        .nav-dropdown-menu::before {
+            content: '';
+            position: absolute;
+            top: -8px;
+            left: 0;
+            right: 0;
+            height: 8px;
+        }
+        .nav-dropdown:hover .nav-dropdown-menu,
+        .nav-dropdown:focus-within .nav-dropdown-menu {
+            opacity: 1;
+            visibility: visible;
+            transform: translateX(-50%) translateY(0);
+        }
+
+        .nav-dropdown-menu li { list-style: none; }
+
+        .nav-dropdown-menu a {
+            display: flex;
+            align-items: center;
+            gap: 0.6rem;
+            padding: 0.45rem 0.85rem;
+            border-radius: 6px;
+            font-size: clamp(0.78rem, 1vw, 0.88rem);
+            white-space: nowrap;
+            transition: background 0.15s, color 0.15s;
+        }
+
+        .nav-dropdown-menu a:hover {
+            background: rgba(255, 255, 255, 0.06);
+            color: var(--text-primary);
+        }
+
+        .nav-dropdown-menu a.active {
+            color: var(--accent);
+            background: rgba(34, 211, 168, 0.08);
+        }
+
+        .nav-dropdown-menu a.active::after { display: none; }
+
+        .nav-dropdown-menu a::after { display: none; }
+
+        .nav-toggle {
+            display: none;
+            background: none;
+            border: none;
+            cursor: pointer;
+            padding: 0.5rem;
+        }
+
+        .nav-toggle span {
+            display: block;
+            width: 22px;
+            height: 2px;
+            background: var(--text-primary);
+            margin: 5px 0;
+            transition: transform 0.3s, opacity 0.3s;
+        }
+
+        /* §§ BUTTONS */
+        .btn {
+            font-family: var(--font-display);
+            font-size: var(--small-size);
+            font-weight: 600;
+            padding: 0.75rem 1.75rem;
+            border-radius: 8px;
+            border: none;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            transition: transform 0.2s var(--ease-out-expo), box-shadow 0.2s;
+        }
+
+        .btn:hover { transform: translateY(-1px); opacity: 1; }
+
+        .btn-primary {
+            background: var(--accent);
+            color: var(--bg-primary);
+        }
+
+        .btn-primary:hover {
+            box-shadow: 0 4px 24px var(--accent-glow);
+        }
+
+        .btn-secondary {
+            background: transparent;
+            color: var(--text-primary);
+            border: 1px solid var(--border-hover);
+        }
+
+        .btn-secondary:hover {
+            border-color: var(--accent);
+            box-shadow: 0 4px 24px rgba(34, 211, 168, 0.08);
+        }
+
+        /* §§ HERO */
+        .hero {
+            min-height: 50vh;
+            justify-content: center;
+            text-align: center;
+            position: relative;
+        }
+
+        .hero::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background:
+                radial-gradient(ellipse at 50% 30%, rgba(34, 211, 168, 0.08) 0%, transparent 60%),
+                radial-gradient(ellipse at 30% 70%, rgba(99, 102, 241, 0.05) 0%, transparent 50%);
+            pointer-events: none;
+        }
+
+        .hero .container { position: relative; }
+
+        .hero h1 {
+            font-size: var(--title-size);
+            font-weight: 400;
+            letter-spacing: -0.05em;
+            margin-bottom: 1.5rem;
+        }
+
+        .hero .subtitle {
+            font-size: clamp(1.05rem, 1.5vw, 1.25rem);
+            color: var(--text-secondary);
+            max-width: 640px;
+            margin: 0 auto 2.5rem;
+            line-height: 1.7;
+        }
+
+        /* §§ APPROACH */
+        .approach {
+            background: var(--bg-secondary);
+            border-top: 1px solid var(--border);
+            border-bottom: 1px solid var(--border);
+        }
+
+        .approach-layout {
+            display: grid;
+            grid-template-columns: 1fr 280px;
+            gap: clamp(2rem, 4vw, 3rem);
+            align-items: start;
+            overflow-x: hidden;
+        }
+
+        .approach-text {
+            min-width: 0;
+            overflow-wrap: break-word;
+        }
+
+        .approach-body {
+            color: var(--text-secondary);
+            line-height: 1.8;
+            margin-top: 1.5rem;
+        }
+
+        .approach-body p + p {
+            margin-top: 1.25rem;
+        }
+
+        /* §§ APPROACH_PHOTOS */
+        .approach-photos {
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+        }
+
+        .approach-photos img {
+            width: 100%;
+            max-width: 100%;
+            aspect-ratio: 4 / 3;
+            object-fit: cover;
+            object-position: center top;
+            border-radius: 10px;
+            border: 1px solid var(--border);
+            transition: border-color 0.3s;
+            height: auto;
+        }
+
+        .approach-photos img:hover {
+            border-color: var(--border-hover);
+        }
+
+        @media (max-width: 768px) {
+            .approach-layout {
+                grid-template-columns: 1fr;
+            }
+
+            .approach-photos {
+                flex-direction: row;
+                gap: 0.75rem;
+            }
+
+            .approach-photos img {
+                flex: 1;
+                min-width: 0;
+                aspect-ratio: 1 / 1;
+                object-position: center 15%;
+            }
+        }
+
+        /* §§ FORMATS */
+        .formats-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: clamp(1rem, 2vw, 1.5rem);
+            margin-top: 2.5rem;
+        }
+
+        @media (max-width: 960px) {
+            .approach-layout {
+                grid-template-columns: 1fr;
+            }
+            .approach-photos {
+                flex-direction: row;
+                gap: 0.75rem;
+            }
+            .approach-photos img {
+                flex: 1;
+                min-width: 0;
+                aspect-ratio: 1 / 1;
+                object-position: center 15%;
+            }
+        }
+
+        @media (max-width: 560px) {
+            .formats-grid {
+                grid-template-columns: 1fr;
+            }
+            .hero h1 {
+                font-size: clamp(1.8rem, 7vw, 2.5rem);
+            }
+            section {
+                padding: clamp(3rem, 6vw, 4rem) 1rem;
+            }
+        }
+
+        .format-card {
+            padding: 2rem 1.75rem;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            transition: border-color 0.3s, transform 0.3s var(--ease-out-expo);
+        }
+
+        .format-card:hover {
+            border-color: var(--accent-secondary);
+            transform: translateY(-2px);
+        }
+
+        .format-icon {
+            display: block;
+            margin-bottom: 1rem;
+            color: var(--accent-secondary);
+        }
+
+        .format-icon svg {
+            width: 32px;
+            height: 32px;
+        }
+
+        .format-card h3 {
+            margin-bottom: 0.5rem;
+            font-size: var(--h3-size);
+        }
+
+        .format-card p {
+            color: var(--text-secondary);
+            font-size: var(--small-size);
+            line-height: 1.65;
+        }
+
+        .format-duration {
+            display: inline-block;
+            font-family: var(--font-display);
+            font-size: 0.75rem;
+            font-weight: 500;
+            color: var(--accent);
+            background: rgba(34, 211, 168, 0.08);
+            border: 1px solid rgba(34, 211, 168, 0.2);
+            padding: 0.2rem 0.6rem;
+            border-radius: 999px;
+            margin-top: 1rem;
+        }
+
+        /* §§ TOPICS */
+        .topics-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: clamp(1rem, 2vw, 1.5rem);
+            margin-top: 2.5rem;
+        }
+
+        .topic {
+            padding: 1.5rem;
+            border-left: 2px solid var(--accent);
+        }
+
+        .topic h3 {
+            margin-bottom: 0.5rem;
+            font-size: var(--h3-size);
+        }
+
+        .topic p {
+            color: var(--text-secondary);
+            font-size: var(--small-size);
+            line-height: 1.65;
+        }
+
+        /* §§ TOPIC_GROUPS */
+        .topic-groups {
+            display: flex;
+            flex-direction: column;
+            gap: clamp(1rem, 2vw, 1.5rem);
+            margin-top: 2.5rem;
+        }
+
+        .topic-group {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            transition: border-color 0.3s;
+        }
+
+        .topic-group:hover {
+            border-color: var(--border-hover);
+        }
+
+        .topic-group-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 1rem;
+            padding: clamp(1.25rem, 2.5vw, 1.75rem) clamp(1.5rem, 3vw, 2rem);
+            cursor: pointer;
+        }
+
+        .topic-group-header h3 {
+            font-size: clamp(1.1rem, 1.8vw, 1.35rem);
+            margin-bottom: 0.25rem;
+        }
+
+        .topic-group-desc {
+            color: var(--text-secondary);
+            font-size: var(--small-size);
+            line-height: 1.5;
+        }
+
+        .topic-group-body {
+            display: grid;
+            grid-template-rows: 0fr;
+            transition: grid-template-rows 0.35s var(--ease-out-expo);
+        }
+
+        .topic-group.open .topic-group-body {
+            grid-template-rows: 1fr;
+        }
+
+        .topic-group-body-inner {
+            overflow: hidden;
+        }
+
+        .topic-group-body-inner .topics-grid {
+            padding: 0 clamp(1.5rem, 3vw, 2rem) clamp(1.25rem, 2.5vw, 1.75rem);
+            margin-top: 0;
+            border-top: 1px solid var(--border);
+            padding-top: clamp(1.25rem, 2.5vw, 1.75rem);
+        }
+
+        /* §§ ENGAGEMENTS */
+        .engagements {
+            background: var(--bg-secondary);
+            border-top: 1px solid var(--border);
+            border-bottom: 1px solid var(--border);
+        }
+
+        .engagements-intro {
+            color: var(--text-secondary);
+            max-width: 860px;
+            margin-top: 1rem;
+            margin-bottom: 2.5rem;
+        }
+
+        /* §§ CTA_SECTION */
+        .cta-section {
+            text-align: center;
+        }
+
+        .cta-section h2 {
+            margin-bottom: 1rem;
+        }
+
+        .cta-body {
+            color: var(--text-secondary);
+            max-width: 560px;
+            margin: 0 auto 2.5rem;
+            line-height: 1.7;
+        }
+
+        .cta-buttons {
+            display: flex;
+            gap: 1rem;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+
+        /* §§ FOOTER */
+        footer {
+            padding: 2rem clamp(1.5rem, 5vw, 4rem);
+            border-top: 1px solid var(--border);
+            text-align: center;
+            background: transparent;
+        }
+
+        .footer-copy {
+            font-size: var(--small-size);
+            color: var(--text-secondary);
+            opacity: 0.6;
+        }
+
+        /* §§ TESTIMONIALS */
+        .testimonials-section {
+            background: var(--bg-secondary);
+            border-top: 1px solid var(--border);
+            border-bottom: 1px solid var(--border);
+        }
+
+        .testimonials-list {
+            columns: 2;
+            column-gap: clamp(2rem, 4vw, 3rem);
+            margin-top: 2.5rem;
+        }
+
+        .pull-quote {
+            position: relative;
+            padding-left: clamp(1.5rem, 3vw, 2.5rem);
+            padding-top: 1rem;
+            border-left: 3px solid var(--accent-secondary);
+            break-inside: avoid;
+            margin-bottom: clamp(1.5rem, 3vw, 2.5rem);
+        }
+
+        .pull-quote::before {
+            content: '\201C';
+            position: absolute;
+            top: -0.15rem;
+            left: 0.1rem;
+            font-family: var(--font-display);
+            font-size: clamp(5.5rem, 8vw, 8rem);
+            font-weight: 700;
+            line-height: 1;
+            color: var(--accent-secondary);
+            opacity: 0.16;
+            pointer-events: none;
+            user-select: none;
+        }
+
+        .pull-quote blockquote {
+            font-family: var(--font-display);
+            font-size: clamp(1rem, 1.6vw, 1.25rem);
+            font-weight: 400;
+            line-height: 1.5;
+            letter-spacing: -0.01em;
+            color: var(--text-primary);
+            font-style: normal;
+        }
+
+        .pull-quote blockquote em {
+            color: var(--accent-secondary);
+            font-style: normal;
+            font-weight: 600;
+        }
+
+        /* §§ PARTNERS */
+        .partners {
+            background: var(--bg-secondary);
+            border-top: 1px solid var(--border);
+            border-bottom: 1px solid var(--border);
+        }
+
+        .partners-intro {
+            color: var(--text-secondary);
+            max-width: 640px;
+            margin-top: 1rem;
+            margin-bottom: 2.5rem;
+        }
+
+        .partners-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(min(100%, 200px), 1fr));
+            gap: clamp(0.75rem, 1.5vw, 1rem);
+        }
+
+        .partner {
+            padding: 1.5rem;
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            background: rgba(255, 255, 255, 0.95);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            font-family: var(--font-display);
+            font-size: var(--small-size);
+            font-weight: 500;
+            color: var(--text-secondary);
+            line-height: 1.35;
+            transition: border-color 0.3s;
+            min-height: 80px;
+        }
+
+        .partner:hover {
+            border-color: var(--border-hover);
+        }
+
+        .partner img {
+            max-width: 100%;
+            max-height: 64px;
+            object-fit: contain;
+            filter: none;
+            height: auto;
+        }
+
+        .partner-logo-scale img {
+            transform: scale(1.45);
+        }
+
+        /* §§ WORKSHOPS_BG */
+        .workshops-bg {
+            background: var(--bg-secondary);
+            border-top: 1px solid var(--border);
+            border-bottom: 1px solid var(--border);
+        }
+
+        /* §§ WORKSHOPS */
+        .workshop-listing {
+            display: flex;
+            flex-direction: column;
+            gap: clamp(1rem, 2vw, 1.5rem);
+            margin-top: 2.5rem;
+        }
+
+        .workshop-item {
+            padding: clamp(1.5rem, 3vw, 2rem);
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            transition: border-color 0.3s;
+        }
+
+        .workshop-item:hover {
+            border-color: var(--border-hover);
+        }
+
+        .workshop-header {
+            display: flex;
+            align-items: baseline;
+            gap: 0.75rem;
+            flex-wrap: wrap;
+            cursor: pointer;
+        }
+
+        .workshop-header h3 {
+            font-size: clamp(1rem, 1.8vw, 1.25rem);
+            line-height: 1.3;
+            flex: 1;
+            min-width: 0;
+        }
+
+        .workshop-header .format-duration {
+            flex-shrink: 0;
+        }
+
+        .workshop-toggle {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            flex-shrink: 0;
+            border: 1.5px solid var(--text-secondary);
+            border-radius: 50%;
+            position: relative;
+            transition: border-color 0.2s, transform 0.3s var(--ease-out-expo);
+            cursor: pointer;
+        }
+
+        .workshop-toggle::before,
+        .workshop-toggle::after {
+            content: '';
+            position: absolute;
+            background: var(--text-secondary);
+            transition: background 0.2s, transform 0.3s var(--ease-out-expo);
+        }
+
+        .workshop-toggle::before {
+            width: 10px;
+            height: 1.5px;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+        }
+
+        .workshop-toggle::after {
+            width: 1.5px;
+            height: 10px;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+        }
+
+        .workshop-item.open .workshop-toggle {
+            border-color: var(--accent);
+        }
+
+        .workshop-item.open .workshop-toggle::before,
+        .workshop-item.open .workshop-toggle::after {
+            background: var(--accent);
+        }
+
+        .workshop-item.open .workshop-toggle::after {
+            transform: translate(-50%, -50%) rotate(90deg);
+            opacity: 0;
+        }
+
+        .workshop-body {
+            display: grid;
+            grid-template-rows: 0fr;
+            transition: grid-template-rows 0.35s var(--ease-out-expo);
+        }
+
+        .workshop-item.open .workshop-body {
+            grid-template-rows: 1fr;
+        }
+
+        .workshop-body-inner {
+            overflow: hidden;
+        }
+
+        .workshop-body-inner p {
+            color: var(--text-secondary);
+            font-size: var(--small-size);
+            line-height: 1.7;
+            padding-top: 1.25rem;
+        }
+
+        /* §§ RESPONSIVE */
+        @media (max-width: 768px) {
+            .nav-links { display: none; }
+            .nav-links.open {
+                display: flex;
+                flex-direction: column;
+                align-items: flex-start;
+                text-align: left;
+                position: absolute;
+                top: 100%;
+                left: 0;
+                right: 0;
+                background: rgba(10, 15, 28, 0.95);
+                backdrop-filter: blur(12px);
+                -webkit-backdrop-filter: blur(12px);
+                padding: 1.25rem 2rem 1.75rem;
+                border-bottom: 1px solid var(--border);
+                gap: 0.15rem;
+            }
+            .nav-toggle { display: block; }
+            .nav-links a { padding: 0.65rem 0; white-space: normal; }
+            .nav-links a.active::after { display: none; }
+
+            .nav-dropdown { width: 100%; }
+            .nav-dropdown-menu {
+                display: none;
+            }
+
+            .nav-dropdown.mobile-open .nav-dropdown-menu {
+                display: block;
+                position: static;
+                opacity: 1;
+                visibility: visible;
+                transform: none;
+                background: transparent;
+                border: none;
+                box-shadow: none;
+                backdrop-filter: none;
+                -webkit-backdrop-filter: none;
+                padding: 0.35rem 0 0.25rem 1rem;
+                min-width: 0;
+            }
+
+            .nav-dropdown > a::before { display: none; }
+            .nav-dropdown > .nav-dropdown-toggle {
+                padding: 0.65rem 1.2rem 0.65rem 0;
+                cursor: pointer;
+                text-align: left;
+                width: 100%;
+            }
+            .nav-dropdown > .nav-dropdown-toggle::before {
+                display: block;
+                transition: transform 0.2s ease;
+            }
+            .nav-dropdown.mobile-open > .nav-dropdown-toggle::before {
+                transform: translateY(-75%) rotate(-135deg);
+            }
+            .nav-dropdown-toggle.active::after { display: none; }
+
+            .nav-dropdown-menu a {
+                padding: 0.4rem 0.85rem;
+                font-size: 0.88rem;
+                color: var(--text-muted);
+                justify-content: flex-start;
+            }
+            .nav-dropdown-menu a:hover,
+            .nav-dropdown-menu a.active {
+                color: var(--accent);
+            }
+
+            .topics-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .testimonials-list {
+                columns: 1;
+            }
+
+            .partners-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+
+            .partner {
+                padding: 1rem;
+            }
+
+            .partner img {
+                max-height: 48px;
+            }
+
+            .partner-logo-scale img {
+                transform: scale(1.2);
+            }
+
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            html { scroll-behavior: auto; }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- §§ NAV -->
+    <nav>
+        <a href="index.html" class="nav-brand"><span class="logo-icon" aria-hidden="true"></span>Open Augments</a>
+        <button class="nav-toggle" aria-label="Toggle navigation" aria-expanded="false">
+            <span></span><span></span><span></span>
+        </button>
+        <ul class="nav-links" id="nav-links">
+            <li><a href="index.html">Home</a></li>
+            <li><a href="index.html#mission">Our Mission</a></li>
+            <li class="nav-dropdown">
+                <button class="nav-dropdown-toggle active" aria-expanded="false" aria-haspopup="true">Our Services</button>
+                <ul class="nav-dropdown-menu">
+                    <li><a href="../daaf-product/index.html">Flagship project: DAAF &#8599;</a></li>
+                    <li><a href="#" class="active">Workshops &amp; Consulting</a></li>
+                </ul>
+            </li>
+            <li><a href="index.html#contact">Contact</a></li>
+            <li><a href="index.html#founder">About</a></li>
+        </ul>
+    </nav>
+
+    <!-- §§ HERO -->
+    <section class="hero">
+        <div class="container">
+            <p class="section-label">Workshops &amp; Consulting</p>
+            <h1>Expert training and strategic guidance for <span class="gradient-text">responsible AI adoption</span></h1>
+            <p class="subtitle">
+                We work directly with executive leaders, teams, researchers, and organizations
+                to build critical AI awareness grounded in rigor, transparency, and real-world applications.
+            </p>
+        </div>
+    </section>
+
+    <!-- §§ ENGAGEMENTS -->
+    <section class="engagements" id="engagements">
+        <div class="container">
+            <h2>Trusted by leading institutions and organizations</h2>
+            <p class="engagements-intro">
+                A selection of universities, foundations, research organizations, and professional societies we're supporting through workshops, presentations, and consulting engagements:
+            </p>
+            <div class="partners-grid">
+                <div class="partner"><img src="assets/logos/northwestern.png" alt="Northwestern University" loading="lazy"></div>
+                <div class="partner"><img src="assets/logos/uva.png" alt="University of Virginia" loading="lazy"></div>
+                <div class="partner"><img src="assets/logos/upenn.png" alt="University of Pennsylvania" loading="lazy"></div>
+                <div class="partner"><img src="assets/logos/stanford.png" alt="Stanford University" loading="lazy"></div>
+                <div class="partner"><img src="assets/logos/bu.png" alt="Boston University" loading="lazy"></div>
+                <div class="partner partner-logo-scale"><img src="assets/logos/rand.png" alt="RAND Corporation" loading="lazy"></div>
+                <div class="partner partner-logo-scale"><img src="assets/logos/urban-institute.png" alt="Urban Institute" loading="lazy"></div>
+                <div class="partner"><img src="assets/logos/gates-foundation.png" alt="Gates Foundation" loading="lazy"></div>
+                <div class="partner"><img src="assets/logos/aefp.png" alt="Association for Education Finance & Policy" loading="lazy"></div>
+                <div class="partner"><img src="assets/logos/sree.png" alt="Society for Research on Educational Effectiveness" loading="lazy"></div>
+            </div>
+        </div>
+    </section>
+
+    <!-- §§ APPROACH -->
+    <section class="approach">
+        <div class="container">
+            <div class="approach-layout">
+                <div class="approach-text">
+                    <p class="section-label">Our Approach</p>
+                    <h2>Deep experience, expertly distilled</h2>
+                    <div class="approach-body">
+                        <p>
+                            Brian brings years of direct, hands-on work with large language models and their predecessors dating back as early as 2019: through his Ph.D. studies pioneering the use of data science and machine learning techniques in the education policy field, as the Director of Data Science and Research for a national non-profit organization, and now as the developer of advanced agentic AI orchestration systems like DAAF for non-profits and researchers.
+                        </p>
+                        <p>
+                            In every engagement, Brian distills this deep set of experiences through the lens of his formal pedagogical training and classroom teaching experience to craft highly responsive, approachable, and actionable guidance that meets clients exactly where they are -- and to build durable understandings that extend well beyond any single tool, project, or trend.
+                        </p>
+                        <p>
+                            The end result: We help leaders, researchers, and teams build the critical intuition to evaluate these tools honestly, deploy them responsibly, and adapt as the landscape inevitably shifts, empowering more organizations and leaders to thrive in this rapidly changing era of AI.
+                        </p>
+                    </div>
+                </div>
+                <div class="approach-photos">
+                    <img src="assets/seminars_1.jpg" alt="Brian Kim presenting at a conference podium" loading="lazy">
+                    <img src="assets/seminars_2.jpg" alt="Brian Kim delivering a keynote presentation" loading="lazy">
+                    <img src="assets/seminars_3.jpg" alt="Brian Kim speaking on a panel discussion" loading="lazy">
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- §§ SERVICES -->
+    <section id="services">
+        <div class="container">
+            <p class="section-label">What We Offer</p>
+            <h2>Four complementary services for lasting impact</h2>
+            <div class="formats-grid">
+                <div class="format-card">
+                    <span class="format-icon" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="m16.24 7.76l-1.804 5.411a2 2 0 0 1-1.265 1.265L7.76 16.24l1.804-5.411a2 2 0 0 1 1.265-1.265z"/></g></svg></span>
+                    <h3>Strategic Consulting</h3>
+                    <p>
+                        High-level executive consulting to support strategic planning around AI/data investments,
+                        change management, and organizational mission redesigns in this rapidly changing era of AI.
+                    </p>
+                </div>
+                <div class="format-card">
+                    <span class="format-icon" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2 3h20m-1 0v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V3m4 18l5-5l5 5"/></svg></span>
+                    <h3>Workshops</h3>
+                    <p>
+                        Larger group sessions with hands-on components that accelerate AI skill and tool adoption
+                        across your team or organization, wherever they are along the AI adoption spectrum.
+                    </p>
+                </div>
+                <div class="format-card">
+                    <span class="format-icon" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 14c.2-1 .7-1.7 1.5-2.5c1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5c.7.7 1.3 1.5 1.5 2.5m0 4h6m-5 4h4"/></svg></span>
+                    <h3>Project Advising</h3>
+                    <p>
+                        Smaller group sessions to co-design applications of AI in a specific
+                        team or project context for maximum efficacy, rigor, and sustainability.
+                    </p>
+                </div>
+                <div class="format-card">
+                    <span class="format-icon" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"><path d="M12 15v5s3.03-.55 4-2c1.08-1.62 0-5 0-5M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09"/><path d="M9 12a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.4 22.4 0 0 1-4 2z"/><path d="M9 12H4s.55-3.03 2-4c1.62-1.08 5 .05 5 .05"/></g></svg></span>
+                    <h3>Personalized Coaching</h3>
+                    <p>
+                        One-on-one coaching to push individuals further along the AI skill and adoption spectrum,
+                        all the way from just starting out to designing and testing advanced AI orchestration
+                        workflows and systems.
+                    </p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- §§ TESTIMONIALS -->
+    <section class="testimonials-section" id="testimonials">
+        <div class="container">
+            <p class="section-label">What Our Clients Say</p>
+            <h2>In their own words...</h2>
+            <div class="testimonials-list">
+                <div class="pull-quote">
+                    <blockquote>That was <em>the most productive hour I have ever spent on AI education</em>... hands-on ideas pitched at a level that perfectly threaded the needle of generic (/generalizable) and concrete with respect to the work we do.</blockquote>
+                </div>
+                <div class="pull-quote">
+                    <blockquote>...this explanation of siloing short term contexts for different skills <em>completely shifted my paradigm</em> and will make AI a far more useful tool for me in the future.</blockquote>
+                </div>
+                <div class="pull-quote">
+                    <blockquote>This was the first AI workshop I've attended where I left <em>feeling empowered to expand my AI use</em> in research tasks.</blockquote>
+                </div>
+                <div class="pull-quote">
+                    <blockquote>...multiple faculty members have approached me with <em>overwhelmingly positive feedback</em>... Several also wanted to inquire about the possibility of [Brian] offering additional office hours</blockquote>
+                </div>
+                <div class="pull-quote">
+                    <blockquote>Let's do more sessions with Brian. He was <em>super approachable and easy to follow.</em></blockquote>
+                </div>
+                <div class="pull-quote">
+                    <blockquote><em>It was helpful to know the "what" behind the "why"</em>... the incremental approach is something that I believe is necessary. Many people think it's all or nothing, but I am a fan of the 1% each day kind of approach.</blockquote>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- §§ TOPICS -->
+    <section id="topics">
+        <div class="container">
+            <p class="section-label">Topics We Cover</p>
+            <h2>What you'll learn with us:</h2>
+            <div class="topic-groups">
+                <!-- Foundations -->
+                <div class="topic-group open">
+                    <div class="topic-group-header" onclick="this.parentElement.classList.toggle('open')">
+                        <div>
+                            <h3>Foundations</h3>
+                            <p class="topic-group-desc">Core mental models and techniques that underpin effective AI use</p>
+                        </div>
+                        <span class="workshop-toggle" aria-hidden="true"></span>
+                    </div>
+                    <div class="topic-group-body">
+                        <div class="topic-group-body-inner">
+                            <div class="topics-grid">
+                                <div class="topic">
+                                    <h3>How LLMs Actually Work</h3>
+                                    <p>A foundational mental model of what AI tools are doing mechanically when they generate text or analysis -- the basis for developing robust intuitions about when and how to use them effectively.</p>
+                                </div>
+                                <div class="topic">
+                                    <h3>Context Engineering</h3>
+                                    <p>The core discipline of structuring prompts, providing the right files and context, and managing token budgets to get reliable, high-quality AI outputs consistently.</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Practice & Tools -->
+                <div class="topic-group">
+                    <div class="topic-group-header" onclick="this.parentElement.classList.toggle('open')">
+                        <div>
+                            <h3>Practice &amp; Tools</h3>
+                            <p class="topic-group-desc">Hands-on skills for building, orchestrating, and refining AI workflows</p>
+                        </div>
+                        <span class="workshop-toggle" aria-hidden="true"></span>
+                    </div>
+                    <div class="topic-group-body">
+                        <div class="topic-group-body-inner">
+                            <div class="topics-grid">
+                                <div class="topic">
+                                    <h3>Reusable AI Workflows &amp; Agent Skills</h3>
+                                    <p>Designing, testing, and continuously improving modular AI workflows ("Agent Skills") that codify best practices into repeatable, shareable templates your team can build on.</p>
+                                </div>
+                                <div class="topic">
+                                    <h3>Multi-Agent Orchestration</h3>
+                                    <p>How orchestrator agents modularize and distribute tasks across parallel subagents -- and how to navigate the tension between greater automation and maintaining auditability.</p>
+                                </div>
+                                <div class="topic">
+                                    <h3>Architectural Prompting</h3>
+                                    <p>Using AI to help design and improve the instruction systems that govern its own behavior -- the meta-skill of building better AI frameworks with AI assistance.</p>
+                                </div>
+                                <div class="topic">
+                                    <h3>Evaluation, Testing &amp; Iteration</h3>
+                                    <p>Chat logging, structured testing, and systematic evaluation techniques to identify what's working, diagnose what isn't, and make AI workflows more reproducible and iterable over time.</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Strategy & Applications -->
+                <div class="topic-group">
+                    <div class="topic-group-header" onclick="this.parentElement.classList.toggle('open')">
+                        <div>
+                            <h3>Strategy &amp; Applications</h3>
+                            <p class="topic-group-desc">Applying AI responsibly to research, organizational missions, and leadership decisions</p>
+                        </div>
+                        <span class="workshop-toggle" aria-hidden="true"></span>
+                    </div>
+                    <div class="topic-group-body">
+                        <div class="topic-group-body-inner">
+                            <div class="topics-grid">
+                                <div class="topic">
+                                    <h3>AI-Assisted Data Analysis with DAAF</h3>
+                                    <p>Accelerating quantitative research with DAAF -- from data cleaning and exploration to statistical modeling -- while strictly enforcing transparency, reproducibility, and rigor.</p>
+                                </div>
+                                <div class="topic">
+                                    <h3>Responsible AI &amp; Transparency</h3>
+                                    <p>Frameworks for evaluating AI outputs, understanding limitations, maintaining reproducibility, and meeting emerging disclosure and accountability standards in research contexts.</p>
+                                </div>
+                                <div class="topic">
+                                    <h3>AI Strategy &amp; Investment Planning</h3>
+                                    <p>Executive-level guidance on evaluating AI opportunities, prioritizing data and AI investments, and developing strategic roadmaps aligned with organizational mission.</p>
+                                </div>
+                                <div class="topic">
+                                    <h3>Change Management &amp; AI Adoption</h3>
+                                    <p>Navigating the human side of AI integration -- building buy-in across leadership and staff, designing phased adoption strategies, and creating sustainable practices at every level of readiness.</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- §§ WORKSHOP_EXAMPLES -->
+    <section class="workshops-bg" id="workshop-examples">
+        <div class="container">
+            <p class="section-label">Sample workshops</p>
+            <h2>Sessions ready to be tailored to your context:</h2>
+            <div class="workshop-listing">
+                <div class="workshop-item open">
+                    <div class="workshop-header" onclick="this.parentElement.classList.toggle('open')">
+                        <h3>Beyond the Hype: Building a Critical Intuition for Effective Uses of AI Assistants in Your Work</h3>
+                        <span class="format-duration">2 hours</span>
+                        <span class="workshop-toggle" aria-hidden="true"></span>
+                    </div>
+                    <div class="workshop-body">
+                        <div class="workshop-body-inner">
+                            <p>AI assistants are increasingly capable -- but they can also hallucinate, produce unverifiable output, and confidently present wrong answers as fact. This creates a real tension: the tools are becoming too useful to ignore, but remain too unreliable to trust by definition. In this workshop, we'll introduce a foundational mental model of how these tools actually work -- what they're doing mechanically when they generate text or analysis -- so attendees can operate with a robust intuition for how to use AI in their workflows more reliably and responsibly. Attendees will learn a core set of best practices to get higher-quality AI assisted work, practice developing their own reusable AI workflows ("Agent Skills") that can be continuously improved over time, and learn how to deepen their practice from this foundational starting point with self-study and additional curated resources. This workshop will also introduce core AI concepts like Agents, Skills, context window management, Tools, and token usage management.</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="workshop-item">
+                    <div class="workshop-header" onclick="this.parentElement.classList.toggle('open')">
+                        <h3>From Chats to Pipelines: An Introduction to Multi-Stage Task Orchestration for Research Workflows with Claude Code</h3>
+                        <span class="format-duration">2 hours</span>
+                        <span class="workshop-toggle" aria-hidden="true"></span>
+                    </div>
+                    <div class="workshop-body">
+                        <div class="workshop-body-inner">
+                            <p>Even with a strong grasp of how LLMs work, using them well requires a great deal of effort and intention. Getting reliable output means carefully structuring many prompts, providing the right context and files, checking results, and then repeating the whole process again for each task. This workshop introduces attendees to the more scalable approach of agent "orchestration." Instead of directly overseeing all tasks in one sustained conversation with an assistant, attendees will learn how to leverage an "orchestrator" agent that modularizes and distributes tasks across multiple parallel assistants ("subagents") on their behalf. This workshop helps attendees understand and navigate the tension between greater automation and auditability/interpretability of AI systems while firmly staying in control of the decisions that matter most. Attendees will also be introduced to the Data Analyst Augmentation Framework (DAAF), an open-source research orchestration framework built on Claude Code, as a concrete exemplar for this style of workflow in practice that they can leverage and build on themselves.</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="workshop-item">
+                    <div class="workshop-header" onclick="this.parentElement.classList.toggle('open')">
+                        <h3>Getting Under the Hood: Advanced Agent Orchestration Techniques that Push the AI Capability Frontier with Claude Code</h3>
+                        <span class="format-duration">2 hours</span>
+                        <span class="workshop-toggle" aria-hidden="true"></span>
+                    </div>
+                    <div class="workshop-body">
+                        <div class="workshop-body-inner">
+                            <p>Once users can leverage AI orchestration frameworks, the core question of practice shifts from "how do I do this task?" to "how do I do this task most effectively and efficiently?" This workshop is about enhancing and extending on what attendees can already do -- learning the deeper mechanics that let them build more powerful, more reliable workflows and apply them to a wider range of problems. We cover best practices for "architectural" prompting (using AI to help design and improve the systems that govern its own behaviors and systems), advanced context engineering techniques, and the diagnostic tools (evaluation, chat logging, structured testing) that let users systematically identify what's working and fix what isn't. Attendees will also learn the more advanced version control and iteration practices that make these advanced workflows more testable, reproducible, and iterable over time. The goal is to move attendees from the beginner stages of developing these frameworks to someone who can confidently architect, evaluate, and extend them to fit whatever research problems they need to solve.</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="workshop-item">
+                    <div class="workshop-header" onclick="this.parentElement.classList.toggle('open')">
+                        <h3>Accelerating Responsible and Rigorous Quantitative Research with AI Agents and Claude Code: An Introduction to the Data Analyst Augmentation Framework (DAAF)</h3>
+                        <span class="format-duration">2 hours</span>
+                        <span class="workshop-toggle" aria-hidden="true"></span>
+                    </div>
+                    <div class="workshop-body">
+                        <div class="workshop-body-inner">
+                            <p>AI agents can now autonomously plan, write, review, and execute analytic code, raising urgent questions about their role in research given known risks like hallucinations and inaccuracies. This session provides researchers with an approachable framework for realizing the benefits of AI agents for more complex research workflows, while mitigating their very real risks, using DAAF: an open-source set of tools for Claude Code designed to accelerate data analysis while strictly enforcing transparency, reproducibility, and rigor. In addition to building familiarity with how to use and extend DAAF for their own purposes, attendees will leave with a strong understanding of the pros and cons of current AI agent frameworks for data analysis workflows, the main design considerations involved in robust "context engineering" practices, what these tools currently can and cannot do, as well as the intuition needed to evaluate their appropriateness for their own work.</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="workshop-item">
+                    <div class="workshop-header" onclick="this.parentElement.classList.toggle('open')">
+                        <h3>Data Science Instruction in the Era of AI: Critical Questions and Considerations for Practice</h3>
+                        <span class="format-duration">2 hours</span>
+                        <span class="workshop-toggle" aria-hidden="true"></span>
+                    </div>
+                    <div class="workshop-body">
+                        <div class="workshop-body-inner">
+                            <p>Just as AI tools are rapidly reshaping what it means to practice data science and statistics, so too are they reshaping what it means to teach data science and statistics. Professors and instructors are now faced with an extremely difficult challenge: How can you redesign your curriculum to respond to the expanding role of AI in students' lives without knowing what kinds of jobs and careers will exist for them in the future? What skills and topics and experiences will be valuable for students beyond just the next few months? This workshop brings faculty together to work through those design tensions directly. We'll introduce practical heuristics for distinguishing "durable" skills in the era of AI, explore targeted opportunities to modernize curricula and assignments without abandoning the conceptual depth that makes graduates genuinely capable, and develop a more informed critical lens for evaluating AI developments as they continue to emerge. Participants come having pre-identified core "problems of practice" from reviewing their syllabi for the upcoming semester, so that the session's facilitated discussions center on real design tensions rather than hypotheticals -- questions like what trade-offs exist between productive struggle and AI assistance in the classroom, what role assessment should play when students can generate plausible-looking work effortlessly, and what opportunities AI presents for richer course materials and activities. Attendees will leave with concrete strategies for more agile curriculum adaptation and a stronger framework for making principled instructional decisions as the landscape continues to shift.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- §§ CTA -->
+    <section class="cta-section" id="book">
+        <div class="container">
+            <p class="section-label">Work With Us</p>
+            <h2>Let's design something together</h2>
+            <p class="cta-body">
+                Our calendar is fully committed for the next few months, but we're still actively booking engagements three to four months out. Whether you need strategic consulting, team workshops, project advising, or individual coaching, reach out now and we'll find the right fit for your timeline and goals.
+            </p>
+            <div class="cta-buttons">
+                <a href="mailto:brhkim@openaugments.org" class="btn btn-primary">Start a Conversation</a>
+            </div>
+        </div>
+    </section>
+
+    <!-- §§ FOOTER -->
+    <footer>
+        <p class="footer-copy">&copy; 2026 Open Augments LLC. All rights reserved.</p>
+    </footer>
+
+    <!-- §§ SCRIPTS -->
+    <script>
+        // Mobile nav toggle
+        const toggle = document.querySelector('.nav-toggle');
+        const navLinks = document.getElementById('nav-links');
+        toggle.addEventListener('click', () => {
+            const open = navLinks.classList.toggle('open');
+            toggle.setAttribute('aria-expanded', open);
+            // When closing the nav, also close any open dropdowns
+            if (!open) {
+                document.querySelectorAll('.nav-dropdown.mobile-open').forEach(function(dd) {
+                    dd.classList.remove('mobile-open');
+                    var btn = dd.querySelector('.nav-dropdown-toggle');
+                    if (btn) btn.setAttribute('aria-expanded', 'false');
+                });
+            }
+        });
+
+        // Mobile dropdown expand/collapse
+        document.querySelectorAll('.nav-dropdown-toggle').forEach(function(btn) {
+            btn.addEventListener('click', function() {
+                var dropdown = btn.closest('.nav-dropdown');
+                dropdown.classList.toggle('mobile-open');
+                btn.setAttribute('aria-expanded', dropdown.classList.contains('mobile-open'));
+            });
+        });
+
+        // Close mobile nav on link click
+        navLinks.querySelectorAll('a').forEach(link => {
+            link.addEventListener('click', () => {
+                navLinks.classList.remove('open');
+                toggle.setAttribute('aria-expanded', 'false');
+                // Also close any open dropdowns
+                document.querySelectorAll('.nav-dropdown.mobile-open').forEach(function(dd) {
+                    dd.classList.remove('mobile-open');
+                    var btn = dd.querySelector('.nav-dropdown-toggle');
+                    if (btn) btn.setAttribute('aria-expanded', 'false');
+                });
+            });
+        });
+
+        // §§ DROPDOWN_FOCUS_LOCK_FIX — prevent focus-lock on button click while preserving keyboard focus
+        document.querySelectorAll('.nav-dropdown-toggle').forEach(function(btn) {
+            btn.addEventListener('mousedown', function(e) { e.preventDefault(); });
+        });
+    </script>
+</body>
+</html>
