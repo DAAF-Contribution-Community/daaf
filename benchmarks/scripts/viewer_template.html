@@ -3,18 +3,18 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>DAAF Benchmarks &mdash; How Well Do AI Models Follow a Rigorous Research Framework?</title>
+<title>DAAFBench: How Well Do AI Models Follow a Rigorous Research Framework?</title>
 <meta name="description" content="Benchmarking language models on whether they can operate DAAF, a structured open-source research framework, as designed: routing requests, following protocol, delegating to subagents, and grounding methodological advice. Every score traces to an individual archived run.">
 <!-- OpenGraph / Twitter cards. og:image is deliberately omitted (deferred to
      the deploy infrastructure — it must be an absolute URL on the host).
      DEPLOY STEP: replace the og:url placeholder below with the final public
      URL before publishing. -->
-<meta property="og:title" content="DAAF Benchmarks — How Well Do AI Models Follow a Rigorous Research Framework?">
-<meta property="og:description" content="Language models dropped into a live research-orchestration framework and scored on whether they follow its protocols — with every number traceable to an individual archived run.">
+<meta property="og:title" content="DAAFBench: How Well Do AI Models Follow a Rigorous Research Orchestration Framework?">
+<meta property="og:description" content="Language models dropped into a live research-orchestration framework and scored on whether they follow its protocols, with every number traceable to an individual archived run.">
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://daaf.openaugments.org/REPLACE-WITH-FINAL-URL.html">
 <meta name="twitter:card" content="summary">
-<meta name="twitter:title" content="DAAF Benchmarks — How Well Do AI Models Follow a Rigorous Research Framework?">
+<meta name="twitter:title" content="DAAFBench: How Well Do AI Models Follow a Rigorous Research Orchestration Framework?">
 <meta name="twitter:description" content="Language models dropped into a live research-orchestration framework and scored on whether they follow its protocols.">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='3' fill='%236366f1'/%3E%3Ctext x='8' y='12.5' font-size='11' font-weight='700' text-anchor='middle' fill='%23f8fafc' font-family='Arial,sans-serif'%3ED%3C/text%3E%3C/svg%3E">
 <style>
@@ -476,7 +476,7 @@ code{ font-family:'SF Mono',SFMono-Regular,Consolas,'Liberation Mono',Menlo,mono
 <noscript>
   <p style="max-width:900px;margin:18px auto;padding:12px 16px;background:#1e293b;border:1px solid #f59e0b;border-radius:8px;font-size:14px;line-height:1.6;color:#f8fafc">
     This page is an interactive report rendered by JavaScript from data embedded
-    directly in this single file &mdash; nothing is fetched from a network, and no
+    directly in this single file: nothing is fetched from a network, and no
     data leaves your machine. With JavaScript disabled you will see only section
     headings and static prose; every table, chart, and run transcript needs
     JavaScript enabled to render.
@@ -487,7 +487,7 @@ code{ font-family:'SF Mono',SFMono-Regular,Consolas,'Liberation Mono',Menlo,mono
 <!-- TOC rail (scrollspy active-state managed by JS)                -->
 <!-- ============================================================== -->
 <nav class="toc-rail" id="toc-rail">
-  <div class="toc-title">DAAF Benchmarks</div>
+  <div class="toc-title">DAAFBench Explorer</div>
   <a class="toc-link" href="#hero" data-target="hero">Verdict</a>
   <a class="toc-link" href="#takeaways" data-target="takeaways">Key Takeaways</a>
   <a class="toc-link" href="#about" data-target="about">About This Benchmark</a>
@@ -505,19 +505,27 @@ code{ font-family:'SF Mono',SFMono-Regular,Consolas,'Liberation Mono',Menlo,mono
 
 <!-- 1. Hero / Verdict -->
 <section class="doc-section hero" id="hero">
-  <h1>How well do different AI models handle the complexities of rigorous research workflows?</h1>
-  <div class="gen">Generated __GENERATED_DISPLAY__ UTC</div>
+  <h1>How well do different AI models handle the complexities of rigorous research orchestration workflows?</h1>
+  <div class="gen">Report Updated __GENERATED_DISPLAY__ UTC</div>
   <p class="hero-sub">
     <a href="https://daaf.openaugments.org">DAAF (the Data Analyst Augmentation
     Framework)</a> is a free,
     <a href="https://github.com/DAAF-Contribution-Community/daaf">open-source</a>
-    instructions framework that turns Claude Code into a structured, auditable
-    research assistant. This benchmark drops
-    <span id="hero-models">&mdash;</span> language models into the live framework
-    and scores whether each one can operate it as designed &mdash; routing requests,
-    following protocol, delegating cleanly, and grounding its methodological
-    advice. Every number on this page traces to an individual archived run.
+    toolkit and instructions framework that turns Claude Code into a rigorous quantitative research engine with the human researcher at the helm: every step auditable, every output verifiable, every decision theirs to make. DAAF layers together a suite of architectural defenses and strategies from the current frontier of AI best practices to maximize AI output quality and force Claude Code to operate more like a careful and thoughtful researcher at every opportunity. 
   </p>
+  <p class="hero-sub">
+    One of the core features of this system is something called "agentic orchestration," or the complex process of weaving together multiple AI assistants in concert to tackle increasingly complex research workflows: anything from iterating continuously on a data visualization script to developing entire data analytic pipelines from a given research question. DAAF (and other orchestration frameworks) does this by giving a series of intensive instructions, guidelines, and workflows to the AI assistants as they work, breaking tasks down into more concrete and tractable sub-tasks, facilitating better coordination, managing work tracking and documentation, and enforcing adherence to a set of unifying work principles (e.g., auditability, human-in-the-loop, rigorous self-verification processes, etc.).
+  </p>
+  <p class="hero-sub">
+    But a framework like this only works if the AI assistants are sophisticated enough to actually understand, apply, and remember these instructions thoughtfully and consistently. This page walks through the initial results of DAAFBench, a series of bespoke benchmark tests explicitly designed to test adherence to the research protocols and process guidelines of DAAF and assess a given model's suitability for operating along guidelines that make rigorous, reproducible, and responsible social science at scale possible with AI assistants. The results below summarize multi-dimensional performance assessments for 17 models (both official Anthropic models, as well as open-weights models accessible via OpenRouter, which is immediately compatible with Claude Code and DAAF) across over 1,700 different test repetitions designed to simulate key moments of orchestration decision-making and protocol adherence. Importantly, it measures <b>behavioral conformance only</b>:
+    not answer quality, not analytical capability, not general intelligence. A
+    brilliant analyst model that skips confirmation gates scores poorly here,
+    and a modest model that faithfully follows protocol scores well. 
+      </p>
+  <p class="hero-sub">
+    But these results are a crucial step in understanding how models actually perform under these conditions and allow for far greater nuance in thinking about the exact use of specific models (especially more expensive versus cheaper, and proprietary versus open-source) across these types of workflows. Most importantly, it allows us to more directly track whether and when locally-hosted models (e.g., on a home computer with consumer hardware) can start to tackle these sorts of tasks, opening the door for unprecedented access to analytic capacity going forward.
+  </p>
+
   <div class="chip-row" id="hero-chips"></div>
   <div class="verdict" id="hero-verdict"></div>
 </section>
@@ -527,147 +535,71 @@ code{ font-family:'SF Mono',SFMono-Regular,Consolas,'Liberation Mono',Menlo,mono
      to a visible dash, never a stale number. Maintenance rules in the
      generator's dev-guide comment block.) -->
 <section class="doc-section" id="takeaways">
-  <h2>Key Takeaways</h2>
-  <span class="kt-badge">Editorial takeaways &mdash; June 2026 corpus</span>
-  <p class="kt-disclaimer">
-    These six readings are the maintainer&rsquo;s interpretation &mdash; the one
-    hand-written layer on a page that otherwise computes its prose from the
-    embedded results. The numbers inside them are injected from the same data
-    as every chart; the framing is editorial. Form your own view: each claim
-    points onward to the section that computes it. (Scores below are
-    Perfect-run rates &mdash; the share of runs where a model got everything
-    exactly right; this and every other term is defined in
-    <a href="#about">About</a>, just below.)
-  </p>
+  <h2>Key Takeaways (June 2026)</h2>
 
   <div class="kt-item">
-    <div class="kt-claim">1. Fable 5 is in a class of its own.</div>
-    <p>Fable 5 leads the composite at <b><span id="kt-t1-comp">&mdash;</span></b>
+    <div class="kt-claim">1. Fable 5 is genuinely in a class of its own.</div>
+    <p>Fable 5 leads the scoreboard at <b><span id="kt-t1-comp">&mdash;</span></b>
     &mdash; <b><span id="kt-t1-margin">&mdash;</span></b> points clear of the next
-    model, roughly <span id="kt-t1-gapx">&mdash;</span>&times; the
-    <span id="kt-t1-thresh">&mdash;</span>-point gap that defines a tier break on
-    this page. It is also the most consistent model in the corpus:
-    <b><span id="kt-t1-cons">&mdash;</span></b> of its repeated cases were perfect
-    on every repetition. See the <a href="#leaderboard">Leaderboard</a>.</p>
+    model. It is also by far the most consistent model tested:
+    <b><span id="kt-t1-cons">&mdash;</span></b> of its repeated cases scored perfectly across every criterion
+    on every single repetition. Given that errors and issues quickly percolate and multiply in these chained agentic systems, this is an enormously valuable characteristic relative to competitors, and likely holds similar additional value in terms of code quality and other moment-to-moment junctures not tested by this benchmark.</p>
   </div>
 
   <div class="kt-item">
-    <div class="kt-claim">2. Opus 4.7 was a real regression &mdash; and Opus 4.8 recovered.</div>
-    <p>Across the Opus line, the composite runs
-    <span id="kt-t2-o45">&mdash;</span> (4.5) &rarr;
-    <span id="kt-t2-o46">&mdash;</span> (4.6) &rarr;
-    <b><span id="kt-t2-o47">&mdash;</span></b> (4.7) &rarr;
-    <span id="kt-t2-o48">&mdash;</span> (4.8). The slide spans two releases,
-    but 4.7&rsquo;s distinctive failure is concentrated in subagent behavior
-    (P3b): <b><span id="kt-t2-o47p3b">&mdash;</span></b> versus
-    <span id="kt-t2-o46p3b">&mdash;</span> for 4.6 &mdash; the specialists it
-    dispatched stopped following their own working rules. 4.8 doesn&rsquo;t
-    just recover: it posts the line&rsquo;s best showing yet and is the only
-    Opus to reach the second tier &mdash; the rest of the line shares the band
-    below it. See the <a href="#phases">Phase Deep-Dives</a>.</p>
+    <div class="kt-claim">2. Opus 4.7 was genuinely worse than Opus 4.5/4.6, but Opus 4.8 was a strong return to form.</div>
+    <p>Claude Opus 4.7 was widely criticized for being far too stingy in its effort, perceived as an strategy by Anthropic to manage intense compute constraints at launch time. The testing bears this out empirically: Opus 4.5 and 4.6 scored at
+    <span id="kt-t2-o45">&mdash;</span> and 
+    <span id="kt-t2-o46">&mdash;</span>, respectively, while Opus 4.7 came in at 
+    <b><span id="kt-t2-o47">&mdash;</span></b>. Trends are even more pronounced when focusing only on critical criteria completion ("Critical-only"): scores excluding the valuable but less mission-critical criteria otherwise. That being said, 4.8 was the best of the Opus line so far by a wide margin at
+    <span id="kt-t2-o48">&mdash;</span>.</p>
   </div>
 
   <div class="kt-item">
-    <div class="kt-claim">3. Sonnet 4.6 is the quiet bargain at the frontier.</div>
-    <p>Sonnet 4.6 posts <b><span id="kt-t3-comp">&mdash;</span></b> &mdash;
-    #2 overall, ahead of every Opus model in this corpus (best Opus:
-    <span id="kt-t3-bestopus">&mdash;</span>) &mdash; and gets there cheaply:
+    <div class="kt-claim">3. Sonnet 4.6 is an enormously high performer relative to its cost.</div>
+    <p>Sonnet 4.6 posts a Perfect average score of <b><span id="kt-t3-comp">&mdash;</span></b> &mdash;
+    #2 overall, shockingly ahead of every Opus model in this corpus (best Opus:
+    <span id="kt-t3-bestopus">&mdash;</span>) except in the Critical-only category. And it does so cheaply:
     running this benchmark&rsquo;s full battery on Sonnet costs roughly
     <b><span id="kt-t3-batpct">&mdash;</span>%</b> of what it costs on
-    Opus 4.8. Frontier-grade protocol adherence without frontier spend. See
-    <a href="#cost-performance">Cost vs. Performance</a>.</p>
+    Opus 4.8. Recognizing that there is uncertainty/imprecision in these results, and many model capabilities not explicitly tested by these current tests, these numbers nonetheless suggest Sonnet 4.6 is more than capable of orchestration work on a budget with potentially minimal trade-off.</p>
   </div>
 
   <div class="kt-item">
-    <div class="kt-claim">4. Open-weight models are credible &mdash; and the case for them is control, not price.</div>
-    <p>DeepSeek V4 Pro leads the open-weight pack at
-    <b><span id="kt-t4-dspro">&mdash;</span></b>, edging GLM 5.1
-    (<span id="kt-t4-glm">&mdash;</span>) &mdash; and landing in the same tier
-    as most of the Opus line. The argument is no longer about price: running
-    the battery on DS Pro costs about
-    <span id="kt-t4-sonratio">&mdash;</span> as much as on Sonnet 4.6. What
-    open weights buy instead is control &mdash; you can self-host them,
-    inspect them, and keep the exact version your workflow was validated on.
-    One honest caveat: DS Pro
-    carries the corpus&rsquo;s second-highest timeout rate
-    (<span id="kt-t4-dsto">&mdash;</span> of runs), so its scores come with a
-    reliability asterisk. See the <a href="#leaderboard">Leaderboard</a>.</p>
+    <div class="kt-claim">4. Open-weight models are highly capable as a win for self-hosting opportunities, but with a meaningful and crucial decline in consistency.</div>
+    <p>DeepSeek V4 Pro 
+    (<span id="kt-t4-dspro">&mdash;</span>) and GLM 5.1
+    (<span id="kt-t4-glm">&mdash;</span>) lead the open-weight pack, with the considerably cheaper DeepSeek V4 Flash a close follower (<span id="kt-t4-dsflash">&mdash;</span>) -- all landing in the same neighborhood
+    as most of the Opus line. That being said, while much cheaper in terms of price-per-token, differences in token consumption patterns still place them in roughly the same cost bracket as Sonnet (with the exception of DeepSeek V4 Flash). The empirical trade-off then is less about price versus raw performance, and more about the value of control and performance consistency. Open-weight models allow for self-hosting, modification/fine-tuning, and long-term support guarantees (i.e., not worrying about Opus 4.5 getting sun-setted in a few months when multiple analyses and products rely explicitly on it). But the testing battery also reveals a marked drop in performance consistency -- the Anthropic models perform predictably for the same tasks (for better and for worse), while the open-weight models perform more erratically on repeated runs. Moreover, DeepSeek Pro
+    carries the &rsquo;s second-highest timeout rate
+    (<span id="kt-t4-dsto">&mdash;</span> of runs) across all models tested, so its scores come with a broader
+    reliability asterisk as well.</p>
   </div>
 
   <div class="kt-item">
-    <div class="kt-claim">5. DeepSeek V4 Flash is strikingly cheap &mdash; and weaker where it counts.</div>
-    <p>On the headline composite, Flash is a near-tie with GLM 5.1
-    (<span id="kt-t5-dscomp">&mdash;</span> vs
-    <span id="kt-t5-glmcomp">&mdash;</span>). But on the lower bar that asks
-    &ldquo;will it generally work through the system as intended?&rdquo; &mdash;
-    Critical-only, counting just the must-pass criteria &mdash; Flash falls
-    meaningfully behind: <b><span id="kt-t5-dshard">&mdash;</span></b> vs
-    <b><span id="kt-t5-glmhard">&mdash;</span></b>. The price is still the
-    story: roughly 1/<span id="kt-t5-glmx">&mdash;</span> of GLM&rsquo;s cost
-    to run the entire battery, and 1/<span id="kt-t5-opusx">&mdash;</span> of
-    Opus 4.8&rsquo;s. See the
-    <a href="#leaderboard">Leaderboard</a> metric toggle.</p>
-  </div>
-
-  <div class="kt-item">
-    <div class="kt-claim">6. Local-class models aren&rsquo;t there yet &mdash; and Gemma 4 31B often fails to finish at all.</div>
+    <div class="kt-claim">5. Local-class open-weight models just aren&rsquo;t there yet.</div>
     <p>Qwen 3.6 27B, the best of the small open models here, manages
     <span id="kt-t6-qwen">&mdash;</span>, and its weakest points sit exactly
-    where an orchestration framework hurts most: skill routing
-    (<span id="kt-t6-qwenp4">&mdash;</span> perfect on P4) and mode
-    classification (<span id="kt-t6-qwenp1">&mdash;</span> on P1). Gemma 4 31B timed
-    out on <b><span id="kt-t6-g31to">&mdash;</span></b> of its runs by the
-    harness&rsquo;s timed-out flag &mdash; a measure that counts both wall-clock
-    timeouts and silent stalls that ran out the clock &mdash; by far the worst
-    reliability in the corpus. Both Gemma variants score zero on skill routing
-    (P4). See <a href="#cases">Cases &amp; Consistency</a>.</p>
+    where an orchestration framework hurts most: careful skill routing
+    (basically: How often does it load the necessary grounding references before it responds to questions? <span id="kt-t6-qwenp4">&mdash;</span>) and mode
+    classification (basically: How often does it correctly assign a natural language query to the right workflow process? <span id="kt-t6-qwenp1">&mdash;</span>). Gemma 4 31B timed
+    out on <b><span id="kt-t6-g31to">&mdash;</span></b> of its runs, often not actually doing any work at all when queried: by far the worst
+    reliability in the corpus. Some of these results may be simple harness incompatibility (Claude Code is not optimized for communicating with Gemma or Qwen, to be clear), but nonetheless point to more necessary improvements/development to be viable for rigorous research orchestration workflows. That being said, they <em>will</em> get there someday, and with DAAFBench, we'll now be able to know when they do!</p>
   </div>
 
   <p class="kt-foot">
-    Read these with the corpus&rsquo;s caveats in hand: repetition counts are
-    uneven across providers and models, so some per-phase differences rest on
-    small run counts; cost comparisons are rough relative multipliers &mdash;
-    the estimated cost to run the full
+    Some key caveats to keep in mind while reviewing the results: repetition counts are relatively small and can be 
+    uneven across providers and models due to cost limitations, so recognize the results are necessarily imprecise; cost comparisons are based on rough relative multipliers (the estimated cost to run the full
     <span id="kt-foot-bat">&mdash;</span>-probe battery once, from uncached
-    published list prices applied to each model&rsquo;s observed token mix
-    &mdash; and these relative figures can shift as providers reprice tokens
+    published list prices applied to each model&rsquo;s observed token mix) and these relative figures can shift as providers reprice tokens
     and as provider caching mechanics interact with each model&rsquo;s
-    behavior (definition and caveats in <a href="#costs">Costs Detail</a>);
-    and tier bands are derived from gaps in the composite ranking, not fixed
-    thresholds &mdash; small score shifts can re-tier a model. Full caveat
-    list in <a href="#about">About This Benchmark</a>.
+    behavior. See more detail in the Key Caveats section below.
   </p>
 </section>
 
 <!-- 3. About This Benchmark -->
 <section class="doc-section about" id="about">
   <h2>About This Benchmark</h2>
-  <p class="about-intro">
-    <a href="https://daaf.openaugments.org">DAAF (the Data Analyst Augmentation
-    Framework)</a> is a free,
-    <a href="https://github.com/DAAF-Contribution-Community/daaf">open-source</a>
-    instructions framework that turns Claude Code into a structured research
-    assistant: it routes each request into the right workflow, makes the
-    assistant load the reference documents that define how the work should be
-    done, hands work to specialist subagents with clear instructions, and
-    requires methodological advice to be grounded in curated reference material
-    rather than improvised from training data. A framework like that only works
-    if the model inside it actually follows the structure &mdash; so this page
-    measures exactly that.
-  </p>
-  <p class="about-intro">
-    Each of the <span id="ab-runs">1,700+</span> runs drops one of
-    <span id="ab-models">17</span> language models into a live DAAF session
-    &mdash; hooks firing, skills discoverable, agents dispatchable, nothing
-    mocked &mdash; and scores its observable behavior against the
-    framework&rsquo;s own rules. It measures <b>behavioral conformance only</b>:
-    not answer quality, not analytical capability, not general intelligence. A
-    brilliant analyst model that skips confirmation gates scores poorly here,
-    and a modest model that faithfully follows protocol scores well. One honest
-    confound to hold onto throughout: DAAF&rsquo;s framework instructions were
-    authored and tuned with Claude Opus 4.5/4.6 in mind, so part of any
-    cross-model difference is prompting-style fit rather than capability.
-  </p>
 
   <div class="two-bars">
     <p><b>Two bars run through every number on this page.</b>
@@ -831,7 +763,7 @@ code{ font-family:'SF Mono',SFMono-Regular,Consolas,'Liberation Mono',Menlo,mono
   </details>
 
   <details>
-    <summary>Reading caveats</summary>
+    <summary>Key caveats</summary>
     <div>
       <ul>
         <li><b>This is one view under one orchestration system, not a model exam.</b>
