@@ -70,18 +70,47 @@
   --font-body:'DM Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;
   --font-mono:'JetBrains Mono','SF Mono',SFMono-Regular,Consolas,'Liberation Mono',Menlo,monospace;
   --nav-height:88px;
+  /* Mobile sticky-TOC height (site --toc-scroll-height idiom, fine-tuning
+     round 3 Wave B): 0 on desktop; the <=900px block sets ~50px so anchor
+     landings clear the sticky TOC bar. Wired into scroll-padding-top below
+     and read by navSpyOffset() in the scrollspy. */
+  --toc-scroll-height:0px;
   --ease-out-expo:cubic-bezier(0.16,1,0.3,1);
 }
 
 /* === Reset & Base === */
 *{ margin:0; padding:0; box-sizing:border-box; }
 /* scroll-padding is nav-height-aware (geometry rework, 2026-06-12): hash
-   jumps must land below the 3px gradient strip + sticky 88px topbar */
-html{ scroll-behavior:smooth; scroll-padding-top:calc(var(--nav-height) + 3px + 14px); }
+   jumps must land below the 3px gradient strip + sticky 88px topbar — and,
+   since fine-tuning round 3 Wave B, below the mobile sticky TOC bar too
+   (--toc-scroll-height: 0 desktop / ~50px under 900px, the site idiom). */
+html{ scroll-behavior:smooth; scroll-padding-top:calc(var(--nav-height) + 3px + var(--toc-scroll-height) + 14px); }
 body{
   background:var(--surface-0); color:var(--text-1);
   font-family:var(--font-body);
   line-height:1.5;
+  /* NO body-level overflow guard (round-3 post-review fix pass; replaces
+     Wave B's body{overflow-x:hidden}). Per css-overflow-3 §3.3 a body
+     overflow value PROPAGATES to the viewport when html is
+     overflow:visible (it is, here and on the site), with body's own used
+     value reverting to visible — so the Wave B rule never guarded body at
+     all; it put overflow-x:hidden on the VIEWPORT's scroll machinery.
+     hidden (unlike clip) creates a scroll container: residual horizontal
+     overflow became a scrollable-but-scrollbarless viewport axis instead
+     of being clipped away. User-observed consequences on this
+     content-heavy page: mobile panned the layout viewport so the
+     pinned-to-scrollport sticky topbar slid partially off-screen and the
+     viewport read as mis-sized, and scrolling went axis-locked
+     (one-direction-at-a-time) on desktop. The site DOES run
+     body{overflow-x:hidden} + sticky nav (learn-understanding.html L82/
+     L143; daaf_anatomy.css L81/L114) — but its pages have no horizontal
+     overflow pressure, so the propagated guard is inert there: Wave B
+     copied the rule without the conditions that keep it harmless.
+     body{overflow-x:clip} is NOT the fix either — it propagates the same
+     way, and the viewport treats propagated clip as hidden. The working
+     guard is overflow-x:clip on the CONTENT CONTAINER (see .doc), which
+     never touches the viewport and never creates a scroll container. Do
+     NOT reintroduce overflow-x (hidden OR clip) on body or html. */
 }
 /* Brand gradient strip (site body::before, mirrored verbatim) */
 body::before{
@@ -108,35 +137,120 @@ h1,h2,h3{ font-family:var(--font-display); letter-spacing:-0.02em; }
   margin-bottom:4px;
 }
 
+/* === Prose emphasis tiers (site idiom; fine-tuning round 3, Wave C) ===
+   The DAAF site dims body prose and makes emphasis work by BRIGHTENING,
+   not coloring: strong = bright text at w600 (the Learn page
+   .doc-content strong rule; 600 is also the heaviest DM Sans weight this
+   page loads, so browser-default <b> 700 was being synthesized), em =
+   muted italic (de-emphasis lands one step BELOW its surface's body
+   color), and a RARE accent-strong for the one claim/number per major
+   section the reader must retain. Budget discipline (measured on the
+   site itself — do not dilute): ~1 plain-strong thesis phrase per
+   paragraph; accent-strong AT MOST once per major section; em sparingly
+   for single-word stress. Scoped to the hand-written prose surfaces
+   ONLY — JS-rendered data surfaces (lb/cp/pd findings, pd explainers/
+   callouts, tooltips, badges, table cells, case browser) keep their
+   deliberate weights and colors, and the colored .crit-pass/.crit-fail
+   spans are untouched (these rules select b/strong/i/em elements only,
+   never classed spans). Accent-strong is TEAL deliberately: the site's
+   own body-prose accent-strong is teal, and here accent-strong is
+   voice/brand emphasis — the chrome family (prose links in these same
+   paragraphs are already teal) — not an in-content interactive element,
+   so the teal-chrome/indigo-content token split (see :root comment) is
+   respected, not violated. It appears only inside pure prose paragraphs,
+   never beside status-colored cells (the pass-green-proximity concern
+   that keeps teal out of data surfaces). Teal measured 8.78:1 on the
+   surfaces (WP8 re-audit) — clears the 4.5:1 small-text floor. */
+.hero-sub b,.hero-sub strong,
+.section-lead b,.section-lead strong,
+.kt-item p b,.kt-item p strong,
+.about-intro b,.about-intro strong,
+.about details > div b,.about details > div strong,
+.two-bars b,.two-bars strong,
+.foot-details b,.foot-details strong,
+.prov-foot b,.prov-foot strong{
+  color:var(--text-1); font-weight:600;
+}
+.hero-sub i,.hero-sub em,
+.section-lead i,.section-lead em,
+.kt-item p i,.kt-item p em,
+.about details > div i,.about details > div em,
+.two-bars i,.two-bars em,
+.foot-details i,.foot-details em,
+.prov-foot i,.prov-foot em{
+  color:var(--text-3); font-style:italic;
+}
+/* .about-intro reads at --text-1 (the voice-anchor prose carries full
+   brightness), so its de-emphasis step lands on --text-2 — the same
+   one-step-down relationship as the site, different absolute color. */
+.about-intro i,.about-intro em{ color:var(--text-2); font-style:italic; }
+/* Declared LAST and .doc-prefixed: (0,2,1) outranks the (0,1,1) scoped
+   strong rules above and wins the source-order tie with .kt-item p b. */
+.doc b.accent-strong,.doc strong.accent-strong{ color:var(--accent-teal); font-weight:600; }
+
 /* === Document Layout: fixed TOC rail + scrolling document ===
    Rail top is nav-height-aware (geometry rework, 2026-06-12): it starts
    below the gradient strip + sticky topbar instead of top:0, so the two
    never collide. The viewer's scrollspy stays authoritative for this rail;
-   the ported site nav JS never touches it. */
+   the ported site nav JS never touches it.
+   Restyled to the Learn page's .doc-toc idiom (fine-tuning round 3,
+   Wave B): "On this page" mini-title, mono muted links on a 1px hairline
+   rail with a 2px teal active bar (teal is correct — the TOC is chrome
+   per the accent split). The rail STAYS fixed/full-height at the far left
+   (user decision: keep the page's horizontal real estate; the Learn
+   page's centered grid was deliberately not adopted).
+   Markup decision (Wave B): ONE markup element restyled by media query —
+   not the site's dual-markup (hidden aside + separate mobile strip). The
+   existing scrollspy + click handler select on .toc-link; a single link
+   set keeps the 9-link parity with SECTION_IDS trivially verifiable and
+   cannot drift between two copies. Structure: .toc-rail (wrap; carries
+   the mobile edge fades) > .toc-scroll (the mobile horizontal scroller)
+   > .toc-list (the 1px-rail link group) + .toc-top. */
 .toc-rail{
   position:fixed; top:calc(var(--nav-height) + 3px); left:0; bottom:0; width:190px;
   background:var(--surface-1); border-right:1px solid var(--border-1);
   padding:18px 0 14px; overflow-y:auto; z-index:100;
 }
 .toc-title{
-  font-family:var(--font-display); font-size:13px; font-weight:600; color:var(--text-1);
-  padding:0 18px 10px; letter-spacing:.3px;
+  font-family:var(--font-display); font-size:0.72rem; font-weight:600;
+  text-transform:uppercase; letter-spacing:.12em; color:var(--text-3);
+  padding:0 18px 12px;
 }
+/* position:relative so the mobile auto-centering's offsetLeft reads are
+   deterministically relative to the scroller */
+.toc-scroll{ position:relative; }
+.toc-list{ border-left:1px solid var(--border-1); margin:0 14px 0 18px; }
 .toc-link{
-  display:block; padding:6px 18px; font-size:13px; color:var(--text-2);
-  border-left:3px solid transparent; transition:background .15s;
+  display:block; font-family:var(--font-mono); font-size:0.72rem; line-height:1.4;
+  color:var(--text-3); padding:0.3rem 0 0.3rem 1rem;
+  border-left:2px solid transparent; margin-left:-1px; /* overlaps the list's 1px rail */
+  transition:color .2s,border-color .2s;
 }
-.toc-link:hover{ background:var(--border-1); color:var(--text-1); text-decoration:none; }
+.toc-link:hover{ color:var(--text-1); text-decoration:none; }
 /* Active nav state uses the site's teal (chrome accent — user decision) */
-.toc-link.active{
-  color:var(--text-1); border-left-color:var(--accent-teal);
-  background:rgba(34,211,168,.08); font-weight:600;
-}
+.toc-link.active{ color:var(--accent-teal); border-left-color:var(--accent-teal); }
 .toc-top{
-  display:block; padding:10px 18px 0; font-size:12px; color:var(--text-3);
-  border-top:1px solid var(--border-1); margin-top:12px;
+  display:block; font-family:var(--font-mono); font-size:0.72rem; color:var(--text-3);
+  padding:10px 18px 0; border-top:1px solid var(--border-1); margin-top:12px;
 }
-.doc{ margin-left:190px; max-width:1300px; padding:0 28px 80px; }
+.doc{
+  margin-left:190px; max-width:1300px; padding:0 28px 80px;
+  /* Grid/flex-child width discipline (site .doc-content idiom, Wave B):
+     min-width:0 defeats min-content stretching; break-word stops long
+     unbroken strings (paths, SHAs) widening the column. */
+  min-width:0; overflow-wrap:break-word;
+  /* Overflow-x guard history (round-3):
+     - Wave B added body{overflow-x:hidden} — caused axis-locked scrolling +
+       topbar slide (hidden on body propagates to viewport, creates scroll
+       container; see body rule rationale).
+     - Fix pass moved guard here as overflow-x:clip (site .doc-layout idiom).
+       clip shouldn't create a scroll container per spec, but in practice it
+       still produced axis-locked scrolling on desktop (user-reported).
+     - Final fix: REMOVED entirely. The individual containment handles every
+       actual overflow source (.card overflow-x:auto for leaderboard/heatmaps,
+       .table-wrap for bare tables, .logs-layout stacking ≤900px, min-width:0
+       + break-word on this element). No page-level guard needed. */
+}
 .doc-section{ padding-top:30px; }
 /* Below-fold sections skip layout/paint while off-screen: toggling an About
    <details> otherwise reflows the WHOLE document (every section below it
@@ -177,23 +291,83 @@ body.nav-rendered #phases,body.nav-rendered #cases{
 .sec-body:empty{ min-height:240px; }
 .sec-body:empty::after{ content:"Rendering\2026"; color:var(--text-3); font-size:12px; }
 
-/* Narrow viewports: rail collapses to a simple inline list at the top */
+/* Narrow viewports (fine-tuning round 3, Wave B): the rail becomes the
+   Learn page's STICKY HORIZONTAL-SCROLL TOC bar — sticky under the nav,
+   translucent blurred background, edge-fade affordances, hidden
+   scrollbars, nowrap mono links, teal active state (fixes the old
+   inconsistency where the mobile active state was indigo). Breakpoint
+   stays 900px (deliberate: the viewer's .doc/rail collapse has always
+   lived here and the content-visibility size estimates reference it;
+   aligning to the site's 960px would touch unrelated rules for no
+   functional gain). Auto-centering of the active link lives in the
+   scrollspy (centerActiveTocLink). */
 @media (max-width:900px){
+  :root{ --toc-scroll-height:50px; } /* feeds scroll-padding-top + navSpyOffset() */
   .toc-rail{
-    position:static; width:auto; bottom:auto;
-    display:flex; flex-wrap:wrap; align-items:center; gap:0 4px;
-    padding:8px 12px; border-right:none; border-bottom:1px solid var(--border-1);
+    position:sticky; top:calc(var(--nav-height) + 3px); /* below nav + gradient strip */
+    left:auto; bottom:auto; width:auto;
+    background:rgba(10,15,28,.92);
+    backdrop-filter:blur(10px); -webkit-backdrop-filter:blur(10px);
+    border-right:none; border-bottom:1px solid var(--border-1);
+    padding:0; overflow:visible; /* scrolling happens inside .toc-scroll */
   }
-  .toc-title{ padding:0 10px 0 0; }
-  .toc-link{ padding:4px 8px; border-left:none; font-size:12px; }
-  .toc-link.active{ border-left:none; border-bottom:2px solid var(--accent); }
-  .toc-top{ border-top:none; margin-top:0; padding:4px 8px; }
+  /* edge-fade affordances (site .toc-mobile-wrap idiom) */
+  .toc-rail::before,.toc-rail::after{
+    content:''; position:absolute; top:0; bottom:0;
+    width:3rem; z-index:2; pointer-events:none;
+  }
+  .toc-rail::before{ left:0; background:linear-gradient(to right,rgba(10,15,28,.92),transparent); }
+  .toc-rail::after{ right:0; background:linear-gradient(to left,rgba(10,15,28,.92),transparent); }
+  .toc-title{ display:none; } /* the bar is pure links (site idiom) */
+  .toc-scroll{
+    display:flex; padding:0.25rem 0;
+    overflow-x:auto;
+    scrollbar-width:none; -ms-overflow-style:none;
+  }
+  .toc-scroll::-webkit-scrollbar{ display:none; }
+  /* width:max-content on the INNER row (site idiom): the scroller contains
+     the overflow, so the bar can never widen the page itself */
+  .toc-list{
+    display:flex; gap:0.1rem; width:max-content;
+    border-left:none; margin:0; padding:0 1.25rem 0;
+  }
+  .toc-link{ padding:0.75rem 0.65rem; white-space:nowrap; border-left:none; margin-left:0; }
+  .toc-link.active{ color:var(--accent-teal); border-left:none; }
+  .toc-top{ border-top:none; margin-top:0; padding:0.75rem 1.25rem 0.75rem 0.65rem; white-space:nowrap; }
   .doc{ margin-left:0; padding:0 16px 60px; }
+  /* Run Explorer panels stack vertically (Wave B overflow fix): the
+     no-wrap 380px-list + flex-detail row was the page's primary
+     horizontal-overflow source on phones. Each panel keeps its own
+     internal scroll (list capped shorter so the detail stays reachable). */
+  .logs-layout{ flex-direction:column; height:auto; }
+  .run-list-panel{ width:auto; min-width:0; max-height:38vh; }
+  .run-detail-panel{ max-height:70vh; }
 }
 
 /* === Hero === */
-.hero h1{ font-size:26px; font-weight:600; }
-.hero .gen{ font-size:12px; color:var(--text-3); margin-top:2px; }
+/* Hero top-matter mirrors the anatomy page (fine-tuning round 3, Wave B):
+   eyebrow mini-header (.intro-label recipe) above an anatomy-scale h1
+   (.intro-title recipe), date line on the Learn page's mono breadcrumb
+   idiom. .hero-eyebrow is a hero-specific variant — the smaller, tighter
+   .sec-eyebrow (11px / 4px margin) stays untouched for section headers.
+   Deliberately NOT adopting the anatomy's min-height:100vh hero: this
+   page's hero flows straight into content. */
+.hero-eyebrow{
+  font-family:var(--font-display); font-size:clamp(0.75rem,1vw,0.85rem);
+  font-weight:500; text-transform:uppercase; letter-spacing:.12em;
+  color:var(--accent-teal); margin-bottom:1.5rem;
+}
+.hero h1{
+  font-size:clamp(2rem,4vw,3.2rem); font-weight:700;
+  letter-spacing:-0.03em; line-height:1.1;
+  max-width:1000px; margin-bottom:8px;
+}
+.hero .gen{ font-family:var(--font-mono); font-size:0.78rem; color:var(--text-3); margin-top:2px; }
+/* Small phones: the anatomy clamp bottoms out at 2rem, which wraps this
+   long h1 to ~6 lines at 360px — mirror the site's 560px hero override */
+@media (max-width:560px){
+  .hero h1{ font-size:clamp(1.8rem,7vw,2.4rem); }
+}
 /* Hero stat chips: site .summary-badge idiom (anatomy css L766-815) — mono
    value in the teal chrome accent, uppercase display label, teal→indigo
    gradient top border, hover lift. The teal tint is decorative (these are
@@ -343,6 +517,41 @@ body.nav-rendered #phases,body.nav-rendered #cases{
    teal links 8.78:1, accent-light 5.65:1, chip-val teal 9.44:1,
    code-chip indigo-light 5.19:1, SVG axis text 8.72:1 — all PASS. */
 
+/* === Timeout scale (leaderboard Timed-out column; fine-tuning round 3,
+   Wave A) === A dedicated 5-step RED worst-is-hot ramp on --c-fail-rgb,
+   mirroring the .rs-* mechanism but inverted semantics: 0% timeouts reads
+   quiet/neutral (good), the highest shares read strong fail-red. This
+   resolves the original objection that kept the column off a ramp (the
+   pass-green .rs-* family reads high-is-good — it would visually reward
+   timeouts); a fail-red ramp keeps worst-is-hot honest. Color never
+   carries meaning alone: the 1-decimal % text + k/n sub-line stay in the
+   cell, so the number itself is the redundancy (no glyphs needed).
+   Thresholds (toStep(), next to rateStep()) were designed from the actual
+   2026-06 corpus distribution — 17 models clustering low: 0% (x2),
+   1.3-1.4% (x2), 4.3-6.4% (x4), 9.2-9.8% (x2), 13.7-15.0% (x3),
+   20.3-26.8% (x3), 45.8% (x1) — so rateStep's 50/90 breaks would dump 16
+   of 17 models into two steps. Breaks 0 / >0 / >=5% / >=10% / >=20% spread
+   the corpus 2/4/4/3/4 across the five steps and stay round and readable
+   (one-in-twenty / one-in-ten / one-in-five).
+   Contrast (computed for the WCAG 4.5:1 small-text floor, worse of the
+   two surfaces #0a0f1c/#151d2e): the fail red is DARKER than the pass
+   green, so the rs-3-style dark-text flip at alpha .65 FAILS here
+   (--surface-0 text measures 3.49:1) — to-3 instead keeps light text on a
+   .55 fill (text-1 5.66:1 worst; the opacity-.85 .lb-n sub-line 4.59:1).
+   to-4 (.85) flips dark like rs-4 (--surface-0 5.24:1 worst), but the
+   .lb-n at opacity .85 measures 4.49:1 — a hair under floor — so .to-4
+   carries an opacity:1 override for its k/n line. to-1 (.16, text-1
+   12.09:1) and to-2 (.34, text-1 8.62:1) mirror the rs-* alphas. to-0 is
+   deliberately untinted: a faint red wash on a 0% cell would suggest a
+   problem where there is none, and rs-na (the no-data idiom) must stay
+   visually distinct from "zero timeouts". */
+.to-0{ background:transparent; color:var(--text-2); }
+.to-1{ background:rgba(var(--c-fail-rgb),.16); color:var(--text-1); }
+.to-2{ background:rgba(var(--c-fail-rgb),.34); color:var(--text-1); }
+.to-3{ background:rgba(var(--c-fail-rgb),.55); color:var(--text-1); }
+.to-4{ background:rgba(var(--c-fail-rgb),.85); color:var(--surface-0); }
+.to-4 .lb-n{ opacity:1; } /* .85 opacity measured 4.49:1 — see comment above */
+
 /* === Leaderboard === */
 .lb-finding,.cp-finding,.pd-finding{ font-size:15px; max-width:980px; margin:4px 0 12px; line-height:1.55; }
 .lb-controls{ display:flex; align-items:center; gap:6px; flex-wrap:wrap; margin-bottom:12px; }
@@ -356,8 +565,28 @@ body.nav-rendered #phases,body.nav-rendered #cases{
 .lb-metric-note{ font-size:11px; color:var(--text-3); margin-left:8px; }
 .lb-table th{ cursor:default; }
 /* Sortable column headers: visible affordance (pointer + hover tint),
-   active column highlighted; the ▲/▼ indicator is appended in JS */
-.lb-table th.lb-th-sort{ cursor:pointer; user-select:none; white-space:nowrap; }
+   active column highlighted; the ▲/▼ indicator is appended in JS, glued
+   to the last label word with a no-break space so it never wraps alone.
+   white-space:normal (fine-tuning round 3, Wave A — overrides the
+   .data-table th nowrap, which other tables keep): the Critical-only
+   metric mode swaps five phase-header suffixes "Perfect" →
+   "Critical-only", and nowrap forced each onto one line, stretching the
+   table; wrap-capable headers keep both metric modes compact. max-width
+   keeps a wrapped header to a tidy two lines instead of one word per
+   line; the non-sortable Tier/#/Model headers are short and deliberately
+   stay on the base nowrap. */
+.lb-table th.lb-th-sort{ cursor:pointer; user-select:none; white-space:normal; max-width:120px; }
+/* Cost-header width override (round-3 post-review fix pass, user-approved):
+   "Relative Test Cost (1x=Opus 4.8)" wrapped to THREE lines under the
+   120px cap; 170px seats it at two ("Relative Test Cost" /
+   "(1x=Opus 4.8)" + the nbsp-glued sort arrow). Deliberately the same
+   max-width mechanism as the base cap: max-width on table cells is
+   formally undefined in CSS 2.1 but honored by every modern auto-layout
+   engine, and ALL sortable headers have relied on it since Wave A —
+   mixing a width/min-width pair into the same header row would introduce
+   a second sizing mechanism for no better-defined behavior. Applied via
+   thSort()'s extraCls hook to the cost th only. */
+.lb-table th.lb-th-cost{ max-width:210px; }
 .lb-table th.lb-th-sort:hover{ color:var(--text-1); background:rgba(99,102,241,.12); }
 .lb-table th.lb-th-active{ color:var(--text-1); background:rgba(99,102,241,.18); }
 .lb-table td{ vertical-align:middle; }
@@ -390,7 +619,22 @@ body.nav-rendered #phases,body.nav-rendered #cases{
 .lb-cell{ text-align:center; }
 .lb-cell .hm-cell{ min-width:64px; }
 .lb-n{ display:block; font-size:9px; font-weight:400; opacity:.85; }
-.lb-cost{ text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap; }
+/* Cost cell emphasis (fine-tuning round 3, Wave A — user: cost promoted
+   to a primary reference point, no colored boxes): the site's "key
+   number" idiom — JetBrains Mono in an accent color, one step larger
+   than the 12px table body. Indigo --accent-light, NOT teal/mint: per
+   the token-comment accent split, teal is chrome-only and mint sits too
+   close to pass-green #34d399 to place beside status-colored rate cells;
+   indigo is the sanctioned in-content accent (5.65:1 on the surfaces,
+   WP8 re-audit — clears the 4.5:1 small-text floor). Weight 500 keeps
+   the emphasis below the composite bar's visual priority. The em-dash
+   na-idiom stays muted: .text-muted is declared later in the sheet, so
+   it wins the same-specificity color tie on .lb-cost.text-muted cells. */
+.lb-cost{
+  text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap;
+  font-family:var(--font-mono); font-size:13px; font-weight:500;
+  color:var(--accent-light);
+}
 .lb-foot,.cp-foot,.pd-foot{ font-size:12px; color:var(--text-3); margin-top:10px; max-width:980px; line-height:1.6; }
 /* "Details" footnote expanders (2026-06-12, user fine-tuning round 2):
    the methodology footnotes under the Leaderboard table and the Cost vs.
@@ -475,6 +719,12 @@ body.nav-rendered #phases,body.nav-rendered #cases{
 .pd-soft-start{ border-left:2px solid var(--c-partial); }
 
 /* === Tables === */
+/* Scroll-container for bare tables in prose flows (site .doc-table-wrap
+   idiom; fine-tuning round 3, Wave B): the About phases table and the CvP
+   published list-price table sat un-wrapped and could exceed narrow
+   viewports. Cards/heatmaps/charts already contain their own overflow —
+   do not double-wrap those. */
+.table-wrap{ overflow-x:auto; -webkit-overflow-scrolling:touch; }
 .data-table{
   width:100%; border-collapse:collapse; font-size:12px;
 }
@@ -563,6 +813,10 @@ body.nav-rendered #phases,body.nav-rendered #cases{
 .run-detail-panel{
   flex:1; overflow-y:auto; border:1px solid var(--border-1); border-radius:14px;
   background:var(--surface-1); padding:16px 20px;
+  /* min-width:0 (Wave B overflow fix): defeats the flex default
+     min-width:auto so the panel can shrink below its content's
+     min-content width instead of widening the page */
+  min-width:0;
 }
 .run-detail-panel .empty-state{ color:var(--text-3); text-align:center; padding:60px 20px; font-size:13px; }
 .show-all-row{ padding:10px 12px; text-align:center; }
@@ -578,8 +832,14 @@ body.nav-rendered #phases,body.nav-rendered #cases{
 .tx-role{ font-weight:700; font-size:10px; text-transform:uppercase; letter-spacing:.5px; margin-right:6px; }
 .tx-content{ white-space:pre-wrap; word-break:break-word; }
 /* Tool/diagnostic output blocks: site panel-content code treatment (mono).
-   Class-based (tx-out) because .tx-collapsed is removed on expand. */
-.tx-out{ font-family:var(--font-mono); line-height:1.55; }
+   Class-based (tx-out) because .tx-collapsed is removed on expand.
+   pre-wrap + break-word (Wave B overflow fix): long unbroken strings
+   (paths, SHAs) in tool outputs otherwise inflate the detail panel's
+   min-content width and push the page wide on phones. */
+.tx-out{
+  font-family:var(--font-mono); line-height:1.55;
+  white-space:pre-wrap; word-break:break-word;
+}
 .tx-toggle{ color:var(--accent-light); cursor:pointer; font-size:11px; }
 .tx-toggle:hover{ text-decoration:underline; }
 .tx-collapsed{ max-height:40px; overflow:hidden; position:relative; }
@@ -890,28 +1150,48 @@ nav.site-nav{
 </noscript>
 
 <!-- ============================================================== -->
-<!-- TOC rail (scrollspy active-state managed by JS)                -->
+<!-- TOC rail (scrollspy active-state managed by JS). "On this page" -->
+<!-- title per the Learn page's doc-toc idiom (fine-tuning round 3,  -->
+<!-- Wave B; the suite name lives in the hero h1/eyebrow now).       -->
+<!-- Single markup for both widths: desktop = fixed left rail,       -->
+<!-- <=900px = sticky horizontal scroll bar (see the TOC CSS blocks).-->
+<!-- Invariants: every .toc-link carries BOTH href="#id" AND          -->
+<!-- data-target="id" (scrollspy matches data-target; the click      -->
+<!-- handler reads it), and the 9 links stay in 1:1 parity with      -->
+<!-- SECTION_IDS. #toc-scroll is the mobile scroller the             -->
+<!-- auto-centering JS targets.                                      -->
 <!-- ============================================================== -->
 <nav class="toc-rail" id="toc-rail">
-  <div class="toc-title">DAAFBench: Orchestration</div>
-  <a class="toc-link" href="#hero" data-target="hero">Intro</a>
-  <a class="toc-link" href="#takeaways" data-target="takeaways">Key Takeaways</a>
-  <a class="toc-link" href="#about" data-target="about">About DAAFBench</a>
-  <a class="toc-link" href="#leaderboard" data-target="leaderboard">Leaderboard</a>
-  <a class="toc-link" href="#cost-performance" data-target="cost-performance">Cost vs. Performance</a>
-  <a class="toc-link" href="#phases" data-target="phases">Phase Deep-Dives</a>
-  <a class="toc-link" href="#cases" data-target="cases">Cases &amp; Consistency</a>
-  <a class="toc-link" href="#run-explorer" data-target="run-explorer">Run Explorer</a>
-  <a class="toc-link" href="#provenance" data-target="provenance">Provenance</a>
-  <a class="toc-top" href="#hero">&#8593; top</a>
+  <div class="toc-title">On this page</div>
+  <div class="toc-scroll" id="toc-scroll">
+    <div class="toc-list">
+      <a class="toc-link" href="#hero" data-target="hero">Intro</a>
+      <a class="toc-link" href="#takeaways" data-target="takeaways">Key Takeaways</a>
+      <a class="toc-link" href="#about" data-target="about">About DAAFBench</a>
+      <a class="toc-link" href="#leaderboard" data-target="leaderboard">Leaderboard</a>
+      <a class="toc-link" href="#cost-performance" data-target="cost-performance">Cost vs. Performance</a>
+      <a class="toc-link" href="#phases" data-target="phases">Phase Deep-Dives</a>
+      <a class="toc-link" href="#cases" data-target="cases">Cases &amp; Consistency</a>
+      <a class="toc-link" href="#run-explorer" data-target="run-explorer">Run Explorer</a>
+      <a class="toc-link" href="#provenance" data-target="provenance">Provenance</a>
+    </div>
+    <a class="toc-top" href="#hero">&#8593; top</a>
+  </div>
 </nav>
 
 <main class="doc">
 
-<!-- 1. Hero / Intro (restructured 2026-06-12, user fine-tuning rounds 1+2):
-     h1 + date + stat chips + ONE "TLDR:" paragraph — the first sentence of
+<!-- 1. Hero / Intro (restructured 2026-06-12, user fine-tuning rounds 1+2;
+     anatomy-mirrored top-matter in round 3 Wave B): eyebrow ("Choosing
+     Your Model", the page's site-nav label) + h1 + date + stat chips +
+     ONE "TLDR:" paragraph — the first sentence of
      the user's former hero ¶1 (links intact) plus a user-supplied DAAFBench
-     framing sentence, both VERBATIM (voice anchors — never reword). The
+     framing sentence, both VERBATIM (voice anchors — never reword; the
+     ONE exception on record is the user-approved Wave B typo fix
+     "is testing suite" -> "is a testing suite" — the anchor protection
+     otherwise remains fully in force). Wave C emphasis note
+     (user-confirmed): <b> WRAPPING inside this paragraph is presentation
+     only — the words themselves stay verbatim; keep it to 1-2 wraps. The
      "layers together" remainder of the former ¶1 and the three deeper hero
      paragraphs (agentic-orchestration explainer, the DAAFBench suite
      framing, and the why-it-matters paragraph) all moved VERBATIM to the
@@ -921,6 +1201,7 @@ nav.site-nav{
      chips render ABOVE the prose, filled by renderHero() from
      PRECOMPUTED. -->
 <section class="doc-section hero" id="hero">
+  <div class="hero-eyebrow">Choosing Your Model</div>
   <h1>How well do different AI models handle the complexities of <span class="gradient-text">rigorous research orchestration workflows</span>?</h1>
   <div class="gen">Report Updated __GENERATED_DISPLAY__ UTC</div>
 
@@ -930,7 +1211,7 @@ nav.site-nav{
     TLDR: <a href="https://daaf.openaugments.org">DAAF (the Data Analyst Augmentation
     Framework)</a> is a free,
     <a href="https://github.com/DAAF-Contribution-Community/daaf">open-source</a>
-    toolkit and instructions framework that turns Claude Code into a rigorous quantitative research engine with the human researcher at the helm: every step auditable, every output verifiable, every decision theirs to make. DAAFBench: Orchestration is testing suite designed to assess different models&rsquo; abilities to adhere to the workflows, guidance, guardrails, and processes needed to facilitate responsible, rigorous, and reproducible data analysis for good research. Lots of neat insights on model performance, task consistency, costs, and open-weight trade-offs below!
+    toolkit and instructions framework that turns Claude Code into a <b>rigorous quantitative research engine</b> with the human researcher at the helm: every step auditable, every output verifiable, every decision theirs to make. DAAFBench: Orchestration is a testing suite designed to assess different models&rsquo; abilities to adhere to the workflows, guidance, guardrails, and processes needed to facilitate <b>responsible, rigorous, and reproducible data analysis</b> for good research. Lots of neat insights on model performance, task consistency, costs, and open-weight trade-offs below!
   </p>
 </section>
 
@@ -946,7 +1227,7 @@ nav.site-nav{
      through the same svgCostFrontier path as the full chart. -->
 <section class="doc-section" id="cvp-preview">
   <p class="section-lead">
-    The headline picture: model performance across the benchmark suite plotted against estimated cost to run
+    <b>The headline picture:</b> model performance across the benchmark suite plotted against estimated cost to run
     the full battery, relative to Opus 4.8. 
     <a href="#cost-performance">See the full chart</a> below for much more information, customization, and caveats.
   </p>
@@ -963,7 +1244,11 @@ nav.site-nav{
 
   <div class="kt-item">
     <div class="kt-claim">1. Fable 5 is actually in a class of its own.</div>
-    <p>Fable 5 leads the scoreboard at a Perfect average score of <b><span id="kt-t1-comp">&mdash;</span></b>
+    <!-- The section's ONE accent-strong (Wave C budget: at most one per
+         major section) sits on the headline Fable figure below — the
+         single most load-bearing number on the page. Everything else in
+         #takeaways stays plain <b>. -->
+    <p>Fable 5 leads the scoreboard at a Perfect average score of <b class="accent-strong"><span id="kt-t1-comp">&mdash;</span></b>
     &mdash; <b><span id="kt-t1-margin">&mdash;</span></b> points clear of the next
     model. It is also by far the most consistent model tested:
     <b><span id="kt-t1-cons">&mdash;</span></b> of its repeated cases scored perfectly across every criterion
@@ -976,7 +1261,7 @@ nav.site-nav{
     <span id="kt-t2-o45">&mdash;</span> and 
     <span id="kt-t2-o46">&mdash;</span>, respectively, while Opus 4.7 came in at 
     <b><span id="kt-t2-o47">&mdash;</span></b>. The 4.7 dip is even more pronounced when focusing only on critical criteria completion (&ldquo;Critical-only&rdquo;: scores counting just the must-pass criteria): <span id="kt-t2-o45h">&mdash;</span>/<span id="kt-t2-o46h">&mdash;</span>/<b><span id="kt-t2-o47h">&mdash;</span></b>/<span id="kt-t2-o48h">&mdash;</span> across the four Opus releases. That being said, 4.8 was the best of the Opus line so far by a wide margin at
-    <span id="kt-t2-o48">&mdash;</span>.</p>
+    <b><span id="kt-t2-o48">&mdash;</span></b>.</p>
   </div>
 
   <div class="kt-item">
@@ -994,7 +1279,7 @@ nav.site-nav{
     <p>DeepSeek V4 Pro 
     (<span id="kt-t4-dspro">&mdash;</span>) and GLM 5.1
     (<span id="kt-t4-glm">&mdash;</span>) lead the open-weight pack, with the considerably cheaper DeepSeek V4 Flash a close follower (<span id="kt-t4-dsflash">&mdash;</span>) &mdash; all landing in the same neighborhood
-    as most of the Opus line. That being said, while much cheaper in terms of price-per-token, differences in token consumption patterns still place them in roughly the same cost bracket as Sonnet (with the exception of DeepSeek V4 Flash). The empirical trade-off then is less about price versus raw performance, and more about the value of control and performance consistency. Open-weight models allow for self-hosting, modification/fine-tuning, and long-term support guarantees (i.e., not worrying about Opus 4.5 getting sun-setted in a few months when multiple analyses and products rely explicitly on it). But the testing battery also reveals a marked drop in performance consistency: the Anthropic models perform predictably for the same tasks (for better and for worse), while the open-weight models perform more erratically on repeated runs. Moreover, DeepSeek Pro
+    as most of the Opus line. That being said, while much cheaper in terms of price-per-token, differences in token consumption patterns still place them in roughly the same cost bracket as Sonnet (with the exception of DeepSeek V4 Flash). The empirical trade-off then is less about price versus raw performance, and more about the value of control and performance consistency. Open-weight models allow for self-hosting, modification/fine-tuning, and long-term support guarantees (i.e., not worrying about Opus 4.5 getting sun-setted in a few months when multiple analyses and products rely explicitly on it). But the testing battery also reveals <b>a marked drop in performance consistency</b>: the Anthropic models perform predictably for the same tasks (for better and for worse), while the open-weight models perform more erratically on repeated runs. Moreover, DeepSeek Pro
     carries the corpus&rsquo;s second-highest timeout rate
     (<span id="kt-t4-dsto">&mdash;</span> of runs) across all models tested, so its scores come with a broader
     reliability asterisk as well.</p>
@@ -1003,7 +1288,7 @@ nav.site-nav{
   <div class="kt-item">
     <div class="kt-claim">5. Local-class open-weight models just aren&rsquo;t there yet.</div>
     <p>Qwen 3.6 27B, the best of the small open models here, manages
-    <span id="kt-t5-qwen">&mdash;</span>, and its weakest points sit exactly
+    <b><span id="kt-t5-qwen">&mdash;</span></b>, and its weakest points sit exactly
     where an orchestration framework hurts most: careful skill routing
     (basically: How often does it load the necessary grounding references before it responds to questions? <span id="kt-t5-qwenp4">&mdash;</span>) and mode
     classification (basically: How often does it correctly assign a natural language query to the right workflow process? <span id="kt-t5-qwenp1">&mdash;</span>). Gemma 4 31B timed
@@ -1034,21 +1319,31 @@ nav.site-nav{
        renderHero() refill) travel with them. The old Wave-3 About intro ¶1
        was trimmed to its one non-duplicative sentence (mechanical scoring)
        — its companion-suite framing now lives, stated once with full
-       fidelity, in the third moved paragraph. -->
+       fidelity, in the third moved paragraph.
+       Wave C exceptions on record (fine-tuning round 3, 2026-06-12), the
+       anchor protection otherwise fully in force: (1) the user-approved
+       inputs/outputs framing sentence ("Put differently: Orchestration is
+       an inputs-based assessment ... while Analytics will assess outputs
+       directly.") was INSERTED into ¶3 between "...dedicated measurement."
+       and "More to come there!" — a sanctioned ADDITION; zero changes to
+       any pre-existing word. (2) <b> emphasis WRAPPING in ¶¶1-4 is
+       presentation only (user-confirmed) — wrap thesis phrases, never
+       reword. -->
+
   <p class="about-intro">
-    DAAF layers together a suite of architectural defenses and strategies from the current frontier of AI best practices to maximize AI output quality and force Claude Code to operate more like a careful and thoughtful researcher at every opportunity. One of the core features of this system is something called &ldquo;agentic orchestration,&rdquo; or the complex process of weaving together multiple AI assistants in concert to tackle increasingly complex research workflows: anything from iterating continuously on a data visualization script to developing entire data analytic pipelines from a given research question. DAAF (and other orchestration frameworks) does this by giving a series of intensive instructions, guidelines, and workflows to the AI assistants as they work, breaking tasks down into more concrete and tractable sub-tasks, facilitating better coordination, managing work tracking and documentation, and enforcing adherence to a set of unifying work principles (e.g., auditability, human-in-the-loop, rigorous self-verification processes, etc.).
+    DAAF layers together a suite of architectural defenses and strategies from the current frontier of AI best practices to maximize AI output quality and force Claude Code to operate more like a careful and thoughtful researcher at every opportunity. One of the core features of this system is something called <b>&ldquo;agentic orchestration,&rdquo;</b> or the complex process of weaving together multiple AI assistants in concert to tackle increasingly complex research workflows: anything from iterating continuously on a data visualization script to developing entire data analytic pipelines from a given research question. DAAF (and other orchestration frameworks) does this by giving a series of intensive instructions, guidelines, and workflows to the AI assistants as they work, breaking tasks down into more concrete and tractable sub-tasks, facilitating better coordination, managing work tracking and documentation, and enforcing adherence to a set of unifying work principles (e.g., auditability, human-in-the-loop, rigorous self-verification processes, etc.).
   </p>
   <p class="about-intro">
-    But a framework like this only works if the AI assistants are sophisticated enough to actually understand, apply, and remember these instructions thoughtfully and consistently. This page walks through the initial results of DAAFBench, a series of bespoke benchmark tests explicitly designed to test adherence to the research protocols and process guidelines of DAAF and assess a given model&rsquo;s suitability for operating along guidelines that make rigorous, reproducible, and responsible social science at scale possible with AI assistants. The results below summarize multi-dimensional performance assessments for <span id="hero-models">__HERO_MODELS__</span> models (both official Anthropic models, as well as open-weights models accessible via OpenRouter, which is immediately compatible with Claude Code and DAAF) across <span id="hero-runs">__HERO_RUNS__</span> different test repetitions designed to simulate key moments of orchestration decision-making and protocol adherence. 
+    But a framework like this only works if the AI assistants are sophisticated enough to actually understand, apply, and remember these instructions thoughtfully and consistently. This page walks through the initial results of DAAFBench, a series of bespoke benchmark tests explicitly designed to <b>test adherence to the research protocols and process guidelines of DAAF</b> and assess a given model&rsquo;s suitability for operating along guidelines that make rigorous, reproducible, and responsible social science at scale possible with AI assistants. The results below summarize multi-dimensional performance assessments for <span id="hero-models">__HERO_MODELS__</span> models (both official Anthropic models, as well as open-weights models accessible via OpenRouter, which is immediately compatible with Claude Code and DAAF) across <span id="hero-runs">__HERO_RUNS__</span> different test repetitions designed to simulate key moments of orchestration decision-making and protocol adherence. 
       </p>
   <p class="about-intro">
-    Importantly, DAAFBench: Orchestration measures <b>behavioral conformance only</b>:
+    Importantly, DAAFBench: Orchestration measures <b class="accent-strong">behavioral conformance only</b>:
     not answer quality, not analytical capability, not general intelligence. A
     brilliant analyst model that skips confirmation gates scores poorly here,
-    and a modest model that faithfully follows protocol scores well. It is deliberately only half of the picture: a companion suite still in development (predictably, DAAFBench: Analytics) will test analytic competency directly, or whether models make the right calls <em>inside</em> the analysis itself (i.e., explicit decision-making in analytic code and data-cleaning steps, tested via adversarial examples, known-good code, and deterministically verifiable outputs). Orchestration discipline and analytic judgment are complementary halves of trustworthy AI-assisted research, and each deserves its own dedicated measurement. More to come there!
+    and a modest model that faithfully follows protocol scores well. It is deliberately only half of the picture: a companion suite still in development (predictably, DAAFBench: Analytics) will test analytic competency directly, or whether models make the right calls <em>inside</em> the analysis itself (i.e., explicit decision-making in analytic code and data-cleaning steps, tested via adversarial examples, known-good code, and deterministically verifiable outputs). Orchestration discipline and analytic judgment are complementary halves of trustworthy AI-assisted research, and each deserves its own dedicated measurement. Put differently: Orchestration is an <b>inputs-based</b> assessment &mdash; if a model gets the process right, downstream results improve &mdash; while Analytics will assess <b>outputs</b> directly. More to come there!
   </p>
   <p class="about-intro">
-    Regardless, DAAFBench: Orchestration results are a crucial step in understanding how models actually perform under these conditions and allow for far greater nuance in thinking about the exact use of specific models (especially more expensive versus cheaper, and proprietary versus open-source) across these types of workflows. Most importantly, it allows us to more directly track whether and when locally-hosted models (e.g., on a home computer with consumer hardware) can start to tackle these sorts of tasks, opening the door for unprecedented access to analytic capacity going forward.
+    Regardless, DAAFBench: Orchestration results are a crucial step in understanding how models actually perform under these conditions and allow for far greater nuance in thinking about the exact use of specific models (especially more expensive versus cheaper, and proprietary versus open-source) across these types of workflows. Most importantly, it allows us to more directly track whether and when locally-hosted models (e.g., on a home computer with consumer hardware) can start to tackle these sorts of tasks, opening the door for <b>unprecedented access to analytic capacity</b> going forward.
     Both the framework being tested and the benchmark harness that produced
     these numbers are free and open-source in the
     <a href="https://github.com/DAAF-Contribution-Community/daaf">DAAF
@@ -1109,13 +1404,13 @@ nav.site-nav{
   <details>
     <summary>The benchmark phases</summary>
     <div>
-      <p>Each phase isolates one slice of orchestrator behavior, and each asks the
+      <p>Each phase isolates <b>one slice of orchestrator behavior</b>, and each asks the
       model one plain question: Does it route requests correctly? Does it do its
       homework before acting? Can it delegate cleanly? Does the specialist it
       delegates to follow its own rules? Does it ground its advice? Later phases
       resume from <i>golden checkpoints</i> (truncated transcripts of known-good
       sessions), so every model starts from an identical mid-conversation state.</p>
-      <table>
+      <div class="table-wrap"><table>
         <thead><tr><th>Phase</th><th>Starts from</th><th>What it tests</th></tr></thead>
         <tbody>
           <tr>
@@ -1170,7 +1465,7 @@ nav.site-nav{
                 <i>Failure mode: confident, ungrounded methodological advice.</i></td>
           </tr>
         </tbody>
-      </table>
+      </table></div>
       <p>Phase 3b is a <b>sub-scoring of Phase 3 runs</b>, not a separate batch: its
       criteria are derived from the agent type, and which criteria apply varies with the
       case, so its denominators differ from 3a&rsquo;s.</p>
@@ -1218,7 +1513,7 @@ nav.site-nav{
     <div>
       <p>Runs execute inside the real DAAF Docker container through the
       <code>claude -p</code> command line, with all framework hooks, permission rules, and
-      skill discovery live &mdash; nothing is mocked. Phases 2&ndash;4 resume from golden
+      skill discovery live &mdash; <b>nothing is mocked</b>. Phases 2&ndash;4 resume from golden
       checkpoints so every model starts at an identical protocol point, and each
       (phase, model, case) cell is repeated up to three times. Every batch archives to a
       timestamped, self-contained result set from which this page is generated.</p>
@@ -1337,7 +1632,7 @@ nav.site-nav{
     rows are models ranked by that phase&rsquo;s Perfect rate, and each column is one
     scored criterion (a single named requirement a run either meets or misses), with
     critical (must-pass) criteria before normal ones, split by the yellow border. Use
-    this to find <em>which specific protocol requirement</em> a model misses: a model
+    this to find <b>which specific protocol requirement</b> a model misses: a model
     can rank well overall while reliably failing one criterion. Hover any cell
     for its exact pass count; click a cell to open those runs in the Run Explorer.
   </p>
@@ -1375,7 +1670,7 @@ nav.site-nav{
   <div class="sec-eyebrow">The Audit Layer</div>
   <h2>Run Explorer</h2>
   <p class="section-lead">
-    This is the audit layer of the page: every aggregate above can be traced down to the
+    This is the <b>audit layer</b> of the page: every aggregate above can be traced down to the
     individual runs it was computed from, here.
     Every individual run with its grade, per-criterion verdicts and diagnostic details, and
     condensed transcript &mdash; including subagent transcripts where they exist. The
@@ -1422,7 +1717,7 @@ nav.site-nav{
   <div class="sec-eyebrow">The Audit Trail</div>
   <h2>Provenance</h2>
   <p class="section-lead">
-    The audit trail for where the numbers come from: one row per archived result set,
+    The audit trail for where the numbers come from: <b>one row per archived result set</b>,
     with the DAAF git SHA and run configuration it was produced under. Run-level data
     on disk is the source of truth; summary counts are shown for disclosure.
   </p>
@@ -1561,6 +1856,20 @@ function rateGlyph(step){
   return "";
 }
 
+/* Timeout-share steps for the leaderboard Timed-out column's .to-0...to-4
+   red ramp (fine-tuning round 3, Wave A). Deliberately NOT rateStep():
+   timeout rates cluster low (2026-06 corpus: 0% to 45.8%, median ~9%), so
+   the pass-ramp's 50/90 breaks would dump 16 of 17 models into two steps.
+   Breaks 0 / >0 / >=5% / >=10% / >=20% spread the measured corpus 2/4/4/3/4
+   — full distribution + contrast arithmetic in the .to-* CSS comment. */
+function toStep(rate){
+  if(rate>=0.2) return 4;
+  if(rate>=0.1) return 3;
+  if(rate>=0.05) return 2;
+  if(rate>0) return 1;
+  return 0;
+}
+
 function pct(v){ return (v*100).toFixed(0)+"%"; }
 function esc(s){ if(!s) return ""; var d=document.createElement("div"); d.textContent=s; return d.innerHTML; }
 function truncate(s,n){ if(!s) return ""; return s.length>n ? s.substring(0,n)+"..." : s; }
@@ -1599,10 +1908,14 @@ function fmtMult(v){
    (Artificial Analysis convention) was retired in v3.1.0 — benchmark
    cost is dominated by input tokens, so a 3:1 in/out blend misled
    (key removal recorded in the generator's cost block + README § 8).
+   Display label (fine-tuning round 3, Wave A): the battery figure is
+   presented as "Relative Test Cost (1x=Opus 4.8)" on both user-visible
+   label surfaces (this toggle button + the leaderboard cost header) —
+   one name for one figure; internal keys/identifiers keep "battery".
    axis names the x-axis label used by the Cost vs. Performance
    scatter. */
 var COST_FORMS=[
-  {key:"battery",label:"Battery cost (\u00d7 Opus 4.8)",
+  {key:"battery",label:"Relative Test Cost (1x=Opus 4.8)",
    formula:"Estimated relative cost to run the full benchmark battery once, as a multiple of Opus 4.8 (= 1.0\u00d7) \u2014 every token at published list input/output rates with no cache discounts, using each model\u2019s observed token mix (definition + caveats in the notes below the chart)",
    axis:"Est. relative cost vs Opus 4.8 to run the full battery once (\u00d7, log scale)"},
   {key:"input",label:"Input",formula:"Published input price, per million tokens",
@@ -1730,8 +2043,10 @@ var KNOWN_SCORER_CAVEATS={
 };
 
 /* Plain-language labels for criterion ids, used in headline prose only
-   (deep-dive callouts and the global finding, the
-   leaderboard Dispatch column tooltip). Forensic surfaces (Run Explorer,
+   (deep-dive callouts and the global finding; the leaderboard Dispatch
+   column that also consumed these was removed in fine-tuning round 3,
+   Wave A — the P3a deep-dive prose still uses the agent_dispatched
+   entry). Forensic surfaces (Run Explorer,
    rotated heatmap column headers) keep the raw ids; heatmap header
    tooltips append the label. Headline prose always keeps the raw id
    alongside the label (in <code>) for traceability back to the scorers.
@@ -2235,7 +2550,6 @@ function renderLeaderboard(container){
   var consistency=PRECOMPUTED.consistency||{};
   var toByModel=PRECOMPUTED.timeout_by_model||{};
   var groups=getEvalGroups();
-  var hasDispatch=groups.some(function(g){ return g.id==="dispatch_compliance_dispatch"; });
 
   /* Composite ranking — mirrors the generator's ordering (score desc, name asc) */
   var ranked=Object.keys(comp).map(function(m){ return {model:m,e:comp[m]}; });
@@ -2292,10 +2606,6 @@ function renderLeaderboard(container){
       var t=toByModel[m];
       return (t&&t.rate!=null)?t.rate:null;
     }
-    if(sortKey==="dispatch"){
-      var d=(pmp[m]||{})["dispatch_compliance_dispatch"];
-      return (d&&d.dispatch_rate!=null)?d.dispatch_rate:null;
-    }
     if(sortKey==="composite"){
       var e=comp[m];
       return e?e.score:null;
@@ -2342,27 +2652,41 @@ function renderLeaderboard(container){
   html+='</div>';
 
   /* Sortable column headers: \u25B2/\u25BC on the active column, pointer +
-     hover affordance via .lb-th-sort, aria-sort as the accessible hint */
-  function thSort(key,label,tip,defDir){
+     hover affordance via .lb-th-sort, aria-sort as the accessible hint.
+     The arrow joins via a NO-BREAK space (\u00a0): headers are
+     wrap-capable since fine-tuning round 3 (Wave A), and a breakable
+     space could orphan the arrow onto its own line. extraCls (optional,
+     round-3 post-review fix pass) is a per-column CSS hook — currently
+     only the cost column's wider .lb-th-cost cap (see the leaderboard
+     CSS block). */
+  function thSort(key,label,tip,defDir,extraCls){
     var active=(sortKey===key);
-    var arrow=active?(sortDir===1?' \u25B2':' \u25BC'):'';
+    var arrow=active?(sortDir===1?'\u00a0\u25B2':'\u00a0\u25BC'):'';
     var aria=active?(sortDir===1?'ascending':'descending'):'none';
-    return '<th class="lb-th-sort'+(active?' lb-th-active':'')+'" aria-sort="'+aria+
+    return '<th class="lb-th-sort'+(extraCls?' '+extraCls:'')+(active?' lb-th-active':'')+'" aria-sort="'+aria+
       '" title="'+esc(tip)+' \u2014 click to sort'+(active?'; click again to reverse':'')+
       '" onclick="lbSortBy(&#39;'+esc(key)+'&#39;,'+defDir+')">'+label+arrow+'</th>';
   }
 
+  /* Column order (fine-tuning round 3, Wave A — user decision): Tier, #,
+     Model, Cost, Composite, P1...P4 phases, Consistency, Timed out. Cost
+     was promoted from last to right after Model as a primary reference
+     point read alongside the composite; the Dispatch column (the P3a
+     agent_dispatched pass rate) was REMOVED — it duplicated signal the
+     P3a phase column already carries (the per-phase
+     dispatch_compliance_dispatch rate, which stays). Tier must stay the
+     first cell of band-start rows (the rowspan gutter contract). */
   html+='<div class="card"><table class="data-table lb-table"><thead><tr>';
   if(showTier) html+='<th title="'+metricLabel+' composite tier band (banding rule below)">Tier</th>';
   html+='<th title="'+metricLabel+' composite rank (fixed across re-sorts)">#</th><th>Model</th>';
+  html+=thSort("cost","Relative Test Cost (1x=Opus 4.8)",
+    "Estimated relative cost to run the full benchmark battery once, as a multiple of Opus 4.8 (= 1.0\u00d7) \u2014 published list rates \u00d7 each model\u2019s observed token mix, uncached basis (defined under Cost vs. Performance). Always the battery multiplier here, regardless of the price-basis toggle in Cost vs. Performance. Not measured benchmark spend.",1,'lb-th-cost');
   html+=thSort("composite","Composite",
     metricLabel+' composite \u2014 unweighted mean of the per-phase '+metricLabel+' rates',-1);
   groups.forEach(function(g){
     html+=thSort(g.id,esc(groupShort(g.id))+' '+metricLabel,
       g.label+' \u2014 share of runs with every '+(isHard?'critical (must-pass)':'')+' criterion passed',-1);
   });
-  if(hasDispatch) html+=thSort("dispatch","Dispatch",
-    "Phase 3a \u201c"+critLabel("agent_dispatched")+"\u201d (agent_dispatched) pass rate",-1);
   html+=thSort("consistency","Consistency",
     "Share of repeated (phase, case) cells (2+ reps) where every rep was perfect. Always Perfect-based (all criteria), regardless of the metric toggle.",-1);
   /* Timed-out column (2026-06-12, user fine-tuning round): per-model
@@ -2371,11 +2695,11 @@ function renderLeaderboard(container){
      Takeaways timeout claims. Default sort direction is DESCENDING
      (worst-first): for a reliability column the interesting reading is
      "who times out most", mirroring the worst-first instinct of the other
-     columns' best-first defaults. */
+     columns' best-first defaults. Since fine-tuning round 3 (Wave A) the
+     cells sit on the dedicated .to-* red worst-is-hot ramp (toStep();
+     design + contrast record at the .to-* CSS). */
   html+=thSort("timeout","Timed out",
     "Share of this model\u2019s runs cut off at the wall clock \u2014 the harness\u2019s timed_out flag counts genuine wall-clock timeouts AND silent stalls that simply ran out the clock. Timed-out runs are still graded from the transcript produced before the cutoff.",-1);
-  html+=thSort("cost","Battery cost (\u00d7 Opus 4.8)",
-    "Estimated relative cost to run the full benchmark battery once, as a multiple of Opus 4.8 (= 1.0\u00d7) \u2014 published list rates \u00d7 each model\u2019s observed token mix, uncached basis (defined under Cost vs. Performance). Always the battery multiplier here, regardless of the price-basis toggle in Cost vs. Performance. Not measured benchmark spend.",1);
   html+='</tr></thead><tbody>';
 
   var anyPartial=false;
@@ -2398,6 +2722,23 @@ function renderLeaderboard(container){
       html+=' <span class="badge lb-partial" title="No runs for: '+esc(missing)+'. Composite is the mean of the components present only.">partial</span>';
     }
     html+='</td>';
+
+    /* Relative Test Cost — the battery-cost multiplier, the headline cost
+       figure, promoted to right after Model (fine-tuning round 3, Wave A).
+       Pinned to the battery form regardless of the Cost vs. Performance
+       price-basis toggle (disclosed in the header tip). Models without
+       battery data get the em-dash idiom; stale token-mix snapshots carry
+       the \u26a0 convention in the tooltip (mirrors the CvP battery
+       disclosure). */
+    var b=batteryMult(m);
+    if(b){
+      html+='<td class="lb-cost" title="Est. cost to run the full battery once \u2248 '+
+        fmtMult(b.mult)+' Opus 4.8\u2019s (= 1.0\u00d7); uncached list rates \u00d7 observed token mix \u2014 defined under Cost vs. Performance'+
+        (b.stale?' \u26a0 token mix from a billing snapshot that predates this model\u2019s newest corpus runs':'')+
+        '">'+fmtMult(b.mult)+'</td>';
+    } else {
+      html+='<td class="lb-cost text-muted">&mdash;</td>';
+    }
 
     /* Composite: score + bar; ticks mark the per-phase components */
     var compsStr=(e.components_present||[]).map(function(gid){
@@ -2434,18 +2775,6 @@ function renderLeaderboard(container){
         rateGlyph(step)+pct(rate)+'<span class="lb-n">'+kn+'</span></span></td>';
     });
 
-    /* Dispatch reliability (P3a agent_dispatched) */
-    if(hasDispatch){
-      var d=(pmp[m]||{})["dispatch_compliance_dispatch"];
-      if(d&&d.dispatch_total){
-        var dr=d.dispatch_rate||0, ds=rateStep(dr);
-        html+='<td class="lb-cell"><span class="hm-cell rs-'+ds+'" title="agent_dispatched: '+d.dispatch_passed+'/'+d.dispatch_total+'">'+
-          rateGlyph(ds)+pct(dr)+'<span class="lb-n">'+d.dispatch_passed+'/'+d.dispatch_total+'</span></span></td>';
-      } else {
-        html+='<td class="lb-cell"><span class="hm-cell rs-na" title="No Phase 3a runs for this model">&mdash;</span></td>';
-      }
-    }
-
     /* Consistency: k-of-n repeated cells all-perfect */
     var k=consistency[m];
     if(k&&k.rate!=null){
@@ -2456,32 +2785,22 @@ function renderLeaderboard(container){
       html+='<td class="lb-cell"><span class="hm-cell rs-na" title="No (phase, case) cells with 2+ reps">&mdash;</span></td>';
     }
 
-    /* Timed-out share: plain numeric cell (deliberately NOT on the .rs-*
-       pass ramp — that ramp reads high-is-good, the inverse of a timeout
-       rate), 1-decimal percent with the k/n underneath like the rate
-       cells; em-dash idiom if the precompute lacks the model. */
+    /* Timed-out share on the .to-* red worst-is-hot ramp (fine-tuning
+       round 3, Wave A; previously a plain cell). The original objection
+       to a ramp here — the pass-green .rs-* family reads high-is-good,
+       the inverse of a timeout rate — is resolved by a dedicated
+       fail-red family where MORE timeouts read HOTTER; 0% stays quiet/
+       neutral (.to-0 is untinted). The 1-decimal % text + k/n sub-line
+       stay, so color never carries the meaning alone; em-dash idiom if
+       the precompute lacks the model. Breaks + contrast record at the
+       .to-* CSS and toStep(). */
     var to=toByModel[m];
     if(to&&to.rate!=null){
-      html+='<td class="lb-cell" title="'+fmt(to.n_timed_out)+' of '+fmt(to.n_runs)+
+      html+='<td class="lb-cell"><span class="hm-cell to-'+toStep(to.rate)+'" title="'+fmt(to.n_timed_out)+' of '+fmt(to.n_runs)+
         ' runs hit the wall clock (harness timed_out flag: wall-clock timeouts + silent stalls that ran out the clock); still graded from the transcript produced before the cutoff">'+
-        (to.rate*100).toFixed(1)+'%<span class="lb-n">'+fmt(to.n_timed_out)+'/'+fmt(to.n_runs)+'</span></td>';
+        (to.rate*100).toFixed(1)+'%<span class="lb-n">'+fmt(to.n_timed_out)+'/'+fmt(to.n_runs)+'</span></span></td>';
     } else {
       html+='<td class="lb-cell text-muted">&mdash;</td>';
-    }
-
-    /* Battery-cost multiplier (the headline cost figure) — pinned to the
-       battery form regardless of the Cost vs. Performance price-basis
-       toggle (disclosed in the header tip). Models without battery data
-       get the em-dash idiom; stale token-mix snapshots carry the \u26a0
-       convention in the tooltip (mirrors the CvP battery disclosure). */
-    var b=batteryMult(m);
-    if(b){
-      html+='<td class="lb-cost" title="Est. cost to run the full battery once \u2248 '+
-        fmtMult(b.mult)+' Opus 4.8\u2019s (= 1.0\u00d7); uncached list rates \u00d7 observed token mix \u2014 defined under Cost vs. Performance'+
-        (b.stale?' \u26a0 token mix from a billing snapshot that predates this model\u2019s newest corpus runs':'')+
-        '">'+fmtMult(b.mult)+'</td>';
-    } else {
-      html+='<td class="lb-cost text-muted">&mdash;</td>';
     }
 
     html+='</tr>';
@@ -2497,7 +2816,7 @@ function renderLeaderboard(container){
   html+='<div class="lb-finding">'+finding+'</div>';
   html+='<details class="foot-details"><summary>Details</summary><div>';
   html+='<p class="lb-foot">'+lbTierRuleText(tierRule,tiers,metricLabel)+'</p>';
-  html+='<p class="lb-foot">Battery cost is the estimated relative cost to run the full benchmark battery once '+
+  html+='<p class="lb-foot">Relative Test Cost is the estimated relative cost to run the full benchmark battery once '+
     '&mdash; every token priced at uncached published list rates, applied to each model\u2019s own observed token mix &mdash; '+
     'expressed as a multiple of Opus 4.8 (= 1.0\u00d7), never dollars; not measured benchmark spend. '+
     'Where a model\u2019s token-mix snapshot predates its newest runs, the cell tooltip carries a \u26a0 marker. '+
@@ -2628,7 +2947,9 @@ function pricingDetailsHtml(){
   rows.sort(function(a,b){ return pricing[a].input_per_million-pricing[b].input_per_million; });
   var h='<details class="cp-pricing"><summary>Published list prices (per 1M tokens) \u2014 secondary detail</summary><div>';
   h+='<p class="cp-foot" style="margin:6px 0 8px">Raw published list rates \u2014 the price tag alone, before token appetite \u2014 not measured benchmark spend. The battery multiplier above is the headline cost figure.</p>';
-  h+='<table class="data-table" style="width:auto"><thead><tr><th style="cursor:default">Model</th><th style="cursor:default">Input / 1M</th><th style="cursor:default">Output / 1M</th><th style="cursor:default">Cache Read / 1M</th></tr></thead><tbody>';
+  /* .table-wrap (Wave B overflow fix): four numeric columns are marginal
+     on narrow phones — scroll within the panel, never widen the page */
+  h+='<div class="table-wrap"><table class="data-table" style="width:auto"><thead><tr><th style="cursor:default">Model</th><th style="cursor:default">Input / 1M</th><th style="cursor:default">Output / 1M</th><th style="cursor:default">Cache Read / 1M</th></tr></thead><tbody>';
   rows.forEach(function(m){
     var p=pricing[m];
     h+='<tr><td style="font-weight:600;color:'+modelColorLight(m)+'">'+esc(m)+'</td>'+
@@ -2636,7 +2957,7 @@ function pricingDetailsHtml(){
       '<td>$'+p.output_per_million.toFixed(2)+'</td>'+
       '<td>'+(p.cached_input_per_million>0?'$'+p.cached_input_per_million.toFixed(2):'N/A')+'</td></tr>';
   });
-  h+='</tbody></table></div></details>';
+  h+='</tbody></table></div></div></details>';
   return h;
 }
 
@@ -2671,8 +2992,8 @@ function renderCostPerf(container){
 
   /* Selector rows (radio-style, reusing the leaderboard toggle styling):
      price basis (x-axis), performance basis (y-axis), metric (y-axis).
-     The leaderboard's Battery cost column stays pinned to the battery
-     multiplier. */
+     The leaderboard's Relative Test Cost column stays pinned to the
+     battery multiplier. */
   var toggle='<div class="lb-controls"><span class="lb-sort-label">Price basis</span>';
   COST_FORMS.forEach(function(f){
     toggle+='<button class="lb-sort-btn'+(form===f.key?' active':'')+'" title="'+esc(f.formula)+
@@ -3953,24 +4274,62 @@ var SECTION_IDS=["hero","takeaways","about","leaderboard","cost-performance","ph
 
 /* Scrollspy detection offset is nav-height-aware (geometry rework,
    2026-06-12): the sticky topbar occupies --nav-height + the 3px strip, so
-   the old hardcoded 120px threshold would mis-detect under it. Reads the
-   CSS var once (it is static) + 3px strip + ~30px detection margin —
-   ≈121px at the 88px site nav, matching the old feel. */
-var NAV_SPY_OFFSET=(function(){
-  var v=parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--nav-height"));
-  return (isNaN(v)?88:v)+3+30;
-})();
+   the old hardcoded 120px threshold would mis-detect under it.
+   A FUNCTION since fine-tuning round 3 Wave B (was a once-computed
+   constant): the effective header now also includes the mobile sticky TOC
+   bar (--toc-scroll-height: 0 desktop / 50px under 900px), which changes
+   with viewport width — without it, a mobile anchor landing at
+   scroll-padding (nav + strip + bar + 14px) would sit BELOW the old 121px
+   threshold and the spy would highlight the previous section. nav + 3px
+   strip + bar + ~30px detection margin ≈ 121px desktop / 171px mobile.
+   One getComputedStyle read per rAF-throttled spy frame — negligible. */
+function navSpyOffset(){
+  var cs=getComputedStyle(document.documentElement);
+  var v=parseFloat(cs.getPropertyValue("--nav-height"));
+  var t=parseFloat(cs.getPropertyValue("--toc-scroll-height"));
+  return (isNaN(v)?88:v)+3+(isNaN(t)?0:t)+30;
+}
+
+/* Mobile TOC auto-centering (fine-tuning round 3, Wave B — the Learn
+   page's behavior, adapted INTO the existing scrollspy rather than adding
+   a second IntersectionObserver): when the active section changes, scroll
+   the horizontal bar so the active link is centered. 600ms debounce +
+   1200ms click-lock (set by the TOC click handler) so the bar never
+   jitters during smooth scrolls. Desktop no-ops via the scrollWidth guard
+   (the vertical rail never overflows horizontally). */
+var tocCenterTimer=null;
+var tocClickLockUntil=0;
+var tocLastActiveId=null;
+function centerActiveTocLink(){
+  var scroller=el("toc-scroll");
+  if(!scroller) return;
+  if(scroller.scrollWidth<=scroller.clientWidth+1) return; /* desktop rail */
+  var active=scroller.querySelector(".toc-link.active");
+  if(!active) return;
+  var left=active.offsetLeft-scroller.clientWidth/2+active.offsetWidth/2;
+  scroller.scrollTo({left:left,behavior:"smooth"});
+}
 
 function updateActiveLink(){
   var activeId=SECTION_IDS[0];
+  var spyOffset=navSpyOffset();
   for(var i=0;i<SECTION_IDS.length;i++){
     var sec=el(SECTION_IDS[i]);
     if(!sec) continue;
-    if(sec.getBoundingClientRect().top<=NAV_SPY_OFFSET) activeId=SECTION_IDS[i];
+    if(sec.getBoundingClientRect().top<=spyOffset) activeId=SECTION_IDS[i];
   }
   document.querySelectorAll(".toc-link").forEach(function(lnk){
     lnk.classList.toggle("active", lnk.getAttribute("data-target")===activeId);
   });
+  /* Auto-center the mobile bar on active-section CHANGE only (not every
+     scroll frame), debounced + click-locked per the site recipe */
+  if(activeId!==tocLastActiveId){
+    tocLastActiveId=activeId;
+    if(Date.now()>=tocClickLockUntil){
+      clearTimeout(tocCenterTimer);
+      tocCenterTimer=setTimeout(centerActiveTocLink,600);
+    }
+  }
   if(!isFileProto){
     try{ history.replaceState(null,"","#"+activeId); }catch(e){}
   }
@@ -4063,10 +4422,12 @@ window.showAllRuns=function(){
   renderRunExplorer(el("sec-run-explorer"));
 };
 
-/* Leaderboard column-header sort: composite | per-phase gid | dispatch |
-   consistency | cost. Clicking the active column flips direction;
-   clicking a new column applies that column's default direction
-   (best-first: descending for rates, ascending for price). */
+/* Leaderboard column-header sort: composite | per-phase gid |
+   consistency | timeout | cost. (The "dispatch" key was removed with the
+   Dispatch column, fine-tuning round 3 Wave A.) Clicking the active
+   column flips direction; clicking a new column applies that column's
+   default direction (best-first: descending for rates and the timeout
+   share's worst-first read, ascending for price). */
 window.lbSortBy=function(key,defDir){
   if(state.lbSort===key){
     state.lbSortDir=-state.lbSortDir;
@@ -4097,8 +4458,8 @@ window.lbJumpPhase=function(gid){
 
 /* Cost vs. Performance price-basis toggle: re-render the scatter (points
    and frontier both come precomputed per formulation). The leaderboard's
-   Battery cost column is pinned to the battery multiplier and does not
-   re-render. */
+   Relative Test Cost column is pinned to the battery multiplier and does
+   not re-render. */
 window.setCostForm=function(key){
   state.costForm=key;
   renderCostPerf(el("sec-cost-performance"));
@@ -4155,6 +4516,12 @@ function init(){
       var target=this.getAttribute("data-target");
       if(!target) return;
       ev.preventDefault();
+      /* Mobile TOC bar (Wave B): lock the auto-centering for the smooth
+         scroll, then center the clicked target once the lock expires
+         (active-change events during the lock are deliberately dropped,
+         so the explicit follow-up keeps the bar in sync). */
+      tocClickLockUntil=Date.now()+1200;
+      setTimeout(centerActiveTocLink,1250);
       ensureRendered(target);
       ensureAllRendered();
       window.requestAnimationFrame(function(){

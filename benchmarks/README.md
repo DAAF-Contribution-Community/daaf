@@ -827,7 +827,21 @@ single existing viewer rather than forking a public variant.
    rendering, and (since v3.0.0) transcript fetch-on-demand — including the
    fetch-failure fallback message and the `&run=` deep-link path, where the
    transcript pops into the already-scrolled-to run panel when its shard
-   arrives.
+   arrives. The at-deploy visual check additionally covers (fine-tuning
+   round 3, Wave B): the mobile sticky TOC bar at a narrow viewport —
+   stickiness under the nav, active-link auto-centering during scroll and
+   after a TOC tap, and anchor landings clearing the bar
+   (`--toc-scroll-height` scroll-padding). And (round 3, Wave C): the prose
+   emphasis tiers render as intended — bright `b`/`strong`, muted italic
+   `em`/`i`, and exactly two teal `.accent-strong` instances page-wide —
+   plus (Wave A) leaderboard header wrapping in Critical-only mode, the
+   cost-cell emphasis weight vs the composite bar, and the `.to-*` red
+   timeout ramp legibility. And (round-3 post-review fix pass): free
+   diagonal/two-axis scrolling on desktop; the topbar staying pinned while
+   scrolling on mobile with no page-level left-right play (the horizontal
+   guard now lives on `main.doc` as `overflow-x:clip`, not on body); and
+   the leaderboard cost header sitting at two lines with the sort arrow
+   attached.
 
 **Accepted residuals (public-audience evolution, 2026-06-11) — reviewed, no
 fix planned:** (1) the "expects:" badge in the Run Explorer still shows raw
@@ -920,7 +934,9 @@ convention) was removed entirely. Rationale (user decision): the vast
 majority of benchmark cost came from input tokens, so a 3:1 in/out blend
 was misleading; raw input/output $/Mtok stay as secondary detail only.
 Changes: the leaderboard cost column re-pointed from `blend31` to the
-battery multiplier (header "Battery cost (× Opus 4.8)"; em-dash idiom for
+battery multiplier (header "Battery cost (× Opus 4.8)" — renamed "Relative
+Test Cost (1x=Opus 4.8)" in fine-tuning round 3 Wave A, see that addendum;
+em-dash idiom for
 models without battery data; the staleness guard's ⚠ now propagates to the
 leaderboard cell tooltip — previously it surfaced only in Costs Detail);
 the Cost vs. Performance scatter defaults to the battery basis (battery
@@ -948,7 +964,9 @@ analytic competency (explicit decision-making inside analytic code and
 data-cleaning steps, via adversarial examples, known-good code, and
 deterministically verifiable outputs). Carried in the title/og/twitter meta
 (also resolving the pre-existing title-vs-og wording mismatch by unifying on
-one title), the TOC rail title, one sanctioned two-sentence hero insertion,
+one title), the TOC rail title (later replaced by "On this page" in
+fine-tuning round 3 Wave B — the suite name lives in the hero eyebrow/h1 and
+the head metadata now), one sanctioned two-sentence hero insertion,
 a new About intro, and the closing CTA. About h2 and TOC label renamed
 "About This Benchmark" → "About DAAFBench".
 (b) *Full rewrites* — leaderboard section lead (intuition-first decoders for
@@ -1030,7 +1048,10 @@ selected component idioms, deliberately NOT a full restyle.
    strip + 30px margin), `scroll-padding-top` became
    `calc(var(--nav-height) + 3px + 14px)`, and the TOC rail tops at
    `calc(var(--nav-height) + 3px)` so hash jumps and active-state detection
-   work under the sticky bar.
+   work under the sticky bar. (*Superseded in fine-tuning round 3 Wave B:*
+   the once-computed constant became the per-call `navSpyOffset()` and the
+   scroll-padding calc gained `var(--toc-scroll-height)`, both to account
+   for the mobile sticky TOC bar's responsive height — see that addendum.)
 4. *Component idioms (from the anatomy page)* — hero chips →
    `.summary-badge` treatment (mono teal value, uppercase display label,
    teal→indigo gradient top border, hover lift; the teal is decorative —
@@ -1094,7 +1115,9 @@ user-approved items from the visual review of `viewer_2026-06-12a.html`.
 3. *Leaderboard Timed-out column* — per-model timed-out share from
    `PRECOMPUTED.timeout_by_model` (runs basis, 1-decimal percent + k/n,
    em-dash idiom, sortable with worst-first default direction, deliberately
-   NOT on the pass-green `.rs-*` ramp), with a tooltip + lb-foot clause
+   NOT on the pass-green `.rs-*` ramp — superseded in fine-tuning round 3
+   Wave A, which put the cells on a dedicated fail-red worst-is-hot `.to-*`
+   ramp; see that addendum), with a tooltip + lb-foot clause
    naming the `timed_out`-flag basis (wall-clock timeouts AND silent stalls
    that ran out the clock; timed-out runs are still graded).
 4. *Costs Detail section removed* (fully duplicative of CvP + leaderboard):
@@ -1158,6 +1181,327 @@ whose bodies read at regular body size in `--text-2` rather than the tiny
 list-price collapsible stays its own sibling expander beneath the CvP
 Details block; `prov-foot` and the `cp-foot` inside `cp-pricing` keep the
 small idiom). Verified on `viewer_2026-06-12d.html`.
+
+*Fine-tuning round 3, Wave A — leaderboard (2026-06-12; template prose/JS +
+generator dev-guide comments only — no generator code change, no version
+bump):* six user-approved leaderboard changes.
+
+1. *Dispatch column removed* — the standalone sortable Dispatch column (the
+   P3a `agent_dispatched` pass rate) duplicated signal the **P3a phase
+   column already carries** (the per-phase `dispatch_compliance_dispatch`
+   rate, which is a different column and stays). Removal took the th/td
+   blocks, the `hasDispatch` plumbing, and the `sortVal` `"dispatch"`
+   branch (safe: the column's removal means no UI can set
+   `state.lbSort="dispatch"` anymore, and state never persists across
+   loads); the `CRIT_LABELS` `agent_dispatched` entry **stays** (still
+   consumed by P3a deep-dive prose) with its doc comment + the generator
+   dev-guide consumer list updated. Precompute fields (`dispatch_rate`
+   etc.) untouched — no generator code change. Accepted residual: after
+   this removal the `dispatch_rate`/`dispatch_passed`/`dispatch_total`
+   fields in `PRECOMPUTED.per_model_phase` have zero template consumers;
+   they remain embedded deliberately (pruning them is a precompute schema
+   change requiring a generator version bump — defer until a schema-touching
+   release).
+2. *Column reorder* — new order: Tier, #, Model, **Cost**, Composite,
+   P1…P4 phases, Consistency, Timed out. Cost promoted from last to right
+   after Model as a primary reference point read alongside the composite
+   (user decision); Tier stays the first cell of band-start rows (rowspan
+   gutter contract unchanged).
+3. *Cost header renamed* — "Battery cost (× Opus 4.8)" → **"Relative Test
+   Cost (1x=Opus 4.8)"**, synced to `COST_FORMS[0].label` (the CvP
+   price-basis toggle button) so one figure carries one name; the lb-foot
+   cost sentence now leads with the new name (uncached basis,
+   billing-export token mixes, never-dollars disclosures unchanged).
+   Display-label change only — internal keys/identifiers (`battery`,
+   `batteryMult`) and the "battery multiplier" definitional prose in
+   `batteryDisclosureHtml()` keep their names.
+4. *Cost cell emphasis* — the site's "key number" idiom: JetBrains Mono,
+   13px (vs the 12px table body), weight 500, in indigo `--accent-light`
+   (the in-content accent per the teal-chrome/indigo-content split; mint
+   rejected as too close to pass-green next to status-colored cells;
+   5.65:1 on the surfaces per the WP8 re-audit). `tabular-nums`, right
+   alignment, em-dash idiom, and the staleness ⚠ tooltip unchanged.
+5. *Timed-out red ramp* — the cells moved from plain numeric onto a new
+   dedicated `.to-0…to-4` family on `--c-fail-rgb` (worst-is-hot; `.to-0`
+   deliberately untinted so 0% reads quiet/good and stays distinct from
+   the `rs-na` no-data idiom). This inverts the round-1 "deliberately NOT
+   on a ramp" decision by resolving its objection: the pass-green `.rs-*`
+   ramp would have visually rewarded timeouts; a fail-red ramp reads
+   honestly. Breaks 0 / >0 / ≥5% / ≥10% / ≥20% (`toStep()`) were designed
+   from the measured corpus distribution (17 models, rates 0%–45.8%,
+   spread 2/4/4/3/4 across the steps — `rateStep`'s 50/90 breaks would
+   have dumped 16 of 17 models into two steps). Contrast arithmetic
+   (4.5:1 small-text floor, worse of the two surfaces): fail-red is darker
+   than pass-green, so the `rs-3`-style dark-text flip at alpha .65 fails
+   (3.49:1) — `.to-3` keeps light text on a .55 fill (5.66:1); `.to-4`
+   (.85) flips dark (5.24:1) with an `opacity:1` override on its `.lb-n`
+   k/n line (the inherited .85 opacity measured 4.49:1). The % text + k/n
+   stay in every cell, so color never carries the meaning alone.
+6. *Wrap-capable headers* — `.lb-table th.lb-th-sort` relaxed from
+   `nowrap` to `normal` + `max-width:120px` (the base `.data-table th`
+   nowrap is untouched for other tables; the short non-sortable Tier/#/
+   Model headers deliberately keep it): Critical-only mode swaps five
+   phase-header suffixes "Perfect" → "Critical-only" and nowrap forced
+   full one-line widths, stretching the table. The sort arrow now joins
+   with a no-break space (`\u00a0`) so ▲/▼ can never orphan onto its own
+   line.
+
+*Fine-tuning round 3, Wave B — hero, TOC, mobile overflow (2026-06-12;
+template prose/CSS/JS + this README only — no generator code change, no
+version bump):* user-approved at checkpoint.
+
+1. *Hero top-matter mirrors the anatomy page* — a new `.hero-eyebrow`
+   mini-header ("Choosing Your Model", matching the page's site-nav label)
+   above the h1, on the anatomy `.intro-label` recipe (font-display,
+   `clamp(0.75rem,1vw,0.85rem)`, w500, uppercase, ls .12em, teal chrome
+   accent, 1.5rem margin) — a hero-specific variant; the smaller 11px
+   `.sec-eyebrow` on section headers is untouched. The hero h1 upsized
+   from fixed 26px/600 to the anatomy `.intro-title` idiom
+   (`clamp(2rem,4vw,3.2rem)`, w700, ls −0.03em, lh 1.1, max-width 1000px;
+   `gradient-text` span unchanged), with the site's 560px mobile override
+   (`clamp(1.8rem,7vw,2.4rem)`) so the long question doesn't wrap to ~6
+   lines on phones. The date line restyled to the Learn page breadcrumb
+   idiom (mono, 0.78rem, text-muted). The anatomy's `min-height:100vh`
+   hero was deliberately NOT adopted — this hero flows into content.
+2. *User-approved typo fix in the hero TLDR voice anchor* — "DAAFBench:
+   Orchestration is testing suite" → "is **a** testing suite". The ONLY
+   word-level prose change in any voice-anchor region this wave (verified
+   by diff over the hero TLDR + About ¶¶1–4); the template's "never
+   reword" comment now records the exception and the anchor protection
+   stays in force.
+3. *TOC reworked to the Learn page's doc-toc idiom* — title becomes **"On
+   this page"** (pure text swap; the suite name lives in the hero/meta),
+   styled per `.doc-toc-title`; links go mono 0.72rem text-muted on a 1px
+   hairline left rail with a 2px teal active bar (teal correct: TOC is
+   chrome). The rail stays fixed/full-height at the far left, ~190px (user
+   decision — the Learn page's centered grid was not adopted). **Markup
+   decision: single markup restyled by media query** (not the site's
+   dual-markup aside + mobile strip): one `.toc-link` set keeps the 9-link
+   `SECTION_IDS` parity trivially verifiable and cannot drift; structure is
+   `.toc-rail` (wrap/fades) > `.toc-scroll` (mobile scroller, `#toc-scroll`)
+   > `.toc-list` (rail) + `.toc-top`. Invariants preserved: every link
+   keeps both `href` and `data-target`; scrollspy/click-handler selectors
+   and `ensureAllRendered()` untouched.
+4. *Mobile TOC = the Learn page's sticky horizontal-scroll bar* (breakpoint
+   stays 900px — deliberate: the viewer's `.doc`/rail collapse and
+   content-visibility estimates already live there; the site's 960px would
+   touch unrelated rules for no gain): sticky at
+   `calc(var(--nav-height) + 3px)`, translucent blurred bg, edge-fade
+   `::before`/`::after` gradients, `overflow-x:auto` with hidden
+   scrollbars, `width:max-content` inner flex row, nowrap mono links, teal
+   active state (fixes the old mobile-active-was-indigo inconsistency).
+   Auto-centering ported INTO the existing scrollspy (no second
+   IntersectionObserver): `updateActiveLink()` detects active-section
+   *change* and schedules `centerActiveTocLink()` on a 600ms debounce with
+   a 1200ms click-lock set by the TOC click handler (plus an explicit
+   post-lock re-center after taps); desktop no-ops via a scrollWidth
+   guard. Geometry: `--toc-scroll-height` (0 desktop / 50px mobile) wired
+   into `scroll-padding-top`, and the once-computed `NAV_SPY_OFFSET`
+   became the per-call `navSpyOffset()` (reads both CSS vars per
+   rAF-throttled spy frame) so mobile anchor landings and spy detection
+   agree — without it the spy would highlight the previous section after
+   a mobile anchor jump.
+5. *Mobile horizontal-overflow fixes* (all four scoped suspects verified
+   and addressed): (a) `.logs-layout` stacks vertically at ≤900px (list
+   above detail, list capped 38vh / detail 70vh, both keep internal
+   scroll), the detail panel gains `min-width:0` (defeats the flex
+   `min-width:auto` stretch), and `.tx-out` tool outputs gain
+   `pre-wrap` + `break-word` so long paths/SHAs can't inflate min-content
+   width; (b) the About phases table and (c) the CvP published list-price
+   table are wrapped in a new `.table-wrap` (`overflow-x:auto`, the site
+   `.doc-table-wrap` idiom); (d) backstop guards — `body{overflow-x:hidden}`
+   (hidden, not clip, deliberately: body/html overflow propagates to the
+   viewport so the sticky site-nav and sticky TOC bar keep working — the
+   site itself runs this exact combination) plus `min-width:0` +
+   `overflow-wrap:break-word` on `.doc`. The leaderboard card, heatmaps,
+   case matrices, and SVG charts already contain their own overflow and
+   were deliberately not double-wrapped. (*Superseded in the round-3
+   post-review fix pass — item (d)'s body rule only:* the
+   `body{overflow-x:hidden}` backstop was the root cause of the
+   user-reported mobile topbar slide and axis-locked scrolling. The
+   factual claim was accurate — the site does run that exact rule with a
+   sticky nav — but the inference was wrong: per css-overflow-3 § 3.3 a
+   body overflow value propagates to the VIEWPORT (body's used value
+   reverts to visible), so the rule put `overflow-x:hidden` on the
+   viewport's own scroll machinery; `hidden`, unlike `clip`, creates a
+   scroll container. The site's pages have no horizontal overflow
+   pressure, so the propagated rule is inert there — Wave B copied the
+   rule without the conditions that keep it harmless. Replaced by
+   `overflow-x:clip` on `main.doc` (the site's `.doc-layout` idiom); the
+   stacking, `.table-wrap`, and `.doc` width-discipline fixes in (a)-(d)
+   all stay in force. Full record: the round-3 post-review fix-pass
+   addendum below.)
+
+Verified by single-file regeneration (`/tmp/viewer_waveB_sanity.html`):
+38 structural checks pass — "On this page" present / old title absent;
+eyebrow directly above the h1; typo fixed with the old string absent from
+prose (it survives only inside the dev comment recording the exception);
+9 `toc-link`s with matching `href`+`data-target` in `SECTION_IDS` order;
+mobile sticky/fade/max-content CSS present; stacking + `min-width:0` +
+`tx-out` wrap rules present; both tables wrapped; overflow backstop +
+scroll-padding var wired; `navSpyOffset`/`centerActiveTocLink` defined and
+referenced, zero stale `NAV_SPY_OFFSET` refs, exactly one
+IntersectionObserver; 23-span kt contract, `hero-models`/`hero-runs`, and
+`renderHero()` chip fill intact; brace-balanced JS (python structural
+check; no node in the container — same accepted residual as prior rounds).
+Voice-anchor diff: About ¶¶1–4 byte-identical; hero TLDR differs only by
+the approved "a".
+
+*Fine-tuning round 3, Wave C — prose emphasis + inputs/outputs framing
+(2026-06-12; template prose/CSS + generator dev-guide comments + this
+README — no generator code change, no JS change, no version bump):*
+user-approved at checkpoint.
+
+1. *Four-tier emphasis system adopted (site idiom)* — the template had NO
+   styling for `b/strong/em/i` in prose (bold rendered at the same gray —
+   the "flat" feel the user flagged). New CSS, scoped to the hand-written
+   prose surfaces only (`.hero-sub`, `.section-lead`, `.kt-item p`,
+   `.about-intro`, `.about details > div`, `.two-bars`, `.foot-details`,
+   `.prov-foot`): **strong/b = bright `--text-1` at w600** (the Learn page
+   `.doc-content strong` rule; 600 is also the heaviest DM Sans weight the
+   page loads, so browser-default 700 was being synthesized); **em/i =
+   muted italic one step below the surface's body color** (`--text-3` in
+   the `--text-2` surfaces; `--text-2` in the `--text-1` `.about-intro` —
+   same one-step-down relationship as the site, different absolute color);
+   **`.accent-strong` = teal**, the rare per-section headline treatment.
+   JS-rendered data surfaces (lb/cp/pd findings, pd explainers/callouts,
+   tooltips, badges, table cells, case browser) are deliberately OUT of
+   scope and keep their weights/colors; the colored `.crit-pass`/
+   `.crit-fail` spans cannot be touched (the new rules select b/strong/
+   i/em elements only, never classed spans — verified no selector
+   co-targets them). Mint code-chips were NOT added to prose (the page's
+   code chips stay indigo per the earlier user decision). The tier
+   system, source, and budget rule are recorded in a design comment at
+   the CSS block so future editors don't dilute it.
+2. *Accent-strong color decision: TEAL* — matching the site's own
+   body-prose accent-strong exactly. The token-split nuance (teal=chrome
+   / indigo=in-content, `:root` comment) is respected, not violated:
+   accent-strong is voice/brand emphasis (the chrome family — prose links
+   in these same paragraphs are already teal), not an in-content
+   interactive element, and it appears only inside pure prose paragraphs,
+   never beside status-colored cells (the pass-green-proximity concern
+   that keeps teal out of data surfaces). 8.78:1 on the surfaces (WP8
+   re-audit). Implementation: `.doc b.accent-strong` (0,2,1 specificity,
+   declared last) so it outranks the scoped brightening rules.
+3. *Budget discipline applied* (site-measured: ~1 plain-strong thesis
+   phrase per paragraph; accent-strong AT MOST once per major section; em
+   sparingly for single-word stress). **Exactly 2 accent-strong uses
+   page-wide**: T1's headline Fable composite figure (the single
+   most load-bearing number; the #takeaways section's one budget slot)
+   and About ¶3's "behavioral conformance only" (the About section's
+   thesis; class added to the pre-existing `<b>` — presentation only).
+   New plain-`<b>` wraps, zero word changes everywhere: hero TLDR 2
+   ("rigorous quantitative research engine", "responsible, rigorous, and
+   reproducible data analysis" — voice anchor, wrapping user-confirmed as
+   presentation-only); cvp-preview lead-in ("The headline picture:");
+   T2's bare `kt-t2-o48` and T5's bare `kt-t5-qwen` spans wrapped (each
+   takeaway's central number), T4 thesis phrase ("a marked drop in
+   performance consistency"); About ¶1 ("agentic orchestration"), ¶2
+   ("test adherence to the research protocols and process guidelines of
+   DAAF"), ¶4 ("unprecedented access to analytic capacity"); phases-table
+   intro ("one slice of orchestrator behavior"); runs details ("nothing
+   is mocked"); Run Explorer lead ("audit layer"); Provenance lead ("one
+   row per archived result set"). Existing `<b>` lead-ins (two-bars,
+   glossary terms, caveats, scoring, leaderboard/CvP leads, foot-details)
+   brighten via CSS with no markup churn. One markup conversion: the
+   Phases section lead's `<em>which specific protocol requirement</em>` →
+   `<b>` — under the tier system em now reads as DE-emphasis (muted), and
+   this phrase is the lead's operative stress; the single-word stress
+   italics (`<em>will</em>`, `<em>inside</em>`, `<i>all</i>`, the table's
+   `<i>Failure mode</i>` asides) keep em/i — muted italic IS the site's
+   idiom for those.
+4. *User-approved inputs/outputs framing sentence (C1)* — inserted into
+   About ¶3 (a voice-anchor paragraph) between "…each deserves its own
+   dedicated measurement." and "More to come there!", verbatim as
+   approved: **"Put differently: Orchestration is an inputs-based
+   assessment — if a model gets the process right, downstream results
+   improve — while Analytics will assess outputs directly."** (em-dashes
+   encoded `&mdash;` per the file's conventions; "inputs-based" and
+   "outputs" carry plain `<b>` under the same tier rules). This is a
+   sanctioned ADDITION to a "do not reword" anchor — zero changes to any
+   pre-existing word; the template's anchor comment and the generator
+   dev-guide's voice-anchor note now record it as the second exception on
+   record (after the Wave B typo fix), with protection staying in force.
+
+Verified by single-file regeneration (`/tmp/viewer_waveC_sanity.html`):
+C1 present exactly once with the exact approved wording (markup-stripped
+check); all four emphasis CSS rules present; accent-strong used exactly
+2×; per-surface b/em counts within budget (hero 2/0, cvp lead 1/0,
+takeaways 11/1, About intro 6/1, two-bars 3/0, section leads ≤4 each);
+no new selector co-targets `.crit-pass`/`.crit-fail` (single rule each,
+element-only emphasis selectors); 23-span kt contract bidirectional;
+`hero-models`/`hero-runs` + `ab-*` runtime spans intact; template app-JS
+brace/paren balance 552/552 and 1905/1905, and the generated app script
+blocks are **byte-identical** to the Wave B artifact's (zero JS edits
+this wave). Voice-anchor word-level diff vs the Wave B artifact: hero
+TLDR and About ¶¶1/2/4 ZERO word deltas; About ¶3 shows additions only —
+exactly the 25 approved C1 tokens, no removals, no changed words.
+
+*Round-3 post-review fix pass (2026-06-13; template CSS/JS + a generator
+dev-guide anchor refresh + this README — no generator code change, no
+version bump):* three items from the user's visual check of the round-3
+artifact, user-approved.
+
+1. *Cost header width* — "Relative Test Cost (1x=Opus 4.8)" wrapped to
+   three lines under the Wave A 120px header cap. New
+   `.lb-table th.lb-th-cost{ max-width:170px }` seats it at two
+   ("Relative Test Cost" / "(1x=Opus 4.8)" + the nbsp-glued arrow),
+   applied via a new optional `extraCls` parameter on `thSort()` to the
+   cost th only; all other sortable headers keep 120px. Mechanism note:
+   `max-width` on table cells is formally undefined in CSS 2.1 but
+   honored by modern auto-layout engines — kept deliberately, since ALL
+   sortable headers have relied on it since Wave A and mixing a
+   `width`/`min-width` pair into the same header row would add a second
+   sizing mechanism for no better-defined behavior.
+2. *Overflow guard rework — root cause of both reported bugs* (mobile
+   topbar sliding partially off-screen during scroll + mis-sized
+   viewport; axis-locked one-direction-at-a-time scrolling on desktop).
+   Wave B's `body{overflow-x:hidden}` backstop never guarded body: per
+   css-overflow-3 § 3.3, body overflow values propagate to the viewport
+   when html is `overflow:visible` (it is, in the viewer and on the
+   site), with body's used value reverting to visible — so the rule put
+   `overflow-x:hidden` on the viewport's scroll machinery itself, and
+   `hidden` (unlike `clip`) creates a scroll container: residual
+   horizontal overflow on this content-heavy page became a
+   scrollable-but-scrollbarless viewport axis instead of being clipped
+   away. Site-pattern determination (re-verified at source): the site
+   nav is `position:sticky; top:3px` — NOT fixed
+   (`learn-understanding.html` L143-145, `daaf_anatomy.css` L114-115);
+   the site does run `body{overflow-x:hidden}` (L82 / L81) but its pages
+   have no horizontal overflow pressure, so the propagated rule is inert
+   there; the site's content-container guard is
+   `.doc-layout{overflow-x:clip}` (`learn-understanding.html` L391).
+   Fix: the body rule is REMOVED and the guard moved to
+   `main.doc{overflow-x:clip}` (the site's `.doc-layout` idiom) — `clip`
+   never creates a scroll container, never touches the viewport, and
+   leaves a single viewport scroll container so sticky chrome and free
+   two-axis scrolling behave normally. `body{overflow-x:clip}` was
+   rejected: it propagates identically (the viewport treats propagated
+   clip as hidden). Wave B's other overflow fixes (`.logs-layout`
+   stacking, `min-width:0`, `.tx-out` wrap, `.table-wrap` wrappers, `.doc`
+   width-discipline) all stay in force; every data surface lives inside
+   `main.doc`, the nav/footer mirror non-overflowing site markup, and the
+   mobile TOC bar contains its own overflow inside `.toc-scroll`. The
+   template's body and `.doc` design comments record the propagation
+   mechanism so the body-level guard never comes back.
+3. *Topbar positioning* — no nav change needed: the viewer's
+   `nav.site-nav{position:sticky; top:3px; z-index:1100}` already matches
+   the site verbatim; the mobile topbar slide was a symptom of item 2,
+   not a nav-positioning divergence. Hamburger/dropdown markup and JS
+   untouched.
+
+Same pass: the generator dev-guide's five template line anchors
+(GROUP_SHORT, PD_EXPLAINERS, buildEvalGroups order, phaseSpan, phases
+table row) were refreshed — they had drifted ~+320-425 lines across the
+round-3 waves. Verified by single-file regeneration
+(`research/2026-06-11_FrameworkDev_ViewerPublic/viewer_waveC_sanity.html`,
+the user's review-artifact location, overwritten): zero live
+`overflow-x:hidden` rules; `.doc` clip + `.lb-th-cost` present and the
+class applied to the cost th only; nav CSS unchanged; round-3 content
+intact ("On this page", `.to-*` ramp, C1 sentence exactly once, 23-span
+kt contract, zero unsubstituted `__TOKEN__`s). Official regen:
+`daafbench_2026-06-13a/` (53 sets / 2,493 runs; index.html 3.78 MB + 53
+transcript shards, 20.97 MB) — § 12 "Viewer current".
 
 ## 9. Operational Notes
 
@@ -1757,15 +2101,109 @@ and update or remove this subsection.
   size (`cp-pricing` stays a sibling expander; other footnote surfaces
   unchanged). Full record: § 8 fine-tuning addendum, round-2 paragraph.
   Review artifact: `viewer_2026-06-12d.html` (single-file).
-- **Viewer current:** `daafbench_2026-06-12b/` (generator v3.1.1; 53 sets /
-  2,493 runs; 2026-06-12, user-approved for deploy) — adds the fine-tuning
+- **Viewer fine-tuning round 3, Wave A — leaderboard (2026-06-12; template
+  prose/JS + generator dev-guide comments + this README, no generator code
+  change, no version bump):** six user-approved leaderboard changes —
+  Dispatch column removed (the P3a phase column, a different column,
+  stays; `agent_dispatched` precompute + `CRIT_LABELS` entry untouched);
+  columns reordered to Tier, #, Model, Cost, Composite, P1…P4,
+  Consistency, Timed out (cost promoted as a primary reference point);
+  cost header renamed "Relative Test Cost (1x=Opus 4.8)" with the CvP
+  `COST_FORMS` toggle label synced and the lb-foot sentence re-led; cost
+  cells on the mono + indigo-accent "key number" idiom; Timed-out cells
+  on a new dedicated fail-red worst-is-hot `.to-0…to-4` ramp (breaks
+  0 / >0 / ≥5% / ≥10% / ≥20% from the measured corpus distribution,
+  contrast-verified); leaderboard sortable headers made wrap-capable with
+  the sort arrow nbsp-glued. Full record: § 8 "Fine-tuning round 3,
+  Wave A" addendum. Official regen deferred to the end of the round-3
+  session (after Waves B and C).
+- **Viewer fine-tuning round 3, Wave B — hero, TOC, mobile overflow
+  (2026-06-12; template prose/CSS/JS + this README, no generator code
+  change, no version bump):** user-approved changes — hero top-matter
+  mirrors the anatomy page (new `.hero-eyebrow` "Choosing Your Model",
+  h1 on the `.intro-title` clamp idiom + 560px mobile override, mono
+  breadcrumb date line; `.sec-eyebrow` untouched) with the user-approved
+  TLDR voice-anchor typo fix ("is **a** testing suite" — the only prose
+  word change, About ¶¶1–4 byte-identical); TOC restyled to the Learn
+  page doc-toc idiom ("On this page", mono links, hairline rail + teal
+  active bar; rail stays fixed-left; single markup for both widths) with
+  the mobile state now the site's sticky horizontal-scroll bar (edge
+  fades, hidden scrollbars, teal active — was indigo) plus auto-centering
+  integrated into the existing scrollspy (600ms debounce / 1200ms
+  click-lock; no second IntersectionObserver) and geometry wiring
+  (`--toc-scroll-height` in scroll-padding; `NAV_SPY_OFFSET` →
+  `navSpyOffset()`); mobile horizontal overflow fixed (`.logs-layout`
+  stacking + detail `min-width:0` + `.tx-out` wrap, About phases and CvP
+  pricing tables in `.table-wrap`, `body{overflow-x:hidden}` + `.doc`
+  width-discipline backstops — *the body backstop was root-caused and
+  replaced by `overflow-x:clip` on `main.doc` in the round-3 post-review
+  fix pass below; the rest stays*). Mobile sticky TOC behavior added to the
+  § 8 at-deploy visual check list. Full record: § 8 "Fine-tuning round 3,
+  Wave B" addendum. Sanity artifact: `/tmp/viewer_waveB_sanity.html`
+  (38 structural checks pass). Official regen still deferred to the end
+  of the round-3 session.
+- **Viewer fine-tuning round 3, Wave C — prose emphasis + inputs/outputs
+  framing (2026-06-12; template prose/CSS + generator dev-guide comments
+  + this README, no generator code change, no JS change, no version
+  bump):** the site's four-tier inline-emphasis system adopted across the
+  hand-written prose surfaces (strong/b = bright `--text-1` w600; em/i =
+  one-step-down muted italic; rare `.accent-strong` = teal — the site's
+  own body-prose accent-strong, voice/brand emphasis in the chrome
+  family, used exactly 2× page-wide: T1's headline Fable figure and
+  About's "behavioral conformance only"; JS data surfaces and
+  `.crit-pass`/`.crit-fail` spans deliberately untouched), with 15 new
+  thesis-phrase `<b>` wraps at zero word changes and one em→b conversion
+  in the Phases lead; plus the user-approved inputs/outputs framing
+  sentence inserted verbatim into About ¶3 ("Put differently:
+  Orchestration is an inputs-based assessment — if a model gets the
+  process right, downstream results improve — while Analytics will
+  assess outputs directly." — a sanctioned addition to a voice-anchor
+  paragraph, recorded as the second anchor exception; word-level diff vs
+  Wave B shows additions only). Full record: § 8 "Fine-tuning round 3,
+  Wave C" addendum. Sanity artifact: `/tmp/viewer_waveC_sanity.html`
+  (app-JS byte-identical to Wave B's). Official regen still deferred to
+  the end of the round-3 session.
+- **Viewer fine-tuning round 3 — post-review fix pass + official regen
+  (2026-06-13; template CSS/JS + generator dev-guide anchor refresh + this
+  README, no generator code change, no version bump):** three items from
+  the user's visual check of the round-3 artifact — cost header widened to
+  two lines (`.lb-th-cost` 170px cap via a new `thSort()` `extraCls` hook;
+  other headers keep 120px); the Wave B `body{overflow-x:hidden}` backstop
+  root-caused (body overflow propagates to the VIEWPORT per css-overflow-3
+  § 3.3, and `hidden` creates a scroll container there — it broke the
+  sticky topbar during mobile scroll, mis-sized the mobile viewport, and
+  axis-locked desktop scrolling; the site runs the same rule but with zero
+  overflow pressure it is inert there) and replaced by
+  `main.doc{overflow-x:clip}` (the site's `.doc-layout` idiom — never a
+  scroll container, never touches the viewport); nav positioning verified
+  already site-exact (`sticky; top:3px` — site nav is NOT fixed), so no
+  nav change. Sanity artifact overwritten at the user's review location
+  (`research/2026-06-11_FrameworkDev_ViewerPublic/viewer_waveC_sanity.html`);
+  round-3 content re-verified intact (23-span contract, C1, `.to-*` ramp,
+  "On this page", zero unsubstituted tokens). Full record: § 8 round-3
+  post-review fix-pass addendum.
+- **Viewer current:** `daafbench_2026-06-13b/` (generator v3.1.1; 53 sets /
+  2,493 runs; 2026-06-13, user-approved) — adds fine-tuning round 3 in
+  full: Wave A (leaderboard column reorder, cost header rename + key-number
+  cells, `.to-*` timeout ramp, wrap-capable headers), Wave B (hero
+  top-matter, doc-toc restyle + mobile sticky TOC bar, mobile overflow
+  fixes), Wave C (prose emphasis tiers, C1 inputs/outputs sentence), and
+  the post-review fix pass (overflow guard `body{overflow-x:hidden}`
+  removed — `main.doc` carries `min-width:0` + `overflow-wrap:break-word`
+  only; history in § 8 fix-pass addendum). Supersedes
+  `daafbench_2026-06-13a/` (fix-pass candidate, `.doc{overflow-x:clip}`
+  still present — removed in _13b after user visual check) which superseded
+  `daafbench_2026-06-13/` (never current — carries Wave B body backstop),
+  which superseded `daafbench_2026-06-12b/` (generator
+  v3.1.1; 53 sets /
+  2,493 runs; 2026-06-12, user-approved for deploy) — added the fine-tuning
   rounds 1-2 (Verdict removal, Intro TOC label, timed-out leaderboard
   column, responsive CvP chart + native-tooltip removal, TOC first-click
   render fix, next-steps + Costs Detail section removals w/ disclosure
   relocation, TLDR hero + preview-above-takeaways restructure, footnote
   Details expanders), the website-deploy compat edits (canonical
   `daaf.openaugments.org/bench/`, short "Choosing Your Model" nav label),
-  and the user's final manual prose touches. Supersedes
+  and the user's final manual prose touches. That bundle superseded
   `daafbench_2026-06-12a/` (first official bundle
   artifact; generator v3.1.1; 53 sets / 2,493 runs; 2026-06-12) — carried
   everything since `_11k`: the v3.0.0 bundle architecture, the v3.1.0

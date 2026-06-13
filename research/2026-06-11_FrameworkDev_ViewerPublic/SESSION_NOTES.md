@@ -518,6 +518,117 @@ compression; superseded single-file viewers _09e–_12d = user-deletion
 housekeeping). Next session: post-deploy retest findings or DAAFBench
 part B (analytic-competency suite) scoping.
 
+## Session 4 (2026-06-12): Fine-Tuning Round 3 — Content + Styling Polish
+
+**Scope (user-confirmed at Checkpoint 1):** 7 items: (1) inputs-vs-outputs
+framing note for Orchestration/Analytics distinction; (2) prose emphasis
+("flatness") via the site's four-tier system; (3) leaderboard Dispatch column
+removal + cost-cell emphasis; (4) Timed-out red ramp; (5) wrap-capable column
+headers; (6) column reorder Tier/#/Model/Cost/Composite/rest + header rename
+"Relative Test Cost (1x=Opus 4.8)"; (7) site cohesion: anatomy-style hero
+(eyebrow "Choosing Your Model" + clamp h1), Learn-page "On this page" TOC
+(desktop restyle + mobile sticky horizontal-scroll bar), mobile
+horizontal-overflow fix. User decisions: fix "is testing suite" typo (voice
+anchor, approved); sync COST_FORMS CvP toggle label to new cost name;
+orchestrator's drafted inputs/outputs sentence approved for insertion (held
+for final visual review).
+
+**Phase 1 scoping COMPLETE** — 3 parallel search-agents persisted:
+- `preliminary_notes/2026-06-12_scoping_finetune-website-design-language.md`
+  (emphasis idiom catalog, anatomy hero recipe, Learn TOC recipe verbatim,
+  overflow techniques)
+- `preliminary_notes/2026-06-12_scoping_finetune-leaderboard-current-state.md`
+  (column model, six change anchors, rs-* ramp recipe, removal risks, doc-sync)
+- `preliminary_notes/2026-06-12_scoping_finetune-toc-hero-prose.md` (TOC/JS
+  map, overflow suspects ranked, hero map, framing quotes, 23-span contract)
+
+**Wave A COMPLETE (framework-engineer):** Dispatch column removed (P3a column
+stays; precompute fields stay — INFO: now zero template consumers, prune =
+future version bump); columns reordered (cost after Model); header renamed +
+COST_FORMS[0] synced + lb-foot reworded; .lb-cost mono/13px/--accent-light
+emphasis; .to-0…to-4 red timeout ramp (breaks 0/>0/5/10/20% from measured
+distribution, spread 2/4/4/3/4; WCAG recomputed per hue — red ≠ green alpha
+flip, .to-3 keeps light text at α.55, .to-4 flips at α.85 + lb-n opacity
+override); th wrap enabled (max-width 120px, nbsp-glued sort arrow).
+README §8 Wave A addendum + 2 stale claims fixed; §12 entry. Generator
+comment-only (v3.1.1 unchanged). Full report:
+`preliminary_notes/2026-06-12_waveA_leaderboard-report.md`
+
+**Wave B COMPLETE (framework-engineer):** hero eyebrow + clamp h1 (+560px
+override) + breadcrumb-idiom date; typo fixed (only word-level voice-anchor
+change, diff-proven); TOC → "On this page" doc-toc idiom, mobile sticky
+horizontal-scroll bar w/ edge fades + auto-centering integrated into existing
+scrollspy (navSpyOffset() per-call, --toc-scroll-height 0/50px wired to
+scroll-padding-top); overflow fixed (.logs-layout stacks ≤900px, min-width:0,
+tx-out break-word, both bare tables wrapped in .table-wrap,
+body overflow-x:hidden backstop). Decisions: 900px breakpoint kept; single
+markup + media query; hidden not clip. README §8 Wave B addendum + retest
+list extended (mobile TOC items); §12 entry. Full report:
+`preliminary_notes/2026-06-12_waveB_hero-toc-mobile-report.md`
+
+**Wave C COMPLETE (framework-engineer, after one rate-limit-aborted dispatch
+verified to have made zero edits):** emphasis-tier CSS (b/strong bright w600,
+i/em muted, .accent-strong teal — exactly 2 page-wide: T1 figure +
+"behavioral conformance only"); 15 new <b> wraps + 1 em→b, zero word changes
+to voice anchors (word-level diffs proven); C1 inputs/outputs sentence
+inserted exactly-once into About ¶3 with <b> on "inputs-based"/"outputs";
+README §8 Wave C addendum + §12; generator comment-only (two recorded anchor
+exceptions). Full report:
+`preliminary_notes/2026-06-13_waveC_prose-emphasis-report.md`
+
+**Official bundle regenerated:** `benchmarks/daafbench_2026-06-13/`
+(index.html 3.77 MB + 53 shards 20.97 MB; v3.1.1; 53 sets / 2,493 runs /
+17 models; corpus unchanged from _2026-06-12b).
+
+**Phase 4 three-angle review COMPLETE — ALL PROCEED YES, zero blockers:**
+- Consistency: clean across all 7 checks (labels, dispatch removal vs git
+  HEAD, TOC parity, README claims vs code incl. empirical +15-wrap count,
+  cross-wave CSS/JS interference, artifact freshness 6-line token-only diff,
+  kt 23↔23). §12 pointer at _12b = expected pending.
+- Quality: idiom fidelity verbatim-verified vs site CSS; WCAG arithmetic
+  recomputed exact (all 6 figures); ramp spread 2/4/4/3/4 vs real
+  distribution; C1 in-situ voice flow clean. 3 MINOR: M1 mobile TOC gap
+  0.1rem vs site 0.75rem; M2 "1x" ASCII vs "×" elsewhere (NOTE: user
+  specified "1x" wording); M3 cost header likely wraps 3 lines at
+  max-width:120px. 3 SUGGESTIONs (hero h1 margin comment; About ¶3 density
+  watch; phases-table full-sentence italic demotion).
+- Completeness: all 7 items + 3 decisions DELIVERED with evidence; overflow
+  suspects 3 fixed / 2 deliberately skipped; orphan scan clean; bundle
+  integrity clean (53/53 shards, gitignored). 2 doc-gap WARNINGs → FIXED
+  by orchestrator post-review (README §8: Wave C/A items added to at-deploy
+  visual list; dispatch-precompute zero-consumer residual recorded).
+
+**Checkpoint 2 round 1:** orchestrator fixed the 2 completeness doc-gaps
+directly (README §8 at-deploy visual items + dispatch-precompute residual).
+User approved round, with: M3 cost-header widening YES; M2 "1x" kept
+(user's own wording); M1 TOC spacing not raised. User visual check found
+2 BUGS: mobile topbar partially scrolls away (site pages keep it pinned);
+axis-locked scrolling even on desktop + mis-sized mobile viewport.
+
+**Post-review fix pass COMPLETE (framework-engineer):** root cause = Wave B
+`body{overflow-x:hidden}` PROPAGATES to the viewport (css-overflow-3 §3.3;
+hidden creates a scroll container; clip-on-body would propagate identically)
+— site survives the same rule only because its pages have zero horizontal
+overflow pressure; orchestrator's body-scroll-container mechanism refuted,
+rule-as-root-cause confirmed. Fixes: body overflow-x removed (corrective
+comment forbids reintroduction on body/html); `main.doc` gains
+overflow-x:clip (site .doc-layout idiom); nav unchanged (already site-exact
+sticky top:3px); `.lb-th-cost{max-width:170px}` via new thSort extraCls
+param (cost header ≤2 lines). Generator dev-guide line anchors refreshed
+(drifted ~320-425 lines; autonomous fix). Review artifact overwritten in
+place: `viewer_waveC_sanity.html` (24.74 MB, workspace root). Official
+bundle: **daafbench_2026-06-13a/** (generator letter-suffixes, no
+overwrite); §12 Viewer current → _13a, supersession chain extended (_13
+never-current, carries the bug). README §8 fix-pass addendum + stale Wave B
+claims annotated. All 8 verification checks PASS.
+
+**Remaining:** user final visual re-check (topbar pinned, free 2-axis
+scroll, mobile viewport, 2-line cost header) → housekeeping before commit:
+delete workspace `viewer_waveC_sanity.html` (24.74 MB) + superseded
+`benchmarks/daafbench_2026-06-13/` (user-deletion convention; gitignored
+anyway) → commit on user direction (working tree: template, generator,
+README, this workspace).
+
 ## Open Questions
 
 - None pending — all design decisions resolved at Checkpoint 1 + design

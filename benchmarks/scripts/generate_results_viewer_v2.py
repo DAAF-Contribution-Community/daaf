@@ -191,13 +191,15 @@ def resolve_paths(args):
 #   4. Template prose + JS registries: the About layer's "The benchmark
 #      phases" collapsible in viewer_template.html enumerates phases in
 #      hand-written prose — add an entry for the new phase. ALSO register the
-#      phase in the template's JS lookup maps: GROUP_SHORT (~L1695, short
-#      labels), PD_EXPLAINERS (~L2740, deep-dive explainer prose), the
-#      eval-group `order` array inside buildEvalGroups() (~L1669) so the new
+#      phase in the template's JS lookup maps: GROUP_SHORT (~L2018, short
+#      labels), PD_EXPLAINERS (~L3165, deep-dive explainer prose), the
+#      eval-group `order` array inside buildEvalGroups() (~L1995) so the new
 #      group sorts canonically instead of falling to the unordered tail, AND
-#      the About-table case-count wiring: a `phaseSpan` entry (~L2190)
+#      the About-table case-count wiring: a `phaseSpan` entry (~L2478)
 #      mapping the phase_id to an `ab-pX-cases` span id, plus the matching
-#      table row in the "The benchmark phases" collapsible (~L1068).
+#      table row in the "The benchmark phases" collapsible (~L1405).
+#      (Anchors refreshed 2026-06-13, round-3 post-review fix pass — they
+#      had drifted ~+320-425 across the round-3 waves.)
 #      Omitting these caused the missing Phase 4 (skill_routing) explainer.
 #      (Template edits, not handled in this script; line anchors drift as
 #      the template evolves — grep for the identifier names.) Cost vs.
@@ -213,8 +215,9 @@ def resolve_paths(args):
 # with the public-audience evolution of the viewer):
 #   - CRIT_LABELS (viewer_template.html JS, next to KNOWN_SCORER_CAVEATS):
 #     maps snake_case criterion ids to plain-language labels used in headline
-#     prose (hero verdict, deep-dive callouts and the global finding, the
-#     leaderboard Dispatch tooltip). Forensic surfaces (run explorer, rotated
+#     prose (deep-dive callouts and the global finding; the hero verdict and
+#     the leaderboard Dispatch column that also consumed these were removed
+#     in the 2026-06-12 fine-tuning rounds). Forensic surfaces (run explorer, rotated
 #     heatmap column headers) keep raw names; heatmap header tooltips append
 #     the label. When a new criterion enters the corpus, add a label entry —
 #     unlabeled criteria fall back to the snake_case name with underscores
@@ -264,11 +267,15 @@ def resolve_paths(args):
 #   - Suite naming + hero orientation (2026-06-12 tone percolation; intro
 #     restructured later the same day, user fine-tuning round): the page
 #     presents this suite as "DAAFBench: Orchestration" — title/og/twitter
-#     meta, TOC rail title, and the moved intro paragraphs at the top of
-#     #about all carry it, alongside the planned analytic-competency
-#     companion suite framing. Keep that naming consistent when editing
-#     prose. Page-top order is now (fine-tuning round 2, 2026-06-12): hero
-#     (h1 + date + stat chips + ONE user "TLDR:" paragraph — the first
+#     meta and the moved intro paragraphs at the top of #about carry it,
+#     alongside the planned analytic-competency companion suite framing.
+#     (The TOC rail title carried it too until fine-tuning round 3 Wave B,
+#     when the title became the Learn-page-idiom "On this page" — the
+#     suite name now leads the hero h1/eyebrow and the head metadata.)
+#     Keep that naming consistent when editing
+#     prose. Page-top order is now (fine-tuning rounds 2 + 3B, 2026-06-12):
+#     hero (eyebrow "Choosing Your Model" + anatomy-scale h1 + mono
+#     breadcrumb date + stat chips + ONE user "TLDR:" paragraph — the first
 #     sentence of the user's former hero ¶1, links intact, plus a
 #     user-supplied DAAFBench framing sentence; TOC label "Intro"; the
 #     computed verdict callout was REMOVED) -> #cvp-preview (compact
@@ -276,9 +283,15 @@ def resolve_paths(args):
 #     #takeaways -> #about, which opens with the "layers together"
 #     remainder of the user's former hero ¶1 as its own paragraph, then the
 #     user's hero paragraphs 2-4 — all moved VERBATIM (voice anchors —
-#     never reword). Chip content must stay intuitively
-#     meaningful to a zero-context reader (counts and concrete facts,
-#     never metric jargon — see renderHero).
+#     never reword; two recorded exceptions, both user-approved: the
+#     Wave B "is a testing suite" typo fix in the TLDR, and the Wave C
+#     inputs/outputs framing sentence INSERTED into About ¶3 — an
+#     addition with zero changes to pre-existing words. Wave C <b>
+#     emphasis wrapping inside the anchors is presentation-only and
+#     user-confirmed; the per-anchor comments in the template carry the
+#     details). Chip content must stay
+#     intuitively meaningful to a zero-context reader (counts and concrete
+#     facts, never metric jargon — see renderHero).
 #   - Substitution order in generate_html() is load-bearing: the small
 #     controlled placeholders (__GENERATED_DISPLAY__, __HERO_MODELS__,
 #     __HERO_RUNS__) are filled first, then __PRECOMPUTED_JSON__, with
