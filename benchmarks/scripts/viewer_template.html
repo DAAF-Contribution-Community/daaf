@@ -279,8 +279,15 @@ h1,h2,h3{ font-family:var(--font-display); letter-spacing:-0.02em; }
    (ensureAllRendered) and adds this class, which un-skips them all so the
    whole document lays out at true geometry once — every subsequent anchor
    jump then lands exactly. The initial-load perf benefit of
-   content-visibility is already banked by that point. (http(s) retest
-   item: re-verify the first-click landing post-deploy.) */
+   content-visibility is already banked by that point.
+   Performance fix (2026-06-16): nav-rendered is now REMOVED after a
+   double-rAF settling delay (ensureAllRendered), restoring content-
+   visibility:auto with cached true sizes (contain-intrinsic-size:auto).
+   Without removal, every in-section re-render (leaderboard sort, metric
+   toggle, scatter axis change) forced the browser to reflow ALL
+   downstream sections — the dominant cause of sort jank on content-heavy
+   pages. (http(s) retest item: re-verify the first-click landing and
+   subsequent anchor jumps post-deploy.) */
 body.nav-rendered #leaderboard,body.nav-rendered #cost-performance,
 body.nav-rendered #run-explorer,body.nav-rendered #provenance,
 body.nav-rendered #phases,body.nav-rendered #cases{
@@ -1213,6 +1220,11 @@ nav.site-nav{
     <a href="https://github.com/DAAF-Contribution-Community/daaf">open-source</a>
     toolkit and instructions framework that turns Claude Code into a <b>rigorous quantitative research engine</b> with the human researcher at the helm: every step auditable, every output verifiable, every decision theirs to make. DAAFBench: Orchestration is a testing suite designed to assess different models&rsquo; abilities to adhere to the workflows, guidance, guardrails, and processes needed to facilitate <b>responsible, rigorous, and reproducible data analysis</b> for good research. Lots of neat insights on model performance, task consistency, costs, and open-weight trade-offs below!
   </p>
+
+   <div class="two-bars">
+    <p>The bottom line for practical use of DAAF at this time: those who are <b>budget-constrained should feel comfortable relying on Sonnet 4.6</b>, but using <b>GLM5.1 is definitely viable for self-hosting/full control/hermetic systems</b> (best performance-consistency trade-off). There may nonetheless be benefits to using more generally powerful models like Opus 4.8 not explicitly tracked by this benchmark (e.g., actual coding quality, analytic fidelity, etc.) if your budget/use limits allow.</p>
+  </div>
+
 </section>
 
 <!-- 1b. Cost-performance preview (2026-06-12 user fine-tuning rounds;
@@ -1259,9 +1271,8 @@ nav.site-nav{
     <div class="kt-claim">2. Opus 4.7 was genuinely worse than Opus 4.5/4.6, but Opus 4.8 was a strong return to form.</div>
     <p>Claude Opus 4.7 was widely criticized for being far too stingy in its effort, perceived as a strategy by Anthropic to manage intense compute constraints at launch time. The testing bears this out empirically: Opus 4.5 and 4.6 scored at
     <span id="kt-t2-o45">&mdash;</span> and 
-    <span id="kt-t2-o46">&mdash;</span>, respectively, while Opus 4.7 came in at 
-    <b><span id="kt-t2-o47">&mdash;</span></b>. The 4.7 dip is even more pronounced when focusing only on critical criteria completion (&ldquo;Critical-only&rdquo;: scores counting just the must-pass criteria): <span id="kt-t2-o45h">&mdash;</span>/<span id="kt-t2-o46h">&mdash;</span>/<b><span id="kt-t2-o47h">&mdash;</span></b>/<span id="kt-t2-o48h">&mdash;</span> across the four Opus releases. That being said, 4.8 was the best of the Opus line so far by a wide margin at
-    <b><span id="kt-t2-o48">&mdash;</span></b>.</p>
+    <span id="kt-t2-o46">&mdash;</span>, respectively, Opus 4.7 came in at 
+    <b><span id="kt-t2-o47">&mdash;</span></b>, and Opus 4.8 returned to form at <b><span id="kt-t2-o48">&mdash;</span></b>. The 4.7 dip is even more pronounced when focusing only on critical criteria completion (&ldquo;Critical-only&rdquo;: scores counting just the must-pass criteria): <span id="kt-t2-o45h">&mdash;</span>/<span id="kt-t2-o46h">&mdash;</span>/<b><span id="kt-t2-o47h">&mdash;</span></b>/<span id="kt-t2-o48h">&mdash;</span> across the four Opus releases.</p>
   </div>
 
   <div class="kt-item">
@@ -1288,11 +1299,10 @@ nav.site-nav{
   <div class="kt-item">
     <div class="kt-claim">5. Local-class open-weight models just aren&rsquo;t there yet.</div>
     <p>Qwen 3.6 27B, the best of the small open models here, manages
-    <b><span id="kt-t5-qwen">&mdash;</span></b>, and its weakest points sit exactly
-    where an orchestration framework hurts most: careful skill routing
+    <b><span id="kt-t5-qwen">&mdash;</span></b>, and it's at its weakest in perhaps the most important part of the overall orchestration pipeline: careful skill routing
     (basically: How often does it load the necessary grounding references before it responds to questions? <span id="kt-t5-qwenp4">&mdash;</span>) and mode
     classification (basically: How often does it correctly assign a natural language query to the right workflow process? <span id="kt-t5-qwenp1">&mdash;</span>). Gemma 4 31B timed
-    out on <b><span id="kt-t5-g31to">&mdash;</span></b> of its runs, often &mdash; per transcript forensics &mdash; not actually doing any work at all when queried: by far the worst
+    out on <b><span id="kt-t5-g31to">&mdash;</span></b> of its runs, often (per transcripts) not actually doing any work at all when queried: by far the worst
     reliability in the corpus. Some of these results may be simple harness incompatibility (Claude Code is not optimized for communicating with Gemma or Qwen, to be clear), but nonetheless point to more necessary improvements/development to be viable for rigorous research orchestration workflows. That being said, they <em>will</em> get there someday, and with DAAFBench, we&rsquo;ll now be able to know when they do!</p>
   </div>
 
@@ -1343,7 +1353,7 @@ nav.site-nav{
     and a modest model that faithfully follows protocol scores well. It is deliberately only half of the picture: a companion suite still in development (predictably, DAAFBench: Analytics) will test analytic competency directly, or whether models make the right calls <em>inside</em> the analysis itself (i.e., explicit decision-making in analytic code and data-cleaning steps, tested via adversarial examples, known-good code, and deterministically verifiable outputs). Orchestration discipline and analytic judgment are complementary halves of trustworthy AI-assisted research, and each deserves its own dedicated measurement. Put differently: Orchestration is an <b>inputs-based</b> assessment &mdash; if a model gets the process right, downstream results improve &mdash; while Analytics will assess <b>outputs</b> directly. More to come there!
   </p>
   <p class="about-intro">
-    Regardless, DAAFBench: Orchestration results are a crucial step in understanding how models actually perform under these conditions and allow for far greater nuance in thinking about the exact use of specific models (especially more expensive versus cheaper, and proprietary versus open-source) across these types of workflows. Most importantly, it allows us to more directly track whether and when locally-hosted models (e.g., on a home computer with consumer hardware) can start to tackle these sorts of tasks, opening the door for <b>unprecedented access to analytic capacity</b> going forward.
+    Regardless, DAAFBench: Orchestration results are a crucial step in understanding how models actually perform under these conditions and allow for far greater nuance in thinking about the exact use of specific models (especially more expensive versus cheaper, and proprietary versus open-source) across these types of workflows (and within!). Most importantly, it allows us to more directly track whether and when locally-hosted models (e.g., on a home computer with consumer hardware) can start to tackle these sorts of tasks, opening the door for <b>unprecedented access to analytic capacity</b> going forward.
     Both the framework being tested and the benchmark harness that produced
     these numbers are free and open-source in the
     <a href="https://github.com/DAAF-Contribution-Community/daaf">DAAF
@@ -1353,8 +1363,8 @@ nav.site-nav{
   </p>
 
   <div class="two-bars">
-    <p><b>Two quality indicators run through every number on this page.</b>
-    <b>Perfect</b> is the high bar: did the model do everything exactly right on
+    <p><b>Two quality indicators run through every number on this page.</b></p>
+    <p><b>Perfect</b> is the high bar: did the model do everything exactly right on
     a run &mdash; every criterion (a single named requirement a run either meets
     or misses) passed, right down to the protocol details? It tells
     you how well, and how often, a model delivers a fully clean run, and it is
@@ -1381,7 +1391,7 @@ nav.site-nav{
             source&rsquo;s structure) at the right moment.</li>
         <li><b>Engagement mode</b> &mdash; one of DAAF&rsquo;s nine workflow types (a full
             analysis pipeline, onboarding a new dataset, a quick lookup, and so on);
-            every user request must be routed into one.</li>
+            every user request must be routed into one to facilitate self-verification workflows and coordination among specialist subagents.</li>
         <li><b>Confirmation gate</b> &mdash; the required pause where the assistant
             states its plan and waits for explicit user approval before doing
             anything.</li>
@@ -1470,11 +1480,7 @@ nav.site-nav{
       criteria are derived from the agent type, and which criteria apply varies with the
       case, so its denominators differ from 3a&rsquo;s.</p>
       <p>All five components (P1, P2, P3a, P3b, P4) enter the <b>leaderboard composite
-      and tier bands</b> with equal weight. (Phase 4 is the newest component, added in
-      June 2026; earlier versions of this page averaged only the first four.) A model
-      lacking runs for a component is scored on the mean of the
-      components it has, and carries a visible &ldquo;partial&rdquo; marker on the
-      leaderboard naming what is missing.</p>
+      and tier bands</b> with equal weight.</p>
     </div>
   </details>
 
@@ -1499,11 +1505,10 @@ nav.site-nav{
             composite.</li>
         <li><b>Critical rate</b> (per criterion) &mdash; across all of a model&rsquo;s runs, what
             fraction of its critical criteria passed?</li>
-        <li><b>Normal rate</b> (per criterion) &mdash; the same, for normal criteria.</li>
       </ul>
       <p>They diverge by design. Worked example: in a 12-run batch where 4 runs each fail
       exactly one normal criterion, Perfect drops to 67% (8/12 runs) while the critical rate
-      stays at 100% and the normal rate stays around 96% &mdash; a model can look strong on
+      stays at 100% &mdash; a model can look strong on
       criterion-level rates yet rarely deliver a fully clean run.</p>
     </div>
   </details>
@@ -1534,6 +1539,9 @@ nav.site-nav{
             prompting-style fit rather than capability. Read these results as one
             particular view of how models behave under a very specific AI orchestration
             system &mdash; not as an absolute indicator of model quality.</li>
+        <li><b>All analyses were conducted via Claude Code through OpenRouter</b> in a relatively naive fashion, and at least some
+          of the results will be driven by models' compatibility with this specific harness combination.
+          Tune your sense of generalizability around these benchmark results accordingly!</li>
         <li><b>Timeouts are still graded.</b> Runs that hit the wall-clock limit
             (<span id="ab-timeouts">some</span> runs in this corpus) have zeroed turn counts
             and a duration recorded at the cutoff limit, but their criteria are fully
@@ -1543,7 +1551,7 @@ nav.site-nav{
             relatively small and can be uneven across providers and models due
             to cost limitations &mdash; some (model, phase) cells have 2 reps
             instead of 3 &mdash; so the results are necessarily imprecise: read
-            every rate together with its n.</li>
+            every rate together with its n, and recognize there are unshown confidence intervals to think about.</li>
         <li><b>Cost figures are estimates at published list prices, not invoices.</b>
             The headline cost lens throughout this page is the <b>battery-cost
             multiplier</b>: each model&rsquo;s estimated cost to run the full
@@ -1577,12 +1585,11 @@ nav.site-nav{
   <div class="sec-eyebrow">The Scoreboard</div>
   <h2>Leaderboard</h2>
   <p class="section-lead">
-    One row per model, best score first. The ranking runs on each model&rsquo;s
-    <b>composite</b> (basically: a report-card average &mdash; take the model&rsquo;s
+    The ranking runs by default on each model&rsquo;s
+    <b>composite score</b> (basically: a report-card average &mdash; take the model&rsquo;s
     share of fully clean runs in each of the five phase components (P1, P2, P3a,
-    P3b, P4), and average those five numbers with equal weight). Every rate carries its
-    denominator underneath, because a percentage over a handful of runs deserves
-    less confidence than the percentage alone implies. <b>Tier bands</b> group
+    P3b, P4), and average those five numbers with equal weight). Every rate shows its
+    denominator underneath to better convey uncertainty with smaller samples. <b>Tier bands</b> group
     models whose composites cluster together: gaps between tiers are meaningful,
     ordering within a tier may not be. The metric toggle switches every rate,
     rank, and tier band between the two bars defined above: <b>Perfect</b>
@@ -2707,7 +2714,7 @@ function renderLeaderboard(container){
   rows.forEach(function(rw){
     var m=rw.model, e=rw.e;
     var bandStart=showTier&&tierFirst[m];
-    html+='<tr'+(bandStart?' class="lb-band-start"':'')+'>';
+    html+='<tr data-model="'+esc(m)+'"'+(bandStart?' class="lb-band-start"':'')+'>';
     if(bandStart){
       html+='<td class="lb-tier-cell" rowspan="'+tierSize[m]+'">'+esc(tierFirst[m])+'</td>';
     }
@@ -4251,6 +4258,20 @@ function ensureAllRendered(){
   navGeomReady=true;
   SECTION_IDS.forEach(function(id){ if(sectionRenderers[id]) ensureRendered(id); });
   document.body.classList.add("nav-rendered");
+  /* Restore content-visibility:auto after the geometry fix settles.
+     contain-intrinsic-size:auto caches the true rendered heights from
+     the full layout above, so off-screen sections keep accurate sizes.
+     Without this, nav-rendered permanently forces content-visibility:
+     visible and every in-section re-render (e.g. leaderboard sort)
+     reflows every downstream section. The double-rAF fires in the
+     same frame sequence as the caller's scroll double-rAF, one tick
+     before scrollToSection reads positions — cached sizes ensure the
+     scroll target is correct. */
+  requestAnimationFrame(function(){
+    requestAnimationFrame(function(){
+      document.body.classList.remove("nav-rendered");
+    });
+  });
 }
 
 function idlePrerender(queue){
@@ -4427,15 +4448,88 @@ window.showAllRuns=function(){
    Dispatch column, fine-tuning round 3 Wave A.) Clicking the active
    column flips direction; clicking a new column applies that column's
    default direction (best-first: descending for rates and the timeout
-   share's worst-first read, ascending for price). */
+   share's worst-first read, ascending for price).
+   Performance: when the tier gutter column does not change, rows are
+   reordered via DOM moves (no innerHTML rebuild); tier-column transitions
+   fall back to full re-render. */
 window.lbSortBy=function(key,defDir){
+  var prevKey=state.lbSort||"composite";
+  var prevDir=state.lbSortDir||-1;
   if(state.lbSort===key){
     state.lbSortDir=-state.lbSortDir;
   } else {
     state.lbSort=key;
     state.lbSortDir=defDir||-1;
   }
-  renderLeaderboard(el("sec-leaderboard"));
+  /* Tier gutter appears only under composite-desc; if that status changes,
+     the column count changes and a full rebuild is needed. */
+  var tiers=((state.lbMetric||"perfect")==="hard"?PRECOMPUTED.tiers_hard:PRECOMPUTED.tiers)||[];
+  var hadTier=(prevKey==="composite"&&prevDir===-1&&tiers.length>0);
+  var hasTier=(state.lbSort==="composite"&&state.lbSortDir===-1&&tiers.length>0);
+  if(hadTier!==hasTier){
+    renderLeaderboard(el("sec-leaderboard"));
+    return;
+  }
+  /* Fast path: reorder existing <tr> elements via DOM moves. */
+  var tbody=document.querySelector("#sec-leaderboard .lb-table tbody");
+  if(!tbody){ renderLeaderboard(el("sec-leaderboard")); return; }
+  var metric=state.lbMetric||"perfect";
+  var isHard=(metric==="hard");
+  var rateField=isHard?"hard_rate":"perfect_rate";
+  var comp=(isHard?PRECOMPUTED.composite_hard:PRECOMPUTED.composite)||{};
+  var pmp=PRECOMPUTED.per_model_phase||{};
+  var consistency=PRECOMPUTED.consistency||{};
+  var toByModel=PRECOMPUTED.timeout_by_model||{};
+  var sortKey=state.lbSort;
+  var sortDir=state.lbSortDir;
+  var rankOf={};
+  Object.keys(comp).map(function(m){return{model:m,score:comp[m].score};})
+    .sort(function(a,b){
+      if(b.score!==a.score) return b.score-a.score;
+      return a.model<b.model?-1:1;
+    })
+    .forEach(function(r,i){ rankOf[r.model]=i+1; });
+  var sortVal=function(m){
+    if(sortKey==="cost"){ var b=batteryMult(m); return b?b.mult:null; }
+    if(sortKey==="consistency"){ var k=consistency[m]; return(k&&k.rate!=null)?k.rate:null; }
+    if(sortKey==="timeout"){ var t=toByModel[m]; return(t&&t.rate!=null)?t.rate:null; }
+    if(sortKey==="composite"){ var e=comp[m]; return e?e.score:null; }
+    var cell=(pmp[m]||{})[sortKey];
+    return(cell&&cell[rateField]!=null)?cell[rateField]:null;
+  };
+  var rows=Array.prototype.slice.call(tbody.children);
+  if(!rows.length||!rows[0].hasAttribute("data-model")){
+    renderLeaderboard(el("sec-leaderboard"));
+    return;
+  }
+  rows.sort(function(a,b){
+    var ma=a.getAttribute("data-model"),mb=b.getAttribute("data-model");
+    var va=sortVal(ma),vb=sortVal(mb);
+    if(va==null&&vb==null) return rankOf[ma]-rankOf[mb];
+    if(va==null) return 1;
+    if(vb==null) return -1;
+    if(va!==vb) return sortDir*(va-vb);
+    return rankOf[ma]-rankOf[mb];
+  });
+  var frag=document.createDocumentFragment();
+  for(var i=0;i<rows.length;i++) frag.appendChild(rows[i]);
+  tbody.appendChild(frag);
+  /* Update <th> sort indicators (arrow glyph + active class + aria) */
+  var ths=document.querySelectorAll("#sec-leaderboard .lb-table th.lb-th-sort");
+  for(var j=0;j<ths.length;j++){
+    var th=ths[j];
+    var oc=th.getAttribute("onclick")||"";
+    var km=oc.match(/lbSortBy\('([^']+)'/);
+    if(!km) continue;
+    var thKey=km[1];
+    var active=(thKey===sortKey);
+    if(active) th.classList.add("lb-th-active");
+    else th.classList.remove("lb-th-active");
+    th.setAttribute("aria-sort",active?(sortDir===1?"ascending":"descending"):"none");
+    var txt=th.textContent.replace(/[\u00a0][\u25B2\u25BC]$/,"");
+    if(active) txt+="\u00a0"+(sortDir===1?"\u25B2":"\u25BC");
+    th.textContent=txt;
+  }
 };
 
 /* Leaderboard metric toggle: perfect (all criteria) | hard (hard-tier
