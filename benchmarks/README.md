@@ -33,11 +33,12 @@ and still score poorly here if it skips confirmation gates or dispatches
 free-form prompts. Conversely, a weaker model that faithfully follows protocol
 scores well.
 
-**Model matrix:** 17 models — 7 Anthropic (Haiku 4.5, Sonnet 4.6, Opus
-4.5/4.6/4.7/4.8, Fable 5) via the container's Claude Code subscription, and 10
-OpenRouter models (GLM 5.1, Kimi K2.6, Qwen 3.6 27B, Gemma 4 31B/26B, DeepSeek
-V4 Pro/Flash, Gemini 3.1 Pro, Nemotron 3 Ultra, Gemini 3.1 Flash Lite) via an
-Anthropic-compatible endpoint. The matrix is defined in `config/models.yaml`.
+**Model matrix:** 19 models — 7 Anthropic (Haiku 4.5, Sonnet 4.6, Opus
+4.5/4.6/4.7/4.8, Fable 5) via the container's Claude Code subscription, and 12
+OpenRouter models (GLM 5.1/5.2, Kimi K2.6, Kimi K2.7 Code, Qwen 3.6 27B,
+Gemma 4 31B/26B, DeepSeek V4 Pro/Flash, Gemini 3.1 Pro, Nemotron 3 Ultra,
+Gemini 3.1 Flash Lite) via an Anthropic-compatible endpoint. The matrix is defined in
+`config/models.yaml`.
 
 **Relationship to original design:** The system was designed in
 `/daaf/research/2026-05-01_Benchmark_Testing/Benchmark_System_Reference.md`,
@@ -1752,8 +1753,8 @@ within 300s.
     fixed list
 - **Complete rep counts:** run Fable 5 to 3 reps on Phases 1-2 and the
   remaining Anthropic models to 3 reps on Phase 3 (sequential, one model at a
-  time). Phase 4 rep counts are complete — all 17 models at 3 reps as of
-  2026-06-11 (§ 12 Current Status)
+  time). Phase 4 rep counts are complete for 18 of 19 models at 3 reps as of
+  2026-06-16 (Kimi K2.7 Code P3-P4 pending; § 12 Current Status)
 - **Recalibrate cost estimation profiles** from post-`modelUsage`-fix runs
   (Phases 1-3 remaining; Phase 4 recalibrated per provider 2026-06-10, § 7)
 
@@ -1813,7 +1814,7 @@ items below are the still-valuable remainder.
   decision rule for model differences), pass^k consistency alongside pass@1
   capability, a safety-weighted composite adherence score (§ 9.4), and a
   report format (§ 9.5). Never built — the § 10 ranking above is
-  hand-aggregated. With 2-3 reps × 17 models already in `results/`, credible
+  hand-aggregated. With 2-3 reps × 19 models already in `results/`, credible
   intervals are immediately computable from existing data.
 - **Hardening items** (Reference § 10, Phase 5): CI integration (cheap subset —
   Phase 1, one cheap model, 1 rep — on PRs touching framework files), a test
@@ -1837,12 +1838,31 @@ items below are the still-valuable remainder.
   orchestrator" — a refusal test, candidate for a future Safety/Protocol
   category.
 
-### Current Status / Next Steps (2026-06-11, updated ~07:00 UTC)
+### Current Status / Next Steps (2026-06-16)
 
 Point-in-time status; supersedes the retired `SESSION_NOTES.md` restart
 prompts. Once these items land, fold the outcomes into the sections above
 and update or remove this subsection.
 
+- **GLM 5.2 full 4-phase battery — COMPLETE (2026-06-16).** 3 reps per
+  phase, 153 total runs. Result sets: `20260616_182329` (P1; 45/45 perfect),
+  `20260616_185225` (P2; 24/27 — pc-07 agent-authoring soft failure 0/3, 2
+  timeouts), `20260616_205526` (P3; 34/36 perfect main criteria, 8 timeouts
+  all still passed dispatch+subagent), `20260616_214740` (P4; 6/45 perfect,
+  classic two-hop decay). Composite 0.782 (T2). Key GLM 5.1→5.2 gains:
+  classification +0.16 (0.84→1.00), dispatch +0.16 (0.78→0.94); routing
+  flat at 0.13. Battery cost $20.99 (0.26× Opus 4.8). `models.yaml` now
+  19 models / 12 OpenRouter (was 17 / 10 before GLM 5.2 and Kimi K2.7
+  Code additions).
+- **Kimi K2.7 Code partial battery (2026-06-16).** Phases 1-2 only (added
+  in a separate session), 72 runs. Result sets: `20260616_193842` (P1),
+  `20260616_201431` (P2). Composite 0.815 on available components (partial;
+  P1+P2 only). Phases 3-4 pending.
+- **Reconciliation + viewer update (2026-06-16).** Reconciliation snapshot:
+  `derived/openrouter_reconciliation_2026-06-16.json`. Viewer regenerated as
+  `viewer_2026-06-16b.html`. GLM 5.2 obs/pred billing ratio 0.70 (caching
+  benefit from sequential runs; published rates $1.40/$4.40 confirmed
+  correct).
 - **Phase 4 baseline matrix (fresh goldens) — COMPLETE, now at 3 reps for
   ALL 17 models.** Originally 10 OpenRouter models × 3 reps + 7 Anthropic
   models × 1 rep, all on the post-third-hop framework and fresh goldens;
@@ -2182,7 +2202,9 @@ and update or remove this subsection.
   round-3 content re-verified intact (23-span contract, C1, `.to-*` ramp,
   "On this page", zero unsubstituted tokens). Full record: § 8 round-3
   post-review fix-pass addendum.
-- **Viewer current:** `daafbench_2026-06-13b/` (generator v3.1.1; 53 sets /
+- **Viewer current:** `viewer_2026-06-16b.html` (59 sets / 2,718 runs;
+  2026-06-16; adds GLM 5.2 full battery + Kimi K2.7 Code P1-P2),
+  superseding `daafbench_2026-06-13b/` (generator v3.1.1; 53 sets /
   2,493 runs; 2026-06-13, user-approved) — adds fine-tuning round 3 in
   full: Wave A (leaderboard column reorder, cost header rename + key-number
   cells, `.to-*` timeout ramp, wrap-capable headers), Wave B (hero

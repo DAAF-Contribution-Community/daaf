@@ -471,6 +471,8 @@ def main():
         attr = [r for r in mrows if r["matched_runs"]]
         orph = [r for r in mrows if not r["matched_runs"]]
         orphan_all.extend(orph)
+        if not mrows:
+            continue
         tot_cost = sum(r["cost_total"] for r in mrows)
         attr_cost = sum(r["cost_total"] for r in attr)
 

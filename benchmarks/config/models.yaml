@@ -90,6 +90,15 @@ models:
       input: 0.98
       output: 3.08
 
+  - id: "z-ai/glm-5.2"
+    name: "GLM 5.2"
+    provider: openrouter
+    cost_tier: "medium"
+    pricing:
+      input: 1.40
+      output: 4.40
+      cached_input: 0.26
+
   - id: "moonshotai/kimi-k2.6:siliconflow/fp8"
     name: "Kimi K2.6"
     provider: openrouter
@@ -97,6 +106,14 @@ models:
     pricing:
       input: 0.68
       output: 3.41
+
+  - id: "moonshotai/kimi-k2.7-code:novita"
+    name: "Kimi K2.7 Code"
+    provider: openrouter
+    cost_tier: "medium"
+    pricing:
+      input: 0.75
+      output: 3.50
 
   - id: "qwen/qwen3.6-27b:venice/fp8"
     name: "Qwen 3.6 27B"

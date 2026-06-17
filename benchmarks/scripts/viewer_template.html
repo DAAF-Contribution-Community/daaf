@@ -534,7 +534,7 @@ body.nav-rendered #phases,body.nav-rendered #cases{
    carries meaning alone: the 1-decimal % text + k/n sub-line stay in the
    cell, so the number itself is the redundancy (no glyphs needed).
    Thresholds (toStep(), next to rateStep()) were designed from the actual
-   2026-06 corpus distribution — 17 models clustering low: 0% (x2),
+   2026-06 corpus distribution (design basis: 17 models, now 19) clustering low: 0% (x2),
    1.3-1.4% (x2), 4.3-6.4% (x4), 9.2-9.8% (x2), 13.7-15.0% (x3),
    20.3-26.8% (x3), 45.8% (x1) — so rateStep's 50/90 breaks would dump 16
    of 17 models into two steps. Breaks 0 / >0 / >=5% / >=10% / >=20% spread
@@ -1222,7 +1222,7 @@ nav.site-nav{
   </p>
 
    <div class="two-bars">
-    <p>The bottom line for practical use of DAAF at this time: those who are <b>budget-constrained should feel comfortable relying on Sonnet 4.6</b>, but using <b>GLM5.1 is definitely viable for self-hosting/full control/hermetic systems</b> (best performance-consistency trade-off). There may nonetheless be benefits to using more generally powerful models like Opus 4.8 not explicitly tracked by this benchmark (e.g., actual coding quality, analytic fidelity, etc.) if your budget/use limits allow.</p>
+    <p>The bottom line for practical use of DAAF at this time: Fable 5 is the undisputed top performer if budget is not a constraint. Those who <b>are</b> budget-constrained should feel comfortable relying on Sonnet 4.6, and <b>GLM5.2 is equally viable for self-hosting/full control/hermetic systems</b>. There may nonetheless be benefits to using more generally powerful models like Opus 4.8 not explicitly tracked by this benchmark (e.g., actual coding quality, analytic fidelity, etc.) if your budget/use limits allow.</p>
   </div>
 
 </section>
@@ -1286,14 +1286,8 @@ nav.site-nav{
   </div>
 
   <div class="kt-item">
-    <div class="kt-claim">4. Open-weight models are highly capable &mdash; a real win for self-hosting &mdash; but with a crucial decline in consistency.</div>
-    <p>DeepSeek V4 Pro 
-    (<span id="kt-t4-dspro">&mdash;</span>) and GLM 5.1
-    (<span id="kt-t4-glm">&mdash;</span>) lead the open-weight pack, with the considerably cheaper DeepSeek V4 Flash a close follower (<span id="kt-t4-dsflash">&mdash;</span>) &mdash; all landing in the same neighborhood
-    as most of the Opus line. That being said, while much cheaper in terms of price-per-token, differences in token consumption patterns still place them in roughly the same cost bracket as Sonnet (with the exception of DeepSeek V4 Flash). The empirical trade-off then is less about price versus raw performance, and more about the value of control and performance consistency. Open-weight models allow for self-hosting, modification/fine-tuning, and long-term support guarantees (i.e., not worrying about Opus 4.5 getting sun-setted in a few months when multiple analyses and products rely explicitly on it). But the testing battery also reveals <b>a marked drop in performance consistency</b>: the Anthropic models perform predictably for the same tasks (for better and for worse), while the open-weight models perform more erratically on repeated runs. Moreover, DeepSeek Pro
-    carries the corpus&rsquo;s second-highest timeout rate
-    (<span id="kt-t4-dsto">&mdash;</span> of runs) across all models tested, so its scores come with a broader
-    reliability asterisk as well.</p>
+    <div class="kt-claim">4. Open-weight models have finally crossed the capability threshold &mdash; a real win for self-hosting.</div>
+    <p>GLM 5.2 leads the open-weight pack at <span id="kt-t4-glm">&mdash;</span>, looking roughly indistinguishable from the Opus line on every metric at anywhere between <b>a quarter and half of the cost</b>. This is an enormous boon for researchers, especially, given that open-weight models like GLM 5.2 also allow for self-hosting, modification/fine-tuning, and greater long-term support guarantees (i.e., not worrying about Opus 4.5 getting sun-setted in a few months when multiple analyses and products rely explicitly on it). DeepSeek V4 Flash presents a greater dip in performance relative to the Opus line (<span id="kt-t4-dsflash">&mdash;</span>) but with an almost unbelievable price differential, costing only 3-5% of Anthropic's flagships for the same tasks.</p>
   </div>
 
   <div class="kt-item">
@@ -1815,16 +1809,18 @@ var state = {
    HELPERS
    ================================================================= */
 
-/* 17 entries for the 17-model corpus (design record: README § 8 — design
+/* 19 entries for the 19-model corpus (design record: README § 8 — design
    system: distinguishable identity hues;
-   wraps via modulo only beyond 17). First 8 unchanged to preserve historical
+   wraps via modulo only beyond 19). First 8 unchanged to preserve historical
    assignments. New values avoid the exact status-token hexes (#34d399 pass,
    #fb7185/#f87171 fail, #fbbf24 partial, #64748b neutral); identity is never
    conveyed by hue alone — points and rows are always labeled. */
 var MODEL_COLORS = ["#6366f1","#f59e0b","#06b6d4","#ec4899","#22c55e","#ef4444","#8b5cf6","#14b8a6",
-                    "#84cc16","#f97316","#38bdf8","#d946ef","#3b82f6","#eab308","#059669","#e11d48","#a8a29e"];
+                    "#84cc16","#f97316","#38bdf8","#d946ef","#3b82f6","#eab308","#059669","#e11d48","#a8a29e",
+                    "#c084fc","#f472b6"];
 var MODEL_COLORS_LIGHT = ["#a5b4fc","#fcd34d","#67e8f9","#f9a8d4","#86efac","#fca5a5","#c4b5fd","#5eead4",
-                          "#bef264","#fdba74","#7dd3fc","#f0abfc","#93c5fd","#fde047","#6ee7b7","#fecdd3","#d6d3d1"];
+                          "#bef264","#fdba74","#7dd3fc","#f0abfc","#93c5fd","#fde047","#6ee7b7","#fecdd3","#d6d3d1",
+                          "#e9d5ff","#fbcfe8"];
 
 function uniqueModels(){
   var s=new Set(); DATA.runs.forEach(function(r){ s.add(r.model); }); return Array.from(s).sort();
@@ -1866,7 +1862,7 @@ function rateGlyph(step){
 /* Timeout-share steps for the leaderboard Timed-out column's .to-0...to-4
    red ramp (fine-tuning round 3, Wave A). Deliberately NOT rateStep():
    timeout rates cluster low (2026-06 corpus: 0% to 45.8%, median ~9%), so
-   the pass-ramp's 50/90 breaks would dump 16 of 17 models into two steps.
+   the pass-ramp's 50/90 breaks would dump 16 of 17 models (design basis; now 19) into two steps.
    Breaks 0 / >0 / >=5% / >=10% / >=20% spread the measured corpus 2/4/4/3/4
    — full distribution + contrast arithmetic in the .to-* CSS comment. */
 function toStep(rate){
@@ -2432,16 +2428,12 @@ function fillTakeaways(){
   var sBat=batCost("Sonnet 4.6"), oBat=batCost(OPUS_ANCHOR);
   if(sBat!=null&&oBat!=null) set("kt-t3-batpct",String(Math.round(sBat/oBat*100)));
 
-  /* T4 — the open-weight pack: DS Pro and GLM lead on score with DS
-     Flash a close follower; DS Pro timeout-rate reliability caveat */
-  var dspro=score("DeepSeek V4 Pro");
-  if(dspro!=null) set("kt-t4-dspro",pct1(dspro));
-  var glm=score("GLM 5.1");
+  /* T4 — the open-weight pack: GLM 5.2 leads on score; DS Flash
+     cost-differential highlight */
+  var glm=score("GLM 5.2");
   if(glm!=null) set("kt-t4-glm",pct1(glm));
   var dsflash=score("DeepSeek V4 Flash");
   if(dsflash!=null) set("kt-t4-dsflash",pct1(dsflash));
-  var dpTo=tom["DeepSeek V4 Pro"];
-  if(dpTo&&dpTo.rate!=null) set("kt-t4-dsto",(dpTo.rate*100).toFixed(1)+"%");
 
   /* T5 — Qwen's local-class ceiling (P4 skill routing + P1 mode
      classification as the weak points); Gemma 4 31B timed-out rate (the

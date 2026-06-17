@@ -65,6 +65,7 @@ ALL_MODELS = {
     "opus-47-max": ModelConfig(id="claude-opus-4-7", name="Opus 4.7 max", effort_level="max"),
     # --- OpenRouter models (no effort_level — Anthropic-specific) ---
     "glm-5.1": ModelConfig(id="z-ai/glm-5.1:atlas-cloud/fp8", name="GLM 5.1"),
+    "glm-5.2": ModelConfig(id="z-ai/glm-5.2", name="GLM 5.2"),
     "kimi-k2.6": ModelConfig(id="kimi-k2.6:siliconflow/fp8", name="Kimi K2.6"),
     #"qwen3.6-35b": ModelConfig(id="qwen/qwen3.6-35b-a3b", name="Qwen 3.6 35B"),
     "qwen3.6-27b": ModelConfig(id="qwen/qwen3.6-27b:venice/fp8", name="Qwen 3.6 27B"),
