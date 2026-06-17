@@ -1753,8 +1753,8 @@ within 300s.
     fixed list
 - **Complete rep counts:** run Fable 5 to 3 reps on Phases 1-2 and the
   remaining Anthropic models to 3 reps on Phase 3 (sequential, one model at a
-  time). Phase 4 rep counts are complete for 18 of 19 models at 3 reps as of
-  2026-06-16 (Kimi K2.7 Code P3-P4 pending; § 12 Current Status)
+  time). Phase 4 rep counts are complete — all 19 models at 3 reps as of
+  2026-06-16 (§ 12 Current Status)
 - **Recalibrate cost estimation profiles** from post-`modelUsage`-fix runs
   (Phases 1-3 remaining; Phase 4 recalibrated per provider 2026-06-10, § 7)
 
@@ -1854,10 +1854,10 @@ and update or remove this subsection.
   flat at 0.13. Battery cost $20.99 (0.26× Opus 4.8). `models.yaml` now
   19 models / 12 OpenRouter (was 17 / 10 before GLM 5.2 and Kimi K2.7
   Code additions).
-- **Kimi K2.7 Code partial battery (2026-06-16).** Phases 1-2 only (added
-  in a separate session), 72 runs. Result sets: `20260616_193842` (P1),
-  `20260616_201431` (P2). Composite 0.815 on available components (partial;
-  P1+P2 only). Phases 3-4 pending.
+- **Kimi K2.7 Code full 4-phase battery — COMPLETE (2026-06-16).** Added
+  in a separate session, 162 total runs. Result sets: `20260616_193842` (P1),
+  `20260616_201431` (P2), `20260616_224014` (P3), `20260616_233654` (P4).
+  Composite 0.623 (T3).
 - **Reconciliation + viewer update (2026-06-16).** Reconciliation snapshot:
   `derived/openrouter_reconciliation_2026-06-16.json`. Viewer regenerated as
   `viewer_2026-06-16b.html`. GLM 5.2 obs/pred billing ratio 0.70 (caching
@@ -2202,8 +2202,8 @@ and update or remove this subsection.
   round-3 content re-verified intact (23-span contract, C1, `.to-*` ramp,
   "On this page", zero unsubstituted tokens). Full record: § 8 round-3
   post-review fix-pass addendum.
-- **Viewer current:** `viewer_2026-06-16b.html` (59 sets / 2,718 runs;
-  2026-06-16; adds GLM 5.2 full battery + Kimi K2.7 Code P1-P2),
+- **Viewer current:** `daafbench_2026-06-17/` (61 sets / 2,799 runs;
+  2026-06-17; adds GLM 5.2 + Kimi K2.7 Code full batteries),
   superseding `daafbench_2026-06-13b/` (generator v3.1.1; 53 sets /
   2,493 runs; 2026-06-13, user-approved) — adds fine-tuning round 3 in
   full: Wave A (leaderboard column reorder, cost header rename + key-number
