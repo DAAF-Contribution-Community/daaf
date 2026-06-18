@@ -520,7 +520,7 @@ See `.claude/agents/README.md` for the complete agent index with key inputs and 
 | `Plan` | Read-only operations when `search-agent` is not suitable | Can read files and make data access calls; CANNOT write files. Prefer `search-agent` for most read-only tasks. |
 | `general-purpose` | Code generation, analysis execution, file creation | Full capabilities including file writes and code execution |
 
-**When to use generic types:** Only for ad-hoc tasks that do not map to any named agent (e.g., Stage DI-7 skill authoring using a `general-purpose` subagent). For all standard pipeline stages, use the corresponding named agent. For read-only exploration tasks, prefer `search-agent` over generic `Plan` — it inherits the main Opus model, has web access (WebSearch, WebFetch), and understands DAAF conventions. **NEVER use `Explore` subagents.** `Explore` agents are blocked by project hooks (they run on Haiku, which lacks reasoning depth) and will be rejected, wasting time and context on failed launches.
+**When to use generic types:** Only for ad-hoc tasks that do not map to any named agent (e.g., Stage DI-7 skill authoring using a `general-purpose` subagent). For all standard pipeline stages, use the corresponding named agent. For read-only exploration tasks, prefer `search-agent` over generic `Plan` — it inherits the orchestrator's model, has web access (WebSearch, WebFetch), and understands DAAF conventions. **NEVER use `Explore` subagents.** `Explore` agents are blocked by project hooks (they run on Haiku, which lacks reasoning depth) and will be rejected, wasting time and context on failed launches.
 
 ### Orchestrator Context Budget
 

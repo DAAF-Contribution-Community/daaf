@@ -157,7 +157,7 @@ I strongly recommend the **Max subscription** ($100/mo or $200/mo). DAAF is extr
 | **Rate limiting** | Minimal | May hit rate limits during very heavy sessions |
 | **Best for** | Light/occasional use, or organizational API budgets | Regular DAAF usage (recommended) |
 
-**Third option: OpenRouter.** Pay-per-token access to Claude via [OpenRouter](https://openrouter.ai/) with no monthly commitment (5.5% fee on credit purchases). Good for testing DAAF before committing to a subscription. See [**01. Installation -- Configure authentication via environment_settings.txt**](01_installation_and_quickstart.md#configure-authentication-via-environment_settingstxt) for setup.
+**Third option: OpenRouter.** Pay-per-token access via [OpenRouter](https://openrouter.ai/) with no monthly commitment (5.5% fee on credit purchases). OpenRouter provides access to Anthropic's Claude models and also to high-performing open-weight models like GLM 5.2, which [benchmarks competitively with the Opus line](https://daaf.openaugments.org/bench/) at roughly 33% of the cost. Good for testing DAAF or for cost-conscious sustained use. See [**01. Installation -- Configure authentication via environment_settings.txt**](01_installation_and_quickstart.md#configure-authentication-via-environment_settingstxt) for setup.
 
 For the full comparison of all authentication options, see [**01. Installation -- Anthropic Account & Authentication**](01_installation_and_quickstart.md#1-anthropic-account--authentication).
 
@@ -165,13 +165,19 @@ One thing to note: the Max plan does have usage limits per time window. If you'r
 
 ### Q: Which Claude model should I use?
 
-**Use Opus 4.5 or Opus 4.6.** All development and testing was done on these models, and I genuinely don't think the others are up to the task.
+DAAF defaults to **Opus 4.6**, and that remains a strong choice — but it's no longer the only good one. [Empirical benchmarking across 19 models](https://daaf.openaugments.org/bench/) (DAAFBench) has produced clear, data-backed guidance:
 
-The DAAF workflow is complex -- it involves multi-agent orchestration, following detailed multi-step protocols, making judgment calls about data quality, writing careful code, and then critically reviewing that same code from a different perspective. Sonnet and Haiku are capable models for many things, but they consistently produce erratic, inconsistent results with DAAF's workflow complexity. The instructions are simply too nuanced and layered for models that optimize for speed over depth.
+| Recommendation | Model | Why |
+|---------------|-------|-----|
+| **Default** | **Opus 4.6** | Strong orchestration performance with the deepest analytical reasoning. Best for complex methodology and nuanced judgment calls. |
+| **Best value** | **Sonnet 4.6** | Ranked #2 overall on orchestration benchmarks — outperforms every Opus model on protocol conformance at ~66% of the cost. An excellent choice for most DAAF work. |
+| **Best without Anthropic subscription** | **GLM 5.2** (via OpenRouter) | Ranked #4 overall, roughly on par with the Opus line on orchestration at ~33% of the cost. Makes DAAF accessible without any Anthropic subscription. |
+| **Budget-friendly** | **DeepSeek V4 Flash** (via OpenRouter) | Solid mid-tier performance at ~3% of flagship cost. Worth exploring for less complex tasks. |
+| **Not recommended** | **Haiku 4.5** | Adequate on basic tasks but struggles with DAAF's multi-step protocols and skill routing. |
 
-Opus 4.6 also supports configurable "thinking levels" (you can toggle this in the `/model` selector by tapping the left/right arrow keys). I've done all my testing with the **"High"** thinking setting, and I strongly recommend the same. This is a case where quality matters far more than speed -- you want Claude to think carefully about your data, not rush through it.
+**Important context:** These benchmarks test *orchestration behavioral conformance* — can the model follow DAAF's protocols, dispatch agents correctly, and load the right skills? They do not directly measure analytical reasoning depth or code quality. Opus may still have an edge on the hardest analytical work, but the gap between the top models is much smaller than previously assumed. See the [full DAAFBench results](https://daaf.openaugments.org/bench/) for detailed per-phase breakdowns.
 
-That said, higher thinking levels do consume more of your usage allocation, so there's a legitimate tradeoff to explore. If you experiment with different thinking levels, I'd genuinely love to hear about your results -- please share back so we can update this guidance.
+Opus 4.6 also supports configurable "thinking levels" (toggle in the `/model` selector with left/right arrow keys). I recommend the **"High"** setting — quality matters more than speed for research work. Higher thinking levels do consume more of your usage allocation, so there's a legitimate tradeoff to explore. The DAAFBench results are a useful starting point for understanding where different models sit on the quality-cost frontier.
 
 ### Q: How do I change the Claude model during a session?
 
@@ -183,9 +189,9 @@ You can also adjust the thinking level for Opus 4.6 by pressing the left and rig
 
 Yes -- partially. There are two different things this question might mean, so let me address both.
 
-**Using different models through OpenRouter (supported):** [OpenRouter](https://openrouter.ai/) is a model gateway that lets you route Claude Code through a single API key with pay-per-token billing. It's already configured as an authentication option in DAAF's `environment_settings_example.txt` template (Option C). Through OpenRouter, you can access Anthropic's Claude models without a Max subscription -- and OpenRouter technically allows routing to non-Anthropic models as well. See [**01. Installation & Quick Start -- Configure authentication via environment_settings.txt**](01_installation_and_quickstart.md#configure-authentication-via-environment_settingstxt) for setup instructions (remember to run `/logout` first if you previously authenticated with Anthropic directly).
+**Using different models through OpenRouter (supported and tested):** [OpenRouter](https://openrouter.ai/) is a model gateway that lets you route Claude Code through a single API key with pay-per-token billing. It's already configured as an authentication option in DAAF's `environment_settings_example.txt` template (Option C). Through OpenRouter, you can access Anthropic's Claude models without a Max subscription — and also access non-Anthropic models that perform well with DAAF. See [**01. Installation & Quick Start -- Configure authentication via environment_settings.txt**](01_installation_and_quickstart.md#configure-authentication-via-environment_settingstxt) for setup instructions (remember to run `/logout` first if you previously authenticated with Anthropic directly).
 
-**The practical reality for non-Anthropic models:** Claude Code is optimized for Anthropic models, and DAAF's complex multi-agent workflow (detailed protocols, nuanced judgment calls, multi-step tool chains) requires Opus-class reasoning to function reliably. OpenRouter's own documentation notes that Claude Code "is optimized for Anthropic models and may not work correctly with other providers." Some non-Claude models (e.g., GPT-4o) can handle basic operations, but they struggle with the tool-calling patterns and edit formatting that DAAF depends on heavily. Extended thinking -- which DAAF uses extensively -- works through OpenRouter when using Anthropic models, but does not work with non-Anthropic models at all. **Bottom line:** Use Anthropic's Opus models through OpenRouter for reliable DAAF results. Non-Anthropic models may technically load but will produce erratic, inconsistent output for DAAF's workflows.
+**Non-Anthropic models — what works:** [DAAFBench](https://daaf.openaugments.org/bench/) has tested multiple non-Anthropic models across 2,799 runs. The standout is **GLM 5.2**, which ranks #4 overall and performs roughly on par with the Opus line on orchestration benchmarks at ~33% of the cost. **DeepSeek V4 Flash** performs appreciably worse but at substantially lower price points (~3% of costs for Opus). Note that extended thinking (which DAAF uses extensively with Anthropic models) does not work with non-Anthropic models through OpenRouter — these models rely on their native reasoning capabilities instead. See the [full benchmark results](https://daaf.openaugments.org/bench/) for per-model breakdowns.
 
 **Porting DAAF to a different CLI tool entirely:** This is also possible but requires more effort. DAAF is built on Claude Code, which is Anthropic's CLI agent tool. The vast majority of what DAAF actually *is* -- the agent protocols, skill documents, workflow definitions, validation checkpoints -- is just structured text in Markdown files. None of that is Anthropic-specific. What *is* specific to Claude Code are the hooks system (the safety guardrails that block dangerous commands, scan outputs for secrets, etc.) and some of the tool invocation patterns.
 
@@ -200,7 +206,7 @@ What would need adaptation:
 - The `.claude/settings.json` permission configuration
 - Any Claude Code-specific invocation patterns (the `Task` tool, subagent types)
 
-I would honestly be thrilled if someone forked DAAF and adapted it for another provider. The more researchers who have access to rigorous AI-assisted analysis tooling, the better. I'd also love to see someone test this with open-source models, as that's such an enormous value-add for anyone working with sufficiently protected data in secure environments -- **please** reach out if you've got the capacity to explore that!!
+I would honestly be thrilled if someone forked DAAF and adapted it for another provider. The more researchers who have access to rigorous AI-assisted analysis tooling, the better. We've made significant progress testing open-source models via [DAAFBench](https://daaf.openaugments.org/bench/) — GLM 5.2 is already viable — but there's much more to explore, especially around analytical depth and domain-specific tasks. If you're running DAAF with non-default models, **please** share your experiences so we can continue refining this guidance!
 
 ### Q: Is my data sent to Anthropic? What about privacy?
 
@@ -250,9 +256,9 @@ After changing, rebuild the container — see [Keeping DAAF Updated](01_installa
 
 Not in a practical sense for full-pipeline analyses, unfortunately. The free and Pro tiers of Claude simply don't provide enough usage for the volume of work DAAF demands. You might be able to do some lightweight Data Discovery Mode queries (asking what data is available, looking up variable definitions), but a full analysis pipeline will exhaust a lower-tier plan very quickly.
 
-**More flexible billing via OpenRouter:** While not free, [OpenRouter](https://openrouter.ai/) offers pay-per-token access to Claude's Opus models with no monthly subscription commitment. You only pay for what you use (with a 5.5% fee on credit purchases), which can be more accessible than a $100-200/mo Max subscription if you're doing occasional analyses rather than heavy daily use. See the [Installation Guide](01_installation_and_quickstart.md#configure-authentication-via-environment_settingstxt) for setup instructions.
+**More flexible and affordable billing via OpenRouter:** [OpenRouter](https://openrouter.ai/) offers pay-per-token access with no monthly subscription commitment (5.5% fee on credit purchases). Critically, OpenRouter also provides access to high-performing open-weight models at a fraction of Anthropic's pricing. **GLM 5.2** [benchmarks competitively with the Opus line](https://daaf.openaugments.org/bench/) at roughly 33% of the cost, and **DeepSeek V4 Flash** offers passable mid-tier performance at roughly 3% of flagship cost. This makes DAAF substantially more accessible than it was even a few months ago — a full pipeline analysis that might cost $50+ with Opus via API could cost under $15 with GLM 5.2 through OpenRouter, or less than $1 with DeepSeek V4 Flash. See the [Installation Guide](01_installation_and_quickstart.md#configure-authentication-via-environment_settingstxt) for setup instructions.
 
-This is genuinely the biggest barrier to entry for DAAF, and I wish it were different. I hope that as model costs continue to decrease and open-source models become more capable, a more accessible option will emerge. If you have the capacity to test DAAF with open-source models or alternative providers, please reach out -- that's high on the list of things I'd love community help with.
+Cost remains a meaningful barrier to entry for DAAF, but it's shrinking. As open-weight models continue to improve and inference costs continue to fall, accessibility will only get better. If you're running DAAF with non-default models, please share your experiences — community feedback on the quality-cost frontier directly informs the guidance here and in the [DAAFBench results](https://daaf.openaugments.org/bench/).
 
 ### Q: How much disk space does DAAF use?
 

@@ -28,7 +28,7 @@ Enter <a href="https://daaf.openaugments.org"><strong>**DAAF, the Data Analyst A
 
 Think of it as a **force-multiplying exoskeleton** for human researchers -- a tool explicitly designed to **augment** your hard-earned expertise, not replace it. The goal is to make it easy for researchers to use Claude Code effectively **and** responsibly. Importantly, DAAF is not and will never be perfect -- but it is already immensely useful, and this is the worst a tool like DAAF will ever be from now on with the help and support of the broader research community.
 
-Install and begin using it in as little as 10 minutes from a fresh install with a high-usage Anthropic account.
+Install and begin using it in as little as 10 minutes from a fresh install with an Anthropic account or OpenRouter API key.
 
 Watch the 4 minute v2.0.0 Showcase video below, or read on for more information!
   <p align="center">                                                                                                  
@@ -53,7 +53,7 @@ Watch the 4 minute v2.0.0 Showcase video below, or read on for more information!
 
 If you're already comfortable with the Terminal and Claude Code, you can get started almost immediately using the Quick Start instructions below. Otherwise, I recommend starting with the full [Installation Guide](user_reference/01_installation_and_quickstart.md) for beginner-friendly details, prerequisites, and troubleshooting.
 
-**Requirements:** [Docker Desktop](https://www.docker.com/products/docker-desktop/) (running) and an [Anthropic Max subscription](https://claude.com/pricing/max) ($100-200/mo), [API key](https://console.anthropic.com/), or [OpenRouter](https://openrouter.ai/) account (pay-per-token, no subscription). Open a terminal in your desired installation directory.
+**Requirements:** [Docker Desktop](https://www.docker.com/products/docker-desktop/) (running) and an [Anthropic Max subscription](https://claude.com/pricing/max) ($100-200/mo), [API key](https://console.anthropic.com/), or [OpenRouter](https://openrouter.ai/) account (pay-per-token, no subscription — provides access to Anthropic models as well as high-performing open-weight alternatives like GLM 5.2). Open a terminal in your desired installation directory.
 
 **macOS / Linux (Terminal):**
 
@@ -77,7 +77,7 @@ cd daaf-docker
 .\run_daaf.ps1
 ```
 
-On first launch, Claude Code will prompt you to authenticate. Set your model to **Opus 4.6** (or Opus 4.5) via `/model`, set the thinking level to **High** using the arrow keys while the model is selected, and set **Auto-compact** to **False** (to prevent conflicts with DAAF's built-in context window management) and **Verbose output** to **True** (to ensure that you can monitor how DAAF's thinking and working for accuracy) via `/config`. You're ready to go; see [Understanding DAAF](user_reference/02_understanding_daaf.md) for some suggestions on how to get started with progressively more complex tasks with DAAF!
+On first launch, Claude Code will prompt you to authenticate. DAAF defaults to **Opus 4.6** with 1 million token context. **Sonnet 4.6** is also an excellent choice that [matches the Opus line on DAAF orchestration benchmarks](https://daaf.openaugments.org/bench/) at a fraction of the cost; if you'd like to use it, type `/model` to switch. Set the thinking level to **High** using the arrow keys while the model is selected, and set **Auto-compact** to **False** (to prevent conflicts with DAAF's built-in context window management) and **Verbose output** to **True** (to ensure that you can monitor how DAAF's thinking and working for accuracy) via `/config`. You're ready to go; see [Understanding DAAF](user_reference/02_understanding_daaf.md) for some suggestions on how to get started with progressively more complex tasks with DAAF!
 
 ---
 
