@@ -339,7 +339,7 @@ def score_subagent_behavior_from_transcripts(
     Parameterized core of score_subagent_behavior(): accepts the subagent
     .jsonl paths directly, so it works for both live sessions (paths from
     find_subagent_transcripts) and archived result sets (paths from a run
-    dir's subagents/ folder — used by rescore_dispatch_timeout_rescue.py).
+    dir's subagents/ folder).
 
     Args:
         transcripts: Paths to subagent .jsonl transcript files.

@@ -197,7 +197,7 @@ def score_skill_routing(
     # pass — because a criterion that can only ever pass for a case dilutes
     # Perfect/soft rates (2026-06-10; cf. the removed no_spurious_skill_reload,
     # plan section 9 decision 6). Aggregations (runner summary, rescore tool,
-    # viewer) all key off per-run criteria sets, and rescore_skill_routing.py's
+    # viewer) all key off per-run criteria sets, and the former rescore_skill_routing.py's
     # merge/determinism logic tolerates per-run omission, so no consumer
     # assumes this criterion exists.
     expected_refs = expected.get("expected_refs", [])

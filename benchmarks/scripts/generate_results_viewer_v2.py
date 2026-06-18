@@ -30,7 +30,7 @@ PHASE_MAP):
 
 The HTML/CSS/JS lives in the sibling template file viewer_template.html;
 this script is data preparation + placeholder substitution. v1
-(generate_results_viewer.py) is preserved untouched as a historical artifact.
+The v1 generator has been retired.
 
 Usage:
     python3 benchmarks/scripts/generate_results_viewer_v2.py [--results TIMESTAMP...] [--exclude-results TIMESTAMP...] [--output PATH] [--single-file [PATH]]

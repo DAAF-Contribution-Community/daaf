@@ -786,7 +786,7 @@ def main():
     # Mode classification uses cold starts — no golden checkpoints.
     # Each run is a fresh `claude -p` session so we test the full bootstrap +
     # classification behavior. Golden checkpoints are reserved for post-confirmation
-    # protocol tests (see run_checkpoint_comparison.py).
+    # protocol tests (the legacy run_checkpoint_comparison.py has been retired).
 
     total_runs = len(test_cases) * len(models) * args.reps
     print(f"Mode Classification Benchmark")

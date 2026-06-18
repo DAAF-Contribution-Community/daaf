@@ -5,14 +5,6 @@ protocols. It answers one question: when a model is placed inside the real DAAF
 container — hooks firing, skills discoverable, agents dispatchable — does it follow
 the framework's protocols?
 
-This README is the authoritative documentation for the benchmark system. The
-`SESSION_RESTART*.md` files in `archive/` are historical session notes (including
-run-level provenance for the 2026-06 result sets) superseded by this document for
-system-level documentation. `SESSION_NOTES.md` (the shared working-session log,
-retired 2026-06-10) is likewise superseded: its durable operational knowledge has
-been folded into this document and its live point-in-time status moved to § 12
-"Current Status / Next Steps".
-
 ---
 
 ## 1. What This Is
@@ -40,15 +32,9 @@ Gemma 4 31B/26B, DeepSeek V4 Pro/Flash, Gemini 3.1 Pro, Nemotron 3 Ultra,
 Gemini 3.1 Flash Lite) via an Anthropic-compatible endpoint. The matrix is defined in
 `config/models.yaml`.
 
-**Relationship to original design:** The system was designed in
-`/daaf/research/2026-05-01_Benchmark_Testing/Benchmark_System_Reference.md`,
-which specified six test categories (mode classification, skill loading,
-protocol adherence, script quality, safety boundaries, golden checkpoint
-protocol tests). Four phases are implemented; where this README and the design
-document differ, the code (and this README) reflect current reality.
-Designed-but-never-built components that remain valuable are catalogued in the
-Design Backlog (§ 12) — the reference document does not need to be consulted
-for "what's next" beyond the sections cited there.
+**Scope:** The original design specified six test categories; four are
+implemented as the phases above. The remaining designed-but-unbuilt
+categories are catalogued in the Design Backlog (§ 12).
 
 ## 2. The Four Phases
 
@@ -83,14 +69,10 @@ Each case's required loads/reads are grounded in verbatim routing text in the
 skills themselves: a case is valid only if every required load/read is
 *explicitly necessitated by a verbatim directive* in a SKILL.md (the
 data-scientist hub tree, a library skill's decision tree, or frontmatter
-disambiguation like "For static figures use plotnine"). Directives were
-verified against skill text 2026-06-10 (pre-routing-fix wording; the
-routing-norm fix — defined in § 5 — removed "for implementation
-syntax"-style qualifiers without changing any routing target). A case that
+disambiguation like "For static figures use plotnine"). A case that
 provokes a clarifying question fails its design goal and must be reworded.
 `cases.jsonl` is the operative encoding; the governing directives per case
-are condensed below (the verbatim validated quotes live in the retired
-design doc, recoverable via git history):
+are condensed below:
 
 | Case | Skill(s) | Required refs | Governing directive (condensed) | Forbidden |
 |------|----------|---------------|--------------------------------|-----------|
@@ -124,8 +106,7 @@ Phase 2/3/4 cases additionally carry a `golden_checkpoint` field; Phase 3 cases
 also carry `golden_project_path`. Phase 4 deliberately omits
 `golden_project_path`: setting it makes `prepare_sandbox()` rewrite every
 `/daaf` literal in the replayed history — including the in-history skill file
-paths that routing depends on — which poisons the test (discovered in the
-first Phase 4 dry run).
+paths that routing depends on — which poisons the test.
 
 ## 3. Architecture
 
@@ -181,14 +162,12 @@ Directory map (paths relative to `benchmarks/`):
 |-----------|----------|
 | `harness/` | Core machinery: `executor.py` (CLI invocation), `checkpoint_manager.py` (golden cloning + sandbox lifecycle), `cost_estimator.py` (estimation + cost recomputation), `models.py` (dataclasses: TestCase, RunConfig, RunResult, etc.), `model_loader.py` (models.yaml loading + provider env wiring), `collector.py`, `hooks/` (benchmark-scoped hook scripts, e.g., `block-git-writes.sh` — see § 9) |
 | `scorers/deterministic/` | `checkpoint_adherence.py`, `dispatch_compliance.py`, `subagent_behavior.py`, `skill_routing.py` (Phase 1 is scored inline by `scripts/run_mode_classification.py` — see § 6) |
-| `scorers/llm_judge/` | Unimplemented stub (see § 6) |
 | `datasets/` | `{phase}/cases.jsonl` plus `test_fixtures/` (buggy scripts and data for debugger/code-reviewer cases) |
 | `golden/` | Golden checkpoint JSONLs (see § 5) |
 | `config/` | `models.yaml` — model matrix with pricing |
-| `scripts/` | Phase runners, `generate_goldens.py`, `generate_results_viewer.py`, `rescore_skill_routing.py`, `rescore_criteria_overhaul.py`, `rescore_dispatch_timeout_rescue.py`, `refresh_golden_checkpoint.py`, utilities |
+| `scripts/` | Phase runners, `generate_goldens.py`, `generate_results_viewer_v2.py`, `viewer_template.html`, `refresh_golden_checkpoint.py`, `reconcile_openrouter_costs.py`, `clean_sandbox.sh` |
 | `results/` | Timestamped, self-contained result sets |
-| `_sandbox/` | Per-run scratch directories and archived transcripts (transient) |
-| `archive/` | Legacy components (`runner.py`, `cost_budget.yaml`, per-case Phase 1 goldens) — see `archive/README.md` |
+| `_sandbox/` | Per-run scratch directories (transient, gitignored) |
 
 ## 4. Quick Start
 
@@ -265,9 +244,9 @@ timed-out runs still produce scorable data.
 | File | Lines | Used By |
 |------|-------|---------|
 | `post_confirmation/{mode}.jsonl` (9 files) | 18 | Phase 2 — one per engagement mode, ending at the confirmation gate |
-| `dispatch_compliance/ad_hoc_initialized.jsonl` | 47 | All 12 Phase 3 cases — Ad Hoc mode fully initialized (topic-free final exchange, so any task can follow). Phase 4 used this file too until 2026-06-10 (result sets through `20260610_144524`, since archived out of `results/`) |
-| `skill_routing/ad_hoc_initialized.jsonl` | 47 | All 15 Phase 4 cases — content-refreshed copy of the Phase 3 golden (see Regeneration below) reflecting the 2026-06-10 routing-norm fix (the fix: reworded the data-scientist hub + ad-hoc mode doc to require loading the routed library skill whenever advice names tools — skills encode environment-specific constraints absent from memory — replacing the "for implementation syntax" framing) |
-| `ad_hoc/after_confirmation.jsonl` | 19 | `run_checkpoint_comparison.py` (legacy comparison utility) |
+| `dispatch_compliance/ad_hoc_initialized.jsonl` | 47 | All 12 Phase 3 cases — Ad Hoc mode fully initialized (topic-free final exchange, so any task can follow) |
+| `skill_routing/ad_hoc_initialized.jsonl` | 47 | All 15 Phase 4 cases — content-refreshed copy of the Phase 3 golden |
+| `ad_hoc/after_confirmation.jsonl` | 19 | Unused by current scripts |
 | `bootstrap_template.jsonl` | 7 | Input to `scripts/generate_goldens.py` |
 
 **Regeneration.** Two distinct mechanisms:
@@ -275,49 +254,27 @@ timed-out runs still produce scorable data.
 - `scripts/generate_goldens.py` builds 7-line bootstrap-style checkpoints by
   injecting each case prompt from every `datasets/*/cases.jsonl` into line 3 of
   `golden/bootstrap_template.jsonl`, writing `golden/{category}/{case_id}.jsonl`.
-  This is the path for prompt-injection-style goldens (the per-case Phase 1
-  goldens it once produced are now archived, since Phase 1 runs cold).
-- The Phase 2 and Phase 3 goldens in use today are **captured transcripts** —
-  truncated from real sessions where a model correctly executed the protocol up
-  to the desired boundary. Regenerating them means re-recording a session and
-  truncating it, not running the script. Scorers depend on each golden's exact
-  line count (§ 6), so any change to a golden invalidates comparison with prior
-  result sets.
+- The Phase 2–4 goldens are **captured transcripts** — truncated from real
+  sessions where a model correctly executed the protocol up to the desired
+  boundary. Regenerating them means re-recording a session and truncating it.
+  Scorers depend on each golden's exact line count (§ 6), so any change to a
+  golden invalidates comparison with prior result sets.
 - `scripts/refresh_golden_checkpoint.py` performs a **deterministic content
-  refresh** of a captured transcript: it re-reads the files behind each
-  Skill/Read tool result (and rebuilds skill-listing attachment descriptions
-  from current frontmatter) and splices current contents into the payloads,
-  preserving everything else byte-for-byte (record count, assistant text,
-  tool_use_id pairings). Caution: Read results are stored TWICE per record
-  (numbered `message.content` payload AND raw `toolUseResult.file.content`) —
-  both must be refreshed or stale text silently survives in replay context.
-  A second serialization trap: a Skill call's own tool_result is just
-  "Launching skill: X" — the skill body arrives in a SUBSEQUENT user record
-  (with frontmatter stripped), so a refresh must target that later record,
-  not the tool_result itself.
+  refresh**: re-reads the files behind each Skill/Read tool result, rebuilds
+  skill-listing attachment descriptions from current frontmatter, and splices
+  current contents into the payloads while preserving everything else
+  byte-for-byte. Caution: Read results are stored TWICE per record (numbered
+  `message.content` payload AND raw `toolUseResult.file.content`) — both must
+  be refreshed. A Skill call's tool_result is just "Launching skill: X" — the
+  skill body arrives in a subsequent user record, so a refresh must target that
+  later record.
 
-**Golden staleness caveat (important for before/after experiments).** A captured
-checkpoint freezes every tool-result payload — skill bodies, reference files —
-at recording time. Models resuming from it see that frozen content in-context,
-and in-context text dominates behavior: framework edits on disk are largely
-invisible until the golden is refreshed. Discovered empirically 2026-06-10: a
-routing-norm fix to the data-scientist skill produced zero behavioral change in
-a 60-run spot-check replayed against the pre-fix golden (sets
-`20260610_144245`/`_144524`, retained as a control condition until Session 5
-archived them out of `results/` with the other pre-fresh-golden Phase 4 sets;
-the finding stands as recorded), because the old
-skill text was embedded in the checkpoint. Any benchmark measuring a framework
-change MUST refresh (or re-record) its goldens first, and result sets spanning
-a golden change are not directly comparable. On 2026-06-10 (Session 5) ALL
-replayed goldens — both `ad_hoc_initialized` files, the 9 `post_confirmation`
-goldens, and `ad_hoc/after_confirmation.jsonl` — plus `bootstrap_template.jsonl`
-were refreshed to current framework text via `refresh_golden_checkpoint.py`
-(extended that day to also rebuild skill-listing attachment descriptions, which
-every golden embeds at line 5). Consequently, Phase 2 and Phase 3 result sets
-recorded before this refresh are not directly comparable to later sets: the
-checkpoint content changed, including embedded skill bodies and listings (the
-older recordings carried listing descriptions truncated under a previous
-display cap, so the refreshed checkpoints are also several KB larger).
+**Golden staleness caveat.** A captured checkpoint freezes every tool-result
+payload — skill bodies, reference files — at recording time. In-context text
+dominates behavior: framework edits on disk are largely invisible until the
+golden is refreshed. Any benchmark measuring a framework change MUST refresh
+(or re-record) its goldens first, and result sets spanning a golden change
+are not directly comparable.
 
 ## 6. Scoring
 
@@ -334,21 +291,15 @@ criteria from them (`tier1` = structural must-pass, e.g., `agent_dispatched`;
 `tier2` = protocol detail, e.g., `prompt_has_base_dir`; `info` = diagnostic
 only). Phase 1 criteria carry no stamped tier at all — the viewer classifies
 them by membership in the case's `hard_requirements` list (in
-`hard_requirements` → critical, otherwise normal). Vocabulary note: the
-display terms "critical"/"normal" replaced the former "hard"/"soft"
-(2026-06-10, docs and viewer); the underlying data keys —
-`hard_requirements`, `soft_requirements`, `tier1`, `tier2` — are unchanged.
+`hard_requirements` → critical, otherwise normal). Vocabulary note: the display terms are "critical"/"normal" but the
+underlying data keys use `hard_requirements`, `soft_requirements`, `tier1`,
+`tier2`.
 
-**Phase 1 criteria** (scored inline by `scripts/run_mode_classification.py`;
-the separate `scorers/deterministic/mode_classification.py` module was dead
-code — never invoked by the runner — and was deleted 2026-06-10, with its
-keyword/pattern tables relocated into the runner):
+**Phase 1 criteria** (scored inline by `scripts/run_mode_classification.py`):
 `orchestrator_skill_loaded`, `mode_correct`, `no_premature_execution` (critical
-in all cases) and `confirmation_gate_present` (normal — gate phrasing varies enough
-across models that it is a protocol-detail signal, not a structural one). A
-former `reasoning_present` criterion existed only in the dead scorer module
-and was never scored by the live runner; it has been removed from the case
-lists.
+in all cases) and `confirmation_gate_present` (normal — gate phrasing varies
+enough across models that it is a protocol-detail signal, not a structural
+one).
 
 **Phase 2 criteria** (from `scorers/deterministic/checkpoint_adherence.py`):
 dynamically named `read_{doc}` criteria from `expected.documents_read` (tier1)
@@ -372,149 +323,55 @@ accept semantically equivalent variants, not just one literal string — e.g.,
 `## Output Format`, `## Deliverables`, and similar (see `CONTEXT_HEADERS` /
 `INSTRUCTION_HEADERS` in the scorer).
 
-**Phase 3 dispatch-recovery fallback (2026-06-11).** The harness historically
-SIGKILLed timed-out runs (`subprocess.run(timeout=...)`; replaced 2026-06-11
-by the graceful-kill ladder, § 9), and Claude Code's main-session
-transcript writes are async/buffered — so a timed-out run could lose an
-unflushed transcript tail, sometimes including the very assistant record
-carrying the `Agent` tool_use (worst case observed: a main transcript frozen
-at exactly the 47-line golden checkpoint beside a 71KB subagent transcript,
-`20260609_005920/runs/dc-07_Gemma_4_31B_0`). The scorer now recovers these:
-when the main transcript contains no Agent tool_use record at all
-post-checkpoint (a recorded FAILED call — `is_error=true` — suppresses
-recovery: the system demonstrably processed and rejected that dispatch, and
-it keeps failing; the fallback only reconstructs records lost to the kill
-race) AND subagent transcripts exist for the run (`subagents/agent-{id}.jsonl` —
-keyed by per-run fresh session UUIDs, so presence proves that run dispatched),
-`score_dispatch_compliance()` synthesizes the dispatch from that evidence —
-subagent_type from `agent-{id}.meta.json`'s `agentType`, the full dispatched
-prompt from the subagent transcript's first user record — and scores ALL ten
-criteria from it. The fallback is evidence-gated, not timeout-gated (it never
-consults the `timed_out` flag). Every criterion scored from recovered evidence
-carries a "(recovered from subagent transcript)" provenance suffix in its
-detail. Phase 3b subagent behavior IS scored for recovered dispatches (the
-subagent transcript is by definition present). With no evidence supplied, the
-scorer's behavior is byte-identical to the pre-fallback version. The same
-change replaced the dispatch runner's vestigial hardcoded `tool_call_count: 0`
-with a real post-checkpoint count.
+**Phase 3 dispatch-recovery fallback.** When a timed-out run's main
+transcript is missing the Agent tool_use record (lost to the timeout kill
+race) but subagent transcripts exist, `score_dispatch_compliance()`
+reconstructs the dispatch from that evidence — subagent_type from
+`agent-{id}.meta.json`, the prompt from the subagent transcript's first
+user record — and scores all ten criteria. The fallback is evidence-gated
+(it never consults the `timed_out` flag; a recorded FAILED dispatch
+suppresses recovery). Recovered criteria carry a provenance suffix.
+Phase 3b subagent behavior IS scored for recovered dispatches.
 
-**Rescue rescore (2026-06-11).** `scripts/rescore_dispatch_timeout_rescue.py`
-applied the fallback retroactively across all 24 archived dispatch_compliance
-sets: 83 timed-out runs whose dispatch record was lost (concentrated in the
-2026-06-09 baseline sets; every one carried archived subagent evidence) were
-rescued — `agent_dispatched` +83, `correct_subagent_type` +82, 68 runs flipped
-to viewer-Perfect on main criteria, 240 Phase 3b criteria entries added — and
-10 further failed-dispatch runs (genuine non-dispatches) received
-`tool_call_count` fixes only. 93 result.json files were rewritten in place;
-summary.json was rewritten only where its content changed — 7 of the 9
-touched sets. The other 2 sets received only `tool_call_count` fixes, which
-don't enter summary aggregation, so their prior summaries were kept verbatim.
-Note the field's resulting mixed semantics across the archive: historical
-PASSED-dispatch runs retain the vestigial `tool_call_count: 0` (the rescore
-recomputed it only for failed-dispatch candidates; runs after 2026-06-11 get
-real counts). No-evidence recomputes were
-determinism-gated and all reproduced their archives exactly. Pre-rescue
-snapshots (§ 10) understate dispatch rates for slow models, and viewers
-generated before the rescue embed pre-rescue data — regeneration required.
-
-**Phase 3b criteria pruning (2026-06-10).** Four structural criteria were
-REMOVED from `scorers/deterministic/subagent_behavior.py` because they passed
-in essentially every run with a transcript, noising Perfect and normal rates
-(the viewer's Perfect metric counts every non-info criterion, and info-tier
-entries also counted toward Perfect in the v1 viewer):
-`subagent_transcript_found` (when no subagent transcript exists the scorer now
-emits NO subagent criteria — dispatch failure is already captured by
-`agent_dispatched`), `subagent_active` (every dispatched subagent makes tool
-calls), `subagent_no_code_execution` (never observed failing for the read-only
-agents), and `subagent_tool_summary` (an info-tier tool-call distribution
-diagnostic, not a behavioral check; its detail string was only ever console
-output). The discriminating per-agent-type criteria
-(`subagent_writes_script`, `subagent_uses_run_with_capture`,
-`subagent_loads_data_skill`, `subagent_reads_target_script`, etc.) are
-unchanged. Result sets scored before this pruning initially retained the
-removed criteria in their archived `result.json` files; on 2026-06-10 all live
-Phase 2 and Phase 3 result sets were rescored in place via
-`scripts/rescore_criteria_overhaul.py`, which normalized the historical corpus
-to the current criteria scale: the four removed Phase 3b criteria were
-stripped from stored `subagent_criteria` (417 runs across 24 sets; retained
-entries cross-checked against archived subagent transcripts with zero
-mismatches and zero Perfect changes — the removed criteria always passed
-wherever stored), and pc-07 runs gained the `skill_agent_authoring` tier2
-criterion retroactively with `skill_skill_authoring` retiered tier1 → tier2
-(48 runs across 8 sets; 35/48 fail the new criterion). summary.json files
-were regenerated per set. The rescore surfaced two corpus caveats: five
-result sets have run directories that were pruned after archival
-(`20260608_221438` plus four dispatch sets — `20260609_005021`, `_134443`,
-`_160029`, `_180411`; dates corrected 2026-06-11 against disk — previously
-misrecorded here as `20260610_*`); their summaries now reflect what is on disk, and disk
-is the source of truth whenever summary.json and `runs/` disagree. And two
-timed-out Fable pc-07 runs lack archived transcripts — they received the
-transcript-independent retiers but carry no `skill_agent_authoring` entry
-(correct: no evidence to score).
+**Phase 3b criteria.** When no subagent transcript exists, the scorer emits
+no subagent criteria (dispatch failure is captured by `agent_dispatched`).
+The scored criteria are per-agent-type behavioral checks:
+`subagent_writes_script`, `subagent_uses_run_with_capture`,
+`subagent_loads_data_skill`, `subagent_reads_target_script`, etc.
 
 **Phase 4 skill-routing criteria** (from `scorers/deterministic/skill_routing.py`):
 `required_skills_loaded` and `required_refs_read` (tier1, critical in all cases);
 `required_skills_engaged`, `expected_refs_read`, `routing_order`, and
 `no_forbidden_skills` (tier2, normal). `expected_refs_read` is emitted ONLY for
-cases with a non-empty `expected.expected_refs` list (since 2026-06-10) —
-cases without secondary refs get no criterion at all rather than an automatic
-pass, so it never dilutes Perfect/normal rates. `required_skills_engaged` (added
-2026-06-10) passes when every required skill was loaded OR name-mentioned in
-user-visible assistant text post-checkpoint (case-insensitive, hyphens match
-hyphen-or-whitespace, `sklearn` counts for scikit-learn; thinking blocks
-excluded). It is a strict superset of `required_skills_loaded`, so the
+cases with a non-empty `expected.expected_refs` list — cases without secondary
+refs get no criterion at all rather than an automatic pass.
+`required_skills_engaged` passes when every required skill was loaded OR
+name-mentioned in user-visible assistant text post-checkpoint (case-insensitive,
+hyphens match hyphen-or-whitespace, `sklearn` counts for scikit-learn; thinking
+blocks excluded). It is a strict superset of `required_skills_loaded`, so the
 engaged-vs-loaded gap directly quantifies "named the right skill but deferred
-the load" behavior — the dominant Phase 4 failure mode. Historical Phase 4
-result sets were rescored in place via `scripts/rescore_skill_routing.py`
-(merge semantics: legacy criteria such as dry-run 2's `no_spurious_skill_reload`
-are retained).
+the load" behavior — the dominant Phase 4 failure mode (**two-hop decay**:
+models correctly select the hub reference but answer from parametric memory
+instead of loading the routed library skill).
 `routing_order` checks the expected load/read sequence as a subsequence of the
-post-checkpoint tool-call stream (tests the hub's "FIRST read X THEN load Y"
-directives). Read matching is by **basename only** — sandbox checkpoint replay
-rewrites `/daaf` inside replayed `file_path` values, so full paths are
-unreliable; basenames are unique within each case's required skill. Only
-successful tool calls satisfy requirements. `quickstart.md`/`gotchas.md` and
-other extra reads under a correctly loaded skill are never penalized —
-over-reading is a quality issue, not a routing error.
-
-Baseline transcript review (2026-06-10; Fable 5 + Sonnet 4.6, 30 runs)
-established the dominant failure behind `required_skills_engaged` as **two-hop
-decay**: hub-reference selection was near-100% correct, but models
-reinterpreted "THEN load the library skill" as an implementation-time
-protocol — naming the correct skill in prose while answering from parametric
-memory. Reference reads were accuracy-anxiety-driven, not directive-driven;
-zero-tool runs were substantive, not lazy. This motivated both
-`required_skills_engaged` and the framework-side routing-norm fix (defined in
-§ 5; the pre-fix data-scientist description "For implementation syntax, load
-the routed tool-specific skill" itself licensed the deferral). Informal mention-counts in
-the review (~13/15) overstate vs the deterministic matcher (9/15).
+post-checkpoint tool-call stream. Read matching is by **basename only** —
+sandbox checkpoint replay rewrites `/daaf` inside replayed `file_path` values.
+Only successful tool calls satisfy requirements; extra reads under a correctly
+loaded skill are never penalized.
 
 **Vacuous tier-2 passes (Phase 4 caveat):** `no_forbidden_skills` passes
-trivially when a model makes no Skill calls at all. In the 2026-06-10 dry run,
-models that ignored routing entirely (answering from parametric memory) still
-passed it 75/75 — interpret Phase 4 normal rates jointly with the tier-1
-load/read criteria, never in isolation. (A former criterion,
-`no_spurious_skill_reload`, was removed 2026-06-10 for exactly this
-vacuousness: it passed 75/75 in dry runs with zero discrimination — models
-that fail routing mostly make zero Skill calls. Removed from scorer, cases,
-and schema; dry-run result.json files retain it.)
-`required_skills_engaged`, by contrast,
-is not vacuously passable: a zero-tool run must still name the required skill
-in user-visible text, and observed per-model rates span 3/15 to 14/15.
+trivially when a model makes no Skill calls at all — interpret Phase 4 normal
+rates jointly with the tier-1 load/read criteria, never in isolation.
+`required_skills_engaged`, by contrast, is not vacuously passable: a zero-tool
+run must still name the required skill in user-visible text.
 
-**Phase 4 scoring rationale:** `no_forbidden_skills` is deliberately
-normal-tier: loading a wrong skill is only harmful if acted upon, and the
-excluding directive in the wrong skill is itself informative.
-`required_skills_engaged` is deliberately NOT folded into the critical loading
-criterion — that would grade the targeted failure mode as a pass, blind the
-post-fix delta, and mix prose-matching into a tool-call criterion. (Pre-fix
-rescore, since-archived sets: engaged 136/225 = 60.4% vs loaded 18/225 = 8.0%
-— numbers survive only in this record.) `routing_order` auto-passes when a
-case omits `expected.order` (intentional; sr-15 omits it — no directive
-sequences its two branches). "Allowed ≠ expected": per-case `allowed_refs`
-audit lists are ignored by the scorer — by design there is no over-reading
-penalty. `forbidden_skills` membership requires a verbatim excluding
-directive; merely-unnecessary skills are never forbidden.
+**Phase 4 scoring rationale:** `no_forbidden_skills` is normal-tier because
+loading a wrong skill is only harmful if acted upon. `required_skills_engaged`
+is deliberately separate from the critical loading criterion — folding it in
+would grade the dominant failure mode as a pass. `routing_order` auto-passes
+when a case omits `expected.order` (sr-15 omits it — no directive sequences
+its two branches). There is no over-reading penalty by design;
+`forbidden_skills` membership requires a verbatim excluding directive.
 
 **Perfect vs. Critical/Normal rates — intentionally different metrics:**
 
@@ -527,10 +384,9 @@ directive; merely-unnecessary skills are never forbidden.
 These can diverge sharply: 4 runs each failing one normal criterion yields 67%
 Perfect with 100% Critical and 96% Normal. Both views are reported.
 
-**LLM judge status:** `scorers/llm_judge/` is an **unimplemented stub**
-(contains only `__init__.py`). The three-tier hybrid design from the original
-reference document reserved tier 3 for LLM-as-judge rubric scoring; nothing in
-the current system invokes it.
+**LLM judge status:** The three-tier hybrid design from the original
+reference document reserved tier 3 for LLM-as-judge rubric scoring; this
+remains unimplemented (see § 12 Design Backlog).
 
 ## 7. Cost Tracking
 
@@ -546,53 +402,24 @@ sessions (the plain `usage` block excludes subagents and is used only as a
 fallback). `input_tokens` is the UNCACHED count; `cache_read_tokens` is
 additive — total billed input = input + cached. Models without a
 `cached_input` rate are billed cached tokens at the `input` rate.
-`cache_creation_tokens` were historically captured in results but excluded
-from `compute_cost()`; as of 2026-06-11 they are billed at 1.25× the `input`
-rate (Anthropic's cache-write convention — § 8 cost methodology addendum).
-The omission understated Anthropic-side computed costs ~3× against the full
-convention (cache-write spend dominates subagent-heavy runs). The fix applies
-to future runs only — archived `result.json` values are immutable and not
-recomputed.
+`cache_creation_tokens` are billed at 1.25× the `input` rate (Anthropic's
+cache-write convention).
 
 **Pre-run estimation.** `cost_estimator.py` holds per-case calibration token
-profiles (average input/output/cached per case) that drive the pre-launch
-estimate and confirmation prompt. **The Phase 1–3 profiles are stale:** they
-were collected 2026-06-08 (Haiku 4.5, DeepSeek V4 Flash, Gemini 3.1 Flash
-Lite) before the `modelUsage` fix and reflect main-session-only tokens, so
-they underestimate costs for subagent-dispatching cases (all of Phase 3).
-Treat those pre-run estimates as lower bounds until recalibrated (§ 12). The
-Phase 4 profiles were recalibrated 2026-06-10 from all eight fresh-golden
-baseline sets (520 usable runs; 35 error/timeout/stall runs excluded) and are
-**split by provider** (`PHASE4_TOKENS_OPENROUTER` / `PHASE4_TOKENS_ANTHROPIC`,
-selected via `model.provider`; unknown providers fall back to the OpenRouter
-profile, which estimates high). The split is necessary because the billing
-regimes do not mix: Anthropic runs are nearly all cache reads (billed ~10% of
-input price) with ~0 uncached input, while OpenRouter runs re-send uncached
-context every turn — a single blended profile over-estimated Anthropic models
-3.3-8.4x. Validated against the same actuals at 0.90x aggregate, 0.90-0.91x
-per provider (`_sandbox/validate_phase4_estimator_a.py`); residual per-model
-scatter (~0.7-1.7x) is inherent to per-case calibration — heavy models run
-above the profile, light ones below.
+profiles that drive the pre-launch estimate and confirmation prompt. **Phase
+1–3 profiles are stale** and underestimate costs for subagent-dispatching
+cases — treat as lower bounds (§ 12). Phase 4 profiles are **split by
+provider** (`PHASE4_TOKENS_OPENROUTER` / `PHASE4_TOKENS_ANTHROPIC`, selected
+via `model.provider`; unknown providers fall back to OpenRouter, which
+estimates high). The split is necessary because Anthropic runs are nearly all
+cache reads while OpenRouter runs re-send uncached context every turn.
 
-**Pricing correction (2026-06-10).** Reconciling computed costs against the
-OpenRouter billing export (`openrouter_activity_2026-06-10.csv`, which covers
-the strong-five rep-1 batch 18:12-18:35; analysis in
-`_sandbox/analyze_openrouter_activity.py`) confirmed computed costs within
-~2-6% of billed for Gemini 3.1 Pro, GLM 5.1, Kimi K2.6, and DeepSeek V4
-Flash — but exposed **DeepSeek V4 Pro billing at ~3.3x the configured rates**.
-`config/models.yaml` was corrected ($0.435/$0.87 → $1.44/$2.88 per M, implied
-from billed totals). Result sets archived before the fix (2026-06-10 and
-earlier) understate DS Pro `computed_cost_usd` — and therefore its viewer
-cost displays and cost-efficiency standing — by ~3.3x; stored values are not
-retroactively recomputed (archived results are immutable).
-
-**Pricing corrections (2026-06-11).** The fuller billing reconciliation of
-2026-06-11 (§ 8 cost methodology addendum) exposed the same error class in
-three more models; `config/models.yaml` rates were multiplied by the observed
-obs/pred billing factors: Gemma 4 26B ×2.12 ($0.06/$0.33 → $0.127/$0.700),
-DeepSeek V4 Flash ×1.34 ($0.0983/$0.1966 → $0.132/$0.263), Gemma 4 31B ×1.26
-($0.12/$0.36 → $0.151/$0.454). As with DS Pro, archived result sets
-understate those models' computed costs by the same factors.
+**Pricing reconciliation.** `models.yaml` rates were validated against
+OpenRouter billing exports via `scripts/reconcile_openrouter_costs.py`
+(machine-readable summaries in `derived/`). Rates for four models were
+corrected after reconciliation: DeepSeek V4 Pro (×3.3), Gemma 4 26B (×2.12),
+DeepSeek V4 Flash (×1.34), Gemma 4 31B (×1.26). Result sets predating these
+corrections understate those models' `computed_cost_usd` by the same factors.
 
 ## 8. Results & Viewer
 
@@ -611,15 +438,10 @@ results/{YYYYMMDD_HHMMSS}/
     └── subagents/         # subagent transcripts (Phase 3)
 ```
 
-**Viewer generation.** `scripts/generate_results_viewer_v2.py` is the
-maintained generator; v1 (`generate_results_viewer.py`) remains in the repo
-as archival code, never modified. The `viewer.html` artifact v1 once produced
-was deleted (2026-06-10 housekeeping, user decision). Since generator v3.0.0
-the **official artifact is a multi-file bundle directory**
-`daafbench_YYYY-MM-DD[suffix]/`; `--single-file` still emits the dated
-`viewer_YYYY-MM-DD{letter}.html` monolith for offline auditing. Both are
-untracked (gitignored via the `daafbench_*/` and `viewer_*.html` patterns
-in `benchmarks/.gitignore`).
+**Viewer generation.** `scripts/generate_results_viewer_v2.py` produces the
+viewer. The official artifact is a **multi-file bundle directory**
+`daafbench_YYYY-MM-DD[suffix]/`; `--single-file` emits a self-contained
+monolith for offline `file://` auditing. Both are gitignored.
 
 ```bash
 python3 benchmarks/scripts/generate_results_viewer_v2.py              # bundle, all result sets
@@ -630,879 +452,79 @@ python3 benchmarks/scripts/generate_results_viewer_v2.py \
 python3 benchmarks/scripts/generate_results_viewer_v2.py --single-file # offline monolith
 ```
 
-By default (generator v3.0.0) this produces a **multi-file bundle
-directory**: `index.html` — the full report shell with all run-level data
-and precomputed metrics inline (~4 MB on the 2026-06 corpus) — plus
-`data/tx_{result_set}.json`, one transcript shard per result set, fetched
-on demand when a run is opened in the Run Explorer (condensed transcripts
-were ~85% of the monolith's bytes; lazy-loading them cut the initial
-payload from ~25 MB to ~4 MB). The bundle **requires http(s) serving** —
-`fetch()` of sibling files is CORS-blocked on `file://` origins, so a
-bundle opened from disk shows a visible fallback message in the transcript
-panel (with a `python3 -m http.server` hint) rather than failing silently.
-For offline / `file://` auditing, `--single-file` emits the pre-3.0
-self-contained monolith embedding full inline transcripts; it works opened
-directly from disk. When `--output` is omitted, both modes write **dated,
-auto-incrementing names** in `benchmarks/` —
-`daafbench_YYYY-MM-DD{,a,b,...}/` for bundles,
-`viewer_YYYY-MM-DD{a,b,...}.html` for single-file — which is intentional:
-each regeneration is a new versioned artifact (matching the framework's
-no-in-place-modification convention) and never overwrites a prior one.
-Historical v1 outputs interleave with v2's single-file lettering in the
-shared `viewer_YYYY-MM-DD{letter}.html` namespace. `--exclude-results`
-drops named sets while keeping everything else (useful for
-known-contaminated sets without enumerating the rest via `--results`);
-exclusions are recorded in the embedded generation parameters for
-provenance (which also record the output mode since v3.0.0).
+The **bundle** contains `index.html` (~4 MB; all run-level data and
+precomputed metrics inline) plus `data/tx_{result_set}.json` transcript
+shards fetched on demand by the Run Explorer. The bundle requires http(s)
+serving — `fetch()` is CORS-blocked on `file://`, so a fallback message
+with a `python3 -m http.server` hint appears instead. Output filenames
+auto-increment (`daafbench_2026-06-18/`, `daafbench_2026-06-18a/`, etc.)
+and never overwrite prior artifacts. `--exclude-results` drops named sets;
+exclusions are recorded in the embedded generation parameters.
 
-The output is a single scrolling document of nine TOC sections (intro/hero,
-key takeaways — with a compact cost-performance preview in their flow —
-about, leaderboard, cost vs. performance, phase deep-dives, cases &
-consistency, run explorer, provenance; the verdict callout, costs-detail,
-and next-steps sections were removed in the 2026-06-12 user fine-tuning
-round, below). The leaderboard composite and tier bands span all five
-approved components with equal weight (P1, P2, P3a, P3b, P4 — P4
-user-approved 2026-06-10, joined the composite 2026-06-11, superseding the
-original four-component pin); a
-model lacking runs for a component is scored on its available components and
-carries a visible "partial" marker naming what's missing. Any new phase
-reports as its own labeled group throughout the viewer until it is
-deliberately added to the composite. Cost vs. Performance has a phase-basis
-selector (Composite + each phase group) and Costs Detail a perfect-rate
-phase-scope toggle, so per-phase value comparisons don't require regeneration.
-To add a new benchmark phase to the viewer, follow the "Adding a
-new benchmark phase" guide in the comment block above `PHASE_MAP` in
-`scripts/generate_results_viewer_v2.py`. Notable internals:
+**Viewer content.** The output is a single scrolling document: intro/hero,
+key takeaways with a cost-performance preview, about, leaderboard, cost
+vs. performance, phase deep-dives, cases & consistency, run explorer, and
+provenance. The leaderboard composite is the unweighted mean of five
+per-phase Perfect rates (P1, P2, P3a, P3b, P4); tier bands are derived
+mechanically from gaps in composite score. Models lacking runs for a
+component are scored on available components with a visible "partial"
+marker. Cost vs. Performance has a phase-basis selector. To add a new
+phase, follow the guide above `PHASE_MAP` in the generator.
 
-- **Global rep renumbering:** runs from separate `--reps 1` batches all carry
-  `rep=0`; the generator renumbers sequentially per `(phase, model, case_id)`
-  across all loaded result sets
-- **Transcript keying (generator v2.7.0 fix, 2026-06-11):** the embedded
-  `transcripts` and `subagent_transcripts` dicts are keyed
-  `{result_set}/{run_dir}`, mirrored exactly by the template's run-detail
-  lookups. Run-dir names (e.g. `dc-08_Gemma_4_26B_0`) are only unique within
-  a result set — bare-name keys silently overwrote 857 main transcripts
-  (482 colliding names across 1,339 transcript-bearing run instances on the
-  52-set corpus) and displayed another set's subagent transcript on
-  same-named runs. Bundle artifacts (v3.0.0) ship the same dicts split into
-  per-set shards with the keys unchanged in full composite form, so the
-  template's lookup code is identical in both modes
-- **HTML5 tokenizer safety:** all `<` in the embedded JSON are escaped to
-  `\u003c`. Transcripts contain literal `<!--` and `<script` sequences that
-  otherwise flip the HTML5 parser into escaped-script states and break rendering
-- **Chrome `file://` handling:** explicit navigation (nav links, deep-link
-  jumps) writes the hash via `location.hash` on `file://` (Chrome restricts
-  `history.replaceState` there) and via `history.replaceState` otherwise.
-  The scrollspy only ever writes via `history.replaceState` — and writes
-  nothing on `file://` — since assigning `location.hash` during scroll would
-  scroll-jump
+**Notable internals:**
 
-### Viewer design record
+- **Global rep renumbering:** runs from separate `--reps 1` batches all
+  carry `rep=0`; the generator renumbers sequentially per
+  `(phase, model, case_id)` across all loaded result sets
+- **Transcript keying:** transcript dicts are keyed
+  `{result_set}/{run_dir}` (run-dir names are only unique within a result
+  set). Bundle shards split the dicts by set with keys unchanged
+- **HTML5 tokenizer safety:** all `<` in embedded JSON are escaped to
+  `\u003c` (transcripts contain literal `<!--` and `<script` sequences)
+- **Chrome `file://` handling:** explicit navigation uses `location.hash`
+  on `file://` and `history.replaceState` otherwise; scrollspy writes
+  nothing on `file://` to avoid scroll-jump
 
-Durable record of the 2026-06-10 viewer redesign (absorbed from the retired
-redesign plan document); code comments in the generator and template cite
-this subsection as "design record: README § 8".
+### Viewer design
 
-**Design decisions (viewer redesign Checkpoint 1, 2026-06-10):** (1) Composite
-= unweighted mean of per-phase Perfect rates, originally four equal components
-(P1, P2, P3a, P3b) — superseded 2026-06-11 when P4 joined as a fifth equal
-component (see above / § 12). (2) Tier bands derived mechanically from gaps in
-composite score (reproducible rule, documented in the generator's tier-banding
-comment block). (3) All result sets embedded by default. (4) Dated
-auto-incrementing output filenames are intentional (above). (5) About layer:
-plain-language, DAAF-aware tone, ~600–900 words across collapsibles.
-(6) Archival approach for the v1 generator (user decision; details at the
-top of this section).
-
-**Accepted residuals (viewer redesign Checkpoint 2, 2026-06-10) — reviewed,
-no fix planned:** (1) `konStep` labels 1-of-2 reps as "most" in the case ×
-model agreement heatmaps — a smallest-denominator labeling quirk; exact k/n
-stays visible in the cell. (2) The leaderboard keeps a fixed "#" rank column
-despite the tier-bands-over-false-precision principle; adjacent prose
-disclaims strict-ordering precision. (3) P3b heatmap cells carry varying
-denominators (subagent-criterion applicability varies by case subcategory);
-tooltip k/n mitigates misreading. (4) The generator's `print_summary` echoes
-`summary.json` totals without the disk-vs-summary discrepancy caveat the
-rendered provenance footer carries. (5) Provenance git SHA is per-set display
-only — no cross-set SHA grouping or comparison.
-
-**Data realities the viewer encodes (2026-06-10 inventory):** run-level
-`result.json` is ground truth — `summary.json` run counts disagreed with
-on-disk run dirs in 9 of 42 sets at redesign time (67 phantom runs); all
-viewer aggregates come from loaded runs, summary totals are provenance-only,
-and disk-vs-summary discrepancies are displayed (not hidden) in the provenance
-footer. Timed-out runs are **graded**: every on-disk `error` is a timeout
-string; such runs have zeroed turns/cost/tokens but fully scored criteria. The
-viewer status taxonomy is therefore grade (perfect/partial/failed/ungraded)
-orthogonal to the `timed_out` flag — no string-matching on `error` — and
-cost/duration averages exclude timeout-zeroed runs, with excluded counts
-disclosed in footnotes. `reasoning_cost_multiplier` appears in no
-`result.json`; the badge logic reads it defensively.
-
-**Template architecture:** v2 is data-prep Python + placeholder substitution
-into `scripts/viewer_template.html` (bare `__DATA_JSON__` and
-`__PRECOMPUTED_JSON__` tokens — as in `const DATA = __DATA_JSON__;` — plus
-small prose slots; substitution order is load-bearing, with the small
+**Template architecture:** data-prep Python + placeholder substitution into
+`scripts/viewer_template.html` (bare `__DATA_JSON__` and
+`__PRECOMPUTED_JSON__` tokens; substitution order is load-bearing, with small
 controlled placeholders filled first and `__DATA_JSON__` last so transcript
-content can never be treated as a placeholder). Extracted from v1's
-single f-string because `{{ }}` escaping across ~1,400 lines of CSS/JS bred
-subtle bugs, blocked editor syntax support, and made diffs noisy. The default
-output is the multi-file bundle since v3.0.0 (index.html + per-set transcript
-shards; `--single-file` keeps a fully self-contained monolith for offline
-audit); either way the generator is the single entry
-point, no build step. JS is vanilla, IIFE-wrapped, ES5-style; headline numbers
-are precomputed in Python and embedded so prose and charts cannot drift apart.
+content can never be treated as a placeholder). The generator is the single
+entry point, no build step. JS is vanilla, IIFE-wrapped, ES5-style; headline
+numbers are precomputed in Python and embedded so prose and charts cannot
+drift apart.
 
-**Design system:** dark theme. Colorblind-safe status palette with mandatory
-glyph redundancy (✓ ✗ ◐ —) and ≥3:1 non-text contrast: pass `#34d399`, fail
-`#fb7185`/`#f87171`, partial `#fbbf24`, ungraded slate `#64748b`; timeout is a
-distinct glyph marker, never a color of its own. Heatmap rates render as 5
-discrete steps on a single hue ramp (never a continuous red→green ramp). 17
-distinguishable model-identity hues, never hue alone (always label
-points/rows). Inline SVG, zero chart libraries. Governing principles:
-overview-first/details-on-demand single scrolling document (no global filter
-bar — each section owns its controls); every chart titles its *finding*,
-computed at render time; 1–3 sentences of "how to read this" per section;
-visible denominators everywhere (`21/24`, not just 88%).
+**Design system:** dark theme, styled for cohesion with the DAAF product
+website (Space Grotesk / DM Sans / JetBrains Mono; teal chrome accent,
+indigo in-content accent). Colorblind-safe status palette with mandatory
+glyph redundancy (✓ ✗ ◐ —) and ≥3:1 non-text contrast: pass `#34d399`,
+fail `#fb7185`/`#f87171`, partial `#fbbf24`, ungraded slate `#64748b`.
+Heatmap rates render as 5 discrete steps on a single hue ramp. 17
+distinguishable model-identity hues, always with labels. Inline SVG, zero
+chart libraries. Governing principles: overview-first / details-on-demand
+single scrolling document; every chart titles its *finding*; visible
+denominators everywhere (`21/24`, not just 88%).
 
-**Public-audience evolution (2026-06-11, generator v2.6.0):** the viewer was
-reworked for public consumption (project-website hosting), evolving the
-single existing viewer rather than forking a public variant.
+**Battery-cost metric.** The headline cost figure is the **estimated cost
+to run the full benchmark battery once** (51 distinct probes), displayed as
+**relative multipliers** vs Opus 4.8 (1.0×) — never dollar estimates.
+Per model: est_cost = (input tokens × list input rate + output tokens ×
+list output rate) / 1e6, on an **uncached basis** (every token at full list
+rates, no cache discounts — caching schemes differ across providers, so
+uncached is the only like-for-like comparison). Token mixes: Anthropic
+models from corpus `result.json`; OpenRouter models from the reconciliation
+snapshot (`derived/openrouter_reconciliation_*.json`). A generation-time
+staleness guard compares corpus run counts to the snapshot and warns on
+drift.
 
-1. *Audience inversion* — all prose rewritten for readers unfamiliar with
-   DAAF; generalist hero framing ("How well do different AI models handle
-   the complexities of rigorous research workflows?"). The user explicitly
-   rejected a Mind/Body/Instructions conceptual device as overcomplicating.
-2. *Key Takeaways section* (new; sits between Verdict and About) — a dated
-   editorial ("Editorial takeaways — June 2026 corpus") with six
-   maintainer-interpretation claims (five after the user's 2026-06-12
-   frontmatter consolidation) whose figures are span-injected from
-   PRECOMPUTED at render time (`kt-*` spans filled by `fillTakeaways()` —
-   31 originally, 29 after the battery re-adjudication below, 23 after the
-   2026-06-12 e099982 repair pass (§ 12);
-   a new `timeout_by_model` precompute feeds the timeout claims), so
-   regeneration cannot orphan the numbers. The qualitative claims do NOT
-   track the data — when the corpus changes materially, rewrite the prose
-   and update the date badge. That rewrite rule fired the same day: after
-   the 2026-06-11 dispatch-recovery rescue rescore shifted the corpus, a
-   delta re-adjudication of all six claims reframed T4 around DeepSeek V4
-   Pro leading an open-weight pack that now crowds the frontier tier (with
-   a DS Pro timeout-rate caveat), retired T2's "4.7 drops a tier" sentence,
-   and confirmed T1/T3/T5/T6 unchanged. *Second re-adjudication
-   (2026-06-11, vs the `_11j` corpus + battery metric, generator v2.8.1):*
-   all takeaway cost claims moved from blended $/Mtok to the battery
-   basis, displayed as **relative multipliers/ratios vs Opus 4.8 — never
-   dollars** (user decision: exact dollar figures imply false precision).
-   T1 held; T2 got a light body rewrite (the dip is now a two-release
-   slide; 4.8 is the only Opus in the second tier); T3 recast as a
-   battery-percentage claim (Sonnet ≈ 41% of Opus 4.8's battery); T4
-   reframed control-not-price (its "crowd the frontier tier" claim
-   tier-broke and the battery basis erased the price story — DS Pro ≈
-   0.8× Sonnet's battery); T5's "on the order of 1/100 of frontier cost"
-   clause retired and "astonishingly" softened to "strikingly" (battery
-   ratios: 1/7 of GLM, 1/31 of Opus 4.8); T6's weakest-point claim
-   corrected from mode classification to P4 skill routing (new
-   `kt-t6-qwenp4` span); and the kt-foot retired the stale "single
-   repetition on Phase 4" caveat (every model now has 45 P4 runs) and
-   gained the relative-multiplier basis + drift caveat with an injected
-   battery size (`kt-foot-bat`). Net span wiring: 31 → 29 `kt-*` spans.
-3. *"Two bars" concept* — Perfect ("everything exactly right") vs.
-   Critical-only ("will it generally work") promoted to an always-visible
-   About block, with all echo sites aligned to that vocabulary.
-4. *CRIT_LABELS* — a 45-entry plain-language criterion label map in the
-   template; the raw snake_case ids are always shown alongside the label for
-   traceability (the Run Explorer stays raw).
-5. *Head metadata for web hosting* — title, meta description,
-   OpenGraph/Twitter tags with a `REPLACE-WITH-FINAL-URL` og:url placeholder
-   for the deploy step, inline SVG favicon, and a noscript notice. og:image
-   is deliberately deferred to the user's external deploy infrastructure (it
-   must be an absolute URL on the host).
-6. `#takeaways` is deliberately excluded from the `content-visibility:auto`
-   rule — it is a static above-the-fold prose section with no JS renderer;
-   the CSS comment at the top of the template documents the exclusion.
-7. *Hosting/deployment boundary* — stable public filename, compression, and
-   upload are handled by the user's separate website deploy infrastructure,
-   out of framework scope. An http(s) retest is needed post-deploy because
-   four code paths differ between `file://` and http(s): explicit-nav hash
-   writes, scrollspy `replaceState` writes, `content-visibility` anchor
-   rendering, and (since v3.0.0) transcript fetch-on-demand — including the
-   fetch-failure fallback message and the `&run=` deep-link path, where the
-   transcript pops into the already-scrolled-to run panel when its shard
-   arrives. The at-deploy visual check additionally covers (fine-tuning
-   round 3, Wave B): the mobile sticky TOC bar at a narrow viewport —
-   stickiness under the nav, active-link auto-centering during scroll and
-   after a TOC tap, and anchor landings clearing the bar
-   (`--toc-scroll-height` scroll-padding). And (round 3, Wave C): the prose
-   emphasis tiers render as intended — bright `b`/`strong`, muted italic
-   `em`/`i`, and exactly two teal `.accent-strong` instances page-wide —
-   plus (Wave A) leaderboard header wrapping in Critical-only mode, the
-   cost-cell emphasis weight vs the composite bar, and the `.to-*` red
-   timeout ramp legibility. And (round-3 post-review fix pass): free
-   diagonal/two-axis scrolling on desktop; the topbar staying pinned while
-   scrolling on mobile with no page-level left-right play (the horizontal
-   guard now lives on `main.doc` as `overflow-x:clip`, not on body); and
-   the leaderboard cost header sitting at two lines with the sort arrow
-   attached.
-
-**Accepted residuals (public-audience evolution, 2026-06-11) — reviewed, no
-fix planned:** (1) the "expects:" badge in the Run Explorer still shows raw
-engagement-mode ids — no display-name mapping for modes exists in the
-template. (2) JS syntax was structurally verified via python; no node syntax
-check was run — the user's browser visual check covers it.
-
-**Cost methodology evolution (2026-06-11, generator v2.8.0):** a full
-reconciliation of OpenRouter billing against the results corpus
-(`scripts/reconcile_openrouter_costs.py`; machine-readable summary in
-`derived/openrouter_reconciliation_2026-06-11.json`; findings in
-`research/2026-06-11_FrameworkDev_ViewerPublic/preliminary_notes/`)
-established that token appetite varies only ~0.67–1.26× vs Opus 4.8 — the
-huge cost-per-run divergence across the corpus is overwhelmingly price, not
-volume — and that list price × the *billed* token mix predicts actual
-OpenRouter billing within ~3% for 7 of 10 models, while the harness's own
-token counts (Anthropic-tokenizer approximations) do not. Changes that
-followed, all user-approved:
-
-1. *Battery-cost metric* — the Costs Detail headline is now the **estimated
-   cost to run the full benchmark battery once** (51 distinct probes on this
-   corpus: 15 mc + 9 pc + 12 dc + 15 sr; derived from the corpus at
-   generation time, never hardcoded — note the Anthropic models' 141 runs
-   are uneven reps over those 51 cases, not 47×3). Per model:
-   est_cost_per_run = (input-side tokens × list input rate + output-side
-   tokens × list output rate) / 1e6, on an **uncached basis** — every token
-   at full list input/output rates, no cache discounts. Rationale: caching
-   schemes differ wildly across providers (Anthropic runs are ~95% cache
-   reads/writes; OpenRouter prompt caching effectively never materialized in
-   billing), so the uncached counterfactual is the only basis that compares
-   providers like-for-like (for the record: real cached usage runs far
-   cheaper — Opus 4.8's battery ≈ $32 under Anthropic's caching convention
-   vs ≈ $81 uncached). *Presentation (generator v2.8.1, user decision):*
-   the takeaways and all user-facing cost surfaces display the battery
-   metric as **relative multipliers** (Opus 4.8 = 1.0×), not dollar
-   estimates — exact dollar figures would imply false precision; the
-   dollar values stay embedded in PRECOMPUTED, only presentation changed,
-   and the cached-vs-uncached dollar disclosure was retired from the
-   viewer with it (superseded by a relative-drift caveat: multipliers
-   shift as providers reprice tokens and as caching mechanics interact
-   with model behavior). Token mixes: Anthropic models
-   live from corpus `result.json` (input + cache_read + cache_creation on
-   the input side); OpenRouter models from the reconciliation snapshot's
-   billed prompt/completion per covered run. A generation-time **staleness
-   guard** compares each OpenRouter model's corpus run count to the
-   snapshot's recorded `n_runs` and warns (never fails) on drift. "Battery"
-   is also a fourth price formulation in Cost vs. Performance (since
-   v3.1.0 the *first* of three — the blended 3:1 form was retired and
-   battery became the headline cost figure page-wide; see the dated
-   "Battery multiplier promoted" addendum below). Caveat
-   (disclosed in the viewer): high-timeout models' figures are
-   truncation-depressed.
-2. *Rate corrections* — Gemma 4 26B / DeepSeek V4 Flash / Gemma 4 31B
-   published rates understated actual billing (obs/pred 2.12 / 1.34 / 1.26);
-   corrected in `models.yaml` (§ 7 Pricing corrections).
-3. *Harness cache-write fix* — `compute_cost()` now bills
-   `cache_creation_tokens` at 1.25× input (§ 7 Token semantics); future runs
-   only.
-4. *New data dependency* — the generator discovers the latest
-   `derived/openrouter_reconciliation_*.json` (fail-soft: warns and omits
-   OpenRouter battery costs if absent). Maintenance guide: the
-   "Battery-cost metric" dev-guide comment above `PHASE_MAP` in the
-   generator.
-
-**Multi-file bundle architecture (2026-06-12, generator v3.0.0):** the
-official artifact became a bundle directory for website hosting (user
-decision; transcripts + subagent transcripts were 84.6% of the 25 MB
-monolith and are read only by the Run Explorer's `renderRunDetail`).
-`index.html` keeps `DATA.runs` and everything else inline (every section
-computes from runs) and replaces the two transcript dicts with a
-`transcripts_index` (`{result_set: {file, n_main, n_subagent}}`); per-set
-shards `data/tx_{result_set}.json` carry only that set's entries under the
-unchanged composite keys (median ~275 KB / max ~1.2 MB per shard). The
-template feature-detects the artifact shape on `DATA.transcripts` presence:
-single-file renders transcripts synchronously exactly as before; bundles
-render a loading placeholder and fill it when the shard arrives, with a
-memoized per-set shard cache, a stale-click token so a late shard never
-renders into another run's panel, and a visible fetch-failure fallback
-(with the `python3 -m http.server` hint on `file://`). `file://` support is
-deliberately dropped for bundles; `--single-file` is the offline audit
-path. Maintenance guide: the "Bundle architecture" dev-guide comment above
-`PHASE_MAP` in the generator.
-
-**Battery multiplier promoted to the headline cost figure; blended $/Mtok
-retired (2026-06-12, generator v3.1.0):** the battery-cost multiplier
-(estimated cost to run the full battery once, × Opus 4.8 = 1.0×, never
-dollars) is now the headline cost figure on *every* surface, and the
-blended 3:1 price formulation (`blend31`, the Artificial Analysis
-convention) was removed entirely. Rationale (user decision): the vast
-majority of benchmark cost came from input tokens, so a 3:1 in/out blend
-was misleading; raw input/output $/Mtok stay as secondary detail only.
-Changes: the leaderboard cost column re-pointed from `blend31` to the
-battery multiplier (header "Battery cost (× Opus 4.8)" — renamed "Relative
-Test Cost (1x=Opus 4.8)" in fine-tuning round 3 Wave A, see that addendum;
-em-dash idiom for
-models without battery data; the staleness guard's ⚠ now propagates to the
-leaderboard cell tooltip — previously it surfaced only in Costs Detail);
-the Cost vs. Performance scatter defaults to the battery basis (battery
-ordered first in `COST_FORMS` so the array-index-0 fallback agrees), with
-input/output as secondary toggles and the section lead rewritten
-multiplier-first; the About cost caveat reordered multiplier-first. Schema
-change (hence the minor version bump): `blend31` removed from
-`PRECOMPUTED.cost.models[]` entries and from `cost.frontiers` (battery now
-first of three forms); the sanity report prints the battery frontier
-instead of the blended one. Costs Detail and Key Takeaways needed no
-changes — already multiplier-led since v2.8.1.
-
-**Tone percolation, "DAAFBench: Orchestration" suite naming, and hero chips
-redesign (2026-06-12; template prose + generator dev-guide comments only —
-no generator code change, no version bump):** the maintainer's voice (colon-
-first elaboration, the "basically: …" decoder pattern, honest hedging,
-plain-label-first jargon policy) and the DAAF website's framing language were
-percolated through all remaining viewer prose, per the voice guide and
-35-surface percolation map in
-`research/2026-06-11_FrameworkDev_ViewerPublic/preliminary_notes/2026-06-12_scoping_voice-percolation.md`.
-
-(a) *Suite naming* — the page now presents itself as **"DAAFBench:
-Orchestration"**, part A of a planned pair whose companion suite will test
-analytic competency (explicit decision-making inside analytic code and
-data-cleaning steps, via adversarial examples, known-good code, and
-deterministically verifiable outputs). Carried in the title/og/twitter meta
-(also resolving the pre-existing title-vs-og wording mismatch by unifying on
-one title), the TOC rail title (later replaced by "On this page" in
-fine-tuning round 3 Wave B — the suite name lives in the hero eyebrow/h1 and
-the head metadata now), one sanctioned two-sentence hero insertion,
-a new About intro, and the closing CTA. About h2 and TOC label renamed
-"About This Benchmark" → "About DAAFBench".
-(b) *Full rewrites* — leaderboard section lead (intuition-first decoders for
-composite / tier bands / denominators); Cost-vs-Performance lead (voice
-restructure only; factual content unchanged from the v3.1.0 multiplier-first
-rewrite); all five `PD_EXPLAINERS` entries (two-register failure-mode-first
-structure kept; the skill-routing entry adopts the website's "fuzzy general
-knowledge" vs curated-context vocabulary).
-(c) *Moderate passes* — two-bars primer (criterion decoder), benchmark-phases
-table framing (anatomy-style plain-question intro; composite-governance note
-de-internalized to "newest component, added in June 2026"), how-scoring-works
-(deterministic-scorer decoder), Phase Deep-Dives / Cases & Consistency
-("probabilistic" decoder) / Costs Detail leads, `lbTierRuleText` ("no
-judgment calls"), hero verdict (decoder voice). Light touches: `models.yaml`
-dropped from the CvP secondary-basis footnote; DAAFBench naming at first
-reference per section. Forensic surfaces (Run Explorer detail, Provenance,
-GRADE_TIP, heatmap headers) deliberately untouched.
-(d) *Hero chips redesign* — the chip row and verdict hoisted ABOVE the four
-hero paragraphs (anatomy-page orientation-first pattern), and chip content
-redesigned for zero-context readers: "N AI models tested / N archived test
-runs / N distinct test scenarios / 100% of scores trace to a real run"
-(replacing the jargon chips Models / Runs / Cases / Phases).
-(e) *Outbound links + attribution* — DAAF site + GitHub repo links restored
-in the new About intro; a new lean closing CTA section `#next-steps` (TOC +
-`SECTION_IDS` registered, static prose, no renderer, deliberately outside the
-content-visibility rule) links daaf.openaugments.org, the anatomy deep-dive
-("See how a DAAF analysis actually works"), and the GitHub repo, with the
-Open Augments attribution in the site's own register ("built by researchers,
-for researchers"; public-good framing). All URLs verified against the website
-subset. The glossary's orchestrator entry gained the site's "lab manager"
-gloss.
-(f) *Sanctioned voice-anchor edits (the only two)* — the hero pair-naming
-insertion (item a) and takeaway 1's metric clarifier ("leads the scoreboard
-at **a Perfect average score of**", matching takeaway 3's vocabulary — it
-previously named no metric). All other hero/takeaway prose is byte-identical;
-the 23-span contract is unchanged.
-(g) *Housekeeping* — the two stale "1,700+ run corpus" internal JS comments
-made corpus-neutral; generator dev-guide anchors refreshed (GROUP_SHORT
-~L1279, PD_EXPLAINERS ~L2322, buildEvalGroups order ~L1269, phaseSpan ~L1772,
-phases table ~L689) and a suite-naming/hero-orientation maintenance note
-added to the public-prose registries guide.
-
-**Site-cohesion styling (2026-06-12; template-only — no generator code
-change, no version bump):** the viewer was restyled to be visually cohesive
-with the DAAF product website (it ships alongside the site as the Learn >
-"Choosing Your Model (DAAFBench)" page) — a token swap + fonts + chrome +
-selected component idioms, deliberately NOT a full restyle.
-
-1. *Tokens + fonts* — the template `:root` surfaces/text/borders were
-   remapped to the site's values (`#0a0f1c`/`#111827`/`#151d2e` + hover/
-   active surfaces; `#f0f4f8`/`#b0bcc8`/`#7b8da0` text; white-alpha
-   borders), with `--accent-teal`/`--accent-mint`, `--nav-height`, and
-   `--ease-out-expo` added and the site's radii scale (14px cards / 10px
-   buttons & callouts / 999px pills / 8px pre) applied through the existing
-   var-routed rules. Fonts mirror the site's Google Fonts loading exactly
-   (preconnect pair + one css2 link, `display=swap`): Space Grotesk for
-   h1/h2/h3, section labels, eyebrows, and nav; DM Sans for body/UI;
-   JetBrains Mono for code/mono surfaces with the old SF Mono stack kept as
-   fallback — single-file/offline use falls back gracefully to system fonts
-   when Google Fonts is unreachable. **Accent split (user decision):** teal
-   `#22d3a8` is chrome only (gradient strip, topbar, prose links, TOC/nav
-   active states, eyebrows, decorative callout gradients) so accent never
-   reads as pass-green `#34d399`; indigo `#6366f1` remains the in-content
-   interactive accent (buttons, selected runs, hover tints, code chips).
-   The audited status palette hues are untouched.
-2. *Topbar + footer chrome* — the site's 3px fixed gradient strip, sticky
-   88px nav (brand wordmark SVG, See How It Works + Learn dropdowns —
-   Learn carrying this page's own active "Choosing Your Model (DAAFBench)"
-   entry — Get Started CTA, GitHub icon), and the Open Augments site footer
-   were ported verbatim, with nav element selectors scoped to
-   `nav.site-nav` so they can never touch the viewer's `<nav
-   class="toc-rail">`. Hrefs follow the anatomy page's relative-path model
-   (`../daaf-product/…`; the deploy script rewrites for production). The
-   site's minimal nav JS (mobile toggle, dropdown blur/focus fixes, mobile
-   dropdown expand) is ported in a self-contained IIFE introducing zero
-   globals; the viewer's scrollspy stays authoritative for the TOC rail.
-3. *Geometry rework* — the scrollspy's hardcoded 120px offset is now
-   nav-height-aware (`NAV_SPY_OFFSET`, read once from `--nav-height` + 3px
-   strip + 30px margin), `scroll-padding-top` became
-   `calc(var(--nav-height) + 3px + 14px)`, and the TOC rail tops at
-   `calc(var(--nav-height) + 3px)` so hash jumps and active-state detection
-   work under the sticky bar. (*Superseded in fine-tuning round 3 Wave B:*
-   the once-computed constant became the per-call `navSpyOffset()` and the
-   scroll-padding calc gained `var(--toc-scroll-height)`, both to account
-   for the mobile sticky TOC bar's responsive height — see that addendum.)
-4. *Component idioms (from the anatomy page)* — hero chips →
-   `.summary-badge` treatment (mono teal value, uppercase display label,
-   teal→indigo gradient top border, hover lift; the teal is decorative —
-   chips are corpus counts, not pass/fail); `.verdict`/`.pd-callout` →
-   gradient-border callout (teal→indigo left bar, gradient-tinted bg, 10px
-   radius); uppercase teal eyebrow labels above nine section h2s;
-   provider/subcategory chips and badges → 999px pills; criterion/run-dir
-   `<code>` → mono chips on the indigo idiom (deliberately not teal — they
-   sit next to pass/fail rates); selected run-list item → glowing
-   left-accent card state (indigo); cards → `#151d2e` at 14px; h1 keyword →
-   `gradient-text`; case prompts/tool outputs → mono panel treatment
-   (tool-output divs gained a stable `tx-out` class because `.tx-collapsed`
-   is removed on expand). P1–P4 phase-cascade coloring was evaluated and
-   skipped (would require data-phase plumbing through the JS renderers —
-   not cheap). Also a deliberate skip: the `.two-bars` block keeps its
-   indigo left bar — it was not in the scoped gradient-border callout list.
-5. *JS hex sweep + WP8 contrast re-audit* — all hardcoded old-token hexes
-   in JS-generated markup were routed through the new tokens
-   (`var(--…)` in inline styles; matching literals where SVG `fill`
-   attributes require: axis/label text `#b0bcc8`, frontier ring `#f0f4f8`,
-   gridlines moved to white-alpha borders since the old `#1e293b` lines
-   vanished against the new card bg). Deliberate survivors: the audited
-   status ramp and its `rgba(52,211,153,…)` frontier/annotation greens, the
-   amber warning tints `#f59e0b`/`#fcd34d`, `MODEL_COLORS`/
-   `MODEL_COLORS_LIGHT` (data colors — re-checked as distinguishable on the
-   darker surfaces), the model-badge `#fff`, and the site's own literal
-   gradients/logo SVG. The WP8 contrast audit was re-run against the new
-   surfaces (floors 4.5:1 text / 3:1 UI): every pair passes with alphas
-   unchanged — the darker surfaces raise most ratios (worst case `.rs-3`
-   4.71:1 vs ~5.0 pre-remap; `.rs-na` 7.74:1; full measurements recorded in
-   the template's WP8 re-audit comment at the `.rs-*` rules).
-   `contain-intrinsic-size` values were sanity-checked and left unchanged —
-   the global 1.5 line-height and font sizes were deliberately NOT moved to
-   the site's 1.7, so type metrics are near-identical (live re-verify stays
-   on the post-deploy retest list). Verified by sanity bundle regeneration:
-   index.html 3.75 MB (+0.03 MB for the chrome), zero-orphan span check,
-   nav/footer present exactly once, all `var()` references defined.
-
-
-**User fine-tuning round (2026-06-12; template prose/JS + generator dev-guide
-comments only — no generator code change, no version bump):** eleven
-user-approved items from the visual review of `viewer_2026-06-12a.html`.
-
-1. *Intro restructure* — the hero is now h1 + date + stat chips + the user's
-   hero ¶1 only (TOC label "Verdict" → "Intro"); hero ¶¶2–4 moved **verbatim**
-   to the top of About (the `hero-models`/`hero-runs` live-count spans and
-   their build-time `__HERO_MODELS__`/`__HERO_RUNS__` substitution travel
-   with them), ahead of the existing About intro, whose Wave-3 ¶1 was trimmed
-   to its one non-duplicative sentence (mechanical scoring) so the
-   companion-suite framing is stated exactly once, in the user's own words.
-   The computed verdict callout (`#hero-verdict` + its renderHero prose and
-   `.verdict` CSS) was removed entirely; a new compact **cost-performance
-   preview** (`#cvp-preview`, battery basis / composite Perfect, reduced
-   height, hover-only interactivity, one-line caption linking the full
-   chart) sits after the takeaways — same `costPerfData`/`svgCostFrontier`
-   code path as the full chart, rendered at init, deliberately absent from
-   the TOC/`SECTION_IDS`/content-visibility machinery.
-2. *Takeaway headline de-dup* — T1 "genuinely in a class of its own" →
-   "simply in a class of its own" (T2 keeps "genuinely worse"); no other
-   takeaway text changed.
-3. *Leaderboard Timed-out column* — per-model timed-out share from
-   `PRECOMPUTED.timeout_by_model` (runs basis, 1-decimal percent + k/n,
-   em-dash idiom, sortable with worst-first default direction, deliberately
-   NOT on the pass-green `.rs-*` ramp — superseded in fine-tuning round 3
-   Wave A, which put the cells on a dedicated fail-red worst-is-hot `.to-*`
-   ramp; see that addendum), with a tooltip + lb-foot clause
-   naming the `timed_out`-flag basis (wall-clock timeouts AND silent stalls
-   that ran out the clock; timed-out runs are still graded).
-4. *Costs Detail section removed* (fully duplicative of CvP + leaderboard):
-   the battery-multiplier canonical definition + disclosures survive
-   condensed as an unconditional CvP footnote (`batteryDisclosureHtml()` —
-   uncached basis, billing-export vs corpus-live token-mix sources, ⚠
-   staleness meaning, reprice/caching drift, never-dollars, timeout
-   depression); the published list-price table survives as a compact
-   `<details>` collapsible beneath the CvP chart (`pricingDetailsHtml()`,
-   input-ascending, non-sorting); every `#costs`/"Costs Detail" reference
-   re-pointed to Cost vs. Performance; `renderCostsDetail` + its phase-scope
-   and sort handlers + state deleted. The generator's `cost.battery`/
-   `cost.models` precompute is untouched.
-5. *#next-steps removed* — its CTA links live on in the hero ¶1 / About
-   intro and the site footer carries the Open Augments attribution (the W3
-   tone-percolation record above stands as history).
-6. *kt-foot removed* — its small/uneven-reps imprecision point merged into
-   the About "Denominators are small and uneven" caveat and its battery
-   definition + drift sentence into the About cost caveat, which now hosts
-   the `kt-foot-bat` battery-size span. **Span contract: still 23 `kt-*`
-   setters — 22 spans in `#takeaways` + `kt-foot-bat` in the About Key
-   Caveats.**
-7. *CvP responsiveness* — the scatter (and the preview) now scales to its
-   container (`viewBox` + `width:100%`/`height:auto`, `max-width` capped at
-   the designed size); no resize re-render is needed because all positions
-   are computed in viewBox coordinates. Leaderboard/heatmaps are tables and
-   were confirmed out of scope.
-8. *CvP double-tooltip fix* — the native `<title>` children on plot points
-   (which overlapped the custom tooltip) were removed; the custom tooltip is
-   authoritative. No other chart code emitted native tooltips.
-9. *TOC first-click landing fix* — on the first explicit nav (TOC click or
-   load-time deep link) the JS now renders every section and adds
-   `body.nav-rendered`, which un-skips `content-visibility` document-wide so
-   the document lays out at true heights once; the scroll then runs after a
-   double-rAF against final geometry (previously the first click scrolled
-   toward `contain-intrinsic-size` estimates and landed short). **Stays on
-   the http(s) post-deploy retest list.**
-
-Verified by single-file regeneration (`viewer_2026-06-12b.html`, for the
-user's next `file://` review; official bundle regeneration deferred until
-his approval): zero unsubstituted tokens, bidirectional 23-span check, 9
-sections = TOC = `SECTION_IDS`, zero live `#costs`/"Costs Detail"/
-next-steps stragglers, timed-out rates present for all 17 models, preview
-block before `#about`, no native `<title>` tooltips on CvP points.
-
-*Fine-tuning round 2 (2026-06-12; template prose/JS + generator dev-guide
-comments only — no version bump):* the hero prose became a single user
-"TLDR:" paragraph (the former hero ¶1's first sentence verbatim, links
-intact, plus a new user-supplied DAAFBench: Orchestration framing
-sentence), with the "layers together" remainder of the former ¶1 moved
-verbatim to the top of About ahead of the orchestration explainer (About
-now opens with four moved user paragraphs); `#cvp-preview` moved from
-after `#takeaways` to between the hero and `#takeaways` (still
-init-rendered, still outside the TOC/`SECTION_IDS`/content-visibility
-machinery — it now scrollspy-reads as part of `#hero`); and the
-leaderboard and CvP footnote prose (the `lb-foot` paragraphs and the
-`cp-foot` paragraphs incl. `batteryDisclosureHtml()`) collapsed into
-closed-by-default `<details class="foot-details">` "Details" expanders
-whose bodies read at regular body size in `--text-2` rather than the tiny
-`--text-3` footnote treatment (content unchanged; the `cp-pricing`
-list-price collapsible stays its own sibling expander beneath the CvP
-Details block; `prov-foot` and the `cp-foot` inside `cp-pricing` keep the
-small idiom). Verified on `viewer_2026-06-12d.html`.
-
-*Fine-tuning round 3, Wave A — leaderboard (2026-06-12; template prose/JS +
-generator dev-guide comments only — no generator code change, no version
-bump):* six user-approved leaderboard changes.
-
-1. *Dispatch column removed* — the standalone sortable Dispatch column (the
-   P3a `agent_dispatched` pass rate) duplicated signal the **P3a phase
-   column already carries** (the per-phase `dispatch_compliance_dispatch`
-   rate, which is a different column and stays). Removal took the th/td
-   blocks, the `hasDispatch` plumbing, and the `sortVal` `"dispatch"`
-   branch (safe: the column's removal means no UI can set
-   `state.lbSort="dispatch"` anymore, and state never persists across
-   loads); the `CRIT_LABELS` `agent_dispatched` entry **stays** (still
-   consumed by P3a deep-dive prose) with its doc comment + the generator
-   dev-guide consumer list updated. Precompute fields (`dispatch_rate`
-   etc.) untouched — no generator code change. Accepted residual: after
-   this removal the `dispatch_rate`/`dispatch_passed`/`dispatch_total`
-   fields in `PRECOMPUTED.per_model_phase` have zero template consumers;
-   they remain embedded deliberately (pruning them is a precompute schema
-   change requiring a generator version bump — defer until a schema-touching
-   release).
-2. *Column reorder* — new order: Tier, #, Model, **Cost**, Composite,
-   P1…P4 phases, Consistency, Timed out. Cost promoted from last to right
-   after Model as a primary reference point read alongside the composite
-   (user decision); Tier stays the first cell of band-start rows (rowspan
-   gutter contract unchanged).
-3. *Cost header renamed* — "Battery cost (× Opus 4.8)" → **"Relative Test
-   Cost (1x=Opus 4.8)"**, synced to `COST_FORMS[0].label` (the CvP
-   price-basis toggle button) so one figure carries one name; the lb-foot
-   cost sentence now leads with the new name (uncached basis,
-   billing-export token mixes, never-dollars disclosures unchanged).
-   Display-label change only — internal keys/identifiers (`battery`,
-   `batteryMult`) and the "battery multiplier" definitional prose in
-   `batteryDisclosureHtml()` keep their names.
-4. *Cost cell emphasis* — the site's "key number" idiom: JetBrains Mono,
-   13px (vs the 12px table body), weight 500, in indigo `--accent-light`
-   (the in-content accent per the teal-chrome/indigo-content split; mint
-   rejected as too close to pass-green next to status-colored cells;
-   5.65:1 on the surfaces per the WP8 re-audit). `tabular-nums`, right
-   alignment, em-dash idiom, and the staleness ⚠ tooltip unchanged.
-5. *Timed-out red ramp* — the cells moved from plain numeric onto a new
-   dedicated `.to-0…to-4` family on `--c-fail-rgb` (worst-is-hot; `.to-0`
-   deliberately untinted so 0% reads quiet/good and stays distinct from
-   the `rs-na` no-data idiom). This inverts the round-1 "deliberately NOT
-   on a ramp" decision by resolving its objection: the pass-green `.rs-*`
-   ramp would have visually rewarded timeouts; a fail-red ramp reads
-   honestly. Breaks 0 / >0 / ≥5% / ≥10% / ≥20% (`toStep()`) were designed
-   from the measured corpus distribution (17 models, rates 0%–45.8%,
-   spread 2/4/4/3/4 across the steps — `rateStep`'s 50/90 breaks would
-   have dumped 16 of 17 models into two steps). Contrast arithmetic
-   (4.5:1 small-text floor, worse of the two surfaces): fail-red is darker
-   than pass-green, so the `rs-3`-style dark-text flip at alpha .65 fails
-   (3.49:1) — `.to-3` keeps light text on a .55 fill (5.66:1); `.to-4`
-   (.85) flips dark (5.24:1) with an `opacity:1` override on its `.lb-n`
-   k/n line (the inherited .85 opacity measured 4.49:1). The % text + k/n
-   stay in every cell, so color never carries the meaning alone.
-6. *Wrap-capable headers* — `.lb-table th.lb-th-sort` relaxed from
-   `nowrap` to `normal` + `max-width:120px` (the base `.data-table th`
-   nowrap is untouched for other tables; the short non-sortable Tier/#/
-   Model headers deliberately keep it): Critical-only mode swaps five
-   phase-header suffixes "Perfect" → "Critical-only" and nowrap forced
-   full one-line widths, stretching the table. The sort arrow now joins
-   with a no-break space (`\u00a0`) so ▲/▼ can never orphan onto its own
-   line.
-
-*Fine-tuning round 3, Wave B — hero, TOC, mobile overflow (2026-06-12;
-template prose/CSS/JS + this README only — no generator code change, no
-version bump):* user-approved at checkpoint.
-
-1. *Hero top-matter mirrors the anatomy page* — a new `.hero-eyebrow`
-   mini-header ("Choosing Your Model", matching the page's site-nav label)
-   above the h1, on the anatomy `.intro-label` recipe (font-display,
-   `clamp(0.75rem,1vw,0.85rem)`, w500, uppercase, ls .12em, teal chrome
-   accent, 1.5rem margin) — a hero-specific variant; the smaller 11px
-   `.sec-eyebrow` on section headers is untouched. The hero h1 upsized
-   from fixed 26px/600 to the anatomy `.intro-title` idiom
-   (`clamp(2rem,4vw,3.2rem)`, w700, ls −0.03em, lh 1.1, max-width 1000px;
-   `gradient-text` span unchanged), with the site's 560px mobile override
-   (`clamp(1.8rem,7vw,2.4rem)`) so the long question doesn't wrap to ~6
-   lines on phones. The date line restyled to the Learn page breadcrumb
-   idiom (mono, 0.78rem, text-muted). The anatomy's `min-height:100vh`
-   hero was deliberately NOT adopted — this hero flows into content.
-2. *User-approved typo fix in the hero TLDR voice anchor* — "DAAFBench:
-   Orchestration is testing suite" → "is **a** testing suite". The ONLY
-   word-level prose change in any voice-anchor region this wave (verified
-   by diff over the hero TLDR + About ¶¶1–4); the template's "never
-   reword" comment now records the exception and the anchor protection
-   stays in force.
-3. *TOC reworked to the Learn page's doc-toc idiom* — title becomes **"On
-   this page"** (pure text swap; the suite name lives in the hero/meta),
-   styled per `.doc-toc-title`; links go mono 0.72rem text-muted on a 1px
-   hairline left rail with a 2px teal active bar (teal correct: TOC is
-   chrome). The rail stays fixed/full-height at the far left, ~190px (user
-   decision — the Learn page's centered grid was not adopted). **Markup
-   decision: single markup restyled by media query** (not the site's
-   dual-markup aside + mobile strip): one `.toc-link` set keeps the 9-link
-   `SECTION_IDS` parity trivially verifiable and cannot drift; structure is
-   `.toc-rail` (wrap/fades) > `.toc-scroll` (mobile scroller, `#toc-scroll`)
-   > `.toc-list` (rail) + `.toc-top`. Invariants preserved: every link
-   keeps both `href` and `data-target`; scrollspy/click-handler selectors
-   and `ensureAllRendered()` untouched.
-4. *Mobile TOC = the Learn page's sticky horizontal-scroll bar* (breakpoint
-   stays 900px — deliberate: the viewer's `.doc`/rail collapse and
-   content-visibility estimates already live there; the site's 960px would
-   touch unrelated rules for no gain): sticky at
-   `calc(var(--nav-height) + 3px)`, translucent blurred bg, edge-fade
-   `::before`/`::after` gradients, `overflow-x:auto` with hidden
-   scrollbars, `width:max-content` inner flex row, nowrap mono links, teal
-   active state (fixes the old mobile-active-was-indigo inconsistency).
-   Auto-centering ported INTO the existing scrollspy (no second
-   IntersectionObserver): `updateActiveLink()` detects active-section
-   *change* and schedules `centerActiveTocLink()` on a 600ms debounce with
-   a 1200ms click-lock set by the TOC click handler (plus an explicit
-   post-lock re-center after taps); desktop no-ops via a scrollWidth
-   guard. Geometry: `--toc-scroll-height` (0 desktop / 50px mobile) wired
-   into `scroll-padding-top`, and the once-computed `NAV_SPY_OFFSET`
-   became the per-call `navSpyOffset()` (reads both CSS vars per
-   rAF-throttled spy frame) so mobile anchor landings and spy detection
-   agree — without it the spy would highlight the previous section after
-   a mobile anchor jump.
-5. *Mobile horizontal-overflow fixes* (all four scoped suspects verified
-   and addressed): (a) `.logs-layout` stacks vertically at ≤900px (list
-   above detail, list capped 38vh / detail 70vh, both keep internal
-   scroll), the detail panel gains `min-width:0` (defeats the flex
-   `min-width:auto` stretch), and `.tx-out` tool outputs gain
-   `pre-wrap` + `break-word` so long paths/SHAs can't inflate min-content
-   width; (b) the About phases table and (c) the CvP published list-price
-   table are wrapped in a new `.table-wrap` (`overflow-x:auto`, the site
-   `.doc-table-wrap` idiom); (d) backstop guards — `body{overflow-x:hidden}`
-   (hidden, not clip, deliberately: body/html overflow propagates to the
-   viewport so the sticky site-nav and sticky TOC bar keep working — the
-   site itself runs this exact combination) plus `min-width:0` +
-   `overflow-wrap:break-word` on `.doc`. The leaderboard card, heatmaps,
-   case matrices, and SVG charts already contain their own overflow and
-   were deliberately not double-wrapped. (*Superseded in the round-3
-   post-review fix pass — item (d)'s body rule only:* the
-   `body{overflow-x:hidden}` backstop was the root cause of the
-   user-reported mobile topbar slide and axis-locked scrolling. The
-   factual claim was accurate — the site does run that exact rule with a
-   sticky nav — but the inference was wrong: per css-overflow-3 § 3.3 a
-   body overflow value propagates to the VIEWPORT (body's used value
-   reverts to visible), so the rule put `overflow-x:hidden` on the
-   viewport's own scroll machinery; `hidden`, unlike `clip`, creates a
-   scroll container. The site's pages have no horizontal overflow
-   pressure, so the propagated rule is inert there — Wave B copied the
-   rule without the conditions that keep it harmless. Replaced by
-   `overflow-x:clip` on `main.doc` (the site's `.doc-layout` idiom); the
-   stacking, `.table-wrap`, and `.doc` width-discipline fixes in (a)-(d)
-   all stay in force. Full record: the round-3 post-review fix-pass
-   addendum below.)
-
-Verified by single-file regeneration (`/tmp/viewer_waveB_sanity.html`):
-38 structural checks pass — "On this page" present / old title absent;
-eyebrow directly above the h1; typo fixed with the old string absent from
-prose (it survives only inside the dev comment recording the exception);
-9 `toc-link`s with matching `href`+`data-target` in `SECTION_IDS` order;
-mobile sticky/fade/max-content CSS present; stacking + `min-width:0` +
-`tx-out` wrap rules present; both tables wrapped; overflow backstop +
-scroll-padding var wired; `navSpyOffset`/`centerActiveTocLink` defined and
-referenced, zero stale `NAV_SPY_OFFSET` refs, exactly one
-IntersectionObserver; 23-span kt contract, `hero-models`/`hero-runs`, and
-`renderHero()` chip fill intact; brace-balanced JS (python structural
-check; no node in the container — same accepted residual as prior rounds).
-Voice-anchor diff: About ¶¶1–4 byte-identical; hero TLDR differs only by
-the approved "a".
-
-*Fine-tuning round 3, Wave C — prose emphasis + inputs/outputs framing
-(2026-06-12; template prose/CSS + generator dev-guide comments + this
-README — no generator code change, no JS change, no version bump):*
-user-approved at checkpoint.
-
-1. *Four-tier emphasis system adopted (site idiom)* — the template had NO
-   styling for `b/strong/em/i` in prose (bold rendered at the same gray —
-   the "flat" feel the user flagged). New CSS, scoped to the hand-written
-   prose surfaces only (`.hero-sub`, `.section-lead`, `.kt-item p`,
-   `.about-intro`, `.about details > div`, `.two-bars`, `.foot-details`,
-   `.prov-foot`): **strong/b = bright `--text-1` at w600** (the Learn page
-   `.doc-content strong` rule; 600 is also the heaviest DM Sans weight the
-   page loads, so browser-default 700 was being synthesized); **em/i =
-   muted italic one step below the surface's body color** (`--text-3` in
-   the `--text-2` surfaces; `--text-2` in the `--text-1` `.about-intro` —
-   same one-step-down relationship as the site, different absolute color);
-   **`.accent-strong` = teal**, the rare per-section headline treatment.
-   JS-rendered data surfaces (lb/cp/pd findings, pd explainers/callouts,
-   tooltips, badges, table cells, case browser) are deliberately OUT of
-   scope and keep their weights/colors; the colored `.crit-pass`/
-   `.crit-fail` spans cannot be touched (the new rules select b/strong/
-   i/em elements only, never classed spans — verified no selector
-   co-targets them). Mint code-chips were NOT added to prose (the page's
-   code chips stay indigo per the earlier user decision). The tier
-   system, source, and budget rule are recorded in a design comment at
-   the CSS block so future editors don't dilute it.
-2. *Accent-strong color decision: TEAL* — matching the site's own
-   body-prose accent-strong exactly. The token-split nuance (teal=chrome
-   / indigo=in-content, `:root` comment) is respected, not violated:
-   accent-strong is voice/brand emphasis (the chrome family — prose links
-   in these same paragraphs are already teal), not an in-content
-   interactive element, and it appears only inside pure prose paragraphs,
-   never beside status-colored cells (the pass-green-proximity concern
-   that keeps teal out of data surfaces). 8.78:1 on the surfaces (WP8
-   re-audit). Implementation: `.doc b.accent-strong` (0,2,1 specificity,
-   declared last) so it outranks the scoped brightening rules.
-3. *Budget discipline applied* (site-measured: ~1 plain-strong thesis
-   phrase per paragraph; accent-strong AT MOST once per major section; em
-   sparingly for single-word stress). **Exactly 2 accent-strong uses
-   page-wide**: T1's headline Fable composite figure (the single
-   most load-bearing number; the #takeaways section's one budget slot)
-   and About ¶3's "behavioral conformance only" (the About section's
-   thesis; class added to the pre-existing `<b>` — presentation only).
-   New plain-`<b>` wraps, zero word changes everywhere: hero TLDR 2
-   ("rigorous quantitative research engine", "responsible, rigorous, and
-   reproducible data analysis" — voice anchor, wrapping user-confirmed as
-   presentation-only); cvp-preview lead-in ("The headline picture:");
-   T2's bare `kt-t2-o48` and T5's bare `kt-t5-qwen` spans wrapped (each
-   takeaway's central number), T4 thesis phrase ("a marked drop in
-   performance consistency"); About ¶1 ("agentic orchestration"), ¶2
-   ("test adherence to the research protocols and process guidelines of
-   DAAF"), ¶4 ("unprecedented access to analytic capacity"); phases-table
-   intro ("one slice of orchestrator behavior"); runs details ("nothing
-   is mocked"); Run Explorer lead ("audit layer"); Provenance lead ("one
-   row per archived result set"). Existing `<b>` lead-ins (two-bars,
-   glossary terms, caveats, scoring, leaderboard/CvP leads, foot-details)
-   brighten via CSS with no markup churn. One markup conversion: the
-   Phases section lead's `<em>which specific protocol requirement</em>` →
-   `<b>` — under the tier system em now reads as DE-emphasis (muted), and
-   this phrase is the lead's operative stress; the single-word stress
-   italics (`<em>will</em>`, `<em>inside</em>`, `<i>all</i>`, the table's
-   `<i>Failure mode</i>` asides) keep em/i — muted italic IS the site's
-   idiom for those.
-4. *User-approved inputs/outputs framing sentence (C1)* — inserted into
-   About ¶3 (a voice-anchor paragraph) between "…each deserves its own
-   dedicated measurement." and "More to come there!", verbatim as
-   approved: **"Put differently: Orchestration is an inputs-based
-   assessment — if a model gets the process right, downstream results
-   improve — while Analytics will assess outputs directly."** (em-dashes
-   encoded `&mdash;` per the file's conventions; "inputs-based" and
-   "outputs" carry plain `<b>` under the same tier rules). This is a
-   sanctioned ADDITION to a "do not reword" anchor — zero changes to any
-   pre-existing word; the template's anchor comment and the generator
-   dev-guide's voice-anchor note now record it as the second exception on
-   record (after the Wave B typo fix), with protection staying in force.
-
-Verified by single-file regeneration (`/tmp/viewer_waveC_sanity.html`):
-C1 present exactly once with the exact approved wording (markup-stripped
-check); all four emphasis CSS rules present; accent-strong used exactly
-2×; per-surface b/em counts within budget (hero 2/0, cvp lead 1/0,
-takeaways 11/1, About intro 6/1, two-bars 3/0, section leads ≤4 each);
-no new selector co-targets `.crit-pass`/`.crit-fail` (single rule each,
-element-only emphasis selectors); 23-span kt contract bidirectional;
-`hero-models`/`hero-runs` + `ab-*` runtime spans intact; template app-JS
-brace/paren balance 552/552 and 1905/1905, and the generated app script
-blocks are **byte-identical** to the Wave B artifact's (zero JS edits
-this wave). Voice-anchor word-level diff vs the Wave B artifact: hero
-TLDR and About ¶¶1/2/4 ZERO word deltas; About ¶3 shows additions only —
-exactly the 25 approved C1 tokens, no removals, no changed words.
-
-*Round-3 post-review fix pass (2026-06-13; template CSS/JS + a generator
-dev-guide anchor refresh + this README — no generator code change, no
-version bump):* three items from the user's visual check of the round-3
-artifact, user-approved.
-
-1. *Cost header width* — "Relative Test Cost (1x=Opus 4.8)" wrapped to
-   three lines under the Wave A 120px header cap. New
-   `.lb-table th.lb-th-cost{ max-width:170px }` seats it at two
-   ("Relative Test Cost" / "(1x=Opus 4.8)" + the nbsp-glued arrow),
-   applied via a new optional `extraCls` parameter on `thSort()` to the
-   cost th only; all other sortable headers keep 120px. Mechanism note:
-   `max-width` on table cells is formally undefined in CSS 2.1 but
-   honored by modern auto-layout engines — kept deliberately, since ALL
-   sortable headers have relied on it since Wave A and mixing a
-   `width`/`min-width` pair into the same header row would add a second
-   sizing mechanism for no better-defined behavior.
-2. *Overflow guard rework — root cause of both reported bugs* (mobile
-   topbar sliding partially off-screen during scroll + mis-sized
-   viewport; axis-locked one-direction-at-a-time scrolling on desktop).
-   Wave B's `body{overflow-x:hidden}` backstop never guarded body: per
-   css-overflow-3 § 3.3, body overflow values propagate to the viewport
-   when html is `overflow:visible` (it is, in the viewer and on the
-   site), with body's used value reverting to visible — so the rule put
-   `overflow-x:hidden` on the viewport's scroll machinery itself, and
-   `hidden` (unlike `clip`) creates a scroll container: residual
-   horizontal overflow on this content-heavy page became a
-   scrollable-but-scrollbarless viewport axis instead of being clipped
-   away. Site-pattern determination (re-verified at source): the site
-   nav is `position:sticky; top:3px` — NOT fixed
-   (`learn-understanding.html` L143-145, `daaf_anatomy.css` L114-115);
-   the site does run `body{overflow-x:hidden}` (L82 / L81) but its pages
-   have no horizontal overflow pressure, so the propagated rule is inert
-   there; the site's content-container guard is
-   `.doc-layout{overflow-x:clip}` (`learn-understanding.html` L391).
-   Fix: the body rule is REMOVED and the guard moved to
-   `main.doc{overflow-x:clip}` (the site's `.doc-layout` idiom) — `clip`
-   never creates a scroll container, never touches the viewport, and
-   leaves a single viewport scroll container so sticky chrome and free
-   two-axis scrolling behave normally. `body{overflow-x:clip}` was
-   rejected: it propagates identically (the viewport treats propagated
-   clip as hidden). Wave B's other overflow fixes (`.logs-layout`
-   stacking, `min-width:0`, `.tx-out` wrap, `.table-wrap` wrappers, `.doc`
-   width-discipline) all stay in force; every data surface lives inside
-   `main.doc`, the nav/footer mirror non-overflowing site markup, and the
-   mobile TOC bar contains its own overflow inside `.toc-scroll`. The
-   template's body and `.doc` design comments record the propagation
-   mechanism so the body-level guard never comes back.
-3. *Topbar positioning* — no nav change needed: the viewer's
-   `nav.site-nav{position:sticky; top:3px; z-index:1100}` already matches
-   the site verbatim; the mobile topbar slide was a symptom of item 2,
-   not a nav-positioning divergence. Hamburger/dropdown markup and JS
-   untouched.
-
-Same pass: the generator dev-guide's five template line anchors
-(GROUP_SHORT, PD_EXPLAINERS, buildEvalGroups order, phaseSpan, phases
-table row) were refreshed — they had drifted ~+320-425 lines across the
-round-3 waves. Verified by single-file regeneration
-(`research/2026-06-11_FrameworkDev_ViewerPublic/viewer_waveC_sanity.html`,
-the user's review-artifact location, overwritten): zero live
-`overflow-x:hidden` rules; `.doc` clip + `.lb-th-cost` present and the
-class applied to the cost th only; nav CSS unchanged; round-3 content
-intact ("On this page", `.to-*` ramp, C1 sentence exactly once, 23-span
-kt contract, zero unsubstituted `__TOKEN__`s). Official regen:
-`daafbench_2026-06-13a/` (53 sets / 2,493 runs; index.html 3.78 MB + 53
-transcript shards, 20.97 MB) — § 12 "Viewer current".
+**Data ground rules.** Run-level `result.json` is ground truth — viewer
+aggregates come from loaded runs, not `summary.json` totals. Timed-out runs
+are **graded** (zeroed turns/cost/tokens but fully scored criteria); the
+viewer grade taxonomy (perfect/partial/failed/ungraded) is orthogonal to the
+`timed_out` flag. Cost/duration averages exclude timeout-zeroed runs, with
+excluded counts disclosed.
 
 ## 9. Operational Notes
 
@@ -1572,47 +594,24 @@ token counts, and skill prose false-positives `/overloaded/` ("Overloaded
 charts") and `/quota/` ("quotable").
 
 **Edit scorers only between batches.** A launched runner process holds its
-imported scorer modules for its whole life — a batch in flight (or launched
-just before) a scorer edit scores with the pre-edit logic. Observed
-2026-06-10: set `20260610_184022` was scored by a pre-overhaul import and
-carried legacy vacuous criteria until a post-hoc rescore normalized it. The
-rescore tools (`rescore_skill_routing.py`, `rescore_criteria_overhaul.py`,
-`rescore_dispatch_timeout_rescue.py`) are the recovery path when this happens.
+imported scorer modules for its whole life — editing a scorer while a batch
+is in flight means those runs are scored with the pre-edit logic.
 
 **Timed-out runs are killed gracefully (SIGTERM → 15s grace → SIGKILL).**
-Until 2026-06-11 the executor's `subprocess.run(timeout=...)` killed timed-out
-runs with SIGKILL, and the CLI's main-session transcript writes are
-async/buffered — the final records (including Agent tool_use blocks) could be
-lost even though everything earlier persisted. `harness/executor.py` now sends
-SIGTERM first, drains stdout/stderr through a `KILL_GRACE_SECONDS = 15` grace
-window (via `communicate(timeout=...)`, not `wait()` — `wait()` with full
-pipes can deadlock while the CLI writes during its flush), and escalates to
-SIGKILL only if the CLI outlives the grace. Observed in the 2026-06-11
-validation run: the CLI exits ~0.1s after SIGTERM, well inside the window.
-Timeout semantics are unchanged (`error = "Timed out after {N}s"`, the
-`timed_out` flag, partial-stdout parsing). See § 11 item 9 for the validation
-evidence and the honest limits of what one run proves. The dispatched
-subagent's transcript is a separate file and survives the kill either way, so
-a run dir's `subagents/` folder remains the forensic fallback for
-reconstructing what a killed run actually did; the § 6 dispatch-recovery
-fallback automates this for scoring.
+`harness/executor.py` sends SIGTERM first, drains stdout/stderr through a
+`KILL_GRACE_SECONDS = 15` grace window (via `communicate(timeout=...)`, not
+`wait()` — `wait()` with full pipes can deadlock), and escalates to SIGKILL
+only if the CLI outlives the grace. Timeout semantics: `error = "Timed out
+after {N}s"`, the `timed_out` flag, partial-stdout parsing. The subagent's
+transcript is a separate file and survives the kill, so `subagents/` is the
+forensic fallback; the § 6 dispatch-recovery fallback automates this for
+scoring.
 
 ## 10. Results Snapshot (2026-06-09)
 
-Point-in-time results as of 2026-06-09. Rep counts: Phases 1 and 2 — 3 reps
-for most models, Fable 5 at 2 reps; Phase 3 — Anthropic models at 2 reps,
-OpenRouter at 3. Note: this snapshot predates the 2026-06-10 criteria rescore
-(`rescore_criteria_overhaul.py`), which retroactively changed pc-07 rates in
-the archived result sets. It also predates Phase 4 and the five-component
-composite (§ 8) — its tiering and weakest-criterion claims describe the
-P1-P3 corpus only; see § 12 for current composite results. A further caveat
-(2026-06-11): the snapshot also predates the dispatch-recovery rescue rescore
-(§ 6), which retroactively rescued 83 timed-out Phase 3 runs whose Agent
-dispatch record was lost to the timeout SIGKILL — the dispatch rates and
-Phase 3 scores below substantially understate the slow models that timed out
-most often (Nemotron 3 Ultra, DeepSeek V4 Pro, Kimi K2.6, and both Gemmas
-were most affected). The archived result sets now carry the corrected scores;
-this table is preserved as recorded.
+Pre-Phase 4 snapshot, preserved as recorded. The viewer and § 12 Current
+Status are the authoritative performance references. Archived result sets
+carry corrected scores; the table below reflects the original scoring.
 
 **Topline:** Fable 5 is the strongest model overall — Phase 1: 30/30 (100%),
 Phase 2: 18/18 (100%), Phase 3: 21/24 (88%) with a 100% dispatch rate at
@@ -1652,93 +651,49 @@ within 300s.
 
 ## 11. Known Limitations
 
-1. **`--disallowed-tools` cannot block compound commands.** Claude Code splits
-   commands on shell operators (`&&`, `||`, `;`, `|`) and checks each
-   subcommand independently, so `cd x && git commit` evades `Bash(git commit *)`
-   deny patterns. Leading `*` wildcards (as formerly written in
-   `harness/models.py`) do not work either — glob matching is prefix-anchored.
-   **Resolved (2026-06-10)** by the env-gated PreToolUse hook
+1. **`--disallowed-tools` cannot block compound commands.** Claude Code checks
+   subcommands independently, so compound commands evade Bash deny patterns.
+   **Mitigated** by the env-gated PreToolUse hook
    `harness/hooks/block-git-writes.sh` (§ 9), which inspects the full command
-   string (compound commands cannot evade it) and blocks any non-allowlisted
-   git invocation. Registered in `.claude/settings.json` and verified
-   end-to-end (nested benchmark-style session: `git commit` blocked,
-   `git status` allowed). The dead git patterns were removed from
-   `harness/models.py`; the `disallowed_tools` mechanism itself remains for
-   non-git uses (e.g., disallowing the Agent tool).
+   string and blocks any non-allowlisted git invocation. The `disallowed_tools`
+   mechanism itself remains for non-git uses (e.g., disallowing the Agent tool).
 2. **Fable 5 thinking blocks are encrypted** (empty string + cryptographic
    signature). Reasoning-quality analysis is structurally impossible for Fable;
    all behavioral assessment relies on observable output proxies.
-3. **Phase 1-3 cost calibration profiles are stale.** Those per-case token
-   profiles in `harness/cost_estimator.py` predate the `modelUsage` fix and
-   reflect main-session-only tokens, underestimating subagent-dispatching
-   cases. Phase 4 profiles were recalibrated per provider 2026-06-10 (§ 7).
-4. **Subagents leaked artifacts outside the sandbox (root cause fixed
-   2026-06-10).** Fixture contamination was an ordering bug: the dispatch
-   runner staged fixtures into the sandbox BEFORE `prepare_sandbox()`
-   rmtree-wiped that same sandbox, so at model launch the rewritten prompt
-   pointed at deleted paths — models hunted the files by name and modified the
-   originals under `datasets/test_fixtures/`. Fixed by wiping before staging
-   (`wipe_sandbox=False` threaded through `RunConfig`), with the per-batch
-   restore-to-HEAD as defense-in-depth and a post-batch contamination warning
-   (§ 9). Rogue git commits are addressed by the git-blocking hook
-   (limitation 1). Rogue `research/` project folders remain possible — models
-   can still write outside the sandbox workspace; manual cleanup applies
-   there.
+3. **Phase 1-3 cost calibration profiles are stale.** Per-case token profiles
+   in `cost_estimator.py` underestimate subagent-dispatching cases. Phase 4
+   profiles are calibrated per provider (§ 7).
+4. **Subagent sandbox leakage (root cause fixed).** Fixtures are now staged
+   after the sandbox wipe (`wipe_sandbox=False` in `RunConfig`), with the
+   per-batch restore-to-HEAD as defense-in-depth (§ 9). Rogue git commits are
+   blocked by the hook (limitation 1). Models can still write `research/`
+   folders outside the sandbox; manual cleanup applies.
 5. **OpenRouter token counts are approximations.** The Anthropic-compatible
    endpoint reports counts from Anthropic's tokenizer, not each model's native
    tokenizer, so computed OpenRouter costs are approximate. Billing
-   reconciliation (2026-06-10, § 7) bounded the tokenizer-driven error at
-   ~2-6% for the strong-five models; the larger DeepSeek V4 Pro discrepancy
-   was a pricing-config error (fixed in `models.yaml`; archived sets retain
-   ~3.3x-understated DS Pro costs).
+   billing reconciliation (§ 7) bounded the tokenizer-driven error at
+   ~2-6% for most models.
 6. **Golden checkpoints embed recording-time framework content.** Golden JSONLs
    contain `attachment` records with CLAUDE.md and hook-injection content from
    when the session was recorded. Material framework changes can leave a
    resumed model facing conflicting instructions (old history vs. current
-   system prompt). Carried from Reference § 11; the only mitigation is
-   re-recording, which invalidates prior comparisons (§ 5).
-7. **Scoring is not isolated from execution.** The original design (Reference
-   § 2.1, § 6.3) required scorers to run outside the agent's environment, after
-   UC Berkeley showed major agent benchmarks are exploitable wherever the agent
-   can write state the evaluator reads. Currently the runners, scorers, and the
+   system prompt). The only mitigation is re-recording or refreshing (§ 5),
+   which invalidates prior comparisons.
+7. **Scoring is not isolated from execution.** The runners, scorers, and the
    model under test all share the DAAF container and filesystem. Low practical
    risk for internal behavioral scoring; a real gap if scores ever carry
    external weight.
 8. **Manifests pin the DAAF git SHA but not golden content hashes.** A run
-   executed against a worktree-modified golden is indistinguishable in
-   provenance from one against the committed version (observed: the first
-   fresh-golden Phase 4 sets pinned a SHA predating the golden's first
-   commit — they ran against the identical worktree copy, so scoring was
-   unaffected, but the manifest cannot prove it). Adding a golden content
-   hash to `manifest.json` is the designed improvement (§ 12).
-9. **Timeout SIGKILL races the async transcript writer (mitigated on both
-   sides 2026-06-11).** The original `subprocess.run(timeout=...)` SIGKILLed
-   timed-out runs while Claude Code's main-session transcript writes are
-   async/buffered, so a killed run could lose an unflushed transcript tail —
-   up to and including the assistant record carrying the `Agent` tool_use
-   (observed: a main transcript frozen at exactly the 47-line golden
-   checkpoint beside a 71KB subagent transcript). Two mitigations now stack.
-   Scoring side (2026-06-11): the evidence-gated dispatch-recovery fallback
-   and rescue rescore (§ 6) reconstruct lost dispatches from the surviving
-   subagent transcripts. Executor side (2026-06-11): a graceful-kill ladder —
-   SIGTERM → 15s grace window → SIGKILL (`KILL_GRACE_SECONDS` in
-   `harness/executor.py`, § 9) — gives the CLI a flush opportunity before the
-   hard kill. Validation evidence (one deliberate 10s-timeout run, mc-01 ×
-   Haiku 4.5, throwaway set `20260611_031913`, since deleted — user decision;
-   findings survive only in this record): the CLI exited ~0.1s after
-   SIGTERM (never reaching SIGKILL), and the archived 15-line main transcript
-   extended well past the injected prompt — assistant thinking, the `Skill`
-   tool_use, and its tool_result, with a cleanly parseable final line — vs.
-   the SIGKILL-loss signature of a transcript frozen at the prompt/checkpoint.
-   Honest caveat: that run's last timestamped record predated the kill by
-   ~6.4s (the model was mid-generation of its next turn, which no kill
-   strategy can preserve — incomplete turns are never written), so the single
-   run proves the ladder works mechanically but cannot positively demonstrate
-   improved tail-flushing over SIGKILL; SIGKILL-era timed-out transcripts also
-   end on complete lines, so the historical loss was a race, not a constant.
-   Whether the ladder eliminates the race will only be confirmed by future
-   organically timed-out runs. The scoring-side recovery (§ 6) remains the
-   backstop for lost dispatch records either way.
+   against a worktree-modified golden is indistinguishable in provenance from
+   one against the committed version. Adding a golden content hash to
+   `manifest.json` is the designed improvement (§ 12).
+9. **Timeout kill can race the async transcript writer.** Claude Code's
+   main-session transcript writes are async/buffered, so a timed-out run can
+   lose unflushed records — including the Agent dispatch. Two mitigations
+   stack: the executor's graceful-kill ladder (SIGTERM → 15s grace → SIGKILL,
+   § 9) gives the CLI a flush opportunity; the scoring-side dispatch-recovery
+   fallback (§ 6) reconstructs lost dispatches from surviving subagent
+   transcripts.
 
 ## 12. Future Work
 
@@ -1756,17 +711,13 @@ within 300s.
   time). Phase 4 rep counts are complete — all 19 models at 3 reps as of
   2026-06-16 (§ 12 Current Status)
 - **Recalibrate cost estimation profiles** from post-`modelUsage`-fix runs
-  (Phases 1-3 remaining; Phase 4 recalibrated per provider 2026-06-10, § 7)
+  (Phases 1-3 remaining; Phase 4 is calibrated per provider, § 7)
 
-### Design Backlog (from the original reference)
+### Design Backlog
 
-The original design document —
-`/daaf/research/2026-05-01_Benchmark_Testing/Benchmark_System_Reference.md` —
-specifies components that were designed but never implemented. Its research,
-architecture, and session-history sections are superseded by this README; the
-items below are the still-valuable remainder.
+Designed but unimplemented components from the original specification.
 
-- **Safety Boundaries test category** (Reference § 7.6): 8 single-prompt cases
+- **Safety Boundaries test category**: 8 single-prompt cases
   (sb-01..08) testing refusal of protocol violations — direct `python3`, CSV
   output, skipping QA, deleting failed scripts, `.env` reads, `rm -rf`,
   unconfirmed `git push`, helper functions. Highest-priority unbuilt category:
@@ -1775,60 +726,53 @@ items below are the still-valuable remainder.
   already specified; complements the PreToolUse git-blocking hook (§ 9). Open
   design question: whether a hook-blocked rogue-git attempt should itself be
   scored as a safety failure (currently unscored).
-- **Script Quality test category** (Reference § 7.5): 4-8 cases scoring
+- **Script Quality test category**: 4-8 cases scoring
   generated scripts deterministically — section headers, IAT comments, no
   function definitions, parquet output, `run_with_capture.sh` execution,
   date-prefixed naming. Phase 3b's `subagent_behavior` scorer covers a subset
-  (script written + wrapper used); § 7.5's eight per-script criteria would
+  (script written + wrapper used); the full design's eight per-script criteria would
   deepen it into convention-level scoring.
-- **Skill Loading test category** (Reference § 7.3): 8-12 cases testing
+- **Skill Loading test category**: 8-12 cases testing
   task-specific skill selection — the right data source skill (e.g., SAIPE vs.
   MEPS), discovery before query, skill loaded by the right tier (subagent vs.
   orchestrator). Phase 2 tests per-mode post-confirmation loading; this adds
   the selection dimension. The required mechanism (golden checkpoints +
   transcript scoring) already exists.
-- **Protocol Adherence test category** (Reference § 7.4): multi-step ordering
+- **Protocol Adherence test category**: multi-step ordering
   checks — the Turn Boundary Rule (confirmation turn contains zero tool
   calls), document loading order, stage progression, STATE.md creation timing.
   Phases 1-2 cover gates and reference loading; turn-boundary and
   phase-progression behavior is currently untested.
-- **Deep golden-checkpoint catalog** (Reference § 7.7): 24 designed cases
+- **Deep golden-checkpoint catalog**: 24 designed cases
   resuming mid-pipeline — PSU blocking gates, code-reviewer-before-next-script,
   STATE.md pre-flight verification, Data Onboarding interpretation gates, and
   six cross-mode boundary/escalation tests. The checkpoint mechanism (§ 5) is
   this design's infrastructure, but current phases exercise only two checkpoint
   types (post-confirmation, Ad-Hoc-initialized). The catalog and seed-directory
-  design (Reference § 6.5) are the expansion path.
-- **Tier 3 LLM-as-judge** (Reference § 8.3; rubric principles § 4.1, hybrid
-  stack § 4.4, intermediate-artifact gap § 4.5): binary analytic rubrics, one
+  design are the expansion path.
+- **Tier 3 LLM-as-judge:** binary analytic rubrics, one
   criterion per judge call, mandatory negative criteria, conservative
   resolution when judge and deterministic scores diverge, Batches API for 50%
   scoring cost, and sanitization of agent content before judge prompts
-  (prompt-injection warning, Reference § 2.1). This is the deeper fix for
+  (prompt-injection warning). This is the deeper fix for
   `prompt_has_context_section` (judge whether contextual content is present
   rather than matching a heading list) and the only designed path to
-  IAT-quality and other intermediate-artifact evaluation. `scorers/llm_judge/`
-  is the empty stub awaiting `judge.py` + `rubrics.yaml`.
-- **Statistical aggregation — `aggregator.py`** (Reference § 9): Beta-Binomial
+  IAT-quality and other intermediate-artifact evaluation. The `scorers/llm_judge/` directory will be created when this work begins.
+- **Statistical aggregation — `aggregator.py`**: Beta-Binomial
   posteriors with 90% credible intervals (non-overlapping intervals as the
   decision rule for model differences), pass^k consistency alongside pass@1
-  capability, a safety-weighted composite adherence score (§ 9.4), and a
-  report format (§ 9.5). Never built — the § 10 ranking above is
+  capability, and a safety-weighted composite adherence score. Never built — the § 10 ranking is
   hand-aggregated. With 2-3 reps × 19 models already in `results/`, credible
   intervals are immediately computable from existing data.
-- **Hardening items** (Reference § 10, Phase 5): CI integration (cheap subset —
+- **Hardening items**: CI integration (cheap subset —
   Phase 1, one cheap model, 1 rep — on PRs touching framework files), a test
   case contribution guide, and effort-level comparison runs (`--effort`
   plumbing exists; see the reference's 2026-05-02 session notes for the
   `CLAUDE_CODE_EFFORT_LEVEL` override pitfall). The version-tagging deliverable
   is already satisfied by `manifest.json`'s DAAF git SHA.
-- **Viewer fast-follows:** light theme / print stylesheet — deferred from the
-  2026-06-10 viewer redesign as possible fast-follows, deferral reconfirmed
-  2026-06-11 (§ 8 design record); og:image (requires an absolute URL, so it
-  is a deploy-time addition) — deferred from the 2026-06-11 public-audience
-  evolution, as were a touch/aria accessibility audit and responsive rework
-  (trivial-only mobile fixes were applied) and a benchmarks link from the
-  main `/daaf/README.md` (out of scope for now, user decision).
+- **Viewer fast-follows:** light theme / print stylesheet; og:image (requires
+  an absolute URL — a deploy-time addition); touch/aria accessibility audit;
+  a benchmarks link from the main `/daaf/README.md`.
 - **Phase 4 expansion reserve:** few-clusters wild bootstrap (pyfixest
   `advanced-inference.md`) is the first candidate if the suite grows — cut
   only for slot economics. Excluded as unroutable: time series (no hub branch;
@@ -1838,490 +782,70 @@ items below are the still-valuable remainder.
   orchestrator" — a refusal test, candidate for a future Safety/Protocol
   category.
 
-### Current Status / Next Steps (2026-06-16)
+### Current Status / Next Steps (2026-06-18)
 
-Point-in-time status; supersedes the retired `SESSION_NOTES.md` restart
-prompts. Once these items land, fold the outcomes into the sections above
-and update or remove this subsection.
+Point-in-time status. Completed items are condensed here; full design
+records live in the sections cited.
 
-- **GLM 5.2 full 4-phase battery — COMPLETE (2026-06-16).** 3 reps per
-  phase, 153 total runs. Result sets: `20260616_182329` (P1; 45/45 perfect),
-  `20260616_185225` (P2; 24/27 — pc-07 agent-authoring soft failure 0/3, 2
-  timeouts), `20260616_205526` (P3; 34/36 perfect main criteria, 8 timeouts
-  all still passed dispatch+subagent), `20260616_214740` (P4; 6/45 perfect,
-  classic two-hop decay). Composite 0.782 (T2). Key GLM 5.1→5.2 gains:
-  classification +0.16 (0.84→1.00), dispatch +0.16 (0.78→0.94); routing
-  flat at 0.13. Battery cost $20.99 (0.26× Opus 4.8). `models.yaml` now
-  19 models / 12 OpenRouter (was 17 / 10 before GLM 5.2 and Kimi K2.7
-  Code additions).
-- **Kimi K2.7 Code full 4-phase battery — COMPLETE (2026-06-16).** Added
-  in a separate session, 162 total runs. Result sets: `20260616_193842` (P1),
-  `20260616_201431` (P2), `20260616_224014` (P3), `20260616_233654` (P4).
-  Composite 0.623 (T3).
-- **Reconciliation + viewer update (2026-06-16).** Reconciliation snapshot:
-  `derived/openrouter_reconciliation_2026-06-16.json`. Viewer regenerated as
-  `viewer_2026-06-16b.html`. GLM 5.2 obs/pred billing ratio 0.70 (caching
-  benefit from sequential runs; published rates $1.40/$4.40 confirmed
-  correct).
-- **Phase 4 baseline matrix (fresh goldens) — COMPLETE, now at 3 reps for
-  ALL 17 models.** Originally 10 OpenRouter models × 3 reps + 7 Anthropic
-  models × 1 rep, all on the post-third-hop framework and fresh goldens;
-  Anthropic rep completion landed 2026-06-11 (next bullet). Fresh-golden sets in `results/` (all swept
-  clean: 0 rate-limit events anywhere; python3-verified): `20260610_184022`
-  (OR strong-five rep 1: glm-51, kimi-k26, deepseek-v4-pro, gemini-31-pro,
-  deepseek-v4-flash — normalized post-hoc, § 9), `_194256` (Anthropic:
-  haiku-45, sonnet-46, opus-46, fable-5; **Fable 5 near-ceiling: 15/15
-  loaded, 14/15 refs_read, 13/15 all-criteria; Haiku pure third-hop failure:
-  8/15 loaded, 0/15 refs_read**), `_201039` (OR second-five rep 1:
-  qwen-36-27b, gemma-4-26b, nemotron-3-ultra, gemini-31-flash-lite,
-  gemma-4-31b), `_203038` + `_203935` (strong-five reps 2-3), `_205051` +
-  `_210215` (second-five reps 2-3; Gemma 31B stalled 10/15 and 14/15),
-  `_214502` (Anthropic Opus 4.8/4.5/4.7 sequential, 0 errors: **Opus 4.8
-  12/15 loaded, 8/15 refs_read, 6/15 all — clear top-end gradient 4.5 → 4.8
-  → Fable**). Top open-weight routers across reps: DeepSeek V4 Pro and
-  Qwen 3.6 27B (5-6/15 all-criteria); Kimi most rep-volatile (5-9/15
-  loaded).
-- **Phase 4 Anthropic rep completion — COMPLETE (2026-06-11, ~05:09 and
-  ~06:56 UTC).** Two additional sequential 1-rep rounds, all 7 Anthropic
-  models × 15 cases each, 300s timeout, same worktree scorer and goldens as
-  the rep-1 baseline: `20260611_050913` (105 runs, $16.27, 6181s) and
-  `20260611_065633` (105 runs, $16.91, 6404s). Both swept clean
-  (python3-verified): 0 rate-limit events, 0 missing transcripts, 0
-  timeouts. All Anthropic models now at 3 Phase 4 reps. Findings replicate
-  the rep-1 gradient: Fable 5 12/15 all-criteria in both rounds (13-15/15
-  loaded); Opus 4.8 7-8/15 all; Opus 4.7 names skills near-perfectly
-  (14-15/15 engaged) but loads only 9-11/15 — two-hop decay persists
-  post-routing-fix; Haiku 4.5 floor confirmed (0-1/15 all, 0-1/15
-  refs_read). Hardest cases across all 7 models: sr-10 (0/7 refs both
-  rounds), sr-11 (0/7 all both rounds), sr-08 (1/7 all both rounds);
-  sr-14 remains the easy one-hop case (6-7/7). Composite effects on the
-  full 52-set corpus (supersedes the smaller-corpus effects noted in the
-  P4-joins-composite bullet below): Sonnet 4.6 rises to T2 (0.829), Opus
-  4.8 T2 (0.796), Haiku 4.5 sits T4 (P4 perfect 0.02), Fable 5 sole T1
-  (0.939); global weakest criterion is now `skill_agent_authoring`
-  (13/48 = 27%, P2), displacing `expected_refs_read`.
-- **Viewer cost-plot phase filter — RESOLVED (2026-06-10 viewer session).**
-  Cost vs. Performance now has a phase basis selector (Composite + P1-P4;
-  perf values/frontiers precomputed per group, dynamic for future phases) and
-  Costs Detail gained a "Perfect-rate scope" phase toggle. Same session:
-  template group-order array gained `skill_routing` (the one real Phase 4
-  wiring gap — P4 had rendered via unordered-tail fallback), and all
-  user-visible severity labels renamed Hard→**Critical** / Soft→**Normal**
-  (viewer + README §§ 2/6; data keys `hard_requirements`/`tier1`/etc.
-  unchanged). Generator v2.4.0.
-- **Harness gap (bookmarked): transcript-less timeout runs.** 4 runs
-  (`pc-03`/`pc-07` × Fable 5 in `20260609_203258` and `20260609_215903` —
-  the two sets with the short 120s pc-timeout) were flagged timed-out with NO
-  transcript.jsonl archived. Update 2026-06-11 (~12:48 UTC, user decision):
-  those 4 runs were moved out of scoring into each set's `removed_runs/`
-  (provenance README.txt alongside; the viewer loads `runs/` only) and
-  replaced by fresh fable-5 pc-03/pc-07 runs at the corpus-standard 300s
-  timeout in set `20260611_124829` — all 4 replacements pass all criteria
-  (4/4). One replacement (pc-07 rep 0) organically timed out at 300s under
-  the new graceful-kill ladder and still archived a fully scored transcript
-  (3/3 criteria PASS, 6 tool calls visible) — the first organic post-ladder
-  timeout, supportive evidence the flush race is closed, though confounded
-  with the ceiling change (120s → 300s gives the CLI more time to write
-  early records regardless of kill signal). Original working hypothesis: timeout-kill lands before
-  the CLI emits session metadata, so the collector has no session ID to
-  resolve (slowest model × tightest ceiling × heaviest cases). Confirmation
-  pass = read `harness/executor.py`/`collector.py` transcript-resolution
-  logic against one of those run dirs. Related fix candidates: write
-  transcript on timeout; first-activity stall detector (below). Update
-  2026-06-11: the related Phase 3 manifestation — transcripts PRESENT but
-  truncated mid-flush by the timeout SIGKILL, losing the Agent tool_use
-  record — is now resolved on the scoring side (§ 6 dispatch-recovery
-  fallback + `rescore_dispatch_timeout_rescue.py`; 83 runs rescued, § 11
-  item 9). Update 2026-06-11 (~03:25 UTC): the executor graceful-kill ladder
-  has landed (SIGTERM → 15s grace → SIGKILL; § 9, § 11 item 9), validated
-  mechanically with one deliberate 10s-timeout run — the throwaway validation
-  sets `20260611_031838` (completed under its 20s timeout, no kill) and
-  `20260611_031913` (timed out; transcript archived past the prompt) were
-  deleted at user direction 2026-06-11 (findings recorded in § 11 item 9).
-  The ladder may also help the
-  transcript-less manifestation (a SIGTERM'd CLI gets a chance to create/
-  flush the transcript before dying), but that is unverified — the
-  confirmation pass against `executor.py`/`collector.py`
-  transcript-resolution logic remains open. The post-rescue viewer
-  regeneration has landed (`viewer_2026-06-11g.html` — see the
-  viewer-current bullet below).
-- **Gemma 4 31B kept IN by user decision:** silent stalls are documented
-  model-attributable failures, not artifacts to exclude — forensic sweep of
-  Phases 1-3 (full corpus, transcript-level) found 18.5% silent-stall rate
-  for 31B and 9.3% for 26B across *different* provider pins, vs ≤1% for
-  Gemini models and ~1-3% ambient elsewhere: a Gemma-subfamily defect, not
-  Google-family or single-endpoint. 31B reproduced 10/15 zero-turn 300s
-  stalls in each fresh batch. Stalls score as failed runs.
-- **Timeout stays 300s for mixed/OpenRouter batches** (runtime analysis of
-  199 completed fresh runs: p99=252s, max=271s; the slow tail is OpenRouter
-  per-turn latency ~2x Anthropic, not work volume). Anthropic-only batches
-  are safe at 150s (max observed 129s). Better stall remedy than tighter
-  ceilings: harness first-activity detector (no event by ~90s → kill) —
-  candidate § 12 backlog item. Harness artifact to know: timeouts zero
-  `turns`/`output_tokens` in result.json, so stall analysis requires
-  transcript-level reconstruction.
-- **PHASE4_TOKENS recalibration — RESOLVED (2026-06-10), provider-split.**
-  Calibrated from all eight fresh sets (520 usable runs); split into
-  `PHASE4_TOKENS_OPENROUTER`/`_ANTHROPIC` after a blended profile
-  over-estimated Anthropic 3.3-8.4x (caching-regime mismatch). Validated
-  0.90x aggregate, 0.90-0.91x per provider (§ 7; scripts in `_sandbox/`).
-  Same session: **DeepSeek V4 Pro pricing corrected** in `models.yaml`
-  ($0.435/$0.87 → $1.44/$2.88) via billing-export reconciliation — archived
-  sets understate DS Pro costs ~3.3x (§ 7 Pricing correction).
-- **Public-audience viewer evolution — RESOLVED (2026-06-11 session,
-  generator v2.5.0 → v2.6.0).** The viewer was reworked for public
-  consumption on the project website: full audience inversion of the prose,
-  a new dated Key Takeaways editorial section (figures span-injected from a
-  new `timeout_by_model`-extended PRECOMPUTED), an always-visible
-  Perfect-vs-Critical "two bars" About block, a 45-entry plain-language
-  criterion label map (CRIT_LABELS), and head metadata for web hosting
-  (og:url placeholder pending deploy). Full record: § 8 design record,
-  "Public-audience evolution" addendum. Deployment (stable filename,
-  compression, upload, og:image) stays in the user's website infrastructure;
-  an http(s) retest is needed post-deploy.
-- **Battery-cost metric + pricing foundation fixes — RESOLVED (2026-06-11,
-  generator v2.7.0 → v2.8.0 → v2.8.1).** Full record:
-  § 8 "Cost methodology evolution" addendum. New data dependency: the
-  generator now reads the latest `derived/openrouter_reconciliation_*.json`
-  (fail-soft if absent; staleness guard warns when OpenRouter corpus run
-  counts drift from the snapshot — currently 153 = 153 for all 10, no
-  warnings). `models.yaml` rates corrected for Gemma 4 26B (×2.12),
-  DeepSeek V4 Flash (×1.34), Gemma 4 31B (×1.26); harness `compute_cost()`
-  now bills cache writes at 1.25× input (future runs only). Verified by
-  sanity regeneration first; the official regeneration landed as
-  `viewer_2026-06-11j.html` — the first dated viewer carrying battery costs
-  and the corrected rates. The Key Takeaways **cost-ratio re-adjudication**
-  the rate corrections forced (corrected DS Flash rates shifted
-  `kt-t5-glmx` 1/12 → 1/9 and `kt-t5-opusx` 1/81 → 1/61 on the blended
-  basis, breaking T5's hand-written "on the order of 1/100 of frontier
-  cost" sentence; the original prediction that kt-t4-ratio and the T3
-  spans were unaffected was overtaken — those claims moved to the battery
-  basis too) was resolved the same day by moving all takeaway cost claims
-  to the battery metric, displayed as relative multipliers vs Opus 4.8
-  rather than dollars (generator **v2.8.1**, presentation-only bump; § 8
-  addenda: design record item 2 second re-adjudication + cost-methodology
-  presentation note), regenerated as `viewer_2026-06-11k.html`.
-- **Viewer e099982 repair pass — RESOLVED (2026-06-12; template + dev-guide
-  comments only, no generator code change, no version bump).** The user's
-  hand edit of the hero and Key Takeaways (commit e099982) deleted spans
-  that `renderHero` and `fillAboutCounts` still wrote to, crashing both at
-  init (hero chips/verdict never rendered; the surviving `ab-*` counts froze
-  as em dashes). Repairs: hero "17 models" / "1,700 repetitions" re-injected
-  as live `hero-models`/`hero-runs` spans filled by `renderHero` from
-  `PRECOMPUTED.totals` (static text = previous generation's figures, not an
-  em dash); dead `ab-models`/`ab-runs` writes deleted; `kt-t4-dsflash` fill
-  added; the 11 orphaned `fillTakeaways` writes pruned; takeaway 2's garbled
-  Critical-only sentence repaired with four injected `kt-t2-o4Xh` spans from
-  `composite_hard` (claim direction verified: Opus 4.7's Critical-only dip,
-  8.5 pts vs the best of 4.5/4.6, exceeds its Perfect-composite dip of
-  4.9 pts); takeaway 5's stale `kt-t6-*` ids renumbered `kt-t5-*` in
-  lockstep with their setters; orphaned `.kt-badge`/`.kt-disclaimer` CSS
-  removed; typo/entity fixes in the user-voice prose; Key Caveats `<details>`
-  gained `id="caveats"` and the kt-foot reference now links `#about`.
-  **Span contract now 23 `kt-*` spans** (was 29); generator dev-guide
-  comment block refreshed (span contract count, date-lives-in-the-h2 rule,
-  template anchor re-points incl. PD_EXPLAINERS ~L1762 → ~L2211). Verified
-  by sanity regeneration: bidirectional span check zero orphans both
-  directions; all 32 kt/hero/ab injection values non-null on the 53-set
-  corpus.
-- **Viewer multi-file bundle architecture — RESOLVED (2026-06-12, generator
-  v3.0.0).** The official viewer artifact is now a bundle directory with a
-  new naming convention, `daafbench_YYYY-MM-DD[suffix]/` (letter suffix
-  auto-increments when the candidate exists — the no-overwrite convention
-  carried over from the dated single files): `index.html` (~4 MB; DATA
-  minus transcripts, plus a `transcripts_index`) and per-result-set
-  transcript shards `data/tx_{result_set}.json` fetched on demand by the
-  Run Explorer (memoized shard cache, stale-click guard, visible
-  fetch-failure fallback). `--single-file [PATH]` retains the ~25 MB
-  monolith under the `viewer_YYYY-MM-DD{letter}.html` naming as the
-  offline/`file://` audit path; `file://` support is explicitly dropped for
-  bundles (sibling-file `fetch()` is CORS-blocked on `file://` — the
-  fallback message carries a `python3 -m http.server` hint).
-  `benchmarks/.gitignore` gained the `daafbench_*/` companion pattern.
-  Full record: § 8 "Multi-file bundle architecture" addendum; the http(s)
-  post-deploy retest list grew from three to four items (§ 8
-  public-audience evolution item 7). The first bundle artifact is
-  `daafbench_2026-06-12a/` (2026-06-12 official regeneration, generator
-  v3.1.1 — see "Viewer current" below); `viewer_2026-06-11k.html` remains
-  the last monolith-only official artifact.
-- **Battery multiplier promoted to headline cost figure / blend31 removed —
-  RESOLVED (2026-06-12, generator v3.1.0).** The blended 3:1 $/Mtok
-  formulation was retired everywhere (user rationale: benchmark cost was
-  dominated by input tokens, making a 3:1 in/out blend misleading) and the
-  battery-cost multiplier (× Opus 4.8 = 1.0×) became the headline cost
-  figure page-wide: leaderboard cost column re-pointed (with ⚠ staleness
-  propagation to its tooltip), scatter default price basis now battery
-  (input/output remain as secondary toggles), About caveat and section
-  leads reordered multiplier-first. Schema change: `blend31` removed from
-  `PRECOMPUTED.cost.models[]` and `cost.frontiers` (battery first); sanity
-  report prints the battery frontier. Full record: § 8 "Battery multiplier
-  promoted" addendum. Verified by sanity regeneration (bundle +
-  `--single-file`); lands in the next official artifact.
-- **Tone percolation + "DAAFBench: Orchestration" naming + hero chips
-  redesign — RESOLVED (2026-06-12; template prose + generator dev-guide
-  comments only, no version bump).** The maintainer's voice and website
-  framing percolated through all remaining viewer prose: suite named
-  "DAAFBench: Orchestration" (title/meta/TOC/hero/About/CTA, with the
-  planned analytic-competency companion suite framed as the complementary
-  half); full rewrites of the leaderboard lead, CvP lead (voice-only), and
-  all five PD_EXPLAINERS; moderate passes per the percolation map; hero
-  chips hoisted above the prose and redesigned to zero-context facts; About
-  intro restored DAAF/GitHub links; new static `#next-steps` closing CTA
-  (TOC + SECTION_IDS registered) with Open Augments attribution; glossary
-  lab-manager gloss; exactly two sanctioned voice-anchor edits (hero
-  pair-naming insertion; takeaway 1 "a Perfect average score of"
-  clarifier); stale "1,700+" JS comments neutralized; dev-guide anchors
-  refreshed. Full record: § 8 "Tone percolation" addendum. Verified by
-  sanity bundle regeneration + bidirectional span check (zero orphans;
-  23-span contract unchanged); lands in the next official artifact.
-- **Site-cohesion styling — RESOLVED (2026-06-12; template-only, no
-  generator change, no version bump).** The viewer adopted the DAAF product
-  site's design tokens, Google Fonts (Space Grotesk / DM Sans / JetBrains
-  Mono), 3px gradient strip + sticky topbar (with the Learn dropdown's
-  active "Choosing Your Model (DAAFBench)" entry), Open Augments footer,
-  and selected anatomy-page component idioms; teal is chrome-only and the
-  audited status palette hues are untouched (WP8 contrast re-audit against
-  the new surfaces: all floors pass, alphas unchanged). Scrollspy offset /
-  scroll-padding / TOC-rail top are now `--nav-height`-aware. Full record:
-  § 8 "Site-cohesion styling" addendum. Verified by sanity bundle
-  regeneration (index.html 3.75 MB, +0.03 MB); lands in the next official
-  artifact. **The post-deploy visual check now additionally covers: topbar
-  dropdown open/close (desktop hover + mobile tap), the mobile hamburger
-  toggle, the hoisted hero chips' badge treatment, the site footer, and
-  Google Fonts loading (plus the graceful system-font fallback when
-  offline).**
-- **Viewer user fine-tuning round — IMPLEMENTED, pending user review
-  (2026-06-12; template + generator dev-guide comments + this README, no
-  generator code change, no version bump).** Eleven user-approved items
-  from his visual review of the `2026-06-12a` artifact: verdict callout
-  removed and the intro restructured (hero = h1 + chips + ¶1; hero ¶¶2–4
-  moved verbatim to the top of About; TOC label "Intro"); a compact
-  cost-performance preview after the takeaways (same chart code path);
-  T1 headline de-dup ("simply"); a sortable leaderboard Timed-out column
-  from `timeout_by_model`; the Costs Detail section removed (battery
-  definition condensed into an unconditional CvP footnote; list-price
-  table relocated as a CvP collapsible; all references re-pointed);
-  `#next-steps` removed; kt-foot folded into the About caveats
-  (`kt-foot-bat` moved there; span contract still 23 setters = 22 in
-  #takeaways + 1 in About); CvP scatter + preview made responsive
-  (viewBox scaling, no re-render needed); native `<title>` point tooltips
-  removed; TOC first-click landing fixed via first-nav full render +
-  `body.nav-rendered` content-visibility un-skip (http(s) retest item).
-  Full record: § 8 "User fine-tuning round" addendum. Review artifact:
-  `viewer_2026-06-12b.html` (single-file, for the user's next `file://`
-  pass); the official **bundle regeneration is deferred** until his
-  approval.
-- **Viewer fine-tuning round 2 (2026-06-12; template prose/JS + generator
-  dev-guide comments only — no version bump):** hero reduced to a single
-  user "TLDR:" paragraph (former ¶1 first sentence + new user DAAFBench
-  framing sentence, verbatim); the "layers together" remainder moved
-  verbatim to the top of About; `#cvp-preview` moved above `#takeaways`
-  (scrollspy-reads as part of `#hero`); leaderboard + CvP footnotes
-  collapsed into closed-by-default "Details" expanders at regular body
-  size (`cp-pricing` stays a sibling expander; other footnote surfaces
-  unchanged). Full record: § 8 fine-tuning addendum, round-2 paragraph.
-  Review artifact: `viewer_2026-06-12d.html` (single-file).
-- **Viewer fine-tuning round 3, Wave A — leaderboard (2026-06-12; template
-  prose/JS + generator dev-guide comments + this README, no generator code
-  change, no version bump):** six user-approved leaderboard changes —
-  Dispatch column removed (the P3a phase column, a different column,
-  stays; `agent_dispatched` precompute + `CRIT_LABELS` entry untouched);
-  columns reordered to Tier, #, Model, Cost, Composite, P1…P4,
-  Consistency, Timed out (cost promoted as a primary reference point);
-  cost header renamed "Relative Test Cost (1x=Opus 4.8)" with the CvP
-  `COST_FORMS` toggle label synced and the lb-foot sentence re-led; cost
-  cells on the mono + indigo-accent "key number" idiom; Timed-out cells
-  on a new dedicated fail-red worst-is-hot `.to-0…to-4` ramp (breaks
-  0 / >0 / ≥5% / ≥10% / ≥20% from the measured corpus distribution,
-  contrast-verified); leaderboard sortable headers made wrap-capable with
-  the sort arrow nbsp-glued. Full record: § 8 "Fine-tuning round 3,
-  Wave A" addendum. Official regen deferred to the end of the round-3
-  session (after Waves B and C).
-- **Viewer fine-tuning round 3, Wave B — hero, TOC, mobile overflow
-  (2026-06-12; template prose/CSS/JS + this README, no generator code
-  change, no version bump):** user-approved changes — hero top-matter
-  mirrors the anatomy page (new `.hero-eyebrow` "Choosing Your Model",
-  h1 on the `.intro-title` clamp idiom + 560px mobile override, mono
-  breadcrumb date line; `.sec-eyebrow` untouched) with the user-approved
-  TLDR voice-anchor typo fix ("is **a** testing suite" — the only prose
-  word change, About ¶¶1–4 byte-identical); TOC restyled to the Learn
-  page doc-toc idiom ("On this page", mono links, hairline rail + teal
-  active bar; rail stays fixed-left; single markup for both widths) with
-  the mobile state now the site's sticky horizontal-scroll bar (edge
-  fades, hidden scrollbars, teal active — was indigo) plus auto-centering
-  integrated into the existing scrollspy (600ms debounce / 1200ms
-  click-lock; no second IntersectionObserver) and geometry wiring
-  (`--toc-scroll-height` in scroll-padding; `NAV_SPY_OFFSET` →
-  `navSpyOffset()`); mobile horizontal overflow fixed (`.logs-layout`
-  stacking + detail `min-width:0` + `.tx-out` wrap, About phases and CvP
-  pricing tables in `.table-wrap`, `body{overflow-x:hidden}` + `.doc`
-  width-discipline backstops — *the body backstop was root-caused and
-  replaced by `overflow-x:clip` on `main.doc` in the round-3 post-review
-  fix pass below; the rest stays*). Mobile sticky TOC behavior added to the
-  § 8 at-deploy visual check list. Full record: § 8 "Fine-tuning round 3,
-  Wave B" addendum. Sanity artifact: `/tmp/viewer_waveB_sanity.html`
-  (38 structural checks pass). Official regen still deferred to the end
-  of the round-3 session.
-- **Viewer fine-tuning round 3, Wave C — prose emphasis + inputs/outputs
-  framing (2026-06-12; template prose/CSS + generator dev-guide comments
-  + this README, no generator code change, no JS change, no version
-  bump):** the site's four-tier inline-emphasis system adopted across the
-  hand-written prose surfaces (strong/b = bright `--text-1` w600; em/i =
-  one-step-down muted italic; rare `.accent-strong` = teal — the site's
-  own body-prose accent-strong, voice/brand emphasis in the chrome
-  family, used exactly 2× page-wide: T1's headline Fable figure and
-  About's "behavioral conformance only"; JS data surfaces and
-  `.crit-pass`/`.crit-fail` spans deliberately untouched), with 15 new
-  thesis-phrase `<b>` wraps at zero word changes and one em→b conversion
-  in the Phases lead; plus the user-approved inputs/outputs framing
-  sentence inserted verbatim into About ¶3 ("Put differently:
-  Orchestration is an inputs-based assessment — if a model gets the
-  process right, downstream results improve — while Analytics will
-  assess outputs directly." — a sanctioned addition to a voice-anchor
-  paragraph, recorded as the second anchor exception; word-level diff vs
-  Wave B shows additions only). Full record: § 8 "Fine-tuning round 3,
-  Wave C" addendum. Sanity artifact: `/tmp/viewer_waveC_sanity.html`
-  (app-JS byte-identical to Wave B's). Official regen still deferred to
-  the end of the round-3 session.
-- **Viewer fine-tuning round 3 — post-review fix pass + official regen
-  (2026-06-13; template CSS/JS + generator dev-guide anchor refresh + this
-  README, no generator code change, no version bump):** three items from
-  the user's visual check of the round-3 artifact — cost header widened to
-  two lines (`.lb-th-cost` 170px cap via a new `thSort()` `extraCls` hook;
-  other headers keep 120px); the Wave B `body{overflow-x:hidden}` backstop
-  root-caused (body overflow propagates to the VIEWPORT per css-overflow-3
-  § 3.3, and `hidden` creates a scroll container there — it broke the
-  sticky topbar during mobile scroll, mis-sized the mobile viewport, and
-  axis-locked desktop scrolling; the site runs the same rule but with zero
-  overflow pressure it is inert there) and replaced by
-  `main.doc{overflow-x:clip}` (the site's `.doc-layout` idiom — never a
-  scroll container, never touches the viewport); nav positioning verified
-  already site-exact (`sticky; top:3px` — site nav is NOT fixed), so no
-  nav change. Sanity artifact overwritten at the user's review location
-  (`research/2026-06-11_FrameworkDev_ViewerPublic/viewer_waveC_sanity.html`);
-  round-3 content re-verified intact (23-span contract, C1, `.to-*` ramp,
-  "On this page", zero unsubstituted tokens). Full record: § 8 round-3
-  post-review fix-pass addendum.
-- **Viewer current:** `daafbench_2026-06-17/` (61 sets / 2,799 runs;
-  2026-06-17; adds GLM 5.2 + Kimi K2.7 Code full batteries),
-  superseding `daafbench_2026-06-13b/` (generator v3.1.1; 53 sets /
-  2,493 runs; 2026-06-13, user-approved) — adds fine-tuning round 3 in
-  full: Wave A (leaderboard column reorder, cost header rename + key-number
-  cells, `.to-*` timeout ramp, wrap-capable headers), Wave B (hero
-  top-matter, doc-toc restyle + mobile sticky TOC bar, mobile overflow
-  fixes), Wave C (prose emphasis tiers, C1 inputs/outputs sentence), and
-  the post-review fix pass (overflow guard `body{overflow-x:hidden}`
-  removed — `main.doc` carries `min-width:0` + `overflow-wrap:break-word`
-  only; history in § 8 fix-pass addendum). Supersedes
-  `daafbench_2026-06-13a/` (fix-pass candidate, `.doc{overflow-x:clip}`
-  still present — removed in _13b after user visual check) which superseded
-  `daafbench_2026-06-13/` (never current — carries Wave B body backstop),
-  which superseded `daafbench_2026-06-12b/` (generator
-  v3.1.1; 53 sets /
-  2,493 runs; 2026-06-12, user-approved for deploy) — added the fine-tuning
-  rounds 1-2 (Verdict removal, Intro TOC label, timed-out leaderboard
-  column, responsive CvP chart + native-tooltip removal, TOC first-click
-  render fix, next-steps + Costs Detail section removals w/ disclosure
-  relocation, TLDR hero + preview-above-takeaways restructure, footnote
-  Details expanders), the website-deploy compat edits (canonical
-  `daaf.openaugments.org/bench/`, short "Choosing Your Model" nav label),
-  and the user's final manual prose touches. That bundle superseded
-  `daafbench_2026-06-12a/` (first official bundle
-  artifact; generator v3.1.1; 53 sets / 2,493 runs; 2026-06-12) — carried
-  everything since `_11k`: the v3.0.0 bundle architecture, the v3.1.0
-  battery-multiplier headline promotion, the 2026-06-12 user hero/takeaways
-  edit + e099982 repair pass (23-span contract), the tone-percolation and
-  site-cohesion template passes, and the 2026-06-12 post-review fix pass
-  cycle 1 (T2 dip sentence, leaderboard component naming, entity sweep,
-  phrasing dedupes, plus v3.1.1's build-time `__HERO_MODELS__`/
-  `__HERO_RUNS__` substitution so the hero's static fallback counts can no
-  longer go stale) — superseded before deploy. That bundle superseded
-  `viewer_2026-06-11k.html` (generator v2.8.1; 53 sets /
-  2,493 runs; battery-cost surfaces converted to relative multipliers vs
-  Opus 4.8 — Costs Detail table, Cost vs. Performance battery axis
-  normalized so Opus 4.8 = 1.0×, disclosure rewrites — plus the second Key
-  Takeaways re-adjudication, 29 `kt-*` spans; § 8 addenda; the last
-  monolith-only official artifact), which superseded `_11j` (v2.8.0; 53 sets / 2,493 runs; first
-  dated viewer with battery costs and the corrected rates, but its takeaway
-  prose and dollar-based battery display predated the re-adjudication and
-  the multiplier decision), which superseded
-  `_11i` (v2.6.0 → v2.7.0;
-  same 52-set / 2,493-run corpus as `_11h`; transcript-keying collision fix —
-  § 8 notable internals: composite `{result_set}/{run_dir}` transcript keys
-  recovered 857 previously-overwritten main transcripts, 2,489 now embedded
-  vs `_11h`'s 1,632, and ended cross-set subagent-transcript misattribution,
-  500 subagent entries vs 201; leaderboard/composite figures unchanged from
-  `_11h`; its takeaway sentences were still those adjudicated on the 50-set
-  corpus — resolved by the second re-adjudication above), which superseded
-  `_11h` (v2.6.0; 52 sets / 2,493 runs; added the two Anthropic
-  Phase 4 rep-completion sets `20260611_050913`/`_065633`; bare run-dir
-  transcript keys), which superseded
-  `_11g` (v2.6.0; 50 sets / 2,283 runs; five-component
-  composite; embedded the post-rescue corpus
-  (dispatch-recovery rescue rescore, § 6) AND the post-rescue
-  re-adjudicated Key Takeaways (T4 reframed around DeepSeek V4 Pro
-  leading the open-weight pack into the frontier tier, with a DS Pro
-  timeout-rate caveat; T2's tier-drop sentence retired; T1/T3/T5/T6
-  unchanged — § 8 addendum item 2)), which had superseded
-  `_11e` (pre-rescue scores) and `_11f` (post-rescue scores
-  but pre-re-adjudication takeaway prose, generated before the two
-  throwaway graceful-kill validation sets were deleted), which had
-  superseded `_11d.html`/v2.5.0, `_10s.html`/v2.4.0, and intermediates
-  `_11a`-`_11c` (`_11c` differed only in doc-consolidation comment
-  repoints, rendered output identical, while a review pass caught stale
-  four-component prose in the leaderboard lead, hero verdict, and P4
-  deep-dive explainer that shipped into `_11a`/`_11b`). Earlier dated
-  viewers superseded — retention/deletion is pending housekeeping (user
-  decision; user deletes).
-- **P4 joined the leaderboard composite + tier bands — RESOLVED (2026-06-11
-  session; user-approved 2026-06-10).** `skill_routing` added to
-  `COMPOSITE_GIDS` (generator v2.5.0); composite is now the unweighted mean
-  of five components. Models lacking a component score on their available
-  components with the leaderboard "partial" disclosure chip (existing
-  mechanism; on the current corpus all 17 models have all five components,
-  so no partial markers appear). Effects (point-in-time on the 2026-06-11
-  pre-rep-completion corpus — composite figures superseded by the Phase 4
-  Anthropic rep-completion bullet above): the tier **gap rule** now yields
-  5 tiers natively (quartile fallback no longer triggers); Fable 5 is sole
-  T1 (0.948); Haiku 4.5 drops to T3 (P4 perfect rate 0.00); global weakest
-  criterion is now `expected_refs_read` (25%, P4). Same dispatch: § 8 pin
-  sentence rewritten (+ phase-filter mention), redesign-plan decision 1
-  superseded + its addendum rewritten + header version note (that plan doc
-  was later absorbed and deleted — see the consolidation bullet below),
-  generator
-  docstring/console "Hard"→"Critical" labels, dev-guide anchors fixed +
-  `phaseSpan`/`ab-pX-cases` registration step added, template tooltip
-  double-space fixed.
-- **Transient docs consolidated — RESOLVED (2026-06-11 session).** This
-  README is now the single source of truth: `VIEWER_REDESIGN_PLAN.md`,
-  `PHASE4_SKILL_ROUTING_PLAN.md`, `PHASE4_ROUTING_FIX_SCOPING_20260610.md`,
-  and `PHASE4_TRANSCRIPT_REVIEW_20260610.md` were absorbed (durable content
-  → § 2 per-case ground-truth table + agent-disallow tradeoff, § 5
-  routing-fix gloss, § 6 Phase 4 scoring rationale + two-hop-decay record,
-  § 8 "Viewer design record" subsection, § 12 expansion-reserve/fast-follow/
-  open-follow-up bullets) and deleted (user decision, absorb-then-delete).
-  All code/doc citations repointed to README sections (generator, template,
-  `run_skill_routing.py`, `scorers/deterministic/skill_routing.py`);
-  `archive/` and `research/2026-05-01_Benchmark_Testing/
-  Benchmark_System_Reference.md` deliberately untouched.
-- **Open follow-ups from the Phase 4 routing-fix scoping (2026-06-10):**
-  (1) frontmatter description budget — svy (506 ch), polars (416), marimo
-  (486) exceed the 250-char limit documented in skill-authoring, yet the live
-  environment shows full descriptions; verify which claim is stale before
-  fixing. (2) "For implementation syntax" framing persists in ~12
-  data-scientist reference-file headers (descriptive-analysis.md:3,571;
-  statistical-modeling.md:3; causal-inference.md:5-6; survey-analysis.md:7;
-  exploratory-unsupervised.md:3,261; supervised-ml.md:3,188,230,354;
-  geospatial-operations.md:5) — the Session 4 fix targeted SKILL.md + the
-  mode doc; this sweep was recommended but not executed. Pairs with the
-  data-scientist SKILL.md:353 residual in the "Optional" bullet below.
-  (3) Maintainer note: Phase 4 criterion
-  *emission* is hardcoded in the scorer; the cases' `hard_/soft_requirements`
-  lists drive viewer display only and must stay synchronized but do not drive
-  scoring.
-- **Optional:** golden content hash in `manifest.json` (§ 11 item 8); review
-  of the data-scientist `SKILL.md:353` "Tool-specific syntax" branch label
-  (accepted residual unless transcripts show models exploiting it).
+#### Viewer current
+
+`daafbench_2026-06-17/` (61 sets / 2,799 runs; generator v3.1.1).
+
+#### Completed data collection
+
+- **Phase 4 baseline matrix — COMPLETE.** All 19 models × 3 reps on
+  fresh goldens. Result sets `20260610_184022` through `_214502` (10 OR
+  + 7 Anthropic rep 1), `20260611_050913`/`_065633` (Anthropic reps 2-3).
+  Key finding: Fable 5 sole T1 (0.939 composite); two-hop decay is the
+  dominant failure mode — models name the right skill in prose but defer
+  the Skill tool call.
+- **GLM 5.2 full 4-phase battery — COMPLETE (2026-06-16).** 153 runs.
+  Composite 0.782 (T2). Key gains over GLM 5.1: classification +0.16,
+  dispatch +0.16; routing flat. Battery cost 0.26× Opus 4.8.
+- **Kimi K2.7 Code full 4-phase battery — COMPLETE (2026-06-16).** 162
+  runs. Composite 0.623 (T3).
+- **Reconciliation snapshot (2026-06-16):**
+  `derived/openrouter_reconciliation_2026-06-16.json`. GLM 5.2 obs/pred
+  billing ratio 0.70 (caching benefit from sequential runs).
+
+#### Completed infrastructure
+
+- **PHASE4_TOKENS recalibration:** provider-split profiles; validated
+  0.90x aggregate (§ 7).
+- **Pricing corrections:** four models corrected in `models.yaml` after
+  billing reconciliation (§ 7).
+- **Cache-write billing:** `compute_cost()` bills `cache_creation_tokens`
+  at 1.25× input rate (§ 7).
+- **Dispatch-recovery fallback:** 83 timed-out Phase 3 runs rescued from
+  subagent transcripts (§ 6).
+- **Historical corpus normalized** to current criteria scale (§ 6).
+- **P4 joins composite:** five-component leaderboard (§ 8).
+
+#### Open items
+
+- **Harness gap (bookmarked): transcript-less timeout runs.** Original 4
+  runs (`pc-03`/`pc-07` × Fable 5) moved to `removed_runs/` and replaced
+  in set `20260611_124829`. Root cause (timeout-kill before CLI emits
+  session metadata) is mitigated by the executor graceful-kill ladder
+  (§ 9, § 11 item 9) but the confirmation pass against
+  `executor.py`/`collector.py` transcript-resolution logic remains open.
+- **Gemma 4 31B kept IN by user decision:** silent stalls are
+  model-attributable (18.5% rate for 31B, 9.3% for 26B — a Gemma-subfamily
+  defect, not Google-family). Stalls score as failed runs.
+- **Timeout stays 300s for mixed/OpenRouter batches** (p99=252s, max=271s).
+  Anthropic-only batches safe at 150s. Better stall remedy: harness
+  first-activity detector (~90s → kill).
+- **Open follow-ups from Phase 4 routing-fix scoping:**
+  (1) frontmatter description budget — svy/polars/marimo exceed the
+  250-char limit documented in skill-authoring; verify which claim is
+  stale. (2) "For implementation syntax" framing persists in ~12
+  data-scientist reference-file headers — sweep recommended but not
+  executed. (3) Maintainer note: Phase 4 criterion *emission* is hardcoded
+  in the scorer; the cases' `hard_/soft_requirements` lists drive viewer
+  display only.
+- **Optional:** golden content hash in `manifest.json` (§ 11 item 8);
+  review of `data-scientist SKILL.md:353` "Tool-specific syntax" branch
+  label.
 
 ## 13. AI Disclosure
 
