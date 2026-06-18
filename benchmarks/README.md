@@ -513,11 +513,25 @@ to run the full benchmark battery once** (51 distinct probes), displayed as
 Per model: est_cost = (input tokens × list input rate + output tokens ×
 list output rate) / 1e6, on an **uncached basis** (every token at full list
 rates, no cache discounts — caching schemes differ across providers, so
-uncached is the only like-for-like comparison). Token mixes: Anthropic
-models from corpus `result.json`; OpenRouter models from the reconciliation
-snapshot (`derived/openrouter_reconciliation_*.json`). A generation-time
-staleness guard compares corpus run counts to the snapshot and warns on
-drift.
+uncached is the only like-for-like comparison). Token mixes are averaged
+over **non-timed-out runs only** (timed-out runs produce zeroed tokens and
+are excluded from both providers' averages; timeout rates are separately
+disclosed on the leaderboard). Anthropic token mixes come from corpus
+`result.json`; OpenRouter from the reconciliation snapshot
+(`derived/openrouter_reconciliation_*.json`). A generation-time staleness
+guard compares corpus run counts to the snapshot and warns on drift.
+
+**Battery timeout-exclusion fix (2026-06-18, generator v3.1.2).** Prior
+to this fix, Anthropic token averages included timed-out runs (zeroed
+tokens) in the denominator, depressing per-run averages by each model's
+timeout share (4–9% for Anthropic models). OpenRouter averages were
+naturally unaffected because the billing reconciliation's `n_covered_runs`
+denominator excludes timed-out runs that generated no billing records. The
+fix filters `timed_out == true` runs from Anthropic aggregation, making
+both providers consistent. Impact: Anthropic battery multipliers increase
+slightly (the reference Opus 4.8 and all Anthropic models shift together,
+so within-Anthropic ratios are minimally affected; cross-provider
+comparisons become ~4–9% more accurate).
 
 **Data ground rules.** Run-level `result.json` is ground truth — viewer
 aggregates come from loaded runs, not `summary.json` totals. Timed-out runs
@@ -789,7 +803,9 @@ records live in the sections cited.
 
 #### Viewer current
 
-`daafbench_2026-06-17/` (61 sets / 2,799 runs; generator v3.1.1).
+`viewer_2026-06-18b.html` (61 sets / 2,799 runs; generator v3.1.2).
+Battery timeout-exclusion fix (§ 8): Anthropic token averages now exclude
+timed-out runs, matching OpenRouter's natural exclusion.
 
 #### Completed data collection
 

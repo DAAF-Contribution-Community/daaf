@@ -795,10 +795,12 @@ def load_runs(results_dir, result_sets, cases):
             runs.append(run)
 
             # Battery-cost token aggregation (Anthropic provider only; see
-            # docstring). Timed-out runs zero their token fields, so they
-            # are included in n and depress the mean — disclosed in the
-            # viewer via timeout_by_model.
-            if run["provider"] == "anthropic":
+            # docstring). Timed-out runs are excluded (v3.1.2): they zero
+            # their token fields and depressed the mean asymmetrically vs
+            # OpenRouter (whose billing-snapshot denominator naturally
+            # excludes timeouts). Both providers now average over non-
+            # timed-out runs only; timeout rates are separately disclosed.
+            if run["provider"] == "anthropic" and not run["timed_out"]:
                 agg = anth_token_totals.setdefault(run["model"], {
                     "n": 0, "input": 0, "output": 0,
                     "cache_read": 0, "cache_creation": 0,
@@ -1208,7 +1210,7 @@ def build_data_bundle(result_sets, cases, runs, transcripts, subagent_transcript
     )
     bundle = {
         "generated_at": datetime.now(timezone.utc).isoformat(),
-        "generator_version": "3.1.1",
+        "generator_version": "3.1.2",
         "result_sets": sorted_result_sets,
         "cases": cases,
         "runs": runs,

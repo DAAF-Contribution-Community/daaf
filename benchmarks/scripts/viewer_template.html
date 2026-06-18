@@ -2932,8 +2932,8 @@ function batteryDisclosureHtml(){
     'not have \u2014 and the relative figures can shift as providers reprice tokens and as caching mechanics '+
     'interact with each model\u2019s behavior.'+
     (anyStale?' A \u26a0 marker (here and on the leaderboard) means that model\u2019s token-mix snapshot predates its newest corpus runs.':'')+
-    ' And read high-timeout models low: a run cut off at the wall clock stopped consuming tokens, so high '+
-    'timed-out shares (see the leaderboard) depress these estimates.</p>';
+    ' Timed-out runs are excluded from both providers\u2019 token averages, so the estimates reflect successful-run costs; '+
+    'timeout rates are shown separately on the leaderboard.</p>';
 }
 
 /* Published list-price table (relocated from the removed Costs Detail
