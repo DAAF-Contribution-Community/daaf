@@ -236,6 +236,7 @@ Context management is NEVER about reducing the quality or completeness of work. 
 | Layer | Mechanism | What It Covers |
 |-------|-----------|----------------|
 | **PreToolUse Hook** | `bash-safety.sh` — exit code 2 blocks execution | Destructive commands, privilege escalation, pipe-to-shell, data exfiltration, container escape |
+| **PreToolUse Hook** | `enforce-single-command.sh` — exit code 2 blocks execution | Blocks command chaining (`&&`, `||`, `;`, newline-separated commands). Quote-aware and nesting-aware scanner with compound-command exception. Enforces the "One Command Per Call" rule. |
 | **PreToolUse Hook (agent-scoped)** | `enforce-file-first.sh` — registered in agent frontmatter for coding agents only (research-executor, code-reviewer, debugger, data-ingest) | Blocks direct `python`/`python3` execution; enforces `run_with_capture.sh` wrapper for audit trail. Not active for the orchestrator or read-only agents. |
 | **Permission Deny Rules** | `settings.json` deny list | `rm -rf`, `sudo`, `docker`, credential file reads/writes, audit log writes/edits |
 | **Permission Allow List** | `settings.json` allow list | Only approved tools auto-execute; everything else prompts |
