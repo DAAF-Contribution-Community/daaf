@@ -168,7 +168,13 @@ What task are you performing?
 │       └─ Index construction via PCA → also read ./references/descriptive-analysis.md
 ├─ Causal / quasi-experimental analysis
 │   └─ FIRST read ./references/causal-inference.md
-│       THEN load appropriate library skill (pyfixest for DiD/IV/FE, linearmodels for panel RE/IV-GMM, statsmodels for RD/matching)
+│       THEN load appropriate library skill (pyfixest for DiD/IV/FE, linearmodels for panel RE/IV-GMM)
+│       For RD implementation (rdrobust) → also read ./references/causal-rd.md
+│       For matching/IPW/AIPW implementation → also read ./references/causal-matching.md
+│       For Heckman selection correction → also read ./references/causal-selection.md
+│       For synthetic control implementation → also read ./references/causal-synth.md
+│       For causal ML (DML, CATE, meta-learners, causal forests) → also read ./references/causal-ml.md
+│       For mediation analysis (mechanisms, NDE/NIE) → also read ./references/causal-mediation.md
 ├─ Complex survey data analysis (NHANES, ACS PUMS, CPS, ECLS-K, MEPS, etc.)
 │   └─ FIRST read ./references/survey-analysis.md (methodology, pitfalls, weight selection)
 │       THEN load `svy` skill
@@ -220,6 +226,12 @@ This skill assumes familiarity with:
 | `descriptive-analysis.md` | Summary statistics, subgroups, distributions, decompositions, weighting, inequality, correlation, missing data | Stage 8 analysis when the research contribution is descriptive |
 | `statistical-modeling.md` | Model selection, assumption checking, robust inference, coefficient interpretation, robustness checks | Stage 8.1 analysis involving regression, modeling, or hypothesis testing. For formal time-series estimation (ARIMA/SARIMAX, VAR, forecasting), load the `statsmodels` skill directly |
 | `causal-inference.md` | Causal identification, DAGs, RCTs, IV, RD, DiD, synthetic control, matching | Stage 8.1 analysis requiring causal claims |
+| `causal-rd.md` | Regression discontinuity implementation: rdrobust API (sharp, fuzzy, kink), bandwidth selection, manipulation testing, covariate balance, visualization, diagnostics | Stage 8.1 analysis using regression discontinuity designs |
+| `causal-matching.md` | Matching (NN, caliper, Mahalanobis, exact, CEM), IPW, doubly robust/AIPW implementation with sklearn + statsmodels + scipy + polars; balance diagnostics; inference | Stage 8.1 analysis using matching, propensity scores, IPW, or AIPW methods |
+| `causal-synth.md` | Synthetic control implementation: manual scipy, pysyncon, synthdid, scpi-pkg, CausalPy; inference methods; SDID; gotchas | Stage 8.1 analysis using synthetic control or SDID methods |
+| `causal-ml.md` | Causal ML implementation: manual DML (partially linear + interactive/AIPW) with sklearn + statsmodels + pyfixest; S/T-learner (manual); EconML patterns (LinearDML, CausalForestDML, meta-learners, DR-learner); DoubleML patterns (PLR, IRM, sensitivity); causal forests (EconML + R grf); CATE diagnostics (overlap, GATES, BLP); gotchas | Stage 8.1 analysis using DML, CATE estimation, meta-learners, or causal forests |
+| `causal-selection.md` | Heckman selection model implementation: manual two-step (Probit + OLS + IMR), FIML via scipy, bootstrap inference, exclusion restriction diagnostics, IMR collinearity checks; no statsmodels.heckman module exists | Stage 8.1 analysis where the outcome is observed only for a non-random subset (sample selection bias) |
+| `causal-mediation.md` | Causal mediation analysis: statsmodels Mediation (Imai et al. 2010), manual bootstrap, NDE/NIE decomposition, moderated mediation, multiple mediators, sensitivity analysis (E-value), gotchas | Stage 8.1 analysis decomposing causal effects into direct and indirect pathways (mechanisms) |
 | `survey-analysis.md` | Complex survey methodology: design anatomy, weight selection, variance estimation, domain estimation, plausible values, survey-weighted regression, federal survey reference table, pitfalls checklist | **Any task involving data from a complex probability survey** (NHANES, ACS PUMS, CPS, ECLS-K, HSLS, MEPS, NAEP, etc.) |
 | `geospatial-analysis.md` | Spatial thinking, MAUP, CRS, methods decision guide, autocorrelation, regression | **Any task involving geographic/spatial data** |
 | `geospatial-operations.md` | Spatial joins, weights, LISA interpretation, interpolation, zonal statistics, geometry validity | **Planning or executing spatial operations (joins, overlays, weights, interpolation, zonal statistics), or interpreting spatial statistics results (Moran's I, LISA)** |
@@ -389,15 +401,26 @@ What variation identifies the causal effect?
 ├─ Random assignment → RCT analysis
 │   → ./references/causal-inference.md
 ├─ I can control for all confounders → Regression / matching
-│   → ./references/causal-inference.md
+│   → ./references/causal-inference.md (methodology)
+│   → ./references/causal-matching.md (implementation: PSM, IPW, AIPW, balance)
 ├─ There's a valid instrument → IV / 2SLS
 │   → ./references/causal-inference.md
 ├─ There's a score cutoff → Regression discontinuity
-│   → ./references/causal-inference.md
+│   → ./references/causal-inference.md (methodology)
+│   → ./references/causal-rd.md (implementation: rdrobust, bandwidth, diagnostics)
 ├─ Policy changed for some groups → Difference-in-differences
 │   → ./references/causal-inference.md
 ├─ Few treated units, long pre-period → Synthetic control
-│   → ./references/causal-inference.md
+│   → ./references/causal-inference.md (methodology)
+│   → ./references/causal-synth.md (implementation, packages, inference)
+├─ Outcome only observed for a selected subset → Heckman selection correction
+│   → ./references/causal-selection.md (implementation: manual Probit+OLS, FIML, bootstrap)
+├─ I want to understand the mechanism (T→M→Y) → Mediation analysis
+│   → ./references/causal-mediation.md (implementation: statsmodels Mediation, bootstrap, sensitivity)
+├─ Many confounders / want ML nuisance estimation → DML
+│   → ./references/causal-ml.md (manual DML, EconML, DoubleML)
+├─ Want to explore treatment effect heterogeneity → CATE / causal forests
+│   → ./references/causal-ml.md (meta-learners, causal forests, diagnostics)
 └─ Not sure → Start with a DAG
     → ./references/causal-inference.md
 ```
@@ -758,10 +781,51 @@ Use markdown cells liberally:
 | Potential outcomes framework | `./references/causal-inference.md` |
 | Randomized controlled trials (RCTs) | `./references/causal-inference.md` |
 | Instrumental variables (IV / 2SLS) | `./references/causal-inference.md` |
-| Regression discontinuity (RD) | `./references/causal-inference.md` |
+| Regression discontinuity methodology (RD) | `./references/causal-inference.md` |
+| RD implementation (rdrobust, sharp, fuzzy, kink) | `./references/causal-rd.md` |
+| RD bandwidth selection (MSE-optimal, CER-optimal) | `./references/causal-rd.md` |
+| RD diagnostics (manipulation testing, covariate balance, placebo cutoffs) | `./references/causal-rd.md` |
+| RD visualization (rdplot workaround, manual plotting) | `./references/causal-rd.md` |
 | Difference-in-differences (DiD, modern methods) | `./references/causal-inference.md` |
-| Synthetic control methods | `./references/causal-inference.md` |
-| Matching and propensity scores | `./references/causal-inference.md` |
+| Synthetic control methods (methodology) | `./references/causal-inference.md` |
+| Synthetic control implementation (scipy, pysyncon, scpi-pkg) | `./references/causal-synth.md` |
+| Synthetic difference-in-differences (SDID, synthdid) | `./references/causal-synth.md` |
+| SC inference (placebos, RMSPE ratios, conformal, prediction intervals) | `./references/causal-synth.md` |
+| SC gotchas (overfitting, interpolation bias, donor pool, SUTVA) | `./references/causal-synth.md` |
+| Matching and propensity scores (methodology) | `./references/causal-inference.md` |
+| Matching implementation (NN, caliper, Mahalanobis, exact, CEM) | `./references/causal-matching.md` |
+| Propensity score estimation (sklearn LogisticRegression) | `./references/causal-matching.md` |
+| Inverse probability weighting (IPW, stabilized, overlap weights) | `./references/causal-matching.md` |
+| Doubly robust / AIPW estimation (cross-fitted) | `./references/causal-matching.md` |
+| Balance diagnostics (SMD, variance ratios, Love plots, KS tests) | `./references/causal-matching.md` |
+| Inference after matching (bootstrap validity, Abadie-Imbens SE) | `./references/causal-matching.md` |
+| Sample selection bias (Heckman correction, Heckit) | `./references/causal-selection.md` |
+| Heckman two-step implementation (Probit + OLS + IMR) | `./references/causal-selection.md` |
+| Heckman FIML (joint maximum likelihood, scipy.optimize) | `./references/causal-selection.md` |
+| Inverse Mills ratio (computation, collinearity diagnostics) | `./references/causal-selection.md` |
+| Exclusion restriction (Heckman identification, strength tests) | `./references/causal-selection.md` |
+| Bootstrap inference for two-step estimators | `./references/causal-selection.md` |
+| sm.heckman.Heckman does not exist (statsmodels has no Heckman module) | `./references/causal-selection.md` |
+| Causal mediation analysis (NDE, NIE, ACME, mechanisms) | `./references/causal-mediation.md` |
+| Mediation implementation (statsmodels Mediation, bootstrap) | `./references/causal-mediation.md` |
+| Sequential ignorability assumption | `./references/causal-mediation.md` |
+| Moderated mediation (conditional indirect effects) | `./references/causal-mediation.md` |
+| Multiple mediators (parallel, sequential) | `./references/causal-mediation.md` |
+| Mediation sensitivity analysis (E-value, coefficient stability) | `./references/causal-mediation.md` |
+| Baron-Kenny vs. modern mediation framework | `./references/causal-mediation.md` |
+| Double/debiased machine learning (DML, methodology) | `./references/causal-inference.md` |
+| DML implementation (manual partially linear model, cross-fitting) | `./references/causal-ml.md` |
+| DML interactive model (AIPW-based ATE) | `./references/causal-ml.md` |
+| DML final stage with pyfixest (clustered SEs) | `./references/causal-ml.md` |
+| DML nuisance model sensitivity (robustness check) | `./references/causal-ml.md` |
+| CATE estimation (conditional average treatment effects) | `./references/causal-ml.md` |
+| Meta-learners (S-learner, T-learner, X-learner, DR-learner) | `./references/causal-ml.md` |
+| S-learner and T-learner manual implementation | `./references/causal-ml.md` |
+| EconML (LinearDML, CausalForestDML, meta-learners) | `./references/causal-ml.md` |
+| DoubleML (PLR, IRM, sensitivity analysis) | `./references/causal-ml.md` |
+| Causal forests (EconML CausalForestDML, R grf) | `./references/causal-ml.md` |
+| CATE diagnostics (GATES, BLP test, overlap check) | `./references/causal-ml.md` |
+| Causal ML gotchas (cross-fitting, overlap, identification) | `./references/causal-ml.md` |
 | Complex survey design (strata, PSUs, clustering) | `./references/survey-analysis.md` |
 | Survey weight selection and types | `./references/survey-analysis.md` |
 | Variance estimation (Taylor linearization, BRR, jackknife) | `./references/survey-analysis.md` |

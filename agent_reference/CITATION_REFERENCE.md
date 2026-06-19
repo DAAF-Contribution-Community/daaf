@@ -57,7 +57,13 @@ Cite the **primary** citation per method — the one paper you would cite in a j
 | IV (weak instruments) | Staiger, D. & Stock, J.H. (1997). "Instrumental Variables Regression with Weak Instruments." *Econometrica*, 65(3), 557-586. | IV estimation with first-stage F-test |
 | RD design | Cattaneo, M.D., Idrobo, N., & Titiunik, R. (2020). *A Practical Introduction to Regression Discontinuity Designs.* Cambridge University Press. | RD is primary identification strategy |
 | Synthetic control | Abadie, A., Diamond, A., & Hainmueller, J. (2010). "Synthetic Control Methods for Comparative Case Studies." *Journal of the American Statistical Association*, 105(490), 493-505. | Synthetic control method used |
+| Synthetic difference-in-differences | Arkhangelsky, D., Athey, S., Hirshberg, D.A., Imbens, G.W., & Wager, S. (2021). "Synthetic Difference-in-Differences." *American Economic Review*, 111(12), 4088-4118. | SDID estimator used (distinct from classical SC or standard DiD) |
 | Propensity score | Rosenbaum, P.R. & Rubin, D.B. (1983). "The Central Role of the Propensity Score in Observational Studies for Causal Effects." *Biometrika*, 70(1), 41-55. | Propensity score matching or weighting used |
+| Heckman selection correction | Heckman, J.J. (1979). "Sample Selection Bias as a Specification Error." *Econometrica*, 47(1), 153-162. | Heckman two-step or FIML selection correction used |
+| Causal mediation (ACME/NDE/NIE) | Imai, K., Keele, L., & Tingley, D. (2010). "A General Approach to Causal Mediation Analysis." *Psychological Methods*, 15(4), 309-334. | Causal mediation analysis (ACME/ADE decomposition) performed |
+| AIPW / doubly robust estimation | Robins, J.M., Rotnitzky, A., & Zhao, L.P. (1994). "Estimation of Regression Coefficients When Some Regressors Are Not Always Observed." *Journal of the American Statistical Association*, 89(427), 846-866. | Augmented IPW or doubly robust estimator used |
+| Double/debiased ML (DML) | Chernozhukov, V., Chetverikov, D., Demirer, M., Duflo, E., Hansen, C., Newey, W., & Robins, J. (2018). "Double/Debiased Machine Learning for Treatment and Structural Parameters." *Econometrics Journal*, 21(1), C1-C68. | DML estimator used for ATE estimation with ML nuisance models |
+| Meta-learners (CATE) | Künzel, S.R., Sekhon, J.S., Bickel, P.J., & Yu, B. (2019). "Metalearners for Estimating Heterogeneous Treatment Effects Using Machine Learning." *PNAS*, 116(10), 4156-4165. | S/T/X/R/DR-learner used for heterogeneous treatment effect estimation |
 
 #### Survey Analysis
 
