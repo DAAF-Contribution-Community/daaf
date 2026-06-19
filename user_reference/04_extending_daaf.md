@@ -41,7 +41,7 @@ This separation is what makes DAAF extensible without being fragile. When you wa
 | **Methodology** | Knowledge about a statistical or analytical method | Framework Development Mode | A new `methodology-skill` |
 | **Domain expertise** | Knowledge about a content area or field | Framework Development Mode | A new `context-skill` |
 
-The most common extension path by far -- and the one I'll spend the most time on in this guide -- is adding new data sources. DAAF has a dedicated engagement mode for this purpose: **Data Onboarding Mode**, which orchestrates a thorough profiling protocol and generates the skill documentation for you. You still need to review its output (this is *always* true with DAAF), but it should dramatically reduce the manual effort involved.
+The most common extension path by far -- and the one I'll spend the most time on in this guide -- is adding new data sources. DAAF has a dedicated engagement mode for this purpose: **Data Onboarding Mode**, which orchestrates a thorough profiling protocol and generates the skill documentation for you. You still need to review its output (this is *always* true with DAAF), but it produces a more systematic and thorough profile than is practical to create by hand -- including cross-checks that are valuable but tedious to do manually.
 
 For methodology and domain expertise skills, the process is lighter-weight -- you ask DAAF to use the `skill-authoring` skill, point it at documentation or literature to research, and it drafts a skill for you to review and refine. I'll cover that process too, but it's more straightforward than data onboarding.
 

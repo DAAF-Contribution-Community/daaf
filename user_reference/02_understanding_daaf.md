@@ -320,7 +320,7 @@ And here's what each of them do in more detail, and how the workflow works so yo
 
 **Trigger words:** "analyze," "research," "create," "generate," "what's the relationship between..."
 
-**What it is:** This is where DAAF will take your research question and run a complete analytic workflow across 5 phases: exploring available data, creating a detailed research plan, fetching and cleaning data, running analyses and creating visualizations, and delivering a comprehensive report with all supporting artifacts. This is what DAAF was fundamentally built to do as its main use-case (not to say the other modes aren't also very useful!).
+**What it is:** This is where you and DAAF collaborate on a complete analytic workflow across 5 phases: exploring available data, creating a detailed research plan, fetching and cleaning data, running analyses and creating visualizations, and delivering a comprehensive report with all supporting artifacts. This is what DAAF was fundamentally built to do as its main use-case (not to say the other modes aren't also very useful!).
 
 **What you get:**
 - A detailed research plan documenting every methodological decision
@@ -331,7 +331,7 @@ And here's what each of them do in more detail, and how the workflow works so yo
 - A stakeholder report synthesizing key findings, methodology, and limitations
 - A lessons-learned document with data and process insights
 
-**Expected time investment:** About 5-10 minutes of active engagement time spread across four "check-in" points where DAAF pauses for your review and approval, a few hours of DAAF working independently in the background, and then whatever time you (rightfully, importantly) dedicate to reviewing the final outputs. And, of course, whatever API fees you incur along the way. Full duration will depend heavily on how complex your query is: primarily how many scripts it needs to write, rewrite, and QA. Plan accordingly!
+**Expected time investment:** About 20-30 minutes of active engagement time spread across four "check-in" points where DAAF pauses for your review and approval, a few hours of DAAF working independently in the background, and then whatever time you (rightfully, importantly) dedicate to reviewing the final outputs. And, of course, whatever API fees you incur along the way. Full duration will depend heavily on how complex your query is: primarily how many scripts it needs to write, rewrite, and QA. Plan accordingly!
 
 **When to use it:** When you have a genuine research question you want to explore with data. It can be as simple as "How has enrollment in rural schools changed over the past decade?" or as complex as "What's the relationship between school-level poverty, access to advanced coursework, and disciplinary disparities, controlling for school size and urbanicity?" DAAF will scope accordingly.
 

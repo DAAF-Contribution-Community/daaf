@@ -18,7 +18,7 @@ LLM-based AI assistants are becoming **increasingly capable**, but they are alwa
 
 **Yes** -- but only with the right guidance, right guardrails, and in expert hands to direct all core decisions and verify all key outputs.
 
-Enter <a href="https://daaf.openaugments.org"><strong>**DAAF, the Data Analyst Augmentation Framework**</strong></a>. DAAF is a free and open-source instructions framework for [Claude Code](https://docs.anthropic.com/en/docs/claude-code) that helps skilled researchers rapidly scale their expertise and accelerate data analysis across any domain with AI assistance -- without sacrificing the transparency, rigor, or reproducibility that good science demands. DAAF sits between you and Claude Code to automatically and consistently help Claude think more like a responsible and rigorous researcher by:
+Enter <a href="https://daaf.openaugments.org"><strong>**DAAF, the Data Analyst Augmentation Framework**</strong></a>. DAAF is a free and open-source instructions framework for [Claude Code](https://docs.anthropic.com/en/docs/claude-code) that helps skilled researchers deepen and extend their expertise across any domain of data analysis with AI assistance -- while enhancing the transparency, rigor, and reproducibility that good science demands. DAAF sits between you and Claude Code to automatically and consistently help Claude think more like a responsible and rigorous researcher by:
 
 - Enforcing strict auditability and reproducibility standards for all work, thus allowing you to **verify everything** Claude does on your behalf
 - Preventing potentially dangerous unintended file access and editing, by sandboxing Claude with strict protections and logging traces
@@ -87,7 +87,7 @@ DAAF explicitly embraces the fact that LLM research assistants will never be per
 
 - **Transparent.** Because LLMs will always be susceptible to lying, hallucinating, and cutting corners, DAAF forces Claude Code to operate using file-first principles: all data operations are drafted and run as actual Python files, all reasoning is stored as verbose comments, plan documents, and structured code output that you can review and intervene on at any time.
 - **Scalable.** Because most LLMs are trained as generalists susceptible to sycophancy and overconfidence, DAAF provides a comprehensive and extensible set of explicit instructions and standards enforcing highly opinionated best practices (via agent and skill documents), injecting the right information at the right time for any specific task -- so you don't have to hold its hand every time to get good output.
-- **Rigorous.** Because LLMs can work at speeds orders of magnitude faster than humans, DAAF's workflows force Claude to be meticulous, cautious, self-checking, and extremely thorough. Code is broken into hyper-atomic steps and adversarially reviewed. Plans and reports are informed by deep-dives into actual data documentation and actual exploratory analyses, then also reviewed by equally informed counterparts.
+- **Rigorous.** Because LLMs can perform extensive computation on your behalf, DAAF's workflows force Claude to be meticulous, cautious, self-checking, and extremely thorough. Code is broken into hyper-atomic steps and adversarially reviewed. Plans and reports are informed by deep-dives into actual data documentation and actual exploratory analyses, then also reviewed by equally informed counterparts.
 - **Reproducible.** Because good science needs to be reproducible, every single data file, script, and output is automatically stored throughout the entire process. You **do not** have to just trust DAAF or Claude Code -- you can and should verify everything yourself.
 - **Responsible.** Because AI-assisted research demands accountability, DAAF ensures that data sources are properly cited, AI assistance is transparently disclosed via the [GUIDE-LLM](https://llm-checklist.com/) reporting standard, data usage terms are respected, limitations are honestly acknowledged, and the human researcher's judgment remains the final authority on all analytical decisions.
 
@@ -105,7 +105,7 @@ When you open DAAF, just begin by asking it any question or for support with any
 
 **Data Lookup:** Your personal data documentation oracle
 - *What you do:* Ask DAAF a specific question about any dataset it has access to
-- *What DAAF does:* Loads the data documentation Skill and reviews all relevant reference information in seconds
+- *What DAAF does:* Loads the data documentation Skill and synthesizes all relevant reference information into a precise, grounded answer in seconds
 - *What you get:* A precise, documentation-informed answer with opportunities to dig deeper
 - *Example:* Can you give me a sense of what the year variables actually indicate in the various IPEDS datasets?
 
@@ -204,7 +204,7 @@ DAAF is in constant development as AI advances continue, and as more and more us
 
 - **Bug reports and session learnings** -- even a quick issue with context is extremely valuable. Every completed Full Pipeline project produces a LEARNINGS.md file with actionable improvements that can be fed back into the framework for improvements
 - **New data sources and methodological tools** -- use Data Onboarding mode to profile new datasets, or use the Framework Development mode to develop new statistical methods and domain expertise Skills to share back with the community.
-- **Workflow improvements and documentation** -- suggestions for balancing quality with efficiency, clearer onboarding, and better documentation are all welcome.
+- **Workflow improvements and documentation** -- suggestions for improving quality, reducing friction, clearer onboarding, and better documentation are all welcome.
 - **Platform ports** -- the vast majority of DAAF's tooling can be ported to other agentic coding harnesses (Gemini CLI, Codex, OpenCode, etc.) with a good bit of elbow-grease, but it requires people who know the real ins-and-outs of these various harnesses' idiosyncrasies.
 
 See [**Contributing to DAAF**](CONTRIBUTING.md) for the full contribution guide and [**Extending DAAF**](user_reference/04_extending_daaf.md) for adding new capabilities for your own use.
@@ -268,7 +268,7 @@ For the full philosophy behind this decision, see [FAQ: Philosophy](user_referen
 
 ## About the Author
 
-Hello! My name is Brian Heseung Kim ([@brhkim](https://github.com/brhkim)). I have been at the frontier of finding rigorous, careful, and auditable ways of using LLMs and their predecessors in social science research since roughly 2018. I focused my [entire Ph.D. dissertation](https://libraetd.lib.virginia.edu/public_view/nz806060w) on teaching others how to use these tools responsibly (finished in mid-2022, months before ChatGPT was released), and I've [continued](https://journals.sagepub.com/doi/10.3102/0013189X241276814) to [work](https://journals.sagepub.com/doi/10.3102/00028312241292309) on [that frontier](https://link.springer.com/article/10.1007/s11162-025-09847-5) through to today. As a former public high school English teacher, much of why DAAF is packaged as an educational endeavor comes from my belief that helping peers and colleagues rapidly skill-up on this frontier is one of the most important things I can do. I now work full-time developing DAAF and other AI frameworks to support the work of public-interest and research organizations as Founder and Chief Data Scientist at [Open Augments](https://openaugments.org/).
+Hello! My name is Brian Heseung Kim ([@brhkim](https://github.com/brhkim)). I have been at the frontier of finding rigorous, careful, and auditable ways of using LLMs and their predecessors in social science research since roughly 2018. I focused my [entire Ph.D. dissertation](https://libraetd.lib.virginia.edu/public_view/nz806060w) on teaching others how to use these tools responsibly (finished in mid-2022, months before ChatGPT was released), and I've [continued](https://journals.sagepub.com/doi/10.3102/0013189X241276814) to [work](https://journals.sagepub.com/doi/10.3102/00028312241292309) on [that frontier](https://link.springer.com/article/10.1007/s11162-025-09847-5) through to today. As a former public high school English teacher, much of why DAAF is packaged as an educational endeavor comes from my belief that helping peers and colleagues rapidly develop deep fluency on this frontier is one of the most important things I can do. I now work full-time developing DAAF and other AI frameworks to support the work of public-interest and research organizations as Founder and Chief Data Scientist at [Open Augments](https://openaugments.org/).
 
 ---
 

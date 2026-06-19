@@ -27,7 +27,7 @@ This is the single most impactful thing you can do to improve the quality of wha
 
 ### What Makes a Good Request
 
-Building off of what we discussed in [**02. Understanding and Working with DAAF**](02_understanding_daaf.md) re: context management principles: A good request ultimately helps steer the LLM in the right directions and enhances its likelihood of doing what you really want it to do. As many in the AI space are advocating, you really need to ask yourself: What kind of instruction would **you** need to do the task you're asking well? What kind of specifics, details, and process guidance would be helpful for you, or a colleague you're delegating to? Time spent crafting your prompt with more detail and specifics pay off almost infinitely for quality down the road.
+Building off of what we discussed in [**02. Understanding and Working with DAAF**](02_understanding_daaf.md) re: context management principles: A good request ultimately helps steer the LLM in the right directions and enhances its likelihood of doing what you really want it to do. As many in the AI space are advocating, you really need to ask yourself: What kind of instruction would **you** need to do the task you're asking well? What kind of specifics, details, and process guidance would be helpful for you, or a colleague you're delegating to? Time spent crafting your prompt with more detail and specifics compounds into meaningfully better quality throughout the entire analysis.
 
 When it comes to DAAF, there are a few dimensions of specificity you can provide to help it scope and navigate the work properly:
 
@@ -431,7 +431,7 @@ These are genuinely good applications for DAAF in its current state:
 These are possible but carry significant caveats:
 
 - **Policy-informing analysis.** If your analysis will inform real policy decisions, DAAF's output should be treated as a *starting point* that requires thorough independent verification by a qualified researcher. Every finding should be checked against known benchmarks, and the methodology should be reviewed by someone with deep domain expertise.
-- **Publication-adjacent work.** DAAF can accelerate the data preparation and exploratory analysis phases of a study destined for publication, but the analytical decisions, robustness checks, and interpretation must be held to the standard of your target venue -- which typically means significant additional human work beyond what DAAF produces.
+- **Publication-adjacent work.** DAAF can accelerate and broaden the data preparation and exploratory analysis phases of a study destined for publication, but the analytical decisions, robustness checks, and interpretation must be held to the standard of your target venue -- which typically means significant additional human work beyond what DAAF produces.
 - **Cross-dataset analyses involving complex joins.** DAAF handles joins reasonably well for well-documented datasets, but joins between datasets with different geographic units, different year definitions, or ambiguous key relationships require careful human scrutiny.
 
 ### Never Appropriate
