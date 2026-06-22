@@ -5,8 +5,8 @@
 # an HTTP server so the interactive Log Explorer is accessible in a browser.
 #
 # Usage:
-#   bash /daaf/scripts/generate_log_viewer.sh <project_path> [--port PORT]
-#   bash /daaf/scripts/generate_log_viewer.sh --archive [--port PORT]
+#   bash /daaf/scripts/generate_log_viewer.sh <project_path> [--port PORT] [--background]
+#   bash /daaf/scripts/generate_log_viewer.sh --archive [--port PORT] [--background]
 #
 # Examples:
 #   bash /daaf/scripts/generate_log_viewer.sh /daaf/research/2026-03-29_College_Analysis
@@ -36,11 +36,16 @@ PROJECT_PATH=""
 SERVE=true
 PORT=2719
 ARCHIVE=false
+BACKGROUND=false
 
 while [ $# -gt 0 ]; do
     case "$1" in
         --archive)
             ARCHIVE=true
+            shift
+            ;;
+        --background)
+            BACKGROUND=true
             shift
             ;;
         --serve)
@@ -60,8 +65,8 @@ while [ $# -gt 0 ]; do
             shift 2
             ;;
         -h|--help)
-            echo "Usage: bash $0 <project_path> [--port PORT] [--no-serve]"
-            echo "       bash $0 --archive [--port PORT] [--no-serve]"
+            echo "Usage: bash $0 <project_path> [--port PORT] [--background]"
+            echo "       bash $0 --archive [--port PORT] [--background]"
             echo ""
             echo "Generates an interactive HTML viewer for DAAF session logs"
             echo "and starts an HTTP server (default port: 2719)."
@@ -70,6 +75,7 @@ while [ $# -gt 0 ]; do
             echo "  project_path    Absolute path to a DAAF research project"
             echo "  --archive       View all sessions from the DAAF-wide log archive"
             echo "  --port PORT     Use a custom port for the HTTP server (default: 2719)"
+            echo "  --background    Start the server in the background and exit"
             echo "  --no-serve      Generate the manifest without starting a server"
             echo ""
             echo "Examples:"
@@ -216,10 +222,26 @@ if [ "$SERVE" = true ]; then
             echo "  Open in your browser:"
             echo "  http://localhost:$PORT/$VIEWER_URL"
             echo ""
-            if [ "$ARCHIVE" = true ]; then
-                python3 "$SCRIPT_DIR/log_viewer_server.py" --port "$PORT" --root "$REPO_ROOT" --archive --logs-dir "$LOGS_DIR"
+            if [ "$BACKGROUND" = true ]; then
+                if [ "$ARCHIVE" = true ]; then
+                    nohup python3 "$SCRIPT_DIR/log_viewer_server.py" \
+                        --port "$PORT" --root "$REPO_ROOT" --archive --logs-dir "$LOGS_DIR" \
+                        > /dev/null 2>&1 &
+                else
+                    nohup python3 "$SCRIPT_DIR/log_viewer_server.py" \
+                        --port "$PORT" --root "$REPO_ROOT" --project-path "$PROJECT_PATH" \
+                        > /dev/null 2>&1 &
+                fi
+                disown
+                echo "Server started in background (PID $!)."
+                echo "  URL: http://localhost:$PORT/$VIEWER_URL"
+                exit 0
             else
-                python3 "$SCRIPT_DIR/log_viewer_server.py" --port "$PORT" --root "$REPO_ROOT" --project-path "$PROJECT_PATH"
+                if [ "$ARCHIVE" = true ]; then
+                    python3 "$SCRIPT_DIR/log_viewer_server.py" --port "$PORT" --root "$REPO_ROOT" --archive --logs-dir "$LOGS_DIR"
+                else
+                    python3 "$SCRIPT_DIR/log_viewer_server.py" --port "$PORT" --root "$REPO_ROOT" --project-path "$PROJECT_PATH"
+                fi
             fi
         else
             echo "ERROR: Port $PORT is in use but the owning process could not be identified."
@@ -232,10 +254,26 @@ if [ "$SERVE" = true ]; then
         echo "  Open in your browser:"
         echo "  http://localhost:$PORT/$VIEWER_URL"
         echo ""
-        if [ "$ARCHIVE" = true ]; then
-            python3 "$SCRIPT_DIR/log_viewer_server.py" --port "$PORT" --root "$REPO_ROOT" --archive --logs-dir "$LOGS_DIR"
+        if [ "$BACKGROUND" = true ]; then
+            if [ "$ARCHIVE" = true ]; then
+                nohup python3 "$SCRIPT_DIR/log_viewer_server.py" \
+                    --port "$PORT" --root "$REPO_ROOT" --archive --logs-dir "$LOGS_DIR" \
+                    > /dev/null 2>&1 &
+            else
+                nohup python3 "$SCRIPT_DIR/log_viewer_server.py" \
+                    --port "$PORT" --root "$REPO_ROOT" --project-path "$PROJECT_PATH" \
+                    > /dev/null 2>&1 &
+            fi
+            disown
+            echo "Server started in background (PID $!)."
+            echo "  URL: http://localhost:$PORT/$VIEWER_URL"
+            exit 0
         else
-            python3 "$SCRIPT_DIR/log_viewer_server.py" --port "$PORT" --root "$REPO_ROOT" --project-path "$PROJECT_PATH"
+            if [ "$ARCHIVE" = true ]; then
+                python3 "$SCRIPT_DIR/log_viewer_server.py" --port "$PORT" --root "$REPO_ROOT" --archive --logs-dir "$LOGS_DIR"
+            else
+                python3 "$SCRIPT_DIR/log_viewer_server.py" --port "$PORT" --root "$REPO_ROOT" --project-path "$PROJECT_PATH"
+            fi
         fi
     fi
 else

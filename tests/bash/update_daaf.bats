@@ -159,6 +159,14 @@ teardown() {
 
 # --- sync_host_scripts behavioral tests ---
 
+@test "update: sync_host_scripts file list includes daaf.sh and daaf_lib.sh" {
+    run grep 'scripts/host/daaf.sh' "${REPO_ROOT}/scripts/host/update_daaf.sh"
+    assert_success
+
+    run grep 'scripts/host/daaf_lib.sh' "${REPO_ROOT}/scripts/host/update_daaf.sh"
+    assert_success
+}
+
 @test "update: sync_host_scripts skips when HEAD unchanged" {
     run bash -c '
         DAAF_TEST_MODE=1 source "'"${REPO_ROOT}"'/scripts/host/update_daaf.sh"

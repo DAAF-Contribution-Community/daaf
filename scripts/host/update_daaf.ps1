@@ -513,6 +513,8 @@ function Sync-HostScript {
     # Only sync platform-appropriate scripts (.ps1 on Windows) and shared files.
     # Excludes install.ps1 (not needed post-install) and all .sh files.
     $changedScripts = Invoke-ComposeGit diff --name-only "$OldHead..$newHead" -- `
+        scripts/host/daaf.sh `
+        scripts/host/daaf_lib.sh `
         scripts/host/run_daaf.ps1 `
         scripts/host/backup_daaf.ps1 `
         scripts/host/restore_from_backup.ps1 `

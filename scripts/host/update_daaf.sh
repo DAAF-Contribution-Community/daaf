@@ -406,6 +406,8 @@ sync_host_scripts() {
     # Excludes install.sh (not needed post-install) and all .ps1 files.
     changed_scripts=$(docker compose exec -T daaf-docker \
         git -C /daaf diff --name-only "${old_head}..${new_head}" -- \
+        scripts/host/daaf.sh \
+        scripts/host/daaf_lib.sh \
         scripts/host/run_daaf.sh \
         scripts/host/backup_daaf.sh \
         scripts/host/restore_from_backup.sh \

@@ -4,7 +4,8 @@
 # ============================================================================
 # Opens marimo's notebook browser in your browser -- browse, open, create, and
 # edit marimo notebooks across all your research projects.
-# Starts the DAAF container if needed.
+# Starts the DAAF container if needed. Automatically opens the browser when
+# daaf_lib.sh is available.
 #
 # Usage:
 #   cd daaf-docker
@@ -19,6 +20,12 @@
 # ============================================================================
 
 set -euo pipefail
+
+# --- Source shared library (optional — backwards compatible without it) ---
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+if [ -f "${SCRIPT_DIR}/daaf_lib.sh" ]; then
+    source "${SCRIPT_DIR}/daaf_lib.sh"
+fi
 
 # Pause before exit so the user can review output.
 # Suppressed by DAAF_NESTED (to avoid double-pause when called from
@@ -91,6 +98,11 @@ if ! docker compose exec daaf-docker bash /daaf/scripts/launch_marimo.sh; then
     echo "ERROR: Failed to start the notebook browser." >&2
     echo "  The container may not be running, or marimo may not be installed." >&2
     echo "  Try: docker compose logs daaf-docker" >&2
+fi
+
+# Open browser automatically if library is available
+if command -v open_url >/dev/null 2>&1; then
+    open_url "http://localhost:2718"
 fi
 
 # If marimo was already running, the container-side script returns immediately

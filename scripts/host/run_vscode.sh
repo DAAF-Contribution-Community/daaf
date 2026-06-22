@@ -4,7 +4,8 @@
 # ============================================================================
 # Opens code-server (VS Code in the browser) for browsing, editing, and
 # reviewing files in the DAAF container.
-# Starts the DAAF container if needed.
+# Starts the DAAF container if needed. Automatically opens the browser when
+# daaf_lib.sh is available.
 #
 # Usage:
 #   cd daaf-docker
@@ -19,6 +20,12 @@
 # ============================================================================
 
 set -euo pipefail
+
+# --- Source shared library (optional — backwards compatible without it) ---
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+if [ -f "${SCRIPT_DIR}/daaf_lib.sh" ]; then
+    source "${SCRIPT_DIR}/daaf_lib.sh"
+fi
 
 # Pause before exit so the user can review output.
 # Suppressed by DAAF_NESTED (to avoid double-pause when called from
@@ -91,6 +98,11 @@ if ! docker compose exec daaf-docker bash /daaf/scripts/launch_code_server.sh; t
     echo "ERROR: Failed to start code-server." >&2
     echo "  The container may not be running, or code-server may not be installed." >&2
     echo "  Try: docker compose logs daaf-docker" >&2
+fi
+
+# Open browser automatically if library is available
+if command -v open_url >/dev/null 2>&1; then
+    open_url "http://localhost:2720"
 fi
 
 # If code-server was already running, the container-side script returns

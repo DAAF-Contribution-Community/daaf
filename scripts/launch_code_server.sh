@@ -5,7 +5,7 @@
 # reviewing files in the DAAF container.
 #
 # Usage:
-#   bash /daaf/scripts/launch_code_server.sh [directory] [--port PORT]
+#   bash /daaf/scripts/launch_code_server.sh [directory] [--port PORT] [--background]
 #
 # Examples:
 #   bash /daaf/scripts/launch_code_server.sh
@@ -29,6 +29,7 @@ set -euo pipefail
 PORT=2720
 OPEN_DIR="/daaf"
 PASSWORD="${PASSWORD:-daaf}"
+BACKGROUND=false
 
 # --- Parse arguments ---
 
@@ -51,8 +52,12 @@ while [ $# -gt 0 ]; do
             PASSWORD="$2"
             shift 2
             ;;
+        --background)
+            BACKGROUND=true
+            shift
+            ;;
         -h|--help)
-            echo "Usage: bash $0 [directory] [--port PORT] [--password PASSWORD]"
+            echo "Usage: bash $0 [directory] [--port PORT] [--password PASSWORD] [--background]"
             echo ""
             echo "Launch code-server (VS Code in the browser) for DAAF."
             echo ""
@@ -60,6 +65,7 @@ while [ $# -gt 0 ]; do
             echo "  directory         Directory to open (default: /daaf)"
             echo "  --port PORT       Port for the server (default: 2720)"
             echo "  --password PASS   Set login password (default: \$PASSWORD or 'daaf')"
+            echo "  --background      Start the server in the background and exit"
             echo ""
             echo "Examples:"
             echo "  bash $0                                          # Open DAAF root"
@@ -153,16 +159,32 @@ printf "  │  %-46s │\n" ""
 printf "  │  %-46s │\n" "Password: $PASSWORD"
 echo "  └────────────────────────────────────────────────┘"
 echo ""
-echo "  Press Ctrl+C to stop the server."
-echo ""
 
 export PASSWORD
-exec code-server \
-    --bind-addr "0.0.0.0:$PORT" \
-    --user-data-dir /home/appuser/.local/share/code-server \
-    --extensions-dir /home/appuser/.local/share/code-server/extensions \
-    --disable-telemetry \
-    --disable-update-check \
-    --disable-getting-started-override \
-    --auth password \
-    "$OPEN_DIR"
+if [ "$BACKGROUND" = true ]; then
+    nohup code-server \
+        --bind-addr "0.0.0.0:$PORT" \
+        --user-data-dir /home/appuser/.local/share/code-server \
+        --extensions-dir /home/appuser/.local/share/code-server/extensions \
+        --disable-telemetry \
+        --disable-update-check \
+        --disable-getting-started-override \
+        --auth password \
+        "$OPEN_DIR" > /dev/null 2>&1 &
+    disown
+    echo "Server started in background (PID $!)."
+    echo "  URL: http://localhost:$PORT"
+    exit 0
+else
+    echo "  Press Ctrl+C to stop the server."
+    echo ""
+    exec code-server \
+        --bind-addr "0.0.0.0:$PORT" \
+        --user-data-dir /home/appuser/.local/share/code-server \
+        --extensions-dir /home/appuser/.local/share/code-server/extensions \
+        --disable-telemetry \
+        --disable-update-check \
+        --disable-getting-started-override \
+        --auth password \
+        "$OPEN_DIR"
+fi

@@ -141,7 +141,16 @@ The actual output will include more detail as each step progresses, but these ar
 
 Now, you'll use your terminal to enter the DAAF installation directory it just created with all the main utility files, `daaf-docker/`. Once you're in there, you can run a helper script I created to make it easy to launch DAAF and Claude Code in the Docker container automatically.
 
-**macOS / Linux (Terminal):**
+**macOS / Linux (Terminal) -- recommended:**
+
+```bash
+cd daaf-docker
+bash daaf.sh
+```
+
+The DAAF Control Panel (`daaf.sh`) is an interactive menu with a status dashboard, service management, and all DAAF operations in one place. Select "Launch Claude Code" from the menu to get started.
+
+**Alternative -- launch Claude Code directly:**
 
 ```bash
 cd daaf-docker
@@ -154,6 +163,8 @@ bash run_daaf.sh
 cd daaf-docker
 .\run_daaf.ps1
 ```
+
+> **Note:** The DAAF Control Panel (`daaf.sh`) requires bash. On Windows, you can use it from Git Bash or WSL. A PowerShell version is future work.
 
 On first launch, Claude Code should prompt you to authenticate (API key or subscription login). Follow its instructions to complete the process as needed based on your method. Remember that CTRL+C actually exits the terminal, so use (Windows/Linux: CTRL+SHIFT+C and CTRL+V) and (macOS: Cmd+C and Cmd+V) if you want to copy/paste. You may need to copy and paste the link into your browser; be careful to check it for erroneous line-breaks in the URL if you run into issues!
 
@@ -248,6 +259,15 @@ Once you've completed the installation, your daily workflow is just to open your
 
 ```bash
 cd daaf-docker
+bash daaf.sh
+```
+
+The DAAF Control Panel provides an interactive menu with a status dashboard, service management, and all DAAF operations in one place.
+
+**Alternative -- launch Claude Code directly:**
+
+```bash
+cd daaf-docker
 bash run_daaf.sh
 ```
 
@@ -283,6 +303,7 @@ claude
 
 | Operation | macOS / Linux | Windows |
 |-----------|---------------|---------|
+| DAAF Control Panel | `bash daaf.sh` | (requires bash) |
 | Start session | `bash run_daaf.sh` | `.\run_daaf.ps1` |
 | End session | `/exit` → `exit` → `docker compose down` | Same |
 | Browse/edit files | `bash run_vscode.sh` | `.\run_vscode.ps1` |

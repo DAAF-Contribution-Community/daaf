@@ -235,3 +235,28 @@ mock_curl() {
     }
     export -f curl
 }
+
+# ============================================================================
+# Mocks for daaf_lib.sh functions
+# ============================================================================
+
+mock_open_url() {
+    OPENED_URLS=()
+    open_url() {
+        OPENED_URLS+=("$1")
+        return 0
+    }
+    export -f open_url
+}
+
+mock_port_check() {
+    export MOCK_PORT_RESPONSES="${1:-}"
+    check_port() {
+        local port="$1"
+        if echo "${MOCK_PORT_RESPONSES}" | grep -q "${port}:yes"; then
+            return 0
+        fi
+        return 1
+    }
+    export -f check_port
+}

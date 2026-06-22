@@ -5,6 +5,8 @@
 # Opens the interactive session log viewer in your browser.
 # Starts the DAAF container if needed, recovers any orphaned session logs,
 # presents available log sources, and starts an HTTP server.
+# Sources daaf_lib.sh when available (used by the menu wrapper; no auto-open
+# here because the docker compose exec blocks while the server runs).
 #
 # Usage:
 #   cd daaf-docker
@@ -20,6 +22,12 @@
 # ============================================================================
 
 set -euo pipefail
+
+# --- Source shared library (optional — backwards compatible without it) ---
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+if [ -f "${SCRIPT_DIR}/daaf_lib.sh" ]; then
+    source "${SCRIPT_DIR}/daaf_lib.sh"
+fi
 
 # Pause before exit so the user can review output.
 # Suppressed by DAAF_NESTED (to avoid double-pause when called from

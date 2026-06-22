@@ -152,6 +152,8 @@ mkdir -p "${INSTALL_DIR}"
 echo "[2/4] Downloading installation files ..."
 if ! curl -fsSL "${RAW_BASE}/Dockerfile"                          -o "${INSTALL_DIR}/Dockerfile" ||
    ! curl -fsSL "${RAW_BASE}/docker-compose.yml"                   -o "${INSTALL_DIR}/docker-compose.yml" ||
+   ! curl -fsSL "${RAW_BASE}/scripts/host/daaf.sh"                 -o "${INSTALL_DIR}/daaf.sh" ||
+   ! curl -fsSL "${RAW_BASE}/scripts/host/daaf_lib.sh"             -o "${INSTALL_DIR}/daaf_lib.sh" ||
    ! curl -fsSL "${RAW_BASE}/scripts/host/run_daaf.sh"             -o "${INSTALL_DIR}/run_daaf.sh" ||
    ! curl -fsSL "${RAW_BASE}/scripts/host/backup_daaf.sh"          -o "${INSTALL_DIR}/backup_daaf.sh" ||
    ! curl -fsSL "${RAW_BASE}/scripts/host/restore_from_backup.sh"  -o "${INSTALL_DIR}/restore_from_backup.sh" ||
@@ -167,7 +169,7 @@ if ! curl -fsSL "${RAW_BASE}/Dockerfile"                          -o "${INSTALL_
     echo "You can check available branches at: https://github.com/${REPO}/branches"
     exit 1
 fi
-chmod +x "${INSTALL_DIR}/run_daaf.sh" "${INSTALL_DIR}/backup_daaf.sh" "${INSTALL_DIR}/restore_from_backup.sh" "${INSTALL_DIR}/rebuild_daaf.sh" "${INSTALL_DIR}/update_daaf.sh" "${INSTALL_DIR}/view_logs.sh" "${INSTALL_DIR}/view_notebooks.sh" "${INSTALL_DIR}/run_vscode.sh"
+chmod +x "${INSTALL_DIR}/daaf.sh" "${INSTALL_DIR}/daaf_lib.sh" "${INSTALL_DIR}/run_daaf.sh" "${INSTALL_DIR}/backup_daaf.sh" "${INSTALL_DIR}/restore_from_backup.sh" "${INSTALL_DIR}/rebuild_daaf.sh" "${INSTALL_DIR}/update_daaf.sh" "${INSTALL_DIR}/view_logs.sh" "${INSTALL_DIR}/view_notebooks.sh" "${INSTALL_DIR}/run_vscode.sh"
 
 # --- Build the Docker image ---
 echo "[3/4] Building Docker image (this may take a few minutes on first run since there are a lot of Python libraries to install)..."
@@ -271,11 +273,12 @@ echo "=========================================="
 echo ""
 echo "To start using DAAF:"
 echo ""
-echo "  1. Navigate to the install directory and launch Claude Code:"
+echo "  1. Navigate to the install directory and launch the DAAF Control Panel:"
 echo "     cd ${INSTALL_DIR}"
-echo "     bash run_daaf.sh"
+echo "     bash daaf.sh"
 echo ""
-echo "     This starts the container (if needed) and launches Claude Code directly."
+echo "     The Control Panel provides a status dashboard, service management,"
+echo "     and all DAAF operations in one place."
 echo ""
 echo "  2. On first launch, you'll be asked to authenticate with your Anthropic account."
 echo ""
@@ -285,8 +288,9 @@ echo "         Auto-compact  -> False"
 echo "         Verbose output -> True"
 echo "     - Press ESC to return to the chat"
 echo ""
-echo "Convenience scripts (in ${INSTALL_DIR}):"
-echo "  bash run_daaf.sh               Launch Claude Code (starts container if needed)"
+echo "Available scripts (in ${INSTALL_DIR}):"
+echo "  bash daaf.sh                    DAAF Control Panel (recommended)"
+echo "  bash run_daaf.sh               Launch Claude Code directly"
 echo "  bash run_daaf.sh bash          Enter the container shell"
 echo "  bash backup_daaf.sh            Back up the Docker volume to a dated folder"
 echo "  bash restore_from_backup.sh    Restore from a backup"

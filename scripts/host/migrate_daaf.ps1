@@ -407,7 +407,7 @@ Write-Host "Downloading utility scripts from GitHub..."
 
 $DownloadFailed = $false
 
-foreach ($File in @("backup_daaf.ps1", "restore_from_backup.ps1", "rebuild_daaf.ps1", "update_daaf.ps1", "run_daaf.ps1", "view_logs.ps1", "view_notebooks.ps1", "run_vscode.ps1", "environment_settings_example.txt")) {
+foreach ($File in @("daaf.sh", "daaf_lib.sh", "backup_daaf.ps1", "restore_from_backup.ps1", "rebuild_daaf.ps1", "update_daaf.ps1", "run_daaf.ps1", "view_logs.ps1", "view_notebooks.ps1", "run_vscode.ps1", "environment_settings_example.txt")) {
     try {
         Invoke-WebRequest -UseBasicParsing -Uri "$RawBase/scripts/host/$File" -OutFile "$HostDir\$File"
         Write-Host "  Downloaded: $File"
@@ -1195,13 +1195,14 @@ Write-Host "  cd $HostDir"
 Write-Host "  .\update_daaf.ps1"
 Write-Host ""
 Write-Host "Other available scripts:"
-Write-Host "  .\run_daaf.ps1                Launch Claude Code"
-Write-Host "  .\backup_daaf.ps1             Back up the Docker volume"
-Write-Host "  .\restore_from_backup.ps1     Restore from a backup"
-Write-Host "  .\rebuild_daaf.ps1            Rebuild the Docker image"
-Write-Host "  .\view_logs.ps1               Browse session logs"
-Write-Host "  .\view_notebooks.ps1          Browse and edit marimo notebooks"
-Write-Host "  .\run_vscode.ps1              Open VS Code in your browser (code-server)"
+Write-Host "  bash daaf.sh                    DAAF Control Panel (recommended; requires bash)"
+Write-Host "  .\run_daaf.ps1                 Launch Claude Code directly"
+Write-Host "  .\backup_daaf.ps1              Back up the Docker volume"
+Write-Host "  .\restore_from_backup.ps1      Restore from a backup"
+Write-Host "  .\rebuild_daaf.ps1             Rebuild the Docker image"
+Write-Host "  .\view_logs.ps1                Browse session logs"
+Write-Host "  .\view_notebooks.ps1           Browse and edit marimo notebooks"
+Write-Host "  .\run_vscode.ps1               Open VS Code in your browser (code-server)"
 Write-Host ""
 
 if ($Mutex) { try { $Mutex.ReleaseMutex() } catch { <# Mutex already released or not owned -- safe to ignore #> Write-Verbose "Silenced: $_" } }

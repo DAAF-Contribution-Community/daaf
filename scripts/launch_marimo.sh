@@ -5,7 +5,7 @@
 # for browsing, opening, creating, and editing marimo notebooks.
 #
 # Usage:
-#   bash /daaf/scripts/launch_marimo.sh [directory] [--port PORT]
+#   bash /daaf/scripts/launch_marimo.sh [directory] [--port PORT] [--background]
 #
 # Examples:
 #   bash /daaf/scripts/launch_marimo.sh
@@ -34,6 +34,7 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 readonly DEFAULT_DIR="$REPO_ROOT/research"
 PORT=2718
 BROWSE_DIR=""
+BACKGROUND=false
 
 # --- Parse arguments ---
 
@@ -48,14 +49,19 @@ while [ $# -gt 0 ]; do
             PORT="$2"
             shift 2
             ;;
+        --background)
+            BACKGROUND=true
+            shift
+            ;;
         -h|--help)
-            echo "Usage: bash $0 [directory] [--port PORT]"
+            echo "Usage: bash $0 [directory] [--port PORT] [--background]"
             echo ""
             echo "Launch marimo's notebook browser for DAAF projects."
             echo ""
             echo "Arguments:"
-            echo "  directory     Directory to browse (default: /daaf/research)"
-            echo "  --port PORT   Port for the marimo server (default: 2718)"
+            echo "  directory       Directory to browse (default: /daaf/research)"
+            echo "  --port PORT     Port for the marimo server (default: 2718)"
+            echo "  --background    Start the server in the background and exit"
             echo ""
             echo "Examples:"
             echo "  bash $0                                # Browse all projects"
@@ -151,7 +157,15 @@ echo ""
 echo "  (Marimo will print its own URL below using 0.0.0.0 — ignore that,"
 echo "   use the localhost link above from your host browser.)"
 echo ""
-echo "  Press Ctrl+C to stop the server."
-echo ""
 
-exec marimo edit "$BROWSE_DIR" --host 0.0.0.0 --port "$PORT" --no-token --headless --skip-update-check
+if [ "$BACKGROUND" = true ]; then
+    nohup marimo edit "$BROWSE_DIR" --host 0.0.0.0 --port "$PORT" --no-token --headless --skip-update-check > /dev/null 2>&1 &
+    disown
+    echo "Server started in background (PID $!)."
+    echo "  URL: http://localhost:$PORT"
+    exit 0
+else
+    echo "  Press Ctrl+C to stop the server."
+    echo ""
+    exec marimo edit "$BROWSE_DIR" --host 0.0.0.0 --port "$PORT" --no-token --headless --skip-update-check
+fi

@@ -61,9 +61,9 @@ If you're already comfortable with the Terminal and Claude Code, you can get sta
 # Install DAAF (downloads Docker build files, builds image, clones repo into container)
 curl -fsSL https://raw.githubusercontent.com/DAAF-Contribution-Community/daaf/main/scripts/host/install.sh | bash
 
-# Enter the installation folder and launch Claude Code with a helper script
+# Enter the installation folder and open the DAAF Control Panel
 cd daaf-docker
-bash run_daaf.sh
+bash daaf.sh
 ```
 
 **Windows (PowerShell):**
@@ -74,7 +74,7 @@ irm https://raw.githubusercontent.com/DAAF-Contribution-Community/daaf/main/scri
 
 # Enter the installation folder and launch Claude Code with a helper script
 cd daaf-docker
-.\run_daaf.ps1
+.\run_daaf.ps1  # or: bash daaf.sh (requires bash)
 ```
 
 On first launch, Claude Code will prompt you to authenticate. DAAF defaults to **Opus 4.6** with 1 million token context. **Sonnet 4.6** is also an excellent choice that [matches the Opus line on DAAF orchestration benchmarks](https://daaf.openaugments.org/bench/) at a fraction of the cost; if you'd like to use it, type `/model` to switch. Set the thinking level to **High** using the arrow keys while the model is selected, and set **Auto-compact** to **False** (to prevent conflicts with DAAF's built-in context window management) and **Verbose output** to **True** (to ensure that you can monitor how DAAF's thinking and working for accuracy) via `/config`. You're ready to go; see [Understanding DAAF](user_reference/02_understanding_daaf.md) for some suggestions on how to get started with progressively more complex tasks with DAAF!

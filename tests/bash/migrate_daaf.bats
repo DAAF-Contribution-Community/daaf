@@ -530,6 +530,21 @@ Initial commit"
 # Dry-run mode
 # ============================================================================
 
+@test "migrate: download list includes daaf.sh and daaf_lib.sh" {
+    run grep -c 'daaf.sh' "${REPO_ROOT}/scripts/host/migrate_daaf.sh"
+    assert_success
+    [ "${output}" -ge 1 ]
+
+    run grep -c 'daaf_lib.sh' "${REPO_ROOT}/scripts/host/migrate_daaf.sh"
+    assert_success
+    [ "${output}" -ge 1 ]
+}
+
+@test "migrate: success message mentions daaf.sh as recommended entry point" {
+    run grep 'DAAF Control Panel' "${REPO_ROOT}/scripts/host/migrate_daaf.sh"
+    assert_success
+}
+
 @test "migrate_daaf.sh: dry-run completes successfully" {
     run env DAAF_DRY_RUN=1 DAAF_NESTED=1 bash "${REPO_ROOT}/scripts/host/migrate_daaf.sh"
     assert_success

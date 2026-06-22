@@ -211,6 +211,8 @@ teardown() {
     run cat "${TEST_DIR}/curl_log.txt"
     assert_output --partial "Dockerfile"
     assert_output --partial "docker-compose.yml"
+    assert_output --partial "daaf.sh"
+    assert_output --partial "daaf_lib.sh"
     assert_output --partial "run_daaf.sh"
     assert_output --partial "backup_daaf.sh"
     assert_output --partial "update_daaf.sh"
@@ -477,6 +479,16 @@ teardown() {
     assert_failure
     assert_output --partial "WARNING"
     assert_output --partial "existing DAAF installation"
+}
+
+@test "install.sh: success message mentions daaf.sh as recommended entry point" {
+    export DAAF_NESTED=1
+    MOCK_DOCKER_EXEC_EXIT=0
+    cd "${TEST_DIR}"
+    run bash "${REPO_ROOT}/scripts/host/install.sh"
+    assert_success
+    assert_output --partial "bash daaf.sh"
+    assert_output --partial "DAAF Control Panel (recommended)"
 }
 
 @test "install.sh: fails when copy repo files into container fails" {
