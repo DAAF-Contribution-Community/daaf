@@ -193,33 +193,33 @@ Before sending your confirmation response, verify:
 Use the appropriate boilerplate below as a starting point. Fill in the bracketed fields, expand naturally based on context, and **always end with a confirmation question.**
 
 **Data Onboarding:**
-> [Classification reasoning]. I'll profile your data thoroughly across up to 4 automated phases with 2 checkpoints — you review the findings and interpretations before I create the Skill so the dataset is immediately available for all future work. I can work with local files, API endpoints, or multiple related files at different levels of aggregation. I'll also create a project folder with all the reproducible profiling scripts. **Shall I proceed?**
+> [Classification reasoning]. I'll read the data onboarding mode workflow reference, then profile your data thoroughly across up to 4 automated phases with 2 checkpoints — you review the findings and interpretations before I create the Skill so the dataset is immediately available for all future work. I can work with local files, API endpoints, or multiple related files at different levels of aggregation. I'll also create a project folder with all the reproducible profiling scripts. **Shall I proceed?**
 
 **Data Lookup:**
-> [Classification reasoning]. [What you'll look up and where]. **Sound good?**
+> [Classification reasoning]. I'll read the data lookup mode workflow reference, then [what you'll look up and where]. **Sound good?**
 
 Even for simple lookups, always confirm — the user may want broader context than the question implies.
 
 **Data Discovery:**
-> [Classification reasoning]. Read-only exploration — no code, no downloads. [What you'll look into]. **Shall I proceed?**
+> [Classification reasoning]. I'll read the data discovery mode workflow reference, then do a read-only exploration — no code, no downloads. [What you'll look into]. **Shall I proceed?**
 
 **Ad Hoc Collaboration:**
-> [Classification reasoning]. I'll work with you as a thought partner — we can review code, debug scripts, explore data sources, brainstorm approaches, write analysis code, or tackle whatever you need. If we produce anything, I'll save it to a workspace called `[proposed topic label]`. You drive the conversation — change topics freely. **Sound good, or would you rather approach this differently?**
+> [Classification reasoning]. I'll read the ad hoc collaboration mode workflow reference, then work with you as a thought partner — we can review code, debug scripts, explore data sources, brainstorm approaches, write analysis code, or tackle whatever you need. If we produce anything, I'll save it to a workspace called `[proposed topic label]`. You drive the conversation — change topics freely. **Sound good, or would you rather approach this differently?**
 
 **Full Pipeline:**
-> [Classification reasoning]. This is DAAF's most comprehensive mode — a full research pipeline with 5 phases and 4 checkpoints where you review data sources, approve the methodology, check data quality, and confirm results before the final report. Once confirmed, I'll present a pre-flight checklist with the full deliverables list and estimated scope for your review. **Shall I proceed?**
+> [Classification reasoning]. This is DAAF's most comprehensive mode — a full research pipeline with 5 phases and 4 checkpoints where you review data sources, approve the methodology, check data quality, and confirm results before the final report. Once confirmed, I'll read the full pipeline mode workflow reference, then present a pre-flight checklist with the full deliverables list and estimated scope for your review. **Shall I proceed?**
 
 **Revision and Extension:**
-> [Classification reasoning]. [What will change]. New version — original untouched. I'll classify the change type, re-run only the affected steps (with the same quality checks as the original), and present a summary when complete. **Shall I proceed?**
+> [Classification reasoning]. [What will change]. New version — original untouched. I'll read the revision and extension mode workflow reference, then classify the change type, re-run only the affected steps (with the same quality checks as the original), and present a summary when complete. **Shall I proceed?**
 
 **Reproducibility Verification:**
-> [Classification reasoning]. I'll decompile the marimo notebook into individual scripts, re-execute each one, and compare outputs against the originals. Then I'll cross-reference the Report's claims against the reproduced data. You'll get a Reproduction Report documenting what matched, what diverged, and any methodological concerns. Two decisions to confirm: (1) should I re-fetch data from mirrors or use frozen data from the folder (default: re-fetch from mirrors), and (2) how deep should the methodological review/critique be beyond checking for mechanical reproducibility (default: light, obvious concerns only)? I'll confirm both again after setup once the scope is concrete. **Shall I proceed with these defaults?**
+> [Classification reasoning]. I'll read the reproducibility verification mode workflow reference, then decompile the marimo notebook into individual scripts, re-execute each one, and compare outputs against the originals. Then I'll cross-reference the Report's claims against the reproduced data. You'll get a Reproduction Report documenting what matched, what diverged, and any methodological concerns. Two decisions to confirm: (1) should I re-fetch data from mirrors or use frozen data from the folder (default: re-fetch from mirrors), and (2) how deep should the methodological review/critique be beyond checking for mechanical reproducibility (default: light, obvious concerns only)? I'll confirm both again after setup once the scope is concrete. **Shall I proceed with these defaults?**
 
 **Framework Development:**
-> [Classification reasoning]. I'll start by thoroughly scoping the current state of the framework components you want to modify — what exists, how it connects, and what will be affected. You'll review and confirm the scope before I make any changes. Then I'll author or modify the artifacts following DAAF's canonical templates, execute the integration checklist to wire everything consistently, and run a multi-angle review pass at the end. Two checkpoints: (1) after scoping to confirm approach, and (2) after the review pass to approve final state. [Scope summary]. **Shall I proceed?**
+> [Classification reasoning]. I'll read the framework development mode workflow reference, then start by thoroughly scoping the current state of the framework components you want to modify — what exists, how it connects, and what will be affected. You'll review and confirm the scope before I make any changes. Then I'll author or modify the artifacts following DAAF's canonical templates, execute the integration checklist to wire everything consistently, and run a multi-angle review pass at the end. Two checkpoints: (1) after scoping to confirm approach, and (2) after the review pass to approve final state. [Scope summary]. **Shall I proceed?**
 
 **User Support:**
-> [Classification reasoning]. I'll load the core DAAF documentation so I can answer your questions thoroughly — how it works, what it can do, troubleshooting, best practices, anything about the system or the tools it runs on (Docker, Git, Claude Code). I can also look up official documentation online if needed. No formal outputs, just a conversation. If at any point you want to actually do something (run an analysis, look up data, etc.), I'll switch to the right mode. **Sound good?**
+> [Classification reasoning]. I'll read the user support mode workflow reference and load the core DAAF documentation so I can answer your questions thoroughly — how it works, what it can do, troubleshooting, best practices, anything about the system or the tools it runs on (Docker, Git, Claude Code). I can also look up official documentation online if needed. No formal outputs, just a conversation. If at any point you want to actually do something (run an analysis, look up data, etc.), I'll switch to the right mode. **Sound good?**
 
 ### Mode Escalation Paths
 
