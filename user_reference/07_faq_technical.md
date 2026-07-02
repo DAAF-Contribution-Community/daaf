@@ -165,7 +165,7 @@ One thing to note: the Max plan does have usage limits per time window. If you'r
 
 ### Q: Which Claude model should I use?
 
-DAAF defaults to **Opus 4.6**, and that remains a strong choice — but it's no longer the only good one. [Empirical benchmarking across 19 models](https://daaf.openaugments.org/bench/) (DAAFBench) has produced clear, data-backed guidance:
+DAAF defaults to **Opus 4.6**, and that remains a strong choice — but it's no longer the only good one. [Empirical benchmarking across 20 models](https://daaf.openaugments.org/bench/) (DAAFBench) has produced clear, data-backed guidance:
 
 | Recommendation | Model | Why |
 |---------------|-------|-----|

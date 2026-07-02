@@ -25,7 +25,7 @@ and still score poorly here if it skips confirmation gates or dispatches
 free-form prompts. Conversely, a weaker model that faithfully follows protocol
 scores well.
 
-**Model matrix:** 19 models — 7 Anthropic (Haiku 4.5, Sonnet 4.6, Opus
+**Model matrix:** 20 models — 8 Anthropic (Haiku 4.5, Sonnet 4.6, Sonnet 5, Opus
 4.5/4.6/4.7/4.8, Fable 5) via the container's Claude Code subscription, and 12
 OpenRouter models (GLM 5.1/5.2, Kimi K2.6, Kimi K2.7 Code, Qwen 3.6 27B,
 Gemma 4 31B/26B, DeepSeek V4 Pro/Flash, Gemini 3.1 Pro, Nemotron 3 Ultra,

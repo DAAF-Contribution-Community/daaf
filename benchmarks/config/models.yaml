@@ -80,6 +80,21 @@ models:
       output: 50.00
       cached_input: 1.00
 
+  - id: "claude-sonnet-5"
+    name: "Sonnet 5"
+    provider: anthropic
+    cost_tier: "medium"
+
+    # Introductory pricing verified against platform.claude.com/docs on 2026-06-30,
+    # in effect through 2026-08-31. Reverts to 3.00/15.00/0.30 (Sonnet 4.6 parity)
+    # on 2026-09-01. Note: Sonnet 5 uses the newer tokenizer (~30% more tokens for
+    # equivalent text vs. Sonnet 4.6), which will inflate its battery-cost multiplier
+    # relative to sticker price.
+    pricing:
+      input: 2.00
+      output: 10.00
+      cached_input: 0.20
+
   # --- OpenRouter models ---
 
   - id: "z-ai/glm-5.1:atlas-cloud/fp8"
