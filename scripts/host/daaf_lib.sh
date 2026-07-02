@@ -100,6 +100,15 @@ open_url() {
 # --- Port Check ---
 # Check if a service is listening on a port inside the DAAF container.
 # Returns 0 if listening, 1 otherwise.
+#
+# The probe reads /proc/net/tcp{,6} directly rather than shelling out to `ss`:
+# the `ss` binary (iproute2) is NOT installed in the DAAF image, so the old
+# iproute2-based probe always failed silently and check_port always returned 1.
+# The /proc/net/tcp approach needs no extra binary and matches the pattern
+# already proven in generate_log_viewer.sh and launch_code_server.sh. In that
+# file, column 2 is "local_address" formatted as HEXIP:HEXPORT and column 4 is
+# the socket state, where 0A means LISTEN. We match the listening port by its
+# uppercase 4-hex-digit representation.
 check_port() {
     local port="${1:?check_port requires a port number}"
 
@@ -111,8 +120,19 @@ check_port() {
         return 1
     fi
 
-    # Query the container via ss (fail-safe: assume not listening on error)
-    if docker compose exec -T daaf-docker bash -c "ss -tlnp 2>/dev/null | grep -q ':${port} '" </dev/null 2>/dev/null; then
+    # Query the container via /proc/net/tcp (fail-safe: assume not listening on
+    # error). The remote script is passed fully single-quoted (so awk internals
+    # and $1/$0 stay literal in the container shell); the port is passed as a
+    # positional argument after the `bash -c '...' _ "$port"` sentinel, which
+    # avoids brittle host-vs-remote quote interleaving. The awk END{exit !found}
+    # idiom sets the exec exit code so the outer `if` reflects listening state.
+    local probe='
+        port="$1"
+        ph=$(printf "%04X" "$port")
+        awk -v ph="$ph" '\''$2 ~ ":"ph"$" && $4 == "0A" {found=1} END {exit !found}'\'' \
+            /proc/net/tcp /proc/net/tcp6 2>/dev/null
+    '
+    if docker compose exec -T daaf-docker bash -c "$probe" _ "$port" </dev/null 2>/dev/null; then
         return 0
     fi
 

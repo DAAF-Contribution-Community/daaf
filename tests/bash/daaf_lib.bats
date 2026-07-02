@@ -251,6 +251,51 @@ teardown() {
     assert_failure
 }
 
+@test "check_port probes /proc/net/tcp inside the container (not ss)" {
+    # The DAAF image has no `ss` binary; check_port must read /proc/net/tcp.
+    run grep -F '/proc/net/tcp' "${REPO_ROOT}/scripts/host/daaf_lib.sh"
+    assert_success
+    # No live `ss` invocation should remain (comments referencing history aside).
+    run grep -E '^[^#]*\bss -tlnp' "${REPO_ROOT}/scripts/host/daaf_lib.sh"
+    assert_failure
+}
+
+@test "check_port /proc/net/tcp probe detects a listening port" {
+    # Exercise the actual probe logic against a real listener in THIS container
+    # (Linux, /proc/net/tcp present), bypassing the docker-exec wrapper by
+    # running the remote script portion directly. This validates the awk/hex
+    # matching, not the docker plumbing. Skips where the probe cannot run
+    # (no /proc/net/tcp, e.g. macOS) or python3 is unavailable.
+    [ -r /proc/net/tcp ] || skip "no /proc/net/tcp on this platform"
+    command -v python3 >/dev/null 2>&1 || skip "python3 not available"
+    local probe='
+        port="$1"
+        ph=$(printf "%04X" "$port")
+        awk -v ph="$ph" '\''$2 ~ ":"ph"$" && $4 == "0A" {found=1} END {exit !found}'\'' \
+            /proc/net/tcp /proc/net/tcp6 2>/dev/null
+    '
+    # Start a listener on an ephemeral-ish fixed port for the duration of the test.
+    python3 -c "import socket,time,sys; s=socket.socket(); s.setsockopt(socket.SOL_SOCKET,socket.SO_REUSEADDR,1); s.bind(('127.0.0.1',53917)); s.listen(1); sys.stderr.write('up\n'); sys.stderr.flush(); time.sleep(5)" 2>/dev/null &
+    local lpid=$!
+    sleep 1
+    run bash -c "$probe" _ 53917
+    local rc=$status
+    kill "$lpid" 2>/dev/null || true
+    [ "$rc" -eq 0 ]
+}
+
+@test "check_port /proc/net/tcp probe reports a free port as not listening" {
+    [ -r /proc/net/tcp ] || skip "no /proc/net/tcp on this platform"
+    local probe='
+        port="$1"
+        ph=$(printf "%04X" "$port")
+        awk -v ph="$ph" '\''$2 ~ ":"ph"$" && $4 == "0A" {found=1} END {exit !found}'\'' \
+            /proc/net/tcp /proc/net/tcp6 2>/dev/null
+    '
+    run bash -c "$probe" _ 54999
+    assert_failure
+}
+
 # =========================================================================
 # Tier 5 -- ensure_container
 # =========================================================================

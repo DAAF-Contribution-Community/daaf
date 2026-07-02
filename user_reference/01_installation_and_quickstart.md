@@ -164,7 +164,7 @@ cd daaf-docker
 .\run_daaf.ps1
 ```
 
-> **Note:** The DAAF Control Panel (`daaf.sh`) requires bash. On Windows, you can use it from Git Bash or WSL. A PowerShell version is future work.
+> **Note:** The DAAF Control Panel (`daaf.sh`) requires bash. On macOS and Linux this is already built in — the Control Panel is written to run on the system `/bin/bash` (macOS ships version 3.2), so **no Homebrew or newer bash is needed**; just run `bash daaf.sh`. On Windows, you can use it from Git Bash or WSL. A native PowerShell version is future work.
 
 On first launch, Claude Code should prompt you to authenticate (API key or subscription login). Follow its instructions to complete the process as needed based on your method. Remember that CTRL+C actually exits the terminal, so use (Windows/Linux: CTRL+SHIFT+C and CTRL+V) and (macOS: Cmd+C and Cmd+V) if you want to copy/paste. You may need to copy and paste the link into your browser; be careful to check it for erroneous line-breaks in the URL if you run into issues!
 
@@ -404,6 +404,8 @@ bash view_logs.sh            # macOS / Linux
 
 This starts the container (if needed), generates the manifest from all sessions in the overarching session logs folder, and starts the server. Open the URL it prints in your browser. Press Ctrl+C to stop.
 
+> **Note:** The Log Explorer reads from DAAF's session archive (the session logs folder that DAAF populates as you work). It has something to show only *after* you have run at least one Claude Code session — until then the archive is empty and the viewer has nothing to display. This is true even for the per-project view below: project log viewing draws on the same archived session records, so a project with no archived sessions yet will come up empty.
+
 **From inside the container** (for per-project viewing):
 
 ```bash
@@ -455,8 +457,10 @@ The update script handles everything for you:
 - **Handles local commits** — if you've committed your own changes, it offers to merge or rebase them with the update
 - **Pulls safely** — if there are no local changes, it pulls the latest updates automatically
 - **Offers Claude Code for conflicts** — if a merge conflict occurs, you can launch Claude Code directly to help resolve it interactively
-- **Syncs utility scripts** — automatically copies any updated host-side scripts (run, backup, rebuild, update) from the container
+- **Syncs utility scripts** — automatically copies updated host-side scripts (the Control Panel, run, backup, rebuild, update, and the rest) out of the container to your `daaf-docker` folder. It figures out the full list from the newly updated repository itself, so newly added host scripts are picked up automatically without you having to do anything.
 - **Auto-rebuilds if needed** — if the Dockerfile or docker-compose.yml changed, it offers to run `rebuild_daaf` automatically
+
+> **If the updater tells you it updated itself, run it once more.** The update script is one of the files it keeps in sync, so occasionally an update includes a newer version of the updater. When that happens it copies the new updater into place and prints a notice asking you to run `bash update_daaf.sh` (or `.\update_daaf.ps1`) again. This second run uses the new updater and finishes applying everything. This is expected and safe — running it twice never does any harm, and if there is nothing left to do it will simply report "Already up to date!" and exit.
 
 By default, the update script auto-detects the remote's default branch (`main` or `master`). If you installed from a specific branch (e.g., `dev`) and want to keep updating from that branch, set the `DAAF_BRANCH` environment variable:
 

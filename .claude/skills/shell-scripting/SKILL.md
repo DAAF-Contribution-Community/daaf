@@ -19,7 +19,7 @@ Coding quality standards and best practices for all `.sh` (Bash) and `.ps1` (Pow
 
 | File | Purpose | When to Read |
 |------|---------|--------------|
-| `bash-standards.md` | Preambles, quoting, variables, ShellCheck, signal handling | Writing or reviewing any `.sh` file |
+| `bash-standards.md` | Preambles, quoting, variables, ShellCheck, signal handling, host-script Bash 3.2 portability | Writing or reviewing any `.sh` file; anything under `scripts/host/` |
 | `powershell-standards.md` | Preambles, dual error system, defensive coding, PSScriptAnalyzer | Writing or reviewing any `.ps1` file |
 | `error-handling.md` | Fail-closed philosophy, output conventions, exit codes, Docker errors, dependency validation | Designing error paths for any script |
 | `testing.md` | BATS, Pester, CI workflows, Docker mocking, test taxonomy | Setting up or running script tests |
@@ -175,6 +175,10 @@ Existing patterns in DAAF scripts that this skill codifies:
 | ShellCheck integration | `./references/bash-standards.md` |
 | Bash signal handling and cleanup | `./references/bash-standards.md` |
 | Bash never-do list | `./references/bash-standards.md` |
+| Host-script Bash 3.2 portability (macOS `/bin/bash`) | `./references/bash-standards.md` |
+| Banned Bash-4.x-only constructs for host scripts | `./references/bash-standards.md` |
+| BSD vs GNU userland pitfalls (`sed -i`, `date -d`, `stat`, `readlink -f`) | `./references/bash-standards.md` |
+| In-container command availability (Dockerfile-installed set) | `./references/bash-standards.md` |
 | PowerShell preamble | `./references/powershell-standards.md` |
 | PowerShell ASCII-only encoding | `./references/powershell-standards.md` |
 | PowerShell dual error system | `./references/powershell-standards.md` |

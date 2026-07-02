@@ -386,11 +386,10 @@ jobs:
           recurse: true
           output: results.sarif
 
+  # BATS unit/smoke tests run on ubuntu only (bats results are stable across
+  # platforms; the goal here is assertion coverage, not environment coverage).
   bats-tests:
-    strategy:
-      matrix:
-        os: [ubuntu-latest, macos-latest]
-    runs-on: ${{ matrix.os }}
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
@@ -398,6 +397,65 @@ jobs:
       - uses: bats-core/bats-action@4.0.0
         with:
           tests: tests/bash/
+
+  # Cross-platform *smoke* tests (DAAF_DRY_RUN=1) cover the environment
+  # dimension that unit tests do not: macOS Bash 3.2 and Windows PS 5.1
+  # runtime behavior. This is where 4.x-only constructs surface on macOS.
+  #
+  # NOTE: interactive entry points (e.g. daaf.sh) cannot be included in a
+  # plain loop — they block on `read` waiting for menu input. DAAF's real
+  # CI handles this by running daaf.sh in a SEPARATE step with `printf 'q\n'`
+  # piped to stdin and a seeded *_daaf_backup directory to exercise the
+  # gather_status last-backup code path. Non-interactive lifecycle scripts
+  # (install, backup, update, etc.) are run in the loop below.
+  # See .github/workflows/ci-scripts.yml for the authoritative implementation.
+  smoke-tests:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      # Non-interactive lifecycle scripts — run each individually
+      - if: matrix.os != 'windows-latest'
+        run: |
+          for f in install backup_daaf rebuild_daaf update_daaf migrate_daaf \
+                   restore_from_backup view_logs view_notebooks run_vscode run_daaf; do
+            DAAF_DRY_RUN=1 DAAF_NESTED=1 bash "scripts/host/${f}.sh" >/dev/null || exit 1
+          done
+      # Interactive entry point: drive with a quit choice on stdin (macOS only
+      # — Bash 3.2 coverage; see the bats-bash32 job for the container version)
+      - if: matrix.os == 'macos-latest'
+        run: |
+          mkdir -p ./2026-06-18_daaf_backup
+          printf 'q\n' | DAAF_DRY_RUN=1 /bin/bash scripts/host/daaf.sh >/dev/null
+          rm -rf ./2026-06-18_daaf_backup
+
+  # Deterministic Bash 3.2 coverage on ubuntu via the official bash:3.2 image.
+  # Three steps: (1) syntax-check all host scripts with `bash -n`, (2) DRY_RUN
+  # smoke of the non-interactive lifecycle scripts, (3) daaf.sh Control Panel
+  # driven with `printf 'q\n'` and a seeded backup dir. See
+  # .github/workflows/ci-scripts.yml for the authoritative implementation.
+  bats-bash32:
+    runs-on: ubuntu-latest
+    container:
+      image: bash:3.2
+    steps:
+      - uses: actions/checkout@v4
+      # Step 1: syntax check
+      - run: |
+          for f in scripts/host/*.sh; do bash -n "$f" || exit 1; done
+      # Step 2: lifecycle smoke
+      - run: |
+          for f in install backup_daaf rebuild_daaf update_daaf migrate_daaf \
+                   restore_from_backup view_logs view_notebooks run_vscode run_daaf; do
+            DAAF_DRY_RUN=1 DAAF_NESTED=1 bash "scripts/host/${f}.sh" >/dev/null 2>&1 || exit 1
+          done
+      # Step 3: daaf.sh Control Panel (interactive, driven with q)
+      - run: |
+          mkdir -p ./2026-06-18_daaf_backup
+          printf 'q\n' | DAAF_DRY_RUN=1 bash scripts/host/daaf.sh >/dev/null
+          rm -rf ./2026-06-18_daaf_backup
 
   pester-tests:
     strategy:
@@ -416,9 +474,13 @@ jobs:
 - **Path filtering:** Only run when shell-related files change (saves CI minutes)
 - **ShellCheck:** Ubuntu only (same results cross-platform)
 - **PSScriptAnalyzer:** Ubuntu only (same results cross-platform)
-- **BATS:** Ubuntu + macOS (covers most Bash environments; skip Windows)
+- **BATS:** Ubuntu only — bats assertion results are stable across platforms, so a second OS buys little. Environment differences are covered by the smoke and bash32 jobs instead (see below).
+- **Smoke (DRY_RUN):** All three OS. This is the layer that catches *environment*-specific runtime behavior: macOS system Bash 3.2 and Windows PS 5.1. Interactive entry points that run a menu loop (e.g. `daaf.sh`) are driven with a quit choice on stdin and any state their code paths require (e.g. a seeded `*_daaf_backup` dir) so the historically fragile branch actually executes.
+- **bash32 (container):** Ubuntu, inside the official `bash:3.2` image. Deterministic Bash 3.2 coverage that does not depend on macOS-runner bash drift; catches runtime-only 3.2 incompatibilities that parse cleanly and that ShellCheck cannot flag. See `./bash-standards.md` > "Host-Script Portability" for the banned-construct list this job backstops.
 - **Pester:** All three OS (PowerShell behavior varies across platforms)
 - **Submodules:** Required for BATS helper libraries
+
+> **Why not run BATS on macOS too?** An earlier version of this reference recommended BATS on ubuntu + macOS. In practice, DAAF splits the concern: BATS on ubuntu owns *assertion* coverage, while the smoke and `bash:3.2` jobs own *environment* coverage (which is what actually catches Bash 3.2 defects). This mirrors DAAF's real `ci-scripts.yml`. Provisioning BATS inside the Alpine-based `bash:3.2` image is brittle (no `apk` bats package, no `git`/`make` to bootstrap bats-core), so that job uses syntax + DRY_RUN smoke rather than the full bats suite.
 
 ---
 

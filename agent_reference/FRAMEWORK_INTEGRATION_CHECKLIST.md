@@ -10,7 +10,7 @@
 
 ## How to Use This Document
 
-Each section covers one component type (Skill, Agent, Mode, Reference File, Hook). Items are marked:
+Each section covers one component type (Skill, Agent, Mode, Reference File, Hook, Host-Facing Script). Items are marked:
 - **[M]** = Mandatory (must be completed for every instance)
 - **[C]** = Conditional (required only when the stated condition applies)
 
@@ -169,7 +169,40 @@ After completing each item, note the status: Done, Skipped (with reason), or N/A
 
 ---
 
-## 6. Cross-Cutting Consistency Checks
+## 6. Adding or Modifying a Host-Facing Script
+
+> **Scope:** Files under `scripts/host/` — the launchers and lifecycle tools that run on the **user's own machine** (macOS/Linux/Windows), not inside the container. These have distribution and portability registration points that in-container scripts do not.
+
+### New Host-Facing Script Checklist
+
+| # | Item | Req | File | Section / Location |
+|---|------|-----|------|--------------------|
+| HS1 | Create the `.sh` script under `scripts/host/` following Bash 3.2 + BSD portability standards | [M] | `scripts/host/{name}.sh` | See `shell-scripting` skill > `bash-standards.md` "Host-Script Portability" — host scripts run on macOS `/bin/bash` 3.2 |
+| HS2 | Create the matching `.ps1` cross-platform pair (or document why none is needed) | [M] | `scripts/host/{name}.ps1` | The hygiene-checks CI job enforces `.sh`/`.ps1` pair parity for `scripts/host/` |
+| HS3 | Set executable bit and record it in Git | [M] | `scripts/host/{name}.sh` | `chmod +x`, then `git update-index --chmod=+x`; verify `git ls-files -s` shows `100755` (see § 5 note) |
+| HS4 | Add the script to the **fresh-install download list** in `install.sh` | [M] | `scripts/host/install.sh` | The `curl … -o` download block that fetches host scripts via GitHub raw. A file missing here will not exist for fresh installs |
+| HS5 | Add the script to the fresh-install download list in `install.ps1` | [M] | `scripts/host/install.ps1` | The PowerShell equivalent download block (`.ps1` files, plus `daaf.sh`/`daaf_lib.sh` which Windows runs via Git Bash/WSL) |
+| HS6 | **Updater sync — no action needed.** The updater self-derives its host-script list from the post-update repository state, so newly added `scripts/host/` files are picked up automatically | [M] | `scripts/host/update_daaf.sh`, `update_daaf.ps1` | Do **not** hand-edit a sync allowlist in the updater. The updater intentionally reads the file list from the new repo state (not a hardcoded list in the old script), which is what heals the historical chicken-and-egg where a hardcoded allowlist in the *running* (old) updater could never deliver a file it did not already know about |
+| HS7 | Add `DAAF_NESTED` handling and a `DAAF_DRY_RUN` smoke path so CI can exercise it | [M] | `scripts/host/{name}.sh` / `.ps1` | Required by the `daaf-conventions` linter (DAAF_NESTED) and consumed by the smoke-tests / bats-bash32 CI jobs |
+| HS8 | Add the script to the smoke-test lists in `ci-scripts.yml` (bash, pwsh 7, PS 5.1, and the `bash:3.2` job) | [M] | `.github/workflows/ci-scripts.yml` | Smoke-tests job + bats-bash32 job. Interactive menu-loop scripts must be driven with input on stdin and any state their code paths require |
+| HS9 | Create a `.bats` (and Pester `.Tests.ps1`) unit test | [C] | `tests/bash/{name}.bats`, `tests/powershell/{name}.Tests.ps1` | Required if the script has non-trivial logic beyond a thin launcher |
+| HS10 | Add to the migration fetch list if it is a bootstrap tool users may lack | [C] | `scripts/host/migrate_daaf.sh` / `.ps1` | Only for one-time migration tooling; most scripts are covered by install + updater self-sync |
+| HS11 | Document user-facing scripts in the quickstart Quick Reference table | [C] | `user_reference/01_installation_and_quickstart.md` | Quick Reference table + relevant workflow section, if the script is meant to be run directly by users |
+
+> **Why the install lists are hand-maintained but the updater is not:** Fresh installs download host scripts before any repo exists on the host, so `install.sh`/`install.ps1` must name each file explicitly (there is nothing to derive a list from yet). The updater, by contrast, runs *after* pulling the new repo state into the container, so it can and does enumerate the current `scripts/host/` contents itself — making a hardcoded updater list both redundant and a recurring source of "new file silently never delivered" bugs. Register new host scripts in the two install lists; leave the updater alone.
+
+### Modifying an Existing Host-Facing Script
+
+| # | Item | Req | File | What to Check |
+|---|------|-----|------|----|
+| HSM1 | Read the full script (and its `.ps1` pair) before editing | [M] | Target script(s) | Keep the pair behaviorally in sync |
+| HSM2 | Re-run the portability gate after editing | [M] | — | `bash tests/lint/check-daaf-conventions.sh` — no Bash-4.x-only constructs in `scripts/host/*.sh` |
+| HSM3 | If renaming, update both install download lists and the CI smoke lists | [M] | `install.sh`, `install.ps1`, `ci-scripts.yml` | The updater self-heals renames on next update, but installs and CI reference the name directly |
+| HSM4 | Keep `.sh` and `.ps1` behavior aligned | [M] | Both pair members | Parity is enforced for existence by CI, but not for behavior — that is on the author |
+
+---
+
+## 7. Cross-Cutting Consistency Checks
 
 After completing any component checklist above, run these universal verification steps:
 

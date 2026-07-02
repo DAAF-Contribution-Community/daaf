@@ -390,53 +390,197 @@ handle_stash_conflict() {
     fi
 }
 
+# Copy one host script out of the container. Sets SYNC_COPY_FAILED=true and
+# prints a manual-recovery hint on failure (no silent skips). Marks the file's
+# basename as copied in the "already copied" tracker so tier B does not repeat
+# a tier A copy. Returns 0 on success, 1 on failure.
+#
+# INTENT: single shared copy routine so the existence-heal (tier A) and
+#   changed-file (tier B) passes format success/failure output identically.
+# ASSUMES: CONTAINER_NAME points at the running container; docker cp is
+#   name-sensitive (docker compose exec is not, but cp is).
+_sync_copy_one() {
+    local repo_path="$1"
+    local script
+    script=$(basename "${repo_path}")
+    if docker cp "${CONTAINER_NAME}:/daaf/${repo_path}" "./${script}" 2>/dev/null; then
+        # Text files (.txt) do not need the executable bit; scripts do.
+        case "${script}" in
+            *.sh) chmod +x "./${script}" 2>/dev/null || true ;;
+        esac
+        echo "  Updated: ${script}"
+        SYNC_COPIED="${SYNC_COPIED} ${script}"
+        return 0
+    else
+        echo "  Warning: could not copy ${script}. You can copy it manually:"
+        echo "    docker cp ${CONTAINER_NAME}:/daaf/${repo_path} ./${script}"
+        SYNC_COPY_FAILED=true
+        return 1
+    fi
+}
+
+# Sync host-side utility scripts out of the container to the daaf-docker folder.
+#
+# The old design diffed a HARDCODED pathspec inside the running (old) script.
+# Files added upstream that the old script did not know about were silently
+# skipped forever -- a chicken-and-egg defect (a v2.1.0 updater could never
+# deliver daaf.sh/daaf_lib.sh even though they were in the update). This
+# rewrite derives the file list from the POST-UPDATE repo state and adds an
+# existence-heal pass so past misses self-correct on the next run.
+#
+# INTENT: guarantee every host-appropriate script that exists in the new HEAD
+#   reaches the host, regardless of what the running (old) script knew.
+# REASONING: the authoritative list lives in the freshly-pulled repo
+#   (git ls-files at new HEAD), not in this script's source.
+#
+# old_head may be empty (called from the "already up to date" path). When
+# empty or equal to new_head, only the existence-heal pass runs (cheap).
 sync_host_scripts() {
-    local old_head="$1"
+    local old_head="${1:-}"
 
     local new_head
     new_head=$(docker compose exec -T daaf-docker \
         git -C /daaf rev-parse HEAD </dev/null 2>/dev/null | tr -d '\r')
 
-    if [ "${old_head}" = "${new_head}" ]; then
+    # Derive the authoritative host-script list from the post-update repo state.
+    # git ls-files runs in-container at new HEAD -- Linux userland, so GNU git
+    # features are fine here (this is NOT host-executed code).
+    local all_host_files
+    all_host_files=$(docker compose exec -T daaf-docker \
+        git -C /daaf ls-files 'scripts/host/*' </dev/null 2>/dev/null | tr -d '\r' || true)
+
+    if [ -z "${all_host_files}" ]; then
         return
     fi
 
-    local changed_scripts
-    # Only sync platform-appropriate scripts (.sh on Unix) and shared files.
-    # Excludes install.sh (not needed post-install) and all .ps1 files.
-    changed_scripts=$(docker compose exec -T daaf-docker \
-        git -C /daaf diff --name-only "${old_head}..${new_head}" -- \
-        scripts/host/daaf.sh \
-        scripts/host/daaf_lib.sh \
-        scripts/host/run_daaf.sh \
-        scripts/host/backup_daaf.sh \
-        scripts/host/restore_from_backup.sh \
-        scripts/host/rebuild_daaf.sh \
-        scripts/host/update_daaf.sh \
-        scripts/host/view_logs.sh \
-        scripts/host/view_notebooks.sh \
-        scripts/host/run_vscode.sh \
-        scripts/host/environment_settings_example.txt \
-        </dev/null 2>/dev/null | tr -d '\r' || true)
+    # Platform filter (macOS/Linux hosts): keep *.sh files and the shared
+    # environment_settings_example.txt; drop all *.ps1 (Windows-only).
+    # Bootstrap-only scripts (install.sh, migrate_daaf.sh) are intentionally
+    # excluded -- they are fetched via curl on demand and are not needed in the
+    # daaf-docker folder post-install. This preserves the pre-existing exclusion
+    # intent from the old hardcoded list.
+    #
+    # ASSUMES: no negative subscripts, no mapfile, no declare -A -- Bash 3.2
+    #   compatible for macOS hosts.
+    # sync_list is a newline-delimited set of full repo paths, with a leading
+    # and trailing newline so membership tests can anchor on "\n<path>\n"
+    # (prevents a short path from matching as a substring of a longer one).
+    local sync_list="
+"
+    while IFS= read -r repo_path; do
+        [ -z "${repo_path}" ] && continue
+        case "${repo_path}" in
+            scripts/host/install.sh|scripts/host/migrate_daaf.sh) continue ;;
+            *.sh|scripts/host/environment_settings_example.txt) sync_list="${sync_list}${repo_path}
+" ;;
+            *) continue ;;
+        esac
+    done <<< "${all_host_files}"
 
-    if [ -z "${changed_scripts}" ]; then
+    # Only the seed newline means no files passed the filter.
+    if [ "${sync_list}" = "
+" ]; then
         return
     fi
 
-    echo "Syncing updated utility scripts..."
+    # Compute the set of files that changed in old_head..new_head (tier B).
+    # Only when we have a real commit range; skip the diff on the up-to-date
+    # path (old_head empty or unchanged) -- the existence-heal pass still runs.
+    local changed_scripts=""
+    if [ -n "${old_head}" ] && [ "${old_head}" != "${new_head}" ]; then
+        changed_scripts=$(docker compose exec -T daaf-docker \
+            git -C /daaf diff --name-only "${old_head}..${new_head}" -- scripts/host \
+            </dev/null 2>/dev/null | tr -d '\r' || true)
+    fi
+
+    # Trackers (space-delimited strings -- Bash 3.2 compatible, no arrays needed).
+    SYNC_COPIED=""
+    SYNC_COPY_FAILED=false
+    local self_updated=false
+    local printed_header=false
+
+    # --- Tier A: existence-heal ---------------------------------------------
+    # Any host-appropriate file MISSING on the host is copied unconditionally.
+    # This is what heals past misses (e.g., daaf.sh arriving for a v2.1.0 user
+    # even though it will never change again).
     while IFS= read -r repo_path; do
         [ -z "${repo_path}" ] && continue
         local script
         script=$(basename "${repo_path}")
-        if docker cp "${CONTAINER_NAME}:/daaf/${repo_path}" "./${script}" 2>/dev/null; then
-            chmod +x "./${script}" 2>/dev/null || true
-            echo "  Updated: ${script}"
-        else
-            echo "  Warning: could not copy ${script}. You can copy it manually:"
-            echo "    docker cp ${CONTAINER_NAME}:/daaf/${repo_path} ./${script}"
+        if [ ! -f "./${script}" ]; then
+            if [ "${printed_header}" = false ]; then
+                echo "Syncing utility scripts..."
+                printed_header=true
+            fi
+            _sync_copy_one "${repo_path}" || true
         fi
-    done <<< "${changed_scripts}"
-    echo ""
+    done <<< "${sync_list}"
+
+    # --- Tier B: changed files ----------------------------------------------
+    # Any listed file that changed in this update range is copied (unless tier A
+    # already copied it). Preserves the only-touch-changed-files courtesy for
+    # existing host copies the user may have customized.
+    if [ -n "${changed_scripts}" ]; then
+        while IFS= read -r repo_path; do
+            [ -z "${repo_path}" ] && continue
+            # Only sync files that pass the platform filter (i.e., are in
+            # sync_list). Anchor on surrounding newlines for an exact line match.
+            case "${sync_list}" in
+                *"
+${repo_path}
+"*) ;;
+                *) continue ;;
+            esac
+            local script
+            script=$(basename "${repo_path}")
+            # Skip if tier A already copied this file (space-delimited membership).
+            case " ${SYNC_COPIED} " in
+                *" ${script} "*) continue ;;
+            esac
+            if [ "${printed_header}" = false ]; then
+                echo "Syncing updated utility scripts..."
+                printed_header=true
+            fi
+            if _sync_copy_one "${repo_path}"; then
+                if [ "${script}" = "update_daaf.sh" ]; then
+                    self_updated=true
+                fi
+            fi
+        done <<< "${changed_scripts}"
+    fi
+
+    if [ "${printed_header}" = true ]; then
+        echo ""
+    fi
+
+    # --- Sync failure summary ------------------------------------------------
+    # SYNC_COPY_FAILED is set true by _sync_copy_one on any copy error. Print a
+    # closing summary so the user knows to act even if the warning scrolled by.
+    if [ "${SYNC_COPY_FAILED}" = true ]; then
+        echo "Warning: some host scripts could not be synced -- see the messages above for manual copy commands."
+        echo ""
+    fi
+
+    # --- Self-update notice --------------------------------------------------
+    # If the updater itself was refreshed as a CHANGED file, its new logic is on
+    # disk but was not executed this run. Prompt a re-run so the new updater's
+    # existence-heal pass can deliver anything the old logic could not. This is
+    # the explicit mechanism for the v2.1.0 -> daaf_dev two-run recovery (no
+    # auto re-exec -- that would collide with the mkdir lock and EXIT traps).
+    if [ "${self_updated}" = true ]; then
+        echo "-------------------------------------------"
+        echo "  The updater itself was updated"
+        echo "-------------------------------------------"
+        echo ""
+        echo "update_daaf.sh was refreshed in this update. The new version is"
+        echo "now on disk but this run used the previous version. Re-run it once"
+        echo "more so the latest updater can finish syncing your host tools:"
+        echo "  bash update_daaf.sh"
+        echo ""
+        echo "(It is safe to re-run -- if everything is already current it will"
+        echo " simply report 'Already up to date!')"
+        echo ""
+    fi
 }
 
 check_build_changes() {
@@ -906,6 +1050,11 @@ if [ "${CURRENT_BRANCH}" = "${REMOTE_BRANCH}" ] \
     echo ""
     echo "Already up to date! Nothing to do."
     echo ""
+    # Even when there is nothing to pull, run the existence-heal sync so host
+    # scripts a prior update missed (e.g., a file added in a release the user
+    # updated across) are delivered now. Called with no old_head so only the
+    # cheap tier-A (missing-file) pass runs -- no diff, no changed-file copies.
+    sync_host_scripts
     exit 0
 fi
 
@@ -932,6 +1081,10 @@ if [ "${CURRENT_BRANCH}" != "${REMOTE_BRANCH}" ] && [ "${BEHIND}" = "0" ]; then
     echo "Already up to date! Your branch '${CURRENT_BRANCH}' has all the latest"
     echo "changes from ${UPSTREAM_REMOTE}/${REMOTE_BRANCH}. Nothing to do."
     echo ""
+    # Existence-heal sync (tier A only) so host scripts a prior update missed
+    # are delivered even when there is nothing new to pull. See the note on the
+    # default-branch up-to-date path above.
+    sync_host_scripts
     exit 0
 fi
 

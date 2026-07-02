@@ -127,6 +127,9 @@ fi
 if [ ! -d "$LOGS_DIR" ]; then
     if [ "$ARCHIVE" = true ]; then
         echo "ERROR: No session archive found at: $LOGS_DIR"
+        echo "Hint: The DAAF-wide archive is empty. Run a DAAF session to populate it,"
+        echo "      or point this viewer at a specific project instead:"
+        echo "        bash $0 /daaf/research/<project>"
     else
         echo "ERROR: No logs/ directory found in: $PROJECT_PATH"
         echo "Hint: Run collect_session_logs.sh first to gather session transcripts."
@@ -138,7 +141,11 @@ fi
 ORCH_COUNT=$(find "$LOGS_DIR" -maxdepth 1 -name '*_orchestrator.jsonl' 2>/dev/null | wc -l)
 if [ "$ORCH_COUNT" -eq 0 ]; then
     echo "ERROR: No orchestrator JSONL files found in: $LOGS_DIR"
-    if [ "$ARCHIVE" = false ]; then
+    if [ "$ARCHIVE" = true ]; then
+        echo "Hint: The DAAF-wide archive contains no session transcripts yet."
+        echo "      Run a DAAF session, or view a specific project instead:"
+        echo "        bash $0 /daaf/research/<project>"
+    else
         echo "Hint: Run collect_session_logs.sh first to gather session transcripts."
     fi
     exit 1

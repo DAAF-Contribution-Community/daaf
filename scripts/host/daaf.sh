@@ -18,10 +18,15 @@
 # Supports DAAF_DRY_RUN=1 for CI cross-platform smoke testing (see tests/).
 # ============================================================================
 
-set -euo pipefail
+# -E propagates the ERR trap into functions and command substitutions so an
+# unexpected failure anywhere is reported rather than silently aborting.
+set -Eeuo pipefail
 
 # --- Source shared library ---
-DAAF_LIB_DIR="$(cd "$(dirname "$0")" && pwd)"
+# Use BASH_SOURCE (not $0) so the library resolves correctly whether this file
+# is executed directly or sourced (e.g., by the bats test harness, where $0 is
+# the test runner's path rather than this script's).
+DAAF_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${DAAF_LIB_DIR}/daaf_lib.sh"
 setup_colors
 SCRIPT_DIR="$DAAF_LIB_DIR"
@@ -34,7 +39,8 @@ if [ "${DAAF_DRY_RUN:-}" = "1" ]; then
         case "$*" in
             "info") return 0 ;;
             *"compose ps --status running"*"--format"*) echo "daaf-docker" ;;
-            *"compose exec"*"ss -tlnp"*) echo "" ;;
+            *"compose exec"*"PORT:"*) echo "" ;;
+            *"compose exec"*"/proc/net/tcp"*) echo "" ;;
             *"compose exec"*"git"*"describe"*) echo "v2.0.0" ;;
             *"compose exec"*"git"*"log"*) echo "2026-06-21" ;;
             *"compose exec"*"git"*"branch"*) echo "main" ;;
@@ -46,33 +52,46 @@ if [ "${DAAF_DRY_RUN:-}" = "1" ]; then
     }
 fi
 
-# --- Test Mode Guard ---
-# When sourced for testing, define functions but skip execution.
-# Usage: DAAF_TEST_MODE=1 source scripts/host/daaf.sh
-if [ "${DAAF_TEST_MODE:-}" = "1" ]; then
-    return 0 2>/dev/null || exit 0
-fi
-
 # --- Preflight ---
-if [ ! -f "docker-compose.yml" ]; then
-    echo "ERROR: docker-compose.yml not found in the current directory." >&2
-    echo "Please run this script from your daaf-docker folder." >&2
-    exit 1
+# Skipped under DAAF_TEST_MODE so the test harness can source this file (to load
+# function definitions further below) without a real Docker daemon present.
+if [ "${DAAF_TEST_MODE:-}" != "1" ]; then
+    if [ ! -f "docker-compose.yml" ]; then
+        echo "ERROR: docker-compose.yml not found in the current directory." >&2
+        echo "Please run this script from your daaf-docker folder." >&2
+        exit 1
+    fi
+
+    if ! command -v docker &> /dev/null; then
+        echo "ERROR: Docker is either not installed or not configured properly in your system PATH to allow it to be used from Terminal." >&2
+        echo "Please install Docker Desktop: https://www.docker.com/products/docker-desktop/" >&2
+        exit 1
+    fi
+
+    if ! docker info &> /dev/null; then
+        echo "ERROR: Docker Desktop does not seem to be running. Please start it and try again." >&2
+        exit 1
+    fi
 fi
 
-if ! command -v docker &> /dev/null; then
-    echo "ERROR: Docker is either not installed or not configured properly in your system PATH to allow it to be used from Terminal." >&2
-    echo "Please install Docker Desktop: https://www.docker.com/products/docker-desktop/" >&2
-    exit 1
-fi
+# --- Signal / error handling ---
+# Registered only outside test mode so sourcing this file for tests does not
+# install an EXIT trap into the harness shell.
+if [ "${DAAF_TEST_MODE:-}" != "1" ]; then
+    trap 'echo ""; echo "Goodbye!"; exit 0' INT TERM
 
-if ! docker info &> /dev/null; then
-    echo "ERROR: Docker Desktop does not seem to be running. Please start it and try again." >&2
-    exit 1
-fi
+    # Any unexpected non-zero command (one not already guarded by `if`/`||`)
+    # trips the ERR trap. We print a diagnostic line — script, line number, and
+    # the failing command — so a failure is never silent. Important for users
+    # who launch the panel by double-clicking in Terminal, where the window
+    # would otherwise close instantly on an uncaught error.
+    trap 'ec=$?; echo "" >&2; echo "ERROR: DAAF Control Panel hit an unexpected failure." >&2; echo "  Location: $(basename "$0"), line ${LINENO} (exit ${ec})" >&2; echo "  Command:  ${BASH_COMMAND}" >&2; echo "  This is a bug — please report it. The panel will now exit." >&2' ERR
 
-# --- Signal handling ---
-trap 'echo ""; echo "Goodbye!"; exit 0' INT TERM
+    # On any error exit, pause so a double-clicked Terminal window does not
+    # vanish before the diagnostic above can be read. Skips the clean-quit path
+    # (exit 0), non-interactive contexts, and dry-run runs.
+    trap 'ec=$?; if [ "$ec" -ne 0 ] && [ -t 0 ] && [ "${DAAF_DRY_RUN:-}" != "1" ]; then read -r -p "Press Enter to close... " _ || true; fi' EXIT
+fi
 
 # ============================================================================
 # Status Gathering
@@ -98,7 +117,12 @@ gather_status() {
     else
         STATUS_CONTAINER="Running"
 
-        # Parallel docker exec calls for container-side info
+        # Parallel docker exec calls for container-side info.
+        # The ports probe reads /proc/net/tcp{,6} (not `ss`, which is not
+        # installed in the image) and emits one "PORT:<n>" line per listening
+        # port among 2718/2719/2720. Column 2 is HEXIP:HEXPORT and column 4 is
+        # the socket state (0A = LISTEN); we match each target port by its
+        # uppercase 4-hex-digit form.
         docker compose exec -T daaf-docker git -C /daaf describe --tags --always \
             </dev/null 2>/dev/null > "$tmpdir/version" &
         docker compose exec -T daaf-docker git -C /daaf log -1 --format='%cd' --date=short \
@@ -107,7 +131,16 @@ gather_status() {
             </dev/null 2>/dev/null > "$tmpdir/branch" &
         docker compose exec -T daaf-docker git -C /daaf rev-list --count HEAD..origin/main \
             </dev/null 2>/dev/null > "$tmpdir/updates" &
-        docker compose exec -T daaf-docker bash -c "ss -tlnp 2>/dev/null" \
+        local ports_probe='
+            for p in 2718 2719 2720; do
+                ph=$(printf "%04X" "$p")
+                if awk -v ph="$ph" '\''$2 ~ ":"ph"$" && $4 == "0A" {found=1} END {exit !found}'\'' \
+                    /proc/net/tcp /proc/net/tcp6 2>/dev/null; then
+                    echo "PORT:$p"
+                fi
+            done
+        '
+        docker compose exec -T daaf-docker bash -c "$ports_probe" \
             </dev/null 2>/dev/null > "$tmpdir/ports" &
         wait || true
 
@@ -116,22 +149,26 @@ gather_status() {
         STATUS_BRANCH=$(tr -d '\r' < "$tmpdir/branch" 2>/dev/null || echo "detached")
         STATUS_UPDATES=$(tr -d '\r' < "$tmpdir/updates" 2>/dev/null || echo "")
 
-        # Parse ports from ss output
+        # Parse ports from the probe output (one "PORT:<n>" line per listener)
         local ports_output
         ports_output=$(tr -d '\r' < "$tmpdir/ports" 2>/dev/null || echo "")
         STATUS_PORT_2718=false
         STATUS_PORT_2719=false
         STATUS_PORT_2720=false
-        if echo "$ports_output" | grep -q ":2718 "; then STATUS_PORT_2718=true; fi
-        if echo "$ports_output" | grep -q ":2719 "; then STATUS_PORT_2719=true; fi
-        if echo "$ports_output" | grep -q ":2720 "; then STATUS_PORT_2720=true; fi
+        if echo "$ports_output" | grep -q "PORT:2718"; then STATUS_PORT_2718=true; fi
+        if echo "$ports_output" | grep -q "PORT:2719"; then STATUS_PORT_2719=true; fi
+        if echo "$ports_output" | grep -q "PORT:2720"; then STATUS_PORT_2720=true; fi
     fi
 
     # Local backup check (no docker needed)
     # Use glob array instead of parsing ls output
     local -a backup_dirs=(./*_daaf_backup)
     if [ -e "${backup_dirs[0]}" ]; then
-        local last_backup_dir="${backup_dirs[-1]}"
+        # Bash 3.2 (macOS /bin/bash) does not support negative array subscripts
+        # (${arr[-1]} was added in 4.3), so index the last element via arithmetic.
+        # Timestamp-prefixed names sort lexicographically, so the last glob match
+        # is the newest backup.
+        local last_backup_dir="${backup_dirs[$((${#backup_dirs[@]} - 1))]}"
         STATUS_LAST_BACKUP=$(basename "$last_backup_dir" | sed 's/_daaf_backup//')
     else
         STATUS_LAST_BACKUP=""
@@ -275,7 +312,12 @@ handle_claude_code() {
     echo "Launching Claude Code..."
     echo "(When you're done, type /exit to return to this menu)"
     echo ""
-    DAAF_NESTED=1 bash "${SCRIPT_DIR}/run_daaf.sh"
+    # Guard the child exit so a non-zero return (e.g., run_daaf.sh preflight
+    # failure) does not abort the panel under set -e.
+    if ! DAAF_NESTED=1 bash "${SCRIPT_DIR}/run_daaf.sh"; then
+        echo ""
+        echo "  ${YELLOW}Claude Code session ended with an error.${RESET}"
+    fi
     echo ""
     echo "Returned to DAAF Control Panel."
 }
@@ -285,7 +327,10 @@ handle_shell() {
     echo "Opening container shell..."
     echo "(Type 'exit' to return to this menu)"
     echo ""
-    DAAF_NESTED=1 bash "${SCRIPT_DIR}/run_daaf.sh" bash
+    if ! DAAF_NESTED=1 bash "${SCRIPT_DIR}/run_daaf.sh" bash; then
+        echo ""
+        echo "  ${YELLOW}Container shell ended with an error.${RESET}"
+    fi
     echo ""
     echo "Returned to DAAF Control Panel."
 }
@@ -298,11 +343,26 @@ handle_notebooks() {
     echo ""
     echo "Starting notebook browser..."
 
+    # Ensure the container is up before attempting docker compose exec, so we
+    # give a clear message instead of letting a failed exec surface obscurely.
+    if ! ensure_container; then
+        echo "  ${YELLOW}Could not start the DAAF container. Is Docker running?${RESET}"
+        return
+    fi
+
     if check_port 2718; then
         echo "  Marimo is already running."
     else
-        docker compose exec -d daaf-docker \
-            bash /daaf/scripts/launch_marimo.sh --background </dev/null 2>/dev/null
+        # Capture stderr (do NOT discard) so a container-side launch failure is
+        # distinguishable from a slow start. A non-zero exit returns to the menu
+        # rather than aborting the panel under set -e.
+        local launch_err
+        launch_err=$(docker compose exec -d daaf-docker \
+            bash /daaf/scripts/launch_marimo.sh --background </dev/null 2>&1) || {
+            echo "  ${YELLOW}Failed to start the notebook server:${RESET}"
+            echo "  ${launch_err}"
+            return
+        }
 
         local elapsed=0
         while [ "$elapsed" -lt 10 ]; do
@@ -329,11 +389,32 @@ handle_vscode() {
     echo ""
     echo "Starting VS Code browser..."
 
+    # Ensure the container is up before attempting docker compose exec.
+    if ! ensure_container; then
+        echo "  ${YELLOW}Could not start the DAAF container. Is Docker running?${RESET}"
+        return
+    fi
+
+    # code-server runs with --auth password; the launcher prints the password to
+    # its own stdout, which is lost under `exec -d`. Mirror launch_code_server.sh's
+    # default here so the menu can display it. Honor a PASSWORD override if the
+    # user exported one before launching the panel.
+    # Default mirrors launch_code_server.sh (PASSWORD env var overrides both).
+    local vscode_password="${PASSWORD:-daaf}"
+
     if check_port 2720; then
         echo "  VS Code is already running."
     else
-        docker compose exec -d daaf-docker \
-            bash /daaf/scripts/launch_code_server.sh --background </dev/null 2>/dev/null
+        # Capture stderr (do NOT discard) so a container-side launch failure —
+        # e.g., a stale image without code-server — is visible rather than
+        # masquerading as "still starting". Non-zero exit returns to the menu.
+        local launch_err
+        launch_err=$(docker compose exec -d daaf-docker \
+            bash /daaf/scripts/launch_code_server.sh --background </dev/null 2>&1) || {
+            echo "  ${YELLOW}Failed to start VS Code (code-server):${RESET}"
+            echo "  ${launch_err}"
+            return
+        }
 
         local elapsed=0
         while [ "$elapsed" -lt 10 ]; do
@@ -352,6 +433,7 @@ handle_vscode() {
     local url="http://localhost:2720"
     echo ""
     echo "  ${CYAN}${url}${RESET}"
+    echo "  ${BOLD}Password:${RESET} ${vscode_password}"
     echo ""
     open_url "$url"
 }
@@ -359,6 +441,12 @@ handle_vscode() {
 handle_logs() {
     echo ""
     echo "Discovering available log sources..."
+
+    # Ensure the container is up before attempting docker compose exec.
+    if ! ensure_container; then
+        echo "  ${YELLOW}Could not start the DAAF container. Is Docker running?${RESET}"
+        return
+    fi
 
     local sources
     sources=$(docker compose exec -T daaf-docker \
@@ -418,28 +506,57 @@ handle_logs() {
 
     local selected="${paths[$((choice - 1))]}"
     local url
+    local manifest_err
 
+    # --- Step 1: Generate the manifest for the SELECTED source ---
+    # Capture stderr so a generation failure (e.g., empty archive) produces an
+    # accurate message instead of a dead URL. A failure here returns to the menu.
     echo ""
     echo "  Generating session manifest..."
     if [ "$selected" = "ARCHIVE" ]; then
-        docker compose exec -T daaf-docker \
+        manifest_err=$(docker compose exec -T daaf-docker \
             bash /daaf/scripts/generate_log_viewer.sh --archive --no-serve \
-            </dev/null 2>/dev/null || true
+            </dev/null 2>&1) || {
+            echo "  ${YELLOW}Could not generate the session manifest:${RESET}"
+            echo "  ${manifest_err}"
+            echo "  ${YELLOW}The full archive may be empty. Run a DAAF session, or"
+            echo "  choose a specific project source instead.${RESET}"
+            return
+        }
         url="http://localhost:2719/scripts/log_viewer.html?manifest=.claude/logs/sessions/session_manifest.json"
     else
-        docker compose exec -T daaf-docker \
+        manifest_err=$(docker compose exec -T daaf-docker \
             bash /daaf/scripts/generate_log_viewer.sh "$selected" --no-serve \
-            </dev/null 2>/dev/null || true
+            </dev/null 2>&1) || {
+            echo "  ${YELLOW}Could not generate the session manifest:${RESET}"
+            echo "  ${manifest_err}"
+            return
+        }
         local rel_path="${selected#/daaf/}"
         url="http://localhost:2719/scripts/log_viewer.html?manifest=${rel_path}/logs/session_manifest.json"
     fi
 
-    # Ensure log viewer server is running
+    # --- Step 2: Ensure the log viewer server is running ---
+    # Start the server against the SELECTED source, not always --archive. The
+    # old code always launched with --archive, which exits before serving when
+    # the DAAF-wide archive is empty — leaving a valid project selection with a
+    # dead URL. Serving from the chosen source decouples the two.
     if ! check_port 2719; then
         echo "  Starting log viewer server..."
-        docker compose exec -d daaf-docker \
-            bash /daaf/scripts/generate_log_viewer.sh --archive --background \
-            </dev/null 2>/dev/null
+        local -a serve_args=()
+        if [ "$selected" = "ARCHIVE" ]; then
+            serve_args=(--archive --background)
+        else
+            serve_args=("$selected" --background)
+        fi
+        local serve_err
+        serve_err=$(docker compose exec -d daaf-docker \
+            bash /daaf/scripts/generate_log_viewer.sh "${serve_args[@]}" \
+            </dev/null 2>&1) || {
+            echo "  ${YELLOW}Could not start the log viewer server:${RESET}"
+            echo "  ${serve_err}"
+            return
+        }
 
         local elapsed=0
         while [ "$elapsed" -lt 10 ]; do
@@ -447,6 +564,10 @@ handle_logs() {
             sleep 1
             elapsed=$((elapsed + 1))
         done
+
+        if ! check_port 2719; then
+            echo "  ${YELLOW}Server may still be starting. Try the URL in a moment.${RESET}"
+        fi
     fi
 
     echo ""
@@ -459,32 +580,38 @@ handle_logs() {
 # Handlers: Maintenance (options 6-9)
 # ============================================================================
 
+# run_delegate <script-name> — run a delegated child script with DAAF_NESTED=1.
+# Guards the child's exit code: a non-zero exit (child failure, user abort, or
+# the graceful "no backups found" case in restore_from_backup.sh) prints a clear
+# message and returns to the menu rather than letting `set -e` kill the panel.
+run_delegate() {
+    local script_name="$1"
+    echo ""
+    if DAAF_NESTED=1 bash "${SCRIPT_DIR}/${script_name}"; then
+        echo ""
+        echo "Returned to DAAF Control Panel."
+    else
+        local ec=$?
+        echo ""
+        echo "  ${YELLOW}${script_name} exited without completing (code ${ec}).${RESET}"
+        echo "Returned to DAAF Control Panel."
+    fi
+}
+
 handle_backup() {
-    echo ""
-    DAAF_NESTED=1 bash "${SCRIPT_DIR}/backup_daaf.sh"
-    echo ""
-    echo "Returned to DAAF Control Panel."
+    run_delegate backup_daaf.sh
 }
 
 handle_restore() {
-    echo ""
-    DAAF_NESTED=1 bash "${SCRIPT_DIR}/restore_from_backup.sh"
-    echo ""
-    echo "Returned to DAAF Control Panel."
+    run_delegate restore_from_backup.sh
 }
 
 handle_update() {
-    echo ""
-    DAAF_NESTED=1 bash "${SCRIPT_DIR}/update_daaf.sh"
-    echo ""
-    echo "Returned to DAAF Control Panel."
+    run_delegate update_daaf.sh
 }
 
 handle_rebuild() {
-    echo ""
-    DAAF_NESTED=1 bash "${SCRIPT_DIR}/rebuild_daaf.sh"
-    echo ""
-    echo "Returned to DAAF Control Panel."
+    run_delegate rebuild_daaf.sh
 }
 
 # ============================================================================
@@ -528,14 +655,32 @@ handle_stop_services() {
 
     if [ "$choice" = "1" ]; then
         echo "  Stopping services..."
-        docker compose exec -T daaf-docker bash -c '
+        # Map each listening port to its owning PID via /proc/net/tcp (inode) ->
+        # /proc/*/fd (socket symlink) -> PID, then kill it. `ss` is not present
+        # in the image, so we reuse the /proc pattern from generate_log_viewer.sh.
+        # Surface stderr (do NOT discard) so container-side failures are visible.
+        local stop_script='
             for port in 2718 2719 2720; do
-                pid=$(ss -tlnp 2>/dev/null | grep ":${port} " | sed -n "s/.*pid=\([0-9]*\).*/\1/p" | head -1)
-                if [ -n "$pid" ]; then
-                    kill "$pid" 2>/dev/null && echo "    Stopped service on port $port (PID $pid)"
+                ph=$(printf "%04X" "$port")
+                inode=$(awk -v ph="$ph" '\''$2 ~ ":"ph"$" && $4 == "0A" {print $10}'\'' \
+                    /proc/net/tcp /proc/net/tcp6 2>/dev/null | head -1)
+                [ -z "$inode" ] && continue
+                pid=$(find /proc -maxdepth 3 -path "*/fd/*" -exec ls -la {} + 2>/dev/null \
+                    | grep "socket:\[$inode\]" | head -1 \
+                    | sed "s|.*/proc/\([0-9]*\)/.*|\1|")
+                case "$pid" in
+                    ""|*[!0-9]*) continue ;;
+                esac
+                if kill "$pid" 2>/dev/null; then
+                    echo "    Stopped service on port $port (PID $pid)"
+                else
+                    echo "    Could not stop service on port $port (PID $pid)"
                 fi
             done
-        ' </dev/null 2>/dev/null || true
+        '
+        if ! docker compose exec -T daaf-docker bash -c "$stop_script" </dev/null; then
+            echo "  ${YELLOW}Warning: could not reach the container to stop services.${RESET}"
+        fi
         echo "  Done."
     fi
 }
@@ -614,10 +759,13 @@ handle_quit() {
 # ============================================================================
 # Main Loop
 # ============================================================================
-
-while true; do
-    gather_status
-    display_menu
-    read_choice
-    dispatch_choice "$CHOICE"
-done
+# Skipped under DAAF_TEST_MODE: the test harness sources this file to load the
+# function definitions above and drives them directly, without the menu loop.
+if [ "${DAAF_TEST_MODE:-}" != "1" ]; then
+    while true; do
+        gather_status
+        display_menu
+        read_choice
+        dispatch_choice "$CHOICE"
+    done
+fi

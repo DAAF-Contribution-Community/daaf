@@ -503,45 +503,136 @@ function Resolve-StashConflict {
     }
 }
 
+# Copy one host script out of the container. Returns $true on success, $false
+# on failure (printing a manual-recovery hint -- no silent skips).
+function Copy-HostScript {
+    param([string]$RepoPath)
+    $scriptName = Split-Path $RepoPath -Leaf
+    $savedEAP = $ErrorActionPreference
+    try { $ErrorActionPreference = "SilentlyContinue"; docker cp "${ContainerName}:/daaf/$RepoPath" "./$scriptName" 2>$null } finally { $ErrorActionPreference = $savedEAP }
+    if ($LASTEXITCODE -eq 0) {
+        Write-Host "  Updated: $scriptName"
+        return $true
+    } else {
+        Write-Host "  Warning: could not copy $scriptName. You can copy it manually:" -ForegroundColor Yellow
+        Write-Host "    docker cp ${ContainerName}:/daaf/$RepoPath ./$scriptName" -ForegroundColor Yellow
+        return $false
+    }
+}
+
+# Sync host-side utility scripts out of the container to the daaf-docker folder.
+#
+# The old design diffed a HARDCODED pathspec inside the running (old) script, so
+# files added upstream that the old script did not know about were silently
+# skipped forever (chicken-and-egg). This rewrite derives the file list from the
+# POST-UPDATE repo state (git ls-files at new HEAD) and adds an existence-heal
+# pass so past misses self-correct on the next run. Mirrors the Bash design in
+# update_daaf.sh sync_host_scripts.
+#
+# $OldHead may be empty (called from the "already up to date" path). When empty
+# or equal to $newHead, only the existence-heal pass runs.
 function Sync-HostScript {
-    param([string]$OldHead)
+    param([string]$OldHead = "")
 
     $newHead = Invoke-ComposeGit rev-parse HEAD
 
-    if ($OldHead -eq $newHead) { return }
+    # Authoritative host-script list from the post-update repo state. ls-files
+    # runs in-container (Linux git) so its features are fine here.
+    $allHostFiles = Invoke-ComposeGit ls-files 'scripts/host/*'
+    if ([string]::IsNullOrWhiteSpace($allHostFiles)) { return }
 
-    # Only sync platform-appropriate scripts (.ps1 on Windows) and shared files.
-    # Excludes install.ps1 (not needed post-install) and all .sh files.
-    $changedScripts = Invoke-ComposeGit diff --name-only "$OldHead..$newHead" -- `
-        scripts/host/daaf.sh `
-        scripts/host/daaf_lib.sh `
-        scripts/host/run_daaf.ps1 `
-        scripts/host/backup_daaf.ps1 `
-        scripts/host/restore_from_backup.ps1 `
-        scripts/host/rebuild_daaf.ps1 `
-        scripts/host/update_daaf.ps1 `
-        scripts/host/view_logs.ps1 `
-        scripts/host/view_notebooks.ps1 `
-        scripts/host/run_vscode.ps1 `
-        scripts/host/environment_settings_example.txt
-
-    if ([string]::IsNullOrWhiteSpace($changedScripts)) { return }
-
-    Write-Host "Syncing updated utility scripts..."
-    $changedScripts -split "`n" | ForEach-Object {
-        $repoPath = $_.Trim()
-        if (-not $repoPath) { return }
-        $scriptName = Split-Path $repoPath -Leaf
-        $savedEAP = $ErrorActionPreference
-        try { $ErrorActionPreference = "SilentlyContinue"; docker cp "${ContainerName}:/daaf/$repoPath" "./$scriptName" 2>$null } finally { $ErrorActionPreference = $savedEAP }
-        if ($LASTEXITCODE -eq 0) {
-            Write-Host "  Updated: $scriptName"
-        } else {
-            Write-Host "  Warning: could not copy $scriptName. You can copy it manually:" -ForegroundColor Yellow
-            Write-Host "    docker cp ${ContainerName}:/daaf/$repoPath ./$scriptName" -ForegroundColor Yellow
+    # Platform filter (Windows hosts): keep *.ps1 files, the shared
+    # environment_settings_example.txt, and daaf.sh / daaf_lib.sh (the Control
+    # Panel is run via Git Bash on Windows -- there is no daaf.ps1). Drop other
+    # *.sh files. Bootstrap-only scripts (install.ps1, migrate_daaf.ps1) are
+    # intentionally excluded -- fetched via irm on demand, not needed post-install.
+    $syncList = @()
+    foreach ($line in ($allHostFiles -split "`n")) {
+        $repoPath = $line.Trim()
+        if (-not $repoPath) { continue }
+        if ($repoPath -eq "scripts/host/install.ps1" -or $repoPath -eq "scripts/host/migrate_daaf.ps1") { continue }
+        if ($repoPath -like "*.ps1" -or
+            $repoPath -eq "scripts/host/environment_settings_example.txt" -or
+            $repoPath -eq "scripts/host/daaf.sh" -or
+            $repoPath -eq "scripts/host/daaf_lib.sh") {
+            $syncList += $repoPath
         }
     }
-    Write-Host ""
+    if ($syncList.Count -eq 0) { return }
+
+    # Files changed in the update range (tier B). Only when we have a real range.
+    $changedList = @()
+    if ($OldHead -and ($OldHead -ne $newHead)) {
+        $changedRaw = Invoke-ComposeGit diff --name-only "$OldHead..$newHead" -- scripts/host
+        foreach ($line in ($changedRaw -split "`n")) {
+            $p = $line.Trim()
+            if ($p) { $changedList += $p }
+        }
+    }
+
+    $copied = @()
+    $selfUpdated = $false
+    $printedHeader = $false
+    $syncCopyFailed = $false
+
+    # --- Tier A: existence-heal ---
+    # Any host-appropriate file MISSING on the host is copied unconditionally.
+    foreach ($repoPath in $syncList) {
+        $scriptName = Split-Path $repoPath -Leaf
+        if (-not (Test-Path "./$scriptName")) {
+            if (-not $printedHeader) { Write-Host "Syncing utility scripts..."; $printedHeader = $true }
+            if (Copy-HostScript $repoPath) {
+                $copied += $scriptName
+            } else {
+                $syncCopyFailed = $true
+            }
+        }
+    }
+
+    # --- Tier B: changed files ---
+    # Any listed file changed in this range is copied (unless tier A already did).
+    foreach ($repoPath in $changedList) {
+        if ($syncList -notcontains $repoPath) { continue }
+        $scriptName = Split-Path $repoPath -Leaf
+        if ($copied -contains $scriptName) { continue }
+        if (-not $printedHeader) { Write-Host "Syncing updated utility scripts..."; $printedHeader = $true }
+        if (Copy-HostScript $repoPath) {
+            if ($scriptName -eq "update_daaf.ps1") { $selfUpdated = $true }
+            $copied += $scriptName
+        } else {
+            $syncCopyFailed = $true
+        }
+    }
+
+    if ($printedHeader) { Write-Host "" }
+
+    # --- Sync failure summary ---
+    # $syncCopyFailed is set on any copy error. Print a closing summary so the
+    # user knows to act even if the per-file warning scrolled by.
+    if ($syncCopyFailed) {
+        Write-Host "Warning: some host scripts could not be synced -- see the messages above for manual copy commands."
+        Write-Host ""
+    }
+
+    # --- Self-update notice ---
+    # If the updater itself was refreshed as a CHANGED file, its new logic is on
+    # disk but was not executed this run. Prompt a re-run so the new updater's
+    # existence-heal pass can deliver anything the old logic could not (no auto
+    # re-exec -- that would collide with the mutex and trap handling).
+    if ($selfUpdated) {
+        Write-Host "-------------------------------------------"
+        Write-Host "  The updater itself was updated"
+        Write-Host "-------------------------------------------"
+        Write-Host ""
+        Write-Host "update_daaf.ps1 was refreshed in this update. The new version is"
+        Write-Host "now on disk but this run used the previous version. Re-run it once"
+        Write-Host "more so the latest updater can finish syncing your host tools:"
+        Write-Host "  .\update_daaf.ps1"
+        Write-Host ""
+        Write-Host "(It is safe to re-run - if everything is already current it will"
+        Write-Host " simply report 'Already up to date!')"
+        Write-Host ""
+    }
 }
 
 function Test-BuildChange {
@@ -1015,6 +1106,9 @@ if (($CurrentBranch -eq $RemoteBranch) -and ($Local -eq $Remote) -and `
     Write-Host ""
     Write-Host "Already up to date! Nothing to do."
     Write-Host ""
+    # Even with nothing to pull, run the existence-heal sync so host scripts a
+    # prior update missed are delivered now. No OldHead -> only tier A runs.
+    Sync-HostScript
     Wait-AndExit 0
 }
 
@@ -1040,6 +1134,8 @@ if (($CurrentBranch -ne $RemoteBranch) -and ($Behind -eq "0")) {
     Write-Host "Already up to date! Your branch '$CurrentBranch' has all the latest"
     Write-Host "changes from $UpstreamRemote/$RemoteBranch. Nothing to do."
     Write-Host ""
+    # Existence-heal sync (tier A only) even when there is nothing new to pull.
+    Sync-HostScript
     Wait-AndExit 0
 }
 

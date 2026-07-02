@@ -329,6 +329,56 @@ echo "[4/4] Verifying results..."
 
 ---
 
+## Host-Script Portability (Bash 3.2 + BSD userland)
+
+There are two Bash worlds in DAAF, and they have different portability rules:
+
+- **In-container scripts** (`.claude/hooks/`, `scripts/` root utilities, anything run inside the Docker image) execute under the Bash and GNU coreutils installed by the Dockerfile — a modern, known environment. Write for that environment; do not assume anything the Dockerfile does not install.
+- **Host scripts** (`scripts/host/*.sh`, and anything documented to run on the user's own machine) execute on *the user's* shell, which you do not control. These must target **Bash 3.2 + BSD userland**.
+
+### Why Bash 3.2 for host scripts
+
+macOS still ships **Bash 3.2.57** at `/bin/bash` and always will: Bash 4.0+ is GPLv3, which Apple declines to bundle, so the system bash has been frozen at the last GPLv2 release for over a decade. Users who follow DAAF's documented launch command (`bash daaf.sh`) get `/bin/bash` — 3.2 — unless they have separately installed a newer bash via Homebrew, which we cannot assume. Requiring Homebrew bash would be a real adoption barrier and a support burden, so the correct fix is to make host scripts run on 3.2, not to document a workaround.
+
+This bit us concretely: a review change once "cleaned up" backup-directory parsing into a glob array and used `${backup_dirs[-1]}` to grab the newest entry. Negative array subscripts are a Bash 4.3 feature; on 3.2 the expansion fails with `bad array subscript`, and because the script ran `set -euo pipefail`, the whole Control Panel crashed on every startup once a backup existed. ShellCheck passed (it has no version pin and does not warn on `arr[-1]`), and `bash -n` passed (it is a runtime expansion error, not a parse error) — so *nothing caught it statically*. The lesson: 4.x-isms are invisible to the usual linters and must be banned explicitly and exercised under a real 3.2 interpreter in CI.
+
+### Banned constructs in host scripts
+
+| Construct | Introduced | 3.2-safe alternative |
+|-----------|-----------|----------------------|
+| `${arr[-1]}` (negative subscript) | 4.3 | `${arr[${#arr[@]}-1]}` (arithmetic subscripts work in 3.2) |
+| `declare -A` (associative arrays) | 4.0 | Parallel indexed arrays, or a `case` lookup |
+| `mapfile` / `readarray` | 4.0 | `while IFS= read -r line; do …; done < file` |
+| `${var,,}` / `${var^^}` (case modification) | 4.0 | `tr '[:upper:]' '[:lower:]'` / `tr '[:lower:]' '[:upper:]'` |
+| `&>>` (append both streams) | 4.0 | `>>file 2>&1` |
+| `coproc` | 4.0 | Named pipe (`mkfifo`) or a temp file |
+
+`&>foo` (truncating redirect of both streams) *is* valid in 3.2 and is not banned; only the appending `&>>` form is 4.0+. When in doubt, prefer the explicit `>file 2>&1` form, which reads identically on every version.
+
+These bans are enforced by `tests/lint/check-daaf-conventions.sh` (a grep gate over `scripts/host/*.sh`) and exercised at runtime by the `bats-bash32` job in `ci-scripts.yml`, which runs the host scripts under the official `bash:3.2` image. See `./testing.md` for the CI layout.
+
+### BSD vs GNU userland pitfalls
+
+Host scripts also call external tools, and macOS ships **BSD** versions of them, not GNU. Flags that "always work" on Linux frequently differ or are absent on BSD. The common traps:
+
+| GNU (Linux) idiom | Breaks on BSD/macOS because | Portable alternative |
+|-------------------|------------------------------|----------------------|
+| `sed -i 's/a/b/' f` | BSD `sed -i` requires a backup-suffix argument (`sed -i '' …`) | Write to a temp file and `mv`, or `sed -i.bak` then remove `.bak` |
+| `date -d '2 days ago'` | BSD `date` has no `-d`; it uses `-v` | Compute in the shell, or require GNU `date` explicitly (avoid on host) |
+| `stat -c '%s' f` | BSD `stat` uses `-f '%z'`, different format codes | `wc -c <f` for size; avoid `stat` format strings on host |
+| `readlink -f path` | BSD `readlink` has no `-f` | `cd "$(dirname "$path")" && pwd -P` pattern |
+| `grep -P` (PCRE) | BSD `grep` has no `-P` | `grep -E` (ERE) with a portable pattern |
+
+Prefer POSIX-defined tools and flags for host scripts. When a task genuinely needs GNU behavior, do it *inside the container* (where GNU coreutils are installed) via `docker compose exec` rather than on the host.
+
+### In-container commands: only what the Dockerfile installs
+
+A related failure mode is the mirror image of the version problem: assuming a binary exists in the container when the image never installed it. A host script once probed container ports with `ss -tlnp`, but `iproute2` is not in the Dockerfile, so `ss` did not exist and every probe silently failed (stderr was discarded), making the status dashboard and service-stop logic misreport. The container-side scripts had already solved the same problem with `/proc/net/tcp` parsing — no extra binary needed.
+
+The rule: **a command you run inside the container must be part of the Dockerfile's installed set** (or the base image's guaranteed contents). Before adding a new in-container command to a host or container script, confirm it is installed; if it is not, either add it to the Dockerfile deliberately (a rebuild-gated change) or use a mechanism that is already present. Suppressing the command's stderr (`2>/dev/null`) turns a missing-binary error into a silent wrong answer — validate the dependency instead.
+
+---
+
 ## Compliance Checklist
 
 Use this checklist when writing or reviewing any Bash script:
@@ -347,3 +397,5 @@ Use this checklist when writing or reviewing any Bash script:
 | 10 | Positional arguments validated with usage message | `if [ $# -lt N ]; then` |
 | 11 | External dependencies checked at script start | `command -v tool` block |
 | 12 | Progress steps use `[N/M]` format | Visual scan |
+| 13 | Host scripts (`scripts/host/*.sh`) avoid Bash-4.x-only constructs and BSD-incompatible flags | See "Host-Script Portability" above; enforced by `check-daaf-conventions.sh` + `bats-bash32` CI job |
+| 14 | In-container commands are part of the Dockerfile's installed set | No probing with un-installed binaries (e.g. `ss`); validate, don't suppress |

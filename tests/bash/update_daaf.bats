@@ -158,35 +158,46 @@ teardown() {
 # ============================================================================
 
 # --- sync_host_scripts behavioral tests ---
+#
+# The sync mechanism was redesigned: instead of a hardcoded pathspec diffed by
+# the (old) running script, it derives the file list from the POST-UPDATE repo
+# state (git ls-files at new HEAD), copies any host-appropriate file MISSING on
+# the host unconditionally (tier A / existence-heal), and copies files that
+# CHANGED in old_head..new_head (tier B). Mocks below therefore respond to
+# `ls-files` in addition to `rev-parse HEAD`, `diff --name-only`, and `cp`.
 
-@test "update: sync_host_scripts file list includes daaf.sh and daaf_lib.sh" {
-    run grep 'scripts/host/daaf.sh' "${REPO_ROOT}/scripts/host/update_daaf.sh"
+@test "update: sync_host_scripts derives list from ls-files (not a hardcoded pathspec)" {
+    # The redesign must NOT diff a hardcoded scripts/host/*.sh pathspec inside
+    # the running script. It should call git ls-files against the new HEAD.
+    run grep -c "ls-files 'scripts/host/\*'" "${REPO_ROOT}/scripts/host/update_daaf.sh"
     assert_success
-
-    run grep 'scripts/host/daaf_lib.sh' "${REPO_ROOT}/scripts/host/update_daaf.sh"
-    assert_success
+    [ "${output}" -ge 1 ]
 }
 
-@test "update: sync_host_scripts skips when HEAD unchanged" {
+@test "update: sync_host_scripts skips when repo lists no host files" {
     run bash -c '
         DAAF_TEST_MODE=1 source "'"${REPO_ROOT}"'/scripts/host/update_daaf.sh"
         trap - ERR
         set +eu
 
-        # Mock docker: compose exec returns the same HEAD hash
+        # ls-files returns nothing -> function returns early, no output.
         docker() {
-            echo "abc1234"
-            return 0
+            case "$*" in
+                *rev-parse*HEAD*) echo "abc1234" ;;
+                *ls-files*) echo "" ;;
+                *) return 0 ;;
+            esac
         }
 
         sync_host_scripts "abc1234"
     '
     assert_success
-    # No "Syncing" output when HEAD is unchanged
     refute_output --partial "Syncing"
 }
 
-@test "update: sync_host_scripts detects changed files via git diff" {
+@test "update: sync_host_scripts existence-heal copies a file missing on host" {
+    # daaf.sh is absent from the host dir (fresh TEST_DIR). Even with old_head
+    # == new_head (nothing pulled), tier A must copy it out.
     run bash -c '
         DAAF_TEST_MODE=1 source "'"${REPO_ROOT}"'/scripts/host/update_daaf.sh"
         trap - ERR
@@ -194,8 +205,62 @@ teardown() {
 
         docker() {
             case "$*" in
+                *rev-parse*HEAD*) echo "samehash" ;;
+                *ls-files*) printf "scripts/host/daaf.sh\nscripts/host/run_daaf.sh\n" ;;
+                cp*) return 0 ;;
+                *) return 0 ;;
+            esac
+        }
+
+        # old_head == new_head: no diff/tier-B, only existence-heal runs.
+        sync_host_scripts "samehash"
+    '
+    assert_success
+    assert_output --partial "Syncing utility scripts..."
+    assert_output --partial "Updated: daaf.sh"
+    assert_output --partial "Updated: run_daaf.sh"
+}
+
+@test "update: sync_host_scripts existence-heal skips files already present" {
+    # Pre-create run_daaf.sh on the host; only the missing daaf.sh should copy.
+    run bash -c '
+        DAAF_TEST_MODE=1 source "'"${REPO_ROOT}"'/scripts/host/update_daaf.sh"
+        trap - ERR
+        set +eu
+
+        touch ./run_daaf.sh
+
+        docker() {
+            case "$*" in
+                *rev-parse*HEAD*) echo "samehash" ;;
+                *ls-files*) printf "scripts/host/daaf.sh\nscripts/host/run_daaf.sh\n" ;;
+                cp*) return 0 ;;
+                *) return 0 ;;
+            esac
+        }
+
+        sync_host_scripts "samehash"
+    '
+    assert_success
+    assert_output --partial "Updated: daaf.sh"
+    refute_output --partial "Updated: run_daaf.sh"
+}
+
+@test "update: sync_host_scripts tier B copies files changed in the update range" {
+    # run_daaf.sh already present on host (so tier A skips it), but it changed
+    # in old_head..new_head, so tier B must refresh it.
+    run bash -c '
+        DAAF_TEST_MODE=1 source "'"${REPO_ROOT}"'/scripts/host/update_daaf.sh"
+        trap - ERR
+        set +eu
+
+        touch ./run_daaf.sh ./backup_daaf.sh ./daaf.sh
+
+        docker() {
+            case "$*" in
                 *rev-parse*HEAD*) echo "new5678" ;;
-                *diff*--name-only*) echo "scripts/host/run_daaf.sh" ;;
+                *ls-files*) printf "scripts/host/daaf.sh\nscripts/host/run_daaf.sh\nscripts/host/backup_daaf.sh\n" ;;
+                *diff*--name-only*) printf "scripts/host/run_daaf.sh\nscripts/host/backup_daaf.sh\n" ;;
                 cp*) return 0 ;;
                 *) return 0 ;;
             esac
@@ -205,18 +270,25 @@ teardown() {
     '
     assert_success
     assert_output --partial "Syncing updated utility scripts..."
+    assert_output --partial "Updated: run_daaf.sh"
+    assert_output --partial "Updated: backup_daaf.sh"
 }
 
-@test "update: sync_host_scripts copies only changed files" {
+@test "update: sync_host_scripts ignores changed files outside the platform filter" {
+    # A .ps1 file changed upstream must NOT be copied on a Unix host, and
+    # install.sh / migrate_daaf.sh (bootstrap-only) are excluded even if changed.
     run bash -c '
         DAAF_TEST_MODE=1 source "'"${REPO_ROOT}"'/scripts/host/update_daaf.sh"
         trap - ERR
         set +eu
 
+        touch ./run_daaf.sh ./daaf.sh
+
         docker() {
             case "$*" in
                 *rev-parse*HEAD*) echo "new5678" ;;
-                *diff*--name-only*) printf "scripts/host/run_daaf.sh\nscripts/host/backup_daaf.sh\n" ;;
+                *ls-files*) printf "scripts/host/daaf.sh\nscripts/host/run_daaf.sh\nscripts/host/run_daaf.ps1\nscripts/host/install.sh\nscripts/host/migrate_daaf.sh\n" ;;
+                *diff*--name-only*) printf "scripts/host/run_daaf.ps1\nscripts/host/install.sh\nscripts/host/migrate_daaf.sh\n" ;;
                 cp*) return 0 ;;
                 *) return 0 ;;
             esac
@@ -225,21 +297,27 @@ teardown() {
         sync_host_scripts "old1234"
     '
     assert_success
-    assert_output --partial "Updated: run_daaf.sh"
-    assert_output --partial "Updated: backup_daaf.sh"
+    refute_output --partial "run_daaf.ps1"
+    refute_output --partial "Updated: install.sh"
+    refute_output --partial "Updated: migrate_daaf.sh"
 }
 
-@test "update: sync_host_scripts handles partial failure gracefully" {
+@test "update: sync_host_scripts prints self-update notice when update_daaf.sh changed" {
+    # update_daaf.sh present on host (tier A skips) but changed in the range ->
+    # tier B refreshes it and the self-update re-run notice must fire.
     run bash -c '
         DAAF_TEST_MODE=1 source "'"${REPO_ROOT}"'/scripts/host/update_daaf.sh"
         trap - ERR
         set +eu
 
+        touch ./update_daaf.sh
+
         docker() {
             case "$*" in
                 *rev-parse*HEAD*) echo "new5678" ;;
-                *diff*--name-only*) printf "scripts/host/run_daaf.sh\nscripts/host/backup_daaf.sh\n" ;;
-                cp*) return 1 ;;
+                *ls-files*) printf "scripts/host/update_daaf.sh\n" ;;
+                *diff*--name-only*) printf "scripts/host/update_daaf.sh\n" ;;
+                cp*) return 0 ;;
                 *) return 0 ;;
             esac
         }
@@ -247,8 +325,78 @@ teardown() {
         sync_host_scripts "old1234"
     '
     assert_success
+    assert_output --partial "The updater itself was updated"
+    assert_output --partial "Re-run it"
+}
+
+@test "update: sync_host_scripts does NOT print self-update notice for other changes" {
+    run bash -c '
+        DAAF_TEST_MODE=1 source "'"${REPO_ROOT}"'/scripts/host/update_daaf.sh"
+        trap - ERR
+        set +eu
+
+        touch ./run_daaf.sh
+
+        docker() {
+            case "$*" in
+                *rev-parse*HEAD*) echo "new5678" ;;
+                *ls-files*) printf "scripts/host/run_daaf.sh\n" ;;
+                *diff*--name-only*) printf "scripts/host/run_daaf.sh\n" ;;
+                cp*) return 0 ;;
+                *) return 0 ;;
+            esac
+        }
+
+        sync_host_scripts "old1234"
+    '
+    assert_success
+    refute_output --partial "The updater itself was updated"
+}
+
+@test "update: sync_host_scripts reports copy failures by name with recovery hint" {
+    run bash -c '
+        DAAF_TEST_MODE=1 source "'"${REPO_ROOT}"'/scripts/host/update_daaf.sh"
+        trap - ERR
+        set +eu
+
+        docker() {
+            case "$*" in
+                *rev-parse*HEAD*) echo "samehash" ;;
+                *ls-files*) printf "scripts/host/daaf.sh\nscripts/host/run_daaf.sh\n" ;;
+                cp*) return 1 ;;
+                *) return 0 ;;
+            esac
+        }
+
+        sync_host_scripts "samehash"
+    '
+    assert_success
+    assert_output --partial "Warning: could not copy daaf.sh"
     assert_output --partial "Warning: could not copy run_daaf.sh"
-    assert_output --partial "Warning: could not copy backup_daaf.sh"
+    assert_output --partial "docker cp"
+}
+
+@test "update: sync_host_scripts up-to-date path heals with empty old_head" {
+    # Called with no old_head (the up-to-date early-exit path). Only tier A runs;
+    # a missing file is still delivered even though nothing was pulled.
+    run bash -c '
+        DAAF_TEST_MODE=1 source "'"${REPO_ROOT}"'/scripts/host/update_daaf.sh"
+        trap - ERR
+        set +eu
+
+        docker() {
+            case "$*" in
+                *rev-parse*HEAD*) echo "samehash" ;;
+                *ls-files*) printf "scripts/host/daaf.sh\n" ;;
+                cp*) return 0 ;;
+                *) return 0 ;;
+            esac
+        }
+
+        sync_host_scripts
+    '
+    assert_success
+    assert_output --partial "Updated: daaf.sh"
 }
 
 # --- check_build_changes behavioral tests ---
@@ -699,6 +847,41 @@ setup_state_machine() {
     '
     assert_success
     assert_output --partial "Already up to date"
+}
+
+@test "update: already-up-to-date path still existence-heals a missing host script" {
+    setup_state_machine
+    # Same SHA everywhere (nothing to pull), but daaf.sh is missing on the host.
+    # The up-to-date early exit must still call sync_host_scripts and copy it.
+    run bash -c '
+        docker() {
+            local all_args="$*"
+            case "$all_args" in
+                "info") return 0 ;;
+                *"compose ps"*"--format"*) echo "daaf-docker" ;;
+                *"compose exec"*"true"*) return 0 ;;
+                *"compose exec"*"test -f"*"/daaf/CLAUDE.md"*) return 0 ;;
+                *"compose exec"*"test -f"*"/daaf/.git/shallow"*) return 1 ;;
+                *"compose exec"*"remote get-url"*"origin"*) echo "https://github.com/DAAF-Contribution-Community/daaf.git" ;;
+                *"compose exec"*"fetch"*) return 0 ;;
+                *"compose exec"*"rev-parse --verify"*"backup/"*) return 1 ;;
+                *"compose exec"*"rev-parse --verify"*"origin/main"*) return 0 ;;
+                *"compose exec"*"branch --show-current"*) echo "main" ;;
+                *"compose exec"*"rev-parse"*"origin/main"*) echo "abc123same" ;;
+                *"compose exec"*"rev-parse"*"HEAD"*) echo "abc123same" ;;
+                *"compose exec"*"diff --name-only"*"HEAD"*) echo "" ;;
+                *"compose exec"*"ls-files"*) echo "scripts/host/daaf.sh" ;;
+                *"compose exec"*"branch"*) return 0 ;;
+                "cp"*) return 0 ;;
+                *) return 0 ;;
+            esac
+        }
+        export -f docker
+        bash "'"${REPO_ROOT}"'/scripts/host/update_daaf.sh"
+    '
+    assert_success
+    assert_output --partial "Already up to date"
+    assert_output --partial "Updated: daaf.sh"
 }
 
 @test "update: no remote configured exits with guidance" {

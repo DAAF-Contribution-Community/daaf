@@ -63,8 +63,19 @@ teardown() {
 }
 
 @test "daaf.sh fails when Docker daemon is not running" {
-    MOCK_DOCKER_INFO_EXIT=1
-    run env DAAF_DRY_RUN=1 bash -c 'echo q | bash "'"${REPO_ROOT}"'/scripts/host/daaf.sh"'
+    # Do NOT use DAAF_DRY_RUN here: the dry-run docker() stub returns 0 for
+    # `info` and would mask the failure. Use a real docker() override that fails
+    # `docker info` so the preflight check is actually exercised.
+    run bash -c '
+        docker() {
+            case "$1" in
+                info) return 1 ;;
+                *) return 0 ;;
+            esac
+        }
+        export -f docker
+        echo q | bash "'"${REPO_ROOT}"'/scripts/host/daaf.sh"
+    '
     assert_failure
     assert_output --partial "ERROR"
     assert_output --partial "Docker Desktop"
@@ -74,8 +85,10 @@ teardown() {
 # Tier 3 -- Script structure
 # =========================================================================
 
-@test "daaf.sh includes set -euo pipefail" {
-    run grep -c "set -euo pipefail" "${REPO_ROOT}/scripts/host/daaf.sh"
+@test "daaf.sh includes strict-mode preamble" {
+    # The wrapper uses set -Eeuo pipefail (the -E propagates the ERR trap into
+    # functions so unexpected failures are reported rather than silently aborting).
+    run grep -Ec "set -E?euo pipefail" "${REPO_ROOT}/scripts/host/daaf.sh"
     assert_success
     [ "${output}" -ge 1 ]
 }
@@ -98,10 +111,14 @@ teardown() {
     [ "${output}" -ge 1 ]
 }
 
-@test "daaf.sh does not have DAAF_NESTED exit trap" {
-    # The menu wrapper is the top-level entry point and should NOT
-    # have the "Press Enter to continue" trap.
-    run grep "Press Enter" "${REPO_ROOT}/scripts/host/daaf.sh"
+@test "daaf.sh does not have DAAF_NESTED pause-on-exit trap" {
+    # The menu wrapper is the top-level entry point and should NOT carry the
+    # child-script "pause on exit unless nested" trap (the DAAF_NESTED guard
+    # around a 'Press Enter to continue' EXIT trap that child scripts use).
+    # It does legitimately have an error-only pause ("Press Enter to close")
+    # and a help prompt, so we assert specifically the DAAF_NESTED-guarded
+    # pause pattern is absent.
+    run grep -E "DAAF_NESTED.*Press Enter to continue" "${REPO_ROOT}/scripts/host/daaf.sh"
     assert_failure
 }
 
@@ -386,8 +403,9 @@ teardown() {
 }
 
 @test "dispatch_choice routes q to handle_quit" {
+    # handle_quit calls `exit 0`; under `run` this is captured as status 0.
     run dispatch_choice "q"
-    assert_failure  # exit 0 from subshell shows as failure in run
+    assert_success
     assert_output --partial "Goodbye"
 }
 
@@ -548,14 +566,22 @@ teardown() {
 }
 
 @test "handle_stop_services lists running services" {
-    mock_port_check "2718:yes 2720:yes"
-
-    # Provide "0" (Back) as input to avoid blocking on read
+    # Provide "0" (Back) as input to avoid blocking on read. Source daaf.sh in
+    # test mode so only function definitions load (no main loop), and define an
+    # inline check_port stub reporting 2718/2720 as listening (the test_helper
+    # mock functions are not exported into this subshell).
     run bash -c 'echo "0" | (
         source "'"${REPO_ROOT}"'/scripts/host/daaf_lib.sh"
         setup_colors
-        source "'"${REPO_ROOT}"'/scripts/host/daaf.sh" 2>/dev/null
-        mock_port_check "2718:yes 2720:yes"
+        export DAAF_TEST_MODE=1
+        source "'"${REPO_ROOT}"'/scripts/host/daaf.sh"
+        unset DAAF_TEST_MODE
+        check_port() {
+            case "$1" in
+                2718|2720) return 0 ;;
+                *) return 1 ;;
+            esac
+        }
         handle_stop_services
     )' 2>/dev/null
     # Structural check: the function should show running services
@@ -645,4 +671,100 @@ teardown() {
     local count
     count=$(echo "$output" | grep -c "DAAF Control Panel" || true)
     [ "$count" -ge 2 ]
+}
+
+# =========================================================================
+# Tier 12 -- Regression coverage for the Control Panel fixes
+# =========================================================================
+
+@test "daaf.sh uses Bash 3.2-safe last-element array indexing (no negative subscript)" {
+    # Bash 3.2 (macOS /bin/bash) has no ${arr[-1]}; a negative subscript there
+    # is a fatal "bad array subscript" error. Guard against reintroduction.
+    run grep -F 'backup_dirs[-1]' "${REPO_ROOT}/scripts/host/daaf.sh"
+    assert_failure
+}
+
+@test "gather_status does not crash when a backup dir exists (3.2-safe indexing)" {
+    # Regression for the L134 crash: with a seeded backup dir the last-element
+    # branch executes. This must run cleanly under the arithmetic subscript.
+    mkdir -p "${TEST_DIR}/2026-07-01_daaf_backup"
+    run gather_status
+    assert_success
+}
+
+@test "daaf.sh probes ports via /proc/net/tcp, not ss" {
+    # The image has no `ss`; the probe must read /proc/net/tcp instead.
+    run grep -F '/proc/net/tcp' "${REPO_ROOT}/scripts/host/daaf.sh"
+    assert_success
+    run grep -E '\bss -tlnp\b' "${REPO_ROOT}/scripts/host/daaf.sh"
+    assert_failure
+}
+
+@test "daaf_lib.sh check_port probes via /proc/net/tcp, not ss" {
+    run grep -F '/proc/net/tcp' "${REPO_ROOT}/scripts/host/daaf_lib.sh"
+    assert_success
+    run grep -E '\bss -tlnp\b' "${REPO_ROOT}/scripts/host/daaf_lib.sh"
+    assert_failure
+}
+
+@test "handle_restore returns to menu when child exits non-zero (no set -e abort)" {
+    # Simulate restore_from_backup.sh exiting 1 (e.g., no backups found). The
+    # guard must catch it and return to the menu instead of killing the panel.
+    bash() {
+        return 1
+    }
+    export -f bash
+    run handle_restore
+    assert_success
+    assert_output --partial "Returned to DAAF Control Panel"
+}
+
+@test "handle_backup returns to menu when child exits non-zero" {
+    bash() { return 1; }
+    export -f bash
+    run handle_backup
+    assert_success
+    assert_output --partial "Returned to DAAF Control Panel"
+}
+
+@test "handle_vscode displays the code-server password" {
+    mock_port_check "2720:yes"
+    run handle_vscode
+    assert_success
+    assert_output --partial "Password:"
+    assert_output --partial "daaf"
+}
+
+@test "handle_vscode honors a PASSWORD override in the displayed password" {
+    mock_port_check "2720:yes"
+    PASSWORD="hunter2" run handle_vscode
+    assert_success
+    assert_output --partial "hunter2"
+}
+
+@test "handle_logs starts the server against the selected source, not always --archive" {
+    # The server-start command must be able to use the selected project source
+    # so a project selection works even when the DAAF-wide archive is empty.
+    run grep -F 'serve_args=("$selected" --background)' "${REPO_ROOT}/scripts/host/daaf.sh"
+    assert_success
+}
+
+@test "handle_logs surfaces manifest generation failures (no dead URL)" {
+    # A manifest generation failure must produce a visible message and return,
+    # rather than printing a URL that leads nowhere.
+    run grep -F 'Could not generate the session manifest' "${REPO_ROOT}/scripts/host/daaf.sh"
+    assert_success
+}
+
+@test "service handlers call ensure_container before docker exec" {
+    # Notebooks, VS Code, and Log Viewer handlers must ensure the container is
+    # up before attempting docker compose exec.
+    local count
+    count=$(grep -c 'ensure_container' "${REPO_ROOT}/scripts/host/daaf.sh" || true)
+    [ "$count" -ge 3 ]
+}
+
+@test "daaf.sh registers an ERR trap for diagnostics" {
+    run grep -E "trap .* ERR" "${REPO_ROOT}/scripts/host/daaf.sh"
+    assert_success
 }

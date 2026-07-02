@@ -7,6 +7,7 @@
 #   2. PowerShell preamble: $ErrorActionPreference in first 15 code lines
 #   3. DAAF_NESTED consistency: host lifecycle scripts reference DAAF_NESTED
 #   4. Numbered progress: host lifecycle scripts use [N/M] indicators (warn only)
+#   5. Bash 3.2 portability: host scripts avoid Bash-4.x-only constructs
 #
 # Usage:
 #   bash tests/lint/check-daaf-conventions.sh
@@ -99,14 +100,17 @@ while IFS= read -r -d '' shfile; do
     # false failure as long as error handling appears early in actual code.
     # Accept any of:
     #   - set -euo pipefail  (preferred)
+    #   - set -Eeuo pipefail (errexit + ERR-trap propagation into functions)
     #   - set -eu            (minimum)
     #   - set -o pipefail    (used by some utility scripts)
     #   - trap ... ERR       (fail-closed pattern used by hooks)
     code_lines=$(awk '!/^\s*#/ && !/^\s*$/ { print; if (++n == 10) exit }' "${shfile}")
-    if ! echo "${code_lines}" | grep -qE 'set -e|trap .* ERR'; then
-        # Allow BATS test files and test helpers to skip strict mode
+    if ! echo "${code_lines}" | grep -qE 'set -[A-Za-z]*e|trap .* ERR'; then
+        # Allow BATS test files, test helpers, and sourced function libraries
+        # (*_lib.sh) to skip strict mode — a sourced library must not change
+        # the caller's shell options, so it correctly has no set -e of its own.
         case "${filename}" in
-            *.bats|test_helper.bash) ;;
+            *.bats|test_helper.bash|*_lib.sh) ;;
             *)
                 fail "${relpath}: missing error handling (set -e / set -euo pipefail / trap ERR) in first 10 code lines"
                 ;;
@@ -155,6 +159,13 @@ for shfile in "${REPO_ROOT}"/scripts/host/*.sh; do
     [ -f "${shfile}" ] || continue
     filename=$(basename "${shfile}")
 
+    # Sourced function libraries (*_lib.sh) are not lifecycle scripts: they
+    # define functions only, never execute nested scripts, and have no
+    # pause-on-exit trap — the DAAF_NESTED convention does not apply.
+    case "${filename}" in
+        *_lib.sh) continue ;;
+    esac
+
     if ! grep -q 'DAAF_NESTED' "${shfile}"; then
         fail "scripts/host/${filename}: lifecycle script does not reference DAAF_NESTED"
     else
@@ -201,6 +212,95 @@ for ps1file in "${REPO_ROOT}"/scripts/host/*.ps1; do
     else
         pass "scripts/host/${filename}: has [N/M] progress indicators"
     fi
+done
+
+echo ""
+
+# =====================================================================
+# 5. Bash 3.2 portability (host-executed scripts)
+# =====================================================================
+echo "--- Bash 3.2 portability checks (host scripts) ---"
+
+# Scripts under scripts/host/ run on the *user's own machine*, not inside the
+# container. On macOS the default /bin/bash is 3.2.57 (Apple ships it rather than
+# a GPLv3 build), and documented usage is `bash daaf.sh` -> /bin/bash. So host
+# scripts must avoid constructs introduced after Bash 3.2. ShellCheck cannot
+# catch this class (it has no version pin and does not warn on, e.g., arr[-1]),
+# so this grep-based gate is the practical static defense. See the
+# shell-scripting skill (bash-standards.md > Host-Script Portability) for the
+# full standard and reasoning.
+#
+# Banned constructs and the Bash version that introduced each:
+#   ${arr[-1]}      negative array subscript      (4.3)
+#   declare -A      associative arrays            (4.0)
+#   mapfile / readarray  read lines into array    (4.0)
+#   ${var,,} ${var^^}  case modification          (4.0)
+#   &>>            append-redirect stdout+stderr  (4.0)
+#   coproc         coprocesses                    (4.0)
+#
+# We strip comments before matching so that documentation mentioning these
+# constructs (e.g., an "# ASSUMES: no mapfile" note) does not trip the check.
+# The regexes target the actual syntax, not prose.
+
+check_bash32_portability() {
+    local file="$1"
+    local relpath="$2"
+    local found=0
+
+    # Strip full-line and trailing comments to avoid false positives on prose.
+    # This is a heuristic (a '#' inside a string literal would also be stripped),
+    # which is acceptable here: it only ever *reduces* matches, so it cannot
+    # produce a false failure — at worst it misses a construct hidden after a
+    # quoted '#', which is vanishingly rare in these scripts.
+    local code
+    code=$(sed 's/#.*$//' "$file")
+
+    # Negative array subscript: ${name[-N]} (arithmetic subscripts like
+    # ${name[i-1]} are fine — we require a '-' immediately before a digit).
+    if echo "$code" | grep -qE '\$\{[A-Za-z_][A-Za-z0-9_]*\[[[:space:]]*-[0-9]'; then
+        fail "scripts/host/${relpath}: uses negative array subscript (\${arr[-1]}) — Bash 4.3+; use \${arr[\${#arr[@]}-1]}"
+        found=1
+    fi
+
+    # declare -A (associative array declaration)
+    if echo "$code" | grep -qE '(^|[;&|[:space:]])declare[[:space:]]+-[A-Za-z]*A'; then
+        fail "scripts/host/${relpath}: uses 'declare -A' (associative arrays) — Bash 4.0+"
+        found=1
+    fi
+
+    # mapfile / readarray
+    if echo "$code" | grep -qE '(^|[;&|[:space:]])(mapfile|readarray)([[:space:]]|$)'; then
+        fail "scripts/host/${relpath}: uses mapfile/readarray — Bash 4.0+; use a read loop"
+        found=1
+    fi
+
+    # Case modification: ${var,,}, ${var^^}, ${var,}, ${var^}
+    if echo "$code" | grep -qE '\$\{[A-Za-z_][A-Za-z0-9_]*(\[[^]]*\])?[,^]'; then
+        fail "scripts/host/${relpath}: uses case-modification expansion (\${var,,}/\${var^^}) — Bash 4.0+; use tr"
+        found=1
+    fi
+
+    # &>> append-redirect of both streams
+    if echo "$code" | grep -qE '&>>'; then
+        fail "scripts/host/${relpath}: uses '&>>' append redirect — Bash 4.0+; use '>>file 2>&1'"
+        found=1
+    fi
+
+    # coproc
+    if echo "$code" | grep -qE '(^|[;&|[:space:]])coproc([[:space:]]|$)'; then
+        fail "scripts/host/${relpath}: uses 'coproc' — Bash 4.0+"
+        found=1
+    fi
+
+    if [ "$found" -eq 0 ]; then
+        pass "scripts/host/${relpath}: no Bash-4.x-only constructs"
+    fi
+}
+
+for shfile in "${REPO_ROOT}"/scripts/host/*.sh; do
+    [ -f "${shfile}" ] || continue
+    filename=$(basename "${shfile}")
+    check_bash32_portability "${shfile}" "${filename}"
 done
 
 echo ""
