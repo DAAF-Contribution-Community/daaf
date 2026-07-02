@@ -453,8 +453,8 @@ sync_host_scripts() {
         return
     fi
 
-    # Platform filter (macOS/Linux hosts): keep *.sh files and the shared
-    # environment_settings_example.txt; drop all *.ps1 (Windows-only).
+    # Platform filter (macOS/Linux hosts): keep *.sh files and shared plain-text
+    # files (environment_settings_example.txt, README.txt); drop all *.ps1 (Windows-only).
     # Bootstrap-only scripts (install.sh, migrate_daaf.sh) are intentionally
     # excluded -- they are fetched via curl on demand and are not needed in the
     # daaf-docker folder post-install. This preserves the pre-existing exclusion
@@ -471,7 +471,7 @@ sync_host_scripts() {
         [ -z "${repo_path}" ] && continue
         case "${repo_path}" in
             scripts/host/install.sh|scripts/host/migrate_daaf.sh) continue ;;
-            *.sh|scripts/host/environment_settings_example.txt) sync_list="${sync_list}${repo_path}
+            *.sh|scripts/host/environment_settings_example.txt|scripts/host/README.txt) sync_list="${sync_list}${repo_path}
 " ;;
             *) continue ;;
         esac

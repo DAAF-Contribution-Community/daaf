@@ -162,7 +162,8 @@ if ! curl -fsSL "${RAW_BASE}/Dockerfile"                          -o "${INSTALL_
    ! curl -fsSL "${RAW_BASE}/scripts/host/view_logs.sh"            -o "${INSTALL_DIR}/view_logs.sh" ||
    ! curl -fsSL "${RAW_BASE}/scripts/host/view_notebooks.sh"      -o "${INSTALL_DIR}/view_notebooks.sh" ||
    ! curl -fsSL "${RAW_BASE}/scripts/host/run_vscode.sh"           -o "${INSTALL_DIR}/run_vscode.sh" ||
-   ! curl -fsSL "${RAW_BASE}/scripts/host/environment_settings_example.txt" -o "${INSTALL_DIR}/environment_settings_example.txt"; then
+   ! curl -fsSL "${RAW_BASE}/scripts/host/environment_settings_example.txt" -o "${INSTALL_DIR}/environment_settings_example.txt" ||
+   ! curl -fsSL "${RAW_BASE}/scripts/host/README.txt"                      -o "${INSTALL_DIR}/README.txt"; then
     echo ""
     echo "ERROR: Failed to download installation files from branch '${BRANCH}'."
     echo "Please verify that the branch name is correct and that you have an internet connection."

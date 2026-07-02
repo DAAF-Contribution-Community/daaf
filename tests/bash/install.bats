@@ -217,6 +217,7 @@ teardown() {
     assert_output --partial "backup_daaf.sh"
     assert_output --partial "update_daaf.sh"
     assert_output --partial "environment_settings_example.txt"
+    assert_output --partial "README.txt"
 }
 
 # --- Download URLs use correct path prefix ---

@@ -541,9 +541,10 @@ function Sync-HostScript {
     $allHostFiles = Invoke-ComposeGit ls-files 'scripts/host/*'
     if ([string]::IsNullOrWhiteSpace($allHostFiles)) { return }
 
-    # Platform filter (Windows hosts): keep *.ps1 files, the shared
-    # environment_settings_example.txt, and daaf.sh / daaf_lib.sh (the Control
-    # Panel is run via Git Bash on Windows -- there is no daaf.ps1). Drop other
+    # Platform filter (Windows hosts): keep *.ps1 files, the shared plain-text
+    # files (environment_settings_example.txt, README.txt), and daaf.sh /
+    # daaf_lib.sh (the Control Panel is run via Git Bash on Windows -- there is
+    # no daaf.ps1). Drop other
     # *.sh files. Bootstrap-only scripts (install.ps1, migrate_daaf.ps1) are
     # intentionally excluded -- fetched via irm on demand, not needed post-install.
     $syncList = @()
@@ -553,6 +554,7 @@ function Sync-HostScript {
         if ($repoPath -eq "scripts/host/install.ps1" -or $repoPath -eq "scripts/host/migrate_daaf.ps1") { continue }
         if ($repoPath -like "*.ps1" -or
             $repoPath -eq "scripts/host/environment_settings_example.txt" -or
+            $repoPath -eq "scripts/host/README.txt" -or
             $repoPath -eq "scripts/host/daaf.sh" -or
             $repoPath -eq "scripts/host/daaf_lib.sh") {
             $syncList += $repoPath

@@ -407,7 +407,7 @@ Write-Host "Downloading utility scripts from GitHub..."
 
 $DownloadFailed = $false
 
-foreach ($File in @("daaf.sh", "daaf_lib.sh", "backup_daaf.ps1", "restore_from_backup.ps1", "rebuild_daaf.ps1", "update_daaf.ps1", "run_daaf.ps1", "view_logs.ps1", "view_notebooks.ps1", "run_vscode.ps1", "environment_settings_example.txt")) {
+foreach ($File in @("daaf.sh", "daaf_lib.sh", "backup_daaf.ps1", "restore_from_backup.ps1", "rebuild_daaf.ps1", "update_daaf.ps1", "run_daaf.ps1", "view_logs.ps1", "view_notebooks.ps1", "run_vscode.ps1", "environment_settings_example.txt", "README.txt")) {
     try {
         Invoke-WebRequest -UseBasicParsing -Uri "$RawBase/scripts/host/$File" -OutFile "$HostDir\$File"
         Write-Host "  Downloaded: $File"

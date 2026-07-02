@@ -77,6 +77,16 @@ re-bootstrap bats-core), and Checkpoint 2 final approval with the user. The thre
 reports are in `preliminary_notes/`. User has approved CI workflow edits and prefers
 Agent dispatches on Opus/Sonnet rather than Fable.
 
+## Post-Commit Addendum (2026-07-02, after b3690cd pushed by user)
+
+- Field verification: fresh v2.1.0 → daaf_dev two-run sequence WORKS (user confirmed daaf.sh arrived on run 2). Transition caveat: run 1 (old updater) gives no re-run cue — changelog must carry the "run update twice from v2.1.x" instruction.
+- **README round (uncommitted):** created `scripts/host/README.txt` (host-folder orientation; daaf.sh as entry point); wired into install.sh/.ps1, migrate_daaf.sh/.ps1, and BOTH updater platform filters (txt files don't match `*.sh`/`*.ps1` — required explicit filter add); tests updated (update_daaf.bats 56/56, install.bats 30/30, migrate_daaf.bats 51/51, lint 0). Refined checklist HS6 to document the novel-file-type filter exception discovered in this exercise.
+- **Future work backlog (user-endorsed, not yet scoped):**
+  1. Container-name derivation (`docker compose ps -q daaf-docker` → ID) replacing hardcoded `daaf-daaf-docker-1` in update_daaf.sh docker cp, rebuild_daaf.sh, and `grep -c "daaf-docker"` checks → also enables multi-instance installs (per-folder compose projects; verify no explicit volume `name:` in docker-compose.yml; parameterize published ports 2718/2719/2720 via env with unchanged defaults; daaf.sh + launchers read same vars). Bundle with/after the daaf.ps1 session.
+  2. Drift warning in updater heal pass: warn (never overwrite) when host copy differs from repo copy.
+  3. Clearer stash-pop conflict guidance in updater output (Dockerfile/compose customization path) routing to User Support conflict walkthrough.
+  4. Changelog entry: two-run update from v2.1.x; pre-v2.1.0 users take the migrate path.
+
 ## Open Questions
 
 - Include CI workflow changes in scope (safety boundary requires explicit user approval)?

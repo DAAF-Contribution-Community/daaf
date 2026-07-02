@@ -173,6 +173,7 @@ try {
     Invoke-WebRequest -UseBasicParsing -Uri "$RawBase/scripts/host/view_notebooks.ps1"      -OutFile "$InstallDir\view_notebooks.ps1"
     Invoke-WebRequest -UseBasicParsing -Uri "$RawBase/scripts/host/run_vscode.ps1"           -OutFile "$InstallDir\run_vscode.ps1"
     Invoke-WebRequest -UseBasicParsing -Uri "$RawBase/scripts/host/environment_settings_example.txt" -OutFile "$InstallDir\environment_settings_example.txt"
+    Invoke-WebRequest -UseBasicParsing -Uri "$RawBase/scripts/host/README.txt"                      -OutFile "$InstallDir\README.txt"
 } catch {
     Write-Host ""
     Write-Host "ERROR: Failed to download installation files from branch '$Branch'." -ForegroundColor Red

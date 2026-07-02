@@ -302,6 +302,29 @@ teardown() {
     refute_output --partial "Updated: migrate_daaf.sh"
 }
 
+@test "update: sync_host_scripts syncs README.txt on Unix (shared plain-text file)" {
+    # README.txt is not a .sh file but must pass the platform filter on Unix hosts.
+    run bash -c '
+        DAAF_TEST_MODE=1 source "'"${REPO_ROOT}"'/scripts/host/update_daaf.sh"
+        trap - ERR
+        set +eu
+
+        docker() {
+            case "$*" in
+                *rev-parse*HEAD*) echo "new5678" ;;
+                *ls-files*) printf "scripts/host/README.txt\n" ;;
+                *diff*--name-only*) printf "scripts/host/README.txt\n" ;;
+                cp*) return 0 ;;
+                *) return 0 ;;
+            esac
+        }
+
+        sync_host_scripts "old1234"
+    '
+    assert_success
+    assert_output --partial "Updated: README.txt"
+}
+
 @test "update: sync_host_scripts prints self-update notice when update_daaf.sh changed" {
     # update_daaf.sh present on host (tier A skips) but changed in the range ->
     # tier B refreshes it and the self-update re-run notice must fire.
