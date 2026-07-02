@@ -217,7 +217,8 @@ RUN git config --global user.email "daaf@local" \
     && git config --global user.name "DAAF Container"
 
 # Install Claude Code as appuser (pinned version)
-ARG CLAUDE_CODE_VERSION=2.1.112
+# Latest stable as of 2026-07-02
+ARG CLAUDE_CODE_VERSION=2.1.187
 RUN curl -fsSL https://claude.ai/install.sh | bash -s ${CLAUDE_CODE_VERSION}
 ENV PATH="/home/appuser/.local/bin:${PATH}"
 
