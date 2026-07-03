@@ -60,7 +60,7 @@ if ($env:DAAF_DRY_RUN -eq "1") {
 # script operates on the Docker volume via raw `docker run`/`docker volume` (not
 # `docker compose`), so compose interpolation does not apply -- we must derive the
 # project-prefixed volume name ourselves. Canonical shared pattern (kept in sync
-# with Import-DaafSettings in daaf_lib.ps1); standalone scripts that do NOT
+# with Import-DaafSettingsFile in daaf_lib.ps1); standalone scripts that do NOT
 # dot-source daaf_lib.ps1 inline it. Parse only these four keys (never
 # dot-source -- the file holds API keys); process env wins; absent file = no-op;
 # CR stripped; PS 5.1 safe.

@@ -342,10 +342,10 @@ teardown() {
         export -f docker
 
         ensure_container
-        echo "CONTAINER_RUNNING=${CONTAINER_RUNNING}"
+        echo "ENSURE_RC=$?"
     '
     assert_success
-    assert_output --partial "CONTAINER_RUNNING=true"
+    assert_output --partial "ENSURE_RC=0"
 }
 
 @test "ensure_container detects a running container via compose ps -q (non-empty ID)" {
@@ -370,10 +370,10 @@ teardown() {
         export -f docker
 
         ensure_container
-        echo "CONTAINER_RUNNING=${CONTAINER_RUNNING}"
+        echo "ENSURE_RC=$?"
     '
     assert_success
-    assert_output --partial "CONTAINER_RUNNING=true"
+    assert_output --partial "ENSURE_RC=0"
     # A running container must not trigger `docker compose up`.
     refute_output --partial "UP_WAS_CALLED"
 }

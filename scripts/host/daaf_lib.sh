@@ -96,6 +96,13 @@ load_daaf_settings() {
 # --- Color Setup ---
 # Populate global color variables for terminal output.
 # Respects NO_COLOR (https://no-color.org/) and non-TTY contexts.
+#
+# shellcheck disable=SC2034  # color vars are consumed by the SOURCING script
+# (daaf.sh reads ${GREEN}/${YELLOW}/${CYAN}/${BOLD}/${DIM}/${RESET}); this
+# directive spans the whole function so both the default-empty block and the
+# tput block are covered. ${RED} completes the standard palette for parity even
+# though no caller reads it yet -- keeping the palette symmetric avoids a silent
+# empty-string trap if an error path later references it.
 setup_colors() {
     # Default: no colors
     RED=""
@@ -210,11 +217,13 @@ check_port() {
 
 # --- Container Check ---
 # Ensure the DAAF container is running, starting it if necessary.
-# Sets CONTAINER_RUNNING=true on success, false on failure.
+# Returns 0 when the container is running (already up or just started), 1 on
+# failure. Callers gate on the return code (`if ! ensure_container; then ...`);
+# there is no exported status variable (the PowerShell twin Confirm-DaafContainer
+# likewise returns a boolean rather than setting a flag).
 ensure_container() {
     # In dry-run mode, just pretend the container is running
     if [ "${DAAF_DRY_RUN:-}" = "1" ]; then
-        CONTAINER_RUNNING=true
         return 0
     fi
 
@@ -226,16 +235,13 @@ ensure_container() {
     cid=$(docker compose ps -q daaf-docker 2>/dev/null || true)
 
     if [ -n "${cid}" ]; then
-        CONTAINER_RUNNING=true
         return 0
     fi
 
     # Attempt to start the container
     if docker compose up -d 2>/dev/null; then
-        CONTAINER_RUNNING=true
         return 0
     fi
 
-    CONTAINER_RUNNING=false
     return 1
 }

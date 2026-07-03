@@ -211,7 +211,39 @@ groundwork (compose project name + port parameterization, default-preserving);
   (.sh 100755, .ps1 100644); intentional gaps confirmed (example.txt human-only;
   Unix lists keep .sh; restore mocks).
 
-**OUTSTANDING at Checkpoint 2:**
+**COMMITTED 2026-07-03 as `4fa8c43` on daaf_dev** (46 files, +3459/-178; incl.
+user-applied environment_settings_example.txt block and post-review cleanup:
+eval→${!key:-} in 9 scripts, DAAF_MOCK_PORTS rename, stale PS comment fix).
+Foreign files left uncommitted. NEXT: user runs CI; diagnose any failures in the
+PowerShell jobs (pester-tests, validate-ps-windows, windows smoke — the only
+runtime gates for PS work; watch for CRLF false-drift warnings and DAAF_DRY_RUN
+env inheritance in the PS 5.1 smoke).
+
+**CI FIX ROUND (2026-07-03, after first real CI run of 4fa8c43; single Opus
+dispatch, all 5 failure classes fixed; suite 401/401, lint 0 failures):**
+1. PSUseSingularNouns (lint-powershell fails on ANY finding): renamed
+   Invoke-DaafNotebooks→Invoke-DaafNotebookBrowser, Invoke-DaafLogs→
+   Invoke-DaafLogViewer, Invoke-DaafStopServices→Stop-DaafWebService,
+   Import-DaafSettings→Import-DaafSettingsFile (Import-DaafSettingsInline in the
+   8 standalone .ps1 untouched — "Inline" is singular). All ripples swept.
+2. daaf_lib.ps1 double-source guard: variable flag ($script:DaafLibLoaded)
+   survived discarded Pester scopes while functions vanished → daaf.ps1's source
+   skipped redefinition → CommandNotFoundException. Fix: guard on
+   `Get-Command Read-DaafLine` (signal shares the definitions' lifetime).
+3. rebuild_daaf.Tests.ps1: 2 pre-existing assertions stale after B1
+   (docker inspect → compose ps -aq; new "No daaf-docker container found" msg).
+4. update_daaf.Tests.ps1: $env:TEMP null on Linux pwsh →
+   [System.IO.Path]::GetTempPath() (also TestHelper.ps1 comment); "docker cp"
+   assertion → "docker compose cp" (hint text changed in B1).
+5. daaf_lib.sh SC2034: function-level shellcheck disable on setup_colors
+   (colors consumed by sourcing daaf.sh; RED kept for palette symmetry);
+   CONTAINER_RUNNING was a dead refactor orphan → deleted (4 assignment sites),
+   daaf_lib.bats tests updated to assert return codes. shellcheck not installed
+   in container — statically verified; CI shellcheck job is the gate.
+   OUT OF SCOPE (reported): pre-existing `docker inspect` in run_daaf.sh/.ps1,
+   migrate_daaf.sh/.ps1 — candidate future standardization on compose.
+
+**Resolved at Checkpoint 2 (was outstanding):**
 1. USER ACTION: paste multi-instance block into environment_settings_example.txt
    (deny-listed for agents; text provided in checkpoint message).
 2. User decision: optional fix round (eval→${!key:-} across ~9 .sh; optionally

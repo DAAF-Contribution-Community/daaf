@@ -188,7 +188,7 @@ Describe "update_daaf.ps1 behavioral tests" {
     # checks are deterministic.
     Context "Sync-HostScript" {
         BeforeEach {
-            $script:SyncTestDir = New-Item -ItemType Directory -Path (Join-Path $env:TEMP "daaf-sync-$(Get-Random)")
+            $script:SyncTestDir = New-Item -ItemType Directory -Path (Join-Path ([System.IO.Path]::GetTempPath()) "daaf-sync-$(Get-Random)")
             Push-Location $script:SyncTestDir
         }
         AfterEach {
@@ -320,7 +320,7 @@ Describe "update_daaf.ps1 behavioral tests" {
 
             $output = Sync-HostScript "samehash" 6>&1
             ($output | Where-Object { $_ -match "Warning: could not copy daaf.ps1" }) | Should -Not -BeNullOrEmpty
-            ($output | Where-Object { $_ -match "docker cp" }) | Should -Not -BeNullOrEmpty
+            ($output | Where-Object { $_ -match "docker compose cp" }) | Should -Not -BeNullOrEmpty
         }
 
         It "existence-heals with an empty OldHead (up-to-date path)" {

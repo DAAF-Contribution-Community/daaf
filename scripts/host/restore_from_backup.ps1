@@ -33,7 +33,7 @@ function Wait-AndExit {
 # Bridge environment_settings.txt's four DAAF_* multi-instance keys into the
 # process environment so the volume name below reflects DAAF_PROJECT_NAME and
 # `docker compose down` (used when stopping a running container) targets the right
-# project. Canonical shared pattern (kept in sync with Import-DaafSettings in
+# project. Canonical shared pattern (kept in sync with Import-DaafSettingsFile in
 # daaf_lib.ps1); standalone scripts that do NOT dot-source daaf_lib.ps1 inline it.
 # Parse only these four keys (never dot-source -- the file holds API keys); process
 # env wins; absent file = no-op; CR stripped; PS 5.1 safe.

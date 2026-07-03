@@ -43,8 +43,8 @@ Describe "rebuild_daaf.ps1" {
             $Content | Should -Match 'docker info'
         }
 
-        It "checks container exists with docker inspect" {
-            $Content | Should -Match 'docker inspect'
+        It "checks container exists (running or stopped) with docker compose ps -aq" {
+            $Content | Should -Match 'docker compose ps -aq daaf-docker'
         }
 
         It "uses numbered progress steps [1/3] [2/3] [3/3]" {
@@ -130,8 +130,8 @@ Describe "rebuild_daaf.ps1 error paths" {
     }
 
     Context "Container not found" {
-        It "outputs error when container inspect fails" {
-            $Content | Should -Match "Container.*not found"
+        It "outputs error when no container exists (running or stopped)" {
+            $Content | Should -Match "No daaf-docker container found \(running or stopped\)"
         }
 
         It "suggests running the installer first" {

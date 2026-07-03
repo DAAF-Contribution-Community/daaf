@@ -30,8 +30,8 @@ $DaafScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 # --- Multi-instance settings ---
 # Bridge environment_settings.txt's DAAF_* keys into the process environment so
 # `docker compose` interpolation resolves the project name and published host
-# ports. See Import-DaafSettings in daaf_lib.ps1 for the full rationale.
-Import-DaafSettings
+# ports. See Import-DaafSettingsFile in daaf_lib.ps1 for the full rationale.
+Import-DaafSettingsFile
 
 # Host-facing ports for browser URLs and status display (default to the fixed
 # container ports so existing single-instance installs behave identically).
@@ -291,15 +291,15 @@ function Invoke-DaafChoice {
 
     switch ($Choice) {
         "1"  { Invoke-DaafClaudeCode; return $true }
-        "2"  { Invoke-DaafNotebooks; return $true }
+        "2"  { Invoke-DaafNotebookBrowser; return $true }
         "3"  { Invoke-DaafVSCode; return $true }
-        "4"  { Invoke-DaafLogs; return $true }
+        "4"  { Invoke-DaafLogViewer; return $true }
         "5"  { Invoke-DaafShell; return $true }
         "6"  { Invoke-DaafBackup; return $true }
         "7"  { Invoke-DaafRestore; return $true }
         "8"  { Invoke-DaafUpdate; return $true }
         "9"  { Invoke-DaafRebuild; return $true }
-        "10" { Invoke-DaafStopServices; return $true }
+        "10" { Stop-DaafWebService; return $true }
         { $_ -in @("h", "H") } { Show-DaafHelp; return $true }
         { $_ -in @("q", "Q") } { Invoke-DaafQuit; return $false }
         "" { return $true }  # Empty input -- just redraw
@@ -362,7 +362,7 @@ function Invoke-DaafShell {
 # Handlers: Web services (options 2, 3, 4)
 # ============================================================================
 
-function Invoke-DaafNotebooks {
+function Invoke-DaafNotebookBrowser {
     Write-Host ""
     Write-Host "Starting notebook browser..."
 
@@ -476,7 +476,7 @@ function Invoke-DaafVSCode {
     Open-DaafUrl $url
 }
 
-function Invoke-DaafLogs {
+function Invoke-DaafLogViewer {
     Write-Host ""
     Write-Host "Discovering available log sources..."
 
@@ -671,7 +671,7 @@ function Invoke-DaafRebuild { Invoke-DaafDelegate "rebuild_daaf.ps1" }
 # Handler: Stop Services (option 10)
 # ============================================================================
 
-function Invoke-DaafStopServices {
+function Stop-DaafWebService {
     Write-Host ""
 
     $marimoRunning = Test-DaafPort 2718

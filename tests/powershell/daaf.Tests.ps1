@@ -137,20 +137,20 @@ Describe "daaf_lib.ps1" {
         $LibContent | Should -Match '0A'
     }
 
-    It "guards against double dot-sourcing" {
-        $LibContent | Should -Match 'DaafLibLoaded'
+    It "guards against redundant dot-sourcing via a function-existence probe" {
+        $LibContent | Should -Match 'Get-Command Read-DaafLine'
     }
 
-    It "defines Import-DaafSettings" {
-        $LibContent | Should -Match 'function Import-DaafSettings'
+    It "defines Import-DaafSettingsFile" {
+        $LibContent | Should -Match 'function Import-DaafSettingsFile'
     }
 }
 
 # ============================================================================
-# Import-DaafSettings unit tests (daaf_lib.ps1)
+# Import-DaafSettingsFile unit tests (daaf_lib.ps1)
 # ============================================================================
 
-Describe "daaf_lib.ps1 Import-DaafSettings" {
+Describe "daaf_lib.ps1 Import-DaafSettingsFile" {
     BeforeAll {
         . "$PSScriptRoot/TestHelper.ps1"
         # Dot-source the library in a clean scope
@@ -177,7 +177,7 @@ Describe "daaf_lib.ps1 Import-DaafSettings" {
 
     It "picks up a DAAF_* value from the settings file" {
         Set-Content -Path $script:SettingsFile -Value "DAAF_PROJECT_NAME=myinstance`nDAAF_PORT_MARIMO=3001"
-        Import-DaafSettings -SettingsFile $script:SettingsFile
+        Import-DaafSettingsFile -SettingsFile $script:SettingsFile
         $env:DAAF_PROJECT_NAME | Should -Be "myinstance"
         $env:DAAF_PORT_MARIMO  | Should -Be "3001"
     }
@@ -185,25 +185,25 @@ Describe "daaf_lib.ps1 Import-DaafSettings" {
     It "lets an already-set process env var win over the file value" {
         Set-Content -Path $script:SettingsFile -Value "DAAF_PROJECT_NAME=fromfile"
         $env:DAAF_PROJECT_NAME = "fromshell"
-        Import-DaafSettings -SettingsFile $script:SettingsFile
+        Import-DaafSettingsFile -SettingsFile $script:SettingsFile
         $env:DAAF_PROJECT_NAME | Should -Be "fromshell"
     }
 
     It "is a no-op when the settings file is absent" {
         $absentPath = Join-Path $script:TmpDir "nonexistent.txt"
-        Import-DaafSettings -SettingsFile $absentPath
+        Import-DaafSettingsFile -SettingsFile $absentPath
         $env:DAAF_PROJECT_NAME | Should -BeNullOrEmpty
     }
 
     It "tolerates CRLF line endings" {
         [System.IO.File]::WriteAllBytes($script:SettingsFile, [System.Text.Encoding]::ASCII.GetBytes("DAAF_PORT_VSCODE=3020`r`n"))
-        Import-DaafSettings -SettingsFile $script:SettingsFile
+        Import-DaafSettingsFile -SettingsFile $script:SettingsFile
         $env:DAAF_PORT_VSCODE | Should -Be "3020"
     }
 
     It "ignores non-DAAF keys (does not inject arbitrary variables)" {
         Set-Content -Path $script:SettingsFile -Value "ANTHROPIC_API_KEY=sk-secret`nDAAF_PROJECT_NAME=safe"
-        Import-DaafSettings -SettingsFile $script:SettingsFile
+        Import-DaafSettingsFile -SettingsFile $script:SettingsFile
         $env:DAAF_PROJECT_NAME   | Should -Be "safe"
         $env:ANTHROPIC_API_KEY   | Should -BeNullOrEmpty
     }

@@ -20,7 +20,7 @@ $script:RepoRoot = (Resolve-Path "$PSScriptRoot/../..").Path
 #
 #   BeforeAll {
 #       . "$PSScriptRoot/TestHelper.ps1"
-#       $script:TestDir = New-Item -ItemType Directory -Path (Join-Path $env:TEMP "daaf-test-$(Get-Random)")
+#       $script:TestDir = New-Item -ItemType Directory -Path (Join-Path ([System.IO.Path]::GetTempPath()) "daaf-test-$(Get-Random)")
 #       Push-Location $script:TestDir
 #   }
 #

@@ -9,7 +9,7 @@
 #
 # This is the PowerShell counterpart to daaf_lib.sh. It provides the same
 # helpers the Bash Control Panel relies on, adapted to PowerShell idiom:
-#   Import-DaafSettings -- export DAAF_* multi-instance vars from environment_settings.txt
+#   Import-DaafSettingsFile -- export DAAF_* multi-instance vars from environment_settings.txt
 #   Read-DaafLine       -- read one input line, working under redirected stdin (CI)
 #   Open-DaafUrl        -- open a URL in the default browser (best-effort)
 #   Test-DaafPort       -- test whether a port is listening inside the container
@@ -23,11 +23,21 @@
 # Supports DAAF_DRY_RUN=1 for CI smoke testing without Docker.
 # ============================================================================
 
-# Guard against double dot-sourcing. daaf.ps1 dot-sources this file, and a
-# helper that dot-sources it again would redefine functions harmlessly, but the
-# guard keeps behavior explicit and cheap.
-if ($script:DaafLibLoaded) { return }
-$script:DaafLibLoaded = $true
+# Guard against redundant dot-sourcing. daaf.ps1 dot-sources this file, and a
+# helper that dot-sources it again would merely redefine identical functions.
+#
+# The guard probes for one of THIS library's own functions rather than a module
+# variable. A variable-based flag ($script:DaafLibLoaded) is unsafe under Pester:
+# when the lib is first sourced inside a short-lived Pester scope, the function
+# definitions vanish when that scope is discarded, but a flag set in a
+# longer-lived parent scope can survive -- so a later dot-source (e.g. via
+# daaf.ps1) would skip redefinition and the functions would be MISSING, causing
+# CommandNotFoundException. Keying the guard on the presence of an actual
+# function ties the "already loaded" signal to the same lifetime as the
+# definitions themselves: if the functions were discarded, the probe misses and
+# the lib re-defines them. Re-defining is safe -- this file only declares
+# functions and has no non-idempotent load-time side effects.
+if (Get-Command Read-DaafLine -ErrorAction SilentlyContinue) { return }
 
 # --- Multi-Instance Settings Loader ---
 # PowerShell counterpart to daaf_lib.sh load_daaf_settings. Bridges
@@ -46,7 +56,7 @@ $script:DaafLibLoaded = $true
 #
 # PRECEDENCE: an already-set process env var WINS over the file value (matches
 # Docker Compose precedence: shell env > .env file). Absent file = no-op.
-function Import-DaafSettings {
+function Import-DaafSettingsFile {
     [CmdletBinding()]
     param(
         [string]$SettingsFile = "./environment_settings.txt"
@@ -193,8 +203,8 @@ function Test-DaafPort {
 # --- Container Check ---
 # Ensure the DAAF container is running, starting it if necessary.
 # Returns $true on success, $false on failure. Mirrors daaf_lib.sh
-# ensure_container (which set CONTAINER_RUNNING); here the boolean return is the
-# single source of truth so callers use `if (Confirm-DaafContainer) { ... }`.
+# ensure_container; both use their return value as the single source of truth
+# (no exported status variable), so callers use `if (Confirm-DaafContainer) { ... }`.
 function Confirm-DaafContainer {
     [CmdletBinding()]
     param()
