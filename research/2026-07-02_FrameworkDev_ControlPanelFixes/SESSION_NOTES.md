@@ -240,8 +240,26 @@ dispatch, all 5 failure classes fixed; suite 401/401, lint 0 failures):**
    CONTAINER_RUNNING was a dead refactor orphan → deleted (4 assignment sites),
    daaf_lib.bats tests updated to assert return codes. shellcheck not installed
    in container — statically verified; CI shellcheck job is the gate.
-   OUT OF SCOPE (reported): pre-existing `docker inspect` in run_daaf.sh/.ps1,
-   migrate_daaf.sh/.ps1 — candidate future standardization on compose.
+   OUT OF SCOPE finding RESOLVED (2026-07-03, orchestrator verification + user
+   concurrence — NO ACTION NEEDED): the `docker inspect` calls in run_daaf.sh/.ps1
+   and migrate_daaf.sh/.ps1 read metadata FROM already-correct identities, they do
+   not discover identity. run_daaf: inspect --format '{{.Created}}' operates on a
+   compose-derived ID (`docker compose ps -q daaf-docker`, project-aware via the
+   item-B settings preamble) — multi-instance safe. migrate: inspect
+   '{{.State.Status}}' operates on a name discovered via
+   `docker ps -a --filter volume=daaf_daaf-data`; the hardcoded default volume is
+   correct BY CONSTRUCTION (migration targets predate multi-instance support and
+   therefore always used the default project name; compose-derivation would be
+   wrong for legacy containers outside the current compose project). Committed
+   state stands; both commits (4fa8c43, a63ef0f) pushed by user for CI re-run.
+
+**CI FIX ROUND 2 (2026-07-03, orchestrator-direct):** the round-1 rename
+Stop-DaafWebService tripped PSUseShouldProcessForStateChangingFunctions (Stop-*
+requires SupportsShouldProcess — wrong ceremony for an interactive menu handler
+with its own confirm prompt). Re-renamed to Invoke-DaafServiceStop (matches the
+Invoke- convention of all sibling menu handlers; final noun singular), with an
+explanatory comment at the definition. 2 sites (daaf.ps1:302 dispatch, :678 def);
+no test/doc references existed. Lint 0 failures / 18-warning baseline.
 
 **Resolved at Checkpoint 2 (was outstanding):**
 1. USER ACTION: paste multi-instance block into environment_settings_example.txt

@@ -299,7 +299,7 @@ function Invoke-DaafChoice {
         "7"  { Invoke-DaafRestore; return $true }
         "8"  { Invoke-DaafUpdate; return $true }
         "9"  { Invoke-DaafRebuild; return $true }
-        "10" { Stop-DaafWebService; return $true }
+        "10" { Invoke-DaafServiceStop; return $true }
         { $_ -in @("h", "H") } { Show-DaafHelp; return $true }
         { $_ -in @("q", "Q") } { Invoke-DaafQuit; return $false }
         "" { return $true }  # Empty input -- just redraw
@@ -671,7 +671,11 @@ function Invoke-DaafRebuild { Invoke-DaafDelegate "rebuild_daaf.ps1" }
 # Handler: Stop Services (option 10)
 # ============================================================================
 
-function Stop-DaafWebService {
+# Named with Invoke- (like the other menu handlers) rather than the natural
+# Stop- verb: PSSA's PSUseShouldProcessForStateChangingFunctions requires
+# SupportsShouldProcess on Stop-* functions, which is wrong ceremony for an
+# interactive menu handler that has its own confirmation prompt.
+function Invoke-DaafServiceStop {
     Write-Host ""
 
     $marimoRunning = Test-DaafPort 2718
