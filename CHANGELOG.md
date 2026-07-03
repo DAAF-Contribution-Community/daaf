@@ -4,10 +4,50 @@ All notable changes to DAAF for each release version are documented here, in rev
 
 ## Table of Contents
 
+- [Unreleased (v2.1.1)](#unreleased-v211)
 - [v2.1.0 — 2026-05-02](#v210--2026-05-02)
 - [v2.0.1 — 2026-04-05](#v201--2026-04-05)
 - [v2.0.0 — 2026-03-31](#v200--2026-03-31)
 - [v1.0.0 — 2026-02-22](#v100--2026-02-22)
+
+---
+
+## Unreleased (v2.1.1)
+
+### Data Analyst Augmentation Framework -- Host Tooling and Update Reliability
+
+A maintenance release focused on the host-side experience: a native Windows Control Panel, a more self-reliant updater, and the ability to run more than one DAAF instance side by side. Most of these changes live in the helper scripts that run on your own computer, not inside the container, so they improve how you install, launch, and maintain DAAF rather than how it does research.
+
+### Important: Updating from v2.1.x Requires Running the Updater Twice
+
+Because of a limitation in the older updater, upgrading from **v2.1.0** to this release takes **two runs** of the update script:
+
+- **First run** upgrades the updater itself. The older script has no way to signal that this happened, so it will appear to finish without delivering the new host tools -- this is expected, not a failure.
+- **Second run** uses the freshly upgraded updater, which then delivers the new host tools (`daaf.sh` / `daaf_lib.sh` on macOS/Linux, `daaf.ps1` / `daaf_lib.ps1` on Windows) via its self-healing sync.
+
+If everything is already current on the second run, it will simply report "Already up to date!" -- it is always safe to re-run.
+
+If you are on a **pre-v2.1.0** installation (anything without the built-in `update_daaf` script), use the `migrate_daaf` script path instead, as described in the [Installation and Quickstart guide](user_reference/01_installation_and_quickstart.md#migrating-from-an-older-installation).
+
+### Native Windows Control Panel
+
+Windows now has its own native Control Panel, `daaf.ps1` (with its `daaf_lib.ps1` helper library), as the canonical entry point on Windows -- no more relying on a Bash-shaped experience through a compatibility layer. It brings the menu-driven launcher, backup/restore, update, and log-viewing flows to PowerShell as first-class citizens.
+
+### Control Panel Fixes for macOS
+
+The macOS/Linux Control Panel (`daaf.sh`) was hardened for older shells -- most importantly, it now runs correctly on the Bash 3.2 that ships by default with macOS, so Mac users no longer need a newer Bash to use it.
+
+### Self-Healing Updater and Drift Warnings
+
+The `update_daaf` script continues to get more resilient:
+
+- **Self-healing sync:** Host tool files that a previous update missed (for example, because they were added in a release you skipped over) are now delivered automatically on the next run, even when there is nothing new to pull.
+- **Drift warnings:** If a host script on your machine differs from the repository version and was not part of this update, the updater now *warns* you by name instead of silently leaving it stale. It **never overwrites** the file -- the difference may be a deliberate customization of yours -- and tells you the exact command to adopt the repository version if you want it.
+- **Clearer conflict guidance:** When re-applying your local Dockerfile / docker-compose customizations conflicts with an update, the message now explains plainly what happened, reassures you that your changes are safe in a git stash, and points you to DAAF's User Support mode for a guided walkthrough.
+
+### Multi-Instance Support
+
+You can now run more than one DAAF instance on the same machine without them colliding. New `DAAF_PROJECT_NAME` and `DAAF_PORT_*` settings in `environment_settings.txt` let each instance use its own container name and its own published host ports (Marimo, log viewer, VS Code). The container name is derived from your compose project rather than hardcoded, so the helper scripts target the right container automatically.
 
 ---
 

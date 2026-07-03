@@ -33,6 +33,7 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 readonly DEFAULT_DIR="$REPO_ROOT/research"
 PORT=2718
+PORT_OVERRIDDEN=false
 BROWSE_DIR=""
 BACKGROUND=false
 
@@ -47,6 +48,7 @@ while [ $# -gt 0 ]; do
                 exit 1
             fi
             PORT="$2"
+            PORT_OVERRIDDEN=true
             shift 2
             ;;
         --background)
@@ -102,6 +104,19 @@ if ! [[ "$PORT" =~ ^[0-9]+$ ]] || [ "$PORT" -lt 1 ] || [ "$PORT" -gt 65535 ]; th
     exit 1
 fi
 
+# --- Resolve display port ---
+
+# The server always BINDS the container-side port ($PORT stays 2718 unless
+# --port is passed). But the URL the user opens goes through the compose port
+# mapping (host ${DAAF_PORT_MARIMO:-2718} -> container 2718), so when the host
+# port is remapped via environment_settings.txt (available in-container through
+# the compose env_file), the printed URL must show the HOST port. An explicit
+# --port bypasses this: custom in-container flows keep the literal port.
+DISPLAY_PORT="$PORT"
+if [ "$PORT_OVERRIDDEN" = false ] && [ -n "${DAAF_PORT_MARIMO:-}" ]; then
+    DISPLAY_PORT="$DAAF_PORT_MARIMO"
+fi
+
 # --- Preflight ---
 
 if ! command -v marimo >/dev/null 2>&1; then
@@ -131,7 +146,7 @@ if [ -n "$LISTEN_INODE" ]; then
         echo "Marimo is already running on port $PORT (PID $LISTEN_PID)."
         echo ""
         echo "  Open in your browser:"
-        echo "  http://localhost:$PORT"
+        echo "  http://localhost:$DISPLAY_PORT"
         echo ""
         exit 0
     elif [ -n "$LISTEN_PID" ]; then
@@ -152,7 +167,7 @@ echo "  Browsing: $BROWSE_DIR"
 echo "  Port:     $PORT"
 echo ""
 echo "  Open in your browser:"
-echo "  http://localhost:$PORT"
+echo "  http://localhost:$DISPLAY_PORT"
 echo ""
 echo "  (Marimo will print its own URL below using 0.0.0.0 — ignore that,"
 echo "   use the localhost link above from your host browser.)"
@@ -162,7 +177,7 @@ if [ "$BACKGROUND" = true ]; then
     nohup marimo edit "$BROWSE_DIR" --host 0.0.0.0 --port "$PORT" --no-token --headless --skip-update-check > /dev/null 2>&1 &
     disown
     echo "Server started in background (PID $!)."
-    echo "  URL: http://localhost:$PORT"
+    echo "  URL: http://localhost:$DISPLAY_PORT"
     exit 0
 else
     echo "  Press Ctrl+C to stop the server."

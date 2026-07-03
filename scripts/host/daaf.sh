@@ -31,6 +31,20 @@ source "${DAAF_LIB_DIR}/daaf_lib.sh"
 setup_colors
 SCRIPT_DIR="$DAAF_LIB_DIR"
 
+# --- Multi-instance settings ---
+# Bridge environment_settings.txt's DAAF_* keys into the environment so
+# `docker compose` interpolation resolves the project name and published host
+# ports. See load_daaf_settings in daaf_lib.sh for the full rationale.
+load_daaf_settings
+
+# Host-facing ports for browser URLs and status display. These are the ports
+# published on the HOST (docker-compose.yml maps them to the fixed container
+# ports 2718/2719/2720). Default to the container ports when unset so existing
+# single-instance installs behave identically.
+DAAF_PORT_MARIMO="${DAAF_PORT_MARIMO:-2718}"
+DAAF_PORT_LOGVIEWER="${DAAF_PORT_LOGVIEWER:-2719}"
+DAAF_PORT_VSCODE="${DAAF_PORT_VSCODE:-2720}"
+
 # --- Dry-Run Support ---
 # When DAAF_DRY_RUN=1, simulate external commands (Docker, curl) for CI
 # cross-platform smoke testing without a Docker daemon.
@@ -38,6 +52,7 @@ if [ "${DAAF_DRY_RUN:-}" = "1" ]; then
     docker() {
         case "$*" in
             "info") return 0 ;;
+            *"compose ps -q daaf-docker"*) echo "abc123" ;;
             *"compose ps --status running"*"--format"*) echo "daaf-docker" ;;
             *"compose exec"*"PORT:"*) echo "" ;;
             *"compose exec"*"/proc/net/tcp"*) echo "" ;;
@@ -101,11 +116,13 @@ gather_status() {
     local tmpdir
     tmpdir=$(mktemp -d)
 
-    # Check if container is running first
-    local running
-    running=$(docker compose ps --status running --format '{{.Name}}' 2>/dev/null | grep -c "daaf-docker" || true)
+    # Check if container is running first. `docker compose ps -q daaf-docker`
+    # prints the running container's ID (empty when stopped), derived from the
+    # compose project rather than a hardcoded container name.
+    local running_cid
+    running_cid=$(docker compose ps -q daaf-docker 2>/dev/null || true)
 
-    if [ "$running" -eq 0 ]; then
+    if [ -z "$running_cid" ]; then
         STATUS_CONTAINER="Stopped"
         STATUS_VERSION="--"
         STATUS_DATE=""
@@ -225,17 +242,17 @@ display_menu() {
     # --- Services ---
     echo "  Services:"
     if [ "$STATUS_PORT_2718" = true ]; then
-        echo "    ${GREEN}●${RESET} Notebooks    localhost:2718"
+        echo "    ${GREEN}●${RESET} Notebooks    localhost:${DAAF_PORT_MARIMO}"
     else
         echo "    ${DIM}○${RESET} Notebooks    (not running)"
     fi
     if [ "$STATUS_PORT_2719" = true ]; then
-        echo "    ${GREEN}●${RESET} Log Viewer   localhost:2719"
+        echo "    ${GREEN}●${RESET} Log Viewer   localhost:${DAAF_PORT_LOGVIEWER}"
     else
         echo "    ${DIM}○${RESET} Log Viewer   (not running)"
     fi
     if [ "$STATUS_PORT_2720" = true ]; then
-        echo "    ${GREEN}●${RESET} VS Code      localhost:2720"
+        echo "    ${GREEN}●${RESET} VS Code      localhost:${DAAF_PORT_VSCODE}"
     else
         echo "    ${DIM}○${RESET} VS Code      (not running)"
     fi
@@ -378,7 +395,9 @@ handle_notebooks() {
         fi
     fi
 
-    local url="http://localhost:2718"
+    # Browser URL uses the HOST-published port (DAAF_PORT_MARIMO); the container
+    # port probed above stays fixed at 2718.
+    local url="http://localhost:${DAAF_PORT_MARIMO}"
     echo ""
     echo "  ${CYAN}${url}${RESET}"
     echo ""
@@ -430,7 +449,9 @@ handle_vscode() {
         fi
     fi
 
-    local url="http://localhost:2720"
+    # Browser URL uses the HOST-published port (DAAF_PORT_VSCODE); the container
+    # port probed above stays fixed at 2720.
+    local url="http://localhost:${DAAF_PORT_VSCODE}"
     echo ""
     echo "  ${CYAN}${url}${RESET}"
     echo "  ${BOLD}Password:${RESET} ${vscode_password}"
@@ -523,7 +544,7 @@ handle_logs() {
             echo "  choose a specific project source instead.${RESET}"
             return
         }
-        url="http://localhost:2719/scripts/log_viewer.html?manifest=.claude/logs/sessions/session_manifest.json"
+        url="http://localhost:${DAAF_PORT_LOGVIEWER}/scripts/log_viewer.html?manifest=.claude/logs/sessions/session_manifest.json"
     else
         manifest_err=$(docker compose exec -T daaf-docker \
             bash /daaf/scripts/generate_log_viewer.sh "$selected" --no-serve \
@@ -533,7 +554,7 @@ handle_logs() {
             return
         }
         local rel_path="${selected#/daaf/}"
-        url="http://localhost:2719/scripts/log_viewer.html?manifest=${rel_path}/logs/session_manifest.json"
+        url="http://localhost:${DAAF_PORT_LOGVIEWER}/scripts/log_viewer.html?manifest=${rel_path}/logs/session_manifest.json"
     fi
 
     # --- Step 2: Ensure the log viewer server is running ---

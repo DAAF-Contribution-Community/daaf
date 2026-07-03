@@ -133,9 +133,12 @@ while IFS= read -r -d '' ps1file; do
     relpath="${ps1file#"${REPO_ROOT}/"}"
     filename=$(basename "${ps1file}")
 
-    # Skip test files (*.Tests.ps1) and helpers (TestHelper.ps1)
+    # Skip test files (*.Tests.ps1), helpers (TestHelper.ps1), and sourced
+    # function libraries (*_lib.ps1). A dot-sourced library must not force
+    # $ErrorActionPreference on its caller -- its functions save/restore EAP
+    # locally instead -- mirroring the *_lib.sh exemption in the Bash checks.
     case "${filename}" in
-        *.Tests.ps1|TestHelper.ps1) continue ;;
+        *.Tests.ps1|TestHelper.ps1|*_lib.ps1) continue ;;
     esac
 
     # Check for $ErrorActionPreference in first 15 non-comment, non-blank code lines.
@@ -177,6 +180,14 @@ done
 for ps1file in "${REPO_ROOT}"/scripts/host/*.ps1; do
     [ -f "${ps1file}" ] || continue
     filename=$(basename "${ps1file}")
+
+    # Sourced function libraries (*_lib.ps1) are not lifecycle scripts: they
+    # define functions only, never execute nested scripts, and have no
+    # pause-on-exit prompt -- the DAAF_NESTED convention does not apply
+    # (mirrors the *_lib.sh exemption above).
+    case "${filename}" in
+        *_lib.ps1) continue ;;
+    esac
 
     if ! grep -q 'DAAF_NESTED' "${ps1file}"; then
         fail "scripts/host/${filename}: lifecycle script does not reference DAAF_NESTED"

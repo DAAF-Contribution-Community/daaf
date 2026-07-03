@@ -221,10 +221,14 @@ teardown() {
     [ "${output}" -ge 1 ]
 }
 
-@test "view_notebooks.sh calls open_url with port 2718" {
-    run grep "open_url.*2718" "${REPO_ROOT}/scripts/host/view_notebooks.sh"
+@test "view_notebooks.sh calls open_url with the host notebook port (default 2718)" {
+    # The URL uses the overridable host port var (defaults to 2718). Assert the
+    # parameterized form plus the default resolution.
+    run grep 'open_url.*DAAF_PORT_MARIMO' "${REPO_ROOT}/scripts/host/view_notebooks.sh"
     assert_success
-    assert_output --partial "http://localhost:2718"
+    assert_output --partial 'http://localhost:${DAAF_PORT_MARIMO}'
+    run grep 'DAAF_PORT_MARIMO:-2718' "${REPO_ROOT}/scripts/host/view_notebooks.sh"
+    assert_success
 }
 
 @test "view_notebooks.sh guards open_url behind command -v check" {

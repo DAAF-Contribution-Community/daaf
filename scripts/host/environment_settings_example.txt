@@ -83,3 +83,27 @@
 # ============================================================================
 
 # PASSWORD=your_password_here
+
+
+# === MULTI-INSTANCE SETTINGS (OPTIONAL) =====================================
+# Run more than one DAAF install on the same machine by giving each install
+# folder its own project name and host ports. All DAAF scripts read these
+# values automatically. Leave everything unset for a standard single install —
+# the defaults match the original behavior exactly.
+#
+# NOTE: If you run `docker compose` commands directly (outside the provided
+# scripts), also create a .env file in this folder with the same values —
+# bare docker compose does not read environment_settings.txt for these.
+# After changing any of these on an existing install, recreate the container:
+#   docker compose down, then bash run_daaf.sh (or .\run_daaf.ps1)
+# ============================================================================
+
+# Compose project name (prefixes the container and data volume). Default: daaf
+# WARNING: changing this on an EXISTING install detaches it from its current
+# data volume — only set this when creating a NEW second install.
+# DAAF_PROJECT_NAME=daaf2
+
+# Host ports for the web services. Defaults: 2718 / 2719 / 2720
+# DAAF_PORT_MARIMO=3718
+# DAAF_PORT_LOGVIEWER=3719
+# DAAF_PORT_VSCODE=3720

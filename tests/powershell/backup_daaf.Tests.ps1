@@ -91,6 +91,82 @@ Describe "backup_daaf.ps1" {
             $scanLine | Should -Match 'stat -c %s'
             $scanLine | Should -Match "awk '"
         }
+
+        It "defines Import-DaafSettingsInline" {
+            $Content | Should -Match 'function Import-DaafSettingsInline'
+        }
+
+        It "derives volume name from DAAF_PROJECT_NAME env var (PS 5.1 safe, no ?? operator)" {
+            $Content | Should -Match 'DAAF_PROJECT_NAME'
+            $Content | Should -Match '_daaf-data'
+            # No PS7-only null-coalescing operator
+            $Content | Should -Not -Match '\?\?'
+        }
+    }
+}
+
+# ============================================================================
+# Import-DaafSettingsInline unit tests
+# ============================================================================
+
+Describe "backup_daaf.ps1 Import-DaafSettingsInline" {
+    BeforeAll {
+        . "$PSScriptRoot/TestHelper.ps1"
+        $env:DAAF_TEST_MODE = "1"
+        . "$RepoRoot/scripts/host/backup_daaf.ps1"
+    }
+
+    AfterAll {
+        Remove-Item Env:DAAF_TEST_MODE -ErrorAction SilentlyContinue
+    }
+
+    BeforeEach {
+        $script:TmpDir = New-Item -ItemType Directory -Path (Join-Path ([System.IO.Path]::GetTempPath()) "daaf-backup-settings-$(Get-Random)")
+        $script:SettingsFile = Join-Path $script:TmpDir "environment_settings.txt"
+        Remove-Item Env:DAAF_PROJECT_NAME  -ErrorAction SilentlyContinue
+        Remove-Item Env:DAAF_PORT_MARIMO   -ErrorAction SilentlyContinue
+        Remove-Item Env:DAAF_PORT_LOGVIEWER -ErrorAction SilentlyContinue
+        Remove-Item Env:DAAF_PORT_VSCODE   -ErrorAction SilentlyContinue
+    }
+
+    AfterEach {
+        Remove-Item -Recurse -Force $script:TmpDir -ErrorAction SilentlyContinue
+        Remove-Item Env:DAAF_PROJECT_NAME  -ErrorAction SilentlyContinue
+        Remove-Item Env:DAAF_PORT_MARIMO   -ErrorAction SilentlyContinue
+        Remove-Item Env:DAAF_PORT_LOGVIEWER -ErrorAction SilentlyContinue
+        Remove-Item Env:DAAF_PORT_VSCODE   -ErrorAction SilentlyContinue
+    }
+
+    It "picks up DAAF_PROJECT_NAME from the settings file" {
+        Set-Content -Path $script:SettingsFile -Value "DAAF_PROJECT_NAME=myinstance"
+        Import-DaafSettingsInline -SettingsFile $script:SettingsFile
+        $env:DAAF_PROJECT_NAME | Should -Be "myinstance"
+    }
+
+    It "lets an already-set env var win over the file" {
+        Set-Content -Path $script:SettingsFile -Value "DAAF_PROJECT_NAME=fromfile"
+        $env:DAAF_PROJECT_NAME = "fromshell"
+        Import-DaafSettingsInline -SettingsFile $script:SettingsFile
+        $env:DAAF_PROJECT_NAME | Should -Be "fromshell"
+    }
+
+    It "is a no-op when the settings file is absent" {
+        $absentPath = Join-Path $script:TmpDir "nonexistent.txt"
+        Import-DaafSettingsInline -SettingsFile $absentPath
+        $env:DAAF_PROJECT_NAME | Should -BeNullOrEmpty
+    }
+
+    It "tolerates CRLF line endings" {
+        [System.IO.File]::WriteAllBytes($script:SettingsFile, [System.Text.Encoding]::ASCII.GetBytes("DAAF_PORT_MARIMO=3001`r`n"))
+        Import-DaafSettingsInline -SettingsFile $script:SettingsFile
+        $env:DAAF_PORT_MARIMO | Should -Be "3001"
+    }
+
+    It "ignores non-DAAF keys" {
+        Set-Content -Path $script:SettingsFile -Value "ANTHROPIC_API_KEY=sk-secret`nDAAF_PROJECT_NAME=safe"
+        Import-DaafSettingsInline -SettingsFile $script:SettingsFile
+        $env:DAAF_PROJECT_NAME | Should -Be "safe"
+        $env:ANTHROPIC_API_KEY | Should -BeNullOrEmpty
     }
 }
 

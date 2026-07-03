@@ -1,4 +1,4 @@
-name: daaf
+name: ${DAAF_PROJECT_NAME:-daaf}   # Override in environment_settings.txt to run a second instance
 
 services:
   daaf-init:
@@ -17,9 +17,13 @@ services:
       - path: environment_settings.txt
         required: false         # Container starts normally if environment_settings.txt doesn't exist
     ports:
-      - "127.0.0.1:2718:2718"   # Marimo notebook server (localhost only)
-      - "127.0.0.1:2719:2719"   # Session log viewer (localhost only)
-      - "127.0.0.1:2720:2720"   # code-server / VS Code in browser (localhost only)
+      # Published HOST ports are overridable for multi-instance (a second install
+      # must not collide on the same host port). The CONTAINER ports stay fixed at
+      # 2718/2719/2720; only the left-hand host port varies. Defaults preserve the
+      # original single-instance mapping exactly.
+      - "127.0.0.1:${DAAF_PORT_MARIMO:-2718}:2718"      # Marimo notebook server (localhost only)
+      - "127.0.0.1:${DAAF_PORT_LOGVIEWER:-2719}:2719"   # Session log viewer (localhost only)
+      - "127.0.0.1:${DAAF_PORT_VSCODE:-2720}:2720"      # code-server / VS Code in browser (localhost only)
     volumes:
       - daaf-data:/daaf        # Named volume instead of bind mount
     working_dir: /daaf

@@ -221,10 +221,14 @@ teardown() {
     [ "${output}" -ge 1 ]
 }
 
-@test "run_vscode.sh calls open_url with port 2720" {
-    run grep "open_url.*2720" "${REPO_ROOT}/scripts/host/run_vscode.sh"
+@test "run_vscode.sh calls open_url with the host VS Code port (default 2720)" {
+    # The URL uses the overridable host port var (defaults to 2720). Assert the
+    # parameterized form plus the default resolution.
+    run grep 'open_url.*DAAF_PORT_VSCODE' "${REPO_ROOT}/scripts/host/run_vscode.sh"
     assert_success
-    assert_output --partial "http://localhost:2720"
+    assert_output --partial 'http://localhost:${DAAF_PORT_VSCODE}'
+    run grep 'DAAF_PORT_VSCODE:-2720' "${REPO_ROOT}/scripts/host/run_vscode.sh"
+    assert_success
 }
 
 @test "run_vscode.sh guards open_url behind command -v check" {

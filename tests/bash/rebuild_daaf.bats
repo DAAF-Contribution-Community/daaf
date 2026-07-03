@@ -61,12 +61,15 @@ teardown() {
 # --- Preflight: container not found ---
 
 @test "rebuild_daaf.sh fails when container does not exist" {
-    MOCK_DOCKER_INSPECT_EXIT=1
+    # rebuild now derives the container via `docker compose ps -aq daaf-docker`;
+    # empty output = no container (running or stopped). Model that with an empty
+    # PSQ mock output.
+    MOCK_DOCKER_PSQ_OUTPUT=""
     export DAAF_NESTED=1
     run bash "${REPO_ROOT}/scripts/host/rebuild_daaf.sh"
     assert_failure
     assert_output --partial "ERROR"
-    assert_output --partial "not found"
+    assert_output --partial "No daaf-docker container found"
 }
 
 # --- DAAF_NESTED behavior ---
@@ -114,22 +117,30 @@ teardown() {
 # Error paths
 # =========================================================================
 
-@test "rebuild_daaf.sh: fails when container not found (inspect fails)" {
-    MOCK_DOCKER_INSPECT_EXIT=1
+@test "rebuild_daaf.sh: fails when container not found (compose ps -aq empty)" {
+    # rebuild derives the container via `docker compose ps -aq daaf-docker`;
+    # empty output = no container (running or stopped).
+    MOCK_DOCKER_PSQ_OUTPUT=""
     export DAAF_NESTED=1
     run bash "${REPO_ROOT}/scripts/host/rebuild_daaf.sh"
     assert_failure
     assert_output --partial "ERROR"
-    assert_output --partial "not found"
+    assert_output --partial "No daaf-docker container found"
 }
 
 @test "rebuild_daaf.sh: fails when Dockerfile copy from container fails" {
     export DAAF_NESTED=1
-    # Custom docker mock: inspect succeeds, cp fails
+    # Custom docker mock: container exists (compose ps -aq returns an ID), cp fails
     docker() {
         case "$1" in
             info)    return 0 ;;
-            inspect) return 0 ;;
+            compose)
+                shift
+                case "$1" in
+                    ps) echo "abc123"; return 0 ;;
+                    *) return 0 ;;
+                esac
+                ;;
             cp)
                 # Fail on copy
                 return 1
@@ -161,6 +172,9 @@ teardown() {
             compose)
                 shift
                 case "$1" in
+                    # rebuild derives the container via `compose ps -aq daaf-docker`;
+                    # a non-empty ID means the container exists (running or stopped).
+                    ps) echo "abc123"; return 0 ;;
                     build) return 1 ;;
                     *) return 0 ;;
                 esac
@@ -187,6 +201,9 @@ teardown() {
             compose)
                 shift
                 case "$1" in
+                    # rebuild derives the container via `compose ps -aq daaf-docker`;
+                    # a non-empty ID means the container exists (running or stopped).
+                    ps) echo "abc123"; return 0 ;;
                     build) return 0 ;;
                     up) return 1 ;;
                     *) return 0 ;;
@@ -213,6 +230,9 @@ teardown() {
             compose)
                 shift
                 case "$1" in
+                    # rebuild derives the container via `compose ps -aq daaf-docker`;
+                    # a non-empty ID means the container exists (running or stopped).
+                    ps) echo "abc123"; return 0 ;;
                     build) return 0 ;;
                     up) return 0 ;;
                     exec) return 1 ;;
@@ -243,6 +263,9 @@ teardown() {
             compose)
                 shift
                 case "$1" in
+                    # rebuild derives the container via `compose ps -aq daaf-docker`;
+                    # a non-empty ID means the container exists (running or stopped).
+                    ps) echo "abc123"; return 0 ;;
                     build) return 0 ;;
                     up) return 0 ;;
                     exec)
@@ -290,6 +313,9 @@ teardown() {
             compose)
                 shift
                 case "$1" in
+                    # rebuild derives the container via `compose ps -aq daaf-docker`;
+                    # a non-empty ID means the container exists (running or stopped).
+                    ps) echo "abc123"; return 0 ;;
                     build) return 0 ;;
                     up) return 0 ;;
                     exec)
@@ -331,6 +357,9 @@ teardown() {
             compose)
                 shift
                 case "$1" in
+                    # rebuild derives the container via `compose ps -aq daaf-docker`;
+                    # a non-empty ID means the container exists (running or stopped).
+                    ps) echo "abc123"; return 0 ;;
                     build) return 0 ;;
                     up) return 0 ;;
                     exec) return 0 ;;
@@ -363,6 +392,9 @@ teardown() {
             compose)
                 shift
                 case "$1" in
+                    # rebuild derives the container via `compose ps -aq daaf-docker`;
+                    # a non-empty ID means the container exists (running or stopped).
+                    ps) echo "abc123"; return 0 ;;
                     build) return 0 ;;
                     up) return 0 ;;
                     exec) return 0 ;;
@@ -383,7 +415,13 @@ teardown() {
     docker() {
         case "$1" in
             info)    return 0 ;;
-            inspect) return 0 ;;
+            compose)
+                shift
+                case "$1" in
+                    ps) echo "abc123"; return 0 ;;
+                    *) return 0 ;;
+                esac
+                ;;
             cp)
                 shift
                 local args_str="$*"

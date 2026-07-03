@@ -148,23 +148,28 @@ cd daaf-docker
 bash daaf.sh
 ```
 
-The DAAF Control Panel (`daaf.sh`) is an interactive menu with a status dashboard, service management, and all DAAF operations in one place. Select "Launch Claude Code" from the menu to get started.
+**Windows (PowerShell) -- recommended:**
+
+```powershell
+cd daaf-docker
+.\daaf.ps1
+```
+
+The DAAF Control Panel (`daaf.sh` on macOS/Linux, `daaf.ps1` on Windows) is an interactive menu with a status dashboard, service management, and all DAAF operations in one place. Select "Launch Claude Code" from the menu to get started.
 
 **Alternative -- launch Claude Code directly:**
 
 ```bash
 cd daaf-docker
-bash run_daaf.sh
+bash run_daaf.sh          # macOS / Linux
 ```
-
-**Windows (PowerShell):**
 
 ```powershell
 cd daaf-docker
-.\run_daaf.ps1
+.\run_daaf.ps1            # Windows
 ```
 
-> **Note:** The DAAF Control Panel (`daaf.sh`) requires bash. On macOS and Linux this is already built in — the Control Panel is written to run on the system `/bin/bash` (macOS ships version 3.2), so **no Homebrew or newer bash is needed**; just run `bash daaf.sh`. On Windows, you can use it from Git Bash or WSL. A native PowerShell version is future work.
+> **Note:** Each platform has its own native Control Panel — `daaf.sh` on macOS/Linux and `daaf.ps1` on Windows. On macOS and Linux, bash is already built in; the Control Panel runs on the system `/bin/bash` (macOS ships version 3.2), so **no Homebrew or newer bash is needed** — just run `bash daaf.sh`. On Windows, `.\daaf.ps1` runs directly in PowerShell with no extra tools required.
 
 On first launch, Claude Code should prompt you to authenticate (API key or subscription login). Follow its instructions to complete the process as needed based on your method. Remember that CTRL+C actually exits the terminal, so use (Windows/Linux: CTRL+SHIFT+C and CTRL+V) and (macOS: Cmd+C and Cmd+V) if you want to copy/paste. You may need to copy and paste the link into your browser; be careful to check it for erroneous line-breaks in the URL if you run into issues!
 
@@ -262,20 +267,25 @@ cd daaf-docker
 bash daaf.sh
 ```
 
+**Windows (PowerShell):**
+
+```powershell
+cd daaf-docker
+.\daaf.ps1
+```
+
 The DAAF Control Panel provides an interactive menu with a status dashboard, service management, and all DAAF operations in one place.
 
 **Alternative -- launch Claude Code directly:**
 
 ```bash
 cd daaf-docker
-bash run_daaf.sh
+bash run_daaf.sh         # macOS / Linux
 ```
-
-**Windows (PowerShell):**
 
 ```powershell
 cd daaf-docker
-.\run_daaf.ps1
+.\run_daaf.ps1           # Windows
 ```
 
 The `run_daaf` script handles everything: starts the container if it's not already running, then launches Claude Code directly. To enter the container shell instead of Claude Code (for manual commands, setting API keys, etc.), pass `bash` as an argument:
@@ -303,7 +313,7 @@ claude
 
 | Operation | macOS / Linux | Windows |
 |-----------|---------------|---------|
-| DAAF Control Panel | `bash daaf.sh` | (requires bash) |
+| DAAF Control Panel | `bash daaf.sh` | `.\daaf.ps1` |
 | Start session | `bash run_daaf.sh` | `.\run_daaf.ps1` |
 | End session | `/exit` → `exit` → `docker compose down` | Same |
 | Browse/edit files | `bash run_vscode.sh` | `.\run_vscode.ps1` |
@@ -592,6 +602,40 @@ $env:DAAF_FORCE_REINSTALL = "1"; irm https://raw.githubusercontent.com/DAAF-Cont
 Back up your Docker volume first (see [**Backing Up Your Work**](#backing-up-your-work)) if you have research data or framework customizations you want to preserve.
 
 If the installer detects a previous attempt that didn't complete successfully (e.g., the Docker build failed partway through), it will note this and proceed automatically — no override needed.
+
+### Running multiple DAAF instances
+
+Most people run a single DAAF installation and never need this section. But if you want **two (or more) independent DAAF installs on the same machine** — for example, one folder for work and another for personal projects, each with its own Docker volume and research history — you can, with a small amount of configuration.
+
+Two things must be unique per install so they don't collide:
+
+1. **The Compose project name** — this determines the container name and the Docker volume (`<project>_daaf-data`) that holds your files. Two installs sharing a project name would share a volume.
+2. **The three published localhost ports** — `2718` (notebooks), `2719` (log viewer), and `2720` (VS Code). Two installs cannot both publish the same host port.
+
+To set up a second instance, install DAAF into a second, separate `daaf-docker` folder as usual, then in **that folder's** `environment_settings.txt` set a distinct project name and three free ports:
+
+```
+DAAF_PROJECT_NAME=daaf-personal
+DAAF_PORT_MARIMO=2818
+DAAF_PORT_LOGVIEWER=2819
+DAAF_PORT_VSCODE=2820
+```
+
+(These four variables are documented in `environment_settings_example.txt`. Any free ports work — the numbers above are just an example offset by 100.)
+
+Then recreate that instance's container so Compose picks up the new project name and ports:
+
+```
+docker compose down
+bash run_daaf.sh            # macOS / Linux
+.\run_daaf.ps1             # Windows
+```
+
+The DAAF launcher and control-panel scripts (`run_daaf`, `daaf`, the `view_*` browsers, `update`, `rebuild`, `backup`, `restore`) read these values from `environment_settings.txt` automatically, so the status dashboard and the browser URLs they print will point at the correct ports for each instance.
+
+> **If you run bare `docker compose` commands directly** (outside the provided scripts) in a multi-instance folder, you must also create a `.env` file in that `daaf-docker` folder containing the same `DAAF_PROJECT_NAME` / `DAAF_PORT_*` lines. Docker Compose reads `.env` (and your shell environment) when resolving the `${...}` placeholders in `docker-compose.yml`, but it does **not** read `environment_settings.txt` for that purpose — that file only feeds the container's own environment. The DAAF scripts bridge this gap for you; bare `docker compose` does not.
+
+> **Changing these on an existing install** requires the same `docker compose down` + relaunch: the project name and published ports are baked in at container-creation time, so a running container will not adopt new values until it is recreated. Your data volume moves with the project name — renaming `DAAF_PROJECT_NAME` on an existing install points it at a *different* (empty) volume, so choose the name once, up front.
 
 ### Configure authentication via environment_settings.txt
 

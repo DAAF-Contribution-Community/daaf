@@ -61,6 +61,7 @@ if ($env:DAAF_DRY_RUN -eq "1") {
         $global:LASTEXITCODE = 0
         switch -Wildcard ($argStr) {
             "*info*" { return }
+            "*compose ps -q daaf-docker*" { Write-Output "abc123" }
             "*compose ps*--format*" { Write-Output "daaf-docker" }
             "*compose up*" { return }
             "*compose exec*test -f*/daaf/.git/shallow*" {
@@ -105,10 +106,45 @@ if ($env:DAAF_DRY_RUN -eq "1") {
 }
 
 $UpstreamRepo = "DAAF-Contribution-Community/daaf"
-$ContainerName = "daaf-daaf-docker-1"
+# $ContainerId is derived from the compose project after the container is started
+# (see the preflight block below), not hardcoded -- so it tracks DAAF_PROJECT_NAME
+# and is correct for a second instance. Consumed by `docker cp` in the sync helper
+# and by user-facing manual-recovery hints.
+$ContainerId = ""
 $Timestamp = Get-Date -Format "yyyy-MM-dd-HHmmss"
 $BackupBranch = "backup/pre-update-$Timestamp"
 $Mutex = $null  # Initialized before trap; set to actual mutex after helper functions
+
+# --- Multi-instance settings (shared pattern) ---
+# Bridge environment_settings.txt's four DAAF_* multi-instance keys into the
+# process environment so `docker compose` interpolation resolves the project name
+# and published host ports. Canonical shared pattern (kept in sync with
+# Import-DaafSettings in daaf_lib.ps1); standalone scripts that do NOT dot-source
+# daaf_lib.ps1 inline it. Parse only these four keys (never dot-source -- the file
+# holds API keys); process env wins; absent file = no-op; CR stripped; PS 5.1 safe.
+function Import-DaafSettingsInline {
+    param([string]$SettingsFile = "./environment_settings.txt")
+    if (-not (Test-Path -LiteralPath $SettingsFile)) { return }
+    $known = @('DAAF_PROJECT_NAME', 'DAAF_PORT_MARIMO', 'DAAF_PORT_LOGVIEWER', 'DAAF_PORT_VSCODE')
+    foreach ($rawLine in (Get-Content -LiteralPath $SettingsFile)) {
+        $line = $rawLine -replace "`r", ""
+        $trimmed = $line.Trim()
+        if ($trimmed -eq "" -or $trimmed.StartsWith("#")) { continue }
+        $eq = $line.IndexOf("=")
+        if ($eq -lt 1) { continue }
+        $key = $line.Substring(0, $eq).Trim()
+        if ($known -notcontains $key) { continue }
+        $val = $line.Substring($eq + 1)
+        if (($val.StartsWith('"') -and $val.EndsWith('"')) -or ($val.StartsWith("'") -and $val.EndsWith("'"))) {
+            if ($val.Length -ge 2) { $val = $val.Substring(1, $val.Length - 2) }
+        }
+        $current = [Environment]::GetEnvironmentVariable($key, "Process")
+        if ([string]::IsNullOrEmpty($current)) {
+            Set-Item -Path ("Env:" + $key) -Value $val
+        }
+    }
+}
+Import-DaafSettingsInline
 
 # --- Trap handler for unexpected failures ---
 trap {
@@ -415,9 +451,17 @@ function Resolve-StashConflict {
     Write-Host ""
     Write-Host "The framework update was applied successfully!"
     Write-Host ""
-    Write-Host "However, some of your uncommitted edits overlap with files that"
-    Write-Host "changed in the update. Your edits are NOT lost - they are saved"
-    Write-Host "in a temporary holding area."
+    Write-Host "However, re-applying your uncommitted changes hit conflicts: some of"
+    Write-Host "your local edits (commonly to Dockerfile or docker-compose.yml)"
+    Write-Host "overlap with changes in this update, so Git could not merge them"
+    Write-Host "automatically."
+    Write-Host ""
+    Write-Host "Nothing is lost. Your changes are preserved safely in a git stash -"
+    Write-Host "the update did not discard them."
+    Write-Host ""
+    Write-Host "The easiest fix: start a DAAF session (launch Claude Code in the"
+    Write-Host "container) and ask for help with `"update conflicts`". DAAF's User"
+    Write-Host "Support mode has a guided walkthrough that resolves these step by step."
     Write-Host ""
     # Claude Code requires an interactive terminal. When non-interactive,
     # skip straight to manual resolution instructions.
@@ -481,12 +525,19 @@ function Resolve-StashConflict {
         }
     } else {
         Write-Host ""
-        Write-Host "To resolve, enter the container:"
+        Write-Host "Recommended: start a DAAF session and ask for help with `"update"
+        Write-Host "conflicts`" - User Support mode has a guided conflict walkthrough:"
+        Write-Host "  .\run_daaf.ps1"
+        Write-Host ""
+        Write-Host "Or resolve manually - enter the container:"
         Write-Host "  .\run_daaf.ps1 bash"
         Write-Host "  (edit the conflicting files to remove the <<<<<<< markers)"
         Write-Host "  git add ."
         Write-Host "  git stash drop"
         Write-Host "  exit"
+        Write-Host ""
+        Write-Host "Either way, your changes are safe in the git stash until you"
+        Write-Host "resolve them - nothing has been lost."
         Write-Host ""
         Write-Host "Or to discard your uncommitted edits and keep the update"
         Write-Host "(WARNING - this cannot be undone):"
@@ -509,13 +560,13 @@ function Copy-HostScript {
     param([string]$RepoPath)
     $scriptName = Split-Path $RepoPath -Leaf
     $savedEAP = $ErrorActionPreference
-    try { $ErrorActionPreference = "SilentlyContinue"; docker cp "${ContainerName}:/daaf/$RepoPath" "./$scriptName" 2>$null } finally { $ErrorActionPreference = $savedEAP }
+    try { $ErrorActionPreference = "SilentlyContinue"; docker cp "${ContainerId}:/daaf/$RepoPath" "./$scriptName" 2>$null } finally { $ErrorActionPreference = $savedEAP }
     if ($LASTEXITCODE -eq 0) {
         Write-Host "  Updated: $scriptName"
         return $true
     } else {
         Write-Host "  Warning: could not copy $scriptName. You can copy it manually:" -ForegroundColor Yellow
-        Write-Host "    docker cp ${ContainerName}:/daaf/$RepoPath ./$scriptName" -ForegroundColor Yellow
+        Write-Host "    docker compose cp daaf-docker:/daaf/$RepoPath ./$scriptName" -ForegroundColor Yellow
         return $false
     }
 }
@@ -541,12 +592,12 @@ function Sync-HostScript {
     $allHostFiles = Invoke-ComposeGit ls-files 'scripts/host/*'
     if ([string]::IsNullOrWhiteSpace($allHostFiles)) { return }
 
-    # Platform filter (Windows hosts): keep *.ps1 files, the shared plain-text
-    # files (environment_settings_example.txt, README.txt), and daaf.sh /
-    # daaf_lib.sh (the Control Panel is run via Git Bash on Windows -- there is
-    # no daaf.ps1). Drop other
-    # *.sh files. Bootstrap-only scripts (install.ps1, migrate_daaf.ps1) are
-    # intentionally excluded -- fetched via irm on demand, not needed post-install.
+    # Platform filter (Windows hosts): keep *.ps1 files (which now includes the
+    # native Control Panel pair daaf.ps1 / daaf_lib.ps1) and the shared
+    # plain-text files (environment_settings_example.txt, README.txt). All *.sh
+    # files are dropped -- Windows uses the .ps1 Control Panel, not daaf.sh.
+    # Bootstrap-only scripts (install.ps1, migrate_daaf.ps1) are intentionally
+    # excluded -- fetched via irm on demand, not needed post-install.
     $syncList = @()
     foreach ($line in ($allHostFiles -split "`n")) {
         $repoPath = $line.Trim()
@@ -554,9 +605,7 @@ function Sync-HostScript {
         if ($repoPath -eq "scripts/host/install.ps1" -or $repoPath -eq "scripts/host/migrate_daaf.ps1") { continue }
         if ($repoPath -like "*.ps1" -or
             $repoPath -eq "scripts/host/environment_settings_example.txt" -or
-            $repoPath -eq "scripts/host/README.txt" -or
-            $repoPath -eq "scripts/host/daaf.sh" -or
-            $repoPath -eq "scripts/host/daaf_lib.sh") {
+            $repoPath -eq "scripts/host/README.txt") {
             $syncList += $repoPath
         }
     }
@@ -607,6 +656,92 @@ function Sync-HostScript {
     }
 
     if ($printedHeader) { Write-Host "" }
+
+    # --- Tier C: drift warning (never overwrite) ---
+    # A file that EXISTS on host but differs from the repo copy and was NOT
+    # copied this run (not missing, not changed in-range) would otherwise be
+    # left silently stale -- the last silent failure mode after interrupted
+    # syncs, manual copies, or user customizations. We WARN but NEVER overwrite:
+    # the difference may be a deliberate local customization, and clobbering it
+    # would destroy user work. This is a deliberate design decision. Mirrors the
+    # Bash tier-C design in update_daaf.sh sync_host_scripts.
+    #
+    # One bulk `docker compose cp` of scripts/host into a temp dir, then a
+    # per-file Get-FileHash compare (Get-FileHash exists in PS 5.1). Files copied
+    # this run ($copied) are fresh by construction and excluded. Failure to stage
+    # or compare degrades to a single notice -- best-effort, never aborts.
+    $driftFound = $false
+    $driftDegraded = $false
+    $driftDir = $null
+    try {
+        $driftDir = Join-Path ([System.IO.Path]::GetTempPath()) ("daaf-drift-" + [System.Guid]::NewGuid().ToString("N"))
+        New-Item -ItemType Directory -Path $driftDir -Force -ErrorAction Stop | Out-Null
+    } catch {
+        $driftDegraded = $true
+    }
+
+    if (-not $driftDegraded) {
+        # Bulk-copy the repo's scripts/host tree out of the container once.
+        # docker compose cp is project-aware (tracks DAAF_PROJECT_NAME).
+        $repoHost = Join-Path $driftDir "repo_host"
+        $savedEAP = $ErrorActionPreference
+        try {
+            $ErrorActionPreference = "SilentlyContinue"
+            docker compose cp daaf-docker:/daaf/scripts/host "$repoHost" 2>$null | Out-Null
+        } finally { $ErrorActionPreference = $savedEAP }
+        if ($LASTEXITCODE -ne 0 -or -not (Test-Path $repoHost)) {
+            $driftDegraded = $true
+        }
+    }
+
+    if ($driftDegraded) {
+        Write-Host "Note: could not check host scripts for drift this run (skipped safely)."
+        Write-Host ""
+    } else {
+        foreach ($repoPath in $syncList) {
+            $scriptName = Split-Path $repoPath -Leaf
+            # Only files that exist on host are drift candidates (missing files
+            # were handled by tier A).
+            if (-not (Test-Path "./$scriptName")) { continue }
+            # Exclude files copied this run (tier A or tier B) -- fresh already.
+            if ($copied -contains $scriptName) { continue }
+            $repoCopy = Join-Path (Join-Path $driftDir "repo_host") $scriptName
+            # If the repo copy is missing from the staged tree, we cannot
+            # compare -- skip rather than guessing.
+            if (-not (Test-Path $repoCopy)) { continue }
+            $differs = $false
+            try {
+                $hostHash = (Get-FileHash -Path "./$scriptName" -Algorithm SHA256 -ErrorAction Stop).Hash
+                $repoHash = (Get-FileHash -Path $repoCopy -Algorithm SHA256 -ErrorAction Stop).Hash
+                if ($hostHash -ne $repoHash) { $differs = $true }
+            } catch {
+                # A compare failure for one file is non-fatal -- skip it.
+                continue
+            }
+            if ($differs) {
+                Write-Host "  WARNING: $scriptName differs from the repository version." -ForegroundColor Yellow
+                Write-Host "    It was NOT overwritten in case the difference is a" -ForegroundColor Yellow
+                Write-Host "    deliberate local customization of yours. To adopt the" -ForegroundColor Yellow
+                Write-Host "    repository version, run:" -ForegroundColor Yellow
+                Write-Host "      docker compose cp daaf-docker:/daaf/$repoPath ./$scriptName" -ForegroundColor Yellow
+                $driftFound = $true
+            }
+        }
+    }
+
+    # Clean up the staging dir (best-effort; never fatal).
+    if ($driftDir -and (Test-Path $driftDir)) {
+        Remove-Item -Path $driftDir -Recurse -Force -ErrorAction SilentlyContinue
+    }
+
+    # Closing summary if any drift was found -- mirrors the sync-failure summary
+    # so the message is not missed if it scrolled past.
+    if ($driftFound) {
+        Write-Host ""
+        Write-Host "Warning: one or more host scripts differ from the repository version"
+        Write-Host "and were left unchanged -- see the messages above. Nothing was overwritten."
+        Write-Host ""
+    }
 
     # --- Sync failure summary ---
     # $syncCopyFailed is set on any copy error. Print a closing summary so the
@@ -674,7 +809,7 @@ function Test-BuildChange {
         } else {
             Write-Host "rebuild_daaf.ps1 is not in your daaf-docker folder."
             Write-Host "You can retrieve it from the container and run it:"
-            Write-Host "  docker cp ${ContainerName}:/daaf/scripts/host/rebuild_daaf.ps1 .\rebuild_daaf.ps1"
+            Write-Host "  docker compose cp daaf-docker:/daaf/scripts/host/rebuild_daaf.ps1 .\rebuild_daaf.ps1"
             Write-Host "  .\rebuild_daaf.ps1"
         }
     } else {
@@ -779,9 +914,11 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 # --- Preflight: Start container if needed ---
+# `docker compose ps -q daaf-docker` prints the running container's ID (empty
+# when stopped), derived from the compose project rather than a hardcoded name.
 $savedEAP = $ErrorActionPreference
-try { $ErrorActionPreference = "SilentlyContinue"; $runningCheck = docker compose ps --status running --format '{{.Name}}' 2>$null } finally { $ErrorActionPreference = $savedEAP }
-$running = ($runningCheck | Out-String) -match "daaf-docker"
+try { $ErrorActionPreference = "SilentlyContinue"; $runningCid = docker compose ps -q daaf-docker 2>$null } finally { $ErrorActionPreference = $savedEAP }
+$running = -not [string]::IsNullOrWhiteSpace(($runningCid | Out-String))
 
 if (-not $running) {
     Write-Host "Starting DAAF container..."
@@ -832,6 +969,12 @@ if (-not $running) {
     Write-Host "Container started."
     Write-Host ""
 }
+
+# Derive the container ID now that the container is guaranteed running. Used by
+# `docker cp` in the sync helper and by manual-recovery hints. `-q` (running only)
+# is correct here because the preflight above ensures the container is up.
+$savedEAP = $ErrorActionPreference
+try { $ErrorActionPreference = "SilentlyContinue"; $ContainerId = (docker compose ps -q daaf-docker 2>$null | Out-String).Trim() } finally { $ErrorActionPreference = $savedEAP }
 
 # --- Preflight: DAAF installed ---
 $null = Invoke-ComposeExec test -f /daaf/CLAUDE.md 2>&1

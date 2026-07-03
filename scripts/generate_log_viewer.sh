@@ -35,6 +35,7 @@ GENERATOR_SCRIPT="$SCRIPT_DIR/generate_log_viewer.py"
 PROJECT_PATH=""
 SERVE=true
 PORT=2719
+PORT_OVERRIDDEN=false
 ARCHIVE=false
 BACKGROUND=false
 
@@ -62,6 +63,7 @@ while [ $# -gt 0 ]; do
                 exit 1
             fi
             PORT="$2"
+            PORT_OVERRIDDEN=true
             shift 2
             ;;
         -h|--help)
@@ -112,6 +114,19 @@ fi
 if ! [[ "$PORT" =~ ^[0-9]+$ ]] || [ "$PORT" -lt 1 ] || [ "$PORT" -gt 65535 ]; then
     echo "ERROR: --port must be a number between 1 and 65535 (got: $PORT)"
     exit 1
+fi
+
+# --- Resolve display port ---
+
+# The server always BINDS the container-side port ($PORT stays 2719 unless
+# --port is passed). But the URL the user opens goes through the compose port
+# mapping (host ${DAAF_PORT_LOGVIEWER:-2719} -> container 2719), so when the
+# host port is remapped via environment_settings.txt (available in-container
+# through the compose env_file), the printed URL must show the HOST port. An
+# explicit --port bypasses this: custom in-container flows keep the literal port.
+DISPLAY_PORT="$PORT"
+if [ "$PORT_OVERRIDDEN" = false ] && [ -n "${DAAF_PORT_LOGVIEWER:-}" ]; then
+    DISPLAY_PORT="$DAAF_PORT_LOGVIEWER"
 fi
 
 if [ "$ARCHIVE" = true ]; then
@@ -218,7 +233,7 @@ if [ "$SERVE" = true ]; then
             echo "Server already running on port $PORT (PID $LISTEN_PID)."
             echo ""
             echo "  Open in your browser:"
-            echo "  http://localhost:$PORT/$VIEWER_URL"
+            echo "  http://localhost:$DISPLAY_PORT/$VIEWER_URL"
             echo ""
         elif [ -n "$LISTEN_PID" ]; then
             echo "Port $PORT is in use by: $LISTEN_CMD (PID $LISTEN_PID). Stopping it..."
@@ -227,7 +242,7 @@ if [ "$SERVE" = true ]; then
             echo "Starting HTTP server on port $PORT (serving from $REPO_ROOT)..."
             echo ""
             echo "  Open in your browser:"
-            echo "  http://localhost:$PORT/$VIEWER_URL"
+            echo "  http://localhost:$DISPLAY_PORT/$VIEWER_URL"
             echo ""
             if [ "$BACKGROUND" = true ]; then
                 if [ "$ARCHIVE" = true ]; then
@@ -241,7 +256,7 @@ if [ "$SERVE" = true ]; then
                 fi
                 disown
                 echo "Server started in background (PID $!)."
-                echo "  URL: http://localhost:$PORT/$VIEWER_URL"
+                echo "  URL: http://localhost:$DISPLAY_PORT/$VIEWER_URL"
                 exit 0
             else
                 if [ "$ARCHIVE" = true ]; then
@@ -259,7 +274,7 @@ if [ "$SERVE" = true ]; then
         echo "Starting HTTP server on port $PORT (serving from $REPO_ROOT)..."
         echo ""
         echo "  Open in your browser:"
-        echo "  http://localhost:$PORT/$VIEWER_URL"
+        echo "  http://localhost:$DISPLAY_PORT/$VIEWER_URL"
         echo ""
         if [ "$BACKGROUND" = true ]; then
             if [ "$ARCHIVE" = true ]; then
@@ -273,7 +288,7 @@ if [ "$SERVE" = true ]; then
             fi
             disown
             echo "Server started in background (PID $!)."
-            echo "  URL: http://localhost:$PORT/$VIEWER_URL"
+            echo "  URL: http://localhost:$DISPLAY_PORT/$VIEWER_URL"
             exit 0
         else
             if [ "$ARCHIVE" = true ]; then

@@ -26,8 +26,45 @@ if [ -z "${DAAF_NESTED:-}" ] && [ -z "${CI:-}" ] && [ -c /dev/tty ] && [ -t 1 ];
     trap 'echo ""; read -r -p "Press Enter to continue: " < /dev/tty' EXIT
 fi
 
+# --- Multi-instance settings (shared pattern) ---
+# Bridge environment_settings.txt's four DAAF_* multi-instance keys into the
+# environment so the volume name below reflects DAAF_PROJECT_NAME. This script
+# operates on the Docker volume via raw `docker run`/`docker volume` (not
+# `docker compose`), so compose interpolation does not apply -- we must derive the
+# project-prefixed volume name ourselves. Canonical shared pattern (kept in sync
+# with load_daaf_settings in daaf_lib.sh). Parse only these four keys (never
+# `source` -- the file holds API keys); shell env wins; absent file = no-op; CR
+# stripped; Bash 3.2 safe.
+_daaf_load_settings() {
+    local settings_file="./environment_settings.txt"
+    [ -f "${settings_file}" ] || return 0
+    local key val line
+    while IFS= read -r line || [ -n "${line}" ]; do
+        line="$(printf '%s' "${line}" | tr -d '\r')"
+        case "${line}" in ''|'#'*) continue ;; esac
+        case "${line}" in
+            DAAF_PROJECT_NAME=*|DAAF_PORT_MARIMO=*|DAAF_PORT_LOGVIEWER=*|DAAF_PORT_VSCODE=*)
+                key="${line%%=*}"; val="${line#*=}"
+                case "${val}" in
+                    \"*\") val="${val#\"}"; val="${val%\"}" ;;
+                    \'*\') val="${val#\'}"; val="${val%\'}" ;;
+                esac
+                if [ -z "${!key:-}" ]; then
+                    export "${key}=${val}"
+                fi
+                ;;
+            *) continue ;;
+        esac
+    done < "${settings_file}"
+}
+_daaf_load_settings
+
 # --- Configuration ---
-VOLUME_NAME="daaf_daaf-data"
+# The Docker named volume is project-prefixed: "<project>_daaf-data". Compose
+# derives the prefix from the project name (default "daaf"), so a second instance
+# with DAAF_PROJECT_NAME=daaf2 owns the volume "daaf2_daaf-data". Default unset =>
+# "daaf_daaf-data" (byte-for-byte identical to the previous hardcoded value).
+VOLUME_NAME="${DAAF_PROJECT_NAME:-daaf}_daaf-data"
 TODAY=$(date +%Y-%m-%d)
 
 # --- Dry-Run Support ---

@@ -10,6 +10,7 @@
 #   source "${DAAF_LIB_DIR}/daaf_lib.sh"
 #
 # Functions provided:
+#   load_daaf_settings -- export DAAF_* multi-instance vars from environment_settings.txt
 #   setup_colors    -- populate color variables (respects NO_COLOR + non-TTY)
 #   open_url        -- open a URL in the default browser (best-effort)
 #   check_port      -- test whether a port is listening inside the DAAF container
@@ -23,6 +24,74 @@ if [ "${_DAAF_LIB_LOADED:-}" = "1" ]; then
     return 0 2>/dev/null || true
 fi
 _DAAF_LIB_LOADED=1
+
+# --- Multi-Instance Settings Loader ---
+# Bridge environment_settings.txt -> host shell environment for the four
+# multi-instance DAAF_* variables (DAAF_PROJECT_NAME, DAAF_PORT_MARIMO,
+# DAAF_PORT_LOGVIEWER, DAAF_PORT_VSCODE).
+#
+# WHY THIS EXISTS: environment_settings.txt is wired into docker-compose.yml as a
+# service-level `env_file`, which feeds the CONTAINER environment only. Docker
+# Compose *variable interpolation* (the `${DAAF_PROJECT_NAME:-daaf}` /
+# `${DAAF_PORT_*:-27xx}` substitutions in docker-compose.yml) is resolved from the
+# HOST shell environment and the project-folder .env file -- NOT from env_file.
+# So without this bridge, setting DAAF_PROJECT_NAME in environment_settings.txt
+# would change the in-container env but leave the compose project name and
+# published ports at their defaults. This function reads those four keys from the
+# file and exports them so compose interpolation sees them.
+#
+# PARSING SAFETY: we deliberately do NOT `source`/`.` the file. It holds API keys
+# with arbitrary characters (quotes, $, backticks, spaces) that would be
+# interpreted by the shell -- a correctness and safety hazard. We extract only the
+# four known DAAF_* keys via a line-oriented grep/sed/case scan, stripping CR for
+# CRLF tolerance (matches how the rest of the codebase handles container output).
+#
+# PRECEDENCE: an already-set shell environment variable WINS over the file value.
+# This matches Docker Compose's own precedence (shell env > .env file) so running
+# `DAAF_PORT_MARIMO=3000 bash daaf.sh` overrides the file exactly as bare compose
+# would. Absent file = no-op (defaults in docker-compose.yml apply).
+#
+# Bash 3.2 safe: no associative arrays, no mapfile, no ${var,,}.
+load_daaf_settings() {
+    local settings_file="${1:-./environment_settings.txt}"
+
+    # Absent file: nothing to do -- docker-compose.yml defaults apply.
+    if [ ! -f "${settings_file}" ]; then
+        return 0
+    fi
+
+    local key val line
+    # Read line by line (Bash 3.2: while read, not mapfile). Strip CR so CRLF
+    # files (Windows-edited) parse identically to LF files.
+    while IFS= read -r line || [ -n "${line}" ]; do
+        line="$(printf '%s' "${line}" | tr -d '\r')"
+        # Skip blanks and comments before any parsing.
+        case "${line}" in
+            ''|'#'*) continue ;;
+        esac
+        # Only lines of the form KEY=VALUE for our four known keys.
+        case "${line}" in
+            DAAF_PROJECT_NAME=*|DAAF_PORT_MARIMO=*|DAAF_PORT_LOGVIEWER=*|DAAF_PORT_VSCODE=*)
+                key="${line%%=*}"
+                val="${line#*=}"
+                # Strip one layer of surrounding quotes if present (tolerant of
+                # DAAF_PROJECT_NAME="myname" style entries).
+                case "${val}" in
+                    \"*\") val="${val#\"}"; val="${val%\"}" ;;
+                    \'*\') val="${val#\'}"; val="${val%\'}" ;;
+                esac
+                # Precedence: shell env wins. Only adopt the file value when the
+                # variable is currently unset OR empty in the environment.
+                if [ -z "${!key:-}" ]; then
+                    export "${key}=${val}"
+                fi
+                ;;
+            *) continue ;;
+        esac
+    done < "${settings_file}"
+
+    return 0
+}
 
 # --- Color Setup ---
 # Populate global color variables for terminal output.
@@ -112,9 +181,9 @@ open_url() {
 check_port() {
     local port="${1:?check_port requires a port number}"
 
-    # In dry-run mode, consult MOCK_PORT_RESPONSES instead of Docker
+    # In dry-run mode, consult DAAF_MOCK_PORTS instead of Docker
     if [ "${DAAF_DRY_RUN:-}" = "1" ]; then
-        if echo "${MOCK_PORT_RESPONSES:-}" | grep -q "${port}:yes"; then
+        if echo "${DAAF_MOCK_PORTS:-}" | grep -q "${port}:yes"; then
             return 0
         fi
         return 1
@@ -149,10 +218,14 @@ ensure_container() {
         return 0
     fi
 
-    local running
-    running=$(docker compose ps --status running --format '{{.Name}}' 2>/dev/null | grep -c "daaf-docker" || true)
+    # `docker compose ps -q daaf-docker` prints the container ID of the RUNNING
+    # daaf-docker service (compose v2 lists running containers by default);
+    # empty output means not running. This is derived from the compose project
+    # rather than matching a hardcoded name, so it tracks DAAF_PROJECT_NAME.
+    local cid
+    cid=$(docker compose ps -q daaf-docker 2>/dev/null || true)
 
-    if [ "${running}" -gt 0 ]; then
+    if [ -n "${cid}" ]; then
         CONTAINER_RUNNING=true
         return 0
     fi

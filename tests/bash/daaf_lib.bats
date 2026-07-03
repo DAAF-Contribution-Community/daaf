@@ -347,3 +347,128 @@ teardown() {
     assert_success
     assert_output --partial "CONTAINER_RUNNING=true"
 }
+
+@test "ensure_container detects a running container via compose ps -q (non-empty ID)" {
+    # New running-check: `docker compose ps -q daaf-docker` prints a container ID
+    # when running. A non-empty ID must be treated as running WITHOUT calling up.
+    run bash -c '
+        unset _DAAF_LIB_LOADED
+        source "'"${REPO_ROOT}"'/scripts/host/daaf_lib.sh"
+
+        docker() {
+            case "$1" in
+                compose)
+                    shift
+                    case "$1" in
+                        ps) echo "abc123containerid" ; return 0 ;;
+                        up) echo "UP_WAS_CALLED" ; return 0 ;;
+                        *) return 0 ;;
+                    esac ;;
+                *) return 0 ;;
+            esac
+        }
+        export -f docker
+
+        ensure_container
+        echo "CONTAINER_RUNNING=${CONTAINER_RUNNING}"
+    '
+    assert_success
+    assert_output --partial "CONTAINER_RUNNING=true"
+    # A running container must not trigger `docker compose up`.
+    refute_output --partial "UP_WAS_CALLED"
+}
+
+# =========================================================================
+# Multi-instance settings loader (load_daaf_settings)
+# =========================================================================
+
+@test "load_daaf_settings picks up a DAAF_* value from environment_settings.txt" {
+    printf 'DAAF_PROJECT_NAME=myinstance\nDAAF_PORT_MARIMO=3001\n' > "${TEST_DIR}/environment_settings.txt"
+    run bash -c '
+        unset _DAAF_LIB_LOADED
+        source "'"${REPO_ROOT}"'/scripts/host/daaf_lib.sh"
+        unset DAAF_PROJECT_NAME DAAF_PORT_MARIMO
+        load_daaf_settings "./environment_settings.txt"
+        echo "NAME=${DAAF_PROJECT_NAME:-UNSET}"
+        echo "PORT=${DAAF_PORT_MARIMO:-UNSET}"
+    '
+    assert_success
+    assert_output --partial "NAME=myinstance"
+    assert_output --partial "PORT=3001"
+}
+
+@test "load_daaf_settings lets an already-set shell env var win over the file" {
+    printf 'DAAF_PROJECT_NAME=fromfile\n' > "${TEST_DIR}/environment_settings.txt"
+    run bash -c '
+        unset _DAAF_LIB_LOADED
+        source "'"${REPO_ROOT}"'/scripts/host/daaf_lib.sh"
+        export DAAF_PROJECT_NAME=fromshell
+        load_daaf_settings "./environment_settings.txt"
+        echo "NAME=${DAAF_PROJECT_NAME}"
+    '
+    assert_success
+    # Precedence: shell env wins, matching Docker Compose (shell > .env file).
+    assert_output --partial "NAME=fromshell"
+}
+
+@test "load_daaf_settings is a no-op when the settings file is absent" {
+    # No environment_settings.txt in TEST_DIR.
+    run bash -c '
+        unset _DAAF_LIB_LOADED
+        source "'"${REPO_ROOT}"'/scripts/host/daaf_lib.sh"
+        unset DAAF_PROJECT_NAME
+        load_daaf_settings "./environment_settings.txt"
+        echo "NAME=${DAAF_PROJECT_NAME:-UNSET}"
+    '
+    assert_success
+    assert_output --partial "NAME=UNSET"
+}
+
+@test "load_daaf_settings tolerates CRLF line endings" {
+    printf 'DAAF_PORT_VSCODE=3020\r\n' > "${TEST_DIR}/environment_settings.txt"
+    run bash -c '
+        unset _DAAF_LIB_LOADED
+        source "'"${REPO_ROOT}"'/scripts/host/daaf_lib.sh"
+        unset DAAF_PORT_VSCODE
+        load_daaf_settings "./environment_settings.txt"
+        echo "PORT=[${DAAF_PORT_VSCODE:-UNSET}]"
+    '
+    assert_success
+    # CR must be stripped: value is exactly 3020, not "3020\r".
+    assert_output --partial "PORT=[3020]"
+}
+
+@test "load_daaf_settings ignores non-DAAF keys (does not source arbitrary lines)" {
+    # A credential-shaped line with shell metacharacters must NOT be evaluated.
+    printf 'ANTHROPIC_API_KEY=sk-$(touch /tmp/daaf_should_not_exist)\nDAAF_PROJECT_NAME=safe\n' > "${TEST_DIR}/environment_settings.txt"
+    run bash -c '
+        unset _DAAF_LIB_LOADED
+        source "'"${REPO_ROOT}"'/scripts/host/daaf_lib.sh"
+        unset DAAF_PROJECT_NAME ANTHROPIC_API_KEY
+        load_daaf_settings "./environment_settings.txt"
+        echo "NAME=${DAAF_PROJECT_NAME:-UNSET}"
+        echo "KEY=${ANTHROPIC_API_KEY:-UNSET}"
+    '
+    assert_success
+    assert_output --partial "NAME=safe"
+    # The non-DAAF key is not adopted, and its command-substitution never ran.
+    assert_output --partial "KEY=UNSET"
+    [ ! -f /tmp/daaf_should_not_exist ]
+}
+
+# =========================================================================
+# docker-compose.yml multi-instance interpolation defaults
+# =========================================================================
+
+@test "docker-compose.yml preserves single-instance defaults for project and ports" {
+    # Static check: the interpolation defaults must resolve to the original
+    # values so an existing install with no new settings behaves identically.
+    run grep -F 'name: ${DAAF_PROJECT_NAME:-daaf}' "${REPO_ROOT}/docker-compose.yml"
+    assert_success
+    run grep -F '${DAAF_PORT_MARIMO:-2718}:2718' "${REPO_ROOT}/docker-compose.yml"
+    assert_success
+    run grep -F '${DAAF_PORT_LOGVIEWER:-2719}:2719' "${REPO_ROOT}/docker-compose.yml"
+    assert_success
+    run grep -F '${DAAF_PORT_VSCODE:-2720}:2720' "${REPO_ROOT}/docker-compose.yml"
+    assert_success
+}

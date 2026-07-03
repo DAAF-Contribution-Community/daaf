@@ -28,8 +28,41 @@ if [ -z "${DAAF_NESTED:-}" ] && [ -z "${CI:-}" ] && [ -c /dev/tty ] && [ -t 1 ];
     trap 'echo ""; read -r -p "Press Enter to continue: " < /dev/tty' EXIT
 fi
 
+# --- Multi-instance settings (shared pattern) ---
+# Bridge environment_settings.txt's four DAAF_* multi-instance keys into the
+# environment so the volume name below reflects DAAF_PROJECT_NAME and the
+# `docker compose down` further below targets the right project. Canonical shared
+# pattern (kept in sync with load_daaf_settings in daaf_lib.sh). Parse only these
+# four keys (never `source` -- the file holds API keys); shell env wins; absent
+# file = no-op; CR stripped; Bash 3.2 safe.
+_daaf_load_settings() {
+    local settings_file="./environment_settings.txt"
+    [ -f "${settings_file}" ] || return 0
+    local key val line
+    while IFS= read -r line || [ -n "${line}" ]; do
+        line="$(printf '%s' "${line}" | tr -d '\r')"
+        case "${line}" in ''|'#'*) continue ;; esac
+        case "${line}" in
+            DAAF_PROJECT_NAME=*|DAAF_PORT_MARIMO=*|DAAF_PORT_LOGVIEWER=*|DAAF_PORT_VSCODE=*)
+                key="${line%%=*}"; val="${line#*=}"
+                case "${val}" in
+                    \"*\") val="${val#\"}"; val="${val%\"}" ;;
+                    \'*\') val="${val#\'}"; val="${val%\'}" ;;
+                esac
+                if [ -z "${!key:-}" ]; then
+                    export "${key}=${val}"
+                fi
+                ;;
+            *) continue ;;
+        esac
+    done < "${settings_file}"
+}
+_daaf_load_settings
+
 # --- Configuration ---
-VOLUME_NAME="daaf_daaf-data"
+# Project-prefixed volume name "<project>_daaf-data". Default unset =>
+# "daaf_daaf-data" (byte-for-byte identical to the previous hardcoded value).
+VOLUME_NAME="${DAAF_PROJECT_NAME:-daaf}_daaf-data"
 
 # --- Dry-Run Support ---
 # When DAAF_DRY_RUN=1, simulate external commands (Docker) for CI

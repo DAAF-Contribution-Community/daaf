@@ -454,11 +454,11 @@ If you'd rather run the individual commands instead of using the rebuild script:
 
 ```bash
 cd daaf-docker
-docker cp daaf-daaf-docker-1:/daaf/Dockerfile ./Dockerfile
+docker compose cp daaf-docker:/daaf/Dockerfile ./Dockerfile
 docker compose up -d --build
 ```
 
-The copy step must come **before** the rebuild. You can also copy via Docker Desktop's GUI: Containers → expand `daaf` → click `daaf-daaf-docker-1` → Files tab → navigate to `/daaf/Dockerfile` → right-click → Save, and overwrite the host copy.
+The copy step must come **before** the rebuild. Using `docker compose cp` (rather than `docker cp` with a literal container name) means the command works no matter what your compose project is named -- including a second instance with a custom `DAAF_PROJECT_NAME`. You can also copy via Docker Desktop's GUI: Containers → expand your DAAF project → click the `daaf-docker` container → Files tab → navigate to `/daaf/Dockerfile` → right-click → Save, and overwrite the host copy.
 </details>
 
 ### Adding System-Level Dependencies

@@ -53,9 +53,44 @@ if [ "${IS_INTERACTIVE}" = "true" ] && [ -z "${DAAF_NESTED:-}" ]; then
 fi
 
 UPSTREAM_REPO="DAAF-Contribution-Community/daaf"
-CONTAINER_NAME="daaf-daaf-docker-1"
+# CONTAINER_ID is derived from the compose project after the container is started
+# (see the preflight block below), not hardcoded -- so it tracks DAAF_PROJECT_NAME
+# and is correct for a second instance. It is consumed by `docker cp` in
+# _sync_copy_one and by user-facing manual-recovery hints.
+CONTAINER_ID=""
 TIMESTAMP=$(date +%Y-%m-%d-%H%M%S)
 BACKUP_BRANCH="backup/pre-update-${TIMESTAMP}"
+
+# --- Multi-instance settings (shared pattern) ---
+# Bridge environment_settings.txt's four DAAF_* multi-instance keys into the
+# environment so `docker compose` interpolation resolves the project name and
+# published host ports. Canonical shared pattern (kept in sync with
+# load_daaf_settings in daaf_lib.sh). Parse only these four keys (never `source`
+# -- the file holds API keys); shell env wins; absent file = no-op; CR stripped;
+# Bash 3.2 safe.
+_daaf_load_settings() {
+    local settings_file="./environment_settings.txt"
+    [ -f "${settings_file}" ] || return 0
+    local key val line
+    while IFS= read -r line || [ -n "${line}" ]; do
+        line="$(printf '%s' "${line}" | tr -d '\r')"
+        case "${line}" in ''|'#'*) continue ;; esac
+        case "${line}" in
+            DAAF_PROJECT_NAME=*|DAAF_PORT_MARIMO=*|DAAF_PORT_LOGVIEWER=*|DAAF_PORT_VSCODE=*)
+                key="${line%%=*}"; val="${line#*=}"
+                case "${val}" in
+                    \"*\") val="${val#\"}"; val="${val%\"}" ;;
+                    \'*\') val="${val#\'}"; val="${val%\'}" ;;
+                esac
+                if [ -z "${!key:-}" ]; then
+                    export "${key}=${val}"
+                fi
+                ;;
+            *) continue ;;
+        esac
+    done < "${settings_file}"
+}
+_daaf_load_settings
 
 # --- Dry-Run Support ---
 # When DAAF_DRY_RUN=1, simulate external commands (Docker, curl) for CI
@@ -64,7 +99,9 @@ if [ "${DAAF_DRY_RUN:-}" = "1" ]; then
     docker() {
         case "$*" in
             "info") return 0 ;;
+            *"compose ps -q daaf-docker"*) echo "abc123" ;;
             *"compose ps"*"--format"*) echo "daaf-docker" ;;
+            "cp"*) return 0 ;;
             *"compose exec"*"true"*) return 0 ;;
             *"compose exec"*"test -f"*) return 0 ;;
             *"fetch"*) return 0 ;;
@@ -304,9 +341,17 @@ handle_stash_conflict() {
     echo ""
     echo "The framework update was applied successfully!"
     echo ""
-    echo "However, some of your uncommitted edits overlap with files that"
-    echo "changed in the update. Your edits are NOT lost -- they are saved"
-    echo "in a temporary holding area."
+    echo "However, re-applying your uncommitted changes hit conflicts: some of"
+    echo "your local edits (commonly to Dockerfile or docker-compose.yml)"
+    echo "overlap with changes in this update, so Git could not merge them"
+    echo "automatically."
+    echo ""
+    echo "Nothing is lost. Your changes are preserved safely in a git stash --"
+    echo "the update did not discard them."
+    echo ""
+    echo "The easiest fix: start a DAAF session (launch Claude Code in the"
+    echo "container) and ask for help with \"update conflicts\". DAAF's User"
+    echo "Support mode has a guided walkthrough that resolves these step by step."
     echo ""
     # Claude Code requires an interactive terminal. When non-interactive,
     # skip straight to manual resolution instructions.
@@ -369,12 +414,19 @@ handle_stash_conflict() {
         fi
     else
         echo ""
-        echo "To resolve, enter the container:"
+        echo "Recommended: start a DAAF session and ask for help with \"update"
+        echo "conflicts\" -- User Support mode has a guided conflict walkthrough:"
+        echo "  bash run_daaf.sh"
+        echo ""
+        echo "Or resolve manually -- enter the container:"
         echo "  bash run_daaf.sh bash"
         echo "  (edit the conflicting files to remove the <<<<<<< markers)"
         echo "  git add ."
         echo "  git stash drop"
         echo "  exit"
+        echo ""
+        echo "Either way, your changes are safe in the git stash until you"
+        echo "resolve them -- nothing has been lost."
         echo ""
         echo "Or to discard your uncommitted edits and keep the update"
         echo "(WARNING -- this cannot be undone):"
@@ -397,13 +449,14 @@ handle_stash_conflict() {
 #
 # INTENT: single shared copy routine so the existence-heal (tier A) and
 #   changed-file (tier B) passes format success/failure output identically.
-# ASSUMES: CONTAINER_NAME points at the running container; docker cp is
-#   name-sensitive (docker compose exec is not, but cp is).
+# ASSUMES: CONTAINER_ID points at the running container; docker cp is
+#   ID/name-sensitive (docker compose exec is not, but cp is). The manual-recovery
+#   hint offers `docker compose cp` (project-aware) as the copy/paste-safe form.
 _sync_copy_one() {
     local repo_path="$1"
     local script
     script=$(basename "${repo_path}")
-    if docker cp "${CONTAINER_NAME}:/daaf/${repo_path}" "./${script}" 2>/dev/null; then
+    if docker cp "${CONTAINER_ID}:/daaf/${repo_path}" "./${script}" 2>/dev/null; then
         # Text files (.txt) do not need the executable bit; scripts do.
         case "${script}" in
             *.sh) chmod +x "./${script}" 2>/dev/null || true ;;
@@ -413,7 +466,7 @@ _sync_copy_one() {
         return 0
     else
         echo "  Warning: could not copy ${script}. You can copy it manually:"
-        echo "    docker cp ${CONTAINER_NAME}:/daaf/${repo_path} ./${script}"
+        echo "    docker compose cp daaf-docker:/daaf/${repo_path} ./${script}"
         SYNC_COPY_FAILED=true
         return 1
     fi
@@ -553,6 +606,83 @@ ${repo_path}
         echo ""
     fi
 
+    # --- Tier C: drift warning (never overwrite) ----------------------------
+    # A file that EXISTS on host but differs from the repo copy and was NOT
+    # copied this run (not missing, not changed in-range) would otherwise be
+    # left silently stale -- the last silent failure mode after interrupted
+    # syncs, manual copies, or user customizations. We WARN but NEVER overwrite:
+    # the difference may be a deliberate local customization, and clobbering it
+    # would destroy user work. This is a deliberate design decision.
+    #
+    # INTENT: surface stale-but-present host files without touching them.
+    # REASONING: one bulk `docker compose cp` of scripts/host into a temp dir,
+    #   then local `cmp -s` per file, avoids N per-file docker execs. `cmp -s`
+    #   is POSIX/BSD-safe (available on macOS's BSD userland).
+    # ASSUMES: files already copied this run (SYNC_COPIED) are fresh by
+    #   construction and are excluded. Failure to stage or compare degrades to
+    #   a single notice -- drift checking is best-effort and never aborts.
+    local drift_dir=""
+    local drift_found=false
+    local drift_degraded=false
+    drift_dir=$(mktemp -d 2>/dev/null || true)
+    if [ -z "${drift_dir}" ] || [ ! -d "${drift_dir}" ]; then
+        # Could not create a scratch dir -- skip drift checking silently-ish.
+        drift_degraded=true
+    else
+        # Bulk-copy the repo's scripts/host tree out of the container once.
+        # `docker compose cp` is project-aware (tracks DAAF_PROJECT_NAME), the
+        # same courtesy form used in manual-recovery hints. On failure, degrade.
+        if ! docker compose cp daaf-docker:/daaf/scripts/host "${drift_dir}/repo_host" \
+            >/dev/null 2>&1; then
+            drift_degraded=true
+        fi
+    fi
+
+    if [ "${drift_degraded}" = true ]; then
+        echo "Note: could not check host scripts for drift this run (skipped safely)."
+        echo ""
+    else
+        while IFS= read -r repo_path; do
+            [ -z "${repo_path}" ] && continue
+            local script
+            script=$(basename "${repo_path}")
+            # Only files that exist on host are drift candidates (missing files
+            # were handled by tier A).
+            [ -f "./${script}" ] || continue
+            # Exclude files copied this run (tier A or tier B) -- fresh by
+            # construction (space-delimited membership, Bash 3.2 safe).
+            case " ${SYNC_COPIED} " in
+                *" ${script} "*) continue ;;
+            esac
+            local repo_copy="${drift_dir}/repo_host/${script}"
+            # If the repo copy is missing from the staged tree, we cannot compare
+            # -- skip this file rather than guessing.
+            [ -f "${repo_copy}" ] || continue
+            if ! cmp -s "./${script}" "${repo_copy}"; then
+                echo "  WARNING: ${script} differs from the repository version."
+                echo "    It was NOT overwritten in case the difference is a"
+                echo "    deliberate local customization of yours. To adopt the"
+                echo "    repository version, run:"
+                echo "      docker compose cp daaf-docker:/daaf/${repo_path} ./${script}"
+                drift_found=true
+            fi
+        done <<< "${sync_list}"
+    fi
+
+    # Clean up the staging dir (best-effort; never fatal).
+    if [ -n "${drift_dir}" ] && [ -d "${drift_dir}" ]; then
+        rm -rf "${drift_dir}" 2>/dev/null || true
+    fi
+
+    # Closing summary if any drift was found -- mirrors the SYNC_COPY_FAILED
+    # summary so the message is not missed if it scrolled past.
+    if [ "${drift_found}" = true ]; then
+        echo ""
+        echo "Warning: one or more host scripts differ from the repository version"
+        echo "and were left unchanged -- see the messages above. Nothing was overwritten."
+        echo ""
+    fi
+
     # --- Sync failure summary ------------------------------------------------
     # SYNC_COPY_FAILED is set true by _sync_copy_one on any copy error. Print a
     # closing summary so the user knows to act even if the warning scrolled by.
@@ -624,7 +754,7 @@ check_build_changes() {
         else
             echo "rebuild_daaf.sh is not in your daaf-docker folder."
             echo "You can retrieve it from the container and run it:"
-            echo "  docker cp ${CONTAINER_NAME}:/daaf/scripts/host/rebuild_daaf.sh ./rebuild_daaf.sh"
+            echo "  docker compose cp daaf-docker:/daaf/scripts/host/rebuild_daaf.sh ./rebuild_daaf.sh"
             echo "  chmod +x ./rebuild_daaf.sh"
             echo "  bash rebuild_daaf.sh"
         fi
@@ -725,10 +855,11 @@ if ! docker info &> /dev/null; then
 fi
 
 # --- Preflight: Start container if needed ---
-RUNNING=$(docker compose ps --status running --format '{{.Name}}' 2>/dev/null \
-    | grep -c "daaf-docker" || true)
+# `docker compose ps -q daaf-docker` prints the running container's ID (empty
+# when stopped), derived from the compose project rather than a hardcoded name.
+RUNNING_CID=$(docker compose ps -q daaf-docker 2>/dev/null || true)
 
-if [ "${RUNNING}" -eq 0 ]; then
+if [ -z "${RUNNING_CID}" ]; then
     echo "Starting DAAF container..."
     if ! docker compose up -d; then
         echo "ERROR: Failed to start the DAAF container."
@@ -770,6 +901,11 @@ if [ "${RUNNING}" -eq 0 ]; then
     echo "Container started."
     echo ""
 fi
+
+# Derive the container ID now that the container is guaranteed running. Used by
+# `docker cp` in _sync_copy_one and by manual-recovery hints. `-q` (running only)
+# is correct here because the preflight above ensures the container is up.
+CONTAINER_ID=$(docker compose ps -q daaf-docker 2>/dev/null || true)
 
 # --- Preflight: DAAF installed ---
 if ! docker compose exec -T daaf-docker test -f /daaf/CLAUDE.md </dev/null 2>/dev/null; then

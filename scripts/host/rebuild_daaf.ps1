@@ -34,6 +34,37 @@ function Wait-AndExit {
     exit $Code
 }
 
+# --- Multi-instance settings (shared pattern) ---
+# Bridge environment_settings.txt's four DAAF_* multi-instance keys into the
+# process environment so `docker compose` interpolation resolves the project name
+# and published host ports. Canonical shared pattern (kept in sync with
+# Import-DaafSettings in daaf_lib.ps1); standalone scripts that do NOT dot-source
+# daaf_lib.ps1 inline it. Parse only these four keys (never dot-source -- the file
+# holds API keys); process env wins; absent file = no-op; CR stripped; PS 5.1 safe.
+function Import-DaafSettingsInline {
+    param([string]$SettingsFile = "./environment_settings.txt")
+    if (-not (Test-Path -LiteralPath $SettingsFile)) { return }
+    $known = @('DAAF_PROJECT_NAME', 'DAAF_PORT_MARIMO', 'DAAF_PORT_LOGVIEWER', 'DAAF_PORT_VSCODE')
+    foreach ($rawLine in (Get-Content -LiteralPath $SettingsFile)) {
+        $line = $rawLine -replace "`r", ""
+        $trimmed = $line.Trim()
+        if ($trimmed -eq "" -or $trimmed.StartsWith("#")) { continue }
+        $eq = $line.IndexOf("=")
+        if ($eq -lt 1) { continue }
+        $key = $line.Substring(0, $eq).Trim()
+        if ($known -notcontains $key) { continue }
+        $val = $line.Substring($eq + 1)
+        if (($val.StartsWith('"') -and $val.EndsWith('"')) -or ($val.StartsWith("'") -and $val.EndsWith("'"))) {
+            if ($val.Length -ge 2) { $val = $val.Substring(1, $val.Length - 2) }
+        }
+        $current = [Environment]::GetEnvironmentVariable($key, "Process")
+        if ([string]::IsNullOrEmpty($current)) {
+            Set-Item -Path ("Env:" + $key) -Value $val
+        }
+    }
+}
+Import-DaafSettingsInline
+
 # --- Dry-Run Support ---
 # When DAAF_DRY_RUN=1, simulate external commands (Docker) for CI
 # cross-platform smoke testing without a Docker daemon.
@@ -43,6 +74,7 @@ if ($env:DAAF_DRY_RUN -eq "1") {
         $global:LASTEXITCODE = 0
         switch -Wildcard ($argStr) {
             "*info*" { return }
+            "*compose ps -aq daaf-docker*" { Write-Output "abc123" }
             "*inspect*" { return }
             "*cp *" { return }
             "*compose build*" { return }
@@ -63,8 +95,6 @@ if ($env:DAAF_DRY_RUN -eq "1") {
 if ($env:DAAF_TEST_MODE -eq "1") {
     return
 }
-
-$ContainerName = "daaf-daaf-docker-1"
 
 Write-Host ""
 Write-Host "=========================================="
@@ -94,11 +124,15 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 # --- Check container exists (running or stopped) ---
+# Derive the container ID from the compose project rather than a hardcoded name.
+# `-aq` includes STOPPED containers: rebuild must be able to copy build files out
+# of a container that is not currently running (the documented use case), so the
+# running-only `-q` form would be wrong here.
 $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
-$null = docker inspect $ContainerName 2>&1
+$ContainerId = (docker compose ps -aq daaf-docker 2>$null | Out-String).Trim()
 $ErrorActionPreference = $savedEAP
-if ($LASTEXITCODE -ne 0) {
-    Write-Host "ERROR: Container '$ContainerName' not found." -ForegroundColor Red
+if ([string]::IsNullOrWhiteSpace($ContainerId)) {
+    Write-Host "ERROR: No daaf-docker container found (running or stopped)." -ForegroundColor Red
     Write-Host "Have you run the DAAF installer? The container must exist (running or stopped)"
     Write-Host "for this script to copy the updated files from it."
     Wait-AndExit 1
@@ -119,7 +153,7 @@ if (Test-Path "docker-compose.yml") {
 }
 
 $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
-docker cp "${ContainerName}:/daaf/Dockerfile" ./Dockerfile
+docker cp "${ContainerId}:/daaf/Dockerfile" ./Dockerfile
 $ErrorActionPreference = $savedEAP
 if ($LASTEXITCODE -ne 0) {
     Write-Host "ERROR: Failed to copy Dockerfile from container." -ForegroundColor Red
@@ -129,7 +163,7 @@ if ($LASTEXITCODE -ne 0) {
 Write-Host "      Copied Dockerfile"
 
 $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
-docker cp "${ContainerName}:/daaf/docker-compose.yml" ./docker-compose.yml
+docker cp "${ContainerId}:/daaf/docker-compose.yml" ./docker-compose.yml
 $ErrorActionPreference = $savedEAP
 if ($LASTEXITCODE -ne 0) {
     Write-Host "ERROR: Failed to copy docker-compose.yml from container." -ForegroundColor Red

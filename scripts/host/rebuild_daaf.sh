@@ -33,7 +33,36 @@ if [ -z "${DAAF_NESTED:-}" ] && [ -z "${CI:-}" ] && [ -c /dev/tty ] && [ -t 1 ];
     trap 'echo ""; read -r -p "Press Enter to continue: " < /dev/tty' EXIT
 fi
 
-CONTAINER_NAME="daaf-daaf-docker-1"
+# --- Multi-instance settings (shared pattern) ---
+# Bridge environment_settings.txt's four DAAF_* multi-instance keys into the
+# environment so `docker compose` interpolation resolves the project name and
+# published host ports. Canonical shared pattern (kept in sync with
+# load_daaf_settings in daaf_lib.sh). Parse only these four keys (never `source`
+# -- the file holds API keys); shell env wins; absent file = no-op; CR stripped;
+# Bash 3.2 safe.
+_daaf_load_settings() {
+    local settings_file="./environment_settings.txt"
+    [ -f "${settings_file}" ] || return 0
+    local key val line
+    while IFS= read -r line || [ -n "${line}" ]; do
+        line="$(printf '%s' "${line}" | tr -d '\r')"
+        case "${line}" in ''|'#'*) continue ;; esac
+        case "${line}" in
+            DAAF_PROJECT_NAME=*|DAAF_PORT_MARIMO=*|DAAF_PORT_LOGVIEWER=*|DAAF_PORT_VSCODE=*)
+                key="${line%%=*}"; val="${line#*=}"
+                case "${val}" in
+                    \"*\") val="${val#\"}"; val="${val%\"}" ;;
+                    \'*\') val="${val#\'}"; val="${val%\'}" ;;
+                esac
+                if [ -z "${!key:-}" ]; then
+                    export "${key}=${val}"
+                fi
+                ;;
+            *) continue ;;
+        esac
+    done < "${settings_file}"
+}
+_daaf_load_settings
 
 # --- Dry-Run Support ---
 # When DAAF_DRY_RUN=1, simulate external commands (Docker, curl) for CI
@@ -42,6 +71,7 @@ if [ "${DAAF_DRY_RUN:-}" = "1" ]; then
     docker() {
         case "$*" in
             "info") return 0 ;;
+            *"compose ps -aq daaf-docker"*) echo "abc123" ;;
             "inspect"*) return 0 ;;
             "cp"*) return 0 ;;
             *"compose build"*) return 0 ;;
@@ -88,8 +118,13 @@ if ! docker info &> /dev/null; then
 fi
 
 # --- Check container exists (running or stopped) ---
-if ! docker inspect "${CONTAINER_NAME}" &> /dev/null; then
-    echo "ERROR: Container '${CONTAINER_NAME}' not found."
+# Derive the container ID from the compose project rather than a hardcoded name.
+# `-aq` includes STOPPED containers: rebuild must be able to copy build files out
+# of a container that is not currently running (this is the documented use case),
+# so the running-only `-q` form would be wrong here.
+CONTAINER_ID=$(docker compose ps -aq daaf-docker 2>/dev/null || true)
+if [ -z "${CONTAINER_ID}" ]; then
+    echo "ERROR: No daaf-docker container found (running or stopped)."
     echo "Have you run the DAAF installer? The container must exist (running or stopped)"
     echo "for this script to copy the updated files from it."
     exit 1
@@ -109,14 +144,14 @@ if [ -f "docker-compose.yml" ]; then
     cp docker-compose.yml docker-compose.yml.pre-rebuild
 fi
 
-if ! docker cp "${CONTAINER_NAME}:/daaf/Dockerfile" ./Dockerfile; then
+if ! docker cp "${CONTAINER_ID}:/daaf/Dockerfile" ./Dockerfile; then
     echo "ERROR: Failed to copy Dockerfile from container."
     echo "Make sure DAAF is installed in the container (run the installer if needed)."
     exit 1
 fi
 echo "      Copied Dockerfile"
 
-if ! docker cp "${CONTAINER_NAME}:/daaf/docker-compose.yml" ./docker-compose.yml; then
+if ! docker cp "${CONTAINER_ID}:/daaf/docker-compose.yml" ./docker-compose.yml; then
     echo "ERROR: Failed to copy docker-compose.yml from container."
     exit 1
 fi

@@ -396,7 +396,8 @@ teardown() {
     assert_success
     assert_output --partial "Warning: could not copy daaf.sh"
     assert_output --partial "Warning: could not copy run_daaf.sh"
-    assert_output --partial "docker cp"
+    # Manual-recovery hint now uses the project-aware `docker compose cp` form.
+    assert_output --partial "docker compose cp"
 }
 
 @test "update: sync_host_scripts up-to-date path heals with empty old_head" {
@@ -420,6 +421,171 @@ teardown() {
     '
     assert_success
     assert_output --partial "Updated: daaf.sh"
+}
+
+# --- sync_host_scripts drift-warning tests (tier C) ---
+#
+# Tier C compares host files that EXIST and were NOT copied this run against the
+# repo copy staged via a bulk `docker compose cp scripts/host <tmp>/repo_host`.
+# The mock below implements `compose cp` by populating the destination tree so a
+# local `cmp -s` can run for real. It NEVER overwrites a drifted host file.
+
+@test "update: sync_host_scripts warns when an unchanged host file drifts from repo" {
+    # run_daaf.sh exists on host with DIFFERENT content than the repo copy, and
+    # is NOT in the changed range -> tier A/B skip it, tier C must warn.
+    run bash -c '
+        DAAF_TEST_MODE=1 source "'"${REPO_ROOT}"'/scripts/host/update_daaf.sh"
+        trap - ERR
+        set +eu
+
+        printf "host-customized\n" > ./run_daaf.sh
+
+        docker() {
+            case "$*" in
+                *rev-parse*HEAD*) echo "samehash" ;;
+                *ls-files*) printf "scripts/host/run_daaf.sh\n" ;;
+                *compose*cp*)
+                    # Last arg is the destination repo_host dir. Populate it with
+                    # the pristine repo copy (different from the host copy above).
+                    dest="${@: -1}"
+                    mkdir -p "${dest}"
+                    printf "pristine-repo\n" > "${dest}/run_daaf.sh"
+                    return 0 ;;
+                cp*) return 0 ;;
+                *) return 0 ;;
+            esac
+        }
+
+        sync_host_scripts "samehash"
+    '
+    assert_success
+    assert_output --partial "WARNING: run_daaf.sh differs from the repository version"
+    assert_output --partial "NOT overwritten"
+    assert_output --partial "one or more host scripts differ"
+}
+
+@test "update: sync_host_scripts does NOT warn when host file matches repo" {
+    # Identical content -> cmp -s succeeds -> no drift warning.
+    run bash -c '
+        DAAF_TEST_MODE=1 source "'"${REPO_ROOT}"'/scripts/host/update_daaf.sh"
+        trap - ERR
+        set +eu
+
+        printf "identical\n" > ./run_daaf.sh
+
+        docker() {
+            case "$*" in
+                *rev-parse*HEAD*) echo "samehash" ;;
+                *ls-files*) printf "scripts/host/run_daaf.sh\n" ;;
+                *compose*cp*)
+                    dest="${@: -1}"
+                    mkdir -p "${dest}"
+                    printf "identical\n" > "${dest}/run_daaf.sh"
+                    return 0 ;;
+                cp*) return 0 ;;
+                *) return 0 ;;
+            esac
+        }
+
+        sync_host_scripts "samehash"
+    '
+    assert_success
+    refute_output --partial "differs from the repository version"
+}
+
+@test "update: sync_host_scripts drift check does NOT overwrite the host file" {
+    # The drifted host file must be byte-for-byte unchanged after the run.
+    run bash -c '
+        DAAF_TEST_MODE=1 source "'"${REPO_ROOT}"'/scripts/host/update_daaf.sh"
+        trap - ERR
+        set +eu
+
+        printf "host-customized\n" > ./run_daaf.sh
+
+        docker() {
+            case "$*" in
+                *rev-parse*HEAD*) echo "samehash" ;;
+                *ls-files*) printf "scripts/host/run_daaf.sh\n" ;;
+                *compose*cp*)
+                    dest="${@: -1}"
+                    mkdir -p "${dest}"
+                    printf "pristine-repo\n" > "${dest}/run_daaf.sh"
+                    return 0 ;;
+                cp*) return 0 ;;
+                *) return 0 ;;
+            esac
+        }
+
+        sync_host_scripts "samehash"
+        cat ./run_daaf.sh
+    '
+    assert_success
+    # Content unchanged: still the host customization, never the repo copy.
+    assert_output --partial "host-customized"
+    refute_output --partial "pristine-repo"
+}
+
+@test "update: sync_host_scripts does NOT drift-check a freshly-copied file" {
+    # daaf.sh is MISSING on host -> tier A copies it -> it is excluded from tier C
+    # even if the staged repo copy differs (which it will not, but the point is
+    # freshly-copied files are never drift-warned).
+    run bash -c '
+        DAAF_TEST_MODE=1 source "'"${REPO_ROOT}"'/scripts/host/update_daaf.sh"
+        trap - ERR
+        set +eu
+
+        # daaf.sh absent (tier A will copy it); run_daaf.sh present + identical.
+        printf "identical\n" > ./run_daaf.sh
+
+        docker() {
+            case "$*" in
+                *rev-parse*HEAD*) echo "samehash" ;;
+                *ls-files*) printf "scripts/host/daaf.sh\nscripts/host/run_daaf.sh\n" ;;
+                *compose*cp*)
+                    dest="${@: -1}"
+                    mkdir -p "${dest}"
+                    # Staged repo copy of daaf.sh differs from whatever tier A put
+                    # on host, but daaf.sh is in SYNC_COPIED so must be skipped.
+                    printf "repo-daaf\n" > "${dest}/daaf.sh"
+                    printf "identical\n" > "${dest}/run_daaf.sh"
+                    return 0 ;;
+                cp*) return 0 ;;
+                *) return 0 ;;
+            esac
+        }
+
+        sync_host_scripts "samehash"
+    '
+    assert_success
+    assert_output --partial "Updated: daaf.sh"
+    refute_output --partial "WARNING: daaf.sh differs"
+}
+
+@test "update: sync_host_scripts degrades gracefully when drift staging fails" {
+    # `docker compose cp` (bulk stage) fails -> drift check is skipped with a
+    # single notice, and the run still succeeds (never aborts the update).
+    run bash -c '
+        DAAF_TEST_MODE=1 source "'"${REPO_ROOT}"'/scripts/host/update_daaf.sh"
+        trap - ERR
+        set +eu
+
+        printf "host-customized\n" > ./run_daaf.sh
+
+        docker() {
+            case "$*" in
+                *rev-parse*HEAD*) echo "samehash" ;;
+                *ls-files*) printf "scripts/host/run_daaf.sh\n" ;;
+                *compose*cp*) return 1 ;;
+                cp*) return 0 ;;
+                *) return 0 ;;
+            esac
+        }
+
+        sync_host_scripts "samehash"
+    '
+    assert_success
+    assert_output --partial "could not check host scripts for drift"
+    refute_output --partial "differs from the repository version"
 }
 
 # --- check_build_changes behavioral tests ---

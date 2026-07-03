@@ -137,11 +137,11 @@ teardown() {
 # =========================================================================
 
 @test "gather_status sets container to Running when container is up" {
-    # Mock docker compose ps to show the container
+    # Mock docker compose ps -q to return a container ID (non-empty = running)
     docker() {
         case "$*" in
-            *"compose ps --status running"*"--format"*)
-                echo "daaf-docker"
+            *"compose ps -q daaf-docker"*)
+                echo "abc123"
                 return 0
                 ;;
             *"compose exec"*)
@@ -176,8 +176,8 @@ teardown() {
 @test "gather_status reads version from git describe" {
     docker() {
         case "$*" in
-            *"compose ps --status running"*"--format"*)
-                echo "daaf-docker"
+            *"compose ps -q daaf-docker"*)
+                echo "abc123"
                 return 0
                 ;;
             *"compose exec"*"git"*"describe"*)

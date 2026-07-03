@@ -88,7 +88,11 @@ if ($env:DAAF_DRY_RUN -eq "1") {
             "*info*" { return }
             "*volume inspect*" { return }
             "*ps -a*--filter*volume=*--format*" {
-                Write-Output "daaf-daaf-docker-1"
+                # Mock output for the volume-based container discovery below. A
+                # generic dry-run name (not the real default container name) keeps
+                # the production name from lingering as a stray literal; migrate's
+                # real code derives the name from `docker ps -a --filter volume=`.
+                Write-Output "daaf-migrate-dry-run-1"
             }
             "*inspect*--format*Status*" {
                 Write-Output "running"
@@ -407,7 +411,7 @@ Write-Host "Downloading utility scripts from GitHub..."
 
 $DownloadFailed = $false
 
-foreach ($File in @("daaf.sh", "daaf_lib.sh", "backup_daaf.ps1", "restore_from_backup.ps1", "rebuild_daaf.ps1", "update_daaf.ps1", "run_daaf.ps1", "view_logs.ps1", "view_notebooks.ps1", "run_vscode.ps1", "environment_settings_example.txt", "README.txt")) {
+foreach ($File in @("daaf.ps1", "daaf_lib.ps1", "backup_daaf.ps1", "restore_from_backup.ps1", "rebuild_daaf.ps1", "update_daaf.ps1", "run_daaf.ps1", "view_logs.ps1", "view_notebooks.ps1", "run_vscode.ps1", "environment_settings_example.txt", "README.txt")) {
     try {
         Invoke-WebRequest -UseBasicParsing -Uri "$RawBase/scripts/host/$File" -OutFile "$HostDir\$File"
         Write-Host "  Downloaded: $File"
@@ -1195,7 +1199,7 @@ Write-Host "  cd $HostDir"
 Write-Host "  .\update_daaf.ps1"
 Write-Host ""
 Write-Host "Other available scripts:"
-Write-Host "  bash daaf.sh                    DAAF Control Panel (recommended; requires bash)"
+Write-Host "  .\daaf.ps1                     DAAF Control Panel (recommended)"
 Write-Host "  .\run_daaf.ps1                 Launch Claude Code directly"
 Write-Host "  .\backup_daaf.ps1              Back up the Docker volume"
 Write-Host "  .\restore_from_backup.ps1      Restore from a backup"

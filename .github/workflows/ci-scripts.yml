@@ -505,6 +505,26 @@ jobs:
             "Launching Claude Code"
           )
 
+          # daaf.ps1 Control Panel: interactive menu loop, so it is driven
+          # separately (like daaf.sh) with `q` on stdin to quit after the first
+          # menu draw. Seed a backup dir so Get-DaafStatus's last-backup path
+          # executes, and require docker-compose.yml (repo root after checkout)
+          # for the preflight. DAAF_DRY_RUN=1 mocks Docker.
+          #
+          # IMPORTANT: spawn a CHILD PROCESS via -NoProfile -File so that piped
+          # input reaches [Console]::In (stdin) inside daaf.ps1. Piping into an
+          # in-process `& script.ps1` feeds the PS pipeline, NOT stdin, so
+          # Read-DaafLine's [Console]::In.ReadLine() would block waiting for
+          # real terminal input and hang the job.
+          Write-Host "=== Smoke testing: scripts/host/daaf.ps1 (Control Panel) ==="
+          New-Item -ItemType Directory -Path "./2026-06-18_daaf_backup" -Force | Out-Null
+          $env:DAAF_DRY_RUN = "1"
+          Remove-Item Env:\DAAF_NESTED -ErrorAction SilentlyContinue
+          $panelOut = "q" | & pwsh -NoProfile -File scripts/host/daaf.ps1 2>&1 | Out-String
+          Remove-Item -Recurse -Force "./2026-06-18_daaf_backup" -ErrorAction SilentlyContinue
+          Assert-OutputContains "daaf.ps1" $panelOut "DAAF Control Panel"
+          Assert-OutputContains "daaf.ps1" $panelOut "Goodbye!"
+
           if ($failed) {
             Write-Host ""
             Write-Host "One or more smoke tests failed."
@@ -608,6 +628,26 @@ jobs:
             "DAAF container is already running.",
             "Launching Claude Code"
           )
+
+          # daaf.ps1 Control Panel under Windows PS 5.1: interactive menu loop,
+          # driven with `q` on stdin to quit after the first menu draw. Seed a
+          # backup dir so Get-DaafStatus's last-backup path executes, and
+          # require docker-compose.yml (repo root after checkout) for the
+          # preflight. DAAF_DRY_RUN=1 mocks Docker.
+          #
+          # IMPORTANT: spawn a CHILD PROCESS via -NoProfile -File so that piped
+          # input reaches [Console]::In (stdin) inside daaf.ps1. Piping into an
+          # in-process `& script.ps1` feeds the PS pipeline, NOT stdin, so
+          # Read-DaafLine's [Console]::In.ReadLine() would block waiting for
+          # real terminal input and hang the job.
+          Write-Host "=== Smoke testing (PS 5.1): scripts/host/daaf.ps1 (Control Panel) ==="
+          New-Item -ItemType Directory -Path "./2026-06-18_daaf_backup" -Force | Out-Null
+          $env:DAAF_DRY_RUN = "1"
+          Remove-Item Env:\DAAF_NESTED -ErrorAction SilentlyContinue
+          $panelOut = "q" | & powershell -NoProfile -File scripts/host/daaf.ps1 2>&1 | Out-String
+          Remove-Item -Recurse -Force "./2026-06-18_daaf_backup" -ErrorAction SilentlyContinue
+          Assert-OutputContains "daaf.ps1" $panelOut "DAAF Control Panel"
+          Assert-OutputContains "daaf.ps1" $panelOut "Goodbye!"
 
           if ($failed) {
             Write-Host ""

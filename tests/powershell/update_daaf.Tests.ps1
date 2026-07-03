@@ -212,18 +212,18 @@ Describe "update_daaf.ps1 behavioral tests" {
         }
 
         It "existence-heals a file missing on the host" {
-            # daaf.sh absent from the temp dir; even with OldHead == newHead,
+            # daaf.ps1 absent from the temp dir; even with OldHead == newHead,
             # tier A must copy it.
             Mock docker {
                 $allArgs = $args -join " "
                 if ($allArgs -match "rev-parse HEAD") { return "samehash" }
-                if ($allArgs -match "ls-files") { return "scripts/host/daaf.sh`nscripts/host/run_daaf.ps1" }
+                if ($allArgs -match "ls-files") { return "scripts/host/daaf.ps1`nscripts/host/run_daaf.ps1" }
                 $global:LASTEXITCODE = 0
                 return ""
             }
 
             $output = Sync-HostScript "samehash" 6>&1
-            ($output | Where-Object { $_ -match "Updated: daaf.sh" })      | Should -Not -BeNullOrEmpty
+            ($output | Where-Object { $_ -match "Updated: daaf.ps1" })     | Should -Not -BeNullOrEmpty
             ($output | Where-Object { $_ -match "Updated: run_daaf.ps1" }) | Should -Not -BeNullOrEmpty
         }
 
@@ -232,23 +232,23 @@ Describe "update_daaf.ps1 behavioral tests" {
             Mock docker {
                 $allArgs = $args -join " "
                 if ($allArgs -match "rev-parse HEAD") { return "samehash" }
-                if ($allArgs -match "ls-files") { return "scripts/host/daaf.sh`nscripts/host/run_daaf.ps1" }
+                if ($allArgs -match "ls-files") { return "scripts/host/daaf.ps1`nscripts/host/run_daaf.ps1" }
                 $global:LASTEXITCODE = 0
                 return ""
             }
 
             $output = Sync-HostScript "samehash" 6>&1
-            ($output | Where-Object { $_ -match "Updated: daaf.sh" })      | Should -Not -BeNullOrEmpty
+            ($output | Where-Object { $_ -match "Updated: daaf.ps1" })     | Should -Not -BeNullOrEmpty
             ($output | Where-Object { $_ -match "Updated: run_daaf.ps1" }) | Should -BeNullOrEmpty
         }
 
         It "tier B copies files changed in the update range" {
             New-Item -ItemType File -Path "./run_daaf.ps1" | Out-Null
-            New-Item -ItemType File -Path "./daaf.sh" | Out-Null
+            New-Item -ItemType File -Path "./daaf.ps1" | Out-Null
             Mock docker {
                 $allArgs = $args -join " "
                 if ($allArgs -match "rev-parse HEAD") { return "new-sha-999" }
-                if ($allArgs -match "ls-files") { return "scripts/host/daaf.sh`nscripts/host/run_daaf.ps1" }
+                if ($allArgs -match "ls-files") { return "scripts/host/daaf.ps1`nscripts/host/run_daaf.ps1" }
                 if ($allArgs -match "diff --name-only") { return "scripts/host/run_daaf.ps1" }
                 $global:LASTEXITCODE = 0
                 return ""
@@ -259,21 +259,22 @@ Describe "update_daaf.ps1 behavioral tests" {
         }
 
         It "ignores changed files outside the platform filter" {
-            # Another host's .sh (not daaf.sh/daaf_lib.sh) and bootstrap-only
+            # .sh files (including daaf.sh -- Unix-only now) and bootstrap-only
             # scripts must not be copied on Windows.
             New-Item -ItemType File -Path "./run_daaf.ps1" | Out-Null
-            New-Item -ItemType File -Path "./daaf.sh" | Out-Null
+            New-Item -ItemType File -Path "./daaf.ps1" | Out-Null
             Mock docker {
                 $allArgs = $args -join " "
                 if ($allArgs -match "rev-parse HEAD") { return "new-sha-999" }
-                if ($allArgs -match "ls-files") { return "scripts/host/daaf.sh`nscripts/host/run_daaf.ps1`nscripts/host/run_daaf.sh`nscripts/host/install.ps1" }
-                if ($allArgs -match "diff --name-only") { return "scripts/host/run_daaf.sh`nscripts/host/install.ps1" }
+                if ($allArgs -match "ls-files") { return "scripts/host/daaf.ps1`nscripts/host/run_daaf.ps1`nscripts/host/daaf.sh`nscripts/host/run_daaf.sh`nscripts/host/install.ps1" }
+                if ($allArgs -match "diff --name-only") { return "scripts/host/daaf.sh`nscripts/host/run_daaf.sh`nscripts/host/install.ps1" }
                 $global:LASTEXITCODE = 0
                 return ""
             }
 
             $output = Sync-HostScript "old-sha-111" 6>&1
-            ($output | Where-Object { $_ -match "run_daaf.sh" })       | Should -BeNullOrEmpty
+            ($output | Where-Object { $_ -match "Updated: daaf.sh" })     | Should -BeNullOrEmpty
+            ($output | Where-Object { $_ -match "run_daaf.sh" })          | Should -BeNullOrEmpty
             ($output | Where-Object { $_ -match "Updated: install.ps1" }) | Should -BeNullOrEmpty
         }
 
@@ -311,14 +312,14 @@ Describe "update_daaf.ps1 behavioral tests" {
             Mock docker {
                 $allArgs = $args -join " "
                 if ($allArgs -match "rev-parse HEAD") { return "samehash" }
-                if ($allArgs -match "ls-files") { return "scripts/host/daaf.sh" }
+                if ($allArgs -match "ls-files") { return "scripts/host/daaf.ps1" }
                 # docker cp fails
                 $global:LASTEXITCODE = 1
                 return ""
             }
 
             $output = Sync-HostScript "samehash" 6>&1
-            ($output | Where-Object { $_ -match "Warning: could not copy daaf.sh" }) | Should -Not -BeNullOrEmpty
+            ($output | Where-Object { $_ -match "Warning: could not copy daaf.ps1" }) | Should -Not -BeNullOrEmpty
             ($output | Where-Object { $_ -match "docker cp" }) | Should -Not -BeNullOrEmpty
         }
 
@@ -326,13 +327,132 @@ Describe "update_daaf.ps1 behavioral tests" {
             Mock docker {
                 $allArgs = $args -join " "
                 if ($allArgs -match "rev-parse HEAD") { return "samehash" }
-                if ($allArgs -match "ls-files") { return "scripts/host/daaf.sh" }
+                if ($allArgs -match "ls-files") { return "scripts/host/daaf.ps1" }
                 $global:LASTEXITCODE = 0
                 return ""
             }
 
             $output = Sync-HostScript 6>&1
-            ($output | Where-Object { $_ -match "Updated: daaf.sh" }) | Should -Not -BeNullOrEmpty
+            ($output | Where-Object { $_ -match "Updated: daaf.ps1" }) | Should -Not -BeNullOrEmpty
+        }
+
+        # --- Tier C: drift warning (never overwrite) ---
+        # Mirrors the Bash tier-C drift tests. The docker mock implements the bulk
+        # `compose cp scripts/host <tmp>/repo_host` stage by creating the repo_host
+        # tree with known contents so a real Get-FileHash compare can run. Drift
+        # never overwrites the host file.
+
+        It "warns when an unchanged host file drifts from the repo copy" {
+            Set-Content -Path "./run_daaf.ps1" -Value "host-customized" -NoNewline
+            Mock docker {
+                $allArgs = $args -join " "
+                if ($allArgs -match "rev-parse HEAD") { return "samehash" }
+                if ($allArgs -match "ls-files") { return "scripts/host/run_daaf.ps1" }
+                if ($allArgs -match "compose cp") {
+                    # Last arg is the destination repo_host dir. Populate it with
+                    # the pristine repo copy (differs from the host copy above).
+                    $dest = $args[$args.Count - 1]
+                    New-Item -ItemType Directory -Path $dest -Force | Out-Null
+                    Set-Content -Path (Join-Path $dest "run_daaf.ps1") -Value "pristine-repo" -NoNewline
+                    $global:LASTEXITCODE = 0
+                    return ""
+                }
+                $global:LASTEXITCODE = 0
+                return ""
+            }
+
+            $output = Sync-HostScript "samehash" 6>&1
+            ($output | Where-Object { $_ -match "WARNING: run_daaf.ps1 differs from the repository version" }) | Should -Not -BeNullOrEmpty
+            ($output | Where-Object { $_ -match "NOT overwritten" }) | Should -Not -BeNullOrEmpty
+            ($output | Where-Object { $_ -match "one or more host scripts differ" }) | Should -Not -BeNullOrEmpty
+        }
+
+        It "does not warn when the host file matches the repo copy" {
+            Set-Content -Path "./run_daaf.ps1" -Value "identical" -NoNewline
+            Mock docker {
+                $allArgs = $args -join " "
+                if ($allArgs -match "rev-parse HEAD") { return "samehash" }
+                if ($allArgs -match "ls-files") { return "scripts/host/run_daaf.ps1" }
+                if ($allArgs -match "compose cp") {
+                    $dest = $args[$args.Count - 1]
+                    New-Item -ItemType Directory -Path $dest -Force | Out-Null
+                    Set-Content -Path (Join-Path $dest "run_daaf.ps1") -Value "identical" -NoNewline
+                    $global:LASTEXITCODE = 0
+                    return ""
+                }
+                $global:LASTEXITCODE = 0
+                return ""
+            }
+
+            $output = Sync-HostScript "samehash" 6>&1
+            ($output | Where-Object { $_ -match "differs from the repository version" }) | Should -BeNullOrEmpty
+        }
+
+        It "does not overwrite the drifted host file" {
+            Set-Content -Path "./run_daaf.ps1" -Value "host-customized" -NoNewline
+            Mock docker {
+                $allArgs = $args -join " "
+                if ($allArgs -match "rev-parse HEAD") { return "samehash" }
+                if ($allArgs -match "ls-files") { return "scripts/host/run_daaf.ps1" }
+                if ($allArgs -match "compose cp") {
+                    $dest = $args[$args.Count - 1]
+                    New-Item -ItemType Directory -Path $dest -Force | Out-Null
+                    Set-Content -Path (Join-Path $dest "run_daaf.ps1") -Value "pristine-repo" -NoNewline
+                    $global:LASTEXITCODE = 0
+                    return ""
+                }
+                $global:LASTEXITCODE = 0
+                return ""
+            }
+
+            Sync-HostScript "samehash" 6>&1 | Out-Null
+            (Get-Content -Path "./run_daaf.ps1" -Raw) | Should -Match "host-customized"
+            (Get-Content -Path "./run_daaf.ps1" -Raw) | Should -Not -Match "pristine-repo"
+        }
+
+        It "does not drift-check a freshly-copied (tier A) file" {
+            # daaf.ps1 is MISSING -> tier A copies it -> excluded from tier C even
+            # though the staged repo copy differs. run_daaf.ps1 present + identical.
+            Set-Content -Path "./run_daaf.ps1" -Value "identical" -NoNewline
+            Mock docker {
+                $allArgs = $args -join " "
+                if ($allArgs -match "rev-parse HEAD") { return "samehash" }
+                if ($allArgs -match "ls-files") { return "scripts/host/daaf.ps1`nscripts/host/run_daaf.ps1" }
+                if ($allArgs -match "compose cp") {
+                    $dest = $args[$args.Count - 1]
+                    New-Item -ItemType Directory -Path $dest -Force | Out-Null
+                    Set-Content -Path (Join-Path $dest "daaf.ps1") -Value "repo-daaf" -NoNewline
+                    Set-Content -Path (Join-Path $dest "run_daaf.ps1") -Value "identical" -NoNewline
+                    $global:LASTEXITCODE = 0
+                    return ""
+                }
+                $global:LASTEXITCODE = 0
+                return ""
+            }
+
+            $output = Sync-HostScript "samehash" 6>&1
+            ($output | Where-Object { $_ -match "Updated: daaf.ps1" }) | Should -Not -BeNullOrEmpty
+            ($output | Where-Object { $_ -match "WARNING: daaf.ps1 differs" }) | Should -BeNullOrEmpty
+        }
+
+        It "degrades gracefully when drift staging (compose cp) fails" {
+            Set-Content -Path "./run_daaf.ps1" -Value "host-customized" -NoNewline
+            Mock docker {
+                $allArgs = $args -join " "
+                if ($allArgs -match "rev-parse HEAD") { return "samehash" }
+                if ($allArgs -match "ls-files") { return "scripts/host/run_daaf.ps1" }
+                if ($allArgs -match "compose cp") {
+                    # Bulk stage fails -> drift check skipped with a notice.
+                    $global:LASTEXITCODE = 1
+                    return ""
+                }
+                $global:LASTEXITCODE = 0
+                return ""
+            }
+
+            $output = Sync-HostScript "samehash" 6>&1
+            ($output | Where-Object { $_ -match "could not check host scripts for drift" }) | Should -Not -BeNullOrEmpty
+            ($output | Where-Object { $_ -match "differs from the repository version" }) | Should -BeNullOrEmpty
         }
     }
 

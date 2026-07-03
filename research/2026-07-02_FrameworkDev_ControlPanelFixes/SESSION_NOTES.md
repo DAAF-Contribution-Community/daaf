@@ -93,6 +93,153 @@ Agent dispatches on Opus/Sonnet rather than Fable.
 - Update-fix flavor: full-directory copy (B) vs manifest (C) — recommendation is B-style derived-from-new-HEAD list with missing-file healing
 - User's immediate host recovery: move `*_daaf_backup` dir out of `daaf-docker/` (workaround), then manual `docker cp` of fixed scripts once landed
 
+## 2026-07-03 Continuation Session (daaf.ps1 + multi-instance + updater polish)
+
+**Scope (Checkpoint 1 CONFIRMED 2026-07-03):** Four items in priority order:
+(A) native `daaf.ps1` Windows control panel with full checklist §6 execution;
+(B) container-name derivation via `docker compose ps -q daaf-docker` + multi-instance
+groundwork (compose project name + port parameterization, default-preserving);
+(C) drift warning in updater heal pass (warn, never overwrite);
+(D) changelog two-run note from v2.1.x + clearer stash-pop conflict guidance.
+
+**Key decisions (2026-07-03):**
+- **daaf.ps1 is CANONICAL on Windows.** Remove `daaf.sh`/`daaf_lib.sh` from
+  `install.ps1` download list and `update_daaf.ps1` platform filter. No deprecation
+  notice needed — daaf.sh never shipped to any user (v2.1.0 predates it; daaf_dev
+  unreleased). Windows = .ps1 only; Unix = .sh only.
+- **Item B design:** keep pinned compose project name as interpolated default
+  (`name: ${DAAF_PROJECT_NAME:-daaf}`) — removing `name: daaf` outright would orphan
+  existing `daaf_daaf-data` volumes. Ports as `"127.0.0.1:${DAAF_PORT_MARIMO:-2718}:2718"`
+  etc. `environment_settings.txt` is service-level env_file (container env only) and
+  CANNOT feed compose interpolation — host scripts source/export the `DAAF_PORT_*` /
+  `DAAF_PROJECT_NAME` vars from it before compose calls; docs note `.env` mirror for
+  bare `docker compose` usage.
+- **Verified counts for item B:** hardcoded `daaf-daaf-docker-1` at 5 sites
+  (update_daaf.sh:56, rebuild_daaf.sh:36, update_daaf.ps1:108, rebuild_daaf.ps1:67,
+  migrate_daaf.ps1:91); fragile `grep -c "daaf-docker"` at 7 sites (daaf.sh:106,
+  daaf_lib.sh:153, run_daaf.sh:76, run_vscode.sh:80, view_notebooks.sh:80,
+  view_logs.sh:112, update_daaf.sh:729).
+- Foreign tree files (do NOT stage): `.claude/settings.json`,
+  `.claude/skills/daaf-orchestrator/references/full-pipeline-mode.md`, six untracked
+  research/ folders.
+- CI edits re-authorized by user; dispatches on Opus (judgment-heavy) / Sonnet
+  (mechanical), not Fable.
+
+**Item A COMPLETE (2026-07-03, author→review→fix cycle):**
+- Created: `scripts/host/daaf.ps1` (native Windows Control Panel, full menu/dashboard
+  parity with daaf.sh, verbatim container-side /proc/net/tcp payloads in single-quoted
+  here-strings), `scripts/host/daaf_lib.ps1` (Test-DaafPort/Confirm-DaafContainer/
+  Open-DaafUrl/Read-DaafLine), `tests/powershell/daaf.Tests.ps1`.
+- Modified: install.ps1 + migrate_daaf.ps1 (canonical swap: .ps1 pair in, daaf.sh/
+  daaf_lib.sh out), update_daaf.ps1 (Windows filter: *.ps1 + two .txt, .sh dropped),
+  update_daaf.Tests.ps1 (6 assertions now test the drop behavior), ci-scripts.yml
+  (daaf.ps1 smoke in pwsh-7 + PS 5.1 jobs, child-process stdin drive), README.txt,
+  README.md, user_reference/01 (Windows entry point = .\daaf.ps1),
+  tests/lint/check-daaf-conventions.sh (*_lib.ps1 exemption mirroring *_lib.sh —
+  out-of-list deviation RATIFIED by orchestrator, surfaced for user at Checkpoint 2).
+- Adversarial Opus review verdict REWORK → fixes applied by fresh Sonnet dispatch
+  (original Opus engineer hit CONTEXT CRITICAL post-handoff, returned early cleanly):
+  (1) BLOCKER Read-Host vs redirected stdin — new Read-DaafLine helper (update_daaf.ps1
+  IsInputRedirected pattern), EOF=quit with Goodbye! for CI determinism, child-process
+  spawns in CI/Pester; (2) $global:LASTEXITCODE=0 reset before both delegate calls;
+  (3) port-mock -match → -like. Linter 0 failures / 18 warnings (16 baseline + 2
+  expected new). ALL PowerShell statically verified only — CI (pester-tests,
+  validate-ps-windows, windows smoke) is the runtime gate.
+- CI watch item: PS 5.1 smoke sets $env:DAAF_DRY_RUN in parent before piping to child
+  powershell — env inheritance is standard but unverified here.
+
+**Item B COMPLETE (2026-07-03, Opus main dispatch + Sonnet remainder + orchestrator-caught fix):**
+- B1 container-name derivation: all `daaf-daaf-docker-1` hardcodes and `grep -c
+  "daaf-docker"` checks replaced with `docker compose ps -q daaf-docker` (running) /
+  `-aq` (rebuild flow, stopped-OK) across .sh AND .ps1; manual-recovery hints now
+  `docker compose cp daaf-docker:`; end-state greps clean (deliberate exception:
+  restore_from_backup.bats mocks of raw `docker ps --filter volume` name output).
+- B2 multi-instance: compose `name: ${DAAF_PROJECT_NAME:-daaf}` + ports
+  `127.0.0.1:${DAAF_PORT_*:-...}`; volume left un-named (project-prefixed);
+  settings propagation via grep-extraction (never source) of the four DAAF_* keys
+  from environment_settings.txt, shell-env-wins, exported before compose calls —
+  `load_daaf_settings()` in daaf_lib.sh / `Import-DaafSettings` in daaf_lib.ps1 +
+  inline blocks in all standalone compose-callers; backup/restore derive
+  `VOLUME_NAME="${DAAF_PROJECT_NAME:-daaf}_daaf-data"` (raw docker, not compose).
+  Quickstart gains "Running multiple DAAF instances" (+ .env caveat for bare compose).
+- Orchestrator-caught regression in subagent work: launcher URL parameterization
+  initially re-defaulted PORT (dual-role bind+display var) → would have broken the
+  compose mapping under remap. Fixed via PORT_OVERRIDDEN flag + DISPLAY_PORT split
+  (bind stays fixed 2718/2719/2720; only printed URLs use host port).
+- Tests: full bash suite 396/396 (+7 new: settings parser incl. injection-safety,
+  ps -q checks, compose-defaults grep); Pester coverage added mirroring bats
+  (statically authored). Lint 0 failures / 18-warning baseline. Exec bits 100755.
+- **BLOCKER for human:** `environment_settings*.txt` is deny-listed (read+write) for
+  ALL agents incl. orchestrator — the four-var documentation block for
+  environment_settings_example.txt must be applied by the user (text prepared,
+  presented at Checkpoint 2).
+- Git index note: pre-existing staged mode-change (linter .sh) + intent-to-add
+  entries (daaf.ps1/daaf_lib.ps1/daaf.Tests.ps1) from dispatches — resolve
+  deliberately at commit time.
+
+**Items C+D COMPLETE (2026-07-03, single Opus dispatch):**
+- C: tier-C drift warning in sync_host_scripts (update_daaf.sh:~590) and
+  Sync-HostScript (update_daaf.ps1:~643): one bulk `docker compose cp` staging +
+  per-file cmp -s / Get-FileHash SHA256; excludes freshly-copied (SYNC_COPIED /
+  $copied); NEVER overwrites; covers normal + both early-exit heal paths (block
+  lives inside the shared sync function); graceful degradation w/ single notice;
+  5 new bats + 5 mirrored Pester tests. Suite 401/401.
+- D: CHANGELOG.md "Unreleased (v2.1.1)" section + ToC (two-run upgrade note from
+  v2.1.x prominent; pre-v2.1.0 → migrate path; entries for daaf.ps1, Bash 3.2
+  fixes, self-heal+drift, multi-instance, container-name derivation). Stash-pop
+  conflict messaging improved in handle_stash_conflict (bash:340) /
+  Resolve-StashConflict (ps:450): what happened, route to User Support "update
+  conflicts" walkthrough, stash-is-safe reassurance.
+
+**Phase 4 REVIEW COMPLETE (2026-07-03, 3 parallel: consistency [Sonnet], quality
+[Opus], completeness [Sonnet]). NO BLOCKERS anywhere.**
+- Consistency: PASS. WARNINGS: (1) port-mock env var name diverges —
+  MOCK_PORT_RESPONSES (daaf_lib.sh:186) vs DAAF_MOCK_PORTS (daaf_lib.ps1:162);
+  (2) restore_from_backup.bats:235,305,337 mocks emit daaf-daaf-docker-1
+  (completeness reviewer deems legitimate: raw `docker ps --filter volume` name
+  output). INFO: user_reference/01:760 troubleshooting quotes image name
+  "daaf-daaf-docker" which varies under custom DAAF_PROJECT_NAME.
+- Quality: APPROVE-WITH-FIXES. Actionable WARNING: settings loaders use
+  `eval`-based indirect lookup (daaf_lib.sh:80 + ~8 inline copies) — not
+  exploitable (case-allowlisted keys) but violates skill "never eval" standard;
+  fix = `${!key:-}` (Bash 3.2-safe). INFO: .ps1 preamble omits Requires/StrictMode
+  (pre-existing project-wide convention, not a session regression); noted CI-only
+  verifiables incl. possible CRLF false-drift warnings on Windows (Get-FileHash
+  LF-vs-CRLF) — watch first Windows CI run.
+- Completeness: COMPLETE. All HS1-HS11 + HSM verified with line evidence;
+  401/401 bats; lint 0 failures/18-warning baseline; exec bits correct
+  (.sh 100755, .ps1 100644); intentional gaps confirmed (example.txt human-only;
+  Unix lists keep .sh; restore mocks).
+
+**OUTSTANDING at Checkpoint 2:**
+1. USER ACTION: paste multi-instance block into environment_settings_example.txt
+   (deny-listed for agents; text provided in checkpoint message).
+2. User decision: optional fix round (eval→${!key:-} across ~9 .sh; optionally
+   align MOCK_PORT_RESPONSES→DAAF_MOCK_PORTS naming; optionally reword
+   user_reference/01:760 image-name hint).
+3. Container-host boundary reminder owed to user: docker-compose.yml changed —
+   host copy is what compose reads; rebuild_daaf flow or updater
+   check_build_changes delivers it.
+4. Commit decision (stage ONLY session files; index has pre-existing intent-to-add
+   + staged linter mode bit; foreign: .claude/settings.json, full-pipeline-mode.md,
+   six untracked research dirs).
+5. CI runtime gates for all PS work: pester-tests, validate-ps-windows,
+   lint-powershell, windows smoke (incl. DAAF_DRY_RUN env inheritance to child
+   powershell in PS 5.1 smoke step).
+
+## Restart Prompt (2026-07-03 session; supersedes the 2026-07-02 one above)
+
+Resume Framework Development mode for the DAAF Control Panel continuation session
+(daaf.ps1 + multi-instance + updater drift). Read
+`/daaf/research/2026-07-02_FrameworkDev_ControlPanelFixes/SESSION_NOTES.md` in full.
+Items A-D and the 3-angle Phase 4 review are COMPLETE (all uncommitted; `git status`
+lists ~44 session files). Only the "OUTSTANDING at Checkpoint 2" items above remain:
+present/settle the user decisions, optionally run the small fix round (fully
+specified above), and handle the commit. bats-core lives at
+/tmp/daaf_scratch/bats-core (re-clone from https://github.com/bats-core/bats-core
+if gone); full suite baseline 401 ok, lint 0 failures / 18 warnings. User approved
+CI workflow edits; dispatches on Opus/Sonnet, not Fable.
+
 ## AI Disclosure
 
 This session used DAAF (Data Analyst Augmentation Framework) in Framework

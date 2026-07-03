@@ -29,6 +29,45 @@ function Wait-AndExit {
     exit $Code
 }
 
+# --- Multi-instance settings (shared pattern) ---
+# Bridge environment_settings.txt's four DAAF_* multi-instance keys into the
+# process environment so the volume name below reflects DAAF_PROJECT_NAME and
+# `docker compose down` (used when stopping a running container) targets the right
+# project. Canonical shared pattern (kept in sync with Import-DaafSettings in
+# daaf_lib.ps1); standalone scripts that do NOT dot-source daaf_lib.ps1 inline it.
+# Parse only these four keys (never dot-source -- the file holds API keys); process
+# env wins; absent file = no-op; CR stripped; PS 5.1 safe.
+function Import-DaafSettingsInline {
+    param([string]$SettingsFile = "./environment_settings.txt")
+    if (-not (Test-Path -LiteralPath $SettingsFile)) { return }
+    $known = @('DAAF_PROJECT_NAME', 'DAAF_PORT_MARIMO', 'DAAF_PORT_LOGVIEWER', 'DAAF_PORT_VSCODE')
+    foreach ($rawLine in (Get-Content -LiteralPath $SettingsFile)) {
+        $line = $rawLine -replace "`r", ""
+        $trimmed = $line.Trim()
+        if ($trimmed -eq "" -or $trimmed.StartsWith("#")) { continue }
+        $eq = $line.IndexOf("=")
+        if ($eq -lt 1) { continue }
+        $key = $line.Substring(0, $eq).Trim()
+        if ($known -notcontains $key) { continue }
+        $val = $line.Substring($eq + 1)
+        if (($val.StartsWith('"') -and $val.EndsWith('"')) -or ($val.StartsWith("'") -and $val.EndsWith("'"))) {
+            if ($val.Length -ge 2) { $val = $val.Substring(1, $val.Length - 2) }
+        }
+        $current = [Environment]::GetEnvironmentVariable($key, "Process")
+        if ([string]::IsNullOrEmpty($current)) {
+            Set-Item -Path ("Env:" + $key) -Value $val
+        }
+    }
+}
+Import-DaafSettingsInline
+
+# --- Configuration ---
+# The Docker named volume is project-prefixed: "<project>_daaf-data". Default
+# unset => "daaf_daaf-data" (byte-for-byte identical to the previous hardcoded value).
+$projectName = "daaf"
+if ($env:DAAF_PROJECT_NAME) { $projectName = $env:DAAF_PROJECT_NAME }
+$VolumeName = "${projectName}_daaf-data"
+
 # --- Dry-Run Support ---
 # When DAAF_DRY_RUN=1, simulate external commands (Docker) for CI
 # cross-platform smoke testing without a Docker daemon.
@@ -81,8 +120,6 @@ if ($LASTEXITCODE -ne 0) {
     Write-Host "ERROR: Docker Desktop does not seem to be running. Please start it and try again." -ForegroundColor Red
     Wait-AndExit 1
 }
-
-$VolumeName = "daaf_daaf-data"
 
 $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
 $null = docker volume inspect $VolumeName 2>&1
