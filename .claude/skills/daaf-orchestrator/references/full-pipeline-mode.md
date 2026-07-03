@@ -14,7 +14,7 @@ This reference is loaded after the orchestrator classifies a request as Full Pip
 >
 > **`.claude/agents/README.md`** provides agent behavioral specs and input/output contracts — consult when understanding an agent's capabilities, not for constructing invocation prompts.
 
-> **Parallel Dispatch Limit:** The orchestrator MUST NOT dispatch more than **5 subagents concurrently** — this applies to wave-based task dispatch, Stage 3 source-researcher dispatch, and any other parallel invocation. If more than 5 independent tasks need to run, sub-batch into groups of ≤5 and wait for each sub-batch to complete before dispatching the next. Parallel dispatch is achieved by making multiple Agent tool calls in a **single response message** (foreground parallel). **NEVER use `run_in_background`** — background agents cannot prompt for permissions and will silently fail.
+> **Parallel Dispatch Limit:** The orchestrator MUST NOT dispatch more than **5 subagents concurrently** — this applies to wave-based task dispatch, Stage 3 source-researcher dispatch, and any other parallel invocation. If more than 5 independent tasks need to run, sub-batch into groups of ≤5 and wait for each sub-batch to complete before dispatching the next. Parallel dispatch is achieved by making multiple Agent tool calls in a **single response message**. Completion may arrive via async task notifications — the orchestrator must still wait for ALL dispatched subagents in a batch to return before acting on their results.
 
 ---
 
@@ -847,7 +847,7 @@ Wave 3: [join-data]                 ← Depends on Wave 2
 ```
 
 **Execution Rules:**
-- Same-wave tasks dispatch simultaneously by making multiple Agent tool calls in a **single response message** (foreground parallel). **NEVER use `run_in_background`** — background agents cannot prompt for permissions and will silently fail.
+- Same-wave tasks dispatch simultaneously by making multiple Agent tool calls in a **single response message**. Background execution is permitted (Claude Code v2.1.186+ dispatches subagents in the background by default and surfaces their permission prompts in the main session; the earlier foreground-only rule is retired). Wait for every task in the wave to return before proceeding.
 - If any parallel dispatch stage contains more than 5 tasks (e.g., Stage 3 source-researcher dispatch, any ad-hoc parallel exploration, and code-reviewer invocations), sub-batch into groups of ≤5 and wait for each sub-batch to complete before dispatching the next. NEVER dispatch more than 5 subagents concurrently.
 - Each subagent gets fresh 200K-token context (no degradation)
 - Later waves wait for ALL prior waves to complete
