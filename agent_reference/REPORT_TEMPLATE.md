@@ -21,7 +21,7 @@
 | Summary Statistics | Analysis dataset metadata + Stage 7 EDA logs | Notebook data cells |
 | Limitations | Plan.md § Risk Register (planning risks) + STATE.md Runtime Risks + STATE.md Blockers | LEARNINGS.md + source caveats |
 | References | STATE.md > Citations Accumulated | Plan.md § Data Citations + CITATION_REFERENCE.md (verification) |
-| AI Use Disclosure | STATE.md (session metadata) + QA summary + `agent_reference/AI_DISCLOSURE_REFERENCE.md` | CLAUDE.md (model info), DAAF commit hash from orchestrator |
+| AI Use Disclosure | STATE.md (session metadata) + QA summary + `agent_reference/AI_DISCLOSURE_REFERENCE.md` | DAAF commit hash from orchestrator |
 | Technical Notes | Project file paths | — |
 | Appendix | Additional figures + extended methodology from Plan.md | — |
 
@@ -201,7 +201,7 @@ This analysis has the following limitations that should be considered when inter
 
 | Item | Value | Source |
 |------|-------|--------|
-| Model | `[AUTO]` [e.g., Claude Opus 4.6 (claude-opus-4-6)] | Session metadata |
+| Model | `[AUTO]` [Model name and ID in use at session start, from STATE.md Session Metadata — e.g., Claude Opus 4.8 (claude-opus-4-8[1m])] | Session metadata |
 | Provider | `[AUTO]` Anthropic | — |
 | Access method | `[AUTO]` Claude Code CLI (local execution via API) | — |
 | Date of use | `[AUTO]` [Session date(s)] | STATE.md |

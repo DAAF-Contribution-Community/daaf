@@ -222,7 +222,7 @@ Copy this template to `Reproduction_Report.md` in the reproduction project folde
 | Field | Value |
 |-------|-------|
 | **DAAF Version** | [git commit hash] |
-| **Model ID** | [e.g., claude-opus-4-6] |
+| **Model ID** | [model identifier in use at reproduction start — record the runtime value, e.g., claude-opus-4-8[1m]] |
 | **Reproduction Date** | [YYYY-MM-DD] |
 | **Original Analysis Date** | [YYYY-MM-DD] |
 | **Python Version** | [e.g., 3.12] |

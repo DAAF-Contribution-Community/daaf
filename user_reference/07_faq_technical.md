@@ -185,6 +185,16 @@ Type `/model` in the Claude Code chat window. You'll see a list of available mod
 
 You can also adjust the thinking level for Opus 4.6 by pressing the left and right arrow keys while Opus 4.6 is highlighted in the model selector.
 
+### Q: Why does DAAF disable "background tasks" but specialists still run in the background?
+
+These are two different Claude Code features that happen to share a name.
+
+`CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1` (set in DAAF's `settings.json`) disables background *shell commands* — the option to run terminal commands in the background, automatic backgrounding of long-running commands, and the Ctrl+B shortcut. DAAF keeps this disabled deliberately: every analysis script must run to completion in the foreground so its full output is captured into the script's embedded audit log. A backgrounded script would decouple execution from capture and break the audit trail.
+
+Separately, Claude Code runs *subagents* (the specialists DAAF dispatches for research, coding, and review work) in the background by default and notifies the session when each finishes. That's a harness scheduling feature the environment variable does not control — and it's fine: DAAF's workflows wait for all dispatched specialists to report back before making decisions.
+
+(Related trivia: `DISABLE_AUTOUPDATER` in the same settings block is technically redundant — `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC` subsumes it — but it's kept as an explicit standalone pin so the version-pinned container can never auto-update, even if the umbrella setting is temporarily lifted for diagnostics.)
+
 ### Q: Can I use DAAF with a different AI provider (OpenAI, Google, etc.)?
 
 Yes -- partially. There are two different things this question might mean, so let me address both.
@@ -653,6 +663,21 @@ DAAF has extensive curated knowledge about its supported data sources, stored in
 4. Report persistent loading failures by [opening an issue](https://github.com/DAAF-Contribution-Community/daaf/issues) -- patterns of failure help us improve DAAF's loading reliability.
 
 For more detail, see [Best Practices — Monitoring DAAF's Internal Reference Loading](03_best_practices.md#monitoring-daafs-internal-reference-loading).
+
+### Q: How can I tell whether a problem comes from DAAF or from Claude Code itself?
+
+Claude Code ships a built-in diagnostic for exactly this question: **safe mode**. Launch it with:
+
+```bash
+claude --safe-mode
+```
+
+(or set `CLAUDE_CODE_SAFE_MODE=1` in the environment). Safe mode starts Claude Code with **all customizations disabled** — no CLAUDE.md instructions, no skills, no hooks, no MCP servers. That gives you a clean baseline:
+
+- If the problem **persists** in safe mode, it's a Claude Code or environment issue — check the [Claude Code documentation](https://code.claude.com/docs) or run `/doctor`
+- If the problem **disappears** in safe mode, one of DAAF's customizations is involved — a good next step is filing an issue with the details
+
+> **⚠️ Warning:** in safe mode, DAAF effectively does not exist. None of its safety guardrails, audit logging, or workflow protocols are active — the model runs with Claude Code's defaults only. Use safe mode strictly for quick diagnosis, never for real analysis work. Exit and restart normally when you're done.
 
 ---
 

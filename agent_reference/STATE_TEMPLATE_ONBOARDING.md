@@ -34,7 +34,7 @@ Copy this template to `STATE.md` in the project folder when starting a Data Onbo
 | Field | Value |
 |-------|-------|
 | **DAAF Version** | [Short git commit hash — from `git rev-parse --short HEAD` at project setup] |
-| **Model ID** | [Claude model identifier — e.g., "claude-opus-4-6"] |
+| **Model ID** | [Model identifier actually in use at session start — record the runtime value, not this example (e.g., "claude-opus-4-8[1m]")] |
 | **Session Date(s)** | [Date(s) of profiling sessions — e.g., "2026-03-23"] |
 | **Session Transcript(s)** | `logs/` — collected at project completion via `collect_session_logs.sh` |
 
