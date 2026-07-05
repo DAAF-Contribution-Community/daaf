@@ -138,7 +138,13 @@ Describe "install.ps1 behavioral tests" {
         }
 
         It "checks for existing Docker volume" {
-            $Content | Should -Match 'docker volume inspect daaf_daaf-data'
+            # Detection is project-name-aware (DAAF_PROJECT_NAME), not hardcoded
+            $Content | Should -Match 'docker volume inspect \$DataVolumeName'
+        }
+
+        It "derives the volume name from the project name with daaf default" {
+            $Content | Should -Match '\$DataVolumeName = "\$\{InstallProjectName\}_daaf-data"'
+            $Content | Should -Match '\$InstallProjectName = "daaf"'
         }
 
         It "DAAF_FORCE_REINSTALL bypasses existing check" {
