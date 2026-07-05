@@ -229,8 +229,12 @@ services:
     image: daaf:latest
     volumes:
       - daaf-data:/daaf
+      - daaf-claude-config:/home/appuser/.claude
+    environment:
+      - CLAUDE_CONFIG_DIR=/home/appuser/.claude
 volumes:
   daaf-data:
+  daaf-claude-config:
 YAML
 }
 
