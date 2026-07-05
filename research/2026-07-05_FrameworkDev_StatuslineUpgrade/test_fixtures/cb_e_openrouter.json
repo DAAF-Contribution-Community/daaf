@@ -1,0 +1,7 @@
+{
+  "model": {"id": "z-ai/glm-5.1", "display_name": "GLM 5.1"},
+  "cwd": "/daaf",
+  "session_id": "test-session-or",
+  "transcript_path": "/daaf/research/2026-07-05_FrameworkDev_StatuslineUpgrade/test_fixtures/transcript.jsonl",
+  "context_window": {"context_window_size": 200000}
+}

@@ -1,0 +1,12 @@
+{
+  "model": {"id": "claude-opus-4-8", "display_name": "Opus 4.8"},
+  "cwd": "/daaf",
+  "session_id": "test-session-a",
+  "transcript_path": "/daaf/research/2026-07-05_FrameworkDev_StatuslineUpgrade/test_fixtures/transcript.jsonl",
+  "context_window": {"context_window_size": 200000},
+  "effort": {"level": "high"},
+  "rate_limits": {
+    "five_hour": {"used_percentage": 42, "resets_at": 4102444800},
+    "seven_day": {"used_percentage": 13}
+  }
+}

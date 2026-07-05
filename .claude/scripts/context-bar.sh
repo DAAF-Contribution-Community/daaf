@@ -1,13 +1,17 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
-# Color theme: gray, orange, blue, teal, green, lavender, rose, gold, slate, cyan
-# Preview colors with: bash scripts/color-preview.sh
+# Color theme — set COLOR to one of: gray, orange, blue, teal, green,
+# lavender, rose, gold, slate, cyan (see the case block below for the codes).
 COLOR="blue"
 
 # Color codes
 C_RESET='\033[0m'
 C_GRAY='\033[38;5;245m'  # explicit gray for default text
 C_BAR_EMPTY='\033[38;5;238m'
+# Segment colors for the rate-limit addition (kept subtle so they do not
+# compete with the single-accent context bar).
+C_AMBER='\033[38;5;179m'   # rate limit warning (>=70%)
+C_RED='\033[38;5;167m'     # rate limit danger (>=90%)
 case "$COLOR" in
     orange)   C_ACCENT='\033[38;5;173m' ;;
     blue)     C_ACCENT='\033[38;5;74m' ;;
@@ -23,9 +27,53 @@ esac
 
 input=$(cat)
 
-# Extract model, directory, and cwd
-model=$(echo "$input" | jq -r '.model.display_name // .model.id // "?"')
-cwd=$(echo "$input" | jq -r '.cwd // empty')
+# Single consolidated jq pass over the payload: extract every field used below
+# as one tab-separated record, then read into shell variables. This replaces
+# what were ~5 separate `jq` invocations on "$input" (one process fork each).
+# Field order and defaults are preserved byte-for-byte from the prior per-field
+# calls so downstream logic (OpenRouter override, transcript parsing, the
+# /tmp/claude-ctx-window write) behaves identically:
+#   model            = .model.display_name // .model.id // "?"
+#   cwd              = .cwd // ""
+#   transcript_path  = .transcript_path // ""
+#   max_context      = .context_window.context_window_size // 200000
+#   session_id       = .session_id // "default"
+#   model_id         = .model.id // ""           (used by the OpenRouter block)
+# New optional segments (all default to empty when absent, e.g. API-key sessions):
+#   effort_level     = .effort.level
+#   rl_5h            = .rate_limits.five_hour.used_percentage
+#   rl_5h_reset      = .rate_limits.five_hour.resets_at
+#   rl_7d            = .rate_limits.seven_day.used_percentage
+#   rl_7d_reset      = .rate_limits.seven_day.resets_at
+# Fields are joined with the ASCII unit separator \x1f, NOT @tsv: tab is IFS
+# *whitespace* in bash, so consecutive tabs collapse and any EMPTY field (e.g.
+# transcript_path at session start, or the absent effort/rate-limit fields)
+# would silently shift every later field left. A non-whitespace IFS preserves
+# empty fields. See subagent-bar.sh FIELD-JOINING NOTE for the discovery story.
+IFS=$'\x1f' read -r model cwd transcript_path max_context session_id model_id \
+    effort_level rl_5h rl_5h_reset rl_7d rl_7d_reset < <(echo "$input" | jq -r '
+    [ (.model.display_name // .model.id // "?"),
+      (.cwd // ""),
+      (.transcript_path // ""),
+      (.context_window.context_window_size // 200000 | tostring),
+      (.session_id // "default"),
+      (.model.id // ""),
+      (.effort.level // ""),
+      (.rate_limits.five_hour.used_percentage // ""),
+      (.rate_limits.five_hour.resets_at // ""),
+      (.rate_limits.seven_day.used_percentage // ""),
+      (.rate_limits.seven_day.resets_at // "") ]
+    | map(tostring) | join("\u001f")
+')
+
+# Guard against an unparseable payload leaving max_context empty (which would
+# cause a divide-by-zero in the pct arithmetic below). Valid payloads always
+# yield an integer here, so this only fires on malformed/empty stdin.
+if ! [[ "$max_context" =~ ^[0-9]+$ ]] || [[ "$max_context" -le 0 ]]; then
+    max_context=200000
+fi
+
+# Directory basename from cwd
 dir=$(basename "$cwd" 2>/dev/null || echo "?")
 
 # Get git branch only (skip expensive status/sync checks)
@@ -34,24 +82,19 @@ if [[ -n "$cwd" && -d "$cwd" ]]; then
     branch=$(git -C "$cwd" branch --show-current 2>/dev/null)
 fi
 
-# Get transcript path for context calculation and last message feature
-transcript_path=$(echo "$input" | jq -r '.transcript_path // empty')
-
-# Get context window size from JSON, but override for OpenRouter models where
+# Context window size: from JSON above, but override for OpenRouter models where
 # Claude Code reports a hardcoded 200k default regardless of actual model.
 # Calculate tokens from transcript (more accurate than total_input_tokens which
 # excludes system prompt/tools/memory).
 # See: github.com/anthropics/claude-code/issues/13652
-max_context=$(echo "$input" | jq -r '.context_window.context_window_size // 200000')
-
-session_id=$(echo "$input" | jq -r '.session_id // "default"')
 
 # OpenRouter context window override: Claude Code doesn't know the real context
 # window size for third-party models accessed via OpenRouter, so it reports a
 # hardcoded 200k default. Query the OpenRouter models API once per session to
 # get the actual context_length for the current model.
 if [[ "${ANTHROPIC_BASE_URL:-}" == *openrouter.ai* ]]; then
-    model_id=$(echo "$input" | jq -r '.model.id // empty')
+    # model_id already extracted in the consolidated jq pass above
+    # (byte-identical to the old `.model.id // empty`).
     or_cache="/tmp/claude-or-models-${session_id}"
 
     if [[ -n "$model_id" && ! -s "$or_cache" ]]; then
@@ -134,7 +177,7 @@ if [[ -n "$transcript_path" && -f "$transcript_path" ]]; then
         fi
     done
 
-    ctx="${bar} ${C_GRAY}${pct_prefix}${pct}% of ${max_k}k tokens (lower session context use enhances performance)"
+    ctx="${bar} ${C_GRAY}${pct_prefix}${pct}% of ${max_k}k tokens"
 else
     # Transcript not available yet - show baseline estimate
     baseline=20000
@@ -155,22 +198,93 @@ else
         fi
     done
 
-    ctx="${bar} ${C_GRAY}~${pct}% of ${max_k}k tokens (lower session context use enhances performance)"
+    ctx="${bar} ${C_GRAY}~${pct}% of ${max_k}k tokens"
 fi
 
-# Build output: Model | Dir | Branch (uncommitted) | Context
-output="${C_ACCENT}${model}${C_GRAY} | 📁${dir}"
+# --- Model display ---
+# Append the effort level directly to the model name when the payload reports
+# one (low/medium/high/xhigh/max), e.g. "Fable 5 (high)". Kept inside the model
+# segment so effort reads as a property of the model rather than a standalone
+# indicator.
+model_disp="$model"
+[[ -n "$effort_level" ]] && model_disp="${model} (${effort_level})"
+
+# --- Rate-limit segment ---
+# Present only for Claude.ai subscriber sessions (absent on API-key sessions).
+# Renders as: Plan usage: 5h:42%(2h10m) 7d:13%(3d4h)
+# Color each percentage: gray <70, amber >=70, red >=90. Each window appends a
+# reset countdown derived from resets_at whenever it can be parsed (epoch
+# seconds and ISO-8601 both handled; omitted rather than printing garbage).
+rl_seg=""
+rl_color_for() {
+    # $1 = integer percent; echoes an ANSI color code.
+    if   [[ "$1" -ge 90 ]]; then printf '%s' "$C_RED"
+    elif [[ "$1" -ge 70 ]]; then printf '%s' "$C_AMBER"
+    else                         printf '%s' "$C_GRAY"
+    fi
+}
+fmt_reset() {
+    # $1 = resets_at (epoch seconds or ISO-8601). Echoes "(NdNh)" / "(NhNm)"
+    # time remaining, or nothing when unparseable or already past (fail-open:
+    # omit rather than print garbage or corrupt the bar).
+    local raw="$1" reset_epoch="" now_epoch="" remain
+    if [[ "$raw" =~ ^[0-9]+$ ]]; then
+        reset_epoch="$raw"                       # already epoch seconds
+    else
+        reset_epoch=$(date -d "$raw" +%s 2>/dev/null) || reset_epoch=""
+    fi
+    [[ "$reset_epoch" =~ ^[0-9]+$ ]] || return 0
+    # 13+ digits means epoch MILLISECONDS (seconds stay 10 digits until 2286);
+    # normalize so a ms timestamp doesn't render as a multi-decade countdown.
+    [[ ${#reset_epoch} -ge 13 ]] && reset_epoch=$((reset_epoch / 1000))
+    now_epoch=$(date +%s 2>/dev/null) || now_epoch=""
+    # Guard: arithmetic on an empty now_epoch would emit a bash syntax error
+    # to stderr/stdout and corrupt the statusline.
+    [[ "$now_epoch" =~ ^[0-9]+$ ]] || return 0
+    remain=$((reset_epoch - now_epoch))
+    [[ "$remain" -gt 0 ]] || return 0
+    if [[ "$remain" -ge 86400 ]]; then
+        printf '(%dd%dh)' $((remain / 86400)) $(((remain % 86400) / 3600))
+    else
+        printf '(%dh%dm)' $((remain / 3600)) $(((remain % 3600) / 60))
+    fi
+}
+if [[ -n "$rl_5h" || -n "$rl_7d" ]]; then
+    rl_body=""
+    if [[ -n "$rl_5h" ]]; then
+        rl_5h_int=${rl_5h%.*}                    # strip any fractional part
+        [[ "$rl_5h_int" =~ ^[0-9]+$ ]] || rl_5h_int=0
+        c5=$(rl_color_for "$rl_5h_int")
+        cd5=$(fmt_reset "$rl_5h_reset")
+        rl_body+="${c5}5h:${rl_5h_int}%${C_RESET}"
+        [[ -n "$cd5" ]] && rl_body+="${C_GRAY}${cd5}${C_RESET}"
+    fi
+    if [[ -n "$rl_7d" ]]; then
+        rl_7d_int=${rl_7d%.*}
+        [[ "$rl_7d_int" =~ ^[0-9]+$ ]] || rl_7d_int=0
+        c7=$(rl_color_for "$rl_7d_int")
+        cd7=$(fmt_reset "$rl_7d_reset")
+        [[ -n "$rl_body" ]] && rl_body+=" "
+        rl_body+="${c7}7d:${rl_7d_int}%${C_RESET}"
+        [[ -n "$cd7" ]] && rl_body+="${C_GRAY}${cd7}${C_RESET}"
+    fi
+    [[ -n "$rl_body" ]] && rl_seg=" ${C_GRAY}|${C_RESET} ${C_GRAY}Plan usage:${C_RESET} ${rl_body}"
+fi
+
+# Build output: Model (effort) | Dir | Branch | Context [| Plan usage]
+output="${C_ACCENT}${model_disp}${C_GRAY} | 📁${dir}"
 [[ -n "$branch" ]] && output+=" | 🔀${branch}"
 output+=" | ${ctx}${C_RESET}"
+output+="${rl_seg}"
 
 printf '%b\n' "$output"
 
 # Get user's last message (text only, not tool results, skip unhelpful messages)
 if [[ -n "$transcript_path" && -f "$transcript_path" ]]; then
     # Calculate visible length (without ANSI codes) - 10 chars for bar + content
-    plain_output="${model} | 📁${dir}"
+    plain_output="${model_disp} | 📁${dir}"
     [[ -n "$branch" ]] && plain_output+=" | 🔀${branch}"
-    plain_output+=" | xxxxxxxxxx ${pct}% of ${max_k}k tokens (lower session context use enhances performance)"
+    plain_output+=" | xxxxxxxxxx ${pct}% of ${max_k}k tokens"
     max_len=${#plain_output}
     last_user_msg=$(jq -rs '
         # Messages to skip (not useful as context)
