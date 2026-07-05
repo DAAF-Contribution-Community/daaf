@@ -92,6 +92,10 @@ if [[ -n "$AGENT_ID" ]]; then
     LAST_INJECT_FILE="/tmp/claude-ctx-ts-${SESSION_ID}-${AGENT_ID}"
 else
     # Main session: measure the parent transcript's main chain only.
+    # Empty transcript_path = malformed payload; exit explicitly (mirroring the
+    # subagent branch's guard above) instead of relying on the downstream -f
+    # guard in calculate() and the empty-MSG exit to absorb it.
+    [[ -z "$TRANSCRIPT_PATH" ]] && exit 0
     MEASURE_TRANSCRIPT="$TRANSCRIPT_PATH"
     ALLOW_SIDECHAIN=false
     LAST_INJECT_FILE="/tmp/claude-ctx-ts-${SESSION_ID}"

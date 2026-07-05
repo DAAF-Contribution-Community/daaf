@@ -319,6 +319,17 @@ _seed_window() { printf '%s' "$1" > "/tmp/claude-ctx-window-${FAKE_SESSION}"; }
     assert_success
 }
 
+# Pins the malformed-payload contract (empty transcript_path -> silent no-op).
+# The pre-guard code also passed this via incidental downstream nets (the -f
+# guard in calculate() and the empty-MSG exit); the explicit main-branch guard
+# makes the contract survive refactoring, and this test makes its loss loud.
+@test "fail-open: empty transcript_path on main-session payload exits 0 with no injection" {
+    _seed_window 1000000
+    run bash "$CONTEXT_REPORTER_SH" < <(_payload_main "")
+    assert_success
+    refute_output --partial "Context utilization"
+}
+
 # =========================================================================
 # Rate-limit gate: a warm gate file suppresses injection
 # =========================================================================
