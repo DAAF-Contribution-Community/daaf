@@ -277,7 +277,29 @@ no test/doc references existed. Lint 0 failures / 18-warning baseline.
    lint-powershell, windows smoke (incl. DAAF_DRY_RUN env inheritance to child
    powershell in PS 5.1 smoke step).
 
-## Restart Prompt (2026-07-03 session; supersedes the 2026-07-02 one above)
+**SESSION CLOSE-OUT (2026-07-05):** All CI green after three commits: `4fa8c43`
+(feature: daaf.ps1 control panel, multi-instance, drift warnings, docs),
+`a63ef0f` (5 CI failure classes), `a981eca` (PSSA ShouldProcess verb fix:
+Stop-DaafWebService → Invoke-DaafServiceStop). All pushed by user. User is now
+running MANUAL field tests (the runtime seams CI cannot reach — no CI runner
+combines Windows PowerShell with Linux containers). Manual test plan given to
+user, priority order: (T1) Windows daaf.ps1 vs real Docker — fresh install.ps1
+incl. execution-policy/mark-of-the-web, full menu walkthrough (verbatim probe
+payloads, VS Code password, stop-services kill, child-failure survivability,
+Ctrl+Z EOF quit); (T2) two-run v2.1.x upgrade, drift-warning silence on clean
+re-run on Windows (**CRLF Get-FileHash false-positive is the #1 predicted
+failure**), no-overwrite on real edit, stash-conflict messaging; (T3) default
+preservation on existing install (esp. backup/RESTORE volume-name derivation —
+data-destructive path), second-instance end-to-end (separate volumes, remapped
+port URLs, instance-1 data untouched), `docker compose config` on oldest
+supported Docker Desktop (top-level `name:` interpolation version sensitivity);
+(T4) quick macOS Bash 3.2 re-pass (item B touched daaf.sh/daaf_lib.sh after the
+prior field verification). Next session = triage/troubleshoot whatever these
+surface. Investigated-and-closed: docker inspect in run_daaf/migrate (correct by
+construction — see CI FIX ROUND entry above). No open backlog items.
+
+## Restart Prompt (2026-07-03 session; superseded by close-out above — see the
+2026-07-05 prompt the orchestrator handed the user at session end)
 
 Resume Framework Development mode for the DAAF Control Panel continuation session
 (daaf.ps1 + multi-instance + updater drift). Read
