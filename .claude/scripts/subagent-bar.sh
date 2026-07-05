@@ -62,11 +62,18 @@ set -u
 C_RESET='\033[0m'
 C_GRAY='\033[38;5;245m'
 C_BAR_EMPTY='\033[38;5;238m'
-# Severity palette aligned to the Context Quality Curve:
-#   NOMINAL  green   — < 40% AND < 150k tokens
-#   ELEVATED amber   — >= 40% OR >= 150k tokens
-#   HIGH     orange  — >= 60% OR >= 200k tokens (bold to distinguish from amber)
-#   CRITICAL red     — >= 75% OR >= 250k tokens
+# Severity palette aligned to the Context Quality Curve. The exact numeric
+# thresholds are model-family conditional (see the per-row severity block near
+# the bottom of the loop): Fable/Mythos rows use the permissive family
+# (ELEVATED >= 30% OR >= 300k, HIGH >= 40% OR >= 400k, CRITICAL >= 50% OR >=
+# 500k); every other model — Opus (incl. opus-4-8[1m]), Sonnet, unknown — uses
+# the conservative family (ELEVATED >= 40% OR >= 150k, HIGH >= 60% OR >= 200k,
+# CRITICAL >= 75% OR >= 250k). Each severity keeps one color regardless of
+# family:
+#   NOMINAL  green
+#   ELEVATED amber
+#   HIGH     orange  (bold to distinguish from amber)
+#   CRITICAL red
 C_NOMINAL='\033[38;5;71m'    # green
 C_ELEVATED='\033[38;5;179m'  # amber
 C_HIGH='\033[1;38;5;173m'    # orange, bold
@@ -190,12 +197,29 @@ while IFS=$'\x1f' read -r id type name status tokens label; do
     [[ $pct -gt 100 ]] && pct=100
     used_k=$((tokens / 1000))
 
+    # Threshold family (percentage AND absolute k-token gates per severity),
+    # keyed on THIS row's model. Fable/Mythos get the permissive family;
+    # everything else — INCLUDING opus-4-8[1m], whose 1M window does NOT relax
+    # its Opus-class quality horizon — gets the conservative family. Match ONLY
+    # *fable-5*/*mythos-5* (NOT [1m], NOT opus); unknown/empty falls through to
+    # the conservative default (fail-conservative). Deliberately different from
+    # the window-size case block above (which also matches opus and [1m]) —
+    # family and window size are separate lookups.
+    case "$task_model" in
+        *fable-5*|*mythos-5*)
+            elev_pct=30; high_pct=40; crit_pct=50
+            elev_k=300;  high_k=400;  crit_k=500 ;;
+        *)
+            elev_pct=40; high_pct=60; crit_pct=75
+            elev_k=150;  high_k=200;  crit_k=250 ;;
+    esac
+
     # Severity via dual thresholds (percentage OR absolute k-tokens, whichever
     # fires first) — identical logic to context-reporter.sh calculate().
-    if   [[ $pct -ge 75 ]] || [[ $used_k -ge 250 ]]; then color="$C_CRITICAL"
-    elif [[ $pct -ge 60 ]] || [[ $used_k -ge 200 ]]; then color="$C_HIGH"
-    elif [[ $pct -ge 40 ]] || [[ $used_k -ge 150 ]]; then color="$C_ELEVATED"
-    else                                                   color="$C_NOMINAL"
+    if   [[ $pct -ge $crit_pct ]] || [[ $used_k -ge $crit_k ]]; then color="$C_CRITICAL"
+    elif [[ $pct -ge $high_pct ]] || [[ $used_k -ge $high_k ]]; then color="$C_HIGH"
+    elif [[ $pct -ge $elev_pct ]] || [[ $used_k -ge $elev_k ]]; then color="$C_ELEVATED"
+    else                                                            color="$C_NOMINAL"
     fi
 
     # Mini context bar: fill segments proportional to pct across bar_width.

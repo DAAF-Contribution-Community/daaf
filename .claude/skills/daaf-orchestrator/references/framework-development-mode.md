@@ -519,7 +519,7 @@ If the user requests changes, loop back to Phase 3 for targeted fixes (respectin
 
 Additional skills (e.g., specific data source skills when the user is modifying one) are loaded by subagents when dispatched, following the standard pattern.
 
-**Context budget note:** Loading two skills at mode start consumes approximately 1,000-1,500 tokens of orchestrator context. Avoid loading additional skills directly in orchestrator context beyond these two — defer to subagents for any further skill loading. If context utilization reaches ELEVATED (≥ 40% or ≥ 150k tokens), consider whether direct advisory responses could be delegated to a framework-engineer dispatch instead.
+**Context budget note:** Loading two skills at mode start consumes approximately 1,000-1,500 tokens of orchestrator context. Avoid loading additional skills directly in orchestrator context beyond these two — defer to subagents for any further skill loading. If context utilization reaches ELEVATED (see CLAUDE.md § Context Quality Curve for model-family thresholds), consider whether direct advisory responses could be delegated to a framework-engineer dispatch instead.
 
 ---
 
@@ -547,7 +547,7 @@ Create `SESSION_NOTES.md` in the workspace root when the **first substantive mil
 - Phase 1 scoping completes (work type classified, exploration done)
 - A framework artifact is created or substantially modified
 - A key design decision is made
-- Context utilization reaches ELEVATED (≥ 40% or ≥ 150k tokens)
+- Context utilization reaches ELEVATED (see CLAUDE.md § Context Quality Curve for model-family thresholds)
 
 If the session remains purely conversational with no milestones, SESSION_NOTES.md is not needed.
 
@@ -603,7 +603,7 @@ The researcher directed all framework design decisions and approved all changes.
 | Framework-engineer dispatch returns | Accomplishments + Integration Status |
 | Key design decision made | Key Decisions |
 | Review pass complete (Phase 4) | Accomplishments + In Progress |
-| Context reaches ELEVATED (≥ 40% or ≥ 150k tokens) | All sections (full checkpoint) |
+| Context reaches ELEVATED (see CLAUDE.md § Context Quality Curve for model-family thresholds) | All sections (full checkpoint) |
 | User signals session is ending | All sections (final summary) |
 | Before any escalation to another mode | All sections + note the escalation |
 

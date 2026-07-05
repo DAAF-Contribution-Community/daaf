@@ -135,18 +135,27 @@ context prevents misinterpretation of the target section.
 
 ## Context & Session Health
 
-Session context utilization must always be monitored to ensure high performance quality. The `context-reporter` hook provides objective, continuous utilization measurements on every turn. It fires for **both the orchestrator and all subagents** via the `PreToolUse` registration in `settings.json` — every agent in the system receives periodic utilization data as `<system-reminder>` injections, and each agent's measurement reflects its **own** context window: the hook detects subagent calls via the `agent_id` field and measures the subagent's own transcript, never the orchestrator's (if a subagent's transcript cannot be located, the hook stays silent rather than reporting another agent's numbers). Use the reported severity level directly for gating decisions — the hook applies dual thresholds (percentage OR absolute token count, whichever fires first) to cap effective session length on large context windows. Utilization helps agents manage their workloads and report back before issues arise.
+Session context utilization must always be monitored to ensure high performance quality. The `context-reporter` hook provides objective, continuous utilization measurements on every turn. It fires for **both the orchestrator and all subagents** via the `PreToolUse` registration in `settings.json` — every agent in the system receives periodic utilization data as `<system-reminder>` injections, and each agent's measurement reflects its **own** context window: the hook detects subagent calls via the `agent_id` field and measures the subagent's own transcript, never the orchestrator's (if a subagent's transcript cannot be located, the hook stays silent rather than reporting another agent's numbers). Use the reported severity level directly for gating decisions — the hook applies dual thresholds (percentage OR absolute token count, whichever fires first) to cap effective session length on large context windows. Both legs of the dual trigger are **model-family-conditional**: newer Claude Fable/Mythos-family models sustain high-quality work across a larger share of their window and so cross each severity level at higher trigger points, while Opus, Sonnet, and any unknown or alternative-provider model use the conservative default thresholds. The hook selects the correct family automatically from each agent's own model ID. Utilization helps agents manage their workloads and report back before issues arise.
 
 ### Context Quality Curve
 
-These thresholds apply to **all agents** — orchestrator and subagents alike. The "Required Action" column specifies role-appropriate responses for each.
+These thresholds apply to **all agents** — orchestrator and subagents alike. Trigger points are **model-family-conditional**: the two families below cross each severity level at different points, but the four severity **levels and their required actions are identical** regardless of family. Each agent is evaluated against the thresholds for its **own** model's family — a Sonnet subagent dispatched under a Fable session is measured with the conservative thresholds, consistent with the per-subagent window mapping the hook already applies. Family is detected from the model ID (`fable-5`/`mythos-5` → Fable/Mythos family; everything else, including unknown or alternative-provider IDs, falls back to the conservative default). Detection is deliberately version-specific rather than prefix-based: a future model generation's quality horizon is unvalidated until measured, so new model IDs — even within the Fable/Mythos line — receive the conservative thresholds until this table and the detection patterns are deliberately extended. Window size and threshold family are **separate lookups**: `claude-opus-4-8[1m]` has a 1M-token window but keeps the conservative thresholds because its quality horizon is Opus-class.
 
-| Utilization | Status | Required Action |
-|-------------|--------|-----------------|
-| **< 40% and < 150k tokens** | NOMINAL | Continue normally |
-| **≥ 40% or ≥ 150k tokens** | ELEVATED | Monitor closely; consider how realistic the scope of work remaining is and how to redelegate work (the orchestrator can delegate work to subagents; subagents can return work early to the orchestrator to be redelegated and completed as needed) |
-| **≥ 60% or ≥ 200k tokens** | HIGH | Complete current atomic unit at full quality; report back to user (for orchestrator) or orchestrator (for subagents); do not start new stages of work; Orchestrator must update STATE.md with restart prompt |
-| **≥ 75% or ≥ 250k tokens** | CRITICAL | Cease work immediately and report back to user (for orchestrator) or orchestrator (for subagents); Orchestrator must finalize STATE.md |
+**Trigger points by model family** (percentage OR absolute tokens, whichever fires first):
+
+| Model Family | ELEVATED at | HIGH at | CRITICAL at |
+|--------------|-------------|---------|-------------|
+| **Claude Fable/Mythos-family models** | ≥ 30% or ≥ 300k tokens | ≥ 40% or ≥ 400k tokens | ≥ 50% or ≥ 500k tokens |
+| **All other models** (Opus, Sonnet, unknown/alternative providers — the conservative default) | ≥ 40% or ≥ 150k tokens | ≥ 60% or ≥ 200k tokens | ≥ 75% or ≥ 250k tokens |
+
+**Status levels and required actions** (identical across families; NOMINAL is any utilization below the ELEVATED trigger):
+
+| Status | Required Action |
+|--------|-----------------|
+| **NOMINAL** (below ELEVATED) | Continue normally |
+| **ELEVATED** | Monitor closely; consider how realistic the scope of work remaining is and how to redelegate work (the orchestrator can delegate work to subagents; subagents can return work early to the orchestrator to be redelegated and completed as needed) |
+| **HIGH** | Complete current atomic unit at full quality; report back to user (for orchestrator) or orchestrator (for subagents); do not start new stages of work; Orchestrator must update STATE.md with restart prompt |
+| **CRITICAL** | Cease work immediately and report back to user (for orchestrator) or orchestrator (for subagents); Orchestrator must finalize STATE.md |
 
 ### Subagent Context Monitoring
 
@@ -176,9 +185,9 @@ Subagents receive their own `context-reporter` utilization injections, measured 
 
 | Symptom | Severity | Indicates |
 |---------|----------|-----------|
-| Repeating information already stated | MEDIUM | 40-60% utilization |
-| Forgetting earlier decisions | HIGH | 60%+ utilization |
-| Generating contradictory outputs | CRITICAL | 70%+ utilization |
+| Repeating information already stated | MEDIUM | ELEVATED-range utilization |
+| Forgetting earlier decisions | HIGH | HIGH-range utilization |
+| Generating contradictory outputs | CRITICAL | CRITICAL-range utilization |
 | Incomplete or truncated responses | CRITICAL | Near limit |
 | Losing track of current stage | HIGH | Context fragmentation |
 | Mixing up file names or paths | MEDIUM | Working memory strain |
@@ -197,7 +206,7 @@ Context management is NEVER about reducing the quality or completeness of work. 
 
 **Context monitoring protocol at stage transitions:**
 1. CHECK utilization from hook report
-2. UPDATE STATE.md if ELEVATED or higher (≥ 40% or ≥ 150k tokens)
+2. UPDATE STATE.md if ELEVATED or higher (per the Context Quality Curve for the session's model family)
 3. DECIDE per threshold table above
 4. Flush learning signals to LEARNINGS.md if at a phase boundary
 
@@ -244,9 +253,9 @@ Context management is NEVER about reducing the quality or completeness of work. 
 | **Permission Deny Rules** | `settings.json` deny list | `rm -rf`, `sudo`, `docker`, credential file reads/writes, audit log writes/edits |
 | **Permission Allow List** | `settings.json` allow list | Only approved tools auto-execute; everything else prompts |
 | **PostToolUse Hooks** | `audit-log.sh`, `output-scanner.sh` | Audit trail, secret detection in output |
-| **Context Reporting Hook** | `context-reporter.sh` — fires for orchestrator and all subagents via `PreToolUse` | Context utilization injection for gating decisions (orchestrator + subagents). Subagent measurements use the window provisioned for the subagent's *own* model (per-model 1M/200k mapping when it differs from the session model; model cached in `/tmp/claude-subagent-model-*`, shared with `subagent-bar.sh`) |
+| **Context Reporting Hook** | `context-reporter.sh` — fires for orchestrator and all subagents via `PreToolUse` | Context utilization injection for gating decisions (orchestrator + subagents). Applies the Context Quality Curve thresholds for each agent's *own* model family (Fable/Mythos vs. conservative default; unknown IDs fail conservative). Subagent measurements use the window provisioned for the subagent's *own* model (per-model 1M/200k window mapping when it differs from the session model; window size and threshold family are separate lookups; model cached in `/tmp/claude-subagent-model-*`, shared with `subagent-bar.sh`) |
 | **Statusline (main bar)** | `context-bar.sh` — registered via `statusLine` in `settings.json`; fail-open, exits 0 on all paths | Live session display: model, directory, branch, context-utilization bar, effort level, subscription rate-limit windows. Shares the session context-window size with hooks via `/tmp/claude-ctx-window-*` (bare-integer contract consumed by `context-reporter.sh`) |
-| **Statusline (agent panel)** | `subagent-bar.sh` — registered via `subagentStatusLine` in `settings.json`; fail-open, exits 0 on all paths | Per-subagent rows in the agent panel: agent type, model, status, token count, and a context bar colored by the Context Quality Curve thresholds (dual: 40%/150k, 60%/200k, 75%/250k), computed against the window provisioned for each subagent's *own* model (per-model 1M/200k mapping when it differs from the session model). Read-only consumer of the `/tmp/claude-ctx-window-*` cache; shares the per-subagent model cache (`/tmp/claude-subagent-model-*`) with `context-reporter.sh` |
+| **Statusline (agent panel)** | `subagent-bar.sh` — registered via `subagentStatusLine` in `settings.json`; fail-open, exits 0 on all paths | Per-subagent rows in the agent panel: agent type, model, status, token count, and a context bar colored by the Context Quality Curve thresholds for each subagent's *own* model family (Fable/Mythos: 30%/300k, 40%/400k, 50%/500k; conservative default: 40%/150k, 60%/200k, 75%/250k), computed against the window provisioned for each subagent's *own* model (per-model 1M/200k window mapping when it differs from the session model; window size and threshold family are separate lookups). Read-only consumer of the `/tmp/claude-ctx-window-*` cache; shares the per-subagent model cache (`/tmp/claude-subagent-model-*`) with `context-reporter.sh` |
 | **Session Archive Hook** | `archive-session.sh` | Session transcript archiving on exit |
 | **Session Recovery Hook** | `recover-session-logs.sh` — fires on `SessionStart` | Activity logging + crash recovery: archives orphaned transcripts from sessions that terminated without reaching `SessionEnd` |
 | **Container Isolation** | Docker with `cap_drop: ALL`, non-root user | OS-level blast radius containment |

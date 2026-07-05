@@ -1825,7 +1825,7 @@ Agents use domain-specific status vocabularies. The orchestrator translates thes
 | QA finding recorded | QA Findings Summary (incremental — append per code-reviewer return) |
 | Analysis result addresses hypothesis | Hypothesis Assessment Progress table |
 | Final review completed | Final Review Log |
-| Context Utilization ≥ ELEVATED (≥ 40% or ≥ 150k tokens) | Context Snapshot section |
+| Context Utilization reaches ELEVATED (see CLAUDE.md § Context Quality Curve for model-family thresholds) | Context Snapshot section |
 | Phase boundary reached | Phase Status Update section + User confirmation status |
 | Phase completes | Session History (if multi-session) |
 

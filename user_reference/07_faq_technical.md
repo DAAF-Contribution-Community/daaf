@@ -617,14 +617,16 @@ If you're using the manual `marimo run` command and can't see anything at `http:
 
 This isn't an error -- it's DAAF being responsible about Claude's working memory.
 
-Claude has a finite context window. As a session progresses and Claude processes more information, that window fills up. Even with large context windows (up to 1M tokens), quality can degrade well before the window is full, so DAAF enforces both percentage-based and absolute token thresholds — whichever fires first:
+Claude has a finite context window. As a session progresses and Claude processes more information, that window fills up. Even with large context windows (up to 1M tokens), quality can degrade well before the window is full, so DAAF enforces both percentage-based and absolute token thresholds — whichever fires first.
 
-| Utilization | Status | What happens |
-|-------------|--------|-------------|
-| < 40% and < 150k tokens | NOMINAL | Normal operations |
-| ≥ 40% or ≥ 150k tokens | ELEVATED | Works normally but starts delegating more to subagents |
-| ≥ 60% or ≥ 200k tokens | HIGH | Finishes current work, prepares for session restart |
-| ≥ 75% or ≥ 250k tokens | CRITICAL | Stops new work, asks you to restart the session |
+The exact trigger points depend on which model you are running. Newer models keep their quality across a larger share of their context window, so DAAF gives them higher thresholds; older or unrecognized models get a more conservative set so DAAF errs on the side of caution. DAAF detects the model automatically — nothing to configure. The four status levels and what DAAF does at each are the same for every model; only the trigger points differ:
+
+| Status | What happens | Newer Claude Fable/Mythos models | Opus, Sonnet, and unrecognized models (conservative default) |
+|--------|-------------|----------------------------------|--------------------------------------------------------------|
+| NOMINAL | Normal operations | below 30% and below 300k tokens | below 40% and below 150k tokens |
+| ELEVATED | Works normally but starts delegating more to subagents | ≥ 30% or ≥ 300k tokens | ≥ 40% or ≥ 150k tokens |
+| HIGH | Finishes current work, prepares for session restart | ≥ 40% or ≥ 400k tokens | ≥ 60% or ≥ 200k tokens |
+| CRITICAL | Stops new work, asks you to restart the session | ≥ 50% or ≥ 500k tokens | ≥ 75% or ≥ 250k tokens |
 
 When you see CRITICAL, it means Claude's context window is nearly full and continuing would degrade the quality of its work. This is by design -- DAAF would rather stop and restart cleanly than continue with increasingly unreliable output.
 

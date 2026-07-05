@@ -3,8 +3,10 @@
 #
 # Injects context window utilization and a current timestamp into Claude's
 # conversation so the model can make informed decisions about delegation, state
-# persistence, and session recovery (see CLAUDE.md utilization gates at
-# 40%/60%/75% OR 150k/200k/250k tokens, whichever fires first).
+# persistence, and session recovery (see CLAUDE.md utilization gates — the
+# thresholds are model-family conditional: Fable/Mythos use 30%/40%/50% OR
+# 300k/400k/500k, everything else uses 40%/60%/75% OR 150k/200k/250k, whichever
+# fires first; see the calculate() threshold table below).
 #
 # Registered events:
 #   UserPromptSubmit  — stdout text → injected as <user-prompt-submit-hook>
@@ -41,6 +43,18 @@
 #   the parent transcript in the subagent branch — that would inject the
 #   orchestrator's utilization into the subagent's context, causing subagents
 #   to falsely throttle or refuse work at HIGH/CRITICAL.
+#
+# Threshold family (see calculate()):
+#   The severity thresholds are keyed on the model FAMILY of the agent being
+#   measured — main-session measurements use the session model; subagent
+#   measurements use that subagent's own model. Fable/Mythos models get the
+#   permissive family (30/40/50% OR 300/400/500k); everything else (Opus,
+#   Sonnet, unknown/empty) gets the conservative family (40/60/75% OR
+#   150/200/250k). This is DELIBERATELY separate from the window-size mapping:
+#   claude-opus-4-8[1m] has a 1M *window* but an Opus-class *quality horizon*,
+#   so it keeps the conservative thresholds even though it gets the 1M window.
+#   The model used here is resolved into MEASURE_MODEL below; if it is
+#   empty/unresolved the conservative family applies (fail-conservative).
 #
 # Exit codes:
 #   0 = success (stdout/JSON processed by Claude Code)
@@ -144,17 +158,41 @@ fi
 MAX_K=$((MAX_CONTEXT / 1000))
 
 # ---------------------------------------------------------------------------
+# Threshold-family model resolution: which model's family governs the severity
+# thresholds for THIS measurement. Subagent measurements use the subagent's own
+# model (already resolved into AGENT_MODEL above); main-session measurements use
+# the session model (cache populated by cache_model() on a prior turn — read it
+# here, falling back to the transcript's last model entry when the cache is not
+# yet warm). Empty/unresolved leaves MEASURE_MODEL empty, which the calculate()
+# case block treats as the conservative family (fail-conservative). This is
+# INTENTIONALLY independent of the window-size mapping above: family (quality
+# horizon) and window size are separate lookups.
+if [[ -n "$AGENT_ID" ]]; then
+    MEASURE_MODEL="${AGENT_MODEL:-}"
+else
+    MEASURE_MODEL=$(cat "/tmp/claude-model-${SESSION_ID}" 2>/dev/null) || MEASURE_MODEL=""
+    if [[ -z "${MEASURE_MODEL:-}" ]]; then
+        MEASURE_MODEL=$(tail -50 "$MEASURE_TRANSCRIPT" 2>/dev/null | jq -rs '
+            [.[] | .message.model // empty] | last // empty
+        ' 2>/dev/null) || MEASURE_MODEL=""
+    fi
+fi
+
+# ---------------------------------------------------------------------------
 # calculate: Parse the transcript's most recent usage data and format a
 # utilization message with timestamp. Uses tail -50 to avoid parsing the
 # entire JSONL file.
 # Args: $1 = transcript path, $2 = allow_sidechain (true/false). When true,
 # sidechain entries count (required for subagent transcripts, where every
 # entry is isSidechain:true); when false, only main-chain entries count.
+# $3 = model id of the agent being measured (drives the threshold family; may
+# be empty → conservative family).
 # Outputs a single line to stdout, or nothing if data is unavailable.
 # ---------------------------------------------------------------------------
 calculate() {
     local transcript="$1"
     local allow_sidechain="$2"
+    local model="$3"
     [[ -z "$transcript" || ! -f "$transcript" ]] && return
 
     local tokens
@@ -177,15 +215,33 @@ calculate() {
     [[ $pct -gt 100 ]] && pct=100
     local used_k=$((tokens / 1000))
 
+    # Threshold family (percentage AND absolute k-token gates per severity),
+    # keyed on the measured agent's model. Fable/Mythos get the permissive
+    # family; everything else — INCLUDING opus-4-8[1m], whose 1M window does NOT
+    # relax its Opus-class quality horizon — gets the conservative family.
+    # Match ONLY *fable-5*/*mythos-5* (NOT [1m], NOT opus); unknown/empty falls
+    # through to the conservative default (fail-conservative). Deliberately
+    # different from the window-size case block above (which also matches opus
+    # and [1m]) — family and window size are separate lookups.
+    # See CLAUDE.md § Context Quality Curve for the authoritative threshold table.
+    local elev_pct high_pct crit_pct elev_k high_k crit_k
+    case "$model" in
+        *fable-5*|*mythos-5*)
+            elev_pct=30; high_pct=40; crit_pct=50
+            elev_k=300;  high_k=400;  crit_k=500 ;;
+        *)
+            elev_pct=40; high_pct=60; crit_pct=75
+            elev_k=150;  high_k=200;  crit_k=250 ;;
+    esac
+
     # Dual-trigger thresholds: percentage OR absolute token count, whichever
     # fires first. Absolute counts cap effective session length on large context
     # windows (1M) where percentage thresholds would allow excessive token usage.
-    # See CLAUDE.md § Context Quality Curve for the authoritative threshold table.
     local severity
-    if   [[ $pct -ge 75 ]] || [[ $used_k -ge 250 ]]; then severity="CRITICAL"
-    elif [[ $pct -ge 60 ]] || [[ $used_k -ge 200 ]]; then severity="HIGH"
-    elif [[ $pct -ge 40 ]] || [[ $used_k -ge 150 ]]; then severity="ELEVATED"
-    else                                                    severity="NOMINAL"
+    if   [[ $pct -ge $crit_pct ]] || [[ $used_k -ge $crit_k ]]; then severity="CRITICAL"
+    elif [[ $pct -ge $high_pct ]] || [[ $used_k -ge $high_k ]]; then severity="HIGH"
+    elif [[ $pct -ge $elev_pct ]] || [[ $used_k -ge $elev_k ]]; then severity="ELEVATED"
+    else                                                             severity="NOMINAL"
     fi
 
     local ts
@@ -231,7 +287,7 @@ if [[ $((NOW - LAST_INJECT)) -lt $INJECT_INTERVAL ]]; then
 fi
 
 # Interval elapsed — calculate and emit
-MSG=$(calculate "$MEASURE_TRANSCRIPT" "$ALLOW_SIDECHAIN")
+MSG=$(calculate "$MEASURE_TRANSCRIPT" "$ALLOW_SIDECHAIN" "$MEASURE_MODEL")
 [[ -z "${MSG:-}" ]] && exit 0
 
 # Update the per-agent timestamp gate

@@ -709,12 +709,21 @@ Reproducibility Verification can span many scripts, each consuming subagent cont
 
 **Actions by utilization level:**
 
-| Utilization | Action |
-|-------------|--------|
-| < 40% and < 150k tokens (NOMINAL) | Continue normally |
-| ≥ 40% or ≥ 150k tokens (ELEVATED) | Update Session Continuity after each script; monitor closely |
-| ≥ 60% or ≥ 200k tokens (HIGH) | Complete current script's atomic cycle; update Session Continuity; present checkpoint to user with restart guidance |
-| ≥ 75% or ≥ 250k tokens (CRITICAL) | Cease work; update Session Continuity; present restart prompt to user |
+Trigger points are **model-family-conditional** (percentage OR absolute tokens, whichever fires first); each agent is measured against its own model's family:
+
+| Model Family | ELEVATED at | HIGH at | CRITICAL at |
+|--------------|-------------|---------|-------------|
+| **Claude Fable/Mythos-family models** | ≥ 30% or ≥ 300k tokens | ≥ 40% or ≥ 400k tokens | ≥ 50% or ≥ 500k tokens |
+| **All other models** (Opus, Sonnet, unknown/alternative providers — conservative default) | ≥ 40% or ≥ 150k tokens | ≥ 60% or ≥ 200k tokens | ≥ 75% or ≥ 250k tokens |
+
+The status levels and their actions are identical across families (NOMINAL is any utilization below the ELEVATED trigger):
+
+| Status | Action |
+|--------|--------|
+| NOMINAL (below ELEVATED) | Continue normally |
+| ELEVATED | Update Session Continuity after each script; monitor closely |
+| HIGH | Complete current script's atomic cycle; update Session Continuity; present checkpoint to user with restart guidance |
+| CRITICAL | Cease work; update Session Continuity; present restart prompt to user |
 
 **Restart procedure:** User copies the Restart Prompt from the Reproduction Report's Session Continuity section, runs `/clear`, and pastes it. The new session reads the Reproduction Report to establish position and resumes from the next unprocessed script.
 

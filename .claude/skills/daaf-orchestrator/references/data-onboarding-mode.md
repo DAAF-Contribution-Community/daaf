@@ -565,7 +565,7 @@ For EACH profiling part (DI-3 through DI-6), follow this complete cycle. **Do NO
 | Gate passes (GDI-3/4/5/6) | Current Position → Status; Next Actions |
 | Gate STOP triggered | Blockers → Execution Blockers; Current Position → Status=Blocked |
 | Key decision made | Key Decisions Made table |
-| Context utilization ≥ ELEVATED (≥ 40% or ≥ 150k tokens) | Session Continuity → Context Snapshot |
+| Context utilization reaches ELEVATED (see CLAUDE.md § Context Quality Curve for model-family thresholds) | Session Continuity → Context Snapshot |
 | PSU-DI2 user response received | Interpretation Tracking table (all rows populated with user decisions) |
 | Skill authoring completes (DI-7) | Skill Authoring Status table; Discovery Status (confirmed) |
 | Session break / finalization | Session Continuity → all fields; Session History |
@@ -574,14 +574,21 @@ For EACH profiling part (DI-3 through DI-6), follow this complete cycle. **Do NO
 
 ### Context Management
 
-Context utilization thresholds from `CLAUDE.md` > "Context & Session Health" > "Context Quality Curve" apply to Data Onboarding mode. The Per-Part Execution Cycle is the atomic unit for gating decisions.
+Context utilization thresholds from `CLAUDE.md` > "Context & Session Health" > "Context Quality Curve" apply to Data Onboarding mode. The Per-Part Execution Cycle is the atomic unit for gating decisions. Trigger points are **model-family-conditional** (percentage OR absolute tokens, whichever fires first); each agent is measured against its own model's family:
 
-| Utilization | Status | Data Onboarding Action |
-|-------------|--------|--------------------|
-| **< 40% and < 150k tokens** | NOMINAL | Continue normally through profiling parts |
-| **≥ 40% or ≥ 150k tokens** | ELEVATED | Complete current part cycle; assess whether remaining parts are feasible in this session; update STATE.md Context Snapshot |
-| **≥ 60% or ≥ 200k tokens** | HIGH | Complete current part cycle at full quality; update STATE.md with restart prompt; report to user; do not start next part |
-| **≥ 75% or ≥ 250k tokens** | CRITICAL | **Overrides atomic-unit requirement** — save STATE.md immediately (Current Position, Next Actions, Context Snapshot) and cease work; do not attempt to finish the current part cycle |
+| Model Family | ELEVATED at | HIGH at | CRITICAL at |
+|--------------|-------------|---------|-------------|
+| **Claude Fable/Mythos-family models** | ≥ 30% or ≥ 300k tokens | ≥ 40% or ≥ 400k tokens | ≥ 50% or ≥ 500k tokens |
+| **All other models** (Opus, Sonnet, unknown/alternative providers — conservative default) | ≥ 40% or ≥ 150k tokens | ≥ 60% or ≥ 200k tokens | ≥ 75% or ≥ 250k tokens |
+
+The status levels and their Data Onboarding actions are identical across families (NOMINAL is any utilization below the ELEVATED trigger):
+
+| Status | Data Onboarding Action |
+|--------|--------------------|
+| **NOMINAL** (below ELEVATED) | Continue normally through profiling parts |
+| **ELEVATED** | Complete current part cycle; assess whether remaining parts are feasible in this session; update STATE.md Context Snapshot |
+| **HIGH** | Complete current part cycle at full quality; update STATE.md with restart prompt; report to user; do not start next part |
+| **CRITICAL** | **Overrides atomic-unit requirement** — save STATE.md immediately (Current Position, Next Actions, Context Snapshot) and cease work; do not attempt to finish the current part cycle |
 
 **Post-PSU-DI2 is a natural restart boundary.** If utilization is ELEVATED or higher after Part D completes, present PSU-DI2 findings, collect user decisions, populate Interpretation Tracking in STATE.md, then recommend restarting for DI-7 (skill authoring) in a fresh session.
 

@@ -831,14 +831,16 @@ Real research analyses take time -- often more time than a single Claude Code se
 
 Claude Code operates within a context window that can be up to 1M tokens. However, quality can degrade well before the window is full, so DAAF enforces dual thresholds — both percentage-based and absolute token counts, whichever fires first. As DAAF works through a Full Pipeline analysis, delegating tasks to agents, receiving results, and coordinating the workflow, it gradually fills up this context. When it gets too full, Claude's performance degrades, and it becomes increasingly susceptible to erratic behavior due to **context rot**.
 
-To prevent this, DAAF monitors its own context utilization continuously and manages this proactively:
+The exact points at which DAAF acts depend on which model you are running, because newer models hold their quality across a larger share of their context window than older ones. DAAF detects the model automatically and applies the right thresholds — you do not need to configure anything. Newer Claude Fable/Mythos-family models get higher thresholds (they can safely work deeper into their window before quality slips); Opus, Sonnet, and any model DAAF does not recognize use a more conservative set of thresholds, so DAAF errs on the side of caution.
 
-| Utilization | What Happens |
-|-------------|-------------|
-| **Below 40% and below 150k tokens** | Normal operation, no special actions |
-| **≥ 40% or ≥ 150k tokens** | DAAF starts delegating more work to subagents to keep the orchestrator's context lean |
-| **≥ 60% or ≥ 200k tokens** | DAAF finishes its current work unit, updates STATE.md thoroughly, and warns you that a restart may be needed soon |
-| **≥ 75% or ≥ 250k tokens** | DAAF finalizes STATE.md and recommends restarting the session |
+To prevent context rot, DAAF monitors its own context utilization continuously and manages this proactively. The thresholds below trigger the same set of protective actions for every model — only the exact trigger points differ by model family (percentage OR token count, whichever comes first):
+
+| What Happens | Newer Claude Fable/Mythos models | Opus, Sonnet, and unrecognized models (conservative default) |
+|--------------|----------------------------------|--------------------------------------------------------------|
+| Normal operation, no special actions | below 30% and below 300k tokens | below 40% and below 150k tokens |
+| DAAF starts delegating more work to subagents to keep the orchestrator's context lean | ≥ 30% or ≥ 300k tokens | ≥ 40% or ≥ 150k tokens |
+| DAAF finishes its current work unit, updates STATE.md thoroughly, and warns you that a restart may be needed soon | ≥ 40% or ≥ 400k tokens | ≥ 60% or ≥ 200k tokens |
+| DAAF finalizes STATE.md and recommends restarting the session | ≥ 50% or ≥ 500k tokens | ≥ 75% or ≥ 250k tokens |
 
 ### How Session Recovery Works
 
