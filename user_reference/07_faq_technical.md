@@ -65,9 +65,9 @@ Another application is using one of DAAF's ports. Close the conflicting applicat
 
 This usually happens when Docker Desktop's file sharing permissions haven't been configured. Open Docker Desktop → Settings → Resources → File Sharing, and ensure the relevant directories are shared.
 
-### Claude Code asks for my API key every session
+### Claude Code asks me to log in again
 
-Your authentication method may not be persisting between sessions. For Anthropic Max/Pro subscriptions, try running `/login` inside Claude Code to re-authenticate. For API keys, make sure your `environment_settings.txt` file in the `daaf-docker/` folder has the correct key set -- this file is read on every container start.
+This should be uncommon. Claude Code's login, session history, and plugins live in a dedicated Docker volume (`daaf-claude-config`), so they persist across container restarts, `docker compose down`, and even image rebuilds -- a routine restart or update should not sign you out. If you *do* get prompted after a normal restart, just run `/login` once for an Anthropic Max/Pro subscription (or paste your API key); it will persist from then on. Note that `docker compose down -v` (with the `-v` flag) or manually deleting the volume erases this state, so avoid `-v` unless you mean to wipe everything. If you'd rather never log in interactively, set your credentials in the `environment_settings.txt` file in the `daaf-docker/` folder -- it is read on every container start.
 
 ### OpenRouter: "model not found" or authentication errors
 
@@ -429,7 +429,7 @@ A virtual environment (venv, conda, etc.) handles one thing well: Python package
 
 **Complete reproducibility.** Docker pins *everything*: the OS (Debian Bookworm), Python version (3.12), system packages, Python libraries, and Claude Code itself. When I say DAAF works, I mean it works in that exact environment. Virtualenvs only manage Python packages, not system-level dependencies, OS differences, or tool versions.
 
-**Clean recovery.** If something goes wrong -- a corrupted package, a broken state, whatever -- you can tear down the container and rebuild from scratch in minutes. Your data persists in the Docker volume, completely unaffected. Try doing that with a corrupted virtualenv.
+**Clean recovery.** If something goes wrong -- a corrupted package, a broken state, whatever -- you can tear down the container and rebuild from scratch in minutes. Your research data persists in its Docker volume, and Claude Code's own login and session history persist in a second dedicated volume (`daaf-claude-config`), so both are completely unaffected by a rebuild. (Only an explicit `docker compose down -v` or `docker volume rm` deletes those volumes.) Try doing that with a corrupted virtualenv.
 
 **Cross-platform consistency.** Docker runs the same way on Mac, Windows, and Linux. No more "it works on my machine" problems.
 
