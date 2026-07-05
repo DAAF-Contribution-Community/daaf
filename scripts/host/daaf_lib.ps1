@@ -19,10 +19,17 @@
 # Container-side probe payloads (the /proc/net/tcp + awk strings) are copied
 # VERBATIM from daaf_lib.sh: they run inside the Linux container, so they must
 # remain Linux shell, not PowerShell. Only the outer invocation wrapper is
-# PowerShell here. The payloads are fed to the container shell on STDIN via
-# `bash -s` (NOT `bash -c <payload>`): PS 5.1 mangles embedded double quotes
-# when marshalling native-process arguments, so any payload containing `"`
-# must be piped in rather than passed as an argument. See Test-DaafPort.
+# PowerShell here. The payloads are delivered as a base64 TOKEN passed as a
+# native argument (transport v3): `bash -c 'echo $1 | base64 -d | bash ...' _ $b64`.
+# A base64 token contains only [A-Za-z0-9+/=] -- no quotes, no spaces, no CR --
+# so it survives PS 5.1's native-arg marshalling intact and involves no stdin.
+# This replaced two earlier transports that both failed on real Windows:
+#   v1 `bash -c <payload>` -- PS 5.1 mangles embedded double quotes in native
+#      args (the awk `"` patterns); fixed only in PS 7.3+.
+#   v2 `<payload> | bash -s` (stdin) -- PS appends CRLF when piping a string to
+#      a native process, leaving a stray \r on the last line, and the PS
+#      pipeline -> docker.exe npipe stdin wiring is unreliable on Windows.
+# See Test-DaafPort for the fully annotated call site.
 #
 # Supports DAAF_DRY_RUN=1 for CI smoke testing without Docker.
 # ============================================================================
@@ -182,20 +189,11 @@ function Test-DaafPort {
         return $false
     }
 
-    # Container-side probe payload -- VERBATIM from daaf_lib.sh check_port.
-    #
-    # TRANSPORT (do NOT revert to `bash -c $probe`): the payload is fed to the
-    # container shell on STDIN via `bash -s`, NOT as a native `bash -c <payload>`
-    # argument. Windows PowerShell 5.1 does not correctly escape embedded double
-    # quotes when marshalling a string into a native process's argument vector
-    # (this native-arg quoting bug was fixed only in PS 7.3+). This payload
-    # contains embedded `"` (the awk field patterns), so passing it via `-c`
-    # under PS 5.1 delivers a mangled script to bash, which exits non-zero and
-    # makes the probe read "not listening" forever. Feeding it on stdin keeps
-    # every byte intact regardless of the PowerShell version. With `bash -s`,
-    # trailing arguments become positional parameters ($1 = $Port), so the
-    # payload text below stays byte-identical to daaf_lib.sh (still reads $1) and
-    # the `_` $0-sentinel used with `-c` is dropped.
+    # Container-side probe payload -- VERBATIM from daaf_lib.sh check_port. It
+    # still reads its target port from $1, so the container-side bash sees the
+    # port as its own positional $1 (see the base64 transport below, which passes
+    # the port as $2 to the outer `-c` wrapper and forwards it as $1 to the
+    # decoded payload via `bash -s -- $2`).
     $probe = @'
         port="$1"
         ph=$(printf "%04X" "$port")
@@ -203,13 +201,52 @@ function Test-DaafPort {
             /proc/net/tcp /proc/net/tcp6 2>/dev/null
 '@
 
+    # TRANSPORT v3 -- base64-as-argument (do NOT revert to either prior form):
+    #
+    #   v1 (`bash -c $probe _ $Port`): FAILED. Windows PowerShell 5.1 does not
+    #   correctly escape embedded double quotes when marshalling a string into a
+    #   native process's argument vector (fixed only in PS 7.3+). This payload
+    #   contains embedded `"` (the awk field patterns), so passing it via `-c`
+    #   under PS 5.1 delivered a mangled script and the probe read "not
+    #   listening" forever.
+    #
+    #   v2 (pipe the $probe string into `docker compose exec -T ... bash -s
+    #   $Port` on stdin): FAILED in the field. Piping a PS string into a native
+    #   process's stdin is unreliable on
+    #   Windows: PowerShell appends a Windows CRLF, so the payload's last line
+    #   carried a stray `\r` that broke the trailing awk redirect; and the
+    #   PS-object-pipeline -> docker.exe (npipe) stdin wiring is itself flaky.
+    #   Services worked but the probe never saw them.
+    #
+    #   v3 (this): encode the payload as base64 and pass the TOKEN as a native
+    #   argument. A base64 token is drawn from [A-Za-z0-9+/=] only -- no quotes,
+    #   no spaces, no CR -- so PS 5.1's arg marshalling cannot damage it, and
+    #   stdin is not involved at all. The container decodes and runs it.
+    #
+    # Why this exact remote shape:
+    #   * The single-quoted PS literal below contains spaces but ZERO double
+    #     quotes, so PS 5.1 wraps it in "..." on the Win32 CommandLine and nothing
+    #     inside needs escaping -- it arrives byte-intact. In PS single quotes,
+    #     $1/$2 stay literal and become the CONTAINER bash's positional params
+    #     (`_` is $0, the b64 token is $1, the port is $2).
+    #   * `echo $1` is UNQUOTED deliberately: the base64 alphabet has no
+    #     whitespace or glob characters, so word-splitting/globbing cannot harm
+    #     it. Do NOT "fix" it to "$1" -- that would reintroduce double quotes into
+    #     the single-quoted literal and put us back on the v1 failure path.
+    #   * `bash -s -- $2` forwards the port to the decoded probe as its $1 (the
+    #     `--` stops option parsing so a numeric port is never read as a flag).
+    #   * ASCII encoding is correct: these host files are enforced-ASCII, and the
+    #     here-string is byte-identical to the daaf_lib.sh payload.
+    #
     # EAP = SilentlyContinue prevents PS 5.1 from promoting Docker's stderr to a
     # terminating error under the caller's global EAP = Stop. Fail-safe: any
-    # non-zero exit (including "not listening") returns $false.
+    # non-zero exit (including "not listening") returns $false. Out-Null does not
+    # touch $LASTEXITCODE, so it still reflects docker's exit.
+    $b64 = [Convert]::ToBase64String([System.Text.Encoding]::ASCII.GetBytes($probe))
     $savedEAP = $ErrorActionPreference
     try {
         $ErrorActionPreference = "SilentlyContinue"
-        $probe | docker compose exec -T daaf-docker bash -s $Port 2>$null | Out-Null
+        docker compose exec -T daaf-docker bash -c 'echo $1 | base64 -d | bash -s -- $2' _ $b64 $Port 2>$null | Out-Null
         $exit = $LASTEXITCODE
     } finally {
         $ErrorActionPreference = $savedEAP

@@ -45,12 +45,15 @@ $DaafPortVscode = if ($env:DAAF_PORT_VSCODE) { $env:DAAF_PORT_VSCODE } else { "2
 # probes return empty (no services listening), git metadata returns canned
 # values, and every other invocation is a no-op that echoes a [DRY-RUN] marker.
 #
-# NOTE: the port-status probes (Get-DaafPortStatus, Test-DaafPort) no longer
-# reach this shim under dry-run -- they consult DAAF_MOCK_PORTS directly in
-# their own dry-run branches, because their payloads are now fed on STDIN
-# (`bash -s`) and so never appear in $args here. The `bash -s` invocations that
-# do reach this shim (e.g. the stop-services payload) fall through the generic
-# `*compose exec*` arm as a no-op, which is the intended dry-run behavior.
+# NOTE: the port-status probes (Get-DaafPortStatus, Test-DaafPort) short-circuit
+# to DAAF_MOCK_PORTS in their OWN dry-run branches before ever reaching docker,
+# so this shim never has to interpret their payloads. Under real (non-dry-run)
+# operation those probes use the base64-as-argument transport (v3): the b64
+# token and the `echo $1 | base64 -d | bash ...` remote wrapper show up in $args,
+# but that is irrelevant here because the dry-run branch returns first. Any other
+# `docker compose exec` payload that does reach this shim (e.g. the stop-services
+# base64 call) falls through the generic `*compose exec*` arm as a no-op, which
+# is the intended dry-run behavior.
 if ($env:DAAF_DRY_RUN -eq "1") {
     function docker {
         $argStr = $args -join ' '
@@ -177,10 +180,16 @@ function Get-DaafStatus {
 # one (column 2 = HEXIP:HEXPORT, column 4 = 0A = LISTEN, matched on the
 # uppercase 4-hex-digit port). We parse the emitted lines back into booleans.
 #
-# TRANSPORT: fed on STDIN via `bash -s` (NOT `bash -c <payload>`) for the same
-# reason as Test-DaafPort -- PS 5.1 mangles embedded double quotes in native
-# process arguments, and this payload contains `"` inside the awk pattern. See
-# the Test-DaafPort transport note in daaf_lib.ps1.
+# TRANSPORT v3 -- base64-as-argument (do NOT revert): the payload is base64-
+# encoded and the TOKEN is passed as a native argument; the container decodes it
+# and runs it, and we capture its "PORT:<n>" stdout lines. This payload takes no
+# positional args (the three ports are hardcoded), so the remote wrapper is the
+# arg-less `echo $1 | base64 -d | bash`. Two earlier transports both failed on
+# real Windows: v1 `bash -c <payload>` mangled the awk `"` patterns (PS 5.1
+# native-arg quoting bug, fixed only in 7.3+); v2 `<payload> | bash -s` (stdin)
+# left a stray CR on the last line (PS appends CRLF piping to a native process)
+# and the PS-pipeline -> docker.exe npipe stdin wiring is unreliable. See the
+# fully annotated Test-DaafPort transport note in daaf_lib.ps1.
 function Get-DaafPortStatus {
     $result = @{ "2718" = $false; "2719" = $false; "2720" = $false }
 
@@ -207,10 +216,19 @@ function Get-DaafPortStatus {
         done
 '@
 
+    # Encode the payload and pass the b64 token as a native arg. The single-
+    # quoted PS literal 'echo $1 | base64 -d | bash' has spaces but ZERO double
+    # quotes, so PS 5.1 wraps it in "..." on the CommandLine intact; $1 stays
+    # literal and is the container bash's positional param (`_` is $0, the token
+    # is $1). `echo $1` is unquoted deliberately (base64 alphabet has no
+    # whitespace/glob chars) -- quoting it would reintroduce double quotes and
+    # revert to the v1 failure. We capture stdout (the PORT:<n> lines) here, not
+    # Out-Null, so the per-port parse below is preserved.
+    $b64 = [Convert]::ToBase64String([System.Text.Encoding]::ASCII.GetBytes($portsProbe))
     $savedEAP = $ErrorActionPreference
     try {
         $ErrorActionPreference = "SilentlyContinue"
-        $probeRaw = ($portsProbe | docker compose exec -T daaf-docker bash -s 2>$null)
+        $probeRaw = (docker compose exec -T daaf-docker bash -c 'echo $1 | base64 -d | bash' _ $b64 2>$null)
     } finally {
         $ErrorActionPreference = $savedEAP
     }
@@ -893,13 +911,18 @@ function Invoke-DaafServiceStop {
         # in the image, so this reuses the /proc pattern from
         # generate_log_viewer.sh. Surface stderr so failures are visible.
         #
-        # TRANSPORT: fed on STDIN via `bash -s` (NOT `bash -c <payload>`). This
-        # payload contains embedded double quotes (the find/grep/sed patterns),
-        # and PS 5.1 mangles embedded `"` when marshalling native-process
-        # arguments -- so passing it via `-c` would deliver a broken script and
-        # the services would never be stopped. See the Test-DaafPort transport
-        # note in daaf_lib.ps1. The payload hardcodes the ports and takes no
-        # positional args, so no trailing arguments are needed.
+        # TRANSPORT v3 -- base64-as-argument (do NOT revert). This payload
+        # contains embedded double quotes (the find/grep/sed patterns) and takes
+        # no positional args (ports hardcoded), so it uses the arg-less remote
+        # wrapper `echo $1 | base64 -d | bash`, with the b64 token passed as a
+        # native argument. Two earlier transports both failed on real Windows:
+        # v1 `bash -c <payload>` mangled the embedded `"` (PS 5.1 native-arg
+        # quoting bug, fixed only in 7.3+), delivering a broken script so the
+        # services were never stopped; v2 `<payload> | bash -s` (stdin) left a
+        # stray CR on the last line (PS appends CRLF piping to a native process)
+        # and the PS-pipeline -> docker.exe npipe stdin wiring is unreliable. The
+        # b64 token is [A-Za-z0-9+/=] only, so PS 5.1's arg marshalling cannot
+        # damage it. See the fully annotated Test-DaafPort note in daaf_lib.ps1.
         $stopScript = @'
             for port in 2718 2719 2720; do
                 ph=$(printf "%04X" "$port")
@@ -919,10 +942,17 @@ function Invoke-DaafServiceStop {
                 fi
             done
 '@
+        # The single-quoted PS literal 'echo $1 | base64 -d | bash' has spaces
+        # but ZERO double quotes -> PS 5.1 wraps it in "..." intact; $1 stays
+        # literal and is the container bash's positional param (`_` is $0, the
+        # token is $1). `echo $1` is unquoted deliberately (base64 alphabet has
+        # no whitespace/glob chars); quoting it would reintroduce double quotes
+        # and revert to v1. $LASTEXITCODE reflects docker after the call.
+        $b64 = [Convert]::ToBase64String([System.Text.Encoding]::ASCII.GetBytes($stopScript))
         $savedEAP = $ErrorActionPreference
         try {
             $ErrorActionPreference = "SilentlyContinue"
-            $stopScript | docker compose exec -T daaf-docker bash -s
+            docker compose exec -T daaf-docker bash -c 'echo $1 | base64 -d | bash' _ $b64
             $stopExit = $LASTEXITCODE
         } finally {
             $ErrorActionPreference = $savedEAP

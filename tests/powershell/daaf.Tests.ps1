@@ -94,12 +94,22 @@ Describe "daaf.ps1" {
             ([regex]::Matches($Content, 'Goodbye!')).Count | Should -BeGreaterOrEqual 2
         }
 
-        It "feeds container payloads via bash -s stdin (not bash -c native arg)" {
-            # PS 5.1 mangles embedded double quotes in native-process arguments,
-            # so any payload with `"` must be piped in via `bash -s`. Guard
-            # against a revert to `bash -c $payload`.
-            $Content | Should -Match 'bash -s'
-            $Content | Should -Not -Match 'bash -c \$'
+        It "delivers container payloads via base64-as-argument (transport v3)" {
+            # PS 5.1 mangles embedded double quotes in native-process args (v1
+            # `bash -c <payload>` failure), and piping a PS string to a native
+            # process's stdin appends a CRLF and is unreliable on Windows (v2
+            # `<payload> | bash -s` failure). v3 base64-encodes the payload and
+            # passes the token as an argument: the token is [A-Za-z0-9+/=] only,
+            # so PS 5.1 cannot damage it and no stdin is involved.
+            #   * base64 decode must be present in the remote wrapper.
+            $Content | Should -Match 'base64 -d'
+            #   * the payload must NOT be piped into docker on stdin (no `$var | docker`).
+            $Content | Should -Not -Match '\$\w+\s*\|\s*docker'
+            #   * the remote `-c` literal must be single-quoted (zero double
+            #     quotes inside it) -- guard against `bash -c "..."`.
+            $Content | Should -Not -Match "bash -c `""
+            #   * the payload must be encoded to base64 before dispatch.
+            $Content | Should -Match 'ToBase64String'
         }
 
         It "batches the port probe into a single Get-DaafPortStatus exec" {
@@ -177,12 +187,20 @@ Describe "daaf_lib.ps1" {
         $LibContent | Should -Match '0A'
     }
 
-    It "feeds the probe payload via bash -s stdin (PS 5.1 native-arg quoting bug)" {
-        # Test-DaafPort must pipe its payload into `bash -s` rather than passing
-        # it as a `bash -c <payload>` native argument -- PS 5.1 mangles the
-        # embedded double quotes in the awk pattern. Guard against a revert.
-        $LibContent | Should -Match 'bash -s'
-        $LibContent | Should -Not -Match 'bash -c \$'
+    It "delivers the probe payload via base64-as-argument (transport v3)" {
+        # Test-DaafPort must base64-encode its payload and pass the token as a
+        # native arg, decoding it container-side. The embedded double quotes in
+        # the awk pattern rule out v1 `bash -c <payload>` (PS 5.1 native-arg
+        # quoting bug), and PS-string-to-native-stdin CRLF contamination ruled
+        # out v2 `<payload> | bash -s`. Guard against a revert to either.
+        #   * base64 decode present in the remote wrapper.
+        $LibContent | Should -Match 'base64 -d'
+        #   * payload encoded before dispatch.
+        $LibContent | Should -Match 'ToBase64String'
+        #   * payload NOT piped into docker on stdin.
+        $LibContent | Should -Not -Match '\$\w+\s*\|\s*docker'
+        #   * remote `-c` literal is single-quoted (no double quotes inside it).
+        $LibContent | Should -Not -Match "bash -c `""
     }
 
     It "guards against redundant dot-sourcing via a function-existence probe" {
