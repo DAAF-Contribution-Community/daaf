@@ -23,7 +23,7 @@
 
 load 'test_helper'
 
-SUBAGENT_BAR_SH="${SUBAGENT_BAR_SH:-/daaf/.claude/scripts/subagent-bar.sh}"
+SUBAGENT_BAR_SH="${SUBAGENT_BAR_SH:-${REPO_ROOT}/.claude/scripts/subagent-bar.sh}"
 
 FAKE_SESSION="bats-subbar-session"
 

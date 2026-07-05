@@ -20,7 +20,7 @@
 load 'test_helper'
 
 # Path to the script under test (override to test a proposed copy).
-CONTEXT_REPORTER_SH="${CONTEXT_REPORTER_SH:-/daaf/.claude/hooks/context-reporter.sh}"
+CONTEXT_REPORTER_SH="${CONTEXT_REPORTER_SH:-${REPO_ROOT}/.claude/hooks/context-reporter.sh}"
 
 # Fixed fake session id so tests never touch a real session's /tmp caches.
 FAKE_SESSION="bats-ctxrep-session"
