@@ -17,9 +17,12 @@
 #   Confirm-DaafContainer -- start the DAAF container if it is not running
 #
 # Container-side probe payloads (the /proc/net/tcp + awk strings) are copied
-# VERBATIM from daaf_lib.sh: they run inside the Linux container via
-# `docker compose exec ... bash -c '<payload>'`, so they must remain Linux
-# shell, not PowerShell. Only the outer invocation wrapper is PowerShell here.
+# VERBATIM from daaf_lib.sh: they run inside the Linux container, so they must
+# remain Linux shell, not PowerShell. Only the outer invocation wrapper is
+# PowerShell here. The payloads are fed to the container shell on STDIN via
+# `bash -s` (NOT `bash -c <payload>`): PS 5.1 mangles embedded double quotes
+# when marshalling native-process arguments, so any payload containing `"`
+# must be piped in rather than passed as an argument. See Test-DaafPort.
 #
 # Supports DAAF_DRY_RUN=1 for CI smoke testing without Docker.
 # ============================================================================
@@ -179,9 +182,20 @@ function Test-DaafPort {
         return $false
     }
 
-    # Container-side probe payload -- VERBATIM from daaf_lib.sh check_port. The
-    # port is passed as a positional argument after the `bash -c '...' _ <port>`
-    # sentinel so awk internals and $1 stay literal in the container shell.
+    # Container-side probe payload -- VERBATIM from daaf_lib.sh check_port.
+    #
+    # TRANSPORT (do NOT revert to `bash -c $probe`): the payload is fed to the
+    # container shell on STDIN via `bash -s`, NOT as a native `bash -c <payload>`
+    # argument. Windows PowerShell 5.1 does not correctly escape embedded double
+    # quotes when marshalling a string into a native process's argument vector
+    # (this native-arg quoting bug was fixed only in PS 7.3+). This payload
+    # contains embedded `"` (the awk field patterns), so passing it via `-c`
+    # under PS 5.1 delivers a mangled script to bash, which exits non-zero and
+    # makes the probe read "not listening" forever. Feeding it on stdin keeps
+    # every byte intact regardless of the PowerShell version. With `bash -s`,
+    # trailing arguments become positional parameters ($1 = $Port), so the
+    # payload text below stays byte-identical to daaf_lib.sh (still reads $1) and
+    # the `_` $0-sentinel used with `-c` is dropped.
     $probe = @'
         port="$1"
         ph=$(printf "%04X" "$port")
@@ -195,7 +209,7 @@ function Test-DaafPort {
     $savedEAP = $ErrorActionPreference
     try {
         $ErrorActionPreference = "SilentlyContinue"
-        docker compose exec -T daaf-docker bash -c $probe _ $Port 2>$null | Out-Null
+        $probe | docker compose exec -T daaf-docker bash -s $Port 2>$null | Out-Null
         $exit = $LASTEXITCODE
     } finally {
         $ErrorActionPreference = $savedEAP

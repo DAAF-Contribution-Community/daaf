@@ -1290,12 +1290,36 @@ def main():
     # Process each session
     sessions = []
     total_subagents = 0
+    skipped = 0
 
+    # Per-session fault isolation: the archive can hold thousands of sessions and
+    # is often still growing while this runs, so in-flight / truncated .jsonl
+    # files are expected input. A single malformed session must NOT abort the
+    # whole manifest (that previously killed a 5,700+ session build at one bad
+    # file). Wrap each session in try/except: on any exception, warn with the
+    # session file + exception class/message, skip it, and continue.
     for idx, (prefix, files) in enumerate(sorted(session_groups.items())):
-        session_data = process_session(idx, prefix, files)
+        try:
+            session_data = process_session(idx, prefix, files)
+        except Exception as e:
+            orch = files.get("orchestrator") if isinstance(files, dict) else None
+            label = os.path.basename(orch) if orch else prefix
+            print(f"  WARNING: Skipping session {label} — {type(e).__name__}: {e}")
+            skipped += 1
+            continue
         if session_data:
             sessions.append(session_data)
             total_subagents += len(session_data.get("subagents", []))
+
+    # If every session failed to process, there is no manifest worth writing —
+    # surface a hard error (exit non-zero) so the caller shows an honest failure
+    # rather than a dead/empty viewer. A partial success (some skipped) still
+    # writes a manifest for the sessions that parsed cleanly.
+    if not sessions:
+        print()
+        print(f"ERROR: No sessions could be processed "
+              f"({skipped} of {len(session_groups)} unreadable).")
+        sys.exit(1)
 
     # Sort sessions chronologically
     sessions.sort(key=lambda s: s.get("startTime", ""))
@@ -1330,7 +1354,8 @@ def main():
 
     print()
     print(f"Summary:")
-    print(f"  Sessions: {len(sessions)}")
+    print(f"  Sessions: {len(sessions)} processed"
+          + (f", {skipped} skipped (unreadable)" if skipped else ""))
     print(f"  Subagents: {total_subagents}")
     print(f"  Output: {output_path}")
 

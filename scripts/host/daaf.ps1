@@ -44,6 +44,13 @@ $DaafPortVscode = if ($env:DAAF_PORT_VSCODE) { $env:DAAF_PORT_VSCODE } else { "2
 # without a Docker daemon. Mirrors daaf.sh's docker() dry-run shim: the status
 # probes return empty (no services listening), git metadata returns canned
 # values, and every other invocation is a no-op that echoes a [DRY-RUN] marker.
+#
+# NOTE: the port-status probes (Get-DaafPortStatus, Test-DaafPort) no longer
+# reach this shim under dry-run -- they consult DAAF_MOCK_PORTS directly in
+# their own dry-run branches, because their payloads are now fed on STDIN
+# (`bash -s`) and so never appear in $args here. The `bash -s` invocations that
+# do reach this shim (e.g. the stop-services payload) fall through the generic
+# `*compose exec*` arm as a no-op, which is the intended dry-run behavior.
 if ($env:DAAF_DRY_RUN -eq "1") {
     function docker {
         $argStr = $args -join ' '
@@ -52,8 +59,6 @@ if ($env:DAAF_DRY_RUN -eq "1") {
             "*info*" { return }
             "*compose ps -q daaf-docker*" { Write-Output "abc123" }
             "*compose ps --status running*--format*" { Write-Output "daaf-docker" }
-            "*compose exec*PORT:*" { return }
-            "*compose exec*/proc/net/tcp*" { return }
             "*compose exec*git*describe*" { Write-Output "v2.0.0" }
             "*compose exec*git*log*" { Write-Output "2026-06-21" }
             "*compose exec*git*branch*" { Write-Output "main" }
@@ -136,11 +141,17 @@ function Get-DaafStatus {
         if (-not $script:STATUS_BRANCH) { $script:STATUS_BRANCH = "detached" }
         $script:STATUS_UPDATES = (Invoke-DaafGit "rev-list" "--count" "HEAD..origin/main")
 
-        # Port probes reuse the shared Test-DaafPort helper (container-side
-        # /proc/net/tcp probe copied verbatim from daaf_lib.sh).
-        $script:STATUS_PORT_2718 = (Test-DaafPort 2718)
-        $script:STATUS_PORT_2719 = (Test-DaafPort 2719)
-        $script:STATUS_PORT_2720 = (Test-DaafPort 2720)
+        # Port probes: ONE batched exec for all three ports instead of three
+        # separate Test-DaafPort execs. On Windows Docker Desktop each
+        # `docker compose exec` costs ~0.5-2s, so three per menu redraw made the
+        # dashboard visibly slow. This mirrors daaf.sh gather_status's single
+        # ports_probe: the container-side payload loops over 2718/2719/2720 and
+        # emits one "PORT:<n>" line per LISTENing port, which we parse per port.
+        # Test-DaafPort is retained for single-port readiness polls elsewhere.
+        $portStatus = Get-DaafPortStatus
+        $script:STATUS_PORT_2718 = $portStatus["2718"]
+        $script:STATUS_PORT_2719 = $portStatus["2719"]
+        $script:STATUS_PORT_2720 = $portStatus["2720"]
     }
 
     # Local backup check (no Docker needed). Timestamp-prefixed names sort
@@ -154,6 +165,62 @@ function Get-DaafStatus {
     } else {
         $script:STATUS_LAST_BACKUP = ""
     }
+}
+
+# Probe all three service ports (2718/2719/2720) in ONE container exec and
+# return a hashtable of "<port>" -> $true/$false. Batches what used to be three
+# separate Test-DaafPort execs (each ~0.5-2s on Windows Docker Desktop) into a
+# single call to keep the menu redraw responsive.
+#
+# The container-side payload is mirrored VERBATIM from daaf.sh gather_status's
+# ports_probe: it loops the three ports and echoes "PORT:<n>" for each LISTENing
+# one (column 2 = HEXIP:HEXPORT, column 4 = 0A = LISTEN, matched on the
+# uppercase 4-hex-digit port). We parse the emitted lines back into booleans.
+#
+# TRANSPORT: fed on STDIN via `bash -s` (NOT `bash -c <payload>`) for the same
+# reason as Test-DaafPort -- PS 5.1 mangles embedded double quotes in native
+# process arguments, and this payload contains `"` inside the awk pattern. See
+# the Test-DaafPort transport note in daaf_lib.ps1.
+function Get-DaafPortStatus {
+    $result = @{ "2718" = $false; "2719" = $false; "2720" = $false }
+
+    # In dry-run mode, consult DAAF_MOCK_PORTS directly (parity with
+    # Test-DaafPort's dry-run branch and daaf.sh's check_port mock) rather than
+    # routing through the docker shim -- the payload is on stdin and so is
+    # invisible to a $args-matching shim.
+    if ($env:DAAF_DRY_RUN -eq "1") {
+        foreach ($p in @("2718", "2719", "2720")) {
+            if ($env:DAAF_MOCK_PORTS -and ($env:DAAF_MOCK_PORTS -like "*${p}:yes*")) {
+                $result[$p] = $true
+            }
+        }
+        return $result
+    }
+
+    $portsProbe = @'
+        for p in 2718 2719 2720; do
+            ph=$(printf "%04X" "$p")
+            if awk -v ph="$ph" '$2 ~ ":"ph"$" && $4 == "0A" {found=1} END {exit !found}' \
+                /proc/net/tcp /proc/net/tcp6 2>/dev/null; then
+                echo "PORT:$p"
+            fi
+        done
+'@
+
+    $savedEAP = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = "SilentlyContinue"
+        $probeRaw = ($portsProbe | docker compose exec -T daaf-docker bash -s 2>$null)
+    } finally {
+        $ErrorActionPreference = $savedEAP
+    }
+    $probeOut = ($probeRaw | Out-String) -replace "`r", ""
+
+    if ($probeOut -match "PORT:2718") { $result["2718"] = $true }
+    if ($probeOut -match "PORT:2719") { $result["2719"] = $true }
+    if ($probeOut -match "PORT:2720") { $result["2720"] = $true }
+
+    return $result
 }
 
 # Run `docker compose exec ... git -C /daaf <args>` and return trimmed,
@@ -264,9 +331,16 @@ function Show-DaafMenu {
 # Input
 # ============================================================================
 
-# Read a menu choice into the script-scoped $script:CHOICE. Returns $false when
-# input is exhausted (EOF -- e.g., CI piping a single `q`) so the main loop can
-# quit cleanly, mirroring daaf.sh read_choice's EOF-to-quit behavior.
+# Read a menu choice into the script-scoped $script:CHOICE. On EOF (CI piping a
+# single `q`, or the terminal closing) it clears $script:DaafMenuRunning so the
+# main loop exits cleanly, mirroring daaf.sh read_choice's EOF-to-quit behavior.
+#
+# This function deliberately does NOT return a value the loop consumes in a
+# conditional: quit is signaled purely through the script-scoped flag. Routing
+# control flow through a captured return value would put the whole handler chain
+# in a success-stream-capturing context, which strips console handles from the
+# interactive delegates (see Invoke-DaafDelegateInteractive). $script:CHOICE is
+# set to "" on EOF so a stray value from a prior iteration is never re-dispatched.
 function Read-DaafChoice {
     $line = Read-DaafLine "  Enter choice"
     if ($null -eq $line) {
@@ -274,38 +348,44 @@ function Read-DaafChoice {
         # explicit quit so the main loop exits cleanly and CI assertions hold.
         Write-Host ""
         Write-Host "Goodbye!"
-        return $false
+        $script:CHOICE = ""
+        $script:DaafMenuRunning = $false
+        return
     }
     $script:CHOICE = $line
-    return $true
 }
 
 # ============================================================================
 # Dispatch
 # ============================================================================
 
-# Returns $false only for the quit choice (signals the main loop to stop);
-# every other choice returns $true so the loop redraws the menu.
+# Dispatch a menu choice. Quit is signaled by clearing $script:DaafMenuRunning,
+# NOT by a return value the main loop consumes in a conditional. This keeps every
+# handler out of a success-stream-capturing context so the interactive delegates
+# (Claude Code, container shell) inherit real console handles for TTY allocation
+# -- routing quit through a captured `return $false` was what pipe-attached their
+# stdio and broke TTY detection. Handlers are invoked as bare statements here and
+# in the main loop; any incidental output they emit is theirs to print, not a
+# control signal. Empty input and invalid input simply fall through to a redraw.
 function Invoke-DaafChoice {
     param([string]$Choice)
 
     switch ($Choice) {
-        "1"  { Invoke-DaafClaudeCode; return $true }
-        "2"  { Invoke-DaafNotebookBrowser; return $true }
-        "3"  { Invoke-DaafVSCode; return $true }
-        "4"  { Invoke-DaafLogViewer; return $true }
-        "5"  { Invoke-DaafShell; return $true }
-        "6"  { Invoke-DaafBackup; return $true }
-        "7"  { Invoke-DaafRestore; return $true }
-        "8"  { Invoke-DaafUpdate; return $true }
-        "9"  { Invoke-DaafRebuild; return $true }
-        "10" { Invoke-DaafServiceStop; return $true }
-        { $_ -in @("h", "H") } { Show-DaafHelp; return $true }
-        { $_ -in @("q", "Q") } { Invoke-DaafQuit; return $false }
-        "" { return $true }  # Empty input -- just redraw
+        "1"  { Invoke-DaafClaudeCode }
+        "2"  { Invoke-DaafNotebookBrowser }
+        "3"  { Invoke-DaafVSCode }
+        "4"  { Invoke-DaafLogViewer }
+        "5"  { Invoke-DaafShell }
+        "6"  { Invoke-DaafBackup }
+        "7"  { Invoke-DaafRestore }
+        "8"  { Invoke-DaafUpdate }
+        "9"  { Invoke-DaafRebuild }
+        "10" { Invoke-DaafServiceStop }
+        { $_ -in @("h", "H") } { Show-DaafHelp }
+        { $_ -in @("q", "Q") } { Invoke-DaafQuit; $script:DaafMenuRunning = $false }
+        "" { }  # Empty input -- just redraw
         default {
             Write-Host "  Invalid choice. Please enter a number (1-10), h, or q."
-            return $true
         }
     }
 }
@@ -318,6 +398,21 @@ function Invoke-DaafChoice {
 # (Claude Code, container shell). Guards the child exit so a non-zero return
 # does not abort the panel -- control always returns to the menu with the
 # failure surfaced. DAAF_NESTED=1 suppresses the child's pause-on-exit prompt.
+#
+# CONSOLE INHERITANCE (do NOT revert to `& child.ps1`): the child runs an
+# interactive `docker compose exec` (Claude Code / a container bash shell) that
+# needs the real console for TTY allocation. When any ancestor in the PowerShell
+# call chain captures the success stream -- and the menu loop does, because a
+# handler's return value used to drive the loop's continue/quit decision --
+# native child processes get pipe-attached stdio instead of console handles.
+# `docker compose exec` then auto-detects a non-terminal and skips `-t`, so
+# Claude Code sees non-TTY stdin, flips to `--print` mode, and dies with
+# "no stdin data received"; a plain container bash reads its script off the pipe
+# and appears frozen. Launching the child via Start-Process with
+# -NoNewWindow inherits THIS process's console handles directly, bypassing any
+# capturing ancestor. The loop rework below (script-scoped quit flag instead of
+# return-value dispatch) is the other half of the fix -- together they keep the
+# handler chain out of a capturing context.
 function Invoke-DaafDelegateInteractive {
     param(
         [string]$ScriptName,
@@ -325,13 +420,61 @@ function Invoke-DaafDelegateInteractive {
         [string]$FailureMessage
     )
     $env:DAAF_NESTED = "1"
+
+    # Resolve the current host executable (works for both Windows PowerShell
+    # powershell.exe and pwsh) -- same pattern the Pester child-process test and
+    # the CI smoke harness use to spawn a child panel.
+    $hostExe = (Get-Process -Id $PID).Path
+    $childPath = Join-Path $script:DaafScriptDir $ScriptName
+
+    # Build the argument list PS-5.1-safely (no splatting into Start-Process,
+    # which does not accept @array for -ArgumentList reliably under 5.1). Quote
+    # any token containing whitespace so multi-word args survive re-parsing;
+    # current callers pass simple tokens ("bash") or nothing.
+    $argList = @('-NoProfile', '-File', $childPath)
+    foreach ($a in $ScriptArgs) {
+        if ($a -match '\s') { $argList += ('"' + ($a -replace '"', '\"') + '"') }
+        else { $argList += $a }
+    }
+
+    # Ctrl+C survivability: while the child owns the console, route Ctrl+C to the
+    # child (normal claude/bash break behavior) WITHOUT killing the parent panel.
+    # Setting [Console]::TreatControlCAsInput = $true stops the parent runspace
+    # from treating the break as a PipelineStoppedException. Read the prior value
+    # first and restore it exactly in finally. Some hosts throw on this property
+    # (e.g. a redirected/non-console host) -- degrade gracefully to prior
+    # behavior in that case rather than aborting the delegation.
+    $ctrlCGuarded = $false
+    $priorTreatCtrlC = $false
     try {
-        $global:LASTEXITCODE = 0
-        & (Join-Path $script:DaafScriptDir $ScriptName) @ScriptArgs
-        $ec = $LASTEXITCODE
+        $priorTreatCtrlC = [Console]::TreatControlCAsInput
+        [Console]::TreatControlCAsInput = $true
+        $ctrlCGuarded = $true
+    } catch {
+        $ctrlCGuarded = $false
+    }
+
+    try {
+        $proc = Start-Process -FilePath $hostExe -ArgumentList $argList `
+            -NoNewWindow -PassThru
+        $proc.WaitForExit()
+        $ec = $proc.ExitCode
     } finally {
+        if ($ctrlCGuarded) {
+            try {
+                [Console]::TreatControlCAsInput = $priorTreatCtrlC
+                # Drain any Ctrl+C keypress records queued while the guard was
+                # active so a stray ^C does not land in the next menu prompt.
+                # Best-effort: KeyAvailable/ReadKey throw on non-console hosts.
+                while ([Console]::KeyAvailable) { [void][Console]::ReadKey($true) }
+            } catch {
+                # Non-console host or drain unsupported -- a residual keypress
+                # landing in the menu prompt is acceptable (documented).
+            }
+        }
         Remove-Item Env:\DAAF_NESTED -ErrorAction SilentlyContinue
     }
+
     if ($ec -and $ec -ne 0) {
         Write-Host ""
         Write-Host "  $FailureMessage" -ForegroundColor Yellow
@@ -564,10 +707,11 @@ function Invoke-DaafLogViewer {
             $ErrorActionPreference = $savedEAP
         }
         if ($manifestExit -and $manifestExit -ne 0) {
-            Write-Host "  Could not generate the session manifest:" -ForegroundColor Yellow
+            Write-Host "  Manifest generation failed for the full archive." -ForegroundColor Yellow
+            Write-Host "  The specific error is in the output above." -ForegroundColor Yellow
             Write-Host "  $manifestErr"
-            Write-Host "  The full archive may be empty. Run a DAAF session, or" -ForegroundColor Yellow
-            Write-Host "  choose a specific project source instead." -ForegroundColor Yellow
+            Write-Host "  A specific project source may still work -- try selecting" -ForegroundColor Yellow
+            Write-Host "  one project instead of the full archive." -ForegroundColor Yellow
             return
         }
         $url = "http://localhost:$DaafPortLogViewer/scripts/log_viewer.html?manifest=.claude/logs/sessions/session_manifest.json"
@@ -641,17 +785,53 @@ function Invoke-DaafLogViewer {
 # user abort, or the graceful "no backups found" case in
 # restore_from_backup.ps1) prints a clear message and returns to the menu
 # rather than aborting the panel. Mirrors daaf.sh run_delegate.
+#
+# CONSOLE INHERITANCE (do NOT revert to `& child.ps1`): these maintenance
+# children (backup/restore/update/rebuild) run interactive Read-Host prompts and
+# may run interactive docker execs. For the same reason as
+# Invoke-DaafDelegateInteractive -- the menu loop no longer captures handler
+# return values, but Start-Process with -NoNewWindow guarantees the child gets
+# real console handles regardless of any capturing ancestor -- we spawn the
+# child as a child process rather than calling it in-process.
 function Invoke-DaafDelegate {
     param([string]$ScriptName)
     Write-Host ""
     $env:DAAF_NESTED = "1"
+
+    $hostExe = (Get-Process -Id $PID).Path
+    $childPath = Join-Path $script:DaafScriptDir $ScriptName
+    $argList = @('-NoProfile', '-File', $childPath)
+
+    # Ctrl+C survivability guard (see Invoke-DaafDelegateInteractive for the full
+    # rationale): keep a break from killing the parent panel; degrade gracefully
+    # on hosts that do not support the property.
+    $ctrlCGuarded = $false
+    $priorTreatCtrlC = $false
     try {
-        $global:LASTEXITCODE = 0
-        & (Join-Path $script:DaafScriptDir $ScriptName)
-        $ec = $LASTEXITCODE
+        $priorTreatCtrlC = [Console]::TreatControlCAsInput
+        [Console]::TreatControlCAsInput = $true
+        $ctrlCGuarded = $true
+    } catch {
+        $ctrlCGuarded = $false
+    }
+
+    try {
+        $proc = Start-Process -FilePath $hostExe -ArgumentList $argList `
+            -NoNewWindow -PassThru
+        $proc.WaitForExit()
+        $ec = $proc.ExitCode
     } finally {
+        if ($ctrlCGuarded) {
+            try {
+                [Console]::TreatControlCAsInput = $priorTreatCtrlC
+                while ([Console]::KeyAvailable) { [void][Console]::ReadKey($true) }
+            } catch {
+                # Non-console host or drain unsupported -- residual keypress OK.
+            }
+        }
         Remove-Item Env:\DAAF_NESTED -ErrorAction SilentlyContinue
     }
+
     if (-not $ec -or $ec -eq 0) {
         Write-Host ""
         Write-Host "Returned to DAAF Control Panel."
@@ -712,6 +892,14 @@ function Invoke-DaafServiceStop {
         # /proc/*/fd (socket symlink) -> PID, then kills it. `ss` is not present
         # in the image, so this reuses the /proc pattern from
         # generate_log_viewer.sh. Surface stderr so failures are visible.
+        #
+        # TRANSPORT: fed on STDIN via `bash -s` (NOT `bash -c <payload>`). This
+        # payload contains embedded double quotes (the find/grep/sed patterns),
+        # and PS 5.1 mangles embedded `"` when marshalling native-process
+        # arguments -- so passing it via `-c` would deliver a broken script and
+        # the services would never be stopped. See the Test-DaafPort transport
+        # note in daaf_lib.ps1. The payload hardcodes the ports and takes no
+        # positional args, so no trailing arguments are needed.
         $stopScript = @'
             for port in 2718 2719 2720; do
                 ph=$(printf "%04X" "$port")
@@ -734,7 +922,7 @@ function Invoke-DaafServiceStop {
         $savedEAP = $ErrorActionPreference
         try {
             $ErrorActionPreference = "SilentlyContinue"
-            docker compose exec -T daaf-docker bash -c $stopScript
+            $stopScript | docker compose exec -T daaf-docker bash -s
             $stopExit = $LASTEXITCODE
         } finally {
             $ErrorActionPreference = $savedEAP
@@ -830,12 +1018,21 @@ if ($env:DAAF_TEST_MODE -eq "1") {
 # pauses -- a double-clicked window must not vanish before the error can be read
 # (parity with daaf.sh's ERR + EXIT traps). Ctrl+C surfaces as a
 # PipelineStoppedException, which we treat as a clean "Goodbye!".
+#
+# The loop is gated on the script-scoped $script:DaafMenuRunning flag rather than
+# on captured handler return values. Quit paths (the `q` choice and Read-DaafChoice's
+# EOF branch) clear the flag; every step below is a bare statement, so no ancestor
+# of a handler captures the success stream. That is what lets the interactive
+# delegates (Claude Code, container shell) receive real console handles for TTY
+# allocation -- see Invoke-DaafChoice and Invoke-DaafDelegateInteractive.
+$script:DaafMenuRunning = $true
 try {
-    while ($true) {
+    while ($script:DaafMenuRunning) {
         Get-DaafStatus
         Show-DaafMenu
-        if (-not (Read-DaafChoice)) { break }
-        if (-not (Invoke-DaafChoice $script:CHOICE)) { break }
+        Read-DaafChoice
+        if (-not $script:DaafMenuRunning) { break }
+        Invoke-DaafChoice $script:CHOICE
     }
 } catch {
     Write-Host ""

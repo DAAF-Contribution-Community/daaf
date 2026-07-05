@@ -538,10 +538,11 @@ handle_logs() {
         manifest_err=$(docker compose exec -T daaf-docker \
             bash /daaf/scripts/generate_log_viewer.sh --archive --no-serve \
             </dev/null 2>&1) || {
-            echo "  ${YELLOW}Could not generate the session manifest:${RESET}"
+            echo "  ${YELLOW}Manifest generation failed for the full archive.${RESET}"
+            echo "  ${YELLOW}The specific error is in the output above.${RESET}"
             echo "  ${manifest_err}"
-            echo "  ${YELLOW}The full archive may be empty. Run a DAAF session, or"
-            echo "  choose a specific project source instead.${RESET}"
+            echo "  ${YELLOW}A specific project source may still work -- try selecting"
+            echo "  one project instead of the full archive.${RESET}"
             return
         }
         url="http://localhost:${DAAF_PORT_LOGVIEWER}/scripts/log_viewer.html?manifest=.claude/logs/sessions/session_manifest.json"

@@ -67,6 +67,46 @@ Describe "daaf.ps1" {
             $Content | Should -Match 'function Invoke-DaafDelegate\b'
         }
 
+        It "spawns interactive delegates via Start-Process for console inheritance" {
+            # The interactive/maintenance delegates must launch the child via
+            # Start-Process -NoNewWindow (console handle inheritance) rather than
+            # calling it in-process, so docker TTY allocation works. Guard against
+            # a revert to `& child.ps1`.
+            $Content | Should -Match 'Start-Process'
+            $Content | Should -Match '-NoNewWindow'
+            $Content | Should -Match '\(Get-Process -Id \$PID\)\.Path'
+        }
+
+        It "guards the parent against Ctrl+C while a delegate owns the console" {
+            $Content | Should -Match 'TreatControlCAsInput'
+        }
+
+        It "drives the main loop off a script-scoped run flag (not return values)" {
+            # Quit is signaled by clearing $script:DaafMenuRunning, keeping the
+            # handler chain out of a success-stream-capturing context.
+            $Content | Should -Match '\$script:DaafMenuRunning'
+            $Content | Should -Match 'while\s*\(\s*\$script:DaafMenuRunning\s*\)'
+        }
+
+        It "prints Goodbye! on both quit and EOF paths" {
+            # CI smoke asserts "Goodbye!"; both Invoke-DaafQuit and the
+            # Read-DaafChoice EOF branch must print it.
+            ([regex]::Matches($Content, 'Goodbye!')).Count | Should -BeGreaterOrEqual 2
+        }
+
+        It "feeds container payloads via bash -s stdin (not bash -c native arg)" {
+            # PS 5.1 mangles embedded double quotes in native-process arguments,
+            # so any payload with `"` must be piped in via `bash -s`. Guard
+            # against a revert to `bash -c $payload`.
+            $Content | Should -Match 'bash -s'
+            $Content | Should -Not -Match 'bash -c \$'
+        }
+
+        It "batches the port probe into a single Get-DaafPortStatus exec" {
+            $Content | Should -Match 'function Get-DaafPortStatus'
+            $Content | Should -Match 'PORT:\$p'
+        }
+
         It "wraps the main loop in try/catch for unexpected failures" {
             $Content | Should -Match 'catch'
         }
@@ -135,6 +175,14 @@ Describe "daaf_lib.ps1" {
     It "carries the container-side /proc/net/tcp probe verbatim" {
         $LibContent | Should -Match '/proc/net/tcp'
         $LibContent | Should -Match '0A'
+    }
+
+    It "feeds the probe payload via bash -s stdin (PS 5.1 native-arg quoting bug)" {
+        # Test-DaafPort must pipe its payload into `bash -s` rather than passing
+        # it as a `bash -c <payload>` native argument -- PS 5.1 mangles the
+        # embedded double quotes in the awk pattern. Guard against a revert.
+        $LibContent | Should -Match 'bash -s'
+        $LibContent | Should -Not -Match 'bash -c \$'
     }
 
     It "guards against redundant dot-sourcing via a function-existence probe" {
@@ -238,24 +286,46 @@ Describe "daaf.ps1 behavioral tests" {
         Remove-Item Env:DAAF_TEST_MODE -ErrorAction SilentlyContinue
     }
 
-    Context "Invoke-DaafChoice dispatch" {
-        It "returns true (redraw) for an empty choice" {
-            Invoke-DaafChoice "" | Should -BeTrue
+    Context "Invoke-DaafChoice dispatch (flag-based quit)" {
+        # The dispatcher signals quit by clearing the script-scoped
+        # $script:DaafMenuRunning flag, NOT via a captured return value. Routing
+        # quit through a return value consumed in the loop's conditional put the
+        # handler chain in a success-stream-capturing context, which stripped
+        # console handles from the interactive delegates and broke docker TTY
+        # allocation. These tests assert the NEW flag contract: non-quit choices
+        # leave the flag set (loop keeps running); quit clears it.
+
+        It "leaves the run flag set for an empty choice (redraw)" {
+            $script:DaafMenuRunning = $true
+            Invoke-DaafChoice ""
+            $script:DaafMenuRunning | Should -BeTrue
         }
 
-        It "returns true (redraw) for an invalid choice" {
-            $result = Invoke-DaafChoice "zzz" 6>$null
-            $result | Should -BeTrue
+        It "leaves the run flag set for an invalid choice (redraw)" {
+            $script:DaafMenuRunning = $true
+            Invoke-DaafChoice "zzz" 6>$null
+            $script:DaafMenuRunning | Should -BeTrue
         }
 
-        It "returns false (stop loop) for quit" {
-            $result = Invoke-DaafChoice "q" 6>$null
-            $result | Should -BeFalse
+        It "clears the run flag for quit" {
+            $script:DaafMenuRunning = $true
+            Invoke-DaafChoice "q" 6>$null
+            $script:DaafMenuRunning | Should -BeFalse
         }
 
-        It "returns false (stop loop) for uppercase quit" {
-            $result = Invoke-DaafChoice "Q" 6>$null
-            $result | Should -BeFalse
+        It "clears the run flag for uppercase quit" {
+            $script:DaafMenuRunning = $true
+            Invoke-DaafChoice "Q" 6>$null
+            $script:DaafMenuRunning | Should -BeFalse
+        }
+
+        It "does not emit a boolean control value on the success stream for quit" {
+            # Guard against a regression to return-value dispatch: capturing the
+            # dispatcher's success stream must yield no [bool] control token
+            # (any incidental handler output is fine, but not a bare $true/$false).
+            $script:DaafMenuRunning = $true
+            $captured = Invoke-DaafChoice "q" 6>$null
+            @($captured | Where-Object { $_ -is [bool] }).Count | Should -Be 0
         }
     }
 
@@ -279,6 +349,35 @@ Describe "daaf.ps1 behavioral tests" {
             $env:DAAF_DRY_RUN = "1"
             $env:DAAF_MOCK_PORTS = "2718:yes"
             Test-DaafPort 2720 | Should -BeFalse
+        }
+    }
+
+    Context "Get-DaafPortStatus dry-run mock (batched probe)" {
+        BeforeAll {
+            $script:OrigDryRun = $env:DAAF_DRY_RUN
+            $script:OrigMockPorts = $env:DAAF_MOCK_PORTS
+        }
+        AfterAll {
+            $env:DAAF_DRY_RUN = $script:OrigDryRun
+            $env:DAAF_MOCK_PORTS = $script:OrigMockPorts
+        }
+
+        It "reports per-port booleans from DAAF_MOCK_PORTS in one call" {
+            $env:DAAF_DRY_RUN = "1"
+            $env:DAAF_MOCK_PORTS = "2718:yes 2720:yes"
+            $status = Get-DaafPortStatus
+            $status["2718"] | Should -BeTrue
+            $status["2719"] | Should -BeFalse
+            $status["2720"] | Should -BeTrue
+        }
+
+        It "reports all ports false when DAAF_MOCK_PORTS is empty" {
+            $env:DAAF_DRY_RUN = "1"
+            $env:DAAF_MOCK_PORTS = ""
+            $status = Get-DaafPortStatus
+            $status["2718"] | Should -BeFalse
+            $status["2719"] | Should -BeFalse
+            $status["2720"] | Should -BeFalse
         }
     }
 
