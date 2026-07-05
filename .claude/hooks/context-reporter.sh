@@ -33,7 +33,9 @@
 #   Entries in subagent transcripts all carry isSidechain:true, so the
 #   sidechain filter (used to isolate the main chain in the parent transcript)
 #   is disabled when measuring a subagent's own transcript. Each subagent also
-#   gets its own rate-limit gate file (see "Rate limiting" above).
+#   gets its own rate-limit gate file (see "Rate limiting" above), and its
+#   utilization is computed against the window provisioned for ITS model, not
+#   the session's (see the per-subagent window correction below).
 #   Fail silent, never wrong: if the subagent's transcript cannot be located
 #   or yields no usage data, the hook emits nothing. It NEVER falls back to
 #   the parent transcript in the subagent branch — that would inject the
@@ -84,10 +86,10 @@ fi
 INJECT_INTERVAL=60  # seconds between injections
 
 # Read context window size from shared cache (written by context-bar.sh
-# statusline). Subagents inherit the parent's model/window, and subagent-fired
-# hook calls carry the PARENT's session_id, so the session-specific cache
-# applies to both. If it's absent, fall back to the most recent cache from any
-# session, then to 200k as a last resort.
+# statusline). Subagent-fired hook calls carry the PARENT's session_id, so
+# this resolves the SESSION's window; a subagent running on a different model
+# than the session is corrected below. If the cache is absent, fall back to
+# the most recent cache from any session, then to 200k as a last resort.
 CTX_CACHE="/tmp/claude-ctx-window-${SESSION_ID}"
 if [[ -f "$CTX_CACHE" ]]; then
     MAX_CONTEXT=$(cat "$CTX_CACHE" 2>/dev/null)
@@ -98,6 +100,47 @@ else
     fi
 fi
 MAX_CONTEXT=${MAX_CONTEXT:-200000}
+
+# Per-subagent window correction: a subagent on a DIFFERENT model than the
+# session gets the window Claude Code provisions for ITS model, not the
+# session's (e.g. a sonnet subagent inside a 1M fable session has 200k — its
+# severity must be computed against 200k, or HIGH/CRITICAL fire far too late).
+# The subagent's model is read once from its own transcript and cached in
+# /tmp/claude-subagent-model-<session>-<agent> (a model never changes
+# mid-task; subagent-bar.sh shares this cache). Window mapping: [1m]-suffixed
+# and natively-1M models (fable-5, mythos-5, opus-4-7, opus-4-8) → 1,000,000;
+# ALL others → 200,000. Mapping verified against installed CC 2.1.187 binary,
+# 2026-07-05; re-verify after Claude Code upgrades. Same-model subagents (and
+# alternative-provider sessions, where the model ids match the session cache)
+# keep the session window from above. Fail-open: any read failure leaves
+# MAX_CONTEXT untouched.
+if [[ -n "$AGENT_ID" ]]; then
+    SESSION_MODEL=$(cat "/tmp/claude-model-${SESSION_ID}" 2>/dev/null) || SESSION_MODEL=""
+    AGENT_MODEL_CACHE="/tmp/claude-subagent-model-${SESSION_ID}-${AGENT_ID}"
+    AGENT_MODEL=""
+    if [[ -f "$AGENT_MODEL_CACHE" ]]; then
+        AGENT_MODEL=$(cat "$AGENT_MODEL_CACHE" 2>/dev/null)
+    else
+        AGENT_MODEL=$(tail -50 "$MEASURE_TRANSCRIPT" 2>/dev/null | jq -rs '
+            [.[] | .message.model // empty] | last // empty
+        ' 2>/dev/null)
+        [[ -n "${AGENT_MODEL:-}" ]] && echo "$AGENT_MODEL" > "$AGENT_MODEL_CACHE" 2>/dev/null
+    fi
+    if [[ -n "${AGENT_MODEL:-}" && "$AGENT_MODEL" != "${SESSION_MODEL:-}" ]]; then
+        case "$AGENT_MODEL" in
+            *fable-5*|*mythos-5*|*opus-4-7*|*opus-4-8*|*\[1m\]*) MAX_CONTEXT=1000000 ;;
+            *) MAX_CONTEXT=200000 ;;
+        esac
+        # CLAUDE_CODE_MAX_CONTEXT_TOKENS overrides provisioning when set.
+        if [[ "${CLAUDE_CODE_MAX_CONTEXT_TOKENS:-}" =~ ^[0-9]+$ ]]; then
+            MAX_CONTEXT="$CLAUDE_CODE_MAX_CONTEXT_TOKENS"
+        fi
+    fi
+fi
+# Guard: must be a positive integer, else fall back to 200k.
+if ! [[ "$MAX_CONTEXT" =~ ^[0-9]+$ ]] || [[ "$MAX_CONTEXT" -le 0 ]]; then
+    MAX_CONTEXT=200000
+fi
 MAX_K=$((MAX_CONTEXT / 1000))
 
 # ---------------------------------------------------------------------------
