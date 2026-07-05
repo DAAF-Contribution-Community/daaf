@@ -1,6 +1,0 @@
-{
-  "model": {"id": "claude-opus-4-8", "display_name": "Opus 4.8"},
-  "cwd": "/daaf",
-  "session_id": "test-session-d",
-  "context_window": {"context_window_size": 200000}
-}

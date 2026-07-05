@@ -1,2 +1,0 @@
-{"type":"user","isSidechain":false,"message":{"role":"user","content":"analyze the school poverty data please"}}
-{"type":"assistant","isSidechain":false,"message":{"role":"assistant","model":"claude-opus-4-8","usage":{"input_tokens":5000,"cache_read_input_tokens":40000,"cache_creation_input_tokens":5000,"output_tokens":800}}}

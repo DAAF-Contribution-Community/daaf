@@ -1,8 +1,0 @@
-{
-  "tasks": [
-    {"id": "t1", "type": "search-agent", "name": "search-agent", "status": "running", "tokenCount": 30000, "cwd": "/daaf"},
-    {"id": "t2", "type": "research-executor", "name": "stage5-fetch", "status": "running", "tokenCount": 90000, "cwd": "/daaf"},
-    {"id": "t3", "type": "code-reviewer", "name": "code-reviewer", "status": "running", "tokenCount": 130000, "cwd": "/daaf"},
-    {"id": "t4", "type": "debugger", "name": "debugger", "status": "completed", "tokenCount": 160000, "cwd": "/daaf"}
-  ]
-}
