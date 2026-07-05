@@ -67,6 +67,11 @@ Import-DaafSettingsInline
 $projectName = "daaf"
 if ($env:DAAF_PROJECT_NAME) { $projectName = $env:DAAF_PROJECT_NAME }
 $VolumeName = "${projectName}_daaf-data"
+# Second volume: Claude Code state. Restored only when the selected backup
+# contains the dedicated subfolder (newer backups); older backups predating the
+# volume are restored data-only with a warning.
+$ClaudeVolumeName = "${projectName}_daaf-claude-config"
+$ClaudeSubDir = ".daaf-claude-config"
 
 # --- Dry-Run Support ---
 # When DAAF_DRY_RUN=1, simulate external commands (Docker) for CI
@@ -237,11 +242,20 @@ $SelectedPath = $Selected.FullName
 Write-Host ""
 Write-Host "Selected: $SelectedName"
 
+# --- Detect Claude Code state in the backup ---
+# Newer backups nest the Claude Code state volume in a hidden subfolder. Older
+# backups (created before the dedicated volume existed) lack it -- those restore
+# data-only with a warning.
+$ClaudeBackupPath = Join-Path $SelectedPath $ClaudeSubDir
+$HasClaudeBackup = Test-Path -LiteralPath $ClaudeBackupPath -PathType Container
+
 # --- Count source files ---
+# Exclude the Claude subfolder from the DATA-volume count -- it is restored to a
+# separate volume below, not into the data volume.
 Write-Host ""
 Write-Host "Scanning backup..."
-$TotalFiles = @(Get-ChildItem -Path $SelectedPath -Recurse -File -Force -ErrorAction SilentlyContinue).Count
-$TotalSizeBytes = (Get-ChildItem -Path $SelectedPath -Recurse -Force -ErrorAction SilentlyContinue | Measure-Object -Property Length -Sum).Sum
+$TotalFiles = @(Get-ChildItem -Path $SelectedPath -Recurse -File -Force -ErrorAction SilentlyContinue | Where-Object { $_.FullName -notlike "$ClaudeBackupPath*" }).Count
+$TotalSizeBytes = (Get-ChildItem -Path $SelectedPath -Recurse -Force -ErrorAction SilentlyContinue | Where-Object { $_.FullName -notlike "$ClaudeBackupPath*" } | Measure-Object -Property Length -Sum).Sum
 if ($null -eq $TotalSizeBytes) { $TotalSizeBytes = 0 }
 if ($TotalSizeBytes -ge 1073741824) {
     $TotalSizeStr = "{0:N1}G" -f ($TotalSizeBytes / 1073741824)
@@ -267,6 +281,12 @@ Write-Host "deleted and overwritten by the backup contents."
 Write-Host ""
 Write-Host "Source:      $SelectedName\ ($TotalFiles files, $TotalSizeStr)"
 Write-Host "Destination: Docker volume '$VolumeName'"
+if ($HasClaudeBackup) {
+    Write-Host ""
+    Write-Host "This backup also contains Claude Code state (credentials and session"
+    Write-Host "history), which will be restored to volume '$ClaudeVolumeName',"
+    Write-Host "overwriting any existing Claude Code login/history in this install."
+}
 Write-Host ""
 $Confirm = Read-Host "Type RESTORE to confirm, or anything else to cancel"
 
@@ -296,8 +316,10 @@ Write-Host "Copying backup into Docker volume..."
 Write-Host "  This may take a few minutes for large backups."
 Write-Host ""
 
+# Copy everything, then strip the Claude subfolder from the DATA volume -- it
+# belongs in the separate Claude volume (restored below), not the data volume.
 $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
-$null = docker run --rm -v "${SelectedPath}:/source:ro" -v "${VolumeName}:/dest" busybox sh -c "cp -a /source/. /dest/" 2>&1
+$null = docker run --rm -v "${SelectedPath}:/source:ro" -v "${VolumeName}:/dest" busybox sh -c "cp -a /source/. /dest/ && rm -rf `"/dest/${ClaudeSubDir}`"" 2>&1
 $ErrorActionPreference = $savedEAP
 if ($LASTEXITCODE -ne 0) {
     Write-Host "" -ForegroundColor Red
@@ -338,6 +360,43 @@ if ($TotalFiles -gt 0 -and $RestoredCount -gt 0) {
         Write-Host "         Backup: $TotalFiles files, Restored: $RestoredCount files (difference: $Diff)"
         Write-Host "         The restore may be incomplete."
     }
+}
+
+# --- Restore the Claude Code state volume ---
+# Only when the backup contains it. Older backups predating the volume are
+# restored data-only, with a clear warning (not an error) so the user knows
+# Claude Code login/history was not part of that backup.
+if ($HasClaudeBackup) {
+    Write-Host ""
+    Write-Host "Restoring Claude Code state (credentials, session history, plugins)..."
+    # Ensure the volume exists (idempotent) in case restore runs before first start.
+    $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
+    $null = docker volume create $ClaudeVolumeName 2>&1
+    # Clear then copy, mirroring the data-volume restore semantics.
+    $null = docker run --rm -v "${ClaudeVolumeName}:/dest" busybox sh -c 'rm -rf /dest/* /dest/.[!.]* /dest/..?*' 2>&1
+    $clearOk = ($LASTEXITCODE -eq 0)
+    if ($clearOk) {
+        $null = docker run --rm -v "${ClaudeBackupPath}:/source:ro" -v "${ClaudeVolumeName}:/dest" busybox sh -c "cp -a /source/. /dest/" 2>&1
+        $claudeCopyOk = ($LASTEXITCODE -eq 0)
+    } else {
+        $claudeCopyOk = $false
+    }
+    $ErrorActionPreference = $savedEAP
+    if (-not $clearOk) {
+        Write-Host "WARNING: Failed to clear the Claude Code state volume before restore." -ForegroundColor Yellow
+        Write-Host "         Data volume restore above succeeded; Claude state may be inconsistent."
+    } elseif (-not $claudeCopyOk) {
+        Write-Host "WARNING: Failed to restore the Claude Code state volume." -ForegroundColor Yellow
+        Write-Host "         Data volume restore above succeeded; you may need to re-run /login."
+    } else {
+        Write-Host "Claude Code state restored."
+    }
+} else {
+    Write-Host ""
+    Write-Host "NOTE: This backup does not contain Claude Code state (it predates the"
+    Write-Host "      dedicated Claude volume). Your data was restored, but Claude Code"
+    Write-Host "      login and session history were NOT part of this backup -- you may"
+    Write-Host "      need to run /login again after starting DAAF."
 }
 
 Write-Host ""

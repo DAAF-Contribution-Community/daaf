@@ -63,6 +63,11 @@ _daaf_load_settings
 # Project-prefixed volume name "<project>_daaf-data". Default unset =>
 # "daaf_daaf-data" (byte-for-byte identical to the previous hardcoded value).
 VOLUME_NAME="${DAAF_PROJECT_NAME:-daaf}_daaf-data"
+# Second volume: Claude Code state. Restored only when the selected backup
+# contains the dedicated subfolder (newer backups); older backups predating the
+# volume are restored data-only with a warning.
+CLAUDE_VOLUME_NAME="${DAAF_PROJECT_NAME:-daaf}_daaf-claude-config"
+CLAUDE_SUBDIR=".daaf-claude-config"
 
 # --- Dry-Run Support ---
 # When DAAF_DRY_RUN=1, simulate external commands (Docker) for CI
@@ -222,11 +227,32 @@ SELECTED_PATH="$(cd "${SELECTED}" && pwd)"
 echo ""
 echo "Selected: ${SELECTED_NAME}"
 
+# --- Detect Claude Code state in the backup ---
+# Newer backups nest the Claude Code state volume in a hidden subfolder. Older
+# backups (created before the dedicated volume existed) lack it -- those restore
+# data-only with a warning.
+CLAUDE_BACKUP_PATH="${SELECTED_PATH}/${CLAUDE_SUBDIR}"
+HAS_CLAUDE_BACKUP=0
+if [ -d "${CLAUDE_BACKUP_PATH}" ]; then
+    HAS_CLAUDE_BACKUP=1
+fi
+
 # --- Count source files ---
+# Exclude the Claude subfolder from the DATA-volume count -- it is restored to a
+# separate volume below, not into the data volume.
 echo ""
 echo "Scanning backup..."
-TOTAL_FILES=$(find "${SELECTED_PATH}" -type f | wc -l | tr -d '[:space:]')
-TOTAL_SIZE=$(du -sh "${SELECTED_PATH}" 2>/dev/null | awk '{print $1}')
+TOTAL_FILES=$(find "${SELECTED_PATH}" -type f -not -path "${CLAUDE_BACKUP_PATH}/*" | wc -l | tr -d '[:space:]')
+# Size must match the file count above: data-volume contents only, excluding the
+# Claude subfolder (which restores to its own volume). BSD du has no --exclude,
+# so subtract the subfolder's KB from the total and humanize with awk.
+TOTAL_KB=$(du -sk "${SELECTED_PATH}" 2>/dev/null | awk '{print $1}')
+TOTAL_KB=${TOTAL_KB:-0}
+if [ "${HAS_CLAUDE_BACKUP}" -eq 1 ]; then
+    CLAUDE_KB=$(du -sk "${CLAUDE_BACKUP_PATH}" 2>/dev/null | awk '{print $1}')
+    TOTAL_KB=$(( TOTAL_KB - ${CLAUDE_KB:-0} ))
+fi
+TOTAL_SIZE=$(awk -v kb="${TOTAL_KB}" 'BEGIN { if (kb >= 1048576) printf "%.1fG", kb/1048576; else if (kb >= 1024) printf "%.1fM", kb/1024; else printf "%dK", kb }')
 echo "Found ${TOTAL_FILES} files (${TOTAL_SIZE}) to restore."
 
 # --- Destructive warning ---
@@ -244,6 +270,12 @@ echo "deleted and overwritten by the backup contents."
 echo ""
 echo "Source:      ${SELECTED_NAME}/ (${TOTAL_FILES} files, ${TOTAL_SIZE})"
 echo "Destination: Docker volume '${VOLUME_NAME}'"
+if [ "${HAS_CLAUDE_BACKUP}" -eq 1 ]; then
+    echo ""
+    echo "This backup also contains Claude Code state (credentials and session"
+    echo "history), which will be restored to volume '${CLAUDE_VOLUME_NAME}',"
+    echo "overwriting any existing Claude Code login/history in this install."
+fi
 echo ""
 read -r -p "Type RESTORE to confirm, or anything else to cancel: " CONFIRM
 
@@ -270,10 +302,12 @@ echo "Copying backup into Docker volume..."
 echo "  This may take a few minutes for large backups."
 echo ""
 
+# Copy everything, then strip the Claude subfolder from the DATA volume -- it
+# belongs in the separate Claude volume (restored below), not the data volume.
 if ! docker run --rm \
     -v "${SELECTED_PATH}:/source:ro" \
     -v "${VOLUME_NAME}:/dest" \
-    busybox sh -c "cp -a /source/. /dest/"; then
+    busybox sh -c "cp -a /source/. /dest/ && rm -rf \"/dest/${CLAUDE_SUBDIR}\""; then
     echo "" >&2
     echo "ERROR: File copy failed." >&2
     echo "The Docker volume may be in an inconsistent state." >&2
@@ -308,6 +342,38 @@ if [ "${TOTAL_FILES}" -gt 0 ] && [ "${RESTORED_COUNT}" -gt 0 ]; then
         echo "         Backup: ${TOTAL_FILES} files, Restored: ${RESTORED_COUNT} files (difference: ${DIFF})" >&2
         echo "         The restore may be incomplete." >&2
     fi
+fi
+
+# --- Restore the Claude Code state volume ---
+# Only when the backup contains it. Older backups predating the volume are
+# restored data-only, with a clear warning (not an error) so the user knows
+# Claude Code login/history was not part of that backup.
+if [ "${HAS_CLAUDE_BACKUP}" -eq 1 ]; then
+    echo ""
+    echo "Restoring Claude Code state (credentials, session history, plugins)..."
+    # Ensure the volume exists (a fresh install created by `docker compose up`
+    # will have it; create it explicitly here in case restore runs before first
+    # start). `docker volume create` is idempotent.
+    docker volume create "${CLAUDE_VOLUME_NAME}" > /dev/null 2>&1 || true
+    # Clear then copy, mirroring the data-volume restore semantics.
+    if ! docker run --rm -v "${CLAUDE_VOLUME_NAME}:/dest" busybox sh -c 'rm -rf /dest/* /dest/.[!.]* /dest/..?*'; then
+        echo "WARNING: Failed to clear the Claude Code state volume before restore." >&2
+        echo "         Data volume restore above succeeded; Claude state may be inconsistent." >&2
+    elif ! docker run --rm \
+        -v "${CLAUDE_BACKUP_PATH}:/source:ro" \
+        -v "${CLAUDE_VOLUME_NAME}:/dest" \
+        busybox sh -c "cp -a /source/. /dest/"; then
+        echo "WARNING: Failed to restore the Claude Code state volume." >&2
+        echo "         Data volume restore above succeeded; you may need to re-run /login." >&2
+    else
+        echo "Claude Code state restored."
+    fi
+else
+    echo ""
+    echo "NOTE: This backup does not contain Claude Code state (it predates the"
+    echo "      dedicated Claude volume). Your data was restored, but Claude Code"
+    echo "      login and session history were NOT part of this backup -- you may"
+    echo "      need to run /login again after starting DAAF."
 fi
 
 echo ""

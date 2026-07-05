@@ -103,6 +103,13 @@ if ($env:DAAF_TEST_MODE -eq "1") {
 $projectName = "daaf"
 if ($env:DAAF_PROJECT_NAME) { $projectName = $env:DAAF_PROJECT_NAME }
 $VolumeName = "${projectName}_daaf-data"
+# Second volume: Claude Code state (auth/credentials, session history and
+# transcripts, plugins, ~/.claude.json). Backed up into a dedicated hidden
+# subfolder of the backup so it does not contaminate the data-volume file counts
+# (which scan the backup root). May not exist on very old installs that predate
+# the volume -- handled gracefully below.
+$ClaudeVolumeName = "${projectName}_daaf-claude-config"
+$ClaudeSubDir = ".daaf-claude-config"
 $Today = Get-Date -Format "yyyy-MM-dd"
 
 Write-Host ""
@@ -267,6 +274,39 @@ if ($SourceSizeKB -gt 0 -and $BackupSizeKB -gt 0) {
     }
 }
 
+# --- Back up the Claude Code state volume ---
+# Copy the second volume into a dedicated hidden subfolder. This runs AFTER the
+# data-volume verification above so the earlier file counts are unaffected by
+# these files. If the volume does not exist (older install predating it), skip
+# with a note rather than failing -- the data backup is still valid on its own.
+$ClaudeBackedUp = $false
+$savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
+$null = docker volume inspect $ClaudeVolumeName 2>&1
+$claudeVolumeExists = ($LASTEXITCODE -eq 0)
+$ErrorActionPreference = $savedEAP
+if ($claudeVolumeExists) {
+    Write-Host ""
+    Write-Host "Backing up Claude Code state (credentials, session history, plugins)..."
+    $ClaudeDestPath = Join-Path $HostPath $ClaudeSubDir
+    New-Item -ItemType Directory -Path $ClaudeDestPath -Force | Out-Null
+    $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
+    $null = docker run --rm -v "${ClaudeVolumeName}:/source:ro" -v "${ClaudeDestPath}:/dest" busybox sh -c "cp -a /source/. /dest/" 2>&1
+    $claudeCopyOk = ($LASTEXITCODE -eq 0)
+    $ErrorActionPreference = $savedEAP
+    if ($claudeCopyOk) {
+        $ClaudeFileCount = @(Get-ChildItem -Path $ClaudeDestPath -Recurse -File -Force -ErrorAction SilentlyContinue).Count
+        Write-Host "Claude Code state backed up ($ClaudeFileCount files)."
+        $ClaudeBackedUp = $true
+    } else {
+        Write-Host "WARNING: Failed to back up the Claude Code state volume." -ForegroundColor Yellow
+        Write-Host "         The data volume backup above is still valid."
+    }
+} else {
+    Write-Host ""
+    Write-Host "NOTE: No Claude Code state volume ('$ClaudeVolumeName') found."
+    Write-Host "      Skipping -- this install may predate the dedicated Claude volume."
+}
+
 Write-Host ""
 Write-Host "=========================================="
 Write-Host "  Backup complete!"
@@ -274,6 +314,12 @@ Write-Host "=========================================="
 Write-Host ""
 Write-Host "Location: $HostPath\"
 Write-Host "Files:    $FileCount files copied"
+if ($ClaudeBackedUp) {
+    Write-Host ""
+    Write-Host "IMPORTANT: This backup INCLUDES your Claude Code credentials and session" -ForegroundColor Yellow
+    Write-Host "history (in $ClaudeSubDir\). Treat the backup folder as sensitive --"
+    Write-Host "store it somewhere private and do not share it."
+}
 Write-Host ""
 Write-Host "To restore from this backup, run the restore script from this folder:"
 Write-Host ""

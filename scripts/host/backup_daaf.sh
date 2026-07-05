@@ -65,6 +65,13 @@ _daaf_load_settings
 # with DAAF_PROJECT_NAME=daaf2 owns the volume "daaf2_daaf-data". Default unset =>
 # "daaf_daaf-data" (byte-for-byte identical to the previous hardcoded value).
 VOLUME_NAME="${DAAF_PROJECT_NAME:-daaf}_daaf-data"
+# Second volume: Claude Code state (auth/credentials, session history and
+# transcripts, plugins, ~/.claude.json). Backed up into a dedicated hidden
+# subfolder of the backup so it does not contaminate the data-volume file
+# counts (which scan the backup root). May not exist on very old installs that
+# predate the volume -- handled gracefully below.
+CLAUDE_VOLUME_NAME="${DAAF_PROJECT_NAME:-daaf}_daaf-claude-config"
+CLAUDE_SUBDIR=".daaf-claude-config"
 TODAY=$(date +%Y-%m-%d)
 
 # --- Dry-Run Support ---
@@ -247,6 +254,34 @@ if [ "${SOURCE_SIZE_KB}" -gt 0 ] && [ "${BACKUP_SIZE_KB}" -gt 0 ]; then
     fi
 fi
 
+# --- Back up the Claude Code state volume ---
+# Copy the second volume into a dedicated hidden subfolder. This runs AFTER the
+# data-volume verification above so the earlier `find "${BACKUP_NAME}"` counts
+# are unaffected by these files. If the volume does not exist (older install
+# predating it), skip with a note rather than failing -- the data backup is still
+# valid on its own.
+CLAUDE_BACKED_UP=0
+if docker volume inspect "${CLAUDE_VOLUME_NAME}" &> /dev/null; then
+    echo ""
+    echo "Backing up Claude Code state (credentials, session history, plugins)..."
+    mkdir -p "${BACKUP_NAME}/${CLAUDE_SUBDIR}"
+    if docker run --rm \
+        -v "${CLAUDE_VOLUME_NAME}:/source:ro" \
+        -v "$(pwd)/${BACKUP_NAME}/${CLAUDE_SUBDIR}:/dest" \
+        busybox sh -c "cp -a /source/. /dest/"; then
+        CLAUDE_FILE_COUNT=$(find "${BACKUP_NAME}/${CLAUDE_SUBDIR}" -type f 2>/dev/null | wc -l | tr -d '[:space:]') || CLAUDE_FILE_COUNT=0
+        echo "Claude Code state backed up (${CLAUDE_FILE_COUNT} files)."
+        CLAUDE_BACKED_UP=1
+    else
+        echo "WARNING: Failed to back up the Claude Code state volume." >&2
+        echo "         The data volume backup above is still valid." >&2
+    fi
+else
+    echo ""
+    echo "NOTE: No Claude Code state volume ('${CLAUDE_VOLUME_NAME}') found."
+    echo "      Skipping -- this install may predate the dedicated Claude volume."
+fi
+
 echo ""
 echo "=========================================="
 echo "  Backup complete!"
@@ -254,6 +289,12 @@ echo "=========================================="
 echo ""
 echo "Location: $(pwd)/${BACKUP_NAME}/"
 echo "Files:    ${FILE_COUNT} files copied"
+if [ "${CLAUDE_BACKED_UP}" -eq 1 ]; then
+    echo ""
+    echo "IMPORTANT: This backup INCLUDES your Claude Code credentials and session"
+    echo "history (in ${CLAUDE_SUBDIR}/). Treat the backup folder as sensitive --"
+    echo "store it somewhere private and do not share it."
+fi
 echo ""
 echo "To restore from this backup, run the restore script from this folder:"
 echo ""
