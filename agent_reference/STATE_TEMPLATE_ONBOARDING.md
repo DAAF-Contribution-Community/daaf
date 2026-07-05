@@ -34,7 +34,8 @@ Copy this template to `STATE.md` in the project folder when starting a Data Onbo
 | Field | Value |
 |-------|-------|
 | **DAAF Version** | [Short git commit hash — from `git rev-parse --short HEAD` at project setup] |
-| **Model ID** | [Model identifier actually in use at session start — record the runtime value, not this example (e.g., "claude-opus-4-8[1m]")] |
+| **Session Model ID** | [Model identifier driving the orchestrator/main session at session start — record the runtime value, not this example (e.g., "claude-opus-4-8[1m]")] |
+| **Subagent Model Tiers** | [Distinct specialist model IDs by tier, from agent frontmatter defaults (`model: opus` / `model: sonnet`) plus any per-dispatch overrides the orchestrator applied. Record resolved IDs where known, or the tier alias + session date otherwise — e.g., "opus tier: claude-opus-4-8[1m]; sonnet tier: claude-sonnet-4-5". See `.claude/skills/daaf-orchestrator/SKILL.md` > "Model Selection for Subagent Dispatch" and AI_DISCLOSURE_REFERENCE.md > Multi-Model Sessions.] |
 | **Session Date(s)** | [Date(s) of profiling sessions — e.g., "2026-03-23"] |
 | **Session Transcript(s)** | `logs/` — collected at project completion via `collect_session_logs.sh` |
 

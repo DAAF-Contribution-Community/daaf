@@ -71,7 +71,8 @@ Secondary distinction from **data-verifier**: the report-writer creates the repo
 - [ ] Project path (absolute)
 - [ ] Report filename (full name following naming convention)
 - [ ] DAAF commit hash (short hash from `git rev-parse --short HEAD`)
-- [ ] Model ID (the model identifier in use for the session — e.g., "claude-opus-4-8[1m]")
+- [ ] Session Model ID (the model identifier in use for the session — e.g., "claude-opus-4-8[1m]"; populates the "Model (session)" row in the AI Use Disclosure)
+- [ ] Subagent Model Tiers (specialist model IDs by tier, from STATE.md Session Metadata — populates the "Specialist models" row in the AI Use Disclosure)
 
 </upstream_input>
 
@@ -224,7 +225,7 @@ Read `agent_reference/AI_DISCLOSURE_REFERENCE.md` for the GUIDE-LLM mapping and 
 
 1. **`[AUTO]` fields** — populate from available artifacts:
    - Purpose and human oversight model from Plan.md methodology
-   - Model ID, date of use, and DAAF version from orchestrator-provided metadata
+   - Session model ID, specialist model IDs (per subagent tier), date of use, and DAAF version from orchestrator-provided metadata
    - Checkpoint statuses from STATE.md
    - Script and notebook paths from project structure
    - Session transcript archive note (flag for researcher: *"Your full session transcript has been archived and can be included as supplementary material"*)

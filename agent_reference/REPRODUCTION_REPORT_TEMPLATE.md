@@ -222,7 +222,8 @@ Copy this template to `Reproduction_Report.md` in the reproduction project folde
 | Field | Value |
 |-------|-------|
 | **DAAF Version** | [git commit hash] |
-| **Model ID** | [model identifier in use at reproduction start — record the runtime value, e.g., claude-opus-4-8[1m]] |
+| **Session Model ID** | [Model driving the orchestrator/main session at reproduction start — record the runtime value, e.g., claude-opus-4-8[1m]] |
+| **Subagent Model Tiers** | [Distinct specialist model IDs by tier used during reproduction (re-execution, debugging, verification) — from agent frontmatter defaults plus any per-dispatch overrides. Record resolved IDs where known, or the tier alias + session date otherwise — e.g., "opus tier: claude-opus-4-8[1m]; sonnet tier: claude-sonnet-4-5". Record BOTH session and subagent models of the reproduction run; the original run's models are separately captured from its Report's AI Disclosure.] |
 | **Reproduction Date** | [YYYY-MM-DD] |
 | **Original Analysis Date** | [YYYY-MM-DD] |
 | **Python Version** | [e.g., 3.12] |

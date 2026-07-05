@@ -191,7 +191,7 @@ These are two different Claude Code features that happen to share a name.
 
 `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1` (set in DAAF's `settings.json`) disables background *shell commands* — the option to run terminal commands in the background, automatic backgrounding of long-running commands, and the Ctrl+B shortcut. DAAF keeps this disabled deliberately: every analysis script must run to completion in the foreground so its full output is captured into the script's embedded audit log. A backgrounded script would decouple execution from capture and break the audit trail.
 
-Separately, Claude Code runs *subagents* (the specialists DAAF dispatches for research, coding, and review work) in the background by default and notifies the session when each finishes. That's a harness scheduling feature the environment variable does not control — and it's fine: DAAF's workflows wait for all dispatched specialists to report back before making decisions.
+Separately, Claude Code runs *subagents* (the specialists DAAF dispatches for research, coding, and review work) in the background and notifies the session when each finishes. The official documentation says this setting disables background execution for subagent dispatches too, but on DAAF's pinned Claude Code version the observed behavior is that specialist dispatches still run in the background with the setting active. Either behavior is fine for DAAF: its workflows wait for all dispatched specialists to report back before making decisions, and the audit-trail concern applies to analysis scripts (which the setting reliably keeps in the foreground), not to specialist scheduling. If a future version update makes specialists run in the foreground instead, nothing in DAAF's workflows breaks — turns just complete sequentially.
 
 (Related trivia: `DISABLE_AUTOUPDATER` in the same settings block is technically redundant — `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC` subsumes it — but it's kept as an explicit standalone pin so the version-pinned container can never auto-update, even if the umbrella setting is temporarily lifted for diagnostics.)
 
@@ -672,7 +672,7 @@ Claude Code ships a built-in diagnostic for exactly this question: **safe mode**
 claude --safe-mode
 ```
 
-(or set `CLAUDE_CODE_SAFE_MODE=1` in the environment). Safe mode starts Claude Code with **all customizations disabled** — no CLAUDE.md instructions, no skills, no hooks, no MCP servers. That gives you a clean baseline:
+(or set `CLAUDE_CODE_SAFE_MODE=1` in the environment). Safe mode starts Claude Code with **all customizations disabled** — no CLAUDE.md instructions, no skills, no hooks, no MCP servers. (The one exception: settings deployed by an organization's admin policy stay active — not applicable to a standard DAAF install.) That gives you a clean baseline:
 
 - If the problem **persists** in safe mode, it's a Claude Code or environment issue — check the [Claude Code documentation](https://code.claude.com/docs) or run `/doctor`
 - If the problem **disappears** in safe mode, one of DAAF's customizations is involved — a good next step is filing an issue with the details

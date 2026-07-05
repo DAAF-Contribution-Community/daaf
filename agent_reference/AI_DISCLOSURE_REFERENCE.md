@@ -22,7 +22,7 @@ The table below maps each GUIDE-LLM core item to its DAAF artifact source and in
 |---|---|---|---|
 | **A.1** | Purpose of LLM use | Plan.md (research question + methodology) | `[AUTO]` — report-writer derives from Plan.md |
 | **A.2** | Human-in-the-loop vs. fully automated | DAAF architecture (checkpoint gates) | `[AUTO]` — always "Human-in-the-loop" for Full Pipeline |
-| **B.1** | Model name, provider, version, date of access | Session metadata + CLAUDE.md | `[AUTO]` — orchestrator provides model ID and session date(s) |
+| **B.1** | Model name, provider, version, date of access | Session metadata + CLAUDE.md | `[AUTO]` — orchestrator provides session model ID, specialist (subagent) model IDs, and session date(s); see "Multi-Model Sessions" below |
 | **B.2** | Access method (API/web/local) | DAAF architecture | `[AUTO]` — always "Claude Code CLI (local execution via API)" |
 | **B.3** | Parameters (temperature, max tokens, seed) | DAAF architecture | `[AUTO]` — "Default API parameters; no user-configured overrides" |
 | **B.4** | Fine-tuning or customization | DAAF framework files | `[AUTO]` — reference to DAAF skills, agents, and system instructions |
@@ -58,8 +58,15 @@ Every disclosure should include version and temporal metadata to support reprodu
 |---|---|---|
 | **Date of analysis** | Session date(s) from STATE.md or orchestrator | Report-writer uses the date prefix (e.g., "2026-02-11") provided by orchestrator |
 | **DAAF version** | Git commit hash of the DAAF repository at time of analysis | Orchestrator captures via `git rev-parse --short HEAD` at project setup and provides to report-writer |
-| **Model ID** | Claude model identifier | From session metadata — record the model ID actually in use at session start, not a hardcoded example (e.g., "claude-opus-4-8[1m]") |
+| **Session model ID** | Model driving the orchestrator/main session | From session metadata — record the model ID actually in use at session start, not a hardcoded example (e.g., "claude-opus-4-8[1m]") |
+| **Specialist model IDs** | Models driving subagent (specialist) dispatches | From STATE.md Session Metadata (Subagent Model Tiers). Record the distinct opus-tier and sonnet-tier model IDs actually used — see "Multi-Model Sessions" below |
 | **Session transcript** | Archived session log | Project-local copies in `logs/` (collected at completion via `collect_session_logs.sh`); global archives in `.claude/logs/sessions/`. Flag for researcher: *"Your full session transcripts have been collected into your project folder and can be included as supplementary material per GUIDE-LLM optional item on conversation transcripts"* |
+
+### Multi-Model Sessions
+
+DAAF dispatches subagents under a two-tier model-routing convention (documented in `.claude/skills/daaf-orchestrator/SKILL.md` > "Model Selection for Subagent Dispatch"). A single analysis session can therefore involve up to three distinct models: the **session model** (orchestrator), an **opus-tier specialist model**, and a **sonnet-tier specialist model**. Disclosures should list all distinct models actually used — the session model plus each specialist tier that was dispatched — not a single "Model ID".
+
+Record **resolved** model IDs (e.g., `claude-opus-4-8[1m]`) when known. The `opus`/`sonnet` values in agent frontmatter are aliases that resolve per provider and drift over time, so when a resolved ID is unavailable, record the alias plus the session date so the resolution can be reconstructed. Note the alt-provider case: users may remap these aliases via `ANTHROPIC_DEFAULT_OPUS_MODEL` / `ANTHROPIC_DEFAULT_SONNET_MODEL` env vars, in which case specialist models may not be Claude models at all and should be disclosed as whatever provider/model actually served the tier.
 
 **Note on session transcripts:** DAAF automatically archives full session transcripts via the `archive-session.sh` hook. These transcripts are a powerful differentiator — most AI-assisted research cannot point to a complete record of the human-AI interaction. Researchers are encouraged to include these as supplementary material when submitting to journals, as they provide unparalleled transparency into the AI-assisted research process.
 
@@ -86,14 +93,14 @@ Different engagement modes involve different levels of AI assistance. The disclo
 **Depth:** Light. AI conducted read-only data exploration; no code was executed, no data was downloaded.
 
 **Template:**
-> This exploratory assessment was conducted using DAAF (Data Analyst Augmentation Framework) with [model ID] via Claude Code CLI on [date]. DAAF version: [commit hash]. The AI was used solely for read-only data landscape exploration — identifying available data sources, variables, and feasibility considerations. No analytical code was executed and no data was downloaded. The researcher reviewed and directed the exploration throughout. For the full GUIDE-LLM checklist, see the AI_DISCLOSURE_REFERENCE.md in the DAAF repository.
+> This exploratory assessment was conducted using DAAF (Data Analyst Augmentation Framework) with [session model ID; and any specialist model IDs if subagents were dispatched] via Claude Code CLI on [date]. DAAF version: [commit hash]. The AI was used solely for read-only data landscape exploration — identifying available data sources, variables, and feasibility considerations. No analytical code was executed and no data was downloaded. The researcher reviewed and directed the exploration throughout. For the full GUIDE-LLM checklist, see the AI_DISCLOSURE_REFERENCE.md in the DAAF repository.
 
 ### Data Lookup Mode
 
 **Depth:** Minimal. AI answered a specific factual question from structured documentation.
 
 **Template:**
-> AI assistance (DAAF with [model ID], [date]) was used to look up [specific information] from [data source documentation]. The answer was verified against [source]. DAAF version: [commit hash].
+> AI assistance (DAAF with [session model ID], [date]) was used to look up [specific information] from [data source documentation]. The answer was verified against [source]. DAAF version: [commit hash].
 
 ### Revision and Extension Mode
 
@@ -107,7 +114,7 @@ Different engagement modes involve different levels of AI assistance. The disclo
 **Depth:** Moderate. AI profiled dataset structure and generated a reusable data source skill.
 
 **Template:**
-> Dataset profiling was conducted using DAAF (Data Analyst Augmentation Framework) with [model ID] via Claude Code CLI on [date]. DAAF version: [commit hash]. The AI executed structured profiling scripts across four phases (structural, statistical, relational, interpretation) to characterize the dataset. All profiling scripts underwent automated QA review. The researcher reviewed profiling findings at two checkpoints before the data source skill was finalized. All profiling scripts and execution logs are archived in the project's `scripts/` directory.
+> Dataset profiling was conducted using DAAF (Data Analyst Augmentation Framework) with [session model ID, plus specialist model IDs for dispatched subagents — see STATE.md Session Metadata] via Claude Code CLI on [date]. DAAF version: [commit hash]. The AI executed structured profiling scripts across four phases (structural, statistical, relational, interpretation) to characterize the dataset. All profiling scripts underwent automated QA review. The researcher reviewed profiling findings at two checkpoints before the data source skill was finalized. All profiling scripts and execution logs are archived in the project's `scripts/` directory.
 
 ### Reproducibility Verification Mode
 
@@ -129,7 +136,7 @@ Different engagement modes involve different levels of AI assistance. The disclo
 **Guidance:** User Support conversations typically require no AI disclosure because they produce no publishable or shareable research output. If a User Support session leads to mode escalation (e.g., the user decides to start a Full Pipeline analysis), the escalated mode's disclosure guidance applies to the work produced in that mode — the preceding User Support conversation is not separately disclosable.
 
 **Exception:** If a researcher cites specific guidance received during a User Support session in a methods section (e.g., "DAAF's orchestrator recommended using Data Onboarding mode before analysis"), a brief acknowledgment is sufficient:
-> Methodological guidance was obtained through DAAF's User Support mode ([model ID], [date]). DAAF version: [commit hash].
+> Methodological guidance was obtained through DAAF's User Support mode ([session model ID], [date]). DAAF version: [commit hash].
 
 ---
 
@@ -142,7 +149,7 @@ Different engagement modes involve different levels of AI assistance. The disclo
 - **Light consultation** (methodological question, interpretation advice): Use the Data Lookup template adapted for the consultation context.
 - **Substantive consultation** (code generation, analytical approach design, data interpretation): Use a template similar to:
 
-> AI assistance (DAAF with [model ID], [date], version [commit hash]) was used for [specific consultation purpose — e.g., "designing the regression specification" or "reviewing data cleaning logic"]. The researcher independently verified [what was verified] and takes responsibility for all final analytical decisions.
+> AI assistance (DAAF with [session model ID; and any specialist model IDs if subagents were dispatched], [date], version [commit hash]) was used for [specific consultation purpose — e.g., "designing the regression specification" or "reviewing data cleaning logic"]. The researcher independently verified [what was verified] and takes responsibility for all final analytical decisions.
 
 ### Framework Development Mode
 
@@ -164,13 +171,13 @@ For researchers writing up DAAF-assisted work for publication, the following boi
 
 ### Short Version (for methods sections with space constraints)
 
-> Data analysis was conducted using the Data Analyst Augmentation Framework (DAAF; Kim, 2026), an open-source AI-assisted research orchestration system built on Claude Code (Anthropic, [model ID]). DAAF enforces human-in-the-loop oversight through structured checkpoints, automated code review, and full audit trail preservation. All analysis code, data files, and AI interaction transcripts are archived for reproducibility. A completed GUIDE-LLM checklist (Feuerriegel et al., 2026) is included as supplementary material.
+> Data analysis was conducted using the Data Analyst Augmentation Framework (DAAF; Kim, 2026), an open-source AI-assisted research orchestration system built on Claude Code (Anthropic, [session model ID; list specialist model IDs too if subagents were dispatched]). DAAF enforces human-in-the-loop oversight through structured checkpoints, automated code review, and full audit trail preservation. All analysis code, data files, and AI interaction transcripts are archived for reproducibility. A completed GUIDE-LLM checklist (Feuerriegel et al., 2026) is included as supplementary material.
 
 ### Long Version (for detailed methods sections or supplementary materials)
 
 > Data analysis was conducted using the Data Analyst Augmentation Framework (DAAF; Kim, 2026), an open-source AI-assisted research orchestration system built on Claude Code (Anthropic). DAAF structures the analysis pipeline into discrete phases — discovery, planning, data acquisition, analysis, and synthesis — with mandatory human review checkpoints between each phase. The AI generated all analysis code, which was then reviewed by a separate AI instance acting as an automated quality reviewer before the researcher's own review. The researcher reviewed and approved the analytical methodology before any code was executed, verified data quality after acquisition, and validated all results before report generation.
 >
-> The specific model used was [model ID], accessed via the Claude Code CLI with default API parameters on [date(s)]. DAAF version [commit hash] was used. No personally identifiable information was submitted to the AI model. The complete set of analysis scripts with execution logs, intermediate data files, a consolidated analytic notebook, and the full AI session transcript are available as supplementary materials. All AI prompts and system instructions are version-controlled in the DAAF repository. A completed GUIDE-LLM reporting checklist (Feuerriegel et al., 2026) is included as Supplementary Material [X].
+> The models used were [session model ID for the orchestrator, plus the specialist model IDs for each subagent tier dispatched — e.g., "claude-opus-4-8[1m] for the orchestrator and opus-tier specialists, claude-sonnet-4-5 for sonnet-tier specialists"; see the DAAF two-tier routing convention], accessed via the Claude Code CLI with default API parameters on [date(s)]. DAAF version [commit hash] was used. No personally identifiable information was submitted to the AI model. The complete set of analysis scripts with execution logs, intermediate data files, a consolidated analytic notebook, and the full AI session transcript are available as supplementary materials. All AI prompts and system instructions are version-controlled in the DAAF repository. A completed GUIDE-LLM reporting checklist (Feuerriegel et al., 2026) is included as Supplementary Material [X].
 
 ---
 
