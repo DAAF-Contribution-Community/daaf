@@ -67,10 +67,3 @@ environment_settings*.txt
 
 # Generated log viewer artifacts (regenerated on demand)
 **/logs/session_manifest.json
-
-# Research projects stay local-only (session workspaces, benchmark leakage,
-# framework-dev scratch). Only the college selectivity sample analysis and its
-# reproduction are tracked, as the repo's worked examples.
-research/*
-!research/2026-03-29_College_Graduation_Rate_Selectivity_Analysis/
-!research/2026-03-30_College_Graduation_Rate_Selectivity_Analysis_Reproduction/
