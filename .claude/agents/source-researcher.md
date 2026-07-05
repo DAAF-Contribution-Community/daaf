@@ -8,6 +8,7 @@ description: >
 tools: [Read, Bash, Glob, Grep, Skill]
 skills: data-scientist
 permissionMode: plan
+model: sonnet   # Well-specified tier: skill-guided structured source lookup (override per-dispatch allowed)
 ---
 
 # Source Researcher Agent

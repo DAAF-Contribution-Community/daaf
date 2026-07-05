@@ -7,7 +7,7 @@ description: >
   needed during any mode or pipeline stage.
 tools: [Read, Bash, Glob, Grep, Skill, WebSearch, WebFetch]
 permissionMode: plan
-model: inherit
+model: sonnet   # Well-specified tier: broad read-only exploration (override per-dispatch allowed)
 ---
 
 # Search Agent

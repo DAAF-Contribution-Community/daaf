@@ -56,6 +56,7 @@ Before beginning, you MUST have a clear, coherent, and compelling answer to each
    - `Plan` — read-only validation, discovery, or verification
 5. **Determine skill dependencies** — will this agent need to invoke any skills?
 6. **Determine hook requirements** — will this agent need per-agent hooks? (see "Per-Agent Hooks" below)
+7. **Determine model tier** — which model tier should this agent default to? `opus` for high-judgment, adversarial, or synthesis roles; `sonnet` for well-specified, mechanical, or skill-guided roles. Haiku is excluded by DAAF policy. See `.claude/skills/daaf-orchestrator/SKILL.md` > "Model Selection for Subagent Dispatch" for the routing rationale and the current per-agent tier table.
 
 If any of these answers are vague, in doubt, or incomplete, the quality and reliability of the ensuing agent file will suffer. If the agent authoring process has been initiated by the user, make sure to ask these questions directly, and ask follow-up questions to enhance the quality of their responses as you go. Before proceeding to Phase 2, make sure the user agrees with your enhanced answers explicitly.
 
@@ -79,11 +80,12 @@ If any of these answers are vague, in doubt, or incomplete, the quality and reli
    - [ ] Total length 400-700 lines (flag if approaching 800+)
    - [ ] Large inline code blocks minimized (extract to `agent_reference/` only if shared across agents)
    - [ ] Per-agent hooks registered in frontmatter if agent executes Python (see "Per-Agent Hooks" below)
+   - [ ] `model:` field present with a justified tier (`opus` or `sonnet` per DAAF policy; see design question 7)
 
 ### Phase 3: Integrate (wire into the ecosystem)
 
 1. Read `agent_reference/FRAMEWORK_INTEGRATION_CHECKLIST.md` § 2 for the canonical checklist of registration points
-2. Execute all [M] (mandatory) items — A1-A5, A14
+2. Execute all [M] (mandatory) items — A1, A1b, A2-A5, A14
 3. Review and execute applicable [C] (conditional) items — A6-A13, A15-A16
 4. Run cross-cutting consistency checks (§ 7) — count words, cross-references, naming
 5. For supplementary walkthrough detail, also consult `references/integration-checklist.md`

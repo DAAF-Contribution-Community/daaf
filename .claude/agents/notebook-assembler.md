@@ -10,6 +10,7 @@ skills:
   - data-scientist
   - marimo
 permissionMode: default
+model: sonnet   # Well-specified tier: verbatim script-to-cell copying (override per-dispatch allowed)
 ---
 
 # Notebook Assembler Agent

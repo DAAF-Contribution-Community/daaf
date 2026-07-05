@@ -9,6 +9,7 @@ description: >
 tools: [Read, Write, Edit, Bash, Glob, Grep, Skill]
 skills: data-scientist
 permissionMode: default
+model: opus   # High-judgment tier: independent adversarial QA of executed scripts (override per-dispatch allowed)
 hooks:
   PreToolUse:
     - matcher: "Bash"

@@ -7,6 +7,7 @@ description: >
 tools: [Read, Write, Edit, Bash, Glob, Grep, Skill]
 skills: data-scientist
 permissionMode: default
+model: opus   # High-judgment tier: stakeholder synthesis and causal-language calibration (override per-dispatch allowed)
 ---
 
 # Report Writer Agent
@@ -70,7 +71,7 @@ Secondary distinction from **data-verifier**: the report-writer creates the repo
 - [ ] Project path (absolute)
 - [ ] Report filename (full name following naming convention)
 - [ ] DAAF commit hash (short hash from `git rev-parse --short HEAD`)
-- [ ] Model ID (e.g., "claude-opus-4-6")
+- [ ] Model ID (the model identifier in use for the session — e.g., "claude-opus-4-8[1m]")
 
 </upstream_input>
 
@@ -103,7 +104,7 @@ Each report section has defined primary and secondary source artifacts. Follow t
 | Summary Statistics | Analysis dataset metadata (from orchestrator) + Stage 7 EDA execution logs | Notebook data inspection cells |
 | Limitations | Plan.md Risk Register (planning risks) + Plan.md source caveats from Stage 3 + suppression rates from Stage 6 + LEARNINGS.md data quality entries | STATE.md blockers encountered + STATE.md Runtime Risks |
 | References | STATE.md > Citations Accumulated (primary). Plan.md Data Citations (fallback). CITATION_REFERENCE.md (verification/completeness check). | Plan.md Data Sources table |
-| AI Use Disclosure: Role + Model + Prompts + Validation + Reproducibility | STATE.md (session dates, checkpoint statuses) + QA summary + `agent_reference/AI_DISCLOSURE_REFERENCE.md` | CLAUDE.md (model info), DAAF commit hash (from orchestrator) |
+| AI Use Disclosure: Role + Model + Prompts + Validation + Reproducibility | STATE.md (session dates, checkpoint statuses) + QA summary + `agent_reference/AI_DISCLOSURE_REFERENCE.md` | DAAF commit hash (from orchestrator) |
 | AI Use Disclosure: Data Privacy + Post-processing + Funding | N/A — `[RESEARCHER]` fields | Report-writer inserts placeholder prompts for researcher |
 | Technical Notes: Reproducibility | Project file paths (notebook, data, scripts) | — |
 | Technical Notes: Environment | Standard (Python 3.12, polars, plotnine, marimo) | — |

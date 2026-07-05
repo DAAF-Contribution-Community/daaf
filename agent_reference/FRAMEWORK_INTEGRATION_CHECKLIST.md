@@ -57,6 +57,7 @@ After completing each item, note the status: Done, Skipped (with reason), or N/A
 | # | Item | Req | File | Section / Location |
 |---|------|-----|------|--------------------|
 | A1 | Create agent file following AGENT_TEMPLATE.md (all 12 sections) | [M] | `.claude/agents/{agent-name}.md` | 400-700 lines target |
+| A1b | Assign `model:` frontmatter tier (`opus` or `sonnet`) per orchestrator SKILL.md Model Selection guidance | [M] | `.claude/agents/{agent-name}.md` | YAML frontmatter `model` field; two-tier policy (haiku excluded) — see `.claude/skills/daaf-orchestrator/SKILL.md` > "Model Selection for Subagent Dispatch" |
 | A2 | Verify Core Distinction table differentiates from closest neighbors | [M] | `.claude/agents/{agent-name}.md` | Section 2: Identity |
 | A3 | Add to Agent Index table | [M] | `.claude/agents/README.md` | Agent Index table |
 | A4 | Add "When to Use" subsection | [M] | `.claude/agents/README.md` | When to Use section |
@@ -166,6 +167,19 @@ After completing each item, note the status: Done, Skipped (with reason), or N/A
 | H5 | Test with both allow and block scenarios | [M] | — | Verify exit code 0 (allow) and exit code 2 (block) |
 
 > **Applies to all `.sh` files, not just hooks.** Item H1b (executable permissions) applies whenever any `.sh` file is created or modified in the repository — including utility scripts in `scripts/` (e.g., `run_with_capture.sh`, `collect_session_logs.sh`). Shell scripts that are not executable will fail silently when invoked with `./script.sh` syntax and will be stored incorrectly in Git history. Always run `chmod +x` and `git update-index --chmod=+x` for every `.sh` file.
+
+### Retiring a Hook
+
+> Deregistration is the inverse of the New Hook Checklist, but with pitfalls of its own — a hook may be registered under multiple matchers, and its name typically appears in documentation surfaces beyond `settings.json`. Precedent: the 2026-07-02 retirement of `enforce-foreground-agents.sh`, where these steps had to be derived by inverting H1-H5.
+
+| # | Item | Req | File | Section / Location |
+|---|------|-----|------|--------------------|
+| HR1 | Remove the hook's registration from ALL `settings.json` hook chains — check every event type and every matcher (a hook may be registered under multiple matchers, e.g., both `Task` and `Agent`). Validate JSON afterward (`jq empty .claude/settings.json`) | [M] | `.claude/settings.json` | `hooks` section, all event types |
+| HR2 | Remove any agent-frontmatter registrations (`hooks:` blocks) | [C] | `.claude/agents/*.md` | YAML frontmatter `hooks` field — grep for the hook name |
+| HR3 | Sweep live framework surfaces for references to the hook name and update or remove each — CLAUDE.md (including the Defense-in-Depth Architecture table if listed), README.md, skills, agent definitions, `agent_reference/`, `user_reference/`, `scripts/`. Archival research documents are NOT updated — corrections belong in new dated documents | [M] | Multiple | Grep for the hook name across live surfaces |
+| HR4 | Decide the script file's fate. Deletion requires human action (`.claude/hooks/` is deny-protected); until deleted, the script is unregistered-but-present. Git history preserves it either way | [M] | `.claude/hooks/{hook-name}.sh` | Note the decision; flag deletion for human execution |
+| HR5 | Record the retirement rationale (why the hook is no longer needed) in a dated document in an appropriate research workspace, including what would need re-registration if the retirement were ever reversed | [M] | `research/{workspace}/` | New dated document |
+| HR6 | Verify: a repo-wide grep for the hook name returns hits only in archival locations and (if retained) the inert script itself; `git diff` on `settings.json` shows only the intended deregistration | [M] | — | Final verification |
 
 ---
 

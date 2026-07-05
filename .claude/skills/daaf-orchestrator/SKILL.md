@@ -468,6 +468,34 @@ The goal is to make the user aware that verification is always an option, and
 especially valuable when the agent is operating beyond what skills explicitly
 encode.
 
+### Built-in Claude Code Skills (Not Part of DAAF)
+
+The Claude Code harness bundles its own skills and slash commands (e.g.,
+`code-review`, `verify`, `run`, `deep-research`, `loop`, `schedule`, `init`,
+`security-review`), which appear in the available-skills listing alongside
+DAAF's curated skills. These are **not DAAF components**: they don't follow
+DAAF's templates, don't know DAAF's conventions, and can conflict with DAAF
+protocols — e.g., the bundled `code-review` skill reviews git diffs
+generically, while DAAF's quality review is performed by the `code-reviewer`
+agent following `QA_CHECKPOINTS.md`.
+
+Disambiguation rules:
+
+- For pipeline and framework work, DAAF's skills and agents always take
+  precedence — never substitute a built-in skill for a DAAF protocol step
+- Invoke a built-in skill only when the user explicitly requests it (e.g.,
+  types its slash command) or when the task is clearly outside DAAF's scope
+  and no DAAF component covers it
+- When a natural-language request (no slash command typed) matches both
+  (e.g., "review this code"), DAAF mode classification wins — that request
+  routes to the appropriate DAAF mode and agent, not the bundled skill. An
+  explicitly typed slash command is never overridden by this rule (see the
+  previous bullet). Mention the built-in alternative only when it genuinely
+  serves the user better
+- Bundled-skill visibility can be tuned via the `disableBundledSkills` and
+  `skillOverrides` settings; DAAF currently leaves bundled skills enabled
+  (evaluation deferred — see the 2026-07-02 upgrade review addendum)
+
 ### Universal Prompt Requirements
 
 Every subagent prompt MUST include:
@@ -520,7 +548,35 @@ See `.claude/agents/README.md` for the complete agent index with key inputs and 
 | `Plan` | Read-only operations when `search-agent` is not suitable | Can read files and make data access calls; CANNOT write files. Prefer `search-agent` for most read-only tasks. |
 | `general-purpose` | Code generation, analysis execution, file creation | Full capabilities including file writes and code execution |
 
-**When to use generic types:** Only for ad-hoc tasks that do not map to any named agent (e.g., Stage DI-7 skill authoring using a `general-purpose` subagent). For all standard pipeline stages, use the corresponding named agent. For read-only exploration tasks, prefer `search-agent` over generic `Plan` — it inherits the orchestrator's model, has web access (WebSearch, WebFetch), and understands DAAF conventions. **NEVER use `Explore` subagents.** `Explore` agents are blocked by project hooks (they run on Haiku, which lacks reasoning depth) and will be rejected, wasting time and context on failed launches.
+**When to use generic types:** Only for ad-hoc tasks that do not map to any named agent (e.g., Stage DI-7 skill authoring using a `general-purpose` subagent). For all standard pipeline stages, use the corresponding named agent. For read-only exploration tasks, prefer `search-agent` over generic `Plan` — it defaults to the `sonnet` tier (with per-dispatch override available; see Model Selection below), has web access (WebSearch, WebFetch), and understands DAAF conventions. **NEVER use `Explore` subagents.** `Explore` agents are blocked by project hooks (they run on Haiku, which lacks reasoning depth) and will be rejected, wasting time and context on failed launches.
+
+### Model Selection for Subagent Dispatch
+
+DAAF routes subagents across two model tiers, following a **least-capable-sufficient** baseline: use the least powerful model that can reliably handle each role, to conserve cost and latency. Haiku is excluded by policy — "turn count beats token price": the cheapest models routinely take 2-3× the turns on multi-step research work, costing more overall and degrading reliability, so `sonnet` is the floor, never Haiku. `opus` is reserved for high-judgment, adversarial, and synthesis roles.
+
+**Per-agent default tiers** (set in each agent's `model:` frontmatter):
+
+| Tier | Agents | Why |
+|------|--------|-----|
+| `opus` | data-planner, plan-checker, code-reviewer, data-verifier, debugger, framework-engineer, report-writer | High-judgment work: plan architecture, adversarial verification, hypothesis-driven diagnosis, cross-file consistency, stakeholder synthesis |
+| `sonnet` | research-executor, source-researcher, research-synthesizer, data-ingest, notebook-assembler, integration-checker, search-agent | Well-specified, skill-guided, or mechanical work: fetching/cleaning/transforming from a plan, structured lookup, profiling, verbatim notebook assembly, systematic reference tracing, broad read-only exploration |
+
+**Always-explicit dispatch.** Frontmatter defaults are the *floor*, not a cap. The Agent tool accepts a per-dispatch `model` parameter that outranks frontmatter (per Claude Code's resolution order), so the orchestrator may override any dispatch when the task warrants it. Prefer to state the model explicitly on dispatches you are escalating or downgrading.
+
+**Escalate Sonnet → Opus when:**
+- The task involves complex methodology (causal-inference design, intricate multi-source joins, survey-weighted estimation).
+- A prior dispatch returned BLOCKED or failed and is being re-dispatched (give the retry more capability).
+- The work product feeds a high-stakes decision or a downstream verification gate.
+
+**Downgrade Opus → Sonnet when:**
+- Reviewing a small, mechanical script (risk-scaled review — a trivial diff does not need Opus).
+- The judgment work is trivially bounded.
+
+**Never downgrade the last line of defense.** Final verification (data-verifier at Stage 12) and plan verification (plan-checker at Stage 4.5) stay on Opus — do not cheap out on the terminal quality gates.
+
+**Ceiling rule.** Never dispatch a subagent on a *higher* tier than the current session model. A user who chose a cheaper session model did so deliberately (cost control); silently upgrading subagents defeats that choice. The orchestrator cannot reliably determine its own session model from context, so the `enforce-model-ceiling.sh` PreToolUse hook enforces this deterministically: if a dispatch would exceed the session tier, the hook denies it and its message names the session model. **Trust and follow the hook** — re-dispatch at the tier it states. (The hook is a fail-open cost guard, not a safety boundary: if it cannot detect the session model it allows the dispatch.)
+
+**Alternative providers.** Users on OpenRouter or other providers keep two-tier routing working by remapping the aliases via `ANTHROPIC_DEFAULT_OPUS_MODEL` / `ANTHROPIC_DEFAULT_SONNET_MODEL` (their models, same two-tier semantics) or by flattening to one model with `CLAUDE_CODE_SUBAGENT_MODEL`. These are set host-side in `environment_settings.txt`. When either is configured, the ceiling hook stands down (it cannot rank custom models).
 
 ### Orchestrator Context Budget
 

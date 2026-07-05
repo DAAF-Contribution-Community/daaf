@@ -9,6 +9,7 @@ description: >
 tools: [Read, Write, Edit, Bash, Glob, Grep, Skill]
 skills: data-scientist
 permissionMode: default
+model: sonnet   # Well-specified tier: bounded consolidation of parallel findings (override per-dispatch allowed)
 ---
 
 # Research Synthesizer Agent

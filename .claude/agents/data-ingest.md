@@ -8,6 +8,7 @@ description: >
 tools: [Read, Write, Edit, Bash, Glob, Grep, WebSearch, WebFetch, Skill]
 skills: data-scientist
 permissionMode: default
+model: sonnet   # Well-specified tier: structured profiling parts with skill guidance (override per-dispatch allowed)
 hooks:
   PreToolUse:
     - matcher: "Bash"

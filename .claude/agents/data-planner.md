@@ -8,6 +8,7 @@ description: >
 tools: [Read, Write, Edit, Bash, Glob, Grep, Skill]
 skills: data-scientist
 permissionMode: default
+model: opus   # High-judgment tier: plan architecture synthesis from scratch (override per-dispatch allowed)
 ---
 
 # Data Planner Agent

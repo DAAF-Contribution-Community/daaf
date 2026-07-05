@@ -20,8 +20,8 @@ description: >
   and data integrity. Invoked after each Stage 5-8 script execution."
 tools: [Read, Write, Edit, Bash, Glob, Grep, Skill]   # Explicit allowlist. Omit for all.
 permissionMode: default                          # Or: plan (read-only agents)
+model: sonnet            # DAAF two-tier routing: opus | sonnet (see "Model Field" below)
 # ── Optional fields ──
-# model: inherit          # sonnet | opus | haiku | inherit
 # maxTurns: 50
 # skills: skill-a          # Skill to preload at startup (full content injected)
 # skills:                  # Multiple skills use YAML block list:
@@ -37,6 +37,21 @@ permissionMode: default                          # Or: plan (read-only agents)
 #           timeout: 5
 ---
 ```
+
+#### Model Field
+
+The `model:` field is **expected on every DAAF agent** — it sets the model tier the orchestrator dispatches the agent on by default.
+
+**Valid values:** `sonnet`, `opus`, `haiku`, `fable`, a full model ID (e.g. `claude-opus-4-8`), or `inherit`. Omitting the field is equivalent to `inherit` (tracks the main session model).
+
+**DAAF policy — two tiers only:** assign `opus` or `sonnet`. Haiku is excluded: "turn count beats token price" — the cheapest models take 2-3× the turns on multi-step research work, costing more overall and degrading reliability, so `sonnet` is the floor. Choose the tier by the agent's core workload:
+
+- **`opus`** — high-judgment, adversarial, or synthesis roles (plan design, plan/data verification, code review, hypothesis-driven debugging, cross-file framework consistency, stakeholder report synthesis).
+- **`sonnet`** — well-specified, skill-guided, or mechanical roles (fetching/cleaning/transforming from a plan, structured source lookup, dataset profiling, verbatim notebook assembly, systematic reference tracing, broad read-only exploration).
+
+**`inherit` is reserved** for the rare agent that must deliberately track the session model rather than pin a tier.
+
+The frontmatter tier is a *default floor*, not a cap: the orchestrator may override any dispatch via the Agent tool's per-dispatch `model` parameter (which outranks frontmatter), and a session-model ceiling is enforced by the `enforce-model-ceiling.sh` hook. For the full per-agent routing table, escalation/downgrade rules, and the ceiling rule, see `.claude/skills/daaf-orchestrator/SKILL.md` > "Model Selection for Subagent Dispatch".
 
 ### Section 1: Title and Purpose (REQUIRED)
 

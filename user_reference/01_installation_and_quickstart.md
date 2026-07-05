@@ -680,6 +680,27 @@ Your `daaf-docker` folder includes an `environment_settings_example.txt` templat
 
 > **Note:** The `environment_settings.txt` file is also where you'll configure data source API keys (covered in the next section). Both authentication and data source credentials live in the same file and are loaded together when the container starts.
 
+#### Model routing for alternative providers (optional)
+
+DAAF splits its background helper agents across two Claude model tiers to balance quality against cost: a stronger tier (**Opus**) for high-judgment work like planning, review, and verification, and a faster tier (**Sonnet**) for well-defined work like fetching and profiling data. If you use Anthropic directly (Max subscription or API key), this happens automatically and you don't need to do anything.
+
+If you point DAAF at an **alternative provider** (OpenRouter, or a cloud platform serving non-Claude models like GLM), the names "opus" and "sonnet" won't exist on your endpoint. You have two options, both set in `environment_settings.txt`:
+
+- **Keep the two tiers, using your own models** — map each tier to one of your provider's models:
+  ```bash
+  ANTHROPIC_DEFAULT_OPUS_MODEL=your-strong-model-slug      # e.g. z-ai/glm-5.2
+  ANTHROPIC_DEFAULT_SONNET_MODEL=your-fast-model-slug      # e.g. z-ai/glm-5.2-air
+  ```
+  DAAF then routes high-judgment work to your strong model and routine work to your fast one.
+
+- **Use a single model for everything** — simplest if you'd rather not think about tiers:
+  ```bash
+  CLAUDE_CODE_SUBAGENT_MODEL=your-model-slug
+  ```
+  Every helper agent runs on that one model.
+
+If you set **neither** on a non-Claude session, DAAF still works: a built-in check keeps helper agents on your session's model instead of trying to reach a Claude model that isn't there. Setting one of the options above is recommended for the best results. The exact variable names are documented in `environment_settings_example.txt` as well.
+
 ### Set up data source API keys
 
 Most DAAF data sources — including all built-in education data from the Urban Institute — are **freely accessible with no authentication required**. You can skip this step entirely if you're only working with education data.

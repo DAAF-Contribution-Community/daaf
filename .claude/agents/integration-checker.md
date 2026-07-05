@@ -7,6 +7,7 @@ description: >
 tools: [Read, Bash, Glob, Grep, Skill]
 skills: data-scientist
 permissionMode: plan
+model: sonnet   # Well-specified tier: systematic reference tracing (override per-dispatch allowed)
 ---
 
 # Integration Checker Agent

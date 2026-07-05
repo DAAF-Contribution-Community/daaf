@@ -7,6 +7,7 @@ description: >
 tools: [Read, Bash, Glob, Grep, Skill]
 skills: data-scientist
 permissionMode: plan
+model: opus   # High-judgment tier: final cross-artifact coherence check, last line of defense (override per-dispatch allowed)
 ---
 
 # Data Verifier Agent

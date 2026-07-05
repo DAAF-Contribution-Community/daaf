@@ -8,6 +8,7 @@ description: >
 tools: [Read, Bash, Glob, Grep, Skill]
 skills: data-scientist
 permissionMode: plan
+model: opus   # High-judgment tier: adversarial goal-backward verification (override per-dispatch allowed)
 ---
 
 # Plan Checker Agent

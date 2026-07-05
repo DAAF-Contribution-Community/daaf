@@ -179,6 +179,7 @@ description: >
   Third person. What it does AND when to use it.
 tools: [Read, Write, Edit, Bash, Glob, Grep]   # Explicit allowlist (omit for all)
 permissionMode: default          # Or: plan (read-only agents)
+model: sonnet                    # DAAF two-tier routing: opus | sonnet
 ---
 ```
 
@@ -186,6 +187,11 @@ permissionMode: default          # Or: plan (read-only agents)
 - Third person ("Reviews executed scripts..." not "Review executed scripts...")
 - Includes WHAT the agent does AND WHEN to use it
 - No angle brackets in description text
+
+**Model rules:**
+- Present on every DAAF agent; assign `opus` (high-judgment/adversarial/synthesis) or `sonnet` (well-specified/mechanical/skill-guided). Haiku is excluded by policy.
+- The tier is a default floor — the orchestrator may override per dispatch, bounded by the session-model ceiling.
+- See `agent_reference/AGENT_TEMPLATE.md` > "Model Field" and `.claude/skills/daaf-orchestrator/SKILL.md` > "Model Selection for Subagent Dispatch".
 
 ---
 

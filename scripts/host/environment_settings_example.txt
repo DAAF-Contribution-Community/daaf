@@ -51,6 +51,26 @@
 # ANTHROPIC_API_KEY=
 # OPENROUTER_API_KEY=your_openrouter_api_key_here
 
+    # --- Optional: Subagent model routing (alternative providers) ----------------
+    # DAAF routes specialist subagents to Claude model tiers: 'opus' for high-
+    # judgment work (planning, QA review, verification, debugging) and 'sonnet'
+    # for well-specified work (fetching, profiling, notebook assembly).
+    #
+    # If you point Claude Code at an alternative provider (e.g., OpenRouter
+    # serving GLM, Kimi, Qwen), those Claude aliases don't exist on your endpoint.
+    # Remap them so DAAF's two-tier routing uses YOUR models instead:
+    #
+    # ANTHROPIC_DEFAULT_OPUS_MODEL=your-strong-model-slug      # e.g. z-ai/glm-5.2
+    # ANTHROPIC_DEFAULT_SONNET_MODEL=your-fast-model-slug      # e.g. z-ai/glm-5.2-air
+    #
+    # Or, to switch tiered routing off and run every subagent on a single model:
+    #
+    # CLAUDE_CODE_SUBAGENT_MODEL=your-model-slug
+    #
+    # If you set none of these on a non-Claude session, DAAF's model-routing guard
+    # blocks mismatched Claude-tier dispatches and subagents run on your session
+    # model.
+
 # --- Option D: Amazon Bedrock ---
 # Docs: https://code.claude.com/docs/en/bedrock-vertex
 # CLAUDE_CODE_USE_BEDROCK=1

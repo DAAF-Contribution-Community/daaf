@@ -7,6 +7,7 @@ description: >
   editing, and wiring framework components.
 tools: [Read, Write, Edit, Bash, Glob, Grep, Skill]
 permissionMode: default
+model: opus   # High-judgment tier: framework self-modification with cross-file consistency (override per-dispatch allowed)
 skills:
   - skill-authoring
   - agent-authoring
