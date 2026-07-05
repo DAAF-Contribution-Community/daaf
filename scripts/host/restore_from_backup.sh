@@ -233,7 +233,12 @@ echo "Selected: ${SELECTED_NAME}"
 # data-only with a warning.
 CLAUDE_BACKUP_PATH="${SELECTED_PATH}/${CLAUDE_SUBDIR}"
 HAS_CLAUDE_BACKUP=0
-if [ -d "${CLAUDE_BACKUP_PATH}" ]; then
+# Require the subfolder to exist AND be non-empty. An empty "${CLAUDE_SUBDIR}/"
+# dir (e.g., a stray pre-created folder from an interrupted backup) must NOT
+# trigger the Claude restore path below -- that path CLEARS the live claude-config
+# volume before copying, so restoring from an empty source would wipe the user's
+# Claude Code login and session history and copy nothing back.
+if [ -d "${CLAUDE_BACKUP_PATH}" ] && [ -n "$(ls -A "${CLAUDE_BACKUP_PATH}" 2>/dev/null)" ]; then
     HAS_CLAUDE_BACKUP=1
 fi
 

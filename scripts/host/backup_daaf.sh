@@ -187,6 +187,18 @@ fi
 
 # --- Create backup ---
 mkdir -p "${BACKUP_NAME}"
+# Pre-create the Claude state subfolder NOW, while the backup dir is still owned
+# by the invoking user. It MUST happen before the data-volume copy below because
+# busybox `cp -a /source/. /dest/` applies the SOURCE volume root's own directory
+# attributes to /dest -- resetting "${BACKUP_NAME}"'s owner to the volume root's
+# UID (appuser/1000). When the invoking user's UID differs (e.g., a CI runner at
+# UID 1001), a later `mkdir` under "${BACKUP_NAME}" would fail with EACCES and
+# `set -euo pipefail` would abort. Gate on the same volume-exists condition as the
+# Claude backup block far below so a data-only backup (no Claude volume) never
+# leaves behind an empty "${CLAUDE_SUBDIR}/" dir that restore might misread.
+if docker volume inspect "${CLAUDE_VOLUME_NAME}" &> /dev/null; then
+    mkdir -p "${BACKUP_NAME}/${CLAUDE_SUBDIR}"
+fi
 echo "Copying files from Docker volume..."
 printf "  Progress: 0 / %d files (0%%)" "${TOTAL_FILES}"
 
@@ -280,6 +292,21 @@ else
     echo ""
     echo "NOTE: No Claude Code state volume ('${CLAUDE_VOLUME_NAME}') found."
     echo "      Skipping -- this install may predate the dedicated Claude volume."
+fi
+
+# --- Repair backup tree ownership ---
+# The busybox `cp -a /source/. /dest/` copies above chown the backup tree to the
+# volumes' internal UIDs (appuser/1000, and Claude state dirs are mode 700). When
+# the invoking user's UID differs (e.g., a CI runner at UID 1001), those files
+# become unreadable/untraversable to that user -- they cannot inspect, move, or
+# delete the backup, and restore's host-side `find`/`du` cannot descend into the
+# Claude state dirs. A host-side non-root `chown` cannot fix this, but root inside
+# a container can rewrite the bind mount's ownership. Non-fatal: the backup itself
+# is already complete and verified, so a chown failure only WARNs.
+if ! docker run --rm -v "$(pwd)/${BACKUP_NAME}:/dest" busybox chown -R "$(id -u):$(id -g)" /dest; then
+    echo "WARNING: Could not restore backup folder ownership to the current user." >&2
+    echo "         The backup is complete, but you may need elevated permissions" >&2
+    echo "         to inspect or remove it." >&2
 fi
 
 echo ""

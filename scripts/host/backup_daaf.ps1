@@ -209,6 +209,22 @@ if ($env:DAAF_DRY_RUN -eq "1") {
 # --- Create backup ---
 New-Item -ItemType Directory -Path $BackupName -Force | Out-Null
 $HostPath = (Resolve-Path $BackupName).Path
+# Pre-create the Claude state subfolder NOW, before the data-volume copy below,
+# for parity with backup_daaf.sh. On Linux (pwsh-on-Linux / CI), busybox
+# `cp -a /source/. /dest/` resets the backup dir's owner to the volume root's UID,
+# which can make a later mkdir under it fail -- creating the subfolder while it is
+# still user-owned avoids that. On Windows Docker Desktop, bind-mount ownership is
+# a no-op, so this is harmless there and exists purely for cross-platform parity.
+# Gate on the same volume-exists condition as the Claude backup block below so a
+# data-only backup never leaves an empty "$ClaudeSubDir\" dir that restore might
+# misread.
+$savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
+$null = docker volume inspect $ClaudeVolumeName 2>&1
+$claudeVolumeExistsEarly = ($LASTEXITCODE -eq 0)
+$ErrorActionPreference = $savedEAP
+if ($claudeVolumeExistsEarly) {
+    New-Item -ItemType Directory -Path (Join-Path $HostPath $ClaudeSubDir) -Force | Out-Null
+}
 Write-Host "Copying files from Docker volume..."
 Write-Host "  Progress: 0 / $TotalFiles files (0%)" -NoNewline
 
@@ -305,6 +321,30 @@ if ($claudeVolumeExists) {
     Write-Host ""
     Write-Host "NOTE: No Claude Code state volume ('$ClaudeVolumeName') found."
     Write-Host "      Skipping -- this install may predate the dedicated Claude volume."
+}
+
+# --- Repair backup tree ownership ---
+# Parity with backup_daaf.sh: the busybox `cp -a` copies chown the backup tree to
+# the volumes' internal UIDs (1000, with Claude state dirs at mode 700). On Linux
+# (pwsh-on-Linux / CI) a differing invoking UID would then be unable to traverse
+# those dirs; root inside a container can rewrite the bind mount's ownership to
+# fix it. On pwsh-on-Linux the external `id` command resolves the real invoking
+# UID/GID (matching the .sh behavior); on Windows `id` is absent and we fall back
+# to the literal volume UID/GID 1000:1000 -- harmless there, since Windows Docker
+# Desktop bind mounts ignore Unix ownership. Non-fatal: the backup is already
+# complete, so failure only WARNs.
+$chownOwner = "1000:1000"
+if (Get-Command id -ErrorAction SilentlyContinue) {
+    $chownOwner = "$(& id -u):$(& id -g)"
+}
+$savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
+$null = docker run --rm -v "${HostPath}:/dest" busybox chown -R $chownOwner /dest 2>&1
+$chownOk = ($LASTEXITCODE -eq 0)
+$ErrorActionPreference = $savedEAP
+if (-not $chownOk) {
+    Write-Host "WARNING: Could not restore backup folder ownership to the current user." -ForegroundColor Yellow
+    Write-Host "         The backup is complete, but you may need elevated permissions"
+    Write-Host "         to inspect or remove it."
 }
 
 Write-Host ""

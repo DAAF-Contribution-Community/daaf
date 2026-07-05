@@ -247,7 +247,16 @@ Write-Host "Selected: $SelectedName"
 # backups (created before the dedicated volume existed) lack it -- those restore
 # data-only with a warning.
 $ClaudeBackupPath = Join-Path $SelectedPath $ClaudeSubDir
-$HasClaudeBackup = Test-Path -LiteralPath $ClaudeBackupPath -PathType Container
+# Require the subfolder to exist AND be non-empty. An empty "$ClaudeSubDir\" dir
+# (e.g., a stray pre-created folder from an interrupted backup) must NOT trigger
+# the Claude restore path below -- that path CLEARS the live claude-config volume
+# before copying, so restoring from an empty source would wipe the user's Claude
+# Code login and session history and copy nothing back.
+$HasClaudeBackup = $false
+if (Test-Path -LiteralPath $ClaudeBackupPath -PathType Container) {
+    $claudeItemCount = @(Get-ChildItem -LiteralPath $ClaudeBackupPath -Force -ErrorAction SilentlyContinue).Count
+    if ($claudeItemCount -gt 0) { $HasClaudeBackup = $true }
+}
 
 # --- Count source files ---
 # Exclude the Claude subfolder from the DATA-volume count -- it is restored to a
