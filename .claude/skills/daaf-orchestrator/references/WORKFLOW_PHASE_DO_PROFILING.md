@@ -87,6 +87,8 @@ For datasets with more than 100 columns, profiling scripts that inspect individu
 - **Merge outputs:** After all batches complete, merge per-batch outputs into a single consolidated result before proceeding to the next part
 - **STATE.md tracking:** Record batch boundaries and completion status for each batch
 
+> **Wave barrier discipline (async dispatch).** Column batching is this mode's parallel-dispatch surface: multiple data-ingest invocations for the same profiling script may run concurrently. Subagents dispatched via the Agent tool run in the background by default and return via completion notifications that may arrive one at a time. Treat mid-wave notifications as **status-only**: do not merge per-batch outputs, advance to the next part, or update STATE.md conclusions until EVERY batch invocation in the wave has returned. The merge happens once, over the complete set of batch returns — never incrementally per return. An early return under context pressure, or a failed batch, still counts as that batch's completion — handle re-dispatch as part of the whole-wave merge, not as an immediate mid-wave reaction. The sequential Part A → B → C → D dispatches are governed by the same principle at their gates (see below): each part's completion notification must arrive and its preliminary notes must be persisted before the next part is dispatched.
+
 ## Multi-File Profiling
 
 When intake includes multiple data files, the profiling protocol adapts based on the file structure classification from DI-1.

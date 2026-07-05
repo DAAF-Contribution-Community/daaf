@@ -93,6 +93,7 @@ After completing each item, note the status: Done, Skipped (with reason), or N/A
 | # | Item | Req | File | Section / Location |
 |---|------|-----|------|--------------------|
 | M1 | Create mode reference file following MODE_TEMPLATE.md | [M] | `.claude/skills/daaf-orchestrator/references/{mode-name}-mode.md` | Required sections: description, User Orientation, Workflow, Subagent Invocation, Output Format, Boundaries, Escalation Triggers |
+| M1a | If the mode dispatches subagents, include the wave barrier discipline note in the Subagent Invocation section (mid-wave completion notifications are status-only; no synthesis, gates, or checkpoints until the whole wave returns), citing `SKILL.md` § Subagent Coordination > "Wave Barrier Discipline (Async Dispatch)" | [C] | `.claude/skills/daaf-orchestrator/references/{mode-name}-mode.md` | Subagent Invocation section |
 | M2 | Update YAML frontmatter description (mode count) | [M] | `.claude/skills/daaf-orchestrator/SKILL.md` | Frontmatter `description` field |
 | M3 | Update Expanded Orientation bullet (mode count + description) | [M] | `.claude/skills/daaf-orchestrator/SKILL.md` | Welcome Preamble > Expanded Orientation |
 | M4 | Update Engagement Mode Classification count word | [M] | `.claude/skills/daaf-orchestrator/SKILL.md` | "classify it into one of N engagement modes" |

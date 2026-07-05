@@ -8,6 +8,8 @@ Loaded by the orchestrator when profiling is complete and the user has confirmed
 
 Invoked at Stage DI-7 after PSU-DI2 user confirmation of preliminary interpretations.
 
+> **Async dispatch note.** DI-7 dispatches a single skill-authoring subagent (not a parallel wave). Under async dispatch, it returns via a completion notification rather than a synchronous tool return. Do not advance to DI-8 review, evaluate CPP-SKILL results, or present the skill to the user until that return has arrived and been fully processed. The DI-8 review iteration loop is likewise sequential — each re-invocation's return must be received before re-running CPP-SKILL validation or presenting the revised skill.
+
 **Purpose:** Author the data source skill  |  **Stage:** DI-7  |  **Subagent:** general-purpose  |  **Skills:** `data-scientist`, `skill-authoring`
 
 ```python

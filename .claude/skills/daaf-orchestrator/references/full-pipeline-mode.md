@@ -14,7 +14,7 @@ This reference is loaded after the orchestrator classifies a request as Full Pip
 >
 > **`.claude/agents/README.md`** provides agent behavioral specs and input/output contracts — consult when understanding an agent's capabilities, not for constructing invocation prompts.
 
-> **Parallel Dispatch Limit:** The orchestrator MUST NOT dispatch more than **5 subagents concurrently** — this applies to wave-based task dispatch, Stage 3 source-researcher dispatch, and any other parallel invocation. If more than 5 independent tasks need to run, sub-batch into groups of ≤5 and wait for each sub-batch to complete before dispatching the next. Parallel dispatch is achieved by making multiple Agent tool calls in a **single response message**. Completion may arrive via async task notifications — the orchestrator must still wait for ALL dispatched subagents in a batch to return before acting on their results.
+> **Parallel Dispatch Limit:** The orchestrator MUST NOT dispatch more than **5 subagents concurrently** — this applies to wave-based task dispatch, Stage 3 source-researcher dispatch, and any other parallel invocation. If more than 5 independent tasks need to run, sub-batch into groups of ≤5 and wait for each sub-batch to complete before dispatching the next. Parallel dispatch is achieved by making multiple Agent tool calls in a **single response message**. Because subagents run in the background by default, completion arrives via async task notifications that may land one at a time — the orchestrator must still wait for ALL dispatched subagents in a batch to return before acting on their results, treating mid-wave notifications as status-only (no gate decisions, plan changes, or synthesis until the whole wave is in). See "Wave Barrier Discipline" below and the master statement in `SKILL.md` § Subagent Coordination.
 
 ---
 
@@ -494,7 +494,7 @@ These operations may be executed without preview:
 
 **Notes:**
 - Stages 5 and 6 use `general-purpose` subagent type because they require file write capability (saving parquet files to `data/raw/` and `data/processed/`).
-- **Stage 4 responsibility split:** The `data-planner` agent creates Plan.md and Plan_Tasks.md. The **orchestrator** is responsible for creating STATE.md (from `agent_reference/STATE_TEMPLATE.md`) and the LEARNINGS.md skeleton (from `agent_reference/WORKFLOW_PHASE5_SYNTHESIS.md`) after the data-planner returns. Gate G4 requires all four files. **When creating STATE.md, populate the Session Metadata section:** run `git rev-parse --short HEAD` to capture the DAAF version, and record the model ID actually in use for the session (e.g., "claude-opus-4-8[1m]") and session start date. These feed into the AI Use Disclosure section of the final report.
+- **Stage 4 responsibility split:** The `data-planner` agent creates Plan.md and Plan_Tasks.md. The **orchestrator** is responsible for creating STATE.md (from `agent_reference/STATE_TEMPLATE.md`) and the LEARNINGS.md skeleton (from `agent_reference/WORKFLOW_PHASE5_SYNTHESIS.md`) after the data-planner returns. Gate G4 requires all four files. **When creating STATE.md, populate the Session Metadata section:** run `git rev-parse --short HEAD` to capture the DAAF version, and record the Session Model ID, the Subagent Model Tiers in effect, and the session start date — see the authoritative creation checklist under **Creation Trigger** in the STATE.md section below. These feed into the AI Use Disclosure section of the final report.
 - **Stage 10** has no dedicated agent — the orchestrator performs QA aggregation directly by reviewing accumulated code-reviewer findings from Stages 5-8.
 
 **Stage 10 Protocol:** Read STATE.md's Transformation Progress table as the sole input. For each script: (1) Check QA status (PASS / PASS_WITH_WARNINGS / N/A), (2) Aggregate WARNING items into a summary, (3) Verify no unresolved BLOCKERs exist, (4) Compose QA Aggregation Summary for PSU4. Do NOT re-read individual QA scripts — STATE.md already tracks all QA outcomes.
@@ -852,6 +852,8 @@ Wave 3: [join-data]                 ← Depends on Wave 2
 - Each subagent gets fresh 200K-token context (no degradation)
 - Later waves wait for ALL prior waves to complete
 - Dependencies in `depends_on` must be satisfied
+
+**Wave Barrier Discipline (async dispatch).** Background-by-default dispatch means a wave's completion notifications may arrive one at a time. Treat every mid-wave notification as **status-only**: do not make gate decisions, revise the plan, finalize STATE.md conclusions, present a PSU/checkpoint, or begin QA aggregation or synthesis until EVERY task in the wave has returned. Synthesize once, over the complete wave — never incrementally per return, so a later return can genuinely change the decision rather than being anchored out by the first. An early return under context pressure, or a failed/BLOCKED task, still counts as that task's completion — handle its redelegation as part of whole-wave synthesis, not as an immediate mid-wave reaction. Narrating progress to the user ("two of three fetches are back") is fine; acting on partial results is not. This is the pipeline application of the master statement in `SKILL.md` § Subagent Coordination > "Wave Barrier Discipline (Async Dispatch)."
 
 See `agent_reference/PLAN_TEMPLATE.md` for wave-based task table format.
 
@@ -1935,7 +1937,8 @@ The orchestrator receives actual context utilization via the `context-reporter` 
 - **Required Sections:** STATE.md must include skeleton sections for Runtime Risks, QA Findings Summary, and Final Review Log at creation time.
 - **Session Metadata (required at creation):** Populate the Session Metadata section immediately when creating STATE.md:
   - **DAAF Version:** Run `git rev-parse --short HEAD` in the DAAF repository root and record the result
-  - **Model ID:** Record the model identifier actually in use for the session (e.g., "claude-opus-4-8[1m]")
+  - **Session Model ID:** Record the model identifier actually in use for the session (e.g., "claude-opus-4-8[1m]")
+  - **Subagent Model Tiers:** Record the specialist model tiers/IDs in use — agent frontmatter defaults (`model: opus` / `model: sonnet`) plus any per-dispatch overrides applied; resolved IDs where known, tier alias + session date otherwise (see STATE_TEMPLATE.md)
   - **Session Date(s):** Record today's date; update if the project spans multiple sessions
   - **Session Transcript(s):** Leave as the default value — project-local logs are collected at completion
 

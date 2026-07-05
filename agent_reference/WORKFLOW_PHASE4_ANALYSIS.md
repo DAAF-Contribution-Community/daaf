@@ -4,6 +4,8 @@ Stages 7, 8, 9, 10. Cross-phase orchestration guidance (invocation templates, QA
 
 **Execution Model:** All scripts follow the file-first execution pattern. See `SCRIPT_EXECUTION_REFERENCE.md` for the complete protocol.
 
+> **Async dispatch note.** This phase is deliberately serial: one transformation, analysis, or visualization script per subagent invocation, each followed by its mandatory code-reviewer QA before the next begins (the "NEVER batch" rule below is load-bearing). Under async dispatch, each research-executor and code-reviewer returns via a completion notification rather than a synchronous tool return. Do not begin the next script, approve the next transformation, or evaluate a stage gate until the current dispatch's return has arrived and been fully processed. Should multiple visualization scripts (Stage 8.2) ever be dispatched together, treat every mid-flight notification as status-only and wait for all wave members to return before proceeding to Stage 9.
+
 ---
 
 ## Stage 7: EDA & Transformation

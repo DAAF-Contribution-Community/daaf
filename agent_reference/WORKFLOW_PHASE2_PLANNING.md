@@ -108,6 +108,8 @@ Incomplete transformation sequences lead to incomplete validation and unreliable
 **Subagent:** general-purpose
 **Skills:** `data-scientist`
 
+> **Async dispatch note.** This phase dispatches single agents sequentially (data-planner, then plan-checker), not parallel waves. Under async dispatch, the data-planner returns via a completion notification rather than a synchronous tool return. Do not advance to Stage 4.5 (plan-checker), evaluate Gate G4, or present PSU2 until that return has arrived and been fully processed — including confirming that Plan.md, Plan_Tasks.md, STATE.md, and LEARNINGS.md exist on disk.
+
 ```python
 Agent({
     description: "Stage 4: Plan Creation",

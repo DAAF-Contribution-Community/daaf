@@ -632,6 +632,16 @@ When a subagent returns findings:
 
 If a write fails, retry once. If the retry also fails, stop and report the issue to the user — do not proceed with degraded findings.
 
+### Wave Barrier Discipline (Async Dispatch)
+
+Subagents dispatched via the Agent tool run in the background by default and return via completion notifications that may arrive one at a time. Under the older synchronous harness this barrier was enforced structurally — a dispatch blocked until its return arrived, so the orchestrator *could not* act on partial wave results. That enforcement is gone; the orchestrator now *can* act mid-wave, which is exactly the failure mode this norm prevents. Treat mid-wave notifications as **status-only**: do not make gate decisions, revise plans, finalize STATE.md conclusions, present user checkpoints, or begin synthesis until EVERY member of the dispatched wave has returned.
+
+- **Synthesize once, over the complete wave — never incrementally per return.** Holding all wave results together before deciding is what lets you genuinely reincorporate a later return rather than anchoring on the first one.
+- **Interim narration is fine; acting on partial results is not.** Telling the user "two of three specialists have reported back" is good communication; making the next gate decision before the third returns is not.
+- **An early return (context pressure) or a failed/skipped agent still counts as that member's completion.** Handle redelegation as part of whole-wave synthesis, not as an immediate mid-wave reaction — a failed member does not license acting on the wave before the rest arrive.
+
+This norm restates a formerly-structural guarantee as an explicit discipline. It applies to every mode that dispatches subagents in waves; the mode reference files may state it more briefly and point back here.
+
 ### Context Recovery
 
 Follow the context utilization thresholds defined in `CLAUDE.md` > "Context & Session Health" > "Context Quality Curve". The orchestrator-specific relief mechanism is session restart via STATE.md (see `{SKILL_REFS}/session-recovery.md`).

@@ -4,6 +4,8 @@ Stages 5, 6. Cross-phase orchestration guidance (invocation templates, QA protoc
 
 **Execution Model:** All scripts follow the file-first execution pattern. See `SCRIPT_EXECUTION_REFERENCE.md` for the complete protocol.
 
+> **Async dispatch note.** This phase runs strictly one script at a time (each fetch or clean, then its mandatory code-reviewer QA, before the next). Under async dispatch, each research-executor and code-reviewer returns via a completion notification rather than a synchronous tool return. Do not start the next script, evaluate a stage gate (G5, G6), or present PSU3 until the current dispatch's return has arrived and been fully processed. If more than one dispatch is ever in flight at once, treat every mid-flight notification as status-only and wait for all of them before acting.
+
 ---
 
 ## Stage 5: Data Retrieval

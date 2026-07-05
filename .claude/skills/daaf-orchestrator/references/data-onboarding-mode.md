@@ -452,6 +452,8 @@ Return findings in this structure (max 3500 words):
 
 For EACH profiling part (DI-3 through DI-6), follow this complete cycle. **Do NOT skip any step.** This is the Data Onboarding equivalent of the Full Pipeline's Stage 5-8 Composite Execution Pattern.
 
+> **Wave barrier discipline (async dispatch).** Subagents dispatched via the Agent tool run in the background by default; their completion arrives as async task notifications rather than a synchronous return. The "WAIT for … return before proceeding" steps below therefore mean a hard barrier: do not evaluate QA severity, update STATE.md conclusions, advance to the next part, or present PSU-DI2 until the dispatched subagent has actually returned. Where a step dispatches more than one subagent, wait for ALL of them before acting, and synthesize once over the complete set — a failed or early-returning subagent still counts as a completion to be handled during that whole-set synthesis, not as a mid-wave trigger. See the master statement in `SKILL.md` § Subagent Coordination > "Wave Barrier Discipline (Async Dispatch)."
+
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │  STEP 0: READ STATE.md                                                      │

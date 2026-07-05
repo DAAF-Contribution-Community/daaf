@@ -168,6 +168,8 @@ Subagents receive their own `context-reporter` utilization injections, measured 
 - Any decisions made or assumptions applied that the next agent needs to know
 - Confidence assessment of completed work
 
+**Async completion note:** Subagents dispatched via the Agent tool run in the background by default; their completion — including an early return under context pressure — arrives at the orchestrator as an async task notification rather than a synchronous tool return, and when several subagents were dispatched together these notifications may arrive one at a time. A subagent's early-return output must therefore be self-contained per the protocol above, because the orchestrator will not act on it until the whole dispatched wave has returned (see `.claude/skills/daaf-orchestrator/SKILL.md` § Subagent Coordination > "Wave Barrier Discipline (Async Dispatch)").
+
 **STATE.md updates:** Subagents do not write STATE.md directly — that is the orchestrator's responsibility. However, subagents returning early under context pressure should include enough structured information in their return output for the orchestrator to update STATE.md accurately. The orchestrator must update STATE.md whenever a subagent returns early due to ELEVATED or higher utilization.
 
 ### Symptoms of Context Degradation

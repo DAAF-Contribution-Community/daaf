@@ -392,6 +392,8 @@ Phase 4 review is **mandatory for all work, regardless of complexity.** Review s
 
 For **Moderate** and **Complex** work, launch 3 read-only research subagents in parallel. For **Simple** work, launch Subagent 1 (Consistency) and Subagent 3 (Completeness) in parallel:
 
+> **Wave barrier discipline (async dispatch).** These review subagents run in the background by default and return via completion notifications that may arrive one at a time. Treat mid-wave notifications as status-only: do not synthesize the review, present Checkpoint 2, or act on any single reviewer's findings until EVERY review subagent has returned. Synthesize once over the complete set of reviews — a reviewer that returns early or fails still counts as a completion to fold into that single synthesis, and its absence must be surfaced at the checkpoint rather than silently skipped. The same discipline applies to the Phase 1 scoping wave (the 3 parallel search-agents): wait for all before scoping conclusions. See the master statement in `SKILL.md` § Subagent Coordination > "Wave Barrier Discipline (Async Dispatch)."
+
 ### Subagent 1: Consistency Review
 
 ```

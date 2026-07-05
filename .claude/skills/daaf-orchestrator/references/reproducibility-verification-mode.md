@@ -638,6 +638,8 @@ To browse the session timeline interactively in your browser, run in the Docker 
 
 The RV-2 per-script cycle is lightweight compared to Full Pipeline's Composite Execution Pattern. The re-execution IS the review — the code-reviewer both re-executes and evaluates in a single invocation.
 
+> **Wave barrier discipline (async dispatch).** RV-2 is deliberately sequential — one script's code-reviewer dispatch at a time, in notebook order. Because subagents run in the background by default and complete via async task notifications, the barrier still applies at the single-dispatch level: do not begin the next script's cycle, advance Session Continuity, or draw cross-script conclusions until the current dispatch has actually returned. When RV-2 escalation dispatches the debugger, treat that as part of the same script's cycle — wait for it before moving on. (Updating the Reproduction Report after each script's own return is intended incremental behavior, not a barrier violation: each script is its own single-member wave.) See the master statement in `SKILL.md` § Subagent Coordination > "Wave Barrier Discipline (Async Dispatch)."
+
 **Atomic cycle per script:**
 
 | Step | Action | Detail |

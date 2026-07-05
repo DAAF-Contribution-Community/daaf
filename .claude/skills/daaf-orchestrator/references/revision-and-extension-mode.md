@@ -117,6 +117,8 @@ The canonical re-run decision trees live in `agent_reference/ERROR_RECOVERY.md`.
 
 For stages that need re-execution, load `{SKILL_REFS}/full-pipeline-mode.md` and follow the relevant stage's Composite Execution Pattern. All QA requirements from the full pipeline apply to re-executed stages.
 
+**Wave barrier discipline (async dispatch).** Because re-execution reuses the full pipeline's wave-based dispatch, the same barrier applies: subagents run in the background by default and return via completion notifications that may arrive one at a time. When re-executing stages that dispatch multiple subagents in a wave, treat mid-wave notifications as status-only — do not run gates, update STATE.md conclusions, assemble the Revision Status Update, or present interim findings to the user until EVERY member of the wave has returned, and synthesize once over the complete wave (a failed or early-returning agent still counts as a completion). See the full statement in `full-pipeline-mode.md` § "Wave-Based Parallel Execution" and the master statement in `SKILL.md` § Subagent Coordination.
+
 **Gate applicability:** Stage gates from `full-pipeline-mode.md` apply to all re-executed stages. Gates for stages that are NOT being re-executed are considered already satisfied from the prior version. PSUs are NOT required (replaced by Revision Status Update), but gates within re-executed stages are mandatory.
 
 ### Re-Entry File Loading

@@ -2,6 +2,8 @@
 
 Stages 11, 12. Cross-phase orchestration guidance (invocation templates, QA protocols, context requirements) is in `full-pipeline-mode.md`.
 
+> **Async dispatch note.** This phase dispatches single agents sequentially (report-writer for Stage 11, then data-verifier for Stage 12), not parallel waves. Under async dispatch, each returns via a completion notification rather than a synchronous tool return. Do not begin Stage 12 verification, evaluate a stage gate, or present the final deliverable to the user until the current dispatch's return has arrived and been fully processed.
+
 ---
 
 ## Stage 11: Report Generation
@@ -80,7 +82,8 @@ Agent({
 
     **AI DISCLOSURE METADATA (from STATE.md Session Metadata):**
     - DAAF Version: {daaf_commit_hash}
-    - Model ID: {model_id}
+    - Session Model ID: {session_model_id}
+    - Subagent Model Tiers: {subagent_model_tiers}
     - Session Date(s): {session_dates}
 
     **Target Audience:** {target_audience} (from Plan.md; if non-technical, include instruction to load science-communication skill)
@@ -122,7 +125,7 @@ Before invoking report-writer, verify:
 - [ ] Report filename specified (following naming convention)
 - [ ] Project path specified (absolute)
 - [ ] DAAF commit hash provided (from STATE.md Session Metadata)
-- [ ] Model ID provided (from STATE.md Session Metadata)
+- [ ] Session model ID and subagent model tiers provided (from STATE.md Session Metadata) — so report-writer can populate the Report's session + specialist model rows
 - [ ] Session logs collected into `logs/` (collect_session_logs.sh run)
 - [ ] Target audience specified (from Plan.md; if non-technical, include `science-communication` skill loading instruction)
 
