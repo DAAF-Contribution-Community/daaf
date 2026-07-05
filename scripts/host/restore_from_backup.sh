@@ -79,12 +79,15 @@ if [ "${DAAF_DRY_RUN:-}" = "1" ]; then
             *"volume inspect"*) return 0 ;;
             *"ps --filter"*) return 0 ;;
             *"run --rm"*"rm -rf"*) return 0 ;;
-            *"run --rm"*"cp -a"*) return 0 ;;
             *"run --rm"*"find /dest"*)
                 echo "42"
                 return 0
                 ;;
             *)
+                # The dry-run path exits before any create/cp/rm/chown, so no match
+                # arm is needed for the copy mechanism or the ownership repair -- the
+                # default is only reached for unmodeled calls, which are echoed and
+                # treated as no-ops.
                 echo "[DRY-RUN] docker $*" >&2
                 return 0
                 ;;
@@ -307,16 +310,84 @@ echo "Copying backup into Docker volume..."
 echo "  This may take a few minutes for large backups."
 echo ""
 
-# Copy everything, then strip the Claude subfolder from the DATA volume -- it
-# belongs in the separate Claude volume (restored below), not the data volume.
-if ! docker run --rm \
-    -v "${SELECTED_PATH}:/source:ro" \
-    -v "${VOLUME_NAME}:/dest" \
-    busybox sh -c "cp -a /source/. /dest/ && rm -rf \"/dest/${CLAUDE_SUBDIR}\""; then
+# Copy the backup into the data volume via `docker create` + `docker cp` instead
+# of a bind-mounted `busybox cp -a`. On Docker Desktop for Windows, a bind-mounted
+# copy reads every host file across the 9p/gRPC-FUSE host<->VM boundary
+# individually, so a large restore takes minutes; `docker cp` streams the whole
+# tree to the daemon in one pass and extracts it inside the VM, avoiding that
+# per-file overhead. The helper container is created but never started -- `docker
+# cp` still writes into the volume because the daemon mounts the container root AND
+# its volume MountPoints into the archive view regardless of container state. The
+# trailing "/." on the source copies the backup's CONTENTS into /dest rather than
+# nesting a folder.
+#
+# Two asymmetries vs the backup script's copy-OUT:
+#   1. Ownership: `docker cp` INTO a container writes files as ROOT (not the
+#      volume's appuser, UID 1000), so a container-side chown repair is REQUIRED
+#      below -- see Step 2c. (Copy-OUT needs no repair because `docker cp` extracts
+#      container->host as the invoking user.)
+#   2. Exclusion: `docker cp` has no exclude flag, so it copies the whole backup
+#      folder INCLUDING the hidden ".daaf-claude-config/" subfolder. That subfolder
+#      belongs in the separate Claude volume (restored below), not the data volume,
+#      so it is stripped container-side in Step 2b -- matching the old
+#      `cp -a ... && rm -rf "/dest/${CLAUDE_SUBDIR}"` outcome exactly.
+CID=""
+trap 'docker rm -f "${CID:-}" > /dev/null 2>&1 || true' INT TERM
+# Guard the create explicitly: under `set -e`, an unguarded `CID="$(docker
+# create ...)"` would abort the whole script with NO message -- and the volume
+# was already cleared in Step 1, so the user would be left with an empty volume
+# and no explanation. Capture into CID first, then check the status.
+if ! CID="$(docker create -v "${VOLUME_NAME}:/dest" busybox)"; then
+    trap - INT TERM
+    echo "" >&2
+    echo "ERROR: Could not create the helper container for the volume copy." >&2
+    echo "The Docker volume has already been cleared and is now EMPTY." >&2
+    echo "Re-run this restore, or reinstall DAAF, to repopulate it." >&2
+    exit 1
+fi
+
+if ! docker cp "${SELECTED_PATH}/." "${CID}:/dest/"; then
+    docker rm -f "${CID}" > /dev/null 2>&1 || true
+    trap - INT TERM
     echo "" >&2
     echo "ERROR: File copy failed." >&2
     echo "The Docker volume may be in an inconsistent state." >&2
     echo "You may want to re-run this restore or reinstall DAAF." >&2
+    exit 1
+fi
+
+# Remove the helper container -- the copy is done. Best-effort; a failure here
+# must not fail the restore. Subsequent container-side steps use `docker run --rm`.
+docker rm -f "${CID}" > /dev/null 2>&1 || true
+trap - INT TERM
+
+# --- Step 2b: Strip the Claude subfolder from the DATA volume ---
+# `docker cp` above copied the whole backup, including "${CLAUDE_SUBDIR}/". Remove
+# it from the data volume container-side (fast: runs inside the VM, no bind mount)
+# so the data volume matches the old copy's outcome. It is restored to its own
+# volume below when present.
+if ! docker run --rm -v "${VOLUME_NAME}:/dest" busybox rm -rf "/dest/${CLAUDE_SUBDIR}"; then
+    echo "" >&2
+    echo "ERROR: Failed to remove the ${CLAUDE_SUBDIR} subfolder from the data volume." >&2
+    echo "WARNING: The restore copied the whole backup into the data volume, so Claude" >&2
+    echo "         Code credentials and session data may REMAIN inside the data volume" >&2
+    echo "         until this is resolved. Re-run this restore to clear them." >&2
+    exit 1
+fi
+
+# --- Step 2c: Repair ownership on the data volume ---
+# `docker cp` wrote the files as root; the volume must be owned by appuser (UID
+# 1000) so the container can read/write it. Chown container-side (runs inside the
+# VM -- no bind mount, so it is fast). The literal 1000:1000 mirrors the
+# daaf-init service in docker-compose.yml, which chowns both volumes to 1000:1000
+# on every startup; that init container is a second net, but restore must not
+# depend on it having run.
+if ! docker run --rm -v "${VOLUME_NAME}:/dest" busybox chown -R 1000:1000 /dest; then
+    echo "" >&2
+    echo "ERROR: Failed to repair ownership on the data volume." >&2
+    echo "The files were restored intact, but the DAAF container may not be able to" >&2
+    echo "read them. Re-run this restore, or restart DAAF -- the compose init service" >&2
+    echo "also repairs volume ownership on startup." >&2
     exit 1
 fi
 echo "Copy complete."
@@ -360,18 +431,35 @@ if [ "${HAS_CLAUDE_BACKUP}" -eq 1 ]; then
     # will have it; create it explicitly here in case restore runs before first
     # start). `docker volume create` is idempotent.
     docker volume create "${CLAUDE_VOLUME_NAME}" > /dev/null 2>&1 || true
-    # Clear then copy, mirroring the data-volume restore semantics.
+    # Clear then copy, mirroring the data-volume restore semantics. The copy uses
+    # the same `docker create` + `docker cp` mechanism (with the same root->1000
+    # ownership repair) as the data volume above; the claude-config volume is also
+    # chowned to 1000:1000 by daaf-init in docker-compose.yml, but restore repairs
+    # it here rather than depending on that init container.
+    CLAUDE_CID=""
     if ! docker run --rm -v "${CLAUDE_VOLUME_NAME}:/dest" busybox sh -c 'rm -rf /dest/* /dest/.[!.]* /dest/..?*'; then
         echo "WARNING: Failed to clear the Claude Code state volume before restore." >&2
         echo "         Data volume restore above succeeded; Claude state may be inconsistent." >&2
-    elif ! docker run --rm \
-        -v "${CLAUDE_BACKUP_PATH}:/source:ro" \
-        -v "${CLAUDE_VOLUME_NAME}:/dest" \
-        busybox sh -c "cp -a /source/. /dest/"; then
-        echo "WARNING: Failed to restore the Claude Code state volume." >&2
-        echo "         Data volume restore above succeeded; you may need to re-run /login." >&2
     else
-        echo "Claude Code state restored."
+        # Best-effort helper-container cleanup on interrupt, guarded under set -u.
+        trap 'docker rm -f "${CLAUDE_CID:-}" > /dev/null 2>&1 || true' INT TERM
+        # Guard the create under `set -e`: a failure here is non-fatal (the data
+        # volume restore already succeeded), so it must fall into the WARNING path
+        # below, not abort the whole script. `|| CLAUDE_CID=""` keeps the exit
+        # status from tripping `set -e` while leaving CLAUDE_CID empty on failure.
+        CLAUDE_CID="$(docker create -v "${CLAUDE_VOLUME_NAME}:/dest" busybox)" || CLAUDE_CID=""
+        if [ -n "${CLAUDE_CID}" ] \
+            && docker cp "${CLAUDE_BACKUP_PATH}/." "${CLAUDE_CID}:/dest/" \
+            && docker run --rm -v "${CLAUDE_VOLUME_NAME}:/dest" busybox chown -R 1000:1000 /dest; then
+            echo "Claude Code state restored."
+        else
+            echo "WARNING: Failed to restore the Claude Code state volume." >&2
+            echo "         Data volume restore above succeeded; you may need to re-run /login." >&2
+        fi
+        # Best-effort: a spurious rm failure must never abort AFTER a successful
+        # restore. `|| true` keeps `set -e` from tripping here.
+        docker rm -f "${CLAUDE_CID}" > /dev/null 2>&1 || true
+        trap - INT TERM
     fi
 else
     echo ""

@@ -38,6 +38,83 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # ============================================
+# Optional dev tooling: in-container test toolchain (DAAF_DEV)
+# ============================================
+# OPT-IN, FRAMEWORK-DEVELOPER-ONLY. Everything in this section is skipped
+# entirely unless DAAF_DEV=1 is passed as a build arg. A framework developer
+# opts in by setting DAAF_DEV=1 in the host-side environment_settings.txt; the
+# install/rebuild scripts bridge that key into the shell environment, and
+# docker-compose.yml forwards it here as `--build-arg DAAF_DEV=${DAAF_DEV:-0}`.
+# When DAAF_DEV is unset or 0 (the default for every normal user), the guarded
+# RUN layers below are no-ops, so a standard build is byte-for-byte unchanged.
+#
+# What it installs (only when DAAF_DEV=1):
+#   - shellcheck                 (Bash linter, Debian repo)
+#   - bats                       (Bash test runner, Debian repo)
+#   - PowerShell 7 + Pester +
+#     PSScriptAnalyzer           (PowerShell test/lint stack)
+# The goal is to let a developer run the repo's own test suites INSIDE the
+# container so `bats tests/bash/` and `Invoke-Pester tests/powershell/`
+# reproduce what .github/workflows/ci-scripts.yml runs in CI.
+#
+# CI PARITY (bats): the CI `bats-tests` job installs bats with a plain
+# `apt-get install -y bats` and does NOT vendor bats-support/bats-assert; the
+# suite's tests/bash/test_helper.bash provides fallback assertions when those
+# helper libraries are absent (and looks for them under tests/libs, test/libs,
+# or /usr/lib/bats if a developer adds them later). So the Debian `bats`
+# package alone reproduces CI here -- no helper libraries are required.
+#
+# ARCH NOTE (PowerShell): PowerShell is installed from the GitHub release
+# tarball, NOT Microsoft's apt feed, because that feed has no arm64 packages and
+# DAAF supports Apple Silicon. The tarball asset is selected from
+# `dpkg --print-architecture` (amd64 -> linux-x64, arm64 -> linux-arm64).
+ARG DAAF_DEV=0
+ARG DAAF_DEV_PWSH_VERSION=7.6.3
+ARG DAAF_DEV_PESTER_VERSION=5.7.1
+ARG DAAF_DEV_PSSA_VERSION=1.24.0
+
+# shellcheck + bats from the Debian repo (mirrors the CI bats-tests job).
+RUN if [ "${DAAF_DEV}" = "1" ]; then \
+        apt-get update && apt-get install -y --no-install-recommends \
+            shellcheck \
+            bats \
+        && apt-get clean \
+        && rm -rf /var/lib/apt/lists/*; \
+    fi
+
+# PowerShell 7 from the GitHub release tarball (arch-mapped for amd64/arm64).
+# Installs to /opt/microsoft/powershell/7 with a /usr/bin/pwsh symlink, matching
+# the layout Microsoft's own packages use so `pwsh` is on PATH for all users.
+RUN if [ "${DAAF_DEV}" = "1" ]; then \
+        DEB_ARCH=$(dpkg --print-architecture) \
+        && case "${DEB_ARCH}" in \
+             amd64) PWSH_ARCH=x64 ;; \
+             arm64) PWSH_ARCH=arm64 ;; \
+             *) echo "DAAF_DEV: unsupported architecture '${DEB_ARCH}' for PowerShell" >&2; exit 1 ;; \
+           esac \
+        && PWSH_TGZ="powershell-${DAAF_DEV_PWSH_VERSION}-linux-${PWSH_ARCH}.tar.gz" \
+        && curl -fsSL -o "/tmp/${PWSH_TGZ}" \
+             "https://github.com/PowerShell/PowerShell/releases/download/v${DAAF_DEV_PWSH_VERSION}/${PWSH_TGZ}" \
+        && mkdir -p /opt/microsoft/powershell/7 \
+        && tar zxf "/tmp/${PWSH_TGZ}" -C /opt/microsoft/powershell/7 \
+        && chmod +x /opt/microsoft/powershell/7/pwsh \
+        && ln -sf /opt/microsoft/powershell/7/pwsh /usr/bin/pwsh \
+        && rm -f "/tmp/${PWSH_TGZ}"; \
+    fi
+
+# Pester + PSScriptAnalyzer for the PowerShell suite. Installed AllUsers (root
+# build context) so the modules are available to any user's pwsh session.
+# Versions are pinned here because CI installs them unpinned (Pester is
+# pre-provisioned on the runners; PSScriptAnalyzer via `Install-Module` with no
+# version) -- pinning current stable releases keeps in-container runs
+# deterministic while still reproducing the CI toolchain.
+RUN if [ "${DAAF_DEV}" = "1" ]; then \
+        pwsh -NoProfile -Command "Set-PSRepository -Name PSGallery -InstallationPolicy Trusted; \
+            Install-Module -Name Pester -RequiredVersion '${DAAF_DEV_PESTER_VERSION}' -Force -Scope AllUsers -SkipPublisherCheck; \
+            Install-Module -Name PSScriptAnalyzer -RequiredVersion '${DAAF_DEV_PSSA_VERSION}' -Force -Scope AllUsers"; \
+    fi
+
+# ============================================
 # Install Python Data Science Packages via uv
 # ============================================
 #

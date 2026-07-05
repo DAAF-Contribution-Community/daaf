@@ -18,6 +18,7 @@
 # Supports DAAF_DRY_RUN=1 for CI cross-platform smoke testing (see tests/).
 # ============================================================================
 
+#Requires -Version 5.1
 $ErrorActionPreference = "Stop"
 
 function Wait-AndExit {
@@ -85,12 +86,15 @@ if ($env:DAAF_DRY_RUN -eq "1") {
             "*volume inspect*" { return }
             "*ps --filter*" { return }
             "*run --rm*rm -rf*" { return }
-            "*run --rm*cp -a*" { return }
             "*run --rm*find /dest*" {
                 Write-Output "42"
                 return
             }
             default {
+                # The dry-run path exits before any create/cp/rm/chown, so no match
+                # arm is needed for the copy mechanism or the ownership repair -- the
+                # default is only reached for unmodeled calls, which are echoed and
+                # treated as no-ops.
                 Write-Host "[DRY-RUN] docker $argStr"
                 return
             }
@@ -325,16 +329,110 @@ Write-Host "Copying backup into Docker volume..."
 Write-Host "  This may take a few minutes for large backups."
 Write-Host ""
 
-# Copy everything, then strip the Claude subfolder from the DATA volume -- it
-# belongs in the separate Claude volume (restored below), not the data volume.
-$savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
-$null = docker run --rm -v "${SelectedPath}:/source:ro" -v "${VolumeName}:/dest" busybox sh -c "cp -a /source/. /dest/ && rm -rf `"/dest/${ClaudeSubDir}`"" 2>&1
-$ErrorActionPreference = $savedEAP
-if ($LASTEXITCODE -ne 0) {
+# Copy the backup into the data volume via `docker create` + `docker cp` instead
+# of a bind-mounted `busybox cp -a`. On Docker Desktop for Windows, a bind-mounted
+# copy reads every host file across the 9p/gRPC-FUSE host<->VM boundary
+# individually, so a large restore takes minutes; `docker cp` streams the whole
+# tree to the daemon in one pass and extracts it inside the VM, avoiding that
+# per-file overhead. The helper container is created but never started -- `docker
+# cp` still writes into the volume because the daemon mounts the container root AND
+# its volume MountPoints into the archive view regardless of container state. The
+# trailing "/." on the source copies the backup's CONTENTS into /dest.
+#
+# Two asymmetries vs the backup script's copy-OUT:
+#   1. Ownership: `docker cp` INTO a container writes files as ROOT (not the
+#      volume's appuser, UID 1000), so a container-side chown repair is REQUIRED
+#      below (Step 2c). Copy-OUT needs no repair because `docker cp` extracts
+#      container->host as the invoking user.
+#   2. Exclusion: `docker cp` has no exclude flag, so it copies the whole backup
+#      folder INCLUDING the hidden ".daaf-claude-config\" subfolder. That subfolder
+#      belongs in the separate Claude volume (restored below), not the data volume,
+#      so it is stripped container-side in Step 2b -- matching the old
+#      `cp -a ... && rm -rf "/dest/$ClaudeSubDir"` outcome exactly.
+# Only docker cp's text status line reaches stdout here (the file data goes over
+# the daemon API pipe, not the PS pipeline), so synchronous inline calls are
+# pipeline-safe on PS 5.1.
+#
+# Structure (mirrors backup_daaf.ps1): do the create + copy inside try, set
+# $createOk/$copyOk flags, and put ONLY the best-effort container cleanup in
+# finally. All error checks and Wait-AndExit calls happen AFTER the try/finally
+# completes -- calling `exit` from inside a `try` whose `finally` must still run is
+# version-fragile on PS 5.1, so it is avoided entirely.
+$Cid = $null
+$createOk = $false
+$copyOk = $false
+try {
+    $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
+    $Cid = (docker create -v "${VolumeName}:/dest" busybox 2>&1).Trim()
+    $createOk = ($LASTEXITCODE -eq 0)
+    $ErrorActionPreference = $savedEAP
+
+    if ($createOk) {
+        # Step 2a: copy the backup CONTENTS into the volume.
+        $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
+        $null = docker cp "${SelectedPath}/." "${Cid}:/dest/" 2>&1
+        $copyOk = ($LASTEXITCODE -eq 0)
+        $ErrorActionPreference = $savedEAP
+    }
+} finally {
+    # Remove the helper container even if the copy is interrupted (PS finally runs
+    # on Ctrl-C). Best-effort; guarded so an unset/empty CID is a no-op. Subsequent
+    # container-side steps use `docker run --rm`.
+    if (-not [string]::IsNullOrEmpty($Cid)) {
+        $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
+        $null = docker rm -f $Cid 2>&1
+        $ErrorActionPreference = $savedEAP
+    }
+}
+
+if (-not $createOk) {
+    Write-Host "" -ForegroundColor Red
+    Write-Host "ERROR: Could not create the helper container for the volume copy." -ForegroundColor Red
+    Write-Host "The Docker volume has already been cleared and is now EMPTY."
+    Write-Host "Re-run this restore, or reinstall DAAF, to repopulate it."
+    Wait-AndExit 1
+}
+
+if (-not $copyOk) {
     Write-Host "" -ForegroundColor Red
     Write-Host "ERROR: File copy failed." -ForegroundColor Red
     Write-Host "The Docker volume may be in an inconsistent state."
     Write-Host "You may want to re-run this restore or reinstall DAAF."
+    Wait-AndExit 1
+}
+
+# Step 2b: strip the Claude subfolder from the DATA volume. `docker cp` copied the
+# whole backup, including "$ClaudeSubDir\"; remove it container-side (fast: inside
+# the VM, no bind mount) so the data volume matches the old copy's outcome. It is
+# restored to its own volume below when present.
+$savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
+$null = docker run --rm -v "${VolumeName}:/dest" busybox rm -rf "/dest/${ClaudeSubDir}" 2>&1
+$stripOk = ($LASTEXITCODE -eq 0)
+$ErrorActionPreference = $savedEAP
+if (-not $stripOk) {
+    Write-Host "" -ForegroundColor Red
+    Write-Host "ERROR: Failed to remove the $ClaudeSubDir subfolder from the data volume." -ForegroundColor Red
+    Write-Host "WARNING: The restore copied the whole backup into the data volume, so Claude" -ForegroundColor Yellow
+    Write-Host "         Code credentials and session data may REMAIN inside the data volume"
+    Write-Host "         until this is resolved. Re-run this restore to clear them."
+    Wait-AndExit 1
+}
+
+# Step 2c: repair ownership. `docker cp` wrote files as root; the volume must be
+# owned by appuser (UID 1000). Chown container-side (inside the VM, no bind mount,
+# so it is fast). The literal 1000:1000 mirrors the daaf-init service in
+# docker-compose.yml, which chowns both volumes to 1000:1000 on every startup;
+# that init container is a second net, but restore must not depend on it.
+$savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
+$null = docker run --rm -v "${VolumeName}:/dest" busybox chown -R 1000:1000 /dest 2>&1
+$chownOk = ($LASTEXITCODE -eq 0)
+$ErrorActionPreference = $savedEAP
+if (-not $chownOk) {
+    Write-Host "" -ForegroundColor Red
+    Write-Host "ERROR: Failed to repair ownership on the data volume." -ForegroundColor Red
+    Write-Host "The files were restored intact, but the DAAF container may not be able to"
+    Write-Host "read them. Re-run this restore, or restart DAAF -- the compose init service"
+    Write-Host "also repairs volume ownership on startup."
     Wait-AndExit 1
 }
 Write-Host "Copy complete."
@@ -381,14 +479,39 @@ if ($HasClaudeBackup) {
     # Ensure the volume exists (idempotent) in case restore runs before first start.
     $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
     $null = docker volume create $ClaudeVolumeName 2>&1
-    # Clear then copy, mirroring the data-volume restore semantics.
+    # Clear then copy, mirroring the data-volume restore semantics. The copy uses
+    # the same `docker create` + `docker cp` mechanism (with the same root->1000
+    # ownership repair) as the data volume above; the claude-config volume is also
+    # chowned to 1000:1000 by daaf-init in docker-compose.yml, but restore repairs
+    # it here rather than depending on that init container.
     $null = docker run --rm -v "${ClaudeVolumeName}:/dest" busybox sh -c 'rm -rf /dest/* /dest/.[!.]* /dest/..?*' 2>&1
     $clearOk = ($LASTEXITCODE -eq 0)
+    $claudeCopyOk = $false
     if ($clearOk) {
-        $null = docker run --rm -v "${ClaudeBackupPath}:/source:ro" -v "${ClaudeVolumeName}:/dest" busybox sh -c "cp -a /source/. /dest/" 2>&1
-        $claudeCopyOk = ($LASTEXITCODE -eq 0)
-    } else {
-        $claudeCopyOk = $false
+        $ClaudeCid = $null
+        try {
+            $ClaudeCid = (docker create -v "${ClaudeVolumeName}:/dest" busybox 2>&1).Trim()
+            $claudeCreateOk = ($LASTEXITCODE -eq 0)
+            if ($claudeCreateOk) {
+                $null = docker cp "${ClaudeBackupPath}/." "${ClaudeCid}:/dest/" 2>&1
+                $claudeCpOk = ($LASTEXITCODE -eq 0)
+                if ($claudeCpOk) {
+                    $null = docker run --rm -v "${ClaudeVolumeName}:/dest" busybox chown -R 1000:1000 /dest 2>&1
+                    $claudeCopyOk = ($LASTEXITCODE -eq 0)
+                }
+            }
+        } finally {
+            # Remove the helper container even if the copy is interrupted (PS
+            # finally runs on Ctrl-C). Best-effort; guarded on an unset/empty CID.
+            # Wrap in its own SilentlyContinue bracket -- on an interrupt path the
+            # ambient EAP is not guaranteed, and under EAP=Stop a stderr line from
+            # `docker rm` would throw inside finally.
+            if (-not [string]::IsNullOrEmpty($ClaudeCid)) {
+                $innerEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
+                $null = docker rm -f $ClaudeCid 2>&1
+                $ErrorActionPreference = $innerEAP
+            }
+        }
     }
     $ErrorActionPreference = $savedEAP
     if (-not $clearOk) {

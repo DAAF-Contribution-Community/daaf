@@ -124,10 +124,15 @@ teardown() {
     assert_success
 }
 
-@test "backup_daaf.sh uses cp -a (not cp -r)" {
-    run grep -c "cp -a /source" "${REPO_ROOT}/scripts/host/backup_daaf.sh"
+@test "backup_daaf.sh uses docker cp (not bind-mounted cp -a)" {
+    # The copy mechanism is `docker create` + `docker cp` -- it must invoke a
+    # quoted `docker cp "` (one for the data volume, one for the Claude state
+    # volume) and must NOT use the old bind-mounted `cp -a /source` busybox copy.
+    run grep -c 'docker create' "${REPO_ROOT}/scripts/host/backup_daaf.sh"
     assert_success
-    run grep -c "cp -r /source" "${REPO_ROOT}/scripts/host/backup_daaf.sh"
+    run grep -c 'docker cp "' "${REPO_ROOT}/scripts/host/backup_daaf.sh"
+    assert_success
+    run grep -c "cp -a /source" "${REPO_ROOT}/scripts/host/backup_daaf.sh"
     assert_failure
 }
 
@@ -265,36 +270,39 @@ teardown() {
 @test "backup: warns when backup size differs from source by more than 1 percent" {
     export DAAF_NESTED=1
 
-    # Custom docker mock: scan reports 9800 logical KB source; copy creates a
-    # small file in the backup dir so FILE_COUNT > 0 and size verification triggers.
-    # The backup file is ~1 KB vs 9800 KB source -- well beyond 1% tolerance.
+    # Custom docker mock: scan reports 9800 logical KB source; the docker cp copy
+    # creates a small file in the destination dir so FILE_COUNT > 0 and size
+    # verification triggers. The backup file is ~1 KB vs 9800 KB source -- well
+    # beyond 1% tolerance. The mock keys on docker subcommands (create/cp/rm) now
+    # that the copy uses `docker create` + `docker cp` instead of a bind-mounted
+    # `busybox cp -a`.
     docker() {
         case "$1" in
             info)   return 0 ;;
             volume) return 0 ;;
-            run)
-                shift
-                local args_str="$*"
-                if [[ "${args_str}" == *"cp -a"* ]]; then
-                    # Extract the host-side bind-mount path before ":/dest"
-                    local dest_dir=""
-                    for arg in "$@"; do
-                        if [[ "${arg}" == *":/dest"* ]]; then
-                            dest_dir="${arg%%:/dest*}"
-                            break
-                        fi
-                    done
-                    if [ -n "${dest_dir}" ]; then
-                        mkdir -p "${dest_dir}"
-                        # Create a file with ~1 KB of content (far less than 9800 KB source)
-                        dd if=/dev/zero of="${dest_dir}/mock_file" bs=1024 count=1 2>/dev/null
-                    fi
-                    return 0
-                else
-                    # Scan call: file count, du -sk, du -sh, logical KB
-                    printf '10\n10000\t/source\n10M\t/source\n9800\n'
-                    return 0
+            create)
+                # Emit a fake container ID for the caller to cp from.
+                echo "mockcid0000"
+                return 0
+                ;;
+            cp)
+                # `docker cp <cid>:/source/. <dest>/` -- the destination is the
+                # last positional arg. Create a file there so the backup is non-empty.
+                local dest_dir=""
+                for arg in "$@"; do dest_dir="${arg}"; done
+                dest_dir="${dest_dir%/}"
+                if [ -n "${dest_dir}" ]; then
+                    mkdir -p "${dest_dir}"
+                    # ~1 KB file (far less than 9800 KB source)
+                    dd if=/dev/zero of="${dest_dir}/mock_file" bs=1024 count=1 2>/dev/null
                 fi
+                return 0
+                ;;
+            rm) return 0 ;;
+            run)
+                # Scan call: file count, du -sk, du -sh, logical KB
+                printf '10\n10000\t/source\n10M\t/source\n9800\n'
+                return 0
                 ;;
             *)  return 0 ;;
         esac
@@ -311,31 +319,26 @@ teardown() {
 @test "backup: reports file count in output on success" {
     export DAAF_NESTED=1
 
-    # Custom docker mock: copy step creates files so FILE_COUNT > 0
+    # Custom docker mock: the docker cp copy step creates files so FILE_COUNT > 0.
     docker() {
         case "$1" in
             info)   return 0 ;;
             volume) return 0 ;;
-            run)
-                shift
-                local args_str="$*"
-                if [[ "${args_str}" == *"cp -a"* ]]; then
-                    local dest_dir=""
-                    for arg in "$@"; do
-                        if [[ "${arg}" == *":/dest"* ]]; then
-                            dest_dir="${arg%%:/dest*}"
-                            break
-                        fi
-                    done
-                    if [ -n "${dest_dir}" ]; then
-                        mkdir -p "${dest_dir}"
-                        touch "${dest_dir}/file1" "${dest_dir}/file2"
-                    fi
-                    return 0
-                else
-                    printf '5\n512\t/source\n500K\t/source\n500\n'
-                    return 0
+            create) echo "mockcid0000"; return 0 ;;
+            cp)
+                local dest_dir=""
+                for arg in "$@"; do dest_dir="${arg}"; done
+                dest_dir="${dest_dir%/}"
+                if [ -n "${dest_dir}" ]; then
+                    mkdir -p "${dest_dir}"
+                    touch "${dest_dir}/file1" "${dest_dir}/file2"
                 fi
+                return 0
+                ;;
+            rm) return 0 ;;
+            run)
+                printf '5\n512\t/source\n500K\t/source\n500\n'
+                return 0
                 ;;
             *)  return 0 ;;
         esac
@@ -353,31 +356,27 @@ teardown() {
     local today
     today=$(date +%Y-%m-%d)
 
-    # Custom docker mock: copy step creates a file so the script reaches success
+    # Custom docker mock: the docker cp copy step creates a file so the script
+    # reaches success.
     docker() {
         case "$1" in
             info)   return 0 ;;
             volume) return 0 ;;
-            run)
-                shift
-                local args_str="$*"
-                if [[ "${args_str}" == *"cp -a"* ]]; then
-                    local dest_dir=""
-                    for arg in "$@"; do
-                        if [[ "${arg}" == *":/dest"* ]]; then
-                            dest_dir="${arg%%:/dest*}"
-                            break
-                        fi
-                    done
-                    if [ -n "${dest_dir}" ]; then
-                        mkdir -p "${dest_dir}"
-                        touch "${dest_dir}/file1"
-                    fi
-                    return 0
-                else
-                    printf '5\n512\t/source\n500K\t/source\n500\n'
-                    return 0
+            create) echo "mockcid0000"; return 0 ;;
+            cp)
+                local dest_dir=""
+                for arg in "$@"; do dest_dir="${arg}"; done
+                dest_dir="${dest_dir%/}"
+                if [ -n "${dest_dir}" ]; then
+                    mkdir -p "${dest_dir}"
+                    touch "${dest_dir}/file1"
                 fi
+                return 0
+                ;;
+            rm) return 0 ;;
+            run)
+                printf '5\n512\t/source\n500K\t/source\n500\n'
+                return 0
                 ;;
             *)  return 0 ;;
         esac
@@ -430,22 +429,19 @@ teardown() {
 @test "backup: copy failure with zero files exits with error" {
     export DAAF_NESTED=1
 
-    # Custom docker mock: scan succeeds, copy fails (non-zero exit), no files created
+    # Custom docker mock: scan succeeds, the docker cp copy fails (non-zero exit)
+    # and creates no files.
     docker() {
         case "$1" in
             info)   return 0 ;;
             volume) return 0 ;;
+            create) echo "mockcid0000"; return 0 ;;
+            cp)     return 1 ;;
+            rm)     return 0 ;;
             run)
-                shift
-                local args_str="$*"
-                if [[ "${args_str}" == *"cp -a"* ]]; then
-                    # Copy fails, creates no files
-                    return 1
-                else
-                    # Scan output: file count, du -sk, du -sh, logical KB
-                    printf '50\n512\t/source\n500K\t/source\n500\n'
-                    return 0
-                fi
+                # Scan output: file count, du -sk, du -sh, logical KB
+                printf '50\n512\t/source\n500K\t/source\n500\n'
+                return 0
                 ;;
             *)  return 0 ;;
         esac
@@ -460,34 +456,28 @@ teardown() {
 @test "backup: copy partially succeeds with non-zero exit but files copied shows warning" {
     export DAAF_NESTED=1
 
-    # Custom docker mock: copy returns non-zero but creates files
+    # Custom docker mock: the docker cp copy returns non-zero but still creates files
     docker() {
         case "$1" in
             info)   return 0 ;;
             volume) return 0 ;;
-            run)
-                shift
-                local args_str="$*"
-                if [[ "${args_str}" == *"cp -a"* ]]; then
-                    # Extract the host-side bind-mount path before ":/dest"
-                    local dest_dir=""
-                    for arg in "$@"; do
-                        if [[ "${arg}" == *":/dest"* ]]; then
-                            dest_dir="${arg%%:/dest*}"
-                            break
-                        fi
-                    done
-                    if [ -n "${dest_dir}" ]; then
-                        mkdir -p "${dest_dir}"
-                        touch "${dest_dir}/file1" "${dest_dir}/file2" "${dest_dir}/file3"
-                    fi
-                    # Non-zero exit (partial failure)
-                    return 1
-                else
-                    # Scan output
-                    printf '5\n512\t/source\n500K\t/source\n500\n'
-                    return 0
+            create) echo "mockcid0000"; return 0 ;;
+            cp)
+                local dest_dir=""
+                for arg in "$@"; do dest_dir="${arg}"; done
+                dest_dir="${dest_dir%/}"
+                if [ -n "${dest_dir}" ]; then
+                    mkdir -p "${dest_dir}"
+                    touch "${dest_dir}/file1" "${dest_dir}/file2" "${dest_dir}/file3"
                 fi
+                # Non-zero exit (partial failure)
+                return 1
+                ;;
+            rm) return 0 ;;
+            run)
+                # Scan output
+                printf '5\n512\t/source\n500K\t/source\n500\n'
+                return 0
                 ;;
             *)  return 0 ;;
         esac

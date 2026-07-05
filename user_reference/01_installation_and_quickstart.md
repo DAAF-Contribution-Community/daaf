@@ -641,6 +641,35 @@ The DAAF launcher and control-panel scripts (`run_daaf`, `daaf`, the `view_*` br
 
 > **Changing these on an existing install** requires the same `docker compose down` + relaunch: the project name and published ports are baked in at container-creation time, so a running container will not adopt new values until it is recreated. Your data volume moves with the project name — renaming `DAAF_PROJECT_NAME` on an existing install points it at a *different* (empty) volume, so choose the name once, up front.
 
+### Building with the developer test toolchain (DAAF_DEV)
+
+Most people never need this section — it is for **framework developers** who want to run DAAF's own shell and PowerShell test suites (`bats` and Pester) *inside* the container, so an in-container run reproduces what the project's CI does.
+
+Unlike the multi-instance keys above (which are runtime settings), `DAAF_DEV` is a **build-time** flag: it changes what gets installed into the Docker image. To turn it on, add this line to your `daaf-docker` folder's `environment_settings.txt`:
+
+```
+DAAF_DEV=1
+```
+
+Then rebuild the image so the flag takes effect:
+
+```
+bash rebuild_daaf.sh         # macOS / Linux
+.\rebuild_daaf.ps1           # Windows
+```
+
+With `DAAF_DEV=1`, the build additionally installs `shellcheck`, `bats`, PowerShell 7, Pester, and PSScriptAnalyzer. You can then run the suites from inside the container (`bash run_daaf.sh bash`):
+
+```
+bats tests/bash/
+pwsh -NoProfile -Command "Invoke-Pester -Path ./tests/powershell/"
+shellcheck -x scripts/host/*.sh
+```
+
+When `DAAF_DEV` is unset or `0` (the default for every normal install), none of this tooling is installed and the image is byte-for-byte identical to a standard build — so leaving it off costs you nothing.
+
+> **DAAF_DEV is a build flag, not a runtime setting.** It only matters at `docker compose build` time. The install and rebuild scripts bridge it from `environment_settings.txt` into the shell environment so the build picks it up; if you run bare `docker compose build` yourself, put `DAAF_DEV=1` in a `.env` file (or your shell environment) the same way you would for the multi-instance keys. Turning it on or off requires a rebuild to change the installed toolchain.
+
 ### Configure authentication via environment_settings.txt
 
 By default, Claude Code prompts you to log in interactively the first time you launch it (browser-based OAuth or pasting an API key). This works great for Max subscription and direct API key setups. However, if you're using **OpenRouter**, a **cloud provider** (Bedrock/Vertex), or simply want your authentication to persist automatically without interactive login, you can configure it through the `environment_settings.txt` file in your `daaf-docker` folder.

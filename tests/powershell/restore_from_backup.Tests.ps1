@@ -64,9 +64,19 @@ Describe "restore_from_backup.ps1" {
             $Content | Should -Match 'rm -rf /dest'
         }
 
-        It "uses cp -a (not cp -r) for permission-preserving copy" {
-            $Content | Should -Match 'cp -a /source/\. /dest/'
-            $Content | Should -Not -Match 'cp -r /source/\. /dest/'
+        It "uses docker cp (not bind-mounted cp -a)" {
+            # The copy mechanism is `docker create` + `docker cp` -- one for the
+            # data volume, one for the Claude state volume -- and must NOT use the
+            # old bind-mounted `cp -a /source` busybox copy.
+            $Content | Should -Match 'docker create'
+            $Content | Should -Match 'docker cp'
+            $Content | Should -Not -Match 'cp -a /source'
+        }
+
+        It "repairs volume ownership after docker cp writes as root" {
+            # `docker cp` INTO a container writes files as root; restore must chown
+            # the volume back to appuser (UID 1000), matching daaf-init.
+            $Content | Should -Match 'chown -R 1000:1000 /dest'
         }
 
         It "verifies file count after restore" {

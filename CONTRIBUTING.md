@@ -374,6 +374,17 @@ If you're modifying hooks (`.claude/hooks/`), Docker configuration, or other inf
 2. **Verify hook execution.** Check `.claude/logs/` for evidence that hooks fired correctly (audit log entries, session archives, etc.).
 3. **Test the safety boundaries.** If your change is anywhere near the safety infrastructure (the `bash-safety.sh` hook, permission deny rules, etc.), test that the safety boundaries are still enforced. Try a few commands that should be blocked and verify they're still blocked.
 
+**Running the shell/PowerShell test suites in-container.** The `scripts/host/` lifecycle scripts and shared libraries are covered by `bats` (Bash) and Pester (PowerShell) suites under `tests/`, plus `shellcheck`, `PSScriptAnalyzer`, and `tests/lint/check-daaf-conventions.sh`. These run in CI (`.github/workflows/ci-scripts.yml`) on every push that touches a script. To reproduce that toolchain **inside the DAAF container** rather than installing it on your host, set `DAAF_DEV=1` in your `daaf-docker` folder's `environment_settings.txt` and rebuild (`rebuild_daaf.sh` / `.ps1`) — this installs `shellcheck`, `bats`, PowerShell 7, Pester, and PSScriptAnalyzer into the image. Then, from inside the container (`bash run_daaf.sh bash`):
+
+```bash
+bats tests/bash/
+shellcheck -x scripts/host/*.sh
+bash tests/lint/check-daaf-conventions.sh
+pwsh -NoProfile -Command "Invoke-Pester -Path ./tests/powershell/"
+```
+
+`DAAF_DEV` is an opt-in build flag: when it is unset or `0` (the default), none of this tooling is installed and the image is identical to a standard build. See `user_reference/01_installation_and_quickstart.md` ("Building with the developer test toolchain") for details.
+
 ---
 
 ## Using Session Logs for Debugging and Issue Reports

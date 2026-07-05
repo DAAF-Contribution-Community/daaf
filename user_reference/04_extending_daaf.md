@@ -507,6 +507,10 @@ The recommended workflow is:
 2. Verify it works for your use case
 3. Add it to the Dockerfile and rebuild to make it permanent
 
+### Building with the developer test toolchain (DAAF_DEV)
+
+If you are **developing the framework itself** (not just running research) and want to run DAAF's own shell/PowerShell test suites inside the container, there is an opt-in build flag: `DAAF_DEV`. Setting `DAAF_DEV=1` in your `daaf-docker` folder's `environment_settings.txt` and rebuilding (`rebuild_daaf.sh` / `.ps1`) installs `shellcheck`, `bats`, PowerShell 7, Pester, and PSScriptAnalyzer into the image so `bats tests/bash/` and `pwsh -NoProfile -Command "Invoke-Pester -Path ./tests/powershell/"` reproduce the project's CI locally. It is a **build-time** flag (it changes what is installed), so it rides the same rebuild boundary described above — the install/rebuild scripts bridge it from `environment_settings.txt` into the shell environment and Compose forwards it as `--build-arg DAAF_DEV=${DAAF_DEV:-0}`. When it is unset or `0` (the default for all normal installs) the image is identical to a standard build. See `user_reference/01_installation_and_quickstart.md` ("Building with the developer test toolchain") for the full walkthrough.
+
 ### Understanding the `uv` Package Manager
 
 You may have noticed that DAAF uses `uv` rather than plain `pip` for package installation. `uv` is a fast, Rust-based Python package manager that's fully compatible with pip but significantly faster -- often 10-50x faster for large installs. The Dockerfile uses `uv pip install --system` (which installs packages system-wide during the build, when running as root). At runtime, since you're running as a non-root user, use `uv pip install --user` instead.

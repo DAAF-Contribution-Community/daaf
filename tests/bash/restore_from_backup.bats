@@ -158,11 +158,23 @@ teardown() {
     assert_success
 }
 
-@test "restore: uses cp -a (not cp -r) for permission-preserving copy" {
-    run grep -c "cp -a /source" "${REPO_ROOT}/scripts/host/restore_from_backup.sh"
+@test "restore: uses docker cp (not bind-mounted cp -a)" {
+    # The copy mechanism is `docker create` + `docker cp` -- it must invoke a
+    # quoted `docker cp "` (one for the data volume, one for the Claude state
+    # volume) and must NOT use the old bind-mounted `cp -a /source` busybox copy.
+    run grep -c 'docker create' "${REPO_ROOT}/scripts/host/restore_from_backup.sh"
     assert_success
-    run grep -c "cp -r /source" "${REPO_ROOT}/scripts/host/restore_from_backup.sh"
+    run grep -c 'docker cp "' "${REPO_ROOT}/scripts/host/restore_from_backup.sh"
+    assert_success
+    run grep -c "cp -a /source" "${REPO_ROOT}/scripts/host/restore_from_backup.sh"
     assert_failure
+}
+
+@test "restore: repairs volume ownership after docker cp writes as root" {
+    # `docker cp` INTO a container writes files as root; the restore must chown the
+    # volume back to appuser (UID 1000) container-side, matching daaf-init.
+    run grep -c "chown -R 1000:1000 /dest" "${REPO_ROOT}/scripts/host/restore_from_backup.sh"
+    assert_success
 }
 
 @test "restore: checks for running containers before restoring" {
@@ -390,12 +402,18 @@ teardown() {
             info)   return 0 ;;
             volume) return 0 ;;
             ps)     return 0 ;;
+            create) echo "mockcid0000"; return 0 ;;
+            cp)     return 0 ;;
             run)
                 shift
                 local args_str="$*"
+                # The copy path is now `docker create` + `docker cp` (arms above);
+                # the volume-clear, Claude-subfolder strip, and ownership repair are
+                # `docker run --rm ... rm -rf` / `chown`; verification is
+                # `docker run --rm ... find /dest`.
                 if [[ "${args_str}" == *"rm -rf"* ]]; then
                     return 0
-                elif [[ "${args_str}" == *"cp -a"* ]]; then
+                elif [[ "${args_str}" == *"chown"* ]]; then
                     return 0
                 elif [[ "${args_str}" == *"find /dest"* ]]; then
                     # Verification: 0 files restored
@@ -429,12 +447,17 @@ teardown() {
             info)   return 0 ;;
             volume) return 0 ;;
             ps)     return 0 ;;
+            create) echo "mockcid0000"; return 0 ;;
+            cp)     return 0 ;;
             run)
                 shift
                 local args_str="$*"
+                # Copy path is `docker create` + `docker cp` (arms above); clear,
+                # subfolder strip, and chown are `docker run --rm`; verification is
+                # `docker run --rm ... find /dest`.
                 if [[ "${args_str}" == *"rm -rf"* ]]; then
                     return 0
-                elif [[ "${args_str}" == *"cp -a"* ]]; then
+                elif [[ "${args_str}" == *"chown"* ]]; then
                     return 0
                 elif [[ "${args_str}" == *"find /dest"* ]]; then
                     # Return much lower count than actual (50 files, report 10)
@@ -451,6 +474,84 @@ teardown() {
     run bash -c 'printf "1\nRESTORE\n" | bash "'"${REPO_ROOT}"'/scripts/host/restore_from_backup.sh"'
     assert_output --partial "WARNING"
     assert_output --partial "File count mismatch"
+}
+
+@test "restore: subfolder-strip failure exits with hygiene warning" {
+    mkdir -p "${TEST_DIR}/2026-01-01_daaf_backup"
+    touch "${TEST_DIR}/2026-01-01_daaf_backup/f1"
+
+    export DAAF_NESTED=1
+
+    # The data copy (create/cp) succeeds; the Step 2b strip of the
+    # ".daaf-claude-config" subfolder fails. Both the Step 1 volume-clear and the
+    # Step 2b strip are `docker run ... rm -rf`, so the mock distinguishes them by
+    # the ".daaf-claude-config" substring: the clear (no substring) succeeds, the
+    # strip (contains the substring) returns 1.
+    docker() {
+        case "$1" in
+            info)   return 0 ;;
+            volume) return 0 ;;
+            ps)     return 0 ;;
+            create) echo "mockcid0000"; return 0 ;;
+            cp)     return 0 ;;
+            run)
+                shift
+                local args_str="$*"
+                if [[ "${args_str}" == *".daaf-claude-config"* ]]; then
+                    # Step 2b strip fails.
+                    return 1
+                elif [[ "${args_str}" == *"rm -rf"* ]]; then
+                    # Step 1 volume-clear succeeds.
+                    return 0
+                fi
+                return 0
+                ;;
+            *)  return 0 ;;
+        esac
+    }
+    export -f docker
+
+    run bash -c 'printf "1\nRESTORE\n" | bash "'"${REPO_ROOT}"'/scripts/host/restore_from_backup.sh"'
+    assert_failure
+    assert_output --partial "ERROR"
+    assert_output --partial "may REMAIN inside the data volume"
+}
+
+@test "restore: ownership-repair (chown) failure exits with ownership warning" {
+    mkdir -p "${TEST_DIR}/2026-01-01_daaf_backup"
+    touch "${TEST_DIR}/2026-01-01_daaf_backup/f1"
+
+    export DAAF_NESTED=1
+
+    # The data copy (create/cp) and the Step 2b strip succeed; the Step 2c
+    # ownership repair (`docker run ... chown`) fails.
+    docker() {
+        case "$1" in
+            info)   return 0 ;;
+            volume) return 0 ;;
+            ps)     return 0 ;;
+            create) echo "mockcid0000"; return 0 ;;
+            cp)     return 0 ;;
+            run)
+                shift
+                local args_str="$*"
+                if [[ "${args_str}" == *"chown"* ]]; then
+                    # Step 2c ownership repair fails.
+                    return 1
+                elif [[ "${args_str}" == *"rm -rf"* ]]; then
+                    return 0
+                fi
+                return 0
+                ;;
+            *)  return 0 ;;
+        esac
+    }
+    export -f docker
+
+    run bash -c 'printf "1\nRESTORE\n" | bash "'"${REPO_ROOT}"'/scripts/host/restore_from_backup.sh"'
+    assert_failure
+    assert_output --partial "ERROR"
+    assert_output --partial "Failed to repair ownership"
 }
 
 @test "restore: no backup folders found exits with error" {

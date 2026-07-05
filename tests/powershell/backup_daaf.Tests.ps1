@@ -68,9 +68,20 @@ Describe "backup_daaf.ps1" {
             $Content | Should -Match 'files copied'
         }
 
-        It "uses cp -a (not cp -r) for permission-preserving copy" {
-            $Content | Should -Match 'cp -a /source/\. /dest/'
-            $Content | Should -Not -Match 'cp -r /source/\. /dest/'
+        It "uses docker cp (not bind-mounted cp -a) for the volume copy" {
+            # The copy mechanism is `docker create` + `docker cp`, which streams the
+            # tree through the daemon instead of writing file-by-file across the
+            # Docker Desktop bind-mount layer. It must NOT use the old busybox cp -a.
+            $Content | Should -Match 'docker create -v'
+            $Content | Should -Match 'docker cp'
+            $Content | Should -Not -Match 'cp -a /source'
+        }
+
+        It "removes the helper container after copying" {
+            # Both the data-volume copy (finally block) and the Claude copy must
+            # tear down their `docker create` helper container with docker rm -f.
+            $Content | Should -Match 'docker rm -f \$Cid'
+            $Content | Should -Match 'docker rm -f \$ClaudeCid'
         }
 
         It "checks available disk space before copying" {

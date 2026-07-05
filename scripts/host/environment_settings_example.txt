@@ -127,3 +127,22 @@
 # DAAF_PORT_MARIMO=3718
 # DAAF_PORT_LOGVIEWER=3719
 # DAAF_PORT_VSCODE=3720
+
+# ----------------------------------------------------------------------------
+# Developer tooling (framework developers only)
+# ----------------------------------------------------------------------------
+# DAAF_DEV is an OPT-IN, BUILD-TIME flag. Set it to 1 to have the Docker image
+# additionally install the in-container test toolchain (shellcheck, bats,
+# PowerShell 7, Pester, PSScriptAnalyzer) so you can run DAAF's own shell and
+# PowerShell test suites inside the container and reproduce what CI runs:
+#
+#   bats tests/bash/
+#   pwsh -NoProfile -Command "Invoke-Pester -Path ./tests/powershell/"
+#
+# This is a BUILD flag, not a runtime setting: it only takes effect at
+# `docker compose build`, so after changing it you must rebuild
+# (rebuild_daaf.sh / rebuild_daaf.ps1). When unset or 0 (the default for every
+# normal install), NONE of this tooling is installed and the image is identical
+# to a standard build -- leaving it off costs you nothing.
+#
+# DAAF_DEV=1

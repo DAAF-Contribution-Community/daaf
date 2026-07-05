@@ -111,6 +111,8 @@ mock_docker() {
     export MOCK_DOCKER_EXEC_EXIT=0
     export MOCK_DOCKER_EXEC_OUTPUT=""
     export MOCK_DOCKER_CP_EXIT=0
+    export MOCK_DOCKER_CREATE_EXIT=0
+    export MOCK_DOCKER_CREATE_OUTPUT=""
     export MOCK_DOCKER_VOLUME_EXIT=0
     export MOCK_DOCKER_PS_OUTPUT=""
     export MOCK_DOCKER_RUN_EXIT=0
@@ -165,6 +167,18 @@ mock_docker() {
                         return "${MOCK_DOCKER_COMPOSE_EXIT:-0}"
                         ;;
                 esac
+                ;;
+            create)
+                # `docker create ... busybox` returns a container ID on stdout.
+                # Emit a stable fake CID so a script capturing it (e.g. the backup
+                # copy path: CID=$(docker create ...)) binds a non-empty value.
+                # Previously `create` fell through to the default arm, which
+                # returns 0 but prints nothing -- silently giving an empty CID and
+                # masking copy-path bugs in any test reaching it via the shared
+                # mock. Override with a custom docker() in a test only when the
+                # create/cp/rm dispatch must be modeled per-arm.
+                echo "${MOCK_DOCKER_CREATE_OUTPUT:-mockcid0000}"
+                return "${MOCK_DOCKER_CREATE_EXIT:-0}"
                 ;;
             cp)
                 return "${MOCK_DOCKER_CP_EXIT:-0}"

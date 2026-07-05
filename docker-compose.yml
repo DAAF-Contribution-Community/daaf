@@ -14,7 +14,16 @@ services:
     # covers both mounts (data volume + Claude Code state volume).
 
   daaf-docker:
-    build: .
+    build:
+      context: .
+      args:
+        # Opt-in dev-tooling build path (framework developers only). Defaults to
+        # 0 so a normal build is identical to before. Compose interpolation reads
+        # DAAF_DEV from the HOST shell environment / project .env file, not from
+        # env_file above -- the install/rebuild scripts bridge the key from
+        # environment_settings.txt into the shell env before invoking the build.
+        # See the DAAF_DEV block in the Dockerfile for what this installs.
+        DAAF_DEV: "${DAAF_DEV:-0}"
     env_file:                      # Requires Docker Compose v2.17+ (Docker Desktop 4.15+)
       - path: environment_settings.txt
         required: false         # Container starts normally if environment_settings.txt doesn't exist

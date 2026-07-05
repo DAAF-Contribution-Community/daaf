@@ -86,8 +86,10 @@ if [ "${DAAF_DRY_RUN:-}" = "1" ]; then
                 printf '100\n1024\t/source\n1M\t/source\n1024\n'
                 return 0
                 ;;
-            *"run --rm"*"cp -a"*) return 0 ;;
             *)
+                # The dry-run path exits before any create/cp/rm, so no match arm
+                # is needed for the copy mechanism -- the default is only reached
+                # for unmodeled calls, which are echoed and treated as no-ops.
                 echo "[DRY-RUN] docker $*" >&2
                 return 0
                 ;;
@@ -187,27 +189,30 @@ fi
 
 # --- Create backup ---
 mkdir -p "${BACKUP_NAME}"
-# Pre-create the Claude state subfolder NOW, while the backup dir is still owned
-# by the invoking user. It MUST happen before the data-volume copy below because
-# busybox `cp -a /source/. /dest/` applies the SOURCE volume root's own directory
-# attributes to /dest -- resetting "${BACKUP_NAME}"'s owner to the volume root's
-# UID (appuser/1000). When the invoking user's UID differs (e.g., a CI runner at
-# UID 1001), a later `mkdir` under "${BACKUP_NAME}" would fail with EACCES and
-# `set -euo pipefail` would abort. Gate on the same volume-exists condition as the
-# Claude backup block far below so a data-only backup (no Claude volume) never
-# leaves behind an empty "${CLAUDE_SUBDIR}/" dir that restore might misread.
-if docker volume inspect "${CLAUDE_VOLUME_NAME}" &> /dev/null; then
-    mkdir -p "${BACKUP_NAME}/${CLAUDE_SUBDIR}"
-fi
 echo "Copying files from Docker volume..."
 printf "  Progress: 0 / %d files (0%%)" "${TOTAL_FILES}"
 
-docker run --rm \
-    -v "${VOLUME_NAME}:/source:ro" \
-    -v "$(pwd)/${BACKUP_NAME}:/dest" \
-    busybox sh -c "cp -a /source/. /dest/" &
+# Copy the data volume out via `docker create` + `docker cp` instead of a
+# bind-mounted `busybox cp -a`. On Docker Desktop for Windows, every file a
+# bind-mounted copy writes crosses the 9p/gRPC-FUSE host<->VM boundary
+# individually, so a large volume takes minutes. `docker cp` streams the whole
+# tree through the daemon in one pass, avoiding that per-file overhead entirely.
+# The helper container is created but never started -- `docker cp` still reads
+# the volume because the daemon mounts the container root AND its volume
+# MountPoints into the archive view regardless of container state. Crucially,
+# `docker cp` (without -a/--archive) extracts container->host files as the
+# INVOKING user, so ownership is correct by construction -- there is no bind-mount
+# UID reset and hence no chown-repair step. The trailing "/." on the source copies
+# the volume's CONTENTS into "${BACKUP_NAME}" rather than nesting a "source" dir.
+CID="$(docker create -v "${VOLUME_NAME}:/source:ro" busybox)"
+# Install the interrupt trap right after the helper container exists so an INT/TERM
+# between here and the copy still removes it. COPY_PID may not be set yet (the copy
+# is backgrounded just below), so the trap guards it with ${COPY_PID:-} under set -u.
+COPY_PID=""
+trap 'if [ -n "${COPY_PID:-}" ]; then kill "${COPY_PID}" 2>/dev/null; wait "${COPY_PID}" 2>/dev/null; fi; docker rm -f "${CID}" > /dev/null 2>&1 || true' INT TERM
+
+docker cp "${CID}:/source/." "${BACKUP_NAME}/" &
 COPY_PID=$!
-trap 'kill "${COPY_PID}" 2>/dev/null; wait "${COPY_PID}" 2>/dev/null' INT TERM
 
 while kill -0 "${COPY_PID}" 2>/dev/null; do
     sleep 3
@@ -227,6 +232,11 @@ done
 COPY_EXIT=0
 wait "${COPY_PID}" || COPY_EXIT=$?
 printf "\r  Progress: %d / %d files (100%%)   \n" "${TOTAL_FILES}" "${TOTAL_FILES}"
+
+# Remove the helper container. Best-effort: the copy is already done, so a
+# failure here must never fail the backup.
+docker rm -f "${CID}" > /dev/null 2>&1 || true
+trap - INT TERM
 
 # --- Verify ---
 FILE_COUNT=$(find "${BACKUP_NAME}" -type f 2>/dev/null | wc -l | tr -d '[:space:]') || FILE_COUNT=0
@@ -277,10 +287,16 @@ if docker volume inspect "${CLAUDE_VOLUME_NAME}" &> /dev/null; then
     echo ""
     echo "Backing up Claude Code state (credentials, session history, plugins)..."
     mkdir -p "${BACKUP_NAME}/${CLAUDE_SUBDIR}"
-    if docker run --rm \
-        -v "${CLAUDE_VOLUME_NAME}:/source:ro" \
-        -v "$(pwd)/${BACKUP_NAME}/${CLAUDE_SUBDIR}:/dest" \
-        busybox sh -c "cp -a /source/. /dest/"; then
+    # Same `docker create` + `docker cp` + `docker rm` mechanism as the data
+    # volume above, but synchronous (this copy is small). `docker cp` extracts as
+    # the invoking user, so the Claude state files land user-owned with no chown
+    # repair -- which is why the old ownership-repair step is gone entirely.
+    CLAUDE_CID="$(docker create -v "${CLAUDE_VOLUME_NAME}:/source:ro" busybox)"
+    # Re-register an interrupt trap around this block: the data-copy trap was
+    # cleared above, so without this a Ctrl-C during the Claude create/cp window
+    # would leak the helper container. Best-effort removal; guarded under set -u.
+    trap 'docker rm -f "${CLAUDE_CID:-}" > /dev/null 2>&1 || true' INT TERM
+    if docker cp "${CLAUDE_CID}:/source/." "${BACKUP_NAME}/${CLAUDE_SUBDIR}/"; then
         CLAUDE_FILE_COUNT=$(find "${BACKUP_NAME}/${CLAUDE_SUBDIR}" -type f 2>/dev/null | wc -l | tr -d '[:space:]') || CLAUDE_FILE_COUNT=0
         echo "Claude Code state backed up (${CLAUDE_FILE_COUNT} files)."
         CLAUDE_BACKED_UP=1
@@ -288,25 +304,12 @@ if docker volume inspect "${CLAUDE_VOLUME_NAME}" &> /dev/null; then
         echo "WARNING: Failed to back up the Claude Code state volume." >&2
         echo "         The data volume backup above is still valid." >&2
     fi
+    docker rm -f "${CLAUDE_CID}" > /dev/null 2>&1 || true
+    trap - INT TERM
 else
     echo ""
     echo "NOTE: No Claude Code state volume ('${CLAUDE_VOLUME_NAME}') found."
     echo "      Skipping -- this install may predate the dedicated Claude volume."
-fi
-
-# --- Repair backup tree ownership ---
-# The busybox `cp -a /source/. /dest/` copies above chown the backup tree to the
-# volumes' internal UIDs (appuser/1000, and Claude state dirs are mode 700). When
-# the invoking user's UID differs (e.g., a CI runner at UID 1001), those files
-# become unreadable/untraversable to that user -- they cannot inspect, move, or
-# delete the backup, and restore's host-side `find`/`du` cannot descend into the
-# Claude state dirs. A host-side non-root `chown` cannot fix this, but root inside
-# a container can rewrite the bind mount's ownership. Non-fatal: the backup itself
-# is already complete and verified, so a chown failure only WARNs.
-if ! docker run --rm -v "$(pwd)/${BACKUP_NAME}:/dest" busybox chown -R "$(id -u):$(id -g)" /dest; then
-    echo "WARNING: Could not restore backup folder ownership to the current user." >&2
-    echo "         The backup is complete, but you may need elevated permissions" >&2
-    echo "         to inspect or remove it." >&2
 fi
 
 echo ""

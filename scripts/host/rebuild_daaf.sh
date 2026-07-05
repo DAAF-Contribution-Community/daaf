@@ -33,13 +33,16 @@ if [ -z "${DAAF_NESTED:-}" ] && [ -z "${CI:-}" ] && [ -c /dev/tty ] && [ -t 1 ];
     trap 'echo ""; read -r -p "Press Enter to continue: " < /dev/tty' EXIT
 fi
 
-# --- Multi-instance settings (shared pattern) ---
-# Bridge environment_settings.txt's four DAAF_* multi-instance keys into the
+# --- Multi-instance / build-flag settings (shared pattern) ---
+# Bridge environment_settings.txt's five whitelisted DAAF_* keys into the
 # environment so `docker compose` interpolation resolves the project name and
-# published host ports. Canonical shared pattern (kept in sync with
-# load_daaf_settings in daaf_lib.sh). Parse only these four keys (never `source`
-# -- the file holds API keys); shell env wins; absent file = no-op; CR stripped;
-# Bash 3.2 safe.
+# published host ports, and so the DAAF_DEV build flag reaches
+# `docker compose build` as `--build-arg DAAF_DEV=${DAAF_DEV:-0}`. DAAF_DEV
+# matters specifically for THIS script because it runs the build (below); a
+# developer who set DAAF_DEV=1 expects the rebuild to pick up the dev toolchain.
+# Canonical shared pattern (kept in sync with load_daaf_settings in
+# daaf_lib.sh). Parse only these five keys (never `source` -- the file holds API
+# keys); shell env wins; absent file = no-op; CR stripped; Bash 3.2 safe.
 _daaf_load_settings() {
     local settings_file="./environment_settings.txt"
     [ -f "${settings_file}" ] || return 0
@@ -48,7 +51,7 @@ _daaf_load_settings() {
         line="$(printf '%s' "${line}" | tr -d '\r')"
         case "${line}" in ''|'#'*) continue ;; esac
         case "${line}" in
-            DAAF_PROJECT_NAME=*|DAAF_PORT_MARIMO=*|DAAF_PORT_LOGVIEWER=*|DAAF_PORT_VSCODE=*)
+            DAAF_PROJECT_NAME=*|DAAF_PORT_MARIMO=*|DAAF_PORT_LOGVIEWER=*|DAAF_PORT_VSCODE=*|DAAF_DEV=*)
                 key="${line%%=*}"; val="${line#*=}"
                 case "${val}" in
                     \"*\") val="${val#\"}"; val="${val%\"}" ;;

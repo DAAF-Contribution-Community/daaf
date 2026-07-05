@@ -16,6 +16,7 @@
 # Supports DAAF_DRY_RUN=1 for CI cross-platform smoke testing (see tests/).
 # ============================================================================
 
+#Requires -Version 5.1
 $ErrorActionPreference = "Stop"
 
 function Wait-AndExit {
@@ -209,27 +210,38 @@ if ($env:DAAF_DRY_RUN -eq "1") {
 # --- Create backup ---
 New-Item -ItemType Directory -Path $BackupName -Force | Out-Null
 $HostPath = (Resolve-Path $BackupName).Path
-# Pre-create the Claude state subfolder NOW, before the data-volume copy below,
-# for parity with backup_daaf.sh. On Linux (pwsh-on-Linux / CI), busybox
-# `cp -a /source/. /dest/` resets the backup dir's owner to the volume root's UID,
-# which can make a later mkdir under it fail -- creating the subfolder while it is
-# still user-owned avoids that. On Windows Docker Desktop, bind-mount ownership is
-# a no-op, so this is harmless there and exists purely for cross-platform parity.
-# Gate on the same volume-exists condition as the Claude backup block below so a
-# data-only backup never leaves an empty "$ClaudeSubDir\" dir that restore might
-# misread.
-$savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
-$null = docker volume inspect $ClaudeVolumeName 2>&1
-$claudeVolumeExistsEarly = ($LASTEXITCODE -eq 0)
-$ErrorActionPreference = $savedEAP
-if ($claudeVolumeExistsEarly) {
-    New-Item -ItemType Directory -Path (Join-Path $HostPath $ClaudeSubDir) -Force | Out-Null
-}
 Write-Host "Copying files from Docker volume..."
 Write-Host "  Progress: 0 / $TotalFiles files (0%)" -NoNewline
 
+# Copy the data volume out via `docker create` + `docker cp` instead of a
+# bind-mounted `busybox cp -a`. On Docker Desktop for Windows, every file a
+# bind-mounted copy writes crosses the 9p/gRPC-FUSE host<->VM boundary
+# individually, so a large volume takes minutes; `docker cp` streams the whole
+# tree through the daemon in one pass and avoids that per-file overhead. The
+# helper container is created but never started -- `docker cp` still reads the
+# volume because the daemon mounts the container root AND its volume MountPoints
+# into the archive view regardless of container state. `docker cp` (without
+# -a/--archive) also extracts files as the invoking user, so ownership is correct
+# by construction and no chown-repair step is needed. The trailing "/." on the
+# source copies the volume's CONTENTS into $HostPath rather than nesting a dir.
+# docker writes directly to disk here; PowerShell only starts and polls the
+# process (via Start-Process, as before) -- no binary data is piped through the
+# PS 5.1 pipeline, which would corrupt it.
+$savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
+$Cid = (docker create -v "${VolumeName}:/source:ro" busybox 2>&1).Trim()
+$createOk = ($LASTEXITCODE -eq 0)
+$ErrorActionPreference = $savedEAP
+if (-not $createOk) {
+    Write-Host "ERROR: Could not create the helper container for the volume copy." -ForegroundColor Red
+    Wait-AndExit 1
+}
+
+# Array-form ArgumentList: each element is quoted robustly by PowerShell, so a
+# $HostPath containing parentheses or ampersands (e.g. OneDrive-style folders)
+# cannot silently corrupt the single-string parse that an embedded-quote form
+# risks on PS 5.1.
 $CopyProcess = Start-Process -FilePath "docker" `
-    -ArgumentList "run --rm -v `"${VolumeName}:/source:ro`" -v `"${HostPath}:/dest`" busybox sh -c `"cp -a /source/. /dest/`"" `
+    -ArgumentList @("cp", "${Cid}:/source/.", $HostPath) `
     -NoNewWindow -PassThru
 
 try {
@@ -247,10 +259,17 @@ try {
 } finally {
     if (-not $CopyProcess.HasExited) {
         Stop-Process -Id $CopyProcess.Id -Force -ErrorAction SilentlyContinue
-        $CopyProcess.WaitForExit()
     }
+    # Remove the helper container. Best-effort: the copy is already done (or was
+    # interrupted), so a failure here must never fail the backup.
+    $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
+    $null = docker rm -f $Cid 2>&1
+    $ErrorActionPreference = $savedEAP
 }
 
+# Block until the copy process is fully gone and read its exit code exactly once.
+# (Stop-Process in the finally above, if it fired, leaves the process exiting;
+# WaitForExit here settles it before we trust ExitCode.)
 $CopyProcess.WaitForExit()
 $CopyExitCode = if ($null -ne $CopyProcess.ExitCode) { $CopyProcess.ExitCode } else { 0 }
 Write-Host "`r  Progress: $TotalFiles / $TotalFiles files (100%)   "
@@ -305,10 +324,35 @@ if ($claudeVolumeExists) {
     Write-Host "Backing up Claude Code state (credentials, session history, plugins)..."
     $ClaudeDestPath = Join-Path $HostPath $ClaudeSubDir
     New-Item -ItemType Directory -Path $ClaudeDestPath -Force | Out-Null
-    $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
-    $null = docker run --rm -v "${ClaudeVolumeName}:/source:ro" -v "${ClaudeDestPath}:/dest" busybox sh -c "cp -a /source/. /dest/" 2>&1
-    $claudeCopyOk = ($LASTEXITCODE -eq 0)
-    $ErrorActionPreference = $savedEAP
+    # Same `docker create` + `docker cp` + `docker rm` mechanism as the data
+    # volume above, run synchronously (this copy is small). `docker cp` extracts as
+    # the invoking user, so the Claude state files land user-owned with no chown
+    # repair -- which is why the old ownership-repair step is gone entirely. Only
+    # docker cp's text status line reaches stdout here (the file data goes straight
+    # to disk), so a synchronous inline call is pipeline-safe on PS 5.1.
+    $ClaudeCid = $null
+    $claudeCopyOk = $false
+    try {
+        $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
+        $ClaudeCid = (docker create -v "${ClaudeVolumeName}:/source:ro" busybox 2>&1).Trim()
+        $claudeCreateOk = ($LASTEXITCODE -eq 0)
+        $ErrorActionPreference = $savedEAP
+        if ($claudeCreateOk) {
+            $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
+            $null = docker cp "${ClaudeCid}:/source/." "${ClaudeDestPath}" 2>&1
+            $claudeCopyOk = ($LASTEXITCODE -eq 0)
+            $ErrorActionPreference = $savedEAP
+        }
+    } finally {
+        # Remove the helper container even if the copy is interrupted (PS finally
+        # runs on pipeline stop / Ctrl-C), mirroring the data-copy cleanup idiom.
+        # Best-effort; guarded so an unset/empty CID is a no-op.
+        if (-not [string]::IsNullOrEmpty($ClaudeCid)) {
+            $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
+            $null = docker rm -f $ClaudeCid 2>&1
+            $ErrorActionPreference = $savedEAP
+        }
+    }
     if ($claudeCopyOk) {
         $ClaudeFileCount = @(Get-ChildItem -Path $ClaudeDestPath -Recurse -File -Force -ErrorAction SilentlyContinue).Count
         Write-Host "Claude Code state backed up ($ClaudeFileCount files)."
@@ -321,30 +365,6 @@ if ($claudeVolumeExists) {
     Write-Host ""
     Write-Host "NOTE: No Claude Code state volume ('$ClaudeVolumeName') found."
     Write-Host "      Skipping -- this install may predate the dedicated Claude volume."
-}
-
-# --- Repair backup tree ownership ---
-# Parity with backup_daaf.sh: the busybox `cp -a` copies chown the backup tree to
-# the volumes' internal UIDs (1000, with Claude state dirs at mode 700). On Linux
-# (pwsh-on-Linux / CI) a differing invoking UID would then be unable to traverse
-# those dirs; root inside a container can rewrite the bind mount's ownership to
-# fix it. On pwsh-on-Linux the external `id` command resolves the real invoking
-# UID/GID (matching the .sh behavior); on Windows `id` is absent and we fall back
-# to the literal volume UID/GID 1000:1000 -- harmless there, since Windows Docker
-# Desktop bind mounts ignore Unix ownership. Non-fatal: the backup is already
-# complete, so failure only WARNs.
-$chownOwner = "1000:1000"
-if (Get-Command id -ErrorAction SilentlyContinue) {
-    $chownOwner = "$(& id -u):$(& id -g)"
-}
-$savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
-$null = docker run --rm -v "${HostPath}:/dest" busybox chown -R $chownOwner /dest 2>&1
-$chownOk = ($LASTEXITCODE -eq 0)
-$ErrorActionPreference = $savedEAP
-if (-not $chownOk) {
-    Write-Host "WARNING: Could not restore backup folder ownership to the current user." -ForegroundColor Yellow
-    Write-Host "         The backup is complete, but you may need elevated permissions"
-    Write-Host "         to inspect or remove it."
 }
 
 Write-Host ""

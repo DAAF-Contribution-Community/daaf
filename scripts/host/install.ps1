@@ -19,6 +19,7 @@
 # Supports DAAF_DRY_RUN=1 for CI cross-platform smoke testing (see tests/).
 # ============================================================================
 
+#Requires -Version 5.1
 $ErrorActionPreference = "Stop"
 
 function Wait-ForUser {
@@ -144,6 +145,31 @@ if ([string]::IsNullOrEmpty($InstallProjectName)) {
 }
 if ([string]::IsNullOrEmpty($InstallProjectName)) { $InstallProjectName = "daaf" }
 $DataVolumeName = "${InstallProjectName}_daaf-data"
+
+# --- Bridge the DAAF_DEV build flag into the environment ---
+# Unlike DAAF_PROJECT_NAME above (only needed locally to derive the volume name;
+# the compose project name comes from the file's `name:` key), DAAF_DEV must be
+# EXPORTED so `docker compose build` below sees it and forwards it as
+# `--build-arg DAAF_DEV=${DAAF_DEV:-0}`. Parse only that one key from the
+# just-downloaded environment_settings.txt (never dot-source -- the file holds
+# API keys); process env wins; CR stripped; PS 5.1 safe. Absent file / absent
+# key = DAAF_DEV stays unset, so the build arg defaults to 0 (standard build).
+if ([string]::IsNullOrEmpty($env:DAAF_DEV)) {
+    $DevSettingsPath = Join-Path $InstallDir "environment_settings.txt"
+    if (Test-Path -LiteralPath $DevSettingsPath) {
+        foreach ($rawLine in (Get-Content -LiteralPath $DevSettingsPath)) {
+            $line = $rawLine -replace "`r", ""
+            if ($line -match '^\s*DAAF_DEV\s*=(.*)$') {
+                $val = $Matches[1].Trim()
+                if (($val.StartsWith('"') -and $val.EndsWith('"')) -or ($val.StartsWith("'") -and $val.EndsWith("'"))) {
+                    if ($val.Length -ge 2) { $val = $val.Substring(1, $val.Length - 2) }
+                }
+                $env:DAAF_DEV = $val
+                break
+            }
+        }
+    }
+}
 
 if (Test-Path "$InstallDir\docker-compose.yml") {
     $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
