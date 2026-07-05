@@ -488,6 +488,7 @@ function Invoke-DaafDelegateInteractive {
             } catch {
                 # Non-console host or drain unsupported -- a residual keypress
                 # landing in the menu prompt is acceptable (documented).
+                Write-Verbose "Silenced: $_"
             }
         }
         Remove-Item Env:\DAAF_NESTED -ErrorAction SilentlyContinue
@@ -845,6 +846,7 @@ function Invoke-DaafDelegate {
                 while ([Console]::KeyAvailable) { [void][Console]::ReadKey($true) }
             } catch {
                 # Non-console host or drain unsupported -- residual keypress OK.
+                Write-Verbose "Silenced: $_"
             }
         }
         Remove-Item Env:\DAAF_NESTED -ErrorAction SilentlyContinue
