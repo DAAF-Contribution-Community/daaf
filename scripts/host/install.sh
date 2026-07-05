@@ -115,8 +115,32 @@ if ! docker info &> /dev/null; then
 fi
 
 # --- Check for existing installation ---
+# Derive the project-prefixed data volume name so multi-instance installs
+# (DAAF_PROJECT_NAME set) are detected correctly. The value comes from the shell
+# environment first, else DAAF_PROJECT_NAME in the existing install's
+# environment_settings.txt, else the "daaf" default (byte-for-byte identical to
+# the former hardcoded "daaf_daaf-data"). Parse only that one key (never `source`
+# -- the file holds API keys); shell env wins; CR stripped; Bash 3.2 safe.
+INSTALL_PROJECT_NAME="${DAAF_PROJECT_NAME:-}"
+if [ -z "${INSTALL_PROJECT_NAME}" ] && [ -f "${INSTALL_DIR}/environment_settings.txt" ]; then
+    while IFS= read -r _line || [ -n "${_line}" ]; do
+        _line="$(printf '%s' "${_line}" | tr -d '\r')"
+        case "${_line}" in
+            DAAF_PROJECT_NAME=*)
+                INSTALL_PROJECT_NAME="${_line#*=}"
+                case "${INSTALL_PROJECT_NAME}" in
+                    \"*\") INSTALL_PROJECT_NAME="${INSTALL_PROJECT_NAME#\"}"; INSTALL_PROJECT_NAME="${INSTALL_PROJECT_NAME%\"}" ;;
+                    \'*\') INSTALL_PROJECT_NAME="${INSTALL_PROJECT_NAME#\'}"; INSTALL_PROJECT_NAME="${INSTALL_PROJECT_NAME%\'}" ;;
+                esac
+                break
+                ;;
+        esac
+    done < "${INSTALL_DIR}/environment_settings.txt"
+fi
+DATA_VOLUME_NAME="${INSTALL_PROJECT_NAME:-daaf}_daaf-data"
+
 if [ -f "${INSTALL_DIR}/docker-compose.yml" ]; then
-    if docker volume inspect daaf_daaf-data &>/dev/null; then
+    if docker volume inspect "${DATA_VOLUME_NAME}" &>/dev/null; then
         # Volume exists -- this is a completed or substantially completed installation
         if [ "${DAAF_FORCE_REINSTALL:-}" = "1" ]; then
             echo "NOTE: Existing installation detected. Proceeding with re-install (DAAF_FORCE_REINSTALL=1)."

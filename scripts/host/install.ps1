@@ -119,9 +119,35 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 # --- Check for existing installation ---
+# Derive the project-prefixed data volume name so multi-instance installs
+# (DAAF_PROJECT_NAME set) are detected correctly. The value comes from the process
+# environment first, else DAAF_PROJECT_NAME in the existing install's
+# environment_settings.txt, else the "daaf" default (byte-for-byte identical to the
+# former hardcoded "daaf_daaf-data"). Parse only that one key (never dot-source --
+# the file holds API keys); process env wins; CR stripped; PS 5.1 safe.
+$InstallProjectName = $env:DAAF_PROJECT_NAME
+if ([string]::IsNullOrEmpty($InstallProjectName)) {
+    $SettingsPath = Join-Path $InstallDir "environment_settings.txt"
+    if (Test-Path -LiteralPath $SettingsPath) {
+        foreach ($rawLine in (Get-Content -LiteralPath $SettingsPath)) {
+            $line = $rawLine -replace "`r", ""
+            if ($line -match '^\s*DAAF_PROJECT_NAME\s*=(.*)$') {
+                $val = $Matches[1].Trim()
+                if (($val.StartsWith('"') -and $val.EndsWith('"')) -or ($val.StartsWith("'") -and $val.EndsWith("'"))) {
+                    if ($val.Length -ge 2) { $val = $val.Substring(1, $val.Length - 2) }
+                }
+                $InstallProjectName = $val
+                break
+            }
+        }
+    }
+}
+if ([string]::IsNullOrEmpty($InstallProjectName)) { $InstallProjectName = "daaf" }
+$DataVolumeName = "${InstallProjectName}_daaf-data"
+
 if (Test-Path "$InstallDir\docker-compose.yml") {
     $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
-    docker volume inspect daaf_daaf-data 2>&1 | Out-Null
+    docker volume inspect $DataVolumeName 2>&1 | Out-Null
     $ErrorActionPreference = $savedEAP
     $volumeExists = ($LASTEXITCODE -eq 0)
     if ($volumeExists) {
