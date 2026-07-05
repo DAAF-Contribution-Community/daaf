@@ -43,7 +43,7 @@
 - Reviewer note resolved: "changes already committed" was a misread — changes were staged, not committed. Nothing committed this session.
 - Known theoretical residual (accepted): `rate_limits.*.resets_at` wire format not binary-verified; both epoch+ISO handled, garbage omitted gracefully. Confirm visually on a live Pro/Max session.
 
-## Final State
+## Final State (superseded by "COMMITTED" below — kept for history)
 
 - `.claude/scripts/subagent-bar.sh` — NEW (100755, staged)
 - `.claude/scripts/context-bar.sh` — modified + polished (100755, staged)
@@ -51,6 +51,15 @@
 - `/daaf/CLAUDE.md` — 2 Defense-in-Depth rows (unstaged)
 - NOT committed — awaiting user's commit decision
 - settings.json is read at startup: subagent panel rows appear after next session restart
+
+## COMMITTED (2026-07-05, user-approved)
+
+Commit `21be317` "feat(statusline): agent panel with per-model context windows" — 20 files: both scripts (subagent-bar.sh created 100755), settings.json, CLAUDE.md, this workspace (session notes, 3 scoping notes, 11 test fixtures, context-reporter.sh.proposed). Committed with explicit pathspecs to avoid sweeping in a parallel session's staged `scripts/host/backup_daaf.sh` / `restore_from_backup.sh` changes.
+
+**Outstanding after commit:**
+1. USER ACTION — install the hook fix: `cp /daaf/research/2026-07-05_FrameworkDev_StatuslineUpgrade/context-reporter.sh.proposed /daaf/.claude/hooks/context-reporter.sh` (takes effect immediately — hook scripts are executed fresh per invocation; only settings.json registration needs a restart). Until installed, CLAUDE.md's Context Reporting Hook row describes post-install behavior.
+2. The upgrade-review checklist additions live in the still-untracked `research/2026-06-18_FrameworkDev_ClaudeCode_Upgrade/` folder — working tree only, to be committed with that workspace.
+3. Confirm `rate_limits.*.resets_at` wire format visually on a live Pro/Max session (accepted residual from Phase 4).
 
 ## Iteration 2 (user adjustments after live use) — PARTIAL, session ended at HIGH context
 
