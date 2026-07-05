@@ -7,7 +7,7 @@ description: >
 tools: [Read, Write, Edit, Bash, Glob, Grep, Skill]
 skills: data-scientist
 permissionMode: default
-model: sonnet   # Well-specified tier: atomic, well-specified execution steps (override per-dispatch allowed)
+model: opus   # Well-specified tier: atomic, well-specified execution steps (override per-dispatch allowed)
 hooks:
   PreToolUse:
     - matcher: "Bash"
