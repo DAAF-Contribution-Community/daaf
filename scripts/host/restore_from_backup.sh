@@ -68,6 +68,12 @@ VOLUME_NAME="${DAAF_PROJECT_NAME:-daaf}_daaf-data"
 # volume are restored data-only with a warning.
 CLAUDE_VOLUME_NAME="${DAAF_PROJECT_NAME:-daaf}_daaf-claude-config"
 CLAUDE_SUBDIR=".daaf-claude-config"
+# Executable-permission manifest written into the backup root by backup_daaf.sh
+# (see the "Capture the executable-permission manifest" block there). Lists every
+# regular file that had the owner-exec bit set at backup time. Restore uses it to
+# put POSIX modes back after a Windows round-trip erased them. Absent on older
+# backups -- restore handles that gracefully (no normalization; see Step 2d).
+PERMISSIONS_MANIFEST=".daaf-permissions"
 
 # --- Dry-Run Support ---
 # When DAAF_DRY_RUN=1, simulate external commands (Docker) for CI
@@ -198,9 +204,32 @@ echo ""
 for i in "${!SORTED_BACKUPS[@]}"; do
     dir="${SORTED_BACKUPS[$i]}"
     name="$(basename "${dir}")"
-    count=$(find "${dir}" -type f 2>/dev/null | wc -l | tr -d '[:space:]') || count="?"
-    size=$(du -sh "${dir}" 2>/dev/null | awk '{print $1}') || size="?"
-    printf "  %d) %s  (%s files, %s)\n" "$((i + 1))" "${name}" "${count}" "${size}"
+    # Count and size the DATA-volume contents only -- exclude the hidden Claude
+    # subfolder (it restores to its own volume, not the data volume) and the
+    # ".daaf-permissions" manifest (metadata, not restored content). This makes the
+    # listing count agree exactly with the "Scanning backup" count below, the
+    # post-restore verification count, and the backup script's completion report
+    # (all four count data-volume files only). When Claude state is present it is
+    # noted inline rather than folded silently into the number.
+    claude_sub="${dir}/${CLAUDE_SUBDIR}"
+    count=$(find "${dir}" -type f -not -path "${claude_sub}/*" -not -name "${PERMISSIONS_MANIFEST}" 2>/dev/null | wc -l | tr -d '[:space:]') || count="?"
+    # BSD du has no --exclude, so total the data-volume KB by subtracting the Claude
+    # subfolder's KB from the whole-folder KB (the manifest is negligibly small), then
+    # humanize with awk. Mirrors the "Scanning backup" size logic below.
+    total_kb=$(du -sk "${dir}" 2>/dev/null | awk '{print $1}')
+    total_kb=${total_kb:-0}
+    has_claude=0
+    if [ -d "${claude_sub}" ] && [ -n "$(ls -A "${claude_sub}" 2>/dev/null)" ]; then
+        has_claude=1
+        claude_kb=$(du -sk "${claude_sub}" 2>/dev/null | awk '{print $1}')
+        total_kb=$(( total_kb - ${claude_kb:-0} ))
+    fi
+    size=$(awk -v kb="${total_kb}" 'BEGIN { if (kb >= 1048576) printf "%.1fG", kb/1048576; else if (kb >= 1024) printf "%.1fM", kb/1024; else printf "%dK", kb }') || size="?"
+    if [ "${has_claude}" -eq 1 ]; then
+        printf "  %d) %s  (%s files + Claude state, %s)\n" "$((i + 1))" "${name}" "${count}" "${size}"
+    else
+        printf "  %d) %s  (%s files, %s)\n" "$((i + 1))" "${name}" "${count}" "${size}"
+    fi
 done
 echo ""
 
@@ -247,10 +276,14 @@ fi
 
 # --- Count source files ---
 # Exclude the Claude subfolder from the DATA-volume count -- it is restored to a
-# separate volume below, not into the data volume.
+# separate volume below, not into the data volume. Also exclude the
+# ".daaf-permissions" manifest: it is metadata (consumed by Step 2d, then removed),
+# not restored content, so counting it would make this scan disagree with the
+# post-restore verification count (which runs after the manifest is stripped from
+# the volume) and with the listing count above.
 echo ""
 echo "Scanning backup..."
-TOTAL_FILES=$(find "${SELECTED_PATH}" -type f -not -path "${CLAUDE_BACKUP_PATH}/*" | wc -l | tr -d '[:space:]')
+TOTAL_FILES=$(find "${SELECTED_PATH}" -type f -not -path "${CLAUDE_BACKUP_PATH}/*" -not -name "${PERMISSIONS_MANIFEST}" | wc -l | tr -d '[:space:]')
 # Size must match the file count above: data-volume contents only, excluding the
 # Claude subfolder (which restores to its own volume). BSD du has no --exclude,
 # so subtract the subfolder's KB from the total and humanize with awk.
@@ -389,6 +422,81 @@ if ! docker run --rm -v "${VOLUME_NAME}:/dest" busybox chown -R 1000:1000 /dest;
     echo "read them. Re-run this restore, or restart DAAF -- the compose init service" >&2
     echo "also repairs volume ownership on startup." >&2
     exit 1
+fi
+
+# --- Step 2d: Replay executable permissions from the manifest ---
+# The manifest ("${PERMISSIONS_MANIFEST}") was copied into the data volume by the
+# whole-folder `docker cp` above. When it is PRESENT, restore normalizes every
+# regular file to 0644 and then re-applies 0755 to exactly the paths it lists --
+# undoing the mode loss a Windows (NTFS) round-trip inflicts, where `docker cp`
+# fabricates 0755 for every file and git then flags every tracked 0644 file as a
+# spurious 100644->100755 change.
+#
+# SAFETY RULE -- no manifest, no normalization: when the manifest is ABSENT (older
+# backups predating this feature, OR a manifest whose write failed at backup time),
+# do NOTHING. A blanket 0644 without the manifest would strip exec from every
+# script and hook and make matters worse than leaving the fabricated 0755 in place.
+# The manifest's presence is the signal that "these are the files that SHOULD be
+# executable, and everything else should be 0644"; without it there is no safe
+# baseline to normalize toward.
+#
+# Everything below runs container-side (inside the VM, no bind mount) so it is
+# fast and immune to host-filesystem quirks:
+#   - normalize:  `find -type f -exec chmod 644 {} +` -- only regular files, so
+#                 directories keep 0755 (chown/normalize never touch dir modes).
+#   - re-apply:   read the manifest with `while IFS= read -r`, strip a trailing CR
+#                 (WriteAllLines on Windows emits CRLF) and a leading UTF-8 BOM (both
+#                 as parameter-expansion prefixes/suffixes, not sed -- busybox sed has
+#                 no \xNN escapes) defensively, skip blanks, chmod 0755 each path.
+#   - cleanup:    remove the manifest from the volume (it is metadata, not content),
+#                 mirroring the Step 2b ".daaf-claude-config" strip.
+# Replay failure is a WARNING (data is intact; only permissions may be off), never
+# a fatal error -- consistent with how the Claude restore below degrades.
+if docker run --rm -v "${VOLUME_NAME}:/dest:ro" busybox test -f "/dest/${PERMISSIONS_MANIFEST}"; then
+    echo "Restoring executable permissions from ${PERMISSIONS_MANIFEST}..."
+    # The whole replay is one container-side sh script so the manifest read and the
+    # chmods share a single busybox invocation. The manifest path is interpolated
+    # from the (fixed, non-user) constant, so no injection surface. Trailing CR is
+    # stripped with parameter expansion (busybox ash supports "${p%$cr}"); a leading
+    # UTF-8 BOM on the first line is stripped the same way, as a prefix, in the loop.
+    if ! docker run --rm -v "${VOLUME_NAME}:/dest" busybox sh -c '
+        set -e
+        manifest="/dest/'"${PERMISSIONS_MANIFEST}"'"
+        # Normalize every regular file to 644 (directories are untouched: -type f).
+        find /dest -type f -exec chmod 644 {} +
+        # Re-apply 755 to each manifest path. Read line by line, tolerating spaces in
+        # paths and stripping any trailing CR (WriteAllLines emits CRLF on Windows).
+        # Also strip a leading UTF-8 BOM (bytes EF BB BF) if present on a line: busybox
+        # sed does NOT understand \xNN hex escapes (it would match them literally), so
+        # the BOM is derived once via octal printf (portable) and removed as a prefix
+        # with "${p#$bom}" -- never with `tr -d`, which would also delete those three
+        # bytes where they legitimately occur inside multi-byte UTF-8 filenames.
+        cr=$(printf "\r")
+        bom=$(printf "\357\273\277")
+        while IFS= read -r p; do
+            p="${p%$cr}"
+            p="${p#$bom}"
+            [ -z "$p" ] && continue
+            # A false `[ -e ... ]` here does NOT trip `set -e`: a command that is part
+            # of an AND-OR list (anything but the last) is exempt from errexit per
+            # POSIX, so a manifest path missing from this backup is simply skipped
+            # rather than aborting the whole replay. Do not "simplify" this into an
+            # `if`-less bare chmod.
+            [ -e "/dest/$p" ] && chmod 755 "/dest/$p"
+        done < "$manifest"
+        # Remove the manifest from the volume -- metadata, not restored content
+        # (mirrors the Step 2b .daaf-claude-config strip).
+        rm -f "$manifest"
+    '; then
+        echo "WARNING: Could not fully replay executable permissions." >&2
+        echo "         Your data was restored intact; only file permissions may be off." >&2
+        echo "         If git reports many files as changed by mode only, or a script" >&2
+        echo "         will not run, repair with: chmod +x <file> inside the container." >&2
+    fi
+else
+    echo "NOTE: No ${PERMISSIONS_MANIFEST} manifest found in this backup (it may predate"
+    echo "      permission preservation, or the manifest write may have failed during"
+    echo "      backup). File permissions were left as-is -- no normalization was applied."
 fi
 echo "Copy complete."
 echo ""

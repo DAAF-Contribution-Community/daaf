@@ -376,7 +376,7 @@ cd daaf-docker
 
 The backup script creates a date-versioned folder (e.g., `2026-04-21_daaf_backup/`) in your `daaf-docker` directory. Multiple backups on the same day are automatically suffixed (`2026-04-21a_daaf_backup/`, `2026-04-21b_daaf_backup/`, etc.). Feel free to move or copy these folders to another location on your computer (or an external drive) for safekeeping.
 
-The backup covers both DAAF volumes: your research data, plus Claude Code's own state (your login, session history, and plugins) in a hidden `.daaf-claude-config/` subfolder. **Because the backup includes your Claude Code login credentials, treat backup folders as sensitive** — store them somewhere private, and if you share a backup with a colleague for collaboration, delete the `.daaf-claude-config/` subfolder from the copy first.
+The backup covers both DAAF volumes: your research data, plus Claude Code's own state (your login, session history, and plugins) in a hidden `.daaf-claude-config/` subfolder. **Because the backup includes your Claude Code login credentials, treat backup folders as sensitive** — store them somewhere private, and if you share a backup with a colleague for collaboration, delete the `.daaf-claude-config/` subfolder from the copy first. (The backup also contains a small hidden `.daaf-permissions` file — a manifest of which files were executable — so the restore can put file permissions back correctly even when the backup was stored on a Windows drive, which does not preserve them. You can ignore it; the restore consumes it automatically.)
 
 You can also back up manually using Docker Desktop's GUI: go into the Docker volume file viewer (see above) and download the whole `daaf` or `research` folder to somewhere else on your computer.
 

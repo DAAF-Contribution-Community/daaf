@@ -23,6 +23,18 @@ Describe "restore_from_backup.ps1" {
             $Content | Should -Match '\$ErrorActionPreference\s*=\s*[''"]Stop[''"]'
         }
 
+        It "enables Set-StrictMode -Version 3.0 AFTER the DAAF_TEST_MODE guard" {
+            # Strict mode is dynamically scoped -- it must be placed after the
+            # DAAF_TEST_MODE dot-source guard so Pester's dot-sourcing (which returns
+            # at the guard) never leaks strict mode into the whole test session, while
+            # real executions run fully protected. Assert BOTH presence and ordering.
+            $Content | Should -Match 'Set-StrictMode -Version 3\.0'
+            $guardIdx  = $Content.IndexOf('$env:DAAF_TEST_MODE -eq "1"')
+            $strictIdx = $Content.IndexOf('Set-StrictMode -Version 3.0')
+            $guardIdx  | Should -BeGreaterThan -1
+            $strictIdx | Should -BeGreaterThan $guardIdx
+        }
+
         It "defines Wait-AndExit function" {
             $Content | Should -Match 'function Wait-AndExit'
         }
@@ -77,6 +89,50 @@ Describe "restore_from_backup.ps1" {
             # `docker cp` INTO a container writes files as root; restore must chown
             # the volume back to appuser (UID 1000), matching daaf-init.
             $Content | Should -Match 'chown -R 1000:1000 /dest'
+        }
+
+        It "replays executable permissions from the manifest (Step 2d)" {
+            # When ".daaf-permissions" is present, normalize files to 644 and
+            # re-apply 755 to the manifest's paths (undoing NTFS mode loss).
+            $Content | Should -Match '\.daaf-permissions'
+            $Content | Should -Match 'find /dest -type f -exec chmod 644'
+            $Content | Should -Match 'chmod 755'
+        }
+
+        It "skips normalization when the manifest is absent (backward compat)" {
+            # No manifest => no normalization (blanket 644 would strip exec from
+            # every script and be worse than the fabricated 0755). The absent-manifest
+            # NOTE covers both an older backup AND a failed manifest write (Fix 3).
+            $Content | Should -Match 'it may predate'
+            $Content | Should -Match 'the manifest write may have failed during'
+            $Content | Should -Match 'no normalization was applied'
+        }
+
+        It "passes the replay sh -c program without embedded double-quotes (Windows arg safety)" {
+            # Regression: embedded " in a string passed to a native exe on Windows
+            # is silently mangled by the C runtime (see shell-scripting gotchas.md).
+            # The replay sh -c program is built with sh single-quotes and
+            # backtick-escaped sh variables. Assert that the $replayScript VALUE (the
+            # text between the outer PS delimiters) contains no double-quote chars:
+            # after stripping the leading `$replayScript = "` and the trailing `"`,
+            # no `"` may remain.
+            $replayLine = ($Content -split "`n") | Where-Object { $_ -match '\$replayScript\s*=' }
+            $replayLine | Should -Not -BeNullOrEmpty
+            $value = ($replayLine -replace '^\s*\$replayScript\s*=\s*"', '') -replace '"\s*$', ''
+            $value | Should -Not -Match '"'
+            # And it must use the sh single-quote idioms, not double-quotes. The BOM is
+            # stripped via octal printf (busybox sed has no \xNN escapes), NOT sed. The
+            # regex needs a literal backslash before each octal group, hence \\ per byte.
+            $value | Should -Match "printf '\\357\\273\\277'"
+            $value | Should -Not -Match "sed '1s"
+        }
+
+        It "excludes the manifest and Claude subfolder from the listing/scan counts" {
+            # The listing loop and the Scanning-backup count must both exclude the
+            # ".daaf-permissions" manifest so all four counts (listing, scan,
+            # verification, backup completion report) agree exactly.
+            $Content | Should -Match '\$_\.Name -ne \$PermissionsManifest'
+            $Content | Should -Match '\+ Claude state'
         }
 
         It "verifies file count after restore" {

@@ -136,6 +136,24 @@ teardown() {
     assert_failure
 }
 
+# --- Executable-permission manifest ---
+
+@test "backup_daaf.sh records the executable-permission manifest" {
+    # The manifest ".daaf-permissions" is written into the backup root so a Windows
+    # (NTFS) round-trip -- which loses POSIX modes -- can be undone on restore.
+    run grep -c '\.daaf-permissions' "${REPO_ROOT}/scripts/host/backup_daaf.sh"
+    assert_success
+    # It is generated container-side from the volume with -perm -0100 (owner-exec).
+    run grep -c 'find /source -type f -perm -0100' "${REPO_ROOT}/scripts/host/backup_daaf.sh"
+    assert_success
+}
+
+@test "backup_daaf.sh writes the manifest as a WARNING-not-fatal step" {
+    # A manifest write failure must not fail the backup (the data is still valid).
+    run grep -c 'Could not record the executable-permission manifest' "${REPO_ROOT}/scripts/host/backup_daaf.sh"
+    assert_success
+}
+
 # --- Date-suffix versioning edge cases ---
 
 @test "backup: suffix picks first available letter sequentially" {
@@ -386,6 +404,107 @@ teardown() {
     run bash "${REPO_ROOT}/scripts/host/backup_daaf.sh"
     assert_output --partial "${today}_daaf_backup"
     assert_output --partial "Backup complete"
+}
+
+@test "backup: writes .daaf-permissions manifest listing exec files on success" {
+    export DAAF_NESTED=1
+    local today
+    today=$(date +%Y-%m-%d)
+
+    # Custom docker mock: the data copy creates files; the manifest `docker run ...
+    # find /source -perm -0100` call is distinguished from the scan `docker run ...
+    # wc -l` call by the "-perm" substring, and returns two exec paths under
+    # /source (which the script strips to volume-relative before writing).
+    docker() {
+        case "$1" in
+            info)   return 0 ;;
+            volume) return 0 ;;
+            create) echo "mockcid0000"; return 0 ;;
+            cp)
+                local dest_dir=""
+                for arg in "$@"; do dest_dir="${arg}"; done
+                dest_dir="${dest_dir%/}"
+                if [ -n "${dest_dir}" ]; then
+                    mkdir -p "${dest_dir}"
+                    touch "${dest_dir}/file1"
+                fi
+                return 0
+                ;;
+            rm) return 0 ;;
+            run)
+                local args_str="$*"
+                if [[ "${args_str}" == *"-perm -0100"* ]]; then
+                    # Manifest generation: two exec files (absolute /source paths).
+                    printf '/source/scripts/run.sh\n/source/hook.sh\n'
+                else
+                    # Scan: file count, du -sk, du -sh, logical KB
+                    printf '5\n512\t/source\n500K\t/source\n500\n'
+                fi
+                return 0
+                ;;
+            *)  return 0 ;;
+        esac
+    }
+    export -f docker
+
+    run bash "${REPO_ROOT}/scripts/host/backup_daaf.sh"
+    assert_output --partial "Recorded"
+    assert_output --partial "executable-permission manifest"
+    # The manifest file exists in the backup root with volume-relative paths.
+    run test -f "${TEST_DIR}/${today}_daaf_backup/.daaf-permissions"
+    assert_success
+    run cat "${TEST_DIR}/${today}_daaf_backup/.daaf-permissions"
+    assert_output --partial "scripts/run.sh"
+    assert_output --partial "hook.sh"
+    refute_output --partial "/source/"
+}
+
+@test "backup: manifest preserves exec paths containing spaces verbatim" {
+    export DAAF_NESTED=1
+    local today
+    today=$(date +%Y-%m-%d)
+
+    # An exec file whose path contains spaces must survive the "/source/"-prefix strip
+    # intact -- the `printf | sed | grep` manifest pipeline is whitespace-safe because
+    # it operates line-by-line, not token-by-token. The manifest-generation `docker run
+    # ... find -perm -0100` call is distinguished from the scan call by the "-perm"
+    # substring; the data copy creates a file so FILE_COUNT > 0 and the script succeeds.
+    docker() {
+        case "$1" in
+            info)   return 0 ;;
+            volume) return 0 ;;
+            create) echo "mockcid0000"; return 0 ;;
+            cp)
+                local dest_dir=""
+                for arg in "$@"; do dest_dir="${arg}"; done
+                dest_dir="${dest_dir%/}"
+                if [ -n "${dest_dir}" ]; then
+                    mkdir -p "${dest_dir}"
+                    touch "${dest_dir}/file1"
+                fi
+                return 0
+                ;;
+            rm) return 0 ;;
+            run)
+                local args_str="$*"
+                if [[ "${args_str}" == *"-perm -0100"* ]]; then
+                    # One exec path with spaces in a directory component.
+                    printf '/source/research/path with spaces/run.sh\n'
+                else
+                    printf '5\n512\t/source\n500K\t/source\n500\n'
+                fi
+                return 0
+                ;;
+            *)  return 0 ;;
+        esac
+    }
+    export -f docker
+
+    run bash "${REPO_ROOT}/scripts/host/backup_daaf.sh"
+    # The manifest must contain the "/source/"-stripped path VERBATIM, spaces intact.
+    run cat "${TEST_DIR}/${today}_daaf_backup/.daaf-permissions"
+    assert_output --partial "research/path with spaces/run.sh"
+    refute_output --partial "/source/"
 }
 
 @test "backup: scan failure exits with error" {

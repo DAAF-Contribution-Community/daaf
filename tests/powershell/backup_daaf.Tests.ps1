@@ -23,6 +23,18 @@ Describe "backup_daaf.ps1" {
             $Content | Should -Match '\$ErrorActionPreference\s*=\s*[''"]Stop[''"]'
         }
 
+        It "enables Set-StrictMode -Version 3.0 AFTER the DAAF_TEST_MODE guard" {
+            # Strict mode is dynamically scoped -- it must be placed after the
+            # DAAF_TEST_MODE dot-source guard so Pester's dot-sourcing (which returns
+            # at the guard) never leaks strict mode into the whole test session, while
+            # real executions run fully protected. Assert BOTH presence and ordering.
+            $Content | Should -Match 'Set-StrictMode -Version 3\.0'
+            $guardIdx  = $Content.IndexOf('$env:DAAF_TEST_MODE -eq "1"')
+            $strictIdx = $Content.IndexOf('Set-StrictMode -Version 3.0')
+            $guardIdx  | Should -BeGreaterThan -1
+            $strictIdx | Should -BeGreaterThan $guardIdx
+        }
+
         It "defines Wait-AndExit function" {
             $Content | Should -Match 'function Wait-AndExit'
         }
@@ -87,6 +99,26 @@ Describe "backup_daaf.ps1" {
         It "checks available disk space before copying" {
             $Content | Should -Match 'Insufficient disk space'
             $Content | Should -Match 'System\.IO\.DriveInfo'
+        }
+
+        It "records the executable-permission manifest" {
+            # The manifest ".daaf-permissions" is written into the backup root so a
+            # Windows (NTFS) round-trip -- which loses POSIX modes -- can be undone
+            # on restore. Generated container-side with -perm -0100 (owner-exec).
+            $Content | Should -Match '\.daaf-permissions'
+            $Content | Should -Match 'find /source -type f -perm -0100'
+        }
+
+        It "writes the manifest BOM-free with a no-BOM UTF8 encoding" {
+            # PS 5.1 encoding trap: > / Out-File default to UTF-16 and -Encoding UTF8
+            # adds a BOM. The manifest must be BOM-free LF bytes, so it is written via
+            # WriteAllLines with New-Object System.Text.UTF8Encoding($false).
+            $Content | Should -Match 'System\.Text\.UTF8Encoding\(\$false\)'
+            $Content | Should -Match 'WriteAllLines'
+        }
+
+        It "treats a manifest write failure as a WARNING, not fatal" {
+            $Content | Should -Match 'Could not record the executable-permission manifest'
         }
 
         It "performs size-based backup verification" {

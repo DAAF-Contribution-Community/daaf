@@ -312,6 +312,61 @@ else
     echo "      Skipping -- this install may predate the dedicated Claude volume."
 fi
 
+# --- Capture the executable-permission manifest ---
+# Why: NTFS (and the FAT/exFAT of external drives) stores no POSIX permission
+# bits, so when a backup lands on a Windows host every file's mode is lost. On
+# restore, `docker cp` INTO the volume fabricates 0755 for every file, and git
+# inside the container then reports every tracked 0644 file as modified (a pure
+# 100644->100755 mode diff, no content change). To make restore able to put the
+# modes back, record -- here, from the volume, where the modes are still intact --
+# the relative path of every regular file that has the owner-exec bit set. Restore
+# normalizes everything to 0644 and re-applies 0755 to exactly these paths.
+#
+# This runs AFTER the data-volume file-count/size verification above (same reason
+# the Claude subfolder copy does): the backup script compares backup-folder
+# counts/sizes against the volume scan, and the manifest file must not skew that
+# comparison. It is written into the backup ROOT (not a subfolder) so restore
+# finds it via the whole-folder `docker cp`.
+#
+# Generate the list container-side from the volume: `find -type f -perm -0100`
+# matches regular files with the owner-exec bit set; strip the "/source/" prefix
+# so the paths are volume-relative. Manifest write failure is a WARNING, not
+# fatal -- the data backup is still valid, and restore degrades gracefully (an
+# absent manifest simply means no permission normalization happens).
+PERMISSIONS_MANIFEST=".daaf-permissions"
+echo ""
+echo "Recording executable-permission manifest..."
+if EXEC_PATHS=$(docker run --rm -v "${VOLUME_NAME}:/source:ro" busybox sh -c 'find /source -type f -perm -0100' 2>/dev/null); then
+    # Strip the leading "/source/" from each path so entries are volume-relative,
+    # then write LF-terminated (printf, not echo -e). An empty result is fine --
+    # a zero-line manifest still signals to restore that this backup DOES preserve
+    # permissions (so restore normalizes to 644 with no exec re-applied), which is
+    # different from an absent manifest (older backup: restore leaves modes alone).
+    # Write the volume-relative paths, dropping blank lines. `grep -v '^$'` exits 1
+    # when it selects NO lines (a legitimately empty manifest -- zero exec files),
+    # which is NOT a failure, so the write outcome is judged by whether the file was
+    # actually created rather than by the pipeline's exit status. The redirection
+    # still creates a 0-byte file in the empty case, and that empty file is the
+    # correct signal to restore ("preserves permissions, re-apply exec to nothing").
+    printf '%s\n' "${EXEC_PATHS}" | sed 's|^/source/||' | grep -v '^$' > "${BACKUP_NAME}/${PERMISSIONS_MANIFEST}" || true
+    if [ -f "${BACKUP_NAME}/${PERMISSIONS_MANIFEST}" ]; then
+        EXEC_COUNT=$(grep -c . "${BACKUP_NAME}/${PERMISSIONS_MANIFEST}" 2>/dev/null | tr -d '[:space:]') || EXEC_COUNT=0
+        echo "Recorded ${EXEC_COUNT} executable file(s) in ${PERMISSIONS_MANIFEST}."
+    else
+        # The write itself failed (e.g. disk full) -- the redirection never created the
+        # file. A missing manifest must not fail the backup: warn (mirroring the
+        # scan-failure branch below) and let restore degrade gracefully (an absent
+        # manifest simply means no permission normalization on restore).
+        echo "WARNING: Could not record the executable-permission manifest." >&2
+        echo "         The backup is still valid; on restore, file permissions may need" >&2
+        echo "         manual repair if this backup is restored on a Windows host." >&2
+    fi
+else
+    echo "WARNING: Could not record the executable-permission manifest." >&2
+    echo "         The backup is still valid; on restore, file permissions may need" >&2
+    echo "         manual repair if this backup is restored on a Windows host." >&2
+fi
+
 echo ""
 echo "=========================================="
 echo "  Backup complete!"

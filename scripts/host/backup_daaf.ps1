@@ -96,6 +96,13 @@ if ($env:DAAF_TEST_MODE -eq "1") {
     return
 }
 
+# Enable strict mode for real executions only. Set-StrictMode is dynamically
+# scoped, so placing it AFTER the DAAF_TEST_MODE guard keeps Pester's dot-sourcing
+# (which returns above) from leaking strict mode into the whole test session, while
+# every code path a real run reaches is fully protected against uninitialized-variable
+# and missing-property reads.
+Set-StrictMode -Version 3.0
+
 # --- Configuration ---
 # The Docker named volume is project-prefixed: "<project>_daaf-data". Compose
 # derives the prefix from the project name (default "daaf"), so a second instance
@@ -365,6 +372,70 @@ if ($claudeVolumeExists) {
     Write-Host ""
     Write-Host "NOTE: No Claude Code state volume ('$ClaudeVolumeName') found."
     Write-Host "      Skipping -- this install may predate the dedicated Claude volume."
+}
+
+# --- Capture the executable-permission manifest ---
+# Why: NTFS (and the FAT/exFAT of external drives) stores no POSIX permission
+# bits, so when this backup lands on the Windows host every file's mode is lost.
+# On restore, `docker cp` INTO the volume fabricates 0755 for every file, and git
+# inside the container then reports every tracked 0644 file as modified (a pure
+# 100644->100755 mode diff, no content change). To let restore put the modes back,
+# record -- here, from the volume, where the modes are still intact -- the relative
+# path of every regular file that has the owner-exec bit set. Restore normalizes
+# everything to 0644 and re-applies 0755 to exactly these paths.
+#
+# This runs AFTER the data-volume file-count/size verification above (same reason
+# the Claude subfolder copy does): the backup compares backup-folder counts/sizes
+# against the volume scan, and the manifest file must not skew that comparison. It
+# is written into the backup ROOT (not a subfolder) so restore finds it via the
+# whole-folder `docker cp`.
+#
+# Generate the list container-side from the volume: `find -type f -perm -0100`
+# matches regular files with the owner-exec bit set. Manifest write failure is a
+# WARNING, not fatal -- the data backup is still valid, and restore degrades
+# gracefully (an absent manifest simply means no permission normalization happens).
+$PermissionsManifest = ".daaf-permissions"
+Write-Host ""
+Write-Host "Recording executable-permission manifest..."
+$savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
+$ExecPathsRaw = docker run --rm -v "${VolumeName}:/source:ro" busybox sh -c 'find /source -type f -perm -0100' 2>$null
+$manifestScanOk = ($LASTEXITCODE -eq 0)
+$ErrorActionPreference = $savedEAP
+if ($manifestScanOk) {
+    # Normalize to an array of volume-relative paths (strip the leading "/source/"),
+    # dropping blank lines. `docker run` may return $null (no matches), a single
+    # string (one match -- PS unwraps the array), or a string[]; @() forces array
+    # context so the foreach is always safe.
+    $ExecPaths = @($ExecPathsRaw | ForEach-Object { ($_ -replace '\r', '').Trim() } |
+        Where-Object { $_ -ne "" } | ForEach-Object { $_ -replace '^/source/', '' })
+    # PS 5.1 encoding trap: `>` and Out-File default to UTF-16, and `-Encoding UTF8`
+    # writes a BOM -- either corrupts the container-side read on restore. Write raw
+    # LF-terminated, BOM-free bytes via WriteAllLines with a no-BOM UTF8 encoding.
+    # WriteAllLines joins with Environment.NewLine (CRLF on Windows), so restore
+    # strips trailing CR defensively; a zero-length array still writes an empty
+    # (0-byte) file, which correctly signals "backup DOES preserve permissions"
+    # (restore normalizes to 644, re-applies exec to nothing) vs. an absent manifest
+    # (older backup: restore leaves modes untouched).
+    $ManifestPath = Join-Path $HostPath $PermissionsManifest
+    $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+    # A WriteAllLines failure (e.g. disk full) would throw under EAP=Stop and abort the
+    # whole backup fatally. Catch it and downgrade to the same WARNING the scan-failure
+    # branch below emits -- the data backup is already complete and valid, and restore
+    # degrades gracefully on an absent manifest. Remove any partial file so restore
+    # sees an ABSENT manifest (no normalization) rather than a truncated one.
+    try {
+        [System.IO.File]::WriteAllLines($ManifestPath, $ExecPaths, $utf8NoBom)
+        Write-Host "Recorded $($ExecPaths.Count) executable file(s) in $PermissionsManifest."
+    } catch {
+        Remove-Item -LiteralPath $ManifestPath -Force -ErrorAction SilentlyContinue
+        Write-Host "WARNING: Could not record the executable-permission manifest." -ForegroundColor Yellow
+        Write-Host "         The backup is still valid; on restore, file permissions may need"
+        Write-Host "         manual repair if this backup is restored on a Windows host."
+    }
+} else {
+    Write-Host "WARNING: Could not record the executable-permission manifest." -ForegroundColor Yellow
+    Write-Host "         The backup is still valid; on restore, file permissions may need"
+    Write-Host "         manual repair if this backup is restored on a Windows host."
 }
 
 Write-Host ""

@@ -73,6 +73,12 @@ $VolumeName = "${projectName}_daaf-data"
 # volume are restored data-only with a warning.
 $ClaudeVolumeName = "${projectName}_daaf-claude-config"
 $ClaudeSubDir = ".daaf-claude-config"
+# Executable-permission manifest written into the backup root by backup_daaf.ps1
+# (see the "Capture the executable-permission manifest" block there). Lists every
+# regular file that had the owner-exec bit set at backup time. Restore uses it to
+# put POSIX modes back after a Windows round-trip (NTFS) erased them. Absent on
+# older backups -- restore handles that gracefully (no normalization; see Step 2d).
+$PermissionsManifest = ".daaf-permissions"
 
 # --- Dry-Run Support ---
 # When DAAF_DRY_RUN=1, simulate external commands (Docker) for CI
@@ -108,6 +114,13 @@ if ($env:DAAF_DRY_RUN -eq "1") {
 if ($env:DAAF_TEST_MODE -eq "1") {
     return
 }
+
+# Enable strict mode for real executions only. Set-StrictMode is dynamically
+# scoped, so placing it AFTER the DAAF_TEST_MODE guard keeps Pester's dot-sourcing
+# (which returns above) from leaking strict mode into the whole test session, while
+# every code path a real run reaches is fully protected against uninitialized-variable
+# and missing-property reads.
+Set-StrictMode -Version 3.0
 
 Write-Host ""
 Write-Host "=========================================="
@@ -205,8 +218,18 @@ Write-Host "Available backups (newest first):"
 Write-Host ""
 for ($i = 0; $i -lt $Backups.Count; $i++) {
     $dir = $Backups[$i]
-    $fileCount = @(Get-ChildItem -Path $dir.FullName -Recurse -File -Force -ErrorAction SilentlyContinue).Count
-    $sizeBytes = (Get-ChildItem -Path $dir.FullName -Recurse -Force -ErrorAction SilentlyContinue | Measure-Object -Property Length -Sum).Sum
+    # Count and size the DATA-volume contents only -- exclude the hidden Claude
+    # subfolder (it restores to its own volume, not the data volume) and the
+    # ".daaf-permissions" manifest (metadata, not restored content). This makes the
+    # listing count agree exactly with the "Scanning backup" count below, the
+    # post-restore verification count, and the backup script's completion report
+    # (all four count data-volume files only). When Claude state is present it is
+    # noted inline rather than folded silently into the number.
+    $claudeSub = Join-Path $dir.FullName $ClaudeSubDir
+    $dataItems = @(Get-ChildItem -Path $dir.FullName -Recurse -File -Force -ErrorAction SilentlyContinue |
+        Where-Object { $_.FullName -notlike "$claudeSub*" -and $_.Name -ne $PermissionsManifest })
+    $fileCount = $dataItems.Count
+    $sizeBytes = ($dataItems | Measure-Object -Property Length -Sum).Sum
     if ($null -eq $sizeBytes) { $sizeBytes = 0 }
     if ($sizeBytes -ge 1073741824) {
         $sizeStr = "{0:N1}G" -f ($sizeBytes / 1073741824)
@@ -215,7 +238,13 @@ for ($i = 0; $i -lt $Backups.Count; $i++) {
     } else {
         $sizeStr = "{0:N0}K" -f ($sizeBytes / 1024)
     }
-    Write-Host ("  {0}) {1}  ({2} files, {3})" -f ($i + 1), $dir.Name, $fileCount, $sizeStr)
+    $hasClaude = (Test-Path -LiteralPath $claudeSub -PathType Container) -and
+        (@(Get-ChildItem -LiteralPath $claudeSub -Force -ErrorAction SilentlyContinue).Count -gt 0)
+    if ($hasClaude) {
+        Write-Host ("  {0}) {1}  ({2} files + Claude state, {3})" -f ($i + 1), $dir.Name, $fileCount, $sizeStr)
+    } else {
+        Write-Host ("  {0}) {1}  ({2} files, {3})" -f ($i + 1), $dir.Name, $fileCount, $sizeStr)
+    }
 }
 Write-Host ""
 
@@ -264,11 +293,15 @@ if (Test-Path -LiteralPath $ClaudeBackupPath -PathType Container) {
 
 # --- Count source files ---
 # Exclude the Claude subfolder from the DATA-volume count -- it is restored to a
-# separate volume below, not into the data volume.
+# separate volume below, not into the data volume. Also exclude the
+# ".daaf-permissions" manifest: it is metadata (consumed by Step 2d, then removed),
+# not restored content, so counting it would make this scan disagree with the
+# post-restore verification count (which runs after the manifest is stripped from
+# the volume) and with the listing count above.
 Write-Host ""
 Write-Host "Scanning backup..."
-$TotalFiles = @(Get-ChildItem -Path $SelectedPath -Recurse -File -Force -ErrorAction SilentlyContinue | Where-Object { $_.FullName -notlike "$ClaudeBackupPath*" }).Count
-$TotalSizeBytes = (Get-ChildItem -Path $SelectedPath -Recurse -Force -ErrorAction SilentlyContinue | Where-Object { $_.FullName -notlike "$ClaudeBackupPath*" } | Measure-Object -Property Length -Sum).Sum
+$TotalFiles = @(Get-ChildItem -Path $SelectedPath -Recurse -File -Force -ErrorAction SilentlyContinue | Where-Object { $_.FullName -notlike "$ClaudeBackupPath*" -and $_.Name -ne $PermissionsManifest }).Count
+$TotalSizeBytes = (Get-ChildItem -Path $SelectedPath -Recurse -Force -ErrorAction SilentlyContinue | Where-Object { $_.FullName -notlike "$ClaudeBackupPath*" -and $_.Name -ne $PermissionsManifest } | Measure-Object -Property Length -Sum).Sum
 if ($null -eq $TotalSizeBytes) { $TotalSizeBytes = 0 }
 if ($TotalSizeBytes -ge 1073741824) {
     $TotalSizeStr = "{0:N1}G" -f ($TotalSizeBytes / 1073741824)
@@ -435,6 +468,60 @@ if (-not $chownOk) {
     Write-Host "also repairs volume ownership on startup."
     Wait-AndExit 1
 }
+
+# Step 2d: replay executable permissions from the manifest. The manifest
+# ("$PermissionsManifest") was copied into the volume by the whole-folder
+# `docker cp` above. When it is PRESENT, normalize every regular file to 0644 and
+# re-apply 0755 to exactly the paths it lists -- undoing the mode loss the NTFS
+# round-trip inflicts (where `docker cp` fabricates 0755 for every file and git
+# then flags every tracked 0644 file as a spurious 100644->100755 change).
+#
+# SAFETY RULE -- no manifest, no normalization: when the manifest is ABSENT (older
+# backups, OR a manifest whose write failed at backup time), do NOTHING. A blanket
+# 0644 without the manifest would strip exec from every script and hook and make
+# matters worse than the fabricated 0755. The manifest's presence is the signal for
+# "these files should be executable, everything else 0644"; without it there is no
+# safe baseline. Replay failure is a WARNING (data is intact), never fatal.
+#
+# Trailing CR (WriteAllLines emits CRLF on Windows) and a leading UTF-8 BOM are both
+# stripped as parameter-expansion suffix/prefix (`${p%`$cr} / `${p#`$bom}), NOT with
+# sed: busybox sed has no \xNN hex escapes, so a `sed 1s/^\xef\xbb\xbf//` would match
+# those bytes literally and silently do nothing. The BOM bytes are derived once via
+# octal `printf '\357\273\277'` (portable) and removed only as a leading prefix --
+# never with `tr -d`, which would also delete them where they legitimately appear
+# inside multi-byte UTF-8 filenames. The `[ -e ... ] && chmod` on a missing path does
+# NOT trip `set -e`: a non-final command in an AND-OR list is exempt from errexit per
+# POSIX, so a manifest path absent from this backup is skipped, not fatal.
+#
+# Windows quoting: the `sh -c` program reaches docker.exe as a single command-line
+# string, so it must contain NO embedded double-quotes (they get re-parsed by the
+# Windows C runtime and silently mangle the argument -- see shell-scripting
+# gotchas.md). This is a PS double-quoted outer string using sh single-quotes
+# throughout; sh variables are backtick-escaped (`$p, `$manifest, `$cr, `$bom) so
+# PowerShell does not interpolate them, and $PermissionsManifest (a fixed constant,
+# no user input) IS interpolated by PowerShell to build the container path.
+$savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
+$null = docker run --rm -v "${VolumeName}:/dest:ro" busybox test -f "/dest/${PermissionsManifest}" 2>&1
+$manifestPresent = ($LASTEXITCODE -eq 0)
+$ErrorActionPreference = $savedEAP
+if ($manifestPresent) {
+    Write-Host "Restoring executable permissions from $PermissionsManifest..."
+    $replayScript = "set -e; manifest=/dest/$PermissionsManifest; find /dest -type f -exec chmod 644 {} +; cr=`$(printf '\r'); bom=`$(printf '\357\273\277'); while IFS= read -r p; do p=`${p%`$cr}; p=`${p#`$bom}; [ -z `$p ] && continue; [ -e /dest/`$p ] && chmod 755 /dest/`$p; done < `$manifest; rm -f `$manifest"
+    $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
+    $null = docker run --rm -v "${VolumeName}:/dest" busybox sh -c $replayScript 2>&1
+    $replayOk = ($LASTEXITCODE -eq 0)
+    $ErrorActionPreference = $savedEAP
+    if (-not $replayOk) {
+        Write-Host "WARNING: Could not fully replay executable permissions." -ForegroundColor Yellow
+        Write-Host "         Your data was restored intact; only file permissions may be off."
+        Write-Host "         If git reports many files as changed by mode only, or a script"
+        Write-Host "         will not run, repair with: chmod +x <file> inside the container."
+    }
+} else {
+    Write-Host "NOTE: No $PermissionsManifest manifest found in this backup (it may predate"
+    Write-Host "      permission preservation, or the manifest write may have failed during"
+    Write-Host "      backup). File permissions were left as-is -- no normalization was applied."
+}
 Write-Host "Copy complete."
 Write-Host ""
 
@@ -486,7 +573,11 @@ if ($HasClaudeBackup) {
     # it here rather than depending on that init container.
     $null = docker run --rm -v "${ClaudeVolumeName}:/dest" busybox sh -c 'rm -rf /dest/* /dest/.[!.]* /dest/..?*' 2>&1
     $clearOk = ($LASTEXITCODE -eq 0)
+    # Pre-init the full guard set (not just $claudeCopyOk) so a strict-mode read
+    # is safe even if a docker step throws before its own assignment.
     $claudeCopyOk = $false
+    $claudeCreateOk = $false
+    $claudeCpOk = $false
     if ($clearOk) {
         $ClaudeCid = $null
         try {

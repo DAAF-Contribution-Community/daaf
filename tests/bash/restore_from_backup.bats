@@ -108,6 +108,41 @@ teardown() {
     assert_output --partial "${today}a_daaf_backup"
 }
 
+@test "restore: listing excludes Claude subfolder and manifest, annotates Claude state" {
+    local today
+    today=$(date +%Y-%m-%d)
+    mkdir -p "${TEST_DIR}/${today}_daaf_backup"
+    # Two data files, a manifest, and a non-empty Claude subfolder.
+    touch "${TEST_DIR}/${today}_daaf_backup/data1"
+    touch "${TEST_DIR}/${today}_daaf_backup/data2"
+    printf 'scripts/run.sh\n' > "${TEST_DIR}/${today}_daaf_backup/.daaf-permissions"
+    mkdir -p "${TEST_DIR}/${today}_daaf_backup/.daaf-claude-config"
+    touch "${TEST_DIR}/${today}_daaf_backup/.daaf-claude-config/creds"
+
+    MOCK_DOCKER_VOLUME_EXIT=0
+    export DAAF_NESTED=1
+
+    run bash -c 'echo "" | bash "'"${REPO_ROOT}"'/scripts/host/restore_from_backup.sh"'
+    # Count must be the 2 data files only (not the manifest, not the Claude file).
+    assert_output --partial "(2 files + Claude state,"
+}
+
+@test "restore: listing shows plain count when no Claude state present" {
+    local today
+    today=$(date +%Y-%m-%d)
+    mkdir -p "${TEST_DIR}/${today}_daaf_backup"
+    touch "${TEST_DIR}/${today}_daaf_backup/data1"
+    printf 'scripts/run.sh\n' > "${TEST_DIR}/${today}_daaf_backup/.daaf-permissions"
+
+    MOCK_DOCKER_VOLUME_EXIT=0
+    export DAAF_NESTED=1
+
+    run bash -c 'echo "" | bash "'"${REPO_ROOT}"'/scripts/host/restore_from_backup.sh"'
+    # 1 data file, no Claude annotation, manifest excluded from the count.
+    assert_output --partial "(1 files,"
+    refute_output --partial "Claude state"
+}
+
 @test "restore: ignores directories not matching backup pattern" {
     mkdir -p "${TEST_DIR}/2026-04-21_daaf_backup"
     mkdir -p "${TEST_DIR}/random_folder"
@@ -174,6 +209,30 @@ teardown() {
     # `docker cp` INTO a container writes files as root; the restore must chown the
     # volume back to appuser (UID 1000) container-side, matching daaf-init.
     run grep -c "chown -R 1000:1000 /dest" "${REPO_ROOT}/scripts/host/restore_from_backup.sh"
+    assert_success
+}
+
+@test "restore: replays executable permissions from the manifest" {
+    # Step 2d: when ".daaf-permissions" is present, normalize files to 644 and
+    # re-apply 755 to the manifest's paths (undoing NTFS mode loss).
+    run grep -c '\.daaf-permissions' "${REPO_ROOT}/scripts/host/restore_from_backup.sh"
+    assert_success
+    run grep -c 'find /dest -type f -exec chmod 644' "${REPO_ROOT}/scripts/host/restore_from_backup.sh"
+    assert_success
+    run grep -c 'chmod 755' "${REPO_ROOT}/scripts/host/restore_from_backup.sh"
+    assert_success
+}
+
+@test "restore: skips normalization when the manifest is absent (backward compat)" {
+    # No manifest => no normalization (blanket 644 would strip exec from every
+    # script and be worse than the fabricated 0755). The absent-manifest NOTE must
+    # cover BOTH causes: an older backup, or a manifest whose write failed at backup
+    # time (Fix 3) -- so it reads "may predate permission preservation".
+    run grep -c 'it may predate' "${REPO_ROOT}/scripts/host/restore_from_backup.sh"
+    assert_success
+    run grep -c 'the manifest write may have failed during' "${REPO_ROOT}/scripts/host/restore_from_backup.sh"
+    assert_success
+    run grep -c 'no normalization was applied' "${REPO_ROOT}/scripts/host/restore_from_backup.sh"
     assert_success
 }
 
@@ -562,4 +621,82 @@ teardown() {
     run bash "${REPO_ROOT}/scripts/host/restore_from_backup.sh"
     assert_failure
     assert_output --partial "No backup folders found"
+}
+
+# --- Step 2d: permission replay ---
+
+@test "restore: replays permissions when the backup contains a manifest" {
+    mkdir -p "${TEST_DIR}/2026-01-01_daaf_backup"
+    touch "${TEST_DIR}/2026-01-01_daaf_backup/f1"
+    printf 'scripts/run.sh\n' > "${TEST_DIR}/2026-01-01_daaf_backup/.daaf-permissions"
+
+    export DAAF_NESTED=1
+
+    # Step 2d probes the volume with `docker run ... test -f /dest/.daaf-permissions`.
+    # Model the manifest as PRESENT (test -f => 0) so the replay sh -c path runs.
+    # Distinguish calls by substring: the manifest probe and replay both contain
+    # ".daaf-permissions"; verification is `find /dest`.
+    docker() {
+        case "$1" in
+            info)   return 0 ;;
+            volume) return 0 ;;
+            ps)     return 0 ;;
+            create) echo "mockcid0000"; return 0 ;;
+            cp)     return 0 ;;
+            run)
+                shift
+                local args_str="$*"
+                if [[ "${args_str}" == *"find /dest"* ]] && [[ "${args_str}" == *"wc -l"* ]]; then
+                    # Verification: report 1 restored file so the restore succeeds.
+                    echo "1"; return 0
+                fi
+                # test -f manifest probe (present), replay sh -c, clear, strip,
+                # chown: all succeed.
+                return 0
+                ;;
+            *)  return 0 ;;
+        esac
+    }
+    export -f docker
+
+    run bash -c 'printf "1\nRESTORE\n" | bash "'"${REPO_ROOT}"'/scripts/host/restore_from_backup.sh"'
+    assert_output --partial "Restoring executable permissions"
+}
+
+@test "restore: notes older backups that predate the permission manifest" {
+    mkdir -p "${TEST_DIR}/2026-01-01_daaf_backup"
+    touch "${TEST_DIR}/2026-01-01_daaf_backup/f1"
+    # No .daaf-permissions manifest in this backup (older backup).
+
+    export DAAF_NESTED=1
+
+    # Step 2d probes with `docker run ... test -f /dest/.daaf-permissions`. Model the
+    # manifest as ABSENT (test -f => 1) so the "predates" branch runs. Verification
+    # (`find /dest ... wc -l`) still returns a non-zero count so the restore succeeds.
+    docker() {
+        case "$1" in
+            info)   return 0 ;;
+            volume) return 0 ;;
+            ps)     return 0 ;;
+            create) echo "mockcid0000"; return 0 ;;
+            cp)     return 0 ;;
+            run)
+                shift
+                local args_str="$*"
+                if [[ "${args_str}" == *"test -f"* ]] && [[ "${args_str}" == *".daaf-permissions"* ]]; then
+                    # Manifest absent.
+                    return 1
+                elif [[ "${args_str}" == *"find /dest"* ]] && [[ "${args_str}" == *"wc -l"* ]]; then
+                    echo "1"; return 0
+                fi
+                return 0
+                ;;
+            *)  return 0 ;;
+        esac
+    }
+    export -f docker
+
+    run bash -c 'printf "1\nRESTORE\n" | bash "'"${REPO_ROOT}"'/scripts/host/restore_from_backup.sh"'
+    assert_output --partial "may predate"
+    assert_output --partial "permission preservation"
 }
