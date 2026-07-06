@@ -23,6 +23,19 @@ Describe "migrate_daaf.ps1" {
             $Content | Should -Match '\$ErrorActionPreference\s*=\s*[''"]Stop[''"]'
         }
 
+        It "enables Set-StrictMode -Version 3.0" {
+            $Content | Should -Match 'Set-StrictMode\s+-Version\s+3\.0'
+        }
+
+        It "places Set-StrictMode after the test-mode guard" {
+            # Strict mode is dynamically scoped: placing it before the guard would
+            # leak into Pester's dot-sourced test session. It must come after.
+            $guardIdx = $Content.IndexOf('$env:DAAF_TEST_MODE -eq "1"')
+            $strictIdx = $Content.IndexOf('Set-StrictMode -Version 3.0')
+            $guardIdx | Should -BeGreaterThan -1
+            $strictIdx | Should -BeGreaterThan $guardIdx
+        }
+
         It "defines Wait-ForUser function" {
             $Content | Should -Match 'function Wait-ForUser'
         }
@@ -363,11 +376,24 @@ Describe "migrate_daaf.ps1 dry-run mode" {
         . "$PSScriptRoot/TestHelper.ps1"
         $script:OrigDryRun = $env:DAAF_DRY_RUN
         $script:OrigNested = $env:DAAF_NESTED
+        # Run inside a throwaway temp dir. migrate_daaf.ps1 treats the current
+        # directory as an existing install when it finds a docker-compose.yml
+        # there, and writes stub scripts + a docker-compose.yml.pre-migrate into
+        # it. Without this isolation the repo root (which has a docker-compose.yml)
+        # would be clobbered. Push in BeforeAll and Pop in a crash-proof AfterAll.
+        $script:TestDir = New-Item -ItemType Directory -Path (Join-Path ([System.IO.Path]::GetTempPath()) "daaf-migrate-dry-$(Get-Random)")
+        Push-Location $script:TestDir
+        New-FakeComposeFile
+        Set-Content -Path (Join-Path $script:TestDir "backup_daaf.ps1") -Value "exit 0"
     }
 
     AfterAll {
         $env:DAAF_DRY_RUN = $script:OrigDryRun
         $env:DAAF_NESTED = $script:OrigNested
+        # Pop unconditionally so a mid-block failure cannot leave CWD at the repo
+        # root for the next Describe block.
+        if ((Get-Location).Path -eq $script:TestDir.FullName) { Pop-Location }
+        Remove-Item -Recurse -Force $script:TestDir -ErrorAction SilentlyContinue
     }
 
     It "completes successfully with DAAF_DRY_RUN=1" {

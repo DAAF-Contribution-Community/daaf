@@ -114,6 +114,11 @@ $ContainerId = ""
 $Timestamp = Get-Date -Format "yyyy-MM-dd-HHmmss"
 $BackupBranch = "backup/pre-update-$Timestamp"
 $Mutex = $null  # Initialized before trap; set to actual mutex after helper functions
+# Initialized before the scope-wide trap (defined below) references $Stashed to
+# print stash-recovery guidance. Without this, a failure firing the trap before
+# the stash step (far below) would read an uninitialized variable under
+# Set-StrictMode, masking the real error with a strict-mode violation.
+$Stashed = $false
 
 # --- Multi-instance settings (shared pattern) ---
 # Bridge environment_settings.txt's four DAAF_* multi-instance keys into the
@@ -854,6 +859,12 @@ function Complete-Update {
 if ($env:DAAF_TEST_MODE -eq "1") {
     return
 }
+
+# Enable strict mode AFTER the test-mode guard. Set-StrictMode is dynamically
+# scoped, so placing it here keeps Pester's dot-sourcing (which returns above)
+# from leaking strict mode into the whole test session, while real executions
+# run fully protected from this point on.
+Set-StrictMode -Version 3.0
 
 # =====================================================================
 # Concurrent-run lock (named mutex)

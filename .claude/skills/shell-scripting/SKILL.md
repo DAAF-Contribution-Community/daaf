@@ -144,7 +144,7 @@ Existing patterns in DAAF scripts that this skill codifies:
 | # | Requirement | Quick Check |
 |---|-------------|-------------|
 | 1 | `$ErrorActionPreference = 'Stop'` | First line |
-| 2 | `Set-StrictMode -Version 3.0` | Second line |
+| 2 | `Set-StrictMode -Version 3.0` | Second line (DAAF exception: scripts with a `DAAF_TEST_MODE` dot-source guard place it immediately *after* the guard; dot-sourced libraries like `daaf_lib.ps1` carry no directive -- see `powershell-standards.md` > "Strict Mode Placement in DAAF Host Scripts") |
 | 3 | `$LASTEXITCODE` checked after every native command | After docker, git, etc. |
 | 4 | `[CmdletBinding()]` on functions | Function declarations |
 | 5 | `$null = expr` not `\| Out-Null` | Performance |

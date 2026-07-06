@@ -101,6 +101,12 @@ if ($env:DAAF_TEST_MODE -eq "1") {
     return
 }
 
+# Enable strict mode AFTER the test-mode guard. Set-StrictMode is dynamically
+# scoped, so placing it here keeps Pester's dot-sourcing (which returns above)
+# from leaking strict mode into the whole test session, while real executions
+# run fully protected from this point on.
+Set-StrictMode -Version 3.0
+
 Write-Host ""
 Write-Host "=========================================="
 Write-Host "  DAAF Rebuild"

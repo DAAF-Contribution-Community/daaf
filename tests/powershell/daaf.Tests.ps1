@@ -35,6 +35,20 @@ Describe "daaf.ps1" {
             $Content | Should -Match '\$ErrorActionPreference\s*=\s*[''"]Stop[''"]'
         }
 
+        It "enables Set-StrictMode -Version 3.0 AFTER the DAAF_TEST_MODE guard" {
+            # Strict mode is dynamically scoped -- it must be placed after the
+            # DAAF_TEST_MODE dot-source guard (which sits just above the main loop, past
+            # all function definitions) so Pester's dot-sourcing never leaks strict mode
+            # into the whole test session, while the real menu loop and every function it
+            # calls -- including the dot-sourced daaf_lib.ps1 helpers -- run protected.
+            # Assert BOTH presence and ordering.
+            $Content | Should -Match 'Set-StrictMode -Version 3\.0'
+            $guardIdx  = $Content.LastIndexOf('$env:DAAF_TEST_MODE -eq "1"')
+            $strictIdx = $Content.IndexOf('Set-StrictMode -Version 3.0')
+            $guardIdx  | Should -BeGreaterThan -1
+            $strictIdx | Should -BeGreaterThan $guardIdx
+        }
+
         It "dot-sources daaf_lib.ps1" {
             $Content | Should -Match 'daaf_lib\.ps1'
         }
@@ -168,6 +182,20 @@ Describe "daaf_lib.ps1" {
     BeforeAll {
         . "$PSScriptRoot/TestHelper.ps1"
         $script:LibContent = Get-Content "$RepoRoot/scripts/host/daaf_lib.ps1" -Raw
+    }
+
+    It "carries NO Set-StrictMode directive (Library Rule)" {
+        # A dot-sourced library shares the caller's scope, so a Set-StrictMode
+        # directive here would impose strict mode on every caller. Entry points
+        # enable strict mode themselves; the library must stay strict-clean and
+        # directive-free, mirroring daaf_lib.sh's deliberate lack of a `set` line.
+        # Match only an actual directive LINE -- one that begins with Set-StrictMode
+        # after leading whitespace -- so the cmdlet name appearing in the header's
+        # explanatory prose (each such line starts with `#`) does not trip the guard.
+        $directiveLines = @(
+            $LibContent -split "`n" | Where-Object { $_ -match '^\s*Set-StrictMode\b' }
+        )
+        $directiveLines.Count | Should -Be 0
     }
 
     It "defines Open-DaafUrl" {

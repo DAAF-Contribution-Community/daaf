@@ -23,6 +23,18 @@ Describe "run_daaf.ps1" {
             $Content | Should -Match '\$ErrorActionPreference\s*=\s*[''"]Stop[''"]'
         }
 
+        It "enables Set-StrictMode -Version 3.0 AFTER the DAAF_TEST_MODE guard" {
+            # Strict mode is dynamically scoped -- it must be placed after the
+            # DAAF_TEST_MODE dot-source guard so Pester's dot-sourcing (which returns
+            # at the guard) never leaks strict mode into the whole test session, while
+            # real executions run fully protected. Assert BOTH presence and ordering.
+            $Content | Should -Match 'Set-StrictMode -Version 3\.0'
+            $guardIdx  = $Content.IndexOf('$env:DAAF_TEST_MODE -eq "1"')
+            $strictIdx = $Content.IndexOf('Set-StrictMode -Version 3.0')
+            $guardIdx  | Should -BeGreaterThan -1
+            $strictIdx | Should -BeGreaterThan $guardIdx
+        }
+
         It "defines Wait-AndExit function" {
             $Content | Should -Match 'function Wait-AndExit'
         }

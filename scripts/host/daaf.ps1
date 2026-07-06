@@ -464,6 +464,10 @@ function Invoke-DaafDelegateInteractive {
     # behavior in that case rather than aborting the delegation.
     $ctrlCGuarded = $false
     $priorTreatCtrlC = $false
+    # Pre-init so the post-finally read below is strict-mode-safe even if
+    # Start-Process throws before $ec is assigned (the real exception must
+    # surface, not a masking "unset variable $ec" error).
+    $ec = 0
     try {
         $priorTreatCtrlC = [Console]::TreatControlCAsInput
         [Console]::TreatControlCAsInput = $true
@@ -826,6 +830,10 @@ function Invoke-DaafDelegate {
     # on hosts that do not support the property.
     $ctrlCGuarded = $false
     $priorTreatCtrlC = $false
+    # Pre-init so the post-finally read below is strict-mode-safe even if
+    # Start-Process throws before $ec is assigned (surface the real exception,
+    # not a masking "unset variable $ec" error).
+    $ec = 0
     try {
         $priorTreatCtrlC = [Console]::TreatControlCAsInput
         [Console]::TreatControlCAsInput = $true
@@ -1043,6 +1051,16 @@ if ($env:DAAF_TEST_MODE -eq "1") {
     return
 }
 
+# Enable strict mode for real executions only. Set-StrictMode is dynamically
+# scoped, so placing it AFTER the DAAF_TEST_MODE guard keeps Pester's dot-sourcing
+# (which returns above) from leaking strict mode into the whole test session. Because
+# it is dynamically scoped, every function invoked from the main loop below -- the
+# panel's own handlers AND the daaf_lib.ps1 helpers dot-sourced at the top -- runs
+# under strict mode, so the library must stay strict-clean (it carries no directive of
+# its own; see its header). Real runs are fully protected against uninitialized-variable
+# and missing-property reads.
+Set-StrictMode -Version 3.0
+
 # ============================================================================
 # Main Loop
 # ============================================================================
@@ -1058,6 +1076,9 @@ if ($env:DAAF_TEST_MODE -eq "1") {
 # delegates (Claude Code, container shell) receive real console handles for TTY
 # allocation -- see Invoke-DaafChoice and Invoke-DaafDelegateInteractive.
 $script:DaafMenuRunning = $true
+# Defensive pre-init (all paths set CHOICE via Read-DaafChoice before the read
+# below, but match the pre-init idiom applied elsewhere under strict mode).
+$script:CHOICE = ""
 try {
     while ($script:DaafMenuRunning) {
         Get-DaafStatus

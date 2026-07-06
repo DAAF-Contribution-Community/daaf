@@ -83,6 +83,13 @@ if ($env:DAAF_TEST_MODE -eq "1") {
     return
 }
 
+# Enable strict mode for real executions only. Set-StrictMode is dynamically
+# scoped, so placing it AFTER the DAAF_TEST_MODE guard keeps Pester's dot-sourcing
+# (which returns above) from leaking strict mode into the whole test session, while
+# every code path a real run reaches -- including library functions called below --
+# runs fully protected against uninitialized-variable and missing-property reads.
+Set-StrictMode -Version 3.0
+
 $Command = if ($args.Count -gt 0) { $args[0] } else { "claude" }
 
 # --- Preflight ---

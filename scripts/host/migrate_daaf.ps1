@@ -62,6 +62,11 @@ $BackupCompleted = $false
 $IsFork = $false
 $DetectedEra = ""
 $UpdateChoice = "n"
+# Initialize $Mutex before the scope-wide trap (defined below) can reference it.
+# The trap reads $Mutex to release the lock on failure; under Set-StrictMode it
+# would be an uninitialized-variable error if a failure fired the trap before the
+# mutex is created further down.
+$Mutex = $null
 
 # --- Detect non-interactive mode (curl-pipe equivalent) ---
 $NonInteractive = $false
@@ -309,6 +314,12 @@ function Invoke-ContainerShellVerbose {
 if ($env:DAAF_TEST_MODE -eq "1") {
     return
 }
+
+# Enable strict mode AFTER the test-mode guard. Set-StrictMode is dynamically
+# scoped, so placing it here keeps Pester's dot-sourcing (which returns above)
+# from leaking strict mode into the whole test session, while real executions
+# run fully protected from this point on.
+Set-StrictMode -Version 3.0
 
 # =====================================================================
 # Concurrent-run lock
@@ -814,7 +825,10 @@ if ($DetectedEra -eq "1") {
     $CatFileOutput = Invoke-ContainerGitVerbose cat-file -p $InitialCommit
     $InitialParentCount = 0
     if (-not [string]::IsNullOrWhiteSpace($CatFileOutput)) {
-        $InitialParentCount = ($CatFileOutput -split "`n" | Where-Object { $_ -match '^parent ' }).Count
+        # Wrap in @() so .Count is safe under Set-StrictMode when Where-Object
+        # matches no lines (an unwrapped no-match pipeline yields $null, and
+        # $null.Count throws a non-existent-property error under strict mode).
+        $InitialParentCount = @($CatFileOutput -split "`n" | Where-Object { $_ -match '^parent ' }).Count
     }
 
     if ($InitialParentCount -gt 0) {

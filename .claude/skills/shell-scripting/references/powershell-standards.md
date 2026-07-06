@@ -26,6 +26,16 @@ Set-StrictMode -Version 3.0
 
 `Set-StrictMode -Version Latest` resolves to whatever version the runtime supports. This means the same script may enforce different rules on different machines, creating hard-to-reproduce failures. `-Version 3.0` is deterministic.
 
+### Strict Mode Placement in DAAF Host Scripts
+
+The "second line" rule above is the general case. DAAF host scripts (`scripts/host/*.ps1`) carry two deliberate exceptions -- do NOT flag them as non-compliant:
+
+- **Scripts with a `DAAF_TEST_MODE` dot-source guard place `Set-StrictMode` immediately *after* the guard, not in the preamble.** These scripts begin with a guard that returns early (skipping the main body) when the file is dot-sourced by the Pester suite, so tests can load functions without executing side effects. `Set-StrictMode` is dynamically scoped: if it ran before the guard, it would leak into and persist across the whole Pester session, changing the strictness of every other test. Placing it *after* the guard confines strict mode to the script's own execution path. The trade-off (the few guard lines run without strict mode) is intentional and documented inline in each script.
+
+- **Dot-sourced library files carry NO `Set-StrictMode` directive.** `daaf_lib.ps1` (mirroring `daaf_lib.sh`) is a pure function library that is always dot-sourced into a caller; the caller imposes strict mode. A directive in the library would either leak into the caller's session or fight the caller's chosen version. Libraries stay directive-free; callers own the strict-mode decision.
+
+The full rationale for each script lives in that script's inline comments; this note exists so a reviewer applying the checklist does not "correct" the placement.
+
 ---
 
 ## Character Encoding: ASCII Only
@@ -318,7 +328,7 @@ Write-Host "Done." -ForegroundColor Green
 |---|------|-------|
 | 1 | `#Requires -Version 5.1` | First line |
 | 2 | `$ErrorActionPreference = 'Stop'` | Near top |
-| 3 | `Set-StrictMode -Version 3.0` (not `-Version Latest`) | Near top |
+| 3 | `Set-StrictMode -Version 3.0` (not `-Version Latest`) | Near top -- but see "Strict Mode Placement in DAAF Host Scripts": scripts with a `DAAF_TEST_MODE` guard place it *after* the guard; dot-sourced libraries (`daaf_lib.ps1`) carry no directive |
 | 4 | `$LASTEXITCODE` checked after every native command | After docker, git, etc. |
 | 5 | No reliance on `$?` for native commands | Grep for `if \($\?` near native calls |
 | 6 | `[CmdletBinding()]` on all functions | Function declarations |

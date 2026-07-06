@@ -32,6 +32,18 @@
 # See Test-DaafPort for the fully annotated call site.
 #
 # Supports DAAF_DRY_RUN=1 for CI smoke testing without Docker.
+#
+# STRICT MODE: this library carries NO `Set-StrictMode` directive of its own, by
+# design -- a directive here would impose strict mode on every caller (it is
+# dynamically scoped and a dot-sourced library shares the caller's scope). This
+# mirrors daaf_lib.sh, which likewise omits a `set` line. The entry points that
+# dot-source this file (daaf.ps1, and the standalone scripts that inline the
+# settings loader) enable `Set-StrictMode -Version 3.0` themselves, and because
+# strict mode is dynamically scoped these functions run UNDER that strict mode at
+# runtime. They must therefore stay strict-clean: no reads of never-assigned
+# variables, no `.Count`/`.Length`/property access on `$null` or on scalars lacking
+# them (wrap collection reads in `@(...)`), and no `$Matches` access after a failed
+# `-match`. `$env:` reads are exempt (they never error under strict mode).
 # ============================================================================
 
 # Guard against redundant dot-sourcing. daaf.ps1 dot-sources this file, and a
