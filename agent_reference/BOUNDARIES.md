@@ -47,6 +47,7 @@ These actions are **mandatory** for every analysis task.
 | Record all methodology decisions with rationale | Reproducibility |
 | Version all files (never overwrite) | Audit trail |
 | Include limitations section in every report | Transparency |
+| Keep temporary/intermediate files in `{PROJECT_DIR}/scripts/scratch/` (never `/tmp`) | Provenance — scratch stays inside the backup and audit boundary |
 
 ---
 
@@ -104,6 +105,7 @@ These actions are **prohibited** under all circumstances.
 | Store PII or sensitive data unencrypted | Privacy violation |
 | Share data outside the research folder | Data governance |
 | Expose raw data in public outputs | Privacy risk |
+| Write working files to `/tmp` (redirects, `cp`/`mv`/`tee`/`mkdir`/`touch`, downloads, `sed -i`, extraction, `git clone`) | Provenance loss — `/tmp` is outside the backup and audit boundary; blocked by the `bash-safety.sh` hook and `settings.json` deny rules. Correct approach: use `{PROJECT_DIR}/scripts/scratch/`. Reading DAAF's `/tmp` coordination caches is fine — only writes are blocked |
 
 ### Analysis Integrity
 

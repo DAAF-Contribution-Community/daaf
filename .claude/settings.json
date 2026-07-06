@@ -83,7 +83,9 @@
       "Edit(.claude/hooks/*)",
       "Write(.claude/hooks/*)",
       "Edit(.claude/logs/*)",
-      "Write(.claude/logs/*)"
+      "Write(.claude/logs/*)",
+      "Write(//tmp/**)",
+      "Edit(//tmp/**)"
     ]
   },
   "env": {

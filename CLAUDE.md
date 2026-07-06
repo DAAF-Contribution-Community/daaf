@@ -232,6 +232,11 @@ Context management is NEVER about reducing the quality or completeness of work. 
 - You MUST NEVER upload local files via `curl -d @file` or `--upload-file`
 - You MUST NEVER run `docker run`, `mount`, or `chroot` inside this environment
 
+### Provenance Boundary
+
+- You MUST NEVER write working files to `/tmp` (redirects, `cp`/`mv`/`tee`/`mkdir`/`touch`, downloads, `sed -i`, archive extraction, or `git clone` targeting `/tmp`). `/tmp` is outside the Docker-volume backup boundary and the audit trail, and the session log viewer renders `/tmp` paths as broken references — files written there are lost silently. Temporary and intermediate files belong inside the project (see § Project Conventions > Scratch Files).
+- **Exception — reads are fine:** DAAF's own hooks and statuslines legitimately cache coordination state in `/tmp` (e.g. `/tmp/claude-ctx-window-*`, `/tmp/claude-model-*`). *Reading* those caches via Bash is permitted; only *writes* to `/tmp` are blocked. Reading a `/tmp` cache and redirecting the output into the project is the sanctioned rescue pattern.
+
 ### Repository & Remote Safety
 
 - You MUST NOT push to any remote repository without explicit user instruction — `git push` is not in the auto-allow list and will prompt for confirmation each time
@@ -246,11 +251,11 @@ Context management is NEVER about reducing the quality or completeness of work. 
 
 | Layer | Mechanism | What It Covers |
 |-------|-----------|----------------|
-| **PreToolUse Hook** | `bash-safety.sh` — exit code 2 blocks execution | Destructive commands, privilege escalation, pipe-to-shell, data exfiltration, container escape |
+| **PreToolUse Hook** | `bash-safety.sh` — exit code 2 blocks execution | Destructive commands, privilege escalation, pipe-to-shell, data exfiltration, container escape, and the /tmp provenance guard (write-operator-gated: blocks shell *writes* to /tmp — redirects, cp/mv/tee/mkdir/touch, downloads, sed -i, extraction, git clone — while allowing /tmp *reads* of DAAF coordination caches) |
 | **PreToolUse Hook** | `enforce-single-command.sh` — exit code 2 blocks execution | Blocks command chaining (`&&`, `||`, `;`, newline-separated commands). Quote-aware and nesting-aware scanner with compound-command exception. Enforces the "One Command Per Call" rule. |
 | **PreToolUse Hook (agent-scoped)** | `enforce-file-first.sh` — registered in agent frontmatter for coding agents only (research-executor, code-reviewer, debugger, data-ingest) | Blocks direct `python`/`python3` execution; enforces `run_with_capture.sh` wrapper for audit trail. Not active for the orchestrator or read-only agents. |
 | **PreToolUse Hook** | `enforce-model-ceiling.sh` — registered on subagent dispatch (`Task`/`Agent`); denies via `permissionDecision: deny` | Blocks subagent dispatches on a model tier *above* the session model, preserving the user's cost-control choice; also blocks Claude-tier requests on non-Claude sessions (alternative providers) with a pointer to the env-var remaps. Cost-control guard, **fail-open by design** — if it cannot detect the session model (or `jq`/agent file is unavailable) it allows the dispatch, unlike the fail-closed safety hooks above. Stands down when alternative-provider model routing env vars are set. |
-| **Permission Deny Rules** | `settings.json` deny list | `rm -rf`, `sudo`, `docker`, credential file reads/writes, audit log writes/edits |
+| **Permission Deny Rules** | `settings.json` deny list | `rm -rf`, `sudo`, `docker`, credential file reads/writes, audit log writes/edits, `Write`/`Edit` to /tmp (`//tmp/**` — complements the bash-safety.sh /tmp guard, which covers shell writes the deny rules cannot see) |
 | **Permission Allow List** | `settings.json` allow list | Only approved tools auto-execute; everything else prompts |
 | **PostToolUse Hooks** | `audit-log.sh`, `output-scanner.sh` | Audit trail, secret detection in output |
 | **Context Reporting Hook** | `context-reporter.sh` — fires for orchestrator and all subagents via `PreToolUse` | Context utilization injection for gating decisions (orchestrator + subagents). Applies the Context Quality Curve thresholds for each agent's *own* model family (Fable/Mythos vs. conservative default; unknown IDs fail conservative). Subagent measurements use the window provisioned for the subagent's *own* model (per-model 1M/200k window mapping when it differs from the session model; window size and threshold family are separate lookups; model cached in `/tmp/claude-subagent-model-*`, shared with `subagent-bar.sh`) |
@@ -281,6 +286,12 @@ bash {BASE_DIR}/scripts/run_with_capture.sh {PROJECT_DIR}/scripts/stage5_fetch/0
 ### Shell Script Permissions
 
 **All `.sh` files must be committed with the executable bit set.** After creating or modifying any shell script, run `chmod +x <file>` to set filesystem permissions, then `git update-index --chmod=+x <file>` to ensure Git's index tracks the file as mode `100755`. Verify with `git ls-files -s <file>` — the mode column must show `100755`, not `100644`. This applies to hooks in `.claude/hooks/` and utility scripts in `scripts/`.
+
+### Scratch Files
+
+**Temporary and intermediate working files go inside the project, never in `/tmp`.** Use `{PROJECT_DIR}/scripts/scratch/` (create it on first use). It is inside the backup boundary and the audit trail; scratch files are transient by nature but are retained for provenance. For sessions without a research project yet (e.g., early-stage exploration), use the session workspace once it is created.
+
+`/tmp` writes are blocked by both the `bash-safety.sh` hook (shell writes) and `settings.json` deny rules (`Write`/`Edit` tools) because `/tmp` is outside the backup and audit boundary. **Legitimate exception:** DAAF's own hooks and statuslines cache coordination state in `/tmp` (e.g. `/tmp/claude-model-*`) — *reading* those caches is fine; agents just must not *write* to `/tmp`.
 
 ### Version Control Protocol
 
@@ -338,6 +349,7 @@ All executed scripts are archived in the `scripts/` folder with stage-based orga
 | DI-5 (Relational) | `scripts/profile_relational/` | `{NN}_{task-name}.py` | `07_key-integrity.py` |
 | DI-6 (Interpretation) | `scripts/profile_interpretation/` | `{NN}_{task-name}.py` | `10_semantic-interpretation.py` |
 | RV-2 (Reproduction) | `scripts/repro/{stage_dir}/` | `{original_script_name}` | `01_fetch-ccd.py` |
+| Scratch (any) | `scripts/scratch/` | free-form (transient intermediates, no naming pattern) | `stripped_08_fetch.py` |
 
 **Step numbering:** Use the step number from the Transformation Sequence (e.g., Step 1.1 → `01`, Step 2.3 → `03`).
 

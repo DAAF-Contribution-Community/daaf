@@ -240,8 +240,9 @@ research/YYYY-MM-DD_[Title]/
 │   │   ├── stage7_02_cr1.py    # CR for 02_join-data.py
 │   │   ├── stage8_01_cra1.py   # QA4a (statistical validity) for 01_regression-poverty.py
 │   │   └── stage8_02_crb1.py   # QA4b (viz quality) for 02_enrollment-plot.py
-│   └── debug/                  # Debugger diagnostic scripts
-│       └── 01_diag-key-mismatch.py
+│   ├── debug/                  # Debugger diagnostic scripts
+│   │   └── 01_diag-key-mismatch.py
+│   └── scratch/                # Temporary/intermediate working files (created on first use; never /tmp)
 ```
 
 **Data Onboarding profiling scripts** follow a parallel directory convention under `scripts/`:
@@ -251,6 +252,8 @@ research/YYYY-MM-DD_[Title]/
 - `profile_interpretation/` (Part D, scripts 10-11)
 
 Profiling scripts use the same file-first execution pattern, IAT documentation standards, and `run_with_capture.sh` wrapper. See `.claude/skills/daaf-orchestrator/references/data-onboarding-mode.md` for the profiling script template and part-specific details.
+
+**Everything stays inside the project.** All script outputs, intermediates, and scratch files are written under the project directory — never `/tmp`, which is outside the backup and audit boundary and is blocked by the `bash-safety.sh` hook and `settings.json` deny rules. Temporary/intermediate working files go in `{PROJECT_DIR}/scripts/scratch/` (created on first use); see CLAUDE.md § Project Conventions > Scratch Files. (Reading DAAF's own `/tmp` coordination caches, e.g. `/tmp/claude-model-*`, is permitted — only writes to `/tmp` are blocked.)
 
 ---
 
