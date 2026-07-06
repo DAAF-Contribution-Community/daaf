@@ -381,6 +381,7 @@ bats tests/bash/
 shellcheck -x scripts/host/*.sh
 bash tests/lint/check-daaf-conventions.sh
 pwsh -NoProfile -Command "Invoke-Pester -Path ./tests/powershell/"
+pwsh -NoProfile -Command "Get-ChildItem ./scripts/host/*.ps1 | ForEach-Object { Invoke-ScriptAnalyzer -Path \$_.FullName -Settings ./.github/linters/PSScriptAnalyzerSettings.psd1 }"
 ```
 
 `DAAF_DEV` is an opt-in build flag: when it is unset or `0` (the default), none of this tooling is installed and the image is identical to a standard build. See `user_reference/01_installation_and_quickstart.md` ("Building with the developer test toolchain") for details.
