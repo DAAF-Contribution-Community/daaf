@@ -28,6 +28,7 @@
 # Supports DAAF_DRY_RUN=1 for CI cross-platform smoke testing (see tests/).
 # ============================================================================
 
+#Requires -Version 5.1
 $ErrorActionPreference = "Stop"
 
 # Ensure TLS 1.2 for GitHub downloads (required on PowerShell 5.1)

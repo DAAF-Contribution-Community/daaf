@@ -19,6 +19,10 @@ Describe "migrate_daaf.ps1" {
             $script:Content = Get-Content "$RepoRoot/scripts/host/migrate_daaf.ps1" -Raw
         }
 
+        It "declares #Requires -Version 5.1" {
+            $Content | Should -Match '#Requires\s+-Version\s+5\.1'
+        }
+
         It "sets ErrorActionPreference to Stop" {
             $Content | Should -Match '\$ErrorActionPreference\s*=\s*[''"]Stop[''"]'
         }
