@@ -344,6 +344,58 @@ Invoke-Pester -Path ./tests/powershell/ -CI
 
 ---
 
+## In-Container Validation Toolchain (DAAF_DEV)
+
+The `DAAF_DEV=1` opt-in image bakes the full shell-validation toolchain directly
+into the container, so scripts can be parsed, tested, and linted *in place*
+without a separate runner. This exists **only in `DAAF_DEV=1` builds** — a
+default (non-dev) container will not have `pwsh` or the linters on PATH.
+
+**What's installed (DAAF_DEV builds):**
+
+| Tool | Version | Purpose |
+|------|---------|---------|
+| `pwsh` | 7.6.3 (at `/usr/bin/pwsh`) | PowerShell parse + Pester runner |
+| Pester | 5.7.1 | PowerShell test framework |
+| PSScriptAnalyzer | 1.24.0 | PowerShell linter |
+| `shellcheck` | (Dockerfile-installed) | Bash linter |
+| `bats` | (Dockerfile-installed) | Bash test framework |
+
+**Always probe before declaring a tool unavailable.** Do not assume "there's no
+`pwsh` in this container" from memory — the DAAF_DEV image provides it. State that
+a validation tool is "not available" only *after* a failed probe, and report the
+exact probe command you ran so the claim is auditable.
+
+```bash
+# Probe (run before claiming any validation tool is missing)
+command -v pwsh          # PowerShell 7
+command -v shellcheck    # Bash linter
+bats --version           # Bash test framework
+```
+
+**Canonical validation commands (once a probe confirms the tool is present):**
+
+```bash
+# Parse a PowerShell script (0 errors expected) — pattern applies to any .ps1
+pwsh -NoProfile -Command '$e=$null; [System.Management.Automation.Language.Parser]::ParseFile("scripts/host/run_daaf.ps1",[ref]$null,[ref]$e); if($e){$e; exit 1}'
+
+# Run the Pester suite
+pwsh -NoProfile -Command 'Invoke-Pester -Path tests/powershell/ -Output Detailed'
+
+# Lint a PowerShell script with the accepted-pattern suppressions
+pwsh -NoProfile -Command 'Invoke-ScriptAnalyzer -Path scripts/host/run_daaf.ps1 -Settings .github/linters/PSScriptAnalyzerSettings.psd1'
+```
+
+Notes:
+- The `.github/linters/PSScriptAnalyzerSettings.psd1` settings file suppresses
+  accepted fleet patterns (e.g. `PSAvoidUsingWriteHost`), so lint findings against
+  it are real deviations, not style noise. Always pass `-Settings` — a bare
+  `Invoke-ScriptAnalyzer` will flag accepted patterns.
+- `Invoke-ScriptAnalyzer -Path` takes a **single** string, not an array — lint one
+  file per invocation (loop for multiple files).
+
+---
+
 ## CI Workflow (GitHub Actions)
 
 ### Recommended Matrix

@@ -68,6 +68,9 @@ Reviewing a script?
 │   ├─ PSScriptAnalyzer clean? → ./references/powershell-standards.md
 │   └─ Error paths robust? → ./references/error-handling.md
 └─ Either language
+    ├─ Run parser/linter/tests in-container? → ./references/testing.md
+    │   (DAAF_DEV toolchain: pwsh, Pester, PSSA, shellcheck, bats --
+    │    PROBE for tools before declaring validation unavailable)
     ├─ Exit code conventions? → ./references/error-handling.md
     └─ Known gotchas present? → ./references/gotchas.md
 ```
@@ -196,6 +199,7 @@ Existing patterns in DAAF scripts that this skill codifies:
 | CI workflow setup | `./references/testing.md` |
 | Docker mocking strategies | `./references/testing.md` |
 | Test taxonomy (lint/unit/smoke/integration) | `./references/testing.md` |
+| In-container validation toolchain (DAAF_DEV: pwsh, Pester, PSScriptAnalyzer, shellcheck, bats) | `./references/testing.md` |
 | What to test and what to skip | `./references/testing.md` |
 | Bash exit code masking | `./references/gotchas.md` |
 | Bash set -e edge cases | `./references/gotchas.md` |
