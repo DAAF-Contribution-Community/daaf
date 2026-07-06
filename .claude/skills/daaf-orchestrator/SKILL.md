@@ -567,6 +567,8 @@ DAAF routes subagents across two model tiers, following a **least-capable-suffic
 - The task involves complex methodology (causal-inference design, intricate multi-source joins, survey-weighted estimation).
 - A prior dispatch returned BLOCKED or failed and is being re-dispatched (give the retry more capability).
 - The work product feeds a high-stakes decision or a downstream verification gate.
+- The artifact under review cannot be executed and static review is the terminal quality gate — when there is no runtime check downstream, the reviewer's judgment *is* the gate and warrants the more capable model.
+- A search-agent dispatch is review-role or interpretive-synthesis work (adversarial reading of code or documents, generalizing conventions across sources) rather than mechanical lookup — the latter (structured lookup, reference-tracing) stays Sonnet.
 
 **Downgrade Opus → Sonnet when:**
 - Reviewing a small, mechanical script (risk-scaled review — a trivial diff does not need Opus).
@@ -631,6 +633,8 @@ When a subagent returns findings:
 ```
 
 If a write fails, retry once. If the retry also fails, stop and report the issue to the user — do not proceed with degraded findings.
+
+**Claim adjudication (applies across extraction and relay, steps 3-5):** For load-bearing claims in a return — especially negative capability claims ("X is unavailable/impossible/unsupported") and completion counts — verify the stated evidence is present (a quoted probe or command output). If it is absent, treat the claim as unverified inference: verify it directly, re-dispatch with an explicit evidence requirement, or carry it forward explicitly labeled as unverified. When relaying an unverified subagent claim to the user, mark its provenance (e.g., "the specialist reports, though I have not verified...") rather than passing it on with orchestrator authority attached.
 
 ### Wave Barrier Discipline (Async Dispatch)
 

@@ -205,6 +205,19 @@ model: sonnet                    # DAAF two-tier routing: opus | sonnet
 
 ---
 
+### 11. Claim Evidence Standards
+
+Every agent's output must let the reader distinguish **observed facts from inference** (this mirrors CLAUDE.md § Execution Philosophy > "Evidence-graded reporting" — the agent-level expression of that universal principle):
+
+- **Observed vs. inferred:** An observed fact means a command was run and the command plus its relevant output are quoted; everything else is inference and should read as such.
+- **Probes for negative claims:** Negative claims (a tool/field/capability is unavailable, an operation is impossible, something does not exist) carry the higher evidence bar — quote the probe that establishes them, or label the claim as inference. False negatives fail silently and accrue false authority when repeated.
+- **Derived counts:** Completion and coverage counts (files changed, items checked, occurrences) are derived from quoted tool output (`git diff --stat`, `grep -c`, `ls`), never from memory.
+- **Repro over recall:** When a behavioral claim is testable in seconds, run the minimal repro and quote it rather than recalling it. For read-only/non-executing agents, the "repro" is the static probe (Grep/Read) that grounds the claim.
+
+Agents adapt the phrasing to their role (a static verifier's probe is a Grep/Read; a coding agent's is an executed script), but the four expectations are constant.
+
+---
+
 ## Verification Script
 
 After writing an agent, verify all standards are met:

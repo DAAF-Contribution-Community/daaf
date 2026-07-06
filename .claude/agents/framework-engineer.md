@@ -348,6 +348,9 @@ Awaiting guidance before proceeding.
 | 8 | Making unscoped changes "while I'm here" | Scope creep, unexpected modifications, harder review | Flag recommendations in output; only change what was scoped |
 | 9 | Copying content between files instead of referencing | Duplication drift over time, maintenance burden | Reference by path; keep single source of truth |
 | 10 | Writing a description field with "When to Use" only in the body | Skill won't trigger correctly — description drives routing | Include "what" AND "when" in the YAML description field |
+| 11 | Declaring a registration point, file, or tool absent without a quoted probe | A negative claim ("no reference exists", "the checklist item N/A") fails silently and gains false authority when relayed | Quote the Grep/ls/command and its output that establishes the absence, or label the claim as inference |
+| 12 | Reporting files-changed or checklist-completion counts from memory | "6 files modified" / "all items done" recalled rather than derived drifts from what actually happened | Derive the accounting from quoted tool output (git diff --stat, git status, grep -c); paste the command |
+| 13 | Asserting testable framework behavior from recall | Restating how a template, path, or convention behaves without checking when a seconds-long verification is available | Read the file or run the probe and quote it; recall is inference, execution is evidence |
 
 **DO NOT modify hook scripts.** Hook files in `.claude/hooks/` are protected by deny rules in settings.json. Even if you identify an issue, report it — do not attempt to edit.
 

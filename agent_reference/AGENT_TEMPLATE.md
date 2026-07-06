@@ -248,6 +248,7 @@ If nothing novel, emit "None" — this is the expected common case.
 - **Heading levels:** Output sections use `##` headings (Summary, Confidence Assessment, etc.) since the returned output is a standalone message. Add a `#` title heading at the top.
 - Confidence model is STANDARDIZED across all agents (H/M/L with rationale)
 - Learning Signal categories are STANDARDIZED (Access/Data/Method/Perf/Process)
+- Output must distinguish observed facts from inference per the **Claim Evidence Standards** (`.claude/skills/agent-authoring/references/cross-agent-standards.md` § 11): quote probes for negative claims, derive counts from tool output, prefer repro over recall
 - Agent-specific content goes in the middle sections
 - Output should be parseable by the orchestrator without ambiguity
 

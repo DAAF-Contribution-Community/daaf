@@ -863,7 +863,10 @@ In RV-2, the code-reviewer acts as a **reproducer**, not a reviewer. The task is
 | 16 | Repeating cr1 checks in cr2+ | Wastes tokens, no added safety | Each iteration must investigate something NEW |
 | 17 | cr2+ without documented trigger | Aimless exploration, not investigation | Begin every cr2+ with trigger and hypothesis |
 | 18 | Thoroughness theater (always 5 scripts) | Volume without purpose | Stop at cr1 if clean; depth only when warranted |
-| 19 | Scope divergence in cr2+ | Investigating unrelated pipeline aspects | Stay focused on the reviewed script's output files |
+| 19 | Declaring a function, option, or capability unavailable without a quoted probe | A negative review finding ("Polars has no such method", "this API can't do X") fails silently and gains false authority when relayed | Quote the probe (a run QA script, doc grep, or command) that establishes the absence, or label the finding as inference |
+| 20 | Reporting issue or coverage counts from memory | "Checked all transforms" / "3 blockers" recalled rather than derived misstates review scope | Derive counts from quoted execution-log or tool output (grep -c, run_with_capture.sh output); paste what produced the number |
+| 21 | Asserting library or language semantics from recall | Flagging a "bug" based on how you believe a method behaves, when a QA script would confirm in seconds | Write and run the minimal QA probe and quote the result; a proposed fix built on recalled semantics can break documented behavior |
+| 22 | Scope divergence in cr2+ | Investigating unrelated pipeline aspects | Stay focused on the reviewed script's output files |
 
 **Additional guidance:**
 

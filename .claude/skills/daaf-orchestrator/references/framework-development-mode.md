@@ -390,6 +390,8 @@ Phase 4 review is **mandatory for all work, regardless of complexity.** Review s
 | **Moderate** (new skill, modified agent protocol) | Launch **3 search-agent subagents** in parallel: Consistency Review + Quality Review + Completeness Review. |
 | **Complex** (new agent, new mode, multi-component work) | Launch **3 search-agent subagents** in parallel: Consistency Review + Quality Review + Completeness Review. |
 
+**Dispatch tier.** The Consistency and Quality reviewers are review-role work per the Model Selection doctrine (`SKILL.md` § Model Selection for Subagent Dispatch): dispatch them with an explicit `model: opus` override by default. The Completeness reviewer verifies registration and diffs mechanically, so it stays at the search-agent default (Sonnet). When the modified artifacts cannot be executed, the Quality reviewer is the terminal quality gate — there is no runtime check downstream — and the Opus override on it is mandatory, not a default. For Simple work (Consistency + Completeness, no Quality reviewer), the Consistency reviewer still takes the `model: opus` override and serves as the de facto judgment gate; Completeness stays Sonnet.
+
 For **Moderate** and **Complex** work, launch 3 read-only research subagents in parallel. For **Simple** work, launch Subagent 1 (Consistency) and Subagent 3 (Completeness) in parallel:
 
 > **Wave barrier discipline (async dispatch).** These review subagents run in the background by default and return via completion notifications that may arrive one at a time. Treat mid-wave notifications as status-only: do not synthesize the review, present Checkpoint 2, or act on any single reviewer's findings until EVERY review subagent has returned. Synthesize once over the complete set of reviews — a reviewer that returns early or fails still counts as a completion to fold into that single synthesis, and its absence must be surfaced at the checkpoint rather than silently skipped. The same discipline applies to the Phase 1 scoping wave (the 3 parallel search-agents): wait for all before scoping conclusions. See the master statement in `SKILL.md` § Subagent Coordination > "Wave Barrier Discipline (Async Dispatch)."
@@ -409,6 +411,13 @@ Specific checks:
 - Naming conventions: do names follow the established patterns?
 
 Files to review: [list all created/modified files with absolute paths]
+
+Evidence requirements:
+- Any unavailability/impossibility claim must quote the probe command and its output.
+- Any language- or tool-semantics claim must include a minimal repro you executed.
+- Any count or inventory (files touched, occurrences) must be derived from quoted
+  tool output (git diff --stat, ls, grep -c), not from memory.
+- Your findings are claims for orchestrator adjudication — label inference as inference.
 
 Report: list of inconsistencies found, with file paths and line numbers.
 ```
@@ -433,6 +442,13 @@ Specific checks:
 Files to review: [list all created/modified files with absolute paths]
 Templates to check against: [relevant template paths]
 
+Evidence requirements:
+- Any unavailability/impossibility claim must quote the probe command and its output.
+- Any language- or tool-semantics claim must include a minimal repro you executed.
+- Any count or inventory (files touched, occurrences) must be derived from quoted
+  tool output (git diff --stat, ls, grep -c), not from memory.
+- Your findings are claims for orchestrator adjudication — label inference as inference.
+
 Report: quality issues found, with specific improvement suggestions.
 ```
 
@@ -454,6 +470,13 @@ Specific checks:
 
 Files to review: [list all created/modified files with absolute paths]
 Checklist: {BASE_DIR}/agent_reference/FRAMEWORK_INTEGRATION_CHECKLIST.md
+
+Evidence requirements:
+- Any unavailability/impossibility claim must quote the probe command and its output.
+- Any language- or tool-semantics claim must include a minimal repro you executed.
+- Any count or inventory (registrations checked, occurrences) must be derived from
+  quoted tool output (git diff --stat, ls, grep -c), not from memory.
+- Your findings are claims for orchestrator adjudication — label inference as inference.
 
 Report: missing registrations, orphaned components, and suggested extensions.
 ```

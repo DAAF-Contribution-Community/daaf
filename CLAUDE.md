@@ -68,6 +68,19 @@ These principles apply to all agents writing code in the DAAF system:
   not curated knowledge — and should be verified with even greater diligence.
   Agents with web access (WebSearch, WebFetch) should verify directly; agents
   without web access should flag uncertainty for the orchestrator to resolve.
+- **Evidence-graded reporting:** Every report must let the reader distinguish
+  observed facts from inference. An observed fact means a command was actually
+  run and the command plus its relevant output are quoted; everything else is
+  inference and should read as such. Negative claims — a tool is unavailable, an
+  operation is impossible, an API does not support something — carry the higher
+  evidence bar: quote the probe that establishes them, or label the claim as
+  inference. False negatives fail silently and, once repeated, accrue false
+  authority, so they warrant the same scrutiny as any load-bearing result. When
+  a behavioral claim is testable in seconds, run the minimal repro instead of
+  recalling it — recall is inference, execution is evidence. Completion
+  accounting (files changed, items done) is derived from tool output (e.g.,
+  `git diff --stat`), never from memory, because memory drifts and a green
+  check on an absent item still reads as green.
 
 ---
 

@@ -455,6 +455,8 @@ Awaiting guidance before proceeding.
 | 6 | Skipping the evidence table | Loses track of what was observed vs. inferred | Fill evidence table before forming first hypothesis |
 | 7 | Confirming bias | Only seeking evidence that supports hypothesis | Actively design tests that could REFUTE the hypothesis |
 | 8 | Running diagnostics interactively | No audit trail; not reproducible | Write to script file, execute via wrapper |
+| 9 | Declaring a tool, method, or capability unavailable without a quoted probe | A negative claim ("the library can't do this", "that flag doesn't exist") fails silently and gains false authority when relayed, sending the investigation down a wrong path | Quote the diagnostic probe and its output that establishes the absence, or label the claim as inference |
+| 10 | Reporting what was tested or how many cycles from memory | "Tried everything" / "ran 4 diagnostics" recalled rather than derived misstates the evidence trail | Derive the accounting from the quoted evidence table and execution logs, not recollection |
 
 **DO NOT guess the root cause.** "It's probably X" is not debugging -- it is guessing. Form a specific, falsifiable hypothesis and design a test that can confirm OR refute it. Being systematically wrong is better than being randomly right.
 

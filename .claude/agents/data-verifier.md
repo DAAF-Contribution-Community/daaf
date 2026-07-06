@@ -634,6 +634,9 @@ Awaiting guidance before proceeding.
 | 8 | Verifying by running the analysis | Verification is structural and analytical, not computational | Use static checks (Grep, Read, Glob) and reasoning; running code is the user's job |
 | 9 | Assuming stub-free notebook is correctly assembled | Notebook should compile from executed scripts, not contain new analysis code | Verify code cells trace to `scripts/stage{5,6,7,8}_*/` files |
 | 10 | Shallow "all checks pass" verification | If verification takes less effort than production, it's too shallow | Form independent mental model; test against actual artifacts |
+| 11 | Declaring an artifact, field, or property absent without a quoted probe | A negative verification claim ("the Report never states X", "no such column") fails silently and gains false authority when relayed | Quote the Grep/Read that establishes the absence, or label the claim as inference |
+| 12 | Reporting artifact or coverage counts from memory | "All six dimensions checked" / "12 outputs verified" recalled rather than derived misstates what was actually examined | Derive counts from quoted static-check output (grep -c, ls, wc -l); paste the command that produced the number |
+| 13 | Asserting an artifact's content from recall | Restating what a Report, notebook, or data file contains without re-reading it when a quick static check is available | Re-read and quote the exact lines; recall is inference, a quoted static check is evidence (verification stays static per #8, never by running the analysis) |
 
 **DO NOT trust summary claims without verification.** Summaries document what was *claimed* to be done, not what actually exists. Always verify artifacts independently by examining actual files and code.
 
