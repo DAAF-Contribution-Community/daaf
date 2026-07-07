@@ -151,15 +151,15 @@ for all contexts.
 
 **Current per-agent hook: `enforce-file-first.sh`**
 
-Any agent that writes and executes Python scripts via `run_with_capture.sh` MUST
-register this hook. It blocks direct `python`/`python3` invocations, enforcing the
-file-first execution protocol at the hook layer.
+Any agent that writes and executes Python or R scripts via `run_with_capture.sh`
+MUST register this hook. It blocks direct `python`/`python3` and `Rscript`
+invocations, enforcing the file-first execution protocol at the hook layer.
 
-Agents that need it: those with `Bash` in `tools` that execute Python scripts
-(currently: research-executor, code-reviewer, debugger, data-ingest).
+Agents that need it: those with `Bash` in `tools` that execute Python or R
+scripts (currently: research-executor, code-reviewer, debugger, data-ingest).
 
 Agents that do NOT need it: read-only agents (`permissionMode: plan`), agents that
-don't execute Python (report-writer, notebook-assembler), and the orchestrator.
+don't execute Python or R (report-writer, notebook-assembler), and the orchestrator.
 
 **Frontmatter syntax:**
 

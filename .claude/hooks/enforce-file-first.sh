@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# enforce-file-first.sh — PreToolUse hook that blocks direct python execution
+# enforce-file-first.sh — PreToolUse hook that blocks direct python/R execution
 #
-# Enforces the file-first execution protocol: all Python scripts must be
+# Enforces the file-first execution protocol: all Python and R scripts must be
 # executed via run_with_capture.sh, which appends an execution log to the
-# script file as an immutable audit artifact. Direct `python` or `python3`
-# invocations bypass this audit trail and are blocked.
+# script file as an immutable audit artifact. Direct `python`, `python3`, and
+# `Rscript` invocations bypass this audit trail and are blocked.
 #
 # Exception: Framework utility scripts in /daaf/scripts/ (e.g.,
 # compare_execution_logs.py, normalize_project_dir.py) are standalone CLI
@@ -68,12 +68,15 @@ NORM_CMD=$(echo "$CMD" | tr '\n' ';' | tr -s '[:space:]' ' ')
 # These are standalone CLI tools (not pipeline scripts) that produce stdout
 # output rather than audit artifacts. They may be run directly by any agent.
 #
-# The whitelist checks for python/python3 invocations that target a .py file
-# within the /daaf/scripts/ directory (the framework root, NOT a research
+# The whitelist checks for python/python3/Rscript invocations that target a
+# file within the /daaf/scripts/ directory (the framework root, NOT a research
 # project's scripts/ directory).
 # ---------------------------------------------------------------------------
 DAAF_ROOT="${CLAUDE_PROJECT_DIR:-/daaf}"
 if echo "$NORM_CMD" | grep -qE "python3?[.0-9]*\s+${DAAF_ROOT}/scripts/[A-Za-z0-9_-]+\.py"; then
+    exit 0
+fi
+if echo "$NORM_CMD" | grep -qE "Rscript[.0-9]*\s+${DAAF_ROOT}/scripts/[A-Za-z0-9_-]+\.R"; then
     exit 0
 fi
 
@@ -135,6 +138,54 @@ as an immutable audit trail. See SCRIPT_EXECUTION_REFERENCE.md for details.
 
 Exception: Framework utility scripts in /daaf/scripts/ may be run directly
 (e.g., python /daaf/scripts/compare_execution_logs.py ...).
+
+If you need to write a quick check, write it as a script file first,
+then execute it through the capture wrapper.
+EOF
+    exit 2
+fi
+
+# ---------------------------------------------------------------------------
+# Detect Rscript invoked as a command. Same philosophy as Python detection:
+# block direct execution, require run_with_capture.sh wrapper.
+#
+# R interpreter names:
+#   Rscript                    — standard non-interactive script runner
+#   Rscript.exe                — Windows variant (unlikely but defensive)
+#   /usr/bin/Rscript            — absolute path variants
+#
+# BLOCKS:
+#   Rscript script.R                      — direct execution, no audit trail
+#   Rscript -e "code"                     — interactive one-liner
+#   env Rscript script.R                  — env wrapper
+#   /usr/bin/Rscript script.R             — absolute path
+#   R_LIBS=/foo Rscript script.R          — env var prefix
+#
+# ALLOWS:
+#   bash .../run_with_capture.sh script.R  — correct file-first pattern
+#   Rscript /daaf/scripts/utility.R        — whitelisted framework utility
+#   grep Rscript file.txt                 — Rscript as argument, not command
+#   install.packages("sf")               — not an Rscript invocation
+# ---------------------------------------------------------------------------
+
+RPATTERN='(^|&&|\|\||;|\|)\s*'               # BOUNDARY
+RPATTERN+='([A-Za-z_][A-Za-z0-9_]*=[^ ]+ )*'  # PREFIX: zero or more VAR=val assignments
+RPATTERN+='(env|exec|command|eval|nohup|nice|time|strace)?\s*'  # PREFIX: optional wrapper
+RPATTERN+='(Rscript[.0-9]*|[^ ]*\/Rscript[.0-9]*)'             # RSCRIPT interpreter
+RPATTERN+='(\s|;|$)'                          # TRAIL
+
+if echo "$NORM_CMD" | grep -qE "$RPATTERN"; then
+    cat >&2 <<'EOF'
+BLOCKED by enforce-file-first hook: Direct Rscript execution violates the file-first protocol.
+
+All R scripts must be executed via run_with_capture.sh:
+  bash {BASE_DIR}/scripts/run_with_capture.sh {PROJECT_DIR}/scripts/{script}.R
+
+This ensures execution output is captured and appended to the script file
+as an immutable audit trail. See SCRIPT_EXECUTION_REFERENCE.md for details.
+
+Exception: Framework utility scripts in /daaf/scripts/ may be run directly
+(e.g., Rscript /daaf/scripts/utility.R ...).
 
 If you need to write a quick check, write it as a script file first,
 then execute it through the capture wrapper.
