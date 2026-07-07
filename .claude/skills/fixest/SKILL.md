@@ -58,7 +58,7 @@ release building on those defaults.
 
 Key defaults in 0.14.0:
 - Default standard errors: `"iid"` (not cluster-by-first-FE as in pre-0.13)
-- Singleton removal: on by default (`fixef.rm = "singleton"`)
+- Singleton removal: on by default (`fixef.rm = "perfect_fit"`)
 - `ssc()` arguments: `adj`, `fixef.K`, `cluster.adj`, `cluster.df`
 
 ## How to Use This Skill

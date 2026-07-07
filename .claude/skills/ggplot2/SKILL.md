@@ -63,7 +63,7 @@ geom_bar(linewidth = 0.5)
 | `coord_trans()` | Primary name | Renamed to `coord_transform()`; `coord_trans()` still works |
 | `theme_set()` etc. | Primary names | Renamed: `set_theme()`, `get_theme()`, `update_theme()`, `replace_theme()`; old names still work |
 | `geom_errorbarh()` | Primary | Deprecated; use `geom_errorbar(orientation = "y")` |
-| `geom_violin(draw_quantiles)` | Geom parameter | Deprecated; use `stat_ydensity(quantiles = ...)` instead |
+| `geom_violin(draw_quantiles)` | Geom parameter | Deprecated; use `geom_violin(quantiles = c(...), quantile.linetype = 1)` — quantiles are hidden by default in 4.0, so `quantile.linetype` (a non-`0` value) is required to display them |
 | `fatten` argument | In boxplot/crossbar/pointrange | Deprecated |
 | `borders()` | Active | Deprecated; use `annotation_borders()` |
 | Pre-3.0 deprecations | Warnings | Now errors |

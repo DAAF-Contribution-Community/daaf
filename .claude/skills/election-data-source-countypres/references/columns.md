@@ -76,6 +76,7 @@ starts with `state, county_name, year, state_po, ...` while the codebook lists
   )
   ```
   ```r
+  library(stringr)  # str_pad()
   # Always zero-pad before joining
   df <- df |> mutate(county_fips_str = str_pad(county_fips, width = 5, pad = "0"))
   ```

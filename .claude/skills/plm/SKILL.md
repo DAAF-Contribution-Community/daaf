@@ -10,7 +10,7 @@ autoload: never
 metadata:
   audience: code-producing agents
   domain: r-library
-  library-version: "plm 2.6.7"
+  library-version: "plm 2.6-7"
   skill-last-updated: "2026-05-08"
   tags: ["r", "panel-data", "plm", "random-effects", "mixed-effects"]
 ---
@@ -51,11 +51,11 @@ This skill also covers two companion packages:
 | Package | Version | Role |
 |---------|---------|------|
 | `estimatr` | 1.0.6 | `lm_robust()` and `iv_robust()` with HC/CR standard errors |
-| `lme4` | 2.0.1 | `lmer()` for random intercepts/slopes (mixed-effects models) |
+| `lme4` | 2.0-1 | `lmer()` for random intercepts/slopes (mixed-effects models) |
 
 ## Version Notes
 
-This skill targets **plm 2.6.7** (R 4.5.3). Key features:
+This skill targets **plm 2.6-7** (R 4.5.3). Key features:
 - `pdata.frame()` for explicit panel structure declaration
 - `plm()` formula interface: `y ~ x1 + x2 | instruments`
 - Default vcov is classical (homoskedastic) -- always specify robust/clustered

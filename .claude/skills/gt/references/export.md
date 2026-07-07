@@ -32,8 +32,10 @@ gtsave(tbl, "output/tables/my_table.png", vwidth = 800, vheight = 600)
 PNG output renders the HTML table to an image. Useful for embedding in
 presentations or documents that do not support HTML.
 
-**Dependency:** PNG export requires the `chromote` package (headless Chrome).
-If not available, install with `install.packages("chromote")`.
+**Dependency:** PNG export requires a headless-browser backend — either
+`chromote` or `webshot2` (both drive headless Chrome). Neither is installed in
+DAAF; install one at analysis time with `install.packages("chromote")` (or
+`install.packages("webshot2")`).
 
 ### LaTeX Output
 

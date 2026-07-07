@@ -248,13 +248,16 @@ summary(fit, vcov = ~entity)
 ### Setting Defaults Globally
 
 ```r
-# Set default SE type for all subsequent estimations
-setFixest_vcov(vcov = ~entity)          # Default to cluster by entity
-setFixest_vcov(vcov = "hetero")         # Default to robust
-setFixest_vcov(vcov = "iid")            # Reset to IID (the package default)
+# Set default SE type for all subsequent estimations.
+# setFixest_vcov() takes NAMED arguments keyed by FE structure, not a
+# `vcov = ` argument. The recognized keys are: no_FE, one_FE, two_FE,
+# panel, all, and reset.
+setFixest_vcov(all = "cluster")         # Default to clustering everywhere
+setFixest_vcov(all = "hetero")          # Default to robust everywhere
+setFixest_vcov(reset = TRUE)            # Reset to package defaults (IID)
 
-# Conditional defaults (only apply when FE are present)
-setFixest_vcov(vcov = "iid", all = TRUE)
+# Structure-conditional defaults: apply different SEs by FE count
+setFixest_vcov(no_FE = "iid", one_FE = "cluster")
 ```
 
 ### Recommendation

@@ -267,11 +267,16 @@ year_df <- data.frame(
 
 ```r
 # Predicted values including FE
-yhat <- predict(fit)              # Includes FE contributions
+yhat <- predict(fit)              # Includes FE contributions (fixef = FALSE
+                                  # is the default and returns full predictions)
 
-# Predicted values WITHOUT FE (just Xb)
-# Use the fixef.rm argument or manual calculation
-xb <- predict(fit, fixef = FALSE)  # Only covariate contributions
+# NOTE: predict(fit, fixef = TRUE) does NOT return Xb-without-FE. It returns
+# a data.frame of the per-observation fixed-effect coefficients instead.
+fe_contrib <- predict(fit, fixef = TRUE)  # per-obs FE coefficient(s)
+
+# To get the linear predictor WITHOUT the FE contribution (just Xb), subtract
+# the summed FE contributions from the full prediction:
+xb <- yhat - rowSums(fe_contrib)
 ```
 
 ## Saving Outputs

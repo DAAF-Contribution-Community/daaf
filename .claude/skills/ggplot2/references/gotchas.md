@@ -53,7 +53,7 @@ geom_point(size = 3)                   # size is correct for points
 | Deprecated | Replacement |
 |-----------|-------------|
 | `geom_errorbarh()` | `geom_errorbar(orientation = "y")` |
-| `geom_violin(draw_quantiles = ...)` | `stat_ydensity(quantiles = ...)` |
+| `geom_violin(draw_quantiles = ...)` | `geom_violin(quantiles = c(...), quantile.linetype = 1)` — in 4.0 quantiles are hidden unless `quantile.linetype` is set to a non-`0` value |
 | `fatten` in boxplot/crossbar/pointrange | Use specific styling arguments |
 | `facet_wrap(as.table = ...)` | `facet_wrap(dir = ...)` |
 | Pre-3.0 deprecated functions | Now throw errors (not just warnings) |

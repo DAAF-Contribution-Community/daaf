@@ -201,7 +201,6 @@ for (i in seq_len(nrow(empty_mode_states))) {
 
 # --- B.2: Reclassify empty-string totals as "TOTAL" (Pattern 3) ---
 if (length(total_state_years) > 0) {
-  total_keys <- strsplit(total_state_years, "_")
   df <- df |> mutate(
     mode = if_else(
       paste(state_po, year, sep = "_") %in% total_state_years & mode == "",

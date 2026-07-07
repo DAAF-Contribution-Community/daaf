@@ -405,8 +405,9 @@ cat("AME of age:", round(ame_age, 5), "\n")
 ```
 
 This is an approximation -- for delta-method SEs on AMEs, `marginaleffects`
-would be needed, but it is not guaranteed to work correctly with survey design
-objects. Document the approximation with an `# ASSUMES:` comment.
+supports `svyglm` objects and propagates the survey design's variance. Verify
+that the design is carried through as expected for your specification, and
+document the approximation with an `# ASSUMES:` comment.
 
 ---
 

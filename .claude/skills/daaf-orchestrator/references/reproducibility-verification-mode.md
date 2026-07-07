@@ -131,7 +131,7 @@ User points to existing analysis folder
 6. Run the decompiler:
    - Python (marimo): `python /daaf/scripts/decompile_notebook.py <notebook_path> <project>/original_files/scripts/`
    - R (Quarto): `Rscript /daaf/scripts/decompile_notebook.R <notebook_path> <project>/original_files/scripts/`
-   (Both decompilers extract individual scripts from notebook cells and produce a `MANIFEST.md`. Note: `decompile_notebook.R` is the R-mode counterpart to the marimo decompiler; if it is not yet present in `/daaf/scripts/`, flag this to the user before attempting Quarto reproduction rather than assuming it exists.)
+   (Both decompilers extract individual scripts from notebook cells and produce a `MANIFEST.md`. `decompile_notebook.R` is the R-mode counterpart to the marimo `decompile_notebook.py`: it parses a Stage 9 Quarto `.qmd`, extracts each script chunk (identified by its `# --- VERBATIM COPY of scripts/... ---` marker) into a standalone `.R` file under the mirrored stage-directory layout, and re-appends each script's execution log from its `<details>` block.)
 7. **Path normalization** — run the batch normalizer on all decompiled scripts:
    `python /daaf/scripts/normalize_project_dir.py <project>/original_files/scripts/ <project_absolute_path>`
    (The normalizer handles both `.py` and `.R` files.)

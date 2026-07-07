@@ -305,9 +305,12 @@ RUN Rscript -e 'install.packages(c( \
         ))'
 
 # Statistics and econometrics
+# NOTE: the wild-cluster-bootstrap package was removed here — archived on CRAN,
+# no R 4.5 binary in the P3M snapshot. It can be installed at analysis time if
+# needed (e.g. via a source/archive build).
 RUN Rscript -e 'install.packages(c( \
         "fixest", "sandwich", "lmtest", "car", "plm", "estimatr", \
-        "marginaleffects", "rdrobust", "fwildclusterboot", \
+        "marginaleffects", "rdrobust", \
         "survey", "rugarch", "broom", "modelsummary" \
         ))'
 
@@ -329,6 +332,31 @@ RUN Rscript -e 'install.packages(c( \
         "tidymodels", "ranger", "glmnet", "xgboost", "lightgbm", \
         "iml", "uwot", "fairmodels" \
         ))'
+
+# Presence gate: verify every intended R package actually installed. install.packages()
+# does NOT fail the build on a single package error, so a missing binary (as happened
+# with the archived wild-bootstrap package) can slip through silently. This RUN loops the full
+# intended list — the union of the install.packages() blocks above — and stops the build
+# with an explicit list if any namespace is unavailable. Keep this list in sync with the
+# blocks above when adding or removing packages.
+RUN Rscript -e 'pkgs <- c( \
+        "data.table", "dplyr", "tidyr", "tibble", "readr", "purrr", "stringr", \
+        "forcats", "lubridate", "glue", "rlang", \
+        "arrow", "readxl", "writexl", "haven", "jsonlite", "yaml", \
+        "fixest", "sandwich", "lmtest", "car", "plm", "estimatr", \
+        "marginaleffects", "rdrobust", \
+        "survey", "rugarch", "broom", "modelsummary", \
+        "sf", "terra", "stars", \
+        "spdep", "spatialreg", "classInt", "exactextractr", \
+        "leaflet", "maptiles", "tidygeocoder", "osmdata", \
+        "ggplot2", "scales", "ggridges", "ggrepel", "patchwork", "ggdist", \
+        "plotly", "gt", "knitr", "kableExtra", "viridis", \
+        "tidymodels", "ranger", "glmnet", "xgboost", "lightgbm", \
+        "iml", "uwot", "fairmodels" \
+        ); \
+        missing <- pkgs[!vapply(pkgs, requireNamespace, logical(1), quietly = TRUE)]; \
+        if (length(missing)) stop("Missing R packages: ", paste(missing, collapse = ", ")); \
+        cat("All", length(pkgs), "R packages present.\n")'
 
 # Quarto CLI (language-agnostic notebook system; DAAF uses it for R Stage 9).
 # Pin the version; update when intentionally upgrading.

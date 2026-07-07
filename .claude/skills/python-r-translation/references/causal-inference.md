@@ -16,6 +16,12 @@ DAAF's R stack provides strong coverage:
 > Python: pyfixest 0.40.0, marginaleffects (unpinned), rdrobust (unpinned)
 > See SKILL.md § Library Versions for the complete version table.
 
+> **Availability:** Of the R packages below, only `fixest` and `marginaleffects`
+> are pre-installed in DAAF. The specialized causal packages referenced here —
+> `did2s`, `rdrobust`, `MatchIt`, `WeightIt`, `cobalt`, `grf`, `Synth`,
+> `augsynth`, `gsynth`, `survival` — are NOT pre-installed; add
+> `install.packages("<pkg>")` at analysis time before using them.
+
 ---
 
 ## 1. Difference-in-Differences

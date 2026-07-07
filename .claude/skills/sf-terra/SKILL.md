@@ -8,7 +8,7 @@ autoload: never
 metadata:
   audience: code-producing agents
   domain: r-library
-  library-version: "sf 1.1.0"
+  library-version: "sf 1.1-0"
   skill-last-updated: "2026-05-08"
   tags: ["r", "geospatial", "sf", "terra", "mapping"]
 ---
@@ -50,8 +50,8 @@ Versions installed in the DAAF container (R 4.5.3):
 
 | Package | Version | Role |
 |---------|---------|------|
-| sf | 1.1.0 | Vector spatial data (Simple Features) |
-| terra | 1.9.11 | Raster spatial data |
+| sf | 1.1-0 | Vector spatial data (Simple Features) |
+| terra | 1.9-11 | Raster spatial data |
 | stars | 0.7.2 | Spatiotemporal arrays (raster time series) |
 | spdep | 1.4.2 | Spatial weights and spatial autocorrelation |
 | spatialreg | 1.4.3 | Spatial regression models (SAR, SEM, SDM) |

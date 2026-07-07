@@ -1,6 +1,6 @@
 # plm Quickstart
 
-A technical reference for using plm 2.6.7 in R. Covers pdata.frame setup,
+A technical reference for using plm 2.6-7 in R. Covers pdata.frame setup,
 plm() basics, model= argument, summary output, coeftest with robust vcov,
 and syntax comparison with linearmodels (Python). No methodology content --
 syntax and library guidance only.
@@ -29,7 +29,7 @@ library(lmtest)   # coeftest() for robust inference
 library(arrow)    # parquet I/O (DAAF convention)
 ```
 
-plm is already installed in the DAAF container (v2.6.7, R 4.5.3). No
+plm is already installed in the DAAF container (v2.6-7, R 4.5.3). No
 additional installation is needed.
 
 ### Built-in Datasets

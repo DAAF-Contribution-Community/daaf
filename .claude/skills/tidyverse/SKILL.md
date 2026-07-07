@@ -63,7 +63,7 @@ Versions installed in the DAAF container (R 4.5.3):
 | `quickstart.md` | Core verbs: filter, select, mutate, group_by + summarize, arrange, pipe | Starting an R data pipeline, basic wrangling |
 | `reshaping.md` | pivot_longer, pivot_wider, separate, unite, nest/unnest | Converting between wide and long formats |
 | `joins.md` | left_join, inner_join, anti_join, semi_join, join keys, validation | Combining data frames |
-| `io.md` | Parquet via arrow, CSV via readr, data import patterns | Reading or writing data files |
+| `io.md` | Parquet via arrow, CSV via readr, Excel via readxl, remote fetching via httr2/glue, data import patterns | Reading or writing data files, fetching from HTTP APIs |
 | `strings-dates.md` | stringr ops (str_detect, str_replace, regex), lubridate (ymd, date arithmetic) | String processing or date handling |
 | `purrr-functional.md` | map/map_dfr/map2, walk, list-columns, nested data patterns | Iterating over lists or nested data |
 | `factors.md` | forcats: fct_relevel, fct_reorder, fct_lump, factor ordering | Categorical variable manipulation |
@@ -126,6 +126,7 @@ Data I/O?
 ├─ Read/write parquet (preferred) → ./references/io.md (arrow)
 ├─ Read/write CSV → ./references/io.md (readr)
 ├─ Read Excel → ./references/io.md (readxl)
+├─ Fetch from HTTP API → ./references/io.md (httr2, glue)
 └─ High-speed CSV for large files → ./references/data-table.md (fread)
 ```
 
@@ -251,6 +252,7 @@ result <- df |>
 | read_parquet, write_parquet | `./references/io.md` |
 | read_csv, write_csv | `./references/io.md` |
 | Arrow integration | `./references/io.md` |
+| httr2, glue remote fetch | `./references/io.md` |
 | str_detect, str_replace | `./references/strings-dates.md` |
 | str_extract, regex | `./references/strings-dates.md` |
 | ymd, date arithmetic | `./references/strings-dates.md` |

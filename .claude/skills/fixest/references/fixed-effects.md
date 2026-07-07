@@ -42,7 +42,7 @@ Key parameters:
 |-----------|---------|---------|
 | `fixef.tol` | `1e-06` | Convergence tolerance for demeaning |
 | `nthreads` | Auto-detected | Number of threads for parallel computation |
-| `fixef.rm` | `"singleton"` | Remove singleton FE groups (since v0.13) |
+| `fixef.rm` | `"perfect_fit"` | Remove singleton/perfect-fit FE groups; tokens: `"perfect_fit"`, `"singletons"`, `"infinite_coef"`, `"none"` (since v0.13) |
 | `lean` | `FALSE` | If TRUE, stores less data (saves memory) |
 
 ```r
@@ -181,7 +181,7 @@ Keeping singletons:
 - Can bias standard errors (spurious degrees of freedom)
 - Wastes computation without improving estimation
 
-The default `fixef.rm = "singleton"` is the correct choice for almost all
+The default `fixef.rm = "perfect_fit"` is the correct choice for almost all
 applications.
 
 ### Iterative Removal

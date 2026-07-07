@@ -44,10 +44,12 @@ fit <- feols(y ~ x1 | entity + year, data = df, vcov = ~entity)
 ### Setting a Global Default
 
 ```r
-# Restore old behavior for the session
-setFixest_vcov(vcov = "cluster")   # Cluster by first FE
+# Restore old behavior for the session.
+# setFixest_vcov() takes named arguments keyed by FE structure
+# (no_FE, one_FE, two_FE, panel, all, reset) — there is no `vcov = ` argument.
+setFixest_vcov(all = "cluster")   # Cluster everywhere
 # Or
-setFixest_vcov(vcov = "hetero")    # Always use robust
+setFixest_vcov(all = "hetero")    # Always use robust
 ```
 
 ## Singleton Fixed Effects
@@ -55,7 +57,8 @@ setFixest_vcov(vcov = "hetero")    # Always use robust
 ### What Happens
 
 Since v0.13, fixest drops singleton FE groups (observations where a FE level
-appears only once) by default:
+appears only once) by default. The `fixef.rm` default is `"perfect_fit"`, which
+removes both singletons and observations perfectly fit by the FE:
 
 ```r
 # You will see:
@@ -343,7 +346,7 @@ Differences are typically due to small-sample correction choices:
 | Symptom | Likely Cause | Fix |
 |---------|-------------|-----|
 | Different SEs from old code | v0.13+ default SE change | Specify `vcov` explicitly |
-| "Singleton observations removed" | Default `fixef.rm = "singleton"` | Expected; or set `fixef.rm = "none"` |
+| "Singleton observations removed" | Default `fixef.rm = "perfect_fit"` | Expected; or set `fixef.rm = "none"` (valid tokens: `"perfect_fit"`, `"singletons"`, `"infinite_coef"`, `"none"`) |
 | Variable dropped (collinear with FE) | No within-group variation | Reconsider FE specification |
 | Poisson won't converge | Separation or sparse data | Increase `glm.iter`, check for separation |
 | "need panel.id" error | NW/DK requires panel structure | Add `panel.id = ~entity + year` |

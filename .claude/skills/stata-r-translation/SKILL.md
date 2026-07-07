@@ -214,6 +214,8 @@ Which Stata command?
 
 **Fidelity key:** Very High = same authors, near-identical API. High = same capability, similar syntax. Medium = same capability, different API patterns. Low = fundamentally different paradigm requiring conceptual remapping.
 
+> **Package availability:** The core mappings above (`fixest`, `plm`, `survey`, `marginaleffects`, base `stats`, `dplyr`/`tidyr`, `ggplot2`) are pre-installed in DAAF. The specialized causal packages — `rdrobust`, `binsreg`, `augsynth`, `Synth`, `MatchIt`, `did`, `rddensity` — are NOT pre-installed; run `install.packages("<pkg>")` at analysis time before using them (the Stata equivalent of `ssc install`).
+
 ## Library Versions
 
 Translations in this skill reference specific library versions. R versions are

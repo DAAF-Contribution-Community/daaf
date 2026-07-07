@@ -205,15 +205,17 @@ library(spatialreg)
 # OLS regression
 ols <- lm(poverty_rate ~ median_income + pct_rural, data = counties)
 
-# Lagrange Multiplier tests for spatial dependence
-lm_tests <- lm.LMtests(ols, listw_W,
-                        test = c("LMerr", "LMlag", "RLMerr", "RLMlag", "SARMA"))
-print(lm_tests)
+# Rao's score (formerly "Lagrange Multiplier") tests for spatial dependence.
+# spdep >= 1.3-2 renamed lm.LMtests() to lm.RStests() and the test tokens
+# from LM*/RLM* to RS*/adjRS* (installed spdep is 1.4.2).
+rs_tests <- lm.RStests(ols, listw_W,
+                       test = c("RSerr", "RSlag", "adjRSerr", "adjRSlag", "SARMA"))
+print(rs_tests)
 
 # Decision rule:
-# LMlag significant, LMerr not -> Spatial Lag Model (SAR)
-# LMerr significant, LMlag not -> Spatial Error Model (SEM)
-# Both significant -> Check robust versions (RLMlag, RLMerr)
+# RSlag significant, RSerr not -> Spatial Lag Model (SAR)
+# RSerr significant, RSlag not -> Spatial Error Model (SEM)
+# Both significant -> Check adjusted (robust) versions (adjRSlag, adjRSerr)
 # Neither significant -> OLS is fine
 ```
 

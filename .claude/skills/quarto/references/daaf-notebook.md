@@ -29,12 +29,13 @@ format:
   html:
     toc: true
     toc-depth: 2
-    code-fold: false
+    code-fold: show
     embed-resources: true
     theme: cosmo
 execute:
   echo: true
   eval: false
+  warning: false
 ---
 
 ## Project Overview
@@ -61,14 +62,11 @@ Source: `scripts/stage5_fetch/01_fetch-source.R`
 [Exact script contents pasted here]
 ```
 
-<details>
-<summary>Execution Log</summary>
-
+::: {.callout-note collapse="true" title="Execution Log"}
 ```
 [Exact execution log output pasted here]
 ```
-
-</details>
+:::
 
 #### Data Inspection
 
@@ -78,7 +76,8 @@ Source: `scripts/stage5_fetch/01_fetch-source.R`
 #| echo: false
 
 df <- arrow::read_parquet("data/raw/YYYY-MM-DD_source_data.parquet")
-head(df, 100)
+glimpse(df)
+head(df, 20)
 ```
 
 ---
@@ -97,14 +96,11 @@ Source: `scripts/stage6_clean/01_clean-source.R`
 [Exact script contents pasted here]
 ```
 
-<details>
-<summary>Execution Log</summary>
-
+::: {.callout-note collapse="true" title="Execution Log"}
 ```
 [Exact execution log output pasted here]
 ```
-
-</details>
+:::
 
 ---
 
@@ -168,18 +164,16 @@ Rules:
 ### Execution Log Block
 
 ````markdown
-<details>
-<summary>Execution Log</summary>
-
+::: {.callout-note collapse="true" title="Execution Log"}
 ```
 [Paste the stdout/stderr output that run_with_capture.sh appended to the script]
 ```
-
-</details>
+:::
 ````
 
-The `<details>` HTML element creates a collapsible section. Logs are important
-for the audit trail but would clutter the document if always expanded.
+The Quarto callout block with `collapse="true"` creates a collapsible section
+(analogous to marimo's `mo.accordion()`). Logs are important for the audit trail
+but would clutter the document if always expanded.
 
 ### Data Inspection Chunk
 
@@ -190,13 +184,14 @@ for the audit trail but would clutter the document if always expanded.
 #| echo: false
 
 df <- arrow::read_parquet("data/processed/YYYY-MM-DD_cleaned.parquet")
-head(df, 100)
+glimpse(df)
+head(df, 20)
 ```
 ````
 
 These are the ONLY chunks with `eval: true`. They:
 - Load a parquet file with `arrow::read_parquet()`
-- Display the first 100 rows with `head()`
+- Preview structure with `glimpse(df)` and the first 20 rows with `head(df, 20)`
 - Nothing else -- no filtering, no transforming, no summarizing
 
 ### Narrative Cell (Markdown)
@@ -222,7 +217,7 @@ The notebook-assembler agent follows this sequence:
 4. **For each script:**
    a. Add a Markdown narrative cell with the script's purpose
    b. Add a code chunk with the FULL script contents (verbatim)
-   c. Add the execution log in a `<details>` block
+   c. Add the execution log in a `::: {.callout-note collapse="true"}` block
    d. Optionally add a data inspection chunk for key outputs
 5. **Add** metadata section at the end
 
@@ -230,7 +225,7 @@ The notebook-assembler agent follows this sequence:
 
 | Prohibited | Why | What to Do Instead |
 |-----------|-----|-------------------|
-| New R code beyond `arrow::read_parquet() |> head()` | Stage 9 compiles, not creates | Put new analysis in Stage 8 scripts |
+| New R code beyond `arrow::read_parquet()` + `glimpse()`/`head()` | Stage 9 compiles, not creates | Put new analysis in Stage 8 scripts |
 | `library()` calls beyond `arrow` | No new dependencies | Libraries are in the copied scripts |
 | Parameterized rendering (`params:`) | Not a dynamic report | The notebook is a static artifact |
 | Shiny runtime | Not an interactive app | Use standalone Shiny for interactivity |
@@ -245,8 +240,8 @@ The notebook-assembler agent follows this sequence:
 | Code blocks | ```` ```{r} ```` fenced chunks | `@app.cell` decorated functions |
 | Execution model | Sequential, top-to-bottom | Reactive (DAG-based) |
 | Non-execution flag | `eval: false` in YAML | Code is display-only in cell wrappers |
-| Data display | `head(df, 100)` | `mo.ui.table(df.head(100))` |
-| Collapsible logs | `<details>` HTML element | `mo.accordion()` |
+| Data display | `glimpse(df)` + `head(df, 20)` | `mo.ui.table(df.head(100))` |
+| Collapsible logs | `::: {.callout-note collapse="true"}` block | `mo.accordion()` |
 | Output format | Rendered HTML via `quarto render` | marimo app or exported HTML |
 | Git format | Plain text .qmd | Plain text .py |
 

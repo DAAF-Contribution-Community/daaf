@@ -189,6 +189,39 @@ write_xlsx(df, "output.xlsx")
 
 ---
 
+## Remote Fetching: HTTP and String Interpolation
+
+Data-source fetch blocks that pull from APIs or remote files rely on three
+packages installed in the DAAF container but not part of core tidyverse:
+
+| Package | Version | Role |
+|---------|---------|------|
+| `httr2` | 1.2.2 | HTTP requests with a pipeable request builder and automatic retry |
+| `glue` | 1.8.0 | String interpolation for building URLs and query parameters |
+| `readxl` | 1.4.5 | Reading Excel files returned by some sources (see Excel section above) |
+
+```r
+library(httr2)
+library(glue)
+
+# Build a URL with glue interpolation
+year <- 2022
+url <- glue("https://api.example.gov/data?year={year}&format=json")
+
+# httr2 request pipeline with retry on transient failures
+resp <- request(url) |>
+  req_retry(max_tries = 3) |>   # backs off and retries on 429/5xx
+  req_perform()
+
+data <- resp |> resp_body_json()
+```
+
+Use `req_retry()` for resilience against transient network errors, and prefer
+`glue()` over `paste0()` for readable URL construction. For sources that deliver
+Excel, combine `httr2` to download and `readxl::read_excel()` to parse.
+
+---
+
 ## data.table I/O (High-Speed Alternative)
 
 For very large CSV files, data.table's `fread()` is significantly faster:
