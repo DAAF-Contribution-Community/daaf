@@ -132,7 +132,7 @@ The actual output will include more detail as each step progresses, but these ar
 ### What the installer does
 
 1. **Creates an installation directory** called `daaf-docker/` in whatever folder your terminal is currently in, containing all the files you'll need to run and manage DAAF from here on. For example, if you open your terminal and it starts in your home folder (`~` on Mac/Linux, `C:\Users\YourName` on Windows), that's where `daaf-docker/` will be created. You can `cd` to a different location first if you'd prefer to install elsewhere.
-2. **Builds the Docker image** with Python 3.12, 50+ data science packages, geospatial libraries, and Claude Code pre-installed (and, when R support is enabled, an R environment with its own data science packages and the Quarto CLI). The first build downloads everything and takes a few minutes; subsequent rebuilds use Docker's layer cache and are much faster.
+2. **Builds the Docker image** with Python 3.12, 50+ data science packages, geospatial libraries, and Claude Code pre-installed (and, when R support is enabled via the `DAAF_R` build flag, R 4.5.3 with 30+ R data science packages and the Quarto CLI 1.7.29 — see [**Enabling R support (DAAF_R)**](#enabling-r-support-daaf_r) below). The first build downloads everything and takes a few minutes; subsequent rebuilds use Docker's layer cache and are much faster.
 3. **Downloads the DAAF repository** directly into the Docker volume inside the container. This gives you a full file edit and version history via Git.
 4. **Enforces security controls on Claude.** One of the big benefits of using Docker is that we can really keep Claude Code under control. The Docker container runs as a non-root user with all Linux capabilities dropped (`cap_drop: ALL`) and privilege escalation explicitly blocked (`no-new-privileges`). Even if Claude Code somehow tried to do something it shouldn't, the operating system kernel would stop it.
 
@@ -691,6 +691,37 @@ shellcheck -x scripts/host/*.sh
 When `DAAF_DEV` is unset or `0` (the default for every normal install), none of this tooling is installed and the image is byte-for-byte identical to a standard build — so leaving it off costs you nothing.
 
 > **DAAF_DEV is a build flag, not a runtime setting.** It only matters at `docker compose build` time. The install and rebuild scripts bridge it from `environment_settings.txt` into the shell environment so the build picks it up; if you run bare `docker compose build` yourself, put `DAAF_DEV=1` in a `.env` file (or your shell environment) the same way you would for the multi-instance keys. Turning it on or off requires a rebuild to change the installed toolchain.
+
+### Enabling R support (DAAF_R)
+
+By default DAAF ships as a Python-only environment. If you want to run **R** pipelines — with R as a first-class execution language alongside Python — there is an opt-in build flag: `DAAF_R`. Like `DAAF_DEV` above, it is a **build-time** flag: it changes what gets installed into the Docker image, so it only takes effect at `docker compose build`.
+
+To turn it on, add this line to your `daaf-docker` folder's `environment_settings.txt`:
+
+```
+DAAF_R=1
+```
+
+Then rebuild the image so the flag takes effect:
+
+```
+bash rebuild_daaf.sh         # macOS / Linux
+.\rebuild_daaf.ps1           # Windows
+```
+
+With `DAAF_R=1`, the build additionally installs:
+
+- **R 4.5.3** (the current DAAF-pinned R release)
+- **30+ R packages** covering data manipulation (tidyverse), visualization (ggplot2, plotly, gt), econometrics (fixest, plm, survey), spatial analysis (sf, terra), and machine learning (tidymodels) — installed from a **date-pinned Posit Package Manager (P3M) snapshot** so rebuilds produce identical package versions
+- **Quarto CLI 1.7.29** — R's literate-programming notebook system, the R equivalent of Marimo for Python
+
+The R runtime alone adds roughly **300 MB** of image size; with the full package set and Quarto, expect the total addition to be substantially larger (build time also increases on the first R-enabled build — later rebuilds reuse Docker's layer cache). When `DAAF_R` is unset or `0` (the default for every normal install), none of this is installed and the image is byte-for-byte identical to a standard Python-only build — so leaving it off costs you nothing. To turn R support back off, remove (or set to `0`) the `DAAF_R` line and rebuild.
+
+`DAAF_R` and `DAAF_DEV` are **independent** flags: you can enable either, both, or neither, and any combination is valid.
+
+> **A note for framework developers:** the R smoke tests and their runner in `scripts/smoke_tests/` require a `DAAF_R=1` build to run — they exercise each R library skill — and are separate from the `DAAF_DEV` shell/PowerShell test toolchain described above.
+
+> **DAAF_R is a build flag, not a runtime setting.** It only matters at `docker compose build` time. The install and rebuild scripts bridge it from `environment_settings.txt` into the shell environment so the build picks it up; if you run bare `docker compose build` yourself, put `DAAF_R=1` in a `.env` file (or your shell environment) the same way you would for the multi-instance keys and `DAAF_DEV`. Turning it on or off requires a rebuild to change what is installed.
 
 ### Configure authentication via environment_settings.txt
 

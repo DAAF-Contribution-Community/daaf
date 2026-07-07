@@ -139,14 +139,15 @@ if [ -z "${INSTALL_PROJECT_NAME}" ] && [ -f "${INSTALL_DIR}/environment_settings
 fi
 DATA_VOLUME_NAME="${INSTALL_PROJECT_NAME:-daaf}_daaf-data"
 
-# --- Bridge the DAAF_DEV build flag into the environment ---
+# --- Bridge the DAAF_DEV and DAAF_R build flags into the environment ---
 # Unlike DAAF_PROJECT_NAME above (only needed locally to derive the volume name;
-# the compose project name comes from the file's `name:` key), DAAF_DEV must be
-# EXPORTED so `docker compose build` below sees it and forwards it as
-# `--build-arg DAAF_DEV=${DAAF_DEV:-0}`. Parse only that one key from the
-# just-downloaded environment_settings.txt (never `source` -- the file holds API
-# keys); shell env wins; CR stripped; Bash 3.2 safe. Absent file / absent key =
-# DAAF_DEV stays unset, so the build arg defaults to 0 (standard build).
+# the compose project name comes from the file's `name:` key), the two build
+# flags must be EXPORTED so `docker compose build` below sees them and forwards
+# them as `--build-arg DAAF_DEV=${DAAF_DEV:-0}` / `--build-arg DAAF_R=${DAAF_R:-0}`.
+# Parse only these two keys from the just-downloaded environment_settings.txt
+# (never `source` -- the file holds API keys); shell env wins; CR stripped;
+# Bash 3.2 safe. Absent file / absent key = the flag stays unset, so its build
+# arg defaults to 0 (standard build).
 if [ -z "${DAAF_DEV:-}" ] && [ -f "${INSTALL_DIR}/environment_settings.txt" ]; then
     while IFS= read -r _line || [ -n "${_line}" ]; do
         _line="$(printf '%s' "${_line}" | tr -d '\r')"
@@ -158,6 +159,22 @@ if [ -z "${DAAF_DEV:-}" ] && [ -f "${INSTALL_DIR}/environment_settings.txt" ]; t
                     \'*\') _dev_val="${_dev_val#\'}"; _dev_val="${_dev_val%\'}" ;;
                 esac
                 export DAAF_DEV="${_dev_val}"
+                break
+                ;;
+        esac
+    done < "${INSTALL_DIR}/environment_settings.txt"
+fi
+if [ -z "${DAAF_R:-}" ] && [ -f "${INSTALL_DIR}/environment_settings.txt" ]; then
+    while IFS= read -r _line || [ -n "${_line}" ]; do
+        _line="$(printf '%s' "${_line}" | tr -d '\r')"
+        case "${_line}" in
+            DAAF_R=*)
+                _r_val="${_line#*=}"
+                case "${_r_val}" in
+                    \"*\") _r_val="${_r_val#\"}"; _r_val="${_r_val%\"}" ;;
+                    \'*\') _r_val="${_r_val#\'}"; _r_val="${_r_val%\'}" ;;
+                esac
+                export DAAF_R="${_r_val}"
                 break
                 ;;
         esac

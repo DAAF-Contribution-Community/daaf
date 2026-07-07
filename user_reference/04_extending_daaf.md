@@ -538,7 +538,7 @@ Ask DAAF to edit the version pin in the Dockerfile. For example, to change Polar
 
 **"I need an R package that isn't included"**
 
-When R support is enabled, DAAF includes R as a first-class execution language with 11 library skills (tidyverse, ggplot2, fixest, r-stats, quarto, plotly-r, sf-terra, plm, tidymodels, survey-r, and gt). See the **R Packages** subsection below for how to add additional R packages. If you're coming from a Python background and want to understand R equivalents, DAAF includes a `python-r-translation` skill; from Stata, there's a `stata-r-translation` skill. If R support is not enabled, DAAF runs as a Python-based environment, and the `r-python-translation` and `stata-python-translation` skills can help you find Python equivalents for R or Stata operations you're familiar with.
+When R support is enabled (via the [`DAAF_R` build flag](01_installation_and_quickstart.md#enabling-r-support-daaf_r)), DAAF includes R as a first-class execution language with 11 library skills (tidyverse, ggplot2, fixest, r-stats, quarto, plotly-r, sf-terra, plm, tidymodels, survey-r, and gt). See the **R Packages** subsection below for how to add additional R packages. If you're coming from a Python background and want to understand R equivalents, DAAF includes a `python-r-translation` skill; from Stata, there's a `stata-r-translation` skill. If R support is not enabled, DAAF runs as a Python-based environment, and the `r-python-translation` and `stata-python-translation` skills can help you find Python equivalents for R or Stata operations you're familiar with.
 
 **"I need a package that requires compilation and it's failing"**
 
@@ -550,9 +550,9 @@ No. The container runs as a non-root user (`appuser`) with all Linux capabilitie
 
 ### R Packages
 
-> This subsection applies when R support is enabled in your build.
+> This subsection applies when R support is enabled via the `DAAF_R` build flag. R support is opt-in and off by default; see [**Enabling R support (DAAF_R)**](01_installation_and_quickstart.md#enabling-r-support-daaf_r) in the installation guide for how to turn it on.
 
-When R support is enabled, DAAF includes R with a curated set of packages covering the most common needs for social science research: data manipulation (tidyverse), visualization (ggplot2, plotly), econometrics (fixest, plm), spatial analysis (sf, terra), machine learning (tidymodels), complex survey analysis (survey), and more. It also includes the Quarto CLI for producing reproducible R research notebooks (the R equivalent of marimo for Python).
+When R support is enabled, DAAF installs **R 4.5.3** with a curated set of 30+ packages covering the most common needs for social science research: data manipulation (tidyverse), visualization (ggplot2, plotly), econometrics (fixest, plm), spatial analysis (sf, terra), machine learning (tidymodels), complex survey analysis (survey), and more. It also includes the **Quarto CLI 1.7.29** for producing reproducible R research notebooks (the R equivalent of marimo for Python).
 
 If you need an R package that isn't pre-installed, the process mirrors the Python approach: you can install it temporarily for quick testing, or add it to the Dockerfile for persistence.
 

@@ -36,20 +36,22 @@ function Wait-AndExit {
 }
 
 # --- Multi-instance / build-flag settings (shared pattern) ---
-# Bridge environment_settings.txt's five whitelisted DAAF_* keys into the
+# Bridge environment_settings.txt's six whitelisted DAAF_* keys into the
 # process environment so `docker compose` interpolation resolves the project name
-# and published host ports, and so the DAAF_DEV build flag reaches
-# `docker compose build` as `--build-arg DAAF_DEV=${DAAF_DEV:-0}`. DAAF_DEV
-# matters specifically for THIS script because it runs the build (below); a
-# developer who set DAAF_DEV=1 expects the rebuild to pick up the dev toolchain.
+# and published host ports, and so the DAAF_DEV and DAAF_R build flags reach
+# `docker compose build` as `--build-arg DAAF_DEV=${DAAF_DEV:-0}` /
+# `--build-arg DAAF_R=${DAAF_R:-0}`. Both build flags matter specifically for
+# THIS script because it runs the build (below); a developer who set DAAF_DEV=1
+# expects the rebuild to pick up the dev toolchain, and a user who set DAAF_R=1
+# expects it to pick up the R environment.
 # Canonical shared pattern (kept in sync with Import-DaafSettingsFile in
 # daaf_lib.ps1); standalone scripts that do NOT dot-source daaf_lib.ps1 inline it.
-# Parse only these five keys (never dot-source -- the file holds API keys);
+# Parse only these six keys (never dot-source -- the file holds API keys);
 # process env wins; absent file = no-op; CR stripped; PS 5.1 safe.
 function Import-DaafSettingsInline {
     param([string]$SettingsFile = "./environment_settings.txt")
     if (-not (Test-Path -LiteralPath $SettingsFile)) { return }
-    $known = @('DAAF_PROJECT_NAME', 'DAAF_PORT_MARIMO', 'DAAF_PORT_LOGVIEWER', 'DAAF_PORT_VSCODE', 'DAAF_DEV')
+    $known = @('DAAF_PROJECT_NAME', 'DAAF_PORT_MARIMO', 'DAAF_PORT_LOGVIEWER', 'DAAF_PORT_VSCODE', 'DAAF_DEV', 'DAAF_R')
     foreach ($rawLine in (Get-Content -LiteralPath $SettingsFile)) {
         $line = $rawLine -replace "`r", ""
         $trimmed = $line.Trim()

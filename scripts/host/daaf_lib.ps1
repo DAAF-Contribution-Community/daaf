@@ -10,7 +10,8 @@
 # This is the PowerShell counterpart to daaf_lib.sh. It provides the same
 # helpers the Bash Control Panel relies on, adapted to PowerShell idiom:
 #   Import-DaafSettingsFile -- export the whitelisted DAAF_* vars (four multi-instance
-#                              keys + the DAAF_DEV build flag) from environment_settings.txt
+#                              keys + the DAAF_DEV and DAAF_R build flags) from
+#                              environment_settings.txt
 #   Read-DaafLine       -- read one input line, working under redirected stdin (CI)
 #   Open-DaafUrl        -- open a URL in the default browser (best-effort)
 #   Test-DaafPort       -- test whether a port is listening inside the container
@@ -64,20 +65,21 @@ if (Get-Command Read-DaafLine -ErrorAction SilentlyContinue) { return }
 
 # --- Multi-Instance / Build-Flag Settings Loader ---
 # PowerShell counterpart to daaf_lib.sh load_daaf_settings. Bridges
-# environment_settings.txt -> process environment for the five whitelisted
+# environment_settings.txt -> process environment for the six whitelisted
 # DAAF_* variables: the four multi-instance keys so `docker compose`
 # interpolation in docker-compose.yml (${DAAF_PROJECT_NAME:-daaf},
-# ${DAAF_PORT_*:-27xx}) resolves them, plus DAAF_DEV, the opt-in dev-tooling
-# BUILD flag consumed as `--build-arg DAAF_DEV=${DAAF_DEV:-0}`.
+# ${DAAF_PORT_*:-27xx}) resolves them, plus DAAF_DEV and DAAF_R, the opt-in
+# BUILD flags consumed as `--build-arg DAAF_DEV=${DAAF_DEV:-0}` /
+# `--build-arg DAAF_R=${DAAF_R:-0}`.
 #
 # WHY: environment_settings.txt is a compose `env_file` (feeds the CONTAINER
 # env only). Compose *interpolation* (and build args) read the host/process
 # environment and the project .env file, never env_file -- so these keys must be
 # lifted into the process environment here for the project name / published
-# ports / dev-build flag to take effect.
+# ports / build flags to take effect.
 #
 # PARSING SAFETY: we never dot-source the file (it holds API keys with arbitrary
-# characters). We extract only the five known DAAF_* keys via a line scan and a
+# characters). We extract only the six known DAAF_* keys via a line scan and a
 # regex on KEY=VALUE. CR is stripped for CRLF tolerance.
 #
 # PRECEDENCE: an already-set process env var WINS over the file value (matches
@@ -92,7 +94,7 @@ function Import-DaafSettingsFile {
         return
     }
 
-    $known = @('DAAF_PROJECT_NAME', 'DAAF_PORT_MARIMO', 'DAAF_PORT_LOGVIEWER', 'DAAF_PORT_VSCODE', 'DAAF_DEV')
+    $known = @('DAAF_PROJECT_NAME', 'DAAF_PORT_MARIMO', 'DAAF_PORT_LOGVIEWER', 'DAAF_PORT_VSCODE', 'DAAF_DEV', 'DAAF_R')
 
     foreach ($rawLine in (Get-Content -LiteralPath $SettingsFile)) {
         $line = $rawLine -replace "`r", ""

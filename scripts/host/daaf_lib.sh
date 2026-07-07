@@ -11,7 +11,8 @@
 #
 # Functions provided:
 #   load_daaf_settings -- export the whitelisted DAAF_* vars (four multi-instance
-#                         keys + the DAAF_DEV build flag) from environment_settings.txt
+#                         keys + the DAAF_DEV and DAAF_R build flags) from
+#                         environment_settings.txt
 #   setup_colors    -- populate color variables (respects NO_COLOR + non-TTY)
 #   open_url        -- open a URL in the default browser (best-effort)
 #   check_port      -- test whether a port is listening inside the DAAF container
@@ -27,13 +28,14 @@ fi
 _DAAF_LIB_LOADED=1
 
 # --- Multi-Instance / Build-Flag Settings Loader ---
-# Bridge environment_settings.txt -> host shell environment for the five
+# Bridge environment_settings.txt -> host shell environment for the six
 # whitelisted DAAF_* variables: the four multi-instance keys
 # (DAAF_PROJECT_NAME, DAAF_PORT_MARIMO, DAAF_PORT_LOGVIEWER, DAAF_PORT_VSCODE)
-# plus DAAF_DEV, the opt-in dev-tooling BUILD flag consumed as a
-# `--build-arg DAAF_DEV=${DAAF_DEV:-0}` in docker-compose.yml. DAAF_DEV rides
-# the same bridge for the same reason: env_file feeds the container env only,
-# while compose interpolation (and build args) resolve from the host shell env.
+# plus DAAF_DEV and DAAF_R, the opt-in BUILD flags consumed as
+# `--build-arg DAAF_DEV=${DAAF_DEV:-0}` / `--build-arg DAAF_R=${DAAF_R:-0}` in
+# docker-compose.yml. Both build flags ride the same bridge for the same reason:
+# env_file feeds the container env only, while compose interpolation (and build
+# args) resolve from the host shell env.
 #
 # WHY THIS EXISTS: environment_settings.txt is wired into docker-compose.yml as a
 # service-level `env_file`, which feeds the CONTAINER environment only. Docker
@@ -48,7 +50,7 @@ _DAAF_LIB_LOADED=1
 # PARSING SAFETY: we deliberately do NOT `source`/`.` the file. It holds API keys
 # with arbitrary characters (quotes, $, backticks, spaces) that would be
 # interpreted by the shell -- a correctness and safety hazard. We extract only the
-# five known DAAF_* keys via a line-oriented grep/sed/case scan, stripping CR for
+# six known DAAF_* keys via a line-oriented grep/sed/case scan, stripping CR for
 # CRLF tolerance (matches how the rest of the codebase handles container output).
 #
 # PRECEDENCE: an already-set shell environment variable WINS over the file value.
@@ -74,9 +76,9 @@ load_daaf_settings() {
         case "${line}" in
             ''|'#'*) continue ;;
         esac
-        # Only lines of the form KEY=VALUE for our five known keys.
+        # Only lines of the form KEY=VALUE for our six known keys.
         case "${line}" in
-            DAAF_PROJECT_NAME=*|DAAF_PORT_MARIMO=*|DAAF_PORT_LOGVIEWER=*|DAAF_PORT_VSCODE=*|DAAF_DEV=*)
+            DAAF_PROJECT_NAME=*|DAAF_PORT_MARIMO=*|DAAF_PORT_LOGVIEWER=*|DAAF_PORT_VSCODE=*|DAAF_DEV=*|DAAF_R=*)
                 key="${line%%=*}"
                 val="${line#*=}"
                 # Strip one layer of surrounding quotes if present (tolerant of

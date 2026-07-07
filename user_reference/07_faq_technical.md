@@ -332,7 +332,7 @@ In the `Dockerfile`, packages are installed with `uv pip install --system` (syst
 
 ## R and Language Support
 
-> The questions in this section apply when R support is enabled in your build.
+> The questions in this section apply when R support is enabled in your build. R support is opt-in via the `DAAF_R` build flag — see [**Enabling R support (DAAF_R)**](01_installation_and_quickstart.md#enabling-r-support-daaf_r) in the installation guide for how to turn it on.
 
 ### Q: How do I switch between R and Python?
 

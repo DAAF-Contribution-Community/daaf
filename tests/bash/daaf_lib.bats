@@ -412,6 +412,21 @@ teardown() {
     assert_output --partial "DEV=1"
 }
 
+@test "load_daaf_settings picks up the DAAF_R build flag from environment_settings.txt" {
+    # DAAF_R rides the same whitelist bridge as the four multi-instance keys so
+    # it can reach `docker compose build` as --build-arg DAAF_R=${DAAF_R:-0}.
+    printf 'DAAF_R=1\n' > "${TEST_DIR}/environment_settings.txt"
+    run bash -c '
+        unset _DAAF_LIB_LOADED
+        source "'"${REPO_ROOT}"'/scripts/host/daaf_lib.sh"
+        unset DAAF_R
+        load_daaf_settings "./environment_settings.txt"
+        echo "R=${DAAF_R:-UNSET}"
+    '
+    assert_success
+    assert_output --partial "R=1"
+}
+
 @test "load_daaf_settings lets an already-set shell env var win over the file" {
     printf 'DAAF_PROJECT_NAME=fromfile\n' > "${TEST_DIR}/environment_settings.txt"
     run bash -c '
@@ -495,11 +510,27 @@ teardown() {
     assert_success
 }
 
+@test "docker-compose.yml forwards DAAF_R as a build arg defaulting to 0" {
+    # The opt-in R-tooling flag reaches the Dockerfile as a build arg; its
+    # interpolation default must be 0 so a standard build is unchanged.
+    run grep -F 'DAAF_R: "${DAAF_R:-0}"' "${REPO_ROOT}/docker-compose.yml"
+    assert_success
+}
+
 @test "Dockerfile guards the DAAF_DEV toolchain behind an opt-in build arg" {
     # Default builds (DAAF_DEV unset/0) must skip the dev toolchain entirely, so
     # every dev RUN layer is guarded by `if [ "${DAAF_DEV}" = "1" ]`.
     run grep -F 'ARG DAAF_DEV=0' "${REPO_ROOT}/Dockerfile"
     assert_success
     run grep -F 'if [ "${DAAF_DEV}" = "1" ]' "${REPO_ROOT}/Dockerfile"
+    assert_success
+}
+
+@test "Dockerfile guards the DAAF_R toolchain behind an opt-in build arg" {
+    # Default builds (DAAF_R unset/0) must skip the R toolchain entirely, so
+    # every R RUN layer is guarded by `if [ "${DAAF_R}" = "1" ]`.
+    run grep -F 'ARG DAAF_R=0' "${REPO_ROOT}/Dockerfile"
+    assert_success
+    run grep -F 'if [ "${DAAF_R}" = "1" ]' "${REPO_ROOT}/Dockerfile"
     assert_success
 }

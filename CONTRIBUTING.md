@@ -386,6 +386,8 @@ pwsh -NoProfile -Command "Get-ChildItem ./scripts/host/*.ps1 | ForEach-Object { 
 
 `DAAF_DEV` is an opt-in build flag: when it is unset or `0` (the default), none of this tooling is installed and the image is identical to a standard build. See `user_reference/01_installation_and_quickstart.md` ("Building with the developer test toolchain") for details.
 
+**Working on R support?** The R execution environment (R, the R package set, Quarto, and the R smoke tests in `scripts/smoke_tests/`) is gated behind the separate, independent `DAAF_R` opt-in build flag — set `DAAF_R=1` in `environment_settings.txt` and rebuild, the same pattern as `DAAF_DEV`. See `user_reference/01_installation_and_quickstart.md` ("Enabling R support (DAAF_R)") for the full walkthrough.
+
 ---
 
 ## Using Session Logs for Debugging and Issue Reports
