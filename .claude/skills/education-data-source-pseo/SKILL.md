@@ -198,14 +198,23 @@ df = fetch_from_mirrors("pseo/colleges_pseo_2020")
 library(arrow)
 library(dplyr)
 
-# PSEO is a yearly dataset -- fetch individual years
-df <- fetch_yearly_from_mirrors(
-  path_template = "pseo/colleges_pseo_{year}",
-  years = c(2018, 2019, 2020)
-)
+# fetch_yearly_from_mirrors()/fetch_from_mirrors() are Python helpers; in R,
+# build URLs from the mirror root in mirrors.yaml and read directly.
+# Mirror failover: see `education-data-query/references/fetch-patterns.md` (R pattern).
+config <- yaml::read_yaml("mirrors.yaml")
+mirror <- config$mirrors[[1]]
+
+# PSEO is a yearly dataset -- fetch individual years and bind
+frames <- list()
+for (y in c(2018, 2019, 2020)) {
+  url <- paste0(mirror$root_url, "/", "pseo/colleges_pseo_", y, ".", mirror$format)
+  frames[[length(frames) + 1]] <- arrow::read_parquet(url)
+}
+df <- bind_rows(frames)
 
 # Or fetch a single year
-df <- fetch_from_mirrors("pseo/colleges_pseo_2020")
+url <- paste0(mirror$root_url, "/", "pseo/colleges_pseo_2020", ".", mirror$format)
+df <- arrow::read_parquet(url)
 ```
 
 ### Filtering

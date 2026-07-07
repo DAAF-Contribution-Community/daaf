@@ -360,7 +360,7 @@ Python and R are functional peers across the pipeline — the same file-first ex
 
 - **ML interpretation and fairness tooling is deeper on the Python side** (SHAP, fairlearn, LightGBM guidance). R ships iml and fairmodels with tidymodels interpretation/fairness references, but Python's coverage is more mature.
 - **gt table export is HTML-first.** Exporting gt tables to PNG requires a headless browser that isn't shipped in the image; save tables as HTML instead.
-- **Interactive plotly HTML from R needs internet access to view.** The image doesn't include pandoc, so saved R plotly widgets are not self-contained and load their JavaScript from a CDN when opened in a browser.
+- **Interactive plotly HTML from R needs internet access to view.** pandoc isn't on the PATH — Quarto bundles a private copy at `/opt/quarto/bin/tools`, but `htmlwidgets::saveWidget(selfcontained = TRUE)` only finds it if the `RSTUDIO_PANDOC` environment variable is exported, which DAAF does not do — so saved R plotly widgets are not self-contained and load their JavaScript from a CDN when opened in a browser.
 - **PDF rendering uses Typst, not LaTeX.** Quarto's bundled Typst engine handles PDF output; LaTeX-specific features are not available.
 - **Point-pattern spatial analysis is Python-only** (the spatstat package is not installed). Standard vector/raster spatial work is fully supported in R via sf and terra.
 

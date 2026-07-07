@@ -257,8 +257,14 @@ valid = valid.join(
 )
 ```
 ```r
-# Fetch earnings data
-earnings <- fetch_from_mirrors("scorecard/colleges_scorecard_earnings")
+# Fetch earnings data.
+# fetch_from_mirrors() is a Python helper; in R, build the URL from the mirror
+# root in mirrors.yaml and read directly.
+# Mirror failover: see `education-data-query/references/fetch-patterns.md` (R pattern).
+config <- yaml::read_yaml("mirrors.yaml")
+mirror <- config$mirrors[[1]]
+url <- paste0(mirror$root_url, "/", "scorecard/colleges_scorecard_earnings", ".", mirror$format)
+earnings <- arrow::read_parquet(url)
 
 # Filter by time horizon (LONG format — filter, don't use wide column names)
 six_yr <- earnings |> filter(years_after_entry == 6)
@@ -267,9 +273,9 @@ six_yr <- earnings |> filter(years_after_entry == 6)
 valid <- six_yr |> filter(!is.na(earnings_med), earnings_med != -3)
 
 # Institution names/control are NOT in the earnings dataset.
-# Join to inst_characteristics or IPEDS directory:
-inst <- fetch_from_mirrors("scorecard/colleges_scorecard_inst_characteristics",
-                           years = c(2020))
+# Join to inst_characteristics or IPEDS directory (filter years locally):
+url <- paste0(mirror$root_url, "/", "scorecard/colleges_scorecard_inst_characteristics", ".", mirror$format)
+inst <- arrow::read_parquet(url) |> filter(year == 2020)
 valid <- valid |> left_join(
   inst |> select(unitid, inst_name, pred_degree_awarded_ipeds),
   by = "unitid"

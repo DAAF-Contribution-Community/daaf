@@ -233,8 +233,14 @@ ut_cs = df.filter(
 print(ut_cs.select("years_after_grad", "p25_earnings", "p50_earnings", "p75_earnings", "employed_grads_count_e"))
 ```
 ```r
-# Fetch PSEO data for 2020
-df <- fetch_from_mirrors("pseo/colleges_pseo_2020")
+# Fetch PSEO data for 2020.
+# fetch_from_mirrors() is a Python helper; in R, build the URL from the mirror
+# root in mirrors.yaml and read directly.
+# Mirror failover: see `education-data-query/references/fetch-patterns.md` (R pattern).
+config <- yaml::read_yaml("mirrors.yaml")
+mirror <- config$mirrors[[1]]
+url <- paste0(mirror$root_url, "/", "pseo/colleges_pseo_2020", ".", mirror$format)
+df <- arrow::read_parquet(url)
 
 # Filter to UT Austin CS Bachelor's
 ut_cs <- df |> filter(

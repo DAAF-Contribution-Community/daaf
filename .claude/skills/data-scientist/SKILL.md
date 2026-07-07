@@ -219,8 +219,8 @@ What task are you performing?
 ├─ Unsupervised analysis (clustering, dimensionality reduction, pattern discovery)
 │   └─ Stage 8.1 — FIRST read ./references/exploratory-unsupervised.md
 │       THEN load `scikit-learn` skill (Python) or `tidymodels` skill (R)
-│       ├─ Clustering → clustering.md, evaluation-unsupervised.md
-│       ├─ Dimensionality reduction → decomposition.md, manifold.md
+│       ├─ Clustering → clustering.md, evaluation-unsupervised.md (scikit-learn refs; R: tidymodels unsupervised.md)
+│       ├─ Dimensionality reduction → decomposition.md, manifold.md (scikit-learn refs; R: tidymodels unsupervised.md)
 │       └─ Index construction via PCA → also read ./references/descriptive-analysis.md
 ├─ Causal / quasi-experimental analysis
 │   └─ FIRST read ./references/causal-inference.md

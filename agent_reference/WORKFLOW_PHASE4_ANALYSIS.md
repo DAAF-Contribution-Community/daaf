@@ -981,7 +981,7 @@ Return all plotting code and confirm files saved.""",
 ### Key Constraints (Summary)
 
 - **LITERAL COPY** — Read each script file and copy contents verbatim into cells
-- NO new analysis code — Python: only `pl.read_parquet()` + `mo.ui.table()` for data inspection; R: only `arrow::read_parquet()` + `glimpse(df)` + `head(df, 20)` for data inspection
+- NO new analysis code — Python: only `pl.read_parquet()` + `mo.ui.table()` for data inspection; R: only `arrow::read_parquet()` + `dplyr::glimpse(df)` + `head(df, 20)` for data inspection
 - NO dashboards, widgets, dropdowns, sliders
 - All script code presented as-is; execution logs in accordions
 - Script versioning: use final successful version (`_b.py` > `_a.py` > base)
@@ -1013,7 +1013,7 @@ The following are **NEVER ALLOWED** in Stage 9 notebooks:
 **Purpose:** COMPILE executed scripts into notebook by LITERALLY COPYING file contents
 **Stage:** 9 (Script Compilation)
 **Agent:** notebook-assembler (see `.claude/agents/notebook-assembler.md`)
-**Subagent:** general-purpose
+**Subagent:** notebook-assembler
 
 > **Language note:** For Python projects, produce a Marimo notebook (.py). For R projects, produce a Quarto notebook (.qmd). The notebook-assembler agent handles both formats -- load `marimo` skill for Python or `quarto` skill for R. The Four-Cell Pattern applies to both; see `.claude/agents/notebook-assembler.md` for format-specific details.
 
@@ -1036,7 +1036,7 @@ Your job is to:
 1. READ each script file from `scripts/`
 2. COPY the script code VERBATIM into a marimo cell (Python) or Quarto chunk (R)
 3. COPY the execution log VERBATIM into a collapsed accordion (Python) or collapsed callout block (R)
-4. ADD ONLY a simple data-inspection cell: `pl.read_parquet()` + `mo.ui.table()` (Python) or `arrow::read_parquet()` + `glimpse(df)` + `head(df, 20)` (R)
+4. ADD ONLY a simple data-inspection cell: `pl.read_parquet()` + `mo.ui.table()` (Python) or `arrow::read_parquet()` + `dplyr::glimpse(df)` + `head(df, 20)` (R)
 
 You are a COPY-PASTE MACHINE with formatting. Nothing more.
 
@@ -1065,7 +1065,7 @@ scripts/
     (R/Quarto chunk equivalent:)
     ```r
     df <- arrow::read_parquet("path/to/output.parquet")
-    glimpse(df)
+    dplyr::glimpse(df)
     head(df, 20)
     ```
     NOTHING ELSE. No .filter()/no dplyr filter(), no .with_columns()/no mutate(), no aggregations.
@@ -1090,6 +1090,7 @@ import polars as pl
 
 print("Hello")
 ```
+(R/Quarto: Cell 2's first line is instead `# --- VERBATIM COPY of scripts/stage5_fetch/01_fetch-source.R ---` — the exact anchor `scripts/decompile_notebook.R` uses to extract scripts.)
 
 And Cell 3 accordion should contain EXACTLY:
 ```
@@ -1113,7 +1114,7 @@ Count your code cells. If you have ANY of these, you failed:
 - filter in data inspection (Polars .filter() or dplyr filter()): FAIL
 - with_columns / mutate in data inspection: FAIL
 
-The ONLY acceptable new code is `pl.read_parquet()` + `mo.ui.table()` (Python) or `arrow::read_parquet()` + `glimpse(df)` + `head(df, 20)` (R).""",
+The ONLY acceptable new code is `pl.read_parquet()` + `mo.ui.table()` (Python) or `arrow::read_parquet()` + `dplyr::glimpse(df)` + `head(df, 20)` (R).""",
     subagent_type: "notebook-assembler"
 })
 ```

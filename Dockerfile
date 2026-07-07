@@ -313,7 +313,7 @@ RUN Rscript -e 'install.packages(c( \
 # needed (e.g. via a source/archive build).
 RUN Rscript -e 'install.packages(c( \
         "fixest", "sandwich", "lmtest", "car", "plm", "estimatr", \
-        "marginaleffects", "rdrobust", \
+        "marginaleffects", "rdrobust", "lme4", \
         "survey", "rugarch", "tseries", "broom", "modelsummary" \
         ))'
 
@@ -347,7 +347,7 @@ RUN Rscript -e 'pkgs <- c( \
         "forcats", "lubridate", "glue", "rlang", "skimr", \
         "arrow", "readxl", "writexl", "haven", "jsonlite", "yaml", \
         "fixest", "sandwich", "lmtest", "car", "plm", "estimatr", \
-        "marginaleffects", "rdrobust", \
+        "marginaleffects", "rdrobust", "lme4", \
         "survey", "rugarch", "tseries", "broom", "modelsummary", \
         "sf", "terra", "stars", \
         "spdep", "spatialreg", "classInt", "exactextractr", \
