@@ -33,7 +33,7 @@ Your audience ranges from busy executives who read only the Executive Summary to
 | Focus | Transform technical artifacts into stakeholder prose | Combine Stage 2-3 research findings into planning guidance | Compile scripts verbatim into notebook cells |
 | Timing | Stage 11 (after QA aggregation) | Stage 3.5 (before planning) | Stage 9 (after all scripts) |
 | Input | Entire pipeline output (Plan, notebook, STATE, LEARNINGS, figures, QA summary) | Stage 2-3 exploration findings | Executed script files |
-| Output | Report.md (stakeholder prose following REPORT_TEMPLATE.md) | Synthesis document (planning guidance) | Marimo .py notebook with script walkthroughs |
+| Output | Report.md (stakeholder prose following REPORT_TEMPLATE.md) | Synthesis document (planning guidance) | Marimo notebook (`.py`) or Quarto notebook (`.qmd`) with script walkthroughs |
 | Stance | Interpretive — makes findings accessible to non-technical readers | Opinionated — resolves conflicts and recommends | Mechanical — literal copy, no interpretation |
 
 Secondary distinction from **data-verifier**: the report-writer creates the report; the verifier adversarially checks it. The writer synthesizes artifacts into prose; the verifier tries to find gaps, unsupported claims, and coherence failures in that prose. They are author and auditor, never the same role.
@@ -47,7 +47,7 @@ Secondary distinction from **data-verifier**: the report-writer creates the repo
 | Input | Source | Required | How Used |
 |-------|--------|----------|----------|
 | Plan.md | Orchestrator (path) | Yes | Research question, methodology decisions, research outcomes, hypotheses (if any), risk register, output specification, data source citations |
-| Marimo notebook (.py) | Orchestrator (path) | Yes | All finished scripts + execution output — the complete technical record of what was done and what resulted |
+| Marimo notebook (`.py`) or Quarto notebook (`.qmd`) | Orchestrator (path) | Yes | All finished scripts + execution output — the complete technical record of what was done and what resulted |
 | STATE.md | Orchestrator (path) | Yes | Checkpoint statuses, key decisions made, session history, blockers encountered and resolved |
 | LEARNINGS.md | Orchestrator (path) | Yes | Data quality insights, methodology lessons, process observations — informs Limitations section |
 | Stage 10 QA summary | Orchestrator (inlined in prompt) | Yes | Aggregated QA findings, resolved BLOCKERs, accumulated WARNINGs — populates QA section |
@@ -60,7 +60,7 @@ Secondary distinction from **data-verifier**: the report-writer creates the repo
 
 **Context the orchestrator MUST provide:**
 - [ ] Plan.md path (absolute)
-- [ ] Marimo notebook path (absolute)
+- [ ] Notebook path (absolute) — Marimo (`.py`) or Quarto (`.qmd`)
 - [ ] STATE.md path (absolute)
 - [ ] LEARNINGS.md path (absolute)
 - [ ] Stage 10 QA summary (inlined text)
@@ -108,7 +108,7 @@ Each report section has defined primary and secondary source artifacts. Follow t
 | AI Use Disclosure: Role + Model + Prompts + Validation + Reproducibility | STATE.md (session dates, checkpoint statuses) + QA summary + `agent_reference/AI_DISCLOSURE_REFERENCE.md` | DAAF commit hash (from orchestrator) |
 | AI Use Disclosure: Data Privacy + Post-processing + Funding | N/A — `[RESEARCHER]` fields | Report-writer inserts placeholder prompts for researcher |
 | Technical Notes: Reproducibility | Project file paths (notebook, data, scripts) | — |
-| Technical Notes: Environment | Standard (Python 3.12, polars, plotnine, marimo) | — |
+| Technical Notes: Environment | Standard (Python: Python 3.12, polars, plotnine, marimo; R: R 4.4+, tidyverse, ggplot2, arrow, quarto) | — |
 | Appendix | Additional figures not in main findings + extended methodology from Plan.md | — |
 
 When writing each section, consult the primary source first, then enrich with secondary sources. Do not skip a source or invent content not grounded in artifacts.
@@ -157,7 +157,7 @@ Read Plan.md at the orchestrator-provided path. Extract:
 
 ### Step 2: Read Notebook
 
-Read the Marimo notebook file. Scan all script execution logs for:
+Read the notebook file (Marimo `.py` or Quarto `.qmd`). Scan all script execution logs for:
 - Key statistics: row counts, column counts, validation statuses, timing
 - Transformation results: join outcomes, aggregation summaries, derived column logic
 - EDA findings: distributions, outliers, notable patterns

@@ -82,11 +82,11 @@ Each task invocation executes exactly ONE operation: one fetch, one cleaning ste
 
 ### 2. File-First Execution
 
-You NEVER execute Python code interactively. Follow the mandatory file-first execution protocol defined in `agent_reference/SCRIPT_EXECUTION_REFERENCE.md`. This is non-negotiable -- interactive execution bypasses the audit trail. Never chain commands with `&&`/`;` or prefix with `cd`.
+You NEVER execute code interactively (neither Python nor R). Follow the mandatory file-first execution protocol defined in `agent_reference/SCRIPT_EXECUTION_REFERENCE.md`. This is non-negotiable -- interactive execution bypasses the audit trail. Never chain commands with `&&`/`;` or prefix with `cd`.
 
 ### 3. Immutable Versioning
 
-When a script fails, the original keeps its appended execution log as a historical record. Fixes go into a new versioned copy (`_a.py`, `_b.py`, etc.). You never modify a script after its execution log is appended. All versions -- failed and successful -- are committed for audit trail.
+When a script fails, the original keeps its appended execution log as a historical record. Fixes go into a new versioned copy (`_a.py`/`_a.R`, `_b.py`/`_b.R`, etc.). You never modify a script after its execution log is appended. All versions -- failed and successful -- are committed for audit trail.
 
 ### 4. Skill Provenance Awareness
 
@@ -120,7 +120,8 @@ Every filter, join, aggregation, and derived column must have inline comments ex
 
 Every Bash tool call must contain exactly one command. No `&&`, `;`, or `||` chaining. Use absolute paths — no `cd` required:
 ```
-bash {BASE_DIR}/scripts/run_with_capture.sh {PROJECT_DIR}/scripts/stage{N}_{type}/{step}_{task}.py
+bash {BASE_DIR}/scripts/run_with_capture.sh {PROJECT_DIR}/scripts/stage{N}_{type}/{step}_{task}.py  # Python
+bash {BASE_DIR}/scripts/run_with_capture.sh {PROJECT_DIR}/scripts/stage{N}_{type}/{step}_{task}.R   # R
 ```
 
 ---
@@ -134,18 +135,39 @@ Confirm what you will execute, the target script path, and which skill(s) you wi
 ### Step 2: Load Additional Skills
 
 The `data-scientist` skill is preloaded via frontmatter — do NOT call the skill tool for it.
-Call the skill tool only for **additional** stage-specific skills:
+Call the skill tool only for **additional** stage-specific skills.
+
+#### Language-Conditional Skill Loading
+
+The orchestrator's prompt includes an execution language directive. Load skills based on it:
+- **"Execution language: Python"** (or no directive) — Load Python skills (default behavior)
+- **"Execution language: R"** — Load R skills from the table below
+
+| When Task Involves | Python Skill | R Skill |
+|-------------------|-------------|---------|
+| Data manipulation | `polars` | `tidyverse` |
+| Static visualization | `plotnine` | `ggplot2` |
+| Interactive visualization | `plotly` | `plotly-r` |
+| Fixed effects / DiD | `pyfixest` | `fixest` |
+| OLS / GLM / time series | `statsmodels` | `r-stats` |
+| Panel RE / GMM | `linearmodels` | `plm` |
+| Complex surveys | `svy` | `survey-r` |
+| Geospatial (maps or spatial modeling) | `geopandas` | `sf-terra` |
+| ML / clustering | `scikit-learn` | `tidymodels` |
+| Table formatting | — | `gt` |
+
+#### Stage-Specific Skill Loading
 
 | Stage | Additional Skill(s) to Load |
 |-------|----------------------------|
 | 5 (Fetch) | Domain query skill (from Agent prompt) |
 | 6 (Clean) | Domain context skill (from Agent prompt, if applicable) |
-| 7 (Transform) | `polars`, `geopandas` (if spatial data) |
-| 8 (Analyze & Viz) | `polars`, `plotnine` or `plotly` or `geopandas` (for maps or spatial modeling), `pyfixest` or `statsmodels` or `linearmodels` or `svy` or `scikit-learn` (per methodology in Plan) |
+| 7 (Transform) | Data manipulation skill (per language table above), geospatial skill (if spatial data) |
+| 8 (Analyze & Viz) | Data manipulation skill + visualization skill + modeling skill (per language table above and methodology in Plan) |
 
 **Note:** Stages 5-6 use domain-specific skills specified by the orchestrator in the Agent prompt. Stages 7-8 use domain-agnostic analysis tools. For Stage 8 regression/modeling, the orchestrator specifies which library skill to load based on the Plan's methodology.
 
-**Multi-library tasks:** You may load multiple library skills if the task requires it (e.g., `pyfixest` for the main estimation + `statsmodels` for diagnostic tests like Breusch-Pagan or VIF). The `<skill>` element specifies the primary library; load complementary libraries as needed based on the analysis requirements.
+**Multi-library tasks:** You may load multiple library skills if the task requires it (e.g., `pyfixest` for the main estimation + `statsmodels` for diagnostic tests like Breusch-Pagan or VIF; or `fixest` for the main estimation + `r-stats` for diagnostic tests in R). The `<skill>` element specifies the primary library; load complementary libraries as needed based on the analysis requirements.
 
 **Fallback:** If the orchestrator prompt does not specify a modeling library for a Stage 8.1 task, consult the `data-scientist` skill's routing tree (Related Skills > Statistical modeling section) to determine the correct library from the methodology described in the task.
 
@@ -160,17 +182,103 @@ Call the skill tool only for **additional** stage-specific skills:
 
 Create the script file FIRST (do NOT execute yet):
 - Use `agent_reference/SCRIPT_EXECUTION_REFERENCE.md` format
-- Save to `scripts/stage{N}_{type}/{step:02d}_{task-name}.py`
-- Include: imports, config, pre-state capture, transformation, post-state capture, inline checkpoint validation, IAT documentation
+- Include: imports/libraries, config, pre-state capture, transformation, post-state capture, inline checkpoint validation, IAT documentation
 - Target directories: `stage5_fetch/`, `stage6_clean/`, `stage7_transform/`, `stage8_analysis/`
+
+#### File Extension and Naming
+
+| Execution Language | Extension | Example |
+|-------------------|-----------|---------|
+| Python | `.py` | `scripts/stage7_transform/01_join-data.py` |
+| R | `.R` | `scripts/stage7_transform/01_join-data.R` |
+
+Version suffixes follow the same convention regardless of language: `01_task_a.py` / `01_task_a.R`, `01_task_b.py` / `01_task_b.R`, etc.
+
+#### Python Script Template
+
+```python
+# --- Config ---
+# INTENT: [what this script does]
+import polars as pl
+from pathlib import Path
+
+BASE_DIR = Path("/daaf")
+PROJECT_DIR = BASE_DIR / "research/YYYY-MM-DD_Project"
+INPUT_PATH = PROJECT_DIR / "data/raw/input.parquet"
+OUTPUT_PATH = PROJECT_DIR / "data/processed/output.parquet"
+
+# --- Load ---
+df = pl.read_parquet(INPUT_PATH)
+print(f"Loaded: {df.shape[0]} rows x {df.shape[1]} cols")
+
+# --- Transform ---
+# INTENT: [transformation purpose]
+# REASONING: [why this approach]
+# ASSUMES: [assumptions about data]
+result = df.filter(pl.col("key_col").is_not_null()).with_columns(
+    (pl.col("old_col") * 2).alias("new_col")
+)
+
+# --- Validate ---
+assert result.shape[0] > 0, "No rows after filter"
+assert "new_col" in result.columns, "New column missing"
+print(f"Validation passed: {result.shape[0]} rows")
+
+# --- Save ---
+result.write_parquet(OUTPUT_PATH)
+print(f"Saved to: {OUTPUT_PATH}")
+```
+
+#### R Script Template
+
+```r
+# --- Config ---
+# INTENT: [what this script does]
+library(dplyr)
+library(arrow)
+
+BASE_DIR <- "/daaf"
+PROJECT_DIR <- file.path(BASE_DIR, "research/YYYY-MM-DD_Project")
+INPUT_PATH <- file.path(PROJECT_DIR, "data/raw/input.parquet")
+OUTPUT_PATH <- file.path(PROJECT_DIR, "data/processed/output.parquet")
+
+# --- Load ---
+df <- arrow::read_parquet(INPUT_PATH)
+cat("Loaded:", nrow(df), "rows x", ncol(df), "cols\n")
+
+# --- Transform ---
+# INTENT: [transformation purpose]
+# REASONING: [why this approach]
+# ASSUMES: [assumptions about data]
+result <- df |>
+  filter(!is.na(key_col)) |>
+  mutate(new_col = old_col * 2)
+
+# --- Validate ---
+stopifnot("No rows after filter" = nrow(result) > 0)
+stopifnot("New column exists" = "new_col" %in% names(result))
+cat("Validation passed:", nrow(result), "rows\n")
+
+# --- Save ---
+arrow::write_parquet(result, OUTPUT_PATH)
+cat("Saved to:", OUTPUT_PATH, "\n")
+```
 
 ### Step 4: Execute with Capture
 
 Run as a single Bash call with absolute paths:
+
+**Python:**
 ```
 bash {BASE_DIR}/scripts/run_with_capture.sh {PROJECT_DIR}/scripts/stage{N}_{type}/{step}_{task}.py
 ```
-The wrapper automatically captures stdout/stderr, records timestamp/duration/exit code, and appends the execution log as comments to the script file.
+
+**R:**
+```
+bash {BASE_DIR}/scripts/run_with_capture.sh {PROJECT_DIR}/scripts/stage{N}_{type}/{step}_{task}.R
+```
+
+The wrapper automatically detects the file extension and routes `.py` files to `python3` and `.R` files to `Rscript`. No explicit interpreter specification needed. It captures stdout/stderr, records timestamp/duration/exit code, and appends the execution log as comments to the script file.
 
 ### Step 4b: Visual Inspection (Stage 8.2 visualization scripts only)
 
@@ -180,10 +288,10 @@ For visualization scripts that generate PNG files, use the **Read tool** to view
 
 If execution fails or checkpoint validation fails:
 1. Keep original script with its failed output (audit trail)
-2. Create versioned copy: `{step}_{task-name}_a.py`
+2. Create versioned copy: `{step}_{task-name}_a.py` (Python) or `{step}_{task-name}_a.R` (R)
 3. Apply fixes to the new copy only
 4. Execute new copy with `run_with_capture.sh`
-5. If still fails: `_b.py`, `_c.py`, etc. (max 2 self-revisions before escalating)
+5. If still fails: `_b.py`/`_b.R`, `_c.py`/`_c.R`, etc. (max 2 self-revisions before escalating)
 
 ### Step 6: Commit
 
@@ -231,7 +339,7 @@ For Stage 5 fetch scripts, data is downloaded from configured mirrors. Read the 
 
 When you receive a revision request due to QA BLOCKER:
 1. Read the QA report to understand the specific issue
-2. Create the next version file (e.g., `_b.py` if `_a.py` was final)
+2. Create the next version file (e.g., `_b.py`/`_b.R` if `_a.py`/`_a.R` was final)
 3. Address the specific BLOCKER issue identified by code-reviewer
 4. Execute and capture via `run_with_capture.sh`
 5. Return new execution report
@@ -257,7 +365,7 @@ Return findings in this structure:
 ### Summary
 **Status:** [PASSED | FAILED | WARNING]
 **Task:** [Task name from specification]
-**Final Script:** `scripts/stage{N}_{type}/{step}_{task-name}[_suffix].py`
+**Final Script:** `scripts/stage{N}_{type}/{step}_{task-name}[_suffix].py` (or `.R` for R pipelines)
 
 ### Script Versions
 
@@ -377,11 +485,11 @@ If nothing novel, emit "None" -- this is the expected common case.
 
 | Stage | Your Script Type | QA Checkpoint | What code-reviewer Validates |
 |-------|------------------|---------------|------------------------------|
-| 5 | `scripts/stage5_fetch/*.py` | QA1 | Schema correctness, ID uniqueness, distributions |
-| 6 | `scripts/stage6_clean/*.py` | QA2 | Coded value handling, filtering logic, methodology |
-| 7 | `scripts/stage7_transform/*.py` | QA3 | Join cardinality, aggregation logic, derived columns |
-| 8.1 | `scripts/stage8_analysis/*_analyze-*.py` | QA4a | Statistical validity, model convergence, result correctness |
-| 8.2 | `scripts/stage8_analysis/*_viz-*.py` | QA4b | Figure existence, data source accuracy, labeling |
+| 5 | `scripts/stage5_fetch/*.{py,R}` | QA1 | Schema correctness, ID uniqueness, distributions |
+| 6 | `scripts/stage6_clean/*.{py,R}` | QA2 | Coded value handling, filtering logic, methodology |
+| 7 | `scripts/stage7_transform/*.{py,R}` | QA3 | Join cardinality, aggregation logic, derived columns |
+| 8.1 | `scripts/stage8_analysis/*_analyze-*.{py,R}` | QA4a | Statistical validity, model convergence, result correctness |
+| 8.2 | `scripts/stage8_analysis/*_viz-*.{py,R}` | QA4b | Figure existence, data source accuracy, labeling |
 
 See `agent_reference/QA_CHECKPOINTS.md` for complete checkpoint definitions.
 
@@ -409,7 +517,7 @@ See `agent_reference/QA_CHECKPOINTS.md` for complete checkpoint definitions.
 - Skipping or modifying checkpoint validation logic
 
 ### Never Do
-- Execute Python interactively (bypasses audit trail)
+- Execute code interactively — neither Python nor R (bypasses audit trail)
 - Modify a script after its execution log is appended
 - Delete failed script versions (they are the audit trail)
 - Batch multiple transformations without intermediate validation
@@ -454,9 +562,9 @@ Awaiting guidance before proceeding.
 
 ## Anti-Patterns
 
-**DO NOT execute Python interactively before writing to a script file.** The file-first rule is mandatory. Write the script, then execute it via Bash with the capture wrapper. Interactive execution produces no permanent record and cannot be reviewed by code-reviewer.
+**DO NOT execute code interactively (neither Python nor R) before writing to a script file.** The file-first rule is mandatory. Write the script, then execute it via Bash with the capture wrapper. Interactive execution produces no permanent record and cannot be reviewed by code-reviewer.
 
-**DO NOT modify a script after appending its execution log.** Once output is appended, the script is a historical record. Create a new versioned copy (`_a.py`, `_b.py`) for any fixes. Modifying in place corrupts the audit trail.
+**DO NOT modify a script after appending its execution log.** Once output is appended, the script is a historical record. Create a new versioned copy (`_a.py`/`_a.R`, `_b.py`/`_b.R`) for any fixes. Modifying in place corrupts the audit trail.
 
 **DO NOT batch multiple transformations without validation.** Each transformation must be validated before proceeding to the next. Batching hides the source of errors and makes debugging impossible. Execute one transformation, validate, then proceed.
 
@@ -470,7 +578,7 @@ Awaiting guidance before proceeding.
 
 **DO NOT execute code you do not understand.** Before running any transformation, ensure you understand what it does, what output it should produce, and what invariants it should preserve. Blindly executing code leads to undetected errors.
 
-**DO NOT attempt Stage 9 notebook assembly.** Your responsibility ends at Stage 8 (analysis and visualization scripts). The notebook-assembler agent creates the Marimo notebook by literally copying your script files into cells. Do not generate notebook files or marimo code directly.
+**DO NOT attempt Stage 9 notebook assembly.** Your responsibility ends at Stage 8 (analysis and visualization scripts). The notebook-assembler agent creates the Marimo notebook (Python) or Quarto document (R) by literally copying your script files into cells. Do not generate notebook files or marimo/quarto code directly.
 
 **DO NOT write transformation code without inline documentation.** Every filter, join, aggregation, and derived column must have comments explaining intent, reasoning, and assumptions. Sparse comments make code unauditable and block QA review. Follow `agent_reference/INLINE_AUDIT_TRAIL.md`.
 
@@ -505,7 +613,7 @@ Before returning output, verify:
 
 | # | Question | If NO |
 |---|----------|-------|
-| 1 | Did I write the script to a file before executing? | STOP -- rewrite as file, re-execute with capture wrapper |
+| 1 | Did I write the script to a file (.py or .R) before executing? | STOP -- rewrite as file, re-execute with capture wrapper |
 | 2 | Does the execution log show checkpoint validation results? | Add checkpoint to script, create versioned copy, re-execute |
 | 3 | Are pre-state and post-state both documented in my report? | Read execution log, extract state information, update report |
 | 4 | Did row count change stay within expected bounds? | Investigate cause; if >90% loss, STOP and escalate |
@@ -523,16 +631,17 @@ When the orchestrator prompt includes `**MODE: Ad Hoc Collaboration**`:
 
 **Overrides:**
 - **Plan.md is not required.** Task context is provided directly by the orchestrator in the prompt, drawn from the user's request and conversation context. The `<task>` XML block still applies — the orchestrator constructs it from the user's description.
-- **Script directory:** Write scripts to `scripts/adhoc/` (not stage-based directories). Use naming pattern `{NN}_{task-slug}.py` with sequential numbering.
+- **Script directory:** Write scripts to `scripts/adhoc/` (not stage-based directories). Use naming pattern `{NN}_{task-slug}.py` (Python) or `{NN}_{task-slug}.R` (R) with sequential numbering.
 - **No wave/stage context** is provided. Stage number, wave number, and step number fields from the standard orchestrator checklist do not apply.
 - **Output audience:** Results are relayed to the user, not consumed silently by the orchestrator pipeline.
 
 **What stays the same:**
 - Atomic execution (one operation per invocation)
 - File-first execution via `run_with_capture.sh`
-- Pre/post validation with inline assertions
+- Pre/post validation with inline assertions (`assert`/`print` in Python; `stopifnot()`/`cat()` in R)
 - IAT documentation (`# INTENT:`, `# REASONING:`, `# ASSUMES:`)
-- Immutable script versioning (`_a.py`, `_b.py` for revisions)
+- Immutable script versioning (`_a.py`/`_a.R`, `_b.py`/`_b.R` for revisions)
+- Language-conditional skill loading (per execution language directive)
 - `data-scientist` skill preloaded via frontmatter
 - Parquet-only data format
 
@@ -554,7 +663,7 @@ Load on demand -- do NOT read all at start:
 |------|-------------|---------|
 | `agent_reference/SCRIPT_EXECUTION_REFERENCE.md` | Before writing first script | File-first execution protocol, script format, and stage-specific examples |
 | `agent_reference/INLINE_AUDIT_TRAIL.md` | Before writing first script | IAT documentation standards for inline comments |
-| `agent_reference/VALIDATION_CHECKPOINTS.md` | When writing checkpoint code | Python checkpoint code templates (CP1-CP4) |
+| `agent_reference/VALIDATION_CHECKPOINTS.md` | When writing checkpoint code | Checkpoint code templates (CP1-CP4) for Python and R |
 | `agent_reference/QA_CHECKPOINTS.md` | When understanding QA expectations | QA checkpoint definitions (QA1-QA4b) |
 | `agent_reference/BOUNDARIES.md` | When encountering deviation decisions | Complete autonomous deviation rules |
 | `agent_reference/ERROR_RECOVERY.md` | When errors occur | Recovery procedures and escalation templates |

@@ -130,14 +130,85 @@ When diagnosing data-related bugs (unexpected values, failed joins, wrong coded 
 
 ### 5. Modeling Library Gotchas
 
-When debugging Stage 8 analysis failures: if the error traceback involves a specific modeling library (`pyfixest`, `statsmodels`, `linearmodels`, `geopandas`, or `scikit-learn`), call the skill tool for that library. Each library's `gotchas.md` reference file documents common failure modes:
+When debugging Stage 8 analysis failures: if the error traceback involves a specific library, load the corresponding skill via the Skill tool (see § Language-Conditional Skill Loading for the full mapping). Each library skill's `gotchas.md` reference file documents common failure modes:
+
+**Python libraries:**
 - **pyfixest:** Formula syntax errors, singleton fixed effect warnings, SE specification issues, v0.40.0 breaking changes
 - **statsmodels:** Convergence failures, perfect separation in logit, singular matrix in GLS, missing formula API import
 - **linearmodels:** Entity effects specification, absorbed variable errors, GMM weight matrix issues
 - **geopandas:** CRS mismatch errors, invalid geometry, spatial join row explosion, Shapely 2.x migration issues
 - **scikit-learn:** Data leakage from fitting on test data, forgetting to scale features, misinterpreting t-SNE distances as meaningful, class imbalance handling, pipeline ordering errors
 
-### 6. Evidence Collection
+**R libraries:**
+- **fixest:** Formula parsing differences from lm(), absorbed variable warnings, sunab() syntax
+- **r-stats (lm/glm):** Convergence failures in glm(), singular.ok defaults, sandwich SE version mismatches
+- **tidyverse:** Non-standard evaluation pitfalls, arrow parquet type coercions, join suffix collisions
+- **ggplot2:** Aesthetic inheritance confusion, scale_*_continuous on discrete data, coord_flip deprecation patterns
+
+### 6. Common Error Patterns
+
+Recognize these frequent error patterns by language to form initial hypotheses quickly:
+
+**Python:**
+
+| Error Pattern | Category | Common Cause |
+|---------------|----------|--------------|
+| `KeyError: 'column_name'` | Column access | Column missing or renamed; check schema |
+| `TypeError: unsupported operand type` | Type mismatch | Comparing/operating on incompatible types (str vs int) |
+| `ValueError: Length mismatch` | Shape | Assignment or operation on mismatched-length arrays |
+| `SchemaError` (Polars) | Type | Column dtype doesn't match expected; check cast logic |
+| `ColumnNotFoundError` (Polars) | Column access | Typo in column name or column dropped earlier in chain |
+| `ComputeError` (Polars) | Expression | Invalid operation for dtype (e.g., mean of strings) |
+| `MemoryError` / `killed` | Memory | Dataset too large for available RAM |
+| `ConvergenceWarning` | Modeling | Optimizer failed to converge; check data scaling or specification |
+
+**R:**
+
+| Error Pattern | Category | Common Cause |
+|---------------|----------|--------------|
+| `Error in ...` | General | Syntax errors, type mismatches, object not found |
+| `subscript out of bounds` | Indexing | Accessing vector/list element beyond its length |
+| `could not find function` | Missing library | `library()` call missing or package not installed |
+| `non-conformable arguments` | Dimension mismatch | Matrix/vector operations with incompatible dimensions |
+| `cannot allocate vector of size` | Memory | Dataset too large for available RAM |
+| `replacement has [n] rows, data has [m]` | Recycling/length | Assignment with incompatible lengths |
+| `object of type 'closure' is not subsettable` | Type confusion | Trying to subset a function (e.g., `df[1]` when `df` is a function) |
+| `no applicable method` | S3/S4 dispatch | Generic function has no method for the object's class |
+
+**Diagnostic script language:** Always write diagnostic scripts in the same language as the failing script. Use the same file-first protocol: `scripts/debug/{seq:02d}_diag-{slug}.py` or `scripts/debug/{seq:02d}_diag-{slug}.R`.
+
+### 7. Language-Conditional Skill Loading
+
+When diagnosing pipeline failures, load skills that match the pipeline language. The orchestrator's prompt includes an execution language directive — or detect it from the failing script's file extension (`.R` → R pipeline, `.py` → Python pipeline).
+
+- **Python pipeline (`.py` scripts, or no directive):** Load Python skills as needed (default behavior)
+- **R pipeline (`.R` scripts, or `"Execution language: R"`):** Load R skills from the table below
+
+| When Failure Involves | Python Skill | R Skill |
+|----------------------|-------------|---------|
+| Data manipulation | `polars` | `tidyverse` |
+| Static visualization | `plotnine` | `ggplot2` |
+| Interactive visualization | `plotly` | `plotly-r` |
+| Fixed effects / DiD | `pyfixest` | `fixest` |
+| OLS / GLM / time series | `statsmodels` | `r-stats` |
+| Panel RE / GMM | `linearmodels` | `plm` |
+| Complex surveys | `svy` | `survey-r` |
+| Geospatial | `geopandas` | `sf-terra` |
+| ML / clustering | `scikit-learn` | `tidymodels` |
+| Table formatting | — | `gt` |
+
+**Skill loading informs hypothesis formation.** Library skills contain known gotchas, common failure modes, and API quirks that directly map to diagnostic hypotheses. Load the relevant skill early in the debugging session — before forming your first hypothesis — so you can draw on documented failure patterns rather than guessing.
+
+**Multiple libraries in a traceback:** If the error traceback crosses library boundaries (e.g., a `tidyverse` pipe feeding into `fixest`), load all relevant skills. The failure may be at the handoff point between libraries.
+
+**Cross-language annotation skills:**
+
+| Skill | Trigger | What It Does |
+|-------|---------|-------------|
+| `r-python-translation` | Orchestrator indicates user has R background | Explain Python errors and fixes in R-equivalent terms. Load via Skill tool when directed. |
+| `stata-python-translation` | Orchestrator indicates user has Stata background | Explain Python errors and fixes in Stata-equivalent terms. Load via Skill tool when directed. |
+
+### 8. Evidence Collection
 
 Document evidence systematically. Collect evidence BEFORE forming hypotheses -- premature hypotheses create confirmation bias.
 
@@ -147,7 +218,7 @@ Document evidence systematically. Collect evidence BEFORE forming hypotheses -- 
 | Row count | Pre-transform | 100,000 |
 | Row count | Post-transform | 10,000 |
 
-### 7. Cognitive Discipline
+### 9. Cognitive Discipline
 
 Guard against these reasoning failures during diagnosis:
 
@@ -219,18 +290,20 @@ Distill the diagnosis into prevention strategies and a Learning Signal. The debu
 
 Save all diagnostic code to `scripts/debug/` for traceability and future reference.
 
-**Naming Pattern:** `{sequence:02d}_diag-{issue-slug}.py`
+**Naming Pattern:** `{sequence:02d}_diag-{issue-slug}.py` (Python) or `{sequence:02d}_diag-{issue-slug}.R` (R)
 
 **Examples:**
 - `01_diag-join-key-mismatch.py`
 - `02_diag-missing-year-2020.py`
-- `03_diag-type-conversion-error.py`
+- `03_diag-type-conversion-error.R`
 
-**Script Versioning:** Revisions follow the `_a.py` / `_b.py` pattern from research-executor. The original keeps its output (audit trail); revisions get new suffixes (e.g., `01_diag-join-key-mismatch.py` then `01_diag-join-key-mismatch_a.py`, `_b.py`).
+**Language selection:** Match the pipeline language. If debugging an R pipeline, write R diagnostic scripts. If debugging a Python pipeline, write Python diagnostic scripts.
+
+**Script Versioning:** Revisions follow the `_a.py` / `_b.py` (or `_a.R` / `_b.R`) pattern from research-executor. The original keeps its output (audit trail); revisions get new suffixes (e.g., `01_diag-join-key-mismatch.R` then `01_diag-join-key-mismatch_a.R`, `_b.R`).
 
 **Required Contents:** Problem description in docstring (issue, error, stage), hypothesis testing log, diagnostic code per hypothesis, evidence collection code, root cause identification, recommended fix (if found), IAT-compliant comments (`# INTENT:`, `# REASONING:`, `# ASSUMES:`).
 
-**File-First Execution:** (1) WRITE script to `scripts/debug/`, (2) EXECUTE as a single Bash call with absolute paths: `bash {BASE_DIR}/scripts/run_with_capture.sh {PROJECT_DIR}/scripts/debug/{script}.py`, (3) VERSION if iteration needed. **DO NOT** run diagnostic code interactively, chain commands with `&&`/`;`, or run via `python` directly.
+**File-First Execution:** (1) WRITE script to `scripts/debug/`, (2) EXECUTE as a single Bash call with absolute paths: `bash {BASE_DIR}/scripts/run_with_capture.sh {PROJECT_DIR}/scripts/debug/{script}.py` (or `{script}.R`), (3) VERSION if iteration needed. **DO NOT** run diagnostic code interactively, chain commands with `&&`/`;`, or run via `python`/`Rscript` directly.
 
 Read `agent_reference/SCRIPT_EXECUTION_REFERENCE.md` for the mandatory file-first protocol and debug script example.
 
@@ -545,9 +618,4 @@ Load on demand -- do NOT read all at start:
 | `agent_reference/INLINE_AUDIT_TRAIL.md` | When adding comments to diagnostic code | IAT documentation standards |
 | `agent_reference/ERROR_RECOVERY.md` | When error matches a known recovery pattern | Error type decision trees |
 
-**Conditional on-demand skill:**
-
-| Skill | Trigger | What It Does |
-|-------|---------|-------------|
-| `r-python-translation` | Orchestrator indicates user has R background | When debugging for an R-background user, load this skill to explain Python errors and fixes in R-equivalent terms. Load via Skill tool when directed. |
-| `stata-python-translation` | Orchestrator indicates user has Stata background | When debugging for a Stata-background user, load this skill to explain Python errors and fixes in Stata-equivalent terms. Load via Skill tool when directed. |
+**Language-conditional and cross-language annotation skills** are documented in § 7 (Language-Conditional Skill Loading).

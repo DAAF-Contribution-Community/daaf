@@ -13,6 +13,7 @@ This is the complete first-time installation and setup guide for DAAF. This docu
 - [**Day-to-Day Start/Stop Workflow**](#day-to-day-startstop-workflow)
 - [**How to Manage DAAF Project Files and Output**](#how-to-manage-daaf-project-files-and-output)
 - [**Viewing Marimo Notebooks in Your Browser**](#viewing-marimo-notebooks-in-your-browser)
+- [**Viewing Quarto Documents**](#viewing-quarto-documents)
 - [**Viewing Session Logs in Your Browser**](#viewing-session-logs-in-your-browser)
 - [**Keeping DAAF Updated**](#keeping-daaf-updated)
 - [**Advanced Installation & Configuration**](#advanced-installation--configuration)
@@ -30,7 +31,7 @@ Before installing DAAF, there are three (technically four) key prerequisites. Pl
 
 ### 0. A computer with internet access
 
-You'll need internet access to download the project files and interact with DAAF/Claude (which itself always requires internet). Note that all data analyses will be conducted using your actual computer hardware, so you should have a computer that's generally capable of running intermediate-level data analysis (same sort of requirements you'd face if you wanted to analyze these same datasets in R/Stata/Python regularly). Don't worry about actual Python packages/libraries/dependencies, that's all handled carefully for you behind the scenes!
+You'll need internet access to download the project files and interact with DAAF/Claude (which itself always requires internet). Note that all data analyses will be conducted using your actual computer hardware, so you should have a computer that's generally capable of running intermediate-level data analysis (same sort of requirements you'd face if you wanted to analyze these same datasets in R/Stata/Python regularly). Don't worry about actual Python (or, when R support is enabled, R) packages/libraries/dependencies, that's all handled carefully for you behind the scenes!
 
 ### 1. Anthropic Account & Authentication
 
@@ -131,7 +132,7 @@ The actual output will include more detail as each step progresses, but these ar
 ### What the installer does
 
 1. **Creates an installation directory** called `daaf-docker/` in whatever folder your terminal is currently in, containing all the files you'll need to run and manage DAAF from here on. For example, if you open your terminal and it starts in your home folder (`~` on Mac/Linux, `C:\Users\YourName` on Windows), that's where `daaf-docker/` will be created. You can `cd` to a different location first if you'd prefer to install elsewhere.
-2. **Builds the Docker image** with Python 3.12, 50+ data science packages, geospatial libraries, and Claude Code pre-installed. The first build downloads everything and takes a few minutes; subsequent rebuilds use Docker's layer cache and are much faster.
+2. **Builds the Docker image** with Python 3.12, 50+ data science packages, geospatial libraries, and Claude Code pre-installed (and, when R support is enabled, an R environment with its own data science packages and the Quarto CLI). The first build downloads everything and takes a few minutes; subsequent rebuilds use Docker's layer cache and are much faster.
 3. **Downloads the DAAF repository** directly into the Docker volume inside the container. This gives you a full file edit and version history via Git.
 4. **Enforces security controls on Claude.** One of the big benefits of using Docker is that we can really keep Claude Code under control. The Docker container runs as a non-root user with all Linux capabilities dropped (`cap_drop: ALL`) and privilege escalation explicitly blocked (`no-new-privileges`). Even if Claude Code somehow tried to do something it shouldn't, the operating system kernel would stop it.
 
@@ -344,7 +345,7 @@ bash run_vscode.sh              # macOS / Linux
 .\run_vscode.ps1                # Windows
 ```
 
-This opens a full VS Code editor at the URL [http://localhost:2720](http://localhost:2720) running in your favorite browser where you can explore the entire DAAF file tree, edit files, preview Markdown reports, view/edit Python scripts, and track changes with the built-in Git tools. It comes pre-loaded with extensions for Python syntax highlighting, Markdown preview, Git history visualization, and CSV viewing. The password is displayed in the terminal when you launch the script (default: `daaf`). A few things worth highlighting:
+This opens a full VS Code editor at the URL [http://localhost:2720](http://localhost:2720) running in your favorite browser where you can explore the entire DAAF file tree, edit files, preview Markdown reports, view/edit Python scripts, and track changes with the built-in Git tools. It comes pre-loaded with extensions for Python (and, when R support is enabled, R) syntax highlighting, Markdown preview, Git history visualization, and CSV viewing. The password is displayed in the terminal when you launch the script (default: `daaf`). A few things worth highlighting:
 
 - **The default access password is "daaf"** but the password can be customized at any time in your environment_settings.txt file. See the environment_settings_example.txt in your daaf-docker folder for instructions there.
 - **Markdown preview:** Right-click any `.md` file and select **"Open Preview"**, or press `Shift+Ctrl+V`, to see rendered Markdown with proper formatting — headers, tables, links, and all. This is the easiest way to read DAAF's reports and plans.
@@ -445,6 +446,27 @@ bash view_notebooks.sh       # macOS / Linux
 ```
 
 This opens marimo's built-in notebook browser at [http://localhost:2718](http://localhost:2718), where you can browse all your research projects and open any notebook for viewing or editing. The script handles starting the container if it isn't already running. The nice thing about these is that they're also written in regular Python code, so you can inspect its code very easily in any text editor as well.
+
+### Viewing Quarto Documents
+
+> This applies to R projects, which are available when R support is enabled.
+
+R projects produce **Quarto** notebooks (`.qmd` files) instead of Marimo notebooks. Quarto renders to HTML by default, giving you a polished document with narrative text, executed code, tables, and figures -- all viewable in any web browser.
+
+**Rendering a Quarto document from inside the container:**
+
+```bash
+quarto render research/YYYY-MM-DD_Your_Project/notebook.qmd
+```
+
+This produces an HTML file (e.g., `notebook.html`) in the same directory. To view it, copy it out of the container to your host machine:
+
+```bash
+# From your host terminal (not inside the container)
+docker cp daaf-docker:/daaf/research/YYYY-MM-DD_Your_Project/notebook.html ./notebook.html
+```
+
+Then open the HTML file in any browser. You can also browse and open the `.qmd` source files directly in the browser-based VS Code editor (see "Viewing and Editing Files" above) -- they're plain Markdown with R code chunks, so they're perfectly readable as source.
 
 ---
 

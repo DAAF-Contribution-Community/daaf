@@ -228,7 +228,7 @@ These contributions require more engagement but are well within reach for anyone
 
 - **Adding new data source skills.** This is probably the single most impactful medium-effort contribution. DAAF ships with skills for 40+ education data sources, but there are entire data domains waiting to be integrated. Use **Data Onboarding mode** to profile a public dataset (the `data-ingest` agent handles the profiling work), review its output carefully, and submit the resulting skill. The full process is documented in [**04. Extending DAAF**](user_reference/04_extending_daaf.md) -- the profiling agent does the heavy lifting, but your domain expertise in reviewing and correcting its output is what makes the skill actually reliable. **Important:** To distinctions above, creating the skill is an *extension*. Submitting it to the shared repository via PR is the *contribution*.
 
-- **Adding methodology or domain expertise skills.** Similarly, if you have deep knowledge of a statistical method (pyfixest, Bayesian analysis, cluster analysis), a Python library (geopandas, networkx), or a domain area (school finance policy, graduation rate interpretation), you can use the `skill-authoring` skill to draft a new skill and submit it. These skills directly expand what DAAF can do competently -- without them, DAAF falls back to the model's general training, which is often not specific enough for rigorous work.
+- **Adding methodology or domain expertise skills.** Similarly, if you have deep knowledge of a statistical method (pyfixest, fixest, Bayesian analysis, cluster analysis, tidymodels), a Python library (geopandas, networkx), an R package (plm, survey, sf), or a domain area (school finance policy, graduation rate interpretation), you can use the `skill-authoring` skill to draft a new skill and submit it. These skills directly expand what DAAF can do competently -- without them, DAAF falls back to the model's general training, which is often not specific enough for rigorous work.
 
 - **Writing FAQ entries based on your experience.** The FAQ documents ([**07. FAQ: Technical Support**](user_reference/07_faq_technical.md) and [**06. FAQ: Philosophy**](user_reference/06_faq_philosophy.md)) are living documents that grow from real user questions. If you ran into something confusing, chances are good that someone else will too. Writing up the question and answer saves future users the same frustration.
 
@@ -248,7 +248,7 @@ These contributions involve modifying the core framework -- the agents, protocol
 
 - **Porting to other coding agent platforms.** DAAF is built on Claude Code, but the vast majority of the tooling -- Skills, Agents, `agent_reference/` protocols -- can be ported to any similar agentic coding harness (Gemini CLI, Codex, OpenCode, etc.). The Hooks system is the most platform-specific component and will need more finessing. If you're interested in bringing DAAF to other platforms, this would be an incredibly valuable contribution that opens the framework to a much broader user base.
 
-- **Coding language expansion.** DAAF currently works in the Python ecosystem by default. But it's entirely possible to adapt it for R, Julia, or any other analytic language that runs from the command line. I chose Polars (which follows similar syntax to R's tidyverse) partly to split the difference, but native R support would open DAAF to a huge population of researchers who think in R and shouldn't have to switch.
+- **Coding language expansion.** When R support is enabled, DAAF supports both Python and R as first-class execution languages. R support includes 10 library skills (tidyverse, ggplot2, fixest, plm, survey, sf/terra, tidymodels, and more), full agent support for R script execution and review, and Quarto notebooks for R's literate programming format. Adapting DAAF for additional languages -- Julia, Stata, or any other analytic language that runs from the command line -- remains a welcome and impactful contribution opportunity. The R integration provides a strong template for how to bring a new language into the framework.
 
 ### Extension vs. Contribution: Where's the Line?
 
@@ -288,7 +288,7 @@ Not every contribution needs to be huge, but every contribution should meet a ba
 
 ### Code Contributions
 
-- **Follow the existing patterns.** DAAF's Python code follows specific conventions -- Polars over pandas, parquet over CSV, file-first execution (write to file then run, never inline execution), inline audit trail documentation. Read [`agent_reference/SCRIPT_EXECUTION_REFERENCE.md`](agent_reference/SCRIPT_EXECUTION_REFERENCE.md) and [`agent_reference/INLINE_AUDIT_TRAIL.md`](agent_reference/INLINE_AUDIT_TRAIL.md) for the standards. These don't need to be hard-and-fast forever, but you should have a good reason for deviating if you do.
+- **Follow the existing patterns.** DAAF's Python code follows specific conventions -- Polars over pandas, parquet over CSV, file-first execution (write to file then run, never inline execution), inline audit trail documentation. When R support is enabled, R code follows parallel conventions: tidyverse over base R for data manipulation, parquet over CSV, file-first execution with `run_with_capture.sh`, `stopifnot()` for assertions, native pipe `|>` over magrittr `%>%`, and the same inline audit trail documentation standards. Read [`agent_reference/SCRIPT_EXECUTION_REFERENCE.md`](agent_reference/SCRIPT_EXECUTION_REFERENCE.md) and [`agent_reference/INLINE_AUDIT_TRAIL.md`](agent_reference/INLINE_AUDIT_TRAIL.md) for the standards. These don't need to be hard-and-fast forever, but you should have a good reason for deviating if you do.
 - **Include validation.** Every script should validate its own output -- check shapes, assert expected conditions, report statistics. This is a core framework requirement and expectation of users based on the primary goals/framing of the project.
 
 ---
@@ -440,7 +440,7 @@ For a detailed explanation of what counts as "core" versus "extension," includin
 
 ## Recommended Next Steps
 
-- [**04. Extending DAAF**](user_reference/04_extending_daaf.md) -- How to add new data source skills, analytical tools and methodologies, creating your own additional specialized agents, and customizing the Python environment
+- [**04. Extending DAAF**](user_reference/04_extending_daaf.md) -- How to add new data source skills, analytical tools and methodologies, creating your own additional specialized agents, and customizing your Python and R environment
 - [**06. FAQ: Philosophy**](user_reference/06_faq_philosophy.md) -- Grapples with the broader implications of this work, AI automation in general, model advancement pace, approaching the "exponential", environmental ethics, what this means for the next generation of researchers, and more
 - [**07. FAQ: Technical Support**](user_reference/07_faq_technical.md) -- Covers frequently asked questions about Docker, issues with Claude Code, usage limits, authentication errors, and other common errors
 - [**Back to main**](https://github.com/DAAF-Contribution-Community/daaf/tree/main)

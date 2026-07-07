@@ -1,8 +1,10 @@
 # Script Execution Reference
 
-This document is the **single source of truth** for how Python scripts are written, executed, captured, versioned, and managed in DAAF. It covers both the file-first execution protocol and the standardized script format templates.
+This document is the **single source of truth** for how scripts are written, executed, captured, versioned, and managed in DAAF. It covers both the file-first execution protocol and the standardized script format templates.
 
-Every agent that writes or executes Python code (research-executor, code-reviewer, debugger, notebook-assembler) follows this reference.
+**Language coverage:** This reference covers script format for both Python and R pipelines. The execution language is determined by the user's preference setting in CLAUDE.md. Language-specific sections are clearly marked. The execution wrapper (`run_with_capture.sh`) auto-detects the language from the file extension (`.py` → `python3`, `.R` → `Rscript`).
+
+Every agent that writes or executes code (research-executor, code-reviewer, debugger, notebook-assembler) follows this reference.
 
 **Documentation Standard:** All scripts follow the Inline Audit Trail (IAT) protocol. See `agent_reference/INLINE_AUDIT_TRAIL.md` for the complete standard.
 
@@ -20,7 +22,7 @@ Every agent that writes or executes Python code (research-executor, code-reviewe
 
 ## The Protocol
 
-Every Python execution follows these steps in order. No exceptions.
+Every script execution (Python or R) follows these steps in order. No exceptions.
 
 ```
 WRITE  -->  EXECUTE  -->  CAPTURE  -->  COMMIT
@@ -29,24 +31,33 @@ WRITE  -->  EXECUTE  -->  CAPTURE  -->  COMMIT
 
 ### Step 1: Write the Script to a File
 
-Create the script file BEFORE executing any code. Use the standard template format from Part 2 of this document.
+Create the script file BEFORE executing any code. Use the standard template format from Part 2 (Python) or Part 3 (R) of this document.
 
 - Save to the appropriate stage directory (see Directory Structure below)
-- Include: shebang, metadata docstring, config section, sequential code, inline validation
+- **Python:** Include shebang, metadata docstring, config section, sequential code, inline validation
+- **R:** Include header comment block, config section, sequential code, inline validation
 - Follow IAT documentation standards (see `agent_reference/INLINE_AUDIT_TRAIL.md`)
-- Scripts are **flat, sequential** Python — no `def main()`, no `if __name__` guards, no helper function sections
+- Scripts are **flat, sequential** code — no function definitions, no helper function sections
+  - Python: no `def main()`, no `if __name__` guards
+  - R: no reusable functions, no `source()` of external modules
 
 ### Step 2: Execute with the Wrapper
 
 Run the script using the execution wrapper, which handles output capture and log appending automatically:
 
 ```bash
+# Python script
 bash {BASE_DIR}/scripts/run_with_capture.sh {PROJECT_DIR}/scripts/stage{N}_{type}/{step}_{task-name}.py
+
+# R script
+bash {BASE_DIR}/scripts/run_with_capture.sh {PROJECT_DIR}/scripts/stage{N}_{type}/{step}_{task-name}.R
 ```
+
+The wrapper auto-detects the language from the file extension: `.py` files run with `python3`, `.R` files run with `Rscript`.
 
 **Single command only.** Do not chain with `&&` or `;`. Do not prefix with `cd`. Use absolute paths.
 
-**Do NOT run `python script.py` directly.** Direct execution bypasses output capture and log appending.
+**Do NOT run `python script.py` or `Rscript script.R` directly.** Direct execution bypasses output capture and log appending.
 
 ### Step 3: Capture is Automatic
 
@@ -63,10 +74,10 @@ After execution, the script file itself contains both the code AND proof of what
 If the script fails (non-zero exit code or failed validation):
 
 1. The original script already has its failed output appended — leave it as-is
-2. Create a new versioned copy: `cp {step}_{task-name}.py {step}_{task-name}_a.py`
+2. Create a new versioned copy: `cp {step}_{task-name}.py {step}_{task-name}_a.py` (or `.R` → `_a.R`)
 3. Apply fixes to the new copy only
 4. Execute the new copy with `run_with_capture.sh`
-5. If it fails again, create `_b.py`, then `_c.py`, etc.
+5. If it fails again, create `_b.py`/`_b.R`, then `_c.py`/`_c.R`, etc.
 
 **Never modify a script after its execution log has been appended.** See Script Versioning below for complete suffix conventions, examples, and rules.
 
@@ -96,16 +107,20 @@ All scripts reference this single canonical copy directly — there is no need t
 
 1. Validates the script path exists
 2. Checks whether the script already has an execution log (blocks re-runs if so)
-3. Executes `python <script>` with stdout/stderr capture via `tee`
-4. Records timestamp, duration, and exit code
-5. Appends the complete execution log to the script file as comments
-6. Returns the script's exit code
+3. Detects language from file extension (`.py` → `python3`, `.R` → `Rscript`)
+4. Executes the script with stdout/stderr capture via `tee`
+5. Records timestamp, duration, and exit code
+6. Appends the complete execution log to the script file as comments (using `#` for both Python and R)
+7. Returns the script's exit code
 
 ### Usage
 
 ```bash
-# Execute a script (single Bash call, absolute paths)
+# Execute a Python script (single Bash call, absolute paths)
 bash {BASE_DIR}/scripts/run_with_capture.sh {PROJECT_DIR}/scripts/stage5_fetch/01_fetch-ccd.py
+
+# Execute an R script (single Bash call, absolute paths)
+bash {BASE_DIR}/scripts/run_with_capture.sh {PROJECT_DIR}/scripts/stage5_fetch/01_fetch-ccd.R
 
 # If it fails, create a versioned copy and fix
 cp {PROJECT_DIR}/scripts/stage5_fetch/01_fetch-ccd.py {PROJECT_DIR}/scripts/stage5_fetch/01_fetch-ccd_a.py
@@ -130,14 +145,16 @@ The wrapper checks for the marker `# EXECUTION LOG` in the script file. If found
 
 ### Suffix Convention
 
-| Attempt | Suffix | Filename Example |
-|---------|--------|------------------|
-| First (original) | _(none)_ | `01_join-ccd-meps.py` |
-| Second | `_a` | `01_join-ccd-meps_a.py` |
-| Third | `_b` | `01_join-ccd-meps_b.py` |
-| Fourth | `_c` | `01_join-ccd-meps_c.py` |
-| ... | ... | ... |
-| Twenty-seventh | `_aa` | `01_join-ccd-meps_aa.py` |
+R script versioning follows the same suffix pattern as Python: `01_task.R` → `01_task_a.R` → `01_task_b.R`. The execution log is appended identically (both languages use `#` comments).
+
+| Attempt | Suffix | Python Example | R Example |
+|---------|--------|----------------|-----------|
+| First (original) | _(none)_ | `01_join-ccd-meps.py` | `01_join-ccd-meps.R` |
+| Second | `_a` | `01_join-ccd-meps_a.py` | `01_join-ccd-meps_a.R` |
+| Third | `_b` | `01_join-ccd-meps_b.py` | `01_join-ccd-meps_b.R` |
+| Fourth | `_c` | `01_join-ccd-meps_c.py` | `01_join-ccd-meps_c.R` |
+| ... | ... | ... | ... |
+| Twenty-seventh | `_aa` | `01_join-ccd-meps_aa.py` | `01_join-ccd-meps_aa.R` |
 
 ### Example Progression
 
@@ -187,11 +204,11 @@ This separation — exhaustive in the files, concise in the message — is what 
 
 | Rule | Rationale |
 |------|-----------|
-| **NEVER execute Python interactively before writing to a file** | Scripts are the primary artifact. Interactive execution bypasses the audit trail. |
+| **NEVER execute code interactively before writing to a file** | Scripts are the primary artifact. Interactive execution bypasses the audit trail. |
 | **NEVER modify a script after appending its execution log** | The log documents that exact code. Modifications make the log misleading. |
-| **NEVER run `python script.py` directly** | Use `run_with_capture.sh` so output is captured and appended automatically. |
+| **NEVER run `python script.py` or `Rscript script.R` directly** | Use `run_with_capture.sh` so output is captured and appended automatically. |
 | **NEVER delete failed script versions** | All versions form the audit trail. They document what was tried and what failed. |
-| **NEVER use function definitions (`def main()`, helpers)** | Sequential scripts read top-to-bottom. Functions add indirection without reuse value. |
+| **NEVER use function definitions** | Sequential scripts read top-to-bottom. Functions add indirection without reuse value. Python: no `def main()`, no helpers. R: no reusable functions, no `source()`. |
 
 ### Required Practices (ALWAYS)
 
@@ -202,17 +219,17 @@ This separation — exhaustive in the files, concise in the message — is what 
 | **ALWAYS use the final successful version downstream** | Notebook and report reference only the version that passed. |
 | **ALWAYS follow one-operation-per-script** | Mixing multiple transformations hides the source of errors. |
 | **ALWAYS commit all versions** | Audit trail shows evolution of code and results. |
-| **ALWAYS include shebang, metadata docstring, and config section** | Required for traceability and reproducibility. |
-| **ALWAYS use `Path` with `PROJECT_DIR` constant** | Hardcoded paths break when project location changes. |
+| **ALWAYS include header metadata and config section** | Required for traceability and reproducibility. Python: shebang + docstring. R: comment block header. |
+| **ALWAYS use path constants (`PROJECT_DIR`)** | Hardcoded paths break when project location changes. Python: `Path()`. R: `file.path()`. |
 | **ALWAYS capture pre/post state around transformations** | Enables validation of row count changes and data integrity. |
-| **ALWAYS include checkpoint validation (`assert` + `print`)** | Every transformation needs inline proof of correctness. |
+| **ALWAYS include checkpoint validation** | Every transformation needs inline proof of correctness. Python: `assert` + `print`. R: `stopifnot()` + `cat()`. |
 | **ALWAYS follow IAT protocol (INTENT, REASONING, ASSUMES)** | Uncommented transformations block QA review. See `INLINE_AUDIT_TRAIL.md`. |
 
 ---
 
-# Part 2: Script Format and Templates
+# Part 2: Python Script Format and Templates
 
-Part 1 defined **what to do** (the execution lifecycle). Part 2 defines **what the files look like** — the directory layout, naming conventions, and complete script templates for each stage. Use this as a reference when writing new scripts.
+Part 1 defined **what to do** (the execution lifecycle). Part 2 defines **what Python files look like** — the directory layout, naming conventions, and complete Python script templates for each stage. For R script templates, see Part 3.
 
 ## Directory Structure
 
@@ -259,21 +276,27 @@ Profiling scripts use the same file-first execution pattern, IAT documentation s
 
 ## Naming Convention
 
-**Pattern:** `{step:02d}_{task-name}.py`
+**Pattern:** `{step:02d}_{task-name}.py` (Python) or `{step:02d}_{task-name}.R` (R)
 
 | Component | Source | Format |
 |-----------|--------|--------|
 | `step` | Step number from Transformation Sequence (e.g., 1.1, 2.3) | 2-digit zero-padded (01, 02) |
 | `task-name` | Task Name from Transformation Sequence | lowercase-with-hyphens |
+| extension | User's execution language preference | `.py` (Python) or `.R` (R) |
 
-**Examples:**
+**Examples (Python):**
 - Step 1.1 `fetch-ccd` → `01_fetch-ccd.py`
 - Step 2.3 `join-ccd-meps` → `03_join-ccd-meps.py`
 - Debug issue `key-mismatch` → `01_diag-key-mismatch.py`
 
+**Examples (R):**
+- Step 1.1 `fetch-ccd` → `01_fetch-ccd.R`
+- Step 2.3 `join-ccd-meps` → `03_join-ccd-meps.R`
+- Debug issue `key-mismatch` → `01_diag-key-mismatch.R`
+
 ### QA Script Naming Convention (Iterative)
 
-**Pattern:** `stage{N}_{step:02d}_cr{iteration}.py`
+**Pattern:** `stage{N}_{step:02d}_cr{iteration}.py` (Python) or `stage{N}_{step:02d}_cr{iteration}.R` (R)
 
 | Component | Source | Format |
 |-----------|--------|--------|
@@ -281,30 +304,35 @@ Profiling scripts use the same file-first execution pattern, IAT documentation s
 | `step` | Step number of the reviewed script | 2-digit zero-padded |
 | `_cr{iteration}` | QA script suffix with iteration (1-5) | `_cr1`, `_cr2`, etc. |
 
-**Examples:**
+**Examples (Python):**
 - QA for `01_fetch-ccd.py` (Stage 5) → `stage5_01_cr1.py` (first iteration), `stage5_01_cr2.py` (if needed)
 - QA for `02_join-data.py` (Stage 7) → `stage7_02_cr1.py`
 - QA for `02_enrollment-plot.py` (Stage 8 viz) → `stage8_02_crb1.py`
 
+**Examples (R):**
+- QA for `01_fetch-ccd.R` (Stage 5) → `stage5_01_cr1.R` (first iteration), `stage5_01_cr2.R` (if needed)
+- QA for `02_join-data.R` (Stage 7) → `stage7_02_cr1.R`
+- QA for `02_enrollment-plot.R` (Stage 8 viz) → `stage8_02_crb1.R`
+
 **Stage 8 QA Split:** Stage 8 uses separate QA prefixes for analysis (QA4a) and visualization (QA4b):
-- QA4a for `01_regression-poverty.py` (Stage 8.1 analysis) → `stage8_01_cra1.py`
-- QA4b for `02_enrollment-plot.py` (Stage 8.2 viz) → `stage8_02_crb1.py`
+- QA4a for `01_regression-poverty.py`/`.R` (Stage 8.1 analysis) → `stage8_01_cra1.py`/`.R`
+- QA4b for `02_enrollment-plot.py`/`.R` (Stage 8.2 viz) → `stage8_02_crb1.py`/`.R`
 
 **QA scripts are created by code-reviewer** and saved in `scripts/cr/`.
 
 ### Debug Script Naming Convention
 
-**Pattern:** `{seq:02d}_diag-{slug}.py`
+**Pattern:** `{seq:02d}_diag-{slug}.py` (Python) or `{seq:02d}_diag-{slug}.R` (R)
 
-**Example:** `01_diag-key-mismatch.py`
+**Examples:** `01_diag-key-mismatch.py` or `01_diag-key-mismatch.R`
 
 All debug scripts are saved in `scripts/debug/`.
 
 ---
 
-## Standard Script Template
+## Standard Python Script Template
 
-Every script is a **flat, sequential** Python file that reads top-to-bottom like a lab notebook. There are no `main()` functions, no helper function sections, and no `if __name__` guards. The script runs from top to bottom when executed with `python script.py`.
+Every Python script is a **flat, sequential** file that reads top-to-bottom like a lab notebook. There are no `main()` functions, no helper function sections, and no `if __name__` guards. The script runs from top to bottom when executed with `python script.py`.
 
 ```python
 #!/usr/bin/env python3
@@ -512,9 +540,9 @@ DATASET_PATH = "ccd/schools_ccd_directory"  # Education domain example
 
 ---
 
-## Stage-Specific Examples
+## Python Stage-Specific Examples
 
-### Stage 5: Fetch Script Example (Mirror-Based)
+### Stage 5: Fetch Script Example (Mirror-Based, Python)
 
 *Education domain example — substitute your domain's query skill paths and dataset references.*
 
@@ -723,7 +751,7 @@ print("=" * 60)
 
 ---
 
-### Stage 6: Clean Script Example
+### Stage 6: Clean Script Example (Python)
 
 ```python
 #!/usr/bin/env python3
@@ -867,7 +895,7 @@ print("=" * 60)
 
 ---
 
-### Stage 7: Transform Script Example
+### Stage 7: Transform Script Example (Python)
 
 ```python
 #!/usr/bin/env python3
@@ -1004,7 +1032,7 @@ print("=" * 60)
 
 ---
 
-### Stage 8: Analysis Script Example
+### Stage 8: Analysis Script Example (Python)
 
 Stage 8 encompasses both statistical analysis (8.1) and visualization (8.2). This example covers 8.1 (analysis). For 8.2 (visualization), follow the same template structure but output figures to `output/figures/` and use the `plotnine` or `plotly` skills for plot construction. See `agent_reference/QA_CHECKPOINTS.md` for the QA4a (analysis) and QA4b (visualization) checkpoint definitions.
 
@@ -1171,7 +1199,7 @@ print("=" * 60)
 
 ---
 
-### Debug Script Example
+### Debug Script Example (Python)
 
 ```python
 #!/usr/bin/env python3
@@ -1317,13 +1345,13 @@ df = df_ccd.join(df_meps, on="ncessch", how="inner")
 
 ---
 
-## QA Script Template
+## QA Script Template (Python)
 
-QA scripts are created by **code-reviewer** to validate outputs independently from the original execution script.
+QA scripts are created by **code-reviewer** to validate outputs independently from the original execution script. For the R equivalent, see Part 3.
 
 **Reference:** See `agent_reference/QA_CHECKPOINTS.md` for complete QA checkpoint definitions (QA1-QA4b) and stage-specific validation criteria.
 
-### QA Script Structure
+### QA Script Structure (Python)
 
 ```python
 #!/usr/bin/env python3
@@ -1461,3 +1489,789 @@ if not all_passed:
 | **Exit non-zero on failure** | Use `raise SystemExit(1)` so the wrapper captures failure |
 | **Save to scripts/cr/** | Keeps QA scripts separate from execution scripts |
 
+---
+
+# Part 3: R Script Format and Templates
+
+Part 3 defines **what R files look like** — the standard template, section separators, and complete R script examples for each pipeline stage. The directory structure and naming conventions (Part 2) are shared across languages — only the file extension differs (`.R` instead of `.py`).
+
+**R-specific conventions:**
+- Use `#` comment headers instead of Python shebangs/docstrings
+- Use `library()` calls at the top of `# --- Config ---`
+- Use native pipe `|>` (R 4.1+), not magrittr `%>%`
+- Use `cat()` for output and `stopifnot()` for assertions (not `print()` and `assert`)
+- Use `file.path()` for path construction (not `Path()`)
+- Use `arrow::read_parquet()` / `arrow::write_parquet()` for data I/O
+- Section separators are identical to Python: `# --- Config ---`, `# --- Load ---`, `# --- Transform ---`, `# --- Validate ---`, `# --- Save ---`
+
+---
+
+## Standard R Script Template
+
+Every R script is a **flat, sequential** file that reads top-to-bottom like a lab notebook. There are no reusable function definitions, no `source()` of external modules. The script runs from top to bottom when executed with `Rscript script.R`.
+
+```r
+# ==============================================================================
+# Script: {step:02d}_{task-name}.R
+# Stage: {stage_name}
+# Project: {project_path}
+# Created: {date}
+#
+# Task: {task-name}
+# Wave: {wave}, Step: {step}, Stage: {N}
+# Depends on: {dependencies}
+# Input: {input_path}
+# Output: {output_path}
+# Checkpoint: CP{n}
+# ==============================================================================
+
+# --- Config ---
+# INTENT: {what this script accomplishes}
+# REASONING: {why this approach was chosen}
+# ASSUMES: {assumptions about input data}
+
+library(dplyr)
+library(arrow)
+
+BASE_DIR <- "/daaf"
+PROJECT_DIR <- file.path(BASE_DIR, "research/{project_folder}")
+INPUT_PATH <- file.path(PROJECT_DIR, "data/raw/{input_file}.parquet")
+OUTPUT_PATH <- file.path(PROJECT_DIR, "data/processed/{output_file}.parquet")
+
+# --- Load ---
+cat("==============================================================\n")
+cat("Stage {N}.{step}: {Description}\n")
+cat("==============================================================\n")
+
+df <- arrow::read_parquet(INPUT_PATH)
+cat("Loaded:", nrow(df), "rows x", ncol(df), "cols\n")
+
+# --- Pre-state ---
+# Capture current state BEFORE transformation for post-validation comparison.
+pre_rows <- nrow(df)
+cat("Pre-state:", pre_rows, "rows\n")
+
+# --- Transform ---
+# INTENT: {transformation purpose}
+# REASONING: {why this specific operation}
+# ASSUMES: {input guarantees}
+result <- df |>
+  filter(!is.na(key_col)) |>
+  mutate(
+    new_col = existing_col * factor
+  ) |>
+  select(id, year, new_col, everything())
+
+cat("After transform:", nrow(result), "rows\n")
+
+# --- Validate ---
+# Checkpoint validation against Plan expectations.
+cat("\nPost-state:", nrow(result), "rows x", ncol(result), "cols\n")
+row_change <- nrow(result) - pre_rows
+row_change_pct <- row_change / pre_rows * 100
+cat("Row change:", sprintf("%+d (%+.1f%%)\n", row_change, row_change_pct))
+
+stopifnot("STOP: Empty result" = nrow(result) > 0)
+stopifnot("STOP: Missing required columns" = "new_col" %in% names(result))
+stopifnot("STOP: NAs in key column" = sum(is.na(result$id)) == 0)
+
+cat("\nValidation passed\n")
+cat("  Rows:", nrow(result), "\n")
+cat("  Cols:", ncol(result), "\n")
+cat("  NA count:", sum(is.na(result$new_col)), "\n")
+
+# --- Save ---
+arrow::write_parquet(result, OUTPUT_PATH)
+cat("\nSaved:", OUTPUT_PATH, "\n")
+cat("\nCP{n} VALIDATION: PASSED\n")
+
+# =============================================================================
+# EXECUTION LOG
+# Executed: [auto-appended after running]
+# Duration: [auto-appended]
+# Exit code: [auto-appended]
+# --- STDOUT ---
+# [auto-appended]
+# =============================================================================
+```
+
+---
+
+## R Stage-Specific Examples
+
+### Stage 5: Fetch Script Example (R)
+
+```r
+# ==============================================================================
+# Script: 01_fetch-ccd.R
+# Stage: stage5_fetch
+# Project: research/2026-01-24_School_Analysis
+# Created: 2026-01-24
+#
+# Task: fetch-ccd
+# Wave: 1, Step: 1, Stage: 5
+# Depends on: None
+# Input: Mirror download (CSV via arrow)
+# Output: data/raw/2026-01-24_ccd_directory.parquet
+# Checkpoint: CP1
+# ==============================================================================
+
+# --- Config ---
+# INTENT: Fetch CCD school directory data for 2020
+# REASONING: Parquet mirror provides pre-formatted data matching Portal schema
+# ASSUMES: Mirror URL is accessible; data contains expected columns
+
+library(arrow)
+
+BASE_DIR <- "/daaf"
+PROJECT_DIR <- file.path(BASE_DIR, "research/2026-01-24_School_Analysis")
+DATA_RAW <- file.path(PROJECT_DIR, "data/raw")
+OUTPUT_PATH <- file.path(DATA_RAW, "2026-01-24_ccd_directory.parquet")
+
+# --- Fetch ---
+cat("==============================================================\n")
+cat("Stage 5.1: Fetch CCD school directory\n")
+cat("==============================================================\n")
+
+# INTENT: Download from education data mirror
+# REASONING: CSV mirror provides full dataset; filter locally with dplyr
+# ASSUMES: URL is stable; dataset contains "year" and "ncessch" columns
+url <- "https://educationdata.urban.org/csv/ccd/schools_ccd_directory_2020.csv"
+df <- arrow::read_csv_arrow(url)
+cat("Fetched:", nrow(df), "rows x", ncol(df), "cols\n")
+
+# --- Validate ---
+cat("\n==============================================================\n")
+cat("CHECKPOINT 1 VALIDATION\n")
+cat("==============================================================\n")
+
+stopifnot("STOP: No data fetched" = nrow(df) > 0)
+stopifnot("STOP: Missing school_id" = "ncessch" %in% names(df))
+
+# CP1.1: Row count reasonable
+cat("  [PASS] Data fetched:", nrow(df), "rows\n")
+
+# CP1.2: Critical columns present
+critical_cols <- c("ncessch", "school_name", "fips")
+cols_present <- all(critical_cols %in% names(df))
+cat("  [", ifelse(cols_present, "PASS", "FAIL"), "] Critical columns present:",
+    paste(critical_cols, collapse = ", "), "\n")
+
+# CP1.3: No nulls in ID column
+ncessch_nulls <- sum(is.na(df$ncessch))
+cat("  [", ifelse(ncessch_nulls == 0, "PASS", "FAIL"),
+    "] No nulls in ncessch:", ncessch_nulls, "\n")
+
+stopifnot("STOP: Missing critical columns" = cols_present)
+stopifnot("STOP: Nulls in ID column" = ncessch_nulls == 0)
+
+# --- Save ---
+dir.create(DATA_RAW, recursive = TRUE, showWarnings = FALSE)
+arrow::write_parquet(df, OUTPUT_PATH)
+cat("\nSaved:", OUTPUT_PATH, "\n")
+
+cat("\n==============================================================\n")
+cat("CP1 VALIDATION: PASSED\n")
+cat("==============================================================\n")
+
+# =============================================================================
+# EXECUTION LOG
+# Executed: [auto-appended after running]
+# Duration: [auto-appended]
+# Exit code: [auto-appended]
+# --- STDOUT ---
+# [auto-appended]
+# =============================================================================
+```
+
+---
+
+### Stage 6: Clean Script Example (R)
+
+```r
+# ==============================================================================
+# Script: 01_clean-ccd.R
+# Stage: stage6_clean
+# Project: research/2026-01-24_School_Analysis
+# Created: 2026-01-24
+#
+# Task: clean-ccd
+# Wave: 2, Step: 1, Stage: 6
+# Depends on: fetch-ccd
+# Input: data/raw/2026-01-24_ccd_directory.parquet
+# Output: data/processed/2026-01-24_ccd_clean.parquet
+# Checkpoint: CP2
+# ==============================================================================
+
+# --- Config ---
+# INTENT: Clean CCD directory — standardize types, handle missing codes
+# REASONING: Portal uses -1 (missing), -2 (not applicable), -3 (suppressed)
+#            as sentinel values that must be replaced with NA before analysis
+# ASSUMES: Numeric columns use these sentinel values per Portal documentation
+
+library(dplyr)
+library(arrow)
+
+BASE_DIR <- "/daaf"
+PROJECT_DIR <- file.path(BASE_DIR, "research/2026-01-24_School_Analysis")
+INPUT_PATH <- file.path(PROJECT_DIR, "data/raw/2026-01-24_ccd_directory.parquet")
+OUTPUT_PATH <- file.path(PROJECT_DIR, "data/processed/2026-01-24_ccd_clean.parquet")
+
+CODED_MISSING <- c(-1, -2, -3)
+
+# --- Load ---
+cat("==============================================================\n")
+cat("Stage 6.1: Clean CCD data\n")
+cat("==============================================================\n")
+
+df <- arrow::read_parquet(INPUT_PATH)
+cat("Loaded:", nrow(df), "rows x", ncol(df), "cols\n")
+
+# --- Pre-state ---
+pre_rows <- nrow(df)
+cat("Pre-state:", pre_rows, "rows\n")
+
+# --- Transform ---
+# INTENT: Replace Portal missing codes with NA
+# REASONING: Portal uses -1 (missing), -2 (not applicable), -3 (suppressed)
+#            as integer sentinel values. Leaving them corrupts means/medians.
+# ASSUMES: Numeric columns use these sentinel values; non-numeric are unaffected
+clean <- df |>
+  mutate(
+    across(where(is.numeric), \(x) if_else(x %in% CODED_MISSING, NA_real_, x))
+  ) |>
+  filter(school_status == 1)  # Active schools only
+
+cat("After cleaning:", nrow(clean), "rows\n")
+cat("Removed:", pre_rows - nrow(clean), "inactive/filtered schools\n")
+
+# --- Validate ---
+cat("\n==============================================================\n")
+cat("CHECKPOINT 2 VALIDATION\n")
+cat("==============================================================\n")
+
+# CP2.1: No coded values remain in numeric columns
+numeric_cols <- names(clean)[sapply(clean, is.numeric)]
+coded_remaining <- 0
+for (col in numeric_cols) {
+  coded_remaining <- coded_remaining + sum(clean[[col]] %in% CODED_MISSING, na.rm = TRUE)
+}
+cat("  [", ifelse(coded_remaining == 0, "PASS", "FAIL"),
+    "] No coded values remaining:", coded_remaining, "\n")
+
+# CP2.2: Suppression rate < 50%
+total_cells <- nrow(clean) * length(numeric_cols)
+null_cells <- sum(sapply(numeric_cols, \(col) sum(is.na(clean[[col]]))))
+suppression_rate <- null_cells / total_cells
+cat("  [", ifelse(suppression_rate < 0.50, "PASS", "FAIL"),
+    "] Suppression rate < 50%:", sprintf("%.1f%%", suppression_rate * 100), "\n")
+
+# CP2.3: Row count reasonable (cleaning should reduce but not eliminate)
+cat("  [", ifelse(nrow(clean) > 0, "PASS", "FAIL"),
+    "] Rows remaining:", nrow(clean), "\n")
+
+stopifnot("STOP: Coded values still present" = coded_remaining == 0)
+stopifnot("STOP: Suppression rate >= 50%" = suppression_rate < 0.50)
+stopifnot("STOP: No rows after clean" = nrow(clean) > 0)
+
+# --- Save ---
+arrow::write_parquet(clean, OUTPUT_PATH)
+cat("\nSaved:", OUTPUT_PATH, "\n")
+
+cat("\n==============================================================\n")
+cat("CP2 VALIDATION: PASSED\n")
+cat("==============================================================\n")
+
+# =============================================================================
+# EXECUTION LOG
+# Executed: [auto-appended after running]
+# Duration: [auto-appended]
+# Exit code: [auto-appended]
+# --- STDOUT ---
+# [auto-appended]
+# =============================================================================
+```
+
+---
+
+### Stage 7: Transform Script Example (R)
+
+```r
+# ==============================================================================
+# Script: 01_join-data.R
+# Stage: stage7_transform
+# Project: research/2026-01-24_School_Analysis
+# Created: 2026-01-24
+#
+# Task: join-data
+# Wave: 3, Step: 1, Stage: 7
+# Depends on: clean-ccd, clean-saipe
+# Input: data/processed/2026-01-24_ccd_clean.parquet,
+#        data/processed/2026-01-24_saipe_clean.parquet
+# Output: data/processed/2026-01-24_analysis_data.parquet
+# Checkpoint: CP3
+# ==============================================================================
+
+# --- Config ---
+# INTENT: Join CCD schools with SAIPE poverty data
+# REASONING: Left join preserves all schools; poverty is district-level
+# ASSUMES: leaid is the shared key; poverty has one row per district
+
+library(dplyr)
+library(arrow)
+
+BASE_DIR <- "/daaf"
+PROJECT_DIR <- file.path(BASE_DIR, "research/2026-01-24_School_Analysis")
+SCHOOLS_PATH <- file.path(PROJECT_DIR, "data/processed/2026-01-24_ccd_clean.parquet")
+POVERTY_PATH <- file.path(PROJECT_DIR, "data/processed/2026-01-24_saipe_clean.parquet")
+OUTPUT_PATH <- file.path(PROJECT_DIR, "data/processed/2026-01-24_analysis_data.parquet")
+
+JOIN_KEY <- "leaid"
+
+# --- Load ---
+cat("==============================================================\n")
+cat("Stage 7.1: Join CCD + SAIPE\n")
+cat("==============================================================\n")
+
+schools <- arrow::read_parquet(SCHOOLS_PATH)
+poverty <- arrow::read_parquet(POVERTY_PATH)
+cat("Schools:", nrow(schools), "rows x", ncol(schools), "cols\n")
+cat("Poverty:", nrow(poverty), "rows x", ncol(poverty), "cols\n")
+
+# --- Pre-state ---
+pre_rows <- nrow(schools)
+
+schools_keys <- unique(schools[[JOIN_KEY]])
+poverty_keys <- unique(poverty[[JOIN_KEY]])
+key_overlap <- length(intersect(schools_keys, poverty_keys))
+cat("\nKey overlap:", key_overlap, "/", length(schools_keys),
+    sprintf("(%.1f%%)\n", key_overlap / length(schools_keys) * 100))
+
+# --- Transform ---
+# INTENT: Left join schools to poverty on district ID
+# REASONING: Left join preserves all schools; unmatched get NA for poverty cols.
+#            This is appropriate because poverty data may not cover all districts.
+# ASSUMES: leaid is the shared key; poverty has one row per district per year
+joined <- schools |>
+  left_join(poverty, by = JOIN_KEY)
+
+cat("\nAfter join:", nrow(joined), "rows x", ncol(joined), "cols\n")
+match_rate <- mean(!is.na(joined$poverty_rate))
+cat("Poverty match rate:", sprintf("%.1f%%\n", match_rate * 100))
+
+# --- Validate ---
+cat("\n==============================================================\n")
+cat("CHECKPOINT 3 VALIDATION\n")
+cat("==============================================================\n")
+
+# CP3.1: Row count preserved (left join should not add or lose rows)
+rows_preserved <- nrow(joined) == pre_rows
+cat("  [", ifelse(rows_preserved, "PASS", "FAIL"),
+    "] Row count preserved:", pre_rows, "->", nrow(joined), "\n")
+
+# CP3.2: Match rate acceptable (>80% expected)
+match_ok <- match_rate > 0.8
+cat("  [", ifelse(match_ok, "PASS", "FAIL"),
+    "] Match rate > 80%:", sprintf("%.1f%%", match_rate * 100), "\n")
+
+# CP3.3: No unexpected row duplication
+no_duplication <- nrow(joined) <= pre_rows
+cat("  [", ifelse(no_duplication, "PASS", "FAIL"),
+    "] No row duplication\n")
+
+stopifnot("STOP: Row count changed unexpectedly" = rows_preserved)
+stopifnot("STOP: Match rate too low" = match_ok)
+
+# --- Save ---
+arrow::write_parquet(joined, OUTPUT_PATH)
+cat("\nSaved:", OUTPUT_PATH, "\n")
+
+cat("\n==============================================================\n")
+cat("CP3 VALIDATION: PASSED\n")
+cat("==============================================================\n")
+
+# =============================================================================
+# EXECUTION LOG
+# Executed: [auto-appended after running]
+# Duration: [auto-appended]
+# Exit code: [auto-appended]
+# --- STDOUT ---
+# [auto-appended]
+# =============================================================================
+```
+
+---
+
+### Stage 8: Analysis Script Example (R)
+
+Stage 8 encompasses both statistical analysis (8.1) and visualization (8.2). This example covers 8.1 (analysis) using `fixest` for fixed-effects regression. For 8.2 (visualization), follow the same template structure but output figures to `output/figures/` and use the `ggplot2` skill for plot construction.
+
+```r
+# ==============================================================================
+# Script: 01_regression-poverty.R
+# Stage: stage8_analysis
+# Project: research/2026-01-24_School_Analysis
+# Created: 2026-01-24
+#
+# Task: regression-poverty
+# Wave: 4, Step: 1, Stage: 8
+# Depends on: join-data (Stage 7)
+# Input: data/processed/2026-01-24_analysis_data.parquet
+# Output: output/analysis/2026-01-24_regression_results.parquet
+# Checkpoint: CP4
+# ==============================================================================
+
+# --- Config ---
+# INTENT: Regression — effect of poverty on math proficiency
+# REASONING: Fixed effects absorb time-invariant state characteristics and
+#            national trends; clustered SEs account for within-district correlation
+# ASSUMES: Sufficient within-state variation in poverty rates for identification
+
+library(fixest)
+library(arrow)
+library(broom)
+
+BASE_DIR <- "/daaf"
+PROJECT_DIR <- file.path(BASE_DIR, "research/2026-01-24_School_Analysis")
+INPUT_PATH <- file.path(PROJECT_DIR, "data/processed/2026-01-24_analysis_data.parquet")
+OUTPUT_DIR <- file.path(PROJECT_DIR, "output/analysis")
+OUTPUT_PATH <- file.path(OUTPUT_DIR, "2026-01-24_regression_results.parquet")
+
+# --- Load ---
+cat("==============================================================\n")
+cat("Stage 8.1: Poverty-Proficiency Regression\n")
+cat("==============================================================\n")
+
+df <- arrow::read_parquet(INPUT_PATH)
+cat("Analysis data:", nrow(df), "rows x", ncol(df), "cols\n")
+
+# --- Pre-state ---
+# Verify analysis variables exist
+analysis_vars <- c("math_proficiency", "poverty_rate", "state", "year", "leaid")
+missing_vars <- setdiff(analysis_vars, names(df))
+stopifnot("STOP: Missing analysis variables" = length(missing_vars) == 0)
+
+# Complete cases for analysis
+df_complete <- df[complete.cases(df[, c("math_proficiency", "poverty_rate")]), ]
+dropped <- nrow(df) - nrow(df_complete)
+drop_pct <- dropped / nrow(df) * 100
+cat("Complete cases:", nrow(df_complete), sprintf("(%d dropped, %.1f%%)\n", dropped, drop_pct))
+stopifnot("STOP: Listwise deletion > 10%" = drop_pct < 10)
+
+# --- Analysis ---
+# INTENT: Estimate poverty effect with state + year fixed effects
+# REASONING: State FE absorbs time-invariant state characteristics;
+#            year FE absorbs national trends. Clustered SEs at district
+#            level account for within-district serial correlation.
+# ASSUMES: Sufficient within-state variation in poverty rates;
+#          linear relationship is appropriate for this exploratory analysis
+model <- feols(math_proficiency ~ poverty_rate | state + year,
+               data = df_complete, vcov = ~leaid)
+
+cat("\n=== REGRESSION RESULTS ===\n")
+print(summary(model))
+cat("\nPoverty coefficient:", coef(model)["poverty_rate"], "\n")
+cat("Clustered SE:", se(model)["poverty_rate"], "\n")
+cat("N observations:", model$nobs, "\n")
+cat("R-squared (within):", fitstat(model, "r2")[[1]], "\n")
+
+# --- Validate ---
+cat("\n==============================================================\n")
+cat("CHECKPOINT 4 VALIDATION\n")
+cat("==============================================================\n")
+
+# CP4.1: Model converged
+model_ok <- !is.null(coef(model))
+cat("  [", ifelse(model_ok, "PASS", "FAIL"), "] Model converged\n")
+
+# CP4.2: Coefficient is finite
+coef_finite <- is.finite(coef(model)["poverty_rate"])
+cat("  [", ifelse(coef_finite, "PASS", "FAIL"), "] Coefficient finite:",
+    coef(model)["poverty_rate"], "\n")
+
+# CP4.3: Expected sign (negative — higher poverty = lower proficiency)
+sign_ok <- coef(model)["poverty_rate"] < 0
+cat("  [", ifelse(sign_ok, "PASS", "NOTE"), "] Expected sign (negative):",
+    coef(model)["poverty_rate"], "\n")
+
+# CP4.4: Sufficient observations
+obs_ok <- model$nobs > 100
+cat("  [", ifelse(obs_ok, "PASS", "FAIL"), "] Sufficient obs:", model$nobs, "\n")
+
+stopifnot("STOP: Model did not converge" = model_ok)
+stopifnot("STOP: Non-finite coefficient" = coef_finite)
+
+# --- Save ---
+dir.create(OUTPUT_DIR, recursive = TRUE, showWarnings = FALSE)
+results <- broom::tidy(model, conf.int = TRUE)
+arrow::write_parquet(results, OUTPUT_PATH)
+cat("\nSaved results:", OUTPUT_PATH, "\n")
+
+cat("\n==============================================================\n")
+cat("CP4 VALIDATION: PASSED\n")
+cat("==============================================================\n")
+
+# =============================================================================
+# EXECUTION LOG
+# Executed: [auto-appended after running]
+# Duration: [auto-appended]
+# Exit code: [auto-appended]
+# --- STDOUT ---
+# [auto-appended]
+# =============================================================================
+```
+
+---
+
+### Debug Script Example (R)
+
+```r
+# ==============================================================================
+# Script: 01_diag-key-mismatch.R
+# Stage: debug
+# Project: research/2026-01-24_School_Analysis
+# Created: 2026-01-24
+#
+# DIAGNOSTIC: Investigate join key mismatch between CCD and SAIPE
+# Issue: Join producing 0 matches when ~80% expected
+# Error: "Match rate too low"
+#
+# Hypothesis Testing Log:
+# 1. Key column type mismatch -> CONFIRMED
+# 2. Key value format difference (leading zeros) -> CONFIRMED
+# ==============================================================================
+
+# --- Config ---
+library(arrow)
+
+BASE_DIR <- "/daaf"
+PROJECT_DIR <- file.path(BASE_DIR, "research/2026-01-24_School_Analysis")
+CCD_PATH <- file.path(PROJECT_DIR, "data/processed/2026-01-24_ccd_clean.parquet")
+SAIPE_PATH <- file.path(PROJECT_DIR, "data/processed/2026-01-24_saipe_clean.parquet")
+
+# --- Load ---
+cat("==============================================================\n")
+cat("DIAGNOSTIC: join-key-mismatch\n")
+cat("==============================================================\n")
+
+df_ccd <- arrow::read_parquet(CCD_PATH)
+df_saipe <- arrow::read_parquet(SAIPE_PATH)
+
+# --- Hypothesis 1: Type mismatch ---
+# INTENT: Test whether the join key has different data types across datasets
+# REASONING: R is more lenient than Python on type coercion in joins, but
+#            character vs numeric keys can still produce zero matches
+cat("\n==============================================================\n")
+cat("HYPOTHESIS 1: Type mismatch\n")
+cat("==============================================================\n")
+
+ccd_type <- class(df_ccd$leaid)
+saipe_type <- class(df_saipe$leaid)
+cat("CCD leaid type:", ccd_type, "\n")
+cat("SAIPE leaid type:", saipe_type, "\n")
+
+h1_confirmed <- ccd_type != saipe_type
+cat("\nRESULT:", ifelse(h1_confirmed, "CONFIRMED", "REFUTED"),
+    "-", ccd_type, "vs", saipe_type, "\n")
+
+# --- Hypothesis 2: Value format difference ---
+# INTENT: Test whether key values have different formatting (leading zeros)
+# REASONING: NCES district IDs are 7-digit codes. Integer storage strips
+#            leading zeros (e.g., 0100001 becomes 100001)
+cat("\n==============================================================\n")
+cat("HYPOTHESIS 2: Value format difference\n")
+cat("==============================================================\n")
+
+ccd_sample <- head(df_ccd$leaid, 5)
+saipe_sample <- head(df_saipe$leaid, 5)
+cat("CCD sample values:", paste(ccd_sample, collapse = ", "), "\n")
+cat("SAIPE sample values:", paste(saipe_sample, collapse = ", "), "\n")
+
+# Test overlap as-is vs as character
+ccd_keys <- unique(as.character(df_ccd$leaid))
+saipe_keys <- unique(as.character(df_saipe$leaid))
+overlap_raw <- length(intersect(ccd_keys, saipe_keys))
+cat("\nKey overlap (as character):", overlap_raw, "/", length(ccd_keys), "\n")
+
+# Test with zero-padding
+ccd_keys_padded <- sprintf("%07s", ccd_keys)
+saipe_keys_padded <- sprintf("%07s", saipe_keys)
+overlap_padded <- length(intersect(ccd_keys_padded, saipe_keys_padded))
+cat("Key overlap (zero-padded):", overlap_padded, "/", length(ccd_keys_padded), "\n")
+
+h2_confirmed <- overlap_padded > overlap_raw * 2
+cat("\nRESULT:", ifelse(h2_confirmed, "CONFIRMED - Zero-padding improves match",
+                        "REFUTED - Padding does not help"), "\n")
+
+# --- Summary ---
+cat("\n==============================================================\n")
+cat("DIAGNOSIS SUMMARY\n")
+cat("==============================================================\n")
+cat("H1 (type mismatch):", ifelse(h1_confirmed, "CONFIRMED", "REFUTED"), "\n")
+cat("H2 (value format):", ifelse(h2_confirmed, "CONFIRMED", "REFUTED"), "\n")
+
+if (h1_confirmed || h2_confirmed) {
+  cat("\nROOT CAUSE: Key format/type mismatch\n")
+  cat("\n==============================================================\n")
+  cat("RECOMMENDED FIX\n")
+  cat("==============================================================\n")
+  cat("
+# Normalize both keys to zero-padded 7-character strings before joining
+schools <- schools |>
+  mutate(leaid = sprintf('%07s', as.character(leaid)))
+
+poverty <- poverty |>
+  mutate(leaid = sprintf('%07s', as.character(leaid)))
+
+# Now join
+joined <- schools |>
+  left_join(poverty, by = 'leaid')
+\n")
+}
+
+# =============================================================================
+# EXECUTION LOG
+# Executed: [auto-appended after running]
+# Duration: [auto-appended]
+# Exit code: [auto-appended]
+# --- STDOUT ---
+# [auto-appended]
+# =============================================================================
+```
+
+---
+
+## QA Script Template (R)
+
+QA scripts in R follow the same independent-verification pattern as Python QA scripts. They are created by **code-reviewer** and saved in `scripts/cr/`.
+
+**Reference:** See `agent_reference/QA_CHECKPOINTS.md` for complete QA checkpoint definitions (QA1-QA4b).
+
+```r
+# ==============================================================================
+# QA Inspection: Stage {N} Step {step}
+# Reviewed Script: scripts/stage{N}_{type}/{step}_{task-name}.R
+# Output Files: {list of output files}
+# Plan Reference: {plan_path}
+#
+# QA Checks:
+# 1. Schema validation
+# 2. Row count verification
+# 3. Distribution sanity
+# 4. Coded value absence
+# 5. Critical null check
+# ==============================================================================
+
+# --- Config ---
+library(arrow)
+
+PROJECT_DIR <- file.path("/daaf", "research/{project_name}")
+OUTPUT_FILE <- file.path(PROJECT_DIR, "data/{subdir}/{filename}.parquet")
+
+EXPECTED_COLUMNS <- c("col1", "col2", "col3")
+EXPECTED_MIN_ROWS <- 1000
+EXPECTED_MAX_ROWS <- 100000
+CRITICAL_COLUMNS <- c("id_col", "year")
+CODED_MISSING_VALUES <- c(-1, -2, -3)
+
+# --- Load ---
+cat("==============================================================\n")
+cat("QA INSPECTION: Stage {N} Step {step}\n")
+cat("==============================================================\n")
+
+stopifnot("FAIL: Output file not found" = file.exists(OUTPUT_FILE))
+
+df <- arrow::read_parquet(OUTPUT_FILE)
+cat("Loaded:", nrow(df), "rows x", ncol(df), "cols\n")
+
+# --- Check 1: Schema ---
+# INTENT: Verify all Plan-required columns exist in the output.
+missing_cols <- setdiff(EXPECTED_COLUMNS, names(df))
+schema_ok <- length(missing_cols) == 0
+cat("[", ifelse(schema_ok, "PASS", "FAIL"), "] Schema:",
+    ifelse(schema_ok, "OK", paste("Missing:", paste(missing_cols, collapse = ", "))), "\n")
+
+# --- Check 2: Row count ---
+# INTENT: Verify row count falls within the Plan's expected range.
+rows_ok <- nrow(df) >= EXPECTED_MIN_ROWS & nrow(df) <= EXPECTED_MAX_ROWS
+cat("[", ifelse(rows_ok, "PASS", "FAIL"), "] Rows:", nrow(df),
+    sprintf("(expected %d-%d)\n", EXPECTED_MIN_ROWS, EXPECTED_MAX_ROWS))
+
+# --- Check 3: Distribution sanity ---
+# INTENT: Detect degenerate distributions (all same value, all zeros).
+numeric_cols <- names(df)[sapply(df, is.numeric)]
+dist_issues <- character(0)
+for (col in numeric_cols) {
+  col_data <- df[[col]][!is.na(df[[col]])]
+  if (length(col_data) == 0) next
+  if (length(unique(col_data)) == 1 & length(col_data) > 10) {
+    dist_issues <- c(dist_issues, sprintf("%s: all same value (%s)", col, col_data[1]))
+  }
+  if (all(col_data == 0)) {
+    dist_issues <- c(dist_issues, sprintf("%s: all zeros", col))
+  }
+}
+dist_ok <- length(dist_issues) == 0
+cat("[", ifelse(dist_ok, "PASS", "FAIL"), "] Distribution:",
+    ifelse(dist_ok, "OK", paste(dist_issues, collapse = "; ")), "\n")
+
+# --- Check 4: No coded values ---
+# INTENT: Verify coded missing values have been replaced with NA.
+coded_issues <- character(0)
+if (length(CODED_MISSING_VALUES) > 0) {
+  for (col in numeric_cols) {
+    for (code in CODED_MISSING_VALUES) {
+      count <- sum(df[[col]] == code, na.rm = TRUE)
+      if (count > 0) {
+        coded_issues <- c(coded_issues, sprintf("%s has %d coded value %d", col, count, code))
+      }
+    }
+  }
+}
+coded_ok <- length(coded_issues) == 0
+cat("[", ifelse(coded_ok, "PASS", "FAIL"), "] Coded values:",
+    ifelse(coded_ok, "None remain", paste(coded_issues, collapse = "; ")), "\n")
+
+# --- Check 5: Critical nulls ---
+# INTENT: Verify key columns contain no NAs.
+null_issues <- character(0)
+for (col in CRITICAL_COLUMNS) {
+  if (col %in% names(df)) {
+    null_count <- sum(is.na(df[[col]]))
+    if (null_count > 0) {
+      null_issues <- c(null_issues, sprintf("%s: %d NAs", col, null_count))
+    }
+  }
+}
+nulls_ok <- length(null_issues) == 0
+cat("[", ifelse(nulls_ok, "PASS", "FAIL"), "] Critical nulls:",
+    ifelse(nulls_ok, "None", paste(null_issues, collapse = "; ")), "\n")
+
+# --- Summary ---
+all_passed <- all(schema_ok, rows_ok, dist_ok, coded_ok, nulls_ok)
+cat("\n==============================================================\n")
+cat("QA STATUS:", ifelse(all_passed, "PASSED", "ISSUES FOUND"), "\n")
+cat("==============================================================\n")
+
+if (!all_passed) quit(status = 1)
+
+# =============================================================================
+# EXECUTION LOG
+# Executed: [auto-appended after running]
+# Duration: [auto-appended]
+# Exit code: [auto-appended]
+# --- STDOUT ---
+# [auto-appended]
+# =============================================================================
+```
+
+### R QA Script Best Practices
+
+| Practice | Rationale |
+|----------|-----------|
+| **Load data independently** | Don't trust the original script's data handling |
+| **Use values from Plan** | Expected columns, row counts come from Plan specification |
+| **Run default checks always** | Schema, rows, distribution, coded values, nulls |
+| **Add discretionary checks** | Statistical tests, methodology checks when context warrants |
+| **Exit non-zero on failure** | Use `quit(status = 1)` so the wrapper captures failure |
+| **Save to scripts/cr/** | Keeps QA scripts separate from execution scripts |

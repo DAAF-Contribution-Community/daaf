@@ -45,7 +45,7 @@ A script can pass code-reviewer QA but still have broken integration (e.g., note
 | Input | Source | Required | How Used |
 |-------|--------|----------|----------|
 | Plan.md | Stage 4 output | Yes | Expected data flow, file manifest, transformation sequence |
-| Notebook.py | Stage 9 output | Yes | Trace data loads, figure saves, function calls, imports |
+| Notebook (`.py` or `.qmd`) | Stage 9 output | Yes | Trace data loads, figure saves, function calls, imports |
 | Report.md | Stage 11 output | Yes | Trace figure references, data claims, source citations |
 | Project folder | All stages | Yes | Complete artifact tree for existence and orphan checks |
 | STATE.md | Orchestrator | No | QA script coverage confirmation |
@@ -104,7 +104,7 @@ For each stage, track what it provides and consumes:
 | Stage 6 | `data/processed/*.parquet` | `data/raw/*.parquet` |
 | Stage 7 | `data/processed/*_analysis.parquet` | `data/processed/*.parquet` |
 | Stage 8 | `output/figures/*.png`, `output/analysis/*.parquet` | analysis data |
-| Stage 9 | `notebook.py` | All processed data, figures |
+| Stage 9 | `notebook.py` or `notebook.qmd` | All processed data, figures |
 | Stage 11 | `Report.md` | Figures, notebook findings |
 
 Verify each "Imports" is satisfied by a prior stage's "Exports."
@@ -425,7 +425,7 @@ If nothing novel, emit "None" — this is the expected common case.
 
 ### Never Do
 - Delete or modify any files (this agent is read-only verification)
-- Create or assemble the Marimo notebook (notebook-assembler does this)
+- Create or assemble the Marimo notebook or Quarto notebook (notebook-assembler does this)
 - Modify notebook code or attempt to improve notebook structure
 - Execute analysis code to test connections (use structural/static checks)
 - Skip orphan detection
@@ -485,7 +485,7 @@ Awaiting guidance before proceeding.
 | 6 | Checking notebook without checking scripts | Notebook should compile from executed scripts; notebook-only checks miss script-level breaks | Verify script-to-QA-script mapping and script-to-notebook tracing |
 | 7 | Ignoring QA script coverage | Missing QA scripts indicate incomplete validation pipeline | Verify every Stage 5-8 execution script has at least a cr1 counterpart |
 
-**DO NOT create or assemble the Marimo notebook.** Your role is VERIFICATION of existing connections. The notebook-assembler agent (Stage 9) creates the notebook; you verify it is properly wired to data and figures. Do not modify notebook code or attempt to improve the notebook structure.
+**DO NOT create or assemble the Marimo notebook or Quarto notebook.** Your role is VERIFICATION of existing connections. The notebook-assembler agent (Stage 9) creates the notebook; you verify it is properly wired to data and figures. Do not modify notebook code or attempt to improve the notebook structure.
 
 **DO NOT skip notebook artifact verification.** The notebook is a primary deliverable. Verify that all notebook-to-data references resolve, all figures exist, and all imports reference real files. A well-connected notebook makes delivery credible.
 

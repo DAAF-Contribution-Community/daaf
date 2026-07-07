@@ -173,7 +173,7 @@ This analysis has the following limitations that should be considered when inter
 > [Additional software citations from STATE.md > Citations Accumulated > Software & Tools]
 > *Cited because: [rationale from STATE.md]*
 
-> [AUTO — report-writer: The DAAF and marimo citations are always included (pre-populated in STATE.md). Additional software citations come from STATE.md. Update the DAAF version number if CITATION.cff specifies a different version.]
+> [AUTO — report-writer: The DAAF citation is always included. For Python projects, the marimo citation is always included. For R projects, include R, Quarto, and key R package citations instead. Additional software citations come from STATE.md. Update the DAAF version number if CITATION.cff specifies a different version.]
 
 ### Reporting Standards
 
@@ -244,15 +244,21 @@ This analysis has the following limitations that should be considered when inter
 
 ### Reproducibility
 
-- **Notebook:** `YYYY-MM-DD_[Title].py`
+- **Notebook:** `YYYY-MM-DD_[Title].py` (Marimo) or `YYYY-MM-DD_[Title].qmd` (Quarto)
 - **Processed data:** `data/processed/YYYY-MM-DD_*.parquet`
 - **Raw data:** `data/raw/YYYY-MM-DD_*.parquet`
 - **Session logs:** `logs/*.{jsonl,md}` (complete interaction transcripts)
 
 ### Analysis Environment
 
+**Python execution:**
 - Python 3.12
 - Key packages: polars, plotnine, marimo
+
+**R execution:**
+- R 4.5.3
+- Key packages: tidyverse, ggplot2, arrow, quarto
+- Quarto 1.7.29
 
 ---
 

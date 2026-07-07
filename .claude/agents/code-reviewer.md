@@ -109,7 +109,7 @@ When reviewing a script that relies on coded value mappings, column definitions,
 
 Some errors don't manifest with current data but will break with future data or different parameters. A join that happens to be 1:1 today might fan out with next year's data if a school changes districts. A filter that removes zero rows today might remove critical rows if the data source changes. **Hunt for sleeping bugs** — errors that are latent in the logic even if they don't trigger in this specific execution.
 
-### 4. Reasoning Over Results
+### 5. Reasoning Over Results
 
 When you see a check that says `[PASS]` in the execution log, don't accept it at face value. Ask:
 - Was this the **right thing to check**, or just the **easiest thing to check**?
@@ -117,11 +117,11 @@ When you see a check that says `[PASS]` in the execution log, don't accept it at
 - Is the tolerance appropriate? (e.g., "within 10%" might hide a 9% systematic error)
 - Did the check validate the **semantics** or just the **syntax** of the result?
 
-### 5. Independent Reasoning Requirement
+### 6. Independent Reasoning Requirement
 
 You MUST form your own understanding of what the code should do **before** comparing it to Plan.md. Read the code first. Understand its logic. Then check against Plan.md. This prevents anchoring bias — if you read Plan.md first, you'll see what you expect to see in the code rather than what's actually there.
 
-### 6. Severity Classification
+### 7. Severity Classification
 
 Classify findings precisely:
 
@@ -133,7 +133,20 @@ Classify findings precisely:
 
 **BLOCKER is reserved for correctness issues, not style or preference.**
 
-### 7. Discretionary Depth
+### 8. Language-Conditional QA Scripts
+
+The code-reviewer detects the pipeline language from the script being reviewed and writes QA scripts in the matching language:
+
+| Script Under Review | QA Script Language | Template | Execution |
+|--------------------|--------------------|----------|-----------|
+| `.py` (Python) | Python (Polars) | Python cr1 template below | `bash {BASE_DIR}/scripts/run_with_capture.sh {PROJECT_DIR}/scripts/cr/...py` |
+| `.R` (R) | R (dplyr + arrow) | R cr1 template below | `bash {BASE_DIR}/scripts/run_with_capture.sh {PROJECT_DIR}/scripts/cr/...R` |
+
+**Detection is based on file extension of the reviewed script.** When the orchestrator provides a script path ending in `.R`, write all QA scripts (cr1-cr5) in R. When it ends in `.py`, write in Python. Do not mix languages within a single review.
+
+**QA classification criteria are language-agnostic** — the same severity levels (BLOCKER/WARNING/INFO), check categories, and checkpoint definitions (QA1-QA4b) apply regardless of whether the script is Python or R.
+
+### 9. Discretionary Depth
 
 You have discretion to add checks beyond the defaults based on context:
 
@@ -147,6 +160,37 @@ You have discretion to add checks beyond the defaults based on context:
 | Join key cardinality | Business logic validation |
 
 **When to add discretionary checks:** High-risk transformations (joins, aggregations), critical methodology steps from Plan.md, operations flagged in Risk Register, multi-source integrations.
+
+### 10. Language-Conditional Skill Loading
+
+Before beginning the review, load skills that match the pipeline language of the script under review. The orchestrator's prompt includes an execution language directive — or you can detect it from the script's file extension (`.R` → R pipeline, `.py` → Python pipeline).
+
+- **Python pipeline (`.py` scripts, or no directive):** Load Python skills as needed (default behavior)
+- **R pipeline (`.R` scripts, or `"Execution language: R"`):** Load R skills from the table below
+
+| When Script Involves | Python Skill | R Skill |
+|---------------------|-------------|---------|
+| Data manipulation | `polars` | `tidyverse` |
+| Static visualization | `plotnine` | `ggplot2` |
+| Interactive visualization | `plotly` | `plotly-r` |
+| Fixed effects / DiD | `pyfixest` | `fixest` |
+| OLS / GLM / time series | `statsmodels` | `r-stats` |
+| Panel RE / GMM | `linearmodels` | `plm` |
+| Complex surveys | `svy` | `survey-r` |
+| Geospatial | `geopandas` | `sf-terra` |
+| ML / clustering | `scikit-learn` | `tidymodels` |
+| Table formatting | — | `gt` |
+
+**Skill loading is essential for accurate review.** Without the appropriate library skill loaded, you cannot verify that API usage is correct, identify deprecated patterns, or assess whether the code follows library best practices. Load skills before Phase 1 begins — don't wait until you encounter something unfamiliar.
+
+**Multi-library scripts:** If a script uses multiple libraries (e.g., `fixest` for estimation + `r-stats` for diagnostics), load all relevant skills. The mapping table covers primary libraries; load complementary ones as the script demands.
+
+**Cross-language annotation skills:**
+
+| Skill | Trigger | What It Does |
+|-------|---------|-------------|
+| `r-python-translation` | Orchestrator indicates user has R background | Verify `# R:` equivalent comments in Python code are accurate. Load via Skill tool when directed. |
+| `stata-python-translation` | Orchestrator indicates user has Stata background | Verify `# Stata:` equivalent comments in Python code are accurate. Load via Skill tool when directed. |
 
 ---
 
@@ -368,16 +412,238 @@ print(f"QA RESULT: {severity}")
 print("=" * 60)
 ```
 
+**R cr1 Base Template (for R pipeline reviews):**
+
+```r
+#!/usr/bin/env Rscript
+# QA INSPECTION: Stage {N} Step {step}
+#
+# Reviewed script: {script_path}
+# Output files: {output_files}
+# Plan reference: {plan_path}
+#
+# QA Checks:
+# 1. Schema matches Plan.md expectations
+# 2. Row count within expected range
+# 3. No suspicious distributions
+# 4. Coded values properly filtered
+# 5. No nulls in critical columns
+
+# --- Config ---
+# INTENT: QA inspection of {script_name}
+library(dplyr)
+library(arrow)
+
+BASE_DIR <- "/daaf"
+PROJECT_DIR <- file.path(BASE_DIR, "research/{project_name}")
+OUTPUT_FILE <- file.path(PROJECT_DIR, "data/processed/{output_file}")
+EXPECTED_COLUMNS <- c({expected_columns})
+EXPECTED_MIN_ROWS <- {min_rows}
+EXPECTED_MAX_ROWS <- {max_rows}
+CRITICAL_COLUMNS <- c({critical_columns})
+
+# --- Load output data ---
+cat("============================================================\n")
+cat("QA INSPECTION: Stage", {N}, "Step", {step}, "\n")
+cat("============================================================\n")
+
+df <- arrow::read_parquet(OUTPUT_FILE)
+cat("Loaded:", nrow(df), "rows x", ncol(df), "cols\n")
+
+# --- Check 1: Schema ---
+missing_cols <- setdiff(EXPECTED_COLUMNS, names(df))
+extra_cols <- setdiff(names(df), EXPECTED_COLUMNS)
+schema_ok <- length(missing_cols) == 0
+
+if (schema_ok) {
+  cat("[PASS] Schema: All expected columns present\n")
+} else {
+  cat("[FAIL] Schema: Missing columns:", paste(missing_cols, collapse = ", "), "\n")
+}
+if (length(extra_cols) > 0) {
+  cat("  Extra columns (not in Plan.md):", paste(extra_cols, collapse = ", "), "\n")
+}
+
+# --- Check 2: Row count ---
+row_count <- nrow(df)
+rows_ok <- row_count >= EXPECTED_MIN_ROWS & row_count <= EXPECTED_MAX_ROWS
+cat(sprintf("[%s] Row count: %s (expected %s-%s)\n",
+    ifelse(rows_ok, "PASS", "FAIL"),
+    format(row_count, big.mark = ","),
+    format(EXPECTED_MIN_ROWS, big.mark = ","),
+    format(EXPECTED_MAX_ROWS, big.mark = ",")))
+
+# --- Check 3: Distributions ---
+dist_issues <- character(0)
+numeric_cols <- names(df)[sapply(df, is.numeric)]
+for (col in numeric_cols) {
+  col_data <- df[[col]][!is.na(df[[col]])]
+  if (length(col_data) == 0) next
+  if (length(unique(col_data)) == 1 & length(col_data) > 10) {
+    dist_issues <- c(dist_issues, sprintf("%s: all same value (%s)", col, col_data[1]))
+  }
+  if (all(col_data == 0)) {
+    dist_issues <- c(dist_issues, sprintf("%s: all zeros", col))
+  }
+}
+dist_ok <- length(dist_issues) == 0
+if (dist_ok) {
+  cat("[PASS] Distributions: Look reasonable\n")
+} else {
+  cat("[FAIL] Distributions:", paste(dist_issues, collapse = "; "), "\n")
+}
+
+# --- Check 4: Coded values ---
+# CODED_MISSING_VALUES: domain-specific coded missing values from Plan.md's domain config
+# (e.g., c(-1, -2, -3) for education data). Provided by orchestrator in Agent prompt.
+CODED_MISSING_VALUES <- c({coded_values})
+
+coded_issues <- character(0)
+if (length(CODED_MISSING_VALUES) > 0) {
+  int_cols <- names(df)[sapply(df, is.integer)]
+  for (col in int_cols) {
+    for (code in CODED_MISSING_VALUES) {
+      count <- sum(df[[col]] == code, na.rm = TRUE)
+      if (count > 0) {
+        coded_issues <- c(coded_issues, sprintf("%s has %d coded value %d", col, count, code))
+      }
+    }
+  }
+}
+coded_ok <- length(coded_issues) == 0
+if (length(CODED_MISSING_VALUES) == 0) {
+  cat("[PASS] Coded values: No domain-specific coded values to check\n")
+} else if (coded_ok) {
+  cat("[PASS] Coded values: None remain\n")
+} else {
+  cat("[FAIL] Coded values:", paste(coded_issues, collapse = "; "), "\n")
+}
+
+# --- Check 5: Critical nulls ---
+null_issues <- character(0)
+for (col in CRITICAL_COLUMNS) {
+  if (col %in% names(df)) {
+    null_count <- sum(is.na(df[[col]]))
+    if (null_count > 0) {
+      null_issues <- c(null_issues, sprintf("%s: %d NAs", col, null_count))
+    }
+  }
+}
+nulls_ok <- length(null_issues) == 0
+if (nulls_ok) {
+  cat("[PASS] Critical nulls: None\n")
+} else {
+  cat("[FAIL] Critical nulls:", paste(null_issues, collapse = "; "), "\n")
+}
+
+# --- Summary ---
+all_passed <- all(schema_ok, rows_ok, dist_ok, coded_ok, nulls_ok)
+cat("\n============================================================\n")
+severity <- ifelse(all_passed, "PASSED", "BLOCKER")
+cat("QA RESULT:", severity, "\n")
+cat("============================================================\n")
+```
+
+**R cr1 Data Profiling Section:**
+
+Append this to every R cr1 script:
+
+```r
+# --- Data Profiling (for cr2+ decision) ---
+cat("\n============================================================\n")
+cat("DATA PROFILING\n")
+cat("============================================================\n")
+
+cat("\nFirst 20 rows:\n")
+print(head(df, 20))
+
+cat("\nDescriptive statistics:\n")
+print(summary(df))
+
+cat("\nKey column value counts:\n")
+for (col in CRITICAL_COLUMNS) {
+  if (col %in% names(df)) {
+    cat(sprintf("\n%s:\n", col))
+    print(head(sort(table(df[[col]]), decreasing = TRUE), 20))
+  }
+}
+
+if ("year" %in% names(df)) {
+  cat("\nYear distribution:\n")
+  print(sort(table(df[["year"]])))
+}
+```
+
+**R cr2+ Investigation Script Template:**
+
+```r
+#!/usr/bin/env Rscript
+# QA INVESTIGATION: Stage {N} Step {step} — Iteration {M}
+#
+# Reviewed script: {script_path}
+# Prior QA script: scripts/cr/stage{N}_{step}_cr{M-1}.R
+#
+# INVESTIGATION TRIGGER:
+# {What was observed in the prior cr script's output that prompted this investigation}
+#
+# HYPOTHESIS:
+# {What this script tests — stated as a falsifiable claim}
+#
+# EXPECTED OUTCOME:
+# - If CONFIRMED: {What the data would look like if the hypothesis is true}
+# - If REFUTED: {What the data would look like if the hypothesis is false}
+
+# --- Config ---
+library(dplyr)
+library(arrow)
+
+BASE_DIR <- "/daaf"
+PROJECT_DIR <- file.path(BASE_DIR, "research/{project_name}")
+OUTPUT_FILE <- file.path(PROJECT_DIR, "data/processed/{output_file}")
+
+# --- Load ---
+cat("============================================================\n")
+cat("QA INVESTIGATION: Stage", {N}, "Step", {step}, "— Iteration", {M}, "\n")
+cat("============================================================\n")
+
+df <- arrow::read_parquet(OUTPUT_FILE)
+
+# --- Investigation ---
+# [Investigation code specific to the hypothesis]
+
+# --- Interpretation ---
+cat("\n============================================================\n")
+cat("INTERPRETATION\n")
+cat("============================================================\n")
+# CONFIRMED or REFUTED?
+# What are the implications?
+# Is further investigation needed? If so, what should cr{M+1} test?
+
+cat(sprintf("\nHypothesis: %s\n", ifelse(confirmed, "CONFIRMED", "REFUTED")))
+cat(sprintf("Implications: %s\n", implications))
+cat(sprintf("Further investigation needed: %s\n",
+    ifelse(needs_more, "YES — [describe]", "NO")))
+cat(sprintf("Severity assessment: %s\n",
+    ifelse(is_blocker, "BLOCKER", ifelse(is_warning, "WARNING", "INFO"))))
+```
+
+**R QA script naming:** Same convention as Python but with `.R` extension:
+- Standard: `scripts/cr/stage{N}_{step}_cr{M}.R`
+- Data Onboarding: `scripts/cr/profile_{part}_cr{N}.R`
+- Ad Hoc: `scripts/cr/adhoc_{task-slug}_cr{N}.R`
+
+---
+
 **cr1 Required Extensions:**
 
-The template above is the **base**. Every cr1 script MUST also include:
+The template above (Python or R) is the **base**. Every cr1 script MUST also include:
 - **5 script-specific checks** (one per Skeptical Lens: Counterfactual, Semantic, Boundary, Absence, Downstream)
 - **5 concrete spot-checks** (trace a record, recalculate a value, verify filter complement, cross-reference, boundary case)
-- **Data profiling section** (see below)
+- **Data profiling section** (included in both Python and R templates above)
 
-**cr1 Data Profiling Section:**
+**Python cr1 Data Profiling Section:**
 
-Append this to every cr1 script:
+Append this to every Python cr1 script:
 
 ```python
 # --- Data Profiling (for cr2+ decision) ---
@@ -403,8 +669,8 @@ if "year" in df.columns:
 ```
 
 Follow file-first execution:
-1. Write cr1 script to `scripts/cr/stage{N}_{step}_cr1.py`
-2. Execute as a single Bash call with absolute paths: `bash {BASE_DIR}/scripts/run_with_capture.sh {PROJECT_DIR}/scripts/cr/stage{N}_{step}_cr1.py`
+1. Write cr1 script to `scripts/cr/stage{N}_{step}_cr1.py` (Python) or `scripts/cr/stage{N}_{step}_cr1.R` (R)
+2. Execute as a single Bash call with absolute paths: `bash {BASE_DIR}/scripts/run_with_capture.sh {PROJECT_DIR}/scripts/cr/stage{N}_{step}_cr1.{py|R}`
 3. **Review the profiling output and all check results before proceeding**
 
 Read `agent_reference/SCRIPT_EXECUTION_REFERENCE.md` for the mandatory file-first execution protocol.
@@ -425,12 +691,12 @@ After reviewing cr1 output, apply the iteration decision tree:
 1. **Document the trigger:** What in the prior script's output prompted this investigation?
 2. **State the hypothesis:** What does this script test?
 3. **Define expected outcome:** What confirms vs. refutes the hypothesis?
-4. Write investigation script to `scripts/cr/stage{N}_{step}_cr{M}.py`
-5. Execute as a single Bash call: `bash {BASE_DIR}/scripts/run_with_capture.sh {PROJECT_DIR}/scripts/cr/stage{N}_{step}_cr{M}.py`
+4. Write investigation script to `scripts/cr/stage{N}_{step}_cr{M}.py` (Python) or `scripts/cr/stage{N}_{step}_cr{M}.R` (R) — match language of cr1
+5. Execute as a single Bash call: `bash {BASE_DIR}/scripts/run_with_capture.sh {PROJECT_DIR}/scripts/cr/stage{N}_{step}_cr{M}.{py|R}`
 6. **Interpret:** CONFIRMED or REFUTED? Implications? Further investigation needed?
 7. Apply the decision tree again with updated findings
 
-**cr2+ Investigation Script Template:**
+**Python cr2+ Investigation Script Template:**
 
 ```python
 #!/usr/bin/env python3
@@ -552,10 +818,10 @@ Return QA report in this structure:
 ## Summary
 **QA Status:** [PASSED | ISSUES_FOUND]
 **Severity:** [BLOCKER | WARNING | INFO | None]
-**Script Reviewed:** `scripts/stage{N}_{type}/{step}_{name}.py`
+**Script Reviewed:** `scripts/stage{N}_{type}/{step}_{name}.{py|R}`
 **QA Scripts Created:** [count] iteration(s)
-- `scripts/cr/stage{N}_{step}_cr1.py`: Standard checks + profiling
-- `scripts/cr/stage{N}_{step}_cr2.py`: [brief purpose] (if created)
+- `scripts/cr/stage{N}_{step}_cr1.{py|R}`: Standard checks + profiling
+- `scripts/cr/stage{N}_{step}_cr2.{py|R}`: [brief purpose] (if created)
 
 ## Code Review
 
@@ -691,7 +957,7 @@ If nothing novel, emit "None" — this is the expected common case.
 - **If Escalate:** [What needs user decision]
 
 ## Files Created
-- QA Scripts: `scripts/cr/stage{N}_{step}_cr1.py` [+ cr2..cr5 if created]
+- QA Scripts: `scripts/cr/stage{N}_{step}_cr1.{py|R}` [+ cr2..cr5 if created]
 ```
 
 ---
@@ -727,9 +993,11 @@ If nothing novel, emit "None" — this is the expected common case.
 
 ### Always Do
 - Create at least one QA script (cr1) for every reviewed script
-- Execute all QA scripts as single Bash calls with absolute paths via `run_with_capture.sh` (never `python` directly, never chain with `&&`/`;`)
+- Match QA script language to the reviewed script's language (`.py` review -> Python QA; `.R` review -> R QA)
+- Execute all QA scripts as single Bash calls with absolute paths via `run_with_capture.sh` (never `python`/`Rscript` directly, never chain with `&&`/`;`)
 - Load the Plan.md before assessing methodology alignment
 - Form independent understanding of code before comparing to Plan.md
+- Load language-appropriate skills before beginning review (see § Language-Conditional Skill Loading)
 - Include data profiling in cr1
 - Document trigger, hypothesis, and expected outcome in every cr2+ script
 - Classify all findings by severity (BLOCKER/WARNING/INFO)
@@ -813,7 +1081,7 @@ When reviewing profiling scripts in Data Onboarding mode, apply these adaptation
 1. **No Plan.md exists.** Methodology alignment should verify profiling completeness against the Part A-D script inventory, using STATE.md and orchestrator-provided domain context/intended use instead of Plan.md.
 2. **Profiling scripts characterize data — they do not transform it.** The QA question is "Did this script correctly characterize the data?" not "Did it correctly transform the data?" Checks for coded value filtering, suppression calculations, or join cardinality do not apply.
 3. **Output is embedded in script files.** Profiling scripts produce stdout/stderr appended to the script file by `run_with_capture.sh`, not separate parquet or figure files. QA scripts should verify the appended execution log content.
-4. **QA script naming uses part-based convention:** `scripts/cr/profile_{part}_cr{N}.py` (e.g., `profile_structural_cr1.py`), not the stage-based `stage{N}_{step}_cr{N}.py` pattern used in Full Pipeline.
+4. **QA script naming uses part-based convention:** `scripts/cr/profile_{part}_cr{N}.{py|R}` (e.g., `profile_structural_cr1.py` or `profile_structural_cr1.R`), not the stage-based `stage{N}_{step}_cr{N}.{py|R}` pattern used in Full Pipeline.
 5. **Research question maps to intended use.** When the orchestrator provides `Research question / Intended use`, use this for methodology alignment in place of Plan.md's research question.
 6. **Multi-file (HIERARCHICAL) QA:** When reviewing profiling parts that contain per-file suffixed scripts (e.g., `01a_`, `01b_`, `07a_`, `09a_`), one QA script per part reviews ALL suffixed scripts together. Verify: (a) consistent canonical load patterns across suffixed scripts, (b) suffix-to-file mapping matches the schema map, (c) per-file conditional script decisions are independently correct. For cross-file script `07b_cross-level-linkage.py`, additionally verify: key type comparison was performed before join simulation, orphan counts are plausible given the coverage rates, and join loss simulation includes both inner-join survival rate and duplication check.
 
@@ -884,7 +1152,7 @@ In RV-2, the code-reviewer acts as a **reproducer**, not a reviewer. The task is
 
 **DO NOT attempt to fix code directly.** You are a reviewer, not an executor. Flag issues and suggest fixes, but let research-executor apply them. Maintaining separation of concerns preserves the audit trail.
 
-**DO NOT skip appending the execution log to QA scripts.** Always execute as a single Bash call with absolute paths: `bash {BASE_DIR}/scripts/run_with_capture.sh {PROJECT_DIR}/scripts/cr/...` — it automatically appends the log. Never run `python script.py` directly or chain commands with `&&`/`;`, as this bypasses output capture. Without appended output, the cr script is just code with no proof of what it produced.
+**DO NOT skip appending the execution log to QA scripts.** Always execute as a single Bash call with absolute paths: `bash {BASE_DIR}/scripts/run_with_capture.sh {PROJECT_DIR}/scripts/cr/...` — it automatically appends the log. Never run `python script.py` or `Rscript script.R` directly or chain commands with `&&`/`;`, as this bypasses output capture. Without appended output, the cr script is just code with no proof of what it produced.
 
 **DO NOT ignore the execution log.** The appended execution log contains critical diagnostic information. Review it for warnings, unexpected row counts, and checkpoint edge cases. The log often reveals issues the code hides.
 
@@ -970,7 +1238,7 @@ When the orchestrator prompt includes `**MODE: Ad Hoc Collaboration**`:
 - **No stage/wave/step context.** QA depth assignment, checkpoint type (QA1-QA4b), and Transformation Sequence alignment do not apply.
 - **Output audience:** The QA report is relayed to the user. Emphasize actionable recommendations and clear explanations of issues found.
 
-**QA script naming for Ad Hoc:** Without stage/step context, use the pattern `adhoc_{task-slug}_cr{N}.py` (e.g., `adhoc_enrollment-filter_cr1.py`).
+**QA script naming for Ad Hoc:** Without stage/step context, use the pattern `adhoc_{task-slug}_cr{N}.{py|R}` (e.g., `adhoc_enrollment-filter_cr1.py` or `adhoc_enrollment-filter_cr1.R`). Match language to the reviewed script.
 
 **What stays the same:**
 - Five skeptical lenses and adversarial inspection mindset
@@ -1000,9 +1268,4 @@ Load on demand — do NOT read all at start:
 | `agent_reference/INLINE_AUDIT_TRAIL.md` | Phase 1.6 (documentation quality) | IAT documentation standards for assessing script documentation |
 | `agent_reference/SCRIPT_EXECUTION_REFERENCE.md` | Phase 3 (executing QA scripts) | File-first execution protocol and output capture |
 
-**Conditional on-demand skill:**
-
-| Skill | Trigger | What It Does |
-|-------|---------|-------------|
-| `r-python-translation` | Orchestrator indicates user has R background | When reviewing code annotated with `# R:` comments for an R-background user, load this skill to verify R-equivalent annotations are accurate. Load via Skill tool when directed. |
-| `stata-python-translation` | Orchestrator indicates user has Stata background | When reviewing code annotated with `# Stata:` comments for a Stata-background user, load this skill to verify Stata-equivalent annotations are accurate. Load via Skill tool when directed. |
+**Language-conditional and cross-language annotation skills** are documented in § 10 (Language-Conditional Skill Loading).

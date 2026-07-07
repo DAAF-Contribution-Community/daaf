@@ -133,7 +133,7 @@ These actions are **prohibited** under all circumstances.
 
 | Prohibition | Consequence |
 |-------------|-------------|
-| Use bare `except:` without specific exception | Hidden errors |
+| Use bare `except:` without specific exception (Python) | Hidden errors |
 | Print to stdout in production notebooks | Pollution |
 | Hard-code file paths with user-specific directories | Non-portable |
 | Leave debugging code in final notebooks | Unprofessional |
@@ -142,11 +142,11 @@ These actions are **prohibited** under all circumstances.
 
 | Prohibition | Consequence |
 |-------------|-------------|
-| Execute Python interactively before writing to a script file | No audit trail, not reproducible |
+| Execute Python or R interactively before writing to a script file | No audit trail, not reproducible |
 | Use `mcp__ide__executeCode` for analysis code (except quick exploration) | Hidden execution, no version control |
 | Save scripts without embedded execution logs | Missing proof of what happened |
 | Modify scripts after appending execution log (create new version instead) | Destroys audit trail |
-| Create Marimo cells with code that wasn't first executed as a script | Unvalidated code in notebook |
+| Create Marimo/Quarto cells with code that wasn't first executed as a script | Unvalidated code in notebook |
 
 **See:** Closely read `agent_reference/SCRIPT_EXECUTION_REFERENCE.md` for the mandatory file-first execution protocol covering complete code file writing, output capture, and file versioning rules.
 
@@ -204,7 +204,7 @@ User Support is DAAF's lightest mode — a read-only, conversational interaction
 - Confirm with the user before escalating to another mode
 
 **Never Do:**
-- Execute code (no scripts, no Python, no data operations)
+- Execute code (no scripts, no Python/R, no data operations)
 - Create a project workspace, STATE.md, LEARNINGS.md, or any project artifacts
 - Dispatch subagents (orchestrator handles all questions directly)
 - Load domain-specific data skills (User Support is framework-oriented, not data-oriented)
@@ -340,7 +340,7 @@ assert post_rows >= pre_rows * 0.1, f"Filter removed {100 - (post_rows/pre_rows)
 | **Import Errors** | Wrong import path, circular import, missing `__init__.py` |
 | **Data Access Connection Issues** | Data access timeout, mirror service unavailable, mirror file path changed |
 | **File Path Errors** | Parquet file not found, wrong directory structure, missing data folder |
-| **Environment Issues** | Missing mirror configuration (mirrors.yaml), wrong Python version |
+| **Environment Issues** | Missing mirror configuration (mirrors.yaml), wrong Python/R version |
 | **Data Format Issues** | Data file has unexpected encoding, parquet schema mismatch, date format parsing failure |
 
 **Process:**
@@ -442,7 +442,7 @@ Awaiting your guidance before proceeding.
 **Process:**
 1. Receive QA BLOCKER from code-reviewer
 2. Check if methodology issue → If yes, escalate (Rule 4)
-3. Create versioned revision file (`_a.py`, `_b.py`, etc.)
+3. Create versioned revision file (`_a.py`/`_a.R`, `_b.py`/`_b.R`, etc.)
 4. Apply fix as suggested by code-reviewer
 5. Execute and capture output
 6. Return for re-QA
@@ -456,7 +456,7 @@ Awaiting your guidance before proceeding.
 code-reviewer found: Script uses LEFT join but Plan specifies INNER join for 1:1 cardinality validation.
 
 ## Action (Rule 5)
-Create revision: 01_join-data_a.py
+Create revision: 01_join-data_a.py (or _a.R for R scripts)
 Fix: Change join type from "left" to "inner"
 Execute and capture
 Return for re-QA

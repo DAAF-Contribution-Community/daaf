@@ -35,7 +35,19 @@ Cite when the library's **analytical functionality** drives a result. Do NOT cit
 | polars | Vink, R. et al. Polars: Blazingly fast DataFrames [Computer software]. https://pola.rs/ | Core data processing engine for the analysis | Only used for trivial file I/O |
 | plotnine | Kibirige, H. et al. plotnine: Grammar of graphics for Python [Computer software]. https://plotnine.org/ | Primary visualization library producing report figures | Only used for a quick exploratory plot |
 | plotly | Plotly Technologies Inc. Plotly: Interactive graphing library [Computer software]. https://plotly.com/ | Primary visualization library producing report figures | Only used for a quick exploratory plot |
-| marimo | marimo team. marimo: Reactive Python notebook [Computer software]. https://marimo.io/ | Always (analysis notebook is a marimo notebook) | — |
+| marimo | marimo team. marimo: Reactive Python notebook [Computer software]. https://marimo.io/ | Always when execution language is Python (notebook is marimo) | — |
+| R | R Core Team (2025). R: A Language and Environment for Statistical Computing [Computer software]. R Foundation for Statistical Computing, Vienna, Austria. https://www.R-project.org/ | Always when execution language is R | — |
+| Quarto | Allaire, J.J. et al. Quarto: An Open-Source Scientific and Technical Publishing System [Computer software]. https://quarto.org/ | Always when execution language is R (notebook is Quarto) | — |
+| tidyverse | Wickham, H. et al. (2019). "Welcome to the Tidyverse." *Journal of Open Source Software*, 4(43), 1686. | Core data wrangling in R projects | Only used for trivial file I/O |
+| ggplot2 | Wickham, H. (2016). *ggplot2: Elegant Graphics for Data Analysis.* Springer-Verlag New York. https://ggplot2.tidyverse.org/ | Primary visualization library in R projects | Only used for a quick exploratory plot |
+| fixest | Berge, L. (2018). "Efficient Estimation of Maximum Likelihood Models with Multiple Fixed-Effects: the R Package fixest." CREA Discussion Papers. https://lrberge.github.io/fixest/ | Used for fixed-effects regression or DiD in R | Only imported but not used for estimation |
+| arrow (R) | Richardson, N. et al. arrow: Integration to Apache Arrow [Computer software]. https://arrow.apache.org/docs/r/ | Parquet I/O in R projects | — |
+| survey | Lumley, T. (2004). "Analysis of Complex Survey Samples." *Journal of Statistical Software*, 9(8), 1-19. | Used for survey-weighted estimation in R | — |
+| sf | Pebesma, E. (2018). "Simple Features for R: Standardized Support for Spatial Vector Data." *The R Journal*, 10(1), 439-446. | Used for spatial operations in R | Only used to read a shapefile |
+| terra | Hijmans, R.J. terra: Spatial Data Analysis [Computer software]. https://rspatial.github.io/terra/ | Used for raster/spatial analysis in R | — |
+| gt | Iannone, R. et al. gt: Easily Create Presentation-Ready Display Tables [Computer software]. https://gt.rstudio.com/ | Used for formatted table output in R | — |
+| plm | Croissant, Y. & Millo, G. (2008). "Panel Data Econometrics in R: The plm Package." *Journal of Statistical Software*, 27(2), 1-43. | Used for panel data models in R | — |
+| modelsummary | Arel-Bundock, V. (2022). "modelsummary: Data and Model Summaries in R." *Journal of Statistical Software*, 103(1), 1-23. | Used for regression table output in R | — |
 
 ### Methodological References
 
@@ -112,6 +124,6 @@ Cite the **primary** citation per method — the one paper you would cite in a j
 
 1. **After each Stage 6 script:** Orchestrator extracts data source citation from research-executor output and appends to STATE.md > Citations Accumulated > Data Sources.
 2. **After each Stage 7-8 script:** Orchestrator extracts method and software citations from research-executor output and appends to STATE.md > Citations Accumulated > Methodological References and/or Software & Tools. Deduplicate by checking if the citation already exists in STATE.md.
-3. **At project setup:** Orchestrator pre-populates the DAAF, marimo, and GUIDE-LLM citations in STATE.md (these are always present).
+3. **At project setup:** Orchestrator pre-populates the DAAF and GUIDE-LLM citations in STATE.md (always present). For Python projects, also pre-populates marimo. For R projects, also pre-populates R, Quarto, and tidyverse.
 4. **At Stage 11:** Report-writer reads STATE.md > Citations Accumulated as the primary source for the report's References section. Consults this file for verification if needed.
 5. **At Stage 12:** Data-verifier checks that all accumulated citations appear in the report and that no uncited methods or tools are present.

@@ -16,7 +16,7 @@ Stages 11, 12. Cross-phase orchestration guidance (invocation templates, QA prot
 | Input | Source | Purpose |
 |-------|--------|---------|
 | Plan.md | Stage 4 | Research question, methodology, research outcomes, risk register (frozen after Stage 4.5) |
-| Marimo notebook (.py) | Stage 9 | Complete technical record: all scripts + execution logs |
+| Notebook — Marimo (.py) or Quarto (.qmd) | Stage 9 | Complete technical record: all scripts + execution logs |
 | STATE.md | Maintained throughout | Checkpoint statuses, key decisions, blockers, runtime risks, QA findings summary, final review log |
 | LEARNINGS.md | Maintained throughout | Data quality insights, methodology lessons |
 | Stage 10 QA summary | Stage 10 | Aggregated QA findings (WARNINGs, resolved BLOCKERs) |
@@ -240,7 +240,7 @@ These files must exist in the project folder:
 |----------|------|---------|--------------|
 | Plan document | `[project]/YYYY-MM-DD_[Title]_Plan.md` | [ ] | [ ] |
 | Plan tasks | `[project]/YYYY-MM-DD_[Title]_Plan_Tasks.md` | [ ] | [ ] |
-| Marimo notebook | `[project]/YYYY-MM-DD_[Title].py` | [ ] | [ ] |
+| Notebook (Marimo `.py` or Quarto `.qmd`) | `[project]/YYYY-MM-DD_[Title].py` (Python) or `.qmd` (R) | [ ] | [ ] |
 | Stakeholder report | `[project]/YYYY-MM-DD_[Title]_Report.md` | [ ] | [ ] |
 | Lessons learned | `[project]/LEARNINGS.md` | [ ] | [ ] |
 | Raw data (parquet) | `[project]/data/raw/*.parquet` | [ ] | [ ] |
@@ -351,7 +351,7 @@ Execute verification in this order:
    └─ Check checkpoint statuses in STATE.md
 
 5. EXECUTION CHECK
-   └─ Load notebook: marimo run [notebook].py --host 0.0.0.0 --port 2718 --headless
+   └─ Load notebook: `marimo run [notebook].py --host 0.0.0.0 --port 2718 --headless` (Python) or `quarto render [notebook].qmd` (R)
 ```
 
 ---
@@ -389,7 +389,7 @@ In addition to goal-backward verification, complete these traditional checks:
 | | Coded values handled | [ ] |
 | | Suppression documented | [ ] |
 | **Documentation** | Plan complete | [ ] |
-| | Notebook documented | [ ] |
+| | Notebook documented (Marimo or Quarto) | [ ] |
 | | Report complete | [ ] |
 | | Citations included | [ ] |
 | | LEARNINGS.md created | [ ] |
@@ -469,7 +469,7 @@ After passing Final Review, deliver to user:
 
 **Deliverables:**
 - Plan: `research/[folder]/[Plan file]`
-- Notebook: `research/[folder]/[Notebook file]`
+- Notebook: `research/[folder]/[Notebook file]` (Marimo `.py` for Python, Quarto `.qmd` for R)
 - Report: `research/[folder]/[Report file]`
 - Data: `research/[folder]/data/`
 - Figures: `research/[folder]/output/figures/`

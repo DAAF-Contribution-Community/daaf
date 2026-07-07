@@ -11,7 +11,7 @@ Stages 7, 8, 9, 10. Cross-phase orchestration guidance (invocation templates, QA
 ## Stage 7: EDA & Transformation
 
 **Executor:** Subagent (general-purpose) - ITERATIVE INVOCATION REQUIRED
-**Skills:** `data-scientist`, `polars`, `geopandas` (if spatial data)
+**Skills:** `data-scientist`, `polars` (Python) or `tidyverse` (R), `geopandas` (Python) or `sf-terra` (R) (if spatial data)
 **Purpose:** Explore data and create analysis dataset through step-by-step validated transformations
 
 **CRITICAL:** This stage is executed in MULTIPLE subagent calls, NOT a single invocation. Follow the Iteration Protocol.
@@ -117,6 +117,7 @@ The cardinality in Plan_Tasks.md's task specification is the contract. The Join-
 
 All transformations are executed through script files, NOT interactive notebooks. See `SCRIPT_EXECUTION_REFERENCE.md` for the script format and the mandatory file-first execution protocol covering complete code file writing, output capture, and file versioning rules.
 
+**Python example:**
 ```python
 # scripts/stage7_transform/01_join-data.py
 # Each transformation is a SEPARATE SCRIPT with embedded validation
@@ -158,7 +159,51 @@ else:
 # bash {BASE_DIR}/scripts/run_with_capture.sh {PROJECT_DIR}/scripts/stage7_transform/01_join-data.py
 ```
 
-**If validation fails:** Create a new versioned script (`01_join-data_a.py`) with fixes. Do NOT modify the original—it serves as audit trail.
+**R example:**
+```r
+# scripts/stage7_transform/01_join-data.R
+# Each transformation is a SEPARATE SCRIPT with embedded validation
+# NOTE: Scripts use sequential top-level code (no function definitions).
+
+# --- Config ---
+library(arrow)
+library(dplyr)
+
+# --- Load ---
+# PRE-STATE CAPTURE
+df <- read_parquet("data/processed/2026-01-31_clean.parquet")
+pre_shape <- c(nrow(df), ncol(df))
+pre_sample_ids <- df |> slice_sample(n = 5) |> pull(id_col)
+
+cat(sprintf("PRE-STATE: %s rows x %d cols\n", format(pre_shape[1], big.mark = ","), pre_shape[2]))
+
+# --- Transform ---
+# EXECUTE TRANSFORMATION
+df_transformed <- df |>
+  left_join(other_df, by = "join_key")
+
+# POST-STATE CAPTURE
+post_shape <- c(nrow(df_transformed), ncol(df_transformed))
+cat(sprintf("POST-STATE: %s rows x %d cols\n", format(post_shape[1], big.mark = ","), post_shape[2]))
+cat(sprintf("ROW CHANGE: %.1f%%\n", post_shape[1] / pre_shape[1] * 100))
+
+# --- Validate ---
+# VALIDATION (CP3)
+row_loss_pct <- 1 - (post_shape[1] / pre_shape[1])
+invariant_passed <- row_loss_pct < 0.9  # <90% row loss
+
+if (invariant_passed) {
+  cat("CP3 STATUS: PASSED\n")
+  write_parquet(df_transformed, "data/processed/2026-01-31_analysis.parquet")
+} else {
+  cat(sprintf("CP3 STATUS: FAILED - Row loss %.1f%%\n", row_loss_pct * 100))
+}
+
+# EXECUTION LOG will be appended here after running:
+# bash {BASE_DIR}/scripts/run_with_capture.sh {PROJECT_DIR}/scripts/stage7_transform/01_join-data.R
+```
+
+**If validation fails:** Create a new versioned script (`01_join-data_a.py` / `01_join-data_a.R`) with fixes. Do NOT modify the original -- it serves as audit trail.
 
 #### Stage 7.3: Final CP3 Validation
 
@@ -172,7 +217,7 @@ else:
 4. Check for unexpected nulls introduced
 5. Verify invariants (totals, IDs preserved)
 
-**CP3 Validation Report:**
+**CP3 Validation Report (Python):**
 ```python
 # Overall change summary
 print(f"Overall: {original_shape} → {final_shape}")
@@ -191,7 +236,7 @@ new_nulls_by_col = {col: post_nulls - pre_nulls for col in ...}
 cp3_status = "PASSED" | "WARNING" | "FAILED"
 ```
 
-### Invocation Template: data-scientist + polars
+### Invocation Template: data-scientist + polars (Python) or tidyverse (R)
 
 **Purpose:** Apply rigorous methodology to analysis
 **Stage:** 7 (EDA & Transformation)
@@ -211,6 +256,7 @@ All relative paths in referenced files resolve from BASE_DIR.
 
 **TASK:** Perform ONLY initial exploratory data analysis. DO NOT transform data yet.
 
+If execution language is R: "Load `tidyverse` skill for data operations. If spatial data is involved, also load `sf-terra` skill."
 If user has R/Stata background, also include: "User has [R/Stata] background. Load [r-python-translation/stata-python-translation] skill. Add inline [R/Stata]-equivalent comments for non-trivial data operations."
 
 **REQUIRED ACTIONS (from data-scientist skill — preloaded via frontmatter):**
@@ -242,7 +288,8 @@ Agent({
     prompt: """**BASE_DIR:** {BASE_DIR}
 All relative paths in referenced files resolve from BASE_DIR.
 
-**IMPORTANT:** This is script-based execution, NOT marimo. Write transformations to script files following `{BASE_DIR}/agent_reference/SCRIPT_EXECUTION_REFERENCE.md`.
+**IMPORTANT:** This is script-based execution, NOT marimo/Quarto. Write transformations to script files (.py or .R) following `{BASE_DIR}/agent_reference/SCRIPT_EXECUTION_REFERENCE.md`.
+If execution language is R: "Load `tidyverse` skill for data operations. If spatial data is involved, also load `sf-terra` skill."
 If user has R/Stata background, also include: "User has [R/Stata] background. Load [r-python-translation/stata-python-translation] skill. Add inline [R/Stata]-equivalent comments for non-trivial data operations."
 
 **DATA LOCATION:** {current_data_location}
@@ -312,18 +359,18 @@ Do NOT proceed to transformation #{n+1}. Return to orchestrator for approval."""
 })
 ```
 
-### Polars Skill
+### Polars (Python) / Tidyverse (R) Skill
 
 **Purpose:** DataFrame operations
 **Stage:** 7 (EDA & Transformation)
 **Subagent:** general-purpose
 
-Typically invoked alongside `data-scientist` skill. Use for specific Polars syntax questions or complex operations.
+Typically invoked alongside `data-scientist` skill. Use for specific Polars/tidyverse syntax questions or complex operations.
 
 ```python
 Agent({
-    description: "Polars Operation: {operation_name}",
-    prompt: """You have access to a skill tool. First, call the skill tool with name 'polars'.
+    description: "DataFrame Operation: {operation_name}",
+    prompt: """You have access to a skill tool. First, call the skill tool with name 'polars' (Python) or 'tidyverse' (R).
 
 **OPERATION NEEDED:**
 {description_of_operation}
@@ -335,7 +382,7 @@ Agent({
 **EXPECTED RESULT:**
 {expected_outcome}
 
-Return the Polars code to accomplish this, with validation.""",
+Return the code to accomplish this, with validation.""",
     subagent_type: "general-purpose"
 })
 ```
@@ -442,7 +489,7 @@ MANDATORY EXECUTION PATTERN:
 ## Stage 8: Analysis & Visualization
 
 **Executor:** Subagent (general-purpose) — ITERATIVE INVOCATION REQUIRED
-**Skills:** `data-scientist`, `polars`, modeling library per Plan (`statsmodels` / `pyfixest` / `linearmodels` / `svy` / `geopandas` / `scikit-learn`), (Stage 8.1), `plotnine`, `plotly`, `geopandas` (if map viz) (Stage 8.2)
+**Skills:** `data-scientist`, `polars` (Python) or `tidyverse` (R), modeling library per Plan — Python: `statsmodels` / `pyfixest` / `linearmodels` / `svy` / `geopandas` / `scikit-learn`; R: `r-stats` / `fixest` / `plm` / `survey-r` / `sf-terra` / `tidymodels` (Stage 8.1), `plotnine` (Python) or `ggplot2` (R), `plotly` (Python) or `plotly-r` (R), `geopandas` (Python) or `sf-terra` (R) (if map viz) (Stage 8.2)
 **Purpose:** Conduct final statistical analyses on the analysis dataset AND generate visualizations specified in Plan
 
 ### Execution Pattern
@@ -481,7 +528,7 @@ Stage 8.2.x: Visualization (one script per visualization task)
 **Purpose:** Run statistical analyses (regression, hypothesis tests, model fitting)
 **Stage:** 8.1 (Statistical Analysis)
 **Subagent:** general-purpose
-**Skills:** `data-scientist`, `polars`, modeling library per Plan (`statsmodels` / `pyfixest` / `linearmodels` / `svy` / `geopandas` / `scikit-learn`)
+**Skills:** `data-scientist`, `polars` (Python) or `tidyverse` (R), modeling library per Plan — Python: `statsmodels` / `pyfixest` / `linearmodels` / `svy` / `geopandas` / `scikit-learn`; R: `r-stats` / `fixest` / `plm` / `survey-r` / `sf-terra` / `tidymodels`
 
 ```python
 # ITERATIVE INVOCATION PATTERN (Required for Stage 8.1)
@@ -492,11 +539,11 @@ Agent({
     prompt: """**BASE_DIR:** {BASE_DIR}
 All relative paths in referenced files resolve from BASE_DIR.
 
-Call the skill tool with name 'polars'.
-Call the skill tool with name '{modeling_library}' (one of: statsmodels, pyfixest, linearmodels, svy, geopandas, scikit-learn -- as specified in the <skill> element of Plan_Tasks.md for this task). For spatial regression tasks, geopandas IS the modeling library (via PySAL/spreg). For complex survey data, svy IS the modeling library (design-based inference with Taylor/BRR/jackknife variance).
+Call the skill tool with name 'polars' (Python) or 'tidyverse' (R).
+Call the skill tool with name '{modeling_library}' — Python options: statsmodels, pyfixest, linearmodels, svy, geopandas, scikit-learn; R options: r-stats, fixest, plm, survey-r, sf-terra, tidymodels — as specified in the <skill> element of Plan_Tasks.md for this task. For spatial regression tasks, geopandas (Python) or sf-terra (R) IS the modeling library. For complex survey data, svy (Python) or survey-r (R) IS the modeling library (design-based inference with Taylor/BRR/jackknife variance).
 If user has R/Stata background, also include: "User has [R/Stata] background. Load [r-python-translation/stata-python-translation] skill. Add inline [R/Stata]-equivalent comments for non-trivial data operations."
 
-**IMPORTANT:** This is script-based execution, NOT marimo. Write analysis to script files following `{BASE_DIR}/agent_reference/SCRIPT_EXECUTION_REFERENCE.md`.
+**IMPORTANT:** This is script-based execution, NOT marimo/Quarto. Write analysis to script files (.py or .R) following `{BASE_DIR}/agent_reference/SCRIPT_EXECUTION_REFERENCE.md`.
 
 **DATA LOCATION:** data/processed/{analysis_data_filename}
 
@@ -602,12 +649,12 @@ with stage-specific values for Stage 8. Use **QA4a** (statistical validity) for 
    - If WARNING: log to STATE.md, proceed
    - If PASSED: proceed to next visualization task or Stage 9
 
-#### Invocation Template: plotnine
+#### Invocation Template: plotnine (Python) or ggplot2 (R)
 
-**Purpose:** Static visualizations (ggplot2 style)
+**Purpose:** Static visualizations (grammar of graphics)
 **Stage:** 8.2 (Visualization)
 **Subagent:** general-purpose
-**Skills:** `data-scientist`, `plotnine`
+**Skills:** `data-scientist`, `plotnine` (Python) or `ggplot2` (R)
 
 ```python
 Agent({
@@ -615,7 +662,7 @@ Agent({
     prompt: """**BASE_DIR:** {BASE_DIR}
 All relative paths in referenced files resolve from BASE_DIR.
 
-Call the skill tool with name 'plotnine'.
+Call the skill tool with name 'plotnine' (Python) or 'ggplot2' (R).
 If user has R/Stata background, also include: "User has [R/Stata] background. Load [r-python-translation/stata-python-translation] skill. Add inline [R/Stata]-equivalent comments for non-trivial data operations."
 
 **VISUALIZATION SPECIFICATION (from Plan.md):**
@@ -641,12 +688,12 @@ Return the plotting code and confirm files are saved.""",
 })
 ```
 
-#### Invocation Template: plotly
+#### Invocation Template: plotly (Python) or plotly-r (R)
 
 **Purpose:** Interactive visualizations
 **Stage:** 8.2 (Visualization)
 **Subagent:** general-purpose
-**Skills:** `data-scientist`, `plotly`
+**Skills:** `data-scientist`, `plotly` (Python) or `plotly-r` (R)
 
 ```python
 Agent({
@@ -654,7 +701,7 @@ Agent({
     prompt: """**BASE_DIR:** {BASE_DIR}
 All relative paths in referenced files resolve from BASE_DIR.
 
-Call the skill tool with name 'plotly'.
+Call the skill tool with name 'plotly' (Python) or 'plotly-r' (R).
 If user has R/Stata background, also include: "User has [R/Stata] background. Load [r-python-translation/stata-python-translation] skill. Add inline [R/Stata]-equivalent comments for non-trivial data operations."
 
 **VISUALIZATION SPECIFICATION (from Plan.md):**
@@ -679,12 +726,12 @@ Return the plotting code and confirm files are saved.""",
 })
 ```
 
-#### Invocation Template: geopandas (Map Visualization)
+#### Invocation Template: geopandas (Python) or sf-terra (R) (Map Visualization)
 
 **Purpose:** Choropleth maps, spatial plots, dot-density maps
 **Stage:** 8.2 (Map Visualization)
 **Subagent:** general-purpose
-**Skills:** `data-scientist`, `geopandas`
+**Skills:** `data-scientist`, `geopandas` (Python) or `sf-terra` (R)
 
 ```python
 Agent({
@@ -694,7 +741,7 @@ Agent({
 All relative paths in referenced files resolve from BASE_DIR.
 
 ## SKILL LOADING
-Call the skill tool with name 'geopandas'.
+Call the skill tool with name 'geopandas' (Python) or 'sf-terra' (R).
 If user has R/Stata background, also include: "User has [R/Stata] background. Load [r-python-translation/stata-python-translation] skill. Add inline [R/Stata]-equivalent comments for non-trivial data operations."
 
 ## CONTEXT FROM PLAN
@@ -704,7 +751,7 @@ Research Question: {research_question}
 Current Stage: 8.2
 
 ## TASK
-**Script Target:** {BASE_DIR}/research/{project_folder}/scripts/stage8_analysis/{step:02d}_{task-name}.py
+**Script Target:** {BASE_DIR}/research/{project_folder}/scripts/stage8_analysis/{step:02d}_{task-name}.py (.py for Python, .R for R)
 **Map Type:** {map_type} (e.g., choropleth, dot-density, proportional symbol, bivariate)
 **Geographic Unit:** {geographic_unit} (e.g., county, state, school district, tract)
 **Variable(s) to Map:** {variables}
@@ -744,7 +791,7 @@ with stage-specific values for Stage 8. Use **QA4b** (visualization quality) for
 
 ### Visualization Principles
 
-**Static (plotnine):**
+**Static — Python (plotnine):**
 ```python
 from plotnine import ggplot, aes, geom_point, theme_minimal
 
@@ -756,13 +803,31 @@ plot = (
 plot.save(f"output/figures/{date_prefix}_plot_name.png", dpi=300)
 ```
 
-**Interactive (plotly):**
+**Static — R (ggplot2):**
+```r
+library(ggplot2)
+
+p <- ggplot(df, aes(x = var1, y = var2)) +
+  geom_point() +
+  theme_minimal()
+ggsave(sprintf("output/figures/%s_plot_name.png", date_prefix), p, dpi = 300)
+```
+
+**Interactive — Python (plotly):**
 ```python
 import plotly.express as px
 
 fig = px.scatter(df, x='var1', y='var2', color='category')
 fig.write_html(f"output/figures/{date_prefix}_plot_name.html")
 # Note: kaleido/write_image is not available in DAAF — use plotnine for static PNG export
+```
+
+**Interactive — R (plotly):**
+```r
+library(plotly)
+
+fig <- plot_ly(df, x = ~var1, y = ~var2, color = ~category, type = "scatter", mode = "markers")
+htmlwidgets::saveWidget(fig, sprintf("output/figures/%s_plot_name.html", date_prefix))
 ```
 
 ### Context Requirements
@@ -840,15 +905,15 @@ Agent({
     prompt: """**BASE_DIR:** {BASE_DIR}
 All relative paths in referenced files resolve from BASE_DIR.
 
-Call the skill tool with name 'polars'.
-If this task involves spatial operations (spatial join, point-in-polygon, buffer, geocoding, or working with geometry columns): also call the skill tool with name 'geopandas'.
+Call the skill tool with name 'polars' (Python) or 'tidyverse' (R).
+If this task involves spatial operations (spatial join, point-in-polygon, buffer, geocoding, or working with geometry columns): also call the skill tool with name 'geopandas' (Python) or 'sf-terra' (R).
 If user has R/Stata background, also include: "User has [R/Stata] background. Load [r-python-translation/stata-python-translation] skill. Add inline [R/Stata]-equivalent comments for non-trivial data operations."
 
 **DATA LOCATION:** data/processed/{filename}
 
 **TASK:**
 1. Profile the data following data-scientist methodology (preloaded via frontmatter)
-2. Implement transformations using Polars
+2. Implement transformations using Polars (Python) or tidyverse (R)
 3. Validate each step
 
 **TRANSFORMATION SPECIFICATION:**
@@ -869,8 +934,8 @@ Agent({
     prompt: """**BASE_DIR:** {BASE_DIR}
 All relative paths in referenced files resolve from BASE_DIR.
 
-Call the skill tool with name 'plotnine' for static publication plots.
-Call the skill tool with name 'plotly' for interactive exploration plots.
+Call the skill tool with name 'plotnine' (Python) or 'ggplot2' (R) for static publication plots.
+Call the skill tool with name 'plotly' (Python) or 'plotly-r' (R) for interactive exploration plots.
 If user has R/Stata background, also include: "User has [R/Stata] background. Load [r-python-translation/stata-python-translation] skill. Add inline [R/Stata]-equivalent comments for non-trivial data operations."
 
 **DATA LOCATION:** data/processed/{filename}
@@ -894,8 +959,8 @@ Return all plotting code and confirm files saved.""",
 
 **Agent:** `notebook-assembler` (see `.claude/agents/notebook-assembler.md`)
 **Executor:** Subagent (general-purpose)
-**Skill:** `marimo` (for basic syntax only; agent provides behavioral constraints)
-**Purpose:** LITERALLY COPY script file contents into marimo cells
+**Skill:** `marimo` (Python) or `quarto` (R) — for basic syntax only; agent provides behavioral constraints
+**Purpose:** LITERALLY COPY script file contents into notebook cells (marimo .py or Quarto .qmd)
 
 > **CRITICAL:** Stage 9 is a FILE COMPILATION task. See `.claude/agents/notebook-assembler.md`
 > for the complete protocol including the Four-Cell Pattern, helper functions, and
@@ -904,7 +969,7 @@ Return all plotting code and confirm files saved.""",
 ### Key Constraints (Summary)
 
 - **LITERAL COPY** — Read each script file and copy contents verbatim into cells
-- NO new analysis code — only `pl.read_parquet()` + `mo.ui.table()` for data inspection
+- NO new analysis code — Python: only `pl.read_parquet()` + `mo.ui.table()` for data inspection; R: only `arrow::read_parquet()` for data inspection
 - NO dashboards, widgets, dropdowns, sliders
 - All script code presented as-is; execution logs in accordions
 - Script versioning: use final successful version (`_b.py` > `_a.py` > base)
@@ -931,12 +996,14 @@ The following are **NEVER ALLOWED** in Stage 9 notebooks:
 
 **If the notebook contains ANY of the above, it FAILED.**
 
-### Invocation Template: marimo (via notebook-assembler)
+### Invocation Template: marimo (Python) or quarto (R) (via notebook-assembler)
 
 **Purpose:** COMPILE executed scripts into notebook by LITERALLY COPYING file contents
 **Stage:** 9 (Script Compilation)
 **Agent:** notebook-assembler (see `.claude/agents/notebook-assembler.md`)
 **Subagent:** general-purpose
+
+> **Language note:** For Python projects, produce a Marimo notebook (.py). For R projects, produce a Quarto notebook (.qmd). The notebook-assembler agent handles both formats -- load `marimo` skill for Python or `quarto` skill for R. The Four-Cell Pattern applies to both; see `.claude/agents/notebook-assembler.md` for format-specific details.
 
 > **CRITICAL CONSTRAINT:** The notebook LITERALLY COPIES script file contents into cells. It does NOT generate new code, dashboards, filters, or interactive widgets. The notebook is a script viewer.
 
@@ -949,7 +1016,7 @@ Agent({
     prompt: """**BASE_DIR:** {BASE_DIR}
 All relative paths in referenced files resolve from BASE_DIR.
 
-Also call the skill tool with name 'marimo' for basic marimo syntax.
+Also call the skill tool with name 'marimo' (Python) or 'quarto' (R) for basic notebook syntax.
 
 ## CRITICAL: YOU ARE A COMPILER, NOT AN ANALYST
 
@@ -968,10 +1035,10 @@ NO dashboards, NO widgets, NO new aggregations, NO new visualizations, NO paraph
 ## SCRIPTS LOCATION
 
 scripts/
-├── stage5_fetch/   ← Read each .py file
-├── stage6_clean/   ← Read each .py file
-├── stage7_transform/ ← Read each .py file
-└── stage8_analysis/ ← Read each .py file
+├── stage5_fetch/   ← Read each .py/.R file
+├── stage6_clean/   ← Read each .py/.R file
+├── stage7_transform/ ← Read each .py/.R file
+└── stage8_analysis/ ← Read each .py/.R file
 
 ## FOR EACH SCRIPT, CREATE EXACTLY 4 CELLS
 
@@ -1015,7 +1082,7 @@ And Cell 3 accordion should contain EXACTLY:
 
 ## OUTPUT
 
-**Notebook file:** {date_prefix}_{title}.py
+**Notebook file:** {date_prefix}_{title}.py (Python/Marimo) or {date_prefix}_{title}.qmd (R/Quarto)
 
 ## VERIFICATION BEFORE RETURNING
 

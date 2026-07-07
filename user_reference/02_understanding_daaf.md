@@ -216,10 +216,14 @@ DAAF's skills are currently organized into a few categories:
 
 **Technical skills** -- how to use certain toolsets:
 - `data-scientist` for general methodology, mindset/philosophy, and rigor principles
-- `polars` for data manipulation (similar to tidyverse or pandas)
-- `plotnine` for static, publication-quality plots (ggplot2 in Python)
-- `plotly` for interactive visualizations
+- `polars` for data manipulation in Python (similar to tidyverse or pandas)
+- `tidyverse` for data manipulation in R (dplyr, tidyr, readr, purrr, and more)
+- `plotnine` for static, publication-quality plots in Python (ggplot2 syntax)
+- `ggplot2` for static, publication-quality plots in R
+- `plotly` for interactive visualizations in Python
+- `plotly-r` for interactive visualizations in R
 - `marimo` for reactive Python notebooks
+- `quarto` for reproducible R notebooks
 
 **Meta skills** -- for extending DAAF itself:
 - `skill-authoring` for creating and integrating new skills in a unified format and with best practices
@@ -310,7 +314,7 @@ And here's what each of them do in more detail, and how the workflow works so yo
 
 **Expected time investment:** As long as you need. There are no mandatory checkpoints or gates -- the session ends when you're done. If the session produces artifacts, DAAF will summarize what's in the workspace at the end.
 
-**When to use it:** When you want a capable research partner for whatever you're working on right now. Some examples: "Can you review this script I wrote for cleaning CCD data?" "I'm getting a weird join error -- help me figure out what's going on." "What's the best way to handle suppressed data in a trend analysis?" "How do I use plotnine to create faceted bar charts?" "Help me think through the right approach for a school-level poverty analysis."
+**When to use it:** When you want a capable research partner for whatever you're working on right now. Some examples: "Can you review this script I wrote for cleaning CCD data?" "I'm getting a weird join error -- help me figure out what's going on." "What's the best way to handle suppressed data in a trend analysis?" "How do I use plotnine to create faceted bar charts?" "How do I use ggplot2 to create faceted bar charts with custom themes?" "Help me think through the right approach for a school-level poverty analysis."
 
 **When NOT to use it:** When you know you want a complete, formal analysis with a Plan, Notebook, and Report -- that's Full Pipeline mode. When you just need a quick variable definition -- that's Data Lookup. Ad Hoc Collaboration is for the messy, real-world middle ground where you're actively working on something and want a knowledgeable partner.
 
@@ -325,9 +329,9 @@ And here's what each of them do in more detail, and how the workflow works so yo
 **What you get:**
 - A detailed research plan documenting every methodological decision
 - All raw and processed data files (parquet format)
-- A complete set of versioned, validated Python scripts covering every step of the analysis
+- A complete set of versioned, validated Python or R scripts covering every step of the analysis
 - Statistical analysis results and high-quality data visualizations
-- A compiled marimo notebook walking you through every script and its execution logs
+- A compiled marimo (Python) or Quarto (R) notebook walking you through every script and its execution logs
 - A stakeholder report synthesizing key findings, methodology, and limitations
 - A lessons-learned document with data and process insights
 
@@ -598,14 +602,15 @@ Every analysis lives in a self-contained folder under `research/`, named with th
 research/2026-01-24_School_Poverty_Analysis/
 ├── 2026-01-24_School_Poverty_Analysis_Plan.md
 ├── 2026-01-24_School_Poverty_Analysis_Plan_Tasks.md
-├── 2026-01-24_School_Poverty_Analysis.py
+├── 2026-01-24_School_Poverty_Analysis.py       (Python: marimo notebook)
+│   or 2026-01-24_School_Poverty_Analysis.qmd   (R: Quarto notebook)
 ├── 2026-01-24_School_Poverty_Analysis_Report.md
 ├── LEARNINGS.md
 ├── STATE.md
 ├── logs/                             (session transcripts, collected at completion)
 ├── scripts/
 │   ├── stage5_fetch/
-│   │   ├── 01_fetch-ccd.py
+│   │   ├── 01_fetch-ccd.py           (Python: .py / R: .R)
 │   │   └── 02_fetch-meps.py
 │   ├── stage6_clean/
 │   │   ├── 01_clean-ccd.py
@@ -637,6 +642,8 @@ research/2026-01-24_School_Poverty_Analysis/
     └── preliminary_notes/
 ```
 
+> **Note on execution language:** When R support is enabled, the folder structure is identical whether using Python or R. The differences are in file extensions (`.py` vs `.R` for scripts) and notebook format (`.py` marimo notebook vs `.qmd` Quarto notebook). Your execution language is set in CLAUDE.md's User Preferences section -- DAAF handles the rest automatically.
+
 **Tip:** The easiest way to browse a completed project is with the browser-based code editor. Run `bash run_vscode.sh` (or `.\run_vscode.ps1` on Windows) from your `daaf-docker` folder, then navigate the file tree in the sidebar. You can preview Markdown reports and plans with `Shift+Ctrl+V`, read Python scripts with syntax highlighting, and inspect the Git history to see what changed and when. See [**03. Best Practices — Using the Browser-Based Code Editor**](03_best_practices.md#using-the-browser-based-code-editor) for more.
 
 Let's go through each piece.
@@ -661,12 +668,12 @@ A companion file, **Plan_Tasks.md**, contains the detailed machine-readable task
 
 ### The Scripts Directory
 
-**What it is:** The primary execution artifacts. I cannot stress this enough -- **the scripts are the real work product**, not the notebook. Every data fetch, every cleaning operation, every transformation, every analysis, and every visualization is captured as a standalone Python script in the `scripts/` directory, organized by stage. I cannot stress enough: Get a sense for how these scripts are actually written and run: **this is the secret sauce of why anything about DAAF is worth anything at all**. Without the core engine of data analysis being transparent, rigorous, and reproducible, nothing else that comes out of this process is valuable. Spend time here.
+**What it is:** The primary execution artifacts. I cannot stress this enough -- **the scripts are the real work product**, not the notebook. Every data fetch, every cleaning operation, every transformation, every analysis, and every visualization is captured as a standalone Python or R script in the `scripts/` directory, organized by stage. I cannot stress enough: Get a sense for how these scripts are actually written and run: **this is the secret sauce of why anything about DAAF is worth anything at all**. Without the core engine of data analysis being transparent, rigorous, and reproducible, nothing else that comes out of this process is valuable. Spend time here.
 
 **What's inside each script:**
 - Clear section headers (`# --- Config ---`, `# --- Load ---`, `# --- Transform ---`, `# --- Validate ---`, `# --- Save ---`)
 - Inline audit trail comments explaining the *intent* and *reasoning* behind every operation (not just what the code does, but *why*)
-- Embedded validation assertions (`assert`, `print` statements showing data shape, distributions, etc.)
+- Embedded validation: `assert` and `print` statements in Python, or `stopifnot()` and `cat()` in R, showing data shape, distributions, etc.
 - An **appended execution log** at the bottom of each script (added automatically after execution) showing exactly what happened: duration, exit code, stdout/stderr output, pre/post data state
 
 **How to read scripts:** Scripts read top-to-bottom like a lab notebook -- no functions, no classes, no jumping around. Start at the top, follow the comments, and then check the execution log outputs at the bottom. The execution log is the "ground truth" for what actually happened when the script ran.
@@ -679,9 +686,9 @@ A companion file, **Plan_Tasks.md**, contains the detailed machine-readable task
 
 **The `cr/` subdirectory:** This is where the code-reviewer's QA inspection scripts live. Each `cr` script is a diagnostic that the code-reviewer wrote and ran to verify a specific analysis script. The naming convention is `stage{N}_{step}_cr{iteration}.py` -- so `stage5_01_cr1.py` is the code-reviewer's first inspection of the first Stage 5 script. If the reviewer found something suspicious and needed to investigate further, you'll see `cr2`, `cr3`, etc.
 
-### The Marimo Notebook
+### The Research Notebook (Marimo or Quarto)
 
-**What it is:** A compiled walkthrough of all the validated scripts, assembled into an interactive marimo notebook that you can view in your browser. It is *not* where the analysis was done -- it's a presentation layer that lets you browse the completed work.
+**What it is:** A compiled walkthrough of all the validated scripts, assembled into a notebook you can view in your browser. DAAF uses **marimo** (`.py`) for Python projects and, when R support is enabled, **Quarto** (`.qmd`) for R projects. In both cases, the notebook is *not* where the analysis was done -- it's a presentation layer that lets you browse the completed work.
 
 **What's inside:**
 - **Section headers** identifying which script stage is being shown
@@ -691,11 +698,13 @@ A companion file, **Plan_Tasks.md**, contains the detailed machine-readable task
 
 **What you won't see:** New analysis code, interactive dashboards, filter widgets, or additional transformations. The notebook is a viewer, not an analysis tool. This is by design -- it ensures that what you see in the notebook is exactly what was executed and validated in the scripts, with nothing added or changed.
 
-**How to view it:** The easiest way is to run `bash view_notebooks.sh` (or `.\view_notebooks.ps1` on Windows) from your `daaf-docker` folder — this opens marimo's notebook browser at [http://localhost:2718](http://localhost:2718) where you can browse and open any notebook. Alternatively, from inside the container you can view a single notebook read-only with:
+**How to view marimo notebooks (Python):** The easiest way is to run `bash view_notebooks.sh` (or `.\view_notebooks.ps1` on Windows) from your `daaf-docker` folder — this opens marimo's notebook browser at [http://localhost:2718](http://localhost:2718) where you can browse and open any notebook. Alternatively, from inside the container you can view a single notebook read-only with:
 ```bash
 marimo run 'research/YYYY-MM-DD_Title/YYYY-MM-DD_Notebook.py' --host 0.0.0.0 --port 2718 --headless
 ```
 You can also open the `.py` file in any text editor -- marimo notebooks are just Python.
+
+**How to view Quarto notebooks (R):** Quarto notebooks are `.qmd` files that render to HTML. From inside the container, render with `quarto render 'research/YYYY-MM-DD_Title/YYYY-MM-DD_Notebook.qmd'`, then view the resulting HTML file in the browser-based code editor. You can also open the `.qmd` file directly in any text editor -- Quarto notebooks are plain text with YAML frontmatter and code chunks.
 
 ### The Report
 

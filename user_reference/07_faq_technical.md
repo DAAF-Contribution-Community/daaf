@@ -12,6 +12,7 @@ Operational questions with concrete answers. If you're stuck, troubleshooting, o
 - [**Working with DAAF**](#working-with-daaf)
 - [**Setup and Settings**](#setup-and-settings)
 - [**Packages and Environment**](#packages-and-environment)
+- [**R and Language Support**](#r-and-language-support)
 - [**Session Logs and Diagnostics**](#session-logs-and-diagnostics)
 - [**Technology Choices**](#technology-choices)
 - [**Performance and Configuration**](#performance-and-configuration)
@@ -272,7 +273,7 @@ Cost remains a meaningful barrier to entry for DAAF, but it's shrinking. As open
 
 ### Q: How much disk space does DAAF use?
 
-The Docker image is roughly **3-5 GB** after building. It includes a Debian Bookworm base image, Python 3.12, 57 pinned Python packages (data science, geospatial, econometrics, visualization, ML), geospatial system libraries (GDAL/GEOS/PROJ), and Claude Code. Docker also keeps build cache layers, so total Docker disk usage may be somewhat higher.
+The Docker image is roughly **3-5 GB** after building. It includes a Debian Bookworm base image, Python 3.12, 57 pinned Python packages (data science, geospatial, econometrics, visualization, ML), geospatial system libraries (GDAL/GEOS/PROJ), and Claude Code. When R support is enabled, the image also includes R, 30+ pinned R packages (tidyverse, fixest, survey, sf, and more), and the Quarto CLI, which increases its size accordingly. Docker also keeps build cache layers, so total Docker disk usage may be somewhat higher.
 
 Beyond the image, your Docker volume will grow as you create research projects. Each project accumulates scripts, parquet data files, session logs, and notebooks. A typical full-pipeline project might add 50-500 MB depending on how many datasets you fetch and how large they are.
 
@@ -303,27 +304,57 @@ For self-guided reading, the full user documentation suite is in `user_reference
 
 ## Packages and Environment
 
-### Q: How do I install additional Python packages?
+### Q: How do I install additional Python or R packages?
 
-The recommended approach is to ask DAAF to add the package to the `Dockerfile` and rebuild the container. For detailed step-by-step instructions, common scenarios, and examples, see [**04. Extending DAAF -- Customizing Your Python Environment**](04_extending_daaf.md#the-recommended-path-modify-the-dockerfile).
+**Python:** The recommended approach is to ask DAAF to add the package to the `Dockerfile` and rebuild the container. For detailed step-by-step instructions, common scenarios, and examples, see [**04. Extending DAAF -- Customizing Your Python and R Environment**](04_extending_daaf.md#the-recommended-path-modify-the-dockerfile-python).
+
+**R (when R support is enabled):** For quick, session-only use, run `install.packages("pkgname")` inside the container -- the package will be available for the rest of that session but will not survive a container restart. For permanent installation, add the package to the `Dockerfile`'s R package install block and rebuild the container. DAAF uses Posit Package Manager (P3M) with date-pinned snapshots for R package reproducibility, so permanent additions go through the Dockerfile just like Python packages. See [**04. Extending DAAF**](04_extending_daaf.md) for more details.
 
 ### Q: Can I use `apt-get` or `sudo` inside the container?
 
 No. The DAAF container runs as a non-root user (`appuser`) with all Linux capabilities dropped and privilege escalation blocked. This is a deliberate security hardening measure -- `apt-get`, `sudo`, and other system-level commands are completely unavailable at runtime.
 
-If you need system-level packages (for example, a C library that a Python package depends on), you'll want to ask DAAF to add them to the `apt-get install` block in the `Dockerfile`. See [**04. Extending DAAF -- Customizing Your Python Environment**](04_extending_daaf.md#adding-system-level-dependencies) for the full step-by-step process.
+If you need system-level packages (for example, a C library that a Python package depends on), you'll want to ask DAAF to add them to the `apt-get install` block in the `Dockerfile`. See [**04. Extending DAAF -- Customizing Your Python and R Environment**](04_extending_daaf.md#adding-system-level-dependencies) for the full step-by-step process.
 
 ### Q: Will packages I install at runtime persist across restarts?
 
 No. Packages installed at runtime (via `uv pip install --user` or `pip install --user`) are stored in the container's filesystem, which is **separate** from the Docker volume where your research data lives. Your research files, scripts, and outputs persist across restarts because they're in the named volume (`daaf_daaf-data`). But runtime-installed packages live in the container image layer, so they disappear whenever the container is rebuilt or recreated (e.g., after `docker compose down` + `docker compose up -d`, or after `docker compose up -d --build`).
 
-To make a package permanently part of your container, add it to the `Dockerfile` and rebuild. See [**04. Extending DAAF -- Customizing Your Python Environment**](04_extending_daaf.md#the-recommended-path-modify-the-dockerfile) for the full process.
+To make a package permanently part of your container, add it to the `Dockerfile` and rebuild. See [**04. Extending DAAF -- Customizing Your Python and R Environment**](04_extending_daaf.md#the-recommended-path-modify-the-dockerfile-python) for the full process.
 
 ### Q: What package manager does DAAF use?
 
 DAAF uses **[uv](https://docs.astral.sh/uv/)**, a fast Rust-based Python package manager by Astral (the makers of Ruff). It's fully compatible with pip -- it reads the same package index (PyPI) and supports the same package specifiers -- but it's significantly faster, often 10-50x for large installs.
 
 In the `Dockerfile`, packages are installed with `uv pip install --system` (system-wide, during the root build phase). At runtime inside the container, use `uv pip install --user <package>` (user-local, since you're not root). Regular `pip install --user <package>` also works if you prefer -- both tools install from the same source.
+
+---
+
+## R and Language Support
+
+> The questions in this section apply when R support is enabled in your build.
+
+### Q: How do I switch between R and Python?
+
+Just tell DAAF. Say something like "I want to use R" or "set execution language to R" at the start of your session, and DAAF will configure itself to write R scripts, use tidyverse for data manipulation, validate with `stopifnot()` and `cat()`, and assemble Quarto notebooks instead of Marimo. This sets a preference in the project configuration that persists across sessions until you change it back.
+
+To switch back, say "set execution language to Python" or "I want to use Python." The framework adjusts everything accordingly -- script templates, validation patterns, notebook format, and library choices.
+
+### Q: Can I mix R and Python in one pipeline?
+
+No. Each DAAF pipeline runs in a single language -- all scripts, validation, and notebooks within a given project use either Python or R, not both. This is by design: mixing languages within a pipeline would break the audit trail, complicate the code review process, and make reproducibility much harder to verify.
+
+That said, parquet files are completely language-agnostic. Data saved by a Python pipeline can be read by an R pipeline and vice versa (R reads them with `arrow::read_parquet()`). So you can absolutely analyze the same dataset in both languages across different projects -- you just can't mix them within a single project's pipeline.
+
+### Q: How do I add an R package?
+
+For quick, session-only use, run `install.packages("pkgname")` inside the container. The package will be available for the rest of that session but will disappear when the container is rebuilt or recreated.
+
+For permanent installation, add the package to the `Dockerfile`'s R package install block and rebuild the container. DAAF uses Posit Package Manager (P3M) with date-pinned snapshots for reproducibility, so all R packages are installed from a consistent, versioned repository. See [**04. Extending DAAF**](04_extending_daaf.md) for the full step-by-step process.
+
+### Q: What R packages come pre-installed?
+
+DAAF ships with 30+ R packages covering the core data science stack: tidyverse (dplyr, tidyr, readr, purrr, stringr, forcats, lubridate), ggplot2, arrow (for parquet I/O), fixest (high-dimensional fixed effects), plm (panel data), survey (complex survey analysis), sf and terra (spatial data), tidymodels (machine learning), plotly, data.table, sandwich, lmtest, modelsummary, marginaleffects, and more. DAAF also includes 10 R library skills that provide curated guidance for using these packages effectively within the framework.
 
 ---
 
@@ -409,7 +440,7 @@ A few reasons, and they're all about making AI-generated code more reliable.
 
 **Type strictness.** Polars is stricter about types than Pandas, which means type-related bugs surface immediately rather than silently propagating through a pipeline.
 
-That said, Pandas is still installed in the container and available if needed. Polars syntax is also very similar to R's tidyverse (intentionally so), which may feel familiar if you're coming from that ecosystem. I'd welcome new skills for the ecosystem to leverage Pandas and R just as robustly in the future!
+That said, Pandas is still installed in the container and available if needed. If you're an R user, DAAF also supports R as a first-class execution language when R support is enabled -- R pipelines use tidyverse (dplyr, tidyr, and friends) as their DataFrame library, with the same file-first execution protocol, parquet-based data pipeline, and inline validation standards. Polars syntax is intentionally similar to tidyverse, so the two ecosystems feel quite natural alongside each other. See the [R and Language Support](#r-and-language-support) FAQ section above for more on switching between languages.
 
 ### Q: Why Marimo instead of Jupyter?
 
@@ -420,6 +451,8 @@ This one's pretty straightforward: Jupyter notebooks and AI code editors are a t
 **Hidden state.** Jupyter's biggest footgun is that cells can be run out of order, creating hidden state that makes notebooks unreproducible. You can run cell 5, then cell 3, then cell 7, and get results that depend on that exact execution order -- but nothing in the notebook records that order. Marimo enforces a dependency graph between cells. If cell B uses a variable from cell A, marimo *knows* that and won't let you break that relationship. Run them in any order and you get the same result.
 
 **AI editability.** Because marimo notebooks are plain Python, Claude can read and write them the same way it handles any other `.py` file. Editing a Jupyter `.ipynb` file requires manipulating JSON structure, cell metadata, kernel info, and output encodings -- it's fragile and error-prone for AI tools. Marimo is dramatically simpler and more reliable for this use case. Far, far, far easier.
+
+**What about R projects?** When R support is enabled, R pipelines use **Quarto** (`.qmd` files) instead of Marimo. Quarto is R's native literate programming system -- it combines Markdown narrative with executable R code chunks, and renders to HTML, PDF, or other formats. Just as Marimo is the natural choice for Python (plain `.py` files, reactive execution, Git-friendly), Quarto is the natural choice for R (Markdown-based, knitr engine, first-class R support). The same principles apply: scripts are the primary artifact, and the Quarto document is assembled from completed scripts at the end for presentation.
 
 ### Q: Why Docker instead of a virtual environment?
 
@@ -451,11 +484,11 @@ This is one of DAAF's most distinctive design choices, and it's worth understand
 
 In most data science workflows, the notebook *is* the work product -- you write code in cells, run them interactively, and the notebook captures both the code and its output. DAAF flips this: **scripts are the primary artifact**, and the notebook is assembled *from* those scripts at the end.
 
-**Reproducibility.** Each script is a self-contained, executable Python file that can be run independently from the command line. You don't need a notebook server, you don't need to run cells in a specific order, and there's no hidden state. Run the script, get the output. Every time.
+**Reproducibility.** Each script is a self-contained, executable Python or R file that can be run independently from the command line. You don't need a notebook server, you don't need to run cells in a specific order, and there's no hidden state. Run the script, get the output. Every time.
 
 **Audit trail.** Each script includes its own execution log appended as a comment block at the bottom -- the exact output from when it was run, including timestamps, row counts, and validation results. This means the evidence of what happened is embedded directly in the artifact, not in a separate log file you might lose track of.
 
-**Version control.** When a script needs revision (say, the code-reviewer finds a bug), the original script is preserved and a new version is created (`_a.py`, `_b.py`). The full history of attempts and fixes is visible in the file system. The marimo notebook only includes the final successful version, but the intermediate attempts remain available for audit.
+**Version control.** When a script needs revision (say, the code-reviewer finds a bug), the original script is preserved and a new version is created (`_a.py`/`_a.R`, `_b.py`/`_b.R`). The full history of attempts and fixes is visible in the file system. The notebook (marimo for Python, Quarto for R) only includes the final successful version, but the intermediate attempts remain available for audit.
 
 **Separation of execution from presentation.** The notebook's job in DAAF is to *present* the completed work in an interactive, explorable format -- not to *do* the work. This separation means the notebook can't accidentally introduce bugs or hidden state, because it's literally just displaying what the scripts already produced.
 

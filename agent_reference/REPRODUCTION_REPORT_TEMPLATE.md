@@ -226,8 +226,11 @@ Copy this template to `Reproduction_Report.md` in the reproduction project folde
 | **Subagent Model Tiers** | [Distinct specialist model IDs by tier used during reproduction (re-execution, debugging, verification) — from agent frontmatter defaults plus any per-dispatch overrides. Record resolved IDs where known, or the tier alias + session date otherwise — e.g., "opus tier: claude-opus-4-8[1m]; sonnet tier: claude-sonnet-4-5". Record BOTH session and subagent models of the reproduction run; the original run's models are separately captured from its Report's AI Disclosure.] |
 | **Reproduction Date** | [YYYY-MM-DD] |
 | **Original Analysis Date** | [YYYY-MM-DD] |
-| **Python Version** | [e.g., 3.12] |
-| **Key Packages** | [polars version, plotnine version, etc.] |
+| **Execution Language** | [Python or R] |
+| **Python Version** | [e.g., 3.12, or N/A if R project] |
+| **R Version** | [e.g., 4.5, or N/A if Python project] |
+| **Quarto Version** | [e.g., 1.7, or N/A if Python project] |
+| **Key Packages** | [polars, plotnine, marimo, etc. (Python) or tidyverse, ggplot2, arrow, etc. (R)] |
 
 ### Environment Compatibility Assessment
 

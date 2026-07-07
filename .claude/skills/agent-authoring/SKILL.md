@@ -218,6 +218,7 @@ the content a second time and waste context tokens.
 |-------|-------------|
 | `data-scientist` | research-executor, code-reviewer, debugger, data-ingest, data-planner, plan-checker, data-verifier, source-researcher, research-synthesizer, integration-checker, report-writer, notebook-assembler |
 | `marimo` | notebook-assembler |
+| `quarto` | notebook-assembler |
 
 ## Naming Convention
 

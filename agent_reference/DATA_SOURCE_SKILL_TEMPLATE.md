@@ -338,6 +338,7 @@ When in doubt, re-run data-ingest to re-verify against fresh data.
 
 ### Example Fetch
 
+**Python:**
 ```python
 # Uses fetch_from_mirrors() from fetch-patterns.md — tries each mirror
 # in priority order per mirrors.yaml and applies filters locally.
@@ -350,10 +351,28 @@ df = fetch_from_mirrors(
 )
 ```
 
+**R:**
+```r
+# Uses arrow::read_parquet() for mirror-hosted parquet files.
+# Mirror URL constructed from mirrors.yaml configuration.
+library(arrow)
+library(dplyr)
+
+df <- read_parquet("[mirror_url]/[source]/[dataset_path].parquet") |>
+  filter(fips == 6, year %in% c([year]))
+```
+
 ### Filtering
 
+**Python:**
 ```python
 # [Source-specific filtering examples]
+# Show 2-3 common filter patterns relevant to this source
+```
+
+**R:**
+```r
+# [Source-specific filtering examples using dplyr::filter()]
 # Show 2-3 common filter patterns relevant to this source
 ```
 ```
@@ -430,6 +449,7 @@ Use this skeleton instead of (or in addition to) the mirror-based skeleton above
 
 ### Example Fetch
 
+**Python:**
 ```python
 import os, io, requests
 import polars as pl
@@ -450,17 +470,50 @@ print(f"Shape: {df.shape}")
 assert df.shape[0] > 0, "STOP: Empty response from API"
 ```
 
+**R:**
+```r
+library(httr2)
+library(arrow)
+
+# --- Config ---
+API_KEY <- Sys.getenv("[ENV_VAR_NAME]")
+ENDPOINT <- "[base_url/endpoint]"
+
+# --- Fetch ---
+# INTENT: Download [dataset] via [API name]
+# ASSUMES: API key is set in environment
+resp <- request(ENDPOINT) |>
+  req_url_query(key = API_KEY) |>
+  req_perform()
+df <- resp_body_string(resp) |>
+  read.delim(text = _, sep = "\t") |>
+  as_tibble()
+
+# --- Validate ---
+cat(sprintf("Shape: %d rows x %d cols\n", nrow(df), ncol(df)))
+stopifnot("STOP: Empty response from API" = nrow(df) > 0)
+```
+
 ### Data Persistence
 
 **Local storage (download once, then use local file):**
+
+Python:
 ```python
 # Save to project data/raw/ after fetching
 df.write_parquet(f"{DATA_DIR}/raw/{DATE}_{source}_{dataset}.parquet")
 # Subsequent scripts load from local parquet — no API access needed
 ```
 
+R:
+```r
+# Save to project data/raw/ after fetching
+write_parquet(df, file.path(DATA_DIR, "raw", paste0(DATE, "_", source, "_", dataset, ".parquet")))
+# Subsequent scripts load from local parquet — no API access needed
+```
+
 **Live query (fetch from API each time):**
-```python
+```
 # Include the full API call pattern above in each Stage 5 script
 # Data is always current but requires API access and a valid key
 # Consider saving a local backup for offline use
@@ -468,9 +521,16 @@ df.write_parquet(f"{DATA_DIR}/raw/{DATE}_{source}_{dataset}.parquet")
 
 ### Filtering
 
+**Python:**
 ```python
 # [Source-specific filtering examples after download]
 # All filtering is done locally with Polars after the API response is received
+```
+
+**R:**
+```r
+# [Source-specific filtering examples after download]
+# All filtering is done locally with dplyr after the API response is received
 ```
 ```
 
@@ -550,6 +610,7 @@ Use this section when the data source comprises multiple related files at differ
 
 ### Join Patterns
 
+**Python:**
 ```python
 # Join schools to districts
 schools_with_district = schools.join(
@@ -562,6 +623,18 @@ schools_with_district = schools.join(
 # WARNING: Check for leaid values in schools that have no district match
 unmatched = schools_with_district.filter(pl.col("col_district").is_null()).shape[0]
 print(f"Join coverage: {len(schools_with_district) - unmatched} / {len(schools_with_district)}")
+```
+
+**R:**
+```r
+# Join schools to districts
+schools_with_district <- schools |>
+  left_join(districts, by = "leaid", suffix = c("", "_district"))
+# ASSUMES: leaid is present in both files
+# WARNING: Check for leaid values in schools that have no district match
+unmatched <- sum(is.na(schools_with_district$col_district))
+cat(sprintf("Join coverage: %d / %d\n",
+    nrow(schools_with_district) - unmatched, nrow(schools_with_district)))
 ```
 
 ### Cross-Level Caveats

@@ -38,6 +38,7 @@ Copy this template to `STATE.md` in the project folder when starting a Full Pipe
 | **DAAF Version** | [Short git commit hash — from `git rev-parse --short HEAD` at project setup] |
 | **Session Model ID** | [Model identifier driving the orchestrator/main session at session start — record the runtime value, not this example (e.g., "claude-opus-4-8[1m]")] |
 | **Subagent Model Tiers** | [Distinct specialist model IDs by tier, from agent frontmatter defaults (`model: opus` / `model: sonnet`) plus any per-dispatch overrides the orchestrator applied. Record resolved IDs where known, or the tier alias + session date otherwise — e.g., "opus tier: claude-opus-4-8[1m]; sonnet tier: claude-sonnet-4-5". See `.claude/skills/daaf-orchestrator/SKILL.md` > "Model Selection for Subagent Dispatch" and AI_DISCLOSURE_REFERENCE.md > Multi-Model Sessions.] |
+| **Execution Language** | [Python or R — from CLAUDE.md User Preferences] |
 | **Session Date(s)** | [Date(s) of analysis sessions — e.g., "2026-02-11"] |
 | **Session Transcript(s)** | `logs/` — collected at project completion via `collect_session_logs.sh` |
 
@@ -139,6 +140,8 @@ Copy this template to `STATE.md` in the project folder when starting a Full Pipe
 | 1 | Fetch CCD schools | `scripts/stage5_fetch/01_fetch-ccd.py` | [PENDING/PASSED/FAILED] | [NOT_RUN/PENDING/PASSED/WARNING/REVISED] | `scripts/cr/stage5_01_cr1.py` | [1 of 5] | [0-2] | [N] | [N] | |
 | 2 | Clean CCD schools | `scripts/stage6_clean/01_clean-ccd.py` | [PENDING/PASSED/FAILED] | [NOT_RUN/PENDING/PASSED/WARNING/REVISED] | `scripts/cr/stage6_01_cr1.py` | [1 of 5] | [0-2] | [N] | [N] | |
 | 3 | Join CCD + MEPS | `scripts/stage7_transform/01_join-data.py` | [PENDING/PASSED/FAILED] | [NOT_RUN/PENDING/PASSED/WARNING/REVISED] | `scripts/cr/stage7_01_cr1.py` | [1 of 5] | [0-2] | [N] | [N] | |
+
+> **Note:** Script extensions are `.py` for Python projects and `.R` for R projects. QA scripts use the same extension as the execution language.
 
 **QA Status Values:**
 - **NOT_RUN** — code-reviewer has not been invoked for this script (blocks next script invocation)
@@ -304,7 +307,12 @@ Copy this template to `STATE.md` in the project folder when starting a Full Pipe
 | Library | Citation | Rationale | Stage | Script |
 |---------|----------|-----------|-------|--------|
 | DAAF | Kim, B.H. (2026). *DAAF: Data Analyst Augmentation Framework* (Version 2.1.0) [Computer software]. https://github.com/DAAF-Contribution-Community/daaf | Analysis framework | — | — |
-| marimo | marimo team. marimo: Reactive Python notebook [Computer software]. https://marimo.io/ | Analysis notebook format | — | — |
+| marimo | marimo team. marimo: Reactive Python notebook [Computer software]. https://marimo.io/ | Analysis notebook format (Python projects) | — | — |
+
+> **Language-conditional pre-population:** For Python projects, pre-populate the marimo row above. For R projects, replace the marimo row with R, Quarto, and tidyverse:
+> - R Core Team (2025). R: A Language and Environment for Statistical Computing. https://www.R-project.org/
+> - Allaire, J.J. et al. Quarto: An Open-Source Scientific and Technical Publishing System. https://quarto.org/
+> - Wickham, H. et al. (2019). "Welcome to the Tidyverse." JOSS, 4(43), 1686.
 
 ### Reporting Standards
 

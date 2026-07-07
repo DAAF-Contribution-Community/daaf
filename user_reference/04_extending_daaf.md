@@ -16,7 +16,7 @@ This guide focuses on the primary extension path: bringing new datasets, data do
 - [**Adding a New Agent**](#adding-a-new-agent)
 - [**Testing Your New Extension End-to-End**](#testing-your-new-extension-end-to-end)
 - [**Submitting Your Extension for Inclusion (Optional)**](#submitting-your-extension-for-inclusion-optional)
-- [**Customizing Your Python Environment**](#customizing-your-python-environment)
+- [**Customizing Your Python and R Environment**](#customizing-your-python-and-r-environment)
 - [**Recommended Next Steps**](#recommended-next-steps)
 
 ---
@@ -165,7 +165,7 @@ Once you've provided your feedback, the agent uses your corrections to finalize 
 
 ### Methodology Skills (via Skill-Authoring)
 
-For adding knowledge about a statistical method, Python library, or analytical technique, you'll use the `skill-authoring` skill directly. This is more free-form than data onboarding, and the content depends heavily on what you're documenting. You may find it helpful to refer DAAF to other standard skills this one will be most like. Python library? Try referencing the `plotnine` or `polars` skills. Wanting to do something more methodological in nature? Try pointing it to the `data-scientist` skill. And so on. My hope is that as the community continues to extend DAAF in a few directions, we'll have plenty of exemplars to point to.
+For adding knowledge about a statistical method, library, or analytical technique, you'll use the `skill-authoring` skill directly. This is more free-form than data onboarding, and the content depends heavily on what you're documenting. You may find it helpful to refer DAAF to other standard skills this one will be most like. Python library? Try referencing the `plotnine` or `polars` skills. R library (when R support is enabled)? Try referencing the `ggplot2` or `tidyverse` skills. Wanting to do something more methodological in nature? Try pointing it to the `data-scientist` skill. And so on. My hope is that as the community continues to extend DAAF in a few directions, we'll have plenty of exemplars to point to.
 
 Ask DAAF something like:
 
@@ -361,11 +361,11 @@ To share learnings with the broader community, [open an issue](https://github.co
 
 ---
 
-## Customizing Your Python Environment
+## Customizing Your Python and R Environment
 
-DAAF ships with a comprehensive Python data science stack (50+ packages covering statistics, econometrics, geospatial analysis, machine learning, visualization, and more). But research is unpredictable -- you may need a package we didn't anticipate. This section covers how to add Python packages, system-level libraries, and other software to your DAAF environment.
+DAAF ships with a comprehensive Python data science stack (50+ packages covering statistics, econometrics, geospatial analysis, machine learning, visualization, and more), and -- when R support is enabled -- a full R environment with 10+ library skills covering data manipulation, visualization, econometrics, spatial analysis, machine learning, and more. But research is unpredictable -- you may need a package we didn't anticipate. This section covers how to add Python packages, R packages, system-level libraries, and other software to your DAAF environment. The Python instructions come first, followed by [R Packages](#r-packages) at the end of this section.
 
-### The Recommended Path: Modify the Dockerfile
+### The Recommended Path: Modify the Dockerfile (Python)
 
 The best way to add packages is to ask DAAF to edit the `Dockerfile` and then rebuild the container. This is a multi-step process and involves one step that's easy to miss, so the rest of this section walks through the whole thing carefully.
 
@@ -536,9 +536,9 @@ Ask DAAF to add `networkx==3.4.2` (or your preferred version) to the core data s
 
 Ask DAAF to edit the version pin in the Dockerfile. For example, to change Polars from `1.38.1` to `1.39.0`, find `polars==1.38.1` and change it to `polars==1.39.0`. Then follow the same Steps 2-3 from "Step-by-Step Process" above (exit and run `rebuild_daaf`) -- the container-host boundary applies to version-pin edits exactly the same way it applies to new package additions. Be cautious with version changes -- other packages may depend on the currently pinned version, so test your analysis after upgrading. Ask DAAF/Claude Code to run a `uv pip compile` dry-run to test compatibility between all the package versions before committing to the rebuild.
 
-**"I need an R package or want to use R"**
+**"I need an R package that isn't included"**
 
-DAAF is a Python-based environment and does not include R. However, DAAF includes translation skills (`r-python-translation` and `stata-python-translation`) that can help you find Python equivalents for R or Stata operations you're familiar with. If you tell DAAF "I usually do this in R with dplyr," it can show you how to accomplish the same thing in Python with Polars.
+When R support is enabled, DAAF includes R as a first-class execution language with 11 library skills (tidyverse, ggplot2, fixest, r-stats, quarto, plotly-r, sf-terra, plm, tidymodels, survey-r, and gt). See the **R Packages** subsection below for how to add additional R packages. If you're coming from a Python background and want to understand R equivalents, DAAF includes a `python-r-translation` skill; from Stata, there's a `stata-r-translation` skill. If R support is not enabled, DAAF runs as a Python-based environment, and the `r-python-translation` and `stata-python-translation` skills can help you find Python equivalents for R or Stata operations you're familiar with.
 
 **"I need a package that requires compilation and it's failing"**
 
@@ -547,6 +547,56 @@ Some packages need a C/C++ compiler or specific development headers. Ask DAAF to
 **"Can I use `apt-get` or `sudo` inside the running container?"**
 
 No. The container runs as a non-root user (`appuser`) with all Linux capabilities dropped (`cap_drop: ALL`) and privilege escalation explicitly blocked. This is a deliberate security hardening measure -- it prevents both you and Claude from accidentally (or intentionally) making system-level changes at runtime that could compromise the container's integrity. All system-level software must be installed through the Dockerfile and built into the image.
+
+### R Packages
+
+> This subsection applies when R support is enabled in your build.
+
+When R support is enabled, DAAF includes R with a curated set of packages covering the most common needs for social science research: data manipulation (tidyverse), visualization (ggplot2, plotly), econometrics (fixest, plm), spatial analysis (sf, terra), machine learning (tidymodels), complex survey analysis (survey), and more. It also includes the Quarto CLI for producing reproducible R research notebooks (the R equivalent of marimo for Python).
+
+If you need an R package that isn't pre-installed, the process mirrors the Python approach: you can install it temporarily for quick testing, or add it to the Dockerfile for persistence.
+
+#### Runtime Installation for Quick Testing
+
+Inside the container, you can install an R package for the current session:
+
+```r
+install.packages("broom.mixed")
+```
+
+Like Python runtime installs, this is **ephemeral** -- the package will be lost when the container is rebuilt or restarted. Use it for testing, then add the package to the Dockerfile to make it permanent.
+
+#### The Recommended Path: Modify the Dockerfile
+
+To permanently add an R package, ask DAAF to add an `Rscript -e 'install.packages("pkg")'` line to the Dockerfile. For example:
+
+```
+I'd like to add the broom.mixed package to the Dockerfile so I
+can use it for tidying mixed effects model output.
+```
+
+DAAF will add a line like this to the R package installation section of the Dockerfile:
+
+```dockerfile
+RUN Rscript -e 'install.packages("broom.mixed")'
+```
+
+Then follow the same exit-and-rebuild process described in the Python section above: exit Claude Code, exit the container, and run `bash rebuild_daaf.sh` (or `.\rebuild_daaf.ps1` on Windows) from your `daaf-docker` folder.
+
+#### How DAAF Ensures R Package Reproducibility
+
+DAAF pins R package versions using **Posit Package Manager (P3M)**, a date-specific CRAN snapshot. The Dockerfile configures R to install packages from a snapshot frozen on a specific date, which means that every `install.packages()` call -- whether at build time or runtime -- pulls the exact same package versions regardless of when you run it. This is the R equivalent of pinning Python packages with `==` version specifiers: it ensures that your R environment is reproducible across builds and across machines.
+
+You don't need to specify version numbers when installing R packages -- the P3M snapshot handles that automatically. If you need a newer version of a package than what's available in the current snapshot, you can temporarily override the repository URL in your `install.packages()` call, but this trades reproducibility for currency and should be done deliberately.
+
+**Note on renv:** The R ecosystem's standard project-level dependency manager, `renv`, is available in the container but is not required. DAAF's Dockerfile-based approach (P3M snapshot + explicit `install.packages()` calls) handles reproducibility at the container level, which is sufficient for most DAAF workflows. If you have an existing project that uses `renv`, you can use it inside the container without conflict.
+
+#### Checking What R Packages Are Already Installed
+
+- **Ask DAAF directly:** "What R packages are installed?" -- DAAF can check for you
+- **Run `Rscript -e 'installed.packages()[, "Package"]'`** inside the container to see all installed packages
+- **Read the Dockerfile** to see exactly what's installed
+- **Check the smoke tests** in `scripts/smoke_tests/` -- each R library skill has a corresponding smoke test (`smoke_tidyverse.R`, `smoke_ggplot2.R`, etc.) that exercises core functionality
 
 ---
 

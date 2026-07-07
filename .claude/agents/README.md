@@ -6,6 +6,22 @@ All agents in this directory MUST follow the canonical template at `agent_refere
 
 ---
 
+## Language Support
+
+All code-producing agents support both Python and R. The execution language is determined by the user's preference in CLAUDE.md (`Primary analysis language background` and the pipeline execution-language directive) and propagated by the orchestrator to each agent's prompt. Agents detect the pipeline language from script file extensions (`.py` vs `.R`) and load the appropriate library skills on demand.
+
+Read-only agents (search-agent, plan-checker, data-verifier, integration-checker) and planning/synthesis agents (data-planner, source-researcher, research-synthesizer, report-writer, framework-engineer) are language-agnostic — they reason about artifacts rather than authoring executable pipeline scripts, so they are not listed below.
+
+| Agent | Python Support | R Support |
+|-------|---------------|-----------|
+| research-executor | Default. polars, plotnine, statsmodels, pyfixest | R execution via `run_with_capture.sh`. tidyverse, ggplot2, fixest, r-stats |
+| code-reviewer | Reviews `.py` scripts; QA scripts in Polars | Reviews `.R` scripts; QA scripts in dplyr/arrow |
+| debugger | Diagnoses Python errors; writes `.py` diagnostics | Diagnoses R errors; writes `.R` diagnostics |
+| data-ingest | Profiles with Python (polars, arrow) | Profiles with R (dplyr, arrow, skimr) |
+| notebook-assembler | Assembles Marimo `.py` notebooks | Assembles Quarto `.qmd` notebooks |
+
+---
+
 ## Agent vs Skill Distinction
 
 | Aspect | Skill | Agent |
@@ -46,7 +62,7 @@ DAAF uses a two-tier model routing convention: `opus` for high-judgment roles wh
 | **source-researcher** | Deep-dive into a single data source for caveats, coded values, suppression patterns, and pitfalls | `source-researcher` | 3 | `sonnet` | Source name, variables of interest, research question, years, geographic scope | Five-section source report (Summary, Variables, Caveats, Patterns, Pitfalls) |
 | **research-synthesizer** | Consolidate parallel Stage 2-3 findings into actionable planning guidance with conflict resolution | `research-synthesizer` | 3.5 | `sonnet` | Stage 2 findings, all Stage 3 findings, research question, year range, geographic scope | Integrated synthesis with conflicts, resolutions, and planning recommendations |
 | **debugger** | Diagnose data quality issues and analysis failures using scientific hypothesis-testing methodology | `debugger` | Any (on error) | `opus` | Error message/symptom, failed script path, Plan.md, Plan_Tasks.md (optional), last successful operation | Root cause report with hypothesis log and verified fix |
-| **notebook-assembler** | Compile scripts into Marimo notebook via VERBATIM copy (NO dashboards, NO widgets, NO new code) | `notebook-assembler` | 9 | `sonnet` | Completed scripts (stages 5-8), Plan.md, data files, figure files, project path | Marimo `.py` notebook with script walkthroughs and data inspection cells |
+| **notebook-assembler** | Compile scripts into notebook via VERBATIM copy — Marimo (Python) or Quarto (R) — NO dashboards, NO widgets, NO new code | `notebook-assembler` | 9 | `sonnet` | Completed scripts (stages 5-8), Plan.md, data files, figure files, project path | Marimo `.py` (Python) or Quarto `.qmd` (R) notebook with script walkthroughs and data inspection cells |
 | **integration-checker** | Validate component wiring: data flows, file references, and orphan detection | `integration-checker` | 9, 11, 12 | `sonnet` | Plan.md, Notebook, Report, project folder, script-to-output mappings | Integration check report: CONNECTED / ISSUES FOUND with flow diagrams |
 | **data-ingest** | Profile new datasets and produce comprehensive findings for skill authoring; also handles API acquisition (DI-0) | `data-ingest` | Data Onboarding Mode (Stages DI-0, DI-3 to DI-6) | `sonnet` | Data file path(s) + format, target skill name, intended use, domain context, optional docs, API details (if DI-0) | Part-specific profiling findings for orchestrator; DI-0: acquisition script + API findings |
 | **framework-engineer** | Author, modify, and integrate DAAF framework artifacts with template compliance and cross-file consistency | `framework-engineer` | Framework Development Mode | `opus` | Work type + scope + scoping findings + affected file paths | Framework artifacts (.md files) + integration checklist report |
@@ -229,7 +245,7 @@ Shows which agents produce output consumed by other agents:
 | **debugger** | research-executor | Root cause diagnosis + verified fix + prevention recommendation | After diagnosis |
 | **debugger** | Orchestrator | Escalation (when UNRESOLVED or methodology issue) | Undiagnosed issues |
 | **research-executor** (Stage 8) | notebook-assembler | Scripts + data files + analysis results + figures | After Stage 8 completes |
-| **notebook-assembler** | integration-checker | Marimo notebook (VERBATIM script copies, NO new code) | After Stage 9 compilation |
+| **notebook-assembler** | integration-checker | Marimo `.py` or Quarto `.qmd` notebook (VERBATIM script copies, NO new code) | After Stage 9 compilation |
 | **integration-checker** | data-verifier | Wiring status (CONNECTED / ISSUES FOUND) | Stages 9, 11, 12 |
 | **data-verifier** | Orchestrator | Verification report (PASSED / ISSUES_FOUND with four-layer evidence) | Before delivery |
 | **report-writer** | integration-checker | Report.md (stakeholder report following REPORT_TEMPLATE.md) | After Stage 11 completes |
@@ -335,7 +351,7 @@ Closely read `agent_reference/SCRIPT_EXECUTION_REFERENCE.md` for the mandatory f
 
 ### debugger
 
-**Use when:** Something fails and root cause is unclear, or code-reviewer identifies complex issues requiring root-cause analysis.
+**Use when:** Something fails and root cause is unclear, or code-reviewer identifies complex issues requiring root-cause analysis. Diagnoses both Python and R pipeline errors.
 
 **Key behaviors:**
 - Scientific hypothesis testing (max 5 cycles)
@@ -343,6 +359,7 @@ Closely read `agent_reference/SCRIPT_EXECUTION_REFERENCE.md` for the mandatory f
 - Systematic evidence collection
 - Falsifiable hypothesis formation
 - Documented elimination process
+- Writes diagnostic scripts matching the pipeline language (`.py` or `.R`)
 
 **Escalation rules:**
 - 2 diagnostic cycles maximum before escalating to user
@@ -390,9 +407,9 @@ Closely read `agent_reference/SCRIPT_EXECUTION_REFERENCE.md` for the mandatory f
 
 ### notebook-assembler
 
-**Use when:** Stage 8 is complete and it's time to compile scripts into a marimo notebook (Stage 9).
+**Use when:** Stage 8 is complete and it's time to compile scripts into a notebook (Stage 9).
 
-**Purpose:** LITERALLY COPY script file contents into marimo cells. The notebook is a script viewer, NOT a dashboard.
+**Purpose:** LITERALLY COPY script file contents into notebook cells. Assembles Marimo (Python) or Quarto (R) notebooks. The notebook is a script viewer, NOT a dashboard.
 
 **CRITICAL CONSTRAINT:** This agent COPIES files. It does NOT generate new code, dashboards, filters, or interactive widgets. If you see dropdowns, sliders, or new aggregations in the output, the agent FAILED.
 
@@ -406,29 +423,28 @@ Closely read `agent_reference/SCRIPT_EXECUTION_REFERENCE.md` for the mandatory f
 - An analysis tool
 - An interactive explorer
 
-**Key behaviors:**
+**Language detection:** Inspects script file extensions in `scripts/stage{5,6,7,8}_*/`. If `.py` → assembles Marimo. If `.R` → assembles Quarto.
+
+**Key behaviors (Marimo — Python pipelines):**
 - READ script files from `scripts/`
 - COPY code VERBATIM into code cells (commented out with `# ` prefix)
 - COPY execution logs VERBATIM into accordion cells
 - ADD ONLY `pl.read_parquet() + mo.ui.table()` cells
 - Applies the Four-Cell Pattern per script (header, commented code, log accordion, data load)
 
+**Key behaviors (Quarto — R pipelines):**
+- READ script files from `scripts/`
+- COPY code VERBATIM into ```` ```{r} ```` chunks with `#| eval: false`
+- COPY execution logs VERBATIM into collapsible callout blocks
+- ADD ONLY `arrow::read_parquet()` + `glimpse()` inspection chunks
+- Applies heading + chunk + callout + inspection pattern per script
+
 **PROHIBITIONS (agent FAILED if output contains):**
-- `mo.ui.dropdown()` -- NO dropdowns
-- `mo.ui.slider()` -- NO sliders
-- `mo.ui.multiselect()` -- NO multiselects
-- `.group_by()` outside script code -- NO new aggregations
-- `.pivot()` outside script code -- NO new pivots
-- `.filter()` in data cells -- NO filtering
-- `.with_columns()` in data cells -- NO transforms
+- New analysis code (aggregations, pivots, filters, transforms) not from original scripts
+- Interactive widgets (Marimo: `mo.ui.dropdown()`, `mo.ui.slider()`, etc.)
+- New visualizations not from original scripts
 
-**What notebook-assembler produces:**
-- Marimo notebook with navigation (markdown only)
-- VERBATIM script code in code cells (commented out)
-- VERBATIM execution logs in accordion cells
-- Simple data load + display cells (THE ONLY NEW CODE)
-
-**Verification:** If output contains `mo.ui.dropdown`, `mo.ui.slider`, `group_by` outside scripts, or `filter` in data cells -> REJECT and re-run
+**Verification:** If output contains interactive widgets, new aggregations outside scripts, or new analysis code -> REJECT and re-run
 
 **Invocation template:** See the appropriate WORKFLOW_PHASE*.md or mode reference file for stage-specific invocation templates.
 
@@ -527,7 +543,7 @@ code-reviewer returns BLOCKER
 
 ### data-ingest
 
-**Use when:** The orchestrator is running Data Onboarding Mode and needs to dispatch a profiling part (A/B/C/D) for a new data file. Each part is a separate subagent invocation managed by the orchestrator.
+**Use when:** The orchestrator is running Data Onboarding Mode and needs to dispatch a profiling part (A/B/C/D) for a new data file. Each part is a separate subagent invocation managed by the orchestrator. Profiles data with Python or R scripts depending on the user's execution language preference.
 
 **Purpose:** Profile new datasets across four orchestrator-managed parts:
 - **Part A:** Structural Discovery (schema, types, shapes, nulls)
@@ -540,6 +556,7 @@ code-reviewer returns BLOCKER
 - Receives part assignment and prior part findings from orchestrator
 - Data file is source of truth; documentation claims are verified against data
 - Returns part-specific profiling findings with confidence assessment
+- Writes profiling scripts in the pipeline language (Python with polars, or R with dplyr/arrow)
 - Skill authoring is NOT performed by this agent (handled at Stage DI-7 by a separate subagent)
 
 **Invocation template:** See the appropriate WORKFLOW_PHASE*.md or mode reference file for stage-specific invocation templates.

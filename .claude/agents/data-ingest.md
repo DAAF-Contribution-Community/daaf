@@ -150,6 +150,44 @@ Read `agent_reference/SCRIPT_EXECUTION_REFERENCE.md` before writing any scripts.
 
 **Your return to the orchestrator summarizes the key findings** within the 3500-word cap. The orchestrator does not need per-column detail — it needs status, key observations, confidence, and issues.
 
+### 4b. Language-Specific Profiling Patterns
+
+Profiling scripts use the execution language specified by the orchestrator. The core profiling logic is the same; the library choices differ:
+
+| Concern | Python | R |
+|---------|--------|---|
+| **Data loading (parquet)** | `polars.read_parquet()` | `arrow::read_parquet()` |
+| **Structural profiling** | `df.schema`, `df.describe()` | `dplyr::glimpse()`, `str()`, `summary()` |
+| **Statistical profiling** | `df.describe()`, custom Polars expressions | `skimr::skim()` (if available), `summary()` |
+| **Relational profiling** | Polars `group_by`, `join`, `filter` | `dplyr` verbs: `group_by`, `left_join`, `filter` |
+| **Assertions** | `assert` + `print()` | `stopifnot()` + `cat()` |
+| **API fetching (DI-0)** | `requests` | `httr2` |
+| **File extension** | `.py` | `.R` |
+| **Script naming** | `scripts/profile_*/NN_task-name.py` | `scripts/profile_*/NN_task-name.R` |
+
+See § Language-Conditional Skill Loading below for which skills to load based on the pipeline language.
+
+### 4c. Language-Conditional Skill Loading
+
+The orchestrator's prompt includes an execution language directive — or detect it from the script extension convention (`.R` → R pipeline, `.py` → Python pipeline).
+
+- **Python pipeline (`.py` scripts, or no directive):** Load Python skills as needed (default behavior)
+- **R pipeline (`.R` scripts, or `"Execution language: R"`):** Load R skills from the table below
+
+| When Profiling Involves | Python Skill | R Skill |
+|------------------------|-------------|---------|
+| Data manipulation (loading, filtering, reshaping, aggregation) | `polars` | `tidyverse` |
+| Distribution or coverage visualizations | `plotnine` | `ggplot2` |
+
+Profiling does not involve regression, panel estimation, survey weighting, ML, or geospatial analysis — those skills are not applicable here. If a profiling task unexpectedly requires capabilities beyond data manipulation and basic visualization, flag it to the orchestrator rather than loading analysis-stage skills.
+
+**Cross-language annotation skills:**
+
+| Skill | Trigger | What It Does |
+|-------|---------|-------------|
+| `r-python-translation` | Orchestrator indicates user has R background | Annotate Python profiling scripts with R-equivalent comments. Load via Skill tool when directed. |
+| `stata-python-translation` | Orchestrator indicates user has Stata background | Annotate Python profiling scripts with Stata-equivalent comments. Load via Skill tool when directed. |
+
 ### 5. Part-Scoped Execution
 
 When invoked, you execute ONLY the profiling part specified in `profiling_part`:
@@ -592,9 +630,4 @@ Load on demand -- do NOT read all at start:
 | `agent_reference/SCRIPT_EXECUTION_REFERENCE.md` | Before writing first script | File-first execution protocol and capture utilities |
 | `agent_reference/INLINE_AUDIT_TRAIL.md` | When writing scripts with transforms | IAT documentation standards |
 
-**Conditional on-demand skill:**
-
-| Skill | Trigger | What It Does |
-|-------|---------|-------------|
-| `r-python-translation` | Orchestrator indicates user has R background | When profiling data for an R-background user, load this skill to annotate profiling scripts with R-equivalent comments. Load via Skill tool when directed. |
-| `stata-python-translation` | Orchestrator indicates user has Stata background | When profiling data for a Stata-background user, load this skill to annotate profiling scripts with Stata-equivalent comments. Load via Skill tool when directed. |
+**Cross-language annotation skills** are documented in § 4c (Language-Conditional Skill Loading).
