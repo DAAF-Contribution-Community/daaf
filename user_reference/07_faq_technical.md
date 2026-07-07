@@ -354,7 +354,7 @@ For permanent installation, add the package to the `Dockerfile`'s R package inst
 
 ### Q: What R packages come pre-installed?
 
-DAAF ships with 30+ R packages covering the core data science stack: tidyverse (dplyr, tidyr, readr, purrr, stringr, forcats, lubridate), ggplot2, arrow (for parquet I/O), fixest (high-dimensional fixed effects), plm (panel data), survey (complex survey analysis), sf and terra (spatial data), tidymodels (machine learning), plotly, data.table, sandwich, lmtest, modelsummary, marginaleffects, and more. DAAF also includes 10 R library skills that provide curated guidance for using these packages effectively within the framework.
+DAAF ships with 30+ R packages covering the core data science stack: tidyverse (dplyr, tidyr, readr, purrr, stringr, forcats, lubridate), ggplot2, arrow (for parquet I/O), fixest (high-dimensional fixed effects), plm (panel data), survey (complex survey analysis), sf and terra (spatial data), tidymodels (machine learning), plotly, data.table, sandwich, lmtest, modelsummary, marginaleffects, and more. DAAF also includes 11 R library skills that provide curated guidance for using these packages effectively within the framework.
 
 ---
 

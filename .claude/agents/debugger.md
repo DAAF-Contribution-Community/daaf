@@ -205,8 +205,10 @@ When diagnosing pipeline failures, load skills that match the pipeline language.
 
 | Skill | Trigger | What It Does |
 |-------|---------|-------------|
-| `r-python-translation` | Orchestrator indicates user has R background | Explain Python errors and fixes in R-equivalent terms. Load via Skill tool when directed. |
-| `stata-python-translation` | Orchestrator indicates user has Stata background | Explain Python errors and fixes in Stata-equivalent terms. Load via Skill tool when directed. |
+| `r-python-translation` | Orchestrator indicates user has R background (Python execution) | Explain Python errors and fixes in R-equivalent terms. Load via Skill tool when directed. |
+| `stata-python-translation` | Orchestrator indicates user has Stata background (Python execution) | Explain Python errors and fixes in Stata-equivalent terms. Load via Skill tool when directed. |
+| `python-r-translation` | Orchestrator indicates user has Python background (R execution) | Explain R errors and fixes in Python-equivalent terms. Load via Skill tool when directed. |
+| `stata-r-translation` | Orchestrator indicates user has Stata background (R execution) | Explain R errors and fixes in Stata-equivalent terms. Load via Skill tool when directed. |
 
 ### 8. Evidence Collection
 

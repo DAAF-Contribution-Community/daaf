@@ -185,8 +185,10 @@ Profiling does not involve regression, panel estimation, survey weighting, ML, o
 
 | Skill | Trigger | What It Does |
 |-------|---------|-------------|
-| `r-python-translation` | Orchestrator indicates user has R background | Annotate Python profiling scripts with R-equivalent comments. Load via Skill tool when directed. |
-| `stata-python-translation` | Orchestrator indicates user has Stata background | Annotate Python profiling scripts with Stata-equivalent comments. Load via Skill tool when directed. |
+| `r-python-translation` | Orchestrator indicates user has R background (Python execution) | Annotate Python profiling scripts with R-equivalent comments. Load via Skill tool when directed. |
+| `stata-python-translation` | Orchestrator indicates user has Stata background (Python execution) | Annotate Python profiling scripts with Stata-equivalent comments. Load via Skill tool when directed. |
+| `python-r-translation` | Orchestrator indicates user has Python background (R execution) | Annotate R profiling scripts with Python-equivalent comments. Load via Skill tool when directed. |
+| `stata-r-translation` | Orchestrator indicates user has Stata background (R execution) | Annotate R profiling scripts with Stata-equivalent comments. Load via Skill tool when directed. |
 
 ### 5. Part-Scoped Execution
 

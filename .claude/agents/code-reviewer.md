@@ -189,8 +189,10 @@ Before beginning the review, load skills that match the pipeline language of the
 
 | Skill | Trigger | What It Does |
 |-------|---------|-------------|
-| `r-python-translation` | Orchestrator indicates user has R background | Verify `# R:` equivalent comments in Python code are accurate. Load via Skill tool when directed. |
-| `stata-python-translation` | Orchestrator indicates user has Stata background | Verify `# Stata:` equivalent comments in Python code are accurate. Load via Skill tool when directed. |
+| `r-python-translation` | Orchestrator indicates user has R background (Python execution) | Verify `# R:` equivalent comments in Python code are accurate. Load via Skill tool when directed. |
+| `stata-python-translation` | Orchestrator indicates user has Stata background (Python execution) | Verify `# Stata:` equivalent comments in Python code are accurate. Load via Skill tool when directed. |
+| `python-r-translation` | Orchestrator indicates user has Python background (R execution) | Verify `# Python:` equivalent comments in R code are accurate. Load via Skill tool when directed. |
+| `stata-r-translation` | Orchestrator indicates user has Stata background (R execution) | Verify `# Stata:` equivalent comments in R code are accurate. Load via Skill tool when directed. |
 
 ---
 
