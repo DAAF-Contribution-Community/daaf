@@ -264,7 +264,6 @@ Describe "daaf_lib.ps1 Import-DaafSettingsFile" {
         Remove-Item Env:DAAF_PORT_LOGVIEWER -ErrorAction SilentlyContinue
         Remove-Item Env:DAAF_PORT_VSCODE   -ErrorAction SilentlyContinue
         Remove-Item Env:DAAF_DEV           -ErrorAction SilentlyContinue
-        Remove-Item Env:DAAF_R             -ErrorAction SilentlyContinue
     }
 
     AfterEach {
@@ -274,7 +273,6 @@ Describe "daaf_lib.ps1 Import-DaafSettingsFile" {
         Remove-Item Env:DAAF_PORT_LOGVIEWER -ErrorAction SilentlyContinue
         Remove-Item Env:DAAF_PORT_VSCODE   -ErrorAction SilentlyContinue
         Remove-Item Env:DAAF_DEV           -ErrorAction SilentlyContinue
-        Remove-Item Env:DAAF_R             -ErrorAction SilentlyContinue
     }
 
     It "picks up a DAAF_* value from the settings file" {
@@ -290,14 +288,6 @@ Describe "daaf_lib.ps1 Import-DaafSettingsFile" {
         Set-Content -Path $script:SettingsFile -Value "DAAF_DEV=1"
         Import-DaafSettingsFile -SettingsFile $script:SettingsFile
         $env:DAAF_DEV | Should -Be "1"
-    }
-
-    It "picks up the DAAF_R build flag from the settings file" {
-        # DAAF_R rides the same whitelist bridge as the four multi-instance keys
-        # so it can reach `docker compose build` as --build-arg DAAF_R=${DAAF_R:-0}.
-        Set-Content -Path $script:SettingsFile -Value "DAAF_R=1"
-        Import-DaafSettingsFile -SettingsFile $script:SettingsFile
-        $env:DAAF_R | Should -Be "1"
     }
 
     It "lets an already-set process env var win over the file value" {

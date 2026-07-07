@@ -24,12 +24,6 @@ services:
         # environment_settings.txt into the shell env before invoking the build.
         # See the DAAF_DEV block in the Dockerfile for what this installs.
         DAAF_DEV: "${DAAF_DEV:-0}"
-        # Opt-in R-support build path (adds R, ~30+ R packages via a P3M snapshot,
-        # and the Quarto CLI). Same mechanics as DAAF_DEV above: defaults to 0 so a
-        # normal build is unchanged, and the install/rebuild scripts bridge DAAF_R
-        # from environment_settings.txt into the shell env before the build.
-        # See the DAAF_R blocks in the Dockerfile for what this installs.
-        DAAF_R: "${DAAF_R:-0}"
     env_file:                      # Requires Docker Compose v2.17+ (Docker Desktop 4.15+)
       - path: environment_settings.txt
         required: false         # Container starts normally if environment_settings.txt doesn't exist

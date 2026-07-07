@@ -248,7 +248,7 @@ These contributions involve modifying the core framework -- the agents, protocol
 
 - **Porting to other coding agent platforms.** DAAF is built on Claude Code, but the vast majority of the tooling -- Skills, Agents, `agent_reference/` protocols -- can be ported to any similar agentic coding harness (Gemini CLI, Codex, OpenCode, etc.). The Hooks system is the most platform-specific component and will need more finessing. If you're interested in bringing DAAF to other platforms, this would be an incredibly valuable contribution that opens the framework to a much broader user base.
 
-- **Coding language expansion.** When R support is enabled, DAAF supports both Python and R as first-class execution languages. R support includes 11 library skills (tidyverse, ggplot2, fixest, plm, survey, sf/terra, tidymodels, and more), full agent support for R script execution and review, and Quarto notebooks for R's literate programming format. Adapting DAAF for additional languages -- Julia, Stata, or any other analytic language that runs from the command line -- remains a welcome and impactful contribution opportunity. The R integration provides a strong template for how to bring a new language into the framework.
+- **Coding language expansion.** DAAF supports both Python and R as first-class execution languages. R support includes 11 library skills (tidyverse, ggplot2, fixest, plm, survey, sf/terra, tidymodels, and more), full agent support for R script execution and review, and Quarto notebooks for R's literate programming format. Adapting DAAF for additional languages -- Julia, Stata, or any other analytic language that runs from the command line -- remains a welcome and impactful contribution opportunity. The R integration provides a strong template for how to bring a new language into the framework.
 
 ### Extension vs. Contribution: Where's the Line?
 
@@ -288,7 +288,7 @@ Not every contribution needs to be huge, but every contribution should meet a ba
 
 ### Code Contributions
 
-- **Follow the existing patterns.** DAAF's Python code follows specific conventions -- Polars over pandas, parquet over CSV, file-first execution (write to file then run, never inline execution), inline audit trail documentation. When R support is enabled, R code follows parallel conventions: tidyverse over base R for data manipulation, parquet over CSV, file-first execution with `run_with_capture.sh`, `stopifnot()` for assertions, native pipe `|>` over magrittr `%>%`, and the same inline audit trail documentation standards. Read [`agent_reference/SCRIPT_EXECUTION_REFERENCE.md`](agent_reference/SCRIPT_EXECUTION_REFERENCE.md) and [`agent_reference/INLINE_AUDIT_TRAIL.md`](agent_reference/INLINE_AUDIT_TRAIL.md) for the standards. These don't need to be hard-and-fast forever, but you should have a good reason for deviating if you do.
+- **Follow the existing patterns.** DAAF's Python code follows specific conventions -- Polars over pandas, parquet over CSV, file-first execution (write to file then run, never inline execution), inline audit trail documentation. R code follows parallel conventions: tidyverse over base R for data manipulation, parquet over CSV, file-first execution with `run_with_capture.sh`, `stopifnot()` for assertions, native pipe `|>` over magrittr `%>%`, and the same inline audit trail documentation standards. Read [`agent_reference/SCRIPT_EXECUTION_REFERENCE.md`](agent_reference/SCRIPT_EXECUTION_REFERENCE.md) and [`agent_reference/INLINE_AUDIT_TRAIL.md`](agent_reference/INLINE_AUDIT_TRAIL.md) for the standards. These don't need to be hard-and-fast forever, but you should have a good reason for deviating if you do.
 - **Include validation.** Every script should validate its own output -- check shapes, assert expected conditions, report statistics. This is a core framework requirement and expectation of users based on the primary goals/framing of the project.
 
 ---
@@ -386,7 +386,7 @@ pwsh -NoProfile -Command "Get-ChildItem ./scripts/host/*.ps1 | ForEach-Object { 
 
 `DAAF_DEV` is an opt-in build flag: when it is unset or `0` (the default), none of this tooling is installed and the image is identical to a standard build. See `user_reference/01_installation_and_quickstart.md` ("Building with the developer test toolchain") for details.
 
-**Working on R support?** The R execution environment (R, the R package set, Quarto, and the R smoke tests in `scripts/smoke_tests/`) is gated behind the separate, independent `DAAF_R` opt-in build flag — set `DAAF_R=1` in `environment_settings.txt` and rebuild, the same pattern as `DAAF_DEV`. See `user_reference/01_installation_and_quickstart.md` ("Enabling R support (DAAF_R)") for the full walkthrough.
+**Working on R support?** The R execution environment (R, the R package set, and Quarto) is part of the standard DAAF image — there is nothing to enable. The R smoke tests in `scripts/smoke_tests/` exercise each R library skill and run in any container. See `user_reference/01_installation_and_quickstart.md` ("R support (included)") for what the image ships with.
 
 ---
 

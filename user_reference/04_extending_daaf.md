@@ -165,7 +165,7 @@ Once you've provided your feedback, the agent uses your corrections to finalize 
 
 ### Methodology Skills (via Skill-Authoring)
 
-For adding knowledge about a statistical method, library, or analytical technique, you'll use the `skill-authoring` skill directly. This is more free-form than data onboarding, and the content depends heavily on what you're documenting. You may find it helpful to refer DAAF to other standard skills this one will be most like. Python library? Try referencing the `plotnine` or `polars` skills. R library (when R support is enabled)? Try referencing the `ggplot2` or `tidyverse` skills. Wanting to do something more methodological in nature? Try pointing it to the `data-scientist` skill. And so on. My hope is that as the community continues to extend DAAF in a few directions, we'll have plenty of exemplars to point to.
+For adding knowledge about a statistical method, library, or analytical technique, you'll use the `skill-authoring` skill directly. This is more free-form than data onboarding, and the content depends heavily on what you're documenting. You may find it helpful to refer DAAF to other standard skills this one will be most like. Python library? Try referencing the `plotnine` or `polars` skills. R library? Try referencing the `ggplot2` or `tidyverse` skills. Wanting to do something more methodological in nature? Try pointing it to the `data-scientist` skill. And so on. My hope is that as the community continues to extend DAAF in a few directions, we'll have plenty of exemplars to point to.
 
 Ask DAAF something like:
 
@@ -363,7 +363,7 @@ To share learnings with the broader community, [open an issue](https://github.co
 
 ## Customizing Your Python and R Environment
 
-DAAF ships with a comprehensive Python data science stack (50+ packages covering statistics, econometrics, geospatial analysis, machine learning, visualization, and more), and -- when R support is enabled -- a full R environment with 10+ library skills covering data manipulation, visualization, econometrics, spatial analysis, machine learning, and more. But research is unpredictable -- you may need a package we didn't anticipate. This section covers how to add Python packages, R packages, system-level libraries, and other software to your DAAF environment. The Python instructions come first, followed by [R Packages](#r-packages) at the end of this section.
+DAAF ships with a comprehensive Python data science stack (50+ packages covering statistics, econometrics, geospatial analysis, machine learning, visualization, and more), plus a full R environment with 10+ library skills covering data manipulation, visualization, econometrics, spatial analysis, machine learning, and more. But research is unpredictable -- you may need a package we didn't anticipate. This section covers how to add Python packages, R packages, system-level libraries, and other software to your DAAF environment. The Python instructions come first, followed by [R Packages](#r-packages) at the end of this section.
 
 ### The Recommended Path: Modify the Dockerfile (Python)
 
@@ -538,7 +538,7 @@ Ask DAAF to edit the version pin in the Dockerfile. For example, to change Polar
 
 **"I need an R package that isn't included"**
 
-When R support is enabled (via the [`DAAF_R` build flag](01_installation_and_quickstart.md#enabling-r-support-daaf_r)), DAAF includes R as a first-class execution language with 11 library skills (tidyverse, ggplot2, fixest, r-stats, quarto, plotly-r, sf-terra, plm, tidymodels, survey-r, and gt). See the **R Packages** subsection below for how to add additional R packages. If you're coming from a Python background and want to understand R equivalents, DAAF includes a `python-r-translation` skill; from Stata, there's a `stata-r-translation` skill. If R support is not enabled, DAAF runs as a Python-based environment, and the `r-python-translation` and `stata-python-translation` skills can help you find Python equivalents for R or Stata operations you're familiar with.
+DAAF includes R as a first-class execution language with 11 library skills (tidyverse, ggplot2, fixest, r-stats, quarto, plotly-r, sf-terra, plm, tidymodels, survey-r, and gt). See the **R Packages** subsection below for how to add additional R packages. If you're coming from a Python background and want to understand R equivalents, DAAF includes a `python-r-translation` skill; from Stata, there's a `stata-r-translation` skill. If you prefer to work in Python, the `r-python-translation` and `stata-python-translation` skills can help you find Python equivalents for R or Stata operations you're familiar with.
 
 **"I need a package that requires compilation and it's failing"**
 
@@ -550,9 +550,9 @@ No. The container runs as a non-root user (`appuser`) with all Linux capabilitie
 
 ### R Packages
 
-> This subsection applies when R support is enabled via the `DAAF_R` build flag. R support is opt-in and off by default; see [**Enabling R support (DAAF_R)**](01_installation_and_quickstart.md#enabling-r-support-daaf_r) in the installation guide for how to turn it on.
+> R is a standard, always-available part of DAAF, and adding R packages follows the same Dockerfile-modification path as adding Python packages.
 
-When R support is enabled, DAAF installs **R 4.5.3** with a curated set of 30+ packages covering the most common needs for social science research: data manipulation (tidyverse), visualization (ggplot2, plotly), econometrics (fixest, plm), spatial analysis (sf, terra), machine learning (tidymodels), complex survey analysis (survey), and more. It also includes the **Quarto CLI 1.7.29** for producing reproducible R research notebooks (the R equivalent of marimo for Python).
+DAAF installs **R 4.5.3** with a curated set of 30+ packages covering the most common needs for social science research: data manipulation (tidyverse), visualization (ggplot2, plotly), econometrics (fixest, plm), spatial analysis (sf, terra), machine learning (tidymodels), complex survey analysis (survey), and more. It also includes the **Quarto CLI 1.7.29** for producing reproducible R research notebooks (the R equivalent of marimo for Python).
 
 If you need an R package that isn't pre-installed, the process mirrors the Python approach: you can install it temporarily for quick testing, or add it to the Dockerfile for persistence.
 

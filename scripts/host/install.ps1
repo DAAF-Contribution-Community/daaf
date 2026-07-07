@@ -152,15 +152,14 @@ if ([string]::IsNullOrEmpty($InstallProjectName)) {
 if ([string]::IsNullOrEmpty($InstallProjectName)) { $InstallProjectName = "daaf" }
 $DataVolumeName = "${InstallProjectName}_daaf-data"
 
-# --- Bridge the DAAF_DEV and DAAF_R build flags into the environment ---
+# --- Bridge the DAAF_DEV build flag into the environment ---
 # Unlike DAAF_PROJECT_NAME above (only needed locally to derive the volume name;
-# the compose project name comes from the file's `name:` key), the two build
-# flags must be EXPORTED so `docker compose build` below sees them and forwards
-# them as `--build-arg DAAF_DEV=${DAAF_DEV:-0}` / `--build-arg DAAF_R=${DAAF_R:-0}`.
-# Parse only these two keys from the just-downloaded environment_settings.txt
-# (never dot-source -- the file holds API keys); process env wins; CR stripped;
-# PS 5.1 safe. Absent file / absent key = the flag stays unset, so its build arg
-# defaults to 0 (standard build).
+# the compose project name comes from the file's `name:` key), the build flag
+# must be EXPORTED so `docker compose build` below sees it and forwards it as
+# `--build-arg DAAF_DEV=${DAAF_DEV:-0}`. Parse only that one key from the
+# just-downloaded environment_settings.txt (never dot-source -- the file holds
+# API keys); process env wins; CR stripped; PS 5.1 safe. Absent file / absent
+# key = the flag stays unset, so its build arg defaults to 0 (standard build).
 if ([string]::IsNullOrEmpty($env:DAAF_DEV)) {
     $DevSettingsPath = Join-Path $InstallDir "environment_settings.txt"
     if (Test-Path -LiteralPath $DevSettingsPath) {
@@ -172,22 +171,6 @@ if ([string]::IsNullOrEmpty($env:DAAF_DEV)) {
                     if ($val.Length -ge 2) { $val = $val.Substring(1, $val.Length - 2) }
                 }
                 $env:DAAF_DEV = $val
-                break
-            }
-        }
-    }
-}
-if ([string]::IsNullOrEmpty($env:DAAF_R)) {
-    $RSettingsPath = Join-Path $InstallDir "environment_settings.txt"
-    if (Test-Path -LiteralPath $RSettingsPath) {
-        foreach ($rawLine in (Get-Content -LiteralPath $RSettingsPath)) {
-            $line = $rawLine -replace "`r", ""
-            if ($line -match '^\s*DAAF_R\s*=(.*)$') {
-                $val = $Matches[1].Trim()
-                if (($val.StartsWith('"') -and $val.EndsWith('"')) -or ($val.StartsWith("'") -and $val.EndsWith("'"))) {
-                    if ($val.Length -ge 2) { $val = $val.Substring(1, $val.Length - 2) }
-                }
-                $env:DAAF_R = $val
                 break
             }
         }

@@ -273,7 +273,7 @@ Cost remains a meaningful barrier to entry for DAAF, but it's shrinking. As open
 
 ### Q: How much disk space does DAAF use?
 
-The Docker image is roughly **3-5 GB** after building. It includes a Debian Bookworm base image, Python 3.12, 57 pinned Python packages (data science, geospatial, econometrics, visualization, ML), geospatial system libraries (GDAL/GEOS/PROJ), and Claude Code. When R support is enabled, the image also includes R, 30+ pinned R packages (tidyverse, fixest, survey, sf, and more), and the Quarto CLI, which increases its size accordingly. Docker also keeps build cache layers, so total Docker disk usage may be somewhat higher.
+The Docker image is roughly **8.6 GB** after building. It includes a Debian Bookworm base image, Python 3.12, 57 pinned Python packages (data science, geospatial, econometrics, visualization, ML), geospatial system libraries (GDAL/GEOS/PROJ), Claude Code, R, 30+ pinned R packages (tidyverse, fixest, survey, sf, and more), and the Quarto CLI. The R runtime, packages, and Quarto account for roughly **2.2 GB** of that total (measured: 8.61 GB with R vs. 6.4 GB without). Docker also keeps build cache layers, so total Docker disk usage may be somewhat higher.
 
 Beyond the image, your Docker volume will grow as you create research projects. Each project accumulates scripts, parquet data files, session logs, and notebooks. A typical full-pipeline project might add 50-500 MB depending on how many datasets you fetch and how large they are.
 
@@ -308,7 +308,7 @@ For self-guided reading, the full user documentation suite is in `user_reference
 
 **Python:** The recommended approach is to ask DAAF to add the package to the `Dockerfile` and rebuild the container. For detailed step-by-step instructions, common scenarios, and examples, see [**04. Extending DAAF -- Customizing Your Python and R Environment**](04_extending_daaf.md#the-recommended-path-modify-the-dockerfile-python).
 
-**R (when R support is enabled):** For quick, session-only use, run `install.packages("pkgname")` inside the container -- the package will be available for the rest of that session but will not survive a container restart. For permanent installation, add the package to the `Dockerfile`'s R package install block and rebuild the container. DAAF uses Posit Package Manager (P3M) with date-pinned snapshots for R package reproducibility, so permanent additions go through the Dockerfile just like Python packages. See [**04. Extending DAAF**](04_extending_daaf.md) for more details.
+**R:** For quick, session-only use, run `install.packages("pkgname")` inside the container -- the package will be available for the rest of that session but will not survive a container restart. For permanent installation, add the package to the `Dockerfile`'s R package install block and rebuild the container. DAAF uses Posit Package Manager (P3M) with date-pinned snapshots for R package reproducibility, so permanent additions go through the Dockerfile just like Python packages. See [**04. Extending DAAF**](04_extending_daaf.md) for more details.
 
 ### Q: Can I use `apt-get` or `sudo` inside the container?
 
@@ -331,8 +331,6 @@ In the `Dockerfile`, packages are installed with `uv pip install --system` (syst
 ---
 
 ## R and Language Support
-
-> The questions in this section apply when R support is enabled in your build. R support is opt-in via the `DAAF_R` build flag — see [**Enabling R support (DAAF_R)**](01_installation_and_quickstart.md#enabling-r-support-daaf_r) in the installation guide for how to turn it on.
 
 ### Q: How do I switch between R and Python?
 
@@ -440,7 +438,7 @@ A few reasons, and they're all about making AI-generated code more reliable.
 
 **Type strictness.** Polars is stricter about types than Pandas, which means type-related bugs surface immediately rather than silently propagating through a pipeline.
 
-That said, Pandas is still installed in the container and available if needed. If you're an R user, DAAF also supports R as a first-class execution language when R support is enabled -- R pipelines use tidyverse (dplyr, tidyr, and friends) as their DataFrame library, with the same file-first execution protocol, parquet-based data pipeline, and inline validation standards. Polars syntax is intentionally similar to tidyverse, so the two ecosystems feel quite natural alongside each other. See the [R and Language Support](#r-and-language-support) FAQ section above for more on switching between languages.
+That said, Pandas is still installed in the container and available if needed. If you're an R user, DAAF also supports R as a first-class execution language -- R pipelines use tidyverse (dplyr, tidyr, and friends) as their DataFrame library, with the same file-first execution protocol, parquet-based data pipeline, and inline validation standards. Polars syntax is intentionally similar to tidyverse, so the two ecosystems feel quite natural alongside each other. See the [R and Language Support](#r-and-language-support) FAQ section above for more on switching between languages.
 
 ### Q: Why Marimo instead of Jupyter?
 
@@ -452,7 +450,7 @@ This one's pretty straightforward: Jupyter notebooks and AI code editors are a t
 
 **AI editability.** Because marimo notebooks are plain Python, Claude can read and write them the same way it handles any other `.py` file. Editing a Jupyter `.ipynb` file requires manipulating JSON structure, cell metadata, kernel info, and output encodings -- it's fragile and error-prone for AI tools. Marimo is dramatically simpler and more reliable for this use case. Far, far, far easier.
 
-**What about R projects?** When R support is enabled, R pipelines use **Quarto** (`.qmd` files) instead of Marimo. Quarto is R's native literate programming system -- it combines Markdown narrative with executable R code chunks, and renders to HTML, PDF, or other formats. Just as Marimo is the natural choice for Python (plain `.py` files, reactive execution, Git-friendly), Quarto is the natural choice for R (Markdown-based, knitr engine, first-class R support). The same principles apply: scripts are the primary artifact, and the Quarto document is assembled from completed scripts at the end for presentation.
+**What about R projects?** R pipelines use **Quarto** (`.qmd` files) instead of Marimo. Quarto is R's native literate programming system -- it combines Markdown narrative with executable R code chunks, and renders to HTML, PDF, or other formats. Just as Marimo is the natural choice for Python (plain `.py` files, reactive execution, Git-friendly), Quarto is the natural choice for R (Markdown-based, knitr engine, first-class R support). The same principles apply: scripts are the primary artifact, and the Quarto document is assembled from completed scripts at the end for presentation.
 
 ### Q: Why Docker instead of a virtual environment?
 

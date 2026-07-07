@@ -642,7 +642,7 @@ research/2026-01-24_School_Poverty_Analysis/
     └── preliminary_notes/
 ```
 
-> **Note on execution language:** When R support is enabled, the folder structure is identical whether using Python or R. The differences are in file extensions (`.py` vs `.R` for scripts) and notebook format (`.py` marimo notebook vs `.qmd` Quarto notebook). Your execution language is set in CLAUDE.md's User Preferences section -- DAAF handles the rest automatically.
+> **Note on execution language:** The folder structure is identical whether using Python or R. The differences are in file extensions (`.py` vs `.R` for scripts) and notebook format (`.py` marimo notebook vs `.qmd` Quarto notebook). Your execution language is set in CLAUDE.md's User Preferences section -- DAAF handles the rest automatically.
 
 **Tip:** The easiest way to browse a completed project is with the browser-based code editor. Run `bash run_vscode.sh` (or `.\run_vscode.ps1` on Windows) from your `daaf-docker` folder, then navigate the file tree in the sidebar. You can preview Markdown reports and plans with `Shift+Ctrl+V`, read Python scripts with syntax highlighting, and inspect the Git history to see what changed and when. See [**03. Best Practices — Using the Browser-Based Code Editor**](03_best_practices.md#using-the-browser-based-code-editor) for more.
 
@@ -688,7 +688,7 @@ A companion file, **Plan_Tasks.md**, contains the detailed machine-readable task
 
 ### The Research Notebook (Marimo or Quarto)
 
-**What it is:** A compiled walkthrough of all the validated scripts, assembled into a notebook you can view in your browser. DAAF uses **marimo** (`.py`) for Python projects and, when R support is enabled, **Quarto** (`.qmd`) for R projects. In both cases, the notebook is *not* where the analysis was done -- it's a presentation layer that lets you browse the completed work.
+**What it is:** A compiled walkthrough of all the validated scripts, assembled into a notebook you can view in your browser. DAAF uses **marimo** (`.py`) for Python projects and **Quarto** (`.qmd`) for R projects. In both cases, the notebook is *not* where the analysis was done -- it's a presentation layer that lets you browse the completed work.
 
 **What's inside:**
 - **Section headers** identifying which script stage is being shown

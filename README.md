@@ -165,7 +165,7 @@ Difference-in-differences &bull; Fixed/random effects &bull; Mixed effects model
 **Python library expertise:**
 polars &bull; pyfixest &bull; linearmodels &bull; statsmodels &bull; scikit-learn &bull; geopandas &bull; plotly &bull; plotnine &bull; marimo &bull; svy &bull; fairlearn &bull; SHAP &bull; PySAL &bull; LightGBM &bull; seaborn &bull; rdrobust &bull; marginaleffects
 
-**R library expertise** (when R support is enabled):
+**R library expertise:**
 tidyverse (data manipulation) &bull; ggplot2 (static visualization) &bull; fixest (high-dimensional fixed effects) &bull; r-stats (base statistical modeling) &bull; quarto (reproducible notebooks) &bull; plotly-r (interactive visualization) &bull; sf-terra (spatial analysis) &bull; plm (panel data) &bull; tidymodels (machine learning) &bull; survey-r (complex surveys) &bull; gt (table formatting)
 
 Need a Python or R package that isn't listed? You can add your own by editing the Dockerfile and rebuilding -- see [Customizing Your Python and R Environment](user_reference/04_extending_daaf.md#customizing-your-python-and-r-environment) for instructions.
