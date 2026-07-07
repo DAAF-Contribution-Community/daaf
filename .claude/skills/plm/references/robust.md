@@ -120,8 +120,12 @@ coeftest(fit, vcov = vc)
 # Confidence intervals
 confint(coeftest(fit, vcov = vc))
 
-# Wald test for joint significance
-waldtest(fit, vcov = vc)
+# Wald test for joint significance (restricted vs full model, robust vcov).
+# NOTE: the single-model form waldtest(fit, vcov = vc) errors with "empty model"
+# on within/FE models (there is no intercept-only reduction to test against).
+# Use the two-model comparison instead, or run the test on a pooling model.
+fit_restricted <- plm(inv ~ value, data = pdf, model = "within")
+waldtest(fit_restricted, fit, vcov = vc)
 ```
 
 ### Summary with Robust SEs via modelsummary

@@ -596,7 +596,7 @@ You don't need to specify version numbers when installing R packages -- the P3M 
 - **Ask DAAF directly:** "What R packages are installed?" -- DAAF can check for you
 - **Run `Rscript -e 'installed.packages()[, "Package"]'`** inside the container to see all installed packages
 - **Read the Dockerfile** to see exactly what's installed
-- **Check the smoke tests** in `scripts/smoke_tests/` -- each R library skill has a corresponding smoke test (`smoke_tidyverse.R`, `smoke_ggplot2.R`, etc.) that exercises core functionality
+- **Check the smoke tests** in `scripts/smoke_tests/` -- each R library skill has a corresponding smoke test (`smoke_tidyverse.R`, `smoke_ggplot2.R`, etc.) that exercises core functionality, and a Python import-smoke (`smoke_imports.py`) verifies every pinned Python analysis package imports (the per-skill R smokes came first because the newly added R packages needed install verification; the Python import-smoke rounds out the suite). Run the whole set with `bash scripts/smoke_tests/run_all_smoke_tests.sh`
 
 ---
 

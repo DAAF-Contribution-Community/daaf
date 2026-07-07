@@ -704,7 +704,7 @@ Including R (with the full package set and Quarto) accounts for roughly **2.2 GB
 
 **To use R**, just tell DAAF "set execution language to R" at the start of a session — no configuration files to edit. See the [R and Language Support FAQ](07_faq_technical.md#r-and-language-support) for details on switching between languages.
 
-The R smoke tests and their runner in `scripts/smoke_tests/` exercise each R library skill and run in any DAAF container.
+The smoke tests and their runner in `scripts/smoke_tests/` exercise each R library skill, plus a Python import smoke (`smoke_imports.py`) covering the pinned Python analysis stack; all run via `run_all_smoke_tests.sh` in any DAAF container.
 
 ### Configure authentication via environment_settings.txt
 

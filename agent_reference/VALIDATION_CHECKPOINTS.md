@@ -2267,19 +2267,20 @@ for (col in numeric_columns) {
   col_max <- max(df[[col]], na.rm = TRUE)
   col_mean <- mean(df[[col]], na.rm = TRUE)
   # REASONING: Mean must fall within [min, max] for any valid distribution
-  stopifnot(
-    sprintf("STOP: Mean for '%s' (%.4f) outside [%.4f, %.4f]", col, col_mean, col_min, col_max) =
-      col_min <= col_mean && col_mean <= col_max
-  )
+  # NOTE: stopifnot() named messages require a literal string; for a dynamic
+  # (sprintf) message use the if (!cond) stop(sprintf(...)) idiom instead.
+  if (!(col_min <= col_mean && col_mean <= col_max)) {
+    stop(sprintf("STOP: Mean for '%s' (%.4f) outside [%.4f, %.4f]",
+                 col, col_mean, col_min, col_max))
+  }
   # REASONING: Percentiles must be monotonically non-decreasing
   p25 <- quantile(df[[col]], 0.25, na.rm = TRUE, names = FALSE)
   p50 <- quantile(df[[col]], 0.50, na.rm = TRUE, names = FALSE)
   p75 <- quantile(df[[col]], 0.75, na.rm = TRUE, names = FALSE)
-  stopifnot(
-    sprintf("STOP: Percentile monotonicity violated for '%s': p25=%.4f, p50=%.4f, p75=%.4f",
-            col, p25, p50, p75) =
-      p25 <= p50 && p50 <= p75
-  )
+  if (!(p25 <= p50 && p50 <= p75)) {
+    stop(sprintf("STOP: Percentile monotonicity violated for '%s': p25=%.4f, p50=%.4f, p75=%.4f",
+                 col, p25, p50, p75))
+  }
 }
 # INTENT: Verify temporal script found time columns if dataset is temporal
 # ASSUMES: Orchestrator marked dataset as temporal based on Part A findings
@@ -2353,11 +2354,12 @@ if (!is.null(correlation_matrix)) {
 for (col in key_candidates) {
   reported_unique <- uniqueness_results[[col]]
   actual_unique <- n_distinct(df[[col]])
-  stopifnot(
-    sprintf("STOP: Uniqueness count mismatch for '%s': reported %d, actual %d",
-            col, reported_unique, actual_unique) =
-      reported_unique == actual_unique
-  )
+  # NOTE: dynamic (sprintf) message requires the if (!cond) stop(...) idiom;
+  # stopifnot() named messages must be literal strings.
+  if (!(reported_unique == actual_unique)) {
+    stop(sprintf("STOP: Uniqueness count mismatch for '%s': reported %d, actual %d",
+                 col, reported_unique, actual_unique))
+  }
 }
 
 cat(sprintf("CPP3 PASSED: Relational checks consistent, %d anomalies cataloged\n",
@@ -2407,10 +2409,12 @@ interpretations <- regmatches(
 
 for (interp in interpretations) {
   if (!grepl("\\[NO INTERPRETATION\\]", interp)) {
-    stopifnot(
-      sprintf("STOP: Interpretation missing [PRELIMINARY] marker: %s", substr(interp, 1, 80)) =
-        grepl("\\[PRELIMINARY\\]", interp)
-    )
+    # NOTE: dynamic (sprintf) message requires the if (!cond) stop(...) idiom;
+    # stopifnot() named messages must be literal strings.
+    if (!grepl("\\[PRELIMINARY\\]", interp)) {
+      stop(sprintf("STOP: Interpretation missing [PRELIMINARY] marker: %s",
+                   substr(interp, 1, 80)))
+    }
   }
 }
 

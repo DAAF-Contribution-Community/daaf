@@ -336,6 +336,8 @@ df <- df |> inner_join(districts, by = "school_id")
 
 **Note:** Individual tool skills contain library-specific usage guidance (syntax, gotchas, performance). This skill provides the Stata-to-R conceptual bridge -- use both together when a Stata-background user is working with a specific library.
 
+**ML interpretation/fairness asymmetry (honest signal):** Python's ML interpretation and fairness ecosystem is genuinely deeper (SHAP, fairlearn, and related tooling). The R-side equivalents (iml, DALEX, kernelshap, fairmodels) are installed and covered by the `tidymodels` skill's `interpretation.md` and `fairness.md`, so real R workflows exist for these tasks -- but for ML-heavy interpretation or fairness translation questions the Python direction carries more depth. For those, `stata-python-translation` (Stata-to-Python) may map to a richer target ecosystem than the R side offers.
+
 ## Topic Index
 
 | Topic | Reference File |

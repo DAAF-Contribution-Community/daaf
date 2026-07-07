@@ -212,17 +212,27 @@ spurious regressions in panel data with long T.
 
 ```r
 # Im-Pesaran-Shin (IPS) test
-purtest(pdf$inv, test = "ips", exo = "intercept", lags = "AIC")
+# NOTE: on short-T panels (Grunfeld has T = 20) the default lag search overshoots
+# and the Fortran back-end errors with "NA/NaN/Inf in foreign function call (arg 6)".
+# Cap the lag search with pmax to keep the augmentation feasible.
+purtest(pdf$inv, test = "ips", exo = "intercept", pmax = 4)
 
-# Levin-Lin-Chu (LLC) test
-purtest(pdf$inv, test = "levinlin", exo = "intercept")
+# Levin-Lin-Chu (LLC) test  (same pmax guard on short panels)
+purtest(pdf$inv, test = "levinlin", exo = "intercept", pmax = 4)
 
-# Maddala-Wu (Fisher-type) test
-purtest(pdf$inv, test = "madwu", exo = "intercept")
+# Maddala-Wu (Fisher-type) test  (same pmax guard on short panels)
+purtest(pdf$inv, test = "madwu", exo = "intercept", pmax = 4)
 
-# Hadri test (H0: stationarity, opposite null)
+# Hadri test (H0: stationarity, opposite null) -- no lag search, runs as-is
 purtest(pdf$inv, test = "hadri", exo = "intercept")
 ```
+
+> **Short-T lag caps.** `ips`, `levinlin`, and `madwu` augment each series with
+> lagged differences; with a small number of time periods the default lag search
+> (`lags = "AIC"`) can request more lags than the series supports and the
+> underlying Fortran routine fails. Passing `pmax = 4` (or a small integer
+> `lags = 2`) bounds the search and lets the test run. `hadri` performs no lag
+> augmentation and is unaffected.
 
 | Test | H0 | H1 | Best When |
 |------|-----|-----|-----------|
@@ -279,7 +289,8 @@ pcdtest(fit_fe, test = "cd")
 # -> Use Driscoll-Kraay SEs (vcovSCC)
 
 # 7. Unit roots (if T is large)
-purtest(pdf$y, test = "ips", exo = "intercept", lags = "AIC")
+# On short panels cap the lag search with pmax (see Panel Unit Root Tests above).
+purtest(pdf$y, test = "ips", exo = "intercept", pmax = 4)
 # If fail to reject: non-stationarity, consider first-differencing
 
 # 8. Final model with appropriate SEs

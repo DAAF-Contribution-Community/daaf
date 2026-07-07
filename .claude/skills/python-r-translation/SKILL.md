@@ -276,6 +276,8 @@ fit <- feols(y ~ x1 + x2 | state + year, data = df, vcov = ~state)
 
 **Note:** Individual tool skills contain library-specific usage guidance (syntax, gotchas, performance). This skill provides the Python-to-R conceptual bridge -- use both together when a Python-background user is working with a specific R library.
 
+**ML interpretation/fairness asymmetry (honest signal):** Python's ML interpretation and fairness ecosystem is genuinely deeper (SHAP, fairlearn, and related tooling). The R-side equivalents (iml, DALEX, kernelshap, fairmodels) are installed and covered by the `tidymodels` skill's `interpretation.md` and `fairness.md`, so real R workflows exist for these tasks -- but for ML-heavy interpretation or fairness translation questions the Python direction carries more depth, and translating *to* R may surface a residual ecosystem gap rather than a one-to-one mapping.
+
 ## Topic Index
 
 | Topic | Reference File |

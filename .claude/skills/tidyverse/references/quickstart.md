@@ -123,7 +123,7 @@ df |> mutate(
   frl_pct = frl_rate * 100
 )
 
-# Conditional with if_else (strict types)
+# Conditional with if_else (type-safe: casts to common type, errors on incompatible types)
 df |> mutate(
   size = if_else(enrollment > 500, "large", "small")
 )

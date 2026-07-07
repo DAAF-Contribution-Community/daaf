@@ -85,7 +85,7 @@ graph LR
 
 ```python
 mo.callout("This is important!", kind="warn")
-# Kinds: "info", "warn", "danger", "success"
+# Kinds: "neutral" (default), "info", "warn", "danger", "success"
 ```
 
 Or in markdown:
@@ -221,8 +221,9 @@ with mo.status.spinner("Loading..."):
 ### Toast Notifications
 
 ```python
-mo.toast("Operation complete!", kind="success")
-# Kinds: "info", "success", "warn", "danger"
+mo.status.toast("Operation complete!")
+# Lives under mo.status (there is no top-level mo.toast).
+# Signature: toast(title, description=""); kind="danger" is the only non-default kind.
 ```
 
 ## Conditional Output
@@ -260,7 +261,7 @@ process_data()
 ```python
 mo.image("path/to/image.png")
 mo.image("https://example.com/image.png")
-mo.image(bytes_data, format="png")
+mo.image(bytes_data)  # format auto-detected from bytes (no format= parameter)
 ```
 
 ### Video

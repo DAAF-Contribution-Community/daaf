@@ -125,15 +125,28 @@ feglm coefficients are not directly interpretable as marginal effects. Use the
 ```r
 library(marginaleffects)
 
+# --- With fixed effects: point estimates only ---
+# marginaleffects (0.32.0) CANNOT propagate the uncertainty in absorbed FE
+# parameters, so on an feglm with FE it errors unless you set vcov = FALSE.
+# The result is the AME point estimate with NO standard error.
 fit <- feglm(binary_y ~ x1 + x2 | entity, data = df, family = binomial)
 
-# Average marginal effects
-avg_slopes(fit, variables = "x1")
+avg_slopes(fit, variables = "x1", vcov = FALSE)                 # point estimate only
 
-# Marginal effects at representative values
 slopes(fit, variables = "x1",
-       newdata = datagrid(x2 = c(0, 1)))
+       newdata = datagrid(x2 = c(0, 1)), vcov = FALSE)          # point estimates only
+
+# --- FE-free feglm: full inference available ---
+# Without absorbed FE, marginaleffects returns AMEs WITH standard errors.
+fit_nofe <- feglm(binary_y ~ x1 + x2, data = df, family = binomial)
+avg_slopes(fit_nofe, variables = "x1")                          # estimate + std.error
 ```
+
+> **Caveat.** When the model has fixed effects, `vcov = FALSE` is mandatory and
+> you get point estimates without SEs. If you need standard errors on the AMEs,
+> either drop the FE (as in `fit_nofe`) or compute marginal effects on a
+> comparison model without absorbed FE. This is a limitation of how
+> marginaleffects treats fixest's demeaned FE parameters, not of the AME itself.
 
 ### Incidental Parameters Problem
 
@@ -207,7 +220,12 @@ fit <- feNmlm(y ~ x1 + x2, data = df,
 | `"negbin"` | Same as fenegbin | Overdispersed counts |
 | `"logit"` | Same as feglm(binomial) | Binary outcomes |
 | `"gaussian"` | Same as feols | Linear model |
-| Custom | User-specified likelihood | Research-specific models |
+
+The `family` argument admits only these four values (`formals(feNmlm)$family` =
+`poisson, negbin, logit, gaussian`) — there is no user-supplied-likelihood family.
+What makes feNmlm "nonlinear" is the `NL.fml` argument, which lets you specify a
+custom nonlinear predictor (e.g. `~ a * exp(b * x3)`) fitted by maximum likelihood
+under one of the four families above — not an arbitrary user-defined likelihood.
 
 ### When to Use feNmlm
 

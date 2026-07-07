@@ -265,10 +265,16 @@ datasummary_correlation(df)
 
 ### Average Marginal Effects (AME)
 
+> **Reserved variable names.** marginaleffects (0.32.0+) forbids models whose data
+> contain variables named `group`, `term`, `contrast`, `estimate`, `std.error`,
+> `statistic`, `p.value`, `conf.low`, or `conf.high` — these collide with its
+> internal output columns and error with "These variable names are forbidden…".
+> Rename such columns before fitting (the examples below use `region`, not `group`).
+
 ```r
 library(marginaleffects)
 
-fit <- glm(y ~ x1 + x2 + factor(group), data = df, family = binomial)
+fit <- glm(y ~ x1 + x2 + factor(region), data = df, family = binomial)
 
 # Average marginal effects for all variables
 avg_slopes(fit)
@@ -286,18 +292,18 @@ slopes(fit, newdata = datagrid(x1 = c(0, 1, 2)))
 
 ```r
 # Compare levels of a factor
-avg_comparisons(fit, variables = "group")
+avg_comparisons(fit, variables = "region")
 # Returns: pairwise differences in predicted probability
 
 # Specific comparison
-avg_comparisons(fit, variables = list(group = c("A", "B")))
+avg_comparisons(fit, variables = list(region = c("A", "B")))
 ```
 
 ### Average Predictions
 
 ```r
 # Predicted probabilities at specific covariate values
-avg_predictions(fit, by = "group")
+avg_predictions(fit, by = "region")
 
 # Predictions over a grid
 predictions(fit, newdata = datagrid(x1 = seq(0, 10, by = 1)))
@@ -309,12 +315,29 @@ predictions(fit, newdata = datagrid(x1 = seq(0, 10, by = 1)))
 # Test: is the AME of x1 = 0?
 # (Default -- reported in avg_slopes output)
 
-# Test: is AME of x1 = AME of x2?
-hypotheses(avg_slopes(fit), "x1 = x2")
+# Equality test -- is AME of x1 = AME of x2?
+# Use POSITIONAL indices (b1, b2, ...) into the avg_slopes() output rather than
+# variable names. On models with a factor, the string form "x1 = x2" errors with
+# a non-unique `term` column, because each factor level adds a term row.
+fit2 <- glm(y ~ x1 + x2, data = df, family = binomial)
+avg_slopes(fit2)                       # inspect row order first
+hypotheses(avg_slopes(fit2), "b1 = b2")
 
-# Joint test: AME of x1 = 0 AND AME of x2 = 0
-hypotheses(avg_slopes(fit), joint = c("x1", "x2"))
+# Joint (Wald) test: AME of x1 = 0 AND AME of x2 = 0.
+# Pass `joint` to the FITTED MODEL, not to avg_slopes(): the joint form on an
+# avg_slopes() object fails ("Lapack routine dgesv: system is exactly singular")
+# because the effects object carries no usable joint vcov.
+hypotheses(fit, joint = c("x1", "x2"))
 ```
+
+> **Caveats (marginaleffects 0.32.0).** Two forms that look natural but fail:
+> `hypotheses(avg_slopes(fit), "x1 = x2")` errors when a factor with 3+ levels
+> is in the model (two or more rows then share a `term` label, making the
+> column non-unique — use positional `b1`/`b2` indices instead), and
+> `hypotheses(avg_slopes(fit), joint = ...)` errors as singular (run the joint
+> test on the fitted model object as shown above). Because positional indices
+> depend on row order, inspect `avg_slopes()` output first and assert the order
+> (e.g. `stopifnot(s$term[1] == "x1")`) before relying on `b1`/`b2`.
 
 ### marginaleffects with Different Models
 

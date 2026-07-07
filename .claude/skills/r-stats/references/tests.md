@@ -272,6 +272,15 @@ ks.test(x, "pnorm", mean = mean(x), sd = sd(x))
 ks.test(x, "punif", min = 0, max = 1)
 ```
 
+> **Caveat — estimated parameters invalidate the KS p-value.** The one-sample KS
+> test assumes the reference distribution is *fully specified in advance*. Plugging
+> in `mean = mean(x)` and `sd = sd(x)` estimated from the same data (as above)
+> makes the test conservative and its reported p-value invalid — this is the
+> Lilliefors problem. For a normality check, prefer `shapiro.test()` (see
+> `diagnostics.md`), which is valid when parameters are estimated from the data.
+> Use the KS form only when the reference distribution's parameters are known
+> independently of `x`.
+
 ### Two-Sample (Compare Two Distributions)
 
 ```r

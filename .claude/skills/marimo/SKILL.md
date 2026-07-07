@@ -257,7 +257,7 @@ Having issues?
 | Function | Purpose |
 |----------|---------|
 | `mo.md("text")` | Render markdown |
-| `mo.ui.slider(min, max)` | Create slider |
+| `mo.ui.slider(start, stop)` | Create slider |
 | `mo.ui.dropdown(options)` | Create dropdown |
 | `mo.ui.table(data)` | Interactive table |
 | `mo.hstack([...])` | Horizontal layout |

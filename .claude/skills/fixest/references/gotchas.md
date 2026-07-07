@@ -160,8 +160,10 @@ fixest can detect and handle separation, but severe cases may require:
 ### Poisson with Many Zeros
 
 If your data has many zeros:
-- Zero-inflated Poisson/NB: Not in fixest; use `pscl::zeroinfl()` (no FE)
-- Hurdle model: Not in fixest; use `pscl::hurdle()` (no FE)
+- Zero-inflated Poisson/NB: Not in fixest; use `pscl::zeroinfl()` (no FE). `pscl`
+  is not pre-installed in DAAF — run `install.packages("pscl")` at analysis time.
+- Hurdle model: Not in fixest; use `pscl::hurdle()` (no FE). Same `pscl` install
+  note as above.
 - PPML with FE: `fepois()` handles excess zeros reasonably well for
   gravity-type models
 

@@ -209,9 +209,13 @@ ols <- lm(poverty_rate ~ median_income + pct_rural, data = counties)
 # Rao's score (formerly "Lagrange Multiplier") tests for spatial dependence.
 # spdep >= 1.3-2 renamed lm.LMtests() to lm.RStests() and the test tokens
 # from LM*/RLM* to RS*/adjRS* (installed spdep is 1.4.2).
-rs_tests <- lm.RStests(ols, listw_W,
-                       test = c("RSerr", "RSlag", "adjRSerr", "adjRSlag", "SARMA"))
+rs_tests <- lm.RStests(ols, listw_W, test = "all")   # yields all 5: RSerr, RSlag, adjRSerr, adjRSlag, SARMA
 print(rs_tests)
+# NOTE: use test = "all" rather than an explicit vector that includes "SARMA".
+# On spdep 1.4-2, SARMA lives in BOTH the legacy and current token lists, so a
+# vector mixing "SARMA" with the RS*/adjRS* tokens trips the old-token remap and
+# errors ("Invalid test selected - must be either 'all' or a vector of tests").
+# "all" returns the full five-test set cleanly.
 
 # Decision rule:
 # RSlag significant, RSerr not -> Spatial Lag Model (SAR)

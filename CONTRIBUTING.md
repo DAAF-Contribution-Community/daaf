@@ -386,7 +386,7 @@ pwsh -NoProfile -Command "Get-ChildItem ./scripts/host/*.ps1 | ForEach-Object { 
 
 `DAAF_DEV` is an opt-in build flag: when it is unset or `0` (the default), none of this tooling is installed and the image is identical to a standard build. See `user_reference/01_installation_and_quickstart.md` ("Building with the developer test toolchain") for details.
 
-**Working on R support?** The R execution environment (R, the R package set, and Quarto) is part of the standard DAAF image — there is nothing to enable. The R smoke tests in `scripts/smoke_tests/` exercise each R library skill and run in any container. See `user_reference/01_installation_and_quickstart.md` ("R support (included)") for what the image ships with.
+**Working on R support?** The R execution environment (R, the R package set, and Quarto) is part of the standard DAAF image — there is nothing to enable. The R smoke tests in `scripts/smoke_tests/` exercise each R library skill and run in any container; a Python import-smoke (`smoke_imports.py`) additionally verifies every pinned Python analysis package imports. Both run via `run_all_smoke_tests.sh`. (The per-skill R smokes came first because the newly added R package set needed install verification the mature Python stack had long since earned; the Python import-smoke rounds out the suite.) See `user_reference/01_installation_and_quickstart.md` ("R support (included)") for what the image ships with.
 
 ---
 

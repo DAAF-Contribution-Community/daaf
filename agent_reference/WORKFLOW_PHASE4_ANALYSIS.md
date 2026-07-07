@@ -217,7 +217,7 @@ if (invariant_passed) {
 4. Check for unexpected nulls introduced
 5. Verify invariants (totals, IDs preserved)
 
-**CP3 Validation Report (language-agnostic pseudocode — implement in the project's execution language):**
+**CP3 Validation Report (implement in the project's execution language):**
 ```python
 # Overall change summary
 print(f"Overall: {original_shape} → {final_shape}")
