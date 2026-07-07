@@ -95,6 +95,21 @@ df_pell_ca = df.filter(
 )
 ```
 
+```r
+library(arrow)
+library(dplyr)
+
+# Fetch grants data via mirror system
+df <- arrow::read_parquet("fsa/colleges_fsa_grants")
+
+# Get Pell Grant data for California in 2020
+df_pell_ca <- df |> filter(
+    (grant_type == 1) &  # 1 = Pell Grant
+    (fips == 6) &         # 6 = California
+    (year == 2020)
+)
+```
+
 ## Loans Dataset Variables
 
 Canonical path: `fsa/colleges_fsa_loans` | Codebook: `fsa/codebook_colleges_fsa_loans`
@@ -165,6 +180,23 @@ df_sub = df.filter(
 df_plus = df.filter(pl.col("loan_type") == 7)  # 7 = Parent PLUS
 ```
 
+```r
+library(arrow)
+library(dplyr)
+
+# Fetch loans data via mirror system
+df <- arrow::read_parquet("fsa/colleges_fsa_loans")
+
+# Get Direct Subsidized Undergraduate loan data for a specific institution
+df_sub <- df |> filter(
+    (loan_type == 1) &     # 1 = Subsidized Direct Loan - Undergraduate
+    (unitid == 110635)
+)
+
+# Get all Parent PLUS loans
+df_plus <- df |> filter(loan_type == 7)  # 7 = Parent PLUS
+```
+
 ## Campus-Based Volume Dataset Variables
 
 Canonical path: `fsa/colleges_fsa_campus_based_volume` | Codebook: `fsa/codebook_colleges_fsa_campus_based_volume`
@@ -222,6 +254,23 @@ df_fws = df.filter(
 df_fseog = df.filter(pl.col("award_type") == 1)  # 1 = FSEOG
 ```
 
+```r
+library(arrow)
+library(dplyr)
+
+# Fetch campus-based data via mirror system
+df <- arrow::read_parquet("fsa/colleges_fsa_campus_based_volume")
+
+# Get Federal Work-Study data for 2020
+df_fws <- df |> filter(
+    (award_type == 2) &  # 2 = Federal Work-Study
+    (year == 2020)
+)
+
+# Get FSEOG data
+df_fseog <- df |> filter(award_type == 1)  # 1 = FSEOG
+```
+
 ## Financial Responsibility Dataset Variables
 
 Canonical path: `fsa/colleges_fsa_composite_scores` | Codebook: `fsa/codebook_colleges_fsa_financial_responsibility`
@@ -270,6 +319,23 @@ df_zone = df.filter(
 
 # Get institutions not financially responsible
 df_at_risk = df.filter(pl.col("financial_resp_score") < 1.0)
+```
+
+```r
+library(arrow)
+library(dplyr)
+
+# Fetch financial responsibility data via mirror system
+df <- arrow::read_parquet("fsa/colleges_fsa_composite_scores")
+
+# Get institutions in the "zone" (1.0 to 1.49)
+df_zone <- df |> filter(
+    (financial_resp_score >= 1.0) &
+    (financial_resp_score < 1.5)
+)
+
+# Get institutions not financially responsible
+df_at_risk <- df |> filter(financial_resp_score < 1.0)
 ```
 
 ## 90/10 Revenue Dataset Variables
@@ -329,6 +395,20 @@ df_at_risk = df.filter(pl.col("rev_pct_90_10") >= 0.85)
 df_violations = df.filter(pl.col("rev_pct_90_10") > 0.90)
 ```
 
+```r
+library(arrow)
+library(dplyr)
+
+# Fetch 90/10 data via mirror system
+df <- arrow::read_parquet("fsa/colleges_fsa_90_10_revenue_percentages")
+
+# Get institutions near the threshold (85%+ = 0.85 as proportion)
+df_at_risk <- df |> filter(rev_pct_90_10 >= 0.85)
+
+# Get apparent violations (>90% = 0.90 as proportion)
+df_violations <- df |> filter(rev_pct_90_10 > 0.90)
+```
+
 ## Common Identifiers
 
 ### Primary Keys
@@ -384,6 +464,24 @@ df = df.with_columns(
     .then(None)
     .otherwise(pl.col("grant_recipients_unitid"))
     .alias("grant_recipients_unitid")
+)
+```
+
+```r
+library(dplyr)
+
+# Filter out missing sentinel values from numeric columns
+df <- df |> filter(~grant_recipients_unitid %in% c(-1, -2, -3)
+
+# Or filter to positive values only
+df <- df |> filter(grant_recipients_unitid > 0)
+
+# Replace sentinel values with null
+df <- df |> mutate(
+    pl.when(grant_recipients_unitid %in% c(-1, -2, -3))
+    .then(NULL)
+    .otherwise(grant_recipients_unitid)
+    
 )
 ```
 
@@ -470,6 +568,23 @@ df.filter(pl.col("financial_resp_score") < 1.5)
 df.filter(pl.col("rev_pct_90_10") >= 85)
 ```
 
+```r
+library(dplyr)
+
+# Single filter
+df |> filter(fips == 6)
+
+# Multiple filters
+df |> filter(
+    (fips == 6) &
+    (year == 2020)
+)
+
+# Comparison operators
+df |> filter(financial_resp_score < 1.5)
+df |> filter(rev_pct_90_10 >= 85)
+```
+
 ### Aggregations
 
 ```python
@@ -481,5 +596,19 @@ df.group_by("fips").agg(
 # Average by year
 df.group_by("year").agg(
     pl.col("value_grants_disbursed_unitid").mean().alias("avg_grant")
+)
+```
+
+```r
+library(dplyr)
+
+# Total grants by state
+df |> group_by(fips) |> summarise(
+    sum(value_grants_disbursed_unitid, na.rm = TRUE)
+)
+
+# Average by year
+df |> group_by(year) |> summarise(
+    mean(value_grants_disbursed_unitid, na.rm = TRUE)
 )
 ```

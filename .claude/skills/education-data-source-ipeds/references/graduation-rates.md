@@ -179,6 +179,16 @@ adjusted_success = graduation_rate + transfer_out_rate
 # 3. Some students may be double-counted
 ```
 
+```r
+# Basic transfer-adjusted rate (imperfect but better)
+adjusted_success <- graduation_rate + transfer_out_rate
+
+# But this is NOT a true completion rate because:
+# 1. Not all transfers complete elsewhere
+# 2. Not all transfers are captured
+# 3. Some students may be double-counted
+```
+
 ### Transfer-Out Rate Patterns
 
 | Institution Type | Typical Transfer-Out Rate |
@@ -220,6 +230,11 @@ Students who received neither Pell grants nor subsidized loans.
 **Calculating Equity Gaps**:
 ```python
 equity_gap = grad_rate_neither_pell_loan - grad_rate_pell
+# Positive value = higher-income students graduate at higher rates
+```
+
+```r
+equity_gap <- grad_rate_neither_pell_loan - grad_rate_pell
 # Positive value = higher-income students graduate at higher rates
 ```
 
@@ -273,6 +288,16 @@ grad_rate_150 = (
 # Exclusions: died, disabled, military service, foreign service
 ```
 
+```r
+grad_rate_150 <- (
+  completers_within_150_pct_time /
+    adjusted_cohort
+) * 100
+
+# Where adjusted_cohort = initial_cohort - exclusions
+# Exclusions: died, disabled, military service, foreign service
+```
+
 ### By Demographic Group
 
 ```python
@@ -286,11 +311,30 @@ grad_rate_female = completers_female / cohort_female * 100
 grad_rate_pell = completers_pell / cohort_pell * 100
 ```
 
+```r
+# By race/ethnicity
+grad_rate_black <- completers_black / cohort_black * 100
+
+# By gender
+grad_rate_female <- completers_female / cohort_female * 100
+
+# By Pell status
+grad_rate_pell <- completers_pell / cohort_pell * 100
+```
+
 ### Transfer-Adjusted (Informal)
 
 ```python
 # NOT an official rate, but provides context
 transfer_adjusted = grad_rate_150 + transfer_out_rate
+
+# Better interpretation: "percentage who either graduated or transferred"
+# This is NOT equal to "percentage who succeeded"
+```
+
+```r
+# NOT an official rate, but provides context
+transfer_adjusted <- grad_rate_150 + transfer_out_rate
 
 # Better interpretation: "percentage who either graduated or transferred"
 # This is NOT equal to "percentage who succeeded"
@@ -383,6 +427,15 @@ gr_bach = (
 )
 ```
 
+```r
+library(dplyr)
+
+gr_bach <- df |>
+  filter(subcohort == 2) |>
+  arrange(desc(completion_rate_150pct)) |>
+  distinct(unitid, .keep_all = TRUE)
+```
+
 #### NCES Raw File Names (for reference only)
 
 The following variable names appear in NCES documentation and raw IPEDS data files but are NOT used in the Portal:
@@ -401,6 +454,10 @@ The outcome-measures dataset is available at path `ipeds/colleges_ipeds_outcome-
 
 ```python
 url = get_codebook_url("ipeds/codebook_colleges_ipeds_outcome-measures")
+```
+
+```r
+url <- get_codebook_url("ipeds/codebook_colleges_ipeds_outcome-measures")
 ```
 
 #### All 38 Columns (Verified from Mirror)
@@ -499,4 +556,23 @@ om = (
     )
     .select("unitid", "ftpt", "completion_rate_8yr", "transfer_rate_8yr")
 )
+```
+
+```r
+library(arrow)
+library(dplyr)
+
+MIRROR <- "https://huggingface.co/datasets/brhkim/education_data_portal_mirror/resolve/main"
+url <- paste0(MIRROR, "/ipeds/colleges_ipeds_outcome-measures.parquet")
+df <- read_parquet(url)
+
+# 8-year completion rates by enrollment intensity for first-time students
+om <- df |>
+  filter(
+    year == 2022,
+    class_level == 1,
+    fed_aid_type == 99,
+    ftpt %in% c(1, 2)
+  ) |>
+  select(unitid, ftpt, completion_rate_8yr, transfer_rate_8yr)
 ```

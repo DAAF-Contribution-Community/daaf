@@ -74,6 +74,20 @@ def check_ccd_missingness(df, variable):
     ).sort("pct_problematic", descending=True)
 ```
 
+```r
+# Check missingness by state and variable
+df |>
+  group_by(fips) |>
+  summarise(
+    missing_n1 = sum(.data[[variable]] == -1),
+    na_n2 = sum(.data[[variable]] == -2),
+    suppressed_n3 = sum(.data[[variable]] == -3),
+    total = n()
+  ) |>
+  mutate(pct_problematic = (missing_n1 + na_n2 + suppressed_n3) / total * 100) |>
+  arrange(desc(pct_problematic))
+```
+
 ## Definitional Issues
 
 ### Variables with State Variation
@@ -198,6 +212,17 @@ def check_id_stability(df_year1, df_year2, id_col):
     }
 ```
 
+```r
+# Verify ID stability before merging years
+ids_y1 <- unique(df_year1[[id_col]])
+ids_y2 <- unique(df_year2[[id_col]])
+
+cat("Dropped:", length(setdiff(ids_y1, ids_y2)), "\n")
+cat("Added:", length(setdiff(ids_y2, ids_y1)), "\n")
+cat("Stable:", length(intersect(ids_y1, ids_y2)), "\n")
+cat("Pct stable:", length(intersect(ids_y1, ids_y2)) / length(ids_y1) * 100, "%\n")
+```
+
 ## State-Specific Notes
 
 ### Single-District States
@@ -237,6 +262,14 @@ total_enrollment = df.filter(pl.col("grade") == 99)["enrollment"]
 # grade_sum = df.filter(pl.col("grade").is_between(0, 12))["enrollment"].sum()
 ```
 
+```r
+# RECOMMENDED - use reported total (grade=99, NOT -99)
+total_enrollment <- df |> filter(grade == 99) |> pull(enrollment)
+
+# NOT RECOMMENDED - summing grades may miss ungraded students
+# grade_sum <- df |> filter(between(grade, 0, 12)) |> pull(enrollment) |> sum()
+```
+
 **CRITICAL: Grade -1 means Pre-K, NOT missing data!**
 
 The Portal uses integer encoding for grades:
@@ -253,6 +286,15 @@ df = df.filter(pl.col("grade") >= 0)
 # RIGHT - include Pre-K
 pre_k = df.filter(pl.col("grade") == -1)
 k_12 = df.filter(pl.col("grade").is_between(0, 12))
+```
+
+```r
+# WRONG - this filters out Pre-K students!
+df <- df |> filter(grade >= 0)
+
+# RIGHT - include Pre-K
+pre_k <- df |> filter(grade == -1)
+k_12 <- df |> filter(between(grade, 0, 12))
 ```
 
 ### State Comparisons
@@ -283,6 +325,17 @@ def suppression_analysis(df, variable):
     if suppressed / total > 0.1:
         print(f"WARNING: {suppressed/total:.1%} of {variable} is suppressed")
         print("Disaggregated analysis may be unreliable")
+```
+
+```r
+# Identify suppression impact
+total <- nrow(df)
+suppressed <- df |> filter(.data[[variable]] == -3) |> nrow()
+
+if (suppressed / total > 0.1) {
+  cat(sprintf("WARNING: %.1f%% of %s is suppressed\n", suppressed / total * 100, variable))
+  cat("Disaggregated analysis may be unreliable\n")
+}
 ```
 
 ## Related Data Sources

@@ -59,6 +59,13 @@ year1 = df.filter(pl.col("years_after_grad") == 1)
 # Get median earnings
 median_earnings = year1.select("p50_earnings")
 ```
+```r
+# Filter to Year 1 earnings
+year1 <- df |> filter(years_after_grad == 1)
+
+# Get median earnings
+median_earnings <- year1 |> select(p50_earnings)
+```
 
 ### Status/Suppression
 
@@ -224,6 +231,21 @@ ut_cs = df.filter(
 
 # View earnings by years after graduation
 print(ut_cs.select("years_after_grad", "p25_earnings", "p50_earnings", "p75_earnings", "employed_grads_count_e"))
+```
+```r
+# Fetch PSEO data for 2020
+df <- fetch_from_mirrors("pseo/colleges_pseo_2020")
+
+# Filter to UT Austin CS Bachelor's
+ut_cs <- df |> filter(
+  unitid == 228778,          # UT Austin
+  degree_level == 5,          # Bachelor's
+  cipcode == 11,              # Computer Science
+  p50_earnings > 0            # Valid earnings only
+)
+
+# View earnings by years after graduation
+ut_cs |> select(years_after_grad, p25_earnings, p50_earnings, p75_earnings, employed_grads_count_e)
 ```
 
 **Example result** (hypothetical):

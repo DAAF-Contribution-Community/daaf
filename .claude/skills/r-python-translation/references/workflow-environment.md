@@ -12,7 +12,7 @@ is different."
 
 > **Versions referenced:**
 > Python: marimo 0.19.11, Python 3.12
-> R: R 4.5.3, Quarto 1.6.x
+> R: R 4.5.3, Quarto 1.7.29
 > See SKILL.md § Library Versions for the complete version table.
 
 ---

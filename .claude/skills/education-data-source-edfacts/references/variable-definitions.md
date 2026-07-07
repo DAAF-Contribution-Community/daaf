@@ -40,6 +40,11 @@ Data does not apply to this record:
 # grad_rate_midpt = -1 (not applicable)
 ```
 
+```r
+# Example: Elementary school has no graduation rate
+# grad_rate_midpt = -1 (not applicable)
+```
+
 #### `-2` (Not Reported)
 
 State did not submit this data:
@@ -48,6 +53,11 @@ State did not submit this data:
 - Indicator not collected that year
 
 ```python
+# Example: State didn't report participation rates
+# read_test_pct_part = -2 (not reported)
+```
+
+```r
 # Example: State didn't report participation rates
 # read_test_pct_part = -2 (not reported)
 ```
@@ -64,6 +74,11 @@ Data suppressed to protect student privacy:
 # math_test_pct_prof_midpt = -3 (suppressed)
 ```
 
+```r
+# Example: Small subgroup, exact value would reveal individuals
+# math_test_pct_prof_midpt = -3 (suppressed)
+```
+
 #### `-9` (Rounds to Zero)
 
 Actual value rounds to 0% but isn't truly zero:
@@ -71,6 +86,11 @@ Actual value rounds to 0% but isn't truly zero:
 - Distinguishes from true 0%
 
 ```python
+# Example: 0.4% proficient rounds to 0
+# read_test_pct_prof_midpt = -9 (rounds to zero)
+```
+
+```r
 # Example: 0.4% proficient rounds to 0
 # read_test_pct_prof_midpt = -9 (rounds to zero)
 ```
@@ -89,6 +109,16 @@ clean_df = df.filter(
 clean_df = df.filter(
     ~pl.col("read_test_pct_prof_midpt").is_in([-1, -2, -3, -9])
 )
+```
+
+```r
+library(dplyr)
+
+# Remove all missing/suppressed values
+clean_df <- df |> filter(read_test_pct_prof_midpt >= 0)
+
+# Or explicitly check for each code
+clean_df <- df |> filter(!read_test_pct_prof_midpt %in% c(-1, -2, -3, -9))
 ```
 
 ## Range and Midpoint Variables
@@ -143,6 +173,14 @@ EDFacts uses standard range bands:
    avg_low = df["read_test_pct_prof_low"].mean()
    ```
 
+   ```r
+   # Correct
+   avg_prof <- mean(df$read_test_pct_prof_midpt, na.rm = TRUE)
+   
+   # Not useful alone
+   avg_low <- mean(df$read_test_pct_prof_low, na.rm = TRUE)
+   ```
+
 2. **Document uncertainty from ranges**
    ```python
    # Calculate uncertainty
@@ -151,6 +189,12 @@ EDFacts uses standard range bands:
        .alias("range_width")
    )
    avg_uncertainty = df["range_width"].mean()
+   ```
+
+   ```r
+   # Calculate uncertainty
+   df <- df |> mutate(range_width = read_test_pct_prof_high - read_test_pct_prof_low)
+   avg_uncertainty <- mean(df$range_width, na.rm = TRUE)
    ```
 
 3. **Report range width in findings**
@@ -191,6 +235,18 @@ weighted_avg = (
         pl.col("read_test_num_valid").sum()
     )
 )
+```
+
+```r
+library(dplyr)
+
+# Weight average by number of test-takers
+weighted_avg <- df |>
+  filter(read_test_num_valid > 0) |>
+  summarise(
+    weighted_avg = sum(read_test_pct_prof_midpt * read_test_num_valid) /
+      sum(read_test_num_valid)
+  )
 ```
 
 ## Graduation Rate Variables
@@ -241,6 +297,14 @@ low_participation = df.filter(
     (pl.col("read_test_pct_part") < 95) |
     (pl.col("math_test_pct_part") < 95)
 )
+```
+
+```r
+library(dplyr)
+
+# Identify schools below participation threshold
+low_participation <- df |>
+  filter(read_test_pct_part < 95 | math_test_pct_part < 95)
 ```
 
 ## Subgroup Codes
@@ -323,6 +387,29 @@ race_comparison = (df
 )
 ```
 
+```r
+library(dplyr)
+
+# Get data for students with disabilities (IDEA)
+# Portal uses integer 1, NOT string "CWD"
+cwd_data <- df |> filter(disability == 1)
+
+# Get total row (all students)
+all_students <- df |> filter(race == 99)
+
+# Get Black students only
+black_students <- df |> filter(race == 2)
+
+# Get LEP students
+lep_data <- df |> filter(lep == 1)
+
+# Compare race groups
+race_comparison <- df |>
+  filter(race %in% c(1, 2, 3, 99)) |>
+  group_by(race) |>
+  summarise(avg_prof = mean(read_test_pct_prof_midpt, na.rm = TRUE))
+```
+
 ## Geographic Identifiers
 
 > **Portal Data Types:** All identifiers are **Int64** in the Portal parquet files. The NCES source format (zero-padded strings) is described below for reference, but you will encounter integer values when working with the data.
@@ -364,6 +451,17 @@ race_comparison = (df
 # NCES source:        ncessch = "060000100001" (12-char string)
 ```
 
+```r
+# NCESSCH logical format: SSLLLLLNNNNN (12 digits)
+# SS = State FIPS (2 digits)
+# LLLLL = LEA ID (5 digits)
+# NNNNN = School ID within LEA (5 digits)
+#
+# In Portal data, this is stored as integer (no leading zeros):
+# California example: ncessch = 60000100001 (integer)
+# NCES source:        ncessch = "060000100001" (12-char string)
+```
+
 ## Handling Special Values
 
 ### Complete Data Cleaning Function
@@ -402,6 +500,17 @@ def clean_edfacts_data(df, value_cols):
     return df
 ```
 
+```r
+library(dplyr)
+
+# Clean EDFacts data by replacing special values with NA
+# value_cols: character vector of columns to clean
+missing_codes <- c(-1, -2, -3, -9)
+
+df <- df |>
+  mutate(across(all_of(value_cols), ~ if_else(.x %in% missing_codes, NA_real_, .x)))
+```
+
 ### Documenting Suppression
 
 ```python
@@ -423,6 +532,24 @@ def suppression_report(df, value_col):
     suppression_counts["pct_suppressed"] = suppression_counts["suppressed"] / total * 100
     
     return suppression_counts
+```
+
+```r
+# Generate suppression report for a variable
+# value_col: unquoted column name
+total <- nrow(df)
+valid <- sum(df$value_col >= 0, na.rm = TRUE)
+missing_na <- sum(df$value_col == -1, na.rm = TRUE)
+not_reported <- sum(df$value_col == -2, na.rm = TRUE)
+suppressed <- sum(df$value_col == -3, na.rm = TRUE)
+rounds_to_zero <- sum(df$value_col == -9, na.rm = TRUE)
+
+cat("Total records:", total, "\n")
+cat("Valid:", valid, sprintf("(%.1f%%)", valid / total * 100), "\n")
+cat("Missing/NA (-1):", missing_na, "\n")
+cat("Not reported (-2):", not_reported, "\n")
+cat("Suppressed (-3):", suppressed, sprintf("(%.1f%%)", suppressed / total * 100), "\n")
+cat("Rounds to zero (-9):", rounds_to_zero, "\n")
 ```
 
 ### Working with Ranges
@@ -450,6 +577,23 @@ def add_range_metrics(df, var_prefix):
     ])
 ```
 
+```r
+library(dplyr)
+
+# Add range-related metrics to dataframe
+# Example for read_test_pct_prof prefix
+df <- df |>
+  mutate(
+    range_width = read_test_pct_prof_high - read_test_pct_prof_low,
+    is_exact = (read_test_pct_prof_high == read_test_pct_prof_low),
+    relative_uncertainty = if_else(
+      read_test_pct_prof_midpt > 0,
+      (read_test_pct_prof_high - read_test_pct_prof_low) / read_test_pct_prof_midpt * 100,
+      NA_real_
+    )
+  )
+```
+
 ## EDFacts Data in the Portal
 
 ### Fetching EDFacts Data
@@ -475,6 +619,22 @@ grad_df = fetch_yearly_from_mirrors(
     path_template="edfacts/schools_edfacts_grad_rates_{year}",
     years=[2018, 2019],
 )
+```
+
+```r
+library(arrow)
+library(dplyr)
+
+# School-level assessments (yearly dataset)
+# fetch_yearly_from_mirrors() is a Python helper; in R, read parquet directly
+df <- read_parquet("path/to/edfacts_schools_assessments_2018.parquet")
+
+# Filter to California, grade 4
+ca_grade4 <- df |>
+  filter(fips == 6, grade_edfacts == 4)
+
+# School-level graduation rates (yearly dataset)
+grad_df <- read_parquet("path/to/edfacts_schools_grad_rates_2019.parquet")
 ```
 
 ### Codebook Authority

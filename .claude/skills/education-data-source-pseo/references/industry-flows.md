@@ -96,6 +96,20 @@ prof_services = df.filter(
     & (pl.col("employed_grads_count_f") > 0)
 )
 ```
+```r
+# Fetch PSEO data
+df <- fetch_from_mirrors("pseo/colleges_pseo_2020")
+
+# Employment in Professional Services sector ("54"), 1 year post-graduation
+prof_services <- df |> filter(
+  industry == "54",
+  unitid == 228778,          # UT Austin
+  degree_level == 5,          # Bachelor's
+  cipcode == 11,              # Computer Science
+  years_after_grad == 1,
+  employed_grads_count_f > 0
+)
+```
 
 ### Multiple Industries
 
@@ -114,6 +128,22 @@ all_industries = df.filter(
     & (pl.col("years_after_grad") == 1)
     & (pl.col("employed_grads_count_f") > 0)
 ).select("industry", "employed_grads_count_f")
+```
+```r
+# Filter to specific NAICS sectors
+tech_sectors <- df |> filter(
+  industry %in% c("51", "54", "52"),
+  years_after_grad == 1,
+  employed_grads_count_f > 0
+)
+
+# Get distribution across all industries for a program
+all_industries <- df |> filter(
+  unitid == 228778,
+  cipcode == 11,
+  years_after_grad == 1,
+  employed_grads_count_f > 0
+) |> select(industry, employed_grads_count_f)
 ```
 
 ## Analysis Patterns
@@ -148,6 +178,13 @@ Compare Y1 vs Y5 vs Y10 industry distribution:
 for year in [1, 5, 10]:
     industry_dist = get_employment_by_naics(institution, cip, year)
     print(f"Year {year}: {industry_dist}")
+```
+```r
+# Pseudo-code: How industry distribution changes over time
+for (yr in c(1, 5, 10)) {
+  industry_dist <- get_employment_by_naics(institution, cip, yr)
+  cat(sprintf("Year %d: %s\n", yr, industry_dist))
+}
 ```
 
 **Example finding**: Engineering graduates may start in manufacturing (31-33) but shift toward management (55) or professional services (54) by Year 10.

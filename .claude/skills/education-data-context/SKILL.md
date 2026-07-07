@@ -196,6 +196,16 @@ k_12 = df.filter(pl.col("grade").is_between(0, 12))
 total = df.filter(pl.col("grade") == 99)
 ```
 
+```r
+# WRONG - filters out Pre-K students!
+df <- df |> filter(grade >= 0)
+
+# RIGHT - Pre-K students have grade = -1
+pre_k <- df |> filter(grade == -1)
+k_12 <- df |> filter(between(grade, 0, 12))
+total <- df |> filter(grade == 99)
+```
+
 #### Variable Names Are Lowercase
 
 Portal variable names are lowercase, not the uppercase names from original NCES documentation:
@@ -246,6 +256,14 @@ df["enrollment"].mean()
 
 # RIGHT - exclude coded missing values
 df.filter(pl.col("enrollment") >= 0)["enrollment"].mean()
+```
+
+```r
+# WRONG - includes coded values in mean
+mean(df$enrollment)
+
+# RIGHT - exclude coded missing values
+df |> filter(enrollment >= 0) |> pull(enrollment) |> mean()
 ```
 
 ### Year Definitions
@@ -303,6 +321,17 @@ df.group_by("fips").agg([
     pl.col("variable").filter(pl.col("variable") == -3).count().alias("suppressed"),
     pl.col("variable").count().alias("total")
 ])
+```
+
+```r
+# Check missingness and suppression by state
+df |>
+  group_by(fips) |>
+  summarise(
+    missing = sum(variable == -1),
+    suppressed = sum(variable == -3),
+    total = n()
+  )
 ```
 
 ## Citation Requirements

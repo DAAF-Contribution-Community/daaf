@@ -1,6 +1,6 @@
 # Validation Checkpoints Reference
 
-This document provides Python code templates for all four validation checkpoints, along with checkpoint classification for determining human involvement levels.
+This document provides Python and R code templates for all four validation checkpoints, along with checkpoint classification for determining human involvement levels.
 
 ---
 
@@ -10,7 +10,7 @@ This document provides Python code templates for all four validation checkpoints
 
 The workflow is:
 1. Write script to `scripts/stage{N}_{type}/` including validation code
-2. Execute as a single Bash call: `bash {BASE_DIR}/scripts/run_with_capture.sh {PROJECT_DIR}/scripts/.../script.py` (automatically captures output and appends execution log)
+2. Execute as a single Bash call: `bash {BASE_DIR}/scripts/run_with_capture.sh {PROJECT_DIR}/scripts/.../script.py` (or `script.R` — automatically captures output and appends execution log)
 3. Validation results get automatically embedded in scripts as comments
 4. Checkpoint status (PASSED/FAILED) is captured in the embedded execution log
 
@@ -345,10 +345,111 @@ if not cp1_passed:
     raise ValueError("CP1 FAILED - see details above")
 ```
 
+### R Code Template
+
+```r
+library(dplyr)
+library(arrow)
+
+# --- CP1 Validation: Post-Fetch ---
+# INTENT: Verify fetched data structure and completeness before proceeding
+# to cleaning. Checks shape, required columns, year coverage, and missingness.
+# ASSUMES: df is the fetched data frame, expected_rows/required_cols/expected_years
+# are configured above from Plan specification.
+cat("\n")
+cat(strrep("=", 60), "\n")
+cat("CP1 VALIDATION: POST-FETCH\n")
+cat(strrep("=", 60), "\n")
+
+cp1_passed <- TRUE
+
+# Shape check
+cat(sprintf("\nShape: %s rows x %s cols\n", format(nrow(df), big.mark = ","), ncol(df)))
+if (nrow(df) == 0) {
+  cat("[FAIL] Empty dataset returned from data access mirror\n")
+  cp1_passed <- FALSE
+} else {
+  cat(sprintf("[PASS] %s rows loaded\n", format(nrow(df), big.mark = ",")))
+}
+
+# Row count reasonableness (compare to expected_rows)
+if (nrow(df) > 0 && expected_rows > 0) {
+  ratio <- nrow(df) / expected_rows
+  cat(sprintf("Expected ~%s rows, got %s (ratio: %.2fx)\n",
+              format(expected_rows, big.mark = ","),
+              format(nrow(df), big.mark = ","), ratio))
+  if (ratio < 0.01) {
+    cat("[WARN] Row count much lower than expected\n")
+  } else if (ratio > 10) {
+    cat("[WARN] Row count much higher than expected\n")
+  }
+}
+
+# Required columns
+missing_cols <- setdiff(required_cols, names(df))
+if (length(missing_cols) > 0) {
+  cat(sprintf("[FAIL] Missing columns: %s\n", paste(missing_cols, collapse = ", ")))
+  cp1_passed <- FALSE
+} else {
+  cat(sprintf("[PASS] All %d required columns present\n", length(required_cols)))
+}
+
+# Expected years
+if (!is.null(year_col) && length(expected_years) > 0 && year_col %in% names(df)) {
+  present_years <- sort(unique(df[[year_col]]))
+  missing_years <- setdiff(expected_years, present_years)
+  cat(sprintf("Years present: %s\n", paste(present_years, collapse = ", ")))
+  if (length(missing_years) > 0) {
+    cat(sprintf("[WARN] Missing expected years: %s\n", paste(missing_years, collapse = ", ")))
+  }
+}
+
+# Missingness check
+for (col in required_cols) {
+  if (col %in% names(df)) {
+    null_pct <- sum(is.na(df[[col]])) / nrow(df) * 100
+    if (null_pct > 90) {
+      cat(sprintf("[FAIL] %s: %.1f%% NA (>90%% threshold)\n", col, null_pct))
+      cp1_passed <- FALSE
+    } else if (null_pct > 50) {
+      cat(sprintf("[WARN] %s: %.1f%% NA (high)\n", col, null_pct))
+    } else if (null_pct > 5) {
+      cat(sprintf("[WARN] %s: %.1f%% NA\n", col, null_pct))
+    }
+  }
+}
+
+# Year freshness (data lag detection)
+if (!is.null(year_col) && length(expected_years) > 0 && year_col %in% names(df)) {
+  max_expected <- max(expected_years)
+  max_actual <- max(df[[year_col]], na.rm = TRUE)
+  if (max_actual < max_expected) {
+    lag_years <- max_expected - max_actual
+    cat(sprintf("[WARN] Data lag: requested %d, latest available %d (%d-year lag)\n",
+                max_expected, max_actual, lag_years))
+  }
+}
+
+# Flag years data quality check (e.g., COVID-19 for education: [2020, 2021])
+if (length(FLAG_YEARS) > 0 && length(expected_years) > 0 &&
+    any(expected_years %in% FLAG_YEARS)) {
+  cat(sprintf("[WARN] FLAG-YEARS: Analysis includes data from flagged years %s. Document comparability concerns in limitations.\n",
+              paste(FLAG_YEARS, collapse = ", ")))
+}
+
+cat(sprintf("\nCP1 VALIDATION: %s\n", ifelse(cp1_passed, "PASSED", "FAILED")))
+cat(strrep("=", 60), "\n")
+
+if (!cp1_passed) {
+  stop("CP1 FAILED - see details above")
+}
+```
+
 ### Usage Notes
 
 Adapt the inline code above to each fetch script. Set these variables before running:
 
+**Python:**
 ```python
 # Configure before CP1 block
 expected_rows = 10000
@@ -362,6 +463,22 @@ FLAG_YEARS = [2020, 2021]      # From Plan domain config; empty list [] if N/A (
 
 year_col = YEAR_COL
 # df = <your fetched DataFrame>
+```
+
+**R:**
+```r
+# Configure before CP1 block
+expected_rows <- 10000
+required_cols <- c("ncessch", "school_name", "enrollment", "year")
+expected_years <- c(2020, 2021, 2022)
+
+# Domain configuration (from Plan's Domain Configuration section)
+YEAR_COL <- "year"              # From Plan domain config; set to NULL if no temporal dimension
+FLAG_YEARS <- c(2020, 2021)     # From Plan domain config; empty c() if N/A (e.g., education: COVID years)
+# Education domain defaults: YEAR_COL = "year", FLAG_YEARS = c(2020, 2021)
+
+year_col <- YEAR_COL
+# df <- <your fetched data frame>
 ```
 
 ---
@@ -441,10 +558,91 @@ if not cp2_passed:
     raise ValueError("CP2 FAILED - see details above")
 ```
 
+### R Code Template
+
+```r
+# --- CP2 Validation: Post-Cleaning ---
+# INTENT: Verify data quality after cleaning operations — confirm coded values
+# are removed, suppression rates are within tolerance, and data loss is acceptable.
+# ASSUMES: raw_df is pre-cleaning state, clean_df is post-cleaning state,
+# key_variables lists the columns to validate.
+cat("\n")
+cat(strrep("=", 60), "\n")
+cat("CP2 VALIDATION: POST-CLEANING\n")
+cat(strrep("=", 60), "\n")
+
+cp2_passed <- TRUE
+max_suppression <- SUPPRESSION_THRESHOLD  # From Plan domain config (education default: 0.5)
+max_data_loss <- 0.9    # 90% threshold
+
+# Data loss check
+raw_rows <- nrow(raw_df)
+clean_rows <- nrow(clean_df)
+rows_removed <- raw_rows - clean_rows
+loss_rate <- if (raw_rows > 0) rows_removed / raw_rows else 0
+
+cat("\nData Loss:\n")
+cat(sprintf("  Raw rows:     %s\n", format(raw_rows, big.mark = ",")))
+cat(sprintf("  Clean rows:   %s\n", format(clean_rows, big.mark = ",")))
+cat(sprintf("  Rows removed: %s (%.1f%%)\n", format(rows_removed, big.mark = ","), loss_rate * 100))
+
+if (loss_rate > max_data_loss) {
+  cat(sprintf("[FAIL] Data loss rate %.1f%% exceeds %.0f%%\n", loss_rate * 100, max_data_loss * 100))
+  cp2_passed <- FALSE
+} else if (loss_rate > 0.5) {
+  cat(sprintf("[WARN] High data loss rate: %.1f%%\n", loss_rate * 100))
+} else {
+  cat(sprintf("[PASS] Data loss rate %.1f%% within tolerance\n", loss_rate * 100))
+}
+
+# Suppression rate check (on raw data)
+cat("\nSuppression Rates (in raw data):\n")
+for (var in key_variables) {
+  if (var %in% names(raw_df)) {
+    suppressed <- if (!is.null(SUPPRESSION_CODE)) sum(raw_df[[var]] == SUPPRESSION_CODE, na.rm = TRUE) else 0
+    supp_rate <- if (raw_rows > 0) suppressed / raw_rows else 0
+    if (supp_rate > max_suppression) {
+      cat(sprintf("[FAIL] %s: %.1f%% suppressed (>%.0f%% threshold)\n", var, supp_rate * 100, max_suppression * 100))
+      cp2_passed <- FALSE
+    } else if (supp_rate > 0.2) {
+      cat(sprintf("[WARN] %s: %.1f%% suppressed (notable)\n", var, supp_rate * 100))
+    } else {
+      cat(sprintf("[PASS] %s: %.1f%% suppressed\n", var, supp_rate * 100))
+    }
+  }
+}
+
+# Coded values remaining in clean data
+cat("\nCoded Values Check (clean data):\n")
+coded_found <- FALSE
+for (var in key_variables) {
+  if (var %in% names(clean_df)) {
+    if (is.numeric(clean_df[[var]])) {
+      coded <- sum(sapply(CODED_MISSING_VALUES, function(c) sum(clean_df[[var]] == c, na.rm = TRUE)))
+      if (coded > 0) {
+        cat(sprintf("[WARN] %s: %d coded values remain\n", var, coded))
+        coded_found <- TRUE
+      }
+    }
+  }
+}
+if (!coded_found) {
+  cat("[PASS] No coded values remain in key variables\n")
+}
+
+cat(sprintf("\nCP2 VALIDATION: %s\n", ifelse(cp2_passed, "PASSED", "FAILED")))
+cat(strrep("=", 60), "\n")
+
+if (!cp2_passed) {
+  stop("CP2 FAILED - see details above")
+}
+```
+
 ### Usage Notes
 
 Set these variables before the CP2 block:
 
+**Python:**
 ```python
 # Configure before CP2 block
 # raw_df = <DataFrame before cleaning>
@@ -456,6 +654,20 @@ SUPPRESSION_CODE = -3              # From Plan domain config; None if domain has
 CODED_MISSING_VALUES = [-1, -2, -3]  # From Plan domain config; empty list [] if none
 SUPPRESSION_THRESHOLD = 0.5        # From Plan domain config; 50% default for education
 # Education domain defaults: SUPPRESSION_CODE = -3, CODED_MISSING_VALUES = [-1, -2, -3], SUPPRESSION_THRESHOLD = 0.5
+```
+
+**R:**
+```r
+# Configure before CP2 block
+# raw_df <- <data frame before cleaning>
+# clean_df <- <data frame after cleaning>
+key_variables <- c("enrollment", "poverty_rate")  # columns to check
+
+# Domain configuration (from Plan's Domain Configuration section)
+SUPPRESSION_CODE <- -3              # From Plan domain config; NULL if domain has no suppression code
+CODED_MISSING_VALUES <- c(-1, -2, -3)  # From Plan domain config; empty c() if none
+SUPPRESSION_THRESHOLD <- 0.5        # From Plan domain config; 50% default for education
+# Education domain defaults: SUPPRESSION_CODE = -3, CODED_MISSING_VALUES = c(-1, -2, -3), SUPPRESSION_THRESHOLD = 0.5
 ```
 
 ---
@@ -538,10 +750,94 @@ if not cp3_passed:
     raise ValueError("CP3 FAILED - see details above")
 ```
 
+### R Code Template
+
+```r
+# --- CP3 Validation: Post-Transformation ---
+# INTENT: Verify transformation preserved data integrity — check row counts,
+# new nulls, and column preservation against Plan expectations.
+# ASSUMES: input_df is pre-transform state, output_df is post-transform state,
+# operation/expected_relationship/preserved_cols configured above.
+cat("\n")
+cat(strrep("=", 60), "\n")
+cat(sprintf("CP3 VALIDATION: POST-TRANSFORMATION (%s)\n", operation))
+cat(strrep("=", 60), "\n")
+
+cp3_passed <- TRUE
+max_row_loss <- 0.9  # 90% threshold
+
+input_rows <- nrow(input_df)
+output_rows <- nrow(output_df)
+row_change <- output_rows - input_rows
+
+cat("\nRow Count Change:\n")
+cat(sprintf("  Input rows:  %s\n", format(input_rows, big.mark = ",")))
+cat(sprintf("  Output rows: %s\n", format(output_rows, big.mark = ",")))
+cat(sprintf("  Change:      %+d\n", row_change))
+cat(sprintf("  Expected:    %s\n", expected_relationship))
+
+# Row count relationship check
+if (expected_relationship == "same" && row_change != 0) {
+  cat(sprintf("[WARN] Expected same row count, but changed by %+d\n", row_change))
+} else if (expected_relationship == "fewer" && row_change >= 0) {
+  cat(sprintf("[WARN] Expected fewer rows, but count changed by %+d\n", row_change))
+} else if (expected_relationship == "more" && row_change <= 0) {
+  cat(sprintf("[WARN] Expected more rows, but count changed by %+d\n", row_change))
+} else {
+  cat("[PASS] Row count relationship matches expectation\n")
+}
+
+# Extreme row loss check
+if (input_rows > 0) {
+  loss_rate <- 1 - (output_rows / input_rows)
+  cat(sprintf("  Loss rate:   %.1f%%\n", loss_rate * 100))
+  if (loss_rate > max_row_loss) {
+    cat(sprintf("[FAIL] Row count dropped by %.1f%% (>%.0f%% threshold)\n", loss_rate * 100, max_row_loss * 100))
+    cp3_passed <- FALSE
+  }
+}
+
+# New nulls introduced
+cat("\nNew Null Values:\n")
+common_cols <- intersect(names(input_df), names(output_df))
+new_nulls_found <- FALSE
+for (col in sort(common_cols)) {
+  input_nulls <- sum(is.na(input_df[[col]]))
+  output_nulls <- sum(is.na(output_df[[col]]))
+  new_nulls <- output_nulls - input_nulls
+  if (new_nulls > 0) {
+    cat(sprintf("[WARN] %s: %s new NAs\n", col, format(new_nulls, big.mark = ",")))
+    new_nulls_found <- TRUE
+  }
+}
+if (!new_nulls_found) {
+  cat("[PASS] No new NAs introduced\n")
+}
+
+# Preserved columns check
+if (length(preserved_cols) > 0) {
+  missing <- setdiff(preserved_cols, names(output_df))
+  if (length(missing) > 0) {
+    cat(sprintf("[FAIL] Preserved columns missing: %s\n", paste(missing, collapse = ", ")))
+    cp3_passed <- FALSE
+  } else {
+    cat(sprintf("[PASS] All %d preserved columns present\n", length(preserved_cols)))
+  }
+}
+
+cat(sprintf("\nCP3 VALIDATION: %s\n", ifelse(cp3_passed, "PASSED", "FAILED")))
+cat(strrep("=", 60), "\n")
+
+if (!cp3_passed) {
+  stop("CP3 FAILED - see details above")
+}
+```
+
 ### Usage Notes
 
 Set these variables before the CP3 block:
 
+**Python:**
 ```python
 # Configure before CP3 block
 operation = "Join CCD + MEPS"           # description of the transformation
@@ -549,6 +845,16 @@ expected_relationship = "same"           # "same", "fewer", "more", "aggregated"
 preserved_cols = ["ncessch", "year"]     # columns that must survive
 # input_df = <DataFrame before transformation>
 # output_df = <DataFrame after transformation>
+```
+
+**R:**
+```r
+# Configure before CP3 block
+operation <- "Join CCD + MEPS"           # description of the transformation
+expected_relationship <- "same"          # "same", "fewer", "more", "aggregated"
+preserved_cols <- c("ncessch", "year")   # columns that must survive
+# input_df <- <data frame before transformation>
+# output_df <- <data frame after transformation>
 ```
 
 ---
@@ -674,10 +980,81 @@ if not cp4_passed:
     raise ValueError("CP4 FAILED - see details above")
 ```
 
+### R Code Template
+
+```r
+# --- CP4 Validation: Pre-Output ---
+# INTENT: Final completeness check before generating deliverables — verify all
+# required columns, figures, and report sections exist and are substantive.
+# ASSUMES: analysis_df is the final dataset, required_columns/critical_columns/
+# required_figures/figures_dir configured above from Plan specification.
+cat("\n")
+cat(strrep("=", 60), "\n")
+cat("CP4 VALIDATION: PRE-OUTPUT\n")
+cat(strrep("=", 60), "\n")
+
+cp4_passed <- TRUE
+
+# CP4.1: Required columns present
+missing_cols <- setdiff(required_columns, names(analysis_df))
+if (length(missing_cols) > 0) {
+  cat(sprintf("[FAIL] Missing required columns: %s\n", paste(missing_cols, collapse = ", ")))
+  cp4_passed <- FALSE
+} else {
+  cat(sprintf("[PASS] All %d required columns present\n", length(required_columns)))
+}
+
+# CP4.2: No nulls in critical columns
+cat("\nCritical Column Nulls:\n")
+for (col in critical_columns) {
+  if (col %in% names(analysis_df)) {
+    null_count <- sum(is.na(analysis_df[[col]]))
+    if (null_count > 0) {
+      cat(sprintf("[FAIL] %s: %s nulls\n", col, format(null_count, big.mark = ",")))
+      cp4_passed <- FALSE
+    } else {
+      cat(sprintf("[PASS] %s: 0 nulls\n", col))
+    }
+  }
+}
+
+# CP4.3: Required figures exist
+cat("\nRequired Figures:\n")
+missing_figures <- character(0)
+for (fig in required_figures) {
+  fig_path <- file.path(figures_dir, fig)
+  if (file.exists(fig_path)) {
+    size_kb <- file.info(fig_path)$size / 1024
+    cat(sprintf("[PASS] %s (%.1f KB)\n", fig, size_kb))
+    if (size_kb < 10) {
+      cat(sprintf("[WARN] %s is suspiciously small\n", fig))
+    }
+  } else {
+    cat(sprintf("[FAIL] %s NOT FOUND\n", fig))
+    missing_figures <- c(missing_figures, fig)
+    cp4_passed <- FALSE
+  }
+}
+
+# CP4.4: Report sections (if provided)
+if (length(required_sections) > 0) {
+  cat(sprintf("\nRequired Report Sections: %s\n", paste(required_sections, collapse = ", ")))
+  cat("  (Verify manually that each section has substantive content)\n")
+}
+
+cat(sprintf("\nCP4 VALIDATION: %s\n", ifelse(cp4_passed, "PASSED", "FAILED")))
+cat(strrep("=", 60), "\n")
+
+if (!cp4_passed) {
+  stop("CP4 FAILED - see details above")
+}
+```
+
 ### Usage Notes
 
 Set these variables before the CP4 block:
 
+**Python:**
 ```python
 # Configure before CP4 block
 required_columns = ["ncessch", "enrollment", "poverty_rate"]
@@ -686,6 +1063,17 @@ required_figures = ["enrollment_trends.png", "poverty_scatter.png"]
 figures_dir = Path("output/figures/")
 required_sections = ["Executive Summary", "Key Findings", "Limitations"]
 # analysis_df = <final analysis DataFrame>
+```
+
+**R:**
+```r
+# Configure before CP4 block
+required_columns <- c("ncessch", "enrollment", "poverty_rate")
+critical_columns <- c("ncessch", "enrollment")
+required_figures <- c("enrollment_trends.png", "poverty_scatter.png")
+figures_dir <- "output/figures/"
+required_sections <- c("Executive Summary", "Key Findings", "Limitations")
+# analysis_df <- <final analysis data frame>
 ```
 
 ---
@@ -796,10 +1184,142 @@ if not join_passed:
     raise ValueError("Join validation FAILED - see details above")
 ```
 
+### R Code Template
+
+```r
+# --- Join Validation ---
+# INTENT: Validate join operation by checking cardinality, fan-out, row loss,
+# and key matching. Joins are high-risk operations where silent data corruption
+# (duplicate rows, unexpected nulls) can go undetected without explicit checks.
+# ASSUMES: left_df/right_df are input data frames, result_df is join output,
+# join_keys/expected_cardinality/join_type configured above.
+cat("\n")
+cat(strrep("=", 60), "\n")
+cat(sprintf("JOIN VALIDATION (%s JOIN)\n", toupper(join_type)))
+cat(strrep("=", 60), "\n")
+
+join_passed <- TRUE
+
+left_rows <- nrow(left_df)
+right_rows <- nrow(right_df)
+result_rows <- nrow(result_df)
+
+cat("\nRow Counts:\n")
+cat(sprintf("  Left side:  %s\n", format(left_rows, big.mark = ",")))
+cat(sprintf("  Right side: %s\n", format(right_rows, big.mark = ",")))
+cat(sprintf("  Result:     %s\n", format(result_rows, big.mark = ",")))
+cat(sprintf("  Expected cardinality: %s\n", expected_cardinality))
+
+# Cardinality check
+if (expected_cardinality == "1:1") {
+  if (join_type %in% c("inner", "left") && result_rows > left_rows * 1.01) {
+    cat(sprintf("[WARN] Expected 1:1 but result has %s more rows than left (fan-out?)\n",
+                format(result_rows - left_rows, big.mark = ",")))
+  } else if (join_type == "right" && result_rows > right_rows * 1.01) {
+    cat(sprintf("[WARN] Expected 1:1 but result has %s more rows than right\n",
+                format(result_rows - right_rows, big.mark = ",")))
+  } else {
+    cat("[PASS] Cardinality consistent with 1:1\n")
+  }
+} else if (expected_cardinality == "1:many") {
+  if (result_rows < right_rows) {
+    cat("[WARN] Expected 1:many but result has fewer rows than right side\n")
+  } else {
+    cat("[PASS] Cardinality consistent with 1:many\n")
+  }
+} else if (expected_cardinality == "many:1") {
+  if (result_rows < left_rows * 0.99) {
+    cat(sprintf("[WARN] Expected many:1 but result has %s fewer rows than left\n",
+                format(left_rows - result_rows, big.mark = ",")))
+  } else {
+    cat("[PASS] Cardinality consistent with many:1\n")
+  }
+}
+
+# Fan-out check
+if (join_type == "inner") {
+  max_expected <- max(left_rows, right_rows)
+  if (result_rows > max_expected * 2) {
+    cat(sprintf("[WARN] Possible fan-out: result has %.1fx expected rows\n", result_rows / max_expected))
+  }
+}
+
+# Extreme row loss
+if (join_type %in% c("inner", "left")) {
+  loss_rate <- if (left_rows > 0) 1 - (result_rows / left_rows) else 0
+  cat(sprintf("  Loss rate from left: %.1f%%\n", loss_rate * 100))
+  if (loss_rate > 0.9) {
+    cat(sprintf("[FAIL] Join lost %.1f%% of left side rows\n", loss_rate * 100))
+    join_passed <- FALSE
+  } else if (loss_rate > 0.5) {
+    cat(sprintf("[WARN] High row loss from left: %.1f%%\n", loss_rate * 100))
+  } else {
+    cat(sprintf("[PASS] Row loss acceptable: %.1f%%\n", loss_rate * 100))
+  }
+}
+
+# Join key matching
+cat("\nJoin Key Matching:\n")
+for (key in join_keys) {
+  if (key %in% names(left_df) && key %in% names(right_df)) {
+    left_unique <- n_distinct(left_df[[key]])
+    right_unique <- n_distinct(right_df[[key]])
+    result_unique <- if (key %in% names(result_df)) n_distinct(result_df[[key]]) else 0
+    cat(sprintf("  %s: left=%s unique, right=%s unique, result=%s unique\n",
+                key, format(left_unique, big.mark = ","),
+                format(right_unique, big.mark = ","),
+                format(result_unique, big.mark = ",")))
+
+    if (join_type == "inner" && min(left_unique, right_unique) > 0) {
+      match_rate <- result_unique / min(left_unique, right_unique)
+      if (match_rate < 0.5) {
+        cat(sprintf("[WARN] Low key match rate for '%s': %.1f%%\n", key, match_rate * 100))
+      }
+    }
+  }
+}
+
+# Null keys in result (unexpected for inner join)
+if (join_type == "inner") {
+  for (key in join_keys) {
+    if (key %in% names(result_df)) {
+      null_keys <- sum(is.na(result_df[[key]]))
+      if (null_keys > 0) {
+        cat(sprintf("[WARN] Join key '%s' has %s NAs in result\n", key, format(null_keys, big.mark = ",")))
+      }
+    }
+  }
+}
+
+# Duplicate keys (indicates many-side)
+for (key in join_keys) {
+  if (key %in% names(left_df)) {
+    left_dups <- left_rows - n_distinct(left_df[[key]])
+    if (left_dups > 0) {
+      cat(sprintf("  Left key '%s' duplicates: %s\n", key, format(left_dups, big.mark = ",")))
+    }
+  }
+  if (key %in% names(right_df)) {
+    right_dups <- right_rows - n_distinct(right_df[[key]])
+    if (right_dups > 0) {
+      cat(sprintf("  Right key '%s' duplicates: %s\n", key, format(right_dups, big.mark = ",")))
+    }
+  }
+}
+
+cat(sprintf("\nJOIN VALIDATION: %s\n", ifelse(join_passed, "PASSED", "FAILED")))
+cat(strrep("=", 60), "\n")
+
+if (!join_passed) {
+  stop("Join validation FAILED - see details above")
+}
+```
+
 ### Usage Notes
 
 Set these variables before the join validation block:
 
+**Python:**
 ```python
 # Configure before join validation block
 join_keys = ["ncessch"]
@@ -808,6 +1328,17 @@ join_type = "inner"           # "inner", "left", "right", "outer"
 # left_df = <left DataFrame>
 # right_df = <right DataFrame>
 # result_df = <join result DataFrame>
+```
+
+**R:**
+```r
+# Configure before join validation block
+join_keys <- c("ncessch")
+expected_cardinality <- "1:1"  # "1:1", "1:many", "many:1", "many:many"
+join_type <- "inner"           # "inner", "left", "right", "outer"
+# left_df <- <left data frame>
+# right_df <- <right data frame>
+# result_df <- <join result data frame>
 ```
 
 ---
@@ -864,6 +1395,61 @@ if subst_passed:
 
 print(f"\nDATA SUBSTANTIVENESS: {'PASSED' if subst_passed else 'FAILED'}")
 print("=" * 60)
+```
+
+#### Data Substantiveness Check (R)
+
+```r
+# --- Substantiveness Validation: Data ---
+cat("\n")
+cat(strrep("=", 60), "\n")
+cat(sprintf("SUBSTANTIVENESS CHECK: %s\n", context))
+cat(strrep("=", 60), "\n")
+
+subst_passed <- TRUE
+
+for (col in key_columns) {
+  if (!col %in% names(df)) next
+
+  # Single unique value (suspicious)
+  n_unique <- n_distinct(df[[col]], na.rm = TRUE)
+  if (n_unique == 1 && nrow(df) > 10) {
+    value <- unique(df[[col]][!is.na(df[[col]])])[1]
+    cat(sprintf("[FAIL] Column '%s' has only one unique value: %s\n", col, as.character(value)))
+    subst_passed <- FALSE
+  }
+
+  # All zeros in numeric columns
+  if (is.numeric(df[[col]])) {
+    non_null <- df[[col]][!is.na(df[[col]])]
+    if (length(non_null) > 0 && all(non_null == 0)) {
+      cat(sprintf("[FAIL] Column '%s' is all zeros\n", col))
+      subst_passed <- FALSE
+    }
+
+    # Suspiciously round numbers
+    if (length(non_null) > 10) {
+      round_count <- sum(non_null %% 1000 == 0)
+      round_rate <- round_count / length(non_null)
+      if (round_rate > 0.9 && max(non_null) > 1000) {
+        cat(sprintf("[WARN] Column '%s' has %.0f%% suspiciously round values\n", col, round_rate * 100))
+      }
+    }
+  }
+
+  # All NAs
+  if (all(is.na(df[[col]]))) {
+    cat(sprintf("[FAIL] Column '%s' is entirely NA\n", col))
+    subst_passed <- FALSE
+  }
+}
+
+if (subst_passed) {
+  cat("[PASS] No data substantiveness issues found\n")
+}
+
+cat(sprintf("\nDATA SUBSTANTIVENESS: %s\n", ifelse(subst_passed, "PASSED", "FAILED")))
+cat(strrep("=", 60), "\n")
 ```
 
 #### Text Substantiveness Check
@@ -989,7 +1575,8 @@ required_sections = ["Executive Summary", "Findings", "Limitations"]
 ```
 research/YYYY-MM-DD_[Title]/
 ├── YYYY-MM-DD_[Title]_Plan.md
-├── YYYY-MM-DD_[Title].py     # Marimo notebook
+├── YYYY-MM-DD_[Title].py     # Marimo notebook (Python)
+├── YYYY-MM-DD_[Title].qmd    # Quarto notebook (R)
 ├── scripts/                   # Scripts with inline validation
 │   ├── stage5_fetch/
 │   ├── stage6_clean/
@@ -1231,6 +1818,69 @@ def _():
 
 ---
 
+### Quarto Notebook Stubs
+
+These patterns are specific to Quarto (`.qmd`) notebooks used in R pipelines.
+
+#### Chunks With Only Comments (WARNING)
+
+````markdown
+```{r}
+#| label: analysis
+#| eval: false
+
+# TODO: add analysis code
+```
+
+```{r}
+#| label: visualization
+
+# This will be implemented later
+```
+````
+
+#### Placeholder Markdown Sections (WARNING)
+
+```markdown
+## Findings
+
+[Add findings here]
+
+## Methodology
+
+TBD
+```
+
+#### Chunks Returning Hardcoded Strings (WARNING)
+
+````markdown
+```{r}
+#| label: summary
+
+cat("Analysis Coming Soon")
+```
+
+```{r}
+#| label: results
+
+# TODO: Add findings here
+cat("Results pending")
+```
+````
+
+#### Library Calls With No Usage (INFO)
+
+````markdown
+```{r}
+#| label: setup
+
+library(sf)          # Never used in notebook
+library(tidymodels)  # Never used
+```
+````
+
+---
+
 ### Wiring Red Flags
 
 These patterns indicate data/artifacts exist but aren't properly connected.
@@ -1344,6 +1994,78 @@ for pattern_glob in ["*.py", "*.md"]:
 print(f"\nSummary: {blocker_count} blockers, {warning_count} warnings")
 print(f"STUB DETECTION: {'PASSED' if stub_passed else 'FAILED'}")
 print("=" * 60)
+```
+
+### R/Quarto Stub Detection (Inline)
+
+Use this sequential inline code within a Final Review script to detect stubs across R project files:
+
+```r
+# --- Stub Detection: Project Scan ---
+cat("============================================================\n")
+cat(sprintf("STUB DETECTION: %s\n", project_dir))
+cat("============================================================\n")
+
+stub_passed <- TRUE
+blocker_count <- 0
+warning_count <- 0
+
+# Patterns to scan for
+BLOCKER_PATTERNS <- list(
+    list("\\bTODO\\b", "TODO marker"),
+    list("\\bFIXME\\b", "FIXME marker"),
+    list("\\bXXX\\b", "XXX marker"),
+    list("\\bHACK\\b", "HACK marker"),
+    list("\\bPLACEHOLDER\\b", "PLACEHOLDER marker"),
+    list("stop\\(", "stop() — potential NotImplementedError equivalent"),
+    list("\\bplaceholder\\b", "Placeholder text"),
+    list("coming soon", "Coming soon text"),
+    list("\\[TBD\\]", "TBD marker"),
+    list("\\[add more\\]", "Add more placeholder"),
+    list("\\[your .* here\\]", "Template placeholder")
+)
+
+WARNING_PATTERNS <- list(
+    list("cat\\(.*TODO", "R TODO in output"),
+    list("cat\\(.*Coming Soon", "R Coming Soon text"),
+    list("#\\| eval:\\s*false", "Quarto chunk with eval: false")
+)
+
+scan_files <- c(
+    list.files(project_dir, pattern = "\\.R$", recursive = TRUE, full.names = TRUE),
+    list.files(project_dir, pattern = "\\.qmd$", recursive = TRUE, full.names = TRUE),
+    list.files(project_dir, pattern = "\\.md$", recursive = TRUE, full.names = TRUE)
+)
+
+for (fp in scan_files) {
+    if (grepl("/\\.", fp)) next
+    content <- readLines(fp, warn = FALSE)
+    content_text <- paste(content, collapse = "\n")
+    rel_path <- sub(paste0("^", project_dir, "/?"), "", fp)
+
+    for (pat in BLOCKER_PATTERNS) {
+        matches <- gregexpr(pat[[1]], content_text, ignore.case = TRUE, perl = TRUE)
+        n <- sum(matches[[1]] > 0)
+        if (n > 0) {
+            cat(sprintf("[BLOCKER] %s: %s (%dx)\n", rel_path, pat[[2]], n))
+            blocker_count <- blocker_count + n
+            stub_passed <- FALSE
+        }
+    }
+
+    for (pat in WARNING_PATTERNS) {
+        matches <- gregexpr(pat[[1]], content_text, ignore.case = TRUE, perl = TRUE)
+        n <- sum(matches[[1]] > 0)
+        if (n > 0) {
+            cat(sprintf("[WARNING] %s: %s (%dx)\n", rel_path, pat[[2]], n))
+            warning_count <- warning_count + n
+        }
+    }
+}
+
+cat(sprintf("\nSummary: %d blockers, %d warnings\n", blocker_count, warning_count))
+cat(sprintf("STUB DETECTION: %s\n", ifelse(stub_passed, "PASSED", "FAILED")))
+cat("============================================================\n")
 ```
 
 #### Wiring Check (Inline)
@@ -1474,6 +2196,33 @@ if df.shape[0] < 100:
 print(f"CPP1 PASSED: {df.shape[0]:,} rows, {df.shape[1]} columns, {null_rate:.1%} null rate")
 ```
 
+**R:**
+```r
+# --- CPP1: Post-Load Validation ---
+# INTENT: Verify data loaded correctly before profiling begins
+stopifnot("STOP: Zero rows loaded" = nrow(df) > 0)
+stopifnot("STOP: Zero columns detected" = ncol(df) > 0)
+
+# INTENT: Check overall data quality
+total_cells <- nrow(df) * ncol(df)
+total_nulls <- sum(sapply(df, function(x) sum(is.na(x))))
+null_rate <- total_nulls / total_cells
+stopifnot("STOP: Overall null rate exceeds 50%" = null_rate < 0.5)
+
+# INTENT: Warn about potential issues without stopping
+for (col in names(df)) {
+  if (all(is.na(df[[col]]))) {
+    cat(sprintf("WARNING: Column '%s' is entirely NA\n", col))
+  }
+}
+if (nrow(df) < 100) {
+  cat("WARNING: Dataset has < 100 rows - possible partial file\n")
+}
+
+cat(sprintf("CPP1 PASSED: %s rows, %d columns, %.1f%% null rate\n",
+            format(nrow(df), big.mark = ","), ncol(df), null_rate * 100))
+```
+
 ### CPP2: Post-Statistical Validation
 
 **Embedded in:** Last script of Part B (04, 05, or 06 depending on conditional execution)
@@ -1501,6 +2250,37 @@ for col in numeric_columns:
 if temporal_expected and not time_columns_found:
     print("WARNING: Dataset expected to have temporal columns but none identified")
 print("CPP2 PASSED: Statistical summaries internally consistent")
+```
+
+**R:**
+```r
+# --- CPP2: Post-Statistical Validation ---
+# INTENT: Verify numeric summary statistics are internally consistent
+for (col in numeric_columns) {
+  col_min <- min(df[[col]], na.rm = TRUE)
+  col_max <- max(df[[col]], na.rm = TRUE)
+  col_mean <- mean(df[[col]], na.rm = TRUE)
+  # REASONING: Mean must fall within [min, max] for any valid distribution
+  stopifnot(
+    sprintf("STOP: Mean for '%s' (%.4f) outside [%.4f, %.4f]", col, col_mean, col_min, col_max) =
+      col_min <= col_mean && col_mean <= col_max
+  )
+  # REASONING: Percentiles must be monotonically non-decreasing
+  p25 <- quantile(df[[col]], 0.25, na.rm = TRUE, names = FALSE)
+  p50 <- quantile(df[[col]], 0.50, na.rm = TRUE, names = FALSE)
+  p75 <- quantile(df[[col]], 0.75, na.rm = TRUE, names = FALSE)
+  stopifnot(
+    sprintf("STOP: Percentile monotonicity violated for '%s': p25=%.4f, p50=%.4f, p75=%.4f",
+            col, p25, p50, p75) =
+      p25 <= p50 && p50 <= p75
+  )
+}
+# INTENT: Verify temporal script found time columns if dataset is temporal
+# ASSUMES: Orchestrator marked dataset as temporal based on Part A findings
+if (temporal_expected && !time_columns_found) {
+  cat("WARNING: Dataset expected to have temporal columns but none identified\n")
+}
+cat("CPP2 PASSED: Statistical summaries internally consistent\n")
 ```
 
 ### CPP3: Post-Relational Validation
@@ -1539,6 +2319,45 @@ for col in key_candidates:
 print(f"CPP3 PASSED: Relational checks consistent, {len(anomaly_catalog)} anomalies cataloged")
 ```
 
+**R:**
+```r
+# --- CPP3: Post-Relational Validation ---
+# NOTE: This checkpoint is embedded in script 09 (quality-anomaly.R).
+# Variables from other scripts (e.g., uniqueness_results from script 07,
+# correlation_matrix from script 08) must be recomputed or loaded within
+# this script before validation. Each profiling script runs independently;
+# there is no shared in-memory state between scripts.
+
+# INTENT: Anomaly catalog must be non-empty (at minimum INFO-level observations)
+stopifnot(
+  "STOP: Anomaly catalog is empty - quality analysis must produce at least one observation" =
+    length(anomaly_catalog) > 0
+)
+
+# INTENT: Verify correlation matrix is symmetric (if computed in this script or loaded)
+if (!is.null(correlation_matrix)) {
+  stopifnot(
+    "STOP: Correlation matrix is not symmetric" =
+      all(abs(correlation_matrix - t(correlation_matrix)) < 1e-10, na.rm = TRUE)
+  )
+}
+
+# INTENT: Verify uniqueness counts agree with n_distinct
+# ASSUMES: uniqueness_results was computed or loaded in this script (not inherited from script 07)
+for (col in key_candidates) {
+  reported_unique <- uniqueness_results[[col]]
+  actual_unique <- n_distinct(df[[col]])
+  stopifnot(
+    sprintf("STOP: Uniqueness count mismatch for '%s': reported %d, actual %d",
+            col, reported_unique, actual_unique) =
+      reported_unique == actual_unique
+  )
+}
+
+cat(sprintf("CPP3 PASSED: Relational checks consistent, %d anomalies cataloged\n",
+            length(anomaly_catalog)))
+```
+
 ### CPP4: Post-Interpretation Validation
 
 **Embedded in:** The last executed Part D script (script 11 if docs provided, otherwise script 10).
@@ -1566,6 +2385,40 @@ if documentation_provided:
 
 print(f"CPP4 PASSED: All interpretations marked PRELIMINARY, "
       f"documentation reconciliation: {'completed' if documentation_provided else 'N/A (no docs)'}")
+```
+
+**R:**
+```r
+# --- CPP4: Post-Interpretation Validation ---
+# INTENT: Verify interpretation discipline was maintained
+
+# ASSUMES: interpretation_output is the string output from script 10
+# REASONING: Every semantic claim must be hedged with [PRELIMINARY]
+interpretations <- regmatches(
+  interpretation_output,
+  gregexpr("(?:->|interpretation:)\\s*(.+)", interpretation_output)
+)[[1]]
+
+for (interp in interpretations) {
+  if (!grepl("\\[NO INTERPRETATION\\]", interp)) {
+    stopifnot(
+      sprintf("STOP: Interpretation missing [PRELIMINARY] marker: %s", substr(interp, 1, 80)) =
+        grepl("\\[PRELIMINARY\\]", interp)
+    )
+  }
+}
+
+# INTENT: If docs were provided, reconciliation must have run
+# ASSUMES: documentation_provided is TRUE if user supplied documentation at intake
+if (documentation_provided) {
+  stopifnot(
+    "STOP: Documentation was provided but reconciliation script did not execute" =
+      reconciliation_ran
+  )
+}
+
+cat(sprintf("CPP4 PASSED: All interpretations marked PRELIMINARY, documentation reconciliation: %s\n",
+            ifelse(documentation_provided, "completed", "N/A (no docs)")))
 ```
 
 ### CPP-SKILL: Post-Authoring Validation

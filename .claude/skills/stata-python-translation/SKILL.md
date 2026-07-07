@@ -325,6 +325,7 @@ df = df.join(districts, on="school_id", how="inner")
 | `geopandas` | Python-side spatial data -- covers Stata spmap/spregress equivalents |
 | `marimo` | Python-side notebooks -- replaces do-file + log workflow |
 | `r-python-translation` | Parallel skill for R-background users -- shares the same Python target stack |
+| `stata-r-translation` | Reverse direction -- maps Stata commands to R equivalents for Stata-background users working in R |
 
 **Note:** Individual tool skills contain library-specific usage guidance (syntax, gotchas, performance). This skill provides the Stata-to-Python conceptual bridge -- use both together when a Stata-background user is working with a specific library.
 

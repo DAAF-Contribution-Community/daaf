@@ -1,6 +1,6 @@
 # QA Checkpoints Reference
 
-This document defines the continuous Quality Assurance checkpoint system that runs after each atomic script execution. QA checkpoints complement the existing CP1-CP4 validation system by providing independent secondary verification.
+This document defines the continuous Quality Assurance checkpoint system that runs after each atomic script execution. QA checkpoints complement the existing CP1-CP4 validation system by providing independent secondary verification. Code templates are provided in both Python (Polars) and R (tidyverse/arrow).
 
 ---
 
@@ -126,6 +126,78 @@ print(f"\nQA1 RESULT: {qa1_max_severity}")
 print("=" * 60)
 ```
 
+### QA1 Standard Check Script — R (cr1)
+
+```r
+library(dplyr)
+library(arrow)
+
+# --- QA1: Post-Fetch Quality Assessment ---
+cat("\n")
+cat(strrep("=", 60), "\n")
+cat("QA1: POST-FETCH QUALITY ASSESSMENT\n")
+cat(strrep("=", 60), "\n")
+
+qa1_max_severity <- "PASSED"  # Track highest severity: PASSED < WARNING < BLOCKER
+severity_rank <- c("PASSED" = 1, "WARNING" = 2, "BLOCKER" = 3)
+
+# Schema validation
+expected_cols <- plan_spec$expected_columns
+missing <- setdiff(expected_cols, names(df))
+if (length(missing) > 0) {
+  critical_missing <- intersect(missing, plan_spec$critical_columns)
+  if (length(critical_missing) > 0) {
+    cat(sprintf("[BLOCKER] Missing critical columns: %s\n", paste(critical_missing, collapse = ", ")))
+    qa1_max_severity <- "BLOCKER"
+  } else {
+    cat(sprintf("[WARNING] Missing non-critical columns: %s\n", paste(missing, collapse = ", ")))
+    if (severity_rank["WARNING"] > severity_rank[qa1_max_severity]) qa1_max_severity <- "WARNING"
+  }
+} else {
+  cat(sprintf("[PASS] All %d expected columns present\n", length(expected_cols)))
+}
+
+# Year coverage
+year_col <- plan_spec$year_col %||% "year"  # From Plan Domain Configuration
+if (!is.null(year_col) && year_col %in% names(df)) {
+  years_present <- unique(df[[year_col]])
+  years_expected <- plan_spec$year_range
+  missing_years <- setdiff(years_expected, years_present)
+  if (length(missing_years) > 0) {
+    severity <- if (length(missing_years) > length(years_expected) %/% 2) "BLOCKER" else "WARNING"
+    cat(sprintf("[%s] Missing years: %s\n", severity, paste(sort(missing_years), collapse = ", ")))
+    if (severity_rank[severity] > severity_rank[qa1_max_severity]) qa1_max_severity <- severity
+  } else {
+    cat(sprintf("[PASS] All expected years present: %s\n", paste(sort(years_present), collapse = ", ")))
+  }
+}
+
+# ID uniqueness
+id_col <- plan_spec$primary_key
+if (!is.null(id_col) && id_col %in% names(df)) {
+  duplicates <- df |> count(!!sym(id_col)) |> filter(n > 1)
+  if (nrow(duplicates) > 0) {
+    cat(sprintf("[BLOCKER] %d duplicate IDs found in '%s'\n", nrow(duplicates), id_col))
+    qa1_max_severity <- "BLOCKER"
+  } else {
+    cat(sprintf("[PASS] All IDs unique in '%s'\n", id_col))
+  }
+}
+
+# --- Data Profiling (for qa2+ decision) ---
+cat("\n")
+cat(strrep("=", 60), "\n")
+cat("DATA PROFILING\n")
+cat(strrep("=", 60), "\n")
+cat("\nFirst 10 rows:\n")
+print(head(df, 10))
+cat("\nDescriptive statistics:\n")
+print(summary(df))
+
+cat(sprintf("\nQA1 RESULT: %s\n", qa1_max_severity))
+cat(strrep("=", 60), "\n")
+```
+
 ### QA1 Discretionary Checks
 
 Add when appropriate:
@@ -229,6 +301,91 @@ print(f"\nDescriptive statistics:\n{df.describe()}")
 
 print(f"\nQA2 RESULT: {qa2_max_severity}")
 print("=" * 60)
+```
+
+### QA2 Standard Check Script — R (cr1)
+
+```r
+library(dplyr)
+library(arrow)
+
+# --- QA2: Post-Clean Quality Assessment ---
+cat("\n")
+cat(strrep("=", 60), "\n")
+cat("QA2: POST-CLEAN QUALITY ASSESSMENT\n")
+cat(strrep("=", 60), "\n")
+
+qa2_max_severity <- "PASSED"
+severity_rank <- c("PASSED" = 1, "WARNING" = 2, "BLOCKER" = 3)
+
+# Coded values verification
+cat("\nCoded Values Check:\n")
+numeric_columns <- plan_spec$numeric_columns %||% character(0)
+for (col in numeric_columns) {
+  if (!col %in% names(df)) next
+  # Maps to Plan's "Coded Missing Values" field in Domain Configuration; education default: c(-1, -2, -3)
+  coded_missing_values <- plan_spec$coded_missing_values %||% c(-1, -2, -3)
+  for (code in coded_missing_values) {
+    count <- sum(df[[col]] == code, na.rm = TRUE)
+    if (count > 0) {
+      cat(sprintf("[BLOCKER] Column '%s' still has %d coded value %d\n", col, count, code))
+      qa2_max_severity <- "BLOCKER"
+    }
+  }
+  if (all(sapply(coded_missing_values, function(c) sum(df[[col]] == c, na.rm = TRUE) == 0))) {
+    cat(sprintf("[PASS] '%s': no coded values remain\n", col))
+  }
+}
+
+# Suppression rate recalculation
+if (!is.null(plan_spec$suppression_columns)) {
+  cat("\nSuppression Rate Verification:\n")
+  for (col in plan_spec$suppression_columns) {
+    if (!col %in% names(df) || !col %in% names(raw_df)) next
+    raw_count <- nrow(raw_df)
+    clean_count <- nrow(df)
+    actual_rate <- if (raw_count > 0) 1 - (clean_count / raw_count) else 0
+    reported_rate <- plan_spec$reported_suppression_rate[[col]]
+    if (!is.null(reported_rate) && abs(actual_rate - reported_rate) > 0.05) {
+      cat(sprintf("[WARNING] Suppression rate mismatch for '%s': reported %.1f%%, actual %.1f%%\n",
+                  col, reported_rate * 100, actual_rate * 100))
+      if (severity_rank["WARNING"] > severity_rank[qa2_max_severity]) qa2_max_severity <- "WARNING"
+    } else {
+      cat(sprintf("[PASS] '%s' suppression rate: %.1f%%\n", col, actual_rate * 100))
+    }
+  }
+}
+
+# Type validation
+type_spec <- plan_spec$column_types %||% list()
+if (length(type_spec) > 0) {
+  cat("\nType Validation:\n")
+  for (col in names(type_spec)) {
+    if (col %in% names(df)) {
+      actual_type <- class(df[[col]])[1]
+      expected_type <- type_spec[[col]]
+      if (actual_type != expected_type) {
+        cat(sprintf("[WARNING] '%s' type mismatch: expected %s, got %s\n", col, expected_type, actual_type))
+        if (severity_rank["WARNING"] > severity_rank[qa2_max_severity]) qa2_max_severity <- "WARNING"
+      } else {
+        cat(sprintf("[PASS] '%s' type: %s\n", col, actual_type))
+      }
+    }
+  }
+}
+
+# --- Data Profiling (for qa2+ decision) ---
+cat("\n")
+cat(strrep("=", 60), "\n")
+cat("DATA PROFILING\n")
+cat(strrep("=", 60), "\n")
+cat("\nFirst 10 rows:\n")
+print(head(df, 10))
+cat("\nDescriptive statistics:\n")
+print(summary(df))
+
+cat(sprintf("\nQA2 RESULT: %s\n", qa2_max_severity))
+cat(strrep("=", 60), "\n")
 ```
 
 ### QA2 Discretionary Checks
@@ -352,6 +509,116 @@ print(f"\nDescriptive statistics:\n{df.describe()}")
 
 print(f"\nQA3 RESULT: {qa3_max_severity}")
 print("=" * 60)
+```
+
+### QA3 Standard Check Script — R (cr1)
+
+```r
+library(dplyr)
+library(arrow)
+
+# --- QA3: Post-Transform Quality Assessment ---
+cat("\n")
+cat(strrep("=", 60), "\n")
+cat("QA3: POST-TRANSFORM QUALITY ASSESSMENT\n")
+cat(strrep("=", 60), "\n")
+
+qa3_max_severity <- "PASSED"
+severity_rank <- c("PASSED" = 1, "WARNING" = 2, "BLOCKER" = 3)
+
+# Join cardinality validation
+if (!is.null(transform_spec$join)) {
+  expected_cardinality <- transform_spec$join$expected_cardinality
+  left_df <- source_dfs$left
+  right_df <- source_dfs$right
+
+  cat(sprintf("\nJoin Cardinality (expected: %s):\n", expected_cardinality))
+  if (expected_cardinality == "1:1") {
+    if (nrow(df) > max(nrow(left_df), nrow(right_df)) * 1.05) {
+      cat(sprintf("[BLOCKER] Fan-out detected: %d rows from %d and %d\n",
+                  nrow(df), nrow(left_df), nrow(right_df)))
+      qa3_max_severity <- "BLOCKER"
+    } else {
+      cat(sprintf("[PASS] No fan-out: %d rows\n", nrow(df)))
+    }
+  }
+}
+
+# Aggregation spot-check
+if (!is.null(transform_spec$aggregation)) {
+  group_col <- transform_spec$aggregation$group_by
+  agg_col <- transform_spec$aggregation$column
+  agg_func <- transform_spec$aggregation$`function`
+
+  sample_group <- unique(df[[group_col]])[1]
+  sample_df <- df |> filter(!!sym(group_col) == sample_group)
+
+  cat(sprintf("\nAggregation Spot-Check (group: %s):\n", as.character(sample_group)))
+  if (agg_func == "sum") {
+    source_sum <- source_dfs$input |>
+      filter(!!sym(group_col) == sample_group) |>
+      pull(!!sym(agg_col)) |>
+      sum(na.rm = TRUE)
+    result_sum <- sum(sample_df[[agg_col]], na.rm = TRUE)
+    if (abs(source_sum - result_sum) > 0.01 * source_sum) {
+      cat(sprintf("[BLOCKER] Aggregation mismatch: source sum %s, result sum %s\n",
+                  format(source_sum, big.mark = ","), format(result_sum, big.mark = ",")))
+      qa3_max_severity <- "BLOCKER"
+    } else {
+      cat(sprintf("[PASS] Aggregation verified: source=%s, result=%s\n",
+                  format(source_sum, big.mark = ","), format(result_sum, big.mark = ",")))
+    }
+  }
+}
+
+# Row preservation
+expected_rows <- transform_spec$expected_rows
+if (!is.null(expected_rows)) {
+  row_diff <- abs(nrow(df) - expected_rows) / expected_rows
+  cat("\nRow Preservation:\n")
+  if (row_diff > 0.5) {
+    cat(sprintf("[BLOCKER] Row count deviation: expected ~%s, got %s (%.1f%%)\n",
+                format(expected_rows, big.mark = ","), format(nrow(df), big.mark = ","), row_diff * 100))
+    qa3_max_severity <- "BLOCKER"
+  } else if (row_diff > 0.1) {
+    cat(sprintf("[WARNING] Row count deviation: expected ~%s, got %s (%.1f%%)\n",
+                format(expected_rows, big.mark = ","), format(nrow(df), big.mark = ","), row_diff * 100))
+    if (severity_rank["WARNING"] > severity_rank[qa3_max_severity]) qa3_max_severity <- "WARNING"
+  } else {
+    cat(sprintf("[PASS] Row count: %s (expected ~%s)\n",
+                format(nrow(df), big.mark = ","), format(expected_rows, big.mark = ",")))
+  }
+}
+
+# Unexpected null check
+no_null_cols <- transform_spec$no_null_columns %||% character(0)
+if (length(no_null_cols) > 0) {
+  cat("\nUnexpected Nulls:\n")
+  for (col in no_null_cols) {
+    if (col %in% names(df)) {
+      null_count <- sum(is.na(df[[col]]))
+      if (null_count > 0) {
+        cat(sprintf("[BLOCKER] Column '%s' has %d unexpected NAs\n", col, null_count))
+        qa3_max_severity <- "BLOCKER"
+      } else {
+        cat(sprintf("[PASS] '%s': no NAs\n", col))
+      }
+    }
+  }
+}
+
+# --- Data Profiling (for qa2+ decision) ---
+cat("\n")
+cat(strrep("=", 60), "\n")
+cat("DATA PROFILING\n")
+cat(strrep("=", 60), "\n")
+cat("\nFirst 10 rows:\n")
+print(head(df, 10))
+cat("\nDescriptive statistics:\n")
+print(summary(df))
+
+cat(sprintf("\nQA3 RESULT: %s\n", qa3_max_severity))
+cat(strrep("=", 60), "\n")
 ```
 
 ### QA3 Discretionary Checks
@@ -496,6 +763,129 @@ print(f"\nQA4a RESULT: {qa4a_max_severity}")
 print("=" * 60)
 ```
 
+### QA4a cra1 Script Template — R
+
+```r
+library(dplyr)
+library(arrow)
+
+# --- QA4a: Post-Analysis Statistical Validity ---
+cat("\n")
+cat(strrep("=", 60), "\n")
+cat("QA4a: POST-ANALYSIS STATISTICAL VALIDITY\n")
+cat(strrep("=", 60), "\n")
+
+qa4a_max_severity <- "PASSED"
+severity_rank <- c("PASSED" = 1, "WARNING" = 2, "BLOCKER" = 3)
+
+# Data source accuracy
+cat("\nData Source Check:\n")
+script_path <- script_spec$script_path
+script_text <- readLines(script_path) |> paste(collapse = "\n")
+expected_data_source <- plan_spec$data_source
+if (!grepl(expected_data_source, script_text, fixed = TRUE)) {
+  cat(sprintf("[BLOCKER] Script does not load expected data source: %s\n", expected_data_source))
+  qa4a_max_severity <- "BLOCKER"
+} else if (grepl("data/raw/", script_text, fixed = TRUE) && !grepl("data/processed/", script_text, fixed = TRUE)) {
+  cat("[WARNING] Script appears to use raw data instead of processed data\n")
+  if (severity_rank["WARNING"] > severity_rank[qa4a_max_severity]) qa4a_max_severity <- "WARNING"
+} else {
+  cat("[PASS] Script loads expected data source\n")
+}
+
+# Aggregation spot-check
+if (!is.null(plan_spec$aggregation)) {
+  cat("\nAggregation Spot-Check:\n")
+  group_col <- plan_spec$aggregation$group_by
+  agg_col <- plan_spec$aggregation$column
+  sample_group <- unique(df[[group_col]])[1]
+  source_val <- source_df |>
+    filter(!!sym(group_col) == sample_group) |>
+    pull(!!sym(agg_col)) |>
+    sum(na.rm = TRUE)
+  result_val <- df |>
+    filter(!!sym(group_col) == sample_group) |>
+    pull(!!sym(agg_col)) |>
+    sum(na.rm = TRUE)
+  if (abs(source_val - result_val) > 0.01 * abs(source_val) && source_val != 0) {
+    cat(sprintf("[BLOCKER] Aggregation mismatch: source=%s, result=%s\n",
+                format(source_val, big.mark = ","), format(result_val, big.mark = ",")))
+    qa4a_max_severity <- "BLOCKER"
+  } else {
+    cat(sprintf("[PASS] Aggregation verified: source=%s, result=%s\n",
+                format(source_val, big.mark = ","), format(result_val, big.mark = ",")))
+  }
+}
+
+# Model convergence (if applicable)
+if (!is.null(plan_spec$model_results)) {
+  cat("\nModel Convergence Check:\n")
+  model_results <- plan_spec$model_results
+  if (identical(model_results$converged, FALSE) && !isTRUE(model_results$convergence_documented)) {
+    cat("[BLOCKER] Model did not converge and non-convergence is not documented\n")
+    qa4a_max_severity <- "BLOCKER"
+  } else if (identical(model_results$converged, FALSE)) {
+    cat("[WARNING] Model did not converge (documented in script)\n")
+    if (severity_rank["WARNING"] > severity_rank[qa4a_max_severity]) qa4a_max_severity <- "WARNING"
+  } else {
+    cat("[PASS] Model converged successfully\n")
+  }
+}
+
+# Assumption validation (if applicable)
+if (!is.null(plan_spec$assumptions)) {
+  cat("\nAssumption Validation:\n")
+  for (assumption in plan_spec$assumptions) {
+    name <- assumption$name
+    checked <- isTRUE(assumption$checked)
+    violated <- isTRUE(assumption$violated)
+    discussed <- isTRUE(assumption$discussed)
+    if (!checked) {
+      cat(sprintf("[WARNING] Assumption '%s' not checked\n", name))
+      if (severity_rank["WARNING"] > severity_rank[qa4a_max_severity]) qa4a_max_severity <- "WARNING"
+    } else if (violated && !discussed) {
+      cat(sprintf("[BLOCKER] Assumption '%s' violated without discussion\n", name))
+      qa4a_max_severity <- "BLOCKER"
+    } else if (violated && discussed) {
+      cat(sprintf("[WARNING] Assumption '%s' violated (discussed in script)\n", name))
+      if (severity_rank["WARNING"] > severity_rank[qa4a_max_severity]) qa4a_max_severity <- "WARNING"
+    } else {
+      cat(sprintf("[PASS] Assumption '%s' holds\n", name))
+    }
+  }
+}
+
+# Robustness consistency (if applicable)
+if (!is.null(plan_spec$robustness_checks)) {
+  cat("\nRobustness Consistency:\n")
+  for (rob_check in plan_spec$robustness_checks) {
+    name <- rob_check$name
+    primary_sign <- rob_check$primary_sign
+    alt_sign <- rob_check$alt_sign
+    if (!is.null(primary_sign) && !is.null(alt_sign) && primary_sign != alt_sign) {
+      cat(sprintf("[BLOCKER] Result reversal in '%s': primary sign=%s, alt sign=%s\n",
+                  name, primary_sign, alt_sign))
+      qa4a_max_severity <- "BLOCKER"
+    } else {
+      cat(sprintf("[PASS] Robustness check '%s' consistent\n", name))
+    }
+  }
+}
+
+# --- Data Profiling (for cra2+ decision) ---
+cat("\n")
+cat(strrep("=", 60), "\n")
+cat("DATA PROFILING\n")
+cat(strrep("=", 60), "\n")
+cat("\nFirst 10 rows:\n")
+print(head(df, 10))
+cat("\nDescriptive statistics:\n")
+print(summary(df))
+
+cat(sprintf("\nQA4a RESULT: %s\n", qa4a_max_severity))
+cat(strrep("=", 60), "\n")
+```
+
 ### QA4a Discretionary Checks
 
 | Check | When to Add | What It Validates |
@@ -627,6 +1017,107 @@ if figures_dir.exists():
 
 print(f"\nQA4b RESULT: {qa4b_max_severity}")
 print("=" * 60)
+```
+
+### QA4b crb1 Script Template — R
+
+```r
+# --- QA4b: Post-Analysis Visualization Quality ---
+cat("\n")
+cat(strrep("=", 60), "\n")
+cat("QA4b: POST-ANALYSIS VISUALIZATION QUALITY\n")
+cat(strrep("=", 60), "\n")
+
+qa4b_max_severity <- "PASSED"
+severity_rank <- c("PASSED" = 1, "WARNING" = 2, "BLOCKER" = 3)
+
+# File existence and size check
+expected_figures <- viz_spec$expected_figures %||% character(0)
+cat(sprintf("\nExpected Figures (%d):\n", length(expected_figures)))
+for (fig_name in expected_figures) {
+  fig_path <- file.path(output_dir, "figures", fig_name)
+  if (!file.exists(fig_path)) {
+    cat(sprintf("[BLOCKER] Not found: %s\n", fig_name))
+    qa4b_max_severity <- "BLOCKER"
+  } else {
+    size_kb <- file.info(fig_path)$size / 1024
+    if (size_kb < 10) {
+      cat(sprintf("[WARNING] %s is suspiciously small (%.1f KB)\n", fig_name, size_kb))
+      if (severity_rank["WARNING"] > severity_rank[qa4b_max_severity]) qa4b_max_severity <- "WARNING"
+    } else {
+      cat(sprintf("[PASS] %s (%.1f KB)\n", fig_name, size_kb))
+    }
+  }
+}
+
+# Title and label check (via script inspection)
+cat("\nTitle/Label Check:\n")
+script_path <- script_spec$script_path
+script_text <- readLines(script_path) |> paste(collapse = "\n")
+has_xlabel <- grepl("(xlab|labs\\(.*x\\s*=|scale_x)", script_text)
+has_ylabel <- grepl("(ylab|labs\\(.*y\\s*=|scale_y)", script_text)
+has_title <- grepl("(ggtitle|labs\\(.*title)", script_text)
+
+if (!has_xlabel || !has_ylabel) {
+  cat("[BLOCKER] Missing axis labels\n")
+  qa4b_max_severity <- "BLOCKER"
+} else {
+  cat("[PASS] Axis labels present in script\n")
+}
+
+if (!has_title) {
+  cat("[WARNING] No title detected in script\n")
+  if (severity_rank["WARNING"] > severity_rank[qa4b_max_severity]) qa4b_max_severity <- "WARNING"
+} else {
+  cat("[PASS] Title present in script\n")
+}
+
+# COVID period annotation check
+cat("\nCOVID Annotation Check:\n")
+covid_years <- isTRUE(viz_spec$covid_years_present)
+if (covid_years) {
+  has_covid <- grepl("(covid|pandemic|2020.*2022|annotate|geom_vline|geom_rect)", script_text, ignore.case = TRUE)
+  if (!has_covid) {
+    cat("[BLOCKER] COVID years (2020-2022) present but not annotated visually\n")
+    qa4b_max_severity <- "BLOCKER"
+  } else {
+    cat("[PASS] COVID period annotation detected\n")
+  }
+} else {
+  cat("[PASS] No COVID years in data range\n")
+}
+
+# Resolution check
+cat("\nResolution Check:\n")
+dpi_match <- regmatches(script_text, regexpr("dpi\\s*=\\s*(\\d+)", script_text))
+if (length(dpi_match) > 0 && nchar(dpi_match) > 0) {
+  dpi <- as.integer(gsub("dpi\\s*=\\s*", "", dpi_match))
+  if (dpi < 150) {
+    cat(sprintf("[WARNING] Low DPI (%d) - may be insufficient for print\n", dpi))
+    if (severity_rank["WARNING"] > severity_rank[qa4b_max_severity]) qa4b_max_severity <- "WARNING"
+  } else {
+    cat(sprintf("[PASS] DPI = %d\n", dpi))
+  }
+} else {
+  cat("[WARNING] No explicit DPI setting found\n")
+  if (severity_rank["WARNING"] > severity_rank[qa4b_max_severity]) qa4b_max_severity <- "WARNING"
+}
+
+# --- Figures Directory Listing ---
+cat("\n")
+cat(strrep("=", 60), "\n")
+cat("FIGURES DIRECTORY LISTING\n")
+cat(strrep("=", 60), "\n")
+figures_dir_path <- file.path(output_dir, "figures")
+if (dir.exists(figures_dir_path)) {
+  files <- list.files(figures_dir_path, full.names = TRUE)
+  for (f in sort(files)) {
+    cat(sprintf("  %s (%.1f KB)\n", basename(f), file.info(f)$size / 1024))
+  }
+}
+
+cat(sprintf("\nQA4b RESULT: %s\n", qa4b_max_severity))
+cat(strrep("=", 60), "\n")
 ```
 
 ### QA4b Discretionary Checks

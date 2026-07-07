@@ -291,6 +291,17 @@ df.filter(pl.col("endow_per_fte").is_null())
 # df.filter(pl.col("endow_per_fte") == -1)  # Won't find anything
 ```
 
+```r
+# R equivalent
+library(dplyr)
+
+# Correct: Check for null
+df |> filter(is.na(endow_per_fte))
+
+# Incorrect: Checking for -1/-2/-3 (these don't exist in NACUBO)
+# df |> filter(endow_per_fte == -1)  # Won't find anything
+```
+
 ## Data Types
 
 ### Portal Mirror Column Types

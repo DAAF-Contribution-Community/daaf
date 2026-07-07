@@ -206,6 +206,24 @@ df = df.with_columns(
 )
 ```
 
+```r
+library(dplyr)
+
+# Approach 1: Filter to non-null records
+df <- df |> filter(!is.na(grant_recipients_unitid)
+
+# Approach 2: Filter out missing data codes
+df <- df |> filter(~fips %in% c(-1, -2, -3)
+
+# Approach 3: Replace missing codes with null
+df <- df |> mutate(
+    pl.when(fips %in% c(-1, -2, -3))
+    .then(NULL)
+    .otherwise(fips)
+    
+)
+```
+
 ## Methodological Considerations
 
 ### Changes Over Time
@@ -240,6 +258,18 @@ cpi_multipliers = {2018: 1.08, 2019: 1.06, 2020: 1.04, 2021: 1.00}
 df = df.with_columns(
     (pl.col("value_grants_disbursed_unitid") *
      pl.col("year").replace(cpi_multipliers)).alias("grants_real_2021")
+)
+```
+
+```r
+library(dplyr)
+
+# Example: Adjust to 2021 dollars using CPI multipliers
+cpi_multipliers <- {2018: 1.08, 2019: 1.06, 2020: 1.04, 2021: 1.00}
+
+df <- df |> mutate(
+    (value_grants_disbursed_unitid *
+     year.replace(cpi_multipliers))
 )
 ```
 
@@ -325,6 +355,22 @@ df_discrepancy = df.filter(
 )
 ```
 
+```r
+library(dplyr)
+
+# Check: 90/10 calculation matches components
+# NOTE: rev_pct_90_10 is a proportion (0-1), not percentage (0-100)
+df <- df |> mutate(
+    (numerator_90_10 / denominator_90_10)
+    
+)
+
+# Flag discrepancies > 0.01 (1 percentage point)
+df_discrepancy <- df |> filter(
+    (rev_pct_90_10 - calculated_pct).abs() > 0.01
+)
+```
+
 ### Outlier Detection
 
 ```python
@@ -337,5 +383,18 @@ q99 = df["financial_resp_score"].quantile(0.99)
 outliers = df.filter(
     (pl.col("financial_resp_score") < q01) |
     (pl.col("financial_resp_score") > q99)
+)
+```
+
+```r
+library(dplyr)
+
+# Identify extreme values
+q01 <- quantile(df$financial_resp_score, 0.01, na.rm = TRUE)
+q99 <- quantile(df$financial_resp_score, 0.99, na.rm = TRUE)
+
+outliers <- df |> filter(
+    (financial_resp_score < q01) |
+    (financial_resp_score > q99)
 )
 ```

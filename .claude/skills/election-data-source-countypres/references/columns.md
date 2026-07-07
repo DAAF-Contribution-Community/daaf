@@ -75,6 +75,10 @@ starts with `state, county_name, year, state_po, ...` while the codebook lists
       pl.col("county_fips").cast(pl.Utf8).str.zfill(5).alias("county_fips_str")
   )
   ```
+  ```r
+  # Always zero-pad before joining
+  df <- df |> mutate(county_fips_str = str_pad(county_fips, width = 5, pad = "0"))
+  ```
 
 ### office (String)
 - **Null rate:** 0%

@@ -69,6 +69,17 @@ df = df.with_columns(
 )
 ```
 
+```r
+# Extract LEAID from NCESSCH
+df <- df |> mutate(leaid = substr(ncessch, 1, 7))
+
+# Extract State FIPS from LEAID
+df <- df |> mutate(fips = substr(leaid, 1, 2))
+
+# Extract State FIPS from NCESSCH
+df <- df |> mutate(fips = substr(ncessch, 1, 2))
+```
+
 ### Postsecondary Identifier Relationships
 
 ```
@@ -119,6 +130,11 @@ OPEID6 (6 digits) - Institution family
 # Always check your specific institutions
 ```
 
+```r
+# Note: UNITID and OPEID don't always have 1:1 relationship
+# Always check your specific institutions
+```
+
 ## Joining Tables
 
 ### Schools to Districts
@@ -149,6 +165,24 @@ unmatched = merged.filter(pl.col("lea_name_district").is_null()).height
 print(f"Schools without district match: {unmatched}")
 ```
 
+```r
+library(arrow)
+library(dplyr)
+
+# Load school-level CCD directory from mirror
+schools <- read_parquet("data/raw/schools_ccd_directory.parquet") |> filter(year == 2020)
+
+# Load district-level CCD directory from mirror
+districts <- read_parquet("data/raw/school-districts_lea_directory.parquet") |> filter(year == 2020)
+
+# Join on leaid and year
+merged <- schools |> left_join(districts, by = c("leaid", "year"), suffix = c("", "_district"))
+
+# Check for unmatched schools
+unmatched <- sum(is.na(merged$lea_name_district))
+cat(sprintf("Schools without district match: %d\n", unmatched))
+```
+
 ### Schools Across Sources (CCD to CRDC)
 
 ```python
@@ -177,6 +211,21 @@ crdc_coverage = merged.filter(
 print(f"CRDC coverage: {crdc_coverage:.1%}")
 ```
 
+```r
+# Load CCD directory from mirror
+ccd <- read_parquet("data/raw/schools_ccd_directory.parquet") |> filter(year == 2017)
+
+# Load CRDC discipline from mirror (yearly files)
+crdc <- read_parquet("data/raw/schools_crdc_discipline_k12_2017.parquet")
+
+# Join on ncessch (CRDC is biennial - verify year alignment)
+merged <- ccd |> left_join(crdc, by = "ncessch", suffix = c("", "_crdc"))
+
+# Check coverage
+crdc_coverage <- sum(!is.na(merged$tot_discw_iss)) / nrow(merged)
+cat(sprintf("CRDC coverage: %.1f%%\n", crdc_coverage * 100))
+```
+
 ### Colleges Across Sources (IPEDS to Scorecard)
 
 ```python
@@ -198,6 +247,17 @@ merged = ipeds.join(
     how="left",
     suffix="_scorecard"
 )
+
+# Note: Not all institutions in both sources
+```
+
+```r
+# Both IPEDS and Scorecard use UNITID
+ipeds <- read_parquet("data/raw/colleges_ipeds_directory.parquet") |> filter(year == 2020)
+scorecard <- read_parquet("data/raw/colleges_scorecard_earnings.parquet") |> filter(year == 2014)
+
+# Join on unitid
+merged <- ipeds |> left_join(scorecard, by = "unitid", suffix = c("", "_scorecard"))
 
 # Note: Not all institutions in both sources
 ```
@@ -242,6 +302,16 @@ def get_aligned_data(crdc_year):
     return crdc.join(ccd, on="ncessch", how="left")
 ```
 
+```r
+# CRDC available years: 2011, 2013, 2015, 2017, 2020, 2021
+# Use matching CCD year
+crdc_year <- 2017
+crdc <- read_parquet(sprintf("data/raw/schools_crdc_discipline_k12_%d.parquet", crdc_year))
+ccd <- read_parquet("data/raw/schools_ccd_directory.parquet") |> filter(year == crdc_year)
+
+merged <- crdc |> left_join(ccd, by = "ncessch")
+```
+
 ### IPEDS Cohort Alignment
 
 ```python
@@ -266,9 +336,34 @@ def get_ipeds_with_outcomes(enrollment_year):
     return enrollment.join(grad_rates, on="unitid", how="left")
 ```
 
+```r
+# Graduation rates for year=2015 means cohort entered in 2015
+# 150% completion measured 6 years later (2021 for 4-year schools)
+enrollment_year <- 2015
+
+enrollment <- read_parquet("data/raw/colleges_ipeds_fall_enrollment.parquet") |>
+  filter(year == enrollment_year)
+
+# Graduation rate cohort year = enrollment year
+# But outcomes measured later
+grad_rates <- read_parquet("data/raw/colleges_ipeds_grad_rates_200pct.parquet") |>
+  filter(year == enrollment_year)
+
+merged <- enrollment |> left_join(grad_rates, by = "unitid")
+```
+
 ### Scorecard Earnings Lag
 
 ```python
+# Scorecard earnings are measured 6-10 years after entry
+# year field refers to measurement year or cohort year depending on variable
+
+# Example: If you want earnings for students who enrolled ~2014
+# Look at ~2020 (6-year) or ~2024 (10-year) measurement years
+# But data release lags by 1-2 additional years
+```
+
+```r
 # Scorecard earnings are measured 6-10 years after entry
 # year field refers to measurement year or cohort year depending on variable
 
@@ -299,6 +394,17 @@ def check_id_stability(df_year1, df_year2, id_col, year1, year2):
     return {"dropped": dropped, "added": added, "stable": stable}
 ```
 
+```r
+# Verify ID stability before joining across years
+ids_y1 <- unique(df_year1[[id_col]])
+ids_y2 <- unique(df_year2[[id_col]])
+
+cat(sprintf("IDs in %s but not %s: %d\n", year1, year2, length(setdiff(ids_y1, ids_y2))))
+cat(sprintf("IDs in %s but not %s: %d\n", year2, year1, length(setdiff(ids_y2, ids_y1))))
+cat(sprintf("Stable IDs: %d\n", length(intersect(ids_y1, ids_y2))))
+cat(sprintf("Stability rate: %.1f%%\n", length(intersect(ids_y1, ids_y2)) / length(ids_y1) * 100))
+```
+
 ### 2. Year Misalignment
 
 ```python
@@ -313,6 +419,20 @@ merged = source1.join(source2, on=["ncessch", "year"])
 source1_2017 = source1.filter(pl.col("year") == 2017)
 source2_2017 = source2.filter(pl.col("year") == 2017)
 merged = source1_2017.join(source2_2017.drop("year"), on="ncessch")
+```
+
+```r
+# WRONG: Joining without considering year
+merged <- source1 |> left_join(source2, by = "ncessch")  # May get wrong year match
+
+# RIGHT: Always include year in join when merging same-year data
+merged <- source1 |> left_join(source2, by = c("ncessch", "year"))
+
+# OR when sources have different year granularity:
+# Filter to specific years first, then join without year column
+source1_2017 <- source1 |> filter(year == 2017)
+source2_2017 <- source2 |> filter(year == 2017) |> select(-year)
+merged <- source1_2017 |> left_join(source2_2017, by = "ncessch")
 ```
 
 ### 3. Missing Coverage
@@ -334,6 +454,20 @@ def check_join_coverage(left_df, merged_df, right_key_col):
     return coverage
 ```
 
+```r
+# Not all schools/colleges appear in all sources
+# Always check join coverage
+original <- nrow(left_df)
+matched <- sum(!is.na(merged_df[[right_key_col]]))
+
+coverage <- matched / original * 100
+cat(sprintf("Join coverage: %.1f%%\n", coverage))
+
+if (coverage < 90) {
+  cat("WARNING: Significant data loss from join\n")
+}
+```
+
 ### 4. Duplicate Keys
 
 ```python
@@ -353,6 +487,19 @@ def check_duplicates(df, key_col):
     return dup_count
 ```
 
+```r
+# Some sources have multiple rows per institution
+# (e.g., branch campuses, reporting units)
+
+# Check for duplicates before joining
+dup_count <- df |> count(.data[[key_col]]) |> filter(n > 1)
+
+if (nrow(dup_count) > 0) {
+  cat(sprintf("WARNING: %d duplicate keys found\n", nrow(dup_count)))
+  cat("Consider aggregating or filtering before join\n")
+}
+```
+
 ## Aggregation Relationships
 
 ### School to District Aggregation
@@ -367,6 +514,20 @@ district_enrollment = schools.group_by(["leaid", "year"]).agg(
     pl.col("enrollment").sum().alias("total_enrollment"),
     pl.col("ncessch").count().alias("school_count")
 )
+
+# IMPORTANT: Prefer district-level totals from district endpoints
+# School sums may differ from official district totals
+```
+
+```r
+# Aggregate school enrollment to district
+district_enrollment <- schools |>
+  group_by(leaid, year) |>
+  summarise(
+    total_enrollment = sum(enrollment),
+    school_count = n(),
+    .groups = "drop"
+  )
 
 # IMPORTANT: Prefer district-level totals from district endpoints
 # School sums may differ from official district totals
@@ -403,6 +564,14 @@ schools_with_tract = schools.join(
     on="ncessch",
     how="left"
 )
+```
+
+```r
+# Get school-census geography crosswalk from mirror
+nhgis <- read_parquet("data/raw/schools_nhgis_geog_2010.parquet") |> filter(year == 2020)
+
+# Join to get census tract for each school
+schools_with_tract <- schools |> left_join(nhgis, by = "ncessch")
 ```
 
 ### Census Vintage Matching
@@ -508,4 +677,26 @@ null_counts = merged_df.select([
 
 print("\nNull counts after join:")
 print(null_counts)
+```
+
+```r
+# --- Post-Join Validation ---
+cat(sprintf("Join type: %s\n", join_type))
+cat(sprintf("Left rows: %s\n", format(nrow(left_df), big.mark = ",")))
+cat(sprintf("Merged rows: %s\n", format(nrow(merged_df), big.mark = ",")))
+
+if (join_type == "left") {
+  if (nrow(merged_df) != nrow(left_df)) {
+    cat(sprintf("[WARN] Row count changed: %s -> %s (duplicates in right?)\n",
+                format(nrow(left_df), big.mark = ","),
+                format(nrow(merged_df), big.mark = ",")))
+  } else {
+    cat("[PASS] Row count preserved\n")
+  }
+}
+
+# Check for unexpected NAs
+null_counts <- colSums(is.na(merged_df))
+cat("\nNull counts after join:\n")
+print(null_counts[null_counts > 0])
 ```

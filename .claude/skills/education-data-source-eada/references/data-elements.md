@@ -71,6 +71,21 @@ enrollment_gap = (
 ) - female_pct
 ```
 
+```r
+library(dplyr)
+
+# Total unduplicated athletes
+total_athletes <- undup_athpartic_men + undup_athpartic_women
+
+# Female participation rate
+female_pct <- undup_athpartic_women / total_athletes
+
+# Compare to enrollment (enrollment columns are in EADA data)
+enrollment_gap <- (
+    enrollment_women / enrollment_total
+) - female_pct
+```
+
 ## Coaching Data
 
 ### Head Coaches
@@ -121,6 +136,21 @@ total_coaches_womens = pl.col("women_total_hdcoach")
 pct_female = female_coaches_womens / total_coaches_womens
 ```
 
+```r
+library(dplyr)
+
+# Female head coaches of women's teams
+female_coaches_womens <- (
+    women_fthdcoach_fem + women_pthdcoach_fem
+)
+
+# Total head coaches of women's teams
+total_coaches_womens <- women_total_hdcoach
+
+# Percentage female
+pct_female <- female_coaches_womens / total_coaches_womens
+```
+
 ## Salary Data
 
 ### Salary Reporting Rules
@@ -150,6 +180,12 @@ Institutions report:
 
 Better approach: Compare coaches of similar sports
 ```python
+# Example: Compare basketball coaches
+# Rather than all men's vs all women's coaches
+basketball_men_salary vs basketball_women_salary
+```
+
+```r
 # Example: Compare basketball coaches
 # Rather than all men's vs all women's coaches
 basketball_men_salary vs basketball_women_salary
@@ -258,6 +294,12 @@ Athletic aid should be proportional to participation:
 aid_women / (aid_men + aid_women) ≈ 0.45
 ```
 
+```r
+# If participation is 45% women, 55% men
+# Aid should be approximately:
+aid_women / (aid_men + aid_women) ≈ 0.45
+```
+
 Small deviations (1-2%) acceptable; larger gaps raise concerns.
 
 ## Derived Metrics
@@ -278,6 +320,20 @@ enrollment_gap = (
 ) - female_share
 ```
 
+```r
+library(dplyr)
+
+# Female participation share
+female_share <- undup_athpartic_women / (
+    undup_athpartic_men + undup_athpartic_women
+)
+
+# Compare to enrollment (included in EADA data)
+enrollment_gap <- (
+    enrollment_women / enrollment_total
+) - female_share
+```
+
 ### Financial Investment Per Athlete
 
 ```python
@@ -286,6 +342,16 @@ enrollment_gap = (
 
 # Investment ratio
 investment_ratio = pl.col("ath_opexp_perpart_women") / pl.col("ath_opexp_perpart_men")
+```
+
+```r
+library(dplyr)
+
+# Per-athlete operating expenses (pre-calculated in data)
+# Use ath_opexp_perpart_men and ath_opexp_perpart_women directly
+
+# Investment ratio
+investment_ratio <- ath_opexp_perpart_women / ath_opexp_perpart_men
 ```
 
 ### Coaching Investment
@@ -297,6 +363,17 @@ salary_ratio = pl.col("hdcoach_salary_women") / pl.col("hdcoach_salary_men")
 # Coaches per athlete
 coaches_per_male = pl.col("men_total_hdcoach") / pl.col("undup_athpartic_men")
 coaches_per_female = pl.col("women_total_hdcoach") / pl.col("undup_athpartic_women")
+```
+
+```r
+library(dplyr)
+
+# Average salary comparison
+salary_ratio <- hdcoach_salary_women / hdcoach_salary_men
+
+# Coaches per athlete
+coaches_per_male <- men_total_hdcoach / undup_athpartic_men
+coaches_per_female <- women_total_hdcoach / undup_athpartic_women
 ```
 
 ### Aid Proportionality
@@ -313,6 +390,22 @@ partic_share_women = pl.col("undup_athpartic_women") / (
 
 # Proportionality gap
 aid_gap = partic_share_women - aid_share_women
+```
+
+```r
+library(dplyr)
+
+# Aid share vs participation share (pre-calculated ratio available)
+# Use ath_stuaid_women_ratio directly, or calculate:
+aid_share_women <- ath_stuaid_women / (
+    ath_stuaid_men + ath_stuaid_women
+)
+partic_share_women <- undup_athpartic_women / (
+    undup_athpartic_men + undup_athpartic_women
+)
+
+# Proportionality gap
+aid_gap <- partic_share_women - aid_share_women
 ```
 
 ## Data Quality Considerations

@@ -29,7 +29,7 @@ total_waves: 0                        # Total wave count (populated by data-plan
 | 2.2 | clean-meps | 2 | 6 | `scripts/stage6_clean/02_clean-meps.py` | 1.2 |
 | 3.1 | join-ccd-meps | 3 | 7 | `scripts/stage7_transform/01_join-data.py` | 2.1, 2.2 |
 
-*(Replace with actual tasks for your analysis.)*
+*(Replace with actual tasks for your analysis. Use `.R` extension instead of `.py` when execution language is R.)*
 
 ---
 
@@ -51,9 +51,9 @@ total_waves: 0                        # Total wave count (populated by data-plan
     2. Use mirror fetch pattern (see skill's fetch-patterns.md):
        - Dataset Paths: {dataset_paths}  (from datasets-reference.md)
        - File type: {single | yearly}
-    3. Apply local filters with Polars:
-       - Years: pl.col("year").is_in([year list])
-       - Filters: [filter parameters as Polars expressions]
+    3. Apply local filters:
+       - Python: pl.col("year").is_in([year list]) (Polars)
+       - R: dplyr::filter(year %in% c(...)) (tidyverse)
     4. Save to parquet format
     5. Run CP1 validation
   </action>
@@ -164,14 +164,14 @@ total_waves: 0                        # Total wave count (populated by data-plan
 
 <task name="regression-poverty" type="auto" wave="4">
   <depends_on>join-ccd-meps</depends_on>
-  <skill>data-scientist, pyfixest</skill>
+  <skill>data-scientist, pyfixest</skill>  <!-- R equivalent: data-scientist, fixest -->
   <agent>research-executor</agent>
   <files>
     <input>data/processed/YYYY-MM-DD_analysis.parquet</input>
     <output>output/analysis/YYYY-MM-DD_regression_results.parquet</output>
   </files>
   <action>
-    1. Load skills (polars + modeling library specified above)
+    1. Load skills (polars/tidyverse + modeling library specified above)
     2. Load analysis dataset
     3. Specify model: {model_type} with DV={dependent_var}, IV={independent_vars}, controls={control_vars}
     4. Check assumptions: {assumptions_to_verify}
@@ -227,7 +227,7 @@ total_waves: 0                        # Total wave count (populated by data-plan
     <output>output/figures/YYYY-MM-DD_poverty_distribution.png</output>
   </files>
   <action>
-    1. Load skills (plotnine or plotly or geopandas for maps)
+    1. Load skills (Python: plotnine/plotly/geopandas; R: ggplot2/plotly-r/sf-terra)
     2. Load analysis dataset
     3. Create {chart_type} showing {variables}
     4. Apply styling: {title}, {axes}, {facets}, colorblind-safe palette

@@ -332,6 +332,14 @@ response = requests.get(
 data = response.json()
 print("Actual columns:", list(data['results'][0].keys()))
 ```
+```r
+# Test query to verify actual column names
+library(httr2)
+resp <- request("https://educationdata.urban.org/api/v1/college-university/ipeds/directory/2023/") |>
+  req_perform()
+data <- resp_body_json(resp)
+cat("Actual columns:", paste(names(data$results[[1]]), collapse = ", "), "\n")
+```
 
 **Known discrepancies:**
 

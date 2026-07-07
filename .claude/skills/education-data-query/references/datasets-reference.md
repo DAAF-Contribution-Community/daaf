@@ -25,6 +25,17 @@ DATASET_PATH = "saipe/districts_saipe"
 df = fetch_from_mirrors(DATASET_PATH, years=[2020, 2021, 2022])
 ```
 
+```r
+# Example: SAIPE district poverty
+# See fetch-patterns.md for the full R mirror resolution pattern
+dataset_path <- "saipe/districts_saipe"
+config <- yaml::read_yaml(mirrors_yaml_path)
+mirror <- config$mirrors[[1]]
+url <- paste0(mirror$root_url, "/", dataset_path, ".", mirror$format)
+df <- arrow::read_parquet(url) |>
+  filter(year %in% c(2020, 2021, 2022))
+```
+
 No per-mirror path dicts needed — one path works for all mirrors.
 
 ---

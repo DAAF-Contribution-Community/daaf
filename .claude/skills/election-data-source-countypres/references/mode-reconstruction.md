@@ -167,6 +167,94 @@ if dup_groups.shape[0] > 0:
             agg_exprs_dedup.append(pl.col(col).first())
     df = df.group_by(DEDUP_KEY).agg(agg_exprs_dedup)
 ```
+```r
+library(dplyr)
+library(stringr)
+
+# --- Constants ---
+GROUP_COLS <- c("county_fips", "year", "state_po", "state", "county_name", "candidate", "party")
+DEDUP_KEY <- c("county_fips", "year", "candidate", "party")
+CARRY_COLS <- c("office", "version")
+
+# --- B.1: Classify empty-string mode states ---
+empty_mode_rows <- df |> filter(mode == "")
+empty_mode_states <- empty_mode_rows |> distinct(state_po, year) |> arrange(year, state_po)
+
+breakdown_state_years <- character(0)
+total_state_years <- character(0)
+
+for (i in seq_len(nrow(empty_mode_states))) {
+  st <- empty_mode_states$state_po[i]
+  yr <- empty_mode_states$year[i]
+  state_empty <- empty_mode_rows |> filter(state_po == st, year == yr)
+  rows_per_group <- state_empty |>
+    group_by(county_name, candidate, party) |>
+    summarise(n = n(), .groups = "drop")
+  max_rows <- max(rows_per_group$n)
+  key <- paste(st, yr, sep = "_")
+  if (max_rows > 1) {
+    breakdown_state_years <- c(breakdown_state_years, key)
+  } else {
+    total_state_years <- c(total_state_years, key)
+  }
+}
+
+# --- B.2: Reclassify empty-string totals as "TOTAL" (Pattern 3) ---
+if (length(total_state_years) > 0) {
+  total_keys <- strsplit(total_state_years, "_")
+  df <- df |> mutate(
+    mode = if_else(
+      paste(state_po, year, sep = "_") %in% total_state_years & mode == "",
+      "TOTAL", mode
+    )
+  )
+}
+
+# --- B.4: Identify county-years that HAVE a TOTAL row ---
+has_total <- df |> filter(mode == "TOTAL") |> distinct(state_po, county_name, year)
+
+# --- B.5a: Counties WITH TOTAL -> keep only TOTAL rows (Pattern 1) ---
+df_total <- df |>
+  semi_join(has_total, by = c("state_po", "county_name", "year")) |>
+  filter(mode == "TOTAL")
+
+# --- B.5b: Counties WITHOUT TOTAL -> aggregate breakdowns (Pattern 2) ---
+df_no_total <- df |> anti_join(has_total, by = c("state_po", "county_name", "year"))
+
+if (nrow(df_no_total) > 0) {
+  df_reconstructed <- df_no_total |>
+    group_by(across(all_of(GROUP_COLS))) |>
+    summarise(
+      candidatevotes = sum(candidatevotes, na.rm = TRUE),
+      totalvotes = first(totalvotes),
+      mode = "TOTAL",
+      office = first(office),
+      version = first(version),
+      .groups = "drop"
+    )
+  df <- bind_rows(df_total, df_reconstructed)
+} else {
+  df <- df_total
+}
+
+# --- B.6: Post-concat deduplication using DEDUP_KEY ---
+dup_groups <- df |> group_by(across(all_of(DEDUP_KEY))) |> filter(n() > 1) |> ungroup()
+if (nrow(dup_groups) > 0) {
+  df <- df |>
+    group_by(across(all_of(DEDUP_KEY))) |>
+    summarise(
+      candidatevotes = sum(candidatevotes, na.rm = TRUE),
+      totalvotes = first(totalvotes),
+      mode = first(mode),
+      state_po = first(state_po),
+      state = first(state),
+      county_name = first(county_name),
+      office = first(office),
+      version = first(version),
+      .groups = "drop"
+    )
+}
+```
 
 ## Row Count Estimation
 
@@ -204,4 +292,24 @@ for yr in df["year"].unique().to_list():
 for yr in df["year"].unique().to_list():
     n_states = df.filter(pl.col("year") == yr)["state_po"].n_unique()
     assert n_states >= 50, f"Only {n_states} states in {yr} (expected 51)"
+```
+```r
+# 1. All rows should be mode == "TOTAL"
+stopifnot(all(df$mode == "TOTAL"))
+
+# 2. No duplicate (county_fips, year, candidate, party) groups
+dup_check <- df |> group_by(across(all_of(DEDUP_KEY))) |> filter(n() > 1) |> ungroup()
+stopifnot(nrow(dup_check) == 0)
+
+# 3. County coverage: at least 3,100 unique county_fips per year
+for (yr in unique(df$year)) {
+  n_counties <- df |> filter(year == yr) |> pull(county_fips) |> n_distinct()
+  stopifnot(n_counties >= 3100)
+}
+
+# 4. State coverage: 51 unique states per year (50 + DC)
+for (yr in unique(df$year)) {
+  n_states <- df |> filter(year == yr) |> pull(state_po) |> n_distinct()
+  stopifnot(n_states >= 50)
+}
 ```

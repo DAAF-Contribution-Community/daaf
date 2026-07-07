@@ -48,6 +48,14 @@ completions = 2  # Two awards
 completions = 1  # One award
 ```
 
+```r
+# If student earns BS in Biology and BA in Chemistry
+completions <- 2  # Two awards
+
+# If student earns dual degree (single program)
+completions <- 1  # One award
+```
+
 ### Completers
 
 **Unduplicated count of individuals** - each person counted once regardless of awards.
@@ -55,6 +63,15 @@ completions = 1  # One award
 ```python
 # Same student with two degrees
 completers = 1  # One person
+
+# Why different totals?
+# completions >= completers (always)
+# completions = completers + double majors + multiple awards
+```
+
+```r
+# Same student with two degrees
+completers <- 1  # One person
 
 # Why different totals?
 # completions >= completers (always)
@@ -83,6 +100,14 @@ stem_completions = bio_completions + chem_completions + physics_completions
 # Solution: Use completers for people count, completions for field analysis
 ```
 
+```r
+# Example: Counting STEM graduates
+stem_completions <- bio_completions + chem_completions + physics_completions
+# May count same person multiple times if double major
+
+# Solution: Use completers for people count, completions for field analysis
+```
+
 ## Award Levels
 
 ### Portal Award Level Codes
@@ -106,6 +131,9 @@ stem_completions = bio_completions + chem_completions + physics_completions
 > Verify these codes against the live codebook. Use `get_codebook_url()` from `fetch-patterns.md`:
 > ```python
 > url = get_codebook_url("ipeds/codebook_colleges_ipeds_completions-2digcip")
+> ```
+> ```r
+> url <- get_codebook_url("ipeds/codebook_colleges_ipeds_completions-2digcip")
 > ```
 
 #### NCES Raw File Award Level Codes (for reference only)
@@ -139,6 +167,19 @@ doctoral = [31, 32, 33]
 # Undergraduate vs graduate
 undergraduate = [4, 7, 8, 9, 22]  # Through bachelor's
 graduate = [23, 24, 30, 31, 32, 33]  # Post-bachelor's
+```
+
+```r
+# Common groupings using PORTAL codes (not NCES codes)
+certificates <- c(4, 7, 9, 23, 30)  # All certificate levels
+associate <- c(8)
+bachelor <- c(22)
+master <- c(24)
+doctoral <- c(31, 32, 33)
+
+# Undergraduate vs graduate
+undergraduate <- c(4, 7, 8, 9, 22)  # Through bachelor's
+graduate <- c(23, 24, 30, 31, 32, 33)  # Post-bachelor's
 ```
 
 ## CIP Codes
@@ -215,6 +256,20 @@ stem_cips = [
 ]
 ```
 
+```r
+stem_cips <- c(
+    1,   # Agriculture (some)
+    3,   # Natural Resources
+    11,  # Computer Science
+    14,  # Engineering
+    15,  # Engineering Tech
+    26,  # Biology
+    27,  # Math
+    40,  # Physical Sciences
+    41   # Science Tech
+)
+```
+
 ## Data Disaggregation
 
 ### By Demographics
@@ -227,6 +282,14 @@ Completions are reported by:
 # Demographic breakdown
 completions_by_race = df.group_by(["cip", "race"]).agg(pl.col("awards").sum())
 completions_by_gender = df.group_by(["cip", "sex"]).agg(pl.col("awards").sum())
+```
+
+```r
+library(dplyr)
+
+# Demographic breakdown
+completions_by_race <- df |> group_by(cip, race) |> summarise(awards = sum(awards), .groups = "drop")
+completions_by_gender <- df |> group_by(cip, sex) |> summarise(awards = sum(awards), .groups = "drop")
 ```
 
 ### Race/Ethnicity Categories (Portal Integer Encoding)
@@ -287,6 +350,16 @@ online_only = completions.filter(
 ).select(pl.col("awards").sum())
 ```
 
+```r
+library(dplyr)
+
+# Filter to programs with DE option
+de_programs <- completions |> filter(distance_ed %in% c(1, 2))
+
+# Count completions in fully online programs
+online_only <- completions |> filter(distance_ed == 1) |> summarise(total = sum(awards))
+```
+
 ## Common Analysis Uses
 
 ### Labor Market Supply
@@ -305,6 +378,14 @@ cs_by_level = completions.filter(
 ).group_by("awlevel").agg(pl.col("awards").sum())
 ```
 
+```r
+# CS graduates available
+cs_grads <- completions |> filter(cip2 == 11) |> summarise(total = sum(awards))
+
+# By degree level
+cs_by_level <- completions |> filter(cip2 == 11) |> group_by(awlevel) |> summarise(total = sum(awards))
+```
+
 ### Program Growth Analysis
 
 Track field trends over time:
@@ -319,6 +400,22 @@ field_trend = completions.group_by(["year", "cip2"]).agg(
 field_trend = field_trend.with_columns(
     (pl.col("total") / pl.col("total").shift(1) - 1).over("cip2").alias("growth")
 )
+```
+
+```r
+library(dplyr)
+
+# Year-over-year change
+field_trend <- completions |>
+  group_by(year, cip2) |>
+  summarise(total = sum(awards), .groups = "drop") |>
+  arrange(cip2, year)
+
+# Calculate growth rate
+field_trend <- field_trend |>
+  group_by(cip2) |>
+  mutate(growth = total / lag(total) - 1) |>
+  ungroup()
 ```
 
 ### Diversity in Fields
@@ -339,6 +436,20 @@ total_awards = eng_by_gender.filter(pl.col("sex") == 99)["awards"][0]
 pct_women = female_awards / total_awards * 100
 ```
 
+```r
+library(dplyr)
+
+# Percent women in engineering (sex=2 is Female in Portal integer encoding)
+eng_by_gender <- completions |>
+  filter(cipcode == 14, race == 99) |>
+  group_by(sex) |>
+  summarise(awards = sum(awards), .groups = "drop")
+
+female_awards <- eng_by_gender |> filter(sex == 2) |> pull(awards)
+total_awards <- eng_by_gender |> filter(sex == 99) |> pull(awards)
+pct_women <- female_awards / total_awards * 100
+```
+
 ### Institution Program Mix
 
 Understand institutional focus:
@@ -350,6 +461,15 @@ inst_mix = completions.filter(
 ).group_by("cip2").agg(
     pl.col("awards").sum().alias("completions")
 ).sort("completions", descending=True)
+```
+
+```r
+# Programs by field at institution
+inst_mix <- completions |>
+  filter(unitid == 110635) |>
+  group_by(cip2) |>
+  summarise(completions = sum(awards), .groups = "drop") |>
+  arrange(desc(completions))
 ```
 
 ## Data Quality Issues
@@ -392,6 +512,15 @@ bio_completions += 1  # appears here
 chem_completions += 1  # and here
 total_completions += 2  # counts twice
 total_completers += 1  # counts once
+```
+
+```r
+# Example
+bio_chem_double_major_student <- 1  # person
+bio_completions <- bio_completions + 1  # appears here
+chem_completions <- chem_completions + 1  # and here
+total_completions <- total_completions + 2  # counts twice
+total_completers <- total_completers + 1  # counts once
 ```
 
 **Mitigation**: Use completers for people counts; note when using completions.
@@ -446,6 +575,10 @@ The `completers` dataset counts unduplicated individuals. Consult the codebook f
 
 ```python
 url = get_codebook_url("ipeds/codebook_colleges_ipeds_completers")
+```
+
+```r
+url <- get_codebook_url("ipeds/codebook_colleges_ipeds_completers")
 ```
 
 ### CIP-Related Resources

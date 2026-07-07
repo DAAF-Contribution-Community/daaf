@@ -272,6 +272,29 @@ suspicious = valid_earnings.filter(
 )
 print(f"Suspicious values: {suspicious.height}")
 ```
+```r
+# Portal column names are lowercase; filter years_after_entry for time horizon
+six_yr <- df |> filter(years_after_entry == 6)
+
+# Check suppression rate (earnings uses -3 for suppression, NOT NA)
+suppressed <- six_yr |> filter(earnings_med == -3) |> nrow()
+null_count <- six_yr |> filter(is.na(earnings_med)) |> nrow()
+total <- nrow(six_yr)
+cat(sprintf("Suppressed (-3): %d (%.1f%%)\n", suppressed, suppressed / total * 100))
+cat(sprintf("Null: %d (%.1f%%)\n", null_count, null_count / total * 100))
+
+# Valid earnings: exclude both -3 and NA
+valid_earnings <- six_yr |> filter(!is.na(earnings_med), earnings_med != -3, earnings_med > 0)
+cat(sprintf("Valid earnings: %d (%.1f%%)\n", nrow(valid_earnings), nrow(valid_earnings) / total * 100))
+
+# Check sample sizes
+small_samples <- valid_earnings |> filter(!is.na(count_working), count_working != -3, count_working < 100)
+cat(sprintf("Small samples (<100 workers): %d\n", nrow(small_samples)))
+
+# Check for implausible values
+suspicious <- valid_earnings |> filter(earnings_med < 10000 | earnings_med > 500000)
+cat(sprintf("Suspicious values: %d\n", nrow(suspicious)))
+```
 
 ### During Analysis
 

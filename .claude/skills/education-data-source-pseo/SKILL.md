@@ -194,6 +194,19 @@ df = fetch_yearly_from_mirrors(
 # Or fetch a single year
 df = fetch_from_mirrors("pseo/colleges_pseo_2020")
 ```
+```r
+library(arrow)
+library(dplyr)
+
+# PSEO is a yearly dataset -- fetch individual years
+df <- fetch_yearly_from_mirrors(
+  path_template = "pseo/colleges_pseo_{year}",
+  years = c(2018, 2019, 2020)
+)
+
+# Or fetch a single year
+df <- fetch_from_mirrors("pseo/colleges_pseo_2020")
+```
 
 ### Filtering
 
@@ -212,6 +225,22 @@ df.filter(pl.col("p50_earnings") > 0)
 
 # Filter by industry (String column, not integer)
 df.filter(pl.col("industry") == "54")  # Professional Services
+```
+```r
+# Filter by institution
+df |> filter(unitid == 100751)  # University of Alabama
+
+# Filter by field of study
+df |> filter(cipcode == 11)  # Computer Science
+
+# Filter by cohort (note: full year range format)
+df |> filter(pseo_cohort == "2019-2021")
+
+# Earnings rows only (exclude missing/suppressed)
+df |> filter(p50_earnings > 0)
+
+# Filter by industry (String column, not integer)
+df |> filter(industry == "54")  # Professional Services
 ```
 
 ### Additional Access Methods (Census Bureau Source)

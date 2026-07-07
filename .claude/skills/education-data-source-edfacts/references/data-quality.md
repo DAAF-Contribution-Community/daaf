@@ -79,6 +79,22 @@ def flag_covid_years(df):
     )
 ```
 
+```r
+library(dplyr)
+
+# Exclude COVID-affected years from trend analysis
+# 2020 (spring 2020 testing) is most affected; 2021 has partial data
+df_no_covid <- df |> filter(!year %in% c(2020, 2021))
+
+# Add flag for COVID-affected years
+df <- df |>
+  mutate(covid_status = case_when(
+    year == 2020 ~ "no_testing",
+    year == 2021 ~ "partial_testing",
+    TRUE ~ "normal"
+  ))
+```
+
 ### Reporting COVID Gaps
 
 When presenting findings:
@@ -137,6 +153,13 @@ def flag_potential_cep(df):
     return df.with_columns(
         (pl.col("econ_disadvantaged_pct") >= 99).alias("likely_cep")
     )
+```
+
+```r
+library(dplyr)
+
+# Flag potential CEP schools
+df <- df |> mutate(likely_cep = econ_disadvantaged_pct >= 99)
 ```
 
 ## Known Data Issues
@@ -218,6 +241,20 @@ def detect_breaks(df, state_fips, variable, threshold=10):
     return breaks
 ```
 
+```r
+library(dplyr)
+
+# Detect potential time series breaks
+# threshold: percentage point change to flag (default 10)
+state_data <- df |>
+  filter(fips == state_fips) |>
+  arrange(year) |>
+  mutate(yoy_change = .data[[variable]] - lag(.data[[variable]]))
+
+# Flag large changes
+breaks <- state_data |> filter(abs(yoy_change) > threshold)
+```
+
 ### Handling Time Series Breaks
 
 | Approach | When to Use |
@@ -246,6 +283,18 @@ def segmented_trend(df, state_fips, variable, break_year):
     }
     
     return results
+```
+
+```r
+library(dplyr)
+
+# Analyze trends separately before and after break
+state_data <- df |> filter(fips == state_fips)
+
+pre_break <- state_data |> filter(year < break_year)
+post_break <- state_data |> filter(year >= break_year)
+
+# Note: Trends should not be compared across the break
 ```
 
 ## Suppression Patterns
@@ -303,6 +352,26 @@ def suppression_analysis(df, value_col, group_col=None):
     return analysis
 ```
 
+```r
+library(dplyr)
+
+# Analyze suppression patterns by group
+analysis <- df |>
+  group_by(.data[[group_col]]) |>
+  summarise(
+    total = n(),
+    suppressed = sum(.data[[value_col]] == -3, na.rm = TRUE),
+    valid = sum(.data[[value_col]] >= 0, na.rm = TRUE)
+  ) |>
+  mutate(pct_suppressed = suppressed / total * 100) |>
+  arrange(desc(pct_suppressed))
+
+# Or overall (no grouping)
+total <- nrow(df)
+suppressed <- sum(df[[value_col]] == -3, na.rm = TRUE)
+pct_suppressed <- suppressed / total * 100
+```
+
 ### Mitigating Suppression Bias
 
 | Strategy | Description |
@@ -351,6 +420,39 @@ def validate_edfacts(df):
     return issues
 ```
 
+```r
+library(dplyr)
+library(stringr)
+
+# Basic validation for EDFacts data
+issues <- character()
+
+# Check for impossible percentages
+pct_cols <- names(df)[str_detect(names(df), "pct") & str_detect(names(df), "_midpt")]
+for (col in pct_cols) {
+  invalid_n <- df |>
+    filter(.data[[col]] > 100 | (.data[[col]] < 0 & !.data[[col]] %in% c(-1, -2, -3, -9))) |>
+    nrow()
+  if (invalid_n > 0) issues <- c(issues, paste0("Invalid percentages in ", col, ": ", invalid_n, " records"))
+}
+
+# Check for year coverage
+years <- sort(unique(df$year))
+expected_years <- seq(min(years), max(years))
+missing_years <- setdiff(expected_years, years)
+if (length(missing_years) > 0) issues <- c(issues, paste0("Missing years: ", paste(missing_years, collapse = ", ")))
+
+# Check for ID consistency
+for (col in c("ncessch", "leaid", "fips")) {
+  if (col %in% names(df)) {
+    nulls <- sum(is.na(df[[col]]))
+    if (nulls > 0) issues <- c(issues, paste0("Null IDs in ", col, ": ", nulls, " records"))
+  }
+}
+
+cat(issues, sep = "\n")
+```
+
 ### Cross-Source Validation
 
 Compare EDFacts data with other sources:
@@ -386,6 +488,24 @@ def cross_validate(edfacts_df, ccd_df, merge_keys, compare_cols):
             })
     
     return discrepancies
+```
+
+```r
+library(dplyr)
+
+# Cross-validate EDFacts with CCD data
+merged <- edfacts_df |>
+  left_join(ccd_df, by = merge_keys, suffix = c("", "_ccd"))
+
+for (col in compare_cols) {
+  ccd_col <- paste0(col, "_ccd")
+  merged_diff <- merged |>
+    mutate(diff = abs(.data[[col]] - .data[[ccd_col]])) |>
+    filter(diff > 5)
+  if (nrow(merged_diff) > 0) {
+    cat(paste0("Large discrepancies in ", col, ": ", nrow(merged_diff), " records\n"))
+  }
+}
 ```
 
 ## Documentation Practices

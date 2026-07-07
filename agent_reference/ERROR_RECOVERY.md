@@ -389,6 +389,39 @@ def fetch_from_mirrors(mirrors: list[dict], dataset_path: str) -> pl.DataFrame:
     )
 ```
 
+**R equivalent pattern:**
+
+```r
+# --- Data Access with Mirror Fallback ---
+# INTENT: Download data from configured mirrors with fallback
+library(arrow)
+
+fetch_result <- NULL
+errors <- character(0)
+
+for (i in seq_along(mirrors)) {
+  mirror <- mirrors[[i]]
+  url <- sprintf(mirror$url_template, path = dataset_path)
+  tryCatch({
+    if (identical(mirror$read_strategy, "eager_parquet")) {
+      fetch_result <- arrow::read_parquet(url)
+    } else {
+      fetch_result <- readr::read_csv(url, show_col_types = FALSE)
+    }
+    cat(sprintf("Mirror: %s - %s rows fetched\n", mirror$name, format(nrow(fetch_result), big.mark = ",")))
+    break
+  }, error = function(e) {
+    errors <<- c(errors, sprintf("%s: %s", mirror$name, conditionMessage(e)))
+    cat(sprintf("Mirror %s failed: %s\n", mirror$name, conditionMessage(e)))
+  })
+}
+
+if (is.null(fetch_result)) {
+  stop(sprintf("All mirrors failed for %s:\n%s\nSTOP: Escalate to user",
+               dataset_path, paste(errors, collapse = "\n")))
+}
+```
+
 **If retry fails:** ESCALATE
 
 ```markdown
@@ -476,13 +509,24 @@ Awaiting guidance.
 
 ### Code Execution Errors
 
-**Definition:** Python code fails to execute.
+**Definition:** Python or R code fails to execute.
 
-**Examples:**
+**Python Examples:**
 - SyntaxError
 - TypeError
 - KeyError
 - MemoryError
+
+**R Examples:**
+- `Error in ...: could not find function` — Missing `library()` call
+- `Error in ...: object 'x' not found` — Variable doesn't exist or misspelled
+- `subscript out of bounds` — Index exceeds vector/list length
+- `non-conformable arguments` — Matrix/vector dimension mismatch
+- `cannot allocate vector of size` — Out of memory
+- `replacement has N rows, data has M` — Recycling/length mismatch in assignment
+- `object of type 'closure' is not subsettable` — Trying to subset a function name
+- `there is no package called 'X'` — Package not installed (check Dockerfile)
+- `Error in parse(text = ...)` — Syntax error (unmatched brackets, pipes, assignments)
 
 **Recovery:** Fix and retry (max 2 attempts) using **script versioning**
 
@@ -538,6 +582,81 @@ When a script fails, DO NOT modify the original. Instead:
 Awaiting guidance.
 ```
 
+#### R Error Types and Recovery
+
+| Error Pattern | Likely Cause | Recovery |
+|--------------|-------------|----------|
+| `could not find function "x"` | Missing `library()` call | Add the required `library()` to Config section |
+| `object 'x' not found` | Variable doesn't exist | Check spelling, verify data loaded correctly |
+| `subscript out of bounds` | Index exceeds vector/list length | Check dimensions before indexing |
+| `non-conformable arguments` | Matrix/vector dimension mismatch | Verify shapes match for the operation |
+| `cannot allocate vector of size` | Out of memory | Filter data earlier, use data.table, or increase memory |
+| `replacement has N rows, data has M` | Recycling/length mismatch | Ensure assignment vectors match target length |
+| `object of type 'closure' is not subsettable` | Trying to subset a function | Check for name collision with function names (e.g., `data`, `df`, `c`) |
+| `there is no package called 'X'` | Package not installed | Check Dockerfile, verify with `packageVersion("X")` |
+| `Error in parse(text = ...)` | Syntax error in R code | Check for unmatched brackets, pipes, assignments |
+| `unused argument` | Wrong function signature | Check function documentation; argument may have been renamed |
+| `argument is of length zero` | NULL passed to condition or subset | Add `is.null()` / `length() > 0` guards |
+| `missing value where TRUE/FALSE needed` | NA in `if()` condition | Use `isTRUE()` or add `!is.na()` check |
+
+**R Script Versioning:** R script versioning follows the same pattern as Python: `01_task.R` -> `01_task_a.R` -> `01_task_b.R`. The execution log is appended by `run_with_capture.sh` identically to Python scripts.
+
+#### R Diagnostic Script Template
+
+```r
+# --- Diagnostic Script ---
+# INTENT: Diagnose [error description]
+library(dplyr)
+library(arrow)
+
+# --- Config ---
+input_path <- "[input_path]"
+
+# --- Load ---
+df <- arrow::read_parquet(input_path)
+
+# --- Structural Diagnosis ---
+cat("=== STRUCTURAL DIAGNOSIS ===\n")
+cat("Rows:", nrow(df), "\n")
+cat("Cols:", ncol(df), "\n")
+cat("\nColumn names:\n")
+print(names(df))
+cat("\nColumn types:\n")
+print(data.frame(column = names(df), type = sapply(df, function(x) class(x)[1])))
+
+# --- NA Summary ---
+cat("\n=== NA SUMMARY ===\n")
+na_counts <- colSums(is.na(df))
+na_pct <- round(na_counts / nrow(df) * 100, 1)
+na_summary <- data.frame(column = names(na_counts), na_count = na_counts, na_pct = na_pct)
+na_summary <- na_summary[na_summary$na_count > 0, ]
+if (nrow(na_summary) > 0) {
+  print(na_summary)
+} else {
+  cat("No NA values found\n")
+}
+
+# --- Specific Checks ---
+cat("\n=== SPECIFIC CHECKS ===\n")
+# [Targeted checks based on the error]
+# Example: check for coded values
+for (col in names(df)[sapply(df, is.numeric)]) {
+  for (code in c(-1, -2, -3, -9, -99, -999)) {
+    count <- sum(df[[col]] == code, na.rm = TRUE)
+    if (count > 0) {
+      cat(sprintf("  %s: %d occurrences of coded value %d\n", col, count, code))
+    }
+  }
+}
+
+# --- Sample Rows ---
+cat("\n=== SAMPLE DATA ===\n")
+cat("First 5 rows:\n")
+print(head(df, 5))
+
+cat("\n=== DIAGNOSIS COMPLETE ===\n")
+```
+
 ---
 
 ### QA BLOCKER Recovery (NEW)
@@ -572,7 +691,7 @@ code-reviewer returns BLOCKER
     │   └─ NO → Continue to revision
     │
     ├─ Revision Attempt 1
-    │   ├─ Create new versioned script (_a.py or next suffix)
+    │   ├─ Create new versioned script (_a.py/_a.R or next suffix)
     │   ├─ Apply fix suggested by code-reviewer
     │   ├─ Execute with full validation
     │   └─ Return for re-QA
@@ -582,7 +701,7 @@ code-reviewer returns BLOCKER
     │   └─ Still BLOCKER → Revision Attempt 2
     │
     ├─ Revision Attempt 2
-    │   ├─ Create next versioned script (_b.py)
+    │   ├─ Create next versioned script (_b.py/_b.R)
     │   ├─ Try different approach
     │   ├─ Execute with full validation
     │   └─ Return for re-QA
@@ -718,11 +837,81 @@ Validation Failure
 
 ### Stage 9 (Notebook Assembly) Failures
 
+**Marimo (Python):**
+
 | Issue | Recovery |
 |-------|----------|
 | Cell execution error | Fix and retry |
 | Reactivity issues | Review variable dependencies |
 | UI element errors | Simplify or remove interactivity |
+
+**Quarto (R):**
+
+| Issue | Recovery |
+|-------|----------|
+| Chunk execution error | Fix code in chunk; verify library() calls present |
+| Render failure | Check YAML frontmatter; verify knitr engine set |
+| Package loading error | Verify package installed in Dockerfile |
+| Object not found across chunks | Verify chunk execution order; check chunk labels for conflicts |
+
+### R-Specific Recovery Patterns
+
+Common R error recovery strategies when working with tidyverse/arrow pipelines:
+
+**Package/Library Errors:**
+```r
+# --- Diagnostic: Package availability ---
+cat("=== PACKAGE DIAGNOSIS ===\n")
+required_pkgs <- c("dplyr", "tidyr", "arrow", "ggplot2", "readr")
+for (pkg in required_pkgs) {
+  if (requireNamespace(pkg, quietly = TRUE)) {
+    cat(sprintf("[PASS] %s %s\n", pkg, packageVersion(pkg)))
+  } else {
+    cat(sprintf("[FAIL] %s not installed\n", pkg))
+  }
+}
+```
+
+**Column Name Conflicts (common after joins):**
+```r
+# --- Diagnostic: Duplicate column names after join ---
+cat("=== COLUMN CONFLICT DIAGNOSIS ===\n")
+col_names <- names(df)
+dup_cols <- col_names[duplicated(col_names)]
+if (length(dup_cols) > 0) {
+  cat(sprintf("[ISSUE] Duplicate columns: %s\n", paste(dup_cols, collapse = ", ")))
+  cat("FIX: Use suffix argument in join or rename before join\n")
+} else {
+  cat("[PASS] No duplicate column names\n")
+}
+```
+
+**Type Coercion Issues:**
+```r
+# --- Diagnostic: Unexpected types after read_parquet ---
+cat("=== TYPE DIAGNOSIS ===\n")
+type_issues <- character(0)
+for (col in names(df)) {
+  col_class <- class(df[[col]])[1]
+  # Check for unexpected list columns (common with nested parquet)
+  if (col_class == "list") {
+    type_issues <- c(type_issues, sprintf("%s: list-column (may need unnest)", col))
+  }
+  # Check for character columns that should be numeric
+  if (col_class == "character") {
+    non_na <- df[[col]][!is.na(df[[col]])]
+    if (length(non_na) > 0 && all(grepl("^-?[0-9.]+$", non_na))) {
+      type_issues <- c(type_issues, sprintf("%s: character but looks numeric", col))
+    }
+  }
+}
+if (length(type_issues) > 0) {
+  cat("Issues found:\n")
+  for (issue in type_issues) cat(sprintf("  - %s\n", issue))
+} else {
+  cat("[PASS] No type issues detected\n")
+}
+```
 
 ### Stage 10 (QA Aggregation) Failures
 

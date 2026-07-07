@@ -236,6 +236,10 @@ from fetch_patterns import get_codebook_url
 url = get_codebook_url("crdc/codebook_schools_crdc_discipline")
 ```
 
+```r
+url <- # get_codebook_url("crdc/codebook_schools_crdc_discipline") -- use same path with mirror URL
+```
+
 > **Truth Hierarchy:** When interpreting variable values, apply this priority:
 > 1. **Actual data file** (what you observe in the parquet/CSV) -- this IS the truth
 > 2. **Live codebook** (.xls in mirror) -- authoritative documentation, may lag
@@ -259,6 +263,23 @@ df = df.filter(
     (pl.col("race") == 2) &        # Black students
     (pl.col("sex") == 99) &         # Both sexes (total)
     (pl.col("disability") == 99)    # All disability statuses
+)
+```
+
+```r
+library(dplyr)
+
+# Filter to a single state (California) and disaggregated race groups
+df <- df |> filter(
+    (fips == 6) &       # California
+    (race < 99)          # Exclude totals row
+)
+
+# Filter to specific demographic intersection
+df <- df |> filter(
+    (race == 2) &        # Black students
+    (sex == 99) &         # Both sexes (total)
+    (disability == 99)    # All disability statuses
 )
 ```
 
@@ -312,6 +333,39 @@ def discipline_disparity(df, discipline_var, group_a, group_b):
              df_b.select(pl.col('enrollment_crdc').sum()).item()
 
     return rate_a / rate_b
+
+# Example: Black (race=2) vs White (race=1) disparity
+# disparity = discipline_disparity(df, 'students_susp_out_sch_single', 2, 1)
+```
+
+```r
+library(dplyr)
+
+# Calculate discipline disparity using Portal integer codes
+# discipline_disparity(df, discipline_var, group_a, group_b)
+# Calculate risk ratio between two groups.
+# Value > 1 indicates group_a has higher rate.
+#
+# Args:
+# df: DataFrame with CRDC data
+# discipline_var: Column with discipline counts
+# group_a: Integer race code (e.g., 2 for Black)
+# group_b: Integer race code (e.g., 1 for White)
+#
+# Example:
+# # Black vs White OSS disparity
+# disparity = discipline_disparity(df, 'students_susp_out_sch_single', 2, 1)
+    # Filter to each group (using integer codes)
+    df_a <- df |> filter(race == group_a)
+    df_b <- df |> filter(race == group_b)
+
+    # Calculate rates
+    rate_a <- df_a |> summarise(s = sum(.data[[discipline_var]], na.rm = TRUE)) |> pull(s) /
+              df_a |> summarise(s = sum(enrollment_crdc, na.rm = TRUE)) |> pull(s)
+    rate_b <- df_b |> summarise(s = sum(.data[[discipline_var]], na.rm = TRUE)) |> pull(s) /
+              df_b |> summarise(s = sum(enrollment_crdc, na.rm = TRUE)) |> pull(s)
+
+    rate_a / rate_b
 
 # Example: Black (race=2) vs White (race=1) disparity
 # disparity = discipline_disparity(df, 'students_susp_out_sch_single', 2, 1)

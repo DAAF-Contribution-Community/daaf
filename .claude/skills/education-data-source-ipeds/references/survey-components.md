@@ -192,6 +192,12 @@ admit_rate = number_admitted / number_applied
 yield_rate = number_enrolled_total / number_admitted
 ```
 
+```r
+# Filter to totals first (sex == 99)
+admit_rate <- number_admitted / number_applied
+yield_rate <- number_enrolled_total / number_admitted
+```
+
 ### Student Financial Aid (SFA)
 
 Financial aid awarded to students.

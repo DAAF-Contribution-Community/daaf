@@ -29,6 +29,24 @@ print(f"Shape: {df.shape}")
 print(f"Columns: {len(df.columns)}")
 ```
 
+```r
+library(arrow)
+library(dplyr)
+
+# Fetch EADA institutional data via unified mirror system
+DATASET_PATH <- "eada/colleges_eada_inst_characteristics"
+df <- fetch_from_mirrors(DATASET_PATH)
+
+# Filter by year and state
+df <- df |> filter(
+    (year == 2021) &
+    (fips == 6)  # California
+)
+
+cat(paste0("Shape: ", dim(df)), "\n")
+cat(paste0("Columns: ", len(df.columns)), "\n")
+```
+
 ## Available Years
 
 2002-2021 (institutional characteristics). 165 columns, ~40,600 rows total.
@@ -67,12 +85,30 @@ valid = df.filter(
 )
 ```
 
+```r
+library(dplyr)
+
+# Filter out BOTH nulls AND coded missing values
+missing_codes <- [-1, -2, -3]
+
+valid <- df |> filter(
+    !is.na(ath_exp_men) &
+    ~ath_exp_men.is_in(missing_codes)
+)
+```
+
 ## Codebook Access
 
 ```python
 # Get the codebook URL for manual reference
 codebook_url = get_codebook_url("eada/codebook_colleges_eada_inst-characteristics")
 print(f"Codebook: {codebook_url}")
+```
+
+```r
+# Get the codebook URL for manual reference
+codebook_url <- # get_codebook_url("eada/codebook_colleges_eada_inst-characteristics") -- use same path with mirror URL
+cat(paste0("Codebook: ", codebook_url), "\n")
 ```
 
 ## Important Notes

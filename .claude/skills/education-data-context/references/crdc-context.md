@@ -78,6 +78,15 @@ def crdc_coverage_check(crdc_df, ccd_df, year):
     return coverage
 ```
 
+```r
+# Check school coverage
+crdc_schools <- unique(crdc_df$ncessch)
+ccd_schools <- unique(ccd_df$ncessch)
+
+coverage <- length(intersect(crdc_schools, ccd_schools)) / length(ccd_schools) * 100
+cat(sprintf("CRDC covers %.1f%% of CCD schools for %s\n", coverage, year))
+```
+
 ## Self-Reported Data
 
 ### Quality Implications
@@ -144,6 +153,16 @@ def discipline_disparity(df, discipline_col, group1, group2):
     return rate1 / rate2  # Disparity ratio
 ```
 
+```r
+# Discipline rates per 100 students
+df <- df |> mutate(discipline_rate = .data[[discipline_col]] / .data[[enrollment_col]] * 100)
+
+# Compare across subgroups
+rate1 <- df |> filter(subgroup == group1) |> pull(!!sym(discipline_col)) |> mean()
+rate2 <- df |> filter(subgroup == group2) |> pull(!!sym(discipline_col)) |> mean()
+disparity_ratio <- rate1 / rate2
+```
+
 ## Variable Consistency
 
 ### Variables Added Over Time
@@ -177,6 +196,17 @@ def check_variable_availability(variable, year):
     }
     if year not in availability.get(variable, []):
         print(f"WARNING: {variable} not available for {year}")
+```
+
+```r
+# Verify variable availability
+availability <- list(
+  chronic_absent = c(2015, 2017, 2020),
+  preschool_suspend = c(2015, 2017, 2020)
+)
+if (!(year %in% availability[[variable]])) {
+  cat(sprintf("WARNING: %s not available for %s\n", variable, year))
+}
 ```
 
 ## COVID-19 Impact (2020-2021)
@@ -232,6 +262,13 @@ def course_access_disparity(df):
     )
 ```
 
+```r
+# Course access disparity
+df |>
+  group_by(school_has_ap, student_race) |>
+  summarise(enrollment = sum(enrollment), .groups = "drop")
+```
+
 ## Linking CRDC to Other Data
 
 ### To CCD
@@ -244,6 +281,14 @@ crdc = fetch("schools/crdc/discipline/2017")
 ccd = fetch("schools/ccd/directory/2017")
 
 merged = crdc.join(ccd, on="ncessch", how="left")
+```
+
+```r
+# Join CRDC to CCD
+crdc <- arrow::read_parquet("data/raw/schools_crdc_discipline_2017.parquet")
+ccd <- arrow::read_parquet("data/raw/schools_ccd_directory.parquet") |> filter(year == 2017)
+
+merged <- crdc |> left_join(ccd, by = "ncessch")
 ```
 
 ### Year Alignment
@@ -284,6 +329,18 @@ def suppression_rate(df, variable):
         print("Subgroup analysis may be unreliable")
     
     return rate
+```
+
+```r
+# Check suppression rate before analysis
+suppressed <- df |> filter(.data[[variable]] == -3) |> nrow()
+total <- nrow(df)
+rate <- suppressed / total * 100
+
+if (rate > 10) {
+  cat(sprintf("WARNING: %.1f%% of %s is suppressed\n", rate, variable))
+  cat("Subgroup analysis may be unreliable\n")
+}
 ```
 
 ## Recommended Practices

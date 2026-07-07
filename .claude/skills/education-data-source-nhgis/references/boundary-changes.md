@@ -173,6 +173,15 @@ tracts_2020 = df_2020.filter(pl.col("county_fips_geo") == 6037).select("tract").
 # LA County: ~1,600 in 1990 → ~2,300 in 2020
 ```
 
+```r
+library(dplyr)
+
+# If tract count in area changed, boundaries changed
+tracts_1990 <- df_1990 |> filter(county_fips_geo == 6037) |> distinct(tract) |> nrow()
+tracts_2020 <- df_2020 |> filter(county_fips_geo == 6037) |> distinct(tract) |> nrow()
+# LA County: ~1,600 in 1990 → ~2,300 in 2020
+```
+
 ### Method 2: Check Crosswalk
 
 ```python
@@ -188,6 +197,26 @@ split_tracts = splits.filter(pl.col("n_targets") > 1)
 # Tracts that merged (multiple 1990 tracts → 1 2010 tract)
 merges = crosswalk.group_by("GJOIN2010").agg(pl.col("GJOIN1990").n_unique().alias("n_sources"))
 merged_tracts = merges.filter(pl.col("n_sources") > 1)
+```
+
+```r
+library(readr)
+library(dplyr)
+
+# Crosswalk shows splits/mergers (direct NHGIS download, not Portal data)
+crosswalk <- read_csv("nhgis_tr1990_tr2010.csv")
+
+# Tracts that split (1990 tract -> multiple 2010 tracts)
+splits <- crosswalk |>
+  group_by(GJOIN1990) |>
+  summarise(n_targets = n_distinct(GJOIN2010))
+split_tracts <- splits |> filter(n_targets > 1)
+
+# Tracts that merged (multiple 1990 tracts -> 1 2010 tract)
+merges <- crosswalk |>
+  group_by(GJOIN2010) |>
+  summarise(n_sources = n_distinct(GJOIN1990))
+merged_tracts <- merges |> filter(n_sources > 1)
 ```
 
 ### Method 3: Visual Inspection

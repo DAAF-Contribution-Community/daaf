@@ -42,6 +42,17 @@ df = df.with_columns([
 ])
 ```
 
+```r
+library(dplyr)
+
+# 95% confidence interval
+df <- df |> mutate(
+    (meps_poverty_pct - 1.96 * meps_poverty_se),
+    (meps_poverty_pct + 1.96 * meps_poverty_se),
+    (meps_poverty_se < 2.0),
+])
+```
+
 ## Known Limitations
 
 ### 1. Public Schools Only
@@ -163,6 +174,22 @@ def statistically_different(pct_a: float, se_a: float, pct_b: float, se_b: float
     return z_score > z_critical
 ```
 
+```r
+# statistically_different(pct_a: float, se_a: float, pct_b: float, se_b: float, alpha: float = 0.05) -> bool
+#
+# Args:
+# pct_a: meps_poverty_pct for school A
+# se_a: meps_poverty_se for school A
+# pct_b: meps_poverty_pct for school B
+# se_b: meps_poverty_se for school B
+# alpha: significance level (0.05 or 0.01)
+    diff <- pct_a - pct_b
+    se_diff <- (se_a^2 + se_b^2)^0.5
+    z_score <- abs(diff) / se_diff
+    z_critical <- 1.96 if alpha == 0.05 else 2.58
+    z_score > z_critical
+```
+
 ### Aggregating to Higher Levels
 
 For district or state aggregation, use enrollment-weighted averages (requires joining with CCD enrollment data first):
@@ -188,6 +215,27 @@ district_agg = (
 )
 ```
 
+```r
+library(dplyr)
+
+# Enrollment-weighted aggregation with proper SE propagation
+district_agg <- (
+    df |> filter(
+        !is.na(meps_poverty_pct)
+        & !is.na(enrollment)
+    )
+    .group_by("leaid")
+    .agg(
+        ((meps_poverty_pct * enrollment).sum()
+         / sum(enrollment, na.rm = TRUE)),
+        sum(enrollment, na.rm = TRUE),
+        # SE of weighted average (approximate)
+        ((meps_poverty_se^2 * enrollment^2).sum().sqrt()
+         / sum(enrollment, na.rm = TRUE)),
+    )
+)
+```
+
 ### Regression with MEPS
 
 When using MEPS as a control variable, note that `meps_poverty_pct` is a modeled estimate with known standard error (`meps_poverty_se`). Consider:
@@ -208,12 +256,28 @@ null_pct = df["meps_poverty_pct"].null_count() / len(df)
 print(f"Missing: {null_pct:.1%}")
 ```
 
+```r
+library(dplyr)
+
+null_pct <- sum(is.na(df$meps_poverty_pct)) / nrow(df)
+cat(paste0("Missing: ", sprintf("%.1f%%", null_pct * 100)), "\n")
+```
+
 2. **Verify reasonable ranges**
 ```python
 valid = df.filter(pl.col("meps_poverty_pct").is_not_null())
 assert valid["meps_poverty_pct"].min() >= 0, "Negative poverty values"
 assert valid["meps_poverty_pct"].max() <= 100, "MEPS out of range"
 assert valid["meps_poverty_se"].min() >= 0, "Negative SE values"
+```
+
+```r
+library(dplyr)
+
+valid <- df |> filter(!is.na(meps_poverty_pct)
+stopifnot("Negative poverty values" = valid["meps_poverty_pct"].min() >= 0)
+stopifnot("MEPS out of range" = valid["meps_poverty_pct"].max() <= 100)
+stopifnot("Negative SE values" = valid["meps_poverty_se"].min() >= 0)
 ```
 
 3. **Check coverage**
@@ -223,11 +287,27 @@ print(f"States covered: {df['fips'].n_unique()}")
 print(f"Years covered: {df['year'].unique().sort().to_list()}")
 ```
 
+```r
+library(dplyr)
+
+cat(paste0("Schools covered: ", format(df['ncessch'].n_unique(), big.mark = ",")), "\n")
+cat(paste0("States covered: ", df['fips'].n_unique()), "\n")
+cat(paste0("Years covered: ", df['year'].unique().sort()), "\n")
+```
+
 4. **Assess reliability distribution**
 ```python
 print(df["meps_poverty_se"].describe())
 reliable_pct = df.filter(pl.col("meps_poverty_se") < 2.0).height / len(df)
 print(f"Reliable estimates (SE<2.0): {reliable_pct:.1%}")
+```
+
+```r
+library(dplyr)
+
+cat(summary(df$meps_poverty_se), "\n")
+reliable_pct <- df |> filter(meps_poverty_se < 2.0).height / nrow(df)
+cat(paste0("Reliable estimates (SE<2.0): ", sprintf("%.1f%%", reliable_pct * 100)), "\n")
 ```
 
 ## Reporting Recommendations

@@ -20,7 +20,8 @@ must_haves:
     #   basis: "[Why expected — cite theory, prior research, or domain knowledge]"
 
   artifacts:
-    - path: "research/YYYY-MM-DD_[Title]/YYYY-MM-DD_[Title].py"
+    # Python notebook (.py) or R notebook (.qmd) depending on execution language
+    - path: "research/YYYY-MM-DD_[Title]/YYYY-MM-DD_[Title].py"   # or .qmd for R
       provides: "[What this file delivers]"
       min_lines: 200
       contains: "[Pattern or text that must be present]"
@@ -102,6 +103,7 @@ must_haves:
 > **Purpose:** This section specifies the active data domain and its associated skills, coded values, and governance rules. All domain-specific behavior throughout the pipeline (skill loading, validation thresholds, coded value handling) is driven by these settings. For domains without a particular feature (e.g., no suppression codes), set the value to N/A or "none".
 
 **Active Domain:** [domain name, e.g., "education"]
+**Execution Language:** [Python | R]
 **Query Skill:** [skill name, e.g., "education-data-query"]
 **Explorer Skill:** [skill name, e.g., "education-data-explorer"]
 **Context Skill:** [skill name or N/A, e.g., "education-data-context"]
@@ -203,10 +205,11 @@ must_haves:
       basis: "Prior literature on demographic shifts and school choice patterns (cite specific studies)"
 
   artifacts:
-    - path: "research/YYYY-MM-DD_[Title]/YYYY-MM-DD_[Title].py"
+    # Python: .py (Marimo notebook); R: .qmd (Quarto notebook)
+    - path: "research/YYYY-MM-DD_[Title]/YYYY-MM-DD_[Title].py"  # or .qmd for R
       provides: "Interactive analysis notebook"
       min_lines: 200
-      contains: "mo.md"  # Marimo markdown cells present
+      contains: "mo.md"  # Marimo markdown cells (Python) or ```{r} chunks (R)
 
     - path: "research/YYYY-MM-DD_[Title]/data/processed/YYYY-MM-DD_analysis.parquet"
       provides: "Cleaned analysis dataset"
@@ -221,14 +224,14 @@ must_haves:
       min_size_kb: 50
 
   key_links:
-    - from: "YYYY-MM-DD_[Title].py"
+    - from: "YYYY-MM-DD_[Title].py"  # or .qmd for R
       to: "data/processed/YYYY-MM-DD_analysis.parquet"
-      via: "pl.read_parquet() in data loading cell"
+      via: "pl.read_parquet() or arrow::read_parquet() in data loading cell"
       pattern: "read_parquet.*analysis"
 
-    - from: "YYYY-MM-DD_[Title].py"
+    - from: "YYYY-MM-DD_[Title].py"  # or .qmd for R
       to: "output/figures/"
-      via: "ggplot.save() or fig.write_html()"
+      via: "ggplot.save() or ggsave() or fig.write_html()"
       pattern: "(ggsave|write_image|write_html|savefig)"
 
     - from: "YYYY-MM-DD_[Title]_Report.md"
@@ -532,7 +535,7 @@ If analysis includes 2020 or 2021 data, CP1 Check 7 will flag this automatically
 | 5 | 5.1 | aggregate | Aggregate by district | ~1K rows | `scripts/stage7_transform/04_aggregate.py` | N/A | 4.1, 4.2 |
 
 **Script Path Convention:**
-- Pattern: `scripts/stage{N}_{type}/{step:02d}_{task-name}.py`
+- Pattern: `scripts/stage{N}_{type}/{step:02d}_{task-name}.py` (or `.R` for R)
 - Stage 5 (fetch) → `scripts/stage5_fetch/`
 - Stage 6 (clean) → `scripts/stage6_clean/`
 - Stage 7 (transform) → `scripts/stage7_transform/`
@@ -583,7 +586,7 @@ Define the expected data contracts between stages. The data-planner populates th
 
 ### Notebook Structure
 
-**Marimo Notebook Sections:**
+**Marimo Notebook Sections (Python):**
 
 1. **Setup & Imports** — Dependencies, configuration
 2. **Data Loading** — Load from processed data files
@@ -594,7 +597,18 @@ Define the expected data contracts between stages. The data-planner populates th
 7. **Findings Summary** — Markdown synthesis
 8. **Interactive Elements** — [If applicable: filters, selectors]
 
-**UI Elements (if applicable):**
+**Quarto Notebook Sections (R):**
+
+1. **Setup** — `library()` calls, configuration
+2. **Data Loading** — Load from processed data via `arrow::read_parquet()`
+3. **Data Overview** — `glimpse()`, summary
+4. **Exploratory Analysis** — Distributions, patterns
+5. **Main Analysis** — [Specific analysis sections]
+6. **Visualizations** — ggplot2 charts
+7. **Findings Summary** — Markdown narrative
+8. **Appendix** — [If applicable: additional tables or figures]
+
+**UI Elements (if applicable, Python/Marimo only):**
 
 | Element | Type | Purpose |
 |---------|------|---------|
@@ -639,7 +653,7 @@ Define the expected data contracts between stages. The data-planner populates th
 | Deliverable | Location | Format |
 |-------------|----------|--------|
 | Plan document | `research/[project]/` | `.md` |
-| Marimo notebook | `research/[project]/` | `.py` |
+| Analysis notebook | `research/[project]/` | `.py` (Marimo) or `.qmd` (Quarto) |
 | Stakeholder report | `research/[project]/` | `.md` |
 | Raw data | `research/[project]/data/raw/` | `.parquet` |
 | Processed data | `research/[project]/data/processed/` | `.parquet` |
@@ -798,16 +812,16 @@ and QA reviewers understand what was intentionally accepted.*
 |------|------|-------------|
 | Plan | `research/YYYY-MM-DD_[Title]/YYYY-MM-DD_[Title]_Plan.md` | This document |
 | Plan Tasks | `research/YYYY-MM-DD_[Title]/YYYY-MM-DD_[Title]_Plan_Tasks.md` | Executable task sequence (companion to Plan) |
-| Notebook | `research/YYYY-MM-DD_[Title]/YYYY-MM-DD_[Title].py` | Marimo analysis notebook |
+| Notebook | `research/YYYY-MM-DD_[Title]/YYYY-MM-DD_[Title].py` (or `.qmd`) | Marimo (Python) or Quarto (R) analysis notebook |
 | Report | `research/YYYY-MM-DD_[Title]/YYYY-MM-DD_[Title]_Report.md` | Stakeholder report |
 | **Learnings** | `research/YYYY-MM-DD_[Title]/LEARNINGS.md` | **Session learnings (skeleton at Stage 4, incremental during 5-8, consolidated at Stage 12)** |
 | Raw Data | `research/YYYY-MM-DD_[Title]/data/raw/YYYY-MM-DD_*.parquet` | Original data downloads |
 | Processed Data | `research/YYYY-MM-DD_[Title]/data/processed/YYYY-MM-DD_*.parquet` | Cleaned data |
 | Figures | `research/YYYY-MM-DD_[Title]/output/figures/YYYY-MM-DD_*.png` | Visualizations |
 | Discovery Preliminary Notes | `research/YYYY-MM-DD_[Title]/output/preliminary_notes/{date}_stage{N}_{desc}.md` | Lossless agent findings from discovery phase (Stages 2, 3, 3.5) |
-| Fetch Scripts | `research/YYYY-MM-DD_[Title]/scripts/stage5_fetch/*.py` | Data retrieval code |
-| Clean Scripts | `research/YYYY-MM-DD_[Title]/scripts/stage6_clean/*.py` | Context application code |
-| Transform Scripts | `research/YYYY-MM-DD_[Title]/scripts/stage7_transform/*.py` | Transformation code |
-| Analysis & Viz Scripts | `research/YYYY-MM-DD_[Title]/scripts/stage8_analysis/*.py` | Statistical analysis and visualization code |
-| **QA Scripts** | `research/YYYY-MM-DD_[Title]/scripts/cr/*.py` | **QA inspection scripts from code-reviewer** |
-| Debug Scripts | `research/YYYY-MM-DD_[Title]/scripts/debug/*.py` | Diagnostic scripts (if any) |
+| Fetch Scripts | `research/YYYY-MM-DD_[Title]/scripts/stage5_fetch/*.py` (or `*.R`) | Data retrieval code |
+| Clean Scripts | `research/YYYY-MM-DD_[Title]/scripts/stage6_clean/*.py` (or `*.R`) | Context application code |
+| Transform Scripts | `research/YYYY-MM-DD_[Title]/scripts/stage7_transform/*.py` (or `*.R`) | Transformation code |
+| Analysis & Viz Scripts | `research/YYYY-MM-DD_[Title]/scripts/stage8_analysis/*.py` (or `*.R`) | Statistical analysis and visualization code |
+| **QA Scripts** | `research/YYYY-MM-DD_[Title]/scripts/cr/*.py` (or `*.R`) | **QA inspection scripts from code-reviewer** |
+| Debug Scripts | `research/YYYY-MM-DD_[Title]/scripts/debug/*.py` (or `*.R`) | Diagnostic scripts (if any) |

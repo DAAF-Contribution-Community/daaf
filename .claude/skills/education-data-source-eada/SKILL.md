@@ -245,6 +245,22 @@ df_clean = df.filter(
 # join with IPEDS directory data on unitid first.
 ```
 
+```r
+library(dplyr)
+
+# Filter by athletic division (NCAA Division I FBS only)
+df_d1_fbs <- df |> filter(ath_classification_code == 1)
+
+# Exclude coded missing values before calculations
+df_clean <- df |> filter(
+    (undup_athpartic_men >= 0) &
+    (undup_athpartic_women >= 0)
+)
+
+# Note: No `sector` column in EADA data. To filter by sector,
+# join with IPEDS directory data on unitid first.
+```
+
 ## Common Pitfalls
 
 | Pitfall | Issue | Solution |

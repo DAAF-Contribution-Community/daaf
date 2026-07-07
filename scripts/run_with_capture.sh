@@ -1,24 +1,28 @@
 #!/usr/bin/env bash
 # =============================================================================
-# run_with_capture.sh - Execute Python script with output capture and logging
+# run_with_capture.sh - Execute script with output capture and logging
 # =============================================================================
 #
 # Usage: ./scripts/run_with_capture.sh <script_path>
 #
-# This script:
-# 1. Executes the Python script with output capture
-# 2. Records timestamp, duration, and exit code
-# 3. Appends the execution log to the script file (if successful or failed)
-# 4. Returns the script's exit code
+# Supported languages: Python (.py), R (.R)
 #
-# Example:
+# This script:
+# 1. Detects the script language from the file extension
+# 2. Executes the script with the appropriate interpreter
+# 3. Records timestamp, duration, and exit code
+# 4. Appends the execution log to the script file (if successful or failed)
+# 5. Returns the script's exit code
+#
+# Examples:
 #   ./scripts/run_with_capture.sh scripts/stage5_fetch/01_fetch-ccd.py
+#   ./scripts/run_with_capture.sh scripts/stage5_fetch/01_fetch-ccd.R
 #
 # =============================================================================
 
 # -u: catch unset variables; -o pipefail: detect pipeline failures
 # Deliberately omit -e: this script must capture non-zero exit codes from
-# the Python script it executes, not die on them.
+# the target script it executes, not die on them.
 set -uo pipefail
 
 SCRIPT_PATH="$1"
@@ -34,11 +38,30 @@ if [ ! -f "$SCRIPT_PATH" ]; then
     exit 1
 fi
 
+# Detect language from file extension
+EXT="${SCRIPT_PATH##*.}"
+case "$EXT" in
+    py)
+        INTERPRETER="python3"
+        ;;
+    R|r)
+        INTERPRETER="Rscript"
+        ;;
+    *)
+        echo "Error: Unsupported file extension: .$EXT"
+        echo "Supported: .py (Python), .R (R)"
+        exit 1
+        ;;
+esac
+
+# Language-aware version suffix
+BASE="${SCRIPT_PATH%.${EXT}}"
+
 # Check if script already has an execution log
 if grep -q "^# EXECUTION LOG" "$SCRIPT_PATH"; then
     echo "WARNING: Script already has an execution log."
     echo "If you need to re-run with fixes, create a new version:"
-    echo "  cp $SCRIPT_PATH ${SCRIPT_PATH%.py}_a.py"
+    echo "  cp $SCRIPT_PATH ${BASE}_a.${EXT}"
     echo "Then run the new version."
     exit 1
 fi
@@ -55,7 +78,7 @@ echo ""
 
 # Execute with timing (integer seconds — avoids bc dependency and macOS date +%N incompatibility)
 START_TIME=$(date +%s)
-python3 "$SCRIPT_PATH" 2>&1 | tee "$TEMP_LOG"
+$INTERPRETER "$SCRIPT_PATH" 2>&1 | tee "$TEMP_LOG"
 EXIT_CODE=${PIPESTATUS[0]}
 END_TIME=$(date +%s)
 DURATION=$((END_TIME - START_TIME))
@@ -79,7 +102,7 @@ cat >> "$SCRIPT_PATH" << EOF
 # =============================================================================
 #
 # Executed: $TIMESTAMP
-# Command: python3 $SCRIPT_PATH
+# Command: $INTERPRETER $SCRIPT_PATH
 # Duration: ${DURATION}s
 # Exit code: $EXIT_CODE
 #
@@ -104,10 +127,10 @@ else
     echo "Next steps:"
     echo "  1. Review the execution log appended to the script"
     echo "  2. Create a versioned copy for fixes:"
-    echo "     cp $SCRIPT_PATH ${SCRIPT_PATH%.py}_a.py"
+    echo "     cp $SCRIPT_PATH ${BASE}_a.${EXT}"
     echo "  3. Apply fixes to the new version"
     echo "  4. Run the new version:"
-    echo "     $0 ${SCRIPT_PATH%.py}_a.py"
+    echo "     $0 ${BASE}_a.${EXT}"
 fi
 
 # Cleanup

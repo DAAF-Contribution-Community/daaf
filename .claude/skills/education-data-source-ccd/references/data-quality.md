@@ -30,6 +30,22 @@ def check_state_missingness(df, variable):
     ).sort("missing_pct", descending=True)
 ```
 
+```r
+# R equivalent
+library(dplyr)
+
+# Check missingness by state for a variable
+missing_codes <- c(-1, -2, -3, -9)
+state_missingness <- df |>
+  group_by(fips) |>
+  summarise(
+    missing_count = sum(.data[[variable]] %in% missing_codes),
+    total_count = n()
+  ) |>
+  mutate(missing_pct = missing_count / total_count * 100) |>
+  arrange(desc(missing_pct))
+```
+
 ### High-Missingness Variables
 
 | Variable | Typical Issue | Most Affected Years |
@@ -178,6 +194,18 @@ def suppression_analysis(df: pl.DataFrame, variable: str) -> dict:
     }
 ```
 
+```r
+# R equivalent
+total <- nrow(df)
+suppressed <- sum(df[[variable]] == -3, na.rm = TRUE)
+suppression_rate <- suppressed / total
+
+if (suppression_rate > 0.1) {
+  cat(sprintf("WARNING: %.1f%% of %s is suppressed\n", suppression_rate * 100, variable))
+  cat("Disaggregated analysis may be unreliable\n")
+}
+```
+
 ---
 
 ## Charter School Coverage
@@ -273,6 +301,21 @@ def check_id_stability(df_year1: pl.DataFrame, df_year2: pl.DataFrame, id_col: s
         "stable": len(ids_y1 & ids_y2),
         "pct_stable": len(ids_y1 & ids_y2) / len(ids_y1) * 100
     }
+```
+
+```r
+# R equivalent
+ids_y1 <- unique(df_year1[[id_col]])
+ids_y2 <- unique(df_year2[[id_col]])
+
+stability <- list(
+  dropped = length(setdiff(ids_y1, ids_y2)),
+  added = length(setdiff(ids_y2, ids_y1)),
+  stable = length(intersect(ids_y1, ids_y2)),
+  pct_stable = length(intersect(ids_y1, ids_y2)) / length(ids_y1) * 100
+)
+cat(sprintf("Dropped: %d, Added: %d, Stable: %d (%.1f%%)\n",
+            stability$dropped, stability$added, stability$stable, stability$pct_stable))
 ```
 
 ### Definition Changes Over Time

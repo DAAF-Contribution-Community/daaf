@@ -151,6 +151,39 @@ black_oss_rate = discipline_rate_by_group(
 )
 ```
 
+```r
+library(dplyr)
+
+# discipline_rate_by_group(df, discipline_var, enrollment_var='enrollment_crdc', per=100)
+# Calculate discipline rate per 100 (or 1000) students.
+#
+# Args:
+# df: DataFrame filtered to a subgroup (e.g., race==2 for Black)
+# discipline_var: Column with discipline counts
+# enrollment_var: Column with enrollment counts
+# per: Rate multiplier (100 or 1000)
+#
+# Returns:
+# Rate per specified multiplier
+    # Filter out coded missing values
+    df_valid <- df |> filter(.data[[discipline_var]] >= 0)
+
+    total_disciplined <- df_valid |> summarise(s = sum(.data[[discipline_var]], na.rm = TRUE)) |> pull(s)
+    total_enrolled <- df_valid |> summarise(s = sum(.data[[enrollment_var]], na.rm = TRUE)) |> pull(s)
+
+    if (total_enrolled == 0) {
+        NULL
+    (total_disciplined / total_enrolled) * per
+
+# Example: OSS rate for Black students (race=2 in Portal encoding)
+black_students <- df |> filter(race == 2)
+black_oss_rate <- discipline_rate_by_group(
+    black_students,
+    'students_susp_out_sch_single',
+    per <- 100
+)
+```
+
 ### Important Caveats
 
 1. **Definition of "suspension" varies** - Length thresholds differ by district
@@ -370,6 +403,40 @@ def course_access_analysis(df):
     )
 
     return school_df
+```
+
+```r
+library(dplyr)
+
+# Example: AP course access disparity
+# course_access_analysis(df)
+# Analyze whether schools serving more minority students
+# are less likely to offer advanced courses.
+#
+# Uses Portal integer codes: race=2 (Black), race=3 (Hispanic)
+    # Get enrollment totals by race for each school
+    # Note: race=99 is total enrollment in Portal data
+    totals <- df |> filter(race == 99).select(['ncessch', 'enrollment_crdc'])
+    black <- df |> filter(race == 2).select(['ncessch', enrollment_crdc])
+    hispanic <- df |> filter(race == 3).select(['ncessch', enrollment_crdc])
+
+    school_df <- totals |> left_join(black, by = "ncessch").join(hispanic, on='ncessch', how='left')
+
+    school_df <- school_df |> mutate(
+        ((replace_na(enrollment_black, 0) + replace_na(enrollment_hispanic, 0)) /
+         enrollment_crdc)
+    )
+
+    # Group by minority percentage quartile
+    school_df <- school_df |> mutate(
+        pl.when(pct_minority <= 0.25).then("0-25%")
+        .when(pct_minority <= 0.50).then("25-50%")
+        .when(pct_minority <= 0.75).then("50-75%")
+        .otherwise("75-100%")
+        
+    )
+
+    school_df
 ```
 
 ---

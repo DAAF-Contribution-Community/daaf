@@ -97,6 +97,27 @@ all_divisions = df.filter(
     & (pl.col("employed_grads_count_f") > 0)
 ).select("census_division", "employed_grads_count_f")
 ```
+```r
+# Fetch PSEO data
+df <- fetch_from_mirrors("pseo/colleges_pseo_2020")
+
+# Employment in Pacific Division (9), 1 year post-graduation
+pacific <- df |> filter(
+  census_division == 9,
+  unitid == 228778,          # UT Austin
+  degree_level == 5,          # Bachelor's
+  years_after_grad == 1,
+  employed_grads_count_f > 0
+)
+
+# Get all divisions for an institution
+all_divisions <- df |> filter(
+  unitid == 228778,
+  years_after_grad == 1,
+  census_division != 99,      # Exclude aggregate
+  employed_grads_count_f > 0
+) |> select(census_division, employed_grads_count_f)
+```
 
 ## In-State Employment
 
@@ -113,6 +134,10 @@ In Portal data, in-state employment is in the `employed_instate_grads_count` col
 ### Calculating Retention Rate
 
 ```python
+# In-state retention = employed_instate_grads_count / employed_grads_count_f
+# Filter to census_division == 99 (aggregate) for total employed count
+```
+```r
 # In-state retention = employed_instate_grads_count / employed_grads_count_f
 # Filter to census_division == 99 (aggregate) for total employed count
 ```
@@ -143,6 +168,15 @@ for cip_code in programs:
     total_emp = get_y1_grads_emp(institution, cip_code)
     instate_emp = get_y1_grads_emp_instate(institution, cip_code)
     retention_by_program[cip_code] = instate_emp / total_emp
+```
+```r
+# Pseudo-code for brain drain analysis
+retention_by_program <- list()
+for (cip_code in programs) {
+  total_emp <- get_y1_grads_emp(institution, cip_code)
+  instate_emp <- get_y1_grads_emp_instate(institution, cip_code)
+  retention_by_program[[as.character(cip_code)]] <- instate_emp / total_emp
+}
 ```
 
 ### Migration Flow Analysis

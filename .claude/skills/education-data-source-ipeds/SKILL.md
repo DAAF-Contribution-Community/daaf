@@ -251,6 +251,10 @@ Codebooks are `.xls` files co-located with data in all mirrors. Use `get_codeboo
 url = get_codebook_url("ipeds/codebook_colleges_ipeds_directory")
 ```
 
+```r
+url <- get_codebook_url("ipeds/codebook_colleges_ipeds_directory")
+```
+
 > **Truth Hierarchy:** When interpreting variable values, apply this priority:
 > 1. **Actual data file** (what you observe in the parquet/CSV) — this IS the truth
 > 2. **Live codebook** (.xls in mirror) — authoritative documentation, may lag
@@ -279,6 +283,23 @@ df = df.filter(
     (pl.col("sector") == 1) &
     (pl.col("degree_granting") == 1)
 )
+```
+
+```r
+library(arrow)
+library(dplyr)
+
+# Admissions totals: filter to sex=99 for institution-level totals
+# WRONG - includes duplicates (~26K rows with multiple sex values per institution)
+df <- read_parquet("data/raw/admissions.parquet")
+# CORRECT - one row per institution-year (~8K rows)
+df_totals <- df |> filter(sex == 99)
+
+# Calculate admission rate (not provided directly)
+df <- df |> mutate(admit_rate = number_admitted / number_applied * 100)
+
+# Filter to active, degree-granting, 4-year public institutions
+df <- df |> filter(sector == 1, degree_granting == 1)
 ```
 
 ### Data Availability & Lag Times
@@ -419,6 +440,41 @@ def ipeds_quality_check(df):
             issues.append(f"Invalid control codes: {invalid.height}")
 
     return issues
+```
+
+```r
+library(dplyr)
+
+# Basic IPEDS data quality checks using Portal variable names
+issues <- character(0)
+
+# Check graduation rates — Portal stores as 0-1 proportions (not 0-100)
+# See education-data-context skill > Rate and Proportion Normalization
+if ("completion_rate_150pct" %in% names(df)) {
+  bad <- df |> filter(completion_rate_150pct > 1.0 | completion_rate_150pct < 0)
+  if (nrow(bad) > 0) {
+    issues <- c(issues, paste0("Invalid grad rates: ", nrow(bad), " rows"))
+  }
+}
+
+# Check for non-active institutions (directory dataset)
+if ("currently_active_ipeds" %in% names(df)) {
+  inactive <- df |> filter(currently_active_ipeds != 1)
+  if (nrow(inactive) > 0) {
+    issues <- c(issues, paste0("Non-active institutions: ", nrow(inactive)))
+  }
+}
+
+# Check sector consistency
+if ("inst_control" %in% names(df)) {
+  invalid <- df |> filter(!inst_control %in% c(1, 2, 3, -1))
+  if (nrow(invalid) > 0) {
+    issues <- c(issues, paste0("Invalid control codes: ", nrow(invalid)))
+  }
+}
+
+cat("Issues found:", length(issues), "\n")
+if (length(issues) > 0) cat(paste(issues, collapse = "\n"), "\n")
 ```
 
 ## Related Data Sources

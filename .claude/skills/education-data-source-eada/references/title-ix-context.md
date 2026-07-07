@@ -71,6 +71,12 @@ female_participation_pct = female_athletes / total_athletes
 participation_gap = female_enrollment_pct - female_participation_pct
 ```
 
+```r
+female_enrollment_pct <- female_undergrads / total_undergrads
+female_participation_pct <- female_athletes / total_athletes
+participation_gap <- female_enrollment_pct - female_participation_pct
+```
+
 ### What is "Substantial"?
 
 No fixed percentage, but OCR and courts have considered:

@@ -484,6 +484,22 @@ valid_default = default_df.filter(
     pl.col("default_rate").is_not_null()
 )
 ```
+```r
+# EARNINGS: Filter out -3 suppression codes AND NAs
+valid_earnings <- df |> filter(!is.na(earnings_med), earnings_med != -3, earnings_med > 0)
+
+# Also filter count columns for -3
+valid_with_counts <- valid_earnings |> filter(!is.na(count_working), count_working != -3)
+
+# INST CHARACTERISTICS: Filter out NAs for flag columns
+operating <- inst_df |> filter(currently_operating == 1)
+
+# For yes/no flags, valid values are 0 and 1 (NAs = missing)
+hbcus <- inst_df |> filter(min_serving_historic_black == 1)
+
+# RATES (default, repayment): Filter out NAs
+valid_default <- default_df |> filter(!is.na(default_rate))
+```
 
 ### Portal vs Original Scorecard Format
 
@@ -555,6 +571,13 @@ Most outcome variables should be numeric:
 # Join to inst_characteristics for: inst_name, pred_degree_awarded_ipeds
 # Join to IPEDS directory for: control type
 ```
+```r
+# From scorecard/colleges_scorecard_earnings (filter years_after_entry)
+c("unitid", "year", "years_after_entry", "earnings_med", "earnings_mean",
+  "earnings_pct25", "earnings_pct75", "count_working")
+# Join to inst_characteristics for: inst_name, pred_degree_awarded_ipeds
+# Join to IPEDS directory for: control type
+```
 
 ### Default/Repayment Analysis
 
@@ -565,6 +588,13 @@ Most outcome variables should be numeric:
 ["unitid", "year", "years_since_entering_repay", "repay_rate", "repay_count",
  "repay_rate_pell", "repay_rate_lowincome"]
 ```
+```r
+# From scorecard/colleges_scorecard_repayment_fsa
+c("unitid", "year", "years_since_entering_repay", "default_rate", "default_rate_denom")
+# From scorecard/colleges_scorecard_repayment_nslds
+c("unitid", "year", "years_since_entering_repay", "repay_rate", "repay_count",
+  "repay_rate_pell", "repay_rate_lowincome")
+```
 
 ### Institutional Context
 
@@ -572,6 +602,11 @@ Most outcome variables should be numeric:
 # From scorecard/colleges_scorecard_inst_characteristics
 ["unitid", "inst_name", "city", "state_abbr", "pred_degree_awarded_ipeds",
  "min_serving_historic_black", "religious_affiliation", "currently_operating"]
+```
+```r
+# From scorecard/colleges_scorecard_inst_characteristics
+c("unitid", "inst_name", "city", "state_abbr", "pred_degree_awarded_ipeds",
+  "min_serving_historic_black", "religious_affiliation", "currently_operating")
 ```
 
 ## Field-Level Variable Patterns

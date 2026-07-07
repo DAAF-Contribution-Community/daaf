@@ -166,6 +166,34 @@ def collapse_to_5_categories(race_code: int) -> int:
 # Note the break in your time series documentation
 ```
 
+```r
+# R equivalent
+library(dplyr)
+
+# Portal uses integer race codes (not NCES string codes)
+# Current Portal codes: 1=White, 2=Black, 3=Hispanic, 4=Asian,
+#                       5=AIAN, 6=NHPI, 7=Two+, 99=Total
+
+# For time series spanning 2010
+# Option 1: Collapse new categories to match old 5-category system
+df <- df |> mutate(
+  race_collapsed = case_match(
+    race,
+    5 ~ 5L,   # American Indian/Alaska Native stays same
+    4 ~ 4L,   # Asian stays Asian
+    6 ~ 4L,   # Pacific Islander -> Asian (combined pre-2010)
+    2 ~ 2L,   # Black stays Black
+    3 ~ 3L,   # Hispanic stays Hispanic
+    1 ~ 1L,   # White stays White
+    7 ~ -1L,  # Two or more -> cannot map (treat as missing)
+    .default = -1L
+  )
+)
+
+# Option 2: Analyze pre-2010 and post-2010 separately
+# Note the break in your time series documentation
+```
+
 ---
 
 ## LEA Type Codes (2007)
@@ -406,6 +434,26 @@ def prepare_longitudinal_data(df, variable, start_year, end_year):
         print("NOTE: CEP implementation affects FRPL interpretation post-2014")
     
     return df
+```
+
+```r
+# R equivalent
+# Check for locale code issues
+if (variable == "locale" && start_year < 2006 && end_year >= 2006) {
+  cat("WARNING: Locale code methodology changed in 2006\n")
+  cat("Consider separate pre/post-2006 analysis\n")
+}
+
+# Check for race/ethnicity issues
+if (variable %in% c("race", "enrollment_by_race") && start_year < 2010 && end_year >= 2010) {
+  cat("WARNING: Race/ethnicity categories changed in 2010\n")
+  cat("Two or More Races (TR) and HP categories not available pre-2010\n")
+}
+
+# Check for FRPL issues
+if (variable %in% c("frpl", "free_lunch", "reduced_lunch") && end_year >= 2014) {
+  cat("NOTE: CEP implementation affects FRPL interpretation post-2014\n")
+}
 ```
 
 ---

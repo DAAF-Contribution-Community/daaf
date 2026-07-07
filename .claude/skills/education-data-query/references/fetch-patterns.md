@@ -163,6 +163,109 @@ def fetch_from_mirrors(
     raise RuntimeError(f"All mirrors failed. Last error: {last_error}")
 ```
 
+```r
+library(arrow)
+library(dplyr)
+library(readr)
+library(yaml)
+library(httr2)
+
+# --- Rate Limiting ---
+# INTENT: Prevent HTTP 429 (Too Many Requests) errors from mirrors.
+# REASONING: Mirrors may rate-limit rapid successive requests. A 3-second delay
+#   between fetch calls avoids triggering limits while keeping pipeline runtime
+#   reasonable (most fetches are sequential anyway).
+FETCH_DELAY_SECONDS <- 3
+last_fetch_time <- 0.0
+
+rate_limit <- function() {
+  if (last_fetch_time > 0) {
+    elapsed <- as.numeric(Sys.time()) - last_fetch_time
+    if (elapsed < FETCH_DELAY_SECONDS) {
+      wait <- FETCH_DELAY_SECONDS - elapsed
+      cat(sprintf("  (rate limit: waiting %.1fs)\n", wait))
+      Sys.sleep(wait)
+    }
+  }
+  last_fetch_time <<- as.numeric(Sys.time())
+}
+
+# --- Mirror Configuration ---
+# INTENT: Download dataset from the fastest available mirror.
+# REASONING: Mirrors are loaded from mirrors.yaml (the single source of truth).
+#   Each mirror specifies its own url_template, read_strategy, and timeout.
+#   The first successful response is used; failures fall through to the next mirror.
+# REFERENCE: See mirrors.yaml for mirror definitions, datasets-reference.md for paths.
+
+# Load mirror config from mirrors.yaml (adjust path to your project)
+mirrors_yaml_path <- "mirrors.yaml"  # Adjust path as needed
+config <- yaml::read_yaml(mirrors_yaml_path)
+mirrors <- config$mirrors
+
+# Dataset path: canonical path string from datasets-reference.md.
+# All mirrors use the same path — only root_url and format differ.
+# Example for SAIPE district poverty:
+DATASET_PATH <- "saipe/districts_saipe"
+
+# --- Single-File Fetch: Try each mirror in order ---
+# INTENT: Try each mirror in priority order. Return data frame on first success.
+# Args:
+#   path: Canonical dataset path string from datasets-reference.md.
+#   filters: Named list of column->value(s) filters to apply locally.
+#   years: Integer vector of years to filter to.
+# Returns: Filtered tibble.
+
+rate_limit()
+last_error <- NULL
+df <- NULL
+
+for (mirror in mirrors) {
+  mirror_name <- mirror$name
+  strategy <- mirror$read_strategy
+
+  # Build URL from template + canonical path
+  url <- glue::glue(mirror$url_template,
+                     root_url = mirror$root_url,
+                     path = DATASET_PATH,
+                     format = mirror$format)
+  cat(sprintf("  Trying %s: %s\n", mirror_name, url))
+
+  result <- tryCatch({
+    if (strategy == "eager_parquet") {
+      # REASONING: Parquet files have embedded schema, no inference needed.
+      # arrow reads HTTP URLs natively via arrow::read_parquet().
+      df <<- arrow::read_parquet(url)
+    } else if (strategy == "lazy_csv") {
+      # REASONING: CSV files can be large. readr handles efficiently.
+      # ASSUMES: CSV has standard column names matching parquet schema.
+      df <<- readr::read_csv(url, show_col_types = FALSE)
+    } else {
+      cat(sprintf("  Skipping %s: unknown read_strategy '%s'\n", mirror_name, strategy))
+      next
+    }
+    cat(sprintf("  Success %s: %s rows\n", mirror_name, format(nrow(df), big.mark = ",")))
+    "success"
+  }, error = function(e) {
+    last_error <<- e
+    cat(sprintf("  Failed %s: %s\n", mirror_name, conditionMessage(e)))
+    "error"
+  })
+
+  if (identical(result, "success")) break
+}
+
+if (is.null(df)) stop(paste("All mirrors failed. Last error:", conditionMessage(last_error)))
+
+# Apply filters locally
+if (!is.null(years)) {
+  df <- df |> filter(year %in% years)
+}
+# For additional filters, apply with dplyr::filter():
+# df <- df |> filter(fips == 6, charter == 1)
+
+cat(sprintf("  After filters: %s rows\n", format(nrow(df), big.mark = ",")))
+```
+
 ### Yearly Dataset (one file per year)
 
 ```python
@@ -213,6 +316,69 @@ def fetch_yearly_from_mirrors(
     result = pl.concat(frames, how="diagonal_relaxed")
     print(f"\n  Combined: {result.shape[0]:,} rows x {result.shape[1]} cols")
     return result
+```
+
+```r
+# --- Yearly Dataset Fetch: one file per year, concatenated ---
+# INTENT: Fetch yearly files and bind into a single data frame.
+# Args:
+#   path_template: Canonical path with "{year}" placeholder.
+#     Example: "ccd/schools_ccd_enrollment_{year}"
+#   years: Integer vector of years to fetch.
+# Returns: Combined tibble across all years.
+
+path_template <- "ccd/schools_ccd_enrollment_{year}"
+years <- c(2020, 2021, 2022)
+
+frames <- list()
+
+for (year in years) {
+  # Substitute {year} in the path template
+  year_path <- gsub("\\{year\\}", as.character(year), path_template)
+  cat(sprintf("\n  Year %d:\n", year))
+
+  result <- tryCatch({
+    rate_limit()
+    last_error_yearly <- NULL
+    year_df <- NULL
+
+    for (mirror in mirrors) {
+      url <- glue::glue(mirror$url_template,
+                         root_url = mirror$root_url,
+                         path = year_path,
+                         format = mirror$format)
+      cat(sprintf("    Trying %s: %s\n", mirror$name, url))
+
+      year_result <- tryCatch({
+        if (mirror$read_strategy == "eager_parquet") {
+          year_df <<- arrow::read_parquet(url)
+        } else if (mirror$read_strategy == "lazy_csv") {
+          year_df <<- readr::read_csv(url, show_col_types = FALSE)
+        }
+        "success"
+      }, error = function(e) {
+        last_error_yearly <<- e
+        cat(sprintf("    Failed %s: %s\n", mirror$name, conditionMessage(e)))
+        "error"
+      })
+
+      if (identical(year_result, "success")) break
+    }
+
+    if (is.null(year_df)) stop("All mirrors failed")
+    year_df <- year_df |> filter(year == !!year)
+    cat(sprintf("    -> %s rows\n", format(nrow(year_df), big.mark = ",")))
+    frames[[length(frames) + 1]] <<- year_df
+    "success"
+  }, error = function(e) {
+    cat(sprintf("    -> SKIP: Year %d not available from any mirror\n", year))
+    "skip"
+  })
+}
+
+if (length(frames) == 0) stop(paste("No data retrieved for any year in", paste(years, collapse = ", ")))
+result <- bind_rows(frames)
+cat(sprintf("\n  Combined: %s rows x %d cols\n", format(nrow(result), big.mark = ","), ncol(result)))
 ```
 
 ---
@@ -305,6 +471,64 @@ def discover_mirror_files(mirror_config: dict) -> list[str] | None:
 #         print("Not in primary mirror — will fall through to next")
 ```
 
+```r
+# --- Mirror Discovery: check what files are available ---
+# INTENT: Query a mirror's discovery endpoint to list available files.
+# Returns character vector of file paths, or NULL if discovery not supported.
+
+mirror <- mirrors[[1]]
+discovery <- mirror$discovery
+
+if (!is.null(discovery) && discovery$method == "http_json") {
+  resp <- httr2::request(discovery$url) |>
+    httr2::req_timeout(30) |>
+    httr2::req_perform()
+  raw <- httr2::resp_body_json(resp)
+
+  # Handle paginated response envelopes
+  entries <- if (!is.null(raw$results)) raw$results else raw
+
+  # Extract paths based on mirror's discovery config
+  file_dir_key <- discovery$file_dir_key
+  file_name_key <- discovery$file_name_key
+
+  if (!is.null(file_dir_key) && !is.null(file_name_key)) {
+    # Construct paths from separate dir + name fields
+    paths <- vapply(entries, function(e) {
+      if (!is.null(e$hide) && e$hide != 0) return(NA_character_)
+      paste0(e[[file_dir_key]], "/", e[[file_name_key]])
+    }, character(1))
+    paths <- paths[!is.na(paths)]
+  } else {
+    # Single path field
+    path_key <- if (!is.null(discovery$file_path_key)) discovery$file_path_key else "path"
+    paths <- vapply(entries, function(e) {
+      if (!is.null(e$type) && e$type != "file") return(NA_character_)
+      e[[path_key]]
+    }, character(1))
+    paths <- paths[!is.na(paths)]
+  }
+
+  # Apply file_filter if specified
+  file_filter <- discovery$file_filter
+  if (!is.null(file_filter) && file_filter != "*") {
+    suffix <- sub("^\\*", "", file_filter)
+    paths <- paths[grepl(paste0(suffix, "$"), paths)]
+  }
+
+  cat(sprintf("  Available files: %d\n", length(paths)))
+} else if (!is.null(discovery) && discovery$method == "known_complete") {
+  cat("  Mirror has complete coverage — no query needed\n")
+  paths <- NULL
+}
+
+# Usage example:
+# target <- "saipe/districts_saipe.parquet"
+# if (!is.null(paths) && target %in% paths) {
+#   cat("Available in primary mirror\n")
+# }
+```
+
 ---
 
 ## Metadata File References
@@ -378,6 +602,34 @@ def get_codebook_url(
 # Usage:
 # url = get_codebook_url("saipe/codebook_districts_saipe")
 # → "{root_url}/saipe/codebook_districts_saipe.xls" (from first mirror with metadata config)
+```
+
+```r
+# --- get_codebook_url: construct codebook URL from canonical path ---
+# INTENT: Build a codebook download URL from a datasets-reference.md codebook path.
+# Args:
+#   codebook_path: Canonical codebook path (e.g., "saipe/codebook_districts_saipe")
+# Returns: Full URL string to the codebook .xls file.
+
+codebook_path <- "saipe/codebook_districts_saipe"
+
+codebook_url <- NULL
+for (mirror in mirrors) {
+  meta <- mirror$metadata
+  if (is.null(meta)) next
+
+  fmt <- meta$formats[[1]]  # e.g., "xls"
+  codebook_url <- glue::glue(meta$url_template,
+                              root_url = mirror$root_url,
+                              path = codebook_path,
+                              format = fmt)
+  break
+}
+if (is.null(codebook_url)) stop("No mirror with metadata configuration found")
+cat(sprintf("Codebook URL: %s\n", codebook_url))
+
+# Usage:
+# codebook_url  # e.g., "{root_url}/saipe/codebook_districts_saipe.xls"
 ```
 
 ### fetch_codebook()
@@ -462,6 +714,68 @@ def fetch_codebook(
 # → downloads to data/codebooks/saipe_codebook_districts_saipe.xls
 ```
 
+```r
+# --- fetch_codebook: download codebook .xls to local cache ---
+# INTENT: Download a codebook .xls file from a mirror to a local cache directory.
+# Returns the local file path. Skips download if file already exists (session cache).
+# Args:
+#   codebook_path: Canonical codebook path (e.g., "saipe/codebook_districts_saipe")
+#   cache_dir: Local directory for cached codebook files.
+
+codebook_path <- "saipe/codebook_districts_saipe"
+cache_dir <- "data/codebooks"
+dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
+
+# Derive local filename from canonical path
+local_name <- paste0(gsub("/", "_", codebook_path), ".xls")
+local_path <- file.path(cache_dir, local_name)
+
+if (file.exists(local_path)) {
+  cat(sprintf("  Codebook cached: %s\n", local_path))
+} else {
+  last_error_cb <- NULL
+  downloaded <- FALSE
+
+  for (mirror in mirrors) {
+    meta <- mirror$metadata
+    if (is.null(meta)) next
+
+    fmt <- meta$formats[[1]]
+    url <- glue::glue(meta$url_template,
+                       root_url = mirror$root_url,
+                       path = codebook_path,
+                       format = fmt)
+    cat(sprintf("  Fetching codebook from %s: %s\n", mirror$name, url))
+
+    result_cb <- tryCatch({
+      rate_limit()
+      resp <- httr2::request(url) |>
+        httr2::req_timeout(60) |>
+        httr2::req_perform()
+      writeBin(httr2::resp_body_raw(resp), local_path)
+      cat(sprintf("  Saved: %s (%s bytes)\n", local_path,
+                  format(file.size(local_path), big.mark = ",")))
+      downloaded <<- TRUE
+      "success"
+    }, error = function(e) {
+      last_error_cb <<- e
+      cat(sprintf("  Failed %s: %s\n", mirror$name, conditionMessage(e)))
+      "error"
+    })
+
+    if (identical(result_cb, "success")) break
+  }
+
+  if (!downloaded) {
+    stop(paste("All mirrors failed for codebook. Last error:",
+               conditionMessage(last_error_cb)))
+  }
+}
+
+# Usage:
+# local_path  # e.g., "data/codebooks/saipe_codebook_districts_saipe.xls"
+```
+
 ### read_codebook()
 
 Download (if needed) and read a codebook into a dict of DataFrames, one per sheet. This is the primary entry point for agents that need to inspect codebook contents.
@@ -521,6 +835,35 @@ def read_codebook(
 # for name, df in sheets.items():
 #     print(f"\n--- {name} ---")
 #     print(df.head())
+```
+
+```r
+# --- read_codebook: download (if needed) and read codebook into named list of data frames ---
+# INTENT: Download and read a codebook .xls file. Returns named list of tibbles, one per sheet.
+# Requires the readxl package.
+# Assumes fetch_codebook R block above has already run and local_path is set.
+
+library(readxl)
+
+sheet_names <- readxl::excel_sheets(local_path)
+sheets <- setNames(
+  lapply(sheet_names, function(s) readxl::read_excel(local_path, sheet = s)),
+  sheet_names
+)
+
+sheet_summary <- paste(
+  vapply(names(sheets), function(nm) {
+    sprintf("%s (%dx%d)", nm, nrow(sheets[[nm]]), ncol(sheets[[nm]]))
+  }, character(1)),
+  collapse = ", "
+)
+cat(sprintf("  Codebook sheets: %s\n", sheet_summary))
+
+# Usage:
+# for (nm in names(sheets)) {
+#   cat(sprintf("\n--- %s ---\n", nm))
+#   print(head(sheets[[nm]]))
+# }
 ```
 
 ---
@@ -584,6 +927,16 @@ k_12 = df.filter(pl.col("grade").is_between(0, 12))
 total = df.filter(pl.col("grade") == 99)
 ```
 
+```r
+# WRONG - filters out Pre-K students!
+df <- df |> filter(grade >= 0)
+
+# RIGHT - grade=-1 is Pre-K, NOT missing data
+pre_k <- df |> filter(grade == -1)
+k_12 <- df |> filter(between(grade, 0, 12))
+total <- df |> filter(grade == 99)
+```
+
 ### Variable Names Are Lowercase
 
 Portal variable names are lowercase:
@@ -598,6 +951,18 @@ Portal variable names are lowercase:
 Every fetch script must include these IAT comments:
 
 ```python
+# --- Mirror Resolution ---
+# INTENT: Download {dataset_name} from the fastest available mirror.
+# REASONING: Mirrors are tried in priority order per mirrors.yaml config.
+#   Format-specific read strategy is driven by each mirror's read_strategy field.
+# ASSUMES: Mirror URLs are current and accessible; each mirror uses the same canonical
+#   path with its own root_url and format.
+#   Year/filter columns exist in the dataset with expected names.
+#   Portal uses integer encoding: grade=-1 is Pre-K (NOT missing), race=1-7, sex=1-2.
+# REFERENCE: mirrors.yaml for mirror config, datasets-reference.md for canonical paths.
+```
+
+```r
 # --- Mirror Resolution ---
 # INTENT: Download {dataset_name} from the fastest available mirror.
 # REASONING: Mirrors are tried in priority order per mirrors.yaml config.

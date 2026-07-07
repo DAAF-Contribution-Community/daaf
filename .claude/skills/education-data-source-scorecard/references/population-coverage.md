@@ -174,6 +174,16 @@ coverage_estimate = scorecard_count / ipeds_total_enrollment
 if coverage_estimate < 0.5:
     print("WARNING: Less than half of students in Scorecard data")
 ```
+```r
+# Estimate coverage rate using count_working from earnings data
+# vs IPEDS enrollment
+coverage_estimate <- scorecard_count / ipeds_total_enrollment
+
+# Flag institutions with low coverage
+if (coverage_estimate < 0.5) {
+  cat("WARNING: Less than half of students in Scorecard data\n")
+}
+```
 
 ### Variables Indicating Coverage
 

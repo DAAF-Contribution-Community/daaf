@@ -75,6 +75,20 @@ if files is not None:
     print(f"Available files: {len(files)}")
 ```
 
+```r
+# Generic discovery — works with any mirror that supports it
+# See fetch-patterns.md for the full inline R discovery pattern
+# Check primary mirror
+mirror <- mirrors[[1]]
+discovery <- mirror$discovery
+if (!is.null(discovery) && discovery$method == "http_json") {
+  resp <- httr2::request(discovery$url) |> httr2::req_timeout(30) |> httr2::req_perform()
+  raw <- httr2::resp_body_json(resp)
+  entries <- if (!is.null(raw$results)) raw$results else raw
+  cat(sprintf("Available files: %d\n", length(entries)))
+}
+```
+
 This eliminates guessing — if the file exists in a mirror, use it; if not, fall through to the next.
 
 ## Decision Trees
@@ -127,6 +141,20 @@ df = df.filter(
 )
 ```
 
+```r
+# By state
+df <- df |> filter(fips == 6)  # California
+
+# By year
+df <- df |> filter(year %in% c(2020, 2021, 2022))
+
+# By school type
+df <- df |> filter(charter == 1)
+
+# Multiple filters
+df <- df |> filter(fips == 6, charter == 1, school_level == 3)
+```
+
 ## Dataset Path Structure
 
 All mirrors use the same canonical path. Each mirror appends its own format extension (`.parquet`, `.csv`) via its `url_template` in mirrors.yaml:
@@ -156,6 +184,10 @@ Format-specific read behavior is driven by each mirror's `read_strategy` field (
 df = pl.read_parquet(url)  # Polars reads HTTP URLs natively
 ```
 
+```r
+df <- arrow::read_parquet(url)  # arrow reads HTTP URLs natively
+```
+
 ### `lazy_csv`
 ```python
 # Always use lazy loading for large files
@@ -165,6 +197,13 @@ df = (
     .filter(pl.col("fips") == STATE_FIPS)
     .collect()
 )
+```
+
+```r
+# Read CSV then filter (R reads eagerly; arrow handles large files efficiently)
+df <- readr::read_csv(url, show_col_types = FALSE) |>
+  filter(year %in% YEARS) |>
+  filter(fips == STATE_FIPS)
 ```
 
 See `./references/fetch-patterns.md` for complete code patterns.
@@ -197,6 +236,15 @@ df = df.filter(pl.col("grade") >= 0)
 # RIGHT - Pre-K students have grade = -1
 pre_k = df.filter(pl.col("grade") == -1)
 total = df.filter(pl.col("grade") == 99)
+```
+
+```r
+# WRONG - filters out Pre-K students!
+df <- df |> filter(grade >= 0)
+
+# RIGHT - Pre-K students have grade = -1
+pre_k <- df |> filter(grade == -1)
+total <- df |> filter(grade == 99)
 ```
 
 ### Variable Names Are Lowercase

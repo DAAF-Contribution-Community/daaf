@@ -143,6 +143,17 @@ df = df.with_columns(
 df.filter(pl.col("endow_total") > 1_000_000_000)  # Endowments over $1B
 ```
 
+```r
+# R equivalent
+library(dplyr)
+
+# Correct: convert decimal fraction to percentage for display
+df <- df |> mutate(pct_change = endow_chg_mktval * 100)
+
+# Correct: endow_total is already in full USD
+df |> filter(endow_total > 1e9)
+```
+
 ### Key Metrics Available
 
 | Metric | Description | In Portal Mirror? | Granularity |
@@ -211,6 +222,17 @@ df.filter(pl.col("endow_per_fte").is_null())
 # df.filter(pl.col("endow_per_fte") == -1)  # Won't find anything
 ```
 
+```r
+# R equivalent
+library(dplyr)
+
+# Correct: Check for null
+df |> filter(is.na(endow_per_fte))
+
+# Incorrect: Checking for -1/-2/-3 (these don't exist in NACUBO)
+# df |> filter(endow_per_fte == -1)  # Won't find anything
+```
+
 ## Data Access
 
 Datasets for NACUBO are available via the mirror system. See `datasets-reference.md` for canonical paths, `mirrors.yaml` for mirror configuration, and `fetch-patterns.md` for fetch code patterns.
@@ -223,6 +245,11 @@ Codebooks are `.xls` files co-located with data in all mirrors. Use `get_codeboo
 
 ```python
 url = get_codebook_url("nacubo/codebook_colleges_nacubo_endowments")
+```
+
+```r
+# R equivalent
+url <- get_codebook_url("nacubo/codebook_colleges_nacubo_endowments")
 ```
 
 > **Truth Hierarchy:** When interpreting variable values, apply this priority:

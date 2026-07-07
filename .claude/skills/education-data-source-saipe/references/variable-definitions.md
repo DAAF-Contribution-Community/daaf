@@ -170,6 +170,18 @@ df.filter(pl.col("fips") == "06")  # String won't match integer
 df.filter(pl.col("fips") == "6")   # Still a string
 ```
 
+```r
+# R equivalent
+library(dplyr)
+
+# Correct - use integer
+df |> filter(fips == 6)  # California
+
+# WRONG - these will not match
+df |> filter(fips == "06")  # String won't match integer
+df |> filter(fips == "6")   # Still a string
+```
+
 | Code | State | Code | State |
 |------|-------|------|-------|
 | 1 | Alabama | 27 | Minnesota |
@@ -228,6 +240,18 @@ df.with_columns(
 )
 ```
 
+```r
+# R equivalent
+library(dplyr)
+library(stringr)
+
+# Filtering by leaid - use integers
+df |> filter(leaid == 622710)  # California district 22710
+
+# If you need the 7-character format for joining with other sources
+df <- df |> mutate(leaid_str = str_pad(as.character(leaid), 7, pad = "0"))
+```
+
 ### County FIPS Codes
 
 - 5-character string
@@ -256,6 +280,18 @@ df_valid = df.filter(pl.col("est_population_5_17_poverty").is_not_null())
 # Check null rates per column
 null_rates = df.null_count() / df.height
 print(null_rates)
+```
+
+```r
+# R equivalent
+library(dplyr)
+
+# Filter to valid (non-null) data only
+df_valid <- df |> filter(!is.na(est_population_5_17_poverty))
+
+# Check null rates per column
+null_rates <- colMeans(is.na(df))
+cat("Null rates per column:\n"); print(null_rates)
 ```
 
 ### Suppression Rules

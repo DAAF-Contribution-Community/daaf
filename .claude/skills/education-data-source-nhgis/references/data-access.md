@@ -23,6 +23,23 @@ df_colleges = fetch_from_mirrors("nhgis/colleges_nhgis_geog_2020")
 # The census year determines which boundary vintage is used for geographic assignment
 ```
 
+```r
+library(arrow)
+
+# Uses fetch_from_mirrors() — tries each mirror in priority order per mirrors.yaml.
+# See fetch-patterns.md and datasets-reference.md for canonical paths.
+
+# School-to-census geography (2020 Census boundaries)
+df <- fetch_from_mirrors("nhgis/schools_nhgis_geog_2020")
+
+# College-to-census geography (2020 Census boundaries)
+df_colleges <- fetch_from_mirrors("nhgis/colleges_nhgis_geog_2020")
+
+# Available census years: 1990, 2000, 2010, 2020
+# All files contain ALL data years (schools: 1986-2023, colleges: 1980-2023)
+# The census year determines which boundary vintage is used for geographic assignment
+```
+
 **Available data**: Institution coordinates linked to census tract, block group, block, region, division, CBSA, and place. See `variable-catalog.md` for Portal integer encodings.
 
 Codebooks are `.xls` files co-located with data in all mirrors. Use `get_codebook_url()` from `fetch-patterns.md` to construct download URLs. Codebook paths are listed in `datasets-reference.md`.
@@ -153,12 +170,50 @@ response = requests.post(
 extract_id = response.json()["number"]
 ```
 
+```r
+library(httr)
+library(jsonlite)
+
+api_key <- "YOUR_API_KEY"
+
+# Define extract
+extract_def <- list(
+  datasets = list(
+    `2016_2020_ACS5a` = list(
+      data_tables = list("B01001"),
+      geog_levels = list("tract")
+    )
+  ),
+  data_format = "csv_no_header",
+  description = "Population by age, tract level"
+)
+
+# Submit extract
+response <- POST(
+  "https://api.ipums.org/extracts/?collection=nhgis&version=v1",
+  add_headers(Authorization = api_key),
+  body = extract_def, encode = "json"
+)
+
+extract_id <- content(response)$number
+```
+
 ### Checking Extract Status
 
 ```python
 status_url = f"https://api.ipums.org/extracts/{extract_id}?collection=nhgis&version=v1"
 response = requests.get(status_url, headers=headers)
 status = response.json()["status"]
+# "queued", "started", "completed", "failed"
+```
+
+```r
+status_url <- paste0(
+  "https://api.ipums.org/extracts/", extract_id,
+  "?collection=nhgis&version=v1"
+)
+response <- GET(status_url, add_headers(Authorization = api_key))
+status <- content(response)$status
 # "queued", "started", "completed", "failed"
 ```
 
@@ -170,6 +225,16 @@ if status == "completed":
     for link in download_links:
         data = requests.get(link["url"], headers=headers)
         # Save to file
+```
+
+```r
+if (status == "completed") {
+  download_links <- content(response)$download_links
+  for (link in download_links) {
+    download.file(link$url, destfile = basename(link$url),
+                  headers = c(Authorization = api_key))
+  }
+}
 ```
 
 ## Method 3: ipumspy (Python)
@@ -372,6 +437,18 @@ extract = NhgisExtract(
 )
 ```
 
+```r
+# Include shapefiles in extract (ipumsr)
+extract <- define_extract_nhgis(
+  description = "Data with shapefiles",
+  datasets = ds_spec("2016_2020_ACS5a",
+    data_tables = "B01001",
+    geog_levels = "tract"
+  ),
+  shapefiles = "2020_tract"
+)
+```
+
 ### Direct TIGER/Line (Alternative)
 
 For current boundaries only:
@@ -437,6 +514,16 @@ else:
     pass
 ```
 
+```r
+# Check if extract exists before resubmitting (ipumsr)
+existing <- get_extract_info(submitted)
+if (existing$status == "completed") {
+  # Download existing
+} else {
+  # Submit new
+}
+```
+
 ### Batch Processing
 
 ```python
@@ -453,6 +540,26 @@ for state in ["California", "Texas", "New York"]:
 # Wait for all
 for ext in extracts:
     client.wait_for_extract(ext)
+```
+
+```r
+# Submit multiple extracts (ipumsr)
+states <- c("California", "Texas", "New York")
+extracts <- lapply(states, function(st) {
+  ext <- define_extract_nhgis(
+    description = paste("Data for", st),
+    datasets = ds_spec(
+      "2016_2020_ACS5a",
+      data_tables = "B01001",
+      geog_levels = "tract"
+    ),
+    geographic_extents = st
+  )
+  submit_extract(ext)
+})
+
+# Wait for all
+completed <- lapply(extracts, wait_for_extract)
 ```
 
 ## Troubleshooting

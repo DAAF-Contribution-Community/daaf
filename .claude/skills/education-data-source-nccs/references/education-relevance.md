@@ -121,6 +121,14 @@ import polars as pl
 universities = df.filter(pl.col("NTEE_V2").str.starts_with("UNI-"))
 ```
 
+```r
+library(dplyr)
+library(stringr)
+
+# Filter for universities using NTEEV2 industry group
+universities <- df |> filter(str_starts(NTEE_V2, "UNI-"))
+```
+
 ### Using Foundation Code
 
 Many colleges have foundation code 11 (School):
@@ -129,6 +137,11 @@ import polars as pl
 
 # Schools under 170(b)(1)(A)(ii) — full NCCS BMF data only
 schools = bmf.filter(pl.col("FNDNCD") == "11")
+```
+
+```r
+# Schools under 170(b)(1)(A)(ii) — full NCCS BMF data only
+schools <- bmf |> filter(FNDNCD == "11")
 ```
 
 ### Filtering Strategy
@@ -147,6 +160,20 @@ higher_ed = higher_ed.filter(pl.col("SUBSECCD") == "03")
 
 # Step 3: Exclude tiny organizations (likely support orgs, not colleges)
 higher_ed = higher_ed.filter(pl.col("INCOME_AMT") > 1_000_000)  # >$1M revenue
+```
+
+```r
+library(dplyr)
+library(stringr)
+
+# Step 1: Filter by NTEE
+higher_ed <- bmf |> filter(str_detect(NTEECC, "^B4[0-9]|^B50"))
+
+# Step 2: Verify 501(c)(3) status
+higher_ed <- higher_ed |> filter(SUBSECCD == "03")
+
+# Step 3: Exclude tiny organizations (likely support orgs, not colleges)
+higher_ed <- higher_ed |> filter(INCOME_AMT > 1000000)
 ```
 
 ---
@@ -183,6 +210,20 @@ combined = nccs.join(
 )
 ```
 
+```r
+library(arrow)
+library(dplyr)
+
+# Portal data already has unitid
+nccs <- fetch_from_mirrors("nccs/colleges_nccs_all")
+ipeds <- fetch_from_mirrors("ipeds/colleges_ipeds_directory")
+
+# Direct join on unitid and year
+combined <- nccs |>
+  left_join(ipeds |> select(unitid, year, inst_name, sector),
+            by = c("unitid", "year"))
+```
+
 **2. Full NCCS Data (Fuzzy Matching Required)**
 
 When working with the full NCCS universe (outside Portal), linking requires fuzzy name/location matching since there is no official EIN-UNITID crosswalk:
@@ -206,6 +247,11 @@ same_location = ipeds_df.filter(
     (pl.col("CITY") == nccs_city) &
     (pl.col("STABBR") == nccs_state)
 )
+```
+
+```r
+# Match on city + state first, then name (full NCCS data)
+same_location <- ipeds_df |> filter(CITY == nccs_city, STABBR == nccs_state)
 ```
 
 **3. Published Crosswalks**
@@ -253,6 +299,13 @@ compensation = efile_partVII[
 ]
 ```
 
+```r
+# Get compensation for college presidents
+# Use Efile Part VII or Schedule J data
+compensation <- efile_partVII |>
+  filter(str_detect(TITLE, regex("President|Chancellor", ignore_case = TRUE)))
+```
+
 **Research questions**:
 - How does president pay vary by institution size?
 - Is there a relationship between endowment size and compensation?
@@ -272,6 +325,18 @@ endowment_cols = [
     'F9_SD_05_ENDOWMENT_ADMIN',     # Admin expenses
     'F9_SD_05_ENDOWMENT_EOY'        # Ending balance
 ]
+```
+
+```r
+# Endowment data from Schedule D Part V
+endowment_cols <- c(
+  "F9_SD_05_ENDOWMENT_BOY",      # Beginning balance
+  "F9_SD_05_ENDOWMENT_CONTRIB",  # Contributions
+  "F9_SD_05_ENDOWMENT_INVEST",   # Investment return
+  "F9_SD_05_ENDOWMENT_GRANTS",   # Grants/scholarships
+  "F9_SD_05_ENDOWMENT_ADMIN",    # Admin expenses
+  "F9_SD_05_ENDOWMENT_EOY"       # Ending balance
+)
 ```
 
 **Research questions**:
@@ -295,6 +360,18 @@ governance_vars = [
 ]
 ```
 
+```r
+# Governance indicators from Part VI
+governance_vars <- c(
+  "F9_PC_06_VOTING_MEMBERS",          # Board size
+  "F9_PC_06_INDEP_VOTING_MEMBERS",    # Independent members
+  "F9_PC_06_FAMILY_RELATIONSHIP",     # Family on board
+  "F9_PC_06_CONFLICT_POLICY",         # COI policy
+  "F9_PC_06_WHISTLEBLOWER",           # Whistleblower policy
+  "F9_PC_06_CEO_COMP_REVIEW"          # CEO comp reviewed
+)
+```
+
 **Research questions**:
 - Does board composition affect institutional outcomes?
 - Do governance practices correlate with financial health?
@@ -316,6 +393,17 @@ df['program_ratio'] = (
     df['F9_PC_09_FUNC_EXP_PROGRAM'] / 
     df['F9_PC_09_FUNC_EXP_TOTAL']
 )
+```
+
+```r
+library(dplyr)
+
+# Calculate fundraising efficiency
+df <- df |>
+  mutate(
+    fundraising_ratio = F9_PC_09_FUNC_EXP_FUNDRAISING / F9_PC_08_CONTRIBUTIONS,
+    program_ratio = F9_PC_09_FUNC_EXP_PROGRAM / F9_PC_09_FUNC_EXP_TOTAL
+  )
 ```
 
 ### 5. Related Party Analysis
@@ -386,6 +474,25 @@ print(f"Total Revenue: ${latest['revenue_total'].mean():,.0f}")
 print(f"Total Assets: ${latest['total_assets_eoy'].mean():,.0f}")
 ```
 
+```r
+library(arrow)
+library(dplyr)
+
+# Load NCCS data via unified mirror system
+DATASET_PATH <- "nccs/colleges_nccs_all"
+nccs <- fetch_from_mirrors(DATASET_PATH)
+
+# Filter to California (FIPS = 6) - note: integer codes!
+ca_institutions <- nccs |> filter(fips == 6)
+
+# Get latest year data
+latest <- nccs |> filter(year == max(year))
+
+# Financial summary
+cat(sprintf("Total Revenue: $%s\n", format(mean(latest$revenue_total, na.rm = TRUE), big.mark = ",")))
+cat(sprintf("Total Assets: $%s\n", format(mean(latest$total_assets_eoy, na.rm = TRUE), big.mark = ",")))
+```
+
 **Join with IPEDS:**
 
 ```python
@@ -405,6 +512,24 @@ combined = nccs.join(
     on=["unitid", "year"],
     how="left"
 )
+```
+
+```r
+library(arrow)
+library(dplyr)
+
+# NCCS data includes unitid for IPEDS matching
+NCCS_PATH <- "nccs/colleges_nccs_all"
+nccs <- fetch_from_mirrors(NCCS_PATH)
+
+# IPEDS directory for institution names
+IPEDS_PATH <- "ipeds/colleges_ipeds_directory"
+ipeds <- fetch_from_mirrors(IPEDS_PATH)
+
+# Join on unitid and year
+combined <- nccs |>
+  left_join(ipeds |> select(unitid, year, inst_name, sector),
+            by = c("unitid", "year"))
 ```
 
 ### Using Direct NCCS Data
@@ -430,6 +555,25 @@ ca_universities = bmf.filter(
 print(f"Found {ca_universities.height} private universities in California")
 ```
 
+```r
+library(dplyr)
+library(stringr)
+
+# Load BMF
+bmf <- read.csv("BMF_UNIFIED_V1.1.csv")
+
+# Filter to California private universities
+ca_universities <- bmf |>
+  filter(
+    STATE == "CA",
+    SUBSECCD == "03",
+    str_detect(NTEECC, "^B4[0-3]"),
+    INCOME_AMT > 1000000
+  )
+
+cat(sprintf("Found %d private universities in California\n", nrow(ca_universities)))
+```
+
 **Get Financial Data for a Specific Institution:**
 
 ```python
@@ -443,6 +587,19 @@ stanford_990 = core.filter(pl.col("EIN") == stanford_ein)
 
 print(f"Total Revenue: ${stanford_990['TOTREV'][0]:,.0f}")
 print(f"Total Assets: ${stanford_990['TOTASS'][0]:,.0f}")
+```
+
+```r
+# Find Stanford University
+stanford <- bmf |> filter(grepl("STANFORD UNIVERSITY", NAME, ignore.case = TRUE))
+stanford_ein <- stanford$EIN[1]
+
+# Load Core data
+core <- read.csv("CHARITIES_PC_2021.csv")
+stanford_990 <- core |> filter(EIN == stanford_ein)
+
+cat(sprintf("Total Revenue: $%s\n", format(stanford_990$TOTREV[1], big.mark = ",")))
+cat(sprintf("Total Assets: $%s\n", format(stanford_990$TOTASS[1], big.mark = ",")))
 ```
 
 **Compare Endowments Across Institutions:**
@@ -462,6 +619,23 @@ endowments = endowments.filter(pl.col("EIN").is_in(ca_universities["EIN"]))
 
 # Sort by endowment size
 endowments = endowments.sort("ENDOWMENT_EOY", descending=True)
+```
+
+```r
+library(dplyr)
+
+# Load Efile Schedule D data
+sched_d <- read.csv("efile_schedule_d_part_v.csv")
+
+# Join with BMF for institution names
+endowments <- sched_d |>
+  left_join(bmf |> select(EIN, NAME, STATE), by = "EIN")
+
+# Filter to higher ed
+endowments <- endowments |> filter(EIN %in% ca_universities$EIN)
+
+# Sort by endowment size
+endowments <- endowments |> arrange(desc(ENDOWMENT_EOY))
 ```
 
 **Analyze Executive Compensation:**
@@ -485,6 +659,28 @@ presidents = presidents.with_columns(
 
 # Summary statistics
 print(presidents["TOTAL_COMP"].describe())
+```
+
+```r
+library(dplyr)
+library(stringr)
+
+# Load Part VII compensation data
+part_vii <- read.csv("efile_part_vii.csv")
+
+# Filter to presidents/chancellors at universities
+presidents <- part_vii |>
+  filter(
+    str_detect(TITLE, regex("President|Chancellor", ignore_case = TRUE)),
+    EIN %in% higher_ed$EIN
+  )
+
+# Calculate total compensation
+presidents <- presidents |>
+  mutate(TOTAL_COMP = BASE_COMP + BONUS + OTHER_COMP + DEFERRED_COMP + NONTAXABLE)
+
+# Summary statistics
+summary(presidents$TOTAL_COMP)
 ```
 
 ---

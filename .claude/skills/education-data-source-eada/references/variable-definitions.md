@@ -433,6 +433,26 @@ aid_share_female = pl.col("ath_stuaid_women") / (
 # Note: ath_stuaid_women_ratio is pre-calculated in the data
 ```
 
+```r
+library(dplyr)
+
+# Total unduplicated participation
+# Note: undup_athpartic_total is often coded -1; calculate manually
+total_partic <- undup_athpartic_men + undup_athpartic_women
+
+# Female participation share
+female_share <- undup_athpartic_women / total_partic
+
+# Per-athlete operating expense (pre-calculated in data)
+# Use ath_opexp_perpart_men, ath_opexp_perpart_women directly
+
+# Aid proportionality
+aid_share_female <- ath_stuaid_women / (
+    ath_stuaid_men + ath_stuaid_women
+)
+# Note: ath_stuaid_women_ratio is pre-calculated in the data
+```
+
 ### Additional Miscellaneous Variables
 
 | Variable | Type | Description |
@@ -469,6 +489,24 @@ df_clean = df.with_columns(
 )
 ```
 
+```r
+library(dplyr)
+
+# Identify coded missing values
+missing_codes <- [-1, -2, -3]
+
+# Filter to valid data only for a specific column
+df_valid <- df |> filter(~undup_athpartic_women.is_in(missing_codes)
+
+# Or convert coded values to null for calculations
+df_clean <- df |> mutate(
+    pl.when(ath_stuaid_men.is_in(missing_codes))
+    .then(NULL)
+    .otherwise(ath_stuaid_men)
+    
+)
+```
+
 ## Data Type Notes
 
 - **Integers**: Count variables (participants, coaches)
@@ -488,6 +526,13 @@ Use `unitid` to join with IPEDS data for:
 
 ```python
 import polars as pl
+
+# Example join with IPEDS
+eada_df.join(ipeds_df, on=["unitid", "year"], how="left")
+```
+
+```r
+library(dplyr)
 
 # Example join with IPEDS
 eada_df.join(ipeds_df, on=["unitid", "year"], how="left")

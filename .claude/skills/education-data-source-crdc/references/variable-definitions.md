@@ -79,6 +79,16 @@ df.filter(pl.col("race") == 2)  # Correct
 # df.filter(pl.col("race") == "BL")  # Will return 0 rows!
 ```
 
+```r
+library(dplyr)
+
+# Filter to Black students (use integer code, NOT string)
+df |> filter(race == 2)  # Correct
+
+# WRONG - string codes don't exist in Portal data
+# df |> filter(race == "BL")  # Will return 0 rows!
+```
+
 ---
 
 ## Sex Categories
@@ -113,6 +123,16 @@ df.filter(pl.col("sex") == 2)  # Correct
 
 # WRONG - string codes don't exist in Portal data
 # df.filter(pl.col("sex") == "F")  # Will return 0 rows!
+```
+
+```r
+library(dplyr)
+
+# Filter to female students
+df |> filter(sex == 2)  # Correct
+
+# WRONG - string codes don't exist in Portal data
+# df |> filter(sex == "F")  # Will return 0 rows!
 ```
 
 ---
@@ -197,6 +217,13 @@ These are string codes from OCR source documentation (not used in Portal data; t
 ```python
 # Filter to LEP students only (excludes totals)
 df.filter(pl.col("lep") == 1)  # Correct
+```
+
+```r
+library(dplyr)
+
+# Filter to LEP students only (excludes totals)
+df |> filter(lep == 1)  # Correct
 ```
 
 ---
@@ -393,6 +420,43 @@ def exclude_totals_and_missing(df, categorical_cols):
     return df
 ```
 
+```r
+library(dplyr)
+
+# clean_crdc_values(df, value_columns)
+# Handle CRDC special codes appropriately.
+#
+# Args:
+# df: DataFrame with CRDC data
+# value_columns: List of columns to clean
+#
+# Returns:
+# DataFrame with nulls for special codes
+    for (col in value_columns) {
+        df <- df |> mutate(
+            pl.when(pl.col(col) < 0)
+            .then(NULL)
+            .otherwise(pl.col(col))
+            .alias(col)
+        )
+    df
+
+# flag_suppressed(df, column)
+# Flag suppressed values separately.
+    df |> mutate(
+        (pl.col(column) == -3).alias(f"{column}_suppressed")
+    )
+
+# exclude_totals_and_missing(df, categorical_cols)
+# Filter out total rows (99) and missing/suppressed values.
+# Use this to get individual subgroup rows only.
+    for (col in categorical_cols) {
+        df <- df |> filter(
+            (pl.col(col) > 0) & (pl.col(col) < 99)
+        )
+    df
+```
+
 ### Suppression Rules
 
 Small cells are suppressed to protect student privacy:
@@ -459,6 +523,16 @@ import polars as pl
 black_male_oss = df.filter(
     (pl.col("race") == 2) &    # Black
     (pl.col("sex") == 1)        # Male
+).select("students_susp_out_sch_single")
+```
+
+```r
+library(dplyr)
+
+# Cross-tab: Black male students
+black_male_oss <- df |> filter(
+    (race == 2) &    # Black
+    (sex == 1)        # Male
 ).select("students_susp_out_sch_single")
 ```
 

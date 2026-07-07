@@ -197,7 +197,7 @@ files note the change.
 | svy | 0.13.0 | survey | survey 4.5 |
 | marginaleffects | unpinned | marginaleffects (R) | 0.32.0 |
 | rdrobust | unpinned | rdrobust (R) | 3.0.0 |
-| marimo | 0.19.11 | Quarto / RMarkdown | Quarto 1.6.x |
+| marimo | 0.19.11 | Quarto / RMarkdown | Quarto 1.7.29 |
 
 **Unpinned packages:** linearmodels, marginaleffects, and rdrobust install the latest
 version at Docker build time. Translations for these packages reference their documented
@@ -282,6 +282,7 @@ fit = pf.feols("y ~ x1 + x2 | state + year", data=pdf, vcov={"CRV1": "state"})
 | `svy` | Python-side survey analysis — covers survey (Lumley) equivalents |
 | `marimo` | Python-side notebooks — covers Quarto/RMarkdown workflow equivalents |
 | `stata-python-translation` | Parallel skill for Stata-background users — shares the same Python target stack |
+| `python-r-translation` | Reverse direction — maps Python concepts to R equivalents for Python-background users working in R |
 
 **Note:** Individual tool skills contain library-specific usage guidance (syntax, gotchas, performance). This skill provides the R-to-Python conceptual bridge — use both together when an R-background user is working with a specific library.
 

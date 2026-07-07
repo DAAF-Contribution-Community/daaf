@@ -77,6 +77,18 @@ ucsf = 110699
 # But may share some system-level characteristics
 ```
 
+```r
+# Single UNITID
+unitid <- 110635  # UC Berkeley
+
+# Multi-campus system - each campus has own UNITID
+ucla <- 110662
+ucsd <- 110680
+ucsf <- 110699
+
+# But may share some system-level characteristics
+```
+
 ## OPEID
 
 ### Definition
@@ -101,6 +113,16 @@ opeid6 = "001312"    # Institution family
 # Branch campuses share OPEID6
 branch1 = "00131201"  # opeid6 = "001312"
 branch2 = "00131202"  # opeid6 = "001312"
+```
+
+```r
+# Main campus
+opeid8 <- "00131200"  # Main campus
+opeid6 <- "001312"    # Institution family
+
+# Branch campuses share OPEID6
+branch1 <- "00131201"  # opeid6 = "001312"
+branch2 <- "00131202"  # opeid6 = "001312"
 ```
 
 ### OPEID Characteristics
@@ -137,6 +159,22 @@ opeid = directory["opeid"]
 # Link to other data (e.g., Scorecard)
 scorecard = pl.read_parquet("data/raw/scorecard_earnings.parquet")
 merged = directory.join(scorecard, on="unitid")
+```
+
+```r
+library(arrow)
+library(dplyr)
+
+# Load IPEDS directory (contains both unitid and opeid)
+directory <- read_parquet("data/raw/ipeds_directory.parquet")
+
+# Crosswalk columns
+unitid <- directory$unitid
+opeid <- directory$opeid
+
+# Link to other data (e.g., Scorecard)
+scorecard <- read_parquet("data/raw/scorecard_earnings.parquet")
+merged <- directory |> inner_join(scorecard, by = "unitid")
 ```
 
 ### Complications
@@ -198,6 +236,16 @@ active = df.filter(pl.col("currently_active_ipeds") == 1)
 closed = df.filter(pl.col("year_deleted").is_not_null())
 ```
 
+```r
+library(dplyr)
+
+# Filter to active institutions
+active <- df |> filter(currently_active_ipeds == 1)
+
+# Find closures
+closed <- df |> filter(!is.na(year_deleted))
+```
+
 ## Tracking Institutions Over Time
 
 ### Time Series Analysis Challenges
@@ -217,6 +265,11 @@ closed = df.filter(pl.col("year_deleted").is_not_null())
    active_years = df.filter(pl.col("currently_active_ipeds") == 1).select("year").unique()
    ```
 
+   ```r
+   # Verify institution was active in analysis years
+   active_years <- df |> filter(currently_active_ipeds == 1) |> distinct(year)
+   ```
+
 2. **Look for discontinuities**
    ```python
    # Large year-over-year changes may indicate issues
@@ -224,6 +277,12 @@ closed = df.filter(pl.col("year_deleted").is_not_null())
        (pl.col("enrollment") / pl.col("enrollment").shift(1) - 1).alias("change")
    )
    suspicious = yoy_change.filter(pl.col("change").abs() > 0.5)
+   ```
+
+   ```r
+   # Large year-over-year changes may indicate issues
+   yoy_change <- df |> mutate(change = enrollment / lag(enrollment) - 1)
+   suspicious <- yoy_change |> filter(abs(change) > 0.5)
    ```
 
 3. **Use institution history files**
@@ -237,6 +296,12 @@ closed = df.filter(pl.col("year_deleted").is_not_null())
        pl.col("status_change_flag") == 0
    )
    print(f"Excluded {original_n - analysis_sample.height} institutions")
+   ```
+
+   ```r
+   # Exclude institutions with status changes
+   analysis_sample <- df |> filter(status_change_flag == 0)
+   cat("Excluded", original_n - nrow(analysis_sample), "institutions\n")
    ```
 
 ### Merger Handling
@@ -264,6 +329,17 @@ data = data.with_columns(
 )
 ```
 
+```r
+# Example: Identify merged institutions
+mergers <- history |> filter(merge_flag == 1)
+
+# Option 1: Exclude
+clean_data <- data |> filter(!unitid %in% mergers$unitid)
+
+# Option 2: Flag for separate handling
+data <- data |> mutate(merger_involved = unitid %in% mergers$unitid)
+```
+
 ## Linking to Other Data Sources
 
 ### College Scorecard
@@ -286,6 +362,20 @@ merged = ipeds.join(scorecard, on="unitid", how="left")
 missing = merged.filter(pl.col("scorecard_field").is_null())
 ```
 
+```r
+library(arrow)
+library(dplyr)
+
+# Both IPEDS and Scorecard use UNITID
+ipeds <- read_parquet("data/raw/ipeds_directory.parquet")
+scorecard <- read_parquet("data/raw/scorecard_earnings.parquet")
+
+merged <- ipeds |> left_join(scorecard, by = "unitid")
+
+# Check for missing matches
+missing <- merged |> filter(is.na(scorecard_field))
+```
+
 ### Federal Student Aid (FSA) Data
 
 | Link Field | Notes |
@@ -306,6 +396,23 @@ merged = ipeds.join(fsa_data, on="opeid", how="left")
 merged = ipeds.with_columns(
     pl.col("opeid").str.slice(0, 6).alias("opeid6")
 ).join(fsa_data, on="opeid6", how="left")
+```
+
+```r
+library(arrow)
+library(dplyr)
+library(stringr)
+
+# FSA data uses OPEID
+fsa_data <- read_parquet("data/raw/fsa_grants.parquet")
+
+# Link through OPEID
+merged <- ipeds |> left_join(fsa_data, by = "opeid")
+
+# Or at institution family level
+merged <- ipeds |>
+  mutate(opeid6 = str_sub(opeid, 1, 6)) |>
+  left_join(fsa_data, by = "opeid6")
 ```
 
 ### State Longitudinal Data Systems
@@ -340,6 +447,11 @@ Some institutions don't have OPEID:
 missing_opeid = df.filter(pl.col("opeid").is_null())
 ```
 
+```r
+# Check for missing OPEIDs
+missing_opeid <- df |> filter(is.na(opeid))
+```
+
 ### Issue 2: OPEID Format Inconsistencies
 
 | Format | Example | Issue |
@@ -355,6 +467,11 @@ df = df.with_columns(
 )
 ```
 
+```r
+# Standardize OPEID format
+df <- df |> mutate(opeid_clean = str_pad(str_remove(opeid, "-"), 8, pad = "0"))
+```
+
 ### Issue 3: Branch Campus Aggregation
 
 For some analysis, want institution-level data not branch-level.
@@ -367,6 +484,13 @@ institution_level = branch_data.group_by("opeid6").agg([
 ])
 ```
 
+```r
+# Aggregate to OPEID6 level
+institution_level <- branch_data |>
+  group_by(opeid6) |>
+  summarise(enrollment = sum(enrollment), completions = sum(completions))
+```
+
 ### Issue 4: Duplicate UNITID in Merged Data
 
 When merging across years or sources:
@@ -377,6 +501,15 @@ duplicates = merged.group_by("unitid").count().filter(pl.col("count") > 1)
 
 if duplicates.height > 0:
     print(f"Warning: {duplicates.height} duplicate UNITIDs found")
+```
+
+```r
+# Check for duplicates
+duplicates <- merged |> count(unitid) |> filter(n > 1)
+
+if (nrow(duplicates) > 0) {
+  cat("Warning:", nrow(duplicates), "duplicate UNITIDs found\n")
+}
 ```
 
 ### Issue 5: Historical UNITID Changes
@@ -392,6 +525,17 @@ added = in_2023 - in_2020
 removed = in_2020 - in_2023
 
 print(f"Added: {len(added)}, Removed: {len(removed)}")
+```
+
+```r
+# Find institutions not in both years
+in_2020 <- unique(data_2020$unitid)
+in_2023 <- unique(data_2023$unitid)
+
+added <- setdiff(in_2023, in_2020)
+removed <- setdiff(in_2020, in_2023)
+
+cat("Added:", length(added), ", Removed:", length(removed), "\n")
 ```
 
 ## Variable Reference

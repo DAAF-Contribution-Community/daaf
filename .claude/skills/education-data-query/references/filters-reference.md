@@ -257,6 +257,16 @@ k_12 = df.filter(pl.col("grade").is_between(0, 12))
 total = df.filter(pl.col("grade") == 99)
 ```
 
+```r
+# WRONG - filters out Pre-K students!
+df <- df |> filter(grade >= 0)
+
+# RIGHT - Pre-K students have grade = -1
+pre_k <- df |> filter(grade == -1)
+k_12 <- df |> filter(between(grade, 0, 12))
+total <- df |> filter(grade == 99)
+```
+
 ### Grade Disaggregator
 
 Use in path: `/enrollment/{year}/grade-{value}/`
@@ -365,6 +375,23 @@ Returns records with `sex` field (integer, not string codes):
 "?school_status=1"
 ```
 
+```r
+# Charter high schools in California (local filter after fetch)
+df <- df |> filter(fips == 6, charter == 1, school_level == 3)
+
+# Urban elementary schools
+df <- df |> filter(school_level == 1, urban_centric_locale %in% c(11, 12, 13))
+
+# Title I magnet schools in Texas
+df <- df |> filter(fips == 48, title_i_eligible == 1, magnet == 1)
+
+# Regular schools only (exclude special ed, vocational)
+df <- df |> filter(school_type == 1)
+
+# Open schools only
+df <- df |> filter(school_status == 1)
+```
+
 ### Common District Queries
 
 ```python
@@ -373,6 +400,14 @@ Returns records with `sex` field (integer, not string codes):
 
 # Charter school agencies
 "?agency_type=7"
+```
+
+```r
+# Regular local districts in California (local filter after fetch)
+df <- df |> filter(fips == 6, agency_type == 1)
+
+# Charter school agencies
+df <- df |> filter(agency_type == 7)
 ```
 
 ### Common College Queries
@@ -397,6 +432,26 @@ Returns records with `sex` field (integer, not string codes):
 "?degree_granting=1"
 ```
 
+```r
+# Public 4-year in California (local filter after fetch)
+df <- df |> filter(fips == 6, sector == 1)
+
+# HBCUs nationwide
+df <- df |> filter(hbcu == 1)
+
+# Large public universities
+df <- df |> filter(inst_control == 1, inst_size == 5)
+
+# Community colleges in Texas
+df <- df |> filter(fips == 48, sector == 4)
+
+# Private nonprofit 4-year
+df <- df |> filter(sector == 2)
+
+# All degree-granting institutions
+df <- df |> filter(degree_granting == 1)
+```
+
 ## Null Value Handling
 
 Some filters accept special values for missing data:
@@ -407,6 +462,11 @@ Some filters accept special values for missing data:
 ```python
 # Schools with unknown charter status
 "?charter=-1"
+```
+
+```r
+# Schools with unknown charter status (local filter after fetch)
+df <- df |> filter(charter == -1)
 ```
 
 ## Case Sensitivity

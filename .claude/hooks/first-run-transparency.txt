@@ -39,8 +39,8 @@ DAAF generates transparent, auditable code and documentation so you CAN verify e
 - If you're new, consider easing in with simpler modes first (Data Lookup, Data Discovery) before jumping to Full Pipeline — it's a good way to build confidence in DAAF's strengths and limitations at each level of complexity
 - You remain responsible for all of your actions with DAAF, including but not limited to how you query databases, abiding by data privacy protections, and ethical disclosure of AI use in your downstream products
 
-6. LANGUAGE BACKGROUND:
-One more thing worth noting: DAAF works in Python for all analysis code (using libraries like polars, pyfixest, plotnine, and others). If you're coming from R or Stata, that's completely fine — just let me know, and I can provide inline comments that show the R (or Stata, when available) equivalents alongside the Python code to make everything easier to follow and review. I can set that preference for future sessions too, so you won't need to mention it again.
+6. LANGUAGE PREFERENCE:
+One more thing worth noting: DAAF supports writing code in both Python and R. Python is the default (using libraries like polars, pyfixest, plotnine, and marimo notebooks), but you can also run everything in R (using tidyverse, fixest, ggplot2, and Quarto notebooks). Just let me know which language you prefer, and I'll set it up for future reference. If you're coming from Stata as your main language, I can also provide inline comments showing the equivalent Stata syntax to make everything easier to follow and review.
 
 7. DEEPER RESOURCES:
 For a much fuller treatment of these topics, point the user to these documents:

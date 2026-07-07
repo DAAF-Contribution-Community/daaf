@@ -52,6 +52,11 @@ When interpreting FSA data values and resolving discrepancies between this skill
 url = get_codebook_url("fsa/codebook_colleges_fsa_grants")
 ```
 
+```r
+# Example: Get codebook for FSA grants
+url <- # get_codebook_url("fsa/codebook_colleges_fsa_grants") -- use same path with mirror URL
+```
+
 | Dataset | Codebook Path |
 |---------|---------------|
 | Grants | `fsa/codebook_colleges_fsa_grants` |
@@ -261,6 +266,23 @@ df_inst = df_grants.filter(pl.col("unitid") == 110635)
 
 # Filter by year range
 df_recent = df_grants.filter(pl.col("year").is_between(2015, 2021))
+```
+
+```r
+library(arrow)
+library(dplyr)
+
+# Using fetch_from_mirrors() from fetch-patterns.md
+df_grants <- arrow::read_parquet("fsa/colleges_fsa_grants")
+
+# Filter by grant type (1 = Federal Pell Grant)
+df_pell <- df_grants |> filter(grant_type == 1)
+
+# Filter by institution
+df_inst <- df_grants |> filter(unitid == 110635)
+
+# Filter by year range
+df_recent <- df_grants |> filter(between(year, 2015, 2021)
 ```
 
 ## Common Pitfalls

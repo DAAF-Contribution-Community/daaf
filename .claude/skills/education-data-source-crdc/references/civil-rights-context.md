@@ -100,6 +100,47 @@ def check_discipline_disparity(df: pl.DataFrame) -> dict:
     }
 ```
 
+```r
+library(dplyr)
+
+# check_discipline_disparity(df: pl.DataFrame) -> dict
+# Calculate if Black students are disciplined at
+# disproportionately higher rates than White students.
+#
+# OCR often looks at risk ratios > 2.0 as potential red flags.
+#
+# Args:
+# df: CRDC discipline data with race, enrollment_crdc,
+# and students_susp_out_sch_single columns.
+# Uses Portal integer codes: race=2 (Black), race=1 (White).
+    # Filter to totals for sex/disability/lep to avoid double-counting
+    totals <- df |> filter(
+        (sex == 99) &
+        (disability == 99) &
+        (lep == 99)
+    )
+
+    black <- totals |> filter(race == 2)
+    white <- totals |> filter(race == 1)
+
+    black_oss <- black |> filter(students_susp_out_sch_single >= 0)
+    white_oss <- white |> filter(students_susp_out_sch_single >= 0)
+
+    black_rate <- black_oss |> summarise(sum(students_susp_out_sch_single, na.rm = TRUE)) / \
+                 black_oss |> summarise(sum(enrollment_crdc, na.rm = TRUE)) * 100
+    white_rate <- white_oss |> summarise(sum(students_susp_out_sch_single, na.rm = TRUE)) / \
+                 white_oss |> summarise(sum(enrollment_crdc, na.rm = TRUE)) * 100
+
+    risk_ratio <- black_rate / white_rate if white_rate > 0 else NULL
+
+    {
+        "black_suspension_rate": black_rate,
+        "white_suspension_rate": white_rate,
+        "risk_ratio": risk_ratio,
+        "potential_concern": risk_ratio is not NULL and risk_ratio > 2.0,
+    }
+```
+
 ---
 
 ## Title IX of the Education Amendments of 1972

@@ -239,6 +239,24 @@ df = df.with_columns(
 )
 ```
 
+```r
+library(dplyr)
+
+# Filter by year
+df_2015 <- df |> filter(year == 2015)
+
+# Filter by state (integer FIPS codes)
+df_ca <- df |> filter(fips == 6)  # California
+
+# Filter out null values from financial columns
+df_valid <- df |> filter(!is.na(revenue_total), revenue_total >= 0)
+
+# Replace negative codes with NA for analysis (precautionary)
+df <- df |> mutate(
+  revenue_total_clean = if_else(revenue_total < 0, NA_real_, revenue_total)
+)
+```
+
 ## Common Pitfalls
 
 | Pitfall | Issue | Solution |

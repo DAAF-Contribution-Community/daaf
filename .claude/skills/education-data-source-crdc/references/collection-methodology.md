@@ -89,6 +89,38 @@ def check_coverage_appropriateness(year, analysis_type):
     return {'appropriate': True}
 ```
 
+```r
+# check_coverage_appropriateness(year, analysis_type)
+# Determine if CRDC year is appropriate for analysis type.
+    sample_years <- [2011, 2013]
+    universe_years <- [2015, 2017, 2020, 2021]
+
+    if (analysis_type == 'national_totals') {
+        if (year in sample_years) {
+            {
+                'appropriate': FALSE,
+                'reason': 'Sample years cannot produce national totals without weighting',
+                'recommendation': 'Use 2015+ for national estimates'
+            }
+
+    if (analysis_type == 'school_level') {
+        if (year in sample_years) {
+            {
+                'appropriate': TRUE,
+                'warning': 'Not all schools included; cannot generalize',
+                'recommendation': 'Verify school is in sample'
+            }
+
+    if (analysis_type == 'time_series') {
+        {
+            'appropriate': year in universe_years,
+            'reason': 'Time series requires consistent coverage',
+            'recommendation': 'Use only 2015+ for trends'
+        }
+
+    {'appropriate': TRUE}
+```
+
 ### Sample Years (2011, 2013) Limitations
 
 - **No sample weights provided** - Cannot weight up to national estimates
@@ -362,6 +394,35 @@ def link_crdc_ccd(crdc_df: pl.DataFrame, ccd_df: pl.DataFrame) -> pl.DataFrame:
         print(f"Warning: {unmatched} CRDC schools not matched to CCD")
 
     return merged
+```
+
+```r
+library(dplyr)
+
+# Linking CRDC to CCD
+# link_crdc_ccd(crdc_df: pl.DataFrame, ccd_df: pl.DataFrame) -> pl.DataFrame
+# Link CRDC data to CCD school characteristics.
+#
+# Args:
+# crdc_df: CRDC data (must have ncessch as String)
+# ccd_df: CCD directory data (must have ncessch as String)
+#
+# Returns:
+# Joined DataFrame with CCD characteristics
+    ccd_cols <- ccd_df |> select(
+        ncessch, school_name, leaid,
+        urban_centric_locale, charter,
+        free_or_reduced_price_lunch
+    )
+
+    merged <- crdc_df |> left_join(ccd_cols, by = "ncessch")
+
+    # Check join success
+    unmatched <- merged |> filter(is.na(school_name)) |> nrow()
+    if (unmatched > 0) {
+        cat(paste0("Warning: ", unmatched, " CRDC schools not matched to CCD"), "\n")
+
+    merged
 ```
 
 > **Note:** Some CRDC rows have `ncessch` as null. Use `crdc_id` or `leaid` for alternative linkage when `ncessch` is unavailable.

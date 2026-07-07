@@ -195,6 +195,13 @@ valid = df.filter(
 # Filter for 6-year earnings specifically
 six_yr_valid = valid.filter(pl.col("years_after_entry") == 6)
 ```
+```r
+# Filter for valid earnings (handle -3 suppression code)
+valid <- df |> filter(!is.na(earnings_med), earnings_med != -3)
+
+# Filter for 6-year earnings specifically
+six_yr_valid <- valid |> filter(years_after_entry == 6)
+```
 
 ## Data Access
 
@@ -247,6 +254,25 @@ inst = fetch_from_mirrors("scorecard/colleges_scorecard_inst_characteristics",
 valid = valid.join(
     inst.select("unitid", "inst_name", "pred_degree_awarded_ipeds"),
     on="unitid", how="left"
+)
+```
+```r
+# Fetch earnings data
+earnings <- fetch_from_mirrors("scorecard/colleges_scorecard_earnings")
+
+# Filter by time horizon (LONG format — filter, don't use wide column names)
+six_yr <- earnings |> filter(years_after_entry == 6)
+
+# Filter for valid earnings (exclude -3 suppression code)
+valid <- six_yr |> filter(!is.na(earnings_med), earnings_med != -3)
+
+# Institution names/control are NOT in the earnings dataset.
+# Join to inst_characteristics or IPEDS directory:
+inst <- fetch_from_mirrors("scorecard/colleges_scorecard_inst_characteristics",
+                           years = c(2020))
+valid <- valid |> left_join(
+  inst |> select(unitid, inst_name, pred_degree_awarded_ipeds),
+  by = "unitid"
 )
 ```
 

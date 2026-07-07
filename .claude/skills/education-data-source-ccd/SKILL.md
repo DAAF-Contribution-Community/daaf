@@ -189,6 +189,19 @@ k12 = df.filter(pl.col("grade").is_between(0, 12))  # K-12
 total = df.filter(pl.col("grade") == 99)  # All grades
 ```
 
+```r
+# R equivalent
+library(dplyr)
+
+# WRONG - removes Pre-K students!
+df <- df |> filter(grade >= 0)
+
+# CORRECT
+pre_k <- df |> filter(grade == -1)              # Pre-K only
+k12 <- df |> filter(grade >= 0, grade <= 12)    # K-12
+total <- df |> filter(grade == 99)              # All grades
+```
+
 ### Portal Column Name Mapping
 
 > **Variable Name Mapping:** The Portal column `urban_centric_locale` contains locale codes. Some documentation may refer to this as simply `locale`. Use `urban_centric_locale` when filtering or selecting columns in Portal data.
@@ -245,6 +258,11 @@ Codebooks are `.xls` files co-located with data in all mirrors. Use `get_codeboo
 url = get_codebook_url("ccd/codebook_schools_ccd_directory")
 ```
 
+```r
+# R equivalent
+url <- get_codebook_url("ccd/codebook_schools_ccd_directory")
+```
+
 > **Truth Hierarchy:** When interpreting variable values, apply this priority:
 > 1. **Actual data file** (what you observe in the parquet/CSV) -- this IS the truth
 > 2. **Live codebook** (.xls in mirror) -- authoritative documentation, may lag
@@ -270,6 +288,23 @@ df = df.filter(pl.col("grade") == 99)
 
 # Get specific grades (K-12)
 df = df.filter(pl.col("grade").is_between(0, 12))
+```
+
+```r
+# R equivalent
+library(dplyr)
+
+# Filter by state (California)
+df <- df |> filter(fips == 6)
+
+# Filter by year
+df <- df |> filter(year %in% c(2020, 2021, 2022))
+
+# Get totals only (enrollment)
+df <- df |> filter(grade == 99)
+
+# Get specific grades (K-12)
+df <- df |> filter(grade >= 0, grade <= 12)
 ```
 
 ### Finance Data Notes

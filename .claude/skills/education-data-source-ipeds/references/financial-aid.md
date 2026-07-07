@@ -108,6 +108,14 @@ avg_grant = total_grant_amount / number_receiving_grants
 pct_receiving = students_with_aid / total_students * 100
 ```
 
+```r
+# Average award calculation
+avg_grant <- total_grant_amount / number_receiving_grants
+
+# Percent receiving aid
+pct_receiving <- students_with_aid / total_students * 100
+```
+
 ## Net Price
 
 ### Definition
@@ -153,6 +161,17 @@ net_price_high_income = 22000  # Little grant aid
 # Average masks important variation
 ```
 
+```r
+# Example showing why average net price is misleading
+avg_net_price <- 15000  # Overall average
+
+# But by income level:
+net_price_low_income <- 8000    # After Pell, institutional aid
+net_price_high_income <- 22000  # Little grant aid
+
+# Average masks important variation
+```
+
 ### Net Price Limitations
 
 | Limitation | Implication |
@@ -168,6 +187,17 @@ net_price_high_income = 22000  # Little grant aid
 ```python
 # What net price tells you
 net_price = sticker_price - grants
+
+# What it doesn't tell you
+# - Whether students can afford it
+# - Loan amounts needed
+# - Out-of-pocket costs
+# - Impact of room and board choices
+```
+
+```r
+# What net price tells you
+net_price <- sticker_price - grants
 
 # What it doesn't tell you
 # - Whether students can afford it
@@ -201,6 +231,12 @@ net_price = sticker_price - grants
 # Net price components
 coa = tuition_fees + room_board + books_supplies + other
 net_price = coa - total_grant_aid
+```
+
+```r
+# Net price components
+coa <- tuition_fees + room_board + books_supplies + other
+net_price <- coa - total_grant_aid
 ```
 
 ### Published vs Actual
@@ -260,6 +296,15 @@ avg_a = 15000
 avg_b = 15000  # Same average, very different experience
 ```
 
+```r
+# Hypothetical examples
+# Institution A: Everyone pays $15,000
+avg_a <- 15000
+
+# Institution B: Half pay $5,000, half pay $25,000
+avg_b <- 15000  # Same average, very different experience
+```
+
 **Solution**: Look at net price by income level.
 
 ### Issue 3: Full-Pay Students Not Included
@@ -303,6 +348,18 @@ loans_taken = 8000  # Typical
 out_of_pocket = 4000
 ```
 
+```r
+# Example
+net_price <- 12000  # After grants
+pell_grant <- 6000
+institutional_grant <- 4000
+# Student needs $12,000 more
+# Options: loans, work, family contribution
+
+loans_taken <- 8000  # Typical
+out_of_pocket <- 4000
+```
+
 **Solution**: Consider loan data alongside net price.
 
 ### Issue 6: Part-Time Students
@@ -330,6 +387,18 @@ pct_ftft = 20  # FTFT is 20% of students
 interpretation: net_price reflects minority of students
 ```
 
+```r
+# Institution A (selective private)
+net_price_a <- 25000
+pct_ftft <- 80  # FTFT is 80% of students
+# interpretation: net_price reflects most students
+
+# Institution B (community college)
+net_price_b <- 8000
+pct_ftft <- 20  # FTFT is 20% of students
+# interpretation: net_price reflects minority of students
+```
+
 ### Analyzing Aid Effectiveness
 
 ```python
@@ -341,11 +410,28 @@ gap = net_price_high_income - net_price_low_income
 # Zero = same net price regardless of income
 ```
 
+```r
+# Equity analysis
+gap <- net_price_high_income - net_price_low_income
+
+# Positive gap = higher income pays more (progressive)
+# Negative gap = lower income pays more (regressive)
+# Zero = same net price regardless of income
+```
+
 ### Grant Aid Coverage
 
 ```python
 # What share of costs are covered by grants?
 grant_coverage = total_grants / cost_of_attendance * 100
+
+# High coverage = more affordable
+# Low coverage = more loans/family contribution needed
+```
+
+```r
+# What share of costs are covered by grants?
+grant_coverage <- total_grants / cost_of_attendance * 100
 
 # High coverage = more affordable
 # Low coverage = more loans/family contribution needed
@@ -518,6 +604,26 @@ net_prices = (
 )
 ```
 
+```r
+library(arrow)
+library(dplyr)
+
+MIRROR <- "https://huggingface.co/datasets/brhkim/education_data_portal_mirror/resolve/main"
+url <- paste0(MIRROR, "/ipeds/colleges_ipeds_sfa_grants_and_net_price.parquet")
+df <- read_parquet(url)
+
+# Net price by income level for a specific institution and year
+net_prices <- df |>
+  filter(
+    unitid == 166027,
+    year == 2020,
+    income_level %in% c(1, 2, 3, 4, 5),
+    type_of_aid == 9
+  ) |>
+  select(income_level, net_price, number_of_students) |>
+  arrange(income_level)
+```
+
 ### Cost Variables
 
 Cost of attendance components are in the **tuition/fees datasets**, not SFA datasets:
@@ -527,6 +633,10 @@ Cost of attendance components are in the **tuition/fees datasets**, not SFA data
 Consult those codebooks for column names:
 ```python
 url = get_codebook_url("ipeds/codebook_colleges_ipeds_ay_tuition_fees")
+```
+
+```r
+url <- get_codebook_url("ipeds/codebook_colleges_ipeds_ay_tuition_fees")
 ```
 
 #### NCES Cost Variable Names (for reference only)

@@ -140,6 +140,21 @@ def compare_schools(pct_a: float, se_a: float, pct_b: float, se_b: float) -> str
     return "Statistically different"
 ```
 
+```r
+library(dplyr)
+
+# Identify schools where estimates are precise (SE < 2 percentage points)
+precise_schools <- df |> filter(meps_poverty_se < 2.0)
+
+# Flag close comparisons between two schools
+# compare_schools(pct_a: float, se_a: float, pct_b: float, se_b: float) -> str
+    diff <- abs(pct_a - pct_b)
+    se_combined <- (se_a^2 + se_b^2)^0.5
+    if (diff < 1.96 * se_combined) {
+        "Not statistically different"
+    "Statistically different"
+```
+
 ## MEPS 2.0 Updates
 
 ### Key Improvements in MEPS 2.0 (December 2025)

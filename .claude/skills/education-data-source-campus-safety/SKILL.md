@@ -234,6 +234,11 @@ Codebooks are `.xls` files co-located with data in all mirrors. Use `get_codeboo
 url = get_codebook_url("csafety/codebook_colleges_csafety_hate_crimes")
 ```
 
+```r
+# R equivalent
+url <- get_codebook_url("csafety/codebook_colleges_csafety_hate_crimes")
+```
+
 ### Fetching Data
 
 Use the `fetch_from_mirrors()` pattern from `fetch-patterns.md`:
@@ -258,6 +263,30 @@ institution = df.filter(pl.col("unitid") == 100654)
 
 # Filter by state FIPS code (6 = California)
 california = df.filter(pl.col("fips") == 6)
+```
+
+```r
+# R equivalent
+library(arrow)
+library(dplyr)
+
+# Fetch hate crimes data (all years, single-file dataset)
+df <- read_parquet("csafety/colleges_csafety_hate_crimes.parquet")
+
+# Filter by year
+df_2021 <- df |> filter(year == 2021)
+
+# Filter by bias category (1 = Race)
+race_crimes <- df |> filter(bias == 1)
+
+# Filter by crime type (14 = Intimidation)
+intimidation <- df |> filter(crime_type == 14)
+
+# Filter by institution
+institution <- df |> filter(unitid == 100654)
+
+# Filter by state FIPS code (6 = California)
+california <- df |> filter(fips == 6)
 ```
 
 ### Direct from Department of Education (Non-Mirror Data)

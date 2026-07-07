@@ -144,6 +144,22 @@ df_clean = df.with_columns(
 )
 ```
 
+```r
+# R equivalent
+library(dplyr)
+
+# Identify problematic values
+problematic_codes <- c(-1, -2, -3, -9)
+
+# Filter to valid data
+df_valid <- df |> filter(!variable %in% problematic_codes)
+
+# Or convert to NA
+df_clean <- df |> mutate(
+  variable = if_else(variable %in% problematic_codes, NA_real_, variable)
+)
+```
+
 ### Suppression Rules
 
 Data is typically suppressed when:
@@ -189,6 +205,18 @@ total = df.filter(pl.col("grade") == 99)["enrollment"]
 # NOT RECOMMENDED: Summing grades
 # May undercount due to ungraded students
 grade_sum = df.filter(pl.col("grade").is_between(1, 12))["enrollment"].sum()
+```
+
+```r
+# R equivalent
+library(dplyr)
+
+# RECOMMENDED: Use total enrollment
+total <- df |> filter(grade == 99) |> pull(enrollment)
+
+# NOT RECOMMENDED: Summing grades
+# May undercount due to ungraded students
+grade_sum <- df |> filter(grade >= 1, grade <= 12) |> summarise(s = sum(enrollment)) |> pull(s)
 ```
 
 ### Grade Span

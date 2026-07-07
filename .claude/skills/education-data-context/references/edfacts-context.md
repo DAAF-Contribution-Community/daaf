@@ -68,6 +68,13 @@ df.select([
 ])
 ```
 
+```r
+# EDFacts proficiency range handling
+# Look for variables ending in _midpt for single-value estimates
+
+df |> select(proficiency_low, proficiency_high, proficiency_midpt)
+```
+
 **Use `_midpt` variables for single-value analysis**, but note uncertainty.
 
 ### Proficiency Levels
@@ -113,6 +120,21 @@ def check_assessment_years(df, state_fips):
     missing = set(all_years) - set(available_years)
     if missing:
         print(f"Missing years: {missing}")
+```
+
+```r
+# Check assessment data availability
+state_data <- df |> filter(fips == state_fips)
+
+available_years <- sort(unique(state_data$year))
+cat(sprintf("Available years for state %s: %s\n", state_fips, paste(available_years, collapse = ", ")))
+
+# Check for gaps
+all_years <- seq(min(available_years), max(available_years))
+missing <- setdiff(all_years, available_years)
+if (length(missing) > 0) {
+  cat(sprintf("Missing years: %s\n", paste(missing, collapse = ", ")))
+}
 ```
 
 ## Graduation Rates
@@ -180,6 +202,18 @@ def check_subgroup_suppression(df, variable, subgroup_col):
     ]).with_columns(
         (pl.col("suppressed") / pl.col("total") * 100).alias("pct_suppressed")
     ).sort("pct_suppressed", descending=True)
+```
+
+```r
+# Check suppression before disaggregating
+df |>
+  group_by(.data[[subgroup_col]]) |>
+  summarise(
+    suppressed = sum(.data[[variable]] == -3),
+    total = n()
+  ) |>
+  mutate(pct_suppressed = suppressed / total * 100) |>
+  arrange(desc(pct_suppressed))
 ```
 
 ### Why So Much Suppression?
@@ -251,6 +285,17 @@ def identify_assessment_changes(df, state_fips, variable):
     large_changes = state_data.filter(pl.col("yoy_change").abs() > 10)
     
     return large_changes
+```
+
+```r
+# Look for suspicious jumps in state data
+state_data <- df |>
+  filter(fips == state_fips) |>
+  arrange(year) |>
+  mutate(yoy_change = .data[[variable]] - lag(.data[[variable]]))
+
+# Flag large changes (>10 percentage points)
+large_changes <- state_data |> filter(abs(yoy_change) > 10)
 ```
 
 ### Common Transition Years

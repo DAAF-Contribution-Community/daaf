@@ -268,6 +268,23 @@ advocacy = df.filter(pl.col("NTEE_V2").str.ends_with("-AA"))
 education = df.filter(pl.col("NTEE_V2").str.starts_with("EDU-"))
 ```
 
+```r
+library(dplyr)
+library(stringr)
+
+# Filter for all universities
+universities <- df |> filter(str_starts(NTEE_V2, "UNI-"))
+
+# Filter for hospitals
+hospitals <- df |> filter(str_starts(NTEE_V2, "HOS-"))
+
+# Filter for advocacy organizations in any sector
+advocacy <- df |> filter(str_ends(NTEE_V2, "-AA"))
+
+# Filter for education sector (excluding universities)
+education <- df |> filter(str_starts(NTEE_V2, "EDU-"))
+```
+
 ---
 
 ## Code Accuracy and Limitations
@@ -426,4 +443,26 @@ all_education = df.filter(pl.col("NTEECC").str.starts_with("B"))
 
 # Using NTEEV2 for universities
 universities_v2 = df.filter(pl.col("NTEE_V2").str.starts_with("UNI-"))
+```
+
+```r
+library(dplyr)
+library(stringr)
+
+# --- Full NCCS data (NOT Portal) ---
+
+# All higher education (B40-B50)
+higher_ed <- df |> filter(str_detect(NTEECC, "^B4[0-9]|^B50"))
+
+# Just universities (B43)
+universities <- df |> filter(NTEECC == "B43")
+
+# All K-12 schools (B20-B29)
+k12 <- df |> filter(str_detect(NTEECC, "^B2[0-9]"))
+
+# All education (B)
+all_education <- df |> filter(str_starts(NTEECC, "B"))
+
+# Using NTEEV2 for universities
+universities_v2 <- df |> filter(str_starts(NTEE_V2, "UNI-"))
 ```
