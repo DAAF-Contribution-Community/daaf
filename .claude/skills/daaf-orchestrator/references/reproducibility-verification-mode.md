@@ -1,12 +1,12 @@
 # Reproducibility Verification Mode
 
-Verify that an existing analysis can be mechanically reproduced from its delivered marimo notebook. The orchestrator decompiles the notebook into individual scripts, re-executes each one, compares outputs against the original execution logs, and cross-references the original Report's claims against the reproduced results.
+Verify that an existing analysis can be mechanically reproduced from its delivered notebook (marimo `.py` for Python or Quarto `.qmd` for R). The orchestrator decompiles the notebook into individual scripts, re-executes each one, compares outputs against the original execution logs, and cross-references the original Report's claims against the reproduced results.
 
 ## User Orientation
 
 After mode confirmation, briefly orient the user. Key points:
 
-- You will reproduce an existing analysis by re-running every script extracted from its marimo notebook
+- You will reproduce an existing analysis by re-running every script extracted from its notebook (marimo for Python, Quarto for R)
 - You will receive a Reproduction Report documenting what matched, what diverged, and any methodological concerns
 - The original project is never modified — all reproduction work happens in a new project folder
 
@@ -124,13 +124,17 @@ User points to existing analysis folder
 
 **Steps:**
 1. User provides path to existing analysis folder
-2. Validate that the folder contains both a Report (`*_Report.md`) and a Notebook (`*.py` with `import marimo`)
+2. Validate that the folder contains both a Report (`*_Report.md`) and a Notebook (Python: `*.py` with `import marimo`; R: `*.qmd` with Quarto frontmatter)
 3. Create new project folder: `research/YYYY-MM-DD_[OriginalProjectName]_Reproduction/`
 4. Create subdirectories: `original_files/`, `original_files/scripts/`, `original_files/output/figures/`, `scripts/`, `scripts/repro/`, `output/figures/`, `output/preliminary_notes/`
 5. Copy the Report and Notebook into `original_files/`. Copy `output/figures/` from the original project into `original_files/output/figures/` (these are the original figures needed for visual comparison during RV-2 and RV-3). If `output/preliminary_notes/` exists in the original project, copy it into `original_files/output/preliminary_notes/` (these provide discovery-phase context for understanding analytical decisions).
-6. Run the decompiler: `python /daaf/scripts/decompile_notebook.py <notebook_path> <project>/original_files/scripts/`
+6. Run the decompiler:
+   - Python (marimo): `python /daaf/scripts/decompile_notebook.py <notebook_path> <project>/original_files/scripts/`
+   - R (Quarto): `Rscript /daaf/scripts/decompile_notebook.R <notebook_path> <project>/original_files/scripts/`
+   (Both decompilers extract individual scripts from notebook cells and produce a `MANIFEST.md`. Note: `decompile_notebook.R` is the R-mode counterpart to the marimo decompiler; if it is not yet present in `/daaf/scripts/`, flag this to the user before attempting Quarto reproduction rather than assuming it exists.)
 7. **Path normalization** — run the batch normalizer on all decompiled scripts:
    `python /daaf/scripts/normalize_project_dir.py <project>/original_files/scripts/ <project_absolute_path>`
+   (The normalizer handles both `.py` and `.R` files.)
    This deterministically replaces all `PROJECT_DIR` assignments (both `Path("...")` and plain string `"..."` styles) with the reproduction project path. Record the normalizer's output in the Reproduction Report's **Infrastructure Normalizations** section.
    This is an **infrastructure normalization**, NOT a substantive modification — it does not affect reproduction status.
 8. Create `Reproduction_Report.md` from `agent_reference/REPRODUCTION_REPORT_TEMPLATE.md`
@@ -192,7 +196,7 @@ User points to existing analysis folder
    - **Full mode:** Apply the Five Lenses of Skeptical Review
 7. **UPDATE REPORT:** Update Reproduction_Report.md — Script Inventory status, Per-Script Reproduction Results section, Deviation Log if applicable, Concerns Log if applicable, Session Continuity (Last Script Completed, Next Script)
 8. **IF FAILED:** If the script fails and a modification is needed for it to run:
-   - Create versioned copy: `{script_name%.py}_repro_a.py`
+   - Create versioned copy: `{script_name%.py}_repro_a.py` (Python) or `{script_name%.R}_repro_a.R` (R)
    - Document the modification prominently in Per-Script Reproduction Results
    - Re-execute the modified version
    - Mark status as MODIFIED (not REPRODUCED)
@@ -277,7 +281,7 @@ caution when classifying deviation causes — version differences are a plausibl
 factor for any divergence.
 
 **IF SCRIPT FAILS:**
-- Create `{script_name%.py}_repro_a.py` with necessary fixes (max 2 versions: _repro_a.py, _repro_b.py)
+- Create `{script_name%.ext}_repro_a.{ext}` with necessary fixes (max 2 versions: _repro_a, _repro_b; ext is `.py` or `.R`)
 - Document ALL modifications in Per-Script Reproduction Results § Modifications Required
 - Re-execute the modified version
 - Mark status as MODIFIED, not REPRODUCED
@@ -439,7 +443,7 @@ research/YYYY-MM-DD_[OriginalProject]_Reproduction/
 ├── Reproduction_Report.md              # Central artifact (created RV-1, updated throughout)
 ├── original_files/
 │   ├── [original_report].md            # Copied from original project
-│   ├── [original_notebook].py          # Copied from original project
+│   ├── [original_notebook].py/.qmd     # Copied from original project (marimo or Quarto)
 │   ├── Dockerfile.original             # Fetched from public repo at original commit (RV-1)
 │   ├── output/                         # Copied from original project
 │   │   ├── figures/                    # Original figures for visual comparison
@@ -487,7 +491,7 @@ The path normalization performed during RV-1 (step 7) is the canonical example o
 - Update the Reproduction Report after EVERY script re-execution
 - Preserve the original project completely untouched
 - Document ANY modification required to run a script, no matter how small
-- Use versioned copies (_repro_a.py) for any modifications, following DAAF conventions
+- Use versioned copies (`_repro_a.py` / `_repro_a.R`) for any modifications, following DAAF conventions
 - Compare against tolerances defined in the Reproduction Report template
 
 ### Never Do
@@ -655,8 +659,8 @@ The RV-2 per-script cycle is lightweight compared to Full Pipeline's Composite E
 | 8 | RETURN | Return concise summary to orchestrator |
 
 **Error handling within the cycle:**
-- If Step 3 fails: create `_repro_a.py` with minimal fixes, document modification, re-execute, mark MODIFIED
-- If modification also fails: create `_repro_b.py` (max 2 versions), then mark FAILED
+- If Step 3 fails: create `_repro_a.{ext}` with minimal fixes (`.py` or `.R` matching original), document modification, re-execute, mark MODIFIED
+- If modification also fails: create `_repro_b.{ext}` (max 2 versions), then mark FAILED
 - If FAILED after 2 modification attempts: orchestrator may dispatch debugger (max 1 per script, max 3 per session)
 
 ---

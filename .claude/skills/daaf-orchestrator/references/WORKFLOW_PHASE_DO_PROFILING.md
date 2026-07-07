@@ -10,18 +10,18 @@ Loaded by the orchestrator when entering the profiling phase. Contains part deta
 
 | # | Part | Script Name | Purpose | Conditional? | Script Path Pattern |
 |---|-------|-------------|---------|--------------|---------------------|
-| 01 | A | load-and-format (or inventory for HIERARCHICAL) | Format detection, encoding validation, canonical load pattern; HIERARCHICAL: un-suffixed `01_inventory.py` inventories all files first | No | `scripts/profile_structural/01_load-and-format.py` (HIERARCHICAL: `01_inventory.py` + `01a_load-and-format.py`, `01b_...`, etc.) |
-| 02 | A | structural-profile | Row/column counts, memory, types, schema | No | `scripts/profile_structural/02_structural-profile.py` |
-| 03 | A | column-profile | Per-column statistics, value distributions | No | `scripts/profile_structural/03_column-profile.py` |
-| 04 | B | distribution-analysis | Distribution fitting, outlier detection, multimodality | No | `scripts/profile_statistical/04_distribution-analysis.py` |
-| 05 | B | temporal-coverage | Time coverage gaps, record count trends, drift | Yes: time column | `scripts/profile_statistical/05_temporal-coverage.py` |
-| 06 | B | entity-coverage | Entity/geographic coverage, ID format validation | Yes: entity/geo ID | `scripts/profile_statistical/06_entity-coverage.py` |
-| 07 | C | key-integrity | Uniqueness testing, composite keys, functional dependencies | No | `scripts/profile_relational/07_key-integrity.py` |
-| 07b | C | cross-level-linkage | Cross-file key cardinality, coverage, orphan detection, join simulation | Yes: HIERARCHICAL | `scripts/profile_relational/07b_cross-level-linkage.py` |
-| 08 | C | correlation-dependency | Pearson/Spearman, Cramer's V, redundant column detection | Yes: >=3 numeric cols | `scripts/profile_relational/08_correlation-dependency.py` |
-| 09 | C | quality-anomaly | Completeness, coded missing values, duplicates, anomaly catalog | No | `scripts/profile_relational/09_quality-anomaly.py` |
-| 10 | D | semantic-interpretation | Column name/value pattern matching, data dictionary draft | No | `scripts/profile_interpretation/10_semantic-interpretation.py` |
-| 11 | D | reconcile-docs | Documentation verification, discrepancy report | Yes: docs provided | `scripts/profile_interpretation/11_reconcile-docs.py` |
+| 01 | A | load-and-format (or inventory for HIERARCHICAL) | Format detection, encoding validation, canonical load pattern; HIERARCHICAL: un-suffixed `01_inventory` inventories all files first | No | `scripts/profile_structural/01_load-and-format.py` (`.R` for R) (HIERARCHICAL: `01_inventory.py`/`.R` + `01a_load-and-format.py`/`.R`, `01b_...`, etc.) |
+| 02 | A | structural-profile | Row/column counts, memory, types, schema | No | `scripts/profile_structural/02_structural-profile.py` (`.R` for R) |
+| 03 | A | column-profile | Per-column statistics, value distributions | No | `scripts/profile_structural/03_column-profile.py` (`.R` for R) |
+| 04 | B | distribution-analysis | Distribution fitting, outlier detection, multimodality | No | `scripts/profile_statistical/04_distribution-analysis.py` (`.R` for R) |
+| 05 | B | temporal-coverage | Time coverage gaps, record count trends, drift | Yes: time column | `scripts/profile_statistical/05_temporal-coverage.py` (`.R` for R) |
+| 06 | B | entity-coverage | Entity/geographic coverage, ID format validation | Yes: entity/geo ID | `scripts/profile_statistical/06_entity-coverage.py` (`.R` for R) |
+| 07 | C | key-integrity | Uniqueness testing, composite keys, functional dependencies | No | `scripts/profile_relational/07_key-integrity.py` (`.R` for R) |
+| 07b | C | cross-level-linkage | Cross-file key cardinality, coverage, orphan detection, join simulation | Yes: HIERARCHICAL | `scripts/profile_relational/07b_cross-level-linkage.py` (`.R` for R) |
+| 08 | C | correlation-dependency | Pearson/Spearman, Cramer's V, redundant column detection | Yes: >=3 numeric cols | `scripts/profile_relational/08_correlation-dependency.py` (`.R` for R) |
+| 09 | C | quality-anomaly | Completeness, coded missing values, duplicates, anomaly catalog | No | `scripts/profile_relational/09_quality-anomaly.py` (`.R` for R) |
+| 10 | D | semantic-interpretation | Column name/value pattern matching, data dictionary draft | No | `scripts/profile_interpretation/10_semantic-interpretation.py` (`.R` for R) |
+| 11 | D | reconcile-docs | Documentation verification, discrepancy report | Yes: docs provided | `scripts/profile_interpretation/11_reconcile-docs.py` (`.R` for R) |
 
 ### Part Dependency Diagram
 
@@ -132,7 +132,7 @@ For files at different aggregation levels (e.g., schools, districts, states):
    - Script 11 (if docs provided) runs once across all files
 6. **Skill authoring subagent** synthesizes per-file and cross-file findings from all scripts. For UNIFIED skill structure: one SKILL.md with a Multi-File Structure section. For PER-ENTITY: one SKILL.md per entity type with cross-references.
 
-**Script naming convention for HIERARCHICAL:**
+**Script naming convention for HIERARCHICAL** (shown with `.py`; use `.R` when execution language is R):
 ```
 scripts/profile_structural/
   01_inventory.py              (cross-file: schema map, file inventory)
@@ -195,7 +195,7 @@ Script 07b (Cross-Level Linkage):
 
 Scripts 01-03 establish foundational understanding. Always fully executed.
 
-**01_load-and-format.py:** Detect file format (CSV/TSV/Parquet/Excel/JSON), validate encoding (BOM, line endings, delimiter inference), analyze character set, establish canonical `pl.read_*` call with exact parameters reused by all subsequent scripts. Outputs: detected format/encoding, canonical load statement, CPP1 results.
+**01_load-and-format:** Detect file format (CSV/TSV/Parquet/Excel/JSON), validate encoding (BOM, line endings, delimiter inference), analyze character set, establish canonical load call — `pl.read_*` (Python/Polars) or `arrow::read_parquet()` / `readr::read_csv()` (R) — with exact parameters reused by all subsequent scripts. Outputs: detected format/encoding, canonical load statement, CPP1 results.
 
 **02_structural-profile.py:** Extract row/column counts, estimated memory footprint (MB), column data types and order, first/last 5 rows for visual inspection, schema summary table. Outputs: shape, memory, type distribution, schema.
 
@@ -205,6 +205,7 @@ Scripts 01-03 establish foundational understanding. Always fully executed.
 
 Embedded in script 01.
 
+**Python:**
 ```python
 # --- CPP1: Post-Load Validation ---
 assert df.shape[0] > 0, "STOP: Zero rows loaded"
@@ -220,6 +221,23 @@ for col in df.columns:
 if df.shape[0] < 100:
     print("WARNING: Dataset has < 100 rows — possible partial file")
 print(f"CPP1 PASSED: {df.shape[0]} rows, {df.shape[1]} columns, {null_rate:.1%} null rate")
+```
+
+**R:**
+```r
+# --- CPP1: Post-Load Validation ---
+stopifnot("STOP: Zero rows loaded" = nrow(df) > 0)
+stopifnot("STOP: Zero columns detected" = ncol(df) > 0)
+total_cells <- nrow(df) * ncol(df)
+total_nulls <- sum(sapply(df, function(x) sum(is.na(x))))
+null_rate <- total_nulls / total_cells
+stopifnot("STOP: Overall null rate exceeds 50%" = null_rate < 0.5)
+# INTENT: Warn about entirely null columns but don't stop
+for (col_name in names(df)) {
+  if (all(is.na(df[[col_name]]))) cat("WARNING: Column", col_name, "is entirely null\n")
+}
+if (nrow(df) < 100) cat("WARNING: Dataset has < 100 rows -- possible partial file\n")
+cat(sprintf("CPP1 PASSED: %d rows, %d columns, %.1f%% null rate\n", nrow(df), ncol(df), null_rate * 100))
 ```
 
 #### QAP1: Post-Structural QA
@@ -248,6 +266,7 @@ Scripts 04-06 analyze distributions, temporal patterns, and entity coverage. Ind
 
 Embedded in the last executed script of Part B.
 
+**Python:**
 ```python
 # --- CPP2: Post-Statistical Validation ---
 # INTENT: Verify numeric summary statistics are internally consistent
@@ -271,6 +290,30 @@ for col in numeric_columns:
 if temporal_expected and not time_columns_found:
     print("WARNING: Dataset expected to have temporal columns but none identified")
 print("CPP2 PASSED: Statistical summaries internally consistent")
+```
+
+**R:**
+```r
+# --- CPP2: Post-Statistical Validation ---
+# INTENT: Verify numeric summary statistics are internally consistent
+for (col_name in numeric_columns) {
+  col_min <- min(df[[col_name]], na.rm = TRUE)
+  col_max <- max(df[[col_name]], na.rm = TRUE)
+  col_mean <- mean(df[[col_name]], na.rm = TRUE)
+  # REASONING: Mean must fall within [min, max] for any valid distribution
+  stopifnot(col_min <= col_mean && col_mean <= col_max)
+  # REASONING: Percentiles must be monotonically non-decreasing
+  p25 <- quantile(df[[col_name]], 0.25, na.rm = TRUE)
+  p50 <- quantile(df[[col_name]], 0.50, na.rm = TRUE)
+  p75 <- quantile(df[[col_name]], 0.75, na.rm = TRUE)
+  stopifnot(p25 <= p50 && p50 <= p75)
+}
+# INTENT: Verify temporal script found time columns if dataset is temporal
+# ASSUMES: Orchestrator marked dataset as temporal based on Part A findings
+if (temporal_expected && !time_columns_found) {
+  cat("WARNING: Dataset expected to have temporal columns but none identified\n")
+}
+cat("CPP2 PASSED: Statistical summaries internally consistent\n")
 ```
 
 #### QAP2: Post-Statistical QA
@@ -299,6 +342,7 @@ Scripts 07-09 examine inter-column relationships. Independent within part. Scrip
 
 Embedded in the last executed script of Part C.
 
+**Python:**
 ```python
 # --- CPP3: Post-Relational Validation ---
 # INTENT: Verify correlation matrix is symmetric (basic sanity)
@@ -319,6 +363,24 @@ assert len(anomaly_catalog) > 0, (
     "STOP: Anomaly catalog is empty — quality analysis must produce at least one observation"
 )
 print(f"CPP3 PASSED: Relational checks consistent, {len(anomaly_catalog)} anomalies cataloged")
+```
+
+**R:**
+```r
+# --- CPP3: Post-Relational Validation ---
+# INTENT: Verify correlation matrix is symmetric (basic sanity)
+if (!is.null(correlation_matrix)) {
+  stopifnot("STOP: Correlation matrix is not symmetric" = all(abs(correlation_matrix - t(correlation_matrix)) < 1e-10))
+}
+# INTENT: Verify uniqueness counts agree with n_unique
+for (col_name in key_candidates) {
+  reported_unique <- uniqueness_results[[col_name]]
+  actual_unique <- length(unique(df[[col_name]]))
+  stopifnot(reported_unique == actual_unique)
+}
+# INTENT: Anomaly catalog must be non-empty (at minimum INFO-level observations)
+stopifnot("STOP: Anomaly catalog is empty" = length(anomaly_catalog) > 0)
+cat(sprintf("CPP3 PASSED: Relational checks consistent, %d anomalies cataloged\n", length(anomaly_catalog)))
 ```
 
 #### QAP3: Post-Relational QA
@@ -346,6 +408,7 @@ Scripts 10-11 produce interpretations and reconciliation. Sequential: 10 before 
 
 Embedded in the last executed Part D script (script 11 if docs provided, otherwise script 10).
 
+**Python:**
 ```python
 # --- CPP4: Post-Interpretation Validation ---
 # INTENT: All semantic interpretations must contain [PRELIMINARY] marker
@@ -360,6 +423,21 @@ if documentation_provided:
     )
 print(f"CPP4 PASSED: {len(data_dictionary_draft)} columns interpreted, "
       f"documentation reconciliation: {'completed' if documentation_provided else 'N/A (no docs)'}")
+```
+
+**R:**
+```r
+# --- CPP4: Post-Interpretation Validation ---
+# INTENT: All semantic interpretations must contain [PRELIMINARY] marker
+for (i in seq_len(nrow(data_dictionary_draft))) {
+  stopifnot(grepl("\\[PRELIMINARY\\]", data_dictionary_draft$interpretation[i]))
+}
+# INTENT: If docs were provided, reconciliation must have run
+if (documentation_provided) {
+  stopifnot("STOP: Documentation was provided but reconciliation script did not execute" = reconciliation_ran)
+}
+cat(sprintf("CPP4 PASSED: %d columns interpreted, documentation reconciliation: %s\n",
+    nrow(data_dictionary_draft), ifelse(documentation_provided, "completed", "N/A (no docs)")))
 ```
 
 #### QAP4: Post-Interpretation QA
@@ -425,7 +503,7 @@ Read `agent_reference/SCRIPT_EXECUTION_REFERENCE.md` for the file-first protocol
 3. For each file: write and execute 02{x}_structural-profile.py
 4. For each file: write and execute 03{x}_column-profile.py
 Scripts go to: scripts/profile_structural/
-Execute: bash {BASE_DIR}/scripts/run_with_capture.sh {project_script_dir}/profile_structural/{script}.py
+Execute: bash {BASE_DIR}/scripts/run_with_capture.sh {project_script_dir}/profile_structural/{script}.py (or {script}.R for R)
 
 **OUTPUT FORMAT:**
 Return findings using the Data Ingest Output Format
@@ -492,7 +570,7 @@ Read `agent_reference/SCRIPT_EXECUTION_REFERENCE.md` for the file-first protocol
 2. For each file where applicable: 05{x}_temporal-coverage.py, 06{x}_entity-coverage.py
 4. Embed CPP2 in last executed script
 Scripts go to: scripts/profile_statistical/
-Execute: bash {BASE_DIR}/scripts/run_with_capture.sh {project_script_dir}/profile_statistical/{script}.py
+Execute: bash {BASE_DIR}/scripts/run_with_capture.sh {project_script_dir}/profile_statistical/{script}.py (or {script}.R for R)
 
 **OUTPUT FORMAT:**
 Return findings using the Data Ingest Output Format
@@ -561,7 +639,7 @@ Read `agent_reference/SCRIPT_EXECUTION_REFERENCE.md` for the file-first protocol
 4. For each file: write and execute 09{x}_quality-anomaly.py
 5. Embed CPP3 in last executed script
 Scripts go to: scripts/profile_relational/
-Execute: bash {BASE_DIR}/scripts/run_with_capture.sh {project_script_dir}/profile_relational/{script}.py
+Execute: bash {BASE_DIR}/scripts/run_with_capture.sh {project_script_dir}/profile_relational/{script}.py (or {script}.R for R)
 
 **OUTPUT FORMAT:**
 Return findings using the Data Ingest Output Format
@@ -634,7 +712,7 @@ Read `agent_reference/SCRIPT_EXECUTION_REFERENCE.md` for the file-first protocol
 3. If EXECUTE: 11_reconcile-docs.py (once, cross-file) — verify docs against all files
 4. Embed CPP4 in the last executed script
 Scripts go to: scripts/profile_interpretation/
-Execute: bash {BASE_DIR}/scripts/run_with_capture.sh {project_script_dir}/profile_interpretation/{script}.py
+Execute: bash {BASE_DIR}/scripts/run_with_capture.sh {project_script_dir}/profile_interpretation/{script}.py (or {script}.R for R)
 
 **ADDITIONAL PART D REQUIREMENTS:**
 
@@ -756,7 +834,7 @@ Read your agent protocol at `.claude/agents/data-ingest.md`.
 **REVISION INSTRUCTIONS:**
 1. Read the failing script and its appended execution log
 2. Read the code-reviewer's QA script and its findings
-3. Create a NEW versioned script with suffix _a (or _b if _a exists): `{failing_script_name_without_ext}_a.py`
+3. Create a NEW versioned script with suffix _a (or _b if _a exists): `{failing_script_name_without_ext}_a.py` (or `_a.R` for R)
 4. Fix ONLY the issues identified in the BLOCKER findings
 5. Preserve all IAT documentation from the original script
 6. Execute via run_with_capture.sh
@@ -792,6 +870,7 @@ Read your agent protocol at `.claude/agents/data-ingest.md`.
 
 ### Profiling Script Template
 
+**Python:**
 ```python
 #!/usr/bin/env python3
 """
@@ -834,7 +913,50 @@ print("=" * 60)
 # (Appended by run_with_capture.sh — do not edit below this line)
 ```
 
-**Conventions:** Polars only (never pandas). IAT comments (INTENT:, REASONING:, ASSUMES:) on every non-trivial operation. Section separators: Config, Load, Profile, Validate, Summary. No function definitions. Canonical load pattern from script 01 reused verbatim.
+**R:**
+```r
+#!/usr/bin/env Rscript
+# Script: {NN}_{name}.R
+# Part: {A/B/C/D} — {Part Name}
+# Project: {project_name}
+# Created: {YYYY-MM-DD}
+#
+# Purpose: {brief description}
+
+# --- Config ---
+library(dplyr)
+library(arrow)
+
+# INTENT: Central configuration for file paths and parameters
+DATA_FILE <- "{absolute_path_to_data_file}"
+# ASSUMES: Canonical load pattern established by script 01
+
+# --- Load ---
+# INTENT: Load data using canonical pattern from script 01
+# REASONING: Reuse exact load parameters to ensure consistency across scripts
+df <- arrow::read_parquet(DATA_FILE)  # or readr::read_csv() per canonical pattern
+cat(sprintf("Loaded: %d rows, %d columns\n", nrow(df), ncol(df)))
+
+# --- Profile ---
+# INTENT: {part-specific profiling purpose}
+{profiling_logic}
+
+# --- Validate ---
+# INTENT: {CPP checkpoint if this is the last script in part}
+{validation_code_if_applicable}
+
+# --- Summary ---
+# INTENT: Structured output for orchestrator consumption
+cat(strrep("=", 60), "\n")
+cat(sprintf("PART %s PROFILING COMPLETE: %s\n", part, script_name))
+cat(strrep("=", 60), "\n")
+{structured_summary_output}
+
+# === EXECUTION LOG ===
+# (Appended by run_with_capture.sh — do not edit below this line)
+```
+
+**Conventions:** Python: Polars only (never pandas). R: dplyr + arrow (tidyverse ecosystem). IAT comments (INTENT:, REASONING:, ASSUMES:) on every non-trivial operation. Section separators: Config, Load, Profile, Validate, Summary. No function definitions. Canonical load pattern from script 01 reused verbatim.
 
 ---
 

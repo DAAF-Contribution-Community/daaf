@@ -39,9 +39,9 @@ After mode confirmation (Gate G1) and before beginning Phase 1 work, present the
 This analysis will create:
 - [ ] Research Plan documents (Plan.md + Plan_Tasks.md) summarizing all key goals, considerations, decisions, risks, interpretations, work stage summaries, and final work review notes
 - [ ] STATE.md session state file (for progress tracking and session recovery)
-- [ ] Comprehensive analytic scripts covering data fetch, clean, join, transformation, analysis, and QA for all of the above
+- [ ] Comprehensive analytic scripts (.py for Python, .R for R) covering data fetch, clean, join, transformation, analysis, and QA for all of the above
 - [ ] Validated datasets (raw + processed)
-- [ ] Marimo notebook "walkthrough" of successfully completed analysis scripts and their execution runtime logs for inspection
+- [ ] Marimo notebook (Python) or Quarto notebook (R) "walkthrough" of successfully completed analysis scripts and their execution runtime logs for inspection
 - [ ] Illustrative key data visualizations
 - [ ] Summary stakeholder report synthesizing key findings and interpreting key data visualizations
 - [ ] LEARNINGS.md lessons learned
@@ -115,9 +115,9 @@ Before sending your pre-flight response, verify:
 | **4.5** | 2 | Plan Validation | `plan-checker` agent | Plan |
 | 5 | 3 | Data Retrieval | Domain query skill (e.g., `education-data-query`) | general-purpose |
 | 6 | 3 | Context Application | Domain context skill (e.g., `education-data-context`) | general-purpose |
-| 7 | 4 | EDA & Transformation | `data-scientist`, `polars` | general-purpose |
-| 8 | 4 | Analysis & Visualization | `data-scientist`, `polars`, modeling library (`statsmodels`/`pyfixest`/`linearmodels`/`svy`/`scikit-learn` per Plan), `plotnine`/`plotly`, `geopandas` (if spatial) | general-purpose |
-| 9 | 4 | Notebook Assembly | `marimo` | general-purpose |
+| 7 | 4 | EDA & Transformation | `data-scientist`, `polars` (Python) or `tidyverse` (R) | general-purpose |
+| 8 | 4 | Analysis & Visualization | `data-scientist`, `polars`/`tidyverse`, modeling library (Python: `statsmodels`/`pyfixest`/`linearmodels`/`svy`/`scikit-learn`; R: `r-stats`/`fixest`/`plm`/`survey-r`/`tidymodels` per Plan), `plotnine`/`plotly` (Python) or `ggplot2`/`plotly-r` (R), `geopandas` (Python) or `sf-terra` (R) if spatial | general-purpose |
+| 9 | 4 | Notebook Assembly | `marimo` (Python) or `quarto` (R) | general-purpose |
 | 10 | 4 | QA Aggregation | — (orchestrator) | — |
 | 11 | 5 | Report Generation | `report-writer` agent | general-purpose |
 | 12 | 5 | Final Review | `data-verifier` agent (adversarial verification with cross-artifact coherence) | Plan |
@@ -241,7 +241,7 @@ The Full Pipeline workflow consists of **5 Phases** and **12 Stages**.
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │ PHASE 4: ANALYSIS & NOTEBOOK DEVELOPMENT                                    │
 ├─────────────────────────────────────────────────────────────────────────────┤
-│  Stage 7: EDA & Transformation ←── data-scientist + polars skills           │
+│  Stage 7: EDA & Transformation ←── data-scientist + polars/tidyverse skills │
 │      ├─ Initial data profiling (auto-execute)                               │
 │      ├─ Report key findings to user (adaptive)                              │
 │      ├─ Transformations with validation (CP3 per transformation)            │
@@ -253,14 +253,17 @@ The Full Pipeline workflow consists of **5 Phases** and **12 Stages**.
 │      │   ├─ Load modeling skill per Plan (see Modeling library selection)   │
 │      │   └─ [Per-script QA loop (QA4a) — see Composite Execution Pattern]   │
 │      ├─ 8.2: Generate exploratory and final plots (save to output/figures/) │
-│      │   ├─ Load viz skill: plotnine/plotly, or geopandas for maps          │
+│      │   ├─ Load viz skill: plotnine/plotly (Python) or ggplot2/plotly-r (R),│
+│      │   │   or geopandas (Python) / sf-terra (R) for maps                  │
 │      │   └─ [Per-script QA loop (QA4b) — see Composite Execution Pattern]   │
 │      └─ Gate G8: Analyses + viz complete, QA4a AND QA4b PASSED/WARNING      │
 │                          ↓                                                  │
 │  Stage 9: Script Compilation ←── notebook-assembler agent                   │
-│      ├─ LITERALLY COPY script file contents into marimo cells               │
+│      ├─ LITERALLY COPY script file contents into Marimo cells (Python)      │
+│      │   or Quarto chunks (R)                                               │
 │      ├─ VERBATIM execution logs in accordions (not summaries)               │
-│      ├─ NO new code except pl.read_parquet() + mo.ui.table()                │
+│      ├─ NO new code except pl.read_parquet()+mo.ui.table() (Python)         │
+│      │   or arrow::read_parquet()+DT::datatable() (R)                       │
 │      ├─ NO dashboards, NO widgets, NO filters, NO aggregations              │
 │      └─ Gate G9: Notebook runs, all scripts represented, no prohibited items│
 │                          ↓                                                  │
@@ -358,9 +361,9 @@ For EACH task in Stages 5-8, follow this complete loop. **Do NOT skip any step.*
 │      └─ BLOCKER → Go to STEP 4                                              │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │  STEP 4: REVISION FLOW (if BLOCKER)                                         │
-│      ├─ Invoke research-executor to create revised script (_a.py)           │
+│      ├─ Invoke research-executor to create revised script (_a.py/_a.R)      │
 │      ├─ Re-invoke code-reviewer on revised script                           │
-│      ├─ If still BLOCKER → Create _b.py revision, re-invoke code-reviewer   │
+│      ├─ If still BLOCKER → Create _b.py/_b.R revision, re-invoke reviewer   │
 │      └─ If still BLOCKER after 2 revisions → STOP and escalate to user      │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │  STEP 5: UPDATE STATE.md                                                    │
@@ -482,12 +485,12 @@ These operations may be executed without preview:
 | **5-QA** | `data-scientist` | general-purpose | `code-reviewer` agent (after each Stage 5 script) |
 | 6 | `data-scientist`, domain context skill | general-purpose | Subagent invokes skill |
 | **6-QA** | `data-scientist` | general-purpose | `code-reviewer` agent (after each Stage 6 script) |
-| 7 | `data-scientist`, `polars`, `geopandas` (if spatial data) | general-purpose | Subagent invokes skills |
+| 7 | `data-scientist`, `polars` (Python) or `tidyverse` (R), `geopandas`/`sf-terra` (if spatial data) | general-purpose | Subagent invokes skills |
 | **7-QA** | `data-scientist` | general-purpose | `code-reviewer` agent (after each Stage 7 script) |
-| 8.1 | `data-scientist`, `polars`, modeling library per Plan (`statsmodels` / `pyfixest` / `linearmodels` / `svy` / `scikit-learn` / `geopandas`), `geopandas` (if spatial) | general-purpose | Subagent invokes skills |
-| 8.2 | `data-scientist`, `plotnine` or `plotly`, `geopandas` (if map visualization) | general-purpose | Subagent invokes skills |
+| 8.1 | `data-scientist`, `polars`/`tidyverse`, modeling library per Plan (Python: `statsmodels` / `pyfixest` / `linearmodels` / `svy` / `scikit-learn` / `geopandas`; R: `r-stats` / `fixest` / `plm` / `survey-r` / `tidymodels` / `sf-terra`), `gt` (R, if formatted tables needed) | general-purpose | Subagent invokes skills |
+| 8.2 | `data-scientist`, `plotnine` or `plotly` (Python) or `ggplot2` or `plotly-r` (R), `geopandas` (Python) or `sf-terra` (R) if map visualization, `gt` (R, if formatted summary tables needed) | general-purpose | Subagent invokes skills |
 | **8-QA** | `data-scientist` | general-purpose | `code-reviewer` agent (after each Stage 8 script) |
-| 9 | `marimo` | general-purpose | `notebook-assembler` agent (COMPILES scripts — NO new code, NO dashboards) |
+| 9 | `marimo` (Python) or `quarto` (R) | general-purpose | `notebook-assembler` agent (COMPILES scripts — NO new code, NO dashboards) |
 | 10 | — | — | Orchestrator aggregates QA findings (no subagent) |
 | 11 | `data-scientist`, `science-communication` (if non-technical audience) | general-purpose | `report-writer` agent |
 | 12 | `data-scientist` | Plan | `data-verifier` agent |
@@ -504,11 +507,13 @@ These operations may be executed without preview:
 
 **Note:** Stages 2, 3, 5, and 6 use domain-specific skills resolved by the orchestrator based on the active domain configuration in Plan.md.
 
-**Skill loading mechanism:** All named agents preload `data-scientist` via frontmatter (full content injected at startup). The orchestrator's Agent prompts should only include `Call the skill tool` instructions for **additional** skills (domain skills, `polars`, `plotnine`, `plotly`, `statsmodels`, `pyfixest`, `linearmodels`, `svy`, `scikit-learn`, `geopandas`, `science-communication`). Stage 2 uses `search-agent` and Stage 3 uses `source-researcher` — both are named agents that preload `data-scientist` via frontmatter, but still require explicit skill tool calls for domain-specific skills (explorer, source).
+**Skill loading mechanism:** All named agents preload `data-scientist` via frontmatter (full content injected at startup). The orchestrator's Agent prompts should only include `Call the skill tool` instructions for **additional** skills (domain skills, Python: `polars`, `plotnine`, `plotly`, `statsmodels`, `pyfixest`, `linearmodels`, `svy`, `scikit-learn`, `geopandas`; R: `tidyverse`, `ggplot2`, `plotly-r`, `r-stats`, `fixest`, `plm`, `survey-r`, `tidymodels`, `sf-terra`, `gt`; either: `science-communication`). Route by execution language preference in CLAUDE.md User Preferences. Stage 2 uses `search-agent` and Stage 3 uses `source-researcher` — both are named agents that preload `data-scientist` via frontmatter, but still require explicit skill tool calls for domain-specific skills (explorer, source).
 
-**R/Stata-background user preference:** When the user has indicated an R / RStudio or Stata background (detected during intake or mode confirmation), add this directive to all Stage 5-8 agent prompts: `"User has [R/Stata] background. Load [r-python-translation/stata-python-translation] skill. Add inline [R/Stata]-equivalent comments for non-trivial data operations."` This propagates to research-executor (code annotation), code-reviewer (annotation verification), debugger (R/Stata-framed error explanations), and data-ingest (profiling script annotation during Data Onboarding). The translation skills are loaded on demand via the Skill tool — they are NOT preloaded in any agent's frontmatter.
+**Cross-language annotation preference:** When the user's primary analysis language background differs from the execution language and cross-language code annotations are enabled in CLAUDE.md User Preferences, add the appropriate translation directive to all Stage 5-8 agent prompts. Select the directive based on execution language and background (see orchestrator SKILL.md § User Language Preference Propagation for the full 4-way table): Python execution with R/Stata background loads `r-python-translation`/`stata-python-translation`; R execution with Python/Stata background loads `python-r-translation`/`stata-r-translation`. This propagates to research-executor (code annotation), code-reviewer (annotation verification), debugger (framed error explanations), and data-ingest (profiling script annotation during Data Onboarding). The translation skills are loaded on demand via the Skill tool — they are NOT preloaded in any agent's frontmatter.
 
-**Modeling library selection for Stage 8.1:** The Plan_Tasks.md `<skill>` element specifies which modeling library to load. The orchestrator passes this to the research-executor. The `data-scientist` skill's routing tree provides the canonical decision logic:
+**Modeling library selection for Stage 8.1:** The Plan_Tasks.md `<skill>` element specifies which modeling library to load. The orchestrator passes this to the research-executor. The `data-scientist` skill's routing tree provides the canonical decision logic, routed by execution language (per CLAUDE.md User Preferences):
+
+**Python:**
 - Standard regression (OLS, GLM, logit/probit) → `statsmodels`
 - Time series modeling (ARIMA/SARIMAX, VAR, forecasting, stationarity tests) → `statsmodels`
 - Fixed effects, IV with FE, or DiD → `pyfixest`
@@ -517,6 +522,14 @@ These operations may be executed without preview:
 - Spatial analysis → `geopandas`
 - Supervised ML (classification, prediction, risk scoring) → `scikit-learn`
 - Unsupervised analysis (clustering, PCA, dimensionality reduction) → `scikit-learn`
+
+**R:**
+- Standard regression (OLS, GLM, logit/probit) → `r-stats`
+- Fixed effects, IV with FE, or DiD → `fixest`
+- Random effects, between estimation, Fama-MacBeth → `plm`
+- Survey-weighted analysis (complex survey design) → `survey-r`
+- Spatial analysis → `sf-terra`
+- Supervised/Unsupervised ML (classification, prediction, clustering) → `tidymodels`
 
 **Methodology verification:** When the Plan specifies statistical methods or modeling approaches, verify that the chosen library supports the intended technique with its current API. Library skills encode syntax at a point in time — if a method call produces unexpected errors during execution, use WebSearch to check the library's latest documentation before assuming the code is wrong. This is especially important for rapidly-evolving libraries.
 
@@ -609,8 +622,8 @@ See the "Task Types" section below for the complete taxonomy, behavioral descrip
 - [ ] Significance thresholds or interpretation guidelines provided
 - [ ] Research Outcome contribution stated
 - [ ] Risk Register items included
-- [ ] Modeling library skill specified (`statsmodels` / `pyfixest` / `linearmodels` / `svy` / `scikit-learn` / `geopandas` per Plan methodology; see "Modeling library selection" above)
-- [ ] If spatial analysis: `geopandas` skill specified
+- [ ] Modeling library skill specified (Python: `statsmodels` / `pyfixest` / `linearmodels` / `svy` / `scikit-learn` / `geopandas`; R: `r-stats` / `fixest` / `plm` / `survey-r` / `tidymodels` / `sf-terra` per Plan methodology and execution language; see "Modeling library selection" above)
+- [ ] If spatial analysis: `geopandas` (Python) or `sf-terra` (R) skill specified
 - [ ] Script follows IAT documentation standards
 
 **Stage 8.2 (Visualization) Checklist:**
@@ -624,7 +637,7 @@ See the "Task Types" section below for the complete taxonomy, behavioral descrip
 - [ ] Accessibility considerations noted (colorblind-safe palette, etc.)
 - [ ] Research Outcome contribution stated
 - [ ] Risk Register items included
-- [ ] Visualization skill specified (`plotnine` for static, `plotly` for interactive, `geopandas` for maps/choropleths)
+- [ ] Visualization skill specified (Python: `plotnine` for static, `plotly` for interactive, `geopandas` for maps; R: `ggplot2` for static, `plotly-r` for interactive, `sf-terra` for maps)
 - [ ] Script follows IAT documentation standards
 
 **Revision Request Checklist (when re-invoking research-executor after QA BLOCKER):**
@@ -1050,7 +1063,13 @@ All relative paths in referenced files resolve from BASE_DIR.
 ## SKILL LOADING
 [Only include skill tool calls for skills NOT preloaded via agent frontmatter.
 Named agents already have `data-scientist` injected at startup — do not re-load it.
-Call the skill tool only for additional skills like polars, plotnine, plotly, statsmodels, pyfixest, linearmodels, svy, geopandas, scikit-learn, science-communication, or domain skills.]
+Call the skill tool only for additional skills — route by execution language
+(per CLAUDE.md User Preferences):
+  Python: polars, plotnine, plotly, statsmodels, pyfixest, linearmodels, svy,
+          geopandas, scikit-learn
+  R: tidyverse, ggplot2, plotly-r, r-stats, fixest, plm, survey-r, tidymodels,
+     sf-terra, gt
+  Either: science-communication, domain skills]
 
 ## CONTEXT FROM PLAN
 [Paste relevant Plan.md methodology sections and Plan_Tasks.md task blocks - Context Completeness Checklist always takes priority over brevity]
@@ -1084,8 +1103,8 @@ Wave: [N] (if applicable)
 </task>
 
 ## FILE-FIRST RULE (Stages 5-8)
-Write Python code to a script file FIRST. Do NOT execute interactively.
-Execute ONLY via single Bash call: `bash {BASE_DIR}/scripts/run_with_capture.sh {PROJECT_DIR}/scripts/.../script.py` — do NOT run `python script.py` directly, chain commands with `&&`/`;`, or prefix with `cd`.
+Write code to a script file FIRST (.py for Python, .R for R). Do NOT execute interactively.
+Execute ONLY via single Bash call: `bash {BASE_DIR}/scripts/run_with_capture.sh {PROJECT_DIR}/scripts/.../script.py` (or `script.R` for R) — do NOT run `python script.py` or `Rscript script.R` directly, chain commands with `&&`/`;`, or prefix with `cd`.
 Follow the IAT documentation standard (`{BASE_DIR}/agent_reference/INLINE_AUDIT_TRAIL.md`).
 Closely read `{BASE_DIR}/agent_reference/SCRIPT_EXECUTION_REFERENCE.md` for the mandatory file-first execution protocol covering complete code file writing, output capture, and file versioning rules.
 
@@ -1315,7 +1334,7 @@ Agent({
 All relative paths in referenced files resolve from BASE_DIR.
 
 **SCRIPT TO REVIEW:**
-Path: scripts/stage{N}_{type}/{step}_{task-name}.py
+Path: scripts/stage{N}_{type}/{step}_{task-name}.py (or .R for R)
 
 **PLAN LOCATIONS:**
 Plan.md: {plan_path}
@@ -1394,8 +1413,8 @@ All relative paths in referenced files resolve from BASE_DIR.
 
 **REVISION REQUEST**
 
-**Original Script:** scripts/stage{N}_{type}/{step}_{task-name}.py
-**Current Final Version:** scripts/stage{N}_{type}/{step}_{task-name}_{suffix}.py
+**Original Script:** scripts/stage{N}_{type}/{step}_{task-name}.py (or .R)
+**Current Final Version:** scripts/stage{N}_{type}/{step}_{task-name}_{suffix}.py (or .R)
 
 **METHODOLOGY CONTEXT (from Plan.md):**
 {relevant methodology decisions, coded values, research outcomes for this task}
@@ -1410,7 +1429,7 @@ All relative paths in referenced files resolve from BASE_DIR.
 - **Suggested Fix:** {suggested_fix_from_code_reviewer}
 
 **Instructions:**
-1. Create new versioned script: {step}_{task-name}_{next_suffix}.py
+1. Create new versioned script: {step}_{task-name}_{next_suffix}.py (or .R)
 2. Apply fix for the BLOCKER issue while maintaining alignment with Plan.md methodology
 3. Execute with full validation per the task's <verify> block
 4. Append execution log
@@ -1870,8 +1889,8 @@ These supplement the universal boundaries in `CLAUDE.md` (Boundaries & Safety) a
 - Validate data at every checkpoint (CP1-CP4)
 - Create Plan.md + Plan_Tasks.md before data acquisition
 - Complete Final Review (Final Review) before delivery
-- Generate all three deliverables (Plan.md + Plan_Tasks.md, Notebook, Report)
-- Follow the Inline Audit Trail (IAT) protocol for all Python scripts (`agent_reference/INLINE_AUDIT_TRAIL.md`)
+- Generate all three deliverables (Plan.md + Plan_Tasks.md, Marimo/Quarto Notebook, Report)
+- Follow the Inline Audit Trail (IAT) protocol for all scripts (`agent_reference/INLINE_AUDIT_TRAIL.md`)
 - Include validation assertions in notebooks
 - Update STATE.md with all runtime decisions, deviations, and findings
 - Surface online verification as an option at Phase 1 (Discovery) when skill-sourced data source details may have changed, at Phase 2 (Planning) when methodology choices draw on general knowledge beyond loaded skills, and at checkpoints when presenting findings that rest on skill-derived assumptions

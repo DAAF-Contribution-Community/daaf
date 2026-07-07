@@ -115,6 +115,70 @@ RUN if [ "${DAAF_DEV}" = "1" ]; then \
     fi
 
 # ============================================
+# Optional R toolchain: runtime + system libraries (DAAF_R)
+# ============================================
+# OPT-IN, R-USER-ONLY. Everything in this section (and the R packages +
+# Quarto section further down) is skipped entirely unless DAAF_R=1 is passed
+# as a build arg. When DAAF_R is unset or 0 (the default for every Python-only
+# user), the guarded RUN layers below are no-ops, so a standard build is
+# byte-for-byte unchanged. Adds roughly ~300MB to the image when enabled
+# (R runtime + system libs; the R packages + Quarto section adds more on top).
+#
+# Placed AFTER the always-run apt/uv layers (and after the DAAF_DEV block) so
+# that DAAF_R=0 builds do not invalidate or re-run any earlier cache layers —
+# this mirrors where the DAAF_DEV blocks sit relative to the Python installs.
+#
+# What it installs (only when DAAF_R=1):
+#   - R 4.5.x runtime           (Posit pre-built .deb binaries)
+#   - R build/link system libs  (gfortran, libcurl/xml2/ssl/udunits2, etc.)
+# The R packages themselves and the Quarto CLI are installed in the
+# "Install R Data Science Packages" section below the Python installs.
+#
+# R VERSION NOTE: Pinned to R 4.5.x for P3M binary package compatibility.
+# R 4.6.0 (released 2026-04-24) lacks P3M pre-built binaries as of May 2026 —
+# all packages compile from source, and S7 <=0.2.1 fails due to removed C API
+# symbols. Posit CDN .deb installs to /opt/R/{VERSION}/; symlinks expose on
+# PATH. Upgrade path: bump R_VERSION once P3M announces R 4.6 binary support.
+ARG DAAF_R=0
+ARG R_VERSION=4.5.3
+
+# R runtime from Posit pre-built binaries (Debian Bookworm).
+RUN if [ "${DAAF_R}" = "1" ]; then \
+        curl -fsSL -o /tmp/r-${R_VERSION}.deb \
+          "https://cdn.posit.co/r/debian-12/pkgs/r-${R_VERSION}_1_$(dpkg --print-architecture).deb" \
+        && apt-get update \
+        && apt-get install -y --no-install-recommends /tmp/r-${R_VERSION}.deb \
+        && rm /tmp/r-${R_VERSION}.deb \
+        && ln -s /opt/R/${R_VERSION}/bin/R /usr/local/bin/R \
+        && ln -s /opt/R/${R_VERSION}/bin/Rscript /usr/local/bin/Rscript \
+        && apt-get clean \
+        && rm -rf /var/lib/apt/lists/*; \
+    fi
+
+# Additional system libraries needed by R packages.
+# libgdal-dev, libgeos-dev, libproj-dev are already installed unconditionally
+# in the "Install Geospatial System Libraries" block above (shared with Python),
+# so they are NOT re-listed here. libudunits2-dev is critical — must be present
+# before installing sf. libtbb-dev required by terra; cmake required by the
+# lightgbm R bindings.
+RUN if [ "${DAAF_R}" = "1" ]; then \
+        apt-get update && apt-get install -y --no-install-recommends \
+            gfortran \
+            libcurl4-openssl-dev \
+            libxml2-dev \
+            libfontconfig1-dev \
+            libudunits2-dev \
+            libtbb-dev \
+            libnetcdf-dev \
+            libsqlite3-dev \
+            libssl-dev \
+            libhdf5-dev \
+            cmake \
+        && apt-get clean \
+        && rm -rf /var/lib/apt/lists/*; \
+    fi
+
+# ============================================
 # Install Python Data Science Packages via uv
 # ============================================
 #
@@ -210,6 +274,94 @@ RUN uv pip install --system \
     shap==0.51.0 \
     fairlearn==0.12.0 \
     lightgbm==4.6.0
+
+# ============================================
+# Install R Data Science Packages + Quarto (DAAF_R)
+# ============================================
+# OPT-IN, R-USER-ONLY (continues the DAAF_R opt-in begun above). Every RUN
+# layer below is a no-op unless DAAF_R=1. The R runtime and system libraries
+# these packages depend on are installed in the "Optional R toolchain" section
+# above the Python installs; this section adds the R packages themselves plus
+# the Quarto CLI. Combined R footprint (runtime + libs + these packages +
+# Quarto) is well beyond the ~300MB base R cost noted above.
+#
+# CUSTOMIZATION: To add an R package, append it to the appropriate Rscript
+# install block below (or add a new guarded block). For R packages needing
+# C/Fortran libraries, add the system deps to the guarded apt-get block in the
+# "Optional R toolchain" section above.
+#
+# QUARTO SCOPING: Quarto is a standalone system binary that does not depend on
+# R or Python package managers, but within DAAF it exists solely to render
+# R-mode Stage 9 notebooks (.qmd). It therefore lives inside the DAAF_R guard —
+# a Python-only build has no use for it and should not pay its cost.
+
+# Configure R package repository (P3M date-pinned snapshot for reproducibility).
+# Pin to a specific date snapshot so rebuilds produce identical package versions.
+# Update the date when intentionally upgrading R packages (and update skill
+# metadata). P3M provides pre-built binaries for Debian Bookworm — much faster
+# than source compilation.
+ARG P3M_SNAPSHOT_DATE=2026-04-15
+RUN if [ "${DAAF_R}" = "1" ]; then \
+        RPROFILE="$(Rscript -e 'cat(file.path(R.home("etc"), "Rprofile.site"))')" \
+        && echo "options(repos = c(CRAN = 'https://p3m.dev/cran/__linux__/bookworm/${P3M_SNAPSHOT_DATE}'))" \
+            >> "${RPROFILE}" \
+        && echo 'options(Ncpus = parallel::detectCores())' \
+            >> "${RPROFILE}"; \
+    fi
+
+# Core data manipulation and I/O
+RUN if [ "${DAAF_R}" = "1" ]; then \
+        Rscript -e 'install.packages(c( \
+            "data.table", "dplyr", "tidyr", "tibble", "readr", "purrr", "stringr", \
+            "forcats", "lubridate", "glue", "rlang", \
+            "arrow", "readxl", "writexl", "haven", "jsonlite", "yaml" \
+            ))'; \
+    fi
+
+# Statistics and econometrics
+RUN if [ "${DAAF_R}" = "1" ]; then \
+        Rscript -e 'install.packages(c( \
+            "fixest", "sandwich", "lmtest", "car", "plm", "estimatr", \
+            "marginaleffects", "rdrobust", "fwildclusterboot", \
+            "survey", "rugarch", "broom", "modelsummary" \
+            ))'; \
+    fi
+
+# Geospatial
+RUN if [ "${DAAF_R}" = "1" ]; then \
+        Rscript -e 'install.packages(c( \
+            "sf", "terra", "stars", \
+            "spdep", "spatialreg", "classInt", "exactextractr", \
+            "leaflet", "maptiles", "tidygeocoder", "osmdata" \
+            ))'; \
+    fi
+
+# Visualization
+RUN if [ "${DAAF_R}" = "1" ]; then \
+        Rscript -e 'install.packages(c( \
+            "ggplot2", "scales", "ggridges", "ggrepel", "patchwork", "ggdist", \
+            "plotly", "gt", "knitr", "kableExtra", "viridis" \
+            ))'; \
+    fi
+
+# ML and interpretation
+RUN if [ "${DAAF_R}" = "1" ]; then \
+        Rscript -e 'install.packages(c( \
+            "tidymodels", "ranger", "glmnet", "xgboost", "lightgbm", \
+            "iml", "uwot", "fairmodels" \
+            ))'; \
+    fi
+
+# Quarto CLI (language-agnostic notebook system; DAAF uses it for R Stage 9).
+# Pin the version; update when intentionally upgrading.
+ARG QUARTO_VERSION=1.7.29
+RUN if [ "${DAAF_R}" = "1" ]; then \
+        ARCH=$(dpkg --print-architecture) \
+        && curl -fsSL "https://github.com/quarto-dev/quarto-cli/releases/download/v${QUARTO_VERSION}/quarto-${QUARTO_VERSION}-linux-${ARCH}.deb" \
+            -o /tmp/quarto.deb \
+        && dpkg -i /tmp/quarto.deb \
+        && rm /tmp/quarto.deb; \
+    fi
 
 # ============================================
 # Install code-server (browser-based VS Code)

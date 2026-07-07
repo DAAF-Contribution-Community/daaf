@@ -36,15 +36,18 @@ These principles apply to all agents writing code in the DAAF system:
 - **Iterative validation:** Execute in small, discrete increments (max 1-2
   transformations per cycle). Validate immediately after each transformation.
 - **Cardinal rule:** Every transformation has a validation. No exceptions.
-- **File-first execution:** You NEVER execute Python code interactively. Every
-  operation follows the mandatory file-first pattern:
+- **File-first execution:** You NEVER execute code interactively (neither Python
+  nor R). Every operation follows the mandatory file-first pattern:
   1. **WRITE** complete script to the appropriate `scripts/` directory
   2. **EXECUTE** as a single Bash call with absolute paths:
      `bash {BASE_DIR}/scripts/run_with_capture.sh {PROJECT_DIR}/scripts/{script_name}.py`
+     (or `{script_name}.R` for R scripts — `run_with_capture.sh` detects language
+     from the file extension)
   3. **CAPTURE** — `run_with_capture.sh` appends stdout/stderr to the script file
 
   Interactive execution bypasses the audit trail and produces no permanent record
-  that can be reviewed by code-reviewer. Never run `python script.py` directly.
+  that can be reviewed by code-reviewer. Never run `python script.py` or
+  `Rscript script.R` directly.
   See `agent_reference/SCRIPT_EXECUTION_REFERENCE.md` for the complete protocol.
 - **Inline Audit Trail (IAT):** Every filter, join, aggregation, and derived
   column must have inline comments using `# INTENT:`, `# REASONING:`, and
@@ -54,8 +57,9 @@ These principles apply to all agents writing code in the DAAF system:
 - **Parquet only:** Save all data files in parquet format. No CSV, no Excel.
 - **Immutable script versioning:** When a script fails, the original keeps its
   appended execution log as a historical record. Fixes go into a new versioned
-  copy (`_a.py`, `_b.py`, etc.). Never modify a script after its execution log
-  is appended — all versions (failed and successful) are kept for audit trail.
+  copy (`_a.py`/`_a.R`, `_b.py`/`_b.R`, etc.). Never modify a script after its
+  execution log is appended — all versions (failed and successful) are kept for
+  audit trail.
 - **Skill information awareness:** Skills contain curated domain knowledge that
   represents a point-in-time snapshot — APIs evolve, endpoints deprecate,
   documentation updates, and coded values change. Skills are the best available
@@ -84,13 +88,14 @@ These principles apply to all agents writing code in the DAAF system:
 
 ---
 
-## Code Style: Sequential Inline Python
+## Code Style: Sequential Inline Scripts
 
-All Python code produced by agents follows a **flat, sequential** style. Scripts
-read top-to-bottom like lab notebooks — no function definitions, no class
-hierarchies, no module abstractions.
+All code produced by agents follows a **flat, sequential** style. Scripts read
+top-to-bottom like lab notebooks — no function definitions, no class hierarchies,
+no module abstractions. The same philosophy applies to both Python and R.
 
-**Rules:**
+### Python Rules
+
 1. **No function definitions** — No `def main()`, no helper functions, no
    `if __name__ == "__main__"` guards
    - *Exceptions:* Marimo cell wrappers (`def _():`) and standalone CLI tools
@@ -104,6 +109,22 @@ hierarchies, no module abstractions.
    `# --- Profile ---`, `# --- Validate ---`, `# --- Summary ---`
 4. **No type annotations** — Sequential scripts don't define function signatures
 5. **No test files** — Validation is inline (`assert` + `print`), not in
+   `tests/` directories
+
+### R Rules
+
+1. **No function definitions** — No reusable functions, no `source()` of external
+   modules
+   - *Exception:* Quarto cell structure
+2. **Inline validation** — Use `cat()` for output and `stopifnot()` for
+   assertions, never a separate `validation.R` module
+3. **Section separators** — Same convention as Python:
+   `# --- Config ---`, `# --- Load ---`, `# --- Transform ---`,
+   `# --- Validate ---`, `# --- Save ---`
+4. **Library calls at top** — All `library()` calls in the `# --- Config ---`
+   section
+5. **Pipe style** — Use native pipe `|>` (R 4.1+), not magrittr `%>%`
+6. **No test files** — Validation is inline (`stopifnot()` + `cat()`), not in
    `tests/` directories
 
 **Why this style?** Research scripts are **write-once, execute-once, archive**
@@ -324,7 +345,8 @@ bash {BASE_DIR}/scripts/run_with_capture.sh {PROJECT_DIR}/scripts/stage5_fetch/0
 |-----------|---------|---------|
 | Plan | `YYYY-MM-DD[suffix]_[Title]_Plan.md` | `2026-01-24a_School_Poverty_Analysis_Plan.md` |
 | Plan Tasks | `YYYY-MM-DD[suffix]_[Title]_Plan_Tasks.md` | `2026-01-24a_School_Poverty_Analysis_Plan_Tasks.md` |
-| Notebook | `YYYY-MM-DD[suffix]_[Title].py` | `2026-01-24a_School_Poverty_Analysis.py` |
+| Notebook (Python) | `YYYY-MM-DD[suffix]_[Title].py` | `2026-01-24a_School_Poverty_Analysis.py` |
+| Notebook (R) | `YYYY-MM-DD[suffix]_[Title].qmd` | `2026-01-24a_School_Poverty_Analysis.qmd` |
 | Report | `YYYY-MM-DD[suffix]_[Title]_Report.md` | `2026-01-24a_School_Poverty_Analysis_Report.md` |
 | Raw Data | `YYYY-MM-DD[suffix]_[source]_[description].parquet` | `2026-01-24a_ccd_schools.parquet` |
 | Processed Data | `YYYY-MM-DD[suffix]_[description].parquet` | `2026-01-24a_analysis_data.parquet` |
@@ -337,17 +359,18 @@ bash {BASE_DIR}/scripts/run_with_capture.sh {PROJECT_DIR}/scripts/stage5_fetch/0
 ### Project Folder Structure
 
 **Script Versioning:** When a script fails:
-- Original `01_task.py` keeps its appended execution log as a historical record
-- Revision `01_task_a.py` contains fixes + its own output
-- Further revisions use `_b.py`, `_c.py`, etc. (max 2 self-revisions before escalating)
+- Original `01_task.py` (or `01_task.R`) keeps its appended execution log as a
+  historical record
+- Revision `01_task_a.py` (or `01_task_a.R`) contains fixes + its own output
+- Further revisions use `_b`, `_c`, etc. (max 2 self-revisions before escalating)
 - Never modify a script after its execution log is appended — the script becomes
   an immutable audit artifact
 - All versions (failed and successful) remain in the folder for traceability
-- Marimo notebook only includes the final successful version
+- Marimo/Quarto notebook only includes the final successful version
 
 ### Script Naming Convention
 
-All executed scripts are archived in the `scripts/` folder with stage-based organization.
+All executed scripts are archived in the `scripts/` folder with stage-based organization. File extension is `.py` (Python) or `.R` (R) depending on the execution language preference.
 
 | Stage | Directory | Pattern | Example |
 |-------|-----------|---------|---------|
@@ -362,6 +385,7 @@ All executed scripts are archived in the `scripts/` folder with stage-based orga
 | DI-5 (Relational) | `scripts/profile_relational/` | `{NN}_{task-name}.py` | `07_key-integrity.py` |
 | DI-6 (Interpretation) | `scripts/profile_interpretation/` | `{NN}_{task-name}.py` | `10_semantic-interpretation.py` |
 | RV-2 (Reproduction) | `scripts/repro/{stage_dir}/` | `{original_script_name}` | `01_fetch-ccd.py` |
+| Smoke Tests | `scripts/smoke_tests/` | `smoke_{skill-name}.R` | `smoke_tidyverse.R` |
 | Scratch (any) | `scripts/scratch/` | free-form (transient intermediates, no naming pattern) | `stripped_08_fetch.py` |
 
 **Step numbering:** Use the step number from the Transformation Sequence (e.g., Step 1.1 → `01`, Step 2.3 → `03`).
@@ -407,10 +431,18 @@ User-specific preferences that the orchestrator and agents should respect. These
 defaults can be updated by the orchestrator (with user confirmation) when a user
 indicates a preference during conversation.
 
+- **Primary execution language:** Python
+  <!-- Options: Python, R. Determines the language for all pipeline scripts,
+       notebooks, and validation code. When set to R, agents load R library
+       skills (tidyverse, ggplot2, fixest, etc.) instead of Python equivalents,
+       write .R files, and assemble Quarto notebooks instead of Marimo. -->
 - **Primary analysis language background:** Python
+  <!-- The user's native/preferred language for reading and understanding code.
+       Used for annotation direction when cross-language annotations are enabled. -->
 - **Cross-language code annotations:** disabled
-  <!-- Set to "enabled" and specify language (R or Stata) to have code-producing
-       agents add inline comments showing equivalent syntax in the user's primary
-       language. The orchestrator will load the appropriate translation skill
-       (r-python-translation or stata-python-translation) and pass the annotation
-       directive to all code-producing agents. -->
+  <!-- Set to "enabled" to have code-producing agents add inline comments showing
+       equivalent syntax in the user's background language. Only meaningful when
+       execution language differs from background language. The orchestrator will
+       load the appropriate translation skill (r-python-translation,
+       python-r-translation, stata-python-translation, or stata-r-translation)
+       and pass the annotation directive to all code-producing agents. -->

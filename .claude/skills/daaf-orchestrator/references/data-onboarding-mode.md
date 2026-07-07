@@ -77,7 +77,9 @@ Data Onboarding is designed for **tabular datasets** — files with rows and col
 │      ├─ DI-0a: WRITE PHASE — Invoke data-ingest (profiling_part = "DI-0") │
 │      │   ├─ Agent researches API (WebFetch docs, WebSearch if needed)      │
 │      │   ├─ Identifies endpoints, response format, pagination, rate limits │
-│      │   ├─ Writes acquisition script: scripts/stage5_fetch/00_api-fetch.py│
+│      │   ├─ Writes acquisition script:                                    │
+│      │   │   scripts/stage5_fetch/00_api-fetch.py (Python)                │
+│      │   │   scripts/stage5_fetch/00_api-fetch.R  (R)                     │
 │      │   └─ Returns: script path, API findings, confidence assessment     │
 │      │   (Agent does NOT execute the script — returns after writing)       │
 │      ├─ Orchestrator presents script to user for review and approval      │
@@ -324,7 +326,7 @@ When the user needs to set up an API key and it's not currently available in the
 **Security notes to convey to user:**
 - The `environment_settings.txt` file lives on the host machine (in `daaf-docker/`), is gitignored, and is never visible to Claude inside the container
 - DAAF's safety guardrails prevent Claude from reading or writing environment settings files by design
-- The acquisition script references `os.environ["KEY_NAME"]`, never hardcodes the key value
+- The acquisition script references `os.environ["KEY_NAME"]` (Python) or `Sys.getenv("KEY_NAME")` (R), never hardcodes the key value
 - The script is archived in the project for reproducibility, but the key value is never in it
 
 **OAuth / complex authentication:** If the API requires OAuth 2.0 (token refresh, browser-based authorization code flow) or other multi-step authentication, DI-0 cannot handle this automatically. In this case, advise the user to:
@@ -367,6 +369,7 @@ user's requested dataset to the project's data/raw/ directory.
 - **API Documentation URL:** {url or "None — user description below"}
 - **User Description of API:** {what the user told us about the API}
 - **API Key Env Var:** {env var name, e.g., "HARVARD_DATAVERSE_API_KEY"}
+- **Execution Language:** {Python / R}
 - **Target Endpoint(s):** {what data to download}
 - **Query Parameters:** {filters, date range, format preferences}
 - **Data Persistence Preference:** {Local storage / Live query}
@@ -378,11 +381,14 @@ user's requested dataset to the project's data/raw/ directory.
 1. Load the `data-scientist` skill for methodology guidance
 2. Research the API via WebFetch (read API docs) and WebSearch if needed
 3. Identify: available endpoints, response format, pagination method, rate limits, auth method
-4. Write acquisition script to: `{project_script_dir}/stage5_fetch/00_api-fetch.py`
-   - Script MUST check `os.environ["{env_var_name}"]` with clear error if missing
-   - Script MUST use `requests` library for API calls
+4. Write acquisition script to: `{project_script_dir}/stage5_fetch/00_api-fetch.py` (Python) or `00_api-fetch.R` (R)
+   - Python: Script MUST check `os.environ["{env_var_name}"]` with clear error if missing
+   - R: Script MUST check `Sys.getenv("{env_var_name}")` with `stopifnot(nchar(...) > 0)` guard
+   - Python: Script MUST use `requests` library for API calls
+   - R: Script MUST use `httr2` library for API calls
    - Script MUST handle pagination if the API paginates results
    - Script MUST save result as parquet to `{project_dir}/data/raw/{date}_{source}.parquet`
+     (Python: via polars; R: via arrow::write_parquet)
    - Script MUST print: rows fetched, columns, file size, file path
    - Script MUST include IAT comments (INTENT, REASONING, ASSUMES)
    - Follow file-first execution protocol (read SCRIPT_EXECUTION_REFERENCE.md)
@@ -394,7 +400,7 @@ Return findings in this structure (max 3500 words):
 
 ### DI-0 Summary
 **Status:** [SCRIPT_READY | BLOCKED]
-**Script Path:** [absolute path to 00_api-fetch.py]
+**Script Path:** [absolute path to 00_api-fetch.py / 00_api-fetch.R]
 **Expected Output Path:** [where the parquet will be saved]
 
 ### API Findings
@@ -406,7 +412,7 @@ Return findings in this structure (max 3500 words):
 - **API Complexity Assessment:** [Simple / Complex — with reasoning]
 
 ### Acquisition Script
-**Path:** [absolute path to 00_api-fetch.py]
+**Path:** [absolute path to 00_api-fetch.py / 00_api-fetch.R]
 
 ### Confidence Assessment
 **DI-0 Confidence:** [HIGH | MEDIUM | LOW]
@@ -770,7 +776,8 @@ Before dispatching a profiling subagent (Stages DI-3 through DI-6), verify:
 - [ ] Documentation excerpts inlined (if provided and relevant to current part)
 - [ ] Execution command uses {BASE_DIR}/scripts/run_with_capture.sh
 - [ ] IAT documentation standards referenced
-- [ ] If user has R/Stata background: include translation skill directive in prompt ("User has [R/Stata] background. Load [r-python-translation/stata-python-translation] skill. Add inline [R/Stata]-equivalent comments for non-trivial data operations.")
+- [ ] If execution language is R: profiling scripts use `.R` extension; data I/O via `arrow` + `dplyr`/`tidyverse`; validation via `stopifnot()` + `cat()`
+- [ ] If cross-language annotations enabled: include appropriate translation directive per orchestrator SKILL.md § User Language Preference Propagation (4-way table: `r-python-translation`, `stata-python-translation`, `python-r-translation`, or `stata-r-translation`)
 
 ### QA Invocation Checklist
 

@@ -8,7 +8,7 @@ All agents in this directory MUST follow the canonical template at `agent_refere
 
 ## Language Support
 
-All code-producing agents support both Python and R. The execution language is determined by the user's preference in CLAUDE.md (`Primary analysis language background` and the pipeline execution-language directive) and propagated by the orchestrator to each agent's prompt. Agents detect the pipeline language from script file extensions (`.py` vs `.R`) and load the appropriate library skills on demand.
+All code-producing agents support both Python and R. The execution language is determined by the user's `Primary execution language` preference in CLAUDE.md and propagated by the orchestrator to each agent's prompt; the separate `Primary analysis language background` preference drives cross-language annotation direction, not which language the pipeline runs in. Agents detect the pipeline language from script file extensions (`.py` vs `.R`) and load the appropriate library skills on demand.
 
 Read-only agents (search-agent, plan-checker, data-verifier, integration-checker) and planning/synthesis agents (data-planner, source-researcher, research-synthesizer, report-writer, framework-engineer) are language-agnostic — they reason about artifacts rather than authoring executable pipeline scripts, so they are not listed below.
 

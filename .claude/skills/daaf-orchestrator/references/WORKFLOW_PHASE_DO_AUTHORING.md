@@ -89,7 +89,7 @@ Part 1 — Skill Authoring:
 5. **Cross-Dataset Discovery:** Glob for all `.claude/skills/*-data-source-*/SKILL.md` files.
    Read their frontmatter descriptions to identify complementary data sources that share join
    keys (e.g., county FIPS, unitid, state codes). For sources with shared keys, create a worked
-   Polars join example in the Related Data Sources section or in analytical-context.md's
+   join example (Polars for Python, dplyr for R) in the Related Data Sources section or in analytical-context.md's
    Alternative/Complementary Sources section. Include actual column names, join type, and a
    validation check.
 6. Author SKILL.md per canonical 12-section data source template
@@ -176,7 +176,7 @@ Density targets for reference files:
   * **Alternative/Complementary Sources:** What other datasets address this source's gaps?
     Include specific variable names and access guidance, not just source names. Use the
     cross-dataset discovery results (step 5) to identify DAAF skills that complement this
-    source. Include worked Polars join examples for sources with shared join keys.
+    source. Include worked join examples (Polars for Python, dplyr for R) for sources with shared join keys.
   Target: 200+ lines.
 - Additional topic-specific files: Create when ANY of these apply:
   (a) The source has a major known limitation requiring >50 lines of explanation

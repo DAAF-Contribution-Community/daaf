@@ -55,15 +55,47 @@ When a user asks for more information, expand naturally on these points:
 
 For more depth, consult `{BASE_DIR}/user_reference/02_understanding_daaf.md` and summarize relevant sections. Point the user to the file path if they want to read it directly. After orienting, proceed to mode classification.
 
-### Language Background Detection
+### Language Preference Detection
 
-DAAF works in Python, but many users come from R or Stata backgrounds. Watch for
-signals during any conversation:
+DAAF supports two independent language preferences — watch for both:
 
-- **Explicit signals:** "I usually use R", "coming from Stata", "I'm an R user",
-  references to R/Stata packages (dplyr, ggplot2, fixest, eststo, reghdfe, etc.)
-- **Implicit signals:** Using R/Stata syntax in pseudocode, asking "how would I
-  do X" where X is clearly an R/Stata idiom
+1. **Execution language** — which language to write pipeline code in (Python or R)
+2. **Language background** — the user's native analysis language, for cross-language
+   annotations when the execution language differs from their background
+
+These are distinct concepts. Execution language governs which language the pipeline
+actually runs in (which libraries, which notebook format); language background only
+drives whether translation *annotations* are added on top of the chosen execution
+language.
+
+#### Execution Language Signals
+
+Watch for signals that the user wants to work in R:
+
+- **Explicit:** "I want to use R", "write this in R", "R pipeline", "set
+  execution language to R", "switch to R"
+- **Implicit:** Asking for R-specific outputs (e.g., "make a Quarto notebook"),
+  requesting R packages by name as primary tools (not just for reference)
+
+**When detected**, check `CLAUDE.md` § User Preferences > "Primary execution
+language". If set to Python (the default), propose updating:
+
+> "It sounds like you'd prefer to work in R. I can set R as the execution language
+> — all pipeline scripts will be written in R, using tidyverse, ggplot2, fixest,
+> and the rest of the R ecosystem, with Quarto notebooks instead of Marimo. Want me
+> to save that preference?"
+
+If the user confirms, update `CLAUDE.md` § User Preferences:
+- Set "Primary execution language" to R
+
+#### Language Background Signals
+
+Separately, watch for signals about the user's *background* language (relevant for
+cross-language annotations when execution language differs from background):
+
+- **Explicit:** "I usually use R", "coming from Stata", "I'm an R user"
+- **Implicit:** Using R/Stata syntax in pseudocode, referencing R/Stata packages
+  (dplyr, ggplot2, fixest, eststo, reghdfe, etc.) as their familiar tools
 
 **When detected**, check `CLAUDE.md` § User Preferences. If still set to defaults
 (language background: Python, annotations: disabled), propose updating:
@@ -76,16 +108,27 @@ If the user confirms, update `CLAUDE.md` § User Preferences:
 - Set "Primary analysis language background" to R (or Stata)
 - Set "Cross-language code annotations" to enabled
 
-This is a one-time setup. Once set, the orchestrator reads these preferences from
-`CLAUDE.md` at session start and propagates the appropriate translation directive
-to all code-producing agents (research-executor, code-reviewer, debugger,
-data-ingest) via their prompt strings. The `r-python-translation` skill (or
-`stata-python-translation`) is loaded on demand by those agents when the directive
-is present.
+#### Disambiguating "I use R"
 
-**If preferences are already set** (returning user with R/Stata background): read
-the preference from `CLAUDE.md` and silently propagate the directive — no need to
-re-ask.
+When a user says "I use R" without further context, it could mean either execution
+language or background (or both). Ask:
+
+> "Would you like me to write all analysis code in R (execution language), add
+> R-equivalent annotations to Python code (background preference), or both?"
+
+#### Preference Persistence
+
+Both preferences are one-time setup. Once set, the orchestrator reads them from
+`CLAUDE.md` at session start and propagates the appropriate directives to all
+code-producing agents (research-executor, code-reviewer, debugger, data-ingest) via
+their prompt strings (see "User Language Preference Propagation" under Universal
+Prompt Requirements for the exact directive strings). The translation skills
+(`r-python-translation`, `stata-python-translation`, `python-r-translation`,
+`stata-r-translation`) are loaded on demand by those agents when an annotation
+directive is present.
+
+**If preferences are already set** (returning user): read from `CLAUDE.md` and
+silently propagate — no need to re-ask.
 
 ---
 
@@ -213,7 +256,7 @@ Even for simple lookups, always confirm — the user may want broader context th
 > [Classification reasoning]. [What will change]. New version — original untouched. I'll read the revision and extension mode workflow reference, then classify the change type, re-run only the affected steps (with the same quality checks as the original), and present a summary when complete. **Shall I proceed?**
 
 **Reproducibility Verification:**
-> [Classification reasoning]. I'll read the reproducibility verification mode workflow reference, then decompile the marimo notebook into individual scripts, re-execute each one, and compare outputs against the originals. Then I'll cross-reference the Report's claims against the reproduced data. You'll get a Reproduction Report documenting what matched, what diverged, and any methodological concerns. Two decisions to confirm: (1) should I re-fetch data from mirrors or use frozen data from the folder (default: re-fetch from mirrors), and (2) how deep should the methodological review/critique be beyond checking for mechanical reproducibility (default: light, obvious concerns only)? I'll confirm both again after setup once the scope is concrete. **Shall I proceed with these defaults?**
+> [Classification reasoning]. I'll read the reproducibility verification mode workflow reference, then decompile the notebook (Marimo or Quarto, depending on the original) into individual scripts, re-execute each one, and compare outputs against the originals. Then I'll cross-reference the Report's claims against the reproduced data. You'll get a Reproduction Report documenting what matched, what diverged, and any methodological concerns. Two decisions to confirm: (1) should I re-fetch data from mirrors or use frozen data from the folder (default: re-fetch from mirrors), and (2) how deep should the methodological review/critique be beyond checking for mechanical reproducibility (default: light, obvious concerns only)? I'll confirm both again after setup once the scope is concrete. **Shall I proceed with these defaults?**
 
 **Framework Development:**
 > [Classification reasoning]. I'll read the framework development mode workflow reference, then start by thoroughly scoping the current state of the framework components you want to modify — what exists, how it connects, and what will be affected. You'll review and confirm the scope before I make any changes. Then I'll author or modify the artifacts following DAAF's canonical templates, execute the integration checklist to wire everything consistently, and run a multi-angle review pass at the end. Two checkpoints: (1) after scoping to confirm approach, and (2) after the review pass to approve final state. [Scope summary]. **Shall I proceed?**
@@ -509,11 +552,23 @@ All relative paths in referenced files resolve from BASE_DIR.
 All file paths in Agent prompts MUST be absolute. See `full-pipeline-mode.md` > "Standard Agent Prompt Structure" for the universal prompt template and the appropriate `WORKFLOW_PHASE*.md` file for stage-specific invocation templates.
 
 **User Language Preference Propagation:**
-When `CLAUDE.md` § User Preferences indicates a non-Python language background
-with annotations enabled, include the translation directive in every prompt to
+
+*Execution language directive* — When `CLAUDE.md` § User Preferences indicates
+"Primary execution language: R", include this directive in every prompt to
 code-producing agents (research-executor, code-reviewer, debugger, data-ingest):
-`"User has [R/Stata] background. Load [r-python-translation/stata-python-translation] skill. Add inline [R/Stata]-equivalent comments for non-trivial data operations."`
-This is a standing directive — propagate it silently to all applicable agent
+`"Execution language: R. Write .R scripts (not .py). Load R library skills per the data-scientist routing table (tidyverse not polars, ggplot2 not plotnine, fixest not pyfixest, etc.). Use run_with_capture.sh (auto-detects .R extension). Stage 9 notebook format: Quarto .qmd (not Marimo .py)."`
+
+*Annotation directive* — When `CLAUDE.md` § User Preferences indicates a
+non-default language background with annotations enabled, include the translation
+directive in every prompt to code-producing agents. The correct translation skill
+depends on the execution language (which language the code is written in) and the
+background (the language to annotate toward):
+- Execution=Python, Background=R: `"User has R background. Load r-python-translation skill. Add inline R-equivalent comments for non-trivial data operations."`
+- Execution=Python, Background=Stata: `"User has Stata background. Load stata-python-translation skill. Add inline Stata-equivalent comments for non-trivial data operations."`
+- Execution=R, Background=Python: `"User has Python background. Load python-r-translation skill. Add inline Python-equivalent comments for non-trivial data operations."`
+- Execution=R, Background=Stata: `"User has Stata background. Load stata-r-translation skill. Add inline Stata-equivalent comments for non-trivial data operations."`
+
+Both directives are standing — propagate silently to all applicable agent
 dispatches without re-confirming with the user each time.
 
 ### Subagent Type Selection

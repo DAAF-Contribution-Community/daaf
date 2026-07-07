@@ -94,7 +94,24 @@ mkdir -p {PROJECT_DIR}/output/figures
 
 **Rationale:** In this mode, the orchestrator frequently responds directly to the user -- advising on methodology, discussing approaches, explaining concepts -- and needs the `data-scientist` skill's methodology knowledge to provide rigorous advice without dispatching a subagent for every question.
 
-Additional domain skills (e.g., `education-data-source-ccd`, `polars`, `plotnine`, `statsmodels`, `pyfixest`, `linearmodels`, `geopandas`, `scikit-learn`) are loaded by subagents when dispatched, following the standard pattern. When the user asks about a specific tool or package and the orchestrator answers directly, loading the relevant skill first is the expected precondition for that answer — library skills encode environment-specific constraints and curated caveats that general knowledge lacks, so answering without the skill risks recommending approaches this environment cannot run or that the skill explicitly warns against. If a skill fails to load, answer from base knowledge and flag reduced confidence due to the missing skill.
+Additional domain skills are loaded by subagents when dispatched, following the standard pattern. The available library skills depend on execution language:
+
+| Python Skill | R Skill | Domain |
+|-------------|---------|--------|
+| `polars` | `tidyverse` | Data manipulation |
+| `plotnine` | `ggplot2` | Static visualization |
+| `plotly` | `plotly-r` | Interactive visualization |
+| `statsmodels` | `r-stats` | Standard regression / GLM |
+| `pyfixest` | `fixest` | Fixed effects / DiD |
+| `linearmodels` | `plm` | Panel data / IV-GMM |
+| `svy` | `survey-r` | Complex survey analysis |
+| `scikit-learn` | `tidymodels` | Machine learning |
+| `geopandas` | `sf-terra` | Spatial analysis |
+| `marimo` | `quarto` | Notebook format |
+
+Domain-specific data source skills (e.g., `education-data-source-ccd`) are language-agnostic.
+
+When the user asks about a specific tool or package and the orchestrator answers directly, loading the relevant skill first is the expected precondition for that answer — library skills encode environment-specific constraints and curated caveats that general knowledge lacks, so answering without the skill risks recommending approaches this environment cannot run or that the skill explicitly warns against. If a skill fails to load, answer from base knowledge and flag reduced confidence due to the missing skill.
 
 ---
 
@@ -129,7 +146,7 @@ The orchestrator identifies what the user needs and responds accordingly. This i
 The orchestrator responds directly (without dispatching a subagent) when:
 
 - The user asks about methodology, statistical approaches, or research design
-- The user asks about a package or tool that the orchestrator can answer by first loading the relevant skill via the Skill tool, then answering from it (e.g., `polars`, `plotnine`, `marimo`, `statsmodels`, `pyfixest`, `linearmodels`, `geopandas`, `scikit-learn`, `science-communication`)
+- The user asks about a package or tool that the orchestrator can answer by first loading the relevant skill via the Skill tool, then answering from it (e.g., Python: `polars`, `plotnine`, `marimo`, `statsmodels`, `pyfixest`, `linearmodels`, `geopandas`, `scikit-learn`; R: `tidyverse`, `ggplot2`, `quarto`, `r-stats`, `fixest`, `plm`, `sf-terra`, `tidymodels`; either: `science-communication`)
 - The user asks a conceptual question about data or analysis
 - The user wants to brainstorm or think through an approach
 - The question can be answered adequately from the orchestrator's loaded skills — general knowledge may supplement a loaded skill, but where a relevant skill exists it should be loaded rather than answered from memory, and anything inferred beyond skill content must be flagged as inference (per the loaded-vs-inferred distinction above)
@@ -148,7 +165,7 @@ The orchestrator dispatches to a specialized agent when:
 
 | User Need | `subagent_type` | Notes |
 |-----------|----------------|-------|
-| Write or run analysis code | `research-executor` | Orchestrator frames the user's request as a `<task>` block. When the task involves statistical modeling, use the `data-scientist` skill's routing tree (Related Skills > Statistical modeling section) to select the library: `statsmodels` for standard regression/GLM/diagnostics/time series, `pyfixest` for fixed effects/DiD/IV, `linearmodels` for random effects/IV-GMM/SUR, `svy` for complex survey analysis, `geopandas` for spatial regression, `scikit-learn` for clustering/prediction ML. Include the selected library in the task block. |
+| Write or run analysis code | `research-executor` | Orchestrator frames the user's request as a `<task>` block. When the task involves statistical modeling, use the `data-scientist` skill's routing tree (Related Skills > Statistical modeling section) to select the library by execution language. Python: `statsmodels` for standard regression/GLM/diagnostics/time series, `pyfixest` for fixed effects/DiD/IV, `linearmodels` for random effects/IV-GMM/SUR, `svy` for complex survey analysis, `geopandas` for spatial regression, `scikit-learn` for clustering/prediction ML. R: `r-stats` for standard regression/GLM, `fixest` for FE/DiD/IV, `plm` for RE/panel, `survey-r` for complex survey, `sf-terra` for spatial, `tidymodels` for ML. Include the selected library in the task block. |
 | Debug a script or diagnose an error | `debugger` | User provides script path + error description |
 | Review code for correctness and methodology | `code-reviewer` | User provides script; orchestrator provides methodology context |
 | Deep investigation of a data source | `source-researcher` | Standard multi-mode agent; already works in Data Lookup and Data Discovery |
@@ -160,8 +177,8 @@ The orchestrator dispatches to a specialized agent when:
 **When uncertain:** Err toward responding directly first — where "responding directly" includes loading the routed skill before answering, not skipping it. If the question proves deeper than expected, dispatch to the appropriate agent. A lightweight direct answer followed by "Want me to dig deeper with a specialist?" is better than over-dispatching.
 
 **R/Stata-background user detection:** If the user mentions an R / RStudio or Stata background, requests R/Stata-equivalent comments, or asks to understand Python code from an R or Stata perspective, the orchestrator should:
-- For **conceptual questions** (the orchestrator answers directly): Load the appropriate translation skill (`r-python-translation` or `stata-python-translation`) via the Skill tool and use it to bridge R/Stata and Python concepts in the response.
-- For **code-producing tasks** (dispatched to agents): Add the directive `"User has [R/Stata] background. Load [r-python-translation/stata-python-translation] skill. Add inline [R/Stata]-equivalent comments for non-trivial data operations."` to the agent prompt. This applies to research-executor, code-reviewer, debugger, and data-ingest dispatches.
+- For **conceptual questions** (the orchestrator answers directly): Load the appropriate translation skill via the Skill tool to bridge concepts. Select based on execution language and background: Python execution with R/Stata background → `r-python-translation`/`stata-python-translation`; R execution with Python/Stata background → `python-r-translation`/`stata-r-translation`.
+- For **code-producing tasks** (dispatched to agents): Add the appropriate translation directive to the agent prompt (see orchestrator SKILL.md § User Language Preference Propagation for the full 4-way table). This applies to research-executor, code-reviewer, debugger, and data-ingest dispatches.
 
 **Requests outside DAAF's capabilities:** If the user asks for something DAAF genuinely cannot/should not do (e.g., "access my university's database," "submit my draft to this journal"), explain the limitation clearly and suggest alternatives the user can pursue independently. Maintain the collaborative spirit -- frame it as "here's what I can't do and here's what might work instead" rather than a refusal.
 
@@ -374,7 +391,7 @@ These boundaries supplement the universal safety boundaries in `CLAUDE.md`. See 
 - Limit the conversation to a single topic
 - Create STATE.md unless escalating to a pipeline mode
 - Refuse a task because it doesn't fit a predefined category
-- Execute Python interactively (file-first execution still applies for all code)
+- Execute Python or R interactively (file-first execution still applies for all code)
 - Overwrite or modify user-provided files outside the workspace without explicit permission
 
 ---

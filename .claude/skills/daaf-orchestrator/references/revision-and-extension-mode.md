@@ -24,7 +24,7 @@ Stage 1: Classify as Revision and Extension Mode → Confirm with user
 Locate Existing Project
     ├─ Search research/ for the referenced analysis folder
     ├─ Read the COMPLETE existing Plan.md and Plan_Tasks.md
-    ├─ Read the existing notebook to understand current state
+    ├─ Read the existing notebook (marimo `.py` or Quarto `.qmd`) to understand current state
     └─ Read STATE.md and extract original execution context (see below)
     ↓
 Classify Revision Type → Confirm with user
@@ -96,7 +96,7 @@ Version suffixes follow the convention defined in `CLAUDE.md` > "Version Control
 - New versions of BOTH Plan.md AND Plan_Tasks.md document the revision rationale and what changed
 - Version suffix applies consistently to both files (e.g., both get `_a` suffix)
 
-**Skill element update:** When a Methodology Change revision changes the statistical approach (e.g., OLS to fixed effects, or adding spatial analysis), update the `<skill>` element in the relevant Plan_Tasks.md task blocks to reflect the new modeling library. Consult the `data-scientist` skill's routing tree or full-pipeline-mode.md's "Modeling library selection" section for the canonical routing.
+**Skill element update:** When a Methodology Change revision changes the statistical approach (e.g., OLS to fixed effects, or adding spatial analysis), update the `<skill>` element in the relevant Plan_Tasks.md task blocks to reflect the new modeling library. Consult the `data-scientist` skill's routing tree or full-pipeline-mode.md's "Modeling library selection" section for the canonical routing. The routing is language-dependent: Python uses `statsmodels`/`pyfixest`/`linearmodels`/`svy`/`scikit-learn`/`geopandas`; R uses `r-stats`/`fixest`/`plm`/`survey-r`/`tidymodels`/`sf-terra`.
 
 ## Re-run Guidance
 
@@ -191,9 +191,9 @@ Example addition to subagent prompt:
 All deliverables are new-version copies; originals remain untouched:
 - Plan.md (revised, documenting change rationale)
 - Plan_Tasks.md (revised, with updated task specs)
-- Re-executed scripts (new versions in `scripts/`)
+- Re-executed scripts (new versions in `scripts/`, `.py` for Python or `.R` for R)
 - Updated data files (regenerated, not copied)
-- Notebook (reassembled with final script versions)
+- Notebook (reassembled with final script versions — marimo `.py` for Python, Quarto `.qmd` for R)
 - Report (regenerated to reflect changes)
 - Session logs collected into `logs/` (run `collect_session_logs.sh` before report generation)
 
@@ -221,7 +221,7 @@ Revision and Extension mode reuses the standard invocation templates from the re
 
 No revision-specific invocation templates are needed — the standard templates plus REVISION CONTEXT block provide complete dispatch guidance.
 
-**R/Stata-background preference:** If the original analysis was conducted for an R/Stata-background user (check STATE.md or SESSION_NOTES.md for this preference), propagate the same directive to all re-execution agent prompts: `"User has [R/Stata] background. Load [r-python-translation/stata-python-translation] skill. Add inline [R/Stata]-equivalent comments for non-trivial data operations."` This ensures revised scripts maintain the same translation annotation pattern as the originals.
+**Cross-language annotation preference:** If the original analysis used cross-language annotations (check STATE.md or SESSION_NOTES.md), propagate the same translation directive to all re-execution agent prompts. Select the directive based on execution language and background per orchestrator SKILL.md § User Language Preference Propagation (4-way table: `r-python-translation`, `stata-python-translation`, `python-r-translation`, or `stata-r-translation`). This ensures revised scripts maintain the same translation annotation pattern as the originals.
 
 ## Worked Example: Bug Fix Revision
 
@@ -247,7 +247,7 @@ No revision-specific invocation templates are needed — the standard templates 
 ## REVISION CONTEXT
 **Revision Type:** Bug Fix
 **What Changed:** Join key corrected from school_id to ncessch
-**Prior Version:** research/.../scripts/stage7_transform/01_join-data.py
+**Prior Version:** research/.../scripts/stage7_transform/01_join-data.py (or .R)
 **Reusing:** data/raw/*.parquet, data/processed/*_clean.parquet (Stage 5-6 outputs)
 **Regenerating:** All Stage 7+ outputs
 ```
@@ -264,7 +264,7 @@ These boundaries supplement the universal boundaries in `CLAUDE.md` and `agent_r
 
 **Always Do:**
 - Search for and locate existing project first
-- Read complete Plan.md, Plan_Tasks.md, and notebook before proposing changes
+- Read complete Plan.md, Plan_Tasks.md, and notebook (marimo `.py` or Quarto `.qmd`) before proposing changes
 - Read STATE.md before planning any revision — original execution context is critical for informed revision decisions
 - Create fresh copies of both Plan.md and Plan_Tasks.md to record new changes
 - Classify revision type and confirm with user
